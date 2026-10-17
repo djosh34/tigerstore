@@ -18,12 +18,14 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
-// persister runs Node.persist alone on a log in a temporary directory,
-// seen through wrap, which holds an operation of the test's choice.
+// persister runs Node.persist, with prepareSegments, on a log in a
+// temporary directory, seen through wrap, which holds an operation of the
+// test's choice.
 type persister struct {
 	t       *testing.T
 	n       *Node
 	ctx     context.Context
+	cancel  context.CancelFunc
 	stopped chan struct{}
 	// failing is set by a test whose sync fails, which closes the segment.
 	failing bool
@@ -38,7 +40,8 @@ func startPersist(t *testing.T, wrap func(wal.FS) wal.FS, setup func(*wal.WAL, *
 	if err != nil {
 		t.Fatal(err)
 	}
-	w, _, err := wal.Open(wrap(dir))
+	fs := usageFS{wrap(dir)}
+	w, _, err := wal.Open(fs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,12 +54,17 @@ func startPersist(t *testing.T, wrap func(wal.FS) wal.FS, setup func(*wal.WAL, *
 	setup(w, &cfg)
 	p := &persister{t: t, n: &Node{
 		cfg:       cfg,
-		log:       &diskLog{w: w},
+		log:       &diskLog{w: w, fs: fs},
 		persistQ:  make(chan persistBatch, 1),
 		persisted: make(chan persistDone, 1),
-	}, ctx: ctx, stopped: make(chan struct{})}
+		wantQ:     make(chan uint64, 1),
+		nextQ:     make(chan wal.File),
+	}, ctx: ctx, cancel: cancel, stopped: make(chan struct{})}
+	var wg sync.WaitGroup
+	wg.Go(func() { p.n.persist(ctx, nil) })
+	wg.Go(func() { p.n.prepareSegments(ctx) })
 	go func() {
-		p.n.persist(ctx, nil)
+		wg.Wait()
 		close(p.stopped)
 	}()
 	t.Cleanup(func() {
@@ -70,6 +78,11 @@ func startPersist(t *testing.T, wrap func(wal.FS) wal.FS, setup func(*wal.WAL, *
 	})
 	return p
 }
+
+// usageFS is a log directory whose usage nobody measures.
+type usageFS struct{ wal.FS }
+
+func (usageFS) Usage() (int64, error) { return 0, nil }
 
 // append hands persist one entry of size bytes.
 func (p *persister) append(index uint64, size int) {
@@ -204,11 +217,11 @@ func (f *heldFile) WriteAt(p []byte, off int64) (int, error) {
 // A later append must not hold back an earlier durable append's response.
 // With the old pipeline, persist waits inside the second Flush and cannot
 // report the first sync, so a leader cannot count its durable copy toward
-// commit. The test holds the second append's write, the third WriteAt
-// after the segment header and the first append, and the first sync
+// commit. The test holds the second append's write, the second WriteAt
+// after the first append with the segment header, and the first sync
 // until that write is held.
 func TestPersistReportsSyncDuringNextWrite(t *testing.T) {
-	fs := newHeldFS(func(op string, _, write int) bool { return op == "write" && write == 3 })
+	fs := newHeldFS(func(op string, _, write int) bool { return op == "write" && write == 2 })
 	syncing := make(chan struct{})
 	var first sync.Once
 	p := startPersist(t, fs.wrap, func(_ *wal.WAL, cfg *Config) {
@@ -230,22 +243,21 @@ func TestPersistReportsSyncDuringNextWrite(t *testing.T) {
 	p.reported(2)
 }
 
-// An append in a full segment is durable before the next segment's header
-// or directory sync. Neither may hold back its response. The next append
-// must still wait for the new segment, and every sync error stops the node.
+// An append that fills a segment waits for that segment's sync and
+// nothing more: the next segment is readied on another goroutine, and its
+// directory sync does not hold back the response. The next append waits
+// for the new segment, and every failed sync stops the node.
 func TestPersistReportsBeforeRotation(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		// hold picks the held sync: of the full segment (file 1), of the
-		// new segment's header (file 2), or of the directory after it.
+		// hold picks the held sync: of the full segment (file 1), or of
+		// the directory after the next segment's file (file 2).
 		op   string
 		file int
 		fail bool
 	}{
-		{name: "header", op: "sync", file: 2},
 		{name: "directory", op: "syncdir", file: 2},
 		{name: "current-error", op: "sync", file: 1, fail: true},
-		{name: "header-error", op: "sync", file: 2, fail: true},
 		{name: "directory-error", op: "syncdir", file: 2, fail: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -280,8 +292,61 @@ func TestPersistReportsBeforeRotation(t *testing.T) {
 			case <-p.ctx.Done():
 				t.Fatal("no report after releasing the sync")
 			}
-			p.wait(p.stopped, "writer did not stop after the sync error")
+			// The committer ends the run on the error.
+			p.cancel()
+			select {
+			case <-p.stopped:
+			case <-time.After(5 * time.Second):
+				t.Fatal("writer did not stop after the sync error")
+			}
 			p.notReported()
 		})
+	}
+}
+
+// While the full segment's last sync runs, the writer goes on taking
+// appends, which wait in the log's buffer for the next segment, and
+// reports them in order once the full segment is durable.
+func TestPersistTakesAppendsDuringRotation(t *testing.T) {
+	held, release := make(chan struct{}), make(chan struct{})
+	let := sync.OnceFunc(func() { close(release) })
+	syncs := 0
+	p := startPersist(t, func(d wal.FS) wal.FS { return d }, func(w *wal.WAL, cfg *Config) {
+		w.SetSegmentBytes(1024)
+		cfg.BeforeSync = func() {
+			if syncs++; syncs == 2 {
+				close(held)
+				<-release
+			}
+		}
+	}, let)
+	p.append(1, 100)
+	p.reported(1)
+	p.append(2, 2048)
+	p.wait(held, "the full segment's sync never started")
+	// The queue holds one batch, so the second of these goes in only once
+	// the writer took the first.
+	p.append(3, 1)
+	p.append(4, 1)
+	p.notReported()
+	let()
+	var got []uint64
+	for len(got) < 3 {
+		select {
+		case done := <-p.n.persisted:
+			if done.err != nil {
+				t.Fatal(done.err)
+			}
+			for _, j := range done.jobs {
+				for _, e := range j.Entries {
+					got = append(got, e.GetIndex())
+				}
+			}
+		case <-p.ctx.Done():
+			t.Fatalf("reported %v of entries 2 to 4", got)
+		}
+	}
+	if !slices.Equal(got, []uint64{2, 3, 4}) {
+		t.Fatalf("reported entries %v, want 2, 3, 4", got)
 	}
 }

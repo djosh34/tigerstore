@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3/raftpb"
@@ -266,6 +267,7 @@ func (n *Node) Metrics(ctx context.Context) (core.Metrics, error) {
 	n.log.mu.Unlock()
 	used, err := n.log.fs.Usage()
 	m.DiskBytes, m.DiskBudget, m.CleanedBytes = used, n.cfg.DiskBudget, n.log.cleaned.Load()
+	m.RemoveFailures = n.log.removeFailures.Load()
 	m.MaxLogWriteNanos = n.log.maxWrite.Load()
 	return m, err
 }
@@ -345,11 +347,6 @@ func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any,
 		return rpctypes.ErrGRPCStopped
 	default:
 	}
-	if n.delay() > 0 && slices.ContainsFunc(reqs, core.TakesSpace) {
-		if err := n.throttle(ctx); err != nil {
-			return err
-		}
-	}
 	k := uint64(len(reqs))
 	b := &batch{first: n.nextID.Add(k) - k + 1, reqs: reqs, tags: tags, to: to}
 	return n.put(ctx, input{batch: b})
@@ -365,9 +362,13 @@ type Node struct {
 	persisted chan persistDone
 	ckptQ     chan core.CheckpointChunk
 	cleanQ    chan packRoot
-	// sparesQ takes the number of spare segment files the log keeps to
-	// the disk goroutine, which rotates segments into them.
-	sparesQ  chan int
+	// wantQ asks prepareSegments for the file of a segment, which nextQ
+	// takes to the disk goroutine for its next rotation. wantNext, which
+	// only the disk goroutine uses, is set until it asked for the segment
+	// after the current one.
+	wantQ    chan uint64
+	nextQ    chan wal.File
+	wantNext bool
 	defragQ  chan chan error
 	readQ    chan *core.ValueRead
 	readDone chan readDone
@@ -395,20 +396,21 @@ type Node struct {
 	memory func(cacheLow int64) (int64, bool)
 }
 
-// diskLog is the WAL as the committer, the snapshot server and the
-// persist goroutine share it. The lock covers the WAL's map of where
-// entries are: appends and reads take it, the fsync does not. Values in
-// segments that no longer change are read from a read-only mapping of the
-// file, a copy from the page cache instead of a read call.
+// diskLog is the WAL as the committer, the snapshot server, the persist
+// goroutine and the cleaner share it. The lock covers the WAL's map of
+// where entries are: appends and reads take it, the fsync and the
+// removal of files do not. Values in segments that no longer change are
+// read from a read-only mapping of the file, a copy from the page cache
+// instead of a read call.
 //
 // A value read finds its place under the lock and copies the bytes after
 // letting it go, so a read that waits for the disk does not hold up
 // appends (#165). It holds reading meanwhile. Whatever unmaps a segment
 // or closes a file of the log takes reading for writing, under the lock:
-// a removal or an unmap tries, and if a read is under way leaves it for
-// its next turn, so appends never wait for a read. A removal that a read
-// or a snapshot fetch put off waits in removal, and the end of that read
-// or fetch wakes the persist goroutine to try it again.
+// the cleaner tries, and if a read is under way leaves it for its next
+// turn, so appends never wait for a read. A removal that a read or a
+// snapshot fetch put off waits in removal, and the end of that read or
+// fetch wakes the cleaner to try it again.
 type diskLog struct {
 	mu      sync.Mutex
 	reading sync.RWMutex
@@ -420,21 +422,23 @@ type diskLog struct {
 	sealed uint64
 	maps   map[uint64][]byte
 	// ckpts are the durable checkpoints whose files are on disk, which
-	// the persist goroutine sets before it removes older files, and
-	// serving counts the snapshot fetches under way, during which nothing
-	// is removed.
+	// the persist goroutine adds to and the cleaner drops from before it
+	// removes older files, and serving counts the snapshot fetches under
+	// way, during which nothing is removed.
 	ckpts   []wal.Root
 	serving int
-	// removal is the removal that waits, held is set while one does,
-	// and retry wakes the persist goroutine to try it.
+	// removal is what the newest durable root made obsolete, which waits
+	// for the cleaner; held is set while it waits, and retry wakes the
+	// cleaner.
 	removal *rootRemoval
 	held    atomic.Bool
 	retry   chan struct{}
 	// used is the size of the log's files when the cleaner measured them
-	// last, plus what the disk goroutines wrote since, and cleaned the
-	// bytes that cleaning wrote. maxWrite is the longest write and sync
-	// of a group, in nanoseconds.
-	used, cleaned, maxWrite atomic.Int64
+	// last, plus what the disk goroutines wrote since, cleaned the bytes
+	// that cleaning wrote, and removeFailures the removals of files that
+	// failed. maxWrite is the longest write and sync of a group, in
+	// nanoseconds.
+	used, cleaned, removeFailures, maxWrite atomic.Int64
 	// before runs in each value read; see Config.BeforeRead.
 	before func()
 }
@@ -494,7 +498,7 @@ func (l *diskLog) readDone() {
 	l.wake()
 }
 
-// wake wakes the persist goroutine if a removal waits.
+// wake wakes the cleaner if a removal waits.
 func (l *diskLog) wake() {
 	if l.held.Load() {
 		select {
@@ -502,22 +506,6 @@ func (l *diskLog) wake() {
 		default:
 		}
 	}
-}
-
-// remove removes, with the lock held, what the waiting removal's root
-// made obsolete, unless a snapshot fetch or a value read is under way:
-// either may read what it takes.
-func (l *diskLog) remove() error {
-	r := l.removal
-	if r == nil || l.serving > 0 || !l.reading.TryLock() {
-		return nil
-	}
-	err := errors.Join(l.w.RemoveBelow(r.below), l.w.RemoveCheckpoints(r.root.Index))
-	l.reading.Unlock()
-	l.removal = nil
-	l.held.Store(false)
-	l.ckpts = slices.DeleteFunc(l.ckpts, func(c wal.Root) bool { return c.Index < r.root.Index })
-	return errors.Join(err, l.synced())
 }
 
 // mapping returns the mapping of sealed segment seq, mapping it first.
@@ -548,26 +536,9 @@ func (l *diskLog) mapping(seq uint64) ([]byte, error) {
 	return m, nil
 }
 
-// synced notes, with the lock held, the segments that no longer change
-// after a sync, and unmaps those that were removed.
-func (l *diskLog) synced() error {
-	l.sealed = l.w.Seq() - 1
-	return l.unmap(l.w.Oldest() - 1)
-}
-
-// unmap unmaps the segments up to upto, which are removed, unless a value
-// read is under way. The lock is held.
+// unmap unmaps the segments up to upto, which the log dropped. The lock
+// and reading are held.
 func (l *diskLog) unmap(upto uint64) error {
-	gone := false
-	for seq := range l.maps {
-		gone = gone || seq <= upto
-	}
-	// A value read under way may copy from a mapping; the next sync
-	// unmaps it instead.
-	if !gone || !l.reading.TryLock() {
-		return nil
-	}
-	defer l.reading.Unlock()
 	var err error
 	for seq, m := range l.maps {
 		if seq <= upto {
@@ -585,12 +556,7 @@ func (l *diskLog) close() error {
 	}
 	l.reading.Lock()
 	defer l.reading.Unlock()
-	err := l.w.Close()
-	for seq, m := range l.maps {
-		err = errors.Join(err, syscall.Munmap(m))
-		delete(l.maps, seq)
-	}
-	return err
+	return errors.Join(l.w.Close(), l.unmap(l.w.Seq()))
 }
 
 func (l *diskLog) Checkpoint(index uint64) (io.ReadCloser, error) {
@@ -684,11 +650,6 @@ func (n *Node) open() error {
 	if n.cfg.SegmentBytes > 0 {
 		w.SetSegmentBytes(n.cfg.SegmentBytes)
 	}
-	if n.cfg.DiskBudget > 0 {
-		if err := w.SetSpares(spareSegments(n.cfg)); err != nil {
-			return errors.Join(err, w.Close())
-		}
-	}
 	n.log.mu.Lock()
 	err = n.log.close()
 	n.log.w, n.log.sealed, n.log.ckpts, n.log.removal = w, w.Seq()-1, nil, nil
@@ -726,7 +687,8 @@ func (n *Node) open() error {
 	n.persisted = make(chan persistDone, 1)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
 	n.cleanQ = make(chan packRoot)
-	n.sparesQ = make(chan int, 1)
+	n.wantQ = make(chan uint64, 1)
+	n.nextQ = make(chan wal.File)
 	n.readQ = make(chan *core.ValueRead)
 	n.readDone = make(chan readDone, readers)
 	n.leader.Store(0)
@@ -876,11 +838,6 @@ func (n *Node) do(ctx context.Context, r *request) (proto.Message, error) {
 }
 
 func (n *Node) doReply(ctx context.Context, r *request) (core.Reply, error) {
-	if core.TakesSpace(core.Request{Op: r.op}) {
-		if err := n.throttle(ctx); err != nil {
-			return core.Reply{}, err
-		}
-	}
 	if err := n.put(ctx, input{req: r}); err != nil {
 		return core.Reply{}, err
 	}
@@ -956,6 +913,7 @@ func (n *Node) run(ctx context.Context, t peer.Transport) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var wg sync.WaitGroup
+	wg.Go(func() { n.prepareSegments(ctx) })
 	wg.Go(func() { n.persist(ctx, t) })
 	wg.Go(func() { n.writeCheckpoints(ctx) })
 	wg.Go(func() { n.clean(ctx) })
@@ -1290,10 +1248,12 @@ type persistBatch struct {
 // syncsInFlight is how many written groups may wait for their sync.
 const syncsInFlight = 4
 
-// written is a group of jobs written to the log: f is the segment to sync
-// for it, nil when no job must be synced (core.PersistJob.MustSync).
+// written is a group of jobs, and roots of cleaning passes, written to
+// the log: f is the segment to sync for it, nil when nothing in it must be
+// synced (core.PersistJob.MustSync).
 type written struct {
 	jobs           []core.PersistJob
+	packs          []packRoot
 	f              wal.File
 	entries, bytes int
 	times          persistTimes
@@ -1310,24 +1270,25 @@ type syncedGroup struct {
 // writes the next group while that one syncs, so the disk always has the
 // next group to take. syncGroups reports durable jobs to the committer
 // before returning them here: a later blocked Flush must not hold back
-// an earlier append's response. A failed write or sync stops the node; it is
-// never retried, and no later group is reported. A job with a snapshot
+// an earlier append's response. A failed write or sync stops the node; it
+// is never retried, and no later group is reported. A job with a snapshot
 // first fetches it from the leader into the log, and a failed fetch ends
-// the run for a reload; a job with a root removes what the root made
-// obsolete once it is synced. Whatever starts a new segment or syncs on
-// its own (a full segment, a snapshot, a cleaning root) first waits for
-// every group in flight.
+// the run for a reload. A group that comes back hands its durable roots
+// to the cleaner, which removes what they made obsolete.
+//
+// A full segment is cut to its records before its last group's sync, and
+// the log goes on in the file that prepareSegments readied, without a
+// sync of its own. Nothing is written into the new segment before every
+// group of the old one is durable, as its header vouches for the old
+// one's last record: until then, the jobs that come wait in the log's
+// buffer.
 func (n *Node) persist(ctx context.Context, t peer.Transport) {
 	w := n.log.w
+	n.wantNext = true
 	toSync := make(chan written, syncsInFlight)
 	synced := make(chan syncedGroup, syncsInFlight)
-	// report runs on the sync goroutine. Rotation, snapshot installation
-	// and cleaning wait for it before changing the segment or the roots
-	// it reads in afterSync.
+	// report runs on the sync goroutine.
 	report := func(g written, err error) error {
-		if err == nil {
-			err = n.afterSync(g.jobs)
-		}
 		d := time.Since(g.times.start)
 		if err == nil && d > time.Duration(n.log.maxWrite.Load()) {
 			n.log.maxWrite.Store(int64(d))
@@ -1349,78 +1310,88 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		close(toSync)
 		wg.Wait()
 	}()
-	inFlight := 0
-	// drain waits until every earlier group was reported to the committer.
-	drain := func() bool {
-		for ; inFlight > 0; inFlight-- {
-			if s := <-synced; s.err != nil {
-				return false
-			}
-		}
-		return true
-	}
 	fail := func(err error) {
 		select {
 		case n.persisted <- persistDone{err: err}:
 		case <-ctx.Done():
 		}
 	}
+	inFlight := 0
+	// old is the segment the log rotated out of, while groups written to
+	// it wait for their syncs; release closes it once none does, and
+	// reports whether the node goes on.
+	var old wal.File
+	release := func() bool {
+		if inFlight > 0 || old == nil {
+			return true
+		}
+		err := old.Close()
+		old = nil
+		if err != nil {
+			fail(fmt.Errorf("%w: close a full segment: %w", core.ErrDisk, err))
+		}
+		return err == nil
+	}
+	// back takes a synced group back, and reports whether the node goes
+	// on.
+	back := func(s syncedGroup) bool {
+		inFlight--
+		if s.err != nil {
+			return false
+		}
+		n.durable(s.g)
+		if s.g.f == w.Segment() {
+			n.askNext()
+		}
+		return release()
+	}
+	// drain waits until every earlier group was reported to the committer.
+	drain := func() bool {
+		for inFlight > 0 {
+			if !back(<-synced) {
+				return false
+			}
+		}
+		return true
+	}
+	var g written
 	for {
 		var pending persistBatch
 		queue, cleanQ := n.persistQ, n.cleanQ
 		if inFlight == syncsInFlight {
-			queue = nil
-		}
-		if inFlight > 0 {
-			cleanQ = nil
+			queue, cleanQ = nil, nil
 		}
 		select {
 		case pending = <-queue:
+		more:
+			for {
+				select {
+				case js := <-n.persistQ:
+					pending.jobs = append(pending.jobs, js.jobs...)
+				default:
+					break more
+				}
+			}
+			if g.times.start.IsZero() {
+				g.times = persistTimes{queued: pending.queued, start: time.Now()}
+			}
 		case s := <-synced:
-			inFlight--
-			if s.err != nil {
+			if !back(s) {
 				return
 			}
-			continue
 		case pr := <-cleanQ:
-			if err := n.installPacks(pr); err != nil {
-				fail(fmt.Errorf("install the root of a pack: %w", err))
-				return
-			}
-			continue
-		case k := <-n.sparesQ:
-			// Here, as no segment starts while it removes spares.
 			n.log.mu.Lock()
-			err := w.SetSpares(k)
+			w.InstallPacks(pr.add, pr.drop)
+			n.cleaningStage("root-buffered")
 			n.log.mu.Unlock()
-			if err != nil {
-				fail(fmt.Errorf("set %d spares: %w", k, err))
-				return
+			g.packs = append(g.packs, pr)
+			if g.times.start.IsZero() {
+				g.times.start = time.Now()
 			}
-			continue
-		case <-n.log.retry:
-			n.log.mu.Lock()
-			err := n.log.remove()
-			n.log.mu.Unlock()
-			if err != nil {
-				fail(err)
-				return
-			}
-			continue
 		case <-ctx.Done():
 			return
 		}
-	more:
-		for {
-			select {
-			case js := <-n.persistQ:
-				pending.jobs = append(pending.jobs, js.jobs...)
-			default:
-				break more
-			}
-		}
 		jobs, installs := core.UpToInstall(pending.jobs)
-		g := written{jobs: jobs, times: persistTimes{queued: pending.queued, start: time.Now()}}
 		for _, j := range jobs {
 			if j.Install != nil {
 				if !drain() {
@@ -1444,10 +1415,14 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 				w.AppendRoot(*j.Root)
 			}
 			n.log.mu.Unlock()
+			g.jobs = append(g.jobs, j)
 			g.entries += len(j.Entries)
 			for _, e := range j.Entries {
 				g.bytes += len(e.Data)
 			}
+		}
+		if old != nil || len(g.jobs) == 0 && len(g.packs) == 0 {
+			continue
 		}
 		buffered := w.Buffered()
 		n.log.used.Add(buffered)
@@ -1461,45 +1436,42 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			n.logf("slow log flush: %d bytes in %v", buffered, writeTime)
 		}
 		m.WALWriteBytes.Add(float64(buffered))
+		full := err == nil && w.Full()
+		if full {
+			// The group's sync makes the cut durable too.
+			err = w.Seal()
+		}
 		if err != nil {
-			fail(err)
+			fail(fmt.Errorf("%w: %w", core.ErrDisk, err))
 			return
 		}
-		full := w.Full()
-		if full || slices.ContainsFunc(jobs, core.PersistJob.MustSync) {
+		if full || len(g.packs) > 0 || slices.ContainsFunc(g.jobs, core.PersistJob.MustSync) {
 			g.f = w.Segment()
+		}
+		if full && planted.On("B16") {
+			// Planted: the group that fills the segment goes without its
+			// sync.
+			g.f = nil
 		}
 		toSync <- g
 		inFlight++
+		g = written{}
 		if installs {
 			// The run ends at the install and starts again from the log.
 			drain()
 			return
 		}
-		if !full {
-			continue
-		}
-		// Report the full segment's durable appends before starting the
-		// next one. Its header and directory syncs do not make these
-		// appends any more durable, and may block for a long time.
-		if !drain() {
-			return
-		}
-		syncStart := time.Now()
-		err = w.Sync()
-		syncTime := time.Since(syncStart)
-		m.WALFsync.Observe(syncTime.Seconds())
-		if syncTime > n.cfg.Tick {
-			n.logf("slow log rotation: %v start=%s end=%s", syncTime,
-				syncStart.UTC().Format(time.RFC3339Nano), syncStart.Add(syncTime).UTC().Format(time.RFC3339Nano))
-		}
-		if err == nil {
-			// Rotation sealed a segment after the last durable report.
-			err = n.afterSync(nil)
-		}
-		if err != nil {
-			fail(err)
-			return
+		if full {
+			if n.wantNext {
+				// The segment filled before its header was durable.
+				if !drain() {
+					return
+				}
+				n.askNext()
+			}
+			if old, err = n.rotate(ctx); err != nil || !release() {
+				return
+			}
 		}
 	}
 }
@@ -1572,31 +1544,121 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 	}
 }
 
-// afterSync notes what a synced group changed: the segments that no
-// longer change, a snapshot's checkpoint, and a root, which removes what
-// it made obsolete.
-func (n *Node) afterSync(jobs []core.PersistJob) error {
-	n.log.mu.Lock()
-	defer n.log.mu.Unlock()
-	err := n.log.synced()
-	for _, j := range jobs {
+// durable notes what a synced group made durable, on the persist
+// goroutine: a snapshot's checkpoint, and a root, whose removal of what it
+// made obsolete the cleaner takes on; and the roots of cleaning passes,
+// which the cleaner waits for.
+func (n *Node) durable(g written) {
+	l := n.log
+	l.mu.Lock()
+	for _, j := range g.jobs {
 		if in := j.Install; in != nil && in.Checkpoint.Index > 0 {
-			n.log.ckpts = []wal.Root{in.Checkpoint}
-			n.log.removal = nil
-			n.log.held.Store(false)
+			l.ckpts = []wal.Root{in.Checkpoint}
+			l.removal = nil
+			l.held.Store(false)
 		}
 		if j.Root != nil {
-			n.log.ckpts = append(n.log.ckpts, *j.Root)
+			l.ckpts = append(l.ckpts, *j.Root)
 			if j.RemoveBelow > 0 {
-				// Set before it tries, so that a read that keeps
-				// it from removing wakes the retry when it ends.
-				n.log.removal = &rootRemoval{j.RemoveBelow, *j.Root}
-				n.log.held.Store(true)
-				err = errors.Join(err, n.log.remove())
+				l.removal = &rootRemoval{j.RemoveBelow, *j.Root}
+				l.held.Store(true)
 			}
 		}
 	}
-	return err
+	l.mu.Unlock()
+	l.wake()
+	for _, pr := range g.packs {
+		n.cleaningStage("root-synced")
+		close(pr.synced)
+	}
+}
+
+// askNext asks prepareSegments for the file of the segment after the
+// current one, unless it did already: once the current segment's header
+// is durable, as until then a crash must find no newer segment on disk.
+func (n *Node) askNext() {
+	if n.wantNext {
+		n.wantNext = false
+		n.wantQ <- n.log.w.Seq() + 1
+	}
+}
+
+// rotate goes on in the next segment, which prepareSegments readied, and
+// returns the old segment's file. The old segment must be sealed.
+func (n *Node) rotate(ctx context.Context) (wal.File, error) {
+	start := time.Now()
+	var next wal.File
+	select {
+	case next = <-n.nextQ:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	if d := time.Since(start); d > n.cfg.Tick {
+		n.logf("slow log rotation: waited %v for the next segment", d)
+	}
+	n.log.mu.Lock()
+	old := n.log.w.Rotate(next)
+	n.log.sealed = n.log.w.Seq() - 1
+	n.log.mu.Unlock()
+	n.wantNext = true
+	return old, nil
+}
+
+// syncLog writes and syncs what the log buffered, for the persist
+// goroutine while no group is in flight, as in a snapshot install, and
+// observes the sync in h. A full segment then ends, and the log goes on in
+// the next one.
+func (n *Node) syncLog(ctx context.Context, h prometheus.Observer) error {
+	w := n.log.w
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	if err := syncTimed(w.Segment(), h); err != nil {
+		return err
+	}
+	n.askNext()
+	if !w.Full() {
+		return nil
+	}
+	if err := errors.Join(w.Seal(), w.Segment().Sync()); err != nil {
+		return err
+	}
+	old, err := n.rotate(ctx)
+	if err != nil {
+		return err
+	}
+	return old.Close()
+}
+
+// prepareSegments readies the file of each segment the disk goroutine
+// asks for, ahead of the rotation that takes it, as etcd's file pipeline
+// does. A failure stops the node, as a failed write of the log does.
+func (n *Node) prepareSegments(ctx context.Context) {
+	for {
+		var seq uint64
+		select {
+		case seq = <-n.wantQ:
+		case <-ctx.Done():
+			return
+		}
+		f, err := wal.PrepareSegment(n.log.fs, seq)
+		if err != nil {
+			select {
+			case n.persisted <- persistDone{err: fmt.Errorf("%w: prepare segment %d: %w", core.ErrDisk, seq, err)}:
+			case <-ctx.Done():
+			}
+			return
+		}
+		select {
+		case n.nextQ <- f:
+		case <-ctx.Done():
+			// It stays on disk, where the next run starts it.
+			if err := f.Close(); err != nil {
+				n.logf("close the file of segment %d: %v", seq, err)
+			}
+			return
+		}
+	}
 }
 
 // install fetches a snapshot from its leader and writes it to the log.
@@ -1608,7 +1670,7 @@ func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) 
 	m.SnapshotApplyInProgress.Set(1)
 	m.SnapshotReceiveInflights.WithLabelValues(from).Inc()
 	start := time.Now()
-	sink := &core.LogSink{WAL: n.log.w, Lock: &n.log.mu, Step: n.snapshotStep(n.log.w, cmp.Or(n.cfg.snapshotSync, syncBytes))}
+	sink := &core.LogSink{WAL: n.log.w, Lock: &n.log.mu, Step: n.snapshotStep(ctx, cmp.Or(n.cfg.snapshotSync, syncBytes))}
 	r, err := t.Fetch(ctx, in.From, in.Applied+1, in.Index)
 	if err == nil {
 		err = core.ReceiveSnapshot(r, sink, n.log, in)
@@ -1632,21 +1694,21 @@ func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) 
 	case ctx.Err() != nil || planted.On("B26"):
 		return err
 	}
-	return core.FetchFailed(err, n.log.w.Sync)
+	return core.FetchFailed(err, func() error { return n.syncLog(ctx, m.SnapDBFsync) })
 }
 
 // syncBytes is how much of a snapshot the WAL buffers before a sync.
 const syncBytes = 16 << 20
 
-// snapshotStep is the Step of a snapshot sink: it syncs w every
+// snapshotStep is the Step of a snapshot sink: it syncs the log every
 // syncEvery bytes of entries and values, and runs Config.stage, if set,
 // after each such sync and each item.
-func (n *Node) snapshotStep(w *wal.WAL, syncEvery int) func(string, int) error {
+func (n *Node) snapshotStep(ctx context.Context, syncEvery int) func(string, int) error {
 	pending := 0
 	return func(stage string, bytes int) error {
 		if pending += bytes; pending >= syncEvery {
 			pending = 0
-			if err := syncTimed(w, n.cfg.Metrics.SnapDBFsync); err != nil {
+			if err := n.syncLog(ctx, n.cfg.Metrics.SnapDBFsync); err != nil {
 				return fmt.Errorf("%w: %w", core.ErrDisk, err)
 			}
 			if err := n.staged("sync"); err != nil {

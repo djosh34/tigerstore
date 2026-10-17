@@ -64,9 +64,10 @@ type Metrics struct {
 	IndexBytes, WindowBytes int64
 	// The node driver adds the rest: MapBytes estimates what the map of
 	// where entries and values are on disk takes in memory, DiskBytes is
-	// the size of the log's files, DiskBudget the budget for them, and
-	// CleanedBytes what cleaning wrote.
-	MapBytes, DiskBytes, DiskBudget, CleanedBytes int64
+	// the size of the log's files, DiskBudget the budget for them,
+	// CleanedBytes what cleaning wrote, and RemoveFailures the removals of
+	// old files that failed.
+	MapBytes, DiskBytes, DiskBudget, CleanedBytes, RemoveFailures int64
 	// MaxCommitWait is the most ticks one of this node's appends as leader
 	// waited to commit, which the commit watchdog bounds, and the node
 	// driver adds MaxLogWriteNanos, the longest write and sync of the log.

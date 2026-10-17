@@ -68,38 +68,6 @@ func decodeAll(t *testing.T, data []byte, ops []*pending) {
 	}
 }
 
-// TestRefuseSpaceKeepsFormat checks that refusing the writes of an entry
-// keeps its format and every write that takes no space.
-func TestRefuseSpaceKeepsFormat(t *testing.T) {
-	ops := []*pending{
-		{req: Request{ID: 7, Op: &pb.PutRequest{Key: []byte("a"), Value: []byte("1")}}},
-		{req: Request{ID: 8, Op: &pb.DeleteRangeRequest{Key: []byte("b")}}},
-	}
-	for format := uint32(1); format <= MaxVersion; format++ {
-		data, err := encodeBatch(format, 2, 99, ops, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		refused, err := refuseSpace(data)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if (refused[0] == 0) != (format > 1) {
-			t.Fatalf("format %d became an entry that starts with %d", format, refused[0])
-		}
-		var kinds []byte
-		if err := walkBatch(refused, func(_, _, _ uint64, kind byte, _ []byte, _ int) error {
-			kinds = append(kinds, kind)
-			return nil
-		}); err != nil {
-			t.Fatalf("format %d: %v", format, err)
-		}
-		if want := []byte{kindNoSpace, kindDelete}; !bytes.Equal(kinds, want) {
-			t.Fatalf("format %d: kinds %v, want %v", format, kinds, want)
-		}
-	}
-}
-
 func TestReadCtxNeedsSameBoot(t *testing.T) {
 	ctx := readCtx(5, 42)
 	if seq, ok := parseReadCtx(5, ctx); !ok || seq != 42 {

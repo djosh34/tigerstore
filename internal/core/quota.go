@@ -24,9 +24,9 @@ import (
 // applies still applies, as in etcd, but its client gets ErrNoSpace, and
 // every member raises its own NOSPACE alarm. While a NOSPACE alarm is
 // active, such writes fail when they apply (alarm.go), and every member
-// refuses them before it proposes them. A node past its disk budget
-// raises the same alarm for itself, and clears it once its log is below
-// the budget again (SetDisk).
+// refuses them before it proposes them, until an operator disarms it. A
+// node past its disk budget raises the same alarm for itself, and clears
+// it once its files are below the budget again (SetDisk).
 
 // QuotaBytes is etcd's default --quota-backend-bytes.
 const QuotaBytes = 2 << 30
@@ -86,6 +86,7 @@ func (n *Node) quotaLeft(cost int64) bool {
 // raises the node's NOSPACE alarm. Like etcd's gRPC layer, it answers
 // once the alarm applied, if it proposes it.
 func (n *Node) refuseNoSpace(id uint64) {
+	n.quotaAlarm = true
 	if !n.raiseNoSpace(id) {
 		n.reply(id, rpctypes.ErrGRPCNoSpace)
 	}
@@ -93,6 +94,7 @@ func (n *Node) refuseNoSpace(id uint64) {
 
 // overQuota is the answer to a write that applied past the quota.
 func (n *Node) overQuota() error {
+	n.quotaAlarm = true
 	n.raiseNoSpace(0)
 	return rpctypes.ErrGRPCNoSpace
 }
@@ -100,9 +102,10 @@ func (n *Node) overQuota() error {
 // raiseNoSpace proposes this node's NOSPACE alarm, unless it is active or
 // a proposal of it is under way: one from the last leaseRetryTicks that
 // has not applied. A node that replays its log proposes nothing: it
-// raised the alarm when it applied the entry first. If it proposes the
-// alarm and id is not 0, request id gets ErrNoSpace once the alarm
-// applied.
+// raised the alarm when it applied the entry first. The alarm goes ahead
+// of the writes that wait to be proposed, which it then refuses. If it
+// proposes the alarm and id is not 0, request id gets ErrNoSpace once the
+// alarm applied.
 func (n *Node) raiseNoSpace(id uint64) bool {
 	if !n.noSpaceDue(true) {
 		return false
@@ -113,6 +116,10 @@ func (n *Node) raiseNoSpace(id uint64) bool {
 		refuse:   rpctypes.ErrGRPCNoSpace,
 	}
 	n.queueFeature(p)
+	if p.queued {
+		copy(n.proposals[1:], n.proposals[:len(n.proposals)-1])
+		n.proposals[0] = p
+	}
 	if id != 0 {
 		n.timeouts = append(n.timeouts, p)
 	}

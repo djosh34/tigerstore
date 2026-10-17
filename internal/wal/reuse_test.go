@@ -34,9 +34,9 @@ func files(t *testing.T, d *simfs.Disk) (segs, spares []string) {
 	return segs, spares
 }
 
-// TestSetSparesRemovesExtra turns spares off with spare files on disk:
-// they go, and a removal after it removes the segment's file (#181).
-func TestSetSparesRemovesExtra(t *testing.T) {
+// TestRemoveSpares removes spare files beyond one, then turns spares
+// off: a removal after it removes the segment's file (#181).
+func TestRemoveSpares(t *testing.T) {
 	d := simfs.New()
 	w, _ := open(t, d)
 	w.SetSegmentBytes(1)
@@ -51,15 +51,13 @@ func TestSetSparesRemovesExtra(t *testing.T) {
 	if _, spares := files(t, d); len(spares) == 0 {
 		t.Fatal("no spares after the removal")
 	}
-	if err := w.SetSpares(1); err != nil {
+	if err := wal.RemoveSpares(d, 1); err != nil {
 		t.Fatal(err)
 	}
 	if _, spares := files(t, d); len(spares) != 1 {
-		t.Fatalf("spares %v after SetSpares(1)", spares)
+		t.Fatalf("spares %v after RemoveSpares(1)", spares)
 	}
-	if err := w.SetSpares(0); err != nil {
-		t.Fatal(err)
-	}
+	w.SetSpares(0)
 	w.AppendRoot(wal.Root{Index: 7, Term: 1})
 	if err := w.Sync(); err != nil {
 		t.Fatal(err)

@@ -18,7 +18,8 @@
 // removal renames up to MaxSpares segments to spare names instead of
 // deleting them, and the log writes at its own offset, so a sync into a
 // reused file changes no block allocation and, on ext4, commits no
-// journal.
+// journal. PrepareSegment readies the file of the next segment ahead of
+// time, so that a rotation (Seal, Rotate) does no sync of its own.
 //
 // An entry record replaces every entry at or after its index, so a
 // truncated Raft suffix and its replacement are synced together. A root
@@ -31,9 +32,11 @@
 // The package does no I/O of its own. It reads and writes through FS, so
 // the simulator runs it on a simulated disk. It takes no locks: a driver
 // that reads from other goroutines than the one that appends must hold
-// one lock around Append, AppendRoot, AppendValue, InstallPacks,
-// RemoveBelow, RemoveCleaned and every read, but need not hold it around
-// Flush and Sync.
+// one lock around Append, AppendRoot, AppendValue, InstallPacks, Rotate,
+// DropBelow, DropCleaned, RemoveBelow, RemoveCleaned and every read, but
+// need not hold it around Flush, Seal and RemoveFiles. Sync starts the
+// next segment itself, so such a driver uses Flush, Seal and Rotate
+// instead.
 package wal
 
 import (
@@ -42,6 +45,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	iofs "io/fs"
 	"slices"
 	"strings"
 
@@ -228,18 +232,17 @@ type WAL struct {
 	fs  FS
 	seg File
 	seq uint64
-	// version is the format of the newest segment, size where its records
-	// end, and reused whether its file was a spare, which may hold more
-	// after the records.
+	// version is the format of the newest segment, and size where its
+	// records end.
 	version uint32
 	size    int64
-	reused  bool
 	crc     uint32
 	last    uint64
 	buf     []byte
 	dirty   bool
 	maxSize int64
-	// spares is how many removed segments to keep as spare files.
+	// spares is how many removed segments RemoveBelow and RemoveCleaned
+	// keep as spare files.
 	spares int
 	// hs and root are the newest hard state and root, copied into every
 	// new segment; copied marks that the current segment has them.
@@ -250,11 +253,8 @@ type WAL struct {
 	runs    []*run
 	vals    map[uint64][]valueRec
 	readers map[uint64]File
-	// sizes holds the size of each segment that no longer changes, and
-	// sealed the size of the last one to fill until the next append notes
-	// it there: Sync starts new segments without the lock.
-	sizes  map[uint64]int64
-	sealed int64
+	// sizes holds the size of each segment that no longer changes.
+	sizes map[uint64]int64
 
 	// packs are the packs the newest root names, by number, and nextPack
 	// the number of the next one. named are the numbers of the newest
@@ -294,12 +294,13 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	// when the newest segment is empty. Old segments go only from the
 	// front.
 	for i := 1; i < len(segs); i++ {
-		var prev, cur uint64
-		if _, err := fmt.Sscanf(segs[i-1], "%016x.wal", &prev); err != nil {
-			return nil, nil, fmt.Errorf("%w: segment name %s: %w", ErrCorrupt, segs[i-1], err)
+		prev, err := segmentSeq(segs[i-1])
+		if err != nil {
+			return nil, nil, err
 		}
-		if _, err := fmt.Sscanf(segs[i], "%016x.wal", &cur); err != nil {
-			return nil, nil, fmt.Errorf("%w: segment name %s: %w", ErrCorrupt, segs[i], err)
+		cur, err := segmentSeq(segs[i])
+		if err != nil {
+			return nil, nil, err
 		}
 		if cur != prev+1 {
 			return nil, nil, fmt.Errorf("%w: segment %s follows %s", ErrCorrupt, segs[i], segs[i-1])
@@ -329,16 +330,22 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			ok = seq == w.seq+1 && crc == w.crc
 		}
 		if !ok {
-			// newSegment syncs the header before the directory entry and
-			// before any record, so only a newest segment with nothing
-			// after its header can have a header that never reached the
-			// disk. Anything else is damage or a lost segment.
-			if !last || len(data) > headerSize {
-				return nil, nil, errors.Join(fmt.Errorf("%w: bad header or missing segment before %s", ErrCorrupt, name), f.Close())
+			// A segment's header goes to disk with its first records, after
+			// every record of the segment before it is durable, so only the
+			// newest segment can lack a header: one that never started,
+			// whose file PrepareSegment readied, or whose first write did
+			// not reach the disk whole. Such a file holds no first record
+			// of this segment after a header's place, and the log starts it
+			// again. Anything else is damage or a lost segment.
+			seq, err := segmentSeq(name)
+			if err == nil && (!last || w.started(data, seq)) {
+				err = fmt.Errorf("%w: bad header or missing segment before %s", ErrCorrupt, name)
 			}
-			if err := errors.Join(f.Close(), fs.Remove(name), fs.SyncDir()); err != nil {
-				return nil, nil, err
+			if err != nil {
+				return nil, nil, errors.Join(err, f.Close())
 			}
+			w.seq = seq - 1
+			w.start(f)
 			break
 		}
 		if version < 1 || version > Version {
@@ -352,7 +359,18 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		}
 		if good < int64(len(data)) {
 			if !last {
-				return nil, nil, errors.Join(fmt.Errorf("%w: damaged record in %s at byte %d", ErrCorrupt, name, good), f.Close())
+				// The segment after it may be one that never started; then
+				// appends went to this one, and its tail is torn.
+				started := true
+				if i == len(segs)-2 {
+					started, err = w.startedFile(fs, segs[i+1], seq+1)
+				}
+				if err == nil && started {
+					err = fmt.Errorf("%w: damaged record in %s at byte %d", ErrCorrupt, name, good)
+				}
+				if err != nil {
+					return nil, nil, errors.Join(err, f.Close())
+				}
 			}
 			// A torn tail: the write was never synced, so nothing in it was
 			// acknowledged.
@@ -393,11 +411,43 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		return nil, nil, err
 	}
 	if w.seg == nil {
-		if err := w.newSegment(); err != nil {
+		f, err := PrepareSegment(fs, w.seq+1)
+		if err != nil {
 			return nil, nil, errors.Join(err, w.closePacks())
 		}
+		w.start(f)
 	}
 	return w, rec, nil
+}
+
+// started reports whether data, the content of segment seq, holds the
+// segment's header or its first record, chained from the segment before
+// it.
+func (w *WAL) started(data []byte, seq uint64) bool {
+	_, hseq, crc, ok := parseHeader(data)
+	return ok && hseq == seq && crc == w.crc || verifiesAfter(data, headerSize, chainSeed(Version, seq, w.crc))
+}
+
+// startedFile is started for the file name.
+func (w *WAL) startedFile(fs FS, name string, seq uint64) (bool, error) {
+	f, err := fs.Open(name)
+	if err != nil {
+		return false, err
+	}
+	data, err := f.ReadAll()
+	if err = errors.Join(err, f.Close()); err != nil {
+		return false, err
+	}
+	return w.started(data, seq), nil
+}
+
+// segmentSeq is the sequence number in a segment's file name.
+func segmentSeq(name string) (uint64, error) {
+	var seq uint64
+	if _, err := fmt.Sscanf(name, "%016x.wal", &seq); err != nil {
+		return 0, fmt.Errorf("%w: segment name %s: %w", ErrCorrupt, name, err)
+	}
+	return seq, nil
 }
 
 // check requires the entries after the root to be on disk without a gap,
@@ -432,7 +482,7 @@ func (w *WAL) removeCheckpoints(names []string, keep string) error {
 		if n == keep {
 			continue
 		}
-		if err := w.fs.Remove(n); err != nil {
+		if err := w.fs.Remove(n); err != nil && !errors.Is(err, iofs.ErrNotExist) {
 			return err
 		}
 		removed = true
@@ -512,12 +562,16 @@ func verifiesAfter(data []byte, off int, seed uint32) bool {
 // seed is what the crc of the record after one with crc crc starts from
 // in the current segment: from version 2 on, crc with the segment's
 // sequence number added.
-func (w *WAL) seed(crc uint32) uint32 {
-	if w.version < 2 {
+func (w *WAL) seed(crc uint32) uint32 { return chainSeed(w.version, w.seq, crc) }
+
+// chainSeed is seed for a segment of format version and sequence number
+// seq.
+func chainSeed(version uint32, seq uint64, crc uint32) uint32 {
+	if version < 2 {
 		return crc
 	}
 	var b [8]byte
-	binary.LittleEndian.PutUint64(b[:], w.seq)
+	binary.LittleEndian.PutUint64(b[:], seq)
 	return crc32.Update(crc, castagnoli, b[:])
 }
 
@@ -640,74 +694,61 @@ func (w *WAL) setRoot(r Root) {
 	w.root = Root{Index: r.Index, Term: r.Term}
 }
 
-// newSegment starts the next segment, in a spare file if there is one. It
-// syncs the header before the directory entry, so a segment that survives
-// a crash always has its header; a spare gets its new header before it is
-// renamed. The copies of the hard state and the root go in with the next
-// write.
-func (w *WAL) newSegment() error {
-	seq := w.seq + 1
-	spare, err := w.spare()
-	if err != nil {
-		return err
-	}
-	var f File
-	if spare != "" {
-		// The removal that made the spare must be durable before the
-		// file gets a new header: else a crash could bring back the
-		// removed segment's name with this segment's header.
-		if err = w.fs.SyncDir(); err == nil {
-			f, err = w.fs.Open(spare)
+// PrepareSegment readies the file of segment seq, for Rotate: the oldest
+// spare, renamed, or a new file. The directory entry is durable when it
+// returns. The file holds no header of segment seq, nor a record chained
+// from one, until Rotate's first write, so Open starts a segment that
+// never started again. A spare that a removal took meanwhile is skipped.
+func PrepareSegment(fs FS, seq uint64) (File, error) {
+	for {
+		spares, err := listSpares(fs)
+		if err != nil {
+			return nil, err
 		}
-	} else {
-		f, err = w.fs.Create(segmentName(seq))
-	}
-	if err != nil {
-		return err
-	}
-	hdr := make([]byte, 0, headerSize)
-	hdr = append(hdr, magic...)
-	hdr = binary.LittleEndian.AppendUint32(hdr, Version)
-	hdr = binary.LittleEndian.AppendUint64(hdr, seq)
-	hdr = binary.LittleEndian.AppendUint32(hdr, w.crc)
-	if _, err := f.WriteAt(hdr, 0); err != nil {
-		return errors.Join(err, f.Close())
-	}
-	if err := f.Sync(); err != nil {
-		return errors.Join(err, f.Close())
-	}
-	if spare != "" {
-		if err := w.fs.Rename(spare, segmentName(seq)); err != nil {
-			return errors.Join(err, f.Close())
+		if len(spares) == 0 {
+			break
 		}
+		f, err := takeSpare(fs, spares[0], seq)
+		if !errors.Is(err, iofs.ErrNotExist) {
+			return f, err
+		}
+	}
+	f, err := fs.Create(segmentName(seq))
+	if err != nil {
+		return nil, err
 	}
 	// Planted: B05 takes records into the new segment before its directory
 	// entry is durable.
 	if !planted.On("B05") {
-		if err := w.fs.SyncDir(); err != nil {
-			return errors.Join(err, f.Close())
+		if err := fs.SyncDir(); err != nil {
+			return nil, errors.Join(err, f.Close())
 		}
 	}
-	w.sealed = w.size
-	w.seq, w.seg, w.size, w.copied = seq, f, int64(headerSize), false
-	w.version, w.reused = Version, spare != ""
-	return nil
+	return f, nil
 }
 
-// spare returns the name of the oldest spare file, or "" if there is none.
-// It lists the directory, so that the goroutine that syncs shares nothing
-// with the one that removes segments.
-func (w *WAL) spare() (string, error) {
-	spares, err := w.listSpares()
-	if err != nil || len(spares) == 0 {
-		return "", err
+// takeSpare makes spare file name the file of segment seq.
+func takeSpare(fs FS, name string, seq uint64) (File, error) {
+	// The removal that made the spare must be durable before the file
+	// takes another name: else a crash could leave the removed segment
+	// under both.
+	if err := fs.SyncDir(); err != nil {
+		return nil, err
 	}
-	return spares[0], nil
+	if err := fs.Rename(name, segmentName(seq)); err != nil {
+		return nil, err
+	}
+	if !planted.On("B05") {
+		if err := fs.SyncDir(); err != nil {
+			return nil, err
+		}
+	}
+	return fs.Open(segmentName(seq))
 }
 
 // listSpares returns the names of the spare files in order.
-func (w *WAL) listSpares() ([]string, error) {
-	names, err := w.fs.List()
+func listSpares(fs FS) ([]string, error) {
+	names, err := fs.List()
 	if err != nil {
 		return nil, err
 	}
@@ -719,6 +760,19 @@ func (w *WAL) listSpares() ([]string, error) {
 	}
 	slices.Sort(spares)
 	return spares, nil
+}
+
+// start makes f, which PrepareSegment readied, the next segment. Its
+// header goes in front of what is buffered next, which must be nothing
+// yet; the copies of the hard state and the root follow with the next
+// write.
+func (w *WAL) start(f File) {
+	w.seq++
+	w.seg, w.size, w.copied, w.version = f, 0, false, Version
+	w.buf = append(w.buf[:0], magic...)
+	w.buf = binary.LittleEndian.AppendUint32(w.buf, Version)
+	w.buf = binary.LittleEndian.AppendUint64(w.buf, w.seq)
+	w.buf = binary.LittleEndian.AppendUint32(w.buf, w.crc)
 }
 
 func (w *WAL) record(typ byte, payload ...[]byte) {
@@ -752,9 +806,6 @@ func (w *WAL) copyState() {
 		return
 	}
 	w.copied = true
-	if w.sealed > 0 {
-		w.sizes[w.seq-1], w.sealed = w.sealed, 0
-	}
 	if w.hs != (HardState{}) {
 		w.hardState(w.hs)
 	}
@@ -864,49 +915,59 @@ func (w *WAL) Flush() error {
 
 // Sync writes what Append buffered and makes everything written durable.
 // After an error the log is in an unknown state and the node must stop: a
-// failed fsync is never retried.
+// failed fsync is never retried. A full segment then ends, and the next
+// one starts in a file that Sync prepares itself: so a caller that
+// prepares segments on another goroutine, or reads while Sync runs, uses
+// Flush, Seal and Rotate instead.
 func (w *WAL) Sync() error {
 	if err := w.Flush(); err != nil {
 		return err
 	}
-	if !w.dirty {
-		return nil
-	}
-	if planted.On("B16") && w.size >= w.maxSize {
-		// Planted: move on to a new segment without the old one's last
-		// sync.
-		w.dirty = false
-		return errors.Join(w.seg.Close(), w.newSegment())
-	}
-	if err := w.seg.Sync(); err != nil {
-		return err
-	}
-	w.dirty = false
-	if w.size < w.maxSize {
-		return nil
-	}
-	// A reused file may hold more than the records; a segment that no
-	// longer changes ends with its last record.
-	if w.reused {
-		if err := errors.Join(w.seg.Truncate(w.size), w.seg.Sync()); err != nil {
+	if w.dirty {
+		if err := w.seg.Sync(); err != nil {
 			return err
 		}
+		w.dirty = false
 	}
-	if err := w.seg.Close(); err != nil {
+	if !w.Full() {
+		return nil
+	}
+	if err := errors.Join(w.Seal(), w.seg.Sync()); err != nil {
 		return err
 	}
-	return w.newSegment()
+	next, err := PrepareSegment(w.fs, w.seq+1)
+	if err != nil {
+		return err
+	}
+	return w.Rotate(next).Close()
+}
+
+// Seal cuts the full newest segment to its records, which a reused file
+// would hold more after, and Flush must have written them: a segment that
+// no longer changes ends with its last record. The cut must be durable,
+// by the segment's next sync, before anything goes into the next segment.
+func (w *WAL) Seal() error { return w.seg.Truncate(w.size) }
+
+// Rotate makes next, which PrepareSegment readied for segment Seq()+1, the
+// segment that appends go to, after Seal, and returns the old one's file
+// for the caller to close once it is synced. Nothing may be written into
+// next before every record of the old segment is durable: next's header
+// vouches for the old segment's last record.
+func (w *WAL) Rotate(next File) File {
+	old := w.seg
+	w.sizes[w.seq] = w.size
+	w.start(next)
+	return old
 }
 
 // Segment returns the file of the newest segment, which Flush writes to.
 // A sync of it makes what Flush wrote durable, also while the next Flush
-// runs; only Sync starts a new segment, after Full. Sync does not know of
-// such outside syncs and syncs again what they covered, which costs
-// little.
+// runs. Sync does not know of such outside syncs and syncs again what
+// they covered, which costs little.
 func (w *WAL) Segment() File { return w.seg }
 
-// Full reports whether the newest segment is full: the next Sync starts a
-// new one.
+// Full reports whether the newest segment is full: the next segment
+// should start.
 func (w *WAL) Full() bool { return w.size >= w.maxSize }
 
 // Buffered is the size of what Append buffered for the next write. Only
@@ -917,22 +978,9 @@ func (w *WAL) Buffered() int64 { return int64(len(w.buf)) }
 // and the simulator use small segments to exercise rotation.
 func (w *WAL) SetSegmentBytes(n int64) { w.maxSize = n }
 
-// SetSpares changes how many removed segments the log keeps as spare
-// files from now on, and removes the spare files beyond n. It must not
-// run while a segment starts, which may take a spare.
-func (w *WAL) SetSpares(n int) error {
-	w.spares = n
-	spares, err := w.listSpares()
-	if err != nil || len(spares) <= n {
-		return err
-	}
-	for _, name := range spares[n:] {
-		if err := w.fs.Remove(name); err != nil {
-			return err
-		}
-	}
-	return w.fs.SyncDir()
-}
+// SetSpares changes how many removed segments RemoveBelow and
+// RemoveCleaned keep as spare files.
+func (w *WAL) SetSpares(n int) { w.spares = n }
 
 // Close closes the newest segment without syncing, and every file opened
 // for reading.
@@ -1090,12 +1138,14 @@ func (w *WAL) Oldest() uint64 {
 	return w.runs[0].seq
 }
 
-// RemoveBelow removes the oldest segments whose every entry and value is
-// below index mark, then syncs the directory. It keeps the current
-// segment and the one before it, which hold the newest hard state and
-// root until the current one has them too.
-func (w *WAL) RemoveBelow(mark uint64) error {
-	// The runs of the segments to remove, which must all be below mark.
+// DropBelow forgets the oldest segments whose every entry and value is
+// below index mark, and returns their file names, oldest first, for
+// RemoveFiles. It keeps the current segment and the one before it, which
+// hold the newest hard state and root until the current one has them too.
+// Every read of the segments it drops must be over; an error is a failed
+// close of one, which is forgotten all the same.
+func (w *WAL) DropBelow(mark uint64) ([]string, error) {
+	// The runs of the segments to drop, which must all be below mark.
 	n := 0
 	for n < len(w.runs) && w.runs[n].seq+1 < w.seq {
 		end := n
@@ -1116,53 +1166,92 @@ func (w *WAL) RemoveBelow(mark uint64) error {
 			break
 		}
 	}
-	if n == 0 {
-		return nil
-	}
+	return w.drop(n)
+}
+
+// RemoveBelow is DropBelow and RemoveFiles at once.
+func (w *WAL) RemoveBelow(mark uint64) error {
+	names, err := w.DropBelow(mark)
+	_, rerr := RemoveFiles(w.fs, names, w.spares)
+	return errors.Join(err, rerr)
+}
+
+// drop forgets the segments of the first n runs, with the value records in
+// them, and closes their files. It returns their names.
+func (w *WAL) drop(n int) ([]string, error) {
+	var names []string
+	var err error
 	for i, s := range w.runs[:n] {
 		if i > 0 && w.runs[i-1].seq == s.seq {
 			continue
 		}
-		if err := w.removeSegment(s.seq); err != nil {
-			return err
+		names = append(names, segmentName(s.seq))
+		if f, ok := w.readers[s.seq]; ok {
+			delete(w.readers, s.seq)
+			err = errors.Join(err, f.Close())
 		}
+		delete(w.sizes, s.seq)
 	}
 	w.runs = slices.Delete(w.runs, 0, n)
-	return w.fs.SyncDir()
-}
-
-// removeSegment removes the file of segment seq, or keeps it as a spare,
-// and forgets the value records in it. Every read of it must be over: a
-// new segment may overwrite a spare as soon as the removal is done.
-func (w *WAL) removeSegment(seq uint64) error {
-	if f, ok := w.readers[seq]; ok {
-		delete(w.readers, seq)
-		if err := f.Close(); err != nil {
-			return err
-		}
+	if len(names) == 0 {
+		return nil, err
 	}
-	spares, err := w.listSpares()
-	if err != nil {
-		return err
-	}
-	if len(spares) < w.spares {
-		err = w.fs.Rename(segmentName(seq), spareName(seq))
-	} else {
-		err = w.fs.Remove(segmentName(seq))
-	}
-	if err != nil {
-		return err
-	}
-	delete(w.sizes, seq)
 	for index, vs := range w.vals {
-		vs = slices.DeleteFunc(vs, func(v valueRec) bool { return v.seq == seq })
+		vs = slices.DeleteFunc(vs, func(v valueRec) bool { return v.seq < w.Oldest() })
 		if len(vs) == 0 {
 			delete(w.vals, index)
 		} else {
 			w.vals[index] = vs
 		}
 	}
-	return nil
+	return names, err
+}
+
+// RemoveFiles removes the files names, in order, that DropBelow or
+// DropCleaned returned, and syncs the directory: a segment becomes a spare
+// file while fewer than spares are on disk. It returns how many it
+// removed before an error. A file that is gone already counts as removed,
+// so a retry of the rest goes on where an error stopped it, and segments
+// still go only from the front.
+func RemoveFiles(fs FS, names []string, spares int) (int, error) {
+	if len(names) == 0 {
+		return 0, nil
+	}
+	have, err := listSpares(fs)
+	if err != nil {
+		return 0, err
+	}
+	kept := len(have)
+	for i, name := range names {
+		seq, serr := segmentSeq(name)
+		switch {
+		case serr == nil && kept < spares:
+			if err = fs.Rename(name, spareName(seq)); err == nil {
+				kept++
+			}
+		default:
+			err = fs.Remove(name)
+		}
+		if err != nil && !errors.Is(err, iofs.ErrNotExist) {
+			return i, err
+		}
+	}
+	return len(names), fs.SyncDir()
+}
+
+// RemoveSpares removes the spare files beyond the oldest keep, and syncs
+// the directory if it removed any.
+func RemoveSpares(fs FS, keep int) error {
+	spares, err := listSpares(fs)
+	if err != nil || len(spares) <= keep {
+		return err
+	}
+	for _, name := range spares[keep:] {
+		if err := fs.Remove(name); err != nil && !errors.Is(err, iofs.ErrNotExist) {
+			return err
+		}
+	}
+	return fs.SyncDir()
 }
 
 // CreateCheckpoint creates the file of the checkpoint at index. It counts
