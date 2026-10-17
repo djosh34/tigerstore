@@ -58,8 +58,12 @@ func newWatches(l *load, cl *clientv3.Client) *watches {
 	return ws
 }
 
-// run watches every prefix from revision from until ctx ends, and asks
-// for progress every few seconds, so that progress moves without events.
+// run watches every prefix from revision from until ctx ends. Each watch
+// asks for progress notifications, which the nodes send every 3 s, so that
+// progress moves without events. They come to each watch on its own: a
+// RequestProgress answer goes to every watch of a client's stream, and the
+// etcd v3.7.2 client once panicked sending one to a watch it had closed
+// (clientv3 watchGRPCStream.broadcastResponse, #229).
 func (ws *watches) run(ctx context.Context, from int64) {
 	wctx := clientv3.WithRequireLeader(ctx)
 	var wg sync.WaitGroup
@@ -67,18 +71,6 @@ func (ws *watches) run(ctx context.Context, from int64) {
 		w.start, w.progress, w.last = from, from-1, from-1
 		wg.Go(func() { ws.watch(wctx, w) })
 	}
-	wg.Go(func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(3 * time.Second):
-			}
-			cctx, cancel := context.WithTimeout(wctx, 5*time.Second)
-			_ = ws.cl.RequestProgress(cctx)
-			cancel()
-		}
-	})
 	wg.Wait()
 }
 
@@ -87,7 +79,7 @@ func (ws *watches) watch(ctx context.Context, w *watched) {
 		w.mu.Lock()
 		rev := max(w.progress, w.last) + 1
 		w.mu.Unlock()
-		ch := ws.cl.Watch(ctx, w.prefix, clientv3.WithPrefix(), clientv3.WithRev(rev))
+		ch := ws.cl.Watch(ctx, w.prefix, clientv3.WithPrefix(), clientv3.WithRev(rev), clientv3.WithProgressNotify())
 		for resp := range ch {
 			if resp.CompactRevision != 0 {
 				// The revisions up to the compaction are gone for this
