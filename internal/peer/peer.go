@@ -120,6 +120,10 @@ type Config struct {
 	// Answer answers a request that peer id sent with Call. An error that
 	// is a gRPC status reaches the caller with its code and message.
 	Answer func(id uint64, req []byte) ([]byte, error)
+	// Dial, if set, connects to a peer instead of a TCP dial; the
+	// simulator's network uses it. The TLS handshake and the protocol run
+	// on what it returns.
+	Dial func(ctx context.Context, addr string) (net.Conn, error)
 	// Logf logs connection errors.
 	Logf func(format string, args ...any)
 	// Metrics count the traffic with peers; nil gives the transport a
@@ -889,9 +893,6 @@ func (s *sender) run() {
 	backoff := 50 * time.Millisecond
 	for ctx.Err() == nil {
 		c, v, err := s.dial(ctx, s.t.cfg.ID)
-		if errors.Is(err, errRemoved) && s.t.cfg.Removed != nil {
-			s.t.cfg.Removed()
-		}
 		if err != nil {
 			s.drop()
 			select {
@@ -928,7 +929,12 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	raw, err := (&net.Dialer{Timeout: dialTimeout}).DialContext(ctx, "tcp", s.addr)
+	var raw net.Conn
+	if s.t.cfg.Dial != nil {
+		raw, err = s.t.cfg.Dial(ctx, s.addr)
+	} else {
+		raw, err = (&net.Dialer{Timeout: dialTimeout}).DialContext(ctx, "tcp", s.addr)
+	}
 	if err != nil {
 		return nil, 0, err
 	}
@@ -952,6 +958,10 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 			s.t.logHandshake(fmt.Sprintf("with %d", s.id), err)
 		}
 		s.t.untrack(c)
+		if errors.Is(err, errRemoved) && s.t.cfg.Removed != nil {
+			// Messages and snapshot fetches alike: the node stops.
+			s.t.cfg.Removed()
+		}
 		return nil, 0, err
 	}
 	return c, v, nil

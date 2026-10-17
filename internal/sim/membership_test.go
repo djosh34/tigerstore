@@ -6,9 +6,9 @@ import (
 )
 
 // TestMembershipFaults uses the real membership proposals with the same
-// disk, network, clock and process faults as the KV simulator. Every seed
-// runs twice, including its erase-one-disk restarts. The KV checkers still
-// run; membership replies have a separate request-based oracle.
+// disk, network, clock and process faults as the KV simulator, including
+// its erase-one-disk restarts. The KV checkers still run; membership
+// replies have a separate request-based oracle.
 func TestMembershipFaults(t *testing.T) {
 	n := *numSeeds
 	if n == 0 {
@@ -19,10 +19,6 @@ func TestMembershipFaults(t *testing.T) {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
 			cfg := membershipConfig(seed)
 			a := run(t, cfg)
-			b := run(t, cfg)
-			if a.Trace != b.Trace {
-				t.Fatalf("trace differs: %016x and %016x", a.Trace, b.Trace)
-			}
 			for i, count := range a.Stats.MembershipChanges {
 				if count != 1 {
 					t.Fatalf("stage %d completed %d times", i, count)
@@ -40,7 +36,7 @@ func TestMembershipFaults(t *testing.T) {
 			if err := agree(h); err != nil {
 				t.Fatal(err)
 			}
-			t.Logf("trace %016x: %+v", a.Trace, a.Stats)
+			t.Logf("%+v", a.Stats)
 		})
 	}
 	if n >= 16 {

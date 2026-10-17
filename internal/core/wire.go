@@ -4,7 +4,6 @@ import (
 	"errors"
 	"slices"
 
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
@@ -99,13 +98,4 @@ func ParsePut(b []byte) (Put, error) {
 		}
 	}
 	return p, nil
-}
-
-// PutResponse builds the response of a put in wire form from its Reply,
-// as a node that decodes it gets.
-func (n *Node) PutResponse(r Reply) *pb.PutResponse {
-	resp := &pb.PutResponse{Header: &pb.ResponseHeader{Revision: r.Rev}, PrevKv: r.PrevKv}
-	n.fillHeader(resp.Header)
-	resp.Header.RaftTerm = r.Term
-	return resp
 }

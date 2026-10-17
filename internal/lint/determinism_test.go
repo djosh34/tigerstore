@@ -13,18 +13,17 @@ import (
 	"testing"
 )
 
-// corePackages run inside the simulator, so they must behave the same on
-// every run of a seed. Their non-test files may not start goroutines, read
-// the clock, use global randomness or reach the operating system. The
-// drivers in other packages do those things and feed the results in as
-// events.
+// corePackages behave the same for the same inputs. Their non-test files
+// may not start goroutines, read the clock, use global randomness or
+// reach the operating system. The drivers in other packages (the node
+// driver, the peer transport, the simulator) do those things and feed the
+// results in as events.
 var corePackages = []string{
 	"history",
 	"history/frometcd",
 	"internal/core",
 	"internal/mvcc",
 	"internal/planted",
-	"internal/sim",
 	"internal/simfs",
 	"internal/wal",
 }

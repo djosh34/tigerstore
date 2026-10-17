@@ -1,8 +1,10 @@
 package sim
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -38,46 +40,85 @@ type client struct {
 	leases []int64
 }
 
-type clientOp struct {
-	client *client
-	rec    *Record
-	done   bool
-	// member calls have their own response checker, outside the KV history.
-	member bool
-}
-
 const numKeys = 8
 
 func key(i int) []byte { return fmt.Appendf(nil, "k%d", i) }
 
-// start begins the client's next call.
-func (c *client) start() {
+// run makes one call after the other, with a think time of up to 20 ms
+// between them, until the clients stop.
+func (c *client) run() {
 	s := c.sim
-	if s.now >= s.stopAt {
-		return
+	s.mu.Lock()
+	wait := s.rng.Int64N(100 * Millisecond)
+	s.mu.Unlock()
+	for s.sleep(wait) {
+		s.mu.Lock()
+		if s.now() >= s.stopAt {
+			s.mu.Unlock()
+			return
+		}
+		c.n++
+		// The fourth member is a learner for part of the run and is later
+		// removed. Ordinary clients keep the original voting endpoints.
+		i := s.rng.IntN(3)
+		r := &Record{Client: c.id, Node: i, Call: s.now(), req: c.request()}
+		s.mu.Unlock()
+		resp, err := s.call(s.nodes[i], r.req, s.cfg.ClientTimeout)
+		s.mu.Lock()
+		c.done(r, resp, err)
+		// At least 1 ns, so the next call starts after this one returned.
+		wait = 1 + s.rng.Int64N(20*Millisecond)
+		s.mu.Unlock()
 	}
-	c.n++
-	// The fourth member is a learner for part of the run and is later
-	// removed. Ordinary clients keep the original voting endpoints.
-	n := s.nodes[s.rng.IntN(3)]
-	op := &clientOp{client: c, rec: &Record{Client: c.id, Node: n.idx, Call: s.now, req: c.request()}}
-	s.push(&event{at: s.now + s.cfg.ClientTimeout, kind: evClientTimeout, op: op})
-	if !n.up {
-		s.push(&event{at: s.now + s.clientLatency(), kind: evClientReply, op: op, err: errConnRefused})
-		return
-	}
-	s.push(&event{at: s.now + s.clientLatency(), kind: evSubmit, node: n.idx, gen: n.gen, op: op})
 }
 
-// done ends a call. Later answers to the same call are ignored.
-func (c *client) done(op *clientOp, resp proto.Message, err error) {
-	s := c.sim
-	if op.done {
-		return
+// call sends req to n's process as a client on the other end of a
+// connection would, and returns its answer. A timeout of 0 waits for the
+// answer for as long as the connection lasts.
+func (s *Sim) call(n *node, req proto.Message, timeout int64) (proto.Message, error) {
+	s.mu.Lock()
+	p, deadline := n.proc, s.now()+timeout
+	lat := s.clientLatency()
+	s.mu.Unlock()
+	if !s.sleep(lat) {
+		return nil, errConnLost
 	}
-	op.done = true
-	r := op.rec
-	r.Return, r.Resp, r.Err = s.now, resp, err
+	if p == nil {
+		return nil, errConnRefused
+	}
+	ctx, cancel := context.WithCancel(p.ctx)
+	if timeout > 0 {
+		cancel()
+		ctx, cancel = context.WithTimeout(p.ctx, time.Duration(deadline-s.now()))
+	}
+	resp, err := p.node.Do(ctx, req)
+	cancel()
+	switch {
+	case p.dead():
+		resp, err = nil, errConnLost
+	case errors.Is(err, context.DeadlineExceeded):
+		return nil, errClientTimeout
+	case errors.Is(err, rpctypes.ErrGRPCStopped):
+		s.mu.Lock()
+		n.reloads = append(n.reloads, s.now())
+		s.mu.Unlock()
+	}
+	s.mu.Lock()
+	lat = s.clientLatency()
+	s.mu.Unlock()
+	if !s.sleep(lat) {
+		return nil, errConnLost
+	}
+	if timeout > 0 && s.now() > deadline {
+		return nil, errClientTimeout
+	}
+	return resp, err
+}
+
+// done ends a call. The lock is held.
+func (c *client) done(r *Record, resp proto.Message, err error) {
+	s := c.sim
+	r.Return, r.Resp, r.Err = s.now(), resp, err
 	r.Ambiguous = err != nil && ambiguous(err)
 	s.history = append(s.history, r)
 	switch {
@@ -92,10 +133,6 @@ func (c *client) done(op *clientOp, resp proto.Message, err error) {
 	default:
 		s.stats.Failed++
 	}
-	s.mix(0xc1, uint64(c.id), uint64(r.Call), uint64(r.Return))
-	// At least 1 ns, so the next call starts after this one returned.
-	think := 1 + s.rng.Int64N(20*Millisecond)
-	s.push(&event{at: s.now + think, kind: evClientStart, op: &clientOp{client: c}})
 }
 
 // ambiguous reports whether a failed call may still have taken effect.

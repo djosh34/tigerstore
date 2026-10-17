@@ -44,9 +44,9 @@ func (s *Sim) check(res *Result) error {
 			return err
 		}
 	}
-	final := last.core.Store()
+	final := last.proc.core.Store()
 	res.FinalRev = final.Rev()
-	ents, err := s.committed(s.live()[0].core.Applied())
+	ents, err := s.committed(s.live()[0].proc.core.Applied())
 	if err != nil {
 		return err
 	}
@@ -75,7 +75,7 @@ func (s *Sim) check(res *Result) error {
 		return err
 	}
 	res.Log, res.revs = log, revs
-	if err := sameLatest(model, final, last.log); err != nil {
+	if err := s.sameLatestOn(model, last); err != nil {
 		return err
 	}
 	for _, r := range res.History {
@@ -114,7 +114,12 @@ func (s *Sim) check(res *Result) error {
 		if r.Call < liveFrom {
 			continue
 		}
-		if s.nodes[r.Node].stalledAt(r.Call) || r.Err != nil && s.nodes[r.Node].installedDuring(r.Call, r.Return) {
+		if s.nodes[r.Node].stalledAt(r.Call) || r.Err != nil && s.nodes[r.Node].reloadedDuring(r.Call, r.Return) {
+			continue
+		}
+		if r.Err != nil && s.removalDuring(r.Call, r.Return) {
+			// The removed member stops, and when it led, the others
+			// elect another (seed 50214159).
 			continue
 		}
 		if s.nodes[r.Node].fenced && errors.Is(r.Err, errConnRefused) {
@@ -147,24 +152,27 @@ func (s *Sim) live() []*node {
 
 // converged checks that all nodes applied the same log to the same state,
 // the one the record of committed entries has, and returns a node with
-// that state whose disk the run did not damage under it.
+// that state whose disk the run did not damage under it. The nodes are
+// frozen.
 func (s *Sim) converged() (*node, error) {
 	live := s.live()
 	for _, n := range live {
-		if !n.up {
+		if n.proc == nil {
 			return nil, fmt.Errorf("node %d is down at the end", n.id)
 		}
 	}
 	first := live[0]
+	fc := first.proc.core
 	for _, n := range live[1:] {
-		if n.core.Applied() != first.core.Applied() {
-			return nil, fmt.Errorf("node %d applied %d entries, node %d applied %d", n.id, n.core.Applied(), first.id, first.core.Applied())
+		c := n.proc.core
+		if c.Applied() != fc.Applied() {
+			return nil, fmt.Errorf("node %d applied %d entries, node %d applied %d", n.id, c.Applied(), first.id, fc.Applied())
 		}
-		if n.core.Hash() != first.core.Hash() {
+		if c.Hash() != fc.Hash() {
 			return nil, fmt.Errorf("node %d and node %d applied the same log to different states", n.id, first.id)
 		}
 	}
-	if r := s.log[first.core.Applied()]; r.hash != first.core.Hash() {
+	if r := s.log[fc.Applied()]; r.hash != fc.Hash() {
 		return nil, fmt.Errorf("node %d applied the same log to different states than node %d did", first.id, r.node)
 	}
 	for _, n := range live {
@@ -529,6 +537,20 @@ func replay(log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) 
 	return st.Store(), out, revs, nil
 }
 
+// sameLatestOn is sameLatest with the store of node n, which reads the
+// values that left memory from a copy of n's disk.
+func (s *Sim) sameLatestOn(a *mvcc.Store, n *node) (err error) {
+	s.mu.Lock()
+	d := n.disk.Copy()
+	s.mu.Unlock()
+	log, _, err := wal.Open(d)
+	if err != nil {
+		return fmt.Errorf("node %d cannot recover its log for the final reads: %w", n.id, err)
+	}
+	defer func() { err = errors.Join(err, log.Close()) }()
+	return sameLatest(a, n.proc.core.Store(), log)
+}
+
 // sameLatest checks that two stores are at the same revision with the same
 // keys and values. b reads the values that left memory from log.
 func sameLatest(a, b *mvcc.Store, log core.Log) error {
@@ -577,9 +599,10 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 	for _, id := range s.expiredOrder {
 		at := s.expiredAt[id]
 		// The declared clock envelope: the leader's clock may run fast by
-		// DriftPerMille and jump forward once by up to 3 ticks.
-		early := ttl[id]*Second*s.cfg.Faults.DriftPerMille/1000 + 3*TickTime
-		if s.cfg.Faults.DriftPerMille == 0 && s.cfg.Faults.ClockJumpEvery == 0 {
+		// DriftPerMille, and its ticks fall anywhere in a tick of real
+		// time. Go tickers never jump several ticks at once.
+		early := ttl[id]*Second*s.cfg.Faults.DriftPerMille/1000 + TickTime
+		if s.cfg.Faults.DriftPerMille == 0 {
 			early = 0
 		}
 		if t, ok := renewed[id]; ok && at < t+ttl[id]*Second-early {
@@ -598,7 +621,7 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 			last[req.ID] = max(last[req.ID], r.Call)
 		}
 	}
-	for _, id := range s.live()[0].core.Leases() {
+	for _, id := range s.live()[0].proc.core.Leases() {
 		t, known := last[id]
 		// A lease from an ambiguous grant has an ID no client learned.
 		if known && t < s.endAt-leaseGrace {
@@ -616,14 +639,16 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 // checkWatchersFreed requires every node to hold exactly the watchers of
 // the streams that are still open on it, so closed streams leak nothing.
 func (s *Sim) checkWatchersFreed() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, n := range s.live() {
 		open := 0
 		for _, w := range s.watchers {
-			if w.open && w.node == n.idx && w.gen == n.gen {
+			if w.open && w.proc == n.proc {
 				open++
 			}
 		}
-		if got := n.core.WatcherCount(); got != open {
+		if got := n.proc.core.WatcherCount(); got != open {
 			return fmt.Errorf("node %d holds %d watchers for %d open watch streams", n.id, got, open)
 		}
 	}
@@ -637,6 +662,16 @@ func (s *Sim) liveFrom() int64 {
 	if s.cfg.LiveFrom > 0 {
 		return s.cfg.LiveFrom
 	}
+	t := s.recovered()
+	if s.lateStopAt > 0 {
+		t = max(t, s.lateStopAt+max(s.cfg.Faults.MaxDown, Second)+s.cfg.LiveAfter)
+	}
+	return t
+}
+
+// recovered is when the cluster must serve again after the faults,
+// unless a node stopped by then (liveFrom).
+func (s *Sim) recovered() int64 {
 	// A gray fsync in flight at healing finishes when it finishes, up to
 	// 3 s later. Until then its node's term and vote changes and the peer
 	// messages behind them are held, so a higher term can reach the new
@@ -650,14 +685,19 @@ func (s *Sim) liveFrom() int64 {
 		// more election timeout, plus one to win (seed 714720575).
 		t += 2 * Second
 	}
-	if s.lateStopAt > 0 {
-		t = max(t, s.lateStopAt+max(s.cfg.Faults.MaxDown, Second)+s.cfg.LiveAfter)
-	}
 	return t
 }
 
+// removalDuring reports whether a call from to to overlaps the
+// LiveAfter after the removal of a member.
+func (s *Sim) removalDuring(from, to int64) bool {
+	at := s.membership.removedAt
+	return at > 0 && from <= at+s.cfg.LiveAfter && to >= at
+}
+
 // extendLiveness keeps clients running for at least 3 s under the rule.
-// Moving its start must not remove the calls that check recovery.
+// Moving its start must not remove the calls that check recovery. The
+// lock is held.
 func (s *Sim) extendLiveness() {
 	if stop := s.liveFrom() + 3*Second; stop > s.stopAt {
 		s.endAt += stop - s.stopAt
@@ -671,14 +711,13 @@ func (s *Sim) extendLiveness() {
 // read is checked too, so a bad record or root shows in the run that wrote
 // it (#182).
 func (s *Sim) checkRecoverable() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, n := range s.nodes {
-		if !n.up || n.fenced {
+		if n.proc == nil || n.fenced {
 			continue
 		}
-		floor := n.durableLast
-		if n.inflight != nil && n.replaceFrom > 0 {
-			floor = min(floor, n.replaceFrom-1)
-		}
+		floor := n.floor()
 		w, rec, err := wal.Open(n.disk.Durable())
 		if err != nil {
 			return fmt.Errorf("node %d cannot recover its log at the end: %w", n.id, err)

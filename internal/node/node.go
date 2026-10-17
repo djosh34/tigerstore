@@ -1,7 +1,7 @@
 // Package node runs one tigerstore node: the committer goroutine that owns
 // the core, the disk goroutine that persists the log, and the hookup to the
-// peer transport. It is the real-world driver of core.Node; the simulator
-// is the other one.
+// peer transport. It is the driver of core.Node, in production and in the
+// simulator, which runs it on simulated disks and links.
 package node
 
 import (
@@ -100,7 +100,19 @@ type Config struct {
 	// cleanStage, if set, runs at each step of the cleaner that changes
 	// what is durable. For tests.
 	cleanStage func(string)
-	Logf       func(format string, args ...any)
+	// Turn, if set, runs on the committer after each turn of the core,
+	// with the core, what the turn produced and the error it stopped
+	// with, before the node carries any of it out. Persisted, if set,
+	// runs there for each job the disk made durable, once the core took
+	// it. The simulator checks the core with them, and holds a paused
+	// node in Turn.
+	Turn      func(*core.Node, core.Effects, error)
+	Persisted func(core.PersistJob)
+	// Memory, if set, measures what the process uses besides the value
+	// cache, and whether that is a new measure, instead of the Go
+	// runtime's metrics: the simulator runs several nodes in one process.
+	Memory func(cacheLow int64) (int64, bool)
+	Logf   func(format string, args ...any)
 	// Metrics are the metrics the node observes into; nil gives the node
 	// a set of its own.
 	Metrics *metrics.Set
@@ -379,8 +391,8 @@ type Node struct {
 	// members are the members' IDs the committer saw last.
 	members atomic.Pointer[[]uint64]
 	// memory measures the process's memory for the value cache, each
-	// tick; only the committer uses it.
-	memory *memoryGauge
+	// tick (Config.Memory); only the committer uses it.
+	memory func(cacheLow int64) (int64, bool)
 }
 
 // diskLog is the WAL as the committer, the snapshot server and the
@@ -401,7 +413,7 @@ type diskLog struct {
 	mu      sync.Mutex
 	reading sync.RWMutex
 	w       *wal.WAL
-	fs      logFS
+	fs      FS
 	dir     string
 	// sealed is the newest segment that no longer changes; maps holds the
 	// mappings of sealed segments by sequence number.
@@ -587,8 +599,9 @@ func (l *diskLog) Checkpoint(index uint64) (io.ReadCloser, error) {
 	return l.w.Checkpoint(index)
 }
 
-// logFS also reports usage to the paced cleaner.
-type logFS interface {
+// FS is the directory of a node's log. It also reports its usage to the
+// paced cleaner.
+type FS interface {
 	wal.FS
 	Usage() (int64, error)
 }
@@ -606,21 +619,29 @@ func New(cfg Config) (*Node, error) {
 	return newOnDisk(cfg, path, dir)
 }
 
+// NewOnFS recovers the node's state from a log in dir, which is not an OS
+// directory: the simulator runs the node on its simulated disks. Values
+// are read with File.ReadAt instead of mappings.
+func NewOnFS(cfg Config, dir FS) (*Node, error) { return newOnDisk(cfg, "", dir) }
+
 // An empty path uses File.ReadAt rather than OS mappings. Tests run the same
 // driver and cleaner on a simulated filesystem with a virtual clock.
-func newOnDisk(cfg Config, path string, dir logFS) (*Node, error) {
+func newOnDisk(cfg Config, path string, dir FS) (*Node, error) {
 	var err error
 	if cfg.Metrics == nil {
 		if cfg.Metrics, err = metrics.New(nil); err != nil {
 			return nil, err
 		}
 	}
+	if cfg.Memory == nil {
+		cfg.Memory = newMemoryGauge().read
+	}
 	n := &Node{
 		cfg:    cfg,
 		log:    &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead, retry: make(chan struct{}, 1)},
 		inbox:  make(chan input, 8192),
 		done:   make(chan struct{}),
-		memory: newMemoryGauge(),
+		memory: cfg.Memory,
 		// Defragment sends to it from gRPC goroutines, so a reload keeps
 		// it.
 		defragQ: make(chan chan error),
@@ -1013,6 +1034,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			}
 			for _, j := range done.jobs {
 				n.core.Persisted(j)
+				if n.cfg.Persisted != nil {
+					n.cfg.Persisted(j)
+				}
 			}
 			n.logPersistTiming(done)
 		case toDisk <- next:
@@ -1042,6 +1066,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			n.core.SetDisk(n.log.used.Load(), b)
 		}
 		eff, err := n.core.Process()
+		if n.cfg.Turn != nil {
+			n.cfg.Turn(n.core, eff, err)
+		}
 		if len(eff.Persist) > 0 {
 			backlog = append(backlog, persistBatch{jobs: eff.Persist, queued: time.Now()})
 		}
@@ -1113,7 +1140,7 @@ func (n *Node) measureMemory(streams map[uint64]*WatchStream) {
 	if limit <= 0 {
 		return
 	}
-	other, fresh := n.memory.read(n.core.CacheLow())
+	other, fresh := n.memory(n.core.CacheLow())
 	n.core.SetOtherMemory(other)
 	if !fresh || other < limit {
 		return
@@ -1505,12 +1532,27 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 				f = g.f
 			}
 		}
+		var early []syncedGroup
+		if err == nil && f != nil && (planted.On("B02") && n.Leader() == n.ID() || planted.On("B03") && n.Leader() != n.ID()) {
+			// Planted: report the appends durable before their sync, up to
+			// the first group with a root or a snapshot. The writer still
+			// waits for the sync.
+			for len(batch) > 0 && !slices.ContainsFunc(batch[0].jobs, func(j core.PersistJob) bool { return j.Root != nil || j.Install != nil }) {
+				err = report(batch[0], err)
+				early = append(early, syncedGroup{g: batch[0], err: err})
+				batch = batch[1:]
+			}
+		}
 		start := time.Now()
 		if err == nil && f != nil {
 			if n.cfg.BeforeSync != nil {
 				n.cfg.BeforeSync()
 			}
 			err = f.Sync()
+			if planted.On("B11") {
+				// Planted: carry on as if the sync worked.
+				err = nil
+			}
 			syncTime := time.Since(start)
 			n.cfg.Metrics.WALFsync.Observe(syncTime.Seconds())
 			if syncTime > n.cfg.Tick {
@@ -1518,6 +1560,9 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 			}
 		}
 		end := time.Now()
+		for _, e := range early {
+			synced <- e
+		}
 		for _, g := range batch {
 			g.times.sync, g.times.synced = start, end
 			err = report(g, err)

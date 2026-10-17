@@ -3,13 +3,14 @@ package sim
 import (
 	"fmt"
 	"slices"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
+	tnode "github.com/djosh34/tigerstore/internal/node"
 )
 
 // watchClient keeps one logical watch open across node crashes, the way
@@ -31,13 +32,9 @@ type watchClient struct {
 	// ended holds the logical watches that a compaction canceled; the
 	// client then started a new one from the current revision.
 	ended []segment
-
-	// The current stream, if any.
-	open   bool
-	node   int
-	gen    uint64
-	stream uint64
-	lastAt int64 // delivery time of the last response, for ordering
+	// open is set while the client has a stream, on process proc.
+	open bool
+	proc *proc
 }
 
 // WatchRecord is one watch response as the client got it.
@@ -62,6 +59,7 @@ type WatchResult struct {
 	Responses      []WatchRecord
 }
 
+// startWatchers starts the watch clients. The lock is held.
 func (s *Sim) startWatchers() {
 	specs := []struct {
 		key, end         string
@@ -82,111 +80,119 @@ func (s *Sim) startWatchers() {
 			w.next = 1
 		}
 		s.watchers = append(s.watchers, w)
-		s.push(&event{at: s.rng.Int64N(Second), kind: evWatchOpen, watch: w})
-		s.push(&event{at: s.exp(3 * Second), kind: evWatchDrop, watch: w})
+		wait, drop := s.rng.Int64N(Second), s.exp(3*Second)
+		s.wg.Go(func() { w.run(wait, drop) })
 	}
 }
 
-// closeStream disconnects a watch client from its stream at once. The node
-// learns of it in an event of its own, so a paused node handles it when it
-// resumes.
-func (s *Sim) closeStream(w *watchClient) {
-	n := s.nodes[w.node]
-	if n.up && n.gen == w.gen {
-		delete(n.streams, w.stream)
-		n.closing[w.stream] = true
-		s.push(&event{at: s.now, kind: evStreamClose, node: n.idx, gen: n.gen, stream: w.stream})
-	}
-}
-
-// drop closes the stream on purpose, as clients do on a timeout, and
+// run opens a stream on a random node and follows it, again whenever it
+// breaks, until the run ends. Until the clients stop, it also closes the
+// stream on purpose at random times, as clients do on a timeout, and
 // resumes up to 2 s later, so the next stream catches up on history.
-func (w *watchClient) drop() {
+func (w *watchClient) run(wait, dropAt int64) {
 	s := w.sim
-	if s.now >= s.stopAt {
-		// Watches stay open once the clients stop, so they reach the end.
-		return
+	for s.sleep(wait) {
+		s.mu.Lock()
+		n := s.nodes[s.rng.IntN(3)]
+		wait = 100*Millisecond + s.rng.Int64N(400*Millisecond)
+		next := w.next
+		s.mu.Unlock()
+		ws, p, err := s.openStream(n, []int64{next}, func(start int64) *pb.WatchCreateRequest {
+			return &pb.WatchCreateRequest{Key: w.key, RangeEnd: w.end, StartRevision: start, PrevKv: w.prevKV, ProgressNotify: w.progress}
+		})
+		if err != nil {
+			continue
+		}
+		s.mu.Lock()
+		s.tracef("watch %d: stream on node %d from %d", w.id, n.id, next)
+		w.open, w.proc, w.watchID = true, p, -1
+		if dropAt < s.now() {
+			dropAt = s.exp(3 * Second)
+		}
+		s.mu.Unlock()
+		wait, dropAt = w.follow(ws, dropAt)
+		s.mu.Lock()
+		// Once the run ends, the stream stays open for the checks.
+		w.open = w.open && s.ended
+		s.mu.Unlock()
 	}
-	if w.open {
-		s.closeStream(w)
-		w.open = false
-		s.push(&event{at: s.now + s.rng.Int64N(2*Second), kind: evWatchOpen, watch: w})
-	}
-	s.push(&event{at: s.exp(3 * Second), kind: evWatchDrop, watch: w})
 }
 
-// openWatch picks a node and sends the create request.
-func (w *watchClient) openWatch() {
+// follow reads stream ws until it breaks or the client leaves it, and
+// returns when to open the next one and when to drop that.
+func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64) {
 	s := w.sim
-	n := s.nodes[s.rng.IntN(3)]
-	if !n.up {
-		s.push(&event{at: s.now + 100*Millisecond + s.rng.Int64N(400*Millisecond), kind: evWatchOpen, watch: w})
-		return
+	for {
+		s.mu.Lock()
+		// A drop comes at least 3 s before the end, as the next stream
+		// opens up to 2 s later: one that starts below a compaction is
+		// canceled, and the new logical watch must be created by the end
+		// (#245). Drops after the clients stopped resume over compacted
+		// history, which catches B08.
+		p, untilDrop, dropping := w.proc, dropAt-s.now(), dropAt < s.endAt-3*Second
+		s.mu.Unlock()
+		t := time.NewTimer(time.Duration(max(untilDrop, 0)))
+		drop := t.C
+		if !dropping {
+			t.Stop()
+			drop = nil
+		}
+		select {
+		case r := <-ws.C:
+			t.Stop()
+			ws.Taken(r)
+			s.mu.Lock()
+			lat := s.clientLatency()
+			s.mu.Unlock()
+			if !s.sleep(lat) {
+				return 0, dropAt
+			}
+			s.mu.Lock()
+			again := w.receive(r)
+			lat = s.clientLatency()
+			s.mu.Unlock()
+			if again {
+				ws.Close()
+				return lat, dropAt
+			}
+		case <-ws.Done():
+			t.Stop()
+			s.mu.Lock()
+			s.tracef("watch %d: stream ended: %v", w.id, ws.Err())
+			s.mu.Unlock()
+			return 0, dropAt
+		case <-p.ctx.Done():
+			t.Stop()
+			return 0, dropAt
+		case <-drop:
+			ws.Close()
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			return s.rng.Int64N(2 * Second), s.exp(3 * Second)
+		case <-s.end:
+			t.Stop()
+			return 0, dropAt
+		}
 	}
-	s.push(&event{at: s.now + s.clientLatency(), kind: evWatchCreate, node: n.idx, gen: n.gen, watch: w})
 }
 
-func (w *watchClient) create(n *node, gen uint64) {
+// receive takes a response of the current stream, and reports whether the
+// client must leave it and start a new logical watch. The lock is held.
+func (w *watchClient) receive(r *pb.WatchResponse) bool {
 	s := w.sim
-	if !n.up || n.gen != gen {
-		w.openWatch()
-		return
-	}
-	n.nextStream++
-	n.streams[n.nextStream] = w
-	w.open, w.node, w.gen, w.stream, w.lastAt, w.watchID = true, n.idx, n.gen, n.nextStream, 0, -1
-	n.core.Watch(n.nextStream, core.Caller{}, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
-		Key: w.key, RangeEnd: w.end, StartRevision: w.next, PrevKv: w.prevKV, ProgressNotify: w.progress,
-	}}})
-	s.process(n)
-}
-
-// watchResponse routes a response from a node to its client, in order.
-func (s *Sim) watchResponse(n *node, r core.WatchResponse) {
-	w, ok := n.streams[r.Stream]
-	if !ok && (n.closing[r.Stream] || n.grayStreams[r.Stream]) {
-		// Gone, or the gray client's, which never reads.
-		return
-	}
-	if !ok {
-		s.fail("node %d answered unknown watch stream %d", n.id, r.Stream)
-		return
-	}
-	b, err := marshal.Marshal(r.Resp)
-	if err != nil {
-		s.fail("marshal watch response: %w", err)
-		return
-	}
-	s.mixBytes(b)
-	at := max(s.now+s.clientLatency(), w.lastAt)
-	w.lastAt = at
-	s.push(&event{at: at, kind: evWatchResponse, node: n.idx, gen: n.gen, from: int(r.Stream), watch: w, data: b})
-}
-
-func (w *watchClient) receive(e *event) {
-	s := w.sim
-	if !w.open || w.node != e.node || w.gen != e.gen || w.stream != uint64(e.from) {
-		return // a response of a stream that already broke
-	}
-	r := &pb.WatchResponse{}
-	if err := proto.Unmarshal(e.data, r); err != nil {
-		s.fail("unmarshal watch response: %w", err)
-		return
-	}
-	w.responses = append(w.responses, WatchRecord{Time: s.now, Resp: r})
+	w.responses = append(w.responses, WatchRecord{Time: s.now(), Resp: r})
 	if r.Canceled && r.CompactRevision != 0 {
 		// The revision it needed is compacted. Like Kubernetes, start a
 		// new logical watch from now.
 		s.stats.WatchCompacted++
-		s.closeStream(w)
+		s.tracef("watch %d: compacted at %d, starting again", w.id, r.CompactRevision)
 		w.ended = append(w.ended, segment{start: w.start, events: w.events, responses: w.responses})
-		w.start, w.next, w.events, w.responses, w.open = 0, 0, nil, nil, false
-		s.push(&event{at: s.now + s.clientLatency(), kind: evWatchOpen, watch: w})
-		return
+		w.start, w.next, w.events, w.responses = 0, 0, nil, nil
+		return true
 	}
 	if r.Canceled {
 		s.fail("watch %d was canceled: %v", w.id, r)
-		return
+		return false
 	}
 	if r.Created {
 		if w.next == 0 {
@@ -194,50 +200,39 @@ func (w *watchClient) receive(e *event) {
 		}
 		if w.start == 0 {
 			w.start = w.next
+			s.tracef("watch %d: created on node %d from %d", w.id, w.proc.n.id, w.start)
 		}
 		w.watchID = r.WatchId
-		return
+		return false
 	}
 	if r.WatchId != w.watchID {
 		s.fail("watch %d got a response for watch ID %d on a stream whose watcher is %d", w.id, r.WatchId, w.watchID)
-		return
+		return false
 	}
 	if len(r.Events) == 0 {
 		// A progress notification: every event up to its revision was
 		// delivered, so clientv3 resumes after it.
 		w.next = max(w.next, r.Header.Revision+1)
-		return
+		return false
 	}
 	last := w.next
 	for _, ev := range r.Events {
 		rev := ev.Kv.ModRevision
 		if rev < last {
 			s.fail("watch %d got an event at revision %d after one at %d", w.id, rev, last)
-			return
+			return false
 		}
 		if rev > r.Header.Revision {
 			s.fail("watch %d got an event at revision %d in a response with header revision %d", w.id, rev, r.Header.Revision)
-			return
+			return false
 		}
 		last = rev
 	}
 	w.events = append(w.events, r.Events...)
 	// A revision is never split across responses, so the next stream can
-	// start after the last event. A response without events says nothing.
-	if len(r.Events) > 0 {
-		w.next = last + 1
-	}
-}
-
-// broken is a stream that died with its node. The client may have left
-// that stream already and opened another, on the same node or another one
-// whose stream and generation numbers can be the same; that one stays.
-func (w *watchClient) broken(e *event) {
-	if !w.open || w.node != e.node || w.stream != e.stream || w.gen != e.gen {
-		return
-	}
-	w.open = false
-	w.openWatch()
+	// start after the last event.
+	w.next = last + 1
+	return false
 }
 
 // checkWatches requires every logical watch to have delivered exactly the
