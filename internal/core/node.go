@@ -279,6 +279,17 @@ type Reply struct {
 	Range mvcc.RangeResult
 }
 
+// UpToInstall returns the jobs up to the first with an install, that one
+// included, and whether there is one. The core ends at an install
+// (ErrInstalled), so a driver writes nothing after it: a root that came
+// later names a checkpoint of the state the install replaced (#182).
+func UpToInstall(jobs []PersistJob) ([]PersistJob, bool) {
+	if i := slices.IndexFunc(jobs, func(j PersistJob) bool { return j.Install != nil }); i >= 0 {
+		return jobs[:i+1], true
+	}
+	return jobs, false
+}
+
 // ownDepth is how many appends of the leader's own writes may be on their
 // way to disk at once.
 const ownDepth = 2
@@ -524,11 +535,6 @@ type Node struct {
 	// tokenWaits the requests whose token's entry is not applied yet.
 	tokens     map[string]*simpleToken
 	tokenWaits []tokenWait
-	// installs counts the persist jobs with a snapshot install that are
-	// not durable yet.
-	// installTop is the highest snapshot index among them.
-	installs   int
-	installTop uint64
 	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
 	// or -1 once an alarm change of it applied.
 	noSpaceAt int64
@@ -645,10 +651,16 @@ func (n *Node) replay(commit uint64) (uint64, error) {
 		if err != nil {
 			return 0, fmt.Errorf("core: read entry %d: %w", i, err)
 		}
+		term = e.GetTerm()
+		if i == commit && planted.On("B23") {
+			// Planted: the replay stops one entry short; the state lacks
+			// the last committed entry's writes.
+			n.applied = i
+			break
+		}
 		if err := n.apply([]*raftpb.Entry{e}); err != nil {
 			return 0, err
 		}
-		term = e.GetTerm()
 	}
 	return term, nil
 }
@@ -1375,8 +1387,16 @@ func (n *Node) Persisted(job PersistJob) {
 	}
 	n.unpersisted -= job.bytes
 	if in := job.Install; in != nil {
-		n.fail(fmt.Errorf("%w at %d from %d, checkpoint %d", ErrInstalled, in.Index, in.From, in.Checkpoint.Index))
-		return
+		if !planted.On("B27") {
+			n.fail(fmt.Errorf("%w at %d from %d, checkpoint %d", ErrInstalled, in.Index, in.From, in.Checkpoint.Index))
+			return
+		}
+		// Planted: the core goes on with the state the snapshot replaced.
+		if err := n.storage.reset(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(in.Index), Term: new(in.Term), ConfState: n.storage.confAt(in.Index)}}); err != nil {
+			n.fail(err)
+			return
+		}
+		n.applied = in.Index
 	}
 	if job.Root != nil {
 		n.storage.ckpt = *job.Root
@@ -1539,9 +1559,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 		case raft.LocalAppendThread:
 			job := PersistJob{Entries: m.Entries, msg: m}
 			if m.Snapshot != nil {
-				n.installs++
 				meta := m.Snapshot.GetMetadata()
-				n.installTop = max(n.installTop, meta.GetIndex())
 				job.Install = &Install{From: n.rn.BasicStatus().Lead, Index: meta.GetIndex(), Term: meta.GetTerm(), Applied: n.applied}
 			}
 			if m.Vote != nil {
@@ -1855,7 +1873,7 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 			n.pause(e.GetIndex(), k, cold)
 			return errPaused
 		}
-		if c := cold.Compares; c != nil && c.Batch {
+		if batch(cold.Compares) {
 			// The compare is done with the batch before.
 			n.values.fetched = nil
 		}

@@ -110,7 +110,7 @@ jobs:
           from pathlib import Path
           path = Path('internal/core/cache.go')
           text = path.read_text()
-          old = 'n.cache.setLimit(n.cfg.MemoryBytes - n.kv.Bytes() - n.EntryBytes() - n.replyBytes)'
+          old = 'n.cache.setLimit(n.cfg.MemoryBytes - n.otherMemory)'
           assert text.count(old) == 1
           path.write_text(text.replace(old, 'n.cache.setLimit(0)'))
           PY

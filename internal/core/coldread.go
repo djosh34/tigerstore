@@ -102,7 +102,8 @@ func keep(fetched map[mvcc.Ref][]byte, r *ValueRead) {
 }
 
 // readNow reads the values a write needs while the node starts, when no
-// driver runs reads yet and nothing else waits. They stay in values.fetched for the write's next run.
+// driver runs reads yet and nothing else waits. They stay in
+// values.fetched for the write's next run.
 func (n *Node) readNow(need []mvcc.Fill) error {
 	r := &ValueRead{fills: withDst(need)}
 	if err := ReadValues(n.log, r.fills); err != nil {

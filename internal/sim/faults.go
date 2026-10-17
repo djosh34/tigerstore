@@ -294,6 +294,32 @@ func disagree(nodes []*node) (*node, *node) {
 	return nil, nil
 }
 
+// quorum reports whether the running nodes are a quorum of the voters
+// that each of them knows.
+func (s *Sim) quorum() bool {
+	running := 0
+	for _, n := range s.nodes {
+		if n.up && !n.out() {
+			running++
+		}
+	}
+	for _, n := range s.nodes {
+		if !n.up || n.out() {
+			continue
+		}
+		voters := 0
+		for _, m := range n.core.Members() {
+			if !m.IsLearner {
+				voters++
+			}
+		}
+		if running < voters/2+1 {
+			return false
+		}
+	}
+	return true
+}
+
 // coldRestart starts the two nodes whose disks were not erased, with no
 // clients and no faults, until they have applied everything they hold.
 // Every entry and state they reach up to the index applied at the
@@ -325,6 +351,12 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 	}
 	if err := r.loop(); err != nil {
 		return err
+	}
+	if !r.quorum() {
+		// A member whose disk commits its own removal refuses it, as
+		// etcd's does, and with the erased disk the others can be left
+		// without a quorum of the voters they know: nothing commits.
+		return nil
 	}
 	// The leader may have proposed a lease expiry just before the end, so
 	// the follower has yet to learn that it committed (seed 736998125).

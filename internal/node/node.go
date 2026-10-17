@@ -680,6 +680,8 @@ func (n *Node) open() error {
 	// new one loads, so that the two are never in memory at once.
 	reload := n.core != nil
 	n.core = nil
+	// The gauge must not take the old core's cache for room.
+	n.memory.cache = 0
 	if reload && n.cfg.reloading != nil {
 		n.cfg.reloading(n)
 	}
@@ -1393,11 +1395,18 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 				break more
 			}
 		}
-		jobs := pending.jobs
+		jobs, installs := core.UpToInstall(pending.jobs)
 		g := written{jobs: jobs, times: persistTimes{queued: pending.queued, start: time.Now()}}
 		for _, j := range jobs {
 			if j.Install != nil {
 				if !drain() {
+					return
+				}
+				// The install checks the entries this group already
+				// holds, which must be readable.
+				n.log.used.Add(w.Buffered())
+				if err := w.Flush(); err != nil {
+					fail(err)
 					return
 				}
 				if err := n.install(ctx, t, j.Install); err != nil {
@@ -1438,6 +1447,11 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		}
 		toSync <- g
 		inFlight++
+		if installs {
+			// The run ends at the install and starts again from the log.
+			drain()
+			return
+		}
 		if !full {
 			continue
 		}

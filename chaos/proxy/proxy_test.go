@@ -339,6 +339,11 @@ func TestSentLagsRead(t *testing.T) {
 	if _, err := io.ReadFull(c, b); err != nil {
 		t.Fatal(err)
 	}
+	// The writer counts a write once it returned, after the reader may
+	// already have the bytes.
+	for p.Stats().BackwardSent < 64<<10 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if st := p.Stats(); st.BackwardSent != 64<<10 {
 		t.Fatalf("after the echo arrived: %+v", st)
 	}

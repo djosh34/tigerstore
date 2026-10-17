@@ -353,6 +353,9 @@ type node struct {
 
 	diskQ    []core.PersistJob
 	diskBusy bool
+	// installing is set while a group with a snapshot install is on its
+	// way to disk.
+	installing bool
 
 	nextReq     uint64
 	reqs        map[uint64]*clientOp
@@ -1118,6 +1121,7 @@ func rotStop(n *node, err error) bool {
 func (s *Sim) startDisk(n *node) {
 	jobs := n.diskQ
 	n.diskQ = nil
+	_, n.installing = core.UpToInstall(jobs)
 	if s.cfg.Faults.SlowFetch && !s.healed && slices.ContainsFunc(jobs, func(j core.PersistJob) bool { return j.Install != nil }) && s.rng.IntN(2) == 0 {
 		s.stats.SlowFetches++
 		n.diskBusy = true
@@ -1130,6 +1134,7 @@ func (s *Sim) startDisk(n *node) {
 // writeJobs writes jobs and schedules the fsync. A crash before the fsync
 // finishes leaves a torn tail.
 func (s *Sim) writeJobs(n *node, jobs []core.PersistJob) {
+	jobs, _ = core.UpToInstall(jobs)
 	n.inflight, n.replaceFrom = jobs, 0
 	for _, j := range jobs {
 		if len(j.Entries) > 0 && j.Entries[0].GetIndex() <= n.durableLast && (n.replaceFrom == 0 || j.Entries[0].GetIndex() < n.replaceFrom) {
@@ -1149,6 +1154,12 @@ func (s *Sim) writeJobs(n *node, jobs []core.PersistJob) {
 		if j.Install != nil {
 			if i := s.firstReplaced(n, j.Install); i <= n.durableLast && (n.replaceFrom == 0 || i < n.replaceFrom) {
 				n.replaceFrom = i
+			}
+			// The install checks the entries the node holds, which must
+			// be readable.
+			if err := n.log.Flush(); err != nil {
+				s.diskFailed(n, err)
+				return
 			}
 			if err := s.install(n, j.Install); err != nil {
 				s.installFailed(n, err)
@@ -1211,7 +1222,7 @@ func (s *Sim) diskDone(e *event) {
 			return
 		}
 	}
-	n.diskBusy = false
+	n.diskBusy, n.installing = false, false
 	if e.grayDisk {
 		s.graySyncEnded()
 	}
@@ -1372,7 +1383,7 @@ func (s *Sim) down(n *node) {
 	if n.inflight != nil && n.replaceFrom > 0 {
 		n.recoverFloor = min(n.recoverFloor, n.replaceFrom-1)
 	}
-	n.up = false
+	n.up, n.installing = false, false
 	if n.pausedUntil > s.now {
 		// A crash ends a pause; the node handles what it held, as a node
 		// that is down.
