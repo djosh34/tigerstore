@@ -13,6 +13,8 @@ on:
 permissions:
   contents: read
 jobs:
+  # The other storage, cleaner, cache and cold-read tests run under race in
+  # ci's test job; B29-B31 run in planted.yml.
   storage:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
@@ -21,127 +23,20 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Capacity outcome regressions
+      - name: Capacity outcome classifier
         run: python3 -B -m unittest discover -s scripts -p 'test_past_ram.py' -v
-      - name: Format new Go files on the runner
-        run: |
-          gofmt -w cmd/pastram internal/k8ssize internal/sim/sim.go internal/sim/past_ram_test.go internal/core/past_ram_test.go internal/node/past_ram_test.go internal/node/clean_sim_test.go internal/node/node.go internal/node/clean.go
-          go run mvdan.cc/gofumpt@v0.12.0 -w cmd/pastram internal/node/clean_sim_test.go
-          git diff > format.patch
-      - uses: actions/upload-artifact@v7
-        with:
-          name: past-ram-format
-          path: format.patch
-      - name: Check formatting, vet and driver tests
-        run: |
-          test ! -s format.patch
-          go vet ./cmd/pastram ./internal/k8ssize ./internal/core ./internal/node ./internal/sim
-          go test -race ./cmd/pastram ./internal/k8ssize
-          go test -tags planted ./internal/sim -run '^TestPlantedInventory$'
-      - name: Concurrent production cleaner on simulated storage
+      - name: Simulator recovery after the original segments are gone
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=10m -v ./internal/node -run '^TestConcurrentCleanerSimulation$' 2>&1 | tee concurrent-cleaner.log
-      - name: Existing recovery, cleaning, cache and cold-read tests
-        run: |
-          set -o pipefail
-          go test -race -count=1 -timeout=20m -v ./internal/wal ./internal/core ./internal/node ./internal/simfs -run 'Test(Clean|Pack|MapShrinks|DamagedPack|Cache|Cold|Defragment|SharedValues|NoSpace|Value|Read|Remove)' 2>&1 | tee storage.log
-      - name: Simulator recovery after packing and protocol mutation controls
-        run: |
-          set -o pipefail
-          go test -race -count=1 -timeout=20m -v ./internal/sim -run 'TestPastRAM' 2>&1 | tee -a storage.log
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.14.0
-          args: ./cmd/pastram/... ./internal/k8ssize/... ./internal/core/... ./internal/node/... ./internal/sim/...
-      - name: B31 stale cache lookup, one fixed scenario
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('internal/core/cache.go')
-          text = path.read_text()
-          old = 'e, ok := c.items[r]\n'
-          assert text.count(old) == 1
-          text = text.replace(old, '''e, ok := c.items[r]
-              for ref, item := range c.items {
-                  if ref.Off == r.Off && ref.Len == r.Len {
-                      e, ok = item, true
-                      break
-                  }
-              }\n''')
-          path.write_text(text)
-          PY
-          git diff internal/core/cache.go > stale-cache.patch
-          if go test -race -count=1 -v ./internal/core -run '^TestCacheReferenceIdentity$' > stale-cache.log 2>&1; then
-            echo 'stale cache mutation escaped'; exit 1
-          fi
-          grep 'stale cache entry after overwrite' stale-cache.log
-          git restore internal/core/cache.go
+          go test -race -count=1 -timeout=20m -v ./internal/sim -run '^TestPastRAMRecovery$' 2>&1 | tee storage.log
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: past-ram-storage
-          path: |
-            storage.log
-            concurrent-cleaner.log
-            stale-cache.log
-            stale-cache.patch
-          retention-days: 30
-  cleaner-controls:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {bug: B29, fault: early-remove}
-          - {bug: B30, fault: missing-value}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: ${{ matrix.bug }} mutates the production cleaner, one fixed seed
-        env:
-          FAULT: ${{ matrix.fault }}
-        run: |
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          p = Path('internal/node/clean.go')
-          text = p.read_text()
-          if os.environ['FAULT'] == 'early-remove':
-              old = 'pr := packRoot{add: pack, drop: rm.drop, synced: make(chan struct{})}'
-              new = old + '''
-              l.mu.Lock()
-              premature := l.w.RemoveCleaned(rm.upto, rm.drop)
-              l.mu.Unlock()
-              if premature != nil { return false, premature }
-              '''
-          else:
-              old = 'var pw *wal.PackWriter'
-              assert text.count(old) == 1
-              text = text.replace(old, old + '\n skipped := false')
-              old = 'return pw.Add(r.Index, r.Off, b)'
-              new = 'if !skipped { skipped = true; return nil }; ' + old
-          assert text.count(old) == 1
-          p.write_text(text.replace(old, new))
-          PY
-          gofmt -w internal/node/clean.go
-          git diff > cleaner-control.patch
-          if go test -race -count=1 -timeout=5m -v ./internal/node -run '^TestConcurrentCleanerSimulation$/^1$' > cleaner-control.log 2>&1; then
-            echo 'production cleaner mutation escaped'; exit 1
-          fi
-          grep -E 'lost checkpoint value|wal: not on disk|concurrent reader lost' cleaner-control.log
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: cleaner-control-${{ matrix.fault }}
-          path: |
-            cleaner-control.patch
-            cleaner-control.log
+          path: storage.log
           retention-days: 30
   etcd-index:
+    if: inputs.capacity
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:

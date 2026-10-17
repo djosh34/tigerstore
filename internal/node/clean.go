@@ -14,6 +14,7 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
+	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -298,6 +299,12 @@ func (c *cleaner) pass(ctx context.Context, short bool) (did bool, err error) {
 		return false, err
 	}
 	c.n.cleaningStage("pack-synced")
+	if planted.On("B29") {
+		c.pending = &rm
+		if err := c.remove(); err != nil {
+			return false, err
+		}
+	}
 	pr := packRoot{add: pack, drop: rm.drop, synced: make(chan struct{})}
 	select {
 	case c.n.cleanQ <- pr:
@@ -358,6 +365,7 @@ func choose(files []wal.CleanFile, live map[wal.FileID]int64, short bool) (remov
 func (c *cleaner) copyLive(f io.Reader, ckpt uint64, victims map[wal.FileID]bool) (*wal.Pack, error) {
 	l := c.n.log
 	var pw *wal.PackWriter
+	skipped := false
 	err := c.walk(f, ckpt, func(id wal.FileID, r mvcc.Ref) error {
 		if !victims[id] {
 			return nil
@@ -381,6 +389,10 @@ func (c *cleaner) copyLive(f io.Reader, ckpt uint64, victims map[wal.FileID]bool
 			if err != nil {
 				return err
 			}
+		}
+		if planted.On("B30") && !skipped {
+			skipped = true
+			return nil
 		}
 		return pw.Add(r.Index, r.Off, b)
 	})

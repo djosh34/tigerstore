@@ -474,9 +474,9 @@ jobs:
   rolling-upgrade:
     uses: ./.github/workflows/rolling-upgrade.yml
 
-  # Storage recovery and all three mutation controls run on every PR.
-  # Main, nightly and manual runs also measure the past-RAM population
-  # and capacity boundaries under separate per-member cgroups.
+  # The simulator's recovery check after cleaning runs on every PR. Main,
+  # nightly and manual runs also run the memory-limited proof against etcd,
+  # the max-objects runs and the cache measurement (docs/testing.md).
   past-ram:
     uses: ./.github/workflows/past-ram.yml
     with:

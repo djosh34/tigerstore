@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"errors"
+	"fmt"
 	"hash/crc32"
 	"io"
 	"maps"
@@ -179,17 +180,25 @@ func (slowSnapshot) Write(p []byte) (int, error) {
 	return io.Discard.Write(p)
 }
 
+// errLostValue is how the cleaner scenario fails when a value that the
+// durable checkpoint or a client still needs is gone.
+var errLostValue = errors.New("lost a value")
+
 // This runs Node.Run, including cleaner.run's pacing and its real queues.
 // It does not substitute the test's own packing protocol for the cleaner.
 func TestConcurrentCleanerSimulation(t *testing.T) {
 	for seed := uint64(1); seed <= 8; seed++ {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) { concurrentCleaning(t, seed) })
+			synctest.Test(t, func(t *testing.T) {
+				if err := concurrentCleaning(t, seed); err != nil {
+					t.Fatal(err)
+				}
+			})
 		})
 	}
 }
 
-func concurrentCleaning(t *testing.T, seed uint64) {
+func concurrentCleaning(t *testing.T, seed uint64) (err error) {
 	d := &concurrentDisk{d: simfs.New(), seed: seed, cuts: map[string]*simfs.Disk{}}
 	cfg := Config{
 		Tick: 50 * time.Millisecond, SegmentBytes: 32 << 10, DiskBudget: 2 << 20,
@@ -206,21 +215,19 @@ func concurrentCleaning(t *testing.T, seed uint64) {
 	cfg.Core.MemoryBytes = 128 << 10
 	n, err := newOnDisk(cfg, "", d)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	ran := make(chan error, 1)
 	go func() { ran <- n.Run(ctx, noPeers{}) }()
 	defer func() {
 		cancel()
-		if err := <-ran; err != nil {
-			t.Error(err)
-		}
+		err = errors.Join(err, lostValue(<-ran))
 	}()
 	cold, hot := keys("c", 24), keys("h", 24)
 	want := map[string]int{}
 	if _, err := putAll(n, 0, cold...); err != nil {
-		t.Fatal(err)
+		return err
 	}
 	for _, k := range cold {
 		want[k] = 0
@@ -240,7 +247,7 @@ func concurrentCleaning(t *testing.T, seed uint64) {
 			if err == nil {
 				kvs := r.(*pb.RangeResponse).Kvs
 				if len(kvs) != 1 || string(kvs[0].Value) != string(bigValue(cold[reads%len(cold)], 0)) {
-					err = errors.New("concurrent reader lost a cold value")
+					err = fmt.Errorf("%w: concurrent reader got a wrong cold value", errLostValue)
 				}
 			}
 			if err != nil {
@@ -278,34 +285,29 @@ func concurrentCleaning(t *testing.T, seed uint64) {
 	// Join the helpers even on a failed assertion, before stopping Node.Run.
 	defer func() {
 		close(stop)
-		if err := <-readDone; err != nil {
-			t.Error(err)
-		}
-		if err := <-snapDone; err != nil {
-			t.Error(err)
-		}
-		if reads == 0 || snapshots == 0 {
-			t.Errorf("missing overlap: reads=%d snapshots=%d", reads, snapshots)
+		err = errors.Join(err, lostValue(<-readDone), lostValue(<-snapDone))
+		if err == nil && (reads == 0 || snapshots == 0) {
+			err = fmt.Errorf("missing overlap: reads=%d snapshots=%d", reads, snapshots)
 		}
 		t.Logf("seed=%d reads=%d snapshots=%d", seed, reads, snapshots)
 	}()
 	for round := 1; round <= 80; round++ {
 		rev, err := putAll(n, round, hot...)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		for _, k := range hot {
 			want[k] = round
 		}
 		if _, err := do(n, &pb.CompactionRequest{Revision: rev}); err != nil {
-			t.Fatal(err)
+			return err
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
 	// Wait for the durable commit hint and pending removals, without a new KV
 	// revision. The crash copy is taken while the production driver is live.
 	if _, err := do(n, &pb.TxnRequest{}); err != nil {
-		t.Fatal(err)
+		return err
 	}
 	time.Sleep(time.Second)
 	d.mu.Lock()
@@ -315,60 +317,64 @@ func concurrentCleaning(t *testing.T, seed uint64) {
 	d.mu.Unlock()
 	names, err := crash.List()
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	if slices.Contains(names, wal.SegmentName(1)) {
-		t.Fatal("original cold-value segment is still on the durable disk")
+		return errors.New("original cold-value segment is still on the durable disk")
 	}
 	if packs == 0 || removes == 0 {
-		t.Fatalf("no concurrent cleaning: packs=%d removes=%d", packs, removes)
+		return fmt.Errorf("no concurrent cleaning: packs=%d removes=%d", packs, removes)
 	}
 	t.Logf("seed=%d pack-syncs=%d segment-removes=%d crash-cuts=%d", seed, packs, removes, len(cuts))
 	for _, stage := range []string{"pack-synced", "root-buffered", "root-synced", "removed"} {
 		if cuts[stage] == nil {
-			t.Fatalf("missing production cleaner crash boundary %s", stage)
+			return fmt.Errorf("missing production cleaner crash boundary %s", stage)
 		}
 	}
 	for stage, disk := range cuts {
-		checkCrashReferences(t, stage, disk)
+		if err := checkCrashReferences(stage, disk); err != nil {
+			return err
+		}
 	}
-	checkCrashReferences(t, "final", crash.Durable())
+	if err := checkCrashReferences("final", crash.Durable()); err != nil {
+		return err
+	}
 	// Recovery compares against the client's acknowledged values, never
 	// another replica or a hash made by the store.
 	rd := &concurrentDisk{d: crash, seed: seed, cuts: map[string]*simfs.Disk{}}
 	cfg.cleanStage = nil
 	restarted, err := newOnDisk(cfg, "", rd)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	rctx, rcancel := context.WithCancel(context.Background())
 	rdone := make(chan error, 1)
 	go func() { rdone <- restarted.Run(rctx, noPeers{}) }()
 	err = checkValues(restarted, want)
 	rcancel()
-	err = errors.Join(err, <-rdone)
-	if err != nil {
-		t.Fatal(err)
-	}
+	return lostValue(errors.Join(err, <-rdone))
 }
 
-func checkCrashReferences(t *testing.T, stage string, disk *simfs.Disk) {
-	t.Helper()
+// lostValue marks a read of a value the log no longer has as a lost value.
+func lostValue(err error) error {
+	if errors.Is(err, wal.ErrNotOnDisk) {
+		return fmt.Errorf("%w: %w", errLostValue, err)
+	}
+	return err
+}
+
+func checkCrashReferences(stage string, disk *simfs.Disk) (err error) {
 	w, rec, err := wal.Open(disk)
 	if err != nil {
-		t.Fatalf("%s recovery: %v", stage, err)
+		return fmt.Errorf("%s recovery: %w", stage, err)
 	}
-	defer func() {
-		if err := w.Close(); err != nil {
-			t.Error(err)
-		}
-	}()
+	defer func() { err = errors.Join(err, w.Close()) }()
 	if rec.Root.Index == 0 {
-		t.Fatalf("%s has no durable checkpoint", stage)
+		return fmt.Errorf("%s has no durable checkpoint", stage)
 	}
 	f, err := w.Checkpoint(rec.Root.Index)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	err = core.WalkCheckpoint(f, rec.Root.Index, func(r mvcc.Ref) error {
 		b, err := w.Value(r.Index, r.Off, r.Len)
@@ -378,6 +384,7 @@ func checkCrashReferences(t *testing.T, stage string, disk *simfs.Disk) {
 		return err
 	})
 	if err = errors.Join(err, f.Close()); err != nil {
-		t.Fatalf("%s lost checkpoint value: %v", stage, err)
+		return fmt.Errorf("%s: %w of the durable checkpoint: %w", stage, errLostValue, err)
 	}
+	return nil
 }

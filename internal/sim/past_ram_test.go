@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"testing"
 	"testing/cryptotest"
 
@@ -18,6 +17,14 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
+// cacheConfig is linearizableConfig with a small value cache, so reads hit
+// it and miss it.
+func cacheConfig(seed uint64) Config {
+	cfg := linearizableConfig(seed)
+	cfg.CacheBytes = 16 << 10
+	return cfg
+}
+
 // TestPastRAMRecovery checks the simulator's own history after packing and
 // removing the original segments. The cleaner protocol runs on a durable
 // copy, not on the live simulator: concurrent cleaner scheduling is not
@@ -27,9 +34,7 @@ func TestPastRAMRecovery(t *testing.T) {
 	for seed := uint64(1); seed <= 16; seed++ {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
 			cryptotest.SetGlobalRandom(t, seed)
-			cfg := linearizableConfig(seed)
-			cfg.CacheBytes = 16 << 10
-			s, res, err := runWithState(cfg)
+			s, res, err := runWithState(cacheConfig(seed))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -51,7 +56,7 @@ func TestPastRAMRecovery(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				nfiles, err := cleanHistory(n.disk.Durable(), n.id, model, "")
+				nfiles, err := cleanHistory(n.disk.Durable(), n.id, model)
 				if err != nil {
 					t.Fatalf("node %d: %v", n.id, err)
 				}
@@ -101,8 +106,7 @@ func durableModel(s *Sim, disk *simfs.Disk) (*mvcc.Store, error) {
 }
 
 // cleanHistory uses the same WAL pack/root/remove protocol as the node.
-// The two mutations are controls of the test's oracle, not production bugs.
-func cleanHistory(d *simfs.Disk, id uint64, model *mvcc.Store, mutation string) (removed int, err error) {
+func cleanHistory(d *simfs.Disk, id uint64, model *mvcc.Store) (removed int, err error) {
 	w, rec, err := wal.Open(d)
 	if err != nil {
 		return 0, err
@@ -128,7 +132,6 @@ func cleanHistory(d *simfs.Disk, id uint64, model *mvcc.Store, mutation string) 
 	if err != nil {
 		return 0, errors.Join(err, checkpoint.Close())
 	}
-	omitted := false
 	err = core.WalkCheckpoint(checkpoint, rec.Root.Index, func(r mvcc.Ref) error {
 		if _, ok := want[r]; ok {
 			return nil
@@ -140,10 +143,6 @@ func cleanHistory(d *simfs.Disk, id uint64, model *mvcc.Store, mutation string) 
 		want[r] = b
 		where, ok := w.Where(r.Index, r.Off, r.Len)
 		if ok && !where.Pack && where.N <= upto {
-			if mutation == "drop-checkpoint-values" && !omitted {
-				omitted = true
-				return nil
-			}
 			return pw.Add(r.Index, r.Off, b)
 		}
 		return nil
@@ -190,13 +189,11 @@ func cleanHistory(d *simfs.Disk, id uint64, model *mvcc.Store, mutation string) 
 	if err := check("root buffered"); err != nil {
 		return 0, err
 	}
-	if mutation != "delete-before-root-sync" {
-		if err := w.Sync(); err != nil {
-			return 0, err
-		}
-		if err := check("root synced"); err != nil {
-			return 0, err
-		}
+	if err := w.Sync(); err != nil {
+		return 0, err
+	}
+	if err := check("root synced"); err != nil {
+		return 0, err
 	}
 	if err := w.RemoveCleaned(upto, nil); err != nil {
 		return 0, err
@@ -212,37 +209,4 @@ func cleanHistory(d *simfs.Disk, id uint64, model *mvcc.Store, mutation string) 
 		}
 	}
 	return removed, check("segments removed")
-}
-
-func TestPastRAMCleaningControls(t *testing.T) {
-	cryptotest.SetGlobalRandom(t, 1)
-	cfg := linearizableConfig(1)
-	cfg.CacheBytes = 16 << 10
-	s, res, err := runWithState(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	checkers(t, res)
-	for _, mutation := range []string{"delete-before-root-sync", "drop-checkpoint-values"} {
-		t.Run(mutation, func(t *testing.T) {
-			caught := false
-			for _, n := range s.live() {
-				model, err := durableModel(s, n.disk)
-				if err != nil {
-					t.Fatal(err)
-				}
-				_, err = cleanHistory(n.disk.Durable(), n.id, model, mutation)
-				if err != nil {
-					if !strings.Contains(err.Error(), "segments removed lost checkpoint value") {
-						t.Fatalf("unrelated failure: %v", err)
-					}
-					caught = true
-					t.Logf("seed 1 caught %s: %v", mutation, err)
-				}
-			}
-			if !caught {
-				t.Fatalf("seed budget 1 did not catch %s", mutation)
-			}
-		})
-	}
 }

@@ -9,10 +9,6 @@ on:
     paths:
       - "check/**"
       - "internal/sim/**"
-      - "internal/node/**"
-      - "internal/core/**"
-      - "internal/planted/**"
-      - ".github/workflows/past-ram.yml"
       - "cmd/chaos/**"
       - "chaos/**"
       - ".github/workflows/planted.yml"
@@ -59,13 +55,6 @@ jobs:
             echo "::endgroup::"
           done
           exit "$status"
-
-  # B29-B31 mutate source rather than adding production build switches.
-  # ci.yml also requires this workflow, including these fixed scenarios.
-  past-ram:
-    uses: ./.github/workflows/past-ram.yml
-    with:
-      capacity: false
 
   # The chaos job must be able to fail: with a planted bug built in, the
   # checker that bug breaks must report its own finding. B01a serves

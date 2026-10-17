@@ -5,6 +5,7 @@ import (
 	"maps"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // cache holds the newest values of keys written or read lately, after
@@ -61,6 +62,14 @@ func newCache() *cache {
 // get returns the value r names if the cache has it, and marks it used.
 func (c *cache) get(r mvcc.Ref) ([]byte, bool) {
 	e, ok := c.items[r]
+	if !ok && planted.On("B31") {
+		for ref, item := range c.items {
+			if ref.Off == r.Off && ref.Len == r.Len {
+				e, ok = item, true
+				break
+			}
+		}
+	}
 	if !ok {
 		return nil, false
 	}
