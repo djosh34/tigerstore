@@ -83,7 +83,9 @@ func TestRemovedLeaderDrainsCommit(t *testing.T) {
 		t.Fatalf("removed leader did not stop after the drain interval: %v", err)
 	}
 	c.down[0] = true
-	for range 100 {
+	// Two voters that time out a tick or two apart both pass pre-vote and
+	// split the vote, so a few rounds can pass without a leader.
+	for range 1000 {
 		for _, n := range c.nodes[1:] {
 			n.Tick()
 		}
