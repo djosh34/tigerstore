@@ -102,7 +102,7 @@ var plantedCases = map[string]plantedCase{
 		}
 		return nil
 	}},
-	"B18": {seeds: 16, cfg: DefaultConfig, want: `unknown watch stream|holds \d+ watchers`},
+	"B18": {seeds: 16, cfg: DefaultConfig, want: `holds \d+ watchers`},
 	"B19": {seeds: 64, cfg: DefaultConfig, want: refused + `|not on disk|` + stuck},
 	"B20": {seeds: 64, cfg: DefaultConfig, want: `holds entries from \d+ in memory`},
 	"B21": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|already exists|` + refused},

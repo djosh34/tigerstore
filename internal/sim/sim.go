@@ -278,12 +278,15 @@ type node struct {
 	rotFile          string
 	rotEntry, rotSeg uint64
 	// ckptDone are the checkpoint files closed right after their last
-	// sync, whose bytes count once the directory is synced; ckptSynced
-	// and removedSegment mark a checkpoint and a segment removal whose
-	// erase-one-disk copy waits for the next sync of the log and of the
-	// directory.
-	ckptDone                   []string
-	ckptSynced, removedSegment bool
+	// sync, whose bytes count once the directory is synced;
+	// removedSegment marks a segment removal whose erase-one-disk copy
+	// waits for the next sync of the directory.
+	ckptDone       []string
+	removedSegment bool
+	// root is the index of the node's newest durable root, and
+	// servedDamage is set once a serve failed on its own damage.
+	root         uint64
+	servedDamage bool
 }
 
 // pendingJob is a job a node's core handed its disk: the first entry it
@@ -291,6 +294,7 @@ type node struct {
 type pendingJob struct {
 	first    uint64
 	replaces bool
+	install  bool
 }
 
 // proc is one process of a node: the node driver, its peer transport and
@@ -435,6 +439,12 @@ type Stats struct {
 	// a failed fetch, StepCrashes crashes at a checkpoint, removal or
 	// install step, and Rots values damaged under a running node.
 	Checkpoints, Snapshots, ServeFailures, SnapshotFlips, FetchCrashes, SlowFetches, Reloads, StepCrashes, Rots int
+	// OlderCheckpoints counts installed snapshots whose checkpoint is
+	// older than the source's newest durable root, CheckpointsDuringInstall
+	// checkpoints finished while an install was on its way to disk
+	// (#182), and FencedAfterServe nodes fenced after a serve failed on
+	// their own damage (#201).
+	OlderCheckpoints, CheckpointsDuringInstall, FencedAfterServe int
 	// ErasedAtRoot and ErasedAtRemoval count the erase-one-disk copies
 	// taken right after the first root synced and right after the first
 	// segment removal.
@@ -903,6 +913,9 @@ func (s *Sim) start(n *node) error {
 		}
 		n.fenced = true
 		s.stats.Fenced++
+		if n.servedDamage {
+			s.stats.FencedAfterServe++
+		}
 		s.tracef("node %d: fenced: %v", n.id, err)
 		return nil
 	}
@@ -1050,7 +1063,7 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		if j.Install != nil {
 			// The install may replace what the node holds after the
 			// index it applied.
-			pj.first = j.Install.Applied + 1
+			pj.first, pj.install = j.Install.Applied+1, true
 		}
 		pj.replaces = pj.first <= n.durableLast
 		n.pending = append(n.pending, pj)
@@ -1116,6 +1129,17 @@ func (s *Sim) persisted(p *proc, j core.PersistJob) {
 	}
 	if j.Install != nil {
 		n.durableLast = j.Install.Index
+		if c := j.Install.Checkpoint.Index; c > 0 && c < s.byID(j.Install.From).root {
+			s.stats.OlderCheckpoints++
+		}
+	}
+	if j.Root != nil {
+		n.root = j.Root.Index
+	}
+	if j.Root != nil && s.cfg.Faults.Checkpoint && s.stats.ErasedAtRoot == 0 {
+		// The root of a checkpoint is durable now.
+		s.stats.ErasedAtRoot++
+		s.takeCheckpoint()
 	}
 	if len(j.Entries) > 0 {
 		n.durableLast = j.Entries[len(j.Entries)-1].GetIndex()
@@ -1428,4 +1452,15 @@ func (s *Sim) shutdown() {
 	s.mu.Unlock()
 	s.wg.Wait()
 	s.procs.Wait()
+}
+
+// byID returns the node with Raft ID id, or an empty one. The lock is
+// held.
+func (s *Sim) byID(id uint64) *node {
+	for _, n := range s.nodes {
+		if n.id == id {
+			return n
+		}
+	}
+	return &node{}
 }

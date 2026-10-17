@@ -338,16 +338,20 @@ func slowFetchConfig(seed uint64) Config {
 // restart, may finish a checkpoint while the install is on its way to
 // disk, whose root must not follow the install's (#182). Every run must
 // pass the checkers, which recover every node's disk at the end, and
-// across the seeds a leader must fail to serve a fetch.
+// across the seeds each of the three must happen.
 func TestSlowFetch(t *testing.T) {
-	failed := 0
-	for seed := uint64(1); seed <= 100 && failed == 0; seed++ {
+	older, failed, during := 0, 0, 0
+	// Each of the three happens in about one seed in 20 to 50; the search
+	// stops once all did.
+	for seed := uint64(1); seed <= 200 && (older == 0 || failed == 0 || during == 0); seed++ {
 		res := run(t, slowFetchConfig(5000+seed))
 		checkers(t, res)
+		older += res.Stats.OlderCheckpoints
 		failed += res.Stats.ServeFailures
+		during += res.Stats.CheckpointsDuringInstall
 	}
-	if failed == 0 {
-		t.Fatal("no fetch the leader could not serve")
+	if older == 0 || failed == 0 || during == 0 {
+		t.Fatalf("%d snapshots installed from an older checkpoint, %d fetches the leader could not serve, %d checkpoints finished during an install; each must happen", older, failed, during)
 	}
 }
 
@@ -477,8 +481,9 @@ func TestGrayClient(t *testing.T) {
 			continue
 		}
 		if errors.Is(r.Err, rpctypes.ErrGRPCStopped) {
-			// The node started again from its log after a snapshot
-			// install, which the run's tiny window makes frequent.
+			// With no other fault, only a start from the log after a
+			// snapshot install, which the run's tiny window makes
+			// frequent, answers that.
 			continue
 		}
 		if r.Err != nil && !isRejection(r.Err) {
@@ -515,22 +520,22 @@ func TestRotInAnEntryRecord(t *testing.T) {
 	checkers(t, res)
 }
 
-// TestSnapshotFromCorruptLeader runs seeds until one in which a node
-// fails to serve a snapshot and a damaged node is fenced, as when a node
-// serves a snapshot from a damaged old record. Serving it must stop that
-// node, so the follower can catch up from a healthy node instead of
-// reloading on every fetch (#201, campaign seed 5038431). Every run must
-// pass the checkers.
+// TestSnapshotFromCorruptLeader runs seeds until one in which a damaged
+// node fails to serve a snapshot on its own damage and is then fenced, as
+// when a node serves a snapshot from a damaged old record. Serving it must
+// stop that node, so the follower can catch up from a healthy node instead
+// of reloading on every fetch (#201, campaign seed 5038431). Every run
+// must pass the checkers.
 func TestSnapshotFromCorruptLeader(t *testing.T) {
 	for seed := uint64(1); seed <= 200; seed++ {
 		res := run(t, DefaultConfig(seed))
 		checkers(t, res)
-		if res.Stats.ServeFailures > 0 && res.Stats.Fenced > 0 {
+		if res.Stats.FencedAfterServe > 0 {
 			t.Logf("seed %d: %+v", seed, res.Stats)
 			return
 		}
 	}
-	t.Fatal("no run failed a serve and fenced a damaged node")
+	t.Fatal("no run fenced a node after it failed a serve on its own damage")
 }
 
 // TestAmbiguousWritesInTheLog runs seed 1320469923, whose history has 8

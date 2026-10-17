@@ -1,7 +1,10 @@
 package sim
 
 import (
+	"errors"
 	"testing"
+
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
 	"github.com/djosh34/tigerstore/internal/core"
 )
@@ -34,6 +37,11 @@ func TestGrayFsyncOutlastsHealing(t *testing.T) {
 		calls := 0
 		for _, r := range a.History {
 			if r.Call < from {
+				continue
+			}
+			if errors.Is(r.Err, rpctypes.ErrGRPCStopped) {
+				// With no other fault, only a start from the log after a
+				// snapshot install answers that.
 				continue
 			}
 			if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {

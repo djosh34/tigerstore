@@ -163,6 +163,9 @@ func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.
 		s.mu.Lock()
 		if err != nil {
 			s.stats.ServeFailures++
+			if n.corrupted && core.FailureOf(err) == core.Fence {
+				n.servedDamage = true
+			}
 			s.mu.Unlock()
 			return err
 		}
@@ -184,6 +187,12 @@ func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.
 		s.mu.Unlock()
 		_, err = w.Write(data)
 		if crash {
+			// The prefix reaches the follower before the crash, as what
+			// a process sent before it crashed does: links take up to
+			// about 40 ms.
+			if !s.sleep(50 * Millisecond) {
+				return errDead
+			}
 			s.mu.Lock()
 			if n.proc == p {
 				s.stopNode(n)

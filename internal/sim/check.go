@@ -117,6 +117,11 @@ func (s *Sim) check(res *Result) error {
 		if s.nodes[r.Node].stalledAt(r.Call) || r.Err != nil && s.nodes[r.Node].reloadedDuring(r.Call, r.Return) {
 			continue
 		}
+		if r.Err != nil && s.removalDuring(r.Call, r.Return) {
+			// The removed member stops, and when it led, the others
+			// elect another (seed 50214159).
+			continue
+		}
 		if s.nodes[r.Node].fenced && errors.Is(r.Err, errConnRefused) {
 			// The node was fenced for good; a real client moves on to
 			// another endpoint.
@@ -595,8 +600,8 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 		at := s.expiredAt[id]
 		// The declared clock envelope: the leader's clock may run fast by
 		// DriftPerMille, and its ticks fall anywhere in a tick of real
-		// time.
-		early := ttl[id]*Second*s.cfg.Faults.DriftPerMille/1000 + 3*TickTime
+		// time. Go tickers never jump several ticks at once.
+		early := ttl[id]*Second*s.cfg.Faults.DriftPerMille/1000 + TickTime
 		if s.cfg.Faults.DriftPerMille == 0 {
 			early = 0
 		}
@@ -681,6 +686,13 @@ func (s *Sim) recovered() int64 {
 		t += 2 * Second
 	}
 	return t
+}
+
+// removalDuring reports whether a call from to to overlaps the
+// LiveAfter after the removal of a member.
+func (s *Sim) removalDuring(from, to int64) bool {
+	at := s.membership.removedAt
+	return at > 0 && from <= at+s.cfg.LiveAfter && to >= at
 }
 
 // extendLiveness keeps clients running for at least 3 s under the rule.

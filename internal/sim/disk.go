@@ -3,6 +3,7 @@ package sim
 import (
 	"errors"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -23,10 +24,14 @@ type disk struct {
 // errDead is what the disk calls of a process that crashed get.
 var errDead = errors.New("sim: the process crashed")
 
-func (d *disk) yield() {
-	d.s.mu.Lock()
-	k := 1 + d.s.rng.IntN(3)
-	d.s.mu.Unlock()
+func (d *disk) yield() { d.s.yield() }
+
+// yield lets other goroutines run 1 to 3 times, as the seed says: the
+// pause before every disk and network call.
+func (s *Sim) yield() {
+	s.mu.Lock()
+	k := 1 + s.rng.IntN(3)
+	s.mu.Unlock()
 	for range k {
 		runtime.Gosched()
 	}
@@ -67,19 +72,14 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 		return nil
 	}
 	switch {
-	case op == simfs.OpSync && isSegment(name) && n.ckptSynced:
-		// The root of the checkpoint is in the log now, or soon.
-		n.ckptSynced = false
-		if s.cfg.Faults.Checkpoint && s.stats.ErasedAtRoot == 0 {
-			s.stats.ErasedAtRoot++
-			s.takeCheckpoint()
-		}
 	case op == simfs.OpRemove && isSegment(name):
 		n.removedSegment = true
 	case op == simfs.OpSyncDir:
 		for _, f := range n.ckptDone {
 			s.ckptWritten(n, f)
-			n.ckptSynced = true
+			if slices.ContainsFunc(n.pending, func(j pendingJob) bool { return j.install }) {
+				s.stats.CheckpointsDuringInstall++
+			}
 		}
 		n.ckptDone = nil
 		if n.removedSegment {

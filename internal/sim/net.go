@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"runtime"
 	"slices"
 	"time"
 
@@ -272,7 +271,7 @@ type conn struct {
 
 func (c *conn) Read(b []byte) (int, error) {
 	s := c.s
-	runtime.Gosched()
+	s.yield()
 	for {
 		s.mu.Lock()
 		if c.closed {
@@ -326,7 +325,7 @@ func (c *conn) Read(b []byte) (int, error) {
 
 func (c *conn) Write(b []byte) (int, error) {
 	s := c.s
-	runtime.Gosched()
+	s.yield()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch {

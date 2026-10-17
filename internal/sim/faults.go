@@ -5,6 +5,9 @@ import (
 	"slices"
 	"time"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
@@ -297,6 +300,33 @@ func disagree(nodes []*node) (*node, *node) {
 	return nil, nil
 }
 
+// unknownVoter reports whether no running node has a leader while one of
+// them does not know a voter that another counts. The nodes are frozen.
+func (s *Sim) unknownVoter() bool {
+	var running []*core.Node
+	for _, n := range s.nodes {
+		if n.proc != nil && !n.out() {
+			if n.proc.core.Leader() != 0 {
+				return false
+			}
+			running = append(running, n.proc.core)
+		}
+	}
+	for _, a := range running {
+		for _, m := range a.Members() {
+			if m.IsLearner {
+				continue
+			}
+			for _, b := range running {
+				if !slices.ContainsFunc(b.Members(), func(x *pb.Member) bool { return x.ID == m.ID }) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // quorum reports whether the running nodes are a quorum of the voters
 // that each of them knows. The nodes are frozen.
 func (s *Sim) quorum() bool {
@@ -379,6 +409,13 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 		// A member whose disk commits its own removal refuses it, as
 		// etcd's does, and with the erased disk the others can be left
 		// without a quorum of the voters they know: nothing commits.
+		return nil
+	}
+	if r.unknownVoter() {
+		// A member that has not applied the addition of a newer one
+		// refuses its connections, as etcd's peer handler answers
+		// "sender not found", so the voters that know the newer member
+		// can be left without a quorum they can reach (seed 53566070).
 		return nil
 	}
 	// The leader may have proposed a lease expiry just before the end, so
