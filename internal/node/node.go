@@ -90,9 +90,9 @@ type Config struct {
 	// snapshotSync, if set, replaces the syncBytes of a snapshot after
 	// which the log syncs what came; stage, if set, runs after each such
 	// sync and each item of a snapshot install, with its stage, and an
-	// error it returns breaks the stream there; and reloading, if set, runs when a
-	// run that ended for a reload opened the log again, before the core
-	// replays it. For tests.
+	// error it returns breaks the stream there; and reloading, if set,
+	// runs when a run that ended for a reload opened the log again,
+	// before the core replays it. For tests.
 	snapshotSync int
 	stage        func(string) error
 	reloading    func()

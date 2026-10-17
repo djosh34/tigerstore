@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/fs"
 	"slices"
-	"sync"
 
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
@@ -451,9 +450,12 @@ type SnapshotSink interface {
 // the node's WAL. Every write or sync of its own that fails is ErrDisk.
 type LogSink struct {
 	WAL *wal.WAL
-	// Lock, if set, is held around each append, for readers of the WAL
-	// on other goroutines.
-	Lock sync.Locker
+	// Lock, if set, is the driver's lock, held around each append for
+	// readers of the WAL on its other goroutines.
+	Lock interface {
+		Lock()
+		Unlock()
+	}
 	// Step, if set, runs after each item with its stage and the bytes of
 	// entries or values it appended: the real node syncs every few MiB
 	// there, and the simulator writes out and may crash.
