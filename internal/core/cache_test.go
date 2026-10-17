@@ -2,9 +2,11 @@ package core
 
 import (
 	"fmt"
+	"io"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 )
@@ -194,12 +196,39 @@ func TestCacheShrinksAsIndexGrows(t *testing.T) {
 	}
 }
 
-// TestCacheOnInstall installs a snapshot on a node whose second write of
-// an entry waits for a value, as TestInstallAfterPausedWrite does, with
-// the cache on. Without a checkpoint, the values of the entries that
-// leave memory go into the cache. With one, the state is new, the cache
-// starts empty and the values come from the log.
-func TestCacheOnInstall(t *testing.T) {
+type installMemoryLog struct {
+	Log
+	n     *Node
+	reads int
+}
+
+func (l *installMemoryLog) check() error {
+	l.reads++
+	if l.n.cache.bytes != 0 || len(l.n.cache.items) != 0 {
+		return fmt.Errorf("snapshot retained %d cache bytes before loading state", l.n.cache.bytes)
+	}
+	return nil
+}
+
+func (l *installMemoryLog) Entry(index uint64) (*raftpb.Entry, error) {
+	if err := l.check(); err != nil {
+		return nil, err
+	}
+	return l.Log.Entry(index)
+}
+
+func (l *installMemoryLog) Checkpoint(index uint64) (io.ReadCloser, error) {
+	if err := l.check(); err != nil {
+		return nil, err
+	}
+	return l.Log.Checkpoint(index)
+}
+
+// TestSnapshotMemoryDropsCacheBeforeLoad installs a snapshot on a node
+// whose second write of an entry waits for a value. Both installation
+// paths discard the warm cache before reading state, and do not refill
+// it from the old entry window. The values still read back from disk.
+func TestSnapshotMemoryDropsCacheBeforeLoad(t *testing.T) {
 	for _, withCheckpoint := range []bool{false, true} {
 		s, _ := coldSingle(t, func(cfg *Config) {
 			cfg.MemoryBytes = 1 << 20
@@ -230,17 +259,24 @@ func TestCacheOnInstall(t *testing.T) {
 		if withCheckpoint {
 			in.Checkpoint = s.n.DurableCheckpoint()
 		}
+		s.n.cache.add(s.n.kv.Refs([]byte("d"))[0], []byte("vd"))
+		if s.n.cache.bytes == 0 {
+			t.Fatal("setup: no warm cache to discard")
+		}
+		log := &installMemoryLog{Log: s.n.log, n: s.n}
+		s.n.log = log
 		if err := s.n.install(in); err != nil {
 			t.Fatal(err)
 		}
+		s.n.log = log.Log
+		if log.reads == 0 {
+			t.Fatal("snapshot loaded no state")
+		}
 		release(t, s)
-		if withCheckpoint && len(s.n.cache.items) != 0 {
-			t.Fatalf("%d values cached after the checkpoint loaded", len(s.n.cache.items))
+		if len(s.n.cache.items) != 0 {
+			t.Fatalf("%d values cached after the snapshot loaded", len(s.n.cache.items))
 		}
-		if !withCheckpoint && !s.cached("f19") {
-			t.Fatal("f19 left memory, yet is not cached")
-		}
-		if v, waited := s.get(300, "f19", 0); v != string(make([]byte, 64)) || waited != withCheckpoint {
+		if v, waited := s.get(300, "f19", 0); v != string(make([]byte, 64)) || !waited {
 			t.Fatalf("with checkpoint %v: read of f19 = %q, waited %v", withCheckpoint, v, waited)
 		}
 	}

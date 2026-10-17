@@ -62,8 +62,10 @@ func (n *Node) install(in *Install) error {
 	}
 	n.paused, n.epoch = nil, n.epoch+1
 	defer func() { n.resume = nil }()
-	// The entries in memory up to the applied index leave it now.
-	n.fillCache(n.applied)
+	// Installation needs room to load a checkpoint or replay the fetched
+	// entries. Do not copy the old entry window into a warm cache while
+	// both the replay and incoming catch-up entries need that memory.
+	n.cache.clear()
 	if err := n.storage.reset(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(in.Index), Term: new(in.Term), ConfState: n.storage.confAt(in.Index)}}); err != nil {
 		return err
 	}
@@ -78,7 +80,6 @@ func (n *Node) install(in *Install) error {
 			return fmt.Errorf("core: load the snapshot's checkpoint at %d: %w", c.Index, err)
 		}
 		n.setState(st)
-		n.cache.clear()
 		n.applied, n.last, n.base, n.sinceCkpt, n.storage.ckpt = c.Index, last, last.base, 0, c
 		n.storage.confs = nil
 		n.storage.setConf(c.Index, st.confState())
