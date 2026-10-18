@@ -857,12 +857,27 @@ func (r *revisionOrder) takes(s *state, o optional) bool {
 // op called at time call, or by the end of revision rev. One that cannot
 // go in now stays out, and the answer that needs it fails.
 func (r *revisionOrder) expire(call, rev int64) {
-	w := r.w
 	for _, o := range r.due(call, rev) {
-		if r.takes(w.live.clone(), o) {
-			w.apply(o.op, w.reqs[o.op])
-			r.used[o.op] = true
-		}
+		r.putIn(o, r.takes)
+	}
+}
+
+// putIn puts in late optional o if take says it may go in now. The late
+// ones due before the event of an op called when o was go in first, as
+// for any other op: a compaction is called at its own time, which can be
+// after the rejection an expiry must precede.
+func (r *revisionOrder) putIn(o optional, take func(*state, optional) bool) {
+	w := r.w
+	if r.used[o.op] {
+		return
+	}
+	// Marked as used meanwhile, so that it does not put itself in.
+	r.used[o.op] = true
+	r.expire(w.h.Ops[o.op].Call, 0)
+	r.used[o.op] = false
+	if take(w.live.clone(), o) {
+		w.apply(o.op, w.reqs[o.op])
+		r.used[o.op] = true
 	}
 }
 
@@ -878,10 +893,7 @@ func (r *revisionOrder) expireEarly(rev int64) {
 		if l := w.h.Ops[o.op].Req.LeaseRevoke; l != nil && r.alive[l.ID] >= rev {
 			continue
 		}
-		if r.takes(w.live.clone(), o) {
-			w.apply(o.op, w.reqs[o.op])
-			r.used[o.op] = true
-		}
+		r.putIn(o, r.takes)
 	}
 }
 
@@ -893,13 +905,9 @@ func (r *revisionOrder) expireEarly(rev int64) {
 func (r *revisionOrder) expireEnd() {
 	w := r.w
 	for _, o := range r.due(math.MaxInt64, math.MaxInt64) {
-		if o.from > w.live.rev || !r.isReady(o) {
-			continue
-		}
-		if out := w.live.clone().step(w.reqs[o.op], false); out.err == nil {
-			w.apply(o.op, w.reqs[o.op])
-			r.used[o.op] = true
-		}
+		r.putIn(o, func(s *state, o optional) bool {
+			return o.from <= s.rev && r.isReady(o) && s.step(w.reqs[o.op], false).err == nil
+		})
 	}
 }
 

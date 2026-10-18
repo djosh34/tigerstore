@@ -131,6 +131,31 @@ func TestWitnessedGood(t *testing.T) {
 			h.Ops[compact].Resp, h.Ops[compact].Err = nil, errUnavailable
 			return h
 		}},
+		{"lease expiry before an ambiguous compaction called after its rejection", func(t *testing.T) *history.History {
+			// An early rejection makes the compaction due from revision
+			// 3, where it goes in before a put that was called before the
+			// put that found the lease gone returned. The compaction was
+			// called after that, so the expiry goes in before it
+			// (TestSlowFetch seed 5022 on #268).
+			b := newBuilder(t, "a", "b")
+			grant := b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 1}})
+			b.do(0, history.Request{Put: &history.PutRequest{Key: "a", Value: "1", Lease: 42}})
+			b.put(0, "a", "2")
+			b.do(1, history.Request{Compact: &history.CompactRequest{Revision: 2}})
+			b.do(1, history.Request{Compact: &history.CompactRequest{Revision: 2}})
+			expiry := b.do(5, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 42}})
+			gone := b.do(0, history.Request{Put: &history.PutRequest{Key: "b", Value: "x", Lease: 42}})
+			compact := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+			put := b.put(3, "b", "y")
+			h := b.done()
+			h.Ops[expiry].Call, h.Ops[expiry].Return = h.Ops[grant].Call, h.Ops[grant].Call
+			h.Ops[expiry].Resp, h.Ops[expiry].Err = nil, errUnavailable
+			h.Ops[gone].Call, h.Ops[gone].Return = 1000, 1010
+			h.Ops[put].Call, h.Ops[put].Return = 1005, 1030
+			h.Ops[compact].Call, h.Ops[compact].Return = 1011, 1040
+			h.Ops[compact].Resp, h.Ops[compact].Err = nil, errUnavailable
+			return h
+		}},
 		{"ambiguous revoke of a lease ID granted again", func(t *testing.T) *history.History {
 			// The second grant's put shows the ID in use after the
 			// revoke's revision, which says nothing about the first.
