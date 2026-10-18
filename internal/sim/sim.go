@@ -504,9 +504,9 @@ type Result struct {
 	grayHealedAt int64
 	halfOpens    []halfOpenLink
 	// FinalRev is the revision of the converged cluster at the end, and
-	// ended is set when the run reached its checks.
+	// logged is set once the checks built the committed log.
 	FinalRev int64
-	ended    bool
+	logged   bool
 	// Clients is the number of request clients.
 	Clients int
 }
@@ -532,7 +532,6 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
 	s.mu.Unlock()
 	if err == nil {
-		res.ended = true
 		if err = s.check(res); err != nil {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)
 		}

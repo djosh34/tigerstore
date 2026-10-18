@@ -186,17 +186,18 @@ jobs:
         env:
           RUN_ID: ${{ github.run_id }}
         run: |
+          status=0
           for first in 1 $((1000000 + RUN_ID % 1000000000)); do
-            go test -count=1 -timeout=8m ./internal/sim -run '^TestMembershipFaults$' -args -sim.seed="$first" -sim.seeds=64 -sim.out="$RUNNER_TEMP/sim-out" 2>&1 | tee -a "$RUNNER_TEMP/membership.log"
+            go test -count=1 -timeout=8m ./internal/sim -run '^TestMembershipFaults$' -args -sim.seed="$first" -sim.seeds=64 -sim.out="$RUNNER_TEMP/sim-out" 2>&1 | tee "$RUNNER_TEMP/membership-$first.log" || status=1
+            scripts/replay.sh "$RUNNER_TEMP/membership-$first.log" -- -sim.seed="$first" -sim.seeds=64
           done
-      - if: failure()
-        run: scripts/replay.sh "$RUNNER_TEMP/membership.log"
+          exit "$status"
       - if: failure()
         uses: actions/upload-artifact@v6
         with:
           name: membership
           path: |
-            ${{ runner.temp }}/membership.log
+            ${{ runner.temp }}/membership-*.log
             ${{ runner.temp }}/sim-out
           retention-days: 30
 

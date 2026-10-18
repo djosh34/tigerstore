@@ -5,8 +5,8 @@
 #
 # A test that failed and has no failed subtest is printed with its
 # package, and so is a test still running when its binary timed out. The
-# flags go into every line. The test args, such as the -sim.seed and
-# -sim.seeds of the job, go after -args of a line that has no args of its
+# flags go into every line. The test args, the -sim.seed and -sim.seeds
+# of the job, go after -args of a simulator line that has no args of its
 # own, as a test that failed as a whole over its seeds needs them; with
 # them, such a test is printed too, besides its failed subtests. A log
 # of a test binary run directly has no package line; PKG then names the
@@ -79,7 +79,7 @@ function flush(pkg, i, j, k, p, first, leaf, parts, pattern, extra, sim) {
 		}
 		# A test that failed as a whole, as over its seeds, runs again
 		# with the args of the job too.
-		if (!leaf && (args == "" || index(failed[i], "/") > 0)) {
+		if (!leaf && (args == "" || !sim || index(failed[i], "/") > 0)) {
 			continue
 		}
 		k = split(failed[i], parts, "/")
@@ -100,7 +100,7 @@ function flush(pkg, i, j, k, p, first, leaf, parts, pattern, extra, sim) {
 		extra = ""
 		if (sim && first < k && parts[first] ~ /^Test(Seeds|Linearizable|MembershipFaults)$/ && parts[first + 1] ~ /^[0-9]+$/) {
 			extra = " -args -sim.seed=" parts[first + 1] " -sim.seeds=1"
-		} else if (args != "") {
+		} else if (sim && args != "") {
 			extra = " -args " args
 		}
 		printf "replay: %s-count=1 -run '\''%s'\'' %s%s\n", gotest(), pattern, pkg, extra

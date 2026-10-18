@@ -109,10 +109,21 @@ func saveRun(dir, cmd, trace string, res *Result) error {
 		"replay.txt": cmd + "\n",
 		"stats.txt":  fmt.Sprintf("%+v\n", res.Stats),
 	}
+	// Every call, as the clients saw it, also when the run failed before
+	// its checks built the committed log that history.json needs.
+	var calls strings.Builder
+	for _, r := range res.History {
+		answer := fmt.Sprint(r.Resp)
+		if r.Err != nil {
+			answer = fmt.Sprintf("error %v, ambiguous %v", r.Err, r.Ambiguous)
+		}
+		fmt.Fprintf(&calls, "client %d, node %d, %s to %s: %T %v -> %s\n", r.Client, r.Node+1, seconds(r.Call), seconds(r.Return), r.req, r.req, answer)
+	}
+	files["calls.txt"] = calls.String()
 	h, err := res.Checkable()
 	switch {
-	case !res.ended:
-		files["replay.txt"] += "no history.json: the run failed before its end, so it has no committed log for the checkers\n"
+	case !res.logged:
+		files["replay.txt"] += "no history.json: the run failed before its checks built the committed log, which the checkers need; calls.txt has the calls\n"
 	case err != nil:
 		files["replay.txt"] += fmt.Sprintf("no history.json: %v\n", err)
 	default:
@@ -159,7 +170,7 @@ func replayCommand(name string, seed uint64) string {
 	for i, p := range parts {
 		parts[i] = "^" + regexp.QuoteMeta(p) + "$"
 	}
-	cmd := "go test"
+	cmd := "go test -v"
 	if activePlanted != "" {
 		cmd += " -tags planted"
 		args = append(args, "-planted="+activePlanted)

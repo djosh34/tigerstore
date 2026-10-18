@@ -74,7 +74,7 @@ func (s *Sim) check(res *Result) error {
 	if err != nil {
 		return err
 	}
-	res.Log, res.revs = log, revs
+	res.Log, res.revs, res.logged = log, revs, true
 	if err := s.sameLatestOn(model, last); err != nil {
 		return err
 	}
