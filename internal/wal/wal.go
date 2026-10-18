@@ -280,9 +280,8 @@ type cacheDropper interface{ DropCache() error }
 // they are synced and before it closes them, as the log's own DropCache
 // sees only the files it holds open (#226).
 func DropFileCache(f File) error {
-	if d, ok := f.(cacheDropper); ok {
-		return d.DropCache()
-	}
+	// #278 diagnostic only: also disable the nonperiodic file-cache
+	// drops on rotation, checkpoint writes and recovery.
 	return nil
 }
 
