@@ -114,6 +114,9 @@ func peerConfig(ec *embed.Config, selfSigned bool) (peer.Config, error) {
 		AllowedCNs:         info.AllowedCNs, AllowedHostnames: info.AllowedHostnames,
 		WriteTimeout: rafthttp.ConnWriteTimeout, ReadTimeout: rafthttp.ConnReadTimeout,
 	}
+	if len(ec.AdvertisePeerUrls) > 0 {
+		cfg.AdvertiseAddr = ec.AdvertisePeerUrls[0].Host
+	}
 	if info.ClientCertFile != "" {
 		cfg.GetClientCertificate = certFiles(info.ClientCertFile, info.ClientKeyFile, info.Logger)
 		if _, err := cfg.GetClientCertificate(); err != nil {

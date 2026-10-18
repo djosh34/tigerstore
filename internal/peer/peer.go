@@ -6,7 +6,11 @@
 // protocol versions they speak in TLS ALPN, as "tigerstore-peer/<version>".
 // After the TLS handshake, the dialing node writes a 12-byte preface: the
 // magic "TS", the lowest and the highest version it speaks, and its Raft
-// ID as 8 bytes. The accepting node replies with 1 byte: the highest
+// ID as 8 bytes. With ALPN version 2 or later, a 2-byte length and the
+// dialer's advertised peer host:port follow. Unknown, not-removed senders
+// can use these message connections; the address supplies a reply route,
+// not Raft membership. Version 1 keeps its old format and admission rule.
+// The accepting node replies with 1 byte: the highest
 // version both speak, which must be the one ALPN chose, or 0 if there is
 // none, after which it closes. Then each frame is a 4-byte length and a
 // protobuf raftpb.Message.
@@ -72,6 +76,10 @@ type Config struct {
 	Listeners []net.Listener
 	// Peers maps every other node's Raft ID to its host:port.
 	Peers map[uint64]string
+	// AdvertiseAddr is this node's reachable peer host:port. Version 2
+	// carries it in the preface, like etcd's X-PeerURLs. SetPeers updates
+	// it from this node's applied member record. Empty uses the listener.
+	AdvertiseAddr string
 	// Certificate is this node's peer certificate and CA the pool that
 	// verifies other nodes' certificates. The transport requires TLS 1.3
 	// and verifies both ends.
@@ -142,7 +150,7 @@ const (
 	// maxVersion keeps minVersion at or below the previous release's
 	// maxVersion, so that nodes can be upgraded one at a time.
 	minVersion = 1
-	maxVersion = 1
+	maxVersion = 2
 )
 
 // magic starts the preface.
@@ -205,11 +213,15 @@ type TCP struct {
 	// senders are the peers by Raft ID, replaced whole by SetPeers;
 	// peersMu orders the replacements.
 	senders atomic.Pointer[map[uint64]*sender]
-	removed atomic.Pointer[map[uint64]bool]
-	peersMu sync.Mutex
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
+	// remotes are reply routes learned from incoming requests, not Raft
+	// membership. Like etcd's remotes, they survive membership refreshes.
+	remotes   atomic.Pointer[map[uint64]*sender]
+	advertise atomic.Pointer[string]
+	removed   atomic.Pointer[map[uint64]bool]
+	peersMu   sync.Mutex
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
 
 	mu    sync.Mutex
 	conns map[net.Conn]struct{}
@@ -272,6 +284,12 @@ func Start(cfg Config) (*TCP, error) {
 		logged:     map[string]time.Time{},
 	}
 	t.senders.Store(&map[uint64]*sender{})
+	t.remotes.Store(&map[uint64]*sender{})
+	addr := cfg.AdvertiseAddr
+	if addr == "" {
+		addr = cfg.Listeners[0].Addr().String()
+	}
+	t.advertise.Store(&addr)
 	t.SetPeers(cfg.Peers, nil)
 	for _, ln := range lns {
 		t.wg.Go(func() { t.accept(ln) })
@@ -306,12 +324,15 @@ func (t *TCP) ActiveSince(id uint64) time.Time {
 
 // peer returns the sender of peer id.
 func (t *TCP) peer(id uint64) (*sender, bool) {
-	s, ok := (*t.senders.Load())[id]
+	if s, ok := (*t.senders.Load())[id]; ok {
+		return s, true
+	}
+	s, ok := (*t.remotes.Load())[id]
 	return s, ok
 }
 
-// SetPeers makes peers the nodes the transport sends to and accepts
-// connections from, by Raft ID and host:port. A peer that is new or has
+// SetPeers installs applied member addresses by Raft ID and host:port.
+// Learned remotes stay separate until promoted or removed. A peer that is new or has
 // a new address gets a writer; one that is gone loses its writer and its
 // connection. A removed node that connects hears that it was removed.
 func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
@@ -322,6 +343,9 @@ func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
 		gone[id] = true
 	}
 	t.removed.Store(&gone)
+	if addr := peers[t.cfg.ID]; addr != "" {
+		t.advertise.Store(&addr)
+	}
 	old := *t.senders.Load()
 	next := make(map[uint64]*sender, len(peers))
 	for id, addr := range peers {
@@ -332,19 +356,7 @@ func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
 			next[id] = s
 			continue
 		}
-		ctx, cancel := context.WithCancel(t.ctx)
-		s := &sender{
-			t:        t,
-			id:       id,
-			addr:     addr,
-			ctx:      ctx,
-			cancel:   cancel,
-			ctrl:     make(chan queued, controlQueue),
-			data:     make(chan queued, dataQueue),
-			counters: t.countersOf(id),
-		}
-		next[id] = s
-		t.wg.Go(s.run)
+		next[id] = t.newSender(id, addr)
 	}
 	for id, s := range old {
 		if next[id] != s {
@@ -352,16 +364,62 @@ func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
 		}
 	}
 	t.senders.Store(&next)
+	remotes := map[uint64]*sender{}
+	for id, s := range *t.remotes.Load() {
+		if gone[id] || next[id] != nil {
+			s.cancel()
+		} else {
+			remotes[id] = s
+		}
+	}
+	t.remotes.Store(&remotes)
 	// A peer that left may still be connected to this node.
 	t.mu.Lock()
 	for c, in := range t.inbound {
-		if _, ok := next[in.id]; !ok {
+		if _, ok := next[in.id]; !ok && remotes[in.id] == nil {
 			if err := c.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 				t.logf("peer: close: %v", err)
 			}
 		}
 	}
 	t.mu.Unlock()
+}
+
+// newSender starts one directed writer. peersMu is held.
+func (t *TCP) newSender(id uint64, addr string) *sender {
+	ctx, cancel := context.WithCancel(t.ctx)
+	s := &sender{t: t, id: id, addr: addr, ctx: ctx, cancel: cancel,
+		ctrl: make(chan queued, controlQueue), data: make(chan queued, dataQueue), counters: t.countersOf(id)}
+	t.wg.Go(s.run)
+	return s
+}
+
+// addRemote learns a route for replies, never a Raft membership entry.
+func (t *TCP) addRemote(id uint64, addr string) error {
+	t.peersMu.Lock()
+	defer t.peersMu.Unlock()
+	if t.ctx.Err() != nil {
+		return net.ErrClosed
+	}
+	if (*t.removed.Load())[id] {
+		return errRemoved
+	}
+	if _, ok := t.peer(id); ok {
+		return nil
+	}
+	if id == 0 || id == t.cfg.ID || addr == "" {
+		return fmt.Errorf("unknown peer %d has no reply address", id)
+	}
+	if _, _, err := net.SplitHostPort(addr); err != nil {
+		return fmt.Errorf("peer %d reply address: %w", id, err)
+	}
+	next := make(map[uint64]*sender, len(*t.remotes.Load())+1)
+	for id, s := range *t.remotes.Load() {
+		next[id] = s
+	}
+	next[id] = t.newSender(id, addr)
+	t.remotes.Store(&next)
+	return nil
 }
 
 // Addr is the address the transport listens on.
@@ -607,16 +665,13 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 	id = binary.BigEndian.Uint64(p[4:])
 	mode = id & (fetchBit | callBit)
 	id &^= fetchBit | callBit
-	if _, ok := t.peer(id); !ok && (id != 0 || mode != callBit) {
-		if (*t.removed.Load())[id] {
-			// As etcd's peers answer a removed member, so that it stops.
-			err = c.SetWriteDeadline(t.writeDeadline())
-			if err == nil {
-				_, err = c.Write([]byte{removedReply})
-			}
-			return 0, 0, 0, errors.Join(fmt.Errorf("peer %d was removed from the cluster", id), err)
+	if (*t.removed.Load())[id] {
+		// Removal wins over both a member route and a learned remote.
+		err = c.SetWriteDeadline(t.writeDeadline())
+		if err == nil {
+			_, err = c.Write([]byte{removedReply})
 		}
-		return 0, 0, 0, fmt.Errorf("unknown peer %d", id)
+		return 0, 0, 0, errors.Join(fmt.Errorf("peer %d was removed from the cluster", id), err)
 	}
 	v = pick(p[2], p[3], t.cfg.minVersion, t.cfg.maxVersion)
 	switch {
@@ -625,6 +680,34 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 	case name != alpn(v):
 		err = fmt.Errorf("peer %d chose %s in ALPN, but its preface picks version %d", id, name, v)
 		v = 0
+	}
+	var addr string
+	if err == nil && v >= 2 {
+		var size [2]byte
+		if _, err := io.ReadFull(r, size[:]); err != nil {
+			return 0, 0, 0, err
+		}
+		n := binary.BigEndian.Uint16(size[:])
+		if n > 4096 {
+			return 0, 0, 0, errors.New("peer reply address is over the limit")
+		}
+		b := make([]byte, n)
+		if _, err := io.ReadFull(r, b); err != nil {
+			return 0, 0, 0, err
+		}
+		addr = string(b)
+	}
+	if err == nil {
+		if _, known := t.peer(id); !known && (id != 0 || mode != callBit) {
+			// The message connection is the equivalent of etcd's pipeline:
+			// accept a not-removed sender and learn where to send replies.
+			if mode != 0 || v < 2 {
+				return 0, 0, 0, fmt.Errorf("unknown peer %d", id)
+			}
+			if err := t.addRemote(id, addr); err != nil {
+				return 0, 0, 0, err
+			}
+		}
 	}
 	if werr := c.SetWriteDeadline(t.writeDeadline()); werr != nil {
 		return 0, 0, 0, errors.Join(err, werr)
@@ -980,7 +1063,16 @@ func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) (byte, e
 	if name == "" {
 		return 0, errors.New("the peer chose no version in ALPN; it may be a node from before version 1")
 	}
-	if _, err := c.Write(s.t.preface(id)); err != nil {
+	p := s.t.preface(id)
+	if name != alpn(1) {
+		addr := *s.t.advertise.Load()
+		if len(addr) > 4096 {
+			return 0, errors.New("peer reply address is over the limit")
+		}
+		p = binary.BigEndian.AppendUint16(p, uint16(len(addr)))
+		p = append(p, addr...)
+	}
+	if _, err := c.Write(p); err != nil {
 		return 0, err
 	}
 	var reply [1]byte
