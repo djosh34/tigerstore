@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djosh34/tigerstore/internal/testcert"
+
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
@@ -144,7 +146,20 @@ func diag256Backend(t *testing.T, backend string) string {
 	}
 	client, peer := free(), free()
 	dir := t.TempDir()
-	cmd := exec.Command(bin, "--name", "n1", "--data-dir", filepath.Join(dir, "data"), "--listen-client-urls", "http://"+client, "--advertise-client-urls", "http://"+client, "--listen-peer-urls", "http://"+peer, "--initial-advertise-peer-urls", "http://"+peer, "--initial-cluster", "n1=http://"+peer, "--log-level", "warn")
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, cert, key, err := ca.Issue("n1", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{"ca.pem": ca.PEM, "cert.pem": cert, "key.pem": key} {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command(bin, "--name", "n1", "--data-dir", filepath.Join(dir, "data"), "--listen-client-urls", "http://"+client, "--advertise-client-urls", "http://"+client, "--listen-peer-urls", "https://"+peer, "--initial-advertise-peer-urls", "https://"+peer, "--initial-cluster", "n1=https://"+peer, "--peer-cert-file", filepath.Join(dir, "cert.pem"), "--peer-key-file", filepath.Join(dir, "key.pem"), "--peer-trusted-ca-file", filepath.Join(dir, "ca.pem"), "--log-level", "warn")
 	log, err := os.Create(filepath.Join(dir, "backend.log"))
 	if err != nil {
 		t.Fatal(err)
