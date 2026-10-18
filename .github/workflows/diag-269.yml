@@ -1,0 +1,29 @@
+name: diag-269
+on:
+  push:
+    branches: [diag/269-planted-b01a]
+permissions:
+  contents: read
+jobs:
+  repeat-seed-1:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Repeat B01a seed 1 200 times
+        env:
+          SIM_OUT: ${{ runner.temp }}/sim-out
+        run: |
+          set -o pipefail
+          go test -tags planted -count=200 -v ./internal/sim/ -run '^TestPlanted$/^1$' -args -planted=B01a 2>&1 | tee "$RUNNER_TEMP/seed-1.log"
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: diag-269
+          path: |
+            ${{ runner.temp }}/sim-out
+            ${{ runner.temp }}/seed-1.log
+          retention-days: 30
