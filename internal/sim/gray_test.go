@@ -11,29 +11,24 @@ import (
 
 // TestGrayFsyncOutlastsHealing builds the shape of #81 on purpose, so that
 // it no longer depends on one seed's draws (#164): 1.5 s before healing
-// the leader turns gray with slow fsyncs, and one of them, started before
-// healing, ends after it. Its node's term and vote changes wait for it, so
-// the liveness rule starts from its end (Sim.graySyncEnded). On every
-// seed, every call that starts two election timeouts after healing and
-// after that fsync must get a definite answer, at least 50 calls must, and
-// the checkers must pass. The seeds run until two had a gray fsync end
-// 1.5 s or more after healing, as in #81. A seed can have no fsync that
-// outlasts healing, as when the gray leader has nothing to sync then
-// (#262); nearly every seed must have one.
+// the leader turns gray with slow fsyncs, and the one in flight at healing
+// ends 1.5 to 3 s after it (Config.GrayLeaderSync). Its node's term and
+// vote changes wait for it, so the liveness rule starts from its end
+// (Sim.graySyncEnded). On every seed, every call that starts two election
+// timeouts after healing and after that fsync must get a definite answer,
+// at least 50 calls must, and the checkers must pass. Nearly every seed
+// must have such an fsync; one whose gray leader had nothing to sync at
+// healing has none (#262).
 func TestGrayFsyncOutlastsHealing(t *testing.T) {
 	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
-	late := 0
 	var took effects
-	for seed := uint64(1); seed <= 40 && late < 2; seed++ {
+	for seed := uint64(1); seed <= 4; seed++ {
 		cfg := DefaultConfig(seed)
 		cfg.Faults = Faults{}
 		cfg.GrayLeaderAt, cfg.GrayLeaderSync = cfg.Duration-1500*Millisecond, true
 		a := run(t, cfg)
 		checkers(t, a)
-		took.add(map[string]bool{"gray fsync past healing": a.grayHealedAt > cfg.Duration})
-		if a.grayHealedAt >= cfg.Duration+1500*Millisecond {
-			late++
-		}
+		took.add(map[string]bool{"gray fsync 1.5 s past healing": a.grayHealedAt >= cfg.Duration+1500*Millisecond})
 		from := max(a.grayHealedAt, cfg.Duration) + 2*election
 		for _, stop := range a.CommitStops {
 			if stop >= from {
@@ -64,7 +59,4 @@ func TestGrayFsyncOutlastsHealing(t *testing.T) {
 		t.Logf("seed %d: last gray fsync at %d ms; %d definite answers from %d ms", seed, a.grayHealedAt/Millisecond, calls, from/Millisecond)
 	}
 	took.check(t)
-	if late < 2 {
-		t.Fatalf("only %d seeds had a gray fsync end 1.5 s after healing", late)
-	}
 }

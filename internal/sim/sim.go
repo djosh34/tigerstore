@@ -69,8 +69,8 @@ type Config struct {
 	ClientTimeout int64
 	// GrayLeaderAt, if set, makes whichever node leads then gray until
 	// healing: its heartbeats get through, its appends do not.
-	// GrayLeaderSync also makes its fsyncs slow, so one in flight at
-	// healing ends after it.
+	// GrayLeaderSync also makes its fsyncs slow: one in flight at healing
+	// ends 1.5 to 3 s after it, the shape of #81.
 	GrayLeaderAt   int64
 	GrayLeaderSync bool
 	// HalfOpenAt, if set, makes the link from whichever node leads then
@@ -1248,7 +1248,10 @@ func (s *Sim) beforeSync(p *proc) {
 		lat = 20*Millisecond + s.rng.Int64N(80*Millisecond)
 	}
 	gray := s.gray == n && n.graySync && !s.healed
-	if gray {
+	switch {
+	case gray && s.cfg.GrayLeaderSync:
+		lat = s.healAt - s.now() + 1500*Millisecond + s.rng.Int64N(1500*Millisecond)
+	case gray:
 		lat = max(lat, 500*Millisecond+s.rng.Int64N(2500*Millisecond))
 	}
 	s.mu.Unlock()
