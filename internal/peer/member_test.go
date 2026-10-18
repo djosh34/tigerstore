@@ -2,6 +2,9 @@ package peer
 
 import (
 	"crypto/tls"
+	"errors"
+	"fmt"
+	"io"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -70,9 +73,9 @@ func TestSilentRemovedMemberHearsRemoval(t *testing.T) {
 // TestUnknownMemberGetsReplies is #250's case: node 2 is behind on
 // membership and does not know member 4, which asks it for a vote. As in
 // etcd, node 2 takes the message from a member it has not removed and
-// replies to the address in member 4's preface. The route lasts through
-// an unrelated change of node 2's peers, and once node 2 removes member 4,
-// member 4 hears it.
+// replies to the address in member 4's preface, and fetches a snapshot
+// from member 4 as its leader. The route lasts through an unrelated change
+// of node 2's peers, and once node 2 removes member 4, member 4 hears it.
 func TestUnknownMemberGetsReplies(t *testing.T) {
 	ca, err := testcert.NewCA()
 	if err != nil {
@@ -87,6 +90,10 @@ func TestUnknownMemberGetsReplies(t *testing.T) {
 	d := startWith(t, 4, lns[4], addrs, certs[4], ca.Pool, func(c *Config) {
 		c.Peers, c.Addr = map[uint64]string{2: addrs[2]}, addrs[4]
 		c.Removed = func() { removed.Add(1) }
+		c.Serve = func(from, first, last uint64, w io.Writer) error {
+			_, err := fmt.Fprintf(w, "snapshot %d-%d for %d", first, last, from)
+			return err
+		}
 	})
 	defer closeAll(t, b, d)
 	vote := func(term uint64) {
@@ -101,6 +108,14 @@ func TestUnknownMemberGetsReplies(t *testing.T) {
 		}
 	}
 	vote(2)
+	r, err := b.t.Fetch(t.Context(), 4, 5, 9)
+	if err != nil {
+		t.Fatalf("node 2 fetching a snapshot from member 4: %v", err)
+	}
+	got, err := io.ReadAll(r)
+	if err := errors.Join(err, r.Close()); err != nil || string(got) != "snapshot 5-9 for 2" {
+		t.Fatalf("node 2 fetched %q from member 4: %v", got, err)
+	}
 	b.t.SetPeers(map[uint64]string{2: addrs[2], 3: addrs[3]}, nil)
 	vote(3)
 	b.t.SetPeers(map[uint64]string{2: addrs[2], 3: addrs[3]}, []uint64{4})

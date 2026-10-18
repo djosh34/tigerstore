@@ -16,8 +16,9 @@
 // As etcd's peers take messages from any member they have not removed, a
 // node takes a message connection from a member it does not know yet,
 // such as one added in entries it has not applied, and sends its replies
-// to the address in the preface (addRemote). A member behind on
-// membership can so vote for a newer one (#250).
+// to the address in the preface (addRemote), from where it also fetches
+// the snapshots that member sends as leader. A member behind on
+// membership can so vote for a newer one and catch up from it (#250).
 //
 // A follower fetches a snapshot on a connection of its own: its preface
 // carries its Raft ID with the top bit set. After the reply it writes the
@@ -478,16 +479,22 @@ func (t *TCP) Versions() Versions {
 	return v
 }
 
+// to returns the writer to peer id, or to a member this node does not
+// know yet that sent it messages (addRemote).
+func (t *TCP) to(id uint64) (*sender, bool) {
+	if s, ok := t.peer(id); ok {
+		return s, true
+	}
+	t.remoteMu.Lock()
+	defer t.remoteMu.Unlock()
+	s, ok := t.remotes[id]
+	return s, ok
+}
+
 // Send queues a message for its peer, or for a member this node does not
 // know yet that sent it messages (addRemote).
 func (t *TCP) Send(m *raftpb.Message) {
-	s, ok := t.peer(m.GetTo())
-	if !ok {
-		t.remoteMu.Lock()
-		s, ok = t.remotes[m.GetTo()]
-		t.remoteMu.Unlock()
-	}
-	if ok {
+	if s, ok := t.to(m.GetTo()); ok {
 		s.send(m)
 	}
 }
@@ -775,7 +782,9 @@ func (w *deadlineWriter) Write(p []byte) (int, error) {
 
 // Fetch opens a connection to peer id that fetches a snapshot stream.
 func (t *TCP) Fetch(ctx context.Context, id, first, last uint64) (io.ReadCloser, error) {
-	s, ok := t.peer(id)
+	// A leader this node does not know yet sends it a snapshot when it is
+	// behind on membership, as after a cold restart (#250).
+	s, ok := t.to(id)
 	if !ok {
 		return nil, fmt.Errorf("peer: unknown peer %d", id)
 	}
