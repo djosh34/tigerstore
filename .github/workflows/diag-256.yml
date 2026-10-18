@@ -1,0 +1,27 @@
+name: diag-256-watch-created-rev
+on:
+  push:
+    branches: [diag/256-watch-created-rev]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build tigerstore and install etcd v3.7.2
+        run: |
+          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          echo "DIAG_TIGERSTORE=$RUNNER_TEMP/tigerstore" >> "$GITHUB_ENV"
+          echo "DIAG_ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
+      - name: Check same-turn core ordering
+        run: go test -v -count=10 -run '^TestDiag256CreatedRevisionFrozen$' ./internal/core
+      - name: Compare chaos slow-watch baseline against both backends
+        run: go test -v -count=10 -timeout=2m -run '^TestDiag256SlowWatchBaseline$' ./cmd/chaos

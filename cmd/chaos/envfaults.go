@@ -814,16 +814,9 @@ func (r *runner) slowWatch(ctx context.Context, s step, target int, rec *record)
 	defer cl.Close() //nolint:errcheck // the slow client goes at the end of the step
 	wctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	wc := cl.Watch(wctx, prefix, clientv3.WithPrefix(), clientv3.WithPrevKV(), clientv3.WithCreatedNotify())
-	var start int64
-	select {
-	case resp := <-wc:
-		if !resp.Created {
-			return fmt.Errorf("the slow client's watch answered %+v before it was created", resp)
-		}
-		start = resp.Header.Revision
-	case <-time.After(5 * time.Second):
-		return errors.New("the slow client's watch was not created")
+	wc, start, err := startSlowWatch(wctx, cl)
+	if err != nil {
+		return err
 	}
 	st.on.Store(true)
 	rec.Installed = true
@@ -852,6 +845,20 @@ func (r *runner) slowWatch(ctx context.Context, s step, target int, rec *record)
 	rec.Effect = true
 	rec.Healed, rec.HealedAt = true, r.since()
 	return holdErr
+}
+
+// startSlowWatch establishes the baseline used by slowWatch's reference watch.
+func startSlowWatch(ctx context.Context, cl *clientv3.Client) (clientv3.WatchChan, int64, error) {
+	wc := cl.Watch(ctx, prefix, clientv3.WithPrefix(), clientv3.WithPrevKV(), clientv3.WithCreatedNotify())
+	select {
+	case resp := <-wc:
+		if !resp.Created {
+			return nil, 0, fmt.Errorf("the slow client's watch answered %+v before it was created", resp)
+		}
+		return wc, resp.Header.Revision, nil
+	case <-time.After(5 * time.Second):
+		return nil, 0, errors.New("the slow client's watch was not created")
+	}
 }
 
 // watchEvent is what a watch delivered for one key at one revision.
