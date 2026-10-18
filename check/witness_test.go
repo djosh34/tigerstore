@@ -114,6 +114,23 @@ func TestWitnessedGood(t *testing.T) {
 			h.Ops[compact].Call, h.Ops[compact].Return = h.Ops[gone].Call-1, h.Ops[read].Return+1
 			return h
 		}},
+		{"ambiguous compaction after an acked one at the same revision", func(t *testing.T) *history.History {
+			// The acked compaction to 1 answered at revision 3, and the
+			// ambiguous one to 3 must follow it. A read below that found
+			// its revision compacted returned before the next put was
+			// called, so the ambiguous one goes in at revision 3 (#258,
+			// seed 10609).
+			b := newBuilder(t, "a")
+			b.put(0, "a", "1")
+			b.put(0, "a", "2")
+			b.do(1, history.Request{Compact: &history.CompactRequest{Revision: 1}})
+			compact := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+			b.do(3, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+			b.put(0, "a", "3")
+			h := b.done()
+			h.Ops[compact].Resp, h.Ops[compact].Err = nil, errUnavailable
+			return h
+		}},
 		{"ambiguous revoke of a lease ID granted again", func(t *testing.T) *history.History {
 			// The second grant's put shows the ID in use after the
 			// revoke's revision, which says nothing about the first.
@@ -266,6 +283,40 @@ func TestWitnessedBroken(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestWitnessedUnseenGaps has ten writes that no answer shows, each of
+// a revision no acked write holds, and eight older ambiguous deletes that
+// never took effect, which fit every one of those revisions. Only the
+// count of a delete after them shows that none of the eight came in
+// between. The search tried their orders until it timed out (#251, seed
+// 62147) and must now finish at once.
+func TestWitnessedUnseenGaps(t *testing.T) {
+	keys := []string{"z"}
+	for i := range 8 {
+		keys = append(keys, fmt.Sprintf("k%d", i))
+	}
+	b := newBuilder(t, keys...)
+	for i := range 8 {
+		b.put(0, fmt.Sprintf("k%d", i), "v")
+	}
+	var unseen []int
+	for i := range 10 {
+		unseen = append(unseen, b.put(10+i, "z", fmt.Sprintf("z%d", i)))
+	}
+	b.do(0, history.Request{Delete: &history.DeleteRequest{Key: "k0", End: "k8"}})
+	h := b.done()
+	for _, i := range unseen {
+		h.Ops[i].Resp, h.Ops[i].Err = nil, errUnavailable
+	}
+	for i := range 8 {
+		h.Ops = append(h.Ops, history.Op{
+			Client: 30 + i, Call: 1, Return: 2,
+			Req: history.Request{Delete: &history.DeleteRequest{Key: fmt.Sprintf("k%d", i)}},
+			Err: errUnavailable,
+		})
+	}
+	mustPass(t, "Witnessed revisions", Witnessed(h, FromRevisions, 10*time.Second))
 }
 
 // TestWitnessedTimeout checks that running out of time is a failure that

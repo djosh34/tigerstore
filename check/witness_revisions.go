@@ -30,6 +30,7 @@ func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
 		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
 		lb: map[int]int64{}, alive: map[int64]int64{}, grants: map[int64]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: map[int]bool{}, ready: map[int]bool{},
+		counts: map[int64][]count{},
 	}
 	w.search = r
 	if err := r.index(); err != nil {
@@ -89,6 +90,13 @@ type revisionOrder struct {
 	// ready the optional ones whose mutations are all placed.
 	mutations []int
 	ready     map[int]bool
+	// counts are, per revision, how many keys of a range clients saw
+	// then; putters and deleters are, per key, the writers whose request
+	// may create or delete it, and revokers the revokes, which may delete
+	// any key (reachable).
+	counts            map[int64][]count
+	putters, deleters [][]int
+	revokers          []int
 	// top is the highest revision any client saw.
 	top int64
 	// failure is the failure at the highest revision reached, and at its
@@ -132,11 +140,21 @@ type optional struct {
 	late  bool
 	gone  int64
 	by    int64
+	// follow are acked ops that must be placed before it.
+	follow []int
 }
 
 // life is what one observation of a key shows: created at c, last
 // written at m, with version v.
 type life struct{ c, m, v int64 }
+
+// count is what an answer showed of the keys lo to hi of the key set at
+// revision rev: that n of them existed.
+type count struct {
+	rev    int64
+	lo, hi int
+	n      int64
+}
 
 // span is the revisions after lo up to hi.
 type span struct{ lo, hi int64 }
@@ -253,8 +271,125 @@ func (r *revisionOrder) index() error {
 	for k, ss := range r.covered {
 		r.covered[k] = merge(ss)
 	}
+	r.indexCounts()
 	r.scheduleOptional()
 	return nil
+}
+
+// countHorizon is how many revisions ahead reachable looks.
+const countHorizon = 64
+
+// indexCounts records the counts that acked reads and deletes showed, and
+// which writers may change each key.
+func (r *revisionOrder) indexCounts() {
+	h, s := r.w.h, r.w.live
+	add := func(rev int64, key, end string, n int64) {
+		lo, hi := s.span(key, end)
+		r.counts[rev] = append(r.counts[rev], count{rev: rev, lo: lo, hi: hi, n: n})
+	}
+	r.putters, r.deleters = make([][]int, len(s.keys)), make([][]int, len(s.keys))
+	touch := func(i int, req history.Request) {
+		put := func(p *history.PutRequest) {
+			if k := s.index(p.Key); k >= 0 {
+				r.putters[k] = append(r.putters[k], i)
+			}
+		}
+		del := func(d *history.DeleteRequest) {
+			lo, hi := s.span(d.Key, d.End)
+			for k := lo; k < hi; k++ {
+				r.deleters[k] = append(r.deleters[k], i)
+			}
+		}
+		switch {
+		case req.Put != nil:
+			put(req.Put)
+		case req.Delete != nil:
+			del(req.Delete)
+		case req.Txn != nil:
+			for _, o := range slices.Concat(req.Txn.Success, req.Txn.Failure) {
+				if o.Put != nil {
+					put(o.Put)
+				}
+				if o.Delete != nil {
+					del(o.Delete)
+				}
+			}
+		case req.LeaseRevoke != nil:
+			r.revokers = append(r.revokers, i)
+		}
+	}
+	for i := range h.Ops {
+		op := &h.Ops[i]
+		if op.Req.Mutates() && (op.Resp != nil || op.Err.Ambiguous) {
+			touch(i, r.w.reqs[i])
+		}
+		if op.Resp == nil {
+			continue
+		}
+		rev := op.Resp.Revision
+		switch {
+		case op.Req.Range != nil && !op.Req.Range.Serializable:
+			at := rev
+			if op.Req.Range.Revision > 0 {
+				at = op.Req.Range.Revision
+			}
+			add(at, op.Req.Range.Key, op.Req.Range.End, op.Resp.Range.Count)
+		case op.Req.Delete != nil:
+			at := rev
+			if op.Resp.Delete.Deleted > 0 {
+				at = rev - 1
+			}
+			add(at, op.Req.Delete.Key, op.Req.Delete.End, op.Resp.Delete.Deleted)
+		}
+	}
+}
+
+// reachable reports whether the counts clients saw at the next revisions
+// can still come true from s, the store right after its revision, once op
+// skip is placed: in each range, the keys present that no writer left can
+// delete are at most its count, and with the keys absent that a writer
+// left can create, at least. Writers left are the acked writers of the
+// revisions up to the count's, and the ambiguous mutations not yet placed
+// that may come before it. A history whose writes no read sees for a long
+// run of revisions made the search try their orders until a count far
+// ahead failed them (#251).
+func (r *revisionOrder) reachable(s *state, skip int) bool {
+	for rev := s.rev; rev <= min(r.top, s.rev+countHorizon); rev++ {
+		for _, c := range r.counts[rev] {
+			var sure, maybe int64
+			for k := c.lo; k < c.hi; k++ {
+				present := s.kvs[k].Version != 0
+				if present && !r.may(k, s.rev, rev, skip, false) {
+					sure++
+				}
+				if present || r.may(k, s.rev, rev, skip, true) {
+					maybe++
+				}
+			}
+			if sure > c.n || maybe < c.n {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// may reports whether a writer may create key k, or delete it, after
+// revision now and up to rev: an acked writer of one of those revisions,
+// or an ambiguous mutation other than skip not yet placed whose lower
+// bound is below rev. Any revoke may delete a key.
+func (r *revisionOrder) may(k int, now, rev int64, skip int, create bool) bool {
+	ok := func(i int) bool {
+		op := &r.w.h.Ops[i]
+		if op.Resp != nil {
+			return op.Resp.Revision > now && op.Resp.Revision <= rev
+		}
+		return i != skip && !r.used[i] && r.lb[i] < rev
+	}
+	if create {
+		return slices.ContainsFunc(r.putters[k], ok)
+	}
+	return slices.ContainsFunc(r.deleters[k], ok) || slices.ContainsFunc(r.revokers, ok)
 }
 
 // note records what an observation of kv, unchanged up to revision to,
@@ -462,7 +597,12 @@ func (r *revisionOrder) scheduleOptional() {
 	// found it gone.
 	present, gone := map[int64]int64{}, map[int64]int64{}
 	granted, revoked := map[int64]bool{}, map[int64]bool{}
-	var compacted []int64
+	// compacted are the compacted rejections, by the revision they asked
+	// for and their return; keep is, per revision, the highest header
+	// revision of an acked read at it, and compactions the acked ones.
+	type rejection struct{ rev, ret int64 }
+	var compacted []rejection
+	var compactions []int
 	keep := map[int64]int64{}
 	note := func(lease, rev int64) {
 		if lease != 0 {
@@ -483,7 +623,7 @@ func (r *revisionOrder) scheduleOptional() {
 			case op.Req.Range != nil && op.Req.Range.Revision > 0:
 				keep[op.Req.Range.Revision] = max(keep[op.Req.Range.Revision], rev)
 			case op.Req.Compact != nil:
-				keep[op.Req.Compact.Revision-1] = max(keep[op.Req.Compact.Revision-1], rev)
+				compactions = append(compactions, i)
 			}
 			for _, lease := range leasesOf(op.Req) {
 				note(lease, rev)
@@ -507,7 +647,7 @@ func (r *revisionOrder) scheduleOptional() {
 		case sameError(op.Err, errLeaseExists):
 			note(op.Req.LeaseGrant.ID, 1)
 		case sameError(op.Err, errCompacted):
-			compacted = append(compacted, requestedRevision(op.Req))
+			compacted = append(compacted, rejection{requestedRevision(op.Req), op.Return})
 		}
 	}
 	for _, w := range h.Watches {
@@ -558,17 +698,38 @@ func (r *revisionOrder) scheduleOptional() {
 				continue
 			}
 		case op.Req.Compact != nil:
+			// As late as the answers allow, as an expiry above: a
+			// rejection that found the revision it asked for compacted
+			// comes before every op called after it returned, so the
+			// compaction goes in before the event of the first such op,
+			// and by the end of the lowest header revision of an acked
+			// one. It goes after the acked reads below its revision, at
+			// or after their header revision, as the first state that
+			// answers a read comes before it there; and after the acked
+			// compactions to its revision or below, whose answers it
+			// would turn into errors (#258).
 			c := op.Req.Compact.Revision
-			if !slices.ContainsFunc(compacted, func(rev int64) bool { return rev <= c }) {
-				continue
-			}
-			// After the revisions of the answers that need it left
-			// out, which may come late in their own.
-			for rev, by := range keep {
-				if rev < c {
-					at = max(at, by+1)
+			goneAt := int64(math.MaxInt64)
+			for _, rj := range compacted {
+				if rj.rev <= c {
+					goneAt = min(goneAt, rj.ret)
 				}
 			}
+			if goneAt == math.MaxInt64 {
+				continue
+			}
+			for rev, by := range keep {
+				if rev < c {
+					at = max(at, by)
+				}
+			}
+			for _, k := range compactions {
+				if h.Ops[k].Req.Compact.Revision <= c {
+					at = max(at, h.Ops[k].Resp.Revision)
+					o.follow = append(o.follow, k)
+				}
+			}
+			o.late, o.gone, o.by = true, goneAt, r.lowestAfter(goneAt)
 		default:
 			continue
 		}
@@ -660,7 +821,8 @@ func (r *revisionOrder) isReady(o optional) bool {
 		return true
 	}
 	w := r.w
-	if slices.ContainsFunc(r.mutations[:o.after], func(j int) bool { return !w.at[j].set }) {
+	unplaced := func(j int) bool { return !w.at[j].set }
+	if slices.ContainsFunc(r.mutations[:o.after], unplaced) || slices.ContainsFunc(o.follow, unplaced) {
 		return false
 	}
 	r.ready[o.op] = true
@@ -988,7 +1150,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			return false
 		}
 	}
-	return true
+	return r.reachable(s, i)
 }
 
 // finish places what follows the writer of rev: the acked mutations that
