@@ -16,3 +16,24 @@ jobs:
         run: echo "DIAG267_LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
       - name: Targeted recovery rename chain
         run: go test -v -count=20 -timeout=180s ./scripts/diag267
+      - name: Trace unpatched path-cache aliases as a control
+        run: |
+          git -C "$RUNNER_TEMP/lazyfs" checkout -- lazyfs/src/lazyfs.cpp
+          python3 scripts/diag267/trace-lazyfs.py "$RUNNER_TEMP/lazyfs"
+          cmake --build "$RUNNER_TEMP/lazyfs/lazyfs/build" -j2
+          failures=0
+          for i in $(seq 1 20); do
+            if go test -v -count=1 -timeout=30s ./scripts/diag267 > "$RUNNER_TEMP/baseline-$i.log" 2>&1; then
+              echo "baseline $i passed"
+            else
+              failures=$((failures+1))
+              grep -E 'attempt|diag267.*alias|FAIL' "$RUNNER_TEMP/baseline-$i.log" | tail -20
+            fi
+          done
+          echo "Unpatched baseline: $failures/20 failed"
+          test "$failures" -gt 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diag-267-baseline
+          path: ${{ runner.temp }}/baseline-*.log

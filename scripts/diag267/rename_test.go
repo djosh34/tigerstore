@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -56,8 +57,8 @@ func TestLazyFSRenameAliases(t *testing.T) {
 	}()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		b, _ := os.ReadFile(filepath.Join(dir, "lazyfs.log"))
-		if bytes.Contains(b, []byte("running LazyFS")) {
+		var st syscall.Statfs_t
+		if syscall.Statfs(mount, &st) == nil && st.Type == 0x65735546 {
 			break
 		}
 		if time.Now().After(deadline) {
