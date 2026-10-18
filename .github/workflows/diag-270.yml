@@ -16,6 +16,8 @@ jobs:
             steps: 4
           - seed: 8746132061
             steps: 8
+          - seed: 7663907164
+            steps: 3
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -29,7 +31,12 @@ jobs:
           go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
           go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
       - name: Replay only the failing prefix
-        run: '"$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed ${{ matrix.seed }} -diag-steps ${{ matrix.steps }} -out "$RUNNER_TEMP/evidence" -env -lazyfs "$LAZYFS"'
+        run: |
+          status=0
+          for attempt in 1 2 3 4; do
+            "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed ${{ matrix.seed }} -diag-steps ${{ matrix.steps }} -out "$RUNNER_TEMP/evidence/attempt-$attempt" -env -lazyfs "$LAZYFS" || status=1
+          done
+          exit "$status"
       - if: always()
         uses: actions/upload-artifact@v6
         with:
