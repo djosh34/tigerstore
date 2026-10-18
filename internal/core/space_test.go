@@ -165,3 +165,30 @@ func TestFollowerPastBudgetStopsWrites(t *testing.T) {
 		t.Fatalf("the put after the alarm: %d answers, revision %d", c.replies-before, l.Store().Rev())
 	}
 }
+
+// TestRestartKeepsAlarm has a follower raise its NOSPACE alarm past its
+// budget and then start again, which leaves it not knowing why the alarm
+// is up: with its files within the budget, the alarm stays until a
+// disarm, as a quota's does.
+func TestRestartKeepsAlarm(t *testing.T) {
+	c := newMemCluster(t, func(*Config) {})
+	c.capable()
+	f := c.nodes[2]
+	for i := 0; i < 100 && !alarmed(f, f.cfg.ID); i++ {
+		f.SetDisk(1, 1)
+		f.Tick()
+		c.step()
+	}
+	if !alarmed(f, f.cfg.ID) {
+		t.Fatal("the follower past its budget raised no alarm")
+	}
+	f.diskAlarm = false // as a new core starts
+	for range 3 * leaseRetryTicks {
+		f.SetDisk(0, 1)
+		f.Tick()
+		c.step()
+	}
+	if !alarmed(f, f.cfg.ID) {
+		t.Fatal("an alarm the run did not raise cleared itself")
+	}
+}

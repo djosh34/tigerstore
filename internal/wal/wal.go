@@ -340,10 +340,12 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			// durable, so only the newest segment can lack a header: one
 			// whose first write did not reach the disk whole, in a new file
 			// or a spare. Such a file holds no first record of this segment
-			// after a header's place, and the log starts it again. Anything
-			// else is damage or a lost segment.
+			// after a header's place, and the log starts it again. The
+			// segment before it is then still on disk, which the first
+			// record chains from, unless it is segment 1. Anything else is
+			// damage or a lost segment.
 			seq, err := segmentSeq(name)
-			if err == nil && (!last || w.started(data, seq)) {
+			if err == nil && (!last || i == 0 && seq > 1 || w.started(data, seq)) {
 				err = fmt.Errorf("%w: bad header or missing segment before %s", ErrCorrupt, name)
 			}
 			if err != nil {
@@ -417,11 +419,19 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 }
 
 // started reports whether data, the content of segment seq, holds the
-// segment's header or its first record, chained from the segment before
-// it.
+// segment's header or its first record in any format, chained from the
+// segment before it.
 func (w *WAL) started(data []byte, seq uint64) bool {
 	_, hseq, crc, ok := parseHeader(data)
-	return ok && hseq == seq && crc == w.crc || verifiesAfter(data, headerSize, chainSeed(Version, seq, w.crc))
+	if ok && hseq == seq && crc == w.crc {
+		return true
+	}
+	for v := uint32(1); v <= Version; v++ {
+		if verifiesAfter(data, headerSize, chainSeed(v, seq, w.crc)) {
+			return true
+		}
+	}
+	return false
 }
 
 // segmentSeq is the sequence number in a segment's file name.

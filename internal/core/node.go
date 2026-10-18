@@ -536,11 +536,12 @@ type Node struct {
 	tokens     map[string]*simpleToken
 	tokenWaits []tokenWait
 	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
-	// or -1 once an alarm change of it applied. quotaAlarm says that the
-	// store reached the quota while its alarm was up: then only a disarm
-	// clears it (SetDisk).
-	noSpaceAt  int64
-	quotaAlarm bool
+	// or -1 once an alarm change of it applied. diskAlarm says that this
+	// run raised its alarm, or found it up, for its disk budget, and the
+	// quota has not refused a write since: only such an alarm clears
+	// itself (SetDisk).
+	noSpaceAt int64
+	diskAlarm bool
 
 	// removeAt is the shutdown tick after applying our own removal. Raft
 	// keeps running until then so the leader can send the commit update.
@@ -1015,18 +1016,20 @@ func (n *Node) submit(r Request, p *pending) {
 // log, as etcd does past its quota, so that every member refuses writes
 // that take space: a follower past its budget must not take the leader's
 // appends either (#170). Once cleaning brought the files below the
-// budget, it clears the alarm again, unless the store reached the quota
-// meanwhile: the quota's alarm stays until an operator disarms it, as in
-// etcd. A restart forgets that, so it then clears an alarm of its own
-// whenever its files and store are under their limits. The alarm changes
-// at most every leaseRetryTicks.
+// budget, it clears the alarm again, unless the quota refused a write
+// meanwhile or the store is past it: the quota's alarm stays until an
+// operator disarms it, as in etcd. Only an alarm this run raised, or
+// found up, past the budget clears itself, so an alarm a restart finds
+// with the files within the budget stays too. The alarm changes at most
+// every leaseRetryTicks.
 func (n *Node) SetDisk(used, budget int64) {
 	switch {
 	case used >= budget:
+		n.diskAlarm = true
 		n.raiseNoSpace(0)
 	case !n.quotaLeft(kvOverhead):
-		n.quotaAlarm = true
-	case !n.quotaAlarm:
+		n.diskAlarm = false
+	case n.diskAlarm:
 		n.clearNoSpace()
 	}
 }
@@ -1993,7 +1996,7 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 		// changed otherwise.
 		n.noSpaceAt = -1
 		if a.Action == pb.AlarmRequest_DEACTIVATE {
-			n.quotaAlarm = false
+			n.diskAlarm = false
 		}
 	}
 	if n.isLeader || planted.On("B10") {

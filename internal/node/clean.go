@@ -495,8 +495,9 @@ func (c *cleaner) remove() {
 		}
 		errs = append(errs, l.unmap(l.w.Oldest()-1))
 		l.reading.Unlock()
+		// A failed close or unmap leaves nothing to try again.
 		if err := errors.Join(errs...); err != nil {
-			c.failed(err)
+			c.n.logf("drop old files of the log: %v", err)
 		}
 	}
 	l.mu.Unlock()

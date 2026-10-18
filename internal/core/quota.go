@@ -86,7 +86,7 @@ func (n *Node) quotaLeft(cost int64) bool {
 // raises the node's NOSPACE alarm. Like etcd's gRPC layer, it answers
 // once the alarm applied, if it proposes it.
 func (n *Node) refuseNoSpace(id uint64) {
-	n.quotaAlarm = true
+	n.diskAlarm = false
 	if !n.raiseNoSpace(id) {
 		n.reply(id, rpctypes.ErrGRPCNoSpace)
 	}
@@ -94,7 +94,7 @@ func (n *Node) refuseNoSpace(id uint64) {
 
 // overQuota is the answer to a write that applied past the quota.
 func (n *Node) overQuota() error {
-	n.quotaAlarm = true
+	n.diskAlarm = false
 	n.raiseNoSpace(0)
 	return rpctypes.ErrGRPCNoSpace
 }

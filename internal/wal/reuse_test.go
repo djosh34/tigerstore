@@ -407,3 +407,70 @@ func TestPrepareSegment(t *testing.T) {
 	prepare(10, "next-000000000000000a spare-000000000000000a")
 	prepare(11, "next-000000000000000a next-000000000000000b")
 }
+
+// TestDamagedHeaderBeforeRecords opens logs whose newest segment has a
+// damaged header: with a record of its own after it, in format 1 too, or
+// as the only segment left when it is not segment 1, the log is corrupt;
+// with only another segment's old records after it, as a reused spare
+// holds them, the log starts the segment again.
+func TestDamagedHeaderBeforeRecords(t *testing.T) {
+	t.Run("format 1", func(t *testing.T) {
+		d := simfs.New()
+		b := v1Segment()
+		b[0] ^= 1
+		write(t, d, "0000000000000001.wal", b)
+		wantCorrupt(t, d)
+	})
+	t.Run("only segment", func(t *testing.T) {
+		d := simfs.New()
+		w, _ := open(t, d)
+		w.SetSegmentBytes(1)
+		fill(t, w, 1, 4)
+		w.AppendRoot(wal.Root{Index: 4, Term: 1})
+		w.Append(&wal.HardState{Term: 1, Commit: 5}, []*raftpb.Entry{entry(1, 5, "v5")})
+		if err := errors.Join(w.Sync(), w.Close()); err != nil {
+			t.Fatal(err)
+		}
+		// Keep only the segment with the root and entry 5, as removal
+		// keeps the one before a segment that never started.
+		segs, _ := files(t, d)
+		keep := segs[len(segs)-2]
+		for _, name := range segs {
+			if name != keep {
+				if err := errors.Join(d.Remove(name), d.SyncDir()); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		rewrite(t, d, keep, func(b []byte) []byte { b[0] ^= 1; return b })
+		wantCorrupt(t, d)
+	})
+	t.Run("old spare bytes", func(t *testing.T) {
+		d := simfs.New()
+		names := segments(t, d, 2)
+		old := d.DurableBytes(names[0])
+		rewrite(t, d, names[len(names)-1], func([]byte) []byte {
+			b := append([]byte("tigerwaX"), make([]byte, 12)...)
+			return append(b, old[20:]...)
+		})
+		_, rec := open(t, d)
+		if rec.Last != 2 {
+			t.Fatalf("recovered entries to %d, want 2", rec.Last)
+		}
+	})
+}
+
+// write creates file name on d with b in it, durable.
+func write(t *testing.T, d *simfs.Disk, name string, b []byte) {
+	t.Helper()
+	f, err := d.Create(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(b); err != nil {
+		t.Fatal(err)
+	}
+	if err := errors.Join(f.Sync(), f.Close(), d.SyncDir()); err != nil {
+		t.Fatal(err)
+	}
+}
