@@ -79,6 +79,10 @@ type Config struct {
 	// StallLeaderAt, if set, stalls the disk of whichever node leads at
 	// that time until healing.
 	StallLeaderAt int64
+	// RestartAtEnd crashes a follower once the clients' last calls have
+	// ended and starts it again 300 ms before the end, so that the end
+	// finds it catching up (#269).
+	RestartAtEnd bool
 	// LiveFrom, if set, is when the liveness rule starts instead of
 	// LiveAfter into healing.
 	LiveFrom int64
@@ -445,6 +449,9 @@ type Stats struct {
 	// half-open links, and Asymmetric the links that drew a delay at least
 	// 10 times that of the other direction.
 	Pauses, LinkStalls, HalfOpens, Asymmetric int
+	// Settles counts the seconds the nodes ran on after the end because
+	// they disagreed (settle).
+	Settles int
 	// GrayNodes counts gray nodes that lost an append, GrayStreams the
 	// streams with watches a gray client opened, and RecoveryCrashes
 	// crashes inside the recovery of an existing log.
@@ -621,7 +628,34 @@ func (s *Sim) run() error {
 	s.stop()
 	s.mu.Unlock()
 	s.wg.Wait()
-	return s.freeze()
+	if err := s.freeze(); err != nil {
+		return err
+	}
+	return s.settle()
+}
+
+// settleSeconds is how long settle lets nodes that disagree at the end
+// catch up.
+const settleSeconds = 7
+
+// settle lets the nodes run on, a simulated second at a time and up to
+// settleSeconds, while they disagree at the end: a follower may still be
+// catching up, from snapshots that each start it again from its log, when
+// the end freezes it (#269). The checks that follow stay as strict. The
+// faults and clients have stopped.
+func (s *Sim) settle() error {
+	for range settleSeconds {
+		if a, _ := disagree(s.live()); a == nil {
+			return nil
+		}
+		s.stats.Settles++
+		s.thaw()
+		time.Sleep(time.Second)
+		if err := s.freeze(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // schedule starts the clients, the watchers and the faults.
@@ -664,6 +698,20 @@ func (s *Sim) schedule() {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			s.halfOpen(s.leaderIdx(), halfOpenTimeout)
+		})
+	}
+	if s.cfg.RestartAtEnd {
+		s.at(s.stopAt+s.cfg.ClientTimeout+100*Millisecond, func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			lead := s.leaderIdx()
+			for _, n := range s.nodes {
+				if n.proc != nil && n.idx != lead && !n.out() {
+					s.crash(n)
+					s.restartLater(n, s.endAt-300*Millisecond-s.now())
+					return
+				}
+			}
 		})
 	}
 	if s.cfg.StallLeaderAt > 0 {
@@ -1338,8 +1386,9 @@ func (s *Sim) stopNodeAfter(n *node, d int64) {
 	if s.healed && s.now() <= s.recovered() {
 		// The guaranteed disk fault fired after healing. The liveness
 		// rule starts once the node is back (check.go); the clients keep
-		// going for 3 s more than that, so the rule has calls to check. Only a stop before
-		// the rule would have started counts, so the bound stays fixed:
+		// going for 3 s more than that, so the rule has calls to check.
+		// Only a stop before the rule would have started counts, so the
+		// bound stays fixed:
 		// a node that keeps stopping later fails the rule. A run with a
 		// node fenced and another gray past healing may write nothing,
 		// and so not fire the fault, until then (seed 78783).

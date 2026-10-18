@@ -751,3 +751,20 @@ func TestWitnessGaps(t *testing.T) {
 		}
 	}
 }
+
+// TestEndWaitsForCatchUp is #269's case: a follower starts again just
+// before the end, so the end finds it behind the others. The run must let
+// it catch up, then pass every check, as strict as ever.
+func TestEndWaitsForCatchUp(t *testing.T) {
+	for seed := uint64(1); seed <= 3; seed++ {
+		cfg := DefaultConfig(7000 + seed)
+		cfg.Faults = Faults{}
+		cfg.RestartAtEnd = true
+		res := run(t, cfg)
+		if res.Stats.Settles == 0 {
+			t.Fatalf("seed %d: the end found every node caught up; the test needs one behind", 7000+seed)
+		}
+		checkers(t, res)
+		t.Logf("seed %d: the nodes ran %d s more after the end", 7000+seed, res.Stats.Settles)
+	}
+}

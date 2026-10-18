@@ -94,6 +94,10 @@ type Set struct {
 	SnapshotReceive, SnapshotReceiveFailures   *prometheus.CounterVec
 	SnapshotReceiveInflights                   *prometheus.GaugeVec
 	SnapshotReceiveSeconds, PeerRoundTripTimes *prometheus.HistogramVec
+	// HeartbeatSent and HeartbeatReceived are the Unix times of the last
+	// Raft heartbeat written to and read from each peer, for a failure's
+	// report (#241).
+	HeartbeatSent, HeartbeatReceived *prometheus.GaugeVec
 
 	// FeatureEnabled holds the feature gates.
 	FeatureEnabled *prometheus.GaugeVec
@@ -189,6 +193,8 @@ func New(features []Feature) (*Set, error) {
 		SnapshotReceiveFailures:  counterVec("network", "snapshot_receive_failures", "Total number of snapshot receive failures", "From"),
 		SnapshotReceiveSeconds:   histogramVec("network", "snapshot_receive_total_duration_seconds", "Total latency distributions of v3 snapshot receives", exp2(0.1, 10), "From"),
 		PeerRoundTripTimes:       histogramVec("network", "peer_round_trip_time_seconds", "Round-Trip-Time histogram between peers", exp2(0.0001, 16), "To"),
+		HeartbeatSent:            prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "tigerstore_network_heartbeat_sent_time_seconds", Help: "The Unix time of the last Raft heartbeat written to each peer."}, []string{"To"}),
+		HeartbeatReceived:        prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "tigerstore_network_heartbeat_received_time_seconds", Help: "The Unix time of the last Raft heartbeat read from each peer."}, []string{"From"}),
 
 		FeatureEnabled: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "etcd_server_feature_enabled", Help: "Whether or not a feature is enabled. 1 is enabled, 0 is not."}, []string{"name", "stage"}),
 	}
@@ -212,6 +218,7 @@ func New(features []Feature) (*Set, error) {
 		s.ActivePeers, s.DisconnectedPeers, s.PeerSent, s.PeerReceived, s.PeerSentFailures, s.PeerReceivedFailures,
 		s.SnapshotSend, s.SnapshotSendInflights, s.SnapshotSendFailures, s.SnapshotSendSeconds,
 		s.SnapshotReceive, s.SnapshotReceiveInflights, s.SnapshotReceiveFailures, s.SnapshotReceiveSeconds, s.PeerRoundTripTimes,
+		s.HeartbeatSent, s.HeartbeatReceived,
 		s.FeatureEnabled,
 		&nodeCollector{s: s},
 	}

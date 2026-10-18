@@ -220,16 +220,19 @@ func (e *environment) keep(dir string) error {
 
 // envRecord is the evidence of a fault of the environment.
 type envRecord struct {
-	Node      string           `json:"node,omitempty"`
-	Link      string           `json:"link,omitempty"`
-	Netem     *env.NetemStats  `json:"netem,omitempty"`
-	CPU       *env.CgroupStats `json:"cpu,omitempty"`
-	Disk      string           `json:"disk,omitempty"`
-	FreeBytes int64            `json:"free_bytes,omitempty"`
-	Filled    int64            `json:"filled_bytes,omitempty"`
-	LazyFS    string           `json:"lazyfs,omitempty"`
-	Exited    string           `json:"exited,omitempty"`
-	LeaderNow string           `json:"leader_after,omitempty"`
+	Node  string          `json:"node,omitempty"`
+	Link  string          `json:"link,omitempty"`
+	Netem *env.NetemStats `json:"netem,omitempty"`
+	// NetemHealed is the link's qdisc after healing, which must show the
+	// base delay alone.
+	NetemHealed *env.NetemStats  `json:"netem_healed,omitempty"`
+	CPU         *env.CgroupStats `json:"cpu,omitempty"`
+	Disk        string           `json:"disk,omitempty"`
+	FreeBytes   int64            `json:"free_bytes,omitempty"`
+	Filled      int64            `json:"filled_bytes,omitempty"`
+	LazyFS      string           `json:"lazyfs,omitempty"`
+	Exited      string           `json:"exited,omitempty"`
+	LeaderNow   string           `json:"leader_after,omitempty"`
 	// Crashes are the kills during recovery, each with the time after
 	// the start and whether it came inside the recovery of the log.
 	Crashes []recoveryKill `json:"crashes,omitempty"`
@@ -390,9 +393,9 @@ func (r *runner) netemFault(ctx context.Context, s step, l *link, rec *record) e
 	rec.Installed = true
 	holdErr := pause(ctx, s.Hold)
 	after, statErr := r.e.netem.Stats(port)
-	healErr := r.e.netem.Heal(port)
+	healed, healErr := r.e.netem.Heal(port)
 	rec.Healed, rec.HealedAt = healErr == nil, r.since()
-	rec.Env.Netem = &after
+	rec.Env.Netem, rec.Env.NetemHealed = &after, &healed
 	rec.Effect = statErr == nil && after.Packets > before.Packets && (s.Fault != netemLoss || after.Dropped > before.Dropped)
 	return errors.Join(holdErr, statErr, healErr)
 }
@@ -774,6 +777,9 @@ const installClient = 50
 type stall struct {
 	on      atomic.Bool
 	release chan struct{}
+	// dials counts the slow client's connections: more than one means
+	// clientv3 reconnected and resumed its watch.
+	dials atomic.Int64
 }
 
 // stallConn is one connection of the slow client.
@@ -805,6 +811,7 @@ func (r *runner) slowWatch(ctx context.Context, s step, target int, rec *record)
 			if err != nil {
 				return nil, err
 			}
+			st.dials.Add(1)
 			return &stallConn{Conn: c, s: st}, nil
 		})},
 	})
@@ -814,16 +821,9 @@ func (r *runner) slowWatch(ctx context.Context, s step, target int, rec *record)
 	defer cl.Close() //nolint:errcheck // the slow client goes at the end of the step
 	wctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	wc := cl.Watch(wctx, prefix, clientv3.WithPrefix(), clientv3.WithPrevKV(), clientv3.WithCreatedNotify())
-	var start int64
-	select {
-	case resp := <-wc:
-		if !resp.Created {
-			return fmt.Errorf("the slow client's watch answered %+v before it was created", resp)
-		}
-		start = resp.Header.Revision
-	case <-time.After(5 * time.Second):
-		return errors.New("the slow client's watch was not created")
+	start, wc, err := watchAfter(wctx, cl, r.t.cfg.requestTimeout)
+	if err != nil {
+		return err
 	}
 	st.on.Store(true)
 	rec.Installed = true
@@ -838,20 +838,47 @@ func (r *runner) slowWatch(ctx context.Context, s step, target int, rec *record)
 	}
 	end := g.Header.Revision
 	got, last, canceled := readWatch(wc, end)
+	rec.Env.Exited = fmt.Sprintf("after %v stalled from %v: watch from revision %d, %d events up to %d of %d, %d connections, canceled %v",
+		s.Hold, from, start+1, len(got), last, end, st.dials.Load(), canceled)
 	if !canceled && last < end {
-		return errors.Join(holdErr, fmt.Errorf("the slow watch from %d reached %d, not %d, within 10s of its release", start, last, end))
+		return errors.Join(holdErr, fmt.Errorf("the slow watch from %d reached %d, not %d, within 10s of its release", start+1, last, end))
 	}
 	ref, refLast, _ := readWatch(r.t.cs[others(target)[0]].Watch(wctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(start+1)), last)
 	if refLast < last {
 		return errors.Join(holdErr, fmt.Errorf("a watch through another node from %d reached %d, not %d, within 10s", start+1, refLast, last))
 	}
 	if err := sameEvents(got, ref, last); err != nil {
-		return errors.Join(holdErr, fmt.Errorf("the slow watch from %d: %w", start, err))
+		return errors.Join(holdErr, fmt.Errorf("the slow watch from %d over %d connections: %w", start+1, st.dials.Load(), err))
 	}
-	rec.Env.Exited = fmt.Sprintf("after %v stalled from %v: revisions %d to %d of %d, canceled %v", s.Hold, from, start+1, last, end, canceled)
 	rec.Effect = true
 	rec.Healed, rec.HealedAt = true, r.since()
 	return holdErr
+}
+
+// watchAfter reads the revision now through cl and opens a watch on the
+// prefix from the next one, which it returns with the watch once created.
+// The reference watch starts there too. A watch without a start revision
+// would begin after the one its created response names, but clientv3
+// resumes it from that revision itself after a reset, so it can deliver
+// that revision's event (#256; etcd's server does the same).
+func watchAfter(ctx context.Context, cl *clientv3.Client, timeout time.Duration) (int64, clientv3.WatchChan, error) {
+	gctx, cancel := context.WithTimeout(ctx, timeout)
+	g, err := cl.Get(gctx, prefix+"k0")
+	cancel()
+	if err != nil {
+		return 0, nil, fmt.Errorf("read the slow watch's start revision: %w", err)
+	}
+	start := g.Header.Revision
+	wc := cl.Watch(ctx, prefix, clientv3.WithPrefix(), clientv3.WithPrevKV(), clientv3.WithCreatedNotify(), clientv3.WithRev(start+1))
+	select {
+	case resp := <-wc:
+		if !resp.Created {
+			return 0, nil, fmt.Errorf("the slow client's watch answered %+v before it was created", resp)
+		}
+	case <-time.After(5 * time.Second):
+		return 0, nil, errors.New("the slow client's watch was not created")
+	}
+	return start, wc, nil
 }
 
 // watchEvent is what a watch delivered for one key at one revision.
@@ -918,7 +945,7 @@ func (r *runner) several(ctx context.Context, s step, lead, target int, rec *rec
 	rec.Installed = recA.Installed && recB.Installed
 	rec.Effect = recA.Effect && recB.Effect
 	rec.Healed, rec.HealedAt = recA.Healed && recB.Healed, r.since()
-	rec.Env.CPU, rec.Env.Netem = recA.Env.CPU, recB.Env.Netem
+	rec.Env.CPU, rec.Env.Netem, rec.Env.NetemHealed = recA.Env.CPU, recB.Env.Netem, recB.Env.NetemHealed
 	return err
 }
 

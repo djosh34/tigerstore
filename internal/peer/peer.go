@@ -626,6 +626,9 @@ func (t *TCP) frames(r io.Reader, from uint64, cs *counters) error {
 			return fmt.Errorf("peer %d sent a message from %d", from, m.GetFrom())
 		}
 		cs.received.Add(float64(len(hdr) + len(buf)))
+		if m.GetType() == raftpb.MsgHeartbeat {
+			cs.heartbeatReceived.SetToCurrentTime()
+		}
 		t.cfg.Deliver(m)
 	}
 }
@@ -1134,6 +1137,9 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 			return err
 		}
 		s.counters.sent.Add(float64(len(buf)))
+		if m.GetType() == raftpb.MsgHeartbeat {
+			s.counters.heartbeatSent.SetToCurrentTime()
+		}
 	}
 }
 

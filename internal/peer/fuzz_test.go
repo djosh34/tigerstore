@@ -36,7 +36,7 @@ func FuzzFrames(f *testing.F) {
 				t.Fatalf("delivered a message from %d", m.GetFrom())
 			}
 		}}}
-		cs := &counters{received: prometheus.NewCounter(prometheus.CounterOpts{Name: "received"})}
+		cs := &counters{received: prometheus.NewCounter(prometheus.CounterOpts{Name: "received"}), heartbeatReceived: prometheus.NewGauge(prometheus.GaugeOpts{Name: "heartbeat"})}
 		if err := tr.frames(bytes.NewReader(b), 2, cs); err == nil {
 			t.Fatal("frames returned without an error")
 		}

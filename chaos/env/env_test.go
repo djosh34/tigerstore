@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -225,7 +226,43 @@ func TestNetemLoss(t *testing.T) {
 	if err != nil || st.Packets == 0 || st.Dropped == 0 {
 		t.Fatalf("stats %+v, %v", st, err)
 	}
-	if err := n.Heal(port); err != nil {
+	if _, err := n.Heal(port); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestNetemHealClears puts each impairment on a port in turn, after loss,
+// and heals it: the qdisc must then show the base delay alone. netem's
+// change kept corruption and reordering, so a corrupting link stayed
+// corrupt after its heal (#241).
+func TestNetemHealClears(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	port := ln.Addr().(*net.TCPAddr).Port
+	n, err := NewNetem(map[int]time.Duration{port: 2 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := n.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	for _, impairment := range []string{"loss 20%", "reorder 50% 50%", "corrupt 5%"} {
+		if err := n.Impair(port, impairment); err != nil {
+			t.Fatal(err)
+		}
+		st, err := n.Heal(port)
+		if err != nil {
+			t.Fatalf("heal after %s: %v", impairment, err)
+		}
+		for _, f := range strings.Fields(st.Qdisc) {
+			if f == "loss" || f == "reorder" || f == "corrupt" {
+				t.Fatalf("after %s and its heal the qdisc is %q", impairment, st.Qdisc)
+			}
+		}
 	}
 }
