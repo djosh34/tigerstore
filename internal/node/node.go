@@ -477,7 +477,18 @@ func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 		if at+int64(n) > int64(len(m)) {
 			return nil, fmt.Errorf("node: value at %d+%d is past the end of segment %d", at, n, seq)
 		}
-		return bytes.Clone(m[at : at+int64(n)]), nil
+		v := bytes.Clone(m[at : at+int64(n)])
+		// Diag only: compare mmap with a fresh pread on the same path.
+		f, e := os.Open(filepath.Join(l.dir, wal.SegmentName(seq)))
+		if e == nil {
+			b := make([]byte, n)
+			_, e = f.ReadAt(b, at)
+			_ = f.Close()
+			if e == nil && !bytes.Equal(v, b) {
+				fmt.Fprintf(os.Stderr, "diag270: mmap != pread entry=%d off=%d len=%d seq=%d at=%d mmap=%x pread=%x\n", index, off, n, seq, at, v, b)
+			}
+		}
+		return v, nil
 	}
 	return wal.ReadValue(r, at, index, off, n)
 }

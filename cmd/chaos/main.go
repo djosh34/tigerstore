@@ -57,9 +57,10 @@ type config struct {
 	// Env runs every node on a disk of its own, in a cgroup of its own,
 	// with netem on the links and 1 to 10 ms between nodes, through
 	// sudo -n; LazyFS is its binary, for the faults that need it.
-	Env      bool   `json:"env"`
-	LazyFS   string `json:"lazyfs,omitempty"`
-	DiskSize int64  `json:"disk_size,omitempty"`
+	Env       bool   `json:"env"`
+	LazyFS    string `json:"lazyfs,omitempty"`
+	DiskSize  int64  `json:"disk_size,omitempty"`
+	DiagSteps int    `json:"diag_steps,omitempty"`
 }
 
 func main() {
@@ -79,6 +80,7 @@ func main() {
 	flag.BoolVar(&c.Env, "env", false, "run each node on a disk and in a cgroup of its own, with netem and 1 to 10 ms between nodes (needs sudo -n), and add the faults of that environment")
 	flag.StringVar(&c.LazyFS, "lazyfs", "", "LazyFS binary; with -env, every disk runs under it")
 	flag.Int64Var(&c.DiskSize, "disk-size", 512<<20, "with -env, the bytes of each node's disk")
+	flag.IntVar(&c.DiagSteps, "diag-steps", 0, "diag only: stop after this schedule prefix")
 	flag.Parse()
 	if recheck != "" {
 		os.Exit(checkSaved(recheck, c.CheckerTimeout))
@@ -195,6 +197,9 @@ func run(c config, dir string) (err error) {
 		err = errors.Join(append(errs, save(filepath.Join(dir, "verdict.json"), v))...)
 	}()
 	steps := plan(c.Seed, c.Faults)
+	if c.DiagSteps > 0 && c.DiagSteps < len(steps) {
+		steps = steps[:c.DiagSteps]
+	}
 	fail("save config", save(filepath.Join(dir, "config.json"), c))
 	fail("save schedule", save(filepath.Join(dir, "schedule.json"), steps))
 	logf("seed %d, %d steps: %v", c.Seed, len(steps), c.Faults)

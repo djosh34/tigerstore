@@ -1,0 +1,38 @@
+name: diag-270
+on:
+  push:
+    branches: [diag/270-lazyfs-checksum]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - seed: 8965025883
+            steps: 4
+          - seed: 8746132061
+            steps: 8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install FUSE build tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q cmake g++ libfuse3-dev fuse3
+      - name: Build
+        run: |
+          echo "LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
+          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
+      - name: Replay only the failing prefix
+        run: '"$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed ${{ matrix.seed }} -diag-steps ${{ matrix.steps }} -out "$RUNNER_TEMP/evidence" -env -lazyfs "$LAZYFS"'
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: diag-270-${{ matrix.seed }}
+          path: ${{ runner.temp }}/evidence
+          retention-days: 7
