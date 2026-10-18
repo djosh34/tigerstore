@@ -65,6 +65,8 @@ var _ wal.FS = (*Disk)(nil)
 
 // Disk is one node's directory.
 type Disk struct {
+	// Diagnostic only: record calls and crash results without extra yields.
+	Trace   func(string, ...any)
 	names   map[string]*file
 	durable map[string]*file
 
@@ -86,6 +88,7 @@ func New() *Disk {
 // order, and with probability 1/4 the last kept bytes are garbage, like a
 // torn sector.
 func (d *Disk) Crash(rng *rand.Rand) {
+	d.trace("CRASH")
 	d.names = make(map[string]*file, len(d.durable))
 	for _, name := range sortedNames(d.durable) {
 		f := d.durable[name]
@@ -112,6 +115,7 @@ func (d *Disk) Crash(rng *rand.Rand) {
 				stream = stream[k:]
 			}
 		}
+		d.trace("crash-result name=%s inode=%p cut=%v durable=%x kept=%x", name, f, f.cut, f.durable, kept)
 		f.data = kept
 		f.durable = slices.Clone(kept)
 		f.pending, f.cut = nil, false
@@ -240,11 +244,19 @@ func sortedNames(m map[string]*file) []string {
 	return names
 }
 
-func (d *Disk) fault(op Op, name string) error {
-	if d.Fault == nil {
-		return nil
+func (d *Disk) trace(format string, args ...any) {
+	if d.Trace != nil {
+		d.Trace(format, args...)
 	}
-	return d.Fault(op, name)
+}
+
+func (d *Disk) fault(op Op, name string) error {
+	var err error
+	if d.Fault != nil {
+		err = d.Fault(op, name)
+	}
+	d.trace("call op=%d name=%s inode=%p err=%v", op, name, d.names[name], err)
+	return err
 }
 
 // List returns the file names in order.
@@ -283,6 +295,7 @@ func (d *Disk) Open(name string) (wal.File, error) {
 // Rename gives file oldName the name newName, replacing any file of that
 // name. Like a creation, it only survives a crash after SyncDir.
 func (d *Disk) Rename(oldName, newName string) error {
+	d.trace("rename %s -> %s inode=%p", oldName, newName, d.names[oldName])
 	if err := d.fault(OpRename, oldName); err != nil {
 		return err
 	}
@@ -364,6 +377,7 @@ func (h *Handle) Write(p []byte) (int, error) {
 // WriteAt writes a copy of p at offset off, growing the file with zeros
 // up to off if it is shorter.
 func (h *Handle) WriteAt(p []byte, off int64) (int, error) {
+	h.d.trace("write name=%s inode=%p off=%d bytes=%x", h.name, h.f, off, p)
 	if err := h.check(OpWrite); err != nil {
 		return 0, err
 	}
@@ -387,6 +401,7 @@ func (h *Handle) write(off int, p []byte) {
 
 // Truncate cuts the file.
 func (h *Handle) Truncate(size int64) error {
+	h.d.trace("truncate name=%s inode=%p size=%d", h.name, h.f, size)
 	if err := h.check(OpTruncate); err != nil {
 		return err
 	}
@@ -407,6 +422,7 @@ func (h *Handle) Truncate(size int64) error {
 
 // Sync makes the content durable.
 func (h *Handle) Sync() error {
+	h.d.trace("sync name=%s inode=%p", h.name, h.f)
 	if err := h.check(OpSync); err != nil {
 		if errors.Is(err, ErrIO) && !h.f.cut {
 			// As on Linux, a failed writeback marks the pages clean: the

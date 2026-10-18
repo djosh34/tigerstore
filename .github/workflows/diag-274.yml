@@ -1,0 +1,33 @@
+name: diag-274
+on:
+  push:
+    branches: [diag/274-segment-damage]
+permissions:
+  contents: read
+jobs:
+  replay:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: [0, 1]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test -c -o "$RUNNER_TEMP/sim.test" ./internal/sim
+      - name: Repeat only seed 54875, 100 times
+        shell: bash
+        run: |
+          status=0
+          for i in $(seq 1 100); do
+            "$RUNNER_TEMP/sim.test" -test.run '^TestSeeds$/^54875$' -test.timeout=45s -sim.seed=54875 -sim.seeds=1 -sim.out="$RUNNER_TEMP/replay-$i" > "$RUNNER_TEMP/replay-$i.log" 2>&1 || { status=1; echo "failed iteration $i"; tail -8 "$RUNNER_TEMP/replay-$i.log"; }
+          done
+          exit "$status"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: diag-274-${{ matrix.worker }}
+          path: ${{ runner.temp }}/replay-*

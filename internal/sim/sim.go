@@ -351,13 +351,14 @@ type Sim struct {
 	cfg Config
 	// mu guards everything below and every simulated disk. Nothing holds
 	// it while it waits or calls into a node.
-	mu    sync.Mutex
-	rng   *rand.Rand
-	t0    time.Time
-	nodes []*node
-	links [][]link
-	net   network
-	trace []string
+	mu        sync.Mutex
+	rng       *rand.Rand
+	t0        time.Time
+	nodes     []*node
+	links     [][]link
+	net       network
+	trace     []string
+	diskTrace []string
 	// end is closed when the run ends. wg counts the run's goroutines
 	// but the processes', which procs counts.
 	end       chan struct{}
@@ -495,8 +496,9 @@ type Result struct {
 	HeldAppendAt               int64
 	// Trace is what the run did, last of all, and Report how it left each
 	// node, for a failure's report.
-	Trace  []string
-	Report string
+	DiskTrace []string
+	Trace     []string
+	Report    string
 	// grayNode is the index of the last gray node, for tests.
 	grayNode int
 	// grayHealedAt is when the last gray fsync after healing ended, for
@@ -542,6 +544,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.Report = s.report()
 	s.shutdown()
 	res.Trace = s.trace
+	res.DiskTrace = s.diskTrace
 	if err == nil {
 		err = s.failure()
 	}
@@ -590,6 +593,9 @@ func (s *Sim) addNode(i int, disk *simfs.Disk) {
 		// The fourth member is added at memberURL and moves to
 		// updatedMemberURL.
 		n.addrs = []string{hostPort(memberURL), hostPort(updatedMemberURL)}
+	}
+	disk.Trace = func(format string, args ...any) {
+		s.diskTrace = append(s.diskTrace, fmt.Sprintf("%9.3f ms node %d ", float64(s.now())/float64(Millisecond), n.id)+fmt.Sprintf(format, args...))
 	}
 	s.nodes = append(s.nodes, n)
 }

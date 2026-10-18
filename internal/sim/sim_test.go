@@ -104,6 +104,7 @@ func saveRun(dir, cmd, trace string, res *Result) error {
 		return err
 	}
 	files := map[string]string{
+		"disk.txt":   strings.Join(res.DiskTrace, "\n") + "\n",
 		"trace.txt":  trace + "\n",
 		"nodes.txt":  res.Report,
 		"replay.txt": cmd + "\n",
