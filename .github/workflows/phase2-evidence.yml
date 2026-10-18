@@ -1,0 +1,87 @@
+# Scratch workflow for the red and green runs of #148 phase 2. It lives
+# only on exp/148-phase2-evidence and is never merged.
+name: phase2-evidence
+
+on:
+  push:
+    branches: [exp/148-phase2-evidence]
+
+permissions:
+  contents: read
+
+jobs:
+  lazyfs:
+    strategy:
+      fail-fast: false
+      matrix:
+        lazyfs: [unpatched, patched]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: sudo apt-get update -q && sudo apt-get install -y -q cmake g++ libfuse3-dev fuse3
+      - name: Build LazyFS at the pin, ${{ matrix.lazyfs }}
+        env:
+          MODE: ${{ matrix.lazyfs }}
+        run: |
+          dir="$RUNNER_TEMP/lazyfs"
+          git clone -q https://github.com/dsrhaslab/lazyfs.git "$dir"
+          git -C "$dir" checkout -q fa7d32ee9710d55a7e529ac3c375f6616563c78b
+          if [ "$MODE" = patched ]; then git -C "$dir" apply "$PWD/scripts/lazyfs-namespace.patch"; fi
+          (cd "$dir/libs/libpcache" && ./build.sh) >/dev/null
+          (cd "$dir/lazyfs" && ./build.sh) >/dev/null
+          echo "LAZYFS=$dir/lazyfs/build/lazyfs" >> "$GITHUB_ENV"
+      - name: TestLazyFSRenameKeepsFiles, 20 times
+        run: |
+          set +e
+          CHAOS_LAZYFS="$LAZYFS" go test -tags chaosenv -count=20 -v -timeout 20m -run '^TestLazyFSRenameKeepsFiles$' ./chaos/env/ > "$RUNNER_TEMP/out.log" 2>&1
+          code=$?
+          grep -E '^(--- |ok|FAIL)|env_test.go' "$RUNNER_TEMP/out.log" | sort | uniq -c
+          echo "exit $code"
+
+  stress:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: TestHeldFollowerSyncsKeepTheLeader 5 times and TestLargeValuesAtRealTicks 3 times for 10 s
+        run: |
+          go test -count=5 -v -run '^TestHeldFollowerSyncsKeepTheLeader$' ./internal/server 2>&1 | grep -E '^(--- |ok|FAIL)|slowsync_test|stopped committing'
+          TIGERSTORE_STRESS=10s go test -count=3 -v -run '^TestLargeValuesAtRealTicks$' ./internal/server 2>&1 | grep -E '^(--- |ok|FAIL)|stress_test|longest put'
+
+  sim274:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Seed 54875, 100 times, with the disk trace
+        run: |
+          go test -c -o "$RUNNER_TEMP/sim.test" ./internal/sim
+          fails=0
+          for i in $(seq 100); do
+            if ! "$RUNNER_TEMP/sim.test" -test.count=1 -test.run '^TestSeeds$/^54875$' -sim.seed=54875 -sim.seeds=1 -sim.out "$RUNNER_TEMP/sim-out/run-$i" > "$RUNNER_TEMP/run.log" 2>&1; then
+              fails=$((fails + 1))
+              cp "$RUNNER_TEMP/run.log" "$RUNNER_TEMP/sim-out/run-$i.log"
+              grep -m3 'sim_test.go:\|cannot recover' "$RUNNER_TEMP/run.log"
+            fi
+          done
+          echo "shard ${{ matrix.shard }}: $fails of 100 failed"
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sim274-${{ matrix.shard }}
+          path: ${{ runner.temp }}/sim-out
+          if-no-files-found: ignore
