@@ -1065,7 +1065,10 @@ func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) (byte, e
 	}
 	p := s.t.preface(id)
 	if name != alpn(1) {
-		addr := *s.t.advertise.Load()
+		addr := s.t.cfg.AdvertiseAddr
+		if current := s.t.advertise.Load(); current != nil {
+			addr = *current
+		}
 		if len(addr) > 4096 {
 			return 0, errors.New("peer reply address is over the limit")
 		}
