@@ -1,0 +1,25 @@
+name: diag-261
+on:
+  push:
+    branches: [diag-261-membership-cold-restart]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Cold restart with a lagging membership and equal-membership control
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -race -v -count=50 -timeout=3m ./internal/sim -run '^TestDiag261ColdRestart$' 2>&1 | tee "$RUNNER_TEMP/diag261.log"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: diag261
+          path: ${{ runner.temp }}/diag261.log
