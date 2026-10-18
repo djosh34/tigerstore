@@ -1158,16 +1158,26 @@ func (w *WAL) Oldest() uint64 {
 	return w.runs[0].seq
 }
 
+// keep is the oldest segment that must stay on disk: the newest segment
+// and the one before it hold the newest hard state and root until the
+// newest has them too, and while the newest waits for Place, the one
+// before it may not be durable yet, so the one before that stays too.
+func (w *WAL) keep() uint64 {
+	if w.unplaced {
+		return w.seq - 2
+	}
+	return w.seq - 1
+}
+
 // DropBelow forgets the oldest segments whose every entry and value is
 // below index mark, and returns their file names, oldest first, for
-// RemoveFiles. It keeps the current segment and the one before it, which
-// hold the newest hard state and root until the current one has them too.
-// Every read of the segments it drops must be over; an error is a failed
-// close of one, which is forgotten all the same.
+// RemoveFiles. It keeps the segments that keep says. Every read of the
+// segments it drops must be over; an error is a failed close of one,
+// which is forgotten all the same.
 func (w *WAL) DropBelow(mark uint64) ([]string, error) {
 	// The runs of the segments to drop, which must all be below mark.
 	n := 0
-	for n < len(w.runs) && w.runs[n].seq+1 < w.seq {
+	for n < len(w.runs) && w.runs[n].seq < w.keep() {
 		end := n
 		for end < len(w.runs) && w.runs[end].seq == w.runs[n].seq {
 			end++

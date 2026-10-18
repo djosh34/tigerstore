@@ -349,11 +349,11 @@ type CleanFile struct {
 // checkpoint whose file this node keeps is at index below: every pack,
 // and the oldest segments, in order, whose every entry and value is at or
 // below it. Recovery and snapshots need only the values such a checkpoint
-// names from them. It never returns the newest two segments with records,
+// names from them. It never returns the segments that keep says stay,
 // which hold the newest hard state and root.
 func (w *WAL) Cleanable(below uint64) []CleanFile {
 	var out []CleanFile
-	for i := 0; i < len(w.runs) && w.runs[i].seq+1 < w.runs[len(w.runs)-1].seq; {
+	for i := 0; i < len(w.runs) && w.runs[i].seq < w.keep(); {
 		seq := w.runs[i].seq
 		ok := true
 		for ; i < len(w.runs) && w.runs[i].seq == seq; i++ {
@@ -383,7 +383,7 @@ func (w *WAL) DropCleaned(upto uint64, drop []uint64) ([]string, error) {
 	}
 	n := 0
 	for n < len(w.runs) && w.runs[n].seq <= upto {
-		if w.runs[n].seq+1 >= w.runs[len(w.runs)-1].seq {
+		if w.runs[n].seq >= w.keep() {
 			return nil, fmt.Errorf("wal: segment %d is not one that cleaning may remove", w.runs[n].seq)
 		}
 		n++

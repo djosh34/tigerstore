@@ -649,27 +649,26 @@ func (r *runner) crashInRecovery(ctx context.Context, s step, target int, rec *r
 // moved past it, resumes it so that it fetches a snapshot, and kills it
 // once the fetch started; it then starts it again, which must recover.
 // The fetch is a connection of the follower's own, so the replies on its
-// links to the others come at 64 KiB/s from before it resumes until the
-// kill, and its disk takes 100 ms a write, so that an install, which
-// syncs its checkpoint and its log, outlasts 150 ms. The kill comes once
-// 16 KiB of the stream arrived or 150 ms after the fetch started. Raft may
-// pick the snapshot before most of the writes, and the proxy delivers up
-// to 32 KiB at once, so a byte count alone missed small snapshots (#223).
-// Its Raft messages go out on the same links at full speed, and those it
-// gets come on the others' links. A follower that caught up from the
-// leader's log instead goes through it again, up to three times (#246).
+// links to the others are held (a backward stall) from before it resumes
+// until the kill: the fetch cannot finish, however small the snapshot,
+// while its Raft messages go out on the same links and those it gets come
+// on the others' links. The kill comes once the follower logged the fetch
+// and a reply was held. A rate limit with a byte count let small
+// snapshots install before the kill (#223). A follower that caught up
+// from the leader's log instead goes through it again, up to three times
+// (#246).
 func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *record) error {
 	if target == lead {
 		target = others(lead)[0]
 	}
 	rec.Env.Node = fmt.Sprintf("node%d", target+1)
-	n, d := r.c.nodes[target], r.e.disks[target]
+	n := r.c.nodes[target]
 	var held []*link
 	for _, j := range others(target) {
 		held = append(held, r.c.peers[target][j])
 	}
-	slow := proxy.Fault{Kind: proxy.Rate, Dir: proxy.Backward, Rate: 64 << 10}
-	// release heals the links slowed so far, which rec.Links records.
+	hold := proxy.Fault{Kind: proxy.Stall, Dir: proxy.Backward}
+	// release heals the links held so far, which rec.Links records.
 	release := func() error {
 		var errs []error
 		for i := range rec.Links {
@@ -681,13 +680,12 @@ func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *reco
 		}
 		return errors.Join(errs...)
 	}
-	// received is how much the slowed links delivered to the follower
-	// since then.
+	// hits is how many reads the held links held since then.
 	var base uint64
-	received := func() uint64 {
+	hits := func() uint64 {
 		var n uint64
 		for _, l := range held {
-			n += l.Proxy.Stats().BackwardSent
+			n += l.Proxy.Stats().Hits
 		}
 		return n - base
 	}
@@ -706,40 +704,31 @@ func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *reco
 		}
 		rec.Links = rec.Links[:0]
 		for _, l := range held {
-			st, err := l.Proxy.Set(slow)
-			rec.Links = append(rec.Links, linkRecord{Link: l.Name, Requested: slow, Installed: st})
+			st, err := l.Proxy.Set(hold)
+			rec.Links = append(rec.Links, linkRecord{Link: l.Name, Requested: hold, Installed: st})
 			if err != nil {
 				return errors.Join(err, release())
 			}
 		}
-		if err := d.Delay(5*time.Millisecond, 100*time.Millisecond); err != nil {
-			return errors.Join(err, release())
-		}
-		base = received()
+		base = hits()
 		logBefore = logSize(n)
 		if _, _, err := n.signal(syscall.SIGCONT); err != nil {
-			return errors.Join(err, release(), d.Healthy())
+			return errors.Join(err, release())
 		}
 		rec.Installed = true
-		// The fetch started, and part of its stream came or it ran a
-		// while.
-		var started time.Time
 		fetching = waitUntil(ctx, 10*time.Second, func() bool {
-			if started.IsZero() && strings.Contains(logSince(n, logBefore), "fetching the snapshot") {
-				started = time.Now()
-			}
-			return !started.IsZero() && (received() >= 16<<10 || time.Since(started) >= 150*time.Millisecond)
+			return strings.Contains(logSince(n, logBefore), "fetching the snapshot") && hits() > 0
 		})
 		if !fetching {
-			if err := errors.Join(release(), d.Healthy()); err != nil {
+			if err := release(); err != nil {
 				return err
 			}
 		}
 	}
 	if _, _, err := n.signal(syscall.SIGKILL); err != nil {
-		return errors.Join(err, release(), d.Healthy())
+		return errors.Join(err, release())
 	}
-	if err := errors.Join(release(), d.Healthy()); err != nil {
+	if err := release(); err != nil {
 		return err
 	}
 	text := logSince(n, logBefore)

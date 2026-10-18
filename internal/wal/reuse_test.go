@@ -474,3 +474,29 @@ func write(t *testing.T, d *simfs.Disk, name string, b []byte) {
 		t.Fatal(err)
 	}
 }
+
+// TestDropKeepsBeforeUnplaced drops old segments while the newest waits
+// for Place: the segment before the newest may not be durable yet, so the
+// one before that, which holds the last durable hard state and root,
+// stays too.
+func TestDropKeepsBeforeUnplaced(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	w.SetSegmentBytes(1)
+	fill(t, w, 1, 4)
+	w.Append(&wal.HardState{Term: 1, Vote: 2, Commit: 4}, []*raftpb.Entry{entry(1, 5, "v5")})
+	if err := errors.Join(w.Flush(), w.Seal(), wal.PrepareSegment(d, w.Seq()+1)); err != nil {
+		t.Fatal(err)
+	}
+	old := w.Rotate()
+	names, err := w.DropBelow(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(names, " "); got != "0000000000000001.wal 0000000000000002.wal 0000000000000003.wal" {
+		t.Fatalf("dropped %s with segment 6 unplaced", got)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
