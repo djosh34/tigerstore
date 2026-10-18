@@ -126,11 +126,17 @@ func TestEtcdWorkloads(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%+v: %v", tc, err)
 		}
-		// Latency covers the requests that arrived in the window, which
-		// all succeeded.
-		if res.Ops == 0 || res.Cohort == 0 || res.CohortFailed != 0 || res.Latency.Count != uint64(res.Cohort) || res.ServerCPUUsPerOp <= 0 || !res.Valid {
+		// Latency covers arrivals in the window, including successful
+		// completions during the drain. All completions can be late: this
+		// API test must not impose a throughput deadline on real etcd.
+		// CPU per op is defined as zero when the window has no completions.
+		badCPU := (res.Ops > 0 && res.ServerCPUUsPerOp <= 0) || (res.Ops == 0 && res.ServerCPUUsPerOp != 0)
+		if res.Cohort == 0 || res.CohortFailed != 0 || res.Latency.Count != uint64(res.Cohort) || badCPU || !res.Valid {
 			t.Fatalf("%+v: %d ops, cohort %d with %d failed, %d latencies, %.1f us server CPU per op, valid %v",
 				tc, res.Ops, res.Cohort, res.CohortFailed, res.Latency.Count, res.ServerCPUUsPerOp, res.Valid)
+		}
+		if delayDeletes && res.Ops != 0 {
+			t.Fatalf("controlled delay did not put all completions after the window: %+v", res)
 		}
 		if tc.workload == "watch" && (res.Watch.Events < res.Ops*3/2 || res.Watch.Latency.Count == 0) {
 			t.Fatalf("%+v: %d events for %d puts and 3 watchers", tc, res.Watch.Events, res.Ops)
