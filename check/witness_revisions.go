@@ -91,10 +91,13 @@ type revisionOrder struct {
 	mutations []int
 	ready     map[int]bool
 	// counts are, per revision, how many keys of a range clients saw
-	// then; putters and deleters are, per key, the writers whose request
-	// may create or delete it, and revokers the revokes, which may delete
-	// any key (reachable).
+	// then, and countRevs those revisions in order. putRevs and delRevs
+	// are, per key, the revisions whose acked writer may create or delete
+	// it, in order, and putters and deleters the ambiguous mutations that
+	// may; revokers are the revokes, which may delete any key (reachable).
 	counts            map[int64][]count
+	countRevs         []int64
+	putRevs, delRevs  [][]int64
 	putters, deleters [][]int
 	revokers          []int
 	// top is the highest revision any client saw.
@@ -287,17 +290,27 @@ func (r *revisionOrder) indexCounts() {
 		lo, hi := s.span(key, end)
 		r.counts[rev] = append(r.counts[rev], count{rev: rev, lo: lo, hi: hi, n: n})
 	}
-	r.putters, r.deleters = make([][]int, len(s.keys)), make([][]int, len(s.keys))
+	n := len(s.keys)
+	r.putters, r.deleters, r.putRevs, r.delRevs = make([][]int, n), make([][]int, n), make([][]int64, n), make([][]int64, n)
 	touch := func(i int, req history.Request) {
+		acked := h.Ops[i].Resp != nil
 		put := func(p *history.PutRequest) {
 			if k := s.index(p.Key); k >= 0 {
-				r.putters[k] = append(r.putters[k], i)
+				if acked {
+					r.putRevs[k] = append(r.putRevs[k], h.Ops[i].Resp.Revision)
+				} else {
+					r.putters[k] = append(r.putters[k], i)
+				}
 			}
 		}
 		del := func(d *history.DeleteRequest) {
 			lo, hi := s.span(d.Key, d.End)
 			for k := lo; k < hi; k++ {
-				r.deleters[k] = append(r.deleters[k], i)
+				if acked {
+					r.delRevs[k] = append(r.delRevs[k], h.Ops[i].Resp.Revision)
+				} else {
+					r.deleters[k] = append(r.deleters[k], i)
+				}
 			}
 		}
 		switch {
@@ -342,6 +355,10 @@ func (r *revisionOrder) indexCounts() {
 			add(at, op.Req.Delete.Key, op.Req.Delete.End, op.Resp.Delete.Deleted)
 		}
 	}
+	for _, revs := range slices.Concat(r.putRevs, r.delRevs) {
+		slices.Sort(revs)
+	}
+	r.countRevs = slices.Sorted(maps.Keys(r.counts))
 }
 
 // reachable reports whether the counts clients saw at the next revisions
@@ -353,22 +370,28 @@ func (r *revisionOrder) indexCounts() {
 // that may come before it. A history whose writes no read sees for a long
 // run of revisions made the search try their orders until a count far
 // ahead failed them (#251).
+//
+// Only the counts of the next revision that has any, if within
+// countHorizon, are checked, so that each candidate costs little.
 func (r *revisionOrder) reachable(s *state, skip int) bool {
-	for rev := s.rev; rev <= min(r.top, s.rev+countHorizon); rev++ {
-		for _, c := range r.counts[rev] {
-			var sure, maybe int64
-			for k := c.lo; k < c.hi; k++ {
-				present := s.kvs[k].Version != 0
-				if present && !r.may(k, s.rev, rev, skip, false) {
-					sure++
-				}
-				if present || r.may(k, s.rev, rev, skip, true) {
-					maybe++
-				}
+	next := sort.Search(len(r.countRevs), func(k int) bool { return r.countRevs[k] >= s.rev })
+	if next == len(r.countRevs) || r.countRevs[next] > s.rev+countHorizon {
+		return true
+	}
+	rev := r.countRevs[next]
+	for _, c := range r.counts[rev] {
+		var sure, maybe int64
+		for k := c.lo; k < c.hi; k++ {
+			present := s.kvs[k].Version != 0
+			if present && !r.may(k, s.rev, rev, skip, false) {
+				sure++
 			}
-			if sure > c.n || maybe < c.n {
-				return false
+			if present || r.may(k, s.rev, rev, skip, true) {
+				maybe++
 			}
+		}
+		if sure > c.n || maybe < c.n {
+			return false
 		}
 	}
 	return true
@@ -386,10 +409,14 @@ func (r *revisionOrder) may(k int, now, rev int64, skip int, create bool) bool {
 		}
 		return i != skip && !r.used[i] && r.lb[i] < rev
 	}
-	if create {
-		return slices.ContainsFunc(r.putters[k], ok)
+	acked := func(revs []int64) bool {
+		j := sort.Search(len(revs), func(j int) bool { return revs[j] > now })
+		return j < len(revs) && revs[j] <= rev
 	}
-	return slices.ContainsFunc(r.deleters[k], ok) || slices.ContainsFunc(r.revokers, ok)
+	if create {
+		return acked(r.putRevs[k]) || slices.ContainsFunc(r.putters[k], ok)
+	}
+	return acked(r.delRevs[k]) || slices.ContainsFunc(r.deleters[k], ok) || slices.ContainsFunc(r.revokers, ok)
 }
 
 // note records what an observation of kv, unchanged up to revision to,
@@ -703,11 +730,11 @@ func (r *revisionOrder) scheduleOptional() {
 			// comes before every op called after it returned, so the
 			// compaction goes in before the event of the first such op,
 			// and by the end of the lowest header revision of an acked
-			// one. It goes after the acked reads below its revision, at
-			// or after their header revision, as the first state that
-			// answers a read comes before it there; and after the acked
-			// compactions to its revision or below, whose answers it
-			// would turn into errors (#258).
+			// one. It goes after the revisions of the acked reads below
+			// its revision, which may come late in their own; and after
+			// the acked compactions to its revision or below, whose
+			// answers it would turn into errors, but at their revision,
+			// before the ops that follow them there (#258).
 			c := op.Req.Compact.Revision
 			goneAt := int64(math.MaxInt64)
 			for _, rj := range compacted {
@@ -720,7 +747,7 @@ func (r *revisionOrder) scheduleOptional() {
 			}
 			for rev, by := range keep {
 				if rev < c {
-					at = max(at, by)
+					at = max(at, by+1)
 				}
 			}
 			for _, k := range compactions {
@@ -862,19 +889,24 @@ func (r *revisionOrder) expire(call, rev int64) {
 	}
 }
 
-// putIn puts in late optional o if take says it may go in now. The late
-// ones due before the event of an op called when o was go in first, as
-// for any other op: a compaction is called at its own time, which can be
-// after the rejection an expiry must precede.
+// putIn puts in late optional o if take says it may go in now. A
+// compaction is called at its own time, which can be after the rejection
+// that an expiry must precede, so the expiries due before the event of an
+// op called when it was go in first, as for any other op. An expiry is
+// called when its lease is granted, so nothing goes in before it.
 func (r *revisionOrder) putIn(o optional, take func(*state, optional) bool) {
 	w := r.w
 	if r.used[o.op] {
 		return
 	}
-	// Marked as used meanwhile, so that it does not put itself in.
-	r.used[o.op] = true
-	r.expire(w.h.Ops[o.op].Call, 0)
-	r.used[o.op] = false
+	if w.h.Ops[o.op].Req.Compact != nil {
+		for _, e := range r.due(w.h.Ops[o.op].Call, 0) {
+			if w.h.Ops[e.op].Req.LeaseRevoke != nil && !r.used[e.op] && r.takes(w.live.clone(), e) {
+				w.apply(e.op, w.reqs[e.op])
+				r.used[e.op] = true
+			}
+		}
+	}
 	if take(w.live.clone(), o) {
 		w.apply(o.op, w.reqs[o.op])
 		r.used[o.op] = true
