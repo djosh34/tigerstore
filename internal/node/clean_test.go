@@ -202,12 +202,14 @@ func TestCleaningCycles(t *testing.T) {
 	if err := checkValues(r.n, want); err != nil {
 		t.Fatal(err)
 	}
-	// The map's size swings with the number of segments, and a sample
-	// taken while cleaning lags behind is a spike. With nothing removed it
-	// would grow with the history, about tenfold here, so every sample of
-	// the second half would be larger. Compare the smallest of each half.
-	if first, second := slices.Min(maps[:len(maps)/2]), slices.Min(maps[len(maps)/2:]); second > 2*first {
-		t.Fatalf("the map grew from at least %d to %d bytes", first, second)
+	// The map's size swings with the number of segments: a sample taken
+	// while cleaning lags behind is a spike, and one taken just after it
+	// removed segments is a dip, at under half the usual size. With
+	// nothing removed it would grow with the history, about tenfold here,
+	// so every sample of the second half would be larger. Compare the
+	// median of each half, which one spike or dip does not move.
+	if first, second := median(maps[:len(maps)/2]), median(maps[len(maps)/2:]); second > 2*first {
+		t.Fatalf("the map's median grew from %d to %d bytes: %v", first, second, maps)
 	}
 	segs, packs := walFiles(t, dir)
 	if packs == 0 {
@@ -504,4 +506,10 @@ func TestDefragment(t *testing.T) {
 	if err := checkValues(r.n, want); err != nil {
 		t.Fatalf("after a restart: %v", err)
 	}
+}
+
+// median is the middle of xs, or the upper of its two middles.
+func median(xs []int64) int64 {
+	s := slices.Sorted(slices.Values(xs))
+	return s[len(s)/2]
 }
