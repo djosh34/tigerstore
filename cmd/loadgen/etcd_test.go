@@ -134,10 +134,11 @@ func TestEtcdWorkloads(t *testing.T) {
 // of them succeeded, and the latencies cover them. Ops counts the calls
 // that finished inside the window. Only etcd's slow deletes can leave it
 // at 0, with every call answered after it (#271); then the server CPU per
-// op is 0 too.
+// op must be 0 too. The converse is not true: successful /proc CPU samples
+// use 10 ms ticks and can have a zero delta even with completed calls (#276).
 func checkWindow(res *result) error {
 	late := res.Ops == 0 && res.Workload == "delete"
-	if res.Cohort == 0 || res.CohortFailed != 0 || res.Latency.Count != uint64(res.Cohort) || (res.Ops == 0 && !late) || (res.Ops == 0) != (res.ServerCPUUsPerOp == 0) || !res.Valid {
+	if res.Cohort == 0 || res.CohortFailed != 0 || res.Latency.Count != uint64(res.Cohort) || (res.Ops == 0 && !late) || (res.Ops == 0 && res.ServerCPUUsPerOp != 0) || !res.Valid {
 		return fmt.Errorf("%d ops, cohort %d with %d failed, %d latencies, %.1f us server CPU per op, valid %v",
 			res.Ops, res.Cohort, res.CohortFailed, res.Latency.Count, res.ServerCPUUsPerOp, res.Valid)
 	}
@@ -157,7 +158,7 @@ func TestCheckWindow(t *testing.T) {
 		{Ops: 10, Cohort: 0, Valid: true, ServerCPUUsPerOp: 3},
 		{Ops: 10, Cohort: 10, CohortFailed: 1, Latency: latency{Count: 10}, ServerCPUUsPerOp: 3, Valid: true},
 		{Ops: 10, Cohort: 10, Latency: latency{Count: 9}, ServerCPUUsPerOp: 3, Valid: true},
-		{Ops: 10, Cohort: 10, Latency: latency{Count: 10}, Valid: true},
+		{Workload: "delete", Ops: 0, Cohort: 10, Latency: latency{Count: 10}, ServerCPUUsPerOp: 3, Valid: true},
 		{Ops: 10, Cohort: 10, Latency: latency{Count: 10}, ServerCPUUsPerOp: 3},
 	} {
 		if checkWindow(bad) == nil {
