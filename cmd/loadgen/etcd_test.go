@@ -113,6 +113,9 @@ func TestEtcdWorkloads(t *testing.T) {
 			cfg.preloadRate = 300
 		}
 		res, err := run(cfg)
+		if tc.workload == "delete" {
+			t.Logf("delete result: %+v", res)
+		}
 		if err != nil {
 			t.Fatalf("%+v: %v", tc, err)
 		}

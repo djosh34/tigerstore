@@ -1,0 +1,31 @@
+name: diag-271
+on:
+  push:
+    branches: [diag/271-loadgen-delete-ops]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install etcd v3.7.2
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          echo "LOADGEN_ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
+      - name: Repeat only TestEtcdWorkloads
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -race -count=10 -v -timeout=7m -run '^TestEtcdWorkloads$' ./cmd/loadgen 2>&1 | tee "$RUNNER_TEMP/diag-271.log"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: diag-271
+          path: ${{ runner.temp }}/diag-271.log
