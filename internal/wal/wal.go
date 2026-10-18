@@ -405,12 +405,10 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		return nil, nil, err
 	}
 	if w.seg == nil {
-		f, err := PrepareSegment(fs, w.seq+1)
-		if err != nil {
+		if err := PrepareSegment(fs, w.seq+1); err != nil {
 			return nil, nil, errors.Join(err, w.closePacks())
 		}
-		w.start(f)
-		w.unplaced = true
+		w.start(nil)
 		if err := errors.Join(w.Place(), fs.SyncDir()); err != nil {
 			return nil, nil, errors.Join(err, w.Close())
 		}
@@ -684,11 +682,11 @@ func (w *WAL) setRoot(r Root) {
 // segment seq-1, which may wait for Place, the oldest spare, or a new
 // file. Its name is durable when it returns. A spare that a removal took
 // meanwhile is skipped.
-func PrepareSegment(fs FS, seq uint64) (File, error) {
+func PrepareSegment(fs FS, seq uint64) error {
 	for {
 		names, err := fs.List()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		var old, spares []string
 		for _, n := range names {
@@ -708,10 +706,10 @@ func PrepareSegment(fs FS, seq uint64) (File, error) {
 			from = spares[0]
 		default:
 			f, err := fs.Create(nextName(seq))
-			if err == nil {
-				err = fs.SyncDir()
+			if err != nil {
+				return err
 			}
-			return f, err
+			return errors.Join(f.Close(), fs.SyncDir())
 		}
 		// The removal that made a spare must be durable before the file
 		// takes another name: else a crash could leave the removed
@@ -723,11 +721,8 @@ func PrepareSegment(fs FS, seq uint64) (File, error) {
 		if err == nil {
 			err = fs.SyncDir()
 		}
-		if err == nil {
-			return fs.Open(nextName(seq))
-		}
 		if !errors.Is(err, iofs.ErrNotExist) {
-			return nil, err
+			return err
 		}
 	}
 }
@@ -748,10 +743,12 @@ func listSpares(fs FS) ([]string, error) {
 	return spares, nil
 }
 
-// start makes f the next segment. Its header goes in front of what is
-// buffered next, which must be nothing yet; the copies of the hard state
-// and the root follow with the next write.
+// start makes f the next segment, or the file that PrepareSegment readied
+// for it if f is nil, which waits for Place. Its header goes in front of
+// what is buffered next, which must be nothing yet; the copies of the hard
+// state and the root follow with the next write.
 func (w *WAL) start(f File) {
+	w.unplaced = f == nil
 	w.seq++
 	w.seg, w.size, w.copied, w.version = f, 0, false, Version
 	w.buf = append(w.buf[:0], magic...)
@@ -920,11 +917,10 @@ func (w *WAL) Sync() error {
 	if err := errors.Join(w.Seal(), w.seg.Sync()); err != nil {
 		return err
 	}
-	next, err := PrepareSegment(w.fs, w.seq+1)
-	if err != nil {
+	if err := PrepareSegment(w.fs, w.seq+1); err != nil {
 		return err
 	}
-	return errors.Join(w.Rotate(next).Close(), w.Place(), w.fs.SyncDir())
+	return errors.Join(w.Rotate().Close(), w.Place(), w.fs.SyncDir())
 }
 
 // Seal cuts the full newest segment to its records, which a reused file
@@ -933,23 +929,23 @@ func (w *WAL) Sync() error {
 // by the segment's next sync, before anything goes into the next segment.
 func (w *WAL) Seal() error { return w.seg.Truncate(w.size) }
 
-// Rotate makes next, which PrepareSegment readied for segment Seq()+1, the
+// Rotate makes segment Seq()+1, whose file PrepareSegment readied, the
 // segment that appends go to, after Seal, and returns the old one's file
-// for the caller to close once it is synced. Nothing may be written into
-// next before Place, which waits for every record of the old segment to
-// be durable: next's header vouches for the old segment's last record.
-func (w *WAL) Rotate(next File) File {
+// for the caller to close once it is synced. Nothing is written into the
+// new segment before Place, which waits for every record of the old one
+// to be durable: the new header vouches for the old segment's last record.
+func (w *WAL) Rotate() File {
 	old := w.seg
 	w.sizes[w.seq] = w.size
-	w.start(next)
-	w.unplaced = true
+	w.start(nil)
 	return old
 }
 
 // Place gives the segment that Rotate started its name, once every record
 // of the segment before it is durable, so that a crash finds no newer
-// segment than a torn one. The name must then be made durable with
-// SyncDir before the segment's records count as durable.
+// segment than a torn one, and opens it under that name. The name must
+// then be made durable with SyncDir before the segment's records count as
+// durable.
 func (w *WAL) Place() error {
 	if !w.unplaced {
 		return nil
@@ -957,12 +953,13 @@ func (w *WAL) Place() error {
 	if err := w.fs.Rename(nextName(w.seq), segmentName(w.seq)); err != nil {
 		return err
 	}
-	w.unplaced = false
+	f, err := w.fs.Open(segmentName(w.seq))
+	if err != nil {
+		return err
+	}
+	w.seg, w.unplaced = f, false
 	return nil
 }
-
-// Unplaced reports whether the newest segment waits for Place.
-func (w *WAL) Unplaced() bool { return w.unplaced }
 
 // Segment returns the file of the newest segment, which Flush writes to.
 // A sync of it makes what Flush wrote durable, also while the next Flush

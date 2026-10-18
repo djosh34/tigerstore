@@ -362,10 +362,10 @@ type Node struct {
 	persisted chan persistDone
 	ckptQ     chan core.CheckpointChunk
 	cleanQ    chan packRoot
-	// wantQ asks prepareSegments for the file of a segment, which nextQ
-	// takes to the disk goroutine for its rotation.
+	// wantQ asks prepareSegments for the file of a segment, and nextQ
+	// tells the disk goroutine that it is ready, for its rotation.
 	wantQ    chan uint64
-	nextQ    chan wal.File
+	nextQ    chan struct{}
 	defragQ  chan chan error
 	readQ    chan *core.ValueRead
 	readDone chan readDone
@@ -685,7 +685,7 @@ func (n *Node) open() error {
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
 	n.cleanQ = make(chan packRoot)
 	n.wantQ = make(chan uint64, 1)
-	n.nextQ = make(chan wal.File)
+	n.nextQ = make(chan struct{})
 	n.readQ = make(chan *core.ValueRead)
 	n.readDone = make(chan readDone, readers)
 	n.leader.Store(0)
@@ -1577,9 +1577,8 @@ func (n *Node) durable(g written) {
 // the file of the one after.
 func (n *Node) rotate(ctx context.Context) (wal.File, error) {
 	start := time.Now()
-	var next wal.File
 	select {
-	case next = <-n.nextQ:
+	case <-n.nextQ:
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -1587,7 +1586,7 @@ func (n *Node) rotate(ctx context.Context) (wal.File, error) {
 		n.logf("slow log rotation: waited %v for the next segment", d)
 	}
 	n.log.mu.Lock()
-	old := n.log.w.Rotate(next)
+	old := n.log.w.Rotate()
 	n.log.sealed = n.log.w.Seq() - 1
 	n.log.mu.Unlock()
 	n.wantQ <- n.log.w.Seq() + 1
@@ -1626,8 +1625,7 @@ func (n *Node) prepareSegments(ctx context.Context) {
 	seq := n.log.w.Seq() + 1
 	n.log.mu.Unlock()
 	for {
-		f, err := wal.PrepareSegment(n.log.fs, seq)
-		if err != nil {
+		if err := wal.PrepareSegment(n.log.fs, seq); err != nil {
 			select {
 			case n.persisted <- persistDone{err: fmt.Errorf("%w: prepare segment %d: %w", core.ErrDisk, seq, err)}:
 			case <-ctx.Done():
@@ -1635,12 +1633,9 @@ func (n *Node) prepareSegments(ctx context.Context) {
 			return
 		}
 		select {
-		case n.nextQ <- f:
+		case n.nextQ <- struct{}{}:
 		case <-ctx.Done():
-			// It stays on disk, where the next run takes it.
-			if err := f.Close(); err != nil {
-				n.logf("close the file of segment %d: %v", seq, err)
-			}
+			// The file stays on disk, where the next run takes it.
 			return
 		}
 		select {

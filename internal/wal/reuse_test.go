@@ -371,11 +371,7 @@ func TestPrepareSegment(t *testing.T) {
 	}
 	prepare := func(seq uint64, want string) {
 		t.Helper()
-		f, err := wal.PrepareSegment(d, seq)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := f.Close(); err != nil {
+		if err := wal.PrepareSegment(d, seq); err != nil {
 			t.Fatal(err)
 		}
 		if got := names(); got != want {

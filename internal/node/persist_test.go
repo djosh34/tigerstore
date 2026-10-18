@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -58,7 +60,7 @@ func startPersist(t *testing.T, wrap func(wal.FS) wal.FS, setup func(*wal.WAL, *
 		persistQ:  make(chan persistBatch, 1),
 		persisted: make(chan persistDone, 1),
 		wantQ:     make(chan uint64, 1),
-		nextQ:     make(chan wal.File),
+		nextQ:     make(chan struct{}),
 	}, ctx: ctx, cancel: cancel, stopped: make(chan struct{})}
 	var wg sync.WaitGroup
 	wg.Go(func() { p.n.persist(ctx, nil) })
@@ -139,13 +141,12 @@ func (p *persister) notReported() {
 
 // heldFS holds one operation until the test releases it, and then fails
 // it with err. hold picks it: a "write", "sync" or "syncdir", with the
-// number of the file it is on, counted in order of creation from 1 (for
-// a syncdir, the newest file), and for a write, the number of the write
-// on that file.
+// number of the segment it is on (for a syncdir, the newest file readied
+// for one), and for a write, the number of the write on that file.
 type heldFS struct {
 	wal.FS
 	hold             func(op string, file, write int) bool
-	created          int
+	newest           atomic.Int32
 	blocked, release chan struct{}
 	err              error
 	once             sync.Once
@@ -177,17 +178,37 @@ func (fs *heldFS) at(op string, file, write int) error {
 
 func (fs *heldFS) let() { fs.releaseOnce.Do(func() { close(fs.release) }) }
 
+// segment is the number of the segment of a file name, 0 for none.
+func segment(name string) int {
+	var seq int
+	if _, err := fmt.Sscanf(name, "next-%016x", &seq); err == nil {
+		return seq
+	}
+	if _, err := fmt.Sscanf(name, "%016x.wal", &seq); err == nil {
+		return seq
+	}
+	return 0
+}
+
 func (fs *heldFS) Create(name string) (wal.File, error) {
 	f, err := fs.FS.Create(name)
 	if err != nil {
 		return nil, err
 	}
-	fs.created++
-	return &heldFile{File: f, fs: fs, number: fs.created}, nil
+	fs.newest.Store(int32(max(int(fs.newest.Load()), segment(name))))
+	return &heldFile{File: f, fs: fs, number: segment(name)}, nil
+}
+
+func (fs *heldFS) Open(name string) (wal.File, error) {
+	f, err := fs.FS.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return &heldFile{File: f, fs: fs, number: segment(name)}, nil
 }
 
 func (fs *heldFS) SyncDir() error {
-	if err := fs.at("syncdir", fs.created, 0); err != nil {
+	if err := fs.at("syncdir", int(fs.newest.Load()), 0); err != nil {
 		return err
 	}
 	return fs.FS.SyncDir()
