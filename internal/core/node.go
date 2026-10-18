@@ -595,7 +595,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	// The commit index on disk can lag what was applied, which a
 	// checkpoint shows, and the members a new cluster's log starts with.
 	hs := rec.HardState
-	boot, err := bootstrapped(rec, disk)
+	boot, err := bootstrapped(cfg, rec, disk)
 	if err != nil {
 		return nil, err
 	}
@@ -653,30 +653,32 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	return n, nil
 }
 
-// bootstrapped is how many entries the log of a node that has applied
-// nothing starts with that are its cluster's first members: the
-// configuration changes of term 1, which Raft's Bootstrap writes as
-// committed on every first member, and which no later term can replace. A
-// crash can keep them without the commit index that follows them on disk
-// (wal.Append). Applied on start, they give Raft its voters, so the node
-// can campaign; without them it could only vote, and a cold restart in
-// which it holds the longest log never elects (#247).
-func bootstrapped(rec *wal.Recovered, disk Log) (uint64, error) {
-	if rec.Root.Index > 0 {
+// bootstrapped is how many entries at the start of the log are the
+// cluster's first members, cfg.Peers, as Raft's Bootstrap wrote them:
+// configuration changes of term 1, which it writes as committed on every
+// first member. A crash can keep them without the commit index that
+// follows them on disk (wal.Append). Applied on start, they give Raft its
+// voters, so the node can campaign; without them it could only vote, and
+// a cold restart in which it holds the longest log never elects (#247).
+// The driver keeps cfg.Peers on disk from the first start on, so they are
+// the persisted initial configuration. A log that holds only some of
+// them, or other ones, gets 0: applying part of the members would make
+// the driver drop the peers it was started with.
+func bootstrapped(cfg Config, rec *wal.Recovered, disk Log) (uint64, error) {
+	if cfg.Join || rec.Root.Index > 0 || len(cfg.Peers) == 0 || rec.Last < uint64(len(cfg.Peers)) {
 		return 0, nil
 	}
-	var n uint64
-	for i := uint64(1); i <= rec.Last; i++ {
-		e, err := disk.Entry(i)
+	for i, id := range cfg.Peers {
+		e, err := disk.Entry(uint64(i) + 1)
 		if err != nil {
-			return 0, fmt.Errorf("core: read entry %d: %w", i, err)
+			return 0, fmt.Errorf("core: read entry %d: %w", i+1, err)
 		}
-		if e.GetTerm() != 1 || e.GetType() != raftpb.EntryConfChange {
-			break
+		var cc raftpb.ConfChange
+		if e.GetTerm() != 1 || e.GetType() != raftpb.EntryConfChange || proto.Unmarshal(e.GetData(), &cc) != nil || cc.GetNodeId() != id {
+			return 0, nil
 		}
-		n = i
 	}
-	return n, nil
+	return uint64(len(cfg.Peers)), nil
 }
 
 // replay applies the committed entries after the checkpoint, read from

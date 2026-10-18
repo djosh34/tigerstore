@@ -284,6 +284,11 @@ type node struct {
 	// rotStopped is set when it stopped on the rotted value too late for
 	// its restart to come before the end; it stays down (#265).
 	rotStopped bool
+	// diskLog holds the node's last disk calls, with their times, and
+	// crashImage its files right after its last crash, for a failure's
+	// report (#274).
+	diskLog    []string
+	crashImage map[string][]byte
 	// ckptDone are the checkpoint files closed right after their last
 	// sync, whose bytes count once the directory is synced;
 	// removedSegment marks a segment removal whose erase-one-disk copy
@@ -382,7 +387,12 @@ type Sim struct {
 	expiredAt    map[int64]int64
 	expiredOrder []int64
 	checkpoints  []*checkpoint
-	halfOpens    []halfOpenLink
+	// cold holds the disks of the first cold restart that failed, and
+	// votes makes the trace show every vote request and answer, as in a
+	// cold restart, so that one that elects no leader shows why.
+	cold      *coldDisks
+	votes     bool
+	halfOpens []halfOpenLink
 	// applied is the highest index any node has applied.
 	applied  uint64
 	silences []int64
@@ -505,6 +515,10 @@ type Result struct {
 	// tests.
 	grayHealedAt int64
 	halfOpens    []halfOpenLink
+	// nodes are the run's nodes, and cold the disks of a cold restart
+	// that failed, for a failure's report.
+	nodes []*node
+	cold  *coldDisks
 	// FinalRev is the revision of the converged cluster at the end, and
 	// logged is set once the checks built the committed log.
 	FinalRev int64
@@ -532,6 +546,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.History, res.Stats, res.Silences = s.history, s.stats, s.silences
 	res.HeldAppendAt = s.heldAppendAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
+	res.nodes, res.cold = s.nodes, s.cold
 	s.mu.Unlock()
 	if err == nil {
 		if err = s.check(res); err != nil {
@@ -588,6 +603,7 @@ func newSim(cfg Config) (*Sim, error) {
 
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
 	n := &node{idx: i, id: uint64(i + 1), disk: disk, addrs: []string{peerAddr(i)}, wake: make(chan struct{})}
+	s.traceDisk(n)
 	if i == 3 {
 		// The fourth member is added at memberURL and moves to
 		// updatedMemberURL.
@@ -759,8 +775,20 @@ func (s *Sim) stop() {
 	}
 }
 
-// traceLines is how many lines of its trace a run keeps.
-const traceLines = 3000
+// traceLines is how many lines of its trace a run keeps, and diskLines
+// how many disk calls each node keeps.
+const traceLines, diskLines = 3000, 4000
+
+// traceDisk keeps the disk calls of n, with the run's time, in
+// n.diskLog. Disk calls run with the lock held.
+func (s *Sim) traceDisk(n *node) {
+	n.disk.Trace = func(line string) {
+		if len(n.diskLog) == diskLines {
+			n.diskLog = slices.Delete(n.diskLog, 0, diskLines/4)
+		}
+		n.diskLog = append(n.diskLog, fmt.Sprintf("%9.3f ms %s", float64(s.now())/float64(Millisecond), line))
+	}
+}
 
 // tracef adds a line to the trace. The lock is held.
 func (s *Sim) tracef(format string, args ...any) {
@@ -1339,6 +1367,7 @@ func (s *Sim) crash(n *node) {
 	floor := n.floor()
 	s.down(n)
 	n.disk.Crash(s.rng)
+	n.crashImage = n.disk.Files()
 	s.tracef("node %d: crashed", n.id)
 	w, rec, err := wal.Open(n.disk.Durable())
 	if err != nil {

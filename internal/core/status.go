@@ -2,6 +2,8 @@ package core
 
 import (
 	"cmp"
+	"fmt"
+	"maps"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -169,4 +171,22 @@ func (n *Node) memberIDs() []uint64 {
 	}
 	slices.Sort(ids)
 	return ids
+}
+
+// LogState says how the log and Raft stand, for the driver's log at a
+// start, so that a cold restart that elects no leader shows why (#247,
+// #250): the last entry and its term, Raft's term, vote and commit, and
+// its voters.
+func (n *Node) LogState() string {
+	last, err := n.storage.LastIndex()
+	if err != nil {
+		return err.Error()
+	}
+	term, err := n.storage.Term(last)
+	if err != nil {
+		return err.Error()
+	}
+	st := n.rn.Status()
+	voters := slices.Sorted(maps.Keys(st.Config.Voters.IDs()))
+	return fmt.Sprintf("last entry %d at term %d; term %d, vote %x, commit %d; voters %x", last, term, st.GetTerm(), st.GetVote(), st.GetCommit(), voters)
 }

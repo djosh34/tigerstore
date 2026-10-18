@@ -697,7 +697,7 @@ func (n *Node) open() error {
 	as, _ := c.Alarms()
 	as = slices.Clone(as)
 	n.alarms.Store(&as)
-	n.logf("recovered the log up to entry %d", c.Applied())
+	n.logf("recovered the log up to entry %d: %s", c.Applied(), c.LogState())
 	return nil
 }
 

@@ -138,11 +138,44 @@ func saveRun(dir, cmd, trace string, res *Result) error {
 		}
 		files["replay.txt"] += "go run ./cmd/checkhistory -checkers " + checkers + " " + filepath.Join(dir, "history.json") + "\n"
 	}
+	// Each node's last disk calls and its files now and right after its
+	// last crash, and the disks a failed cold restart started from, with
+	// that restart's disk calls (#274).
+	for _, n := range res.nodes {
+		d := filepath.Join("disks", fmt.Sprintf("node%d", n.id))
+		files[filepath.Join(d, "calls.txt")] = strings.Join(n.diskLog, "\n") + "\n"
+		addFiles(files, filepath.Join(d, "now"), n.disk.Files())
+		addFiles(files, filepath.Join(d, "after-crash"), n.crashImage)
+	}
+	if c := res.cold; c != nil {
+		for i, d := range c.disks {
+			name := fmt.Sprintf("node%d", i+1)
+			if i == c.erased {
+				name += "-erased"
+			}
+			addFiles(files, filepath.Join("cold", fmt.Sprintf("copy-at-%dms", c.at/Millisecond), name), d.Files())
+		}
+		for _, n := range c.nodes {
+			files[filepath.Join("cold", fmt.Sprintf("node%d-calls.txt", n.id))] = strings.Join(n.diskLog, "\n") + "\n"
+		}
+	}
 	var errs []error
 	for name, body := range files {
-		errs = append(errs, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644))
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		errs = append(errs, os.WriteFile(path, []byte(body), 0o644))
 	}
 	return errors.Join(errs...)
+}
+
+// addFiles puts each of a disk's files into files, under dir.
+func addFiles(files map[string]string, dir string, disk map[string][]byte) {
+	for name, b := range disk {
+		files[filepath.Join(dir, name)] = string(b)
+	}
 }
 
 // seedTests are the tests whose subtests are the seeds of -sim.seed and
@@ -766,5 +799,37 @@ func TestEndWaitsForCatchUp(t *testing.T) {
 		}
 		checkers(t, res)
 		t.Logf("seed %d: the nodes ran %d s more after the end", 7000+seed, res.Stats.Settles)
+	}
+}
+
+// TestSaveRunKeepsDisks checks that a saved run has each node's disk
+// calls and files, and the files of a crashed node right after its
+// crash (#274).
+func TestSaveRunKeepsDisks(t *testing.T) {
+	cfg := DefaultConfig(11)
+	cfg.Duration = 6 * Second
+	res := run(t, cfg)
+	dir := t.TempDir()
+	if err := saveRun(dir, "replay", "trace", res); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := os.ReadFile(filepath.Join(dir, "disks", "node1", "calls.txt"))
+	if err != nil || !strings.Contains(string(calls), " ms sync 0") || !strings.Contains(string(calls), " ms write 0") {
+		t.Fatalf("node 1's disk calls: %v, %.200q", err, calls)
+	}
+	if segs, err := filepath.Glob(filepath.Join(dir, "disks", "node1", "now", "*.wal")); err != nil || len(segs) == 0 {
+		t.Fatalf("node 1's segments are not saved: %v", err)
+	}
+	crashed := 0
+	for _, n := range res.nodes {
+		if n.crashImage != nil {
+			crashed++
+			if names, err := os.ReadDir(filepath.Join(dir, "disks", fmt.Sprintf("node%d", n.id), "after-crash")); err != nil || len(names) == 0 {
+				t.Fatalf("node %d crashed, but its files after the crash are not saved: %v", n.id, err)
+			}
+		}
+	}
+	if crashed == 0 {
+		t.Fatal("no node crashed")
 	}
 }

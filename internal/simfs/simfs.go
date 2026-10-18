@@ -10,6 +10,8 @@ package simfs
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"hash/crc32"
 	"io"
 	"io/fs"
 	"maps"
@@ -37,6 +39,8 @@ const (
 )
 
 type file struct {
+	// id tells files apart in the trace across their renames.
+	id      int
 	data    []byte
 	durable []byte
 	// pending are the writes since the last sync, oldest first.
@@ -72,13 +76,34 @@ type Disk struct {
 	// the operation without changing anything.
 	Fault func(op Op, name string) error
 
+	// Trace, if set, gets a line for every call that changes the disk,
+	// and for each file a crash keeps, for a failure's report (#274).
+	Trace func(string)
+
 	// short, when set, makes the next write a short one.
 	short *rand.Rand
+	// files counts the files created, for their ids.
+	files int
 }
 
 // New returns an empty disk.
 func New() *Disk {
 	return &Disk{names: map[string]*file{}, durable: map[string]*file{}}
+}
+
+func (d *Disk) tracef(format string, args ...any) {
+	if d.Trace != nil {
+		d.Trace(fmt.Sprintf(format, args...))
+	}
+}
+
+// Files returns a copy of every file's content, synced or not, by name.
+func (d *Disk) Files() map[string][]byte {
+	out := map[string][]byte{}
+	for name, f := range d.names {
+		out[name] = slices.Clone(f.data)
+	}
+	return out
 }
 
 // Crash drops what was not made durable. Each file keeps its synced
@@ -112,6 +137,13 @@ func (d *Disk) Crash(rng *rand.Rand) {
 				stream = stream[k:]
 			}
 		}
+		if d.Trace != nil {
+			unsynced := 0
+			for _, w := range f.pending {
+				unsynced += len(w.p)
+			}
+			d.tracef("crash: %s (file %d) keeps %d bytes: %d synced, %d unsynced bytes written since, cut %v", name, f.id, len(kept), len(f.durable), unsynced, f.cut)
+		}
 		f.data = kept
 		f.durable = slices.Clone(kept)
 		f.pending, f.cut = nil, false
@@ -125,7 +157,7 @@ func (d *Disk) Durable() *Disk {
 	c := New()
 	for _, name := range sortedNames(d.durable) {
 		f := d.durable[name]
-		g := &file{data: slices.Clone(f.durable), durable: slices.Clone(f.durable)}
+		g := &file{id: f.id, data: slices.Clone(f.durable), durable: slices.Clone(f.durable)}
 		c.names[name] = g
 		c.durable[name] = g
 	}
@@ -137,7 +169,7 @@ func (d *Disk) Durable() *Disk {
 func (d *Disk) Copy() *Disk {
 	c := New()
 	for _, name := range sortedNames(d.names) {
-		g := &file{data: slices.Clone(d.names[name].data), durable: slices.Clone(d.names[name].data)}
+		g := &file{id: d.names[name].id, data: slices.Clone(d.names[name].data), durable: slices.Clone(d.names[name].data)}
 		c.names[name] = g
 		c.durable[name] = g
 	}
@@ -244,7 +276,19 @@ func (d *Disk) fault(op Op, name string) error {
 	if d.Fault == nil {
 		return nil
 	}
-	return d.Fault(op, name)
+	err := d.Fault(op, name)
+	if err != nil {
+		d.tracef("%s %s fails: %v", op, name, err)
+	}
+	return err
+}
+
+func (op Op) String() string {
+	names := [...]string{"create", "open", "read", "write", "truncate", "sync", "remove", "sync-dir", "rename"}
+	if int(op) < len(names) {
+		return names[op]
+	}
+	return fmt.Sprintf("op %d", int(op))
 }
 
 // List returns the file names in order.
@@ -263,8 +307,10 @@ func (d *Disk) Create(name string) (wal.File, error) {
 	if _, ok := d.names[name]; ok {
 		return nil, fs.ErrExist
 	}
-	f := &file{}
+	d.files++
+	f := &file{id: d.files}
 	d.names[name] = f
+	d.tracef("create %s (file %d)", name, f.id)
 	return &Handle{d: d, f: f, name: name}, nil
 }
 
@@ -290,6 +336,11 @@ func (d *Disk) Rename(oldName, newName string) error {
 	if !ok {
 		return fs.ErrNotExist
 	}
+	if g, ok := d.names[newName]; ok {
+		d.tracef("rename %s (file %d) to %s, replacing file %d", oldName, f.id, newName, g.id)
+	} else {
+		d.tracef("rename %s (file %d) to %s", oldName, f.id, newName)
+	}
 	delete(d.names, oldName)
 	d.names[newName] = f
 	return nil
@@ -300,9 +351,11 @@ func (d *Disk) Remove(name string) error {
 	if err := d.fault(OpRemove, name); err != nil {
 		return err
 	}
-	if _, ok := d.names[name]; !ok {
+	f, ok := d.names[name]
+	if !ok {
 		return fs.ErrNotExist
 	}
+	d.tracef("remove %s (file %d)", name, f.id)
 	delete(d.names, name)
 	return nil
 }
@@ -313,6 +366,7 @@ func (d *Disk) SyncDir() error {
 		return err
 	}
 	d.durable = maps.Clone(d.names)
+	d.tracef("sync the directory")
 	return nil
 }
 
@@ -376,6 +430,7 @@ func (h *Handle) WriteAt(p []byte, off int64) (int, error) {
 		h.write(len(h.f.data), make([]byte, gap))
 	}
 	h.write(int(off), p[:n])
+	h.d.tracef("write %s (file %d) at %d: %d of %d bytes, crc %08x, %v", h.name, h.f.id, off, n, len(p), crc32.ChecksumIEEE(p[:n]), err)
 	return n, err
 }
 
@@ -396,6 +451,7 @@ func (h *Handle) Truncate(size int64) error {
 	if size < int64(len(h.f.durable)) {
 		h.f.cut = true
 	}
+	h.d.tracef("truncate %s (file %d) to %d, cut %v", h.name, h.f.id, size, h.f.cut)
 	// A later sync keeps only what is left of the writes before it.
 	for i, w := range h.f.pending {
 		if end := int64(w.off + len(w.p)); end > size {
@@ -426,6 +482,7 @@ func (h *Handle) Sync() error {
 		}
 	}
 	h.f.pending, h.f.cut = nil, false
+	h.d.tracef("sync %s (file %d): %d bytes durable", h.name, h.f.id, len(h.f.durable))
 	return nil
 }
 

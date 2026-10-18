@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"testing"
 
 	"go.etcd.io/raft/v3"
@@ -66,5 +67,40 @@ func TestBootstrapWithoutCommitCampaigns(t *testing.T) {
 	}
 	if st := n.RaftStatus().RaftState; st != raft.StatePreCandidate && st != raft.StateCandidate {
 		t.Fatalf("the restarted node is a %s after 3 election timeouts alone, want it to campaign", st)
+	}
+}
+
+// TestPartialBootstrapKeepsNoMembers is the torn case of the same crash:
+// it kept only the first of the three members. The start must not apply
+// it, or the node would know one member and its driver would drop the
+// peers it was started with; with no members, the leader brings it the
+// rest (TestPastRAMRecovery seed 16).
+func TestPartialBootstrapKeepsNoMembers(t *testing.T) {
+	disk := simfs.New()
+	w, rec, err := wal.Open(disk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig(3, []uint64{1, 2, 3})
+	n, err := New(cfg, rec, w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eff, err := n.Process()
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Append(&wal.HardState{Term: 1}, eff.Persist[0].Entries[:1])
+	if err := errors.Join(w.Sync(), w.Close()); err != nil {
+		t.Fatal(err)
+	}
+	if w, rec, err = wal.Open(disk); err != nil {
+		t.Fatal(err)
+	}
+	if n, err = New(cfg, rec, w); err != nil {
+		t.Fatal(err)
+	}
+	if got := n.Members(); len(got) != 0 {
+		t.Fatalf("the restarted node knows %d members from a third of its bootstrap, want none", len(got))
 	}
 }
