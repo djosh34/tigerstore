@@ -1,0 +1,34 @@
+name: diag279 targeted half-open reproduction
+on:
+  push:
+    branches: [diag/279-half-open]
+permissions:
+  contents: read
+jobs:
+  half-open:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Short supply reproduction (seed 4001, seven-second client timeout)
+        run: |
+          set -o pipefail
+          go test -short -v -count=10 -timeout=4m -coverpkg=./internal/... ./internal/sim -run '^TestDiag279HalfOpenClientSupply$' -args -sim.out="$RUNNER_TEMP/diag" 2>&1 | tee "$RUNNER_TEMP/diag.log"
+      - name: Original test (three named seeds, unchanged deadlines)
+        if: always()
+        run: |
+          set -o pipefail
+          go test -short -v -count=3 -timeout=4m -coverpkg=./internal/... ./internal/sim -run '^TestHalfOpenLink$' -args -sim.out="$RUNNER_TEMP/original" 2>&1 | tee "$RUNNER_TEMP/original.log"
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: diag279-evidence
+          path: |
+            ${{ runner.temp }}/diag.log
+            ${{ runner.temp }}/original.log
+            ${{ runner.temp }}/diag
+            ${{ runner.temp }}/original
+          retention-days: 14
