@@ -497,7 +497,8 @@ func (r *rollingRun) connect(from, to, high int) *tls.Conn {
 	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		r.t.Fatal(err)
 	}
-	preface := binary.BigEndian.AppendUint64([]byte{'T', 'S', 1, byte(high)}, r.c.ids[from])
+	// The probe is a known member, so it advertises no address.
+	preface := append(binary.BigEndian.AppendUint64([]byte{'T', 'S', 1, byte(high)}, r.c.ids[from]), 0)
 	if _, err := conn.Write(preface); err != nil {
 		r.t.Fatal(err)
 	}

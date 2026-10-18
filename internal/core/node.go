@@ -593,9 +593,13 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		st.setConf(root.Index, state.confState())
 	}
 	// The commit index on disk can lag what was applied, which a
-	// checkpoint shows.
+	// checkpoint shows, and the members a new cluster's log starts with.
 	hs := rec.HardState
-	hs.Commit = max(hs.Commit, n.applied)
+	boot, err := bootstrapped(rec, disk)
+	if err != nil {
+		return nil, err
+	}
+	hs.Commit = max(hs.Commit, n.applied, boot)
 	n.readInline = true
 	term, err := n.replay(hs.Commit)
 	n.readInline = false
@@ -645,6 +649,32 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	// brings them; its driver keeps the peers it was started with.
 	if len(n.state.members) > 0 {
 		n.out.Members = n.state.cloneMembers()
+	}
+	return n, nil
+}
+
+// bootstrapped is how many entries the log of a node that has applied
+// nothing starts with that are its cluster's first members: the
+// configuration changes of term 1, which Raft's Bootstrap writes as
+// committed on every first member, and which no later term can replace. A
+// crash can keep them without the commit index that follows them on disk
+// (wal.Append). Applied on start, they give Raft its voters, so the node
+// can campaign; without them it could only vote, and a cold restart in
+// which it holds the longest log never elects (#247).
+func bootstrapped(rec *wal.Recovered, disk Log) (uint64, error) {
+	if rec.Root.Index > 0 {
+		return 0, nil
+	}
+	var n uint64
+	for i := uint64(1); i <= rec.Last; i++ {
+		e, err := disk.Entry(i)
+		if err != nil {
+			return 0, fmt.Errorf("core: read entry %d: %w", i, err)
+		}
+		if e.GetTerm() != 1 || e.GetType() != raftpb.EntryConfChange {
+			break
+		}
+		n = i
 	}
 	return n, nil
 }

@@ -231,6 +231,9 @@ func start(c *config, lg *zap.Logger) error {
 	// The node hands the transport the members once it runs; until then,
 	// those it started with.
 	pcfg.ID, pcfg.Peers = ident.id, node.PeerAddrs(ident.members)
+	if len(ec.AdvertisePeerUrls) > 0 {
+		pcfg.Addr = ec.AdvertisePeerUrls[0].Host
+	}
 	pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer, pcfg.Removed = n.Deliver, n.Unreachable, n.Serve, n.Answer, n.Removed
 	t, err := peer.Start(pcfg)
 	if err != nil {

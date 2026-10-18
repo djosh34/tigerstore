@@ -184,9 +184,9 @@ func TestRejectsBadPreface(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	preface := func(magic string, lo, hi byte, id uint64) []byte {
-		p := append([]byte(magic), lo, hi)
-		return binary.BigEndian.AppendUint64(p, id)
+	preface := func(magic string, lo, hi byte, id uint64, addr string) []byte {
+		p := binary.BigEndian.AppendUint64(append([]byte(magic), lo, hi), id)
+		return append(append(p, byte(len(addr))), addr...)
 	}
 	old := binary.BigEndian.AppendUint64(nil, 1)
 	cases := []struct {
@@ -195,13 +195,14 @@ func TestRejectsBadPreface(t *testing.T) {
 		p      []byte
 		reply  []byte
 	}{
-		{"version 1", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 1), []byte{1}},
+		{"version 1", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 1, ""), []byte{1}},
 		{"a version-0 node, no ALPN", nil, old, nil},
-		{"the old preface with ALPN", []string{"tigerstore-peer/1"}, append(old, 0, 0, 0, 0), nil},
-		{"bad magic", []string{"tigerstore-peer/1"}, preface("XX", 1, 1, 1), nil},
-		{"unknown peer", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 9), nil},
-		{"preface range beyond ALPN", []string{"tigerstore-peer/1"}, preface("TS", 2, 3, 1), []byte{0}},
-		{"no shared version in the preface", []string{"tigerstore-peer/1"}, preface("TS", 3, 4, 1), []byte{0}},
+		{"the old preface with ALPN", []string{"tigerstore-peer/1"}, append(old, 0, 0, 0, 0, 0), nil},
+		{"bad magic", []string{"tigerstore-peer/1"}, preface("XX", 1, 1, 1, ""), nil},
+		{"unknown peer without an address", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 9, ""), nil},
+		{"unknown peer with a bad address", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 9, "no port"), nil},
+		{"preface range beyond ALPN", []string{"tigerstore-peer/1"}, preface("TS", 2, 3, 1, ""), []byte{0}},
+		{"no shared version in the preface", []string{"tigerstore-peer/1"}, preface("TS", 3, 4, 1, ""), []byte{0}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
