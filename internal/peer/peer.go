@@ -906,7 +906,7 @@ func (s *sender) run() {
 		s.version.Store(uint32(v))
 		s.since.Store(time.Now().UnixNano())
 		s.counters.active.Inc()
-		err = s.write(ctx, c)
+		err = s.connected(ctx, c)
 		s.counters.active.Dec()
 		s.version.Store(0)
 		s.since.Store(0)
@@ -918,6 +918,30 @@ func (s *sender) run() {
 		}
 		s.t.untrack(c)
 	}
+}
+
+// connected watches the read half even while the writer has no messages.
+// The peer sends no bytes after its handshake, but EOF means it closed this
+// stream (notably on removal). Reconnect so a silent learner can hear the
+// removed reply instead of retaining an idle, dead connection forever.
+func (s *sender) connected(ctx context.Context, c net.Conn) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	readDone := make(chan error, 1)
+	go func() {
+		var b [1]byte
+		_, err := c.Read(b[:])
+		if err == nil {
+			err = errors.New("peer: unexpected bytes on outbound message connection")
+		}
+		cancel()
+		_ = c.Close() // Unblock an in-flight write as well as an idle next.
+		readDone <- err
+	}()
+	err := s.write(ctx, c)
+	cancel()
+	_ = c.Close() // Join the reader when the writer or parent context ends.
+	return errors.Join(err, <-readDone)
 }
 
 // dial connects to the peer and runs the handshake, with id in the
