@@ -139,11 +139,12 @@ func (s *Sim) check(res *Result) error {
 	return nil
 }
 
-// live returns active members whose disks have not been fenced.
+// live returns active members whose disks have not been fenced, but a
+// rotted node that stopped too late to restart before the end.
 func (s *Sim) live() []*node {
 	var out []*node
 	for _, n := range s.nodes {
-		if !n.out() {
+		if !n.out() && !n.rotStopped {
 			out = append(out, n)
 		}
 	}
@@ -678,7 +679,7 @@ func (s *Sim) recovered() int64 {
 	// leader late and cost another election (seed 745672193 before #106). Recovery
 	// counts from the later of healing and the last such fsync.
 	t := max(s.healAt, s.grayHealedAt) + s.cfg.LiveAfter
-	if len(s.live()) < len(s.nodes) {
+	if slices.ContainsFunc(s.nodes, (*node).out) {
 		// With a node fenced, every election needs both others. One with
 		// the longer log and one with the higher term reject each other's
 		// pre-votes until the first learns the term from a rejection: one

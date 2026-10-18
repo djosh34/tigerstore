@@ -92,6 +92,9 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration) erro
 	if err == nil && time.Now().After(w.deadline) {
 		err = errWitnessTimeout
 	}
+	if errors.Is(err, errWitnessTimeout) {
+		err = fmt.Errorf("%w; %s", err, w.stoppedAt())
+	}
 	if err != nil {
 		return fmt.Errorf("witness check (%s) of %d operations: %w", mode, len(h.Ops), err)
 	}
@@ -126,6 +129,23 @@ type witness struct {
 	// kvs caches the keys at revision kvsRev, for stateAt.
 	kvs    []history.KeyValue
 	kvsRev int64
+	// observed and toObserve count the ops observe placed and has to
+	// place, and search is the search of FromRevisions, for the report
+	// of a timeout.
+	observed, toObserve int
+	search              *revisionOrder
+}
+
+// stoppedAt says how far a check got when it ran out of time.
+func (w *witness) stoppedAt() string {
+	s := fmt.Sprintf("the order held %d events up to revision %d", len(w.events), w.live.rev)
+	if w.toObserve > 0 {
+		s += fmt.Sprintf(", and %d of the %d ops that changed nothing had their place", w.observed, w.toObserve)
+	}
+	if w.search != nil {
+		s += "; " + w.search.progress()
+	}
+	return s
 }
 
 // event is one mutation of the order, sent by op, or by no op (-1): a
@@ -404,10 +424,12 @@ func (w *witness) observe() error {
 		return cmp.Or(cmp.Compare(w.h.Ops[a].Call, w.h.Ops[b].Call), cmp.Compare(a, b))
 	})
 	placed := newPlacedMax(w.h, ops)
+	w.observed, w.toObserve = 0, len(ops)
 	for _, i := range ops {
 		if w.tick() {
 			return errWitnessTimeout
 		}
+		w.observed++
 		op := &w.h.Ops[i]
 		lo, hi := events(op)
 		lo = max(lo, placed.before(op.Call))
@@ -477,17 +499,7 @@ func outputOf(o outcome) string {
 }
 
 // describe names op i for a failure.
-func (w *witness) describe(i int) string {
-	op := &w.h.Ops[i]
-	got := "nothing"
-	switch {
-	case op.Resp != nil:
-		got = jsonOf(op.Resp)
-	case op.Err != nil:
-		got = fmt.Sprintf("error %q", op.Err.Message)
-	}
-	return fmt.Sprintf("op %d (client %d, %d to %d) %s with answer %s", i, op.Client, op.Call, op.Return, describeRequest(w.reqs[i]), got)
-}
+func (w *witness) describe(i int) string { return describeOp(w.h, i) }
 
 // eventBounds returns, for an op, the states that the placed events allow
 // it at: after every event of an acked op that returned before its call,

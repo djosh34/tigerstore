@@ -15,8 +15,10 @@ type membershipWork struct {
 	stage int
 	id    uint64
 	list  bool
-	// removedAt is when the removal of the fourth member completed.
+	// removedAt is when the removal of the fourth member completed, and
+	// last the last answer that did not complete a stage.
 	removedAt int64
+	last      string
 }
 
 const (
@@ -85,6 +87,7 @@ func (s *Sim) memberReply(req, resp proto.Message, err error) bool {
 	w := &s.membership
 	if err != nil {
 		s.tracef("membership: stage %d: %v", w.stage, err)
+		w.last = fmt.Sprintf("%T at %s: %v", req, seconds(s.now()), err)
 		w.list = true
 		s.mu.Unlock()
 		return true
@@ -108,6 +111,7 @@ func (s *Sim) memberReply(req, resp proto.Message, err error) bool {
 	}
 	w.list = false
 	if !match {
+		w.last = fmt.Sprintf("the member list at %s: %s", seconds(s.now()), describeMembers(list.GetMembers()))
 		s.mu.Unlock()
 		return true
 	}
@@ -186,8 +190,8 @@ func membershipConfig(seed uint64) Config {
 }
 
 func (s *Sim) checkMembership() error {
-	if s.membership.stage != 4 {
-		return fmt.Errorf("membership: completed %d of 4 changes", s.membership.stage)
+	if w := s.membership; w.stage != 4 {
+		return fmt.Errorf("membership: completed %d of 4 changes; the last answer that did not complete stage %d was %s", w.stage, w.stage, w.last)
 	}
 	for _, n := range s.live() {
 		if c := n.proc.core; !s.membership.matches(c.Members()) || !slices.Contains(c.RemovedMembers(), s.membership.id) {

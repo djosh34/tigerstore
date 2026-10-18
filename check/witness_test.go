@@ -268,8 +268,9 @@ func TestWitnessedBroken(t *testing.T) {
 	}
 }
 
-// TestWitnessedTimeout checks that running out of time is a failure, also
-// for a history too small to check the clock on the way.
+// TestWitnessedTimeout checks that running out of time is a failure that
+// says how far the check got, also for a history too small to check the
+// clock on the way.
 func TestWitnessedTimeout(t *testing.T) {
 	b := newBuilder(t, "a")
 	for i := range 2000 {
@@ -279,7 +280,7 @@ func TestWitnessedTimeout(t *testing.T) {
 	small.put(0, "a", "1")
 	for _, h := range []*history.History{b.done(), small.done()} {
 		for _, mode := range bothModes {
-			mustFail(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Nanosecond), "timed out")
+			mustFail(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Nanosecond), "timed out; the order held")
 		}
 	}
 }

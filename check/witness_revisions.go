@@ -8,6 +8,7 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/djosh34/tigerstore/history"
 )
@@ -30,6 +31,7 @@ func (w *witness) fromRevisions() error {
 		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
 		lb: map[int]int64{}, alive: map[int64]int64{}, grants: map[int64]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: map[int]bool{}, ready: map[int]bool{},
 	}
+	w.search = r
 	if err := r.index(); err != nil {
 		return err
 	}
@@ -93,6 +95,27 @@ type revisionOrder struct {
 	// revision.
 	failure error
 	at      int64
+	// rev is the revision the search is at, stack its open gaps, and
+	// backs how often it went back to one.
+	rev   int64
+	stack []*frame
+	backs int
+}
+
+// progress says where the search is, for the report of a timeout.
+func (r *revisionOrder) progress() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "the search was at revision %d of %d with %d gaps open and had gone back %d times", r.rev, r.top, len(r.stack), r.backs)
+	for _, f := range r.stack[max(0, len(r.stack)-3):] {
+		fmt.Fprintf(&b, "; gap %d had tried %d of its %d candidates", f.rev, f.next, len(f.cands))
+		if f.next > 0 && f.next <= len(f.cands) {
+			fmt.Fprintf(&b, ", the last %s", r.w.describe(f.cands[f.next-1]))
+		}
+	}
+	if r.failure != nil {
+		fmt.Fprintf(&b, "; the furthest it got was revision %d, where %v", r.at, r.failure)
+	}
+	return b.String()
 }
 
 // optional is an ambiguous mutation that changes no key and may go in
@@ -796,8 +819,8 @@ func (r *revisionOrder) search() error {
 	if !r.finish(1) {
 		return r.failure
 	}
-	var stack []*frame
 	for rev := int64(2); ; {
+		r.rev = rev
 		if w.tick() {
 			return errWitnessTimeout
 		}
@@ -816,24 +839,25 @@ func (r *revisionOrder) search() error {
 			}
 			ok = r.dead(rev, err)
 		} else {
-			ok = r.write(rev, &stack) && r.finish(rev)
+			ok = r.write(rev) && r.finish(rev)
 		}
 		if ok {
 			rev++
 			continue
 		}
 		// Back to the last gap, for its next candidate.
-		if len(stack) == 0 {
+		if len(r.stack) == 0 {
 			return r.failure
 		}
-		f := stack[len(stack)-1]
+		f := r.stack[len(r.stack)-1]
 		r.restore(f.mark)
+		r.backs++
 		rev = f.rev
 	}
 }
 
 // write places the writer of rev, the next candidate if rev is a gap.
-func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
+func (r *revisionOrder) write(rev int64) bool {
 	w := r.w
 	if i, ok := r.writers[rev]; ok {
 		r.expire(w.h.Ops[i].Call, 0)
@@ -853,11 +877,11 @@ func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
 		return r.dead(rev, fmt.Errorf("%s, whose value a client saw at revision %d, cannot write it in the order so far; the order around it: %s", w.describe(i), rev, w.around(len(w.events))))
 	}
 	var f *frame
-	if n := len(*stack); n > 0 && (*stack)[n-1].rev == rev {
-		f = (*stack)[n-1]
+	if n := len(r.stack); n > 0 && r.stack[n-1].rev == rev {
+		f = r.stack[n-1]
 	} else {
 		f = &frame{rev: rev, mark: r.save(), cands: r.candidates(rev)}
-		*stack = append(*stack, f)
+		r.stack = append(r.stack, f)
 	}
 	for ; f.next < len(f.cands); f.next++ {
 		i := f.cands[f.next]
@@ -870,7 +894,7 @@ func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
 		f.next++
 		return true
 	}
-	*stack = (*stack)[:len(*stack)-1]
+	r.stack = r.stack[:len(r.stack)-1]
 	return r.dead(rev, fmt.Errorf("no acked op wrote revision %d, and no ambiguous mutation or acked revoke can have written it in the order so far; the order before it: %s", rev, w.around(len(w.events))))
 }
 

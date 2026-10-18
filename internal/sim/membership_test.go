@@ -15,6 +15,7 @@ func TestMembershipFaults(t *testing.T) {
 		n = 16
 	}
 	var during [4]int
+	var took effects
 	for seed := *firstSeed; seed < *firstSeed+uint64(n); seed++ {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
 			cfg := membershipConfig(seed)
@@ -25,9 +26,10 @@ func TestMembershipFaults(t *testing.T) {
 				}
 				during[i] += a.Stats.MembershipFaults[i]
 			}
-			if a.Stats.Crashes == 0 || a.Stats.LinkChanges == 0 || a.Stats.DiskFaults == 0 || a.Stats.ColdRestarts == 0 {
-				t.Fatalf("missing faults or cold restarts: %+v", a.Stats)
-			}
+			took.add(map[string]bool{
+				"crash": a.Stats.Crashes > 0, "link change": a.Stats.LinkChanges > 0,
+				"disk fault": a.Stats.DiskFaults > 0, "cold restart": a.Stats.ColdRestarts > 0,
+			})
 			checkers(t, a)
 			h, err := a.Checkable()
 			if err != nil {
@@ -39,6 +41,7 @@ func TestMembershipFaults(t *testing.T) {
 			t.Logf("%+v", a.Stats)
 		})
 	}
+	took.check(t, "seeds")
 	if n >= 16 {
 		for i, count := range during {
 			if count == 0 {

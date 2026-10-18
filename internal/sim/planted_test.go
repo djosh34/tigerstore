@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/djosh34/tigerstore/check"
@@ -205,14 +204,12 @@ func TestPlanted(t *testing.T) {
 		t.Fatalf("unknown planted bug %q", name)
 	}
 	want := regexp.MustCompile(c.want)
-	planted.Active = name
-	t.Cleanup(func() { planted.Active = "" })
+	planted.Active, activePlanted = name, name
+	t.Cleanup(func() { planted.Active, activePlanted = "", "" })
 	for seed := uint64(1); seed <= uint64(c.seeds); seed++ {
 		caught := false
 		if !t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			var res *Result
-			var err error
-			synctest.Test(t, func(*testing.T) { res, err = Run(c.cfg(seed)) })
+			res, err := runSeed(t, c.cfg(seed))
 			if err == nil {
 				err = independent(res)
 			}

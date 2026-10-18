@@ -217,7 +217,8 @@ func TestLinearizableBroken(t *testing.T) {
 	}
 }
 
-// TestLinearizableTimeout checks that running out of time is a failure.
+// TestLinearizableTimeout checks that running out of time is a failure
+// that says how far the search got.
 func TestLinearizableTimeout(t *testing.T) {
 	b := newBuilder(t, "a", "b", "c", "d")
 	for i := range 2000 {
@@ -229,7 +230,7 @@ func TestLinearizableTimeout(t *testing.T) {
 		h.Ops[i].Call, h.Ops[i].Return = int64(i), int64(i)+1_000_000
 		h.Ops[i].Client = i
 	}
-	mustFail(t, "Linearizable", Linearizable(h, time.Nanosecond), "linearizability check")
+	mustFail(t, "Linearizable", Linearizable(h, time.Nanosecond), "the longest order the search found holds")
 }
 
 func TestValidate(t *testing.T) {

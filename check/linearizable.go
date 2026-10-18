@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -14,14 +15,26 @@ import (
 	"github.com/djosh34/tigerstore/history"
 )
 
+// ShortOps is the most operations a history may have for Porcupine. The
+// simulator's short runs (TestLinearizable) have 2,400 to 3,200 and take
+// it milliseconds. Its 60-second membership runs have 5,000 to 6,700,
+// and now and then one did not finish in 3 minutes (#244), which the
+// witness checker passes in under a second. etcd's robustness tests keep
+// their histories short in the same way.
+const ShortOps = 4000
+
+// ShortEnough reports whether h is short enough for Porcupine. A longer
+// one gets the witness checker only, which runs on every history.
+func ShortEnough(h *history.History) bool { return len(h.Ops) <= ShortOps }
+
 // Linearizable checks h.Ops with Porcupine against the ported etcd model, as
 // etcd v3.7.2's robustness tests do (tests/robustness/model and validate).
 //
 // The store must be empty at the start of the history. Keep checked histories
-// small and isolated, about 16 clients and 10k operations: Porcupine's search
-// grows fast with concurrency and with bugs, and every other writer to the
-// store must be in the history. Not finishing within timeout is a failure,
-// never a pass.
+// short and isolated (ShortEnough): Porcupine's search grows fast with
+// concurrency and with bugs, and every other writer to the store must be in
+// the history. Not finishing within timeout is a failure, never a pass; the
+// error then says how far the search got.
 //
 // A lease that may expire during the history needs an op that models the
 // expiry: a LeaseRevoke from its own client, called when the lease was
@@ -35,6 +48,8 @@ func Linearizable(h *history.History, timeout time.Duration) error {
 	}
 	ops := make([]porcupine.Operation, 0, len(h.Ops))
 	var reqs []history.Request
+	// index is the position in h.Ops of each of ops.
+	var index []int
 	for i := range h.Ops {
 		op := &h.Ops[i]
 		in := input{req: modelRequest(op)}
@@ -56,6 +71,7 @@ func Linearizable(h *history.History, timeout time.Duration) error {
 		}
 		ops = append(ops, porcupine.Operation{ClientId: op.Client, Input: in, Call: op.Call, Output: out, Return: ret})
 		reqs = append(reqs, in.req)
+		index = append(index, i)
 	}
 	keys := keysOf(reqs)
 
@@ -80,10 +96,10 @@ func Linearizable(h *history.History, timeout time.Duration) error {
 	// Porcupine does not always stop at its timeout (upstream issue 44), so
 	// as etcd does, trip the model itself a little later.
 	timer := time.AfterFunc(timeout*11/10, func() { tripped.Store(true) })
-	res := porcupine.CheckOperationsTimeout(m, ops, timeout)
+	res, info := porcupine.CheckOperationsVerbose(m, ops, timeout)
 	timer.Stop()
 	if tripped.Load() {
-		return fmt.Errorf("linearizability check of %d operations passed its deadline of %s", len(ops), timeout)
+		return fmt.Errorf("linearizability check of %d operations passed its deadline of %s; %s", len(ops), timeout, progress(h, ops, index, info))
 	}
 	switch res {
 	case porcupine.Ok:
@@ -92,11 +108,57 @@ func Linearizable(h *history.History, timeout time.Duration) error {
 		if unsupported.Load() {
 			return fmt.Errorf("history of %d operations has a historical range inside a txn, which the model does not support", len(ops))
 		}
-		return fmt.Errorf("history of %d operations is not linearizable", len(ops))
+		return fmt.Errorf("history of %d operations is not linearizable; %s", len(ops), progress(h, ops, index, info))
 	case porcupine.Unknown:
-		return fmt.Errorf("linearizability check of %d operations timed out after %s", len(ops), timeout)
+		return fmt.Errorf("linearizability check of %d operations timed out after %s; %s", len(ops), timeout, progress(h, ops, index, info))
 	}
 	return errors.New("porcupine returned an unknown result")
+}
+
+// progress says how far Porcupine's search got: the longest order it
+// found, and the op it could not place after it, the one of those left
+// that returned first. index maps ops to h.Ops.
+func progress(h *history.History, ops []porcupine.Operation, index []int, info porcupine.LinearizationInfo) string {
+	var longest []int
+	for _, part := range info.PartialLinearizations() {
+		for _, l := range part {
+			if len(l) > len(longest) {
+				longest = l
+			}
+		}
+	}
+	in := make([]bool, len(ops))
+	for _, k := range longest {
+		in[k] = true
+	}
+	stuck := -1
+	for k := range ops {
+		if !in[k] && (stuck < 0 || ops[k].Return < ops[stuck].Return) {
+			stuck = k
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "the longest order the search found holds %d of the %d operations", len(longest), len(ops))
+	if n := len(longest); n > 0 {
+		fmt.Fprintf(&b, " and ends with %s", describeOp(h, index[longest[n-1]]))
+	}
+	if stuck >= 0 {
+		fmt.Fprintf(&b, "; it could not place %s after it", describeOp(h, index[stuck]))
+	}
+	return b.String()
+}
+
+// describeOp names op i of h for a failure.
+func describeOp(h *history.History, i int) string {
+	op := &h.Ops[i]
+	got := "nothing"
+	switch {
+	case op.Resp != nil:
+		got = jsonOf(op.Resp)
+	case op.Err != nil:
+		got = fmt.Sprintf("error %q", op.Err.Message)
+	}
+	return fmt.Sprintf("op %d (client %d, %d to %d) %s with answer %s", i, op.Client, op.Call, op.Return, describeRequest(modelRequest(op)), got)
 }
 
 type input struct{ req history.Request }

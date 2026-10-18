@@ -2,6 +2,7 @@ package sim
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"time"
 
@@ -138,7 +139,15 @@ func (s *Sim) stallLeader() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if i := s.leaderIdx(); i >= 0 {
-		s.stall(s.nodes[i], s.healAt)
+		n := s.nodes[i]
+		s.stall(n, s.healAt)
+		s.stalledLeader = n
+		for _, j := range n.pending {
+			if j.first != math.MaxUint64 && !j.install {
+				s.heldAppendAt = j.at
+				break
+			}
+		}
 	}
 }
 
@@ -152,6 +161,7 @@ func (s *Sim) downFollower() bool {
 	}
 	for _, n := range s.nodes {
 		if p := n.proc; p != nil && p.node.Leader() != 0 && p.node.Leader() != n.id {
+			n.why = "the run holds it down"
 			s.crash(n)
 			s.restartLater(n, s.downFor)
 			return true
@@ -338,7 +348,9 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	defer r.shutdown()
 	defer func() {
 		if err != nil {
-			// The failure's report shows what the cold restart did.
+			// The failure's report shows what the cold restart did, and
+			// how it left its nodes.
+			err = fmt.Errorf("%w\nthe nodes of the cold restart:\n%s", err, r.report())
 			r.mu.Lock()
 			lines := slices.Clone(r.trace)
 			r.mu.Unlock()
