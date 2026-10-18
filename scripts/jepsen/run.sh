@@ -100,7 +100,8 @@ for node in n1 n2 n3; do
     # The image's LazyFS 0.3.0 has the rename race of #267. Replace it with
     # the chaos jobs' pin and patch, where Jepsen mounts it from.
     for file in lazyfs.sh lazyfs-namespace.patch; do docker cp "scripts/$file" "jepsen-$node:/opt/test-assets/$file"; done
-    docker exec "jepsen-$node" bash -euc '
+    # From /: the image's working directory is the one the build replaces.
+    docker exec -w / "jepsen-$node" bash -euc '
       bin=$(bash /opt/test-assets/lazyfs.sh /opt/jepsen/lazyfs)
       test "$bin" = /opt/jepsen/lazyfs/lazyfs/build/lazyfs
       git -C /opt/jepsen/lazyfs rev-parse HEAD
