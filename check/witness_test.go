@@ -154,6 +154,23 @@ func TestWitnessedGood(t *testing.T) {
 			}
 			return h
 		}},
+		{"ambiguous compaction between two reads of one revision", func(t *testing.T) *history.History {
+			// A read at revision 2 succeeded at revision 3, a later one
+			// found 2 compacted, and a read after that still answered at
+			// revision 3: the ambiguous compaction goes in at revision 3,
+			// between the two reads (#277, seed 8143538).
+			b := newBuilder(t, "a")
+			b.put(0, "a", "1")
+			b.put(0, "a", "2")
+			b.do(1, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+			compact := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+			b.do(3, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+			b.do(4, history.Request{Range: &history.RangeRequest{Key: "a"}})
+			b.put(0, "a", "3")
+			h := b.done()
+			h.Ops[compact].Resp, h.Ops[compact].Err = nil, errUnavailable
+			return h
+		}},
 		{"lease expiry before an ambiguous compaction called after its rejection", func(t *testing.T) *history.History {
 			// An early rejection makes the compaction due from revision
 			// 3, where it goes in before a put that was called before the

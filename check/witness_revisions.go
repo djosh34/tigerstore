@@ -730,8 +730,10 @@ func (r *revisionOrder) scheduleOptional() {
 			// comes before every op called after it returned, so the
 			// compaction goes in before the event of the first such op,
 			// and by the end of the lowest header revision of an acked
-			// one. It goes after the revisions of the acked reads below
-			// its revision, which may come late in their own; and after
+			// one. It goes no earlier than the header revisions of the
+			// acked reads below its revision, which may come late in
+			// their own: at such a revision it can still come after the
+			// read, and the model checks that it does (#277); and after
 			// the acked compactions to its revision or below, whose
 			// answers it would turn into errors, but at their revision,
 			// before the ops that follow them there (#258).
@@ -747,7 +749,7 @@ func (r *revisionOrder) scheduleOptional() {
 			}
 			for rev, by := range keep {
 				if rev < c {
-					at = max(at, by+1)
+					at = max(at, by)
 				}
 			}
 			for _, k := range compactions {
