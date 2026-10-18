@@ -789,7 +789,8 @@ func (c *stallConn) Read(b []byte) (int, error) {
 	return c.Conn.Read(b)
 }
 
-// slowWatch opens a watch with previous values on target's client link,
+// slowWatch reads a baseline then opens a watch from its next revision
+// with previous values on target's client link,
 // then stops reading from its connection for the hold, while the
 // workload writes, so the node's sends to it back up. The node must keep
 // serving everyone else (the probes go through every node) and, once the
@@ -847,15 +848,23 @@ func (r *runner) slowWatch(ctx context.Context, s step, target int, rec *record)
 	return holdErr
 }
 
-// startSlowWatch establishes the baseline used by slowWatch's reference watch.
+// startSlowWatch pins an explicit baseline for both watches. clientv3 v3.7.2
+// resumes a watch without a start revision at its created header revision
+// (inclusive) until the first event. A reset in that interval can replay the
+// baseline revision, so the created header cannot define our exclusive start.
 func startSlowWatch(ctx context.Context, cl *clientv3.Client) (clientv3.WatchChan, int64, error) {
-	wc := cl.Watch(ctx, prefix, clientv3.WithPrefix(), clientv3.WithPrevKV(), clientv3.WithCreatedNotify())
+	g, err := cl.Get(ctx, prefix)
+	if err != nil {
+		return nil, 0, fmt.Errorf("read the slow watch baseline: %w", err)
+	}
+	start := g.Header.Revision
+	wc := cl.Watch(ctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(start+1), clientv3.WithPrevKV(), clientv3.WithCreatedNotify())
 	select {
 	case resp := <-wc:
 		if !resp.Created {
 			return nil, 0, fmt.Errorf("the slow client's watch answered %+v before it was created", resp)
 		}
-		return wc, resp.Header.Revision, nil
+		return wc, start, nil
 	case <-time.After(5 * time.Second):
 		return nil, 0, errors.New("the slow client's watch was not created")
 	}
