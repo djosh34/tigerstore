@@ -393,6 +393,19 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 		// without a quorum of the voters they know: nothing commits.
 		return nil
 	}
+	// Two nodes that start within a message's delay of each other and draw
+	// the same election timeouts split their votes, one round in ten, so
+	// with no leader yet they get up to three more such periods
+	// (TestSlowFetch seed 5042 on #268).
+	for range 3 {
+		if slices.ContainsFunc(r.nodes, func(n *node) bool { return n.proc != nil && !n.out() && n.proc.core.Leader() != 0 }) {
+			break
+		}
+		r.thaw()
+		if err := r.runFor(6 * Second); err != nil {
+			return err
+		}
+	}
 	// The leader may have proposed a lease expiry just before the end, so
 	// the follower has yet to learn that it committed (seed 736998125).
 	// One more second settles that.
