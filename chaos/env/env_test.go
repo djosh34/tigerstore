@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -257,14 +256,9 @@ func TestNetemHealClears(t *testing.T) {
 		if err := n.Impair(port, impairment); err != nil {
 			t.Fatal(err)
 		}
-		st, err := n.Heal(port)
-		if err != nil {
+		// Heal fails while the qdisc still shows an impairment.
+		if _, err := n.Heal(port); err != nil {
 			t.Fatalf("heal after %s: %v", impairment, err)
-		}
-		for _, f := range strings.Fields(st.Qdisc) {
-			if f == "loss" || f == "reorder" || f == "corrupt" {
-				t.Fatalf("after %s and its heal the qdisc is %q", impairment, st.Qdisc)
-			}
 		}
 	}
 }

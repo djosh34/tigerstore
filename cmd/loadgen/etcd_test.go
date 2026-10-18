@@ -132,11 +132,12 @@ func TestEtcdWorkloads(t *testing.T) {
 
 // checkWindow checks a short run's window: requests arrived in it, all
 // of them succeeded, and the latencies cover them. Ops counts the calls
-// that finished inside the window, which a slow server can leave at 0
-// with every call answered after it (#271); then the server CPU per op is
-// 0 too.
+// that finished inside the window. Only etcd's slow deletes can leave it
+// at 0, with every call answered after it (#271); then the server CPU per
+// op is 0 too.
 func checkWindow(res *result) error {
-	if res.Cohort == 0 || res.CohortFailed != 0 || res.Latency.Count != uint64(res.Cohort) || (res.Ops == 0) != (res.ServerCPUUsPerOp == 0) || !res.Valid {
+	late := res.Ops == 0 && res.Workload == "delete"
+	if res.Cohort == 0 || res.CohortFailed != 0 || res.Latency.Count != uint64(res.Cohort) || (res.Ops == 0 && !late) || (res.Ops == 0) != (res.ServerCPUUsPerOp == 0) || !res.Valid {
 		return fmt.Errorf("%d ops, cohort %d with %d failed, %d latencies, %.1f us server CPU per op, valid %v",
 			res.Ops, res.Cohort, res.CohortFailed, res.Latency.Count, res.ServerCPUUsPerOp, res.Valid)
 	}
@@ -144,13 +145,15 @@ func checkWindow(res *result) error {
 }
 
 // TestCheckWindow is #271's case: every delete of the window answered
-// after it, so the window counts 0 ops. The run is still a valid one.
+// after it, so the window counts 0 ops. The run is still a valid one, but
+// not for any other workload.
 func TestCheckWindow(t *testing.T) {
-	late := &result{Ops: 0, Cohort: 1508, Latency: latency{Count: 1508}, Valid: true}
+	late := &result{Workload: "delete", Ops: 0, Cohort: 1508, Latency: latency{Count: 1508}, Valid: true}
 	if err := checkWindow(late); err != nil {
 		t.Fatalf("calls answered after the window: %v", err)
 	}
 	for _, bad := range []*result{
+		{Workload: "put", Ops: 0, Cohort: 1508, Latency: latency{Count: 1508}, Valid: true},
 		{Ops: 10, Cohort: 0, Valid: true, ServerCPUUsPerOp: 3},
 		{Ops: 10, Cohort: 10, CohortFailed: 1, Latency: latency{Count: 10}, ServerCPUUsPerOp: 3, Valid: true},
 		{Ops: 10, Cohort: 10, Latency: latency{Count: 9}, ServerCPUUsPerOp: 3, Valid: true},
