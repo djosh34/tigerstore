@@ -14,7 +14,8 @@ def stamp(text):
 
 def parse(line):
     stats = dict((k, int(v)) for k, v in re.findall(r'(\w+) (\d+)', line.split('stat={')[1].split('}')[0]))
-    metrics = dict((k, float(v)) for k, v in re.findall(r'(\w+) ([\d.]+)', line.split('; ', 1)[1]))
+    metrics_text = line.split('; ', 1)[1]
+    metrics = {} if 'no metrics:' in metrics_text else dict((k, float(v)) for k, v in re.findall(r'(\w+) (\d+(?:\.\d+)?)', metrics_text))
     return {
         'time': line.split()[0],
         'current': int(re.search(r'current=(\d+)', line)[1]),

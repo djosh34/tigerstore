@@ -34,6 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Download series, summarize and extract peak rings (no new soak)
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN: ${{ inputs.evidence_run }}
