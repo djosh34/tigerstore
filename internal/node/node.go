@@ -1349,7 +1349,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		n.log.mu.Lock()
 		err := w.Place()
 		n.log.mu.Unlock()
-		err = errors.Join(old.Close(), err)
+		err = errors.Join(wal.DropFileCache(old), old.Close(), err)
 		old, dir = nil, true
 		if err != nil {
 			fail(fmt.Errorf("%w: start a segment: %w", core.ErrDisk, err))
@@ -1639,7 +1639,7 @@ func (n *Node) syncLog(ctx context.Context, h prometheus.Observer) error {
 	n.log.mu.Lock()
 	err = w.Place()
 	n.log.mu.Unlock()
-	return errors.Join(old.Close(), err, n.log.fs.SyncDir())
+	return errors.Join(wal.DropFileCache(old), old.Close(), err, n.log.fs.SyncDir())
 }
 
 // prepareSegments readies the file of each segment the disk goroutine
@@ -1789,7 +1789,7 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 		}
 		if f != nil {
 			if err == nil {
-				err = syncTimed(f, m.SnapFsync)
+				err = errors.Join(syncTimed(f, m.SnapFsync), wal.DropFileCache(f))
 			}
 			err = errors.Join(err, f.Close())
 		}

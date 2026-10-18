@@ -12,8 +12,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// residentBytes is how much of the files under dir the page cache holds.
-func residentBytes(t *testing.T, dir string) int64 {
+// residentBytes is how much of the files under dir whose names match
+// pattern the page cache holds.
+func residentBytes(t *testing.T, dir, pattern string) int64 {
 	t.Helper()
 	var total int64
 	// The node's cleaner may remove a file during the walk; a removed
@@ -23,6 +24,9 @@ func residentBytes(t *testing.T, dir string) int64 {
 			return nil
 		}
 		if err != nil || !d.Type().IsRegular() {
+			return err
+		}
+		if ok, err := filepath.Match(pattern, d.Name()); !ok || err != nil {
 			return err
 		}
 		f, err := os.Open(path)
@@ -75,14 +79,26 @@ func TestPageCacheGivenBack(t *testing.T) {
 			want[k] = round
 		}
 	}
+	// Before any read: the checkpoints the node wrote are closed, and
+	// only their drop on close gives their pages back.
+	waitPageCache(t, dir, "after the writes")
+	// The reads open and map the sealed segments.
 	if err := checkValues(r.n, want); err != nil {
 		t.Fatal(err)
 	}
-	var held int64
+	waitPageCache(t, dir, "after the reads")
+}
+
+// waitPageCache waits until the page cache holds less than 1 MiB of the
+// files in dir and none of its checkpoints.
+func waitPageCache(t *testing.T, dir, when string) {
+	t.Helper()
+	var held, ckpts int64
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
-		if held = residentBytes(t, dir); held < 1<<20 {
+		held, ckpts = residentBytes(t, dir, "*"), residentBytes(t, dir, "ckpt-*")
+		if held < 1<<20 && ckpts == 0 {
 			return
 		}
 	}
-	t.Fatalf("the page cache still holds %d KiB of the node's files", held>>10)
+	t.Fatalf("%s the page cache still holds %d KiB of the node's files, %d KiB of them checkpoints", when, held>>10, ckpts>>10)
 }
