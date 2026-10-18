@@ -546,7 +546,12 @@ func TestSlowFetch(t *testing.T) {
 // at 5 s, with no other fault, until the peer write timeout fails it 5 s
 // later. The leader and the other follower are a quorum, so every call to
 // them must succeed and take under a second; the cut-off follower must
-// serve again 2 s after the connection fails.
+// serve again 2 s after the connection fails. A call that a node answers
+// with "server stopped" as it starts again from its log after a snapshot
+// install is left out, as the liveness rule does: the simulator's window
+// of 16 bytes (tinyLimits) makes a follower that falls one entry behind
+// install a snapshot, which under 12 clients happens every 10 to 20 ms
+// (#266).
 func TestHalfOpenLink(t *testing.T) {
 	for seed := uint64(1); seed <= 3; seed++ {
 		cfg := DefaultConfig(4000 + seed)
@@ -564,7 +569,7 @@ func TestHalfOpenLink(t *testing.T) {
 		h := res.halfOpens[0]
 		healthy := 0
 		for _, r := range res.History {
-			if r.Call < h.start || r.Call >= h.end || r.Node == h.to {
+			if r.Call < h.start || r.Call >= h.end || r.Node == h.to || errors.Is(r.Err, rpctypes.ErrGRPCStopped) {
 				continue
 			}
 			if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {
