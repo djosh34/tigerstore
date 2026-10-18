@@ -149,11 +149,13 @@ type Config struct {
 const (
 	// minVersion and maxVersion are the protocol versions this binary
 	// speaks. Version 0 stands for the unversioned protocol from before
-	// version 1, which this binary does not speak. A release that raises
-	// maxVersion keeps minVersion at or below the previous release's
-	// maxVersion, so that nodes can be upgraded one at a time.
-	minVersion = 1
-	maxVersion = 1
+	// version 1. Version 2 added the dialer's address to the preface
+	// (#250); no release spoke version 1, so this binary speaks neither. A
+	// release that raises maxVersion keeps minVersion at or below the
+	// previous release's maxVersion, so that nodes can be upgraded one at
+	// a time.
+	minVersion = 2
+	maxVersion = 2
 )
 
 // magic starts the preface.

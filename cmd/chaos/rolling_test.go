@@ -26,8 +26,8 @@ import (
 )
 
 // These tests use two builds of this source, not historical releases.
-// The old build supports entry format 1 and peer range 1-1; the new one
-// supports entry formats 1-2 and peer range 1-2. The workflow changes only
+// The old build supports entry format 1 and peer range 2-2; the new one
+// supports entry formats 1-2 and peer range 2-3. The workflow changes only
 // those constants. No test hook runs inside the server.
 func TestRollingUpgrade(t *testing.T) {
 	for _, seed := range []uint64{148, 174} {
@@ -137,6 +137,9 @@ func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 	r.stage("rollback announces after last upgrade", 1)
 }
 
+// peerMin is the oldest peer protocol version both builds speak.
+const peerMin = 2
+
 type rollingRun struct {
 	t                   *testing.T
 	c                   *cluster
@@ -234,9 +237,9 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 func (r *rollingRun) start(i int, bin string) {
 	r.t.Helper()
 	r.c.bin = bin
-	r.ranges[i] = 1
+	r.ranges[i] = peerMin
 	if bin == r.newBin {
-		r.ranges[i] = 2
+		r.ranges[i] = peerMin + 1
 	}
 	if err := r.c.start(r.c.nodes[i]); err != nil {
 		r.t.Fatal(err)
@@ -327,9 +330,9 @@ func (r *rollingRun) version(i, want int) {
 
 func (r *rollingRun) binaryRange(i int, body string) error {
 	want := []string{
-		"tigerstore_peer_protocol_min_version 1",
+		fmt.Sprintf("tigerstore_peer_protocol_min_version %d", peerMin),
 		fmt.Sprintf("tigerstore_peer_protocol_max_version %d", r.ranges[i]),
-		fmt.Sprintf("tigerstore_cluster_version_max %d", r.ranges[i]),
+		fmt.Sprintf("tigerstore_cluster_version_max %d", r.ranges[i]-peerMin+1),
 	}
 	for _, line := range want {
 		if !strings.Contains(body, "\n"+line+"\n") {
@@ -479,7 +482,7 @@ func (r *rollingRun) connect(from, to, high int) *tls.Conn {
 	cfg.Certificates = []tls.Certificate{cert}
 	cfg.MinVersion = tls.VersionTLS13
 	cfg.NextProtos = nil
-	for v := high; v >= 1; v-- {
+	for v := high; v >= peerMin; v-- {
 		cfg.NextProtos = append(cfg.NextProtos, fmt.Sprintf("tigerstore-peer/%d", v))
 	}
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", r.c.peers[from][to].Proxy.Addr(), cfg)
@@ -498,7 +501,7 @@ func (r *rollingRun) connect(from, to, high int) *tls.Conn {
 		r.t.Fatal(err)
 	}
 	// The probe is a known member, so it advertises no address.
-	preface := append(binary.BigEndian.AppendUint64([]byte{'T', 'S', 1, byte(high)}, r.c.ids[from]), 0)
+	preface := append(binary.BigEndian.AppendUint64([]byte{'T', 'S', peerMin, byte(high)}, r.c.ids[from]), 0)
 	if _, err := conn.Write(preface); err != nil {
 		r.t.Fatal(err)
 	}
@@ -523,7 +526,7 @@ func (r *rollingRun) replay(a announced) {
 	// Use a different member's inbound path even if the original sender
 	// is now leader. The entry's origin and boot remain unchanged.
 	from := (lead + 1) % 3
-	conn := r.connect(from, lead, 1)
+	conn := r.connect(from, lead, peerMin)
 	defer func() {
 		if err := conn.Close(); err != nil {
 			r.t.Error(err)
