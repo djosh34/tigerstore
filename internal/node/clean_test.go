@@ -132,7 +132,7 @@ func walFiles(t *testing.T, dir string) (segs, packs int) {
 
 // TestCleaningCycles writes 50 cold keys once, then overwrites 50 hot keys
 // and compacts, round after round, on a node with a 1 MiB disk budget.
-// Cleaning must keep the disk within it, take writes again after any
+// Cleaning must keep the disk near it, take writes again after any
 // NOSPACE answer, copy the cold values into packs, and keep the map of
 // where values are from growing with the history, and every value must
 // read back, also after a restart.
@@ -140,6 +140,7 @@ func TestCleaningCycles(t *testing.T) {
 	const budget = 1 << 20
 	dir := t.TempDir()
 	r := runClean(t, dir, budget)
+	alarmsAllowed(t, r.n)
 	want := map[string]int{}
 	if _, err := do(r.n, &pb.PutRequest{Key: []byte("start"), Value: bigValue("start", 0)}); err != nil {
 		t.Fatal(err)
@@ -189,8 +190,10 @@ func TestCleaningCycles(t *testing.T) {
 			t.Logf("round %d: index %d B, window %d B, map %d B, disk %d B, cleaned %d B, %.2f cleaning bytes per acknowledged Put",
 				round, m.IndexBytes, m.WindowBytes, m.MapBytes, m.DiskBytes, m.CleanedBytes,
 				float64(m.CleanedBytes)/float64(1+len(cold)+round*len(hot)))
-			if m.DiskBytes > budget {
-				t.Fatalf("round %d: the log's files take %d bytes, past the budget", round, m.DiskBytes)
+			// Writes stop at the budget only once the alarm applied, and
+			// the cleaner takes live segments only from there.
+			if m.DiskBytes > budget+64<<10 {
+				t.Fatalf("round %d: the log's files take %d bytes, past the budget and two segments", round, m.DiskBytes)
 			}
 			maps = append(maps, m.MapBytes)
 		}
@@ -223,16 +226,35 @@ func TestCleaningCycles(t *testing.T) {
 	}
 }
 
+// alarmsAllowed waits until n runs a cluster version with alarm entries.
+// Until then, a node past its disk budget refuses nothing.
+func alarmsAllowed(t *testing.T, n *Node) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		m, err := n.Metrics(ctx)
+		cancel()
+		if err == nil && m.ClusterVersion == core.MaxVersion {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("cluster version %d: %v", m.ClusterVersion, err)
+		}
+	}
+}
+
 // TestNoSpace writes new keys on a node with a 512 KiB disk budget until
-// it answers NOSPACE to 10 rounds in a row, as etcd does past its quota.
-// Every other answer is a success, the node never stops, and its files
-// stay near the budget. Reads and deletes still work, and a lease grant
-// gets NOSPACE too. Once the keys are deleted and compacted, the node
-// takes writes again.
+// it answers NOSPACE to 10 rounds in a row, as etcd does past its quota:
+// past the budget, the node raises its NOSPACE alarm. Every other answer
+// is a success, the node never stops, and its files stay near the budget.
+// Reads and deletes still work, and a lease grant gets NOSPACE too. Once
+// the keys are deleted and compacted, the node clears its alarm and takes
+// writes again.
 func TestNoSpace(t *testing.T) {
 	const budget = 512 << 10
 	dir := t.TempDir()
 	r := runClean(t, dir, budget)
+	alarmsAllowed(t, r.n)
 	if _, err := do(r.n, &pb.PutRequest{Key: []byte("start"), Value: []byte("v")}); err != nil {
 		t.Fatal(err)
 	}
@@ -264,10 +286,10 @@ func TestNoSpace(t *testing.T) {
 			t.Fatalf("%T at NOSPACE: %v", op, err)
 		}
 	}
-	// The refusals come at once, so this runs right after the first one,
-	// while a cleaning pass may still have its new pack and the files it
-	// replaces on disk, and a checkpoint may be on its way (#181). Once
-	// the pass removes them, the files must be near the budget.
+	// This runs right after the refusals start, while a cleaning pass may
+	// still have its new pack and the files it replaces on disk, and a
+	// checkpoint may be on its way (#181). Once the pass removes them, the
+	// files must be near the budget.
 	for deadline := time.Now().Add(10 * time.Second); ; {
 		mctx, mcancel := context.WithTimeout(context.Background(), 5*time.Second)
 		m, err := r.n.Metrics(mctx)
@@ -301,9 +323,9 @@ func TestNoSpace(t *testing.T) {
 			t.Fatalf("spare file %s at NOSPACE", e.Name())
 		}
 	}
-	// Deleting the keys and compacting lifts NOSPACE: under the alarm the
-	// compaction cuts a checkpoint, cleaning drops the values it freed,
-	// and the node clears its alarm (#167).
+	// Deleting the keys and compacting lifts NOSPACE: the compaction cuts
+	// a checkpoint, cleaning drops the values it freed, and the node
+	// clears its alarm (#167).
 	del, err := r.n.Do(ctx, &pb.DeleteRangeRequest{Key: []byte("r"), RangeEnd: []byte("s")})
 	if err != nil {
 		t.Fatal(err)
@@ -388,9 +410,10 @@ func TestChoose(t *testing.T) {
 		drop  []uint64
 	}{
 		{"mostly dead segments from the front", []int64{10, 50, 0, 100, 100}, false, 3, nil},
-		{"a mostly live segment stops the rest", []int64{10, 60, 0, 100, 100}, false, 1, nil},
+		{"a live segment in front goes with the dead ones behind it", []int64{100, 30, 0, 100, 100}, false, 3, nil},
+		{"the longest run that is at most half live", []int64{10, 60, 90, 100, 100}, false, 2, nil},
 		{"short of space, live segments go too", []int64{10, 60, 0, 100, 100}, true, 3, nil},
-		{"mostly dead packs", []int64{100, 0, 0, 50, 51}, false, 0, []uint64{7}},
+		{"mostly dead packs", []int64{100, 100, 0, 50, 51}, false, 0, []uint64{7}},
 		{"a pass copies at most cleanLive", []int64{cleanLive, 1, 0, 0, 0}, true, 1, []uint64{7, 8}},
 		{"the first file fits however large", []int64{2 * cleanLive, 0, 0, 0, 0}, true, 3, []uint64{7, 8}},
 	} {

@@ -34,9 +34,9 @@ func files(t *testing.T, d *simfs.Disk) (segs, spares []string) {
 	return segs, spares
 }
 
-// TestSetSparesRemovesExtra turns spares off with spare files on disk:
-// they go, and a removal after it removes the segment's file (#181).
-func TestSetSparesRemovesExtra(t *testing.T) {
+// TestRemoveSpares removes spare files beyond one, then turns spares
+// off: a removal after it removes the segment's file (#181).
+func TestRemoveSpares(t *testing.T) {
 	d := simfs.New()
 	w, _ := open(t, d)
 	w.SetSegmentBytes(1)
@@ -51,15 +51,13 @@ func TestSetSparesRemovesExtra(t *testing.T) {
 	if _, spares := files(t, d); len(spares) == 0 {
 		t.Fatal("no spares after the removal")
 	}
-	if err := w.SetSpares(1); err != nil {
+	if err := wal.RemoveSpares(d, 1); err != nil {
 		t.Fatal(err)
 	}
 	if _, spares := files(t, d); len(spares) != 1 {
-		t.Fatalf("spares %v after SetSpares(1)", spares)
+		t.Fatalf("spares %v after RemoveSpares(1)", spares)
 	}
-	if err := w.SetSpares(0); err != nil {
-		t.Fatal(err)
-	}
+	w.SetSpares(0)
 	w.AppendRoot(wal.Root{Index: 7, Term: 1})
 	if err := w.Sync(); err != nil {
 		t.Fatal(err)
@@ -354,5 +352,158 @@ func TestSpareOfAnUnsyncedRemoval(t *testing.T) {
 	_, rec := open(t, d)
 	if rec.Root.Index != 5 || rec.Last < 6 {
 		t.Fatalf("recovered %+v", rec)
+	}
+}
+
+// TestPrepareSegment readies segment files under names of their own: a
+// new file, never the file of the segment before, which may wait for its
+// name, a file readied before, and the oldest spare. A spare that a
+// removal takes meanwhile is skipped.
+func TestPrepareSegment(t *testing.T) {
+	d := simfs.New()
+	names := func() string {
+		t.Helper()
+		ns, err := d.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Join(ns, " ")
+	}
+	prepare := func(seq uint64, want string) {
+		t.Helper()
+		if err := wal.PrepareSegment(d, seq); err != nil {
+			t.Fatal(err)
+		}
+		if got := names(); got != want {
+			t.Fatalf("after readying %d: %s, want %s", seq, got, want)
+		}
+	}
+	prepare(5, "next-0000000000000005")
+	prepare(6, "next-0000000000000005 next-0000000000000006")
+	for _, name := range []string{"spare-0000000000000001", "spare-0000000000000002"} {
+		f, err := d.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prepare(8, "next-0000000000000006 next-0000000000000008 spare-0000000000000001 spare-0000000000000002")
+	prepare(9, "next-0000000000000008 next-0000000000000009 spare-0000000000000001 spare-0000000000000002")
+	if err := errors.Join(d.Remove("next-0000000000000008"), d.Remove("next-0000000000000009")); err != nil {
+		t.Fatal(err)
+	}
+	d.Fault = func(op simfs.Op, name string) error {
+		if op == simfs.OpRename && name == "spare-0000000000000001" {
+			d.Fault = nil
+			return d.Remove(name)
+		}
+		return nil
+	}
+	prepare(10, "next-000000000000000a")
+	// A file readied for 10 before, as a crash leaves it, is not taken for
+	// 10 again: it may hold records of 10.
+	prepare(10, "next-000000000000000a spare-000000000000000a")
+	prepare(11, "next-000000000000000a next-000000000000000b")
+}
+
+// TestDamagedHeaderBeforeRecords opens logs whose newest segment has a
+// damaged header: with a record of its own after it, in format 1 too, or
+// as the only segment left when it is not segment 1, the log is corrupt;
+// with only another segment's old records after it, as a reused spare
+// holds them, the log starts the segment again.
+func TestDamagedHeaderBeforeRecords(t *testing.T) {
+	t.Run("format 1", func(t *testing.T) {
+		d := simfs.New()
+		b := v1Segment()
+		b[0] ^= 1
+		write(t, d, "0000000000000001.wal", b)
+		wantCorrupt(t, d)
+	})
+	t.Run("only segment", func(t *testing.T) {
+		d := simfs.New()
+		w, _ := open(t, d)
+		w.SetSegmentBytes(1)
+		fill(t, w, 1, 4)
+		w.AppendRoot(wal.Root{Index: 4, Term: 1})
+		w.Append(&wal.HardState{Term: 1, Commit: 5}, []*raftpb.Entry{entry(1, 5, "v5")})
+		if err := errors.Join(w.Sync(), w.Close()); err != nil {
+			t.Fatal(err)
+		}
+		// Keep only the segment with the root and entry 5, as removal
+		// keeps the one before a segment that never started.
+		segs, _ := files(t, d)
+		keep := segs[len(segs)-2]
+		for _, name := range segs {
+			if name != keep {
+				if err := errors.Join(d.Remove(name), d.SyncDir()); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		rewrite(t, d, keep, func(b []byte) []byte { b[0] ^= 1; return b })
+		wantCorrupt(t, d)
+	})
+	t.Run("old spare bytes", func(t *testing.T) {
+		d := simfs.New()
+		names := segments(t, d, 2)
+		old := d.DurableBytes(names[0])
+		rewrite(t, d, names[len(names)-1], func([]byte) []byte {
+			b := append([]byte("tigerwaX"), make([]byte, 12)...)
+			return append(b, old[20:]...)
+		})
+		_, rec := open(t, d)
+		if rec.Last != 2 {
+			t.Fatalf("recovered entries to %d, want 2", rec.Last)
+		}
+	})
+}
+
+// write creates file name on d with b in it, durable.
+func write(t *testing.T, d *simfs.Disk, name string, b []byte) {
+	t.Helper()
+	f, err := d.Create(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(b); err != nil {
+		t.Fatal(err)
+	}
+	if err := errors.Join(f.Sync(), f.Close(), d.SyncDir()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDropKeepsBeforeUnplaced drops old segments while the newest waits
+// for Place: the segment before the newest may not be durable yet, so the
+// one before that, which holds the last durable hard state and root,
+// stays too. Cleaning keeps it as well.
+func TestDropKeepsBeforeUnplaced(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	w.SetSegmentBytes(1)
+	fill(t, w, 1, 4)
+	w.Append(&wal.HardState{Term: 1, Vote: 2, Commit: 4}, []*raftpb.Entry{entry(1, 5, "v5")})
+	if err := errors.Join(w.Flush(), w.Seal(), wal.PrepareSegment(d, w.Seq()+1)); err != nil {
+		t.Fatal(err)
+	}
+	old := w.Rotate()
+	var clean []uint64
+	for _, f := range w.Cleanable(100) {
+		clean = append(clean, f.N)
+	}
+	if fmt.Sprint(clean) != "[1 2 3]" {
+		t.Fatalf("cleanable segments %v with segment 6 unplaced", clean)
+	}
+	names, err := w.DropBelow(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(names, " "); got != "0000000000000001.wal 0000000000000002.wal 0000000000000003.wal" {
+		t.Fatalf("dropped %s with segment 6 unplaced", got)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

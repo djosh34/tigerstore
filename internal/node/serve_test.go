@@ -205,10 +205,12 @@ func TestServeKeepsItsFiles(t *testing.T) {
 	if n.log.w.Has(1) {
 		t.Fatal("setup: entry 1 is still on disk")
 	}
-	// The test stops the persist goroutine before its directory goes.
+	// The test stops the disk goroutines before their directory goes.
 	pctx, pcancel := context.WithCancel(context.Background())
 	var persisting sync.WaitGroup
 	persisting.Go(func() { n.persist(pctx, noPeers{}) })
+	persisting.Go(func() { n.prepareSegments(pctx) })
+	persisting.Go(func() { n.clean(pctx) })
 	defer func() {
 		pcancel()
 		persisting.Wait()

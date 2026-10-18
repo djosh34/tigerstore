@@ -1,8 +1,9 @@
 # The nightly real-process chaos campaign (#49, #148): many short jobs of
 # the chaos-env job of ci, each three seeds of its own, half of them with
 # every disk under LazyFS and half failing fsyncs and filling disks. Also
-# started by hand:
-#   gh workflow run chaos-campaign.yml
+# started by hand, with given seeds spread over the shards in place of
+# the run's own if set:
+#   gh workflow run chaos-campaign.yml [-f seeds="7 8 9"]
 # A failing seed reproduces with the command its log prints, and its
 # evidence is uploaded.
 name: chaos-campaign
@@ -11,6 +12,10 @@ on:
   schedule:
     - cron: "17 2 * * *"
   workflow_dispatch:
+    inputs:
+      seeds:
+        description: Seeds to run, spread over the shards, in place of the run's own
+        default: ""
 
 permissions:
   contents: read
@@ -36,19 +41,29 @@ jobs:
           echo "LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
           go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
           go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
-      - name: Run three seeds
+      - name: Run the seeds
         shell: bash
         env:
           MODE: ${{ matrix.mode }}
           SHARD: ${{ matrix.shard }}
           RUN_ID: ${{ github.run_id }}
+          SEEDS: ${{ inputs.seeds }}
         run: |
           set -uo pipefail
           lazy=()
           if [ "$MODE" = lazyfs ]; then lazy=(-lazyfs "$LAZYFS"); fi
+          seeds=()
+          if [ -n "${SEEDS:-}" ]; then
+            i=0
+            for s in $SEEDS; do
+              if [ $((i % 10)) -eq "$SHARD" ]; then seeds+=("$s"); fi
+              i=$((i + 1))
+            done
+          else
+            for k in 0 1 2; do seeds+=($(( (RUN_ID % 1000000000) * 64 + SHARD * 3 + k + 1 ))); done
+          fi
           status=0
-          for k in 0 1 2; do
-            seed=$(( (RUN_ID % 1000000000) * 64 + SHARD * 3 + k + 1 ))
+          for seed in "${seeds[@]}"; do
             echo "seed $seed, $MODE"
             "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" -env "${lazy[@]}" || status=1
           done

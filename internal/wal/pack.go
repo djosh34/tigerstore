@@ -349,11 +349,11 @@ type CleanFile struct {
 // checkpoint whose file this node keeps is at index below: every pack,
 // and the oldest segments, in order, whose every entry and value is at or
 // below it. Recovery and snapshots need only the values such a checkpoint
-// names from them. It never returns the newest two segments with records,
+// names from them. It never returns the segments that keep says stay,
 // which hold the newest hard state and root.
 func (w *WAL) Cleanable(below uint64) []CleanFile {
 	var out []CleanFile
-	for i := 0; i < len(w.runs) && w.runs[i].seq+1 < w.runs[len(w.runs)-1].seq; {
+	for i := 0; i < len(w.runs) && w.runs[i].seq < w.keep(); {
 		seq := w.runs[i].seq
 		ok := true
 		for ; i < len(w.runs) && w.runs[i].seq == seq; i++ {
@@ -371,30 +371,24 @@ func (w *WAL) Cleanable(below uint64) []CleanFile {
 	return out
 }
 
-// RemoveCleaned removes the oldest segments up to segment upto and the
-// packs drop, once a synced root names the pack that replaces them, then
-// syncs the directory. RemoveBelow may have removed some of the segments
-// already.
-func (w *WAL) RemoveCleaned(upto uint64, drop []uint64) error {
+// DropCleaned forgets the oldest segments up to segment upto and the
+// packs drop, which a synced root no longer names, and closes their
+// files. It returns their names for RemoveFiles, segments first. Every
+// read of them must be over.
+func (w *WAL) DropCleaned(upto uint64, drop []uint64) ([]string, error) {
 	for _, p := range w.packs {
 		if slices.Contains(drop, p.id) {
-			return fmt.Errorf("wal: pack %d is still named", p.id)
+			return nil, fmt.Errorf("wal: pack %d is still named", p.id)
 		}
 	}
 	n := 0
 	for n < len(w.runs) && w.runs[n].seq <= upto {
-		if w.runs[n].seq+1 >= w.runs[len(w.runs)-1].seq {
-			return fmt.Errorf("wal: segment %d is not one that cleaning may remove", w.runs[n].seq)
-		}
-		if n == 0 || w.runs[n-1].seq != w.runs[n].seq {
-			if err := w.removeSegment(w.runs[n].seq); err != nil {
-				return err
-			}
+		if w.runs[n].seq >= w.keep() {
+			return nil, fmt.Errorf("wal: segment %d is not one that cleaning may remove", w.runs[n].seq)
 		}
 		n++
 	}
-	w.runs = slices.Delete(w.runs, 0, n)
-	var err error
+	names, err := w.drop(n)
 	w.dropped = slices.DeleteFunc(w.dropped, func(p *Pack) bool {
 		if slices.Contains(drop, p.id) {
 			err = errors.Join(err, p.f.Close())
@@ -402,18 +396,20 @@ func (w *WAL) RemoveCleaned(upto uint64, drop []uint64) error {
 		}
 		return false
 	})
-	if err != nil {
+	for _, id := range drop {
+		names = append(names, packName(id))
+	}
+	return names, err
+}
+
+// RemoveCleaned is DropCleaned and RemoveFiles at once.
+func (w *WAL) RemoveCleaned(upto uint64, drop []uint64) error {
+	names, err := w.DropCleaned(upto, drop)
+	if names == nil {
 		return err
 	}
-	for _, id := range drop {
-		if err := w.fs.Remove(packName(id)); err != nil {
-			return err
-		}
-	}
-	if n == 0 && len(drop) == 0 {
-		return nil
-	}
-	return w.fs.SyncDir()
+	_, rerr := RemoveFiles(w.fs, names, w.spares)
+	return errors.Join(err, rerr)
 }
 
 // MapBytes is about what the map of where entries and values are on disk

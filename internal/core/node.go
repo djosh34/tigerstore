@@ -493,9 +493,9 @@ type Node struct {
 
 	// logBytes estimates the size of the durable log.
 	logBytes int64
-	// noSpace refuses new data: the node's disk is past its budget.
-	// cutNow makes the next applied entry cut a checkpoint.
-	noSpace, cutNow bool
+	// cutDue makes the next applied entry cut a checkpoint, once no copy
+	// is under way: a compaction applied.
+	cutDue bool
 
 	// log reads what left memory.
 	log Log
@@ -536,8 +536,11 @@ type Node struct {
 	tokens     map[string]*simpleToken
 	tokenWaits []tokenWait
 	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
-	// or -1 once an alarm change of it applied.
+	// or -1 once an alarm change of it applied. diskAlarm says that this
+	// run raised its alarm for its disk budget, and the quota has not
+	// refused a write since: only such an alarm clears itself (SetDisk).
 	noSpaceAt int64
+	diskAlarm bool
 
 	// removeAt is the shutdown tick after applying our own removal. Raft
 	// keeps running until then so the leader can send the commit update.
@@ -844,21 +847,6 @@ func (n *Node) Step(m *raftpb.Message) error {
 	if m.GetType() == raftpb.MsgHeartbeatResp {
 		n.snapshotDropped(m.GetFrom())
 	}
-	if n.noSpace && m.GetType() == raftpb.MsgProp {
-		// Writes a follower forwards. Past its budget, the leader refuses
-		// those that take space, as it refuses its own clients': each
-		// applies as a record that answers its client with NOSPACE.
-		for _, e := range m.GetEntries() {
-			if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
-				continue
-			}
-			data, err := refuseSpace(e.GetData())
-			if err != nil {
-				return err
-			}
-			e.Data = data
-		}
-	}
 	return n.rn.Step(m)
 }
 
@@ -1023,32 +1011,38 @@ func (n *Node) submit(r Request, p *pending) {
 }
 
 // SetDisk tells the node how many bytes its log's files use, and its disk
-// budget. At the budget, the node answers requests that write new data
-// with etcd's NOSPACE error, as etcd does past its quota, and raises its
-// NOSPACE alarm, so that every member refuses them: a follower past its
-// budget must not take the leader's appends either (#170). Once below the
-// budget, with its store under the quota, it clears its own alarm; the
-// alarm changes at most every leaseRetryTicks.
+// budget. At the budget, the node raises its NOSPACE alarm through the
+// log, as etcd does past its quota, so that every member refuses writes
+// that take space: a follower past its budget must not take the leader's
+// appends either (#170). Once cleaning brought the files below the
+// budget, it clears the alarm again, unless the quota refused a write
+// meanwhile or the store is past it: the quota's alarm stays until an
+// operator disarms it, as in etcd. Only an alarm this run raised past
+// the budget clears itself: one it finds up or on its way, the quota's or
+// one a restart found, stays until a disarm. The alarm changes at most
+// every leaseRetryTicks.
 func (n *Node) SetDisk(used, budget int64) {
-	n.noSpace = used >= budget
 	switch {
-	case n.noSpace:
+	case used >= budget:
+		if !n.ownNoSpace() && n.noSpaceAt < 0 {
+			n.diskAlarm = true
+		}
 		n.raiseNoSpace(0)
-	case n.quotaLeft(kvOverhead):
+	case !n.quotaLeft(kvOverhead):
+		n.diskAlarm = false
+	case n.diskAlarm:
 		n.clearNoSpace()
 	}
 }
 
 // refusesSpace reports whether the node refuses write r before it
-// proposes it: past its budget one that takes space, and under a NOSPACE
-// alarm one that the alarm refuses when it applies (State.refusedOp), so
-// that refused writes do not fill the members' logs. A member that has
-// not applied a disarm yet still refuses, though another member already
-// answered it; etcd refuses only when the write applies.
+// proposes it: one that an active NOSPACE alarm refuses when it applies
+// (State.refusedOp), so that refused writes do not fill the members'
+// logs. A member that has not applied a disarm yet still refuses, though
+// another member already answered it; etcd refuses only when the write
+// applies.
 func (n *Node) refusesSpace(r Request) bool {
 	switch {
-	case n.noSpace && TakesSpace(r):
-		return true
 	case !n.state.noSpace:
 		return false
 	case r.Op == nil:
@@ -1298,10 +1292,10 @@ func writeBytes(p *pending) int {
 // whose raft.Node takes no proposal while there is no leader, the writes
 // wait for one, up to their deadline, instead of failing at once (#105).
 func (n *Node) propose() {
-	if n.noSpace || n.state.noSpace {
-		// Writes taken before the disk passed its budget, or before the
-		// alarm, get NOSPACE too, unless they were proposed: only those
-		// still add to the files, and UnappliedBytes bounds them.
+	if n.state.noSpace {
+		// Writes taken before the alarm get NOSPACE too, unless they were
+		// proposed: only those still add to the files, and UnappliedBytes
+		// bounds them.
 		n.proposals = slices.DeleteFunc(n.proposals, func(p *pending) bool {
 			if !n.refusesSpace(p.req) {
 				return false
@@ -1962,12 +1956,9 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	}
 	if _, ok := op.(*pb.CompactionRequest); ok {
 		n.keepHash(n.kv.CompactHash())
-		// A compaction under NOSPACE cuts a checkpoint so cleaning can
-		// drop the freed values (#167). Before alarms are supported,
-		// local disk pressure can already refuse writes, so compacting
-		// must also cut without an alarm (#213). Both conditions come
-		// from replicated state; every member cuts at the same entry.
-		n.cutNow = n.cutNow || n.state.noSpace || !n.capable()
+		// Every compaction cuts a checkpoint, so that cleaning can drop
+		// the values it freed (#167).
+		n.cutDue = true
 	}
 	switch op := op.(type) {
 	case *pb.LeaseGrantRequest:
@@ -2005,6 +1996,9 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 		// The proposal raiseNoSpace waits for has applied, or the alarm
 		// changed otherwise.
 		n.noSpaceAt = -1
+		if a.Action == pb.AlarmRequest_DEACTIVATE {
+			n.diskAlarm = false
+		}
 	}
 	if n.isLeader || planted.On("B10") {
 		switch op := op.(type) {

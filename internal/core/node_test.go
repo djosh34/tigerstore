@@ -34,6 +34,8 @@ type single struct {
 	// them.
 	holdCkpt bool
 	heldCkpt []CheckpointChunk
+	// holdCopy stops copying the checkpoint under way.
+	holdCopy bool
 	// as is the caller of the requests do submits.
 	as Caller
 }
@@ -95,7 +97,9 @@ func (s *single) run() []Reply {
 	s.t.Helper()
 	var out []Reply
 	for range 100 {
-		s.n.CopyCheckpoint()
+		if !s.holdCopy {
+			s.n.CopyCheckpoint()
+		}
 		eff, err := s.n.Process()
 		if err != nil {
 			s.t.Fatalf("node stopped: %v", err)
@@ -114,7 +118,7 @@ func (s *single) run() []Reply {
 				s.n.ValuesRead(r, r.Run())
 			}
 		}
-		if len(eff.Persist) == 0 && !s.n.Copying() && len(eff.Checkpoint) == 0 && (len(eff.Reads) == 0 || s.hold) {
+		if len(eff.Persist) == 0 && (!s.n.Copying() || s.holdCopy) && len(eff.Checkpoint) == 0 && (len(eff.Reads) == 0 || s.hold) {
 			return out
 		}
 		for _, j := range eff.Persist {

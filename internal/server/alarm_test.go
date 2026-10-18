@@ -48,6 +48,11 @@ func TestAlarm(t *testing.T) {
 	if _, err := m3.Alarm(ctx, nospace); err != nil {
 		t.Fatal(err)
 	}
+	// Member 2 refuses puts until it applied the disarm itself. Its list
+	// is a linearizable read, so it answers once it has (#254).
+	if resp, err = m2.Alarm(ctx, &pb.AlarmRequest{Action: pb.AlarmRequest_GET}); err != nil || len(resp.Alarms) != 0 {
+		t.Fatalf("list on member 2 after deactivating: %v, %v", resp, err)
+	}
 	if _, err := c.client(2, cert).Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("2")}); err != nil {
 		t.Fatalf("put after deactivating: %v", err)
 	}

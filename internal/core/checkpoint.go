@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"bytes"
 	"cmp"
 	"encoding/binary"
 	"errors"
@@ -312,6 +313,30 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 	return h, nil
 }
 
+// CheckpointState returns the bytes of a checkpoint file without the base
+// in its header and the checksum that covers it. A compaction during a
+// copy cuts once the copy is done, so nodes differ in when they cut and so
+// in the base; the rest follows from the log, the same on every node that
+// cuts at that index. The simulator compares it.
+func CheckpointState(b []byte) ([]byte, error) {
+	br := bytes.NewReader(b)
+	r := bufio.NewReader(br)
+	h, err := readHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	end := len(b) - br.Len() - r.Buffered()
+	if len(b)-end < 4 {
+		return nil, fmt.Errorf("%w: no checksum", errBadCheckpoint)
+	}
+	h.base = 0
+	out, err := h.encode()
+	if err != nil {
+		return nil, err
+	}
+	return append(out, b[end:len(b)-4]...), nil
+}
+
 // copying is a checkpoint being copied out of the index.
 type copying struct {
 	index, term uint64
@@ -329,18 +354,20 @@ type lastCkpt struct {
 	base   int64
 }
 
-// maybeCheckpoint cuts a checkpoint once the entries applied since the
-// last one pass CheckpointBytes and CheckpointRatio times the base, or
-// at a compaction under a NOSPACE alarm (cutNow): the
-// size of the newest checkpoint finished when the last one was cut. Every
-// node knows that size, however far its copy got, so every node cuts at
-// the same index; it runs after each applied entry. A copy still under
-// way then is finished at once.
+// maybeCheckpoint runs after each applied entry. It cuts a checkpoint
+// once the entries applied since the last one pass CheckpointBytes and
+// CheckpointRatio times the base: the size of the newest checkpoint
+// finished when the last one was cut. Every node knows that size, however
+// far its copy got, so every node cuts at the same index; a copy still
+// under way then is finished at once. A compaction also cuts one
+// (cutDue), but only once no copy is under way, so a compaction during a
+// copy cuts at the first entry after it, where nodes may differ.
 func (n *Node) maybeCheckpoint(index, term uint64) {
-	if n.sinceCkpt < max(n.cfg.CheckpointBytes, n.cfg.CheckpointRatio*n.base) && !n.cutNow {
+	full := n.sinceCkpt >= max(n.cfg.CheckpointBytes, n.cfg.CheckpointRatio*n.base)
+	if !full && (!n.cutDue || n.copy != nil) {
 		return
 	}
-	n.cutNow = false
+	n.cutDue = false
 	if n.copy != nil {
 		n.copyChunk(-1)
 	}

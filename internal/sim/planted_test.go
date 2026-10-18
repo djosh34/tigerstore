@@ -75,11 +75,11 @@ var plantedCases = map[string]plantedCase{
 	// or term next to it, and then two leaders write different entries.
 	"B02":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|applied different entries`},
 	"B03":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|applied different entries`},
-	"B04a": {seeds: 256, cfg: DefaultConfig, want: refused},
+	"B04a": {seeds: 256, cfg: DefaultConfig, want: `without noticing|` + refused},
 	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|without noticing|` + refused + `|` + badValue},
 	// B04b cuts the last synced record, which can be a vote: the node then
 	// votes twice in one term, and two leaders write different entries.
-	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|applied different entries`},
+	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|applied different entries|applied the same log to different states`},
 	"B05":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	"B06a": {seeds: 32, cfg: DefaultConfig, want: badWatch},
 	"B06b": {seeds: 32, cfg: DefaultConfig, want: badWatch},
@@ -91,7 +91,7 @@ var plantedCases = map[string]plantedCase{
 	"B09b": {seeds: 16, cfg: DefaultConfig, want: badState},
 	"B10":  {seeds: 64, cfg: DefaultConfig, want: badState + `|applied the same log to different states|` + badWatch},
 	"B11":  {seeds: 64, cfg: DefaultConfig, want: lostAppend + `|` + refused},
-	"B12":  {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused + `|` + badValue},
+	"B12":  {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused + `|` + badValue + `|the record of entry \d+ in segment \d+ does not verify`},
 	"B15":  {seeds: 32, cfg: DefaultConfig, want: `no client sent it`},
 	"B16":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	// Followers forward their writes to the stalled leader, which stays

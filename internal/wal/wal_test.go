@@ -370,33 +370,48 @@ func TestCrashKeepsSyncedEntries(t *testing.T) {
 	}
 }
 
-// TestCrashWhileReplacingDamagedNewestHeader crashes at each writing step
-// of the repair of a header-only newest segment whose header is damaged:
-// remove, directory sync, and the create, write and syncs of the new
-// segment. The synced log must survive every time.
-func TestCrashWhileReplacingDamagedNewestHeader(t *testing.T) {
-	for k := 1; k <= 6; k++ {
-		d := simfs.New()
-		names := segments(t, d, 2)
-		rewrite(t, d, names[len(names)-1], func(b []byte) []byte { b[0] ^= 1; return b })
-		failFrom(d, k)
-		if _, _, err := wal.Open(d); !errors.Is(err, errCrash2) {
-			t.Fatalf("k=%d: open with a fault = %v", k, err)
+// TestDamagedNewestHeader opens logs whose newest segment holds only a
+// header, damaged, as a first write that did not reach the disk whole
+// leaves it: the log starts that segment again without a write, and an
+// append goes into it. With a record after the damaged header, the log is
+// corrupt.
+func TestDamagedNewestHeader(t *testing.T) {
+	d := simfs.New()
+	names := segments(t, d, 2)
+	last := names[len(names)-1]
+	header := []byte("tigerwal\x02\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04")
+	rewrite(t, d, last, func([]byte) []byte { return header })
+	d.Fault = func(op simfs.Op, name string) error {
+		if op != simfs.OpRead && op != simfs.OpOpen && op != simfs.OpCreate && op != simfs.OpSyncDir {
+			return fmt.Errorf("%v of %s", op, name)
 		}
-		d.Fault = nil
-		d.Crash(rand.New(rand.NewPCG(uint64(k), 1)))
-		w, rec := open(t, d)
-		if rec.Last != 2 || rec.HardState.Commit != 2 {
-			t.Fatalf("k=%d: recovered entries to %d and %+v", k, rec.Last, rec.HardState)
-		}
-		w.Append(nil, []*raftpb.Entry{entry(3, 3, "v")})
-		if err := w.Sync(); err != nil {
-			t.Fatalf("k=%d: %v", k, err)
-		}
-		if _, rec := open(t, d); rec.Last != 3 {
-			t.Fatalf("k=%d: after an append, recovered entries to %d", k, rec.Last)
-		}
+		return nil
 	}
+	w, rec := open(t, d)
+	d.Fault = nil
+	if rec.Last != 2 || rec.HardState.Commit != 2 {
+		t.Fatalf("recovered entries to %d and %+v", rec.Last, rec.HardState)
+	}
+	w.Append(nil, []*raftpb.Entry{entry(3, 3, "v")})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	w, rec = open(t, d)
+	if rec.Last != 3 {
+		t.Fatalf("after an append, recovered entries to %d", rec.Last)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	segs, err := d.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewrite(t, d, segs[len(segs)-1], func(b []byte) []byte { b[0] ^= 1; return b })
+	wantCorrupt(t, d)
 }
 
 // fill appends entries from..to, one synced batch each with its commit,

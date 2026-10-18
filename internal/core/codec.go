@@ -35,7 +35,8 @@ const (
 	kindRenew   = 7
 	kindExpiry  = 8
 	// kindNoSpace stands for a forwarded write that the leader refused
-	// because its disk is past its budget. It has no request.
+	// because its disk was past its budget, which older builds wrote. It
+	// has no request.
 	kindNoSpace = 9
 	// kindVersion is a node's announcement of the newest version it
 	// supports, a wrapperspb.UInt32Value. It changes no key.
@@ -203,39 +204,6 @@ func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte
 		return errBadBatch
 	}
 	return nil
-}
-
-// refuseSpace returns the data of a Raft entry with every write that
-// TakesSpace replaced by a kindNoSpace record. A transaction in an entry
-// is never read-only, so all of them take space.
-func refuseSpace(data []byte) ([]byte, error) {
-	batch, err := skipFormat(data)
-	if err != nil {
-		return nil, err
-	}
-	n, _, ok := uvarint(batch)
-	if !ok {
-		return nil, errBadBatch
-	}
-	out := append(make([]byte, 0, len(data)), data[:len(data)-len(batch)]...)
-	out = binary.AppendUvarint(out, n)
-	err = walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, at int) error {
-		inner, _, _, _, err := unwrapAuth(kind, b, at)
-		if err != nil {
-			return err
-		}
-		if inner == kindPut || inner == kindTxn || inner == kindGrant {
-			kind, b = kindNoSpace, nil
-		}
-		out = binary.AppendUvarint(out, origin)
-		out = binary.AppendUvarint(out, boot)
-		out = binary.AppendUvarint(out, id)
-		out = append(out, kind)
-		out = binary.AppendUvarint(out, uint64(len(b)))
-		out = append(out, b...)
-		return nil
-	})
-	return out, err
 }
 
 // newOp returns an empty request of an entry kind.

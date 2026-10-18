@@ -18,33 +18,42 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
-// Cleaning keeps the log's files within Config.DiskBudget. A checkpoint
-// names every value that recovery and a snapshot fetch from it still
-// need, so the segments at or below the oldest checkpoint whose file the
-// node keeps hold nothing else that is needed. The cleaner copies the
-// values that checkpoint names out of such segments, and out of packs it
-// made before, into a new pack, which keeps their Raft positions. It syncs
-// the pack, has the disk goroutine install and sync a root that names it,
-// and only then removes the files the pack replaced. The index never
-// changes. Segments go only from the front, so the cleaner takes the
-// oldest ones, and packs once at most half of their bytes are live.
+// The cleaner does the log's housekeeping, so that the write path only
+// appends, syncs and rotates. It removes what a durable root made
+// obsolete: the segments below its mark and the older checkpoints. It
+// cleans: a checkpoint names every value that recovery and a snapshot
+// fetch from it still need, so the segments at or below the oldest
+// checkpoint whose file the node keeps hold nothing else that is needed.
+// The cleaner copies the values that checkpoint names out of such
+// segments, and out of packs it made before, into a new pack, which keeps
+// their Raft positions. It syncs the pack, has the disk goroutine write
+// and sync a root that names it, and only then removes the files the pack
+// replaced. The index never changes. Segments go only from the front, so
+// the cleaner takes the oldest ones, and packs once at most half of their
+// bytes are live. A failed removal is logged, counted and tried again; it
+// never fails a write or stops the node.
 //
-// From half the budget on, the cleaner runs at most half the time. From
-// three quarters on, it runs without pause, and writes wait before the
-// node takes them, longer the fuller the disk. At the budget, the node
-// answers writes with etcd's NOSPACE error. Without a budget, the cleaner
-// cleans only for Defragment.
+// Out of disk is one rule from the measured total of the log's files: at
+// Config.DiskBudget, the node raises etcd's NOSPACE alarm through the log
+// (core.Node.SetDisk), which refuses writes on every member, and clears
+// it once cleaning brought the files below the budget. Past the budget,
+// the cleaner runs without pause, takes the oldest segments however much
+// of them is live, and keeps no spare files: they hold nothing, and the
+// spares a pass's removals made would hold the files above the budget
+// (#181). Below it, it cleans what is mostly dead, at most half the time.
+// Without a budget, the cleaner cleans only for Defragment. Every
+// compaction cuts a checkpoint, so the space it frees comes back.
 
 const (
 	// cleanTick is how often the cleaner measures the disk.
 	cleanTick = 20 * time.Millisecond
 	// cleanLive bounds the live bytes that one pass copies into a pack.
 	cleanLive = 64 << 20
-	// maxDelay is how long a write waits at most while the disk is nearly
-	// full.
-	maxDelay = 10 * time.Millisecond
 	// whereBatch is how many values the cleaner looks up per lock.
 	whereBatch = 256
+	// removeRetry is how long the cleaner waits before it tries a failed
+	// removal again.
+	removeRetry = time.Second
 )
 
 // packRoot asks the disk goroutine to install and sync a root that names
@@ -72,53 +81,39 @@ type cleaner struct {
 	idle      uint64
 	idleFiles []wal.CleanFile
 	idleShort bool
-	// pending waits for a snapshot fetch to end before it is removed.
+	// pending is what the last pass's durable root replaced, until the
+	// log drops it, which waits while a snapshot fetch or a value read is
+	// under way.
 	pending *removal
-	// short is whether space was short at the last measure, which turns
-	// spare files off.
-	short bool
+	// files are the files the log dropped, oldest first, which wait to be
+	// removed, and checkpoints go below keep, which kept had last. retryAt
+	// is when a failed removal is tried again.
+	files      []string
+	keep, kept uint64
+	retryAt    time.Time
+	// past is whether the files were past the budget at the last measure,
+	// and sparesGone whether the spare files were removed since.
+	past, sparesGone bool
 }
 
-// spareSegments is how many removed segments the log of a node with a
-// disk budget keeps as spare files: they count against the budget, at
-// most an eighth of it.
-func spareSegments(cfg Config) int {
-	segment := cmp.Or(cfg.SegmentBytes, int64(wal.SegmentBytes))
-	return int(min(wal.MaxSpares, cfg.DiskBudget/8/segment))
-}
-
-// spares turns spare files off from three quarters of the budget on,
-// and has the disk goroutine remove those on disk: they hold nothing, and
-// a removed segment kept as one frees no space. A pass at NOSPACE copies
-// values that are nearly all live, and the spares its removals made held
-// the files above the budget (#181). They come back below half the
-// budget, where cleaning starts, so that they do not switch at every
-// measure near three quarters.
-func (c *cleaner) spares(ctx context.Context, used, budget int64) {
-	short := c.short
+// spares is how many removed segments the log keeps as spare files: none
+// past the budget, and within one at most an eighth of it, as they count
+// against it.
+func (c *cleaner) spares() int {
+	cfg := c.n.cfg
 	switch {
-	case used >= budget*3/4:
-		short = true
-	case used < budget/2:
-		short = false
+	case c.past:
+		return 0
+	case cfg.DiskBudget > 0:
+		return int(min(wal.MaxSpares, cfg.DiskBudget/8/cmp.Or(cfg.SegmentBytes, int64(wal.SegmentBytes))))
 	}
-	if short == c.short {
-		return
-	}
-	c.short = short
-	n := spareSegments(c.n.cfg)
-	if short {
-		n = 0
-	}
-	select {
-	case c.n.sparesQ <- n:
-	case <-ctx.Done():
-	}
+	return wal.MaxSpares
 }
 
-// clean measures the disk every cleanTick and cleans while it is past
-// half the budget. A failed disk operation, or a value that does not
-// match its checksum, stops the node.
+// clean removes what durable roots made obsolete, and measures the disk
+// every cleanTick and cleans within the budget, as the comment at the top
+// says. A failed write, or a value that does not match its checksum,
+// stops the node.
 func (n *Node) clean(ctx context.Context) {
 	c := &cleaner{n: n}
 	if err := c.run(ctx); err != nil && ctx.Err() == nil {
@@ -140,14 +135,12 @@ func (c *cleaner) run(ctx context.Context) error {
 				return err
 			}
 			c.n.log.used.Store(used)
-			c.spares(ctx, used, budget)
+			c.past = used >= budget
 		}
-		if err := c.remove(); err != nil {
-			return err
-		}
-		if used := c.n.log.used.Load(); budget > 0 && used >= budget/2 && c.pending == nil {
+		c.remove()
+		if budget > 0 && c.pending == nil {
 			start := time.Now()
-			did, err := c.pass(ctx, used >= budget*3/4)
+			did, err := c.pass(ctx, c.past)
 			if errors.Is(err, errServing) {
 				did, err = false, nil
 			}
@@ -155,7 +148,7 @@ func (c *cleaner) run(ctx context.Context) error {
 				return err
 			}
 			if did {
-				if used < budget*3/4 && !sleep(ctx, time.Since(start)) {
+				if !c.past && !sleep(ctx, time.Since(start)) {
 					return nil
 				}
 				continue
@@ -163,6 +156,7 @@ func (c *cleaner) run(ctx context.Context) error {
 		}
 		select {
 		case <-tick.C:
+		case <-c.n.log.retry:
 		case done := <-c.n.defragQ:
 			err := c.defrag(ctx)
 			done <- err
@@ -341,34 +335,41 @@ func (c *cleaner) pass(ctx context.Context, short bool) (did bool, err error) {
 	}
 	c.n.logf("cleaning below checkpoint %d: %d files into a pack of %d bytes", ckpt, len(victims), size)
 	c.pending = &rm
-	return true, c.remove()
+	c.remove()
+	return true, nil
 }
 
-// choose picks the files of one pass: the oldest segments, in order,
-// while each is at most half live or space is short, then the packs that
-// are at most half live, while their live bytes fit one pack. The first
-// file always fits, however large, and so does a file with nothing live.
+// choose picks the files of one pass: the longest run of the oldest
+// segments that fits one pack and is at most half live in all, so that a
+// live segment in front does not hold back the dead ones behind it, or
+// every segment that fits while space is short; then the packs that are
+// at most half live, while their live bytes fit one pack. The first file
+// always fits, however large, and so does a file with nothing live.
 func choose(files []wal.CleanFile, live map[wal.FileID]int64, short bool) (removal, map[wal.FileID]bool) {
 	var rm removal
 	victims := map[wal.FileID]bool{}
-	var copied int64
-	segs := true
-	for _, f := range files {
+	var copied, size, segLive int64
+	segs := 0
+	for i, f := range files {
 		v := live[f.FileID]
-		mostlyDead := 2*v <= f.Size
-		fits := len(victims) == 0 || v == 0 || copied+v <= cleanLive
-		if !f.Pack {
-			if !segs || (!mostlyDead && !short) || !fits {
-				segs = false
-				continue
-			}
-			rm.upto = f.N
-		} else {
-			if !mostlyDead || !fits {
-				continue
-			}
-			rm.drop = append(rm.drop, f.N)
+		if f.Pack || i > 0 && v > 0 && segLive+v > cleanLive {
+			break
 		}
+		size, segLive = size+f.Size, segLive+v
+		if short || 2*segLive <= size {
+			segs, copied = i+1, segLive
+		}
+	}
+	for _, f := range files[:segs] {
+		victims[f.FileID] = true
+		rm.upto = f.N
+	}
+	for _, f := range files[segs:] {
+		v := live[f.FileID]
+		if !f.Pack || 2*v > f.Size || len(victims) > 0 && v > 0 && copied+v > cleanLive {
+			continue
+		}
+		rm.drop = append(rm.drop, f.N)
 		victims[f.FileID] = true
 		copied += v
 	}
@@ -470,35 +471,65 @@ func (c *cleaner) walk(f io.Reader, ckpt uint64, fn func(wal.FileID, mvcc.Ref) e
 	return flush()
 }
 
-// remove removes what the last synced root replaced, unless a snapshot
-// fetch is under way, which may read it.
-func (c *cleaner) remove() error {
-	rm := c.pending
-	if rm == nil {
-		return nil
-	}
+// remove drops from the log what durable roots made obsolete and what
+// the last pass replaced, unless a snapshot fetch or a value read is under
+// way, as either may read it. It then removes their files, outside the
+// lock, and past the budget the spare files.
+func (c *cleaner) remove() {
 	l := c.n.log
 	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.serving > 0 {
-		return nil
+	if (l.removal != nil || c.pending != nil) && l.serving == 0 && l.reading.TryLock() {
+		var errs []error
+		if r := l.removal; r != nil {
+			names, err := l.w.DropBelow(r.below)
+			c.files, errs = append(c.files, names...), append(errs, err)
+			c.keep = max(c.keep, r.root.Index)
+			l.ckpts = slices.DeleteFunc(l.ckpts, func(ck wal.Root) bool { return ck.Index < r.root.Index })
+			l.removal = nil
+			l.held.Store(false)
+		}
+		if rm := c.pending; rm != nil {
+			names, err := l.w.DropCleaned(rm.upto, rm.drop)
+			c.files, errs = append(c.files, names...), append(errs, err)
+			c.pending = nil
+		}
+		errs = append(errs, l.unmap(l.w.Oldest()-1))
+		l.reading.Unlock()
+		// A failed close or unmap leaves nothing to try again.
+		if err := errors.Join(errs...); err != nil {
+			c.n.logf("drop old files of the log: %v", err)
+		}
 	}
-	// A value read under way may use a file the removal closes; the next
-	// tick tries again.
-	if !l.reading.TryLock() {
-		return nil
+	l.mu.Unlock()
+	if time.Now().Before(c.retryAt) {
+		return
 	}
-	c.pending = nil
-	err := l.w.RemoveCleaned(rm.upto, rm.drop)
-	l.reading.Unlock()
+	k, err := wal.RemoveFiles(l.fs, c.files, c.spares())
+	if k > 0 {
+		c.n.cleaningStage("removed")
+	}
+	c.files = c.files[k:]
+	if err == nil && c.keep > c.kept {
+		if err = l.w.RemoveCheckpoints(c.keep); err == nil {
+			c.kept = c.keep
+		}
+	}
+	if err == nil && c.past && !c.sparesGone {
+		err = wal.RemoveSpares(l.fs, 0)
+		c.sparesGone = err == nil
+	}
+	c.sparesGone = c.sparesGone && c.past
 	if err != nil {
-		return err
+		c.failed(err)
 	}
-	if err := l.unmap(rm.upto); err != nil {
-		return err
-	}
-	c.n.cleaningStage("removed")
-	return nil
+}
+
+// failed logs and counts a failed removal, which the cleaner tries again
+// after removeRetry.
+func (c *cleaner) failed(err error) {
+	c.n.log.removeFailures.Add(1)
+	c.retryAt = time.Now().Add(removeRetry)
+	c.n.logf("remove old files of the log: %v; trying again in %v", err, removeRetry)
 }
 
 // sleep waits for d and reports whether ctx is still live.
@@ -513,57 +544,8 @@ func sleep(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-// installPacks installs and syncs the root of a cleaning pass, on the
-// disk goroutine.
-func (n *Node) installPacks(pr packRoot) error {
-	w := n.log.w
-	n.log.mu.Lock()
-	w.InstallPacks(pr.add, pr.drop)
-	n.cleaningStage("root-buffered")
-	n.log.mu.Unlock()
-	err := w.Sync()
-	n.log.mu.Lock()
-	err = errors.Join(err, n.log.synced())
-	n.log.mu.Unlock()
-	if err == nil {
-		n.cleaningStage("root-synced")
-		close(pr.synced)
-	}
-	return err
-}
-
 func (n *Node) cleaningStage(stage string) {
 	if n.cfg.cleanStage != nil {
 		n.cfg.cleanStage(stage)
-	}
-}
-
-// delay is how long a write waits before the node takes it: nothing while
-// the disk is within three quarters of its budget, then up to maxDelay as
-// it fills up to the budget.
-func (n *Node) delay() time.Duration {
-	b := n.cfg.DiskBudget
-	over := n.log.used.Load() - b*3/4
-	if b <= 0 || over <= 0 {
-		return 0
-	}
-	return time.Duration(float64(maxDelay) * min(1, float64(over)/float64(b/4)))
-}
-
-// throttle waits as long as delay says before a write.
-func (n *Node) throttle(ctx context.Context) error {
-	d := n.delay()
-	if d == 0 {
-		return nil
-	}
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-t.C:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-n.done:
-		return rpctypes.ErrGRPCStopped
 	}
 }
