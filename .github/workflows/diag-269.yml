@@ -13,12 +13,12 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Repeat B01a seed 1 200 times
+      - name: Repeat B01a seed 1 simulation 200 times (no downstream witness search)
         env:
           SIM_OUT: ${{ runner.temp }}/sim-out
         run: |
           set -o pipefail
-          go test -tags planted -count=200 -v ./internal/sim/ -run '^TestPlanted$/^1$' -args -planted=B01a 2>&1 | tee "$RUNNER_TEMP/seed-1.log"
+          go test -tags planted -count=200 -timeout=8m -v ./internal/sim/ -run '^TestDiag269$' 2>&1 | tee "$RUNNER_TEMP/seed-1.log"
       - if: always()
         uses: actions/upload-artifact@v6
         with:
