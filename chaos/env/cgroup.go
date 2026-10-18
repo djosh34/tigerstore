@@ -75,24 +75,47 @@ type CgroupStats struct {
 	PeakBytes int64 `json:"peak_bytes"`
 }
 
+// fields reads a file of the group's "name value" lines.
+func (c *Cgroup) fields(file string) (map[string]int64, error) {
+	b, err := os.ReadFile(filepath.Join(c.Path, file))
+	if err != nil {
+		return nil, err
+	}
+	m := map[string]int64{}
+	for line := range strings.SplitSeq(strings.TrimSpace(string(b)), "\n") {
+		if f := strings.Fields(line); len(f) == 2 {
+			if m[f[0]], err = strconv.ParseInt(f[1], 10, 64); err != nil {
+				return nil, fmt.Errorf("%s: %w", file, err)
+			}
+		}
+	}
+	return m, nil
+}
+
+// Memory says what the group's memory holds now, in MiB: the total the
+// limit counts and its main parts.
+func (c *Cgroup) Memory() (string, error) {
+	b, err := os.ReadFile(filepath.Join(c.Path, "memory.current"))
+	if err != nil {
+		return "", err
+	}
+	cur, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("memory.current: %w", err)
+	}
+	m, err := c.fields("memory.stat")
+	if err != nil {
+		return "", err
+	}
+	mib := func(n int64) float64 { return float64(n) / (1 << 20) }
+	return fmt.Sprintf("cgroup %.1f MiB: anon %.1f, file %.1f (mapped %.1f, dirty %.1f, writeback %.1f), kernel %.1f, sock %.1f",
+		mib(cur), mib(m["anon"]), mib(m["file"]), mib(m["file_mapped"]), mib(m["file_dirty"]), mib(m["file_writeback"]), mib(m["kernel"]), mib(m["sock"])), nil
+}
+
 // Stats reads the group's counters.
 func (c *Cgroup) Stats() (CgroupStats, error) {
 	var st CgroupStats
-	fields := func(file string) (map[string]int64, error) {
-		b, err := os.ReadFile(filepath.Join(c.Path, file))
-		if err != nil {
-			return nil, err
-		}
-		m := map[string]int64{}
-		for line := range strings.SplitSeq(strings.TrimSpace(string(b)), "\n") {
-			if f := strings.Fields(line); len(f) == 2 {
-				if m[f[0]], err = strconv.ParseInt(f[1], 10, 64); err != nil {
-					return nil, fmt.Errorf("%s: %w", file, err)
-				}
-			}
-		}
-		return m, nil
-	}
+	fields := c.fields
 	cpu, err := fields("cpu.stat")
 	if err != nil {
 		return st, err
