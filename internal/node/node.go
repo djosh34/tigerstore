@@ -931,7 +931,8 @@ func (n *Node) run(ctx context.Context, t peer.Transport) error {
 	wg.Go(func() { n.persist(ctx, t) })
 	wg.Go(func() { n.writeCheckpoints(ctx) })
 	wg.Go(func() { n.clean(ctx) })
-	wg.Go(func() { n.dropPageCache(ctx) })
+	// #278 diagnostic only: disable the periodic sweep, keeping the
+	// rotation, checkpoint and recovery cache drops unchanged.
 	for range readers {
 		wg.Go(func() { n.readValues(ctx) })
 	}
