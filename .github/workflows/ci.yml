@@ -384,8 +384,9 @@ jobs:
   # runs every disk under Jepsen's LazyFS, which loses on a power loss
   # what no fsync covered and tears writes; the plain row fails fsyncs and
   # fills disks, which LazyFS would hide. Gray faults require every probe
-  # write through the healthy nodes to commit within etcd's request
-  # timeout, 7 s. Seeds come from the run ID. A failure prints how each
+  # write through the healthy nodes to commit within two of etcd's 7 s
+  # request timeouts, one for a proposal lost with a leader change and
+  # one for its retry. Seeds come from the run ID. A failure prints how each
   # node stood and the command that runs the seed again.
   chaos-env:
     strategy:

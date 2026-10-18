@@ -80,10 +80,15 @@ func envFaultsFor(lazyfs bool) []string {
 // committing within livenessBound.
 var grayFaults = []string{netemLoss, netemReorder, netemCorrupt, cpuGray, diskSlow, diskStall, fsyncFail, diskFull, powerLoss, tornWrite, recoveryCrash, slowWatcher}
 
-// livenessBound is how long a write through a healthy node may take while
-// one node is gray: etcd's request timeout, 5 s and two election
+// requestTimeout is etcd's request timeout: 5 s and two election
 // timeouts.
-const livenessBound = 5*time.Second + 2*electionMillis*time.Millisecond
+const requestTimeout = 5*time.Second + 2*electionMillis*time.Millisecond
+
+// livenessBound is how long a write through a healthy node may take while
+// one node is gray, retries included: two request timeouts. A proposal
+// that a follower forwarded to a leader that then went away is lost and
+// times out after one, as in etcd (#230); its retry goes through.
+const livenessBound = 2 * requestTimeout
 
 // memberRetry is how long a member change is tried again: after a cold
 // restart, --strict-reconfig-check refuses it until the node has been

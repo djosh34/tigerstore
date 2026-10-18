@@ -120,7 +120,14 @@ func tally(dirs []string, logf func(string, ...any)) (bool, error) {
 			if err != nil {
 				return err
 			}
-			var records []record
+			// Only the fields the tally needs: a planned step's direction
+			// is written as text and not read back.
+			var records []struct {
+				Planned struct {
+					Fault string `json:"fault"`
+				} `json:"planned"`
+				Installed, Effect, Overlapped bool
+			}
 			if err := json.Unmarshal(b, &records); err != nil {
 				return fmt.Errorf("%s: %w", path, err)
 			}
