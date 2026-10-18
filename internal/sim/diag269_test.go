@@ -4,6 +4,7 @@ package sim
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/djosh34/tigerstore/internal/planted"
@@ -15,7 +16,14 @@ import (
 func TestDiag269(t *testing.T) {
 	planted.Active, activePlanted = "B01a", "B01a"
 	t.Cleanup(func() { planted.Active, activePlanted = "", "" })
-	_, err := runSeed(t, DefaultConfig(1))
+	res, err := runSeed(t, DefaultConfig(1))
+	if res != nil {
+		for _, line := range res.Trace {
+			if strings.Contains(line, "diag269:") {
+				t.Log(line)
+			}
+		}
+	}
 	if err == nil {
 		t.Log("seed 1 converged; no internal checker found the planted stale read")
 		return

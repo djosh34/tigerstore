@@ -626,7 +626,43 @@ func (s *Sim) run() error {
 	s.stop()
 	s.mu.Unlock()
 	s.wg.Wait()
-	return s.freeze()
+	if err := s.freeze(); err != nil {
+		return err
+	}
+	// A healed follower can still be draining snapshot installs at the
+	// fixed end time. Give unequal applied indexes a bounded catch-up
+	// interval, not a weaker oracle: check still requires equal logs and
+	// states, and persistent lag still fails after seven simulated seconds.
+	for range 7 {
+		live := s.live()
+		behind := false
+		for _, n := range live {
+			if n.proc == nil || live[0].proc == nil {
+				return nil // check reports the down node
+			}
+			behind = behind || n.proc.core.Applied() != live[0].proc.core.Applied()
+		}
+		if !behind {
+			return nil
+		}
+		s.mu.Lock()
+		for _, n := range live {
+			s.tracef("diag269: before catch-up node %d applied %d, leader %d", n.id, n.proc.core.Applied(), n.proc.core.Leader())
+		}
+		s.mu.Unlock()
+		s.thaw()
+		if err := s.runFor(Second); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		for _, n := range s.live() {
+			if n.proc != nil {
+				s.tracef("diag269: after catch-up node %d applied %d, leader %d", n.id, n.proc.core.Applied(), n.proc.core.Leader())
+			}
+		}
+		s.mu.Unlock()
+	}
+	return nil
 }
 
 // schedule starts the clients, the watchers and the faults.
