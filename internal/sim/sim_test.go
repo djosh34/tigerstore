@@ -28,7 +28,7 @@ import (
 var (
 	firstSeed = flag.Uint64("sim.seed", 1, "first seed to run")
 	numSeeds  = flag.Int("sim.seeds", 0, "number of seeds; 0 means 4 with -short and 16 without")
-	simOut    = flag.String("sim.out", "", "directory where a failed run saves its trace, how it left the nodes, its history and the command that runs it again")
+	simOut    = flag.String("sim.out", os.Getenv("SIM_OUT"), "directory where a failed run saves its trace, how it left the nodes, its history and the command that runs it again; $SIM_OUT by default")
 )
 
 // run runs one seed in a synctest bubble of its own and fails the test if

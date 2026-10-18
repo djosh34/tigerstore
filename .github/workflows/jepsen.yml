@@ -63,6 +63,9 @@ jobs:
       - name: Run upstream Jepsen on three nodes
         shell: bash
         run: bash scripts/jepsen/run.sh '${{ matrix.store }}' '${{ matrix.workload }}' '${{ matrix.nemesis }}' 90 50
+      - if: failure()
+        run: |
+          echo "replay: bash scripts/jepsen/run.sh '${{ matrix.store }}' '${{ matrix.workload }}' '${{ matrix.nemesis }}' 90 50"
       - name: Require a definite verdict and observed faults
         if: always()
         shell: bash
@@ -100,6 +103,9 @@ jobs:
           GOFLAGS: -p=2
           GOMEMLIMIT: 2GiB
         run: bash scripts/jepsen/robustness.sh '${{ matrix.store }}' '${{ matrix.traffic }}'
+      - if: failure()
+        run: |
+          echo "replay: bash scripts/jepsen/robustness.sh '${{ matrix.store }}' '${{ matrix.traffic }}'"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -1,6 +1,8 @@
 # A pull request runs the fast set. The push to main and the nightly run
 # also run every sim and chaos shard, race-sim, chaos-race and apiserver.
-# The planted bugs run in planted.yml.
+# The planted bugs run in planted.yml. A failed job prints the command
+# that runs each failure again (scripts/replay.sh for go test), and
+# uploads its logs and evidence.
 name: ci
 
 on:
@@ -66,7 +68,16 @@ jobs:
           echo "LOADGEN_ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
       # The simulator's tests run under -race in their own job, race-sim:
       # they took 545 s of the 600 s package timeout here.
-      - run: go list ./... | grep -v '/internal/sim$' | xargs go test -race
+      - shell: bash
+        run: go list ./... | grep -v '/internal/sim$' | xargs go test -race 2>&1 | tee "$RUNNER_TEMP/test.log"
+      - if: failure()
+        run: scripts/replay.sh "$RUNNER_TEMP/test.log" -race
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-log
+          path: ${{ runner.temp }}/test.log
+          retention-days: 30
 
   # Values near the request limit from clients on every node at a real
   # node's 100 ms ticks, failing if a leader entry waits one election
@@ -81,10 +92,21 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go test -count=20 -v -run 'TestLargeValuesAtRealTicks$' ./internal/server
+      - shell: bash
+        run: go test -count=20 -v -run 'TestLargeValuesAtRealTicks$' ./internal/server 2>&1 | tee "$RUNNER_TEMP/stress.log"
         env:
           TIGERSTORE_STRESS: 10s
           GOMEMLIMIT: 8GiB
+      - if: failure()
+        run: |
+          scripts/replay.sh "$RUNNER_TEMP/stress.log"
+          echo "with TIGERSTORE_STRESS=10s GOMEMLIMIT=8GiB"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: stress-log
+          path: ${{ runner.temp }}/stress.log
+          retention-days: 30
 
   determinism-lint:
     runs-on: ubuntu-24.04-arm
@@ -94,15 +116,17 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go test -count=1 ./internal/lint/
+      - shell: bash
+        run: go test -count=1 ./internal/lint/ 2>&1 | tee "$RUNNER_TEMP/lint.log"
+      - if: failure()
+        run: scripts/replay.sh "$RUNNER_TEMP/lint.log"
 
   # Each shard runs its seeds with the checkers of package check
   # (TestSeeds) and checks short runs of the same seeds with Porcupine
   # (TestLinearizable). Shards 0 and 1 run fixed seeds; shards 2 and 3 run
   # fresh seeds from the run ID. A pull request runs shard 0 only. A
-  # failing seed's log carries its trace; the seed runs again with
-  # go test ./internal/sim/ -run 'TestSeeds/<seed>$' -args -sim.seed=<seed> -sim.seeds=1
-  # go test ./internal/sim/ -run 'TestLinearizable/<seed>$' -args -sim.seed=<seed> -sim.seeds=1
+  # failing seed's log carries its trace, how it left each node and the
+  # command that runs it again; its trace, nodes and history are uploaded.
   sim:
     strategy:
       fail-fast: false
@@ -128,7 +152,18 @@ jobs:
           echo "FIRST_SEED=$first" >> "$GITHUB_ENV"
           echo "seeds $first to $((first + 399))"
       - name: Run seeds with the checkers
-        run: go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$|TestLinearizable$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400
+        shell: bash
+        run: go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$|TestLinearizable$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400 -sim.out="$RUNNER_TEMP/sim-out" 2>&1 | tee "$RUNNER_TEMP/sim.log"
+      - if: failure()
+        run: scripts/replay.sh "$RUNNER_TEMP/sim.log"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sim-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/sim.log
+            ${{ runner.temp }}/sim-out
+          retention-days: 30
 
   # Membership changes share the simulator's KV traffic and faults. Run
   # fixed and fresh seeds.
@@ -146,8 +181,18 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           for first in 1 $((1000000 + RUN_ID % 1000000000)); do
-            go test -count=1 -timeout=8m ./internal/sim -run '^TestMembershipFaults$' -args -sim.seed="$first" -sim.seeds=64
+            go test -count=1 -timeout=8m ./internal/sim -run '^TestMembershipFaults$' -args -sim.seed="$first" -sim.seeds=64 -sim.out="$RUNNER_TEMP/sim-out" 2>&1 | tee -a "$RUNNER_TEMP/membership.log"
           done
+      - if: failure()
+        run: scripts/replay.sh "$RUNNER_TEMP/membership.log"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: membership
+          path: |
+            ${{ runner.temp }}/membership.log
+            ${{ runner.temp }}/sim-out
+          retention-days: 30
 
   # Starts a 3-node cluster and runs etcdctl v3.7.2 against it over TLS
   # with client certificates.
@@ -165,6 +210,17 @@ jobs:
           echo "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64" >> "$GITHUB_PATH"
       - run: etcdctl version
       - run: scripts/smoke.sh
+        env:
+          KEEP: ${{ runner.temp }}/smoke
+      - if: failure()
+        run: |
+          echo "replay: scripts/smoke.sh, with etcdctl v3.7.2 on PATH"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: smoke
+          path: ${{ runner.temp }}/smoke
+          retention-days: 30
 
   # The k8s.io/apiserver etcd3 storage tests of each supported Kubernetes
   # version, unchanged, against a fresh 3-node TLS tigerstore per test.
@@ -190,6 +246,18 @@ jobs:
       - run: apiservertest/run.sh ${{ matrix.version }}
         env:
           RACE: ${{ matrix.race }}
+          WORK: ${{ runner.temp }}/apiserver
+      - if: failure()
+        run: |
+          scripts/replay.sh "$RUNNER_TEMP"/apiserver/test-*.log
+          echo "replay the whole set: RACE=${{ matrix.race }} apiservertest/run.sh ${{ matrix.version }}"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: apiserver-${{ matrix.version }}-${{ matrix.race }}
+          path: |
+            ${{ runner.temp }}/apiserver/**/*.log
+          retention-days: 30
 
   # Kubernetes must remove all 50,000 ConfigMaps when their namespace is
   # deleted. Check the API and linearizable registry reads on every member.
@@ -203,6 +271,9 @@ jobs:
       - uses: ./.github/actions/kind
       - name: Create 50k ConfigMaps and delete their namespace
         run: timeout --kill-after=30s 30m python3 k8stest/configmaps.py
+      - if: failure()
+        run: |
+          echo "replay: python3 k8stest/configmaps.py, on a kind cluster that .github/actions/kind sets up"
       - name: Collect logs
         if: always()
         run: bash k8stest/collect.sh
@@ -243,6 +314,16 @@ jobs:
       - run: scripts/difftest.sh ${{ matrix.server }}
         env:
           RACE: ${{ matrix.race }}
+          KEEP: ${{ runner.temp }}/difftest
+      - if: failure()
+        run: |
+          echo "replay: RACE=${{ matrix.race }} ETCD=<etcd v3.7.2 binary> scripts/difftest.sh ${{ matrix.server }}, ONLY=<test name> for one test"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: difftest-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/difftest
+          retention-days: 30
 
   # Real-process chaos (#49). Each shard builds tigerstore and runs two
   # seeds of cmd/chaos: a fresh 3-node TLS cluster with a seeded fault
@@ -250,10 +331,10 @@ jobs:
   # and every fault of the schedule once (SIGKILL and SIGSTOP of leader
   # and follower, and proxy faults), then the checkers of package check.
   # Seeds come from the run ID. A pull request runs shard 0 only. A
-  # failing seed reproduces with
-  # go run ./cmd/chaos -tigerstore <binary> -seed <seed>
-  # and its evidence (schedule, fault records, node logs, data, history)
-  # is uploaded.
+  # failing seed prints how each node stood and the command that runs it
+  # again, and its evidence (schedule, fault records, node logs, data,
+  # history) is uploaded. Whether each fault took effect is tallied over
+  # the job's seeds, and over the whole chaos campaign.
   chaos:
     strategy:
       fail-fast: false
@@ -282,6 +363,7 @@ jobs:
             echo "seed $seed"
             "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" || status=1
           done
+          "$RUNNER_TEMP/chaos" -tally "$RUNNER_TEMP/chaos-out" || status=1
           exit "$status"
       - if: failure()
         uses: actions/upload-artifact@v6
@@ -302,8 +384,9 @@ jobs:
   # runs every disk under Jepsen's LazyFS, which loses on a power loss
   # what no fsync covered and tears writes; the plain row fails fsyncs and
   # fills disks, which LazyFS would hide. Gray faults require every probe
-  # write through the healthy nodes to commit within 10 election
-  # timeouts. Seeds come from the run ID.
+  # write through the healthy nodes to commit within etcd's request
+  # timeout, 7 s. Seeds come from the run ID. A failure prints how each
+  # node stood and the command that runs the seed again.
   chaos-env:
     strategy:
       fail-fast: false
@@ -388,7 +471,20 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go test -short -coverpkg=./internal/... -coverprofile="$RUNNER_TEMP/cover.out" ./...
+      - shell: bash
+        run: go test -short -coverpkg=./internal/... -coverprofile="$RUNNER_TEMP/cover.out" ./... 2>&1 | tee "$RUNNER_TEMP/coverage.log"
+        env:
+          SIM_OUT: ${{ runner.temp }}/sim-out
+      - if: failure()
+        run: scripts/replay.sh "$RUNNER_TEMP/coverage.log" -short
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage
+          path: |
+            ${{ runner.temp }}/coverage.log
+            ${{ runner.temp }}/sim-out
+          retention-days: 30
       - name: At least 80%
         run: |
           total=$(go tool cover -func="$RUNNER_TEMP/cover.out" | awk '/^total:/ {sub("%", "", $3); print $3}')
@@ -406,7 +502,20 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go test -race -timeout 40m ./internal/sim
+      - shell: bash
+        run: go test -race -timeout 40m ./internal/sim 2>&1 | tee "$RUNNER_TEMP/race-sim.log"
+        env:
+          SIM_OUT: ${{ runner.temp }}/sim-out
+      - if: failure()
+        run: scripts/replay.sh "$RUNNER_TEMP/race-sim.log" -race
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: race-sim
+          path: |
+            ${{ runner.temp }}/race-sim.log
+            ${{ runner.temp }}/sim-out
+          retention-days: 30
 
   # The chaos job's binaries built with -race, two seeds. A data race
   # stops the node (GORACE halt_on_error), which fails the run as an
@@ -437,6 +546,7 @@ jobs:
             echo "seed $seed"
             "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" || status=1
           done
+          "$RUNNER_TEMP/chaos" -tally "$RUNNER_TEMP/chaos-out" || status=1
           if grep -rl 'WARNING: DATA RACE' "$RUNNER_TEMP/chaos-out"; then status=1; fi
           exit "$status"
       - if: failure()
@@ -475,12 +585,18 @@ jobs:
           DURATION: 90s
           RACE: ${{ matrix.race }}
           RUN_ID: ${{ github.run_id }}
-        run: SEED=$(( (RUN_ID % 1000000000) * 1000000 + 1 + ${RACE:-0} * 500000 )) scripts/difffuzz.sh
+          KEEP: ${{ runner.temp }}/difffuzz
+        run: |
+          seed=$(( (RUN_ID % 1000000000) * 1000000 + 1 + ${RACE:-0} * 500000 ))
+          echo "replay: SEED=$seed DURATION=$DURATION RACE=$RACE ETCD=<etcd v3.7.2 binary> scripts/difffuzz.sh"
+          SEED=$seed scripts/difffuzz.sh
       - if: failure()
         uses: actions/upload-artifact@v6
         with:
           name: difffuzz-mismatch-${{ strategy.job-index }}
-          path: difftest/testdata/fuzz/
+          path: |
+            difftest/testdata/fuzz/
+            ${{ runner.temp }}/difffuzz
 
   rolling-upgrade:
     uses: ./.github/workflows/rolling-upgrade.yml

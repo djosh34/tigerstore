@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # Starts a local 3-node cluster and runs etcdctl against it over TLS with
 # client certificates. Needs etcdctl on PATH. Fails on the first wrong
-# answer.
+# answer. With KEEP set, a failed run leaves its logs there.
 set -euo pipefail
 work=$(mktemp -d)
-trap 'kill $(cat "$work"/data/*.pid 2>/dev/null) 2>/dev/null || true; rm -rf "$work"' EXIT
+# keep copies the logs of a failed run to $KEEP, if set, for the
+# workflow to upload.
+keep() {
+	if [ "$1" != 0 ] && [ -n "${KEEP:-}" ]; then
+		mkdir -p "$KEEP"
+		(cd "$work" && find . -name '*.log' -exec cp --parents {} "$KEEP" \;)
+	fi
+}
+trap 'status=$?; kill $(cat "$work"/data/*.pid 2>/dev/null) 2>/dev/null || true; keep "$status"; rm -rf "$work"' EXIT
 go build -o "$work/tigerstore" ./cmd/tigerstore
 scripts/dev-certs.sh "$work/certs" >/dev/null 2>&1
 off=${OFFSET:-$((RANDOM % 2000 + 1))}

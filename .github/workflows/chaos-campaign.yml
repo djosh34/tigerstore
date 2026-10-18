@@ -4,8 +4,11 @@
 # started by hand, with given seeds spread over the shards in place of
 # the run's own if set:
 #   gh workflow run chaos-campaign.yml [-f seeds="7 8 9"]
-# A failing seed reproduces with the command its log prints, and its
-# evidence is uploaded.
+# A failing seed prints how each node stood and the command that runs it
+# again, and its evidence is uploaded. Whether each fault took effect is
+# counted over the whole campaign: the tally job fails if a fault took
+# effect, and overlapped a write, in fewer than three in four of the runs
+# it was installed in.
 name: chaos-campaign
 
 on:
@@ -76,3 +79,34 @@ jobs:
             ${{ runner.temp }}/chaos-out
             !${{ runner.temp }}/chaos-out/**/disks
           retention-days: 30
+      # For the tally: what each fault of each run did.
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: chaos-faults-${{ matrix.mode }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/chaos-out/*/faults.json
+          retention-days: 30
+
+  tally:
+    needs: seeds
+    if: always()
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: chaos-faults-*
+          path: ${{ runner.temp }}/faults
+      - name: Each fault took effect in three of four runs
+        run: |
+          for mode in lazyfs plain; do
+            echo "::group::$mode"
+            go run ./cmd/chaos -tally "$RUNNER_TEMP"/faults/chaos-faults-"$mode"-* || status=1
+            echo "::endgroup::"
+          done
+          go run ./cmd/chaos -tally "$RUNNER_TEMP/faults" || status=1
+          exit "${status:-0}"

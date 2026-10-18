@@ -10,6 +10,7 @@
 #
 # ONLY, a regular expression, runs only the tests whose names match it.
 # RACE=1 builds tigerstore and runs the tests with the race detector.
+# KEEP, a directory, gets the logs of a failed run.
 #
 # Each test in suites runs on a fresh server started with the flags next to
 # it, on top of the ones below; @CERTS@ in a flag is the directory of the
@@ -55,7 +56,15 @@ stop() {
 	done
 	rm -f "$work"/*.pid "$work"/data/*.pid
 }
-trap 'stop; rm -rf "$work"' EXIT
+# keep copies the logs of a failed run to $KEEP, if set, for the
+# workflow to upload.
+keep() {
+	if [ "$1" != 0 ] && [ -n "${KEEP:-}" ]; then
+		mkdir -p "$KEEP"
+		(cd "$work" && find . -name '*.log' -exec cp --parents {} "$KEEP" \;)
+	fi
+}
+trap 'status=$?; stop; keep "$status"; rm -rf "$work"' EXIT
 # in_use reports whether something listens on a local port.
 in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 # alive fails unless every server this script started still runs, so the

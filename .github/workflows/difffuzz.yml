@@ -41,9 +41,15 @@ jobs:
           DURATION: ${{ inputs.duration }}
           RUN_ID: ${{ github.run_id }}
           SHARD: ${{ matrix.shard }}
-        run: SEED=$(( ((RUN_ID % 1000000000) * 4 + SHARD) * 1000000000 + 1 )) scripts/difffuzz.sh
+          KEEP: ${{ runner.temp }}/difffuzz
+        run: |
+          seed=$(( ((RUN_ID % 1000000000) * 4 + SHARD) * 1000000000 + 1 ))
+          echo "replay: SEED=$seed DURATION=$DURATION ETCD=<etcd v3.7.2 binary> scripts/difffuzz.sh"
+          SEED=$seed scripts/difffuzz.sh
       - if: failure()
         uses: actions/upload-artifact@v6
         with:
           name: difffuzz-mismatch-${{ matrix.shard }}
-          path: difftest/testdata/fuzz/
+          path: |
+            difftest/testdata/fuzz/
+            ${{ runner.temp }}/difffuzz
