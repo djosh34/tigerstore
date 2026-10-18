@@ -18,15 +18,20 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test -c -o "$RUNNER_TEMP/sim.test" ./internal/sim
-      - name: Repeat only seed 54875, 100 times
+      - name: Repeat only seed 54875, 500 times (worker 0 untraced, worker 1 traced)
         shell: bash
+        env:
+          DIAG_DISK_TRACE: ${{ matrix.worker }}
         run: |
           status=0
-          for i in $(seq 1 100); do
+          for i in $(seq 1 500); do
+            export DIAG_SAVE_SUCCESS=0
+            if [ "$i" = 1 ]; then export DIAG_SAVE_SUCCESS=1; fi
             "$RUNNER_TEMP/sim.test" -test.run '^TestSeeds$/^54875$' -test.timeout=45s -sim.seed=54875 -sim.seeds=1 -sim.out="$RUNNER_TEMP/replay-$i" > "$RUNNER_TEMP/replay-$i.log" 2>&1 || { status=1; echo "failed iteration $i"; tail -8 "$RUNNER_TEMP/replay-$i.log"; }
           done
+          echo "500 repetitions complete; status=$status"
           exit "$status"
-      - if: failure()
+      - if: always()
         uses: actions/upload-artifact@v6
         with:
           name: diag-274-${{ matrix.worker }}

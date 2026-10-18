@@ -63,7 +63,7 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 	t.Cleanup(func() {
 		if last, _ := lastRun.Load(t); last == me {
 			lastRun.Delete(t)
-			if t.Failed() {
+			if t.Failed() || os.Getenv("DIAG_SAVE_SUCCESS") == "1" {
 				explain(t, cfg, res)
 			}
 		}

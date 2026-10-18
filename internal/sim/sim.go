@@ -25,6 +25,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"net"
+	"os"
 	"slices"
 	"sync"
 	"time"
@@ -594,8 +595,10 @@ func (s *Sim) addNode(i int, disk *simfs.Disk) {
 		// updatedMemberURL.
 		n.addrs = []string{hostPort(memberURL), hostPort(updatedMemberURL)}
 	}
-	disk.Trace = func(format string, args ...any) {
-		s.diskTrace = append(s.diskTrace, fmt.Sprintf("%9.3f ms node %d ", float64(s.now())/float64(Millisecond), n.id)+fmt.Sprintf(format, args...))
+	if os.Getenv("DIAG_DISK_TRACE") == "1" {
+		disk.Trace = func(format string, args ...any) {
+			s.diskTrace = append(s.diskTrace, fmt.Sprintf("%9.3f ms node %d ", float64(s.now())/float64(Millisecond), n.id)+fmt.Sprintf(format, args...))
+		}
 	}
 	s.nodes = append(s.nodes, n)
 }

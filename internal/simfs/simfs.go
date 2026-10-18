@@ -277,6 +277,7 @@ func (d *Disk) Create(name string) (wal.File, error) {
 	}
 	f := &file{}
 	d.names[name] = f
+	d.trace("created name=%s inode=%p", name, f)
 	return &Handle{d: d, f: f, name: name}, nil
 }
 
@@ -447,6 +448,7 @@ func (h *Handle) Sync() error {
 
 // Close closes the handle.
 func (h *Handle) Close() error {
+	h.d.trace("close name=%s inode=%p", h.name, h.f)
 	if h.closed {
 		return errClosed
 	}
