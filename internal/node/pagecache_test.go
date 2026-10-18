@@ -16,11 +16,19 @@ import (
 func residentBytes(t *testing.T, dir string) int64 {
 	t.Helper()
 	var total int64
+	// The node's cleaner may remove a file during the walk; a removed
+	// file holds no pages.
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
 		if err != nil || !d.Type().IsRegular() {
 			return err
 		}
 		f, err := os.Open(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
