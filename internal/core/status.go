@@ -73,7 +73,7 @@ type Metrics struct {
 	// old files that failed.
 	MapBytes, DiskBytes, DiskBudget, CleanedBytes, RemoveFailures int64
 	// MaxCommitWait is the most ticks one of this node's appends as leader
-	// waited to commit, which the commit watchdog bounds, and the node
+	// waited to commit, those still waiting included, and the node
 	// driver adds MaxLogWriteNanos, the longest write and sync of the log.
 	MaxCommitWait, MaxLogWriteNanos int64
 	// CacheBytes is what the value cache holds and CacheLimit what it may

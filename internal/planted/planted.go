@@ -29,7 +29,7 @@ var Bugs = map[string]string{
 	"B14":  "the peer writer has no write deadline",
 	"B15":  "the history treats a call that timed out as certainly aborted",
 	"B16":  "WAL rotation moves to a new segment without the old one's last sync",
-	"B17":  "the leader's stalled-disk watchdog never fires",
+	"B17":  "a leader whose own disk is stuck never goes silent",
 	"B18":  "closing a watch stream leaves its watchers in place",
 	"B19":  "removing old segments drops one that recovery from the durable checkpoint still needs",
 	"B20":  "entries leave memory above the applied index",

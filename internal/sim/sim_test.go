@@ -217,9 +217,8 @@ func TestSeeds(t *testing.T) {
 			})
 			ran++
 			total.Fenced += st.Fenced
-			total.StallHandOffs += st.StallHandOffs
+			total.Silences += st.Silences
 			total.Asymmetric += st.Asymmetric
-			total.GrayLeaderStops += st.GrayLeaderStops
 			total.RecoveryCrashes += st.RecoveryCrashes
 			total.ErasedAtRoot += st.ErasedAtRoot
 			total.ErasedAtRemoval += st.ErasedAtRemoval
@@ -227,11 +226,10 @@ func TestSeeds(t *testing.T) {
 			t.Logf("%+v, %d committed writes", st, len(a.Log))
 		})
 	}
-	// Random faults can end a gray period or disk stall before the watchdog
-	// fires (#183, #218), so each shard also runs both deliberate scenarios.
+	// Random faults can end a disk stall before the leader goes silent
+	// (#218), so each shard also runs the deliberate scenario.
 	if ran >= 64 {
 		t.Run("TestStalledLeaderIsReplaced", TestStalledLeaderIsReplaced)
-		t.Run("TestGrayLeaderIsReplaced", TestGrayLeaderIsReplaced)
 	}
 	// Corruption, a link 10 times slower than its other direction and the
 	// other common events are rare in one run, but a set of seeds must see
@@ -241,16 +239,14 @@ func TestSeeds(t *testing.T) {
 		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal; each must happen",
 			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval)
 	}
-	// A stalled leader that hands over and a gray leader the commit
-	// watchdog stops are rarer: about 0.9% of seeds had the first (#218),
-	// 0.75% to 1.1% the second (#183). Over 2000 seeds even 0.7% leaves
-	// less than one chance in a million of none. CI's shards of 400 do not
-	// reach that, the seed campaign does.
-	if ran >= 2000 && !t.Failed() && (total.StallHandOffs == 0 || total.GrayLeaderStops == 0) {
-		t.Fatalf("%d seeds: %d stalled leaders that handed over, %d stopped gray leaders; each must happen",
-			ran, total.StallHandOffs, total.GrayLeaderStops)
+	// A stalled leader that goes silent is rarer: about 0.9% of seeds had
+	// one when it handed over instead (#218). Over 2000 seeds even 0.7%
+	// leaves less than one chance in a million of none. CI's shards of 400
+	// do not reach that, the seed campaign does.
+	if ran >= 2000 && !t.Failed() && total.Silences == 0 {
+		t.Fatalf("%d seeds: no stalled leader went silent; one must", ran)
 	}
-	t.Logf("%d seeds: %d stalled leaders that handed over, %d stopped gray leaders", ran, total.StallHandOffs, total.GrayLeaderStops)
+	t.Logf("%d seeds: %d stalled leaders went silent", ran, total.Silences)
 	took.check(t)
 }
 
@@ -427,12 +423,12 @@ func TestLinearizable(t *testing.T) {
 func atLeast(n int) int { return n * 95 / 100 }
 
 // TestStalledLeaderIsReplaced stalls the leader's disk for good at 5 s,
-// with no other fault. The leader still heartbeats, so only its own
-// watchdog can make way. The core hands over core.StallTicks election
-// timeouts after the oldest append it has not persisted, which is the
-// first one the stall holds: one queued before the stall, or the first
-// after it. It must hand over by then, plus two ticks, as the core counts
-// ticks, and every call to a healthy node that starts 10 election
+// with no other fault. The leader would go on heartbeating, so it must go
+// silent for the others to elect another (#233): core.StallTicks
+// election timeouts after the oldest append it has not persisted, which
+// is the first one the stall holds, one queued before the stall or the
+// first after it. It must go silent by then, plus two ticks, as the core
+// counts ticks, and every call to a healthy node that starts 10 election
 // timeouts after the stall must succeed. A leader can propose nothing for
 // a while after the stall, as when it serves a snapshot (#260).
 func TestStalledLeaderIsReplaced(t *testing.T) {
@@ -444,19 +440,19 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 		cfg.LiveFrom = cfg.StallLeaderAt + 10*election
 		cfg.Duration = 25 * Second
 		res := run(t, cfg)
-		if len(res.StallHandOffs) == 0 || res.Stats.StallHandOffs == 0 {
-			t.Fatalf("seed %d: the stalled leader never handed over", seed)
+		if len(res.Silences) == 0 || res.Stats.Silences == 0 {
+			t.Fatalf("seed %d: the stalled leader never went silent", seed)
 		}
 		if res.HeldAppendAt == 0 {
 			t.Fatalf("seed %d: the stall held no append of the leader", seed)
 		}
 		limit := res.HeldAppendAt + core.StallTicks*election + 2*TickTime
-		if at := res.StallHandOffs[0]; at < cfg.StallLeaderAt || at > limit {
-			t.Fatalf("seed %d: the stalled leader handed over at %d ms, want between the stall at %d ms and %d ms, %d election timeouts and two ticks after its oldest held append at %d ms",
+		if at := res.Silences[0]; at < cfg.StallLeaderAt || at > limit {
+			t.Fatalf("seed %d: the stalled leader went silent at %d ms, want between the stall at %d ms and %d ms, %d election timeouts and two ticks after its oldest held append at %d ms",
 				seed, at/Millisecond, cfg.StallLeaderAt/Millisecond, limit/Millisecond, core.StallTicks, res.HeldAppendAt/Millisecond)
 		}
 		checkers(t, res)
-		t.Logf("seed %d: stalled leader handed over at %d ms, deadline %d ms after its oldest held append at %d ms", seed, res.StallHandOffs[0]/Millisecond, limit/Millisecond, res.HeldAppendAt/Millisecond)
+		t.Logf("seed %d: stalled leader went silent at %d ms, deadline %d ms after its oldest held append at %d ms", seed, res.Silences[0]/Millisecond, limit/Millisecond, res.HeldAppendAt/Millisecond)
 	}
 }
 
@@ -622,60 +618,6 @@ func TestHalfOpenLink(t *testing.T) {
 		if healthy < 20 {
 			t.Fatalf("seed %d: only %d calls to the healthy pair during the half-open link", seed, healthy)
 		}
-	}
-}
-
-// TestGrayLeaderIsReplaced makes the leader gray at 5 s until healing,
-// with no other fault: its heartbeats get through, its appends do not, so
-// Raft's quorum check keeps it leader while nothing commits. It must stop
-// within core.CommitStallTicks election timeouts plus one. It
-// restarts still gray and with the longest log, so it can win the next
-// election and stop again. Every call to another node that starts 3
-// election timeouts after its last stop must succeed in under a second.
-func TestGrayLeaderIsReplaced(t *testing.T) {
-	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
-	for seed := uint64(1); seed <= 3; seed++ {
-		cfg := DefaultConfig(5000 + seed)
-		cfg.Faults = Faults{}
-		cfg.GrayLeaderAt = 5 * Second
-		// The stopped leader restarts still gray, until healing, so a
-		// client call to it hangs for the client's 3 s timeout. How many
-		// calls reach the healthy pair then depends on how often the
-		// clients pick that node, and the window starts at its last
-		// stop; 40 s leaves enough of them on every seed (seed 2 had 19
-		// in 30 s).
-		cfg.Duration = 40 * Second
-		res := run(t, cfg)
-		if len(res.CommitStops) == 0 || res.Stats.GrayLeaderStops == 0 {
-			t.Fatalf("seed %d: the gray leader never stopped", seed)
-		}
-		stop := res.CommitStops[0]
-		// One more election timeout than the watchdog's: on the real
-		// driver the stop came up to 750 ms past its three (seed 5001 of
-		// sim-campaign run 39044402060). Why is not known.
-		limit := cfg.GrayLeaderAt + (core.CommitStallTicks+1)*election
-		if stop < cfg.GrayLeaderAt || stop > limit {
-			t.Fatalf("seed %d: the gray leader stopped at %d ms, want between %d and %d ms", seed, stop/Millisecond, cfg.GrayLeaderAt/Millisecond, limit/Millisecond)
-		}
-		last := res.CommitStops[len(res.CommitStops)-1]
-		ok := 0
-		for _, r := range res.History {
-			if r.Call < last+3*election || r.Call >= cfg.Duration || r.Node == res.grayNode {
-				continue
-			}
-			if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {
-				t.Fatalf("seed %d: call to node %d at %d ms failed: %v", seed, r.Node+1, r.Call/Millisecond, r.Err)
-			}
-			if r.Return-r.Call >= Second {
-				t.Fatalf("seed %d: call to node %d at %d ms took %d ms", seed, r.Node+1, r.Call/Millisecond, (r.Return-r.Call)/Millisecond)
-			}
-			ok++
-		}
-		if ok < 20 {
-			t.Fatalf("seed %d: only %d calls to the healthy pair", seed, ok)
-		}
-		checkers(t, res)
-		t.Logf("seed %d: gray leader stopped at %d ms, deadline %d ms; %d timely calls to the healthy pair", seed, stop/Millisecond, limit/Millisecond, ok)
 	}
 }
 

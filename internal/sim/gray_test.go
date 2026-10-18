@@ -29,21 +29,14 @@ func TestGrayFsyncOutlastsHealing(t *testing.T) {
 		checkers(t, a)
 		took.add(seed, map[string]bool{"gray fsync 1.5 s past healing": a.grayHealedAt >= cfg.Duration+1500*Millisecond})
 		from := max(a.grayHealedAt, cfg.Duration) + 2*election
-		for _, stop := range a.CommitStops {
-			if stop >= from {
-				// It would also answer calls with "server stopped".
-				t.Fatalf("seed %d: the commit watchdog stopped a node at %d ms", seed, stop/Millisecond)
-			}
-		}
 		calls := 0
 		for _, r := range a.History {
 			if r.Call < from {
 				continue
 			}
 			if errors.Is(r.Err, rpctypes.ErrGRPCStopped) {
-				// With no other fault and no watchdog stop (above), only a
-				// start from the log after a snapshot install answers
-				// that.
+				// With no other fault, only a start from the log after a
+				// snapshot install answers that.
 				continue
 			}
 			if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {

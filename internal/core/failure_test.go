@@ -18,7 +18,6 @@ func TestFailureOf(t *testing.T) {
 		want Failure
 	}{
 		{fmt.Errorf("%w: %w", ErrDisk, io.ErrShortWrite), Stop},
-		{ErrCommitStalled, Stop},
 		{tooOld(3, 2), Stop},
 		{errors.New("anything else"), Stop},
 		// A damaged stream from the leader is the leader's, not ours.

@@ -395,7 +395,7 @@ func TestLoneLeaderWaitsForItsDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 	held := eff.Persist
-	for range (max(StallTicks, CommitStallTicks) + 1) * n.cfg.ElectionTicks {
+	for range (max(StallTicks, SlowCommitTicks) + 1) * n.cfg.ElectionTicks {
 		n.Tick()
 		eff, err := n.Process()
 		if err != nil {

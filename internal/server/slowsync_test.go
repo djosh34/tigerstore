@@ -64,3 +64,81 @@ func TestSlowSyncsKeepTheLeader(t *testing.T) {
 		t.Fatalf("the nodes saw %d changes of leader during slow syncs", after-before)
 	}
 }
+
+// requestTimeout is etcd's request timeout at its default election
+// timeout of 1 s: 5 s plus two election timeouts.
+const requestTimeout = 7 * time.Second
+
+// TestHeldFollowerSyncsKeepTheLeader is #88's case at a real node's
+// 100 ms ticks. Both followers' syncs are held for 4 s, so the leader's
+// entry waits past three election timeouts to commit, which the commit
+// watchdog took for a dead cluster and stopped the leader. As in etcd
+// (#233), the leader only warns: the put returns within etcd's 7 s
+// request timeout, no node stops, and every node then reads the value.
+func TestHeldFollowerSyncsKeepTheLeader(t *testing.T) {
+	var held [4]atomic.Int64 // unix nanoseconds to hold syncs until, by ID
+	c := newClusterWith(t, func(c *cluster) {
+		c.tick = 100 * time.Millisecond
+		c.nodeConfig = func(nc *node.Config) {
+			id := nc.Core.ID
+			nc.BeforeSync = func() {
+				if d := time.Until(time.Unix(0, held[id].Load())); d > 0 {
+					time.Sleep(d)
+				}
+			}
+		}
+	})
+	cert, _, _, err := c.ca.Issue("client", 94)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+		return c.client(1, cert).Put(ctx, &pb.PutRequest{Key: []byte("start"), Value: []byte("v")})
+	})
+	lead := uint64(0)
+	for id := uint64(1); id <= 3; id++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		m, err := c.nodes[id].Metrics(ctx)
+		cancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.IsLeader {
+			lead = id
+		}
+	}
+	if lead == 0 {
+		t.Fatal("no leader")
+	}
+	until := time.Now().Add(4 * time.Second).UnixNano()
+	for id := uint64(1); id <= 3; id++ {
+		if id != lead {
+			held[id].Store(until)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	start := time.Now()
+	_, err = c.client(lead, cert).Put(ctx, &pb.PutRequest{Key: []byte("k"), Value: []byte("held")})
+	cancel()
+	if err != nil {
+		t.Fatalf("put with the followers' syncs held, after %v: %v", time.Since(start), err)
+	}
+	t.Logf("the put took %v", time.Since(start))
+	for id := uint64(1); id <= 3; id++ {
+		got := retry(t, func(ctx context.Context) (*pb.RangeResponse, error) {
+			return c.client(id, cert).Range(ctx, &pb.RangeRequest{Key: []byte("k")})
+		})
+		if len(got.Kvs) != 1 || string(got.Kvs[0].Value) != "held" {
+			t.Fatalf("node %d reads %v, want the acknowledged value", id, got.Kvs)
+		}
+	}
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	m, err := c.nodes[lead].Metrics(ctx)
+	cancel()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.SlowCommits == 0 {
+		t.Fatalf("the leader never warned of a slow commit; its longest commit wait was %d ticks", m.MaxCommitWait)
+	}
+}

@@ -1029,8 +1029,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		chunks = append(chunks, eff.Checkpoint...)
 		reads = append(reads, eff.Reads...)
-		if eff.HandOff != 0 {
-			n.logf("the leader's disk stalled; handing leadership to %x", eff.HandOff)
+		if eff.SlowCommit {
+			n.logf("warning: the leader's oldest entry has waited %d election timeouts to commit", cmp.Or(n.cfg.Core.SlowCommitElections, core.SlowCommitTicks))
+		}
+		if eff.Silent {
+			n.logf("warning: the leader's disk write has taken %d election timeouts; sending nothing to peers until it is durable", cmp.Or(n.cfg.Core.StallElections, core.StallTicks))
 		}
 		if eff.Members != nil {
 			n.setMembers(eff.Members)

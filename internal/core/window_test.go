@@ -26,11 +26,13 @@ type memCluster struct {
 	// nothing commits; holdDisk keeps a node's disk writes from finishing.
 	holdAcks bool
 	holdDisk [3]bool
-	// down marks nodes that neither run nor get messages, and handOffs
-	// collects Effects.HandOff.
-	down     [3]bool
-	handOffs []uint64
-	replies  int
+	// down marks nodes that neither run nor get messages. sent counts the
+	// messages each node put out, and silences and slowCommits its
+	// Effects.Silent and Effects.SlowCommit.
+	down                  [3]bool
+	sent                  [3]int
+	silences, slowCommits [3]int
+	replies               int
 	// noSpace counts NOSPACE answers, the one error a node may give.
 	noSpace int
 	// onReply lets a test inspect expected errors instead of failing on them.
@@ -98,9 +100,13 @@ func (c *memCluster) step() {
 		if err != nil {
 			c.t.Fatalf("node %d: %v", i+1, err)
 		}
-		if eff.HandOff != 0 {
-			c.handOffs = append(c.handOffs, eff.HandOff)
+		if eff.Silent {
+			c.silences[i]++
 		}
+		if eff.SlowCommit {
+			c.slowCommits[i]++
+		}
+		c.sent[i] += len(eff.Send)
 		c.jobs[i] = append(c.jobs[i], eff.Persist...)
 		c.msgs = append(c.msgs, eff.Send...)
 		for _, r := range eff.Replies {

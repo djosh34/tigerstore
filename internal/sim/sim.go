@@ -380,9 +380,8 @@ type Sim struct {
 	checkpoints  []*checkpoint
 	halfOpens    []halfOpenLink
 	// applied is the highest index any node has applied.
-	applied       uint64
-	stallHandOffs []int64
-	commitStops   []int64
+	applied  uint64
+	silences []int64
 	// stalledLeader is the leader StallLeaderAt stalled, and heldAppendAt
 	// when it handed its disk the oldest append that the stall holds.
 	stalledLeader *node
@@ -438,21 +437,18 @@ type Stats struct {
 	// Revokes counts lease revokes in the log, expiries included.
 	Revokes int
 	// DiskFaults counts failed writes and syncs that stopped a node,
-	// StallHandOffs leaders that handed over on a stalled disk, Fenced
+	// Silences leaders that went silent on a stalled disk, Fenced
 	// nodes that found their disk damaged, and ColdRestarts the
 	// erase-one-disk restarts checked.
-	DiskFaults, StallHandOffs, Fenced, ColdRestarts int
+	DiskFaults, Silences, Fenced, ColdRestarts int
 	// Pauses counts process pauses, LinkStalls stalled links, HalfOpens
 	// half-open links, and Asymmetric the links that drew a delay at least
 	// 10 times that of the other direction.
 	Pauses, LinkStalls, HalfOpens, Asymmetric int
-	// GrayNodes counts gray nodes that lost an append, CommitStops leaders
-	// that stopped because their entries stopped committing, GrayStreams
-	// the streams with watches a gray client opened, and RecoveryCrashes
+	// GrayNodes counts gray nodes that lost an append, GrayStreams the
+	// streams with watches a gray client opened, and RecoveryCrashes
 	// crashes inside the recovery of an existing log.
-	GrayNodes, CommitStops, GrayStreams, RecoveryCrashes int
-	// GrayLeaderStops counts commit-watchdog stops of a gray leader.
-	GrayLeaderStops int
+	GrayNodes, GrayStreams, RecoveryCrashes int
 	// Checkpoints counts checkpoint files completed, Snapshots snapshot
 	// streams served, ServeFailures fetches that the source could not
 	// serve, SnapshotFlips those damaged on the way, FetchCrashes sources
@@ -487,12 +483,11 @@ type Result struct {
 	revs    []int64
 	Watches []WatchResult
 	Stats   Stats
-	// StallHandOffs are the times leaders handed over on a stalled disk,
-	// and CommitStops the times leaders stopped because nothing committed.
+	// Silences are the times leaders went silent on a stalled disk.
 	// HeldAppendAt is when the leader StallLeaderAt stalled handed its
 	// disk the oldest append the stall holds.
-	StallHandOffs, CommitStops []int64
-	HeldAppendAt               int64
+	Silences     []int64
+	HeldAppendAt int64
 	// Trace is what the run did, last of all, and Report how it left each
 	// node, for a failure's report.
 	Trace  []string
@@ -527,7 +522,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	// A run that failed before its end keeps what it did so far, for its
 	// report; it has no committed log for the checkers.
 	s.mu.Lock()
-	res.History, res.Stats, res.StallHandOffs, res.CommitStops = s.history, s.stats, s.stallHandOffs, s.commitStops
+	res.History, res.Stats, res.Silences = s.history, s.stats, s.silences
 	res.HeldAppendAt = s.heldAppendAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
 	s.mu.Unlock()
@@ -1060,8 +1055,6 @@ func (s *Sim) exited(p *proc, err error) {
 	case s.cfg.Membership && core.FailureOf(err) == core.Leave:
 		n.inactive = true
 		s.down(n)
-	case errors.Is(err, core.ErrCommitStalled):
-		s.stopNode(n)
 	case injected(err):
 		// Only injected faults may fail; the node stops at once and never
 		// retries, as a failed fsync leaves the file in an unknown state.
@@ -1136,16 +1129,9 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		}
 	}
 	s.applied = max(s.applied, c.Applied())
-	if eff.HandOff != 0 {
-		s.stats.StallHandOffs++
-		s.stallHandOffs = append(s.stallHandOffs, s.now())
-	}
-	if errors.Is(err, core.ErrCommitStalled) {
-		s.stats.CommitStops++
-		if s.gray == n {
-			s.stats.GrayLeaderStops++
-		}
-		s.commitStops = append(s.commitStops, s.now())
+	if eff.Silent {
+		s.stats.Silences++
+		s.silences = append(s.silences, s.now())
 	}
 	if s.rotDue == n {
 		s.rotDue = nil
@@ -1350,10 +1336,9 @@ func (s *Sim) stopNode(n *node) { s.stopNodeAfter(n, s.restartDelay()) }
 // stopNodeAfter is stopNode with the restart d from now.
 func (s *Sim) stopNodeAfter(n *node, d int64) {
 	if s.healed && s.now() <= s.recovered() {
-		// The guaranteed disk fault fired after healing, or a watchdog
-		// whose wait began before it. The liveness rule starts once the
-		// node is back (check.go); the clients keep going for 3 s more
-		// than that, so the rule has calls to check. Only a stop before
+		// The guaranteed disk fault fired after healing. The liveness
+		// rule starts once the node is back (check.go); the clients keep
+		// going for 3 s more than that, so the rule has calls to check. Only a stop before
 		// the rule would have started counts, so the bound stays fixed:
 		// a node that keeps stopping later fails the rule. A run with a
 		// node fenced and another gray past healing may write nothing,
