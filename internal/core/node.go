@@ -537,9 +537,8 @@ type Node struct {
 	tokenWaits []tokenWait
 	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
 	// or -1 once an alarm change of it applied. diskAlarm says that this
-	// run raised its alarm, or found it up, for its disk budget, and the
-	// quota has not refused a write since: only such an alarm clears
-	// itself (SetDisk).
+	// run raised its alarm for its disk budget, and the quota has not
+	// refused a write since: only such an alarm clears itself (SetDisk).
 	noSpaceAt int64
 	diskAlarm bool
 
@@ -1018,14 +1017,16 @@ func (n *Node) submit(r Request, p *pending) {
 // appends either (#170). Once cleaning brought the files below the
 // budget, it clears the alarm again, unless the quota refused a write
 // meanwhile or the store is past it: the quota's alarm stays until an
-// operator disarms it, as in etcd. Only an alarm this run raised, or
-// found up, past the budget clears itself, so an alarm a restart finds
-// with the files within the budget stays too. The alarm changes at most
+// operator disarms it, as in etcd. Only an alarm this run raised past
+// the budget clears itself: one it finds up or on its way, the quota's or
+// one a restart found, stays until a disarm. The alarm changes at most
 // every leaseRetryTicks.
 func (n *Node) SetDisk(used, budget int64) {
 	switch {
 	case used >= budget:
-		n.diskAlarm = true
+		if !n.ownNoSpace() && n.noSpaceAt < 0 {
+			n.diskAlarm = true
+		}
 		n.raiseNoSpace(0)
 	case !n.quotaLeft(kvOverhead):
 		n.diskAlarm = false

@@ -147,9 +147,7 @@ func (n *Node) noSpaceDue(active bool) bool {
 	if n.rn == nil || n.readInline {
 		return false
 	}
-	if slices.ContainsFunc(n.state.alarms, func(a *pb.AlarmMember) bool {
-		return a.Alarm == pb.AlarmType_NOSPACE && a.MemberID == n.cfg.ID
-	}) == active {
+	if n.ownNoSpace() == active {
 		return false
 	}
 	if n.noSpaceAt >= 0 && n.now-n.noSpaceAt < leaseRetryTicks {
@@ -157,4 +155,11 @@ func (n *Node) noSpaceDue(active bool) bool {
 	}
 	n.noSpaceAt = n.now
 	return true
+}
+
+// ownNoSpace reports whether this node's own NOSPACE alarm is active.
+func (n *Node) ownNoSpace() bool {
+	return slices.ContainsFunc(n.state.alarms, func(a *pb.AlarmMember) bool {
+		return a.Alarm == pb.AlarmType_NOSPACE && a.MemberID == n.cfg.ID
+	})
 }

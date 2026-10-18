@@ -60,8 +60,9 @@ func alarmed(n *Node, id uint64) bool {
 }
 
 // TestQuotaAlarmStays has a put reach the quota: its node raises its
-// NOSPACE alarm, which stays while its disk is within the budget, as
-// etcd's stays until an operator disarms it. After the disarm a put goes
+// NOSPACE alarm, which stays while its disk is within the budget, also
+// after a pass of the budget, as etcd's stays until an operator disarms
+// it. After the disarm a put goes
 // through.
 func TestQuotaAlarmStays(t *testing.T) {
 	c := newMemCluster(t, func(cfg *Config) { cfg.QuotaBytes = 4 << 10 })
@@ -74,13 +75,16 @@ func TestQuotaAlarmStays(t *testing.T) {
 	if c.noSpace != 1 || !alarmed(l, l.cfg.ID) {
 		t.Fatalf("%d NOSPACE answers, alarm %v; want the put refused and the alarm up", c.noSpace, alarmed(l, l.cfg.ID))
 	}
-	for range 3 * leaseRetryTicks {
-		l.SetDisk(0, 1)
-		l.Tick()
-		c.step()
-	}
-	if !alarmed(l, l.cfg.ID) {
-		t.Fatal("the quota's alarm cleared itself")
+	// Nor does a pass of the disk budget make it the budget's.
+	for _, used := range []int64{1, 0} {
+		for range 3 * leaseRetryTicks {
+			l.SetDisk(used, 1)
+			l.Tick()
+			c.step()
+		}
+		if !alarmed(l, l.cfg.ID) {
+			t.Fatalf("the quota's alarm cleared itself with %d of 1 byte used", used)
+		}
 	}
 	l.Submit(Request{ID: 2, Op: &pb.AlarmRequest{Action: pb.AlarmRequest_DEACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: l.cfg.ID}})
 	for i := 0; i < 100 && alarmed(l, l.cfg.ID); i++ {
@@ -168,7 +172,7 @@ func TestFollowerPastBudgetStopsWrites(t *testing.T) {
 
 // TestRestartKeepsAlarm has a follower raise its NOSPACE alarm past its
 // budget and then start again, which leaves it not knowing why the alarm
-// is up: with its files within the budget, the alarm stays until a
+// is up: past the budget and then within it, the alarm stays until a
 // disarm, as a quota's does.
 func TestRestartKeepsAlarm(t *testing.T) {
 	c := newMemCluster(t, func(*Config) {})
@@ -183,10 +187,12 @@ func TestRestartKeepsAlarm(t *testing.T) {
 		t.Fatal("the follower past its budget raised no alarm")
 	}
 	f.diskAlarm = false // as a new core starts
-	for range 3 * leaseRetryTicks {
-		f.SetDisk(0, 1)
-		f.Tick()
-		c.step()
+	for _, used := range []int64{1, 0} {
+		for range 3 * leaseRetryTicks {
+			f.SetDisk(used, 1)
+			f.Tick()
+			c.step()
+		}
 	}
 	if !alarmed(f, f.cfg.ID) {
 		t.Fatal("an alarm the run did not raise cleared itself")
