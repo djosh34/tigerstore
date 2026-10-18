@@ -55,3 +55,32 @@ func TestCompactionCuts(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckpointState checks that the state of a checkpoint leaves out
+// the base and the checksum, and nothing else.
+func TestCheckpointState(t *testing.T) {
+	s := startSingle(t, simfs.New(), 1)
+	s.ok(1, &pb.PutRequest{Key: []byte("k"), Value: []byte("v")})
+	h := s.n.state.header(2, 1)
+	file := func(base int64, index uint64) []byte {
+		h.base, h.index = base, index
+		b, err := h.encode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return append(b, "keys"+string(rune(base))...)
+	}
+	state := func(b []byte) string {
+		st, err := CheckpointState(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(st)
+	}
+	if state(file(1, 2)) != state(file(2, 2)) {
+		t.Fatal("the state depends on the base")
+	}
+	if state(file(1, 2)) == state(file(1, 3)) {
+		t.Fatal("the state does not depend on the index")
+	}
+}

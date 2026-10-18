@@ -363,12 +363,9 @@ type Node struct {
 	ckptQ     chan core.CheckpointChunk
 	cleanQ    chan packRoot
 	// wantQ asks prepareSegments for the file of a segment, which nextQ
-	// takes to the disk goroutine for its next rotation. wantNext, which
-	// only the disk goroutine uses, is set until it asked for the segment
-	// after the current one.
+	// takes to the disk goroutine for its rotation.
 	wantQ    chan uint64
 	nextQ    chan wal.File
-	wantNext bool
 	defragQ  chan chan error
 	readQ    chan *core.ValueRead
 	readDone chan readDone
@@ -1250,11 +1247,13 @@ const syncsInFlight = 4
 
 // written is a group of jobs, and roots of cleaning passes, written to
 // the log: f is the segment to sync for it, nil when nothing in it must be
-// synced (core.PersistJob.MustSync).
+// synced (core.PersistJob.MustSync), and dir whether the directory must be
+// synced after it, as the segment took its name.
 type written struct {
 	jobs           []core.PersistJob
 	packs          []packRoot
 	f              wal.File
+	dir            bool
 	entries, bytes int
 	times          persistTimes
 }
@@ -1278,13 +1277,12 @@ type syncedGroup struct {
 //
 // A full segment is cut to its records before its last group's sync, and
 // the log goes on in the file that prepareSegments readied, without a
-// sync of its own. Nothing is written into the new segment before every
-// group of the old one is durable, as its header vouches for the old
-// one's last record: until then, the jobs that come wait in the log's
-// buffer.
+// sync of its own. The new segment takes its name, and gets its first
+// write, once every group of the old one is durable, as its header vouches
+// for the old one's last record: until then, the jobs that come wait in
+// the log's buffer. Its first group's sync also syncs the directory.
 func (n *Node) persist(ctx context.Context, t peer.Transport) {
 	w := n.log.w
-	n.wantNext = true
 	toSync := make(chan written, syncsInFlight)
 	synced := make(chan syncedGroup, syncsInFlight)
 	// report runs on the sync goroutine.
@@ -1318,17 +1316,19 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 	}
 	inFlight := 0
 	// old is the segment the log rotated out of, while groups written to
-	// it wait for their syncs; release closes it once none does, and
-	// reports whether the node goes on.
+	// it wait for their syncs; release closes it once none does and names
+	// the new segment, and reports whether the node goes on. dir is set
+	// while the name waits for a directory sync.
 	var old wal.File
+	dir := false
 	release := func() bool {
 		if inFlight > 0 || old == nil {
 			return true
 		}
-		err := old.Close()
-		old = nil
+		err := errors.Join(old.Close(), w.Place())
+		old, dir = nil, true
 		if err != nil {
-			fail(fmt.Errorf("%w: close a full segment: %w", core.ErrDisk, err))
+			fail(fmt.Errorf("%w: start a segment: %w", core.ErrDisk, err))
 		}
 		return err == nil
 	}
@@ -1340,9 +1340,6 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			return false
 		}
 		n.durable(s.g)
-		if s.g.f == w.Segment() {
-			n.askNext()
-		}
 		return release()
 	}
 	// drain waits until every earlier group was reported to the committer.
@@ -1445,7 +1442,8 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			fail(fmt.Errorf("%w: %w", core.ErrDisk, err))
 			return
 		}
-		if full || len(g.packs) > 0 || slices.ContainsFunc(g.jobs, core.PersistJob.MustSync) {
+		g.dir, dir = dir, false
+		if full || g.dir || len(g.packs) > 0 || slices.ContainsFunc(g.jobs, core.PersistJob.MustSync) {
 			g.f = w.Segment()
 		}
 		if full && planted.On("B16") {
@@ -1462,13 +1460,6 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			return
 		}
 		if full {
-			if n.wantNext {
-				// The segment filled before its header was durable.
-				if !drain() {
-					return
-				}
-				n.askNext()
-			}
 			if old, err = n.rotate(ctx); err != nil || !release() {
 				return
 			}
@@ -1499,10 +1490,12 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 		}
 		err := failed
 		var f wal.File
+		dir := false
 		for _, g := range batch {
 			if g.f != nil {
 				f = g.f
 			}
+			dir = dir || g.dir
 		}
 		var early []syncedGroup
 		if err == nil && f != nil && (planted.On("B02") && n.Leader() == n.ID() || planted.On("B03") && n.Leader() != n.ID()) {
@@ -1521,6 +1514,11 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 				n.cfg.BeforeSync()
 			}
 			err = f.Sync()
+			// Planted: B05 takes records into the new segment before its
+			// directory entry is durable.
+			if err == nil && dir && !planted.On("B05") {
+				err = n.log.fs.SyncDir()
+			}
 			if planted.On("B11") {
 				// Planted: carry on as if the sync worked.
 				err = nil
@@ -1573,18 +1571,10 @@ func (n *Node) durable(g written) {
 	}
 }
 
-// askNext asks prepareSegments for the file of the segment after the
-// current one, unless it did already: once the current segment's header
-// is durable, as until then a crash must find no newer segment on disk.
-func (n *Node) askNext() {
-	if n.wantNext {
-		n.wantNext = false
-		n.wantQ <- n.log.w.Seq() + 1
-	}
-}
-
 // rotate goes on in the next segment, which prepareSegments readied, and
-// returns the old segment's file. The old segment must be sealed.
+// returns the old segment's file. The old segment must be sealed, and the
+// new one waits for its name (wal.WAL.Place). It asks prepareSegments for
+// the file of the one after.
 func (n *Node) rotate(ctx context.Context) (wal.File, error) {
 	start := time.Now()
 	var next wal.File
@@ -1600,7 +1590,7 @@ func (n *Node) rotate(ctx context.Context) (wal.File, error) {
 	old := n.log.w.Rotate(next)
 	n.log.sealed = n.log.w.Seq() - 1
 	n.log.mu.Unlock()
-	n.wantNext = true
+	n.wantQ <- n.log.w.Seq() + 1
 	return old, nil
 }
 
@@ -1613,12 +1603,8 @@ func (n *Node) syncLog(ctx context.Context, h prometheus.Observer) error {
 	if err := w.Flush(); err != nil {
 		return err
 	}
-	if err := syncTimed(w.Segment(), h); err != nil {
+	if err := syncTimed(w.Segment(), h); err != nil || !w.Full() {
 		return err
-	}
-	n.askNext()
-	if !w.Full() {
-		return nil
 	}
 	if err := errors.Join(w.Seal(), w.Segment().Sync()); err != nil {
 		return err
@@ -1627,20 +1613,19 @@ func (n *Node) syncLog(ctx context.Context, h prometheus.Observer) error {
 	if err != nil {
 		return err
 	}
-	return old.Close()
+	return errors.Join(old.Close(), w.Place(), n.log.fs.SyncDir())
 }
 
 // prepareSegments readies the file of each segment the disk goroutine
 // asks for, ahead of the rotation that takes it, as etcd's file pipeline
-// does. A failure stops the node, as a failed write of the log does.
+// does: a spare or a new file, under a name that is not a segment's until
+// the segment starts. A failure stops the node, as a failed write of the
+// log does.
 func (n *Node) prepareSegments(ctx context.Context) {
+	n.log.mu.Lock()
+	seq := n.log.w.Seq() + 1
+	n.log.mu.Unlock()
 	for {
-		var seq uint64
-		select {
-		case seq = <-n.wantQ:
-		case <-ctx.Done():
-			return
-		}
 		f, err := wal.PrepareSegment(n.log.fs, seq)
 		if err != nil {
 			select {
@@ -1652,10 +1637,15 @@ func (n *Node) prepareSegments(ctx context.Context) {
 		select {
 		case n.nextQ <- f:
 		case <-ctx.Done():
-			// It stays on disk, where the next run starts it.
+			// It stays on disk, where the next run takes it.
 			if err := f.Close(); err != nil {
 				n.logf("close the file of segment %d: %v", seq, err)
 			}
+			return
+		}
+		select {
+		case seq = <-n.wantQ:
+		case <-ctx.Done():
 			return
 		}
 	}

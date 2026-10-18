@@ -19,7 +19,8 @@
 // deleting them, and the log writes at its own offset, so a sync into a
 // reused file changes no block allocation and, on ext4, commits no
 // journal. PrepareSegment readies the file of the next segment ahead of
-// time, so that a rotation (Seal, Rotate) does no sync of its own.
+// time, under a name of its own, so that a rotation (Seal, Rotate, Place)
+// does no sync of its own.
 //
 // An entry record replaces every entry at or after its index, so a
 // truncated Raft suffix and its replacement are synced together. A root
@@ -34,9 +35,9 @@
 // that reads from other goroutines than the one that appends must hold
 // one lock around Append, AppendRoot, AppendValue, InstallPacks, Rotate,
 // DropBelow, DropCleaned, RemoveBelow, RemoveCleaned and every read, but
-// need not hold it around Flush, Seal and RemoveFiles. Sync starts the
-// next segment itself, so such a driver uses Flush, Seal and Rotate
-// instead.
+// need not hold it around Flush, Seal, Place and RemoveFiles. Sync starts
+// the next segment itself, so such a driver uses Flush, Seal, Rotate and
+// Place instead.
 package wal
 
 import (
@@ -149,6 +150,7 @@ const (
 	// spare files for new segments.
 	MaxSpares   = 4
 	sparePrefix = "spare-"
+	nextPrefix  = "next-"
 )
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
@@ -156,6 +158,8 @@ var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 func segmentName(seq uint64) string { return fmt.Sprintf("%016x.wal", seq) }
 
 func spareName(seq uint64) string { return fmt.Sprintf("%s%016x", sparePrefix, seq) }
+
+func nextName(seq uint64) string { return fmt.Sprintf("%s%016x", nextPrefix, seq) }
 
 // CheckpointName is the file name of the checkpoint at a Raft index.
 func CheckpointName(index uint64) string { return fmt.Sprintf("ckpt-%016x", index) }
@@ -232,15 +236,16 @@ type WAL struct {
 	fs  FS
 	seg File
 	seq uint64
-	// version is the format of the newest segment, and size where its
-	// records end.
-	version uint32
-	size    int64
-	crc     uint32
-	last    uint64
-	buf     []byte
-	dirty   bool
-	maxSize int64
+	// version is the format of the newest segment, size where its records
+	// end, and unplaced whether it waits for Place.
+	version  uint32
+	size     int64
+	unplaced bool
+	crc      uint32
+	last     uint64
+	buf      []byte
+	dirty    bool
+	maxSize  int64
 	// spares is how many removed segments RemoveBelow and RemoveCleaned
 	// keep as spare files.
 	spares int
@@ -330,13 +335,13 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			ok = seq == w.seq+1 && crc == w.crc
 		}
 		if !ok {
-			// A segment's header goes to disk with its first records, after
-			// every record of the segment before it is durable, so only the
-			// newest segment can lack a header: one that never started,
-			// whose file PrepareSegment readied, or whose first write did
-			// not reach the disk whole. Such a file holds no first record
-			// of this segment after a header's place, and the log starts it
-			// again. Anything else is damage or a lost segment.
+			// A segment takes its name, and its header goes to disk with its
+			// first records, once every record of the segment before it is
+			// durable, so only the newest segment can lack a header: one
+			// whose first write did not reach the disk whole, in a new file
+			// or a spare. Such a file holds no first record of this segment
+			// after a header's place, and the log starts it again. Anything
+			// else is damage or a lost segment.
 			seq, err := segmentSeq(name)
 			if err == nil && (!last || w.started(data, seq)) {
 				err = fmt.Errorf("%w: bad header or missing segment before %s", ErrCorrupt, name)
@@ -359,18 +364,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		}
 		if good < int64(len(data)) {
 			if !last {
-				// The segment after it may be one that never started; then
-				// appends went to this one, and its tail is torn.
-				started := true
-				if i == len(segs)-2 {
-					started, err = w.startedFile(fs, segs[i+1], seq+1)
-				}
-				if err == nil && started {
-					err = fmt.Errorf("%w: damaged record in %s at byte %d", ErrCorrupt, name, good)
-				}
-				if err != nil {
-					return nil, nil, errors.Join(err, f.Close())
-				}
+				return nil, nil, errors.Join(fmt.Errorf("%w: damaged record in %s at byte %d", ErrCorrupt, name, good), f.Close())
 			}
 			// A torn tail: the write was never synced, so nothing in it was
 			// acknowledged.
@@ -416,6 +410,10 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			return nil, nil, errors.Join(err, w.closePacks())
 		}
 		w.start(f)
+		w.unplaced = true
+		if err := errors.Join(w.Place(), fs.SyncDir()); err != nil {
+			return nil, nil, errors.Join(err, w.Close())
+		}
 	}
 	return w, rec, nil
 }
@@ -426,19 +424,6 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 func (w *WAL) started(data []byte, seq uint64) bool {
 	_, hseq, crc, ok := parseHeader(data)
 	return ok && hseq == seq && crc == w.crc || verifiesAfter(data, headerSize, chainSeed(Version, seq, w.crc))
-}
-
-// startedFile is started for the file name.
-func (w *WAL) startedFile(fs FS, name string, seq uint64) (bool, error) {
-	f, err := fs.Open(name)
-	if err != nil {
-		return false, err
-	}
-	data, err := f.ReadAll()
-	if err = errors.Join(err, f.Close()); err != nil {
-		return false, err
-	}
-	return w.started(data, seq), nil
 }
 
 // segmentSeq is the sequence number in a segment's file name.
@@ -694,56 +679,57 @@ func (w *WAL) setRoot(r Root) {
 	w.root = Root{Index: r.Index, Term: r.Term}
 }
 
-// PrepareSegment readies the file of segment seq, for Rotate: the oldest
-// spare, renamed, or a new file. The directory entry is durable when it
-// returns. The file holds no header of segment seq, nor a record chained
-// from one, until Rotate's first write, so Open starts a segment that
-// never started again. A spare that a removal took meanwhile is skipped.
+// PrepareSegment readies the file of segment seq, for Rotate, under a
+// name that is not a segment's: a file it readied before but not for
+// segment seq-1, which may wait for Place, the oldest spare, or a new
+// file. Its name is durable when it returns. A spare that a removal took
+// meanwhile is skipped.
 func PrepareSegment(fs FS, seq uint64) (File, error) {
 	for {
-		spares, err := listSpares(fs)
+		names, err := fs.List()
 		if err != nil {
 			return nil, err
 		}
-		if len(spares) == 0 {
-			break
+		var old, spares []string
+		for _, n := range names {
+			switch {
+			case strings.HasPrefix(n, nextPrefix) && n != nextName(seq-1):
+				old = append(old, n)
+			case strings.HasPrefix(n, sparePrefix):
+				spares = append(spares, n)
+			}
 		}
-		f, err := takeSpare(fs, spares[0], seq)
-		if !errors.Is(err, iofs.ErrNotExist) {
+		slices.Sort(spares)
+		var from string
+		switch {
+		case len(old) > 0:
+			from = old[0]
+		case len(spares) > 0:
+			from = spares[0]
+		default:
+			f, err := fs.Create(nextName(seq))
+			if err == nil {
+				err = fs.SyncDir()
+			}
 			return f, err
 		}
-	}
-	f, err := fs.Create(segmentName(seq))
-	if err != nil {
-		return nil, err
-	}
-	// Planted: B05 takes records into the new segment before its directory
-	// entry is durable.
-	if !planted.On("B05") {
-		if err := fs.SyncDir(); err != nil {
-			return nil, errors.Join(err, f.Close())
+		// The removal that made a spare must be durable before the file
+		// takes another name: else a crash could leave the removed
+		// segment under both.
+		err = fs.SyncDir()
+		if err == nil && from != nextName(seq) {
+			err = fs.Rename(from, nextName(seq))
 		}
-	}
-	return f, nil
-}
-
-// takeSpare makes spare file name the file of segment seq.
-func takeSpare(fs FS, name string, seq uint64) (File, error) {
-	// The removal that made the spare must be durable before the file
-	// takes another name: else a crash could leave the removed segment
-	// under both.
-	if err := fs.SyncDir(); err != nil {
-		return nil, err
-	}
-	if err := fs.Rename(name, segmentName(seq)); err != nil {
-		return nil, err
-	}
-	if !planted.On("B05") {
-		if err := fs.SyncDir(); err != nil {
+		if err == nil {
+			err = fs.SyncDir()
+		}
+		if err == nil {
+			return fs.Open(nextName(seq))
+		}
+		if !errors.Is(err, iofs.ErrNotExist) {
 			return nil, err
 		}
 	}
-	return fs.Open(segmentName(seq))
 }
 
 // listSpares returns the names of the spare files in order.
@@ -762,10 +748,9 @@ func listSpares(fs FS) ([]string, error) {
 	return spares, nil
 }
 
-// start makes f, which PrepareSegment readied, the next segment. Its
-// header goes in front of what is buffered next, which must be nothing
-// yet; the copies of the hard state and the root follow with the next
-// write.
+// start makes f the next segment. Its header goes in front of what is
+// buffered next, which must be nothing yet; the copies of the hard state
+// and the root follow with the next write.
 func (w *WAL) start(f File) {
 	w.seq++
 	w.seg, w.size, w.copied, w.version = f, 0, false, Version
@@ -939,7 +924,7 @@ func (w *WAL) Sync() error {
 	if err != nil {
 		return err
 	}
-	return w.Rotate(next).Close()
+	return errors.Join(w.Rotate(next).Close(), w.Place(), w.fs.SyncDir())
 }
 
 // Seal cuts the full newest segment to its records, which a reused file
@@ -951,14 +936,33 @@ func (w *WAL) Seal() error { return w.seg.Truncate(w.size) }
 // Rotate makes next, which PrepareSegment readied for segment Seq()+1, the
 // segment that appends go to, after Seal, and returns the old one's file
 // for the caller to close once it is synced. Nothing may be written into
-// next before every record of the old segment is durable: next's header
-// vouches for the old segment's last record.
+// next before Place, which waits for every record of the old segment to
+// be durable: next's header vouches for the old segment's last record.
 func (w *WAL) Rotate(next File) File {
 	old := w.seg
 	w.sizes[w.seq] = w.size
 	w.start(next)
+	w.unplaced = true
 	return old
 }
+
+// Place gives the segment that Rotate started its name, once every record
+// of the segment before it is durable, so that a crash finds no newer
+// segment than a torn one. The name must then be made durable with
+// SyncDir before the segment's records count as durable.
+func (w *WAL) Place() error {
+	if !w.unplaced {
+		return nil
+	}
+	if err := w.fs.Rename(nextName(w.seq), segmentName(w.seq)); err != nil {
+		return err
+	}
+	w.unplaced = false
+	return nil
+}
+
+// Unplaced reports whether the newest segment waits for Place.
+func (w *WAL) Unplaced() bool { return w.unplaced }
 
 // Segment returns the file of the newest segment, which Flush writes to.
 // A sync of it makes what Flush wrote durable, also while the next Flush

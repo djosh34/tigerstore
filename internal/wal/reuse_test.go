@@ -354,3 +354,56 @@ func TestSpareOfAnUnsyncedRemoval(t *testing.T) {
 		t.Fatalf("recovered %+v", rec)
 	}
 }
+
+// TestPrepareSegment readies segment files under names of their own: a
+// new file, never the file of the segment before, which may wait for its
+// name, a file readied before, and the oldest spare. A spare that a
+// removal takes meanwhile is skipped.
+func TestPrepareSegment(t *testing.T) {
+	d := simfs.New()
+	names := func() string {
+		t.Helper()
+		ns, err := d.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Join(ns, " ")
+	}
+	prepare := func(seq uint64, want string) {
+		t.Helper()
+		f, err := wal.PrepareSegment(d, seq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if got := names(); got != want {
+			t.Fatalf("after readying %d: %s, want %s", seq, got, want)
+		}
+	}
+	prepare(5, "next-0000000000000005")
+	prepare(6, "next-0000000000000005 next-0000000000000006")
+	for _, name := range []string{"spare-0000000000000001", "spare-0000000000000002"} {
+		f, err := d.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prepare(8, "next-0000000000000006 next-0000000000000008 spare-0000000000000001 spare-0000000000000002")
+	prepare(9, "next-0000000000000008 next-0000000000000009 spare-0000000000000001 spare-0000000000000002")
+	if err := errors.Join(d.Remove("next-0000000000000008"), d.Remove("next-0000000000000009")); err != nil {
+		t.Fatal(err)
+	}
+	d.Fault = func(op simfs.Op, name string) error {
+		if op == simfs.OpRename && name == "spare-0000000000000001" {
+			d.Fault = nil
+			return d.Remove(name)
+		}
+		return nil
+	}
+	prepare(10, "next-000000000000000a")
+}

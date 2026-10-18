@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
@@ -246,7 +247,12 @@ func (s *Sim) ckptWritten(n *node, name string) {
 	if b == nil {
 		return
 	}
-	sum := hashBytes(b)
+	state, err := core.CheckpointState(b)
+	if err != nil {
+		s.fail("node %d wrote checkpoint %d: %w", n.id, index, err)
+		return
+	}
+	sum := hashBytes(state)
 	if c, ok := s.ckpts[index]; ok && c.sum != sum {
 		s.fail("node %d and node %d wrote different checkpoints at index %d", n.id, c.node, index)
 		return
