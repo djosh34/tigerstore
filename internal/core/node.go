@@ -673,8 +673,14 @@ func bootstrapped(cfg Config, rec *wal.Recovered, disk Log) (uint64, error) {
 		if err != nil {
 			return 0, fmt.Errorf("core: read entry %d: %w", i+1, err)
 		}
+		if e.GetTerm() != 1 || e.GetType() != raftpb.EntryConfChange {
+			return 0, nil
+		}
 		var cc raftpb.ConfChange
-		if e.GetTerm() != 1 || e.GetType() != raftpb.EntryConfChange || proto.Unmarshal(e.GetData(), &cc) != nil || cc.GetNodeId() != id {
+		if err := proto.Unmarshal(e.GetData(), &cc); err != nil {
+			return 0, fmt.Errorf("core: entry %d: %w", i+1, err)
+		}
+		if cc.GetNodeId() != id {
 			return 0, nil
 		}
 	}

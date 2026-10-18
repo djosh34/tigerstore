@@ -84,7 +84,7 @@ func (n *Netem) Heal(port int) (NetemStats, error) {
 	if err != nil {
 		return st, err
 	}
-	for _, f := range strings.Fields(st.Qdisc) {
+	for f := range strings.FieldsSeq(st.Qdisc) {
 		if f == "loss" || f == "reorder" || f == "corrupt" || f == "duplicate" {
 			return st, fmt.Errorf("netem: port %d still has %s after healing: %s", port, f, st.Qdisc)
 		}
