@@ -222,6 +222,17 @@ func (w *watched) match(o *object, p int64, final bool) error {
 	return nil
 }
 
+// reached says how far each watch progressed, for a failure.
+func (ws *watches) reached() string {
+	var parts []string
+	for _, w := range ws.per {
+		w.mu.Lock()
+		parts = append(parts, fmt.Sprintf("%s to %d, last event at %d", w.resource, w.progress, w.last))
+		w.mu.Unlock()
+	}
+	return strings.Join(parts, "; ")
+}
+
 // caughtUp reports whether every watch progressed to rev.
 func (ws *watches) caughtUp(rev int64) bool {
 	for _, w := range ws.per {

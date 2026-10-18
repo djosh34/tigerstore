@@ -204,6 +204,14 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 	// Run the checkers even when a version assertion fails. Their verdict
 	// does not excuse a failed upgrade or an unexpected process exit.
 	t.Cleanup(r.finish)
+	// This runs first: a failure says how each node stood when it failed,
+	// and how to run the test again.
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("the nodes when the test failed:\n%s", c.report(context.Background()))
+			t.Logf("replay: ROLLING_OLD=<old binary> ROLLING_NEW=<new binary> go test -count=1 -v ./cmd/chaos -run '^%s$'", t.Name())
+		}
+	})
 	return r
 }
 

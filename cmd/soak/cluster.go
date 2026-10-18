@@ -267,7 +267,7 @@ func (c *cluster) leader(ctx context.Context) (int, error) {
 			return i, nil
 		}
 	}
-	return -1, fmt.Errorf("no leader that two nodes agree on: %w", last)
+	return -1, fmt.Errorf("no leader that two nodes agree on; the leaders named: %v; the last error: %w", votes, last)
 }
 
 // stop ends every process, SIGTERM first.
