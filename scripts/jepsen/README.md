@@ -42,11 +42,14 @@ They retain these pins:
   jetcd 0.8.5.
 - nurturenature/jepsen-docker `4b5707813a0a24966082ae4fd2dd223da447e499`.
   The three image digests are in `run.sh`.
-- The pinned node image contains LazyFS 0.3.0 at
-  `9c5685e828da8b5d113d2f9134f6671e481d7162`. The runner verifies that revision
-  and records each executable's SHA-256 before mounting it. It does not rebuild
-  LazyFS during Jepsen setup. The first run timed out inside upstream
-  `install!`, before any traffic; the blocked subcommand was not identified.
+- The pinned node image contains LazyFS 0.3.0, which has the rename race of
+  [#267](https://github.com/djosh34/tigerstore/issues/267). Before Jepsen
+  starts, the runner replaces it on each node with `scripts/lazyfs.sh`: the
+  chaos jobs' pin with `scripts/lazyfs-namespace.patch`, built where Jepsen
+  mounts it. It records the revision and the SHA-256 of the patch and the
+  executable in `lazyfs-binary-<node>.txt`. Upstream `install!` stays
+  skipped: the first run timed out inside it, before any traffic, and the
+  blocked subcommand was not identified.
 
 The adapter changes server installation, startup flags, primary lookup,
 readiness and checker scheduling. It preserves upstream clients, models,
