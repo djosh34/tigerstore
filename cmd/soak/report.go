@@ -125,8 +125,8 @@ func lastLines(path string, n int) []string {
 func replayCommand(c config) string {
 	cmd := fmt.Sprintf("go run ./cmd/soak -tigerstore <binary> -out <dir> -duration %v -seed %d -objects %d -memory %d -disk-budget %d -workers %d -rate %v -kill-every %v -hold-every %v -compact-every %v -burst %d -liveness %v -request-timeout %v",
 		c.duration, c.seed, c.objects, c.memory, c.diskBudget, c.workers, c.rate, c.killEvery, c.holdEvery, c.compactEvery, c.burst, c.liveness, c.requestTimeout)
-	for _, a := range c.nodeArgs {
-		cmd += " -node-arg " + a
+	if len(c.nodeArgs) > 0 {
+		cmd += " -node-arg " + strings.Join(c.nodeArgs, " -node-arg ")
 	}
 	return cmd
 }

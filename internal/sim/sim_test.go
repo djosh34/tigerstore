@@ -230,7 +230,7 @@ func TestSeeds(t *testing.T) {
 			ran, total.StallHandOffs, total.GrayLeaderStops)
 	}
 	t.Logf("%d seeds: %d stalled leaders that handed over, %d stopped gray leaders", ran, total.StallHandOffs, total.GrayLeaderStops)
-	took.check(t, "seeds")
+	took.check(t)
 }
 
 // effects counts, over a set of runs, the runs in which each fault took
@@ -256,9 +256,9 @@ func (e *effects) add(took map[string]bool) {
 	}
 }
 
-// check fails t unless each fault took effect in atLeast of the runs, and
-// logs the counts.
-func (e *effects) check(t *testing.T, runs string) {
+// check fails t unless each fault took effect in atLeast of the seeds,
+// and logs the counts.
+func (e *effects) check(t *testing.T) {
 	t.Helper()
 	least := atLeast(e.runs)
 	var counts []string
@@ -266,10 +266,10 @@ func (e *effects) check(t *testing.T, runs string) {
 		n := e.took[name]
 		counts = append(counts, fmt.Sprintf("%s %d", name, n))
 		if n < least {
-			t.Errorf("%s took effect in %d of %d %s, want %d at least", name, n, e.runs, runs, least)
+			t.Errorf("%s took effect in %d of %d seeds, want %d at least", name, n, e.runs, least)
 		}
 	}
-	t.Logf("of %d %s, the faults took effect in: %s", e.runs, runs, strings.Join(counts, ", "))
+	t.Logf("of %d seeds, the faults took effect in: %s", e.runs, strings.Join(counts, ", "))
 }
 
 // checkers runs the independent checkers of package check on a run:
@@ -463,7 +463,7 @@ func TestSwitchingLinks(t *testing.T) {
 		checkers(t, res)
 		took.add(map[string]bool{"ten switches": res.Stats.LinkChanges >= 10})
 	}
-	took.check(t, "seeds")
+	took.check(t)
 }
 
 // TestEachFaultTakesEffect runs each network, process, gray and recovery
@@ -502,7 +502,7 @@ func TestEachFaultTakesEffect(t *testing.T) {
 				checkers(t, res)
 				took.add(map[string]bool{c.name: c.count(res.Stats) > 0})
 			}
-			took.check(t, "seeds")
+			took.check(t)
 		})
 	}
 }

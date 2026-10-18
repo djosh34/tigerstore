@@ -41,7 +41,7 @@ func TestMembershipFaults(t *testing.T) {
 			t.Logf("%+v", a.Stats)
 		})
 	}
-	took.check(t, "seeds")
+	took.check(t)
 	if n >= 16 {
 		for i, count := range during {
 			if count == 0 {

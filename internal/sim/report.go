@@ -2,6 +2,7 @@ package sim
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -73,8 +74,8 @@ func (s *Sim) report() string {
 				lines = append(lines, s.trace[i])
 			}
 		}
-		for i := len(lines) - 1; i >= 0; i-- {
-			b.WriteString("  " + lines[i] + "\n")
+		for _, l := range slices.Backward(lines) {
+			b.WriteString("  " + l + "\n")
 		}
 	}
 	return b.String()

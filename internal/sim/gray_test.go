@@ -63,7 +63,7 @@ func TestGrayFsyncOutlastsHealing(t *testing.T) {
 		}
 		t.Logf("seed %d: last gray fsync at %d ms; %d definite answers from %d ms", seed, a.grayHealedAt/Millisecond, calls, from/Millisecond)
 	}
-	took.check(t, "seeds")
+	took.check(t)
 	if late < 2 {
 		t.Fatalf("only %d seeds had a gray fsync end 1.5 s after healing", late)
 	}
