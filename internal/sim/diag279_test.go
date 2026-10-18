@@ -14,6 +14,7 @@ func TestDiag279HalfOpenClientSupply(t *testing.T) {
 	cfg := DefaultConfig(4001)
 	cfg.Faults = Faults{}
 	cfg.Clients = 12
+	cfg.PinClients = true
 	cfg.ClientTimeout = 7 * Second
 	cfg.HalfOpenAt = 5 * Second
 	cfg.LiveFrom = 12 * Second

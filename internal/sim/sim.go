@@ -65,6 +65,10 @@ type Config struct {
 	LiveAfter int64
 	// Clients is the number of clients. Each has one call in flight.
 	Clients int
+	// PinClients fixes client i to voting endpoint i%3. Tests of a
+	// healthy subset need their own request supply: random endpoints
+	// can park every sequential client on an unavailable node.
+	PinClients bool
 	// ClientTimeout is when a client gives up on a call.
 	ClientTimeout int64
 	// GrayLeaderAt, if set, makes whichever node leads then gray until
