@@ -858,7 +858,9 @@ func (r *revisionOrder) isReady(o optional) bool {
 
 // due lists the late optional mutations not yet placed that must go in
 // before the event of an op called at time call, or by the end of
-// revision rev; all of them if call is past every op.
+// revision rev; all of them if call is past every op. They come in call
+// order: one called before a rejection returned may have to go in before
+// one called after it, which ends the rejection's states.
 func (r *revisionOrder) due(call, rev int64) []optional {
 	var out []optional
 	for _, o := range r.optional {
@@ -866,6 +868,7 @@ func (r *revisionOrder) due(call, rev int64) []optional {
 			out = append(out, o)
 		}
 	}
+	slices.SortStableFunc(out, func(a, b optional) int { return cmp.Compare(r.w.h.Ops[a.op].Call, r.w.h.Ops[b.op].Call) })
 	return out
 }
 

@@ -131,6 +131,29 @@ func TestWitnessedGood(t *testing.T) {
 			h.Ops[compact].Resp, h.Ops[compact].Err = nil, errUnavailable
 			return h
 		}},
+		{"two ambiguous compactions due at once, in call order", func(t *testing.T) *history.History {
+			// The read below both found its revision compacted. Only the
+			// compaction to 3 was called before it returned, so it goes in
+			// first, though the one to 1 comes first in the history, and
+			// the one to 1 then does nothing (TestSeeds seed 36260 on
+			// #268).
+			b := newBuilder(t, "a")
+			b.put(0, "a", "1")
+			b.put(0, "a", "2")
+			b.put(0, "a", "3")
+			early := b.do(1, history.Request{Compact: &history.CompactRequest{Revision: 1}})
+			compact := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+			read := b.do(3, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 1}})
+			put := b.put(0, "a", "4")
+			h := b.done()
+			h.Log = slices.DeleteFunc(h.Log, func(req history.Request) bool { return req.Compact != nil && req.Compact.Revision == 1 })
+			h.Ops[early].Call, h.Ops[early].Return = h.Ops[read].Return+1, h.Ops[put].Return+10
+			h.Ops[compact].Return = h.Ops[put].Return + 10
+			for _, i := range []int{early, compact} {
+				h.Ops[i].Resp, h.Ops[i].Err = nil, errUnavailable
+			}
+			return h
+		}},
 		{"lease expiry before an ambiguous compaction called after its rejection", func(t *testing.T) *history.History {
 			// An early rejection makes the compaction due from revision
 			// 3, where it goes in before a put that was called before the
