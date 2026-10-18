@@ -73,6 +73,10 @@ func freePort(t *testing.T) string {
 
 func TestEtcdWorkloads(t *testing.T) {
 	ep, pid := startEtcd(t)
+	delayDeletes := os.Getenv("LOADGEN_DIAG_DELAY_DELETES") == "1"
+	if delayDeletes {
+		ep = diag271DelayedDeletes(t, ep)
+	}
 	for _, tc := range []struct {
 		workload  string
 		valueSize int
@@ -90,6 +94,9 @@ func TestEtcdWorkloads(t *testing.T) {
 		{"mixed", 1024, 500},
 		{"mixed", 1024, 0},
 	} {
+		if delayDeletes && tc.workload != "delete" {
+			continue
+		}
 		endpoint, serverPID := ep, pid
 		if tc.workload == "mixed" {
 			endpoint, serverPID = startEtcd(t)

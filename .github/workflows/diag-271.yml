@@ -19,13 +19,21 @@ jobs:
           echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
           tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
           echo "LOADGEN_ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
-      - name: Repeat only TestEtcdWorkloads
+      - name: Unmodified TestEtcdWorkloads
         shell: bash
         run: |
           set -o pipefail
-          go test -race -count=10 -v -timeout=7m -run '^TestEtcdWorkloads$' ./cmd/loadgen 2>&1 | tee "$RUNNER_TEMP/diag-271.log"
+          go test -race -count=1 -v -timeout=2m -run '^TestEtcdWorkloads$' ./cmd/loadgen 2>&1 | tee "$RUNNER_TEMP/diag-271-natural.log"
+      - name: Five controlled late-completion repetitions against real etcd
+        if: always()
+        shell: bash
+        env:
+          LOADGEN_DIAG_DELAY_DELETES: '1'
+        run: |
+          set -o pipefail
+          go test -race -count=5 -v -timeout=2m -run '^TestEtcdWorkloads$' ./cmd/loadgen 2>&1 | tee "$RUNNER_TEMP/diag-271-delayed.log"
       - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: diag-271
-          path: ${{ runner.temp }}/diag-271.log
+          path: ${{ runner.temp }}/diag-271-*.log
