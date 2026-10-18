@@ -1,0 +1,30 @@
+name: diag-270
+on:
+  push:
+    branches: [diag/270-value-checksum]
+permissions:
+  contents: read
+jobs:
+  value-reuse:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install FUSE build tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q cmake g++ libfuse3-dev fuse3
+      - name: Build pinned LazyFS
+        run: echo "DIAG270_LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
+      - name: WAL value checksum after recovery and reuse (20 x 300 chains)
+        shell: bash
+        run: |
+          set -o pipefail
+          go test ./internal/wal -run '^TestDiag270ValueAfterRecoveryReuse$' -count=20 -v -timeout=4m 2>&1 | tee "$RUNNER_TEMP/diag270.log"
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: diag-270-log
+          path: ${{ runner.temp }}/diag270.log
+          retention-days: 7
