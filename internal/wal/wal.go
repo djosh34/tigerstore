@@ -34,8 +34,8 @@
 // the simulator runs it on a simulated disk. It takes no locks: a driver
 // that reads from other goroutines than the one that appends must hold
 // one lock around Append, AppendRoot, AppendValue, InstallPacks, Rotate,
-// DropBelow, DropCleaned, RemoveBelow, RemoveCleaned and every read, but
-// need not hold it around Flush, Seal, Place and RemoveFiles. Sync starts
+// Place, DropBelow, DropCleaned, RemoveBelow, RemoveCleaned and every read,
+// but need not hold it around Flush, Seal and RemoveFiles. Sync starts
 // the next segment itself, so such a driver uses Flush, Seal, Rotate and
 // Place instead.
 package wal
