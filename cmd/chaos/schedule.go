@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/djosh34/tigerstore/chaos/proxy"
+	"github.com/djosh34/tigerstore/history"
 )
 
 // The faults the schedule injects. Every run injects each once, in a
@@ -139,6 +140,19 @@ type runner struct {
 
 func (r *runner) since() time.Duration { return time.Since(r.start) }
 
+// hold waits out a fault's hold d with a write through node i in it, so
+// that a write overlaps the fault however long the workload's own clients
+// wait elsewhere, as for a leader change around it (#253).
+func (r *runner) hold(ctx context.Context, d time.Duration, i int) error {
+	start := time.Now()
+	q := history.Request{Put: &history.PutRequest{Key: prefix + "hold", Value: fmt.Sprintf("hold-%d", r.since())}}
+	r.t.r.call(r.t.cs[i], holdClient, q, d)
+	return pause(ctx, d-time.Since(start))
+}
+
+// holdClient is the history client of hold's writes.
+const holdClient = 51
+
 // pause waits d or until ctx ends.
 func pause(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
@@ -266,7 +280,7 @@ func (r *runner) inject(ctx context.Context, s step, rec *record) error {
 	default:
 		return fmt.Errorf("unknown fault %q", s.Fault)
 	}
-	return r.network(ctx, s, faults, rec)
+	return r.network(ctx, s, lead, faults, rec)
 }
 
 type linkFault struct {
@@ -277,7 +291,7 @@ type linkFault struct {
 // network installs faults on their proxies, holds them, and heals them.
 // Every proxy must report the requested fault installed and at least one
 // hit before the heal.
-func (r *runner) network(ctx context.Context, s step, faults []linkFault, rec *record) error {
+func (r *runner) network(ctx context.Context, s step, lead int, faults []linkFault, rec *record) error {
 	rec.Installed, rec.Effect = true, true
 	var errs []error
 	for _, lf := range faults {
@@ -292,7 +306,7 @@ func (r *runner) network(ctx context.Context, s step, faults []linkFault, rec *r
 		}
 		rec.Links = append(rec.Links, lr)
 	}
-	holdErr := pause(ctx, s.Hold)
+	holdErr := r.hold(ctx, s.Hold, lead)
 	rec.Healed = true
 	for i, lf := range faults {
 		rec.Links[i].BeforeHeal = lf.l.Proxy.Stats()
@@ -342,7 +356,7 @@ func (r *runner) kill(ctx context.Context, s step, i int, rec *record) error {
 	ws, ok := ps.Sys().(syscall.WaitStatus)
 	rec.Process.WaitStatus = ps.String()
 	rec.Effect = ok && ws.Signaled() && ws.Signal() == syscall.SIGKILL
-	holdErr := pause(ctx, s.Hold)
+	holdErr := r.hold(ctx, s.Hold, others(i)[0])
 	if err := r.c.start(n); err != nil {
 		return errors.Join(holdErr, err)
 	}
@@ -367,7 +381,7 @@ func (r *runner) pauseProcess(ctx context.Context, s step, i int, rec *record) e
 	st, stErr := waitState(pid, "T", false)
 	rec.Process.StateAfter = st
 	rec.Effect = stErr == nil && st == "T"
-	holdErr := pause(ctx, s.Hold)
+	holdErr := r.hold(ctx, s.Hold, others(i)[0])
 	if _, _, err := n.signal(syscall.SIGCONT); err != nil {
 		return errors.Join(holdErr, stErr, err)
 	}

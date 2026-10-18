@@ -384,14 +384,17 @@ func (r *runner) cpuFault(ctx context.Context, s step, target int, rec *record) 
 	}
 	rec.Installed = true
 	// Reads through the node keep it busy, so that a follower with little
-	// to do still uses up its share. Their answers do not matter.
+	// to do still uses up its share. They are serializable, so that each
+	// is work of the node alone, not a wait for the leader across slow
+	// links, which left a node at 4% unthrottled (#252). Their answers do
+	// not matter.
 	bctx, stop := context.WithCancel(ctx)
 	busy := make(chan struct{})
 	go func() {
 		defer close(busy)
 		for bctx.Err() == nil {
 			rctx, cancel := context.WithTimeout(bctx, time.Second)
-			_, _ = r.t.cs[target].Get(rctx, prefix, clientv3.WithPrefix(), clientv3.WithCountOnly())
+			_, _ = r.t.cs[target].Get(rctx, prefix, clientv3.WithPrefix(), clientv3.WithCountOnly(), clientv3.WithSerializable())
 			cancel()
 		}
 	}()
@@ -648,25 +651,18 @@ func (r *runner) crashInRecovery(ctx context.Context, s step, target int, rec *r
 // The fetch is a connection of the follower's own, so the replies on its
 // links to the others come at 64 KiB/s from before it resumes until the
 // kill, which comes once 16 KiB of the stream arrived: a small snapshot
-// would otherwise be fetched and installed before the kill (#223). Its
-// Raft messages go out on the same links at full speed, and those it gets
-// come on the others' links.
+// would otherwise be fetched and installed before the kill (#223). The
+// writes go to keys of their own, all live, so the snapshot holds their
+// 300 KB. Its Raft messages go out on the same links at full speed, and
+// those it gets come on the others' links. A follower that caught up from
+// the leader's log instead goes through it again, up to three times
+// (#246).
 func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *record) error {
 	if target == lead {
 		target = others(lead)[0]
 	}
 	rec.Env.Node = fmt.Sprintf("node%d", target+1)
 	n := r.c.nodes[target]
-	if _, _, err := n.signal(syscall.SIGSTOP); err != nil {
-		return err
-	}
-	// Writes through the leader far past the window and a checkpoint, so
-	// that the leader sends the follower a snapshot.
-	cl := r.t.cs[lead]
-	for k := range 300 {
-		q := history.Request{Put: &history.PutRequest{Key: fmt.Sprintf("%sk%d", prefix, k%r.t.cfg.keys), Value: fmt.Sprintf("bulk-%d-%s", k, strings.Repeat("b", 1000))}}
-		r.t.r.call(cl, installClient, q, r.t.cfg.requestTimeout)
-	}
 	var held []*link
 	for _, j := range others(target) {
 		held = append(held, r.c.peers[target][j])
@@ -694,23 +690,43 @@ func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *reco
 		}
 		return n - base
 	}
-	for _, l := range held {
-		st, err := l.Proxy.Set(slow)
-		rec.Links = append(rec.Links, linkRecord{Link: l.Name, Requested: slow, Installed: st})
-		if err != nil {
+	cl := r.t.cs[lead]
+	fetching := false
+	var logBefore int64
+	for attempt := 0; attempt < 3 && !fetching; attempt++ {
+		if _, _, err := n.signal(syscall.SIGSTOP); err != nil {
 			return errors.Join(err, release())
 		}
+		// Writes through the leader far past the window and a checkpoint,
+		// so that the leader sends the follower a snapshot.
+		for k := range 300 {
+			q := history.Request{Put: &history.PutRequest{Key: fmt.Sprintf("%sinstall%d", prefix, k), Value: fmt.Sprintf("bulk-%d-%d-%s", attempt, k, strings.Repeat("b", 1000))}}
+			r.t.r.call(cl, installClient, q, r.t.cfg.requestTimeout)
+		}
+		rec.Links = rec.Links[:0]
+		for _, l := range held {
+			st, err := l.Proxy.Set(slow)
+			rec.Links = append(rec.Links, linkRecord{Link: l.Name, Requested: slow, Installed: st})
+			if err != nil {
+				return errors.Join(err, release())
+			}
+		}
+		base = received()
+		logBefore = logSize(n)
+		if _, _, err := n.signal(syscall.SIGCONT); err != nil {
+			return errors.Join(err, release())
+		}
+		rec.Installed = true
+		// The fetch started, and part of its stream came.
+		fetching = waitUntil(ctx, 10*time.Second, func() bool {
+			return strings.Contains(logSince(n, logBefore), "fetching the snapshot") && received() >= 16<<10
+		})
+		if !fetching {
+			if err := release(); err != nil {
+				return err
+			}
+		}
 	}
-	base = received()
-	logBefore := logSize(n)
-	if _, _, err := n.signal(syscall.SIGCONT); err != nil {
-		return errors.Join(err, release())
-	}
-	rec.Installed = true
-	// The fetch started, and part of its stream came.
-	fetching := waitUntil(ctx, 10*time.Second, func() bool {
-		return strings.Contains(logSince(n, logBefore), "fetching the snapshot") && received() >= 16<<10
-	})
 	if _, _, err := n.signal(syscall.SIGKILL); err != nil {
 		return errors.Join(err, release())
 	}

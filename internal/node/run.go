@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"slices"
 
 	"github.com/djosh34/tigerstore/internal/wal"
 )
@@ -24,7 +25,9 @@ func nextRun(dir wal.FS) (uint64, error) {
 		if err = errors.Join(err, f.Close()); err != nil {
 			return 0, err
 		}
-		if len(b) != 8 {
+		// LazyFS can give a new file the size of a removed one, so the run
+		// number comes back followed by zeros (#240).
+		if len(b) < 8 || slices.ContainsFunc(b[8:], func(c byte) bool { return c != 0 }) {
 			return 0, fmt.Errorf("node: %s holds %d bytes, not 8", runFile, len(b))
 		}
 		last = binary.LittleEndian.Uint64(b)
