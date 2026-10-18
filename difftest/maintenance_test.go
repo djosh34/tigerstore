@@ -328,6 +328,7 @@ func downgradeCase(r *run) {
 	r.downgrade("enable 3.6 again", E, "3.6", true)
 	r.downgrade("validate 3.6 during the downgrade", V, "3.6", true)
 	r.downgradeInfo("status during the downgrade")
+	diag272Hold(r)
 	r.downgrade("cancel", C, "", false)
 	r.downgradeInfo("status after the cancel")
 	r.downgrade("cancel again", C, "", false)

@@ -1,0 +1,44 @@
+name: diag only 272 downgrade
+on:
+  push:
+    branches: [diag/272-difftest-downgrade]
+permissions:
+  contents: read
+jobs:
+  downgrade:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install pinned upstream etcd v3.7.2
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          echo "ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
+      - name: Three fresh-server boundary and downgrade repetitions
+        env:
+          ONLY: 'TestBoundaries|TestDowngrade'
+          DIAG_272_HOLD: '1'
+        run: |
+          failed=0
+          for attempt in 1 2 3; do
+            echo "=== attempt $attempt ==="
+            if KEEP="$RUNNER_TEMP/diag272/$attempt" scripts/difftest.sh etcd; then
+              echo "attempt $attempt PASS"
+            else
+              echo "attempt $attempt FAIL"
+              failed=$((failed+1))
+            fi
+          done
+          echo "Failures: $failed / 3"
+          test "$failed" = 0
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: diag272-server-logs
+          path: ${{ runner.temp }}/diag272
+          if-no-files-found: ignore
