@@ -359,14 +359,16 @@ func bootstrapDefrag(ctx context.Context, n *node.Node, thresholdMB uint, lg *za
 func coreConfig(ec *embed.Config, ident identity) core.Config {
 	ccfg := core.DefaultConfig(ident.id, nil)
 	ccfg.ClusterID = ident.cluster
-	if ec.IsNewCluster() {
-		ccfg.Members = ident.members
-		for _, m := range ccfg.Members {
-			ccfg.Peers = append(ccfg.Peers, m.ID)
-		}
-	} else {
-		ccfg.Join = true
+	// The identity's members go to the core on every start, as the
+	// persisted initial configuration a first member's log starts with
+	// (#247). The flag only decides whether an empty log is bootstrapped:
+	// etcd ignores it once the data directory has a member, and so must a
+	// restart that recovers its bootstrap.
+	ccfg.Members = ident.members
+	for _, m := range ccfg.Members {
+		ccfg.Peers = append(ccfg.Peers, m.ID)
 	}
+	ccfg.Join = !ec.IsNewCluster()
 	ccfg.TickMillis = int64(ec.TickMs)
 	ccfg.ElectionTicks = ec.ElectionTicks()
 	ccfg.NoPreVote = !ec.PreVote

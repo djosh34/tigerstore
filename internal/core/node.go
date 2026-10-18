@@ -661,11 +661,12 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 // voters, so the node can campaign; without them it could only vote, and
 // a cold restart in which it holds the longest log never elects (#247).
 // The driver keeps cfg.Peers on disk from the first start on, so they are
-// the persisted initial configuration. A log that holds only some of
-// them, or other ones, gets 0: applying part of the members would make
-// the driver drop the peers it was started with.
+// the persisted initial configuration, whether or not this start is
+// flagged as a join. A log that holds only some of them, or other ones,
+// gets 0: applying part of the members would make the driver drop the
+// peers it was started with.
 func bootstrapped(cfg Config, rec *wal.Recovered, disk Log) (uint64, error) {
-	if cfg.Join || rec.Root.Index > 0 || len(cfg.Peers) == 0 || rec.Last < uint64(len(cfg.Peers)) {
+	if rec.Root.Index > 0 || len(cfg.Peers) == 0 || rec.Last < uint64(len(cfg.Peers)) {
 		return 0, nil
 	}
 	for i, id := range cfg.Peers {

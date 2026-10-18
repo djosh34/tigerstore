@@ -52,6 +52,9 @@ func TestBootstrapWithoutCommitCampaigns(t *testing.T) {
 	if rec.HardState.Commit != 0 || rec.Last != 4 {
 		t.Fatalf("recovered commit %d and last %d, want 0 and 4", rec.HardState.Commit, rec.Last)
 	}
+	// The restart is flagged as a join, as with --initial-cluster-state
+	// existing, which etcd ignores once the data directory has a member.
+	cfg.Join = true
 	n, err = New(cfg, rec, w)
 	if err != nil {
 		t.Fatal(err)
