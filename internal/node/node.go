@@ -1029,8 +1029,8 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		chunks = append(chunks, eff.Checkpoint...)
 		reads = append(reads, eff.Reads...)
-		if eff.HandOff != 0 {
-			n.logf("the leader's disk stalled; handing leadership to %x", eff.HandOff)
+		if eff.CommitWarning {
+			n.logf("the leader's entries are slow to commit; continuing without a watchdog stop")
 		}
 		if eff.Members != nil {
 			n.setMembers(eff.Members)

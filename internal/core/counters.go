@@ -32,6 +32,8 @@ type Counters struct {
 	// no answer came, ReadIndexFailed the reads that timed out and
 	// ProposalsFailed the writes that did.
 	SlowReadIndexes, ReadIndexFailed, ProposalsFailed int64
+	// CommitWarnings counts slow-commit episodes, without stopping Raft.
+	CommitWarnings int64
 	// Events counts the watch events this node sent.
 	Events int64
 	// AlarmGauges is etcd_debugging_server_alarms as etcd keeps it: each

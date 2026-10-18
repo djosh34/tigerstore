@@ -316,6 +316,10 @@ var nodeMetrics = []nodeMetric{
 		value: func(m *core.Metrics) float64 { return float64(m.SlowReadIndexes) },
 	},
 	{
+		desc: desc("tigerstore_server_slow_commit_total", "Slow commit episodes; these never stop the node."), typ: prometheus.CounterValue,
+		value: func(m *core.Metrics) float64 { return float64(m.CommitWarnings) },
+	},
+	{
 		desc: desc("etcd_server_quota_backend_bytes", "Current backend storage quota size in bytes."), typ: prometheus.GaugeValue,
 		value: func(m *core.Metrics) float64 { return float64(m.QuotaBytes) },
 	},

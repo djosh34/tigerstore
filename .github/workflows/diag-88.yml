@@ -27,7 +27,16 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          go test -v -timeout=60s -count=20 -run '^TestDiag88StuckLeaderSilent$' ./internal/core 2>&1 | tee diag88-silent.log
+          go test -v -timeout=60s -count=20 -run '^TestDiag88(StuckLeaderSilent|WarnOnly)$' ./internal/core 2>&1 | tee diag88-silent.log
+      - name: Short large-values stress, owner request allowance
+        id: stress
+        continue-on-error: true
+        shell: bash
+        env:
+          TIGERSTORE_STRESS: 3s
+        run: |
+          set -o pipefail
+          go test -v -timeout=90s -count=3 -run '^TestLargeValuesAtRealTicks$' ./internal/server 2>&1 | tee diag88-stress.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -35,4 +44,4 @@ jobs:
           path: diag88-*.log
       - name: Require both regressions
         if: always()
-        run: test '${{ steps.disk.outcome }}' = success && test '${{ steps.silent.outcome }}' = success
+        run: test '${{ steps.disk.outcome }}' = success && test '${{ steps.silent.outcome }}' = success && test '${{ steps.stress.outcome }}' = success

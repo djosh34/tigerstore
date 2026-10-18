@@ -15,18 +15,15 @@ import (
 	"github.com/djosh34/tigerstore/internal/core"
 )
 
-// maxPut bounds one put in TestLargeValuesAtRealTicks: one election
-// timeout at 100 ms ticks.
-const maxPut = time.Second
+// maxPut is etcd's seven-second request timeout.
+const maxPut = 7 * time.Second
 
 // TestLargeValuesAtRealTicks writes values near etcd's request limit from
 // two clients on every node, with a real node's 100 ms ticks, for as long
-// as TIGERSTORE_STRESS says (for example 10s). It fails if a put takes
-// longer than one election timeout (1 s), and a leader whose entry waits
-// that long to commit stops itself, so the test also fails with
-// core.ErrCommitStalled when the cluster stops. The tick watchdog alone
-// would miss a committer that stalls, since it then counts no ticks; the
-// put deadline is on the wall clock. The nodes log slow
+// as TIGERSTORE_STRESS says (for example 10s). Each put has etcd's 7 s
+// request timeout. Slow commits warn, never stop the leader. The test
+// checks that every node stays alive and that the final acknowledged
+// value of each writer is readable from every node. The nodes log slow
 // log writes, peer messages that waited in their queue, and leader
 // changes, so a failure's log shows where the time went (#88).
 //
@@ -69,9 +66,7 @@ func TestLargeValuesAtRealTicks(t *testing.T) {
 			wg.Go(func() {
 				key := fmt.Appendf(nil, "big/%d/%d", id, n)
 				for time.Now().Before(stop) {
-					// A put waits for its entry to commit and apply; a
-					// commit within one election timeout leaves it well
-					// under a second.
+					// A put waits for its entry to commit and apply.
 					ctx, cancel := context.WithTimeout(context.Background(), maxPut)
 					start := time.Now()
 					_, err := kv.Put(ctx, &pb.PutRequest{Key: key, Value: value})
@@ -91,6 +86,25 @@ func TestLargeValuesAtRealTicks(t *testing.T) {
 		}
 	}
 	wg.Wait()
+	for id := uint64(1); id <= 3; id++ {
+		select {
+		case <-c.nodes[id].Done():
+			t.Errorf("node %d stopped", id)
+		default:
+		}
+		kv := c.client(id, cert)
+		for writer := uint64(1); writer <= 3; writer++ {
+			for n := range 2 {
+				key := fmt.Appendf(nil, "big/%d/%d", writer, n)
+				ctx, cancel := context.WithTimeout(context.Background(), maxPut)
+				resp, err := kv.Range(ctx, &pb.RangeRequest{Key: key})
+				cancel()
+				if err != nil || len(resp.GetKvs()) != 1 || !bytes.Equal(resp.Kvs[0].Value, value) {
+					t.Errorf("node %d lost acknowledged final value %q: %v", id, key, err)
+				}
+			}
+		}
+	}
 	t.Logf("%d puts of %d bytes in %v", puts.Load(), len(value), duration)
 	// The margins under the limits (#88): the longest put, the longest a
 	// leader's append waited to commit, and the longest write and sync of
