@@ -15,4 +15,4 @@ jobs:
       - name: Build pinned LazyFS
         run: echo "DIAG267_LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
       - name: Targeted recovery rename chain
-        run: go test -v -count=1 -timeout=90s ./scripts/diag267
+        run: go test -v -count=20 -timeout=180s ./scripts/diag267

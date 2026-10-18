@@ -13,6 +13,8 @@ if [ ! -x "$bin" ]; then
 	rm -rf "$dir"
 	git clone -q https://github.com/dsrhaslab/lazyfs.git "$dir"
 	git -C "$dir" checkout -q "$commit"
+	# diag only: namespace/cache atomicity prototype for #267.
+	python3 "$(dirname "$0")/diag267/fix-lazyfs.py" "$dir"
 	(cd "$dir/libs/libpcache" && ./build.sh) >/dev/null
 	(cd "$dir/lazyfs" && ./build.sh) >/dev/null
 fi
