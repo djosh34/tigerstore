@@ -161,6 +161,7 @@ func (d *Disk) Durable() *Disk {
 		c.names[name] = g
 		c.durable[name] = g
 	}
+	c.files = d.files
 	return c
 }
 
@@ -173,6 +174,7 @@ func (d *Disk) Copy() *Disk {
 		c.names[name] = g
 		c.durable[name] = g
 	}
+	c.files = d.files
 	return c
 }
 
