@@ -67,13 +67,14 @@ func (n *Netem) Impair(port int, impairment string) error {
 	return err
 }
 
-// Heal takes port back to its base delay.
+// Heal takes port back to its base delay with no other impairments.
+// tc qdisc change retains omitted corruption and reordering options.
 func (n *Netem) Heal(port int) error {
 	b, ok := n.bands[port]
 	if !ok {
 		return fmt.Errorf("netem: port %d is not set up", port)
 	}
-	_, err := sudo("tc", "qdisc", "change", "dev", "lo", "parent", fmt.Sprintf("1:%d", b), "handle", fmt.Sprintf("%d:", b*10), "netem", "delay", ms(n.base[port]))
+	_, err := sudo("tc", "qdisc", "change", "dev", "lo", "parent", fmt.Sprintf("1:%d", b), "handle", fmt.Sprintf("%d:", b*10), "netem", "delay", ms(n.base[port]), "loss", "0%", "reorder", "0%", "corrupt", "0%")
 	return err
 }
 
