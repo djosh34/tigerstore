@@ -52,7 +52,7 @@ jobs:
           for p in 0 1; do
             wait "${pids[$p]}" || status=1
             grep -E -- '^--- FAIL|^    --- FAIL| seeds: |took effect|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$p.log" | head -50
-            "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$p.log"
+            PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$p.log" -- -sim.seed="$((FIRST + SHARD * 5000 + p * 2500))" -sim.seeds=2500
           done
           exit $status
       - if: failure()

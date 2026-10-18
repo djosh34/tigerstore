@@ -49,11 +49,12 @@ jobs:
         run: |
           set -uo pipefail
           status=0
-          (cd internal/sim && "$RUNNER_TEMP/bin/sim.test" -test.run 'TestPlantedInventory$') || { status=1; echo "::error::TestPlantedInventory failed"; }
+          mkdir -p "$RUNNER_TEMP/logs"
+          (cd internal/sim && "$RUNNER_TEMP/bin/sim.test" -test.run 'TestPlantedInventory$') 2>&1 | tee "$RUNNER_TEMP/logs/inventory.log" || { status=1; echo "::error::TestPlantedInventory failed; replay: go test -tags planted -count=1 ./internal/sim/ -run '^TestPlantedInventory$'"; }
           for bug in $BUGS; do
             echo "::group::$bug"
             for pkg in sim node peer; do
-              (cd "internal/$pkg" && "$RUNNER_TEMP/bin/$pkg.test" -test.run 'TestPlanted$' -test.v -test.timeout 28m -planted="$bug") || {
+              (cd "internal/$pkg" && "$RUNNER_TEMP/bin/$pkg.test" -test.run 'TestPlanted$' -test.v -test.timeout 28m -planted="$bug") 2>&1 | tee "$RUNNER_TEMP/logs/$bug-$pkg.log" || {
                 status=1
                 echo "::error::$bug was not caught in internal/$pkg; replay: go test -tags planted -count=1 -v ./internal/$pkg/ -run '^TestPlanted$' -args -planted=$bug"
               }
@@ -65,7 +66,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: planted
-          path: ${{ runner.temp }}/sim-out
+          path: |
+            ${{ runner.temp }}/sim-out
+            ${{ runner.temp }}/logs
           retention-days: 30
 
   # The chaos job must be able to fail: with a planted bug built in, the

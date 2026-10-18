@@ -106,9 +106,14 @@ func lastLines(path string, n int) []string {
 // tally reads the faults.json of every run under dirs and counts, per
 // fault, the runs it was installed in and those in which it took effect
 // and overlapped a write. A fault took effect in too few of them when in
-// fewer than three in four, rounded down; then tally reports false.
+// fewer than three in four, rounded down; then tally reports false and
+// names up to five runs it missed, whose config.json and faults.json say
+// how to run them again and what the fault did.
 func tally(dirs []string, logf func(string, ...any)) (bool, error) {
-	type count struct{ installed, took int }
+	type count struct {
+		installed, took int
+		missed          []string
+	}
 	counts := map[string]*count{}
 	runs := 0
 	for _, dir := range dirs {
@@ -142,6 +147,8 @@ func tally(dirs []string, logf func(string, ...any)) (bool, error) {
 					c.installed++
 					if r.Effect && r.Overlapped {
 						c.took++
+					} else {
+						c.missed = append(c.missed, filepath.Dir(path))
 					}
 				}
 			}
@@ -163,6 +170,9 @@ func tally(dirs []string, logf func(string, ...any)) (bool, error) {
 			verdict, ok = fmt.Sprintf("too few, want %d at least", least), false
 		}
 		logf("%-20s installed in %3d runs, took effect and overlapped a write in %3d: %s", f, c.installed, c.took, verdict)
+		if c.took < least {
+			logf("  it missed in %s", strings.Join(c.missed[:min(5, len(c.missed))], ", "))
+		}
 	}
 	logf("%d runs", runs)
 	return ok, nil

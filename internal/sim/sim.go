@@ -503,8 +503,10 @@ type Result struct {
 	// tests.
 	grayHealedAt int64
 	halfOpens    []halfOpenLink
-	// FinalRev is the revision of the converged cluster at the end.
+	// FinalRev is the revision of the converged cluster at the end, and
+	// ended is set when the run reached its checks.
 	FinalRev int64
+	ended    bool
 	// Clients is the number of request clients.
 	Clients int
 }
@@ -522,10 +524,15 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	}
 	res := &Result{Clients: cfg.Clients}
 	err = s.run()
+	// A run that failed before its end keeps what it did so far, for its
+	// report; it has no committed log for the checkers.
+	s.mu.Lock()
+	res.History, res.Stats, res.StallHandOffs, res.CommitStops = s.history, s.stats, s.stallHandOffs, s.commitStops
+	res.HeldAppendAt = s.heldAppendAt
+	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
+	s.mu.Unlock()
 	if err == nil {
-		res.History, res.Stats, res.StallHandOffs, res.CommitStops = s.history, s.stats, s.stallHandOffs, s.commitStops
-		res.HeldAppendAt = s.heldAppendAt
-		res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
+		res.ended = true
 		if err = s.check(res); err != nil {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)
 		}
@@ -1034,16 +1041,17 @@ func (s *Sim) exited(p *proc, err error) {
 	s.tracef("node %d: stopped: %v", n.id, err)
 	n.why = fmt.Sprintf("its process stopped: %v", err)
 	switch {
-	case n.rotted && rotStop(n, err) && (s.ended || s.now()+s.restartWithin() >= s.endAt):
-		// As below, but its restart would not come before the end: it
-		// stays down, as an operator would replace its disk, and the
-		// checks at the end leave it out.
-		n.rotStopped = true
-		s.crash(n)
 	case n.rotted && rotStop(n, err):
 		// It read the value the run damaged and stopped instead of
-		// answering with it.
-		s.stopNode(n)
+		// answering with it. If its restart would not come before the
+		// end, it stays down, as an operator would replace its disk, and
+		// the checks at the end leave it out.
+		if d := s.restartDelay(); s.ended || s.now()+d >= s.endAt {
+			n.rotStopped = true
+			s.crash(n)
+		} else {
+			s.stopNodeAfter(n, d)
+		}
 	case n.corrupted && core.FailureOf(err) == core.Reload && errors.Is(err, wal.ErrCorrupt):
 		// It started again from its log after a snapshot install or a
 		// failed fetch, and recovery found the damage and ended the
@@ -1338,7 +1346,10 @@ func (s *Sim) down(n *node) {
 
 // stopNode stops a node like a crash and restarts it later from its disk.
 // The lock is held.
-func (s *Sim) stopNode(n *node) {
+func (s *Sim) stopNode(n *node) { s.stopNodeAfter(n, s.restartDelay()) }
+
+// stopNodeAfter is stopNode with the restart d from now.
+func (s *Sim) stopNodeAfter(n *node, d int64) {
 	if s.healed && s.now() <= s.recovered() {
 		// The guaranteed disk fault fired after healing, or a watchdog
 		// whose wait began before it. The liveness rule starts once the
@@ -1352,11 +1363,11 @@ func (s *Sim) stopNode(n *node) {
 		s.extendLiveness()
 	}
 	s.crash(n)
-	s.restartLater(n, 1+s.rng.Int64N(s.restartWithin()))
+	s.restartLater(n, d)
 }
 
-// restartWithin bounds when stopNode restarts a node.
-func (s *Sim) restartWithin() int64 { return max(s.cfg.Faults.MaxDown, Second) }
+// restartDelay draws when stopNode restarts a node. The lock is held.
+func (s *Sim) restartDelay() int64 { return 1 + s.rng.Int64N(max(s.cfg.Faults.MaxDown, Second)) }
 
 // changeLinks changes the set of links that are up, at random times,
 // until healing.

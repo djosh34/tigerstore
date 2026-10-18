@@ -120,6 +120,12 @@ jobs:
         run: go test -count=1 ./internal/lint/ 2>&1 | tee "$RUNNER_TEMP/lint.log"
       - if: failure()
         run: scripts/replay.sh "$RUNNER_TEMP/lint.log"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: determinism-lint-log
+          path: ${{ runner.temp }}/lint.log
+          retention-days: 30
 
   # Each shard runs its seeds with the checkers of package check
   # (TestSeeds) and checks short runs of the same seeds with Porcupine
@@ -155,7 +161,7 @@ jobs:
         shell: bash
         run: go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$|TestLinearizable$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400 -sim.out="$RUNNER_TEMP/sim-out" 2>&1 | tee "$RUNNER_TEMP/sim.log"
       - if: failure()
-        run: scripts/replay.sh "$RUNNER_TEMP/sim.log"
+        run: scripts/replay.sh "$RUNNER_TEMP/sim.log" -- -sim.seed="$FIRST_SEED" -sim.seeds=400
       - if: failure()
         uses: actions/upload-artifact@v6
         with:

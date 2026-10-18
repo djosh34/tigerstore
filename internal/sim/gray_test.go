@@ -16,19 +16,18 @@ import (
 // vote changes wait for it, so the liveness rule starts from its end
 // (Sim.graySyncEnded). On every seed, every call that starts two election
 // timeouts after healing and after that fsync must get a definite answer,
-// at least 50 calls must, and the checkers must pass. Nearly every seed
-// must have such an fsync; one whose gray leader had nothing to sync at
-// healing has none (#262).
+// at least 50 calls must, and the checkers must pass. Every seed must
+// have such an fsync (#262).
 func TestGrayFsyncOutlastsHealing(t *testing.T) {
 	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
-	var took effects
+	took := effects{all: true}
 	for seed := uint64(1); seed <= 4; seed++ {
 		cfg := DefaultConfig(seed)
 		cfg.Faults = Faults{}
 		cfg.GrayLeaderAt, cfg.GrayLeaderSync = cfg.Duration-1500*Millisecond, true
 		a := run(t, cfg)
 		checkers(t, a)
-		took.add(map[string]bool{"gray fsync 1.5 s past healing": a.grayHealedAt >= cfg.Duration+1500*Millisecond})
+		took.add(seed, map[string]bool{"gray fsync 1.5 s past healing": a.grayHealedAt >= cfg.Duration+1500*Millisecond})
 		from := max(a.grayHealedAt, cfg.Duration) + 2*election
 		for _, stop := range a.CommitStops {
 			if stop >= from {

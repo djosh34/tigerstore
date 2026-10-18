@@ -109,13 +109,23 @@ func saveRun(dir, cmd, trace string, res *Result) error {
 		"replay.txt": cmd + "\n",
 		"stats.txt":  fmt.Sprintf("%+v\n", res.Stats),
 	}
-	if h, err := res.Checkable(); err == nil {
+	h, err := res.Checkable()
+	switch {
+	case !res.ended:
+		files["replay.txt"] += "no history.json: the run failed before its end, so it has no committed log for the checkers\n"
+	case err != nil:
+		files["replay.txt"] += fmt.Sprintf("no history.json: %v\n", err)
+	default:
 		b, err := json.MarshalIndent(h, "", "  ")
 		if err != nil {
 			return err
 		}
 		files["history.json"] = string(b) + "\n"
-		files["replay.txt"] += "go run ./cmd/checkhistory -checkers witness-log,witness-revisions,linearizable " + filepath.Join(dir, "history.json") + "\n"
+		checkers := "witness-log,witness-revisions"
+		if check.ShortEnough(h) {
+			checkers += ",linearizable"
+		}
+		files["replay.txt"] += "go run ./cmd/checkhistory -checkers " + checkers + " " + filepath.Join(dir, "history.json") + "\n"
 	}
 	var errs []error
 	for name, body := range files {
@@ -189,7 +199,7 @@ func TestSeeds(t *testing.T) {
 			if st.Compactions == 0 || st.Revokes == 0 || st.OK < 200 || len(a.Log) < 50 {
 				t.Fatalf("seed %d did too little to test anything: %+v, %d committed writes", seed, st, len(a.Log))
 			}
-			took.add(map[string]bool{
+			took.add(seed, map[string]bool{
 				"crash": st.Crashes > 0, "link change": st.LinkChanges > 0, "two cold restarts": st.ColdRestarts >= 2,
 				"disk fault": st.DiskFaults > 0, "pause": st.Pauses > 0, "link stall": st.LinkStalls > 0,
 				"half-open link": st.HalfOpens > 0, "gray node": st.GrayNodes > 0, "gray client": st.GrayStreams > 0,
@@ -235,38 +245,56 @@ func TestSeeds(t *testing.T) {
 
 // effects counts, over a set of runs, the runs in which each fault took
 // effect. A fault that took effect in too few of them fails the test,
-// not the run it missed.
+// not the run it missed, and names the seeds it missed. With all set,
+// every run must show each fault.
 type effects struct {
-	runs int
-	took map[string]int
+	runs   int
+	all    bool
+	took   map[string]int
+	missed map[string][]uint64
 }
 
-// add counts one run, with whether each fault took effect in it.
-func (e *effects) add(took map[string]bool) {
+// add counts the run of seed, with whether each fault took effect in it.
+func (e *effects) add(seed uint64, took map[string]bool) {
 	if e.took == nil {
-		e.took = map[string]int{}
+		e.took, e.missed = map[string]int{}, map[string][]uint64{}
 	}
 	e.runs++
 	for name, ok := range took {
 		n := e.took[name]
 		if ok {
 			n++
+		} else {
+			e.missed[name] = append(e.missed[name], seed)
 		}
 		e.took[name] = n
 	}
 }
 
 // check fails t unless each fault took effect in atLeast of the seeds,
-// and logs the counts.
+// or in all of them, and logs the counts. A failure names up to five
+// seeds that missed the fault, with the command that runs each again.
 func (e *effects) check(t *testing.T) {
 	t.Helper()
 	least := atLeast(e.runs)
+	if e.all {
+		least = e.runs
+	}
 	var counts []string
 	for _, name := range slices.Sorted(maps.Keys(e.took)) {
 		n := e.took[name]
 		counts = append(counts, fmt.Sprintf("%s %d", name, n))
-		if n < least {
-			t.Errorf("%s took effect in %d of %d seeds, want %d at least", name, n, e.runs, least)
+		if n >= least {
+			continue
+		}
+		missed := e.missed[name][:min(5, len(e.missed[name]))]
+		t.Errorf("%s took effect in %d of %d seeds, want %d at least; it missed seeds %v", name, n, e.runs, least, missed)
+		if !seedTests[t.Name()] {
+			t.Logf("replay: %s", replayCommand(t.Name(), 0))
+			continue
+		}
+		for _, seed := range missed {
+			t.Logf("replay: %s", replayCommand(t.Name()+"/"+strconv.FormatUint(seed, 10), seed))
 		}
 	}
 	t.Logf("of %d seeds, the faults took effect in: %s", e.runs, strings.Join(counts, ", "))
@@ -332,7 +360,7 @@ func agree(h *history.History) error {
 	case 0:
 		return nil
 	case len(errs):
-		return fmt.Errorf("linearizability: %w", errors.Join(errs...))
+		return fmt.Errorf("%s: %w", strings.Join(names, ", "), errors.Join(errs...))
 	}
 	return fmt.Errorf("the checkers disagree: %s", strings.Join(verdicts, "; "))
 }
@@ -461,7 +489,7 @@ func TestSwitchingLinks(t *testing.T) {
 		cfg.Duration = 10 * Second
 		res := run(t, cfg)
 		checkers(t, res)
-		took.add(map[string]bool{"ten switches": res.Stats.LinkChanges >= 10})
+		took.add(2000+seed, map[string]bool{"ten switches": res.Stats.LinkChanges >= 10})
 	}
 	took.check(t)
 }
@@ -500,7 +528,7 @@ func TestEachFaultTakesEffect(t *testing.T) {
 				cfg.Heal = 8 * Second
 				res := run(t, cfg)
 				checkers(t, res)
-				took.add(map[string]bool{c.name: c.count(res.Stats) > 0})
+				took.add(seed, map[string]bool{c.name: c.count(res.Stats) > 0})
 			}
 			took.check(t)
 		})

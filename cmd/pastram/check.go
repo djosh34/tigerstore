@@ -122,9 +122,13 @@ func checkRecorded(out string) error {
 		Name    string
 		Seconds float64
 		Error   string
+		Skipped string `json:",omitempty"`
 	}
 	var results []result
 	var failures error
+	// Porcupine gets only a short history (check.ShortEnough); the witness
+	// checker runs on every one.
+	short := check.ShortEnough(lin)
 	for _, c := range []struct {
 		name string
 		run  func() error
@@ -136,6 +140,10 @@ func checkRecorded(out string) error {
 		{"Durable", func() error { return check.Durable(h) }},
 		{"Revisions", func() error { return check.Revisions(h) }},
 	} {
+		if c.name == "Linearizable" && !short {
+			results = append(results, result{Name: c.name, Skipped: fmt.Sprintf("%d operations, more than the %d Porcupine gets", len(lin.Ops), check.ShortOps)})
+			continue
+		}
 		start := time.Now()
 		e := c.run()
 		r := result{Name: c.name, Seconds: time.Since(start).Seconds()}

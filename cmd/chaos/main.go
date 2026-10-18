@@ -356,11 +356,7 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 	logf("linearizability input leaves out %d ambiguous writes that did not take effect", pruned)
 	var results []checkerResult
 	var errs []error
-	if !check.ShortEnough(lin) {
-		skipped := fmt.Sprintf("%d operations, more than the %d Porcupine gets", len(lin.Ops), check.ShortOps)
-		logf("checker Linearizable skipped: %s", skipped)
-		results = append(results, checkerResult{Name: "Linearizable", Skipped: skipped})
-	}
+	short := check.ShortEnough(lin)
 	for _, ch := range []struct {
 		name string
 		fn   func() error
@@ -372,7 +368,10 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 		{"Durable", func() error { return check.Durable(h) }},
 		{"Revisions", func() error { return check.Revisions(h) }},
 	} {
-		if ch.name == "Linearizable" && !check.ShortEnough(lin) {
+		if ch.name == "Linearizable" && !short {
+			skipped := fmt.Sprintf("%d operations, more than the %d Porcupine gets", len(lin.Ops), check.ShortOps)
+			logf("checker Linearizable skipped: %s", skipped)
+			results = append(results, checkerResult{Name: ch.name, Skipped: skipped})
 			continue
 		}
 		start := time.Now()
