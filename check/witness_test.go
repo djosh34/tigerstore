@@ -114,6 +114,71 @@ func TestWitnessedGood(t *testing.T) {
 			h.Ops[compact].Call, h.Ops[compact].Return = h.Ops[gone].Call-1, h.Ops[read].Return+1
 			return h
 		}},
+		{"ambiguous compaction after an acked one at the same revision", func(t *testing.T) *history.History {
+			// The acked compaction to 1 answered at revision 3, and the
+			// ambiguous one to 3 must follow it. A read below that found
+			// its revision compacted returned before the next put was
+			// called, so the ambiguous one goes in at revision 3 (#258,
+			// seed 10609).
+			b := newBuilder(t, "a")
+			b.put(0, "a", "1")
+			b.put(0, "a", "2")
+			b.do(1, history.Request{Compact: &history.CompactRequest{Revision: 1}})
+			compact := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+			b.do(3, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+			b.put(0, "a", "3")
+			h := b.done()
+			h.Ops[compact].Resp, h.Ops[compact].Err = nil, errUnavailable
+			return h
+		}},
+		{"two ambiguous compactions due at once, in call order", func(t *testing.T) *history.History {
+			// The read below both found its revision compacted. Only the
+			// compaction to 3 was called before it returned, so it goes in
+			// first, though the one to 1 comes first in the history, and
+			// the one to 1 then does nothing (TestSeeds seed 36260 on
+			// #268).
+			b := newBuilder(t, "a")
+			b.put(0, "a", "1")
+			b.put(0, "a", "2")
+			b.put(0, "a", "3")
+			early := b.do(1, history.Request{Compact: &history.CompactRequest{Revision: 1}})
+			compact := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+			read := b.do(3, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 1}})
+			put := b.put(0, "a", "4")
+			h := b.done()
+			h.Log = slices.DeleteFunc(h.Log, func(req history.Request) bool { return req.Compact != nil && req.Compact.Revision == 1 })
+			h.Ops[early].Call, h.Ops[early].Return = h.Ops[read].Return+1, h.Ops[put].Return+10
+			h.Ops[compact].Return = h.Ops[put].Return + 10
+			for _, i := range []int{early, compact} {
+				h.Ops[i].Resp, h.Ops[i].Err = nil, errUnavailable
+			}
+			return h
+		}},
+		{"lease expiry before an ambiguous compaction called after its rejection", func(t *testing.T) *history.History {
+			// An early rejection makes the compaction due from revision
+			// 3, where it goes in before a put that was called before the
+			// put that found the lease gone returned. The compaction was
+			// called after that, so the expiry goes in before it
+			// (TestSlowFetch seed 5022 on #268).
+			b := newBuilder(t, "a", "b")
+			grant := b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 1}})
+			b.do(0, history.Request{Put: &history.PutRequest{Key: "a", Value: "1", Lease: 42}})
+			b.put(0, "a", "2")
+			b.do(1, history.Request{Compact: &history.CompactRequest{Revision: 2}})
+			b.do(1, history.Request{Compact: &history.CompactRequest{Revision: 2}})
+			expiry := b.do(5, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 42}})
+			gone := b.do(0, history.Request{Put: &history.PutRequest{Key: "b", Value: "x", Lease: 42}})
+			compact := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+			put := b.put(3, "b", "y")
+			h := b.done()
+			h.Ops[expiry].Call, h.Ops[expiry].Return = h.Ops[grant].Call, h.Ops[grant].Call
+			h.Ops[expiry].Resp, h.Ops[expiry].Err = nil, errUnavailable
+			h.Ops[gone].Call, h.Ops[gone].Return = 1000, 1010
+			h.Ops[put].Call, h.Ops[put].Return = 1005, 1030
+			h.Ops[compact].Call, h.Ops[compact].Return = 1011, 1040
+			h.Ops[compact].Resp, h.Ops[compact].Err = nil, errUnavailable
+			return h
+		}},
 		{"ambiguous revoke of a lease ID granted again", func(t *testing.T) *history.History {
 			// The second grant's put shows the ID in use after the
 			// revoke's revision, which says nothing about the first.
@@ -268,8 +333,43 @@ func TestWitnessedBroken(t *testing.T) {
 	}
 }
 
-// TestWitnessedTimeout checks that running out of time is a failure, also
-// for a history too small to check the clock on the way.
+// TestWitnessedUnseenGaps has ten writes that no answer shows, each of
+// a revision no acked write holds, and eight older ambiguous deletes that
+// never took effect, which fit every one of those revisions. Only the
+// count of a delete after them shows that none of the eight came in
+// between. The search tried their orders until it timed out (#251, seed
+// 62147) and must now finish at once.
+func TestWitnessedUnseenGaps(t *testing.T) {
+	keys := []string{"z"}
+	for i := range 8 {
+		keys = append(keys, fmt.Sprintf("k%d", i))
+	}
+	b := newBuilder(t, keys...)
+	for i := range 8 {
+		b.put(0, fmt.Sprintf("k%d", i), "v")
+	}
+	var unseen []int
+	for i := range 10 {
+		unseen = append(unseen, b.put(10+i, "z", fmt.Sprintf("z%d", i)))
+	}
+	b.do(0, history.Request{Delete: &history.DeleteRequest{Key: "k0", End: "k8"}})
+	h := b.done()
+	for _, i := range unseen {
+		h.Ops[i].Resp, h.Ops[i].Err = nil, errUnavailable
+	}
+	for i := range 8 {
+		h.Ops = append(h.Ops, history.Op{
+			Client: 30 + i, Call: 1, Return: 2,
+			Req: history.Request{Delete: &history.DeleteRequest{Key: fmt.Sprintf("k%d", i)}},
+			Err: errUnavailable,
+		})
+	}
+	mustPass(t, "Witnessed revisions", Witnessed(h, FromRevisions, 10*time.Second))
+}
+
+// TestWitnessedTimeout checks that running out of time is a failure that
+// says how far the check got, also for a history too small to check the
+// clock on the way.
 func TestWitnessedTimeout(t *testing.T) {
 	b := newBuilder(t, "a")
 	for i := range 2000 {
@@ -279,7 +379,7 @@ func TestWitnessedTimeout(t *testing.T) {
 	small.put(0, "a", "1")
 	for _, h := range []*history.History{b.done(), small.done()} {
 		for _, mode := range bothModes {
-			mustFail(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Nanosecond), "timed out")
+			mustFail(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Nanosecond), "timed out; the order held")
 		}
 	}
 }

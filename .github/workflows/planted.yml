@@ -28,8 +28,9 @@ concurrency:
 jobs:
   # Every planted bug (internal/planted) in turn must be caught within its
   # seed budget; TestPlanted fails otherwise, and a crash is a failure too.
-  # TestPlantedInventory checks that BUGS names every bug. A bug reproduces
-  # with go test -tags planted ./internal/sim/ -run 'TestPlanted$' -v -args -planted=<bug>
+  # TestPlantedInventory checks that BUGS names every bug. A bug that is
+  # not caught prints the command that runs it again; a seed that failed
+  # on another check prints its own, and its run is uploaded.
   planted:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
@@ -43,23 +44,38 @@ jobs:
       - run: go test -c -tags planted -o "$RUNNER_TEMP/bin/" ./internal/sim ./internal/node ./internal/peer
       - name: Catch every planted bug
         shell: bash
+        env:
+          SIM_OUT: ${{ runner.temp }}/sim-out
         run: |
           set -uo pipefail
           status=0
-          (cd internal/sim && "$RUNNER_TEMP/bin/sim.test" -test.run 'TestPlantedInventory$') || { status=1; echo "::error::TestPlantedInventory failed"; }
+          mkdir -p "$RUNNER_TEMP/logs"
+          (cd internal/sim && "$RUNNER_TEMP/bin/sim.test" -test.run 'TestPlantedInventory$') 2>&1 | tee "$RUNNER_TEMP/logs/inventory.log" || { status=1; echo "::error::TestPlantedInventory failed; replay: go test -tags planted -count=1 ./internal/sim/ -run '^TestPlantedInventory$'"; }
           for bug in $BUGS; do
             echo "::group::$bug"
             for pkg in sim node peer; do
-              (cd "internal/$pkg" && "$RUNNER_TEMP/bin/$pkg.test" -test.run 'TestPlanted$' -test.v -test.timeout 28m -planted="$bug") || { status=1; echo "::error::$bug was not caught in internal/$pkg"; }
+              (cd "internal/$pkg" && "$RUNNER_TEMP/bin/$pkg.test" -test.run 'TestPlanted$' -test.v -test.timeout 28m -planted="$bug") 2>&1 | tee "$RUNNER_TEMP/logs/$bug-$pkg.log" || {
+                status=1
+                echo "::error::$bug was not caught in internal/$pkg; replay: go test -tags planted -count=1 -v ./internal/$pkg/ -run '^TestPlanted$' -args -planted=$bug"
+              }
             done
             echo "::endgroup::"
           done
           exit "$status"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: planted
+          path: |
+            ${{ runner.temp }}/sim-out
+            ${{ runner.temp }}/logs
+          retention-days: 30
 
   # The chaos job must be able to fail: with a planted bug built in, the
   # checker that bug breaks must report its own finding. B01a serves
-  # linearizable reads like serializable ones (a stale read), which
-  # Porcupine and the witness checker in each mode must find; B06c drops
+  # linearizable reads like serializable ones (a stale read), which the
+  # witness checker in each mode must find; Porcupine gets only short
+  # histories (check.ShortEnough), and a chaos run's is longer. B06c drops
   # previous values from watch events, B09a gives each key of a write its
   # own revision. Each pair of bug and checker runs seeds 1 and 2 in turn.
   chaos-planted:
@@ -80,7 +96,7 @@ jobs:
         run: |
           set -uo pipefail
           status=0
-          for row in "B01a:Linearizable" "B01a:Witnessed (log)" "B01a:Witnessed (revisions)" "B06c:Watches" "B09a:Revisions"; do
+          for row in "B01a:Witnessed (log)" "B01a:Witnessed (revisions)" "B06c:Watches" "B09a:Revisions"; do
             bug=${row%%:*} checker=${row#*:}
             out="$RUNNER_TEMP/chaos-out/$bug-${checker//[ ()]/}"
             echo "::group::$bug, $checker"
@@ -92,9 +108,9 @@ jobs:
               fi
               # Caught only if the named checker itself found the bug, not
               # only a shared precondition such as the coverage floor.
-              # For Linearizable and the witness checker, a timeout or a
-              # search that ran out of candidates is not a catch.
-              if jq -e --arg c "$checker" '.[] | select(.name == $c and (.checker_error // "") != "" and (.name != "Linearizable" or (.checker_error | contains("is not linearizable"))) and ((.name | startswith("Witnessed") | not) or (.checker_error | test("answers it|real time allows|returned before it was called"))))' "$out/seed-$seed/checks.json" >/dev/null; then
+              # For the witness checker, a timeout or a search that ran out
+              # of candidates is not a catch.
+              if jq -e --arg c "$checker" '.[] | select(.name == $c and (.checker_error // "") != "" and ((.name | startswith("Witnessed") | not) or ((.checker_error | test("answers it|real time allows|returned before it was called")) and (.checker_error | contains("timed out") | not))))' "$out/seed-$seed/checks.json" >/dev/null; then
                 echo "seed $seed: $checker caught it"
                 caught=1
               else

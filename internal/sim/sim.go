@@ -69,8 +69,8 @@ type Config struct {
 	ClientTimeout int64
 	// GrayLeaderAt, if set, makes whichever node leads then gray until
 	// healing: its heartbeats get through, its appends do not.
-	// GrayLeaderSync also makes its fsyncs slow, so one in flight at
-	// healing ends after it.
+	// GrayLeaderSync also makes its fsyncs slow: one in flight at healing
+	// ends 1.5 to 3 s after it, the shape of #81.
 	GrayLeaderAt   int64
 	GrayLeaderSync bool
 	// HalfOpenAt, if set, makes the link from whichever node leads then
@@ -277,6 +277,9 @@ type node struct {
 	rotted           bool
 	rotFile          string
 	rotEntry, rotSeg uint64
+	// rotStopped is set when it stopped on the rotted value too late for
+	// its restart to come before the end; it stays down (#265).
+	rotStopped bool
 	// ckptDone are the checkpoint files closed right after their last
 	// sync, whose bytes count once the directory is synced;
 	// removedSegment marks a segment removal whose erase-one-disk copy
@@ -292,14 +295,21 @@ type node struct {
 	root, rootDue uint64
 	servedDamage  bool
 	duringInstall []string
+	// since is when the node's process last started or went down, why
+	// says why it went down, and last is what its core showed at its last
+	// turn, for the report of a failure.
+	since int64
+	why   string
+	last  coreState
 }
 
-// pendingJob is a job a node's core handed its disk: the first entry it
-// writes, and whether that replaces entries reported durable.
+// pendingJob is a job a node's core handed its disk at time at: the first
+// entry it writes, and whether that replaces entries reported durable.
 type pendingJob struct {
 	first    uint64
 	replaces bool
 	install  bool
+	at       int64
 }
 
 // proc is one process of a node: the node driver, its peer transport and
@@ -373,6 +383,10 @@ type Sim struct {
 	applied       uint64
 	stallHandOffs []int64
 	commitStops   []int64
+	// stalledLeader is the leader StallLeaderAt stalled, and heldAppendAt
+	// when it handed its disk the oldest append that the stall holds.
+	stalledLeader *node
+	heldAppendAt  int64
 	// gray is the gray node, or nil, and grayEnd when its gray period ends.
 	gray     *node
 	grayEnd  int64
@@ -475,17 +489,24 @@ type Result struct {
 	Stats   Stats
 	// StallHandOffs are the times leaders handed over on a stalled disk,
 	// and CommitStops the times leaders stopped because nothing committed.
+	// HeldAppendAt is when the leader StallLeaderAt stalled handed its
+	// disk the oldest append the stall holds.
 	StallHandOffs, CommitStops []int64
-	// Trace is what the run did, last of all, for a failure's report.
-	Trace []string
+	HeldAppendAt               int64
+	// Trace is what the run did, last of all, and Report how it left each
+	// node, for a failure's report.
+	Trace  []string
+	Report string
 	// grayNode is the index of the last gray node, for tests.
 	grayNode int
 	// grayHealedAt is when the last gray fsync after healing ended, for
 	// tests.
 	grayHealedAt int64
 	halfOpens    []halfOpenLink
-	// FinalRev is the revision of the converged cluster at the end.
+	// FinalRev is the revision of the converged cluster at the end, and
+	// logged is set once the checks built the committed log.
 	FinalRev int64
+	logged   bool
 	// Clients is the number of request clients.
 	Clients int
 }
@@ -503,9 +524,14 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	}
 	res := &Result{Clients: cfg.Clients}
 	err = s.run()
+	// A run that failed before its end keeps what it did so far, for its
+	// report; it has no committed log for the checkers.
+	s.mu.Lock()
+	res.History, res.Stats, res.StallHandOffs, res.CommitStops = s.history, s.stats, s.stallHandOffs, s.commitStops
+	res.HeldAppendAt = s.heldAppendAt
+	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
+	s.mu.Unlock()
 	if err == nil {
-		res.History, res.Stats, res.StallHandOffs, res.CommitStops = s.history, s.stats, s.stallHandOffs, s.commitStops
-		res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
 		if err = s.check(res); err != nil {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)
 		}
@@ -513,6 +539,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if err == nil && inspect != nil {
 		err = inspect(s)
 	}
+	res.Report = s.report()
 	s.shutdown()
 	res.Trace = s.trace
 	if err == nil {
@@ -896,6 +923,7 @@ func (s *Sim) start(n *node) error {
 		s.stats.RecoveryCrashes++
 		cancel()
 		n.disk.Crash(s.rng)
+		n.since, n.why = s.now(), "the run crashed it during recovery"
 		s.tracef("node %d: crashed during recovery", n.id)
 		s.restartLater(n, 1+s.rng.Int64N(Second))
 		return nil
@@ -907,6 +935,7 @@ func (s *Sim) start(n *node) error {
 		cancel()
 		n.disk.ClearFaults()
 		n.disk.Crash(s.rng)
+		n.since, n.why = s.now(), fmt.Sprintf("failed to boot: %v", err)
 		s.tracef("node %d: failed to boot: %v", n.id, err)
 		s.restartLater(n, 1+s.rng.Int64N(Second))
 		return nil
@@ -914,6 +943,7 @@ func (s *Sim) start(n *node) error {
 	if s.cfg.Membership && core.FailureOf(err) == core.Leave {
 		cancel()
 		n.inactive = true
+		n.since, n.why = s.now(), fmt.Sprintf("left the cluster at its start: %v", err)
 		return nil
 	}
 	if n.corrupted {
@@ -927,6 +957,7 @@ func (s *Sim) start(n *node) error {
 			return fmt.Errorf("node %d started on a damaged disk: %w", n.id, err)
 		}
 		n.fenced = true
+		n.since, n.why = s.now(), fmt.Sprintf("refused to start on its damaged disk: %v", err)
 		s.stats.Fenced++
 		if n.servedDamage {
 			s.stats.FencedAfterServe++
@@ -952,7 +983,7 @@ func (s *Sim) start(n *node) error {
 		return err
 	}
 	p.node, p.t = tn, t
-	n.proc = p
+	n.proc, n.since, n.why = p, s.now(), ""
 	s.procs.Go(func() {
 		err := tn.Run(ctx, t)
 		err = errors.Join(err, t.Close())
@@ -1007,11 +1038,19 @@ func (s *Sim) exited(p *proc, err error) {
 		return
 	}
 	s.tracef("node %d: stopped: %v", n.id, err)
+	n.why = fmt.Sprintf("its process stopped: %v", err)
 	switch {
 	case n.rotted && rotStop(n, err):
 		// It read the value the run damaged and stopped instead of
-		// answering with it.
-		s.stopNode(n)
+		// answering with it. If its restart would not come before the
+		// end, it stays down, as an operator would replace its disk, and
+		// the checks at the end leave it out.
+		if d := s.restartDelay(); s.ended || s.now()+d >= s.endAt {
+			n.rotStopped = true
+			s.crash(n)
+		} else {
+			s.stopNodeAfter(n, d)
+		}
 	case n.corrupted && core.FailureOf(err) == core.Reload && errors.Is(err, wal.ErrCorrupt):
 		// It started again from its log after a snapshot install or a
 		// failed fetch, and recovery found the damage and ended the
@@ -1064,6 +1103,7 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		}
 		p.core, n.pending, n.duringInstall = c, nil, nil
 	}
+	n.remember(c, s.now())
 	for _, a := range eff.Applied {
 		s.record(n, a)
 	}
@@ -1071,9 +1111,12 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		s.fail("node %d holds entries from %d in memory, but applied only to %d", n.id, c.FirstIndex(), c.Applied())
 	}
 	for _, j := range eff.Persist {
-		pj := pendingJob{first: math.MaxUint64}
+		pj := pendingJob{first: math.MaxUint64, at: s.now()}
 		if len(j.Entries) > 0 {
 			pj.first = j.Entries[0].GetIndex()
+			if n == s.stalledLeader && s.heldAppendAt == 0 {
+				s.heldAppendAt = pj.at
+			}
 		}
 		if j.Install != nil {
 			// The install may replace what the node holds after the
@@ -1212,7 +1255,10 @@ func (s *Sim) beforeSync(p *proc) {
 		lat = 20*Millisecond + s.rng.Int64N(80*Millisecond)
 	}
 	gray := s.gray == n && n.graySync && !s.healed
-	if gray {
+	switch {
+	case gray && s.cfg.GrayLeaderSync:
+		lat = s.healAt - s.now() + 1500*Millisecond + s.rng.Int64N(1500*Millisecond)
+	case gray:
 		lat = max(lat, 500*Millisecond+s.rng.Int64N(2500*Millisecond))
 	}
 	s.mu.Unlock()
@@ -1242,6 +1288,7 @@ func (s *Sim) crashRandom() {
 	if n == nil {
 		return
 	}
+	n.why = "the run crashed it"
 	s.crash(n)
 	s.maybeCorrupt(n)
 	s.restartLater(n, 1+s.rng.Int64N(s.cfg.Faults.MaxDown))
@@ -1284,6 +1331,10 @@ func (s *Sim) down(n *node) {
 		return
 	}
 	n.proc, n.pending, n.duringInstall = nil, nil, nil
+	n.since = s.now()
+	if n.why == "" {
+		n.why = "the run took it down"
+	}
 	n.gen++
 	// A crash ends a pause.
 	n.pausedUntil = 0
@@ -1294,7 +1345,10 @@ func (s *Sim) down(n *node) {
 
 // stopNode stops a node like a crash and restarts it later from its disk.
 // The lock is held.
-func (s *Sim) stopNode(n *node) {
+func (s *Sim) stopNode(n *node) { s.stopNodeAfter(n, s.restartDelay()) }
+
+// stopNodeAfter is stopNode with the restart d from now.
+func (s *Sim) stopNodeAfter(n *node, d int64) {
 	if s.healed && s.now() <= s.recovered() {
 		// The guaranteed disk fault fired after healing, or a watchdog
 		// whose wait began before it. The liveness rule starts once the
@@ -1308,8 +1362,11 @@ func (s *Sim) stopNode(n *node) {
 		s.extendLiveness()
 	}
 	s.crash(n)
-	s.restartLater(n, 1+s.rng.Int64N(max(s.cfg.Faults.MaxDown, Second)))
+	s.restartLater(n, d)
 }
+
+// restartDelay draws when stopNode restarts a node. The lock is held.
+func (s *Sim) restartDelay() int64 { return 1 + s.rng.Int64N(max(s.cfg.Faults.MaxDown, Second)) }
 
 // changeLinks changes the set of links that are up, at random times,
 // until healing.

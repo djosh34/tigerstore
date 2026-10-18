@@ -30,8 +30,10 @@ type watchClient struct {
 	events      []*mvccpb.Event
 	responses   []WatchRecord
 	// ended holds the logical watches that a compaction canceled; the
-	// client then started a new one from the current revision.
-	ended []segment
+	// client then started a new one from the current revision, at
+	// restartedAt.
+	ended       []segment
+	restartedAt int64
 	// open is set while the client has a stream, on process proc.
 	open bool
 	proc *proc
@@ -88,12 +90,19 @@ func (s *Sim) startWatchers() {
 // run opens a stream on a random node and follows it, again whenever it
 // breaks, until the run ends. Until the clients stop, it also closes the
 // stream on purpose at random times, as clients do on a timeout, and
-// resumes up to 2 s later, so the next stream catches up on history.
+// resumes up to 2 s later, so the next stream catches up on history. A
+// node that refused it is not tried next, as a client's balancer moves on
+// to another endpoint (#259).
 func (w *watchClient) run(wait, dropAt int64) {
 	s := w.sim
+	var refused *node
 	for s.sleep(wait) {
 		s.mu.Lock()
-		n := s.nodes[s.rng.IntN(3)]
+		i := s.rng.IntN(3)
+		if s.nodes[i] == refused {
+			i = (i + 1 + s.rng.IntN(2)) % 3
+		}
+		n := s.nodes[i]
 		wait = 100*Millisecond + s.rng.Int64N(400*Millisecond)
 		next := w.next
 		s.mu.Unlock()
@@ -101,8 +110,10 @@ func (w *watchClient) run(wait, dropAt int64) {
 			return &pb.WatchCreateRequest{Key: w.key, RangeEnd: w.end, StartRevision: start, PrevKv: w.prevKV, ProgressNotify: w.progress}
 		})
 		if err != nil {
+			refused = n
 			continue
 		}
+		refused = nil
 		s.mu.Lock()
 		s.tracef("watch %d: stream on node %d from %d", w.id, n.id, next)
 		w.open, w.proc, w.watchID = true, p, -1
@@ -188,6 +199,7 @@ func (w *watchClient) receive(r *pb.WatchResponse) bool {
 		s.tracef("watch %d: compacted at %d, starting again", w.id, r.CompactRevision)
 		w.ended = append(w.ended, segment{start: w.start, events: w.events, responses: w.responses})
 		w.start, w.next, w.events, w.responses = 0, 0, nil, nil
+		w.restartedAt = s.now()
 		return true
 	}
 	if r.Canceled {
@@ -239,18 +251,23 @@ func (w *watchClient) receive(r *pb.WatchResponse) bool {
 // model's history of its range from its start, in order, without
 // duplicates, with previous values where asked. The current one must reach
 // the final revision; one that a compaction ended must be complete up to
-// its last event.
+// its last event. A current one that a compaction restarted less than
+// watchRestart before the end may not be created yet: a client may need a
+// second try on another node (#259).
 func (s *Sim) checkWatches(model *mvcc.Store, res *Result) error {
 	for _, w := range s.watchers {
 		segs := append(slices.Clone(w.ended), segment{start: w.start, events: w.events, responses: w.responses})
 		for i, sg := range segs {
 			current := i == len(segs)-1
+			if current && sg.start == 0 && s.endAt-w.restartedAt < watchRestart && len(w.ended) > 0 {
+				continue
+			}
 			res.Watches = append(res.Watches, WatchResult{
 				Key: w.key, End: w.end, PrevKV: w.prevKV, ProgressNotify: w.progress, Start: sg.start, Responses: sg.responses,
 			})
 			if sg.start == 0 {
 				if current {
-					return fmt.Errorf("watch %d was never created", w.id)
+					return fmt.Errorf("watch %d was never created; its last stream was on node %d, and a compaction last restarted it at %s, %s before the end", w.id, w.lastNode(), seconds(w.restartedAt), seconds(s.endAt-w.restartedAt))
 				}
 				return fmt.Errorf("watch %d was canceled before it was created", w.id)
 			}
@@ -277,4 +294,17 @@ func (s *Sim) checkWatches(model *mvcc.Store, res *Result) error {
 		}
 	}
 	return nil
+}
+
+// watchRestart is how long a watch client has at the end to create a
+// logical watch that a compaction restarted: a try, the wait of up to
+// 500 ms before the next, and the next on another node.
+const watchRestart = Second
+
+// lastNode is the node of the client's last stream, or 0.
+func (w *watchClient) lastNode() uint64 {
+	if w.proc == nil {
+		return 0
+	}
+	return w.proc.n.id
 }

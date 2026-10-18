@@ -50,6 +50,10 @@ func (n *Node) Status() *pb.StatusResponse {
 	return resp
 }
 
+// RaftStatus is Raft's view of this node: its role, term, leader, commit
+// and applied index. Test harnesses report it when a run fails.
+func (n *Node) RaftStatus() raft.BasicStatus { return n.rn.BasicStatus() }
+
 // Metrics are the counters and gauges /metrics reports, under etcd's
 // names.
 type Metrics struct {

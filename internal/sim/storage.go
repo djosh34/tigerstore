@@ -225,6 +225,7 @@ func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.
 				s.stats.FetchCrashes++
 			}
 			if n.proc == p {
+				n.why = "the run crashed it while it served a snapshot"
 				s.stopNode(n)
 			}
 			s.mu.Unlock()

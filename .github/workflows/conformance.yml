@@ -25,6 +25,9 @@ jobs:
           store: ${{ inputs.store || 'tigerstore' }}
       - name: Full Kubernetes 1.37 conformance
         run: bash k8stest/conformance.sh
+      - if: failure()
+        run: |
+          echo "replay: bash k8stest/conformance.sh, on a kind cluster that .github/actions/kind sets up"
       - name: Collect logs
         if: always()
         run: bash k8stest/collect.sh

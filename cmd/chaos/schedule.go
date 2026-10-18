@@ -91,10 +91,12 @@ func plan(seed uint64, faults []string) []step {
 	return out
 }
 
-// linkRecord is the evidence for one proxy of a step.
+// linkRecord is the evidence for one proxy of a step. NoTraffic says what
+// the link showed when the step gave up waiting for traffic on it.
 type linkRecord struct {
 	Link       string      `json:"link"`
 	Requested  proxy.Fault `json:"requested"`
+	NoTraffic  string      `json:"no_traffic,omitempty"`
 	Installed  proxy.Stats `json:"installed"`
 	BeforeHeal proxy.Stats `json:"before_heal"`
 	Healed     proxy.Stats `json:"healed"`
@@ -112,20 +114,25 @@ type processRecord struct {
 }
 
 // record is what happened to one step: requested, installed, took effect
-// and healed, with times from the start of the run.
+// and healed, with times from the start of the run. Overlapped says
+// whether a write ran while the fault was on (faultsOverlapWrites). The
+// effect of a fault is counted over a campaign (tally), so NoEffect only
+// says why it had none.
 type record struct {
-	Step      int            `json:"step"`
-	Planned   step           `json:"planned"`
-	Leader    string         `json:"leader,omitempty"`
-	Requested time.Duration  `json:"requested_at"`
-	Installed bool           `json:"installed"`
-	Effect    bool           `json:"effect"`
-	Healed    bool           `json:"healed"`
-	HealedAt  time.Duration  `json:"healed_at,omitempty"`
-	Links     []linkRecord   `json:"links,omitempty"`
-	Process   *processRecord `json:"process,omitempty"`
-	Env       *envRecord     `json:"env,omitempty"`
-	Error     string         `json:"error,omitempty"`
+	Step       int            `json:"step"`
+	Planned    step           `json:"planned"`
+	Leader     string         `json:"leader,omitempty"`
+	Requested  time.Duration  `json:"requested_at"`
+	Installed  bool           `json:"installed"`
+	Effect     bool           `json:"effect"`
+	Overlapped bool           `json:"overlapped"`
+	Healed     bool           `json:"healed"`
+	HealedAt   time.Duration  `json:"healed_at,omitempty"`
+	Links      []linkRecord   `json:"links,omitempty"`
+	Process    *processRecord `json:"process,omitempty"`
+	Env        *envRecord     `json:"env,omitempty"`
+	NoEffect   string         `json:"no_effect,omitempty"`
+	Error      string         `json:"error,omitempty"`
 }
 
 // runner injects a schedule into a cluster. t is the workload, which
@@ -166,7 +173,9 @@ func pause(ctx context.Context, d time.Duration) error {
 }
 
 // run injects each step and heals it before the next. A step whose fault
-// was not installed, did not take effect or did not heal is an error.
+// was not installed or did not heal is an error; whether it took effect is
+// counted over a campaign (tally). When a step fails, the log gets how
+// each node stands then.
 func (r *runner) run(ctx context.Context, steps []step) ([]record, error) {
 	var out []record
 	var errs []error
@@ -176,9 +185,6 @@ func (r *runner) run(ctx context.Context, steps []step) ([]record, error) {
 		if err == nil && !rec.Installed {
 			err = errors.New("fault was not installed")
 		}
-		if err == nil && !rec.Effect {
-			err = errors.New("fault was installed but had no effect")
-		}
 		if err == nil && !rec.Healed {
 			err = errors.New("fault did not heal")
 		}
@@ -186,7 +192,10 @@ func (r *runner) run(ctx context.Context, steps []step) ([]record, error) {
 			rec.Error = err.Error()
 			errs = append(errs, fmt.Errorf("step %d (%s): %w", i, s.Fault, err))
 		}
-		r.logf("step %d %s leader=%s installed=%v effect=%v healed=%v %s", i, s.Fault, rec.Leader, rec.Installed, rec.Effect, rec.Healed, rec.Error)
+		r.logf("step %d %s leader=%s installed=%v effect=%v healed=%v %s%s", i, s.Fault, rec.Leader, rec.Installed, rec.Effect, rec.Healed, rec.NoEffect, rec.Error)
+		if err != nil {
+			r.logf("step %d failed; the nodes now:\n%s", i, r.c.report(ctx))
+		}
 		out = append(out, rec)
 		if err := pause(ctx, s.Gap); err != nil {
 			return out, errors.Join(append(errs, err)...)
@@ -294,12 +303,15 @@ type linkFault struct {
 func (r *runner) network(ctx context.Context, s step, lead int, faults []linkFault, rec *record) error {
 	rec.Installed, rec.Effect = true, true
 	var errs []error
+	waited := map[*link]string{}
 	for _, lf := range faults {
-		awaitTraffic(ctx, lf.l, lf.f.Dir)
+		if err := awaitTraffic(ctx, lf.l, lf.f.Dir); err != nil {
+			waited[lf.l] = err.Error()
+		}
 	}
 	for _, lf := range faults {
 		st, err := lf.l.Proxy.Set(lf.f)
-		lr := linkRecord{Link: lf.l.Name, Requested: lf.f, Installed: st}
+		lr := linkRecord{Link: lf.l.Name, Requested: lf.f, NoTraffic: waited[lf.l], Installed: st}
 		if err != nil || st.Fault != lf.f {
 			rec.Installed = false
 			errs = append(errs, errors.Join(fmt.Errorf("%s: requested %+v, installed %+v", lf.l.Name, lf.f, st.Fault), err))
@@ -312,7 +324,7 @@ func (r *runner) network(ctx context.Context, s step, lead int, faults []linkFau
 		rec.Links[i].BeforeHeal = lf.l.Proxy.Stats()
 		if rec.Links[i].BeforeHeal.Hits == 0 {
 			rec.Effect = false
-			errs = append(errs, fmt.Errorf("%s: no hit in %v", lf.l.Name, s.Hold))
+			rec.NoEffect += fmt.Sprintf("%s: no hit in %v; ", lf.l.Name, s.Hold)
 		}
 		st, err := lf.l.Proxy.Set(proxy.Fault{Kind: proxy.None})
 		rec.Links[i].Healed = st
@@ -332,15 +344,20 @@ const trafficWait = 15 * time.Second
 // and new bytes in the directions of dir, so that a fault installed then
 // has traffic to act on. A client link to a node that just started has
 // no client yet for a while (#224). A fault without a direction (Reset)
-// needs only the connection.
-func awaitTraffic(ctx context.Context, l *link, dir proxy.Dir) bool {
+// needs only the connection. If it gives up, it says what it last saw.
+func awaitTraffic(ctx context.Context, l *link, dir proxy.Dir) error {
 	start := l.Proxy.Stats()
-	return waitUntil(ctx, trafficWait, func() bool {
-		st := l.Proxy.Stats()
+	var st proxy.Stats
+	if waitUntil(ctx, trafficWait, func() bool {
+		st = l.Proxy.Stats()
 		return st.Open > 0 &&
 			(dir&proxy.Forward == 0 || st.ForwardBytes > start.ForwardBytes) &&
 			(dir&proxy.Backward == 0 || st.BackwardBytes > start.BackwardBytes)
-	})
+	}) {
+		return nil
+	}
+	return fmt.Errorf("waited %v for traffic %v on %s: %d connections open, %d bytes forward and %d backward since the wait began",
+		trafficWait, dir, l.Name, st.Open, st.ForwardBytes-start.ForwardBytes, st.BackwardBytes-start.BackwardBytes)
 }
 
 // kill sends SIGKILL to node i, checks that the kernel reports the

@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/djosh34/tigerstore/check"
@@ -91,9 +90,11 @@ var plantedCases = map[string]plantedCase{
 	"B09b": {seeds: 16, cfg: DefaultConfig, want: badState},
 	"B10":  {seeds: 64, cfg: DefaultConfig, want: badState + `|applied the same log to different states|` + badWatch},
 	"B11":  {seeds: 64, cfg: DefaultConfig, want: lostAppend + `|` + refused},
-	"B12":  {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused + `|` + badValue + `|the record of entry \d+ in segment \d+ does not verify`},
-	"B15":  {seeds: 32, cfg: DefaultConfig, want: `no client sent it`},
-	"B16":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
+	// Since a snapshot install starts the node again from its log (#238),
+	// that start can be where the damaged record is found.
+	"B12": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused + `|` + badValue + `|the record of entry \d+ in segment \d+ does not verify|damaged record followed by a valid one`},
+	"B15": {seeds: 32, cfg: DefaultConfig, want: `no client sent it`},
+	"B16": {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	// Followers forward their writes to the stalled leader, which stays
 	// leader, so the liveness check may find the timed-out calls first.
 	"B17": {seeds: 64, cfg: stalledLeaderConfig, want: `the stalled leader|liveness: client \d+ call`, extra: func(r *Result) error {
@@ -205,14 +206,12 @@ func TestPlanted(t *testing.T) {
 		t.Fatalf("unknown planted bug %q", name)
 	}
 	want := regexp.MustCompile(c.want)
-	planted.Active = name
-	t.Cleanup(func() { planted.Active = "" })
+	planted.Active, activePlanted = name, name
+	t.Cleanup(func() { planted.Active, activePlanted = "", "" })
 	for seed := uint64(1); seed <= uint64(c.seeds); seed++ {
 		caught := false
 		if !t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			var res *Result
-			var err error
-			synctest.Test(t, func(*testing.T) { res, err = Run(c.cfg(seed)) })
+			res, err := runSeed(t, c.cfg(seed))
 			if err == nil {
 				err = independent(res)
 			}

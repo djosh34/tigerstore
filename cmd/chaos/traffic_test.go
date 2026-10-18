@@ -58,8 +58,8 @@ func TestAwaitTraffic(t *testing.T) {
 		}
 	}()
 	start := time.Now()
-	if !awaitTraffic(context.Background(), l, proxy.Both) {
-		t.Fatal("no traffic seen")
+	if err := awaitTraffic(context.Background(), l, proxy.Both); err != nil {
+		t.Fatal(err)
 	}
 	if waited := time.Since(start); waited < late {
 		t.Fatalf("returned after %v, before the client connected", waited)

@@ -144,6 +144,8 @@ type rollingRun struct {
 	dir, oldBin, newBin string
 	stopped             bool
 	ranges              [3]int
+	// nodes is how the nodes stood before finish stopped them.
+	nodes string
 }
 
 func startRolling(t *testing.T, seed uint64) *rollingRun {
@@ -169,6 +171,8 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 		if err := c.closeProxies(); err != nil {
 			t.Error(err)
 		}
+	})
+	t.Cleanup(func() {
 		for _, n := range c.nodes {
 			if err := n.log.Close(); err != nil {
 				t.Error(err)
@@ -181,6 +185,19 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 				t.Error(err)
 			}
 		}
+	})
+	// This runs after finish and before the stop, so a failure anywhere,
+	// in the start too, says how each node stood, and how to run the test
+	// again.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		if r.nodes == "" && !r.stopped {
+			r.nodes = c.report(context.Background())
+		}
+		t.Logf("the nodes when the test failed:\n%s", r.nodes)
+		t.Logf("replay: ROLLING_OLD=<old binary> ROLLING_NEW=<new binary> go test -count=1 -v ./cmd/chaos -run '^%s$'", t.Name())
 	})
 	for i := range 3 {
 		r.start(i, oldBin)
@@ -204,6 +221,13 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 	// Run the checkers even when a version assertion fails. Their verdict
 	// does not excuse a failed upgrade or an unexpected process exit.
 	t.Cleanup(r.finish)
+	// This runs before finish, which stops the nodes, so that a failure in
+	// finish too has the report of how the nodes stood.
+	t.Cleanup(func() {
+		if !r.stopped {
+			r.nodes = c.report(context.Background())
+		}
+	})
 	return r
 }
 

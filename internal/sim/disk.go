@@ -2,6 +2,7 @@ package sim
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 	"slices"
 	"strconv"
@@ -105,6 +106,7 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 		// too.
 		s.recoveryDue = false
 		s.tracef("node %d: crash before a sync of the log", n.id)
+		n.why = "the run crashed it before a sync of the log"
 		s.stopNode(n)
 		return errDead
 	}
@@ -113,6 +115,7 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 		s.stepCrashDue = false
 		s.stats.StepCrashes++
 		s.tracef("node %d: crash at a step, after %v of %s", n.id, op, name)
+		n.why = fmt.Sprintf("the run crashed it after %v of %s", op, name)
 		s.stopNode(n)
 		return errDead
 	}

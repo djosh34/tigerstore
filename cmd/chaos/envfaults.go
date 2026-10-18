@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -76,12 +77,23 @@ func envFaultsFor(lazyfs bool) []string {
 }
 
 // grayFaults leave two nodes healthy, so writes through them must keep
-// committing within 10 election timeouts.
+// committing within livenessBound.
 var grayFaults = []string{netemLoss, netemReorder, netemCorrupt, cpuGray, diskSlow, diskStall, fsyncFail, diskFull, powerLoss, tornWrite, recoveryCrash, slowWatcher}
 
+// requestTimeout is etcd's request timeout: 5 s and two election
+// timeouts.
+const requestTimeout = 5*time.Second + 2*electionMillis*time.Millisecond
+
 // livenessBound is how long a write through a healthy node may take while
-// one node is gray: 10 election timeouts.
-const livenessBound = 10 * electionMillis * time.Millisecond
+// one node is gray, retries included: two request timeouts. A proposal
+// that a follower forwarded to a leader that then went away is lost and
+// times out after one, as in etcd (#230); its retry goes through.
+const livenessBound = 2 * requestTimeout
+
+// memberRetry is how long a member change is tried again: after a cold
+// restart, --strict-reconfig-check refuses it until the node has been
+// connected to its peers for 5 s.
+const memberRetry = 20 * time.Second
 
 // nodeArgs are the arguments every node gets under -env: sizes small
 // enough that a follower stopped for a few seconds falls behind the
@@ -96,6 +108,18 @@ type environment struct {
 	netem   *env.Netem
 	latency map[string]time.Duration
 	tag     string
+	// archiving is held by each pass of archive and by erase: on LazyFS,
+	// a file removed while the archive reads it stays as a .fuse_hidden
+	// file until it is closed, and the erase found its directory not
+	// empty (#264).
+	archiving sync.Mutex
+}
+
+// erase erases d while no archive pass reads it.
+func (e *environment) erase(d *env.Disk) error {
+	e.archiving.Lock()
+	defer e.archiving.Unlock()
+	return d.Erase()
 }
 
 // newEnvironment makes a disk under dir for each node, with LazyFS when
@@ -926,6 +950,8 @@ func (e *environment) archive(ctx context.Context, dir string) <-chan error {
 }
 
 func (e *environment) archiveOnce(dir string, seen map[string]time.Time) error {
+	e.archiving.Lock()
+	defer e.archiving.Unlock()
 	for i, d := range e.disks {
 		src := filepath.Join(d.Data, "wal")
 		to := filepath.Join(dir, "wal-archive", fmt.Sprintf("node%d", i+1), "wal")
@@ -1046,7 +1072,7 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 				return err
 			}
 		}
-		if err := d.Erase(); err != nil {
+		if err := r.e.erase(d); err != nil {
 			return err
 		}
 		for _, i := range healthy {
@@ -1086,7 +1112,7 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 			return n.exitedNow
 		})
 		if !refused {
-			return errors.New("the node started on a corrupt log")
+			return fmt.Errorf("the node started on a corrupt log: it still ran 10 s after its start, its last log line %q", lastLines(n.log.Name(), 1))
 		}
 		rec.Env.Exited = strings.TrimSpace(lastLine(logSince(n, from), "corrupt"))
 	}
@@ -1095,12 +1121,15 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 	// refuses a change until the node has been connected to its peers
 	// for 5 s, which after the cold restart it has not, so each is tried
 	// again until it goes through. A try that timed out may have gone
-	// through, so a later one may find the member gone, or added.
+	// through, so a later one may find the member gone, or added. An add
+	// that went through leaves a member that has not started, so the
+	// strict check refuses every later add as one with too few started
+	// members, before it would find the peer URL taken (#248).
 	ctl := r.c.nodes[healthy[0]].control
 	retry := func(what string, call func(c context.Context, ambiguous bool) error) error {
 		var err error
 		ambiguous := false
-		for deadline := time.Now().Add(2 * livenessBound); time.Now().Before(deadline); time.Sleep(500 * time.Millisecond) {
+		for deadline := time.Now().Add(memberRetry); time.Now().Before(deadline); time.Sleep(500 * time.Millisecond) {
 			cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			err = call(cctx, ambiguous)
 			cancel()
@@ -1109,7 +1138,7 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 			}
 			ambiguous = ambiguous || mayHaveApplied(err)
 		}
-		return fmt.Errorf("%s: %w", what, err)
+		return fmt.Errorf("%s, tried for %v: %w", what, memberRetry, err)
 	}
 	old := r.c.ids[target]
 	if err := retry(fmt.Sprintf("remove member %x", old), func(c context.Context, ambiguous bool) error {
@@ -1129,12 +1158,12 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 			newID = added.Member.ID
 			return nil
 		}
-		if !ambiguous || !errors.Is(err, rpctypes.ErrPeerURLExist) {
+		if !ambiguous {
 			return err
 		}
-		list, err := ctl.MemberList(c)
-		if err != nil {
-			return err
+		list, lerr := ctl.MemberList(c)
+		if lerr != nil {
+			return errors.Join(err, lerr)
 		}
 		for _, m := range list.Members {
 			if slices.Equal(m.PeerURLs, []string{peerURL}) {
@@ -1142,11 +1171,11 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 				return nil
 			}
 		}
-		return fmt.Errorf("no member has the peer URL %s", peerURL)
+		return fmt.Errorf("%w; no member has the peer URL %s", err, peerURL)
 	}); err != nil {
 		return err
 	}
-	if err := d.Erase(); err != nil {
+	if err := r.e.erase(d); err != nil {
 		return err
 	}
 	n.args = rejoinArgs(n.args)

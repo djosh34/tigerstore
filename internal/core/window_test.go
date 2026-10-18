@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -56,6 +57,34 @@ func newMemCluster(t *testing.T, change func(*Config)) *memCluster {
 	}
 	t.Fatal("node 1 did not become leader")
 	return nil
+}
+
+// leader returns the node that leads, with the other running one as its
+// follower, or -1.
+func (c *memCluster) leader() int {
+	for i, n := range c.nodes {
+		if c.down[i] || !n.isLeader {
+			continue
+		}
+		for j, m := range c.nodes {
+			if j != i && !c.down[j] && m.Leader() != n.cfg.ID {
+				return -1
+			}
+		}
+		return i
+	}
+	return -1
+}
+
+// describe says how each node stands, for a failure.
+func (c *memCluster) describe() string {
+	var parts []string
+	for i, n := range c.nodes {
+		st := n.RaftStatus()
+		parts = append(parts, fmt.Sprintf("node %d: down %v, disk held %v, %s, term %d, leader %d, commit %d, applied %d",
+			i+1, c.down[i], c.holdDisk[i], st.RaftState, st.GetTerm(), st.Lead, st.GetCommit(), n.Applied()))
+	}
+	return strings.Join(parts, "; ")
 }
 
 // step processes every node once, delivers the messages that are not

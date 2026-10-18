@@ -78,8 +78,9 @@ func main() {
 	flag.DurationVar(&c.holdEvery, "hold-every", 30*time.Minute, "mean time between follower holds")
 	flag.DurationVar(&c.compactEvery, "compact-every", 5*time.Minute, "compaction interval; each compacts to the revision of the one before, as the apiserver does")
 	flag.Int64Var(&c.burst, "burst", 256<<20, "bytes a follower hold writes while the follower is stopped")
-	flag.DurationVar(&c.liveness, "liveness", 10*time.Second, "time within which the cluster must commit a write after a fault")
-	flag.DurationVar(&c.requestTimeout, "request-timeout", 5*time.Second, "deadline of one call")
+	// etcd's request timeout: 5 s and two election timeouts.
+	flag.DurationVar(&c.liveness, "liveness", 7*time.Second, "time within which the cluster must commit a write after a fault")
+	flag.DurationVar(&c.requestTimeout, "request-timeout", 7*time.Second, "deadline of one call")
 	flag.Func("node-arg", "one more argument of every node; repeat for more", func(s string) error {
 		c.nodeArgs = append(c.nodeArgs, s)
 		return nil
@@ -96,7 +97,10 @@ func main() {
 		}
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FAIL: %v\nevidence in %s\n", err, c.out)
+		if rep != nil && rep.NodesAtFailure != "" {
+			fmt.Fprintf(os.Stderr, "the nodes when the run failed:\n%s", rep.NodesAtFailure)
+		}
+		fmt.Fprintf(os.Stderr, "FAIL: %v\nevidence in %s\nreplay (needs sudo -n): %s\n", err, c.out, replayCommand(c))
 		os.Exit(1)
 	}
 	_, _ = fmt.Fprintf(os.Stdout, "PASS: %s\n", rep.summary())
@@ -126,6 +130,8 @@ type report struct {
 	Nodes      [3]nodeStat `json:"nodes"`
 	Unexpected []string    `json:"unexpected_exits,omitempty"`
 	Findings   []string    `json:"findings,omitempty"`
+	// NodesAtFailure is how each node stood when the run failed.
+	NodesAtFailure string `json:"nodes_at_failure,omitempty"`
 }
 
 // nodeStat is the most a node took.
@@ -204,6 +210,9 @@ func run(cfg config) (*report, error) {
 	// The exit is reported with the others at the end; it ends the run now.
 	c.exited = func(string) { stop() }
 	err = s.run(ctx)
+	if err != nil || s.failed() != nil {
+		rep.NodesAtFailure = c.report(context.Background())
+	}
 	c.stop()
 	for i, n := range c.nodes {
 		rep.Nodes[i].Starts = n.starts
@@ -432,11 +441,13 @@ const catchUp = 2 * time.Minute
 // commit writes a probe through each of the nodes until one commits it,
 // within bound from at.
 func (s *soak) commit(ctx context.Context, what string, at time.Time, through []int, bound time.Duration, worst *float64) error {
+	var last error
 	for {
 		for _, i := range through {
 			cctx, cancel := context.WithTimeout(ctx, time.Second)
 			_, err := s.c.nodes[i].one.Put(cctx, "/soak/probe", at.String())
 			cancel()
+			last = err
 			if err == nil {
 				d := time.Since(at)
 				*worst = max(*worst, d.Seconds())
@@ -451,7 +462,7 @@ func (s *soak) commit(ctx context.Context, what string, at time.Time, through []
 			return ctx.Err()
 		}
 		if time.Since(at) > bound {
-			return fmt.Errorf("no write committed within %v of %s", bound, what)
+			return fmt.Errorf("no write committed within %v of %s; the last try through node%d got: %w", bound, what, through[len(through)-1]+1, last)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -509,7 +520,7 @@ func (s *soak) hold(ctx context.Context) error {
 		return err
 	}
 	if !waitUntil(ctx, 2*time.Minute, func() bool { return strings.Contains(logSince(f, from), "fetching the snapshot") }) {
-		return fmt.Errorf("node%d, held while %d MiB went in, did not fetch a snapshot within 2 minutes of its resume", f.i+1, wrote>>20)
+		return fmt.Errorf("node%d, held while %d MiB went in, did not fetch a snapshot within 2 minutes of its resume; its last log line: %q", f.i+1, wrote>>20, lastLines(f.log.Name(), 1))
 	}
 	s.rep.Snapshots++
 	s.logf("node%d fetches a snapshot", f.i+1)
@@ -678,7 +689,7 @@ func (s *soak) finish(ctx context.Context) error {
 	rev := s.l.acked.Load()
 	s.rep.Revision = rev
 	if !waitUntil(ctx, time.Minute, func() bool { return s.ws.caughtUp(rev) }) {
-		return fmt.Errorf("the watches did not reach revision %d within a minute", rev)
+		return fmt.Errorf("the watches did not reach revision %d within a minute: %s", rev, s.ws.reached())
 	}
 	return nil
 }

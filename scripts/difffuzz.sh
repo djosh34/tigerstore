@@ -14,7 +14,8 @@
 # (default difftest/testdata/fuzz) as a named case, and fails the run. BUILD_FLAGS go to the build of tigerstore, for
 # example to build in a planted bug. With RACE set, tigerstore and the
 # tests are built with -race and stop at their first race report, and a
-# report in a node's log fails the run.
+# report in a node's log fails the run. KEEP, a directory, gets the logs of
+# a failed run.
 set -euo pipefail
 etcd=${ETCD:-etcd}
 "$etcd" --version | grep -q '^etcd Version: 3.7.2$' || {
@@ -33,7 +34,15 @@ stop() {
 		sleep 0.1
 	done
 }
-trap 'stop; rm -rf "$work"' EXIT
+# keep copies the logs of a failed run to $KEEP, if set, for the
+# workflow to upload.
+keep() {
+	if [ "$1" != 0 ] && [ -n "${KEEP:-}" ]; then
+		mkdir -p "$KEEP"
+		(cd "$work" && find . -name '*.log' -exec cp --parents {} "$KEEP" \;)
+	fi
+}
+trap 'status=$?; stop; keep "$status"; rm -rf "$work"' EXIT
 in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 off=${OFFSET:-$((RANDOM % 2000 + 1))}
 eport=${FUZZ_ETCD_PORT:-23790}

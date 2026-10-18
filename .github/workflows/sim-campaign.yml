@@ -1,10 +1,11 @@
 # The simulator seed campaign of #148: 100,000 seeds of TestSeeds, every
 # checker on each, the witness checker in both modes among them, in 20
-# jobs of two processes of 2,500 seeds. A process of 2,000 seeds or more
-# also requires a stopped gray leader (#183). Started by hand:
+# jobs of two processes of 2,500 seeds. Each process requires each fault
+# to take effect in 95% of its seeds, and a process of 2,000 seeds or
+# more a stopped gray leader too (#183). Started by the worker:
 #   gh workflow run sim-campaign.yml -f first=<seed>
-# A failing seed reproduces with
-#   go test ./internal/sim/ -run 'TestSeeds/<seed>$' -args -sim.seed=<seed> -sim.seeds=1
+# A failing seed prints the command that runs it again, and its trace, how
+# it left each node and its history are uploaded with the job's logs.
 name: sim-campaign
 
 on:
@@ -44,17 +45,20 @@ jobs:
           for p in 0 1; do
             seed=$((FIRST + SHARD * 5000 + p * 2500))
             echo "process $p: seeds $seed to $((seed + 2499))"
-            "$RUNNER_TEMP/sim.test" -test.run 'TestSeeds$' -test.v -test.timeout 85m -sim.seed="$seed" -sim.seeds=2500 >"$RUNNER_TEMP/seeds-$p.log" 2>&1 &
+            "$RUNNER_TEMP/sim.test" -test.run 'TestSeeds$' -test.v -test.timeout 85m -sim.seed="$seed" -sim.seeds=2500 -sim.out="$RUNNER_TEMP/sim-out" >"$RUNNER_TEMP/seeds-$p.log" 2>&1 &
             pids+=($!)
           done
           status=0
           for p in 0 1; do
             wait "${pids[$p]}" || status=1
-            grep -E -- '^--- FAIL|^    --- FAIL| seeds: |^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$p.log" | head -50
+            grep -E -- '^--- FAIL|^    --- FAIL| seeds: |took effect|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$p.log" | head -50
+            PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$p.log" -- -sim.seed="$((FIRST + SHARD * 5000 + p * 2500))" -sim.seeds=2500
           done
           exit $status
       - if: failure()
         uses: actions/upload-artifact@v6
         with:
           name: sim-campaign-${{ matrix.shard }}
-          path: ${{ runner.temp }}/seeds-*.log
+          path: |
+            ${{ runner.temp }}/seeds-*.log
+            ${{ runner.temp }}/sim-out
