@@ -1,7 +1,9 @@
 name: diag277
-run-name: 'diag277: fix=${{ inputs.fix }}'
+run-name: 'diag277: event=${{ github.event_name }} fix=${{ inputs.fix }}'
 
 on:
+  push:
+    branches: [diag/277-witness-compaction]
   workflow_dispatch:
     inputs:
       fix:
@@ -23,7 +25,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Remove only the checker fix
-        if: ${{ !inputs.fix }}
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.fix }}
         run: |
           git fetch --depth=1 origin 6a3425e2383867dfe218457f77711bd26433d67e
           git show 6a3425e2:check/witness_revisions.go > check/witness_revisions.go
@@ -38,5 +40,5 @@ jobs:
         if: ${{ !cancelled() }}
         run: go run ./cmd/checkhistory -timeout 30s -checkers witness-log,witness-revisions "$RUNNER_TEMP/original/sim-out/TestSeeds_8143538/history.json"
       - name: Checker package, including existing 258 regressions
-        if: ${{ inputs.fix && !cancelled() }}
+        if: ${{ (github.event_name == 'push' || inputs.fix) && !cancelled() }}
         run: go test -count=1 ./check
