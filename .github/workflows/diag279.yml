@@ -13,6 +13,17 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Disable only endpoint pinning for the negative control
+        if: contains(github.event.head_commit.message, '[without-fix]')
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ('internal/sim/diag279_test.go', 'internal/sim/sim_test.go'):
+              p = Path(name)
+              source = p.read_text()
+              assert source.count('cfg.PinClients = true') == 1
+              p.write_text(source.replace('cfg.PinClients = true', 'cfg.PinClients = false'))
+          PY
       - name: Short supply reproduction (seed 4001, seven-second client timeout)
         run: |
           set -o pipefail
