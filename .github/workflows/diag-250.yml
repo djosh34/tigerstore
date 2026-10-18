@@ -1,0 +1,25 @@
+name: diag-250
+on:
+  push:
+    branches: [diag/250-peer-unknown-sender]
+permissions:
+  contents: read
+jobs:
+  acceptor:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Unknown voter and removed voter, ten repetitions
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -v -count=10 -timeout=90s ./internal/peer -run '^TestDiag250UnknownVoter$' 2>&1 | tee "$RUNNER_TEMP/diag250.log"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: diag250
+          path: ${{ runner.temp }}/diag250.log
