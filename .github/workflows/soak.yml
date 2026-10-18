@@ -18,12 +18,35 @@ on:
         description: Seed of the workers and the faults
         required: true
         default: "1"
+      evidence_run:
+        description: Diag226 only - summarize an existing run instead of running a soak
+        required: false
+        default: ""
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
+  evidence:
+    if: inputs.evidence_run != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download series, summarize and extract peak rings (no new soak)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.evidence_run }}
+        run: |
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" -n soak-evidence -D evidence
+          python3 scripts/diag226-memory.py evidence | tee "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: diag226-peak-evidence
+          path: evidence
+          retention-days: 30
   soak:
+    if: inputs.evidence_run == ''
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 345
     steps:

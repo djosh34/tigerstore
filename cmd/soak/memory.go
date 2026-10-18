@@ -71,7 +71,7 @@ func (s *soak) sampleNodeMemory(ctx context.Context, i int, n *node) {
 			if err != nil {
 				return err.Error()
 			}
-			return strings.TrimSpace(strings.ReplaceAll(string(b), "\n", ","))
+			return strings.ReplaceAll(strings.TrimSpace(string(b)), "\n", ",")
 		}
 		cur, peak := read("memory.current"), read("memory.peak")
 		current, _ := strconv.ParseInt(cur, 10, 64)
