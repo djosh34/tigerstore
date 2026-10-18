@@ -53,9 +53,9 @@ var cases = []testCase{
 	{"fragments", fragments},
 	{"gateway", gatewayCase},
 	{"metrics", metricsCase},
-	// Last: after a cancel, the cluster version may stay a minor
-	// version lower for up to 4 s.
-	{"downgrade", downgradeCase},
+	// Downgrade runs on its own fresh server in TestDowngrade. The
+	// malformed enum probes above remain in etcd's WAL even after
+	// their effects are undone, and its migration scanner panics on them.
 }
 
 // stricter lists the steps where tigerstore must not copy etcd v3.7.2. After
