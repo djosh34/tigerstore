@@ -478,7 +478,7 @@ func write(t *testing.T, d *simfs.Disk, name string, b []byte) {
 // TestDropKeepsBeforeUnplaced drops old segments while the newest waits
 // for Place: the segment before the newest may not be durable yet, so the
 // one before that, which holds the last durable hard state and root,
-// stays too.
+// stays too. Cleaning keeps it as well.
 func TestDropKeepsBeforeUnplaced(t *testing.T) {
 	d := simfs.New()
 	w, _ := open(t, d)
@@ -489,6 +489,13 @@ func TestDropKeepsBeforeUnplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := w.Rotate()
+	var clean []uint64
+	for _, f := range w.Cleanable(100) {
+		clean = append(clean, f.N)
+	}
+	if fmt.Sprint(clean) != "[1 2 3]" {
+		t.Fatalf("cleanable segments %v with segment 6 unplaced", clean)
+	}
 	names, err := w.DropBelow(100)
 	if err != nil {
 		t.Fatal(err)
