@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -116,11 +117,8 @@ func TestEtcdWorkloads(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%+v: %v", tc, err)
 		}
-		// Latency covers the requests that arrived in the window, which
-		// all succeeded.
-		if res.Ops == 0 || res.Cohort == 0 || res.CohortFailed != 0 || res.Latency.Count != uint64(res.Cohort) || res.ServerCPUUsPerOp <= 0 || !res.Valid {
-			t.Fatalf("%+v: %d ops, cohort %d with %d failed, %d latencies, %.1f us server CPU per op, valid %v",
-				tc, res.Ops, res.Cohort, res.CohortFailed, res.Latency.Count, res.ServerCPUUsPerOp, res.Valid)
+		if err := checkWindow(res); err != nil {
+			t.Fatalf("%+v: %v", tc, err)
 		}
 		if tc.workload == "watch" && (res.Watch.Events < res.Ops*3/2 || res.Watch.Latency.Count == 0) {
 			t.Fatalf("%+v: %d events for %d puts and 3 watchers", tc, res.Watch.Events, res.Ops)
@@ -129,6 +127,39 @@ func TestEtcdWorkloads(t *testing.T) {
 			t.Fatal("mixed attributed total CPU to watch events")
 		}
 		t.Log(res.oneLine())
+	}
+}
+
+// checkWindow checks a short run's window: requests arrived in it, all
+// of them succeeded, and the latencies cover them. Ops counts the calls
+// that finished inside the window, which a slow server can leave at 0
+// with every call answered after it (#271); then the server CPU per op is
+// 0 too.
+func checkWindow(res *result) error {
+	if res.Cohort == 0 || res.CohortFailed != 0 || res.Latency.Count != uint64(res.Cohort) || (res.Ops == 0) != (res.ServerCPUUsPerOp == 0) || !res.Valid {
+		return fmt.Errorf("%d ops, cohort %d with %d failed, %d latencies, %.1f us server CPU per op, valid %v",
+			res.Ops, res.Cohort, res.CohortFailed, res.Latency.Count, res.ServerCPUUsPerOp, res.Valid)
+	}
+	return nil
+}
+
+// TestCheckWindow is #271's case: every delete of the window answered
+// after it, so the window counts 0 ops. The run is still a valid one.
+func TestCheckWindow(t *testing.T) {
+	late := &result{Ops: 0, Cohort: 1508, Latency: latency{Count: 1508}, Valid: true}
+	if err := checkWindow(late); err != nil {
+		t.Fatalf("calls answered after the window: %v", err)
+	}
+	for _, bad := range []*result{
+		{Ops: 10, Cohort: 0, Valid: true, ServerCPUUsPerOp: 3},
+		{Ops: 10, Cohort: 10, CohortFailed: 1, Latency: latency{Count: 10}, ServerCPUUsPerOp: 3, Valid: true},
+		{Ops: 10, Cohort: 10, Latency: latency{Count: 9}, ServerCPUUsPerOp: 3, Valid: true},
+		{Ops: 10, Cohort: 10, Latency: latency{Count: 10}, Valid: true},
+		{Ops: 10, Cohort: 10, Latency: latency{Count: 10}, ServerCPUUsPerOp: 3},
+	} {
+		if checkWindow(bad) == nil {
+			t.Errorf("checkWindow passed %+v", bad)
+		}
 	}
 }
 

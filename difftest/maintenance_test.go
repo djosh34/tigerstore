@@ -310,6 +310,28 @@ func (r *run) downgradeInfo(do string) {
 	r.record(do, res, err)
 }
 
+// storageVersion waits until the endpoint reports storage version want.
+// etcd lowers it a few seconds into a downgrade, once it has checked every
+// entry of its WAL, so a waiting test meets an entry etcd cannot read
+// every time, not once in many runs (#272). It records no step.
+func (r *run) storageVersion(want string, timeout time.Duration) {
+	r.t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		st, err := r.c.maint.Status(r.ctx, &pb.StatusRequest{})
+		if err != nil {
+			r.t.Fatalf("status while waiting for storage version %s: %v", want, err)
+		}
+		if st.StorageVersion == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			r.t.Fatalf("storage version %s after %v, want %s", st.StorageVersion, timeout, want)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 // downgradeCase checks Downgrade's version formats and targets, one
 // downgrade at a time, and CANCEL with and without one. The leader's
 // version monitor may lower the cluster version at any moment once a
@@ -328,6 +350,7 @@ func downgradeCase(r *run) {
 	r.downgrade("enable 3.6 again", E, "3.6", true)
 	r.downgrade("validate 3.6 during the downgrade", V, "3.6", true)
 	r.downgradeInfo("status during the downgrade")
+	r.storageVersion("3.6.0", 20*time.Second)
 	r.downgrade("cancel", C, "", false)
 	r.downgradeInfo("status after the cancel")
 	r.downgrade("cancel again", C, "", false)

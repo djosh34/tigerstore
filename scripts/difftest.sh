@@ -31,6 +31,7 @@ server=${1:?usage: scripts/difftest.sh etcd|tigerstore [record]}
 record=${2:-}
 suites=(
 	"TestBoundaries|"
+	"TestDowngrade|"
 	"TestSweep|"
 	"TestQuota|--quota-backend-bytes 1048576"
 	"TestAuth|"

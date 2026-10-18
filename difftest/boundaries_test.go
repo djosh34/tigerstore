@@ -53,9 +53,6 @@ var cases = []testCase{
 	{"fragments", fragments},
 	{"gateway", gatewayCase},
 	{"metrics", metricsCase},
-	// Last: after a cancel, the cluster version may stay a minor
-	// version lower for up to 4 s.
-	{"downgrade", downgradeCase},
 }
 
 // stricter lists the steps where tigerstore must not copy etcd v3.7.2. After
@@ -115,6 +112,14 @@ func allowed(srv, name string, want, got step) bool {
 }
 
 func TestBoundaries(t *testing.T) { runCases(t, "etcd-v3.7.2.json", cases) }
+
+// TestDowngrade runs the downgrade on a server of its own. etcd v3.7.2
+// checks every entry of its WAL before it lowers its storage version, and
+// panics on the unknown alarm type that TestBoundaries' alarms case puts
+// in the log (#272).
+func TestDowngrade(t *testing.T) {
+	runCases(t, "etcd-v3.7.2-downgrade.json", []testCase{{"downgrade", downgradeCase}})
+}
 
 // runCases runs cases in order against the endpoint and compares the
 // answers with etcd's in testdata/<golden>. tigerstore's answers to its
