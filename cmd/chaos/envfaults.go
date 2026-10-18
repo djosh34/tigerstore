@@ -458,7 +458,7 @@ func (r *runner) diskFault(ctx context.Context, s step, target int, rec *record)
 	holdErr := pause(ctx, s.Hold)
 	if s.Fault == diskStall {
 		// Whether a write was held: the node logs a slow write once the
-		// stall ends, or, as leader, hands over.
+		// stall ends, or, as leader, goes silent and loses the lead.
 		if lead, err := r.c.leader(ctx, 2*time.Second); err == nil {
 			rec.Env.LeaderNow = fmt.Sprintf("node%d", lead+1)
 		}

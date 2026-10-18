@@ -169,7 +169,7 @@ The first long run on `main` ([38909081059](https://github.com/djosh34/tigerstor
 
 # Simulator seed campaign
 
-`sim-campaign.yml`, started by hand (`gh workflow run sim-campaign.yml -f first=<seed>`), runs `TestSeeds` on 100,000 seeds from `first`: 20 jobs of two processes of 2,500 seeds, every checker on each, the witness checker in both modes among them. Each process of at least 64 seeds also runs the deliberate stalled-leader handoff and gray-leader stop scenarios. Their watchdog deadlines and client-liveness checks must pass. Each process of 2,000 seeds or more must also have at least one of each in its random seeds; CI's shards of 400 seeds are too small for that rule (#183, #218). Each fault of the schedule must take effect in 95% of a process's seeds; a fault that misses in one seed fails no run on its own. A failed seed uploads its trace, how it left each node and its history.
+`sim-campaign.yml`, started by hand (`gh workflow run sim-campaign.yml -f first=<seed>`), runs `TestSeeds` on 100,000 seeds from `first`: 20 jobs of two processes of 2,500 seeds, every checker on each, the witness checker in both modes among them. Each process of at least 64 seeds also runs the deliberate stalled-leader scenario. Its silence deadline and client-liveness checks must pass. Each process of 2,000 seeds or more must also have a stalled leader that went silent in its random seeds; CI's shards of 400 seeds are too small for that rule (#183, #218). Each fault of the schedule must take effect in 95% of a process's seeds; a fault that misses in one seed fails no run on its own. A failed seed uploads its trace, how it left each node and its history.
 
 # When a test fails
 
