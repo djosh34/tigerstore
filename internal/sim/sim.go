@@ -79,10 +79,11 @@ type Config struct {
 	// StallLeaderAt, if set, stalls the disk of whichever node leads at
 	// that time until healing.
 	StallLeaderAt int64
-	// RestartAtEnd crashes a follower once the clients' last calls have
-	// ended and starts it again 300 ms before the end, so that the end
-	// finds it catching up (#269).
-	RestartAtEnd bool
+	// LagAtEnd crashes a follower once the clients' last calls have ended
+	// and starts it again 300 ms before the end, so that the end finds it
+	// catching up on what committed meanwhile, such as lease expiries
+	// (#269).
+	LagAtEnd bool
 	// LiveFrom, if set, is when the liveness rule starts instead of
 	// LiveAfter into healing.
 	LiveFrom int64
@@ -716,7 +717,7 @@ func (s *Sim) schedule() {
 			s.halfOpen(s.leaderIdx(), halfOpenTimeout)
 		})
 	}
-	if s.cfg.RestartAtEnd {
+	if s.cfg.LagAtEnd {
 		s.at(s.stopAt+s.cfg.ClientTimeout+100*Millisecond, func() {
 			s.mu.Lock()
 			defer s.mu.Unlock()
