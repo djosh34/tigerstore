@@ -1,0 +1,18 @@
+name: diag-267
+on:
+  push:
+    branches: [diag/267-lazyfs-rename]
+jobs:
+  rename:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: sudo apt-get update -qq && sudo apt-get install -y libfuse3-dev fuse3 cmake g++
+      - name: Build pinned LazyFS
+        run: echo "DIAG267_LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
+      - name: Targeted recovery rename chain
+        run: go test -v -count=1 -timeout=90s ./scripts/diag267
