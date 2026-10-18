@@ -25,6 +25,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3/raftpb"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -533,6 +534,22 @@ func (l *diskLog) mapping(seq uint64) ([]byte, error) {
 	return m, nil
 }
 
+// dropCache gives back the page cache of the log's files and of the
+// sealed segments mapped for value reads. Kernels before 5.4 do not page
+// out a mapping (EINVAL); their mappings stay until the kernel reclaims
+// them.
+func (l *diskLog) dropCache() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	errs := []error{l.w.DropCache()}
+	for _, m := range l.maps {
+		if err := unix.Madvise(m, unix.MADV_PAGEOUT); err != nil && !errors.Is(err, unix.EINVAL) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // unmap unmaps the segments up to upto, which the log dropped. The lock
 // and reading are held.
 func (l *diskLog) unmap(upto uint64) error {
@@ -914,6 +931,7 @@ func (n *Node) run(ctx context.Context, t peer.Transport) error {
 	wg.Go(func() { n.persist(ctx, t) })
 	wg.Go(func() { n.writeCheckpoints(ctx) })
 	wg.Go(func() { n.clean(ctx) })
+	wg.Go(func() { n.dropPageCache(ctx) })
 	for range readers {
 		wg.Go(func() { n.readValues(ctx) })
 	}

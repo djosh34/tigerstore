@@ -272,6 +272,35 @@ type WAL struct {
 	named    []uint64
 }
 
+// cacheDropper is a File whose page cache can be dropped (osfs).
+type cacheDropper interface{ DropCache() error }
+
+// dropCache drops f's page cache, if its file system can.
+func dropCache(f File) error {
+	if d, ok := f.(cacheDropper); ok {
+		return d.DropCache()
+	}
+	return nil
+}
+
+// DropCache drops the page cache of every file the log holds open: the
+// newest segment, the ones open for reads, and the packs. The node does
+// it now and then, so that its files' pages, which its cgroup charges to
+// it, stay within what its budget leaves for the kernel (#226).
+func (w *WAL) DropCache() error {
+	var errs []error
+	if w.seg != nil {
+		errs = append(errs, dropCache(w.seg))
+	}
+	for _, f := range w.readers {
+		errs = append(errs, dropCache(f))
+	}
+	for _, p := range slices.Concat(w.packs, w.dropped) {
+		errs = append(errs, dropCache(p.f))
+	}
+	return errors.Join(errs...)
+}
+
 // Open reads the log in fs, cuts a torn tail off the newest segment, and
 // returns the log ready for appends. It holds one segment in memory at a
 // time and keeps only where each entry is. A damaged record anywhere else,
@@ -323,6 +352,10 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			return nil, nil, err
 		}
 		data, err := f.ReadAll()
+		if err == nil {
+			// The scan reads the whole log once; its pages need not stay.
+			err = dropCache(f)
+		}
 		if err != nil {
 			return nil, nil, errors.Join(err, f.Close())
 		}
