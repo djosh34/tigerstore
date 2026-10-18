@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          go test -v -timeout=60s -count=20 -run '^TestDiag88(StuckLeaderSilent|WarnOnly)$' ./internal/core 2>&1 | tee diag88-silent.log
+          go test -v -timeout=60s -count=100 -run '^TestDiag88(StuckLeaderSilent|WarnOnly)$' ./internal/core 2>&1 | tee diag88-silent.log
       - name: Short large-values stress, owner request allowance
         id: stress
         continue-on-error: true
@@ -37,6 +37,26 @@ jobs:
         run: |
           set -o pipefail
           go test -v -timeout=90s -count=3 -run '^TestLargeValuesAtRealTicks$' ./internal/server 2>&1 | tee diag88-stress.log
+      - name: Old-code control must fail for the original reason
+        id: control
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          cp internal/core/node.go "$RUNNER_TEMP/fixed-core.go"
+          cp internal/node/node.go "$RUNNER_TEMP/fixed-driver.go"
+          trap 'cp "$RUNNER_TEMP/fixed-core.go" internal/core/node.go; cp "$RUNNER_TEMP/fixed-driver.go" internal/node/node.go' EXIT
+          git fetch --no-tags --depth=1 origin e03a917b8e83613780796d8c780679699efcddf4
+          git show e03a917b:internal/core/node.go > internal/core/node.go
+          git show e03a917b:internal/node/node.go > internal/node/node.go
+          if go test -v -timeout=90s -count=3 -run '^TestDiag88SlowDisk$' ./internal/server > diag88-control-disk.log 2>&1; then
+            echo 'Old watchdog unexpectedly passed'; exit 1
+          fi
+          grep -q "leader's entries stopped committing" diag88-control-disk.log
+          if go test -v -timeout=60s -count=20 -run '^TestDiag88StuckLeaderSilent$' ./internal/core > diag88-control-silent.log 2>&1; then
+            echo 'Old handoff unexpectedly passed'; exit 1
+          fi
+          grep -q 'held disk sent.*handoffs=' diag88-control-silent.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -44,4 +64,4 @@ jobs:
           path: diag88-*.log
       - name: Require both regressions
         if: always()
-        run: test '${{ steps.disk.outcome }}' = success && test '${{ steps.silent.outcome }}' = success && test '${{ steps.stress.outcome }}' = success
+        run: test '${{ steps.disk.outcome }}' = success && test '${{ steps.silent.outcome }}' = success && test '${{ steps.stress.outcome }}' = success && test '${{ steps.control.outcome }}' = success
