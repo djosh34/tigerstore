@@ -169,7 +169,11 @@ func (w *membershipWork) matches(ms []*pb.Member) bool {
 // lasts 20 s: the first change after it can wait 10 s for that (seeds 14
 // and 58), and three more follow. Corruption is left to the
 // three-voter runs: a permanently fenced learner cannot catch up and be
-// promoted, so that workload would require disk replacement too.
+// promoted, so that workload would require disk replacement too. The
+// clients wait up to 55 ms between calls, which keeps a history near
+// 2,500 calls, as the run tests membership faults, not throughput: at
+// 20 ms it has about 6,000, and linearizability can take longer than its
+// 3 minutes on that (#244).
 func membershipConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Membership = true
@@ -177,6 +181,7 @@ func membershipConfig(seed uint64) Config {
 	cfg.Heal = 20 * Second
 	cfg.NoLeases = true
 	cfg.Clients = 3
+	cfg.ClientWait = 55 * Millisecond
 	cfg.Faults.Corrupt, cfg.Faults.Rot = false, false
 	cfg.Faults.CrashEvery = 30 * Second
 	cfg.Faults.LinkEvery = 20 * Second

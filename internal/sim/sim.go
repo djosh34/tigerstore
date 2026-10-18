@@ -67,6 +67,9 @@ type Config struct {
 	Clients int
 	// ClientTimeout is when a client gives up on a call.
 	ClientTimeout int64
+	// ClientWait is the longest wait between a client's calls; 0 means
+	// 20 ms.
+	ClientWait int64
 	// GrayLeaderAt, if set, makes whichever node leads then gray until
 	// healing: its heartbeats get through, its appends do not.
 	// GrayLeaderSync also makes its fsyncs slow, so one in flight at

@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -67,7 +68,7 @@ func (c *client) run() {
 		s.mu.Lock()
 		c.done(r, resp, err)
 		// At least 1 ns, so the next call starts after this one returned.
-		wait = 1 + s.rng.Int64N(20*Millisecond)
+		wait = 1 + s.rng.Int64N(cmp.Or(s.cfg.ClientWait, 20*Millisecond))
 		s.mu.Unlock()
 	}
 }
