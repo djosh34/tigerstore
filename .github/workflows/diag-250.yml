@@ -36,6 +36,8 @@ jobs:
         run: |
           set -o pipefail
           go test -v -count=10 -timeout=90s ./internal/peer -run '^TestDiag250UnknownVoter$' 2>&1 | tee "$RUNNER_TEMP/diag250.log"
+      - name: Peer protocol compatibility and package tests
+        run: go test -count=1 -timeout=120s ./internal/peer
       - uses: actions/upload-artifact@v6
         if: always()
         with:
