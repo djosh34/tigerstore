@@ -619,6 +619,16 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	if err := st.setHardState(hs); err != nil {
 		return nil, err
 	}
+	// Diagnostic prototype: Bootstrap installs the initial voters in Raft
+	// before its entries are durable. A crash can leave those entries (and
+	// a newer leader's append) durable while their commit record is not.
+	// Without restoring the initial voters, the node with the newest log
+	// cannot campaign, and the stale survivor cannot obtain its vote.
+	// Only an initial member can use this configuration; a joiner must
+	// still learn its configuration through committed entries/snapshots.
+	if n.applied == 0 && rec.Last > 0 && !cfg.Join {
+		st.setConf(0, &raftpb.ConfState{Voters: slices.Clone(cfg.Peers)})
+	}
 	rn, err := raft.NewRawNode(raftConfig(cfg, st, hs.Commit))
 	if err != nil {
 		return nil, err
