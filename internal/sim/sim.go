@@ -651,7 +651,10 @@ func (s *Sim) run() error {
 		}
 		s.mu.Unlock()
 		s.thaw()
-		if err := s.runFor(Second); err != nil {
+		// stop already closed end. runFor selects on failed(), which
+		// returns end even without an error, so it would wait no time.
+		<-time.After(time.Duration(Second))
+		if err := s.freeze(); err != nil {
 			return err
 		}
 		s.mu.Lock()
