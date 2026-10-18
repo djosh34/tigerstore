@@ -35,6 +35,7 @@ type memCluster struct {
 	noSpace int
 	// onReply lets a test inspect expected errors instead of failing on them.
 	onReply func(int, Reply)
+	onSend  func(*raftpb.Message)
 }
 
 func newMemCluster(t *testing.T, change func(*Config)) *memCluster {
@@ -121,6 +122,9 @@ func (c *memCluster) step() {
 	msgs := c.msgs
 	c.msgs = nil
 	for _, m := range msgs {
+		if c.onSend != nil {
+			c.onSend(m)
+		}
 		if c.holdAcks && m.GetType() == raftpb.MsgAppResp {
 			c.msgs = append(c.msgs, m)
 			continue

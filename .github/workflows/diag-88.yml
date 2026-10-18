@@ -1,0 +1,38 @@
+name: diag 88
+on:
+  push:
+    branches: [diag/88-commit-watchdog]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Three held disks, real ticks, 7 s client deadline
+        id: disk
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -v -timeout=90s -count=3 -run '^TestDiag88SlowDisk$' ./internal/server 2>&1 | tee diag88-disk.log
+      - name: Own disk stuck, silence and no exit
+        id: silent
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -v -timeout=60s -count=20 -run '^TestDiag88StuckLeaderSilent$' ./internal/core 2>&1 | tee diag88-silent.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diag88
+          path: diag88-*.log
+      - name: Require both regressions
+        if: always()
+        run: test '${{ steps.disk.outcome }}' = success && test '${{ steps.silent.outcome }}' = success
