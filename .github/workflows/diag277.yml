@@ -1,0 +1,42 @@
+name: diag277
+run-name: 'diag277: fix=${{ inputs.fix }}'
+
+on:
+  workflow_dispatch:
+    inputs:
+      fix:
+        description: Keep the prototype fix (false restores the checker from 6a3425e2)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  saved-history:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Remove only the checker fix
+        if: ${{ !inputs.fix }}
+        run: |
+          git fetch --depth=1 origin 6a3425e2383867dfe218457f77711bd26433d67e
+          git show 6a3425e2:check/witness_revisions.go > check/witness_revisions.go
+          git diff -- check/witness_revisions.go
+      - name: Download the original saved history (no simulator replay)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 39170367649 -R djosh34/tigerstore -n sim-campaign-8 -D "$RUNNER_TEMP/original"
+      - name: Reduced 14-op regression, including Porcupine and both witness modes
+        run: go test -v -count=1 ./check -run '^TestDiag277SavedHistory$'
+      - name: Original 5268-op history, both witness modes
+        if: ${{ !cancelled() }}
+        run: go run ./cmd/checkhistory -timeout 30s -checkers witness-log,witness-revisions "$RUNNER_TEMP/original/sim-out/TestSeeds_8143538/history.json"
+      - name: Checker package, including existing 258 regressions
+        if: ${{ inputs.fix && !cancelled() }}
+        run: go test -count=1 ./check
