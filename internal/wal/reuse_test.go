@@ -402,4 +402,8 @@ func TestPrepareSegment(t *testing.T) {
 		return nil
 	}
 	prepare(10, "next-000000000000000a")
+	// A file readied for 10 before, as a crash leaves it, is not taken for
+	// 10 again: it may hold records of 10.
+	prepare(10, "next-000000000000000a spare-000000000000000a")
+	prepare(11, "next-000000000000000a next-000000000000000b")
 }

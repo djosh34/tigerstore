@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -55,9 +56,12 @@ func checkRecorded(out string) error {
 		if err != nil {
 			return fmt.Errorf("node %d WAL: %w", i, err)
 		}
-		if len(log) == 0 || log[0].Put == nil || log[0].Put.Key != proofPrefix+"start" {
+		// The log may reach back past the start, to the preload.
+		start := slices.IndexFunc(log, func(q history.Request) bool { return q.Put != nil && q.Put.Key == proofPrefix+"start" })
+		if start < 0 {
 			return fmt.Errorf("node %d WAL lacks the start of the recorded workload", i)
 		}
+		log = log[start:]
 		for j := range min(len(log), len(longest)) {
 			if !reflect.DeepEqual(log[j], longest[j]) {
 				return fmt.Errorf("node %d committed request %d disagrees", i, j)
@@ -162,7 +166,14 @@ func proofLog(path string) (log []history.Request, err error) {
 		return nil, err
 	}
 	defer func() { err = errors.Join(err, w.Close()) }()
-	for i := rec.Root.Index + 1; i <= rec.HardState.Commit; i++ {
+	// Every compaction cuts a checkpoint, so the newest root can be past
+	// the workload's start; the entries below it stay on disk while a live
+	// value holds them, as the start's does.
+	first := rec.Root.Index + 1
+	for first > 1 && w.Has(first-1) {
+		first--
+	}
+	for i := first; i <= rec.HardState.Commit; i++ {
 		e, err := w.Entry(i)
 		if err != nil {
 			return nil, err

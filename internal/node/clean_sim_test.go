@@ -96,7 +96,14 @@ func (d *concurrentDisk) Remove(name string) error {
 }
 
 func (d *concurrentDisk) Rename(a, b string) error {
-	return serialErr(d, func() error { return d.d.Rename(a, b) })
+	return serialErr(d, func() error {
+		err := d.d.Rename(a, b)
+		// A segment that becomes a spare is removed from the log.
+		if err == nil && strings.HasSuffix(a, ".wal") && strings.HasPrefix(b, "spare-") {
+			d.removes++
+		}
+		return err
+	})
 }
 
 func (d *concurrentDisk) SyncDir() error {
