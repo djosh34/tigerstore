@@ -48,9 +48,9 @@ s = p.read_text()
 s = s.replace('      n4:\n        condition: service_healthy\n      n5:\n        condition: service_healthy\n', '')
 s = s[:s.index('  n4:\n')]
 for image, digest in {
-    'jepsen-control': '2fb9cff3b4376cf06a0b44d3f49083706e0cca42b862c64c4cf8046ecc255b22',
-    'jepsen-node': '47db15309b20752318b1807a68b273b70c637a1b09509b611faf0ede4ddedfce',
-    'jepsen-setup': '795057327afbb271a2581db54ada313677d01f739187808a406dfd15698ffc84',
+    'jepsen-control': 'b0d8e672156022baa30818bd38bf84ab8e10f5045c62d5fe81e7b4a7205c9145',
+    'jepsen-node': '44dd2a6ea919af66a32d47fcc9f8d8f08cd0c3147d759687419567b6b6cf1698',
+    'jepsen-setup': 'f7f21fc1a07458a7f7011fec0370f675e5a746a827e0a529843a2078eca98c82',
 }.items():
     s = s.replace('${JEPSEN_REGISTRY:-}' + image, 'ghcr.io/nurturenature/jepsen-docker/' + image + '@sha256:' + digest)
 p.write_text(s)
