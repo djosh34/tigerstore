@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -12,22 +14,50 @@ import (
 	"go.etcd.io/etcd/api/v3/mvccpb"
 )
 
-// TestFaultsOverlapWrites checks that a fault no write overlaps fails the
-// run, and that reads alone do not count.
+// TestFaultsOverlapWrites checks that a fault no write overlaps is marked
+// so, and that reads alone do not count.
 func TestFaultsOverlapWrites(t *testing.T) {
 	put := history.Op{Call: int64(2 * time.Second), Return: int64(2100 * time.Millisecond), Req: history.Request{Put: &history.PutRequest{}}}
 	read := history.Op{Call: int64(5 * time.Second), Return: int64(5100 * time.Millisecond), Req: history.Request{Range: &history.RangeRequest{}}}
 	h := &history.History{Ops: []history.Op{put, read}}
-	covered := record{Step: 1, Installed: true, Requested: time.Second, HealedAt: 3 * time.Second}
-	if err := faultsOverlapWrites([]record{covered}, h); err != nil {
-		t.Fatalf("a fault with a write inside: %v", err)
+	records := []record{
+		{Step: 1, Installed: true, Requested: time.Second, HealedAt: 3 * time.Second},
+		{Step: 2, Installed: true, Requested: 4 * time.Second, HealedAt: 6 * time.Second},
+		{Step: 3, Requested: 4 * time.Second},
 	}
-	onlyRead := record{Step: 2, Installed: true, Requested: 4 * time.Second, HealedAt: 6 * time.Second}
-	if err := faultsOverlapWrites([]record{covered, onlyRead}, h); err == nil {
-		t.Fatal("a fault that only a read overlaps passed")
+	faultsOverlapWrites(records, h)
+	if !records[0].Overlapped || records[1].Overlapped || records[2].Overlapped {
+		t.Fatalf("overlaps: a fault with a write inside %v, one only a read overlaps %v, one not installed %v",
+			records[0].Overlapped, records[1].Overlapped, records[2].Overlapped)
 	}
-	if err := faultsOverlapWrites([]record{{Step: 3, Requested: 4 * time.Second}}, h); err != nil {
-		t.Fatalf("a fault that was not installed: %v", err)
+}
+
+// TestTally counts, over the runs saved under a directory, the runs in
+// which each fault took effect, and fails a fault that took effect in
+// fewer than three in four of them.
+func TestTally(t *testing.T) {
+	dir := t.TempDir()
+	took := record{Planned: step{Fault: netDrop}, Installed: true, Effect: true, Overlapped: true}
+	missed := record{Planned: step{Fault: netDrop}, Installed: true, Effect: true}
+	kill := record{Planned: step{Fault: killLeader}, Installed: true, Effect: true, Overlapped: true}
+	for i, run := range [][]record{{took, kill}, {took, kill}, {took, kill}, {missed, kill}} {
+		sub := filepath.Join(dir, fmt.Sprintf("seed-%d", i))
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := save(filepath.Join(sub, "faults.json"), run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nop := func(string, ...any) {}
+	if ok, err := tally([]string{dir}, nop); err != nil || !ok {
+		t.Fatalf("3 of 4 runs: ok %v, %v", ok, err)
+	}
+	if err := save(filepath.Join(dir, "seed-1", "faults.json"), []record{missed, kill}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := tally([]string{dir}, nop); err != nil || ok {
+		t.Fatalf("2 of 4 runs: ok %v, %v", ok, err)
 	}
 }
 

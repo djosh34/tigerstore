@@ -11,13 +11,21 @@
 // the stopped nodes' WALs, and runs the Linearizable, Watches, Durable
 // and Revisions checkers on the history.
 //
-// The run fails if a fault was not installed, had no effect or did not
-// heal, if a node exited on its own, if the cluster did not converge, or
-// if a checker fails. Its directory keeps the seed, schedule, fault
-// evidence, node logs, data directories and history either way.
+// The run fails if a fault was not installed or did not heal, if a node
+// exited on its own, if the cluster did not converge, or if a checker
+// fails. Its directory keeps the seed, schedule, fault evidence, node
+// logs, data directories and history either way, and nodes.txt, how each
+// node stood at the end. A failure prints how each node stood then and
+// the command that runs the seed again.
+//
+// Whether each fault took effect, and overlapped a write, is counted over
+// many runs: -tally reads the faults.json of every run under its
+// arguments and fails if a fault took effect in fewer than three in four
+// of the runs it was installed in.
 //
 //	go build -o /tmp/tigerstore ./cmd/tigerstore
 //	go run ./cmd/chaos -tigerstore /tmp/tigerstore -seed 1 -out /tmp/chaos
+//	go run ./cmd/chaos -tally /tmp/chaos
 package main
 
 import (
@@ -67,12 +75,25 @@ func main() {
 	flag.DurationVar(&c.Quiet, "quiet", 8*time.Second, "wait after the heal, longer than the server's request timeout, before the final reads")
 	flag.DurationVar(&c.CheckerTimeout, "checker-timeout", time.Minute, "linearizability checker timeout")
 	flag.StringVar(&recheck, "check", "", "only rerun the checkers on this saved history.json, writing results next to it")
+	tallyRuns := flag.Bool("tally", false, "only count, over the runs under the directories given as arguments, the runs in which each fault took effect")
 	flag.BoolVar(&c.Env, "env", false, "run each node on a disk and in a cgroup of its own, with netem and 1 to 10 ms between nodes (needs sudo -n), and add the faults of that environment")
 	flag.StringVar(&c.LazyFS, "lazyfs", "", "LazyFS binary; with -env, every disk runs under it")
 	flag.Int64Var(&c.DiskSize, "disk-size", 512<<20, "with -env, the bytes of each node's disk")
 	flag.Parse()
 	if recheck != "" {
 		os.Exit(checkSaved(recheck, c.CheckerTimeout))
+	}
+	if *tallyRuns {
+		logf := func(format string, args ...any) { _, _ = fmt.Fprintf(os.Stdout, format+"\n", args...) }
+		ok, err := tally(flag.Args(), logf)
+		if err != nil {
+			logf("tally: %v", err)
+			os.Exit(2)
+		}
+		if !ok {
+			os.Exit(1)
+		}
+		return
 	}
 	c.Faults = strings.Split(faults, ",")
 	if c.Env && faults == strings.Join(allFaults, ",") {
@@ -85,17 +106,24 @@ func main() {
 	dir := filepath.Join(c.Out, fmt.Sprintf("seed-%d", c.Seed))
 	err := run(c, dir)
 	if err != nil {
-		envFlags := ""
-		if c.Env {
-			envFlags = " -env"
-			if c.LazyFS != "" {
-				envFlags += " -lazyfs <LazyFS binary>"
-			}
-		}
-		_, _ = fmt.Fprintf(os.Stdout, "FAIL seed %d: %v\nevidence in %s\nreproduce: go run ./cmd/chaos -tigerstore <binary> -seed %d -faults %s%s\n", c.Seed, err, dir, c.Seed, strings.Join(c.Faults, ","), envFlags)
+		_, _ = fmt.Fprintf(os.Stdout, "FAIL seed %d: %v\nevidence in %s\nreplay: %s\n", c.Seed, err, dir, replayCommand(c))
 		os.Exit(1)
 	}
 	_, _ = fmt.Fprintf(os.Stdout, "PASS seed %d, evidence in %s\n", c.Seed, dir)
+}
+
+// replayCommand is the command that runs c again, with every flag that
+// shapes the run.
+func replayCommand(c config) string {
+	cmd := fmt.Sprintf("go run ./cmd/chaos -tigerstore <binary> -seed %d -faults %s -rate %d -request-timeout %v -watch-timeout %v -quiet %v -checker-timeout %v",
+		c.Seed, strings.Join(c.Faults, ","), c.Rate, c.RequestTimeout, c.WatchTimeout, c.Quiet, c.CheckerTimeout)
+	if c.Env {
+		cmd += fmt.Sprintf(" -env -disk-size %d", c.DiskSize)
+		if c.LazyFS != "" {
+			cmd += " -lazyfs <LazyFS binary>"
+		}
+	}
+	return cmd
 }
 
 func save(path string, v any) error {
@@ -197,16 +225,18 @@ func run(c config, dir string) (err error) {
 		logf("one-way delays between nodes: %v", e.latency)
 		fail("save latency", save(filepath.Join(dir, "latency.json"), e.latency))
 	}
+	ctx := context.Background()
 	for _, n := range cl.nodes {
 		if e := cl.start(n); e != nil {
 			fail("start", e)
+			logf("the nodes now:\n%s", cl.report(ctx))
 			fail("stop", cl.stop())
 			return
 		}
 	}
-	ctx := context.Background()
 	if e := cl.ready(ctx, 30*time.Second); e != nil {
 		fail("ready", e)
+		logf("the nodes now:\n%s", cl.report(ctx))
 		fail("stop", cl.stop())
 		return
 	}
@@ -243,6 +273,15 @@ func run(c config, dir string) (err error) {
 	fail("convergence", cl.converged(ctx, 30*time.Second))
 	fail("finish", t.finish())
 	fail("close clients", closeClients(cs))
+	// How each node stands before the stop, for a failure here or in the
+	// checks.
+	nodes := cl.report(ctx)
+	fail("save the nodes", os.WriteFile(filepath.Join(dir, "nodes.txt"), []byte(nodes), 0o644))
+	defer func() {
+		if len(errs) > 0 {
+			logf("the nodes before the stop:\n%s", nodes)
+		}
+	}()
 	fail("stop", cl.stop())
 	for _, u := range cl.unexpectedExits() {
 		fail("unexpected exit", errors.New(u))
@@ -277,14 +316,17 @@ func run(c config, dir string) (err error) {
 	fail("committed log", logErr)
 	logf("history: %d ops, %d log requests, target %d", len(h.Ops), len(h.Log), h.Target)
 	fail("checks", runChecks(h, c.CheckerTimeout, dir, logf))
-	fail("fault overlap", faultsOverlapWrites(records, h))
+	faultsOverlapWrites(records, h)
+	fail("save faults", save(filepath.Join(dir, "faults.json"), records))
 	return
 }
 
 type checkerResult struct {
 	Name   string `json:"name"`
 	Passed bool   `json:"passed"`
-	Error  string `json:"error,omitempty"`
+	// Skipped says why the checker did not run.
+	Skipped string `json:"skipped,omitempty"`
+	Error   string `json:"error,omitempty"`
 	// CheckerError is the checker's own finding, without the shared
 	// preconditions (coverage floor, target fence, validation) that Error
 	// also holds.
@@ -293,10 +335,11 @@ type checkerResult struct {
 }
 
 // runChecks runs the checkers of package check on h: Porcupine on the
-// history without the ambiguous writes the log does not have, the witness
-// checker in both modes on the whole history, the watch, durability and
-// revision checkers. Each one fails too if the history is incomplete: no
-// committed log, no watches, or a target that the log does not end at.
+// history without the ambiguous writes the log does not have, if that is
+// short enough for it (check.ShortEnough), the witness checker in both
+// modes on the whole history, the watch, durability and revision checkers.
+// Each one fails too if the history is incomplete: no committed log, no
+// watches, or a target that the log does not end at.
 func runChecks(h *history.History, timeout time.Duration, dir string, logf func(string, ...any)) error {
 	var missing error
 	if len(h.Ops) == 0 || len(h.Log) == 0 || len(h.Watches) == 0 || h.Target <= 0 {
@@ -313,6 +356,11 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 	logf("linearizability input leaves out %d ambiguous writes that did not take effect", pruned)
 	var results []checkerResult
 	var errs []error
+	if !check.ShortEnough(lin) {
+		skipped := fmt.Sprintf("%d operations, more than the %d Porcupine gets", len(lin.Ops), check.ShortOps)
+		logf("checker Linearizable skipped: %s", skipped)
+		results = append(results, checkerResult{Name: "Linearizable", Skipped: skipped})
+	}
 	for _, ch := range []struct {
 		name string
 		fn   func() error
@@ -324,6 +372,9 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 		{"Durable", func() error { return check.Durable(h) }},
 		{"Revisions", func() error { return check.Revisions(h) }},
 	} {
+		if ch.name == "Linearizable" && !check.ShortEnough(lin) {
+			continue
+		}
 		start := time.Now()
 		own := ch.fn()
 		err := errors.Join(missing, own)

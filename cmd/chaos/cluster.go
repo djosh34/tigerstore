@@ -307,19 +307,22 @@ func (c *cluster) status(ctx context.Context, i int) (*clientv3.StatusResponse, 
 }
 
 // leader returns the node that every node that answers names as leader,
-// waiting up to timeout.
+// waiting up to timeout. If none does in time, it says what each node
+// answered last.
 func (c *cluster) leader(ctx context.Context, timeout time.Duration) (int, error) {
 	deadline := time.Now().Add(timeout)
-	var last error
+	var seen []string
 	for time.Now().Before(deadline) {
 		lead := uint64(0)
 		agree := 0
+		seen = seen[:0]
 		for i := range 3 {
 			st, err := c.status(ctx, i)
 			if err != nil {
-				last = err
+				seen = append(seen, fmt.Sprintf("node%d: %v", i+1, err))
 				continue
 			}
+			seen = append(seen, fmt.Sprintf("node%d: leader %x at term %d", i+1, st.Leader, st.RaftTerm))
 			if st.Leader == 0 || (lead != 0 && st.Leader != lead) {
 				agree = 0
 				break
@@ -337,7 +340,7 @@ func (c *cluster) leader(ctx context.Context, timeout time.Duration) (int, error
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return -1, fmt.Errorf("no agreed leader within %v: %w", timeout, last)
+	return -1, fmt.Errorf("no agreed leader within %v; last seen: %s", timeout, strings.Join(seen, "; "))
 }
 
 // converged waits until all three nodes answer, name one leader and
