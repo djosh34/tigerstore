@@ -91,7 +91,7 @@ var plantedCases = map[string]plantedCase{
 	"B09b": {seeds: 16, cfg: DefaultConfig, want: badState},
 	"B10":  {seeds: 64, cfg: DefaultConfig, want: badState + `|applied the same log to different states|` + badWatch},
 	"B11":  {seeds: 64, cfg: DefaultConfig, want: lostAppend + `|` + refused},
-	"B12":  {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused + `|` + badValue},
+	"B12":  {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused + `|` + badValue + `|the record of entry \d+ in segment \d+ does not verify`},
 	"B15":  {seeds: 32, cfg: DefaultConfig, want: `no client sent it`},
 	"B16":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	// Followers forward their writes to the stalled leader, which stays
