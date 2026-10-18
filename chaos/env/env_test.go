@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -263,6 +265,60 @@ func TestNetemHealClears(t *testing.T) {
 			if f == "loss" || f == "reorder" || f == "corrupt" {
 				t.Fatalf("after %s and its heal the qdisc is %q", impairment, st.Qdisc)
 			}
+		}
+	}
+}
+
+// TestLazyFSRenameKeepsFiles is #267's and #270's case: readers stat and
+// read files while a writer creates a file, renames it into place and
+// creates another under the old name, as the WAL readies its segments
+// while the chaos archiver copies them. Each file must keep its own
+// bytes. Without scripts/lazyfs-namespace.patch, a stat that raced the
+// rename bound the old name to the moved file, and the next file of that
+// name shared its data, so the moved file read the new one's.
+func TestLazyFSRenameKeepsFiles(t *testing.T) {
+	d := newDisk(t, lazyfsBin(t))
+	next := filepath.Join(d.Data, "next")
+	var last atomic.Pointer[string]
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Go(func() {
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				_, _ = os.Stat(next)
+				if p := last.Load(); p != nil {
+					_, _ = os.ReadFile(*p)
+				}
+			}
+		})
+	}
+	defer func() {
+		close(stop)
+		wg.Wait()
+	}()
+	for i := range 300 {
+		seg := filepath.Join(d.Data, fmt.Sprintf("%d.wal", i))
+		want := fmt.Sprintf("segment %d", i)
+		if err := write(t, next, want, false); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(next, seg); err != nil {
+			t.Fatal(err)
+		}
+		last.Store(&seg)
+		if err := write(t, next, fmt.Sprintf("the file after segment %d", i), false); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := os.ReadFile(seg); err != nil || string(got) != want {
+			t.Fatalf("chain %d: %s reads %q, %v; want %q", i, seg, got, err, want)
+		}
+		if err := os.Remove(next); err != nil {
+			t.Fatal(err)
 		}
 	}
 }
