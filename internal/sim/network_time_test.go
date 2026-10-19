@@ -41,8 +41,14 @@ func TestNetworkTime(t *testing.T) {
 					}
 					res := run(t, cfg)
 					checkers(t, res)
-					if res.Stats.OK < 100 || res.Stats.Snapshots == 0 {
-						t.Fatalf("too little workload or no snapshot: %+v", res.Stats)
+					if res.Stats.OK < 100 {
+						t.Fatalf("too little workload: %+v", res.Stats)
+					}
+					// Only the long follower island guarantees a snapshot.
+					// An election can replace a slow leader before it lags,
+					// and short runs may catch up entirely from the log.
+					if !short && cfg.NetworkTime == "follower-island" && res.Stats.Snapshots == 0 {
+						t.Fatal("the long follower island fetched no snapshot")
 					}
 					if short {
 						h, err := res.Checkable()
