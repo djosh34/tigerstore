@@ -1841,6 +1841,11 @@ func (n *Node) handleReady(rd raft.Ready) {
 		// A configuration change to apply, and those appended, which Raft
 		// hands to apply only once they are durable, also when they commit
 		// before.
+		if m.GetTo() == raft.LocalAppendThread && len(m.Entries) > 0 {
+			// The append replaces the log from its first entry on.
+			first := m.Entries[0].GetIndex()
+			n.confsAppended = slices.DeleteFunc(n.confsAppended, func(i uint64) bool { return i >= first })
+		}
 		if to := m.GetTo(); to == raft.LocalApplyThread || to == raft.LocalAppendThread {
 			for _, e := range m.Entries {
 				if t := e.GetType(); t != raftpb.EntryConfChange && t != raftpb.EntryConfChangeV2 {

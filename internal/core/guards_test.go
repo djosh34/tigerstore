@@ -261,6 +261,36 @@ func TestFollowerHoldsSendsWhileConfIsOnDisk(t *testing.T) {
 	}
 }
 
+// TestReplacedConfHoldsNothing appends a configuration change from
+// leader 2 that leader 3 replaces with an ordinary entry and commits,
+// while apply waits. No configuration change is left to apply, so the
+// follower's acknowledgment goes out (row 9).
+func TestReplacedConfHoldsNothing(t *testing.T) {
+	s := newMember(t, []uint64{1, 2, 3})
+	s.run()
+	app := func(from, term uint64, typ raftpb.EntryType, commit uint64) []*raftpb.Message {
+		t.Helper()
+		m := &raftpb.Message{
+			Type: raftpb.MsgApp.Enum(), From: new(from), To: new(uint64(1)), Term: new(term),
+			Index: new(uint64(3)), LogTerm: new(uint64(1)), Commit: new(commit),
+			Entries: []*raftpb.Entry{{Index: new(uint64(4)), Term: new(term), Type: typ.Enum()}},
+		}
+		if err := s.n.Step(m); err != nil {
+			t.Fatal(err)
+		}
+		return s.sent()
+	}
+	app(2, 2, raftpb.EntryConfChange, 3)
+	if len(s.n.confsAppended) != 1 {
+		t.Fatalf("appended configuration changes %v", s.n.confsAppended)
+	}
+	s.n.paused = &pausedWrite{}
+	got := app(3, 3, raftpb.EntryNormal, 4)
+	if !slices.ContainsFunc(got, func(m *raftpb.Message) bool { return m.GetType() == raftpb.MsgAppResp && m.GetTo() == 3 }) || len(s.n.held) != 0 || s.n.confAt > s.n.applied {
+		t.Fatalf("after the replacement: sent %v, held %d, confAt %d, applied %d", got, len(s.n.held), s.n.confAt, s.n.applied)
+	}
+}
+
 // TestStepRefusesRemovedAndMisrouted steps messages from a removed
 // member and to another member, which etcd's Process refuses (rows 14
 // and 15), and checks that a message to a removed member is dropped.
