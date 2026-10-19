@@ -2,12 +2,14 @@ package wal_test
 
 import (
 	"errors"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
+	"go.etcd.io/raft/v3/raftpb"
 )
 
 // cleanable returns the segments and packs that cleaning may replace
@@ -118,6 +120,47 @@ func TestCleaningSteps(t *testing.T) {
 	check("segments removed", d.Durable(), 1)
 	if _, err := w.Value(3, 1, 1); !errors.Is(err, wal.ErrNotOnDisk) {
 		t.Fatalf("value the checkpoint does not name: %v", err)
+	}
+}
+
+// TestPackOpenMemory opens a 16 MiB pack and checks that recovery reads
+// it in pieces: a node whose pack outgrew its memory was killed reading
+// the whole file at restart (#292).
+func TestPackOpenMemory(t *testing.T) {
+	const values, size = 32, 512 << 10
+	d := simfs.New()
+	w, _ := open(t, d)
+	w.SetSegmentBytes(1)
+	var positions [][3]uint32
+	for i := uint64(1); i <= values; i++ {
+		w.Append(&wal.HardState{Term: 1, Commit: i}, []*raftpb.Entry{entry(1, i, strings.Repeat("x", size))})
+		if err := w.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		positions = append(positions, [3]uint32{uint32(i), 0, size})
+	}
+	w.AppendRoot(wal.Root{Index: values, Term: 1})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	fill(t, w, values+1, values+1)
+	segs, _ := cleanable(w, values)
+	p := writePack(t, w, positions...)
+	w.InstallPacks(p, nil)
+	if err := errors.Join(w.Sync(), w.RemoveCleaned(segs[len(segs)-1], nil), w.Close()); err != nil {
+		t.Fatal(err)
+	}
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	w, _ = open(t, d)
+	runtime.ReadMemStats(&after)
+	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > uint64(p.Size()/16) {
+		t.Fatalf("opening a pack of %d bytes allocated %d bytes", p.Size(), alloc)
+	}
+	wantValue(t, w, values, 0, 4, "xxxx")
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
