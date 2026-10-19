@@ -26,6 +26,21 @@ from pathlib import Path
 import sys
 p = Path(sys.argv[1])
 s = p.read_text().replace('    cfg->entry_timeout    = 0;', '    this_ ()->FSConfig->log_all_operations = true;\n    cfg->entry_timeout    = 0;')
+s = s.replace('    string inode = this_ ()->FSCache->get_original_inode (path);', '''    string inode = this_ ()->FSCache->get_original_inode (path);
+    struct stat diagstat;
+    int diagrc = lstat(path, &diagstat);
+    spdlog::info("[diag300.unlink]: path={} cached_inode={} backing_inode={} size={}", path, inode, diagrc == 0 ? diagstat.st_ino : 0, diagrc == 0 ? diagstat.st_size : -1);''')
+s = s.replace('    bool locked = this_ ()->FSCache->lockItemCheckExists (inode);\n\n    if (!locked)', '''    if (inode != to_string(stbuf->st_ino))
+        spdlog::error("[diag300.mapping]: path={} cached_inode={} backing_inode={}", path, inode, stbuf->st_ino);
+    bool locked = this_ ()->FSCache->lockItemCheckExists (inode);
+
+    if (!locked)''')
+s = s.replace('    if (offset > (meta.size - 1))\n        return 0;', '''    if (offset > (meta.size - 1)) {
+        spdlog::info("[diag300.read]: path={} offset={} request={} returned=0 meta_size={}", path, offset, size, meta.size);
+        return 0;
+    }''')
+s = s.replace('    res = BUF_ITERATOR;', '''    res = BUF_ITERATOR;
+    spdlog::info("[diag300.read]: path={} offset={} request={} returned={} meta_size={}", path, offset, size, res, meta.size);''')
 p.write_text(s)
 PY
 	cp "$patch" "$dir/.patch"

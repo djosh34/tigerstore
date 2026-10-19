@@ -30,6 +30,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         if: inputs.suite == 'tools'
         with:
@@ -44,6 +46,10 @@ jobs:
           test -c /dev/fuse || sudo mknod /dev/fuse c 10 229
           sudo chmod a+rw /dev/fuse
           export CHAOS_LAZYFS=$(bash scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")
+          mkdir -p results/diag300
+          git rev-parse "${PRODUCT_SHA}^{commit}" | tee results/diag300/wal-product.txt
+          git show "$PRODUCT_SHA:internal/wal/wal.go" > internal/wal/wal.go
+          sha256sum internal/wal/wal.go | tee results/diag300/wal-source.sha256
           go test -v -count=1 -run '^TestLazyFSRecoveryValueReads$' -timeout=30s ./scripts/diag300
       - uses: actions/upload-artifact@v4
         if: always() && inputs.suite == 'tools'

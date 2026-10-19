@@ -14,10 +14,11 @@ import (
 	"github.com/djosh34/tigerstore/internal/osfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 	"go.etcd.io/raft/v3/raftpb"
+	"golang.org/x/sys/unix"
 )
 
 // TestLazyFSRecoveryValueReads compares a complete record read during recovery
-// with a small value read after it. No process writes during the reads.
+// with a small value read after it, while startup prepares the next segment.
 func TestLazyFSRecoveryValueReads(t *testing.T) {
 	bin := os.Getenv("CHAOS_LAZYFS")
 	if bin == "" {
@@ -91,10 +92,14 @@ func TestLazyFSRecoveryValueReads(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// A normal run leaves this empty prepared file for the next start.
+	if err := wal.PrepareSegment(fs, 2); err != nil {
+		t.Fatal(err)
+	}
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	for turn := 0; turn < 8; turn++ {
+	for turn := 0; turn < 24; turn++ {
 		before, e := os.ReadFile(log)
 		if e != nil {
 			t.Fatal(e)
@@ -127,6 +132,26 @@ func TestLazyFSRecoveryValueReads(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
+		// The real startup writes run.tmp and renames it before core replay.
+		run, e := fs.Create("run.tmp")
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e := run.Write([]byte{byte(turn + 1), 0, 0, 0, 0, 0, 0, 0}); e != nil {
+			t.Fatal(e)
+		}
+		if e := run.Sync(); e != nil {
+			t.Fatal(e)
+		}
+		if e := run.Close(); e != nil {
+			t.Fatal(e)
+		}
+		if e := fs.Rename("run.tmp", "run"); e != nil {
+			t.Fatal(e)
+		}
+		if e := fs.SyncDir(); e != nil {
+			t.Fatal(e)
+		}
 		for i := uint64(1); i <= rec.Last; i++ {
 			if _, e := w.Entry(i); e != nil {
 				t.Fatal(e)
@@ -156,12 +181,26 @@ func TestLazyFSRecoveryValueReads(t *testing.T) {
 			}
 			places = append(places, place{i, at})
 		}
+		// Alternate the normal warm path and forced cold reads. DONTNEED
+		// drops only the kernel's clean pages, not LazyFS's unsynced data.
+		if turn%2 == 1 {
+			fd := r.(interface{ Fd() uintptr }).Fd()
+			if e := unix.Fadvise(int(fd), 0, 0, unix.FADV_DONTNEED); e != nil {
+				t.Fatal(e)
+			}
+		}
+		beforeStat, e := os.Stat(filepath.Join(backing, "wal", wal.SegmentName(1)))
+		if e != nil {
+			t.Fatal(e)
+		}
 		var wg sync.WaitGroup
+		start := make(chan struct{})
 		errors := make(chan error, 6)
 		for worker := 0; worker < 6; worker++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
+				<-start
 				for _, p := range places {
 					b, e := wal.ReadValue(r, p.at, p.index, 23, 4)
 					if e != nil || !bytes.Equal(b, data[23:27]) {
@@ -171,13 +210,21 @@ func TestLazyFSRecoveryValueReads(t *testing.T) {
 				}
 			}()
 		}
-		for i := rec.Last + 1; i <= rec.Last+120; i++ {
-			w.Append(&wal.HardState{Term: 1, Commit: i}, []*raftpb.Entry{{Term: new(uint64(1)), Index: new(i), Data: data}})
-			if e := w.Sync(); e != nil {
-				t.Fatal(e)
-			}
-		}
+		close(start)
+		// This is the startup call whose unlink/rename differs between
+		// #294 and main. The WAL itself has not rotated.
+		prepareErr := wal.PrepareSegment(fs, w.Seq()+1)
 		wg.Wait()
+		if prepareErr != nil {
+			t.Fatal(prepareErr)
+		}
+		afterStat, e := os.Stat(filepath.Join(backing, "wal", wal.SegmentName(1)))
+		if e != nil {
+			t.Fatal(e)
+		}
+		if !os.SameFile(beforeStat, afterStat) || beforeStat.Size() != afterStat.Size() {
+			t.Errorf("segment changed: before=%v after=%v", beforeStat, afterStat)
+		}
 		close(errors)
 		for e := range errors {
 			t.Error(e)
@@ -185,6 +232,6 @@ func TestLazyFSRecoveryValueReads(t *testing.T) {
 		if e := w.Close(); e != nil {
 			t.Fatal(e)
 		}
-		t.Logf("turn %d: recovered and read %d entries", turn, rec.Last)
+		t.Logf("turn %d cold=%v: recovered and read %d entries during PrepareSegment(2); backing inode and size unchanged", turn, turn%2 == 1, rec.Last)
 	}
 }
