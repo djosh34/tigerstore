@@ -1778,7 +1778,8 @@ func (n *Node) prepareSegments(ctx context.Context) {
 		select {
 		case n.nextQ <- struct{}{}:
 		case <-ctx.Done():
-			// The file stays on disk, where the next run takes it.
+			// The file stays on disk. The next run removes it, as it may
+			// hold records of seq, and readies another.
 			return
 		}
 		select {
