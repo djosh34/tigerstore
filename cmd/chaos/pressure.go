@@ -15,8 +15,8 @@ const pressureSize = 96 << 10
 // is still in the same checked history, and the final paginated reads
 // through all members check the entire key space. Random printable values
 // avoid compression turning a past-RAM run into a small working set.
-func pressureValue(rng *rand.Rand, identity string) string {
-	b := make([]byte, pressureSize)
+func pressureValue(rng *rand.Rand, identity string, size int) string {
+	b := make([]byte, size)
 	for i := range b {
 		b[i] = byte(33 + rng.IntN(90))
 	}
@@ -28,7 +28,7 @@ func pressureKey(i int) string { return fmt.Sprintf("/pressure/%06d", i) }
 func (t *traffic) preloadPressure(keys int) error {
 	rng := rand.New(rand.NewPCG(t.cfg.seed, 80))
 	for k := range keys {
-		value := pressureValue(rng, fmt.Sprintf("preload-%d-%d:", t.cfg.seed, k))
+		value := pressureValue(rng, fmt.Sprintf("preload-%d-%d:", t.cfg.seed, k), pressureSize)
 		op := t.r.call(t.cs[k%3], 80, history.Request{Put: &history.PutRequest{Key: pressureKey(k), Value: value}}, livenessBound)
 		if op.Resp == nil {
 			return fmt.Errorf("pressure key %d: %v", k, op.Err)
@@ -50,7 +50,7 @@ func (t *traffic) preloadPressure(keys int) error {
 				key := pressureKey(rng.IntN(keys))
 				q := history.Request{Range: &history.RangeRequest{Key: key}}
 				if seq%5 == 0 {
-					q = history.Request{Put: &history.PutRequest{Key: key, Value: pressureValue(rng, fmt.Sprintf("pressure-%d-%d-%d:", t.cfg.seed, i, seq))}}
+					q = history.Request{Put: &history.PutRequest{Key: key, Value: pressureValue(rng, fmt.Sprintf("pressure-%d-%d-%d:", t.cfg.seed, i, seq), pressureSize)}}
 				}
 				t.r.call(cl, 81+i, q, t.cfg.requestTimeout)
 			}

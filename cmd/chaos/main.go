@@ -229,6 +229,11 @@ func run(c config, dir string) (err error) {
 		if slices.ContainsFunc(c.Faults, isStorageFault) {
 			extra = []string{"--unsafe-window-bytes", "16384", "--unsafe-checkpoint-bytes", "2097152", "--unsafe-segment-bytes", "1048576"}
 		}
+		if c.PressureKeys > 0 {
+			// Keep several 96 KiB entries during cold recovery, rather
+			// than forcing another snapshot on every new large put.
+			extra = append(extra, "--unsafe-window-bytes", "1048576")
+		}
 		if c.Memory > 0 {
 			extra = append(extra, "--memory-budget-bytes", fmt.Sprint(c.Memory))
 			for _, g := range e.groups {

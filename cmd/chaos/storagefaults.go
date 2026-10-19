@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,9 +100,15 @@ func (r *runner) storageFault(ctx context.Context, s step, lead, follower int, r
 			if _, _, err := lagging.signal(syscall.SIGSTOP); err != nil {
 				return err
 			}
-			for k := range 160 {
-				q := history.Request{Put: &history.PutRequest{Key: fmt.Sprintf("%sinstall%d", prefix, k%16), Value: fmt.Sprintf("%d-%d-%s", cycle, k, strings.Repeat("b", 16384))}}
+			rng := rand.New(rand.NewPCG(s.Pick, uint64(cycle)))
+			for k := range 240 {
+				q := history.Request{Put: &history.PutRequest{Key: fmt.Sprintf("%sinstall%d", prefix, k%16), Value: pressureValue(rng, fmt.Sprintf("%d-%d:", cycle, k), 16384)}}
 				r.t.r.call(r.t.cs[lead], 61, q, r.t.cfg.requestTimeout)
+			}
+			// Let the checkpoint caused by the uncompressed burst finish
+			// before the lagging node asks for a snapshot.
+			if err := pause(ctx, time.Second); err != nil {
+				return err
 			}
 		}
 		if err := r.armGate(target, stage); err != nil {
@@ -245,8 +252,11 @@ func (r *runner) storageFault(ctx context.Context, s step, lead, follower int, r
 					return err
 				}
 			}
-			if got.Resp == nil || len(got.Resp.Range.KVs) != 1 || got.Resp.Range.KVs[0].Value != value {
-				return fmt.Errorf("cycle %d node%d lost acknowledged canary: %+v", cycle, i+1, got)
+			if got.Resp == nil {
+				return fmt.Errorf("cycle %d node%d did not answer a canary read within 45s: %+v", cycle, i+1, got.Err)
+			}
+			if len(got.Resp.Range.KVs) != 1 || got.Resp.Range.KVs[0].Value != value {
+				return fmt.Errorf("cycle %d node%d lost acknowledged canary: %+v", cycle, i+1, got.Resp.Range)
 			}
 		}
 		rec.Env.Parts = append(rec.Env.Parts, fmt.Sprintf("cycle %d caught up; acknowledged canary checked through all nodes", cycle))
