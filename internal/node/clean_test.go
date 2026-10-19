@@ -180,7 +180,7 @@ func TestCleaningCycles(t *testing.T) {
 		if _, err := do(r.n, &pb.CompactionRequest{Revision: rev}); err != nil {
 			t.Fatalf("compact: %v", err)
 		}
-		if round%20 == 0 {
+		if round%10 == 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			m, err := r.n.Metrics(ctx)
 			cancel()
@@ -207,7 +207,9 @@ func TestCleaningCycles(t *testing.T) {
 	// removed segments is a dip, at under half the usual size. With
 	// nothing removed it would grow with the history, about tenfold here,
 	// so every sample of the second half would be larger. Compare the
-	// median of each half, which one spike or dip does not move.
+	// median of each half's ten samples, which a few spikes or dips do
+	// not move; with five a half, the medians swung past twice each
+	// other.
 	if first, second := median(maps[:len(maps)/2]), median(maps[len(maps)/2:]); second > 2*first {
 		t.Fatalf("the map's median grew from %d to %d bytes: %v", first, second, maps)
 	}
