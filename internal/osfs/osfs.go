@@ -153,19 +153,6 @@ func (f file) Sync() error {
 	return errors.Join(cerr, err)
 }
 
-// DropCache drops the file's clean pages from the page cache and starts
-// writing back its dirty ones. A cgroup charges a node for the page cache
-// of its files, which would grow past the eighth of the budget that
-// node.GoMemory leaves for the kernel (#226).
-func (f file) DropCache() error {
-	rc, err := f.SyscallConn()
-	if err != nil {
-		return err
-	}
-	cerr := rc.Control(func(fd uintptr) { err = unix.Fadvise(int(fd), 0, 0, unix.FADV_DONTNEED) })
-	return errors.Join(cerr, err)
-}
-
 func (f file) ReadAll() ([]byte, error) {
 	st, err := f.Stat()
 	if err != nil {

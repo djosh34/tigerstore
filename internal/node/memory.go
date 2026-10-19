@@ -2,7 +2,6 @@ package node
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -12,7 +11,6 @@ import (
 	"runtime/metrics"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // MemoryBudget returns the memory the node may use, and where that came
@@ -63,31 +61,6 @@ func GoMemory(budget int64, from string) int64 {
 // run all the time near it.
 func ProcessMemory(limit int64) int64 {
 	return limit - limit/4
-}
-
-// pageCacheEvery is how often the node gives back the page cache of its
-// log's files.
-const pageCacheEvery = time.Second
-
-// dropPageCache gives back the page cache of the log's files and of the
-// segments mapped for value reads, every pageCacheEvery until ctx ends.
-// A cgroup charges the node for those pages. Kept, they grew past the
-// eighth of the budget that GoMemory leaves for the kernel, and the
-// cgroup of a node with a 640 MiB budget peaked at up to 646 MiB (#226).
-// A failure is logged; it changes nothing on disk.
-func (n *Node) dropPageCache(ctx context.Context) {
-	t := time.NewTicker(pageCacheEvery)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		}
-		if err := n.log.dropCache(); err != nil {
-			n.logf("warning: giving back the page cache of the log: %v", err)
-		}
-	}
 }
 
 // memoryGauge measures what the process uses besides the value cache,

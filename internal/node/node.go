@@ -25,7 +25,6 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3/raftpb"
-	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -534,22 +533,6 @@ func (l *diskLog) mapping(seq uint64) ([]byte, error) {
 	return m, nil
 }
 
-// dropCache gives back the page cache of the log's files and of the
-// sealed segments mapped for value reads. Kernels before 5.4 do not page
-// out a mapping (EINVAL); their mappings stay until the kernel reclaims
-// them.
-func (l *diskLog) dropCache() error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	errs := []error{l.w.DropCache()}
-	for _, m := range l.maps {
-		if err := unix.Madvise(m, unix.MADV_PAGEOUT); err != nil && !errors.Is(err, unix.EINVAL) {
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
-}
-
 // unmap unmaps the segments up to upto, which the log dropped. The lock
 // and reading are held.
 func (l *diskLog) unmap(upto uint64) error {
@@ -931,7 +914,6 @@ func (n *Node) run(ctx context.Context, t peer.Transport) error {
 	wg.Go(func() { n.persist(ctx, t) })
 	wg.Go(func() { n.writeCheckpoints(ctx) })
 	wg.Go(func() { n.clean(ctx) })
-	wg.Go(func() { n.dropPageCache(ctx) })
 	for range readers {
 		wg.Go(func() { n.readValues(ctx) })
 	}
@@ -1349,7 +1331,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		n.log.mu.Lock()
 		err := w.Place()
 		n.log.mu.Unlock()
-		err = errors.Join(wal.DropFileCache(old), old.Close(), err)
+		err = errors.Join(old.Close(), err)
 		old, dir = nil, true
 		if err != nil {
 			fail(fmt.Errorf("%w: start a segment: %w", core.ErrDisk, err))
@@ -1639,7 +1621,7 @@ func (n *Node) syncLog(ctx context.Context, h prometheus.Observer) error {
 	n.log.mu.Lock()
 	err = w.Place()
 	n.log.mu.Unlock()
-	return errors.Join(wal.DropFileCache(old), old.Close(), err, n.log.fs.SyncDir())
+	return errors.Join(old.Close(), err, n.log.fs.SyncDir())
 }
 
 // prepareSegments readies the file of each segment the disk goroutine
@@ -1789,7 +1771,7 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 		}
 		if f != nil {
 			if err == nil {
-				err = errors.Join(syncTimed(f, m.SnapFsync), wal.DropFileCache(f))
+				err = syncTimed(f, m.SnapFsync)
 			}
 			err = errors.Join(err, f.Close())
 		}
