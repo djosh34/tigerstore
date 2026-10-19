@@ -158,5 +158,12 @@ func (f file) ReadAll() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return io.ReadAll(io.NewSectionReader(f.File, 0, st.Size()))
+	// One buffer of the file's size: io.ReadAll's growing buffers held
+	// about two and a half times a large file at once (#292).
+	b := make([]byte, st.Size())
+	n, err := f.ReadAt(b, 0)
+	if errors.Is(err, io.EOF) {
+		err = nil
+	}
+	return b[:n], err
 }

@@ -690,8 +690,11 @@ func (r *revisionOrder) scheduleOptional() {
 			case op.Req.Compact != nil:
 				compactions = append(compactions, i)
 			}
-			for _, lease := range leasesOf(op.Req) {
-				note(lease, rev)
+			// Only the branch that ran shows its leases in use (#290).
+			for _, o := range branch(op) {
+				if o.Put != nil {
+					note(o.Put.Lease, rev)
+				}
 			}
 			continue
 		}

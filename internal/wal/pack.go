@@ -1,11 +1,14 @@
 package wal
 
 import (
+	"bufio"
 	"cmp"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -222,63 +225,96 @@ func openPack(fs FS, id uint64) (*Pack, error) {
 		return nil, err
 	}
 	p := &Pack{id: id, f: f}
-	data, err := f.ReadAll()
-	if err == nil {
-		err = p.read(data)
-	}
-	if err != nil {
+	if p.size, err = p.read(f); err != nil {
 		return nil, errors.Join(err, f.Close())
 	}
-	p.size = int64(len(data))
 	sortPackVals(p)
 	return p, nil
 }
 
-// read takes a pack's values from its bytes, which a synced root names, so
-// anything that does not verify is damage.
-func (p *Pack) read(data []byte) error {
-	if len(data) < packHeaderSize || string(data[:len(packMagic)]) != packMagic ||
-		binary.LittleEndian.Uint64(data[len(packMagic)+4:]) != p.id {
-		return fmt.Errorf("%w: bad header of pack %d", ErrCorrupt, p.id)
+// packReadBytes is the piece of a pack that read holds at a time. A pack
+// can be larger than the memory a restart has, so read never holds the
+// whole file (#292).
+const packReadBytes = 64 << 10
+
+// read takes a pack's values from f, which a synced root names, so
+// anything that does not verify is damage. It returns the pack's size.
+func (p *Pack) read(f File) (int64, error) {
+	r := bufio.NewReaderSize(io.NewSectionReader(f, 0, math.MaxInt64), packReadBytes)
+	corrupt := fmt.Errorf("%w: pack %d does not verify", ErrCorrupt, p.id)
+	// A read that ends inside the pack is damage.
+	ended := func(err error) bool { return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) }
+	short := func(err error) error {
+		if ended(err) {
+			return corrupt
+		}
+		return err
 	}
-	if v := binary.LittleEndian.Uint32(data[len(packMagic):]); v != packVersion {
-		return fmt.Errorf("%w: pack %d has format version %d; this build reads version %d", ErrFormat, p.id, v, packVersion)
+	var hdr [max(packHeaderSize, recHdrSize+valueHdrSize)]byte
+	_, err := io.ReadFull(r, hdr[:packHeaderSize])
+	if err != nil && !ended(err) {
+		return 0, err
+	}
+	if err != nil || string(hdr[:len(packMagic)]) != packMagic || binary.LittleEndian.Uint64(hdr[len(packMagic)+4:]) != p.id {
+		return 0, fmt.Errorf("%w: bad header of pack %d", ErrCorrupt, p.id)
+	}
+	if v := binary.LittleEndian.Uint32(hdr[len(packMagic):]); v != packVersion {
+		return 0, fmt.Errorf("%w: pack %d has format version %d; this build reads version %d", ErrFormat, p.id, v, packVersion)
 	}
 	var crc uint32
-	for off := packHeaderSize; off < len(data); {
-		if len(data)-off < recHdrSize {
-			break
+	for off := int64(packHeaderSize); ; {
+		// The record's header, and as much of its payload as says what
+		// it holds.
+		if _, err := io.ReadFull(r, hdr[:recHdrSize]); err != nil {
+			return 0, short(err)
 		}
-		n := int(binary.LittleEndian.Uint32(data[off:]))
+		n := int64(binary.LittleEndian.Uint32(hdr[:]))
+		want := binary.LittleEndian.Uint32(hdr[4:])
+		head := hdr[recHdrSize : recHdrSize+min(n, valueHdrSize)]
+		if _, err := io.ReadFull(r, head); err != nil {
+			return 0, short(err)
+		}
+		crc = crc32.Update(crc, castagnoli, hdr[recHdrSize-1:recHdrSize+len(head)])
+		for left := n - int64(len(head)); left > 0; {
+			b, err := r.Peek(int(min(left, packReadBytes)))
+			if err != nil {
+				return 0, short(err)
+			}
+			crc = crc32.Update(crc, castagnoli, b)
+			if _, err := r.Discard(len(b)); err != nil {
+				return 0, err
+			}
+			left -= int64(len(b))
+		}
+		if crc != want {
+			return 0, corrupt
+		}
 		end := off + recHdrSize + n
-		if end > len(data) {
-			break
-		}
-		body := data[off+8 : end]
-		if crc = crc32.Update(crc, castagnoli, body); crc != binary.LittleEndian.Uint32(data[off+4:]) {
-			break
-		}
-		switch body[0] {
+		switch hdr[recHdrSize-1] {
 		case recValue:
 			if n < valueHdrSize {
-				return fmt.Errorf("%w: short value record in pack %d", ErrCorrupt, p.id)
+				return 0, fmt.Errorf("%w: short value record in pack %d", ErrCorrupt, p.id)
 			}
 			p.vals = append(p.vals, packVal{
-				index: binary.LittleEndian.Uint64(body[1:]),
-				off:   binary.LittleEndian.Uint32(body[9:]),
+				index: binary.LittleEndian.Uint64(head),
+				off:   binary.LittleEndian.Uint32(head[8:]),
 				len:   uint32(n - valueHdrSize),
 				at:    uint32(off + recHdrSize + valueHdrSize),
 			})
 			off = end
 			continue
 		case recEnd:
-			if n == 8 && end == len(data) && binary.LittleEndian.Uint64(body[1:]) == uint64(len(p.vals)) {
-				return nil
+			// The end record holds the count of values and ends the file.
+			_, err := r.ReadByte()
+			if err != nil && !errors.Is(err, io.EOF) {
+				return 0, err
+			}
+			if err != nil && n == 8 && binary.LittleEndian.Uint64(head) == uint64(len(p.vals)) {
+				return end, nil
 			}
 		}
-		break
+		return 0, corrupt
 	}
-	return fmt.Errorf("%w: pack %d does not verify", ErrCorrupt, p.id)
 }
 
 // closePacks closes the files of the named packs.
