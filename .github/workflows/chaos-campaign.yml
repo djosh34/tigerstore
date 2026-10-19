@@ -5,6 +5,10 @@ on:
       seeds:
         description: Seeds spread over three shards
         default: "1483001 1483002 1483003 1483004 1483005 1483006"
+      race:
+        description: Build the runner and servers with the race detector
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -16,6 +20,8 @@ jobs:
         mode: [lazyfs, plain]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
+    env:
+      GORACE: halt_on_error=1
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -24,12 +30,16 @@ jobs:
       - name: Install FUSE and LazyFS build tools
         run: sudo apt-get update -q && sudo apt-get install -y -q cmake g++ libfuse3-dev fuse3
       - name: Build and check the runner
+        env:
+          RACE: ${{ inputs.race }}
         run: |
           echo "LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
+          flags=()
+          if [ "$RACE" = true ]; then flags=(-race); fi
           go vet ./cmd/chaos
-          go test -short ./cmd/chaos
-          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
-          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
+          go test "${flags[@]}" -short ./cmd/chaos
+          go build "${flags[@]}" -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          go build "${flags[@]}" -o "$RUNNER_TEMP/chaos" ./cmd/chaos
       - name: Membership and overlapping faults
         shell: bash
         env:
