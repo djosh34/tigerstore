@@ -1,5 +1,5 @@
 name: diag277-both
-run-name: 'diag277 reference: old and current red controls'
+run-name: 'diag277 reference: read-predecessor placement green'
 on:
   push:
     branches: [diag/277-witness-both]
@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rule: [old, current]
+        rule: [prototype]
     steps:
       - uses: actions/checkout@v7
         with:
