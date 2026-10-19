@@ -37,7 +37,7 @@ func cancelledTurn(t *testing.T) int {
 		}
 	}
 	var err error
-	n, err = newOnDisk(cfg, "", simfs.New())
+	n, err = newOnDisk(cfg, "", &concurrentDisk{d: simfs.New(), cuts: map[string]*simfs.Disk{}})
 	if err != nil {
 		t.Fatal(err)
 	}
