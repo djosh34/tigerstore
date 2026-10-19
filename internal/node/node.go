@@ -419,7 +419,6 @@ type diskLog struct {
 	mu      sync.Mutex
 	reading sync.RWMutex
 	w       *wal.WAL
-	closed  bool // protected by mu; late snapshot reads must not reopen WAL files
 	fs      FS
 	dir     string
 	// sealed is the newest segment that no longer changes; maps holds the
@@ -451,24 +450,17 @@ type diskLog struct {
 func (l *diskLog) Entry(index uint64) (*raftpb.Entry, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed {
-		return nil, os.ErrClosed
-	}
 	return l.w.Entry(index)
 }
 
 func (l *diskLog) Has(index uint64) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return !l.closed && l.w.Has(index)
+	return l.w.Has(index)
 }
 
 func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 	l.mu.Lock()
-	if l.closed {
-		l.mu.Unlock()
-		return nil, os.ErrClosed
-	}
 	seq, at, ok := l.w.ValuePlace(index, off, n)
 	var m []byte
 	var r io.ReaderAt
@@ -561,20 +553,11 @@ func (l *diskLog) unmap(upto uint64) error {
 	return err
 }
 
-// close unmaps every segment and closes the WAL. Snapshot servers can
-// outlive Run, so take the same lock as Entry and prevent later reads.
+// close unmaps every segment and closes the WAL.
 func (l *diskLog) close() error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.closeLocked()
-}
-
-// closeLocked is also used by open, which replaces the log under mu.
-func (l *diskLog) closeLocked() error {
-	if l.w == nil || l.closed {
+	if l.w == nil {
 		return nil
 	}
-	l.closed = true
 	l.reading.Lock()
 	defer l.reading.Unlock()
 	return errors.Join(l.w.Close(), l.unmap(l.w.Seq()))
@@ -583,9 +566,6 @@ func (l *diskLog) closeLocked() error {
 func (l *diskLog) Checkpoint(index uint64) (io.ReadCloser, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed {
-		return nil, os.ErrClosed
-	}
 	return l.w.Checkpoint(index)
 }
 
@@ -675,8 +655,7 @@ func (n *Node) open() error {
 		w.SetSegmentBytes(n.cfg.SegmentBytes)
 	}
 	n.log.mu.Lock()
-	err = n.log.closeLocked()
-	n.log.closed = false
+	err = n.log.close()
 	n.log.w, n.log.sealed, n.log.ckpts, n.log.removal = w, w.Seq()-1, nil, nil
 	n.log.held.Store(false)
 	n.log.mu.Unlock()
