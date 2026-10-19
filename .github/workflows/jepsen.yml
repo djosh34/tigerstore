@@ -22,9 +22,45 @@ on:
         default: ''
 permissions:
   contents: read
+  actions: read
 env:
   PRODUCT_SHA: ${{ inputs.product_sha || github.sha }}
 jobs:
+  diag299:
+    if: inputs.suite == 'tools'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download original history and pinned Jepsen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p results/diag299 .jepsen
+          gh run download 39331913189 -R djosh34/tigerstore -n jepsen-tigerstore-watch-lazyfs -D results/diag299/original
+          git clone https://github.com/jepsen-io/etcd.git .jepsen/etcd
+          git -C .jepsen/etcd checkout b47cc401f27bfb7c28afd9ac088b5f0dca4501b8
+          mkdir -p .jepsen/etcd/test/jepsen/etcd
+          cp scripts/jepsen/diag299_test.clj .jepsen/etcd/test/jepsen/etcd/diag299_test.clj
+          docker pull ghcr.io/nurturenature/jepsen-docker/jepsen-control@sha256:b0d8e672156022baa30818bd38bf84ab8e10f5045c62d5fe81e7b4a7205c9145
+      - name: Red, original error mapping
+        id: red
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          docker run --rm -v "$PWD:/diag" -w /diag/.jepsen/etcd -e LEIN_ROOT=true -e DIAG299_HISTORY=/diag/results/diag299/original/store/current/history.edn ghcr.io/nurturenature/jepsen-docker/jepsen-control@sha256:b0d8e672156022baa30818bd38bf84ab8e10f5045c62d5fe81e7b4a7205c9145 lein test jepsen.etcd.diag299-test 2>&1 | tee results/diag299/red.txt
+      - name: Green, map server stopped without changing the checker
+        run: |
+          set -o pipefail
+          python3 scripts/jepsen/patch-db.py .jepsen/etcd
+          docker run --rm -v "$PWD:/diag" -w /diag/.jepsen/etcd -e LEIN_ROOT=true -e DIAG299_HISTORY=/diag/results/diag299/original/store/current/history.edn ghcr.io/nurturenature/jepsen-docker/jepsen-control@sha256:b0d8e672156022baa30818bd38bf84ab8e10f5045c62d5fe81e7b4a7205c9145 lein test jepsen.etcd.diag299-test 2>&1 | tee results/diag299/green.txt
+          test '${{ steps.red.outcome }}' = failure
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diag299-replay
+          path: results/diag299
+          retention-days: 30
   tools:
     runs-on: ubuntu-24.04
     timeout-minutes: 5

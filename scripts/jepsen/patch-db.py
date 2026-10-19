@@ -75,6 +75,18 @@ for signal, flag in [('stop', 'STOP'), ('cont', 'CONT')]:
         raise ValueError(f'expected one {signal} command')
     s = s.replace(old, f'(c/exec :kill :-{flag} (str/trim (c/exec :cat pidfile)))')
 p.write_text(s)
+# Diagnosis #299: Jetcd wraps this shutdown response in EtcdException, not
+# StatusRuntimeException. Unmapped errors reset watch clients to revision zero.
+p = root / 'src/jepsen/etcd/client.clj'
+s = p.read_text()
+old = '''               #"unhealthy cluster"
+               {:definite? true, :type :unhealthy-cluster}'''
+assert s.count(old) == 1
+s = s.replace(old, '''               #"etcdserver: server stopped"
+               {:definite? false, :type :server-stopped, :description (.getMessage e#)}
+
+''' + old)
+p.write_text(s)
 # Keep the versioned register model and every operation unchanged. Run only
 # one independent key checker at once, with Knossos WGL instead of competition.
 p = root / 'project.clj'
