@@ -386,10 +386,10 @@ func (r *revisionOrder) reachable(s *state, skip int) bool {
 		var sure, maybe int64
 		for k := c.lo; k < c.hi; k++ {
 			present := s.kvs[k].Version != 0
-			if present && !r.may(k, s.rev, rev, skip, false) {
+			if present && !r.may(s, k, s.rev, rev, skip, false) {
 				sure++
 			}
-			if present || r.may(k, s.rev, rev, skip, true) {
+			if present || r.may(s, k, s.rev, rev, skip, true) {
 				maybe++
 			}
 		}
@@ -404,13 +404,39 @@ func (r *revisionOrder) reachable(s *state, skip int) bool {
 // revision now and up to rev: an acked writer of one of those revisions,
 // or an ambiguous mutation other than skip not yet placed whose lower
 // bound is below rev. Any revoke may delete a key.
-func (r *revisionOrder) may(k int, now, rev int64, skip int, create bool) bool {
+func (r *revisionOrder) may(s *state, k int, now, rev int64, skip int, create bool) bool {
 	ok := func(i int) bool {
 		op := &r.w.h.Ops[i]
 		if op.Resp != nil {
 			return op.Resp.Revision > now && op.Resp.Revision <= rev
 		}
-		return i != skip && !r.used[i] && r.lb[i] < rev
+		if i == skip || r.used[i] || r.lb[i] >= rev {
+			return false
+		}
+		if txn := op.Req.Txn; txn != nil {
+			// A positive old mod revision cannot be regained. Once one
+			// equality has become impossible, only the failure branch
+			// can contribute to the future count. Counting success puts
+			// here hides an irrecoverable deletion behind permutations
+			// of all the remaining gaps (#281).
+			for _, c := range txn.Compare {
+				kv, _ := s.get(c.Key)
+				if c.Target != history.TargetMod || c.Result != history.Equal || c.Number <= 0 || c.Number > now || kv.ModRevision == c.Number {
+					continue
+				}
+				return slices.ContainsFunc(txn.Failure, func(o history.TxnOp) bool {
+					if create {
+						return o.Put != nil && o.Put.Key == s.keys[k]
+					}
+					if o.Delete == nil {
+						return false
+					}
+					lo, hi := s.span(o.Delete.Key, o.Delete.End)
+					return lo <= k && k < hi
+				})
+			}
+		}
+		return true
 	}
 	acked := func(revs []int64) bool {
 		j := sort.Search(len(revs), func(j int) bool { return revs[j] > now })

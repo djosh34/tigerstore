@@ -32,6 +32,9 @@ jobs:
         run: git restore --source=${{ matrix.checker }} -- check/witness.go check/witness_revisions.go
       - name: Saved-history witnesses
         run: go run ./cmd/checkhistory -timeout 60s -checkers witness-log,witness-revisions original/sim-out/TestSeeds_8367529/history.json
+      - name: Reduced-history witnesses
+        if: always()
+        run: go run ./cmd/checkhistory -timeout 10s -checkers witness-log,witness-revisions check/testdata/diag281-prefix.json
       - name: All checker tests
         if: always() && matrix.checker == 'fixed'
         run: go test -count=1 -timeout=3m ./check
