@@ -124,7 +124,10 @@ func (n *Node) expireLeases() {
 		}
 		return
 	}
-	if !n.isLeader {
+	// etcd revokes an expired lease as a client's revoke, which the gap
+	// between commit and apply refuses too (tooManyRequests); it tries
+	// again later.
+	if !n.isLeader || n.tooManyRequests(true) {
 		return
 	}
 	for _, l := range n.state.sortedLeases() {

@@ -171,7 +171,8 @@ func (st *State) supportedVersion(members []uint64) uint32 {
 
 // announce preserves the apply semantics of entries written before the
 // confirmation protocol. Replaying an old log must activate its formats
-// at the same entries as the build that wrote it.
+// at the same entries as the build that wrote it, so it counts the voters
+// alone, as that build did.
 func (st *State) announce(id uint64, v uint32, run uint64, hasRun bool, members []uint64) {
 	if st.recordVersion(id, v, run, hasRun, members, 0) {
 		st.version = max(st.version, st.supportedVersion(members))
@@ -212,7 +213,7 @@ func (n *Node) applyVersion(index, origin uint64, b []byte) error {
 	if a.hasEpoch {
 		n.state.confirmVersion(index, origin, a, n.state.versionMembers())
 	} else {
-		n.state.announce(origin, a.version, a.run, a.hasRun, n.state.versionMembers())
+		n.state.announce(origin, a.version, a.run, a.hasRun, n.state.voters())
 	}
 	if n.state.version > ownVersion(n.cfg) {
 		return tooOld(n.state.version, ownVersion(n.cfg))

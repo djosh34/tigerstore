@@ -11,6 +11,7 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simfs"
@@ -72,6 +73,30 @@ func TestForwardedProposalWaitsForLeader(t *testing.T) {
 	i := slices.IndexFunc(got, func(m *raftpb.Message) bool { return m.GetType() == raftpb.MsgProp })
 	if i < 0 || got[i].GetTo() != 3 || len(got[i].Entries) != 1 || string(got[i].Entries[0].GetData()) != string(data) {
 		t.Fatalf("after the leader came: sent %v, want the proposal forwarded to 3", got)
+	}
+
+	// A node alone in its cluster becomes leader itself and applies what it
+	// held. Past UnappliedBytes of held proposals it drops the next.
+	s = newMember(t, []uint64{1})
+	s.n.cfg.UnappliedBytes = int64(len(data))
+	for range 2 {
+		prop := &raftpb.Message{Type: raftpb.MsgProp.Enum(), From: new(uint64(2)), To: new(uint64(1)), Entries: []*raftpb.Entry{{Data: data}}}
+		if err := s.n.Step(prop); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(s.n.props) != 1 {
+		t.Fatalf("%d proposals held, want one within the budget", len(s.n.props))
+	}
+	for range 50 {
+		s.n.Tick()
+		s.run()
+		if s.n.kv.Rev() > 1 {
+			break
+		}
+	}
+	if r, err := s.n.kv.Range(&pb.RangeRequest{Key: []byte("k")}); err != nil || len(r.Kvs) != 1 {
+		t.Fatalf("the held put after the node led: %v, %v", r, err)
 	}
 }
 
@@ -345,22 +370,60 @@ func TestFirstCommitAsksAgain(t *testing.T) {
 	if b.sent != f.now {
 		t.Fatalf("the read index was last asked at tick %d, now is %d", b.sent, f.now)
 	}
+	eff, err := f.Process()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(eff.Send, func(m *raftpb.Message) bool { return m.GetType() == raftpb.MsgReadIndex && m.GetTo() == 1 }) {
+		t.Fatalf("no read index request to the leader: %v", eff.Send)
+	}
 }
 
-// TestVersionCountsLearners announces a version from both voters while
-// the learner has not: as etcd counts every member's version, the cluster
-// version waits for the learner (row 49).
+// TestVersionCountsLearners has both voters support and confirm a newer
+// version while the learner has not: as etcd counts every member's
+// version, the cluster version waits for the learner (row 49). Legacy
+// announcements, from before confirmations, still count the voters
+// alone, so an old log replays as the build that wrote it applied it.
 func TestVersionCountsLearners(t *testing.T) {
 	st := NewState(2, &mvcc.Heap{})
 	st.members = map[uint64]*pb.Member{1: {ID: 1}, 2: {ID: 2}, 3: {ID: 3, IsLearner: true}}
-	st.announce(1, 2, 1, true, st.versionMembers())
-	st.announce(2, 2, 1, true, st.versionMembers())
+	n := &Node{state: st}
+	var index uint64
+	apply := func(id uint64, a proto.Message) {
+		t.Helper()
+		b, err := proto.Marshal(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		index++
+		if err := n.applyVersion(index, id, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	apply(1, confirmation(2, 1, 0))
+	apply(2, confirmation(2, 1, 0))
+	epoch := st.versionEpoch
+	apply(1, confirmation(2, 1, epoch))
+	apply(2, confirmation(2, 1, epoch))
 	if st.version != 1 {
 		t.Fatalf("version %d before the learner announced", st.version)
 	}
-	st.announce(3, 2, 1, true, st.versionMembers())
+	apply(3, confirmation(2, 1, 0))
+	epoch = st.versionEpoch
+	for _, id := range []uint64{1, 2, 3} {
+		apply(id, confirmation(2, 1, epoch))
+	}
 	if st.version != 2 {
-		t.Fatalf("version %d after every member announced 2", st.version)
+		t.Fatalf("version %d after every member confirmed 2", st.version)
+	}
+
+	legacy := NewState(2, &mvcc.Heap{})
+	legacy.members = map[uint64]*pb.Member{1: {ID: 1}, 2: {ID: 2}, 3: {ID: 3, IsLearner: true}}
+	n.state = legacy
+	apply(1, announcement(2, 1))
+	apply(2, announcement(2, 1))
+	if legacy.version != 2 {
+		t.Fatalf("legacy announcements of both voters activated version %d", legacy.version)
 	}
 }
 
@@ -382,51 +445,69 @@ func TestDowngradeEnableValidatesFirst(t *testing.T) {
 	}
 }
 
-// TestTooManyRequests runs ahead the commit index by more than etcd's
-// 5,000 entries: writes are refused with ErrGRPCRequestTooManyRequests,
-// and with PriorityRequest a lease revoke only past twice that; so are
-// Downgrade's ENABLE and CANCEL (row 52).
+// TestTooManyRequests holds apply while writes commit, past etcd's 5,000
+// committed entries not applied: writes are refused with
+// ErrGRPCRequestTooManyRequests, and with PriorityRequest a lease revoke,
+// a client's or an expiry, only past twice that; so are Downgrade's
+// writes (row 52).
 func TestTooManyRequests(t *testing.T) {
 	s := startSingleWith(t, simfs.New(), 1, func(cfg *Config) { cfg.PriorityRequest = true }).capable()
-	try := func(id uint64, gap uint64, op *pb.LeaseRevokeRequest) error {
-		s.n.commit = s.n.applied + gap
-		if op != nil {
-			s.n.Submit(Request{ID: id, Op: op})
-		} else {
-			s.n.Submit(Request{ID: id, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
-		}
+	g := s.do(1, &pb.LeaseGrantRequest{ID: 5, TTL: MinLeaseTTL(s.n.cfg)})
+	if g.Err != nil {
+		t.Fatal(g.Err)
+	}
+	s.n.paused = &pausedWrite{}
+	id := uint64(100)
+	// submit hands the node a request and returns its answer in this
+	// turn, if any: a refused one has it, a taken one waits for apply.
+	submit := func(op proto.Message) error {
+		id++
+		s.n.Submit(Request{ID: id, Op: op})
 		for _, r := range s.run() {
 			if r.ID == id {
 				return r.Err
 			}
 		}
-		t.Fatalf("no reply to %d", id)
 		return nil
 	}
-	if err := try(1, maxGap, nil); err != nil {
-		t.Fatalf("a put at the limit: %v", err)
+	put := &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}
+	// gapTo commits op until gap entries wait to apply.
+	gapTo := func(gap uint64, op proto.Message) {
+		for s.n.commit < s.n.applied+gap {
+			if err := submit(op); err != nil {
+				t.Fatalf("a put at gap %d: %v", s.n.commit-s.n.applied, err)
+			}
+		}
 	}
-	if err := try(2, maxGap+1, nil); !errors.Is(err, rpctypes.ErrGRPCRequestTooManyRequests) {
+	gapTo(maxGap+1, put)
+	if err := submit(put); !errors.Is(err, rpctypes.ErrGRPCRequestTooManyRequests) {
 		t.Fatalf("a put past the limit: %v", err)
 	}
-	if err := try(3, maxGap+1, &pb.LeaseRevokeRequest{ID: 5}); !errors.Is(err, rpctypes.ErrGRPCLeaseNotFound) {
+	if err := submit(&pb.DowngradeRequest{Action: pb.DowngradeRequest_CANCEL}); !errors.Is(err, rpctypes.ErrGRPCRequestTooManyRequests) {
+		t.Fatalf("a downgrade CANCEL past the limit: %v", err)
+	}
+	if err := submit(&pb.LeaseRevokeRequest{ID: 9}); err != nil {
 		t.Fatalf("a priority revoke past the limit: %v", err)
 	}
-	if err := try(4, 2*maxGap+1, &pb.LeaseRevokeRequest{ID: 5}); !errors.Is(err, rpctypes.ErrGRPCRequestTooManyRequests) {
+	for range 2 * s.n.cfg.ticksOf(MinLeaseTTL(s.n.cfg)) {
+		s.n.Tick()
+		s.run()
+	}
+	if s.n.state.leases[5].revokeAt == 0 {
+		t.Fatal("the expired lease was not revoked past the limit, with PriorityRequest")
+	}
+	s.n.state.leases[5].revokeAt = 0
+	// Only revokes go in now.
+	gapTo(2*maxGap+1, &pb.LeaseRevokeRequest{ID: 9})
+	if err := submit(&pb.LeaseRevokeRequest{ID: 9}); !errors.Is(err, rpctypes.ErrGRPCRequestTooManyRequests) {
 		t.Fatalf("a revoke past twice the limit: %v", err)
 	}
-	// Downgrade's writes too, as etcd proposes them like the others.
-	for i, action := range []pb.DowngradeRequest_DowngradeAction{pb.DowngradeRequest_ENABLE, pb.DowngradeRequest_CANCEL} {
-		s.n.commit = s.n.applied + maxGap + 1
-		s.n.Submit(Request{ID: uint64(10 + i), Op: &pb.DowngradeRequest{Action: action, Version: "3.6"}})
-		var got []Reply
-		for range 3 {
-			s.n.commit = s.n.applied + maxGap + 1
-			got = append(got, s.run()...)
-		}
-		if len(got) != 1 || !errors.Is(got[0].Err, rpctypes.ErrGRPCRequestTooManyRequests) {
-			t.Fatalf("%v past the limit: %+v", action, got)
-		}
+	for range s.n.cfg.ticksOf(2) {
+		s.n.Tick()
+		s.run()
+	}
+	if s.n.state.leases[5].revokeAt != 0 {
+		t.Fatal("the expired lease was revoked past twice the limit")
 	}
 }
 
@@ -470,4 +551,25 @@ func TestOverQuotaAnswerWaitsForAlarm(t *testing.T) {
 		}
 	}
 	t.Fatalf("%d answers to the two puts past the quota", answered)
+}
+
+// TestNoSpaceAlarmAlwaysAnswersNoSpace fails the NOSPACE alarm that
+// answers a refused write, as when it was never proposed: the client
+// still gets ErrNoSpace, as etcd answers it once its alarm request
+// returned, whatever became of it. A cancel leaves the alarm alone (row
+// 55).
+func TestNoSpaceAlarmAlwaysAnswersNoSpace(t *testing.T) {
+	// A member without a leader, of a cluster that takes alarms.
+	s := newMember(t, []uint64{1, 2, 3})
+	s.n.state.version = featureVersion
+	s.n.proposeNoSpace(7)
+	s.n.Cancel(7)
+	p := s.n.waiting[7]
+	if p == nil || p.done {
+		t.Fatal("the cancel dropped the alarm")
+	}
+	s.n.finish(p, errNotProposed)
+	if r := s.n.out.Replies; len(r) != 1 || !errors.Is(r[0].Err, rpctypes.ErrGRPCNoSpace) {
+		t.Fatalf("the alarm failed: %+v", r)
+	}
 }

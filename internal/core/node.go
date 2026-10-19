@@ -435,7 +435,7 @@ type Node struct {
 	// electedAt is the clock when this node last became leader.
 	clock, electedAt int64
 	applied          uint64
-	// commit is Raft's commit index at the last Ready.
+	// commit is the last entry Raft handed to apply.
 	commit   uint64
 	term     uint64
 	leader   uint64
@@ -1026,7 +1026,7 @@ var errCanceled = status.Error(codes.Canceled, context.Canceled.Error())
 // proposed already.
 func (n *Node) Cancel(id uint64) {
 	p := n.waiting[id]
-	if n.err != nil || p == nil || p.done || n.rn.BasicStatus().Lead != raft.None {
+	if n.err != nil || p == nil || p.done || p.refuse != nil || n.rn.BasicStatus().Lead != raft.None {
 		return
 	}
 	switch {
@@ -1501,8 +1501,13 @@ func (n *Node) connectedSince(id uint64, start int64) bool {
 	return t >= 0 && n.clock-t < start
 }
 
-// finish fails a request with err.
+// finish fails a request with err. A NOSPACE alarm that answers a
+// refused write answers ErrNoSpace whatever became of it, as etcd answers
+// once its alarm request returned.
 func (n *Node) finish(p *pending, err error) {
+	if p.refuse != nil {
+		err = p.refuse
+	}
 	if n.settle(p) {
 		n.reply(p.req.ID, err)
 	}
@@ -1811,7 +1816,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 		n.checkTransfers()
 	}
 	if rd.HardState != nil {
-		n.term, n.commit = rd.GetTerm(), rd.GetCommit()
+		n.term = rd.GetTerm()
 	}
 	for _, rs := range rd.ReadStates {
 		n.readIndexKnown(rs)
@@ -1829,6 +1834,10 @@ func (n *Node) handleReady(rd raft.Ready) {
 		// A configuration change to apply, or one this append brings that
 		// is committed already, which Raft hands to apply once it is
 		// durable: the append's responses wait for it too.
+		if m.GetTo() == raft.LocalApplyThread && len(m.Entries) > 0 {
+			// As etcd's committed index: the last entry handed to apply.
+			n.commit = max(n.commit, m.Entries[len(m.Entries)-1].GetIndex())
+		}
 		if to := m.GetTo(); to == raft.LocalApplyThread || to == raft.LocalAppendThread {
 			for _, e := range m.Entries {
 				if t := e.GetType(); (t == raftpb.EntryConfChange || t == raftpb.EntryConfChangeV2) && (to == raft.LocalApplyThread || e.GetIndex() <= m.GetCommit()) {
@@ -1884,14 +1893,12 @@ func (n *Node) handleReady(rd raft.Ready) {
 // requests with the term.
 func (n *Node) failReads() {
 	for _, b := range n.readBatches {
-		if b.index != 0 {
+		if b.index != 0 || allDone(b.reads) {
 			continue
 		}
+		n.counters.ReadIndexFailed++
 		for _, p := range b.reads {
-			if !p.done {
-				n.counters.ReadIndexFailed++
-				n.finish(p, rpctypes.ErrGRPCLeaderChanged)
-			}
+			n.finish(p, rpctypes.ErrGRPCLeaderChanged)
 		}
 	}
 }
