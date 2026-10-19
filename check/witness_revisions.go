@@ -143,8 +143,11 @@ type optional struct {
 	late  bool
 	gone  int64
 	by    int64
-	// follow are acked ops that must be placed before it.
+	// follow are acked ops that must be placed before it. reads are the
+	// acked reads below a compaction's revision, which must still find
+	// their answers in the order built before it goes in.
 	follow []int
+	reads  []int
 }
 
 // life is what one observation of a key shows: created at c, last
@@ -625,12 +628,11 @@ func (r *revisionOrder) scheduleOptional() {
 	present, gone := map[int64]int64{}, map[int64]int64{}
 	granted, revoked := map[int64]bool{}, map[int64]bool{}
 	// compacted are the compacted rejections, by the revision they asked
-	// for and their return; keep is, per revision, the highest header
-	// revision of an acked read at it, and compactions the acked ones.
+	// for and their return; reads are the acked reads at a revision, and
+	// compactions the acked compactions.
 	type rejection struct{ rev, ret int64 }
 	var compacted []rejection
-	var compactions []int
-	keep := map[int64]int64{}
+	var compactions, reads []int
 	note := func(lease, rev int64) {
 		if lease != 0 {
 			present[lease] = max(present[lease], rev)
@@ -648,7 +650,7 @@ func (r *revisionOrder) scheduleOptional() {
 				note(op.Req.LeaseRevoke.ID, rev)
 				revoked[op.Req.LeaseRevoke.ID] = true
 			case op.Req.Range != nil && op.Req.Range.Revision > 0:
-				keep[op.Req.Range.Revision] = max(keep[op.Req.Range.Revision], rev)
+				reads = append(reads, i)
 			case op.Req.Compact != nil:
 				compactions = append(compactions, i)
 			}
@@ -696,6 +698,9 @@ func (r *revisionOrder) scheduleOptional() {
 		// Not before the revision of the ops that returned before its
 		// call; insertOptional also waits for their events.
 		at := r.lb[i]
+		// Not before the acked mutations that change no key and that
+		// returned before call.
+		call := op.Call
 		o := optional{op: i}
 		switch {
 		case op.Req.LeaseRevoke != nil:
@@ -731,10 +736,13 @@ func (r *revisionOrder) scheduleOptional() {
 			// compaction goes in before the event of the first such op,
 			// and by the end of the lowest header revision of an acked
 			// one. It goes no earlier than the header revisions of the
-			// acked reads below its revision, which may come late in
-			// their own: at such a revision it can still come after the
-			// read, and the model checks that it does (#277); and after
-			// the acked compactions to its revision or below, whose
+			// acked reads below its revision, at which it can still come
+			// after them: a rejection can need it between two reads of one
+			// revision. They must find their answers before it, so it
+			// waits for the mutations that returned before they were
+			// called, and goes in only once the order built so far answers
+			// them and the ops that returned before them (readsFit, #277).
+			// And after the acked compactions to its revision or below, whose
 			// answers it would turn into errors, but at their revision,
 			// before the ops that follow them there (#258).
 			c := op.Req.Compact.Revision
@@ -747,9 +755,11 @@ func (r *revisionOrder) scheduleOptional() {
 			if goneAt == math.MaxInt64 {
 				continue
 			}
-			for rev, by := range keep {
-				if rev < c {
-					at = max(at, by)
+			for _, k := range reads {
+				if read := &h.Ops[k]; read.Req.Range.Revision < c {
+					at = max(at, read.Resp.Revision)
+					call = max(call, read.Call)
+					o.reads = append(o.reads, k)
 				}
 			}
 			for _, k := range compactions {
@@ -763,7 +773,7 @@ func (r *revisionOrder) scheduleOptional() {
 			continue
 		}
 		o.from = at
-		o.after = sort.Search(len(r.mutations), func(k int) bool { return h.Ops[r.mutations[k]].Return >= op.Call })
+		o.after = sort.Search(len(r.mutations), func(k int) bool { return h.Ops[r.mutations[k]].Return >= call })
 		r.optional = append(r.optional, o)
 	}
 }
@@ -858,6 +868,30 @@ func (r *revisionOrder) isReady(o optional) bool {
 	return true
 }
 
+// readsFit reports whether the order built so far answers the acked reads
+// that optional o must come after, with the ops that change nothing and
+// that returned before the last of them was called, as observe would
+// place them. A rejection among those can need another optional
+// compaction first, which then goes in before o (#277, seed 8238917).
+func (r *revisionOrder) readsFit(o optional) bool {
+	if len(o.reads) == 0 {
+		return true
+	}
+	w := r.w
+	var call int64
+	for _, k := range o.reads {
+		call = max(call, w.h.Ops[k].Call)
+	}
+	ops := slices.Clone(o.reads)
+	for i := range w.h.Ops {
+		op := &w.h.Ops[i]
+		if op.Return < call && !w.at[i].set && w.seen(i) && (op.Resp == nil || !mutation(op)) && !slices.Contains(o.reads, i) {
+			ops = append(ops, i)
+		}
+	}
+	return w.placeSeen(ops, false) == nil
+}
+
 // due lists the late optional mutations not yet placed that must go in
 // before the event of an op called at time call, or by the end of
 // revision rev; all of them if call is past every op. They come in call
@@ -877,7 +911,7 @@ func (r *revisionOrder) due(call, rev int64) []optional {
 // takes steps s through late optional o if it may go in now and the
 // model takes it without a write.
 func (r *revisionOrder) takes(s *state, o optional) bool {
-	if o.from > s.rev || !r.isReady(o) {
+	if o.from > s.rev || !r.isReady(o) || !r.readsFit(o) {
 		return false
 	}
 	rev := s.rev
@@ -943,7 +977,7 @@ func (r *revisionOrder) expireEnd() {
 	w := r.w
 	for _, o := range r.due(math.MaxInt64, math.MaxInt64) {
 		r.putIn(o, func(s *state, o optional) bool {
-			return o.from <= s.rev && r.isReady(o) && s.step(w.reqs[o.op], false).err == nil
+			return o.from <= s.rev && r.isReady(o) && r.readsFit(o) && s.step(w.reqs[o.op], false).err == nil
 		})
 	}
 }

@@ -398,19 +398,35 @@ func (w *witness) boundAfter() func(t int64) int {
 func (w *witness) observe() error {
 	var ops []int
 	for i := range w.h.Ops {
-		op := &w.h.Ops[i]
-		switch {
-		case w.at[i].set:
-		case op.Req.Range != nil && op.Req.Range.Serializable:
-		case op.Resp != nil:
-			if mutation(op) {
+		if !w.at[i].set && w.seen(i) {
+			if op := &w.h.Ops[i]; op.Resp != nil && mutation(op) {
 				return fmt.Errorf("acked %s changed the store but has no place in the order", w.describe(i))
 			}
 			ops = append(ops, i)
-		case !op.Err.Ambiguous && isModelError(op.Err):
-			ops = append(ops, i)
 		}
 	}
+	w.observed, w.toObserve = 0, len(ops)
+	return w.placeSeen(ops, true)
+}
+
+// seen reports whether op i is one that observe places: an acked op or a
+// rejection that the model decides, other than a serializable read.
+func (w *witness) seen(i int) bool {
+	op := &w.h.Ops[i]
+	switch {
+	case op.Req.Range != nil && op.Req.Range.Serializable:
+		return false
+	case op.Resp != nil:
+		return true
+	default:
+		return !op.Err.Ambiguous && isModelError(op.Err)
+	}
+}
+
+// placeSeen places ops, which change nothing, as observe says, in the
+// order built so far. With set false it only checks that they all fit,
+// and sets nothing.
+func (w *witness) placeSeen(ops []int, set bool) error {
 	// The states of each revision.
 	first, last := map[int64]int{}, map[int64]int{}
 	for j, s := range w.states {
@@ -420,16 +436,18 @@ func (w *witness) observe() error {
 		last[s.rev] = j
 	}
 	events := w.eventBounds()
+	ops = slices.Clone(ops)
 	slices.SortFunc(ops, func(a, b int) int {
 		return cmp.Or(cmp.Compare(w.h.Ops[a].Call, w.h.Ops[b].Call), cmp.Compare(a, b))
 	})
 	placed := newPlacedMax(w.h, ops)
-	w.observed, w.toObserve = 0, len(ops)
 	for _, i := range ops {
 		if w.tick() {
 			return errWitnessTimeout
 		}
-		w.observed++
+		if set {
+			w.observed++
+		}
 		op := &w.h.Ops[i]
 		lo, hi := events(op)
 		lo = max(lo, placed.before(op.Call))
@@ -446,7 +464,9 @@ func (w *witness) observe() error {
 		if !ok {
 			return w.unanswered(i, f, l, lo, hi)
 		}
-		w.at[i] = place{set: true, seen: true, at: j, rank: op.Call}
+		if set {
+			w.at[i] = place{set: true, seen: true, at: j, rank: op.Call}
+		}
 		placed.add(i, j)
 	}
 	return nil
