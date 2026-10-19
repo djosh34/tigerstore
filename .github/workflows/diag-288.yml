@@ -1,0 +1,53 @@
+name: diag-288 archive versus repair
+on:
+  workflow_dispatch:
+    inputs:
+      fixed:
+        description: Keep the archive/repair exclusion (false removes only the fix)
+        type: boolean
+        default: true
+permissions:
+  contents: read
+jobs:
+  focused:
+    strategy:
+      fail-fast: false
+      matrix:
+        baseline: [250b8881, 6b952fef, fa55dee2]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: diagnosis
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.baseline }}
+          path: subject
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: subject/go.mod
+          cache-dependency-path: subject/go.sum
+      - name: Overlay only the focused regression and repair wrapper
+        env:
+          FIXED: ${{ inputs.fixed }}
+        run: |
+          cp diagnosis/cmd/chaos/diag288_test.go subject/cmd/chaos/
+          python3 - <<'PY'
+          import os, pathlib
+          diagnosis = pathlib.Path('diagnosis/cmd/chaos/envfaults.go').read_text()
+          helper = diagnosis.split('// repair checks')[1].split('// erase erases')[0]
+          helper = '// repair checks' + helper
+          if os.environ['FIXED'] != 'true':
+              helper = helper.replace('\te.archiving.Lock()\n\tdefer e.archiving.Unlock()\n', '')
+          p = pathlib.Path('subject/cmd/chaos/envfaults.go')
+          source = p.read_text()
+          source = source.replace('// erase erases', helper + '// erase erases', 1)
+          source = source.replace('healErr = errors.Join(healErr, d.Repair())',
+                                  'healErr = errors.Join(healErr, r.e.repair(d))')
+          p.write_text(source)
+          PY
+          git -C subject diff -- cmd/chaos/envfaults.go
+      - name: One deterministic archive/repair overlap (no database process)
+        working-directory: subject
+        run: go test -tags chaosenv ./cmd/chaos -run '^TestDiag288RepairWhileArchiving$' -count=1 -v -timeout=30s

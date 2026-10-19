@@ -115,6 +115,11 @@ type environment struct {
 	archiving sync.Mutex
 }
 
+// repair checks and remounts d after failed writes.
+func (e *environment) repair(d *env.Disk) error {
+	return d.Repair()
+}
+
 // erase erases d while no archive pass reads it.
 func (e *environment) erase(d *env.Disk) error {
 	e.archiving.Lock()
@@ -513,7 +518,7 @@ func (r *runner) diskError(ctx context.Context, s step, target int, rec *record)
 		healErr = errors.Join(healErr, err)
 	}
 	if s.Fault == fsyncFail {
-		healErr = errors.Join(healErr, d.Repair())
+		healErr = errors.Join(healErr, r.e.repair(d))
 	}
 	if err := r.c.start(n); err != nil {
 		healErr = errors.Join(healErr, err)
