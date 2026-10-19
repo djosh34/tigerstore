@@ -229,7 +229,7 @@ func campaignRequest(q history.Request) error {
 	if q.Put != nil {
 		return checkPut(q.Put)
 	}
-	if q.Delete != nil {
+	if q.Delete != nil || q.Compact != nil {
 		return nil
 	}
 	if q.Txn != nil {
@@ -252,6 +252,9 @@ func finalRevision(log []history.Request) (int64, error) {
 	for _, q := range log {
 		var ops []history.TxnOp
 		switch {
+		case q.Compact != nil:
+			// Compaction changes retained history, not the current revision.
+			continue
 		case q.Put != nil:
 			ops = []history.TxnOp{{Put: q.Put}}
 		case q.Delete != nil:
