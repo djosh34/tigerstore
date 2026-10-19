@@ -1,0 +1,6 @@
+=== RUN   TestCheckpointRecoveryMemory
+    recovery_memory_test.go:137: recovery peak 108984760 > 22020096, cache 0, window 0
+--- FAIL: TestCheckpointRecoveryMemory (0.08s)
+FAIL
+FAIL	github.com/djosh34/tigerstore/internal/core	0.094s
+FAIL

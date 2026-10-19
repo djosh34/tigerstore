@@ -1,0 +1,31 @@
+[
+  {
+    "step": 0,
+    "planned": {
+      "fault": "clean-rename-power",
+      "hold": 1772000000,
+      "gap": 1609000000,
+      "pick": 10311207381787136820,
+      "dir": "both"
+    },
+    "leader": "node1",
+    "requested_at": 92829929929,
+    "installed": true,
+    "effect": true,
+    "overlapped": true,
+    "healed": true,
+    "healed_at": 99873440491,
+    "env": {
+      "node": "node1",
+      "lazyfs": "[2026-10-19 17:28:49.584] [global] [info] [lazyfs.faults.worker]: received 'lazyfs::clear-cache'\n[2026-10-19 17:28:49.584] [global] [warning] [lazyfs.cmds]: clear cache request submitted...\n[2026-10-19 17:28:49.637] [global] [warning] [lazyfs.cmds]: cache is cleared.\n[2026-10-19 17:28:51.771] [global] [info] [lazyfs.faults.worker]: received 'lazyfs::clear-cache'\n[2026-10-19 17:28:51.771] [global] [warning] [lazyfs.cmds]: clear cache request submitted...\n[2026-10-19 17:28:51.786] [global] [warning] [lazyfs.cmds]: cache is cleared.\n[2026-10-19 17:28:54.040] [global] [info] [lazyfs.faults.worker]: received 'lazyfs::clear-cache'\n[2026-10-19 17:28:54.040] [global] [warning] [lazyfs.cmds]: clear cache request submitted...\n[2026-10-19 17:28:54.054] [global] [warning] [lazyfs.cmds]: cache is cleared.\n",
+      "parts": [
+        "cycle 0 hit clean-rename at 1m33.883102217s",
+        "cycle 0 caught up; acknowledged canary checked through all nodes",
+        "cycle 1 hit clean-rename at 1m36.073194367s",
+        "cycle 1 caught up; acknowledged canary checked through all nodes",
+        "cycle 2 hit clean-rename at 1m38.342028936s",
+        "cycle 2 caught up; acknowledged canary checked through all nodes"
+      ]
+    }
+  }
+]

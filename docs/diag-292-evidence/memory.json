@@ -1,0 +1,22 @@
+{
+  "limit_bytes": 134217728,
+  "live_value_bytes": 201326592,
+  "node1": {
+    "throttled": 0,
+    "throttled_usec": 0,
+    "oom_kills": 0,
+    "peak_bytes": 134361088
+  },
+  "node2": {
+    "throttled": 0,
+    "throttled_usec": 0,
+    "oom_kills": 0,
+    "peak_bytes": 134221824
+  },
+  "node3": {
+    "throttled": 0,
+    "throttled_usec": 0,
+    "oom_kills": 0,
+    "peak_bytes": 134221824
+  }
+}

@@ -1,0 +1,17 @@
+   0.000s seed 148108, 1 steps: [clean-rename-power]
+   1.153s one-way delays between nodes: map[client-node1:0s client-node2:0s client-node3:0s node1-node2:2ms node1-node3:10ms node2-node1:3ms node2-node3:9ms node3-node1:2ms node3-node2:1ms]
+   1.921s cluster ready, member IDs [1 2 3]
+  92.742s pressure preload: 201326592 live bytes, node limit 134217728
+  95.804s clean-rename-power node1 cycle 0 hit clean-rename
+  97.994s clean-rename-power node1 cycle 1 hit clean-rename
+ 100.263s clean-rename-power node1 cycle 2 hit clean-rename
+ 101.795s step 0 clean-rename-power leader=node1 installed=true effect=true healed=true 
+ 103.404s schedule done, clients stopped, waiting for convergence
+ 133.781s history: 8192 ops, 4436 log requests, target 3634
+ 134.730s linearizability input leaves out 14 ambiguous writes that did not take effect
+ 134.730s checker Linearizable skipped: 8178 operations, more than the 4000 Porcupine gets
+ 136.020s checker Witnessed (log) passed=true in 1.290s
+ 136.998s checker Witnessed (revisions) passed=true in 0.978s
+ 137.020s checker Watches passed=true in 0.022s
+ 137.941s checker Durable passed=true in 0.921s
+ 138.098s checker Revisions passed=true in 0.157s

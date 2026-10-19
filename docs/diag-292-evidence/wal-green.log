@@ -1,0 +1,10 @@
+=== RUN   TestPackRecoveryMemory
+=== RUN   TestPackRecoveryMemory/16MiB
+    recovery_memory_test.go:75: pack payload=16777216, recovery peak heap increase=215424, map accounting=24720, node budget=33554432
+=== RUN   TestPackRecoveryMemory/64MiB
+    recovery_memory_test.go:75: pack payload=67108864, recovery peak heap increase=436480, map accounting=98448, node budget=134217728
+--- PASS: TestPackRecoveryMemory (0.07s)
+    --- PASS: TestPackRecoveryMemory/16MiB (0.02s)
+    --- PASS: TestPackRecoveryMemory/64MiB (0.06s)
+PASS
+ok  	github.com/djosh34/tigerstore/internal/wal	0.078s

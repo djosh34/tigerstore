@@ -1,0 +1,33 @@
+[
+  {
+    "name": "Linearizable",
+    "passed": false,
+    "skipped": "8178 operations, more than the 4000 Porcupine gets",
+    "seconds": 0
+  },
+  {
+    "name": "Witnessed (log)",
+    "passed": true,
+    "seconds": 1.289708946
+  },
+  {
+    "name": "Witnessed (revisions)",
+    "passed": true,
+    "seconds": 0.978325092
+  },
+  {
+    "name": "Watches",
+    "passed": true,
+    "seconds": 0.021545474
+  },
+  {
+    "name": "Durable",
+    "passed": true,
+    "seconds": 0.921038782
+  },
+  {
+    "name": "Revisions",
+    "passed": true,
+    "seconds": 0.156764337
+  }
+]

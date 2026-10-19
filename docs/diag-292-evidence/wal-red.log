@@ -1,0 +1,15 @@
+=== RUN   TestPackRecoveryMemory
+=== RUN   TestPackRecoveryMemory/16MiB
+    recovery_memory_test.go:75: pack payload=16777216, recovery peak heap increase=36342176, map accounting=24720, node budget=33554432
+    recovery_memory_test.go:77: recovery allocated 36342176 bytes for a 16777216-byte pack: exceeds proportional node budget 33554432
+    recovery_memory_test.go:82: recovery allocated 36342176 bytes; want bounded scratch plus the position map (<2 MiB)
+=== RUN   TestPackRecoveryMemory/64MiB
+    recovery_memory_test.go:75: pack payload=67108864, recovery peak heap increase=165751200, map accounting=98448, node budget=134217728
+    recovery_memory_test.go:77: recovery allocated 165751200 bytes for a 67108864-byte pack: exceeds proportional node budget 134217728
+    recovery_memory_test.go:82: recovery allocated 165751200 bytes; want bounded scratch plus the position map (<2 MiB)
+--- FAIL: TestPackRecoveryMemory (0.12s)
+    --- FAIL: TestPackRecoveryMemory/16MiB (0.03s)
+    --- FAIL: TestPackRecoveryMemory/64MiB (0.09s)
+FAIL
+FAIL	github.com/djosh34/tigerstore/internal/wal	0.131s
+FAIL

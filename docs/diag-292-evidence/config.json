@@ -1,0 +1,20 @@
+{
+  "seed": 148108,
+  "out": "/home/runner/work/_temp/chaos-out",
+  "tigerstore": "/home/runner/work/_temp/tigerstore",
+  "faults": [
+    "clean-rename-power"
+  ],
+  "rate": 10,
+  "value_size": 16384,
+  "compact_every": 2000000000,
+  "pressure_keys": 2048,
+  "memory": 134217728,
+  "request_timeout": 2000000000,
+  "watch_timeout": 20000000000,
+  "quiet": 8000000000,
+  "checker_timeout": 180000000000,
+  "env": true,
+  "lazyfs": "/home/runner/work/_temp/lazyfs/lazyfs/build/lazyfs",
+  "disk_size": 536870912
+}

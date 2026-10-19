@@ -1,0 +1,5 @@
+=== RUN   TestCheckpointRecoveryMemory
+    recovery_memory_test.go:154: live values=50331648, recovery peak increase=679136, index=73728, WAL map=12560, cache=0, process accounting=8387496 / 22020096
+--- PASS: TestCheckpointRecoveryMemory (0.06s)
+PASS
+ok  	github.com/djosh34/tigerstore/internal/core	0.065s

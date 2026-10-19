@@ -1,0 +1,45 @@
+Total: 159.88MB
+ROUTINE ======================== io.ReadAll in /home/joshazimullah.linux/.local/opt/go1.27.2/src/io/io.go
+  157.77MB   157.77MB (flat, cum) 98.68% of Total
+         .          .    709:func ReadAll(r Reader) ([]byte, error) {
+         .          .    710:	// Build slices of exponentially growing size,
+         .          .    711:	// then copy into a perfectly-sized slice at the end.
+       1kB        1kB    712:	b := make([]byte, 0, 512)
+         .          .    713:	// Starting with next equal to 256 (instead of say 512 or 1024)
+         .          .    714:	// allows less memory usage for small inputs that finish in the
+         .          .    715:	// early growth stages, but we grow the read sizes quickly such that
+         .          .    716:	// it does not materially impact medium or large inputs.
+         .          .    717:	next := 256
+         .          .    718:	chunks := make([][]byte, 0, 4)
+         .          .    719:	// Invariant: finalSize = sum(len(c) for c in chunks)
+         .          .    720:	var finalSize int
+         .          .    721:	for {
+         .          .    722:		n, err := r.Read(b[len(b):cap(b)])
+         .          .    723:		b = b[:len(b)+n]
+         .          .    724:		if err != nil {
+         .          .    725:			if err == EOF {
+         .          .    726:				err = nil
+         .          .    727:			}
+         .          .    728:			if len(chunks) == 0 {
+         .          .    729:				return b, err
+         .          .    730:			}
+         .          .    731:
+         .          .    732:			// Build our final right-sized slice.
+         .          .    733:			finalSize += len(b)
+   64.09MB    64.09MB    734:			final := append([]byte(nil), make([]byte, finalSize)...)[:0]
+         .          .    735:			for _, chunk := range chunks {
+         .          .    736:				final = append(final, chunk...)
+         .          .    737:			}
+         .          .    738:			final = append(final, b...)
+         .          .    739:			return final, err
+         .          .    740:		}
+         .          .    741:
+         .          .    742:		if cap(b)-len(b) < cap(b)/16 {
+         .          .    743:			// Move to the next intermediate slice.
+    1.44kB     1.44kB    744:			chunks = append(chunks, b)
+         .          .    745:			finalSize += len(b)
+   93.69MB    93.69MB    746:			b = append([]byte(nil), make([]byte, next)...)[:0]
+         .          .    747:			next += next / 2
+         .          .    748:		}
+         .          .    749:	}
+         .          .    750:}
