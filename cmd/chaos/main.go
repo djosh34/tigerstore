@@ -50,6 +50,8 @@ type config struct {
 	Tigerstore     string        `json:"tigerstore"`
 	Faults         []string      `json:"faults"`
 	Rate           int           `json:"rate"`
+	ValueSize      int           `json:"value_size"`
+	CompactEvery   time.Duration `json:"compact_every"`
 	RequestTimeout time.Duration `json:"request_timeout"`
 	WatchTimeout   time.Duration `json:"watch_timeout"`
 	Quiet          time.Duration `json:"quiet"`
@@ -70,6 +72,8 @@ func main() {
 	flag.StringVar(&c.Tigerstore, "tigerstore", "", "tigerstore binary (required)")
 	flag.StringVar(&faults, "faults", strings.Join(allFaults, ","), "faults to inject, comma separated")
 	flag.IntVar(&c.Rate, "rate", 10, "calls per second per client")
+	flag.IntVar(&c.ValueSize, "value-size", 256, "bytes per generated value")
+	flag.DurationVar(&c.CompactEvery, "compact-every", 0, "compact behind all three watches at this interval")
 	flag.DurationVar(&c.RequestTimeout, "request-timeout", 2*time.Second, "deadline of one client call")
 	flag.DurationVar(&c.WatchTimeout, "watch-timeout", 20*time.Second, "time for watches to reach the final revision")
 	flag.DurationVar(&c.Quiet, "quiet", 8*time.Second, "wait after the heal, longer than the server's request timeout, before the final reads")
@@ -117,6 +121,7 @@ func main() {
 func replayCommand(c config) string {
 	cmd := fmt.Sprintf("go run ./cmd/chaos -tigerstore <binary> -seed %d -faults %s -rate %d -request-timeout %v -watch-timeout %v -quiet %v -checker-timeout %v",
 		c.Seed, strings.Join(c.Faults, ","), c.Rate, c.RequestTimeout, c.WatchTimeout, c.Quiet, c.CheckerTimeout)
+	cmd += fmt.Sprintf(" -value-size %d -compact-every %v", c.ValueSize, c.CompactEvery)
 	if c.Env {
 		cmd += fmt.Sprintf(" -env -disk-size %d", c.DiskSize)
 		if c.LazyFS != "" {
@@ -153,7 +158,7 @@ func (e *stepError) Unwrap() error { return e.err }
 
 func run(c config, dir string) (err error) {
 	for _, f := range c.Faults {
-		if slices.Contains(envFaults, f) && !c.Env {
+		if (slices.Contains(envFaults, f) || isStorageFault(f)) && !c.Env {
 			return fmt.Errorf("fault %q needs -env", f)
 		}
 		if slices.Contains(withoutLazyFS, f) && c.LazyFS != "" {
@@ -162,7 +167,15 @@ func run(c config, dir string) (err error) {
 		if slices.Contains(withLazyFS, f) && c.LazyFS == "" {
 			return fmt.Errorf("fault %q needs -lazyfs", f)
 		}
-		if !slices.Contains(allFaults, f) && !slices.Contains(envFaults, f) {
+		if isStorageFault(f) {
+			if strings.Contains(f, "power") && c.LazyFS == "" {
+				return fmt.Errorf("fault %s needs -lazyfs", f)
+			}
+			if !strings.Contains(f, "power") && c.LazyFS != "" {
+				return fmt.Errorf("fault %s needs a plain disk", f)
+			}
+		}
+		if !slices.Contains(allFaults, f) && !slices.Contains(envFaults, f) && !isStorageFault(f) {
 			return fmt.Errorf("unknown fault %q; known: %s", f, strings.Join(slices.Concat(allFaults, envFaults), ","))
 		}
 	}
@@ -209,6 +222,9 @@ func run(c config, dir string) (err error) {
 		}
 		defer func() { fail("close the environment", e.close()) }()
 		data, extra = e.data(), nodeArgs
+		if slices.ContainsFunc(c.Faults, isStorageFault) {
+			extra = []string{"--unsafe-window-bytes", "16384", "--unsafe-checkpoint-bytes", "2097152", "--unsafe-segment-bytes", "1048576"}
+		}
 	}
 	cl, err := newCluster(dir, c.Tigerstore, c.Seed, data, extra)
 	if err != nil {
@@ -247,7 +263,7 @@ func run(c config, dir string) (err error) {
 		fail("stop", cl.stop())
 		return
 	}
-	wcfg := workloadConfig{seed: c.Seed, rate: c.Rate, keys: 6, valueSize: 256, requestTimeout: c.RequestTimeout, watchTimeout: c.WatchTimeout, quiet: c.Quiet}
+	wcfg := workloadConfig{seed: c.Seed, rate: c.Rate, keys: 6, valueSize: c.ValueSize, compactEvery: c.CompactEvery, requestTimeout: c.RequestTimeout, watchTimeout: c.WatchTimeout, quiet: c.Quiet}
 	t, err := startTraffic(wcfg, cs)
 	if err != nil {
 		fail("traffic", err)

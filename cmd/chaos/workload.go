@@ -31,6 +31,7 @@ type workloadConfig struct {
 	rate           int // operations per second per client
 	keys           int
 	valueSize      int
+	compactEvery   time.Duration
 	requestTimeout time.Duration
 	watchTimeout   time.Duration
 	quiet          time.Duration
@@ -119,6 +120,12 @@ func txnOp(o history.TxnOp) clientv3.Op {
 
 func execute(ctx context.Context, cl *clientv3.Client, q history.Request) (*history.Response, error) {
 	switch {
+	case q.Compact != nil:
+		r, e := cl.Compact(ctx, q.Compact.Revision)
+		if e != nil {
+			return nil, e
+		}
+		return frometcd.Response((*pb.CompactionResponse)(r))
 	case q.Put != nil:
 		r, e := cl.Put(ctx, q.Put.Key, q.Put.Value, options("", q.Put.PrevKV)...)
 		if e != nil {
@@ -211,7 +218,41 @@ func startTraffic(cfg workloadConfig, cs []*clientv3.Client) (*traffic, error) {
 		t.workers.Go(func() { t.client(stopCtx, i, cl) })
 		t.workers.Go(func() { t.reader(stopCtx, i, cl) })
 	}
+	if cfg.compactEvery > 0 {
+		t.workers.Go(func() { t.compactor(stopCtx) })
+	}
 	return t, nil
+}
+
+// compactor only removes revisions all pinned watches already delivered.
+// Thus compaction runs under faults without excusing missing watch events.
+func (t *traffic) compactor(ctx context.Context) {
+	tick := time.NewTicker(t.cfg.compactEvery)
+	defer tick.Stop()
+	var last int64
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		through := int64(1<<63 - 1)
+		t.r.mu.Lock()
+		for _, w := range t.r.h.Watches {
+			next := int64(1)
+			for _, resp := range w.Responses {
+				next = resumeRevision(next, resp)
+			}
+			through = min(through, next-2)
+		}
+		t.r.mu.Unlock()
+		if through > last && through > 1 {
+			op := t.r.call(t.cs[0], 70, history.Request{Compact: &history.CompactRequest{Revision: through}}, t.cfg.requestTimeout)
+			if op.Resp != nil {
+				last = through
+			}
+		}
+	}
 }
 
 // readerClient is the history client of the reader pinned to node i.
