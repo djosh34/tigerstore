@@ -467,7 +467,10 @@ type Node struct {
 	voteTerm, vote uint64
 	unsyncedVotes  int
 	confAt         uint64
-	held           []*raftpb.Message
+	// confsAppended are the indexes of configuration changes appended and
+	// not committed yet.
+	confsAppended []uint64
+	held          []*raftpb.Message
 	// props are proposals forwarded by peers while this node knew no
 	// leader, propBytesHeld their entry bytes.
 	props         []*raftpb.Message
@@ -1831,20 +1834,34 @@ func (n *Node) handleReady(rd raft.Ready) {
 			n.unsyncedVotes++
 			newVotes = append(newVotes, m)
 		}
-		// A configuration change to apply, or one this append brings that
-		// is committed already, which Raft hands to apply once it is
-		// durable: the append's responses wait for it too.
 		if m.GetTo() == raft.LocalApplyThread && len(m.Entries) > 0 {
 			// As etcd's committed index: the last entry handed to apply.
 			n.commit = max(n.commit, m.Entries[len(m.Entries)-1].GetIndex())
 		}
+		// A configuration change to apply, and those appended, which Raft
+		// hands to apply only once they are durable, also when they commit
+		// before.
 		if to := m.GetTo(); to == raft.LocalApplyThread || to == raft.LocalAppendThread {
 			for _, e := range m.Entries {
-				if t := e.GetType(); (t == raftpb.EntryConfChange || t == raftpb.EntryConfChangeV2) && (to == raft.LocalApplyThread || e.GetIndex() <= m.GetCommit()) {
+				if t := e.GetType(); t != raftpb.EntryConfChange && t != raftpb.EntryConfChangeV2 {
+					continue
+				}
+				if to == raft.LocalApplyThread {
 					n.confAt = max(n.confAt, e.GetIndex())
+				} else {
+					n.confsAppended = append(n.confsAppended, e.GetIndex())
 				}
 			}
 		}
+	}
+	if rd.HardState != nil {
+		n.confsAppended = slices.DeleteFunc(n.confsAppended, func(i uint64) bool {
+			if i > rd.GetCommit() {
+				return false
+			}
+			n.confAt = max(n.confAt, i)
+			return true
+		})
 	}
 	for _, m := range rd.Messages {
 		switch m.GetTo() {

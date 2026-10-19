@@ -478,10 +478,12 @@ func (c *conn) monitorLeader(st *stream) {
 // expire ends a call whose grpc-timeout passed, whether or not its
 // request is complete or its handler started.
 func (st *stream) expire() {
+	// The end goes first: a batch that the node takes meanwhile sees it
+	// (conn.flush), and otherwise this sees the request's ID there.
+	st.finish(status.Error(codes.DeadlineExceeded, context.DeadlineExceeded.Error()))
 	st.c.mu.Lock()
 	st.c.cancelLocked(st)
 	st.c.mu.Unlock()
-	st.finish(status.Error(codes.DeadlineExceeded, context.DeadlineExceeded.Error()))
 	if st.cancel != nil {
 		st.cancel()
 	}

@@ -210,6 +210,57 @@ func TestFollowerHoldsAckOfCommittedConf(t *testing.T) {
 	}
 }
 
+// TestFollowerHoldsSendsWhileConfIsOnDisk holds node 2's disk while the
+// leader commits the removal of node 3: node 2 hears of the commit while
+// its append of the change is not durable yet, so Raft does not hand it
+// to apply. Node 2 still sends nothing until it applied the change, as
+// etcd's follower, whose Ready holds it as committed (row 9).
+func TestFollowerHoldsSendsWhileConfIsOnDisk(t *testing.T) {
+	c := newMemCluster(t, func(*Config) {})
+	for range 10 {
+		c.step()
+	}
+	f := c.nodes[1]
+	c.holdDisk[1] = true
+	ctx, err := encodeConfContext(0, 0, 0, confRemove, &pb.Member{ID: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.nodes[0].rn.ProposeConfChange(&raftpb.ConfChange{Type: raftpb.ConfChangeRemoveNode.Enum(), NodeId: new(uint64(3)), Context: ctx}); err != nil {
+		t.Fatal(err)
+	}
+	// Node 3 stops a second after it applied its removal.
+	tick := func() {
+		for i, n := range c.nodes {
+			if !c.down[i] {
+				n.Tick()
+			}
+		}
+		c.step()
+		c.down[2] = c.nodes[2].removeAt != 0
+	}
+	for i := 0; f.confAt <= f.applied; i++ {
+		if i > 20 {
+			t.Fatalf("node 2 never heard of the commit: confAt %d, applied %d; %s", f.confAt, f.applied, c.describe())
+		}
+		tick()
+	}
+	before := c.sent[1]
+	for range 5 {
+		tick()
+	}
+	if c.sent[1] != before || len(f.held) == 0 {
+		t.Fatalf("node 2 sent %d messages and holds %d while the change waits on its disk", c.sent[1]-before, len(f.held))
+	}
+	c.holdDisk[1] = false
+	for range 5 {
+		tick()
+	}
+	if !f.state.removed[3] || c.sent[1] == before || len(f.held) != 0 {
+		t.Fatalf("after the disk: removed %v, sent %d, held %d", f.state.removed[3], c.sent[1]-before, len(f.held))
+	}
+}
+
 // TestStepRefusesRemovedAndMisrouted steps messages from a removed
 // member and to another member, which etcd's Process refuses (rows 14
 // and 15), and checks that a message to a removed member is dropped.
