@@ -551,13 +551,18 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.History, res.Stats, res.Silences = s.history, s.stats, s.silences
 	res.HeldAppendAt = s.heldAppendAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
-	res.nodes, res.cold = s.nodes, s.cold
+	res.nodes = s.nodes
 	s.mu.Unlock()
 	if err == nil {
 		if err = s.check(res); err != nil {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)
 		}
 	}
+	// The checks run the cold restarts, which keep their disks when they
+	// fail (#280).
+	s.mu.Lock()
+	res.cold = s.cold
+	s.mu.Unlock()
 	if err == nil && inspect != nil {
 		err = inspect(s)
 	}
