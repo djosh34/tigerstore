@@ -4,11 +4,11 @@ on:
 permissions:
   contents: read
 jobs:
-  b20-seed-one:
+  cancellation:
     strategy:
       fail-fast: false
       matrix:
-        storage: [e3243229, 2fef0b5d]
+        fix: [without, with]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
@@ -18,11 +18,15 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Select storage implementation
-        env:
-          STORAGE: ${{ matrix.storage }}
-        run: git checkout "$STORAGE" -- check internal/osfs internal/wal
+      - name: Remove only the proposed cancellation guard
+        if: matrix.fix == 'without'
+        run: git checkout f4d7b9f9 -- internal/node/node.go
+      - name: Queued input at cancellation
+        run: |
+          set -o pipefail
+          go test -count=1 -v -timeout 1m ./internal/node/ -run '^TestCommitStopsAfterCancelledTurn$' 2>&1 | tee "$RUNNER_TEMP/cancel.log"
       - name: Replay only B20 seed 1
+        if: always()
         env:
           SIM_OUT: ${{ runner.temp }}/sim-out
         run: |
@@ -31,7 +35,8 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: diag-296-${{ matrix.storage }}
+          name: diag-296-${{ matrix.fix }}
           path: |
+            ${{ runner.temp }}/cancel.log
             ${{ runner.temp }}/replay.log
             ${{ runner.temp }}/sim-out

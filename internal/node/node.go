@@ -1046,6 +1046,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	beats := map[uint64]time.Time{}
 	var beatTerm uint64
 	for {
+		// Turn can hold a failed simulator until its process is cancelled.
+		// Do not let another ready select case run the failed core again.
+		if ctx.Err() != nil {
+			return nil
+		}
 		inbox := n.inbox
 		if len(backlog) >= maxBacklog {
 			inbox = nil
