@@ -1425,22 +1425,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 	toSync := make(chan written, syncsInFlight)
 	synced := make(chan syncedGroup, syncsInFlight)
 	// report runs on the sync goroutine.
-	report := func(g written, err error) error {
-		d := time.Since(g.times.start)
-		if err == nil && d > time.Duration(n.log.maxWrite.Load()) {
-			n.log.maxWrite.Store(int64(d))
-		}
-		if err == nil && d > n.cfg.Tick {
-			n.logf("slow write to the log: %d entries, %d bytes in %v", g.entries, g.bytes, d)
-		}
-		done := persistDone{jobs: g.jobs, err: err, times: g.times}
-		select {
-		case n.persisted <- done:
-		case <-ctx.Done():
-			return errors.Join(err, ctx.Err())
-		}
-		return err
-	}
+	report := func(g written, err error) error { return n.reportPersist(ctx, g, err) }
 	var wg sync.WaitGroup
 	wg.Go(func() { n.syncGroups(toSync, synced, report) })
 	defer func() {
@@ -1610,6 +1595,24 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			}
 		}
 	}
+}
+
+// reportPersist is extracted unchanged from persist for the #297 replay.
+func (n *Node) reportPersist(ctx context.Context, g written, err error) error {
+	d := time.Since(g.times.start)
+	if err == nil && d > time.Duration(n.log.maxWrite.Load()) {
+		n.log.maxWrite.Store(int64(d))
+	}
+	if err == nil && d > n.cfg.Tick {
+		n.logf("slow write to the log: %d entries, %d bytes in %v", g.entries, g.bytes, d)
+	}
+	done := persistDone{jobs: g.jobs, err: err, times: g.times}
+	select {
+	case n.persisted <- done:
+	case <-ctx.Done():
+		return errors.Join(err, ctx.Err())
+	}
+	return err
 }
 
 // syncGroups syncs the written groups in order and hands them back. One

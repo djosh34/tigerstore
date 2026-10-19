@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  watch:
+  stop:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     strategy:
@@ -16,22 +16,40 @@ jobs:
         ref:
           - e3243229e2b701883e2c43cf9b4ae77e2c09a9ef
           - 8bf63c8caf321766da569ead6e7f6dd3d2f1d4a4
+        fix: [false, true]
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ matrix.ref }}
+          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Repeat only TestWatchOverTLS
+      - name: Restore target code and extract its unchanged report function
+        env:
+          TARGET: ${{ matrix.ref }}
+          FIX: ${{ matrix.fix }}
+        run: |
+          git restore --source="$TARGET" -- internal/node/node.go internal/wal/wal.go
+          git apply scripts/diag-297-report.patch
+          if [ "$FIX" = true ]; then
+            git apply scripts/diag-297-fix.patch
+          fi
+      - name: Replay the canceled-report schedule
         shell: bash
         run: |
-          git rev-parse HEAD
+          echo "replay: go test -short -count=1 -v -timeout=30s -run '^TestDiag297' ./internal/node"
+          go test -short -count=1 -v -timeout=30s -run '^TestDiag297' ./internal/node 2>&1 | tee "$RUNNER_TEMP/stop.log"
+      - name: Repeat only TestWatchOverTLS
+        if: always()
+        shell: bash
+        run: |
           echo "replay: go test -short -count=100 -timeout=2m -coverpkg=./internal/... -coverprofile=cover.out -run '^TestWatchOverTLS$' ./internal/server"
           go test -short -count=100 -timeout=2m -coverpkg=./internal/... -coverprofile="$RUNNER_TEMP/cover.out" -run '^TestWatchOverTLS$' ./internal/server 2>&1 | tee "$RUNNER_TEMP/watch.log"
       - if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: watch-${{ matrix.ref }}
-          path: ${{ runner.temp }}/watch.log
+          name: stop-${{ matrix.ref }}-${{ matrix.fix }}
+          path: |
+            ${{ runner.temp }}/stop.log
+            ${{ runner.temp }}/watch.log
           retention-days: 30
