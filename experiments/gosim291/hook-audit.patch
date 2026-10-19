@@ -1,0 +1,21 @@
+diff --git a/internal/translate/rewrites.go b/internal/translate/rewrites.go
+index 248c742..f5128f8 100644
+--- a/internal/translate/rewrites.go
++++ b/internal/translate/rewrites.go
+@@ -4,7 +4,6 @@ import (
+ 	"fmt"
+ 	"go/token"
+ 	"log/slog"
+-	"os"
+ 	"regexp"
+ 	"slices"
+ 	"strconv"
+@@ -216,7 +215,7 @@ func (t *packageTranslator) rewriteStdlibEmptyAndLinkname(c *dstutil.Cursor) {
+ 			slog.Debug("keeping asm header", "pkg", t.pkgPath, "name", decl.Name.Name)
+ 		} else {
+ 			slog.Error("missing function body", "pkg", t.pkgPath, "name", decl.Name.Name)
+-			os.Exit(1)
++			// #291 diagnostic only: report all missing hooks. Never execute output.
+ 		}
+ 	}
+ 

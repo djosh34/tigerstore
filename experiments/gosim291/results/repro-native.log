@@ -1,0 +1,10 @@
+=== RUN   TestDriverGate
+    node.go:760: recovering the log
+    node.go:760: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:760: leader is 0 at term 1
+    node.go:760: leader is 0 at term 2
+    node.go:760: leader is 1 at term 2
+    probe_test.go:55: real driver put/read OK (disk is tigerstore simfs)
+--- PASS: TestDriverGate (0.10s)
+PASS
+ok  	github.com/djosh34/tigerstore/experiments/gosim291	0.111s
