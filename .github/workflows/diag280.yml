@@ -1,0 +1,18 @@
+name: diag280 targeted cold restart
+on:
+  push:
+    branches: ['diag/280-cold-restart']
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Cold restart from archived torn prefixes (50 repetitions)
+        run: go test -v -count=50 -timeout=3m ./internal/sim -run '^TestDiag280ColdRestart$'
