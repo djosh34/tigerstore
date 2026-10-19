@@ -202,6 +202,9 @@ func (c *client) learn(resp proto.Message) {
 // serializable reads.
 func (c *client) request() proto.Message {
 	s := c.sim
+	if s.cfg.LeaseCycle && !s.cfg.NoLeases && c.id == 0 {
+		return c.leaseCycle()
+	}
 	k := s.rng.IntN(numKeys)
 	val := fmt.Appendf(nil, "c%d-%d", c.id, c.n)
 	switch p := s.rng.IntN(100); {

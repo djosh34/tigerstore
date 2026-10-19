@@ -103,6 +103,12 @@ type Config struct {
 	// both off.
 	MemoryBytes int64
 	Faults      Faults
+	// NetworkTime selects the round-2 leader-targeted network schedule.
+	NetworkTime string
+	// LeaseCycle gives one client a grant/Txn/keepalive/revoke cycle.
+	LeaseCycle bool
+	// LongWatches leaves streams open until the server or a fault ends them.
+	LongWatches bool
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -718,6 +724,7 @@ func (s *Sim) schedule() {
 	}
 	s.scheduleDiskFaults()
 	s.scheduleNetFaults()
+	s.scheduleNetworkTime()
 	s.scheduleGrayFaults()
 	if s.cfg.HalfOpenAt > 0 {
 		s.at(s.cfg.HalfOpenAt, func() {

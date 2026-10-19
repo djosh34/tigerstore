@@ -197,6 +197,9 @@ func replayCommand(name string, seed uint64) string {
 		}
 	}
 	var args []string
+	if parts[0] == "TestNetworkTime" {
+		args = append(args, fmt.Sprintf("-sim.seed=%d", seed), "-sim.seeds=1", "-sim.network="+*networkScenario)
+	}
 	if seedTests[parts[0]] && len(parts) > 1 && parts[1] == strconv.FormatUint(seed, 10) {
 		args = append(args, fmt.Sprintf("-sim.seed=%d", seed), "-sim.seeds=1")
 	}

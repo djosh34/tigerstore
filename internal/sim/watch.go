@@ -81,6 +81,10 @@ func (s *Sim) startWatchers() {
 		if s.rng.IntN(2) == 0 {
 			w.next = 1
 		}
+		if s.cfg.LongWatches {
+			// Guarantee both start modes, rather than drawing four of one.
+			w.next = int64(i % 2)
+		}
 		s.watchers = append(s.watchers, w)
 		wait, drop := s.rng.Int64N(Second), s.exp(3*Second)
 		s.wg.Go(func() { w.run(wait, drop) })
@@ -140,7 +144,7 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 		// canceled, and the new logical watch must be created by the end
 		// (#245). Drops after the clients stopped resume over compacted
 		// history, which catches B08.
-		p, untilDrop, dropping := w.proc, dropAt-s.now(), dropAt < s.endAt-3*Second
+		p, untilDrop, dropping := w.proc, dropAt-s.now(), !s.cfg.LongWatches && dropAt < s.endAt-3*Second
 		s.mu.Unlock()
 		t := time.NewTimer(time.Duration(max(untilDrop, 0)))
 		drop := t.C

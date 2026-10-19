@@ -1,65 +1,59 @@
-# The simulator seed campaign of #148: 100,000 seeds of TestSeeds, every
-# checker on each, the witness checker in both modes among them, in 20
-# jobs of two processes of 2,500 seeds. Each process requires each fault
-# to take effect in 95% of its seeds, and a process of 2,000 seeds or
-# more a stalled leader that went silent too (#218, #233). Started by the
-# worker:
-#   gh workflow run sim-campaign.yml -f first=<seed>
-# A failing seed prints the command that runs it again, and its trace, how
-# it left each node and its history are uploaded with the job's logs.
 name: sim-campaign
 
 on:
   workflow_dispatch:
     inputs:
       first:
-        description: First seed; the campaign runs it and the next 99,999
+        description: First seed of the network/time campaign
         required: true
-        default: "1"
+        default: "1482001"
+      seeds:
+        description: Seeds per scenario
+        default: "100"
+      scenario:
+        description: One scenario, or all
+        default: all
+      race:
+        description: Build with the race detector
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
-  seeds:
+  network-time:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+        scenario: [leader-incoming, follower-island, leader-flap, peer-slow-leader]
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 90
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go test -c -o "$RUNNER_TEMP/sim.test" ./internal/sim
-      - name: Run 5,000 seeds in two processes
+      - name: Run network and time schedules
+        if: inputs.scenario == 'all' || inputs.scenario == matrix.scenario
         shell: bash
         env:
           FIRST: ${{ inputs.first }}
-          SHARD: ${{ matrix.shard }}
+          SEEDS: ${{ inputs.seeds }}
+          SCENARIO: ${{ matrix.scenario }}
+          RACE: ${{ inputs.race }}
         run: |
-          set -uo pipefail
-          cd internal/sim
-          pids=()
-          for p in 0 1; do
-            seed=$((FIRST + SHARD * 5000 + p * 2500))
-            echo "process $p: seeds $seed to $((seed + 2499))"
-            "$RUNNER_TEMP/sim.test" -test.run 'TestSeeds$' -test.v -test.timeout 85m -sim.seed="$seed" -sim.seeds=2500 -sim.out="$RUNNER_TEMP/sim-out" >"$RUNNER_TEMP/seeds-$p.log" 2>&1 &
-            pids+=($!)
-          done
-          status=0
-          for p in 0 1; do
-            wait "${pids[$p]}" || status=1
-            grep -E -- '^--- FAIL|^    --- FAIL| seeds: |took effect|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$p.log" | head -50
-            PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$p.log" -- -sim.seed="$((FIRST + SHARD * 5000 + p * 2500))" -sim.seeds=2500
-          done
-          exit $status
-      - if: failure()
+          set -o pipefail
+          flags=()
+          if [ "$RACE" = true ]; then flags=(-race); fi
+          go test "${flags[@]}" -v -count=1 -timeout=60m ./internal/sim -run '^TestNetworkTime$' \
+            -args -sim.seed="$FIRST" -sim.seeds="$SEEDS" -sim.network="$SCENARIO" \
+            -sim.out="$RUNNER_TEMP/sim-out" 2>&1 | tee "$RUNNER_TEMP/network-time.log"
+      - if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: sim-campaign-${{ matrix.shard }}
+          name: network-time-${{ matrix.scenario }}
           path: |
-            ${{ runner.temp }}/seeds-*.log
+            ${{ runner.temp }}/network-time.log
             ${{ runner.temp }}/sim-out
+          retention-days: 30
