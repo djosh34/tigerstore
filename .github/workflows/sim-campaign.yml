@@ -2,7 +2,8 @@
 # checker on each, the witness checker in both modes among them, in 20
 # jobs of two processes of 2,500 seeds. Each process requires each fault
 # to take effect in 95% of its seeds, and a process of 2,000 seeds or
-# more a stopped gray leader too (#183). Started by the worker:
+# more a stalled leader that went silent too (#218, #233). Started by the
+# worker:
 #   gh workflow run sim-campaign.yml -f first=<seed>
 # A failing seed prints the command that runs it again, and its trace, how
 # it left each node and its history are uploaded with the job's logs.

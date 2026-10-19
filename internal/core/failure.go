@@ -46,7 +46,7 @@ type Failure int
 
 const (
 	// Stop ends the process; a new one recovers from the disk. This is
-	// the effect of a failed disk, a stalled commit and any error with no
+	// the effect of a failed disk and any error with no
 	// other effect.
 	Stop Failure = iota
 	// Reload ends the run, and a new core starts from the log in the same

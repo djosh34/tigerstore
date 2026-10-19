@@ -26,9 +26,14 @@ import (
 // first start on, so a restart depends neither on --initial-cluster, which
 // a joined node's differs from the first members', nor on discovery; a
 // first start that fails after writing it starts the same way again.
+// first is whether the node bootstrapped the cluster, as one of its first
+// members: every start takes it from here, not from
+// --initial-cluster-state, which etcd ignores once a node has a member
+// file. A file without it, from before it was kept, counts as a joiner.
 type identity struct {
 	id, cluster uint64
 	members     []*pb.Member
+	first       bool
 }
 
 // identityJSON is the identity file's format.
@@ -36,6 +41,7 @@ type identityJSON struct {
 	ID      uint64       `json:"id"`
 	Cluster uint64       `json:"cluster"`
 	Members []memberJSON `json:"members"`
+	First   bool         `json:"first,omitempty"`
 }
 
 type memberJSON struct {
@@ -65,7 +71,7 @@ func readIdentity(dataDir string) (identity, bool, error) {
 	if err := json.Unmarshal(b, &j); err != nil {
 		return identity{}, false, fmt.Errorf("%s: %w", identityFile(dataDir), err)
 	}
-	id := identity{id: j.ID, cluster: j.Cluster}
+	id := identity{id: j.ID, cluster: j.Cluster, first: j.First}
 	for _, m := range j.Members {
 		id.members = append(id.members, &pb.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs})
 	}
@@ -124,12 +130,12 @@ func newIdentity(ec *embed.Config, cluster clusterSpec, pcfg peer.Config) (ident
 func clusterIdentity(cluster clusterSpec) identity {
 	h := fnv.New64a()
 	h.Write([]byte(cluster.token + "/" + cluster.key))
-	return identity{id: cluster.members[cluster.self].id, cluster: h.Sum64(), members: initialMembers(cluster.members)}
+	return identity{id: cluster.members[cluster.self].id, cluster: h.Sum64(), members: initialMembers(cluster.members), first: true}
 }
 
 // saveIdentity writes the identity file and syncs it and its directory.
 func saveIdentity(dataDir string, id identity) error {
-	j := identityJSON{ID: id.id, Cluster: id.cluster}
+	j := identityJSON{ID: id.id, Cluster: id.cluster, First: id.first}
 	for _, m := range id.members {
 		j.Members = append(j.Members, memberJSON{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs})
 	}

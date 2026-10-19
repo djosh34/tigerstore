@@ -231,6 +231,9 @@ func start(c *config, lg *zap.Logger) error {
 	// The node hands the transport the members once it runs; until then,
 	// those it started with.
 	pcfg.ID, pcfg.Peers = ident.id, node.PeerAddrs(ident.members)
+	if len(ec.AdvertisePeerUrls) > 0 {
+		pcfg.Addr = ec.AdvertisePeerUrls[0].Host
+	}
 	pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer, pcfg.Removed = n.Deliver, n.Unreachable, n.Serve, n.Answer, n.Removed
 	t, err := peer.Start(pcfg)
 	if err != nil {
@@ -356,14 +359,16 @@ func bootstrapDefrag(ctx context.Context, n *node.Node, thresholdMB uint, lg *za
 func coreConfig(ec *embed.Config, ident identity) core.Config {
 	ccfg := core.DefaultConfig(ident.id, nil)
 	ccfg.ClusterID = ident.cluster
-	if ec.IsNewCluster() {
-		ccfg.Members = ident.members
-		for _, m := range ccfg.Members {
-			ccfg.Peers = append(ccfg.Peers, m.ID)
-		}
-	} else {
-		ccfg.Join = true
+	// The identity's members go to the core on every start, as the
+	// persisted initial configuration a first member's log starts with
+	// (#247). Whether the node joined comes from the identity too, not from
+	// this start's --initial-cluster-state: it decides whether an empty log
+	// is bootstrapped and whether a torn bootstrap is repaired (#280).
+	ccfg.Members = ident.members
+	for _, m := range ccfg.Members {
+		ccfg.Peers = append(ccfg.Peers, m.ID)
 	}
+	ccfg.Join = !ident.first
 	ccfg.TickMillis = int64(ec.TickMs)
 	ccfg.ElectionTicks = ec.ElectionTicks()
 	ccfg.NoPreVote = !ec.PreVote

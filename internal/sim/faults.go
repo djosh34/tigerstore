@@ -238,6 +238,15 @@ type checkpoint struct {
 	started []bool
 }
 
+// coldDisks are the disks a failed cold restart started from, the time
+// of their copy and the erased one, and the nodes of the cold restart.
+type coldDisks struct {
+	at     int64
+	erased int
+	disks  []*simfs.Disk
+	nodes  []*node
+}
+
 // newCheckpoint copies every disk. The lock is held, so every disk is
 // copied at the same instant.
 func (s *Sim) newCheckpoint() *checkpoint {
@@ -358,10 +367,13 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 			for _, l := range lines {
 				s.tracef("cold restart: %s", l)
 			}
+			if s.cold == nil {
+				s.cold = &coldDisks{at: c.at, erased: erased, disks: c.disks, nodes: r.nodes}
+			}
 			s.mu.Unlock()
 		}
 	}()
-	r.healed = true
+	r.healed, r.votes = true, true
 	r.base, r.baseUpTo = s.log, c.applied
 	for i, d := range c.disks {
 		if i == erased {
@@ -369,6 +381,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 		}
 		n := r.nodes[i]
 		n.disk, n.id = d.Durable(), c.ids[i]
+		r.traceDisk(n)
 		// A process stopped by a peer's removed-member reply may not
 		// have the removal on disk. Cold boot must recover that disk,
 		// not copy the old process's volatile stopped flag. Only a node

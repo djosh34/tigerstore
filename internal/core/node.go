@@ -34,18 +34,19 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
-// StallTicks is how many election timeouts a leader's append may take
-// before it hands leadership to a follower (handOff).
+// StallTicks is how many election timeouts a leader's own append may
+// take before the leader sends nothing more to its peers, until its disk
+// catches up (stalled). As in etcd, whose leader sends nothing while its
+// disk write blocks, the followers stop hearing from it and elect another
+// leader, and it steps down when it hears the new term. It never stops.
 const StallTicks = 2
 
-// ErrCommitStalled stops a leader with other voters whose own entries have
-// not committed for CommitStallTicks election timeouts.
-var ErrCommitStalled = errors.New("core: the leader's entries stopped committing; stopping so that another node can lead")
-
-// CommitStallTicks is how many election timeouts a leader's entry may wait
-// to commit. It is above StallTicks, so a stalled local disk is caught
-// first, and above what the healthy pair needs.
-const CommitStallTicks = 3
+// SlowCommitTicks is how many election timeouts a leader's entry may wait
+// to commit before the leader warns (Effects.SlowCommit) and counts it
+// (Counters.SlowCommits). Nothing else happens: as in etcd, a leader whose
+// entries do not commit stays leader, and its writes wait until the
+// cluster heals.
+const SlowCommitTicks = 3
 
 // MaxRequestBytes is etcd's default --max-request-bytes.
 const MaxRequestBytes = 1536 * 1024
@@ -85,14 +86,12 @@ type Config struct {
 	// ProgressTicks is the interval of progress notifications to watchers
 	// that ask for them; 0 turns them off.
 	ProgressTicks int
-	// CommitStallElections is how many election timeouts a leader's entry
-	// may wait to commit before the leader stops; 0 means
-	// CommitStallTicks. StallElections is how many its own append may
-	// take before it hands over; 0 means StallTicks. Both watch the
-	// disks, so tests at shorter ticks set them higher to keep the time a
-	// real node allows; the stress job sets the first lower to catch
-	// shorter stalls.
-	CommitStallElections, StallElections int
+	// SlowCommitElections is how many election timeouts a leader's entry
+	// may wait to commit before a warning; 0 means SlowCommitTicks.
+	// StallElections is how many its own append may take before it goes
+	// silent; 0 means StallTicks. Both watch the disks, so tests at
+	// shorter ticks set them higher to keep the time a real node allows.
+	SlowCommitElections, StallElections int
 
 	// WindowBytes is how many bytes of applied entries stay in memory, and
 	// WindowMaxBytes how many while a follower still needs them. Older
@@ -349,9 +348,11 @@ type Effects struct {
 	// Members, if set, are the members after a change; the driver
 	// connects to their peer URLs.
 	Members []*pb.Member
-	// HandOff, if set, is the follower that this leader asked Raft to
-	// make leader because its own disk stalled (handOff).
-	HandOff uint64
+	// SlowCommit is set when the leader's oldest entry not committed has
+	// just waited SlowCommitElections election timeouts, and Silent when
+	// its own append has just taken StallElections and it went silent
+	// (stalled). The driver logs both.
+	SlowCommit, Silent bool
 }
 
 // CheckpointChunk is part of the checkpoint at Index.
@@ -455,13 +456,16 @@ type Node struct {
 	held           []*raftpb.Message
 	// appending holds the tick at which each local append with entries
 	// went to disk, oldest first; appends finish in order. If the oldest
-	// gets too old on the leader, its disk is stalled and it fences itself.
+	// gets too old on the leader, it sends nothing to its peers (stalled).
 	appending []int64
 	// uncommitted holds the last index and the tick of each local append
 	// with entries since this node became leader, until they commit.
-	// maxCommitWait is the most ticks one of them waited to commit.
-	uncommitted   []proposedAt
-	maxCommitWait int64
+	// maxCommitWait is the most ticks one of them waited to commit, those
+	// still waiting included. slowCommit and silent were the leader's
+	// state at the last tick, so that each episode is reported once.
+	uncommitted        []proposedAt
+	maxCommitWait      int64
+	slowCommit, silent bool
 	// own holds the last index of each append not yet durable that
 	// carries a batch of the leader's own writes, oldest first. While
 	// ownDepth of them are on their way, new writes wait. awaitOwn marks
@@ -589,9 +593,13 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		st.setConf(root.Index, state.confState())
 	}
 	// The commit index on disk can lag what was applied, which a
-	// checkpoint shows.
+	// checkpoint shows, and the members a new cluster's log starts with.
 	hs := rec.HardState
-	hs.Commit = max(hs.Commit, n.applied)
+	boot, err := bootstrapped(cfg, rec, disk)
+	if err != nil {
+		return nil, err
+	}
+	hs.Commit = max(hs.Commit, n.applied, boot)
 	n.readInline = true
 	term, err := n.replay(hs.Commit)
 	n.readInline = false
@@ -643,6 +651,79 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		n.out.Members = n.state.cloneMembers()
 	}
 	return n, nil
+}
+
+// bootstrapped is how many entries at the start of the log are the
+// cluster's first members, cfg.Peers, as Raft's Bootstrap wrote them:
+// configuration changes of term 1, which it writes as committed on every
+// first member. A crash can keep them without the commit index that
+// follows them on disk (wal.Append). Applied on start, they give Raft its
+// voters, so the node can campaign; without them it could only vote, and
+// a cold restart in which it holds the longest log never elects (#247).
+// The driver keeps cfg.Peers on disk from the first start on, so they are
+// the persisted initial configuration, whether or not this start is
+// flagged as a join. A log that holds only some of them, or other ones,
+// gets 0: applying part of the members would make the driver drop the
+// peers it was started with.
+func bootstrapped(cfg Config, rec *wal.Recovered, disk Log) (uint64, error) {
+	if rec.Root.Index > 0 || len(cfg.Peers) == 0 || rec.Last < uint64(len(cfg.Peers)) {
+		return 0, nil
+	}
+	for i, id := range cfg.Peers {
+		e, err := disk.Entry(uint64(i) + 1)
+		if err != nil {
+			return 0, fmt.Errorf("core: read entry %d: %w", i+1, err)
+		}
+		if e.GetTerm() != 1 || e.GetType() != raftpb.EntryConfChange {
+			return 0, nil
+		}
+		var cc raftpb.ConfChange
+		if err := proto.Unmarshal(e.GetData(), &cc); err != nil {
+			return 0, fmt.Errorf("core: entry %d: %w", i+1, err)
+		}
+		if cc.GetNodeId() != id {
+			return 0, nil
+		}
+	}
+	return uint64(len(cfg.Peers)), nil
+}
+
+// TornBootstrap returns the end of the first members' configuration
+// entries, as Raft's Bootstrap writes them for cfg.Peers at term 1, when
+// a crash cut it off: the log holds only the first of them, equal to
+// those, and nothing else. Every first member writes the same entries
+// from the same persisted peers, so the driver appends the rest and syncs
+// them before it starts the core, which then applies them all
+// (bootstrapped). Without them, a cold restart in which every survivor
+// kept only part of them never elects: no node has voters to campaign
+// with (#280). A node started to join gets none, as its peers are not the
+// first members.
+func TornBootstrap(cfg Config, rec *wal.Recovered, disk Log) ([]*raftpb.Entry, error) {
+	if cfg.Join || rec.Root.Index > 0 || rec.Last == 0 || rec.Last >= uint64(len(cfg.Peers)) {
+		return nil, nil
+	}
+	peers, err := bootstrapPeers(cfg)
+	if err != nil {
+		return nil, err
+	}
+	ents := make([]*raftpb.Entry, len(peers))
+	for i, p := range peers {
+		data, err := proto.Marshal(&raftpb.ConfChange{Type: raftpb.ConfChangeAddNode.Enum(), NodeId: new(p.ID), Context: p.Context})
+		if err != nil {
+			return nil, err
+		}
+		ents[i] = &raftpb.Entry{Type: raftpb.EntryConfChange.Enum(), Term: new(uint64(1)), Index: new(uint64(i + 1)), Data: data}
+	}
+	for i := uint64(1); i <= rec.Last; i++ {
+		e, err := disk.Entry(i)
+		if err != nil {
+			return nil, fmt.Errorf("core: read entry %d: %w", i, err)
+		}
+		if !proto.Equal(e, ents[i-1]) {
+			return nil, nil
+		}
+	}
+	return ents[rec.Last:], nil
 }
 
 // replay applies the committed entries after the checkpoint, read from
@@ -788,21 +869,15 @@ func (n *Node) Tick() {
 		return
 	}
 	n.expire()
-	// A lone voter has no one to lead in its place, so stopping would only
-	// turn a slow disk into an outage; it waits for its disk instead. It
-	// still calls commitStalled, which trims uncommitted.
-	alone := len(n.state.voters()) == 1
-	stall := int64(cmp.Or(n.cfg.StallElections, StallTicks)) * int64(n.cfg.ElectionTicks)
-	if !planted.On("B17") && !alone && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= stall {
-		n.handOff()
+	slow, silent := n.slowCommits(), n.stalled()
+	if slow && !n.slowCommit {
+		n.out.SlowCommit = true
+		n.counters.SlowCommits++
 	}
-	if n.isLeader && n.commitStalled() && !alone {
-		// The same for a gray leader whose heartbeats get through but
-		// whose appends do not: Raft's quorum check sees a live quorum,
-		// yet nothing commits.
-		n.fail(ErrCommitStalled)
-		return
+	if silent && !n.silent {
+		n.out.Silent = true
 	}
+	n.slowCommit, n.silent = slow, silent
 	n.retryReads(false)
 	n.publish()
 	if n.cfg.every(n.now, 1) {
@@ -1421,8 +1496,11 @@ func (n *Node) Persisted(job PersistJob) {
 	if job.newVote {
 		n.unsyncedVotes--
 		if n.unsyncedVotes == 0 {
-			n.out.Send = append(n.out.Send, n.held...)
+			held := n.held
 			n.held = nil
+			for _, m := range held {
+				n.send(m)
+			}
 		}
 	}
 	n.deliver(job.msg.GetResponses())
@@ -2037,39 +2115,13 @@ type proposedAt struct {
 	at    int64
 }
 
-// handOff asks Raft to make the follower with the longest log among those
-// it heard from in the last election timeout the leader, unless a
-// transfer is under way; Raft gives one up after an election timeout, and
-// the next tick asks again. A leader whose disk stalls still heartbeats,
-// so the others would never elect a replacement, and once its entries not
-// yet on its disk fill their budget it holds up the writes of the whole
-// cluster. As a follower it holds up only its own clients, until its disk
-// is back. Effects.HandOff names the follower.
-func (n *Node) handOff() {
-	st := n.rn.Status()
-	if st.LeadTransferee != 0 {
-		return
-	}
-	var to, match uint64
-	for id, pr := range st.Progress {
-		if id == n.cfg.ID || pr.IsLearner || !pr.RecentActive {
-			continue
-		}
-		if to == 0 || pr.Match > match || pr.Match == match && id < to {
-			to, match = id, pr.Match
-		}
-	}
-	if to == 0 {
-		return
-	}
-	n.rn.TransferLeader(to)
-	n.out.HandOff = to
-}
-
-// commitStalled drops the leader's appends that have committed and reports
-// whether the oldest one left has waited CommitStallElections election
+// slowCommits drops the leader's appends that have committed and reports
+// whether the oldest one left has waited SlowCommitElections election
 // timeouts.
-func (n *Node) commitStalled() bool {
+func (n *Node) slowCommits() bool {
+	if !n.isLeader {
+		return false
+	}
 	commit := n.rn.BasicStatus().GetCommit()
 	i := 0
 	for i < len(n.uncommitted) && n.uncommitted[i].index <= commit {
@@ -2077,8 +2129,20 @@ func (n *Node) commitStalled() bool {
 		i++
 	}
 	n.uncommitted = n.uncommitted[i:]
-	limit := int64(cmp.Or(n.cfg.CommitStallElections, CommitStallTicks)) * int64(n.cfg.ElectionTicks)
-	return len(n.uncommitted) > 0 && n.now-n.uncommitted[0].at >= limit
+	if len(n.uncommitted) == 0 {
+		return false
+	}
+	wait := n.now - n.uncommitted[0].at
+	n.maxCommitWait = max(n.maxCommitWait, wait)
+	return wait >= int64(cmp.Or(n.cfg.SlowCommitElections, SlowCommitTicks))*int64(n.cfg.ElectionTicks)
+}
+
+// stalled reports whether this node leads and its oldest append not yet
+// durable has taken StallElections election timeouts: its disk is stuck,
+// and it sends nothing to its peers until the disk catches up.
+func (n *Node) stalled() bool {
+	limit := int64(cmp.Or(n.cfg.StallElections, StallTicks)) * int64(n.cfg.ElectionTicks)
+	return !planted.On("B17") && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= limit
 }
 
 // maxHeld bounds the messages held while a term or vote change is not yet
@@ -2086,8 +2150,16 @@ func (n *Node) commitStalled() bool {
 const maxHeld = 1024
 
 // send puts a message to a peer out, or holds it while a term or vote
-// change is not yet durable.
+// change is not yet durable. A stalled leader drops it: Raft sends again
+// what its peers miss, and messages to this node still step it, so it
+// learns of a new leader's term.
 func (n *Node) send(m *raftpb.Message) {
+	if n.stalled() {
+		if m.GetType() == raftpb.MsgHeartbeat {
+			n.counters.HeartbeatSendFailures++
+		}
+		return
+	}
 	if n.unsyncedVotes > 0 {
 		// Raft resends what it loses, so past the bound the newest
 		// messages are dropped instead of held.

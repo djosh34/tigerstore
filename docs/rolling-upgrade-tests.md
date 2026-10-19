@@ -1,6 +1,6 @@
 # Rolling upgrade tests
 
-`rolling-upgrade.yml` runs the real-process tests in `cmd/chaos/rolling_test.go`. It builds two copies of the checked-out server with Go overlays. The old copy supports entry format 1 and peer range 1-1. The new copy supports entry formats 1-2 and peer range 1-2. Only those constants differ. These are synthetic version ranges, not previous release binaries.
+`rolling-upgrade.yml` runs the real-process tests in `cmd/chaos/rolling_test.go`. It builds two copies of the checked-out server with Go overlays. The old copy supports entry format 1 and peer range 2-2. The new copy supports entry formats 1-2 and peer range 2-3. Only those constants differ. These are synthetic version ranges, not previous release binaries.
 
 The tests reuse the chaos cluster, TLS links, workload, history recorder and six checker verdicts. Each upgrade stage must contain successful writes. The evidence includes the histories, WALs, server logs, captured announcements and old-binary refusal. Checker timeouts fail the run.
 

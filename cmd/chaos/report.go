@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"maps"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,11 +84,62 @@ func (c *cluster) report(ctx context.Context) string {
 			}
 			fmt.Fprintf(&b, "  members: %s\n", strings.Join(parts, ", "))
 		}
+		fmt.Fprintf(&b, "  heartbeats: %s\n", c.heartbeats(ctx, i))
 		for _, line := range lastLines(n.log.Name(), reportLines) {
 			fmt.Fprintf(&b, "  %s\n", line)
 		}
 	}
 	return b.String()
+}
+
+// heartbeats says how long ago node i last wrote a Raft heartbeat to each
+// peer and read one from each, from its /metrics (#241).
+func (c *cluster) heartbeats(ctx context.Context, i int) string {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+c.nodes[i].control.Endpoints()[0]+"/metrics", nil)
+	if err != nil {
+		return err.Error()
+	}
+	hc := &http.Client{Transport: &http.Transport{TLSClientConfig: c.tls}}
+	defer hc.CloseIdleConnections()
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "no answer: " + err.Error()
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return heartbeatAges(resp.Body, time.Now())
+}
+
+// heartbeatAges reads the heartbeat times of a /metrics page and says how
+// long before now each was.
+func heartbeatAges(r io.Reader, now time.Time) string {
+	var parts []string
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		for prefix, dir := range map[string]string{"tigerstore_network_heartbeat_sent_time_seconds{": "to", "tigerstore_network_heartbeat_received_time_seconds{": "from"} {
+			rest, ok := strings.CutPrefix(sc.Text(), prefix)
+			if !ok {
+				continue
+			}
+			labels, value, _ := strings.Cut(rest, "} ")
+			at, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				parts = append(parts, fmt.Sprintf("%s %s: %v", dir, labels, err))
+				continue
+			}
+			ago := now.Sub(time.Unix(0, int64(at*1e9)))
+			parts = append(parts, fmt.Sprintf("%s %s %.1fs ago", dir, labels, ago.Seconds()))
+		}
+	}
+	if err := sc.Err(); err != nil {
+		parts = append(parts, err.Error())
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	slices.Sort(parts)
+	return strings.Join(parts, ", ")
 }
 
 // lastLines returns the last n lines of a file, each cut to 400 bytes.

@@ -4,12 +4,21 @@
 // Both ends verify the other's certificate against the peer CA and, when
 // set, the allowed CommonNames or hostnames. Both ends also offer the
 // protocol versions they speak in TLS ALPN, as "tigerstore-peer/<version>".
-// After the TLS handshake, the dialing node writes a 12-byte preface: the
-// magic "TS", the lowest and the highest version it speaks, and its Raft
-// ID as 8 bytes. The accepting node replies with 1 byte: the highest
-// version both speak, which must be the one ALPN chose, or 0 if there is
-// none, after which it closes. Then each frame is a 4-byte length and a
-// protobuf raftpb.Message.
+// After the TLS handshake, the dialing node writes a preface: the magic
+// "TS", the lowest and the highest version it speaks, its Raft ID as 8
+// bytes, and the host:port it advertises for peers, after a 1-byte length.
+// The accepting node replies with 1 byte: the highest version both speak,
+// which must be the one ALPN chose, or 0 if there is none, after which it
+// closes. Then each frame is a 4-byte length and a protobuf
+// raftpb.Message. The accepting node writes nothing more on that
+// connection; the dialer reads it only to see it close.
+//
+// As etcd's peers take messages from any member they have not removed, a
+// node takes a message connection from a member it does not know yet,
+// such as one added in entries it has not applied, and sends its replies
+// to the address in the preface (addRemote), from where it also fetches
+// the snapshots that member sends as leader. A member behind on
+// membership can so vote for a newer one and catch up from it (#250).
 //
 // A follower fetches a snapshot on a connection of its own: its preface
 // carries its Raft ID with the top bit set. After the reply it writes the
@@ -70,8 +79,11 @@ type Config struct {
 	ID uint64
 	// Listeners accept peers, those of etcd's --listen-peer-urls.
 	Listeners []net.Listener
-	// Peers maps every other node's Raft ID to its host:port.
+	// Peers maps every other node's Raft ID to its host:port. Addr is this
+	// node's own, which its prefaces carry; SetPeers follows this node's
+	// entry in its peers, as when the member's peer URL changes.
 	Peers map[uint64]string
+	Addr  string
 	// Certificate is this node's peer certificate and CA the pool that
 	// verifies other nodes' certificates. The transport requires TLS 1.3
 	// and verifies both ends.
@@ -138,11 +150,13 @@ type Config struct {
 const (
 	// minVersion and maxVersion are the protocol versions this binary
 	// speaks. Version 0 stands for the unversioned protocol from before
-	// version 1, which this binary does not speak. A release that raises
-	// maxVersion keeps minVersion at or below the previous release's
-	// maxVersion, so that nodes can be upgraded one at a time.
-	minVersion = 1
-	maxVersion = 1
+	// version 1. Version 2 added the dialer's address to the preface
+	// (#250); no release spoke version 1, so this binary speaks neither. A
+	// release that raises maxVersion keeps minVersion at or below the
+	// previous release's maxVersion, so that nodes can be upgraded one at
+	// a time.
+	minVersion = 2
+	maxVersion = 2
 )
 
 // magic starts the preface.
@@ -207,9 +221,15 @@ type TCP struct {
 	senders atomic.Pointer[map[uint64]*sender]
 	removed atomic.Pointer[map[uint64]bool]
 	peersMu sync.Mutex
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
+	// remotes are the senders to members this node does not know yet but
+	// that sent it messages (addRemote), until SetPeers makes them peers or
+	// removes them. self is the address in this node's prefaces.
+	remoteMu sync.Mutex
+	remotes  map[uint64]*sender
+	self     atomic.Pointer[string]
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
 
 	mu    sync.Mutex
 	conns map[net.Conn]struct{}
@@ -270,7 +290,9 @@ func Start(cfg Config) (*TCP, error) {
 		conns:      map[net.Conn]struct{}{},
 		inbound:    map[net.Conn]inbound{},
 		logged:     map[string]time.Time{},
+		remotes:    map[uint64]*sender{},
 	}
+	t.self.Store(&cfg.Addr)
 	t.senders.Store(&map[uint64]*sender{})
 	t.SetPeers(cfg.Peers, nil)
 	for _, ln := range lns {
@@ -312,8 +334,9 @@ func (t *TCP) peer(id uint64) (*sender, bool) {
 
 // SetPeers makes peers the nodes the transport sends to and accepts
 // connections from, by Raft ID and host:port. A peer that is new or has
-// a new address gets a writer; one that is gone loses its writer and its
-// connection. A removed node that connects hears that it was removed.
+// a new address gets a writer; one that is gone loses its writer. A
+// removed node loses its connections to this node, and when it connects
+// again it hears that it was removed.
 func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
 	t.peersMu.Lock()
 	defer t.peersMu.Unlock()
@@ -322,6 +345,9 @@ func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
 		gone[id] = true
 	}
 	t.removed.Store(&gone)
+	if addr, ok := peers[t.cfg.ID]; ok {
+		t.self.Store(&addr)
+	}
 	old := *t.senders.Load()
 	next := make(map[uint64]*sender, len(peers))
 	for id, addr := range peers {
@@ -332,19 +358,7 @@ func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
 			next[id] = s
 			continue
 		}
-		ctx, cancel := context.WithCancel(t.ctx)
-		s := &sender{
-			t:        t,
-			id:       id,
-			addr:     addr,
-			ctx:      ctx,
-			cancel:   cancel,
-			ctrl:     make(chan queued, controlQueue),
-			data:     make(chan queued, dataQueue),
-			counters: t.countersOf(id),
-		}
-		next[id] = s
-		t.wg.Go(s.run)
+		next[id] = t.newSender(id, addr)
 	}
 	for id, s := range old {
 		if next[id] != s {
@@ -352,16 +366,55 @@ func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
 		}
 	}
 	t.senders.Store(&next)
-	// A peer that left may still be connected to this node.
+	t.remoteMu.Lock()
+	for id, s := range t.remotes {
+		if _, ok := next[id]; ok || gone[id] {
+			s.cancel()
+			delete(t.remotes, id)
+		}
+	}
+	t.remoteMu.Unlock()
 	t.mu.Lock()
 	for c, in := range t.inbound {
-		if _, ok := next[in.id]; !ok {
+		if gone[in.id] {
 			if err := c.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 				t.logf("peer: close: %v", err)
 			}
 		}
 	}
 	t.mu.Unlock()
+}
+
+// newSender starts a writer to peer id at addr.
+func (t *TCP) newSender(id uint64, addr string) *sender {
+	ctx, cancel := context.WithCancel(t.ctx)
+	s := &sender{
+		t:        t,
+		id:       id,
+		addr:     addr,
+		ctx:      ctx,
+		cancel:   cancel,
+		ctrl:     make(chan queued, controlQueue),
+		data:     make(chan queued, dataQueue),
+		counters: t.countersOf(id),
+	}
+	t.wg.Go(s.run)
+	return s
+}
+
+// addRemote gives replies to member id, which this node does not know
+// yet, a writer to addr, as etcd's addRemoteFromRequest does. A new
+// address replaces the old writer.
+func (t *TCP) addRemote(id uint64, addr string) {
+	t.remoteMu.Lock()
+	defer t.remoteMu.Unlock()
+	if s, ok := t.remotes[id]; ok {
+		if s.addr == addr {
+			return
+		}
+		s.cancel()
+	}
+	t.remotes[id] = t.newSender(id, addr)
 }
 
 // Addr is the address the transport listens on.
@@ -418,19 +471,32 @@ func (t *TCP) Versions() Versions {
 	}
 	t.mu.Lock()
 	for _, in := range t.inbound {
-		v.In[in.id] = max(v.In[in.id], in.version)
+		if _, ok := v.Out[in.id]; ok {
+			v.In[in.id] = max(v.In[in.id], in.version)
+		}
 	}
 	t.mu.Unlock()
 	return v
 }
 
-// Send queues a message for its peer.
-func (t *TCP) Send(m *raftpb.Message) {
-	s, ok := t.peer(m.GetTo())
-	if !ok {
-		return
+// to returns the writer to peer id, or to a member this node does not
+// know yet that sent it messages (addRemote).
+func (t *TCP) to(id uint64) (*sender, bool) {
+	if s, ok := t.peer(id); ok {
+		return s, true
 	}
-	s.send(m)
+	t.remoteMu.Lock()
+	defer t.remoteMu.Unlock()
+	s, ok := t.remotes[id]
+	return s, ok
+}
+
+// Send queues a message for its peer, or for a member this node does not
+// know yet that sent it messages (addRemote).
+func (t *TCP) Send(m *raftpb.Message) {
+	if s, ok := t.to(m.GetTo()); ok {
+		s.send(m)
+	}
 }
 
 // Close stops the transport and waits for its goroutines.
@@ -569,6 +635,9 @@ func (t *TCP) frames(r io.Reader, from uint64, cs *counters) error {
 			return fmt.Errorf("peer %d sent a message from %d", from, m.GetFrom())
 		}
 		cs.received.Add(float64(len(hdr) + len(buf)))
+		if m.GetType() == raftpb.MsgHeartbeat {
+			cs.heartbeatReceived.SetToCurrentTime()
+		}
 		t.cfg.Deliver(m)
 	}
 }
@@ -597,26 +666,37 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 	if name == "" {
 		return 0, 0, 0, errors.New("the dialer offers no version in ALPN; it may be a node from before version 1")
 	}
-	var p [12]byte
+	var p [13]byte
 	if _, err := io.ReadFull(r, p[:]); err != nil {
 		return 0, 0, 0, err
 	}
 	if p[0] != magic[0] || p[1] != magic[1] {
 		return 0, 0, 0, fmt.Errorf("the preface starts with %#x, not the magic \"TS\"", p[:2])
 	}
-	id = binary.BigEndian.Uint64(p[4:])
+	addr := make([]byte, p[12])
+	if _, err := io.ReadFull(r, addr); err != nil {
+		return 0, 0, 0, err
+	}
+	id = binary.BigEndian.Uint64(p[4:12])
 	mode = id & (fetchBit | callBit)
 	id &^= fetchBit | callBit
-	if _, ok := t.peer(id); !ok && (id != 0 || mode != callBit) {
-		if (*t.removed.Load())[id] {
+	if _, ok := t.peer(id); !ok {
+		_, _, aerr := net.SplitHostPort(string(addr))
+		switch {
+		case (*t.removed.Load())[id]:
 			// As etcd's peers answer a removed member, so that it stops.
 			err = c.SetWriteDeadline(t.writeDeadline())
 			if err == nil {
 				_, err = c.Write([]byte{removedReply})
 			}
 			return 0, 0, 0, errors.Join(fmt.Errorf("peer %d was removed from the cluster", id), err)
+		case id == 0 && mode == callBit:
+			// A node that has no ID yet asks to join.
+		case id != 0 && id != t.cfg.ID && mode == 0 && aerr == nil:
+			t.addRemote(id, string(addr))
+		default:
+			return 0, 0, 0, fmt.Errorf("unknown peer %d at %q", id, addr)
 		}
-		return 0, 0, 0, fmt.Errorf("unknown peer %d", id)
 	}
 	v = pick(p[2], p[3], t.cfg.minVersion, t.cfg.maxVersion)
 	switch {
@@ -645,13 +725,14 @@ func remoteHost(c net.Conn) string {
 }
 
 // preface is what a dialer writes after the TLS handshake: the magic, the
-// lowest and the highest version it speaks, and id.
+// lowest and the highest version it speaks, id, and the length and bytes
+// of the address it advertises. An address over 255 bytes is left out.
 func (t *TCP) preface(id uint64) []byte {
-	p := make([]byte, 12)
-	copy(p, magic[:])
-	p[2], p[3] = t.cfg.minVersion, t.cfg.maxVersion
-	binary.BigEndian.PutUint64(p[4:], id)
-	return p
+	p := binary.BigEndian.AppendUint64([]byte{magic[0], magic[1], t.cfg.minVersion, t.cfg.maxVersion}, id)
+	if addr := *t.self.Load(); len(addr) <= 255 {
+		return append(append(p, byte(len(addr))), addr...)
+	}
+	return append(p, 0)
 }
 
 // removedReply is the acceptor's reply to a node the cluster removed, in
@@ -701,7 +782,9 @@ func (w *deadlineWriter) Write(p []byte) (int, error) {
 
 // Fetch opens a connection to peer id that fetches a snapshot stream.
 func (t *TCP) Fetch(ctx context.Context, id, first, last uint64) (io.ReadCloser, error) {
-	s, ok := t.peer(id)
+	// A leader this node does not know yet sends it a snapshot when it is
+	// behind on membership, as after a cold restart (#250).
+	s, ok := t.to(id)
 	if !ok {
 		return nil, fmt.Errorf("peer: unknown peer %d", id)
 	}
@@ -906,7 +989,7 @@ func (s *sender) run() {
 		s.version.Store(uint32(v))
 		s.since.Store(time.Now().UnixNano())
 		s.counters.active.Inc()
-		err = s.write(ctx, c)
+		err = s.connected(ctx, c)
 		s.counters.active.Dec()
 		s.version.Store(0)
 		s.since.Store(0)
@@ -916,8 +999,36 @@ func (s *sender) run() {
 			s.t.logf("peer: send to %d: %v", s.id, err)
 			s.drop()
 		}
-		s.t.untrack(c)
 	}
+}
+
+// connected writes to c until it fails, the transport closes or the peer
+// closes it, then closes it. The peer writes nothing after the handshake,
+// so a read ends only when the connection does: a node with nothing to
+// send still sees the peer close it, as when the cluster removed this
+// node, and dials again to hear why (#263).
+func (s *sender) connected(ctx context.Context, c net.Conn) error {
+	ctx, stop := context.WithCancel(ctx)
+	var rerr error
+	read := make(chan struct{})
+	go func() {
+		defer close(read)
+		defer stop()
+		var b [1]byte
+		if _, err := c.Read(b[:]); err == nil {
+			rerr = fmt.Errorf("peer %d wrote on a message connection", s.id)
+		} else {
+			rerr = err
+		}
+	}()
+	err := s.write(ctx, c)
+	stop()
+	s.t.untrack(c)
+	<-read
+	if err == nil && s.ctx.Err() == nil {
+		err = rerr
+	}
+	return err
 }
 
 // dial connects to the peer and runs the handshake, with id in the
@@ -1037,6 +1148,9 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 			return err
 		}
 		s.counters.sent.Add(float64(len(buf)))
+		if m.GetType() == raftpb.MsgHeartbeat {
+			s.counters.heartbeatSent.SetToCurrentTime()
+		}
 	}
 }
 

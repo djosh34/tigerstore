@@ -213,6 +213,7 @@ func run(cfg config) (*report, error) {
 	if err != nil || s.failed() != nil {
 		rep.NodesAtFailure = c.report(context.Background())
 	}
+	err = errors.Join(err, c.writeMemory(cfg.out))
 	c.stop()
 	for i, n := range c.nodes {
 		rep.Nodes[i].Starts = n.starts
@@ -250,6 +251,16 @@ func (s *soak) logf(format string, args ...any) {
 
 func (s *soak) run(ctx context.Context) error {
 	c := s.c
+	mctx, stopMemory := context.WithCancel(ctx)
+	memory := make(chan struct{})
+	go func() {
+		defer close(memory)
+		s.sampleMemory(mctx)
+	}()
+	defer func() {
+		stopMemory()
+		<-memory
+	}()
 	for _, n := range c.nodes {
 		if err := c.start(n); err != nil {
 			return err

@@ -106,9 +106,8 @@ func (p *linkProxy) serve() {
 func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
 	proxies := map[[2]uint64]*linkProxy{}
 	c := newClusterWith(t, func(c *cluster) {
-		// The 64 KiB puts below make fsyncs slow on a shared runner; with
-		// 10 ms ticks the leader's 200 ms disk-stall watchdog stopped it
-		// once in CI. 50 ms ticks give it a second.
+		// The 64 KiB puts below make fsyncs slow on a shared runner; 50 ms
+		// ticks give the 10 election timeouts below 5 s.
 		c.tick = 50 * time.Millisecond
 		c.via = map[[2]uint64]string{}
 		for from := uint64(1); from <= 3; from++ {

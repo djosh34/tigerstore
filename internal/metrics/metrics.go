@@ -82,7 +82,6 @@ type Set struct {
 	// LearnerPromoteFailures those it refused, by reason.
 	LearnerPromotes        prometheus.Counter
 	LearnerPromoteFailures *prometheus.CounterVec
-	HeartbeatSendFailures  prometheus.Counter
 
 	// The traffic with peers, by peer ID.
 	ActivePeers                                *prometheus.GaugeVec
@@ -95,6 +94,10 @@ type Set struct {
 	SnapshotReceive, SnapshotReceiveFailures   *prometheus.CounterVec
 	SnapshotReceiveInflights                   *prometheus.GaugeVec
 	SnapshotReceiveSeconds, PeerRoundTripTimes *prometheus.HistogramVec
+	// HeartbeatSent and HeartbeatReceived are the Unix times of the last
+	// Raft heartbeat written to and read from each peer, for a failure's
+	// report (#241).
+	HeartbeatSent, HeartbeatReceived *prometheus.GaugeVec
 
 	// FeatureEnabled holds the feature gates.
 	FeatureEnabled *prometheus.GaugeVec
@@ -174,7 +177,6 @@ func New(features []Feature) (*Set, error) {
 
 		LearnerPromotes:        counter("etcd", "server", "learner_promote_successes", "The total number of successful learner promotions while this member is leader."),
 		LearnerPromoteFailures: counterVec("server", "learner_promote_failures", "The total number of failed learner promotions (likely learner not ready) while this member is leader.", "Reason"),
-		HeartbeatSendFailures:  counter("etcd", "server", "heartbeat_send_failures_total", "The total number of leader heartbeat send failures (likely overloaded from slow disk)."),
 
 		ActivePeers:              gaugeVec("network", "active_peers", "The current number of active peer connections.", "Local", "Remote"),
 		DisconnectedPeers:        counterVec("network", "disconnected_peers_total", "The total number of disconnected peers.", "Local", "Remote"),
@@ -191,6 +193,8 @@ func New(features []Feature) (*Set, error) {
 		SnapshotReceiveFailures:  counterVec("network", "snapshot_receive_failures", "Total number of snapshot receive failures", "From"),
 		SnapshotReceiveSeconds:   histogramVec("network", "snapshot_receive_total_duration_seconds", "Total latency distributions of v3 snapshot receives", exp2(0.1, 10), "From"),
 		PeerRoundTripTimes:       histogramVec("network", "peer_round_trip_time_seconds", "Round-Trip-Time histogram between peers", exp2(0.0001, 16), "To"),
+		HeartbeatSent:            prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "tigerstore_network_heartbeat_sent_time_seconds", Help: "The Unix time of the last Raft heartbeat written to each peer."}, []string{"To"}),
+		HeartbeatReceived:        prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "tigerstore_network_heartbeat_received_time_seconds", Help: "The Unix time of the last Raft heartbeat read from each peer."}, []string{"From"}),
 
 		FeatureEnabled: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "etcd_server_feature_enabled", Help: "Whether or not a feature is enabled. 1 is enabled, 0 is not."}, []string{"name", "stage"}),
 	}
@@ -210,10 +214,11 @@ func New(features []Feature) (*Set, error) {
 		s.Apply, s.Range, s.Hash, s.HashRev, s.SlowApplies, s.Request,
 		s.HealthSuccess, s.HealthFailures, s.HealthCheck, s.HealthChecks,
 		s.ClientRequests, s.StreamFailures, s.WatchStream, s.WatchStreamPerEvent, s.WatchControl, s.WatchProgress,
-		s.LearnerPromotes, s.LearnerPromoteFailures, s.HeartbeatSendFailures,
+		s.LearnerPromotes, s.LearnerPromoteFailures,
 		s.ActivePeers, s.DisconnectedPeers, s.PeerSent, s.PeerReceived, s.PeerSentFailures, s.PeerReceivedFailures,
 		s.SnapshotSend, s.SnapshotSendInflights, s.SnapshotSendFailures, s.SnapshotSendSeconds,
 		s.SnapshotReceive, s.SnapshotReceiveInflights, s.SnapshotReceiveFailures, s.SnapshotReceiveSeconds, s.PeerRoundTripTimes,
+		s.HeartbeatSent, s.HeartbeatReceived,
 		s.FeatureEnabled,
 		&nodeCollector{s: s},
 	}
@@ -314,6 +319,14 @@ var nodeMetrics = []nodeMetric{
 	{
 		desc: desc("etcd_server_slow_read_indexes_total", "The total number of pending read indexes not in sync with leader's or timed out read index requests."), typ: prometheus.CounterValue,
 		value: func(m *core.Metrics) float64 { return float64(m.SlowReadIndexes) },
+	},
+	{
+		desc: desc("etcd_server_heartbeat_send_failures_total", "The total number of leader heartbeat send failures (likely overloaded from slow disk)."), typ: prometheus.CounterValue,
+		value: func(m *core.Metrics) float64 { return float64(m.HeartbeatSendFailures) },
+	},
+	{
+		desc: desc("tigerstore_server_slow_commits_total", "The total number of times the leader's oldest entry waited three election timeouts to commit."), typ: prometheus.CounterValue,
+		value: func(m *core.Metrics) float64 { return float64(m.SlowCommits) },
 	},
 	{
 		desc: desc("etcd_server_quota_backend_bytes", "Current backend storage quota size in bytes."), typ: prometheus.GaugeValue,

@@ -67,14 +67,29 @@ func (n *Netem) Impair(port int, impairment string) error {
 	return err
 }
 
-// Heal takes port back to its base delay.
-func (n *Netem) Heal(port int) error {
+// Heal takes port back to its base delay, and returns its qdisc then.
+// netem's change keeps the corruption and reordering it is not given, so
+// Heal sets every impairment to zero, and fails if the qdisc still shows
+// one (#241).
+func (n *Netem) Heal(port int) (NetemStats, error) {
 	b, ok := n.bands[port]
 	if !ok {
-		return fmt.Errorf("netem: port %d is not set up", port)
+		return NetemStats{}, fmt.Errorf("netem: port %d is not set up", port)
 	}
-	_, err := sudo("tc", "qdisc", "change", "dev", "lo", "parent", fmt.Sprintf("1:%d", b), "handle", fmt.Sprintf("%d:", b*10), "netem", "delay", ms(n.base[port]))
-	return err
+	if _, err := sudo("tc", "qdisc", "change", "dev", "lo", "parent", fmt.Sprintf("1:%d", b), "handle", fmt.Sprintf("%d:", b*10),
+		"netem", "delay", ms(n.base[port]), "loss", "0%", "reorder", "0%", "corrupt", "0%"); err != nil {
+		return NetemStats{}, err
+	}
+	st, err := n.Stats(port)
+	if err != nil {
+		return st, err
+	}
+	for f := range strings.FieldsSeq(st.Qdisc) {
+		if f == "loss" || f == "reorder" || f == "corrupt" || f == "duplicate" {
+			return st, fmt.Errorf("netem: port %d still has %s after healing: %s", port, f, st.Qdisc)
+		}
+	}
+	return st, nil
 }
 
 // NetemStats are the counters of one port's qdisc.

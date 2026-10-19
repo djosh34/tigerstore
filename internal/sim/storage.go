@@ -122,6 +122,11 @@ func (s *Sim) deliverer(p *proc, tn *tnode.Node) func(*raftpb.Message) {
 		} else {
 			s.stats.Messages++
 		}
+		switch t := m.GetType(); {
+		case !s.votes || drop:
+		case t == raftpb.MessageType_MsgVote, t == raftpb.MessageType_MsgPreVote, t == raftpb.MessageType_MsgVoteResp, t == raftpb.MessageType_MsgPreVoteResp:
+			s.tracef("node %d: %s from %d at term %d, last entry %d at term %d, reject %v", p.n.id, t, m.GetFrom(), m.GetTerm(), m.GetIndex(), m.GetLogTerm(), m.GetReject())
+		}
 		s.mu.Unlock()
 		if !drop {
 			tn.Deliver(m)

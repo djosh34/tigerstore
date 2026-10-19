@@ -55,6 +55,9 @@ type node struct {
 	expecting bool
 	exits     []string
 	starts    int
+	// memory is the node's memory each second, for the last two minutes
+	// (sampleMemory).
+	memory []string
 }
 
 func newCluster(cfg config) (*cluster, error) {

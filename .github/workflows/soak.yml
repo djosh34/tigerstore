@@ -49,12 +49,13 @@ jobs:
             -duration "$DURATION" -seed "$SEED" -objects 600000 -memory $((640 << 20)) \
             -disk-budget $((3 << 30)) -workers 16 -rate 400
       - if: always()
-        name: Keep the report and the end of each node's log
+        name: Keep the report, the end of each node's log and its last two minutes of memory
         run: |
           mkdir -p "$RUNNER_TEMP/evidence"
           cp "$RUNNER_TEMP/soak-out/report.json" "$RUNNER_TEMP/evidence/" || true
           for n in 1 2 3; do
             tail -c 20000000 "$RUNNER_TEMP/soak-out/node$n.log" > "$RUNNER_TEMP/evidence/node$n.log" || true
+            cp "$RUNNER_TEMP/soak-out/node$n-memory.txt" "$RUNNER_TEMP/evidence/" || true
           done
           cat "$RUNNER_TEMP/evidence/report.json" || true
       - if: always()

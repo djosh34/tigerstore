@@ -62,8 +62,8 @@ func (s *Sim) startGray() bool {
 		return false
 	}
 	s.grayEnd = s.now() + 2*Second + s.rng.Int64N(4*Second)
-	// Half the periods make the leader gray and stay on it, so that the
-	// commit watchdog gets to fire.
+	// Half the periods make the leader gray and stay on it, so that its
+	// writes wait for the gray period to end.
 	s.grayStays = false
 	if i := s.leaderIdx(); i >= 0 && s.rng.IntN(2) == 0 {
 		n, s.grayStays = s.nodes[i], true
@@ -126,8 +126,7 @@ func (s *Sim) graySyncEnded() {
 }
 
 // grayLeader makes the leader gray until healing, without slow fsyncs
-// unless Config.GrayLeaderSync asks for them; without, only the commit
-// watchdog can make way.
+// unless Config.GrayLeaderSync asks for them.
 func (s *Sim) grayLeader() {
 	s.mu.Lock()
 	defer s.mu.Unlock()

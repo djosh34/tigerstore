@@ -60,7 +60,10 @@ func (c *client) run() {
 		c.n++
 		// The fourth member is a learner for part of the run and is later
 		// removed. Ordinary clients keep the original voting endpoints.
-		i := s.rng.IntN(3)
+		i := c.id % 3
+		if !s.cfg.PinClients {
+			i = s.rng.IntN(3)
+		}
 		r := &Record{Client: c.id, Node: i, Call: s.now(), req: c.request()}
 		s.mu.Unlock()
 		resp, err := s.call(s.nodes[i], r.req, s.cfg.ClientTimeout)

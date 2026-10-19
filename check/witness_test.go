@@ -154,6 +154,65 @@ func TestWitnessedGood(t *testing.T) {
 			}
 			return h
 		}},
+		{"ambiguous compaction between two reads of one revision", func(t *testing.T) *history.History {
+			// A read at revision 2 succeeded at revision 3, a later one
+			// found 2 compacted, and a read after that still answered at
+			// revision 3: the ambiguous compaction goes in at revision 3,
+			// between the two reads (#277, seed 8143538).
+			b := newBuilder(t, "a")
+			b.put(0, "a", "1")
+			b.put(0, "a", "2")
+			b.do(1, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+			compact := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+			b.do(3, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+			b.do(4, history.Request{Range: &history.RangeRequest{Key: "a"}})
+			b.put(0, "a", "3")
+			h := b.done()
+			h.Ops[compact].Resp, h.Ops[compact].Err = nil, errUnavailable
+			return h
+		}},
+		{"ambiguous compaction after the grant a read below it follows", func(t *testing.T) *history.History {
+			// The compaction to 3 was called before the grant, and the read
+			// at revision 2 after the grant returned. A later rejection
+			// makes the compaction due within revision 3, after the grant,
+			// so that the read can still come before it (#277, seed
+			// 8200093).
+			b := newBuilder(t, "a")
+			b.put(0, "a", "1")
+			b.put(0, "a", "2")
+			grant := b.do(1, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 100}})
+			b.do(2, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+			compact := b.do(3, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+			b.do(4, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+			b.do(5, history.Request{Range: &history.RangeRequest{Key: "a"}})
+			b.put(0, "a", "3")
+			h := b.done()
+			h.Ops[compact].Call = h.Ops[grant].Call - 1
+			h.Ops[compact].Resp, h.Ops[compact].Err = nil, errUnavailable
+			return h
+		}},
+		{"ambiguous compaction after a smaller one that a read below it needs", func(t *testing.T) *history.History {
+			// A compaction to 2 was rejected as compacted before a read at
+			// 2 succeeded, so the ambiguous compaction to 2 comes before
+			// both, and the one to 3, which a later read found, after the
+			// read (#277, seed 8238917).
+			b := newBuilder(t, "a")
+			b.put(0, "a", "1")
+			b.put(0, "a", "2")
+			small := b.do(1, history.Request{Compact: &history.CompactRequest{Revision: 2}})
+			rejected := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 2}})
+			b.do(3, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+			large := b.do(4, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+			b.do(5, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+			b.do(6, history.Request{Range: &history.RangeRequest{Key: "a"}})
+			put := b.put(0, "a", "3")
+			h := b.done()
+			for _, i := range []int{small, large} {
+				h.Ops[i].Call, h.Ops[i].Return = h.Ops[rejected].Call-1, h.Ops[put].Return+10
+				h.Ops[i].Resp, h.Ops[i].Err = nil, errUnavailable
+			}
+			return h
+		}},
 		{"lease expiry before an ambiguous compaction called after its rejection", func(t *testing.T) *history.History {
 			// An early rejection makes the compaction due from revision
 			// 3, where it goes in before a put that was called before the

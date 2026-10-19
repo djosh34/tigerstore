@@ -98,8 +98,8 @@ var plantedCases = map[string]plantedCase{
 	// Followers forward their writes to the stalled leader, which stays
 	// leader, so the liveness check may find the timed-out calls first.
 	"B17": {seeds: 64, cfg: stalledLeaderConfig, want: `the stalled leader|liveness: client \d+ call`, extra: func(r *Result) error {
-		if len(r.StallHandOffs) == 0 {
-			return errors.New("the stalled leader never handed over")
+		if len(r.Silences) == 0 {
+			return errors.New("the stalled leader never went silent")
 		}
 		return nil
 	}},

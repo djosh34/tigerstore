@@ -655,6 +655,18 @@ func (n *Node) open() error {
 	if err != nil {
 		return err
 	}
+	torn, err := core.TornBootstrap(n.cfg.Core, rec, n.log)
+	if err != nil {
+		return err
+	}
+	if len(torn) > 0 {
+		n.logf("the log holds %d of the cluster's %d first configuration entries; appending the rest", rec.Last, len(n.cfg.Core.Peers))
+		w.Append(nil, torn)
+		if err := w.Sync(); err != nil {
+			return err
+		}
+		return n.open()
+	}
 	// Only a reload finds a core of an earlier run. It goes before the
 	// new one loads, so that the two are never in memory at once.
 	reload := n.core != nil
@@ -697,7 +709,7 @@ func (n *Node) open() error {
 	as, _ := c.Alarms()
 	as = slices.Clone(as)
 	n.alarms.Store(&as)
-	n.logf("recovered the log up to entry %d", c.Applied())
+	n.logf("recovered the log up to entry %d: %s", c.Applied(), c.LogState())
 	return nil
 }
 
@@ -1029,8 +1041,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		chunks = append(chunks, eff.Checkpoint...)
 		reads = append(reads, eff.Reads...)
-		if eff.HandOff != 0 {
-			n.logf("the leader's disk stalled; handing leadership to %x", eff.HandOff)
+		if eff.SlowCommit {
+			n.logf("warning: the leader's oldest entry has waited %d election timeouts to commit", cmp.Or(n.cfg.Core.SlowCommitElections, core.SlowCommitTicks))
+		}
+		if eff.Silent {
+			n.logf("warning: the leader's disk write has taken %d election timeouts; sending nothing to peers until it is durable", cmp.Or(n.cfg.Core.StallElections, core.StallTicks))
 		}
 		if eff.Members != nil {
 			n.setMembers(eff.Members)

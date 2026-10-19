@@ -48,9 +48,9 @@ s = p.read_text()
 s = s.replace('      n4:\n        condition: service_healthy\n      n5:\n        condition: service_healthy\n', '')
 s = s[:s.index('  n4:\n')]
 for image, digest in {
-    'jepsen-control': '2fb9cff3b4376cf06a0b44d3f49083706e0cca42b862c64c4cf8046ecc255b22',
-    'jepsen-node': '47db15309b20752318b1807a68b273b70c637a1b09509b611faf0ede4ddedfce',
-    'jepsen-setup': '795057327afbb271a2581db54ada313677d01f739187808a406dfd15698ffc84',
+    'jepsen-control': 'b0d8e672156022baa30818bd38bf84ab8e10f5045c62d5fe81e7b4a7205c9145',
+    'jepsen-node': '44dd2a6ea919af66a32d47fcc9f8d8f08cd0c3147d759687419567b6b6cf1698',
+    'jepsen-setup': 'f7f21fc1a07458a7f7011fec0370f675e5a746a827e0a529843a2078eca98c82',
 }.items():
     s = s.replace('${JEPSEN_REGISTRY:-}' + image, 'ghcr.io/nurturenature/jepsen-docker/' + image + '@sha256:' + digest)
 p.write_text(s)
@@ -91,23 +91,32 @@ for node in n1 n2 n3; do
 done
 printf 'subjectAltName=%s\nextendedKeyUsage=serverAuth,clientAuth\n' "$sans" > "$assets/extensions"
 openssl x509 -req -in "$assets/peer.csr" -CA "$assets/ca.crt" -CAkey "$assets/ca.key" -CAcreateserial -out "$assets/peer.crt" -days 2 -extfile "$assets/extensions"
+builds=()
 for node in n1 n2 n3; do
   docker exec "jepsen-$node" mkdir -p /opt/test-assets
   docker cp "$assets/server" "jepsen-$node:/opt/test-assets/server"
   for file in ca.crt peer.crt peer.key; do docker cp "$assets/$file" "jepsen-$node:/opt/test-assets/$file"; done
   if [[ $NEMESIS == lazyfs ]]; then
-    docker exec "jepsen-$node" bash -euc '
-      cd /opt/jepsen/lazyfs
-      test "$(git rev-parse HEAD)" = 9c5685e828da8b5d113d2f9134f6671e481d7162
-      test -x lazyfs/build/lazyfs
-      git rev-parse HEAD
-      sha256sum lazyfs/build/lazyfs
+    # The image's LazyFS 0.3.0 has the rename race of #267. Replace it with
+    # the chaos jobs' pin and patch, where Jepsen mounts it from.
+    for file in lazyfs.sh lazyfs-namespace.patch; do docker cp "scripts/$file" "jepsen-$node:/opt/test-assets/$file"; done
+    # From /: the image's working directory is the one the build replaces.
+    docker exec -w / "jepsen-$node" bash -euc '
+      bin=$(bash /opt/test-assets/lazyfs.sh /opt/jepsen/lazyfs)
+      test "$bin" = /opt/jepsen/lazyfs/lazyfs/build/lazyfs
+      git -C /opt/jepsen/lazyfs rev-parse HEAD
+      sha256sum /opt/test-assets/lazyfs-namespace.patch "$bin"
       test -c /dev/fuse || mknod /dev/fuse c 10 229
       chmod a+rw /dev/fuse
       sed -i "/user_allow_other/s/^#//g" /etc/fuse.conf
-    ' | tee "$out/lazyfs-binary-$node.txt"
+    ' > "$out/lazyfs-binary-$node.txt" 2>&1 &
+    builds+=($!)
   fi
 done
+if [[ $NEMESIS == lazyfs ]]; then
+  for pid in "${builds[@]}"; do wait "$pid"; done
+  cat "$out"/lazyfs-binary-n?.txt
+fi
 docker cp .jepsen/etcd jepsen-control:/jepsen/etcd
 # Record clocks' namespace identities. Docker shares CLOCK_REALTIME with host.
 for node in control n1 n2 n3; do

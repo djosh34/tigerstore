@@ -1,7 +1,6 @@
 package server_test
 
 import (
-	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -40,8 +39,6 @@ type cluster struct {
 	via map[[2]uint64]string
 	// tick is the Raft tick, 10 ms unless setup changes it.
 	tick time.Duration
-	// stallElections, if set, is the nodes' CommitStallElections.
-	stallElections int
 	// coreConfig, if set, changes the nodes' core configuration, and
 	// segmentBytes their segment size.
 	coreConfig   func(*core.Config)
@@ -173,14 +170,14 @@ func (c *cluster) start(id uint64) {
 	cfg.Members = c.members()
 	cfg.Name = fmt.Sprintf("node%d", id)
 	cfg.Join = c.join[id]
-	// The watchdogs and the request deadline wait for the disks, which a
+	// The stall limits and the request deadline wait for the disks, which a
 	// test's shorter ticks do not speed up: under -race on a shared runner
 	// one write took up to 600 ms, past the 200 ms that two election
 	// timeouts are at 10 ms ticks, and a request's 70 ticks were 700 ms
 	// (#180). They keep the time a real node at 100 ms ticks allows.
 	scale := max(1, int(100*time.Millisecond/c.tick))
 	cfg.StallElections = core.StallTicks * scale
-	cfg.CommitStallElections = cmp.Or(c.stallElections, core.CommitStallTicks*scale)
+	cfg.SlowCommitElections = core.SlowCommitTicks * scale
 	cfg.RequestTicks *= scale
 	if c.coreConfig != nil {
 		c.coreConfig(&cfg)
@@ -208,7 +205,7 @@ func (c *cluster) start(id uint64) {
 		// A restart: the stopped transport closed its listener.
 		pln = listenPeer(t, c.peerAddrs[id])
 	}
-	tr, err := peer.Start(peer.Config{ID: id, Listeners: []net.Listener{pln}, Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Removed: n.Removed, Logf: logf})
+	tr, err := peer.Start(peer.Config{ID: id, Listeners: []net.Listener{pln}, Peers: peers, Addr: c.peerAddrs[id], Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Removed: n.Removed, Logf: logf})
 	if err != nil {
 		t.Fatal(err)
 	}

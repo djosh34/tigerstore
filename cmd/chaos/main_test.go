@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -90,5 +91,17 @@ func TestSameEvents(t *testing.T) {
 	}
 	if err := sameEvents(ref[:2], ref, 2); err == nil {
 		t.Error("an event no other watch got passed")
+	}
+}
+
+func TestHeartbeatAges(t *testing.T) {
+	page := `# HELP tigerstore_network_heartbeat_sent_time_seconds The Unix time of the last Raft heartbeat written to each peer.
+tigerstore_network_heartbeat_sent_time_seconds{To="2"} 1.7e+09
+tigerstore_network_heartbeat_received_time_seconds{From="3"} 1.6999999985e+09
+etcd_server_is_leader 1
+`
+	got := heartbeatAges(strings.NewReader(page), time.Unix(1700000002, 0))
+	if want := `from From="3" 3.5s ago, to To="2" 2.0s ago`; got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

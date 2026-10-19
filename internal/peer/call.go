@@ -45,6 +45,7 @@ func Ask(ctx context.Context, cfg Config, addr string, req []byte) ([]byte, erro
 	_, clientCert := cfg.certificates()
 	t := &TCP{cfg: cfg, clientCert: clientCert, verify: verify, ctx: ctx, conns: map[net.Conn]struct{}{}, inbound: map[net.Conn]inbound{}, logged: map[string]time.Time{}}
 	t.removed.Store(&map[uint64]bool{})
+	t.self.Store(&cfg.Addr)
 	return t.call(ctx, &sender{t: t, addr: addr}, 0, req)
 }
 
