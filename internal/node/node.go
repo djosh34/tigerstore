@@ -419,8 +419,12 @@ type diskLog struct {
 	mu      sync.Mutex
 	reading sync.RWMutex
 	w       *wal.WAL
-	fs      FS
-	dir     string
+	// closed is set once the WAL is closed for good: a snapshot fetch can
+	// outlast Run, and its reads then fail instead of opening files again
+	// (#286). Guarded by mu.
+	closed bool
+	fs     FS
+	dir    string
 	// sealed is the newest segment that no longer changes; maps holds the
 	// mappings of sealed segments by sequence number.
 	sealed uint64
@@ -450,17 +454,24 @@ type diskLog struct {
 func (l *diskLog) Entry(index uint64) (*raftpb.Entry, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.closed {
+		return nil, os.ErrClosed
+	}
 	return l.w.Entry(index)
 }
 
 func (l *diskLog) Has(index uint64) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.w.Has(index)
+	return !l.closed && l.w.Has(index)
 }
 
 func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 	l.mu.Lock()
+	if l.closed {
+		l.mu.Unlock()
+		return nil, os.ErrClosed
+	}
 	seq, at, ok := l.w.ValuePlace(index, off, n)
 	var m []byte
 	var r io.ReaderAt
@@ -553,11 +564,20 @@ func (l *diskLog) unmap(upto uint64) error {
 	return err
 }
 
-// close unmaps every segment and closes the WAL.
+// close unmaps every segment and closes the WAL for good.
 func (l *diskLog) close() error {
-	if l.w == nil {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.closeLocked()
+}
+
+// closeLocked closes as close does, with the lock held, as open does
+// before it puts a new WAL in place.
+func (l *diskLog) closeLocked() error {
+	if l.w == nil || l.closed {
 		return nil
 	}
+	l.closed = true
 	l.reading.Lock()
 	defer l.reading.Unlock()
 	return errors.Join(l.w.Close(), l.unmap(l.w.Seq()))
@@ -566,6 +586,9 @@ func (l *diskLog) close() error {
 func (l *diskLog) Checkpoint(index uint64) (io.ReadCloser, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.closed {
+		return nil, os.ErrClosed
+	}
 	return l.w.Checkpoint(index)
 }
 
@@ -655,8 +678,8 @@ func (n *Node) open() error {
 		w.SetSegmentBytes(n.cfg.SegmentBytes)
 	}
 	n.log.mu.Lock()
-	err = n.log.close()
-	n.log.w, n.log.sealed, n.log.ckpts, n.log.removal = w, w.Seq()-1, nil, nil
+	err = n.log.closeLocked()
+	n.log.w, n.log.closed, n.log.sealed, n.log.ckpts, n.log.removal = w, false, w.Seq()-1, nil, nil
 	n.log.held.Store(false)
 	n.log.mu.Unlock()
 	if err != nil {

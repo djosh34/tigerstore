@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -294,4 +295,51 @@ func TestCleanStopSyncsTail(t *testing.T) {
 			t.Fatalf("the synced log commits %d, the node applied %d", rec.HardState.Commit, m.Applied)
 		}
 	})
+}
+
+// TestCloseWhileServing reads entries from the log on other goroutines,
+// as a peer's snapshot fetch can, while Run ends and closes it: the close
+// takes the log's lock, so under -race they do not race, and reads after
+// it fail instead of opening the files again (#286).
+func TestCloseWhileServing(t *testing.T) {
+	n, err := New(Config{Core: core.DefaultConfig(1, []uint64{1}), DataDir: t.TempDir(), Tick: 10 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	ran := make(chan error, 1)
+	go func() { ran <- n.Run(ctx, noPeers{}) }()
+	if _, err := do(n, &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}); err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	readers := make(chan error, 4)
+	for range 4 {
+		go func() {
+			for {
+				select {
+				case <-stop:
+					_, err := n.log.Entry(1)
+					readers <- err
+					return
+				default:
+				}
+				if _, err := n.log.Entry(1); err != nil && !errors.Is(err, os.ErrClosed) {
+					readers <- err
+					return
+				}
+			}
+		}()
+	}
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	if err := <-ran; err != nil {
+		t.Fatal(err)
+	}
+	close(stop)
+	for range 4 {
+		if err := <-readers; !errors.Is(err, os.ErrClosed) {
+			t.Fatalf("a read after the close: %v", err)
+		}
+	}
 }
