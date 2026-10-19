@@ -34,7 +34,8 @@ jobs:
           status=0
           for storage in e3243229 2fef0b5d; do
             git checkout "$storage" -- check internal/osfs internal/wal
-            go test -tags planted -count=8 -v -timeout 2m ./internal/sim/ -run '^TestPlanted$/^1$' -args -planted=B20 2>&1 | tee "$RUNNER_TEMP/replay-$storage.log" || status=1
+            go test -tags planted -count=1 -v -timeout 2m ./internal/sim/ -run '^TestPlanted$/^1$' -args -planted=B20 2>&1 | tee "$RUNNER_TEMP/replay-$storage.log" || status=1
+            go test -tags planted -count=8 -v -timeout 2m ./internal/sim/ -run '^TestDiag296B20QueuedCommit$' 2>&1 | tee "$RUNNER_TEMP/queued-$storage.log" || status=1
           done
           exit "$status"
       - if: always()
@@ -44,4 +45,5 @@ jobs:
           path: |
             ${{ runner.temp }}/cancel.log
             ${{ runner.temp }}/replay-*.log
+            ${{ runner.temp }}/queued-*.log
             ${{ runner.temp }}/sim-out

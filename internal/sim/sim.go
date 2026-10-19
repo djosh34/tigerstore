@@ -30,6 +30,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -39,6 +40,10 @@ import (
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
+
+// diag296QueueHeartbeat forces the pending-input shutdown case in the
+// diagnosis test. Ordinary simulator runs do not enable it.
+var diag296QueueHeartbeat bool
 
 // Times are virtual nanoseconds since the start of a run.
 const (
@@ -1243,6 +1248,15 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		select {
 		case <-p.ctx.Done():
 			fmt.Printf("DIAG296 failed Turn released by cancellation: node %d first=%d applied=%d\n", n.id, c.FirstIndex(), c.Applied())
+			if diag296QueueHeartbeat && c.FirstIndex() > c.Applied()+1 {
+				// A queued heartbeat can commit the entry B20 compacted.
+				// A higher term also makes a leader take the heartbeat.
+				p.node.Deliver(&raftpb.Message{
+					Type: raftpb.MsgHeartbeat.Enum(), From: new(n.id%3 + 1),
+					To: new(n.id), Term: new(c.Term() + 1), Commit: new(c.Applied() + 1),
+				})
+				fmt.Printf("DIAG296 queued heartbeat committing compacted entry %d\n", c.Applied()+1)
+			}
 			return
 		case <-wake:
 		}
