@@ -296,6 +296,7 @@ func run(c config, dir string) (err error) {
 		actx, cancel := context.WithCancel(ctx)
 		archived, stopArchive = e.archive(actx, dir), cancel
 	}
+	fail("coverage prelude", t.coveragePrelude())
 	if c.PressureKeys > 0 {
 		fail("pressure preload", t.preloadPressure(c.PressureKeys))
 		logf("pressure preload: %d live bytes, node limit %d", c.PressureKeys*pressureSize, c.Memory)

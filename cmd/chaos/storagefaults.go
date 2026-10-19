@@ -19,7 +19,7 @@ var storageFaults = map[string]string{
 	"rotation-power":         "rotation-rename",
 	"checkpoint-power":       "checkpoint-sync",
 	"clean-power":            "clean-pack-synced",
-	"install-power":          "install-checkpoint done",
+	"install-power":          "install-entries",
 	"recovery-power":         "recovery-read",
 	"send-power":             "send-first-chunk",
 	"checkpoint-full-cycle":  "checkpoint-create",
