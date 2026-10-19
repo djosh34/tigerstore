@@ -20,6 +20,7 @@ var storageFaults = map[string]string{
 	"clean-power":            "clean-pack-synced",
 	"install-power":          "install-checkpoint done",
 	"recovery-power":         "recovery-open",
+	"send-power":             "send-first-chunk",
 	"checkpoint-full-cycle":  "checkpoint-sync",
 	"checkpoint-fsync-eio":   "checkpoint-sync",
 	"checkpoint-stall-cycle": "checkpoint-sync",
@@ -52,13 +53,17 @@ func (r *runner) releaseGate(i int, result string) error {
 // through all the ordinary checkers at the end.
 func (r *runner) storageFault(ctx context.Context, s step, lead, follower int, rec *record) error {
 	target := follower
-	if s.Pick%3 == 0 && s.Fault != "install-power" {
+	if s.Pick%3 == 0 && s.Fault != "install-power" || s.Fault == "send-power" {
 		target = lead
 	}
 	rec.Env = &envRecord{Node: fmt.Sprintf("node%d", target+1)}
 	n, d := r.c.nodes[target], r.e.disks[target]
 	stage := storageFaults[s.Fault]
-	for cycle := range 3 {
+	cycles := 3
+	if s.Fault == "send-power" {
+		cycles = 1
+	}
+	for cycle := range cycles {
 		key := fmt.Sprintf("%sstorage/%s/%d", prefix, s.Fault, cycle)
 		value := fmt.Sprintf("acked-before-%s-%d-%d", s.Fault, cycle, s.Pick)
 		op := r.t.r.call(r.t.cs[others(target)[0]], 60, history.Request{Put: &history.PutRequest{Key: key, Value: value}}, livenessBound)
@@ -82,8 +87,12 @@ func (r *runner) storageFault(ctx context.Context, s step, lead, follower int, r
 				return err
 			}
 		}
-		if s.Fault == "install-power" {
-			if _, _, err := n.signal(syscall.SIGSTOP); err != nil {
+		lagging := n
+		if s.Fault == "send-power" {
+			lagging = r.c.nodes[follower]
+		}
+		if s.Fault == "install-power" || s.Fault == "send-power" {
+			if _, _, err := lagging.signal(syscall.SIGSTOP); err != nil {
 				return err
 			}
 			for k := range 160 {
@@ -99,8 +108,8 @@ func (r *runner) storageFault(ctx context.Context, s step, lead, follower int, r
 			if err := r.c.start(n); err != nil {
 				return err
 			}
-		case "install-power":
-			if _, _, err := n.signal(syscall.SIGCONT); err != nil {
+		case "install-power", "send-power":
+			if _, _, err := lagging.signal(syscall.SIGCONT); err != nil {
 				return err
 			}
 		}
@@ -112,8 +121,17 @@ func (r *runner) storageFault(ctx context.Context, s step, lead, follower int, r
 			go func() {
 				cctx, cancel := context.WithTimeout(ctx, 70*time.Second)
 				defer cancel()
-				_, err := r.t.cs[target].Defragment(cctx, r.t.cs[target].Endpoints()[0])
-				done <- err
+				for {
+					_, err := r.t.cs[target].Defragment(cctx, r.t.cs[target].Endpoints()[0])
+					if err != nil {
+						done <- err
+						return
+					}
+					if err := pause(cctx, 100*time.Millisecond); err != nil {
+						done <- err
+						return
+					}
+				}
 			}()
 		}
 		hit := filepath.Join(r.c.gateDir(target), "hit")
@@ -213,7 +231,16 @@ func (r *runner) storageFault(ctx context.Context, s step, lead, follower int, r
 			}
 		}
 		for i, cl := range r.t.cs {
-			got := r.t.r.call(cl, 60, history.Request{Range: &history.RangeRequest{Key: key}}, livenessBound)
+			var got history.Op
+			for deadline := time.Now().Add(45 * time.Second); time.Now().Before(deadline); {
+				got = r.t.r.call(cl, 60, history.Request{Range: &history.RangeRequest{Key: key}}, r.t.cfg.requestTimeout)
+				if got.Resp != nil {
+					break
+				}
+				if err := pause(ctx, 200*time.Millisecond); err != nil {
+					return err
+				}
+			}
 			if got.Resp == nil || len(got.Resp.Range.KVs) != 1 || got.Resp.Range.KVs[0].Value != value {
 				return fmt.Errorf("cycle %d node%d lost acknowledged canary: %+v", cycle, i+1, got)
 			}

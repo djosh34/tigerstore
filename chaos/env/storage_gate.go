@@ -3,6 +3,7 @@ package env
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,3 +67,15 @@ func StorageGate(stage string) error {
 }
 
 var gateMu sync.Mutex
+
+// StorageWriter gates a snapshot source after a successful stream write.
+// The arm file makes only the selected write wait.
+type StorageWriter struct{ io.Writer }
+
+func (w StorageWriter) Write(b []byte) (int, error) {
+	n, err := w.Writer.Write(b)
+	if err == nil {
+		err = StorageGate("send-first-chunk")
+	}
+	return n, err
+}

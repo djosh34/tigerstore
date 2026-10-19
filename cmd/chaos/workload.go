@@ -42,7 +42,7 @@ type workloadConfig struct {
 func dialClients(c *cluster, timeout time.Duration) ([]*clientv3.Client, error) {
 	var out []*clientv3.Client
 	for _, l := range c.clients {
-		cl, err := clientv3.New(clientv3.Config{Endpoints: []string{l.Proxy.Addr()}, TLS: c.tls, DialTimeout: timeout, MaxUnaryRetries: 1, Logger: zap.NewNop(), DialOptions: []grpc.DialOption{grpc.WithDisableRetry()}})
+		cl, err := clientv3.New(clientv3.Config{Endpoints: []string{l.Proxy.Addr()}, TLS: c.tls, DialTimeout: timeout, MaxUnaryRetries: 1, MaxCallRecvMsgSize: 32 << 20, Logger: zap.NewNop(), DialOptions: []grpc.DialOption{grpc.WithDisableRetry()}})
 		if err != nil {
 			return nil, errors.Join(err, closeClients(out))
 		}
@@ -139,7 +139,14 @@ func execute(ctx context.Context, cl *clientv3.Client, q history.Request) (*hist
 		}
 		return frometcd.Response((*pb.DeleteRangeResponse)(r))
 	case q.Range != nil:
-		r, e := cl.Get(ctx, q.Range.Key, options(q.Range.End, false)...)
+		opts := options(q.Range.End, false)
+		if q.Range.Limit > 0 {
+			opts = append(opts, clientv3.WithLimit(q.Range.Limit))
+		}
+		if q.Range.Revision > 0 {
+			opts = append(opts, clientv3.WithRev(q.Range.Revision))
+		}
+		r, e := cl.Get(ctx, q.Range.Key, opts...)
 		if e != nil {
 			return nil, e
 		}
@@ -182,6 +189,7 @@ type traffic struct {
 	workers sync.WaitGroup
 	watches sync.WaitGroup
 	stop    context.CancelFunc
+	loadCtx context.Context
 	cancelW context.CancelFunc
 }
 
@@ -209,6 +217,7 @@ func startTraffic(cfg workloadConfig, cs []*clientv3.Client) (*traffic, error) {
 	var watchCtx, stopCtx context.Context
 	watchCtx, t.cancelW = context.WithCancel(context.Background())
 	stopCtx, t.stop = context.WithCancel(context.Background())
+	t.loadCtx = stopCtx
 	t.r.h.Watches = make([]history.Watch, len(cs))
 	for i, cl := range cs {
 		t.r.h.Watches[i] = history.Watch{Client: 100 + i, Req: history.WatchRequest{Key: prefix, End: end, StartRevision: 1, PrevKV: true, ProgressNotify: true}}
@@ -395,7 +404,7 @@ func (t *traffic) finish() (err error) {
 	}
 	var terminal history.Op
 	for i, cl := range cs {
-		observed := r.call(cl, 10+i, history.Request{Range: &history.RangeRequest{Key: "\x00", End: history.AllKeys}}, c.requestTimeout)
+		observed := t.terminalRead(cl, 10+i)
 		if observed.Resp == nil {
 			err = errors.Join(err, fmt.Errorf("terminal linearizable read failed on endpoint %d: %v", i, observed.Err))
 			continue

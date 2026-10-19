@@ -44,6 +44,8 @@ patch('internal/node/node.go', [
      '''w, rec, err := wal.Open(n.log.fs)
      if err != nil { return err }
      if err := env.StorageGate("recovery-open"); err != nil { return errors.Join(err, w.Close()) }'''),
+    ('err := core.ServeSnapshot(n.log, ckpts, first, last, w)',
+     'err := core.ServeSnapshot(n.log, ckpts, first, last, env.StorageWriter{Writer: w})'),
     ('func (n *Node) staged(stage string) error {',
      '''func (n *Node) staged(stage string) error {
      if err := env.StorageGate("install-" + stage); err != nil { return err }'''),

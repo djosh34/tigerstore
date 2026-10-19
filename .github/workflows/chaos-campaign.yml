@@ -6,6 +6,12 @@ on:
       seeds:
         description: Space-separated seeds for the storage schedules
         default: "148101 148102"
+      pressure_keys:
+        description: Number of 96 KiB cold keys, 2048 gives 192 MiB
+        default: "0"
+      memory:
+        description: Per-node memory limit in bytes, 134217728 gives 128 MiB
+        default: "0"
       scenarios:
         description: JSON array of storage schedules
         default: '["rotation-power","checkpoint-power","clean-power","install-power","recovery-power","checkpoint-full-cycle","checkpoint-fsync-eio","checkpoint-stall-cycle"]'
@@ -40,6 +46,8 @@ jobs:
         env:
           SCENARIO: ${{ matrix.scenario }}
           SEEDS: ${{ inputs.seeds }}
+          PRESSURE_KEYS: ${{ inputs.pressure_keys }}
+          MEMORY: ${{ inputs.memory }}
         run: |
           set -uo pipefail
           lazy=()
@@ -48,7 +56,8 @@ jobs:
           for seed in $SEEDS; do
             "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" \
               -out "$RUNNER_TEMP/chaos-out" -env "${lazy[@]}" -faults "$SCENARIO" \
-              -value-size 16384 -compact-every 2s -rate 10 -checker-timeout 3m || status=1
+              -value-size 16384 -compact-every 2s -rate 10 -checker-timeout 3m \
+              -pressure-keys "$PRESSURE_KEYS" -memory "$MEMORY" || status=1
           done
           exit "$status"
       - if: always()
