@@ -65,6 +65,10 @@ type Config struct {
 	LiveAfter int64
 	// Clients is the number of clients. Each has one call in flight.
 	Clients int
+	// PinClients makes client i call voting node i%3 only, so that the
+	// clients waiting on a node that cannot answer leave the other nodes
+	// theirs (#279). Otherwise each call picks a voting node at random.
+	PinClients bool
 	// ClientTimeout is when a client gives up on a call.
 	ClientTimeout int64
 	// GrayLeaderAt, if set, makes whichever node leads then gray until
