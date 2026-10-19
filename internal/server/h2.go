@@ -215,6 +215,7 @@ func (c *conn) close() {
 		for _, st := range c.streams {
 			st.countEnd(canceled)
 			st.reset = true
+			c.cancelLocked(st)
 			st.out = nil
 			if st.deadline != nil {
 				st.deadline.Stop()
@@ -423,6 +424,7 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 		// A call the node still runs keeps its request charge until its
 		// reply comes and is dropped.
 		c.releaseLocked(&st.replyHeld)
+		c.cancelLocked(st)
 		st.out = nil
 		st.queued = 0
 	}

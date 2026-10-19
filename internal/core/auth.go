@@ -596,7 +596,7 @@ func (n *Node) retryTokenWaits() {
 	waits := n.tokenWaits
 	n.tokenWaits = nil
 	for _, w := range waits {
-		if w.deadline <= n.now {
+		if w.deadline <= n.clock {
 			n.reply(w.req.ID, rpctypes.ErrGRPCInvalidAuthToken)
 			continue
 		}

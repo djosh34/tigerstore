@@ -138,7 +138,7 @@ func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 }
 
 // peerMin is the oldest peer protocol version both builds speak.
-const peerMin = 2
+const peerMin = 3
 
 type rollingRun struct {
 	t                   *testing.T
@@ -247,8 +247,16 @@ func (r *rollingRun) start(i int, bin string) {
 	r.t.Logf("node%d started with %s", i+1, bin)
 }
 
+// stop ends node i with SIGTERM. Like etcd's, a leader stops its client
+// port and hands its leadership to a peer before Raft stops (#232 rows 45
+// and 46): once its process has exited, a peer leads already, without
+// waiting an election timeout for the loss.
 func (r *rollingRun) stop(i int) {
 	r.t.Helper()
+	lead, err := r.c.leader(context.Background(), 10*time.Second)
+	if err != nil {
+		r.t.Fatal(err)
+	}
 	ps, _, err := r.c.nodes[i].signal(syscall.SIGTERM)
 	if err != nil {
 		r.t.Fatal(err)
@@ -256,6 +264,21 @@ func (r *rollingRun) stop(i int) {
 	if !ps.Success() {
 		r.t.Fatalf("node%d stopped with %v", i+1, ps)
 	}
+	if lead != i {
+		return
+	}
+	var seen []string
+	for j := range 3 {
+		if j == i {
+			continue
+		}
+		st, err := r.c.status(context.Background(), j)
+		if err == nil && st.Leader == r.c.ids[j] {
+			return
+		}
+		seen = append(seen, fmt.Sprintf("node%d: %v, %v", j+1, st, err))
+	}
+	r.t.Fatalf("node%d led and stopped, and no peer leads: %s", i+1, strings.Join(seen, "; "))
 }
 
 func (r *rollingRun) restart(i int, bin string) {
@@ -500,8 +523,14 @@ func (r *rollingRun) connect(from, to, high int) *tls.Conn {
 	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		r.t.Fatal(err)
 	}
-	// The probe is a known member, so it advertises no address.
-	preface := append(binary.BigEndian.AppendUint64([]byte{'T', 'S', peerMin, byte(high)}, r.c.ids[from]), 0)
+	st, err := r.c.status(context.Background(), to)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	// The probe is a known member of the cluster, so it advertises no
+	// address.
+	preface := binary.BigEndian.AppendUint64([]byte{'T', 'S', peerMin, byte(high)}, r.c.ids[from])
+	preface = append(binary.BigEndian.AppendUint64(preface, st.Header.ClusterId), 0)
 	if _, err := conn.Write(preface); err != nil {
 		r.t.Fatal(err)
 	}

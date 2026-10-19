@@ -166,6 +166,7 @@ func (n *Node) runApply() {
 		n.applyQ = n.applyQ[1:]
 		n.deliver(m.GetResponses())
 	}
+	n.releaseHeld()
 }
 
 // ValuesRead hands back a ValueRead the driver ran, with the error of its

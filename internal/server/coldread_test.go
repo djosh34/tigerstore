@@ -360,10 +360,19 @@ func TestColdReadsStall(t *testing.T) {
 		t.Fatalf("b after the value compare: %v, %v", r, err)
 	}
 
-	// Phase 3: an election while reads are held.
+	// Phase 3: an election while reads are held. The list waits for its
+	// values before the leader stops: one whose read index has not come
+	// yet fails with ErrGRPCLeaderChanged instead, as in etcd.
 	gate.hold()
 	held = time.Now()
+	waits := gate.waits.Load()
 	send("list", func() (proto.Message, error) { return kv.Range(ctx, all) })
+	for gate.waits.Load() == waits {
+		if time.Since(held) > stall {
+			t.Fatal("the list never waited for its values")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	c.running[leader].stop()
 	delete(c.running, leader)
 	for {

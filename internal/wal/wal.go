@@ -942,6 +942,20 @@ func (w *WAL) Sync() error {
 	return errors.Join(w.Rotate().Close(), w.Place(), w.fs.SyncDir())
 }
 
+// SyncTail writes what Append buffered and syncs the newest segment,
+// unless it waits for its name (Place), as etcd's WAL.Close syncs its
+// tail. The node driver calls it on a clean stop, never after a failed
+// write or sync.
+func (w *WAL) SyncTail() error {
+	if w.seg == nil {
+		return nil
+	}
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	return w.seg.Sync()
+}
+
 // Seal cuts the full newest segment to its records, which a reused file
 // would hold more after, and Flush must have written them: a segment that
 // no longer changes ends with its last record. The cut must be durable,

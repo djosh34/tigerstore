@@ -171,6 +171,11 @@ func (c *conn) flush() error {
 	}
 	err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)
 	if err == nil {
+		c.mu.Lock()
+		for i, tag := range b.tags {
+			tag.(*stream).nodeID = b.reqs[i].ID
+		}
+		c.mu.Unlock()
 		return nil
 	}
 	if c.ctx.Err() != nil {
@@ -205,6 +210,15 @@ func (c *conn) releaseLocked(charge *int) {
 	c.held -= *charge
 	*charge = 0
 	c.creditLocked()
+}
+
+// cancelLocked tells the node that a call it runs ended early, reset or
+// past its deadline, so that it drops the request if it waits for a
+// leader, as etcd drops a proposal whose context ends. c.mu is held.
+func (c *conn) cancelLocked(st *stream) {
+	if _, ok := c.atNode[st]; ok && st.nodeID != 0 {
+		c.s.n.Cancel(st.nodeID)
+	}
 }
 
 // releaseReqLocked frees a call's request charge once the node answered

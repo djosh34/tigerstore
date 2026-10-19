@@ -14,8 +14,9 @@ import (
 
 // The cluster version is the entry format every node writes. Each node
 // announces through Raft the newest version it supports. Before raising
-// the version, every voter must confirm the same set of announcements.
-// A stopped voter cannot approve an upgrade using its earlier support.
+// the version, every member, learners included as etcd counts every
+// member's version, must confirm the same set of announcements. A
+// stopped member cannot approve an upgrade using its earlier support.
 // The version never goes down; an older binary refuses to start.
 
 // MaxVersion is the newest cluster version, and so entry format, this
@@ -26,7 +27,7 @@ const MaxVersion = 3
 // entries may hold the writes of etcd's features that format 2 has no
 // kind for: alarm changes, members' attributes and member changes. Until it is active, such writes wait for it,
 // up to their deadline, as writes wait for a leader. A fresh cluster
-// activates it once every voter has confirmed its support.
+// activates it once every member has confirmed its support.
 const featureVersion = 3
 
 // capable reports whether the cluster version allows the kinds of
@@ -142,8 +143,8 @@ func parseAnnouncement(b []byte) (a versionAnnouncement, err error) {
 // Use its log index, not a counter of changes: old checkpoints contain no
 // epoch, so a counter would differ between checkpoint and full-log replay.
 // Legacy announcements use zero and keep their original apply semantics.
-func (st *State) recordVersion(id uint64, v uint32, run uint64, hasRun bool, voters []uint64, index uint64) bool {
-	if !slices.Contains(voters, id) || hasRun && run < st.runs[id] {
+func (st *State) recordVersion(id uint64, v uint32, run uint64, hasRun bool, members []uint64, index uint64) bool {
+	if !slices.Contains(members, id) || hasRun && run < st.runs[id] {
 		return false
 	}
 	if st.supports[id] != v || hasRun && st.runs[id] != run || index != 0 && st.versionEpoch == 0 {
@@ -157,12 +158,12 @@ func (st *State) recordVersion(id uint64, v uint32, run uint64, hasRun bool, vot
 	return true
 }
 
-func (st *State) supportedVersion(voters []uint64) uint32 {
-	if len(voters) == 0 {
+func (st *State) supportedVersion(members []uint64) uint32 {
+	if len(members) == 0 {
 		return st.version
 	}
-	low := st.supports[voters[0]]
-	for _, id := range voters[1:] {
+	low := st.supports[members[0]]
+	for _, id := range members[1:] {
 		low = min(low, st.supports[id])
 	}
 	return low
@@ -171,23 +172,30 @@ func (st *State) supportedVersion(voters []uint64) uint32 {
 // announce preserves the apply semantics of entries written before the
 // confirmation protocol. Replaying an old log must activate its formats
 // at the same entries as the build that wrote it.
-func (st *State) announce(id uint64, v uint32, run uint64, hasRun bool, voters []uint64) {
-	if st.recordVersion(id, v, run, hasRun, voters, 0) {
-		st.version = max(st.version, st.supportedVersion(voters))
+func (st *State) announce(id uint64, v uint32, run uint64, hasRun bool, members []uint64) {
+	if st.recordVersion(id, v, run, hasRun, members, 0) {
+		st.version = max(st.version, st.supportedVersion(members))
 	}
 }
 
-func (st *State) confirmVersion(index, id uint64, a versionAnnouncement, voters []uint64) {
-	if !st.recordVersion(id, a.version, a.run, a.hasRun, voters, index) || a.epoch != st.versionEpoch {
+func (st *State) confirmVersion(index, id uint64, a versionAnnouncement, members []uint64) {
+	if !st.recordVersion(id, a.version, a.run, a.hasRun, members, index) || a.epoch != st.versionEpoch {
 		return
 	}
 	st.confirmed[id] = a.epoch
-	for _, voter := range voters {
-		if st.confirmed[voter] != st.versionEpoch {
+	for _, m := range members {
+		if st.confirmed[m] != st.versionEpoch {
 			return
 		}
 	}
-	st.version = max(st.version, st.supportedVersion(voters))
+	st.version = max(st.version, st.supportedVersion(members))
+}
+
+// versionMembers are the members whose support decides the cluster
+// version: the voters and the learners.
+func (st *State) versionMembers() []uint64 {
+	cs := st.confState()
+	return append(cs.Voters, cs.Learners...)
 }
 
 // ownVersion is the newest version this node supports.
@@ -202,9 +210,9 @@ func (n *Node) applyVersion(index, origin uint64, b []byte) error {
 		return err
 	}
 	if a.hasEpoch {
-		n.state.confirmVersion(index, origin, a, n.state.voters())
+		n.state.confirmVersion(index, origin, a, n.state.versionMembers())
 	} else {
-		n.state.announce(origin, a.version, a.run, a.hasRun, n.state.voters())
+		n.state.announce(origin, a.version, a.run, a.hasRun, n.state.versionMembers())
 	}
 	if n.state.version > ownVersion(n.cfg) {
 		return tooOld(n.state.version, ownVersion(n.cfg))
@@ -213,7 +221,7 @@ func (n *Node) applyVersion(index, origin uint64, b []byte) error {
 }
 
 // announceVersion retries after each election timeout, as Raft may drop
-// proposals. Once all voters support a newer format, each must confirm
+// proposals. Once all members support a newer format, each must confirm
 // that epoch. A node that has rolled back sends its lower support instead.
 func (n *Node) announceVersion() {
 	own := ownVersion(n.cfg)
@@ -222,7 +230,7 @@ func (n *Node) announceVersion() {
 		return
 	}
 	unchanged := st.supports[n.cfg.ID] == own && st.runs[n.cfg.ID] == n.cfg.Run
-	needsConfirmation := st.supportedVersion(st.voters()) > st.version && (st.versionEpoch == 0 || st.confirmed[n.cfg.ID] != st.versionEpoch)
+	needsConfirmation := st.supportedVersion(st.versionMembers()) > st.version && (st.versionEpoch == 0 || st.confirmed[n.cfg.ID] != st.versionEpoch)
 	if unchanged && !needsConfirmation {
 		return
 	}

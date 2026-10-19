@@ -42,8 +42,10 @@ type stream struct {
 	// Reader only, until the unary handler starts: the request messages.
 	body []byte
 	msgs int
-	// reqSize is the size of a request the reader handed to the node.
+	// reqSize is the size of a request the reader handed to the node,
+	// and nodeID its ID there, guarded by c.mu.
 	reqSize int
+	nodeID  uint64
 
 	// done is set once the server has queued the end of the stream; what
 	// the client still sends is dropped.
@@ -116,12 +118,9 @@ var (
 )
 
 // A stream that requires a leader checks for one every election timeout
-// (etcd's default 1 s) and ends after maxNoLeader checks in a row find
-// none, as etcd's monitorLeader does for every stream.
-const (
-	leaderCheck = time.Second
-	maxNoLeader = 3
-)
+// and ends after maxNoLeader checks in a row find none, as etcd's
+// monitorLeader does for every stream.
+const maxNoLeader = 3
 
 // receive takes the payload of a DATA frame. Framer storage is reused by
 // the next frame, so each message is copied once, into a buffer of its
@@ -455,7 +454,7 @@ func (c *conn) runStream(st *stream) {
 // monitorLeader ends a stream that requires a leader once maxNoLeader
 // checks in a row find none.
 func (c *conn) monitorLeader(st *stream) {
-	ticker := time.NewTicker(leaderCheck)
+	ticker := time.NewTicker(c.s.n.ElectionTimeout())
 	defer ticker.Stop()
 	noLeader := 0
 	for {
@@ -479,6 +478,9 @@ func (c *conn) monitorLeader(st *stream) {
 // expire ends a call whose grpc-timeout passed, whether or not its
 // request is complete or its handler started.
 func (st *stream) expire() {
+	st.c.mu.Lock()
+	st.c.cancelLocked(st)
+	st.c.mu.Unlock()
 	st.finish(status.Error(codes.DeadlineExceeded, context.DeadlineExceeded.Error()))
 	if st.cancel != nil {
 		st.cancel()

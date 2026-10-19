@@ -21,8 +21,8 @@ import (
 // ErrNoSpace before it is proposed if the size plus its cost reaches the
 // quota, as etcd's gRPC layer does, and the node raises a NOSPACE alarm
 // for itself. One that was let in and finds the quota reached when it
-// applies still applies, as in etcd, but its client gets ErrNoSpace, and
-// every member raises its own NOSPACE alarm. While a NOSPACE alarm is
+// applies still applies, as in etcd, but its client gets ErrNoSpace once
+// the alarm applied, and every member raises its own NOSPACE alarm. While a NOSPACE alarm is
 // active, such writes fail when they apply (alarm.go), and every member
 // refuses them before it proposes them, until an operator disarms it. A
 // node past its disk budget raises the same alarm for itself, and clears
@@ -92,10 +92,19 @@ func (n *Node) refuseNoSpace(id uint64) {
 	}
 }
 
-// overQuota is the answer to a write that applied past the quota.
-func (n *Node) overQuota() error {
-	n.diskAlarm = false
-	n.raiseNoSpace(0)
+// overQuota is the answer to a write that applied past the quota, and
+// raises this node's NOSPACE alarm. Like etcd's applyEntryNormal, it holds
+// the answer to p, the write's client on this node if any, until the
+// alarm applied, if it proposes it: p is then answered already, and the
+// answer comes with the alarm.
+func (n *Node) overQuota(p *pending) error {
+	if p == nil || p.done || p.req.ID == 0 {
+		n.diskAlarm = false
+		n.raiseNoSpace(0)
+		return rpctypes.ErrGRPCNoSpace
+	}
+	n.settle(p)
+	n.refuseNoSpace(p.req.ID)
 	return rpctypes.ErrGRPCNoSpace
 }
 
@@ -112,7 +121,7 @@ func (n *Node) raiseNoSpace(id uint64) bool {
 	}
 	p := &pending{
 		req:      Request{ID: id, Op: &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: n.cfg.ID}},
-		deadline: n.now + int64(n.cfg.RequestTicks),
+		deadline: n.clock + int64(n.cfg.RequestTicks),
 		refuse:   rpctypes.ErrGRPCNoSpace,
 	}
 	n.queueFeature(p)
@@ -134,7 +143,7 @@ func (n *Node) clearNoSpace() {
 	}
 	n.queueFeature(&pending{
 		req:      Request{Op: &pb.AlarmRequest{Action: pb.AlarmRequest_DEACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: n.cfg.ID}},
-		deadline: n.now + int64(n.cfg.RequestTicks),
+		deadline: n.clock + int64(n.cfg.RequestTicks),
 	})
 }
 

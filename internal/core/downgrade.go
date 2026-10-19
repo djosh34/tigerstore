@@ -18,8 +18,10 @@ import (
 // version below is enabled, both replicated and held in checkpoints.
 // VALIDATE checks, after a linearizable read, that the target is the
 // minor version below the cluster version and that no downgrade is
-// enabled. ENABLE writes etcd's DowngradeInfoSet through Raft, which
-// makes the same checks when it applies, and CANCEL writes it back off,
+// enabled. ENABLE makes the same checks after a linearizable read, as
+// etcd's DowngradeEnable validates first, and then writes etcd's
+// DowngradeInfoSet through Raft, which checks again when it applies, so
+// that of two at once one fails. CANCEL writes it back off,
 // answering without error if none was on, as etcd does. Every 4 s, as etcd's version monitor, the leader moves
 // the cluster version to the target while a downgrade is enabled, and
 // back to its own once none is. The storage version follows the cluster
@@ -71,23 +73,17 @@ func minorVersion(v string) string {
 	return vs[0] + "." + vs[1]
 }
 
-// submitDowngrade checks a Downgrade's version, and queues VALIDATE as
-// a linearizable read and ENABLE and CANCEL as writes of etcd's
-// DowngradeInfoSet, which are checked when they apply.
+// submitDowngrade checks a Downgrade's version, and queues VALIDATE and
+// ENABLE as linearizable reads (validateDowngrade) and CANCEL as a write
+// of etcd's DowngradeInfoSet, which is checked when it applies.
 func (n *Node) submitDowngrade(p *pending, r *pb.DowngradeRequest) {
 	switch r.Action {
 	case pb.DowngradeRequest_VALIDATE, pb.DowngradeRequest_ENABLE:
-		target, err := toClusterVersion(r.Version)
-		if err != nil {
+		if _, err := toClusterVersion(r.Version); err != nil {
 			n.finish(p, err)
 			return
 		}
-		if r.Action == pb.DowngradeRequest_VALIDATE {
-			n.reads = append(n.reads, p)
-			break
-		}
-		p.req.Op, p.who = &pb.InternalRaftRequest{DowngradeInfoSet: &membershippb.DowngradeInfoSetRequest{Enabled: true, Ver: target.String()}}, nil
-		n.queueFeature(p)
+		n.reads = append(n.reads, p)
 	case pb.DowngradeRequest_CANCEL:
 		p.req.Op, p.who = &pb.InternalRaftRequest{DowngradeInfoSet: &membershippb.DowngradeInfoSetRequest{}}, nil
 		n.queueFeature(p)
@@ -115,14 +111,21 @@ func (n *Node) downgradeResponse() *pb.DowngradeResponse {
 	return &pb.DowngradeResponse{Header: n.authHeader(), Version: minorVersion(n.state.clusterVersion().String())}
 }
 
-// validateDowngrade answers VALIDATE once its read is linearizable.
-func (n *Node) validateDowngrade(r *pb.DowngradeRequest) (proto.Message, error) {
+// validateDowngrade answers VALIDATE once its read is linearizable. An
+// ENABLE that passes the same checks then goes through Raft as a write of
+// etcd's DowngradeInfoSet, and validateDowngrade answers nothing.
+func (n *Node) validateDowngrade(p *pending, r *pb.DowngradeRequest) (proto.Message, error) {
 	target, err := toClusterVersion(r.Version)
 	if err != nil {
 		return nil, err
 	}
 	if err := n.state.checkDowngrade(target); err != nil {
 		return nil, err
+	}
+	if r.Action == pb.DowngradeRequest_ENABLE {
+		p.req.Op, p.who = &pb.InternalRaftRequest{DowngradeInfoSet: &membershippb.DowngradeInfoSetRequest{Enabled: true, Ver: target.String()}}, nil
+		n.queueFeature(p)
+		return nil, nil
 	}
 	return n.downgradeResponse(), nil
 }
