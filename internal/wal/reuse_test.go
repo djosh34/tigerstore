@@ -577,3 +577,31 @@ func TestDropKeepsBeforeUnplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestHeaderWaitsForRecords flushes a new segment before anything is
+// appended to it, as the node does before a snapshot install. The header
+// must wait and reach the disk in one write with the first records: a
+// crash can keep a later unsynced write and lose an earlier one (#295).
+func TestHeaderWaitsForRecords(t *testing.T) {
+	d := simfs.New()
+	var writes []string
+	d.Trace = func(s string) {
+		if strings.HasPrefix(s, "write ") {
+			writes = append(writes, s)
+		}
+	}
+	w, _ := open(t, d)
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if len(writes) > 0 {
+		t.Fatalf("a flush with nothing appended wrote: %s", strings.Join(writes, "; "))
+	}
+	w.Append(&wal.HardState{Term: 1, Vote: 2, Commit: 1}, []*raftpb.Entry{entry(1, 1, "v1")})
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if len(writes) != 1 || !strings.Contains(writes[0], " at 0: ") {
+		t.Fatalf("writes: %s, want one at 0 with the header and the records", strings.Join(writes, "; "))
+	}
+}

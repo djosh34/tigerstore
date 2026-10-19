@@ -1539,8 +1539,10 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 				}
 				// The install checks the entries this group already
 				// holds, which must be readable.
-				n.log.used.Add(w.Buffered())
-				if err := w.Flush(); err != nil {
+				buffered := w.Buffered()
+				err := w.Flush()
+				n.log.used.Add(buffered - w.Buffered())
+				if err != nil {
 					fail(err)
 					return
 				}
