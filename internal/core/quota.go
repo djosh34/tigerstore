@@ -93,32 +93,41 @@ func (n *Node) refuseNoSpace(id uint64) {
 }
 
 // overQuota is the answer to a write that applied past the quota, and
-// raises this node's NOSPACE alarm. Like etcd's applyEntryNormal, it holds
-// the answer to p, the write's client on this node if any, until the
-// alarm applied, if it proposes it: p is then answered already, and the
-// answer comes with the alarm.
+// raises this node's NOSPACE alarm. Like etcd's applyEntryNormal, which
+// proposes an alarm for every such write while no NOSPACE alarm is
+// active, it holds the answer to p, the write's client on this node if
+// any, until an alarm proposed for it applied: p is then answered
+// already, and the answer comes with that alarm.
 func (n *Node) overQuota(p *pending) error {
-	if p == nil || p.done || p.req.ID == 0 {
-		n.diskAlarm = false
+	n.diskAlarm = false
+	if p == nil || p.done || p.req.ID == 0 || n.ownNoSpace() || n.readInline {
 		n.raiseNoSpace(0)
 		return rpctypes.ErrGRPCNoSpace
 	}
 	n.settle(p)
-	n.refuseNoSpace(p.req.ID)
+	n.noSpaceAt = n.now
+	n.proposeNoSpace(p.req.ID)
 	return rpctypes.ErrGRPCNoSpace
 }
 
 // raiseNoSpace proposes this node's NOSPACE alarm, unless it is active or
 // a proposal of it is under way: one from the last leaseRetryTicks that
 // has not applied. A node that replays its log proposes nothing: it
-// raised the alarm when it applied the entry first. The alarm goes ahead
-// of the writes that wait to be proposed, which it then refuses. If it
-// proposes the alarm and id is not 0, request id gets ErrNoSpace once the
-// alarm applied.
+// raised the alarm when it applied the entry first. If it proposes the
+// alarm and id is not 0, request id gets ErrNoSpace once the alarm
+// applied.
 func (n *Node) raiseNoSpace(id uint64) bool {
 	if !n.noSpaceDue(true) {
 		return false
 	}
+	n.proposeNoSpace(id)
+	return id != 0
+}
+
+// proposeNoSpace proposes this node's NOSPACE alarm, which answers
+// request id, if not 0, with ErrNoSpace once it applied. The alarm goes
+// ahead of the writes that wait to be proposed, which it then refuses.
+func (n *Node) proposeNoSpace(id uint64) {
 	p := &pending{
 		req:      Request{ID: id, Op: &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: n.cfg.ID}},
 		deadline: n.clock + int64(n.cfg.RequestTicks),
@@ -132,7 +141,6 @@ func (n *Node) raiseNoSpace(id uint64) bool {
 	if id != 0 {
 		n.timeouts = append(n.timeouts, p)
 	}
-	return id != 0
 }
 
 // clearNoSpace proposes clearing this node's NOSPACE alarm, if it is

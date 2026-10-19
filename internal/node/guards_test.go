@@ -191,6 +191,65 @@ func TestCancelReachesCore(t *testing.T) {
 	}
 }
 
+// TestCancelWithFullInbox cancels the write while the committer is held
+// and its inbox full: the cancel still reaches the core once it runs
+// again, as etcd's context reaches its waiting proposal (row 32).
+func TestCancelWithFullInbox(t *testing.T) {
+	var hold atomic.Bool
+	held, release := make(chan struct{}, 1), make(chan struct{})
+	n, stop := leaderless(t, &concurrentDisk{d: simfs.New(), cuts: map[string]*simfs.Disk{}}, func(cfg *Config) {
+		cfg.Core.RequestTicks = 1000
+		cfg.Turn = func(*core.Node, core.Effects, error) {
+			if hold.CompareAndSwap(true, false) {
+				held <- struct{}{}
+				<-release
+			}
+		}
+	})
+	defer stop()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := n.Do(ctx, &pb.PutRequest{Key: []byte("k"), Value: []byte("v")})
+		done <- err
+	}()
+	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		m, err := n.Metrics(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.ProposalsPending == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the write never reached the core")
+		}
+	}
+	hold.Store(true)
+	n.Unreachable(2)
+	<-held
+	for len(n.inbox) < cap(n.inbox) {
+		n.Unreachable(2)
+	}
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("the cancelled write: %v", err)
+	}
+	close(release)
+	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		m, err := n.Metrics(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.ProposalsPending == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d writes still wait after the cancel", m.ProposalsPending)
+		}
+	}
+}
+
 // TestCleanStopSyncsTail writes on a single node and stops it cleanly,
 // then drops what its disk did not sync. As etcd's WAL.Close syncs its
 // tail, the log still holds the commit index the node applied (row 47).

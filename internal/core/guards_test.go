@@ -139,6 +139,52 @@ func TestFollowerHoldsSendsUntilConfApplies(t *testing.T) {
 	}
 }
 
+// TestFollowerHoldsAckOfCommittedConf brings node 2 back after the leader
+// committed the removal of node 3 without it: its append then holds the
+// change already committed, which Raft hands to apply only once the
+// append is durable. As etcd's follower, whose Ready holds the change as
+// committed, node 2 holds the append's acknowledgment until it applied
+// the change (row 9).
+func TestFollowerHoldsAckOfCommittedConf(t *testing.T) {
+	c := newMemCluster(t, func(*Config) {})
+	for range 10 {
+		c.step()
+	}
+	f := c.nodes[1]
+	c.down[1] = true
+	ctx, err := encodeConfContext(0, 0, 0, confRemove, &pb.Member{ID: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.nodes[0].rn.ProposeConfChange(&raftpb.ConfChange{Type: raftpb.ConfChangeRemoveNode.Enum(), NodeId: new(uint64(3)), Context: ctx}); err != nil {
+		t.Fatal(err)
+	}
+	for range 5 {
+		c.step()
+	}
+	if !c.nodes[0].state.removed[3] {
+		t.Fatalf("the leader did not apply the removal; %s", c.describe())
+	}
+	c.down[1] = false
+	held := false
+	for range 50 {
+		c.nodes[0].Tick()
+		c.step()
+		if f.confAt > f.applied {
+			held = true
+			if slices.ContainsFunc(f.out.Send, func(m *raftpb.Message) bool { return m.GetType() == raftpb.MsgAppResp }) || len(f.held) == 0 {
+				t.Fatalf("node 2 sent its acknowledgment before it applied the change: sending %v, holding %d", f.out.Send, len(f.held))
+			}
+		}
+		if f.state.removed[3] {
+			break
+		}
+	}
+	if !held || !f.state.removed[3] || len(f.held) != 0 {
+		t.Fatalf("node 2: held %v, removed 3 %v, still holds %d", held, f.state.removed[3], len(f.held))
+	}
+}
+
 // TestStepRefusesRemovedAndMisrouted steps messages from a removed
 // member and to another member, which etcd's Process refuses (rows 14
 // and 15), and checks that a message to a removed member is dropped.
@@ -338,9 +384,10 @@ func TestDowngradeEnableValidatesFirst(t *testing.T) {
 
 // TestTooManyRequests runs ahead the commit index by more than etcd's
 // 5,000 entries: writes are refused with ErrGRPCRequestTooManyRequests,
-// and with PriorityRequest a lease revoke only past twice that (row 52).
+// and with PriorityRequest a lease revoke only past twice that; so are
+// Downgrade's ENABLE and CANCEL (row 52).
 func TestTooManyRequests(t *testing.T) {
-	s := startSingleWith(t, simfs.New(), 1, func(cfg *Config) { cfg.PriorityRequest = true })
+	s := startSingleWith(t, simfs.New(), 1, func(cfg *Config) { cfg.PriorityRequest = true }).capable()
 	try := func(id uint64, gap uint64, op *pb.LeaseRevokeRequest) error {
 		s.n.commit = s.n.applied + gap
 		if op != nil {
@@ -368,32 +415,49 @@ func TestTooManyRequests(t *testing.T) {
 	if err := try(4, 2*maxGap+1, &pb.LeaseRevokeRequest{ID: 5}); !errors.Is(err, rpctypes.ErrGRPCRequestTooManyRequests) {
 		t.Fatalf("a revoke past twice the limit: %v", err)
 	}
+	// Downgrade's writes too, as etcd proposes them like the others.
+	for i, action := range []pb.DowngradeRequest_DowngradeAction{pb.DowngradeRequest_ENABLE, pb.DowngradeRequest_CANCEL} {
+		s.n.commit = s.n.applied + maxGap + 1
+		s.n.Submit(Request{ID: uint64(10 + i), Op: &pb.DowngradeRequest{Action: action, Version: "3.6"}})
+		var got []Reply
+		for range 3 {
+			s.n.commit = s.n.applied + maxGap + 1
+			got = append(got, s.run()...)
+		}
+		if len(got) != 1 || !errors.Is(got[0].Err, rpctypes.ErrGRPCRequestTooManyRequests) {
+			t.Fatalf("%v past the limit: %+v", action, got)
+		}
+	}
 }
 
-// TestOverQuotaAnswerWaitsForAlarm applies two puts that each fit the
-// quota when taken, of which the second reaches it when it applies. As
-// in etcd, that client's ErrNoSpace comes only once the NOSPACE alarm
-// it raised applied (row 55).
+// TestOverQuotaAnswerWaitsForAlarm applies three puts that each fit the
+// quota when taken, of which the second and the third reach it when they
+// apply. As in etcd, which proposes an alarm for each, their clients get
+// ErrNoSpace only once a NOSPACE alarm applied (row 55).
 func TestOverQuotaAnswerWaitsForAlarm(t *testing.T) {
 	s := startSingleWith(t, simfs.New(), 1, func(cfg *Config) { cfg.QuotaBytes = 4000 }).capable()
 	big := make([]byte, (4000-s.n.kv.Size())-256-2-1)
 	s.n.SubmitAll([]Request{
 		{ID: 1, Op: &pb.PutRequest{Key: []byte("a1"), Value: big}},
 		{ID: 2, Op: &pb.PutRequest{Key: []byte("a2"), Value: big}},
+		{ID: 3, Op: &pb.PutRequest{Key: []byte("a3"), Value: big}},
 	})
+	answered := 0
 	for range 100 {
 		eff, err := s.n.Process()
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, r := range eff.Replies {
-			if r.ID != 2 {
+			if r.ID == 1 {
 				continue
 			}
 			if !errors.Is(r.Err, rpctypes.ErrGRPCNoSpace) || !s.n.ownNoSpace() {
-				t.Fatalf("the put past the quota: %v, alarm applied %v", r.Err, s.n.ownNoSpace())
+				t.Fatalf("put %d past the quota: %v, alarm applied %v", r.ID, r.Err, s.n.ownNoSpace())
 			}
-			return
+			if answered++; answered == 2 {
+				return
+			}
 		}
 		for _, j := range eff.Persist {
 			s.log.Append(j.HardState, j.Entries)
@@ -405,5 +469,5 @@ func TestOverQuotaAnswerWaitsForAlarm(t *testing.T) {
 			s.n.Persisted(j)
 		}
 	}
-	t.Fatal("no answer to the put past the quota")
+	t.Fatalf("%d answers to the two puts past the quota", answered)
 }

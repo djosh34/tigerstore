@@ -173,7 +173,12 @@ func (c *conn) flush() error {
 	if err == nil {
 		c.mu.Lock()
 		for i, tag := range b.tags {
-			tag.(*stream).nodeID = b.reqs[i].ID
+			st := tag.(*stream)
+			st.nodeID = b.reqs[i].ID
+			// A call that ended while the node took the batch.
+			if st.reset || st.done.Load() {
+				c.cancelLocked(st)
+			}
 		}
 		c.mu.Unlock()
 		return nil

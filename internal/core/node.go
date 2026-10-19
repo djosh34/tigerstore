@@ -1826,9 +1826,12 @@ func (n *Node) handleReady(rd raft.Ready) {
 			n.unsyncedVotes++
 			newVotes = append(newVotes, m)
 		}
-		if m.GetTo() == raft.LocalApplyThread {
+		// A configuration change to apply, or one this append brings that
+		// is committed already, which Raft hands to apply once it is
+		// durable: the append's responses wait for it too.
+		if to := m.GetTo(); to == raft.LocalApplyThread || to == raft.LocalAppendThread {
 			for _, e := range m.Entries {
-				if t := e.GetType(); t == raftpb.EntryConfChange || t == raftpb.EntryConfChangeV2 {
+				if t := e.GetType(); (t == raftpb.EntryConfChange || t == raftpb.EntryConfChangeV2) && (to == raft.LocalApplyThread || e.GetIndex() <= m.GetCommit()) {
 					n.confAt = max(n.confAt, e.GetIndex())
 				}
 			}

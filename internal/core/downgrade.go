@@ -85,6 +85,10 @@ func (n *Node) submitDowngrade(p *pending, r *pb.DowngradeRequest) {
 		}
 		n.reads = append(n.reads, p)
 	case pb.DowngradeRequest_CANCEL:
+		if n.tooManyRequests(false) {
+			n.finish(p, rpctypes.ErrGRPCRequestTooManyRequests)
+			return
+		}
 		p.req.Op, p.who = &pb.InternalRaftRequest{DowngradeInfoSet: &membershippb.DowngradeInfoSetRequest{}}, nil
 		n.queueFeature(p)
 	default:
@@ -123,6 +127,9 @@ func (n *Node) validateDowngrade(p *pending, r *pb.DowngradeRequest) (proto.Mess
 		return nil, err
 	}
 	if r.Action == pb.DowngradeRequest_ENABLE {
+		if n.tooManyRequests(false) {
+			return nil, rpctypes.ErrGRPCRequestTooManyRequests
+		}
 		p.req.Op, p.who = &pb.InternalRaftRequest{DowngradeInfoSet: &membershippb.DowngradeInfoSetRequest{Enabled: true, Ver: target.String()}}, nil
 		n.queueFeature(p)
 		return nil, nil

@@ -863,13 +863,10 @@ func (n *Node) Removed() {
 
 // Cancel tells the node that the client of request id went away: a
 // write that waits for a leader to be proposed is dropped
-// (core.Node.Cancel). It never blocks; when the inbox is full, the
-// request goes on.
+// (core.Node.Cancel). It never blocks: a goroutine of its own waits for
+// room in the inbox.
 func (n *Node) Cancel(id uint64) {
-	select {
-	case n.inbox <- input{cancel: id}:
-	default:
-	}
+	go n.tell(input{cancel: id})
 }
 
 // Do runs one request and waits for its reply.
