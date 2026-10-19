@@ -358,7 +358,8 @@ func TestSpareOfAnUnsyncedRemoval(t *testing.T) {
 // TestPrepareSegment readies segment files under names of their own: a
 // new file, never the file of the segment before, which may wait for its
 // name, a file readied before, and the oldest spare. A spare that a
-// removal takes meanwhile is skipped.
+// removal takes meanwhile is skipped, and a file readied for the same
+// segment before is removed.
 func TestPrepareSegment(t *testing.T) {
 	d := simfs.New()
 	names := func() string {
@@ -402,10 +403,79 @@ func TestPrepareSegment(t *testing.T) {
 		return nil
 	}
 	prepare(10, "next-000000000000000a")
-	// A file readied for 10 before, as a crash leaves it, is not taken for
-	// 10 again: it may hold records of 10.
-	prepare(10, "next-000000000000000a spare-000000000000000a")
+	// A file readied for 10 before, as a crash leaves it, is removed: it
+	// may hold records of 10.
+	rewrite(t, d, "next-000000000000000a", func([]byte) []byte { return []byte("records of 10") })
+	prepare(10, "next-000000000000000a")
+	if b := d.Files()["next-000000000000000a"]; len(b) > 0 {
+		t.Fatalf("readied 10 again in the file that held %q", b)
+	}
 	prepare(11, "next-000000000000000a next-000000000000000b")
+}
+
+// TestFileOfALostSegmentName crashes twice before the name of segment 2
+// is durable, as seed 8326003 of #274 did. The first crash leaves records
+// of segment 2 in the file readied for it. That file must not come back
+// for segment 2 through the file readied for segment 3 in between: the new
+// segment's records would end before the old ones, and the log would not
+// open.
+func TestFileOfALostSegmentName(t *testing.T) {
+	d := simfs.New()
+	rng := rand.New(rand.NewPCG(1, 2))
+	w, _ := open(t, d)
+	fill(t, w, 1, 2)
+	// start readies the next segment's file, as a node does when it starts.
+	start := func() {
+		t.Helper()
+		if err := wal.PrepareSegment(d, w.Seq()+1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// rotate starts the next segment with entry i in the old one, as the
+	// node's disk goroutine does, and readies the file of the segment after
+	// it before the new segment takes its name. It leaves the name for a
+	// directory sync.
+	rotate := func(i uint64) {
+		t.Helper()
+		w.Append(&wal.HardState{Term: 1, Vote: 2, Commit: i}, []*raftpb.Entry{entry(1, i, fmt.Sprintf("v%d", i))})
+		if err := errors.Join(w.Flush(), w.Seal()); err != nil {
+			t.Fatal(err)
+		}
+		old := w.Rotate()
+		if err := errors.Join(wal.PrepareSegment(d, w.Seq()+1), old.Sync(), old.Close(), w.Place()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start()
+	rotate(3)
+	// Records of the same sizes as the new segment's, so that one of them
+	// starts where the new segment ends.
+	for i := uint64(4); i <= 8; i++ {
+		w.Append(&wal.HardState{Term: 1, Vote: 2, Commit: i}, []*raftpb.Entry{entry(1, i, fmt.Sprintf("v%d", i))})
+		if err := w.Flush(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Segment().Sync(); err != nil {
+		t.Fatal(err)
+	}
+	d.Crash(rng)
+	w, _ = open(t, d)
+	start()
+	rotate(4)
+	d.Crash(rng)
+	w, _ = open(t, d)
+	start()
+	rotate(5)
+	w.Append(&wal.HardState{Term: 1, Vote: 2, Commit: 6}, []*raftpb.Entry{entry(1, 6, "v6")})
+	if err := errors.Join(w.Flush(), w.Segment().Sync(), d.SyncDir()); err != nil {
+		t.Fatal(err)
+	}
+	d.Crash(rng)
+	w, rec := open(t, d)
+	if got := describe(read(t, w, rec)); got != "1/1:v1 2/1:v2 3/1:v3 4/1:v4 5/1:v5 6/1:v6 " {
+		t.Fatalf("entries: %s", got)
+	}
 }
 
 // TestDamagedHeaderBeforeRecords opens logs whose newest segment has a

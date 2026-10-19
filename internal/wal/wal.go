@@ -691,10 +691,11 @@ func (w *WAL) setRoot(r Root) {
 // name that is not a segment's: a file it readied before for another
 // segment than seq-1, which may wait for Place, the oldest spare, or a new
 // file. Its name is durable when it returns. A file readied before for
-// seq itself becomes a spare, which seq does not take: a crash after
-// Place, before the directory sync, can have left records of segment seq
-// in it, which would chain with the new ones. A spare that a removal took
-// meanwhile is skipped.
+// seq itself is removed: a crash after Place, before the directory sync,
+// can have left records of segment seq in it, which would verify after
+// the new ones. As a spare it could come back to seq through the file of
+// seq+1, when another such crash loses seq's name again (#274). A spare
+// that a removal took meanwhile is skipped.
 func PrepareSegment(fs FS, seq uint64) error {
 	for {
 		names, err := fs.List()
@@ -702,7 +703,7 @@ func PrepareSegment(fs FS, seq uint64) error {
 			return err
 		}
 		if slices.Contains(names, nextName(seq)) {
-			if err := fs.Rename(nextName(seq), spareName(seq)); err != nil {
+			if err := fs.Remove(nextName(seq)); err != nil {
 				return err
 			}
 			continue
@@ -712,7 +713,7 @@ func PrepareSegment(fs FS, seq uint64) error {
 			switch {
 			case strings.HasPrefix(n, nextPrefix) && n != nextName(seq-1):
 				old = append(old, n)
-			case strings.HasPrefix(n, sparePrefix) && n != spareName(seq):
+			case strings.HasPrefix(n, sparePrefix):
 				spares = append(spares, n)
 			}
 		}
