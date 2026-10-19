@@ -126,6 +126,9 @@ type result struct {
 	DurationS   float64 `json:"duration_s"`
 	Ops         int64   `json:"ops"`
 	Throughput  float64 `json:"throughput"`
+	// Acked counts the successful calls of the whole measured phase, its
+	// warmup and drain too, not the preload.
+	Acked int64 `json:"acked"`
 	// Latency counts from the intended send time, ServiceLatency from the
 	// actual send. They differ when the generator or a full window held a
 	// request back.
@@ -349,6 +352,7 @@ func run(cfg config) (*result, error) {
 	for _, wk := range workers {
 		wk.stats.winStart, wk.stats.winStop = t1, t2
 		wk.unsent = 0
+		wk.preloaded = wk.stats.acked
 	}
 	for _, w := range watches {
 		w.stats.winStart, w.stats.winStop = t1, t2
@@ -588,6 +592,7 @@ func summarize(cfg config, workers []*worker, watches []*watchLoad, samples [2]c
 	for _, wk := range workers {
 		wk.c.mu.Lock()
 		res.Ops += wk.stats.ops
+		res.Acked += wk.stats.acked - wk.preloaded
 		res.Cohort += wk.stats.cohort
 		res.CohortFailed += wk.stats.cohortFailed
 		res.Unsent += wk.unsent
