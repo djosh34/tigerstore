@@ -166,8 +166,8 @@ func TestLazyFSRecoveryValueReads(t *testing.T) {
 				t.Fatalf("turn %d index %d: %q %v", turn, i, value, e)
 			}
 		}
-		// The node reads old watch values while its persister appends and
-		// syncs new records through another descriptor of the same file.
+		// The node reads old watch values while startup prepares the next
+		// segment through another path in the same directory.
 		r, _, e := w.ValueReader(1, 23, 4)
 		if e != nil {
 			t.Fatal(e)
