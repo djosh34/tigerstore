@@ -1187,6 +1187,7 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		s.record(n, a)
 	}
 	if err == nil && c.FirstIndex() > c.Applied()+1 {
+		fmt.Printf("DIAG296 invariant fired: node %d first=%d applied=%d\n", n.id, c.FirstIndex(), c.Applied())
 		s.fail("node %d holds entries from %d in memory, but applied only to %d", n.id, c.FirstIndex(), c.Applied())
 	}
 	for _, j := range eff.Persist {
@@ -1241,6 +1242,7 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		}
 		select {
 		case <-p.ctx.Done():
+			fmt.Printf("DIAG296 failed Turn released by cancellation: node %d first=%d applied=%d\n", n.id, c.FirstIndex(), c.Applied())
 			return
 		case <-wake:
 		}

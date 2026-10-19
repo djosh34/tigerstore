@@ -1129,6 +1129,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if b := n.cfg.DiskBudget; b > 0 {
 			n.core.SetDisk(n.log.used.Load(), b)
 		}
+		if ctx.Err() != nil {
+			fmt.Printf("DIAG296 Process after cancellation: node %d first=%d applied=%d\n", n.ID(), n.core.FirstIndex(), n.core.Applied())
+		}
 		eff, err := n.core.Process()
 		if n.cfg.Turn != nil {
 			n.cfg.Turn(n.core, eff, err)
