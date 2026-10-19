@@ -44,8 +44,8 @@ jobs:
                           assert source.count(guard) == 1
                           source = source.replace(guard, 'if false {')
                   else:
-                      assert source.count('maxVersion = 3') == 1
-                      source = source.replace('maxVersion = 3', f'maxVersion = {version + 2}')
+                      assert source.count('maxVersion = 2') == 1
+                      source = source.replace('maxVersion = 2', f'maxVersion = {version + 1}')
                   target = tmp / f'{name}-{pathlib.Path(rel).name}'
                   target.write_text(source)
                   replacements[str(root / rel)] = str(target)

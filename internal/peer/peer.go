@@ -5,13 +5,11 @@
 // set, the allowed CommonNames or hostnames. Both ends also offer the
 // protocol versions they speak in TLS ALPN, as "tigerstore-peer/<version>".
 // After the TLS handshake, the dialing node writes a preface: the magic
-// "TS", the lowest and the highest version it speaks, its Raft ID and its
-// cluster's ID as 8 bytes each, and the host:port it advertises for
-// peers, after a 1-byte length. The accepting node replies with 1 byte:
-// the highest version both speak, which must be the one ALPN chose, or 0
-// if there is none, after which it closes. Like etcd's peers, which check
-// X-Etcd-Cluster-ID, it refuses a node of another cluster, even one whose
-// certificate it trusts, with clusterReply. Then each frame is a 4-byte length and a protobuf
+// "TS", the lowest and the highest version it speaks, its Raft ID as 8
+// bytes, and the host:port it advertises for peers, after a 1-byte length.
+// The accepting node replies with 1 byte: the highest version both speak,
+// which must be the one ALPN chose, or 0 if there is none, after which it
+// closes. Then each frame is a 4-byte length and a protobuf
 // raftpb.Message. The accepting node writes nothing more on that
 // connection; the dialer reads it only to see it close.
 //
@@ -77,9 +75,8 @@ type Transport interface {
 
 // Config sets up the TCP transport.
 type Config struct {
-	// ID is this node's Raft ID, and ClusterID its cluster's, which a
-	// node that has no ID yet does not know either.
-	ID, ClusterID uint64
+	// ID is this node's Raft ID.
+	ID uint64
 	// Listeners accept peers, those of etcd's --listen-peer-urls.
 	Listeners []net.Listener
 	// Peers maps every other node's Raft ID to its host:port. Addr is this
@@ -154,12 +151,12 @@ const (
 	// minVersion and maxVersion are the protocol versions this binary
 	// speaks. Version 0 stands for the unversioned protocol from before
 	// version 1. Version 2 added the dialer's address to the preface
-	// (#250), and version 3 the cluster ID; no release spoke version 1 or
-	// 2, so this binary speaks none of them. A release that raises
-	// maxVersion keeps minVersion at or below the previous release's
-	// maxVersion, so that nodes can be upgraded one at a time.
-	minVersion = 3
-	maxVersion = 3
+	// (#250); no release spoke version 1, so this binary speaks neither. A
+	// release that raises maxVersion keeps minVersion at or below the
+	// previous release's maxVersion, so that nodes can be upgraded one at
+	// a time.
+	minVersion = 2
+	maxVersion = 2
 )
 
 // magic starts the preface.
@@ -669,27 +666,20 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 	if name == "" {
 		return 0, 0, 0, errors.New("the dialer offers no version in ALPN; it may be a node from before version 1")
 	}
-	var p [21]byte
+	var p [13]byte
 	if _, err := io.ReadFull(r, p[:]); err != nil {
 		return 0, 0, 0, err
 	}
 	if p[0] != magic[0] || p[1] != magic[1] {
 		return 0, 0, 0, fmt.Errorf("the preface starts with %#x, not the magic \"TS\"", p[:2])
 	}
-	addr := make([]byte, p[20])
+	addr := make([]byte, p[12])
 	if _, err := io.ReadFull(r, addr); err != nil {
 		return 0, 0, 0, err
 	}
 	id = binary.BigEndian.Uint64(p[4:12])
 	mode = id & (fetchBit | callBit)
 	id &^= fetchBit | callBit
-	if cluster := binary.BigEndian.Uint64(p[12:20]); cluster != t.cfg.ClusterID && (id != 0 || mode != callBit) {
-		err = c.SetWriteDeadline(t.writeDeadline())
-		if err == nil {
-			_, err = c.Write([]byte{clusterReply})
-		}
-		return 0, 0, 0, errors.Join(fmt.Errorf("peer %d is of cluster %x, not %x", id, cluster, t.cfg.ClusterID), err)
-	}
 	if _, ok := t.peer(id); !ok {
 		_, _, aerr := net.SplitHostPort(string(addr))
 		switch {
@@ -735,24 +725,19 @@ func remoteHost(c net.Conn) string {
 }
 
 // preface is what a dialer writes after the TLS handshake: the magic, the
-// lowest and the highest version it speaks, id, the cluster ID, and the
-// length and bytes of the address it advertises. An address over 255
-// bytes is left out.
+// lowest and the highest version it speaks, id, and the length and bytes
+// of the address it advertises. An address over 255 bytes is left out.
 func (t *TCP) preface(id uint64) []byte {
 	p := binary.BigEndian.AppendUint64([]byte{magic[0], magic[1], t.cfg.minVersion, t.cfg.maxVersion}, id)
-	p = binary.BigEndian.AppendUint64(p, t.cfg.ClusterID)
 	if addr := *t.self.Load(); len(addr) <= 255 {
 		return append(append(p, byte(len(addr))), addr...)
 	}
 	return append(p, 0)
 }
 
-// removedReply is the acceptor's reply to a node the cluster removed, and
-// clusterReply to a node of another cluster, in place of a version.
-const (
-	removedReply = 0xff
-	clusterReply = 0xfe
-)
+// removedReply is the acceptor's reply to a node the cluster removed, in
+// place of a version.
+const removedReply = 0xff
 
 // errRemoved is what a node hears when it dials a peer after the cluster
 // removed it.
@@ -1117,8 +1102,6 @@ func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) (byte, e
 	switch {
 	case v == removedReply:
 		return 0, errRemoved
-	case v == clusterReply:
-		return 0, errors.New("the peer is of another cluster")
 	case v == 0:
 		return 0, errors.New("the peer refused the preface with reply 0")
 	case name != alpn(v):

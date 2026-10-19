@@ -232,7 +232,7 @@ func start(c *config, lg *zap.Logger) error {
 	}
 	// The node hands the transport the members once it runs; until then,
 	// those it started with.
-	pcfg.ID, pcfg.ClusterID, pcfg.Peers = ident.id, ident.cluster, node.PeerAddrs(ident.members)
+	pcfg.ID, pcfg.Peers = ident.id, node.PeerAddrs(ident.members)
 	if len(ec.AdvertisePeerUrls) > 0 {
 		pcfg.Addr = ec.AdvertisePeerUrls[0].Host
 	}

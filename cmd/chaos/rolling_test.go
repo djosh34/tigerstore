@@ -138,7 +138,7 @@ func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 }
 
 // peerMin is the oldest peer protocol version both builds speak.
-const peerMin = 3
+const peerMin = 2
 
 type rollingRun struct {
 	t                   *testing.T
@@ -523,14 +523,8 @@ func (r *rollingRun) connect(from, to, high int) *tls.Conn {
 	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		r.t.Fatal(err)
 	}
-	st, err := r.c.status(context.Background(), to)
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	// The probe is a known member of the cluster, so it advertises no
-	// address.
-	preface := binary.BigEndian.AppendUint64([]byte{'T', 'S', peerMin, byte(high)}, r.c.ids[from])
-	preface = append(binary.BigEndian.AppendUint64(preface, st.Header.ClusterId), 0)
+	// The probe is a known member, so it advertises no address.
+	preface := append(binary.BigEndian.AppendUint64([]byte{'T', 'S', peerMin, byte(high)}, r.c.ids[from]), 0)
 	if _, err := conn.Write(preface); err != nil {
 		r.t.Fatal(err)
 	}
