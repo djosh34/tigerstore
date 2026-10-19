@@ -822,7 +822,8 @@ const maxSlotOrder = 6
 // at the current revision, in call order: that one if the model gives
 // each its answer in it, else the first order that follows real time in
 // which it does, else call order. Two compactions at one revision, for
-// one, must go in the order of their revisions.
+// one, must go in the order of their revisions, and a compaction after
+// a grant that returned before a read below it was called (#284).
 func (r *revisionOrder) slotOrder(ops []int) []int {
 	if len(ops) < 2 || len(ops) > maxSlotOrder || r.answered(ops) {
 		return ops
@@ -855,7 +856,10 @@ func (r *revisionOrder) slotOrder(ops []int) []int {
 }
 
 // answered reports whether ops, in this order after the live store,
-// follow real time and get their answers from the model.
+// follow real time and get their answers from the model. An order with a
+// compaction must also leave the acked ops that changed nothing at this
+// revision their answers, as observe would place them: a read below the
+// compaction may have to go between two of ops (#284).
 func (r *revisionOrder) answered(ops []int) bool {
 	w := r.w
 	s := w.live.clone()
@@ -869,7 +873,16 @@ func (r *revisionOrder) answered(ops []int) bool {
 			return false
 		}
 	}
-	return true
+	seen := r.seen[w.live.rev]
+	if len(seen) == 0 || !slices.ContainsFunc(ops, func(i int) bool { return w.reqs[i].Compact != nil }) {
+		return true
+	}
+	m := r.save()
+	defer r.restore(m)
+	for _, i := range ops {
+		w.apply(i, w.reqs[i])
+	}
+	return w.placeSeen(seen, false) == nil
 }
 
 // insertOptional puts in, at revision rev, every optional mutation that

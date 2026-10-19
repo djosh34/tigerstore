@@ -31,10 +31,12 @@ import (
 )
 
 // stopTimeout is how long a tigerstore node may take to stop after
-// SIGINT. etcd gets etcdStopTimeout: it can take several seconds. The
-// adapter waits 10 s for the factory.
+// SIGINT. As etcd's, a leader first gives its clients a second and then
+// hands its leadership to a peer, which waits up to the request timeout
+// of 7 s when the peers stop at the same time (#285). etcd gets
+// etcdStopTimeout. The adapter waits 10 s for the factory.
 const (
-	stopTimeout     = 4 * time.Second
+	stopTimeout     = 9 * time.Second
 	etcdStopTimeout = 8 * time.Second
 )
 

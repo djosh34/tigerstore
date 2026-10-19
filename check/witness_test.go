@@ -252,6 +252,7 @@ func TestWitnessedGood(t *testing.T) {
 			return h
 		}},
 		{"historical reads, inside a txn too", func(*testing.T) *history.History { return historicalTxn() }},
+		{"acked compaction after the grant a read below it follows", func(t *testing.T) *history.History { return grantReadCompact(t, false) }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -382,6 +383,7 @@ func TestWitnessedBroken(t *testing.T) {
 			h.Ops[2].Resp.Txn.Results[0].Range = h.Ops[2].Resp.Txn.Results[2].Range
 			return h
 		}},
+		{"read below a compaction that returned before it", "", func(t *testing.T) *history.History { return grantReadCompact(t, true) }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -748,4 +750,25 @@ func TestWitnessedAmbiguousCases(t *testing.T) {
 			}
 		})
 	}
+}
+
+// grantReadCompact is seed 30120 of #284 cut down: a compaction to 3 is
+// called before a grant, and a read at revision 2 after the grant
+// returned; all three answer at revision 3. The grant goes before the
+// compaction, so that the read can come between them. With early, the
+// compaction returns before the read is called, and the read is stale.
+func grantReadCompact(t *testing.T, early bool) *history.History {
+	b := newBuilder(t, "a")
+	b.put(0, "a", "1")
+	b.put(0, "a", "2")
+	grant := b.do(1, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 100}})
+	read := b.do(2, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+	compact := b.do(3, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+	h := b.done()
+	h.Ops[compact].Call = h.Ops[grant].Call - 1
+	h.Ops[compact].Return = h.Ops[read].Return + 1
+	if early {
+		h.Ops[compact].Return = h.Ops[read].Call - 1
+	}
+	return h
 }
