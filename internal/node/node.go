@@ -1126,6 +1126,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		case <-ctx.Done():
 			return nil
 		}
+		// select can pick another ready case when ctx is done as well. The
+		// core takes no turn after the stop: the simulator's Turn holds a
+		// failed core until the stop, and must not see it run again (#296).
+		if ctx.Err() != nil {
+			return nil
+		}
 		if b := n.cfg.DiskBudget; b > 0 {
 			n.core.SetDisk(n.log.used.Load(), b)
 		}
