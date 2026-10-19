@@ -72,9 +72,21 @@ func (r *runner) storageFault(ctx context.Context, s step, lead, follower int, r
 	for cycle := range cycles {
 		key := fmt.Sprintf("%sstorage/%s/%d", prefix, s.Fault, cycle)
 		value := fmt.Sprintf("acked-before-%s-%d-%d", s.Fault, cycle, s.Pick)
-		op := r.t.r.call(r.t.cs[others(target)[0]], 60, history.Request{Put: &history.PutRequest{Key: key, Value: value}}, livenessBound)
+		var op history.Op
+		for attempt, deadline := 0, time.Now().Add(livenessBound); time.Now().Before(deadline); attempt++ {
+			// The preceding fault may have left one of these nodes
+			// reloading a snapshot. Record its rejection and try the
+			// other healthy endpoint; a rejection is not a lost write.
+			op = r.t.r.call(r.t.cs[others(target)[attempt%2]], 60, history.Request{Put: &history.PutRequest{Key: key, Value: value}}, r.t.cfg.requestTimeout)
+			if op.Resp != nil {
+				break
+			}
+			if err := pause(ctx, 200*time.Millisecond); err != nil {
+				return err
+			}
+		}
 		if op.Resp == nil {
-			return fmt.Errorf("canary before cycle %d: %v", cycle, op.Err)
+			return fmt.Errorf("canary before cycle %d did not commit within %v: %+v", cycle, livenessBound, op.Err)
 		}
 		if err := r.c.ready(ctx, 30*time.Second); err != nil {
 			return err
