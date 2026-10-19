@@ -54,9 +54,11 @@ func (s *Sim) membershipBoundaryFaults() {
 	// This deliberately loses quorum briefly; liveness is required after
 	// healing, not during an unavailable quorum.
 	s.stall(s.nodes[(lead+1)%3], s.now()+2*Second)
-	from, to := lead, 3
-	if stage == 3 {
-		to = (lead + 2) % 3
+	from, to := lead, (lead+2)%3
+	if stage == 2 {
+		// The leader is down. Cut the surviving voters' link, not a
+		// link to the learner which the previous stage still holds down.
+		from = (lead + 1) % 3
 	}
 	l := &s.links[from][to]
 	l.up = false
