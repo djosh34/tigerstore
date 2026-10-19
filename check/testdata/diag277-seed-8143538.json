@@ -1,0 +1,311 @@
+{
+  "ops": [
+    {
+      "client": 1,
+      "call": 14766250617,
+      "return": 17766250617,
+      "req": {
+        "put": {
+          "key": "k6",
+          "value": "c1-13"
+        }
+      },
+      "err": {
+        "code": "DeadlineExceeded",
+        "message": "sim: client timed out",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 2,
+      "call": 14767682242,
+      "return": 17767682242,
+      "req": {
+        "delete": {
+          "key": "k5",
+          "end": "k8",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "DeadlineExceeded",
+        "message": "sim: client timed out",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 5,
+      "call": 14770845449,
+      "return": 17770845449,
+      "req": {
+        "put": {
+          "key": "k6",
+          "value": "c5-16"
+        }
+      },
+      "err": {
+        "code": "DeadlineExceeded",
+        "message": "sim: client timed out",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 1,
+      "call": 17777231831,
+      "return": 20429171582,
+      "req": {
+        "leaseGrant": {
+          "ttl": 2
+        }
+      },
+      "resp": {
+        "revision": 4,
+        "leaseGrant": {
+          "id": 8768105722538885121,
+          "ttl": 2
+        }
+      }
+    },
+    {
+      "client": 1,
+      "call": 20434725352,
+      "return": 20435682483,
+      "req": {
+        "put": {
+          "key": "k0",
+          "value": "c1-15",
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 5,
+        "put": {}
+      }
+    },
+    {
+      "client": 1,
+      "call": 20437127558,
+      "return": 20438217809,
+      "req": {
+        "put": {
+          "key": "k1",
+          "value": "c1-16",
+          "lease": 8768105722538885121,
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 6,
+        "put": {}
+      }
+    },
+    {
+      "client": 4,
+      "call": 20447669061,
+      "return": 20448967347,
+      "req": {
+        "put": {
+          "key": "k0",
+          "value": "c4-14"
+        }
+      },
+      "resp": {
+        "revision": 7,
+        "put": {}
+      }
+    },
+    {
+      "client": 3,
+      "call": 20450568887,
+      "return": 20452217451,
+      "req": {
+        "put": {
+          "key": "k7",
+          "value": "c3-12"
+        }
+      },
+      "resp": {
+        "revision": 8,
+        "put": {}
+      }
+    },
+    {
+      "client": 2,
+      "call": 20453717058,
+      "return": 20455450418,
+      "req": {
+        "put": {
+          "key": "k5",
+          "value": "c2-15",
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 9,
+        "put": {}
+      }
+    },
+    {
+      "client": 4,
+      "call": 20476374225,
+      "return": 20477345977,
+      "req": {
+        "range": {
+          "key": "k",
+          "end": "l",
+          "revision": 1
+        }
+      },
+      "resp": {
+        "revision": 9,
+        "range": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "client": 5,
+      "call": 20438430679,
+      "return": 20484082913,
+      "req": {
+        "compact": {
+          "revision": 2
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 1,
+      "call": 20488171813,
+      "return": 20489424644,
+      "req": {
+        "delete": {
+          "key": "k3",
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 9,
+        "delete": {
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "client": 2,
+      "call": 20489650434,
+      "return": 20490664908,
+      "req": {
+        "range": {
+          "key": "k",
+          "end": "l",
+          "revision": 1
+        }
+      },
+      "err": {
+        "code": "OutOfRange",
+        "message": "etcdserver: mvcc: required revision has been compacted"
+      }
+    },
+    {
+      "client": 4,
+      "call": 20493314840,
+      "return": 20498471073,
+      "req": {
+        "delete": {
+          "key": "k4",
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 9,
+        "delete": {
+          "deleted": 0
+        }
+      }
+    }
+  ],
+  "log": [
+    {
+      "put": {
+        "key": "k6",
+        "value": "c1-13"
+      }
+    },
+    {
+      "delete": {
+        "key": "k5",
+        "end": "k8",
+        "prevKV": true
+      }
+    },
+    {
+      "put": {
+        "key": "k6",
+        "value": "c5-16"
+      }
+    },
+    {
+      "leaseGrant": {
+        "id": 8768105722538885121,
+        "ttl": 2
+      }
+    },
+    {
+      "put": {
+        "key": "k0",
+        "value": "c1-15",
+        "prevKV": true
+      }
+    },
+    {
+      "put": {
+        "key": "k1",
+        "value": "c1-16",
+        "lease": 8768105722538885121,
+        "prevKV": true
+      }
+    },
+    {
+      "put": {
+        "key": "k0",
+        "value": "c4-14"
+      }
+    },
+    {
+      "put": {
+        "key": "k7",
+        "value": "c3-12"
+      }
+    },
+    {
+      "put": {
+        "key": "k5",
+        "value": "c2-15",
+        "prevKV": true
+      }
+    },
+    {
+      "compact": {
+        "revision": 2
+      }
+    },
+    {
+      "delete": {
+        "key": "k3",
+        "prevKV": true
+      }
+    },
+    {
+      "delete": {
+        "key": "k4",
+        "prevKV": true
+      }
+    }
+  ],
+  "target": 9
+}

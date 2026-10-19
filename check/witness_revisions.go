@@ -625,12 +625,12 @@ func (r *revisionOrder) scheduleOptional() {
 	present, gone := map[int64]int64{}, map[int64]int64{}
 	granted, revoked := map[int64]bool{}, map[int64]bool{}
 	// compacted are the compacted rejections, by the revision they asked
-	// for and their return; keep is, per revision, the highest header
-	// revision of an acked read at it, and compactions the acked ones.
+	// for and their return; keep are successful historical reads, and
+	// compactions the acked compactions.
 	type rejection struct{ rev, ret int64 }
 	var compacted []rejection
 	var compactions []int
-	keep := map[int64]int64{}
+	var keep []int
 	note := func(lease, rev int64) {
 		if lease != 0 {
 			present[lease] = max(present[lease], rev)
@@ -648,7 +648,7 @@ func (r *revisionOrder) scheduleOptional() {
 				note(op.Req.LeaseRevoke.ID, rev)
 				revoked[op.Req.LeaseRevoke.ID] = true
 			case op.Req.Range != nil && op.Req.Range.Revision > 0:
-				keep[op.Req.Range.Revision] = max(keep[op.Req.Range.Revision], rev)
+				keep = append(keep, i)
 			case op.Req.Compact != nil:
 				compactions = append(compactions, i)
 			}
@@ -696,6 +696,7 @@ func (r *revisionOrder) scheduleOptional() {
 		// Not before the revision of the ops that returned before its
 		// call; insertOptional also waits for their events.
 		at := r.lb[i]
+		afterCall := op.Call
 		o := optional{op: i}
 		switch {
 		case op.Req.LeaseRevoke != nil:
@@ -732,8 +733,11 @@ func (r *revisionOrder) scheduleOptional() {
 			// and by the end of the lowest header revision of an acked
 			// one. It goes no earlier than the header revisions of the
 			// acked reads below its revision, which may come late in
-			// their own: at such a revision it can still come after the
-			// read, and the model checks that it does (#277); and after
+			// their own. Also wait for every acked mutation that returned
+			// before such a read was called: otherwise the only state
+			// before compaction may be too early for the read (#277).
+			// The read can precede compaction within the same revision;
+			// the final model and real-time checks still decide. And after
 			// the acked compactions to its revision or below, whose
 			// answers it would turn into errors, but at their revision,
 			// before the ops that follow them there (#258).
@@ -747,9 +751,11 @@ func (r *revisionOrder) scheduleOptional() {
 			if goneAt == math.MaxInt64 {
 				continue
 			}
-			for rev, by := range keep {
-				if rev < c {
-					at = max(at, by)
+			for _, k := range keep {
+				read := &h.Ops[k]
+				if read.Req.Range.Revision < c {
+					at = max(at, read.Resp.Revision)
+					afterCall = max(afterCall, read.Call)
 				}
 			}
 			for _, k := range compactions {
@@ -763,7 +769,7 @@ func (r *revisionOrder) scheduleOptional() {
 			continue
 		}
 		o.from = at
-		o.after = sort.Search(len(r.mutations), func(k int) bool { return h.Ops[r.mutations[k]].Return >= op.Call })
+		o.after = sort.Search(len(r.mutations), func(k int) bool { return h.Ops[r.mutations[k]].Return >= afterCall })
 		r.optional = append(r.optional, o)
 	}
 }
