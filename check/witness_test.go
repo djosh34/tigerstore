@@ -253,6 +253,23 @@ func TestWitnessedGood(t *testing.T) {
 		}},
 		{"historical reads, inside a txn too", func(*testing.T) *history.History { return historicalTxn() }},
 		{"acked compaction after the grant a read below it follows", func(t *testing.T) *history.History { return grantReadCompact(t, false) }},
+		{"lease expired before a txn names it in the branch that did not run", func(t *testing.T) *history.History {
+			// Only the branch that ran shows a lease in use (#290).
+			b := newBuilder(t, "a", "b")
+			grant := b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 1}})
+			expiry := b.do(5, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 42}})
+			b.do(0, history.Request{Put: &history.PutRequest{Key: "b", Value: "1", Lease: 42}})
+			b.put(0, "a", "x")
+			b.do(0, history.Request{Txn: &history.TxnRequest{
+				Compare: []history.Compare{{Key: "a", Target: history.TargetVersion, Result: history.Equal, Number: 0}},
+				Success: []history.TxnOp{{Put: &history.PutRequest{Key: "b", Value: "2", Lease: 42}}},
+				Failure: []history.TxnOp{{Range: &history.RangeRequest{Key: "a"}}},
+			}})
+			h := b.done()
+			h.Ops[expiry].Call, h.Ops[expiry].Return = h.Ops[grant].Call, h.Ops[grant].Call
+			h.Ops[expiry].Resp, h.Ops[expiry].Err = nil, errUnavailable
+			return h
+		}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
