@@ -103,7 +103,7 @@ func NewDisk(dir, name string, size int64, lazyfs string) (_ *Disk, err error) {
 	d.fifo = filepath.Join(dir, name+".fifo")
 	d.logfile = filepath.Join(dir, name+".lazyfs.log")
 	d.cfgfile = filepath.Join(dir, name+".lazyfs.toml")
-	cfg := fmt.Sprintf("[faults]\nfifo_path=%q\n[cache]\napply_eviction=false\n[cache.simple]\ncustom_size=\"%dmb\"\nblocks_per_page=1\n[filesystem]\nlog_all_operations=false\nlogfile=%q\n",
+	cfg := fmt.Sprintf("[faults]\nfifo_path=%q\n[cache]\napply_eviction=false\n[cache.simple]\ncustom_size=\"%dmb\"\nblocks_per_page=1\n[filesystem]\nlog_all_operations=true\nlogfile=%q\n",
 		d.fifo, max(64, size>>20), d.logfile)
 	if err := os.WriteFile(d.cfgfile, []byte(cfg), 0o644); err != nil {
 		return nil, err

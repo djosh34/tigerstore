@@ -216,6 +216,16 @@ func (e *environment) close() error {
 func (e *environment) keep(dir string) error {
 	var errs []error
 	for i, d := range e.disks {
+		// Diagnostic evidence survives teardown of the FUSE mounts.
+		for _, suffix := range []string{".lazyfs.log", ".lazyfs.out", ".lazyfs.toml"} {
+			from := filepath.Join(dir, "disks", d.Name+suffix)
+			b, err := os.ReadFile(from)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			errs = append(errs, os.WriteFile(filepath.Join(dir, fmt.Sprintf("node%d%s", i+1, suffix)), b, 0o644))
+		}
 		to := filepath.Join(dir, "data", fmt.Sprintf("node%d", i+1))
 		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 			return err
