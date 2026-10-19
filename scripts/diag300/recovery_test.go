@@ -218,6 +218,14 @@ func TestLazyFSRecoveryValueReads(t *testing.T) {
 		if prepareErr != nil {
 			t.Fatal(prepareErr)
 		}
+		// Also read after the call, in case the concurrent readers ran
+		// ahead of PrepareSegment's directory operations.
+		for _, p := range places {
+			b, e := wal.ReadValue(r, p.at, p.index, 23, 4)
+			if e != nil || !bytes.Equal(b, data[23:27]) {
+				t.Fatalf("after prepare, turn %d entry %d offset %d: %q %v", turn, p.index, p.at, b, e)
+			}
+		}
 		afterStat, e := os.Stat(filepath.Join(backing, "wal", wal.SegmentName(1)))
 		if e != nil {
 			t.Fatal(e)

@@ -39,6 +39,7 @@ s = s.replace('    if (offset > (meta.size - 1))\n        return 0;', '''    if 
         spdlog::info("[diag300.read]: path={} offset={} request={} returned=0 meta_size={}", path, offset, size, meta.size);
         return 0;
     }''')
+s = s.replace('spdlog::info ("[lazyfs.ops]: {}(path={},off={})", __FUNCTION__, path, offset);', 'spdlog::info ("[lazyfs.ops]: {}(path={},off={},flags={})", __FUNCTION__, path, offset, static_cast<int>(flags));')
 s = s.replace('    res = BUF_ITERATOR;', '''    res = BUF_ITERATOR;
     spdlog::info("[diag300.read]: path={} offset={} request={} returned={} meta_size={}", path, offset, size, res, meta.size);''')
 p.write_text(s)
