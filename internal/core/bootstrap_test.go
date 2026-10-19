@@ -6,6 +6,7 @@ import (
 
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
@@ -105,5 +106,71 @@ func TestPartialBootstrapKeepsNoMembers(t *testing.T) {
 	}
 	if got := n.Members(); len(got) != 0 {
 		t.Fatalf("the restarted node knows %d members from a third of its bootstrap, want none", len(got))
+	}
+}
+
+// TestTornBootstrapRepaired is #280's case: a crash kept only the first
+// of the three members, on every survivor. TornBootstrap gives the other
+// two as Bootstrap wrote them, and once they are on disk the node knows
+// all three and campaigns. A joiner, or a log with other members, gets
+// none.
+func TestTornBootstrapRepaired(t *testing.T) {
+	disk := simfs.New()
+	w, rec, err := wal.Open(disk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig(3, []uint64{1, 2, 3})
+	n, err := New(cfg, rec, w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eff, err := n.Process()
+	if err != nil {
+		t.Fatal(err)
+	}
+	boot := eff.Persist[0].Entries
+	w.Append(&wal.HardState{Term: 1}, boot[:1])
+	if err := errors.Join(w.Sync(), w.Close()); err != nil {
+		t.Fatal(err)
+	}
+	if w, rec, err = wal.Open(disk); err != nil {
+		t.Fatal(err)
+	}
+	joiner, other := cfg, DefaultConfig(3, []uint64{4, 2, 3})
+	joiner.Join = true
+	for name, c := range map[string]Config{"a joiner": joiner, "other members": other} {
+		if torn, err := TornBootstrap(c, rec, w); err != nil || len(torn) != 0 {
+			t.Fatalf("%s got %d entries: %v", name, len(torn), err)
+		}
+	}
+	torn, err := TornBootstrap(cfg, rec, w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(torn) != 2 || !proto.Equal(torn[0], boot[1]) || !proto.Equal(torn[1], boot[2]) {
+		t.Fatalf("TornBootstrap gave %v, want the last two of %v", torn, boot)
+	}
+	w.Append(nil, torn)
+	if err := errors.Join(w.Sync(), w.Close()); err != nil {
+		t.Fatal(err)
+	}
+	if w, rec, err = wal.Open(disk); err != nil {
+		t.Fatal(err)
+	}
+	if n, err = New(cfg, rec, w); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(n.Members()); got != 3 {
+		t.Fatalf("the repaired node knows %d members, want 3", got)
+	}
+	for range 3 * cfg.ElectionTicks {
+		n.Tick()
+		if _, err := n.Process(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if st := n.RaftStatus().RaftState; st != raft.StatePreCandidate && st != raft.StateCandidate {
+		t.Fatalf("the repaired node is a %s after 3 election timeouts alone, want it to campaign", st)
 	}
 }

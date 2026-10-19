@@ -655,6 +655,18 @@ func (n *Node) open() error {
 	if err != nil {
 		return err
 	}
+	torn, err := core.TornBootstrap(n.cfg.Core, rec, n.log)
+	if err != nil {
+		return err
+	}
+	if len(torn) > 0 {
+		n.logf("the log holds %d of the cluster's %d first configuration entries; appending the rest", rec.Last, len(n.cfg.Core.Peers))
+		w.Append(nil, torn)
+		if err := w.Sync(); err != nil {
+			return err
+		}
+		return n.open()
+	}
 	// Only a reload finds a core of an earlier run. It goes before the
 	// new one loads, so that the two are never in memory at once.
 	reload := n.core != nil

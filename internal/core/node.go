@@ -688,6 +688,44 @@ func bootstrapped(cfg Config, rec *wal.Recovered, disk Log) (uint64, error) {
 	return uint64(len(cfg.Peers)), nil
 }
 
+// TornBootstrap returns the end of the first members' configuration
+// entries, as Raft's Bootstrap writes them for cfg.Peers at term 1, when
+// a crash cut it off: the log holds only the first of them, equal to
+// those, and nothing else. Every first member writes the same entries
+// from the same persisted peers, so the driver appends the rest and syncs
+// them before it starts the core, which then applies them all
+// (bootstrapped). Without them, a cold restart in which every survivor
+// kept only part of them never elects: no node has voters to campaign
+// with (#280). A node started to join gets none, as its peers are not the
+// first members.
+func TornBootstrap(cfg Config, rec *wal.Recovered, disk Log) ([]*raftpb.Entry, error) {
+	if cfg.Join || rec.Root.Index > 0 || rec.Last == 0 || rec.Last >= uint64(len(cfg.Peers)) {
+		return nil, nil
+	}
+	peers, err := bootstrapPeers(cfg)
+	if err != nil {
+		return nil, err
+	}
+	ents := make([]*raftpb.Entry, len(peers))
+	for i, p := range peers {
+		data, err := proto.Marshal(&raftpb.ConfChange{Type: raftpb.ConfChangeAddNode.Enum(), NodeId: new(p.ID), Context: p.Context})
+		if err != nil {
+			return nil, err
+		}
+		ents[i] = &raftpb.Entry{Type: raftpb.EntryConfChange.Enum(), Term: new(uint64(1)), Index: new(uint64(i + 1)), Data: data}
+	}
+	for i := uint64(1); i <= rec.Last; i++ {
+		e, err := disk.Entry(i)
+		if err != nil {
+			return nil, fmt.Errorf("core: read entry %d: %w", i, err)
+		}
+		if !proto.Equal(e, ents[i-1]) {
+			return nil, nil
+		}
+	}
+	return ents[rec.Last:], nil
+}
+
 // replay applies the committed entries after the checkpoint, read from
 // the log, and returns the term of the entry at commit.
 func (n *Node) replay(commit uint64) (uint64, error) {
