@@ -108,15 +108,19 @@ type environment struct {
 	netem   *env.Netem
 	latency map[string]time.Duration
 	tag     string
-	// archiving is held by each pass of archive and by erase: on LazyFS,
-	// a file removed while the archive reads it stays as a .fuse_hidden
-	// file until it is closed, and the erase found its directory not
-	// empty (#264).
+	// archiving is held by each pass of archive, by erase, and by repair:
+	// an archive reader pins the mount during repair (#288); on LazyFS a
+	// removed file stays as .fuse_hidden until closed, so erase can find
+	// its directory not empty (#264).
 	archiving sync.Mutex
 }
 
-// repair checks and remounts d after failed writes.
+// repair checks and remounts d after failed writes. Archive readers can
+// keep the mount busy even after the node exits, so exclude them through
+// the unmount, fsck and remount, as erase excludes archive passes (#288).
 func (e *environment) repair(d *env.Disk) error {
+	e.archiving.Lock()
+	defer e.archiving.Unlock()
 	return d.Repair()
 }
 
