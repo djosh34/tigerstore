@@ -71,6 +71,9 @@ type Config struct {
 	PinClients bool
 	// ClientTimeout is when a client gives up on a call.
 	ClientTimeout int64
+	// ClientThink is the maximum think time between requests. Zero uses
+	// 20 ms; larger values keep deliberate membership histories small.
+	ClientThink int64
 	// GrayLeaderAt, if set, makes whichever node leads then gray until
 	// healing: its heartbeats get through, its appends do not.
 	// GrayLeaderSync also makes its fsyncs slow: one in flight at healing

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
+
+	"github.com/djosh34/tigerstore/check"
 )
 
 func TestMembershipRound3(t *testing.T) {
@@ -18,6 +20,11 @@ func TestMembershipRound3(t *testing.T) {
 			cfg.Duration = 90 * Second
 			cfg.MembershipRound3 = true
 			cfg.PinClients = true
+			// Alternate dense cleaning traffic with a small history on
+			// which Porcupine must agree with both witness modes.
+			if seed%2 == 0 {
+				cfg.ClientThink = 200 * Millisecond
+			}
 			cfg.Faults = Faults{MaxDelay: 10 * Millisecond, SlowDisk: 5, Checkpoint: true, SlowFetch: true}
 			a, err := runWith(t, cfg, func(s *Sim) error {
 				var leader uint64
@@ -48,6 +55,9 @@ func TestMembershipRound3(t *testing.T) {
 			h, err := a.Checkable()
 			if err != nil {
 				t.Fatal(err)
+			}
+			if cfg.ClientThink > 0 && !check.ShortEnough(h) {
+				t.Fatalf("the thin workload has %d operations, more than Porcupine's %d", len(h.Ops), check.ShortOps)
 			}
 			if err := agree(h); err != nil {
 				t.Fatal(err)

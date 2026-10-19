@@ -44,8 +44,8 @@ const numKeys = 8
 
 func key(i int) []byte { return fmt.Appendf(nil, "k%d", i) }
 
-// run makes one call after the other, with a think time of up to 20 ms
-// between them, until the clients stop.
+// run makes one call after the other, with a configured think time
+// between them (up to 20 ms by default), until the clients stop.
 func (c *client) run() {
 	s := c.sim
 	s.mu.Lock()
@@ -85,7 +85,11 @@ func (c *client) run() {
 		s.mu.Lock()
 		c.done(r, resp, err)
 		// At least 1 ns, so the next call starts after this one returned.
-		wait = 1 + s.rng.Int64N(20*Millisecond)
+		think := s.cfg.ClientThink
+		if think == 0 {
+			think = 20 * Millisecond
+		}
+		wait = 1 + s.rng.Int64N(think)
 		s.mu.Unlock()
 	}
 }
