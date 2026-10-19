@@ -29,6 +29,14 @@ func transientWatch(err error) bool {
 	return errors.Is(err, rpctypes.ErrNoLeader) || code == codes.Unavailable || code == codes.DeadlineExceeded || code == codes.Canceled
 }
 
+// retryWatch keeps the logical watch across a learner replacement too.
+// Learners correctly refuse Watch until promotion. No event or progress
+// cursor is discarded; the resumed watch must still deliver every event.
+func retryWatch(err error) bool {
+	return transientWatch(err) || errors.Is(err, rpctypes.ErrGRPCNotSupportedForLearner) ||
+		errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCNotSupportedForLearner))
+}
+
 func (r *recorder) watch(ctx context.Context, cl *clientv3.Client, i int, prefix string) {
 	next := int64(1)
 	for ctx.Err() == nil {
@@ -62,7 +70,7 @@ func (r *recorder) watch(ctx context.Context, cl *clientv3.Client, i int, prefix
 			// clientv3 turns a terminal no-leader/transport status into a canceled
 			// response. That closes this transport, not the resumed logical watch.
 			// Preserve it in diagnostics, but do not weaken logical completeness.
-			if e != nil && transientWatch(e) && wr.CompactRevision == 0 && len(wr.Events) == 0 && bad == nil {
+			if e != nil && retryWatch(e) && wr.CompactRevision == 0 && len(wr.Events) == 0 && bad == nil {
 				r.mu.Unlock()
 				continue
 			}

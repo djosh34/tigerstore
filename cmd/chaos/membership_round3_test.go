@@ -4,7 +4,19 @@ import (
 	"testing"
 
 	"github.com/djosh34/tigerstore/history"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 )
+
+func TestRound3WatchRetriesLearner(t *testing.T) {
+	for _, err := range []error{rpctypes.ErrGRPCNotSupportedForLearner, rpctypes.Error(rpctypes.ErrGRPCNotSupportedForLearner)} {
+		if !retryWatch(err) {
+			t.Fatalf("learner refusal must resume after promotion: %v", err)
+		}
+	}
+	if retryWatch(rpctypes.ErrCompacted) {
+		t.Fatal("compaction must not be hidden as a retry")
+	}
+}
 
 func TestRound3CompactionFence(t *testing.T) {
 	q := history.Request{Compact: &history.CompactRequest{Revision: 2}}
