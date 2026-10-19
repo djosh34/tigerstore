@@ -75,6 +75,23 @@ for signal, flag in [('stop', 'STOP'), ('cont', 'CONT')]:
         raise ValueError(f'expected one {signal} command')
     s = s.replace(old, f'(c/exec :kill :-{flag} (str/trim (c/exec :cat pidfile)))')
 p.write_text(s)
+# jetcd reports a server that stops during a call as an EtcdException with
+# "etcdserver: server stopped", which remap-errors did not know. The watch
+# client then crashed, and its replacement replayed from revision 0, which
+# the watch checker took for missed events (#299). The call may have taken
+# effect, so it is indeterminate; an idempotent watch fails definitely and
+# keeps its revision.
+p = root / 'src/jepsen/etcd/client.clj'
+s = p.read_text()
+old = '''               #"unhealthy cluster"
+               {:definite? true, :type :unhealthy-cluster}'''
+if s.count(old) != 1:
+    raise ValueError('expected one unhealthy cluster mapping')
+s = s.replace(old, '''               #"etcdserver: server stopped"
+               {:definite? false, :type :server-stopped, :description (.getMessage e#)}
+
+''' + old)
+p.write_text(s)
 # Keep the versioned register model and every operation unchanged. Run only
 # one independent key checker at once, with Knossos WGL instead of competition.
 p = root / 'project.clj'
