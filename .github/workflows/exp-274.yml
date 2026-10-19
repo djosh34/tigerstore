@@ -1,0 +1,62 @@
+# Short targeted replays for #274 on this branch's commit. Never merged.
+name: exp-274
+
+on:
+  push:
+    branches: [exp/274-*]
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: "54875 alone, 1-100", seed: 54875, seeds: 1, reps: 100}
+          - {name: "54875 alone, 101-200", seed: 54875, seeds: 1, reps: 100}
+          - {name: "54875 alone, 201-300", seed: 54875, seeds: 1, reps: 100}
+          - {name: "54875 neighbours 54775-54974", seed: 54775, seeds: 200, reps: 3}
+          - {name: "54875 process 52501-55000", seed: 52501, seeds: 2500, reps: 1}
+          - {name: "8326003 alone", seed: 8326003, seeds: 1, reps: 100}
+          - {name: "8326003 neighbours 8325903-8326102", seed: 8325903, seeds: 200, reps: 3}
+          - {name: "8326003 process 8325001-8327500", seed: 8325001, seeds: 2500, reps: 1}
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test -c -o "$RUNNER_TEMP/sim.test" ./internal/sim
+      - name: Replay
+        shell: bash
+        env:
+          SEED: ${{ matrix.seed }}
+          SEEDS: ${{ matrix.seeds }}
+          REPS: ${{ matrix.reps }}
+        run: |
+          set -uo pipefail
+          cd internal/sim
+          failed=0
+          for r in $(seq 1 "$REPS"); do
+            out="$RUNNER_TEMP/sim-out/rep-$r"
+            if ! "$RUNNER_TEMP/sim.test" -test.run 'TestSeeds$' -test.timeout 55m -sim.seed="$SEED" -sim.seeds="$SEEDS" -sim.out="$out" >"$RUNNER_TEMP/rep-$r.log" 2>&1; then
+              failed=$((failed + 1))
+              echo "rep $r failed:"
+              grep -E -- '^--- FAIL|^    --- FAIL|damaged|cannot recover' "$RUNNER_TEMP/rep-$r.log" | head -20
+            else
+              rm -rf "$out" "$RUNNER_TEMP/rep-$r.log"
+            fi
+          done
+          echo "$failed of $REPS runs failed"
+          exit $(( failed > 0 ))
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: exp-274-${{ strategy.job-index }}
+          path: |
+            ${{ runner.temp }}/rep-*.log
+            ${{ runner.temp }}/sim-out
