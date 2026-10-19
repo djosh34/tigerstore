@@ -51,6 +51,7 @@ func TestRemovedLeaderDrainsCommit(t *testing.T) {
 	if !leader.state.removed[1] {
 		t.Fatal("leader did not apply its removal")
 	}
+	removal := leader.Applied()
 	if len(c.jobs[0]) == 0 {
 		t.Fatal("no leader disk completion was held across removal")
 	}
@@ -60,8 +61,10 @@ func TestRemovedLeaderDrainsCommit(t *testing.T) {
 	for range 100 {
 		c.step()
 	}
+	// The followers take nothing from the leader after they applied its
+	// removal, as etcd's Process refuses a removed member's messages.
 	for _, n := range c.nodes[1:] {
-		if !n.state.removed[1] || n.Applied() < leader.Applied() {
+		if !n.state.removed[1] || n.Applied() < removal {
 			t.Fatalf("node %d did not learn the removal: applied %d, members %v", n.cfg.ID, n.Applied(), n.Members())
 		}
 	}

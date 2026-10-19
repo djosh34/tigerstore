@@ -159,6 +159,10 @@ type Config struct {
 	// MaxVersion is the newest cluster version the node supports; 0 means
 	// MaxVersion. Tests set it lower to run an older binary.
 	MaxVersion uint32
+	// PriorityRequest is etcd's PriorityRequest feature gate: lease
+	// revokes are taken up to twice the gap between commit and apply that
+	// refuses other writes (tooManyRequests).
+	PriorityRequest bool
 	// Timer, if set, times applies and ranges for the metrics.
 	Timer Timer
 }
@@ -424,8 +428,15 @@ type Node struct {
 	state   *State
 	kv      *mvcc.Store
 
-	now      int64
-	applied  uint64
+	now int64
+	// clock is the time requests wait by: the ticks of wall time, which
+	// Elapse moves on past the ticks a busy driver missed, as etcd's
+	// request timeouts run on the wall clock while its Raft loop is stuck.
+	// electedAt is the clock when this node last became leader.
+	clock, electedAt int64
+	applied          uint64
+	// commit is the last entry Raft handed to apply.
+	commit   uint64
 	term     uint64
 	leader   uint64
 	isLeader bool
@@ -450,10 +461,20 @@ type Node struct {
 	// async storage writes sends a candidate's vote requests before its
 	// own term and vote are durable, so it can win, lose its term in a
 	// failed write, and win the same term again with another log. held
-	// keeps at most maxHeld messages.
+	// keeps at most maxHeld messages. They also wait in held while a
+	// follower has a committed configuration change not yet applied: up to
+	// confAt.
 	voteTerm, vote uint64
 	unsyncedVotes  int
-	held           []*raftpb.Message
+	confAt         uint64
+	// confsAppended are the indexes of configuration changes appended and
+	// not committed yet.
+	confsAppended []uint64
+	held          []*raftpb.Message
+	// props are proposals forwarded by peers while this node knew no
+	// leader, propBytesHeld their entry bytes.
+	props         []*raftpb.Message
+	propBytesHeld int64
 	// appending holds the tick at which each local append with entries
 	// went to disk, oldest first; appends finish in order. If the oldest
 	// gets too old on the leader, it sends nothing to its peers (stalled).
@@ -860,6 +881,7 @@ func (n *Node) Tick() {
 		return
 	}
 	n.now++
+	n.clock++
 	if n.removeAt != 0 && n.now >= n.removeAt {
 		n.fail(ErrRemoved)
 		return
@@ -893,6 +915,23 @@ func (n *Node) Tick() {
 	}
 }
 
+// Elapse moves the clock that requests wait by ticks ahead, and nothing
+// else: the driver calls it for the ticks of wall time it missed while it
+// was busy, so that a stalled committer still times its requests out, as
+// etcd's wall-clock request timeouts do. Raft and leases go on by Tick.
+func (n *Node) Elapse(ticks int64) {
+	if n.err != nil || ticks <= 0 {
+		return
+	}
+	n.clock += ticks
+	n.expire()
+}
+
+// LateHeartbeat counts a heartbeat that the driver sent a peer more than
+// two heartbeat intervals after the one before, in
+// Counters.HeartbeatSendFailures, as etcd does.
+func (n *Node) LateHeartbeat() { n.counters.HeartbeatSendFailures++ }
+
 // retryReads asks again for the read index of batches that have none,
 // after readRetryTicks or at once.
 func (n *Node) retryReads(now bool) {
@@ -907,22 +946,103 @@ func (n *Node) retryReads(now bool) {
 	}
 }
 
-// Step hands the node a message from a peer.
+// Errors of Step for a message the node does not take, as etcd's Process
+// refuses it.
+var (
+	errFromRemoved = errors.New("core: rejected a Raft message from a removed member")
+	errNotForUs    = errors.New("core: rejected a Raft message to another member")
+)
+
+// Step hands the node a message from a peer. Like etcd's Process, it
+// refuses one from a removed member or to another member.
 func (n *Node) Step(m *raftpb.Message) error {
 	if n.err != nil {
 		return n.err
 	}
-	if n.removeAt != 0 && m.GetType() == raftpb.MsgProp {
-		return ErrRemoved
+	if n.state.removed[m.GetFrom()] {
+		return fmt.Errorf("%w %d", errFromRemoved, m.GetFrom())
 	}
-	if m.GetType() == raftpb.MsgProp && len(m.Entries) == 1 && m.Entries[0].GetType() == raftpb.EntryConfChange {
-		n.confMessages = append(n.confMessages, m)
-		return nil
+	if m.GetTo() != n.cfg.ID {
+		return fmt.Errorf("%w %d", errNotForUs, m.GetTo())
+	}
+	if m.GetType() == raftpb.MsgProp {
+		if n.removeAt != 0 {
+			return ErrRemoved
+		}
+		if len(m.Entries) == 1 && m.Entries[0].GetType() == raftpb.EntryConfChange {
+			n.confMessages = append(n.confMessages, m)
+			return nil
+		}
+		if n.rn.BasicStatus().Lead == raft.None {
+			n.holdProposal(m)
+			return nil
+		}
 	}
 	if m.GetType() == raftpb.MsgHeartbeatResp {
 		n.snapshotDropped(m.GetFrom())
 	}
 	return n.rn.Step(m)
+}
+
+// holdProposal keeps a proposal that a peer forwarded while this node
+// knows no leader, as etcd's raft.Node takes a proposal only once it
+// knows one: Raft would drop it. stepProposals hands it to Raft once a
+// leader is known, which forwards it or appends it. Past UnappliedBytes of
+// them the node drops the next, as etcd drops a proposal once its queue
+// for the peer is full.
+func (n *Node) holdProposal(m *raftpb.Message) {
+	var size int64
+	for _, e := range m.Entries {
+		size += int64(len(e.GetData()))
+	}
+	if n.propBytesHeld+size > n.cfg.UnappliedBytes {
+		return
+	}
+	n.props = append(n.props, m)
+	n.propBytesHeld += size
+}
+
+// stepProposals steps the held proposals once Raft knows a leader. Raft
+// may still drop one, during a leadership transfer for one; like etcd's,
+// the node then tells no one, and the origin's request times out.
+func (n *Node) stepProposals() {
+	if len(n.props) == 0 || n.rn.BasicStatus().Lead == raft.None {
+		return
+	}
+	props := n.props
+	n.props, n.propBytesHeld = nil, 0
+	for _, m := range props {
+		if err := n.rn.Step(m); err != nil && !errors.Is(err, raft.ErrProposalDropped) {
+			n.fail(err)
+			return
+		}
+	}
+}
+
+// errCanceled answers a request that Cancel dropped.
+var errCanceled = status.Error(codes.Canceled, context.Canceled.Error())
+
+// Cancel drops request id, whose client went away, if it waits for a
+// leader to be proposed: as etcd's raft.Node drops a proposal whose
+// context ends while no leader is known. Its answer is errCanceled. A
+// request that waits for anything else goes on, as in etcd, where it was
+// proposed already.
+func (n *Node) Cancel(id uint64) {
+	p := n.waiting[id]
+	if n.err != nil || p == nil || p.done || p.refuse != nil || n.rn.BasicStatus().Lead != raft.None {
+		return
+	}
+	switch {
+	case p.queued:
+		n.proposals = slices.DeleteFunc(n.proposals, func(q *pending) bool { return q == p })
+		n.propBytes -= writeSize(p)
+	case slices.Contains(n.confs, p):
+		n.confs = slices.DeleteFunc(n.confs, func(q *pending) bool { return q == p })
+	default:
+		return
+	}
+	n.counters.ProposalsFailed++
+	n.finish(p, errCanceled)
 }
 
 // Unreachable reports that a message to a peer was dropped, so Raft
@@ -966,7 +1086,7 @@ func (n *Node) submit(r Request, p *pending) {
 	}
 	ai, hasAI, aiErr := n.identify(r.Caller)
 	if errors.Is(aiErr, errTokenNotApplied) {
-		n.tokenWaits = append(n.tokenWaits, tokenWait{req: r, deadline: n.now + int64(n.cfg.RequestTicks)})
+		n.tokenWaits = append(n.tokenWaits, tokenWait{req: r, deadline: n.clock + int64(n.cfg.RequestTicks)})
 		return
 	}
 	extra := identityExtra(r.Caller, ai, hasAI)
@@ -985,11 +1105,15 @@ func (n *Node) submit(r Request, p *pending) {
 			n.reply(r.ID, aiErr)
 			return
 		}
+		if n.tooManyRequests(false) {
+			n.reply(r.ID, rpctypes.ErrGRPCRequestTooManyRequests)
+			return
+		}
 		if err := checkPutSize(&r.Put, extra, n.cfg.MaxRequestBytes); err != nil {
 			n.reply(r.ID, err)
 			return
 		}
-		*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
+		*p = pending{req: r, deadline: n.clock + int64(n.cfg.RequestTicks)}
 		n.tagWrite(p, ai, hasAI)
 		n.queueWrite(p)
 		n.timeouts = append(n.timeouts, p)
@@ -1004,7 +1128,11 @@ func (n *Node) submit(r Request, p *pending) {
 		err = aiErr
 	}
 	if err == nil && sized != nil {
-		err = checkSize(sized, extra, n.cfg.MaxRequestBytes)
+		if n.tooManyRequests(sized.LeaseRevoke != nil) {
+			err = rpctypes.ErrGRPCRequestTooManyRequests
+		} else {
+			err = checkSize(sized, extra, n.cfg.MaxRequestBytes)
+		}
 	}
 	if err == nil {
 		err = n.authorize(r.Op, ai, hasAI)
@@ -1013,7 +1141,7 @@ func (n *Node) submit(r Request, p *pending) {
 		n.reply(r.ID, err)
 		return
 	}
-	*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks), ai: ai, aiCurrent: hasAI && !r.Caller.Verified}
+	*p = pending{req: r, deadline: n.clock + int64(n.cfg.RequestTicks), ai: ai, aiCurrent: hasAI && !r.Caller.Verified}
 	n.tagWrite(p, ai, hasAI)
 	switch op := r.Op.(type) {
 	case *pb.InternalRaftRequest:
@@ -1149,6 +1277,22 @@ func TakesSpace(r Request) bool {
 // more.
 const sizeRequestID = 1 << 63
 
+// maxGap is etcd's maxGapBetweenApplyAndCommitIndex: how far the commit
+// index may run ahead of the applied one before writes are refused.
+const maxGap = 5000
+
+// tooManyRequests is etcd's exceedsRequestLimit, which it checks for
+// every request it proposes: a write is refused with
+// ErrGRPCRequestTooManyRequests once more than maxGap committed entries
+// wait to apply, a lease revoke with PriorityRequest only past twice that.
+func (n *Node) tooManyRequests(revoke bool) bool {
+	gap := uint64(maxGap)
+	if revoke && n.cfg.PriorityRequest {
+		gap *= 2
+	}
+	return n.commit > n.applied+gap
+}
+
 // validate checks a request like etcd's gRPC layer, and returns the
 // InternalRaftRequest whose size etcd's server limits for a write, or nil
 // for a request that does not go through Raft.
@@ -1282,10 +1426,11 @@ func (n *Node) expire() {
 		if p.done {
 			continue
 		}
-		if p.deadline > n.now {
+		if p.deadline > n.clock {
 			break
 		}
-		if _, write := n.waiting[p.req.ID]; write {
+		_, write := n.waiting[p.req.ID]
+		if write {
 			n.counters.ProposalsFailed++
 		} else {
 			n.counters.ReadIndexFailed++
@@ -1305,6 +1450,10 @@ func (n *Node) expire() {
 			n.finish(p, ErrTimeoutLeaderTransfer)
 			continue
 		}
+		if write {
+			n.finish(p, n.timeoutCause(p.deadline-int64(n.cfg.RequestTicks)))
+			continue
+		}
 		n.finish(p, rpctypes.ErrGRPCTimeout)
 	}
 	n.timeouts = n.timeouts[i:]
@@ -1316,8 +1465,52 @@ func (n *Node) expire() {
 	}
 }
 
-// finish fails a request with err.
+// timeoutCause is etcd's parseProposeCtxErr: the error for a proposed
+// write, taken at clock start, that timed out. It started within two
+// election timeouts before this node became leader, so the leader before
+// failed; or the leader has not been connected to its peer since start,
+// or this leader to a quorum of the members.
+func (n *Node) timeoutCause(start int64) error {
+	if lost := n.electedAt - 2*int64(n.cfg.ElectionTicks); start > lost && start < n.electedAt {
+		return rpctypes.ErrGRPCTimeoutDueToLeaderFail
+	}
+	switch n.leader {
+	case raft.None:
+	case n.cfg.ID:
+		connected := 0
+		for id := range n.state.members {
+			if id == n.cfg.ID || n.connectedSince(id, start) {
+				connected++
+			}
+		}
+		if connected < len(n.state.members)/2+1 {
+			return rpctypes.ErrGRPCTimeoutDueToConnectionLost
+		}
+	default:
+		if !n.connectedSince(n.leader, start) {
+			return rpctypes.ErrGRPCTimeoutDueToConnectionLost
+		}
+	}
+	return rpctypes.ErrGRPCTimeout
+}
+
+// connectedSince reports whether this node has been connected to peer id
+// since before clock start.
+func (n *Node) connectedSince(id uint64, start int64) bool {
+	if n.cfg.ConnectedTicks == nil {
+		return true
+	}
+	t := n.cfg.ConnectedTicks(id)
+	return t >= 0 && n.clock-t < start
+}
+
+// finish fails a request with err. A NOSPACE alarm that answers a
+// refused write answers ErrNoSpace whatever became of it, as etcd answers
+// once its alarm request returned.
 func (n *Node) finish(p *pending, err error) {
+	if p.refuse != nil {
+		err = p.refuse
+	}
 	if n.settle(p) {
 		n.reply(p.req.ID, err)
 	}
@@ -1418,6 +1611,11 @@ func (n *Node) requeue(props []*pending) {
 	}
 }
 
+// errDropped answers the writes of a proposal that Raft dropped, as when
+// the leader transfers its leadership: etcd returns raft's error, which
+// its gRPC layer has no code for.
+var errDropped = status.Error(codes.Unknown, raft.ErrProposalDropped.Error())
+
 // proposeEntry proposes one Raft entry with props.
 func (n *Node) proposeEntry(props []*pending, size int) {
 	data, err := encodeBatch(n.state.version, n.cfg.ID, n.cfg.Boot, props, size)
@@ -1429,7 +1627,7 @@ func (n *Node) proposeEntry(props []*pending, size int) {
 	if err := n.rn.Propose(data); err != nil {
 		// Raft dropped the proposal, so none of these requests will apply.
 		for _, p := range props {
-			n.finish(p, rpctypes.ErrGRPCNoLeader)
+			n.finish(p, errDropped)
 		}
 		return
 	}
@@ -1495,13 +1693,7 @@ func (n *Node) Persisted(job PersistJob) {
 	}
 	if job.newVote {
 		n.unsyncedVotes--
-		if n.unsyncedVotes == 0 {
-			held := n.held
-			n.held = nil
-			for _, m := range held {
-				n.send(m)
-			}
-		}
+		n.releaseHeld()
 	}
 	n.deliver(job.msg.GetResponses())
 }
@@ -1544,6 +1736,7 @@ func (n *Node) Process() (Effects, error) {
 		if len(n.tokenWaits) > 0 {
 			n.retryTokenWaits()
 		}
+		n.stepProposals()
 		if !n.isLeader || len(n.own) < ownDepth {
 			n.propose()
 		}
@@ -1552,8 +1745,12 @@ func (n *Node) Process() (Effects, error) {
 		// Apply messages left behind by a snapshot install.
 		n.runApply()
 		n.requestReads()
-		for n.err == nil && n.rn.HasReady() {
-			n.handleReady(n.rn.Ready())
+		n.drainReady()
+		// A write that a read queued, such as a Downgrade ENABLE once its
+		// read index applied, goes out in the same turn.
+		if len(n.proposals) > 0 && (!n.isLeader || len(n.own) < ownDepth) {
+			n.propose()
+			n.drainReady()
 		}
 		if planted.On("B06d") {
 			// Planted: a progress notification at the current revision
@@ -1588,8 +1785,15 @@ func (n *Node) stop() {
 		n.reply(w.req.ID, rpctypes.ErrGRPCStopped)
 	}
 	n.tokenWaits = nil
-	n.confMessages = nil
+	n.confMessages, n.props, n.propBytesHeld = nil, nil, 0
 	n.timeouts, n.proposals, n.reads, n.readBatches, n.early, n.confs, n.transfers = nil, nil, nil, nil, nil, nil, nil
+}
+
+// drainReady handles Raft's Readys until it has none.
+func (n *Node) drainReady() {
+	for n.err == nil && n.rn.HasReady() {
+		n.handleReady(n.rn.Ready())
+	}
 }
 
 func (n *Node) handleReady(rd raft.Ready) {
@@ -1602,12 +1806,13 @@ func (n *Node) handleReady(rd raft.Ready) {
 			// and never reach the disk; wait for nothing from it.
 			n.own, n.awaitOwn = nil, false
 			n.uncommitted = nil
+			if leader {
+				n.electedAt = n.clock
+			}
 			n.leadershipChanged()
 		}
 		if rd.Lead != n.leader && rd.Lead != raft.None {
-			// A term change clears Raft's pending read requests, so ask the
-			// new leader at once instead of waiting for the retry.
-			n.retryReads(true)
+			n.failReads()
 			n.leaderChanges++
 		}
 		n.leader = rd.Lead
@@ -1619,8 +1824,9 @@ func (n *Node) handleReady(rd raft.Ready) {
 	for _, rs := range rd.ReadStates {
 		n.readIndexKnown(rs)
 	}
-	// Appends first, so that a term or vote change also holds back the
-	// messages of the same Ready.
+	// Appends and applies first, so that a term or vote change, or a
+	// committed configuration change, also holds back the messages of the
+	// same Ready.
 	var newVotes []*raftpb.Message
 	for _, m := range rd.Messages {
 		if m.GetTo() == raft.LocalAppendThread && m.Vote != nil && (m.GetTerm() != n.voteTerm || m.GetVote() != n.vote) {
@@ -1628,6 +1834,39 @@ func (n *Node) handleReady(rd raft.Ready) {
 			n.unsyncedVotes++
 			newVotes = append(newVotes, m)
 		}
+		if m.GetTo() == raft.LocalApplyThread && len(m.Entries) > 0 {
+			// As etcd's committed index: the last entry handed to apply.
+			n.commit = max(n.commit, m.Entries[len(m.Entries)-1].GetIndex())
+		}
+		// A configuration change to apply, and those appended, which Raft
+		// hands to apply only once they are durable, also when they commit
+		// before.
+		if m.GetTo() == raft.LocalAppendThread && len(m.Entries) > 0 {
+			// The append replaces the log from its first entry on.
+			first := m.Entries[0].GetIndex()
+			n.confsAppended = slices.DeleteFunc(n.confsAppended, func(i uint64) bool { return i >= first })
+		}
+		if to := m.GetTo(); to == raft.LocalApplyThread || to == raft.LocalAppendThread {
+			for _, e := range m.Entries {
+				if t := e.GetType(); t != raftpb.EntryConfChange && t != raftpb.EntryConfChangeV2 {
+					continue
+				}
+				if to == raft.LocalApplyThread {
+					n.confAt = max(n.confAt, e.GetIndex())
+				} else {
+					n.confsAppended = append(n.confsAppended, e.GetIndex())
+				}
+			}
+		}
+	}
+	if rd.HardState != nil {
+		n.confsAppended = slices.DeleteFunc(n.confsAppended, func(i uint64) bool {
+			if i > rd.GetCommit() {
+				return false
+			}
+			n.confAt = max(n.confAt, i)
+			return true
+		})
 	}
 	for _, m := range rd.Messages {
 		switch m.GetTo() {
@@ -1667,6 +1906,23 @@ func (n *Node) handleReady(rd raft.Ready) {
 		}
 	}
 	n.serveReads()
+	n.releaseHeld()
+}
+
+// failReads fails the reads whose read index has not come yet when a new
+// leader appears, with ErrGRPCLeaderChanged, which clients retry: as
+// etcd's read loop fails its attempt under way. Raft dropped their
+// requests with the term.
+func (n *Node) failReads() {
+	for _, b := range n.readBatches {
+		if b.index != 0 || allDone(b.reads) {
+			continue
+		}
+		n.counters.ReadIndexFailed++
+		for _, p := range b.reads {
+			n.finish(p, rpctypes.ErrGRPCLeaderChanged)
+		}
+	}
 }
 
 func (n *Node) readIndexKnown(rs raft.ReadState) {
@@ -1792,7 +2048,9 @@ func (n *Node) serveRead(p *pending) {
 	case *pb.MemberListRequest:
 		resp = n.memberResponse(op, nil)
 	case *pb.DowngradeRequest:
-		resp, err = n.validateDowngrade(op)
+		if resp, err = n.validateDowngrade(p, op); resp == nil && err == nil {
+			return
+		}
 	}
 	if cold, ok := errors.AsType[*mvcc.ColdError](err); ok {
 		n.fetch(cold.Need).read = p
@@ -1834,6 +2092,11 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 		if e.GetIndex() <= n.applied {
 			continue
 		}
+		if e.GetIndex() != n.applied+1 {
+			// As etcd, which stops on it: the driver or the log skipped
+			// committed entries.
+			return fmt.Errorf("core: committed entry %d does not follow the applied entry %d", e.GetIndex(), n.applied)
+		}
 		if err := n.applyEntry(e); err != nil {
 			return fmt.Errorf("core: apply entry %d: %w", e.GetIndex(), err)
 		}
@@ -1859,7 +2122,13 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 	if e.GetType() == raftpb.EntryConfChange {
 		return n.applyConfChange(e)
 	}
-	if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
+	if e.GetType() != raftpb.EntryNormal {
+		return nil
+	}
+	if len(e.GetData()) == 0 {
+		// A new leader's first entry: as etcd's read loop on the first
+		// commit in a term, ask for the read indexes not known yet at once.
+		n.retryReads(true)
 		return nil
 	}
 	// A write may read what an earlier write of its entry put, and an
@@ -1968,7 +2237,7 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 	if err == nil {
 		n.matchWatches()
 		if !room {
-			resp, err, fills = nil, n.overQuota(), nil
+			resp, err, fills = nil, n.overQuota(p), nil
 		}
 	}
 	n.timed = timedApply{op: opName(op), err: err}
@@ -1998,7 +2267,7 @@ func (n *Node) applyPut(b []byte, at int, p *pending) error {
 	if err == nil {
 		n.matchWatches()
 		if !room {
-			err = n.overQuota()
+			err = n.overQuota(p)
 		}
 	}
 	n.timed = timedApply{op: "Put", err: err}
@@ -2150,17 +2419,24 @@ func (n *Node) stalled() bool {
 const maxHeld = 1024
 
 // send puts a message to a peer out, or holds it while a term or vote
-// change is not yet durable. A stalled leader drops it: Raft sends again
-// what its peers miss, and messages to this node still step it, so it
-// learns of a new leader's term.
+// change is not yet durable, or while a follower has not applied a
+// committed configuration change: as etcd's follower, which sends nothing
+// until it applied such a change, so that it neither counts votes nor
+// campaigns by the old configuration. A stalled leader drops it: Raft
+// sends again what its peers miss, and messages to this node still step
+// it, so it learns of a new leader's term. A message to a removed member
+// is dropped, as etcd drops it.
 func (n *Node) send(m *raftpb.Message) {
+	if n.state.removed[m.GetTo()] {
+		return
+	}
 	if n.stalled() {
 		if m.GetType() == raftpb.MsgHeartbeat {
 			n.counters.HeartbeatSendFailures++
 		}
 		return
 	}
-	if n.unsyncedVotes > 0 {
+	if n.unsyncedVotes > 0 || n.confPending() {
 		// Raft resends what it loses, so past the bound the newest
 		// messages are dropped instead of held.
 		if len(n.held) < maxHeld {
@@ -2169,4 +2445,20 @@ func (n *Node) send(m *raftpb.Message) {
 		return
 	}
 	n.out.Send = append(n.out.Send, m)
+}
+
+// confPending reports whether this node follows and has a committed
+// configuration change it has not applied yet.
+func (n *Node) confPending() bool { return !n.isLeader && n.applied < n.confAt }
+
+// releaseHeld sends the held messages once nothing holds them any more.
+func (n *Node) releaseHeld() {
+	if len(n.held) == 0 || n.unsyncedVotes > 0 || n.confPending() {
+		return
+	}
+	held := n.held
+	n.held = nil
+	for _, m := range held {
+		n.send(m)
+	}
 }

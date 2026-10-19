@@ -67,6 +67,21 @@ func (c *client) run() {
 		r := &Record{Client: c.id, Node: i, Call: s.now(), req: c.request()}
 		s.mu.Unlock()
 		resp, err := s.call(s.nodes[i], r.req, s.cfg.ClientTimeout)
+		// A read that failed with "leader changed" goes again, as
+		// clientv3 retries it.
+		for errors.Is(err, rpctypes.ErrGRPCLeaderChanged) {
+			timeout := s.cfg.ClientTimeout
+			if timeout > 0 {
+				s.mu.Lock()
+				timeout = r.Call + timeout - s.now()
+				s.mu.Unlock()
+				if timeout <= 0 {
+					err = errClientTimeout
+					break
+				}
+			}
+			resp, err = s.call(s.nodes[i], r.req, timeout)
+		}
 		s.mu.Lock()
 		c.done(r, resp, err)
 		// At least 1 ns, so the next call starts after this one returned.

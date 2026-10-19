@@ -822,7 +822,8 @@ const maxSlotOrder = 6
 // at the current revision, in call order: that one if the model gives
 // each its answer in it, else the first order that follows real time in
 // which it does, else call order. Two compactions at one revision, for
-// one, must go in the order of their revisions.
+// one, must go in the order of their revisions, and a compaction after
+// a grant that returned before a read below it was called (#284).
 func (r *revisionOrder) slotOrder(ops []int) []int {
 	if len(ops) < 2 || len(ops) > maxSlotOrder || r.answered(ops) {
 		return ops
@@ -855,7 +856,10 @@ func (r *revisionOrder) slotOrder(ops []int) []int {
 }
 
 // answered reports whether ops, in this order after the live store,
-// follow real time and get their answers from the model.
+// follow real time and get their answers from the model. An order with a
+// compaction must also leave the acked ops that changed nothing at this
+// revision their answers, as observe would place them: a read below the
+// compaction may have to go between two of ops (#284).
 func (r *revisionOrder) answered(ops []int) bool {
 	w := r.w
 	s := w.live.clone()
@@ -869,7 +873,16 @@ func (r *revisionOrder) answered(ops []int) bool {
 			return false
 		}
 	}
-	return true
+	seen := r.seen[w.live.rev]
+	if len(seen) == 0 || !slices.ContainsFunc(ops, func(i int) bool { return w.reqs[i].Compact != nil }) {
+		return true
+	}
+	m := r.save()
+	defer r.restore(m)
+	for _, i := range ops {
+		w.apply(i, w.reqs[i])
+	}
+	return w.placeSeen(seen, false) == nil
 }
 
 // insertOptional puts in, at revision rev, every optional mutation that
@@ -945,14 +958,18 @@ func (r *revisionOrder) due(call, rev int64) []optional {
 }
 
 // takes steps s through late optional o if it may go in now and the
-// model takes it without a write.
+// model takes it without a write. The model goes before readsFit, which
+// places reads and costs far more: a compaction that an acked one made
+// pointless stays due to the end, and its reads were placed again at
+// every event (#289). s is the caller's copy, which readsFit does not
+// read.
 func (r *revisionOrder) takes(s *state, o optional) bool {
-	if o.from > s.rev || !r.isReady(o) || !r.readsFit(o) {
+	if o.from > s.rev || !r.isReady(o) {
 		return false
 	}
 	rev := s.rev
 	out := s.step(r.w.reqs[o.op], false)
-	return out.err == nil && s.rev == rev
+	return out.err == nil && s.rev == rev && r.readsFit(o)
 }
 
 // expire puts in the late optional mutations due before the event of an
@@ -1013,7 +1030,7 @@ func (r *revisionOrder) expireEnd() {
 	w := r.w
 	for _, o := range r.due(math.MaxInt64, math.MaxInt64) {
 		r.putIn(o, func(s *state, o optional) bool {
-			return o.from <= s.rev && r.isReady(o) && r.readsFit(o) && s.step(w.reqs[o.op], false).err == nil
+			return o.from <= s.rev && r.isReady(o) && s.step(w.reqs[o.op], false).err == nil && r.readsFit(o)
 		})
 	}
 }

@@ -134,7 +134,7 @@ func (c *memCluster) step() {
 		if c.down[m.GetTo()-1] || c.down[m.GetFrom()-1] {
 			continue
 		}
-		if err := c.nodes[m.GetTo()-1].Step(m); err != nil {
+		if err := c.nodes[m.GetTo()-1].Step(m); err != nil && !errors.Is(err, errFromRemoved) {
 			c.t.Fatalf("step %s: %v", m.GetType(), err)
 		}
 	}

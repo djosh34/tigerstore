@@ -252,6 +252,7 @@ func TestWitnessedGood(t *testing.T) {
 			return h
 		}},
 		{"historical reads, inside a txn too", func(*testing.T) *history.History { return historicalTxn() }},
+		{"acked compaction after the grant a read below it follows", func(t *testing.T) *history.History { return grantReadCompact(t, false) }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -382,6 +383,7 @@ func TestWitnessedBroken(t *testing.T) {
 			h.Ops[2].Resp.Txn.Results[0].Range = h.Ops[2].Resp.Txn.Results[2].Range
 			return h
 		}},
+		{"read below a compaction that returned before it", "", func(t *testing.T) *history.History { return grantReadCompact(t, true) }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -431,7 +433,7 @@ func TestWitnessedUnseenGaps(t *testing.T) {
 // clock on the way.
 func TestWitnessedTimeout(t *testing.T) {
 	b := newBuilder(t, "a")
-	for i := range 2000 {
+	for i := range 4000 {
 		b.put(i%16, "a", strconv.Itoa(i))
 	}
 	small := newBuilder(t, "a")
@@ -747,5 +749,54 @@ func TestWitnessedAmbiguousCases(t *testing.T) {
 				mustPass(t, "Witnessed "+mode.String(), Witnessed(h, mode, timeout))
 			}
 		})
+	}
+}
+
+// grantReadCompact is seed 30120 of #284 cut down: a compaction to 3 is
+// called before a grant, and a read at revision 2 after the grant
+// returned; all three answer at revision 3. The grant goes before the
+// compaction, so that the read can come between them. With early, the
+// compaction returns before the read is called, and the read is stale.
+func grantReadCompact(t *testing.T, early bool) *history.History {
+	b := newBuilder(t, "a")
+	b.put(0, "a", "1")
+	b.put(0, "a", "2")
+	grant := b.do(1, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 100}})
+	read := b.do(2, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+	compact := b.do(3, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+	h := b.done()
+	h.Ops[compact].Call = h.Ops[grant].Call - 1
+	h.Ops[compact].Return = h.Ops[read].Return + 1
+	if early {
+		h.Ops[compact].Return = h.Ops[read].Call - 1
+	}
+	return h
+}
+
+// TestWitnessedSupersededCompaction has an ambiguous compaction to 2 that
+// an acked one to 3 made pointless, a read below it that found 1
+// compacted, and then thousands of ops. The ambiguous compaction stays
+// due to the end, and the witness placed its reads again at every event
+// before it asked the model, which refuses it at once: quadratic, so that
+// seed 7004's 12,130 ops took over a minute under -race (#289).
+func TestWitnessedSupersededCompaction(t *testing.T) {
+	b := newBuilder(t, "a")
+	b.put(0, "a", "1")
+	b.put(0, "a", "2")
+	read := b.do(1, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 1}})
+	early := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 2}})
+	b.put(0, "a", "3")
+	b.do(3, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+	b.do(4, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 1}})
+	last := 0
+	for i := range 4000 {
+		last = b.put(0, "a", strconv.Itoa(i))
+		b.get(1, "a")
+	}
+	h := b.done()
+	h.Ops[early].Call, h.Ops[early].Return = h.Ops[read].Return+1, h.Ops[last].Return+10
+	h.Ops[early].Resp, h.Ops[early].Err = nil, errUnavailable
+	for _, mode := range bothModes {
+		mustPass(t, "Witnessed "+mode.String(), Witnessed(h, mode, 2*time.Second))
 	}
 }

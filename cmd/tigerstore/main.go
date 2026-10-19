@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"slices"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -197,6 +198,7 @@ func start(c *config, lg *zap.Logger) error {
 		return err
 	}
 	gate := ec.ServerFeatureGate
+	ccfg.PriorityRequest = gate.Enabled(features.PriorityRequest)
 	ncfg := node.Config{
 		Core: ccfg, DataDir: ec.Dir, WalDir: ec.WalDir, Tick: time.Duration(ec.TickMs) * time.Millisecond,
 		DiskBudget: c.own.DiskBudget, SegmentBytes: c.own.UnsafeSegment, CorruptCheckTime: ec.CorruptCheckTime, Logf: logf, AutoCompaction: compaction,
@@ -274,10 +276,12 @@ func start(c *config, lg *zap.Logger) error {
 		}
 	}()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	sig, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// A signal before the node serves clients stops it at once.
+	stopNow := context.AfterFunc(sig, cancel)
 	ran := make(chan error, 1)
 	go func() {
 		ran <- n.Run(ctx, t)
@@ -303,18 +307,44 @@ func start(c *config, lg *zap.Logger) error {
 		return errors.Join(err, <-ran, g.Stop(), t.Close())
 	}
 	served := make(chan error, len(clientLns))
+	// closing is set once the clients are stopped on purpose.
+	var closing atomic.Bool
 	for _, l := range clientLns {
 		go func() {
 			// A node that cannot serve clients stops instead of staying
 			// a silent Raft member.
 			served <- g.ServeListener(l.Listener)
-			cancel()
+			if !closing.Load() {
+				cancel()
+			}
 		}()
 		lg.Info("serving client traffic", zap.String("address", l.url.String()), zap.String("traffic", trafficName(l.Traffic)))
 	}
 	logf("node %s (raft ID %d) serving clients, peers on %v", ec.Name, ident.id, ec.ListenPeerUrls)
-	runErr := <-ran
-	stopErr := g.Stop()
+	// From here on a signal stops the node as etcd's Close does: the
+	// clients go first, while the node still runs, so that their calls in
+	// flight can finish; then the node hands its leadership to a peer,
+	// and only then stops. A signal that came before stopped the node
+	// already.
+	graceful := stopNow()
+	var runErr, stopErr error
+	stopped := false
+	select {
+	case runErr = <-ran:
+	case <-sig.Done():
+		if graceful {
+			closing.Store(true)
+			stopErr, stopped = g.Stop(), true
+			if err := n.TransferLeadership(ctx); err != nil {
+				lg.Warn("leadership transfer failed", zap.Error(err))
+			}
+		}
+		cancel()
+		runErr = <-ran
+	}
+	if !stopped {
+		stopErr = g.Stop()
+	}
 	for range clientLns {
 		stopErr = errors.Join(stopErr, <-served)
 	}

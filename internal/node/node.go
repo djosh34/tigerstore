@@ -126,6 +126,8 @@ type input struct {
 	batch       *batch
 	msg         *raftpb.Message
 	unreachable uint64
+	// cancel is a request whose client went away (Cancel).
+	cancel uint64
 	// advance moves the election clock (AdjustTicks).
 	advance int
 	// removed is a peer's answer that the cluster removed this node.
@@ -315,12 +317,11 @@ type Completion struct {
 }
 
 // batch is requests that one client connection hands the committer at
-// once. Their IDs are first, first+1, and so on.
+// once, with their IDs set.
 type batch struct {
-	first uint64
-	reqs  []core.Request
-	tags  []any
-	to    Completer
+	reqs []core.Request
+	tags []any
+	to   Completer
 }
 
 // waiter is who waits for the reply to a request: a Do call, or a
@@ -333,7 +334,8 @@ type waiter struct {
 
 // SubmitBatch hands the committer every request in reqs with one inbox
 // send, so a client connection does not pay a channel, a goroutine and a
-// reply channel per request. The node sets their IDs. tags[i] comes back
+// reply channel per request. The node sets their IDs before it hands them
+// over, for Cancel. tags[i] comes back
 // with the reply to reqs[i] through to.Complete. It waits while the inbox
 // is full, which slows down the client connection; it fails only if ctx
 // ends or the node stopped, and then none of the requests was taken. A
@@ -348,8 +350,11 @@ func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any,
 	default:
 	}
 	k := uint64(len(reqs))
-	b := &batch{first: n.nextID.Add(k) - k + 1, reqs: reqs, tags: tags, to: to}
-	return n.put(ctx, input{batch: b})
+	first := n.nextID.Add(k) - k + 1
+	for i := range reqs {
+		reqs[i].ID = first + uint64(i)
+	}
+	return n.put(ctx, input{batch: &batch{reqs: reqs, tags: tags, to: to}})
 }
 
 // Node is a running node.
@@ -388,6 +393,8 @@ type Node struct {
 	transport atomic.Value
 	// members are the members' IDs the committer saw last.
 	members atomic.Pointer[[]uint64]
+	// broken is set once a write or a sync of the log failed.
+	broken atomic.Bool
 	// memory measures the process's memory for the value cache, each
 	// tick (Config.Memory); only the committer uses it.
 	memory func(cacheLow int64) (int64, bool)
@@ -412,8 +419,12 @@ type diskLog struct {
 	mu      sync.Mutex
 	reading sync.RWMutex
 	w       *wal.WAL
-	fs      FS
-	dir     string
+	// closed is set once the WAL is closed for good: a snapshot fetch can
+	// outlast Run, and its reads then fail instead of opening files again
+	// (#286). Guarded by mu.
+	closed bool
+	fs     FS
+	dir    string
 	// sealed is the newest segment that no longer changes; maps holds the
 	// mappings of sealed segments by sequence number.
 	sealed uint64
@@ -443,17 +454,24 @@ type diskLog struct {
 func (l *diskLog) Entry(index uint64) (*raftpb.Entry, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.closed {
+		return nil, os.ErrClosed
+	}
 	return l.w.Entry(index)
 }
 
 func (l *diskLog) Has(index uint64) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.w.Has(index)
+	return !l.closed && l.w.Has(index)
 }
 
 func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 	l.mu.Lock()
+	if l.closed {
+		l.mu.Unlock()
+		return nil, os.ErrClosed
+	}
 	seq, at, ok := l.w.ValuePlace(index, off, n)
 	var m []byte
 	var r io.ReaderAt
@@ -546,11 +564,20 @@ func (l *diskLog) unmap(upto uint64) error {
 	return err
 }
 
-// close unmaps every segment and closes the WAL.
+// close unmaps every segment and closes the WAL for good.
 func (l *diskLog) close() error {
-	if l.w == nil {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.closeLocked()
+}
+
+// closeLocked closes as close does, with the lock held, as open does
+// before it puts a new WAL in place.
+func (l *diskLog) closeLocked() error {
+	if l.w == nil || l.closed {
 		return nil
 	}
+	l.closed = true
 	l.reading.Lock()
 	defer l.reading.Unlock()
 	return errors.Join(l.w.Close(), l.unmap(l.w.Seq()))
@@ -559,6 +586,9 @@ func (l *diskLog) close() error {
 func (l *diskLog) Checkpoint(index uint64) (io.ReadCloser, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.closed {
+		return nil, os.ErrClosed
+	}
 	return l.w.Checkpoint(index)
 }
 
@@ -648,8 +678,8 @@ func (n *Node) open() error {
 		w.SetSegmentBytes(n.cfg.SegmentBytes)
 	}
 	n.log.mu.Lock()
-	err = n.log.close()
-	n.log.w, n.log.sealed, n.log.ckpts, n.log.removal = w, w.Seq()-1, nil, nil
+	err = n.log.closeLocked()
+	n.log.w, n.log.closed, n.log.sealed, n.log.ckpts, n.log.removal = w, false, w.Seq()-1, nil, nil
 	n.log.held.Store(false)
 	n.log.mu.Unlock()
 	if err != nil {
@@ -776,6 +806,45 @@ func PeerAddrs(members []*pb.Member) map[uint64]string {
 	return out
 }
 
+// ElectionTimeout is the node's election timeout.
+func (n *Node) ElectionTimeout() time.Duration {
+	return n.cfg.Tick * time.Duration(n.cfg.Core.ElectionTicks)
+}
+
+// TransferLeadership is etcd's EtcdServer.TransferLeadership, which its
+// Stop runs before the node stops: a leader with another voter hands its
+// leadership to the voter it has been connected to the longest, and
+// waits for that up to the request timeout.
+func (n *Node) TransferLeadership(ctx context.Context) error {
+	m, err := n.Metrics(ctx)
+	if err != nil || !m.IsLeader {
+		return err
+	}
+	t, ok := n.transport.Load().(peer.Transport)
+	if !ok {
+		return nil
+	}
+	var to uint64
+	var since time.Time
+	voters := 0
+	for id := range m.Raft.Config.Voters.IDs() {
+		voters++
+		if s := t.ActiveSince(id); id != n.ID() && !s.IsZero() && (to == 0 || s.Before(since)) {
+			to, since = id, s
+		}
+	}
+	switch {
+	case voters < 2:
+		return nil
+	case to == 0:
+		return rpctypes.ErrGRPCUnhealthy
+	}
+	ctx, cancel := context.WithTimeout(ctx, n.cfg.Tick*time.Duration(n.cfg.Core.RequestTicks))
+	defer cancel()
+	_, err = n.DoAs(ctx, core.RootCaller(), &pb.MoveLeaderRequest{TargetID: to})
+	return err
+}
+
 // Leader is the leader the node knows of, or 0.
 func (n *Node) Leader() uint64 { return n.leader.Load() }
 
@@ -813,6 +882,14 @@ func (n *Node) Removed() {
 	case n.inbox <- input{removed: true}:
 	case <-n.done:
 	}
+}
+
+// Cancel tells the node that the client of request id went away: a
+// write that waits for a leader to be proposed is dropped
+// (core.Node.Cancel). It never blocks: a goroutine of its own waits for
+// room in the inbox.
+func (n *Node) Cancel(id uint64) {
+	go n.tell(input{cancel: id})
 }
 
 // Do runs one request and waits for its reply.
@@ -854,6 +931,7 @@ func (n *Node) doReply(ctx context.Context, r *request) (core.Reply, error) {
 	case rep := <-r.reply:
 		return rep, rep.Err
 	case <-ctx.Done():
+		n.Cancel(r.id)
 		return core.Reply{}, ctx.Err()
 	case <-n.done:
 		return core.Reply{}, rpctypes.ErrGRPCStopped
@@ -911,6 +989,12 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 			}
 			err = errors.Join(err, oerr)
 		}
+		if err == nil && !n.broken.Load() {
+			// A clean stop syncs the log's tail, as etcd's WAL.Close does.
+			n.log.mu.Lock()
+			err = n.log.w.SyncTail()
+			n.log.mu.Unlock()
+		}
 		close(n.done)
 		return errors.Join(err, n.log.close())
 	}
@@ -953,6 +1037,14 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	var reads []*core.ValueRead
 	streams := map[uint64]*WatchStream{}
 	var term uint64 // the term logged last
+	// clock is the ticks the core's request clock has had; the ticks of
+	// wall time it missed while the committer was busy go to it with
+	// Elapse, so that requests time out by the wall clock.
+	started, clock := time.Now(), int64(0)
+	// beats holds when this node last sent each peer a heartbeat, in
+	// term beatTerm.
+	beats := map[uint64]time.Time{}
+	var beatTerm uint64
 	for {
 		inbox := n.inbox
 		if len(backlog) >= maxBacklog {
@@ -1025,6 +1117,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			n.core.CopyCheckpoint()
 		case <-ticker.C:
 			n.core.Tick()
+			clock++
+			if behind := int64(time.Since(started)/n.cfg.Tick) - clock; behind > 0 {
+				n.core.Elapse(behind)
+				clock += behind
+			}
 			n.measureMemory(streams)
 		case <-ctx.Done():
 			return nil
@@ -1052,7 +1149,14 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			t.SetPeers(PeerAddrs(eff.Members), n.core.RemovedMembers())
 			n.learner.Store(n.core.IsLearner())
 		}
+		if tm := n.core.Term(); tm != beatTerm {
+			clear(beats)
+			beatTerm = tm
+		}
 		for _, m := range eff.Send {
+			if m.GetType() == raftpb.MsgHeartbeat {
+				n.heartbeatSent(beats, m.GetTo())
+			}
 			t.Send(m)
 		}
 		groups = n.completeAll(eff.Replies, waiters, groups, groupOf)
@@ -1097,6 +1201,20 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			return err
 		}
 	}
+}
+
+// heartbeatSent is etcd's TimeoutDetector on the leader's heartbeats: a
+// heartbeat to a peer more than two heartbeat intervals after the one
+// before means the leader is overloaded, likely by a slow disk. It logs
+// that and counts it in etcd_server_heartbeat_send_failures_total.
+func (n *Node) heartbeatSent(beats map[uint64]time.Time, to uint64) {
+	now := time.Now()
+	interval := n.cfg.Tick * time.Duration(n.cfg.Core.HeartbeatTicks)
+	if last, ok := beats[to]; ok && now.Sub(last) > 2*interval {
+		n.logf("warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to %d, heartbeat interval %v, exceeded %v", to, interval, now.Sub(last)-2*interval)
+		n.core.LateHeartbeat()
+	}
+	beats[to] = now
 }
 
 // measureMemory gives the core what the process uses besides the value
@@ -1194,9 +1312,7 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 	case in.batch != nil:
 		b := in.batch
 		for i := range b.reqs {
-			r := &b.reqs[i]
-			r.ID = b.first + uint64(i)
-			waiters[r.ID] = waiter{to: b.to, tag: b.tags[i]}
+			waiters[b.reqs[i].ID] = waiter{to: b.to, tag: b.tags[i]}
 		}
 		n.core.SubmitAll(b.reqs)
 	case in.status != nil:
@@ -1227,6 +1343,8 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		}
 	case in.unreachable != 0:
 		n.core.Unreachable(in.unreachable)
+	case in.cancel != 0:
+		n.core.Cancel(in.cancel)
 	case in.advance != 0:
 		n.core.AdvanceElection(in.advance)
 	case in.removed:
@@ -1324,6 +1442,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		wg.Wait()
 	}()
 	fail := func(err error) {
+		n.broken.Store(true)
 		select {
 		case n.persisted <- persistDone{err: err}:
 		case <-ctx.Done():
@@ -1540,6 +1659,9 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 			if planted.On("B11") {
 				// Planted: carry on as if the sync worked.
 				err = nil
+			}
+			if err != nil {
+				n.broken.Store(true)
 			}
 			syncTime := time.Since(start)
 			n.cfg.Metrics.WALFsync.Observe(syncTime.Seconds())

@@ -35,6 +35,9 @@ type memNet struct {
 	cut    int
 	// fetches counts every fetch.
 	fetches int
+	// since is when each node's connections came up, as every peer sees
+	// them; nodes without one count as not connected.
+	since map[uint64]time.Time
 }
 
 // join makes n reachable until ctx ends.
@@ -85,7 +88,11 @@ func (p memPeer) Close() error { return nil }
 
 func (p memPeer) SetPeers(map[uint64]string, []uint64) {}
 
-func (p memPeer) ActiveSince(uint64) time.Time { return time.Time{} }
+func (p memPeer) ActiveSince(id uint64) time.Time {
+	p.net.mu.Lock()
+	defer p.net.mu.Unlock()
+	return p.net.since[id]
+}
 
 func (p memPeer) Call(context.Context, uint64, []byte) ([]byte, error) {
 	return nil, errors.New("memPeer answers no calls")
