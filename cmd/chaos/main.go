@@ -271,6 +271,7 @@ func run(c config, dir string) (err error) {
 	t.stopClients()
 	logf("schedule done, clients stopped, waiting for convergence")
 	fail("convergence", cl.converged(ctx, 30*time.Second))
+	fail("members and leader", r.membersAgree(ctx))
 	fail("finish", t.finish())
 	fail("close clients", closeClients(cs))
 	// How each node stands before the stop, for a failure here or in the

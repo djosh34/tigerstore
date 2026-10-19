@@ -45,12 +45,16 @@ const (
 	slowWatcher    = "barely-alive-client"
 	severalAtOnce  = "several-at-once"
 	replace        = "replace-member"
+	tripleLoss     = "crash-partition-gray"
+	learnerLeader  = "replace-leader-learner"
+	rollingLoss    = "rolling-loss-compact"
 	electionMillis = 1000
 )
 
 var envFaults = []string{
 	netemLoss, netemReorder, netemCorrupt, cpuGray, diskSlow, diskStall, fsyncFail, diskFull,
 	powerLoss, tornWrite, recoveryCrash, installCrash, slowWatcher, severalAtOnce, replace,
+	tripleLoss, learnerLeader, rollingLoss,
 }
 
 // LazyFS answers an fsync with success even when the disk under it
@@ -381,6 +385,12 @@ func (r *runner) injectEnv(ctx context.Context, s step, lead, target int, rec *r
 		return r.several(ctx, s, lead, target, rec)
 	case replace:
 		return r.replaceMember(ctx, s, target, rec)
+	case tripleLoss:
+		return r.tripleLoss(ctx, s, lead, rec)
+	case learnerLeader:
+		return r.replaceLeaderLearner(ctx, s, lead, rec)
+	case rollingLoss:
+		return r.rollingLoss(ctx, s, rec)
 	}
 	return fmt.Errorf("unknown fault %q", s.Fault)
 }

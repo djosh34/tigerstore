@@ -119,6 +119,12 @@ func txnOp(o history.TxnOp) clientv3.Op {
 
 func execute(ctx context.Context, cl *clientv3.Client, q history.Request) (*history.Response, error) {
 	switch {
+	case q.Compact != nil:
+		r, e := cl.Compact(ctx, q.Compact.Revision)
+		if e != nil {
+			return nil, e
+		}
+		return frometcd.Response((*pb.CompactionResponse)(r))
 	case q.Put != nil:
 		r, e := cl.Put(ctx, q.Put.Key, q.Put.Value, options("", q.Put.PrevKV)...)
 		if e != nil {

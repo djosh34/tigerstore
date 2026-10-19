@@ -58,8 +58,10 @@ func plan(seed uint64, faults []string) []step {
 	rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
 	// A replaced member's peers reach it at its own port, past the
 	// proxies, so the replacement comes last.
-	if k := slices.Index(order, replace); k >= 0 {
-		order = append(slices.Delete(order, k, k+1), replace)
+	for _, f := range []string{replace, learnerLeader} {
+		if k := slices.Index(order, f); k >= 0 {
+			order = append(slices.Delete(order, k, k+1), f)
+		}
 	}
 	ms := func(lo, hi int) time.Duration { return time.Duration(lo+rng.IntN(hi-lo+1)) * time.Millisecond }
 	var out []step
