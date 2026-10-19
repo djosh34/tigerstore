@@ -10,21 +10,29 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
-// TestPackRecoveryMemory reproduces #292 at quarter scale: a 16 MiB
-// pack, 16 KiB values, and a 32 MiB node budget. Use the real disk adapter:
-// simfs's ReadAll does not have osfs's growing io.ReadAll buffers.
+// TestPackRecoveryMemory reproduces #292 both at quarter scale and with
+// a full 64 MiB pack. Use the real disk adapter: simfs's ReadAll does not
+// have osfs's growing io.ReadAll buffers.
 // With GC disabled, HeapAlloc's increase is the recovery high-water mark,
 // including transient buffers. This makes the bound deterministic rather
 // than hoping a sampling goroutine catches append's old and new buffers.
 func TestPackRecoveryMemory(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		values int
+		budget uint64
+	}{{"16MiB", 1024, 32 << 20}, {"64MiB", 4096, 128 << 20}} {
+		t.Run(tc.name, func(t *testing.T) { packRecoveryMemory(t, tc.values, tc.budget) })
+	}
+}
+
+func packRecoveryMemory(t *testing.T, values int, budget uint64) {
 	dir, err := osfs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	dir = dir.WithoutSync()
 	const valueBytes = 16 << 10
-	const values = 1024
-	const budget = 32 << 20
 	func() {
 		w, _, err := wal.Open(dir)
 		if err != nil {
@@ -73,7 +81,7 @@ func TestPackRecoveryMemory(t *testing.T) {
 	if peak > 2<<20 {
 		t.Errorf("recovery allocated %d bytes; want bounded scratch plus the position map (<2 MiB)", peak)
 	}
-	for _, i := range []uint64{1, values / 2, values} {
+	for _, i := range []uint64{1, uint64(values / 2), uint64(values)} {
 		b, err := w.Value(i, 0, valueBytes)
 		if err != nil || !bytes.Equal(b, bytes.Repeat([]byte{0x5a}, valueBytes)) {
 			t.Fatalf("value %d did not survive recovery: %v", i, err)
