@@ -21,6 +21,13 @@ if [ ! -x "$bin" ] || ! cmp -s "$patch" "$dir/.patch"; then
 	git clone -q https://github.com/dsrhaslab/lazyfs.git "$dir"
 	git -C "$dir" checkout -q "$commit"
 	git -C "$dir" apply "$patch"
+	python3 - "$dir/lazyfs/src/lazyfs.cpp" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+s = p.read_text().replace('    cfg->entry_timeout    = 0;', '    this_ ()->FSConfig->log_all_operations = true;\n    cfg->entry_timeout    = 0;')
+p.write_text(s)
+PY
 	cp "$patch" "$dir/.patch"
 	(cd "$dir/libs/libpcache" && ./build.sh) >/dev/null
 	(cd "$dir/lazyfs" && ./build.sh) >/dev/null

@@ -1,0 +1,18 @@
+diff --git a/internal/wal/wal.go b/internal/wal/wal.go
+index 0aca5f6e..8857d133 100644
+--- a/internal/wal/wal.go
++++ b/internal/wal/wal.go
+@@ -1126,6 +1126,13 @@ func (w *WAL) Value(index uint64, off, n uint32) ([]byte, error) {
+ func ReadValue(r io.ReaderAt, at int64, index uint64, off, n uint32) ([]byte, error) {
+ 	b := make([]byte, n)
+ 	if k, err := r.ReadAt(b, at); k != len(b) {
++		if f, ok := r.(interface{ Stat() (iofs.FileInfo, error) }); ok {
++			st, statErr := f.Stat()
++			fmt.Printf("DIAG300 value EOF entry=%d off=%d len=%d file-offset=%d reader=%T stat=%v stat-error=%v\n", index, off, n, at, r, st, statErr)
++		}
++		probe := make([]byte, n)
++		pk, pe := r.ReadAt(probe, at)
++		fmt.Printf("DIAG300 repeat-read entry=%d at=%d k=%d error=%v bytes=%x\n", index, at, pk, pe, probe)
+ 		return nil, fmt.Errorf("wal: read %d of %d bytes of the value at %d+%d of entry %d: %w", k, n, off, n, index, err)
+ 	}
+ 	return b, nil

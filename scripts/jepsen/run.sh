@@ -35,6 +35,7 @@ if [[ $STORE == etcd ]]; then
 else
   git worktree add --detach .jepsen/product "${PRODUCT_SHA:?pin the main commit to test}"
   git -C .jepsen/product rev-parse HEAD | tee "$out/product-commit.txt"
+  git -C .jepsen/product apply "$root/scripts/diag300-value.patch"
   (cd .jepsen/product; GOFLAGS=-p=2 GOMEMLIMIT=2GiB CGO_ENABLED=0 go build -o "$assets/server" ./cmd/tigerstore)
 fi
 sha256sum "$assets/server" | tee "$out/server.sha256"
