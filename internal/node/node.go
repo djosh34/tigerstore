@@ -1606,6 +1606,11 @@ func (n *Node) reportPersist(ctx context.Context, g written, err error) error {
 	if err == nil && d > n.cfg.Tick {
 		n.logf("slow write to the log: %d entries, %d bytes in %v", g.entries, g.bytes, d)
 	}
+	// A previous report may have stopped on ctx.Done. Its cancellation
+	// stops the pipeline, but must not become a later disk error report.
+	if ctx.Err() != nil {
+		return errors.Join(err, ctx.Err())
+	}
 	done := persistDone{jobs: g.jobs, err: err, times: g.times}
 	select {
 	case n.persisted <- done:
