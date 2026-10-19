@@ -1,11 +1,13 @@
 package wal
 
 import (
+	"bufio"
 	"cmp"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"slices"
 	"sort"
 	"strings"
@@ -222,63 +224,91 @@ func openPack(fs FS, id uint64) (*Pack, error) {
 		return nil, err
 	}
 	p := &Pack{id: id, f: f}
-	data, err := f.ReadAll()
-	if err == nil {
-		err = p.read(data)
-	}
-	if err != nil {
+	if err := p.read(); err != nil {
 		return nil, errors.Join(err, f.Close())
 	}
-	p.size = int64(len(data))
 	sortPackVals(p)
 	return p, nil
 }
 
-// read takes a pack's values from its bytes, which a synced root names, so
-// anything that does not verify is damage.
-func (p *Pack) read(data []byte) error {
-	if len(data) < packHeaderSize || string(data[:len(packMagic)]) != packMagic ||
-		binary.LittleEndian.Uint64(data[len(packMagic)+4:]) != p.id {
+// read checks the whole pack but retains only its position map. Neither
+// the pack nor even one large value needs to fit in memory (#292).
+func (p *Pack) read() error {
+	r := bufio.NewReaderSize(io.NewSectionReader(p.f, 0, 1<<63-1), 64<<10)
+	bad := func(err error) error {
+		return errors.Join(fmt.Errorf("%w: pack %d does not verify", ErrCorrupt, p.id), err)
+	}
+	var header [packHeaderSize]byte
+	if _, err := io.ReadFull(r, header[:]); err != nil {
+		return bad(err)
+	}
+	if string(header[:len(packMagic)]) != packMagic || binary.LittleEndian.Uint64(header[len(packMagic)+4:]) != p.id {
 		return fmt.Errorf("%w: bad header of pack %d", ErrCorrupt, p.id)
 	}
-	if v := binary.LittleEndian.Uint32(data[len(packMagic):]); v != packVersion {
+	if v := binary.LittleEndian.Uint32(header[len(packMagic):]); v != packVersion {
 		return fmt.Errorf("%w: pack %d has format version %d; this build reads version %d", ErrFormat, p.id, v, packVersion)
 	}
 	var crc uint32
-	for off := packHeaderSize; off < len(data); {
-		if len(data)-off < recHdrSize {
-			break
+	var h [recHdrSize]byte
+	var meta [valueHdrSize]byte
+	scratch := make([]byte, 64<<10)
+	for off := int64(packHeaderSize); ; {
+		if _, err := io.ReadFull(r, h[:]); err != nil {
+			return bad(err)
 		}
-		n := int(binary.LittleEndian.Uint32(data[off:]))
+		n := int64(binary.LittleEndian.Uint32(h[:]))
 		end := off + recHdrSize + n
-		if end > len(data) {
-			break
+		if end > 1<<32-1 {
+			return bad(nil)
 		}
-		body := data[off+8 : end]
-		if crc = crc32.Update(crc, castagnoli, body); crc != binary.LittleEndian.Uint32(data[off+4:]) {
-			break
-		}
-		switch body[0] {
+		crc = crc32.Update(crc, castagnoli, h[8:])
+		switch h[8] {
 		case recValue:
 			if n < valueHdrSize {
-				return fmt.Errorf("%w: short value record in pack %d", ErrCorrupt, p.id)
+				return bad(nil)
+			}
+			if _, err := io.ReadFull(r, meta[:]); err != nil {
+				return bad(err)
+			}
+			crc = crc32.Update(crc, castagnoli, meta[:])
+			for left := n - valueHdrSize; left > 0; {
+				b := scratch[:min(left, int64(len(scratch)))]
+				if _, err := io.ReadFull(r, b); err != nil {
+					return bad(err)
+				}
+				crc = crc32.Update(crc, castagnoli, b)
+				left -= int64(len(b))
+			}
+			if crc != binary.LittleEndian.Uint32(h[4:]) {
+				return bad(nil)
 			}
 			p.vals = append(p.vals, packVal{
-				index: binary.LittleEndian.Uint64(body[1:]),
-				off:   binary.LittleEndian.Uint32(body[9:]),
+				index: binary.LittleEndian.Uint64(meta[:]),
+				off:   binary.LittleEndian.Uint32(meta[8:]),
 				len:   uint32(n - valueHdrSize),
 				at:    uint32(off + recHdrSize + valueHdrSize),
 			})
 			off = end
-			continue
 		case recEnd:
-			if n == 8 && end == len(data) && binary.LittleEndian.Uint64(body[1:]) == uint64(len(p.vals)) {
-				return nil
+			if n != 8 {
+				return bad(nil)
 			}
+			if _, err := io.ReadFull(r, meta[:8]); err != nil {
+				return bad(err)
+			}
+			crc = crc32.Update(crc, castagnoli, meta[:8])
+			if crc != binary.LittleEndian.Uint32(h[4:]) || binary.LittleEndian.Uint64(meta[:8]) != uint64(len(p.vals)) {
+				return bad(nil)
+			}
+			if _, err := r.ReadByte(); err != io.EOF {
+				return bad(err)
+			}
+			p.size = end
+			return nil
+		default:
+			return bad(nil)
 		}
-		break
 	}
-	return fmt.Errorf("%w: pack %d does not verify", ErrCorrupt, p.id)
 }
 
 // closePacks closes the files of the named packs.
