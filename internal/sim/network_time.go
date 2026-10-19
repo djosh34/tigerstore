@@ -1,5 +1,12 @@
 package sim
 
+func (c Config) voters() int {
+	if c.Voters == 0 {
+		return 3
+	}
+	return c.Voters
+}
+
 // scheduleNetworkTime targets the elected leader rather than choosing an
 // arbitrary mask. Clients remain connected to every node throughout.
 // The lock is held. Each schedule leaves time after its last transition
@@ -33,6 +40,36 @@ func (s *Sim) scheduleNetworkTime() {
 			}
 		case "follower-island":
 			s.island(target)
+		case "minority-bridge":
+			// Five voters: the old leader reaches just one follower, and
+			// that follower still reaches the other three voters. The old
+			// leader has two of five, not a quorum. Rotate the bridge while
+			// the majority keeps writing and the old leader sees clients.
+			for at := int64(0); at < s.cfg.Duration-4*Second; at += 2 * Second {
+				s.after(at, func() {
+					s.mu.Lock()
+					defer s.mu.Unlock()
+					if s.healed {
+						return
+					}
+					bridge := (lead + 1 + int(at/(2*Second))%4) % 5
+					mask, bit := uint64(0), uint(0)
+					for from := range s.nodes {
+						for to := range s.nodes {
+							if from == to {
+								continue
+							}
+							if from != lead && to != lead || from == bridge || to == bridge {
+								mask |= 1 << bit
+							}
+							bit++
+						}
+					}
+					s.stats.LinkChanges++
+					s.tracef("minority bridge: leader %d reaches only %d", lead+1, bridge+1)
+					s.setLinks(mask)
+				})
+			}
 		case "leader-flap":
 			// The old leader alternates between isolation and reachability
 			// every 250 ms, with a longer cut every two seconds to force

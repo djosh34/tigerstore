@@ -102,9 +102,9 @@ func (w *watchClient) run(wait, dropAt int64) {
 	var refused *node
 	for s.sleep(wait) {
 		s.mu.Lock()
-		i := s.rng.IntN(3)
+		i := s.rng.IntN(s.cfg.voters())
 		if s.nodes[i] == refused {
-			i = (i + 1 + s.rng.IntN(2)) % 3
+			i = (i + 1 + s.rng.IntN(s.cfg.voters()-1)) % s.cfg.voters()
 		}
 		n := s.nodes[i]
 		wait = 100*Millisecond + s.rng.Int64N(400*Millisecond)

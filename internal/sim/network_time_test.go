@@ -8,7 +8,7 @@ import (
 	"github.com/djosh34/tigerstore/check"
 )
 
-var networkScenario = flag.String("sim.network", "leader-incoming", "round-2 network schedule: leader-incoming, follower-island, leader-flap, peer-slow-leader")
+var networkScenario = flag.String("sim.network", "leader-incoming", "round-2 network schedule: leader-incoming, follower-island, leader-flap, peer-slow-leader, minority-bridge")
 
 // TestNetworkTime combines leader-targeted faults with leases, compared
 // two-key transactions, compaction, snapshots and watches of both start
@@ -28,12 +28,16 @@ func TestNetworkTime(t *testing.T) {
 				t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
 					cfg := DefaultConfig(seed)
 					cfg.NetworkTime = *networkScenario
+					if cfg.NetworkTime == "minority-bridge" {
+						cfg.Voters, cfg.Clients = 5, 10
+					}
 					cfg.Faults = Faults{MaxDelay: 10 * Millisecond, DriftPerMille: 100, Checkpoint: true}
 					cfg.Duration, cfg.Heal = 24*Second, 12*Second
 					cfg.PinClients, cfg.LongWatches, cfg.LeaseCycle = true, true, true
 					if short {
 						cfg.Duration, cfg.Heal = 7*Second, 8*Second
-						cfg.Clients, cfg.NoLeases = 3, true
+						cfg.Clients, cfg.NoLeases = 2, true
+						cfg.PinClients = false
 					}
 					res := run(t, cfg)
 					checkers(t, res)

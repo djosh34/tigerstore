@@ -53,6 +53,9 @@ const (
 // Config describes one run.
 type Config struct {
 	Seed uint64
+	// Voters is the initial voting cluster size: zero means three.
+	// The round-2 minority bridge uses five; membership runs use three.
+	Voters int
 	// Duration is the length of the phase with faults.
 	Duration int64
 	// Heal is how long clients run after scheduled healing. The liveness
@@ -583,6 +586,9 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 
 // newSim sets up an empty run.
 func newSim(cfg Config) (*Sim, error) {
+	if cfg.voters() != 3 && cfg.voters() != 5 || cfg.Membership && cfg.voters() != 3 {
+		return nil, fmt.Errorf("sim: unsupported voter count %d (membership %v)", cfg.voters(), cfg.Membership)
+	}
 	s := &Sim{
 		cfg:        cfg,
 		rng:        rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
@@ -599,7 +605,7 @@ func newSim(cfg Config) (*Sim, error) {
 	// still expire for up to leaseGrace, and the watch events of the last
 	// expiry need time to arrive.
 	s.endAt = s.stopAt + leaseGrace + 2*Second
-	count := 3
+	count := cfg.voters()
 	if cfg.Membership {
 		count = 4
 	}
@@ -620,7 +626,7 @@ func newSim(cfg Config) (*Sim, error) {
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
 	n := &node{idx: i, id: uint64(i + 1), disk: disk, addrs: []string{peerAddr(i)}, wake: make(chan struct{})}
 	s.traceDisk(n)
-	if i == 3 {
+	if i == 3 && s.cfg.Membership {
 		// The fourth member is added at memberURL and moves to
 		// updatedMemberURL.
 		n.addrs = []string{hostPort(memberURL), hostPort(updatedMemberURL)}
@@ -634,7 +640,7 @@ func (s *Sim) run() error {
 	if s.cfg.Membership {
 		s.nodes[3].inactive = true
 	}
-	for _, n := range s.nodes[:3] {
+	for _, n := range s.nodes[:s.cfg.voters()] {
 		if err := s.start(n); err != nil {
 			return err
 		}
@@ -920,9 +926,13 @@ func (n *node) paused() int64 {
 
 // nodeConfig is the configuration of a process of n.
 func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
-	cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
-	cfg.Join = n.id > 3
-	for i := range 3 {
+	ids := make([]uint64, s.cfg.voters())
+	for i := range ids {
+		ids[i] = uint64(i + 1)
+	}
+	cfg := core.DefaultConfig(n.id, ids)
+	cfg.Join = n.idx >= s.cfg.voters()
+	for i := range s.cfg.voters() {
 		cfg.Members = append(cfg.Members, &pb.Member{ID: uint64(i + 1), PeerURLs: []string{peerURL(i)}})
 	}
 	if s.cfg.Membership {
