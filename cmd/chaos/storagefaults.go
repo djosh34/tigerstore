@@ -19,9 +19,9 @@ var storageFaults = map[string]string{
 	"checkpoint-power":       "checkpoint-sync",
 	"clean-power":            "clean-pack-synced",
 	"install-power":          "install-checkpoint done",
-	"recovery-power":         "recovery-open",
+	"recovery-power":         "recovery-read",
 	"send-power":             "send-first-chunk",
-	"checkpoint-full-cycle":  "checkpoint-sync",
+	"checkpoint-full-cycle":  "checkpoint-create",
 	"checkpoint-fsync-eio":   "checkpoint-sync",
 	"checkpoint-stall-cycle": "checkpoint-sync",
 }
@@ -43,7 +43,11 @@ func (r *runner) armGate(i int, stage string) error {
 }
 
 func (r *runner) releaseGate(i int, result string) error {
-	return os.WriteFile(filepath.Join(r.c.gateDir(i), "release"), []byte(result), 0600)
+	path := filepath.Join(r.c.gateDir(i), "release")
+	if err := os.WriteFile(path+".tmp", []byte(result), 0600); err != nil {
+		return err
+	}
+	return os.Rename(path+".tmp", path)
 }
 
 // storageFault repeats the same fault on the same node, not a new random

@@ -32,6 +32,15 @@ patch('internal/osfs/osfs.go', [
      if strings.HasSuffix(newName, ".wal") { return env.StorageGate("rotation-rename") }
      if strings.HasPrefix(newName, "spare-") { return env.StorageGate("clean-rename") }
      return nil'''),
+    ('func (d Dir) Create(name string) (wal.File, error) {',
+     '''func (d Dir) Create(name string) (wal.File, error) {
+     if strings.HasPrefix(name, "ckpt-") {
+       if err := env.StorageGate("checkpoint-create"); err != nil { return nil, err }
+     }'''),
+    ('return io.ReadAll(io.NewSectionReader(f.File, 0, st.Size()))',
+     '''b, err := io.ReadAll(io.NewSectionReader(f.File, 0, st.Size()))
+     if err == nil { err = env.StorageGate("recovery-read") }
+     return b, err'''),
     ('func (f file) Sync() error {', '''func (f file) Sync() error {
      if strings.HasPrefix(filepath.Base(f.Name()), "ckpt-") {
        if err := env.StorageGate("checkpoint-sync"); err != nil { return err }
@@ -40,10 +49,6 @@ patch('internal/osfs/osfs.go', [
 patch('internal/node/node.go', [
     ('"github.com/djosh34/tigerstore/internal/core"',
      '"github.com/djosh34/tigerstore/internal/core"\n "github.com/djosh34/tigerstore/chaos/env"'),
-    ('w, rec, err := wal.Open(n.log.fs)\n\tif err != nil {\n\t\treturn err\n\t}',
-     '''w, rec, err := wal.Open(n.log.fs)
-     if err != nil { return err }
-     if err := env.StorageGate("recovery-open"); err != nil { return errors.Join(err, w.Close()) }'''),
     ('err := core.ServeSnapshot(n.log, ckpts, first, last, w)',
      'err := core.ServeSnapshot(n.log, ckpts, first, last, env.StorageWriter{Writer: w})'),
     ('func (n *Node) staged(stage string) error {',
