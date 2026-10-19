@@ -958,14 +958,18 @@ func (r *revisionOrder) due(call, rev int64) []optional {
 }
 
 // takes steps s through late optional o if it may go in now and the
-// model takes it without a write.
+// model takes it without a write. The model goes before readsFit, which
+// places reads and costs far more: a compaction that an acked one made
+// pointless stays due to the end, and its reads were placed again at
+// every event (#289). s is the caller's copy, which readsFit does not
+// read.
 func (r *revisionOrder) takes(s *state, o optional) bool {
-	if o.from > s.rev || !r.isReady(o) || !r.readsFit(o) {
+	if o.from > s.rev || !r.isReady(o) {
 		return false
 	}
 	rev := s.rev
 	out := s.step(r.w.reqs[o.op], false)
-	return out.err == nil && s.rev == rev
+	return out.err == nil && s.rev == rev && r.readsFit(o)
 }
 
 // expire puts in the late optional mutations due before the event of an
@@ -1026,7 +1030,7 @@ func (r *revisionOrder) expireEnd() {
 	w := r.w
 	for _, o := range r.due(math.MaxInt64, math.MaxInt64) {
 		r.putIn(o, func(s *state, o optional) bool {
-			return o.from <= s.rev && r.isReady(o) && r.readsFit(o) && s.step(w.reqs[o.op], false).err == nil
+			return o.from <= s.rev && r.isReady(o) && s.step(w.reqs[o.op], false).err == nil && r.readsFit(o)
 		})
 	}
 }

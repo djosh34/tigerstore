@@ -433,7 +433,7 @@ func TestWitnessedUnseenGaps(t *testing.T) {
 // clock on the way.
 func TestWitnessedTimeout(t *testing.T) {
 	b := newBuilder(t, "a")
-	for i := range 2000 {
+	for i := range 4000 {
 		b.put(i%16, "a", strconv.Itoa(i))
 	}
 	small := newBuilder(t, "a")
@@ -771,4 +771,32 @@ func grantReadCompact(t *testing.T, early bool) *history.History {
 		h.Ops[compact].Return = h.Ops[read].Call - 1
 	}
 	return h
+}
+
+// TestWitnessedSupersededCompaction has an ambiguous compaction to 2 that
+// an acked one to 3 made pointless, a read below it that found 1
+// compacted, and then thousands of ops. The ambiguous compaction stays
+// due to the end, and the witness placed its reads again at every event
+// before it asked the model, which refuses it at once: quadratic, so that
+// seed 7004's 12,130 ops took over a minute under -race (#289).
+func TestWitnessedSupersededCompaction(t *testing.T) {
+	b := newBuilder(t, "a")
+	b.put(0, "a", "1")
+	b.put(0, "a", "2")
+	read := b.do(1, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 1}})
+	early := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 2}})
+	b.put(0, "a", "3")
+	b.do(3, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+	b.do(4, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 1}})
+	last := 0
+	for i := range 4000 {
+		last = b.put(0, "a", strconv.Itoa(i))
+		b.get(1, "a")
+	}
+	h := b.done()
+	h.Ops[early].Call, h.Ops[early].Return = h.Ops[read].Return+1, h.Ops[last].Return+10
+	h.Ops[early].Resp, h.Ops[early].Err = nil, errUnavailable
+	for _, mode := range bothModes {
+		mustPass(t, "Witnessed "+mode.String(), Witnessed(h, mode, 2*time.Second))
+	}
 }
