@@ -19,6 +19,7 @@ type membershipWork struct {
 	// last the last answer that did not complete a stage.
 	removedAt int64
 	last      string
+	mixed     [5]bool
 }
 
 const (
@@ -34,6 +35,9 @@ const (
 func (s *Sim) changeMembership() {
 	w := &s.membership
 	for {
+		if s.cfg.MembershipRound3 {
+			s.membershipBoundaryFaults()
+		}
 		s.mu.Lock()
 		if w.stage == 4 || s.now() >= s.stopAt {
 			s.mu.Unlock()

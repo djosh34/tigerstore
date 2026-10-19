@@ -180,7 +180,7 @@ func addFiles(files map[string]string, dir string, disk map[string][]byte) {
 
 // seedTests are the tests whose subtests are the seeds of -sim.seed and
 // -sim.seeds.
-var seedTests = map[string]bool{"TestSeeds": true, "TestLinearizable": true, "TestMembershipFaults": true}
+var seedTests = map[string]bool{"TestSeeds": true, "TestLinearizable": true, "TestMembershipFaults": true, "TestMembershipRound3": true}
 
 // activePlanted is the planted bug TestPlanted switched on, if any.
 var activePlanted string

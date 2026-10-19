@@ -98,6 +98,9 @@ type Config struct {
 	// Membership adds, updates, promotes and removes a fourth member
 	// while the ordinary clients and faults continue.
 	Membership bool
+	// MembershipRound3 injects combined faults at membership boundaries,
+	// then power-cycles every original voter under the ordinary workload.
+	MembershipRound3 bool
 	// MemoryBytes is each node's memory budget (core.Config.MemoryBytes):
 	// it turns the value cache on and bounds Range answers. Zero leaves
 	// both off.
@@ -494,6 +497,7 @@ type Stats struct {
 	// those completed before healing. Attempts include failed calls.
 	MembershipChanges, MembershipFaults [4]int
 	MembershipAttempts                  int
+	MembershipMixes                     [4]int
 }
 
 // Result is the outcome of a run.
