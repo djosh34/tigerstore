@@ -193,3 +193,38 @@ func TestTxnEventPrevKV(t *testing.T) {
 		}
 	}
 }
+
+// TestTouches is #281's case: a transaction whose success branch would
+// put k needs k's mod revision to be 2, but a later write gave k mod
+// revision 3, which no write can undo. Only its failure branch counts as
+// a writer of k from then on; before that write, both branches do.
+func TestTouches(t *testing.T) {
+	s := newState([]string{"k"})
+	put := func(v string) {
+		if o := s.step(history.Request{Put: &history.PutRequest{Key: "k", Value: v}}, false); o.err != nil {
+			t.Fatal(o.err)
+		}
+	}
+	txn := func(failure ...history.TxnOp) history.Request {
+		return history.Request{Txn: &history.TxnRequest{
+			Compare: []history.Compare{{Key: "k", Target: history.TargetMod, Result: history.Equal, Number: 2}},
+			Success: []history.TxnOp{{Put: &history.PutRequest{Key: "k", Value: "x"}}},
+			Failure: failure,
+		}}
+	}
+	k := s.index("k")
+	put("1")
+	if !touches(s, txn(), k, true) {
+		t.Fatal("at mod revision 2 the success branch may still put k")
+	}
+	put("2")
+	if touches(s, txn(), k, true) {
+		t.Fatal("at mod revision 3 the success branch counted as a creator of k")
+	}
+	if !touches(s, txn(history.TxnOp{Put: &history.PutRequest{Key: "k", Value: "y"}}), k, true) {
+		t.Fatal("the failure branch's put of k did not count")
+	}
+	if !touches(s, txn(history.TxnOp{Delete: &history.DeleteRequest{Key: "k"}}), k, false) {
+		t.Fatal("the failure branch's delete of k did not count")
+	}
+}

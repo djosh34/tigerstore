@@ -386,10 +386,10 @@ func (r *revisionOrder) reachable(s *state, skip int) bool {
 		var sure, maybe int64
 		for k := c.lo; k < c.hi; k++ {
 			present := s.kvs[k].Version != 0
-			if present && !r.may(k, s.rev, rev, skip, false) {
+			if present && !r.may(s, k, rev, skip, false) {
 				sure++
 			}
-			if present || r.may(k, s.rev, rev, skip, true) {
+			if present || r.may(s, k, rev, skip, true) {
 				maybe++
 			}
 		}
@@ -400,17 +400,19 @@ func (r *revisionOrder) reachable(s *state, skip int) bool {
 	return true
 }
 
-// may reports whether a writer may create key k, or delete it, after
-// revision now and up to rev: an acked writer of one of those revisions,
-// or an ambiguous mutation other than skip not yet placed whose lower
-// bound is below rev. Any revoke may delete a key.
-func (r *revisionOrder) may(k int, now, rev int64, skip int, create bool) bool {
+// may reports whether a writer may create key k, or delete it, after s
+// and up to revision rev: an acked writer of one of the revisions after
+// s's, or an ambiguous mutation other than skip not yet placed whose lower
+// bound is below rev and that may still write k (touches). Any revoke may
+// delete a key.
+func (r *revisionOrder) may(s *state, k int, rev int64, skip int, create bool) bool {
+	now := s.rev
 	ok := func(i int) bool {
 		op := &r.w.h.Ops[i]
 		if op.Resp != nil {
 			return op.Resp.Revision > now && op.Resp.Revision <= rev
 		}
-		return i != skip && !r.used[i] && r.lb[i] < rev
+		return i != skip && !r.used[i] && r.lb[i] < rev && touches(s, op.Req, k, create)
 	}
 	acked := func(revs []int64) bool {
 		j := sort.Search(len(revs), func(j int) bool { return revs[j] > now })
@@ -420,6 +422,40 @@ func (r *revisionOrder) may(k int, now, rev int64, skip int, create bool) bool {
 		return acked(r.putRevs[k]) || slices.ContainsFunc(r.putters[k], ok)
 	}
 	return acked(r.delRevs[k]) || slices.ContainsFunc(r.deleters[k], ok) || slices.ContainsFunc(r.revokers, ok)
+}
+
+// touches reports whether req, placed after s, may still create key k,
+// or delete it. A transaction with a compare that can no longer hold
+// (lostCompare) runs its failure branch, so only that branch counts.
+// Counting its success branch let an ambiguous transaction seem to repair
+// a key it never could, and the search tried the orders of every gap
+// before a later count failed them (#281).
+func touches(s *state, req history.Request, k int, create bool) bool {
+	if req.Txn == nil || !slices.ContainsFunc(req.Txn.Compare, func(c history.Compare) bool { return lostCompare(s, c) }) {
+		return true
+	}
+	return slices.ContainsFunc(req.Txn.Failure, func(o history.TxnOp) bool {
+		if create {
+			return o.Put != nil && o.Put.Key == s.keys[k]
+		}
+		if o.Delete == nil {
+			return false
+		}
+		lo, hi := s.span(o.Delete.Key, o.Delete.End)
+		return lo <= k && k < hi
+	})
+}
+
+// lostCompare reports whether compare c can no longer hold after s: it
+// asks for a key's mod revision to be one that s is at or past, and the
+// key's is another. Every later write gives a newer mod revision, so the
+// key never gets that one again.
+func lostCompare(s *state, c history.Compare) bool {
+	if c.Target != history.TargetMod || c.Result != history.Equal || c.Number <= 0 || c.Number > s.rev {
+		return false
+	}
+	kv, _ := s.get(c.Key)
+	return kv.ModRevision != c.Number
 }
 
 // note records what an observation of kv, unchanged up to revision to,
