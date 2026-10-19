@@ -132,6 +132,9 @@ func TestLazyFSRecoveryValueReads(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
+		if rec.Last != 1200 {
+			t.Fatalf("turn %d: recovered %d entries, want 1200 after cache clear", turn, rec.Last)
+		}
 		// The real startup writes run.tmp and renames it before core replay.
 		run, e := fs.Create("run.tmp")
 		if e != nil {
@@ -236,6 +239,12 @@ func TestLazyFSRecoveryValueReads(t *testing.T) {
 		close(errors)
 		for e := range errors {
 			t.Error(e)
+		}
+		// Leave an unsynced append as a killed process can. The next
+		// clear must discard it without disturbing the recovered prefix.
+		w.Append(nil, []*raftpb.Entry{{Term: new(uint64(1)), Index: new(rec.Last + 1), Data: data}})
+		if e := w.Flush(); e != nil {
+			t.Fatal(e)
 		}
 		if e := w.Close(); e != nil {
 			t.Fatal(e)
