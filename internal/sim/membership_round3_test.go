@@ -14,6 +14,7 @@ func TestMembershipRound3(t *testing.T) {
 		n = 4
 	}
 	cleaned := 0
+	var took effects
 	for seed := *firstSeed; seed < *firstSeed+uint64(n); seed++ {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
 			cfg := membershipConfig(seed)
@@ -42,13 +43,19 @@ func TestMembershipRound3(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// A learner may remain behind until healing. Count fault
+			// coverage over seeds, as TestSeeds does, without injecting
+			// late faults into the period that checks recovery.
+			seen := map[string]bool{"six power losses": a.Stats.Crashes >= 6}
 			for i, count := range a.Stats.MembershipMixes {
-				if count != 1 {
-					t.Fatalf("boundary %d ran %d fault mixes, want 1", i+1, count)
+				if count > 1 {
+					t.Fatalf("boundary %d ran %d fault mixes, want at most 1", i+1, count)
 				}
+				seen[fmt.Sprintf("membership mix %d", i+1)] = count == 1
 			}
-			if a.Stats.Crashes < 6 || a.Stats.Compactions == 0 || a.Stats.Snapshots == 0 {
-				t.Fatalf("missing crash, compaction or snapshot: %+v", a.Stats)
+			took.add(seed, seen)
+			if a.Stats.Compactions == 0 || a.Stats.Snapshots == 0 {
+				t.Fatalf("missing compaction or snapshot: %+v", a.Stats)
 			}
 			cleaned += a.Stats.ErasedAtRemoval
 			checkers(t, a)
@@ -65,6 +72,7 @@ func TestMembershipRound3(t *testing.T) {
 			t.Logf("%+v", a.Stats)
 		})
 	}
+	took.check(t)
 	// Removal depends on the values still live in each segment. It must
 	// happen across a campaign, not in every individual schedule.
 	if n >= 16 && cleaned == 0 {

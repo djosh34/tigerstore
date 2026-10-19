@@ -6,33 +6,12 @@ package sim
 func (s *Sim) membershipBoundaryFaults() {
 	s.mu.Lock()
 	stage := s.membership.stage
-	if stage == 0 || s.membership.mixed[stage] || s.healed {
+	if stage == 0 || stage == 4 || s.membership.mixed[stage] || s.healed {
 		s.mu.Unlock()
 		return
 	}
 	s.membership.mixed[stage] = true
 	s.stats.MembershipMixes[stage-1]++
-	if stage == 4 {
-		s.mu.Unlock()
-		// No membership changes remain. Restart every surviving voter,
-		// including the leader, while compaction and cleaning continue.
-		for i := range 3 {
-			s.mu.Lock()
-			if s.healed {
-				s.mu.Unlock()
-				return
-			}
-			n := s.nodes[i]
-			n.why = "round 3 rolling power loss"
-			s.crash(n)
-			s.restartLater(n, Second)
-			s.mu.Unlock()
-			if !s.sleep(5 * Second) {
-				return
-			}
-		}
-		return
-	}
 	lead := s.leaderIdx()
 	if lead < 0 {
 		// Retry at the next membership attempt, not against a made-up leader.

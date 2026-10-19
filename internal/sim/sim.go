@@ -101,8 +101,8 @@ type Config struct {
 	// Membership adds, updates, promotes and removes a fourth member
 	// while the ordinary clients and faults continue.
 	Membership bool
-	// MembershipRound3 injects combined faults at membership boundaries,
-	// then power-cycles every original voter under the ordinary workload.
+	// MembershipRound3 injects combined faults at membership boundaries
+	// and power-cycles every original voter under the ordinary workload.
 	MembershipRound3 bool
 	// MemoryBytes is each node's memory budget (core.Config.MemoryBytes):
 	// it turns the value cache on and bounds Range answers. Zero leaves
@@ -697,6 +697,9 @@ func (s *Sim) schedule() {
 	defer s.mu.Unlock()
 	if s.cfg.Membership {
 		s.after(2*Second, s.changeMembership)
+		if s.cfg.MembershipRound3 {
+			s.at(s.cfg.Duration-25*Second, s.membershipRollingFaults)
+		}
 	}
 	for i := range s.cfg.Clients {
 		c := &client{id: i, sim: s}
