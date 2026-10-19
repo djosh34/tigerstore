@@ -74,7 +74,15 @@ func TestDiag297CanceledReport(t *testing.T) {
 
 // A stop fix must not hide a real disk error on a running node.
 func TestDiag297DiskFailureStillReturned(t *testing.T) {
-	n := &Node{cfg: Config{Tick: time.Hour}, persisted: make(chan persistDone, 1)}
+	n, err := newOnDisk(Config{Core: core.DefaultConfig(1, []uint64{1, 2, 3}), Tick: time.Hour}, "", &concurrentDisk{d: simfs.New(), cuts: map[string]*simfs.Disk{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := n.log.close(); err != nil {
+			t.Error(err)
+		}
+	})
 	n.persisted <- persistDone{err: errSync}
 	if err := n.commit(context.Background(), noPeers{}); !errors.Is(err, errSync) {
 		t.Fatalf("commit returned %v, want %v", err, errSync)
