@@ -130,41 +130,39 @@ func TestEtcdWorkloads(t *testing.T) {
 	}
 }
 
-// checkWindow checks a short run's window: requests arrived in it, all
-// of them succeeded, and the latencies cover them. Ops counts the calls
-// that finished inside the window. Only etcd's slow deletes can leave it
-// at 0, with every call answered after it (#271); then the server CPU per
-// op is 0 too. The server's CPU is read in clock ticks of 10 ms, so a
-// window with ops can still read none (#276).
+// checkWindow checks successful progress over the whole load phase. A short
+// window may have neither arrivals nor completions when all closed-loop slots
+// were filled in warmup and only freed in drain (#298). Cohort latency must
+// still cover every arrival, and zero ops must have zero CPU/op (#271, #276).
 func checkWindow(res *result) error {
-	late := res.Ops == 0 && res.Workload == "delete"
-	if res.Cohort == 0 || res.CohortFailed != 0 || res.Latency.Count != uint64(res.Cohort) || (res.Ops == 0 && !late) || (res.Ops == 0 && res.ServerCPUUsPerOp != 0) || !res.Valid {
-		return fmt.Errorf("%d ops, cohort %d with %d failed, %d latencies, %.1f us server CPU per op, valid %v",
-			res.Ops, res.Cohort, res.CohortFailed, res.Latency.Count, res.ServerCPUUsPerOp, res.Valid)
+	if res.PhaseOps <= 0 || res.Ops > res.PhaseOps || res.Cohort > res.PhaseOps || res.CohortFailed != 0 || res.Latency.Count != uint64(res.Cohort) || (res.Ops == 0 && res.ServerCPUUsPerOp != 0) || len(res.Errors) != 0 || res.Unsent != 0 || !res.Valid {
+		return fmt.Errorf("%d phase ops, %d ops, cohort %d with %d failed, %d latencies, %.1f us server CPU per op, valid %v",
+			res.PhaseOps, res.Ops, res.Cohort, res.CohortFailed, res.Latency.Count, res.ServerCPUUsPerOp, res.Valid)
 	}
 	return nil
 }
 
-// TestCheckWindow is #271's case: every delete of the window answered
-// after it, so the window counts 0 ops. The run is still a valid one, but
-// not for any other workload. #276's case is a window of 65 puts in which
-// the server's CPU did not reach one clock tick.
 func TestCheckWindow(t *testing.T) {
-	late := &result{Workload: "delete", Ops: 0, Cohort: 1508, Latency: latency{Count: 1508}, Valid: true}
-	if err := checkWindow(late); err != nil {
-		t.Fatalf("calls answered after the window: %v", err)
-	}
-	quick := &result{Workload: "put", Ops: 65, Cohort: 65, Latency: latency{Count: 65}, Valid: true}
-	if err := checkWindow(quick); err != nil {
-		t.Fatalf("ops with no server CPU tick: %v", err)
+	for _, good := range []*result{
+		{Workload: "delete", PhaseOps: 1508, Cohort: 1508, Latency: latency{Count: 1508}, Valid: true},
+		{Workload: "put", PhaseOps: 1508, Cohort: 1508, Latency: latency{Count: 1508}, Valid: true},
+		{Workload: "put", PhaseOps: 65, Ops: 65, Cohort: 65, Latency: latency{Count: 65}, Valid: true},
+		{Workload: "put", PhaseOps: 64, Valid: true},
+	} {
+		if err := checkWindow(good); err != nil {
+			t.Errorf("checkWindow rejected %+v: %v", good, err)
+		}
 	}
 	for _, bad := range []*result{
-		{Workload: "put", Ops: 0, Cohort: 1508, Latency: latency{Count: 1508}, Valid: true},
-		{Ops: 10, Cohort: 0, Valid: true, ServerCPUUsPerOp: 3},
-		{Ops: 10, Cohort: 10, CohortFailed: 1, Latency: latency{Count: 10}, ServerCPUUsPerOp: 3, Valid: true},
-		{Ops: 10, Cohort: 10, Latency: latency{Count: 9}, ServerCPUUsPerOp: 3, Valid: true},
-		{Workload: "delete", Ops: 0, Cohort: 10, Latency: latency{Count: 10}, ServerCPUUsPerOp: 3, Valid: true},
-		{Ops: 10, Cohort: 10, Latency: latency{Count: 10}, ServerCPUUsPerOp: 3},
+		{Valid: true},
+		{PhaseOps: 1, Ops: 2, Valid: true},
+		{PhaseOps: 1, Cohort: 2, Latency: latency{Count: 2}, Valid: true},
+		{PhaseOps: 10, Ops: 10, Cohort: 10, CohortFailed: 1, Latency: latency{Count: 10}, Valid: true},
+		{PhaseOps: 10, Ops: 10, Cohort: 10, Latency: latency{Count: 9}, Valid: true},
+		{PhaseOps: 10, Cohort: 10, Latency: latency{Count: 10}, ServerCPUUsPerOp: 3, Valid: true},
+		{PhaseOps: 64},
+		{PhaseOps: 64, Errors: map[string]int64{"bad response": 1}, Valid: true},
+		{PhaseOps: 64, Unsent: 1, Valid: true},
 	} {
 		if checkWindow(bad) == nil {
 			t.Errorf("checkWindow passed %+v", bad)

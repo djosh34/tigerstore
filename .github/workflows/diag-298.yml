@@ -30,6 +30,18 @@ jobs:
         run: |
           set -o pipefail
           go test -race -count=1 -v -timeout=3m -run '^TestEtcdWorkloads$|^TestCheckWindow$' ./cmd/loadgen 2>&1 | tee "$RUNNER_TEMP/diag-298-natural.log"
+      - name: Remove the assertion fix and reproduce again
+        if: always()
+        shell: bash
+        run: |
+          set -o pipefail
+          git show cb6ec84848e46b02fcc6f346a9e482b24e85744b:cmd/loadgen/etcd_test.go > cmd/loadgen/etcd_test.go
+          status=0
+          go test -race -count=1 -v -timeout=1m -run '^TestDiag298WarmupSpansWindow$' ./cmd/loadgen 2>&1 | tee "$RUNNER_TEMP/diag-298-without-fix.log" || status=$?
+          test "$status" -ne 0
+          grep -F 'phase acknowledgements 64, window ops 0, cohort 0, failed 0, latencies 0, valid true' "$RUNNER_TEMP/diag-298-without-fix.log"
+          grep -F '0 ops, cohort 0 with 0 failed, 0 latencies, 0.0 us server CPU per op, valid true' "$RUNNER_TEMP/diag-298-without-fix.log"
+          git restore cmd/loadgen/etcd_test.go
       - uses: actions/upload-artifact@v6
         if: always()
         with:
