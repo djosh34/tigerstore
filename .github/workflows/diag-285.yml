@@ -1,0 +1,29 @@
+name: diag-285 factory stop
+on:
+  push:
+    branches: [diag/285-apiserver-stop]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  targeted-stop:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    env:
+      GOMEMLIMIT: 1GiB
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build only factory and tigerstore
+        run: |
+          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          go build -o "$RUNNER_TEMP/factory" ./apiservertest/factory
+          scripts/dev-certs.sh "$RUNNER_TEMP/certs"
+      - name: Test simultaneous SIGINT of one three-node cluster (three repetitions)
+        env:
+          TIGERSTORE: ${{ runner.temp }}/tigerstore
+          STORAGE_TEST_FACTORY: ${{ runner.temp }}/factory
+          STORAGE_TEST_CERTS: ${{ runner.temp }}/certs
+        run: python3 -B apiservertest/diag_285_stop.py
