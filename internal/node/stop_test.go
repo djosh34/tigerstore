@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -40,6 +41,26 @@ func TestNoTurnAfterStop(t *testing.T) {
 		}
 		if turns != 1 {
 			t.Fatalf("run %d: the core took %d turns after the stop", i, turns-1)
+		}
+	}
+}
+
+// TestNoReportAfterStop reports a group after the stop, with the
+// cancellation an earlier report returned as its error, as syncGroups
+// passes it on. The committer must not get it: it would stop with it as a
+// disk failure (#297).
+func TestNoReportAfterStop(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	n := &Node{log: &diskLog{}, persisted: make(chan persistDone, 1)}
+	for i := range 32 {
+		if err := n.report(ctx, written{}, ctx.Err()); !errors.Is(err, context.Canceled) {
+			t.Fatalf("run %d: report returned %v", i, err)
+		}
+		select {
+		case done := <-n.persisted:
+			t.Fatalf("run %d: the committer got %v after the stop", i, done.err)
+		default:
 		}
 	}
 }
