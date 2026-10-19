@@ -213,6 +213,9 @@ func (r *runner) inject(ctx context.Context, s step, rec *record) error {
 	followers := []int{(lead + 1) % 3, (lead + 2) % 3}
 	follower := followers[s.Pick%2]
 	rec.Requested = r.since()
+	if isStorageFault(s.Fault) {
+		return r.storageFault(ctx, s, lead, follower, rec)
+	}
 	if slices.Contains(envFaults, s.Fault) {
 		// The leader in a third of the steps, as a gray leader must be
 		// fenced too.

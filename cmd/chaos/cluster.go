@@ -215,6 +215,7 @@ func (c *cluster) startExpecting(n *node, exit bool) error {
 	n.starts++
 	_, _ = fmt.Fprintf(n.log, "chaos: start incarnation %d at %s\n", n.starts, time.Now().UTC().Format(time.RFC3339Nano))
 	cmd := exec.Command(c.bin, n.args...)
+	cmd.Env = append(os.Environ(), "CHAOS_STORAGE_GATE="+c.gateDir(n.i))
 	cmd.Stdout, cmd.Stderr = n.log, n.log
 	if err := cmd.Start(); err != nil {
 		return err

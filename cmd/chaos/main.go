@@ -50,6 +50,10 @@ type config struct {
 	Tigerstore     string        `json:"tigerstore"`
 	Faults         []string      `json:"faults"`
 	Rate           int           `json:"rate"`
+	ValueSize      int           `json:"value_size"`
+	CompactEvery   time.Duration `json:"compact_every"`
+	PressureKeys   int           `json:"pressure_keys"`
+	Memory         int64         `json:"memory"`
 	RequestTimeout time.Duration `json:"request_timeout"`
 	WatchTimeout   time.Duration `json:"watch_timeout"`
 	Quiet          time.Duration `json:"quiet"`
@@ -70,6 +74,10 @@ func main() {
 	flag.StringVar(&c.Tigerstore, "tigerstore", "", "tigerstore binary (required)")
 	flag.StringVar(&faults, "faults", strings.Join(allFaults, ","), "faults to inject, comma separated")
 	flag.IntVar(&c.Rate, "rate", 10, "calls per second per client")
+	flag.IntVar(&c.ValueSize, "value-size", 256, "bytes per generated value")
+	flag.DurationVar(&c.CompactEvery, "compact-every", 0, "compact behind all three watches at this interval")
+	flag.IntVar(&c.PressureKeys, "pressure-keys", 0, "preload this many 96 KiB cold keys, then read and overwrite them under faults")
+	flag.Int64Var(&c.Memory, "memory", 0, "with -env, per-node cgroup memory limit and memory budget")
 	flag.DurationVar(&c.RequestTimeout, "request-timeout", 2*time.Second, "deadline of one client call")
 	flag.DurationVar(&c.WatchTimeout, "watch-timeout", 20*time.Second, "time for watches to reach the final revision")
 	flag.DurationVar(&c.Quiet, "quiet", 8*time.Second, "wait after the heal, longer than the server's request timeout, before the final reads")
@@ -117,6 +125,7 @@ func main() {
 func replayCommand(c config) string {
 	cmd := fmt.Sprintf("go run ./cmd/chaos -tigerstore <binary> -seed %d -faults %s -rate %d -request-timeout %v -watch-timeout %v -quiet %v -checker-timeout %v",
 		c.Seed, strings.Join(c.Faults, ","), c.Rate, c.RequestTimeout, c.WatchTimeout, c.Quiet, c.CheckerTimeout)
+	cmd += fmt.Sprintf(" -value-size %d -compact-every %v -pressure-keys %d -memory %d", c.ValueSize, c.CompactEvery, c.PressureKeys, c.Memory)
 	if c.Env {
 		cmd += fmt.Sprintf(" -env -disk-size %d", c.DiskSize)
 		if c.LazyFS != "" {
@@ -153,7 +162,7 @@ func (e *stepError) Unwrap() error { return e.err }
 
 func run(c config, dir string) (err error) {
 	for _, f := range c.Faults {
-		if slices.Contains(envFaults, f) && !c.Env {
+		if (slices.Contains(envFaults, f) || isStorageFault(f)) && !c.Env {
 			return fmt.Errorf("fault %q needs -env", f)
 		}
 		if slices.Contains(withoutLazyFS, f) && c.LazyFS != "" {
@@ -162,7 +171,15 @@ func run(c config, dir string) (err error) {
 		if slices.Contains(withLazyFS, f) && c.LazyFS == "" {
 			return fmt.Errorf("fault %q needs -lazyfs", f)
 		}
-		if !slices.Contains(allFaults, f) && !slices.Contains(envFaults, f) {
+		if isStorageFault(f) {
+			if strings.Contains(f, "power") && c.LazyFS == "" {
+				return fmt.Errorf("fault %s needs -lazyfs", f)
+			}
+			if !strings.Contains(f, "power") && c.LazyFS != "" {
+				return fmt.Errorf("fault %s needs a plain disk", f)
+			}
+		}
+		if !slices.Contains(allFaults, f) && !slices.Contains(envFaults, f) && !isStorageFault(f) {
 			return fmt.Errorf("unknown fault %q; known: %s", f, strings.Join(slices.Concat(allFaults, envFaults), ","))
 		}
 	}
@@ -209,6 +226,23 @@ func run(c config, dir string) (err error) {
 		}
 		defer func() { fail("close the environment", e.close()) }()
 		data, extra = e.data(), nodeArgs
+		if slices.ContainsFunc(c.Faults, isStorageFault) {
+			extra = []string{"--unsafe-window-bytes", "16384", "--unsafe-checkpoint-bytes", "2097152", "--unsafe-segment-bytes", "1048576"}
+		}
+		if c.PressureKeys > 0 {
+			// Keep several 96 KiB entries during cold recovery, rather
+			// than forcing another snapshot on every new large put.
+			extra = append(extra, "--unsafe-window-bytes", "1048576")
+		}
+		if c.Memory > 0 {
+			extra = append(extra, "--memory-budget-bytes", fmt.Sprint(c.Memory))
+			for _, g := range e.groups {
+				if limitErr := g.LimitMemory(c.Memory); limitErr != nil {
+					fail("limit memory", limitErr)
+					return
+				}
+			}
+		}
 	}
 	cl, err := newCluster(dir, c.Tigerstore, c.Seed, data, extra)
 	if err != nil {
@@ -247,7 +281,7 @@ func run(c config, dir string) (err error) {
 		fail("stop", cl.stop())
 		return
 	}
-	wcfg := workloadConfig{seed: c.Seed, rate: c.Rate, keys: 6, valueSize: 256, requestTimeout: c.RequestTimeout, watchTimeout: c.WatchTimeout, quiet: c.Quiet}
+	wcfg := workloadConfig{seed: c.Seed, rate: c.Rate, keys: 6, valueSize: c.ValueSize, compactEvery: c.CompactEvery, requestTimeout: c.RequestTimeout, watchTimeout: c.WatchTimeout, quiet: c.Quiet}
 	t, err := startTraffic(wcfg, cs)
 	if err != nil {
 		fail("traffic", err)
@@ -262,6 +296,11 @@ func run(c config, dir string) (err error) {
 		actx, cancel := context.WithCancel(ctx)
 		archived, stopArchive = e.archive(actx, dir), cancel
 	}
+	fail("coverage prelude", t.coveragePrelude())
+	if c.PressureKeys > 0 {
+		fail("pressure preload", t.preloadPressure(c.PressureKeys))
+		logf("pressure preload: %d live bytes, node limit %d", c.PressureKeys*pressureSize, c.Memory)
+	}
 	_ = pause(ctx, 2*time.Second)
 	records, schedErr := r.run(ctx, steps)
 	fail("schedule", schedErr)
@@ -272,6 +311,18 @@ func run(c config, dir string) (err error) {
 	logf("schedule done, clients stopped, waiting for convergence")
 	fail("convergence", cl.converged(ctx, 30*time.Second))
 	fail("finish", t.finish())
+	if c.PressureKeys > 0 && e != nil {
+		memory := map[string]any{"limit_bytes": c.Memory, "live_value_bytes": c.PressureKeys * pressureSize}
+		for i, g := range e.groups {
+			st, statErr := g.Stats()
+			fail("memory stats", statErr)
+			memory[fmt.Sprintf("node%d", i+1)] = st
+			if st.OOMKills > 0 {
+				fail("memory limit", fmt.Errorf("node%d had %d OOM kills", i+1, st.OOMKills))
+			}
+		}
+		fail("save memory", save(filepath.Join(dir, "memory.json"), memory))
+	}
 	fail("close clients", closeClients(cs))
 	// How each node stands before the stop, for a failure here or in the
 	// checks.
