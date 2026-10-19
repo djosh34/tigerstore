@@ -10,6 +10,10 @@ import (
 	"github.com/djosh34/tigerstore/history"
 )
 
+// Populated only by scripts/diag289-instrument.py in the Actions diagnosis.
+var diag289Reads = map[int]int{}
+var diag289Superseded = map[int]int{}
+
 // The exact -sim.out history from the failing race-sim job of #289.
 func TestDiag289History(t *testing.T) {
 	if os.Getenv("DIAG289") == "" {
@@ -44,10 +48,39 @@ func TestDiag289History(t *testing.T) {
 			start := time.Now()
 			err := Witnessed(&h, mode, limit)
 			t.Logf("mode=%s ops=%d limit=%s elapsed=%s verdict=%v", mode, len(h.Ops), limit, time.Since(start), err)
+			t.Logf("readsFit calls by op=%v; calls on already-compacted trial=%v", diag289Reads, diag289Superseded)
 			if err != nil {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// A rejected trial must not trigger a read-placement replay. This is an
+// algorithmic (not wall-clock) red/green check for #289.
+func TestDiag289RejectedOptional(t *testing.T) {
+	h := grantReadCompact(t, false)
+	w := newWitness(h, time.Now().Add(time.Second))
+	if err := w.fromLog(); err != nil {
+		t.Fatal(err)
+	}
+	var compact, read int
+	for i, op := range h.Ops {
+		if op.Req.Compact != nil {
+			compact = i
+		}
+		if op.Req.Range != nil {
+			read = i
+		}
+	}
+	r := &revisionOrder{w: w, ready: map[int]bool{}}
+	o := optional{op: compact, reads: []int{read}}
+	before := w.steps
+	if r.takes(w.live.clone(), o) {
+		t.Fatal("already-applied compaction was taken twice")
+	}
+	if w.steps != before {
+		t.Fatalf("rejected compaction replayed read placement: %d extra steps", w.steps-before)
 	}
 }
 

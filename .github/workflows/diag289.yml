@@ -9,7 +9,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        witness: [pr282, main]
         race: [plain, race]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 12
@@ -20,10 +19,9 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Select witness
-        if: matrix.witness == 'main'
-        run: git show fa55dee2:check/witness_revisions.go > check/witness_revisions.go
-      - name: Replay exact saved history and reduced case
+      - name: Instrument readsFit calls
+        run: python3 scripts/diag289-instrument.py
+      - name: Replay exact saved history and reduced case with the fix
         shell: bash
         env:
           DIAG289: '1'
@@ -35,7 +33,7 @@ jobs:
           set +e
           go test "${flags[@]}" -v -count=1 -timeout=4m ./check -run '^TestDiag289History$' -cpuprofile="$PWD/evidence/cpu.pprof" -memprofile="$PWD/evidence/mem.pprof" 2>&1 | tee evidence/history.log
           history_status=${PIPESTATUS[0]}
-          go test "${flags[@]}" -v -count=1 -timeout=30s ./check -run '^TestDiag289Reduced284$' 2>&1 | tee evidence/reduced.log
+          go test "${flags[@]}" -v -count=1 -timeout=30s ./check -run '^TestDiag289(Reduced284|RejectedOptional)$' 2>&1 | tee evidence/reduced.log
           reduced_status=${PIPESTATUS[0]}
           go tool pprof -top -nodecount=50 check.test evidence/cpu.pprof > evidence/cpu-top.txt
           go tool pprof -top -cum -nodecount=50 check.test evidence/cpu.pprof > evidence/cpu-cum.txt
@@ -43,9 +41,47 @@ jobs:
           cat evidence/cpu-top.txt evidence/cpu-cum.txt
           echo "history_status=$history_status reduced_status=$reduced_status" | tee evidence/status.txt
           if [ "$history_status" != 0 ] || [ "$reduced_status" != 0 ]; then exit 1; fi
+      - name: Fresh seed 7004 with sim.out (single seed, not a campaign)
+        if: matrix.race == 'plain'
+        env:
+          DIAG289: '1'
+        run: go test -v -count=1 -timeout=3m ./internal/sim -run '^TestDiag289SaveSeed7004$' -args -sim.out="$PWD/evidence/sim-out" > evidence/sim.log 2>&1
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: diag289-${{ matrix.witness }}-${{ matrix.race }}
+          name: diag289-fixed-${{ matrix.race }}
+          path: evidence/
+          retention-days: 30
+  forensic:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Original PR predicate, with counters only
+        run: |
+          git show 6b952fef:check/witness_revisions.go > check/witness_revisions.go
+          python3 scripts/diag289-instrument.py
+      - name: Rejected-trial regression must fail without the optimization
+        shell: bash
+        run: |
+          mkdir -p evidence
+          set +e
+          go test -v -count=1 -timeout=15s ./check -run '^TestDiag289RejectedOptional$' 2>&1 | tee evidence/algorithm-red.log
+          status=${PIPESTATUS[0]}
+          test "$status" != 0 && grep -q 'rejected compaction replayed read placement' evidence/algorithm-red.log
+      - name: Count the original search's read replays
+        env:
+          DIAG289: '1'
+          DIAG289_MODE: revisions
+        run: go test -v -count=1 -timeout=2m ./check -run '^TestDiag289History$' 2>&1 | tee evidence/counters.log
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: diag289-forensic
           path: evidence/
           retention-days: 30

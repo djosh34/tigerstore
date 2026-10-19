@@ -960,12 +960,17 @@ func (r *revisionOrder) due(call, rev int64) []optional {
 // takes steps s through late optional o if it may go in now and the
 // model takes it without a write.
 func (r *revisionOrder) takes(s *state, o optional) bool {
-	if o.from > s.rev || !r.isReady(o) || !r.readsFit(o) {
+	if o.from > s.rev || !r.isReady(o) {
 		return false
 	}
 	rev := s.rev
 	out := s.step(r.w.reqs[o.op], false)
-	return out.err == nil && s.rev == rev
+	// Check the private trial state before replaying the read constraints.
+	// An optional compaction superseded by an acked one remains due, but
+	// can never apply here. Rechecking its reads at every later event is
+	// quadratic in the history (#289). readsFit uses w, not this clone:
+	// reordering the conjunction preserves both the verdict and live state.
+	return out.err == nil && s.rev == rev && r.readsFit(o)
 }
 
 // expire puts in the late optional mutations due before the event of an
@@ -1026,7 +1031,7 @@ func (r *revisionOrder) expireEnd() {
 	w := r.w
 	for _, o := range r.due(math.MaxInt64, math.MaxInt64) {
 		r.putIn(o, func(s *state, o optional) bool {
-			return o.from <= s.rev && r.isReady(o) && r.readsFit(o) && s.step(w.reqs[o.op], false).err == nil
+			return o.from <= s.rev && r.isReady(o) && s.step(w.reqs[o.op], false).err == nil && r.readsFit(o)
 		})
 	}
 }
