@@ -3,6 +3,11 @@ on:
   push:
     branches: [diag/285-apiserver-stop]
   workflow_dispatch:
+    inputs:
+      remove-fix:
+        description: Restore the original 4 s factory bound for a red-again control
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -16,6 +21,17 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Remove only the timeout fix (negative control)
+        if: inputs.remove-fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('apiservertest/factory/main.go')
+          before = p.read_text()
+          assert 'stopTimeout     = 9 * time.Second' in before
+          p.write_text(before.replace('stopTimeout     = 9 * time.Second', 'stopTimeout     = 4 * time.Second'))
+          PY
+          git diff -- apiservertest/factory/main.go
       - name: Build only factory and tigerstore
         run: |
           go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore

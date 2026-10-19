@@ -30,11 +30,13 @@ import (
 	"github.com/djosh34/tigerstore/internal/testport"
 )
 
-// stopTimeout is how long a tigerstore node may take to stop after
-// SIGINT. etcd gets etcdStopTimeout: it can take several seconds. The
-// adapter waits 10 s for the factory.
+// stopTimeout includes tigerstore's client grace (1 s) and leadership
+// transfer (the default 7 s request timeout), plus time to close the WAL.
+// A simultaneous cluster stop can leave no peer to complete the transfer.
+// Keep this below the adapter's 10 s outer timeout. etcd gets
+// etcdStopTimeout: it too can take several seconds.
 const (
-	stopTimeout     = 4 * time.Second
+	stopTimeout     = 9 * time.Second
 	etcdStopTimeout = 8 * time.Second
 )
 
