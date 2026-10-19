@@ -30,6 +30,26 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        if: inputs.suite == 'tools'
+        with:
+          go-version-file: go.mod
+      - name: Named issue 300 recovery test
+        if: inputs.suite == 'tools'
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libfuse3-dev fuse3 cmake g++
+          sudo modprobe fuse || true
+          test -c /dev/fuse || sudo mknod /dev/fuse c 10 229
+          sudo chmod a+rw /dev/fuse
+          export CHAOS_LAZYFS=$(bash scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")
+          go test -v -count=1 -run '^TestLazyFSRecoveryValueReads$' -timeout=30s ./scripts/diag300
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.suite == 'tools'
+        with:
+          name: diag300-recovery
+          path: results
       - name: Check runner scripts and summary regressions
         shell: bash
         run: |
