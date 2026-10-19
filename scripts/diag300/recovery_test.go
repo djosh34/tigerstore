@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -136,6 +137,50 @@ func TestLazyFSRecoveryValueReads(t *testing.T) {
 			if e != nil || !bytes.Equal(value, data[23:27]) {
 				t.Fatalf("turn %d index %d: %q %v", turn, i, value, e)
 			}
+		}
+		// The node reads old watch values while its persister appends and
+		// syncs new records through another descriptor of the same file.
+		r, _, e := w.ValueReader(1, 23, 4)
+		if e != nil {
+			t.Fatal(e)
+		}
+		type place struct {
+			index uint64
+			at    int64
+		}
+		var places []place
+		for i := uint64(1); i <= rec.Last; i++ {
+			_, at, e := w.ValueReader(i, 23, 4)
+			if e != nil {
+				t.Fatal(e)
+			}
+			places = append(places, place{i, at})
+		}
+		var wg sync.WaitGroup
+		errors := make(chan error, 6)
+		for worker := 0; worker < 6; worker++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for _, p := range places {
+					b, e := wal.ReadValue(r, p.at, p.index, 23, 4)
+					if e != nil || !bytes.Equal(b, data[23:27]) {
+						errors <- fmt.Errorf("entry %d file offset %d: %q %v", p.index, p.at, b, e)
+						return
+					}
+				}
+			}()
+		}
+		for i := rec.Last + 1; i <= rec.Last+120; i++ {
+			w.Append(&wal.HardState{Term: 1, Commit: i}, []*raftpb.Entry{{Term: new(uint64(1)), Index: new(i), Data: data}})
+			if e := w.Sync(); e != nil {
+				t.Fatal(e)
+			}
+		}
+		wg.Wait()
+		close(errors)
+		for e := range errors {
+			t.Error(e)
 		}
 		if e := w.Close(); e != nil {
 			t.Fatal(e)
