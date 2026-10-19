@@ -5,6 +5,7 @@ package sim
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"regexp"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"github.com/djosh34/tigerstore/check"
 
 	"github.com/djosh34/tigerstore/internal/planted"
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 var plantedBug = flag.String("planted", "", "name of the planted bug TestPlanted switches on")
@@ -75,7 +77,9 @@ var plantedCases = map[string]plantedCase{
 	"B02":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|applied different entries`},
 	"B03":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|applied different entries`},
 	"B04a": {seeds: 256, cfg: DefaultConfig, want: `without noticing|` + refused},
-	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|without noticing|` + refused + `|` + badValue},
+	// B04c also lets a damaged record through recovery that a snapshot
+	// sender's read then refuses (#287).
+	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|without noticing|` + refused + `|` + badValue + `|the record of entry \d+ in segment \d+ does not verify`},
 	// B04b cuts the last synced record, which can be a vote: the node then
 	// votes twice in one term, and two leaders write different entries.
 	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|applied different entries|applied the same log to different states`},
@@ -234,4 +238,14 @@ func TestPlanted(t *testing.T) {
 		}
 	}
 	t.Fatalf("%s (%s) was not caught within %d seeds", name, planted.Bugs[name], c.seeds)
+}
+
+// TestB04cSnapshotRefusal checks that B04c counts as caught when a snapshot
+// sender stops on the damaged record that the bug let through recovery,
+// as seed 1 once ended (#287).
+func TestB04cSnapshotRefusal(t *testing.T) {
+	err := fmt.Errorf("seed 1 at 20806 ms: node 3 stopped: %w", &wal.RecordError{Entry: 8, Segment: 1, Reason: "does not verify"})
+	if !regexp.MustCompile(plantedCases["B04c"].want).MatchString(err.Error()) {
+		t.Fatalf("B04c does not count %q as caught", err)
+	}
 }

@@ -108,10 +108,12 @@ type environment struct {
 	netem   *env.Netem
 	latency map[string]time.Duration
 	tag     string
-	// archiving is held by each pass of archive and by erase: on LazyFS,
-	// a file removed while the archive reads it stays as a .fuse_hidden
-	// file until it is closed, and the erase found its directory not
-	// empty (#264).
+	// archiving is held by each pass of archive, by erase and by repair:
+	// on LazyFS, a file removed while the archive reads it stays as a
+	// .fuse_hidden file until it is closed, and the erase found its
+	// directory not empty (#264); a file the archive holds open keeps the
+	// disk from unmounting, and the repair failed with "target is busy"
+	// (#288).
 	archiving sync.Mutex
 }
 
@@ -120,6 +122,13 @@ func (e *environment) erase(d *env.Disk) error {
 	e.archiving.Lock()
 	defer e.archiving.Unlock()
 	return d.Erase()
+}
+
+// repair repairs d while no archive pass reads it.
+func (e *environment) repair(d *env.Disk) error {
+	e.archiving.Lock()
+	defer e.archiving.Unlock()
+	return d.Repair()
 }
 
 // newEnvironment makes a disk under dir for each node, with LazyFS when
@@ -513,7 +522,7 @@ func (r *runner) diskError(ctx context.Context, s step, target int, rec *record)
 		healErr = errors.Join(healErr, err)
 	}
 	if s.Fault == fsyncFail {
-		healErr = errors.Join(healErr, d.Repair())
+		healErr = errors.Join(healErr, r.e.repair(d))
 	}
 	if err := r.c.start(n); err != nil {
 		healErr = errors.Join(healErr, err)
