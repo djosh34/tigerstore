@@ -898,11 +898,7 @@ func (w *WAL) AppendValue(index uint64, off uint32, value []byte) {
 // the records. The node driver writes a group with it and syncs it on
 // another goroutine.
 func (w *WAL) Flush() error {
-	// A new segment's header waits for its first records, so that one
-	// write carries both. Written alone and not synced, a crash could keep
-	// the records after it but not the header, and recovery would take the
-	// segment for a damaged one (#295).
-	if len(w.buf) == 0 || w.size == 0 && len(w.buf) == headerSize {
+	if len(w.buf) == 0 {
 		return nil
 	}
 	n, err := w.seg.WriteAt(w.buf, w.size)

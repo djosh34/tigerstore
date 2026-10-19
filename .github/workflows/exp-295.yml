@@ -1,0 +1,22 @@
+# The #295 LazyFS test without its fix, to show it fails. Never merged.
+name: exp-295
+
+on:
+  push:
+    branches: [exp/295-red]
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: sudo apt-get update -q && sudo apt-get install -y -q cmake g++ libfuse3-dev fuse3
+      - run: echo "LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
+      - run: CHAOS_LAZYFS="$LAZYFS" go test -tags chaosenv -count=1 -v ./chaos/env/ -run '^TestTornWriteAfterEmptyFlush$'
