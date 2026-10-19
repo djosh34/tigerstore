@@ -75,7 +75,9 @@ var plantedCases = map[string]plantedCase{
 	"B02":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|applied different entries`},
 	"B03":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|applied different entries`},
 	"B04a": {seeds: 256, cfg: DefaultConfig, want: `without noticing|` + refused},
-	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|without noticing|` + refused + `|` + badValue},
+	// Recovery can accept B04c's damaged payload before a snapshot sender
+	// reads the whole record again and stops on its CRC (#287).
+	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|without noticing|` + refused + `|` + badValue + `|the record of entry \d+ in segment \d+ does not verify`},
 	// B04b cuts the last synced record, which can be a vote: the node then
 	// votes twice in one term, and two leaders write different entries.
 	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|applied different entries|applied the same log to different states`},
