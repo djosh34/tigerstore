@@ -361,14 +361,14 @@ func coreConfig(ec *embed.Config, ident identity) core.Config {
 	ccfg.ClusterID = ident.cluster
 	// The identity's members go to the core on every start, as the
 	// persisted initial configuration a first member's log starts with
-	// (#247). The flag only decides whether an empty log is bootstrapped:
-	// etcd ignores it once the data directory has a member, and so must a
-	// restart that recovers its bootstrap.
+	// (#247). Whether the node joined comes from the identity too, not from
+	// this start's --initial-cluster-state: it decides whether an empty log
+	// is bootstrapped and whether a torn bootstrap is repaired (#280).
 	ccfg.Members = ident.members
 	for _, m := range ccfg.Members {
 		ccfg.Peers = append(ccfg.Peers, m.ID)
 	}
-	ccfg.Join = !ec.IsNewCluster()
+	ccfg.Join = !ident.first
 	ccfg.TickMillis = int64(ec.TickMs)
 	ccfg.ElectionTicks = ec.ElectionTicks()
 	ccfg.NoPreVote = !ec.PreVote

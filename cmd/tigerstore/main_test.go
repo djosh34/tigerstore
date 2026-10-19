@@ -310,3 +310,34 @@ func TestIdentityKeepsMembers(t *testing.T) {
 		}
 	}
 }
+
+// TestJoinComesFromIdentity checks that whether a node joined is kept in
+// its identity and read from there on every start, whatever this start's
+// --initial-cluster-state says: a joiner restarted with "new" must not
+// repair a torn bootstrap with its own members, and a first member
+// restarted with "existing" must (#280).
+func TestJoinComesFromIdentity(t *testing.T) {
+	ms, err := parseCluster("a=https://h1:2380,b=https://h2:2380")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := clusterIdentity(clusterSpec{members: ms, self: 0, token: "tok", key: "k"})
+	joiner := identity{id: 9, cluster: first.cluster, members: first.members}
+	for name, want := range map[string]identity{"first member": first, "joiner": joiner} {
+		dir := t.TempDir()
+		if err := saveIdentity(dir, want); err != nil {
+			t.Fatal(err)
+		}
+		got, _, err := readIdentity(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, state := range []string{embed.ClusterStateFlagNew, embed.ClusterStateFlagExisting} {
+			ec := embed.NewConfig()
+			ec.ClusterState = state
+			if join := coreConfig(ec, got).Join; join != !want.first {
+				t.Errorf("%s restarted with %s: Join %v, want %v", name, state, join, !want.first)
+			}
+		}
+	}
+}
