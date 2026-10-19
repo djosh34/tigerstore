@@ -241,16 +241,18 @@ const packReadBytes = 64 << 10
 // anything that does not verify is damage. It returns the pack's size.
 func (p *Pack) read(f File) (int64, error) {
 	r := bufio.NewReaderSize(io.NewSectionReader(f, 0, math.MaxInt64), packReadBytes)
-	// short is a read that ended inside the pack: damage, or another error.
+	corrupt := fmt.Errorf("%w: pack %d does not verify", ErrCorrupt, p.id)
+	// A read that ends inside the pack is damage.
+	ended := func(err error) bool { return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) }
 	short := func(err error) error {
-		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-			return fmt.Errorf("%w: pack %d does not verify", ErrCorrupt, p.id)
+		if ended(err) {
+			return corrupt
 		}
 		return err
 	}
 	var hdr [max(packHeaderSize, recHdrSize+valueHdrSize)]byte
 	_, err := io.ReadFull(r, hdr[:packHeaderSize])
-	if err = short(err); err != nil && !errors.Is(err, ErrCorrupt) {
+	if err != nil && !ended(err) {
 		return 0, err
 	}
 	if err != nil || string(hdr[:len(packMagic)]) != packMagic || binary.LittleEndian.Uint64(hdr[len(packMagic)+4:]) != p.id {
@@ -285,7 +287,7 @@ func (p *Pack) read(f File) (int64, error) {
 			left -= int64(len(b))
 		}
 		if crc != want {
-			return 0, short(io.EOF)
+			return 0, corrupt
 		}
 		end := off + recHdrSize + n
 		switch hdr[recHdrSize-1] {
@@ -311,7 +313,7 @@ func (p *Pack) read(f File) (int64, error) {
 				return end, nil
 			}
 		}
-		return 0, short(io.EOF)
+		return 0, corrupt
 	}
 }
 

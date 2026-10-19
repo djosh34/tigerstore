@@ -13,6 +13,33 @@ import (
 
 var bothModes = []WitnessMode{FromLog, FromRevisions}
 
+// unusedTxnLease is #290 cut down: a lease expires without keys and a put
+// finds it gone, then a txn names it in the branch that does not run, the
+// success branch or, with succeeded, the failure branch. Only the branch
+// that ran shows a lease in use.
+func unusedTxnLease(t *testing.T, succeeded bool) *history.History {
+	b := newBuilder(t, "a", "b")
+	grant := b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 1}})
+	expiry := b.do(5, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 42}})
+	b.do(0, history.Request{Put: &history.PutRequest{Key: "b", Value: "1", Lease: 42}})
+	b.put(0, "a", "x")
+	read := []history.TxnOp{{Range: &history.RangeRequest{Key: "a"}}}
+	unused := []history.TxnOp{{Put: &history.PutRequest{Key: "b", Value: "2", Lease: 42}}}
+	txn := &history.TxnRequest{
+		Compare: []history.Compare{{Key: "a", Target: history.TargetVersion, Result: history.Equal, Number: 0}},
+		Success: unused, Failure: read,
+	}
+	if succeeded {
+		txn.Compare[0].Number = 1
+		txn.Success, txn.Failure = read, unused
+	}
+	b.do(0, history.Request{Txn: txn})
+	h := b.done()
+	h.Ops[expiry].Call, h.Ops[expiry].Return = h.Ops[grant].Call, h.Ops[grant].Call
+	h.Ops[expiry].Resp, h.Ops[expiry].Err = nil, errUnavailable
+	return h
+}
+
 // TestWitnessedGood passes linearizable histories in both modes.
 func TestWitnessedGood(t *testing.T) {
 	cases := []struct {
@@ -253,23 +280,8 @@ func TestWitnessedGood(t *testing.T) {
 		}},
 		{"historical reads, inside a txn too", func(*testing.T) *history.History { return historicalTxn() }},
 		{"acked compaction after the grant a read below it follows", func(t *testing.T) *history.History { return grantReadCompact(t, false) }},
-		{"lease expired before a txn names it in the branch that did not run", func(t *testing.T) *history.History {
-			// Only the branch that ran shows a lease in use (#290).
-			b := newBuilder(t, "a", "b")
-			grant := b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 1}})
-			expiry := b.do(5, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 42}})
-			b.do(0, history.Request{Put: &history.PutRequest{Key: "b", Value: "1", Lease: 42}})
-			b.put(0, "a", "x")
-			b.do(0, history.Request{Txn: &history.TxnRequest{
-				Compare: []history.Compare{{Key: "a", Target: history.TargetVersion, Result: history.Equal, Number: 0}},
-				Success: []history.TxnOp{{Put: &history.PutRequest{Key: "b", Value: "2", Lease: 42}}},
-				Failure: []history.TxnOp{{Range: &history.RangeRequest{Key: "a"}}},
-			}})
-			h := b.done()
-			h.Ops[expiry].Call, h.Ops[expiry].Return = h.Ops[grant].Call, h.Ops[grant].Call
-			h.Ops[expiry].Resp, h.Ops[expiry].Err = nil, errUnavailable
-			return h
-		}},
+		{"lease expired before a txn names it in the success branch that did not run", func(t *testing.T) *history.History { return unusedTxnLease(t, false) }},
+		{"lease expired before a txn names it in the failure branch that did not run", func(t *testing.T) *history.History { return unusedTxnLease(t, true) }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
