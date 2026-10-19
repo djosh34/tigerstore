@@ -258,6 +258,10 @@ type node struct {
 	proc     *proc
 	starting bool
 	gen      uint64
+	// Clock faults affect ticks only, not clients or peer delivery.
+	tickBurst       int
+	tickFrozenUntil int64
+	tickWake        chan struct{}
 
 	// graySync makes its fsyncs slow while it is gray.
 	graySync bool
@@ -400,7 +404,9 @@ type Sim struct {
 	// expiredAt is when a lease first expired on any node.
 	expiredAt    map[int64]int64
 	expiredOrder []int64
-	checkpoints  []*checkpoint
+	// jumpTicks records the time of each extra tick actually delivered.
+	jumpTicks   []int64
+	checkpoints []*checkpoint
 	// cold holds the disks of the first cold restart that failed, and
 	// votes makes the trace show every vote request and answer, as in a
 	// cold restart, so that one that elects no leader shows why.
@@ -476,6 +482,8 @@ type Stats struct {
 	// Settles counts the seconds the nodes ran on after the end because
 	// they disagreed (settle).
 	Settles int
+	// JumpTicks and ClockFreezes count the round-2 clock faults.
+	JumpTicks, ClockFreezes int
 	// GrayNodes counts gray nodes that lost an append, GrayStreams the
 	// streams with watches a gray client opened, and RecoveryCrashes
 	// crashes inside the recovery of an existing log.
@@ -624,7 +632,7 @@ func newSim(cfg Config) (*Sim, error) {
 }
 
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
-	n := &node{idx: i, id: uint64(i + 1), disk: disk, addrs: []string{peerAddr(i)}, wake: make(chan struct{})}
+	n := &node{idx: i, id: uint64(i + 1), disk: disk, addrs: []string{peerAddr(i)}, wake: make(chan struct{}), tickWake: make(chan struct{})}
 	s.traceDisk(n)
 	if i == 3 && s.cfg.Membership {
 		// The fourth member is added at memberURL and moves to
@@ -947,9 +955,14 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 	if d := s.cfg.Faults.DriftPerMille; d > 0 && !s.healed {
 		tick += TickTime * (s.rng.Int64N(2*d+1) - d) / 1000
 	}
+	var ticks <-chan time.Time
+	if s.cfg.NetworkTime == "clock-leader" || s.cfg.NetworkTime == "clock-follower" {
+		ticks = s.clockTicks(p, time.Duration(tick))
+	}
 	return tnode.Config{
-		Core: cfg,
-		Tick: time.Duration(tick),
+		Core:       cfg,
+		Tick:       time.Duration(tick),
+		TickSource: ticks,
 		// Small segments, so that most of the log is in sealed ones,
 		// where any damage is detectable.
 		SegmentBytes: 8 << 10,

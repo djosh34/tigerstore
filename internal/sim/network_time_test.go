@@ -8,7 +8,7 @@ import (
 	"github.com/djosh34/tigerstore/check"
 )
 
-var networkScenario = flag.String("sim.network", "leader-incoming", "round-2 network schedule: leader-incoming, follower-island, leader-flap, peer-slow-leader, minority-bridge")
+var networkScenario = flag.String("sim.network", "leader-incoming", "round-2 network schedule: leader-incoming, follower-island, leader-flap, peer-slow-leader, minority-bridge, clock-leader, clock-follower")
 
 // TestNetworkTime combines leader-targeted faults with leases, compared
 // two-key transactions, compaction, snapshots and watches of both start
@@ -41,6 +41,15 @@ func TestNetworkTime(t *testing.T) {
 					}
 					res := run(t, cfg)
 					checkers(t, res)
+					if cfg.NetworkTime == "clock-leader" || cfg.NetworkTime == "clock-follower" {
+						jumps, freezes := 120, 2
+						if short {
+							jumps, freezes = 60, 1
+						}
+						if res.Stats.JumpTicks != jumps || res.Stats.ClockFreezes != freezes {
+							t.Fatalf("clock faults did not all take effect: %+v", res.Stats)
+						}
+					}
 					if res.Stats.OK < 100 {
 						t.Fatalf("too little workload: %+v", res.Stats)
 					}

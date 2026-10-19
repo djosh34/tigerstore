@@ -29,6 +29,8 @@ func (s *Sim) scheduleNetworkTime() {
 		}
 		s.tracef("network-time %s: original leader %d, target %d", s.cfg.NetworkTime, lead+1, target+1)
 		switch s.cfg.NetworkTime {
+		case "clock-leader", "clock-follower":
+			s.scheduleClock(lead)
 		case "leader-incoming":
 			// Swallow only incoming bytes. Unlike setLinks, this does not
 			// reset both directions of an established TCP connection.

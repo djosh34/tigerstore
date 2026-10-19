@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [leader-incoming, follower-island, leader-flap, peer-slow-leader, minority-bridge]
+        scenario: [leader-incoming, follower-island, leader-flap, peer-slow-leader, minority-bridge, clock-leader, clock-follower]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 70
     steps:
@@ -47,7 +47,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Run network and time schedules
-        if: inputs.scenario == 'all' || inputs.scenario == matrix.scenario
+        if: inputs.scenario == 'all' || inputs.scenario == matrix.scenario || (inputs.scenario == 'clocks' && startsWith(matrix.scenario, 'clock-'))
         shell: bash
         env:
           FIRST: ${{ inputs.first }}

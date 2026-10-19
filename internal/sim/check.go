@@ -606,9 +606,20 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 		if s.cfg.Faults.DriftPerMille == 0 {
 			early = 0
 		}
-		if t, ok := renewed[id]; ok && at < t+ttl[id]*Second-early {
-			return fmt.Errorf("lease %d with TTL %d s expired at %d ms, but it was granted or renewed at %d ms",
-				id, ttl[id], at/Millisecond, t/Millisecond)
+		if t, ok := renewed[id]; ok {
+			// Round 2 explicitly jumps a node's tick clock. Account only
+			// for extra ticks delivered after this grant/renewal and no
+			// later than the expiry, not planned or future jumps. With
+			// no jump this is exactly the original physical-time bound.
+			for _, jump := range s.jumpTicks {
+				if jump >= t && jump <= at {
+					early += TickTime
+				}
+			}
+			if at < t+ttl[id]*Second-early {
+				return fmt.Errorf("lease %d with TTL %d s expired at %d ms, but it was granted or renewed at %d ms",
+					id, ttl[id], at/Millisecond, t/Millisecond)
+			}
 		}
 	}
 	last := map[int64]int64{}

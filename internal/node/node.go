@@ -58,6 +58,10 @@ type Config struct {
 	ForceNewCluster bool
 	// Tick is the length of one Raft tick.
 	Tick time.Duration
+	// TickSource, when set by the simulator, replaces the ticker channel.
+	// It models a node's clock jumping forward or holding still. The
+	// source must stay open until the process stops.
+	TickSource <-chan time.Time
 	// WatchQueue is how many responses a watch stream may fall behind
 	// before it is closed; 0 means watchQueue.
 	WatchQueue int
@@ -1024,6 +1028,11 @@ func (n *Node) run(ctx context.Context, t peer.Transport) error {
 func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	ticker := time.NewTicker(n.cfg.Tick)
 	defer ticker.Stop()
+	ticks := ticker.C
+	if n.cfg.TickSource != nil {
+		ticker.Stop()
+		ticks = n.cfg.TickSource
+	}
 	waiters := map[uint64]waiter{}
 	var groups []completions
 	groupOf := map[Completer]int{}
@@ -1115,7 +1124,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		case <-paced:
 			pace = nil
 			n.core.CopyCheckpoint()
-		case <-ticker.C:
+		case <-ticks:
 			n.core.Tick()
 			clock++
 			if behind := int64(time.Since(started)/n.cfg.Tick) - clock; behind > 0 {
