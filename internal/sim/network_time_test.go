@@ -38,6 +38,9 @@ func TestNetworkTime(t *testing.T) {
 						cfg.Duration, cfg.Heal = 7*Second, 8*Second
 						cfg.Clients, cfg.NoLeases = 2, true
 						cfg.PinClients = false
+						if cfg.NetworkTime == "clock-leader" || cfg.NetworkTime == "clock-follower" {
+							cfg.Duration = 10 * Second // includes the whole three-second freeze
+						}
 					}
 					res := run(t, cfg)
 					checkers(t, res)
