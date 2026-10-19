@@ -100,7 +100,9 @@ func committedPrefix(ns []recovered) ([]*raftpb.Entry, error) {
 	}
 	best := ns[0]
 	for _, n := range ns {
-		if n.commit > best.commit {
+		// A replacement may have the same commit but only the suffix it
+		// installed. Prefer the complete archive when commits tie.
+		if n.commit > best.commit || n.commit == best.commit && n.first < best.first {
 			best = n
 		}
 	}

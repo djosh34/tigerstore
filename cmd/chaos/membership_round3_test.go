@@ -5,7 +5,22 @@ import (
 
 	"github.com/djosh34/tigerstore/history"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"go.etcd.io/raft/v3/raftpb"
 )
+
+func TestRound3CompleteArchiveWinsCommitTie(t *testing.T) {
+	var entries []*raftpb.Entry
+	for i := uint64(1); i <= 3; i++ {
+		entries = append(entries, &raftpb.Entry{Index: new(i), Term: new(uint64(1)), Type: raftpb.EntryNormal.Enum()})
+	}
+	got, err := committedPrefix([]recovered{
+		{commit: 3, first: 3, entries: entries[2:], dir: "replacement"},
+		{commit: 3, first: 1, entries: entries, dir: "survivor"},
+	})
+	if err != nil || len(got) != 3 {
+		t.Fatalf("got %d entries, %v; want the full committed prefix", len(got), err)
+	}
+}
 
 func TestRound3WatchRetriesLearner(t *testing.T) {
 	for _, err := range []error{rpctypes.ErrGRPCNotSupportedForLearner, rpctypes.Error(rpctypes.ErrGRPCNotSupportedForLearner)} {
