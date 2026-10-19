@@ -475,11 +475,12 @@ func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 	seq, at, ok := l.w.ValuePlace(index, off, n)
 	var m []byte
 	var r io.ReaderAt
+	var name string
 	var err error
 	if ok && seq <= l.sealed && l.dir != "" {
 		m, err = l.mapping(seq)
 	} else {
-		r, at, err = l.w.ValueReader(index, off, n)
+		r, at, name, err = l.w.ValueReader(index, off, n)
 	}
 	if err != nil {
 		l.mu.Unlock()
@@ -497,7 +498,7 @@ func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 		}
 		return bytes.Clone(m[at : at+int64(n)]), nil
 	}
-	return wal.ReadValue(r, at, index, off, n)
+	return wal.ReadValue(r, at, name, index, off, n)
 }
 
 // rootRemoval is what a synced root made obsolete: the log below index

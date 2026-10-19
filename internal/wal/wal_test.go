@@ -704,3 +704,22 @@ func TestTornAppendKeepsTermWithEntries(t *testing.T) {
 		}
 	}
 }
+
+// TestShortValueReadNamesTheFile cuts the segment inside a value: the
+// error names the file and the byte the read started at, so that a short
+// read seen only once explains itself (#300).
+func TestShortValueReadNamesTheFile(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	fill(t, w, 1, 1)
+	seq, at, ok := w.ValuePlace(1, 0, 2)
+	if !ok {
+		t.Fatal("entry 1 is not in a segment")
+	}
+	rewrite(t, d, wal.SegmentName(seq), func(b []byte) []byte { return b[:at+1] })
+	_, err := w.Value(1, 0, 2)
+	want := fmt.Sprintf("wal: read 1 of 2 bytes at byte %d of %s, the value at 0+2 of entry 1: EOF", at, wal.SegmentName(seq))
+	if err == nil || err.Error() != want {
+		t.Fatalf("short read: %v, want %s", err, want)
+	}
+}
