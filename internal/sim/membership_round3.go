@@ -18,6 +18,10 @@ func (s *Sim) membershipBoundaryFaults() {
 		// including the leader, while compaction and cleaning continue.
 		for i := range 3 {
 			s.mu.Lock()
+			if s.healed {
+				s.mu.Unlock()
+				return
+			}
 			n := s.nodes[i]
 			n.why = "round 3 rolling power loss"
 			s.crash(n)

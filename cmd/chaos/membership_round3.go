@@ -239,6 +239,12 @@ func (r *runner) replaceLeaderLearner(ctx context.Context, s step, lead int, rec
 	if err := r.c.start(n); err != nil {
 		return err
 	}
+	// Bootstrap discovery needs a live quorum. Wait until the new process
+	// has joined and begun its fetch before taking a voter down; otherwise
+	// the experiment tests a refused initial boot, not catch-up recovery.
+	if !waitUntil(ctx, 30*time.Second, func() bool { return strings.Contains(logSince(n, from), "fetching the snapshot") }) {
+		return errors.New("replacement learner did not fetch a snapshot")
+	}
 	if err := r.losePower(b, rec); err != nil {
 		return err
 	}
@@ -248,9 +254,6 @@ func (r *runner) replaceLeaderLearner(ctx context.Context, s step, lead int, rec
 	}
 	if holdErr != nil {
 		return holdErr
-	}
-	if !waitUntil(ctx, 30*time.Second, func() bool { return strings.Contains(logSince(n, from), "fetching the snapshot") }) {
-		return errors.New("replacement learner did not fetch a snapshot")
 	}
 	if err := memberRetryRound3(ctx, "promote replacement", func(c context.Context) error {
 		ms, err := ctl.MemberList(c)
