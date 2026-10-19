@@ -690,8 +690,12 @@ func (r *revisionOrder) scheduleOptional() {
 			case op.Req.Compact != nil:
 				compactions = append(compactions, i)
 			}
-			for _, lease := range leasesOf(op.Req) {
-				note(lease, rev)
+			// Only the executed puts prove their leases present. An
+			// unchosen Txn branch need not have a live lease (#290).
+			for _, o := range branch(op) {
+				if o.Put != nil {
+					note(o.Put.Lease, rev)
+				}
 			}
 			continue
 		}
