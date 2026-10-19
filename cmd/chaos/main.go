@@ -311,6 +311,18 @@ func run(c config, dir string) (err error) {
 	logf("schedule done, clients stopped, waiting for convergence")
 	fail("convergence", cl.converged(ctx, 30*time.Second))
 	fail("finish", t.finish())
+	if c.PressureKeys > 0 && e != nil {
+		memory := map[string]any{"limit_bytes": c.Memory, "live_value_bytes": c.PressureKeys * pressureSize}
+		for i, g := range e.groups {
+			st, statErr := g.Stats()
+			fail("memory stats", statErr)
+			memory[fmt.Sprintf("node%d", i+1)] = st
+			if st.OOMKills > 0 {
+				fail("memory limit", fmt.Errorf("node%d had %d OOM kills", i+1, st.OOMKills))
+			}
+		}
+		fail("save memory", save(filepath.Join(dir, "memory.json"), memory))
+	}
 	fail("close clients", closeClients(cs))
 	// How each node stands before the stop, for a failure here or in the
 	// checks.

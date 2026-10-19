@@ -19,6 +19,7 @@ var storageFaults = map[string]string{
 	"rotation-power":         "rotation-rename",
 	"checkpoint-power":       "checkpoint-sync",
 	"clean-power":            "clean-pack-synced",
+	"clean-rename-power":     "clean-rename",
 	"install-power":          "install-entries",
 	"recovery-power":         "recovery-read",
 	"send-power":             "send-first-chunk",
@@ -126,7 +127,7 @@ func (r *runner) storageFault(ctx context.Context, s step, lead, follower int, r
 		}
 		// Defragment starts cleaning even when no disk budget is configured.
 		var defrag <-chan error
-		if s.Fault == "clean-power" {
+		if s.Fault == "clean-power" || s.Fault == "clean-rename-power" {
 			done := make(chan error, 1)
 			defrag = done
 			go func() {

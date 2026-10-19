@@ -60,12 +60,27 @@ jobs:
               -pressure-keys "$PRESSURE_KEYS" -memory "$MEMORY" || status=1
           done
           exit "$status"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: storage-full-${{ matrix.scenario }}
+          path: |
+            ${{ runner.temp }}/chaos-out
+            !${{ runner.temp }}/chaos-out/**/disks
+          retention-days: 30
       - if: always()
         uses: actions/upload-artifact@v6
         with:
           name: storage-${{ matrix.scenario }}
           path: |
-            ${{ runner.temp }}/chaos-out
-            !${{ runner.temp }}/chaos-out/**/disks
+            ${{ runner.temp }}/chaos-out/*/*.log
+            ${{ runner.temp }}/chaos-out/*/nodes.txt
+            ${{ runner.temp }}/chaos-out/*/config.json
+            ${{ runner.temp }}/chaos-out/*/checks.json
+            ${{ runner.temp }}/chaos-out/*/coverage.json
+            ${{ runner.temp }}/chaos-out/*/faults.json
+            ${{ runner.temp }}/chaos-out/*/verdict.json
+            ${{ runner.temp }}/chaos-out/*/wal.json
+            ${{ runner.temp }}/chaos-out/*/memory.json
             ${{ runner.temp }}/storage-overlay
           retention-days: 30
