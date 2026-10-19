@@ -1,154 +1,37 @@
-name: past-ram
+name: diag-281
 on:
-  workflow_call:
-    inputs:
-      capacity:
-        type: boolean
-        default: true
   workflow_dispatch:
     inputs:
-      capacity:
-        type: boolean
-        default: true
+      checker:
+        type: string
+        default: compare
 permissions:
   contents: read
+  actions: read
 jobs:
-  # The other storage, cleaner, cache and cold-read tests run under race in
-  # ci's test job; B29-B31 run in planted.yml. TestCleaningCycles runs there
-  # too, and again here with -v to log its cleaning bytes per Put.
-  storage:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Capacity outcome classifier
-        run: python3 -B -m unittest discover -s scripts -p 'test_past_ram.py' -v
-      - name: Simulator recovery after the original segments are gone
-        env:
-          SIM_OUT: ${{ runner.temp }}/sim-out
-        run: |
-          set -o pipefail
-          go test -race -count=1 -timeout=20m -v ./internal/sim -run '^TestPastRAMRecovery$' 2>&1 | tee storage.log
-      - name: Cleaning bytes per Put under churn
-        run: |
-          set -o pipefail
-          go test -race -count=1 -timeout=10m -v ./internal/node -run '^TestCleaningCycles$' 2>&1 | tee -a storage.log
-      - if: failure()
-        run: scripts/replay.sh storage.log -race
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: past-ram-storage
-          path: |
-            storage.log
-            ${{ runner.temp }}/sim-out
-          retention-days: 30
-  etcd-index:
-    if: inputs.capacity
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/checkout@v7
-        with:
-          repository: etcd-io/etcd
-          ref: 68c065e562994b89e333e77b039ad066f933c586
-          path: upstream-etcd
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Measure the upstream index with the exact preload key distribution
-        run: |
-          cp scripts/etcd-index_test.go.txt upstream-etcd/server/storage/mvcc/past_ram_index_test.go
-          python3 - <<'PY'
-          import json, re
-          from pathlib import Path
-          rows = re.findall(r'\{"([^"]+)", \d+, (\d+)\}', Path('internal/k8ssize/k8ssize.go').read_text())
-          resources = [resource for resource, count in rows for _ in range(int(count))]
-          Path('resources.json').write_text(json.dumps(resources))
-          PY
-          export PAST_RAM_RESOURCES="$PWD/resources.json"
-          cd upstream-etcd/server
-          set -o pipefail
-          go test -count=1 -v ./storage/mvcc -run '^TestPastRAMIndexBytes$' 2>&1 | tee ../../etcd-index.log
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: etcd-index
-          path: etcd-index.log
-          retention-days: 30
-  capacity:
-    if: inputs.capacity
+  saved-history:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {kind: tigerstore, mode: proof, quota: '9223372036854775807', cache: normal}
-          - {kind: etcd, mode: proof, quota: '9223372036854775807', cache: normal}
-          - {kind: etcd, mode: proof, quota: '8589934592', cache: normal, preload: '16777216', seconds: 60}
-          - {kind: tigerstore, mode: max, quota: '9223372036854775807', cache: normal}
-          - {kind: etcd, mode: max, quota: '8589934592', cache: normal}
-          - {kind: etcd, mode: max, quota: '9223372036854775807', cache: normal}
-          - {kind: tigerstore, mode: cache, quota: '9223372036854775807', cache: normal}
-          - {kind: tigerstore, mode: cache, quota: '9223372036854775807', cache: page}
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 55
+        checker: ${{ inputs.checker == 'compare' && fromJSON('["f943be1c","9d230880","db982766"]') || fromJSON(format('["{0}"]', inputs.checker)) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Build drivers and server
-        run: |
-          go build -o "$RUNNER_TEMP/pastram" ./cmd/pastram
-          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
-          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
-          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
-          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
-          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" "$RUNNER_TEMP/etcd"
-      - name: Build the cache-disabled experimental control
-        if: matrix.cache == 'page'
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('internal/core/cache.go')
-          text = path.read_text()
-          old = 'n.cache.setLimit(n.cfg.MemoryBytes - n.otherMemory)'
-          assert text.count(old) == 1
-          path.write_text(text.replace(old, 'n.cache.setLimit(0)'))
-          PY
-          git diff > "$RUNNER_TEMP/cache-control.patch"
-          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
-      - name: Run under per-member cgroup limits
-        run: |
-          sudo python3 scripts/past-ram.py --server "$RUNNER_TEMP/${{ matrix.kind }}" --driver "$RUNNER_TEMP/pastram" --kind '${{ matrix.kind }}' --mode '${{ matrix.mode }}' --quota '${{ matrix.quota }}' --go-memory 560MiB --preload-bytes '${{ matrix.preload || 0 }}' --seconds '${{ matrix.seconds || 180 }}' --out "$RUNNER_TEMP/past-ram"
-      - name: Report measured outcome
-        if: always()
+      - name: Original saved history
         env:
-          REPORT: ${{ runner.temp }}/past-ram/summary.json
-        run: |
-          python3 -B - <<'PY'
-          import json, os
-          from pathlib import Path
-          report = json.loads(Path(os.environ['REPORT']).read_text())
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              summary.write('## Past-RAM outcome\n\n```json\n' + json.dumps(report, indent=2) + '\n```\n')
-              if report['outcome'] == 'reference-preload-limit':
-                  summary.write('\nEtcd could not reach the requested population. No mixed-load comparison or checker pass is claimed.\n')
-          PY
-      - name: Copy evidence without database files
-        if: always()
-        run: |
-          mkdir -p evidence
-          sudo find "$RUNNER_TEMP/past-ram" -maxdepth 1 -type f -exec cp '{}' evidence/ \;
-          if [ -f "$RUNNER_TEMP/cache-control.patch" ]; then cp "$RUNNER_TEMP/cache-control.patch" evidence/; fi
-          sudo chown -R "$(id -u):$(id -g)" evidence
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: past-ram-${{ matrix.kind }}-${{ matrix.mode }}-${{ matrix.quota }}-${{ matrix.cache }}
-          path: evidence
-          retention-days: 30
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 39193407810 -n sim-campaign-13 -D original
+      - name: Select checker control
+        if: matrix.checker != 'fixed'
+        run: git restore --source=${{ matrix.checker }} -- check/witness.go check/witness_revisions.go
+      - name: Saved-history witnesses
+        run: go run ./cmd/checkhistory -timeout 60s -checkers witness-log,witness-revisions original/sim-out/TestSeeds_8367529/history.json
+      - name: All checker tests
+        if: always() && matrix.checker == 'fixed'
+        run: go test -count=1 -timeout=3m ./check
