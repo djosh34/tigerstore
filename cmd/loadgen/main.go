@@ -124,8 +124,10 @@ type result struct {
 	OfferedRate float64 `json:"offered_rate"`
 	WarmupS     float64 `json:"warmup_s"`
 	DurationS   float64 `json:"duration_s"`
-	Ops         int64   `json:"ops"`
-	Throughput  float64 `json:"throughput"`
+	// PhaseOps includes successful calls in warmup and drain, not preload.
+	PhaseOps   int64   `json:"phase_ops"`
+	Ops        int64   `json:"ops"`
+	Throughput float64 `json:"throughput"`
 	// Latency counts from the intended send time, ServiceLatency from the
 	// actual send. They differ when the generator or a full window held a
 	// request back.
@@ -348,6 +350,7 @@ func run(cfg config) (*result, error) {
 	t2 := t1 + int64(cfg.duration)
 	for _, wk := range workers {
 		wk.stats.winStart, wk.stats.winStop = t1, t2
+		wk.stats.acked = 0
 		wk.unsent = 0
 	}
 	for _, w := range watches {
@@ -587,6 +590,7 @@ func summarize(cfg config, workers []*worker, watches []*watchLoad, samples [2]c
 	var resp, service hist
 	for _, wk := range workers {
 		wk.c.mu.Lock()
+		res.PhaseOps += wk.stats.acked
 		res.Ops += wk.stats.ops
 		res.Cohort += wk.stats.cohort
 		res.CohortFailed += wk.stats.cohortFailed
