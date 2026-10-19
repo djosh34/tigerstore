@@ -162,7 +162,7 @@ func run(c config, dir string) (err error) {
 		if slices.Contains(withLazyFS, f) && c.LazyFS == "" {
 			return fmt.Errorf("fault %q needs -lazyfs", f)
 		}
-		if !slices.Contains(allFaults, f) && !slices.Contains(envFaults, f) {
+		if !slices.Contains(allFaults, f) && !slices.Contains(envFaults, f) && !slices.Contains(networkTimeFaults, f) {
 			return fmt.Errorf("unknown fault %q; known: %s", f, strings.Join(slices.Concat(allFaults, envFaults), ","))
 		}
 	}

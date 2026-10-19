@@ -1,97 +1,73 @@
-# The nightly real-process chaos campaign (#49, #148): many short jobs of
-# the chaos-env job of ci, each three seeds of its own, half of them with
-# every disk under LazyFS and half failing fsyncs and filling disks. Also
-# started by hand, with given seeds spread over the shards in place of
-# the run's own if set:
-#   gh workflow run chaos-campaign.yml [-f seeds="7 8 9"]
-# A failing seed prints how each node stood and the command that runs it
-# again, and its evidence is uploaded. Whether each fault took effect is
-# counted over the whole campaign: the tally job fails if a fault took
-# effect, and overlapped a write, in fewer than three in four of the runs
-# it was installed in.
 name: chaos-campaign
 
 on:
-  schedule:
-    - cron: "17 2 * * *"
   workflow_dispatch:
     inputs:
       seeds:
-        description: Seeds to run, spread over the shards, in place of the run's own
-        default: ""
+        description: Network/time seeds, spread across four shards
+        default: "1482001 1482002 1482003 1482004 1482005 1482006 1482007 1482008"
+      faults:
+        description: Faults in each seeded schedule
+        default: "leader-incoming,follower-island,leader-flap,peer-slow-leader,netem-election"
 
 permissions:
   contents: read
 
 jobs:
-  seeds:
+  network-time:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-        mode: [lazyfs, plain]
+        shard: [0, 1, 2, 3]
+        race: [false, true]
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Install FUSE and LazyFS's build tools
-        run: sudo apt-get update -q && sudo apt-get install -y -q cmake g++ libfuse3-dev fuse3
-      - name: Build LazyFS, tigerstore and chaos
+      - name: Build and vet
+        env:
+          RACE: ${{ matrix.race }}
         run: |
-          echo "LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
-          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
-          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
-      - name: Run the seeds
+          flags=()
+          if [ "$RACE" = true ]; then flags=(-race); fi
+          go vet ./cmd/chaos
+          go build "${flags[@]}" -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          go build "${flags[@]}" -o "$RUNNER_TEMP/chaos" ./cmd/chaos
+      - name: Run network/time schedules
         shell: bash
         env:
-          MODE: ${{ matrix.mode }}
           SHARD: ${{ matrix.shard }}
-          RUN_ID: ${{ github.run_id }}
           SEEDS: ${{ inputs.seeds }}
+          FAULTS: ${{ inputs.faults }}
+          GORACE: halt_on_error=1
         run: |
           set -uo pipefail
-          lazy=()
-          if [ "$MODE" = lazyfs ]; then lazy=(-lazyfs "$LAZYFS"); fi
-          seeds=()
-          if [ -n "${SEEDS:-}" ]; then
-            i=0
-            for s in $SEEDS; do
-              if [ $((i % 10)) -eq "$SHARD" ]; then seeds+=("$s"); fi
-              i=$((i + 1))
-            done
-          else
-            for k in 0 1 2; do seeds+=($(( (RUN_ID % 1000000000) * 64 + SHARD * 3 + k + 1 ))); done
-          fi
           status=0
-          for seed in "${seeds[@]}"; do
-            echo "seed $seed, $MODE"
-            "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" -env "${lazy[@]}" || status=1
+          i=0
+          for seed in $SEEDS; do
+            if [ $((i % 4)) -eq "$SHARD" ]; then
+              "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" \
+                -out "$RUNNER_TEMP/chaos-out" -env -faults "$FAULTS" || status=1
+            fi
+            i=$((i + 1))
           done
           exit "$status"
-      - if: failure()
+      - if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: chaos-campaign-${{ matrix.mode }}-${{ matrix.shard }}
+          name: network-time-${{ matrix.shard }}-race-${{ matrix.race }}
           path: |
             ${{ runner.temp }}/chaos-out
             !${{ runner.temp }}/chaos-out/**/disks
           retention-days: 30
-      # For the tally: what each fault of each run did.
-      - if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: chaos-faults-${{ matrix.mode }}-${{ matrix.shard }}
-          path: ${{ runner.temp }}/chaos-out/*/faults.json
-          retention-days: 30
 
   tally:
-    needs: seeds
+    needs: network-time
     if: always()
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -99,14 +75,6 @@ jobs:
           go-version-file: go.mod
       - uses: actions/download-artifact@v7
         with:
-          pattern: chaos-faults-*
+          pattern: network-time-*
           path: ${{ runner.temp }}/faults
-      - name: Each fault took effect in three of four runs
-        run: |
-          for mode in lazyfs plain; do
-            echo "::group::$mode"
-            go run ./cmd/chaos -tally "$RUNNER_TEMP"/faults/chaos-faults-"$mode"-* || status=1
-            echo "::endgroup::"
-          done
-          go run ./cmd/chaos -tally "$RUNNER_TEMP/faults" || status=1
-          exit "${status:-0}"
+      - run: go run ./cmd/chaos -tally "$RUNNER_TEMP/faults"

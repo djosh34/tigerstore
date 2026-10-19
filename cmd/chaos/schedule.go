@@ -73,7 +73,7 @@ func plan(seed uint64, faults []string) []step {
 			s.Delay, s.Delay2, s.Every = ms(0, 2), ms(20, 80), ms(100, 400)
 		case netSlow:
 			s.Rate = 8<<10 + rng.IntN(24<<10)
-		case cpuGray, severalAtOnce:
+		case cpuGray, severalAtOnce, "netem-election":
 			// A node at 2 to 5 percent of one CPU, which throttles a
 			// follower too.
 			s.Rate = 2 + rng.IntN(4)
@@ -213,6 +213,9 @@ func (r *runner) inject(ctx context.Context, s step, rec *record) error {
 	followers := []int{(lead + 1) % 3, (lead + 2) % 3}
 	follower := followers[s.Pick%2]
 	rec.Requested = r.since()
+	if slices.Contains(networkTimeFaults, s.Fault) {
+		return r.networkTime(ctx, s, lead, follower, rec)
+	}
 	if slices.Contains(envFaults, s.Fault) {
 		// The leader in a third of the steps, as a gray leader must be
 		// fenced too.

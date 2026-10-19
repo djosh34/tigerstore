@@ -51,6 +51,7 @@ const (
 var envFaults = []string{
 	netemLoss, netemReorder, netemCorrupt, cpuGray, diskSlow, diskStall, fsyncFail, diskFull,
 	powerLoss, tornWrite, recoveryCrash, installCrash, slowWatcher, severalAtOnce, replace,
+	"netem-election",
 }
 
 // LazyFS answers an fsync with success even when the disk under it
@@ -379,6 +380,10 @@ func (r *runner) injectEnv(ctx context.Context, s step, lead, target int, rec *r
 		return r.withProbes([]int{0, 1, 2}, rec, func() error { return r.slowWatch(ctx, s, target, rec) })
 	case severalAtOnce:
 		return r.several(ctx, s, lead, target, rec)
+	case "netem-election":
+		// Always throttle the current leader, not a random follower.
+		s.Hold = 15 * time.Second
+		return r.several(ctx, s, lead, lead, rec)
 	case replace:
 		return r.replaceMember(ctx, s, target, rec)
 	}
@@ -391,7 +396,7 @@ func (r *runner) netemFault(ctx context.Context, s step, l *link, rec *record) e
 		return err
 	}
 	rec.Env.Link = l.Name
-	impairment := map[string]string{netemLoss: "loss 20%", netemReorder: "reorder 50% 50%", netemCorrupt: "corrupt 5%"}[s.Fault]
+	impairment := map[string]string{netemLoss: "loss 20%", netemReorder: "reorder 50% 50%", netemCorrupt: "corrupt 5%", "netem-election": "loss 15% reorder 40% 50% corrupt 2%"}[s.Fault]
 	before, err := r.e.netem.Stats(port)
 	if err != nil {
 		return err
@@ -943,6 +948,10 @@ func (r *runner) several(ctx context.Context, s step, lead, target int, rec *rec
 	recA, recB := &record{Env: &envRecord{}}, &record{Env: &envRecord{}}
 	sa, sb := s, s
 	sa.Fault, sb.Fault = cpuGray, netemLoss
+	if s.Fault == "netem-election" {
+		sb.Fault = s.Fault
+		rec.Env.Parts = []string{fmt.Sprintf("cpu-gray on leader node%d", a+1), "netem loss 15%, reorder 40%, corrupt 2% on its peer link"}
+	}
 	errs := make(chan error, 2)
 	go func() { errs <- r.cpuFault(ctx, sa, a, recA) }()
 	l := r.c.peers[lead][b]
