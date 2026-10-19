@@ -644,6 +644,12 @@ func (n *Node) open() error {
 	if err != nil {
 		return err
 	}
+	// DIAG280: finish an exactly matching initial bootstrap before the
+	// new WAL is published or a core can campaign on it.
+	if err := core.RepairTornBootstrap(n.cfg.Core, rec, w); err != nil {
+		_ = w.Close()
+		return err
+	}
 	if n.cfg.SegmentBytes > 0 {
 		w.SetSegmentBytes(n.cfg.SegmentBytes)
 	}

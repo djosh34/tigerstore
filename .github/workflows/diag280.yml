@@ -14,5 +14,34 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Cold restart from archived torn prefixes (50 repetitions)
-        run: go test -v -count=50 -timeout=3m ./internal/sim -run '^TestDiag280ColdRestart$'
+      - name: Cold restart from archived torn prefixes (50 race repetitions)
+        run: go test -race -v -count=50 -timeout=3m ./internal/sim -run '^TestDiag280ColdRestart$'
+      - name: Repair guards and original bootstrap regressions
+        run: go test -race -v -count=50 -timeout=3m ./internal/core -run '^(TestDiag280RepairGuards|TestBootstrapWithoutCommitCampaigns|TestPartialBootstrapKeepsNoMembers)$'
+      - name: Removing only the repair must restore all 50 failures
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('internal/node/node.go')
+          s = p.read_text()
+          start = s.index('\t// DIAG280: finish an exactly matching initial bootstrap')
+          end = s.index('\tif n.cfg.SegmentBytes > 0 {', start)
+          p.write_text(s[:start] + s[end:])
+          PY
+          set +e
+          go test -v -count=50 -timeout=3m ./internal/sim -run '^TestDiag280ColdRestart$' > control.log 2>&1
+          status=$?
+          set -e
+          python3 - "$status" <<'PY'
+          from pathlib import Path
+          import sys
+          s = Path('control.log').read_text()
+          print(s)
+          assert int(sys.argv[1]) != 0, 'without-fix control unexpectedly passed'
+          assert s.count('--- FAIL: TestDiag280ColdRestart/torn-survivors ') == 50
+          assert s.count('--- PASS: TestDiag280ColdRestart/complete-node2-control ') == 50
+          assert s.count('node 2: leader 0, applied 0, members []; want a leader') == 50
+          assert s.count('node 3: leader 0, applied 0, members []; want a leader') == 50
+          PY
+          git restore internal/node/node.go
