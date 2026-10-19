@@ -5,10 +5,10 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -16,9 +16,8 @@ import (
 )
 
 // TestDiag288RepairWhileArchiving forces the archive's open/read/close
-// interval to overlap repair. A FIFO makes that normally tiny interval
-// deterministic, without a large WAL, timing campaign, or tigerstore node.
-// Its open descriptor pins ext4 in exactly the same way as a WAL read.
+// interval to overlap repair. Only the archive's ordinary read descriptor
+// pins the mount: no tigerstore process or other open file is needed.
 func TestDiag288RepairWhileArchiving(t *testing.T) {
 	d, err := env.NewDisk(t.TempDir(), fmt.Sprintf("diag288-%d", os.Getpid()), 64<<20, "")
 	if err != nil {
@@ -34,40 +33,44 @@ func TestDiag288RepairWhileArchiving(t *testing.T) {
 	if err := os.MkdirAll(wal, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	pipe := filepath.Join(wal, "copy.wal")
-	if err := syscall.Mkfifo(pipe, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(wal, "copy.wal"), []byte("archive me"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	archived := make(chan error, 1)
-	go func() { archived <- e.archiveOnce(t.TempDir(), map[string]time.Time{}) }()
-	// A nonblocking writer connects only once archiveOnce has opened its
-	// reader. Keep the writer open to hold os.ReadFile before EOF.
-	var writer *os.File
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		writer, err = os.OpenFile(pipe, os.O_WRONLY|syscall.O_NONBLOCK, 0)
-		if err == nil {
-			break
+	opened, release := make(chan struct{}), make(chan struct{})
+	originalRead := readArchiveFile
+	t.Cleanup(func() { readArchiveFile = originalRead })
+	readArchiveFile = func(path string) ([]byte, error) {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
 		}
-		if !errors.Is(err, syscall.ENXIO) {
-			t.Fatal(err)
-		}
-		time.Sleep(time.Millisecond)
+		close(opened)
+		<-release
+		b, err := io.ReadAll(f)
+		return b, errors.Join(err, f.Close())
 	}
-	if writer == nil {
+	archived := make(chan error, 1)
+	dir := t.TempDir()
+	go func() { archived <- e.archiveOnce(dir, map[string]time.Time{}) }()
+	select {
+	case <-opened:
+	case <-time.After(5 * time.Second):
 		t.Fatal("archive did not open its reader")
 	}
-	defer writer.Close()
 	fds, _ := filepath.Glob("/proc/self/fd/*")
+	holders := 0
 	for _, fd := range fds {
 		if target, err := os.Readlink(fd); err == nil && strings.HasPrefix(target, d.Backing+"/") {
+			holders++
 			info, _ := os.ReadFile("/proc/self/fdinfo/" + filepath.Base(fd))
 			t.Logf("archive holder: pid=%d %s -> %s; %s", os.Getpid(), fd, target, info)
 		}
 	}
+	if holders != 1 {
+		t.Errorf("want exactly one descriptor on the mount (archive reader), got %d", holders)
+	}
 	repaired := make(chan error, 1)
 	go func() { repaired <- e.repair(d) }()
-	// A correct repair cannot finish until the archive closes its reader.
 	var repairErr error
 	early := false
 	select {
@@ -76,9 +79,7 @@ func TestDiag288RepairWhileArchiving(t *testing.T) {
 		t.Logf("repair while the archive holds the mount: %v", repairErr)
 	case <-time.After(200 * time.Millisecond):
 	}
-	if err := writer.Close(); err != nil {
-		t.Error(err)
-	}
+	close(release)
 	if err := <-archived; err != nil {
 		t.Error(err)
 	}
@@ -86,7 +87,7 @@ func TestDiag288RepairWhileArchiving(t *testing.T) {
 		repairErr = <-repaired
 	}
 	if early || repairErr != nil {
-		t.Fatalf("repair must wait for archive EOF and then succeed: early=%v err=%v", early, repairErr)
+		t.Fatalf("repair must wait for archive close and then succeed: early=%v err=%v", early, repairErr)
 	}
-	t.Log("archive closed its reader; unmount, fsck and remount succeeded")
+	t.Log("archive closed its sole reader; unmount, fsck and remount succeeded")
 }

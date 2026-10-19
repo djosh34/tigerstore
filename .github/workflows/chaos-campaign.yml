@@ -43,6 +43,12 @@ jobs:
           p = pathlib.Path('subject/cmd/chaos/envfaults.go')
           source = p.read_text()
           source = source.replace('// erase erases', helper + '// erase erases', 1)
+          # Diagnostic seam only: pause the ordinary archive reader after
+          # open and before close; no FIFO writer or node pins the mount.
+          source = source.replace('// archive copies every file',
+                                  'var readArchiveFile = os.ReadFile\n\n// archive copies every file', 1)
+          source = source.replace('os.ReadFile(filepath.Join(src, ent.Name()))',
+                                  'readArchiveFile(filepath.Join(src, ent.Name()))')
           source = source.replace('healErr = errors.Join(healErr, d.Repair())',
                                   'healErr = errors.Join(healErr, r.e.repair(d))')
           p.write_text(source)

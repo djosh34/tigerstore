@@ -958,6 +958,10 @@ func (r *runner) several(ctx context.Context, s step, lead, target int, rec *rec
 	return err
 }
 
+// readArchiveFile is a diagnostic seam to pause an ordinary WAL read
+// with its descriptor open; the production implementation is os.ReadFile.
+var readArchiveFile = os.ReadFile
+
 // archive copies every file of each node's log, but spares, into
 // dir/wal-archive, every 100 ms until ctx ends and once more after: with
 // the small sizes of -env, segments go below each checkpoint, and the
@@ -1014,7 +1018,7 @@ func (e *environment) archiveOnce(dir string, seen map[string]time.Time) error {
 			if t, ok := seen[key]; ok && !info.ModTime().After(t) {
 				continue
 			}
-			b, err := os.ReadFile(filepath.Join(src, ent.Name()))
+			b, err := readArchiveFile(filepath.Join(src, ent.Name()))
 			if err != nil {
 				continue
 			}
