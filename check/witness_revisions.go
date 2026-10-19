@@ -143,8 +143,10 @@ type optional struct {
 	late  bool
 	gone  int64
 	by    int64
-	// follow are acked ops that must be placed before it.
+	// follow are acked ops that must be placed before it. keep are reads
+	// that need a real-time-compatible place in the prefix before it.
 	follow []int
+	keep   []int
 }
 
 // life is what one observation of a key shows: created at c, last
@@ -756,6 +758,7 @@ func (r *revisionOrder) scheduleOptional() {
 				if read.Req.Range.Revision < c {
 					at = max(at, read.Resp.Revision)
 					afterCall = max(afterCall, read.Call)
+					o.keep = append(o.keep, k)
 				}
 			}
 			for _, k := range compactions {
@@ -883,12 +886,61 @@ func (r *revisionOrder) due(call, rev int64) []optional {
 // takes steps s through late optional o if it may go in now and the
 // model takes it without a write.
 func (r *revisionOrder) takes(s *state, o optional) bool {
-	if o.from > s.rev || !r.isReady(o) {
+	if o.from > s.rev || !r.isReady(o) || !r.keeps(o) {
 		return false
 	}
 	rev := s.rev
 	out := s.step(r.w.reqs[o.op], false)
 	return out.err == nil && s.rev == rev
+}
+
+// keeps checks that the successful historical reads which o would invalidate
+// can already be placed in the prefix, together with every observation that
+// returned before their latest call. A smaller optional compaction may be
+// needed first: compact(1) can reject as compacted while range(1) still succeeds
+// (#277, seed 8238917). Merely waiting for acked mutations misses that bound.
+// This is only a placement guard; observe and verify still check the full order.
+func (r *revisionOrder) keeps(o optional) bool {
+	if len(o.keep) == 0 {
+		return true
+	}
+	w := r.w
+	var call int64
+	for _, i := range o.keep {
+		call = max(call, w.h.Ops[i].Call)
+	}
+	var ops []int
+	for i := range w.h.Ops {
+		op := &w.h.Ops[i]
+		if w.at[i].set || op.Req.Range != nil && op.Req.Range.Serializable {
+			continue
+		}
+		if op.Return >= call && !slices.Contains(o.keep, i) {
+			continue
+		}
+		if op.Resp != nil && !mutation(op) || op.Err != nil && !op.Err.Ambiguous && isModelError(op.Err) {
+			ops = append(ops, i)
+		}
+	}
+	r.byCall(ops)
+	placed := newPlacedMax(w.h, ops)
+	bounds := w.eventBounds()
+	for _, i := range ops {
+		op := &w.h.Ops[i]
+		lo, hi := bounds(op)
+		lo = max(lo, placed.before(op.Call))
+		if op.Resp != nil {
+			rev := op.Resp.Revision
+			lo = max(lo, sort.Search(len(w.states), func(j int) bool { return w.states[j].rev >= rev }))
+			hi = min(hi, sort.Search(len(w.states), func(j int) bool { return w.states[j].rev > rev })-1)
+		}
+		j, ok := w.find(i, lo, hi)
+		if !ok {
+			return false
+		}
+		placed.add(i, j)
+	}
+	return true
 }
 
 // expire puts in the late optional mutations due before the event of an
@@ -949,7 +1001,7 @@ func (r *revisionOrder) expireEnd() {
 	w := r.w
 	for _, o := range r.due(math.MaxInt64, math.MaxInt64) {
 		r.putIn(o, func(s *state, o optional) bool {
-			return o.from <= s.rev && r.isReady(o) && s.step(w.reqs[o.op], false).err == nil
+			return o.from <= s.rev && r.isReady(o) && r.keeps(o) && s.step(w.reqs[o.op], false).err == nil
 		})
 	}
 }

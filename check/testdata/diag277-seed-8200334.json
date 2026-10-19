@@ -5936,6 +5936,21 @@
       }
     },
     {
+      "client": 1,
+      "call": 16282140447,
+      "return": 19282140447,
+      "req": {
+        "leaseGrant": {
+          "ttl": 4
+        }
+      },
+      "err": {
+        "code": "DeadlineExceeded",
+        "message": "sim: client timed out",
+        "ambiguous": true
+      }
+    },
+    {
       "client": 2,
       "call": 16295378879,
       "return": 19295378879,

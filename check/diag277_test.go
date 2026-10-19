@@ -40,6 +40,28 @@ func TestDiag277SavedHistory(t *testing.T) {
 	}
 }
 
+// A smaller optional compaction must sometimes precede the protected read too:
+// compact(1) rejects at compaction 1, while range(1) still succeeds there.
+func TestDiag277RejectionPredecessor(t *testing.T) {
+	b := newBuilder(t, "a")
+	b.put(0, "a", "1")
+	b.put(0, "a", "2")
+	low := b.do(1, history.Request{Compact: &history.CompactRequest{Revision: 1}})
+	b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 1}})
+	b.do(3, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 1}})
+	b.get(4, "a")
+	high := b.do(5, history.Request{Compact: &history.CompactRequest{Revision: 2}})
+	h := b.done()
+	h.Ops[high].Call = 1
+	for _, i := range []int{low, high} {
+		h.Ops[i].Resp, h.Ops[i].Err = nil, errUnavailable
+	}
+	mustPass(t, "Linearizable", Linearizable(h, timeout))
+	for _, mode := range bothModes {
+		mustPass(t, "Witnessed "+mode.String(), Witnessed(h, mode, timeout))
+	}
+}
+
 // A pre-compaction state at the right revision is not enough: it must be
 // after the grant that returned before the successful read was called.
 func TestDiag277ReadPredecessor(t *testing.T) {

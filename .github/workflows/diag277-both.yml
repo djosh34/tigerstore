@@ -1,11 +1,14 @@
 name: diag277-both
-run-name: 'diag277 reference: read-predecessor placement green'
+run-name: 'diag277 reference: old and current red controls'
 on:
   push:
     branches: [diag/277-witness-both]
 permissions:
   contents: read
   actions: read
+defaults:
+  run:
+    shell: bash
 jobs:
   saved:
     runs-on: ubuntu-24.04-arm
@@ -13,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rule: [prototype]
+        rule: [old, current]
     steps:
       - uses: actions/checkout@v7
         with:
