@@ -1,0 +1,40 @@
+name: diag-286-close-serve
+
+on:
+  push:
+    branches: [diag/286-close-serve-race]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-race:
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [pr-282, main-fa55dee2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Select source, retaining exactly the diagnosis test and candidate fix
+        env:
+          SOURCE: ${{ matrix.source }}
+          DIAG_SHA: ${{ github.sha }}
+        run: |
+          git show "$DIAG_SHA:internal/node/close_race_test.go" > "$RUNNER_TEMP/close_race_test.go"
+          git diff 6b952fefe684faf57d0757ea515d38e6bf352184 "$DIAG_SHA" -- internal/node/node.go > "$RUNNER_TEMP/fix.patch"
+          if [ "$SOURCE" = main-fa55dee2 ]; then
+            git checkout --detach fa55dee2
+            git apply --allow-empty "$RUNNER_TEMP/fix.patch"
+          fi
+          cp "$RUNNER_TEMP/close_race_test.go" internal/node/close_race_test.go
+          git diff --stat
+      - name: One short snapshot-close race regression only
+        run: go test -race -v -count=1 -timeout=30s ./internal/node -run '^TestSnapshotServeConcurrentClose$'
