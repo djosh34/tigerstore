@@ -112,6 +112,7 @@ type environment struct {
 	netem   *env.Netem
 	latency map[string]time.Duration
 	tag     string
+	lazyfs  bool
 	// archiving is held by each pass of archive, by erase and by repair:
 	// on LazyFS, a file removed while the archive reads it stays as a
 	// .fuse_hidden file until it is closed, and the erase found its
@@ -138,7 +139,7 @@ func (e *environment) repair(d *env.Disk) error {
 // newEnvironment makes a disk under dir for each node, with LazyFS when
 // lazyfs names its binary.
 func newEnvironment(dir string, seed uint64, lazyfs string, size int64) (*environment, error) {
-	e := &environment{tag: fmt.Sprintf("chaos-%d-%d", seed, os.Getpid())}
+	e := &environment{tag: fmt.Sprintf("chaos-%d-%d", seed, os.Getpid()), lazyfs: lazyfs != ""}
 	for i := range 3 {
 		d, err := env.NewDisk(filepath.Join(dir, "disks"), fmt.Sprintf("%s-n%d", e.tag, i+1), size, lazyfs)
 		if err != nil {

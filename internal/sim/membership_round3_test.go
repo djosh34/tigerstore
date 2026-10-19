@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"fmt"
 	"strconv"
 	"testing"
 )
@@ -16,7 +17,22 @@ func TestMembershipRound3(t *testing.T) {
 			cfg.MembershipRound3 = true
 			cfg.PinClients = true
 			cfg.Faults = Faults{MaxDelay: 10 * Millisecond, SlowDisk: 5, Checkpoint: true, SlowFetch: true}
-			a := run(t, cfg)
+			a, err := runWith(t, cfg, func(s *Sim) error {
+				var leader uint64
+				for i, n := range s.live() {
+					got := n.proc.core.Leader()
+					if i == 0 {
+						leader = got
+					}
+					if got == 0 || got > 3 || got != leader {
+						return fmt.Errorf("node %d names leader %d, want original voter %d", n.id, got, leader)
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
 			for i, count := range a.Stats.MembershipMixes {
 				if count != 1 {
 					t.Fatalf("boundary %d ran %d fault mixes, want 1", i+1, count)

@@ -51,8 +51,12 @@ func (r *runner) losePower(i int, rec *record) error {
 		return err
 	}
 	rec.Env.Exited = ps.String()
-	// DropCaches calls LazyFS's power loss before dropping the kernel cache.
-	return r.e.disks[i].DropCaches()
+	if r.e.lazyfs {
+		report, err := r.e.disks[i].PowerLoss()
+		rec.Env.LazyFS += fmt.Sprintf("node%d: %s\n", i+1, strings.TrimSpace(report))
+		return err
+	}
+	return nil
 }
 
 // tripleLoss takes one follower down, partitions the other and slows the
@@ -66,8 +70,7 @@ func (r *runner) tripleLoss(ctx context.Context, s step, lead int, rec *record) 
 		return err
 	}
 	defer func() { err = errors.Join(err, heal()) }()
-	lazy := strings.HasSuffix(r.e.disks[lead].Data, ".data")
-	if lazy {
+	if r.e.lazyfs {
 		err = r.e.groups[lead].LimitCPU(3)
 		defer func() { err = errors.Join(err, r.e.groups[lead].LimitCPU(0)) }()
 	} else {
@@ -94,7 +97,7 @@ func (r *runner) tripleLoss(ctx context.Context, s step, lead int, rec *record) 
 // compactObserved never compacts an event a recorded watch still needs.
 // It is still a real replicated compaction, concurrent with recovery and
 // cleaning, and is recorded for both witness modes and Porcupine.
-func (r *runner) compactObserved(ctx context.Context) func() error {
+func (r *runner) compactObserved() func() error {
 	stop, done := make(chan struct{}), make(chan error, 1)
 	go func() {
 		last := int64(0)
@@ -159,7 +162,7 @@ func memberRetryRound3(ctx context.Context, what string, call func(context.Conte
 // during catch-up. Promotion and a second power loss test the new member's
 // persisted configuration, not just its in-memory membership.
 func (r *runner) replaceLeaderLearner(ctx context.Context, s step, lead int, rec *record) (err error) {
-	finishCompact := r.compactObserved(ctx)
+	finishCompact := r.compactObserved()
 	defer func() { err = errors.Join(err, finishCompact()) }()
 	n, old := r.c.nodes[lead], r.c.ids[lead]
 	a, b := others(lead)[0], others(lead)[1]
@@ -279,7 +282,7 @@ func (r *runner) replaceLeaderLearner(ctx context.Context, s step, lead int, rec
 }
 
 func (r *runner) rollingLoss(ctx context.Context, s step, rec *record) (err error) {
-	finishCompact := r.compactObserved(ctx)
+	finishCompact := r.compactObserved()
 	defer func() { err = errors.Join(err, finishCompact()) }()
 	for k := range 3 {
 		i := (k + int(s.Pick%3)) % 3
