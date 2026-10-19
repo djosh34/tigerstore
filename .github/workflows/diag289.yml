@@ -33,7 +33,7 @@ jobs:
           set +e
           go test "${flags[@]}" -v -count=1 -timeout=4m ./check -run '^TestDiag289History$' -cpuprofile="$PWD/evidence/cpu.pprof" -memprofile="$PWD/evidence/mem.pprof" 2>&1 | tee evidence/history.log
           history_status=${PIPESTATUS[0]}
-          go test "${flags[@]}" -v -count=1 -timeout=30s ./check -run '^TestDiag289(Reduced284|RejectedOptional)$' 2>&1 | tee evidence/reduced.log
+          go test "${flags[@]}" -v -count=1 -timeout=30s ./check -run '^TestDiag289(Reduced284|RejectedOptional)$|^TestWitnessed(Good|Broken|AmbiguousCases|Timeout)$' 2>&1 | tee evidence/reduced.log
           reduced_status=${PIPESTATUS[0]}
           go tool pprof -top -nodecount=50 check.test evidence/cpu.pprof > evidence/cpu-top.txt
           go tool pprof -top -cum -nodecount=50 check.test evidence/cpu.pprof > evidence/cpu-cum.txt
@@ -45,7 +45,11 @@ jobs:
         if: matrix.race == 'plain'
         env:
           DIAG289: '1'
-        run: go test -v -count=1 -timeout=3m ./internal/sim -run '^TestDiag289SaveSeed7004$' -args -sim.out="$PWD/evidence/sim-out" > evidence/sim.log 2>&1
+        run: |
+          # Instrumentation refers to check's test-only counters. Remove it
+          # before compiling check as an imported dependency of sim.
+          git restore -- check/witness_revisions.go
+          go test -v -count=1 -timeout=3m ./internal/sim -run '^TestDiag289SaveSeed7004$' -args -sim.out="$PWD/evidence/sim-out" > evidence/sim.log 2>&1
       - uses: actions/upload-artifact@v6
         if: always()
         with:
