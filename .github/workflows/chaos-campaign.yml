@@ -1,10 +1,16 @@
 name: diag-295
 on:
   workflow_dispatch:
+    inputs:
+      experiment:
+        default: seed
+        type: choice
+        options: [seed, header]
 permissions:
   contents: read
 jobs:
   replay:
+    if: inputs.experiment == 'seed'
     strategy:
       fail-fast: false
       matrix:
@@ -43,3 +49,43 @@ jobs:
             ${{ runner.temp }}/diag295
             !${{ runner.temp }}/diag295/**/disks
           retention-days: 30
+  header:
+    if: inputs.experiment == 'header'
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [main, pr294, header-fix]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Select the experiment
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          if [ "$VARIANT" = pr294 ]; then
+            git show 76dca7545fd21613ce320cacb6168829a770699a:internal/wal/wal.go > internal/wal/wal.go
+          fi
+          if [ "$VARIANT" = header-fix ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          p = Path('internal/wal/wal.go')
+          s = p.read_text()
+          old = 'func (w *WAL) Flush() error {\n\tif len(w.buf) == 0 {'
+          new = 'func (w *WAL) Flush() error {\n\tif len(w.buf) == 0 || w.size == 0 && len(w.buf) == headerSize {'
+          assert old in s
+          p.write_text(s.replace(old, new))
+          PY
+          fi
+      - name: Install FUSE and build LazyFS
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q cmake g++ libfuse3-dev fuse3
+          echo "CHAOS_LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
+      - name: Tear a write after an unsynced header-only flush
+        run: go test -tags chaosenv -count=1 -v ./chaos/env -run '^TestDiag295HeaderOnlyFlush$' -timeout 90s
