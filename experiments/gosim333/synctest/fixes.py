@@ -21,5 +21,6 @@ add_hooks('weak', ['runtime_registerWeakPointer', 'runtime_makeStrongFromWeak'])
 shutil.copy(here/'gosim/weak333.go', src/'internal/hooks/go123/weak333.go')
 
 # Blocker 4: first contended peer-network mutex asks whether to spin.
-add_hooks('internal/sync', ['runtime_canSpin'])
+# Blocker 5: the next lockSlow call asks for the starvation clock.
+add_hooks('internal/sync', ['runtime_canSpin', 'runtime_nanotime'])
 shutil.copy(here/'gosim/sync333.go', src/'internal/hooks/go123/sync333.go')

@@ -8,3 +8,10 @@ func InternalSync_runtime_canSpin(i int) bool {
  gosimruntime.Port333Reached("internal/sync.runtime_canSpin")
  return Sync_runtime_canSpin(i)
 }
+
+// Moved mutex starvation clock: same simulated clock as the old sync hook
+// (pinned gosim internal/hooks/go123/sync.go:41-43).
+func InternalSync_runtime_nanotime() int64 {
+ gosimruntime.Port333Reached("internal/sync.runtime_nanotime")
+ return Sync_runtime_nanotime()
+}

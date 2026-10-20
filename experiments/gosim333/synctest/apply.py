@@ -17,6 +17,10 @@ replace('internal/hooks/go123/port127.go',
 replace('internal/hooks/go123/port127.go',
  ' if durable { panic(gosimruntime.MissingHook("sync.runtime_SemacquireWaitGroup(durable)")) }\n',
  ' // Experiment: durable waits use the same gosim semaphore; no bubble idle accounting.\n')
+# Match runtime/time.go:16-30: a bubble omits the monotonic component of Now.
+replace('internal/hooks/go123/port127.go',
+ 'func Time_runtimeNow() (int64, int32, int64) { return Time_now() }',
+ 'func Time_runtimeNow() (int64, int32, int64) { sec, nsec, mono := Time_now(); if synctest333Active { mono = 0 }; return sec, nsec, mono }')
 names = ['Run', 'associate', 'disassociate', 'isAssociated', 'acquire', 'release', 'inBubble']
 entries = ''.join(f'\t{{Pkg: "internal/synctest", Selector: "{n}"}}: {{Pkg: hooksGo123Package}},\n' for n in names)
 entries += '\t{Pkg: "testing/synctest", Selector: "testingSynctestTest"}: {Pkg: hooksGo123Package},\n'
