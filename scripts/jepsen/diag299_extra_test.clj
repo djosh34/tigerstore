@@ -70,7 +70,8 @@
                "at" (-> after :value :events first :events first :kv second :mod-revision)))))
 
 (defn event [revision value]
-  {:events [{:type :put :kv ["w" {:mod-revision revision :value value}]}]})
+  ;; ->clj returns a MapEntry here; EDN serializes it as a vector.
+  {:events [{:type :put :kv (first {"w" {:mod-revision revision :value value}})}]})
 
 (defn interrupted-watch [message error-type]
   (let [revision (atom 148)
@@ -91,6 +92,7 @@
                     (when @fail? (error failure))
                     (reify Watch$Watcher
                       (close [_] (complete))
+                      (isClosed [_] false)
                       (requestProgress [_])))
                   watch/watch-for
                   (fn [conn process key rev _]

@@ -80,7 +80,8 @@ p.write_text(s)
 # client then crashed, and its replacement replayed from revision 0, which
 # the watch checker took for missed events (#299). The call may have taken
 # effect, so it is indeterminate; an idempotent watch fails definitely and
-# keeps its revision.
+# keeps its revision. A second artifact has the same reset after Jetcd's
+# "channel closed" error. Treat that transport failure as indeterminate too.
 p = root / 'src/jepsen/etcd/client.clj'
 s = p.read_text()
 old = '''               #"unhealthy cluster"
