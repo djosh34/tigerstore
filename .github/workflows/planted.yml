@@ -34,8 +34,8 @@ jobs:
   # a failure too. TestPlantedInventory checks that BUGS names every bug.
   # A bug that is not caught prints the command that runs it again; a
   # seed that failed on another check prints its own. The run that caught
-  # each bug is uploaded, with its trace, history, disks and replay
-  # command.
+  # each bug is uploaded, in sim-out/<bug>/, with its trace, history,
+  # disks, hashes and replay command.
   planted:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
@@ -63,7 +63,7 @@ jobs:
           for bug in $BUGS; do
             echo "::group::$bug"
             for pkg in sim node peer; do
-              (cd "internal/$pkg" && SIM_PLANTED="$bug" "$GITHUB_WORKSPACE/.gosim/bin/$pkg-planted.test" -test.run '^TestPlanted$' -test.v -test.timeout 28m) 2>&1 | tee "$RUNNER_TEMP/logs/$bug-$pkg.log" || {
+              (cd "internal/$pkg" && SIM_PLANTED="$bug" SIM_OUT="$SIM_OUT/$bug" "$GITHUB_WORKSPACE/.gosim/bin/$pkg-planted.test" -test.run '^TestPlanted$' -test.v -test.timeout 28m) 2>&1 | tee "$RUNNER_TEMP/logs/$bug-$pkg.log" || {
                 status=1
                 echo "::error::$bug was not caught in internal/$pkg; replay: SIM_PLANTED=$bug TAGS=planted scripts/sim.sh ./internal/$pkg '^TestPlanted$'"
               }

@@ -27,8 +27,8 @@ import (
 // the seeds run here.
 func Seeds[T any](t *testing.T, first uint64, n int, env []string, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
 	t.Helper()
-	first = Uint(t, "SIM_SEED", first)
-	n = int(Uint(t, "SIM_SEEDS", uint64(n)))
+	first = envUint(t, "SIM_SEED", first)
+	n = int(envUint(t, "SIM_SEEDS", uint64(n)))
 	if add == nil {
 		add = func(uint64, T) bool { return false }
 	}
@@ -46,14 +46,14 @@ func Seeds[T any](t *testing.T, first uint64, n int, env []string, body func(*te
 	}
 	here := Here(t)
 	known := knownFailures(t)
-	twice := int(Uint(t, "SIM_TWICE", 0))
+	twice := int(envUint(t, "SIM_TWICE", 0))
 	test := Top(strings.Split(t.Name(), "/"))[0]
-	seedFailed := false
+	anyFailed := false
 	if !here {
-		// A rule over the set fails the test, not a seed: the set runs
-		// again.
+		// A rule over the set can fail the test with no seed failed; the
+		// whole set then runs again.
 		t.Cleanup(func() {
-			if t.Failed() && !seedFailed {
+			if t.Failed() && !anyFailed {
 				set := append([]string{fmt.Sprintf("SIM_SEED=%d", first), fmt.Sprintf("SIM_SEEDS=%d", n)}, env...)
 				t.Logf("replay: %s", Replay(dir(t), Pattern(t.Name()), set))
 			}
@@ -62,7 +62,7 @@ func Seeds[T any](t *testing.T, first uint64, n int, env []string, body func(*te
 	for i := range n {
 		seed := first + uint64(i)
 		stop := false
-		seedFailed = !t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
+		anyFailed = !t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
 			if bug, ok := known[failure{test, seed}]; ok {
 				t.Skipf("seed %d of %s fails because of %s (known-failures.txt)", seed, test, bug)
 			}
@@ -88,7 +88,7 @@ func Seeds[T any](t *testing.T, first uint64, n int, env []string, body func(*te
 				t.Fatalf("seed %d left no result: %v", seed, err)
 			}
 			stop = add(seed, v)
-		}) || seedFailed
+		}) || anyFailed
 		if stop {
 			break
 		}
@@ -96,8 +96,8 @@ func Seeds[T any](t *testing.T, first uint64, n int, env []string, body func(*te
 	return true
 }
 
-// Uint is the number in the variable name, or def when it is not set.
-func Uint(t *testing.T, name string, def uint64) uint64 {
+// envUint is the number in the variable name, or def when it is not set.
+func envUint(t *testing.T, name string, def uint64) uint64 {
 	t.Helper()
 	v := os.Getenv(name)
 	if v == "" {

@@ -27,8 +27,9 @@ import (
 
 // The simulator's tests read their settings from the environment, which
 // reaches them under gosim too, where they get no flags:
-//   - SIM_SEED and SIM_SEEDS: the first seed of TestSeeds, TestLinearizable
-//     and TestMembershipFaults, 1 by default, and how many, 16 by default.
+//   - SIM_SEED and SIM_SEEDS: the first seed of a test that runs a set of
+//     seeds (simrun.Seeds), and how many. TestSeeds, TestLinearizable and
+//     TestMembershipFaults run 16 from seed 1 by default.
 //   - SIM_TWICE: how many seeds of the set scripts/sim.sh runs twice; each
 //     must give the same trace, history and disk hashes both times.
 //   - SIM_OUT: the directory where a failed run saves its trace, how it
