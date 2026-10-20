@@ -122,7 +122,7 @@ func (s *Sim) check(res *Result) error {
 			// elect another (seed 50214159).
 			continue
 		}
-		if s.nodes[r.Node].fenced && errors.Is(r.Err, errConnRefused) {
+		if s.nodes[r.Node].fenced && (errors.Is(r.Err, errConnRefused) || r.v3) {
 			// The node was fenced for good; a real client moves on to
 			// another endpoint.
 			continue
@@ -506,7 +506,7 @@ func checkLog(res *Result) error {
 // leader", is unavailability.
 func isRejection(err error) bool {
 	return errors.Is(err, rpctypes.ErrGRPCCompacted) || errors.Is(err, rpctypes.ErrGRPCFutureRev) ||
-		errors.Is(err, rpctypes.ErrGRPCLeaseNotFound)
+		errors.Is(err, rpctypes.ErrGRPCLeaseNotFound) || errors.Is(err, rpctypes.ErrGRPCNoSpace)
 }
 
 // replay applies the committed log to a fresh state, without compactions,

@@ -35,6 +35,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	tnode "github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
+	"github.com/djosh34/tigerstore/internal/server"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
@@ -62,8 +63,10 @@ type Config struct {
 	// seed 126 fails with "no leader".
 	Heal      int64
 	LiveAfter int64
-	// Clients is the number of clients. Each has one call in flight.
-	Clients int
+	// Clients is the number of clients that enter at Node.Do, and
+	// V3Clients of those that use etcd's Go client (v3client.go). Each has
+	// one call in flight.
+	Clients, V3Clients int
 	// PinClients makes client i call voting node i%3 only, so that the
 	// clients waiting on a node that cannot answer leave the other nodes
 	// theirs (#279). Otherwise each call picks a voting node at random.
@@ -220,6 +223,7 @@ func DefaultConfig(seed uint64) Config {
 		Heal:          10 * Second,
 		LiveAfter:     4 * Second,
 		Clients:       6,
+		V3Clients:     3,
 		ClientTimeout: 3 * Second,
 		Faults: Faults{
 			CrashEvery: 3 * Second,
@@ -379,6 +383,8 @@ type proc struct {
 	// closed once the committer holds still for the checks at the end.
 	core   *core.Node
 	parked chan struct{}
+	// srv is the gRPC server of a voting node of the first three.
+	srv *server.Server
 }
 
 func (p *proc) dead() bool { return p.ctx.Err() != nil }
@@ -419,8 +425,11 @@ type Sim struct {
 	t0    time.Time
 	nodes []*node
 	links [][]link
-	net   network
-	trace []string
+	// clientLinks are the links between the clients' host and each node:
+	// to the node, and back.
+	clientLinks [][2]link
+	net         network
+	trace       []string
 	// end is closed when the run ends. wg counts the run's goroutines
 	// but the processes', which procs counts.
 	end       chan struct{}
@@ -499,6 +508,9 @@ type Stats struct {
 	Messages, Dropped     int
 	Crashes, LinkChanges  int
 	OK, Failed, Ambiguous int
+	// V3OK counts the calls of the clients of etcd's Go client that
+	// succeeded, among OK.
+	V3OK int
 	// Compactions counts successful compactions and WatchCompacted the
 	// watches that a compaction canceled.
 	Compactions, WatchCompacted int
@@ -614,7 +626,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := &Result{Clients: cfg.Clients}
+	res := &Result{Clients: cfg.Clients + cfg.V3Clients}
 	err = s.run()
 	// A run that failed before its end keeps what it did so far, for its
 	// report; it has no committed log for the checkers.
@@ -669,8 +681,13 @@ func newSim(cfg Config) (*Sim, error) {
 		count = 4
 	}
 	s.links = make([][]link, count)
+	s.clientLinks = make([][2]link, count)
 	for i := range s.links {
 		s.links[i] = make([]link, count)
+		for j := range 2 {
+			// The client links have the delays of a client's calls.
+			s.clientLinks[i][j] = link{up: true, base: 20 * Microsecond, jitter: 300 * Microsecond}
+		}
 	}
 	s.setLinks(s.allLinks())
 	if err := s.net.init(); err != nil {
@@ -763,8 +780,11 @@ func (s *Sim) schedule() {
 	if s.cfg.Membership {
 		s.after(2*Second, s.changeMembership)
 	}
-	for i := range s.cfg.Clients {
-		c := &client{id: i, sim: s}
+	for i := range s.cfg.Clients + s.cfg.V3Clients {
+		c := &client{id: i, sim: s, node: -1}
+		if i >= s.cfg.Clients {
+			c.node = i % 3
+		}
 		s.clients = append(s.clients, c)
 		s.wg.Go(c.run)
 	}
@@ -1146,7 +1166,7 @@ func (s *Sim) start(n *node) error {
 		cancel()
 		return fmt.Errorf("node %d recovered a log that it read wrong without noticing", n.id)
 	}
-	ln := s.net.listen(s, p)
+	ln := s.net.listen(s, p, n.addrs)
 	t, err := peer.Start(peer.Config{
 		ID: n.id, Listeners: []net.Listener{ln}, Peers: s.peerAddrs(n), Addr: n.addrs[0],
 		Certificate: s.net.cert, CA: s.net.ca,
@@ -1160,10 +1180,19 @@ func (s *Sim) start(n *node) error {
 		return err
 	}
 	p.node, p.t = tn, t
+	if n.idx < 3 {
+		if err := s.serve(p); err != nil {
+			cancel()
+			return errors.Join(err, t.Close())
+		}
+	}
 	n.proc, n.since, n.why = p, s.now(), ""
 	s.procs.Go(func() {
 		err := tn.Run(ctx, t)
 		err = errors.Join(err, t.Close())
+		if p.srv != nil {
+			err = errors.Join(err, p.srv.Stop())
+		}
 		s.exited(p, err)
 	})
 	return nil
@@ -1705,6 +1734,12 @@ func (s *Sim) heal() {
 	s.setLinks(s.allLinks())
 	// Link stalls and pauses end by healing, as they are cut to it.
 	// Half-open links end now, with their connections.
+	for i := range s.clientLinks {
+		for j := range 2 {
+			l := &s.clientLinks[i][j]
+			l.up, l.netemUntil, l.stallUntil = true, 0, 0
+		}
+	}
 	for i := range s.links {
 		for j := range s.links[i] {
 			s.links[i][j].netemUntil = 0

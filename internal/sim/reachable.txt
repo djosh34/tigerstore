@@ -17,3 +17,12 @@ reflect.Value.Recv
 reflect.Value.Send
 reflect.Value.TryRecv
 reflect.Value.TrySend
+
+# internal/server imports net/http/pprof, whose handlers trace with
+# runtime/trace. The simulator's gRPC servers run without pprof
+# (server.Config.Pprof), so nothing serves those handlers.
+runtime/trace.runtime_traceAdvance
+runtime/trace.runtime_traceClockNow
+runtime/trace.runtime_traceClockUnitsPerSecond
+runtime/trace.userRegion
+runtime/trace.userTaskEnd

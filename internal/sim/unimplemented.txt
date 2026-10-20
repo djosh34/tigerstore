@@ -114,6 +114,9 @@ runtime/debug.runtime_setCrashFD
 runtime/debug.setMaxStack
 runtime/debug.setMaxThreads
 runtime/debug.setPanicOnFault
+runtime/trace.runtime_traceAdvance
+runtime/trace.runtime_traceClockNow
+runtime/trace.runtime_traceClockUnitsPerSecond
 runtime/trace.userLog
 runtime/trace.userRegion
 runtime/trace.userTaskCreate
