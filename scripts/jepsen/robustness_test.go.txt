@@ -23,18 +23,22 @@ import (
 )
 
 // This package is copied into the pinned etcd tests module in Actions.
-// The upstream generators, recording clients and model are not replaced.
+// The upstream generators, recording clients, model and validators are not
+// replaced. TestExternalTraffic records a history against a running
+// cluster, and TestExternalValidate checks it once the nodes have stopped.
+
+var presets = map[string]traffic.Traffic{
+	"etcd-put-delete-lease": traffic.EtcdPutDeleteLease,
+	"etcd-put": traffic.EtcdPut,
+	"etcd-delete": traffic.EtcdDelete,
+	"kubernetes": traffic.Kubernetes,
+	"kubernetes-create-delete": traffic.KubernetesCreateDelete,
+}
+
 func TestExternalTraffic(t *testing.T) {
 	endpoints := strings.Split(os.Getenv("ENDPOINTS"), ",")
 	if len(endpoints) != 3 || os.Getenv("GITHUB_ACTIONS") != "true" {
 		t.Fatal("requires three fresh endpoints on a GitHub runner")
-	}
-	presets := map[string]traffic.Traffic{
-		"etcd-put-delete-lease": traffic.EtcdPutDeleteLease,
-		"etcd-put": traffic.EtcdPut,
-		"etcd-delete": traffic.EtcdDelete,
-		"kubernetes": traffic.Kubernetes,
-		"kubernetes-create-delete": traffic.KubernetesCreateDelete,
 	}
 	tf, ok := presets[os.Getenv("TRAFFIC")]
 	if !ok {
@@ -91,11 +95,11 @@ func TestExternalTraffic(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(out, "traffic-ready"), []byte("ready\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := awaitRecovery(ctx, out, endpoints); err != nil {
-		t.Fatal(err)
+	recoveryErr := awaitRecovery(ctx, out, endpoints)
+	if recoveryErr == nil {
+		// etcd's suite also runs traffic for 1 s after its failpoint.
+		time.Sleep(time.Second)
 	}
-	// etcd's suite also runs traffic for 1 s after its failpoint.
-	time.Sleep(time.Second)
 	close(finish)
 	wg.Wait()
 	end := time.Since(cs.BaseTime())
@@ -112,39 +116,72 @@ func TestExternalTraffic(t *testing.T) {
 	if err := r.SaveEtcdData(); err != nil {
 		t.Fatal(err)
 	}
+	if recoveryErr != nil {
+		t.Fatal(recoveryErr)
+	}
 	if putErr != nil {
 		t.Fatalf("terminal put failed: %v", putErr)
 	}
 	stats := traffic.CalculateStats(reports, start, end)
 	watches := traffic.CalculateWatchStats(reports, start, end)
-	// No etcd WAL decoder is valid for tigerstore. Uncertain operations stay
-	// uncertain. Replay-dependent watch and historical-read checks are skipped.
-	checkStart := time.Now()
-	result := validate.ValidateAndReturnVisualize(lg, validate.Config{
-		ExpectRevisionUnique: tf.ExpectUniqueRevision(),
-	}, reports, nil, 5*time.Minute)
-	checkTime := time.Since(checkStart)
-	summary := map[string]any{
+	writeJSON(t, filepath.Join(out, "traffic.json"), map[string]any{
 		"traffic": os.Getenv("TRAFFIC"), "fault": filepath.Base(out), "stats": stats, "watch_traffic": watches,
-		"assumptions": result.Assumptions, "linearization": result.Linearization.Result,
-		"linearization_seconds": checkTime.Seconds(),
-		"watch_validation": "not run: needs ordered persisted requests",
-		"historical_read_validation": "not run: needs ordered persisted requests",
-	}
-	data, err := json.MarshalIndent(summary, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(out, "summary.json"), data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("%s", data)
+	})
 	if stats.Successes < 200 || watches.Events == 0 {
 		t.Error("insufficient successful KV operations or no watch events")
 	}
-	if result.Assumptions.Status != validate.Success || result.Linearization.Status != validate.Success {
-		t.Errorf("required validation failed: %v", result.Error())
+}
+
+// TestExternalValidate checks the saved history with etcd's validators. As
+// in etcd's suite, the requests the stopped cluster persisted resolve
+// writes of unknown outcome, and the watch and historical-read checks
+// replay them. WAL_DIRS names etcd data directories: the nodes' own for
+// etcd, and the one cmd/etcdwal wrote from the WALs for tigerstore.
+func TestExternalValidate(t *testing.T) {
+	tf, ok := presets[os.Getenv("TRAFFIC")]
+	if !ok {
+		t.Fatal("unknown TRAFFIC preset")
 	}
+	out := os.Getenv("RESULTS")
+	lg := zap.NewExample()
+	reports, err := report.LoadClientReports(filepath.Join(out, "reports"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := report.PersistedRequests(lg, strings.Split(os.Getenv("WAL_DIRS"), ","))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkStart := time.Now()
+	result := validate.ValidateAndReturnVisualize(lg, validate.Config{
+		ExpectRevisionUnique: tf.ExpectUniqueRevision(),
+	}, reports, persisted, 5*time.Minute)
+	writeJSON(t, filepath.Join(out, "summary.json"), map[string]any{
+		"traffic": os.Getenv("TRAFFIC"), "fault": filepath.Base(out),
+		"persisted_requests": len(persisted), "check_seconds": time.Since(checkStart).Seconds(),
+		"assumptions": result.Assumptions, "linearization": result.Linearization.Result,
+		"watch": result.Watch, "historical_reads": result.Serializable,
+	})
+	// Result.Error accepts Unknown, so each status must be Success.
+	for name, r := range map[string]validate.Result{
+		"assumptions": result.Assumptions, "linearization": result.Linearization.Result,
+		"watch": result.Watch, "historical reads": result.Serializable,
+	} {
+		if r.Status != validate.Success {
+			t.Errorf("%s validation: %v", name, r)
+		}
+	}
+}
+
+func writeJSON(t *testing.T, path string, v any) {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%s", data)
 }
 
 // awaitRecovery waits until the runner has finished the fault and every

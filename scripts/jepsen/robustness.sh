@@ -20,6 +20,8 @@ cp .robustness/etcd/tests/tigerstore_external/external_test.go "$RESULTS/"
 if [[ $store == tigerstore ]]; then
   git worktree add --detach .robustness/product "${PRODUCT_SHA:?}"
   (cd .robustness/product; CGO_ENABLED=0 go build -o "$root/.robustness/server" ./cmd/tigerstore)
+  # Built from the workflow's commit, which may be newer than the product's.
+  go build -o "$root/.robustness/etcdwal" ./cmd/etcdwal
 else
   curl -fsSL --retry 3 https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-amd64.tar.gz -o .robustness/etcd.tar.gz
   tar -xzf .robustness/etcd.tar.gz -C .robustness
@@ -60,18 +62,19 @@ cleanup() {
 trap cleanup EXIT
 # Like etcd's own suite, each history has one fault, on a fresh cluster, with
 # traffic for 1 s before the fault and 1 s after the cluster has recovered.
-# Every write that fails during a fault keeps an unknown outcome, and longer
-# histories with both faults timed out the linearization check (#356).
+# After the nodes stop, the requests they persisted resolve the writes of
+# unknown outcome, as etcd's suite reads them from its WAL. Without them,
+# histories of EtcdDelete timed out the linearization check (#356).
 round() {
-  local fault=$1 dir=$RESULTS/$1 status=0 traffic_status=0
+  local fault=$1 dir=$RESULTS/$1 status=0 traffic_status=0 validate_status=0 wal_dirs
   mkdir -p "$dir"
   for n in 1 2 3; do start_node "$n" "$dir"; done
-  RESULTS=$dir "$root/.robustness/traffic.test" -test.v -test.run '^TestExternalTraffic$' -test.timeout 8m > "$dir/test.log" 2>&1 &
+  RESULTS=$dir "$root/.robustness/traffic.test" -test.v -test.run '^TestExternalTraffic$' -test.timeout 3m > "$dir/test.log" 2>&1 &
   local traffic_pid=$!
-  for attempt in $(seq 1 90); do
+  for attempt in $(seq 1 900); do
     [[ -f $dir/traffic-ready ]] && break
     kill -0 "$traffic_pid" 2>/dev/null || { wait "$traffic_pid"; exit 1; }
-    sleep 1
+    sleep 0.1
   done
   [[ -f $dir/traffic-ready ]]
   sleep 1
@@ -105,6 +108,15 @@ round() {
     wait "${pids[$n]}" || echo "Server n$n exited nonzero at the end of round $fault"
   done
   pids=()
+  if [[ $store == tigerstore ]]; then
+    "$root/.robustness/etcdwal" -out "$dir/etcd-wal" "$dir/n1.data" "$dir/n2.data" "$dir/n3.data"
+    wal_dirs=$dir/etcd-wal
+  else
+    wal_dirs=$dir/n1.data,$dir/n2.data,$dir/n3.data
+  fi
+  RESULTS=$dir WAL_DIRS=$wal_dirs "$root/.robustness/traffic.test" -test.v -test.run '^TestExternalValidate$' -test.timeout 8m > "$dir/validate.log" 2>&1 || validate_status=$?
+  cat "$dir/validate.log"
+  (( validate_status == 0 ))
 }
 round pause
 round kill

@@ -10,8 +10,8 @@ gh workflow run jepsen.yml --repo djosh34/tigerstore --ref main -f suite=all
 The workflow builds its own commit unless `product_sha` explicitly selects
 another commit. The nightly run tests current main. The original prework ran
 on `e6c654e8253674f972d4227aea157fa907102363`; those results do not certify a
-later commit. Every job has its own fresh three-node cluster and uploads logs
-and histories even when it fails. Choose `jepsen` or
+later commit. Every Jepsen job, and each robustness round, has its own fresh
+three-node cluster, and every job uploads logs and histories even when it fails. Choose `jepsen` or
 `robustness` to run only that suite, or `tools` for the parser regressions.
 To repeat one Jepsen case, pass `-f workloads='["register"]'` and
 `-f nemeses='["lazyfs"]'`. To repeat one robustness preset, pass
@@ -99,28 +99,26 @@ after every node answers again. A recorded revision-1 read proves fresh
 storage. A terminal put must succeed after recovery. Each history needs at
 least 200 successful KV operations and some watch events.
 
-The upstream recording client and nondeterministic KV validator preserve
-uncertain writes. Histories are saved before validation. Assumptions and KV
-linearization must explicitly succeed within 5 minutes, etcd's own deadline.
-`summary.json` records how long the check took.
+`TestExternalTraffic` records each history and saves it in `reports` before
+anything checks it. Once the nodes have stopped, `TestExternalValidate` runs
+etcd's validators on it, as etcd's suite does: the requests the cluster
+persisted resolve writes of unknown outcome, and they feed the replay-dependent
+watch and historical-read checks. For etcd they come from its own WALs. For
+tigerstore, `cmd/etcdwal` reads the committed log from the nodes' WALs, checks
+that the nodes agree on it, and writes it as an etcd WAL in `etcd-wal`, which
+etcd's decoder reads unchanged. Assumptions, KV linearization, watches and
+historical reads must each report `Success`, within etcd's own 5-minute
+deadline. `traffic.json` and `summary.json` record the traffic and each
+verdict, and how long the check took.
 
-The histories are short because every write that fails during a fault keeps an
-unknown outcome, and each one multiplies Porcupine's search. etcd's suite runs
-one failpoint per history and drops failed writes that its WAL never persisted,
-which this adapter cannot do. With 40 seconds of load and both faults in one
-history, `EtcdDelete` timed out the check against etcd v3.7.2 itself in 9 of 10
-runs, with 15 to 39 unknown writes
-([#356](https://github.com/djosh34/tigerstore/issues/356)). Its failed deletes
-cannot be matched to a single effect, and etcd's suite never runs that preset
-under faults that fail requests.
+Both the short histories and the persisted requests come from
+[#356](https://github.com/djosh34/tigerstore/issues/356). Every write that
+fails during a fault keeps an unknown outcome, and each one multiplies
+Porcupine's search. With 40 seconds of load, both faults in one history and no
+persisted requests, `EtcdDelete` timed out the check against etcd v3.7.2 itself
+in 9 of 10 runs. With one fault per history it still timed out in 4 of 10 runs
+against tigerstore. With etcd's persisted requests, all 20 etcd histories of
+`EtcdDelete` checked in under 0.3 seconds.
 
-This is not the complete upstream robustness suite. Its process manager and
-WAL decoder only understand etcd. No tigerstore WAL adapter exists here.
-Watch traffic runs, but the replay-dependent watch and historical-read
-validators do not run. `summary.json` names those omissions rather than
-calling their zero-value statuses successful. The
-[manager decided](https://github.com/djosh34/tigerstore/issues/148#issuecomment-6221843602)
-not to add them for #148.
-
-The test uses upstream's endpoint-based entrypoints rather than pretending
-tigerstore's files are etcd WALs.
+The adapter uses upstream's endpoint-based traffic entrypoints, not its process
+manager, which only starts etcd.
