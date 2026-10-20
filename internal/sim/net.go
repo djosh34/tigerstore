@@ -237,10 +237,19 @@ type addr string
 func (a addr) Network() string { return "sim" }
 func (a addr) String() string  { return string(a) }
 
+// sendBuffer is how many bytes a connection holds in each direction that
+// its reader has not taken yet, on their way or arrived, like TCP's send
+// and receive buffers together. A write past it waits for room, or its
+// write deadline. It is small, so that the little traffic of a run fills
+// it: a stalled link holds about 3 KiB within the write timeout.
+const sendBuffer = 2 << 10
+
 // pipe is one direction of a connection: the bytes written, each write
 // with the time it arrives.
 type pipe struct {
 	chunks []chunk
+	// size is how many bytes chunks holds.
+	size int
 	// last is when the last write arrives; eof is set once the writer
 	// closed, and err once the connection broke. wake is closed and
 	// replaced when any of them changes.
@@ -269,10 +278,11 @@ func (p *pipe) fail(err error) {
 	p.signal()
 }
 
-// conn is one end of a connection, held by process p of node from. Writes
-// never block, as TCP's do not while its buffers have room: each arrives
-// after its link's delay, in order, and not before a stall of the link
-// ends. A half-open link swallows them.
+// conn is one end of a connection, held by process p of node from. A
+// write goes on its way at once while the connection's buffer has room
+// (sendBuffer), and waits for room otherwise, as TCP's does: each arrives
+// after its link's delay and faults, in order, and not before a stall of
+// the link ends. A half-open link swallows them.
 type conn struct {
 	s             *Sim
 	p             *proc
@@ -281,7 +291,8 @@ type conn struct {
 	in, out       *pipe
 	other         *conn
 	closed        bool
-	deadline      time.Time
+	// deadline and writeDeadline are the read and write deadlines.
+	deadline, writeDeadline time.Time
 }
 
 func (c *conn) Read(b []byte) (int, error) {
@@ -310,6 +321,9 @@ func (c *conn) Read(b []byte) (int, error) {
 				if in.chunks[0].b = in.chunks[0].b[k:]; len(in.chunks[0].b) == 0 {
 					in.chunks = slices.Delete(in.chunks, 0, 1)
 				}
+				// A writer may wait for the room.
+				in.size -= k
+				in.signal()
 				s.mu.Unlock()
 				return k, nil
 			}
@@ -339,26 +353,71 @@ func (c *conn) Read(b []byte) (int, error) {
 
 func (c *conn) Write(b []byte) (int, error) {
 	s := c.s
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	switch {
-	case c.closed:
-		return 0, net.ErrClosed
-	case c.in.err != nil:
-		return 0, c.in.err
-	case c.other.closed:
-		return 0, errReset
+	n, blocked := 0, false
+	for {
+		s.mu.Lock()
+		switch {
+		case c.closed:
+			s.mu.Unlock()
+			return n, net.ErrClosed
+		case c.in.err != nil:
+			s.mu.Unlock()
+			return n, c.in.err
+		case c.other.closed:
+			s.mu.Unlock()
+			return n, errReset
+		}
+		now := s.now()
+		if s.links[c.from][c.to].halfOpenUntil > now {
+			s.mu.Unlock()
+			return len(b), nil
+		}
+		if room := sendBuffer - c.out.size; room > 0 {
+			k := min(room, len(b)-n)
+			c.send(b[n : n+k])
+			if n += k; n == len(b) {
+				s.mu.Unlock()
+				return n, nil
+			}
+		}
+		if !blocked {
+			blocked = true
+			s.stats.BlockedWrites++
+		}
+		wait := int64(math.MaxInt64)
+		if !c.writeDeadline.IsZero() {
+			if wait = int64(time.Until(c.writeDeadline)); wait <= 0 {
+				s.stats.WriteTimeouts++
+				s.mu.Unlock()
+				return n, os.ErrDeadlineExceeded
+			}
+		}
+		wake := c.out.wake
+		s.mu.Unlock()
+		t := time.NewTimer(time.Duration(min(wait, math.MaxInt64/2)))
+		select {
+		case <-t.C:
+		case <-wake:
+		}
+		t.Stop()
 	}
+}
+
+// send puts b on its way: it arrives after the link's delay and the
+// fault on the link, if any, in order. The lock is held.
+func (c *conn) send(b []byte) {
+	s := c.s
 	l := &s.links[c.from][c.to]
-	now := s.now()
-	if l.halfOpenUntil > now {
-		return len(b), nil
+	b = slices.Clone(b)
+	at := s.now() + s.delay(l)
+	if l.netemUntil > s.now() {
+		b, at = s.netem(l, b, at, c.out.last)
 	}
-	at := max(now+s.delay(l), c.out.last)
+	at = max(at, c.out.last)
 	c.out.last = at
-	c.out.chunks = append(c.out.chunks, chunk{at: at, b: slices.Clone(b)})
+	c.out.chunks = append(c.out.chunks, chunk{at: at, b: b})
+	c.out.size += len(b)
 	c.out.signal()
-	return len(b), nil
 }
 
 func (c *conn) Close() error {
@@ -379,7 +438,12 @@ func (c *conn) Close() error {
 func (c *conn) LocalAddr() net.Addr  { return addr(c.local) }
 func (c *conn) RemoteAddr() net.Addr { return addr(c.remote) }
 
-func (c *conn) SetDeadline(t time.Time) error { return c.SetReadDeadline(t) }
+func (c *conn) SetDeadline(t time.Time) error {
+	if err := c.SetReadDeadline(t); err != nil {
+		return err
+	}
+	return c.SetWriteDeadline(t)
+}
 
 func (c *conn) SetReadDeadline(t time.Time) error {
 	c.s.mu.Lock()
@@ -389,8 +453,13 @@ func (c *conn) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
-// SetWriteDeadline does nothing: writes never block.
-func (c *conn) SetWriteDeadline(time.Time) error { return nil }
+func (c *conn) SetWriteDeadline(t time.Time) error {
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+	c.writeDeadline = t
+	c.out.signal()
+	return nil
+}
 
 // delay draws the delay of one write on a link. The lock is held.
 func (s *Sim) delay(l *link) int64 {

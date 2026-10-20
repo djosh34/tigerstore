@@ -1,5 +1,7 @@
 package sim
 
+import "slices"
+
 // scheduleNetFaults starts the network and process faults of the run.
 // The lock is held.
 func (s *Sim) scheduleNetFaults() {
@@ -20,6 +22,9 @@ func (s *Sim) scheduleNetFaults() {
 		defer s.mu.Unlock()
 		return s.halfOpen(-1, 0)
 	})
+	once(f.NetemEvery, s.netemFault)
+	once(f.ResetEvery, s.resetLink)
+	once(f.SlowWatcherEvery, s.slowWatcher)
 	if f.SwitchEvery > 0 {
 		s.every(f.SwitchEvery, s.switchLinks)
 	}
@@ -42,9 +47,10 @@ func (s *Sim) randomLink() (from, to int) {
 	return from, to
 }
 
-// stallLink holds back one directed link for 0.5 to 2 s: everything on it,
+// stallLink holds back one directed link for 0.5 to 2 s, and one time in
+// four for 5.5 to 7 s, past the peer write timeout: everything on it,
 // including what is already on its way, waits and then arrives in order,
-// like a stalled TCP stream.
+// like a stalled TCP stream, and a writer whose buffer fills waits too.
 func (s *Sim) stallLink() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -53,7 +59,11 @@ func (s *Sim) stallLink() bool {
 	}
 	from, to := s.randomLink()
 	l := &s.links[from][to]
-	l.stallUntil = max(l.stallUntil, min(s.now()+500*Millisecond+s.rng.Int64N(1500*Millisecond), s.healAt))
+	d := 500*Millisecond + s.rng.Int64N(1500*Millisecond)
+	if s.rng.IntN(4) == 0 {
+		d = 5500*Millisecond + s.rng.Int64N(1500*Millisecond)
+	}
+	l.stallUntil = max(l.stallUntil, min(s.now()+d, s.healAt))
 	s.stats.LinkStalls++
 	s.tracef("link %d->%d stalled until %d ms", from+1, to+1, l.stallUntil/Millisecond)
 	return true
@@ -147,4 +157,159 @@ const halfOpenTimeout = 5 * Second
 type halfOpenLink struct {
 	from, to   int
 	start, end int64
+}
+
+// netemKind is a fault of a link for 1.5 to 3.5 s, as netem and the chaos
+// proxies inject on real links. Loss and corruption of packets are what
+// TCP repairs: the stream arrives late, as TCP retransmits, never wrong.
+// A flipped, dropped or duplicated byte is what reaches the stream past
+// TCP, as through a proxy that damages it, which TLS then refuses.
+type netemKind int
+
+const (
+	// lossy loses 20% of the packets: a write arrives 200 to 400 ms late,
+	// TCP's retransmission timeout, and what follows waits for it.
+	lossy netemKind = iota
+	// corrupting corrupts 5% of the packets, which TCP drops and sends
+	// again, as lossy.
+	corrupting
+	// reordering sends half the packets up to 10 ms late; TCP puts the
+	// stream back in order, so what follows waits for them.
+	reordering
+	// slow limits the link to 8 to 32 KiB/s.
+	slow
+	// delayed delays every write by 300 to 800 ms more, less than an
+	// election timeout.
+	delayed
+	// switching switches the link's delay between 0 to 2 ms and 20 to
+	// 80 ms more every 100 to 400 ms.
+	switching
+	// flipped flips a bit of the first write, then of one in four.
+	flipped
+	// dropped deletes a byte of the first write, then of one in four.
+	dropped
+	// duplicated repeats a byte of the first write, then of one in four.
+	duplicated
+	numNetem
+)
+
+func (k netemKind) String() string {
+	return [...]string{"lossy link", "corrupting link", "reordering link", "slow link", "delayed link", "switching delay", "flipped byte", "dropped byte", "duplicated byte"}[k]
+}
+
+// netemFault puts a fault of a random kind on a busy link: one to or from
+// the leader, where the traffic is. It reports false if the link has one
+// already.
+func (s *Sim) netemFault() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.healed {
+		return false
+	}
+	from, to := s.busyLink()
+	l := &s.links[from][to]
+	now := s.now()
+	if l.netemUntil > now {
+		return false
+	}
+	l.netem = netemKind(s.rng.IntN(int(numNetem)))
+	l.netemUntil = min(now+1500*Millisecond+s.rng.Int64N(2*Second), s.healAt)
+	l.bw = 8<<10 + s.rng.Int64N(24<<10)
+	l.extra = 300*Millisecond + s.rng.Int64N(500*Millisecond)
+	l.switchAt, l.hits = now, 0
+	if l.netem == switching {
+		l.extra = 0
+	}
+	s.tracef("link %d->%d: %v until %d ms", from+1, to+1, l.netem, l.netemUntil/Millisecond)
+	return true
+}
+
+// busyLink picks a random directed link to or from the leader, or any
+// link while there is none. The lock is held.
+func (s *Sim) busyLink() (from, to int) {
+	lead := s.leaderIdx()
+	if lead < 0 {
+		return s.randomLink()
+	}
+	other := (lead + 1 + s.rng.IntN(len(s.nodes)-1)) % len(s.nodes)
+	if s.rng.IntN(2) == 0 {
+		return lead, other
+	}
+	return other, lead
+}
+
+// netem applies l's fault to a write of b, due at time at, on a pipe
+// whose last write arrives at last. It returns the bytes that go on their
+// way and when they arrive. The lock is held.
+func (s *Sim) netem(l *link, b []byte, at, last int64) ([]byte, int64) {
+	hit := true
+	switch l.netem {
+	case lossy, corrupting:
+		pct := 20
+		if l.netem == corrupting {
+			pct = 5
+		}
+		hit = s.rng.IntN(100) < pct
+		if hit {
+			at += 200*Millisecond + s.rng.Int64N(200*Millisecond)
+		}
+	case reordering:
+		hit = s.rng.IntN(2) == 0
+		if hit {
+			at += s.rng.Int64N(10*Millisecond) + 1
+		}
+	case slow:
+		at = max(at, last) + int64(len(b))*Second/l.bw
+	case switching:
+		if now := s.now(); now >= l.switchAt {
+			l.switchAt = now + 100*Millisecond + s.rng.Int64N(300*Millisecond)
+			if l.extra == 0 {
+				l.extra = 20*Millisecond + s.rng.Int64N(60*Millisecond)
+			} else {
+				l.extra = s.rng.Int64N(2*Millisecond) + 1
+			}
+		}
+		fallthrough
+	case delayed:
+		at += l.extra
+	default:
+		hit = len(b) > 0 && (l.hits == 0 || s.rng.IntN(4) == 0)
+		if !hit {
+			break
+		}
+		i := s.rng.IntN(len(b))
+		switch l.netem {
+		case flipped:
+			b[i] ^= 1 << s.rng.IntN(8)
+		case dropped:
+			b = slices.Delete(b, i, i+1)
+		default:
+			b = slices.Insert(b, i, b[i])
+		}
+	}
+	if hit {
+		l.hits++
+		s.stats.Netem[l.netem]++
+	}
+	return b, at
+}
+
+// resetLink resets every connection between two random nodes, as a
+// middlebox's RST does, while the link stays up. It reports whether there
+// was one.
+func (s *Sim) resetLink() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.healed {
+		return false
+	}
+	from, to := s.randomLink()
+	n := len(s.net.conns)
+	s.net.resetBetween(from, to)
+	if len(s.net.conns) == n {
+		return false
+	}
+	s.stats.Resets++
+	s.tracef("link %d-%d: connections reset", from+1, to+1)
+	return true
 }

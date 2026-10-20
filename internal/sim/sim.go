@@ -169,6 +169,9 @@ type Faults struct {
 	// GrayClient adds a client that opens a stream with 10 watches, never
 	// reads it, and reconnects every 50 to 300 ms until healing.
 	GrayClient bool
+	// SlowWatcherEvery is the mean time between watch clients that turn
+	// slow for 2 to 5 s (slowWatcher).
+	SlowWatcherEvery int64
 	// RecoveryCrash crashes one restart in three again at its first to
 	// fourth writing disk operation inside recovery.
 	RecoveryCrash bool
@@ -197,6 +200,10 @@ type Faults struct {
 	// SwitchEvery is the mean time between switches to a random link
 	// mask. It runs alongside LinkEvery; set only one for fast switching.
 	SwitchEvery int64
+	// NetemEvery is the mean time between faults on a link to or from the
+	// leader (netemKind), and ResetEvery between resets of the
+	// connections between two nodes.
+	NetemEvery, ResetEvery int64
 	// HoldMask, if HoldMaskAt is set, sets the link mask at that time.
 	// Other link faults can change it later; with none, it holds until
 	// healing.
@@ -232,19 +239,22 @@ func DefaultConfig(seed uint64) Config {
 			Corrupt:      true,
 			Checkpoint:   true,
 
-			LinkStallEvery: 4 * Second,
-			PauseEvery:     6 * Second,
-			DriftPerMille:  50,
-			HalfOpenEvery:  8 * Second,
-			GrayEvery:      8 * Second,
-			GrayClient:     true,
-			RecoveryCrash:  true,
-			StepCrash:      true,
-			FlipSnapshot:   true,
-			FetchCrash:     true,
-			SlowFetch:      true,
-			Rot:            true,
-			HoldDown:       true,
+			LinkStallEvery:   4 * Second,
+			PauseEvery:       6 * Second,
+			DriftPerMille:    50,
+			HalfOpenEvery:    8 * Second,
+			NetemEvery:       3 * Second,
+			ResetEvery:       6 * Second,
+			GrayEvery:        8 * Second,
+			GrayClient:       true,
+			SlowWatcherEvery: 6 * Second,
+			RecoveryCrash:    true,
+			StepCrash:        true,
+			FlipSnapshot:     true,
+			FetchCrash:       true,
+			SlowFetch:        true,
+			Rot:              true,
+			HoldDown:         true,
 		},
 	}
 }
@@ -388,6 +398,15 @@ type link struct {
 	// halfOpenUntil swallows what the link carries until its connections
 	// fail.
 	halfOpenUntil int64
+	// netem is the link's fault until netemUntil (netemKind): bw is the
+	// bandwidth of a slow link, extra the delay a delay fault adds, and
+	// switchAt when a switching delay switches next; hits counts the
+	// writes it hit.
+	netem      netemKind
+	netemUntil int64
+	bw, extra  int64
+	switchAt   int64
+	hits       int
 }
 
 // Sim is one run.
@@ -532,7 +551,16 @@ type Stats struct {
 	// NOSPACE alarm refused, and OutOfSpace the nodes that stopped on a
 	// write that ran out of space.
 	Packs, NoSpace, OutOfSpace int
-	Damage                     [numDamage]int
+	// Netem counts the writes each kind of link fault hit (netemKind),
+	// Resets the resets of the connections between two nodes,
+	// BlockedWrites the writes that waited for room in a connection's
+	// buffer, and WriteTimeouts those that reached their write deadline.
+	Netem                                [numNetem]int
+	Resets, BlockedWrites, WriteTimeouts int
+	// SlowWatchers counts the watch clients that turned slow, and
+	// WatchersCut the watch streams a node closed as too slow.
+	SlowWatchers, WatchersCut int
+	Damage                    [numDamage]int
 	// MembershipChanges counts each completed stage, and MembershipFaults
 	// those completed before healing. Attempts include failed calls.
 	MembershipChanges, MembershipFaults [4]int
@@ -990,9 +1018,12 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 		// where any damage is detectable.
 		SegmentBytes: 8 << 10,
 		DiskBudget:   s.cfg.Faults.DiskBudget,
-		BeforeSync:   func() { s.beforeSync(p) },
-		Turn:         func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) },
-		Persisted:    func(j core.PersistJob) { s.persisted(p, j) },
+		// A watch stream 8 responses behind is closed, so that a slow
+		// watcher falls that far.
+		WatchQueue: 8,
+		BeforeSync: func() { s.beforeSync(p) },
+		Turn:       func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) },
+		Persisted:  func(j core.PersistJob) { s.persisted(p, j) },
 		// Several nodes share the process, so none can measure its
 		// memory; the value cache takes the whole budget.
 		Memory: func(int64) (int64, bool) { return 0, false },
@@ -1676,6 +1707,7 @@ func (s *Sim) heal() {
 	// Half-open links end now, with their connections.
 	for i := range s.links {
 		for j := range s.links[i] {
+			s.links[i][j].netemUntil = 0
 			if s.links[i][j].halfOpenUntil > s.now() {
 				s.links[i][j].halfOpenUntil = 0
 				s.net.resetBetween(i, j)
