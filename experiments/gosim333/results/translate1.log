@@ -1,0 +1,8 @@
+2026/10/20 08:20:53 errors for  golang.org/x/net/trace
+2026/10/20 08:20:53 /home/joshazimullah.linux/go/pkg/mod/google.golang.org/grpc@v1.84.0/trace_withtrace.go:26:2: missing go.sum entry for module providing package golang.org/x/net/trace; to add:
+	go mod download golang.org/x/net
+2026/10/20 08:20:53 /home/joshazimullah.linux/go/pkg/mod/google.golang.org/grpc@v1.84.0/trace_withtrace.go:24:2: could not import context (no metadata for context)
+2026/10/20 08:20:53 /home/joshazimullah.linux/go/pkg/mod/google.golang.org/grpc@v1.84.0/trace_withtrace.go:26:4: could not import golang.org/x/net/trace (no metadata for golang.org/x/net/trace)
+2026/10/20 08:20:53 /home/joshazimullah.linux/go/pkg/mod/google.golang.org/grpc@v1.84.0/trace_withtrace.go:29:37: undefined: traceLog
+2026/10/20 08:20:53 /home/joshazimullah.linux/go/pkg/mod/google.golang.org/grpc@v1.84.0/trace_withtrace.go:33:46: undefined: traceLog
+2026/10/20 08:20:53 /home/joshazimullah.linux/go/pkg/mod/google.golang.org/grpc@v1.84.0/trace_withtrace.go:37:45: undefined: traceEventLog

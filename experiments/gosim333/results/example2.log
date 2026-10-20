@@ -1,0 +1,53 @@
+<nil> /1         [90m14:10:03.000[0m [31mERR[0m [90mgosimruntime/runtime.go:667[0m[36m >[0m uncaught panic [36mpanic=[0m"runtime error: invalid memory address or nil pointer dereference" [36mtraceback=[0m[
+          "goroutine 17 [running]:",
+          "github.com/jellevandenhooff/gosim/gosimruntime.(*goroutine).exitpoint(0x302e433ea340)",
+          "  github.com/jellevandenhooff/gosim@v0.0.0/gosimruntime/runtime.go:751 +0x90",
+          "panic({0xad93e0?, 0xbaf8e0?})",
+          "  runtime/panic.go:859 +0x120",
+          "translated/internal_/sync.(*HashTrieMap[...]).initSlow(0x50df60)",
+          "  translated/internal_/sync/hashtriemap.go:54 +0xc8",
+          "translated/internal_/sync.(*HashTrieMap[...]).init(0x50df60)",
+          "  translated/internal_/sync/hashtriemap.go:35 +0x3c",
+          "translated/internal_/sync.(*HashTrieMap[...]).Load(0x50df60, {0xac1338, 0x302e43406438})",
+          "  translated/internal_/sync/hashtriemap.go:68 +0x2c",
+          "translated/sync.(*Map).Load(...)",
+          "  translated/sync/map.go:51",
+          "translated/internal_/godebug.lookup({0x4b4e60, 0xc})",
+          "  translated/internal_/godebug/godebug.go:159 +0x54",
+          "translated/internal_/godebug.(*Setting).Value.func1()",
+          "  translated/internal_/godebug/godebug.go:145 +0x4c",
+          "translated/sync.(*Once).doSlow(0x302e433e6ac0, 0x302e43406548)",
+          "  translated/sync/once.go:82 +0x9c",
+          "translated/sync.(*Once).Do(0x302e433e6ac0, 0x302e43406548)",
+          "  translated/sync/once.go:72 +0x38",
+          "translated/internal_/godebug.(*Setting).Value(0x302e433e6ab0)",
+          "  translated/internal_/godebug/godebug.go:144 +0x38",
+          "translated/crypto/internal_/fips140deps/godebug.Value(...)",
+          "  translated/crypto/internal_/fips140deps/godebug/godebug.go:23",
+          "translated/crypto/internal_/fips140.initializers(0x1?)",
+          "  translated/crypto/internal_/fips140/gosim_globals.go:19 +0x60",
+          "github.com/jellevandenhooff/gosim/gosimruntime.InitGlobals(0x0?, 0x1)",
+          "  github.com/jellevandenhooff/gosim@v0.0.0/gosimruntime/globals.go:135 +0x7bc",
+          "github.com/jellevandenhooff/gosim/gosimruntime.initSharedGlobals.func1()",
+          "  github.com/jellevandenhooff/gosim@v0.0.0/gosimruntime/runtime.go:428 +0x24",
+          "github.com/jellevandenhooff/gosim/gosimruntime.goroutineEntrypoint()",
+          "  github.com/jellevandenhooff/gosim@v0.0.0/gosimruntime/runtime.go:735 +0x6c",
+          "github.com/jellevandenhooff/gosim/internal/coro.(*Coro).Start.func1(0x0?)",
+          "  github.com/jellevandenhooff/gosim@v0.0.0/internal/coro/coro_linkname.go:38 +0x24",
+          "created by github.com/jellevandenhooff/gosim/internal/coro.(*Coro).Start in goroutine 1",
+          "  github.com/jellevandenhooff/gosim@v0.0.0/internal/coro/coro_linkname.go:36 +0x70",
+          ""
+        ]
+panic: paniced
+
+goroutine 1 [running]:
+github.com/jellevandenhooff/gosim/gosimruntime.initializeRuntime(0x18?)
+	github.com/jellevandenhooff/gosim@v0.0.0/gosimruntime/runtime.go:320 +0x88
+github.com/jellevandenhooff/gosim/gosimruntime.TestMain({0xb8f8f0, 0xbe4620})
+	github.com/jellevandenhooff/gosim@v0.0.0/gosimruntime/testmain.go:109 +0x170
+translated/github.com/jellevandenhooff/gosim/examples_test.TestMain(...)
+	translated/github.com/jellevandenhooff/gosim/examples/gosim_meta_test.go:18
+main.main()
+	_testmain.go:46 +0x9c
+FAIL	translated/github.com/jellevandenhooff/gosim/examples	0.027s
+FAIL

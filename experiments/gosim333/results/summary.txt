@@ -1,0 +1,5 @@
+completed audit missing function body: 90
+completed audit unknown linkname: 37
+compile-stub manifest: 128
+example6.log: JSON event counts [2, 2, 2]; seed1 identical=True; seed2 differs=True
+probe4.log: JSON event counts [6, 6, 6]; seed1 identical=True; seed2 differs=True

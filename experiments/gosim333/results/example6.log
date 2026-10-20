@@ -1,0 +1,13 @@
+=== RUN   TestGosim (seed 1)
+{"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/jellevandenhooff/gosim/examples_test.ImplTestGosim","file":"translated/github.com/jellevandenhooff/gosim/examples/simple_test.go","line":12},"msg":"Are we in the Matrix? true","machine":"main","method":"t.Logf","goroutine":4,"step":1}
+{"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/jellevandenhooff/gosim/examples_test.ImplTestGosim","file":"translated/github.com/jellevandenhooff/gosim/examples/simple_test.go","line":13},"msg":"Random: 8520188740344366618","machine":"main","method":"t.Logf","goroutine":4,"step":2}
+--- PASS: TestGosim (0.00s simulated)
+=== RUN   TestGosim (seed 1)
+{"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/jellevandenhooff/gosim/examples_test.ImplTestGosim","file":"translated/github.com/jellevandenhooff/gosim/examples/simple_test.go","line":12},"msg":"Are we in the Matrix? true","machine":"main","method":"t.Logf","goroutine":4,"step":1}
+{"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/jellevandenhooff/gosim/examples_test.ImplTestGosim","file":"translated/github.com/jellevandenhooff/gosim/examples/simple_test.go","line":13},"msg":"Random: 8520188740344366618","machine":"main","method":"t.Logf","goroutine":4,"step":2}
+--- PASS: TestGosim (0.00s simulated)
+=== RUN   TestGosim (seed 2)
+{"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/jellevandenhooff/gosim/examples_test.ImplTestGosim","file":"translated/github.com/jellevandenhooff/gosim/examples/simple_test.go","line":12},"msg":"Are we in the Matrix? true","machine":"main","method":"t.Logf","goroutine":4,"step":1}
+{"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/jellevandenhooff/gosim/examples_test.ImplTestGosim","file":"translated/github.com/jellevandenhooff/gosim/examples/simple_test.go","line":13},"msg":"Random: 3012463807607131984","machine":"main","method":"t.Logf","goroutine":4,"step":2}
+--- PASS: TestGosim (0.00s simulated)
+ok  	translated/github.com/jellevandenhooff/gosim/examples	0.078s

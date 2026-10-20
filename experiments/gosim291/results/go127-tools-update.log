@@ -1,0 +1,13 @@
+go: downloading golang.org/x/crypto v0.58.0
+go: downloading golang.org/x/term v0.47.0
+go: upgraded go 1.23.2 => 1.26.0
+go: upgraded golang.org/x/crypto v0.29.0 => v0.58.0
+go: upgraded golang.org/x/mod v0.22.0 => v0.42.0
+go: upgraded golang.org/x/net v0.31.0 => v0.61.0
+go: upgraded golang.org/x/sync v0.9.0 => v0.24.0
+go: upgraded golang.org/x/sys v0.27.0 => v0.49.0
+go: upgraded golang.org/x/term v0.26.0 => v0.47.0
+go: upgraded golang.org/x/text v0.20.0 => v0.43.0
+go: upgraded golang.org/x/tools v0.27.0 => v0.52.0
+2026/10/19 19:05:23 ERROR unknown linkname with no body pkg=crypto/internal/fips140deps/time name=monoTime
+2026/10/19 19:05:23 ERROR missing function body pkg=internal/cpu name=getisar1

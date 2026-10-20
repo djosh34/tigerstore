@@ -1,0 +1,6 @@
+control run 1, seed 1, JSON trace SHA256 010c340218b92d9fc115aa82bf553bb9e3e90af3b78b7ad91daea7c2ec907cd7
+control run 2, seed 1, JSON trace SHA256 010c340218b92d9fc115aa82bf553bb9e3e90af3b78b7ad91daea7c2ec907cd7
+control run 3, seed 2, JSON trace SHA256 671ec2add6a035c72cec6faf7a6be2ce93510aa8edbd0d5b32ce65d0cde7707f
+seed 1 twice, byte-identical JSON traces: True
+seed 1 versus seed 2, different JSON traces: True
+This is the upstream Go 1.23 control only. No tigerstore run reached gosim execution.

@@ -1,0 +1,2 @@
+# translated/github.com/djosh34/tigerstore/internal_/sim.test
+link: duplicated definition of symbol translated/crypto/internal_/fips140hash.sha3Unwrap, from translated/crypto/sha3 (type STEXT size 304) and translated/crypto/internal_/fips140hash (type STEXT size 96)

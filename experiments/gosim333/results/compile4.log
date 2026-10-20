@@ -1,0 +1,10 @@
+# translated/google.golang.org/grpc
+google.golang.org/grpc/server.go:1525:9: cannot use pprof.WithLabels(ctx, pprof.Labels("grpc.method", stream.Method())) (value of interface type "context".Context) as "translated/context".Context value in assignment: "context".Context does not implement "translated/context".Context (wrong type for method Deadline)
+		have Deadline() ("time".Time, bool)
+		want Deadline() ("translated/time".Time, bool)
+google.golang.org/grpc/server.go:1525:26: cannot use ctx (variable of interface type "translated/context".Context) as "context".Context value in argument to pprof.WithLabels: "translated/context".Context does not implement "context".Context (wrong type for method Deadline)
+		have Deadline() ("translated/time".Time, bool)
+		want Deadline() ("time".Time, bool)
+google.golang.org/grpc/server.go:1526:28: cannot use ctx (variable of interface type "translated/context".Context) as "context".Context value in argument to pprof.SetGoroutineLabels: "translated/context".Context does not implement "context".Context (wrong type for method Deadline)
+		have Deadline() ("translated/time".Time, bool)
+		want Deadline() ("time".Time, bool)

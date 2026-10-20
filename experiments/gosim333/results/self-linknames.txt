@@ -1,0 +1,4 @@
+self linkname with no body pkg=crypto/internal/fips140 name=fatal
+self linkname with no body pkg=crypto/internal/fips140 name=getIndicator
+self linkname with no body pkg=crypto/internal/fips140 name=setIndicator
+self linkname with no body pkg=testing/synctest name=testingSynctestTest

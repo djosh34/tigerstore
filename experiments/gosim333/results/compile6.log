@@ -1,0 +1,4 @@
+# translated/github.com/djosh34/tigerstore/internal_/sim [translated/github.com/djosh34/tigerstore/internal_/sim.test]
+github.com/djosh34/tigerstore/internal_/sim/gosim_globals_for_test.go:26:13: GForTest().seedTests undefined (type *GlobalsForTest has no field or method seedTests)
+github.com/djosh34/tigerstore/internal_/sim/gosim_globals_for_test.go:27:13: GForTest().knownBad undefined (type *GlobalsForTest has no field or method knownBad)
+github.com/djosh34/tigerstore/internal_/sim/sim_test.go:254:40: undefined: TestStalledLeaderIsReplaced

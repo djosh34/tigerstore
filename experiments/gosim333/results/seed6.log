@@ -1,0 +1,43 @@
+<nil> /1         14:10:03.000 ERR gosimruntime/runtime.go:667 > uncaught panic panic="unreachable; must be intrinsicified" traceback=[
+          "goroutine 9 [running]:",
+          "github.com/jellevandenhooff/gosim/gosimruntime.(*goroutine).exitpoint(0x2b9984acc340)",
+          "  /tmp/r333-gosim-translator/gosimruntime/runtime.go:751 +0x90",
+          "panic({0x1c87880?, 0xbf6e40?})",
+          "  /home/joshazimullah.linux/.local/opt/go1.27.2/src/runtime/panic.go:859 +0x120",
+          "translated/crypto/internal_/constanttime.boolToUint8(...)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/crypto/internal_/constanttime/constant_time.go:42",
+          "translated/crypto/internal_/constanttime.ByteEq(...)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/crypto/internal_/constanttime/constant_time.go:25",
+          "translated/crypto/internal_/fips140/subtle.ConstantTimeCompare(...)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/crypto/internal_/fips140/subtle/constant_time.go:29",
+          "translated/crypto/internal_/fips140/edwards25519/field.(*Element).Equal(0x2b9984b1e350, 0x2b9984b1e3a0?)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/crypto/internal_/fips140/edwards25519/field/fe.go:227 +0xa0",
+          "translated/crypto/internal_/fips140/edwards25519/field.(*Element).SqrtRatio(0x2b9984b1e458, 0x2b9984b1e4a8, 0x2b9984b1e480)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/crypto/internal_/fips140/edwards25519/field/fe.go:371 +0x144",
+          "translated/crypto/internal_/fips140/edwards25519.(*Point).SetBytes(0x2b9984afe280, {0x2b9984b1e570, 0x20, 0x22488c?})",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/crypto/internal_/fips140/edwards25519/edwards25519.go:158 +0x114",
+          "translated/crypto/internal_/fips140/edwards25519.initializers(0x1?)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/crypto/internal_/fips140/edwards25519/gosim_globals.go:39 +0x188",
+          "github.com/jellevandenhooff/gosim/gosimruntime.InitGlobals(0x0?, 0x1)",
+          "  /tmp/r333-gosim-translator/gosimruntime/globals.go:135 +0x7bc",
+          "github.com/jellevandenhooff/gosim/gosimruntime.initSharedGlobals.func1()",
+          "  /tmp/r333-gosim-translator/gosimruntime/runtime.go:428 +0x24",
+          "github.com/jellevandenhooff/gosim/gosimruntime.goroutineEntrypoint()",
+          "  /tmp/r333-gosim-translator/gosimruntime/runtime.go:735 +0x6c",
+          "github.com/jellevandenhooff/gosim/internal/coro.(*Coro).Start.func1(0x0?)",
+          "  /tmp/r333-gosim-translator/internal/coro/coro_linkname.go:38 +0x24",
+          "created by github.com/jellevandenhooff/gosim/internal/coro.(*Coro).Start in goroutine 1",
+          "  /tmp/r333-gosim-translator/internal/coro/coro_linkname.go:36 +0x70",
+          ""
+        ]
+panic: paniced
+
+goroutine 1 [running]:
+github.com/jellevandenhooff/gosim/gosimruntime.initializeRuntime(0x18?)
+	/tmp/r333-gosim-translator/gosimruntime/runtime.go:320 +0x88
+github.com/jellevandenhooff/gosim/gosimruntime.TestMain({0x1ee8078, 0x1f5b240})
+	/tmp/r333-gosim-translator/gosimruntime/testmain.go:109 +0x170
+translated/github.com/djosh34/tigerstore/internal_/sim_test.TestMain(...)
+	/tmp/r333-translator/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/gosim_meta_test.go:43
+main.main()
+	_testmain.go:48 +0x9c

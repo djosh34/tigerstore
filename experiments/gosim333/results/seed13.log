@@ -1,0 +1,13 @@
++ export GOMAXPROCS=2 'GOFLAGS=-p=2 -mod=mod'
++ GOMAXPROCS=2
++ GOFLAGS='-p=2 -mod=mod'
++ cd /tmp/r333-translator/.gosim/translated/linux_arm64
++ go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim17.test ./github.com/djosh34/tigerstore/internal_/sim
+# translated/github.com/djosh34/tigerstore/internal_/sim.test
+/home/joshazimullah.linux/.local/opt/go1.27.2/pkg/tool/linux_arm64/link: mapping output file failed: no space left on device
++ echo build:1
+build:1
++ ls -l /tmp/r333-sim17.test
+ls: cannot access '/tmp/r333-sim17.test': No such file or directory
++ timeout 30 /tmp/r333-sim17.test -test.v '-test.run=^TestSeeds$/1$' -seeds=1 -logformat=raw
+timeout: failed to run command ‘/tmp/r333-sim17.test’: No such file or directory

@@ -1,0 +1,281 @@
+# shell call 1
+git worktree add /tmp/r333-translator origin/main --detach && gh issue view 333 -R djosh34/tigerstore && git rev-parse origin/exp/291-gosim && go version
+
+# shell call 2
+cd /tmp/r333-translator && git switch -c exp/333-translator && git checkout origin/exp/291-gosim -- experiments/gosim291 && ls experiments/gosim291 && ls /tmp/*gosim* 2>/dev/null; env | grep '^PI_'
+
+# shell call 3
+cd /tmp/r333-translator && mkdir -p experiments/gosim333/results && flock /tmp/r333-heavy.lock bash experiments/gosim291/run.sh setup > experiments/gosim333/results/setup.log 2>&1; echo setup:$?; flock /tmp/r333-heavy.lock bash experiments/gosim291/run.sh tools > experiments/gosim333/results/tools.log 2>&1; echo tools:$?; flock /tmp/r333-heavy.lock bash experiments/gosim291/run.sh audit > experiments/gosim333/results/audit.log 2>&1; echo audit:$?
+
+# shell call 4
+git clone -q /tmp/r333-translator/experiments/gosim291/.cache/upstream /tmp/r333-gosim-translator && git -C /tmp/r333-gosim-translator rev-parse HEAD && rg -n 'export hack|publicExport|public export|jsontext|missing function|unknown linkname' /tmp/r333-gosim-translator/internal/translate && ls /tmp/r333-gosim-translator/internal/translate
+
+# shell call 5
+rg -n 'PublicExportHacks|publicExport' /tmp/r333-gosim-translator/internal/translate; rg -n 'translate|tags|goMod|go.mod|modfile' /tmp/r333-gosim-translator/cmd/gosim/main.go /tmp/r333-gosim-translator/internal/translate/main.go; rg -n 'gosim' /tmp/r333-translator/go.mod /tmp/r333-translator/experiments/gosim291/go.mod; ls -a /tmp/r333-translator | head
+
+# shell call 6
+cd /tmp/r333-gosim-translator && git apply /tmp/r333-translator/experiments/gosim291/tools-update.patch && git apply /tmp/r333-translator/experiments/gosim291/hook-audit.patch; cd /tmp/r333-translator && go mod edit -require=github.com/jellevandenhooff/gosim@v0.0.0-20241210235323-ffd3a6135426 -replace=github.com/jellevandenhooff/gosim=/tmp/r333-gosim-translator
+
+# shell call 7
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS=-p=2; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-audit ./cmd/gosim; cd /tmp/r333-translator && go mod download && /tmp/r333-gosim-audit translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate1.log 2>&1; echo exit:$?
+
+# shell call 8
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; /tmp/r333-gosim-audit translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate2.log 2>&1; echo exit:$?
+
+# shell call 9
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-audit ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-audit translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate3.log 2>&1; echo exit:$?; tail -25 experiments/gosim333/results/translate3.log
+
+# shell call 10
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-audit ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-audit translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate4.log 2>&1; echo exit:$?; tail -8 experiments/gosim333/results/translate4.log; ls -a .gosim
+
+# shell call 11
+cd /tmp/r333-gosim-translator && git diff > /tmp/r333-translator/experiments/gosim333/translate-audit.patch; rg -n 'newRuntimeSelector' internal/translate/translate.go; ls gosimruntime | head; git -C /tmp/r333-translator status --short
+
+# shell call 12
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs.log 2>&1; echo translate:$?; find .gosim/translated -maxdepth 1 -mindepth 1 -type d; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim' > experiments/gosim333/results/compile1.log 2>&1; echo compile:$?
+
+# shell call 13
+rg -n 'Copy|mapsPackage|"maps"|funcName := "G"|NewIdent\("G"\)' /tmp/r333-gosim-translator/internal/translate /tmp/r333-gosim-translator/internal/reflect; rg -n 'func Copy|func Clone' /tmp/r333-translator/.gosim/translated/linux_arm64/maps/maps.go; rg -n 'func TypeAssert|func .*Seq' /home/joshazimullah.linux/.local/opt/go1.27.2/src/reflect/*.go
+
+# shell call 14
+rg -n '"G"|\.G\b' /tmp/r333-gosim-translator/internal/translate/{globals*,translate.go}; rg -n 'tilde|TILDE|UnaryExpr' /tmp/r333-gosim-translator/internal/translate/map.go; rg -n '^func \(v Value\).*Interface' /tmp/r333-gosim-translator/internal/reflect/value.go; rg -n 'TypeAssert|reflect\.' /tmp/r333-translator/.gosim/translated/linux_arm64/encoding/json/v2/arshal_methods.go | head -20
+
+# shell call 15
+rg -n '^type Map' /tmp/r333-gosim-translator/gosimruntime/map.go; rg -n '^func .*\[.*Map' /tmp/r333-translator/.gosim/translated/linux_arm64/maps/*.go; rg -n 'rewriteMapType|rewriteMap' /tmp/r333-gosim-translator/internal/translate/translate.go
+
+# shell call 16
+rg -n 'func ExtractMap' /tmp/r333-gosim-translator/gosimruntime/map.go; head -12 /tmp/r333-gosim-translator/internal/translate/globals.go
+
+# shell call 17
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs2.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim' > experiments/gosim333/results/compile2.log 2>&1; echo compile:$?
+
+# shell call 18
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs3.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim' > experiments/gosim333/results/compile3.log 2>&1; echo compile:$?
+
+# shell call 19
+head -4 /tmp/r333-gosim-translator/internal/hooks/go123/sync.go; cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs4.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim' > experiments/gosim333/results/compile4.log 2>&1; echo compile:$?
+
+# shell call 20
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs5.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim' > experiments/gosim333/results/compile5.log 2>&1; echo compile:$?
+
+# shell call 21
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs6.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim' > experiments/gosim333/results/compile6.log 2>&1; echo compile:$?
+
+# shell call 22
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs7.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim' > experiments/gosim333/results/compile7.log 2>&1; echo compile:$?
+
+# shell call 23
+rg -n 'sha3Unwrap|go:linkname' /home/joshazimullah.linux/.local/opt/go1.27.2/src/crypto/{sha3,internal/fips140hash}
+
+# shell call 24
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs8.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim' > experiments/gosim333/results/compile8.log 2>&1; echo compile:$?
+
+# shell call 25
+rg -n 'go:linkname|func fatal' /tmp/r333-translator/.gosim/translated/linux_arm64/crypto/internal_/fips140/*.go; rg -n 'go:linkname (getIndicator|setIndicator|fatal)' /home/joshazimullah.linux/.local/opt/go1.27.2/src/crypto/internal/fips140/*.go; rg -n 'func \w+.*\)$' /tmp/r333-translator/.gosim/translated/linux_arm64/crypto/internal_/fips140/*.go | head
+
+# shell call 26
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs9.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim' > experiments/gosim333/results/compile9.log 2>&1; echo compile:$?
+
+# shell call 27
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && /tmp/r333-gosim-stubs test -v -seeds=1 -run=^TestGosim$ ./examples' > experiments/gosim333/results/example1.log 2>&1; echo example:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; timeout 30 /tmp/r333-sim.test -test.v -test.run=^TestSeeds$ -seeds=1 -sim.seed=1 -sim.seeds=1' > experiments/gosim333/results/seed1.log 2>&1; echo seed:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-node.test ./github.com/djosh34/tigerstore/internal_/node' > experiments/gosim333/results/node-compile1.log 2>&1; echo node:$?
+
+# shell call 28
+rg -n 'context |context\.|func \(t \*T\)' /tmp/r333-gosim-translator/internal/testing/testing.go | head -35; cd /tmp/r333-gosim-translator && go mod edit -go=1.27.2; cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && /tmp/r333-gosim-stubs test -v -seeds=1 -run=^TestGosim$ ./examples' > experiments/gosim333/results/example2.log 2>&1; echo example:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; timeout 30 /tmp/r333-sim.test -test.v -test.short -test.run=^TestSeeds$ -seeds=1' > experiments/gosim333/results/seed2.log 2>&1; echo seed:$?
+
+# shell call 29
+ls /tmp/r333-gosim-translator/internal/hooks/go123; rg -n 'LoadUintptr|SyncAtomic' /tmp/r333-gosim-translator/internal/hooks/go123/atomic.go; rg -n 'pool|Pool' /tmp/r333-gosim-translator/internal/translate/{hooks_go123.go,globals_analysis.go}; rg -n 'ShouldShare|internal/sync|HashTrie' /tmp/r333-gosim-translator/internal/translate/globals_analysis*.go; rg -n 'func .*Sync' /tmp/r333-gosim-translator/internal/hooks/go123/sync.go
+
+# shell call 30
+cd /tmp/r333-gosim-translator && git add -N gosimruntime/missing.go internal/reflect/port127.go internal/hooks/go123/port127.go && git diff > /tmp/r333-translator/experiments/gosim333/compile-stubs.patch; head -20 internal/translate/hooks_go123.go; head -12 internal/testing/testing.go
+
+# shell call 31
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs10.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-node.test ./github.com/djosh34/tigerstore/internal_/node' > experiments/gosim333/results/compile10.log 2>&1; echo compile:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; timeout 30 /tmp/r333-sim.test -test.v -test.short -test.run=^TestSeeds$ -seeds=1' > experiments/gosim333/results/seed3.log 2>&1; echo seed:$?; head -4 experiments/gosim333/results/seed3.log
+
+# shell call 32
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs11.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim && timeout 30 /tmp/r333-sim.test -test.v -test.short -test.run=^TestSeeds$ -seeds=1' > experiments/gosim333/results/seed4.log 2>&1; echo seed:$?; head -20 experiments/gosim333/results/seed4.log
+
+# shell call 33
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs12.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim && timeout 30 /tmp/r333-sim.test -test.v -test.short -test.run=^TestSeeds$ -seeds=1' > experiments/gosim333/results/seed5.log 2>&1; echo seed:$?; head -15 experiments/gosim333/results/seed5.log
+
+# shell call 34
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs13.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim && timeout 30 /tmp/r333-sim.test -test.v -test.short -test.run=^TestSeeds$ -seeds=1' > experiments/gosim333/results/seed6.log 2>&1; echo seed:$?; head -15 experiments/gosim333/results/seed6.log
+
+# shell call 35
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs14.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim && timeout 30 /tmp/r333-sim.test -test.v -test.short -test.run=^TestSeeds$ -seeds=1' > experiments/gosim333/results/seed7.log 2>&1; echo seed:$?; head -12 experiments/gosim333/results/seed7.log
+
+# shell call 36
+ls /tmp/r333-translator/.gosim/translated/linux_arm64/google.golang.org/protobuf/internal_/editiondefaults; rg -n 'embed|Defaults' /tmp/r333-translator/.gosim/translated/linux_arm64/google.golang.org/protobuf/internal_/editiondefaults/*; rg -n 'embed' /tmp/r333-gosim-translator/internal/translate/*.go; rg -n 'go:embed|Defaults' /home/joshazimullah.linux/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/editiondefaults/*
+
+# shell call 37
+rg -n 'globalsDontTranslateGo123' /tmp/r333-gosim-translator/internal/translate/*; rg -n 'Shared|share|ShouldShare' /tmp/r333-gosim-translator/internal/translate/globals_analysis.go | head -40; head -50 /tmp/r333-gosim-translator/internal/translate/globals_analysis.go
+
+# shell call 38
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs15.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim && timeout 30 /tmp/r333-sim.test -test.v -test.short -test.run=^TestSeeds$ -seeds=1' > experiments/gosim333/results/seed8.log 2>&1; echo seed:$?; head -15 experiments/gosim333/results/seed8.log
+
+# shell call 39
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs16.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim && timeout 30 /tmp/r333-sim.test -test.v -test.short -test.run=^TestSeeds$ -seeds=1' > experiments/gosim333/results/seed9.log 2>&1; echo seed:$?; head -15 experiments/gosim333/results/seed9.log
+
+# shell call 40
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; timeout 30 /tmp/r333-sim.test -test.v -test.run=^TestSeeds$/1$ -seeds=1' > experiments/gosim333/results/seed10.log 2>&1; echo seed:$?; head -20 experiments/gosim333/results/seed10.log; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && /tmp/r333-gosim-stubs test -v -seeds=1 -run=^TestGosim$ ./examples' > experiments/gosim333/results/example3.log 2>&1; echo example:$?; tail -8 experiments/gosim333/results/example3.log
+
+# shell call 41
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs17.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim && timeout 30 /tmp/r333-sim.test -test.v -test.run=^TestSeeds$/1$ -seeds=1' > experiments/gosim333/results/seed11.log 2>&1; echo seed:$?; head -14 experiments/gosim333/results/seed11.log
+
+# shell call 42
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; timeout 30 /tmp/r333-sim.test -test.v -test.run=^TestSeeds$ -seeds=1 -logformat=raw -log-level=INFO' > experiments/gosim333/results/seed12.log 2>&1; echo seed:$?; head -20 experiments/gosim333/results/seed12.log; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && /tmp/r333-gosim-stubs test -v -seeds=1 -run=^TestGosim$ -logformat=raw ./examples' > experiments/gosim333/results/example4.log 2>&1; echo example:$?; tail -15 experiments/gosim333/results/example4.log
+
+# shell call 43
+rg -n 'runtimeNow|Time_runtimeNow' /tmp/r333-translator/.gosim/translated/linux_arm64/time/time.go /tmp/r333-gosim-translator/internal/translate/hooks_go123.go /tmp/r333-translator/experiments/gosim333/results/translate-stubs17.log; ls -l /tmp/r333-sim.test; git -C /tmp/r333-gosim-translator diff --stat; rg -n 'go:linkname runtimeNow' /tmp/r333-gosim-translator/.gosim/translated/linux_arm64/time/time.go
+
+# shell call 44
+date; stat /tmp/r333-sim.test; cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'set -x; export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim17.test ./github.com/djosh34/tigerstore/internal_/sim; echo build:$?; ls -l /tmp/r333-sim17.test; timeout 30 /tmp/r333-sim17.test -test.v -test.run=^TestSeeds$/1$ -seeds=1 -logformat=raw' > experiments/gosim333/results/seed13.log 2>&1; echo seed:$?; head -12 experiments/gosim333/results/seed13.log
+
+# shell call 45
+df -h /tmp; du -sh /tmp/r333-translator/.gosim /tmp/r333-gosim-translator/.gosim /tmp/r333-translator/experiments/gosim291/.cache /home/joshazimullah.linux/.cache/go-build; du -sh /tmp/r333* | sort -h
+
+# shell call 46
+rm -f /tmp/r333-sim.test /tmp/r333-node.test /tmp/r333-gosim-audit; cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim && timeout 30 /tmp/r333-sim.test -test.v -test.run=^TestSeeds$/1$ -seeds=1 -logformat=raw' > experiments/gosim333/results/seed14.log 2>&1; echo seed:$?; head -8 experiments/gosim333/results/seed14.log; df -h /tmp
+
+# shell call 47
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator && /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/translate-stubs18.log 2>&1; echo translate:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; rm -f /tmp/r333-sim.test; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim && timeout 30 /tmp/r333-sim.test -test.v -test.run=^TestSeeds$ -seeds=1 -logformat=raw' > experiments/gosim333/results/seed15.log 2>&1; echo seed:$?; head -8 experiments/gosim333/results/seed15.log; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && /tmp/r333-gosim-stubs test -v -seeds=1 -run=^TestGosim$ -logformat=raw ./examples' > experiments/gosim333/results/example5.log 2>&1; echo example:$?; tail -6 experiments/gosim333/results/example5.log
+
+# shell call 48
+df -h /tmp; du -sh /tmp/go-build* 2>/dev/null | sort -h | tail -15; du -sh /home/joshazimullah.linux/.cache/go-build; ls -l /tmp/r333-sim.test; git -C /tmp/r333-gosim-translator diff --numstat | tail
+
+# shell call 49
+flock /tmp/r333-heavy.lock python3 - <<'PY'
+from pathlib import Path
+import time
+root=Path('/home/joshazimullah.linux/.cache/go-build'); n=total=0
+for p in root.glob('*/*-d'):
+ s=p.stat()
+ if s.st_mtime<time.mktime(time.strptime('2026-10-20 08:39:00','%Y-%m-%d %H:%M:%S')) and s.st_size>2_000_000:
+  b=p.read_bytes()
+  if b'/tmp/r333-translator/' in b or b'/tmp/r333-gosim-translator/' in b:
+   p.unlink(); n+=1; total+=s.st_size
+print('Removed only cache artifacts containing my unique worktree/clone paths:',n,'files;',total,'bytes')
+PY
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -vet=off -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim && timeout 30 /tmp/r333-sim.test -test.v -test.run=^TestSeeds$ -seeds=1 -logformat=raw' > experiments/gosim333/results/seed16.log 2>&1; echo seed:$?; head -6 experiments/gosim333/results/seed16.log; df -h /tmp
+
+# shell call 50
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && /tmp/r333-gosim-stubs test -v -seeds=1,1,2 -run=^TestGosim$ -logformat=raw ./examples' > experiments/gosim333/results/example6.log 2>&1; echo example:$?; cd experiments/gosim291 && go mod edit -replace=github.com/jellevandenhooff/gosim=/tmp/r333-gosim-translator; cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/experiments/gosim291 && /tmp/r333-gosim-stubs test -v -seeds=1 -run=^TestDriverGate$ -logformat=raw .' > experiments/gosim333/results/probe1.log 2>&1; echo probe:$?; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64 && go test -vet=off -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-node.test ./github.com/djosh34/tigerstore/internal_/node && timeout 30 /tmp/r333-node.test -test.v -test.run=^TestConcurrentCleanerSimulation$ -seeds=1 -logformat=raw' > experiments/gosim333/results/cleaner1.log 2>&1; echo cleaner:$?; tail -5 experiments/gosim333/results/example6.log; tail -4 experiments/gosim333/results/probe1.log; head -4 experiments/gosim333/results/cleaner1.log
+
+# shell call 51
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator/experiments/gosim291 && /tmp/r333-gosim-stubs test -v -seeds=1 -run=^TestDriverGate$ -logformat=raw .' > experiments/gosim333/results/probe2.log 2>&1; echo probe:$?; tail -3 experiments/gosim333/results/probe2.log
+
+# shell call 52
+tail -8 /tmp/r333-translator/experiments/gosim333/results/probe2.log; rg -n 'runtime_SemacquireWaitGroup' /home/joshazimullah.linux/.local/opt/go1.27.2/src/sync/runtime.go; rg -n 'ERROR|msg' /tmp/r333-translator/experiments/gosim333/results/probe2.log | tail -5
+
+# shell call 53
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim && cd /tmp/r333-translator/experiments/gosim291 && /tmp/r333-gosim-stubs test -v -seeds=1,1,2 -run=^TestDriverGate$ -logformat=raw .' > experiments/gosim333/results/probe3.log 2>&1; echo probe:$?; tail -5 experiments/gosim333/results/probe3.log
+
+# shell call 54
+flock /tmp/r333-heavy.lock python3 - <<'PY'
+from pathlib import Path
+import time
+n=total=0
+for p in Path('/home/joshazimullah.linux/.cache/go-build').glob('*/*-d'):
+ s=p.stat()
+ if s.st_mtime<time.time()-120 and s.st_size>2_000_000:
+  b=p.read_bytes()
+  if b'/tmp/r333-translator/' in b or b'/tmp/r333-gosim-translator/' in b or (b'translated/github.com/djosh34/tigerstore/experiments/gosim291' in b):
+   p.unlink();n+=1;total+=s.st_size
+print(n,total)
+PY
+cd /tmp/r333-translator && flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/experiments/gosim291 && /tmp/r333-gosim-stubs test -v -seeds=1,1,2 -run=^TestDriverGate$ -logformat=raw .' > experiments/gosim333/results/probe4.log 2>&1; echo probe:$?; tail -8 experiments/gosim333/results/probe4.log; df -h /tmp
+
+# shell call 55
+cd /tmp/r333-gosim-translator && git diff > /tmp/r333-translator/experiments/gosim333/runtime-explore.patch; cd /tmp/r333-translator && python3 - <<'PY'
+from pathlib import Path
+import re,collections
+r=Path('experiments/gosim333/results')
+for label,name,kind in [('missing-bodies','translate4.log','missing function body'),('unknown-linknames','translate4.log','unknown linkname'),('self-linknames','translate-stubs9.log','self linkname')]:
+ lines=[]
+ for x in (r/name).read_text().splitlines():
+  if kind in x:
+   x=x[x.index('ERROR ')+6:];lines.append(x)
+ (r/(label+'.txt')).write_text('\n'.join(sorted(set(lines)))+'\n')
+ print(label,len(lines),len(set(lines)))
+PY
+flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node; cd /tmp/r333-translator/.gosim/translated/linux_arm64; go test -vet=off -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-sim.test ./github.com/djosh34/tigerstore/internal_/sim; go test -vet=off -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-node.test ./github.com/djosh34/tigerstore/internal_/node' > experiments/gosim333/results/final-compile.log 2>&1; echo compile:$?; for test in TestSeeds TestMembershipFaults TestPlanted; do flock /tmp/r333-heavy.lock env GOMAXPROCS=2 GOFLAGS=-p=2 timeout 30 /tmp/r333-sim.test -test.v -test.run="^${test}$" -seeds=1 -logformat=raw > "experiments/gosim333/results/final-${test}.log" 2>&1; echo "$test:$?"; done; flock /tmp/r333-heavy.lock env GOMAXPROCS=2 GOFLAGS=-p=2 timeout 30 /tmp/r333-node.test -test.v -test.run=^TestConcurrentCleanerSimulation$ -seeds=1 -logformat=raw > experiments/gosim333/results/final-cleaner.log 2>&1; echo cleaner:$?
+
+# shell call 56
+rg -n 'self linkname|TestPlanted|func TestPlanted|go:build' /tmp/r333-translator/experiments/gosim333/results/self-linknames.txt /tmp/r333-translator/internal/sim/*test.go /tmp/r333-translator/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/gosim_meta_test.go | head -35; wc -c /tmp/r333-translator/experiments/gosim333/results/final-*; rg -o '"panic":"[^"]+"' /tmp/r333-translator/experiments/gosim333/results/final-* | sort -u; rg -n 'planted|tags' /tmp/r333-translator/internal/sim/planted* /tmp/r333-translator/internal/sim/*test.go | head -30; df -h /tmp
+
+# shell call 57
+cd /tmp/r333-translator && cp experiments/gosim333/planted_wrapper.go.txt internal/sim/gosim333_test.go; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-gosim-translator && go build -o /tmp/r333-gosim-stubs ./cmd/gosim; cd /tmp/r333-translator && GOSIM333_TAGS=planted /tmp/r333-gosim-stubs translate ./internal/sim ./internal/node' > experiments/gosim333/results/planted-translate.log 2>&1; echo translate:$?; rm internal/sim/gosim333_test.go; flock /tmp/r333-heavy.lock bash -c 'export GOMAXPROCS=2 GOFLAGS="-p=2 -mod=mod"; cd /tmp/r333-translator/.gosim/translated/linux_arm64; go test -vet=off -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-planted.test ./github.com/djosh34/tigerstore/internal_/sim && timeout 30 /tmp/r333-planted.test -test.v -test.run=^TestGosim333Planted$ -seeds=1 -logformat=raw' > experiments/gosim333/results/planted-run.log 2>&1; echo planted:$?; tail -5 experiments/gosim333/results/planted-run.log
+
+# shell call 58
+cd /tmp/r333-translator && python3 - <<'PY'
+from pathlib import Path
+import re
+r=Path('experiments/gosim333/results')
+for f in ['audit.log','translate4.log','translate-stubs9.log','final-compile.log','planted-translate.log']:
+ s=(r/f).read_text(); print(f,{k:len(re.findall(k,s)) for k in ['missing function body','unknown linkname','self linkname']})
+s=(r/'translate-stubs9.log').read_text()
+names=sorted(set(p+'.'+n for p,n in re.findall(r'missing function body pkg=(\S+) name=(\S+)',s)))
+(r/'compile-stub-manifest.txt').write_text('\n'.join(names)+'\n');print('compile stub manifest:',len(names))
+for file in ['example6.log','probe4.log']:
+ chunks=[]; cur=[]
+ for line in (r/file).read_text().splitlines():
+  if line.startswith('=== RUN'):
+   if cur:chunks.append(cur)
+   cur=[]
+  elif line.startswith('{'):cur.append(line)
+ if cur:chunks.append(cur)
+ print(file,'chunks',list(map(len,chunks)),'seed1 byte identical',chunks[0]==chunks[1],'seed2 differs',chunks[0]!=chunks[2])
+PY
+git -C /tmp/r333-gosim-translator diff > experiments/gosim333/runtime-explore.patch
+ls -lh experiments/gosim333/*.patch
+git diff -- go.mod | head -50; git diff -- experiments/gosim291/go.mod | head -35
+
+# shell call 59
+python3 - <<'PY'
+import json,os
+p=os.environ['PI_SESSION_FILE']
+for line in open(p):
+ o=json.loads(line)
+ if 'message' in o:
+  m=o['message']
+  if m.get('role')=='assistant':
+   for c in m.get('content',[]):
+    if c.get('type')=='toolCall':
+     print(c.keys());print(str(c)[:250]);raise SystemExit
+PY
+
+# shell call 60
+cd /tmp/r333-translator && python3 - <<'PY'
+import json,os
+from pathlib import Path
+out=[]
+for line in open(os.environ['PI_SESSION_FILE']):
+ o=json.loads(line);m=o.get('message',{})
+ if m.get('role')=='assistant':
+  for c in m.get('content',[]):
+   if c.get('type')=='toolCall' and c.get('name')=='bash':
+    out.append(c['arguments']['command'])
+Path('experiments/gosim333/commands.log').write_text('\n\n'.join('# shell call '+str(i+1)+'\n'+s for i,s in enumerate(out))+'\n')
+PY
+git diff -- go.mod go.sum > experiments/gosim333/root-module.patch
+git restore --source=origin/main -- go.mod go.sum
+git restore --source=origin/exp/291-gosim -- experiments/gosim291/go.mod experiments/gosim291/go.sum
+python3 - <<'PY'
+from pathlib import Path
+import re
+r=Path('experiments/gosim333/results')
+s=(r/'translate4.log').read_text();t=(r/'translate-stubs9.log').read_text()
+o=[]
+for k in ['missing function body','unknown linkname']:
+ o.append(f'completed audit {k}: {s.count(k)}')
+o.append('compile-stub manifest: '+str(len((r/'compile-stub-manifest.txt').read_text().splitlines())))
+for file in ['example6.log','probe4.log']:
+ chunks=[];cur=[]
+ for line in (r/file).read_text().splitlines():
+  if line.startswith('=== RUN'):
+   if cur:chunks.append(cur)
+   cur=[]
+  elif line.startswith('{'):cur.append(line)
+ if cur:chunks.append(cur)
+ o.append(f'{file}: JSON event counts {list(map(len,chunks))}; seed1 identical={chunks[0]==chunks[1]}; seed2 differs={chunks[0]!=chunks[2]}')
+(r/'summary.txt').write_text('\n'.join(o)+'\n');print('\n'.join(o))
+PY

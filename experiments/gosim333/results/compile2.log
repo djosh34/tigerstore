@@ -1,0 +1,2 @@
+# translated/mime/multipart
+mime/multipart/writer.go:114:43: in call to maps.Keys, Map (type textproto.MIMEHeader) does not satisfy gosimruntime.Map[K, V]

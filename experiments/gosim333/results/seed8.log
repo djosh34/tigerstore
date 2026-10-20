@@ -1,0 +1,35 @@
+<nil> /1         14:10:03.000 ERR gosimruntime/runtime.go:667 > uncaught panic panic="unsupported edition: 998" traceback=[
+          "goroutine 9 [running]:",
+          "github.com/jellevandenhooff/gosim/gosimruntime.(*goroutine).exitpoint(0x4162775fc340)",
+          "  /tmp/r333-gosim-translator/gosimruntime/runtime.go:751 +0x90",
+          "panic({0x1c87b70?, 0x416277594f00?})",
+          "  /home/joshazimullah.linux/.local/opt/go1.27.2/src/runtime/panic.go:859 +0x120",
+          "translated/google.golang.org/protobuf/internal_/filedesc.getFeaturesFor(0x0?)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/google.golang.org/protobuf/internal_/filedesc/editions.go:165 +0x140",
+          "translated/google.golang.org/protobuf/internal_/filedesc.gosiminit0()",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/google.golang.org/protobuf/internal_/filedesc/editions.go:19 +0x58",
+          "translated/google.golang.org/protobuf/internal_/filedesc.initializers(0x1?)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/google.golang.org/protobuf/internal_/filedesc/gosim_globals.go:58 +0x6c8",
+          "github.com/jellevandenhooff/gosim/gosimruntime.InitGlobals(0x0?, 0x1)",
+          "  /tmp/r333-gosim-translator/gosimruntime/globals.go:135 +0x7bc",
+          "github.com/jellevandenhooff/gosim/gosimruntime.initSharedGlobals.func1()",
+          "  /tmp/r333-gosim-translator/gosimruntime/runtime.go:428 +0x24",
+          "github.com/jellevandenhooff/gosim/gosimruntime.goroutineEntrypoint()",
+          "  /tmp/r333-gosim-translator/gosimruntime/runtime.go:735 +0x6c",
+          "github.com/jellevandenhooff/gosim/internal/coro.(*Coro).Start.func1(0x0?)",
+          "  /tmp/r333-gosim-translator/internal/coro/coro_linkname.go:38 +0x24",
+          "created by github.com/jellevandenhooff/gosim/internal/coro.(*Coro).Start in goroutine 1",
+          "  /tmp/r333-gosim-translator/internal/coro/coro_linkname.go:36 +0x70",
+          ""
+        ]
+panic: paniced
+
+goroutine 1 [running]:
+github.com/jellevandenhooff/gosim/gosimruntime.initializeRuntime(0x18?)
+	/tmp/r333-gosim-translator/gosimruntime/runtime.go:320 +0x88
+github.com/jellevandenhooff/gosim/gosimruntime.TestMain({0x1ee8350, 0x1f5b2c0})
+	/tmp/r333-gosim-translator/gosimruntime/testmain.go:109 +0x170
+translated/github.com/djosh34/tigerstore/internal_/sim_test.TestMain(...)
+	/tmp/r333-translator/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/gosim_meta_test.go:43
+main.main()
+	_testmain.go:48 +0x9c

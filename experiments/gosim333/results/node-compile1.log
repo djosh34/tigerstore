@@ -1,0 +1,5 @@
+# translated/github.com/djosh34/tigerstore/internal_/node [translated/github.com/djosh34/tigerstore/internal_/node.test]
+github.com/djosh34/tigerstore/internal_/node/fetch_test.go:482:25: t.Context undefined (type *testing.T has no field or method Context, but does have unexported field context)
+github.com/djosh34/tigerstore/internal_/node/fetch_test.go:486:25: t.Context undefined (type *testing.T has no field or method Context, but does have unexported field context)
+github.com/djosh34/tigerstore/internal_/node/serve_test.go:33:30: t.Context undefined (type *testing.T has no field or method Context, but does have unexported field context)
+github.com/djosh34/tigerstore/internal_/node/serve_test.go:51:38: t.Context undefined (type *testing.T has no field or method Context, but does have unexported field context)

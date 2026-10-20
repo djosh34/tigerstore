@@ -1,0 +1,45 @@
+<nil> /1         14:10:03.000 ERR gosimruntime/runtime.go:667 > uncaught panic panic="gosim: missing hook internal/runtime/atomic.LoadAcquintptr" traceback=[
+          "goroutine 5 [running]:",
+          "github.com/jellevandenhooff/gosim/gosimruntime.(*goroutine).exitpoint(0x4bfe957a8340)",
+          "  /tmp/r333-gosim-translator/gosimruntime/runtime.go:751 +0x90",
+          "panic({0x1c869a0?, 0x4bfe957a27a0?})",
+          "  /home/joshazimullah.linux/.local/opt/go1.27.2/src/runtime/panic.go:859 +0x120",
+          "translated/internal_/runtime/atomic.LoadAcquintptr(...)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/internal_/runtime/atomic/atomic_arm64.go:67",
+          "translated/sync.(*Pool).pin(0x4bfe97978468?)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/sync/pool.go:225 +0x58",
+          "translated/sync.(*Pool).Get(0x4bfe958d4c28)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/sync/pool.go:142 +0x20",
+          "translated/fmt.newPrinter()",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/fmt/print.go:142 +0x30",
+          "translated/fmt.Sprintf({0xba1c38, 0x14}, {0x0, 0x0, 0x0})",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/fmt/print.go:226 +0x30",
+          "translated/google.golang.org/protobuf/internal_/errors.format({0xba1c38, 0x14}, {0x0, 0x0, 0x0})",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/google.golang.org/protobuf/internal_/errors/errors.go:63 +0x240",
+          "translated/google.golang.org/protobuf/internal_/errors.New(...)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/google.golang.org/protobuf/internal_/errors/errors.go:14",
+          "translated/google.golang.org/protobuf/encoding/protowire.initializers(0x1?)",
+          "  /tmp/r333-translator/.gosim/translated/linux_arm64/google.golang.org/protobuf/encoding/protowire/gosim_globals.go:20 +0x54",
+          "github.com/jellevandenhooff/gosim/gosimruntime.InitGlobals(0x0?, 0x1)",
+          "  /tmp/r333-gosim-translator/gosimruntime/globals.go:135 +0x7bc",
+          "github.com/jellevandenhooff/gosim/gosimruntime.initSharedGlobals.func1()",
+          "  /tmp/r333-gosim-translator/gosimruntime/runtime.go:428 +0x24",
+          "github.com/jellevandenhooff/gosim/gosimruntime.goroutineEntrypoint()",
+          "  /tmp/r333-gosim-translator/gosimruntime/runtime.go:735 +0x6c",
+          "github.com/jellevandenhooff/gosim/internal/coro.(*Coro).Start.func1(0x0?)",
+          "  /tmp/r333-gosim-translator/internal/coro/coro_linkname.go:38 +0x24",
+          "created by github.com/jellevandenhooff/gosim/internal/coro.(*Coro).Start in goroutine 1",
+          "  /tmp/r333-gosim-translator/internal/coro/coro_linkname.go:36 +0x70",
+          ""
+        ]
+panic: paniced
+
+goroutine 1 [running]:
+github.com/jellevandenhooff/gosim/gosimruntime.initializeRuntime(0x18?)
+	/tmp/r333-gosim-translator/gosimruntime/runtime.go:320 +0x88
+github.com/jellevandenhooff/gosim/gosimruntime.TestMain({0x1ee6f78, 0x1f5b240})
+	/tmp/r333-gosim-translator/gosimruntime/testmain.go:109 +0x170
+translated/github.com/djosh34/tigerstore/internal_/sim_test.TestMain(...)
+	/tmp/r333-translator/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/gosim_meta_test.go:43
+main.main()
+	_testmain.go:48 +0x9c

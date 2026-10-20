@@ -1,0 +1,14 @@
+//go:build planted
+
+package sim
+
+import "testing"
+
+// Gate only: one B01a trial; not a planted-bug detection claim.
+func TestGosim333Planted(t *testing.T) {
+ *plantedBug = "B01a"
+ c := plantedCases["B01a"]
+ c.seeds = 1
+ plantedCases["B01a"] = c
+ TestPlanted(t)
+}

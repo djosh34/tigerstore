@@ -1,0 +1,23 @@
+# translated/github.com/djosh34/tigerstore/internal_/sim.test
+translated/crypto/internal_/fips140.CAST: relocation target translated/crypto/internal_/fips140.fatal not defined
+translated/crypto/internal_/fips140.PCT: relocation target translated/crypto/internal_/fips140.fatal not defined
+translated/crypto/internal_/fips140.RecordApproved: relocation target translated/crypto/internal_/fips140.getIndicator not defined
+translated/crypto/internal_/fips140.RecordApproved: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/hmac.(*HMAC).Sum: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/aes.(*Block).Encrypt: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/aes.(*Block).Decrypt: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/drbg.Read: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/drbg.ReadWithReader: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/aes/gcm.(*GCM).Seal: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/ed25519.signCtx: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/ed25519.VerifyCtx: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/rsa.SignPKCS1v15: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/rsa.VerifyPKCS1v15: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/rsa.verifyPKCS1v15: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/rsa.emsaPSSVerify: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/rsa.SignPSS: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/rsa.verifyPSS: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/rsa.DecryptOAEP: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/rsa.Encrypt: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+translated/crypto/internal_/fips140/rsa.DecryptWithoutCheck: relocation target translated/crypto/internal_/fips140.setIndicator not defined
+/home/joshazimullah.linux/.local/opt/go1.27.2/pkg/tool/linux_arm64/link: too many errors

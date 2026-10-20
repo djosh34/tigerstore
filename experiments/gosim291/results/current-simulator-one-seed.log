@@ -1,0 +1,10 @@
+=== RUN   TestSeeds
+=== RUN   TestSeeds/1
+    sim_test.go:259: {Messages:38543 Dropped:17 Crashes:12 LinkChanges:15 OK:4952 Failed:292 Ambiguous:67 Compactions:29 WatchCompacted:10 Revokes:80 DiskFaults:2 Silences:0 Fenced:0 ColdRestarts:9 Pauses:6 LinkStalls:8 HalfOpens:1 Asymmetric:2 Settles:0 GrayNodes:1 GrayStreams:114 RecoveryCrashes:6 Checkpoints:204 Snapshots:3 ServeFailures:0 SnapshotFlips:0 FetchCrashes:0 SlowFetches:0 Reloads:3 StepCrashes:1 Rots:0 OlderCheckpoints:0 CheckpointsDuringInstall:0 FencedAfterServe:0 ErasedAtRoot:1 ErasedAtRemoval:0 MembershipChanges:[0 0 0 0] MembershipFaults:[0 0 0 0] MembershipAttempts:0}, 3051 committed writes
+=== NAME  TestSeeds
+    sim_test.go:282: 1 seeds: 0 stalled leaders went silent
+    sim_test.go:283: of 1 seeds, the faults took effect in: crash 1, disk fault 1, gray client 1, gray node 1, half-open link 1, link change 1, link stall 1, pause 1, two cold restarts 1
+--- PASS: TestSeeds (0.91s)
+    --- PASS: TestSeeds/1 (0.91s)
+PASS
+ok  	github.com/djosh34/tigerstore/internal/sim	0.917s

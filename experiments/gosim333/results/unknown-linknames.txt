@@ -1,0 +1,37 @@
+unknown linkname pkg=golang.org/x/sys/unix name=runtime_getAuxv targetPkg=runtime targetName=getAuxv
+unknown linkname pkg=golang.org/x/sys/unix name=vgetrandom targetPkg=runtime targetName=vgetrandom
+unknown linkname pkg=internal/sync name=runtime_rand targetPkg=runtime targetName=rand
+unknown linkname pkg=internal/syscall/unix name=vgetrandom targetPkg=runtime targetName=vgetrandom
+unknown linkname pkg=net/http name=protocolSetHTTP3 targetPkg=golang.org/x/net/internal/http3_test targetName=protocolSetHTTP3
+unknown linkname pkg=net/http name=transportFromH1Transport targetPkg=net/http/internal/http2_test targetName=transportFromH1Transport
+unknown linkname pkg=runtime/debug name=runtime_setCrashFD targetPkg=runtime targetName=setCrashFD
+unknown linkname with no body pkg=crypto/fips140 name=isBypassed
+unknown linkname with no body pkg=crypto/fips140 name=setBypass
+unknown linkname with no body pkg=crypto/fips140 name=unsetBypass
+unknown linkname with no body pkg=crypto/internal/fips140deps/time name=monoTime
+unknown linkname with no body pkg=crypto/internal/fips140hash name=sha3Unwrap
+unknown linkname with no body pkg=crypto/internal/sysrand name=fatal
+unknown linkname with no body pkg=crypto/rand name=fatal
+unknown linkname with no body pkg=crypto/subtle name=setDITDisabled
+unknown linkname with no body pkg=crypto/subtle name=setDITEnabled
+unknown linkname with no body pkg=internal/runtime/atomic name=storePointer
+unknown linkname with no body pkg=internal/sync name=fatal
+unknown linkname with no body pkg=internal/sync name=runtime_SemacquireMutex
+unknown linkname with no body pkg=internal/sync name=runtime_Semrelease
+unknown linkname with no body pkg=internal/sync name=runtime_canSpin
+unknown linkname with no body pkg=internal/sync name=runtime_doSpin
+unknown linkname with no body pkg=internal/sync name=runtime_nanotime
+unknown linkname with no body pkg=internal/sync name=throw
+unknown linkname with no body pkg=internal/synctest name=IsInBubble
+unknown linkname with no body pkg=internal/synctest name=Run
+unknown linkname with no body pkg=internal/synctest name=Wait
+unknown linkname with no body pkg=internal/synctest name=acquire
+unknown linkname with no body pkg=internal/synctest name=associate
+unknown linkname with no body pkg=internal/synctest name=disassociate
+unknown linkname with no body pkg=internal/synctest name=inBubble
+unknown linkname with no body pkg=internal/synctest name=isAssociated
+unknown linkname with no body pkg=internal/synctest name=release
+unknown linkname with no body pkg=time name=runtimeIsBubbled
+unknown linkname with no body pkg=time name=runtimeNow
+unknown linkname with no body pkg=weak name=runtime_makeStrongFromWeak
+unknown linkname with no body pkg=weak name=runtime_registerWeakPointer

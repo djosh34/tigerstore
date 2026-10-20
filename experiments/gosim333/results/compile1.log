@@ -1,0 +1,32 @@
+# translated/encoding/json/v2
+encoding/json/v2/arshal_embedded.go:37:19: undefined: reflect.TypeAssert
+encoding/json/v2/arshal_embedded.go:160:19: undefined: reflect.TypeAssert
+encoding/json/v2/arshal_funcs.go:172:20: undefined: reflect.TypeAssert
+encoding/json/v2/arshal_funcs.go:216:20: undefined: reflect.TypeAssert
+encoding/json/v2/arshal_funcs.go:263:20: undefined: reflect.TypeAssert
+encoding/json/v2/arshal_funcs.go:300:20: undefined: reflect.TypeAssert
+encoding/json/v2/arshal_methods.go:170:28: undefined: reflect.TypeAssert
+encoding/json/v2/arshal_methods.go:198:27: undefined: reflect.TypeAssert
+encoding/json/v2/arshal_methods.go:222:28: undefined: reflect.TypeAssert
+encoding/json/v2/arshal_methods.go:257:28: undefined: reflect.TypeAssert
+encoding/json/v2/arshal_methods.go:257:28: too many errors
+# translated/text/template
+text/template/exec.go:387:22: val.Seq undefined (type "translated/github.com/jellevandenhooff/gosim/internal_/reflect".Value has no field or method Seq)
+text/template/exec.go:436:17: val.Type().CanSeq undefined (type "translated/github.com/jellevandenhooff/gosim/internal_/reflect".Type has no field or method CanSeq)
+text/template/exec.go:442:23: val.Seq undefined (type "translated/github.com/jellevandenhooff/gosim/internal_/reflect".Value has no field or method Seq)
+text/template/exec.go:453:17: val.Type().CanSeq2 undefined (type "translated/github.com/jellevandenhooff/gosim/internal_/reflect".Type has no field or method CanSeq2)
+text/template/exec.go:455:26: val.Seq2 undefined (type "translated/github.com/jellevandenhooff/gosim/internal_/reflect".Value has no field or method Seq2)
+text/template/template.go:110:11: in call to maps.Copy, M1 (type FuncMap) does not satisfy gosimruntime.Map[K, V]
+# translated/crypto/subtle
+crypto/subtle/dit.go:61:6: missing function body
+crypto/subtle/dit.go:64:6: missing function body
+# translated/encoding/asn1
+encoding/asn1/marshal.go:459:19: undefined: reflect.TypeAssert
+encoding/asn1/marshal.go:465:19: undefined: reflect.TypeAssert
+encoding/asn1/marshal.go:468:19: undefined: reflect.TypeAssert
+encoding/asn1/marshal.go:471:19: undefined: reflect.TypeAssert
+encoding/asn1/marshal.go:607:20: undefined: reflect.TypeAssert
+encoding/asn1/marshal.go:652:19: undefined: reflect.TypeAssert
+# translated/crypto/internal_/fips140/mlkem
+crypto/internal_/fips140/mlkem/mlkem768.go:492:5: invalid operation: cannot call G (variable of type []byte): []byte is not a function
+crypto/internal_/fips140/mlkem/mlkem768.go:493:3: invalid operation: cannot call G (variable of type []byte): []byte is not a function
