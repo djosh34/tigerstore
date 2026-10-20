@@ -1,0 +1,104 @@
+2026/10/20 07:18:54 ERROR unknown linkname with no body pkg=crypto/internal/fips140deps/time name=monoTime
+2026/10/20 07:18:54 ERROR missing function body pkg=crypto/internal/fips140deps/time name=monoTime
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/cpu name=getisar1
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/cpu name=getpfr0
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/syscall/linux name=Syscall6
+2026/10/20 07:18:54 ERROR unknown linkname with no body pkg=internal/synctest name=Wait
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/synctest name=Wait
+2026/10/20 07:18:54 ERROR unknown linkname with no body pkg=internal/sync name=runtime_SemacquireMutex
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/sync name=runtime_SemacquireMutex
+2026/10/20 07:18:54 ERROR unknown linkname with no body pkg=internal/sync name=runtime_Semrelease
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/sync name=runtime_Semrelease
+2026/10/20 07:18:54 ERROR unknown linkname with no body pkg=internal/sync name=runtime_canSpin
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/sync name=runtime_canSpin
+2026/10/20 07:18:54 ERROR unknown linkname with no body pkg=internal/sync name=runtime_doSpin
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/sync name=runtime_doSpin
+2026/10/20 07:18:54 ERROR unknown linkname with no body pkg=internal/sync name=runtime_nanotime
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/sync name=runtime_nanotime
+2026/10/20 07:18:54 ERROR unknown linkname with no body pkg=internal/sync name=throw
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/sync name=throw
+2026/10/20 07:18:54 ERROR unknown linkname with no body pkg=internal/sync name=fatal
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/sync name=fatal
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Xadd
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Xadd64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Xadduintptr
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Xchg8
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Xchg
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Xchg64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Xchguintptr
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Load
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Load8
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Load64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Loadp
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=LoadAcq
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=LoadAcq64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Or8
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=And8
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=And
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Or
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=And32
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Or32
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=And64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Or64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Anduintptr
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Oruintptr
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Cas64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=CasRel
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Store
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Store8
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Store64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=StorepNoWB
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=StoreRel
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=StoreRel64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Cas
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Casp1
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Casint32
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Casint64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Casuintptr
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Storeint32
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Storeint64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Storeuintptr
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Loaduintptr
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Loaduint
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Loadint32
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Loadint64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Xaddint32
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Xaddint64
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Xchgint32
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=Xchgint64
+2026/10/20 07:18:54 ERROR unknown linkname with no body pkg=internal/runtime/atomic name=storePointer
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=storePointer
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/atomic name=casPointer
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/sys name=EnableDIT
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/sys name=DITEnabled
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/sys name=DisableDIT
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/sys name=GetCallerPC
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/sys name=GetCallerSP
+2026/10/20 07:18:54 ERROR missing function body pkg=internal/runtime/sys name=GetClosurePtr
+2026/10/20 07:18:54 ERROR unknown linkname with no body pkg=crypto/subtle name=setDITEnabled
+2026/10/20 07:18:54 ERROR missing function body pkg=crypto/subtle name=setDITEnabled
+2026/10/20 07:18:54 ERROR unknown linkname with no body pkg=crypto/subtle name=setDITDisabled
+2026/10/20 07:18:54 ERROR missing function body pkg=crypto/subtle name=setDITDisabled
+2026/10/20 07:18:55 ERROR missing function body pkg=syscall name=runtimeClearenv
+2026/10/20 07:18:55 ERROR unknown linkname pkg=internal/syscall/unix name=vgetrandom targetPkg=runtime targetName=vgetrandom
+2026/10/20 07:18:55 ERROR missing function body pkg=internal/syscall/unix name=vgetrandom
+2026/10/20 07:18:55 ERROR self linkname with no body pkg=crypto/internal/fips140 name=fatal
+2026/10/20 07:18:55 ERROR missing function body pkg=crypto/internal/fips140 name=fatal
+2026/10/20 07:18:55 ERROR unknown linkname with no body pkg=crypto/fips140 name=setBypass
+2026/10/20 07:18:55 ERROR missing function body pkg=crypto/fips140 name=setBypass
+2026/10/20 07:18:55 ERROR unknown linkname with no body pkg=crypto/fips140 name=isBypassed
+2026/10/20 07:18:55 ERROR missing function body pkg=crypto/fips140 name=isBypassed
+2026/10/20 07:18:55 ERROR unknown linkname with no body pkg=crypto/fips140 name=unsetBypass
+2026/10/20 07:18:55 ERROR missing function body pkg=crypto/fips140 name=unsetBypass
+2026/10/20 07:18:56 ERROR unknown linkname with no body pkg=crypto/internal/sysrand name=fatal
+2026/10/20 07:18:56 ERROR missing function body pkg=crypto/internal/sysrand name=fatal
+2026/10/20 07:18:56 ERROR unknown linkname pkg=golang.org/x/sys/unix name=runtime_getAuxv targetPkg=runtime targetName=getAuxv
+2026/10/20 07:18:56 ERROR missing function body pkg=golang.org/x/sys/unix name=runtime_getAuxv
+2026/10/20 07:18:56 ERROR unknown linkname pkg=golang.org/x/sys/unix name=vgetrandom targetPkg=runtime targetName=vgetrandom
+2026/10/20 07:18:56 ERROR missing function body pkg=golang.org/x/sys/unix name=vgetrandom
+2026/10/20 07:18:57 ERROR unknown linkname pkg=runtime/debug name=runtime_setCrashFD targetPkg=runtime targetName=setCrashFD
+2026/10/20 07:18:57 ERROR missing function body pkg=runtime/debug name=runtime_setCrashFD
+2026/10/20 07:18:57 ERROR unknown linkname with no body pkg=crypto/rand name=fatal
+2026/10/20 07:18:57 ERROR missing function body pkg=crypto/rand name=fatal
+2026/10/20 07:19:02 ERROR unknown linkname pkg=net/http name=protocolSetHTTP3 targetPkg=golang.org/x/net/internal/http3_test targetName=protocolSetHTTP3
+2026/10/20 07:19:02 ERROR unknown linkname pkg=net/http name=transportFromH1Transport targetPkg=net/http/internal/http2_test targetName=transportFromH1Transport

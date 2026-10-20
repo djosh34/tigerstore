@@ -1,0 +1,11 @@
+seed-1a seed-1b files ['run-001/history.json', 'run-001/trace.txt']
+run-001/history.json bytes 5854139 5854139 equal True sha256 ceeff4adde57fd1adef956e241542c208bb9b6e0f59c6cec72345939b498e83d ceeff4adde57fd1adef956e241542c208bb9b6e0f59c6cec72345939b498e83d
+run-001/trace.txt bytes 25141 25141 equal True sha256 2820157dcf48020e352940e59a2dd002def39ddb74418c14a90e996aa1bf7634 2820157dcf48020e352940e59a2dd002def39ddb74418c14a90e996aa1bf7634
+seed-1a seed-2 files ['run-001/history.json', 'run-001/trace.txt']
+run-001/history.json bytes 5854139 4494061 equal False sha256 ceeff4adde57fd1adef956e241542c208bb9b6e0f59c6cec72345939b498e83d d28a586a850d7ad1ac36eba41cc209aeddd4c2073da804f8ae9621b573c55ae1
+run-001/trace.txt bytes 25141 18896 equal False sha256 2820157dcf48020e352940e59a2dd002def39ddb74418c14a90e996aa1bf7634 6eef68cf174d6e2f8cb713ffb0299c6d15357e7497eeea0dbc6b2e37651e5ea3
+events 1a bytes 1164973770 sha256 b354223b5c2bdb71879543eb1aa5e293b4fabac4450ba5fbd4c97fd40fc34a33
+events 1b bytes 1164973770 sha256 b354223b5c2bdb71879543eb1aa5e293b4fabac4450ba5fbd4c97fd40fc34a33
+events 2 bytes 518984115 sha256 e877dab54c8a445f8b51f1fcabec12d3a19ea4aaf9dda53b2e92df814c2354e0
+events same seed byte-identical True
+events seed 2 differs True

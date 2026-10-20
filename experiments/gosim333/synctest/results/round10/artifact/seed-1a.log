@@ -1,0 +1,16 @@
+=== RUN   TestSeeds (seed 1)
+=== RUN   TestSeeds/1 (seed 1)
+R333_REACHED crypto/internal/fips140.getIndicator
+R333_REACHED crypto/internal/fips140.setIndicator
+R333_REACHED weak.runtime_registerWeakPointer
+R333_REACHED runtime.AddCleanup(no-GC)
+R333_REACHED internal/sync.runtime_canSpin
+R333_REACHED internal/sync.runtime_nanotime
+R333_REACHED internal/sync.runtime_SemacquireMutex
+R333_REACHED internal/sync.runtime_Semrelease
+R333_REACHED weak.runtime_makeStrongFromWeak
+{"time":"2020-01-15T14:11:38.742396074Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestSeeds.func1","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/sim_test.go","line":243},"msg":"{Messages:39051 Dropped:4 Crashes:10 LinkChanges:8 OK:4921 Failed:476 Ambiguous:71 Compactions:44 WatchCompacted:8 Revokes:84 DiskFaults:3 Silences:0 Fenced:0 ColdRestarts:9 Pauses:4 LinkStalls:6 HalfOpens:3 Asymmetric:3 Settles:0 GrayNodes:1 GrayStreams:114 RecoveryCrashes:3 Checkpoints:267 Snapshots:10 ServeFailures:0 SnapshotFlips:0 FetchCrashes:0 SlowFetches:0 Reloads:10 StepCrashes:0 Rots:0 OlderCheckpoints:0 CheckpointsDuringInstall:0 FencedAfterServe:0 ErasedAtRoot:1 ErasedAtRemoval:0 MembershipChanges:[0 0 0 0] MembershipFaults:[0 0 0 0] MembershipAttempts:0}, 3125 committed writes","machine":"main","method":"t.Logf","goroutine":9,"step":1}
+--- PASS: TestSeeds/1 (95.74s simulated)
+{"time":"2020-01-15T14:11:38.742396074Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestSeeds","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/sim_test.go","line":266},"msg":"1 seeds: 0 stalled leaders went silent","machine":"main","method":"t.Logf","goroutine":8,"step":2}
+{"time":"2020-01-15T14:11:38.742396074Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestSeeds","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/sim_test.go","line":267},"msg":"of 1 seeds, the faults took effect in: crash 1, disk fault 1, gray client 1, gray node 1, half-open link 1, link change 1, link stall 1, pause 1, two cold restarts 1","machine":"main","method":"t.Logf","goroutine":8,"step":3}
+--- PASS: TestSeeds (95.74s simulated)

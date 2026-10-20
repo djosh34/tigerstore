@@ -1,0 +1,257 @@
+# shell call 1
+git worktree add /tmp/r333-synctest 1f3ecd0b --detach && cd /tmp/r333-synctest && git switch -c exp/333-synctest && gh auth status && git remote -v
+
+# shell call 2
+curl -IL --max-time 20 -s https://go.dev/dl/go1.27.2.linux-arm64.tar.gz | head -20; gh variable list -R djosh34/tigerstore; ls /tmp/r333-gosim-* 2>/dev/null | head
+
+# shell call 3
+rg -n 'func .*Checkable|logged|func checkers' /tmp/r333-synctest/internal/sim/*.go; rg -n 'checksum|trace' /tmp/r333-gosim-internals/gosimruntime/{testmain.go,checksum.go,runtime.go} | head -35; rg -n 'seeds|flag' /tmp/r333-synctest/internal/node/clean_sim_test.go | head -20; rg -n 'func \(.*\) Cleanup|Cleanup\(' /tmp/r333-gosim-internals/internal/testing/testing.go | head
+
+# shell call 4
+rg -n 'traceflag|simtrace|force-checksum' /tmp/r333-gosim-internals/gosimruntime/*.go; rg -n 'TestConcurrentCleanerSimulation|for .*seed' /tmp/r333-synctest/internal/node/clean_sim_test.go | tail -10; rg -n 'flags|flag\.String' /tmp/r333-gosim-internals/gosimruntime/tracer*
+
+# shell call 5
+cd /tmp/r333-synctest && bash -n experiments/gosim333/run.sh experiments/gosim333/synctest/actions.sh && python3 - <<'PY'
+import ast
+from pathlib import Path
+for p in Path('experiments/gosim333/synctest').glob('*.py'): ast.parse(p.read_text())
+PY
+git add .github/workflows/gosim333-synctest.yml experiments/gosim333/run.sh experiments/gosim333/synctest && git commit -m 'Experiment #333: arm64 Actions synctest adapter and one-seed diagnostic runner' && git push -u origin exp/333-synctest && gh run list -R djosh34/tigerstore --branch exp/333-synctest --limit 3 --json databaseId,headSha,status,url
+
+# shell call 6
+gh run list -R djosh34/tigerstore --branch exp/333-synctest --limit 3 --json databaseId,headSha,status,conclusion,url,createdAt
+
+# shell call 7
+gh run watch 39383505031 -R djosh34/tigerstore --interval 20 --exit-status
+
+# shell call 8
+cd /tmp/r333-synctest && gh run download 39383505031 -R djosh34/tigerstore -D experiments/gosim333/synctest/results/round1 && find experiments/gosim333/synctest/results/round1 -maxdepth 2 -type f && gh run view 39383505031 -R djosh34/tigerstore --log-failed > experiments/gosim333/synctest/results/round1/actions-failed.log
+
+# shell call 9
+cd /tmp/r333-synctest && git add .github/workflows/gosim333-synctest.yml experiments/gosim333/synctest/{actions.sh,fixes.py} && git commit -m 'Experiment #333: distinguish synctest Run function from Bubble.Run method' && git push origin exp/333-synctest && sleep 5 && gh run list -R djosh34/tigerstore --branch exp/333-synctest --limit 2 --json databaseId,headSha,status,url
+
+# shell call 10
+rg -n '^func (.*Goroutine|.*Goid|Get.*|Current.*)' /tmp/r333-gosim-internals/gosimruntime/runtime.go; rg -n 'fipsIndicator|fips140.*Indicator|crypto.*fips|setDITEnabled' /home/joshazimullah.linux/.local/opt/go1.27.2/src/runtime/*.go | head -40; gh run watch 39383773086 -R djosh34/tigerstore --interval 20 --exit-status
+
+# shell call 11
+cd /tmp/r333-synctest && gh run download 39383773086 -R djosh34/tigerstore -D experiments/gosim333/synctest/results/round2 && python3 - <<'PY'
+from pathlib import Path
+p=next(Path('experiments/gosim333/synctest/results/round2').glob('gosim333-*'))
+print((p/'status.tsv').read_text())
+print((p/'seed-1a.log').read_text()[-16000:])
+PY
+
+# shell call 12
+cd /tmp/r333-synctest && git add experiments/gosim333/synctest/fixes.py experiments/gosim333/synctest/gosim/{options333.go,fips333.go} && git commit -m 'Experiment #333: port FIPS indicators to simulated goroutine-local state' && git push origin exp/333-synctest && sleep 5 && gh run list -R djosh34/tigerstore --branch exp/333-synctest --limit 1 --json databaseId,headSha,status,url
+
+# shell call 13
+gh run watch 39384371283 -R djosh34/tigerstore --interval 30 --exit-status
+
+# shell call 14
+cd /tmp/r333-synctest && gh run download 39384371283 -R djosh34/tigerstore -D experiments/gosim333/synctest/results/round3 && python3 - <<'PY'
+from pathlib import Path
+import json
+p=next(Path('experiments/gosim333/synctest/results/round3').glob('gosim333-*'))
+print((p/'status.tsv').read_text())
+for line in (p/'seed-1a.log').read_text().splitlines():
+ if line.startswith('R333_'): print(line)
+ if line.startswith('{'):
+  j=json.loads(line)
+  if 'panic' in j:
+   print(j['panic']); print('\n'.join(j['traceback'][:32]))
+PY
+
+# shell call 15
+head -15 /home/joshazimullah.linux/.local/opt/go1.27.2/src/crypto/internal/fips140/nistec/{p256.go,p256_asm.go}; rg -n '^//go:build' /home/joshazimullah.linux/.local/opt/go1.27.2/src/crypto/internal/fips140/{aes/*,aes/gcm/*,sha256/*,subtle/*} | head -25
+
+# shell call 16
+cd /tmp/r333-synctest && git add experiments/gosim333/run.sh experiments/gosim333/synctest/actions.sh && git commit -m 'Experiment #333: use Go purego crypto after reached p256 assembly stub' && git push origin exp/333-synctest && sleep 5 && gh run list -R djosh34/tigerstore --branch exp/333-synctest --limit 1 --json databaseId,headSha,status,url
+
+# shell call 17
+gh run watch 39384964091 -R djosh34/tigerstore --interval 30 --exit-status
+
+# shell call 18
+cd /tmp/r333-synctest && gh run download 39384964091 -R djosh34/tigerstore -D experiments/gosim333/synctest/results/round4 && python3 - <<'PY'
+from pathlib import Path
+import json
+p=next(Path('experiments/gosim333/synctest/results/round4').glob('gosim333-*'))
+print((p/'status.tsv').read_text())
+for line in (p/'seed-1a.log').read_text().splitlines():
+ if line.startswith('R333_'): print(line)
+ if line.startswith('{'):
+  j=json.loads(line)
+  if 'panic' in j:
+   print(j['panic']); print('\n'.join(j['traceback'][:32]))
+PY
+
+# shell call 19
+cd /tmp/r333-synctest && git add experiments/gosim333/synctest/fixes.py experiments/gosim333/synctest/gosim/weak333.go && git commit -m 'Experiment #333: explicit no-GC strong weak handles for reached key cache' && git push origin exp/333-synctest && sleep 5 && gh run list -R djosh34/tigerstore --branch exp/333-synctest --limit 1 --json databaseId,headSha,status,url
+
+# shell call 20
+gh run watch 39385556714 -R djosh34/tigerstore --interval 30 --exit-status
+
+# shell call 21
+cd /tmp/r333-synctest && gh run download 39385556714 -R djosh34/tigerstore -D experiments/gosim333/synctest/results/round5 && python3 - <<'PY'
+from pathlib import Path
+import json
+p=next(Path('experiments/gosim333/synctest/results/round5').glob('gosim333-*'))
+print((p/'status.tsv').read_text())
+for line in (p/'seed-1a.log').read_text().splitlines():
+ if line.startswith('R333_'): print(line)
+ if line.startswith('{'):
+  j=json.loads(line)
+  if 'panic' in j:
+   print(j['panic']); print('\n'.join(j['traceback'][:34]))
+PY
+
+# shell call 22
+cd /tmp/r333-synctest && git add experiments/gosim333/synctest/fixes.py experiments/gosim333/synctest/gosim/sync333.go && git commit -m 'Experiment #333: route reached internal sync spin decision to gosim' && git push origin exp/333-synctest && sleep 5 && gh run list -R djosh34/tigerstore --branch exp/333-synctest --limit 1 --json databaseId,headSha,status,url
+
+# shell call 23
+gh run watch 39386090601 -R djosh34/tigerstore --interval 30 --exit-status
+
+# shell call 24
+cd /tmp/r333-synctest && gh run download 39386090601 -R djosh34/tigerstore -D experiments/gosim333/synctest/results/round6 && python3 - <<'PY'
+from pathlib import Path
+import json
+p=next(Path('experiments/gosim333/synctest/results/round6').glob('gosim333-*'))
+print((p/'status.tsv').read_text())
+for line in (p/'seed-1a.log').read_text().splitlines():
+ if line.startswith('R333_'): print(line)
+ if line.startswith('{'):
+  j=json.loads(line)
+  if 'panic' in j:
+   print(j['panic']); print('\n'.join(j['traceback'][:34]))
+PY
+
+# shell call 25
+cd /tmp/r333-synctest && git add experiments/gosim333/synctest/{apply.py,fixes.py,gosim/sync333.go} && git commit -m 'Experiment #333: route moved mutex clock and omit bubble monotonic times' && git push origin exp/333-synctest && sleep 5 && gh run list -R djosh34/tigerstore --branch exp/333-synctest --limit 1 --json databaseId,headSha,status,url
+
+# shell call 26
+gh run watch 39386666425 -R djosh34/tigerstore --interval 30 --exit-status
+
+# shell call 27
+cd /tmp/r333-synctest && gh run download 39386666425 -R djosh34/tigerstore -D experiments/gosim333/synctest/results/round7 && python3 - <<'PY'
+from pathlib import Path
+import json
+p=next(Path('experiments/gosim333/synctest/results/round7').glob('gosim333-*'))
+print((p/'status.tsv').read_text())
+for line in (p/'seed-1a.log').read_text().splitlines():
+ if line.startswith('R333_'): print(line)
+ if line.startswith('{'):
+  j=json.loads(line)
+  if 'panic' in j:
+   print(j['panic']); print('\n'.join(j['traceback'][:34]))
+PY
+
+# shell call 28
+cd /tmp/r333-synctest && git add experiments/gosim333/synctest/{fixes.py,gosim/sync333.go} && git commit -m 'Experiment #333: route reached internal sync mutex acquire to gosim semaphore' && git push origin exp/333-synctest && sleep 5 && gh run list -R djosh34/tigerstore --branch exp/333-synctest --limit 1 --json databaseId,headSha,status,url
+
+# shell call 29
+rg -n 'func (runtime_|fips_|InternalSync|Sync_runtime)' /home/joshazimullah.linux/.local/opt/go1.27.2/src/internal/sync/runtime.go /home/joshazimullah.linux/.local/opt/go1.27.2/src/runtime/runtime1.go /tmp/r333-gosim-internals/internal/hooks/go123/sync.go; gh run watch 39387221430 -R djosh34/tigerstore --interval 30 --exit-status
+
+# shell call 30
+cd /tmp/r333-synctest && gh run download 39387221430 -R djosh34/tigerstore -D experiments/gosim333/synctest/results/round8 && python3 - <<'PY'
+from pathlib import Path
+import json
+p=next(Path('experiments/gosim333/synctest/results/round8').glob('gosim333-*'))
+print((p/'status.tsv').read_text())
+for line in (p/'seed-1a.log').read_text().splitlines():
+ if line.startswith('R333_'): print(line)
+ if line.startswith('{'):
+  j=json.loads(line)
+  if 'panic' in j:
+   print(j['panic']); print('\n'.join(j['traceback'][:34]))
+PY
+
+# shell call 31
+cd /tmp/r333-synctest && git add experiments/gosim333/synctest/{fixes.py,gosim/sync333.go} && git commit -m 'Experiment #333: route reached internal sync mutex release to gosim semaphore' && git push origin exp/333-synctest && sleep 5 && gh run list -R djosh34/tigerstore --branch exp/333-synctest --limit 1 --json databaseId,headSha,status,url
+
+# shell call 32
+gh run watch 39387733427 -R djosh34/tigerstore --interval 30 --exit-status
+
+# shell call 33
+cd /tmp/r333-synctest && gh run download 39387733427 -R djosh34/tigerstore -D experiments/gosim333/synctest/results/round9 && python3 - <<'PY'
+from pathlib import Path
+import json
+p=next(Path('experiments/gosim333/synctest/results/round9').glob('gosim333-*'))
+print((p/'status.tsv').read_text())
+for line in (p/'seed-1a.log').read_text().splitlines():
+ if line.startswith('R333_'): print(line)
+ if line.startswith('{'):
+  j=json.loads(line)
+  if 'panic' in j:
+   print(j['panic']); print('\n'.join(j['traceback'][:34]))
+PY
+
+# shell call 34
+cd /tmp/r333-synctest && git add experiments/gosim333/synctest/{fixes.py,gosim/cleanup333.go} && git commit -m 'Experiment #333: pair no-GC weak handles with explicit no-cleanup adapter' && git push origin exp/333-synctest && sleep 5 && gh run list -R djosh34/tigerstore --branch exp/333-synctest --limit 1 --json databaseId,headSha,status,url
+
+# shell call 35
+rg -n 'Memory:|ReadMemStats|runtime/metrics|GOMAXPROCS|NumGoroutine' /tmp/r333-synctest/internal/sim /tmp/r333-synctest/internal/node/clean_sim_test.go; rg -n 'runtime\.' /tmp/r333-synctest/internal/testcert/testcert.go; gh run watch 39388355445 -R djosh34/tigerstore --interval 30 --exit-status
+
+# shell call 36
+gh run view 39388355445 -R djosh34/tigerstore --json status,conclusion,jobs && gh api repos/djosh34/tigerstore/actions/runs/39388355445/artifacts --jq '.artifacts[] | {id,name,size_in_bytes}'
+
+# shell call 37
+gh api -i repos/djosh34/tigerstore/actions/jobs/118513593974/logs | head -15; date -u
+
+# shell call 38
+gh run watch 39388355445 -R djosh34/tigerstore --interval 30 --exit-status
+
+# shell call 39
+gh api repos/djosh34/tigerstore/actions/runs/39388355445/artifacts --jq '.artifacts[] | {id,name,size_in_bytes}'; gh run view 39388355445 -R djosh34/tigerstore --log | tail -40
+
+# shell call 40
+cd /tmp/r333-synctest && mkdir -p experiments/gosim333/synctest/results/round10 && gh run view 39388355445 -R djosh34/tigerstore --log > experiments/gosim333/synctest/results/round10/actions.log && python3 - <<'PY'
+from pathlib import Path
+s=Path('experiments/gosim333/synctest/results/round10/actions.log').read_text()
+for line in s.splitlines():
+ if 'Translate, compile and explore' in line and any(x in line for x in ['COMMAND','seed-1a\t','seed-1b\t','seed-2\t','events-1a\t','events-1b\t','events-2\t','membership\t','cleaner\t','planted\t','byte-identical','sha256','bytes','files [','events seed','uncaught panic','--- PASS: TestSeeds','--- FAIL: TestSeeds']):print(line[:1800])
+PY
+
+# shell call 41
+cd /tmp/r333-synctest && python3 - <<'PY'
+from pathlib import Path
+s=Path('experiments/gosim333/synctest/results/round10/actions.log').read_text()
+for line in s.splitlines():
+ if 'Translate, compile and explore' in line and any(x in line for x in ['TestConcurrentCleanerSimulation','TestGosim333Planted','B01a','caught by seed','--- PASS: TestMembershipFaults']): print(line[:2500])
+PY
+
+# shell call 42
+cd /tmp/r333-synctest && mkdir -p experiments/gosim333/synctest/tools && mv experiments/gosim333/synctest/fetch-small-artifact.py experiments/gosim333/synctest/tools/ && python3 experiments/gosim333/synctest/tools/fetch-small-artifact.py 12249115864 experiments/gosim333/synctest/results/round10/artifact > experiments/gosim333/synctest/results/round10/fetch.log && du -sh experiments/gosim333/synctest/results/round10 && python3 - <<'PY'
+from pathlib import Path
+p=Path('experiments/gosim333/synctest/results/round10/artifact')
+print((p/'status.tsv').read_text());print((p/'comparison.txt').read_text())
+for l in (p/'seed-1a.log').read_text().splitlines():
+ if l.startswith('R333_'):print(l)
+PY
+
+# shell call 43
+cd /tmp/r333-synctest && python3 - <<'PY'
+from pathlib import Path
+import json, os
+base=Path('experiments/gosim333/synctest')
+rows=[]
+for r in sorted((base/'results').glob('round[1-9]'),key=lambda p:int(p.name[5:])):
+ p=next(r.glob('gosim333-*'))
+ f=p/('compile.log' if r.name=='round1' else 'seed-1a.log')
+ if r.name=='round1': rows.append(f'{r.name}: {f.relative_to(base)}:1-3: duplicate Run linkname / missing method body');continue
+ for i,l in enumerate(f.read_text().splitlines(),1):
+  if l.startswith('{'):
+   j=json.loads(l)
+   if 'panic' in j:rows.append(f'{r.name}: {f.relative_to(base)}:{i}: {j["panic"]}');break
+(base/'results/blockers.txt').write_text('\n'.join(rows)+'\n')
+print('\n'.join(rows))
+commands=[];started=False
+for l in open(os.environ['PI_SESSION_FILE']):
+ m=json.loads(l).get('message',{})
+ if m.get('role')=='assistant':
+  for c in m.get('content',[]):
+   if c.get('type')=='toolCall' and c.get('name')=='bash':
+    cmd=c['arguments']['command']
+    if cmd.startswith('git worktree add /tmp/r333-synctest'):started=True
+    if started: commands.append(cmd)
+(base/'commands.log').write_text('\n\n'.join(f'# shell call {i+1}\n{c}' for i,c in enumerate(commands))+'\n')
+PY
+git status --short | head -25; du -sh experiments/gosim333/synctest/results; rg -n 'PASS|caught by seed|R333_REACHED' experiments/gosim333/synctest/results/round10/artifact/{seed-1a.log,membership.log,cleaner.log,planted.log} | tail -25

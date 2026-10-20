@@ -1,0 +1,12 @@
+
+COMMAND prepare bash experiments/gosim333/run.sh prepare 
+
+COMMAND translate bash experiments/gosim333/run.sh translate 
+
+COMMAND compile bash experiments/gosim333/run.sh compile 
+
+COMMAND example bash experiments/gosim333/run.sh example 
+
+COMMAND probe bash experiments/gosim333/run.sh probe 
+
+COMMAND seed-1a flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.v -test.run=\^TestSeeds\$ -seeds=1 -sim.seed=1 -sim.seeds=1 -logformat=raw -r333.output=/home/runner/work/tigerstore/tigerstore/r333-results/seed-1a 

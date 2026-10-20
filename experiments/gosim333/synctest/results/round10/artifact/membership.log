@@ -1,0 +1,15 @@
+=== RUN   TestMembershipFaults (seed 1)
+=== RUN   TestMembershipFaults/1 (seed 1)
+R333_REACHED crypto/internal/fips140.getIndicator
+R333_REACHED crypto/internal/fips140.setIndicator
+R333_REACHED weak.runtime_registerWeakPointer
+R333_REACHED runtime.AddCleanup(no-GC)
+R333_REACHED internal/sync.runtime_canSpin
+R333_REACHED internal/sync.runtime_nanotime
+R333_REACHED internal/sync.runtime_SemacquireMutex
+R333_REACHED internal/sync.runtime_Semrelease
+R333_REACHED weak.runtime_makeStrongFromWeak
+{"time":"2020-01-15T14:12:47.410936465Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestMembershipFaults.func1","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/membership_test.go","line":44},"msg":"{Messages:43745 Dropped:229 Crashes:13 LinkChanges:4 OK:5553 Failed:89 Ambiguous:74 Compactions:36 WatchCompacted:20 Revokes:0 DiskFaults:5 Silences:2 Fenced:0 ColdRestarts:12 Pauses:9 LinkStalls:15 HalfOpens:5 Asymmetric:2 Settles:0 GrayNodes:6 GrayStreams:335 RecoveryCrashes:10 Checkpoints:248 Snapshots:16 ServeFailures:0 SnapshotFlips:2 FetchCrashes:1 SlowFetches:7 Reloads:16 StepCrashes:1 Rots:0 OlderCheckpoints:0 CheckpointsDuringInstall:0 FencedAfterServe:0 ErasedAtRoot:1 ErasedAtRemoval:0 MembershipChanges:[1 1 1 1] MembershipFaults:[0 0 0 0] MembershipAttempts:52}","machine":"main","method":"t.Logf","goroutine":9,"step":1}
+--- PASS: TestMembershipFaults/1 (164.41s simulated)
+{"time":"2020-01-15T14:12:47.410936465Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestMembershipFaults","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/membership_test.go","line":47},"msg":"of 1 seeds, the faults took effect in: cold restart 1, crash 1, disk fault 1, link change 1","machine":"main","method":"t.Logf","goroutine":8,"step":2}
+--- PASS: TestMembershipFaults (164.41s simulated)

@@ -1,0 +1,3 @@
+go version go1.27.2 linux/arm64
+Linux runnervmidgih 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:12:01 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+528d64faf43a7ba7880457bc9da57c78b8ad3f20

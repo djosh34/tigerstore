@@ -1,0 +1,605 @@
+diff --git a/go.mod b/go.mod
+index 2eb2977..bfdef2b 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,6 +1,6 @@
+ module github.com/jellevandenhooff/gosim
+ 
+-go 1.23.2
++go 1.27.2
+ 
+ require (
+ 	github.com/dave/dst v0.27.3
+@@ -17,10 +17,10 @@ require (
+ 	go.etcd.io/etcd/raft/v3 v3.5.17
+ 	go.etcd.io/etcd/server/v3 v3.5.17
+ 	go.uber.org/zap v1.27.0
+-	golang.org/x/mod v0.22.0
+-	golang.org/x/sync v0.9.0
+-	golang.org/x/sys v0.27.0
+-	golang.org/x/tools v0.27.0
++	golang.org/x/mod v0.42.0
++	golang.org/x/sync v0.24.0
++	golang.org/x/sys v0.49.0
++	golang.org/x/tools v0.52.0
+ 	google.golang.org/grpc v1.62.1
+ 	google.golang.org/protobuf v1.33.0
+ 	mvdan.cc/gofumpt v0.7.0
+@@ -105,10 +105,10 @@ require (
+ 	go.opentelemetry.io/otel/trace v1.20.0 // indirect
+ 	go.opentelemetry.io/proto/otlp v1.0.0 // indirect
+ 	go.uber.org/multierr v1.10.0 // indirect
+-	golang.org/x/crypto v0.29.0 // indirect
+-	golang.org/x/net v0.31.0 // indirect
+-	golang.org/x/term v0.26.0 // indirect
+-	golang.org/x/text v0.20.0 // indirect
++	golang.org/x/crypto v0.58.0 // indirect
++	golang.org/x/net v0.61.0 // indirect
++	golang.org/x/term v0.47.0 // indirect
++	golang.org/x/text v0.43.0 // indirect
+ 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba // indirect
+ 	google.golang.org/genproto v0.0.0-20240123012728-ef4313101c80 // indirect
+ 	google.golang.org/genproto/googleapis/api v0.0.0-20240123012728-ef4313101c80 // indirect
+diff --git a/go.sum b/go.sum
+index e456872..7a2a70d 100644
+--- a/go.sum
++++ b/go.sum
+@@ -342,6 +342,8 @@ golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9/go.mod h1:LzIPMQfyMNhhGPh
+ golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d/go.mod h1:IxCIyHEi3zRg3s0A5j5BB6A9Jmi73HwBIUl50j+osU4=
+ golang.org/x/crypto v0.29.0 h1:L5SG1JTTXupVV3n6sUqMTeWbjAyfPwoda2DLX8J8FrQ=
+ golang.org/x/crypto v0.29.0/go.mod h1:+F4F4N5hv6v38hfeYwTdx20oUvLLc+QfrE9Ax9HtgRg=
++golang.org/x/crypto v0.58.0 h1:COkYLr4k7nDI4r6QtMML2AfzeIswWHAJthLS6K/M/54=
++golang.org/x/crypto v0.58.0/go.mod h1:Xh+kl5A+M0gMiWDytH2Hhr5Z7WbNCpv/eB/EFgfSk+w=
+ golang.org/x/exp v0.0.0-20190121172915-509febef88a4/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=
+ golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 h1:2dVuKD2vS7b0QIHQbpyTISPd0LeHDbnYEryqj5Q1ug8=
+ golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56/go.mod h1:M4RDyNAINzryxdtnbRXRL/OHtkFuWGRjvuhBJpk2IlY=
+@@ -352,6 +354,8 @@ golang.org/x/mod v0.2.0/go.mod h1:s0Qsj1ACt9ePp/hMypM3fl4fZqREWJwdYDEqhRiZZUA=
+ golang.org/x/mod v0.3.0/go.mod h1:s0Qsj1ACt9ePp/hMypM3fl4fZqREWJwdYDEqhRiZZUA=
+ golang.org/x/mod v0.22.0 h1:D4nJWe9zXqHOmWqj4VMOJhvzj7bEZg4wEYa759z1pH4=
+ golang.org/x/mod v0.22.0/go.mod h1:6SkKJ3Xj0I0BrPOZoBy3bdMptDDU9oJrpohJ3eWZ1fY=
++golang.org/x/mod v0.42.0 h1:ICeL3t2L30ljSPHHxDnR4fqVcBt/zR2zJAb9juavmQg=
++golang.org/x/mod v0.42.0/go.mod h1:u5fzIrRInkL8MaO1cbRkUHT64v303YIT5KEqpNr7jRs=
+ golang.org/x/net v0.0.0-20180724234803-3673e40ba225/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
+ golang.org/x/net v0.0.0-20180826012351-8a410e7b638d/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
+ golang.org/x/net v0.0.0-20181114220301-adae6a3d119a/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
+@@ -369,6 +373,8 @@ golang.org/x/net v0.0.0-20201202161906-c7110b5ffcbb/go.mod h1:sp8m0HH+o8qH0wwXwY
+ golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2/go.mod h1:9nx3DQGgdP8bBQD5qxJ1jj9UTztislL4KSBs9R2vV5Y=
+ golang.org/x/net v0.31.0 h1:68CPQngjLL0r2AlUKiSxtQFKvzRVbnzLwMUn5SzcLHo=
+ golang.org/x/net v0.31.0/go.mod h1:P4fl1q7dY2hnZFxEk4pPSkDHF+QqjitcnDjUQyMM+pM=
++golang.org/x/net v0.61.0 h1:RR+6j/BTBCrggOLugxa+66R8FvoN6MHlzDlZIbN9YFw=
++golang.org/x/net v0.61.0/go.mod h1:WgDCOTH8iwtB66T4/GfI94AHo/hhdb7Hah9NDseQfiI=
+ golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be/go.mod h1:N/0e6XlmueqKjAGxoOufVs8QHGRruUQn6yWY3a++T0U=
+ golang.org/x/oauth2 v0.0.0-20190226205417-e64efc72b421/go.mod h1:gOpvHmFTYa4IltrdGE7lF6nIHvwfUNPOp7c8zoXwtLw=
+ golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d/go.mod h1:gOpvHmFTYa4IltrdGE7lF6nIHvwfUNPOp7c8zoXwtLw=
+@@ -383,6 +389,8 @@ golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9/go.mod h1:RxMgew5VJxzue5/jJ
+ golang.org/x/sync v0.0.0-20201207232520-09787c993a3a/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+ golang.org/x/sync v0.9.0 h1:fEo0HyrW1GIgZdpbhCRO0PkJajUS5H9IFUztCgEo2jQ=
+ golang.org/x/sync v0.9.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
++golang.org/x/sync v0.24.0 h1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=
++golang.org/x/sync v0.24.0/go.mod h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=
+ golang.org/x/sys v0.0.0-20180830151530-49385e6e1522/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+ golang.org/x/sys v0.0.0-20180905080454-ebe1bf3edb33/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+ golang.org/x/sys v0.0.0-20181116152217-5ac8a444bdc5/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+@@ -405,15 +413,21 @@ golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab/go.mod h1:oPkhp1MJrh7nUepCBc
+ golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.27.0 h1:wBqf8DvsY9Y/2P8gAfPDEYNuS30J4lPHJxXSb/nJZ+s=
+ golang.org/x/sys v0.27.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
++golang.org/x/sys v0.49.0 h1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=
++golang.org/x/sys v0.49.0/go.mod h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=
+ golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
+ golang.org/x/term v0.26.0 h1:WEQa6V3Gja/BhNxg540hBip/kkaYtRg3cxg4oXSw4AU=
+ golang.org/x/term v0.26.0/go.mod h1:Si5m1o57C5nBNQo5z1iq+XDijt21BDBDp2bK0QI8e3E=
++golang.org/x/term v0.47.0 h1:cpyOwQkr2Nzxe2p6KnrTG7Ei2wtzjsuSjhpXXepZ/BM=
++golang.org/x/term v0.47.0/go.mod h1:efAfAuG6RKABvg1ArGebRkvX6LXul14SM67o2e4mUCY=
+ golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
+ golang.org/x/text v0.3.2/go.mod h1:bEr9sfX3Q8Zfm5fL9x+3itogRgK3+ptLWKqgva+5dAk=
+ golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+ golang.org/x/text v0.3.6/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+ golang.org/x/text v0.20.0 h1:gK/Kv2otX8gz+wn7Rmb3vT96ZwuoxnQlY+HlJVj7Qug=
+ golang.org/x/text v0.20.0/go.mod h1:D4IsuqiFMhST5bX19pQ9ikHC2GsaKyk/oF+pn3ducp4=
++golang.org/x/text v0.43.0 h1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=
++golang.org/x/text v0.43.0/go.mod h1:hbSIYA/amXcRXTFSZqh8tWHEoqRvvbKPJ2uz/KU+a+s=
+ golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba h1:O8mE0/t419eoIwhTFpKVkHiTs/Igowgfkj25AcZrtiE=
+ golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba/go.mod h1:tRJNPiyCQ0inRvYxbN9jk5I+vvW/OXSQhTDSoE431IQ=
+ golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+@@ -426,6 +440,8 @@ golang.org/x/tools v0.0.0-20200619180055-7c47624df98f/go.mod h1:EkVYQZoAsY45+roY
+ golang.org/x/tools v0.0.0-20210106214847-113979e3529a/go.mod h1:emZCQorbCU4vsT4fOWvOPXz4eW1wZW4PmDk9uLelYpA=
+ golang.org/x/tools v0.27.0 h1:qEKojBykQkQ4EynWy4S8Weg69NumxKdn40Fce3uc/8o=
+ golang.org/x/tools v0.27.0/go.mod h1:sUi0ZgbwW9ZPAq26Ekut+weQPR5eIM6GQLQ1Yjm1H0Q=
++golang.org/x/tools v0.52.0 h1:ryxg4U63oaUYk7uOLTF37n43f4qgtGvqV4Ioit1BaEs=
++golang.org/x/tools v0.52.0/go.mod h1:ItcP5UNaVGG+Yc4eIYmaFLNJ4soEopkx5Y2d4lcEurs=
+ golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+ golang.org/x/xerrors v0.0.0-20191011141410-1b5146add898/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+ golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+diff --git a/gosimruntime/missing.go b/gosimruntime/missing.go
+new file mode 100644
+index 0000000..2a56297
+--- /dev/null
++++ b/gosimruntime/missing.go
+@@ -0,0 +1,9 @@
++package gosimruntime
++
++// MissingHook constructs all fail-closed porting-stub panic messages.
++// Generated bodies use panic(MissingHook(name)) so the compiler knows they terminate.
++func MissingHook(name string) string { return "gosim: missing hook " + name }
++
++func AddressOf[T any](v T) *T { return &v }
++
++func NativeMapForABI[K comparable, V any]() any { var m map[K]V; return m }
+diff --git a/gosimruntime/options333.go b/gosimruntime/options333.go
+new file mode 100644
+index 0000000..ddb603e
+--- /dev/null
++++ b/gosimruntime/options333.go
+@@ -0,0 +1,31 @@
++package gosimruntime
++
++import (
++ "flag"
++ "fmt"
++ "os"
++ "path/filepath"
++ "strconv"
++)
++
++// Native flag bridge: gosim normally parses flags before translated flag init.
++var tigerSeed333 = flag.Uint64("sim.seed", 1, "tigerstore simulator seed (experiment #333)")
++var tigerSeeds333 = flag.Int("sim.seeds", 1, "tigerstore simulator seed count (experiment #333)")
++var tigerOut333 = flag.String("r333.output", "", "host diagnostic output directory")
++var tigerRecording333 int
++
++func Tigerstore333Options() (string, string) {
++ return strconv.FormatUint(*tigerSeed333, 10), strconv.Itoa(*tigerSeeds333)
++}
++
++// Controlled diagnostic escape: copies immutable serialized results to host files.
++// No host time/randomness/results are fed back to the simulated program.
++func RecordTigerstore333(trace, history string) {
++ if *tigerOut333 == "" { return }
++ tigerRecording333++
++ dir := filepath.Join(*tigerOut333, fmt.Sprintf("run-%03d", tigerRecording333))
++ if err := os.MkdirAll(dir, 0755); err != nil { panic(err) }
++ for _, f := range []struct{name, data string}{{"trace.txt",trace},{"history.json",history}} {
++  if err := os.WriteFile(filepath.Join(dir,f.name), []byte(f.data), 0644); err != nil { panic(err) }
++ }
++}
+diff --git a/internal/hooks/go123/port127.go b/internal/hooks/go123/port127.go
+new file mode 100644
+index 0000000..038a6df
+--- /dev/null
++++ b/internal/hooks/go123/port127.go
+@@ -0,0 +1,36 @@
++package go123
++
++import (
++ "context"
++ "runtime/pprof" //gosim:notranslate
++ "github.com/jellevandenhooff/gosim/gosimruntime"
++)
++
++// Diagnostic only: no synctest bubble exists until internal/synctest is ported.
++func Time_runtimeIsBubbled() bool { return synctest333Active }
++func InternalSynctest_IsInBubble() bool { return synctest333Active }
++func Sync_runtime_SemacquireWaitGroup(s *uint32, durable bool) {
++ // Experiment: durable waits use the same gosim semaphore; no bubble idle accounting.
++ Sync_runtime_Semacquire(s)
++}
++
++func Time_runtimeNow() (int64, int32, int64) { return Time_now() }
++
++func CryptoInternalConstanttime_boolToUint8(b bool) uint8 { if b { return 1 }; return 0 }
++
++func InternalSync_runtime_rand() uint64 { return gosimruntime.Fastrand64() }
++
++func InternalRuntimeAtomic_LoadAcquintptr(ptr *uintptr) uintptr {
++ return Sync_runtime_LoadAcquintptr(ptr)
++}
++
++func InternalRuntimeAtomic_StoreReluintptr(ptr *uintptr, value uintptr) {
++ Sync_runtime_StoreReluintptr(ptr, value)
++}
++
++func PprofWithLabels(ctx context.Context, labels pprof.LabelSet) context.Context {
++ panic(gosimruntime.MissingHook("runtime/pprof.WithLabels"))
++}
++func PprofSetGoroutineLabels(ctx context.Context) {
++ panic(gosimruntime.MissingHook("runtime/pprof.SetGoroutineLabels"))
++}
+diff --git a/internal/hooks/go123/synctest333.go b/internal/hooks/go123/synctest333.go
+new file mode 100644
+index 0000000..f75255d
+--- /dev/null
++++ b/internal/hooks/go123/synctest333.go
+@@ -0,0 +1,36 @@
++package go123
++
++import (
++ "unsafe"
++ "github.com/jellevandenhooff/gosim/internal/testing"
++)
++
++// EXPERIMENT ONLY: one machine-wide bubble, using gosim's already virtual clock.
++// NOT Go synctest semantics: no per-goroutine membership, nested-bubble rejection,
++// bubble lifetime join, durable-block detection, acquire/release liveness, isolated
++// clocks, foreign-bubble detection, or special testing.T cleanup/context rules.
++// Wait remains the generated missing-hook panic. Run may return with goroutines
++// alive. This adapter only exposes deeper hooks; it is not a replay correctness port.
++var synctest333Active bool
++var synctest333Associations = map[unsafe.Pointer]bool{}
++
++func InternalSynctest_Run(f func()) {
++ old := synctest333Active
++ synctest333Active = true
++ defer func() { synctest333Active = old }()
++ f()
++}
++func InternalSynctest_inBubble(_ any, f func()) { InternalSynctest_Run(f) }
++func InternalSynctest_associate(p unsafe.Pointer) int {
++ if !synctest333Active { return 0 }
++ synctest333Associations[p] = true
++ return 1 // internal/synctest.CurrentBubble
++}
++func InternalSynctest_isAssociated(p unsafe.Pointer) bool { return synctest333Active && synctest333Associations[p] }
++func InternalSynctest_disassociate(p unsafe.Pointer) { delete(synctest333Associations, p) }
++func InternalSynctest_acquire() any { if synctest333Active { return 1 }; return nil }
++func InternalSynctest_release(any) {} // no bubble liveness counter
++func TestingSynctest_testingSynctestTest(t *testing.T, f func(*testing.T)) bool {
++ f(t)
++ return !t.Failed()
++}
+diff --git a/internal/reflect/port127.go b/internal/reflect/port127.go
+new file mode 100644
+index 0000000..8792105
+--- /dev/null
++++ b/internal/reflect/port127.go
+@@ -0,0 +1,12 @@
++package reflect
++
++import (
++ "iter"
++ "github.com/jellevandenhooff/gosim/gosimruntime"
++)
++
++func TypeAssert[T any](v Value) (T, bool) { x, ok := v.Interface().(T); return x, ok }
++
++// Fail closed until reflected iteration is ported (especially translated maps).
++func (v Value) Seq() iter.Seq[Value] { panic(gosimruntime.MissingHook("reflect.Value.Seq")) }
++func (v Value) Seq2() iter.Seq2[Value, Value] { panic(gosimruntime.MissingHook("reflect.Value.Seq2")) }
+diff --git a/internal/reflect/type.go b/internal/reflect/type.go
+index 2aab673..be36a28 100644
+--- a/internal/reflect/type.go
++++ b/internal/reflect/type.go
+@@ -55,8 +55,8 @@ type Type interface {
+ 	OverflowFloat(x float64) bool
+ 	OverflowInt(x int64) bool
+ 	OverflowUint(x uint64) bool
+-	// CanSeq() bool
+-	// CanSeq2() bool
++	CanSeq() bool
++	CanSeq2() bool
+ 	isType()
+ 	// common() *abi.Type
+ 	// uncommon() *uncommonType
+@@ -106,6 +106,9 @@ func wrapType(typ reflect.Type) Type {
+ 
+ var _ Type = &typeImpl{}
+ 
++func (t *typeImpl) CanSeq() bool { return t.kind == wrappedMap || t.inner.CanSeq() }
++func (t *typeImpl) CanSeq2() bool { return t.kind == wrappedMap || t.inner.CanSeq2() }
++
+ func (t *typeImpl) Align() int {
+ 	return t.inner.Align()
+ }
+diff --git a/internal/testing/options333.go b/internal/testing/options333.go
+new file mode 100644
+index 0000000..af14c95
+--- /dev/null
++++ b/internal/testing/options333.go
+@@ -0,0 +1,10 @@
++package testing
++import (
++ "flag"
++ "github.com/jellevandenhooff/gosim/gosimruntime"
++)
++func applyTigerstore333Options() {
++ seed, seeds := gosimruntime.Tigerstore333Options()
++ if flag.Lookup("sim.seed") != nil { if err := flag.Set("sim.seed", seed); err != nil { panic(err) } }
++ if flag.Lookup("sim.seeds") != nil { if err := flag.Set("sim.seeds", seeds); err != nil { panic(err) } }
++}
+diff --git a/internal/testing/testing.go b/internal/testing/testing.go
+index c99ad34..6094089 100644
+--- a/internal/testing/testing.go
++++ b/internal/testing/testing.go
+@@ -256,6 +256,8 @@ type T struct {
+ 	context *testContext
+ }
+ 
++func (t *T) Context() context.Context { panic(gosimruntime.MissingHook("testing.T.Context")) }
++
+ func (t *T) report() {
+ 	if t.parent == nil {
+ 		return
+@@ -1006,6 +1008,7 @@ func runTests(match string, skip string, tests []InternalTest) (ran, ok bool) {
+ }
+ 
+ func Entrypoint(match string, skip string, tests []gosimruntime.Test) bool {
++ applyTigerstore333Options()
+ 	var parsedTests []InternalTest
+ 	for _, test := range tests {
+ 		parsedTests = append(parsedTests, InternalTest{
+diff --git a/internal/translate/globals.go b/internal/translate/globals.go
+index 268b65f..493074c 100644
+--- a/internal/translate/globals.go
++++ b/internal/translate/globals.go
+@@ -222,7 +222,7 @@ func makeDetgoGlobalsFile(t *packageTranslator, pkgName string, forTest bool) (*
+ 	// anonymous members. That might make the source of the globals a nice
+ 	// implementation detail.
+ 
+-	funcName := "G"
++	funcName := "GosimGlobals"
+ 	typName := "Globals"
+ 	varName := "globals"
+ 	initFuncName := "initializers"
+@@ -257,6 +257,12 @@ func makeDetgoGlobalsFile(t *packageTranslator, pkgName string, forTest bool) (*
+ 			}
+ 		}
+ 
++		if t.dstMap.Nodes[initializer.Rhs] == nil {
++			if forTest { // Base files were filtered out of this same-package test variant.
++				continue
++			}
++			panic(fmt.Sprintf("missing initializer AST: pkg=%s lhs=%v rhs=%#v", t.pkgPath, initializer.Lhs, initializer.Rhs))
++		}
+ 		rhs := t.apply(t.dstMap.Nodes[initializer.Rhs]).(dst.Expr) // hmm
+ 
+ 		if shouldShare {
+diff --git a/internal/translate/globals_analysis.go b/internal/translate/globals_analysis.go
+index 9581c83..31f85ef 100644
+--- a/internal/translate/globals_analysis.go
++++ b/internal/translate/globals_analysis.go
+@@ -41,6 +41,7 @@ func collectGlobalsAndTests(files []*dst.File, astMap decorator.AstMap, pkgPath
+ }
+ 
+ var globalsDontTranslateGo123 = map[packageSelector]bool{
++	{Pkg: "google.golang.org/protobuf/internal/editiondefaults", Selector: "Defaults"}: true,
+ 	{Pkg: "crypto/sha512", Selector: "_K"}: true,
+ 	// {pkg: "sync/atomic", selector: "firstStoreInProgress"}: true, // no way... universe strikes once again
+ 	{Pkg: "encoding/json", Selector: "fieldCache"}:   true,
+diff --git a/internal/translate/hooks_go123.go b/internal/translate/hooks_go123.go
+index cb2ce1d..8ebc0e3 100644
+--- a/internal/translate/hooks_go123.go
++++ b/internal/translate/hooks_go123.go
+@@ -1,6 +1,22 @@
+ package translate
+ 
+ var hooksGo123 = map[packageSelector]packageSelector{
++	{Pkg: "internal/synctest", Selector: "Run"}: {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "associate"}: {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "disassociate"}: {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "isAssociated"}: {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "acquire"}: {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "release"}: {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "inBubble"}: {Pkg: hooksGo123Package},
++	{Pkg: "testing/synctest", Selector: "testingSynctestTest"}: {Pkg: hooksGo123Package},
++	{Pkg: "sync", Selector: "runtime_SemacquireWaitGroup"}: {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "IsInBubble"}: {Pkg: hooksGo123Package},
++	{Pkg: "time", Selector: "runtimeNow"}: {Pkg: hooksGo123Package},
++	{Pkg: "time", Selector: "runtimeIsBubbled"}: {Pkg: hooksGo123Package},
++	{Pkg: "crypto/internal/constanttime", Selector: "boolToUint8"}: {Pkg: hooksGo123Package},
++	{Pkg: "internal/sync", Selector: "runtime_rand"}: {Pkg: hooksGo123Package},
++	{Pkg: "internal/runtime/atomic", Selector: "LoadAcquintptr"}: {Pkg: hooksGo123Package},
++	{Pkg: "internal/runtime/atomic", Selector: "StoreReluintptr"}: {Pkg: hooksGo123Package},
+ 	{Pkg: "golang.org/x/sys/unix", Selector: "RawSyscall"}:        {Pkg: hooksGo123Package},
+ 	{Pkg: "golang.org/x/sys/unix", Selector: "RawSyscall6"}:       {Pkg: hooksGo123Package},
+ 	{Pkg: "golang.org/x/sys/unix", Selector: "RawSyscallNoError"}: {Pkg: hooksGo123Package},
+diff --git a/internal/translate/main.go b/internal/translate/main.go
+index 9a8bac0..f75dca5 100644
+--- a/internal/translate/main.go
++++ b/internal/translate/main.go
+@@ -80,6 +80,7 @@ var keepAsmPackagesGo123 = map[string]bool{
+ }
+ 
+ var PublicExportHacks = map[string][]string{
++	"encoding/json/jsontext": {"export"},
+ 	"encoding/binary":                  {"littleEndian"},
+ 	"internal/poll":                    {"errNetClosing"},
+ 	"github.com/golang/protobuf/proto": {"enumsByName"},
+@@ -87,6 +88,8 @@ var PublicExportHacks = map[string][]string{
+ 
+ // XXX: replace the package instead
+ var replacements = map[packageSelector]packageSelector{
++	{Pkg: "runtime/pprof", Selector: "WithLabels"}: {Pkg: "translated/" + "github.com/jellevandenhooff/gosim/internal_/hooks/go123", Selector: "PprofWithLabels"},
++	{Pkg: "runtime/pprof", Selector: "SetGoroutineLabels"}: {Pkg: "translated/" + "github.com/jellevandenhooff/gosim/internal_/hooks/go123", Selector: "PprofSetGoroutineLabels"},
+ 	{Pkg: "runtime", Selector: "SetFinalizer"}: {Pkg: gosimruntimePackage, Selector: "SetFinalizer"},
+ 	{Pkg: "runtime", Selector: "GOOS"}:         {Pkg: gosimruntimePackage, Selector: "GOOS"},
+ 	{Pkg: "runtime", Selector: "Gosched"}:      {Pkg: gosimruntimePackage, Selector: "Yield"},
+@@ -127,6 +130,7 @@ func loadPackages(patterns []string, b gosimtool.BuildConfig, mode packages.Load
+ 	// apply build config to packages config
+ 	// TODO: build tags plan (rename files, force GOOS and GOARCH)
+ 	tags := []string{"sim"}
++	if extra := os.Getenv("GOSIM333_TAGS"); extra != "" { tags = append(tags, strings.Split(extra, ",")...) }
+ 	if b.Race {
+ 		tags = append(tags, "race")
+ 	}
+diff --git a/internal/translate/map.go b/internal/translate/map.go
+index 8643671..3af989c 100644
+--- a/internal/translate/map.go
++++ b/internal/translate/map.go
+@@ -179,6 +179,14 @@ func (t *packageTranslator) rewriteMapNil(c *dstutil.Cursor) {
+ }
+ 
+ func (t *packageTranslator) rewriteMapLiteral(c *dstutil.Cursor) {
++	if unary, ok := c.Node().(*dst.UnaryExpr); ok && unary.Op == token.AND {
++		if lit, ok := unary.X.(*dst.CompositeLit); ok {
++			if _, ok := t.isMapType(lit); ok {
++				c.Replace(&dst.CallExpr{Fun: t.newRuntimeSelector("AddressOf"), Args: []dst.Expr{t.apply(lit).(dst.Expr)}})
++				return
++			}
++		}
++	}
+ 	// map literal
+ 	compositeLit, ok := c.Node().(*dst.CompositeLit)
+ 	if !ok {
+diff --git a/internal/translate/rewrites.go b/internal/translate/rewrites.go
+index 248c742..5aee9bc 100644
+--- a/internal/translate/rewrites.go
++++ b/internal/translate/rewrites.go
+@@ -4,7 +4,6 @@ import (
+ 	"fmt"
+ 	"go/token"
+ 	"log/slog"
+-	"os"
+ 	"regexp"
+ 	"slices"
+ 	"strconv"
+@@ -75,6 +74,12 @@ func (t *packageTranslator) rewriteIdentImpl(ident *dst.Ident) {
+ 		}
+ 	*/
+ 
++	if info := t.globalInfo.ByPackage[lookupPath]; info != nil {
++		if name, ok := info.Rewritten[ident.Name]; ok {
++			ident.Name = name
++		}
++	}
++
+ 	// rewrite specific selectors
+ 	selector := packageSelector{Pkg: ident.Path, Selector: ident.Name}
+ 	replacement, ok := replacements[selector]
+@@ -111,12 +116,30 @@ func (t *packageTranslator) rewriteIdentImpl(ident *dst.Ident) {
+ }
+ 
+ func (t *packageTranslator) rewriteIdent(c *dstutil.Cursor) {
++	// HashTrieMap asks ABI metadata about a native map, not gosim's struct wrapper.
++	if decl, ok := c.Node().(*dst.ValueSpec); ok && t.pkgPath == "internal/sync" && len(decl.Names) == 1 && decl.Names[0].Name == "m" {
++		if typ, ok := decl.Type.(*dst.MapType); ok {
++			decl.Type = nil
++			decl.Values = []dst.Expr{&dst.CallExpr{Fun: &dst.IndexListExpr{X: t.newRuntimeSelector("NativeMapForABI"), Indices: []dst.Expr{typ.Key, typ.Value}}}}
++		}
++	}
++	// Go's maps.Copy accepts named maps through ~map; translated constraint is exact Map.
++	if call, ok := c.Node().(*dst.CallExpr); ok {
++		if id, ok := call.Fun.(*dst.Ident); ok && id.Path == "maps" && (id.Name == "Copy" || id.Name == "Keys" || id.Name == "Values" || id.Name == "All" || id.Name == "Insert" || id.Name == "Equal" || id.Name == "EqualFunc" || id.Name == "DeleteFunc") {
++			for i, arg := range call.Args {
++				if typ, ok := t.isMapType(arg); ok && typ.Named != typ.Type {
++					call.Args[i] = &dst.CallExpr{Fun: t.newRuntimeSelector("ExtractMap"), Args: []dst.Expr{arg}}
++				}
++			}
++		}
++	}
+ 	if ident, ok := c.Node().(*dst.Ident); ok {
+ 		t.rewriteIdentImpl(ident)
+ 	}
+ }
+ 
+ func (t *packageTranslator) rewriteStdlibEmptyAndLinkname(c *dstutil.Cursor) {
++ if d, ok := c.Node().(*dst.FuncDecl); ok && t.pkgPath == "internal/synctest" && d.Recv != nil { return }
+ 	node := c.Node()
+ 
+ 	decl, ok := node.(*dst.FuncDecl)
+@@ -128,6 +151,7 @@ func (t *packageTranslator) rewriteStdlibEmptyAndLinkname(c *dstutil.Cursor) {
+ 	// XXX: this wrongly assumes a linkname is going to be part of a FuncDecl's Decs; they can be anywhere in the code
+ 
+ 	hasLinkname := false
++	unknownLinkname := false
+ 	for i, val := range decl.Decs.Start {
+ 		if val == "//go:uintptrkeepalive" {
+ 			decl.Decs.Start[i] = "//go:uintptrescapes" // uintptrkeepalive is only allowed in standard library...
+@@ -144,9 +168,16 @@ func (t *packageTranslator) rewriteStdlibEmptyAndLinkname(c *dstutil.Cursor) {
+ 
+ 			parts := strings.Split(val, " ")
+ 
++			if len(parts) == 2 && decl.Body == nil && t.pkgPath == "crypto/internal/fips140hash" && decl.Name.Name == "sha3Unwrap" {
++				// Supplied by translated crypto/sha3.fips140hash_sha3Unwrap, not the host runtime.
++				continue
++			}
+ 			if len(parts) == 2 && decl.Body == nil {
+ 				// TODO: make this fail the build?
+ 				slog.Error("unknown linkname with no body", "pkg", t.pkgPath, "name", decl.Name.Name)
++				decl.Decs.Start[i] = "// gosim stubbed: " + val
++				hasLinkname = false
++				unknownLinkname = true
+ 			}
+ 
+ 			if len(parts) == 3 {
+@@ -156,7 +187,12 @@ func (t *packageTranslator) rewriteStdlibEmptyAndLinkname(c *dstutil.Cursor) {
+ 				if idx2 != -1 {
+ 					idx := idx1 + idx2
+ 					pkg, name := dest[:idx], dest[idx+1:]
+-					if newPkg, ok := t.replacedPkgs[pkg]; ok {
++					if decl.Body == nil && pkg == t.pkgPath && name == decl.Name.Name {
++						slog.Error("self linkname with no body", "pkg", t.pkgPath, "name", decl.Name.Name)
++						decl.Decs.Start[i] = "// gosim stubbed: " + val
++						hasLinkname = false
++						unknownLinkname = true
++					} else if newPkg, ok := t.replacedPkgs[pkg]; ok {
+ 						slog.Debug("rewriting linkname", "pkg", t.pkgPath, "name", decl.Name.Name)
+ 
+ 						parts[2] = fmt.Sprintf("%s.%s", newPkg, name)
+@@ -169,6 +205,9 @@ func (t *packageTranslator) rewriteStdlibEmptyAndLinkname(c *dstutil.Cursor) {
+ 					} else {
+ 						// TODO: make this fail the build?
+ 						slog.Error("unknown linkname", "pkg", t.pkgPath, "name", decl.Name.Name, "targetPkg", pkg, "targetName", name)
++						decl.Decs.Start[i] = "// gosim stubbed: " + val
++						hasLinkname = false
++						unknownLinkname = true
+ 					}
+ 				}
+ 			}
+@@ -212,11 +251,16 @@ func (t *packageTranslator) rewriteStdlibEmptyAndLinkname(c *dstutil.Cursor) {
+ 				decl.Name.Name))
+ 			t.needsUnsafe = true
+ 
+-		} else if t.keepAsmPkgs[t.pkgPath] {
++		} else if t.keepAsmPkgs[t.pkgPath] && !unknownLinkname {
+ 			slog.Debug("keeping asm header", "pkg", t.pkgPath, "name", decl.Name.Name)
+ 		} else {
+ 			slog.Error("missing function body", "pkg", t.pkgPath, "name", decl.Name.Name)
+-			os.Exit(1)
++			decl.Body = &dst.BlockStmt{List: []dst.Stmt{&dst.ExprStmt{X: &dst.CallExpr{
++				Fun: dst.NewIdent("panic"),
++				Args: []dst.Expr{&dst.CallExpr{Fun: t.newRuntimeSelector("MissingHook"), Args: []dst.Expr{
++					&dst.BasicLit{Kind: token.STRING, Value: strconv.Quote(t.pkgPath + "." + decl.Name.Name)},
++				}}},
++			}}}}
+ 		}
+ 	}
+ 
+diff --git a/internal/translate/translate.go b/internal/translate/translate.go
+index 6d15ee4..b870220 100644
+--- a/internal/translate/translate.go
++++ b/internal/translate/translate.go
+@@ -51,6 +51,7 @@ func (gi *GlobalInfo) merge(pkg string, globals *PackageGlobalInfo) {
+ 	if existing, ok := gi.ByPackage[pkg]; ok {
+ 		maps.Copy(existing.Container, globals.Container)
+ 		maps.Copy(existing.Rewritten, globals.Rewritten)
++		maps.Copy(existing.ShouldShare, globals.ShouldShare)
+ 	} else {
+ 		gi.ByPackage[pkg] = &PackageGlobalInfo{
+ 			Container:   maps.Clone(globals.Container),
+@@ -245,8 +246,8 @@ func translatePackage(args *translatePackageArgs) *TranslatePackageResult {
+ 
+ 	globalField := map[packageKind]string{
+ 		// TODO: share these constants with the global file code
+-		PackageKindBase:    "G",
+-		PackageKindTests:   "G",
++		PackageKindBase:    "GosimGlobals",
++		PackageKindTests:   "GosimGlobals",
+ 		PackageKindForTest: "GForTest",
+ 	}[kind]
+ 	for _, global := range globals.globalsFields {
+@@ -382,6 +383,15 @@ func translatePackage(args *translatePackageArgs) *TranslatePackageResult {
+ 		}
+ 	}
+ 
++	// Narrow experiment workaround: preserve protobuf's immutable embedded defaults.
++	if kind == PackageKindBase && args.pkg.PkgPath == "google.golang.org/protobuf/internal/editiondefaults" {
++		name := "editions_defaults.binpb"
++		data, err := os.ReadFile(filepath.Join(filepath.Dir(args.pkg.GoFiles[0]), name))
++		if err != nil { log.Fatal(err) }
++		file := fmt.Sprintf("package editiondefaults\nfunc init() { Defaults = []byte(%s) }\n", strconv.Quote(string(data)))
++		if err := writer.stage(pathForFile(outputPackage, "gosim_embed.go"), []byte(file)); err != nil { log.Fatal(err) }
++	}
++
+ 	// write a gosimaliashack.go file if needed
+ 	if kind == PackageKindBase {
+ 		// XXX: compute these automatically?

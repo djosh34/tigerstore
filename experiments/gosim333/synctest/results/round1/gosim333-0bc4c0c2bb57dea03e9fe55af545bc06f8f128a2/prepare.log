@@ -1,0 +1,24 @@
+Cloning into '/tmp/r333-gosim-synctest'...
+Note: switching to 'ffd3a613542675755e4cbf8186b5edaf404ed95c'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+HEAD is now at ffd3a61 README: show off -simtrace=syscall
+go: downloading golang.org/x/tools v0.52.0
+go: downloading golang.org/x/mod v0.42.0
+go: downloading github.com/dave/dst v0.27.3
+go: downloading golang.org/x/sync v0.24.0
+go: downloading github.com/mattn/go-sqlite3 v1.14.24

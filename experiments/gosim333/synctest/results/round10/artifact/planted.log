@@ -1,0 +1,16 @@
+=== RUN   TestGosim333Planted (seed 1)
+=== RUN   TestGosim333Planted/1 (seed 1)
+R333_REACHED crypto/internal/fips140.getIndicator
+R333_REACHED crypto/internal/fips140.setIndicator
+R333_REACHED weak.runtime_registerWeakPointer
+R333_REACHED runtime.AddCleanup(no-GC)
+R333_REACHED internal/sync.runtime_canSpin
+R333_REACHED internal/sync.runtime_nanotime
+R333_REACHED internal/sync.runtime_SemacquireMutex
+R333_REACHED internal/sync.runtime_Semrelease
+R333_REACHED weak.runtime_makeStrongFromWeak
+{"time":"2020-01-15T14:10:43.080143782Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.witnessCatches","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/planted_test.go","line":118},"msg":"the witness checker (log): witness check (log) of 7597 operations: op 56 (client 2, 5221681032 to 5222047401) range {\"key\":\"k0\"} with answer {\"revision\":1,\"range\":{\"count\":0}} has no state that real time allows: its revision's states are 0 to 0, real time allows 5 to 0","machine":"main","method":"t.Logf","goroutine":9,"step":1}
+{"time":"2020-01-15T14:10:43.080143782Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.witnessCatches","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/planted_test.go","line":118},"msg":"the witness checker (revisions): witness check (revisions) of 7597 operations: op 56 (client 2, 5221681032 to 5222047401) range {\"key\":\"k0\"} with answer {\"revision\":1,\"range\":{\"count\":0}} has no state that real time allows: its revision's states are 0 to 0, real time allows 5 to 0","machine":"main","method":"t.Logf","goroutine":9,"step":2}
+{"time":"2020-01-15T14:10:43.080143782Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestPlanted.func2","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/planted_test.go","line":161},"msg":"B01a (linearizable reads are served without ReadIndex) caught by seed 1: seed 1: client 2 call at 5221 ms got revision 1, but client 1's call returned revision 6 at 5220 ms, before it started","machine":"main","method":"t.Logf","goroutine":9,"step":3}
+--- PASS: TestGosim333Planted/1 (40.08s simulated)
+--- PASS: TestGosim333Planted (40.08s simulated)

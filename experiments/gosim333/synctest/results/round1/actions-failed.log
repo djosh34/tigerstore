@@ -1,0 +1,182 @@
+probe	Translate, compile and explore one seed	﻿2026-10-20T06:58:23.5276742Z ##[group]Run bash experiments/gosim333/synctest/actions.sh
+probe	Translate, compile and explore one seed	2026-10-20T06:58:23.5277779Z ^[[36;1mbash experiments/gosim333/synctest/actions.sh^[[0m
+probe	Translate, compile and explore one seed	2026-10-20T06:58:23.5385140Z shell: /usr/bin/bash -e {0}
+probe	Translate, compile and explore one seed	2026-10-20T06:58:23.5385606Z ##[endgroup]
+probe	Translate, compile and explore one seed	2026-10-20T06:58:23.5574225Z 
+probe	Translate, compile and explore one seed	2026-10-20T06:58:23.5596433Z COMMAND prepare bash experiments/gosim333/run.sh prepare 
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6630982Z prepare	0
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6649724Z Cloning into '/tmp/r333-gosim-synctest'...
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6651835Z Note: switching to 'ffd3a613542675755e4cbf8186b5edaf404ed95c'.
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6677160Z 
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6687158Z You are in 'detached HEAD' state. You can look around, make experimental
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6688009Z changes and commit them, and you can discard any commits you make in this
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6688700Z state without impacting any branches by switching back to a branch.
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6689633Z 
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6690052Z If you want to create a new branch to retain commits you create, you may
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6690836Z do so (now or later) by using -c with the switch command. Example:
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6691426Z 
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6691615Z   git switch -c <new-branch-name>
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6693809Z 
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6694206Z Or undo this operation with:
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6694380Z 
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6694593Z   git switch -
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6694731Z 
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6695030Z Turn off this advice by setting config variable advice.detachedHead to false
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6695369Z 
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6695532Z HEAD is now at ffd3a61 README: show off -simtrace=syscall
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6696194Z go: downloading golang.org/x/tools v0.52.0
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6696556Z go: downloading golang.org/x/mod v0.42.0
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6696983Z go: downloading github.com/dave/dst v0.27.3
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6697370Z go: downloading golang.org/x/sync v0.24.0
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6697738Z go: downloading github.com/mattn/go-sqlite3 v1.14.24
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6698034Z 
+probe	Translate, compile and explore one seed	2026-10-20T06:59:16.6698328Z COMMAND translate bash experiments/gosim333/run.sh translate 
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8785252Z translate	0
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8794016Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=crypto/internal/fips140deps/time name=monoTime
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8794909Z 2026/10/20 06:59:34 ERROR missing function body pkg=crypto/internal/fips140deps/time name=monoTime
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8795686Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/cpu name=getisar1
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8796407Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/cpu name=getpfr0
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8797086Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/syscall/linux name=Syscall6
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8797739Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/sys name=EnableDIT
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8798527Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/sys name=DITEnabled
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8799116Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/sys name=DisableDIT
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8799820Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/sys name=GetCallerPC
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8800515Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/sys name=GetCallerSP
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8801146Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/sys name=GetClosurePtr
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8801783Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=internal/synctest name=Wait
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8802331Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/synctest name=Wait
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8802969Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=weak name=runtime_registerWeakPointer
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8803579Z 2026/10/20 06:59:34 ERROR missing function body pkg=weak name=runtime_registerWeakPointer
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8804276Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=weak name=runtime_makeStrongFromWeak
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8805499Z 2026/10/20 06:59:34 ERROR missing function body pkg=weak name=runtime_makeStrongFromWeak
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8806336Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=internal/sync name=runtime_SemacquireMutex
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8807063Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/sync name=runtime_SemacquireMutex
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8807710Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=internal/sync name=runtime_Semrelease
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8808354Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/sync name=runtime_Semrelease
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8809006Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=internal/sync name=runtime_canSpin
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8809619Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/sync name=runtime_canSpin
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8810264Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=internal/sync name=runtime_doSpin
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8810858Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/sync name=runtime_doSpin
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8811480Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=internal/sync name=runtime_nanotime
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8812129Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/sync name=runtime_nanotime
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8812700Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=internal/sync name=throw
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8813288Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/sync name=throw
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8813858Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=internal/sync name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8814392Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/sync name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8814975Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Xadd
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8815541Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Xadd64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8826897Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Xadduintptr
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8827648Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Xchg8
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8828222Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Xchg
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8828839Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Xchg64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8829433Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Xchguintptr
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8830064Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Load
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8830664Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Load8
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8831225Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Load64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8831818Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Loadp
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8832414Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=LoadAcq
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8833029Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=LoadAcq64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8833633Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Or8
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8834195Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=And8
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8834810Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=And
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8835351Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Or
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8836227Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=And32
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8836856Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Or32
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8837410Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=And64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8838417Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Or64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8839001Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Anduintptr
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8839633Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Oruintptr
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8840280Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Cas64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8840863Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=CasRel
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8841462Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Store
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8842024Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Store8
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8842606Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Store64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8843242Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=StorepNoWB
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8843858Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=StoreRel
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8844502Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=StoreRel64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8845103Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Cas
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8845719Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Casp1
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8846738Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Casint32
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8847464Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Casint64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8848105Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Casuintptr
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8848738Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Storeint32
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8849352Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Storeint64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8850042Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Storeuintptr
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8850673Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Loaduintptr
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8851311Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Loaduint
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8851914Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Loadint32
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8852535Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Loadint64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8853183Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Xaddint32
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8853785Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Xaddint64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8854416Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Xchgint32
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8855032Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=Xchgint64
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8855692Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=internal/runtime/atomic name=storePointer
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8856590Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=storePointer
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8857231Z 2026/10/20 06:59:34 ERROR missing function body pkg=internal/runtime/atomic name=casPointer
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8857899Z 2026/10/20 06:59:34 ERROR missing function body pkg=crypto/internal/fips140/subtle name=xorBytes
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8858535Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=crypto/subtle name=setDITEnabled
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8859136Z 2026/10/20 06:59:34 ERROR missing function body pkg=crypto/subtle name=setDITEnabled
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8859759Z 2026/10/20 06:59:34 ERROR unknown linkname with no body pkg=crypto/subtle name=setDITDisabled
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8860631Z 2026/10/20 06:59:34 ERROR missing function body pkg=crypto/subtle name=setDITDisabled
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8861359Z 2026/10/20 06:59:35 ERROR missing function body pkg=syscall name=runtimeClearenv
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8862079Z 2026/10/20 06:59:35 ERROR unknown linkname pkg=internal/syscall/unix name=vgetrandom targetPkg=runtime targetName=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8862777Z 2026/10/20 06:59:35 ERROR missing function body pkg=internal/syscall/unix name=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8863407Z 2026/10/20 06:59:35 ERROR self linkname with no body pkg=crypto/internal/fips140 name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8863979Z 2026/10/20 06:59:35 ERROR missing function body pkg=crypto/internal/fips140 name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8864566Z 2026/10/20 06:59:35 ERROR self linkname with no body pkg=crypto/internal/fips140 name=getIndicator
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8865241Z 2026/10/20 06:59:35 ERROR missing function body pkg=crypto/internal/fips140 name=getIndicator
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8866090Z 2026/10/20 06:59:35 ERROR self linkname with no body pkg=crypto/internal/fips140 name=setIndicator
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8866774Z 2026/10/20 06:59:35 ERROR missing function body pkg=crypto/internal/fips140 name=setIndicator
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8867409Z 2026/10/20 06:59:35 ERROR missing function body pkg=crypto/internal/fips140/sha512 name=blockSHA512
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8868031Z 2026/10/20 06:59:35 ERROR missing function body pkg=crypto/internal/fips140/sha256 name=blockSHA2
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8868756Z 2026/10/20 06:59:35 ERROR missing function body pkg=crypto/internal/fips140/sha3 name=keccakF1600NEON
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8869418Z 2026/10/20 06:59:35 ERROR missing function body pkg=crypto/internal/fips140/bigmod name=addMulVVW1024
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8870137Z 2026/10/20 06:59:35 ERROR missing function body pkg=crypto/internal/fips140/bigmod name=addMulVVW1536
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8870808Z 2026/10/20 06:59:35 ERROR missing function body pkg=crypto/internal/fips140/bigmod name=addMulVVW2048
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8871414Z 2026/10/20 06:59:35 ERROR unknown linkname with no body pkg=crypto/fips140 name=setBypass
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8872058Z 2026/10/20 06:59:35 ERROR missing function body pkg=crypto/fips140 name=setBypass
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8872620Z 2026/10/20 06:59:35 ERROR unknown linkname with no body pkg=crypto/fips140 name=isBypassed
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8873204Z 2026/10/20 06:59:35 ERROR missing function body pkg=crypto/fips140 name=isBypassed
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8873772Z 2026/10/20 06:59:35 ERROR unknown linkname with no body pkg=crypto/fips140 name=unsetBypass
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8874344Z 2026/10/20 06:59:35 ERROR missing function body pkg=crypto/fips140 name=unsetBypass
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8875016Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/fips140/aes name=encryptBlockAsm
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8875687Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/fips140/aes name=decryptBlockAsm
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8877038Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/fips140/aes name=expandKeyAsm
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8877763Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/fips140/aes name=ctrBlocks1Asm
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8878413Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/fips140/aes name=ctrBlocks2Asm
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8879156Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/fips140/aes name=ctrBlocks4Asm
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8879793Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/fips140/aes name=ctrBlocks8Asm
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8880444Z 2026/10/20 06:59:36 ERROR unknown linkname with no body pkg=crypto/internal/sysrand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8881036Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/sysrand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8881662Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/fips140/aes/gcm name=gcmAesInit
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8882330Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/fips140/aes/gcm name=gcmAesData
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8883304Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/fips140/aes/gcm name=gcmAesEnc
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8883988Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/fips140/aes/gcm name=gcmAesDec
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8884647Z 2026/10/20 06:59:36 ERROR missing function body pkg=crypto/internal/fips140/aes/gcm name=gcmAesFinish
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8885427Z 2026/10/20 06:59:36 ERROR unknown linkname pkg=golang.org/x/sys/unix name=runtime_getAuxv targetPkg=runtime targetName=getAuxv
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8886405Z 2026/10/20 06:59:36 ERROR missing function body pkg=golang.org/x/sys/unix name=runtime_getAuxv
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8887120Z 2026/10/20 06:59:36 ERROR unknown linkname pkg=runtime/debug name=runtime_setCrashFD targetPkg=runtime targetName=setCrashFD
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8887799Z 2026/10/20 06:59:36 ERROR missing function body pkg=runtime/debug name=runtime_setCrashFD
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8888577Z 2026/10/20 06:59:37 ERROR unknown linkname pkg=golang.org/x/sys/unix name=vgetrandom targetPkg=runtime targetName=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8889278Z 2026/10/20 06:59:37 ERROR missing function body pkg=golang.org/x/sys/unix name=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8889858Z 2026/10/20 06:59:37 ERROR unknown linkname with no body pkg=crypto/rand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8890365Z 2026/10/20 06:59:37 ERROR missing function body pkg=crypto/rand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8890944Z 2026/10/20 06:59:40 ERROR missing function body pkg=crypto/internal/fips140/nistec name=p256Mul
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8891637Z 2026/10/20 06:59:40 ERROR missing function body pkg=crypto/internal/fips140/nistec name=p256Sqr
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8892288Z 2026/10/20 06:59:40 ERROR missing function body pkg=crypto/internal/fips140/nistec name=p256FromMont
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8892954Z 2026/10/20 06:59:40 ERROR missing function body pkg=crypto/internal/fips140/nistec name=p256NegCond
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8893599Z 2026/10/20 06:59:40 ERROR missing function body pkg=crypto/internal/fips140/nistec name=p256MovCond
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8894657Z 2026/10/20 06:59:40 ERROR missing function body pkg=crypto/internal/fips140/nistec name=p256Select
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8895417Z 2026/10/20 06:59:40 ERROR missing function body pkg=crypto/internal/fips140/nistec name=p256SelectAffine
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8896339Z 2026/10/20 06:59:40 ERROR missing function body pkg=crypto/internal/fips140/nistec name=p256PointAddAffineAsm
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8897106Z 2026/10/20 06:59:40 ERROR missing function body pkg=crypto/internal/fips140/nistec name=p256PointAddAsm
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8897790Z 2026/10/20 06:59:40 ERROR missing function body pkg=crypto/internal/fips140/nistec name=p256PointDoubleAsm
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8898649Z 2026/10/20 06:59:43 ERROR unknown linkname pkg=net/http name=protocolSetHTTP3 targetPkg=golang.org/x/net/internal/http3_test targetName=protocolSetHTTP3
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8899896Z 2026/10/20 06:59:43 ERROR unknown linkname pkg=net/http name=transportFromH1Transport targetPkg=net/http/internal/http2_test targetName=transportFromH1Transport
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8900536Z 
+probe	Translate, compile and explore one seed	2026-10-20T06:59:45.8900706Z COMMAND compile bash experiments/gosim333/run.sh compile 
+probe	Translate, compile and explore one seed	2026-10-20T06:59:47.3620499Z compile	1
+probe	Translate, compile and explore one seed	2026-10-20T06:59:47.3628976Z # translated/internal_/synctest
+probe	Translate, compile and explore one seed	2026-10-20T06:59:47.3655420Z ##[error]internal_/synctest/synctest.go:110:3: duplicate //go:linkname for Run
+probe	Translate, compile and explore one seed	2026-10-20T06:59:47.3666514Z ##[error]internal_/synctest/synctest.go:111:6: missing function body
+probe	Translate, compile and explore one seed	2026-10-20T06:59:47.3673320Z ##[error]Process completed with exit code 1.

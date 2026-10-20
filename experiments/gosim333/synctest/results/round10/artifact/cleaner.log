@@ -1,0 +1,10 @@
+=== RUN   TestConcurrentCleanerSimulation (seed 1)
+=== RUN   TestConcurrentCleanerSimulation/1 (seed 1)
+R333_REACHED internal/sync.runtime_canSpin
+R333_REACHED internal/sync.runtime_nanotime
+R333_REACHED internal/sync.runtime_SemacquireMutex
+R333_REACHED internal/sync.runtime_Semrelease
+{"time":"2020-01-15T14:10:06.850001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.concurrentCleaning","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/node/clean_sim_test.go","line":313},"msg":"seed=1 pack-syncs=8 segment-removes=38 crash-cuts=5","machine":"main","method":"t.Logf","goroutine":9,"step":1}
+{"time":"2020-01-15T14:10:07.642001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.concurrentCleaning.func7","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/node/clean_sim_test.go","line":277},"msg":"seed=1 reads=418 snapshots=14","machine":"main","method":"t.Logf","goroutine":9,"step":2}
+--- PASS: TestConcurrentCleanerSimulation/1 (4.64s simulated)
+--- PASS: TestConcurrentCleanerSimulation (4.64s simulated)

@@ -1,0 +1,875 @@
+probe	Set up job	﻿2026-10-20T07:43:08.3146978Z Current runner version: '2.337.0'
+probe	Set up job	2026-10-20T07:43:08.3180671Z ##[group]Runner Image Provisioner
+probe	Set up job	2026-10-20T07:43:08.3181675Z Hosted Compute Agent
+probe	Set up job	2026-10-20T07:43:08.3182446Z Version: 20261015.610
+probe	Set up job	2026-10-20T07:43:08.3183193Z Commit: 267fdb4e8bbec4ab5ea31367f3a00d5c480c7656
+probe	Set up job	2026-10-20T07:43:08.3184011Z Build Date: 2026-10-14T17:06:54Z
+probe	Set up job	2026-10-20T07:43:08.3184725Z Worker ID: {f5381280-b5d7-4880-a20c-8e3b46503eae}
+probe	Set up job	2026-10-20T07:43:08.3185767Z Region: eastus2
+probe	Set up job	2026-10-20T07:43:08.3186467Z Cloud: Azure
+probe	Set up job	2026-10-20T07:43:08.3187079Z ##[endgroup]
+probe	Set up job	2026-10-20T07:43:08.3189454Z ##[group]Operating System
+probe	Set up job	2026-10-20T07:43:08.3190161Z Ubuntu
+probe	Set up job	2026-10-20T07:43:08.3190722Z 24.04.5
+probe	Set up job	2026-10-20T07:43:08.3191367Z LTS
+probe	Set up job	2026-10-20T07:43:08.3191956Z ##[endgroup]
+probe	Set up job	2026-10-20T07:43:08.3192583Z ##[group]Runner Image
+probe	Set up job	2026-10-20T07:43:08.3193334Z Image: ubuntu-24.04-arm
+probe	Set up job	2026-10-20T07:43:08.3193985Z Version: 20261018.154.1
+probe	Set up job	2026-10-20T07:43:08.3195448Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24-arm64/20261018.154/images/ubuntu/Ubuntu2404-Arm64-Readme.md
+probe	Set up job	2026-10-20T07:43:08.3197926Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24-arm64%2F20261018.154
+probe	Set up job	2026-10-20T07:43:08.3198938Z ##[endgroup]
+probe	Set up job	2026-10-20T07:43:08.3200216Z ##[group]GITHUB_TOKEN Permissions
+probe	Set up job	2026-10-20T07:43:08.3203809Z Contents: read
+probe	Set up job	2026-10-20T07:43:08.3204648Z Metadata: read
+probe	Set up job	2026-10-20T07:43:08.3205551Z ##[endgroup]
+probe	Set up job	2026-10-20T07:43:08.3209088Z Secret source: Actions
+probe	Set up job	2026-10-20T07:43:08.3210127Z Cache mode: write
+probe	Set up job	2026-10-20T07:43:08.3211076Z Prepare workflow directory
+probe	Set up job	2026-10-20T07:43:08.3639714Z Prepare all required actions
+probe	Set up job	2026-10-20T07:43:08.3693341Z Getting action download info
+probe	Set up job	2026-10-20T07:43:08.5907736Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+probe	Set up job	2026-10-20T07:43:08.7086343Z Download action repository 'actions/setup-go@v5' (SHA:40f1582b2485089dde7abd97c1529aa768e1baff)
+probe	Set up job	2026-10-20T07:43:08.9479309Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+probe	Set up job	2026-10-20T07:43:09.1864666Z Complete job name: probe
+probe	Run actions/checkout@v4	﻿2026-10-20T07:43:09.2724560Z ##[group]Run actions/checkout@v4
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2726218Z with:
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2727012Z   repository: djosh34/tigerstore
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2730966Z   token: ***
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2731617Z   ssh-strict: true
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2732191Z   ssh-user: git
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2732750Z   persist-credentials: true
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2733820Z   clean: true
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2734446Z   sparse-checkout-cone-mode: true
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2735418Z   fetch-depth: 1
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2736016Z   fetch-tags: false
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2736773Z   show-progress: true
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2737440Z   lfs: false
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2738081Z   submodules: false
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2738720Z   set-safe-directory: true
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2739417Z   allow-unsafe-pr-checkout: false
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.2740598Z ##[endgroup]
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.3709108Z Syncing repository: djosh34/tigerstore
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.3711993Z ##[group]Getting Git version info
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.3713625Z Working directory is '/home/runner/work/tigerstore/tigerstore'
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.3716039Z [command]/usr/bin/git version
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.3841834Z git version 2.55.0
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.3875744Z ##[endgroup]
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.3883767Z Temporarily overriding HOME='/home/runner/work/_temp/1c481070-e3db-4cc5-9f39-6d42e64b0959' before making global git config changes
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.3886209Z Adding repository directory to the temporary git global config as a safe directory
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.3889483Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/tigerstore/tigerstore
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.3927051Z Deleting the contents of '/home/runner/work/tigerstore/tigerstore'
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.3931862Z ##[group]Initializing the repository
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.3936978Z [command]/usr/bin/git init /home/runner/work/tigerstore/tigerstore
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4068760Z hint: Using 'master' as the name for the initial branch. This default branch name
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4071146Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4072898Z hint: to use in all of your new repositories, which will suppress this warning,
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4074109Z hint: call:
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4074994Z hint:
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4076086Z hint: 	git config --global init.defaultBranch <name>
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4077053Z hint:
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4078096Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4079381Z hint: 'development'. The just-created branch can be renamed via this command:
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4080383Z hint:
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4081208Z hint: 	git branch -m <name>
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4082018Z hint:
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4082948Z hint: Disable this message with "git config set advice.defaultBranchName false"
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4084675Z Initialized empty Git repository in /home/runner/work/tigerstore/tigerstore/.git/
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4095450Z [command]/usr/bin/git remote add origin https://github.com/djosh34/tigerstore
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4142098Z ##[endgroup]
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4143621Z ##[group]Disabling automatic garbage collection
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4145429Z [command]/usr/bin/git config --local gc.auto 0
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4196841Z ##[endgroup]
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4198126Z ##[group]Setting up auth
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4199015Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4230296Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4646797Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4681008Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4911877Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.4948770Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.5192374Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.5243218Z ##[endgroup]
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.5244474Z ##[group]Fetching the repository
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.5253391Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +03124ced9402c1e0da14b152ad345dd1e4e11387:refs/remotes/origin/exp/333-synctest
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.9675857Z From https://github.com/djosh34/tigerstore
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.9677519Z  * [new ref]         03124ced9402c1e0da14b152ad345dd1e4e11387 -> origin/exp/333-synctest
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.9680512Z ##[endgroup]
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.9681725Z ##[group]Determining the checkout info
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.9682944Z ##[endgroup]
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.9689594Z [command]/usr/bin/git sparse-checkout disable
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.9743582Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.9780973Z ##[group]Checking out the ref
+probe	Run actions/checkout@v4	2026-10-20T07:43:09.9783554Z [command]/usr/bin/git checkout --progress --force -B exp/333-synctest refs/remotes/origin/exp/333-synctest
+probe	Run actions/checkout@v4	2026-10-20T07:43:10.0093368Z Switched to a new branch 'exp/333-synctest'
+probe	Run actions/checkout@v4	2026-10-20T07:43:10.0095662Z branch 'exp/333-synctest' set up to track 'origin/exp/333-synctest'.
+probe	Run actions/checkout@v4	2026-10-20T07:43:10.0108095Z ##[endgroup]
+probe	Run actions/checkout@v4	2026-10-20T07:43:10.0146657Z [command]/usr/bin/git log -1 --format=%H
+probe	Run actions/checkout@v4	2026-10-20T07:43:10.0180944Z 03124ced9402c1e0da14b152ad345dd1e4e11387
+probe	Run actions/setup-go@v5	﻿2026-10-20T07:43:10.0544034Z ##[group]Run actions/setup-go@v5
+probe	Run actions/setup-go@v5	2026-10-20T07:43:10.0545784Z with:
+probe	Run actions/setup-go@v5	2026-10-20T07:43:10.0546618Z   go-version: 1.27.2
+probe	Run actions/setup-go@v5	2026-10-20T07:43:10.0547572Z   cache: false
+probe	Run actions/setup-go@v5	2026-10-20T07:43:10.0548788Z   check-latest: false
+probe	Run actions/setup-go@v5	2026-10-20T07:43:10.0555794Z   token: ***
+probe	Run actions/setup-go@v5	2026-10-20T07:43:10.0556771Z ##[endgroup]
+probe	Run actions/setup-go@v5	2026-10-20T07:43:10.1766137Z Setup go version spec 1.27.2
+probe	Run actions/setup-go@v5	2026-10-20T07:43:10.1789348Z Attempting to download 1.27.2...
+probe	Run actions/setup-go@v5	2026-10-20T07:43:10.1902661Z (node:2251) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+probe	Run actions/setup-go@v5	2026-10-20T07:43:10.1905055Z (Use `node --trace-deprecation ...` to show where the warning was created)
+probe	Run actions/setup-go@v5	2026-10-20T07:43:10.6124304Z matching 1.27.2...
+probe	Run actions/setup-go@v5	2026-10-20T07:43:10.6147102Z Acquiring 1.27.2 from https://github.com/actions/go-versions/releases/download/1.27.2-37875086547/go-1.27.2-linux-arm64.tar.gz
+probe	Run actions/setup-go@v5	2026-10-20T07:43:11.1539714Z Extracting Go...
+probe	Run actions/setup-go@v5	2026-10-20T07:43:11.1640662Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/57a09fdb-ba3a-4197-b21b-f266d43b37af -f /home/runner/work/_temp/089ee20a-6f50-4e32-aff1-5fedd2aaf4d6
+probe	Run actions/setup-go@v5	2026-10-20T07:43:12.3487294Z Successfully extracted go to /home/runner/work/_temp/57a09fdb-ba3a-4197-b21b-f266d43b37af
+probe	Run actions/setup-go@v5	2026-10-20T07:43:12.3488307Z Adding to the cache ...
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.6163479Z Successfully cached go to /opt/hostedtoolcache/go/1.27.2/arm64
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.6164720Z Added go to the path
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.6166346Z Successfully set up Go version 1.27.2
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.6389395Z go version go1.27.2 linux/arm64
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.6389963Z 
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.6390453Z ##[group]go env
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7840944Z AR='ar'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7841628Z CC='gcc'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7841901Z CGO_CFLAGS='-O2 -g'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7842334Z CGO_CPPFLAGS=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7842603Z CGO_CXXFLAGS='-O2 -g'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7842952Z CGO_ENABLED='1'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7843285Z CGO_FFLAGS='-O2 -g'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7843654Z CGO_LDFLAGS='-O2 -g'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7844029Z CXX='g++'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7844314Z GCCGO='gccgo'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7844574Z GO111MODULE=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7845231Z GOARCH='arm64'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7845542Z GOARM64='v8.0'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7845889Z GOAUTH='netrc'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7846161Z GOBIN='/home/runner/go/bin'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7846474Z GOCACHE='/home/runner/.cache/go-build'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7846857Z GOCACHEPROG=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7847101Z GODEBUG=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7847368Z GOENV='/home/runner/.config/go/env'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7847756Z GOEXE=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7848012Z GOEXPERIMENT=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7848305Z GOFIPS140='off'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7848544Z GOFLAGS=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7849258Z GOGCCFLAGS='-fPIC -pthread -Wl,--no-gc-sections -fmessage-length=0 -ffile-prefix-map=/tmp/go-build818089262=/tmp/go-build -gno-record-gcc-switches'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7849998Z GOHOSTARCH='arm64'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7850311Z GOHOSTOS='linux'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7850604Z GOINSECURE=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7850926Z GOMOD='/home/runner/work/tigerstore/tigerstore/go.mod'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7851375Z GOMODCACHE='/home/runner/go/pkg/mod'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7851789Z GONOPROXY=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7852112Z GONOSUMDB=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7852405Z GOOS='linux'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7852658Z GOPACKAGESDRIVER=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7852955Z GOPATH='/home/runner/go'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7853275Z GOPRIVATE=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7853627Z GOPROXY='https://proxy.golang.org,direct'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7853994Z GOROOT='/opt/hostedtoolcache/go/1.27.2/arm64'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7854411Z GOSUMDB='sum.golang.org'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7855424Z GOTELEMETRY='local'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7855855Z GOTELEMETRYDIR='/home/runner/.config/go/telemetry'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7856203Z GOTMPDIR=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7856432Z GOTOOLCHAIN='auto'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7856872Z GOTOOLDIR='/opt/hostedtoolcache/go/1.27.2/arm64/pkg/tool/linux_arm64'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7857300Z GOVCS=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7857571Z GOVERSION='go1.27.2'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7857831Z GOWORK=''
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7858808Z PKG_CONFIG='pkg-config'
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7859058Z 
+probe	Run actions/setup-go@v5	2026-10-20T07:43:18.7859663Z ##[endgroup]
+probe	Translate, compile and explore one seed	﻿2026-10-20T07:43:18.8061107Z ##[group]Run bash experiments/gosim333/synctest/actions.sh
+probe	Translate, compile and explore one seed	2026-10-20T07:43:18.8062122Z ^[[36;1mbash experiments/gosim333/synctest/actions.sh^[[0m
+probe	Translate, compile and explore one seed	2026-10-20T07:43:18.8353381Z shell: /usr/bin/bash -e {0}
+probe	Translate, compile and explore one seed	2026-10-20T07:43:18.8353836Z ##[endgroup]
+probe	Translate, compile and explore one seed	2026-10-20T07:43:18.8550840Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:43:18.8575889Z COMMAND prepare bash experiments/gosim333/run.sh prepare 
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9702469Z prepare	0
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9720563Z Cloning into '/tmp/r333-gosim-synctest'...
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9721659Z Note: switching to 'ffd3a613542675755e4cbf8186b5edaf404ed95c'.
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9721956Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9722480Z You are in 'detached HEAD' state. You can look around, make experimental
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9723014Z changes and commit them, and you can discard any commits you make in this
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9723598Z state without impacting any branches by switching back to a branch.
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9723956Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9724168Z If you want to create a new branch to retain commits you create, you may
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9725253Z do so (now or later) by using -c with the switch command. Example:
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9725559Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9725700Z   git switch -c <new-branch-name>
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9725892Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9726095Z Or undo this operation with:
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9726261Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9726429Z   git switch -
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9726556Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9726798Z Turn off this advice by setting config variable advice.detachedHead to false
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9727143Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9727347Z HEAD is now at ffd3a61 README: show off -simtrace=syscall
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9727729Z go: downloading golang.org/x/tools v0.52.0
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9728093Z go: downloading golang.org/x/mod v0.42.0
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9728481Z go: downloading github.com/dave/dst v0.27.3
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9728829Z go: downloading golang.org/x/sync v0.24.0
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9729260Z go: downloading github.com/mattn/go-sqlite3 v1.14.24
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9732488Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:44:09.9756725Z COMMAND translate bash experiments/gosim333/run.sh translate 
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3503932Z translate	0
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3515368Z 2026/10/20 07:44:27 ERROR unknown linkname with no body pkg=crypto/internal/fips140deps/time name=monoTime
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3516395Z 2026/10/20 07:44:27 ERROR missing function body pkg=crypto/internal/fips140deps/time name=monoTime
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3517020Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/cpu name=getisar1
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3517743Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/cpu name=getpfr0
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3518323Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/syscall/linux name=Syscall6
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3518986Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/sys name=EnableDIT
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3519578Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/sys name=DITEnabled
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3520154Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/sys name=DisableDIT
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3520902Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/sys name=GetCallerPC
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3521492Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/sys name=GetCallerSP
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3522114Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/sys name=GetClosurePtr
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3522702Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Xadd
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3523262Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Xadd64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3523927Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Xadduintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3524510Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Xchg8
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3525339Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Xchg
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3525911Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Xchg64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3527155Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Xchguintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3527848Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Load
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3528411Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Load8
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3528968Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Load64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3529585Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Loadp
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3530206Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=LoadAcq
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3530824Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=LoadAcq64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3531395Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Or8
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3531951Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=And8
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3532543Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=And
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3533090Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Or
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3533718Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=And32
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3534272Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Or32
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3535012Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=And64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3535642Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Or64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3536256Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Anduintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3536913Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Oruintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3537508Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Cas64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3538085Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=CasRel
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3538694Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Store
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3539289Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Store8
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3539882Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Store64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3540479Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=StorepNoWB
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3541065Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=StoreRel
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3541739Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=StoreRel64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3542365Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Cas
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3543012Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Casp1
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3543601Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Casint32
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3544181Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Casint64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3544963Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Casuintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3545619Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Storeint32
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3546273Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Storeint64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3546887Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Storeuintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3547494Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Loaduintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3548573Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Loaduint
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3549161Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Loadint32
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3549758Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Loadint64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3550391Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Xaddint32
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3551002Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Xaddint64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3551753Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Xchgint32
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3552346Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=Xchgint64
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3552968Z 2026/10/20 07:44:27 ERROR unknown linkname with no body pkg=internal/runtime/atomic name=storePointer
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3553668Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=storePointer
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3554286Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/runtime/atomic name=casPointer
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3555078Z 2026/10/20 07:44:27 ERROR unknown linkname with no body pkg=internal/synctest name=Wait
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3555816Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/synctest name=Wait
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3556379Z 2026/10/20 07:44:27 ERROR unknown linkname with no body pkg=crypto/subtle name=setDITEnabled
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3557043Z 2026/10/20 07:44:27 ERROR missing function body pkg=crypto/subtle name=setDITEnabled
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3557704Z 2026/10/20 07:44:27 ERROR unknown linkname with no body pkg=crypto/subtle name=setDITDisabled
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3558381Z 2026/10/20 07:44:27 ERROR missing function body pkg=crypto/subtle name=setDITDisabled
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3558968Z 2026/10/20 07:44:27 ERROR unknown linkname with no body pkg=internal/sync name=runtime_doSpin
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3559558Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/sync name=runtime_doSpin
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3560156Z 2026/10/20 07:44:27 ERROR unknown linkname with no body pkg=internal/sync name=throw
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3560677Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/sync name=throw
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3561247Z 2026/10/20 07:44:27 ERROR unknown linkname with no body pkg=internal/sync name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3561782Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/sync name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3562305Z 2026/10/20 07:44:27 ERROR missing function body pkg=syscall name=runtimeClearenv
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3562897Z 2026/10/20 07:44:27 ERROR self linkname with no body pkg=crypto/internal/fips140 name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3563470Z 2026/10/20 07:44:27 ERROR missing function body pkg=crypto/internal/fips140 name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3564226Z 2026/10/20 07:44:27 ERROR unknown linkname pkg=internal/syscall/unix name=vgetrandom targetPkg=runtime targetName=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3565395Z 2026/10/20 07:44:27 ERROR missing function body pkg=internal/syscall/unix name=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3566015Z 2026/10/20 07:44:28 ERROR unknown linkname with no body pkg=crypto/fips140 name=setBypass
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3566869Z 2026/10/20 07:44:28 ERROR missing function body pkg=crypto/fips140 name=setBypass
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3567473Z 2026/10/20 07:44:28 ERROR unknown linkname with no body pkg=crypto/fips140 name=isBypassed
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3568115Z 2026/10/20 07:44:28 ERROR missing function body pkg=crypto/fips140 name=isBypassed
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3568698Z 2026/10/20 07:44:28 ERROR unknown linkname with no body pkg=crypto/fips140 name=unsetBypass
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3569268Z 2026/10/20 07:44:28 ERROR missing function body pkg=crypto/fips140 name=unsetBypass
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3569894Z 2026/10/20 07:44:29 ERROR unknown linkname with no body pkg=crypto/internal/sysrand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3570479Z 2026/10/20 07:44:29 ERROR missing function body pkg=crypto/internal/sysrand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3571690Z 2026/10/20 07:44:29 ERROR unknown linkname pkg=golang.org/x/sys/unix name=runtime_getAuxv targetPkg=runtime targetName=getAuxv
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3572444Z 2026/10/20 07:44:29 ERROR missing function body pkg=golang.org/x/sys/unix name=runtime_getAuxv
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3573017Z 2026/10/20 07:44:30 ERROR unknown linkname with no body pkg=crypto/rand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3573561Z 2026/10/20 07:44:30 ERROR missing function body pkg=crypto/rand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3574256Z 2026/10/20 07:44:30 ERROR unknown linkname pkg=golang.org/x/sys/unix name=vgetrandom targetPkg=runtime targetName=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3575141Z 2026/10/20 07:44:30 ERROR missing function body pkg=golang.org/x/sys/unix name=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3575928Z 2026/10/20 07:44:30 ERROR unknown linkname pkg=runtime/debug name=runtime_setCrashFD targetPkg=runtime targetName=setCrashFD
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3576653Z 2026/10/20 07:44:30 ERROR missing function body pkg=runtime/debug name=runtime_setCrashFD
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3577517Z 2026/10/20 07:44:35 ERROR unknown linkname pkg=net/http name=protocolSetHTTP3 targetPkg=golang.org/x/net/internal/http3_test targetName=protocolSetHTTP3
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3578626Z 2026/10/20 07:44:35 ERROR unknown linkname pkg=net/http name=transportFromH1Transport targetPkg=net/http/internal/http2_test targetName=transportFromH1Transport
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3733928Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:44:38.3758855Z COMMAND compile bash experiments/gosim333/run.sh compile 
+probe	Translate, compile and explore one seed	2026-10-20T07:45:43.6200215Z compile	0
+probe	Translate, compile and explore one seed	2026-10-20T07:45:43.6223347Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:45:43.6246302Z COMMAND example bash experiments/gosim333/run.sh example 
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2736505Z example	0
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2746272Z 2026/10/20 07:45:45 ERROR unknown linkname with no body pkg=crypto/internal/fips140deps/time name=monoTime
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2747717Z 2026/10/20 07:45:45 ERROR missing function body pkg=crypto/internal/fips140deps/time name=monoTime
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2748527Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/cpu name=getisar1
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2749609Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/cpu name=getpfr0
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2750248Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/sys name=EnableDIT
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2750852Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/sys name=DITEnabled
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2751454Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/sys name=DisableDIT
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2752048Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/sys name=GetCallerPC
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2752703Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/sys name=GetCallerSP
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2753345Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/sys name=GetClosurePtr
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2753954Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Xadd
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2754585Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Xadd64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2755475Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Xadduintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2756144Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Xchg8
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2756757Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Xchg
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2757383Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Xchg64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2757998Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Xchguintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2758585Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Load
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2759182Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Load8
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2759799Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Load64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2760909Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Loadp
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2761590Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=LoadAcq
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2762188Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=LoadAcq64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2762850Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Or8
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2763477Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=And8
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2764033Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=And
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2764679Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Or
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2765649Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=And32
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2766341Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Or32
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2766921Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=And64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2767479Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Or64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2768122Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Anduintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2768730Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Oruintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2769412Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Cas64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2769989Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=CasRel
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2770552Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Store
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2771172Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Store8
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2771749Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Store64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2772416Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=StorepNoWB
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2773026Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=StoreRel
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2773643Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=StoreRel64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2774268Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Cas
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2775363Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Casp1
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2776101Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Casint32
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2776714Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Casint64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2777322Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Casuintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2778003Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Storeint32
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2778646Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Storeint64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2779276Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Storeuintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2779910Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Loaduintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2780513Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Loaduint
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2781141Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Loadint32
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2781741Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Loadint64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2782412Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Xaddint32
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2783022Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Xaddint64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2784014Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Xchgint32
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2784668Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=Xchgint64
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2785581Z 2026/10/20 07:45:45 ERROR unknown linkname with no body pkg=internal/runtime/atomic name=storePointer
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2786223Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=storePointer
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2786942Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/atomic name=casPointer
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2787570Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/runtime/syscall/linux name=Syscall6
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2788237Z 2026/10/20 07:45:45 ERROR unknown linkname with no body pkg=crypto/subtle name=setDITEnabled
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2788868Z 2026/10/20 07:45:45 ERROR missing function body pkg=crypto/subtle name=setDITEnabled
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2789461Z 2026/10/20 07:45:45 ERROR unknown linkname with no body pkg=crypto/subtle name=setDITDisabled
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2790084Z 2026/10/20 07:45:45 ERROR missing function body pkg=crypto/subtle name=setDITDisabled
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2790661Z 2026/10/20 07:45:45 ERROR unknown linkname with no body pkg=internal/synctest name=Wait
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2791307Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/synctest name=Wait
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2791877Z 2026/10/20 07:45:45 ERROR unknown linkname with no body pkg=internal/sync name=runtime_doSpin
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2792452Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/sync name=runtime_doSpin
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2793055Z 2026/10/20 07:45:45 ERROR unknown linkname with no body pkg=internal/sync name=throw
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2793595Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/sync name=throw
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2794157Z 2026/10/20 07:45:45 ERROR unknown linkname with no body pkg=internal/sync name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2794752Z 2026/10/20 07:45:45 ERROR missing function body pkg=internal/sync name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2795483Z 2026/10/20 07:45:46 ERROR missing function body pkg=syscall name=runtimeClearenv
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2796228Z 2026/10/20 07:45:46 ERROR unknown linkname pkg=internal/syscall/unix name=vgetrandom targetPkg=runtime targetName=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2796941Z 2026/10/20 07:45:46 ERROR missing function body pkg=internal/syscall/unix name=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2797565Z 2026/10/20 07:45:46 ERROR self linkname with no body pkg=crypto/internal/fips140 name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2798200Z 2026/10/20 07:45:46 ERROR missing function body pkg=crypto/internal/fips140 name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2798780Z 2026/10/20 07:45:46 ERROR unknown linkname with no body pkg=crypto/fips140 name=setBypass
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2799394Z 2026/10/20 07:45:46 ERROR missing function body pkg=crypto/fips140 name=setBypass
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2799963Z 2026/10/20 07:45:46 ERROR unknown linkname with no body pkg=crypto/fips140 name=isBypassed
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2800604Z 2026/10/20 07:45:46 ERROR missing function body pkg=crypto/fips140 name=isBypassed
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2801203Z 2026/10/20 07:45:46 ERROR unknown linkname with no body pkg=crypto/fips140 name=unsetBypass
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2801780Z 2026/10/20 07:45:46 ERROR missing function body pkg=crypto/fips140 name=unsetBypass
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2802414Z 2026/10/20 07:45:47 ERROR unknown linkname with no body pkg=crypto/internal/sysrand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2803012Z 2026/10/20 07:45:47 ERROR missing function body pkg=crypto/internal/sysrand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2803823Z 2026/10/20 07:45:47 ERROR unknown linkname pkg=golang.org/x/sys/unix name=runtime_getAuxv targetPkg=runtime targetName=getAuxv
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2804568Z 2026/10/20 07:45:47 ERROR missing function body pkg=golang.org/x/sys/unix name=runtime_getAuxv
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2805556Z 2026/10/20 07:45:48 ERROR unknown linkname pkg=golang.org/x/sys/unix name=vgetrandom targetPkg=runtime targetName=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2806678Z 2026/10/20 07:45:48 ERROR missing function body pkg=golang.org/x/sys/unix name=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2807254Z 2026/10/20 07:45:48 ERROR unknown linkname with no body pkg=crypto/rand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2807808Z 2026/10/20 07:45:48 ERROR missing function body pkg=crypto/rand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2808644Z 2026/10/20 07:45:50 ERROR unknown linkname pkg=net/http name=protocolSetHTTP3 targetPkg=golang.org/x/net/internal/http3_test targetName=protocolSetHTTP3
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2809740Z 2026/10/20 07:45:50 ERROR unknown linkname pkg=net/http name=transportFromH1Transport targetPkg=net/http/internal/http2_test targetName=transportFromH1Transport
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2810473Z === RUN   TestGosim (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2811824Z {"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/jellevandenhooff/gosim/examples_test.ImplTestGosim","file":"translated/github.com/jellevandenhooff/gosim/examples/simple_test.go","line":12},"msg":"Are we in the Matrix? true","machine":"main","method":"t.Logf","goroutine":4,"step":1}
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2814064Z {"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/jellevandenhooff/gosim/examples_test.ImplTestGosim","file":"translated/github.com/jellevandenhooff/gosim/examples/simple_test.go","line":13},"msg":"Random: 8520188740344366618","machine":"main","method":"t.Logf","goroutine":4,"step":2}
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2815566Z --- PASS: TestGosim (0.00s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2815888Z === RUN   TestGosim (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2817185Z {"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/jellevandenhooff/gosim/examples_test.ImplTestGosim","file":"translated/github.com/jellevandenhooff/gosim/examples/simple_test.go","line":12},"msg":"Are we in the Matrix? true","machine":"main","method":"t.Logf","goroutine":4,"step":1}
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2819431Z {"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/jellevandenhooff/gosim/examples_test.ImplTestGosim","file":"translated/github.com/jellevandenhooff/gosim/examples/simple_test.go","line":13},"msg":"Random: 8520188740344366618","machine":"main","method":"t.Logf","goroutine":4,"step":2}
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2820723Z --- PASS: TestGosim (0.00s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2821040Z === RUN   TestGosim (seed 2)
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2822515Z {"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/jellevandenhooff/gosim/examples_test.ImplTestGosim","file":"translated/github.com/jellevandenhooff/gosim/examples/simple_test.go","line":12},"msg":"Are we in the Matrix? true","machine":"main","method":"t.Logf","goroutine":4,"step":1}
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2824885Z {"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/jellevandenhooff/gosim/examples_test.ImplTestGosim","file":"translated/github.com/jellevandenhooff/gosim/examples/simple_test.go","line":13},"msg":"Random: 3012463807607131984","machine":"main","method":"t.Logf","goroutine":4,"step":2}
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2826244Z --- PASS: TestGosim (0.00s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2826698Z ok  	translated/github.com/jellevandenhooff/gosim/examples	0.100s
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2826984Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:46:18.2827189Z COMMAND probe bash experiments/gosim333/run.sh probe 
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2767077Z probe	0
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2777392Z RROR missing function body pkg=internal/runtime/atomic name=Xchg8
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2778596Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Xchg
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2779319Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Xchg64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2779949Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Xchguintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2780677Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Load
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2781877Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Load8
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2782511Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Load64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2783110Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Loadp
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2783735Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=LoadAcq
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2784397Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=LoadAcq64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2785194Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Or8
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2785830Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=And8
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2786427Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=And
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2787046Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Or
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2787668Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=And32
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2788239Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Or32
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2788852Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=And64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2789427Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Or64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2790048Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Anduintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2790679Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Oruintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2791259Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Cas64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2791921Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=CasRel
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2792517Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Store
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2793127Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Store8
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2793732Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Store64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2794332Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=StorepNoWB
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2795109Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=StoreRel
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2795842Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=StoreRel64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2796459Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Cas
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2797452Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Casp1
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2798038Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Casint32
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2798642Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Casint64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2799278Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Casuintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2799921Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Storeint32
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2800579Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Storeint64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2801187Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Storeuintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2801795Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Loaduintptr
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2802450Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Loaduint
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2803081Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Loadint32
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2804105Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Loadint64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2805078Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Xaddint32
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2805678Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Xaddint64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2806390Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Xchgint32
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2806983Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=Xchgint64
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2807649Z 2026/10/20 07:46:20 ERROR unknown linkname with no body pkg=internal/runtime/atomic name=storePointer
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2808311Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=storePointer
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2808929Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/runtime/atomic name=casPointer
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2809627Z 2026/10/20 07:46:20 ERROR unknown linkname with no body pkg=crypto/subtle name=setDITEnabled
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2810224Z 2026/10/20 07:46:20 ERROR missing function body pkg=crypto/subtle name=setDITEnabled
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2810848Z 2026/10/20 07:46:20 ERROR unknown linkname with no body pkg=crypto/subtle name=setDITDisabled
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2811454Z 2026/10/20 07:46:20 ERROR missing function body pkg=crypto/subtle name=setDITDisabled
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2812019Z 2026/10/20 07:46:20 ERROR unknown linkname with no body pkg=internal/synctest name=Wait
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2812639Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/synctest name=Wait
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2813240Z 2026/10/20 07:46:20 ERROR unknown linkname with no body pkg=internal/sync name=runtime_doSpin
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2813842Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/sync name=runtime_doSpin
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2814412Z 2026/10/20 07:46:20 ERROR unknown linkname with no body pkg=internal/sync name=throw
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2815142Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/sync name=throw
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2815793Z 2026/10/20 07:46:20 ERROR unknown linkname with no body pkg=internal/sync name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2816324Z 2026/10/20 07:46:20 ERROR missing function body pkg=internal/sync name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2816837Z 2026/10/20 07:46:21 ERROR missing function body pkg=syscall name=runtimeClearenv
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2817601Z 2026/10/20 07:46:21 ERROR unknown linkname pkg=internal/syscall/unix name=vgetrandom targetPkg=runtime targetName=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2818346Z 2026/10/20 07:46:21 ERROR missing function body pkg=internal/syscall/unix name=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2818969Z 2026/10/20 07:46:21 ERROR self linkname with no body pkg=crypto/internal/fips140 name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2819555Z 2026/10/20 07:46:21 ERROR missing function body pkg=crypto/internal/fips140 name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2820122Z 2026/10/20 07:46:22 ERROR unknown linkname with no body pkg=crypto/fips140 name=setBypass
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2820734Z 2026/10/20 07:46:22 ERROR missing function body pkg=crypto/fips140 name=setBypass
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2821306Z 2026/10/20 07:46:22 ERROR unknown linkname with no body pkg=crypto/fips140 name=isBypassed
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2821968Z 2026/10/20 07:46:22 ERROR missing function body pkg=crypto/fips140 name=isBypassed
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2822546Z 2026/10/20 07:46:22 ERROR unknown linkname with no body pkg=crypto/fips140 name=unsetBypass
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2823118Z 2026/10/20 07:46:22 ERROR missing function body pkg=crypto/fips140 name=unsetBypass
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2823754Z 2026/10/20 07:46:22 ERROR unknown linkname with no body pkg=crypto/internal/sysrand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2824384Z 2026/10/20 07:46:22 ERROR missing function body pkg=crypto/internal/sysrand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2825316Z 2026/10/20 07:46:22 ERROR unknown linkname pkg=golang.org/x/sys/unix name=runtime_getAuxv targetPkg=runtime targetName=getAuxv
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2826105Z 2026/10/20 07:46:22 ERROR missing function body pkg=golang.org/x/sys/unix name=runtime_getAuxv
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2827564Z 2026/10/20 07:46:22 ERROR unknown linkname pkg=golang.org/x/sys/unix name=vgetrandom targetPkg=runtime targetName=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2828353Z 2026/10/20 07:46:22 ERROR missing function body pkg=golang.org/x/sys/unix name=vgetrandom
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2829120Z 2026/10/20 07:46:23 ERROR unknown linkname pkg=runtime/debug name=runtime_setCrashFD targetPkg=runtime targetName=setCrashFD
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2829837Z 2026/10/20 07:46:23 ERROR missing function body pkg=runtime/debug name=runtime_setCrashFD
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2830406Z 2026/10/20 07:46:23 ERROR unknown linkname with no body pkg=crypto/rand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2830925Z 2026/10/20 07:46:23 ERROR missing function body pkg=crypto/rand name=fatal
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2831776Z 2026/10/20 07:46:29 ERROR unknown linkname pkg=net/http name=protocolSetHTTP3 targetPkg=golang.org/x/net/internal/http3_test targetName=protocolSetHTTP3
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2832861Z 2026/10/20 07:46:29 ERROR unknown linkname pkg=net/http name=transportFromH1Transport targetPkg=net/http/internal/http2_test targetName=transportFromH1Transport
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2833582Z === RUN   TestDriverGate (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2835040Z {"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"recovering the log","machine":"main","method":"t.Logf","goroutine":8,"step":1}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2837451Z {"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]","machine":"main","method":"t.Logf","goroutine":8,"step":2}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2839861Z {"time":"2020-01-15T14:10:03.001001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"leader is 0 at term 1","machine":"main","method":"t.Logf","goroutine":77,"step":3}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2841910Z {"time":"2020-01-15T14:10:03.017001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"leader is 0 at term 2","machine":"main","method":"t.Logf","goroutine":77,"step":4}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2843988Z {"time":"2020-01-15T14:10:03.017001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"leader is 1 at term 2","machine":"main","method":"t.Logf","goroutine":77,"step":5}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2846474Z {"time":"2020-01-15T14:10:03.100001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/experiments/gosim291_test.ImplTestDriverGate","file":"translated/github.com/djosh34/tigerstore/experiments/gosim291/probe_test.go","line":57},"msg":"real driver put/read OK (disk is tigerstore simfs)","machine":"main","method":"t.Log","goroutine":8,"step":6}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2847853Z --- PASS: TestDriverGate (0.10s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2848291Z === RUN   TestDriverGate (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2849494Z {"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"recovering the log","machine":"main","method":"t.Logf","goroutine":8,"step":1}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2851805Z {"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]","machine":"main","method":"t.Logf","goroutine":8,"step":2}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2854401Z {"time":"2020-01-15T14:10:03.001001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"leader is 0 at term 1","machine":"main","method":"t.Logf","goroutine":77,"step":3}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2856755Z {"time":"2020-01-15T14:10:03.017001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"leader is 0 at term 2","machine":"main","method":"t.Logf","goroutine":77,"step":4}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2858928Z {"time":"2020-01-15T14:10:03.017001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"leader is 1 at term 2","machine":"main","method":"t.Logf","goroutine":77,"step":5}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2861195Z {"time":"2020-01-15T14:10:03.100001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/experiments/gosim291_test.ImplTestDriverGate","file":"translated/github.com/djosh34/tigerstore/experiments/gosim291/probe_test.go","line":57},"msg":"real driver put/read OK (disk is tigerstore simfs)","machine":"main","method":"t.Log","goroutine":8,"step":6}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2862617Z --- PASS: TestDriverGate (0.10s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2862980Z === RUN   TestDriverGate (seed 2)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2864236Z {"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"recovering the log","machine":"main","method":"t.Logf","goroutine":8,"step":1}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2866672Z {"time":"2020-01-15T14:10:03.000001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]","machine":"main","method":"t.Logf","goroutine":8,"step":2}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2868910Z {"time":"2020-01-15T14:10:03.001001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"leader is 0 at term 1","machine":"main","method":"t.Logf","goroutine":77,"step":3}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2871029Z {"time":"2020-01-15T14:10:03.010001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"leader is 0 at term 2","machine":"main","method":"t.Logf","goroutine":77,"step":4}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2873079Z {"time":"2020-01-15T14:10:03.010001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.(*Node).logf","file":"translated/github.com/djosh34/tigerstore/internal_/node/node.go","line":766},"msg":"leader is 1 at term 2","machine":"main","method":"t.Logf","goroutine":77,"step":5}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2875524Z {"time":"2020-01-15T14:10:03.100001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/experiments/gosim291_test.ImplTestDriverGate","file":"translated/github.com/djosh34/tigerstore/experiments/gosim291/probe_test.go","line":57},"msg":"real driver put/read OK (disk is tigerstore simfs)","machine":"main","method":"t.Log","goroutine":8,"step":6}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2877279Z --- PASS: TestDriverGate (0.10s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2877711Z ok  	translated/github.com/djosh34/tigerstore/experiments/gosim291	0.087s
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2878064Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:47:29.2878897Z COMMAND seed-1a flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.v -test.run=\^TestSeeds\$ -seeds=1 -sim.seed=1 -sim.seeds=1 -logformat=raw -r333.output=/home/runner/work/tigerstore/tigerstore/r333-results/seed-1a 
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2066896Z seed-1a	0
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2077766Z === RUN   TestSeeds (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2078163Z === RUN   TestSeeds/1 (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2078568Z R333_REACHED crypto/internal/fips140.getIndicator
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2079009Z R333_REACHED crypto/internal/fips140.setIndicator
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2079388Z R333_REACHED weak.runtime_registerWeakPointer
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2079730Z R333_REACHED runtime.AddCleanup(no-GC)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2080114Z R333_REACHED internal/sync.runtime_canSpin
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2080549Z R333_REACHED internal/sync.runtime_nanotime
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2080984Z R333_REACHED internal/sync.runtime_SemacquireMutex
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2081360Z R333_REACHED internal/sync.runtime_Semrelease
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2081710Z R333_REACHED weak.runtime_makeStrongFromWeak
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2085460Z {"time":"2020-01-15T14:11:38.742396074Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestSeeds.func1","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/sim_test.go","line":243},"msg":"{Messages:39051 Dropped:4 Crashes:10 LinkChanges:8 OK:4921 Failed:476 Ambiguous:71 Compactions:44 WatchCompacted:8 Revokes:84 DiskFaults:3 Silences:0 Fenced:0 ColdRestarts:9 Pauses:4 LinkStalls:6 HalfOpens:3 Asymmetric:3 Settles:0 GrayNodes:1 GrayStreams:114 RecoveryCrashes:3 Checkpoints:267 Snapshots:10 ServeFailures:0 SnapshotFlips:0 FetchCrashes:0 SlowFetches:0 Reloads:10 StepCrashes:0 Rots:0 OlderCheckpoints:0 CheckpointsDuringInstall:0 FencedAfterServe:0 ErasedAtRoot:1 ErasedAtRemoval:0 MembershipChanges:[0 0 0 0] MembershipFaults:[0 0 0 0] MembershipAttempts:0}, 3125 committed writes","machine":"main","method":"t.Logf","goroutine":9,"step":1}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2089237Z --- PASS: TestSeeds/1 (95.74s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2090829Z {"time":"2020-01-15T14:11:38.742396074Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestSeeds","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/sim_test.go","line":266},"msg":"1 seeds: 0 stalled leaders went silent","machine":"main","method":"t.Logf","goroutine":8,"step":2}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2093853Z {"time":"2020-01-15T14:11:38.742396074Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestSeeds","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/sim_test.go","line":267},"msg":"of 1 seeds, the faults took effect in: crash 1, disk fault 1, gray client 1, gray node 1, half-open link 1, link change 1, link stall 1, pause 1, two cold restarts 1","machine":"main","method":"t.Logf","goroutine":8,"step":3}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2097999Z --- PASS: TestSeeds (95.74s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2098284Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:47:31.2120359Z COMMAND seed-1b flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.v -test.run=\^TestSeeds\$ -seeds=1 -sim.seed=1 -sim.seeds=1 -logformat=raw -r333.output=/home/runner/work/tigerstore/tigerstore/r333-results/seed-1b 
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0347437Z seed-1b	0
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0358667Z === RUN   TestSeeds (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0359194Z === RUN   TestSeeds/1 (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0359562Z R333_REACHED crypto/internal/fips140.getIndicator
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0360014Z R333_REACHED crypto/internal/fips140.setIndicator
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0360950Z R333_REACHED weak.runtime_registerWeakPointer
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0361490Z R333_REACHED runtime.AddCleanup(no-GC)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0361911Z R333_REACHED internal/sync.runtime_canSpin
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0362278Z R333_REACHED internal/sync.runtime_nanotime
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0362678Z R333_REACHED internal/sync.runtime_SemacquireMutex
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0363090Z R333_REACHED internal/sync.runtime_Semrelease
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0363436Z R333_REACHED weak.runtime_makeStrongFromWeak
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0367201Z {"time":"2020-01-15T14:11:38.742396074Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestSeeds.func1","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/sim_test.go","line":243},"msg":"{Messages:39051 Dropped:4 Crashes:10 LinkChanges:8 OK:4921 Failed:476 Ambiguous:71 Compactions:44 WatchCompacted:8 Revokes:84 DiskFaults:3 Silences:0 Fenced:0 ColdRestarts:9 Pauses:4 LinkStalls:6 HalfOpens:3 Asymmetric:3 Settles:0 GrayNodes:1 GrayStreams:114 RecoveryCrashes:3 Checkpoints:267 Snapshots:10 ServeFailures:0 SnapshotFlips:0 FetchCrashes:0 SlowFetches:0 Reloads:10 StepCrashes:0 Rots:0 OlderCheckpoints:0 CheckpointsDuringInstall:0 FencedAfterServe:0 ErasedAtRoot:1 ErasedAtRemoval:0 MembershipChanges:[0 0 0 0] MembershipFaults:[0 0 0 0] MembershipAttempts:0}, 3125 committed writes","machine":"main","method":"t.Logf","goroutine":9,"step":1}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0370522Z --- PASS: TestSeeds/1 (95.74s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0372081Z {"time":"2020-01-15T14:11:38.742396074Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestSeeds","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/sim_test.go","line":266},"msg":"1 seeds: 0 stalled leaders went silent","machine":"main","method":"t.Logf","goroutine":8,"step":2}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0375252Z {"time":"2020-01-15T14:11:38.742396074Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestSeeds","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/sim_test.go","line":267},"msg":"of 1 seeds, the faults took effect in: crash 1, disk fault 1, gray client 1, gray node 1, half-open link 1, link change 1, link stall 1, pause 1, two cold restarts 1","machine":"main","method":"t.Logf","goroutine":8,"step":3}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0377119Z --- PASS: TestSeeds (95.74s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0377339Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:47:33.0399042Z COMMAND seed-2 flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.v -test.run=\^TestSeeds\$ -seeds=2 -sim.seed=1 -sim.seeds=1 -logformat=raw -r333.output=/home/runner/work/tigerstore/tigerstore/r333-results/seed-2 
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1029813Z seed-2	0
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1040648Z === RUN   TestSeeds (seed 2)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1041259Z === RUN   TestSeeds/1 (seed 2)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1041678Z R333_REACHED crypto/internal/fips140.getIndicator
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1042148Z R333_REACHED crypto/internal/fips140.setIndicator
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1042577Z R333_REACHED weak.runtime_registerWeakPointer
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1042921Z R333_REACHED runtime.AddCleanup(no-GC)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1043310Z R333_REACHED internal/sync.runtime_canSpin
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1043647Z R333_REACHED internal/sync.runtime_nanotime
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1044042Z R333_REACHED internal/sync.runtime_SemacquireMutex
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1044462Z R333_REACHED internal/sync.runtime_Semrelease
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1045003Z R333_REACHED weak.runtime_makeStrongFromWeak
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1048586Z {"time":"2020-01-15T14:11:13.77044095Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestSeeds.func1","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/sim_test.go","line":243},"msg":"{Messages:13063 Dropped:1 Crashes:12 LinkChanges:14 OK:3132 Failed:2546 Ambiguous:51 Compactions:21 WatchCompacted:9 Revokes:42 DiskFaults:3 Silences:0 Fenced:1 ColdRestarts:5 Pauses:2 LinkStalls:8 HalfOpens:3 Asymmetric:5 Settles:0 GrayNodes:1 GrayStreams:106 RecoveryCrashes:3 Checkpoints:101 Snapshots:1 ServeFailures:0 SnapshotFlips:0 FetchCrashes:0 SlowFetches:0 Reloads:1 StepCrashes:1 Rots:0 OlderCheckpoints:0 CheckpointsDuringInstall:0 FencedAfterServe:0 ErasedAtRoot:1 ErasedAtRemoval:0 MembershipChanges:[0 0 0 0] MembershipFaults:[0 0 0 0] MembershipAttempts:0}, 1968 committed writes","machine":"main","method":"t.Logf","goroutine":9,"step":1}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1052510Z --- PASS: TestSeeds/1 (70.77s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1054130Z {"time":"2020-01-15T14:11:13.77044095Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestSeeds","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/sim_test.go","line":266},"msg":"1 seeds: 0 stalled leaders went silent","machine":"main","method":"t.Logf","goroutine":8,"step":2}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1057413Z {"time":"2020-01-15T14:11:13.77044095Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestSeeds","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/sim_test.go","line":267},"msg":"of 1 seeds, the faults took effect in: crash 1, disk fault 1, gray client 1, gray node 1, half-open link 1, link change 1, link stall 1, pause 1, two cold restarts 1","machine":"main","method":"t.Logf","goroutine":8,"step":3}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1059274Z --- PASS: TestSeeds (70.77s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1059500Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:47:34.1084206Z COMMAND events-1a flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.run=\^TestSeeds\$ -seeds=1 -sim.seed=1 -sim.seeds=1 -logformat=raw -force-checksum 
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9793027Z events-1a	0
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9803589Z 03431459}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9805226Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":302,"key":"checksumKeyRunPick","a":5,"b":6981463397233341767,"sum":7550967619129782414}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9807481Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":303,"key":"checksumKeyRunResult","a":0,"b":-6787101928825881179,"sum":884817580136660843}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9809668Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":304,"key":"checksumKeyRunPick","a":5,"b":4775359481854058964,"sum":-2507564056099093665}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9812021Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":305,"key":"checksumKeyRunResult","a":0,"b":-8993205844205163982,"sum":-2412694565971229119}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9814183Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":306,"key":"checksumKeyRunPick","a":7,"b":2569255566474776161,"sum":2579474875483571656}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9816523Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":307,"key":"checksumKeyRunResult","a":0,"b":2569255566474776161,"sum":992421116511284791}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9819451Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":308,"key":"checksumKeyRunPick","a":5,"b":-4315027096554835312,"sum":338503234706460653}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9821641Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":309,"key":"checksumKeyRunResult","a":0,"b":363151651095493358,"sum":1168748878493446650}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9823872Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":310,"key":"checksumKeyRunPick","a":5,"b":-6521131011934118115,"sum":8722548637106249537}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9826262Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":311,"key":"checksumKeyRunResult","a":2,"b":-6521131011934118115,"sum":3998362298226415734}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9828934Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":312,"key":"checksumKeyRunPick","a":7,"b":5041330398745822028,"sum":-2505787837960269652}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9831216Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":313,"key":"checksumKeyRunResult","a":0,"b":5041330398745822028,"sum":9056291151957050448}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9833399Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":314,"key":"checksumKeyRunPick","a":7,"b":-1842952264283789445,"sum":1508577021032932600}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9835927Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":315,"key":"checksumKeyRunResult","a":0,"b":-1842952264283789445,"sum":-3848071368448594006}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9838140Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":316,"key":"checksumKeyRunPick","a":5,"b":-8727234927313400918,"sum":7181258131625073154}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9840427Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":317,"key":"checksumKeyRunResult","a":0,"b":-4049056179663072248,"sum":7293675199036241167}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9846068Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":318,"key":"checksumKeyRunPick","a":7,"b":7513405231016867895,"sum":-7120305896194294304}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9848935Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":319,"key":"checksumKeyRunResult","a":0,"b":7513405231016867895,"sum":-8048986291948458131}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9851120Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":320,"key":"checksumKeyRunPick","a":5,"b":629122567987256422,"sum":8211430757459014604}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9853283Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":321,"key":"checksumKeyRunResult","a":0,"b":5307301315637585092,"sum":7737277481371204800}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9856115Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":322,"key":"checksumKeyRunPick","a":5,"b":-1576981347392026381,"sum":7749724864883661374}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9858302Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":323,"key":"checksumKeyRunResult","a":0,"b":3101197400258302289,"sum":3765311011298279895}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9860598Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":324,"key":"checksumKeyRunPick","a":5,"b":-3783085262771309184,"sum":-5591867391498891302}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9862793Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":325,"key":"checksumKeyRunResult","a":2,"b":-3783085262771309184,"sum":-7733456365292012025}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9865113Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":326,"key":"checksumKeyRunPick","a":7,"b":7779376147908630959,"sum":5335798844843031513}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9867365Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":327,"key":"checksumKeyRunResult","a":1,"b":7779376147908630959,"sum":2495811302109015478}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9869651Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":328,"key":"checksumKeyRunPick","a":5,"b":895093484879019486,"sum":-4152339392311693430}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9871907Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":329,"key":"checksumKeyRunResult","a":0,"b":-6599467592179296406,"sum":-4882676069138782958}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9874708Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":330,"key":"checksumKeyRunPick","a":5,"b":4962993818500643737,"sum":3280213436138580158}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9877177Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":331,"key":"checksumKeyRunResult","a":0,"b":-717146244404280807,"sum":3659435131743416158}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9879475Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":332,"key":"checksumKeyRunPick","a":5,"b":-7601428907433892280,"sum":-2291320457893791204}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9881645Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":333,"key":"checksumKeyRunResult","a":0,"b":-7601428907433892280,"sum":-6556579347097106070}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9883880Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":334,"key":"checksumKeyRunPick","a":5,"b":3961032503246047863,"sum":-4259441257242544159}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9886217Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":335,"key":"checksumKeyRunResult","a":0,"b":3961032503246047863,"sum":3459133510259877544}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9888444Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":336,"key":"checksumKeyRunPick","a":5,"b":-2923250159783563610,"sum":-312329694300866941}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9890626Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":337,"key":"checksumKeyRunResult","a":0,"b":-2923250159783563610,"sum":3991137836216694494}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9892812Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":338,"key":"checksumKeyRunPick","a":5,"b":8639211250896376533,"sum":-740038979557882436}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9895093Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":339,"key":"checksumKeyRunResult","a":2,"b":8639211250896376533,"sum":5572958117673587998}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9897321Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":340,"key":"checksumKeyRunPick","a":1,"b":1754928587866765060,"sum":2249544525829253774}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9899890Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":341,"key":"checksumKeyRunResult","a":0,"b":4227003420137810927,"sum":-3205705677811224411}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9902021Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":342,"key":"checksumKeyRunFinished","a":0,"b":0,"sum":260498170041722970}
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9903082Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:47:47.9903721Z COMMAND events-1b flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.run=\^TestSeeds\$ -seeds=1 -sim.seed=1 -sim.seeds=1 -logformat=raw -force-checksum 
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8867753Z events-1b	0
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8877564Z 03431459}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8878927Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":302,"key":"checksumKeyRunPick","a":5,"b":6981463397233341767,"sum":7550967619129782414}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8881314Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":303,"key":"checksumKeyRunResult","a":0,"b":-6787101928825881179,"sum":884817580136660843}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8883486Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":304,"key":"checksumKeyRunPick","a":5,"b":4775359481854058964,"sum":-2507564056099093665}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8886010Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":305,"key":"checksumKeyRunResult","a":0,"b":-8993205844205163982,"sum":-2412694565971229119}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8888315Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":306,"key":"checksumKeyRunPick","a":7,"b":2569255566474776161,"sum":2579474875483571656}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8890460Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":307,"key":"checksumKeyRunResult","a":0,"b":2569255566474776161,"sum":992421116511284791}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8892693Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":308,"key":"checksumKeyRunPick","a":5,"b":-4315027096554835312,"sum":338503234706460653}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8895022Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":309,"key":"checksumKeyRunResult","a":0,"b":363151651095493358,"sum":1168748878493446650}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8897859Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":310,"key":"checksumKeyRunPick","a":5,"b":-6521131011934118115,"sum":8722548637106249537}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8900365Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":311,"key":"checksumKeyRunResult","a":2,"b":-6521131011934118115,"sum":3998362298226415734}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8902878Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":312,"key":"checksumKeyRunPick","a":7,"b":5041330398745822028,"sum":-2505787837960269652}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8905702Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":313,"key":"checksumKeyRunResult","a":0,"b":5041330398745822028,"sum":9056291151957050448}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8908069Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":314,"key":"checksumKeyRunPick","a":7,"b":-1842952264283789445,"sum":1508577021032932600}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8910247Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":315,"key":"checksumKeyRunResult","a":0,"b":-1842952264283789445,"sum":-3848071368448594006}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8912459Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":316,"key":"checksumKeyRunPick","a":5,"b":-8727234927313400918,"sum":7181258131625073154}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8914644Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":317,"key":"checksumKeyRunResult","a":0,"b":-4049056179663072248,"sum":7293675199036241167}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8916992Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":318,"key":"checksumKeyRunPick","a":7,"b":7513405231016867895,"sum":-7120305896194294304}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8919262Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":319,"key":"checksumKeyRunResult","a":0,"b":7513405231016867895,"sum":-8048986291948458131}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8921408Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":320,"key":"checksumKeyRunPick","a":5,"b":629122567987256422,"sum":8211430757459014604}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8923965Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":321,"key":"checksumKeyRunResult","a":0,"b":5307301315637585092,"sum":7737277481371204800}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8926267Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":322,"key":"checksumKeyRunPick","a":5,"b":-1576981347392026381,"sum":7749724864883661374}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8928535Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":323,"key":"checksumKeyRunResult","a":0,"b":3101197400258302289,"sum":3765311011298279895}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8930725Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":324,"key":"checksumKeyRunPick","a":5,"b":-3783085262771309184,"sum":-5591867391498891302}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8932885Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":325,"key":"checksumKeyRunResult","a":2,"b":-3783085262771309184,"sum":-7733456365292012025}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8935198Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":326,"key":"checksumKeyRunPick","a":7,"b":7779376147908630959,"sum":5335798844843031513}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8937408Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":327,"key":"checksumKeyRunResult","a":1,"b":7779376147908630959,"sum":2495811302109015478}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8939587Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":328,"key":"checksumKeyRunPick","a":5,"b":895093484879019486,"sum":-4152339392311693430}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8941774Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":329,"key":"checksumKeyRunResult","a":0,"b":-6599467592179296406,"sum":-4882676069138782958}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8943925Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":330,"key":"checksumKeyRunPick","a":5,"b":4962993818500643737,"sum":3280213436138580158}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8946279Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":331,"key":"checksumKeyRunResult","a":0,"b":-717146244404280807,"sum":3659435131743416158}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8948776Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":332,"key":"checksumKeyRunPick","a":5,"b":-7601428907433892280,"sum":-2291320457893791204}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8950986Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":333,"key":"checksumKeyRunResult","a":0,"b":-7601428907433892280,"sum":-6556579347097106070}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8953142Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":334,"key":"checksumKeyRunPick","a":5,"b":3961032503246047863,"sum":-4259441257242544159}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8955632Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":335,"key":"checksumKeyRunResult","a":0,"b":3961032503246047863,"sum":3459133510259877544}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8957846Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":336,"key":"checksumKeyRunPick","a":5,"b":-2923250159783563610,"sum":-312329694300866941}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8959991Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":337,"key":"checksumKeyRunResult","a":0,"b":-2923250159783563610,"sum":3991137836216694494}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8962199Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":338,"key":"checksumKeyRunPick","a":5,"b":8639211250896376533,"sum":-740038979557882436}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8964346Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":339,"key":"checksumKeyRunResult","a":2,"b":8639211250896376533,"sum":5572958117673587998}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8966644Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":340,"key":"checksumKeyRunPick","a":1,"b":1754928587866765060,"sum":2249544525829253774}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8968877Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":341,"key":"checksumKeyRunResult","a":0,"b":4227003420137810927,"sum":-3205705677811224411}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8970991Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":342,"key":"checksumKeyRunFinished","a":0,"b":0,"sum":260498170041722970}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8972099Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:48:01.8972830Z COMMAND events-2 flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.run=\^TestSeeds\$ -seeds=2 -sim.seed=1 -sim.seeds=1 -logformat=raw -force-checksum 
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3709668Z events-2	0
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3719906Z "time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":308,"key":"checksumKeyRunPick","a":5,"b":-8747951164016900807,"sum":3413150346580067033}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3722298Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":309,"key":"checksumKeyRunResult","a":0,"b":-4069772416366572137,"sum":-2366166875485181309}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3724643Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":310,"key":"checksumKeyRunPick","a":7,"b":7492688994313368006,"sum":-6713438687140318406}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3727004Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":311,"key":"checksumKeyRunResult","a":0,"b":7492688994313368006,"sum":-3480713143790871067}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3729246Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":312,"key":"checksumKeyRunPick","a":5,"b":608406331283756533,"sum":3259112652949905815}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3731464Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":313,"key":"checksumKeyRunResult","a":0,"b":5286585078934085203,"sum":-3480436810620824469}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3733616Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":314,"key":"checksumKeyRunPick","a":5,"b":-1597697584095526270,"sum":-6214554889788183380}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3735957Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":315,"key":"checksumKeyRunResult","a":0,"b":3080481163554802400,"sum":-4724513354042384269}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3738131Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":316,"key":"checksumKeyRunPick","a":5,"b":-3803801499474809073,"sum":-8172147772985506604}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3740334Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":317,"key":"checksumKeyRunResult","a":0,"b":874377248175519597,"sum":-5645172581390517975}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3742559Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":318,"key":"checksumKeyRunPick","a":7,"b":-6009905414854091876,"sum":-6720613712086604091}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3745331Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":319,"key":"checksumKeyRunResult","a":0,"b":-6009905414854091876,"sum":5679134043313767501}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3747637Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":320,"key":"checksumKeyRunPick","a":5,"b":5552555995825848267,"sum":-5005075581791102605}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3749817Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":321,"key":"checksumKeyRunResult","a":0,"b":-8216009330233374679,"sum":8963230193858907721}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3752066Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":322,"key":"checksumKeyRunPick","a":7,"b":3346452080446565464,"sum":-6398386353115698141}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3754221Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":323,"key":"checksumKeyRunResult","a":1,"b":3346452080446565464,"sum":-4756887499854244588}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3756575Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":324,"key":"checksumKeyRunPick","a":5,"b":-3537830582583046009,"sum":-6013663793257121210}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3758748Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":325,"key":"checksumKeyRunResult","a":0,"b":1140348165067282661,"sum":6427073004636398988}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3760957Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":326,"key":"checksumKeyRunPick","a":5,"b":-5743934497962328812,"sum":6782715169544141392}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3763237Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":327,"key":"checksumKeyRunResult","a":0,"b":-1065755750312000142,"sum":3491969090943082269}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3765494Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":328,"key":"checksumKeyRunPick","a":5,"b":-7950038413341611615,"sum":5390394917321673183}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3767727Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":329,"key":"checksumKeyRunResult","a":0,"b":-3271859665691282945,"sum":-1566324866272059937}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3770282Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":330,"key":"checksumKeyRunPick","a":5,"b":8290601744988657198,"sum":5470818836778520945}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3772424Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":331,"key":"checksumKeyRunResult","a":0,"b":-5477963581070565748,"sum":-8379794915657058657}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3774632Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":332,"key":"checksumKeyRunPick","a":5,"b":6084497829609374395,"sum":1766955805600662378}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3776981Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":333,"key":"checksumKeyRunResult","a":0,"b":-7684067496449848551,"sum":3845055535240079583}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3779305Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":334,"key":"checksumKeyRunPick","a":5,"b":3878393914230091592,"sum":-3278156506712515875}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3781505Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":335,"key":"checksumKeyRunResult","a":0,"b":-3616167162828224300,"sum":8130943930450778721}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3783711Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":336,"key":"checksumKeyRunPick","a":5,"b":7946294247851715843,"sum":-3505641245438902371}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3786007Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":337,"key":"checksumKeyRunResult","a":0,"b":2266154184946791299,"sum":4361231277193272225}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3788165Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":338,"key":"checksumKeyRunPick","a":5,"b":-4618128478082820174,"sum":3545493030199868760}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3790382Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":339,"key":"checksumKeyRunResult","a":0,"b":-4618128478082820174,"sum":-8437388093013720355}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3792571Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":340,"key":"checksumKeyRunPick","a":5,"b":6944332932597119969,"sum":-414026720572022835}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3795152Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":341,"key":"checksumKeyRunResult","a":0,"b":6944332932597119969,"sum":-4925544822648237585}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3797352Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":342,"key":"checksumKeyRunPick","a":5,"b":60050269567508496,"sum":6911180852137193562}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3799505Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":343,"key":"checksumKeyRunResult","a":0,"b":60050269567508496,"sum":6979684506302685127}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3801782Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":344,"key":"checksumKeyRunPick","a":5,"b":-6824232393462102977,"sum":6155146459866602378}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3803928Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":345,"key":"checksumKeyRunResult","a":2,"b":-6824232393462102977,"sum":-1188920113219857869}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3806236Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":346,"key":"checksumKeyRunPick","a":1,"b":4738229017217837166,"sum":-7094882019991007621}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3808424Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":347,"key":"checksumKeyRunResult","a":0,"b":7210303849488883033,"sum":-3607269731695789152}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3810559Z {"time":"2020-01-15T14:10:03.000001234Z","level":"ERROR","source":{"function":"github.com/jellevandenhooff/gosim/gosimruntime.(*checksummer).recordIntInt","file":"/tmp/r333-gosim-synctest/gosimruntime/checksum.go","line":51},"msg":"checksummer","step":348,"key":"checksumKeyRunFinished","a":0,"b":0,"sum":3493425137085812965}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3811678Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:48:08.3812230Z COMMAND membership flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.v -test.run=\^TestMembershipFaults\$ -seeds=1 -sim.seed=1 -sim.seeds=1 -logformat=raw 
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6611389Z membership	0
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6621174Z === RUN   TestMembershipFaults (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6621858Z === RUN   TestMembershipFaults/1 (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6622234Z R333_REACHED crypto/internal/fips140.getIndicator
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6622616Z R333_REACHED crypto/internal/fips140.setIndicator
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6623044Z R333_REACHED weak.runtime_registerWeakPointer
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6623402Z R333_REACHED runtime.AddCleanup(no-GC)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6623788Z R333_REACHED internal/sync.runtime_canSpin
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6624131Z R333_REACHED internal/sync.runtime_nanotime
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6624503Z R333_REACHED internal/sync.runtime_SemacquireMutex
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6625113Z R333_REACHED internal/sync.runtime_Semrelease
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6626175Z R333_REACHED weak.runtime_makeStrongFromWeak
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6629728Z {"time":"2020-01-15T14:12:47.410936465Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestMembershipFaults.func1","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/membership_test.go","line":44},"msg":"{Messages:43745 Dropped:229 Crashes:13 LinkChanges:4 OK:5553 Failed:89 Ambiguous:74 Compactions:36 WatchCompacted:20 Revokes:0 DiskFaults:5 Silences:2 Fenced:0 ColdRestarts:12 Pauses:9 LinkStalls:15 HalfOpens:5 Asymmetric:2 Settles:0 GrayNodes:6 GrayStreams:335 RecoveryCrashes:10 Checkpoints:248 Snapshots:16 ServeFailures:0 SnapshotFlips:2 FetchCrashes:1 SlowFetches:7 Reloads:16 StepCrashes:1 Rots:0 OlderCheckpoints:0 CheckpointsDuringInstall:0 FencedAfterServe:0 ErasedAtRoot:1 ErasedAtRemoval:0 MembershipChanges:[1 1 1 1] MembershipFaults:[0 0 0 0] MembershipAttempts:52}","machine":"main","method":"t.Logf","goroutine":9,"step":1}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6633071Z --- PASS: TestMembershipFaults/1 (164.41s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6635621Z {"time":"2020-01-15T14:12:47.410936465Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestMembershipFaults","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/membership_test.go","line":47},"msg":"of 1 seeds, the faults took effect in: cold restart 1, crash 1, disk fault 1, link change 1","machine":"main","method":"t.Logf","goroutine":8,"step":2}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6637417Z --- PASS: TestMembershipFaults (164.41s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6651966Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:48:10.6677770Z COMMAND cleaner flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-node.test -test.v -test.run=\^TestConcurrentCleanerSimulation\$/1\$ -seeds=1 -logformat=raw 
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.1993035Z cleaner	0
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.2002967Z === RUN   TestConcurrentCleanerSimulation (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.2003506Z === RUN   TestConcurrentCleanerSimulation/1 (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.2003875Z R333_REACHED internal/sync.runtime_canSpin
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.2004356Z R333_REACHED internal/sync.runtime_nanotime
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.2004724Z R333_REACHED internal/sync.runtime_SemacquireMutex
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.2005346Z R333_REACHED internal/sync.runtime_Semrelease
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.2007024Z {"time":"2020-01-15T14:10:06.850001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.concurrentCleaning","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/node/clean_sim_test.go","line":313},"msg":"seed=1 pack-syncs=8 segment-removes=38 crash-cuts=5","machine":"main","method":"t.Logf","goroutine":9,"step":1}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.2009797Z {"time":"2020-01-15T14:10:07.642001234Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/node.concurrentCleaning.func7","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/node/clean_sim_test.go","line":277},"msg":"seed=1 reads=418 snapshots=14","machine":"main","method":"t.Logf","goroutine":9,"step":2}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.2011443Z --- PASS: TestConcurrentCleanerSimulation/1 (4.64s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.2011913Z --- PASS: TestConcurrentCleanerSimulation (4.64s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.2015855Z 
+probe	Translate, compile and explore one seed	2026-10-20T07:48:11.2042412Z COMMAND planted bash experiments/gosim333/run.sh planted 
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2137721Z planted	0
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2146653Z === RUN   TestGosim333Planted (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2147043Z === RUN   TestGosim333Planted/1 (seed 1)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2147501Z R333_REACHED crypto/internal/fips140.getIndicator
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2147876Z R333_REACHED crypto/internal/fips140.setIndicator
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2148287Z R333_REACHED weak.runtime_registerWeakPointer
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2149289Z R333_REACHED runtime.AddCleanup(no-GC)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2149636Z R333_REACHED internal/sync.runtime_canSpin
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2150003Z R333_REACHED internal/sync.runtime_nanotime
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2150443Z R333_REACHED internal/sync.runtime_SemacquireMutex
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2150800Z R333_REACHED internal/sync.runtime_Semrelease
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2151193Z R333_REACHED weak.runtime_makeStrongFromWeak
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2153490Z {"time":"2020-01-15T14:10:43.080143782Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.witnessCatches","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/planted_test.go","line":118},"msg":"the witness checker (log): witness check (log) of 7597 operations: op 56 (client 2, 5221681032 to 5222047401) range {\"key\":\"k0\"} with answer {\"revision\":1,\"range\":{\"count\":0}} has no state that real time allows: its revision's states are 0 to 0, real time allows 5 to 0","machine":"main","method":"t.Logf","goroutine":9,"step":1}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2157900Z {"time":"2020-01-15T14:10:43.080143782Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.witnessCatches","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/planted_test.go","line":118},"msg":"the witness checker (revisions): witness check (revisions) of 7597 operations: op 56 (client 2, 5221681032 to 5222047401) range {\"key\":\"k0\"} with answer {\"revision\":1,\"range\":{\"count\":0}} has no state that real time allows: its revision's states are 0 to 0, real time allows 5 to 0","machine":"main","method":"t.Logf","goroutine":9,"step":2}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2161875Z {"time":"2020-01-15T14:10:43.080143782Z","level":"INFO","source":{"function":"translated/github.com/djosh34/tigerstore/internal_/sim.ImplTestPlanted.func2","file":"/home/runner/work/tigerstore/tigerstore/.gosim/translated/linux_arm64/github.com/djosh34/tigerstore/internal_/sim/planted_test.go","line":161},"msg":"B01a (linearizable reads are served without ReadIndex) caught by seed 1: seed 1: client 2 call at 5221 ms got revision 1, but client 1's call returned revision 6 at 5220 ms, before it started","machine":"main","method":"t.Logf","goroutine":9,"step":3}
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2163911Z --- PASS: TestGosim333Planted/1 (40.08s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:31.2164308Z --- PASS: TestGosim333Planted (40.08s simulated)
+probe	Translate, compile and explore one seed	2026-10-20T07:48:43.6284588Z seed-1a seed-1b files ['run-001/history.json', 'run-001/trace.txt']
+probe	Translate, compile and explore one seed	2026-10-20T07:48:43.6286823Z run-001/history.json bytes 5854139 5854139 equal True sha256 ceeff4adde57fd1adef956e241542c208bb9b6e0f59c6cec72345939b498e83d ceeff4adde57fd1adef956e241542c208bb9b6e0f59c6cec72345939b498e83d
+probe	Translate, compile and explore one seed	2026-10-20T07:48:43.6288425Z run-001/trace.txt bytes 25141 25141 equal True sha256 2820157dcf48020e352940e59a2dd002def39ddb74418c14a90e996aa1bf7634 2820157dcf48020e352940e59a2dd002def39ddb74418c14a90e996aa1bf7634
+probe	Translate, compile and explore one seed	2026-10-20T07:48:43.6289508Z seed-1a seed-2 files ['run-001/history.json', 'run-001/trace.txt']
+probe	Translate, compile and explore one seed	2026-10-20T07:48:43.6290469Z run-001/history.json bytes 5854139 4494061 equal False sha256 ceeff4adde57fd1adef956e241542c208bb9b6e0f59c6cec72345939b498e83d d28a586a850d7ad1ac36eba41cc209aeddd4c2073da804f8ae9621b573c55ae1
+probe	Translate, compile and explore one seed	2026-10-20T07:48:43.6291913Z run-001/trace.txt bytes 25141 18896 equal False sha256 2820157dcf48020e352940e59a2dd002def39ddb74418c14a90e996aa1bf7634 6eef68cf174d6e2f8cb713ffb0299c6d15357e7497eeea0dbc6b2e37651e5ea3
+probe	Translate, compile and explore one seed	2026-10-20T07:48:43.6292909Z events 1a bytes 1164973770 sha256 b354223b5c2bdb71879543eb1aa5e293b4fabac4450ba5fbd4c97fd40fc34a33
+probe	Translate, compile and explore one seed	2026-10-20T07:48:43.6293606Z events 1b bytes 1164973770 sha256 b354223b5c2bdb71879543eb1aa5e293b4fabac4450ba5fbd4c97fd40fc34a33
+probe	Translate, compile and explore one seed	2026-10-20T07:48:43.6294379Z events 2 bytes 518984115 sha256 e877dab54c8a445f8b51f1fcabec12d3a19ea4aaf9dda53b2e92df814c2354e0
+probe	Translate, compile and explore one seed	2026-10-20T07:48:43.6295103Z events same seed byte-identical True
+probe	Translate, compile and explore one seed	2026-10-20T07:48:43.6295455Z events seed 2 differs True
+probe	Upload exact logs, patches and recorded traces	﻿2026-10-20T07:48:43.7496976Z ##[group]Run actions/upload-artifact@v4
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.7497475Z with:
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.7497772Z   name: gosim333-03124ced9402c1e0da14b152ad345dd1e4e11387
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.7498269Z   path: r333-results
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.7498553Z   retention-days: 14
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.7498850Z   if-no-files-found: warn
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.7499121Z   compression-level: 6
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.7499361Z   overwrite: false
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.7499712Z   include-hidden-files: false
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.7500000Z ##[endgroup]
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.9010126Z (node:13652) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.9012291Z (Use `node --trace-deprecation ...` to show where the warning was created)
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.9133741Z With the provided path, there will be 30 files uploaded
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.9138449Z Artifact name is valid!
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:43.9139212Z Root directory input is valid!
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:44.1588098Z Beginning upload of artifact content to blob storage
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:45.0335609Z (node:13652) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:45.3383766Z Uploaded bytes 8388608
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:46.1327232Z Uploaded bytes 16777216
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:46.8475850Z Uploaded bytes 25165824
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:47.6726859Z Uploaded bytes 33554432
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:48.5016907Z Uploaded bytes 41943040
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:49.3663156Z Uploaded bytes 50331648
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:50.2331488Z Uploaded bytes 58720256
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:51.0292779Z Uploaded bytes 67108864
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:51.8891441Z Uploaded bytes 75497472
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:52.7857284Z Uploaded bytes 83886080
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:53.5144384Z Uploaded bytes 92274688
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:54.3084181Z Uploaded bytes 100663296
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:55.1561428Z Uploaded bytes 109051904
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:56.0006473Z Uploaded bytes 117440512
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:56.8882761Z Uploaded bytes 125829120
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:57.6430470Z Uploaded bytes 134217728
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:58.5440083Z Uploaded bytes 142606336
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:48:59.2556704Z Uploaded bytes 150994944
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:00.1316338Z Uploaded bytes 159383552
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:00.8941978Z Uploaded bytes 167772160
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:01.7068419Z Uploaded bytes 176160768
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:02.4788880Z Uploaded bytes 184549376
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:03.3526965Z Uploaded bytes 192937984
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:04.1596796Z Uploaded bytes 201326592
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:05.0297852Z Uploaded bytes 209715200
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:05.8456406Z Uploaded bytes 218103808
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:06.7023787Z Uploaded bytes 226492416
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:07.4310923Z Uploaded bytes 234881024
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:08.1982341Z Uploaded bytes 243269632
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:09.0524068Z Uploaded bytes 251658240
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:09.8280860Z Uploaded bytes 260046848
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:10.5835764Z Uploaded bytes 268435456
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:11.3409094Z Uploaded bytes 276824064
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:12.1481517Z Uploaded bytes 285212672
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:12.8934021Z Uploaded bytes 293601280
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:13.7203562Z Uploaded bytes 301989888
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:14.3508914Z Uploaded bytes 310378496
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:15.1587839Z Uploaded bytes 318767104
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:15.9019513Z Uploaded bytes 327155712
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:16.7465501Z Uploaded bytes 335544320
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:17.5526575Z Uploaded bytes 343932928
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:18.2687033Z Uploaded bytes 352321536
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:19.1169535Z Uploaded bytes 360710144
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:19.9790394Z Uploaded bytes 369098752
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:20.8540796Z Uploaded bytes 377487360
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:21.6725352Z Uploaded bytes 385875968
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:22.3941716Z Uploaded bytes 394264576
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:23.2630156Z Uploaded bytes 402653184
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:23.6029552Z Uploaded bytes 406571313
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:23.6231623Z Finished uploading artifact content to blob storage!
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:23.6234141Z SHA256 digest of uploaded artifact zip is 8904157e27b70d99a18e84feb77ae649829efdbb4f151a83f1ed984d67cf34bf
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:23.6236654Z Finalizing artifact upload
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:23.8768970Z Artifact gosim333-03124ced9402c1e0da14b152ad345dd1e4e11387.zip successfully finalized. Artifact ID 12249115864
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:23.8770130Z Artifact gosim333-03124ced9402c1e0da14b152ad345dd1e4e11387 has been successfully uploaded! Final size is 406571313 bytes. Artifact ID is 12249115864
+probe	Upload exact logs, patches and recorded traces	2026-10-20T07:49:23.8776968Z Artifact download URL: https://github.com/djosh34/tigerstore/actions/runs/39388355445/artifacts/12249115864
+probe	Post Run actions/setup-go@v5	﻿2026-10-20T07:49:23.9167766Z Post job cleanup.
+probe	Post Run actions/setup-go@v5	2026-10-20T07:49:24.0291771Z (node:13676) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+probe	Post Run actions/setup-go@v5	2026-10-20T07:49:24.0292888Z (Use `node --trace-deprecation ...` to show where the warning was created)
+probe	Post Run actions/checkout@v4	﻿2026-10-20T07:49:24.0604714Z Post job cleanup.
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.1380264Z [command]/usr/bin/git version
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.1418970Z git version 2.55.0
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.1461779Z Temporarily overriding HOME='/home/runner/work/_temp/c6414bbf-c89b-4f3f-9be5-195f24db4ae8' before making global git config changes
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.1462788Z Adding repository directory to the temporary git global config as a safe directory
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.1468151Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/tigerstore/tigerstore
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.1876552Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.1926823Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.2171378Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.2199420Z http.https://github.com/.extraheader
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.2209760Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.2845708Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.3083429Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+probe	Post Run actions/checkout@v4	2026-10-20T07:49:24.3120990Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+probe	Complete job	﻿2026-10-20T07:49:24.3512045Z Cleaning up orphan processes
+probe	Complete job	2026-10-20T07:49:24.3870102Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

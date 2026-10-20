@@ -1,0 +1,6 @@
+
+COMMAND prepare bash experiments/gosim333/run.sh prepare 
+
+COMMAND translate bash experiments/gosim333/run.sh translate 
+
+COMMAND compile bash experiments/gosim333/run.sh compile 

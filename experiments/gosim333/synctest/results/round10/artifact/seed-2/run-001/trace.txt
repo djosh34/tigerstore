@@ -1,0 +1,312 @@
+    0.000 ms links 111111
+    3.144 ms node 1: starting
+    3.144 ms node 1: recovering the log
+    3.144 ms node 1: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 3; voters [1 2 3]
+    3.144 ms node 1: leader is 0 at term 1
+   41.633 ms node 2: starting
+   41.633 ms node 2: recovering the log
+   41.633 ms node 2: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 3; voters [1 2 3]
+   41.633 ms node 2: leader is 0 at term 1
+   58.453 ms node 3: starting
+   58.453 ms node 3: recovering the log
+   58.453 ms node 3: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 3; voters [1 2 3]
+   64.786 ms watch 0: stream on node 2 from 0
+   64.964 ms watch 0: created on node 2 from 2
+   66.669 ms node 3: leader is 0 at term 1
+   73.781 ms link 3->1 half-open until 3138 ms
+  183.397 ms link 1->2 stalled until 977 ms
+  191.866 ms watch 2: stream on node 3 from 1
+  191.887 ms watch 2: created on node 3 from 1
+  699.070 ms watch 3: stream on node 2 from 0
+  699.196 ms watch 3: created on node 2 from 2
+  853.214 ms watch 1: stream on node 2 from 1
+  853.405 ms watch 1: created on node 2 from 1
+ 1237.399 ms node 2: disk fault 2 armed
+ 1376.972 ms node 2: paused until 1638 ms
+ 1678.099 ms node 3: leader is 0 at term 2
+ 1678.099 ms node 3: disk fault 2 armed
+ 1678.099 ms node 1: peer: receive from node3: EOF
+ 1678.099 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 1678.099 ms node 3: stopped: core: the disk failed: simfs: no space left on device
+ 1678.099 ms node 3: crashed
+ 1678.099 ms node 2: peer: receive from node3: sim: connection reset
+ 1678.099 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 1678.099 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 1678.099 ms node 2: peer: send to 3: sim: connection reset
+ 1743.207 ms watch 3: stream on node 2 from 2
+ 1767.235 ms node 1: leader is 0 at term 2
+ 1772.396 ms node 2: leader is 0 at term 2
+ 1772.396 ms node 2: stopped: core: the disk failed: simfs: no space left on device
+ 1772.396 ms node 2: crashed
+ 1772.396 ms node 1: peer: receive from node2: sim: connection reset
+ 1772.396 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 1772.396 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 1772.396 ms node 1: peer: send to 2: sim: connection reset
+ 1772.514 ms watch 0: stream on node 1 from 2
+ 1909.051 ms watch 3: stream on node 1 from 2
+ 2151.126 ms watch 2: stream on node 1 from 1
+ 2162.533 ms links 111111
+ 2173.946 ms node 3: starting
+ 2173.946 ms node 3: recovering the log
+ 2173.946 ms node 3: crashed during recovery
+ 2331.050 ms watch 1: stream on node 1 from 1
+ 2715.118 ms links 111111
+ 2724.784 ms node 3: starting
+ 2724.784 ms node 3: recovering the log
+ 2724.784 ms node 3: recovered the log up to entry 3: last entry 3 at term 1; term 1, vote 0, commit 3; voters [1 2 3]
+ 2724.784 ms node 3: leader is 0 at term 1
+ 2803.588 ms node 2: starting
+ 2803.588 ms node 2: recovering the log
+ 2803.588 ms node 2: recovered the log up to entry 3: last entry 3 at term 1; term 1, vote 0, commit 3; voters [1 2 3]
+ 2824.331 ms node 2: leader is 0 at term 1
+ 2887.957 ms link 1->3 stalled until 3436 ms
+ 3249.348 ms node 2: disk stalled until 7158 ms
+ 3528.699 ms node 1: leader is 0 at term 3
+ 3531.397 ms node 2: leader is 0 at term 3
+ 3531.526 ms node 3: leader is 0 at term 3
+ 3534.520 ms node 1: leader is 1 at term 3
+ 3536.223 ms node 3: leader is 1 at term 3
+ 3536.636 ms node 2: leader is 1 at term 3
+ 3545.112 ms erase-one-disk copy
+ 3610.648 ms watch 0: stream on node 3 from 2
+ 3691.813 ms link 2->1 stalled until 4547 ms
+ 3826.088 ms watch 2: stream on node 3 from 1
+ 3826.494 ms watch 2: compacted at 1, starting again
+ 3826.892 ms watch 2: stream on node 2 from 0
+ 3827.067 ms watch 2: created on node 2 from 2
+ 4182.056 ms node 3: crashed
+ 4182.056 ms node 3: damaged checkpoint 10
+ 4182.056 ms node 2: peer: receive from node3: sim: connection reset
+ 4182.056 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 4182.056 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 4182.056 ms node 3: peer: send to 2: sim: connection reset
+ 4182.056 ms node 3: peer: accept: use of closed network connection
+ 4182.056 ms node 3: peer: receive from node1: sim: connection reset
+ 4182.056 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 4182.056 ms node 3: peer: receive from node2: sim: connection reset
+ 4182.056 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 4182.056 ms node 3: peer: send to 1: sim: connection reset
+ 4182.056 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 4182.056 ms node 2: peer: send to 3: sim: connection reset
+ 4182.056 ms node 1: peer: receive from node3: sim: connection reset
+ 4182.056 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 4182.056 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 4182.056 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 4182.056 ms node 1: peer: send to 3: sim: connection reset
+ 4349.965 ms watch 3: stream on node 2 from 11
+ 4366.332 ms watch 0: stream on node 1 from 11
+ 4465.125 ms node 3: starting
+ 4465.125 ms node 3: recovering the log
+ 4465.125 ms node 3: fenced: core: load the checkpoint at 10: wal: corrupt log: bad checkpoint: checksum
+ 4770.876 ms watch 1: stream on node 1 from 1
+ 4771.282 ms watch 1: compacted at 1, starting again
+ 4781.634 ms links 000101
+ 4950.361 ms watch 1: stream on node 1 from 0
+ 4950.667 ms watch 1: created on node 1 from 11
+ 5369.199 ms node 1: crashed
+ 5369.199 ms node 1: peer: accept: use of closed network connection
+ 5369.199 ms node 1: peer: receive from node2: sim: connection reset
+ 5369.199 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 5369.199 ms node 2: peer: receive from node1: sim: connection reset
+ 5369.199 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 5369.199 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 5369.199 ms node 1: peer: send to 2: sim: connection reset
+ 5369.199 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+ 5369.199 ms node 2: peer: send to 1: sim: connection reset
+ 5369.292 ms watch 1: stream on node 2 from 11
+ 5853.164 ms links 010001
+ 6084.851 ms watch 0: stream on node 2 from 11
+ 6214.607 ms watch 3: stream on node 2 from 11
+ 6252.088 ms node 2: leader is 0 at term 3
+ 6280.289 ms node 1: starting
+ 6280.289 ms node 1: recovering the log
+ 6280.289 ms node 1: crashed during recovery
+ 6374.365 ms watch 2: stream on node 2 from 2
+ 6777.662 ms node 2: disk stalled until 8784 ms
+ 6824.130 ms link 1->3 stalled until 7791 ms
+ 6856.871 ms link 1->3 half-open until 11157 ms
+ 7273.897 ms node 1: starting
+ 7273.897 ms node 1: recovering the log
+ 7273.897 ms node 1: recovered the log up to entry 14: last entry 15 at term 3; term 3, vote 1, commit 14; voters [1 2 3]
+ 7273.897 ms node 1: leader is 0 at term 3
+ 7403.369 ms node 2: paused until 7984 ms
+ 7660.686 ms node 1: disk stalled until 9829 ms
+ 7916.152 ms node 1: crashed
+ 7916.152 ms node 1: peer: accept: use of closed network connection
+ 8272.567 ms link 1->3 stalled until 10039 ms
+ 8322.406 ms node 2: crashed
+ 8322.406 ms node 2: peer: accept: use of closed network connection
+ 8322.406 ms node 2: slow log sync: 4.791008582s
+ 8634.515 ms node 2: starting
+ 8634.515 ms node 2: recovering the log
+ 8634.515 ms node 2: recovered the log up to entry 3: last entry 3 at term 1; term 1, vote 0, commit 3; voters [1 2 3]
+ 8634.515 ms node 2: leader is 0 at term 1
+ 8653.154 ms watch 0: stream on node 2 from 11
+ 8724.369 ms link 1->3 stalled until 10039 ms
+ 8915.128 ms node 1: starting
+ 8915.128 ms node 1: recovering the log
+ 8915.128 ms node 1: crashed during recovery
+ 8927.130 ms link 3->2 stalled until 10586 ms
+ 8995.553 ms links 111111
+ 9077.255 ms watch 3: stream on node 2 from 11
+ 9328.196 ms watch 2: stream on node 2 from 2
+ 9333.803 ms node 1: starting
+ 9333.803 ms node 1: recovering the log
+ 9333.803 ms node 1: recovered the log up to entry 14: last entry 15 at term 3; term 3, vote 1, commit 14; voters [1 2 3]
+ 9333.803 ms node 1: leader is 0 at term 3
+ 9459.957 ms links 111111
+ 9676.602 ms watch 1: stream on node 2 from 11
+ 9736.312 ms node 2: leader is 0 at term 3
+ 9872.434 ms link 1->2 stalled until 10819 ms
+10109.687 ms link 1->2 half-open until 13661 ms
+10384.708 ms node 2: crashed
+10384.708 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+10384.708 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+10384.708 ms node 1: peer: receive from node2: sim: connection reset
+10384.708 ms node 2: peer: accept: use of closed network connection
+10384.708 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+10384.708 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+10384.708 ms node 1: peer: send to 2: sim: connection reset
+10510.030 ms node 2: starting
+10510.030 ms node 2: recovering the log
+10510.030 ms node 2: recovered the log up to entry 3: last entry 3 at term 1; term 3, vote 0, commit 3; voters [1 2 3]
+10510.030 ms node 2: leader is 0 at term 3
+10536.327 ms node 1: crashed
+10536.327 ms node 1: peer: accept: use of closed network connection
+10964.766 ms watch 3: stream on node 2 from 11
+11000.314 ms watch 2: stream on node 2 from 2
+11056.687 ms node 1: starting
+11056.687 ms node 1: recovering the log
+11056.687 ms node 1: recovered the log up to entry 14: last entry 15 at term 3; term 3, vote 1, commit 14; voters [1 2 3]
+11056.687 ms node 1: crash at a step, after sync-dir of 
+11056.687 ms node 1: crashed
+11056.687 ms node 1: peer: accept: use of closed network connection
+11208.302 ms watch 0: stream on node 2 from 11
+11803.590 ms watch 1: stream on node 2 from 11
+12610.194 ms node 1: starting
+12610.194 ms node 1: recovering the log
+12610.194 ms node 1: recovered the log up to entry 14: last entry 15 at term 3; term 3, vote 1, commit 14; voters [1 2 3]
+12610.194 ms node 1: leader is 0 at term 3
+13150.456 ms node 1: crashed
+13150.456 ms node 1: peer: accept: use of closed network connection
+13521.309 ms node 2: crashed
+13521.309 ms node 2: peer: accept: use of closed network connection
+14351.782 ms node 1: starting
+14351.782 ms node 1: recovering the log
+14351.782 ms node 1: recovered the log up to entry 14: last entry 15 at term 3; term 3, vote 1, commit 14; voters [1 2 3]
+14351.782 ms node 1: leader is 0 at term 3
+14378.143 ms node 1: disk fault 1 armed
+14394.073 ms node 2: starting
+14394.073 ms node 2: recovering the log
+14394.073 ms node 2: recovered the log up to entry 3: last entry 3 at term 1; term 3, vote 0, commit 3; voters [1 2 3]
+14394.073 ms node 2: leader is 0 at term 3
+14562.089 ms watch 2: stream on node 2 from 2
+14668.097 ms watch 3: stream on node 1 from 11
+14721.808 ms watch 1: stream on node 2 from 11
+14838.652 ms watch 0: stream on node 1 from 11
+14989.105 ms node 1: gray until 19737 ms, slow fsyncs true
+15123.595 ms links 111111
+15358.656 ms links 011111
+15431.166 ms links 011011
+15431.166 ms node 2: peer: receive from node1: sim: connection reset
+15431.166 ms node 1: peer: receive from node2: sim: connection reset
+15431.166 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+15431.166 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+15431.166 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+15431.166 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+15431.166 ms node 1: peer: send to 2: sim: connection reset
+15431.166 ms node 2: peer: send to 1: sim: connection reset
+15790.938 ms links 010100
+16406.848 ms watch 1: stream on node 1 from 11
+16602.613 ms links 110010
+16737.590 ms links 011011
+17010.522 ms node 1: disk fault 2 armed
+17135.372 ms links 001010
+17351.453 ms node 1: disk stalled until 20317 ms
+17707.431 ms erase-one-disk copy
+19164.539 ms watch 0: stream on node 1 from 11
+19484.132 ms links 010101
+19985.469 ms node 1: peer: 1 messages to 2 waited over 100ms in their queue, the longest 172.186675ms; the last a MsgPreVote
+19986.150 ms node 2: peer: 1 messages to 1 waited over 100ms in their queue, the longest 652.8773ms; the last a MsgPreVote
+19987.425 ms node 1: leader is 0 at term 4
+19987.425 ms node 1: stopped: core: the disk failed: simfs: input/output error
+19987.425 ms node 1: crashed
+19987.425 ms node 2: peer: receive from node1: sim: connection reset
+19987.425 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+19987.425 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+19987.425 ms node 2: peer: send to 1: sim: connection reset
+20000.000 ms healing
+20000.000 ms links 111111
+20064.944 ms node 2: gray until 19737 ms, slow fsyncs false
+20097.684 ms node 1: starting
+20097.684 ms node 1: recovering the log
+20097.684 ms node 1: recovered the log up to entry 14: last entry 15 at term 3; term 3, vote 1, commit 14; voters [1 2 3]
+20097.684 ms node 1: leader is 0 at term 3
+20105.654 ms watch 3: stream on node 2 from 11
+20413.933 ms watch 1: stream on node 1 from 11
+21006.013 ms watch 0: stream on node 2 from 11
+21097.828 ms node 1: leader is 0 at term 4
+21098.947 ms node 2: leader is 0 at term 4
+21100.020 ms node 1: leader is 1 at term 4
+21197.896 ms node 2: leader is 1 at term 4
+21198.307 ms node 2: fetching the snapshot at 14 from 1
+21199.472 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+21199.472 ms node 2: installed the snapshot at 14 from 1, checkpoint 0
+21200.291 ms watch 0: stream ended: rpc error: code = Unavailable desc = tigerstore: the node installed a snapshot; watch again
+21200.291 ms watch 2: stream ended: rpc error: code = Unavailable desc = tigerstore: the node installed a snapshot; watch again
+21200.291 ms node 2: core: installed a snapshot at 14 from 1, checkpoint 0; starting again from the log
+21200.291 ms node 2: recovering the log
+21200.291 ms node 2: recovered the log up to entry 14: last entry 14 at term 3; term 4, vote 1, commit 14; voters [1 2 3]
+21200.437 ms watch 2: stream on node 1 from 2
+21201.291 ms node 2: started again from its log
+21201.291 ms node 2: leader is 0 at term 4
+21297.751 ms node 2: leader is 1 at term 4
+21436.736 ms watch 0: stream on node 1 from 11
+21874.233 ms watch 3: stream on node 1 from 11
+22918.817 ms watch 0: stream on node 2 from 122
+22919.115 ms watch 0: compacted at 159, starting again
+22919.422 ms watch 0: stream on node 1 from 0
+22919.532 ms watch 0: created on node 1 from 225
+23599.715 ms watch 2: stream on node 1 from 52
+23600.002 ms watch 2: compacted at 266, starting again
+23600.342 ms watch 2: stream on node 2 from 0
+23600.558 ms watch 2: created on node 2 from 328
+24419.517 ms watch 3: stream on node 1 from 163
+24419.830 ms watch 3: compacted at 372, starting again
+24420.179 ms watch 3: stream on node 1 from 0
+24420.395 ms watch 3: created on node 1 from 430
+24996.880 ms watch 1: stream on node 1 from 430
+24997.142 ms watch 1: compacted at 430, starting again
+25226.490 ms watch 1: stream on node 2 from 0
+25226.578 ms watch 1: created on node 2 from 547
+26578.054 ms watch 1: stream on node 2 from 613
+26578.366 ms watch 1: compacted at 677, starting again
+26578.647 ms watch 1: stream on node 2 from 0
+26578.676 ms watch 1: created on node 2 from 718
+28803.368 ms watch 2: stream on node 1 from 853
+28803.804 ms watch 2: compacted at 965, starting again
+28804.108 ms watch 2: stream on node 1 from 0
+28804.417 ms watch 2: created on node 1 from 1002
+29668.508 ms watch 2: stream on node 2 from 1045
+29668.907 ms watch 2: compacted at 1097, starting again
+29669.132 ms watch 2: stream on node 2 from 0
+29669.252 ms watch 2: created on node 2 from 1118
+30021.080 ms watch 0: stream on node 1 from 1146
+32181.563 ms watch 3: stream on node 2 from 1169
+32256.909 ms watch 2: stream on node 1 from 1165
+34188.584 ms watch 3: stream on node 2 from 1169
+37118.479 ms watch 3: stream on node 1 from 1169
+37242.492 ms watch 0: stream on node 1 from 1169
+37535.539 ms watch 1: stream on node 2 from 1169
+70770.440 ms node 2: peer: accept: use of closed network connection
+70770.440 ms node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 100ms, exceeded 30.572755878s
+70770.440 ms node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 100ms, exceeded 30.572755878s
+70770.440 ms node 1: peer: receive from node2: sim: connection reset
+70770.440 ms node 1: peer: accept: use of closed network connection
+70770.440 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+70770.440 ms node 2: peer: receive from node1: sim: connection reset
+70770.440 ms node 1: peer: send to 2: sim: connection reset
+70770.440 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+70770.440 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+70770.440 ms node 2: peer: send to 1: sim: connection reset
+70770.440 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset

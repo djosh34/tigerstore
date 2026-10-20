@@ -1,0 +1,28 @@
+
+COMMAND prepare bash experiments/gosim333/run.sh prepare 
+
+COMMAND translate bash experiments/gosim333/run.sh translate 
+
+COMMAND compile bash experiments/gosim333/run.sh compile 
+
+COMMAND example bash experiments/gosim333/run.sh example 
+
+COMMAND probe bash experiments/gosim333/run.sh probe 
+
+COMMAND seed-1a flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.v -test.run=\^TestSeeds\$ -seeds=1 -sim.seed=1 -sim.seeds=1 -logformat=raw -r333.output=/home/runner/work/tigerstore/tigerstore/r333-results/seed-1a 
+
+COMMAND seed-1b flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.v -test.run=\^TestSeeds\$ -seeds=1 -sim.seed=1 -sim.seeds=1 -logformat=raw -r333.output=/home/runner/work/tigerstore/tigerstore/r333-results/seed-1b 
+
+COMMAND seed-2 flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.v -test.run=\^TestSeeds\$ -seeds=2 -sim.seed=1 -sim.seeds=1 -logformat=raw -r333.output=/home/runner/work/tigerstore/tigerstore/r333-results/seed-2 
+
+COMMAND events-1a flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.run=\^TestSeeds\$ -seeds=1 -sim.seed=1 -sim.seeds=1 -logformat=raw -force-checksum 
+
+COMMAND events-1b flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.run=\^TestSeeds\$ -seeds=1 -sim.seed=1 -sim.seeds=1 -logformat=raw -force-checksum 
+
+COMMAND events-2 flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.run=\^TestSeeds\$ -seeds=2 -sim.seed=1 -sim.seeds=1 -logformat=raw -force-checksum 
+
+COMMAND membership flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.v -test.run=\^TestMembershipFaults\$ -seeds=1 -sim.seed=1 -sim.seeds=1 -logformat=raw 
+
+COMMAND cleaner flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-node.test -test.v -test.run=\^TestConcurrentCleanerSimulation\$/1\$ -seeds=1 -logformat=raw 
+
+COMMAND planted bash experiments/gosim333/run.sh planted 
