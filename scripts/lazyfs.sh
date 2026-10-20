@@ -22,7 +22,12 @@ if [ ! -x "$bin" ] || ! cmp -s "$patch" "$dir/.patch"; then
 	git -C "$dir" checkout -q "$commit"
 	git -C "$dir" apply "$patch"
 	cp "$patch" "$dir/.patch"
+	# CMake 4 refuses the toml11 that LazyFS fetches, which asks for a
+	# CMake older than 3.5.
+	export CMAKE_POLICY_VERSION_MINIMUM=3.5
 	(cd "$dir/libs/libpcache" && ./build.sh) >/dev/null
 	(cd "$dir/lazyfs" && ./build.sh) >/dev/null
+	# LazyFS's build.sh goes on after a failed step.
+	test -x "$bin" || { echo "LazyFS did not build in $dir" >&2; exit 1; }
 fi
 echo "$(cd "$(dirname "$bin")" && pwd)/lazyfs"

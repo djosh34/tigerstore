@@ -414,7 +414,8 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -y -q cmake g++ libfuse3-dev fuse3
       - name: Build LazyFS, tigerstore and chaos
         run: |
-          echo "LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
+          lazyfs=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")
+          echo "LAZYFS=$lazyfs" >> "$GITHUB_ENV"
           go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
           go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
       - name: Test the environment
