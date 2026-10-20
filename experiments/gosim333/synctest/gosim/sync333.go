@@ -2,7 +2,7 @@ package go123
 
 import "github.com/jellevandenhooff/gosim/gosimruntime"
 
-// Go 1.27.2 src/internal/sync/mutex.go:105 and runtime.go:46-47 moved the
+// Go 1.27.2 src/internal/sync/mutex.go:105 and runtime.go:35-38 moved the
 // spin decision from sync. Reuse pinned gosim's sync.go:47-50 (never host-spin).
 func InternalSync_runtime_canSpin(i int) bool {
  gosimruntime.Port333Reached("internal/sync.runtime_canSpin")
@@ -16,9 +16,15 @@ func InternalSync_runtime_nanotime() int64 {
  return Sync_runtime_nanotime()
 }
 
-// Go 1.27.2 internal/sync/runtime.go:26, mutex.go:150; same signature as
+// Go 1.27.2 internal/sync/runtime.go:20-21, mutex.go:150; same signature as
 // pinned gosim's internal/hooks/go123/sync.go:15-17.
 func InternalSync_runtime_SemacquireMutex(addr *uint32, lifo bool, skipframes int) {
  gosimruntime.Port333Reached("internal/sync.runtime_SemacquireMutex")
  Sync_runtime_SemacquireMutex(addr, lifo, skipframes)
+}
+
+// Go 1.27.2 internal/sync/runtime.go:23-32; old gosim sync.go:11-13.
+func InternalSync_runtime_Semrelease(addr *uint32, handoff bool, skipframes int) {
+ gosimruntime.Port333Reached("internal/sync.runtime_Semrelease")
+ Sync_runtime_Semrelease(addr, handoff, skipframes)
 }

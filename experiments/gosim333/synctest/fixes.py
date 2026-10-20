@@ -23,5 +23,6 @@ shutil.copy(here/'gosim/weak333.go', src/'internal/hooks/go123/weak333.go')
 # Blocker 4: first contended peer-network mutex asks whether to spin.
 # Blocker 5: the next lockSlow call asks for the starvation clock.
 # Blocker 6: lockSlow blocks on the moved mutex semaphore.
-add_hooks('internal/sync', ['runtime_canSpin', 'runtime_nanotime', 'runtime_SemacquireMutex'])
+# Blocker 7: the owner unlocks the mutex and wakes the blocked peer dialer.
+add_hooks('internal/sync', ['runtime_canSpin', 'runtime_nanotime', 'runtime_SemacquireMutex', 'runtime_Semrelease'])
 shutil.copy(here/'gosim/sync333.go', src/'internal/hooks/go123/sync333.go')
