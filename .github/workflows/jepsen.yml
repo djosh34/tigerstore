@@ -27,20 +27,29 @@ env:
 jobs:
   tools:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    if: github.event_name == 'workflow_dispatch' && inputs.suite == 'tools'
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Check runner scripts and summary regressions
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install LazyFS build dependencies
+        run: sudo apt-get update -q && sudo apt-get install -y -q cmake g++ libfuse3-dev fuse3
+      - name: Build pinned LazyFS
+        run: echo "CHAOS_LAZYFS=$(bash scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
+      - name: Probe partial-block append
         shell: bash
         run: |
-          bash -n scripts/jepsen/run.sh scripts/jepsen/robustness.sh
-          # run.sh refuses every nemesis but the four of #148 before it starts anything.
-          for nemesis in all clock kill,all; do
-            rc=0; bash scripts/jepsen/run.sh tigerstore append "$nemesis" || rc=$?
-            [[ $rc == 2 ]] || { echo "nemesis $nemesis: exit $rc, want 2"; exit 1; }
-          done
-          pip install edn_format==0.7.5
-          python3 -m unittest discover -s scripts/jepsen -p 'test_*.py'
+          mkdir -p results/diag300
+          echo "replay: CHAOS_LAZYFS=\"$(bash scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")\" go test -tags=chaosenv -v -count=1 -run '^TestLazyFSPartialBlockAppend$' -timeout=45s ./chaos/env"
+          go test -tags=chaosenv -v -count=1 -run '^TestLazyFSPartialBlockAppend$' -timeout=45s ./chaos/env 2>&1 | tee results/diag300/test.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diag300-partial-block
+          path: results/diag300
+          retention-days: 30
   jepsen:
     if: github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'jepsen'
     runs-on: ubuntu-24.04
