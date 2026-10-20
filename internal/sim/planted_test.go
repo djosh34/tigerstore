@@ -122,6 +122,7 @@ var plantedCases = map[string]plantedCase{
 	// some runs and after healing in others; either catch counts.
 	"B28": {seeds: 16, cfg: membershipConfig, want: `membership: stage 1 acknowledged`},
 	"B31": {seeds: 16, cfg: cacheConfig, want: badValue + `|` + badState},
+	"B32": {seeds: 128, cfg: loneHeaderConfig, want: refused},
 }
 
 // plantedElsewhere are the bugs whose own package's TestPlanted runs a

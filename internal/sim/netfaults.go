@@ -1,8 +1,8 @@
 package sim
 
 import (
-	"fmt"
 	"slices"
+	"strconv"
 )
 
 // scheduleNetFaults starts the network and process faults of the run.
@@ -63,7 +63,7 @@ func (s *Sim) host(i int) string {
 	if i == len(s.links) {
 		return "client"
 	}
-	return fmt.Sprint(i + 1)
+	return strconv.Itoa(i + 1)
 }
 
 // setClientLinks sets each direction of the links between the clients'
@@ -232,8 +232,10 @@ const (
 	dropped
 	// duplicated repeats a byte of the first write, then of one in four.
 	duplicated
-	numNetem
 )
+
+// numNetem is the number of kinds of link faults.
+const numNetem = int(duplicated) + 1
 
 func (k netemKind) String() string {
 	return [...]string{"lossy link", "corrupting link", "reordering link", "slow link", "delayed link", "switching delay", "flipped byte", "dropped byte", "duplicated byte"}[k]
@@ -254,7 +256,7 @@ func (s *Sim) netemFault() bool {
 	if l.netemUntil > now {
 		return false
 	}
-	l.netem = netemKind(s.rng.IntN(int(numNetem)))
+	l.netem = netemKind(s.rng.IntN(numNetem))
 	if k := s.cfg.netemKinds; len(k) > 0 {
 		l.netem = k[s.rng.IntN(len(k))]
 	}
@@ -325,26 +327,28 @@ func (s *Sim) netem(l *link, b []byte, at, last int64) ([]byte, int64, bool) {
 		fallthrough
 	case delayed:
 		at += l.extra
-	default:
-		hit = len(b) > 0 && (l.hits == 0 || s.rng.IntN(4) == 0)
-		if !hit {
-			break
-		}
-		i := s.rng.IntN(len(b))
-		switch l.netem {
-		case flipped:
-			b[i] ^= 1 << s.rng.IntN(8)
-		case dropped:
-			b = slices.Delete(b, i, i+1)
-		default:
-			b = slices.Insert(b, i, b[i])
-		}
+	case flipped:
+		b, hit = s.damageByte(l, b, func(b []byte, i int) []byte { b[i] ^= 1 << s.rng.IntN(8); return b })
+	case dropped:
+		b, hit = s.damageByte(l, b, func(b []byte, i int) []byte { return slices.Delete(b, i, i+1) })
+	case duplicated:
+		b, hit = s.damageByte(l, b, func(b []byte, i int) []byte { return slices.Insert(b, i, b[i]) })
 	}
 	if hit {
 		l.hits++
 		s.stats.Netem[l.netem]++
 	}
 	return b, at, hit && l.netem >= flipped
+}
+
+// damageByte damages a random byte of b with damage, in the first write
+// of l's fault and one in four after it, and reports whether it did. The
+// lock is held.
+func (s *Sim) damageByte(l *link, b []byte, damage func([]byte, int) []byte) ([]byte, bool) {
+	if len(b) == 0 || l.hits > 0 && s.rng.IntN(4) != 0 {
+		return b, false
+	}
+	return damage(b, s.rng.IntN(len(b))), true
 }
 
 // resetLink resets every connection between two random nodes, as a

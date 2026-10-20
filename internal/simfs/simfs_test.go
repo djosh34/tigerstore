@@ -190,6 +190,8 @@ func TestCrashImages(t *testing.T) {
 				if n := kept['b']; n != 0 && n != 5000 {
 					t.Fatalf("whole writes seed %d kept %d of b's 5000 bytes", seed, n)
 				}
+			case simfs.Sectors, simfs.Pages:
+				// Any piece may be kept.
 			}
 			reordered = reordered || kept['a'] == 0 && kept['b'] > 0
 			torn = torn || kept['b'] > 0 && kept['b'] < 5000

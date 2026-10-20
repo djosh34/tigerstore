@@ -18,6 +18,7 @@
 package sim
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -104,7 +105,9 @@ type Config struct {
 	// it turns the value cache on and bounds Range answers. Zero leaves
 	// both off.
 	MemoryBytes int64
-	Faults      Faults
+	// SegmentBytes is the size of the nodes' log segments, 8 KiB if 0.
+	SegmentBytes int64
+	Faults       Faults
 	// damageKinds and netemKinds, if set, are the kinds of damage after a
 	// sync and of link faults that the run picks from, for the tests.
 	damageKinds []damageKind
@@ -182,6 +185,9 @@ type Faults struct {
 	// RecoveryCrash crashes one restart in three again at its first to
 	// fourth writing disk operation inside recovery.
 	RecoveryCrash bool
+	// InstallCrash crashes a follower once right before the first sync of
+	// its log during a snapshot install.
+	InstallCrash bool
 	// StepCrash crashes a node once right after a disk call that changes
 	// what is durable outside appends: a write or a sync of a checkpoint,
 	// whether the node's own or a snapshot's, a directory sync, or a
@@ -485,7 +491,10 @@ type Sim struct {
 	// next checkpoint, removal or install step, until one did; rotDue rots
 	// a value of that node at its next turn.
 	recoveryDue, stepCrashDue bool
-	rotDue                    *node
+	// installCrashDue crashes the next node that writes its log during a
+	// snapshot install (Faults.InstallCrash).
+	installCrashDue bool
+	rotDue          *node
 	// log is every committed entry as the first node applied it, with the
 	// state's hash after it, up to index maxLogged; ckpts are the hashes
 	// of the checkpoint files, by index.
@@ -533,9 +542,10 @@ type Stats struct {
 	// they disagreed (settle).
 	Settles int
 	// GrayNodes counts gray nodes that lost an append, GrayStreams the
-	// streams with watches a gray client opened, and RecoveryCrashes
-	// crashes inside the recovery of an existing log.
-	GrayNodes, GrayStreams, RecoveryCrashes int
+	// streams with watches a gray client opened, RecoveryCrashes crashes
+	// inside the recovery of an existing log, and InstallCrashes those
+	// during a snapshot install (Faults.InstallCrash).
+	GrayNodes, GrayStreams, RecoveryCrashes, InstallCrashes int
 	// Checkpoints counts checkpoint files completed, Snapshots snapshot
 	// streams served, ServeFailures fetches that the source could not
 	// serve, SnapshotFlips those damaged on the way, FetchCrashes sources
@@ -1054,7 +1064,7 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 		Tick: time.Duration(tick),
 		// Small segments, so that most of the log is in sealed ones,
 		// where any damage is detectable.
-		SegmentBytes: 8 << 10,
+		SegmentBytes: cmp.Or(s.cfg.SegmentBytes, 8<<10),
 		DiskBudget:   s.cfg.Faults.DiskBudget,
 		// A watch stream 8 responses behind is closed, so that a slow
 		// watcher falls that far.
@@ -1138,7 +1148,7 @@ func (s *Sim) start(n *node) error {
 		s.restartLater(n, 1+s.rng.Int64N(Second))
 		return nil
 	}
-	if injected(err) && !(n.corrupted && errors.Is(err, simfs.ErrBadSector)) {
+	if injected(err) && (!n.corrupted || !errors.Is(err, simfs.ErrBadSector)) {
 		// An injected fault hit recovery, which can write: a failed boot.
 		// The node tries again later from what its disk holds.
 		s.stats.DiskFaults++
@@ -1586,17 +1596,18 @@ func (s *Sim) powerLoss(n *node) {
 }
 
 // loseUnsynced drops what n's disk did not sync, keeping a crash image of
-// the writes since. Images that tear writes can make recovery refuse the
-// log, as a torn write and damage look alike (wal's verifiesAfter), so
-// they come only while no other node is out of the cluster for good,
-// and a quorum stays. The lock is held.
+// the writes since. Images that tear writes at sectors or pages can make
+// recovery refuse the log, as a torn write and damage look alike (wal's
+// verifiesAfter), so they come only while no other node is out of the
+// cluster for good, and a quorum stays. An image of whole writes must
+// never make recovery refuse the log (#295). The lock is held.
 func (s *Sim) loseUnsynced(n *node) {
+	img := simfs.Image(s.rng.IntN(4))
 	if slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.corrupted || m.fenced) }) {
-		n.disk.CrashImage(s.rng, simfs.Image(s.rng.IntN(2)))
-		return
+		img = simfs.Image(s.rng.IntN(2))
 	}
-	n.disk.Crash(s.rng)
-	n.tornCrash = true
+	n.disk.CrashImage(s.rng, img)
+	n.tornCrash = img >= simfs.Sectors
 }
 
 // checkRecovery checks that the next start of n will recover from its

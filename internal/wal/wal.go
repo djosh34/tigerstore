@@ -902,7 +902,8 @@ func (w *WAL) Flush() error {
 	// write carries both. Written alone and not synced, a crash could keep
 	// the records after it but not the header, and recovery would take the
 	// segment for a damaged one (#295).
-	if len(w.buf) == 0 || w.size == 0 && len(w.buf) == headerSize {
+	// Planted: B32 writes the lone header (#295).
+	if len(w.buf) == 0 || w.size == 0 && len(w.buf) == headerSize && !planted.On("B32") {
 		return nil
 	}
 	n, err := w.seg.WriteAt(w.buf, w.size)

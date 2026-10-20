@@ -196,18 +196,16 @@ func (d *Disk) CrashImage(rng *rand.Rand, img Image) {
 			d.Counts.LostDirOps++
 			continue
 		}
-		switch o.op {
-		case OpCreate:
+		switch {
+		case o.op == OpCreate:
 			dir[o.name] = o.f
-		case OpRename:
-			if dir[o.name] == o.f {
-				delete(dir, o.name)
-				dir[o.to] = o.f
-			}
-		case OpRemove:
-			if dir[o.name] == o.f {
-				delete(dir, o.name)
-			}
+		case dir[o.name] != o.f:
+			// A rename or removal of a file whose creation was lost.
+		case o.op == OpRename:
+			delete(dir, o.name)
+			dir[o.to] = o.f
+		default:
+			delete(dir, o.name)
 		}
 	}
 	d.names = make(map[string]*file, len(dir))
@@ -535,7 +533,7 @@ func sortedNames(m map[string]*file) []string {
 func (d *Disk) fault(op Op, name string) error {
 	var err error
 	switch {
-	case d.down == ErrIO || d.down != nil && op.changes():
+	case errors.Is(d.down, ErrIO) || d.down != nil && op.changes():
 		err = d.down
 	case d.Fault != nil:
 		err = d.Fault(op, name)

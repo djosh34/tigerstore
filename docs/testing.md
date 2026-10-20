@@ -38,6 +38,7 @@ Each planted bug switches on a deliberate defect behind the `planted` build tag 
 | B13 | The node driver waits for a slow watch stream instead of closing it | `internal/node`: beside a watch stream with a queue of 8 that is never read, 50 writes, then a Put and a Range, each finish within 10 election timeouts, and the stream is closed as too slow | one fixed scenario | planted; its CI job must catch it |
 | B14 | The peer writer has no write deadline | `internal/peer`: through a proxy that stops reading one connection, the write deadline drops it and reports the peer unreachable, and a message sent after the stall arrives over a new connection. Without the bug, `TestStalledPeerLinkKeepsQuorum` in `internal/server` also stalls the link from node 1 to node 2 of a 3-node cluster and requires every write to commit within 10 election timeouts through the healthy quorum | one fixed scenario | planted; its CI job must catch it |
 | B16 | Replaces the segment-cleaning bug, as there is no cleaning: WAL rotation moves to a new segment without the old one's last sync | Same as B05 | 128 | planted; its CI job must catch it |
+| B32 | The WAL writes a new segment's header alone, before its first records (#295) | Recovery refuses the log after a crash during a snapshot install kept the records and lost the header (`TestLoneSegmentHeader`'s configuration) | 128 | planted; its CI job must catch it |
 
 ## Deviations from the pre-work
 
@@ -191,6 +192,46 @@ Inside gosim the clock stands still while a goroutine computes, so a checker's t
 `internal/sim/known-failures.txt` lists seeds that fail because of an open `bug` issue, each with its issue. `scripts/sim.sh` skips them and prints a `known failure:` line for each; every other failure fails the job. It holds seeds of the tests that run sets of seeds (`simrun.Seeds` and `simrun.Each`); a test of one seed (`simrun.Drive`) cannot be listed. Another package with such tests, such as `internal/node` for the cleaner simulation, gets a `known-failures.txt` of its own.
 
 tigerstore stays on Go 1.27.x. A Go upgrade waits until the gosim port for that version passes the replay gate: CI's double runs, and a seed of a campaign that replays alone with the same hashes.
+
+## The simulator's faults
+
+Every default seed (`sim.DefaultConfig`) has all of these at once, at seeded times, for 20 virtual seconds; then the faults heal and the clients run on for 10 s. `TestEachFaultTakesEffect` runs each new fault alone on three seeds, each a gosim run of its own, and requires that it took effect in two of them; `TestSeeds` requires in every run the faults that come once in every run, and over a set of 64 seeds or more the rare ones.
+
+- **Disks** (`internal/simfs`). A power loss keeps a node's synced bytes and the directory as of its last directory sync, plus a crash image of what came since: a prefix of the bytes written in order (with garbage at its end one time in four), any subset of the writes whole, or any subset torn at sector (512 B) or page (4 KiB) boundaries; each creation, rename and removal since the last directory sync survives or not on its own. Half the crashes are power losses; the other half kill the process and keep the page cache, and one kill in three is followed 0.1 to 3 s later by a power loss, while the node is down or after it started again. A failed sync makes part of its writes durable and marks the rest clean, as Linux does. A disk fault fails the next sync, write (EIO, or a short write with ENOSPC) or any other file or directory operation; a file system shuts down (EIO on everything) or goes read-only (EROFS on every change) for 0.5 to 3 s; a disk fills up for 1.5 to 3.5 s. Every node has a 64 KiB disk budget, so it cleans and raises the NOSPACE alarm, and a 4 MiB disk. Damage after a successful sync, once per run on one node so a quorum stays: a flipped bit in the root checkpoint, a misdirected write over a sealed segment, a lost write (a zeroed sector), a sector that fails every read, a read that returns wrong data once, or a damaged last record that holds only a new term or vote. The node must refuse to start on damage it can detect, start again after a misread, and never lose a durable term and vote (#357). Slow log syncs, stalled disks, crashes inside recovery and at each step of a checkpoint or snapshot install, damaged snapshot streams and rotten values on a running node come as before.
+- **Network** (`internal/sim/net.go`). Links between the nodes go down one way or both ways, and the links between the clients' host and each node go down too. Each link has a delay of its own and spikes up to 5 ms. About every 3 s a link to or from the leader, or a client's link, gets for 1.5 to 3.5 s one of: 20% packet loss or 5% corrupted packets, which TCP retransmits after 200 to 400 ms; reordering, which delays half the packets up to 10 ms; a limit of 8 to 32 KiB/s; 300 to 800 ms more delay; a delay that switches between 0 to 2 ms and 20 to 80 ms every 100 to 400 ms; or a flipped, dropped or duplicated byte in the stream, which TLS refuses, and whose connections the fault's end resets. Links stall, one stall in four past the 5 s peer write timeout; connections reset; links go half-open. A connection holds 2 KiB in each direction that its reader has not taken, and a write past that waits for room or its write deadline.
+- **Processes and clients.** Pauses of 0.2 to 2 s are the gray CPU, and the per-node tick rate, up to 5% fast or slow, is the clock fault. Gray nodes, a barely alive client whose watch streams are never read, and watch clients that turn slow for 2 to 5 s, until the node closes their stream 8 responses behind, are scheduled. Besides six clients at `Node.Do`, three clients of etcd's Go client (clientv3 v3.7.2) each call the real gRPC server of one node over the simulator's network, with TLS, so every link fault reaches them. Their lease calls go through clientv3's lessor on a plain lease client, which sends a call again only when it never left: clientv3's own lease client sends a grant again after it may have taken effect, which makes a second lease. Their reconnect backoff is at most 1 s, not gRPC's 2 minutes.
+
+Each fault that plain chaos, chaos-env and Jepsen inject has a simulator equivalent:
+
+| Real-process fault | In the simulator |
+| --- | --- |
+| chaos `sigkill-leader`, `sigkill-follower`; Jepsen `kill` | A kill that keeps the page cache, of whichever node the schedule picks, the leader among them; a power loss |
+| chaos `sigstop-leader`, `sigstop-follower`; Jepsen `pause` | A pause |
+| chaos `delay` | A delayed link, 300 to 800 ms |
+| chaos `switching-delay` | A switching delay |
+| chaos `stall` | A link stall, with the writers blocking on full buffers |
+| chaos `drop`, `corrupt`, `duplicate` | A dropped, flipped or duplicated byte, which TLS refuses |
+| chaos `reset` | A reset of the connections between two hosts |
+| chaos `one-direction-cut`; Jepsen `partition` | The link masks, one-way and both-way, on peer and client links |
+| chaos `slow-link` | A slow link, 8 to 32 KiB/s |
+| chaos-env `netem-loss`, `netem-reorder`, `netem-corrupt` | A lossy, reordering or corrupting link; every link's own delay, as the 1 to 10 ms of netem on each peer link |
+| chaos-env `cpu-gray` | Pauses |
+| chaos-env `disk-slow`, `disk-stall` | Slow log syncs, a gray node's slow fsyncs, disk stalls and a stalled leader |
+| chaos-env `fsync-fail` | A failed sync that kept part of its writes, EIO on any operation, a file system that shuts down or goes read-only |
+| chaos-env `disk-full` | A full disk, the disk's capacity and short writes with ENOSPC |
+| chaos-env `power-loss`; Jepsen `lazyfs` | A power loss with a crash image, and a power loss after a kill |
+| chaos-env `torn-write` | Crash images that keep any subset of the unsynced writes, torn at sectors and pages, and a crash between a write of the log and its sync |
+| chaos-env `crash-in-recovery` | A crash inside recovery |
+| chaos-env `crash-in-install` | A crash at a step of a snapshot install, and a crash of the snapshot's source during the stream |
+| chaos-env `barely-alive-client` | The gray client, and slow watchers |
+| chaos-env `several-at-once` | Every default seed: all faults at once |
+| chaos-env `replace-member` | Erasing each disk in turn and cold-starting the other two (whose disks are copies taken by a power cut of the whole cluster), fencing a damaged disk, and `TestMembershipFaults`, which adds a member on an empty disk and removes it |
+
+What the simulator cannot reach: the real kernel, file system and `internal/osfs`, LazyFS and FUSE themselves; cgroup limits and the memory a process uses, as all nodes share one process; real time, so a slow CPU only shows as a pause; and per-node clock jumps, which no real-process test injects either (Docker nodes share the runner's clock).
+
+Known limits until the parked recovery format ([#322](https://github.com/djosh34/tigerstore/issues/322)): a crash image that keeps a later sector of a write but loses an earlier one can make recovery refuse the log, as damage looks the same; the node then refuses to start, which the simulator counts as a safe stop (`TornRefusals`), and it draws such images only while no other node is out, so a quorum stays. An image of whole writes must never be refused (#295). Damage to the last record of the log looks like a torn write and is cut off; the simulator damages a last record only where that loses no entry, and the node must keep its term and vote.
+
+`TestLoneSegmentHeader` runs #295's path: a follower held down past the leader's window fetches a snapshot, with segments of 64 bytes so that the install often comes on a fresh segment, and crashes right before the install's first sync of its log (`Faults.InstallCrash`). A crash image of whole writes can then keep the records and lose an earlier write of the header alone. With the fix there is no such write, and every seed passes; planted bug B32 writes the header alone, as before the fix, and `TestPlanted` must catch it with that configuration.
 
 # Simulator seed campaign
 

@@ -680,9 +680,13 @@ func faultCases() []faultCase {
 		{"write deadline", Faults{LinkStallEvery: 300 * Millisecond}, long, func(st Stats) int { return st.WriteTimeouts }},
 		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.WatchersCut }},
 	}
-	for k := range numNetem {
-		cases = append(cases, faultCase{k.String(), Faults{NetemEvery: 300 * Millisecond},
-			func(c *Config) { c.netemKinds = []netemKind{k} }, func(st Stats) int { return st.Netem[k] }})
+	for i := range numNetem {
+		k := netemKind(i)
+		cases = append(cases, faultCase{
+			k.String(),
+			Faults{NetemEvery: 300 * Millisecond},
+			func(c *Config) { c.netemKinds = []netemKind{k} }, func(st Stats) int { return st.Netem[k] },
+		})
 	}
 	return cases
 }
@@ -741,6 +745,40 @@ func TestDamagedLastRecord(t *testing.T) {
 		return res.Stats.Damage[lastRecord] > 0
 	}, func(seed uint64, effect bool) bool {
 		took.add(seed, map[string]bool{lastRecord.String(): effect})
+		return false
+	}) {
+		return
+	}
+	took.check(t)
+}
+
+// loneHeaderConfig is #295's path: a follower held down past the leader's
+// window starts again on a fresh segment, whose header waits in the log's
+// buffer, and fetches a snapshot. A crash at a step of the install, before
+// its sync, can keep the records written after the header and lose the
+// write of the header.
+func loneHeaderConfig(seed uint64) Config {
+	cfg := DefaultConfig(seed)
+	cfg.Faults = Faults{HoldDown: true, InstallCrash: true}
+	cfg.Duration = 10 * Second
+	cfg.Heal = 8 * Second
+	// Segments of 64 bytes end after nearly every write, so the install
+	// often comes on a fresh segment.
+	cfg.SegmentBytes = 64
+	return cfg
+}
+
+// TestLoneSegmentHeader runs #295's scenario (loneHeaderConfig) on 32
+// seeds, which must all pass, and most of which crash during an install;
+// planted bug B32, which writes the header alone, must fail it.
+func TestLoneSegmentHeader(t *testing.T) {
+	var took effects
+	if !simrun.Each(t, seedRange(6001, 32), func(t *testing.T, seed uint64) Stats {
+		res := run(t, loneHeaderConfig(seed))
+		checkers(t, res)
+		return res.Stats
+	}, func(seed uint64, st Stats) bool {
+		took.add(seed, map[string]bool{"crash during an install": st.InstallCrashes > 0})
 		return false
 	}) {
 		return

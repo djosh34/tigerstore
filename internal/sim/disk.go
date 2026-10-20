@@ -35,6 +35,15 @@ func (d *disk) call(op simfs.Op, name string, f func() error) error {
 		return errDead
 	}
 	n := d.p.n
+	if s.installCrashDue && op == simfs.OpSync && isSegment(name) && n.proc == d.p && slices.ContainsFunc(n.pending, func(j pendingJob) bool { return j.install }) {
+		// Every write of the log since its last sync is still unsynced.
+		s.installCrashDue = false
+		s.stats.InstallCrashes++
+		s.tracef("node %d: crash before a sync of the log during an install", n.id)
+		n.why = "the run crashed it before a sync of the log during an install"
+		s.stopNode(n)
+		return errDead
+	}
 	if s.diskFaultDue && op == simfs.OpWrite && isSegment(name) {
 		// The guaranteed fault fires in this write of the log.
 		s.diskFaultDue = false

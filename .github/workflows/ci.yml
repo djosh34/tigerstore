@@ -153,8 +153,10 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
           RUN_ID: ${{ github.run_id }}
+        # Fresh seeds only while known-failures.txt lists none: a fresh
+        # seed that fails on a known bug cannot be listed there.
         run: |
-          if [ "$SHARD" -lt 2 ]; then
+          if [ "$SHARD" -lt 2 ] || grep -qv '^[[:space:]]*\(#\|$\)' internal/sim/known-failures.txt; then
             first=$((1 + SHARD * 400))
           else
             first=$((1000000 + (RUN_ID % 1000000000) * 2 + SHARD * 400))
@@ -213,9 +215,14 @@ jobs:
           SIM_SEEDS: 64
           SIM_TWICE: 4
           SIM_OUT: ${{ runner.temp }}/sim-out
+        # Fresh seeds only while known-failures.txt lists none, as in sim.
         run: |
           status=0
-          for first in 1 $((1000000 + RUN_ID % 1000000000)); do
+          fresh=$((1000000 + RUN_ID % 1000000000))
+          if grep -qv '^[[:space:]]*\(#\|$\)' internal/sim/known-failures.txt; then
+            fresh=65
+          fi
+          for first in 1 "$fresh"; do
             SIM_SEED=$first scripts/sim.sh ./internal/sim '^TestMembershipFaults$' -test.timeout 8m 2>&1 | tee "$RUNNER_TEMP/membership-$first.log" || status=1
             PKG=./internal/sim scripts/replay.sh "$RUNNER_TEMP/membership-$first.log" -gosim
           done

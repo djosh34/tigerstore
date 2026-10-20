@@ -47,6 +47,7 @@ func (s *Sim) scheduleDiskFaults() {
 			s.takeCheckpoint()
 		})
 	}
+	s.installCrashDue = f.InstallCrash
 	if f.StepCrash {
 		s.once(s.cfg.Duration/2, 500*Millisecond, func() bool {
 			s.mu.Lock()
@@ -275,7 +276,7 @@ func (s *Sim) maybeCorrupt(n *node) {
 			return
 		}
 	}
-	kind := damageKind(s.rng.IntN(int(numDamage)))
+	kind := damageKind(s.rng.IntN(numDamage))
 	if k := s.cfg.damageKinds; len(k) > 0 {
 		kind = k[s.rng.IntN(len(k))]
 	}
@@ -317,8 +318,10 @@ const (
 	// vote (#357). Damage to a last record that holds entries is a
 	// documented limit (docs/design.md), and the run does not do it.
 	lastRecord
-	numDamage
 )
+
+// numDamage is the number of damage kinds.
+const numDamage = int(lastRecord) + 1
 
 func (k damageKind) String() string {
 	return [...]string{"flipped root checkpoint", "misdirected write", "lost write", "bad sector", "misread", "damaged last record"}[k]
@@ -356,9 +359,10 @@ func (s *Sim) damage(n *node, kind damageKind) bool {
 	case misread:
 		n.misread = seg != "" && d.Misread(s.rng, seg)
 		return n.misread
-	default:
+	case lastRecord:
 		return s.damageLastRecord(n)
 	}
+	return false
 }
 
 // sealedSegments are the segments of a disk but the newest, with at least
