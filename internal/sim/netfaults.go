@@ -255,6 +255,9 @@ func (s *Sim) netemFault() bool {
 		return false
 	}
 	l.netem = netemKind(s.rng.IntN(int(numNetem)))
+	if k := s.cfg.netemKinds; len(k) > 0 {
+		l.netem = k[s.rng.IntN(len(k))]
+	}
 	l.netemUntil = min(now+1500*Millisecond+s.rng.Int64N(2*Second), s.healAt)
 	l.bw = 8<<10 + s.rng.Int64N(24<<10)
 	l.extra = 300*Millisecond + s.rng.Int64N(500*Millisecond)
@@ -263,6 +266,14 @@ func (s *Sim) netemFault() bool {
 		l.extra = 0
 	}
 	s.tracef("link %s->%s: %v until %d ms", s.host(from), s.host(to), l.netem, l.netemUntil/Millisecond)
+	if l.netem >= flipped {
+		// Its end resets the connections whose bytes it damaged.
+		s.at(l.netemUntil, func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			s.net.resetDamaged(from, to)
+		})
+	}
 	return true
 }
 
@@ -282,8 +293,8 @@ func (s *Sim) busyLink() (from, to int) {
 
 // netem applies l's fault to a write of b, due at time at, on a pipe
 // whose last write arrives at last. It returns the bytes that go on their
-// way and when they arrive. The lock is held.
-func (s *Sim) netem(l *link, b []byte, at, last int64) ([]byte, int64) {
+// way, when they arrive, and whether it damaged them. The lock is held.
+func (s *Sim) netem(l *link, b []byte, at, last int64) ([]byte, int64, bool) {
 	hit := true
 	switch l.netem {
 	case lossy, corrupting:
@@ -333,7 +344,7 @@ func (s *Sim) netem(l *link, b []byte, at, last int64) ([]byte, int64) {
 		l.hits++
 		s.stats.Netem[l.netem]++
 	}
-	return b, at
+	return b, at, hit && l.netem >= flipped
 }
 
 // resetLink resets every connection between two random nodes, as a

@@ -72,7 +72,24 @@ func (c *client) newV3() error {
 			}),
 		},
 	})
-	c.v3 = cli
+	if err != nil {
+		return err
+	}
+	// clientv3's own lessor sends a grant or a revoke again after any
+	// error that may come after it took effect, and a grant sent twice
+	// makes two leases, which the history cannot tell. On a plain lease
+	// client it sends one again only when it never left.
+	c.v3, c.lease = cli, clientv3.NewLeaseFromLeaseClient(pb.NewLeaseClient(cli.ActiveConnection()), cli, 0)
+	return nil
+}
+
+// closeV3 closes client c's clientv3 client.
+func (c *client) closeV3() error {
+	err := errors.Join(c.lease.Close(), c.v3.Close())
+	if errors.Is(err, context.Canceled) {
+		// What Close says when it ended the client's context.
+		return nil
+	}
 	return err
 }
 
@@ -114,16 +131,16 @@ func (c *client) doV3(ctx context.Context, req proto.Message) (proto.Message, er
 		resp, err := cli.Txn(ctx).If(cmps...).Then(then...).Else(els...).Commit()
 		return (*pb.TxnResponse)(resp), err
 	case *pb.LeaseGrantRequest:
-		resp, err := cli.Grant(ctx, r.TTL)
+		resp, err := c.lease.Grant(ctx, r.TTL)
 		if err != nil {
 			return nil, err
 		}
 		return &pb.LeaseGrantResponse{Header: resp.ResponseHeader, ID: int64(resp.ID), TTL: resp.TTL, Error: resp.Error}, nil
 	case *pb.LeaseRevokeRequest:
-		resp, err := cli.Revoke(ctx, clientv3.LeaseID(r.ID))
+		resp, err := c.lease.Revoke(ctx, clientv3.LeaseID(r.ID))
 		return (*pb.LeaseRevokeResponse)(resp), err
 	case *pb.LeaseKeepAliveRequest:
-		resp, err := cli.KeepAliveOnce(ctx, clientv3.LeaseID(r.ID))
+		resp, err := c.lease.KeepAliveOnce(ctx, clientv3.LeaseID(r.ID))
 		if err != nil {
 			return nil, err
 		}

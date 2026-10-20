@@ -317,6 +317,8 @@ func TestSeeds(t *testing.T) {
 			"crash": st.Crashes > 0, "link change": st.LinkChanges > 0, "two cold restarts": st.ColdRestarts >= 2,
 			"disk fault": st.DiskFaults > 0, "pause": st.Pauses > 0, "link stall": st.LinkStalls > 0,
 			"half-open link": st.HalfOpens > 0, "gray node": st.GrayNodes > 0, "gray client": st.GrayStreams > 0,
+			"kill": st.Kills > 0, "clientv3 call": st.V3OK > 0, "link fault": slices.ContainsFunc(st.Netem[:], func(n int) bool { return n > 0 }),
+			"connection reset": st.Resets > 0, "slow watcher": st.SlowWatchers > 0,
 		})
 		ran++
 		total.Fenced += st.Fenced
@@ -325,6 +327,9 @@ func TestSeeds(t *testing.T) {
 		total.RecoveryCrashes += st.RecoveryCrashes
 		total.ErasedAtRoot += st.ErasedAtRoot
 		total.ErasedAtRemoval += st.ErasedAtRemoval
+		total.Disk.TornWrites += st.Disk.TornWrites
+		total.Disk.Reordered += st.Disk.Reordered
+		total.TornRefusals += st.TornRefusals
 		return false
 	}) {
 		return
@@ -338,10 +343,13 @@ func TestSeeds(t *testing.T) {
 	// other common events are rare in one run, but a set of seeds must see
 	// each.
 	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.Asymmetric == 0 ||
-		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal; each must happen",
-			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval)
+		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0 ||
+		total.Disk.TornWrites == 0 || total.Disk.Reordered == 0) {
+		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal, %d writes a crash tore, %d crashes that kept a write and lost an earlier one; each must happen",
+			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval, total.Disk.TornWrites, total.Disk.Reordered)
 	}
+	t.Logf("%d seeds: %d writes a crash tore, %d crashes kept a write and lost an earlier one, %d nodes refused their torn crash image",
+		ran, total.Disk.TornWrites, total.Disk.Reordered, total.TornRefusals)
 	// A stalled leader that goes silent is rarer: about 0.9% of seeds had
 	// one when it handed over instead (#218). Over 2000 seeds even 0.7%
 	// leaves less than one chance in a million of none. CI's shards of 400
@@ -614,50 +622,100 @@ func TestSwitchingLinks(t *testing.T) {
 	took.check(t)
 }
 
-// TestEachFaultTakesEffect runs each network, process, gray and recovery
-// fault alone for 8 virtual seconds, on three seeds, and requires that it
-// happened in two of them at least. A follower held down for up to 4 s
-// needs about a second after its restart before its first fetch, which
-// the stream faults damage only before healing.
-func TestEachFaultTakesEffect(t *testing.T) {
-	cases := []struct {
-		name   string
-		faults Faults
-		count  func(Stats) int
-	}{
-		{"link stall", Faults{LinkStallEvery: Second}, func(st Stats) int { return st.LinkStalls }},
-		{"pause", Faults{PauseEvery: Second}, func(st Stats) int { return st.Pauses }},
-		{"half-open link", Faults{HalfOpenEvery: Second}, func(st Stats) int { return st.HalfOpens }},
-		{"link delays", Faults{SwitchEvery: 200 * Millisecond, MaxDelay: 5 * Millisecond}, func(st Stats) int { return st.Asymmetric }},
-		{"gray node", Faults{GrayEvery: Second}, func(st Stats) int { return st.GrayNodes }},
-		{"gray client", Faults{GrayClient: true}, func(st Stats) int { return st.GrayStreams }},
-		{"crash in recovery", Faults{CrashEvery: 2 * Second, MaxDown: Second, RecoveryCrash: true}, func(st Stats) int { return st.RecoveryCrashes }},
-		{"follower held down", Faults{HoldDown: true}, func(st Stats) int { return st.Snapshots }},
-		{"damaged snapshot", Faults{HoldDown: true, FlipSnapshot: true}, func(st Stats) int { return st.SnapshotFlips }},
-		{"crash during a fetch", Faults{HoldDown: true, FetchCrash: true}, func(st Stats) int { return min(st.FetchCrashes, st.Reloads) }},
-		{"crash at a checkpoint step", Faults{StepCrash: true}, func(st Stats) int { return st.StepCrashes }},
-		{"rotten value", Faults{Rot: true}, func(st Stats) int { return st.Rots }},
+// faultCase is a fault alone, with the count that shows it took effect.
+type faultCase struct {
+	name   string
+	faults Faults
+	// cfg, if set, changes the run's configuration further.
+	cfg   func(*Config)
+	count func(Stats) int
+}
+
+// faultCases are the cases of TestEachFaultTakesEffect.
+func faultCases() []faultCase {
+	crashes := Faults{CrashEvery: Second, MaxDown: Second}
+	// Crashes while directory operations are not synced yet: inside
+	// recovery, which removes and renames files, and at a checkpoint or
+	// removal step.
+	unsynced := Faults{CrashEvery: 500 * Millisecond, MaxDown: 500 * Millisecond, RecoveryCrash: true, StepCrash: true}
+	// The damage needs sealed segments, which take a few seconds of
+	// writes.
+	long := func(c *Config) { c.Duration = 16 * Second }
+	damage := func(k damageKind, count func(Stats) int) faultCase {
+		return faultCase{k.String(), Faults{CrashEvery: Second, MaxDown: Second, Corrupt: true}, func(c *Config) {
+			c.damageKinds = []damageKind{k}
+			long(c)
+		}, count}
 	}
-	// Each seed is one gosim run of every case.
+	cases := []faultCase{
+		{"link stall", Faults{LinkStallEvery: Second}, nil, func(st Stats) int { return st.LinkStalls }},
+		{"pause", Faults{PauseEvery: Second}, nil, func(st Stats) int { return st.Pauses }},
+		{"half-open link", Faults{HalfOpenEvery: Second}, nil, func(st Stats) int { return st.HalfOpens }},
+		{"link delays", Faults{SwitchEvery: 200 * Millisecond, MaxDelay: 5 * Millisecond}, nil, func(st Stats) int { return st.Asymmetric }},
+		{"gray node", Faults{GrayEvery: Second}, nil, func(st Stats) int { return st.GrayNodes }},
+		{"gray client", Faults{GrayClient: true}, nil, func(st Stats) int { return st.GrayStreams }},
+		{"crash in recovery", Faults{CrashEvery: 2 * Second, MaxDown: Second, RecoveryCrash: true}, nil, func(st Stats) int { return st.RecoveryCrashes }},
+		{"follower held down", Faults{HoldDown: true}, nil, func(st Stats) int { return st.Snapshots }},
+		{"damaged snapshot", Faults{HoldDown: true, FlipSnapshot: true}, nil, func(st Stats) int { return st.SnapshotFlips }},
+		{"crash during a fetch", Faults{HoldDown: true, FetchCrash: true}, nil, func(st Stats) int { return min(st.FetchCrashes, st.Reloads) }},
+		{"crash at a checkpoint step", Faults{StepCrash: true}, nil, func(st Stats) int { return st.StepCrashes }},
+		{"rotten value", Faults{Rot: true}, nil, func(st Stats) int { return st.Rots }},
+		{"kill", crashes, nil, func(st Stats) int { return st.Kills }},
+		{"power loss after a kill", crashes, nil, func(st Stats) int { return st.KillLosses }},
+		{"lost directory operation", unsynced, long, func(st Stats) int { return st.Disk.LostDirOps }},
+		{"failed sync", Faults{DiskErrorEvery: Second}, nil, func(st Stats) int { return st.Disk.FailedSyncs }},
+		{"EIO", Faults{DiskErrorEvery: Second}, nil, func(st Stats) int { return st.IOErrors }},
+		{"file system down", Faults{FSDownEvery: Second}, nil, func(st Stats) int { return min(st.FSDowns, st.DiskFaults) }},
+		{"full disk", Faults{DiskFullEvery: Second}, nil, func(st Stats) int { return st.OutOfSpace }},
+		{"cleaning within the budget", Faults{DiskBudget: 64 << 10, DiskCapacity: 4 << 20}, nil, func(st Stats) int { return st.Packs }},
+		damage(flippedRoot, func(st Stats) int { return min(st.Damage[flippedRoot], st.Fenced) }),
+		damage(misdirected, func(st Stats) int { return min(st.Damage[misdirected], st.Fenced) }),
+		damage(lostWrite, func(st Stats) int { return min(st.Damage[lostWrite], st.Fenced) }),
+		damage(badSector, func(st Stats) int { return min(st.Damage[badSector], st.Fenced, st.Disk.BadReads) }),
+		damage(misread, func(st Stats) int { return min(st.Damage[misread], st.MisreadRefusals) }),
+		{"connection reset", Faults{ResetEvery: Second}, nil, func(st Stats) int { return st.Resets }},
+		{"full send buffer", Faults{LinkStallEvery: 500 * Millisecond}, nil, func(st Stats) int { return st.BlockedWrites }},
+		// A stall past the write timeout, one in four, on a link that
+		// carries something.
+		{"write deadline", Faults{LinkStallEvery: 300 * Millisecond}, long, func(st Stats) int { return st.WriteTimeouts }},
+		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.WatchersCut }},
+	}
+	for k := range numNetem {
+		cases = append(cases, faultCase{k.String(), Faults{NetemEvery: 300 * Millisecond},
+			func(c *Config) { c.netemKinds = []netemKind{k} }, func(st Stats) int { return st.Netem[k] }})
+	}
+	return cases
+}
+
+// TestEachFaultTakesEffect runs each fault alone for 8 virtual seconds,
+// on three seeds, and requires that it happened in two of them at least.
+// The seeds of case i are 3000+10i to 3002+10i, each a gosim run of its
+// own. A follower held down for up to 4 s needs about a second after its
+// restart before its first fetch, which the stream faults damage only
+// before healing.
+func TestEachFaultTakesEffect(t *testing.T) {
+	cases := faultCases()
+	var seeds []uint64
+	for i := range cases {
+		seeds = append(seeds, seedRange(3000+10*uint64(i), 3)...)
+	}
 	took := make([]effects, len(cases))
-	if !simrun.Each(t, []uint64{3000, 3001, 3002}, func(t *testing.T, seed uint64) []bool {
-		effect := make([]bool, len(cases))
-		for i, c := range cases {
-			t.Run(c.name, func(t *testing.T) {
-				cfg := DefaultConfig(seed)
-				cfg.Faults = c.faults
-				cfg.Duration = 8 * Second
-				cfg.Heal = 8 * Second
-				res := run(t, cfg)
-				checkers(t, res)
-				effect[i] = c.count(res.Stats) > 0
-			})
+	if !simrun.Each(t, seeds, func(t *testing.T, seed uint64) bool {
+		c := cases[(seed-3000)/10]
+		cfg := DefaultConfig(seed)
+		cfg.Faults = c.faults
+		cfg.Duration = 8 * Second
+		cfg.Heal = 8 * Second
+		if c.cfg != nil {
+			c.cfg(&cfg)
 		}
-		return effect
-	}, func(seed uint64, effect []bool) bool {
-		for i, c := range cases {
-			took[i].add(seed, map[string]bool{c.name: effect[i]})
-		}
+		res := run(t, cfg)
+		checkers(t, res)
+		t.Logf("%s: %+v", c.name, res.Stats)
+		return c.count(res.Stats) > 0
+	}, func(seed uint64, effect bool) bool {
+		i := (seed - 3000) / 10
+		took[i].add(seed, map[string]bool{cases[i].name: effect})
 		return false
 	}) {
 		return
@@ -665,6 +723,29 @@ func TestEachFaultTakesEffect(t *testing.T) {
 	for i := range cases {
 		took[i].check(t)
 	}
+}
+
+// TestDamagedLastRecord damages the last record of a node's newest
+// segment where that loses only a new term or vote (lastRecord): the node
+// must start again with the term and vote it held durable (#357).
+func TestDamagedLastRecord(t *testing.T) {
+	var took effects
+	if !simrun.Each(t, seedRange(3500, 3), func(t *testing.T, seed uint64) bool {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{CrashEvery: Second, MaxDown: Second, Corrupt: true}
+		cfg.Duration = 8 * Second
+		cfg.Heal = 8 * Second
+		cfg.damageKinds = []damageKind{lastRecord}
+		res := run(t, cfg)
+		checkers(t, res)
+		return res.Stats.Damage[lastRecord] > 0
+	}, func(seed uint64, effect bool) bool {
+		took.add(seed, map[string]bool{lastRecord.String(): effect})
+		return false
+	}) {
+		return
+	}
+	took.check(t)
 }
 
 // slowFetchConfig holds a follower down until it needs a snapshot, and

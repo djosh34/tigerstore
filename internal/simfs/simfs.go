@@ -115,6 +115,17 @@ type Disk struct {
 	down error
 	// files counts the files created, for their ids.
 	files int
+	// Counts counts what the disk's faults did.
+	Counts Counts
+}
+
+// Counts counts what a disk's faults did: writes a crash tore, crashes
+// that kept a write and lost an earlier one of the same file, directory
+// operations a crash lost, syncs that failed after part of their writes
+// reached the disk, reads that hit a bad sector, and reads that returned
+// wrong data.
+type Counts struct {
+	TornWrites, Reordered, LostDirOps, FailedSyncs, BadReads, Misreads int
 }
 
 // dirOp is a directory operation: a creation, a rename or a removal of
@@ -182,6 +193,7 @@ func (d *Disk) CrashImage(rng *rand.Rand, img Image) {
 		kept := rng.IntN(2) == 0
 		d.tracef("crash: %v %s (file %d) %s, kept %v", o.op, o.name, o.f.id, o.to, kept)
 		if !kept {
+			d.Counts.LostDirOps++
 			continue
 		}
 		switch o.op {
@@ -207,7 +219,7 @@ func (d *Disk) CrashImage(rng *rand.Rand, img Image) {
 			continue
 		}
 		done[f] = true
-		kept := f.survive(rng, img)
+		kept := f.survive(rng, img, &d.Counts)
 		if d.Trace != nil {
 			unsynced := 0
 			for _, w := range f.pending {
@@ -217,16 +229,17 @@ func (d *Disk) CrashImage(rng *rand.Rand, img Image) {
 		}
 		f.data = kept
 		f.durable = slices.Clone(kept)
-		f.pending, f.cut, f.misread = nil, false, nil
+		f.pending, f.cut = nil, false
 	}
 	d.durable = maps.Clone(d.names)
 	d.dirOps = nil
 }
 
 // survive returns f's synced content with what img keeps of its unsynced
-// writes applied, in the order they were made. A file cut below its
-// synced size keeps only that.
-func (f *file) survive(rng *rand.Rand, img Image) []byte {
+// writes applied, in the order they were made, and counts the writes it
+// tore and whether it kept one after an earlier one it lost. A file cut
+// below its synced size keeps only that.
+func (f *file) survive(rng *rand.Rand, img Image, c *Counts) []byte {
 	kept := slices.Clone(f.durable)
 	if f.cut || len(f.pending) == 0 {
 		return kept
@@ -254,6 +267,7 @@ func (f *file) survive(rng *rand.Rand, img Image) []byte {
 		}
 		return kept
 	}
+	lost, reordered := false, false
 	for _, w := range f.pending {
 		k := rng.IntN(3)
 		if img == Writes {
@@ -262,19 +276,31 @@ func (f *file) survive(rng *rand.Rand, img Image) []byte {
 		switch k {
 		case 0:
 			kept = apply(kept, w.off, w.p)
+			reordered = reordered || lost
 		case 1:
-			// Lost.
+			lost = lost || len(w.p) > 0
 		default:
 			unit := SectorBytes
 			if img == Pages {
 				unit = PageBytes
 			}
-			for _, p := range pieces(w, unit) {
+			ps := pieces(w, unit)
+			n := 0
+			for _, p := range ps {
 				if rng.IntN(2) == 0 {
 					kept = apply(kept, p.off, p.p)
+					n++
 				}
 			}
+			if n > 0 && n < len(ps) {
+				c.TornWrites++
+			}
+			reordered = reordered || lost && n > 0
+			lost = lost || n < len(ps)
 		}
+	}
+	if reordered {
+		c.Reordered++
 	}
 	return kept
 }
@@ -669,6 +695,7 @@ func (h *Handle) readable(from, end int) error {
 	for s := range h.f.bad {
 		if s*SectorBytes < end && (s+1)*SectorBytes > from {
 			h.d.tracef("read %s (file %d) at %d: sector %d is bad", h.name, h.f.id, from, s)
+			h.d.Counts.BadReads++
 			return ErrBadSector
 		}
 	}
@@ -687,6 +714,7 @@ func (h *Handle) misread(b []byte, off int) {
 		return
 	}
 	f.misread = nil
+	h.d.Counts.Misreads++
 	if s := (off + rng.IntN(end-off)) / SectorBytes; rng.IntN(2) == 0 && len(f.durable) >= 2*SectorBytes {
 		from := rng.IntN(len(f.durable)/SectorBytes - 1)
 		if from >= s {
@@ -785,8 +813,9 @@ func (h *Handle) Sync() error {
 		// Part of the writes reached the medium before the writeback
 		// failed.
 		if !h.f.cut {
-			h.f.durable = h.f.survive(rng, Image(1+rng.IntN(3)))
+			h.f.durable = h.f.survive(rng, Image(1+rng.IntN(3)), &h.d.Counts)
 		}
+		h.d.Counts.FailedSyncs++
 		h.d.tracef("sync %s (file %d) fails after %d bytes reached the disk", h.name, h.f.id, len(h.f.durable))
 	}
 	if err != nil {

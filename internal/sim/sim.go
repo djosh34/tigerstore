@@ -105,6 +105,10 @@ type Config struct {
 	// both off.
 	MemoryBytes int64
 	Faults      Faults
+	// damageKinds and netemKinds, if set, are the kinds of damage after a
+	// sync and of link faults that the run picks from, for the tests.
+	damageKinds []damageKind
+	netemKinds  []netemKind
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -559,6 +563,10 @@ type Stats struct {
 	// shut down or went read-only, DiskFulls disks that filled up, and
 	// Damage the damage done after a sync, by kind (damageKinds).
 	Kills, PowerLosses, TornRefusals, MisreadRefusals, IOErrors, FSDowns, DiskFulls int
+	// KillLosses counts the power losses that followed a kill, and Disk
+	// what the faults of the nodes' disks did.
+	KillLosses int
+	Disk       simfs.Counts
 	// Packs counts the packs that cleaning made, NoSpace the calls the
 	// NOSPACE alarm refused, and OutOfSpace the nodes that stopped on a
 	// write that ran out of space.
@@ -631,6 +639,16 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	// A run that failed before its end keeps what it did so far, for its
 	// report; it has no committed log for the checkers.
 	s.mu.Lock()
+	for _, n := range s.nodes {
+		c := n.disk.Counts
+		d := &s.stats.Disk
+		d.TornWrites += c.TornWrites
+		d.Reordered += c.Reordered
+		d.LostDirOps += c.LostDirOps
+		d.FailedSyncs += c.FailedSyncs
+		d.BadReads += c.BadReads
+		d.Misreads += c.Misreads
+	}
 	res.History, res.Stats, res.Silences = s.history, s.stats, s.silences
 	res.HeldAppendAt = s.heldAppendAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
@@ -1550,19 +1568,21 @@ func (s *Sim) kill(n *node) {
 // later, and a disk whose process is down drops what was not synced. A
 // node in the middle of its start keeps its power. The lock is held.
 func (s *Sim) powerLoss(n *node) {
-	switch {
-	case s.ended || n.starting || n.out():
-	case n.proc != nil:
+	if s.ended || n.starting || n.out() {
+		return
+	}
+	s.stats.KillLosses++
+	if n.proc != nil {
 		n.why = "the run cut its power"
 		s.crash(n)
 		s.restartLater(n, 1+s.rng.Int64N(max(s.cfg.Faults.MaxDown, Second)))
-	default:
-		s.stats.PowerLosses++
-		s.loseUnsynced(n)
-		n.crashImage = n.disk.Files()
-		s.tracef("node %d: lost power while down", n.id)
-		s.checkRecovery(n)
+		return
 	}
+	s.stats.PowerLosses++
+	s.loseUnsynced(n)
+	n.crashImage = n.disk.Files()
+	s.tracef("node %d: lost power while down", n.id)
+	s.checkRecovery(n)
 }
 
 // loseUnsynced drops what n's disk did not sync, keeping a crash image of
@@ -1741,10 +1761,12 @@ func (s *Sim) heal() {
 			l := &s.clientLinks[i][j]
 			l.up, l.netemUntil, l.stallUntil = true, 0, 0
 		}
+		s.net.resetDamaged(i, len(s.links))
 	}
 	for i := range s.links {
 		for j := range s.links[i] {
 			s.links[i][j].netemUntil = 0
+			s.net.resetDamaged(i, j)
 			if s.links[i][j].halfOpenUntil > s.now() {
 				s.links[i][j].halfOpenUntil = 0
 				s.net.resetBetween(i, j)

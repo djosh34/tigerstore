@@ -193,6 +193,16 @@ func (nw *network) queued(s *Sim, from int, to uint64) []*pipe {
 	return out
 }
 
+// resetDamaged resets the connections between hosts i and j that a link
+// fault damaged, as chaos heals such a fault with RST. The lock is held.
+func (nw *network) resetDamaged(i, j int) {
+	for c := range nw.conns {
+		if c.damaged && (c.from == i && c.to == j || c.from == j && c.to == i) {
+			nw.reset(c)
+		}
+	}
+}
+
 // reset breaks both ends of c's connection. The lock is held.
 func (nw *network) reset(c *conn) {
 	for _, e := range []*conn{c, c.other} {
@@ -315,6 +325,9 @@ type conn struct {
 	in, out       *pipe
 	other         *conn
 	closed        bool
+	// damaged is set once a link fault damaged a byte the connection
+	// carried (flipped, dropped, duplicated); the fault's end resets it.
+	damaged bool
 	// deadline and writeDeadline are the read and write deadlines.
 	deadline, writeDeadline time.Time
 }
@@ -435,7 +448,9 @@ func (c *conn) send(b []byte) {
 	b = slices.Clone(b)
 	at := s.now() + s.delay(l)
 	if l.netemUntil > s.now() {
-		b, at = s.netem(l, b, at, c.out.last)
+		var damaged bool
+		b, at, damaged = s.netem(l, b, at, c.out.last)
+		c.damaged = c.damaged || damaged
 	}
 	at = max(at, c.out.last)
 	c.out.last = at

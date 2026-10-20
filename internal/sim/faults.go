@@ -276,6 +276,9 @@ func (s *Sim) maybeCorrupt(n *node) {
 		}
 	}
 	kind := damageKind(s.rng.IntN(int(numDamage)))
+	if k := s.cfg.damageKinds; len(k) > 0 {
+		kind = k[s.rng.IntN(len(k))]
+	}
 	if s.damage(n, kind) {
 		s.stats.Damage[kind]++
 		s.tracef("node %d: damage after a sync: %v", n.id, kind)

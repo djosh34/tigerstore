@@ -43,8 +43,9 @@ type client struct {
 	leases []int64
 	// v3, for a client of etcd's Go client, calls node index node
 	// (v3client.go).
-	v3   *clientv3.Client
-	node int
+	v3    *clientv3.Client
+	lease clientv3.Lease
+	node  int
 }
 
 const numKeys = 8
@@ -56,20 +57,19 @@ func key(i int) []byte { return fmt.Appendf(nil, "k%d", i) }
 func (c *client) run() {
 	s := c.sim
 	if c.node >= 0 {
-		err := c.newV3()
-		defer func() {
-			if err := c.v3.Close(); err != nil && !errors.Is(err, context.Canceled) {
-				s.mu.Lock()
-				s.fail("client %d: closing clientv3: %w", c.id, err)
-				s.mu.Unlock()
-			}
-		}()
-		if err != nil {
+		if err := c.newV3(); err != nil {
 			s.mu.Lock()
 			s.fail("client %d: %w", c.id, err)
 			s.mu.Unlock()
 			return
 		}
+		defer func() {
+			if err := c.closeV3(); err != nil {
+				s.mu.Lock()
+				s.fail("client %d: closing clientv3: %w", c.id, err)
+				s.mu.Unlock()
+			}
+		}()
 	}
 	s.mu.Lock()
 	wait := s.rng.Int64N(100 * Millisecond)
