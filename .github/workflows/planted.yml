@@ -36,8 +36,17 @@ jobs:
             echo "::group::$rev seed 34"
             SIM_OUT="$RUNNER_TEMP/diag302/$rev-seed" go test -v -tags planted -count=1 -timeout=2m ./internal/sim/ -run '^TestPlanted$/^34$' -args -planted=B22 2>&1 | tee "$RUNNER_TEMP/diag302/$rev-seed.log" || echo "Seed replay exited nonzero; inspect the saved log for catch versus no catch."
             echo '::endgroup::'
-            rm internal/sim/diag302_test.go
             git restore internal/sim/planted_test.go
+            echo "::group::$rev remove the matcher fix"
+            if go test -v -tags planted -count=1 -timeout=2m ./internal/sim/ -run '^TestDiag302' > "$RUNNER_TEMP/diag302/$rev-rollback.log" 2>&1; then
+              echo 'The reproduction passed without the fix.'
+              status=1
+            elif ! grep -q "B22's matcher rejects its snapshot-reload recovery refusal" "$RUNNER_TEMP/diag302/$rev-rollback.log"; then
+              echo 'The rollback failed for another reason.'
+              status=1
+            fi
+            echo '::endgroup::'
+            rm internal/sim/diag302_test.go
           done
           git checkout --detach "$diag"
           exit "$status"
