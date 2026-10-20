@@ -15,3 +15,10 @@ func InternalSync_runtime_nanotime() int64 {
  gosimruntime.Port333Reached("internal/sync.runtime_nanotime")
  return Sync_runtime_nanotime()
 }
+
+// Go 1.27.2 internal/sync/runtime.go:26, mutex.go:150; same signature as
+// pinned gosim's internal/hooks/go123/sync.go:15-17.
+func InternalSync_runtime_SemacquireMutex(addr *uint32, lifo bool, skipframes int) {
+ gosimruntime.Port333Reached("internal/sync.runtime_SemacquireMutex")
+ Sync_runtime_SemacquireMutex(addr, lifo, skipframes)
+}
