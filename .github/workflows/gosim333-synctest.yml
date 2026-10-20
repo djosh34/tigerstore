@@ -1,0 +1,32 @@
+name: gosim333-synctest
+on:
+  push:
+    branches: [exp/333-synctest]
+    paths:
+      - '.github/workflows/gosim333-synctest.yml'
+      - 'experiments/gosim333/run.sh'
+      - 'experiments/gosim333/synctest/**'
+permissions:
+  contents: read
+concurrency:
+  group: gosim333-synctest
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Translate, compile and explore one seed
+        run: bash experiments/gosim333/synctest/actions.sh
+      - name: Upload exact logs, patches and recorded traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gosim333-${{ github.sha }}
+          path: r333-results
+          retention-days: 14

@@ -12,6 +12,7 @@ case ${1:-help} in
   git clone https://github.com/jellevandenhooff/gosim.git "$src"
   git -C "$src" checkout ffd3a613542675755e4cbf8186b5edaf404ed95c
   git -C "$src" apply "$exp/${PATCH:-runtime-explore.patch}"
+  if [[ -n ${GOSIM333_ADAPTER:-} ]]; then python3 "$GOSIM333_ADAPTER" "$src" "$root"; fi
   (cd "$src"; heavy go build -o "$bin" ./cmd/gosim)
   cd "$root"
   go mod edit -require=github.com/jellevandenhooff/gosim@v0.0.0-20241210235323-ffd3a6135426 -replace=github.com/jellevandenhooff/gosim="$src"
@@ -40,8 +41,8 @@ case ${1:-help} in
   ;;
  planted)
   cd "$root"
-  cp "$exp/planted_wrapper.go.txt" internal/sim/gosim333_test.go
-  trap 'rm -f "$root/internal/sim/gosim333_test.go"' EXIT
+  cp "$exp/planted_wrapper.go.txt" internal/sim/gosim333_planted_test.go
+  trap 'rm -f "$root/internal/sim/gosim333_planted_test.go"' EXIT
   GOSIM333_TAGS=planted heavy "$bin" translate ./internal/sim ./internal/node
   cd "$root/.gosim/translated/linux_arm64"
   heavy go test -vet=off -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-planted.test ./github.com/djosh34/tigerstore/internal_/sim
