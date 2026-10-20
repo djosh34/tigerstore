@@ -75,10 +75,11 @@ for signal, flag in [('stop', 'STOP'), ('cont', 'CONT')]:
         raise ValueError(f'expected one {signal} command')
     s = s.replace(old, f'(c/exec :kill :-{flag} (str/trim (c/exec :cat pidfile)))')
 p.write_text(s)
-# jetcd reports a server that stops during a call as an EtcdException with
-# "etcdserver: server stopped", which remap-errors did not know. The watch
-# client then crashed, and its replacement replayed from revision 0, which
-# the watch checker took for missed events (#299). The call may have taken
+# jetcd reports a server that stops during a call, and a connection that
+# closes under it, as an EtcdException with "etcdserver: server stopped" or
+# "channel closed", which remap-errors did not know. The watch client then
+# crashed, and its replacement replayed from revision 0, which the watch
+# checker took for missed or extra events (#299). The call may have taken
 # effect, so it is indeterminate; an idempotent watch fails definitely and
 # keeps its revision.
 p = root / 'src/jepsen/etcd/client.clj'
@@ -89,6 +90,9 @@ if s.count(old) != 1:
     raise ValueError('expected one unhealthy cluster mapping')
 s = s.replace(old, '''               #"etcdserver: server stopped"
                {:definite? false, :type :server-stopped, :description (.getMessage e#)}
+
+               #"channel closed"
+               {:definite? false, :type :channel-closed, :description (.getMessage e#)}
 
 ''' + old)
 p.write_text(s)
