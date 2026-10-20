@@ -7,6 +7,8 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
 	"github.com/djosh34/tigerstore/internal/core"
+
+	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
 // TestGrayFsyncOutlastsHealing builds the shape of #81 on purpose, so that
@@ -19,6 +21,9 @@ import (
 // at least 50 calls must, and the checkers must pass. Every seed must
 // have such an fsync (#262).
 func TestGrayFsyncOutlastsHealing(t *testing.T) {
+	if simrun.Drive(t) {
+		return
+	}
 	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
 	took := effects{all: true}
 	for seed := uint64(1); seed <= 4; seed++ {

@@ -4,12 +4,10 @@ package sim
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,8 +17,6 @@ import (
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
-
-var plantedBug = flag.String("planted", "", "name of the planted bug TestPlanted switches on")
 
 // plantedCase is how a planted bug must be caught: within seeds runs of
 // cfg, by a failure whose message matches want, the assertion the
@@ -186,7 +182,7 @@ func witnessCatches(t *testing.T, res *Result) bool {
 		t.Fatal(err)
 	}
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
-		err := check.Witnessed(h, mode, time.Minute)
+		err := check.Witnessed(h, mode, time.Minute, witnessSteps)
 		if err == nil || !witnessFinding.MatchString(err.Error()) {
 			t.Logf("the witness checker (%s) did not find the stale read on this seed: %v", mode, err)
 			return false
@@ -196,13 +192,14 @@ func witnessCatches(t *testing.T, res *Result) bool {
 	return true
 }
 
-// TestPlanted switches on the bug named by -planted and fails unless a
-// check catches it within its seed budget. A crash of the test binary is
-// a failure too, not a catch.
+// TestPlanted switches on the bug that $SIM_PLANTED names and fails
+// unless a check catches it within its seed budget, from seed 1. A crash
+// is a failure too, not a catch. The catching run is saved, and its
+// replay command printed.
 func TestPlanted(t *testing.T) {
-	name := *plantedBug
+	name := os.Getenv("SIM_PLANTED")
 	if name == "" {
-		t.Skip("no -planted bug selected")
+		t.Skip("no SIM_PLANTED bug selected")
 	}
 	if pkg, ok := plantedElsewhere[name]; ok {
 		t.Skipf("%s is caught by TestPlanted in %s", name, pkg)
@@ -214,32 +211,41 @@ func TestPlanted(t *testing.T) {
 	want := regexp.MustCompile(c.want)
 	planted.Active, activePlanted = name, name
 	t.Cleanup(func() { planted.Active, activePlanted = "", "" })
-	for seed := uint64(1); seed <= uint64(c.seeds); seed++ {
-		caught := false
-		if !t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			res, err := runSeed(t, c.cfg(seed))
-			if err == nil {
-				err = independent(res)
-			}
-			if err == nil && c.extra != nil {
-				err = c.extra(res)
-			}
-			if err == nil {
-				return
-			}
-			if !want.MatchString(err.Error()) {
-				t.Fatalf("%s failed on another check than the expected one (%s): %v", name, c.want, err)
-			}
-			if c.witness && !witnessCatches(t, res) {
-				return
-			}
-			caught = true
-			t.Logf("%s (%s) caught by seed %d: %v", name, planted.Bugs[name], seed, err)
-		}) || caught {
-			return
+	tried, caught := 0, false
+	if !eachSeed(t, c.seeds, func(t *testing.T, seed uint64) string {
+		res, err := runSeed(t, c.cfg(seed))
+		if err == nil {
+			err = independent(res)
 		}
+		if err == nil && c.extra != nil {
+			err = c.extra(res)
+		}
+		if err == nil {
+			return ""
+		}
+		if !want.MatchString(err.Error()) {
+			t.Fatalf("%s failed on another check than the expected one (%s): %v", name, c.want, err)
+		}
+		if c.witness && !witnessCatches(t, res) {
+			return ""
+		}
+		save(t, replayCommand(t.Name(), seed), res)
+		return err.Error()
+	}, func(seed uint64, finding string) bool {
+		tried++
+		if finding == "" {
+			return false
+		}
+		caught = true
+		t.Logf("%s (%s) caught by seed %d: %s", name, planted.Bugs[name], seed, finding)
+		t.Logf("replay: %s", replayCommand(fmt.Sprintf("%s/%d", t.Name(), seed), seed))
+		return true
+	}) {
+		return
 	}
-	t.Fatalf("%s (%s) was not caught within %d seeds", name, planted.Bugs[name], c.seeds)
+	if !caught {
+		t.Fatalf("%s (%s) was not caught in %d seeds", name, planted.Bugs[name], tried)
+	}
 }
 
 // TestB22InstallRefusal checks that B22 counts as caught when the start

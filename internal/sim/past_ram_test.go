@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"strconv"
 	"testing"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -14,6 +13,8 @@ import (
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
+
+	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
 // cacheConfig is linearizableConfig with a small memory budget, so the value
@@ -30,47 +31,50 @@ func cacheConfig(seed uint64) Config {
 // covered here. Each crash boundary recovers a new core, without its cache.
 func TestPastRAMRecovery(t *testing.T) {
 	var total int
-	for seed := uint64(1); seed <= 16; seed++ {
-		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			var cleaned int
-			var hits, misses int64
-			res, err := runWith(t, cacheConfig(seed), func(s *Sim) error {
-				for _, n := range s.live() {
-					m := n.proc.core.Metrics()
-					hits += m.CacheHits
-					misses += m.CacheMisses
-					s.mu.Lock()
-					disk := n.disk.Durable()
-					s.mu.Unlock()
-					model, err := durableModel(s, disk)
-					if err != nil {
-						return err
-					}
-					nfiles, err := cleanHistory(disk, n.id, model)
-					if err != nil {
-						return fmt.Errorf("node %d: %w", n.id, err)
-					}
-					cleaned += nfiles
+	if !simrun.Seeds(t, 1, 16, nil, func(t *testing.T, seed uint64) int {
+		var cleaned int
+		var hits, misses int64
+		res, err := runWith(t, cacheConfig(seed), func(s *Sim) error {
+			for _, n := range s.live() {
+				m := n.proc.core.Metrics()
+				hits += m.CacheHits
+				misses += m.CacheMisses
+				s.mu.Lock()
+				disk := n.disk.Durable()
+				s.mu.Unlock()
+				model, err := durableModel(s, disk)
+				if err != nil {
+					return err
 				}
-				return nil
-			})
-			if err != nil {
-				t.Fatal(err)
+				nfiles, err := cleanHistory(disk, n.id, model)
+				if err != nil {
+					return fmt.Errorf("node %d: %w", n.id, err)
+				}
+				cleaned += nfiles
 			}
-			checkers(t, res)
-			h, err := res.Checkable()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := agree(h); err != nil {
-				t.Fatal(err)
-			}
-			total += cleaned
-			if hits == 0 || misses == 0 {
-				t.Fatalf("coverage: removed %d files, %d cache hits, %d cold reads", cleaned, hits, misses)
-			}
-			t.Logf("removed %d original segments; cache hits %d, cold reads %d; all six checkers passed", cleaned, hits, misses)
+			return nil
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkers(t, res)
+		h, err := res.Checkable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := agree(h); err != nil {
+			t.Fatal(err)
+		}
+		if hits == 0 || misses == 0 {
+			t.Fatalf("coverage: removed %d files, %d cache hits, %d cold reads", cleaned, hits, misses)
+		}
+		t.Logf("removed %d original segments; cache hits %d, cold reads %d; all six checkers passed", cleaned, hits, misses)
+		return cleaned
+	}, func(_ uint64, cleaned int) bool {
+		total += cleaned
+		return false
+	}) {
+		return
 	}
 	if total == 0 {
 		t.Fatal("no original segment was removed in 16 seeds")

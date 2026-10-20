@@ -3,7 +3,6 @@ package sim
 import (
 	"errors"
 	"fmt"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,10 +13,9 @@ import (
 )
 
 // disk is a process's handle on its node's simulated disk. Every call
-// first yields a seeded number of times, so that the process's goroutines
-// interleave at file calls, then takes the run's lock for the call. A call
-// never waits otherwise: the node's goroutines may hold its locks. Once
-// the process died, every call fails.
+// takes the run's lock for the call. A call never waits otherwise: the
+// node's goroutines may hold its locks. Once the process died, every call
+// fails.
 type disk struct {
 	s *Sim
 	p *proc
@@ -26,24 +24,10 @@ type disk struct {
 // errDead is what the disk calls of a process that crashed get.
 var errDead = errors.New("sim: the process crashed")
 
-func (d *disk) yield() { d.s.yield() }
-
-// yield lets other goroutines run 1 to 3 times, as the seed says: the
-// pause before every disk and network call.
-func (s *Sim) yield() {
-	s.mu.Lock()
-	k := 1 + s.rng.IntN(3)
-	s.mu.Unlock()
-	for range k {
-		runtime.Gosched()
-	}
-}
-
 // call runs f on the disk with the lock held, then what the run does
 // right after the call: a due fault, a crash at a step, or a copy of
 // every disk.
 func (d *disk) call(op simfs.Op, name string, f func() error) error {
-	d.yield()
 	s := d.s
 	s.mu.Lock()
 	defer s.mu.Unlock()

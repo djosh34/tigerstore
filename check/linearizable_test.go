@@ -233,6 +233,18 @@ func TestLinearizableTimeout(t *testing.T) {
 	mustFail(t, "Linearizable", Linearizable(h, time.Nanosecond), "the longest order the search found holds")
 }
 
+// TestLinearizableMaxSteps checks that running out of steps is a failure
+// too, which the clock does not decide.
+func TestLinearizableMaxSteps(t *testing.T) {
+	b := newBuilder(t, "a", "b")
+	for i := range 200 {
+		b.put(i%4, string(rune('a'+i%2)), strconv.Itoa(i))
+	}
+	h := b.done()
+	mustFail(t, "Linearizable", Linearizable(h, time.Hour, MaxSteps(10)), "passed its deadline of 1h0m0s or 10 steps")
+	mustPass(t, "Linearizable", Linearizable(h, time.Hour, MaxSteps(1_000_000)))
+}
+
 func TestValidate(t *testing.T) {
 	b := newBuilder(t, "a")
 	b.put(0, "a", "1")

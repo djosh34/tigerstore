@@ -474,6 +474,20 @@ func TestWitnessedTimeout(t *testing.T) {
 	}
 }
 
+// TestWitnessedMaxSteps checks that running out of steps is a failure
+// too, which the clock does not decide.
+func TestWitnessedMaxSteps(t *testing.T) {
+	b := newBuilder(t, "a")
+	for i := range 4000 {
+		b.put(i%16, "a", strconv.Itoa(i))
+	}
+	h := b.done()
+	for _, mode := range bothModes {
+		mustFail(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Hour, MaxSteps(100)), "timed out after 100 steps; the order held")
+		mustPass(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Hour, MaxSteps(1_000_000)))
+	}
+}
+
 // randomHistory runs random puts, deletes, compare-and-swaps and reads on
 // three keys, one at a time in order, from four clients whose calls
 // overlap their neighbours'. A quarter of the writes time out; half of

@@ -3,6 +3,8 @@ package sim
 import (
 	"strconv"
 	"testing"
+
+	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
 // TestCampaignSeeds runs the seeds of the three failures of campaign
@@ -11,6 +13,9 @@ import (
 // stopped, which TestSnapshotFromCorruptLeader now looks for. The
 // simulator no longer plays them out the same way.
 func TestCampaignSeeds(t *testing.T) {
+	if simrun.Drive(t) {
+		return
+	}
 	for _, seed := range []uint64{5068434, 5058843, 5038431} {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
 			a := run(t, DefaultConfig(seed))

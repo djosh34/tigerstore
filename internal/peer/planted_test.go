@@ -4,19 +4,22 @@ package peer
 
 import (
 	"errors"
-	"flag"
+	"os"
 	"testing"
 
 	"github.com/djosh34/tigerstore/internal/planted"
+	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
-var plantedBug = flag.String("planted", "", "name of the planted bug TestPlanted switches on")
-
-// TestPlanted catches B14 with the write deadline's own test, which must
-// fail with the bug on. Other bugs belong to other packages.
+// TestPlanted catches B14, when $SIM_PLANTED names it, with the write
+// deadline's own test, which must fail with the bug on. Other bugs belong
+// to other packages.
 func TestPlanted(t *testing.T) {
-	if *plantedBug != "B14" {
+	if os.Getenv("SIM_PLANTED") != "B14" {
 		t.Skip("not a bug of this package")
+	}
+	if simrun.Drive(t) {
+		return
 	}
 	planted.Active = "B14"
 	t.Cleanup(func() { planted.Active = "" })

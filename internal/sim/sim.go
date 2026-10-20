@@ -1,6 +1,5 @@
 // Package sim runs a cluster of real tigerstore nodes in one process, on
-// simulated disks and a simulated network, inside a testing/synctest
-// bubble, from one seed.
+// simulated disks and a simulated network, from one seed.
 //
 // Each node is the real node driver (internal/node) with its WAL and its
 // peer transport (internal/peer). Its disk is a simfs disk, and its
@@ -8,14 +7,14 @@
 // Clients enter where the server does: Node.Do, watch streams, and the
 // peer frames the transport delivers. gRPC and HTTP stay outside.
 //
-// The seed decides the workload, the faults and their times, every
-// network delay and log sync, and the yields at every disk call. Go's
-// scheduler decides the order of the work between two of them, so one
-// seed can play out differently from run to run. A failed run reports
-// its trace: what the simulator did, and the nodes' log lines.
-//
-// Run must be called inside a synctest bubble (synctest.Test), whose
-// virtual clock the nodes run on.
+// The seed decides the workload, the faults and their times, and every
+// network delay and log sync. The tests run under gosim (internal/simrun),
+// whose scheduler and clock the same seed decides too, so a seed plays out
+// the same way every time. Natively, under the race detector, Run must be
+// called inside a synctest bubble (synctest.Test), whose virtual clock the
+// nodes run on, and Go's scheduler decides the order of the work, so a
+// seed can play out differently from run to run. A failed run reports its
+// trace: what the simulator did, and the nodes' log lines.
 package sim
 
 import (
@@ -533,7 +532,7 @@ type Result struct {
 }
 
 // Run runs one seed and checks it. The error describes the first broken
-// rule. It must run inside a synctest bubble.
+// rule. It must run under gosim or inside a synctest bubble.
 func Run(cfg Config) (*Result, error) { return runInspect(cfg, nil) }
 
 // runInspect runs cfg, then calls inspect, if set, while the nodes still
@@ -946,14 +945,8 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 		// where any damage is detectable.
 		SegmentBytes: 8 << 10,
 		BeforeSync:   func() { s.beforeSync(p) },
-		// A value read only yields, as a disk call does. The node holds
-		// its read lock there, which its close and a reload wait for,
-		// and synctest moves no time while a goroutine waits on a lock,
-		// so a read that waited for time could hang the run (seeds 256949
-		// and 222975). So a pause does not hold value reads either.
-		BeforeRead: s.yield,
-		Turn:       func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) },
-		Persisted:  func(j core.PersistJob) { s.persisted(p, j) },
+		Turn:         func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) },
+		Persisted:    func(j core.PersistJob) { s.persisted(p, j) },
 		// Several nodes share the process, so none can measure its
 		// memory; the value cache takes the whole budget.
 		Memory: func(int64) (int64, bool) { return 0, false },

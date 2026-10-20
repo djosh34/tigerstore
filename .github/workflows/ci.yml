@@ -1,8 +1,9 @@
 # A pull request runs the fast set. The push to main and the nightly run
 # also run every sim and chaos shard, race-sim, chaos-race and apiserver.
-# The planted bugs run in planted.yml. A failed job prints the command
-# that runs each failure again (scripts/replay.sh for go test), and
-# uploads its logs and evidence.
+# The planted bugs run in planted.yml. The simulator's tests run under
+# gosim through scripts/sim.sh, except in race-sim. A failed job prints
+# the command that runs each failure again (scripts/replay.sh for go test
+# and scripts/sim.sh), and uploads its logs and evidence.
 name: ci
 
 on:
@@ -127,12 +128,15 @@ jobs:
           path: ${{ runner.temp }}/lint.log
           retention-days: 30
 
-  # Each shard runs its seeds with the checkers of package check
-  # (TestSeeds) and checks short runs of the same seeds with Porcupine
-  # (TestLinearizable). Shards 0 and 1 run fixed seeds; shards 2 and 3 run
+  # Each shard runs its seeds under gosim with the checkers of package
+  # check (TestSeeds) and checks short runs of the same seeds with
+  # Porcupine (TestLinearizable); every seed is a gosim run of its own.
+  # 20 seeds of each test run twice and must give the same trace, history
+  # and disk hashes. Shards 0 and 1 run fixed seeds; shards 2 and 3 run
   # fresh seeds from the run ID. A pull request runs shard 0 only. A
-  # failing seed's log carries its trace, how it left each node and the
-  # command that runs it again; its trace, nodes and history are uploaded.
+  # failing seed's log carries its trace, how it left each node, its
+  # hashes and the command that runs it again; its trace, nodes, history
+  # and disks are uploaded.
   sim:
     strategy:
       fail-fast: false
@@ -155,13 +159,17 @@ jobs:
           else
             first=$((1000000 + (RUN_ID % 1000000000) * 2 + SHARD * 400))
           fi
-          echo "FIRST_SEED=$first" >> "$GITHUB_ENV"
+          echo "SIM_SEED=$first" >> "$GITHUB_ENV"
           echo "seeds $first to $((first + 399))"
       - name: Run seeds with the checkers
         shell: bash
-        run: go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$|TestLinearizable$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400 -sim.out="$RUNNER_TEMP/sim-out" 2>&1 | tee "$RUNNER_TEMP/sim.log"
+        env:
+          SIM_SEEDS: 400
+          SIM_TWICE: 20
+          SIM_OUT: ${{ runner.temp }}/sim-out
+        run: scripts/sim.sh ./internal/sim '^(TestSeeds|TestLinearizable)$' -test.timeout 14m 2>&1 | tee "$RUNNER_TEMP/sim.log"
       - if: failure()
-        run: scripts/replay.sh "$RUNNER_TEMP/sim.log" -- -sim.seed="$FIRST_SEED" -sim.seeds=400
+        run: PKG=./internal/sim scripts/replay.sh "$RUNNER_TEMP/sim.log" -gosim
       - if: failure()
         uses: actions/upload-artifact@v6
         with:
@@ -171,8 +179,25 @@ jobs:
             ${{ runner.temp }}/sim-out
           retention-days: 30
 
+  # internal/sim/unimplemented.txt must list every hook that gosim does
+  # not implement and that the translation of the simulator's tests meets.
+  # gosim lists them by architecture; the file is the arm64 list.
+  gosim-hooks:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go build -C tools/gosim -o "$RUNNER_TEMP/gosim" github.com/jellevandenhooff/gosim/cmd/gosim
+      - name: Regenerate the list of missing hooks
+        run: |
+          "$RUNNER_TEMP/gosim" translate -tags planted -unimplemented internal/sim/unimplemented.txt ./internal/sim ./internal/node ./internal/peer
+          git diff --exit-code internal/sim/unimplemented.txt || { echo "::error::internal/sim/unimplemented.txt is out of date; commit the regenerated file"; exit 1; }
+
   # Membership changes share the simulator's KV traffic and faults. Run
-  # fixed and fresh seeds.
+  # fixed and fresh seeds under gosim.
   membership:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
@@ -185,11 +210,14 @@ jobs:
         shell: bash
         env:
           RUN_ID: ${{ github.run_id }}
+          SIM_SEEDS: 64
+          SIM_TWICE: 4
+          SIM_OUT: ${{ runner.temp }}/sim-out
         run: |
           status=0
           for first in 1 $((1000000 + RUN_ID % 1000000000)); do
-            go test -count=1 -timeout=8m ./internal/sim -run '^TestMembershipFaults$' -args -sim.seed="$first" -sim.seeds=64 -sim.out="$RUNNER_TEMP/sim-out" 2>&1 | tee "$RUNNER_TEMP/membership-$first.log" || status=1
-            scripts/replay.sh "$RUNNER_TEMP/membership-$first.log" -- -sim.seed="$first" -sim.seeds=64
+            SIM_SEED=$first scripts/sim.sh ./internal/sim '^TestMembershipFaults$' -test.timeout 8m 2>&1 | tee "$RUNNER_TEMP/membership-$first.log" || status=1
+            PKG=./internal/sim scripts/replay.sh "$RUNNER_TEMP/membership-$first.log" -gosim
           done
           exit "$status"
       - if: failure()
@@ -474,10 +502,12 @@ jobs:
           retention-days: 30
 
   # The statement coverage of the internal/... packages, measured across
-  # every package's tests, must be 80% at least.
+  # every package's tests, must be 80% at least. The simulator's tests
+  # run under gosim, which coverage cannot measure: the second step runs
+  # those that the sim and membership jobs do not.
   coverage:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -485,27 +515,40 @@ jobs:
           go-version-file: go.mod
       - shell: bash
         run: go test -short -coverpkg=./internal/... -coverprofile="$RUNNER_TEMP/cover.out" ./... 2>&1 | tee "$RUNNER_TEMP/coverage.log"
-        env:
-          SIM_OUT: ${{ runner.temp }}/sim-out
       - if: failure()
         run: scripts/replay.sh "$RUNNER_TEMP/coverage.log" -short
+      - name: At least 80%
+        run: |
+          total=$(go tool cover -func="$RUNNER_TEMP/cover.out" | awk '/^total:/ {sub("%", "", $3); print $3}')
+          echo "internal/... coverage: $total%"
+          awk -v t="$total" 'BEGIN { exit !(t >= 80) }'
+      - name: The other simulator tests under gosim
+        shell: bash
+        env:
+          SIM_OUT: ${{ runner.temp }}/sim-out
+        run: |
+          status=0
+          scripts/sim.sh ./internal/sim . -test.skip '^(TestSeeds|TestLinearizable|TestMembershipFaults)$' -test.timeout 20m 2>&1 | tee "$RUNNER_TEMP/sim-tests.log" || status=1
+          PKG=./internal/sim scripts/replay.sh "$RUNNER_TEMP/sim-tests.log" -gosim
+          scripts/sim.sh ./internal/node '^TestConcurrentCleanerSimulation$' -test.timeout 10m 2>&1 | tee "$RUNNER_TEMP/cleaner.log" || status=1
+          PKG=./internal/node scripts/replay.sh "$RUNNER_TEMP/cleaner.log" -gosim
+          exit "$status"
       - if: failure()
         uses: actions/upload-artifact@v6
         with:
           name: coverage
           path: |
             ${{ runner.temp }}/coverage.log
+            ${{ runner.temp }}/sim-tests.log
+            ${{ runner.temp }}/cleaner.log
             ${{ runner.temp }}/sim-out
           retention-days: 30
-      - name: At least 80%
-        run: |
-          total=$(go tool cover -func="$RUNNER_TEMP/cover.out" | awk '/^total:/ {sub("%", "", $3); print $3}')
-          echo "internal/... coverage: $total%"
-          awk -v t="$total" 'BEGIN { exit !(t >= 80) }'
 
   # The simulator under the race detector too, which test leaves out to
-  # keep its time: it runs every node's goroutines. It took 28 minutes on
-  # main before TestEachFaultTakesEffect ran three seeds per fault.
+  # keep its time: it runs every node's goroutines. Under -race the
+  # simulator's tests run natively, in testing/synctest bubbles, not under
+  # gosim. It took 28 minutes on main before TestEachFaultTakesEffect ran
+  # three seeds per fault.
   race-sim:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
@@ -628,7 +671,7 @@ jobs:
   # condition; no job here needs another, so nothing else skips them.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, membership, smoke, apiserver, configmaps, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race, rolling-upgrade, past-ram]
+    needs: [lint, build, test, stress, determinism-lint, sim, gosim-hooks, membership, smoke, apiserver, configmaps, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race, rolling-upgrade, past-ram]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:

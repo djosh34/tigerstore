@@ -16,6 +16,7 @@ jobs:
   # The other storage, cleaner, cache and cold-read tests run under race in
   # ci's test job; B29-B31 run in planted.yml. TestCleaningCycles runs there
   # too, and again here with -v to log its cleaning bytes per Put.
+  # TestPastRAMRecovery runs under gosim here, and under race in race-sim.
   storage:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
@@ -31,18 +32,21 @@ jobs:
           SIM_OUT: ${{ runner.temp }}/sim-out
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=20m -v ./internal/sim -run '^TestPastRAMRecovery$' 2>&1 | tee storage.log
+          scripts/sim.sh ./internal/sim '^TestPastRAMRecovery$' -test.v -test.timeout 20m 2>&1 | tee sim.log
       - name: Cleaning bytes per Put under churn
         run: |
           set -o pipefail
           go test -race -count=1 -timeout=10m -v ./internal/node -run '^TestCleaningCycles$' 2>&1 | tee -a storage.log
       - if: failure()
-        run: scripts/replay.sh storage.log -race
+        run: |
+          PKG=./internal/sim scripts/replay.sh sim.log -gosim
+          scripts/replay.sh storage.log -race
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: past-ram-storage
           path: |
+            sim.log
             storage.log
             ${{ runner.temp }}/sim-out
           retention-days: 30

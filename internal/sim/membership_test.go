@@ -1,45 +1,44 @@
 package sim
 
-import (
-	"strconv"
-	"testing"
-)
+import "testing"
 
 // TestMembershipFaults uses the real membership proposals with the same
 // disk, network, clock and process faults as the KV simulator, including
 // its erase-one-disk restarts. The KV checkers still run; membership
 // replies have a separate request-based oracle.
 func TestMembershipFaults(t *testing.T) {
-	n := *numSeeds
-	if n == 0 {
-		n = 16
-	}
+	n := 0
 	var during [4]int
 	var took effects
-	for seed := *firstSeed; seed < *firstSeed+uint64(n); seed++ {
-		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			cfg := membershipConfig(seed)
-			a := run(t, cfg)
-			for i, count := range a.Stats.MembershipChanges {
-				if count != 1 {
-					t.Fatalf("stage %d completed %d times", i, count)
-				}
-				during[i] += a.Stats.MembershipFaults[i]
+	if !eachSeed(t, 16, func(t *testing.T, seed uint64) Stats {
+		a := run(t, membershipConfig(seed))
+		for i, count := range a.Stats.MembershipChanges {
+			if count != 1 {
+				t.Fatalf("stage %d completed %d times", i, count)
 			}
-			took.add(seed, map[string]bool{
-				"crash": a.Stats.Crashes > 0, "link change": a.Stats.LinkChanges > 0,
-				"disk fault": a.Stats.DiskFaults > 0, "cold restart": a.Stats.ColdRestarts > 0,
-			})
-			checkers(t, a)
-			h, err := a.Checkable()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := agree(h); err != nil {
-				t.Fatal(err)
-			}
-			t.Logf("%+v", a.Stats)
+		}
+		checkers(t, a)
+		h, err := a.Checkable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := agree(h); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%+v", a.Stats)
+		return a.Stats
+	}, func(seed uint64, st Stats) bool {
+		n++
+		for i := range during {
+			during[i] += st.MembershipFaults[i]
+		}
+		took.add(seed, map[string]bool{
+			"crash": st.Crashes > 0, "link change": st.LinkChanges > 0,
+			"disk fault": st.DiskFaults > 0, "cold restart": st.ColdRestarts > 0,
 		})
+		return false
+	}) {
+		return
 	}
 	took.check(t)
 	if n >= 16 {

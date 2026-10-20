@@ -7,13 +7,10 @@ import (
 	"hash/crc32"
 	"io"
 	"maps"
-	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -21,35 +18,23 @@ import (
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simfs"
+	"github.com/djosh34/tigerstore/internal/simrun"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 // concurrentDisk serializes simfs operations, not whole WAL operations. The
 // real persister, checkpoint writer, cleaner, readers and snapshot sender
-// interleave at file calls. Yielding never sleeps while the caller holds a
-// production mutex: synctest cannot advance time through mutex contention.
+// interleave at file calls, in the order gosim's scheduler picks from the
+// seed.
 type concurrentDisk struct {
 	mu             sync.Mutex
 	d              *simfs.Disk
-	seed, calls    uint64
 	packs, removes int
 	cuts           map[string]*simfs.Disk
 }
 
-func (d *concurrentDisk) delay() {
-	d.mu.Lock()
-	d.calls++
-	n := (d.calls*6364136223846793005 + d.seed) >> 32
-	d.mu.Unlock()
-	for range 1 + n%3 {
-		runtime.Gosched()
-	}
-}
-
-// serial runs f with the disk to itself, after a few yields, so that the
-// goroutines interleave at file calls.
+// serial runs f with the disk to itself.
 func serial[T any](d *concurrentDisk, f func() (T, error)) (T, error) {
-	d.delay()
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return f()
@@ -175,20 +160,20 @@ var errLostValue = errors.New("lost a value")
 
 // This runs Node.Run, including cleaner.run's pacing and its real queues.
 // It does not substitute the test's own packing protocol for the cleaner.
+// Each of its 8 seeds is a gosim run of its own (simrun.Seeds).
 func TestConcurrentCleanerSimulation(t *testing.T) {
-	for seed := uint64(1); seed <= 8; seed++ {
-		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				if err := concurrentCleaning(t, seed); err != nil {
-					t.Fatal(err)
-				}
-			})
+	simrun.Seeds(t, 1, 8, nil, func(t *testing.T, seed uint64) struct{} {
+		simrun.Bubble(t, func(t *testing.T) {
+			if err := concurrentCleaning(t, seed); err != nil {
+				t.Fatal(err)
+			}
 		})
-	}
+		return struct{}{}
+	}, nil)
 }
 
 func concurrentCleaning(t *testing.T, seed uint64) (err error) {
-	d := &concurrentDisk{d: simfs.New(), seed: seed, cuts: map[string]*simfs.Disk{}}
+	d := &concurrentDisk{d: simfs.New(), cuts: map[string]*simfs.Disk{}}
 	cfg := Config{
 		Tick: 50 * time.Millisecond, SegmentBytes: 32 << 10, DiskBudget: 2 << 20,
 		BeforeRead: func() { time.Sleep(2 * time.Millisecond) },
@@ -330,7 +315,7 @@ func concurrentCleaning(t *testing.T, seed uint64) (err error) {
 	}
 	// Recovery compares against the client's acknowledged values, never
 	// another replica or a hash made by the store.
-	rd := &concurrentDisk{d: crash, seed: seed, cuts: map[string]*simfs.Disk{}}
+	rd := &concurrentDisk{d: crash, cuts: map[string]*simfs.Disk{}}
 	cfg.cleanStage = nil
 	restarted, err := newOnDisk(cfg, "", rd)
 	if err != nil {
