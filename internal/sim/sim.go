@@ -809,22 +809,13 @@ func (s *Sim) tracef(format string, args ...any) {
 }
 
 // sleep waits d, and reports false if the run ended meanwhile.
-func (s *Sim) sleep(d int64) bool {
-	t := time.NewTimer(time.Duration(max(d, 0)))
-	defer t.Stop()
-	select {
-	case <-t.C:
-		return true
-	case <-s.end:
-		return false
-	}
-}
+func (s *Sim) sleep(d int64) bool { return s.sleepUnless(d, nil) }
 
-// sleepUnless is sleep that also returns false once done is closed. The
-// snapshot fault waits with it for the follower to read the prefix: a
-// node that stops on its own, on a disk error, closes its connections
-// with their unread bytes, and its transport's Close waits for the fault
-// to return before the run sees the node stop (#301).
+// sleepUnless is sleep that also returns false once done is closed; a nil
+// done never is. The snapshot fault waits with it for the follower to read
+// the prefix: a node that stops on its own, on a disk error, closes its
+// connections with their unread bytes, and its transport's Close waits for
+// the fault to return before the run sees the node stop (#301).
 func (s *Sim) sleepUnless(d int64, done <-chan struct{}) bool {
 	t := time.NewTimer(time.Duration(max(d, 0)))
 	defer t.Stop()
