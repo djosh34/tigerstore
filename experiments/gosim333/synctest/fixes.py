@@ -26,3 +26,11 @@ shutil.copy(here/'gosim/weak333.go', src/'internal/hooks/go123/weak333.go')
 # Blocker 7: the owner unlocks the mutex and wakes the blocked peer dialer.
 add_hooks('internal/sync', ['runtime_canSpin', 'runtime_nanotime', 'runtime_SemacquireMutex', 'runtime_Semrelease'])
 shutil.copy(here/'gosim/sync333.go', src/'internal/hooks/go123/sync333.go')
+
+# Blocker 8: strong-backed weak handles make the TLS eviction closure keep its
+# certificate alive. The host runtime rejects it; no-GC mode must intercept
+# AddCleanup too, not dispatch arbitrary translated callbacks on host GC workers.
+replace('internal/translate/main.go',
+ 'var replacements = map[packageSelector]packageSelector{\n',
+ 'var replacements = map[packageSelector]packageSelector{\n\t{Pkg: "runtime", Selector: "AddCleanup"}: {Pkg: gosimruntimePackage, Selector: "AddCleanup"},\n')
+shutil.copy(here/'gosim/cleanup333.go', src/'gosimruntime/cleanup333.go')
