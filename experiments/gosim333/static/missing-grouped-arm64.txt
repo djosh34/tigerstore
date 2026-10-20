@@ -1,0 +1,28 @@
+crypto/fips140: isBypassed, setBypass, unsetBypass
+crypto/internal/fips140/aes: ctrBlocks1Asm, ctrBlocks2Asm, ctrBlocks4Asm, ctrBlocks8Asm, decryptBlockAsm, encryptBlockAsm, expandKeyAsm
+crypto/internal/fips140/aes/gcm: gcmAesData, gcmAesDec, gcmAesEnc, gcmAesFinish, gcmAesInit
+crypto/internal/fips140/bigmod: addMulVVW1024, addMulVVW1536, addMulVVW2048
+crypto/internal/fips140/nistec: p256FromMont, p256MovCond, p256Mul, p256NegCond, p256PointAddAffineAsm, p256PointAddAsm, p256PointDoubleAsm, p256Select, p256SelectAffine, p256Sqr
+crypto/internal/fips140/sha256: blockSHA2
+crypto/internal/fips140/sha3: keccakF1600NEON
+crypto/internal/fips140/sha512: blockSHA512
+crypto/internal/fips140/subtle: xorBytes
+crypto/internal/fips140deps/time: monoTime
+crypto/internal/fips140hash: sha3Unwrap
+crypto/internal/sysrand: fatal
+crypto/rand: fatal
+crypto/subtle: setDITDisabled, setDITEnabled
+golang.org/x/sys/unix: runtime_getAuxv, vgetrandom
+internal/cpu: getisar1, getpfr0
+internal/runtime/atomic: And, And32, And64, And8, Anduintptr, Cas, Cas64, CasRel, Casint32, Casint64, Casp1, Casuintptr, Load, Load64, Load8, LoadAcq, LoadAcq64, LoadAcquintptr, Loadint32, Loadint64, Loadp, Loaduint, Loaduintptr, Or, Or32, Or64, Or8, Oruintptr, Store, Store64, Store8, StoreRel, StoreRel64, StoreReluintptr, Storeint32, Storeint64, StorepNoWB, Storeuintptr, Xadd, Xadd64, Xaddint32, Xaddint64, Xadduintptr, Xchg, Xchg64, Xchg8, Xchgint32, Xchgint64, Xchguintptr, casPointer, storePointer
+internal/runtime/sys: DITEnabled, DisableDIT, EnableDIT, GetCallerPC, GetCallerSP, GetClosurePtr
+internal/runtime/syscall/linux: Syscall6
+internal/sync: fatal, runtime_SemacquireMutex, runtime_Semrelease, runtime_canSpin, runtime_doSpin, runtime_nanotime, runtime_rand, throw
+internal/synctest: IsInBubble, Run, Wait, acquire, associate, disassociate, inBubble, isAssociated, release
+internal/syscall/unix: vgetrandom
+net/http: protocolSetHTTP3, transportFromH1Transport
+runtime/debug: runtime_setCrashFD
+sync: runtime_SemacquireWaitGroup
+syscall: runtimeClearenv
+time: runtimeIsBubbled, runtimeNow
+weak: runtime_makeStrongFromWeak, runtime_registerWeakPointer
