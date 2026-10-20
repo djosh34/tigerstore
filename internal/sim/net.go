@@ -286,7 +286,6 @@ type conn struct {
 
 func (c *conn) Read(b []byte) (int, error) {
 	s := c.s
-	s.yield()
 	for {
 		s.mu.Lock()
 		if c.closed {
@@ -340,7 +339,6 @@ func (c *conn) Read(b []byte) (int, error) {
 
 func (c *conn) Write(b []byte) (int, error) {
 	s := c.s
-	s.yield()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch {

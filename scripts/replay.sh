@@ -1,37 +1,33 @@
 #!/usr/bin/env bash
 # Prints the command that runs each failed test of a go test log again.
 #
-#   scripts/replay.sh <log> [go test flags, such as -race] [-- test args]
+#   scripts/replay.sh <log> [-gosim] [go test flags, such as -race]
 #
 # A test that failed and has no failed subtest is printed with its
 # package, and so is a test still running when its binary timed out. The
-# flags go into every line. The test args, the -sim.seed and -sim.seeds
-# of the job, go after -args of a simulator line that has no args of its
-# own, as a test that failed as a whole over its seeds needs them; with
-# them, such a test is printed too, besides its failed subtests. A log
-# of a test binary run directly has no package line; PKG then names the
+# flags go into every go test line. A log of a test binary run directly,
+# as scripts/sim.sh does, has no package line; PKG then names the
 # package, as in PKG=./internal/sim.
 #
-# The simulator's tests print their own replay lines, with the seed flags
-# and the planted bug; those are printed with the flags, and a simulator
-# test with no line of its own gets the generic one. A seed of a
-# simulator test that timed out gets its seed flags here. A subtest named
-# after a test function runs as that test.
+# -gosim, before the flags, says the log is of scripts/sim.sh, whose
+# failed tests run again with scripts/sim.sh. The simulator's tests print
+# their own replay lines, with the variables that set their seeds and
+# planted bug: scripts/sim.sh lines from runs under gosim, go test lines
+# from native runs under -race. Those are printed as they are, with the
+# flags in a go test line, and a test with no line of its own gets the
+# generic one. A seed of a simulator test that timed out gets its seed
+# variables here. A subtest named after a test function runs as that
+# test.
 set -euo pipefail
 log=$1
 shift
-flags=()
-args=()
-while [ $# -gt 0 ]; do
-	if [ "$1" = -- ]; then
-		shift
-		args=("$@")
-		break
-	fi
-	flags+=("$1")
+gosim=0
+if [ "${1:-}" = -gosim ]; then
+	gosim=1
 	shift
-done
-awk -v flags="${flags[*]:-}" -v args="${args[*]:-}" -v pkgarg="${PKG:-}" '
+fi
+flags=("$@")
+awk -v flags="${flags[*]:-}" -v pkgarg="${PKG:-}" -v gosim="$gosim" '
 function quote(s) {
 	gsub(/[][().*+?^$|\\{}]/, "\\\\&", s)
 	return "^" s "$"
@@ -42,10 +38,10 @@ function gotest() {
 # The first pass collects the -run patterns of the replay lines the
 # tests printed themselves.
 FNR == NR {
-	if (match($0, /replay: go test .*-run '\''[^'\'']*'\''/)) {
+	if (match($0, /replay: .*(go test|scripts\/sim\.sh) .*'\''[^'\'']*'\''/)) {
 		p = substr($0, RSTART, RLENGTH)
-		sub(/.*-run '\''/, "", p)
 		sub(/'\''$/, "", p)
+		sub(/.*'\''/, "", p)
 		own[p] = 1
 	}
 	next
@@ -68,8 +64,7 @@ running && /^[ \t]+Test[^ ]* \(/ {
 {
 	running = 0
 }
-function flush(pkg, i, j, k, p, first, leaf, parts, pattern, extra, sim) {
-	sim = pkg ~ /internal\/sim\/?$/
+function flush(pkg, i, j, k, p, first, leaf, parts, pattern, env) {
 	for (i = 1; i <= n; i++) {
 		leaf = 1
 		for (j = 1; j <= n; j++) {
@@ -77,9 +72,7 @@ function flush(pkg, i, j, k, p, first, leaf, parts, pattern, extra, sim) {
 				leaf = 0
 			}
 		}
-		# A test that failed as a whole, as over its seeds, runs again
-		# with the args of the job too.
-		if (!leaf && (args == "" || !sim || index(failed[i], "/") > 0)) {
+		if (!leaf) {
 			continue
 		}
 		k = split(failed[i], parts, "/")
@@ -94,16 +87,20 @@ function flush(pkg, i, j, k, p, first, leaf, parts, pattern, extra, sim) {
 		for (p = first + 1; p <= k; p++) {
 			pattern = pattern "/" quote(parts[p])
 		}
-		if (sim && !timedOut[i] && (pattern in own)) {
+		if (!timedOut[i] && (pattern in own)) {
 			continue
 		}
-		extra = ""
-		if (sim && first < k && parts[first] ~ /^Test(Seeds|Linearizable|MembershipFaults)$/ && parts[first + 1] ~ /^[0-9]+$/) {
-			extra = " -args -sim.seed=" parts[first + 1] " -sim.seeds=1"
-		} else if (sim && args != "") {
-			extra = " -args " args
+		env = ""
+		# A subtest named after a number is a seed (simrun.Seeds); a test
+		# with fixed seeds of its own ignores the variables.
+		if (first < k && parts[first + 1] ~ /^[0-9]+$/) {
+			env = "SIM_SEED=" parts[first + 1] " SIM_SEEDS=1 "
 		}
-		printf "replay: %s-count=1 -run '\''%s'\'' %s%s\n", gotest(), pattern, pkg, extra
+		if (gosim) {
+			printf "replay: %sscripts/sim.sh %s '\''%s'\''\n", env, pkg, pattern
+		} else {
+			printf "replay: %s%s-count=1 -run '\''%s'\'' %s\n", env, gotest(), pattern, pkg
+		}
 	}
 	n = 0
 }
@@ -119,4 +116,17 @@ END {
 	}
 }
 ' "$log" "$log"
-grep -h 'replay: go test' "$log" | sed 's/^ *[a-z_]*\.go:[0-9]*: //' | sort -u | sed "s/^replay: go test /replay: go test ${flags[*]:+${flags[*]} }/" || true
+grep -hE 'replay: .*(go test|scripts/sim\.sh) ' "$log" | sed 's/^ *[a-z_]*\.go:[0-9]*: //' | sort -u | awk -v flags="${flags[*]:-}" '
+# Each flag goes into a go test line that does not have it yet.
+match($0, /go test /) {
+	add = ""
+	n = split(flags, f, " ")
+	for (i = 1; i <= n; i++) {
+		if (index($0 " ", " " f[i] " ") == 0) {
+			add = add f[i] " "
+		}
+	}
+	$0 = substr($0, 1, RSTART + RLENGTH - 1) add substr($0, RSTART + RLENGTH)
+}
+{ print }
+' || true

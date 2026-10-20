@@ -33,13 +33,13 @@ func ShortEnough(h *history.History) bool { return len(h.Ops) <= ShortOps }
 // The store must be empty at the start of the history. Keep checked histories
 // short and isolated (ShortEnough): Porcupine's search grows fast with
 // concurrency and with bugs, and every other writer to the store must be in
-// the history. Not finishing within timeout is a failure, never a pass; the
-// error then says how far the search got.
+// the history. Not finishing within timeout, or within MaxSteps, is a
+// failure, never a pass; the error then says how far the search got.
 //
 // A lease that may expire during the history needs an op that models the
 // expiry: a LeaseRevoke from its own client, called when the lease was
 // granted, with an ambiguous error.
-func Linearizable(h *history.History, timeout time.Duration) error {
+func Linearizable(h *history.History, timeout time.Duration, opts ...Option) error {
 	if err := h.Validate(); err != nil {
 		return err
 	}
@@ -75,10 +75,15 @@ func Linearizable(h *history.History, timeout time.Duration) error {
 	}
 	keys := keysOf(reqs)
 
+	maxSteps := optionsOf(opts).steps
 	var tripped, unsupported atomic.Bool
+	var steps atomic.Int64
 	m := porcupine.Model{
 		Init: func() any { return initial(keys) },
 		Step: func(st, in, out any) (bool, any) {
+			if maxSteps > 0 && steps.Add(1) > maxSteps {
+				tripped.Store(true)
+			}
 			if tripped.Load() {
 				return false, nil
 			}
@@ -99,7 +104,11 @@ func Linearizable(h *history.History, timeout time.Duration) error {
 	res, info := porcupine.CheckOperationsVerbose(m, ops, timeout)
 	timer.Stop()
 	if tripped.Load() {
-		return fmt.Errorf("linearizability check of %d operations passed its deadline of %s; %s", len(ops), timeout, progress(h, ops, index, info))
+		limit := timeout.String()
+		if maxSteps > 0 {
+			limit += fmt.Sprintf(" or %d steps", maxSteps)
+		}
+		return fmt.Errorf("linearizability check of %d operations passed its deadline of %s; %s", len(ops), limit, progress(h, ops, index, info))
 	}
 	switch res {
 	case porcupine.Ok:

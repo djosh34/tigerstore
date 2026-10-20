@@ -1,0 +1,8 @@
+# Seeds that fail because of an open bug issue. scripts/sim.sh skips and
+# reports them; ci fails on any other failure. One per line: the test, the
+# seed and the issue, as in
+#   TestSeeds 1234 https://github.com/djosh34/tigerstore/issues/357
+# It holds seeds of internal/sim's tests that run sets of seeds
+# (simrun.Seeds and simrun.Each); a test of one seed (simrun.Drive)
+# cannot be listed. A package with such tests of its own, as
+# internal/node, gets a file of its own.

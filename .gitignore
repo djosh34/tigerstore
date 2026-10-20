@@ -1,3 +1,4 @@
 /tigerstore
 *.test
 *.prof
+/.gosim/

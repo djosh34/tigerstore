@@ -9,6 +9,9 @@ on:
     paths:
       - "check/**"
       - "internal/sim/**"
+      - "internal/simrun/**"
+      - "scripts/sim.sh"
+      - "tools/gosim/**"
       - "cmd/chaos/**"
       - "chaos/**"
       - ".github/workflows/planted.yml"
@@ -27,42 +30,48 @@ concurrency:
 
 jobs:
   # Every planted bug (internal/planted) in turn must be caught within its
-  # seed budget; TestPlanted fails otherwise, and a crash is a failure too.
-  # TestPlantedInventory checks that BUGS names every bug. A bug that is
-  # not caught prints the command that runs it again; a seed that failed
-  # on another check prints its own, and its run is uploaded.
+  # seed budget, under gosim; TestPlanted fails otherwise, and a crash is
+  # a failure too. TestPlantedInventory checks that BUGS names every bug.
+  # A bug that is not caught prints the command that runs it again; a
+  # seed that failed on another check prints its own. The run that caught
+  # each bug is uploaded, in sim-out/<bug>/, with its trace, history,
+  # disks, hashes and replay command.
   planted:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     env:
       BUGS: B01a B01b B02 B03 B04a B04b B04c B05 B06a B06b B06c B06d B07 B08 B09a B09b B10 B11 B12 B13 B14 B15 B16 B17 B18 B19 B20 B21 B22 B23 B24 B25 B26 B27 B28 B29 B30 B31
+      TAGS: planted
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go test -c -tags planted -o "$RUNNER_TEMP/bin/" ./internal/sim ./internal/node ./internal/peer
+      # Builds each package's gosim and native test binaries, and runs
+      # no test.
+      - run: for pkg in sim node peer; do scripts/sim.sh "./internal/$pkg" '^$'; done
       - name: Catch every planted bug
         shell: bash
         env:
           SIM_OUT: ${{ runner.temp }}/sim-out
         run: |
           set -uo pipefail
+          export GOSIMTOOL="$GITHUB_WORKSPACE/.gosim/bin/gosim"
           status=0
           mkdir -p "$RUNNER_TEMP/logs"
-          (cd internal/sim && "$RUNNER_TEMP/bin/sim.test" -test.run 'TestPlantedInventory$') 2>&1 | tee "$RUNNER_TEMP/logs/inventory.log" || { status=1; echo "::error::TestPlantedInventory failed; replay: go test -tags planted -count=1 ./internal/sim/ -run '^TestPlantedInventory$'"; }
+          (cd internal/sim && "$GITHUB_WORKSPACE/.gosim/bin/sim-planted.test" -test.run 'TestPlantedInventory$') 2>&1 | tee "$RUNNER_TEMP/logs/inventory.log" || { status=1; echo "::error::TestPlantedInventory failed; replay: go test -tags planted -count=1 ./internal/sim/ -run '^TestPlantedInventory$'"; }
           for bug in $BUGS; do
             echo "::group::$bug"
             for pkg in sim node peer; do
-              (cd "internal/$pkg" && "$RUNNER_TEMP/bin/$pkg.test" -test.run 'TestPlanted$' -test.v -test.timeout 28m -planted="$bug") 2>&1 | tee "$RUNNER_TEMP/logs/$bug-$pkg.log" || {
+              (cd "internal/$pkg" && SIM_PLANTED="$bug" SIM_OUT="$SIM_OUT/$bug" "$GITHUB_WORKSPACE/.gosim/bin/$pkg-planted.test" -test.run '^TestPlanted$' -test.v -test.timeout 28m) 2>&1 | tee "$RUNNER_TEMP/logs/$bug-$pkg.log" || {
                 status=1
-                echo "::error::$bug was not caught in internal/$pkg; replay: go test -tags planted -count=1 -v ./internal/$pkg/ -run '^TestPlanted$' -args -planted=$bug"
+                echo "::error::$bug was not caught in internal/$pkg; replay: SIM_PLANTED=$bug TAGS=planted scripts/sim.sh ./internal/$pkg '^TestPlanted$'"
               }
             done
             echo "::endgroup::"
           done
           exit "$status"
-      - if: failure()
+      - if: always()
         uses: actions/upload-artifact@v6
         with:
           name: planted

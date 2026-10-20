@@ -7,7 +7,6 @@ import (
 	"os"
 	"sync/atomic"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/simfs"
+	"github.com/djosh34/tigerstore/internal/simrun"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -140,7 +140,7 @@ func leaderless(t *testing.T, disk FS, change func(*Config)) (*Node, func()) {
 // ticks it missed still count, so the write times out by the wall clock,
 // as in etcd, not a whole request timeout later (row 35).
 func TestRequestClockFollowsWallClock(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
+	simrun.Bubble(t, func(t *testing.T) {
 		var stall atomic.Bool
 		var timeout time.Duration
 		n, stop := leaderless(t, &concurrentDisk{d: simfs.New(), cuts: map[string]*simfs.Disk{}}, func(cfg *Config) {
@@ -255,7 +255,7 @@ func TestCancelWithFullInbox(t *testing.T) {
 // then drops what its disk did not sync. As etcd's WAL.Close syncs its
 // tail, the log still holds the commit index the node applied (row 47).
 func TestCleanStopSyncsTail(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
+	simrun.Bubble(t, func(t *testing.T) {
 		d := &concurrentDisk{d: simfs.New(), cuts: map[string]*simfs.Disk{}}
 		cfg := Config{Core: core.DefaultConfig(1, []uint64{1}), Tick: 10 * time.Millisecond}
 		n, err := newOnDisk(cfg, "", d)

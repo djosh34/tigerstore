@@ -1,0 +1,19 @@
+# Hooks that gosim does not implement and that the simulator's test
+# binaries can reach. unimplemented.txt lists every hook gosim does not
+# implement that the translation of the simulator's tests meets on arm64.
+# scripts/sim.sh refuses a test binary that can reach one not listed here
+# (gosim build-tests -allow-unimplemented). Each needs the reason the tests
+# never call it.
+
+# os.Exit: dependencies exit on a fatal log line or a bad flag. The
+# simulator never does; a run that tried would fail as unimplemented.
+os.runtime_beforeExit
+syscall.Exit
+
+# text/template ranges over channels and encoding/json builds map types
+# through reflection; the simulator passes them neither.
+reflect.MapOf
+reflect.Value.Recv
+reflect.Value.Send
+reflect.Value.TryRecv
+reflect.Value.TrySend

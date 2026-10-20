@@ -1,12 +1,14 @@
-# The simulator seed campaign of #148: 100,000 seeds of TestSeeds, every
-# checker on each, the witness checker in both modes among them, in 20
-# jobs of two processes of 2,500 seeds. Each process requires each fault
-# to take effect in 95% of its seeds, and a process of 2,000 seeds or
-# more a stalled leader that went silent too (#218, #233). Started by the
-# worker:
+# The simulator seed campaign of #148: 100,000 seeds of TestSeeds under
+# gosim, every checker on each, the witness checker in both modes among
+# them, in 20 jobs of two processes of 2,500 seeds. Every seed is a gosim
+# run of its own, and 25 seeds of each process run twice and must give
+# the same hashes. Each process requires each fault to take effect in 95%
+# of its seeds, and a process of 2,000 seeds or more a stalled leader
+# that went silent too (#218, #233). Started by the worker:
 #   gh workflow run sim-campaign.yml -f first=<seed>
-# A failing seed prints the command that runs it again, and its trace, how
-# it left each node and its history are uploaded with the job's logs.
+# A failing seed prints its hashes and the command that runs it again,
+# and its trace, how it left each node, its history and its disks are
+# uploaded with the job's logs.
 name: sim-campaign
 
 on:
@@ -33,30 +35,37 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go test -c -o "$RUNNER_TEMP/sim.test" ./internal/sim
+      # Builds the gosim and native test binaries, and runs no test.
+      - run: scripts/sim.sh ./internal/sim '^$'
       - name: Run 5,000 seeds in two processes
         shell: bash
         env:
           FIRST: ${{ inputs.first }}
           SHARD: ${{ matrix.shard }}
+          SIM_SEEDS: 2500
+          SIM_TWICE: 25
+          SIM_OUT: ${{ runner.temp }}/sim-out
         run: |
           set -uo pipefail
+          export GOSIMTOOL="$GITHUB_WORKSPACE/.gosim/bin/gosim"
           cd internal/sim
           pids=()
           for p in 0 1; do
             seed=$((FIRST + SHARD * 5000 + p * 2500))
             echo "process $p: seeds $seed to $((seed + 2499))"
-            "$RUNNER_TEMP/sim.test" -test.run 'TestSeeds$' -test.v -test.timeout 85m -sim.seed="$seed" -sim.seeds=2500 -sim.out="$RUNNER_TEMP/sim-out" >"$RUNNER_TEMP/seeds-$p.log" 2>&1 &
+            SIM_SEED=$seed "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run 'TestSeeds$' -test.v -test.timeout 85m >"$RUNNER_TEMP/seeds-$p.log" 2>&1 &
             pids+=($!)
           done
           status=0
           for p in 0 1; do
             wait "${pids[$p]}" || status=1
             grep -E -- '^--- FAIL|^    --- FAIL| seeds: |took effect|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$p.log" | head -50
-            PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$p.log" -- -sim.seed="$((FIRST + SHARD * 5000 + p * 2500))" -sim.seeds=2500
+            PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$p.log" -gosim
           done
           exit $status
-      - if: failure()
+      # The logs, with every seed's hashes, also when the campaign passed:
+      # any seed of them replays alone with the same hashes.
+      - if: always()
         uses: actions/upload-artifact@v6
         with:
           name: sim-campaign-${{ matrix.shard }}

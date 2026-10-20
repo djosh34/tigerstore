@@ -296,8 +296,8 @@ func (c *cleaner) pass(ctx context.Context, short bool) (did bool, err error) {
 	if planted.On("B29") {
 		// Remove the old segments now, before a root names the pack, and
 		// wait for readers rather than skip; sleeping between tries lets
-		// synctest's clock move. The packs it replaces are still named, so
-		// they stay until the normal removal.
+		// a simulated clock move. The packs it replaces are still named,
+		// so they stay until the normal removal.
 		l := c.n.log
 		for {
 			l.mu.Lock()

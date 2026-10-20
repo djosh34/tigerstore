@@ -63,8 +63,8 @@ func (m WitnessMode) String() string {
 //     failed reads.
 //
 // The store must be empty at the start of the history. Not finishing
-// within timeout is a failure, never a pass.
-func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration) error {
+// within timeout, or within MaxSteps, is a failure, never a pass.
+func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts ...Option) error {
 	if err := h.Validate(); err != nil {
 		return err
 	}
@@ -72,6 +72,7 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration) erro
 		return fmt.Errorf("witness check needs a positive timeout, got %s", timeout)
 	}
 	w := newWitness(h, time.Now().Add(timeout))
+	w.maxSteps = optionsOf(opts).steps
 	var err error
 	switch mode {
 	case FromLog:
@@ -92,7 +93,10 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration) erro
 	if err == nil && time.Now().After(w.deadline) {
 		err = errWitnessTimeout
 	}
-	if errors.Is(err, errWitnessTimeout) {
+	switch {
+	case errors.Is(err, errWitnessTimeout) && w.maxSteps > 0 && w.steps > w.maxSteps:
+		err = fmt.Errorf("%w after %d steps; %s", err, w.maxSteps, w.stoppedAt())
+	case errors.Is(err, errWitnessTimeout):
 		err = fmt.Errorf("%w; %s", err, w.stoppedAt())
 	}
 	if err != nil {
@@ -109,8 +113,10 @@ var errWitnessTimeout = errors.New("timed out")
 type witness struct {
 	h        *history.History
 	deadline time.Time
-	steps    int
-	keys     []string
+	// steps counts the search's steps, and a check with maxSteps above 0
+	// stops after that many (MaxSteps).
+	steps, maxSteps int64
+	keys            []string
 	// reqs are the ops' requests as the model sees them.
 	reqs []history.Request
 	// events are the mutations of the order, and states[j] is the store
@@ -199,9 +205,13 @@ func newWitness(h *history.History, deadline time.Time) *witness {
 	return w
 }
 
-// tick counts a step of work and reports whether the deadline passed.
+// tick counts a step of work and reports whether the deadline passed or
+// the steps ran out.
 func (w *witness) tick() bool {
 	w.steps++
+	if w.maxSteps > 0 && w.steps > w.maxSteps {
+		return true
+	}
 	return w.steps%1024 == 0 && time.Now().After(w.deadline)
 }
 
