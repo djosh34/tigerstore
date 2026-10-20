@@ -35,6 +35,8 @@ if [[ $STORE == etcd ]]; then
 else
   git worktree add --detach .jepsen/product "${PRODUCT_SHA:?pin the main commit to test}"
   git -C .jepsen/product rev-parse HEAD | tee "$out/product-commit.txt"
+  bash scripts/diag300/apply.sh .jepsen/product
+  git -C .jepsen/product diff > "$out/diag300-product.patch"
   (cd .jepsen/product; GOFLAGS=-p=2 GOMEMLIMIT=2GiB CGO_ENABLED=0 go build -o "$assets/server" ./cmd/tigerstore)
 fi
 sha256sum "$assets/server" | tee "$out/server.sha256"
@@ -72,6 +74,10 @@ cleanup() {
       fi
     done
   fi
+  for node in n1 n2 n3; do
+    docker exec "jepsen-$node" sh -c 'ls -laR /opt/etcd' > "$out/diag300-ls-$node.txt" 2>&1 || true
+    docker cp "jepsen-$node:/opt/etcd/$node.etcd.lazyfs" "$out/diag300-lazyfs-$node" || true
+  done
   docker cp jepsen-control:/jepsen/etcd/store "$out/store" || rc=1
   "${compose[@]}" logs --no-color > "$out/containers.log" 2>&1 || rc=1
   docker inspect jepsen-control jepsen-n1 jepsen-n2 jepsen-n3 > "$out/containers.json" || rc=1

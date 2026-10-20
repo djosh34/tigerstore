@@ -1,0 +1,113 @@
+// diag only (#300): run.sh copies this file into the product's
+// internal/wal as diag300.go. Never merged.
+
+package wal
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
+)
+
+func diag300Line(format string, a ...any) {
+	fmt.Fprintf(os.Stderr, "DIAG300 %s %s\n", time.Now().UTC().Format(time.RFC3339Nano), fmt.Sprintf(format, a...))
+}
+
+func diag300Stat(what string, st os.FileInfo, err error) {
+	if err != nil {
+		diag300Line("%s error=%v", what, err)
+		return
+	}
+	ino := uint64(0)
+	if s, ok := st.Sys().(*syscall.Stat_t); ok {
+		ino = s.Ino
+	}
+	diag300Line("%s size=%d ino=%d mtime=%s", what, st.Size(), ino, st.ModTime().UTC().Format(time.RFC3339Nano))
+}
+
+func diag300Read(what string, r io.ReaderAt, at int64, n int) {
+	b := make([]byte, n)
+	k, err := r.ReadAt(b, at)
+	diag300Line("%s at=%d got=%d error=%v bytes=%x", what, at, k, err, b[:k])
+}
+
+func diag300List(what, dir string) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		diag300Line("%s %s error=%v", what, dir, err)
+		return
+	}
+	for _, e := range ents {
+		st, err := e.Info()
+		diag300Stat(what+" "+filepath.Join(dir, e.Name()), st, err)
+	}
+}
+
+// Diag300 records, after a short value read at byte at of r, what the
+// log, the descriptor, the mounted path and LazyFS's backing file say.
+// The order matters: the first repeat read comes before any stat, which
+// would refresh the kernel's cached size.
+func (w *WAL) Diag300(r io.ReaderAt, at int64, n int) {
+	diag300Read("repeat-same-fd-before-stat", r, at, n)
+	f, ok := r.(interface {
+		Name() string
+		Stat() (os.FileInfo, error)
+	})
+	if !ok {
+		diag300Line("reader %T", r)
+		return
+	}
+	path := f.Name()
+	diag300Line("path=%s log: seq=%d size=%d unplaced=%v dirty=%v buf=%d last=%d sizes=%v", path, w.seq, w.size, w.unplaced, w.dirty, len(w.buf), w.last, w.sizes)
+	for _, s := range w.runs {
+		lastOff := uint32(0)
+		if len(s.offs) > 0 {
+			lastOff = s.offs[len(s.offs)-1]
+		}
+		diag300Line("run seq=%d first=%d end=%d top=%d lastOff=%d", s.seq, s.first, s.end(), s.top, lastOff)
+	}
+	for seq, rf := range w.readers {
+		if g, ok := rf.(interface{ Stat() (os.FileInfo, error) }); ok {
+			st, err := g.Stat()
+			diag300Stat(fmt.Sprintf("reader seq=%d fstat", seq), st, err)
+		}
+	}
+	if g, ok := w.seg.(interface{ Stat() (os.FileInfo, error) }); ok {
+		st, err := g.Stat()
+		diag300Stat("writer fstat", st, err)
+	}
+	st, err := f.Stat()
+	diag300Stat("fd fstat", st, err)
+	diag300Read("repeat-same-fd-after-stat", r, at, n)
+	st, err = os.Stat(path)
+	diag300Stat("path stat", st, err)
+	if g, err := os.Open(path); err != nil {
+		diag300Line("fresh open error=%v", err)
+	} else {
+		diag300Read("fresh-fd", g, at, n)
+		st, err := g.Stat()
+		diag300Stat("fresh fstat", st, err)
+		g.Close()
+	}
+	// Jepsen mounts LazyFS at /opt/etcd/<node>.etcd over the backing
+	// directory /opt/etcd/<node>.etcd.lazyfs/data.
+	if i := strings.Index(path, ".etcd/"); i >= 0 {
+		backing := path[:i] + ".etcd.lazyfs/data/" + path[i+len(".etcd/"):]
+		st, err := os.Stat(backing)
+		diag300Stat("backing stat "+backing, st, err)
+		if g, err := os.Open(backing); err != nil {
+			diag300Line("backing open error=%v", err)
+		} else {
+			diag300Read("backing", g, at, n)
+			g.Close()
+		}
+		diag300List("backing dir", filepath.Dir(backing))
+	}
+	diag300List("mounted dir", filepath.Dir(path))
+	time.Sleep(200 * time.Millisecond)
+	diag300Read("same-fd-after-200ms", r, at, n)
+}
