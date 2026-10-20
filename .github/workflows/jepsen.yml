@@ -30,6 +30,28 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        if: inputs.suite == 'tools'
+        with:
+          go-version-file: go.mod
+      - name: Issue 300 READDIRPLUS size probe
+        if: inputs.suite == 'tools'
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libfuse3-dev fuse3 cmake g++
+          sudo modprobe fuse || true
+          test -c /dev/fuse || sudo mknod /dev/fuse c 10 229
+          sudo chmod a+rw /dev/fuse
+          export CHAOS_LAZYFS="$(bash scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")"
+          mkdir -p results/diag300rd
+          set -o pipefail
+          go test -v -count=1 -run '^TestLazyFSReadDirSize$' -timeout=45s ./scripts/diag300rd 2>&1 | tee results/diag300rd/test.log
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.suite == 'tools'
+        with:
+          name: diag300-readdir-size
+          path: results/diag300rd
       - name: Check runner scripts and summary regressions
         shell: bash
         run: |
