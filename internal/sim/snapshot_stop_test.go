@@ -3,7 +3,6 @@ package sim
 import (
 	"context"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -14,7 +13,7 @@ import (
 // 377142 did. The run must see the leader stop on its disk error at once,
 // not when the run ends (#301).
 func TestStopWhileServingSnapshot(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
+	bubble(t, func(t *testing.T) {
 		cfg := DefaultConfig(377142)
 		cfg.Faults = Faults{FetchCrash: true}
 		s, err := newSim(cfg)

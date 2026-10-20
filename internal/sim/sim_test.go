@@ -14,7 +14,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -57,7 +56,7 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 	t.Helper()
 	var res *Result
 	var err error
-	synctest.Test(t, func(*testing.T) { res, err = runInspect(cfg, inspect) })
+	bubble(t, func(*testing.T) { res, err = runInspect(cfg, inspect) })
 	me := new(int)
 	lastRun.Store(t, me)
 	t.Cleanup(func() {

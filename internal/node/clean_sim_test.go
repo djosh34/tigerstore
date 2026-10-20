@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -178,7 +177,7 @@ var errLostValue = errors.New("lost a value")
 func TestConcurrentCleanerSimulation(t *testing.T) {
 	for seed := uint64(1); seed <= 8; seed++ {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
+			bubble(t, func(t *testing.T) {
 				if err := concurrentCleaning(t, seed); err != nil {
 					t.Fatal(err)
 				}

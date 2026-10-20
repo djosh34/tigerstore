@@ -20,7 +20,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
-var plantedBug = flag.String("planted", "", "name of the planted bug TestPlanted switches on")
+var plantedBug = flag.String("planted", os.Getenv("SIM_PLANTED"), "name of the planted bug TestPlanted switches on")
 
 // plantedCase is how a planted bug must be caught: within seeds runs of
 // cfg, by a failure whose message matches want, the assertion the

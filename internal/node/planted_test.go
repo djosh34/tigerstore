@@ -3,6 +3,7 @@
 package node
 
 import (
+	"os"
 	"errors"
 	"flag"
 	"testing"
@@ -11,7 +12,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/planted"
 )
 
-var plantedBug = flag.String("planted", "", "name of the planted bug TestPlanted switches on")
+var plantedBug = flag.String("planted", os.Getenv("SIM_PLANTED"), "name of the planted bug TestPlanted switches on")
 
 // TestPlanted catches B13 with the slow watcher's own test, B26 with the
 // fetch test, and B29 and B30 with seed 1 of the concurrent cleaner

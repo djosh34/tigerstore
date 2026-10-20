@@ -3,6 +3,7 @@
 package peer
 
 import (
+	"os"
 	"errors"
 	"flag"
 	"testing"
@@ -10,7 +11,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/planted"
 )
 
-var plantedBug = flag.String("planted", "", "name of the planted bug TestPlanted switches on")
+var plantedBug = flag.String("planted", os.Getenv("SIM_PLANTED"), "name of the planted bug TestPlanted switches on")
 
 // TestPlanted catches B14 with the write deadline's own test, which must
 // fail with the bug on. Other bugs belong to other packages.
