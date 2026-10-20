@@ -13,6 +13,12 @@ var tigerSeed333 = flag.Uint64("sim.seed", 1, "tigerstore simulator seed (experi
 var tigerSeeds333 = flag.Int("sim.seeds", 1, "tigerstore simulator seed count (experiment #333)")
 var tigerOut333 = flag.String("r333.output", "", "host diagnostic output directory")
 var tigerRecording333 int
+var port333Reached = map[string]bool{}
+
+// Diagnostic marker only; no scheduler/time/randomness or result is fed back.
+func Port333Reached(name string) {
+ if !port333Reached[name] { port333Reached[name] = true; fmt.Fprintln(os.Stderr, "R333_REACHED", name) }
+}
 
 func Tigerstore333Options() (string, string) {
  return strconv.FormatUint(*tigerSeed333, 10), strconv.Itoa(*tigerSeeds333)
