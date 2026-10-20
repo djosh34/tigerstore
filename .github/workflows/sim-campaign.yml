@@ -63,7 +63,9 @@ jobs:
             PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$p.log" -gosim
           done
           exit $status
-      - if: failure()
+      # The logs, with every seed's hashes, also when the campaign passed:
+      # any seed of them replays alone with the same hashes.
+      - if: always()
         uses: actions/upload-artifact@v6
         with:
           name: sim-campaign-${{ matrix.shard }}
