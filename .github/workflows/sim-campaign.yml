@@ -3,14 +3,14 @@ on:
   workflow_dispatch:
     inputs:
       first:
-        description: Diagnosis mode
-        default: compare
+        description: Evidence label
+        default: focused-red
 permissions:
   contents: read
 jobs:
   replay:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -18,27 +18,21 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Replay only seed 377142 on five source variants
-        env:
-          MODE: ${{ inputs.first }}
+      - name: Check the closed-prefix wait on head and main
         run: |
           set -uo pipefail
-          diag_ref=$(git rev-parse HEAD)
           mkdir -p "$RUNNER_TEMP/evidence"
-          for variant in head main no-report-change no-turn-change no-header-change; do
-            git checkout "$diag_ref" -- internal/node internal/wal internal/sim
-            case "$variant" in
-              main) git checkout e3243229 -- internal/node internal/wal internal/sim ;;
-              no-report-change) git diff 06ee6a10^ 06ee6a10 -- internal/node/node.go | git apply -R ;;
-              no-turn-change) git diff 8ef35f8c^ 8ef35f8c -- internal/node/node.go | git apply -R ;;
-              no-header-change) git diff 8bf63c8c^ 8bf63c8c -- internal/node/node.go internal/wal/wal.go | git apply -R ;;
-            esac
-            # Tests added by the reverted changes are not part of this replay.
-            go test -v -count=3 -timeout=90s ./internal/sim -run '^TestSeeds$/^377142$' -args -sim.seed=377142 -sim.seeds=1 -sim.out="$RUNNER_TEMP/evidence/$variant" >"$RUNNER_TEMP/evidence/$variant.log" 2>&1
-            result=$?
-            echo "$variant exit=$result"
-            grep -E -- 'FAIL|PASS|down at the end|stopped: core: the disk failed' "$RUNNER_TEMP/evidence/$variant.log" | tail -20
+          cp internal/sim/diag301_test.go "$RUNNER_TEMP/diag301_test.go"
+          status=0
+          for variant in head main; do
+            if [ "$variant" = main ]; then
+              git checkout e3243229 -- internal/node internal/wal internal/sim
+              cp "$RUNNER_TEMP/diag301_test.go" internal/sim/diag301_test.go
+            fi
+            go test -v -count=1 -timeout=30s ./internal/sim -run '^TestDiag301ClosedPrefix$' >"$RUNNER_TEMP/evidence/$variant.log" 2>&1 || status=1
+            grep -E -- 'FAIL|PASS|snapshot fault' "$RUNNER_TEMP/evidence/$variant.log" | tail -12
           done
+          exit "$status"
       - uses: actions/upload-artifact@v6
         if: always()
         with:
