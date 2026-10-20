@@ -4,7 +4,7 @@ on:
     inputs:
       first:
         description: Evidence label
-        default: focused-red
+        default: red-green-red
 permissions:
   contents: read
 jobs:
@@ -18,21 +18,28 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Check the closed-prefix wait on head and main
+      - name: Change only the snapshot-fault wait, then remove the change
         run: |
           set -uo pipefail
           mkdir -p "$RUNNER_TEMP/evidence"
-          cp internal/sim/diag301_test.go "$RUNNER_TEMP/diag301_test.go"
-          cp internal/sim/storage.go "$RUNNER_TEMP/storage.go"
+          cp internal/sim/storage.go "$RUNNER_TEMP/fixed-storage.go"
           status=0
-          for variant in head main; do
-            if [ "$variant" = main ]; then
-              git checkout e3243229 -- internal/node internal/wal internal/sim
-              cp "$RUNNER_TEMP/diag301_test.go" internal/sim/diag301_test.go
-              cp "$RUNNER_TEMP/storage.go" internal/sim/storage.go
+          for variant in broken fixed broken-again; do
+            if [ "$variant" = fixed ]; then
+              cp "$RUNNER_TEMP/fixed-storage.go" internal/sim/storage.go
+            else
+              git show b97c3594:internal/sim/storage.go > internal/sim/storage.go
             fi
-            go test -v -count=1 -timeout=30s ./internal/sim -run '^TestDiag301|^TestSeeds$/^377142$' -args -sim.seed=377142 -sim.seeds=1 -sim.out="$RUNNER_TEMP/evidence/$variant" >"$RUNNER_TEMP/evidence/$variant.log" 2>&1 || status=1
-            grep -E -- 'FAIL|PASS|snapshot fault' "$RUNNER_TEMP/evidence/$variant.log" | tail -12
+            go test -v -count=1 -timeout=30s ./internal/sim -run '^TestDiag301' >"$RUNNER_TEMP/evidence/$variant.log" 2>&1
+            result=$?
+            echo "$variant exit=$result"
+            grep -E -- 'FAIL|PASS|stopped: core: the disk failed|snapshot fault|transport shutdown' "$RUNNER_TEMP/evidence/$variant.log" | tail -12
+            if [ "$variant" = fixed ]; then
+              [ "$result" = 0 ] || status=1
+            else
+              [ "$result" = 1 ] || status=1
+              grep -q 'the disk-failed leader has not exited because transport shutdown is stuck' "$RUNNER_TEMP/evidence/$variant.log" || status=1
+            fi
           done
           exit "$status"
       - uses: actions/upload-artifact@v6
