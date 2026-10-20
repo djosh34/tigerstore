@@ -68,7 +68,19 @@ done
 sleep 5
 kill -STOP "${pids[1]}"
 printf '%s pause n1 pid=%s\n' "$(date -u +%FT%T.%N)" "${pids[1]}" >> "$RESULTS/faults.log"
-ps -p "${pids[1]}" -o pid=,stat= | tee -a "$RESULTS/faults.log" | grep -E '[[:space:]]T'
+# SIGSTOP stays pending while the process is in uninterruptible I/O.
+paused=false
+for attempt in {1..50}; do
+  if ps -p "${pids[1]}" -o pid=,stat= | tee -a "$RESULTS/faults.log" | grep -E '[[:space:]]T'; then
+    paused=true
+    break
+  fi
+  sleep 0.1
+done
+if [[ $paused != true ]]; then
+  echo "n1 pid=${pids[1]} did not stop within 5 seconds" | tee -a "$RESULTS/faults.log" >&2
+  exit 1
+fi
 sleep 3
 kill -CONT "${pids[1]}"
 printf '%s resume n1\n' "$(date -u +%FT%T.%N)" >> "$RESULTS/faults.log"

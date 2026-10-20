@@ -29,10 +29,9 @@ jobs:
           REPLAY: ${{ inputs.replay }}
         run: |
           mkdir -p results/diag-303
-          if [[ $REPLAY == pause ]]; then
-            set -o pipefail
-            python3 scripts/jepsen/diag-303-pause.py 2>&1 | tee results/diag-303/replay.log
-          else
+          set -o pipefail
+          python3 scripts/jepsen/diag-303-pause.py 2>&1 | tee results/diag-303/replay.log
+          if [[ $REPLAY == kubernetes ]]; then
             bash scripts/jepsen/robustness.sh tigerstore kubernetes
           fi
       - if: always()
