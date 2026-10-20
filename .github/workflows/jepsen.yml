@@ -22,9 +22,56 @@ on:
         default: ''
 permissions:
   contents: read
+  actions: read
 env:
   PRODUCT_SHA: ${{ inputs.product_sha || github.sha }}
 jobs:
+  diag299-extra:
+    if: inputs.suite == 'tools'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch the second failure and pinned client
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p results/diag299-extra .jepsen
+          gh run download 39344287487 -R djosh34/tigerstore -n jepsen-tigerstore-watch-lazyfs -D results/diag299-extra/original
+          git clone https://github.com/jepsen-io/etcd.git .jepsen/etcd
+          git -C .jepsen/etcd checkout b47cc401f27bfb7c28afd9ac088b5f0dca4501b8
+          cp scripts/jepsen/diag299_extra_test.clj .jepsen/etcd/test/jepsen/etcd/
+          git show 8c720710:scripts/jepsen/patch-db.py > .jepsen/baseline-patch.py
+          python3 .jepsen/baseline-patch.py .jepsen/etcd
+          docker pull ghcr.io/nurturenature/jepsen-docker/jepsen-control@sha256:b0d8e672156022baa30818bd38bf84ab8e10f5045c62d5fe81e7b4a7205c9145
+      - name: Red, ca4f1bcc mapping only
+        id: red
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          docker run --rm --entrypoint /bin/bash -v "$PWD:/diag" -w /diag/.jepsen/etcd -e LEIN_ROOT=true -e DIAG299_HISTORY=/diag/results/diag299-extra/original/store/current/history.edn ghcr.io/nurturenature/jepsen-docker/jepsen-control@sha256:b0d8e672156022baa30818bd38bf84ab8e10f5045c62d5fe81e7b4a7205c9145 -lc 'lein test jepsen.etcd.diag299-extra-test' 2>&1 | tee results/diag299-extra/red.txt
+      - name: Green, recognize channel closed too
+        run: |
+          set -o pipefail
+          git -C .jepsen/etcd reset --hard b47cc401f27bfb7c28afd9ac088b5f0dca4501b8
+          python3 scripts/jepsen/patch-db.py .jepsen/etcd
+          docker run --rm --entrypoint /bin/bash -v "$PWD:/diag" -w /diag/.jepsen/etcd -e LEIN_ROOT=true -e DIAG299_HISTORY=/diag/results/diag299-extra/original/store/current/history.edn ghcr.io/nurturenature/jepsen-docker/jepsen-control@sha256:b0d8e672156022baa30818bd38bf84ab8e10f5045c62d5fe81e7b4a7205c9145 -lc 'lein test jepsen.etcd.diag299-extra-test' 2>&1 | tee results/diag299-extra/green.txt
+          test '${{ steps.red.outcome }}' = failure
+      - name: Retain the EOF location and later archived bytes
+        if: always()
+        run: |
+          mkdir -p results/diag299-extra/n1
+          tar -xjf results/diag299-extra/original/store/current/n1/data.tar.bz2 -C results/diag299-extra/n1
+          wal=results/diag299-extra/n1/opt/etcd/n1.etcd/wal/0000000000000001.wal
+          { stat -c '%n %s bytes' "$wal"; od -An -tc -j 99726 -N 4 "$wal"; } | tee results/diag299-extra/archived-value.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diag299-extra-replay
+          path: results/diag299-extra
+          retention-days: 30
   tools:
     runs-on: ubuntu-24.04
     timeout-minutes: 5

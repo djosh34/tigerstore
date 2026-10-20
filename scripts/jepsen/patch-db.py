@@ -87,7 +87,10 @@ old = '''               #"unhealthy cluster"
                {:definite? true, :type :unhealthy-cluster}'''
 if s.count(old) != 1:
     raise ValueError('expected one unhealthy cluster mapping')
-s = s.replace(old, '''               #"etcdserver: server stopped"
+s = s.replace(old, '''               #"^channel closed$"
+               {:definite? false, :type :channel-closed, :description (.getMessage e#)}
+
+               #"etcdserver: server stopped"
                {:definite? false, :type :server-stopped, :description (.getMessage e#)}
 
 ''' + old)
