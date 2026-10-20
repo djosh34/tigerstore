@@ -14,3 +14,8 @@ replace('internal/translate/rewrites.go',
 # too, following the same per-goroutine runtime state (source cited in Go file).
 add_hooks('crypto/internal/fips140', ['getIndicator', 'setIndicator'])
 shutil.copy(here/'gosim/fips333.go', src/'internal/hooks/go123/fips333.go')
+
+# Blocker 3: weak registration reached from ECDSA fips140cache.Get. This is an
+# explicit no-GC approximation; it does NOT claim to implement weak semantics.
+add_hooks('weak', ['runtime_registerWeakPointer', 'runtime_makeStrongFromWeak'])
+shutil.copy(here/'gosim/weak333.go', src/'internal/hooks/go123/weak333.go')
