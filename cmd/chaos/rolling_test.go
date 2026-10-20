@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djosh34/tigerstore/internal/committed"
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
@@ -72,8 +73,8 @@ func TestRollingUpgrade(t *testing.T) {
 			if !seen {
 				t.Fatal("delayed announcement was not committed after rollback")
 			}
-			for _, e := range n.entries {
-				if e.GetIndex() <= n.commit && e.GetType() == raftpb.EntryNormal && len(e.Data) > 0 && e.Data[0] == 0 {
+			for _, e := range n.Entries {
+				if e.GetIndex() <= n.Commit && e.GetType() == raftpb.EntryNormal && len(e.Data) > 0 && e.Data[0] == 0 {
 					t.Fatalf("entry %d has versioned data %x before the last node supports it", e.GetIndex(), e.Data)
 				}
 			}
@@ -82,8 +83,8 @@ func TestRollingUpgrade(t *testing.T) {
 			r.stop(1)
 			n = r.wal(1)
 			format2 := false
-			for _, e := range n.entries {
-				if e.GetIndex() <= n.commit && e.GetType() == raftpb.EntryNormal && len(e.Data) > 1 && e.Data[0] == 0 && e.Data[1] == 2 {
+			for _, e := range n.Entries {
+				if e.GetIndex() <= n.Commit && e.GetType() == raftpb.EntryNormal && len(e.Data) > 1 && e.Data[0] == 0 && e.Data[1] == 2 {
 					format2 = true
 				}
 			}
@@ -388,9 +389,9 @@ func (r *rollingRun) metric(i int) (int, string, error) {
 	return 0, body, fmt.Errorf("metrics HTTP %d has no active version", resp.StatusCode)
 }
 
-func (r *rollingRun) wal(i int) recovered {
+func (r *rollingRun) wal(i int) committed.Node {
 	r.t.Helper()
-	n, err := tigerLog(filepath.Join(r.dir, "data", fmt.Sprintf("node%d", i+1)))
+	n, err := committed.Read(filepath.Join(r.dir, "data", fmt.Sprintf("node%d", i+1)))
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -405,11 +406,11 @@ type announced struct {
 	Batch              []byte
 }
 
-func announcements(t *testing.T, n recovered) []announced {
+func announcements(t *testing.T, n committed.Node) []announced {
 	t.Helper()
 	var out []announced
-	for _, e := range n.entries {
-		if e.GetIndex() > n.commit || e.GetType() != raftpb.EntryNormal || len(e.Data) == 0 {
+	for _, e := range n.Entries {
+		if e.GetIndex() > n.Commit || e.GetType() != raftpb.EntryNormal || len(e.Data) == 0 {
 			continue
 		}
 		data := e.Data

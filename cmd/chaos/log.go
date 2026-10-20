@@ -1,33 +1,21 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"slices"
 
 	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/history/frometcd"
+	"github.com/djosh34/tigerstore/internal/committed"
 	"github.com/djosh34/tigerstore/internal/core"
-	"github.com/djosh34/tigerstore/internal/osfs"
-	tigerwal "github.com/djosh34/tigerstore/internal/wal"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
-
-type recovered struct {
-	commit uint64
-	// entries[i] is the entry at index first+i.
-	first   uint64
-	entries []*raftpb.Entry
-	dir     string
-}
 
 // nodeEvidence is what one stopped node's WAL holds.
 type nodeEvidence struct {
@@ -42,26 +30,26 @@ type nodeEvidence struct {
 // their committed prefixes agree, and decodes the longest into requests.
 // It reads private copies, so recovery repairs never touch the files.
 func committedLog(dirs []string) ([]history.Request, []nodeEvidence, error) {
-	var nodes []recovered
+	var nodes []committed.Node
 	var evidence []nodeEvidence
 	for _, dir := range dirs {
-		n, err := tigerLog(dir)
+		n, err := committed.Read(dir)
 		if err != nil {
 			return nil, evidence, fmt.Errorf("node %s: %w", dir, err)
 		}
-		if err = validatePrefix(n); err != nil {
+		if err = n.Validate(); err != nil {
 			return nil, evidence, fmt.Errorf("node %s: %w", dir, err)
 		}
-		item := nodeEvidence{Dir: dir, Commit: n.commit, Last: n.last()}
-		if n.commit < n.last() {
-			tail := n.entries[n.commit+1-n.first]
+		item := nodeEvidence{Dir: dir, Commit: n.Commit, Last: n.Last()}
+		if n.Commit < n.Last() {
+			tail := n.Entries[n.Commit+1-n.First]
 			item.FirstUncommitted = tail.GetIndex()
 			item.TailSHA256 = fmt.Sprintf("%x", sha256.Sum256(tail.Data))
 		}
 		evidence = append(evidence, item)
 		nodes = append(nodes, n)
 	}
-	canonical, err := committedPrefix(nodes)
+	canonical, err := committed.Prefix(nodes)
 	if err != nil {
 		return nil, evidence, err
 	}
@@ -80,92 +68,6 @@ func committedLog(dirs []string) ([]history.Request, []nodeEvidence, error) {
 		return nil, evidence, errors.New("the committed log is empty")
 	}
 	return log, evidence, nil
-}
-
-func (n recovered) last() uint64 { return n.first + uint64(len(n.entries)) - 1 }
-
-func validatePrefix(n recovered) error {
-	if n.commit < n.first || n.commit > n.last() {
-		return fmt.Errorf("missing committed entries: commit %d, entries %d to %d", n.commit, n.first, n.last())
-	}
-	return nil
-}
-
-// committedPrefix returns the longest committed log, which must start at
-// index 1, after checking that every node's committed entries agree with
-// it. A node that installed a snapshot holds a shorter log.
-func committedPrefix(ns []recovered) ([]*raftpb.Entry, error) {
-	if len(ns) == 0 {
-		return nil, errors.New("no recovered WALs")
-	}
-	best := ns[0]
-	for _, n := range ns {
-		if n.commit > best.commit {
-			best = n
-		}
-	}
-	if best.first != 1 {
-		return nil, fmt.Errorf("the longest committed log, of %s, starts at index %d after a checkpoint", best.dir, best.first)
-	}
-	for _, n := range ns {
-		for i := n.first; i <= n.commit; i++ {
-			a, b := n.entries[i-n.first], best.entries[i-1]
-			// Each node writes the bootstrap membership changes itself,
-			// with the peer addresses of its own --initial-cluster, which
-			// name the proxies; only their terms and types must agree.
-			sameData := a.GetType() != raftpb.EntryNormal || bytes.Equal(a.Data, b.Data)
-			if a.GetTerm() != b.GetTerm() || a.GetType() != b.GetType() || !sameData {
-				return nil, fmt.Errorf("conflicting committed entries at index %d in %s and %s", i, n.dir, best.dir)
-			}
-		}
-	}
-	return best.entries[:best.commit], nil
-}
-
-// tigerLog reads the log of the stopped node in dir from a private copy of
-// its files, so that recovery's repairs never touch them.
-func tigerLog(dir string) (recovered, error) {
-	src := filepath.Join(dir, "wal")
-	names, err := os.ReadDir(src)
-	if err != nil {
-		return recovered{}, err
-	}
-	tmp, err := os.MkdirTemp("", "chaos-wal-")
-	if err != nil {
-		return recovered{}, err
-	}
-	defer os.RemoveAll(tmp) //nolint:errcheck // a leftover temporary copy is harmless
-	for _, n := range names {
-		b, e := os.ReadFile(filepath.Join(src, n.Name()))
-		if e != nil {
-			return recovered{}, e
-		}
-		if e = os.WriteFile(filepath.Join(tmp, n.Name()), b, 0o600); e != nil {
-			return recovered{}, e
-		}
-	}
-	fs, err := osfs.New(tmp)
-	if err != nil {
-		return recovered{}, err
-	}
-	w, r, err := tigerwal.Open(fs.WithoutSync())
-	if err != nil {
-		return recovered{}, err
-	}
-	n := recovered{commit: r.HardState.Commit, first: r.Root.Index + 1, dir: dir}
-	// An archive of every segment, as -env keeps, holds the log from its
-	// first entry, below the checkpoint too.
-	if w.Has(1) {
-		n.first = 1
-	}
-	for i := n.first; i <= r.Last; i++ {
-		e, err := w.Entry(i)
-		if err != nil {
-			return recovered{}, errors.Join(err, w.Close())
-		}
-		n.entries = append(n.entries, e)
-	}
-	return n, w.Close()
 }
 
 // decodeBatch decodes the writes of one committed entry. Member
