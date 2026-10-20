@@ -8,7 +8,10 @@
 # and unlinks that change it run one at a time. Without it, a stat that
 # races a rename binds the old name to the moved file's inode, and a file
 # created under that name later shares the moved file's data (#267,
-# #270). The pin is LazyFS's newest commit, which has the race.
+# #270). It also stops directory listings from handing the kernel each
+# entry's attributes with size 0, which from libfuse 3.17 on set an open
+# file's size to 0 and made a read return nothing (#300). The pin is
+# LazyFS's newest commit, which has both bugs.
 #
 #   scripts/lazyfs.sh [DIR]
 set -euo pipefail
@@ -22,7 +25,12 @@ if [ ! -x "$bin" ] || ! cmp -s "$patch" "$dir/.patch"; then
 	git -C "$dir" checkout -q "$commit"
 	git -C "$dir" apply "$patch"
 	cp "$patch" "$dir/.patch"
+	# CMake 4 refuses the toml11 that LazyFS fetches, which asks for a
+	# CMake older than 3.5.
+	export CMAKE_POLICY_VERSION_MINIMUM=3.5
 	(cd "$dir/libs/libpcache" && ./build.sh) >/dev/null
 	(cd "$dir/lazyfs" && ./build.sh) >/dev/null
+	# LazyFS's build.sh goes on after a failed step.
+	test -x "$bin" || { echo "LazyFS did not build in $dir" >&2; exit 1; }
 fi
 echo "$(cd "$(dirname "$bin")" && pwd)/lazyfs"

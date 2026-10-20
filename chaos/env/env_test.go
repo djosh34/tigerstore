@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // These tests need sudo -n, and LazyFS's binary in CHAOS_LAZYFS.
@@ -315,4 +317,53 @@ func TestLazyFSRenameKeepsFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+// TestLazyFSListingKeepsSize is #300's case: the node lists its log
+// directory while it reads an open segment. After the listing, the
+// kernel's cached size of the open file must still be the size LazyFS's
+// getattr reports, synced bytes and unsynced appends alike. The pinned
+// LazyFS lists each entry with size 0, and from libfuse 3.17 on the
+// kernel takes that as the file's size, fresh for the rest of the jiffy:
+// a read in that window found the file empty. AT_STATX_DONT_SYNC shows
+// the cached size without asking LazyFS.
+func TestLazyFSListingKeepsSize(t *testing.T) {
+	d := newDisk(t, lazyfsBin(t))
+	f, err := os.OpenFile(filepath.Join(d.Data, "seg"), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	check := func(stage string) {
+		t.Helper()
+		var st unix.Statx_t
+		if err := unix.Statx(int(f.Fd()), "", unix.AT_EMPTY_PATH|unix.AT_STATX_FORCE_SYNC, unix.STATX_SIZE, &st); err != nil {
+			t.Fatal(err)
+		}
+		want := st.Size
+		if _, err := os.ReadDir(d.Data); err != nil {
+			t.Fatal(err)
+		}
+		if err := unix.Statx(int(f.Fd()), "", unix.AT_EMPTY_PATH|unix.AT_STATX_DONT_SYNC, unix.STATX_SIZE, &st); err != nil {
+			t.Fatal(err)
+		}
+		if st.Size != want {
+			t.Fatalf("%s: after a listing the kernel holds size %d for the open file, getattr reports %d", stage, st.Size, want)
+		}
+	}
+	if _, err := f.Write(make([]byte, 5000)); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	check("synced")
+	if _, err := f.Write(make([]byte, 300)); err != nil {
+		t.Fatal(err)
+	}
+	check("unsynced append")
 }
