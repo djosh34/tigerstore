@@ -221,8 +221,17 @@ func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.
 					return q.err != nil || len(q.chunks) == 0
 				})
 				s.mu.Unlock()
-				if len(pipes) > 0 && !s.sleep(10*Millisecond) {
-					return errDead
+				if len(pipes) > 0 {
+					// Run can stop on a disk error before the simulator
+					// closes p.ctx. Its transport is waiting for this
+					// callback, and a closed pipe may keep unread bytes.
+					select {
+					case <-tn.Done():
+						return errDead
+					case <-s.end:
+						return errDead
+					case <-time.After(10 * time.Millisecond):
+					}
 				}
 			}
 			s.mu.Lock()
