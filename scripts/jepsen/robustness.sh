@@ -4,6 +4,7 @@ set -euo pipefail
 store=${1:?store}
 export TRAFFIC=${2:?traffic}
 root=$PWD
+. scripts/jepsen/stopped.sh
 export RESULTS=$root/results/robustness
 mkdir -p "$RESULTS" .robustness
 exec > >(tee "$RESULTS/runner.log") 2>&1
@@ -68,7 +69,7 @@ done
 sleep 5
 kill -STOP "${pids[1]}"
 printf '%s pause n1 pid=%s\n' "$(date -u +%FT%T.%N)" "${pids[1]}" >> "$RESULTS/faults.log"
-ps -p "${pids[1]}" -o pid=,stat= | tee -a "$RESULTS/faults.log" | grep -E '[[:space:]]T'
+wait_stopped "${pids[1]}" "$RESULTS/faults.log"
 sleep 3
 kill -CONT "${pids[1]}"
 printf '%s resume n1\n' "$(date -u +%FT%T.%N)" >> "$RESULTS/faults.log"
