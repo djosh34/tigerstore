@@ -323,10 +323,10 @@ func TestLazyFSRenameKeepsFiles(t *testing.T) {
 // directory while it reads an open segment. After the listing, the
 // kernel's cached size of the open file must still be the size LazyFS's
 // getattr reports, synced bytes and unsynced appends alike. The pinned
-// LazyFS sent each listed entry's attributes with size 0, and the kernel
-// took them as fresh for the rest of the jiffy: a read in that window
-// found the file empty. AT_STATX_DONT_SYNC shows the cached size without
-// asking LazyFS.
+// LazyFS lists each entry with size 0, and from libfuse 3.17 on the
+// kernel takes that as the file's size, fresh for the rest of the jiffy:
+// a read in that window found the file empty. AT_STATX_DONT_SYNC shows
+// the cached size without asking LazyFS.
 func TestLazyFSListingKeepsSize(t *testing.T) {
 	d := newDisk(t, lazyfsBin(t))
 	f, err := os.OpenFile(filepath.Join(d.Data, "seg"), os.O_CREATE|os.O_RDWR, 0o644)
