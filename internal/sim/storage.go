@@ -221,7 +221,7 @@ func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.
 					return q.err != nil || len(q.chunks) == 0
 				})
 				s.mu.Unlock()
-				if len(pipes) > 0 && !s.sleep(10*Millisecond) {
+				if len(pipes) > 0 && !s.sleepUnless(10*Millisecond, tn.Done()) {
 					return errDead
 				}
 			}
