@@ -111,7 +111,9 @@ var plantedCases = map[string]plantedCase{
 	"B19": {seeds: 64, cfg: DefaultConfig, want: refused + `|not on disk|` + stuck},
 	"B20": {seeds: 64, cfg: DefaultConfig, want: `holds entries from \d+ in memory`},
 	"B21": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|already exists|` + refused},
-	"B22": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|` + badValue + `|malformed|` + refused},
+	// The install starts the node again from its log (#238), where the
+	// unchecked snapshot's damaged entry can be what recovery refuses.
+	"B22": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|` + badValue + `|malformed|` + refused + `|installed a snapshot at \d+ from \d+, checkpoint \d+\n[^\n]*wal: corrupt log:`},
 	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|` + stuck},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},
@@ -238,6 +240,16 @@ func TestPlanted(t *testing.T) {
 		}
 	}
 	t.Fatalf("%s (%s) was not caught within %d seeds", name, planted.Bugs[name], c.seeds)
+}
+
+// TestB22InstallRefusal checks that B22 counts as caught when the start
+// after an install refuses the log, as seed 34 once ended (#302).
+func TestB22InstallRefusal(t *testing.T) {
+	err := "seed 34 at 16384 ms: node 3 stopped: core: installed a snapshot at 24 from 1, checkpoint 0\n" +
+		"0000000000000001.wal at byte 706: wal: corrupt log: entry 0 follows entry 10"
+	if !regexp.MustCompile(plantedCases["B22"].want).MatchString(err) {
+		t.Fatalf("B22 does not count %q as caught", err)
+	}
 }
 
 // TestB04cSnapshotRefusal checks that B04c counts as caught when a snapshot

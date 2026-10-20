@@ -31,6 +31,8 @@ type worker struct {
 	stats    stats
 	// unsent counts arrivals that were never sent by the end of the drain.
 	unsent int64
+	// preloaded is stats.acked before the measured phase.
+	preloaded int64
 }
 
 func newWorker(c *conn, seed uint64) *worker {

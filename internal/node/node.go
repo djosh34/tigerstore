@@ -475,11 +475,12 @@ func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 	seq, at, ok := l.w.ValuePlace(index, off, n)
 	var m []byte
 	var r io.ReaderAt
+	var name string
 	var err error
 	if ok && seq <= l.sealed && l.dir != "" {
 		m, err = l.mapping(seq)
 	} else {
-		r, at, err = l.w.ValueReader(index, off, n)
+		r, at, name, err = l.w.ValueReader(index, off, n)
 	}
 	if err != nil {
 		l.mu.Unlock()
@@ -497,7 +498,7 @@ func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 		}
 		return bytes.Clone(m[at : at+int64(n)]), nil
 	}
-	return wal.ReadValue(r, at, index, off, n)
+	return wal.ReadValue(r, at, name, index, off, n)
 }
 
 // rootRemoval is what a synced root made obsolete: the log below index
@@ -1126,6 +1127,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		case <-ctx.Done():
 			return nil
 		}
+		// select can pick another ready case when ctx is done as well. The
+		// core takes no turn after the stop: the simulator's Turn holds a
+		// failed core until the stop, and must not see it run again (#296).
+		if ctx.Err() != nil {
+			return nil
+		}
 		if b := n.cfg.DiskBudget; b > 0 {
 			n.core.SetDisk(n.log.used.Load(), b)
 		}
@@ -1418,23 +1425,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 	w := n.log.w
 	toSync := make(chan written, syncsInFlight)
 	synced := make(chan syncedGroup, syncsInFlight)
-	// report runs on the sync goroutine.
-	report := func(g written, err error) error {
-		d := time.Since(g.times.start)
-		if err == nil && d > time.Duration(n.log.maxWrite.Load()) {
-			n.log.maxWrite.Store(int64(d))
-		}
-		if err == nil && d > n.cfg.Tick {
-			n.logf("slow write to the log: %d entries, %d bytes in %v", g.entries, g.bytes, d)
-		}
-		done := persistDone{jobs: g.jobs, err: err, times: g.times}
-		select {
-		case n.persisted <- done:
-		case <-ctx.Done():
-			return errors.Join(err, ctx.Err())
-		}
-		return err
-	}
+	report := func(g written, err error) error { return n.report(ctx, g, err) }
 	var wg sync.WaitGroup
 	wg.Go(func() { n.syncGroups(toSync, synced, report) })
 	defer func() {
@@ -1533,8 +1524,10 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 				}
 				// The install checks the entries this group already
 				// holds, which must be readable.
-				n.log.used.Add(w.Buffered())
-				if err := w.Flush(); err != nil {
+				buffered := w.Buffered()
+				err := w.Flush()
+				n.log.used.Add(buffered - w.Buffered())
+				if err != nil {
 					fail(err)
 					return
 				}
@@ -1682,6 +1675,30 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 	}
 }
 
+// report tells the committer that group g is durable, or that err stops
+// the node, on the sync goroutine. Once ctx is done it tells nothing:
+// syncGroups passes the cancellation of one report on to the groups after
+// it as their error, and the committer would stop with it as a disk
+// failure (#297).
+func (n *Node) report(ctx context.Context, g written, err error) error {
+	d := time.Since(g.times.start)
+	if err == nil && d > time.Duration(n.log.maxWrite.Load()) {
+		n.log.maxWrite.Store(int64(d))
+	}
+	if err == nil && d > n.cfg.Tick {
+		n.logf("slow write to the log: %d entries, %d bytes in %v", g.entries, g.bytes, d)
+	}
+	if ctx.Err() != nil {
+		return errors.Join(err, ctx.Err())
+	}
+	select {
+	case n.persisted <- persistDone{jobs: g.jobs, err: err, times: g.times}:
+	case <-ctx.Done():
+		return errors.Join(err, ctx.Err())
+	}
+	return err
+}
+
 // durable notes what a synced group made durable, on the persist
 // goroutine: a snapshot's checkpoint, and a root, whose removal of what it
 // made obsolete the cleaner takes on; and the roots of cleaning passes,
@@ -1778,7 +1795,8 @@ func (n *Node) prepareSegments(ctx context.Context) {
 		select {
 		case n.nextQ <- struct{}{}:
 		case <-ctx.Done():
-			// The file stays on disk, where the next run takes it.
+			// The file stays on disk. The next run removes it, as it may
+			// hold records of seq, and readies another.
 			return
 		}
 		select {

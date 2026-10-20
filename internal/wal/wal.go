@@ -691,10 +691,11 @@ func (w *WAL) setRoot(r Root) {
 // name that is not a segment's: a file it readied before for another
 // segment than seq-1, which may wait for Place, the oldest spare, or a new
 // file. Its name is durable when it returns. A file readied before for
-// seq itself becomes a spare, which seq does not take: a crash after
-// Place, before the directory sync, can have left records of segment seq
-// in it, which would chain with the new ones. A spare that a removal took
-// meanwhile is skipped.
+// seq itself is removed: a crash after Place, before the directory sync,
+// can have left records of segment seq in it, which would verify after
+// the new ones. As a spare it could come back to seq through the file of
+// seq+1, when another such crash loses seq's name again (#274). A spare
+// that a removal took meanwhile is skipped.
 func PrepareSegment(fs FS, seq uint64) error {
 	for {
 		names, err := fs.List()
@@ -702,7 +703,7 @@ func PrepareSegment(fs FS, seq uint64) error {
 			return err
 		}
 		if slices.Contains(names, nextName(seq)) {
-			if err := fs.Rename(nextName(seq), spareName(seq)); err != nil {
+			if err := fs.Remove(nextName(seq)); err != nil {
 				return err
 			}
 			continue
@@ -712,7 +713,7 @@ func PrepareSegment(fs FS, seq uint64) error {
 			switch {
 			case strings.HasPrefix(n, nextPrefix) && n != nextName(seq-1):
 				old = append(old, n)
-			case strings.HasPrefix(n, sparePrefix) && n != spareName(seq):
+			case strings.HasPrefix(n, sparePrefix):
 				spares = append(spares, n)
 			}
 		}
@@ -897,7 +898,11 @@ func (w *WAL) AppendValue(index uint64, off uint32, value []byte) {
 // the records. The node driver writes a group with it and syncs it on
 // another goroutine.
 func (w *WAL) Flush() error {
-	if len(w.buf) == 0 {
+	// A new segment's header waits for its first records, so that one
+	// write carries both. Written alone and not synced, a crash could keep
+	// the records after it but not the header, and recovery would take the
+	// segment for a damaged one (#295).
+	if len(w.buf) == 0 || w.size == 0 && len(w.buf) == headerSize {
 		return nil
 	}
 	n, err := w.seg.WriteAt(w.buf, w.size)
@@ -1109,37 +1114,37 @@ const MaxEntryBytes = 64 << 20
 // entry's record, a value record or a pack. The caller checks them against
 // the value's checksum.
 func (w *WAL) Value(index uint64, off, n uint32) ([]byte, error) {
-	r, at, err := w.ValueReader(index, off, n)
+	r, at, name, err := w.ValueReader(index, off, n)
 	if err != nil {
 		return nil, err
 	}
-	return ReadValue(r, at, index, off, n)
+	return ReadValue(r, at, name, index, off, n)
 }
 
 // ReadValue reads the n bytes at offset off of the data of entry index
-// from r at at, where ValueReader placed them.
-func ReadValue(r io.ReaderAt, at int64, index uint64, off, n uint32) ([]byte, error) {
+// from r, the file name, at at, where ValueReader placed them.
+func ReadValue(r io.ReaderAt, at int64, name string, index uint64, off, n uint32) ([]byte, error) {
 	b := make([]byte, n)
 	if k, err := r.ReadAt(b, at); k != len(b) {
-		return nil, fmt.Errorf("wal: read %d of %d bytes of the value at %d+%d of entry %d: %w", k, n, off, n, index, err)
+		return nil, fmt.Errorf("wal: read %d of %d bytes at byte %d of %s, the value at %d+%d of entry %d: %w", k, n, at, name, off, n, index, err)
 	}
 	return b, nil
 }
 
 // ValueReader returns the file that holds the n bytes at offset off of
-// the data of entry index, and their offset in it: a segment or a pack.
-// The file stays open until the log removes it, or closes, so a caller
-// that reads it after letting go of the log must keep those from
-// running meanwhile.
-func (w *WAL) ValueReader(index uint64, off, n uint32) (io.ReaderAt, int64, error) {
+// the data of entry index, their offset in it and the file's name: a
+// segment or a pack. The file stays open until the log removes it, or
+// closes, so a caller that reads it after letting go of the log must keep
+// those from running meanwhile.
+func (w *WAL) ValueReader(index uint64, off, n uint32) (io.ReaderAt, int64, string, error) {
 	if seq, at, ok := w.ValuePlace(index, off, n); ok {
 		f, err := w.reader(seq)
-		return f, at, err
+		return f, at, segmentName(seq), err
 	}
 	if p, at, ok := w.packPlace(index, off, n); ok {
-		return p.f, at, nil
+		return p.f, at, packName(p.id), nil
 	}
-	return nil, 0, fmt.Errorf("%w: value at %d+%d of entry %d", ErrNotOnDisk, off, n, index)
+	return nil, 0, "", fmt.Errorf("%w: value at %d+%d of entry %d", ErrNotOnDisk, off, n, index)
 }
 
 // ValuePlace returns the segment, and the offset in its file, of the n
