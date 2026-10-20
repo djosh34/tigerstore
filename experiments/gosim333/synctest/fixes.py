@@ -19,3 +19,7 @@ shutil.copy(here/'gosim/fips333.go', src/'internal/hooks/go123/fips333.go')
 # explicit no-GC approximation; it does NOT claim to implement weak semantics.
 add_hooks('weak', ['runtime_registerWeakPointer', 'runtime_makeStrongFromWeak'])
 shutil.copy(here/'gosim/weak333.go', src/'internal/hooks/go123/weak333.go')
+
+# Blocker 4: first contended peer-network mutex asks whether to spin.
+add_hooks('internal/sync', ['runtime_canSpin'])
+shutil.copy(here/'gosim/sync333.go', src/'internal/hooks/go123/sync333.go')
