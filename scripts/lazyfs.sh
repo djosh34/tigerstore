@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds Jepsen's LazyFS at a pinned commit under DIR (default ./lazyfs),
-# with lazyfs-namespace.patch, and prints the path of its binary, for
+# with lazyfs-namespace.patch and the diagnostic lazyfs-readdir.patch,
+# and prints the path of its binary, for
 # cmd/chaos -env -lazyfs. Needs git, cmake, g++ and the FUSE 3 headers
 # (Ubuntu: cmake g++ libfuse3-dev fuse3).
 #
@@ -15,13 +16,16 @@ set -euo pipefail
 dir=${1:-lazyfs}
 commit=fa7d32ee9710d55a7e529ac3c375f6616563c78b
 patch="$(cd "$(dirname "$0")" && pwd)/lazyfs-namespace.patch"
+readdir_patch="$(cd "$(dirname "$0")" && pwd)/lazyfs-readdir.patch"
 bin="$dir/lazyfs/build/lazyfs"
-if [ ! -x "$bin" ] || ! cmp -s "$patch" "$dir/.patch"; then
+if [ ! -x "$bin" ] || ! cmp -s "$patch" "$dir/.patch" || ! cmp -s "$readdir_patch" "$dir/.readdir-patch"; then
 	rm -rf "$dir"
 	git clone -q https://github.com/dsrhaslab/lazyfs.git "$dir"
 	git -C "$dir" checkout -q "$commit"
 	git -C "$dir" apply "$patch"
+	git -C "$dir" apply "$readdir_patch"
 	cp "$patch" "$dir/.patch"
+	cp "$readdir_patch" "$dir/.readdir-patch"
 	(cd "$dir/libs/libpcache" && ./build.sh) >/dev/null
 	(cd "$dir/lazyfs" && ./build.sh) >/dev/null
 fi
