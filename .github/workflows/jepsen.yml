@@ -1,114 +1,43 @@
-name: Jepsen and upstream robustness
+name: Diagnosis 303 pause check
 on:
-  schedule:
-    - cron: '30 3 * * *'
   workflow_dispatch:
     inputs:
-      suite:
+      replay:
         type: choice
-        options: [all, jepsen, robustness, tools]
-        default: all
-      workloads:
-        description: Jepsen workload array as JSON
-        default: '["append","lock-etcd-set","set","register","watch","wr"]'
-      nemeses:
-        description: Jepsen nemesis array as JSON
-        default: '["kill","pause","partition","lazyfs"]'
-      stores:
-        description: Products as JSON
-        default: '["tigerstore"]'
-      product_sha:
-        description: Product commit to test, blank uses the workflow commit
-        default: ''
+        options: [pause, kubernetes]
+        default: pause
 permissions:
   contents: read
-env:
-  PRODUCT_SHA: ${{ inputs.product_sha || github.sha }}
 jobs:
-  tools:
+  diagnosis:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check runner scripts and summary regressions
-        shell: bash
-        run: |
-          bash -n scripts/jepsen/run.sh scripts/jepsen/robustness.sh
-          # run.sh refuses every nemesis but the four of #148 before it starts anything.
-          for nemesis in all clock kill,all; do
-            rc=0; bash scripts/jepsen/run.sh tigerstore append "$nemesis" || rc=$?
-            [[ $rc == 2 ]] || { echo "nemesis $nemesis: exit $rc, want 2"; exit 1; }
-          done
-          pip install edn_format==0.7.5
-          python3 -m unittest discover -s scripts/jepsen -p 'test_*.py'
-  jepsen:
-    if: github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'jepsen'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      max-parallel: 8
-      matrix:
-        workload: ${{ fromJSON(inputs.workloads || '["append","lock-etcd-set","set","register","watch","wr"]') }}
-        nemesis: ${{ fromJSON(inputs.nemeses || '["kill","pause","partition","lazyfs"]') }}
-        store: ${{ fromJSON(inputs.stores || '["tigerstore"]') }}
+    timeout-minutes: 12
+    env:
+      PRODUCT_SHA: 3e026b7dd0eaa929e5ff9cb98f1d4d81824ba6ae
+      GOFLAGS: -p=2
+      GOMEMLIMIT: 2GiB
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
-        if: matrix.store == 'tigerstore'
+        if: inputs.replay == 'kubernetes'
         with:
           go-version-file: go.mod
-      - name: Run upstream Jepsen on three nodes
-        shell: bash
-        run: bash scripts/jepsen/run.sh '${{ matrix.store }}' '${{ matrix.workload }}' '${{ matrix.nemesis }}' 90 50
-      - if: failure()
-        run: |
-          echo "replay: bash scripts/jepsen/run.sh '${{ matrix.store }}' '${{ matrix.workload }}' '${{ matrix.nemesis }}' 90 50"
-      - name: Require a definite verdict and observed faults
-        if: always()
-        shell: bash
-        run: |
-          pip install edn_format==0.7.5
-          mkdir -p results/jepsen
-          python3 -m unittest discover -s scripts/jepsen -p 'test_*.py'
-          python3 scripts/jepsen/summarize.py results/jepsen | tee results/jepsen/summary.json
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: jepsen-${{ matrix.store }}-${{ matrix.workload }}-${{ matrix.nemesis }}
-          path: results/jepsen
-          retention-days: 30
-  robustness:
-    if: github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'robustness'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        traffic: [etcd-put-delete-lease, etcd-put, etcd-delete, kubernetes, kubernetes-create-delete]
-        store: ${{ fromJSON(inputs.stores || '["tigerstore"]') }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Run upstream traffic and black-box KV checker on three nodes
-        shell: bash
+      - name: Replay blocked writer or Kubernetes traffic
         env:
-          GOFLAGS: -p=2
-          GOMEMLIMIT: 2GiB
-        run: bash scripts/jepsen/robustness.sh '${{ matrix.store }}' '${{ matrix.traffic }}'
-      - if: failure()
+          REPLAY: ${{ inputs.replay }}
         run: |
-          echo "replay: bash scripts/jepsen/robustness.sh '${{ matrix.store }}' '${{ matrix.traffic }}'"
-      - uses: actions/upload-artifact@v4
-        if: always()
+          mkdir -p results/diag-303
+          if [[ $REPLAY == pause ]]; then
+            set -o pipefail
+            python3 scripts/jepsen/diag-303-pause.py 2>&1 | tee results/diag-303/replay.log
+          else
+            bash scripts/jepsen/robustness.sh tigerstore kubernetes
+          fi
+      - if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: robustness-${{ matrix.store }}-${{ matrix.traffic }}
-          path: results/robustness
+          name: diag-303-${{ inputs.replay }}
+          path: results
           retention-days: 30
