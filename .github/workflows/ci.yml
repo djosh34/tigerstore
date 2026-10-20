@@ -503,8 +503,9 @@ jobs:
 
   # The statement coverage of the internal/... packages, measured across
   # every package's tests, must be 80% at least. The simulator's tests
-  # run under gosim, which coverage cannot measure: the second step runs
-  # those that the sim and membership jobs do not.
+  # run under gosim, which coverage cannot measure, so the simulator's own
+  # packages are left out; the last step runs those tests that the sim
+  # and membership jobs do not.
   coverage:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
@@ -514,7 +515,9 @@ jobs:
         with:
           go-version-file: go.mod
       - shell: bash
-        run: go test -short -coverpkg=./internal/... -coverprofile="$RUNNER_TEMP/cover.out" ./... 2>&1 | tee "$RUNNER_TEMP/coverage.log"
+        run: |
+          pkgs=$(go list ./internal/... | grep -v -e '/internal/sim$' -e '/internal/simrun$' | paste -sd, -)
+          go test -short -coverpkg="$pkgs" -coverprofile="$RUNNER_TEMP/cover.out" ./... 2>&1 | tee "$RUNNER_TEMP/coverage.log"
       - if: failure()
         run: scripts/replay.sh "$RUNNER_TEMP/coverage.log" -short
       - name: At least 80%
