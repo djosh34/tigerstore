@@ -41,6 +41,9 @@ func Each[T any](t *testing.T, seeds []uint64, body func(*testing.T, uint64) T, 
 	if One() {
 		seed := envUint(t, "SIM_SEED", 0)
 		seeds = slices.DeleteFunc(slices.Clone(seeds), func(s uint64) bool { return s != seed })
+		if len(seeds) == 0 {
+			t.Skipf("seed %d is not one of this test's", seed)
+		}
 	}
 	return each(t, seeds, nil, body, add)
 }

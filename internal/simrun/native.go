@@ -3,6 +3,7 @@
 package simrun
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -27,6 +28,9 @@ func Bubble(t *testing.T, f func(*testing.T)) { synctest.Test(t, f) }
 
 // Artifact does nothing natively.
 func Artifact(string, []byte) {}
+
+// AfterSeed runs f at once natively.
+func AfterSeed(f func()) { f() }
 
 // Here reports whether t runs its body in this process, as under the race
 // detector. It reports false when scripts/sim.sh started t, which then
@@ -116,6 +120,11 @@ func keep(t *testing.T, artifacts map[string][]byte, suffix string) {
 		}
 		run, path, _ := strings.Cut(rel, "/")
 		if suffix != "" {
+			// replay.txt names the run's directory, which gets the
+			// suffix too.
+			if path == "replay.txt" {
+				b = bytes.ReplaceAll(b, []byte("$SIM_OUT/"+run+"/"), []byte("$SIM_OUT/"+run+"-"+suffix+"/"))
+			}
 			run += "-" + suffix
 		}
 		files[filepath.Join(run, path)] = b

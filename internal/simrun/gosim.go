@@ -36,11 +36,17 @@ func Here(*testing.T) bool { return true }
 func Drive(*testing.T, uint64) bool { return false }
 
 // each runs the seeds, which the driver gives one at a time, and saves
-// what body returned for it (Seeds).
+// what body returned for it (Seeds). Then it runs what AfterSeed set.
 func each[T any](t *testing.T, seeds []uint64, _ []string, body func(*testing.T, uint64) T, _ func(uint64, T) bool) bool {
 	t.Helper()
 	for _, seed := range seeds {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
+			defer func() {
+				for _, f := range afterSeed {
+					f()
+				}
+				afterSeed = nil
+			}()
 			b, err := json.Marshal(body(t, seed))
 			if err != nil {
 				t.Fatal(err)
@@ -50,3 +56,11 @@ func each[T any](t *testing.T, seeds []uint64, _ []string, body func(*testing.T,
 	}
 	return false
 }
+
+// afterSeed is what runs after the seed's last simulation.
+var afterSeed []func()
+
+// AfterSeed runs f once the seed's last simulation is over. Work between
+// two simulations of one gosim run moves the later one, so work that only
+// some runs of a seed do, such as saving it for a double run, waits.
+func AfterSeed(f func()) { afterSeed = append(afterSeed, f) }

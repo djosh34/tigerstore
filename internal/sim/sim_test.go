@@ -68,9 +68,10 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, hashes(res)))
 		simrun.Artifact("hashes", []byte(strings.Join(hashLines, "\n")+"\n"))
 		// The driver's double runs keep both runs' files, for when they
-		// differ.
+		// differ, once the seed's last simulation is over.
 		if os.Getenv("SIM_KEEP") != "" {
-			save(t, replayCommand(t.Name(), cfg.Seed), res)
+			cmd := replayCommand(t.Name(), cfg.Seed)
+			simrun.AfterSeed(func() { save(t, cmd, res) })
 		}
 	}
 	me := new(int)
