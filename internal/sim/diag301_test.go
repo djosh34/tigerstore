@@ -46,6 +46,12 @@ func TestDiag301ClosedPrefix(t *testing.T) {
 		if err := c.Close(); err != nil {
 			t.Fatal(err)
 		}
+		// This test calls Serve itself rather than through the transport.
+		// Detach the process so exited does not end the whole simulation
+		// before we check whether the Serve callback returned.
+		s.mu.Lock()
+		n.proc = nil
+		s.mu.Unlock()
 		p.cancel()
 		<-p.node.Done()
 		time.Sleep(20 * time.Millisecond)
