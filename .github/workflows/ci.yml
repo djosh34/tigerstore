@@ -394,13 +394,16 @@ jobs:
   # write through the healthy nodes to commit within two of etcd's 7 s
   # request timeouts, one for a proposal lost with a leader change and
   # one for its retry. Seeds come from the run ID. A failure prints how each
-  # node stood and the command that runs the seed again.
+  # node stood and the command that runs the seed again. LazyFS runs on
+  # Ubuntu 26.04's libfuse 3.18, which, like the 3.17 of Jepsen's nodes,
+  # hands the kernel the attributes a directory listing gives. libfuse
+  # 3.14 on 24.04 drops them, so #300 could not show there.
   chaos-env:
     strategy:
       fail-fast: false
       matrix:
         mode: [lazyfs, plain]
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
