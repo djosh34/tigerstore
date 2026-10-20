@@ -5,7 +5,9 @@ on:
     paths:
       - '.github/workflows/gosim333-synctest.yml'
       - 'experiments/gosim333/run.sh'
-      - 'experiments/gosim333/synctest/**'
+      - 'experiments/gosim333/synctest/gosim/**'
+      - 'experiments/gosim333/synctest/*.py'
+      - 'experiments/gosim333/synctest/actions.sh'
 permissions:
   contents: read
 concurrency:

@@ -27,12 +27,12 @@ record prepare bash experiments/gosim333/run.sh prepare
 [[ $last == 0 ]] || exit "$last"
 record translate bash experiments/gosim333/run.sh translate
 [[ $last == 0 ]] || exit "$last"
-record compile bash experiments/gosim333/run.sh compile
-[[ $last == 0 ]] || exit "$last"
 git -C "$GOSIM333_SOURCE" add -N .
 git -C "$GOSIM333_SOURCE" diff >"$out/gosim.patch"
 git diff >"$out/tigerstore.patch"
 cp go.mod "$out/tigerstore-go.mod"
+record compile bash experiments/gosim333/run.sh compile
+[[ $last == 0 ]] || exit "$last"
 record example bash experiments/gosim333/run.sh example
 record probe bash experiments/gosim333/run.sh probe
 record seed-1a flock /tmp/r333-heavy.lock timeout 300 /tmp/r333-sim.test -test.v '-test.run=^TestSeeds$' -seeds=1 -sim.seed=1 -sim.seeds=1 -logformat=raw -r333.output="$out/seed-1a"
