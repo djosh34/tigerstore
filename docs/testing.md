@@ -188,7 +188,7 @@ gosim does not implement every function of Go's runtime that tigerstore's depend
 
 Inside gosim the clock stands still while a goroutine computes, so a checker's timeout never comes. The simulator's checks are bounded by the steps of their search too (`check.MaxSteps`). Within one gosim run memory is never returned, as the port keeps weak pointers strong, about 30 MB per simulation; a test that loops over many seeds runs each as a gosim run of its own (`simrun.Seeds`). The fork's README lists its other limits.
 
-`internal/sim/known-failures.txt` lists seeds that fail because of an open `bug` issue, each with its issue. `scripts/sim.sh` skips them and says why; every other failure fails the job.
+`internal/sim/known-failures.txt` lists seeds that fail because of an open `bug` issue, each with its issue. `scripts/sim.sh` skips them and prints a `known failure:` line for each; every other failure fails the job. It holds seeds of the tests that run a set of seeds (`simrun.Seeds`); a test with fixed seeds of its own cannot be listed. Another package with such tests, such as `internal/node` for the cleaner simulation, gets a `known-failures.txt` of its own.
 
 tigerstore stays on Go 1.27.x. A Go upgrade waits until the gosim port for that version passes the replay gate: CI's double runs, and a seed of a campaign that replays alone with the same hashes.
 

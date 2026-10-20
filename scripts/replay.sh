@@ -91,7 +91,9 @@ function flush(pkg, i, j, k, p, first, leaf, parts, pattern, env) {
 			continue
 		}
 		env = ""
-		if (first < k && parts[first] ~ /^Test(Seeds|Linearizable|MembershipFaults|Planted|ConcurrentCleanerSimulation)$/ && parts[first + 1] ~ /^[0-9]+$/) {
+		# A subtest named after a number is a seed (simrun.Seeds); a test
+		# with fixed seeds of its own ignores the variables.
+		if (first < k && parts[first + 1] ~ /^[0-9]+$/) {
 			env = "SIM_SEED=" parts[first + 1] " SIM_SEEDS=1 "
 		}
 		if (gosim) {

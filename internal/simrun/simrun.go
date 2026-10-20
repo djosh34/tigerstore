@@ -10,6 +10,9 @@
 package simrun
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -69,4 +72,18 @@ func Top(parts []string) []string {
 		}
 	}
 	return parts
+}
+
+// WriteFiles writes each of files, by its path under dir.
+func WriteFiles(dir string, files map[string][]byte) error {
+	var errs []error
+	for name, b := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		errs = append(errs, os.WriteFile(path, b, 0o644))
+	}
+	return errors.Join(errs...)
 }

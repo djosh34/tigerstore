@@ -136,21 +136,21 @@ func save(t *testing.T, cmd string, res *Result) {
 		return
 	}
 	dir := filepath.Join(out, name)
-	var errs []error
+	files := map[string][]byte{}
 	for path, body := range runFiles(dir, cmd, res) {
-		path = filepath.Join(dir, path)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		errs = append(errs, os.WriteFile(path, []byte(body), 0o644))
+		files[path] = []byte(body)
 	}
-	if err := errors.Join(errs...); err != nil {
+	if err := simrun.WriteFiles(dir, files); err != nil {
 		t.Logf("saving the run in %s: %v", dir, err)
 		return
 	}
 	t.Logf("the run is saved in %s", dir)
 }
+
+// wholeSet reports whether a test that searches its own set of seeds
+// for something runs that whole set, not a replay of some of its seeds
+// ($SIM_SEEDS).
+func wholeSet() bool { return os.Getenv("SIM_SEEDS") == "" }
 
 // runFiles are a run's trace, node report, stats, hashes, history, disks
 // and replay command, by path, for a directory dir of their own.
@@ -261,24 +261,13 @@ func replayCommand(name string, seed uint64) string {
 	return cmd + fmt.Sprintf(" -count=1 ./internal/sim/ -run '%s'", pattern)
 }
 
-// eachSeed is simrun.Seeds over the seeds from 1, n by default, with the
-// planted bug TestPlanted switched on.
-func eachSeed[T any](t *testing.T, n int, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
-	t.Helper()
-	var env []string
-	if activePlanted != "" {
-		env = []string{"SIM_PLANTED=" + activePlanted}
-	}
-	return simrun.Seeds(t, 1, n, env, body, add)
-}
-
 // TestSeeds runs every seed with the checkers. A failing seed prints the
 // command that runs it again.
 func TestSeeds(t *testing.T) {
 	var total Stats
 	var took effects
 	ran := 0
-	if !eachSeed(t, 16, func(t *testing.T, seed uint64) Stats {
+	if !simrun.Seeds(t, 1, 16, func(t *testing.T, seed uint64) Stats {
 		a := run(t, DefaultConfig(seed))
 		st := a.Stats
 		if st.Compactions == 0 || st.Revokes == 0 || st.OK < 200 || len(a.Log) < 50 {
@@ -476,7 +465,7 @@ func linearizableConfig(seed uint64) Config {
 // every run must be short enough for Porcupine (check.ShortEnough).
 func TestLinearizable(t *testing.T) {
 	n, short := 0, 0
-	if !eachSeed(t, 16, func(t *testing.T, seed uint64) bool {
+	if !simrun.Seeds(t, 1, 16, func(t *testing.T, seed uint64) bool {
 		res := run(t, linearizableConfig(seed))
 		h, err := res.Checkable()
 		if err != nil {
@@ -548,7 +537,7 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 // then heals. Every rule and checker must hold, and the cluster must serve
 // again 2 s after healing.
 func TestAllLinkMasks(t *testing.T) {
-	simrun.Seeds(t, 1000, 64, nil, func(t *testing.T, seed uint64) struct{} {
+	simrun.Seeds(t, 1000, 64, func(t *testing.T, seed uint64) struct{} {
 		mask := seed - 1000
 		cfg := DefaultConfig(seed)
 		cfg.Faults = Faults{HoldMask: mask, HoldMaskAt: 2 * Second}
@@ -660,7 +649,7 @@ func TestSlowFetch(t *testing.T) {
 	var older, failed, during int
 	// Each of the three happens in about one seed in 20 to 50; the search
 	// stops once all did.
-	if !simrun.Seeds(t, 5001, 200, nil, func(t *testing.T, seed uint64) Stats {
+	if !simrun.Seeds(t, 5001, 200, func(t *testing.T, seed uint64) Stats {
 		res := run(t, slowFetchConfig(seed))
 		checkers(t, res)
 		return res.Stats
@@ -672,7 +661,7 @@ func TestSlowFetch(t *testing.T) {
 	}) {
 		return
 	}
-	if older == 0 || failed == 0 || during == 0 {
+	if wholeSet() && !t.Failed() && (older == 0 || failed == 0 || during == 0) {
 		t.Fatalf("%d snapshots installed from an older checkpoint, %d fetches the leader could not serve, %d checkpoints finished during an install; each must happen", older, failed, during)
 	}
 }
@@ -818,7 +807,7 @@ func TestRotInAnEntryRecord(t *testing.T) {
 // must pass the checkers.
 func TestSnapshotFromCorruptLeader(t *testing.T) {
 	fenced := false
-	if !simrun.Seeds(t, 1, 200, nil, func(t *testing.T, seed uint64) Stats {
+	if !simrun.Seeds(t, 1, 200, func(t *testing.T, seed uint64) Stats {
 		res := run(t, DefaultConfig(seed))
 		checkers(t, res)
 		return res.Stats
@@ -831,7 +820,7 @@ func TestSnapshotFromCorruptLeader(t *testing.T) {
 	}) {
 		return
 	}
-	if !fenced {
+	if wholeSet() && !t.Failed() && !fenced {
 		t.Fatal("no run fenced a node after it failed a serve on its own damage")
 	}
 }

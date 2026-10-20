@@ -5,9 +5,11 @@ package simrun
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -103,35 +105,29 @@ func readable(out []byte) string {
 // keep writes the files a run saved under sim-out/ to $SIM_OUT.
 func keep(t *testing.T, artifacts map[string][]byte) {
 	t.Helper()
-	out := os.Getenv("SIM_OUT")
-	saved := map[string]bool{}
+	files := map[string][]byte{}
+	runs := map[string]bool{}
 	for name, b := range artifacts {
-		rel, ok := strings.CutPrefix(name, "sim-out/")
-		if !ok {
-			continue
+		if rel, ok := strings.CutPrefix(name, "sim-out/"); ok {
+			files[rel] = b
+			run, _, _ := strings.Cut(rel, "/")
+			runs[run] = true
 		}
-		run, _, _ := strings.Cut(rel, "/")
-		if out == "" {
-			saved[run] = false
-			continue
-		}
-		path := filepath.Join(out, rel)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Errorf("saving the run: %v", err)
-			return
-		}
-		if err := os.WriteFile(path, b, 0o644); err != nil {
-			t.Errorf("saving the run: %v", err)
-			return
-		}
-		saved[run] = true
 	}
-	for run, ok := range saved {
-		if ok {
-			t.Logf("the run is saved in %s", filepath.Join(out, run))
-		} else {
-			t.Logf("set SIM_OUT to save the files of run %s", run)
-		}
+	if len(files) == 0 {
+		return
+	}
+	out := os.Getenv("SIM_OUT")
+	if out == "" {
+		t.Logf("set SIM_OUT to save the files of %v", slices.Sorted(maps.Keys(runs)))
+		return
+	}
+	if err := WriteFiles(out, files); err != nil {
+		t.Errorf("saving the run in %s: %v", out, err)
+		return
+	}
+	for run := range runs {
+		t.Logf("the run is saved in %s", filepath.Join(out, run))
 	}
 }
 

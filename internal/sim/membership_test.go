@@ -1,6 +1,10 @@
 package sim
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/djosh34/tigerstore/internal/simrun"
+)
 
 // TestMembershipFaults uses the real membership proposals with the same
 // disk, network, clock and process faults as the KV simulator, including
@@ -10,7 +14,7 @@ func TestMembershipFaults(t *testing.T) {
 	n := 0
 	var during [4]int
 	var took effects
-	if !eachSeed(t, 16, func(t *testing.T, seed uint64) Stats {
+	if !simrun.Seeds(t, 1, 16, func(t *testing.T, seed uint64) Stats {
 		a := run(t, membershipConfig(seed))
 		for i, count := range a.Stats.MembershipChanges {
 			if count != 1 {

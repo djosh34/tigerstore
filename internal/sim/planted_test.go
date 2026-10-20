@@ -15,6 +15,7 @@ import (
 	"github.com/djosh34/tigerstore/check"
 
 	"github.com/djosh34/tigerstore/internal/planted"
+	"github.com/djosh34/tigerstore/internal/simrun"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -212,7 +213,7 @@ func TestPlanted(t *testing.T) {
 	planted.Active, activePlanted = name, name
 	t.Cleanup(func() { planted.Active, activePlanted = "", "" })
 	tried, caught := 0, false
-	if !eachSeed(t, c.seeds, func(t *testing.T, seed uint64) string {
+	if !simrun.Seeds(t, 1, c.seeds, func(t *testing.T, seed uint64) string {
 		res, err := runSeed(t, c.cfg(seed))
 		if err == nil {
 			err = independent(res)

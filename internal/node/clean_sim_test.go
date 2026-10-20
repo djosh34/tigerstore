@@ -162,7 +162,7 @@ var errLostValue = errors.New("lost a value")
 // It does not substitute the test's own packing protocol for the cleaner.
 // Each of its 8 seeds is a gosim run of its own (simrun.Seeds).
 func TestConcurrentCleanerSimulation(t *testing.T) {
-	simrun.Seeds(t, 1, 8, nil, func(t *testing.T, seed uint64) struct{} {
+	simrun.Seeds(t, 1, 8, func(t *testing.T, seed uint64) struct{} {
 		simrun.Bubble(t, func(t *testing.T) {
 			if err := concurrentCleaning(t, seed); err != nil {
 				t.Fatal(err)
