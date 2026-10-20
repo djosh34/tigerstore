@@ -24,10 +24,12 @@ jobs:
           diag="$GITHUB_SHA"
           mkdir -p "$RUNNER_TEMP/diag302"
           cp internal/sim/diag302_test.go "$RUNNER_TEMP/diag302_test.go"
+          cp internal/sim/planted_test.go "$RUNNER_TEMP/planted_test.go"
           status=0
           for rev in e3243229 8c720710 01deaf78 3e026b7d; do
             git checkout --detach "$rev"
             cp "$RUNNER_TEMP/diag302_test.go" internal/sim/diag302_test.go
+            cp "$RUNNER_TEMP/planted_test.go" internal/sim/planted_test.go
             echo "::group::$rev deterministic reproduction"
             go test -v -tags planted -count=1 -timeout=2m ./internal/sim/ -run '^TestDiag302' 2>&1 | tee "$RUNNER_TEMP/diag302/$rev-regression.log" || status=1
             echo '::endgroup::'
@@ -35,6 +37,7 @@ jobs:
             SIM_OUT="$RUNNER_TEMP/diag302/$rev-seed" go test -v -tags planted -count=1 -timeout=2m ./internal/sim/ -run '^TestPlanted$/^34$' -args -planted=B22 2>&1 | tee "$RUNNER_TEMP/diag302/$rev-seed.log" || echo "Seed replay exited nonzero; inspect the saved log for catch versus no catch."
             echo '::endgroup::'
             rm internal/sim/diag302_test.go
+            git restore internal/sim/planted_test.go
           done
           git checkout --detach "$diag"
           exit "$status"
