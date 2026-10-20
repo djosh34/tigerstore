@@ -29,7 +29,7 @@ jobs:
               git checkout e3243229 -- internal/node internal/wal internal/sim
               cp "$RUNNER_TEMP/diag301_test.go" internal/sim/diag301_test.go
             fi
-            go test -v -count=1 -timeout=30s ./internal/sim -run '^TestDiag301ClosedPrefix$' >"$RUNNER_TEMP/evidence/$variant.log" 2>&1 || status=1
+            go test -v -count=1 -timeout=30s ./internal/sim -run '^TestDiag301' >"$RUNNER_TEMP/evidence/$variant.log" 2>&1 || status=1
             grep -E -- 'FAIL|PASS|snapshot fault' "$RUNNER_TEMP/evidence/$variant.log" | tail -12
           done
           exit "$status"
