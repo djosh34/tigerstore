@@ -43,7 +43,7 @@ case ${1:-help} in
   cd "$root"
   cp "$exp/planted_wrapper.go.txt" internal/sim/gosim333_planted_test.go
   trap 'rm -f "$root/internal/sim/gosim333_planted_test.go"' EXIT
-  GOSIM333_TAGS=planted heavy "$bin" translate ./internal/sim ./internal/node
+  GOSIM333_TAGS="${GOSIM333_TAGS:+$GOSIM333_TAGS,}planted" heavy "$bin" translate ./internal/sim ./internal/node
   cd "$root/.gosim/translated/linux_arm64"
   heavy go test -vet=off -c -ldflags=-checklinkname=0 -tags=linkname -o /tmp/r333-planted.test ./github.com/djosh34/tigerstore/internal_/sim
   heavy timeout 30 /tmp/r333-planted.test -test.v -test.run='^TestGosim333Planted$' -seeds=1 -logformat=raw

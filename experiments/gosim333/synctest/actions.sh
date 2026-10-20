@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export GOMAXPROCS=2 GOFLAGS='-p=2 -mod=mod' GOTOOLCHAIN=go1.27.2
+# Blocker 2: nistec.p256SelectAffine assembly is not translated. Select Go's
+# supported portable crypto implementations (Go 1.27.2 nistec/p256.go:5,
+# p256_asm.go:13; analogous crypto files use the same purego constraint).
+export GOSIM333_TAGS=purego
 export GOSIM333_SOURCE=/tmp/r333-gosim-synctest
 export GOSIM333_ADAPTER=$PWD/experiments/gosim333/synctest/apply.py
 root=$PWD
