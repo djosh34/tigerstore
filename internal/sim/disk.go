@@ -43,6 +43,9 @@ func (d *disk) call(op simfs.Op, name string, f func() error) error {
 	if err := f(); err != nil {
 		return err
 	}
+	if op == simfs.OpCreate && strings.HasPrefix(name, "pack-") {
+		s.stats.Packs++
+	}
 	return s.afterCall(d.p, op, name)
 }
 

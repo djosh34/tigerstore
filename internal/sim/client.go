@@ -146,6 +146,9 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 			s.stats.Compactions++
 		}
 		c.learn(resp)
+	case errors.Is(err, rpctypes.ErrGRPCNoSpace):
+		s.stats.NoSpace++
+		s.stats.Failed++
 	case r.Ambiguous:
 		s.stats.Ambiguous++
 	default:
@@ -163,6 +166,7 @@ func ambiguous(err error) bool {
 		errors.Is(err, rpctypes.ErrGRPCFutureRev),
 		errors.Is(err, rpctypes.ErrGRPCCompacted),
 		errors.Is(err, rpctypes.ErrGRPCDuplicateKey),
+		errors.Is(err, rpctypes.ErrGRPCNoSpace),
 		errors.Is(err, rpctypes.ErrGRPCEmptyKey):
 		return false
 	}
