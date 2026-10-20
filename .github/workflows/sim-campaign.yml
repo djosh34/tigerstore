@@ -30,8 +30,8 @@ jobs:
             else
               git show b97c3594:internal/sim/storage.go > internal/sim/storage.go
             fi
-            go test -v -count=1 -timeout=30s ./internal/sim -run '^TestDiag301' >"$RUNNER_TEMP/evidence/$variant.log" 2>&1
-            result=$?
+            result=0
+            go test -v -count=1 -timeout=30s ./internal/sim -run '^TestDiag301' >"$RUNNER_TEMP/evidence/$variant.log" 2>&1 || result=$?
             echo "$variant exit=$result"
             grep -E -- 'FAIL|PASS|stopped: core: the disk failed|snapshot fault|transport shutdown' "$RUNNER_TEMP/evidence/$variant.log" | tail -12
             if [ "$variant" = fixed ]; then
