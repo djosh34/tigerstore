@@ -61,7 +61,7 @@ func Drive(t *testing.T) bool {
 // passed run's log too. Do writes the files the run kept to $SIM_OUT.
 func Do(t *testing.T, r Run) *Result {
 	t.Helper()
-	pkg := pkgPath(t)
+	pkg, _ := pkgPath(t)
 	mt := metatesting.ForOtherPackage(t, pkg, tags...)
 	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: r.Env})
 	if err != nil {
@@ -135,23 +135,21 @@ func keep(t *testing.T, artifacts map[string][]byte) {
 	}
 }
 
-// pkgPath is the import path of the package t tests: a test binary's main
-// package is that path with .test after it.
-func pkgPath(t *testing.T) string {
+// pkgPath is the import path of the package t tests, and that of its
+// module: a test binary's main package is the package's path with .test
+// after it.
+func pkgPath(t *testing.T) (pkg, module string) {
 	t.Helper()
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
 		t.Fatal("the test binary has no build information")
 	}
-	return strings.TrimSuffix(bi.Path, ".test")
+	return strings.TrimSuffix(bi.Path, ".test"), bi.Main.Path
 }
 
 // dir is the directory of the package t tests, from the module root.
 func dir(t *testing.T) string {
 	t.Helper()
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		t.Fatal("the test binary has no build information")
-	}
-	return "./" + strings.TrimPrefix(strings.TrimSuffix(bi.Path, ".test"), bi.Main.Path+"/")
+	pkg, module := pkgPath(t)
+	return "./" + strings.TrimPrefix(pkg, module+"/")
 }
