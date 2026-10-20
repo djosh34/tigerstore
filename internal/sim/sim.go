@@ -246,8 +246,10 @@ func DefaultConfig(seed uint64) Config {
 			StallEvery:     8 * Second,
 			FSDownEvery:    10 * Second,
 			DiskFullEvery:  10 * Second,
-			// Every run cleans, and runs out of space at times: the
-			// nodes' files take 40 to 70 KiB without a budget.
+			// Every run cleans and raises the NOSPACE alarm at times: the
+			// nodes' files take 40 to 70 KiB without a budget. The disk
+			// is large until #362 is fixed: the cleaner's loop fills a
+			// smaller one once the clients stop.
 			DiskBudget:   64 << 10,
 			DiskCapacity: 4 << 20,
 			Corrupt:      true,
