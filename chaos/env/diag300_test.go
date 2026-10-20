@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -17,6 +18,18 @@ import (
 // Reads in LazyFS do not populate its block cache, unlike writes.
 func TestLazyFSPartialBlockAppend(t *testing.T) {
 	d := newDisk(t, lazyfsBin(t))
+	cfg, err := os.ReadFile(d.cfgfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg = bytes.ReplaceAll(cfg, []byte("log_all_operations=false"), []byte("log_all_operations=true"))
+	if err := os.WriteFile(d.cfgfile, cfg, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Remount(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { t.Logf("LazyFS operations:\n%s", d.lazyLog()) })
 	for _, reset := range []string{"clear", "remount"} {
 		for _, size := range []int{3000, 100000} {
 			for _, appendBytes := range []bool{false, true} {
@@ -48,6 +61,7 @@ func TestLazyFSPartialBlockAppend(t *testing.T) {
 					block := size / 4096 * 4096
 					read := func(stage string) {
 						t.Helper()
+						readsBefore := strings.Count(d.lazyLog(), "lfs_read(")
 						// Force FUSE reads, rather than accepting the kernel's old pages.
 						if err := unix.Fadvise(int(r.Fd()), 0, 0, unix.FADV_DONTNEED); err != nil {
 							t.Fatal(err)
@@ -59,6 +73,11 @@ func TestLazyFSPartialBlockAppend(t *testing.T) {
 							if err != nil || !bytes.Equal(got, want[off:off+4]) {
 								t.Errorf("%s: read at %d = %q, %v; want %q", stage, off, got[:n], err, want[off:off+4])
 							}
+						}
+						readsAfter := strings.Count(d.lazyLog(), "lfs_read(")
+						t.Logf("%s: LazyFS read callbacks=%d", stage, readsAfter-readsBefore)
+						if readsAfter <= readsBefore {
+							t.Fatal("reads did not reach LazyFS")
 						}
 					}
 					read("before append")
