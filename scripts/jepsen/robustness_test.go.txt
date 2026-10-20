@@ -3,6 +3,7 @@ package external_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 
@@ -89,7 +91,11 @@ func TestExternalTraffic(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(out, "traffic-ready"), []byte("ready\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(40 * time.Second)
+	if err := awaitRecovery(ctx, out, endpoints); err != nil {
+		t.Fatal(err)
+	}
+	// etcd's suite also runs traffic for 1 s after its failpoint.
+	time.Sleep(time.Second)
 	close(finish)
 	wg.Wait()
 	end := time.Since(cs.BaseTime())
@@ -113,12 +119,15 @@ func TestExternalTraffic(t *testing.T) {
 	watches := traffic.CalculateWatchStats(reports, start, end)
 	// No etcd WAL decoder is valid for tigerstore. Uncertain operations stay
 	// uncertain. Replay-dependent watch and historical-read checks are skipped.
+	checkStart := time.Now()
 	result := validate.ValidateAndReturnVisualize(lg, validate.Config{
 		ExpectRevisionUnique: tf.ExpectUniqueRevision(),
-	}, reports, nil, 120*time.Second)
+	}, reports, nil, 5*time.Minute)
+	checkTime := time.Since(checkStart)
 	summary := map[string]any{
-		"traffic": os.Getenv("TRAFFIC"), "stats": stats, "watch_traffic": watches,
+		"traffic": os.Getenv("TRAFFIC"), "fault": filepath.Base(out), "stats": stats, "watch_traffic": watches,
 		"assumptions": result.Assumptions, "linearization": result.Linearization.Result,
+		"linearization_seconds": checkTime.Seconds(),
 		"watch_validation": "not run: needs ordered persisted requests",
 		"historical_read_validation": "not run: needs ordered persisted requests",
 	}
@@ -136,4 +145,41 @@ func TestExternalTraffic(t *testing.T) {
 	if result.Assumptions.Status != validate.Success || result.Linearization.Status != validate.Success {
 		t.Errorf("required validation failed: %v", result.Error())
 	}
+}
+
+// awaitRecovery waits until the runner has finished the fault and every
+// endpoint answers a linearizable read. Its client is not recorded.
+func awaitRecovery(ctx context.Context, out string, endpoints []string) error {
+	for {
+		if _, err := os.Stat(filepath.Join(out, "fault-done")); err == nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	for _, endpoint := range endpoints {
+		cli, err := clientv3.New(clientv3.Config{Endpoints: []string{endpoint}, DialTimeout: time.Second})
+		if err != nil {
+			return err
+		}
+		for {
+			getCtx, stop := context.WithTimeout(ctx, time.Second)
+			_, err = cli.Get(getCtx, "key")
+			stop()
+			if err == nil || ctx.Err() != nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if closeErr := cli.Close(); closeErr != nil {
+			return closeErr
+		}
+		if err != nil {
+			return fmt.Errorf("%s did not answer after the fault: %w", endpoint, err)
+		}
+	}
+	return nil
 }

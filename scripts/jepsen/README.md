@@ -14,7 +14,8 @@ later commit. Every job has its own fresh three-node cluster and uploads logs
 and histories even when it fails. Choose `jepsen` or
 `robustness` to run only that suite, or `tools` for the parser regressions.
 To repeat one Jepsen case, pass `-f workloads='["register"]'` and
-`-f nemeses='["lazyfs"]'`. Set `-f stores='["etcd","tigerstore"]'` to add
+`-f nemeses='["lazyfs"]'`. To repeat one robustness preset, pass
+`-f traffics='["etcd-delete"]'`. Set `-f stores='["etcd","tigerstore"]'` to add
 controls. Omitted arrays use the required tigerstore matrix. A partial run is
 not evidence for omitted cases.
 
@@ -90,14 +91,28 @@ The five upstream presets run unchanged against tigerstore, and against etcd
 with `stores`:
 `EtcdPutDeleteLease`, `EtcdPut`, `EtcdDelete`, `Kubernetes`, and
 `KubernetesCreateDelete`. Each has member-pinned and cluster clients, watch
-traffic, 40 seconds of load, a 50-QPS shared limit, a pause/resume and a
-kill/restart. A recorded revision-1 read proves fresh storage. A terminal put
-must succeed after recovery. At least 200 successful KV operations and some
-watch events are required.
+traffic and a 50-QPS shared limit. Each job checks two histories, each on a
+fresh cluster with one fault: a 3-second pause of n1 in `results/robustness/pause`,
+and a kill of n2 with a restart 3 seconds later in `results/robustness/kill`.
+As in etcd's own suite, traffic runs for 1 second before the fault and 1 second
+after every node answers again. A recorded revision-1 read proves fresh
+storage. A terminal put must succeed after recovery. Each history needs at
+least 200 successful KV operations and some watch events.
 
 The upstream recording client and nondeterministic KV validator preserve
 uncertain writes. Histories are saved before validation. Assumptions and KV
-linearization must explicitly succeed, including the checker deadline.
+linearization must explicitly succeed within 5 minutes, etcd's own deadline.
+`summary.json` records how long the check took.
+
+The histories are short because every write that fails during a fault keeps an
+unknown outcome, and each one multiplies Porcupine's search. etcd's suite runs
+one failpoint per history and drops failed writes that its WAL never persisted,
+which this adapter cannot do. With 40 seconds of load and both faults in one
+history, `EtcdDelete` timed out the check against etcd v3.7.2 itself in 9 of 10
+runs, with 15 to 39 unknown writes
+([#356](https://github.com/djosh34/tigerstore/issues/356)). Its failed deletes
+cannot be matched to a single effect, and etcd's suite never runs that preset
+under faults that fail requests.
 
 This is not the complete upstream robustness suite. Its process manager and
 WAL decoder only understand etcd. No tigerstore WAL adapter exists here.
