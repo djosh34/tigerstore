@@ -238,8 +238,8 @@ func DefaultConfig(seed uint64) Config {
 			DiskFullEvery:  10 * Second,
 			// Every run cleans, and runs out of space at times: the
 			// nodes' files take 40 to 70 KiB without a budget.
-			DiskBudget:   96 << 10,
-			DiskCapacity: 160 << 10,
+			DiskBudget:   64 << 10,
+			DiskCapacity: 4 << 20,
 			Corrupt:      true,
 			Checkpoint:   true,
 
@@ -1670,11 +1670,13 @@ func (s *Sim) changeLinks() {
 		s.stats.LinkChanges++
 		// Half of the changes heal every link; the rest pick a random set
 		// of directed links, which covers partitions and one-way links.
-		mask := s.allLinks()
+		mask, clients := s.allLinks(), 1.0
 		if s.rng.IntN(2) == 0 {
-			mask = s.rng.Uint64() & mask
+			mask, clients = s.rng.Uint64()&mask, 0.75
 		}
 		s.setLinks(mask)
+		// The clients' links go down too, each direction on its own.
+		s.setClientLinks(clients)
 		// At most three times the mean, so that one random partition
 		// cannot hold through most of the faults; TestAllLinkMasks holds
 		// each mask.

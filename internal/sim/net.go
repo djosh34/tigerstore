@@ -186,7 +186,7 @@ func (nw *network) queued(s *Sim, from int, to uint64) []*pipe {
 	defer s.mu.Unlock()
 	var out []*pipe
 	for c := range nw.conns {
-		if c.from == from && s.nodes[c.to].id == to && len(c.out.chunks) > 0 {
+		if c.from == from && c.to < len(s.nodes) && s.nodes[c.to].id == to && len(c.out.chunks) > 0 {
 			out = append(out, c.out)
 		}
 	}

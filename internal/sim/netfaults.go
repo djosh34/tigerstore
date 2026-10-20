@@ -1,6 +1,9 @@
 package sim
 
-import "slices"
+import (
+	"fmt"
+	"slices"
+)
 
 // scheduleNetFaults starts the network and process faults of the run.
 // The lock is held.
@@ -40,6 +43,45 @@ func (s *Sim) scheduleNetFaults() {
 	}
 }
 
+// clientOr picks a random link between the clients' host and a node one
+// time in three, as a fault on a client's link, and a link of pick
+// otherwise. The lock is held.
+func (s *Sim) clientOr(pick func() (int, int)) (from, to int) {
+	if s.rng.IntN(3) != 0 {
+		return pick()
+	}
+	from, to = len(s.links), s.rng.IntN(len(s.clientLinks))
+	if s.rng.IntN(2) == 0 {
+		from, to = to, from
+	}
+	return from, to
+}
+
+// host names host i in the trace: a node's ID, or "client" for the
+// clients' host.
+func (s *Sim) host(i int) string {
+	if i == len(s.links) {
+		return "client"
+	}
+	return fmt.Sprint(i + 1)
+}
+
+// setClientLinks sets each direction of the links between the clients'
+// host and the nodes up with probability up, and resets the connections
+// over a link that went down. The lock is held.
+func (s *Sim) setClientLinks(up float64) {
+	for i := range s.clientLinks {
+		for j := range 2 {
+			l := &s.clientLinks[i][j]
+			l.up = s.rng.Float64() < up
+			if !l.up {
+				s.net.resetBetween(i, len(s.links))
+				s.tracef("client link %d (%d) down", i+1, j)
+			}
+		}
+	}
+}
+
 // randomLink picks a random directed link. The lock is held.
 func (s *Sim) randomLink() (from, to int) {
 	from = s.rng.IntN(len(s.nodes))
@@ -57,15 +99,15 @@ func (s *Sim) stallLink() bool {
 	if s.healed {
 		return false
 	}
-	from, to := s.randomLink()
-	l := &s.links[from][to]
+	from, to := s.clientOr(s.randomLink)
+	l := s.link(from, to)
 	d := 500*Millisecond + s.rng.Int64N(1500*Millisecond)
 	if s.rng.IntN(4) == 0 {
 		d = 5500*Millisecond + s.rng.Int64N(1500*Millisecond)
 	}
 	l.stallUntil = max(l.stallUntil, min(s.now()+d, s.healAt))
 	s.stats.LinkStalls++
-	s.tracef("link %d->%d stalled until %d ms", from+1, to+1, l.stallUntil/Millisecond)
+	s.tracef("link %s->%s stalled until %d ms", s.host(from), s.host(to), l.stallUntil/Millisecond)
 	return true
 }
 
@@ -206,8 +248,8 @@ func (s *Sim) netemFault() bool {
 	if s.healed {
 		return false
 	}
-	from, to := s.busyLink()
-	l := &s.links[from][to]
+	from, to := s.clientOr(s.busyLink)
+	l := s.link(from, to)
 	now := s.now()
 	if l.netemUntil > now {
 		return false
@@ -220,7 +262,7 @@ func (s *Sim) netemFault() bool {
 	if l.netem == switching {
 		l.extra = 0
 	}
-	s.tracef("link %d->%d: %v until %d ms", from+1, to+1, l.netem, l.netemUntil/Millisecond)
+	s.tracef("link %s->%s: %v until %d ms", s.host(from), s.host(to), l.netem, l.netemUntil/Millisecond)
 	return true
 }
 
@@ -303,13 +345,13 @@ func (s *Sim) resetLink() bool {
 	if s.healed {
 		return false
 	}
-	from, to := s.randomLink()
+	from, to := s.clientOr(s.randomLink)
 	n := len(s.net.conns)
 	s.net.resetBetween(from, to)
 	if len(s.net.conns) == n {
 		return false
 	}
 	s.stats.Resets++
-	s.tracef("link %d-%d: connections reset", from+1, to+1)
+	s.tracef("link %s-%s: connections reset", s.host(from), s.host(to))
 	return true
 }

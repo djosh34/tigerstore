@@ -513,7 +513,8 @@ func isRejection(err error) bool {
 // so every revision stays readable. It returns the log as the checkers
 // read it: an expiry that applied becomes the LeaseRevoke it amounts to,
 // and one that no longer applied, because a keepalive came first, is left
-// out. With it come the revisions right after each of its entries.
+// out, as are alarms and the writes the NOSPACE alarm refused. With it
+// come the revisions right after each of its entries.
 func replay(log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) {
 	st := core.NewState(core.MinLeaseTTL(core.DefaultConfig(1, nil)), &mvcc.Heap{})
 	var out []proto.Message
@@ -528,7 +529,12 @@ func replay(log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) 
 		if err != nil && !isRejection(err) {
 			return nil, nil, nil, fmt.Errorf("replaying log write %d: %w", i, err)
 		}
+		_, alarm := op.(*pb.AlarmRequest)
 		switch {
+		case alarm, errors.Is(err, rpctypes.ErrGRPCNoSpace):
+			// The checkers know no alarms: an alarm, and a write the
+			// NOSPACE alarm refused, which changed nothing, stay out of
+			// their log.
 		case !expiry:
 			out, revs = append(out, op), append(revs, st.Store().Rev())
 		case resp != nil:
