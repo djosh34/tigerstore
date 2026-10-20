@@ -19,8 +19,9 @@ import (
 )
 
 // TestDiag302SnapshotReload cuts seed 34 down to its damaged snapshot:
-// entry 11 becomes entry 0, with its old stream CRC. Without B22 the
-// receiver refuses it. With B22 it installs, then WAL recovery refuses
+// entry 11's term byte changes from 4 to 0xa3. Its varint consumes
+// the index byte, so it becomes term 1443, index 0, with its old CRC.
+// Without B22 the receiver refuses it. With B22 it installs, then WAL recovery refuses
 // the log. That refusal must count as a catch, just like a cold restart.
 func TestDiag302SnapshotReload(t *testing.T) {
 	src, _, err := wal.Open(simfs.New())
@@ -34,7 +35,7 @@ func TestDiag302SnapshotReload(t *testing.T) {
 	})
 	var ents []*raftpb.Entry
 	for i := uint64(1); i <= 24; i++ {
-		ents = append(ents, &raftpb.Entry{Index: new(i), Term: new(uint64(5))})
+		ents = append(ents, &raftpb.Entry{Index: new(i), Term: new(uint64(4)), Data: []byte{1}})
 	}
 	src.Append(nil, ents)
 	if err := src.Sync(); err != nil {
@@ -57,7 +58,7 @@ func TestDiag302SnapshotReload(t *testing.T) {
 			_, termBytes := binary.Uvarint(data[payload:])
 			index, indexBytes := binary.Uvarint(data[payload+termBytes:])
 			if index == 11 && indexBytes == 1 {
-				data[payload+termBytes] ^= 11
+				data[payload] ^= 0xa7
 				flipped = true
 				break
 			}
@@ -85,7 +86,7 @@ func TestDiag302SnapshotReload(t *testing.T) {
 			if err := dst.Sync(); err != nil {
 				t.Fatal(err)
 			}
-			in := &core.Install{From: 1, Index: 24, Term: 5, Applied: 3}
+			in := &core.Install{From: 1, Index: 24, Term: 4, Applied: 3}
 			err = core.ReceiveSnapshot(bytes.NewReader(data), &core.LogSink{WAL: dst}, dst, in)
 			if bug == "" {
 				if err == nil || !strings.Contains(err.Error(), "an item does not match its checksum") {

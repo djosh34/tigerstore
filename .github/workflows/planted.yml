@@ -32,7 +32,7 @@ jobs:
             go test -v -tags planted -count=1 -timeout=2m ./internal/sim/ -run '^TestDiag302' 2>&1 | tee "$RUNNER_TEMP/diag302/$rev-regression.log" || status=1
             echo '::endgroup::'
             echo "::group::$rev seed 34"
-            SIM_OUT="$RUNNER_TEMP/diag302/$rev-seed" go test -v -tags planted -count=1 -timeout=2m ./internal/sim/ -run '^TestPlanted$/^34$' -args -planted=B22 2>&1 | tee "$RUNNER_TEMP/diag302/$rev-seed.log"
+            SIM_OUT="$RUNNER_TEMP/diag302/$rev-seed" go test -v -tags planted -count=1 -timeout=2m ./internal/sim/ -run '^TestPlanted$/^34$' -args -planted=B22 2>&1 | tee "$RUNNER_TEMP/diag302/$rev-seed.log" || echo "Seed replay exited nonzero; inspect the saved log for catch versus no catch."
             echo '::endgroup::'
             rm internal/sim/diag302_test.go
           done
