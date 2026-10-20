@@ -11,8 +11,9 @@ The workflow builds its own commit unless `product_sha` explicitly selects
 another commit. The nightly run tests current main. The original prework ran
 on `e6c654e8253674f972d4227aea157fa907102363`; those results do not certify a
 later commit. Every Jepsen job, and each robustness round, has its own fresh
-three-node cluster, and every job uploads logs and histories even when it fails. Choose `jepsen` or
-`robustness` to run only that suite, or `tools` for the parser regressions.
+three-node cluster, and every job uploads logs and histories even when it
+fails. Choose `jepsen` or `robustness` to run only that suite, or `tools` for
+the parser regressions.
 To repeat one Jepsen case, pass `-f workloads='["register"]'` and
 `-f nemeses='["lazyfs"]'`. To repeat one robustness preset, pass
 `-f traffics='["etcd-delete"]'`. Set `-f stores='["etcd","tigerstore"]'` to add

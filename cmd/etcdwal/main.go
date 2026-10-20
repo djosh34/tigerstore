@@ -8,7 +8,9 @@
 // log becomes one entry with etcd's InternalRaftRequest, in log order. Lease
 // renewals, lease checkpoints and member announcements change no key and are
 // left out, as etcd keeps renewals out of its log and its tests skip the
-// others. An expired lease becomes the LeaseRevoke that etcd would log.
+// others. A lease expiry fails: it revokes the lease only if no renewal
+// committed first, and the robustness presets grant leases that outlive
+// their histories.
 package main
 
 import (
@@ -107,8 +109,6 @@ func internalRequest(m proto.Message) (*pb.InternalRaftRequest, error) {
 		return &pb.InternalRaftRequest{LeaseGrant: m}, nil
 	case *pb.LeaseRevokeRequest:
 		return &pb.InternalRaftRequest{LeaseRevoke: m}, nil
-	case *pb.LeaseCheckpoint:
-		return &pb.InternalRaftRequest{LeaseRevoke: &pb.LeaseRevokeRequest{ID: m.GetID()}}, nil
 	case *pb.LeaseKeepAliveRequest, *pb.LeaseCheckpointRequest, *pb.Member:
 		return nil, nil
 	}

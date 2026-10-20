@@ -19,7 +19,6 @@ func TestInternalRequest(t *testing.T) {
 		{&pb.CompactionRequest{Revision: 3}, &pb.InternalRaftRequest{Compaction: &pb.CompactionRequest{Revision: 3}}},
 		{&pb.LeaseGrantRequest{ID: 7}, &pb.InternalRaftRequest{LeaseGrant: &pb.LeaseGrantRequest{ID: 7}}},
 		{&pb.LeaseRevokeRequest{ID: 7}, &pb.InternalRaftRequest{LeaseRevoke: &pb.LeaseRevokeRequest{ID: 7}}},
-		{&pb.LeaseCheckpoint{ID: 7}, &pb.InternalRaftRequest{LeaseRevoke: &pb.LeaseRevokeRequest{ID: 7}}},
 		{&pb.LeaseKeepAliveRequest{ID: 7}, nil},
 		{&pb.LeaseCheckpointRequest{}, nil},
 		{&pb.Member{}, nil},
@@ -32,7 +31,7 @@ func TestInternalRequest(t *testing.T) {
 			t.Errorf("%T: got %v, want %v", tc.in, got, tc.want)
 		}
 	}
-	for _, m := range []proto.Message{&pb.AlarmRequest{}, &pb.InternalRaftRequest{}, wrapperspb.UInt32(1)} {
+	for _, m := range []proto.Message{&pb.LeaseCheckpoint{ID: 7}, &pb.AlarmRequest{}, &pb.InternalRaftRequest{}, wrapperspb.UInt32(1)} {
 		if _, err := internalRequest(m); err == nil {
 			t.Errorf("%T: no error", m)
 		}
