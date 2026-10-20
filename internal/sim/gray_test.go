@@ -21,18 +21,14 @@ import (
 // at least 50 calls must, and the checkers must pass. Every seed must
 // have such an fsync (#262).
 func TestGrayFsyncOutlastsHealing(t *testing.T) {
-	if simrun.Drive(t) {
-		return
-	}
 	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
 	took := effects{all: true}
-	for seed := uint64(1); seed <= 4; seed++ {
+	if !simrun.Each(t, []uint64{1, 2, 3, 4}, func(t *testing.T, seed uint64) bool {
 		cfg := DefaultConfig(seed)
 		cfg.Faults = Faults{}
 		cfg.GrayLeaderAt, cfg.GrayLeaderSync = cfg.Duration-1500*Millisecond, true
 		a := run(t, cfg)
 		checkers(t, a)
-		took.add(seed, map[string]bool{"gray fsync 1.5 s past healing": a.grayHealedAt >= cfg.Duration+1500*Millisecond})
 		from := max(a.grayHealedAt, cfg.Duration) + 2*election
 		calls := 0
 		for _, r := range a.History {
@@ -54,6 +50,12 @@ func TestGrayFsyncOutlastsHealing(t *testing.T) {
 			t.Fatalf("seed %d: only %d calls after %d ms", seed, calls, from/Millisecond)
 		}
 		t.Logf("seed %d: last gray fsync at %d ms; %d definite answers from %d ms", seed, a.grayHealedAt/Millisecond, calls, from/Millisecond)
+		return a.grayHealedAt >= cfg.Duration+1500*Millisecond
+	}, func(seed uint64, past bool) bool {
+		took.add(seed, map[string]bool{"gray fsync 1.5 s past healing": past})
+		return false
+	}) {
+		return
 	}
 	took.check(t)
 }

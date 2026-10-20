@@ -31,7 +31,7 @@ func TestPlanted(t *testing.T) {
 	if !ok {
 		t.Skip("not a bug of this package")
 	}
-	if simrun.Drive(t) {
+	if simrun.Drive(t, 1) {
 		return
 	}
 	planted.Active = bug

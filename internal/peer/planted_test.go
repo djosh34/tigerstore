@@ -18,7 +18,7 @@ func TestPlanted(t *testing.T) {
 	if os.Getenv("SIM_PLANTED") != "B14" {
 		t.Skip("not a bug of this package")
 	}
-	if simrun.Drive(t) {
+	if simrun.Drive(t, 1) {
 		return
 	}
 	planted.Active = "B14"

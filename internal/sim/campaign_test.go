@@ -1,7 +1,6 @@
 package sim
 
 import (
-	"strconv"
 	"testing"
 
 	"github.com/djosh34/tigerstore/internal/simrun"
@@ -13,14 +12,10 @@ import (
 // stopped, which TestSnapshotFromCorruptLeader now looks for. The
 // simulator no longer plays them out the same way.
 func TestCampaignSeeds(t *testing.T) {
-	if simrun.Drive(t) {
-		return
-	}
-	for _, seed := range []uint64{5068434, 5058843, 5038431} {
-		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			a := run(t, DefaultConfig(seed))
-			checkers(t, a)
-			t.Logf("%+v", a.Stats)
-		})
-	}
+	simrun.Each(t, []uint64{5068434, 5058843, 5038431}, func(t *testing.T, seed uint64) struct{} {
+		a := run(t, DefaultConfig(seed))
+		checkers(t, a)
+		t.Logf("%+v", a.Stats)
+		return struct{}{}
+	}, nil)
 }

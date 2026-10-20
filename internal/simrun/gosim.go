@@ -3,6 +3,8 @@
 package simrun
 
 import (
+	"encoding/json"
+	"strconv"
 	"testing"
 	"time"
 
@@ -31,15 +33,20 @@ func Artifact(name string, data []byte) { gosim.WriteArtifact(name, data) }
 func Here(*testing.T) bool { return true }
 
 // Drive reports false: under gosim the test runs its body.
-func Drive(*testing.T) bool { return false }
+func Drive(*testing.T, uint64) bool { return false }
 
-// Do drives runs from outside gosim only.
-func Do(t *testing.T, _ Run) *Result {
+// each runs the seeds, which the driver gives one at a time, and saves
+// what body returned for it (Seeds).
+func each[T any](t *testing.T, seeds []uint64, _ []string, body func(*testing.T, uint64) T, _ func(uint64, T) bool) bool {
 	t.Helper()
-	t.Fatal("simrun.Do runs gosim from outside it")
-	return nil
+	for _, seed := range seeds {
+		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
+			b, err := json.Marshal(body(t, seed))
+			if err != nil {
+				t.Fatal(err)
+			}
+			Artifact("seed.json", b)
+		})
+	}
+	return false
 }
-
-// dir names the package's directory for replay lines, which only the
-// driver prints.
-func dir(*testing.T) string { return "." }

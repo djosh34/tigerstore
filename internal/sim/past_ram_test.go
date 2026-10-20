@@ -31,7 +31,7 @@ func cacheConfig(seed uint64) Config {
 // covered here. Each crash boundary recovers a new core, without its cache.
 func TestPastRAMRecovery(t *testing.T) {
 	var total int
-	if !simrun.Seeds(t, 1, 16, func(t *testing.T, seed uint64) int {
+	if !simrun.Each(t, seedRange(1, 16), func(t *testing.T, seed uint64) int {
 		var cleaned int
 		var hits, misses int64
 		res, err := runWith(t, cacheConfig(seed), func(s *Sim) error {
@@ -76,7 +76,7 @@ func TestPastRAMRecovery(t *testing.T) {
 	}) {
 		return
 	}
-	if wholeSet() && !t.Failed() && total == 0 {
+	if !simrun.One() && !t.Failed() && total == 0 {
 		t.Fatal("no original segment was removed in 16 seeds")
 	}
 }

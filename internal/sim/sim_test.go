@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
 
@@ -66,6 +67,11 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 	if simrun.InGosim && res != nil {
 		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, hashes(res)))
 		simrun.Artifact("hashes", []byte(strings.Join(hashLines, "\n")+"\n"))
+		// The driver's double runs keep both runs' files, for when they
+		// differ.
+		if os.Getenv("SIM_KEEP") != "" {
+			save(t, replayCommand(t.Name(), cfg.Seed), res)
+		}
 	}
 	me := new(int)
 	lastRun.Store(t, me)
@@ -87,12 +93,12 @@ var hashLines []string
 // disk, now and right after its last crash. Under gosim, two runs of the
 // same seed must give the same.
 func hashes(res *Result) string {
-	sum := func(s string) string {
-		h := sha256.Sum256([]byte(s))
+	sum := func(b []byte) string {
+		h := sha256.Sum256(b)
 		return hex.EncodeToString(h[:8])
 	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "trace %s history %s", sum(strings.Join(res.Trace, "\n")), sum(calls(res)))
+	fmt.Fprintf(&out, "trace %s history %s", sum([]byte(strings.Join(res.Trace, "\n"))), sum(historyBytes(res)))
 	for _, n := range res.nodes {
 		var disk strings.Builder
 		for _, files := range []map[string][]byte{n.disk.Files(), n.crashImage} {
@@ -101,9 +107,40 @@ func hashes(res *Result) string {
 			}
 			disk.WriteString("\n")
 		}
-		fmt.Fprintf(&out, " node%d %s", n.id, sum(disk.String()))
+		fmt.Fprintf(&out, " node%d %s", n.id, sum([]byte(disk.String())))
 	}
 	return out.String()
+}
+
+// historyBytes is every call and every watch response of a run, with its exact
+// times, for its hash.
+func historyBytes(res *Result) []byte {
+	var b []byte
+	marshal := func(m proto.Message) {
+		if m == nil {
+			b = append(b, "nil\n"...)
+			return
+		}
+		bytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
+		if err != nil {
+			b = fmt.Appendf(b, "%T: %v\n", m, err)
+			return
+		}
+		b = fmt.Appendf(b, "%T %d %x\n", m, len(bytes), bytes)
+	}
+	for _, r := range res.History {
+		b = fmt.Appendf(b, "call %d %d %d %d %v %v\n", r.Client, r.Node, r.Call, r.Return, r.Err, r.Ambiguous)
+		marshal(r.req)
+		marshal(r.Resp)
+	}
+	for _, w := range res.Watches {
+		b = fmt.Appendf(b, "watch %q %q %v %v %d\n", w.Key, w.End, w.PrevKV, w.ProgressNotify, w.Start)
+		for _, r := range w.Responses {
+			b = fmt.Appendf(b, "at %d\n", r.Time)
+			marshal(r.Resp)
+		}
+	}
+	return b
 }
 
 // explain logs what a failed run did, how it left each node, its hashes
@@ -147,10 +184,14 @@ func save(t *testing.T, cmd string, res *Result) {
 	t.Logf("the run is saved in %s", dir)
 }
 
-// wholeSet reports whether a test that searches its own set of seeds
-// for something runs that whole set, not a replay of some of its seeds
-// ($SIM_SEEDS).
-func wholeSet() bool { return os.Getenv("SIM_SEEDS") == "" }
+// seedRange is the n seeds from first.
+func seedRange(first uint64, n int) []uint64 {
+	seeds := make([]uint64, n)
+	for i := range seeds {
+		seeds[i] = first + uint64(i)
+	}
+	return seeds
+}
 
 // runFiles are a run's trace, node report, stats, hashes, history, disks
 // and replay command, by path, for a directory dir of their own.
@@ -229,22 +270,16 @@ func addFiles(files map[string]string, dir string, disk map[string][]byte) {
 	}
 }
 
-// seedTests are the tests whose subtests are the seeds of SIM_SEED and
-// SIM_SEEDS (simrun.Seeds).
-var seedTests = map[string]bool{
-	"TestSeeds": true, "TestLinearizable": true, "TestMembershipFaults": true, "TestPlanted": true,
-	"TestAllLinkMasks": true, "TestSlowFetch": true, "TestSnapshotFromCorruptLeader": true, "TestPastRAMRecovery": true,
-}
-
 // activePlanted is the planted bug TestPlanted switched on, if any.
 var activePlanted string
 
 // replayCommand is the command that runs test name's run of seed again:
-// scripts/sim.sh, or go test natively under the race detector.
+// scripts/sim.sh, or go test natively under the race detector. A subtest
+// named after the seed is one of a set (simrun.Seeds, simrun.Each).
 func replayCommand(name string, seed uint64) string {
 	parts := simrun.Top(strings.Split(name, "/"))
 	var env []string
-	if seedTests[parts[0]] && len(parts) > 1 && parts[1] == strconv.FormatUint(seed, 10) {
+	if len(parts) > 1 && parts[1] == strconv.FormatUint(seed, 10) {
 		env = append(env, fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1")
 	}
 	if activePlanted != "" {
@@ -254,7 +289,7 @@ func replayCommand(name string, seed uint64) string {
 	if !simrun.Race {
 		return simrun.Replay("./internal/sim", pattern, env)
 	}
-	cmd := strings.Join(append(env, "go test -v"), " ")
+	cmd := strings.Join(append(env, "go test -race -v"), " ")
 	if activePlanted != "" {
 		cmd += " -tags planted"
 	}
@@ -363,10 +398,6 @@ func (e *effects) check(t *testing.T) {
 		}
 		missed := e.missed[name][:min(5, len(e.missed[name]))]
 		t.Errorf("%s took effect in %d of %d seeds, want %d at least; it missed seeds %v", name, n, e.runs, least, missed)
-		if !seedTests[t.Name()] {
-			t.Logf("replay: %s", replayCommand(t.Name(), 0))
-			continue
-		}
 		for _, seed := range missed {
 			t.Logf("replay: %s", replayCommand(t.Name()+"/"+strconv.FormatUint(seed, 10), seed))
 		}
@@ -505,11 +536,8 @@ func atLeast(n int) int { return n * 95 / 100 }
 // timeouts after the stall must succeed. A leader can propose nothing for
 // a while after the stall, as when it serves a snapshot (#260).
 func TestStalledLeaderIsReplaced(t *testing.T) {
-	if simrun.Drive(t) {
-		return
-	}
 	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
-	for seed := uint64(1); seed <= 3; seed++ {
+	simrun.Each(t, []uint64{1, 2, 3}, func(t *testing.T, seed uint64) struct{} {
 		cfg := DefaultConfig(seed)
 		cfg.Faults = Faults{}
 		cfg.StallLeaderAt = 5 * Second
@@ -529,7 +557,8 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 		}
 		checkers(t, res)
 		t.Logf("seed %d: stalled leader went silent at %d ms, deadline %d ms after its oldest held append at %d ms", seed, res.Silences[0]/Millisecond, limit/Millisecond, res.HeldAppendAt/Millisecond)
-	}
+		return struct{}{}
+	}, nil)
 }
 
 // TestAllLinkMasks holds each of the 64 sets of directed links between the
@@ -537,7 +566,7 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 // then heals. Every rule and checker must hold, and the cluster must serve
 // again 2 s after healing.
 func TestAllLinkMasks(t *testing.T) {
-	simrun.Seeds(t, 1000, 64, func(t *testing.T, seed uint64) struct{} {
+	simrun.Each(t, seedRange(1000, 64), func(t *testing.T, seed uint64) struct{} {
 		mask := seed - 1000
 		cfg := DefaultConfig(seed)
 		cfg.Faults = Faults{HoldMask: mask, HoldMaskAt: 2 * Second}
@@ -567,17 +596,19 @@ func TestAllLinkMasks(t *testing.T) {
 // every 300 ms for 10 virtual seconds, then heals. Two of the three seeds
 // at least must switch 10 times.
 func TestSwitchingLinks(t *testing.T) {
-	if simrun.Drive(t) {
-		return
-	}
 	var took effects
-	for seed := uint64(1); seed <= 3; seed++ {
-		cfg := DefaultConfig(2000 + seed)
+	if !simrun.Each(t, []uint64{2001, 2002, 2003}, func(t *testing.T, seed uint64) int {
+		cfg := DefaultConfig(seed)
 		cfg.Faults = Faults{SwitchEvery: 300 * Millisecond}
 		cfg.Duration = 10 * Second
 		res := run(t, cfg)
 		checkers(t, res)
-		took.add(2000+seed, map[string]bool{"ten switches": res.Stats.LinkChanges >= 10})
+		return res.Stats.LinkChanges
+	}, func(seed uint64, changes int) bool {
+		took.add(seed, map[string]bool{"ten switches": changes >= 10})
+		return false
+	}) {
+		return
 	}
 	took.check(t)
 }
@@ -588,9 +619,6 @@ func TestSwitchingLinks(t *testing.T) {
 // needs about a second after its restart before its first fetch, which
 // the stream faults damage only before healing.
 func TestEachFaultTakesEffect(t *testing.T) {
-	if simrun.Drive(t) {
-		return
-	}
 	cases := []struct {
 		name   string
 		faults Faults
@@ -609,20 +637,32 @@ func TestEachFaultTakesEffect(t *testing.T) {
 		{"crash at a checkpoint step", Faults{StepCrash: true}, func(st Stats) int { return st.StepCrashes }},
 		{"rotten value", Faults{Rot: true}, func(st Stats) int { return st.Rots }},
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			var took effects
-			for seed := uint64(3000); seed < 3003; seed++ {
+	// Each seed is one gosim run of every case.
+	took := make([]effects, len(cases))
+	if !simrun.Each(t, []uint64{3000, 3001, 3002}, func(t *testing.T, seed uint64) []bool {
+		effect := make([]bool, len(cases))
+		for i, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
 				cfg := DefaultConfig(seed)
 				cfg.Faults = c.faults
 				cfg.Duration = 8 * Second
 				cfg.Heal = 8 * Second
 				res := run(t, cfg)
 				checkers(t, res)
-				took.add(seed, map[string]bool{c.name: c.count(res.Stats) > 0})
-			}
-			took.check(t)
-		})
+				effect[i] = c.count(res.Stats) > 0
+			})
+		}
+		return effect
+	}, func(seed uint64, effect []bool) bool {
+		for i, c := range cases {
+			took[i].add(seed, map[string]bool{c.name: effect[i]})
+		}
+		return false
+	}) {
+		return
+	}
+	for i := range cases {
+		took[i].check(t)
 	}
 }
 
@@ -649,7 +689,7 @@ func TestSlowFetch(t *testing.T) {
 	var older, failed, during int
 	// Each of the three happens in about one seed in 20 to 50; the search
 	// stops once all did.
-	if !simrun.Seeds(t, 5001, 200, func(t *testing.T, seed uint64) Stats {
+	if !simrun.Each(t, seedRange(5001, 200), func(t *testing.T, seed uint64) Stats {
 		res := run(t, slowFetchConfig(seed))
 		checkers(t, res)
 		return res.Stats
@@ -661,7 +701,7 @@ func TestSlowFetch(t *testing.T) {
 	}) {
 		return
 	}
-	if wholeSet() && !t.Failed() && (older == 0 || failed == 0 || during == 0) {
+	if !simrun.One() && !t.Failed() && (older == 0 || failed == 0 || during == 0) {
 		t.Fatalf("%d snapshots installed from an older checkpoint, %d fetches the leader could not serve, %d checkpoints finished during an install; each must happen", older, failed, during)
 	}
 }
@@ -677,11 +717,8 @@ func TestSlowFetch(t *testing.T) {
 // install a snapshot, which under 12 clients happens every 10 to 20 ms
 // (#266).
 func TestHalfOpenLink(t *testing.T) {
-	if simrun.Drive(t) {
-		return
-	}
-	for seed := uint64(1); seed <= 3; seed++ {
-		cfg := DefaultConfig(4000 + seed)
+	simrun.Each(t, []uint64{4001, 4002, 4003}, func(t *testing.T, seed uint64) struct{} {
+		cfg := DefaultConfig(seed)
 		cfg.Faults = Faults{}
 		// Calls to the cut-off follower wait up to the client timeout for a
 		// leader (#105). With clients that pick a node per call, all of
@@ -712,14 +749,15 @@ func TestHalfOpenLink(t *testing.T) {
 		if healthy < 20 {
 			t.Fatalf("seed %d: only %d calls to the healthy pair during the half-open link", seed, healthy)
 		}
-	}
+		return struct{}{}
+	}, nil)
 }
 
 // TestDiskFaultAfterHealing cuts every link before the first election, so
 // no node appends during the faults: the guaranteed disk fault must fire
 // after healing, and the liveness rule must still hold.
 func TestDiskFaultAfterHealing(t *testing.T) {
-	if simrun.Drive(t) {
+	if simrun.Drive(t, 6001) {
 		return
 	}
 	cfg := DefaultConfig(6001)
@@ -738,7 +776,7 @@ func TestDiskFaultAfterHealing(t *testing.T) {
 // call of the other clients during that time must succeed in under a
 // second.
 func TestGrayClient(t *testing.T) {
-	if simrun.Drive(t) {
+	if simrun.Drive(t, 7001) {
 		return
 	}
 	cfg := DefaultConfig(7001)
@@ -779,7 +817,7 @@ func TestGrayClient(t *testing.T) {
 // draws can move this seed off that edge; the test then passes without
 // testing it.
 func TestColdRestartWaitsForLastCommit(t *testing.T) {
-	if simrun.Drive(t) {
+	if simrun.Drive(t, 736998125) {
 		return
 	}
 	run(t, DefaultConfig(736998125))
@@ -792,7 +830,7 @@ func TestColdRestartWaitsForLastCommit(t *testing.T) {
 // change to the simulator's random draws can move this seed off that edge;
 // the test then passes without testing it.
 func TestRotInAnEntryRecord(t *testing.T) {
-	if simrun.Drive(t) {
+	if simrun.Drive(t, 1320469980) {
 		return
 	}
 	res := run(t, DefaultConfig(1320469980))
@@ -807,7 +845,7 @@ func TestRotInAnEntryRecord(t *testing.T) {
 // must pass the checkers.
 func TestSnapshotFromCorruptLeader(t *testing.T) {
 	fenced := false
-	if !simrun.Seeds(t, 1, 200, func(t *testing.T, seed uint64) Stats {
+	if !simrun.Each(t, seedRange(1, 200), func(t *testing.T, seed uint64) Stats {
 		res := run(t, DefaultConfig(seed))
 		checkers(t, res)
 		return res.Stats
@@ -820,7 +858,7 @@ func TestSnapshotFromCorruptLeader(t *testing.T) {
 	}) {
 		return
 	}
-	if wholeSet() && !t.Failed() && !fenced {
+	if !simrun.One() && !t.Failed() && !fenced {
 		t.Fatal("no run fenced a node after it failed a serve on its own damage")
 	}
 }
@@ -833,7 +871,7 @@ func TestSnapshotFromCorruptLeader(t *testing.T) {
 // random draws can move this seed off that edge; the test then passes
 // without testing it.
 func TestAmbiguousWritesInTheLog(t *testing.T) {
-	if simrun.Drive(t) {
+	if simrun.Drive(t, 1320469923) {
 		return
 	}
 	res := run(t, linearizableConfig(1320469923))
@@ -857,10 +895,7 @@ func TestAmbiguousWritesInTheLog(t *testing.T) {
 // lease expiry that the log-free check put in too early, before an
 // ambiguous put that used the lease.
 func TestWitnessGaps(t *testing.T) {
-	if simrun.Drive(t) {
-		return
-	}
-	for _, seed := range []uint64{1789179577, 1789179677, 1797098110} {
+	simrun.Each(t, []uint64{1789179577, 1789179677, 1797098110}, func(t *testing.T, seed uint64) struct{} {
 		res := run(t, DefaultConfig(seed))
 		h, err := res.Checkable()
 		if err != nil {
@@ -869,7 +904,8 @@ func TestWitnessGaps(t *testing.T) {
 		if err := check.Witnessed(h, check.FromRevisions, time.Minute, witnessSteps); err != nil {
 			t.Fatalf("seed %d: %v", seed, err)
 		}
-	}
+		return struct{}{}
+	}, nil)
 }
 
 // TestEndWaitsForCatchUp is #269's case: a follower starts again just
@@ -878,22 +914,24 @@ func TestWitnessGaps(t *testing.T) {
 // every check, as strict as ever. A seed whose run committed nothing
 // meanwhile ends with it caught up, so two of the four must lag.
 func TestEndWaitsForCatchUp(t *testing.T) {
-	if simrun.Drive(t) {
-		return
-	}
 	lagged := 0
-	for seed := uint64(7001); seed <= 7004; seed++ {
+	if !simrun.Each(t, []uint64{7001, 7002, 7003, 7004}, func(t *testing.T, seed uint64) int {
 		cfg := DefaultConfig(seed)
 		cfg.Faults = Faults{}
 		cfg.LagAtEnd = true
 		res := run(t, cfg)
 		checkers(t, res)
-		if res.Stats.Settles > 0 {
+		t.Logf("seed %d: the nodes ran %d s more after the end", seed, res.Stats.Settles)
+		return res.Stats.Settles
+	}, func(_ uint64, settles int) bool {
+		if settles > 0 {
 			lagged++
 		}
-		t.Logf("seed %d: the nodes ran %d s more after the end", seed, res.Stats.Settles)
+		return false
+	}) {
+		return
 	}
-	if lagged < 2 {
+	if !simrun.One() && !t.Failed() && lagged < 2 {
 		t.Fatalf("%d of 4 seeds ended with a node behind; the test needs two", lagged)
 	}
 }
@@ -902,7 +940,7 @@ func TestEndWaitsForCatchUp(t *testing.T) {
 // calls and files, and the files of a crashed node right after its crash
 // (#274).
 func TestSaveRunKeepsDisks(t *testing.T) {
-	if simrun.Drive(t) {
+	if simrun.Drive(t, 11) {
 		return
 	}
 	cfg := DefaultConfig(11)

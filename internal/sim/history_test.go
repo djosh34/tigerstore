@@ -102,3 +102,33 @@ func TestRotStop(t *testing.T) {
 		}
 	}
 }
+
+// TestHashesCoverHistory checks that the history hash changes with every
+// part of the history: a call's exact times and answer, and a watch
+// response and its time.
+func TestHashesCoverHistory(t *testing.T) {
+	result := func() *Result {
+		return &Result{
+			History: []*Record{{Client: 1, Node: 2, Call: 1_000_001, Return: 2_000_002, req: &pb.PutRequest{Key: []byte("a")}, Resp: &pb.PutResponse{Header: &pb.ResponseHeader{Revision: 2}}}},
+			Watches: []WatchResult{{Key: []byte("a"), Responses: []WatchRecord{{Time: 1, Resp: &pb.WatchResponse{Header: &pb.ResponseHeader{Revision: 2}}}}}},
+		}
+	}
+	base := hashes(result())
+	if again := hashes(result()); again != base {
+		t.Fatalf("the same history hashes as %s and %s", base, again)
+	}
+	for name, change := range map[string]func(*Result){
+		"call time":      func(r *Result) { r.History[0].Call++ },
+		"return time":    func(r *Result) { r.History[0].Return++ },
+		"answer":         func(r *Result) { r.History[0].Resp.(*pb.PutResponse).Header.Revision = 3 },
+		"error":          func(r *Result) { r.History[0].Err = errors.New("lost") },
+		"watch time":     func(r *Result) { r.Watches[0].Responses[0].Time = 2 },
+		"watch response": func(r *Result) { r.Watches[0].Responses[0].Resp.Header.Revision = 3 },
+	} {
+		r := result()
+		change(r)
+		if hashes(r) == base {
+			t.Errorf("changing the %s left the hashes at %s", name, base)
+		}
+	}
+}

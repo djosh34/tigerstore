@@ -116,4 +116,17 @@ END {
 	}
 }
 ' "$log" "$log"
-grep -hE 'replay: .*(go test|scripts/sim\.sh) ' "$log" | sed 's/^ *[a-z_]*\.go:[0-9]*: //' | sort -u | sed "s/^\(replay: [^']*\)go test /\1go test ${flags[*]:+${flags[*]} }/" || true
+grep -hE 'replay: .*(go test|scripts/sim\.sh) ' "$log" | sed 's/^ *[a-z_]*\.go:[0-9]*: //' | sort -u | awk -v flags="${flags[*]:-}" '
+# Each flag goes into a go test line that does not have it yet.
+match($0, /go test /) {
+	add = ""
+	n = split(flags, f, " ")
+	for (i = 1; i <= n; i++) {
+		if (index($0 " ", " " f[i] " ") == 0) {
+			add = add f[i] " "
+		}
+	}
+	$0 = substr($0, 1, RSTART + RLENGTH - 1) add substr($0, RSTART + RLENGTH)
+}
+{ print }
+' || true

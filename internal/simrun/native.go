@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -41,11 +42,11 @@ func Here(t *testing.T) bool {
 	return false
 }
 
-// Drive runs t's whole test as one gosim run with seed 1, with the planted
-// bug of $SIM_PLANTED, and reports true when scripts/sim.sh started it;
-// the caller then returns. It reports false when t runs its body here
-// (Here).
-func Drive(t *testing.T) bool {
+// Drive runs t's whole test, which runs the one harness seed seed, as a
+// gosim run with that seed and the planted bug of $SIM_PLANTED, and
+// reports true when scripts/sim.sh started it; the caller then returns.
+// It reports false when t runs its body here (Here).
+func Drive(t *testing.T, seed uint64) bool {
 	t.Helper()
 	if Here(t) {
 		return false
@@ -54,13 +55,14 @@ func Drive(t *testing.T) bool {
 	if bug := os.Getenv("SIM_PLANTED"); bug != "" {
 		env = append(env, "SIM_PLANTED="+bug)
 	}
-	Do(t, Run{Test: Top(strings.Split(t.Name(), "/"))[0], Seed: 1, Env: env})
+	r := Do(t, Run{Test: Top(strings.Split(t.Name(), "/"))[0], Seed: seed, Env: env})
+	keep(t, r.Artifacts, "")
 	return true
 }
 
 // Do runs r in gosim. A failed run fails t, with the run's log, its
 // hashes and the command that runs it again; with -test.v Do logs a
-// passed run's log too. Do writes the files the run kept to $SIM_OUT.
+// passed run's log too.
 func Do(t *testing.T, r Run) *Result {
 	t.Helper()
 	pkg, _ := pkgPath(t)
@@ -69,7 +71,6 @@ func Do(t *testing.T, r Run) *Result {
 	if err != nil {
 		t.Fatalf("running %s in gosim: %v", r.Test, err)
 	}
-	keep(t, res.Artifacts)
 	if res.Failed {
 		t.Errorf("%s failed in gosim with seed %d: %s\n%s", r.Test, r.Seed, res.Err, readable(res.LogOutput))
 		t.Logf("hashes:\n%s", res.Artifacts["hashes"])
@@ -102,17 +103,23 @@ func readable(out []byte) string {
 	return b.String()
 }
 
-// keep writes the files a run saved under sim-out/ to $SIM_OUT.
-func keep(t *testing.T, artifacts map[string][]byte) {
+// keep writes the files a run saved under sim-out/ to $SIM_OUT, each
+// run's in a directory with suffix after its name, if set.
+func keep(t *testing.T, artifacts map[string][]byte, suffix string) {
 	t.Helper()
 	files := map[string][]byte{}
 	runs := map[string]bool{}
 	for name, b := range artifacts {
-		if rel, ok := strings.CutPrefix(name, "sim-out/"); ok {
-			files[rel] = b
-			run, _, _ := strings.Cut(rel, "/")
-			runs[run] = true
+		rel, ok := strings.CutPrefix(name, "sim-out/")
+		if !ok {
+			continue
 		}
+		run, path, _ := strings.Cut(rel, "/")
+		if suffix != "" {
+			run += "-" + suffix
+		}
+		files[filepath.Join(run, path)] = b
+		runs[run] = true
 	}
 	if len(files) == 0 {
 		return
@@ -129,6 +136,99 @@ func keep(t *testing.T, artifacts map[string][]byte) {
 	for run := range runs {
 		t.Logf("the run is saved in %s", filepath.Join(out, run))
 	}
+}
+
+// each runs the seeds: here under the race detector, otherwise each as a
+// gosim run of its own (Seeds). set holds the variables that pick the
+// whole set again.
+func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
+	t.Helper()
+	if add == nil {
+		add = func(uint64, T) bool { return false }
+	}
+	here := Here(t)
+	known := knownFailures(t)
+	twice := int(envUint(t, "SIM_TWICE", 0))
+	test := Top(strings.Split(t.Name(), "/"))[0]
+	var planted []string
+	if bug := os.Getenv("SIM_PLANTED"); bug != "" {
+		planted = append(planted, "SIM_PLANTED="+bug)
+	}
+	anyFailed := false
+	if !here {
+		// A rule over the set can fail the test with no seed failed; the
+		// whole set then runs again.
+		t.Cleanup(func() {
+			if t.Failed() && !anyFailed {
+				t.Logf("replay: %s", Replay(dir(t), Pattern(t.Name()), append(set, planted...)))
+			}
+		})
+	}
+	for i, seed := range seeds {
+		stop := false
+		anyFailed = !t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
+			if bug, ok := known[knownSeed{test, seed}]; ok {
+				// Printed also without -test.v, which shows no skip.
+				msg := fmt.Sprintf("known failure: seed %d of %s fails because of %s (known-failures.txt)", seed, test, bug)
+				if _, err := fmt.Fprintln(os.Stdout, msg); err != nil {
+					t.Error(err)
+				}
+				t.Skip(msg)
+			}
+			if here {
+				stop = add(seed, body(t, seed))
+				return
+			}
+			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, planted...)
+			var r *Result
+			if twice > 0 && i%max(1, len(seeds)/twice) == 0 {
+				r = twoRuns(t, Run{Test: test, Seed: seed, Env: env})
+			} else {
+				r = Do(t, Run{Test: test, Seed: seed, Env: env})
+				keep(t, r.Artifacts, "")
+			}
+			if r.Failed {
+				return
+			}
+			t.Logf("hashes: %s", r.Artifacts["hashes"])
+			var v T
+			if err := json.Unmarshal(r.Artifacts["seed.json"], &v); err != nil {
+				t.Fatalf("seed %d left no result: %v", seed, err)
+			}
+			stop = add(seed, v)
+		}) || anyFailed
+		if stop {
+			break
+		}
+	}
+	return true
+}
+
+// twoRuns runs r twice, and fails t unless both give the same hashes.
+// With SIM_KEEP each run saves its files, which are kept, as first and
+// second, only when they differ or a run failed.
+func twoRuns(t *testing.T, r Run) *Result {
+	t.Helper()
+	r.Env = append(r.Env, "SIM_KEEP=1")
+	first := Do(t, r)
+	if first.Failed {
+		keep(t, first.Artifacts, "")
+		return first
+	}
+	second := Do(t, r)
+	switch {
+	case second.Failed:
+		keep(t, second.Artifacts, "")
+	case len(first.Artifacts["hashes"]) == 0:
+		t.Errorf("seed %d left no hashes to compare", r.Seed)
+	case string(first.Artifacts["hashes"]) != string(second.Artifacts["hashes"]):
+		keep(t, first.Artifacts, "first")
+		keep(t, second.Artifacts, "second")
+		env := slices.DeleteFunc(slices.Clone(r.Env), func(v string) bool { return v == "SIM_KEEP=1" })
+		t.Errorf("seed %d played out differently the second time:\n%s\n%s\nreplay: %s", r.Seed,
+			first.Artifacts["hashes"], second.Artifacts["hashes"], Replay(dir(t), Pattern(t.Name()), append(env, "SIM_TWICE=1")))
+	}
+	return first
 }
 
 // pkgPath is the import path of the package t tests, and that of its

@@ -15,7 +15,7 @@ import (
 // 377142 did. The run must see the leader stop on its disk error at once,
 // not when the run ends (#301).
 func TestStopWhileServingSnapshot(t *testing.T) {
-	if simrun.Drive(t) {
+	if simrun.Drive(t, 377142) {
 		return
 	}
 	simrun.Bubble(t, func(t *testing.T) {
