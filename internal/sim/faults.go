@@ -184,8 +184,24 @@ func (s *Sim) fsDown() {
 			n.why = "the run took it down to mount its disk again"
 			s.stopNode(n)
 		}
-		n.disk.Remount()
+		s.remount(n)
 	})
+}
+
+// remount mounts n's disk again after it shut down or went read-only. A
+// remount follows an unmount, which loses what the page cache could not
+// write back (simfs.Disk.Remount): a node that is down, as one that exited
+// on the disk's error keeps its page cache, loses it now, as at a power
+// loss. Else the pages a failed sync left readable, which no later sync
+// writes, would outlive the remount. The lock is held.
+func (s *Sim) remount(n *node) {
+	if n.disk.Down() && n.proc == nil {
+		s.loseUnsynced(n)
+		n.crashImage = n.disk.Files()
+		s.tracef("node %d: unmounted its disk, which kept what it synced", n.id)
+		s.checkRecovery(n)
+	}
+	n.disk.Remount()
 }
 
 // diskFull fills a node's disk for 1.5 to 3.5 s, as another file taking

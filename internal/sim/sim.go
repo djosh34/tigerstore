@@ -1848,7 +1848,7 @@ func (s *Sim) heal() {
 		n.stallUntil = 0
 		s.wakeNode(n)
 		n.disk.ClearFaults()
-		n.disk.Remount()
+		s.remount(n)
 		n.disk.Capacity = s.cfg.Faults.DiskCapacity
 		if n.proc == nil && !n.fenced {
 			down = append(down, n)

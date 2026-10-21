@@ -494,6 +494,9 @@ func (d *Disk) ReadOnly() {
 	d.tracef("the file system went read-only")
 }
 
+// Down reports whether the file system shut down or went read-only.
+func (d *Disk) Down() bool { return d.down != nil }
+
 // Remount ends a shutdown or a read-only state. A remount follows an
 // unmount, which lost what the page cache could not write back: crash
 // the disk first.
