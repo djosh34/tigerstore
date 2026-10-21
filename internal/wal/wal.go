@@ -393,7 +393,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		// Diagnosis: failed writeback leaves clean cache pages. Copy the
 		// prefix into a new file, so a crash cannot tear an in-place rewrite
 		// of the prefix that was already synced before that failed writeback.
-		tmpName := "recover-" + name
+		tmpName := "recover-" + strings.TrimSuffix(name, ".wal")
 		tmp, err := fs.Create(tmpName)
 		if err != nil {
 			return nil, nil, errors.Join(err, f.Close())
