@@ -21,7 +21,7 @@ func TestFailedSyncKillRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		w.Append(&wal.HardState{Term: 1, Commit: 1}, []*raftpb.Entry{{Term: 1, Index: 1, Data: []byte("synced")}})
+		w.Append(&wal.HardState{Term: 1, Commit: 1}, []*raftpb.Entry{{Term: new(uint64(1)), Index: new(uint64(1)), Data: []byte("synced")}})
 		if err := w.Sync(); err != nil {
 			t.Fatal(err)
 		}
