@@ -103,3 +103,43 @@ func TestFailedSyncThenKill(t *testing.T) {
 		t.Fatalf("after a power loss, recovered entries to %d and %+v", rec.Last, rec.HardState)
 	}
 }
+
+// TestRestartedSegmentKeepsNoStaleRecords starts a segment whose first
+// write a crash lost and whose second it kept, as recovery does, and then
+// tears the first write of the new start. The stale records of the second
+// write chain from the same records as the new ones, so recovery would
+// take them for valid records after a damaged one, unless the restart cut
+// them off (#368).
+func TestRestartedSegmentKeepsNoStaleRecords(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	first := []*raftpb.Entry{entry(1, 1, "a")}
+	w.Append(&wal.HardState{Term: 1, Vote: 1}, first)
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	segs, _ := files(t, d)
+	name := segs[len(segs)-1]
+	n := len(d.Files()[name])
+	w.Append(nil, []*raftpb.Entry{entry(1, 2, "b")})
+	if err := errors.Join(w.Flush(), w.Close()); err != nil {
+		t.Fatal(err)
+	}
+	// The crash kept the second write and lost the first.
+	rewrite(t, d, name, func(b []byte) []byte { clear(b[:n]); return b })
+	w, rec := open(t, d)
+	if rec.Last != 0 {
+		t.Fatalf("recovered entries to %d from a segment that never started", rec.Last)
+	}
+	// The new start writes the same records, and its write is torn.
+	w.Append(&wal.HardState{Term: 1, Vote: 1}, first)
+	if err := errors.Join(w.Flush(), w.Close()); err != nil {
+		t.Fatal(err)
+	}
+	d.Rot(name, n-1)
+	if _, rec, err := wal.Open(d); err != nil {
+		t.Fatalf("after a torn write: %v", err)
+	} else if rec.Last != 0 {
+		t.Fatalf("after a torn write, recovered entries to %d", rec.Last)
+	}
+}

@@ -17,8 +17,9 @@ import (
 // second snapshot. The follower's core starts again from its log after
 // the first install and drops the second, whose fetch never starts. The
 // leader must give up on it and send another within two heartbeats, so
-// the follower catches up within 300 ms of its start from the log: an
-// election timeout held it back about a second (#366).
+// the follower catches up within 500 ms of its start from the log: an
+// election timeout held it back about 900 ms (#366). Under gosim it takes
+// 142 ms, under the race detector up to 372 ms.
 func TestSnapshotDroppedAtReload(t *testing.T) {
 	if simrun.Drive(t, 366) {
 		return
@@ -99,8 +100,8 @@ func TestSnapshotDroppedAtReload(t *testing.T) {
 			}
 			took := s.now() - reloads[0]
 			t.Logf("node %d applied %d %d ms after its start from the log", follower.id, target, took/Millisecond)
-			if took > 300*Millisecond {
-				t.Fatalf("node %d caught up %d ms after its start from the log, want 300 ms at most", follower.id, took/Millisecond)
+			if took > 500*Millisecond {
+				t.Fatalf("node %d caught up %d ms after its start from the log, want 500 ms at most", follower.id, took/Millisecond)
 			}
 			return
 		}

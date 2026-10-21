@@ -399,8 +399,17 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	if err := w.check(first); err != nil {
 		return nil, nil, errors.Join(err, w.Close())
 	}
-	if tail != nil {
+	switch {
+	case tail != nil:
 		if err := w.rewrite(names, tail); err != nil {
+			return nil, nil, errors.Join(err, w.Close())
+		}
+	case w.seg != nil:
+		// The newest segment starts again. A crash can have kept later
+		// writes of its first start in the file, and lost the first: they
+		// chain from the same records as the new ones, and would verify
+		// after a torn write of those (#368). So the file is cut first.
+		if err := w.seg.Truncate(0); err != nil {
 			return nil, nil, errors.Join(err, w.Close())
 		}
 	}
