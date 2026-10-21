@@ -295,8 +295,14 @@ func (s *Sim) rot(n *node, c *core.Node) {
 			continue
 		}
 		if name == newestSegment(n.disk) {
-			// Damage to the newest segment's last durable record looks
-			// like a torn write; a later entry must be durable after it.
+			// A failed sync can cut away bytes an earlier sync happened
+			// to write beyond its group's end. The witness must be in a
+			// group reported durable, so that the cut cannot remove it
+			// and make the damage look like a torn last record (#375).
+			if r.Index+2 > n.floor() {
+				s.tracef("node %d: DIAG skip rot entry %d, witness entry %d exceeds reported floor %d", n.id, r.Index, r.Index+2, n.floor())
+				continue
+			}
 			next, end, ok := w.ValuePlace(r.Index+2, 0, 0)
 			if !ok || next != seq || end >= int64(len(n.disk.DurableBytes(name))) {
 				continue
