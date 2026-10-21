@@ -6,6 +6,8 @@
 # (simrun.Seeds and simrun.Each); a test of one seed (simrun.Drive)
 # cannot be listed. A package with such tests of its own, as
 # internal/node, gets a file of its own.
+# Under the race detector, where seeds do not replay, the runs leave out
+# the faults of these bugs instead (raceLeavesOut).
 TestCampaignSeeds 5068434 https://github.com/djosh34/tigerstore/issues/361
 TestDamagedLastRecord 3501 https://github.com/djosh34/tigerstore/issues/357
 TestDamagedLastRecord 3502 https://github.com/djosh34/tigerstore/issues/357

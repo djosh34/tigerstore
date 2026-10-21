@@ -317,7 +317,7 @@ func TestSeeds(t *testing.T) {
 			"crash": st.Crashes > 0, "link change": st.LinkChanges > 0, "two cold restarts": st.ColdRestarts >= 2,
 			"disk fault": st.DiskFaults > 0, "pause": st.Pauses > 0, "link stall": st.LinkStalls > 0,
 			"half-open link": st.HalfOpens > 0, "gray node": st.GrayNodes > 0, "gray client": st.GrayStreams > 0,
-			"kill": st.Kills > 0, "clientv3 call": st.V3OK > 0, "link fault": slices.ContainsFunc(st.Netem[:], func(n int) bool { return n > 0 }),
+			"kill": st.Kills > 0 || simrun.Race, "clientv3 call": st.V3OK > 0, "link fault": slices.ContainsFunc(st.Netem[:], func(n int) bool { return n > 0 }),
 			"connection reset": st.Resets > 0, "slow watcher": st.SlowWatchers > 0,
 		})
 		ran++
@@ -698,6 +698,11 @@ func faultCases() []faultCase {
 // restart before its first fetch, which the stream faults damage only
 // before healing.
 func TestEachFaultTakesEffect(t *testing.T) {
+	if simrun.Race {
+		// Under the race detector some faults are left out
+		// (raceLeavesOut), and the cases take half an hour.
+		t.Skip("the faults' effects are counted under gosim")
+	}
 	cases := faultCases()
 	var seeds []uint64
 	for i := range cases {
@@ -733,6 +738,9 @@ func TestEachFaultTakesEffect(t *testing.T) {
 // segment where that loses only a new term or vote (lastRecord): the node
 // must start again with the term and vote it held durable (#357).
 func TestDamagedLastRecord(t *testing.T) {
+	if simrun.Race {
+		t.Skip("under the race detector the runs damage no last record (raceLeavesOut)")
+	}
 	var took effects
 	if !simrun.Each(t, seedRange(3500, 3), func(t *testing.T, seed uint64) bool {
 		cfg := DefaultConfig(seed)

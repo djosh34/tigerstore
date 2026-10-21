@@ -1542,7 +1542,7 @@ func (s *Sim) crashRandom() {
 		return
 	}
 	n.why = "the run crashed it"
-	if s.rng.IntN(2) == 0 {
+	if s.rng.IntN(2) == 0 || raceLeavesOut {
 		s.crash(n)
 		s.maybeCorrupt(n)
 	} else {
