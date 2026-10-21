@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        revision: [809b4e1c, 9e278809]
+        revision: ['809b4e1c5f4aa4a576cabf586754fb15ccd8396a', '9e278809b920261368b216e1d29e8ca7bcefc5a2']
     steps:
       - uses: actions/checkout@v7
         with:
