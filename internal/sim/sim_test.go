@@ -659,7 +659,7 @@ func faultCases() []faultCase {
 		{"gray client", Faults{GrayClient: true}, nil, func(st Stats) int { return st.GrayStreams }},
 		{"crash in recovery", Faults{CrashEvery: 2 * Second, MaxDown: Second, RecoveryCrash: true}, nil, func(st Stats) int { return st.RecoveryCrashes }},
 		{"follower held down", Faults{HoldDown: true}, nil, func(st Stats) int { return st.Snapshots }},
-		{"damaged snapshot", Faults{HoldDown: true, FlipSnapshot: true}, nil, func(st Stats) int { return st.SnapshotFlips }},
+		{"damaged snapshot", Faults{}, func(c *Config) { *c = damagedSnapshotConfig(c.Seed) }, func(st Stats) int { return st.SnapshotFlips }},
 		{"crash during a fetch", Faults{HoldDown: true, FetchCrash: true}, nil, func(st Stats) int { return min(st.FetchCrashes, st.Reloads) }},
 		{"crash at a checkpoint step", Faults{StepCrash: true}, nil, func(st Stats) int { return st.StepCrashes }},
 		{"rotten value", Faults{Rot: true}, nil, func(st Stats) int { return st.Rots }},
@@ -766,6 +766,17 @@ func TestDamagedLastRecord(t *testing.T) {
 		return
 	}
 	took.check(t)
+}
+
+// damagedSnapshotConfig holds a follower down until it fetches a snapshot,
+// and damages the first stream, for 8 virtual seconds and 8 of healing:
+// the case "damaged snapshot" of TestEachFaultTakesEffect, and B22's.
+func damagedSnapshotConfig(seed uint64) Config {
+	cfg := DefaultConfig(seed)
+	cfg.Faults = Faults{HoldDown: true, FlipSnapshot: true}
+	cfg.Duration = 8 * Second
+	cfg.Heal = 8 * Second
+	return cfg
 }
 
 // loneHeaderConfig is #295's path: a follower held down past the leader's

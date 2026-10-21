@@ -36,17 +36,6 @@ type plantedCase struct {
 	witness bool
 }
 
-// damagedSnapshotConfig is the case "damaged snapshot" of
-// TestEachFaultTakesEffect, which runs it without a bug: a follower held
-// down until it fetches a snapshot, whose first stream is damaged.
-func damagedSnapshotConfig(seed uint64) Config {
-	cfg := DefaultConfig(seed)
-	cfg.Faults = Faults{HoldDown: true, FlipSnapshot: true}
-	cfg.Duration = 8 * Second
-	cfg.Heal = 8 * Second
-	return cfg
-}
-
 func stalledLeaderConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Faults = Faults{}
@@ -128,7 +117,7 @@ var plantedCases = map[string]plantedCase{
 	// unchecked snapshot's damaged entry can be what recovery refuses.
 	// With every fault on, few snapshot streams are damaged and installed;
 	// the effect test's damaged snapshot runs more.
-	"B22": {seeds: 256, cfg: damagedSnapshotConfig, want: inventedState + `|` + badValue + `|malformed|` + refused + `|installed a snapshot at \d+ from \d+, checkpoint \d+\n[^\n]*wal: corrupt log:`},
+	"B22": {seeds: 256, cfg: damagedSnapshotConfig, want: inventedState + `|wrote different checkpoints|` + badValue + `|malformed|` + refused + `|installed a snapshot at \d+ from \d+, checkpoint \d+\n[^\n]*wal: corrupt log:`},
 	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|` + stuck},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},
@@ -221,12 +210,10 @@ func witnessCatches(t *testing.T, res *Result) bool {
 }
 
 // plantedRun is what a seed of TestPlanted found: the failure that
-// catches the bug, if any, and whether open bugs #357 and #361 give that
-// failure too, so that it counts only if the seed passes without the
+// catches the bug, if any. It counts only if the seed passes without the
 // planted bug (SIM_CONTROL).
 type plantedRun struct {
 	Finding string
-	Open    bool
 }
 
 // TestPlanted switches on the bug that $SIM_PLANTED names and fails
@@ -276,10 +263,10 @@ func TestPlanted(t *testing.T) {
 			return plantedRun{}
 		}
 		save(t, replayCommand(t.Name(), seed), res)
-		return plantedRun{Finding: err.Error(), Open: openBugs.MatchString(err.Error())}
+		return plantedRun{Finding: err.Error()}
 	}, func(seed uint64, r plantedRun) bool {
 		tried++
-		if r.Finding == "" || control || r.Open && failsUnplanted(t, name, seed) {
+		if r.Finding == "" || control || failsUnplanted(t, name, seed) {
 			return false
 		}
 		caught = true
@@ -295,9 +282,11 @@ func TestPlanted(t *testing.T) {
 }
 
 // failsUnplanted runs seed of TestPlanted again without planted bug name,
-// as a gosim run of its own, and reports whether it fails there too: then
-// an open bug gave the failure, which catches nothing. Under the race
-// detector, where a seed does not replay, such a failure never counts.
+// as a gosim run of its own, the control of a catch, and reports whether
+// it fails there too. A seed that fails as open bugs #357 and #361 do
+// catches nothing; one that fails on anything else fails the test, as a
+// failure with no planted bug. Under the race detector, where a seed does
+// not replay, no catch counts.
 func failsUnplanted(t *testing.T, name string, seed uint64) bool {
 	t.Helper()
 	if simrun.Race {
@@ -307,12 +296,18 @@ func failsUnplanted(t *testing.T, name string, seed uint64) bool {
 	res := simrun.Do(t, simrun.Run{Test: "TestPlanted", Seed: seed, Env: env})
 	var r plantedRun
 	if err := json.Unmarshal(res.Artifacts["seed.json"], &r); err != nil {
-		t.Fatalf("the control of seed %d left no result: %v", seed, err)
+		t.Errorf("the control of seed %d left no result: %v", seed, err)
+		return true
 	}
-	if r.Finding != "" {
+	switch {
+	case r.Finding == "":
+		return false
+	case openBugs.MatchString(r.Finding):
 		t.Logf("seed %d of %s fails without the bug too, and catches nothing: %s", seed, name, r.Finding)
+	default:
+		t.Errorf("seed %d of %s fails without the bug too: %s", seed, name, r.Finding)
 	}
-	return r.Finding != ""
+	return true
 }
 
 // TestB22InstallRefusal checks that B22 counts as caught when the start
