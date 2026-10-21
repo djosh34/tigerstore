@@ -963,7 +963,9 @@ func TestGrayClient(t *testing.T) {
 		if r.Err != nil && !isRejection(r.Err) {
 			t.Fatalf("call to node %d at %d ms failed beside the gray client: %v", r.Node+1, r.Call/Millisecond, r.Err)
 		}
-		if r.Return-r.Call >= Second {
+		// A start from the log holds a call that clientv3 tries again
+		// until the node is back (#365).
+		if r.Return-r.Call >= Second && !during(res.nodes[r.Node].fromLog, r.Call, r.Return) {
 			t.Fatalf("call to node %d at %d ms took %d ms beside the gray client", r.Node+1, r.Call/Millisecond, (r.Return-r.Call)/Millisecond)
 		}
 		calls++
