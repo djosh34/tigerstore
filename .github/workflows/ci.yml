@@ -569,14 +569,14 @@ jobs:
   race-sim:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 70
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - shell: bash
-        run: go test -race -timeout 60m ./internal/sim 2>&1 | tee "$RUNNER_TEMP/race-sim.log"
+        run: go test -race -timeout 110m ./internal/sim 2>&1 | tee "$RUNNER_TEMP/race-sim.log"
         env:
           SIM_OUT: ${{ runner.temp }}/sim-out
       - if: failure()

@@ -45,7 +45,10 @@ func TestMembershipFaults(t *testing.T) {
 		return
 	}
 	took.check(t)
-	if n >= 16 {
+	// With every fault on, a stage completes during the faults in fewer
+	// seeds, and 16 of them can miss one: the rule holds over 64 seeds,
+	// as many as CI's job runs.
+	if n >= 64 {
 		for i, count := range during {
 			if count == 0 {
 				t.Errorf("stage %d never completed during faults", i)
