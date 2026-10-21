@@ -1488,6 +1488,7 @@ func (s *Sim) persisted(p *proc, j core.PersistJob) {
 	}
 	if len(j.Entries) > 0 {
 		n.durableLast = j.Entries[len(j.Entries)-1].GetIndex()
+		s.tracef("node %d: DIAG reported entries %d..%d durable", n.id, j.Entries[0].GetIndex(), n.durableLast)
 	}
 	if hs := j.HardState; hs != nil {
 		vote := n.hs != hardState{term: hs.Term, vote: hs.Vote}

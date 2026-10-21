@@ -1,90 +1,60 @@
-# The simulator seed campaigns under gosim, in 20 jobs of two processes,
-# every checker on each seed:
-#   - TestSeeds: 100,000 seeds, 2,500 a process, the witness checker in
-#     both modes among them (#148). Each process requires each fault to
-#     take effect in 95% of its seeds, and a process of 2,000 seeds or
-#     more a stalled leader that went silent too (#218, #233).
-#   - TestMembershipFaults: 10,000 seeds, 250 a process.
-# Every seed is a gosim run of its own, and 1% of each process's seeds run
-# twice and must give the same hashes. Started by the worker:
-#   gh workflow run sim-campaign.yml -f test=<test> -f first=<seed>
-# A failing seed prints its hashes and the command that runs it again,
-# and its trace, how it left each node, its history and its disks are
-# uploaded with the job's logs.
+# Throwaway diagnosis for #375. The parent of the prototype commit has
+# the same logging and workflow, but not the rot witness guard.
 name: sim-campaign
-
 on:
   workflow_dispatch:
-    inputs:
-      test:
-        description: The test to run
-        type: choice
-        options: [TestSeeds, TestMembershipFaults]
-        default: TestSeeds
-      first:
-        description: First seed; the campaign runs it and the next 99,999 of TestSeeds, or 9,999 of TestMembershipFaults
-        required: true
-        default: "1"
-
 permissions:
   contents: read
-
 jobs:
-  seeds:
+  diagnosis:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 90
+        version: [before, after]
+    env:
+      GOMAXPROCS: "2"
+      GOFLAGS: -p=1
+      SIM_SEEDS: "1"
+      SIM_KEEP: "1"
+      SIM_OUT: ${{ runner.temp }}/sim-out
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - name: Select version
+        run: |
+          if [ '${{ matrix.version }}' = before ]; then
+            git checkout --detach HEAD^
+          fi
+          git log -1 --oneline
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      # Builds the gosim and native test binaries, and runs no test.
-      - run: scripts/sim.sh ./internal/sim '^$'
-      - name: Run the seeds in two processes
+      - name: Build once
+        run: scripts/sim.sh ./internal/sim '^$'
+      - name: Replay four seeds
         shell: bash
-        env:
-          TEST: ${{ inputs.test }}
-          FIRST: ${{ inputs.first }}
-          SHARD: ${{ matrix.shard }}
-          SIM_OUT: ${{ runner.temp }}/sim-out
         run: |
           set -uo pipefail
           export GOSIMTOOL="$GITHUB_WORKSPACE/.gosim/bin/gosim"
-          export SIM_SEEDS=2500
-          if [ "$TEST" = TestMembershipFaults ]; then
-            SIM_SEEDS=250
-          fi
-          export SIM_TWICE=$((SIM_SEEDS / 100))
           cd internal/sim
-          pids=()
-          for p in 0 1; do
-            seed=$((FIRST + (SHARD * 2 + p) * SIM_SEEDS))
-            echo "process $p: seeds $seed to $((seed + SIM_SEEDS - 1)) of $TEST"
-            SIM_SEED=$seed "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run "^$TEST\$" -test.v -test.timeout 85m >"$RUNNER_TEMP/seeds-$p.log" 2>&1 &
-            pids+=($!)
-          done
           status=0
-          for p in 0 1; do
-            wait "${pids[$p]}" || status=1
+          for seed in 483056 422677 449788 460792; do
+            SIM_SEED=$seed "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run "^TestSeeds$/^$seed$" -test.v -test.timeout 5m >"$RUNNER_TEMP/seed-$seed.log" 2>&1
+            rc=$?
+            echo "${{ matrix.version }} $(git rev-parse HEAD) seed $seed exit $rc"
+            grep -E -- 'DIAG rot candidate|DIAG skip rot|failed: seed|^--- (PASS|FAIL)|^    --- (PASS|FAIL)|^(PASS|FAIL)$' "$RUNNER_TEMP/seed-$seed.log" || true
+            expected=1
+            if [ '${{ matrix.version }}' = after ] && [ "$seed" = 483056 ]; then expected=0; fi
+            if [ "$rc" != "$expected" ]; then status=1; fi
           done
-          # The step's shell stops at the first failed command, and grep
-          # fails once head has its 50 lines, so both processes are waited
-          # for first.
-          for p in 0 1; do
-            grep -E -- '^--- FAIL|^    --- FAIL| seeds: |took effect|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$p.log" | head -50 || true
-            PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$p.log" -gosim
-          done
-          exit $status
-      # The logs, with every seed's hashes, also when the campaign passed:
-      # any seed of them replays alone with the same hashes.
+          exit "$status"
       - if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: sim-campaign-${{ matrix.shard }}
+          name: diag-375-${{ matrix.version }}
           path: |
-            ${{ runner.temp }}/seeds-*.log
+            ${{ runner.temp }}/seed-*.log
             ${{ runner.temp }}/sim-out

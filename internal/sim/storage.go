@@ -301,6 +301,7 @@ func (s *Sim) rot(n *node, c *core.Node) {
 			if !ok || next != seq || end >= int64(len(n.disk.DurableBytes(name))) {
 				continue
 			}
+			s.tracef("node %d: DIAG rot candidate entry %d, witness entry %d at %d, reported floor %d", n.id, r.Index, r.Index+2, end, n.floor())
 		}
 		n.disk.Rot(name, int(at)+s.rng.IntN(int(r.Len)))
 		n.corrupted, n.rotted, n.rotFile, n.rotEntry, n.rotSeg = true, true, name, r.Index, seq
