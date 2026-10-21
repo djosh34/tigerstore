@@ -36,6 +36,26 @@ func writer() *conn {
 	return a
 }
 
+// TestWriteResetBreaksRead checks the fault behind #369: queued bytes
+// delayed past a peer's close must not hide a reset from the reader.
+func TestWriteResetBreaksRead(t *testing.T) {
+	a := writer()
+	a.in.chunks = append(a.in.chunks, chunk{at: 10 * Second, b: []byte("pending")})
+	a.other.closed = true
+	a.in.eof = true
+	if n, err := a.Write([]byte("request")); n != 0 || !errors.Is(err, errReset) {
+		t.Fatalf("write after peer closed = %d, %v; want reset", n, err)
+	}
+	// An expired deadline keeps the broken implementation from hanging.
+	// A reset takes precedence, just as it does after network.reset.
+	if err := a.SetReadDeadline(time.Now().Add(-time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := a.Read(make([]byte, 1)); n != 0 || !errors.Is(err, errReset) {
+		t.Fatalf("read after write reset = %d, %v; want reset", n, err)
+	}
+}
+
 // TestWriteDeadline checks that a write fails at its deadline: at once
 // when it passed, and after what fits when the buffer fills.
 func TestWriteDeadline(t *testing.T) {

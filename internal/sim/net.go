@@ -401,6 +401,10 @@ func (c *conn) Write(b []byte) (int, error) {
 			s.mu.Unlock()
 			return n, c.in.err
 		case c.other.closed:
+			// A reset also breaks the read side, even with delayed bytes
+			// ahead of the peer's EOF. Otherwise gRPC's writer stops but
+			// its reader cannot retire the transport until time advances.
+			s.net.reset(c)
 			s.mu.Unlock()
 			return n, errReset
 		}
