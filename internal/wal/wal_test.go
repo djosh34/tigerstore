@@ -367,8 +367,8 @@ func TestCrashKeepsSyncedEntries(t *testing.T) {
 // TestDamagedNewestHeader opens logs whose newest segment holds only a
 // header, damaged, as a first write that did not reach the disk whole
 // leaves it: the log cuts that segment and starts it again without a
-// write, and an append goes into it. With a record after the damaged header, the log is
-// corrupt.
+// write, and an append goes into it. With a record after the damaged
+// header, the log is corrupt.
 func TestDamagedNewestHeader(t *testing.T) {
 	d := simfs.New()
 	names := segments(t, d, 2)
@@ -379,7 +379,8 @@ func TestDamagedNewestHeader(t *testing.T) {
 		// Recovery writes the copies of the term and vote, and cuts this
 		// segment, which it starts again (#368), but writes nothing into
 		// the log.
-		if op != simfs.OpRead && op != simfs.OpOpen && op != simfs.OpCreate && op != simfs.OpSyncDir && op != simfs.OpSync && op != simfs.OpTruncate && !wal.IsVoteFile(name) {
+		if op != simfs.OpRead && op != simfs.OpOpen && op != simfs.OpCreate && op != simfs.OpSyncDir && op != simfs.OpSync &&
+			(op != simfs.OpTruncate || name != last) && !wal.IsVoteFile(name) {
 			return fmt.Errorf("%v of %s", op, name)
 		}
 		return nil
