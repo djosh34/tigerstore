@@ -120,9 +120,10 @@ func (s *Sim) injectDiskFault() {
 // fault can fail.
 var otherOps = []simfs.Op{simfs.OpCreate, simfs.OpOpen, simfs.OpRead, simfs.OpTruncate, simfs.OpRemove, simfs.OpSyncDir, simfs.OpRename}
 
-// armDiskFault arms a disk fault on n: a failed sync (kind 0), EIO on the
-// next write (1), a short write with ENOSPC (2), or EIO on the next
-// operation of a random other kind (3). The lock is held.
+// armDiskFault arms a disk fault on n: a failed sync (kind 0), with EIO
+// on the next truncate if cutFails is set, EIO on the next write (1), a
+// short write with ENOSPC (2), or EIO on the next operation of a random
+// other kind (3). The lock is held.
 func (s *Sim) armDiskFault(n *node, kind int) {
 	d := n.disk
 	target := simfs.OpWrite
@@ -130,7 +131,10 @@ func (s *Sim) armDiskFault(n *node, kind int) {
 	case 0:
 		d.FailSync(s.rng)
 		s.tracef("node %d: disk fault armed: the next sync fails", n.id)
-		return
+		if !s.cfg.cutFails {
+			return
+		}
+		target = simfs.OpTruncate
 	case 2:
 		d.ShortWrite(s.rng)
 		s.tracef("node %d: disk fault armed: the next write is short", n.id)

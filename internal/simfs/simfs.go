@@ -327,12 +327,18 @@ func (d *Disk) Durable() *Disk {
 	return c
 }
 
-// Copy returns a new disk whose files hold what this disk's hold now,
-// synced or not, all durable.
+// Copy returns a new disk with this disk's files, under the names they
+// have now, all durable: each holds what the medium holds and what the
+// page cache holds, the writes since the last sync, which a sync writes,
+// and the bytes a failed sync left readable, which none does (#372).
 func (d *Disk) Copy() *Disk {
 	c := New()
 	for _, name := range sortedNames(d.names) {
-		g := &file{id: d.names[name].id, data: slices.Clone(d.names[name].data), durable: slices.Clone(d.names[name].data)}
+		f := d.names[name]
+		g := &file{id: f.id, data: slices.Clone(f.data), durable: slices.Clone(f.durable), cut: f.cut}
+		for _, w := range f.pending {
+			g.pending = append(g.pending, write{w.off, slices.Clone(w.p)})
+		}
 		c.names[name] = g
 		c.durable[name] = g
 	}
@@ -840,6 +846,23 @@ func (h *Handle) Sync() error {
 	}
 	h.f.pending, h.f.cut = nil, false
 	h.d.tracef("sync %s (file %d): %d bytes durable", h.name, h.f.id, len(h.f.durable))
+	return nil
+}
+
+// DropCache drops the file's clean pages, as fadvise(POSIX_FADV_DONTNEED)
+// does: the bytes read what the disk holds, with the writes since the last
+// sync on them. Bytes that a failed sync left readable read as the disk
+// keeps them (#372).
+func (h *Handle) DropCache() error {
+	if h.closed {
+		return errClosed
+	}
+	b := slices.Clone(h.f.durable[:min(len(h.f.durable), len(h.f.data))])
+	for _, w := range h.f.pending {
+		b = apply(b, w.off, w.p)
+	}
+	b = append(b, make([]byte, max(0, len(h.f.data)-len(b)))...)
+	h.f.data = b
 	return nil
 }
 

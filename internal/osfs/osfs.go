@@ -153,6 +153,26 @@ func (f file) Sync() error {
 	return errors.Join(cerr, err)
 }
 
+// DropCache drops the file's clean pages from the page cache with
+// fadvise(POSIX_FADV_DONTNEED). Linux drops each clean page that no
+// process maps, which after a sync is every page of a file the WAL reads:
+// a page that a failed writeback marked clean goes too, and a later read
+// returns what the disk holds there (#372). Without syncs there is nothing
+// to read back.
+func (f file) DropCache() error {
+	if f.noSync {
+		return nil
+	}
+	rc, err := f.SyscallConn()
+	if err != nil {
+		return err
+	}
+	cerr := rc.Control(func(fd uintptr) {
+		err = unix.Fadvise(int(fd), 0, 0, unix.FADV_DONTNEED)
+	})
+	return errors.Join(cerr, err)
+}
+
 func (f file) ReadAll() ([]byte, error) {
 	st, err := f.Stat()
 	if err != nil {

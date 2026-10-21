@@ -141,6 +141,8 @@ func (f *concurrentFile) Sync() error {
 	})
 }
 
+func (f *concurrentFile) DropCache() error { return serialErr(f.d, f.f.DropCache) }
+
 func (f *concurrentFile) Close() error {
 	f.d.mu.Lock()
 	defer f.d.mu.Unlock()

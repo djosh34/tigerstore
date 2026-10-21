@@ -107,7 +107,7 @@ func readVotes(fs FS, names []string) ([2]voteCopy, error) {
 		if err != nil {
 			return copies, err
 		}
-		b, err := f.ReadAll()
+		b, err := readDisk(f)
 		if err := errors.Join(err, f.Close()); err != nil {
 			return copies, err
 		}
@@ -131,13 +131,13 @@ func newestVote(copies [2]voteCopy) HardState {
 	return hs
 }
 
-// writeVotes writes hs into both copies, which held copies, and syncs
-// each. A copy that does not hold hs goes first, so that the other one
-// keeps the newest term and vote that verifies until it is synced; one
-// that holds it is written again, as what recovery read may not be
-// synced. A copy not on disk is made under another name, renamed once it
-// is synced, and its name made durable (replaceFile). Leftovers of such a copy, which a
-// crash left, are removed first.
+// writeVotes writes hs into each copy, of the files in names, that does
+// not hold it, and syncs each before the next, so that a copy that held
+// the newest term and vote that verifies keeps it until another one does.
+// What readVotes read is on the disk (readDisk), so a copy that holds hs
+// stays as it is (#373). A copy not on disk is made under another name,
+// renamed once it is synced, and its name made durable (replaceFile).
+// Leftovers of such a copy, which a crash left, are removed first.
 func writeVotes(fs FS, names []string, copies [2]voteCopy, hs HardState) error {
 	for _, name := range names {
 		if IsVoteFile(name) && !slices.Contains(voteNames[:], name) {
@@ -146,20 +146,17 @@ func writeVotes(fs FS, names []string, copies [2]voteCopy, hs HardState) error {
 			}
 		}
 	}
-	order := []int{0, 1}
-	if copies[0].ok && copies[0].hs == hs {
-		order = []int{1, 0}
-	}
-	for _, i := range order {
-		name := voteNames[i]
-		if copies[i].found {
+	for i, name := range voteNames {
+		switch {
+		case copies[i].ok && copies[i].hs == hs:
+		case copies[i].found:
 			if err := writeVote(fs, name, hs.Term, hs.Vote); err != nil {
 				return err
 			}
-			continue
-		}
-		if err := replaceFile(fs, name+votePart, name, encodeVote(hs.Term, hs.Vote)); err != nil {
-			return err
+		default:
+			if err := replaceFile(fs, name+votePart, name, encodeVote(hs.Term, hs.Vote)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

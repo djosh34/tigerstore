@@ -116,8 +116,9 @@ type Config struct {
 	// a checkpoint file, and every such creation take 50 ms; killLosses
 	// makes every crash a kill followed by a power loss; syncFaultExits
 	// makes every disk fault a failed sync, after which the node starts
-	// again with its page cache kept. For the tests.
-	ckptCreateFaults, killLosses, syncFaultExits bool
+	// again with its page cache kept, and cutFails fails the next truncate
+	// with it. For the tests.
+	ckptCreateFaults, killLosses, syncFaultExits, cutFails bool
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -1169,11 +1170,16 @@ func (s *Sim) start(n *node) error {
 	}
 	if injected(err) && (!n.corrupted || !errors.Is(err, simfs.ErrBadSector)) {
 		// An injected fault hit recovery, which can write: a failed boot.
-		// The node tries again later from what its disk holds.
+		// The node tries again later from what its disk holds, after a
+		// power loss or, half the time, with its page cache kept, where a
+		// failed sync of recovery left bytes that never reach the disk
+		// (#372).
 		s.stats.DiskFaults++
 		cancel()
 		n.disk.ClearFaults()
-		s.loseUnsynced(n)
+		if s.rng.IntN(2) == 0 {
+			s.loseUnsynced(n)
+		}
 		n.since, n.why = s.now(), fmt.Sprintf("failed to boot: %v", err)
 		s.tracef("node %d: failed to boot: %v", n.id, err)
 		s.checkRecovery(n)

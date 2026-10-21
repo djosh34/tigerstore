@@ -860,6 +860,32 @@ func TestFailedSyncThenRestart(t *testing.T) {
 	took.check(t)
 }
 
+// TestFailedCutThenRestart is TestFailedSyncThenRestart with the cut after
+// each failed sync failing too, as when a fault left from earlier fails
+// the truncate. The node starts again on its page cache, which holds the
+// bytes the sync did not write: recovery must read the disk instead, or a
+// power loss later finds a hole where it appended after them (#372).
+func TestFailedCutThenRestart(t *testing.T) {
+	var took effects
+	if !simrun.Each(t, seedRange(3900, 8), func(t *testing.T, seed uint64) int {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{DiskErrorEvery: 500 * Millisecond, CrashEvery: 2 * Second, MaxDown: Second}
+		cfg.syncFaultExits, cfg.cutFails = true, true
+		cfg.SegmentBytes = 256
+		cfg.Duration = 10 * Second
+		cfg.Heal = 8 * Second
+		res := run(t, cfg)
+		checkers(t, res)
+		return res.Stats.IOErrors
+	}, func(seed uint64, n int) bool {
+		took.add(seed, map[string]bool{"failed cut": n > 0})
+		return false
+	}) {
+		return
+	}
+	took.check(t)
+}
+
 // damagedSnapshotConfig holds a follower down until it fetches a snapshot,
 // and damages the first stream, for 8 virtual seconds and 8 of healing:
 // the case "damaged snapshot" of TestEachFaultTakesEffect, and B22's.

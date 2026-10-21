@@ -2,6 +2,7 @@ package wal_test
 
 import (
 	"errors"
+	"math/rand/v2"
 	"testing"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -77,4 +78,53 @@ func TestVoteCopies(t *testing.T) {
 	flip("vote-0")
 	flip("vote-1")
 	wantCorrupt(t, d)
+}
+
+// TestVoteCopyOnlyInPageCache kills the process after it wrote a new term
+// and vote into vote-0 and before it synced it, so that the next process
+// reads the new copy from the page cache, and crashes that recovery in the
+// sync of vote-1, which a crash then tears with vote-0's unsynced write.
+// Recovery must not take a copy for one on the disk before it synced it,
+// or the crash can leave no copy that verifies (#373).
+func TestVoteCopyOnlyInPageCache(t *testing.T) {
+	errKilled := errors.New("killed")
+	for seed := range uint64(32) {
+		d := simfs.New()
+		w, _ := open(t, d)
+		syncVote(t, d, w, 1, 1)
+		w.Append(&wal.HardState{Term: 2, Vote: 2}, nil)
+		if err := w.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		d.Fault = func(op simfs.Op, name string) error {
+			if op == simfs.OpSync && name == "vote-0" {
+				return errKilled
+			}
+			return nil
+		}
+		if err := wal.SaveVote(d, 2, 2); !errors.Is(err, errKilled) {
+			t.Fatalf("saving the vote: %v, want the kill", err)
+		}
+		d.Fault = func(op simfs.Op, name string) error {
+			if op == simfs.OpSync && name == "vote-1" {
+				return errKilled
+			}
+			return nil
+		}
+		if _, _, err := wal.Open(d); !errors.Is(err, errKilled) {
+			t.Fatalf("seed %d: recovery: %v, want the crash in the sync of vote-1", seed, err)
+		}
+		d.Fault = nil
+		d.CrashImage(rand.New(rand.NewPCG(seed, 0)), simfs.Prefix)
+		w, rec, err := wal.Open(d)
+		if err != nil {
+			t.Fatalf("seed %d: after the crash: %v", seed, err)
+		}
+		if rec.HardState.Term != 2 || rec.HardState.Vote != 2 {
+			t.Fatalf("seed %d: recovered %+v, want term 2 and vote 2", seed, rec.HardState)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

@@ -233,6 +233,10 @@ func (f *file) Sync() error {
 	})
 }
 
+func (f *file) DropCache() error {
+	return f.d.call(simfs.OpRead, f.name, f.f.DropCache)
+}
+
 func (f *file) Close() error {
 	f.d.s.mu.Lock()
 	defer f.d.s.mu.Unlock()

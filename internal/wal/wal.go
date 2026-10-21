@@ -88,6 +88,9 @@ type File interface {
 	Truncate(size int64) error
 	// Sync makes the content durable.
 	Sync() error
+	// DropCache drops the file's pages that hold no unsynced write from
+	// the page cache, so that later reads of them read the disk.
+	DropCache() error
 	Close() error
 }
 
@@ -331,7 +334,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		data, err := f.ReadAll()
+		data, err := readDisk(f)
 		if err != nil {
 			return nil, nil, errors.Join(err, f.Close())
 		}
@@ -414,16 +417,9 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			return nil, nil, errors.Join(err, w.Close())
 		}
 	}
-	// A killed process leaves its writes in the page cache, where the next
-	// process reads them. Unsynced, a power loss could still take back an
-	// entry, a term and vote, or a root that names newer packs and a newer
-	// checkpoint, after the node held them durable and removed the files
-	// of the older root (#361). So what recovery read is synced, with the
-	// names of the files, before the node acts on it and before Open
-	// removes any file. A sync that failed before left nothing here that
-	// no sync writes: its process cut the segment back (CutUnsynced),
-	// unless that sync was recovery's own, in an earlier start (see the
-	// known limits in docs/design.md).
+	// What recovery read is on the disk (readDisk), but a cut since is not
+	// (#368), nor are the names of the files (#361). Both are synced before
+	// the node acts on what it read and before Open removes any file.
 	if w.seg != nil {
 		if err := w.seg.Sync(); err != nil {
 			return nil, nil, errors.Join(err, w.Close())
@@ -467,6 +463,28 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		}
 	}
 	return w, rec, nil
+}
+
+// readDisk syncs f, drops its pages from the page cache, and reads it, so
+// that recovery reads what the disk holds. A killed process leaves its
+// writes in the page cache, where the next process reads them: unsynced,
+// a power loss could still take back an entry, a term and vote, or a root
+// that names newer packs and a newer checkpoint, after the node held them
+// durable and removed the files of the older root (#361). The sync writes
+// them. A sync that failed leaves pages that the writeback marked clean,
+// which no later sync writes: a power loss takes them back whatever the
+// next process does. The failed sync's process cuts them off
+// (CutUnsynced), but the cut can fail too, and a sync of recovery itself
+// can fail; the drop makes the next read return what the disk holds in
+// their place (#372).
+func readDisk(f File) ([]byte, error) {
+	if err := f.Sync(); err != nil {
+		return nil, err
+	}
+	if err := f.DropCache(); err != nil {
+		return nil, err
+	}
+	return f.ReadAll()
 }
 
 // replaceFile writes data into a new file tmp, syncs it, renames it to

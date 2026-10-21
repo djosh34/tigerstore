@@ -2,6 +2,7 @@ package wal_test
 
 import (
 	"errors"
+	"math/rand/v2"
 	"testing"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -102,6 +103,48 @@ func TestFailedSyncThenKill(t *testing.T) {
 	}
 	if rec.Last != 3 || rec.HardState.Term != 2 {
 		t.Fatalf("after a power loss, recovered entries to %d and %+v", rec.Last, rec.HardState)
+	}
+}
+
+// TestFailedRecoverySyncThenKill kills a process after it wrote, but did
+// not sync, an entry, and fails the sync in which the next process's
+// recovery would make it durable. That leaves the part the sync did not
+// write readable in the page cache, and recovery cannot cut it off, as it
+// does not know which part that is. The process after it, on the same page
+// cache, must read the disk instead, or a power loss after it appended and
+// synced would find a hole before its new entries (#372).
+func TestFailedRecoverySyncThenKill(t *testing.T) {
+	for seed := range uint64(16) {
+		d := simfs.New()
+		w, _ := open(t, d)
+		w.Append(&wal.HardState{Term: 1, Commit: 1}, []*raftpb.Entry{entry(1, 1, "a")})
+		if err := w.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		w.Append(&wal.HardState{Term: 1, Commit: 1}, []*raftpb.Entry{entry(1, 2, "b")})
+		if err := errors.Join(w.Flush(), w.Close()); err != nil {
+			t.Fatal(err)
+		}
+		d.FailSync(rand.New(rand.NewPCG(seed, 0)))
+		if _, _, err := wal.Open(d); !errors.Is(err, simfs.ErrIO) {
+			t.Fatalf("seed %d: recovery: %v, want its failed sync", seed, err)
+		}
+		w, rec := open(t, d)
+		var ents []*raftpb.Entry
+		for i := rec.Last + 1; i <= 3; i++ {
+			ents = append(ents, entry(2, i, "c"))
+		}
+		w.Append(&wal.HardState{Term: 2, Commit: 1}, ents)
+		if err := errors.Join(w.Sync(), w.Close()); err != nil {
+			t.Fatal(err)
+		}
+		_, rec, err := wal.Open(d.Durable())
+		if err != nil {
+			t.Fatalf("seed %d: after a power loss: %v", seed, err)
+		}
+		if rec.Last != 3 {
+			t.Fatalf("seed %d: after a power loss, recovered entries to %d, want 3", seed, rec.Last)
+		}
 	}
 }
 
