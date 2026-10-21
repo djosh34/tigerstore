@@ -144,6 +144,25 @@ func historyBytes(res *Result) []byte {
 	return b
 }
 
+// explainSim explains a scenario that drives s itself, as explain does a
+// run: its trace, the nodes, their hashes, its saved files and the
+// command that runs it again. It goes before s shuts down.
+func explainSim(t *testing.T, cfg Config, s *Sim) {
+	t.Helper()
+	s.mu.Lock()
+	res := &Result{Clients: cfg.Clients + cfg.V3Clients, History: s.history, Stats: s.stats, nodes: s.nodes}
+	s.mu.Unlock()
+	res.Report = s.report()
+	s.mu.Lock()
+	res.Trace = slices.Clone(s.trace)
+	s.mu.Unlock()
+	if simrun.InGosim {
+		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, hashes(res)))
+		simrun.Artifact("hashes", []byte(strings.Join(hashLines, "\n")+"\n"))
+	}
+	explain(t, cfg, res)
+}
+
 // explain logs what a failed run did, how it left each node, its hashes
 // and the command that runs its seed again, and saves the run (save).
 func explain(t *testing.T, cfg Config, res *Result) {

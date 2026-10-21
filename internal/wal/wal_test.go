@@ -376,8 +376,9 @@ func TestDamagedNewestHeader(t *testing.T) {
 	header := []byte("tigerwal\x02\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04")
 	rewrite(t, d, last, func([]byte) []byte { return header })
 	d.Fault = func(op simfs.Op, name string) error {
-		// Recovery syncs what it read and writes the copies of the term
-		// and vote, but writes nothing into the log.
+		// Recovery rewrites the newest segment and writes the copies of
+		// the term and vote, but changes nothing in this segment, which
+		// it starts again.
 		if op != simfs.OpRead && op != simfs.OpOpen && op != simfs.OpCreate && op != simfs.OpSyncDir && op != simfs.OpSync && !wal.IsVoteFile(name) {
 			return fmt.Errorf("%v of %s", op, name)
 		}

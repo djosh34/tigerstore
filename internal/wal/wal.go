@@ -279,7 +279,8 @@ type WAL struct {
 // returns the log ready for appends. It holds one segment in memory at a
 // time and keeps only where each entry is. A damaged record anywhere else,
 // a gap in the entries, or a commit index past the last entry is
-// ErrCorrupt. It syncs what it read, takes the term and vote from the
+// ErrCorrupt. It rewrites the newest segment so that what it read is
+// durable (rewrite), takes the term and vote from the
 // copies outside the log if those are newer (vote.go), and removes the
 // checkpoint files that the newest root does not name.
 func Open(fs FS) (*WAL, *Recovered, error) {
@@ -417,7 +418,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	w.last = max(w.last, w.root.Index)
 	rec.Root, rec.Last = w.root, w.last
 	if rec.HardState.Commit > w.last {
-		return nil, nil, fmt.Errorf("%w: commit index %d is past the last entry %d", ErrCorrupt, rec.HardState.Commit, w.last)
+		return nil, nil, errors.Join(fmt.Errorf("%w: commit index %d is past the last entry %d", ErrCorrupt, rec.HardState.Commit, w.last), w.Close())
 	}
 	// Both copies of the term and vote get the newest, which repairs a
 	// copy that a crash tore, and the directory sync makes the names of
@@ -426,7 +427,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		return nil, nil, errors.Join(err, w.Close())
 	}
 	if err := w.removeCheckpoints(ckpts, CheckpointName(w.root.Index)); err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Join(err, w.Close())
 	}
 	if w.seg == nil {
 		if err := PrepareSegment(fs, w.seq+1); err != nil {
@@ -460,22 +461,8 @@ func (w *WAL) rewrite(names []string, tail []byte) error {
 			}
 		}
 	}
-	name, tmp := segmentName(w.seq), fmt.Sprintf("%s%016x", recoverPrefix, w.seq)
-	f, err := w.fs.Create(tmp)
-	if err != nil {
-		return err
-	}
-	_, err = f.WriteAt(tail, 0)
-	if err == nil {
-		err = f.Sync()
-	}
-	if err := errors.Join(err, f.Close()); err != nil {
-		return err
-	}
-	if err := w.fs.Rename(tmp, name); err != nil {
-		return err
-	}
-	if err := w.fs.SyncDir(); err != nil {
+	name := segmentName(w.seq)
+	if err := replaceFile(w.fs, fmt.Sprintf("%s%016x", recoverPrefix, w.seq), name, tail); err != nil {
 		return err
 	}
 	old := w.seg
@@ -483,8 +470,33 @@ func (w *WAL) rewrite(names []string, tail []byte) error {
 	if err := old.Close(); err != nil {
 		return err
 	}
-	w.seg, err = w.fs.Open(name)
-	return err
+	f, err := w.fs.Open(name)
+	if err != nil {
+		return err
+	}
+	w.seg = f
+	return nil
+}
+
+// replaceFile writes data into a new file tmp, syncs it, renames it to
+// name, which it replaces, and syncs the directory, so that a crash
+// leaves under name either what was there or all of data.
+func replaceFile(fs FS, tmp, name string, data []byte) error {
+	f, err := fs.Create(tmp)
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteAt(data, 0)
+	if err == nil {
+		err = f.Sync()
+	}
+	if err := errors.Join(err, f.Close()); err != nil {
+		return err
+	}
+	if err := fs.Rename(tmp, name); err != nil {
+		return err
+	}
+	return fs.SyncDir()
 }
 
 // started reports whether data, the content of segment seq, holds the

@@ -450,7 +450,8 @@ type diskLog struct {
 	// before runs in each value read; see Config.BeforeRead.
 	before func()
 	// vote is the term and vote in the copies outside the log
-	// (wal.SaveVote), which only the sync goroutine changes.
+	// (wal.SaveVote): open sets it, and then only the sync goroutine
+	// changes it.
 	vote wal.HardState
 }
 

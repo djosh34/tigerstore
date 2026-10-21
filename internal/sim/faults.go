@@ -138,14 +138,13 @@ func (s *Sim) armDiskFault(n *node, kind int) {
 	case 3:
 		target = otherOps[s.rng.IntN(len(otherOps))]
 	}
-	ckptOnly := kind == 3 && s.cfg.ckptCreateFaults
-	if ckptOnly {
+	if s.cfg.ckptCreateFaults {
 		target = simfs.OpCreate
 	}
 	s.tracef("node %d: disk fault armed: EIO on the next %v", n.id, target)
 	d.Fault = func(op simfs.Op, name string) error {
 		ckpt := op == simfs.OpCreate && isCheckpoint(name)
-		if op != target || ckptOnly && !ckpt {
+		if op != target || s.cfg.ckptCreateFaults && !ckpt {
 			return nil
 		}
 		d.Fault = nil

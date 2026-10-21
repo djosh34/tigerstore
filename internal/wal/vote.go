@@ -136,7 +136,7 @@ func newestVote(copies [2]voteCopy) HardState {
 // keeps the newest term and vote that verifies until it is synced; one
 // that holds it is written again, as what recovery read may not be
 // synced. A copy not on disk is made under another name, renamed once it
-// is synced, and its name made durable. Leftovers of such a copy, which a
+// is synced, and its name made durable (replaceFile). Leftovers of such a copy, which a
 // crash left, are removed first.
 func writeVotes(fs FS, names []string, copies [2]voteCopy, hs HardState) error {
 	for _, name := range names {
@@ -158,21 +158,7 @@ func writeVotes(fs FS, names []string, copies [2]voteCopy, hs HardState) error {
 			}
 			continue
 		}
-		f, err := fs.Create(name + votePart)
-		if err != nil {
-			return err
-		}
-		_, err = f.WriteAt(encodeVote(hs.Term, hs.Vote), 0)
-		if err == nil {
-			err = f.Sync()
-		}
-		if err := errors.Join(err, f.Close()); err != nil {
-			return err
-		}
-		if err := fs.Rename(name+votePart, name); err != nil {
-			return err
-		}
-		if err := fs.SyncDir(); err != nil {
+		if err := replaceFile(fs, name+votePart, name, encodeVote(hs.Term, hs.Vote)); err != nil {
 			return err
 		}
 	}

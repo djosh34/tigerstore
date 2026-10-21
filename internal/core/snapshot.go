@@ -134,8 +134,12 @@ func (n *Node) snapshotProgress() {
 // writes nothing after the install (UpToInstall); Raft then sends another
 // instead of waiting SnapshotTicks. An election timeout held such a
 // follower back about a second (#366). A follower that only starts its
-// fetch late, behind slow syncs of its log, gets another snapshot to
-// fetch after this one, which costs a message.
+// fetch late, behind syncs of its log slower than two heartbeats, loses
+// this snapshot too: until Raft sends another, nothing keeps the
+// leader's cleaner from removing the checkpoint it names, and if it does,
+// the fetch fails, the follower starts again from its log, and the
+// calls it holds fail with "server stopped". Raft's next snapshot then
+// names a newer checkpoint.
 func (n *Node) snapshotDropped(id uint64) {
 	if at, ok := n.snapWait[id]; ok && at != 0 && n.now-at >= int64(2*n.cfg.HeartbeatTicks) {
 		delete(n.snapWait, id)

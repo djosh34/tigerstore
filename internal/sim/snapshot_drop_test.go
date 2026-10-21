@@ -30,7 +30,12 @@ func TestSnapshotDroppedAtReload(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer s.shutdown()
+		defer func() {
+			if t.Failed() {
+				explainSim(t, cfg, s)
+			}
+			s.shutdown()
+		}()
 		for _, n := range s.nodes {
 			if err := s.start(n); err != nil {
 				t.Fatal(err)
