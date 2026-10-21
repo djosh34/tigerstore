@@ -201,6 +201,8 @@ func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.
 			var r *Result
 			if twice > 0 && i%max(1, len(seeds)/twice) == 0 {
 				r = twoRuns(t, Run{Test: test, Seed: seed, Env: env})
+				// Diagnosis only: keep successful replays for the disk trace.
+				keep(t, r.Artifacts, "")
 			} else {
 				r = Do(t, Run{Test: test, Seed: seed, Env: env})
 				keep(t, r.Artifacts, "")

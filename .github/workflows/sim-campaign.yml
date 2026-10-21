@@ -47,9 +47,11 @@ jobs:
             rc=$?
             echo "${{ matrix.version }} $(git rev-parse HEAD) seed $seed exit $rc"
             grep -E -- 'DIAG rot candidate|DIAG skip rot|failed: seed|^--- (PASS|FAIL)|^    --- (PASS|FAIL)|^(PASS|FAIL)$' "$RUNNER_TEMP/seed-$seed.log" || true
-            expected=1
-            if [ '${{ matrix.version }}' = after ] && [ "$seed" = 483056 ]; then expected=0; fi
-            if [ "$rc" != "$expected" ]; then status=1; fi
+            if [ "$seed" = 483056 ]; then
+              expected=1
+              if [ '${{ matrix.version }}' = after ]; then expected=0; fi
+              if [ "$rc" != "$expected" ]; then status=1; fi
+            fi
           done
           exit "$status"
       - if: always()
