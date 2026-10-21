@@ -26,7 +26,7 @@ func (s *Sim) scheduleNetFaults() {
 		return s.halfOpen(-1, 0)
 	})
 	if f.NetemEvery > 0 {
-		s.every(f.NetemEvery, func() { s.netemFault() })
+		s.every(f.NetemEvery, s.netemFault)
 		// A fault on a link that carries nothing hits no write, so the
 		// run's own one comes again until one did.
 		s.once(s.cfg.Duration*3/4, 100*Millisecond, func() bool {
@@ -255,19 +255,18 @@ func (k netemKind) String() string {
 }
 
 // netemFault puts a fault of a random kind on a busy link: one to or from
-// the leader, where the traffic is. It reports false if the link has one
-// already.
-func (s *Sim) netemFault() bool {
+// the leader, where the traffic is, unless the link has one already.
+func (s *Sim) netemFault() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.healed {
-		return false
+		return
 	}
 	from, to := s.clientOr(s.busyLink)
 	l := s.link(from, to)
 	now := s.now()
 	if l.netemUntil > now {
-		return false
+		return
 	}
 	l.netem = netemKind(s.rng.IntN(numNetem))
 	if k := s.cfg.netemKinds; len(k) > 0 {
@@ -289,7 +288,6 @@ func (s *Sim) netemFault() bool {
 			s.net.resetDamaged(from, to)
 		})
 	}
-	return true
 }
 
 // busyLink picks a random directed link to or from the leader, or any
@@ -329,14 +327,7 @@ func (s *Sim) netem(l *link, b []byte, at, last int64) ([]byte, int64, bool) {
 	case slow:
 		at = max(at, last) + int64(len(b))*Second/l.bw
 	case switching:
-		if now := s.now(); now >= l.switchAt {
-			l.switchAt = now + 100*Millisecond + s.rng.Int64N(300*Millisecond)
-			if l.extra == 0 {
-				l.extra = 20*Millisecond + s.rng.Int64N(60*Millisecond)
-			} else {
-				l.extra = s.rng.Int64N(2*Millisecond) + 1
-			}
-		}
+		s.switchDelay(l, s.now())
 		fallthrough
 	case delayed:
 		at += l.extra
@@ -362,6 +353,20 @@ func (s *Sim) damageByte(l *link, b []byte, damage func([]byte, int) []byte) ([]
 		return b, false
 	}
 	return damage(b, s.rng.IntN(len(b))), true
+}
+
+// switchDelay switches l's extra delay between 0 to 2 ms and 20 to 80 ms
+// once its switch is due at time now. The lock is held.
+func (s *Sim) switchDelay(l *link, now int64) {
+	if now < l.switchAt {
+		return
+	}
+	l.switchAt = now + 100*Millisecond + s.rng.Int64N(300*Millisecond)
+	if l.extra < 20*Millisecond {
+		l.extra = 20*Millisecond + s.rng.Int64N(60*Millisecond)
+	} else {
+		l.extra = s.rng.Int64N(2*Millisecond) + 1
+	}
 }
 
 // resetLink resets every connection between two random nodes, as a

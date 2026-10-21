@@ -385,3 +385,18 @@ func list(t *testing.T, d *simfs.Disk) []string {
 	ok(t, err)
 	return names
 }
+
+// TestTruncateUnsynced checks that writes a truncate cut off never reach
+// the disk: a sync after it makes the cut size durable.
+func TestTruncateUnsynced(t *testing.T) {
+	d := simfs.New()
+	f := create(t, d, "f")
+	ok(t, d.SyncDir())
+	write(t, f, make([]byte, 256))
+	write(t, f, make([]byte, 256))
+	ok(t, f.Truncate(100))
+	ok(t, f.Sync())
+	if n := len(d.DurableBytes("f")); n != 100 {
+		t.Fatalf("%d bytes durable after a truncate to 100 and a sync", n)
+	}
+}

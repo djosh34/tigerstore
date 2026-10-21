@@ -75,8 +75,12 @@ type write struct {
 	p   []byte
 }
 
-// apply writes p at off into b, growing it with zeros as needed.
+// apply writes p at off into b, growing it with zeros as needed. An empty
+// p changes nothing.
 func apply(b []byte, off int, p []byte) []byte {
+	if len(p) == 0 {
+		return b
+	}
 	if end := off + len(p); end > len(b) {
 		b = append(b, make([]byte, end-len(b))...)
 	}
@@ -794,9 +798,10 @@ func (h *Handle) Truncate(size int64) error {
 	}
 	h.d.tracef("truncate %s (file %d) to %d, cut %v", h.name, h.f.id, size, h.f.cut)
 	// A later sync keeps only what is left of the writes before it.
+	h.f.pending = slices.DeleteFunc(h.f.pending, func(w write) bool { return int64(w.off) >= size })
 	for i, w := range h.f.pending {
 		if end := int64(w.off + len(w.p)); end > size {
-			h.f.pending[i].p = w.p[:max(0, size-int64(w.off))]
+			h.f.pending[i].p = w.p[:size-int64(w.off)]
 		}
 	}
 	return nil

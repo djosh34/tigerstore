@@ -409,6 +409,11 @@ func (c *conn) Write(b []byte) (int, error) {
 			s.mu.Unlock()
 			return len(b), nil
 		}
+		if !c.writeDeadline.IsZero() && !time.Now().Before(c.writeDeadline) {
+			s.stats.WriteTimeouts++
+			s.mu.Unlock()
+			return n, os.ErrDeadlineExceeded
+		}
 		if room := sendBuffer - c.out.size; room > 0 {
 			k := min(room, len(b)-n)
 			c.send(b[n : n+k])
@@ -423,11 +428,7 @@ func (c *conn) Write(b []byte) (int, error) {
 		}
 		wait := int64(math.MaxInt64)
 		if !c.writeDeadline.IsZero() {
-			if wait = int64(time.Until(c.writeDeadline)); wait <= 0 {
-				s.stats.WriteTimeouts++
-				s.mu.Unlock()
-				return n, os.ErrDeadlineExceeded
-			}
+			wait = max(int64(time.Until(c.writeDeadline)), 1)
 		}
 		wake := c.out.wake
 		s.mu.Unlock()
