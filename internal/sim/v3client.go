@@ -59,6 +59,8 @@ func (c *client) newV3() error {
 		Endpoints: []string{"https://" + clientAddr(c.node)},
 		TLS:       &tls.Config{RootCAs: s.net.ca},
 		Logger:    zap.NewNop(),
+		// Diagnosis: expose each server failure instead of retrying a read.
+		MaxUnaryRetries: 1,
 		DialOptions: []grpc.DialOption{
 			grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
 				return s.net.dial(ctx, s, nil, addr)
