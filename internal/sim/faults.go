@@ -106,8 +106,11 @@ func (s *Sim) injectDiskFault() {
 	}
 	if n := s.upNode(); n != nil {
 		kind := s.rng.IntN(4)
-		if s.cfg.ckptCreateFaults {
+		switch {
+		case s.cfg.ckptCreateFaults:
 			kind = 3
+		case s.cfg.syncFaultExits:
+			kind = 0
 		}
 		s.armDiskFault(n, kind)
 	}

@@ -151,6 +151,9 @@ const (
 	MaxSpares   = 4
 	sparePrefix = "spare-"
 	nextPrefix  = "next-"
+	// recoverPrefix names the copy of the newest segment that recovery
+	// writes (rewrite).
+	recoverPrefix = "recover-"
 )
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
@@ -315,8 +318,10 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 
 	w := &WAL{fs: fs, maxSize: SegmentBytes, spares: MaxSpares, vals: map[uint64][]valueRec{}, readers: map[uint64]File{}, sizes: map[uint64]int64{}}
 	rec := &Recovered{}
-	// first is the index of the first entry the scan found, 0 for none.
+	// first is the index of the first entry the scan found, 0 for none,
+	// and tail the records of the newest segment.
 	var first uint64
+	var tail []byte
 	for i, name := range segs {
 		last := i == len(segs)-1
 		f, err := fs.Open(name)
@@ -379,9 +384,6 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 				}
 				return Open(fs)
 			}
-			if err := errors.Join(f.Truncate(good), f.Sync()); err != nil {
-				return nil, nil, errors.Join(err, f.Close())
-			}
 		}
 		rec.Bytes += good
 		if !last {
@@ -391,19 +393,13 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			w.sizes[seq] = good
 			continue
 		}
-		w.seg, w.size, w.copied = f, good, true
+		w.seg, w.size, w.copied, tail = f, good, true, data[:good]
 	}
 	if err := w.check(first); err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Join(err, w.Close())
 	}
-	// A killed process leaves its writes in the page cache, where the next
-	// process reads them. Unsynced, a power loss could still take back an
-	// entry, a term and vote, or a root that names newer packs and a newer
-	// checkpoint, after the node held them durable and removed the files
-	// of the older root (#361). So what recovery read is synced before the
-	// node acts on it, and before Open removes any file.
-	if w.seg != nil {
-		if err := w.seg.Sync(); err != nil {
+	if tail != nil {
+		if err := w.rewrite(names, tail); err != nil {
 			return nil, nil, errors.Join(err, w.Close())
 		}
 	}
@@ -442,6 +438,53 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		}
 	}
 	return w, rec, nil
+}
+
+// rewrite replaces the newest segment with a synced copy of its records,
+// tail, before the node acts on what recovery read and before Open
+// removes any file. A killed process leaves its writes in the page cache,
+// where the next process reads them: unsynced, a power loss could still
+// take back an entry, a term and vote, or a root that names newer packs
+// and a newer checkpoint, after the node held them durable and removed
+// the files of the older root (#361). A sync of the segment is not
+// enough: a failed sync leaves the bytes that never reached the disk
+// readable in the page cache, and no later sync writes them (#364). So
+// recovery writes them again, into a new file that it renames over the
+// segment once synced, which also drops a torn tail. A copy that a crash
+// left is removed first. names are the files in the directory.
+func (w *WAL) rewrite(names []string, tail []byte) error {
+	for _, n := range names {
+		if strings.HasPrefix(n, recoverPrefix) {
+			if err := w.fs.Remove(n); err != nil && !errors.Is(err, iofs.ErrNotExist) {
+				return err
+			}
+		}
+	}
+	name, tmp := segmentName(w.seq), fmt.Sprintf("%s%016x", recoverPrefix, w.seq)
+	f, err := w.fs.Create(tmp)
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteAt(tail, 0)
+	if err == nil {
+		err = f.Sync()
+	}
+	if err := errors.Join(err, f.Close()); err != nil {
+		return err
+	}
+	if err := w.fs.Rename(tmp, name); err != nil {
+		return err
+	}
+	if err := w.fs.SyncDir(); err != nil {
+		return err
+	}
+	old := w.seg
+	w.seg = nil
+	if err := old.Close(); err != nil {
+		return err
+	}
+	w.seg, err = w.fs.Open(name)
+	return err
 }
 
 // started reports whether data, the content of segment seq, holds the

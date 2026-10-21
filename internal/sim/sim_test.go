@@ -814,6 +814,33 @@ func TestCheckpointCreateFails(t *testing.T) {
 	took.check(t)
 }
 
+// TestFailedSyncThenRestart makes every disk fault a failed sync, after
+// which the node starts again with its page cache kept, where the bytes
+// the sync did not write stay readable, and no later sync writes them.
+// Recovery must write them again: with segments of 256 bytes, which end
+// every few writes, a power loss later would find a hole in a sealed
+// segment (#364).
+func TestFailedSyncThenRestart(t *testing.T) {
+	var took effects
+	if !simrun.Each(t, seedRange(3800, 8), func(t *testing.T, seed uint64) int {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{DiskErrorEvery: 500 * Millisecond, CrashEvery: 2 * Second, MaxDown: Second}
+		cfg.syncFaultExits = true
+		cfg.SegmentBytes = 256
+		cfg.Duration = 10 * Second
+		cfg.Heal = 8 * Second
+		res := run(t, cfg)
+		checkers(t, res)
+		return res.Stats.Disk.FailedSyncs
+	}, func(seed uint64, n int) bool {
+		took.add(seed, map[string]bool{"failed sync": n > 0})
+		return false
+	}) {
+		return
+	}
+	took.check(t)
+}
+
 // damagedSnapshotConfig holds a follower down until it fetches a snapshot,
 // and damages the first stream, for 8 virtual seconds and 8 of healing:
 // the case "damaged snapshot" of TestEachFaultTakesEffect, and B22's.

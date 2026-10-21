@@ -114,8 +114,10 @@ type Config struct {
 	netemKinds  []netemKind
 	// ckptCreateFaults makes every disk fault EIO on the next creation of
 	// a checkpoint file, and every such creation take 50 ms; killLosses
-	// makes every crash a kill followed by a power loss. For the tests.
-	ckptCreateFaults, killLosses bool
+	// makes every crash a kill followed by a power loss; syncFaultExits
+	// makes every disk fault a failed sync, after which the node starts
+	// again with its page cache kept. For the tests.
+	ckptCreateFaults, killLosses, syncFaultExits bool
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -136,7 +138,8 @@ type Faults struct {
 	SlowDisk int
 	// DiskErrorEvery is the mean time between failed writes or syncs:
 	// EIO on a write or a sync, or a short write with ENOSPC. The node
-	// stops, never retries, and restarts from its disk.
+	// stops, never retries, and restarts from its disk, half the time
+	// with its page cache kept.
 	DiskErrorEvery int64
 	// StallEvery is the mean time between disk stalls of 1.5 to 4 s, in
 	// which the log's syncs wait.
@@ -1321,7 +1324,14 @@ func (s *Sim) exited(p *proc, err error) {
 			s.stats.ReadOnlyStops++
 		}
 		n.disk.Fault = nil
-		s.stopNode(n)
+		if s.cfg.syncFaultExits || s.rng.IntN(2) == 0 {
+			// The process exits and starts again on a machine that keeps
+			// its page cache, where a failed sync left bytes that never
+			// reach the disk (#364).
+			s.restartAfterExit(n)
+		} else {
+			s.stopNode(n)
+		}
 	default:
 		s.fail("node %d stopped: %w", n.id, err)
 	}
@@ -1697,6 +1707,21 @@ func (s *Sim) stopNode(n *node) { s.stopNodeAfter(n, s.restartDelay()) }
 
 // stopNodeAfter is stopNode with the restart d from now.
 func (s *Sim) stopNodeAfter(n *node, d int64) {
+	s.lateStop()
+	s.crash(n)
+	s.restartLater(n, d)
+}
+
+// restartAfterExit restarts a node whose process exited, later, from its
+// disk with the page cache kept, as a kill leaves it. The lock is held.
+func (s *Sim) restartAfterExit(n *node) {
+	s.lateStop()
+	s.kill(n)
+	s.restartLater(n, s.restartDelay())
+}
+
+// lateStop notes a node that stops after healing. The lock is held.
+func (s *Sim) lateStop() {
 	if s.healed && s.now() <= s.recovered() {
 		// The guaranteed disk fault fired after healing. The liveness
 		// rule starts once the node is back (check.go); the clients keep
@@ -1709,8 +1734,6 @@ func (s *Sim) stopNodeAfter(n *node, d int64) {
 		s.lateStopAt = s.now()
 		s.extendLiveness()
 	}
-	s.crash(n)
-	s.restartLater(n, d)
 }
 
 // restartDelay draws when stopNode restarts a node. The lock is held.
