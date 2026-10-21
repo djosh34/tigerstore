@@ -942,10 +942,10 @@ func TestGrayClient(t *testing.T) {
 		if r.Call >= cfg.Duration || r.Call < Second {
 			continue
 		}
-		if errors.Is(r.Err, rpctypes.ErrGRPCStopped) {
+		if errors.Is(r.Err, rpctypes.ErrGRPCStopped) || r.Err != nil && res.nodes[r.Node].reloadedDuring(r.Call, r.Return) {
 			// With no other fault, only a start from the log after a
 			// snapshot install, which the run's tiny window makes
-			// frequent, answers that.
+			// frequent, fails a call, as the liveness rule allows.
 			continue
 		}
 		if r.Err != nil && !isRejection(r.Err) {

@@ -304,9 +304,9 @@ type node struct {
 	// stall window, for the liveness rule.
 	stallUntil int64
 	stalls     [][2]int64
-	// reloads are the times a client saw the node fail its call to start
-	// again from its log, after a snapshot install or a failed fetch, as
-	// on a restart; the client tries again.
+	// reloads are the times the node started again from its log, after a
+	// snapshot install or a failed fetch, as on a restart, or a client saw
+	// it fail a call for that; the client tries again.
 	reloads []int64
 	// hs is the term and vote the node holds durable: what its process
 	// recovered or later reported durable. mustLast and mustHS are what
@@ -1345,8 +1345,10 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 	if p.core != c {
 		if p.core != nil {
 			// A snapshot install or a failed fetch started the core
-			// again from the log; what the old one queued is gone.
+			// again from the log; what the old one queued is gone, and
+			// calls it held may fail.
 			s.stats.Reloads++
+			n.reloads = append(n.reloads, s.now())
 			s.tracef("node %d: started again from its log", n.id)
 		} else if hs := c.RaftStatus().HardState; hs.GetTerm() < n.mustHS.term || hs.GetTerm() == n.mustHS.term && n.mustHS.vote != 0 && hs.GetVote() != n.mustHS.vote {
 			// Raft never moves back a term, or a vote within one.
