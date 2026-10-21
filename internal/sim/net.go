@@ -401,6 +401,13 @@ func (c *conn) Write(b []byte) (int, error) {
 			s.mu.Unlock()
 			return n, c.in.err
 		case c.other.closed:
+			// The peer answers with RST, as TCP does, which also fails
+			// the reads of bytes still on their way: else a reader held
+			// behind a link stall waits for them, and gRPC, which retires
+			// a transport only once its reader saw the end, tries the
+			// closing transport again and again while the virtual clock
+			// stands still (#369).
+			s.net.reset(c)
 			s.mu.Unlock()
 			return n, errReset
 		}

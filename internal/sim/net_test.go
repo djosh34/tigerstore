@@ -36,6 +36,39 @@ func writer() *conn {
 	return a
 }
 
+// TestWriteToClosedPeerResets writes to a connection whose peer closed
+// after sending bytes that a link stall holds back: the write fails with
+// a reset, and so does the read of those bytes, at once, as TCP's RST
+// does. Before #369's fix the read waited for the stall to end.
+func TestWriteToClosedPeerResets(t *testing.T) {
+	a := writer()
+	b := a.other
+	a.s.net = network{conns: map[*conn]bool{a: true, b: true}}
+	a.s.links[1][0].stallUntil = 1000 * Second
+	if _, err := b.Write([]byte("held")); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Write([]byte("x")); !errors.Is(err, errReset) {
+		t.Fatalf("write to a closed peer = %v, want a reset", err)
+	}
+	read := make(chan error, 1)
+	go func() {
+		_, err := a.Read(make([]byte, 4))
+		read <- err
+	}()
+	select {
+	case err := <-read:
+		if !errors.Is(err, errReset) {
+			t.Fatalf("read after the reset = %v, want a reset", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the read still waits for the bytes the stall holds")
+	}
+}
+
 // TestWriteDeadline checks that a write fails at its deadline: at once
 // when it passed, and after what fits when the buffer fills.
 func TestWriteDeadline(t *testing.T) {
