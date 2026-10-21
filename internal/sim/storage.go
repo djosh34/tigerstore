@@ -294,13 +294,8 @@ func (s *Sim) rot(n *node, c *core.Node) {
 		if !slices.Contains(live, name) {
 			continue
 		}
-		if name == newestSegment(n.disk) {
-			// Damage to the newest segment's last durable record looks
-			// like a torn write; a later entry must be durable after it.
-			next, end, ok := w.ValuePlace(r.Index+2, 0, 0)
-			if !ok || next != seq || end >= int64(len(n.disk.DurableBytes(name))) {
-				continue
-			}
+		if name == newestSegment(n.disk) && !witnessed(n, w, name, seq, r.Index) {
+			continue
 		}
 		n.disk.Rot(name, int(at)+s.rng.IntN(int(r.Len)))
 		n.corrupted, n.rotted, n.rotFile, n.rotEntry, n.rotSeg = true, true, name, r.Index, seq
@@ -308,4 +303,16 @@ func (s *Sim) rot(n *node, c *core.Node) {
 		s.tracef("node %d: rotted a value of entry %d in %s", n.id, r.Index, name)
 		return
 	}
+}
+
+// witnessed reports whether damage to entry index, in n's newest segment
+// name of sequence number seq, would show. Recovery takes damage to the
+// newest segment's last durable record for a torn write, so entry index+2
+// must follow it in the segment, durable. It must also be reported
+// durable: a failed sync cuts the segment back to what the node driver
+// reported, and with it an entry that an earlier sync wrote along by
+// chance (#375).
+func witnessed(n *node, w *wal.WAL, name string, seq, index uint64) bool {
+	next, end, ok := w.ValuePlace(index+2, 0, 0)
+	return ok && next == seq && end < int64(len(n.disk.DurableBytes(name))) && index+2 <= n.floor()
 }
