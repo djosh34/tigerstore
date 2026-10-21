@@ -926,7 +926,7 @@ func (s *Sim) stop() {
 
 // traceLines is how many lines of its trace a run keeps, and diskLines
 // how many disk calls each node keeps.
-const traceLines, diskLines = 3000, 4000
+const traceLines, diskLines = 3000, 1000000
 
 // traceDisk keeps the disk calls of n, with the run's time, in
 // n.diskLog. Disk calls run with the lock held.
