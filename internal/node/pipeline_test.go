@@ -34,7 +34,7 @@ func TestSyncGroupsStopAtFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := &Node{cfg: Config{Metrics: m}}
+	n := &Node{cfg: Config{Metrics: m}, log: &diskLog{}}
 	f := &syncFile{failAt: 2}
 	groups := make(chan written)
 	synced := make(chan syncedGroup, 4)
@@ -74,7 +74,7 @@ func TestSyncGroupsStopAtReportFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := &Node{cfg: Config{Metrics: m}}
+	n := &Node{cfg: Config{Metrics: m}, log: &diskLog{}}
 	f := &syncFile{failAt: 10}
 	groups := make(chan written)
 	synced := make(chan syncedGroup, 2)

@@ -112,6 +112,10 @@ type Config struct {
 	// sync and of link faults that the run picks from, for the tests.
 	damageKinds []damageKind
 	netemKinds  []netemKind
+	// ckptCreateFaults makes every disk fault EIO on the next creation of
+	// a checkpoint file, and every such creation take 50 ms; killLosses
+	// makes every crash a kill followed by a power loss. For the tests.
+	ckptCreateFaults, killLosses bool
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -575,10 +579,12 @@ type Stats struct {
 	// that did not, of a running node or of one that was down.
 	// TornRefusals counts nodes whose torn crash image recovery refused,
 	// MisreadRefusals starts that refused a log they read wrong, IOErrors
-	// the injected errors of disk operations, FSDowns file systems that
-	// shut down or went read-only, DiskFulls disks that filled up, and
-	// Damage the damage done after a sync, by kind (damageKinds).
-	Kills, PowerLosses, TornRefusals, MisreadRefusals, IOErrors, FSDowns, DiskFulls int
+	// the injected errors of disk operations, CheckpointCreateErrors those
+	// of them that failed the creation of a checkpoint file, FSDowns file
+	// systems that shut down or went read-only, DiskFulls disks that
+	// filled up, and Damage the damage done after a sync, by kind
+	// (damageKinds).
+	Kills, PowerLosses, TornRefusals, MisreadRefusals, IOErrors, CheckpointCreateErrors, FSDowns, DiskFulls int
 	// ReadOnlyStops counts nodes that stopped on a read-only file system,
 	// and ClientLinksDown the directions of the clients' links that went
 	// down.
@@ -1550,13 +1556,13 @@ func (s *Sim) crashRandom() {
 		return
 	}
 	n.why = "the run crashed it"
-	if s.rng.IntN(2) == 0 || raceLeavesOut {
+	if !s.cfg.killLosses && s.rng.IntN(2) == 0 {
 		s.crash(n)
 		s.maybeCorrupt(n)
 	} else {
 		n.why = "the run killed it"
 		s.kill(n)
-		if s.rng.IntN(3) == 0 {
+		if s.cfg.killLosses || s.rng.IntN(3) == 0 {
 			s.after(100*Millisecond+s.rng.Int64N(2900*Millisecond), func() {
 				s.mu.Lock()
 				defer s.mu.Unlock()

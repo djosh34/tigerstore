@@ -138,6 +138,9 @@ func receive(r io.Reader, dir string, in *core.Install) error {
 		w.Append(&wal.HardState{Term: in.Term, Commit: in.Index}, nil)
 		err = w.Sync()
 	}
+	if err == nil {
+		err = wal.SaveVote(d, in.Term, 0)
+	}
 	return errors.Join(err, sink.Close(), w.Close())
 }
 

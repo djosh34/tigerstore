@@ -705,8 +705,7 @@ func faultCases() []faultCase {
 // before healing.
 func TestEachFaultTakesEffect(t *testing.T) {
 	if simrun.Race {
-		// Under the race detector some faults are left out
-		// (raceLeavesOut), and the cases take half an hour.
+		// Under the race detector the cases take half an hour.
 		t.Skip("the faults' effects are counted under gosim")
 	}
 	cases := faultCases()
@@ -744,9 +743,6 @@ func TestEachFaultTakesEffect(t *testing.T) {
 // segment where that loses only a new term or vote (lastRecord): the node
 // must start again with the term and vote it held durable (#357).
 func TestDamagedLastRecord(t *testing.T) {
-	if simrun.Race {
-		t.Skip("under the race detector the runs damage no last record (raceLeavesOut)")
-	}
 	var took effects
 	if !simrun.Each(t, seedRange(3500, 3), func(t *testing.T, seed uint64) bool {
 		cfg := DefaultConfig(seed)
@@ -761,6 +757,56 @@ func TestDamagedLastRecord(t *testing.T) {
 		return res.Stats.Damage[lastRecord] > 0
 	}, func(seed uint64, effect bool) bool {
 		took.add(seed, map[string]bool{lastRecord.String(): effect})
+		return false
+	}) {
+		return
+	}
+	took.check(t)
+}
+
+// TestPowerLossAfterKill makes every crash a kill, which keeps the page
+// cache, followed by a power loss 0.1 to 3 s later, while the node is
+// down or after it started again. What the restarted node read and held
+// durable must survive the power loss: before #361's fix, recovery did
+// not sync what it read from the page cache.
+func TestPowerLossAfterKill(t *testing.T) {
+	var took effects
+	if !simrun.Each(t, seedRange(3600, 16), func(t *testing.T, seed uint64) int {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{CrashEvery: Second, MaxDown: Second}
+		cfg.killLosses = true
+		cfg.Duration = 10 * Second
+		cfg.Heal = 8 * Second
+		res := run(t, cfg)
+		checkers(t, res)
+		return res.Stats.KillLosses
+	}, func(seed uint64, losses int) bool {
+		took.add(seed, map[string]bool{"power loss after a kill": losses > 0})
+		return false
+	}) {
+		return
+	}
+	took.check(t)
+}
+
+// TestCheckpointCreateFails makes every disk fault EIO on the creation of
+// a checkpoint file, which takes 50 ms, so that the later parts of the
+// checkpoint queue up meanwhile. The node stops, and must not write them
+// into a new file without the first part (#363), which the run's check
+// of every completed checkpoint finds.
+func TestCheckpointCreateFails(t *testing.T) {
+	var took effects
+	if !simrun.Each(t, seedRange(3700, 4), func(t *testing.T, seed uint64) int {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{DiskErrorEvery: 500 * Millisecond}
+		cfg.ckptCreateFaults = true
+		cfg.Duration = 8 * Second
+		cfg.Heal = 8 * Second
+		res := run(t, cfg)
+		checkers(t, res)
+		return res.Stats.CheckpointCreateErrors
+	}, func(seed uint64, n int) bool {
+		took.add(seed, map[string]bool{"EIO on a checkpoint's creation": n > 0})
 		return false
 	}) {
 		return
@@ -956,17 +1002,14 @@ func TestGrayClient(t *testing.T) {
 		if errors.Is(r.Err, rpctypes.ErrGRPCStopped) || res.nodes[r.Node].hungOnReload(r) {
 			// With no other fault, only a start from the log after a
 			// snapshot install, which the run's tiny window makes
-			// frequent, answers that, or holds a clientv3 call until
-			// it times out (#365).
+			// frequent, answers that, or makes clientv3 try a read
+			// again, which can time out (#365).
 			continue
 		}
 		if r.Err != nil && !isRejection(r.Err) {
 			t.Fatalf("call to node %d at %d ms failed beside the gray client: %v", r.Node+1, r.Call/Millisecond, r.Err)
 		}
-		// clientv3 tries a call that a start from the log cut off again;
-		// the attempts cut off do not count, as such a direct call does
-		// not (#366).
-		if took := r.Return - r.Call - r.cut; took >= Second {
+		if took := r.Return - r.Call; took >= Second {
 			t.Fatalf("call to node %d at %d ms took %d ms beside the gray client", r.Node+1, r.Call/Millisecond, took/Millisecond)
 		}
 		calls++

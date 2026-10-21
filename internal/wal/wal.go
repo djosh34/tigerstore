@@ -276,8 +276,9 @@ type WAL struct {
 // returns the log ready for appends. It holds one segment in memory at a
 // time and keeps only where each entry is. A damaged record anywhere else,
 // a gap in the entries, or a commit index past the last entry is
-// ErrCorrupt. It removes the checkpoint files that the newest root does
-// not name.
+// ErrCorrupt. It syncs what it read, takes the term and vote from the
+// copies outside the log if those are newer (vote.go), and removes the
+// checkpoint files that the newest root does not name.
 func Open(fs FS) (*WAL, *Recovered, error) {
 	names, err := fs.List()
 	if err != nil {
@@ -395,6 +396,25 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	if err := w.check(first); err != nil {
 		return nil, nil, err
 	}
+	// A killed process leaves its writes in the page cache, where the next
+	// process reads them. Unsynced, a power loss could still take back an
+	// entry, a term and vote, or a root that names newer packs and a newer
+	// checkpoint, after the node held them durable and removed the files
+	// of the older root (#361). So what recovery read is synced before the
+	// node acts on it, and before Open removes any file.
+	if w.seg != nil {
+		if err := w.seg.Sync(); err != nil {
+			return nil, nil, errors.Join(err, w.Close())
+		}
+	}
+	copies, err := readVotes(fs, names)
+	if err != nil {
+		return nil, nil, errors.Join(err, w.Close())
+	}
+	if saved := newestVote(copies); newerVote(saved, rec.HardState) {
+		rec.HardState.Term, rec.HardState.Vote = saved.Term, saved.Vote
+		w.hs = rec.HardState
+	}
 	if err := w.openPacks(packs, rec); err != nil {
 		return nil, nil, errors.Join(err, w.Close())
 	}
@@ -402,6 +422,12 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	rec.Root, rec.Last = w.root, w.last
 	if rec.HardState.Commit > w.last {
 		return nil, nil, fmt.Errorf("%w: commit index %d is past the last entry %d", ErrCorrupt, rec.HardState.Commit, w.last)
+	}
+	// Both copies of the term and vote get the newest, which repairs a
+	// copy that a crash tore, and the directory sync makes the names of
+	// the log's files durable too.
+	if err := errors.Join(writeVotes(fs, names, copies, HardState{Term: rec.HardState.Term, Vote: rec.HardState.Vote}), fs.SyncDir()); err != nil {
+		return nil, nil, errors.Join(err, w.Close())
 	}
 	if err := w.removeCheckpoints(ckpts, CheckpointName(w.root.Index)); err != nil {
 		return nil, nil, err

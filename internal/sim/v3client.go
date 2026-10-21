@@ -70,8 +70,6 @@ func (c *client) newV3() error {
 				Backoff:           backoff.Config{BaseDelay: 100 * time.Millisecond, Multiplier: 1.6, Jitter: 0.2, MaxDelay: time.Second},
 				MinConnectTimeout: time.Duration(dialTimeout),
 			}),
-			// Inside clientv3's own retries, so it sees each attempt.
-			grpc.WithChainUnaryInterceptor(c.attempt),
 		},
 	})
 	if err != nil {
@@ -83,17 +81,6 @@ func (c *client) newV3() error {
 	// client it sends one again only when it never left.
 	c.v3, c.lease = cli, clientv3.NewLeaseFromLeaseClient(pb.NewLeaseClient(cli.ActiveConnection()), cli, 0)
 	return nil
-}
-
-// attempt makes one attempt of a unary call of client c and adds the
-// time it took to c.cut if a start from the log cut it off.
-func (c *client) attempt(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	start := c.sim.now()
-	err := invoker(ctx, method, req, reply, cc, opts...)
-	if errors.Is(v3Error(rpctypes.Error(err)), rpctypes.ErrGRPCStopped) {
-		c.cut += c.sim.now() - start
-	}
-	return err
 }
 
 // closeV3 closes client c's clientv3 client.
