@@ -16,14 +16,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - revision: '8da4108790ba74a3512ecaf72ed4905af764e662'
-            label: baseline
-            expected: 1
-          - revision: '2c4af6180931cd752e9f5cc486d7eb992ee5be47'
-            label: fsync-only
-            expected: 1
-          - revision: '6c0e786db4319e45b677144283b2d7b231ce75a5'
-            label: rewrite
+          - revision: '9169cb637e8a5bab006bea152e5870e5a8335ab1'
+            label: atomic-replacement
             expected: 0
     steps:
       - uses: actions/checkout@v7
@@ -44,7 +38,7 @@ jobs:
           echo "test exit=$status, expected=$EXPECTED"
           test "$status" = "$EXPECTED"
       - name: Original seed with prototype rewrite
-        if: matrix.label == 'rewrite'
+        if: matrix.label == 'atomic-replacement'
         env:
           SIM_SEED: ${{ inputs.first }}
           SIM_SEEDS: 1
