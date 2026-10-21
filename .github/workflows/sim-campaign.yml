@@ -1,5 +1,5 @@
-# Throwaway diagnosis for #375. The parent of the prototype commit has
-# the same logging and workflow, but not the rot witness guard.
+# Throwaway diagnosis for #375. 14b19066 has the same diagnostic
+# logging, but not the rot witness guard.
 name: sim-campaign
 on:
   workflow_dispatch:
@@ -18,15 +18,14 @@ jobs:
       GOFLAGS: -p=1
       SIM_SEEDS: "1"
       SIM_KEEP: "1"
-      SIM_OUT: ${{ runner.temp }}/sim-out
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - name: Select version
         run: |
           if [ '${{ matrix.version }}' = before ]; then
-            git checkout --detach HEAD^
+            git checkout --detach 14b190668f16025ff61e606a3e70471d6d0b418a
           fi
           git log -1 --oneline
       - uses: actions/setup-go@v7
@@ -39,6 +38,7 @@ jobs:
         run: |
           set -uo pipefail
           export GOSIMTOOL="$GITHUB_WORKSPACE/.gosim/bin/gosim"
+          export SIM_OUT="$RUNNER_TEMP/sim-out"
           cd internal/sim
           status=0
           for seed in 483056 422677 449788 460792; do
