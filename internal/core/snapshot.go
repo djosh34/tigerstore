@@ -136,8 +136,8 @@ func (n *Node) snapshotProgress() {
 // driver writes nothing after the install (UpToInstall); Raft then sends
 // another instead of waiting SnapshotTicks.
 func (n *Node) snapshotDropped(id uint64) {
-	if at, ok := n.snapWait[id]; ok && at != 0 && n.now-at >= int64(n.cfg.ElectionTicks) {
-		log.Printf("diag366 snapshotDropped node=%d peer=%d now=%d sent=%d timeout=%d", n.cfg.ID, id, n.now, at, n.cfg.ElectionTicks)
+	if at, ok := n.snapWait[id]; ok && at != 0 && n.now-at >= int64(2*n.cfg.HeartbeatTicks) {
+		log.Printf("diag366 snapshotDropped node=%d peer=%d now=%d sent=%d timeout=%d", n.cfg.ID, id, n.now, at, 2*n.cfg.HeartbeatTicks)
 		delete(n.snapWait, id)
 		n.rn.ReportSnapshot(id, raft.SnapshotFailure)
 	}
