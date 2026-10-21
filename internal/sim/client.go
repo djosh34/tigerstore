@@ -8,6 +8,7 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -22,6 +23,11 @@ type Record struct {
 	Err    error
 	// Ambiguous is set when the call may or may not have taken effect.
 	Ambiguous bool
+	// v3 is set for a call of a client of etcd's Go client.
+	v3 bool
+	// cut is the time the attempts of a clientv3 call that a start from
+	// the log cut off took, which clientv3 tried again.
+	cut int64
 }
 
 // Req is the request of the call.
@@ -38,6 +44,13 @@ type client struct {
 	rev int64
 	// leases are the IDs of leases this client was granted.
 	leases []int64
+	// v3, for a client of etcd's Go client, calls node index node
+	// (v3client.go).
+	v3    *clientv3.Client
+	lease clientv3.Lease
+	node  int
+	// cut is Record.cut of the call being made.
+	cut int64
 }
 
 const numKeys = 8
@@ -48,6 +61,21 @@ func key(i int) []byte { return fmt.Appendf(nil, "k%d", i) }
 // between them, until the clients stop.
 func (c *client) run() {
 	s := c.sim
+	if c.node >= 0 {
+		if err := c.newV3(); err != nil {
+			s.mu.Lock()
+			s.fail("client %d: %w", c.id, err)
+			s.mu.Unlock()
+			return
+		}
+		defer func() {
+			if err := c.closeV3(); err != nil {
+				s.mu.Lock()
+				s.fail("client %d: closing clientv3: %w", c.id, err)
+				s.mu.Unlock()
+			}
+		}()
+	}
 	s.mu.Lock()
 	wait := s.rng.Int64N(100 * Millisecond)
 	s.mu.Unlock()
@@ -61,11 +89,27 @@ func (c *client) run() {
 		// The fourth member is a learner for part of the run and is later
 		// removed. Ordinary clients keep the original voting endpoints.
 		i := c.id % 3
-		if !s.cfg.PinClients {
+		switch {
+		case c.v3 != nil:
+			i = c.node
+		case !s.cfg.PinClients:
 			i = s.rng.IntN(3)
 		}
-		r := &Record{Client: c.id, Node: i, Call: s.now(), req: c.request()}
+		r := &Record{Client: c.id, Node: i, Call: s.now(), req: c.request(), v3: c.v3 != nil}
 		s.mu.Unlock()
+		if c.v3 != nil {
+			c.cut = 0
+			resp, err := c.callV3(r.req)
+			s.mu.Lock()
+			r.cut = c.cut
+			if errors.Is(err, rpctypes.ErrGRPCStopped) {
+				s.nodes[i].reloads = append(s.nodes[i].reloads, s.now())
+			}
+			c.done(r, resp, err)
+			wait = 1 + s.rng.Int64N(20*Millisecond)
+			s.mu.Unlock()
+			continue
+		}
 		resp, err := s.call(s.nodes[i], r.req, s.cfg.ClientTimeout)
 		// A read that failed with "leader changed" goes again, as
 		// clientv3 retries it.
@@ -139,6 +183,9 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 	r.Return, r.Resp, r.Err = s.now(), resp, err
 	r.Ambiguous = err != nil && ambiguous(err)
 	s.history = append(s.history, r)
+	if r.v3 && err == nil {
+		s.stats.V3OK++
+	}
 	switch {
 	case err == nil:
 		s.stats.OK++
@@ -146,6 +193,9 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 			s.stats.Compactions++
 		}
 		c.learn(resp)
+	case errors.Is(err, rpctypes.ErrGRPCNoSpace):
+		s.stats.NoSpace++
+		s.stats.Failed++
 	case r.Ambiguous:
 		s.stats.Ambiguous++
 	default:
@@ -163,6 +213,7 @@ func ambiguous(err error) bool {
 		errors.Is(err, rpctypes.ErrGRPCFutureRev),
 		errors.Is(err, rpctypes.ErrGRPCCompacted),
 		errors.Is(err, rpctypes.ErrGRPCDuplicateKey),
+		errors.Is(err, rpctypes.ErrGRPCNoSpace),
 		errors.Is(err, rpctypes.ErrGRPCEmptyKey):
 		return false
 	}

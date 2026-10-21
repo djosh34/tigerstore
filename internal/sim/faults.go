@@ -1,9 +1,11 @@
 package sim
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/djosh34/tigerstore/internal/planted"
@@ -34,6 +36,12 @@ func (s *Sim) scheduleDiskFaults() {
 	if f.StallEvery > 0 {
 		s.every(f.StallEvery, s.injectStall)
 	}
+	if f.FSDownEvery > 0 {
+		s.every(f.FSDownEvery, s.fsDown)
+	}
+	if f.DiskFullEvery > 0 {
+		s.every(f.DiskFullEvery, s.diskFull)
+	}
 	if f.Checkpoint {
 		s.at(s.cfg.Duration/2+s.rng.Int64N(s.cfg.Duration/2)+1, func() {
 			s.mu.Lock()
@@ -41,6 +49,7 @@ func (s *Sim) scheduleDiskFaults() {
 			s.takeCheckpoint()
 		})
 	}
+	s.installCrashDue, s.voteCrashDue = f.InstallCrash, f.VoteCrash
 	if f.StepCrash {
 		s.once(s.cfg.Duration/2, 500*Millisecond, func() bool {
 			s.mu.Lock()
@@ -86,8 +95,10 @@ func (s *Sim) upNode() *node {
 	return up[s.rng.IntN(len(up))]
 }
 
-// injectDiskFault makes the next write or sync of a node fail: EIO on a
-// sync, EIO on a write, or a short write with ENOSPC.
+// injectDiskFault makes the next disk operation of a kind fail on a node:
+// a sync that fails after part of its writes reached the disk, EIO on a
+// write, a short write with ENOSPC, or EIO on any other file or directory
+// operation.
 func (s *Sim) injectDiskFault() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -95,31 +106,96 @@ func (s *Sim) injectDiskFault() {
 		return
 	}
 	if n := s.upNode(); n != nil {
-		s.armDiskFault(n, s.rng.IntN(3))
+		s.armDiskFault(n, s.rng.IntN(4))
 	}
 }
 
-// armDiskFault arms a disk fault on n: EIO on the next sync (kind 0) or
-// write (1), or a short write with ENOSPC (2). The lock is held.
+// otherOps are the disk operations besides writes and syncs that a disk
+// fault can fail.
+var otherOps = []simfs.Op{simfs.OpCreate, simfs.OpOpen, simfs.OpRead, simfs.OpTruncate, simfs.OpRemove, simfs.OpSyncDir, simfs.OpRename}
+
+// armDiskFault arms a disk fault on n: a failed sync (kind 0), EIO on the
+// next write (1), a short write with ENOSPC (2), or EIO on the next
+// operation of a random other kind (3). The lock is held.
 func (s *Sim) armDiskFault(n *node, kind int) {
-	s.tracef("node %d: disk fault %d armed", n.id, kind)
+	d := n.disk
+	target := simfs.OpWrite
 	switch kind {
-	case 0, 1:
-		target := simfs.OpSync
-		if kind == 1 {
-			target = simfs.OpWrite
-		}
-		d := n.disk
-		d.Fault = func(op simfs.Op, _ string) error {
-			if op != target {
-				return nil
-			}
-			d.Fault = nil
-			return simfs.ErrIO
-		}
+	case 0:
+		d.FailSync(s.rng)
+		s.tracef("node %d: disk fault armed: the next sync fails", n.id)
+		return
 	case 2:
-		n.disk.ShortWrite(s.rng)
+		d.ShortWrite(s.rng)
+		s.tracef("node %d: disk fault armed: the next write is short", n.id)
+		return
+	case 3:
+		target = otherOps[s.rng.IntN(len(otherOps))]
 	}
+	s.tracef("node %d: disk fault armed: EIO on the next %v", n.id, target)
+	d.Fault = func(op simfs.Op, name string) error {
+		if op != target || raceLeavesOut && op == simfs.OpCreate && strings.HasPrefix(name, "ckpt-") {
+			return nil
+		}
+		d.Fault = nil
+		s.stats.IOErrors++
+		return simfs.ErrIO
+	}
+}
+
+// fsDown shuts a node's file system down, or makes it read-only, for 0.5
+// to 3 s, as ext4 and XFS do after an error. The node stops at its next
+// operation that fails; at the end the disk is mounted again, and a node
+// still running is taken down first, as the unmount needs.
+func (s *Sim) fsDown() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := s.upNode()
+	if s.healed || n == nil {
+		return
+	}
+	s.stats.FSDowns++
+	if s.rng.IntN(2) == 0 {
+		n.disk.Shutdown()
+	} else {
+		n.disk.ReadOnly()
+	}
+	s.after(500*Millisecond+s.rng.Int64N(2500*Millisecond), func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.healed {
+			// Healing mounted it again.
+			return
+		}
+		if n.proc != nil {
+			n.why = "the run took it down to mount its disk again"
+			s.stopNode(n)
+		}
+		n.disk.Remount()
+	})
+}
+
+// diskFull fills a node's disk for 1.5 to 3.5 s, as another file taking
+// every free byte does: its writes fail with ENOSPC, and it stops.
+func (s *Sim) diskFull() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := s.upNode()
+	if s.healed || n == nil {
+		return
+	}
+	s.stats.DiskFulls++
+	d := n.disk
+	d.Capacity = d.Bytes()
+	s.tracef("node %d: disk full at %d bytes", n.id, d.Capacity)
+	s.after(1500*Millisecond+s.rng.Int64N(2000*Millisecond), func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if !s.healed {
+			d.Capacity = s.cfg.Faults.DiskCapacity
+			s.tracef("node %d: disk no longer full", n.id)
+		}
+	})
 }
 
 // injectStall holds back a random node's log syncs for 1.5 to 4 s.
@@ -184,7 +260,8 @@ var flipPayload func(*Sim, *node) bool
 // most once per run and only if no node is damaged yet, so a quorum stays.
 // The lock is held.
 func (s *Sim) maybeCorrupt(n *node) {
-	if !s.cfg.Faults.Corrupt || s.healed || s.rng.IntN(2) != 0 {
+	// A test that picks the kinds of damage tries at every crash.
+	if !s.cfg.Faults.Corrupt || s.healed || len(s.cfg.damageKinds) == 0 && s.rng.IntN(2) != 0 {
 		return
 	}
 	if planted.On("B04c") && flipPayload != nil {
@@ -196,33 +273,155 @@ func (s *Sim) maybeCorrupt(n *node) {
 		return
 	}
 	for _, m := range s.nodes {
-		if m.corrupted {
+		if m.corrupted || m.fenced {
 			return
 		}
 	}
-	// Half the time the damage is in the checkpoint that recovery starts
-	// from: the newest root on the disk, which the crash may have kept
-	// though its sync never finished (seed 439 damaged the older one,
-	// which recovery no longer reads).
-	if root, err := recoveredRoot(n); err == nil && root > 0 && s.rng.IntN(2) == 0 && n.disk.CorruptFile(s.rng, wal.CheckpointName(root)) {
-		n.corrupted = true
-		s.tracef("node %d: damaged checkpoint %d", n.id, root)
+	kind := damageKind(s.rng.IntN(numDamage))
+	if k := s.cfg.damageKinds; len(k) > 0 {
+		kind = k[s.rng.IntN(len(k))]
+	}
+	if kind == lastRecord && raceLeavesOut {
+		return
+	}
+	if s.damage(n, kind) {
+		s.stats.Damage[kind]++
+		s.tracef("node %d: damage after a sync: %v", n.id, kind)
 		return
 	}
 	if n.disk.Corrupt(s.rng) {
 		n.corrupted = true
-		s.tracef("node %d: damaged a segment", n.id)
+		s.stats.Damage[misdirected]++
+		s.tracef("node %d: damage after a sync: %v", n.id, misdirected)
 	}
+}
+
+// damageKind is a kind of damage to what a disk synced.
+type damageKind int
+
+const (
+	// flippedRoot flips a bit of the checkpoint that recovery starts
+	// from: the newest root on the disk, which the crash may have kept
+	// though its sync never finished (seed 439 damaged the older one,
+	// which recovery no longer reads).
+	flippedRoot damageKind = iota
+	// misdirected copies synced bytes over a sealed segment, like a write
+	// that landed at the wrong place (simfs.Disk.Corrupt).
+	misdirected
+	// lostWrite zeros a sector of a sealed segment or of the root's
+	// checkpoint, like a write the drive reported done but never made.
+	lostWrite
+	// badSector makes a sector of a sealed segment fail every read.
+	badSector
+	// misread makes recovery's read of a sealed segment return wrong data
+	// once.
+	misread
+	// lastRecord flips a bit of the last record of the newest segment
+	// when that record holds only a new term or vote: the log takes it
+	// for a torn write and cuts it off, which loses a durable term and
+	// vote (#357). Damage to a last record that holds entries is a
+	// documented limit (docs/design.md), and the run does not do it.
+	lastRecord
+)
+
+// numDamage is the number of damage kinds.
+const numDamage = int(lastRecord) + 1
+
+func (k damageKind) String() string {
+	return [...]string{"flipped root checkpoint", "misdirected write", "lost write", "bad sector", "misread", "damaged last record"}[k]
+}
+
+// damage does damage of a kind to the synced bytes of n, which is down.
+// All but a misread and a damaged last record leave the disk damaged for
+// good, so n must refuse to start; a misread one refuses its next start,
+// and a damaged last record must keep its term and vote. It reports
+// whether n had what the kind needs. The lock is held.
+func (s *Sim) damage(n *node, kind damageKind) bool {
+	d := n.disk
+	sealed := sealedSegments(d)
+	var seg string
+	if len(sealed) > 0 {
+		seg = sealed[s.rng.IntN(len(sealed))]
+	}
+	switch kind {
+	case flippedRoot:
+		root, err := recoveredRoot(n)
+		n.corrupted = err == nil && root > 0 && d.CorruptFile(s.rng, wal.CheckpointName(root))
+		return n.corrupted
+	case misdirected:
+		n.corrupted = d.Corrupt(s.rng)
+		return n.corrupted
+	case lostWrite:
+		if root, err := recoveredRoot(n); err == nil && root > 0 && s.rng.IntN(2) == 0 {
+			seg = wal.CheckpointName(root)
+		}
+		n.corrupted = seg != "" && d.LoseWrite(s.rng, seg)
+		return n.corrupted
+	case badSector:
+		n.corrupted = seg != "" && d.BadSector(s.rng, seg)
+		return n.corrupted
+	case misread:
+		n.misread = seg != "" && d.Misread(s.rng, seg)
+		return n.misread
+	case lastRecord:
+		return s.damageLastRecord(n)
+	}
+	return false
+}
+
+// sealedSegments are the segments of a disk but the newest, with at least
+// a sector of synced bytes. Recovery reads all of them, and damage to any
+// is damage to synced records.
+func sealedSegments(d *simfs.Disk) []string {
+	var segs []string
+	for _, name := range d.DurableNames() {
+		if isSegment(name) {
+			segs = append(segs, name)
+		}
+	}
+	if len(segs) > 0 {
+		segs = segs[:len(segs)-1]
+	}
+	return slices.DeleteFunc(segs, func(name string) bool { return len(d.DurableBytes(name)) < simfs.SectorBytes })
+}
+
+// damageLastRecord flips a bit at the end of n's newest segment if that
+// loses only the term and vote of its last record, not an entry, and
+// checks what recovery then gives (checkRecovery, turn). The lock is held.
+func (s *Sim) damageLastRecord(n *node) bool {
+	name := newestSegment(n.disk)
+	size := len(n.disk.DurableBytes(name))
+	before, err := recoveredState(n)
+	if err != nil || size == 0 {
+		return false
+	}
+	n.disk.FlipDurable(name, size-1)
+	after, err := recoveredState(n)
+	if err == nil && after.Last == before.Last && (after.HardState.Term != before.HardState.Term || after.HardState.Vote != before.HardState.Vote) {
+		s.checkRecovery(n)
+		return true
+	}
+	n.disk.FlipDurable(name, size-1)
+	return false
+}
+
+// recoveredState is what recovery of n's synced disk gives now.
+func recoveredState(n *node) (*wal.Recovered, error) {
+	w, rec, err := wal.Open(n.disk.Durable())
+	if err != nil {
+		return nil, err
+	}
+	return rec, w.Close()
 }
 
 // recoveredRoot is the index of the root that recovery of n's disk would
 // start from now.
 func recoveredRoot(n *node) (uint64, error) {
-	w, rec, err := wal.Open(n.disk.Durable())
+	rec, err := recoveredState(n)
 	if err != nil {
 		return 0, err
 	}
-	return rec.Root.Index, w.Close()
+	return rec.Root.Index, nil
 }
 
 // checkpoint is a copy of every disk as a power cut would leave it, the
@@ -464,7 +663,19 @@ func (s *Sim) runFor(d int64) error {
 // reloadedDuring reports whether a node started again from its log
 // between two times.
 func (n *node) reloadedDuring(from, to int64) bool {
-	for _, t := range n.reloads {
+	return during(n.reloads, from, to)
+}
+
+// hungOnReload reports whether r is a clientv3 call that timed out while
+// its node started again from its log: the gRPC server answers no call it
+// held then (#365). Its fix removes this.
+func (n *node) hungOnReload(r *Record) bool {
+	return r.v3 && errors.Is(r.Err, errClientTimeout) && during(n.fromLog, r.Call, r.Return)
+}
+
+// during reports whether one of the times is between from and to.
+func during(times []int64, from, to int64) bool {
+	for _, t := range times {
 		if t >= from && t <= to {
 			return true
 		}

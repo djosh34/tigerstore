@@ -30,7 +30,7 @@ import (
 // and sync a root that names it, and only then removes the files the pack
 // replaced. The index never changes. Segments go only from the front, so
 // the cleaner takes the oldest ones, and packs once at most half of their
-// bytes are live. A failed removal is logged, counted and tried again; it
+// values' bytes are live. A failed removal is logged, counted and tried again; it
 // never fails a write or stops the node.
 //
 // Out of disk is one rule from the measured total of the log's files: at
@@ -366,7 +366,10 @@ func choose(files []wal.CleanFile, live map[wal.FileID]int64, short bool) (remov
 	}
 	for _, f := range files[segs:] {
 		v := live[f.FileID]
-		if !f.Pack || 2*v > f.Size || len(victims) > 0 && v > 0 && copied+v > cleanLive {
+		// A pack's half is of its values' bytes: small values take less
+		// than half of their records, and a pack of nothing but live
+		// ones would be copied again on every pass (#362).
+		if !f.Pack || 2*v > f.Values || len(victims) > 0 && v > 0 && copied+v > cleanLive {
 			continue
 		}
 		rm.drop = append(rm.drop, f.N)

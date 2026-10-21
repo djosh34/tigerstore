@@ -96,6 +96,9 @@ func readable(out []byte) string {
 				File string
 				Line int
 			}
+			// A panic that ended the run has its value and stack.
+			Panic     string
+			Traceback []string
 		}
 		if json.Unmarshal([]byte(line), &entry) != nil || entry.Msg == "" {
 			// Not a log line: === RUN and --- PASS are text.
@@ -103,6 +106,12 @@ func readable(out []byte) string {
 			continue
 		}
 		fmt.Fprintf(&b, "%s:%d: %s\n", filepath.Base(entry.Source.File), entry.Source.Line, entry.Msg)
+		if entry.Panic != "" {
+			fmt.Fprintf(&b, "panic: %s\n", entry.Panic)
+		}
+		for _, l := range entry.Traceback {
+			fmt.Fprintf(&b, "\t%s\n", l)
+		}
 	}
 	return b.String()
 }

@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -37,6 +38,9 @@ type watchClient struct {
 	// open is set while the client has a stream, on process proc.
 	open bool
 	proc *proc
+	// slowUntil makes the client slow until then: it takes 0.3 to 1 s
+	// over each response (slowWatcher).
+	slowUntil int64
 }
 
 // WatchRecord is one watch response as the client got it.
@@ -154,6 +158,9 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 			ws.Taken(r)
 			s.mu.Lock()
 			lat := s.clientLatency()
+			if s.now() < w.slowUntil {
+				lat += 300*Millisecond + s.rng.Int64N(700*Millisecond)
+			}
 			s.mu.Unlock()
 			if !s.sleep(lat) {
 				return 0, dropAt
@@ -170,6 +177,9 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 			t.Stop()
 			s.mu.Lock()
 			s.tracef("watch %d: stream ended: %v", w.id, ws.Err())
+			if errors.Is(ws.Err(), tnode.ErrWatchTooSlow) {
+				s.stats.WatchersCut++
+			}
 			s.mu.Unlock()
 			return 0, dropAt
 		case <-p.ctx.Done():
@@ -307,4 +317,20 @@ func (w *watchClient) lastNode() uint64 {
 		return 0
 	}
 	return w.proc.n.id
+}
+
+// slowWatcher makes a random watch client slow for 2 to 5 s: it falls
+// behind its stream until the node closes it as too slow, and then
+// resumes on a new one.
+func (s *Sim) slowWatcher() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.healed || len(s.watchers) == 0 {
+		return false
+	}
+	w := s.watchers[s.rng.IntN(len(s.watchers))]
+	w.slowUntil = min(s.now()+2*Second+s.rng.Int64N(3*Second), s.healAt)
+	s.stats.SlowWatchers++
+	s.tracef("watch %d: slow until %d ms", w.id, w.slowUntil/Millisecond)
+	return true
 }

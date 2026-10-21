@@ -18,6 +18,7 @@
 package sim
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -35,6 +36,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	tnode "github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
+	"github.com/djosh34/tigerstore/internal/server"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
@@ -62,8 +64,10 @@ type Config struct {
 	// seed 126 fails with "no leader".
 	Heal      int64
 	LiveAfter int64
-	// Clients is the number of clients. Each has one call in flight.
-	Clients int
+	// Clients is the number of clients that enter at Node.Do, and
+	// V3Clients of those that use etcd's Go client (v3client.go). Each has
+	// one call in flight.
+	Clients, V3Clients int
 	// PinClients makes client i call voting node i%3 only, so that the
 	// clients waiting on a node that cannot answer leave the other nodes
 	// theirs (#279). Otherwise each call picks a voting node at random.
@@ -101,7 +105,13 @@ type Config struct {
 	// it turns the value cache on and bounds Range answers. Zero leaves
 	// both off.
 	MemoryBytes int64
-	Faults      Faults
+	// SegmentBytes is the size of the nodes' log segments, 8 KiB if 0.
+	SegmentBytes int64
+	Faults       Faults
+	// damageKinds and netemKinds, if set, are the kinds of damage after a
+	// sync and of link faults that the run picks from, for the tests.
+	damageKinds []damageKind
+	netemKinds  []netemKind
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -127,6 +137,16 @@ type Faults struct {
 	// StallEvery is the mean time between disk stalls of 1.5 to 4 s, in
 	// which the log's syncs wait.
 	StallEvery int64
+	// FSDownEvery is the mean time between file systems that shut down or
+	// go read-only for 0.5 to 3 s, and DiskFullEvery between disks that
+	// fill up for 1.5 to 3.5 s.
+	FSDownEvery, DiskFullEvery int64
+	// DiskBudget is each node's disk budget (node.Config.DiskBudget): the
+	// node cleans to stay below it, and refuses writes with the NOSPACE
+	// alarm at it. DiskCapacity is how many bytes its disk holds; a write
+	// past it fails with ENOSPC. Zero turns either off.
+	DiskBudget   int64
+	DiskCapacity int
 	// Corrupt damages one node's synced bytes at a crash, once per run
 	// and only sometimes; that node must refuse to start.
 	Corrupt bool
@@ -159,9 +179,18 @@ type Faults struct {
 	// GrayClient adds a client that opens a stream with 10 watches, never
 	// reads it, and reconnects every 50 to 300 ms until healing.
 	GrayClient bool
+	// SlowWatcherEvery is the mean time between watch clients that turn
+	// slow for 2 to 5 s (slowWatcher).
+	SlowWatcherEvery int64
 	// RecoveryCrash crashes one restart in three again at its first to
 	// fourth writing disk operation inside recovery.
 	RecoveryCrash bool
+	// InstallCrash crashes a follower once right before the first sync of
+	// its log during a snapshot install.
+	InstallCrash bool
+	// VoteCrash crashes a node once right after it synced a new term or
+	// vote with no entries.
+	VoteCrash bool
 	// StepCrash crashes a node once right after a disk call that changes
 	// what is durable outside appends: a write or a sync of a checkpoint,
 	// whether the node's own or a snapshot's, a directory sync, or a
@@ -187,6 +216,10 @@ type Faults struct {
 	// SwitchEvery is the mean time between switches to a random link
 	// mask. It runs alongside LinkEvery; set only one for fast switching.
 	SwitchEvery int64
+	// NetemEvery is the mean time between faults on a link to or from the
+	// leader (netemKind), and ResetEvery between resets of the
+	// connections between two nodes.
+	NetemEvery, ResetEvery int64
 	// HoldMask, if HoldMaskAt is set, sets the link mask at that time.
 	// Other link faults can change it later; with none, it holds until
 	// healing.
@@ -203,6 +236,7 @@ func DefaultConfig(seed uint64) Config {
 		Heal:          10 * Second,
 		LiveAfter:     4 * Second,
 		Clients:       6,
+		V3Clients:     3,
 		ClientTimeout: 3 * Second,
 		Faults: Faults{
 			CrashEvery: 3 * Second,
@@ -213,22 +247,31 @@ func DefaultConfig(seed uint64) Config {
 
 			DiskErrorEvery: 6 * Second,
 			StallEvery:     8 * Second,
-			Corrupt:        true,
-			Checkpoint:     true,
+			FSDownEvery:    10 * Second,
+			DiskFullEvery:  10 * Second,
+			// Every run cleans, and some raise the NOSPACE alarm: the
+			// nodes' files take 40 to 70 KiB without a budget.
+			DiskBudget:   32 << 10,
+			DiskCapacity: 128 << 10,
+			Corrupt:      true,
+			Checkpoint:   true,
 
-			LinkStallEvery: 4 * Second,
-			PauseEvery:     6 * Second,
-			DriftPerMille:  50,
-			HalfOpenEvery:  8 * Second,
-			GrayEvery:      8 * Second,
-			GrayClient:     true,
-			RecoveryCrash:  true,
-			StepCrash:      true,
-			FlipSnapshot:   true,
-			FetchCrash:     true,
-			SlowFetch:      true,
-			Rot:            true,
-			HoldDown:       true,
+			LinkStallEvery:   4 * Second,
+			PauseEvery:       6 * Second,
+			DriftPerMille:    50,
+			HalfOpenEvery:    8 * Second,
+			NetemEvery:       3 * Second,
+			ResetEvery:       6 * Second,
+			GrayEvery:        8 * Second,
+			GrayClient:       true,
+			SlowWatcherEvery: 6 * Second,
+			RecoveryCrash:    true,
+			StepCrash:        true,
+			FlipSnapshot:     true,
+			FetchCrash:       true,
+			SlowFetch:        true,
+			Rot:              true,
+			HoldDown:         true,
 		},
 	}
 }
@@ -263,8 +306,20 @@ type node struct {
 	stalls     [][2]int64
 	// reloads are the times a client saw the node fail its call to start
 	// again from its log, after a snapshot install or a failed fetch, as
-	// on a restart; the client tries again.
-	reloads []int64
+	// on a restart; the client tries again. fromLog are the times it did.
+	reloads, fromLog []int64
+	// hs is the term and vote the node holds durable: what its process
+	// recovered or later reported durable. mustLast and mustHS are what
+	// recovery must give after its process went down: the floor and hs
+	// then. tornCrash is set while its last crash image may tear writes,
+	// until checkRecovery.
+	hs        hardState
+	mustLast  uint64
+	mustHS    hardState
+	tornCrash bool
+	// misread is set while the next read of a segment by recovery returns
+	// wrong data.
+	misread bool
 	// durableLast is the last entry index the node reported durable to
 	// its core; recovery must give at least that. pending are the jobs
 	// its core handed the disk that it has not reported yet, oldest
@@ -316,6 +371,9 @@ type node struct {
 	last  coreState
 }
 
+// hardState is the term and vote of a Raft hard state.
+type hardState struct{ term, vote uint64 }
+
 // pendingJob is a job a node's core handed its disk at time at: the first
 // entry it writes, and whether that replaces entries reported durable.
 type pendingJob struct {
@@ -338,6 +396,8 @@ type proc struct {
 	// closed once the committer holds still for the checks at the end.
 	core   *core.Node
 	parked chan struct{}
+	// srv is the gRPC server of a voting node of the first three.
+	srv *server.Server
 }
 
 func (p *proc) dead() bool { return p.ctx.Err() != nil }
@@ -357,6 +417,15 @@ type link struct {
 	// halfOpenUntil swallows what the link carries until its connections
 	// fail.
 	halfOpenUntil int64
+	// netem is the link's fault until netemUntil (netemKind): bw is the
+	// bandwidth of a slow link, extra the delay a delay fault adds, and
+	// switchAt when a switching delay switches next; hits counts the
+	// writes it hit.
+	netem      netemKind
+	netemUntil int64
+	bw, extra  int64
+	switchAt   int64
+	hits       int
 }
 
 // Sim is one run.
@@ -369,8 +438,11 @@ type Sim struct {
 	t0    time.Time
 	nodes []*node
 	links [][]link
-	net   network
-	trace []string
+	// clientLinks are the links between the clients' host and each node:
+	// to the node, and back.
+	clientLinks [][2]link
+	net         network
+	trace       []string
 	// end is closed when the run ends. wg counts the run's goroutines
 	// but the processes', which procs counts.
 	end       chan struct{}
@@ -422,7 +494,13 @@ type Sim struct {
 	// next checkpoint, removal or install step, until one did; rotDue rots
 	// a value of that node at its next turn.
 	recoveryDue, stepCrashDue bool
-	rotDue                    *node
+	// installCrashDue crashes the next node that syncs its log during a
+	// snapshot install (Faults.InstallCrash).
+	installCrashDue bool
+	// voteCrashDue crashes the next node that syncs a new term or vote
+	// alone (Faults.VoteCrash).
+	voteCrashDue bool
+	rotDue       *node
 	// log is every committed entry as the first node applied it, with the
 	// state's hash after it, up to index maxLogged; ckpts are the hashes
 	// of the checkpoint files, by index.
@@ -449,6 +527,9 @@ type Stats struct {
 	Messages, Dropped     int
 	Crashes, LinkChanges  int
 	OK, Failed, Ambiguous int
+	// V3OK counts the calls of the clients of etcd's Go client that
+	// succeeded, among OK.
+	V3OK int
 	// Compactions counts successful compactions and WatchCompacted the
 	// watches that a compaction canceled.
 	Compactions, WatchCompacted int
@@ -467,9 +548,10 @@ type Stats struct {
 	// they disagreed (settle).
 	Settles int
 	// GrayNodes counts gray nodes that lost an append, GrayStreams the
-	// streams with watches a gray client opened, and RecoveryCrashes
-	// crashes inside the recovery of an existing log.
-	GrayNodes, GrayStreams, RecoveryCrashes int
+	// streams with watches a gray client opened, RecoveryCrashes crashes
+	// inside the recovery of an existing log, and InstallCrashes those
+	// during a snapshot install (Faults.InstallCrash).
+	GrayNodes, GrayStreams, RecoveryCrashes, InstallCrashes int
 	// Checkpoints counts checkpoint files completed, Snapshots snapshot
 	// streams served, ServeFailures fetches that the source could not
 	// serve, SnapshotFlips those damaged on the way, FetchCrashes sources
@@ -489,6 +571,36 @@ type Stats struct {
 	// taken right after the first root synced and right after the first
 	// segment removal.
 	ErasedAtRoot, ErasedAtRemoval int
+	// Kills counts crashes that kept the page cache, and PowerLosses those
+	// that did not, of a running node or of one that was down.
+	// TornRefusals counts nodes whose torn crash image recovery refused,
+	// MisreadRefusals starts that refused a log they read wrong, IOErrors
+	// the injected errors of disk operations, FSDowns file systems that
+	// shut down or went read-only, DiskFulls disks that filled up, and
+	// Damage the damage done after a sync, by kind (damageKinds).
+	Kills, PowerLosses, TornRefusals, MisreadRefusals, IOErrors, FSDowns, DiskFulls int
+	// ReadOnlyStops counts nodes that stopped on a read-only file system,
+	// and ClientLinksDown the directions of the clients' links that went
+	// down.
+	ReadOnlyStops, ClientLinksDown int
+	Damage                         [numDamage]int
+	// KillLosses counts the power losses that followed a kill, and Disk
+	// what the faults of the nodes' disks did.
+	KillLosses int
+	Disk       simfs.Counts
+	// Packs counts the packs that cleaning made, NoSpace the calls the
+	// NOSPACE alarm refused, and OutOfSpace the nodes that stopped on a
+	// write that ran out of space.
+	Packs, NoSpace, OutOfSpace int
+	// Netem counts the writes each kind of link fault hit (netemKind),
+	// Resets the resets of the connections between two nodes,
+	// BlockedWrites the writes that waited for room in a connection's
+	// buffer, and WriteTimeouts those that reached their write deadline.
+	Netem                                [numNetem]int
+	Resets, BlockedWrites, WriteTimeouts int
+	// SlowWatchers counts the watch clients that turned slow, and
+	// WatchersCut the watch streams a node closed as too slow.
+	SlowWatchers, WatchersCut int
 	// MembershipChanges counts each completed stage, and MembershipFaults
 	// those completed before healing. Attempts include failed calls.
 	MembershipChanges, MembershipFaults [4]int
@@ -542,11 +654,21 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := &Result{Clients: cfg.Clients}
+	res := &Result{Clients: cfg.Clients + cfg.V3Clients}
 	err = s.run()
 	// A run that failed before its end keeps what it did so far, for its
 	// report; it has no committed log for the checkers.
 	s.mu.Lock()
+	for _, n := range s.nodes {
+		c := n.disk.Counts
+		d := &s.stats.Disk
+		d.TornWrites += c.TornWrites
+		d.Reordered += c.Reordered
+		d.LostDirOps += c.LostDirOps
+		d.FailedSyncs += c.FailedSyncs
+		d.BadReads += c.BadReads
+		d.Misreads += c.Misreads
+	}
 	res.History, res.Stats, res.Silences = s.history, s.stats, s.silences
 	res.HeldAppendAt = s.heldAppendAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
@@ -597,8 +719,13 @@ func newSim(cfg Config) (*Sim, error) {
 		count = 4
 	}
 	s.links = make([][]link, count)
+	s.clientLinks = make([][2]link, count)
 	for i := range s.links {
 		s.links[i] = make([]link, count)
+		for j := range 2 {
+			// The client links have the delays of a client's calls.
+			s.clientLinks[i][j] = link{up: true, base: 20 * Microsecond, jitter: 300 * Microsecond}
+		}
 	}
 	s.setLinks(s.allLinks())
 	if err := s.net.init(); err != nil {
@@ -612,6 +739,7 @@ func newSim(cfg Config) (*Sim, error) {
 
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
 	n := &node{idx: i, id: uint64(i + 1), disk: disk, addrs: []string{peerAddr(i)}, wake: make(chan struct{})}
+	disk.Capacity = s.cfg.Faults.DiskCapacity
 	s.traceDisk(n)
 	if i == 3 {
 		// The fourth member is added at memberURL and moves to
@@ -690,8 +818,11 @@ func (s *Sim) schedule() {
 	if s.cfg.Membership {
 		s.after(2*Second, s.changeMembership)
 	}
-	for i := range s.cfg.Clients {
-		c := &client{id: i, sim: s}
+	for i := range s.cfg.Clients + s.cfg.V3Clients {
+		c := &client{id: i, sim: s, node: -1}
+		if i >= s.cfg.Clients {
+			c.node = i % 3
+		}
 		s.clients = append(s.clients, c)
 		s.wg.Go(c.run)
 	}
@@ -943,10 +1074,14 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 		Tick: time.Duration(tick),
 		// Small segments, so that most of the log is in sealed ones,
 		// where any damage is detectable.
-		SegmentBytes: 8 << 10,
-		BeforeSync:   func() { s.beforeSync(p) },
-		Turn:         func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) },
-		Persisted:    func(j core.PersistJob) { s.persisted(p, j) },
+		SegmentBytes: cmp.Or(s.cfg.SegmentBytes, 8<<10),
+		DiskBudget:   s.cfg.Faults.DiskBudget,
+		// A watch stream 8 responses behind is closed, so that a slow
+		// watcher falls that far.
+		WatchQueue: 8,
+		BeforeSync: func() { s.beforeSync(p) },
+		Turn:       func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) },
+		Persisted:  func(j core.PersistJob) { s.persisted(p, j) },
 		// Several nodes share the process, so none can measure its
 		// memory; the value cache takes the whole budget.
 		Memory: func(int64) (int64, bool) { return 0, false },
@@ -1005,21 +1140,34 @@ func (s *Sim) start(n *node) error {
 		// Crashed again while recovering; it starts over from its disk.
 		s.stats.RecoveryCrashes++
 		cancel()
-		n.disk.Crash(s.rng)
+		s.loseUnsynced(n)
 		n.since, n.why = s.now(), "the run crashed it during recovery"
 		s.tracef("node %d: crashed during recovery", n.id)
+		s.checkRecovery(n)
 		s.restartLater(n, 1+s.rng.Int64N(Second))
 		return nil
 	}
-	if injected(err) {
+	if n.misread && errors.Is(err, wal.ErrCorrupt) {
+		// Recovery read wrong data and refused the log. The disk holds
+		// the right data, so the next start recovers.
+		n.misread = false
+		s.stats.MisreadRefusals++
+		cancel()
+		n.since, n.why = s.now(), fmt.Sprintf("refused a misread log: %v", err)
+		s.tracef("node %d: refused a misread log: %v", n.id, err)
+		s.restartLater(n, 1+s.rng.Int64N(Second))
+		return nil
+	}
+	if injected(err) && (!n.corrupted || !errors.Is(err, simfs.ErrBadSector)) {
 		// An injected fault hit recovery, which can write: a failed boot.
 		// The node tries again later from what its disk holds.
 		s.stats.DiskFaults++
 		cancel()
 		n.disk.ClearFaults()
-		n.disk.Crash(s.rng)
+		s.loseUnsynced(n)
 		n.since, n.why = s.now(), fmt.Sprintf("failed to boot: %v", err)
 		s.tracef("node %d: failed to boot: %v", n.id, err)
+		s.checkRecovery(n)
 		s.restartLater(n, 1+s.rng.Int64N(Second))
 		return nil
 	}
@@ -1036,7 +1184,7 @@ func (s *Sim) start(n *node) error {
 		if err == nil {
 			return fmt.Errorf("node %d started on a damaged disk without noticing", n.id)
 		}
-		if !errors.Is(err, wal.ErrCorrupt) {
+		if !errors.Is(err, wal.ErrCorrupt) && !errors.Is(err, simfs.ErrBadSector) {
 			return fmt.Errorf("node %d started on a damaged disk: %w", n.id, err)
 		}
 		n.fenced = true
@@ -1052,7 +1200,11 @@ func (s *Sim) start(n *node) error {
 		cancel()
 		return fmt.Errorf("node %d cannot recover its log: %w", n.id, err)
 	}
-	ln := s.net.listen(s, p)
+	if n.misread {
+		cancel()
+		return fmt.Errorf("node %d recovered a log that it read wrong without noticing", n.id)
+	}
+	ln := s.net.listen(s, p, n.addrs)
 	t, err := peer.Start(peer.Config{
 		ID: n.id, Listeners: []net.Listener{ln}, Peers: s.peerAddrs(n), Addr: n.addrs[0],
 		Certificate: s.net.cert, CA: s.net.ca,
@@ -1066,10 +1218,19 @@ func (s *Sim) start(n *node) error {
 		return err
 	}
 	p.node, p.t = tn, t
+	if n.idx < 3 {
+		if err := s.serve(p); err != nil {
+			cancel()
+			return errors.Join(err, t.Close())
+		}
+	}
 	n.proc, n.since, n.why = p, s.now(), ""
 	s.procs.Go(func() {
 		err := tn.Run(ctx, t)
 		err = errors.Join(err, t.Close())
+		if p.srv != nil {
+			err = errors.Join(err, p.srv.Stop())
+		}
 		s.exited(p, err)
 	})
 	return nil
@@ -1089,7 +1250,7 @@ func (s *Sim) peerAddrs(n *node) map[uint64]string {
 
 // injected reports whether err is a disk fault the run injected.
 func injected(err error) bool {
-	return errors.Is(err, simfs.ErrIO) || errors.Is(err, simfs.ErrNoSpace)
+	return errors.Is(err, simfs.ErrIO) || errors.Is(err, simfs.ErrNoSpace) || errors.Is(err, simfs.ErrReadOnly)
 }
 
 // restartLater starts n again d from now, unless it went down again or
@@ -1147,6 +1308,12 @@ func (s *Sim) exited(p *proc, err error) {
 		// Only injected faults may fail; the node stops at once and never
 		// retries, as a failed fsync leaves the file in an unknown state.
 		s.stats.DiskFaults++
+		if errors.Is(err, simfs.ErrNoSpace) {
+			s.stats.OutOfSpace++
+		}
+		if errors.Is(err, simfs.ErrReadOnly) {
+			s.stats.ReadOnlyStops++
+		}
 		n.disk.Fault = nil
 		s.stopNode(n)
 	default:
@@ -1180,7 +1347,11 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 			// A snapshot install or a failed fetch started the core
 			// again from the log; what the old one queued is gone.
 			s.stats.Reloads++
+			n.fromLog = append(n.fromLog, s.now())
 			s.tracef("node %d: started again from its log", n.id)
+		} else if hs := c.RaftStatus().HardState; hs.GetTerm() < n.mustHS.term || hs.GetTerm() == n.mustHS.term && n.mustHS.vote != 0 && hs.GetVote() != n.mustHS.vote {
+			// Raft never moves back a term, or a vote within one.
+			s.fail("node %d started at term %d with vote %d, but held term %d and vote %d durable", n.id, hs.GetTerm(), hs.GetVote(), n.mustHS.term, n.mustHS.vote)
 		}
 		p.core, n.pending, n.duringInstall = c, nil, nil
 	}
@@ -1302,6 +1473,19 @@ func (s *Sim) persisted(p *proc, j core.PersistJob) {
 	if len(j.Entries) > 0 {
 		n.durableLast = j.Entries[len(j.Entries)-1].GetIndex()
 	}
+	if hs := j.HardState; hs != nil {
+		vote := n.hs != hardState{term: hs.Term, vote: hs.Vote}
+		n.hs = hardState{term: hs.Term, vote: hs.Vote}
+		if vote && len(j.Entries) == 0 && j.Install == nil && s.voteCrashDue && !s.healed {
+			// Its newest record holds the new term or vote alone.
+			s.voteCrashDue = false
+			n.why = "the run crashed it right after it synced a new term or vote"
+			s.tracef("node %d: crash right after it synced term %d and vote %d", n.id, hs.Term, hs.Vote)
+			s.crash(n)
+			s.maybeCorrupt(n)
+			s.restartLater(n, 1+s.rng.Int64N(Second))
+		}
+	}
 }
 
 // floor is how far recovery of n's disk must reach if it crashed now:
@@ -1351,7 +1535,10 @@ func (s *Sim) beforeSync(p *proc) {
 }
 
 // crashRandom crashes a node that is up and restarts it up to MaxDown
-// later.
+// later. Half the crashes are power losses; the others kill the process,
+// as SIGKILL does, and the page cache keeps every write. One kill in three
+// is followed by a power loss 0.1 to 3 s later, while the node is down or
+// after it started again.
 func (s *Sim) crashRandom() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1363,26 +1550,107 @@ func (s *Sim) crashRandom() {
 		return
 	}
 	n.why = "the run crashed it"
-	s.crash(n)
-	s.maybeCorrupt(n)
+	if s.rng.IntN(2) == 0 || raceLeavesOut {
+		s.crash(n)
+		s.maybeCorrupt(n)
+	} else {
+		n.why = "the run killed it"
+		s.kill(n)
+		if s.rng.IntN(3) == 0 {
+			s.after(100*Millisecond+s.rng.Int64N(2900*Millisecond), func() {
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				s.powerLoss(n)
+			})
+		}
+	}
 	s.restartLater(n, 1+s.rng.Int64N(s.cfg.Faults.MaxDown))
 }
 
-// crash takes n down and drops what its disk did not sync. Recovery of
-// what is left must reach what the node reported durable. The lock is
-// held.
+// crash takes n down as a power loss does: its disk drops what it did not
+// sync, apart from what a crash image keeps. The lock is held.
 func (s *Sim) crash(n *node) {
 	if n.proc == nil {
 		return
 	}
 	s.stats.Crashes++
-	floor := n.floor()
+	s.stats.PowerLosses++
+	n.mustLast, n.mustHS = n.floor(), n.hs
 	s.down(n)
-	n.disk.Crash(s.rng)
+	s.loseUnsynced(n)
 	n.crashImage = n.disk.Files()
 	s.tracef("node %d: crashed", n.id)
-	w, rec, err := wal.Open(n.disk.Durable())
+	s.checkRecovery(n)
+}
+
+// kill takes n's process down and leaves its disk as it is: the page
+// cache keeps every write, synced or not. The lock is held.
+func (s *Sim) kill(n *node) {
+	if n.proc == nil {
+		return
+	}
+	s.stats.Crashes++
+	s.stats.Kills++
+	n.mustLast, n.mustHS = n.floor(), n.hs
+	s.down(n)
+	n.crashImage = n.disk.Files()
+	s.tracef("node %d: killed", n.id)
+	s.checkRecovery(n)
+}
+
+// powerLoss cuts n's power: a running process crashes and restarts
+// later, and a disk whose process is down drops what was not synced. A
+// node in the middle of its start keeps its power, and healing ends the
+// faults. The lock is held.
+func (s *Sim) powerLoss(n *node) {
+	if s.ended || s.healed || n.starting || n.out() {
+		return
+	}
+	s.stats.KillLosses++
+	if n.proc != nil {
+		n.why = "the run cut its power"
+		s.crash(n)
+		s.restartLater(n, 1+s.rng.Int64N(max(s.cfg.Faults.MaxDown, Second)))
+		return
+	}
+	s.stats.PowerLosses++
+	s.loseUnsynced(n)
+	n.crashImage = n.disk.Files()
+	s.tracef("node %d: lost power while down", n.id)
+	s.checkRecovery(n)
+}
+
+// loseUnsynced drops what n's disk did not sync, keeping a crash image of
+// the writes since. Images that tear writes at sectors or pages can make
+// recovery refuse the log, as a torn write and damage look alike (wal's
+// verifiesAfter), so they come only while no other node is out of the
+// cluster for good, and a quorum stays. An image of whole writes must
+// never make recovery refuse the log (#295). The lock is held.
+func (s *Sim) loseUnsynced(n *node) {
+	img := simfs.Image(s.rng.IntN(4))
+	if slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.corrupted || m.fenced) }) {
+		img = simfs.Image(s.rng.IntN(2))
+	}
+	n.disk.CrashImage(s.rng, img)
+	n.tornCrash = img >= simfs.Sectors
+}
+
+// checkRecovery checks that the next start of n will recover from its
+// disk, as it is now, every entry that its last process held durable, and
+// keeps the term and vote the log holds; the first turn of the next
+// process checks those (turn). A torn crash image that recovery refuses
+// makes n a node that refuses to start, like one damaged on purpose. The
+// lock is held.
+func (s *Sim) checkRecovery(n *node) {
+	torn := n.tornCrash
+	n.tornCrash = false
+	w, rec, err := wal.Open(n.disk.Copy())
 	if err != nil {
+		if torn && !n.corrupted && errors.Is(err, wal.ErrCorrupt) {
+			n.corrupted = true
+			s.stats.TornRefusals++
+			s.tracef("node %d: its torn crash image looks damaged: %v", n.id, err)
+		}
 		// A damaged disk; the next start finds out.
 		return
 	}
@@ -1390,11 +1658,10 @@ func (s *Sim) crash(n *node) {
 		s.fail("%w", err)
 		return
 	}
-	if rec.Last < floor {
-		s.fail("node %d recovered entries to %d, but reported %d durable", n.id, rec.Last, floor)
-		return
+	if rec.Last < n.mustLast {
+		s.fail("node %d recovered entries to %d, but reported %d durable", n.id, rec.Last, n.mustLast)
 	}
-	n.durableLast = rec.Last
+	n.durableLast, n.hs = rec.Last, hardState{term: rec.HardState.Term, vote: rec.HardState.Vote}
 }
 
 // down takes n's process down: its goroutines, disk calls and
@@ -1459,11 +1726,13 @@ func (s *Sim) changeLinks() {
 		s.stats.LinkChanges++
 		// Half of the changes heal every link; the rest pick a random set
 		// of directed links, which covers partitions and one-way links.
-		mask := s.allLinks()
+		mask, clients := s.allLinks(), 1.0
 		if s.rng.IntN(2) == 0 {
-			mask = s.rng.Uint64() & mask
+			mask, clients = s.rng.Uint64()&mask, 0.75
 		}
 		s.setLinks(mask)
+		// The clients' links go down too, each direction on its own.
+		s.setClientLinks(clients)
 		// At most three times the mean, so that one random partition
 		// cannot hold through most of the faults; TestAllLinkMasks holds
 		// each mask.
@@ -1523,8 +1792,17 @@ func (s *Sim) heal() {
 	s.setLinks(s.allLinks())
 	// Link stalls and pauses end by healing, as they are cut to it.
 	// Half-open links end now, with their connections.
+	for i := range s.clientLinks {
+		for j := range 2 {
+			l := &s.clientLinks[i][j]
+			l.up, l.netemUntil, l.stallUntil = true, 0, 0
+		}
+		s.net.resetDamaged(i, len(s.links))
+	}
 	for i := range s.links {
 		for j := range s.links[i] {
+			s.links[i][j].netemUntil = 0
+			s.net.resetDamaged(i, j)
 			if s.links[i][j].halfOpenUntil > s.now() {
 				s.links[i][j].halfOpenUntil = 0
 				s.net.resetBetween(i, j)
@@ -1539,6 +1817,8 @@ func (s *Sim) heal() {
 		n.stallUntil = 0
 		s.wakeNode(n)
 		n.disk.ClearFaults()
+		n.disk.Remount()
+		n.disk.Capacity = s.cfg.Faults.DiskCapacity
 		if n.proc == nil && !n.fenced {
 			down = append(down, n)
 		}

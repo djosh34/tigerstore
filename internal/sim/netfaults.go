@@ -1,5 +1,10 @@
 package sim
 
+import (
+	"slices"
+	"strconv"
+)
+
 // scheduleNetFaults starts the network and process faults of the run.
 // The lock is held.
 func (s *Sim) scheduleNetFaults() {
@@ -20,6 +25,22 @@ func (s *Sim) scheduleNetFaults() {
 		defer s.mu.Unlock()
 		return s.halfOpen(-1, 0)
 	})
+	if f.NetemEvery > 0 {
+		s.every(f.NetemEvery, s.netemFault)
+		// A fault on a link that carries nothing hits no write, so the
+		// run's own one comes again until one did.
+		s.once(s.cfg.Duration*3/4, 100*Millisecond, func() bool {
+			s.mu.Lock()
+			hit := slices.ContainsFunc(s.stats.Netem[:], func(n int) bool { return n > 0 })
+			s.mu.Unlock()
+			if !hit {
+				s.netemFault()
+			}
+			return hit
+		})
+	}
+	once(f.ResetEvery, s.resetLink)
+	once(f.SlowWatcherEvery, s.slowWatcher)
 	if f.SwitchEvery > 0 {
 		s.every(f.SwitchEvery, s.switchLinks)
 	}
@@ -35,6 +56,46 @@ func (s *Sim) scheduleNetFaults() {
 	}
 }
 
+// clientOr picks a random link between the clients' host and a node one
+// time in three, as a fault on a client's link, and a link of pick
+// otherwise. The lock is held.
+func (s *Sim) clientOr(pick func() (int, int)) (from, to int) {
+	if s.rng.IntN(3) != 0 {
+		return pick()
+	}
+	from, to = len(s.links), s.rng.IntN(len(s.clientLinks))
+	if s.rng.IntN(2) == 0 {
+		from, to = to, from
+	}
+	return from, to
+}
+
+// host names host i in the trace: a node's ID, or "client" for the
+// clients' host.
+func (s *Sim) host(i int) string {
+	if i == len(s.links) {
+		return "client"
+	}
+	return strconv.Itoa(i + 1)
+}
+
+// setClientLinks sets each direction of the links between the clients'
+// host and the nodes up with probability up, and resets the connections
+// over a link that went down. The lock is held.
+func (s *Sim) setClientLinks(up float64) {
+	for i := range s.clientLinks {
+		for j := range 2 {
+			l := &s.clientLinks[i][j]
+			l.up = s.rng.Float64() < up
+			if !l.up {
+				s.stats.ClientLinksDown++
+				s.net.resetBetween(i, len(s.links))
+				s.tracef("client link %d (%d) down", i+1, j)
+			}
+		}
+	}
+}
+
 // randomLink picks a random directed link. The lock is held.
 func (s *Sim) randomLink() (from, to int) {
 	from = s.rng.IntN(len(s.nodes))
@@ -42,20 +103,25 @@ func (s *Sim) randomLink() (from, to int) {
 	return from, to
 }
 
-// stallLink holds back one directed link for 0.5 to 2 s: everything on it,
+// stallLink holds back one directed link for 0.5 to 2 s, and one time in
+// four for 5.5 to 7 s, past the peer write timeout: everything on it,
 // including what is already on its way, waits and then arrives in order,
-// like a stalled TCP stream.
+// like a stalled TCP stream, and a writer whose buffer fills waits too.
 func (s *Sim) stallLink() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.healed {
 		return false
 	}
-	from, to := s.randomLink()
-	l := &s.links[from][to]
-	l.stallUntil = max(l.stallUntil, min(s.now()+500*Millisecond+s.rng.Int64N(1500*Millisecond), s.healAt))
+	from, to := s.clientOr(s.randomLink)
+	l := s.link(from, to)
+	d := 500*Millisecond + s.rng.Int64N(1500*Millisecond)
+	if s.rng.IntN(4) == 0 {
+		d = 5500*Millisecond + s.rng.Int64N(1500*Millisecond)
+	}
+	l.stallUntil = max(l.stallUntil, min(s.now()+d, s.healAt))
 	s.stats.LinkStalls++
-	s.tracef("link %d->%d stalled until %d ms", from+1, to+1, l.stallUntil/Millisecond)
+	s.tracef("link %s->%s stalled until %d ms", s.host(from), s.host(to), l.stallUntil/Millisecond)
 	return true
 }
 
@@ -147,4 +213,179 @@ const halfOpenTimeout = 5 * Second
 type halfOpenLink struct {
 	from, to   int
 	start, end int64
+}
+
+// netemKind is a fault of a link for 1.5 to 3.5 s, as netem and the chaos
+// proxies inject on real links. Loss and corruption of packets are what
+// TCP repairs: the stream arrives late, as TCP retransmits, never wrong.
+// A flipped, dropped or duplicated byte is what reaches the stream past
+// TCP, as through a proxy that damages it, which TLS then refuses.
+type netemKind int
+
+const (
+	// lossy loses 20% of the packets: a write arrives 200 to 400 ms late,
+	// TCP's retransmission timeout, and what follows waits for it.
+	lossy netemKind = iota
+	// corrupting corrupts 5% of the packets, which TCP drops and sends
+	// again, as lossy.
+	corrupting
+	// reordering sends half the packets up to 10 ms late; TCP puts the
+	// stream back in order, so what follows waits for them.
+	reordering
+	// slow limits the link to 8 to 32 KiB/s.
+	slow
+	// delayed delays every write by 300 to 800 ms more, less than an
+	// election timeout.
+	delayed
+	// switching switches the link's delay between 0 to 2 ms and 20 to
+	// 80 ms more every 100 to 400 ms.
+	switching
+	// flipped flips a bit of the first write, then of one in four.
+	flipped
+	// dropped deletes a byte of the first write, then of one in four.
+	dropped
+	// duplicated repeats a byte of the first write, then of one in four.
+	duplicated
+)
+
+// numNetem is the number of kinds of link faults.
+const numNetem = int(duplicated) + 1
+
+func (k netemKind) String() string {
+	return [...]string{"lossy link", "corrupting link", "reordering link", "slow link", "delayed link", "switching delay", "flipped byte", "dropped byte", "duplicated byte"}[k]
+}
+
+// netemFault puts a fault of a random kind on a busy link: one to or from
+// the leader, where the traffic is, unless the link has one already.
+func (s *Sim) netemFault() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.healed {
+		return
+	}
+	from, to := s.clientOr(s.busyLink)
+	l := s.link(from, to)
+	now := s.now()
+	if l.netemUntil > now {
+		return
+	}
+	l.netem = netemKind(s.rng.IntN(numNetem))
+	if k := s.cfg.netemKinds; len(k) > 0 {
+		l.netem = k[s.rng.IntN(len(k))]
+	}
+	l.netemUntil = min(now+1500*Millisecond+s.rng.Int64N(2*Second), s.healAt)
+	l.bw = 8<<10 + s.rng.Int64N(24<<10)
+	l.extra = 300*Millisecond + s.rng.Int64N(500*Millisecond)
+	l.switchAt, l.hits = now, 0
+	if l.netem == switching {
+		l.extra = 0
+	}
+	s.tracef("link %s->%s: %v until %d ms", s.host(from), s.host(to), l.netem, l.netemUntil/Millisecond)
+	if l.netem >= flipped {
+		// Its end resets the connections whose bytes it damaged.
+		s.at(l.netemUntil, func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			s.net.resetDamaged(from, to)
+		})
+	}
+}
+
+// busyLink picks a random directed link to or from the leader, or any
+// link while there is none. The lock is held.
+func (s *Sim) busyLink() (from, to int) {
+	lead := s.leaderIdx()
+	if lead < 0 {
+		return s.randomLink()
+	}
+	other := (lead + 1 + s.rng.IntN(len(s.nodes)-1)) % len(s.nodes)
+	if s.rng.IntN(2) == 0 {
+		return lead, other
+	}
+	return other, lead
+}
+
+// netem applies l's fault to a write of b, due at time at, on a pipe
+// whose last write arrives at last. It returns the bytes that go on their
+// way, when they arrive, and whether it damaged them. The lock is held.
+func (s *Sim) netem(l *link, b []byte, at, last int64) ([]byte, int64, bool) {
+	hit := true
+	switch l.netem {
+	case lossy, corrupting:
+		pct := 20
+		if l.netem == corrupting {
+			pct = 5
+		}
+		hit = s.rng.IntN(100) < pct
+		if hit {
+			at += 200*Millisecond + s.rng.Int64N(200*Millisecond)
+		}
+	case reordering:
+		hit = s.rng.IntN(2) == 0
+		if hit {
+			at += s.rng.Int64N(10*Millisecond) + 1
+		}
+	case slow:
+		at = max(at, last) + int64(len(b))*Second/l.bw
+	case switching:
+		s.switchDelay(l, s.now())
+		fallthrough
+	case delayed:
+		at += l.extra
+	case flipped:
+		b, hit = s.damageByte(l, b, func(b []byte, i int) []byte { b[i] ^= 1 << s.rng.IntN(8); return b })
+	case dropped:
+		b, hit = s.damageByte(l, b, func(b []byte, i int) []byte { return slices.Delete(b, i, i+1) })
+	case duplicated:
+		b, hit = s.damageByte(l, b, func(b []byte, i int) []byte { return slices.Insert(b, i, b[i]) })
+	}
+	if hit {
+		l.hits++
+		s.stats.Netem[l.netem]++
+	}
+	return b, at, hit && l.netem >= flipped
+}
+
+// damageByte damages a random byte of b with damage, in the first write
+// of l's fault and one in four after it, and reports whether it did. The
+// lock is held.
+func (s *Sim) damageByte(l *link, b []byte, damage func([]byte, int) []byte) ([]byte, bool) {
+	if len(b) == 0 || l.hits > 0 && s.rng.IntN(4) != 0 {
+		return b, false
+	}
+	return damage(b, s.rng.IntN(len(b))), true
+}
+
+// switchDelay switches l's extra delay between 0 to 2 ms and 20 to 80 ms
+// once its switch is due at time now. The lock is held.
+func (s *Sim) switchDelay(l *link, now int64) {
+	if now < l.switchAt {
+		return
+	}
+	l.switchAt = now + 100*Millisecond + s.rng.Int64N(300*Millisecond)
+	if l.extra < 20*Millisecond {
+		l.extra = 20*Millisecond + s.rng.Int64N(60*Millisecond)
+	} else {
+		l.extra = s.rng.Int64N(2*Millisecond) + 1
+	}
+}
+
+// resetLink resets every connection between two random nodes, as a
+// middlebox's RST does, while the link stays up. It reports whether there
+// was one.
+func (s *Sim) resetLink() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.healed {
+		return false
+	}
+	from, to := s.clientOr(s.randomLink)
+	n := len(s.net.conns)
+	s.net.resetBetween(from, to)
+	if len(s.net.conns) == n {
+		return false
+	}
+	s.stats.Resets++
+	s.tracef("link %s-%s: connections reset", s.host(from), s.host(to))
+	return true
 }

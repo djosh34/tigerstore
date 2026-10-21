@@ -44,4 +44,5 @@ var Bugs = map[string]string{
 	"B29":  "the cleaner removes segments before syncing their replacement root",
 	"B30":  "the cleaner omits a value still named by the durable checkpoint",
 	"B31":  "a cache lookup ignores the Raft index and returns an overwritten value",
+	"B32":  "the WAL writes a new segment's header alone, before its first records (#295)",
 }

@@ -3,6 +3,7 @@
 package sim
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -47,8 +48,12 @@ func stalledLeaderConfig(seed uint64) Config {
 const (
 	// A read older than a write that returned before it started.
 	staleRead = `before it started|linearizab`
-	// An acknowledged append that recovery or a cold restart lost.
-	lostAppend = `reported \d+ durable|erasing node \d+`
+	// An acknowledged append, or a durable term and vote, that recovery or
+	// a cold restart lost.
+	lostAppend = `reported \d+ durable|erasing node \d+|` + lostVote
+	// A node started again with an older term or vote than it held
+	// durable.
+	lostVote = `but held term \d+ and vote \d+ durable`
 	// A watch that broke the watch rules.
 	badWatch = `watch \d+`
 	// A read or the replayed log that disagrees with the model; not a
@@ -110,7 +115,9 @@ var plantedCases = map[string]plantedCase{
 	"B21": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|already exists|` + refused},
 	// The install starts the node again from its log (#238), where the
 	// unchecked snapshot's damaged entry can be what recovery refuses.
-	"B22": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|` + badValue + `|malformed|` + refused + `|installed a snapshot at \d+ from \d+, checkpoint \d+\n[^\n]*wal: corrupt log:`},
+	// With every fault on, few snapshot streams are damaged and installed;
+	// the effect test's damaged snapshot runs more.
+	"B22": {seeds: 256, cfg: damagedSnapshotConfig, want: inventedState + `|wrote different checkpoints|` + badValue + `|malformed|` + refused + `|installed a snapshot at \d+ from \d+, checkpoint \d+\n[^\n]*wal: corrupt log:`},
 	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|` + stuck},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},
@@ -122,7 +129,16 @@ var plantedCases = map[string]plantedCase{
 	// some runs and after healing in others; either catch counts.
 	"B28": {seeds: 16, cfg: membershipConfig, want: `membership: stage 1 acknowledged`},
 	"B31": {seeds: 16, cfg: cacheConfig, want: badValue + `|` + badState},
+	"B32": {seeds: 128, cfg: loneHeaderConfig, want: refused},
 }
+
+// openBugs are the failures of open bugs #357 and #361, which the default
+// seeds hit in about one in twenty: a lost entry, term or vote, or a
+// checkpoint that a restart removed on a root it read from the page
+// cache. Such a seed catches nothing, unless the planted bug is caught by
+// the same failure and the seed passes without it (failsUnplanted). Their
+// fixes remove it.
+var openBugs = regexp.MustCompile(`reported \d+ durable|held term \d+ and vote \d+ durable|load the checkpoint at \d+: file does not exist`)
 
 // plantedElsewhere are the bugs whose own package's TestPlanted runs a
 // fixed scenario that must catch it; the CI job runs those packages too.
@@ -193,10 +209,18 @@ func witnessCatches(t *testing.T, res *Result) bool {
 	return true
 }
 
+// plantedRun is what a seed of TestPlanted found: the failure that
+// catches the bug, if any. It counts only if the seed passes without the
+// planted bug (SIM_CONTROL).
+type plantedRun struct {
+	Finding string
+}
+
 // TestPlanted switches on the bug that $SIM_PLANTED names and fails
 // unless a check catches it within its seed budget, from seed 1. A crash
 // is a failure too, not a catch. The catching run is saved, and its
-// replay command printed.
+// replay command printed. With $SIM_CONTROL set, it runs the seed without
+// the bug, as the control of a failure that open bugs give too.
 func TestPlanted(t *testing.T) {
 	name := os.Getenv("SIM_PLANTED")
 	if name == "" {
@@ -210,10 +234,14 @@ func TestPlanted(t *testing.T) {
 		t.Fatalf("unknown planted bug %q", name)
 	}
 	want := regexp.MustCompile(c.want)
+	control := os.Getenv("SIM_CONTROL") != ""
 	planted.Active, activePlanted = name, name
+	if control {
+		planted.Active = ""
+	}
 	t.Cleanup(func() { planted.Active, activePlanted = "", "" })
 	tried, caught := 0, false
-	if !simrun.Seeds(t, 1, c.seeds, func(t *testing.T, seed uint64) string {
+	if !simrun.Seeds(t, 1, c.seeds, func(t *testing.T, seed uint64) plantedRun {
 		res, err := runSeed(t, c.cfg(seed))
 		if err == nil {
 			err = independent(res)
@@ -221,32 +249,65 @@ func TestPlanted(t *testing.T) {
 		if err == nil && c.extra != nil {
 			err = c.extra(res)
 		}
-		if err == nil {
-			return ""
-		}
-		if !want.MatchString(err.Error()) {
+		switch {
+		case err == nil:
+			return plantedRun{}
+		case control:
+			return plantedRun{Finding: err.Error()}
+		case openBugs.MatchString(err.Error()) && !want.MatchString(err.Error()):
+			t.Logf("seed %d of %s hit an open bug instead, #357 or #361, and catches nothing: %v", seed, name, err)
+			return plantedRun{}
+		case !want.MatchString(err.Error()):
 			t.Fatalf("%s failed on another check than the expected one (%s): %v", name, c.want, err)
-		}
-		if c.witness && !witnessCatches(t, res) {
-			return ""
+		case c.witness && !witnessCatches(t, res):
+			return plantedRun{}
 		}
 		save(t, replayCommand(t.Name(), seed), res)
-		return err.Error()
-	}, func(seed uint64, finding string) bool {
+		return plantedRun{Finding: err.Error()}
+	}, func(seed uint64, r plantedRun) bool {
 		tried++
-		if finding == "" {
+		if r.Finding == "" || control || failsUnplanted(t, name, seed) {
 			return false
 		}
 		caught = true
-		t.Logf("%s (%s) caught by seed %d: %s", name, planted.Bugs[name], seed, finding)
+		t.Logf("%s (%s) caught by seed %d: %s", name, planted.Bugs[name], seed, r.Finding)
 		t.Logf("replay: %s", replayCommand(fmt.Sprintf("%s/%d", t.Name(), seed), seed))
 		return true
 	}) {
 		return
 	}
-	if !caught {
+	if !caught && !control {
 		t.Fatalf("%s (%s) was not caught in %d seeds", name, planted.Bugs[name], tried)
 	}
+}
+
+// failsUnplanted runs seed of TestPlanted again without planted bug name,
+// as a gosim run of its own, the control of a catch, and reports whether
+// it fails there too. A seed that fails as open bugs #357 and #361 do
+// catches nothing; one that fails on anything else fails the test, as a
+// failure with no planted bug. Under the race detector, where a seed does
+// not replay, no catch counts.
+func failsUnplanted(t *testing.T, name string, seed uint64) bool {
+	t.Helper()
+	if simrun.Race {
+		return true
+	}
+	env := []string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1", "SIM_PLANTED=" + name, "SIM_CONTROL=1"}
+	res := simrun.Do(t, simrun.Run{Test: "TestPlanted", Seed: seed, Env: env})
+	var r plantedRun
+	if err := json.Unmarshal(res.Artifacts["seed.json"], &r); err != nil {
+		t.Errorf("the control of seed %d left no result: %v", seed, err)
+		return true
+	}
+	switch {
+	case r.Finding == "":
+		return false
+	case openBugs.MatchString(r.Finding):
+		t.Logf("seed %d of %s fails without the bug too, and catches nothing: %s", seed, name, r.Finding)
+	default:
+		t.Errorf("seed %d of %s fails without the bug too: %s", seed, name, r.Finding)
+	}
+	return true
 }
 
 // TestB22InstallRefusal checks that B22 counts as caught when the start

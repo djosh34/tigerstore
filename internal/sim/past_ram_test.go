@@ -29,12 +29,16 @@ func cacheConfig(seed uint64) Config {
 // removing the original segments. The cleaner protocol runs on a durable
 // copy, not on the live simulator: concurrent cleaner scheduling is not
 // covered here. Each crash boundary recovers a new core, without its cache.
+// The nodes run without a disk budget, so that their own cleaner leaves
+// the original segments to this one.
 func TestPastRAMRecovery(t *testing.T) {
 	var total int
 	if !simrun.Each(t, seedRange(1, 16), func(t *testing.T, seed uint64) int {
 		var cleaned int
 		var hits, misses int64
-		res, err := runWith(t, cacheConfig(seed), func(s *Sim) error {
+		cfg := cacheConfig(seed)
+		cfg.Faults.DiskBudget = 0
+		res, err := runWith(t, cfg, func(s *Sim) error {
 			for _, n := range s.live() {
 				m := n.proc.core.Metrics()
 				hits += m.CacheHits

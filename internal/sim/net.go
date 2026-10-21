@@ -16,9 +16,12 @@ import (
 	"github.com/djosh34/tigerstore/internal/testcert"
 )
 
-// network carries the nodes' peer connections: in-memory streams over the
-// links, with each link's delays, stalls and faults. The peer transports
-// speak TLS over it, with one certificate for every node.
+// network carries the nodes' peer connections, and the connections of
+// the clients that use etcd's Go client (v3client.go): in-memory streams
+// over the links, with each link's delays, stalls and faults. The peer
+// transports and the gRPC servers speak TLS over it, with one certificate
+// for every node. The clients run on a host of their own, whose index is
+// the number of nodes, with a link to each node and one back.
 type network struct {
 	ca   *x509.CertPool
 	cert tls.Certificate
@@ -70,28 +73,31 @@ var errRefused = errors.New("sim: connection refused")
 // gives up, as the peer transport's dialer does.
 const dialTimeout = 3 * Second
 
-// listen makes p listen on its node's addresses. The lock is held.
-func (nw *network) listen(s *Sim, p *proc) *listener {
-	l := &listener{s: s, p: p, accept: make(chan net.Conn, 64), closed: make(chan struct{})}
-	for _, a := range p.n.addrs {
+// listen makes p listen on addrs. The lock is held.
+func (nw *network) listen(s *Sim, p *proc, addrs []string) *listener {
+	l := &listener{s: s, p: p, addrs: addrs, accept: make(chan net.Conn, 64), closed: make(chan struct{})}
+	for _, a := range addrs {
 		nw.listeners[a] = l
 	}
 	return l
 }
 
-// dial connects p to the process listening at addr, after a round trip on
-// the links between them.
+// dial connects p, or a client if p is nil, to the process listening at
+// addr, after a round trip on the links between them.
 func (nw *network) dial(ctx context.Context, s *Sim, p *proc, addr string) (net.Conn, error) {
 	s.mu.Lock()
 	l := nw.listeners[addr]
-	if p.dead() || l == nil {
+	if p != nil && p.dead() || l == nil {
 		s.mu.Unlock()
 		return nil, errRefused
 	}
-	from, to := p.n.idx, l.p.n.idx
+	from, to := len(s.links), l.p.n.idx
+	if p != nil {
+		from = p.n.idx
+	}
 	timeout := s.now() + dialTimeout
 	for {
-		out, back := s.links[from][to], s.links[to][from]
+		out, back := *s.link(from, to), *s.link(to, from)
 		now := s.now()
 		wait := out.base + back.base
 		until := max(out.halfOpenUntil, back.halfOpenUntil)
@@ -127,11 +133,15 @@ func (nw *network) dial(ctx context.Context, s *Sim, p *proc, addr string) (net.
 		}
 	}
 	defer s.mu.Unlock()
-	out, back := s.links[from][to], s.links[to][from]
-	if p.dead() || l.p.dead() || nw.listeners[addr] != l || !out.up || !back.up {
+	out, back := *s.link(from, to), *s.link(to, from)
+	if p != nil && p.dead() || l.p.dead() || nw.listeners[addr] != l || !out.up || !back.up {
 		return nil, errRefused
 	}
-	a, b := &conn{s: s, p: p, from: from, to: to, local: hosts[from], remote: addr}, &conn{s: s, p: l.p, from: to, to: from, local: addr, remote: hosts[from]}
+	host := "client"
+	if p != nil {
+		host = hosts[from]
+	}
+	a, b := &conn{s: s, p: p, from: from, to: to, local: host, remote: addr}, &conn{s: s, p: l.p, from: to, to: from, local: addr, remote: host}
 	a.in, a.out = newPipe(), newPipe()
 	b.in, b.out, a.other, b.other = a.out, a.in, b, a
 	select {
@@ -176,11 +186,21 @@ func (nw *network) queued(s *Sim, from int, to uint64) []*pipe {
 	defer s.mu.Unlock()
 	var out []*pipe
 	for c := range nw.conns {
-		if c.from == from && s.nodes[c.to].id == to && len(c.out.chunks) > 0 {
+		if c.from == from && c.to < len(s.nodes) && s.nodes[c.to].id == to && len(c.out.chunks) > 0 {
 			out = append(out, c.out)
 		}
 	}
 	return out
+}
+
+// resetDamaged resets the connections between hosts i and j that a link
+// fault damaged, as chaos heals such a fault with RST. The lock is held.
+func (nw *network) resetDamaged(i, j int) {
+	for c := range nw.conns {
+		if c.damaged && (c.from == i && c.to == j || c.from == j && c.to == i) {
+			nw.reset(c)
+		}
+	}
 }
 
 // reset breaks both ends of c's connection. The lock is held.
@@ -191,10 +211,11 @@ func (nw *network) reset(c *conn) {
 	}
 }
 
-// listener is a process's listening address.
+// listener is a process's listening addresses.
 type listener struct {
 	s      *Sim
 	p      *proc
+	addrs  []string
 	accept chan net.Conn
 	closed chan struct{}
 	done   bool
@@ -223,24 +244,33 @@ func (l *listener) shut() {
 	}
 	l.done = true
 	close(l.closed)
-	for _, a := range l.p.n.addrs {
+	for _, a := range l.addrs {
 		if l.s.net.listeners[a] == l {
 			delete(l.s.net.listeners, a)
 		}
 	}
 }
 
-func (l *listener) Addr() net.Addr { return addr(l.p.n.addrs[0]) }
+func (l *listener) Addr() net.Addr { return addr(l.addrs[0]) }
 
 type addr string
 
 func (a addr) Network() string { return "sim" }
 func (a addr) String() string  { return string(a) }
 
+// sendBuffer is how many bytes a connection holds in each direction that
+// its reader has not taken yet, on their way or arrived, like TCP's send
+// and receive buffers together. A write past it waits for room, or its
+// write deadline. It is small, so that the little traffic of a run fills
+// it: a stalled link holds about 3 KiB within the write timeout.
+const sendBuffer = 2 << 10
+
 // pipe is one direction of a connection: the bytes written, each write
 // with the time it arrives.
 type pipe struct {
 	chunks []chunk
+	// size is how many bytes chunks holds.
+	size int
 	// last is when the last write arrives; eof is set once the writer
 	// closed, and err once the connection broke. wake is closed and
 	// replaced when any of them changes.
@@ -269,10 +299,24 @@ func (p *pipe) fail(err error) {
 	p.signal()
 }
 
-// conn is one end of a connection, held by process p of node from. Writes
-// never block, as TCP's do not while its buffers have room: each arrives
-// after its link's delay, in order, and not before a stall of the link
-// ends. A half-open link swallows them.
+// link is the directed link from host from to host to: between two nodes,
+// or between a node and the clients' host. The lock is held.
+func (s *Sim) link(from, to int) *link {
+	switch c := len(s.links); {
+	case from == c:
+		return &s.clientLinks[to][0]
+	case to == c:
+		return &s.clientLinks[from][1]
+	}
+	return &s.links[from][to]
+}
+
+// conn is one end of a connection, held by process p of node from, or by
+// a client if p is nil, from the clients' host. A write goes on its way at
+// once while the connection's buffer has room (sendBuffer), and waits for
+// room otherwise, as TCP's does: each arrives after its link's delay and
+// faults, in order, and not before a stall of the link ends. A half-open
+// link swallows them.
 type conn struct {
 	s             *Sim
 	p             *proc
@@ -281,7 +325,11 @@ type conn struct {
 	in, out       *pipe
 	other         *conn
 	closed        bool
-	deadline      time.Time
+	// damaged is set once a link fault damaged a byte the connection
+	// carried (flipped, dropped, duplicated); the fault's end resets it.
+	damaged bool
+	// deadline and writeDeadline are the read and write deadlines.
+	deadline, writeDeadline time.Time
 }
 
 func (c *conn) Read(b []byte) (int, error) {
@@ -300,16 +348,19 @@ func (c *conn) Read(b []byte) (int, error) {
 		now := s.now()
 		wait := int64(math.MaxInt64)
 		switch {
-		case c.p.n.pausedUntil > now:
+		case c.p != nil && c.p.n.pausedUntil > now:
 			// A paused process reads nothing.
 			wait = c.p.n.pausedUntil - now
 		case len(in.chunks) > 0:
-			at := max(in.chunks[0].at, s.links[c.to][c.from].stallUntil)
+			at := max(in.chunks[0].at, s.link(c.to, c.from).stallUntil)
 			if at <= now {
 				k := copy(b, in.chunks[0].b)
 				if in.chunks[0].b = in.chunks[0].b[k:]; len(in.chunks[0].b) == 0 {
 					in.chunks = slices.Delete(in.chunks, 0, 1)
 				}
+				// A writer may wait for the room.
+				in.size -= k
+				in.signal()
 				s.mu.Unlock()
 				return k, nil
 			}
@@ -339,26 +390,73 @@ func (c *conn) Read(b []byte) (int, error) {
 
 func (c *conn) Write(b []byte) (int, error) {
 	s := c.s
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	switch {
-	case c.closed:
-		return 0, net.ErrClosed
-	case c.in.err != nil:
-		return 0, c.in.err
-	case c.other.closed:
-		return 0, errReset
+	n, blocked := 0, false
+	for {
+		s.mu.Lock()
+		switch {
+		case c.closed:
+			s.mu.Unlock()
+			return n, net.ErrClosed
+		case c.in.err != nil:
+			s.mu.Unlock()
+			return n, c.in.err
+		case c.other.closed:
+			s.mu.Unlock()
+			return n, errReset
+		}
+		if !c.writeDeadline.IsZero() && !time.Now().Before(c.writeDeadline) {
+			s.stats.WriteTimeouts++
+			s.mu.Unlock()
+			return n, os.ErrDeadlineExceeded
+		}
+		if s.link(c.from, c.to).halfOpenUntil > s.now() {
+			s.mu.Unlock()
+			return len(b), nil
+		}
+		if room := sendBuffer - c.out.size; room > 0 {
+			k := min(room, len(b)-n)
+			c.send(b[n : n+k])
+			if n += k; n == len(b) {
+				s.mu.Unlock()
+				return n, nil
+			}
+		}
+		if !blocked {
+			blocked = true
+			s.stats.BlockedWrites++
+		}
+		wait := int64(math.MaxInt64)
+		if !c.writeDeadline.IsZero() {
+			wait = max(int64(time.Until(c.writeDeadline)), 1)
+		}
+		wake := c.out.wake
+		s.mu.Unlock()
+		t := time.NewTimer(time.Duration(min(wait, math.MaxInt64/2)))
+		select {
+		case <-t.C:
+		case <-wake:
+		}
+		t.Stop()
 	}
-	l := &s.links[c.from][c.to]
-	now := s.now()
-	if l.halfOpenUntil > now {
-		return len(b), nil
+}
+
+// send puts b on its way: it arrives after the link's delay and the
+// fault on the link, if any, in order. The lock is held.
+func (c *conn) send(b []byte) {
+	s := c.s
+	l := s.link(c.from, c.to)
+	b = slices.Clone(b)
+	at := s.now() + s.delay(l)
+	if l.netemUntil > s.now() {
+		var damaged bool
+		b, at, damaged = s.netem(l, b, at, c.out.last)
+		c.damaged = c.damaged || damaged
 	}
-	at := max(now+s.delay(l), c.out.last)
+	at = max(at, c.out.last)
 	c.out.last = at
-	c.out.chunks = append(c.out.chunks, chunk{at: at, b: slices.Clone(b)})
+	c.out.chunks = append(c.out.chunks, chunk{at: at, b: b})
+	c.out.size += len(b)
 	c.out.signal()
-	return len(b), nil
 }
 
 func (c *conn) Close() error {
@@ -379,7 +477,12 @@ func (c *conn) Close() error {
 func (c *conn) LocalAddr() net.Addr  { return addr(c.local) }
 func (c *conn) RemoteAddr() net.Addr { return addr(c.remote) }
 
-func (c *conn) SetDeadline(t time.Time) error { return c.SetReadDeadline(t) }
+func (c *conn) SetDeadline(t time.Time) error {
+	if err := c.SetReadDeadline(t); err != nil {
+		return err
+	}
+	return c.SetWriteDeadline(t)
+}
 
 func (c *conn) SetReadDeadline(t time.Time) error {
 	c.s.mu.Lock()
@@ -389,8 +492,13 @@ func (c *conn) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
-// SetWriteDeadline does nothing: writes never block.
-func (c *conn) SetWriteDeadline(time.Time) error { return nil }
+func (c *conn) SetWriteDeadline(t time.Time) error {
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+	c.writeDeadline = t
+	c.out.signal()
+	return nil
+}
 
 // delay draws the delay of one write on a link. The lock is held.
 func (s *Sim) delay(l *link) int64 {

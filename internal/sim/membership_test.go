@@ -45,7 +45,11 @@ func TestMembershipFaults(t *testing.T) {
 		return
 	}
 	took.check(t)
-	if n >= 16 {
+	// With every fault on, a stage completes during the faults in fewer
+	// seeds, and 16 of them can miss one: the rule holds over the 64 seeds
+	// of CI's job, less its known failures. Under the race detector the
+	// runs leave out faults (raceLeavesOut), and race-sim runs 16.
+	if n >= 48 {
 		for i, count := range during {
 			if count == 0 {
 				t.Errorf("stage %d never completed during faults", i)

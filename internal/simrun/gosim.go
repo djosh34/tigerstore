@@ -35,6 +35,14 @@ func Here(*testing.T) bool { return true }
 // Drive reports false: under gosim the test runs its body.
 func Drive(*testing.T, uint64) bool { return false }
 
+// Do starts a gosim run, which only the native driver does: under gosim a
+// test of a set never gets to the driver's part of it (Seeds).
+func Do(t *testing.T, r Run) *Result {
+	t.Helper()
+	t.Fatalf("%s: a gosim run starts only from the native driver", r.Test)
+	return nil
+}
+
 // each runs the seeds, which the driver gives one at a time, and saves
 // what body returned for it (Seeds). Then it runs what AfterSeed set.
 func each[T any](t *testing.T, seeds []uint64, _ []string, body func(*testing.T, uint64) T, _ func(uint64, T) bool) bool {
