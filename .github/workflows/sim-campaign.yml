@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - revision: '9169cb637e8a5bab006bea152e5870e5a8335ab1'
+          - revision: '39bcd8d6ef4eca075ec0d53cffad85927aeda129'
             label: atomic-replacement
             expected: 0
     steps:
@@ -50,6 +50,7 @@ jobs:
           status=$?
           cat "$RUNNER_TEMP/seed.log"
           echo "seed exit=$status (schedule can move with a code change)"
+          exit "$status"
       - if: always()
         uses: actions/upload-artifact@v6
         with:
