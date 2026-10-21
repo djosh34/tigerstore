@@ -390,11 +390,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			w.sizes[seq] = good
 			continue
 		}
-		// Diagnosis: failed writeback can leave clean, readable cache pages
-		// that another fsync will not retry. Dirty the recovered prefix again.
-		if _, err := f.WriteAt(data[:good], 0); err != nil {
-			return nil, nil, errors.Join(err, f.Close())
-		}
+		// Diagnosis: is syncing recovery's readable newest segment enough?
 		if err := errors.Join(f.Sync(), fs.SyncDir()); err != nil {
 			return nil, nil, errors.Join(err, f.Close())
 		}
