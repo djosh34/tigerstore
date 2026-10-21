@@ -15,7 +15,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        revision: ['809b4e1c5f4aa4a576cabf586754fb15ccd8396a', '9e278809b920261368b216e1d29e8ca7bcefc5a2']
+        include:
+          - revision: '8da4108790ba74a3512ecaf72ed4905af764e662'
+            label: baseline
+            expected: 1
+          - revision: '2c4af6180931cd752e9f5cc486d7eb992ee5be47'
+            label: fsync-only
+            expected: 1
+          - revision: '6c0e786db4319e45b677144283b2d7b231ce75a5'
+            label: rewrite
+            expected: 0
     steps:
       - uses: actions/checkout@v7
         with:
@@ -23,18 +32,35 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Keep full disk traces
-        run: python3 -c 'from pathlib import Path; p=Path("internal/sim/sim.go"); p.write_text(p.read_text().replace("3000, 4000", "3000, 400000"))'
-      - name: Replay
+      - name: Named regression
+        env:
+          EXPECTED: ${{ matrix.expected }}
+        shell: bash
+        run: |
+          set +e
+          scripts/sim.sh ./internal/sim '^TestFailedSyncKillRestart$' -test.v > "$RUNNER_TEMP/scenario.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/scenario.log"
+          echo "test exit=$status, expected=$EXPECTED"
+          test "$status" = "$EXPECTED"
+      - name: Original seed with prototype rewrite
+        if: matrix.label == 'rewrite'
         env:
           SIM_SEED: ${{ inputs.first }}
           SIM_SEEDS: 1
           SIM_OUT: ${{ runner.temp }}/sim-out
-        run: scripts/sim.sh ./internal/sim '^TestSeeds$/^434594$' -test.v 2>&1 | tee "$RUNNER_TEMP/replay.log"
+        shell: bash
+        run: |
+          set +e
+          scripts/sim.sh ./internal/sim '^TestSeeds$/^434594$' -test.v > "$RUNNER_TEMP/seed.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/seed.log"
+          echo "seed exit=$status (schedule can move with a code change)"
       - if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: diag-364-${{ matrix.revision }}
+          name: diag-364-${{ matrix.label }}
           path: |
-            ${{ runner.temp }}/replay.log
+            ${{ runner.temp }}/scenario.log
+            ${{ runner.temp }}/seed.log
             ${{ runner.temp }}/sim-out
