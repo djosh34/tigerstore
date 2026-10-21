@@ -216,10 +216,13 @@ var errRecoveryCrash = errors.New("sim: crash during recovery")
 
 // armRecoveryCrash makes every restart of a node with a log on its disk,
 // until one recovery crashed and then one in three, crash during
-// recovery, from its first to sixth writing disk operation on: the truncate and sync of a torn tail, or the six steps of
-// replacing a damaged newest header. Every write from that one on fails,
-// as nothing runs after a crash. A crashed recovery can crash again at the
-// next restart. It reports whether it armed the crash. The lock is held.
+// recovery, from its first to sixth writing disk operation on: the
+// truncate and sync of a torn tail, or the six steps of replacing a
+// damaged newest header. A sync of a file with nothing to write does not
+// count, such as recovery's sync of a segment before it reads it (#372).
+// Every write from that one on fails, as nothing runs after a crash. A
+// crashed recovery can crash again at the next restart. It reports whether
+// it armed the crash. The lock is held.
 func (s *Sim) armRecoveryCrash(n *node) bool {
 	if !s.cfg.Faults.RecoveryCrash || s.healed || n.disk.Fault != nil || len(n.disk.DurableNames()) == 0 || (s.stats.RecoveryCrashes > 0 && s.rng.IntN(3) != 0) {
 		return false
@@ -231,8 +234,8 @@ func (s *Sim) armRecoveryCrash(n *node) bool {
 	if s.stats.RecoveryCrashes == 0 {
 		k = 1 + s.rng.IntN(2)
 	}
-	n.disk.Fault = func(op simfs.Op, _ string) error {
-		if op == simfs.OpOpen || op == simfs.OpRead {
+	n.disk.Fault = func(op simfs.Op, name string) error {
+		if op == simfs.OpOpen || op == simfs.OpRead || op == simfs.OpSync && !n.disk.Unsynced(name) {
 			return nil
 		}
 		writes++

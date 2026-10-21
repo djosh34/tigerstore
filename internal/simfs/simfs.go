@@ -875,6 +875,13 @@ func (h *Handle) Close() error {
 	return nil
 }
 
+// Unsynced reports whether a sync of file name would write anything: a
+// write or a truncate since its last sync.
+func (d *Disk) Unsynced(name string) bool {
+	f, ok := d.names[name]
+	return ok && (len(f.pending) > 0 || f.cut)
+}
+
 // DurableNames returns the names of the files on the durable directory,
 // sorted.
 func (d *Disk) DurableNames() []string { return sortedNames(d.durable) }
