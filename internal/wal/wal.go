@@ -241,13 +241,16 @@ type WAL struct {
 	version  uint32
 	size     int64
 	unplaced bool
-	// synced is how much of the newest segment is known durable.
-	synced  int64
-	crc     uint32
-	last    uint64
-	buf     []byte
-	dirty   bool
-	maxSize int64
+	// synced is how much of the newest segment is known durable, and
+	// prevSynced of prev, the segment before it, while its last syncs may
+	// still be on their way after Rotate (Synced, CutUnsynced).
+	synced, prevSynced int64
+	prev               File
+	crc                uint32
+	last               uint64
+	buf                []byte
+	dirty              bool
+	maxSize            int64
 	// spares is how many removed segments RemoveBelow and RemoveCleaned
 	// keep as spare files.
 	spares int
@@ -418,7 +421,9 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	// of the older root (#361). So what recovery read is synced, with the
 	// names of the files, before the node acts on it and before Open
 	// removes any file. A sync that failed before left nothing here that
-	// no sync writes: its process cut the segment back (CutUnsynced).
+	// no sync writes: its process cut the segment back (CutUnsynced),
+	// unless that sync was recovery's own, in an earlier start (see the
+	// known limits in docs/design.md).
 	if w.seg != nil {
 		if err := w.seg.Sync(); err != nil {
 			return nil, nil, errors.Join(err, w.Close())
@@ -999,7 +1004,7 @@ func (w *WAL) Sync() error {
 	}
 	if w.dirty {
 		if err := w.seg.Sync(); err != nil {
-			return errors.Join(err, CutUnsynced(w.seg, w.synced))
+			return errors.Join(err, w.CutUnsynced(w.seg))
 		}
 		w.dirty, w.synced = false, w.size
 	}
@@ -1010,8 +1015,9 @@ func (w *WAL) Sync() error {
 		return err
 	}
 	if err := w.seg.Sync(); err != nil {
-		return errors.Join(err, CutUnsynced(w.seg, w.synced))
+		return errors.Join(err, w.CutUnsynced(w.seg))
 	}
+	w.synced = w.size
 	if err := PrepareSegment(w.fs, w.seq+1); err != nil {
 		return err
 	}
@@ -1030,20 +1036,42 @@ func (w *WAL) SyncTail() error {
 		return err
 	}
 	if err := w.seg.Sync(); err != nil {
-		return errors.Join(err, CutUnsynced(w.seg, w.synced))
+		return errors.Join(err, w.CutUnsynced(w.seg))
 	}
 	w.synced = w.size
 	return nil
 }
 
-// CutUnsynced cuts f, a segment whose sync failed, back to size, the part
-// of it known durable, before the process stops. A failed sync marks the
-// pages it did not write clean: they stay readable but never reach the
-// disk, and no later sync writes them. A process that starts again
-// without a power loss would read them as the log, and once the segment
-// is sealed, a power loss would find a hole in it (#364). The cut drops
-// them from the page cache.
-func CutUnsynced(f File, size int64) error { return f.Truncate(size) }
+// Synced notes that a sync of f, the newest segment or the one before it
+// while Rotate's segment waits for Place, made its first end bytes
+// durable. A driver that syncs segments itself calls it after each sync
+// that worked, with its lock held, so that CutUnsynced knows where to cut.
+func (w *WAL) Synced(f File, end int64) {
+	switch f {
+	case w.seg:
+		w.synced = max(w.synced, end)
+	case w.prev:
+		w.prevSynced = max(w.prevSynced, end)
+	}
+}
+
+// CutUnsynced cuts f, the newest segment or the one before it, whose sync
+// failed, back to its part known durable (Synced), before the process
+// stops. A failed sync marks the pages it did not write clean: they stay
+// readable but never reach the disk, and no later sync writes them. A
+// process that starts again without a power loss would read them as the
+// log, and once the segment is sealed, a power loss would find a hole in
+// it (#364). The cut drops them from the page cache. A driver calls it
+// with its lock held.
+func (w *WAL) CutUnsynced(f File) error {
+	switch f {
+	case w.seg:
+		return f.Truncate(w.synced)
+	case w.prev:
+		return f.Truncate(w.prevSynced)
+	}
+	return nil
+}
 
 // Size is where the records of the newest segment end, so far: the offset
 // that the next Flush writes at.
@@ -1063,6 +1091,7 @@ func (w *WAL) Seal() error { return w.seg.Truncate(w.size) }
 func (w *WAL) Rotate() File {
 	old := w.seg
 	w.sizes[w.seq] = w.size
+	w.prev, w.prevSynced = old, w.synced
 	w.start(nil)
 	return old
 }
@@ -1083,7 +1112,7 @@ func (w *WAL) Place() error {
 	if err != nil {
 		return err
 	}
-	w.seg, w.unplaced = f, false
+	w.seg, w.unplaced, w.prev = f, false, nil
 	return nil
 }
 

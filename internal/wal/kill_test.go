@@ -144,3 +144,72 @@ func TestRestartedSegmentKeepsNoStaleRecords(t *testing.T) {
 		t.Fatalf("after a torn write, recovered entries to %d", rec.Last)
 	}
 }
+
+// TestCutKeepsDriverSyncs syncs records the way the node driver does,
+// with Flush and a sync of Segment that it reports with Synced, and then
+// fails a sync: SyncTail's on a clean stop, and the driver's own of the
+// segment before a rotation's new one. The cut must keep what those syncs
+// made durable, and drop the rest (#364).
+func TestCutKeepsDriverSyncs(t *testing.T) {
+	failSync := func(d *simfs.Disk) {
+		d.Fault = func(op simfs.Op, _ string) error {
+			if op == simfs.OpSync {
+				d.Fault = nil
+				return simfs.ErrIO
+			}
+			return nil
+		}
+	}
+	t.Run("SyncTail", func(t *testing.T) {
+		d := simfs.New()
+		w, _ := open(t, d)
+		w.Append(&wal.HardState{Term: 1}, []*raftpb.Entry{entry(1, 1, "a"), entry(1, 2, "b")})
+		if err := errors.Join(w.Flush(), w.Segment().Sync()); err != nil {
+			t.Fatal(err)
+		}
+		w.Synced(w.Segment(), w.Size())
+		w.Append(nil, []*raftpb.Entry{entry(1, 3, "c")})
+		failSync(d)
+		if err := w.SyncTail(); !errors.Is(err, simfs.ErrIO) {
+			t.Fatalf("SyncTail = %v, want EIO", err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		w, rec := open(t, d)
+		if rec.Last != 2 {
+			t.Fatalf("after the failed SyncTail, recovered entries to %d, want 2", rec.Last)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("rotation", func(t *testing.T) {
+		d := simfs.New()
+		w, _ := open(t, d)
+		w.Append(&wal.HardState{Term: 1}, []*raftpb.Entry{entry(1, 1, "a")})
+		if err := errors.Join(w.Flush(), w.Segment().Sync()); err != nil {
+			t.Fatal(err)
+		}
+		w.Synced(w.Segment(), w.Size())
+		w.Append(nil, []*raftpb.Entry{entry(1, 2, "b")})
+		if err := errors.Join(w.Flush(), w.Seal(), wal.PrepareSegment(d, w.Seq()+1)); err != nil {
+			t.Fatal(err)
+		}
+		old := w.Rotate()
+		failSync(d)
+		if err := old.Sync(); !errors.Is(err, simfs.ErrIO) {
+			t.Fatalf("sync = %v, want EIO", err)
+		}
+		if err := errors.Join(w.CutUnsynced(old), old.Close(), w.Close()); err != nil {
+			t.Fatal(err)
+		}
+		w, rec := open(t, d)
+		if rec.Last != 1 {
+			t.Fatalf("after the failed sync of the old segment, recovered entries to %d, want 1", rec.Last)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+}

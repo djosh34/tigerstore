@@ -1393,14 +1393,14 @@ const syncsInFlight = 4
 // written is a group of jobs, and roots of cleaning passes, written to
 // the log: f is the segment to sync for it, nil when nothing in it must be
 // synced (core.PersistJob.MustSync), dir whether the directory must be
-// synced after it, as the segment took its name, and start where its
-// bytes start in the segment.
+// synced after it, as the segment took its name, and end where its bytes
+// end in the segment.
 type written struct {
 	jobs           []core.PersistJob
 	packs          []packRoot
 	f              wal.File
 	dir            bool
-	start          int64
+	end            int64
 	entries, bytes int
 	times          persistTimes
 }
@@ -1561,9 +1561,9 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		buffered := w.Buffered()
 		n.log.used.Add(buffered)
 		m := n.cfg.Metrics
-		g.start = w.Size()
 		g.times.flush = time.Now()
 		err := w.Flush()
+		g.end = w.Size()
 		g.times.flushed = time.Now()
 		writeTime := g.times.flushed.Sub(g.times.flush)
 		m.WALWrite.Observe(writeTime.Seconds())
@@ -1612,9 +1612,6 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 // and hands every later group back with that error.
 func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, report func(written, error) error) {
 	var failed error
-	// cut is where the bytes written since the last sync of the log
-	// start, -1 if there are none: a failed sync cuts them off.
-	cut := int64(-1)
 	for g := range groups {
 		batch := []written{g}
 	more:
@@ -1632,14 +1629,14 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 		err := failed
 		var f wal.File
 		dir := false
+		// upTo is where the batch's bytes end in f.
+		var upTo int64
 		for _, g := range batch {
 			if g.f != nil {
 				f = g.f
 			}
 			dir = dir || g.dir
-			if cut < 0 {
-				cut = g.start
-			}
+			upTo = max(upTo, g.end)
 		}
 		var early []syncedGroup
 		if err == nil && f != nil && (planted.On("B02") && n.Leader() == n.ID() || planted.On("B03") && n.Leader() != n.ID()) {
@@ -1658,10 +1655,8 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 				n.cfg.BeforeSync()
 			}
 			err = f.Sync()
-			if err != nil && !planted.On("B11") {
-				// The node stops; what the sync did not write must not
-				// stay readable for its next process (#364).
-				err = errors.Join(err, wal.CutUnsynced(f, cut))
+			if !planted.On("B11") {
+				err = n.syncedLog(f, upTo, err)
 			}
 			// Planted: B05 takes records into the new segment before its
 			// directory entry is durable.
@@ -1673,7 +1668,6 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 				err = nil
 			}
 			if err == nil {
-				cut = -1
 				err = n.saveVote(batch)
 			}
 			if err != nil {
@@ -1696,6 +1690,21 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 		}
 		failed = err
 	}
+}
+
+// syncedLog tells the log how a sync of its segment f, which syncs its
+// first end bytes, went (wal.WAL.Synced). After a failed sync the node
+// stops, and the segment is cut back to its synced part, so that what the
+// sync did not write does not stay readable for its next process
+// (wal.WAL.CutUnsynced, #364). It returns err with the cut's error.
+func (n *Node) syncedLog(f wal.File, end int64, err error) error {
+	n.log.mu.Lock()
+	defer n.log.mu.Unlock()
+	if err != nil {
+		return errors.Join(err, n.log.w.CutUnsynced(f))
+	}
+	n.log.w.Synced(f, end)
+	return nil
 }
 
 // saveVote writes a new term or vote of the groups into the copies
@@ -1805,10 +1814,14 @@ func (n *Node) syncLog(ctx context.Context, h prometheus.Observer) error {
 	if err := w.Flush(); err != nil {
 		return err
 	}
-	if err := syncTimed(w.Segment(), h); err != nil || !w.Full() {
+	f := w.Segment()
+	if err := n.syncedLog(f, w.Size(), syncTimed(f, h)); err != nil || !w.Full() {
 		return err
 	}
-	if err := errors.Join(w.Seal(), w.Segment().Sync()); err != nil {
+	if err := w.Seal(); err != nil {
+		return err
+	}
+	if err := n.syncedLog(f, w.Size(), f.Sync()); err != nil {
 		return err
 	}
 	old, err := n.rotate(ctx)

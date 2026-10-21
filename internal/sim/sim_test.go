@@ -835,10 +835,10 @@ func TestCheckpointCreateFails(t *testing.T) {
 
 // TestFailedSyncThenRestart makes every disk fault a failed sync, after
 // which the node starts again with its page cache kept, where the bytes
-// the sync did not write stay readable, and no later sync writes them.
-// Recovery must write them again: with segments of 256 bytes, which end
-// every few writes, a power loss later would find a hole in a sealed
-// segment (#364).
+// the sync did not write would stay readable, and no later sync writes
+// them. The failed sync's process must cut them off: with segments of 256
+// bytes, which end every few writes, a power loss later would find a hole
+// in a sealed segment (#364).
 func TestFailedSyncThenRestart(t *testing.T) {
 	var took effects
 	if !simrun.Each(t, seedRange(3800, 8), func(t *testing.T, seed uint64) int {
