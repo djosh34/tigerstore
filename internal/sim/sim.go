@@ -1640,11 +1640,13 @@ func (s *Sim) powerLoss(n *node) {
 // the writes since. Images that tear writes at sectors or pages can make
 // recovery refuse the log, as a torn write and damage look alike (wal's
 // verifiesAfter), so they come only while no other node is out of the
-// cluster for good, and a quorum stays. An image of whole writes must
-// never make recovery refuse the log (#295). The lock is held.
+// cluster for good, and a quorum stays, and not in membership runs, where
+// a fenced voter would refuse every change, as corruption would
+// (membershipConfig). An image of whole writes must never make recovery
+// refuse the log (#295). The lock is held.
 func (s *Sim) loseUnsynced(n *node) {
 	img := simfs.Image(s.rng.IntN(4))
-	if slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.corrupted || m.fenced) }) {
+	if s.cfg.Membership || slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.corrupted || m.fenced) }) {
 		img = simfs.Image(s.rng.IntN(2))
 	}
 	n.disk.CrashImage(s.rng, img)
