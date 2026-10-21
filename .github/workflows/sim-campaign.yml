@@ -16,7 +16,7 @@ jobs:
           - mode: before
             revision: e47dbff860b35c81476bd1a16a76c683a5e3a2fe
           - mode: after
-            revision: c87ce4f3
+            revision: c87ce4f39f2deb8e45c6755d4687dd6241f2220b
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     env:
