@@ -36,6 +36,7 @@ jobs:
       - name: Replay four seeds
         shell: bash
         run: |
+          set +e
           set -uo pipefail
           export GOSIMTOOL="$GITHUB_WORKSPACE/.gosim/bin/gosim"
           export SIM_OUT="$RUNNER_TEMP/sim-out"
