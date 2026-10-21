@@ -36,6 +36,17 @@ type plantedCase struct {
 	witness bool
 }
 
+// damagedSnapshotConfig is the case "damaged snapshot" of
+// TestEachFaultTakesEffect, which runs it without a bug: a follower held
+// down until it fetches a snapshot, whose first stream is damaged.
+func damagedSnapshotConfig(seed uint64) Config {
+	cfg := DefaultConfig(seed)
+	cfg.Faults = Faults{HoldDown: true, FlipSnapshot: true}
+	cfg.Duration = 8 * Second
+	cfg.Heal = 8 * Second
+	return cfg
+}
+
 func stalledLeaderConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Faults = Faults{}
@@ -115,7 +126,9 @@ var plantedCases = map[string]plantedCase{
 	"B21": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|already exists|` + refused},
 	// The install starts the node again from its log (#238), where the
 	// unchecked snapshot's damaged entry can be what recovery refuses.
-	"B22": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|` + badValue + `|malformed|` + refused + `|installed a snapshot at \d+ from \d+, checkpoint \d+\n[^\n]*wal: corrupt log:`},
+	// With every fault on, few snapshot streams are damaged and installed;
+	// the effect test's damaged snapshot runs more.
+	"B22": {seeds: 256, cfg: damagedSnapshotConfig, want: inventedState + `|` + badValue + `|malformed|` + refused + `|installed a snapshot at \d+ from \d+, checkpoint \d+\n[^\n]*wal: corrupt log:`},
 	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|` + stuck},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},
