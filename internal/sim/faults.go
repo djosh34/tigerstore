@@ -180,22 +180,29 @@ func (s *Sim) fsDown() {
 			// Healing mounted it again.
 			return
 		}
-		if n.proc != nil {
-			n.why = "the run took it down to mount its disk again"
-			s.stopNode(n)
-		}
+		running := n.proc != nil
 		s.remount(n)
+		if running {
+			s.restartLater(n, s.restartDelay())
+		}
 	})
 }
 
 // remount mounts n's disk again after it shut down or went read-only. A
 // remount follows an unmount, which loses what the page cache could not
-// write back (simfs.Disk.Remount): a node that is down, as one that exited
-// on the disk's error keeps its page cache, loses it now, as at a power
-// loss. Else the pages a failed sync left readable, which no later sync
-// writes, would outlive the remount. The lock is held.
+// write back (simfs.Disk.Remount). A node still running goes down first,
+// as at a power loss. A node that is down loses its page cache now, as at
+// a power loss: one that exited on the disk's error kept it. Else the
+// pages a failed sync left readable, which no later sync writes, would
+// outlive the remount (#371). The caller restarts a node it took down.
+// The lock is held.
 func (s *Sim) remount(n *node) {
-	if n.disk.Down() && n.proc == nil {
+	switch {
+	case !n.disk.Down():
+	case n.proc != nil:
+		n.why = "the run took it down to mount its disk again"
+		s.crash(n)
+	default:
 		s.loseUnsynced(n)
 		n.crashImage = n.disk.Files()
 		s.tracef("node %d: unmounted its disk, which kept what it synced", n.id)

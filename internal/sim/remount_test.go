@@ -99,3 +99,49 @@ func TestRemountAfterExit(t *testing.T) {
 		}
 	})
 }
+
+// TestRemountTakesRunningNodeDown shuts a running follower's file system
+// down and mounts it again at once, as healing can before the follower
+// exits on its disk's error. The remount must take the follower down as a
+// power loss, which drops its page cache, as fsDown does: else pages a
+// failed sync left readable outlive the remount with the process (#371).
+func TestRemountTakesRunningNodeDown(t *testing.T) {
+	if simrun.Drive(t, 372) {
+		return
+	}
+	simrun.Bubble(t, func(t *testing.T) {
+		cfg := DefaultConfig(372)
+		cfg.Faults = Faults{}
+		s, err := newSim(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if t.Failed() {
+				explainSim(t, cfg, s)
+			}
+			s.shutdown()
+		}()
+		for _, n := range s.nodes {
+			if err := s.start(n); err != nil {
+				t.Fatal(err)
+			}
+		}
+		time.Sleep(3 * time.Second)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		lead := s.leaderIdx()
+		if lead < 0 {
+			t.Fatal("no leader after 3 s")
+		}
+		follower := s.nodes[(lead+1)%len(s.nodes)]
+		follower.disk.Shutdown()
+		s.remount(follower)
+		if follower.proc != nil {
+			t.Fatalf("node %d still runs after its disk was mounted again", follower.id)
+		}
+		if follower.disk.Down() {
+			t.Fatalf("node %d's disk is still down", follower.id)
+		}
+	})
+}
