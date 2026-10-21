@@ -46,6 +46,11 @@ func TestWriteDeadline(t *testing.T) {
 	if n, err := a.Write([]byte("x")); n != 0 || !errors.Is(err, os.ErrDeadlineExceeded) {
 		t.Fatalf("write past its deadline = %d, %v", n, err)
 	}
+	// Also on a half-open link, which swallows the write.
+	a.s.links[0][1].halfOpenUntil = Second
+	if n, err := a.Write([]byte("x")); n != 0 || !errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("write past its deadline on a half-open link = %d, %v", n, err)
+	}
 	a = writer()
 	if err := a.SetWriteDeadline(time.Now().Add(20 * time.Millisecond)); err != nil {
 		t.Fatal(err)

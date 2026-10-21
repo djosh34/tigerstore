@@ -404,15 +404,14 @@ func (c *conn) Write(b []byte) (int, error) {
 			s.mu.Unlock()
 			return n, errReset
 		}
-		now := s.now()
-		if s.link(c.from, c.to).halfOpenUntil > now {
-			s.mu.Unlock()
-			return len(b), nil
-		}
 		if !c.writeDeadline.IsZero() && !time.Now().Before(c.writeDeadline) {
 			s.stats.WriteTimeouts++
 			s.mu.Unlock()
 			return n, os.ErrDeadlineExceeded
+		}
+		if s.link(c.from, c.to).halfOpenUntil > s.now() {
+			s.mu.Unlock()
+			return len(b), nil
 		}
 		if room := sendBuffer - c.out.size; room > 0 {
 			k := min(room, len(b)-n)
