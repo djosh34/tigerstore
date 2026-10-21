@@ -1592,9 +1592,10 @@ func (s *Sim) kill(n *node) {
 
 // powerLoss cuts n's power: a running process crashes and restarts
 // later, and a disk whose process is down drops what was not synced. A
-// node in the middle of its start keeps its power. The lock is held.
+// node in the middle of its start keeps its power, and healing ends the
+// faults. The lock is held.
 func (s *Sim) powerLoss(n *node) {
-	if s.ended || n.starting || n.out() {
+	if s.ended || s.healed || n.starting || n.out() {
 		return
 	}
 	s.stats.KillLosses++

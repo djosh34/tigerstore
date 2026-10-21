@@ -10,7 +10,7 @@ Each planted bug switches on a deliberate defect behind the `planted` build tag 
 | B03 | A follower's disk driver reports an append durable before its fsync | Same as B02 | 128 | planted; its CI job must catch it |
 | B04a | WAL recovery accepts a record whose checksum fails | Recovery refuses the log, or a node starts on a damaged disk without noticing (see deviations) | 256 | planted; its CI job must catch it |
 | B04c | WAL recovery skips checksums, and a payload bit flips so that the record still decodes | Two nodes applied different entries at one index, the state disagrees with the model or the final log, or a node starts on a disk with a flipped value without noticing | 256 | planted; its CI job must catch it |
-| B04b | Torn-tail repair also cuts the last synced record | A node recovers less than it reported durable, or, when the cut record was a vote, two nodes applied different entries at one index, or different states from one log | 256 | planted; its CI job must catch it |
+| B04b | Torn-tail repair also cuts the last synced record | A node recovers less than it reported durable, or, when the cut record was a vote, it starts again with an older term or vote than it held durable, or two nodes applied different entries at one index, or different states from one log | 256 | planted; its CI job must catch it |
 | B06a | A watcher drops the last event of a multi-key write | The watch history differs from the committed history | 32 | planted; its CI job must catch it |
 | B06b | A watcher gets the first event of every write twice | Same as B06a | 32 | planted; its CI job must catch it |
 | B06c | Update and delete events lose their previous value | Same as B06a | 32 | planted; its CI job must catch it |

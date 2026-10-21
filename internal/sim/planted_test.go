@@ -49,6 +49,9 @@ const (
 	staleRead = `before it started|linearizab`
 	// An acknowledged append that recovery or a cold restart lost.
 	lostAppend = `reported \d+ durable|erasing node \d+`
+	// A node started again with an older term or vote than it held
+	// durable.
+	lostVote = `but held term \d+ and vote \d+ durable`
 	// A watch that broke the watch rules.
 	badWatch = `watch \d+`
 	// A read or the replayed log that disagrees with the model; not a
@@ -79,7 +82,7 @@ var plantedCases = map[string]plantedCase{
 	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|without noticing|` + refused + `|` + badValue + `|the record of entry \d+ in segment \d+ does not verify`},
 	// B04b cuts the last synced record, which can be a vote: the node then
 	// votes twice in one term, and two leaders write different entries.
-	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|applied different entries|applied the same log to different states`},
+	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|applied different entries|applied the same log to different states|` + lostVote},
 	"B05":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	"B06a": {seeds: 32, cfg: DefaultConfig, want: badWatch},
 	"B06b": {seeds: 32, cfg: DefaultConfig, want: badWatch},
