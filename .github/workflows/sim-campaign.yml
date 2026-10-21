@@ -19,7 +19,6 @@ jobs:
     env:
       GOMAXPROCS: "2"
       GOFLAGS: -p=1
-      SIM_OUT: ${{ runner.temp }}/sim-out
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -27,6 +26,8 @@ jobs:
           go-version-file: go.mod
       - run: scripts/sim.sh ./internal/sim '^$'
       - name: Reproduce the twelve seeds serially
+        env:
+          SIM_OUT: ${{ runner.temp }}/sim-out
         shell: bash
         run: |
           set +e
