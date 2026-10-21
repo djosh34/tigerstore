@@ -295,21 +295,23 @@ func (s *Sim) rot(n *node, c *core.Node) {
 			continue
 		}
 		if name == newestSegment(n.disk) {
-			// A failed sync can cut away bytes an earlier sync happened
-			// to write beyond its group's end. The witness must be in a
-			// group reported durable, so that the cut cannot remove it
-			// and make the damage look like a torn last record (#375).
-			if r.Index+2 > n.floor() {
-				s.tracef("node %d: DIAG skip rot entry %d, witness entry %d exceeds reported floor %d", n.id, r.Index, r.Index+2, n.floor())
-				continue
-			}
+			// Damage to the newest segment's last durable record looks
+			// like a torn write; a later entry must be durable after it.
 			next, end, ok := w.ValuePlace(r.Index+2, 0, 0)
 			if !ok || next != seq || end >= int64(len(n.disk.DurableBytes(name))) {
 				continue
 			}
 			s.tracef("node %d: DIAG rot candidate entry %d, witness entry %d at %d, reported floor %d", n.id, r.Index, r.Index+2, end, n.floor())
 		}
-		n.disk.Rot(name, int(at)+s.rng.IntN(int(r.Len)))
+		bit := s.rng.IntN(int(r.Len))
+		// A failed sync may cut away the physical-only witness (#375).
+		// Decline this rot after the draw, to keep the diagnosis replay's
+		// next faults unchanged until the cut of the damaged tail.
+		if name == newestSegment(n.disk) && r.Index+2 > n.floor() {
+			s.tracef("node %d: DIAG skip rot entry %d, witness entry %d exceeds reported floor %d", n.id, r.Index, r.Index+2, n.floor())
+			return
+		}
+		n.disk.Rot(name, int(at)+bit)
 		n.corrupted, n.rotted, n.rotFile, n.rotEntry, n.rotSeg = true, true, name, r.Index, seq
 		s.stats.Rots++
 		s.tracef("node %d: rotted a value of entry %d in %s", n.id, r.Index, name)

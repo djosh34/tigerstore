@@ -17,7 +17,7 @@ jobs:
       GOMAXPROCS: "2"
       GOFLAGS: -p=1
       SIM_SEEDS: "1"
-      SIM_KEEP: "1"
+      SIM_TWICE: "1"
     steps:
       - uses: actions/checkout@v7
         with:
