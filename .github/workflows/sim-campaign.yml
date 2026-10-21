@@ -59,7 +59,12 @@ jobs:
           status=0
           for p in 0 1; do
             wait "${pids[$p]}" || status=1
-            grep -E -- '^--- FAIL|^    --- FAIL| seeds: |took effect|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$p.log" | head -50
+          done
+          # The step's shell stops at the first failed command, and grep
+          # fails once head has its 50 lines, so both processes are waited
+          # for first.
+          for p in 0 1; do
+            grep -E -- '^--- FAIL|^    --- FAIL| seeds: |took effect|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$p.log" | head -50 || true
             PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$p.log" -gosim
           done
           exit $status
