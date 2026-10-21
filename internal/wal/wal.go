@@ -394,6 +394,9 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		// prefix into a new file, so a crash cannot tear an in-place rewrite
 		// of the prefix that was already synced before that failed writeback.
 		tmpName := "recover-" + strings.TrimSuffix(name, ".wal")
+		if err := fs.Remove(tmpName); err != nil && !errors.Is(err, iofs.ErrNotExist) {
+			return nil, nil, errors.Join(err, f.Close())
+		}
 		tmp, err := fs.Create(tmpName)
 		if err != nil {
 			return nil, nil, errors.Join(err, f.Close())
