@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/djosh34/tigerstore/internal/planted"
@@ -132,8 +133,8 @@ func (s *Sim) armDiskFault(n *node, kind int) {
 		target = otherOps[s.rng.IntN(len(otherOps))]
 	}
 	s.tracef("node %d: disk fault armed: EIO on the next %v", n.id, target)
-	d.Fault = func(op simfs.Op, _ string) error {
-		if op != target {
+	d.Fault = func(op simfs.Op, name string) error {
+		if op != target || raceLeavesOut && op == simfs.OpCreate && strings.HasPrefix(name, "ckpt-") {
 			return nil
 		}
 		d.Fault = nil
