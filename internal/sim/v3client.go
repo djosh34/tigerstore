@@ -85,12 +85,13 @@ func (c *client) newV3() error {
 	return nil
 }
 
-// attempt makes one attempt of a unary call of client c and notes when
-// one ended because a start from the log cut it off.
+// attempt makes one attempt of a unary call of client c and adds the
+// time it took to c.cut if a start from the log cut it off.
 func (c *client) attempt(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	start := c.sim.now()
 	err := invoker(ctx, method, req, reply, cc, opts...)
 	if errors.Is(v3Error(rpctypes.Error(err)), rpctypes.ErrGRPCStopped) {
-		c.stopped = c.sim.now()
+		c.cut += c.sim.now() - start
 	}
 	return err
 }
