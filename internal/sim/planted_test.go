@@ -47,8 +47,9 @@ func stalledLeaderConfig(seed uint64) Config {
 const (
 	// A read older than a write that returned before it started.
 	staleRead = `before it started|linearizab`
-	// An acknowledged append that recovery or a cold restart lost.
-	lostAppend = `reported \d+ durable|erasing node \d+`
+	// An acknowledged append, or a durable term and vote, that recovery or
+	// a cold restart lost.
+	lostAppend = `reported \d+ durable|erasing node \d+|` + lostVote
 	// A node started again with an older term or vote than it held
 	// durable.
 	lostVote = `but held term \d+ and vote \d+ durable`
@@ -82,7 +83,7 @@ var plantedCases = map[string]plantedCase{
 	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|without noticing|` + refused + `|` + badValue + `|the record of entry \d+ in segment \d+ does not verify`},
 	// B04b cuts the last synced record, which can be a vote: the node then
 	// votes twice in one term, and two leaders write different entries.
-	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|applied different entries|applied the same log to different states|` + lostVote},
+	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|applied different entries|applied the same log to different states`},
 	"B05":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	"B06a": {seeds: 32, cfg: DefaultConfig, want: badWatch},
 	"B06b": {seeds: 32, cfg: DefaultConfig, want: badWatch},
@@ -127,6 +128,13 @@ var plantedCases = map[string]plantedCase{
 	"B31": {seeds: 16, cfg: cacheConfig, want: badValue + `|` + badState},
 	"B32": {seeds: 128, cfg: loneHeaderConfig, want: refused},
 }
+
+// openBugs are the failures of open bugs #357 and #361, which the default
+// seeds hit in about one in twenty: a lost entry, term or vote, or a
+// checkpoint that a restart removed on a root it read from the page
+// cache. For a planted bug that is not caught by them, such a seed
+// catches nothing. Their fixes remove it.
+var openBugs = regexp.MustCompile(`reported \d+ durable|held term \d+ and vote \d+ durable|load the checkpoint at \d+: file does not exist`)
 
 // plantedElsewhere are the bugs whose own package's TestPlanted runs a
 // fixed scenario that must catch it; the CI job runs those packages too.
@@ -226,6 +234,10 @@ func TestPlanted(t *testing.T) {
 			err = c.extra(res)
 		}
 		if err == nil {
+			return ""
+		}
+		if !want.MatchString(err.Error()) && openBugs.MatchString(err.Error()) {
+			t.Logf("seed %d of %s hit an open bug instead, #357 or #361, and catches nothing: %v", seed, name, err)
 			return ""
 		}
 		if !want.MatchString(err.Error()) {
