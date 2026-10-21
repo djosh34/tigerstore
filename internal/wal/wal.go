@@ -1064,13 +1064,21 @@ func (w *WAL) Synced(f File, end int64) {
 // it (#364). The cut drops them from the page cache. A driver calls it
 // with its lock held. Another file is ErrNotSegment.
 func (w *WAL) CutUnsynced(f File) error {
+	var end int64
 	switch f {
 	case w.seg:
-		return f.Truncate(w.synced)
+		end = w.synced
 	case w.prev:
-		return f.Truncate(w.prevSynced)
+		end = w.prevSynced
+	default:
+		return ErrNotSegment
 	}
-	return ErrNotSegment
+	// Diagnosis only: does completing the failed cut remove #374?
+	// The campaign injects one-shot EIO. This is not a persistent-error fix.
+	if err := f.Truncate(end); err != nil {
+		return f.Truncate(end)
+	}
+	return nil
 }
 
 // ErrNotSegment is a file that is neither the newest segment nor the one
