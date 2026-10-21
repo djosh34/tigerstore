@@ -440,6 +440,9 @@ func (e *effects) check(t *testing.T) {
 // histories of TestLinearizable.
 func checkers(t *testing.T, res *Result) {
 	t.Helper()
+	if os.Getenv("SIM_PLANTED") == "diag369" {
+		t.Fatal("diagnosis #369: save the history before checkers")
+	}
 	if err := independent(res); err != nil {
 		t.Fatal(err)
 	}
