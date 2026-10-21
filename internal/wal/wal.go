@@ -151,9 +151,6 @@ const (
 	MaxSpares   = 4
 	sparePrefix = "spare-"
 	nextPrefix  = "next-"
-	// recoverPrefix names the copy of the newest segment that recovery
-	// writes (rewrite).
-	recoverPrefix = "recover-"
 )
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
@@ -244,11 +241,13 @@ type WAL struct {
 	version  uint32
 	size     int64
 	unplaced bool
-	crc      uint32
-	last     uint64
-	buf      []byte
-	dirty    bool
-	maxSize  int64
+	// synced is how much of the newest segment is known durable.
+	synced  int64
+	crc     uint32
+	last    uint64
+	buf     []byte
+	dirty   bool
+	maxSize int64
 	// spares is how many removed segments RemoveBelow and RemoveCleaned
 	// keep as spare files.
 	spares int
@@ -320,9 +319,9 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	w := &WAL{fs: fs, maxSize: SegmentBytes, spares: MaxSpares, vals: map[uint64][]valueRec{}, readers: map[uint64]File{}, sizes: map[uint64]int64{}}
 	rec := &Recovered{}
 	// first is the index of the first entry the scan found, 0 for none,
-	// and tail the records of the newest segment.
+	// and restarted is set if the newest segment starts again.
 	var first uint64
-	var tail []byte
+	restarted := false
 	for i, name := range segs {
 		last := i == len(segs)-1
 		f, err := fs.Open(name)
@@ -360,6 +359,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			}
 			w.seq = seq - 1
 			w.start(f)
+			restarted = true
 			break
 		}
 		if version < 1 || version > Version {
@@ -385,6 +385,9 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 				}
 				return Open(fs)
 			}
+			if err := errors.Join(f.Truncate(good), f.Sync()); err != nil {
+				return nil, nil, errors.Join(err, f.Close())
+			}
 		}
 		rec.Bytes += good
 		if !last {
@@ -394,17 +397,12 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			w.sizes[seq] = good
 			continue
 		}
-		w.seg, w.size, w.copied, tail = f, good, true, data[:good]
+		w.seg, w.size, w.copied = f, good, true
 	}
 	if err := w.check(first); err != nil {
 		return nil, nil, errors.Join(err, w.Close())
 	}
-	switch {
-	case tail != nil:
-		if err := w.rewrite(names, tail); err != nil {
-			return nil, nil, errors.Join(err, w.Close())
-		}
-	case w.seg != nil:
+	if restarted {
 		// The newest segment starts again. A crash can have kept later
 		// writes of its first start in the file, and lost the first: they
 		// chain from the same records as the new ones, and would verify
@@ -412,6 +410,23 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		if err := w.seg.Truncate(0); err != nil {
 			return nil, nil, errors.Join(err, w.Close())
 		}
+	}
+	// A killed process leaves its writes in the page cache, where the next
+	// process reads them. Unsynced, a power loss could still take back an
+	// entry, a term and vote, or a root that names newer packs and a newer
+	// checkpoint, after the node held them durable and removed the files
+	// of the older root (#361). So what recovery read is synced, with the
+	// names of the files, before the node acts on it and before Open
+	// removes any file. A sync that failed before left nothing here that
+	// no sync writes: its process cut the segment back (CutUnsynced).
+	if w.seg != nil {
+		if err := w.seg.Sync(); err != nil {
+			return nil, nil, errors.Join(err, w.Close())
+		}
+		w.synced = w.size
+	}
+	if err := fs.SyncDir(); err != nil {
+		return nil, nil, errors.Join(err, w.Close())
 	}
 	copies, err := readVotes(fs, names)
 	if err != nil {
@@ -430,9 +445,8 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		return nil, nil, errors.Join(fmt.Errorf("%w: commit index %d is past the last entry %d", ErrCorrupt, rec.HardState.Commit, w.last), w.Close())
 	}
 	// Both copies of the term and vote get the newest, which repairs a
-	// copy that a crash tore, and the directory sync makes the names of
-	// the log's files durable too.
-	if err := errors.Join(writeVotes(fs, names, copies, HardState{Term: rec.HardState.Term, Vote: rec.HardState.Vote}), fs.SyncDir()); err != nil {
+	// copy that a crash tore.
+	if err := writeVotes(fs, names, copies, HardState{Term: rec.HardState.Term, Vote: rec.HardState.Vote}); err != nil {
 		return nil, nil, errors.Join(err, w.Close())
 	}
 	if err := w.removeCheckpoints(ckpts, CheckpointName(w.root.Index)); err != nil {
@@ -448,43 +462,6 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		}
 	}
 	return w, rec, nil
-}
-
-// rewrite replaces the newest segment with a synced copy of its records,
-// tail, before the node acts on what recovery read and before Open
-// removes any file. A killed process leaves its writes in the page cache,
-// where the next process reads them: unsynced, a power loss could still
-// take back an entry, a term and vote, or a root that names newer packs
-// and a newer checkpoint, after the node held them durable and removed
-// the files of the older root (#361). A sync of the segment is not
-// enough: a failed sync leaves the bytes that never reached the disk
-// readable in the page cache, and no later sync writes them (#364). So
-// recovery writes them again, into a new file that it renames over the
-// segment once synced, which also drops a torn tail. A copy that a crash
-// left is removed first. names are the files in the directory.
-func (w *WAL) rewrite(names []string, tail []byte) error {
-	for _, n := range names {
-		if strings.HasPrefix(n, recoverPrefix) {
-			if err := w.fs.Remove(n); err != nil && !errors.Is(err, iofs.ErrNotExist) {
-				return err
-			}
-		}
-	}
-	name := segmentName(w.seq)
-	if err := replaceFile(w.fs, fmt.Sprintf("%s%016x", recoverPrefix, w.seq), name, tail); err != nil {
-		return err
-	}
-	old := w.seg
-	w.seg = nil
-	if err := old.Close(); err != nil {
-		return err
-	}
-	f, err := w.fs.Open(name)
-	if err != nil {
-		return err
-	}
-	w.seg = f
-	return nil
 }
 
 // replaceFile writes data into a new file tmp, syncs it, renames it to
@@ -860,7 +837,7 @@ func listSpares(fs FS) ([]string, error) {
 func (w *WAL) start(f File) {
 	w.unplaced = f == nil
 	w.seq++
-	w.seg, w.size, w.copied, w.version = f, 0, false, Version
+	w.seg, w.size, w.synced, w.copied, w.version = f, 0, 0, false, Version
 	w.buf = append(w.buf[:0], magic...)
 	w.buf = binary.LittleEndian.AppendUint32(w.buf, Version)
 	w.buf = binary.LittleEndian.AppendUint64(w.buf, w.seq)
@@ -1022,15 +999,18 @@ func (w *WAL) Sync() error {
 	}
 	if w.dirty {
 		if err := w.seg.Sync(); err != nil {
-			return err
+			return errors.Join(err, CutUnsynced(w.seg, w.synced))
 		}
-		w.dirty = false
+		w.dirty, w.synced = false, w.size
 	}
 	if !w.Full() {
 		return nil
 	}
-	if err := errors.Join(w.Seal(), w.seg.Sync()); err != nil {
+	if err := w.Seal(); err != nil {
 		return err
+	}
+	if err := w.seg.Sync(); err != nil {
+		return errors.Join(err, CutUnsynced(w.seg, w.synced))
 	}
 	if err := PrepareSegment(w.fs, w.seq+1); err != nil {
 		return err
@@ -1049,8 +1029,25 @@ func (w *WAL) SyncTail() error {
 	if err := w.Flush(); err != nil {
 		return err
 	}
-	return w.seg.Sync()
+	if err := w.seg.Sync(); err != nil {
+		return errors.Join(err, CutUnsynced(w.seg, w.synced))
+	}
+	w.synced = w.size
+	return nil
 }
+
+// CutUnsynced cuts f, a segment whose sync failed, back to size, the part
+// of it known durable, before the process stops. A failed sync marks the
+// pages it did not write clean: they stay readable but never reach the
+// disk, and no later sync writes them. A process that starts again
+// without a power loss would read them as the log, and once the segment
+// is sealed, a power loss would find a hole in it (#364). The cut drops
+// them from the page cache.
+func CutUnsynced(f File, size int64) error { return f.Truncate(size) }
+
+// Size is where the records of the newest segment end, so far: the offset
+// that the next Flush writes at.
+func (w *WAL) Size() int64 { return w.size }
 
 // Seal cuts the full newest segment to its records, which a reused file
 // would hold more after, and Flush must have written them: a segment that

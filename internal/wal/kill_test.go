@@ -59,10 +59,10 @@ func TestKillThenPowerLoss(t *testing.T) {
 }
 
 // TestFailedSyncThenKill fails a sync of the log, which leaves the bytes
-// it did not write readable in the page cache, and kills the process. The
-// next process reads them, and later syncs do not write them, so a power
-// loss after the segment is sealed would find a hole in it unless
-// recovery wrote them again (#364).
+// it did not write readable in the page cache, and kills the process.
+// Later syncs do not write them, so if the next process read them, a power
+// loss after the segment is sealed would find a hole in it. The failed
+// sync must cut them off (CutUnsynced, #364).
 func TestFailedSyncThenKill(t *testing.T) {
 	d := simfs.New()
 	w, _ := open(t, d)
@@ -84,14 +84,15 @@ func TestFailedSyncThenKill(t *testing.T) {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	// The kill keeps the page cache: the next process holds entry 2.
+	// The kill keeps the page cache, but not entry 2, which never
+	// reached the disk.
 	w, rec := open(t, d)
-	if rec.Last != 2 {
-		t.Fatalf("after the kill, recovered entries to %d", rec.Last)
+	if rec.Last != 1 {
+		t.Fatalf("after the kill, recovered entries to %d, want 1", rec.Last)
 	}
 	// It appends, and starts a new segment, which seals this one.
 	w.SetSegmentBytes(1)
-	w.Append(&wal.HardState{Term: 2, Commit: 2}, []*raftpb.Entry{entry(2, 3, "c")})
+	w.Append(&wal.HardState{Term: 2, Commit: 2}, []*raftpb.Entry{entry(2, 2, "B"), entry(2, 3, "c")})
 	if err := errors.Join(w.Sync(), w.Close()); err != nil {
 		t.Fatal(err)
 	}

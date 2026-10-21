@@ -1392,13 +1392,15 @@ const syncsInFlight = 4
 
 // written is a group of jobs, and roots of cleaning passes, written to
 // the log: f is the segment to sync for it, nil when nothing in it must be
-// synced (core.PersistJob.MustSync), and dir whether the directory must be
-// synced after it, as the segment took its name.
+// synced (core.PersistJob.MustSync), dir whether the directory must be
+// synced after it, as the segment took its name, and start where its
+// bytes start in the segment.
 type written struct {
 	jobs           []core.PersistJob
 	packs          []packRoot
 	f              wal.File
 	dir            bool
+	start          int64
 	entries, bytes int
 	times          persistTimes
 }
@@ -1559,6 +1561,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		buffered := w.Buffered()
 		n.log.used.Add(buffered)
 		m := n.cfg.Metrics
+		g.start = w.Size()
 		g.times.flush = time.Now()
 		err := w.Flush()
 		g.times.flushed = time.Now()
@@ -1609,6 +1612,9 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 // and hands every later group back with that error.
 func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, report func(written, error) error) {
 	var failed error
+	// cut is where the bytes written since the last sync of the log
+	// start, -1 if there are none: a failed sync cuts them off.
+	cut := int64(-1)
 	for g := range groups {
 		batch := []written{g}
 	more:
@@ -1631,6 +1637,9 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 				f = g.f
 			}
 			dir = dir || g.dir
+			if cut < 0 {
+				cut = g.start
+			}
 		}
 		var early []syncedGroup
 		if err == nil && f != nil && (planted.On("B02") && n.Leader() == n.ID() || planted.On("B03") && n.Leader() != n.ID()) {
@@ -1649,6 +1658,11 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 				n.cfg.BeforeSync()
 			}
 			err = f.Sync()
+			if err != nil && !planted.On("B11") {
+				// The node stops; what the sync did not write must not
+				// stay readable for its next process (#364).
+				err = errors.Join(err, wal.CutUnsynced(f, cut))
+			}
 			// Planted: B05 takes records into the new segment before its
 			// directory entry is durable.
 			if err == nil && dir && !planted.On("B05") {
@@ -1659,6 +1673,7 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 				err = nil
 			}
 			if err == nil {
+				cut = -1
 				err = n.saveVote(batch)
 			}
 			if err != nil {

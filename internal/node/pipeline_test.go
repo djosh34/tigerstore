@@ -9,10 +9,17 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
-// syncFile is a segment whose syncs fail from the failAt-th on.
+// syncFile is a segment whose syncs fail from the failAt-th on. cut is
+// where a failed sync cut it, -1 if none did.
 type syncFile struct {
 	wal.File
 	syncs, failAt int
+	cut           int64
+}
+
+func (f *syncFile) Truncate(size int64) error {
+	f.cut = size
+	return nil
 }
 
 var errSync = errors.New("sync failed")
@@ -28,14 +35,15 @@ func (f *syncFile) Sync() error {
 // TestSyncGroupsStopAtFailure syncs written groups one at a time, the
 // second sync failing: the groups come back in order, the first synced
 // and every later one with the error, also one whose own sync would have
-// worked, and one that needed no sync.
+// worked, and one that needed no sync. The failed sync cuts the segment
+// back to where the second group's bytes start (#364).
 func TestSyncGroupsStopAtFailure(t *testing.T) {
 	m, err := metrics.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	n := &Node{cfg: Config{Metrics: m}, log: &diskLog{}}
-	f := &syncFile{failAt: 2}
+	f := &syncFile{failAt: 2, cut: -1}
 	groups := make(chan written)
 	synced := make(chan syncedGroup, 4)
 	done := make(chan struct{})
@@ -48,7 +56,7 @@ func TestSyncGroupsStopAtFailure(t *testing.T) {
 		close(done)
 	}()
 	for i, file := range []wal.File{f, f, nil, f} {
-		groups <- written{jobs: make([]core.PersistJob, i+1), f: file}
+		groups <- written{jobs: make([]core.PersistJob, i+1), f: file, start: int64(100 * i)}
 		s := <-synced
 		if reported != i+1 {
 			t.Fatalf("group %d returned before its report", i)
@@ -65,6 +73,9 @@ func TestSyncGroupsStopAtFailure(t *testing.T) {
 	if f.syncs != 2 {
 		t.Fatalf("%d syncs, want none after the failed one", f.syncs)
 	}
+	if f.cut != 100 {
+		t.Fatalf("the failed sync cut the segment at %d, want 100", f.cut)
+	}
 }
 
 // A failure after sync, such as removing obsolete files, must also stop
@@ -75,7 +86,7 @@ func TestSyncGroupsStopAtReportFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	n := &Node{cfg: Config{Metrics: m}, log: &diskLog{}}
-	f := &syncFile{failAt: 10}
+	f := &syncFile{failAt: 10, cut: -1}
 	groups := make(chan written)
 	synced := make(chan syncedGroup, 2)
 	done := make(chan struct{})
