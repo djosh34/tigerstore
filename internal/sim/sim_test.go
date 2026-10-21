@@ -667,7 +667,7 @@ func faultCases() []faultCase {
 		{"EIO", Faults{DiskErrorEvery: Second}, nil, func(st Stats) int { return st.IOErrors }},
 		{"file system down", Faults{FSDownEvery: Second}, nil, func(st Stats) int { return min(st.FSDowns, st.DiskFaults) }},
 		{"full disk", Faults{DiskFullEvery: Second}, nil, func(st Stats) int { return st.OutOfSpace }},
-		{"cleaning within the budget", Faults{DiskBudget: 64 << 10, DiskCapacity: 4 << 20}, nil, func(st Stats) int { return st.Packs }},
+		{"cleaning within the budget", Faults{DiskBudget: 32 << 10, DiskCapacity: 128 << 10}, nil, func(st Stats) int { return st.Packs }},
 		damage(flippedRoot, func(st Stats) int { return min(st.Damage[flippedRoot], st.Fenced) }),
 		damage(misdirected, func(st Stats) int { return min(st.Damage[misdirected], st.Fenced) }),
 		damage(lostWrite, func(st Stats) int { return min(st.Damage[lostWrite], st.Fenced) }),
@@ -736,7 +736,9 @@ func TestDamagedLastRecord(t *testing.T) {
 	var took effects
 	if !simrun.Each(t, seedRange(3500, 3), func(t *testing.T, seed uint64) bool {
 		cfg := DefaultConfig(seed)
-		cfg.Faults = Faults{CrashEvery: Second, MaxDown: Second, Corrupt: true}
+		// A power loss comes right after a node synced a new term or
+		// vote alone, so that its newest record holds it.
+		cfg.Faults = Faults{Corrupt: true, VoteCrash: true, CrashEvery: Second, MaxDown: Second}
 		cfg.Duration = 8 * Second
 		cfg.Heal = 8 * Second
 		cfg.damageKinds = []damageKind{lastRecord}
@@ -784,6 +786,21 @@ func TestLoneSegmentHeader(t *testing.T) {
 		return
 	}
 	took.check(t)
+}
+
+// TestCleanerSettles runs 8 default seeds, with their disk budget, and
+// requires each to make fewer than 1,000 packs: a run makes 30 to 130.
+// Before #362's fix, the cleaner copied a pack whose small values were all
+// live again on every pass, 10,000 to 47,000 times a run, and the roots
+// it wrote filled the disk once the clients stopped.
+func TestCleanerSettles(t *testing.T) {
+	simrun.Each(t, seedRange(7001, 8), func(t *testing.T, seed uint64) int {
+		res := run(t, DefaultConfig(seed))
+		if res.Stats.Packs >= 1000 {
+			t.Fatalf("seed %d: the cleaner made %d packs", seed, res.Stats.Packs)
+		}
+		return res.Stats.Packs
+	}, nil)
 }
 
 // slowFetchConfig holds a follower down until it needs a snapshot, and

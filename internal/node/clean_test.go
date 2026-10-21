@@ -404,7 +404,9 @@ func TestSharedValues(t *testing.T) {
 // TestChoose picks the files of one pass.
 func TestChoose(t *testing.T) {
 	seg := func(n uint64, size int64) wal.CleanFile { return wal.CleanFile{N: n, Size: size} }
-	pack := func(n uint64, size int64) wal.CleanFile { return wal.CleanFile{Pack: true, N: n, Size: size} }
+	pack := func(n uint64, size int64) wal.CleanFile {
+		return wal.CleanFile{Pack: true, N: n, Size: size, Values: size}
+	}
 	files := []wal.CleanFile{seg(1, 100), seg(2, 100), seg(3, 100), pack(7, 100), pack(8, 100)}
 	for _, tc := range []struct {
 		name  string
@@ -412,14 +414,19 @@ func TestChoose(t *testing.T) {
 		short bool
 		upto  uint64
 		drop  []uint64
+		// values, if set, is how many bytes pack 7's values take: less
+		// than its size, with small values.
+		values int64
 	}{
-		{"mostly dead segments from the front", []int64{10, 50, 0, 100, 100}, false, 3, nil},
-		{"a live segment in front goes with the dead ones behind it", []int64{100, 30, 0, 100, 100}, false, 3, nil},
-		{"the longest run that is at most half live", []int64{10, 60, 90, 100, 100}, false, 2, nil},
-		{"short of space, live segments go too", []int64{10, 60, 0, 100, 100}, true, 3, nil},
-		{"mostly dead packs", []int64{100, 100, 0, 50, 51}, false, 0, []uint64{7}},
-		{"a pass copies at most cleanLive", []int64{cleanLive, 1, 0, 0, 0}, true, 1, []uint64{7, 8}},
-		{"the first file fits however large", []int64{2 * cleanLive, 0, 0, 0, 0}, true, 3, []uint64{7, 8}},
+		{"mostly dead segments from the front", []int64{10, 50, 0, 100, 100}, false, 3, nil, 0},
+		{"a live segment in front goes with the dead ones behind it", []int64{100, 30, 0, 100, 100}, false, 3, nil, 0},
+		{"the longest run that is at most half live", []int64{10, 60, 90, 100, 100}, false, 2, nil, 0},
+		{"short of space, live segments go too", []int64{10, 60, 0, 100, 100}, true, 3, nil, 0},
+		{"mostly dead packs", []int64{100, 100, 0, 50, 51}, false, 0, []uint64{7}, 0},
+		// Small values: the records take more than the values do.
+		{"a pack whose values are all live stays (#362)", []int64{100, 100, 0, 30, 100}, false, 0, nil, 30},
+		{"a pass copies at most cleanLive", []int64{cleanLive, 1, 0, 0, 0}, true, 1, []uint64{7, 8}, 0},
+		{"the first file fits however large", []int64{2 * cleanLive, 0, 0, 0, 0}, true, 3, []uint64{7, 8}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			live := map[wal.FileID]int64{}
@@ -427,6 +434,12 @@ func TestChoose(t *testing.T) {
 			for i, v := range tc.live {
 				live[fs[i].FileID] = v
 				fs[i].Size = max(fs[i].Size, v)
+				if fs[i].Pack {
+					fs[i].Values = max(fs[i].Values, v)
+				}
+			}
+			if tc.values > 0 {
+				fs[3].Values = tc.values
 			}
 			rm, victims := choose(fs, live, tc.short)
 			if rm.upto != tc.upto || !slices.Equal(rm.drop, tc.drop) {

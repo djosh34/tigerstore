@@ -47,7 +47,7 @@ func (s *Sim) scheduleDiskFaults() {
 			s.takeCheckpoint()
 		})
 	}
-	s.installCrashDue = f.InstallCrash
+	s.installCrashDue, s.voteCrashDue = f.InstallCrash, f.VoteCrash
 	if f.StepCrash {
 		s.once(s.cfg.Duration/2, 500*Millisecond, func() bool {
 			s.mu.Lock()
@@ -260,7 +260,8 @@ var flipPayload func(*Sim, *node) bool
 // most once per run and only if no node is damaged yet, so a quorum stays.
 // The lock is held.
 func (s *Sim) maybeCorrupt(n *node) {
-	if !s.cfg.Faults.Corrupt || s.healed || s.rng.IntN(2) != 0 {
+	// A test that picks the kinds of damage tries at every crash.
+	if !s.cfg.Faults.Corrupt || s.healed || len(s.cfg.damageKinds) == 0 && s.rng.IntN(2) != 0 {
 		return
 	}
 	if planted.On("B04c") && flipPayload != nil {

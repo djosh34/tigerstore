@@ -46,7 +46,9 @@ func packName(id uint64) string { return fmt.Sprintf("%s%016x", packPrefix, id) 
 type Pack struct {
 	id   uint64
 	size int64
-	f    File
+	// values is how many bytes its values take, without their records.
+	values int64
+	f      File
 	// vals are sorted by position.
 	vals []packVal
 }
@@ -178,6 +180,10 @@ func sortPackVals(p *Pack) {
 	slices.SortFunc(p.vals, cmpPackVal)
 	p.vals = slices.CompactFunc(p.vals, func(a, b packVal) bool { return a.index == b.index && a.off == b.off })
 	p.vals = slices.Clip(p.vals)
+	p.values = 0
+	for _, v := range p.vals {
+		p.values += int64(v.len)
+	}
 }
 
 // openPacks opens the packs the newest root names, among the files
@@ -375,10 +381,11 @@ func (w *WAL) Where(index uint64, off, n uint32) (FileID, bool) {
 	return FileID{}, false
 }
 
-// CleanFile is a file that cleaning may replace, and its size.
+// CleanFile is a file that cleaning may replace, and its size. Values is
+// how many bytes the values of a pack take, without their records.
 type CleanFile struct {
 	FileID
-	Size int64
+	Size, Values int64
 }
 
 // Cleanable returns the files that cleaning may replace while the oldest
@@ -402,7 +409,7 @@ func (w *WAL) Cleanable(below uint64) []CleanFile {
 		out = append(out, CleanFile{N: seq, Size: size})
 	}
 	for _, p := range w.packs {
-		out = append(out, CleanFile{Pack: true, N: p.id, Size: p.size})
+		out = append(out, CleanFile{Pack: true, N: p.id, Size: p.size, Values: p.values})
 	}
 	return out
 }

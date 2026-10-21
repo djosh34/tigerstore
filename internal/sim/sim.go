@@ -188,6 +188,9 @@ type Faults struct {
 	// InstallCrash crashes a follower once right before the first sync of
 	// its log during a snapshot install.
 	InstallCrash bool
+	// VoteCrash crashes a node once right after it synced a new term or
+	// vote with no entries.
+	VoteCrash bool
 	// StepCrash crashes a node once right after a disk call that changes
 	// what is durable outside appends: a write or a sync of a checkpoint,
 	// whether the node's own or a snapshot's, a directory sync, or a
@@ -246,12 +249,10 @@ func DefaultConfig(seed uint64) Config {
 			StallEvery:     8 * Second,
 			FSDownEvery:    10 * Second,
 			DiskFullEvery:  10 * Second,
-			// Every run cleans and raises the NOSPACE alarm at times: the
-			// nodes' files take 40 to 70 KiB without a budget. The disk
-			// is large until #362 is fixed: the cleaner's loop fills a
-			// smaller one once the clients stop.
-			DiskBudget:   64 << 10,
-			DiskCapacity: 4 << 20,
+			// Every run cleans, and some raise the NOSPACE alarm: the
+			// nodes' files take 40 to 70 KiB without a budget.
+			DiskBudget:   32 << 10,
+			DiskCapacity: 128 << 10,
 			Corrupt:      true,
 			Checkpoint:   true,
 
@@ -311,11 +312,11 @@ type node struct {
 	// recovered or later reported durable. mustLast and mustHS are what
 	// recovery must give after its process went down: the floor and hs
 	// then. tornCrash is set while its last crash image may tear writes,
-	// until checkRecovery, and tornRefused once recovery refused the image.
-	hs                     hardState
-	mustLast               uint64
-	mustHS                 hardState
-	tornCrash, tornRefused bool
+	// until checkRecovery.
+	hs        hardState
+	mustLast  uint64
+	mustHS    hardState
+	tornCrash bool
 	// misread is set while the next read of a segment by recovery returns
 	// wrong data.
 	misread bool
@@ -493,10 +494,13 @@ type Sim struct {
 	// next checkpoint, removal or install step, until one did; rotDue rots
 	// a value of that node at its next turn.
 	recoveryDue, stepCrashDue bool
-	// installCrashDue crashes the next node that writes its log during a
+	// installCrashDue crashes the next node that syncs its log during a
 	// snapshot install (Faults.InstallCrash).
 	installCrashDue bool
-	rotDue          *node
+	// voteCrashDue crashes the next node that syncs a new term or vote
+	// alone (Faults.VoteCrash).
+	voteCrashDue bool
+	rotDue       *node
 	// log is every committed entry as the first node applied it, with the
 	// state's hash after it, up to index maxLogged; ckpts are the hashes
 	// of the checkpoint files, by index.
@@ -575,6 +579,7 @@ type Stats struct {
 	// shut down or went read-only, DiskFulls disks that filled up, and
 	// Damage the damage done after a sync, by kind (damageKinds).
 	Kills, PowerLosses, TornRefusals, MisreadRefusals, IOErrors, FSDowns, DiskFulls int
+	Damage                                                                          [numDamage]int
 	// KillLosses counts the power losses that followed a kill, and Disk
 	// what the faults of the nodes' disks did.
 	KillLosses int
@@ -592,7 +597,6 @@ type Stats struct {
 	// SlowWatchers counts the watch clients that turned slow, and
 	// WatchersCut the watch streams a node closed as too slow.
 	SlowWatchers, WatchersCut int
-	Damage                    [numDamage]int
 	// MembershipChanges counts each completed stage, and MembershipFaults
 	// those completed before healing. Attempts include failed calls.
 	MembershipChanges, MembershipFaults [4]int
@@ -1462,7 +1466,17 @@ func (s *Sim) persisted(p *proc, j core.PersistJob) {
 		n.durableLast = j.Entries[len(j.Entries)-1].GetIndex()
 	}
 	if hs := j.HardState; hs != nil {
+		vote := n.hs != hardState{term: hs.Term, vote: hs.Vote}
 		n.hs = hardState{term: hs.Term, vote: hs.Vote}
+		if vote && len(j.Entries) == 0 && j.Install == nil && s.voteCrashDue && !s.healed {
+			// Its newest record holds the new term or vote alone.
+			s.voteCrashDue = false
+			n.why = "the run crashed it right after it synced a new term or vote"
+			s.tracef("node %d: crash right after it synced term %d and vote %d", n.id, hs.Term, hs.Vote)
+			s.crash(n)
+			s.maybeCorrupt(n)
+			s.restartLater(n, 1+s.rng.Int64N(Second))
+		}
 	}
 }
 
@@ -1624,7 +1638,7 @@ func (s *Sim) checkRecovery(n *node) {
 	w, rec, err := wal.Open(n.disk.Copy())
 	if err != nil {
 		if torn && !n.corrupted && errors.Is(err, wal.ErrCorrupt) {
-			n.corrupted, n.tornRefused = true, true
+			n.corrupted = true
 			s.stats.TornRefusals++
 			s.tracef("node %d: its torn crash image looks damaged: %v", n.id, err)
 		}

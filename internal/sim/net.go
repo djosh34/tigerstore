@@ -311,12 +311,12 @@ func (s *Sim) link(from, to int) *link {
 	return &s.links[from][to]
 }
 
-// conn is one end of a connection, held by process p of node from, or
-// by a client if p is nil, from the clients' host. A
-// write goes on its way at once while the connection's buffer has room
-// (sendBuffer), and waits for room otherwise, as TCP's does: each arrives
-// after its link's delay and faults, in order, and not before a stall of
-// the link ends. A half-open link swallows them.
+// conn is one end of a connection, held by process p of node from, or by
+// a client if p is nil, from the clients' host. A write goes on its way at
+// once while the connection's buffer has room (sendBuffer), and waits for
+// room otherwise, as TCP's does: each arrives after its link's delay and
+// faults, in order, and not before a stall of the link ends. A half-open
+// link swallows them.
 type conn struct {
 	s             *Sim
 	p             *proc
