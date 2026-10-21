@@ -991,7 +991,8 @@ func (r *revisionOrder) expire(call, rev int64) {
 // called when its lease is granted, so nothing goes in before it.
 func (r *revisionOrder) putIn(o optional, take func(*state, optional) bool) {
 	w := r.w
-	if r.used[o.op] {
+	// A compaction that cannot go in yet must not expire its predecessors.
+	if r.used[o.op] || o.from > w.live.rev || !r.isReady(o) {
 		return
 	}
 	if w.h.Ops[o.op].Req.Compact != nil {
