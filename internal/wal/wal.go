@@ -390,13 +390,27 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			w.sizes[seq] = good
 			continue
 		}
-		// Diagnosis: failed writeback can leave clean, readable cache pages
-		// that another fsync will not retry. Dirty the recovered prefix again.
-		if _, err := f.WriteAt(data[:good], 0); err != nil {
+		// Diagnosis: failed writeback leaves clean cache pages. Copy the
+		// prefix into a new file, so a crash cannot tear an in-place rewrite
+		// of the prefix that was already synced before that failed writeback.
+		tmpName := "recover-" + name
+		tmp, err := fs.Create(tmpName)
+		if err != nil {
 			return nil, nil, errors.Join(err, f.Close())
 		}
-		if err := errors.Join(f.Sync(), fs.SyncDir()); err != nil {
+		_, writeErr := tmp.WriteAt(data[:good], 0)
+		if err := errors.Join(writeErr, tmp.Sync(), tmp.Close()); err != nil {
 			return nil, nil, errors.Join(err, f.Close())
+		}
+		if err := fs.Rename(tmpName, name); err != nil {
+			return nil, nil, errors.Join(err, f.Close())
+		}
+		if err := errors.Join(fs.SyncDir(), f.Close()); err != nil {
+			return nil, nil, err
+		}
+		f, err = fs.Open(name)
+		if err != nil {
+			return nil, nil, err
 		}
 		w.seg, w.size, w.copied = f, good, true
 	}
