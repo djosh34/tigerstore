@@ -35,10 +35,10 @@ func (s *Sim) scheduleDiskFaults() {
 		s.every(f.StallEvery, s.injectStall)
 	}
 	if f.FSDownEvery > 0 {
-		s.every(f.FSDownEvery, func() { s.fsDown() })
+		s.every(f.FSDownEvery, s.fsDown)
 	}
 	if f.DiskFullEvery > 0 {
-		s.every(f.DiskFullEvery, func() { s.diskFull() })
+		s.every(f.DiskFullEvery, s.diskFull)
 	}
 	if f.Checkpoint {
 		s.at(s.cfg.Duration/2+s.rng.Int64N(s.cfg.Duration/2)+1, func() {
@@ -145,12 +145,12 @@ func (s *Sim) armDiskFault(n *node, kind int) {
 // to 3 s, as ext4 and XFS do after an error. The node stops at its next
 // operation that fails; at the end the disk is mounted again, and a node
 // still running is taken down first, as the unmount needs.
-func (s *Sim) fsDown() bool {
+func (s *Sim) fsDown() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n := s.upNode()
 	if s.healed || n == nil {
-		return false
+		return
 	}
 	s.stats.FSDowns++
 	if s.rng.IntN(2) == 0 {
@@ -171,17 +171,16 @@ func (s *Sim) fsDown() bool {
 		}
 		n.disk.Remount()
 	})
-	return true
 }
 
 // diskFull fills a node's disk for 1.5 to 3.5 s, as another file taking
 // every free byte does: its writes fail with ENOSPC, and it stops.
-func (s *Sim) diskFull() bool {
+func (s *Sim) diskFull() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n := s.upNode()
 	if s.healed || n == nil {
-		return false
+		return
 	}
 	s.stats.DiskFulls++
 	d := n.disk
@@ -195,7 +194,6 @@ func (s *Sim) diskFull() bool {
 			s.tracef("node %d: disk no longer full", n.id)
 		}
 	})
-	return true
 }
 
 // injectStall holds back a random node's log syncs for 1.5 to 4 s.

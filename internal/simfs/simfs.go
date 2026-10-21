@@ -213,14 +213,9 @@ func (d *Disk) CrashImage(rng *rand.Rand, img Image) {
 		}
 	}
 	d.names = make(map[string]*file, len(dir))
-	done := map[*file]bool{}
 	for _, name := range sortedNames(dir) {
 		f := dir[name]
 		d.names[name] = f
-		if done[f] {
-			continue
-		}
-		done[f] = true
 		kept := f.survive(rng, img, &d.Counts)
 		if d.Trace != nil {
 			unsynced := 0
@@ -813,10 +808,11 @@ func (h *Handle) Sync() error {
 	if rng := h.d.failSync; err == nil && rng != nil {
 		h.d.failSync = nil
 		err = ErrIO
-		// Part of the writes reached the medium before the writeback
-		// failed.
+		// Some of the writes reached the medium whole before the
+		// writeback failed. A torn image comes only from a crash, which
+		// the simulator draws only while a quorum would stay.
 		if !h.f.cut {
-			h.f.durable = h.f.survive(rng, Image(1+rng.IntN(3)), &h.d.Counts)
+			h.f.durable = h.f.survive(rng, Writes, &h.d.Counts)
 		}
 		h.d.Counts.FailedSyncs++
 		h.d.tracef("sync %s (file %d) fails after %d bytes reached the disk", h.name, h.f.id, len(h.f.durable))

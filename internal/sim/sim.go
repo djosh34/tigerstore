@@ -579,7 +579,11 @@ type Stats struct {
 	// shut down or went read-only, DiskFulls disks that filled up, and
 	// Damage the damage done after a sync, by kind (damageKinds).
 	Kills, PowerLosses, TornRefusals, MisreadRefusals, IOErrors, FSDowns, DiskFulls int
-	Damage                                                                          [numDamage]int
+	// ReadOnlyStops counts nodes that stopped on a read-only file system,
+	// and ClientLinksDown the directions of the clients' links that went
+	// down.
+	ReadOnlyStops, ClientLinksDown int
+	Damage                         [numDamage]int
 	// KillLosses counts the power losses that followed a kill, and Disk
 	// what the faults of the nodes' disks did.
 	KillLosses int
@@ -1306,6 +1310,9 @@ func (s *Sim) exited(p *proc, err error) {
 		s.stats.DiskFaults++
 		if errors.Is(err, simfs.ErrNoSpace) {
 			s.stats.OutOfSpace++
+		}
+		if errors.Is(err, simfs.ErrReadOnly) {
+			s.stats.ReadOnlyStops++
 		}
 		n.disk.Fault = nil
 		s.stopNode(n)

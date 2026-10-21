@@ -330,6 +330,8 @@ func TestSeeds(t *testing.T) {
 		total.Disk.TornWrites += st.Disk.TornWrites
 		total.Disk.Reordered += st.Disk.Reordered
 		total.TornRefusals += st.TornRefusals
+		total.Packs += st.Packs
+		total.OutOfSpace += st.OutOfSpace
 		return false
 	}) {
 		return
@@ -344,9 +346,9 @@ func TestSeeds(t *testing.T) {
 	// each.
 	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0 ||
-		total.Disk.TornWrites == 0 || total.Disk.Reordered == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal, %d writes a crash tore, %d crashes that kept a write and lost an earlier one; each must happen",
-			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval, total.Disk.TornWrites, total.Disk.Reordered)
+		total.Disk.TornWrites == 0 || total.Disk.Reordered == 0 || total.Packs == 0 || total.OutOfSpace == 0) {
+		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal, %d writes a crash tore, %d crashes that kept a write and lost an earlier one, %d packs, %d nodes out of space; each must happen",
+			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval, total.Disk.TornWrites, total.Disk.Reordered, total.Packs, total.OutOfSpace)
 	}
 	t.Logf("%d seeds: %d writes a crash tore, %d crashes kept a write and lost an earlier one, %d nodes refused their torn crash image",
 		ran, total.Disk.TornWrites, total.Disk.Reordered, total.TornRefusals)
@@ -641,6 +643,7 @@ func faultCases() []faultCase {
 	// The damage needs sealed segments, which take a few seconds of
 	// writes.
 	long := func(c *Config) { c.Duration = 16 * Second }
+	longer := func(c *Config) { c.Duration = 24 * Second }
 	damage := func(k damageKind, count func(Stats) int) faultCase {
 		return faultCase{k.String(), Faults{CrashEvery: Second, MaxDown: Second, Corrupt: true}, func(c *Config) {
 			c.damageKinds = []damageKind{k}
@@ -661,11 +664,14 @@ func faultCases() []faultCase {
 		{"crash at a checkpoint step", Faults{StepCrash: true}, nil, func(st Stats) int { return st.StepCrashes }},
 		{"rotten value", Faults{Rot: true}, nil, func(st Stats) int { return st.Rots }},
 		{"kill", crashes, nil, func(st Stats) int { return st.Kills }},
-		{"power loss after a kill", crashes, nil, func(st Stats) int { return st.KillLosses }},
+		// One kill in three, of half the crashes, has a power loss after it.
+		{"power loss after a kill", crashes, long, func(st Stats) int { return st.KillLosses }},
 		{"lost directory operation", unsynced, long, func(st Stats) int { return st.Disk.LostDirOps }},
 		{"failed sync", Faults{DiskErrorEvery: Second}, nil, func(st Stats) int { return st.Disk.FailedSyncs }},
 		{"EIO", Faults{DiskErrorEvery: Second}, nil, func(st Stats) int { return st.IOErrors }},
 		{"file system down", Faults{FSDownEvery: Second}, nil, func(st Stats) int { return min(st.FSDowns, st.DiskFaults) }},
+		{"read-only file system", Faults{FSDownEvery: Second}, nil, func(st Stats) int { return st.ReadOnlyStops }},
+		{"client link down", Faults{LinkEvery: Second}, nil, func(st Stats) int { return st.ClientLinksDown }},
 		{"full disk", Faults{DiskFullEvery: Second}, nil, func(st Stats) int { return st.OutOfSpace }},
 		{"cleaning within the budget", Faults{DiskBudget: 32 << 10, DiskCapacity: 128 << 10}, nil, func(st Stats) int { return st.Packs }},
 		damage(flippedRoot, func(st Stats) int { return min(st.Damage[flippedRoot], st.Fenced) }),
@@ -677,7 +683,7 @@ func faultCases() []faultCase {
 		{"full send buffer", Faults{LinkStallEvery: 500 * Millisecond}, nil, func(st Stats) int { return st.BlockedWrites }},
 		// A stall past the write timeout, one in four, on a link that
 		// carries something.
-		{"write deadline", Faults{LinkStallEvery: 300 * Millisecond}, long, func(st Stats) int { return st.WriteTimeouts }},
+		{"write deadline", Faults{LinkStallEvery: 300 * Millisecond}, longer, func(st Stats) int { return st.WriteTimeouts }},
 		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.WatchersCut }},
 	}
 	for i := range numNetem {

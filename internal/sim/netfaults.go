@@ -88,6 +88,7 @@ func (s *Sim) setClientLinks(up float64) {
 			l := &s.clientLinks[i][j]
 			l.up = s.rng.Float64() < up
 			if !l.up {
+				s.stats.ClientLinksDown++
 				s.net.resetBetween(i, len(s.links))
 				s.tracef("client link %d (%d) down", i+1, j)
 			}
