@@ -390,6 +390,28 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			w.sizes[seq] = good
 			continue
 		}
+		// Diagnosis: failed writeback leaves clean cache pages. Copy the
+		// prefix into a new file, so a crash cannot tear an in-place rewrite
+		// of the prefix that was already synced before that failed writeback.
+		tmpName := "recover-" + name
+		tmp, err := fs.Create(tmpName)
+		if err != nil {
+			return nil, nil, errors.Join(err, f.Close())
+		}
+		_, writeErr := tmp.WriteAt(data[:good], 0)
+		if err := errors.Join(writeErr, tmp.Sync(), tmp.Close()); err != nil {
+			return nil, nil, errors.Join(err, f.Close())
+		}
+		if err := fs.Rename(tmpName, name); err != nil {
+			return nil, nil, errors.Join(err, f.Close())
+		}
+		if err := errors.Join(fs.SyncDir(), f.Close()); err != nil {
+			return nil, nil, err
+		}
+		f, err = fs.Open(name)
+		if err != nil {
+			return nil, nil, err
+		}
 		w.seg, w.size, w.copied = f, good, true
 	}
 	if err := w.check(first); err != nil {
