@@ -25,7 +25,20 @@ func (s *Sim) scheduleNetFaults() {
 		defer s.mu.Unlock()
 		return s.halfOpen(-1, 0)
 	})
-	once(f.NetemEvery, s.netemFault)
+	if f.NetemEvery > 0 {
+		s.every(f.NetemEvery, func() { s.netemFault() })
+		// A fault on a link that carries nothing hits no write, so the
+		// run's own one comes again until one did.
+		s.once(s.cfg.Duration*3/4, 100*Millisecond, func() bool {
+			s.mu.Lock()
+			hit := slices.ContainsFunc(s.stats.Netem[:], func(n int) bool { return n > 0 })
+			s.mu.Unlock()
+			if !hit {
+				s.netemFault()
+			}
+			return hit
+		})
+	}
 	once(f.ResetEvery, s.resetLink)
 	once(f.SlowWatcherEvery, s.slowWatcher)
 	if f.SwitchEvery > 0 {

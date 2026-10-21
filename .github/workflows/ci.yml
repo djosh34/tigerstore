@@ -13,6 +13,11 @@ on:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      fixed:
+        description: Fixed seeds only, as while known-failures.txt lists any, to list a simulator change's failures again
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -153,10 +158,11 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
           RUN_ID: ${{ github.run_id }}
+          FIXED: ${{ inputs.fixed }}
         # Fresh seeds only while known-failures.txt lists none: a fresh
         # seed that fails on a known bug cannot be listed there.
         run: |
-          if [ "$SHARD" -lt 2 ] || grep -qv '^[[:space:]]*\(#\|$\)' internal/sim/known-failures.txt; then
+          if [ "$SHARD" -lt 2 ] || [ "$FIXED" = true ] || grep -qv '^[[:space:]]*\(#\|$\)' internal/sim/known-failures.txt; then
             first=$((1 + SHARD * 400))
           else
             first=$((1000000 + (RUN_ID % 1000000000) * 2 + SHARD * 400))
@@ -212,6 +218,7 @@ jobs:
         shell: bash
         env:
           RUN_ID: ${{ github.run_id }}
+          FIXED: ${{ inputs.fixed }}
           SIM_SEEDS: 64
           SIM_TWICE: 4
           SIM_OUT: ${{ runner.temp }}/sim-out
@@ -219,7 +226,7 @@ jobs:
         run: |
           status=0
           fresh=$((1000000 + RUN_ID % 1000000000))
-          if grep -qv '^[[:space:]]*\(#\|$\)' internal/sim/known-failures.txt; then
+          if [ "$FIXED" = true ] || grep -qv '^[[:space:]]*\(#\|$\)' internal/sim/known-failures.txt; then
             fresh=65
           fi
           for first in 1 "$fresh"; do
