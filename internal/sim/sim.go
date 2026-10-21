@@ -112,6 +112,9 @@ type Config struct {
 	// sync and of link faults that the run picks from, for the tests.
 	damageKinds []damageKind
 	netemKinds  []netemKind
+	// turnHook is used by the diagnosis scenario to stop at a snapshot install.
+	turnHook    func(*proc, *core.Node, core.Effects, error)
+	attemptHook func(error)
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -1336,6 +1339,9 @@ func rotStop(n *node, err error) bool {
 // turn is the Turn hook of p's committer: it records what the core
 // applied and checks it, then holds the process while it is paused.
 func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
+	if s.cfg.turnHook != nil {
+		s.cfg.turnHook(p, c, eff, err)
+	}
 	s.mu.Lock()
 	n := p.n
 	if n.proc != p {

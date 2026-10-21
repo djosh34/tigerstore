@@ -90,6 +90,9 @@ func (c *client) newV3() error {
 func (c *client) attempt(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	start := c.sim.now()
 	err := invoker(ctx, method, req, reply, cc, opts...)
+	if c.sim.cfg.attemptHook != nil {
+		c.sim.cfg.attemptHook(err)
+	}
 	if errors.Is(v3Error(rpctypes.Error(err)), rpctypes.ErrGRPCStopped) {
 		c.cut += c.sim.now() - start
 	}
