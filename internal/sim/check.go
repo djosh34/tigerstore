@@ -114,7 +114,7 @@ func (s *Sim) check(res *Result) error {
 		if r.Call < liveFrom {
 			continue
 		}
-		if s.nodes[r.Node].stalledAt(r.Call) || r.Err != nil && s.nodes[r.Node].reloadedDuring(r.Call, r.Return) {
+		if n := s.nodes[r.Node]; n.stalledAt(r.Call) || r.Err != nil && n.reloadedDuring(r.Call, r.Return) || n.hungOnReload(r) {
 			continue
 		}
 		if r.Err != nil && s.removalDuring(r.Call, r.Return) {

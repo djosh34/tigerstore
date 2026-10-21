@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -661,7 +662,19 @@ func (s *Sim) runFor(d int64) error {
 // reloadedDuring reports whether a node started again from its log
 // between two times.
 func (n *node) reloadedDuring(from, to int64) bool {
-	for _, t := range n.reloads {
+	return during(n.reloads, from, to)
+}
+
+// hungOnReload reports whether r is a clientv3 call that timed out while
+// its node started again from its log: the gRPC server answers no call it
+// held then (#365). Its fix removes this.
+func (n *node) hungOnReload(r *Record) bool {
+	return r.v3 && errors.Is(r.Err, errClientTimeout) && during(n.fromLog, r.Call, r.Return)
+}
+
+// during reports whether one of the times is between from and to.
+func during(times []int64, from, to int64) bool {
+	for _, t := range times {
 		if t >= from && t <= to {
 			return true
 		}
