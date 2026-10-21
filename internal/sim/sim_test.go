@@ -489,13 +489,13 @@ func agree(h *history.History) error {
 }
 
 // linearizableConfig is a short run whose history Porcupine can check:
-// 5 virtual seconds with the same faults and 4 clients, then 8 s of
-// healing, without leases.
+// 5 virtual seconds with the same faults and 4 clients, one of them a
+// client of etcd's Go client, then 8 s of healing, without leases.
 func linearizableConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Duration = 5 * Second
 	cfg.Heal = 8 * Second
-	cfg.Clients = 4
+	cfg.Clients, cfg.V3Clients = 3, 1
 	cfg.NoLeases = true
 	return cfg
 }
