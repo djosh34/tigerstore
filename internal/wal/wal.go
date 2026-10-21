@@ -1062,7 +1062,7 @@ func (w *WAL) Synced(f File, end int64) {
 // process that starts again without a power loss would read them as the
 // log, and once the segment is sealed, a power loss would find a hole in
 // it (#364). The cut drops them from the page cache. A driver calls it
-// with its lock held.
+// with its lock held. Another file is ErrNotSegment.
 func (w *WAL) CutUnsynced(f File) error {
 	switch f {
 	case w.seg:
@@ -1070,8 +1070,12 @@ func (w *WAL) CutUnsynced(f File) error {
 	case w.prev:
 		return f.Truncate(w.prevSynced)
 	}
-	return nil
+	return ErrNotSegment
 }
+
+// ErrNotSegment is a file that is neither the newest segment nor the one
+// before it, which CutUnsynced cannot cut.
+var ErrNotSegment = errors.New("wal: not the newest segment or the one before it")
 
 // Size is where the records of the newest segment end, so far: the offset
 // that the next Flush writes at.
