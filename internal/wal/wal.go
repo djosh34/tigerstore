@@ -390,6 +390,10 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			w.sizes[seq] = good
 			continue
 		}
+		// Diagnosis: is syncing recovery's readable newest segment enough?
+		if err := errors.Join(f.Sync(), fs.SyncDir()); err != nil {
+			return nil, nil, errors.Join(err, f.Close())
+		}
 		w.seg, w.size, w.copied = f, good, true
 	}
 	if err := w.check(first); err != nil {
