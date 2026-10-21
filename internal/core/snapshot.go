@@ -8,6 +8,7 @@ import (
 	"hash/crc32"
 	"io"
 	"io/fs"
+	"log"
 	"slices"
 
 	"go.etcd.io/raft/v3"
@@ -122,6 +123,7 @@ func (n *Node) snapshotProgress() {
 	})
 	slices.Sort(failed)
 	for _, id := range failed {
+		log.Printf("diag366 snapshotProgress node=%d peer=%d now=%d sent=%d timeout=%d", n.cfg.ID, id, n.now, n.snapWait[id], n.cfg.SnapshotTicks)
 		delete(n.snapWait, id)
 		n.rn.ReportSnapshot(id, raft.SnapshotFailure)
 	}
@@ -135,6 +137,7 @@ func (n *Node) snapshotProgress() {
 // another instead of waiting SnapshotTicks.
 func (n *Node) snapshotDropped(id uint64) {
 	if at, ok := n.snapWait[id]; ok && at != 0 && n.now-at >= int64(n.cfg.ElectionTicks) {
+		log.Printf("diag366 snapshotDropped node=%d peer=%d now=%d sent=%d timeout=%d", n.cfg.ID, id, n.now, at, n.cfg.ElectionTicks)
 		delete(n.snapWait, id)
 		n.rn.ReportSnapshot(id, raft.SnapshotFailure)
 	}
