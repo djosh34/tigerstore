@@ -40,3 +40,15 @@ that a delete wrote, so the search tried every order of the gaps after it.
 saw `k3` last written at 8 with version 3. The search put a write of `k3` at
 8 that left it at version 2, which the check of no more versions than seen
 let through, and tried every order of the gaps up to 24 before it went back.
+
+`planted-B01a-1.json` comes from B01a seed 1 on PR #384 at `3cdd632e`
+(#387). It keeps successful operations whose header revision is at most 64,
+and ambiguous mutations called no later than their last return,
+21794332122 ns. It removes all other operations, the log, watches, target
+and effects. The cut has 257 operations. Op 89, full-history op 2457,
+reads at header revision 1 after a delete returned at revision 5. The
+revision witness originally waited until after the final gap to check that
+real-time contradiction, then searched other orders of unrelated later gaps.
+`TestDiagnosis387` requires a real-time refutation within 100,000 steps;
+the original checker exhausts that budget instead. The prototype checks
+non-overlapping acknowledged operations' header revisions before the search.

@@ -202,6 +202,18 @@ func (r *revisionOrder) index() error {
 		r.byCall(ops)
 	}
 	r.lowerBounds()
+	// Header revisions cannot go backwards between non-overlapping acked
+	// operations. No choice of writers for the gaps can fix that order.
+	// Check it before searching, not only in observe after the last gap.
+	for i := range h.Ops {
+		op := &h.Ops[i]
+		if op.Resp == nil || op.Req.Range != nil && op.Req.Range.Serializable {
+			continue
+		}
+		if before := r.boundAt(op.Call); before > op.Resp.Revision {
+			return fmt.Errorf("%s has no state that real time allows: its header revision is %d, but an operation that returned before it was called already saw revision %d", r.w.describe(i), op.Resp.Revision, before)
+		}
+	}
 	for i := range h.Ops {
 		op := &h.Ops[i]
 		if op.Resp != nil && op.Req.Put != nil && op.Req.Put.Lease != 0 {
