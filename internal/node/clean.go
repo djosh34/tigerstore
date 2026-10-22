@@ -36,11 +36,16 @@ import (
 // Out of disk is one rule from the measured total of the log's files: at
 // Config.DiskBudget, the node raises etcd's NOSPACE alarm through the log
 // (core.Node.SetDisk), which refuses writes on every member, and clears
-// it once cleaning brought the files below the budget. Past the budget,
-// the cleaner runs without pause, takes the oldest segments however much
-// of them is live, and keeps no spare files: they hold nothing, and the
+// it once cleaning brought the files below the budget. From three
+// quarters of the budget space is short: the cleaner takes the oldest
+// segments however much of them is live, so that it has room to clean in
+// before the alarm. Waiting for the budget itself left none, as a front
+// of segments just over half live, or live values near half the budget,
+// held back every pass until then (#385). Past the budget, it also runs
+// without pause and keeps no spare files: they hold nothing, and the
 // spares a pass's removals made would hold the files above the budget
-// (#181). Below it, it cleans what is mostly dead, at most half the time.
+// (#181). Below three quarters, it cleans what is mostly dead, at most
+// half the time.
 // Without a budget, the cleaner cleans only for Defragment. Every
 // compaction cuts a checkpoint, so the space it frees comes back.
 
@@ -129,6 +134,7 @@ func (c *cleaner) run(ctx context.Context) error {
 	tick := time.NewTicker(cleanTick)
 	defer tick.Stop()
 	for {
+		var short bool
 		if budget > 0 {
 			used, err := c.n.log.fs.Usage()
 			if err != nil {
@@ -136,11 +142,12 @@ func (c *cleaner) run(ctx context.Context) error {
 			}
 			c.n.log.used.Store(used)
 			c.past = used >= budget
+			short = used >= budget-budget/4
 		}
 		c.remove()
 		if budget > 0 && c.pending == nil {
 			start := time.Now()
-			did, err := c.pass(ctx, c.past)
+			did, err := c.pass(ctx, short)
 			if errors.Is(err, errServing) {
 				did, err = false, nil
 			}
