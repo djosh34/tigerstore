@@ -22,6 +22,8 @@ jobs:
       GOFLAGS: '-p=1'
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - run: cp scripts/diag379.py /tmp/diag379.py; git checkout ${{ matrix.source }}; python3 /tmp/diag379.py ${{ matrix.fix }}
       - uses: actions/setup-go@v7
         with:
