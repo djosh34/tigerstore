@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/djosh34/tigerstore/internal/planted"
@@ -106,7 +105,14 @@ func (s *Sim) injectDiskFault() {
 		return
 	}
 	if n := s.upNode(); n != nil {
-		s.armDiskFault(n, s.rng.IntN(4))
+		kind := s.rng.IntN(4)
+		switch {
+		case s.cfg.ckptCreateFaults:
+			kind = 3
+		case s.cfg.syncFaultExits:
+			kind = 0
+		}
+		s.armDiskFault(n, kind)
 	}
 }
 
@@ -114,9 +120,10 @@ func (s *Sim) injectDiskFault() {
 // fault can fail.
 var otherOps = []simfs.Op{simfs.OpCreate, simfs.OpOpen, simfs.OpRead, simfs.OpTruncate, simfs.OpRemove, simfs.OpSyncDir, simfs.OpRename}
 
-// armDiskFault arms a disk fault on n: a failed sync (kind 0), EIO on the
-// next write (1), a short write with ENOSPC (2), or EIO on the next
-// operation of a random other kind (3). The lock is held.
+// armDiskFault arms a disk fault on n: a failed sync (kind 0), with EIO
+// on the next truncate if cutFails is set, EIO on the next write (1), a
+// short write with ENOSPC (2), or EIO on the next operation of a random
+// other kind (3). The lock is held.
 func (s *Sim) armDiskFault(n *node, kind int) {
 	d := n.disk
 	target := simfs.OpWrite
@@ -124,7 +131,10 @@ func (s *Sim) armDiskFault(n *node, kind int) {
 	case 0:
 		d.FailSync(s.rng)
 		s.tracef("node %d: disk fault armed: the next sync fails", n.id)
-		return
+		if !s.cfg.cutFails {
+			return
+		}
+		target = simfs.OpTruncate
 	case 2:
 		d.ShortWrite(s.rng)
 		s.tracef("node %d: disk fault armed: the next write is short", n.id)
@@ -132,13 +142,20 @@ func (s *Sim) armDiskFault(n *node, kind int) {
 	case 3:
 		target = otherOps[s.rng.IntN(len(otherOps))]
 	}
+	if s.cfg.ckptCreateFaults {
+		target = simfs.OpCreate
+	}
 	s.tracef("node %d: disk fault armed: EIO on the next %v", n.id, target)
 	d.Fault = func(op simfs.Op, name string) error {
-		if op != target || raceLeavesOut && op == simfs.OpCreate && strings.HasPrefix(name, "ckpt-") {
+		ckpt := op == simfs.OpCreate && isCheckpoint(name)
+		if op != target || s.cfg.ckptCreateFaults && !ckpt {
 			return nil
 		}
 		d.Fault = nil
 		s.stats.IOErrors++
+		if ckpt {
+			s.stats.CheckpointCreateErrors++
+		}
 		return simfs.ErrIO
 	}
 }
@@ -167,12 +184,35 @@ func (s *Sim) fsDown() {
 			// Healing mounted it again.
 			return
 		}
-		if n.proc != nil {
-			n.why = "the run took it down to mount its disk again"
-			s.stopNode(n)
+		running := n.proc != nil
+		s.remount(n)
+		if running {
+			s.restartLater(n, s.restartDelay())
 		}
-		n.disk.Remount()
 	})
+}
+
+// remount mounts n's disk again after it shut down or went read-only. A
+// remount follows an unmount, which loses what the page cache could not
+// write back (simfs.Disk.Remount). A node still running goes down first,
+// as at a power loss. A node that is down loses its page cache now, as at
+// a power loss: one that exited on the disk's error kept it. Else the
+// pages a failed sync left readable, which no later sync writes, would
+// outlive the remount (#371). The caller restarts a node it took down.
+// The lock is held.
+func (s *Sim) remount(n *node) {
+	switch {
+	case !n.disk.Down():
+	case n.proc != nil:
+		n.why = "the run took it down to mount its disk again"
+		s.crash(n)
+	default:
+		s.loseUnsynced(n)
+		n.crashImage = n.disk.Files()
+		s.tracef("node %d: unmounted its disk, which kept what it synced", n.id)
+		s.checkRecovery(n)
+	}
+	n.disk.Remount()
 }
 
 // diskFull fills a node's disk for 1.5 to 3.5 s, as another file taking
@@ -281,9 +321,6 @@ func (s *Sim) maybeCorrupt(n *node) {
 	if k := s.cfg.damageKinds; len(k) > 0 {
 		kind = k[s.rng.IntN(len(k))]
 	}
-	if kind == lastRecord && raceLeavesOut {
-		return
-	}
 	if s.damage(n, kind) {
 		s.stats.Damage[kind]++
 		s.tracef("node %d: damage after a sync: %v", n.id, kind)
@@ -318,9 +355,10 @@ const (
 	misread
 	// lastRecord flips a bit of the last record of the newest segment
 	// when that record holds only a new term or vote: the log takes it
-	// for a torn write and cuts it off, which loses a durable term and
-	// vote (#357). Damage to a last record that holds entries is a
-	// documented limit (docs/design.md), and the run does not do it.
+	// for a torn write and cuts it off, and the node must take the term
+	// and vote from their copies outside the log (#357). Damage to a last
+	// record that holds entries is a documented limit (docs/design.md),
+	// and the run does not do it.
 	lastRecord
 )
 
@@ -386,17 +424,18 @@ func sealedSegments(d *simfs.Disk) []string {
 }
 
 // damageLastRecord flips a bit at the end of n's newest segment if that
-// loses only the term and vote of its last record, not an entry, and
-// checks what recovery then gives (checkRecovery, turn). The lock is held.
+// loses the log only the term and vote of its last record, not an entry,
+// and checks what recovery then gives (checkRecovery, turn). The lock is
+// held.
 func (s *Sim) damageLastRecord(n *node) bool {
 	name := newestSegment(n.disk)
 	size := len(n.disk.DurableBytes(name))
-	before, err := recoveredState(n)
+	before, err := recoveredLog(n)
 	if err != nil || size == 0 {
 		return false
 	}
 	n.disk.FlipDurable(name, size-1)
-	after, err := recoveredState(n)
+	after, err := recoveredLog(n)
 	if err == nil && after.Last == before.Last && (after.HardState.Term != before.HardState.Term || after.HardState.Vote != before.HardState.Vote) {
 		s.checkRecovery(n)
 		return true
@@ -408,6 +447,28 @@ func (s *Sim) damageLastRecord(n *node) bool {
 // recoveredState is what recovery of n's synced disk gives now.
 func recoveredState(n *node) (*wal.Recovered, error) {
 	w, rec, err := wal.Open(n.disk.Durable())
+	if err != nil {
+		return nil, err
+	}
+	return rec, w.Close()
+}
+
+// recoveredLog is what recovery of n's synced log alone gives now,
+// without the copies of the term and vote outside it.
+func recoveredLog(n *node) (*wal.Recovered, error) {
+	d := n.disk.Durable()
+	names, err := d.List()
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range names {
+		if wal.IsVoteFile(name) {
+			if err := d.Remove(name); err != nil {
+				return nil, err
+			}
+		}
+	}
+	w, rec, err := wal.Open(d)
 	if err != nil {
 		return nil, err
 	}
@@ -667,8 +728,11 @@ func (n *node) reloadedDuring(from, to int64) bool {
 }
 
 // hungOnReload reports whether r is a clientv3 call that timed out while
-// its node started again from its log: the gRPC server answers no call it
-// held then (#365). Its fix removes this.
+// its node started again from its log. The server fails the attempt at
+// once, but clientv3 hides that failure of a read and tries it again on
+// the same node, which can wait out the call's deadline (#365). The
+// liveness rule excuses a direct call that a start from the log failed,
+// as a client tries another node; this is the same call through clientv3.
 func (n *node) hungOnReload(r *Record) bool {
 	return r.v3 && errors.Is(r.Err, errClientTimeout) && during(n.fromLog, r.Call, r.Return)
 }

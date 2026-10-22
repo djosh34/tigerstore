@@ -263,6 +263,40 @@ func TestFailedSyncKeepsPart(t *testing.T) {
 	}
 }
 
+// TestDropCache fails a sync, which leaves its bytes readable but not on
+// the disk, and drops the page cache: the clean page reads what the disk
+// holds in their place, zeros past its end, and a page with a write since
+// the failed sync stays whole, as on Linux (#372).
+func TestDropCache(t *testing.T) {
+	for _, dirty := range []bool{false, true} {
+		d := simfs.New()
+		f := create(t, d, "f")
+		ok(t, d.SyncDir())
+		write(t, f, []byte("aaaa"))
+		ok(t, f.Sync())
+		write(t, f, []byte("bbbb"))
+		d.Fault = func(op simfs.Op, _ string) error {
+			if op == simfs.OpSync {
+				return simfs.ErrIO
+			}
+			return nil
+		}
+		if err := f.Sync(); !errors.Is(err, simfs.ErrIO) {
+			t.Fatalf("failed sync = %v", err)
+		}
+		d.Fault = nil
+		want := "aaaa\x00\x00\x00\x00"
+		if dirty {
+			writeAt(t, f, []byte("cc"), 8)
+			want = "aaaabbbbcc"
+		}
+		ok(t, f.DropCache())
+		if got := readAll(t, f); string(got) != want {
+			t.Errorf("dirty %v: after the drop, read %q, want %q", dirty, got, want)
+		}
+	}
+}
+
 // TestShutdownAndReadOnly checks that a shut-down file system fails every
 // operation, a read-only one every change, and that Remount ends both.
 func TestShutdownAndReadOnly(t *testing.T) {

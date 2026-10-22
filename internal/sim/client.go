@@ -25,9 +25,6 @@ type Record struct {
 	Ambiguous bool
 	// v3 is set for a call of a client of etcd's Go client.
 	v3 bool
-	// cut is the time the attempts of a clientv3 call that a start from
-	// the log cut off took, which clientv3 tried again.
-	cut int64
 }
 
 // Req is the request of the call.
@@ -49,8 +46,6 @@ type client struct {
 	v3    *clientv3.Client
 	lease clientv3.Lease
 	node  int
-	// cut is Record.cut of the call being made.
-	cut int64
 }
 
 const numKeys = 8
@@ -98,10 +93,8 @@ func (c *client) run() {
 		r := &Record{Client: c.id, Node: i, Call: s.now(), req: c.request(), v3: c.v3 != nil}
 		s.mu.Unlock()
 		if c.v3 != nil {
-			c.cut = 0
 			resp, err := c.callV3(r.req)
 			s.mu.Lock()
-			r.cut = c.cut
 			if errors.Is(err, rpctypes.ErrGRPCStopped) {
 				s.nodes[i].reloads = append(s.nodes[i].reloads, s.now())
 			}

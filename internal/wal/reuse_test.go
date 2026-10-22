@@ -591,6 +591,8 @@ func TestHeaderWaitsForRecords(t *testing.T) {
 		}
 	}
 	w, _ := open(t, d)
+	// Recovery wrote the copies of the term and vote.
+	writes = nil
 	if err := w.Flush(); err != nil {
 		t.Fatal(err)
 	}

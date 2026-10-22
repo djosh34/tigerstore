@@ -100,14 +100,21 @@ func (n *Node) trimWindow() {
 
 // snapshotProgress gives up, on the leader, on a snapshot that a follower
 // has not started to fetch within SnapshotTicks, so Raft sends another,
-// as etcd's leader reports a failed snapshot.
+// as etcd's leader reports a failed snapshot. It forgets a peer that Raft
+// no longer tracks, a member removed while its snapshot was pending or
+// whose fetch started after: nothing else would end its wait, which keeps
+// every checkpoint from then on (#379).
 func (n *Node) snapshotProgress() {
 	if !n.isLeader {
 		clear(n.snapWait)
 		return
 	}
-	var failed []uint64
+	var failed, tracked []uint64
+	waiting := len(n.snapWait) > 0
 	n.rn.WithProgress(func(id uint64, _ raft.ProgressType, pr tracker.Progress) {
+		if waiting {
+			tracked = append(tracked, id)
+		}
 		if pr.State != tracker.StateSnapshot {
 			delete(n.snapWait, id)
 			return
@@ -120,6 +127,13 @@ func (n *Node) snapshotProgress() {
 			failed = append(failed, id)
 		}
 	})
+	if waiting {
+		for id := range n.snapWait {
+			if !slices.Contains(tracked, id) {
+				delete(n.snapWait, id)
+			}
+		}
+	}
 	slices.Sort(failed)
 	for _, id := range failed {
 		delete(n.snapWait, id)
@@ -128,13 +142,20 @@ func (n *Node) snapshotProgress() {
 }
 
 // snapshotDropped gives up, on the leader, on a snapshot that follower
-// id answers heartbeats without having started to fetch an election
-// timeout after it was sent. A follower whose core starts again from its
-// log after an install drops a snapshot that came meanwhile, as the
-// driver writes nothing after the install (UpToInstall); Raft then sends
-// another instead of waiting SnapshotTicks.
+// id answers heartbeats without having started to fetch two heartbeats
+// after it was sent. A follower whose core starts again from its log
+// after an install drops a snapshot that came meanwhile, as the driver
+// writes nothing after the install (UpToInstall); Raft then sends another
+// instead of waiting SnapshotTicks. An election timeout held such a
+// follower back about a second (#366). A follower that only starts its
+// fetch late, behind syncs of its log slower than two heartbeats, loses
+// this snapshot too: until Raft sends another, nothing keeps the
+// leader's cleaner from removing the checkpoint it names, and if it does,
+// the fetch fails, the follower starts again from its log, and the
+// calls it holds fail with "server stopped". Raft's next snapshot then
+// names a newer checkpoint.
 func (n *Node) snapshotDropped(id uint64) {
-	if at, ok := n.snapWait[id]; ok && at != 0 && n.now-at >= int64(n.cfg.ElectionTicks) {
+	if at, ok := n.snapWait[id]; ok && at != 0 && n.now-at >= int64(2*n.cfg.HeartbeatTicks) {
 		delete(n.snapWait, id)
 		n.rn.ReportSnapshot(id, raft.SnapshotFailure)
 	}

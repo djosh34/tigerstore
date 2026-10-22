@@ -112,6 +112,13 @@ type Config struct {
 	// sync and of link faults that the run picks from, for the tests.
 	damageKinds []damageKind
 	netemKinds  []netemKind
+	// ckptCreateFaults makes every disk fault EIO on the next creation of
+	// a checkpoint file, and every such creation take 50 ms; killLosses
+	// makes every crash a kill followed by a power loss; syncFaultExits
+	// makes every disk fault a failed sync, after which the node starts
+	// again with its page cache kept, and cutFails fails the next truncate
+	// with it. For the tests.
+	ckptCreateFaults, killLosses, syncFaultExits, cutFails bool
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -132,7 +139,8 @@ type Faults struct {
 	SlowDisk int
 	// DiskErrorEvery is the mean time between failed writes or syncs:
 	// EIO on a write or a sync, or a short write with ENOSPC. The node
-	// stops, never retries, and restarts from its disk.
+	// stops, never retries, and restarts from its disk, half the time
+	// with its page cache kept.
 	DiskErrorEvery int64
 	// StallEvery is the mean time between disk stalls of 1.5 to 4 s, in
 	// which the log's syncs wait.
@@ -575,10 +583,12 @@ type Stats struct {
 	// that did not, of a running node or of one that was down.
 	// TornRefusals counts nodes whose torn crash image recovery refused,
 	// MisreadRefusals starts that refused a log they read wrong, IOErrors
-	// the injected errors of disk operations, FSDowns file systems that
-	// shut down or went read-only, DiskFulls disks that filled up, and
-	// Damage the damage done after a sync, by kind (damageKinds).
-	Kills, PowerLosses, TornRefusals, MisreadRefusals, IOErrors, FSDowns, DiskFulls int
+	// the injected errors of disk operations, CheckpointCreateErrors those
+	// of them that failed the creation of a checkpoint file, FSDowns file
+	// systems that shut down or went read-only, DiskFulls disks that
+	// filled up, and Damage the damage done after a sync, by kind
+	// (damageKinds).
+	Kills, PowerLosses, TornRefusals, MisreadRefusals, IOErrors, CheckpointCreateErrors, FSDowns, DiskFulls int
 	// ReadOnlyStops counts nodes that stopped on a read-only file system,
 	// and ClientLinksDown the directions of the clients' links that went
 	// down.
@@ -1160,11 +1170,16 @@ func (s *Sim) start(n *node) error {
 	}
 	if injected(err) && (!n.corrupted || !errors.Is(err, simfs.ErrBadSector)) {
 		// An injected fault hit recovery, which can write: a failed boot.
-		// The node tries again later from what its disk holds.
+		// The node tries again later from what its disk holds, after a
+		// power loss or, half the time, with its page cache kept, where a
+		// failed sync of recovery left bytes that never reach the disk
+		// (#372).
 		s.stats.DiskFaults++
 		cancel()
 		n.disk.ClearFaults()
-		s.loseUnsynced(n)
+		if s.rng.IntN(2) == 0 {
+			s.loseUnsynced(n)
+		}
 		n.since, n.why = s.now(), fmt.Sprintf("failed to boot: %v", err)
 		s.tracef("node %d: failed to boot: %v", n.id, err)
 		s.checkRecovery(n)
@@ -1315,7 +1330,14 @@ func (s *Sim) exited(p *proc, err error) {
 			s.stats.ReadOnlyStops++
 		}
 		n.disk.Fault = nil
-		s.stopNode(n)
+		if s.cfg.syncFaultExits || s.rng.IntN(2) == 0 {
+			// The process exits and starts again on a machine that keeps
+			// its page cache, where a failed sync left bytes that never
+			// reach the disk (#364).
+			s.restartAfterExit(n)
+		} else {
+			s.stopNode(n)
+		}
 	default:
 		s.fail("node %d stopped: %w", n.id, err)
 	}
@@ -1550,13 +1572,13 @@ func (s *Sim) crashRandom() {
 		return
 	}
 	n.why = "the run crashed it"
-	if s.rng.IntN(2) == 0 || raceLeavesOut {
+	if !s.cfg.killLosses && s.rng.IntN(2) == 0 {
 		s.crash(n)
 		s.maybeCorrupt(n)
 	} else {
 		n.why = "the run killed it"
 		s.kill(n)
-		if s.rng.IntN(3) == 0 {
+		if s.cfg.killLosses || s.rng.IntN(3) == 0 {
 			s.after(100*Millisecond+s.rng.Int64N(2900*Millisecond), func() {
 				s.mu.Lock()
 				defer s.mu.Unlock()
@@ -1624,11 +1646,13 @@ func (s *Sim) powerLoss(n *node) {
 // the writes since. Images that tear writes at sectors or pages can make
 // recovery refuse the log, as a torn write and damage look alike (wal's
 // verifiesAfter), so they come only while no other node is out of the
-// cluster for good, and a quorum stays. An image of whole writes must
-// never make recovery refuse the log (#295). The lock is held.
+// cluster for good, and a quorum stays, and not in membership runs, where
+// a fenced voter would refuse every change, as corruption would
+// (membershipConfig). An image of whole writes must never make recovery
+// refuse the log (#295). The lock is held.
 func (s *Sim) loseUnsynced(n *node) {
 	img := simfs.Image(s.rng.IntN(4))
-	if slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.corrupted || m.fenced) }) {
+	if s.cfg.Membership || slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.corrupted || m.fenced) }) {
 		img = simfs.Image(s.rng.IntN(2))
 	}
 	n.disk.CrashImage(s.rng, img)
@@ -1691,6 +1715,21 @@ func (s *Sim) stopNode(n *node) { s.stopNodeAfter(n, s.restartDelay()) }
 
 // stopNodeAfter is stopNode with the restart d from now.
 func (s *Sim) stopNodeAfter(n *node, d int64) {
+	s.lateStop()
+	s.crash(n)
+	s.restartLater(n, d)
+}
+
+// restartAfterExit restarts a node whose process exited, later, from its
+// disk with the page cache kept, as a kill leaves it. The lock is held.
+func (s *Sim) restartAfterExit(n *node) {
+	s.lateStop()
+	s.kill(n)
+	s.restartLater(n, s.restartDelay())
+}
+
+// lateStop notes a node that stops after healing. The lock is held.
+func (s *Sim) lateStop() {
 	if s.healed && s.now() <= s.recovered() {
 		// The guaranteed disk fault fired after healing. The liveness
 		// rule starts once the node is back (check.go); the clients keep
@@ -1703,8 +1742,6 @@ func (s *Sim) stopNodeAfter(n *node, d int64) {
 		s.lateStopAt = s.now()
 		s.extendLiveness()
 	}
-	s.crash(n)
-	s.restartLater(n, d)
 }
 
 // restartDelay draws when stopNode restarts a node. The lock is held.
@@ -1817,7 +1854,7 @@ func (s *Sim) heal() {
 		n.stallUntil = 0
 		s.wakeNode(n)
 		n.disk.ClearFaults()
-		n.disk.Remount()
+		s.remount(n)
 		n.disk.Capacity = s.cfg.Faults.DiskCapacity
 		if n.proc == nil && !n.fenced {
 			down = append(down, n)

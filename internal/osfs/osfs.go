@@ -153,6 +153,11 @@ func (f file) Sync() error {
 	return errors.Join(cerr, err)
 }
 
+// ErrCached is the error of a drop that left pages of a file in the page
+// cache: Linux keeps a page that something holds, such as a pipe that
+// another process spliced it into.
+var ErrCached = errors.New("osfs: pages stay in the page cache")
+
 func (f file) ReadAll() ([]byte, error) {
 	st, err := f.Stat()
 	if err != nil {

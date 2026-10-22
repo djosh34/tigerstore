@@ -449,6 +449,10 @@ type diskLog struct {
 	used, cleaned, removeFailures, maxWrite atomic.Int64
 	// before runs in each value read; see Config.BeforeRead.
 	before func()
+	// vote is the term and vote in the copies outside the log
+	// (wal.SaveVote): open sets it, and then only the sync goroutine
+	// changes it.
+	vote wal.HardState
 }
 
 func (l *diskLog) Entry(index uint64) (*raftpb.Entry, error) {
@@ -671,7 +675,13 @@ func (n *Node) forceNewCluster() error {
 // for snapshots this node serves meanwhile.
 func (n *Node) open() error {
 	n.logf("recovering the log")
-	w, rec, err := wal.Open(n.log.fs)
+	open := wal.Open
+	if n.log.w != nil {
+		// The process recovered the log before, and snapshots it serves
+		// can read the old log meanwhile.
+		open = wal.Reopen
+	}
+	w, rec, err := open(n.log.fs)
 	if err != nil {
 		return err
 	}
@@ -681,6 +691,7 @@ func (n *Node) open() error {
 	n.log.mu.Lock()
 	err = n.log.closeLocked()
 	n.log.w, n.log.closed, n.log.sealed, n.log.ckpts, n.log.removal = w, false, w.Seq()-1, nil, nil
+	n.log.vote = wal.HardState{Term: rec.HardState.Term, Vote: rec.HardState.Vote}
 	n.log.held.Store(false)
 	n.log.mu.Unlock()
 	if err != nil {
@@ -1387,13 +1398,15 @@ const syncsInFlight = 4
 
 // written is a group of jobs, and roots of cleaning passes, written to
 // the log: f is the segment to sync for it, nil when nothing in it must be
-// synced (core.PersistJob.MustSync), and dir whether the directory must be
-// synced after it, as the segment took its name.
+// synced (core.PersistJob.MustSync), dir whether the directory must be
+// synced after it, as the segment took its name, and end where its bytes
+// end in the segment.
 type written struct {
 	jobs           []core.PersistJob
 	packs          []packRoot
 	f              wal.File
 	dir            bool
+	end            int64
 	entries, bytes int
 	times          persistTimes
 }
@@ -1556,6 +1569,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		m := n.cfg.Metrics
 		g.times.flush = time.Now()
 		err := w.Flush()
+		g.end = w.Size()
 		g.times.flushed = time.Now()
 		writeTime := g.times.flushed.Sub(g.times.flush)
 		m.WALWrite.Observe(writeTime.Seconds())
@@ -1621,11 +1635,14 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 		err := failed
 		var f wal.File
 		dir := false
+		// upTo is where the batch's bytes end in f.
+		var upTo int64
 		for _, g := range batch {
 			if g.f != nil {
 				f = g.f
 			}
 			dir = dir || g.dir
+			upTo = max(upTo, g.end)
 		}
 		var early []syncedGroup
 		if err == nil && f != nil && (planted.On("B02") && n.Leader() == n.ID() || planted.On("B03") && n.Leader() != n.ID()) {
@@ -1644,6 +1661,9 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 				n.cfg.BeforeSync()
 			}
 			err = f.Sync()
+			if !planted.On("B11") {
+				err = n.syncedLog(f, upTo, err)
+			}
 			// Planted: B05 takes records into the new segment before its
 			// directory entry is durable.
 			if err == nil && dir && !planted.On("B05") {
@@ -1652,6 +1672,9 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 			if planted.On("B11") {
 				// Planted: carry on as if the sync worked.
 				err = nil
+			}
+			if err == nil {
+				err = n.saveVote(batch)
 			}
 			if err != nil {
 				n.broken.Store(true)
@@ -1673,6 +1696,44 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 		}
 		failed = err
 	}
+}
+
+// syncedLog tells the log how a sync of its segment f, which syncs its
+// first end bytes, went (wal.WAL.Synced). After a failed sync the node
+// stops, and the segment is cut back to its synced part, so that what the
+// sync did not write does not stay readable for its next process
+// (wal.WAL.CutUnsynced, #364). It returns err with the cut's error.
+func (n *Node) syncedLog(f wal.File, end int64, err error) error {
+	n.log.mu.Lock()
+	defer n.log.mu.Unlock()
+	if err != nil {
+		return errors.Join(err, n.log.w.CutUnsynced(f))
+	}
+	n.log.w.Synced(f, end)
+	return nil
+}
+
+// saveVote writes a new term or vote of the groups into the copies
+// outside the log (wal.SaveVote), after the sync of the log and before
+// the groups count as durable, so that no message that depends on it goes
+// out before (#357).
+func (n *Node) saveVote(groups []written) error {
+	vote := n.log.vote
+	for _, g := range groups {
+		for _, j := range g.jobs {
+			if hs := j.HardState; hs != nil {
+				vote = wal.HardState{Term: hs.Term, Vote: hs.Vote}
+			}
+		}
+	}
+	if vote == n.log.vote {
+		return nil
+	}
+	if err := wal.SaveVote(n.log.fs, vote.Term, vote.Vote); err != nil {
+		return err
+	}
+	n.log.vote = vote
+	return nil
 }
 
 // report tells the committer that group g is durable, or that err stops
@@ -1759,10 +1820,14 @@ func (n *Node) syncLog(ctx context.Context, h prometheus.Observer) error {
 	if err := w.Flush(); err != nil {
 		return err
 	}
-	if err := syncTimed(w.Segment(), h); err != nil || !w.Full() {
+	f := w.Segment()
+	if err := n.syncedLog(f, w.Size(), syncTimed(f, h)); err != nil || !w.Full() {
 		return err
 	}
-	if err := errors.Join(w.Seal(), w.Segment().Sync()); err != nil {
+	if err := w.Seal(); err != nil {
+		return err
+	}
+	if err := n.syncedLog(f, w.Size(), f.Sync()); err != nil {
 		return err
 	}
 	old, err := n.rotate(ctx)
@@ -1939,6 +2004,12 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 		select {
 		case n.inbox <- input{written: c.Index, writeErr: err}:
 		case <-ctx.Done():
+			return
+		}
+		if err != nil {
+			// The error stops the node. The rest of this checkpoint may
+			// still be queued, and would go into a new file without its
+			// first part (#363).
 			return
 		}
 	}

@@ -401,6 +401,16 @@ func (c *conn) Write(b []byte) (int, error) {
 			s.mu.Unlock()
 			return n, c.in.err
 		case c.other.closed:
+			// The peer answers with RST, as TCP does, and the reset also
+			// fails the reads of bytes still on their way. It comes sooner
+			// than TCP's would: a stall of the link back holds those bytes
+			// and would hold the RST too. But a reader held behind the
+			// stall makes gRPC, which retires a transport only once its
+			// reader saw the end, try the closing transport again and
+			// again, and that busy loop keeps the virtual clock from ever
+			// reaching the stall's end (#369). So a stall of a stream whose
+			// sender closed ends once the other end writes.
+			s.net.reset(c)
 			s.mu.Unlock()
 			return n, errReset
 		}

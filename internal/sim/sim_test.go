@@ -144,6 +144,25 @@ func historyBytes(res *Result) []byte {
 	return b
 }
 
+// explainSim explains a scenario that drives s itself, as explain does a
+// run: its trace, the nodes, their hashes, its saved files and the
+// command that runs it again. It goes before s shuts down.
+func explainSim(t *testing.T, cfg Config, s *Sim) {
+	t.Helper()
+	s.mu.Lock()
+	res := &Result{Clients: cfg.Clients + cfg.V3Clients, History: s.history, Stats: s.stats, nodes: s.nodes}
+	s.mu.Unlock()
+	res.Report = s.report()
+	s.mu.Lock()
+	res.Trace = slices.Clone(s.trace)
+	s.mu.Unlock()
+	if simrun.InGosim {
+		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, hashes(res)))
+		simrun.Artifact("hashes", []byte(strings.Join(hashLines, "\n")+"\n"))
+	}
+	explain(t, cfg, res)
+}
+
 // explain logs what a failed run did, how it left each node, its hashes
 // and the command that runs its seed again, and saves the run (save).
 func explain(t *testing.T, cfg Config, res *Result) {
@@ -346,9 +365,15 @@ func TestSeeds(t *testing.T) {
 	// each.
 	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0 ||
-		total.Disk.TornWrites == 0 || total.Disk.Reordered == 0 || total.Packs == 0 || total.OutOfSpace == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal, %d writes a crash tore, %d crashes that kept a write and lost an earlier one, %d packs, %d nodes out of space; each must happen",
-			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval, total.Disk.TornWrites, total.Disk.Reordered, total.Packs, total.OutOfSpace)
+		total.Disk.Reordered == 0 || total.Packs == 0 || total.OutOfSpace == 0) {
+		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal, %d crashes that kept a write and lost an earlier one, %d packs, %d nodes out of space; each must happen",
+			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval, total.Disk.Reordered, total.Packs, total.OutOfSpace)
+	}
+	// A crash tears a write in about 1 seed in 300, so 400 seeds have none
+	// about one time in four; a set of 2000, as in the seed campaign,
+	// holds about 7 (#378).
+	if ran >= 2000 && !t.Failed() && total.Disk.TornWrites == 0 {
+		t.Fatalf("%d seeds: no write a crash tore; a set of 2000 seeds or more must have one", ran)
 	}
 	t.Logf("%d seeds: %d writes a crash tore, %d crashes kept a write and lost an earlier one, %d nodes refused their torn crash image",
 		ran, total.Disk.TornWrites, total.Disk.Reordered, total.TornRefusals)
@@ -705,8 +730,7 @@ func faultCases() []faultCase {
 // before healing.
 func TestEachFaultTakesEffect(t *testing.T) {
 	if simrun.Race {
-		// Under the race detector some faults are left out
-		// (raceLeavesOut), and the cases take half an hour.
+		// Under the race detector the cases take half an hour.
 		t.Skip("the faults' effects are counted under gosim")
 	}
 	cases := faultCases()
@@ -744,9 +768,6 @@ func TestEachFaultTakesEffect(t *testing.T) {
 // segment where that loses only a new term or vote (lastRecord): the node
 // must start again with the term and vote it held durable (#357).
 func TestDamagedLastRecord(t *testing.T) {
-	if simrun.Race {
-		t.Skip("under the race detector the runs damage no last record (raceLeavesOut)")
-	}
 	var took effects
 	if !simrun.Each(t, seedRange(3500, 3), func(t *testing.T, seed uint64) bool {
 		cfg := DefaultConfig(seed)
@@ -761,6 +782,109 @@ func TestDamagedLastRecord(t *testing.T) {
 		return res.Stats.Damage[lastRecord] > 0
 	}, func(seed uint64, effect bool) bool {
 		took.add(seed, map[string]bool{lastRecord.String(): effect})
+		return false
+	}) {
+		return
+	}
+	took.check(t)
+}
+
+// TestPowerLossAfterKill makes every crash a kill, which keeps the page
+// cache, followed by a power loss 0.1 to 3 s later, while the node is
+// down or after it started again. What the restarted node read and held
+// durable must survive the power loss: before #361's fix, recovery did
+// not sync what it read from the page cache.
+func TestPowerLossAfterKill(t *testing.T) {
+	var took effects
+	if !simrun.Each(t, seedRange(3600, 16), func(t *testing.T, seed uint64) int {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{CrashEvery: Second, MaxDown: Second}
+		cfg.killLosses = true
+		cfg.Duration = 10 * Second
+		cfg.Heal = 8 * Second
+		res := run(t, cfg)
+		checkers(t, res)
+		return res.Stats.KillLosses
+	}, func(seed uint64, losses int) bool {
+		took.add(seed, map[string]bool{"power loss after a kill": losses > 0})
+		return false
+	}) {
+		return
+	}
+	took.check(t)
+}
+
+// TestCheckpointCreateFails makes every disk fault EIO on the creation of
+// a checkpoint file, which takes 50 ms, so that the later parts of the
+// checkpoint queue up meanwhile. The node stops, and must not write them
+// into a new file without the first part (#363), which the run's check
+// of every completed checkpoint finds.
+func TestCheckpointCreateFails(t *testing.T) {
+	var took effects
+	if !simrun.Each(t, seedRange(3700, 4), func(t *testing.T, seed uint64) int {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{DiskErrorEvery: 500 * Millisecond}
+		cfg.ckptCreateFaults = true
+		cfg.Duration = 8 * Second
+		cfg.Heal = 8 * Second
+		res := run(t, cfg)
+		checkers(t, res)
+		return res.Stats.CheckpointCreateErrors
+	}, func(seed uint64, n int) bool {
+		took.add(seed, map[string]bool{"EIO on a checkpoint's creation": n > 0})
+		return false
+	}) {
+		return
+	}
+	took.check(t)
+}
+
+// TestFailedSyncThenRestart makes every disk fault a failed sync, after
+// which the node starts again with its page cache kept, where the bytes
+// the sync did not write would stay readable, and no later sync writes
+// them. The failed sync's process must cut them off: with segments of 256
+// bytes, which end every few writes, a power loss later would find a hole
+// in a sealed segment (#364).
+func TestFailedSyncThenRestart(t *testing.T) {
+	var took effects
+	if !simrun.Each(t, seedRange(3800, 8), func(t *testing.T, seed uint64) int {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{DiskErrorEvery: 500 * Millisecond, CrashEvery: 2 * Second, MaxDown: Second}
+		cfg.syncFaultExits = true
+		cfg.SegmentBytes = 256
+		cfg.Duration = 10 * Second
+		cfg.Heal = 8 * Second
+		res := run(t, cfg)
+		checkers(t, res)
+		return res.Stats.Disk.FailedSyncs
+	}, func(seed uint64, n int) bool {
+		took.add(seed, map[string]bool{"failed sync": n > 0})
+		return false
+	}) {
+		return
+	}
+	took.check(t)
+}
+
+// TestFailedCutThenRestart is TestFailedSyncThenRestart with the cut after
+// each failed sync failing too, as when a fault left from earlier fails
+// the truncate. The node starts again on its page cache, which holds the
+// bytes the sync did not write: recovery must read the disk instead, or a
+// power loss later finds a hole where it appended after them (#372).
+func TestFailedCutThenRestart(t *testing.T) {
+	var took effects
+	if !simrun.Each(t, seedRange(3935, 8), func(t *testing.T, seed uint64) int {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{DiskErrorEvery: 500 * Millisecond, CrashEvery: 2 * Second, MaxDown: Second}
+		cfg.syncFaultExits, cfg.cutFails = true, true
+		cfg.SegmentBytes = 256
+		cfg.Duration = 10 * Second
+		cfg.Heal = 8 * Second
+		res := run(t, cfg)
+		checkers(t, res)
+		return res.Stats.IOErrors
+	}, func(seed uint64, n int) bool {
+		took.add(seed, map[string]bool{"failed cut": n > 0})
 		return false
 	}) {
 		return
@@ -956,17 +1080,17 @@ func TestGrayClient(t *testing.T) {
 		if errors.Is(r.Err, rpctypes.ErrGRPCStopped) || res.nodes[r.Node].hungOnReload(r) {
 			// With no other fault, only a start from the log after a
 			// snapshot install, which the run's tiny window makes
-			// frequent, answers that, or holds a clientv3 call until
-			// it times out (#365).
+			// frequent, answers that, or makes clientv3 try a read
+			// again, which can time out (#365).
 			continue
 		}
 		if r.Err != nil && !isRejection(r.Err) {
 			t.Fatalf("call to node %d at %d ms failed beside the gray client: %v", r.Node+1, r.Call/Millisecond, r.Err)
 		}
-		// clientv3 tries a call that a start from the log cut off again;
-		// the attempts cut off do not count, as such a direct call does
-		// not (#366).
-		if took := r.Return - r.Call - r.cut; took >= Second {
+		// A node that keeps starting again from its log, as the tiny
+		// window makes a follower do that falls behind, as under the race
+		// detector, holds a call that it answers in the end (#381).
+		if took := r.Return - r.Call; took >= Second && !during(res.nodes[r.Node].fromLog, r.Call, r.Return) {
 			t.Fatalf("call to node %d at %d ms took %d ms beside the gray client", r.Node+1, r.Call/Millisecond, took/Millisecond)
 		}
 		calls++

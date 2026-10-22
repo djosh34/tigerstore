@@ -327,12 +327,18 @@ func (d *Disk) Durable() *Disk {
 	return c
 }
 
-// Copy returns a new disk whose files hold what this disk's hold now,
-// synced or not, all durable.
+// Copy returns a new disk with this disk's files, under the names they
+// have now, all durable: each holds what the medium holds and what the
+// page cache holds, the writes since the last sync, which a sync writes,
+// and the bytes a failed sync left readable, which none does (#372).
 func (d *Disk) Copy() *Disk {
 	c := New()
 	for _, name := range sortedNames(d.names) {
-		g := &file{id: d.names[name].id, data: slices.Clone(d.names[name].data), durable: slices.Clone(d.names[name].data)}
+		f := d.names[name]
+		g := &file{id: f.id, data: slices.Clone(f.data), durable: slices.Clone(f.durable), cut: f.cut}
+		for _, w := range f.pending {
+			g.pending = append(g.pending, write{w.off, slices.Clone(w.p)})
+		}
 		c.names[name] = g
 		c.durable[name] = g
 	}
@@ -493,6 +499,9 @@ func (d *Disk) ReadOnly() {
 	d.down = ErrReadOnly
 	d.tracef("the file system went read-only")
 }
+
+// Down reports whether the file system shut down or went read-only.
+func (d *Disk) Down() bool { return d.down != nil }
 
 // Remount ends a shutdown or a read-only state. A remount follows an
 // unmount, which lost what the page cache could not write back: crash
@@ -840,6 +849,27 @@ func (h *Handle) Sync() error {
 	return nil
 }
 
+// DropCache drops the file's clean pages, as fadvise(POSIX_FADV_DONTNEED)
+// does: a page that no write since the last sync touched reads what the
+// disk holds, zeros past its end, so bytes that a failed sync left there
+// read as the disk keeps them (#372). A dirty page stays whole, as on
+// Linux. Linux also keeps a page that something holds, which osfs reports
+// (osfs.ErrCached); the model holds none.
+func (h *Handle) DropCache() error {
+	if h.closed {
+		return errClosed
+	}
+	for off := 0; off < len(h.f.data); off += PageBytes {
+		end := min(off+PageBytes, len(h.f.data))
+		if slices.ContainsFunc(h.f.pending, func(w write) bool { return w.off < end && w.off+len(w.p) > off }) {
+			continue
+		}
+		n := copy(h.f.data[off:end], h.f.durable[min(off, len(h.f.durable)):min(end, len(h.f.durable))])
+		clear(h.f.data[off+n : end])
+	}
+	return nil
+}
+
 // Close closes the handle.
 func (h *Handle) Close() error {
 	if h.closed {
@@ -847,6 +877,13 @@ func (h *Handle) Close() error {
 	}
 	h.closed = true
 	return nil
+}
+
+// Unsynced reports whether a sync of file name would write anything: a
+// write or a truncate since its last sync.
+func (d *Disk) Unsynced(name string) bool {
+	f, ok := d.names[name]
+	return ok && (len(f.pending) > 0 || f.cut)
 }
 
 // DurableNames returns the names of the files on the durable directory,

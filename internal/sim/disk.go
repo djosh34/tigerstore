@@ -145,6 +145,14 @@ func (d *disk) open(op simfs.Op, name string, open func(string) (wal.File, error
 }
 
 func (d *disk) Create(name string) (wal.File, error) {
+	if d.s.cfg.ckptCreateFaults && isCheckpoint(name) {
+		// The creation of a checkpoint file takes 50 ms, so that the
+		// checkpoint's later parts queue up for the writer meanwhile, as
+		// before a creation that fails (#363). The writer holds no lock of
+		// the node here.
+		until := d.s.now() + 50*Millisecond
+		d.s.hold(d.p, func() int64 { return until })
+	}
 	return d.open(simfs.OpCreate, name, d.p.n.disk.Create)
 }
 
@@ -223,6 +231,10 @@ func (f *file) Sync() error {
 		f.dirty, f.synced = false, true
 		return nil
 	})
+}
+
+func (f *file) DropCache() error {
+	return f.d.call(simfs.OpRead, f.name, f.f.DropCache)
 }
 
 func (f *file) Close() error {

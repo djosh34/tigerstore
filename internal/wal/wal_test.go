@@ -176,11 +176,8 @@ func segments(t *testing.T, d *simfs.Disk, n uint64) []string {
 			t.Fatal(err)
 		}
 	}
-	names, err := d.List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return names
+	segs, _ := files(t, d)
+	return segs
 }
 
 func wantCorrupt(t *testing.T, d *simfs.Disk) {
@@ -226,11 +223,8 @@ func TestDamagedNewestHeaderIsCorrupt(t *testing.T) {
 	if err := w.Sync(); err != nil {
 		t.Fatal(err)
 	}
-	names, err := d.List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	newest := names[len(names)-1]
+	segs, _ := files(t, d)
+	newest := segs[len(segs)-1]
 	rewrite(t, d, newest, func(b []byte) []byte {
 		b[len("tigerwal")+8] ^= 1 // the chain crc in the header
 		return b
@@ -372,9 +366,9 @@ func TestCrashKeepsSyncedEntries(t *testing.T) {
 
 // TestDamagedNewestHeader opens logs whose newest segment holds only a
 // header, damaged, as a first write that did not reach the disk whole
-// leaves it: the log starts that segment again without a write, and an
-// append goes into it. With a record after the damaged header, the log is
-// corrupt.
+// leaves it: the log cuts that segment and starts it again without a
+// write, and an append goes into it. With a record after the damaged
+// header, the log is corrupt.
 func TestDamagedNewestHeader(t *testing.T) {
 	d := simfs.New()
 	names := segments(t, d, 2)
@@ -382,7 +376,11 @@ func TestDamagedNewestHeader(t *testing.T) {
 	header := []byte("tigerwal\x02\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04")
 	rewrite(t, d, last, func([]byte) []byte { return header })
 	d.Fault = func(op simfs.Op, name string) error {
-		if op != simfs.OpRead && op != simfs.OpOpen && op != simfs.OpCreate && op != simfs.OpSyncDir {
+		// Recovery writes the copies of the term and vote, and cuts this
+		// segment, which it starts again (#368), but writes nothing into
+		// the log.
+		if op != simfs.OpRead && op != simfs.OpOpen && op != simfs.OpCreate && op != simfs.OpSyncDir && op != simfs.OpSync &&
+			(op != simfs.OpTruncate || name != last) && !wal.IsVoteFile(name) {
 			return fmt.Errorf("%v of %s", op, name)
 		}
 		return nil
@@ -406,10 +404,7 @@ func TestDamagedNewestHeader(t *testing.T) {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	segs, err := d.List()
-	if err != nil {
-		t.Fatal(err)
-	}
+	segs, _ := files(t, d)
 	rewrite(t, d, segs[len(segs)-1], func(b []byte) []byte { b[0] ^= 1; return b })
 	wantCorrupt(t, d)
 }
