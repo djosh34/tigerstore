@@ -25,8 +25,8 @@ func (c *heldConn) Close() error {
 	return nil
 }
 
-// other tracks a connection on tr whose Close does not wait.
-func other(t *testing.T, tr *TCP) net.Conn {
+// trackPipe tracks a connection on tr whose Close does not wait.
+func trackPipe(t *testing.T, tr *TCP) net.Conn {
 	t.Helper()
 	c, end := net.Pipe()
 	t.Cleanup(func() { end.Close() }) //nolint:errcheck,gosec // closing a test pipe
@@ -80,7 +80,7 @@ func TestCloseLetsConnectionsEnd(t *testing.T) {
 	if !tr.track(held) {
 		t.Fatal("the transport took no connection")
 	}
-	c := other(t, tr)
+	c := trackPipe(t, tr)
 	closed := make(chan error, 1)
 	go func() { closed <- tr.Close() }()
 	endsWhileHeld(t, tr, held, c)
@@ -101,7 +101,7 @@ func TestRemovingPeerLetsConnectionsEnd(t *testing.T) {
 	tr.mu.Lock()
 	tr.inbound[held] = inbound{id: 2, version: maxVersion}
 	tr.mu.Unlock()
-	c := other(t, tr)
+	c := trackPipe(t, tr)
 	set := make(chan struct{})
 	go func() {
 		tr.SetPeers(map[uint64]string{}, []uint64{2})
