@@ -45,10 +45,11 @@ func TestMembershipFaults(t *testing.T) {
 		return
 	}
 	took.check(t)
-	// With every fault on, a stage completes during the faults in fewer
-	// seeds, and 16 of them can miss one: the rule holds over the 64 seeds
-	// of CI's job; race-sim runs 16.
-	if n >= 48 {
+	// With every fault on, a stage completes during the faults in few
+	// seeds, stage 3 in a few percent, and 64 fresh seeds of CI's job can
+	// miss one: the rule holds over the 250 seeds of a campaign process
+	// (#380).
+	if n >= 200 {
 		for i, count := range during {
 			if count == 0 {
 				t.Errorf("stage %d never completed during faults", i)
