@@ -365,9 +365,15 @@ func TestSeeds(t *testing.T) {
 	// each.
 	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0 ||
-		total.Disk.TornWrites == 0 || total.Disk.Reordered == 0 || total.Packs == 0 || total.OutOfSpace == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal, %d writes a crash tore, %d crashes that kept a write and lost an earlier one, %d packs, %d nodes out of space; each must happen",
-			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval, total.Disk.TornWrites, total.Disk.Reordered, total.Packs, total.OutOfSpace)
+		total.Disk.Reordered == 0 || total.Packs == 0 || total.OutOfSpace == 0) {
+		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal, %d crashes that kept a write and lost an earlier one, %d packs, %d nodes out of space; each must happen",
+			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval, total.Disk.Reordered, total.Packs, total.OutOfSpace)
+	}
+	// A crash tears a write in about 1 seed in 300, so 400 seeds have none
+	// about one time in four; a set of 2000, as in the seed campaign,
+	// holds about 7 (#378).
+	if ran >= 2000 && !t.Failed() && total.Disk.TornWrites == 0 {
+		t.Fatalf("%d seeds: no write a crash tore; a set of 2000 seeds or more must have one", ran)
 	}
 	t.Logf("%d seeds: %d writes a crash tore, %d crashes kept a write and lost an earlier one, %d nodes refused their torn crash image",
 		ran, total.Disk.TornWrites, total.Disk.Reordered, total.TornRefusals)
