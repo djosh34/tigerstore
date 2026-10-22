@@ -1087,7 +1087,10 @@ func TestGrayClient(t *testing.T) {
 		if r.Err != nil && !isRejection(r.Err) {
 			t.Fatalf("call to node %d at %d ms failed beside the gray client: %v", r.Node+1, r.Call/Millisecond, r.Err)
 		}
-		if took := r.Return - r.Call; took >= Second {
+		// A node that keeps starting again from its log, as the tiny
+		// window makes a follower do that falls behind, as under the race
+		// detector, holds a call that it answers in the end (#381).
+		if took := r.Return - r.Call; took >= Second && !during(res.nodes[r.Node].fromLog, r.Call, r.Return) {
 			t.Fatalf("call to node %d at %d ms took %d ms beside the gray client", r.Node+1, r.Call/Millisecond, took/Millisecond)
 		}
 		calls++
