@@ -106,6 +106,13 @@ func (n *Node) snapshotProgress() {
 		clear(n.snapWait)
 		return
 	}
+	// Removed peers no longer appear in Raft's progress map. A late
+	// snapshot serve must not keep their checkpoint pin forever.
+	for id := range n.snapWait {
+		if n.state.members[id] == nil {
+			delete(n.snapWait, id)
+		}
+	}
 	var failed []uint64
 	n.rn.WithProgress(func(id uint64, _ raft.ProgressType, pr tracker.Progress) {
 		if pr.State != tracker.StateSnapshot {
