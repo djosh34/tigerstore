@@ -202,6 +202,9 @@ func (r *revisionOrder) index() error {
 		r.byCall(ops)
 	}
 	r.lowerBounds()
+	if err := r.inRealTime(); err != nil {
+		return err
+	}
 	for i := range h.Ops {
 		op := &h.Ops[i]
 		if op.Resp != nil && op.Req.Put != nil && op.Req.Put.Lease != 0 {
@@ -524,6 +527,27 @@ func (r *revisionOrder) lowerBounds() {
 	for _, i := range r.ambiguous {
 		r.lb[i] = r.boundAt(h.Ops[i].Call)
 	}
+}
+
+// inRealTime refuses an acked answer whose header revision is below that
+// of an acked op that returned before it was called: its state comes
+// after that op's, and revisions only grow. No order of the gaps' writes
+// changes that, so it is checked before the search, which would otherwise
+// find it only once every gap is filled, and try every other order of
+// them first (#387). Serializable reads may be stale and count on
+// neither side.
+func (r *revisionOrder) inRealTime() error {
+	h := r.w.h
+	for i := range h.Ops {
+		op := &h.Ops[i]
+		if op.Resp == nil || op.Req.Range != nil && op.Req.Range.Serializable {
+			continue
+		}
+		if before := r.boundAt(op.Call); before > op.Resp.Revision {
+			return fmt.Errorf("%s has no state that real time allows: it answers revision %d, but an op that returned before it was called answered %d", r.w.describe(i), op.Resp.Revision, before)
+		}
+	}
+	return nil
 }
 
 // lowestAfter is the lowest header revision of an acked op called after

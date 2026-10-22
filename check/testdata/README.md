@@ -40,3 +40,11 @@ that a delete wrote, so the search tried every order of the gaps after it.
 saw `k3` last written at 8 with version 3. The search put a write of `k3` at
 8 that left it at version 2, which the check of no more versions than seen
 let through, and tried every order of the gaps up to 24 before it went back.
+
+`planted-B01a-1.json` is a history the revision witness must refute. It
+comes from planted bug B01a's seed 1 on PR #384 at `3cdd632e`
+([planted run 39807034573](https://github.com/djosh34/tigerstore/actions/runs/39807034573)),
+saved by a local replay, and was cut the same way at header revision 64. A
+read answers revision 1 after a delete returned revision 5. The revision
+witness found that only once it had filled every gap, after it tried every
+other order of them, and ran out of its steps (#387).
