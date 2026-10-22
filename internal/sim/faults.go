@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math"
@@ -611,11 +612,10 @@ func hasLeader(nodes []*node) bool {
 // canElect reports whether a running node can win an election: it is a
 // voter of the members it knows, and its last entry is at least as new as
 // that of a majority of those voters, itself included, which run and so
-// grant it their votes. A learner votes but does not campaign. It also
-// returns the highest last index of the running nodes. The nodes are
-// frozen, and nothing is appended without a leader, so each one's last
-// entry is on its disk.
-func (s *Sim) canElect() (bool, uint64, error) {
+// grant it their votes. A learner votes but does not campaign. The nodes
+// are frozen, and nothing is appended without a leader, so each one's
+// last entry is on its disk.
+func (s *Sim) canElect() (bool, error) {
 	type last struct{ term, index uint64 }
 	logs := map[uint64]last{}
 	for _, n := range s.nodes {
@@ -624,24 +624,20 @@ func (s *Sim) canElect() (bool, uint64, error) {
 		}
 		w, rec, err := wal.Open(n.disk.Durable())
 		if err != nil {
-			return false, 0, err
+			return false, err
 		}
 		l := last{rec.Root.Term, rec.Last}
 		if rec.Last > rec.Root.Index {
 			e, err := w.Entry(rec.Last)
 			if err != nil {
-				return false, 0, errors.Join(err, w.Close())
+				return false, errors.Join(err, w.Close())
 			}
 			l.term = e.GetTerm()
 		}
 		if err := w.Close(); err != nil {
-			return false, 0, err
+			return false, err
 		}
 		logs[n.id] = l
-	}
-	var highest uint64
-	for _, l := range logs {
-		highest = max(highest, l.index)
 	}
 	for _, n := range s.nodes {
 		own, ok := logs[n.id]
@@ -660,10 +656,44 @@ func (s *Sim) canElect() (bool, uint64, error) {
 			}
 		}
 		if voter && votes > voters/2 {
-			return true, highest, nil
+			return true, nil
 		}
 	}
-	return false, highest, nil
+	return false, nil
+}
+
+// holdsApplied reports whether a running node's disk holds the entries up
+// to applied, each as the run's record has it: in its checkpoint, whose
+// state the start checked, or in its log. The nodes are frozen.
+func (s *Sim) holdsApplied(applied uint64) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, n := range s.nodes {
+		if n.out() || n.proc == nil {
+			continue
+		}
+		w, rec, err := wal.Open(n.disk.Durable())
+		if err != nil {
+			return false, err
+		}
+		holds := rec.Last >= applied
+		for i := rec.Root.Index + 1; holds && i <= applied; i++ {
+			e, err := w.Entry(i)
+			if err != nil {
+				return false, errors.Join(err, w.Close())
+			}
+			if b, ok := s.base[i]; ok && (b.term != e.GetTerm() || b.known && !bytes.Equal(b.data, e.GetData())) {
+				holds = false
+			}
+		}
+		if err := w.Close(); err != nil {
+			return false, err
+		}
+		if holds {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // coldRestart starts the two nodes whose disks were not erased, with no
@@ -749,13 +779,17 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	// commits then, so there is nothing to converge on, but what was
 	// applied before must still be on a surviving disk.
 	if !hasLeader(r.nodes) {
-		ok, highest, err := r.canElect()
+		ok, err := r.canElect()
 		if err != nil {
 			return err
 		}
 		if !ok {
-			if highest < c.applied {
-				return fmt.Errorf("cold restart: no node can win an election, and the surviving disks hold entries up to %d, but %d were applied before", highest, c.applied)
+			holds, err := r.holdsApplied(c.applied)
+			if err != nil {
+				return err
+			}
+			if !holds {
+				return fmt.Errorf("cold restart: no node can win an election, and no surviving disk holds the %d entries applied before as the run's record has them", c.applied)
 			}
 			s.tracef("cold restart at %d ms erasing node %d: no node can win an election", c.at/Millisecond, erased+1)
 			return nil

@@ -64,21 +64,24 @@ func cold84216Checkpoint(t *testing.T) *checkpoint {
 }
 
 // coldRestart84216 runs the cold restart of seed 84216 with disk erased
-// erased, -1 for none, and reports whether it found that no node can win
-// an election.
-func coldRestart84216(t *testing.T, erased int) bool {
+// erased, -1 for none, after change, if any, edits the run and its
+// checkpoint. It returns whether the cold restart found that no node can
+// win an election, and its error.
+func coldRestart84216(t *testing.T, erased int, change func(*Sim, *checkpoint)) (bool, error) {
 	t.Helper()
 	s, err := newSim(Config{Seed: 389, Membership: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.shutdown()
-	if err := s.coldRestart(cold84216Checkpoint(t), erased); err != nil {
-		t.Fatal(err)
+	c := cold84216Checkpoint(t)
+	if change != nil {
+		change(s, c)
 	}
+	err = s.coldRestart(c, erased)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return slices.ContainsFunc(s.trace, func(l string) bool { return strings.Contains(l, "no node can win an election") })
+	return slices.ContainsFunc(s.trace, func(l string) bool { return strings.Contains(l, "no node can win an election") }), err
 }
 
 // TestColdRestartNoElection runs the cold restart of membership seed 84216,
@@ -90,7 +93,11 @@ func TestColdRestartNoElection(t *testing.T) {
 		return
 	}
 	simrun.Bubble(t, func(t *testing.T) {
-		if !coldRestart84216(t, 2) {
+		none, err := coldRestart84216(t, 2, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !none {
 			t.Fatal("the cold restart with node 3 erased did not find that no node can win an election")
 		}
 	})
@@ -103,8 +110,40 @@ func TestColdRestartElects(t *testing.T) {
 		return
 	}
 	simrun.Bubble(t, func(t *testing.T) {
-		if coldRestart84216(t, -1) {
+		none, err := coldRestart84216(t, -1, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if none {
 			t.Fatal("the cold restart with every disk found that no node can win an election")
+		}
+	})
+}
+
+// TestColdRestartNoElectionLost requires that a cold restart where no node
+// can win an election still finds the entries applied before on a
+// surviving disk, as the run's record has them: entries past every
+// surviving log, and an entry 1344 that differs from the record's on the
+// only disk that holds it (from the fix-check of #389 on PR #384).
+func TestColdRestartNoElectionLost(t *testing.T) {
+	if simrun.Drive(t, 389) {
+		return
+	}
+	simrun.Bubble(t, func(t *testing.T) {
+		for _, c := range []struct {
+			name   string
+			change func(*Sim, *checkpoint)
+		}{
+			{"missing entries", func(_ *Sim, c *checkpoint) { c.applied = 1352 }},
+			{"different entry", func(s *Sim, c *checkpoint) {
+				c.applied = 1344
+				s.log[1344] = logRec{term: 9}
+			}},
+		} {
+			_, err := coldRestart84216(t, 2, c.change)
+			if err == nil || !strings.Contains(err.Error(), "no surviving disk holds") {
+				t.Errorf("%s: the cold restart returned %v", c.name, err)
+			}
 		}
 	})
 }
