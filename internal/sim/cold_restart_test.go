@@ -2,13 +2,17 @@ package sim
 
 import (
 	"embed"
+	"errors"
 	"path"
 	"slices"
 	"strings"
 	"testing"
 
+	"go.etcd.io/raft/v3/raftpb"
+
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/simrun"
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 //go:embed testdata/cold-84216/node*
@@ -47,6 +51,20 @@ func imageDisk(t *testing.T, dir string) *simfs.Disk {
 		t.Fatal(err)
 	}
 	return d
+}
+
+// entryOn is entry i of the log on d.
+func entryOn(t *testing.T, d *simfs.Disk, i uint64) *raftpb.Entry {
+	t.Helper()
+	w, _, err := wal.Open(d.Durable())
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := w.Entry(i)
+	if err := errors.Join(err, w.Close()); err != nil {
+		t.Fatal(err)
+	}
+	return e
 }
 
 // cold84216Checkpoint is the checkpoint the cold restart of membership
@@ -123,8 +141,9 @@ func TestColdRestartElects(t *testing.T) {
 // TestColdRestartNoElectionLost requires that a cold restart where no node
 // can win an election still finds the entries applied before on a
 // surviving disk, as the run's record has them: entries past every
-// surviving log, and an entry 1344 that differs from the record's on the
-// only disk that holds it (from the fix-check of #389 on PR #384).
+// surviving log, and an entry 1344 whose term or type differs from the
+// record's on the only disk that holds it (from the fix-checks of #389 on
+// PR #384).
 func TestColdRestartNoElectionLost(t *testing.T) {
 	if simrun.Drive(t, 389) {
 		return
@@ -138,6 +157,16 @@ func TestColdRestartNoElectionLost(t *testing.T) {
 			{"different entry", func(s *Sim, c *checkpoint) {
 				c.applied = 1344
 				s.log[1344] = logRec{term: 9}
+			}},
+			{"different type", func(s *Sim, c *checkpoint) {
+				// Node 4's entry 1344 as it is, but recorded as a member
+				// change.
+				c.applied = 1344
+				e := entryOn(t, c.disks[3], 1344)
+				if e.GetType() == raftpb.EntryConfChange {
+					t.Fatal("node 4's entry 1344 is a member change already")
+				}
+				s.log[1344] = logRec{term: e.GetTerm(), typ: raftpb.EntryConfChange, data: e.GetData(), known: true}
 			}},
 		} {
 			_, err := coldRestart84216(t, 2, c.change)

@@ -663,8 +663,9 @@ func (s *Sim) canElect() (bool, error) {
 }
 
 // holdsApplied reports whether a running node's disk holds the entries up
-// to applied, each as the run's record has it: in its checkpoint, whose
-// state the start checked, or in its log. The nodes are frozen.
+// to applied, each as the run's record has it, with its term, and its type
+// and data where the record knows them: in its checkpoint, whose state the
+// start checked, or in its log. The nodes are frozen.
 func (s *Sim) holdsApplied(applied uint64) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -682,7 +683,7 @@ func (s *Sim) holdsApplied(applied uint64) (bool, error) {
 			if err != nil {
 				return false, errors.Join(err, w.Close())
 			}
-			if b, ok := s.base[i]; ok && (b.term != e.GetTerm() || b.known && !bytes.Equal(b.data, e.GetData())) {
+			if b, ok := s.base[i]; ok && (b.term != e.GetTerm() || b.known && (b.typ != e.GetType() || !bytes.Equal(b.data, e.GetData()))) {
 				holds = false
 			}
 		}
