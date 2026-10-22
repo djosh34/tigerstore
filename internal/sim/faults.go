@@ -602,6 +602,58 @@ func (s *Sim) quorum() bool {
 	return true
 }
 
+// coldElectionPossible is a diagnosis prototype for #389. A candidate must
+// consider itself a voter, and its log must be fresh enough for a quorum
+// of the voters in its own recovered configuration. Learners can vote but
+// cannot campaign. Call with frozen nodes and no leader.
+func (s *Sim) coldElectionPossible() (bool, error) {
+	type lastEntry struct{ term, index uint64 }
+	logs := map[uint64]lastEntry{}
+	for _, n := range s.nodes {
+		if n.out() || n.proc == nil {
+			continue
+		}
+		w, rec, err := wal.Open(n.disk.Durable())
+		if err != nil {
+			return false, err
+		}
+		last := lastEntry{rec.Root.Term, rec.Last}
+		if rec.Last > rec.Root.Index {
+			e, err := w.Entry(rec.Last)
+			if err != nil {
+				return false, errors.Join(err, w.Close())
+			}
+			last.term = e.GetTerm()
+		}
+		if err := w.Close(); err != nil {
+			return false, err
+		}
+		logs[n.id] = last
+	}
+	for _, n := range s.nodes {
+		last, live := logs[n.id]
+		if !live {
+			continue
+		}
+		selfVoter, voters, votes := false, 0, 0
+		for _, m := range n.proc.core.Members() {
+			if m.IsLearner {
+				continue
+			}
+			voters++
+			selfVoter = selfVoter || m.ID == n.id
+			other, live := logs[m.ID]
+			if live && (last.term > other.term || (last.term == other.term && last.index >= other.index)) {
+				votes++
+			}
+		}
+		if selfVoter && votes >= voters/2+1 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // coldRestart starts the two nodes whose disks were not erased, with no
 // clients and no faults, until they have applied everything they hold.
 // Every entry and state they reach up to the index applied at the
@@ -665,6 +717,18 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 		// etcd's does, and with the erased disk the others can be left
 		// without a quorum of the voters they know: nothing commits.
 		return nil
+	}
+	if s.cfg.Membership && !slices.ContainsFunc(r.nodes, func(n *node) bool {
+		return n.proc != nil && !n.out() && n.proc.core.Leader() != 0
+	}) {
+		possible, err := r.coldElectionPossible()
+		if err != nil {
+			return err
+		}
+		if !possible {
+			s.tracef("cold restart at %d ms erasing node %d: no surviving candidate has an up-to-date voter quorum; liveness not required", c.at/Millisecond, erased+1)
+			return nil
+		}
 	}
 	// Two nodes that start within a message's delay of each other and draw
 	// the same election timeouts split their votes, one round in ten, so
