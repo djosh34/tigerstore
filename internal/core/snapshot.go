@@ -100,14 +100,21 @@ func (n *Node) trimWindow() {
 
 // snapshotProgress gives up, on the leader, on a snapshot that a follower
 // has not started to fetch within SnapshotTicks, so Raft sends another,
-// as etcd's leader reports a failed snapshot.
+// as etcd's leader reports a failed snapshot. It forgets a peer that Raft
+// no longer tracks, a member removed while its snapshot was pending or
+// whose fetch started after: nothing else would end its wait, which keeps
+// every checkpoint from then on (#379).
 func (n *Node) snapshotProgress() {
 	if !n.isLeader {
 		clear(n.snapWait)
 		return
 	}
-	var failed []uint64
+	var failed, tracked []uint64
+	waiting := len(n.snapWait) > 0
 	n.rn.WithProgress(func(id uint64, _ raft.ProgressType, pr tracker.Progress) {
+		if waiting {
+			tracked = append(tracked, id)
+		}
 		if pr.State != tracker.StateSnapshot {
 			delete(n.snapWait, id)
 			return
@@ -120,6 +127,13 @@ func (n *Node) snapshotProgress() {
 			failed = append(failed, id)
 		}
 	})
+	if waiting {
+		for id := range n.snapWait {
+			if !slices.Contains(tracked, id) {
+				delete(n.snapWait, id)
+			}
+		}
+	}
 	slices.Sort(failed)
 	for _, id := range failed {
 		delete(n.snapWait, id)
