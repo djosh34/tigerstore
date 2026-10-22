@@ -1,0 +1,43 @@
+name: diag-379
+on:
+  workflow_dispatch:
+    inputs:
+      first:
+        default: '19460'
+      count:
+        default: '5'
+permissions:
+  contents: read
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        source: ['757c8f77', '9e278809']
+        fix: ['off', 'on']
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: '-p=1'
+    steps:
+      - uses: actions/checkout@v7
+      - run: cp scripts/diag379.py /tmp/diag379.py; git checkout ${{ matrix.source }}; python3 /tmp/diag379.py ${{ matrix.fix }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Reproduce
+        env:
+          SIM_SEED: ${{ inputs.first }}
+          SIM_SEEDS: ${{ inputs.count }}
+          SIM_OUT: ${{ runner.temp }}/sim-out
+        run: |
+          set -o pipefail
+          scripts/sim.sh ./internal/sim '^TestMembershipFaults$' 2>&1 | tee "$RUNNER_TEMP/result.log"
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: diag379-${{ matrix.source }}-${{ matrix.fix }}
+          path: |
+            ${{ runner.temp }}/result.log
+            ${{ runner.temp }}/sim-out
