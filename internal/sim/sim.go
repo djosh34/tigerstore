@@ -1157,7 +1157,7 @@ func (s *Sim) start(n *node) error {
 		s.restartLater(n, 1+s.rng.Int64N(Second))
 		return nil
 	}
-	if n.misread && errors.Is(err, wal.ErrCorrupt) {
+	if n.misread && refusesDamage(err) {
 		// Recovery read wrong data and refused the log. The disk holds
 		// the right data, so the next start recovers.
 		n.misread = false
@@ -1199,7 +1199,7 @@ func (s *Sim) start(n *node) error {
 		if err == nil {
 			return fmt.Errorf("node %d started on a damaged disk without noticing", n.id)
 		}
-		if !errors.Is(err, wal.ErrCorrupt) && !errors.Is(err, simfs.ErrBadSector) {
+		if !refusesDamage(err) && !errors.Is(err, simfs.ErrBadSector) {
 			return fmt.Errorf("node %d started on a damaged disk: %w", n.id, err)
 		}
 		n.fenced = true
@@ -1249,6 +1249,14 @@ func (s *Sim) start(n *node) error {
 		s.exited(p, err)
 	})
 	return nil
+}
+
+// refusesDamage reports whether err is recovery refusing a log it read
+// damaged. A segment's header has no checksum of its own, so damage to its
+// format version reads as a version this build does not know; refusing
+// the log is still the safe stop (#388).
+func refusesDamage(err error) bool {
+	return errors.Is(err, wal.ErrCorrupt) || errors.Is(err, wal.ErrFormat)
 }
 
 // peerAddrs are the addresses of n's peers it starts with. The node hands
