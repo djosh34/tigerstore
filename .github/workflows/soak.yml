@@ -57,6 +57,7 @@ jobs:
             tail -c 20000000 "$RUNNER_TEMP/soak-out/node$n.log" > "$RUNNER_TEMP/evidence/node$n.log" || true
             cp "$RUNNER_TEMP/soak-out/node$n-memory.txt" "$RUNNER_TEMP/evidence/" || true
           done
+          find "$RUNNER_TEMP/soak-out" -type f -printf '%p %s\n' > "$RUNNER_TEMP/evidence/files.txt"
           cat "$RUNNER_TEMP/evidence/report.json" || true
       - if: always()
         uses: actions/upload-artifact@v6

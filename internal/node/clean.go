@@ -286,6 +286,14 @@ func (c *cleaner) pass(ctx context.Context, short bool) (did bool, err error) {
 	rm, victims := choose(files, live, short)
 	if len(victims) == 0 {
 		c.idle, c.idleFiles, c.idleShort = ckpt, files, short
+		if budget := c.n.cfg.DiskBudget; budget > 0 && l.used.Load() >= budget/2 {
+			var total, values int64
+			for _, f := range files {
+				total += f.Size
+				values += live[f.FileID]
+			}
+			c.n.logf("diag385 cleaner idle checkpoint %d: used %d budget %d, %d eligible files, size %d live %d, first file %+v live %d", ckpt, l.used.Load(), budget, len(files), total, values, files[0], live[files[0].FileID])
+		}
 		return false, nil
 	}
 	pack, err := c.copyLive(f[1], ckpt, victims)
