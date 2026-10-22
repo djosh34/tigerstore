@@ -675,7 +675,13 @@ func (n *Node) forceNewCluster() error {
 // for snapshots this node serves meanwhile.
 func (n *Node) open() error {
 	n.logf("recovering the log")
-	w, rec, err := wal.Open(n.log.fs)
+	open := wal.Open
+	if n.log.w != nil {
+		// The process recovered the log before, and snapshots it serves
+		// can read the old log meanwhile.
+		open = wal.Reopen
+	}
+	w, rec, err := open(n.log.fs)
 	if err != nil {
 		return err
 	}

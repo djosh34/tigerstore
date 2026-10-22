@@ -285,11 +285,22 @@ type WAL struct {
 // returns the log ready for appends. It holds one segment in memory at a
 // time and keeps only where each entry is. A damaged record anywhere else,
 // a gap in the entries, or a commit index past the last entry is
-// ErrCorrupt. It rewrites the newest segment so that what it read is
-// durable (rewrite), takes the term and vote from the
-// copies outside the log if those are newer (vote.go), and removes the
-// checkpoint files that the newest root does not name.
-func Open(fs FS) (*WAL, *Recovered, error) {
+// ErrCorrupt. It reads each file from the disk (readDisk), makes what it
+// read durable, takes the term and vote from the copies outside the log if
+// those are newer (vote.go), and removes the checkpoint files that the
+// newest root does not name.
+func Open(fs FS) (*WAL, *Recovered, error) { return open(fs, true) }
+
+// Reopen is Open in a process that opened the log before and has not
+// stopped on a disk error since: it reads the files as the page cache
+// holds them, without dropping it. A failed sync stops the process, so
+// the page cache holds no page that a failed writeback left, and other
+// goroutines of the process can read the files meanwhile, such as one that
+// serves a snapshot from the old log, which a drop would find in the page
+// cache (#372).
+func Reopen(fs FS) (*WAL, *Recovered, error) { return open(fs, false) }
+
+func open(fs FS, drop bool) (*WAL, *Recovered, error) {
 	names, err := fs.List()
 	if err != nil {
 		return nil, nil, err
@@ -335,7 +346,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		data, err := readDisk(f)
+		data, err := readDisk(f, drop)
 		if err != nil {
 			return nil, nil, errors.Join(err, f.Close())
 		}
@@ -390,7 +401,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 				if err := errors.Join(f.Truncate(lastStart), f.Sync(), f.Close()); err != nil {
 					return nil, nil, err
 				}
-				return Open(fs)
+				return open(fs, drop)
 			}
 			if err := errors.Join(f.Truncate(good), f.Sync()); err != nil {
 				return nil, nil, errors.Join(err, f.Close())
@@ -430,7 +441,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	if err := fs.SyncDir(); err != nil {
 		return nil, nil, errors.Join(err, w.Close())
 	}
-	copies, err := readVotes(fs, names)
+	copies, err := readVotes(fs, names, drop)
 	if err != nil {
 		return nil, nil, errors.Join(err, w.Close())
 	}
@@ -466,25 +477,27 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	return w, rec, nil
 }
 
-// readDisk syncs f, drops its pages from the page cache, and reads it, so
-// that recovery reads what the disk holds. A killed process leaves its
-// writes in the page cache, where the next process reads them: unsynced,
-// a power loss could still take back an entry, a term and vote, or a root
-// that names newer packs and a newer checkpoint, after the node held them
-// durable and removed the files of the older root (#361). The sync writes
-// them. A sync that failed leaves pages that the writeback marked clean,
-// which no later sync writes: a power loss takes them back whatever the
-// next process does. The failed sync's process cuts them off
+// readDisk syncs f, drops its pages from the page cache if drop is set, and
+// reads it, so that recovery reads what the disk holds. A killed process
+// leaves its writes in the page cache, where the next process reads them:
+// unsynced, a power loss could still take back an entry, a term and vote,
+// or a root that names newer packs and a newer checkpoint, after the node
+// held them durable and removed the files of the older root (#361). The
+// sync writes them. A sync that failed leaves pages that the writeback
+// marked clean, which no later sync writes: a power loss takes them back
+// whatever the next process does. The failed sync's process cuts them off
 // (CutUnsynced), but the cut can fail too, and a sync of recovery itself
 // can fail; the drop makes the next read return what the disk holds in
 // their place (#372). A page that stays, which something else holds, fails
 // recovery, and the node tries again at its next start.
-func readDisk(f File) ([]byte, error) {
+func readDisk(f File, drop bool) ([]byte, error) {
 	if err := f.Sync(); err != nil {
 		return nil, err
 	}
-	if err := f.DropCache(); err != nil {
-		return nil, err
+	if drop {
+		if err := f.DropCache(); err != nil {
+			return nil, err
+		}
 	}
 	return f.ReadAll()
 }

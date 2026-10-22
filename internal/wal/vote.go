@@ -95,9 +95,9 @@ type voteCopy struct {
 	hs        HardState
 }
 
-// readVotes reads the copies, of the files in names. It is ErrCorrupt if
-// copies are on disk and none of them verifies.
-func readVotes(fs FS, names []string) ([2]voteCopy, error) {
+// readVotes reads the copies, of the files in names, as readDisk does. It
+// is ErrCorrupt if copies are on disk and none of them verifies.
+func readVotes(fs FS, names []string, drop bool) ([2]voteCopy, error) {
 	var copies [2]voteCopy
 	for i, name := range voteNames {
 		if !slices.Contains(names, name) {
@@ -107,7 +107,7 @@ func readVotes(fs FS, names []string) ([2]voteCopy, error) {
 		if err != nil {
 			return copies, err
 		}
-		b, err := readDisk(f)
+		b, err := readDisk(f, drop)
 		if err := errors.Join(err, f.Close()); err != nil {
 			return copies, err
 		}

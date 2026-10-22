@@ -256,3 +256,48 @@ func TestCutKeepsDriverSyncs(t *testing.T) {
 		}
 	})
 }
+
+// heldFS is a disk on which every drop of the page cache finds a page that
+// something holds.
+type heldFS struct{ *simfs.Disk }
+
+var errHeld = errors.New("a page stays in the page cache")
+
+type heldFile struct{ wal.File }
+
+func (d heldFS) Open(name string) (wal.File, error) {
+	f, err := d.Disk.Open(name)
+	return heldFile{f}, err
+}
+
+func (heldFile) DropCache() error { return errHeld }
+
+// TestReopenKeepsPageCache drops the page cache in Open, which a new
+// process runs, and not in Reopen, which runs in a process that opened
+// the log before. Other goroutines of that process read the old log
+// meanwhile, such as one that serves a snapshot, and a drop finds their
+// pages: a follower that started again from its log after a failed
+// snapshot fetch stopped on that in the coverage job's TestFetchHardCases
+// (#372). A short test, as the simulator holds no page and the node's
+// failure depends on timing.
+func TestReopenKeepsPageCache(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	w.Append(&wal.HardState{Term: 1, Commit: 1}, []*raftpb.Entry{entry(1, 1, "a")})
+	if err := errors.Join(w.Sync(), w.Close()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := wal.Open(heldFS{d}); !errors.Is(err, errHeld) {
+		t.Fatalf("Open with a page held = %v, want the drop's error", err)
+	}
+	w, rec, err := wal.Reopen(heldFS{d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Last != 1 {
+		t.Fatalf("Reopen recovered entries to %d, want 1", rec.Last)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
