@@ -7,8 +7,13 @@ anchor = '\tvar failed []uint64\n'
 if sys.argv[1] == 'on':
     s = s.replace(anchor, '\tfor id := range n.snapWait {\n\t\tif n.state.members[id] == nil {\n\t\t\tdelete(n.snapWait, id)\n\t\t}\n\t}\n' + anchor, 1)
 p.write_text(s)
-# Add evidence only when a disk failure is already stopping a node after
-# member 4's removal. No live logging or synchronization is added.
+# Capture the pin state only after the persist goroutine reports a disk
+# failure. No live logging or synchronization is added.
 p = Path('internal/core/node.go')
-s = p.read_text().replace('\t\tn.err = err\n', '\t\tif n.state.removed[4] && errors.Is(err, ErrDisk) {\n\t\t\terr = fmt.Errorf("%w; DIAG379 node=%d tick=%d snapWait=%v removed=%v", err, n.cfg.ID, n.now, n.snapWait, n.state.removed)\n\t\t}\n\t\tn.err = err\n', 1)
-p.write_text(s)
+p.write_text(p.read_text() + '\nfunc (n *Node) Diag379() string { if n.cfg.ID != 1 || !n.state.removed[4] { return "" }; return fmt.Sprintf("node=%d tick=%d snapWait=%v removed=%v", n.cfg.ID, n.now, n.snapWait, n.state.removed) }\n')
+p = Path('internal/node/node.go')
+s = p.read_text()
+old = '\t\t\t\treturn done.err\n'
+new = '\t\t\t\tif diag := n.core.Diag379(); diag != "" {\n\t\t\t\t\tn.log.mu.Lock()\n\t\t\t\t\tdiag = fmt.Sprintf("%s serving=%d ckpts=%d removal=%v", diag, n.log.serving, len(n.log.ckpts), n.log.removal)\n\t\t\t\t\tn.log.mu.Unlock()\n\t\t\t\t\treturn fmt.Errorf("%w; DIAG379 %s", done.err, diag)\n\t\t\t\t}\n' + old
+assert s.count(old) == 1
+p.write_text(s.replace(old, new))

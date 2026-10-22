@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: ['757c8f77', '9e278809']
+        source: ['757c8f77']
         fix: ['off', 'on']
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
