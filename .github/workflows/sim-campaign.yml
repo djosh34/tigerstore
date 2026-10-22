@@ -27,6 +27,8 @@ jobs:
       GOFLAGS: -p=1
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -52,7 +54,7 @@ jobs:
           set +e
           SIM_OUT="$RUNNER_TEMP/sim-out" SIM_SEED=888737 SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestSeeds$/^888737$' -test.v -test.timeout 25m > "$RUNNER_TEMP/replay.log" 2>&1
           status=$?
-          grep -E 'witness:|hashes of seed|replay:|^(ok|FAIL|PASS)|^--- (PASS|FAIL)' "$RUNNER_TEMP/replay.log" | head -30 || true
+          grep -E 'witness:|hashes: seed|hashes of seed|replay:|^(ok|FAIL|PASS)|^--- (PASS|FAIL)' "$RUNNER_TEMP/replay.log" | head -30 || true
           echo "simulator status=$status version=${{ matrix.version }}"
           if [ '${{ matrix.version }}' = original ]; then
             test "$status" -eq 1 && grep -q 'timed out after 50000000 steps' "$RUNNER_TEMP/replay.log"
