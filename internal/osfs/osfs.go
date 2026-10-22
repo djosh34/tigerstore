@@ -167,7 +167,8 @@ var ErrCached = errors.New("osfs: pages stay in the page cache")
 // held, and fadvise still succeeds, so DropCache then maps the file and
 // asks mincore whether any page stayed, which is ErrCached. A file system
 // in memory has no disk to read back, and neither has a directory whose
-// syncs are no-ops.
+// syncs are no-ops. The check holds on XFS and on ext4 in its default
+// data=ordered mode; docs/design.md names where it does not.
 func (f file) DropCache() error {
 	if f.noSync {
 		return nil
@@ -181,8 +182,8 @@ func (f file) DropCache() error {
 		return err
 	}
 	cerr := rc.Control(func(fd uintptr) {
-		var fs unix.Statfs_t
-		if err = unix.Fstatfs(int(fd), &fs); err != nil || fs.Type == unix.TMPFS_MAGIC || fs.Type == unix.RAMFS_MAGIC {
+		var sfs unix.Statfs_t
+		if err = unix.Fstatfs(int(fd), &sfs); err != nil || sfs.Type == unix.TMPFS_MAGIC || sfs.Type == unix.RAMFS_MAGIC {
 			return
 		}
 		if err = unix.Fadvise(int(fd), 0, 0, unix.FADV_DONTNEED); err != nil || st.Size() == 0 {
