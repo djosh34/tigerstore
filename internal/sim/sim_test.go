@@ -867,7 +867,7 @@ func TestFailedSyncThenRestart(t *testing.T) {
 // power loss later finds a hole where it appended after them (#372).
 func TestFailedCutThenRestart(t *testing.T) {
 	var took effects
-	if !simrun.Each(t, seedRange(3900, 8), func(t *testing.T, seed uint64) int {
+	if !simrun.Each(t, seedRange(3935, 8), func(t *testing.T, seed uint64) int {
 		cfg := DefaultConfig(seed)
 		cfg.Faults = Faults{DiskErrorEvery: 500 * Millisecond, CrashEvery: 2 * Second, MaxDown: Second}
 		cfg.syncFaultExits, cfg.cutFails = true, true

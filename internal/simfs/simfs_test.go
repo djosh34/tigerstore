@@ -264,33 +264,36 @@ func TestFailedSyncKeepsPart(t *testing.T) {
 }
 
 // TestDropCache fails a sync, which leaves its bytes readable but not on
-// the disk, writes after them, and drops the page cache: a read returns
-// what the disk holds in their place, zeros past its end, and the later
-// write, which a sync can still make durable (#372).
+// the disk, and drops the page cache: the clean page reads what the disk
+// holds in their place, zeros past its end, and a page with a write since
+// the failed sync stays whole, as on Linux (#372).
 func TestDropCache(t *testing.T) {
-	d := simfs.New()
-	f := create(t, d, "f")
-	ok(t, d.SyncDir())
-	write(t, f, []byte("aaaa"))
-	ok(t, f.Sync())
-	write(t, f, []byte("bbbb"))
-	d.Fault = func(op simfs.Op, _ string) error {
-		if op == simfs.OpSync {
-			return simfs.ErrIO
+	for _, dirty := range []bool{false, true} {
+		d := simfs.New()
+		f := create(t, d, "f")
+		ok(t, d.SyncDir())
+		write(t, f, []byte("aaaa"))
+		ok(t, f.Sync())
+		write(t, f, []byte("bbbb"))
+		d.Fault = func(op simfs.Op, _ string) error {
+			if op == simfs.OpSync {
+				return simfs.ErrIO
+			}
+			return nil
 		}
-		return nil
-	}
-	if err := f.Sync(); !errors.Is(err, simfs.ErrIO) {
-		t.Fatalf("failed sync = %v", err)
-	}
-	d.Fault = nil
-	write(t, f, []byte("cc"))
-	if got := readAll(t, f); string(got) != "aaaabbbbcc" {
-		t.Fatalf("before the drop, read %q", got)
-	}
-	ok(t, f.DropCache())
-	if got := readAll(t, f); string(got) != "aaaa\x00\x00\x00\x00cc" {
-		t.Fatalf("after the drop, read %q", got)
+		if err := f.Sync(); !errors.Is(err, simfs.ErrIO) {
+			t.Fatalf("failed sync = %v", err)
+		}
+		d.Fault = nil
+		want := "aaaa\x00\x00\x00\x00"
+		if dirty {
+			writeAt(t, f, []byte("cc"), 8)
+			want = "aaaabbbbcc"
+		}
+		ok(t, f.DropCache())
+		if got := readAll(t, f); string(got) != want {
+			t.Errorf("dirty %v: after the drop, read %q, want %q", dirty, got, want)
+		}
 	}
 }
 

@@ -89,7 +89,8 @@ type File interface {
 	// Sync makes the content durable.
 	Sync() error
 	// DropCache drops the file's pages that hold no unsynced write from
-	// the page cache, so that later reads of them read the disk.
+	// the page cache, so that later reads of them read the disk. It fails
+	// if one of them stays.
 	DropCache() error
 	Close() error
 }
@@ -476,7 +477,8 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 // next process does. The failed sync's process cuts them off
 // (CutUnsynced), but the cut can fail too, and a sync of recovery itself
 // can fail; the drop makes the next read return what the disk holds in
-// their place (#372).
+// their place (#372). A page that stays, which something else holds, fails
+// recovery, and the node tries again at its next start.
 func readDisk(f File) ([]byte, error) {
 	if err := f.Sync(); err != nil {
 		return nil, err

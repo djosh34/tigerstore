@@ -850,19 +850,23 @@ func (h *Handle) Sync() error {
 }
 
 // DropCache drops the file's clean pages, as fadvise(POSIX_FADV_DONTNEED)
-// does: the bytes read what the disk holds, with the writes since the last
-// sync on them. Bytes that a failed sync left readable read as the disk
-// keeps them (#372).
+// does: a page that no write since the last sync touched reads what the
+// disk holds, zeros past its end, so bytes that a failed sync left there
+// read as the disk keeps them (#372). A dirty page stays whole, as on
+// Linux. Linux also keeps a page that something holds, which osfs reports
+// (osfs.ErrCached); the model holds none.
 func (h *Handle) DropCache() error {
 	if h.closed {
 		return errClosed
 	}
-	b := slices.Clone(h.f.durable[:min(len(h.f.durable), len(h.f.data))])
-	for _, w := range h.f.pending {
-		b = apply(b, w.off, w.p)
+	for off := 0; off < len(h.f.data); off += PageBytes {
+		end := min(off+PageBytes, len(h.f.data))
+		if slices.ContainsFunc(h.f.pending, func(w write) bool { return w.off < end && w.off+len(w.p) > off }) {
+			continue
+		}
+		n := copy(h.f.data[off:end], h.f.durable[min(off, len(h.f.durable)):min(end, len(h.f.durable))])
+		clear(h.f.data[off+n : end])
 	}
-	b = append(b, make([]byte, max(0, len(h.f.data)-len(b)))...)
-	h.f.data = b
 	return nil
 }
 
