@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/osfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -365,6 +366,76 @@ func TestInstallStartsFromLog(t *testing.T) {
 	}
 	if kept.Load() {
 		t.Fatal("the old core was still there when the new one loaded")
+	}
+}
+
+// pinnedDir is a node's directory on which, once held is set, every drop of
+// the page cache finds a page that something holds, as a read of the log
+// by another goroutine of the process does.
+type pinnedDir struct {
+	osfs.Dir
+	held *atomic.Bool
+}
+
+var errPinned = errors.New("a page stays in the page cache")
+
+type pinnedFile struct {
+	wal.File
+	held *atomic.Bool
+}
+
+func (d pinnedDir) Open(name string) (wal.File, error) {
+	f, err := d.Dir.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return pinnedFile{f, d.held}, nil
+}
+
+func (f pinnedFile) DropCache() error {
+	if f.held.Load() {
+		return errPinned
+	}
+	return f.File.DropCache()
+}
+
+// TestReloadKeepsPageCache is TestInstallStartsFromLog with every drop of
+// the page cache failing once node 3 started. It starts again from its log
+// in the same process after the install, while other goroutines of the
+// process can read the old log: that recovery must not drop the page
+// cache, or a page they read stops a healthy node (#377).
+func TestReloadKeepsPageCache(t *testing.T) {
+	c, err := newBehind(t)
+	defer c.close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reloads atomic.Int32
+	c.tune = func(_ uint64, cfg *Config) {
+		cfg.reloading = func(*Node) { reloads.Add(1) }
+	}
+	cfg := c.config(3)
+	path := filepath.Join(cfg.DataDir, "wal")
+	dir, err := osfs.New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var held atomic.Bool
+	n3, err := newOnDisk(cfg, path, pinnedDir{dir, &held})
+	if err != nil {
+		t.Fatal(err)
+	}
+	held.Store(true)
+	ctx, cancel := context.WithCancel(context.Background())
+	c.net.join(ctx, n3)
+	done := make(chan error, 1)
+	c.ran[3], c.stops[3], c.nodes[3] = done, cancel, n3
+	go func() { done <- n3.Run(ctx, memPeer{net: c.net, id: 3}) }()
+	if err := c.caughtUp(n3, 30*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if reloads.Load() == 0 {
+		t.Fatal("node 3 caught up without starting again from its log")
 	}
 }
 

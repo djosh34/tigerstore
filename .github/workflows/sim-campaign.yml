@@ -3,7 +3,8 @@
 #   - TestSeeds: 100,000 seeds, 2,500 a process, the witness checker in
 #     both modes among them (#148). Each process requires each fault to
 #     take effect in 95% of its seeds, and a process of 2,000 seeds or
-#     more a stalled leader that went silent too (#218, #233).
+#     more a stalled leader that went silent and a write a crash tore
+#     too (#218, #233, #378).
 #   - TestMembershipFaults: 10,000 seeds, 250 a process.
 # Every seed is a gosim run of its own, and 1% of each process's seeds run
 # twice and must give the same hashes. Started by the worker:
