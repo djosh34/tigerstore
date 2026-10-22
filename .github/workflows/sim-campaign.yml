@@ -24,22 +24,29 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - run: cp scripts/diag379.py /tmp/diag379.py; git checkout ${{ matrix.source }}; python3 /tmp/diag379.py ${{ matrix.fix }}
+      - run: cp scripts/diag379.py /tmp/diag379.py; cp internal/core/snapshot_removed_diag_test.go /tmp/snapshot_removed_diag_test.go; git checkout ${{ matrix.source }}; python3 /tmp/diag379.py ${{ matrix.fix }}; cp /tmp/snapshot_removed_diag_test.go internal/core/
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Core pin regression
+        run: |
+          set +e
+          go test ./internal/core -run '^TestDiag379RemovedSnapshotPin$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/unit.log"
+          exit 0
       - name: Reproduce
         env:
           SIM_SEED: ${{ inputs.first }}
           SIM_SEEDS: ${{ inputs.count }}
           SIM_OUT: ${{ runner.temp }}/sim-out
+          SIM_KEEP: '1'
         run: |
           set -o pipefail
-          scripts/sim.sh ./internal/sim '^TestMembershipFaults$' 2>&1 | tee "$RUNNER_TEMP/result.log"
+          scripts/sim.sh ./internal/sim '^TestMembershipFaults$' -test.v 2>&1 | tee "$RUNNER_TEMP/result.log"
       - if: always()
         uses: actions/upload-artifact@v6
         with:
           name: diag379-${{ matrix.source }}-${{ matrix.fix }}
           path: |
             ${{ runner.temp }}/result.log
+            ${{ runner.temp }}/unit.log
             ${{ runner.temp }}/sim-out
