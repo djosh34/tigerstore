@@ -14,8 +14,43 @@ import (
 //go:embed testdata/cold-84216/node*
 var cold84216 embed.FS
 
+// imageDisk is a disk that holds the files of dir in testdata/cold-84216,
+// synced.
+func imageDisk(t *testing.T, dir string) *simfs.Disk {
+	t.Helper()
+	d := simfs.New()
+	dir = path.Join("testdata/cold-84216", dir)
+	ents, err := cold84216.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ents {
+		b, err := cold84216.ReadFile(path.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, err := d.Create(e.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.Write(b); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := d.SyncDir(); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
 // cold84216Checkpoint is the checkpoint the cold restart of membership
-// seed 84216 started from (testdata/cold-84216).
+// seed 84216 started from.
 func cold84216Checkpoint(t *testing.T) *checkpoint {
 	t.Helper()
 	c := &checkpoint{
@@ -23,35 +58,7 @@ func cold84216Checkpoint(t *testing.T) *checkpoint {
 		bad: make([]bool, 4), inactive: make([]bool, 4), started: []bool{true, true, true, true},
 	}
 	for _, dir := range []string{"node1", "node2", "node3-erased", "node4"} {
-		d := simfs.New()
-		dir = path.Join("testdata/cold-84216", dir)
-		ents, err := cold84216.ReadDir(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, e := range ents {
-			b, err := cold84216.ReadFile(path.Join(dir, e.Name()))
-			if err != nil {
-				t.Fatal(err)
-			}
-			f, err := d.Create(e.Name())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := f.Write(b); err != nil {
-				t.Fatal(err)
-			}
-			if err := f.Sync(); err != nil {
-				t.Fatal(err)
-			}
-			if err := f.Close(); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := d.SyncDir(); err != nil {
-			t.Fatal(err)
-		}
-		c.disks = append(c.disks, d)
+		c.disks = append(c.disks, imageDisk(t, dir))
 	}
 	return c
 }
