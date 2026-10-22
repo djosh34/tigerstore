@@ -1,0 +1,1581 @@
+{
+  "ops": [
+    {
+      "client": 7,
+      "call": 245404266,
+      "return": 2025685109,
+      "req": {
+        "delete": {
+          "key": "k5",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "error reading from server: sim: connection reset",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 3,
+      "call": 276250031,
+      "return": 2025904440,
+      "req": {
+        "delete": {
+          "key": "k6"
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 2,
+      "call": 2052385377,
+      "return": 4286144077,
+      "req": {
+        "range": {
+          "key": "k",
+          "end": "l"
+        }
+      },
+      "resp": {
+        "revision": 1,
+        "range": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "client": 5,
+      "call": 2009408601,
+      "return": 4286298632,
+      "req": {
+        "range": {
+          "key": "k6"
+        }
+      },
+      "resp": {
+        "revision": 1,
+        "range": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "client": 0,
+      "call": 2092120209,
+      "return": 4287005618,
+      "req": {
+        "delete": {
+          "key": "k2",
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 3,
+        "delete": {
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "client": 1,
+      "call": 2001319020,
+      "return": 4287076039,
+      "req": {
+        "txn": {
+          "compare": [
+            {
+              "key": "k3",
+              "target": 3,
+              "result": 1
+            }
+          ],
+          "success": [
+            {
+              "put": {
+                "key": "k3",
+                "value": "c1-2"
+              }
+            }
+          ],
+          "failure": [
+            {
+              "range": {
+                "key": "k3"
+              }
+            }
+          ]
+        }
+      },
+      "resp": {
+        "revision": 2,
+        "txn": {
+          "succeeded": true,
+          "results": [
+            {
+              "put": {}
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client": 4,
+      "call": 3289861601,
+      "return": 4287079833,
+      "req": {
+        "txn": {
+          "compare": [
+            {
+              "key": "k2",
+              "target": 3,
+              "result": 1
+            }
+          ],
+          "success": [
+            {
+              "put": {
+                "key": "k2",
+                "value": "c4-7"
+              }
+            }
+          ],
+          "failure": [
+            {
+              "range": {
+                "key": "k2"
+              }
+            }
+          ]
+        }
+      },
+      "resp": {
+        "revision": 4,
+        "txn": {
+          "succeeded": true,
+          "results": [
+            {
+              "put": {}
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client": 3,
+      "call": 2048427513,
+      "return": 4287113236,
+      "req": {
+        "put": {
+          "key": "k1",
+          "value": "c3-3",
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 3,
+        "put": {}
+      }
+    },
+    {
+      "client": 1,
+      "call": 4294709818,
+      "return": 4296363145,
+      "req": {
+        "range": {
+          "key": "k1"
+        }
+      },
+      "resp": {
+        "revision": 4,
+        "range": {
+          "kvs": [
+            {
+              "key": "k1",
+              "value": "c3-3",
+              "createRevision": 3,
+              "modRevision": 3,
+              "version": 1
+            }
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "client": 4,
+      "call": 4299421628,
+      "return": 4301632257,
+      "req": {
+        "range": {
+          "key": "k2"
+        }
+      },
+      "resp": {
+        "revision": 4,
+        "range": {
+          "kvs": [
+            {
+              "key": "k2",
+              "value": "c4-7",
+              "createRevision": 4,
+              "modRevision": 4,
+              "version": 1
+            }
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "client": 0,
+      "call": 4302603094,
+      "return": 4305851835,
+      "req": {
+        "put": {
+          "key": "k5",
+          "value": "c0-6"
+        }
+      },
+      "resp": {
+        "revision": 5,
+        "put": {}
+      }
+    },
+    {
+      "client": 4,
+      "call": 4304726632,
+      "return": 4306821667,
+      "req": {
+        "put": {
+          "key": "k6",
+          "value": "c4-9"
+        }
+      },
+      "resp": {
+        "revision": 6,
+        "put": {}
+      }
+    },
+    {
+      "client": 0,
+      "call": 4334918822,
+      "return": 4335261676,
+      "req": {
+        "range": {
+          "key": "k1",
+          "serializable": true
+        }
+      },
+      "resp": {
+        "revision": 6,
+        "range": {
+          "kvs": [
+            {
+              "key": "k1",
+              "value": "c3-3",
+              "createRevision": 3,
+              "modRevision": 3,
+              "version": 1
+            }
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "client": 4,
+      "call": 4319776536,
+      "return": 5011724057,
+      "req": {
+        "delete": {
+          "key": "k1",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "sim: connection lost",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 0,
+      "call": 5018996170,
+      "return": 5019459115,
+      "req": {
+        "range": {
+          "key": "k1",
+          "serializable": true
+        }
+      },
+      "resp": {
+        "revision": 1,
+        "range": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "client": 4,
+      "call": 5028795627,
+      "return": 5029088633,
+      "req": {
+        "range": {
+          "key": "k1",
+          "serializable": true
+        }
+      },
+      "resp": {
+        "revision": 1,
+        "range": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "client": 8,
+      "call": 6257970659,
+      "return": 6258253442,
+      "req": {
+        "range": {
+          "key": "k6",
+          "serializable": true
+        }
+      },
+      "resp": {
+        "revision": 5,
+        "range": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "client": 2,
+      "call": 7320857996,
+      "return": 7838444892,
+      "req": {
+        "txn": {
+          "compare": [
+            {
+              "key": "k1",
+              "target": 3,
+              "result": 1
+            }
+          ],
+          "success": [
+            {
+              "put": {
+                "key": "k1",
+                "value": "c2-7"
+              }
+            }
+          ],
+          "failure": [
+            {
+              "range": {
+                "key": "k1"
+              }
+            }
+          ]
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "sim: connection lost",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 0,
+      "call": 5051329857,
+      "return": 7838447709,
+      "req": {
+        "txn": {
+          "success": [
+            {
+              "put": {
+                "key": "k2",
+                "value": "c0-13a",
+                "prevKV": true
+              }
+            },
+            {
+              "put": {
+                "key": "k4",
+                "value": "c0-13b"
+              }
+            }
+          ]
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "sim: connection lost",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 8,
+      "call": 6532116576,
+      "return": 7842243914,
+      "req": {
+        "put": {
+          "key": "k3",
+          "value": "c8-5",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "error reading from server: sim: connection reset",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 5,
+      "call": 7304124719,
+      "return": 7842391158,
+      "req": {
+        "put": {
+          "key": "k3",
+          "value": "c5-4",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "sim: connection lost",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 1,
+      "call": 7333076158,
+      "return": 7842459689,
+      "req": {
+        "put": {
+          "key": "k6",
+          "value": "c1-7",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "sim: connection lost",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 8,
+      "call": 7844325975,
+      "return": 9490830006,
+      "req": {
+        "put": {
+          "key": "k4",
+          "value": "c8-6",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "error reading from server: sim: connection reset",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 1,
+      "call": 8366922181,
+      "return": 9490931765,
+      "req": {
+        "put": {
+          "key": "k2",
+          "value": "c1-58"
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "sim: connection lost",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 4,
+      "call": 8370441419,
+      "return": 9490950962,
+      "req": {
+        "delete": {
+          "key": "k4",
+          "end": "k7"
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 5,
+      "call": 8363054114,
+      "return": 9490989709,
+      "req": {
+        "leaseGrant": {
+          "ttl": 3
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 0,
+      "call": 8329484179,
+      "return": 9491011827,
+      "req": {
+        "txn": {
+          "compare": [
+            {
+              "key": "k5",
+              "target": 3,
+              "result": 1
+            }
+          ],
+          "success": [
+            {
+              "put": {
+                "key": "k5",
+                "value": "c0-63"
+              }
+            }
+          ],
+          "failure": [
+            {
+              "range": {
+                "key": "k5"
+              }
+            }
+          ]
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "sim: connection lost",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 2,
+      "call": 8368715767,
+      "return": 9491143681,
+      "req": {
+        "delete": {
+          "key": "k2",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 7,
+      "call": 8048053236,
+      "return": 9492668940,
+      "req": {
+        "put": {
+          "key": "k6",
+          "value": "c7-4",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 7,
+      "call": 9508766311,
+      "return": 10128629630,
+      "req": {
+        "leaseGrant": {
+          "ttl": 4
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "error reading from server: sim: connection reset",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 3,
+      "call": 10161719559,
+      "return": 13161719559,
+      "req": {
+        "delete": {
+          "key": "k2"
+        }
+      },
+      "err": {
+        "code": "DeadlineExceeded",
+        "message": "sim: client timed out",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 3,
+      "call": 13554442248,
+      "return": 13554832076,
+      "req": {
+        "range": {
+          "key": "k2",
+          "serializable": true
+        }
+      },
+      "resp": {
+        "revision": 5,
+        "range": {
+          "kvs": [
+            {
+              "key": "k2",
+              "value": "c4-7",
+              "createRevision": 4,
+              "modRevision": 4,
+              "version": 1
+            }
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "client": 4,
+      "call": 13146593038,
+      "return": 13960174865,
+      "req": {
+        "delete": {
+          "key": "k3",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "sim: connection lost",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 2,
+      "call": 14449187728,
+      "return": 14685627587,
+      "req": {
+        "delete": {
+          "key": "k0",
+          "end": "k3",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 0,
+      "call": 15089921905,
+      "return": 15572221337,
+      "req": {
+        "delete": {
+          "key": "k3"
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "sim: connection lost",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 0,
+      "call": 16327700769,
+      "return": 19030024031,
+      "req": {
+        "delete": {
+          "key": "k2",
+          "end": "k5"
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "sim: connection lost",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 6,
+      "call": 17439384673,
+      "return": 20439384673,
+      "req": {
+        "delete": {
+          "key": "k7",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "DeadlineExceeded",
+        "message": "sim: client timed out",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 2,
+      "call": 19548831028,
+      "return": 21675490700,
+      "req": {
+        "delete": {
+          "key": "k0",
+          "end": "k3"
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 7,
+      "call": 21313030170,
+      "return": 21675516869,
+      "req": {
+        "put": {
+          "key": "k5",
+          "value": "c7-11",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 1,
+      "call": 19544584574,
+      "return": 21675520652,
+      "req": {
+        "txn": {
+          "compare": [
+            {
+              "key": "k5",
+              "target": 3,
+              "result": 1
+            }
+          ],
+          "success": [
+            {
+              "put": {
+                "key": "k5",
+                "value": "c1-246"
+              }
+            }
+          ],
+          "failure": [
+            {
+              "range": {
+                "key": "k5"
+              }
+            }
+          ]
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 4,
+      "call": 19538028401,
+      "return": 21675671762,
+      "req": {
+        "delete": {
+          "key": "k1"
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 0,
+      "call": 19550784331,
+      "return": 21675746290,
+      "req": {
+        "delete": {
+          "key": "k4",
+          "end": "k7",
+          "prevKV": true
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 5,
+      "call": 19589053604,
+      "return": 21675749919,
+      "req": {
+        "txn": {
+          "success": [
+            {
+              "put": {
+                "key": "k5",
+                "value": "c5-254a",
+                "prevKV": true
+              }
+            },
+            {
+              "put": {
+                "key": "k7",
+                "value": "c5-254b"
+              }
+            }
+          ]
+        }
+      },
+      "err": {
+        "code": "Unavailable",
+        "message": "etcdserver: server stopped",
+        "ambiguous": true
+      }
+    },
+    {
+      "client": 8,
+      "call": 21534541004,
+      "return": 21772143917,
+      "req": {
+        "delete": {
+          "key": "k4",
+          "end": "k7"
+        }
+      },
+      "resp": {
+        "revision": 16,
+        "delete": {
+          "deleted": 1
+        }
+      }
+    },
+    {
+      "client": 0,
+      "call": 21693742447,
+      "return": 21772338870,
+      "req": {
+        "put": {
+          "key": "k5",
+          "value": "c0-260",
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 23,
+        "put": {
+          "prevKV": {
+            "key": "k5",
+            "value": "c7-11",
+            "createRevision": 20,
+            "modRevision": 21,
+            "version": 2
+          }
+        }
+      }
+    },
+    {
+      "client": 5,
+      "call": 21698241807,
+      "return": 21772345265,
+      "req": {
+        "delete": {
+          "key": "k2",
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 24,
+        "delete": {
+          "deleted": 1,
+          "prevKVs": [
+            {
+              "key": "k2",
+              "value": "c2-246",
+              "createRevision": 22,
+              "modRevision": 22,
+              "version": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client": 2,
+      "call": 21684232515,
+      "return": 21772424118,
+      "req": {
+        "txn": {
+          "compare": [
+            {
+              "key": "k2",
+              "target": 3,
+              "result": 1
+            }
+          ],
+          "success": [
+            {
+              "put": {
+                "key": "k2",
+                "value": "c2-246"
+              }
+            }
+          ],
+          "failure": [
+            {
+              "range": {
+                "key": "k2"
+              }
+            }
+          ]
+        }
+      },
+      "resp": {
+        "revision": 22,
+        "txn": {
+          "succeeded": true,
+          "results": [
+            {
+              "put": {}
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client": 3,
+      "call": 21688665021,
+      "return": 21772612328,
+      "req": {
+        "range": {
+          "key": "k",
+          "end": "l",
+          "limit": 1
+        }
+      },
+      "resp": {
+        "revision": 24,
+        "range": {
+          "kvs": [
+            {
+              "key": "k3",
+              "value": "c5-4",
+              "createRevision": 2,
+              "modRevision": 8,
+              "version": 3
+            }
+          ],
+          "count": 3,
+          "more": true
+        }
+      }
+    },
+    {
+      "client": 1,
+      "call": 21693915536,
+      "return": 21772724035,
+      "req": {
+        "range": {
+          "key": "k1"
+        }
+      },
+      "resp": {
+        "revision": 24,
+        "range": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "client": 4,
+      "call": 21680888132,
+      "return": 21773678177,
+      "req": {
+        "txn": {
+          "compare": [
+            {
+              "key": "k7",
+              "target": 3,
+              "result": 1
+            }
+          ],
+          "success": [
+            {
+              "put": {
+                "key": "k7",
+                "value": "c4-267"
+              }
+            }
+          ],
+          "failure": [
+            {
+              "range": {
+                "key": "k7"
+              }
+            }
+          ]
+        }
+      },
+      "resp": {
+        "revision": 24,
+        "txn": {
+          "succeeded": false,
+          "results": [
+            {
+              "range": {
+                "kvs": [
+                  {
+                    "key": "k7",
+                    "value": "c5-254b",
+                    "createRevision": 20,
+                    "modRevision": 20,
+                    "version": 1
+                  }
+                ],
+                "count": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client": 3,
+      "call": 21779399570,
+      "return": 21780120249,
+      "req": {
+        "range": {
+          "key": "k3"
+        }
+      },
+      "resp": {
+        "revision": 24,
+        "range": {
+          "kvs": [
+            {
+              "key": "k3",
+              "value": "c5-4",
+              "createRevision": 2,
+              "modRevision": 8,
+              "version": 3
+            }
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "client": 2,
+      "call": 21780155490,
+      "return": 21780786879,
+      "req": {
+        "range": {
+          "key": "k6"
+        }
+      },
+      "resp": {
+        "revision": 24,
+        "range": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "client": 4,
+      "call": 21785845120,
+      "return": 21787673138,
+      "req": {
+        "txn": {
+          "compare": [
+            {
+              "key": "k7",
+              "target": 3,
+              "result": 1,
+              "number": 20
+            }
+          ],
+          "success": [
+            {
+              "put": {
+                "key": "k7",
+                "value": "c4-268"
+              }
+            }
+          ],
+          "failure": [
+            {
+              "range": {
+                "key": "k7"
+              }
+            }
+          ]
+        }
+      },
+      "resp": {
+        "revision": 25,
+        "txn": {
+          "succeeded": true,
+          "results": [
+            {
+              "put": {}
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client": 5,
+      "call": 21788966947,
+      "return": 21789941930,
+      "req": {
+        "range": {
+          "key": "k0"
+        }
+      },
+      "resp": {
+        "revision": 25,
+        "range": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "client": 2,
+      "call": 21788680335,
+      "return": 21790140056,
+      "req": {
+        "put": {
+          "key": "k5",
+          "value": "c2-248",
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 26,
+        "put": {
+          "prevKV": {
+            "key": "k5",
+            "value": "c0-260",
+            "createRevision": 20,
+            "modRevision": 23,
+            "version": 3
+          }
+        }
+      }
+    },
+    {
+      "client": 8,
+      "call": 21790595384,
+      "return": 21791528121,
+      "req": {
+        "put": {
+          "key": "k2",
+          "value": "c8-12",
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 27,
+        "put": {}
+      }
+    },
+    {
+      "client": 1,
+      "call": 21794373469,
+      "return": 21794948218,
+      "req": {
+        "range": {
+          "key": "k1"
+        }
+      },
+      "resp": {
+        "revision": 27,
+        "range": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "client": 8,
+      "call": 21795395982,
+      "return": 21796152054,
+      "req": {
+        "delete": {
+          "key": "k3"
+        }
+      },
+      "resp": {
+        "revision": 28,
+        "delete": {
+          "deleted": 1
+        }
+      }
+    },
+    {
+      "client": 7,
+      "call": 21676110176,
+      "return": 21798103577,
+      "req": {
+        "range": {
+          "key": "k7"
+        }
+      },
+      "resp": {
+        "revision": 28,
+        "range": {
+          "kvs": [
+            {
+              "key": "k7",
+              "value": "c4-268",
+              "createRevision": 20,
+              "modRevision": 25,
+              "version": 2
+            }
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "client": 5,
+      "call": 21804194784,
+      "return": 21805116388,
+      "req": {
+        "range": {
+          "key": "k",
+          "end": "l"
+        }
+      },
+      "resp": {
+        "revision": 28,
+        "range": {
+          "kvs": [
+            {
+              "key": "k2",
+              "value": "c8-12",
+              "createRevision": 27,
+              "modRevision": 27,
+              "version": 1
+            },
+            {
+              "key": "k5",
+              "value": "c2-248",
+              "createRevision": 20,
+              "modRevision": 26,
+              "version": 4
+            },
+            {
+              "key": "k7",
+              "value": "c4-268",
+              "createRevision": 20,
+              "modRevision": 25,
+              "version": 2
+            }
+          ],
+          "count": 3
+        }
+      }
+    },
+    {
+      "client": 2,
+      "call": 21804912922,
+      "return": 21805466255,
+      "req": {
+        "range": {
+          "key": "k5"
+        }
+      },
+      "resp": {
+        "revision": 28,
+        "range": {
+          "kvs": [
+            {
+              "key": "k5",
+              "value": "c2-248",
+              "createRevision": 20,
+              "modRevision": 26,
+              "version": 4
+            }
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "client": 3,
+      "call": 21804646819,
+      "return": 21805691856,
+      "req": {
+        "put": {
+          "key": "k7",
+          "value": "c3-294",
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 29,
+        "put": {
+          "prevKV": {
+            "key": "k7",
+            "value": "c4-268",
+            "createRevision": 20,
+            "modRevision": 25,
+            "version": 2
+          }
+        }
+      }
+    },
+    {
+      "client": 8,
+      "call": 21808784349,
+      "return": 21809976854,
+      "req": {
+        "txn": {
+          "success": [
+            {
+              "put": {
+                "key": "k5",
+                "value": "c8-14a",
+                "prevKV": true
+              }
+            },
+            {
+              "put": {
+                "key": "k4",
+                "value": "c8-14b"
+              }
+            }
+          ]
+        }
+      },
+      "resp": {
+        "revision": 30,
+        "txn": {
+          "succeeded": true,
+          "results": [
+            {
+              "put": {
+                "prevKV": {
+                  "key": "k5",
+                  "value": "c2-248",
+                  "createRevision": 20,
+                  "modRevision": 26,
+                  "version": 4
+                }
+              }
+            },
+            {
+              "put": {}
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client": 7,
+      "call": 21811435758,
+      "return": 21812116950,
+      "req": {
+        "range": {
+          "key": "k1"
+        }
+      },
+      "resp": {
+        "revision": 30,
+        "range": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "client": 8,
+      "call": 21813538420,
+      "return": 21813793099,
+      "req": {
+        "range": {
+          "key": "k4",
+          "serializable": true
+        }
+      },
+      "resp": {
+        "revision": 31,
+        "range": {
+          "kvs": [
+            {
+              "key": "k4",
+              "value": "c8-14b",
+              "createRevision": 30,
+              "modRevision": 30,
+              "version": 1
+            }
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "client": 2,
+      "call": 21812681675,
+      "return": 21813868702,
+      "req": {
+        "delete": {
+          "key": "k1",
+          "end": "k4",
+          "prevKV": true
+        }
+      },
+      "resp": {
+        "revision": 31,
+        "delete": {
+          "deleted": 1,
+          "prevKVs": [
+            {
+              "key": "k2",
+              "value": "c8-12",
+              "createRevision": 27,
+              "modRevision": 27,
+              "version": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client": 0,
+      "call": 21814942421,
+      "return": 21816369997,
+      "req": {
+        "put": {
+          "key": "k3",
+          "value": "c0-263"
+        }
+      },
+      "resp": {
+        "revision": 32,
+        "put": {}
+      }
+    },
+    {
+      "client": 4,
+      "call": 21817399343,
+      "return": 21817730885,
+      "req": {
+        "range": {
+          "key": "k1"
+        }
+      },
+      "resp": {
+        "revision": 32,
+        "range": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "client": 2,
+      "call": 21822242336,
+      "return": 21823114657,
+      "req": {
+        "range": {
+          "key": "k",
+          "end": "l",
+          "limit": 3
+        }
+      },
+      "resp": {
+        "revision": 32,
+        "range": {
+          "kvs": [
+            {
+              "key": "k3",
+              "value": "c0-263",
+              "createRevision": 32,
+              "modRevision": 32,
+              "version": 1
+            },
+            {
+              "key": "k4",
+              "value": "c8-14b",
+              "createRevision": 30,
+              "modRevision": 30,
+              "version": 1
+            },
+            {
+              "key": "k5",
+              "value": "c8-14a",
+              "createRevision": 20,
+              "modRevision": 30,
+              "version": 5
+            }
+          ],
+          "count": 4,
+          "more": true
+        }
+      }
+    },
+    {
+      "client": 0,
+      "call": 21823140398,
+      "return": 21823838395,
+      "req": {
+        "range": {
+          "key": "k",
+          "end": "l",
+          "limit": 1
+        }
+      },
+      "resp": {
+        "revision": 32,
+        "range": {
+          "kvs": [
+            {
+              "key": "k3",
+              "value": "c0-263",
+              "createRevision": 32,
+              "modRevision": 32,
+              "version": 1
+            }
+          ],
+          "count": 4,
+          "more": true
+        }
+      }
+    }
+  ]
+}

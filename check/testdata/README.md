@@ -32,3 +32,12 @@ after them.
 at header revision 70. A lease's ambiguous expiry, called when the lease
 was granted, came first among the candidates of every gap and fitted one
 that a delete wrote, so the search tried every order of the gaps after it.
+
+`seed-888737.json` comes from simulator campaign
+[39783211128](https://github.com/djosh34/tigerstore/actions/runs/39783211128)
+on `8896f002`, artifact `sim-campaign-17`. It was cut the same way at
+header revision 32, leaving 70 operations. All effects, watches and the
+committed log were removed. At revision 8 the search accepted a put of
+`k3` with version 2, although a later read showed its mod revision was 8
+and its version was 3. It then searched permutations of the later gaps
+instead of retrying revision 7, which needed another put of `k3`. See #386.

@@ -1262,11 +1262,13 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			return false
 		}
 		// A key it changes inside a life a client saw stays in that
-		// life: created then, with no more versions than seen.
+		// life: created then, with no more versions than seen. At its
+		// observed last write, the version must already match: a later
+		// revision cannot repair it without changing the mod revision.
 		for l, to := range r.lives[e.KV.Key] {
 			if l.c <= rev && rev <= to {
 				kv, ok := s.get(e.KV.Key)
-				if !ok || kv.CreateRevision != l.c || kv.Version > l.v {
+				if !ok || kv.CreateRevision != l.c || kv.Version > l.v || rev == l.m && kv.Version != l.v {
 					return false
 				}
 			}
