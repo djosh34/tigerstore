@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,14 +20,17 @@ import (
 // near half the budget, so the front stays more than half live until the
 // files near the budget. The cleaner must still keep them below it: while
 // it took the oldest segments however live only at the budget, a put
-// got NOSPACE after round 6, with nothing cleaned (#385).
+// got NOSPACE after round 6, with nothing cleaned (#385). From three
+// quarters of the budget, where it takes them, it must keep no spare
+// files either, as their space is what is short (TestNoSpace, #385).
 func TestCleanerHeadroom(t *testing.T) {
 	if simrun.Drive(t, 385) {
 		return
 	}
 	simrun.Bubble(t, func(t *testing.T) {
 		cfg := DefaultConfig(385)
-		cfg.Faults = Faults{DiskBudget: 192 << 10}
+		const budget = 192 << 10
+		cfg.Faults = Faults{DiskBudget: budget}
 		cfg.SegmentBytes = 16 << 10
 		s, err := newSim(cfg)
 		if err != nil {
@@ -80,6 +84,18 @@ func TestCleanerHeadroom(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Logf("round %d: node %d has %d bytes of files, cleaned %d", round, n.id, m.DiskBytes, m.CleanedBytes)
+				if m.DiskBytes < budget-budget/4 {
+					continue
+				}
+				names, err := n.disk.List()
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, name := range names {
+					if strings.HasPrefix(name, "spare-") {
+						t.Fatalf("round %d: node %d keeps %s with %d bytes of files, where space is short", round, n.id, name, m.DiskBytes)
+					}
+				}
 			}
 			if a := do(&pb.AlarmRequest{Action: pb.AlarmRequest_GET}).(*pb.AlarmResponse); len(a.GetAlarms()) > 0 {
 				t.Fatalf("round %d: alarms %v with 92 KiB of live values on a 192 KiB budget", round, a.GetAlarms())

@@ -39,13 +39,13 @@ import (
 // it once cleaning brought the files below the budget. From three
 // quarters of the budget space is short: the cleaner takes the oldest
 // segments however much of them is live, so that it has room to clean in
-// before the alarm. Waiting for the budget itself left none, as a front
-// of segments just over half live, or live values near half the budget,
-// held back every pass until then (#385). Past the budget, it also runs
-// without pause and keeps no spare files: they hold nothing, and the
+// before the alarm, and keeps no spare files: they hold nothing, and the
 // spares a pass's removals made would hold the files above the budget
-// (#181). Below three quarters, it cleans what is mostly dead, at most
-// half the time.
+// (#181). Waiting for the budget itself left no room, as a front of
+// segments just over half live, or live values near half the budget,
+// held back every pass until then (#385). Past the budget, it also runs
+// without pause. Below three quarters, it cleans what is mostly dead, at
+// most half the time.
 // Without a budget, the cleaner cleans only for Defragment. Every
 // compaction cuts a checkpoint, so the space it frees comes back.
 
@@ -96,18 +96,19 @@ type cleaner struct {
 	files      []string
 	keep, kept uint64
 	retryAt    time.Time
-	// past is whether the files were past the budget at the last measure,
-	// and sparesGone whether the spare files were removed since.
-	past, sparesGone bool
+	// past and short are whether the files were past the budget, and at
+	// three quarters of it, at the last measure, and sparesGone whether
+	// the spare files were removed since space became short.
+	past, short, sparesGone bool
 }
 
 // spares is how many removed segments the log keeps as spare files: none
-// past the budget, and within one at most an eighth of it, as they count
-// against it.
+// while space is short, and below that at most an eighth of the budget,
+// as they count against it.
 func (c *cleaner) spares() int {
 	cfg := c.n.cfg
 	switch {
-	case c.past:
+	case c.short:
 		return 0
 	case cfg.DiskBudget > 0:
 		return int(min(wal.MaxSpares, cfg.DiskBudget/8/cmp.Or(cfg.SegmentBytes, int64(wal.SegmentBytes))))
@@ -134,7 +135,6 @@ func (c *cleaner) run(ctx context.Context) error {
 	tick := time.NewTicker(cleanTick)
 	defer tick.Stop()
 	for {
-		var short bool
 		if budget > 0 {
 			used, err := c.n.log.fs.Usage()
 			if err != nil {
@@ -142,12 +142,12 @@ func (c *cleaner) run(ctx context.Context) error {
 			}
 			c.n.log.used.Store(used)
 			c.past = used >= budget
-			short = used >= budget-budget/4
+			c.short = used >= budget-budget/4
 		}
 		c.remove()
 		if budget > 0 && c.pending == nil {
 			start := time.Now()
-			did, err := c.pass(ctx, short)
+			did, err := c.pass(ctx, c.short)
 			if errors.Is(err, errServing) {
 				did, err = false, nil
 			}
@@ -484,7 +484,7 @@ func (c *cleaner) walk(f io.Reader, ckpt uint64, fn func(wal.FileID, mvcc.Ref) e
 // remove drops from the log what durable roots made obsolete and what
 // the last pass replaced, unless a snapshot fetch or a value read is under
 // way, as either may read it. It then removes their files, outside the
-// lock, and past the budget the spare files.
+// lock, and while space is short the spare files.
 func (c *cleaner) remove() {
 	l := c.n.log
 	l.mu.Lock()
@@ -524,11 +524,11 @@ func (c *cleaner) remove() {
 			c.kept = c.keep
 		}
 	}
-	if err == nil && c.past && !c.sparesGone {
+	if err == nil && c.short && !c.sparesGone {
 		err = wal.RemoveSpares(l.fs, 0)
 		c.sparesGone = err == nil
 	}
-	c.sparesGone = c.sparesGone && c.past
+	c.sparesGone = c.sparesGone && c.short
 	if err != nil {
 		c.failed(err)
 	}
