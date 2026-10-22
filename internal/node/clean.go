@@ -140,7 +140,11 @@ func (c *cleaner) run(ctx context.Context) error {
 		c.remove()
 		if budget > 0 && c.pending == nil {
 			start := time.Now()
-			did, err := c.pass(ctx, c.past)
+			// Keep headroom for cleaning before the disk raises NOSPACE.
+			// Mostly live leading segments otherwise block dead ones until
+			// the budget is already exhausted.
+			pressure := c.n.log.used.Load() >= budget-budget/4
+			did, err := c.pass(ctx, pressure)
 			if errors.Is(err, errServing) {
 				did, err = false, nil
 			}
