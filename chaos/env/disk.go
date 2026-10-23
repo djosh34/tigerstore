@@ -20,7 +20,6 @@ type Disk struct {
 	Data string
 	// Backing is the ext4 mount.
 	Backing string
-	dir     string
 	img     string
 	loop    string
 	sectors int64
@@ -35,7 +34,7 @@ func NewDisk(dir, name string, size int64) (_ *Disk, err error) {
 	if dir, err = filepath.Abs(dir); err != nil {
 		return nil, err
 	}
-	d := &Disk{Name: name, dir: dir, img: filepath.Join(dir, name+".img"), Backing: filepath.Join(dir, name+".ext4"), mode: "linear"}
+	d := &Disk{Name: name, img: filepath.Join(dir, name+".img"), Backing: filepath.Join(dir, name+".ext4"), mode: "linear"}
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, d.Close())
