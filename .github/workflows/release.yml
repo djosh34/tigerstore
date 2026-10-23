@@ -2,12 +2,14 @@
 # commit and its gates, builds the linux amd64 and arm64 binaries and the
 # multi-arch image ghcr.io/djosh34/tigerstore:<version>, runs the rolling
 # upgrade from the previous release, and as its last step creates the tag
-# and the GitHub release. The gates, all found by the check job:
-#   - a successful ci push run on the commit;
-#   - a successful sim-campaign run of TestSeeds and one of
-#     TestMembershipFaults on the commit, and a successful chaos-env run;
-#   - the latest successful conformance run and 5-hour soak run on main,
-#     linked in the notes with the bug batch's bench run, an input.
+# and the GitHub release. The image is pushed only after the upgrade
+# passed. The gates, all found by the check job:
+#   - on the commit, the newest finished ci push run, sim-campaign run of
+#     TestSeeds, of TestMembershipFaults, and chaos-env run, each of which
+#     must have succeeded;
+#   - the latest successful conformance run of tigerstore and 5-hour soak
+#     on main, linked in the notes with the bug batch's bench run, an
+#     input.
 #   gh workflow run release.yml -f version=v0.1.0 -f sha=<commit> -f bench_run=<run>
 # With -f candidate=true the run checks only the commit and ci, and
 # pushes the image as <version>-candidate, with no tag and no release. A
@@ -77,35 +79,40 @@ jobs:
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          fail() { echo "$*"; exit 1; }
+          fail() { echo "$*" >&2; exit 1; }
           [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "version $VERSION is not vX.Y.Z"
           tags=$(gh api "repos/$REPO/git/matching-refs/tags/$VERSION" -q "map(select(.ref == \"refs/tags/$VERSION\")) | length")
           [ "$tags" = 0 ] || fail "tag $VERSION exists, and a tag is never moved"
           SHA=$(gh api "repos/$REPO/commits/${SHA:-main}" -q .sha)
           status=$(gh api "repos/$REPO/compare/$SHA...main" -q .status)
           [[ "$status" == identical || "$status" == ahead ]] || fail "$SHA is not on main: main is $status of it"
-          # newest prints the ID of the newest successful run of workflow
+          # newest prints "<ID> <conclusion>" of the newest run of workflow
           # $1 that matches the query $2 and has $3 in its title.
           newest() {
-            gh api "repos/$REPO/actions/workflows/$1/runs?status=success&per_page=100&$2" \
-              -q "[.workflow_runs[] | select(.display_title | contains(\"${3:-}\")) | .id][0] // empty"
+            gh api "repos/$REPO/actions/workflows/$1/runs?per_page=100&$2" \
+              -q "[.workflow_runs[] | select(.display_title | contains(\"${3:-}\")) | \"\(.id) \(.conclusion)\"][0] // empty"
           }
-          ci=$(newest ci.yml "head_sha=$SHA&event=push")
-          [ -n "$ci" ] || fail "no successful ci push run on $SHA"
+          # gate prints the ID of the newest finished run of workflow $1 on
+          # the commit with $2 in its title, and fails unless it succeeded:
+          # a pass before it does not count.
+          gate() {
+            local id conclusion
+            read -r id conclusion <<< "$(newest "$1" "status=completed&head_sha=$SHA${3:+&event=$3}" "${2:-}")"
+            [ "$conclusion" = success ] || fail "the newest finished $1 run ${2:+of $2 }on $SHA is ${id:-missing}${id:+, $conclusion}"
+            echo "$id"
+          }
+          ci=$(gate ci.yml "" push)
           runs="ci push run on this commit|$ci"
           image=ghcr.io/$REPO:$VERSION
           if [ "$CANDIDATE" = true ]; then
             image=$image-candidate
           else
-            seeds=$(newest sim-campaign.yml "head_sha=$SHA" TestSeeds)
-            membership=$(newest sim-campaign.yml "head_sha=$SHA" TestMembershipFaults)
-            chaos=$(newest chaos-env.yml "head_sha=$SHA")
-            conformance=$(newest conformance.yml branch=main)
-            soak=$(newest soak.yml branch=main "soak 5h")
-            [ -n "$seeds" ] || fail "no successful sim-campaign run of TestSeeds on $SHA"
-            [ -n "$membership" ] || fail "no successful sim-campaign run of TestMembershipFaults on $SHA"
-            [ -n "$chaos" ] || fail "no successful chaos-env run on $SHA"
-            [ -n "$conformance" ] || fail "no successful conformance run on main"
+            seeds=$(gate sim-campaign.yml TestSeeds)
+            membership=$(gate sim-campaign.yml TestMembershipFaults)
+            chaos=$(gate chaos-env.yml)
+            conformance=$(newest conformance.yml "status=success&branch=main" "conformance tigerstore" | cut -d' ' -f1)
+            soak=$(newest soak.yml "status=success&branch=main" "soak 5h" | cut -d' ' -f1)
+            [ -n "$conformance" ] || fail "no successful conformance run of tigerstore on main"
             [ -n "$soak" ] || fail "no successful 5-hour soak run on main"
             [ -n "$BENCH_RUN" ] || fail "bench_run is empty"
             bench=$(gh api "repos/$REPO/actions/runs/$BENCH_RUN" -q 'select(.path == ".github/workflows/bench.yml" and .conclusion == "success") | .id')
@@ -163,7 +170,7 @@ jobs:
           if-no-files-found: error
 
   image:
-    needs: [check, binaries]
+    needs: [check, binaries, upgrade]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     permissions:
@@ -212,6 +219,8 @@ jobs:
     needs: [check, binaries]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
+    outputs:
+      previous: ${{ steps.upgrade.outputs.previous }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -223,7 +232,8 @@ jobs:
         with:
           name: bin-arm64
           path: ${{ runner.temp }}/dist
-      - env:
+      - id: upgrade
+        env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           VERSION: ${{ needs.check.outputs.version }}
@@ -231,6 +241,7 @@ jobs:
         run: |
           set -euo pipefail
           previous=$(gh api "repos/$REPO/releases" -q '[.[] | select(.draft == false and .prerelease == false) | .tag_name][0] // empty')
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
           if [ -z "$previous" ]; then
             echo "There is no release before $VERSION, so no binary to upgrade from: the upgrade passes without a run."
             exit 0
@@ -250,7 +261,7 @@ jobs:
 
   release:
     if: github.event_name == 'workflow_dispatch' && !inputs.candidate
-    needs: [check, binaries, image, upgrade]
+    needs: [check, binaries, upgrade, image]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     permissions:
@@ -269,6 +280,7 @@ jobs:
           IMAGE: ${{ needs.check.outputs.image }}
           DIGEST: ${{ needs.image.outputs.digest }}
           RUNS: ${{ needs.check.outputs.runs }}
+          PREVIOUS: ${{ needs.upgrade.outputs.previous }}
         run: |
           set -euo pipefail
           (cd dist && sha256sum tigerstore-* > SHA256SUMS && cat SHA256SUMS)
@@ -284,7 +296,11 @@ jobs:
             echo "$RUNS" | tr ';' '\n' | while IFS='|' read -r what id; do
               gh api "repos/$REPO/actions/runs/$id" -q "\"- $what: [\\(.display_title)]($url/$id), on \\(.head_sha[0:8])\""
             done
-            echo "- Rolling upgrade from the previous release: [this release run]($url/$GITHUB_RUN_ID)"
+            if [ -n "$PREVIOUS" ]; then
+              echo "- Rolling upgrade from $PREVIOUS, then a downgrade of one node: the upgrade job of [this run]($url/$GITHUB_RUN_ID)"
+            else
+              echo "- Rolling upgrade: none, as this is the first release"
+            fi
           } > notes.md
           cat notes.md
           # The release creates the tag on $SHA.

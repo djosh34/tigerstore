@@ -350,7 +350,7 @@ func (r *rollingRun) stage(name string, version int) {
 }
 
 // settle waits until every node has active version want, and fails
-// unless writes succeed meanwhile.
+// unless they still have it 3 s later and writes succeed meanwhile.
 func (r *rollingRun) settle(name string, want int) {
 	r.t.Helper()
 	begin := r.traffic.r.now()
@@ -358,6 +358,9 @@ func (r *rollingRun) settle(name string, want int) {
 		r.activeVersion(i, want)
 	}
 	time.Sleep(3 * time.Second)
+	for i := range 3 {
+		r.activeVersion(i, want)
+	}
 	writes := r.writesSince(begin)
 	if writes == 0 {
 		r.t.Fatalf("%s: no successful writes during stage", name)
