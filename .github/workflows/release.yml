@@ -1,0 +1,292 @@
+# Releases a commit of main, started by hand (#355). One run checks the
+# commit and its gates, builds the linux amd64 and arm64 binaries and the
+# multi-arch image ghcr.io/djosh34/tigerstore:<version>, runs the rolling
+# upgrade from the previous release, and as its last step creates the tag
+# and the GitHub release. The gates, all found by the check job:
+#   - a successful ci push run on the commit;
+#   - a successful sim-campaign run of TestSeeds and one of
+#     TestMembershipFaults on the commit, and a successful chaos-env run;
+#   - the latest successful conformance run and 5-hour soak run on main,
+#     linked in the notes with the bug batch's bench run, an input.
+#   gh workflow run release.yml -f version=v0.1.0 -f sha=<commit> -f bench_run=<run>
+# With -f candidate=true the run checks only the commit and ci, and
+# pushes the image as <version>-candidate, with no tag and no release. A
+# pull request that changes the release runs every job up to the push and
+# pushes nothing.
+name: release
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "Dockerfile"
+      - ".dockerignore"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to release, such as v0.1.0
+        required: true
+      sha:
+        description: The commit of main to release; empty means the head of main
+        default: ""
+      bench_run:
+        description: Run ID of the bug batch's bench run, linked in the notes
+        default: ""
+      candidate:
+        description: Only push the image as <version>-candidate
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event_name == 'pull_request' && github.ref || 'dispatch' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.check.outputs.sha }}
+      version: ${{ steps.check.outputs.version }}
+      image: ${{ steps.check.outputs.image }}
+      runs: ${{ steps.check.outputs.runs }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          VERSION: ${{ inputs.version }}
+          SHA: ${{ inputs.sha }}
+          BENCH_RUN: ${{ inputs.bench_run }}
+          CANDIDATE: ${{ inputs.candidate }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = pull_request ]; then
+            echo "A pull request builds the release of $GITHUB_SHA as v0.0.0-dryrun and pushes nothing."
+            {
+              echo "sha=$GITHUB_SHA"
+              echo "version=v0.0.0-dryrun"
+              echo "image=ghcr.io/$REPO:v0.0.0-dryrun"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          fail() { echo "$*"; exit 1; }
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "version $VERSION is not vX.Y.Z"
+          tags=$(gh api "repos/$REPO/git/matching-refs/tags/$VERSION" -q "map(select(.ref == \"refs/tags/$VERSION\")) | length")
+          [ "$tags" = 0 ] || fail "tag $VERSION exists, and a tag is never moved"
+          SHA=$(gh api "repos/$REPO/commits/${SHA:-main}" -q .sha)
+          status=$(gh api "repos/$REPO/compare/$SHA...main" -q .status)
+          [[ "$status" == identical || "$status" == ahead ]] || fail "$SHA is not on main: main is $status of it"
+          # newest prints the ID of the newest successful run of workflow
+          # $1 that matches the query $2 and has $3 in its title.
+          newest() {
+            gh api "repos/$REPO/actions/workflows/$1/runs?status=success&per_page=100&$2" \
+              -q "[.workflow_runs[] | select(.display_title | contains(\"${3:-}\")) | .id][0] // empty"
+          }
+          ci=$(newest ci.yml "head_sha=$SHA&event=push")
+          [ -n "$ci" ] || fail "no successful ci push run on $SHA"
+          runs="ci push run on this commit|$ci"
+          image=ghcr.io/$REPO:$VERSION
+          if [ "$CANDIDATE" = true ]; then
+            image=$image-candidate
+          else
+            seeds=$(newest sim-campaign.yml "head_sha=$SHA" TestSeeds)
+            membership=$(newest sim-campaign.yml "head_sha=$SHA" TestMembershipFaults)
+            chaos=$(newest chaos-env.yml "head_sha=$SHA")
+            conformance=$(newest conformance.yml branch=main)
+            soak=$(newest soak.yml branch=main "soak 5h")
+            [ -n "$seeds" ] || fail "no successful sim-campaign run of TestSeeds on $SHA"
+            [ -n "$membership" ] || fail "no successful sim-campaign run of TestMembershipFaults on $SHA"
+            [ -n "$chaos" ] || fail "no successful chaos-env run on $SHA"
+            [ -n "$conformance" ] || fail "no successful conformance run on main"
+            [ -n "$soak" ] || fail "no successful 5-hour soak run on main"
+            [ -n "$BENCH_RUN" ] || fail "bench_run is empty"
+            bench=$(gh api "repos/$REPO/actions/runs/$BENCH_RUN" -q 'select(.path == ".github/workflows/bench.yml" and .conclusion == "success") | .id')
+            [ -n "$bench" ] || fail "run $BENCH_RUN is not a successful bench run"
+            runs+=";Simulator campaign of TestSeeds, 100,000 seeds, on this commit|$seeds"
+            runs+=";Simulator campaign of TestMembershipFaults, 10,000 seeds, on this commit|$membership"
+            runs+=";chaos-env on this commit|$chaos"
+            runs+=";Kubernetes 1.37 conformance, the latest passing run on main|$conformance"
+            runs+=";5-hour soak, the latest passing run on main|$soak"
+            runs+=";Bench of the bug batch against etcd v3.7.2|$bench"
+          fi
+          echo "$runs" | tr ';' '\n'
+          # Each entry is "<what>|<run ID>"; the release job adds the
+          # titles and commits.
+          {
+            echo "sha=$SHA"
+            echo "version=$VERSION"
+            echo "image=$image"
+            echo "runs=$runs"
+          } >> "$GITHUB_OUTPUT"
+
+  binaries:
+    needs: check
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.check.outputs.sha }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - env:
+          CGO_ENABLED: "0"
+          GOARCH: ${{ matrix.arch }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          set -euo pipefail
+          bin=dist/tigerstore-$VERSION-linux-$GOARCH
+          go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$bin" ./cmd/tigerstore
+          "$bin" --version | tee "$RUNNER_TEMP/version.txt"
+          grep -qx "tigerstore Version: $VERSION" "$RUNNER_TEMP/version.txt"
+          go version -m "$bin" | grep -F "vcs.revision=$(git rev-parse HEAD)"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bin-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+
+  image:
+    needs: [check, binaries]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.check.outputs.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: bin-*
+          merge-multiple: true
+          path: dist/
+      - uses: docker/setup-buildx-action@v4
+      - if: github.event_name == 'workflow_dispatch'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ needs.check.outputs.version }}
+          push: ${{ github.event_name == 'workflow_dispatch' }}
+          tags: ${{ needs.check.outputs.image }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.check.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.check.outputs.version }}
+            org.opencontainers.image.licenses=Apache-2.0
+      - if: github.event_name == 'workflow_dispatch'
+        env:
+          IMAGE: ${{ needs.check.outputs.image }}
+        run: docker buildx imagetools inspect "$IMAGE"
+
+  # The rolling upgrade from the previous release's binary to this one,
+  # one node at a time under load with every checker, then a downgrade of
+  # one node (TestReleaseUpgrade).
+  upgrade:
+    needs: [check, binaries]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.check.outputs.sha }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v8
+        with:
+          name: bin-arm64
+          path: ${{ runner.temp }}/dist
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.check.outputs.version }}
+          ROLLING_OUT: ${{ runner.temp }}/rolling
+        run: |
+          set -euo pipefail
+          previous=$(gh api "repos/$REPO/releases" -q '[.[] | select(.draft == false and .prerelease == false) | .tag_name][0] // empty')
+          if [ -z "$previous" ]; then
+            echo "There is no release before $VERSION, so no binary to upgrade from: the upgrade passes without a run."
+            exit 0
+          fi
+          echo "upgrading from $previous to $VERSION"
+          gh release download "$previous" --repo "$REPO" --pattern "tigerstore-$previous-linux-arm64" --dir "$RUNNER_TEMP/previous"
+          export ROLLING_OLD=$RUNNER_TEMP/previous/tigerstore-$previous-linux-arm64
+          export ROLLING_NEW=$RUNNER_TEMP/dist/tigerstore-$VERSION-linux-arm64
+          chmod +x "$ROLLING_OLD" "$ROLLING_NEW"
+          go test -count=1 -timeout 15m -v ./cmd/chaos -run '^TestReleaseUpgrade$'
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: upgrade-evidence
+          path: ${{ runner.temp }}/rolling
+          retention-days: 30
+
+  release:
+    if: github.event_name == 'workflow_dispatch' && !inputs.candidate
+    needs: [check, binaries, image, upgrade]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: bin-*
+          merge-multiple: true
+          path: dist/
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.check.outputs.version }}
+          SHA: ${{ needs.check.outputs.sha }}
+          IMAGE: ${{ needs.check.outputs.image }}
+          DIGEST: ${{ needs.image.outputs.digest }}
+          RUNS: ${{ needs.check.outputs.runs }}
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum tigerstore-* > SHA256SUMS && cat SHA256SUMS)
+          url=https://github.com/$REPO/actions/runs
+          {
+            echo "tigerstore $VERSION, built from $SHA. The README says how to run it, and how to use it as external etcd for kind and kubeadm."
+            echo
+            echo "- Binaries: \`tigerstore-$VERSION-linux-amd64\` and \`tigerstore-$VERSION-linux-arm64\`, with their checksums in \`SHA256SUMS\`."
+            echo "- Image: \`$IMAGE\` (\`$DIGEST\`), for linux/amd64 and linux/arm64."
+            echo
+            echo "Runs:"
+            echo
+            echo "$RUNS" | tr ';' '\n' | while IFS='|' read -r what id; do
+              gh api "repos/$REPO/actions/runs/$id" -q "\"- $what: [\\(.display_title)]($url/$id), on \\(.head_sha[0:8])\""
+            done
+            echo "- Rolling upgrade from the previous release: [this release run]($url/$GITHUB_RUN_ID)"
+          } > notes.md
+          cat notes.md
+          # The release creates the tag on $SHA.
+          gh release create "$VERSION" dist/* --repo "$REPO" --target "$SHA" --title "$VERSION" --notes-file notes.md
+          [ "$(gh api "repos/$REPO/commits/$VERSION" -q .sha)" = "$SHA" ]

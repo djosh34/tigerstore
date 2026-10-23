@@ -13,6 +13,8 @@
 # and its trace, how it left each node, its history and its disks are
 # uploaded with the job's logs.
 name: sim-campaign
+# The title names the test, which release.yml looks for.
+run-name: sim-campaign ${{ inputs.test }} from seed ${{ inputs.first }}
 
 on:
   workflow_dispatch:

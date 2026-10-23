@@ -81,7 +81,7 @@ jobs:
           set -o pipefail
           flags=()
           if [ "$MODE" = race ]; then flags=(-race); fi
-          test='^TestRollingUpgrade$'
+          test='^Test(RollingUpgrade|ReleaseUpgrade)$'
           if [ "$MODE" = rollback-before-announcement ]; then test='^TestRollingRollbackBeforeAnnouncement$'; fi
           if [ "$MODE" = confirmation-removed ]; then
             if go test -count=1 -timeout 8m -v ./cmd/chaos -run '^TestRollingRollbackBeforeAnnouncement$' 2>&1 | tee "$RUNNER_TEMP/result.log"; then

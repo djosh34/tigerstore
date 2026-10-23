@@ -142,8 +142,8 @@ func (c *config) parse(args []string, stdout io.Writer) error {
 		return fmt.Errorf("%q is not a valid flag", c.fs.Arg(0))
 	}
 	if c.printVersion {
-		fmt.Fprintf(stdout, "etcd Version: %s\nGit SHA: %s\nGo Version: %s\nGo OS/Arch: %s/%s\n", //nolint:errcheck // the version goes to the terminal
-			core.ServerVersion, gitSHA(), runtime.Version(), runtime.GOOS, runtime.GOARCH)
+		fmt.Fprintf(stdout, "tigerstore Version: %s\netcd Version: %s\nGit SHA: %s\nGo Version: %s\nGo OS/Arch: %s/%s\n", //nolint:errcheck // the version goes to the terminal
+			version, core.ServerVersion, gitSHA(), runtime.Version(), runtime.GOOS, runtime.GOARCH)
 		return errHelp
 	}
 	// Whether a configuration file is used decides whether the other
@@ -242,6 +242,11 @@ func (c *config) fromFile(path string) error {
 	c.own = ownFlags{}
 	return yaml.Unmarshal(b, &c.own)
 }
+
+// version is tigerstore's release version. The release workflow sets it
+// with -ldflags "-X main.version=v0.1.0"; /version keeps etcd's string,
+// which kubeadm reads.
+var version = "dev"
 
 // gitSHA is the commit the binary was built from, as etcd's version
 // shows it.
