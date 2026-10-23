@@ -279,6 +279,26 @@ func TestWitnessedGood(t *testing.T) {
 			return h
 		}},
 		{"historical reads, inside a txn too", func(*testing.T) *history.History { return historicalTxn() }},
+		{"read called as a write returns answers the state before it", func(t *testing.T) *history.History {
+			// Only a return before a call orders two ops, so the read may
+			// go first, though it answers an older revision (#387).
+			b := newBuilder(t, "a")
+			get := b.get(1, "a")
+			put := b.put(0, "a", "1")
+			h := b.done()
+			h.Ops[put].Call, h.Ops[put].Return = 10, 20
+			h.Ops[get].Call, h.Ops[get].Return = 20, 30
+			return h
+		}},
+		{"read inside a concurrent write answers the state before it", func(t *testing.T) *history.History {
+			b := newBuilder(t, "a")
+			get := b.get(1, "a")
+			put := b.put(0, "a", "1")
+			h := b.done()
+			h.Ops[put].Call, h.Ops[put].Return = 10, 50
+			h.Ops[get].Call, h.Ops[get].Return = 20, 60
+			return h
+		}},
 		{"acked compaction after the grant a read below it follows", func(t *testing.T) *history.History { return grantReadCompact(t, false) }},
 		{"lease expired before a txn names it in the success branch that did not run", func(t *testing.T) *history.History { return unusedTxnLease(t, false) }},
 		{"lease expired before a txn names it in the failure branch that did not run", func(t *testing.T) *history.History { return unusedTxnLease(t, true) }},

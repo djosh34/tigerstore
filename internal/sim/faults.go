@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math"
@@ -602,6 +603,100 @@ func (s *Sim) quorum() bool {
 	return true
 }
 
+// hasLeader reports whether a running node knows a leader. The nodes are
+// frozen.
+func hasLeader(nodes []*node) bool {
+	return slices.ContainsFunc(nodes, func(n *node) bool { return n.proc != nil && !n.out() && n.proc.core.Leader() != 0 })
+}
+
+// canElect reports whether a running node can win an election: it is a
+// voter of the members it knows, and its last entry is at least as new as
+// that of a majority of those voters, itself included, which run and so
+// grant it their votes. A learner votes but does not campaign. The nodes
+// are frozen, and nothing is appended without a leader, so each one's
+// last entry is on its disk.
+func (s *Sim) canElect() (bool, error) {
+	type last struct{ term, index uint64 }
+	logs := map[uint64]last{}
+	for _, n := range s.nodes {
+		if n.out() || n.proc == nil {
+			continue
+		}
+		w, rec, err := wal.Open(n.disk.Durable())
+		if err != nil {
+			return false, err
+		}
+		l := last{rec.Root.Term, rec.Last}
+		if rec.Last > rec.Root.Index {
+			e, err := w.Entry(rec.Last)
+			if err != nil {
+				return false, errors.Join(err, w.Close())
+			}
+			l.term = e.GetTerm()
+		}
+		if err := w.Close(); err != nil {
+			return false, err
+		}
+		logs[n.id] = l
+	}
+	for _, n := range s.nodes {
+		own, ok := logs[n.id]
+		if !ok {
+			continue
+		}
+		voter, voters, votes := false, 0, 0
+		for _, m := range n.proc.core.Members() {
+			if m.IsLearner {
+				continue
+			}
+			voters++
+			voter = voter || m.ID == n.id
+			if l, ok := logs[m.ID]; ok && (own.term > l.term || own.term == l.term && own.index >= l.index) {
+				votes++
+			}
+		}
+		if voter && votes > voters/2 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// holdsApplied reports whether a running node's disk holds the entries up
+// to applied, each as the run's record has it, with its term, and its type
+// and data where the record knows them: in its checkpoint, whose state the
+// start checked, or in its log. The nodes are frozen.
+func (s *Sim) holdsApplied(applied uint64) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, n := range s.nodes {
+		if n.out() || n.proc == nil {
+			continue
+		}
+		w, rec, err := wal.Open(n.disk.Durable())
+		if err != nil {
+			return false, err
+		}
+		holds := rec.Last >= applied
+		for i := rec.Root.Index + 1; holds && i <= applied; i++ {
+			e, err := w.Entry(i)
+			if err != nil {
+				return false, errors.Join(err, w.Close())
+			}
+			if b, ok := s.base[i]; ok && (b.term != e.GetTerm() || b.known && (b.typ != e.GetType() || !bytes.Equal(b.data, e.GetData()))) {
+				holds = false
+			}
+		}
+		if err := w.Close(); err != nil {
+			return false, err
+		}
+		if holds {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // coldRestart starts the two nodes whose disks were not erased, with no
 // clients and no faults, until they have applied everything they hold.
 // Every entry and state they reach up to the index applied at the
@@ -671,12 +766,34 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	// with no leader yet they get up to three more such periods
 	// (TestSlowFetch seed 5042 on #268).
 	for range 3 {
-		if slices.ContainsFunc(r.nodes, func(n *node) bool { return n.proc != nil && !n.out() && n.proc.core.Leader() != 0 }) {
+		if hasLeader(r.nodes) {
 			break
 		}
 		r.thaw()
 		if err := r.runFor(6 * Second); err != nil {
 			return err
+		}
+	}
+	// The erased disk can leave no node able to win an election: one that
+	// applied a member's promotion and needs it, a learner whose log is
+	// newer but cannot campaign, and the rest behind them (#389). Nothing
+	// commits then, so there is nothing to converge on, but what was
+	// applied before must still be on a surviving disk.
+	if !hasLeader(r.nodes) {
+		ok, err := r.canElect()
+		if err != nil {
+			return err
+		}
+		if !ok {
+			holds, err := r.holdsApplied(c.applied)
+			if err != nil {
+				return err
+			}
+			if !holds {
+				return fmt.Errorf("cold restart: no node can win an election, and no surviving disk holds the %d entries applied before as the run's record has them", c.applied)
+			}
+			s.tracef("cold restart at %d ms erasing node %d: no node can win an election", c.at/Millisecond, erased+1)
+			return nil
 		}
 	}
 	// The leader may have proposed a lease expiry just before the end, so

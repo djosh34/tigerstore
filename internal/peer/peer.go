@@ -41,7 +41,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -375,14 +377,14 @@ func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
 	}
 	t.remoteMu.Unlock()
 	t.mu.Lock()
+	var drop []net.Conn
 	for c, in := range t.inbound {
 		if gone[in.id] {
-			if err := c.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-				t.logf("peer: close: %v", err)
-			}
+			drop = append(drop, c)
 		}
 	}
 	t.mu.Unlock()
+	t.closeAll(drop)
 }
 
 // newSender starts a writer to peer id at addr.
@@ -509,16 +511,25 @@ func (t *TCP) Close() error {
 		}
 	}
 	t.mu.Lock()
-	for c := range t.conns {
-		// The other end may have reset the connection already; that is
-		// not a failure of Close.
-		if cerr := c.Close(); cerr != nil {
-			t.logf("peer: close: %v", cerr)
-		}
-	}
+	conns := slices.Collect(maps.Keys(t.conns))
 	t.mu.Unlock()
+	t.closeAll(conns)
 	t.wg.Wait()
 	return err
+}
+
+// closeAll closes connections taken from t.conns or t.inbound, without
+// t.mu: TLS's Close sends close_notify, which waits up to 5 s for a peer
+// that does not read, and the connections' goroutines need t.mu to end
+// (untrack). The other end may have reset a connection already, or its
+// goroutine closed it; neither is a failure of the caller, so the first
+// is only logged.
+func (t *TCP) closeAll(conns []net.Conn) {
+	for _, c := range conns {
+		if err := c.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.logf("peer: close: %v", err)
+		}
+	}
 }
 
 func (t *TCP) track(c net.Conn) bool {
