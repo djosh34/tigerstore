@@ -117,8 +117,8 @@ func coverage(h *history.History) (coverageReport, error) {
 // faultsOverlapWrites sets Overlapped on every installed fault that
 // overlaps a write: a Put, Delete or Txn whose call ran at some point
 // between the fault's install and its heal. Heartbeats on a peer link or a
-// signal to an idle node would otherwise count as a fault that took effect
-// while the workload saw nothing (tally). A fault not healed by the end
+// signal to an idle node would otherwise look like a fault that took
+// effect while the workload saw nothing. A fault not healed by the end
 // runs to the last call.
 func faultsOverlapWrites(records []record, h *history.History) {
 	var end int64

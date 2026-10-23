@@ -115,8 +115,8 @@ type processRecord struct {
 
 // record is what happened to one step: requested, installed, took effect
 // and healed, with times from the start of the run. Overlapped says
-// whether a write ran while the fault was on (faultsOverlapWrites). The
-// effect of a fault is counted over a campaign (tally), so NoEffect only
+// whether a write ran while the fault was on (faultsOverlapWrites). Both
+// are evidence: no run fails on a fault without effect, and NoEffect only
 // says why it had none.
 type record struct {
 	Step       int            `json:"step"`
@@ -174,8 +174,8 @@ func pause(ctx context.Context, d time.Duration) error {
 
 // run injects each step and heals it before the next. A step whose fault
 // was not installed or did not heal is an error; whether it took effect is
-// counted over a campaign (tally). When a step fails, the log gets how
-// each node stands then.
+// only recorded. When a step fails, the log gets how each node stands
+// then.
 func (r *runner) run(ctx context.Context, steps []step) ([]record, error) {
 	var out []record
 	var errs []error

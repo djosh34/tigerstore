@@ -1,0 +1,68 @@
+# Real-process chaos in an environment of its own (#148), nightly and by
+# hand: the check that the simulator's disk (internal/simfs) behaves as
+# real ext4 does (#341). It is not part of the required check ci. Through
+# sudo, each node runs on a loop device, under a device-mapper target that
+# fails, delays or stalls I/O, on a small ext4 that fills for real, and in
+# a cgroup; netem on every link, with 1 to 10 ms between nodes. It first
+# runs the tests of chaos/env itself, then one seed of cmd/chaos -env:
+# the faults of the proxies and signals, and those of the environment
+# (docs/testing.md). It also runs on a pull request that changes the
+# chaos harness. The seed comes from the run ID, or by hand:
+#   gh workflow run chaos-env.yml [--ref <branch>] [-f seed=<seed>]
+# A failure prints how each node stood and the command that runs the seed
+# again, and its evidence is uploaded.
+name: chaos-env
+
+on:
+  pull_request:
+    paths:
+      - "chaos/**"
+      - "cmd/chaos/**"
+      - ".github/workflows/chaos-env.yml"
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: The seed to run, in place of one from the run ID
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  chaos-env:
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build tigerstore and chaos
+        run: |
+          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
+      - name: Test the environment
+        shell: bash
+        run: go test -tags chaosenv -count=1 ./chaos/env/ 2>&1 | tee "$RUNNER_TEMP/env-test.log"
+      - if: failure()
+        run: scripts/replay.sh "$RUNNER_TEMP/env-test.log" -tags chaosenv
+      - name: Run a seed
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          SEED: ${{ inputs.seed }}
+        run: |
+          seed=${SEED:-$(( (RUN_ID % 1000000000) * 8 + 1 ))}
+          echo "seed $seed"
+          "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" -env
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: chaos-env-evidence
+          path: |
+            ${{ runner.temp }}/env-test.log
+            ${{ runner.temp }}/chaos-out
+            !${{ runner.temp }}/chaos-out/**/disks
+          retention-days: 30

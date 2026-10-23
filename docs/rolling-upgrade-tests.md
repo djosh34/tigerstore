@@ -20,4 +20,4 @@ gh workflow run ci.yml --repo djosh34/tigerstore --ref <candidate-branch>
 
 No build or execution belongs on the shared agent host. When a previous release exists, the release workflow still needs the previous-tag-to-candidate run required by #127. These synthetic builds do not replace that check.
 
-The upgrade run uses the chaos cluster without extra data directories or arguments. It does not need the privileged environment or LazyFS.
+The upgrade run uses the chaos cluster without extra data directories or arguments. It does not need the privileged environment.

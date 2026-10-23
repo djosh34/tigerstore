@@ -2,9 +2,7 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -30,35 +28,6 @@ func TestFaultsOverlapWrites(t *testing.T) {
 	if !records[0].Overlapped || records[1].Overlapped || records[2].Overlapped {
 		t.Fatalf("overlaps: a fault with a write inside %v, one only a read overlaps %v, one not installed %v",
 			records[0].Overlapped, records[1].Overlapped, records[2].Overlapped)
-	}
-}
-
-// TestTally counts, over the runs saved under a directory, the runs in
-// which each fault took effect, and fails a fault that took effect in
-// fewer than three in four of them.
-func TestTally(t *testing.T) {
-	dir := t.TempDir()
-	took := record{Planned: step{Fault: netDrop}, Installed: true, Effect: true, Overlapped: true}
-	missed := record{Planned: step{Fault: netDrop}, Installed: true, Effect: true}
-	kill := record{Planned: step{Fault: killLeader}, Installed: true, Effect: true, Overlapped: true}
-	for i, run := range [][]record{{took, kill}, {took, kill}, {took, kill}, {missed, kill}} {
-		sub := filepath.Join(dir, fmt.Sprintf("seed-%d", i))
-		if err := os.MkdirAll(sub, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := save(filepath.Join(sub, "faults.json"), run); err != nil {
-			t.Fatal(err)
-		}
-	}
-	nop := func(string, ...any) {}
-	if ok, err := tally([]string{dir}, nop); err != nil || !ok {
-		t.Fatalf("3 of 4 runs: ok %v, %v", ok, err)
-	}
-	if err := save(filepath.Join(dir, "seed-1", "faults.json"), []record{missed, kill}); err != nil {
-		t.Fatal(err)
-	}
-	if ok, err := tally([]string{dir}, nop); err != nil || ok {
-		t.Fatalf("2 of 4 runs: ok %v, %v", ok, err)
 	}
 }
 

@@ -3,14 +3,10 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"io/fs"
-	"maps"
 	"net/http"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -156,79 +152,4 @@ func lastLines(path string, n int) []string {
 		}
 	}
 	return lines
-}
-
-// tally reads the faults.json of every run under dirs and counts, per
-// fault, the runs it was installed in and those in which it took effect
-// and overlapped a write. A fault took effect in too few of them when in
-// fewer than three in four, rounded down; then tally reports false and
-// names up to five runs it missed, whose config.json and faults.json say
-// how to run them again and what the fault did.
-func tally(dirs []string, logf func(string, ...any)) (bool, error) {
-	type count struct {
-		installed, took int
-		missed          []string
-	}
-	counts := map[string]*count{}
-	runs := 0
-	for _, dir := range dirs {
-		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || d.Name() != "faults.json" {
-				return err
-			}
-			b, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			// Only the fields the tally needs: a planned step's direction
-			// is written as text and not read back.
-			var records []struct {
-				Planned struct {
-					Fault string `json:"fault"`
-				} `json:"planned"`
-				Installed, Effect, Overlapped bool
-			}
-			if err := json.Unmarshal(b, &records); err != nil {
-				return fmt.Errorf("%s: %w", path, err)
-			}
-			runs++
-			for _, r := range records {
-				c := counts[r.Planned.Fault]
-				if c == nil {
-					c = &count{}
-					counts[r.Planned.Fault] = c
-				}
-				if r.Installed {
-					c.installed++
-					if r.Effect && r.Overlapped {
-						c.took++
-					} else {
-						c.missed = append(c.missed, filepath.Dir(path))
-					}
-				}
-			}
-			return nil
-		})
-		if err != nil {
-			return false, err
-		}
-	}
-	if runs == 0 {
-		return false, fmt.Errorf("no faults.json under %v", dirs)
-	}
-	ok := true
-	for _, f := range slices.Sorted(maps.Keys(counts)) {
-		c := counts[f]
-		least := c.installed * 3 / 4
-		verdict := "ok"
-		if c.took < least {
-			verdict, ok = fmt.Sprintf("too few, want %d at least", least), false
-		}
-		logf("%-20s installed in %3d runs, took effect and overlapped a write in %3d: %s", f, c.installed, c.took, verdict)
-		if c.took < least {
-			logf("  it missed in %s", strings.Join(c.missed[:min(5, len(c.missed))], ", "))
-		}
-	}
-	logf("%d runs", runs)
-	return ok, nil
 }

@@ -12,17 +12,14 @@ import (
 	"time"
 )
 
-// Disk is one node's disk. Data is the node's data directory: the LazyFS
-// mount, or the ext4 file system itself without LazyFS.
+// Disk is one node's disk.
 type Disk struct {
 	// Name is the device-mapper name.
 	Name string
-	// Data is where the node keeps its files.
+	// Data is where the node keeps its files, a directory on Backing.
 	Data string
-	// Backing is the ext4 mount, and root the directory under it that
-	// LazyFS shows at Data.
+	// Backing is the ext4 mount.
 	Backing string
-	root    string
 	dir     string
 	img     string
 	loop    string
@@ -31,22 +28,14 @@ type Disk struct {
 	// mode is the device-mapper table in use: linear, error-writes,
 	// delay or suspended, and stalled the one a suspension holds.
 	mode, stalled string
-
-	lazyfs  string
-	fifo    string
-	logfile string
-	cfgfile string
-	proc    *exec.Cmd
-	exited  chan error
 }
 
-// NewDisk makes a disk of size bytes under dir, named name, with LazyFS on
-// top when lazyfs names its binary.
-func NewDisk(dir, name string, size int64, lazyfs string) (_ *Disk, err error) {
+// NewDisk makes a disk of size bytes under dir, named name.
+func NewDisk(dir, name string, size int64) (_ *Disk, err error) {
 	if dir, err = filepath.Abs(dir); err != nil {
 		return nil, err
 	}
-	d := &Disk{Name: name, dir: dir, img: filepath.Join(dir, name+".img"), Backing: filepath.Join(dir, name+".ext4"), lazyfs: lazyfs, mode: "linear"}
+	d := &Disk{Name: name, dir: dir, img: filepath.Join(dir, name+".img"), Backing: filepath.Join(dir, name+".ext4"), mode: "linear"}
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, d.Close())
@@ -91,27 +80,8 @@ func NewDisk(dir, name string, size int64, lazyfs string) (_ *Disk, err error) {
 	if _, err := sudo("chown", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()), d.Backing); err != nil {
 		return nil, err
 	}
-	d.root = filepath.Join(d.Backing, "root")
-	if err := os.MkdirAll(d.root, 0o755); err != nil {
-		return nil, err
-	}
-	if lazyfs == "" {
-		d.Data = d.root
-		return d, nil
-	}
-	d.Data = filepath.Join(dir, name+".data")
-	d.fifo = filepath.Join(dir, name+".fifo")
-	d.logfile = filepath.Join(dir, name+".lazyfs.log")
-	d.cfgfile = filepath.Join(dir, name+".lazyfs.toml")
-	cfg := fmt.Sprintf("[faults]\nfifo_path=%q\n[cache]\napply_eviction=false\n[cache.simple]\ncustom_size=\"%dmb\"\nblocks_per_page=1\n[filesystem]\nlog_all_operations=false\nlogfile=%q\n",
-		d.fifo, max(64, size>>20), d.logfile)
-	if err := os.WriteFile(d.cfgfile, []byte(cfg), 0o644); err != nil {
-		return nil, err
-	}
+	d.Data = filepath.Join(d.Backing, "root")
 	if err := os.MkdirAll(d.Data, 0o755); err != nil {
-		return nil, err
-	}
-	if err := d.mountLazyFS(); err != nil {
 		return nil, err
 	}
 	return d, nil
@@ -121,147 +91,6 @@ func (d *Disk) device() string { return "/dev/mapper/" + d.Name }
 
 func (d *Disk) table(kind string, args ...string) string {
 	return strings.Join(append([]string{"0", strconv.FormatInt(d.sectors, 10), kind, d.loop, "0"}, args...), " ")
-}
-
-// mountLazyFS starts LazyFS on Data and waits for the mount.
-func (d *Disk) mountLazyFS() error {
-	out, err := os.OpenFile(filepath.Join(d.dir, d.Name+".lazyfs.out"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return err
-	}
-	// LazyFS ignores a config path with "-o" in it, in any case, and
-	// looks for config/default.toml instead; a CI run's directory had
-	// chaos-out in it. So it gets the file's name, relative to its working
-	// directory, the disk's.
-	cfg := filepath.Base(d.cfgfile)
-	if strings.Contains(strings.ToLower(cfg), "-o") {
-		return errors.Join(fmt.Errorf("LazyFS cannot take the config path %s, which has -o in it", cfg), out.Close())
-	}
-	cmd := exec.Command(d.lazyfs, d.Data, "--config-path", cfg, "-o", "modules=subdir", "-o", "subdir="+d.root, "-f")
-	cmd.Dir = filepath.Dir(d.cfgfile)
-	cmd.Stdout, cmd.Stderr = out, out
-	if err := cmd.Start(); err != nil {
-		return errors.Join(err, out.Close())
-	}
-	d.proc = cmd
-	exited := make(chan error, 1)
-	d.exited = exited
-	go func() {
-		exited <- cmd.Wait()
-		_ = out.Close()
-	}()
-	var merr error
-	if !waitFor(10*time.Second, func() bool {
-		ok, err := mounted(d.Data)
-		merr = err
-		return ok || err != nil
-	}) {
-		b, err := os.ReadFile(out.Name())
-		if len(b) > 2000 {
-			b = b[len(b)-2000:]
-		}
-		return errors.Join(fmt.Errorf("LazyFS did not mount %s within 10s; it wrote: %s", d.Data, strings.TrimSpace(string(b))), err)
-	}
-	return merr
-}
-
-// stopLazyFS unmounts LazyFS, lazily if it is gone already, and waits for
-// its process.
-func (d *Disk) stopLazyFS() error {
-	if d.proc == nil {
-		return nil
-	}
-	ok, err := mounted(d.Data)
-	errs := []error{err}
-	if ok {
-		if _, err := runIn("", "fusermount3", "-uz", d.Data); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	select {
-	case <-d.exited:
-	case <-time.After(10 * time.Second):
-		errs = append(errs, d.proc.Process.Kill())
-		<-d.exited
-	}
-	d.proc = nil
-	return errors.Join(errs...)
-}
-
-// command sends a command to LazyFS's fault FIFO.
-func (d *Disk) command(cmd string) error {
-	f, err := os.OpenFile(d.fifo, os.O_WRONLY, 0)
-	if err != nil {
-		return err
-	}
-	_, err = f.WriteString(cmd + "\n")
-	return errors.Join(err, f.Close())
-}
-
-// lazyLog returns the LazyFS log.
-func (d *Disk) lazyLog() string {
-	b, _ := os.ReadFile(d.logfile)
-	return string(b)
-}
-
-// PowerLoss drops every write that no fsync covered, as a power cut does.
-// The node must be stopped first. It returns LazyFS's report of the
-// unsynced bytes it dropped.
-func (d *Disk) PowerLoss() (string, error) {
-	if d.proc == nil {
-		return "", errors.New("power loss needs LazyFS")
-	}
-	before := len(d.lazyLog())
-	if err := d.command("lazyfs::clear-cache"); err != nil {
-		return "", err
-	}
-	var report string
-	if !waitFor(10*time.Second, func() bool {
-		report = d.lazyLog()[before:]
-		return strings.Contains(report, "cache is cleared")
-	}) {
-		return report, errors.New("LazyFS did not report the cache cleared within 10s")
-	}
-	return report, nil
-}
-
-// TornWrite makes the next write to file, a path under Data, persist only
-// the first of three parts, after which LazyFS crashes, as a power cut in
-// the middle of the write would. Remount brings the disk back.
-func (d *Disk) TornWrite(file string) error {
-	if d.proc == nil {
-		return errors.New("a torn write needs LazyFS")
-	}
-	rel, err := filepath.Rel(d.Data, file)
-	if err != nil {
-		return err
-	}
-	return d.command(fmt.Sprintf("lazyfs::torn-op::file=%s::persist=1::parts=3::occurrence=1", filepath.Join(d.root, rel)))
-}
-
-// Crashed reports whether LazyFS crashed, as after a torn write.
-func (d *Disk) Crashed() bool {
-	if d.proc == nil {
-		return false
-	}
-	select {
-	case err := <-d.exited:
-		d.exited <- err
-		return true
-	default:
-		return false
-	}
-}
-
-// Remount mounts LazyFS again after a crash, with what reached the disk.
-func (d *Disk) Remount() error {
-	if d.lazyfs == "" {
-		return nil
-	}
-	if err := d.stopLazyFS(); err != nil {
-		return err
-	}
-	return d.mountLazyFS()
 }
 
 // FailWrites makes every write to the device fail, so an fsync fails.
@@ -310,9 +139,6 @@ func (d *Disk) load(mode, table string) error {
 // writes, which may have made ext4 abort its journal and go read-only.
 // The node must be stopped.
 func (d *Disk) Repair() error {
-	if err := d.stopLazyFS(); err != nil {
-		return err
-	}
 	if ok, err := mounted(d.Backing); err != nil {
 		return err
 	} else if ok {
@@ -326,13 +152,8 @@ func (d *Disk) Repair() error {
 			return fmt.Errorf("%w: %s", err, out)
 		}
 	}
-	if _, err := sudo("mount", d.device(), d.Backing); err != nil {
-		return err
-	}
-	if d.lazyfs == "" {
-		return nil
-	}
-	return d.mountLazyFS()
+	_, err := sudo("mount", d.device(), d.Backing)
+	return err
 }
 
 // Stall stops every I/O to the device until Healthy.
@@ -388,15 +209,9 @@ func (d *Disk) Unfill() error {
 	return err
 }
 
-// DropCaches drops what LazyFS holds, unsynced writes too, as a power
-// loss would, and the kernel's page cache, so that the node's next reads
-// come from the device. The node must be stopped.
+// DropCaches writes back and drops the kernel's page cache, so that the
+// node's next reads come from the device. The node must be stopped.
 func (d *Disk) DropCaches() error {
-	if d.proc != nil {
-		if _, err := d.PowerLoss(); err != nil {
-			return err
-		}
-	}
 	if _, err := sudo("sync"); err != nil {
 		return err
 	}
@@ -424,7 +239,6 @@ func (d *Disk) Close() error {
 	if d.mode != "linear" && d.created {
 		errs = append(errs, d.Healthy())
 	}
-	errs = append(errs, d.stopLazyFS())
 	ok, err := mounted(d.Backing)
 	errs = append(errs, err)
 	if ok {
