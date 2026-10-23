@@ -1,4 +1,6 @@
 name: conformance
+# The title names the store, which release.yml looks for.
+run-name: conformance ${{ inputs.store || 'tigerstore' }}
 
 on:
   workflow_dispatch:

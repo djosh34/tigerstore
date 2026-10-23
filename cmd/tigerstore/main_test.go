@@ -95,7 +95,7 @@ func TestVersionAndHelp(t *testing.T) {
 	if err := newConfig(io.Discard).parse([]string{"--version"}, &out); !errors.Is(err, errHelp) {
 		t.Fatalf("--version: %v", err)
 	}
-	if !strings.HasPrefix(out.String(), "etcd Version: 3.7.2\nGit SHA: ") {
+	if !strings.HasPrefix(out.String(), "tigerstore Version: dev\netcd Version: 3.7.2\nGit SHA: ") {
 		t.Errorf("--version printed %q", out.String())
 	}
 	out.Reset()

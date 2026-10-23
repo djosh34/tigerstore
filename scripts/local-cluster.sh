@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Starts a 3-node cluster on this machine with the certificates of
 # scripts/dev-certs.sh. Clients connect to https://127.0.0.1:2379, 22379
-# and 12379, peers to ports 2380, 22380 and 12380; OFFSET adds to every
+# and 12379, or to CLIENT_HOST in place of 127.0.0.1 (its IP must be in
+# the certificates), peers to 127.0.0.1 on ports 2380, 22380 and 12380;
+# TIGERSTORE is the binary (default ./tigerstore). OFFSET adds to every
 # port. With OFFSET up to 2000 every port stays below Linux's ephemeral
 # range (32768 on), where another process's outgoing connection can take
 # a port after it was checked free and before the node binds it (#184).
@@ -15,6 +17,7 @@ set -euo pipefail
 bin=${TIGERSTORE:-./tigerstore}
 certs=${CERTS:-certs}
 off=${OFFSET:-0}
+host=${CLIENT_HOST:-127.0.0.1}
 client=($((2379 + off)) $((22379 + off)) $((12379 + off)))
 peer=($((2380 + off)) $((22380 + off)) $((12380 + off)))
 cluster=node1=https://127.0.0.1:${peer[0]},node2=https://127.0.0.1:${peer[1]},node3=https://127.0.0.1:${peer[2]}
@@ -27,7 +30,7 @@ for i in 1 2 3; do
 	"$bin" --name "node$i" --data-dir "data/node$i" \
 		--initial-cluster "$cluster" \
 		--listen-peer-urls "$peerurl" --initial-advertise-peer-urls "$peerurl" \
-		--listen-client-urls "https://127.0.0.1:$port" --advertise-client-urls "https://127.0.0.1:$port" \
+		--listen-client-urls "https://$host:$port" --advertise-client-urls "https://$host:$port" \
 		--cert-file "$certs/node$i.pem" --key-file "$certs/node$i-key.pem" \
 		--trusted-ca-file "$certs/ca.pem" --client-cert-auth \
 		--peer-cert-file "$certs/node$i.pem" --peer-key-file "$certs/node$i-key.pem" \

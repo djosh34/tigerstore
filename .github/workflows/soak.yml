@@ -6,6 +6,7 @@
 #   gh workflow run soak.yml --ref main
 # A shorter run for a try: -f duration=30m.
 name: soak
+run-name: soak ${{ inputs.duration }}, seed ${{ inputs.seed }}
 
 on:
   workflow_dispatch:

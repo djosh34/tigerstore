@@ -26,10 +26,11 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-// These tests use two builds of this source, not historical releases.
-// The old build supports entry format 1 and peer range 2-2; the new one
-// supports entry formats 1-2 and peer range 2-3. The workflow changes only
-// those constants. No test hook runs inside the server.
+// These tests use two builds of this source; only TestReleaseUpgrade
+// also runs with two releases. The old build supports entry format 1 and
+// peer range 2-2; the new one supports entry formats 1-2 and peer range
+// 2-3. The workflow changes only those constants. No test hook runs
+// inside the server.
 func TestRollingUpgrade(t *testing.T) {
 	for _, seed := range []uint64{148, 174} {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
@@ -136,6 +137,35 @@ func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 	}
 	r.start(1, r.oldBin)
 	r.stage("rollback announces after last upgrade", 1)
+}
+
+// TestReleaseUpgrade upgrades a cluster from the previous release's binary
+// (ROLLING_OLD) to the release candidate (ROLLING_NEW) one node at a time
+// under load, then downgrades one node; the release workflow runs it. Any
+// two releases can do this, so it asks only that the nodes agree on the
+// newest version all of them support. The downgraded node runs the old
+// binary again, unless the cluster went past the old binary's newest
+// version: then the old binary must refuse to start, and the node comes
+// back on the candidate. The checkers run on the whole history.
+func TestReleaseUpgrade(t *testing.T) {
+	r := startRolling(t, 355)
+	oldMax := r.maxVersion(0)
+	r.settle("previous release", oldMax)
+	r.restart(0, r.newBin)
+	r.settle("node1 upgraded", oldMax)
+	r.restart(1, r.newBin)
+	r.settle("node2 upgraded", oldMax)
+	r.restart(2, r.newBin)
+	newMax := r.maxVersion(2)
+	r.settle("node3 upgraded", newMax)
+	if newMax > oldMax {
+		r.stop(0)
+		r.refuseOld(0)
+		r.start(0, r.newBin)
+	} else {
+		r.restart(0, r.oldBin)
+	}
+	r.settle("node1 downgraded", newMax)
 }
 
 // peerMin is the oldest peer protocol version both builds speak.
@@ -312,18 +342,78 @@ func (r *rollingRun) stage(name string, version int) {
 	for i := range 3 {
 		r.version(i, version)
 	}
+	writes := r.writesSince(begin)
+	if writes == 0 {
+		r.t.Fatalf("%s: no successful writes during stage", name)
+	}
+	r.t.Logf("%s: active version %d, peer ranges %v negotiated, %d successful writes", name, version, r.ranges, writes)
+}
+
+// settle waits until every node has active version want, and fails
+// unless they still have it 3 s later and writes succeed meanwhile.
+func (r *rollingRun) settle(name string, want int) {
+	r.t.Helper()
+	begin := r.traffic.r.now()
+	for i := range 3 {
+		r.activeVersion(i, want)
+	}
+	time.Sleep(3 * time.Second)
+	for i := range 3 {
+		r.activeVersion(i, want)
+	}
+	writes := r.writesSince(begin)
+	if writes == 0 {
+		r.t.Fatalf("%s: no successful writes during stage", name)
+	}
+	r.t.Logf("%s: active version %d, %d successful writes", name, want, writes)
+}
+
+// activeVersion waits until node i has active version want.
+func (r *rollingRun) activeVersion(i, want int) {
+	r.t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	var last string
+	for time.Now().Before(deadline) {
+		v, _, err := r.metric(i)
+		if err == nil && v == want {
+			return
+		}
+		last = fmt.Sprintf("version %d, error %v", v, err)
+		time.Sleep(100 * time.Millisecond)
+	}
+	r.t.Fatalf("node%d: want active version %d: %s", i+1, want, last)
+}
+
+// maxVersion is the newest version the binary of node i supports.
+func (r *rollingRun) maxVersion(i int) int {
+	r.t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		_, body, err := r.metric(i)
+		if err == nil {
+			var v int
+			if v, err = metricValue(body, "tigerstore_cluster_version_max"); err == nil {
+				return v
+			}
+		}
+		if time.Now().After(deadline) {
+			r.t.Fatalf("node%d: newest supported version: %v", i+1, err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// writesSince counts the writes that succeeded from begin on.
+func (r *rollingRun) writesSince(begin int64) int {
 	r.traffic.r.mu.Lock()
+	defer r.traffic.r.mu.Unlock()
 	writes := 0
 	for _, op := range r.traffic.r.h.Ops {
 		if op.Call >= begin && op.Err == nil && op.Req.Mutates() {
 			writes++
 		}
 	}
-	r.traffic.r.mu.Unlock()
-	if writes == 0 {
-		r.t.Fatalf("%s: no successful writes during stage", name)
-	}
-	r.t.Logf("%s: active version %d, peer ranges %v negotiated, %d successful writes", name, version, r.ranges, writes)
+	return writes
 }
 
 func (r *rollingRun) version(i, want int) {
@@ -380,13 +470,24 @@ func (r *rollingRun) metric(i int) (int, string, error) {
 		return 0, "", err
 	}
 	body := string(b)
+	v, err := metricValue(body, "tigerstore_cluster_version")
+	if err != nil {
+		return 0, body, fmt.Errorf("metrics HTTP %d: %w", resp.StatusCode, err)
+	}
+	return v, body, nil
+}
+
+// errNoMetric is a metric missing from a /metrics page.
+var errNoMetric = errors.New("no such metric")
+
+// metricValue is the value of the metric name, without labels, in body.
+func metricValue(body, name string) (int, error) {
 	for line := range strings.SplitSeq(body, "\n") {
-		if value, ok := strings.CutPrefix(line, "tigerstore_cluster_version "); ok {
-			v, err := strconv.Atoi(value)
-			return v, body, err
+		if value, ok := strings.CutPrefix(line, name+" "); ok {
+			return strconv.Atoi(value)
 		}
 	}
-	return 0, body, fmt.Errorf("metrics HTTP %d has no active version", resp.StatusCode)
+	return 0, fmt.Errorf("%s: %w", name, errNoMetric)
 }
 
 func (r *rollingRun) wal(i int) committed.Node {
