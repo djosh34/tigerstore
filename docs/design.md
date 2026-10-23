@@ -6,7 +6,7 @@ This file is the current design. It starts from the merged starting design ([#32
 
 ## Status
 
-Built so far: the Go module, CI with lint, build and test, and the storage pieces of one node: the MVCC index (`internal/mvcc`), the Raft log, checkpoints and their roots on disk (`internal/wal`), the real disk adapter (`internal/osfs`), the simulated disk (`internal/simfs`), the committer (`internal/core`), the deterministic simulator (`internal/sim`), the determinism lint (`internal/lint`), and the real node: its driver (`internal/node`), the peer transport (`internal/peer`), the etcd gRPC server on its own HTTP/2 code (`internal/server`) and the `tigerstore` command. The real-process chaos job (`chaos/proxy`, `cmd/chaos`) runs the cluster under a fault proxy and signals. The section "What is built" describes them. Everything else is the design that the next pull requests build.
+Built so far: the Go module, CI with lint, build and test, and the storage pieces of one node: the MVCC index (`internal/mvcc`), the Raft log, checkpoints and their roots on disk (`internal/wal`), the real disk adapter (`internal/osfs`), the simulated disk (`internal/simfs`), the committer (`internal/core`), the deterministic simulator (`internal/sim`), the determinism lint (`internal/lint`), and the real node: its driver (`internal/node`), the peer transport (`internal/peer`), the etcd gRPC server on its own HTTP/2 code (`internal/server`) and the `tigerstore` command. The nightly real-process chaos run (`chaos/proxy`, `chaos/env`, `cmd/chaos`) runs the cluster under a fault proxy, signals and faults of its disks, cgroups and links. The section "What is built" describes them. Everything else is the design that the next pull requests build.
 
 ## Fixed by the owner
 
@@ -291,9 +291,9 @@ Preload uses Txns of up to 128 puts, capped at 60 KiB and the connection's strea
 
 ### Real processes
 
-The fault proxy on every link, tc netem, SIGKILL, SIGSTOP, CPU throttling and a fault-injecting file layer. Each job checks that every requested fault was actually installed. Bugs in TLS, HTTP/2 or the Go scheduler get their regression test at the layer that reproduces them.
+The fault proxy on every link, tc netem, SIGKILL, SIGSTOP, CPU throttling and device-mapper disk faults. Each run checks that every requested fault was actually installed. Bugs in TLS, HTTP/2 or the Go scheduler get their regression test at the layer that reproduces them.
 
-Built so far: the seeded fault proxy (`chaos/proxy`) on every client and peer link, SIGKILL and SIGSTOP of the leader and of a follower, and the `chaos` CI job (`cmd/chaos`), which runs the checkers of package check on every history, the witness checker in both modes among them, and fails when a requested fault was not installed or had no effect. [docs/testing.md](testing.md#real-process-chaos) describes the job and its faults. Later pieces of #49: tc netem packet faults and 1 to 10 ms between nodes, CPU throttling, the fault-injecting file layer and real ENOSPC, crashes timed inside WAL recovery, gray nodes and barely alive clients, several faults at once, and nightly campaigns.
+Built: the seeded fault proxy (`chaos/proxy`) on every client and peer link, SIGKILL and SIGSTOP of the leader and of a follower, and with `-env` (`chaos/env`) tc netem packet faults and 1 to 10 ms between nodes, CPU throttling, device-mapper disk faults and real ENOSPC on ext4, crashes timed inside WAL recovery and a snapshot install, barely alive clients, several faults at once and member replacement. `cmd/chaos` runs the checkers of package check on every history, the witness checker in both modes among them, and fails when a requested fault was not installed. Since the deterministic simulator has every fault (#341), one seed runs nightly in `chaos-env.yml`, as the check that the simulated disk matches real ext4. [docs/testing.md](testing.md#real-process-chaos) describes the run and its faults.
 
 ### Budgets and regressions
 

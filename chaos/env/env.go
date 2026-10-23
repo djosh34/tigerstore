@@ -5,9 +5,7 @@
 //
 // A node's disk is a file on a loop device, under a device-mapper target
 // that is linear when healthy and can fail every write, delay reads and
-// writes, or stall, then a small ext4 file system, which fills for real,
-// and on top Jepsen's LazyFS, which holds every write until an fsync
-// covers it and drops what none covered on a power loss.
+// writes, or stall, then a small ext4 file system, which fills for real.
 package env
 
 import (
@@ -16,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 )
 
 // sudo runs a command as root and returns its combined output.
@@ -46,18 +43,6 @@ func runIn(stdin string, args ...string) (string, error) {
 func writeRoot(path, s string) error {
 	_, err := sudoIn(s, "tee", path)
 	return err
-}
-
-// waitFor polls cond every 10 ms until it holds or timeout passes.
-func waitFor(timeout time.Duration, cond func() bool) bool {
-	deadline := time.Now().Add(timeout)
-	for !cond() {
-		if time.Now().After(deadline) {
-			return false
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return true
 }
 
 // mounted reports whether path is a mount point.

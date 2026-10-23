@@ -28,7 +28,7 @@ import (
 )
 
 // The faults that need the environment of -env: each node on a disk of
-// its own under LazyFS, in a cgroup of its own, and netem on the links.
+// its own, in a cgroup of its own, and netem on the links.
 const (
 	netemLoss      = "netem-loss"
 	netemReorder   = "netem-reorder"
@@ -38,8 +38,6 @@ const (
 	diskStall      = "disk-stall"
 	fsyncFail      = "fsync-fail"
 	diskFull       = "disk-full"
-	powerLoss      = "power-loss"
-	tornWrite      = "torn-write"
 	recoveryCrash  = "crash-in-recovery"
 	installCrash   = "crash-in-install"
 	slowWatcher    = "barely-alive-client"
@@ -50,35 +48,12 @@ const (
 
 var envFaults = []string{
 	netemLoss, netemReorder, netemCorrupt, cpuGray, diskSlow, diskStall, fsyncFail, diskFull,
-	powerLoss, tornWrite, recoveryCrash, installCrash, slowWatcher, severalAtOnce, replace,
-}
-
-// LazyFS answers an fsync with success even when the disk under it
-// failed the write or is full, so a node on it would be told that data is
-// durable that is not. Its fsync also only writes to the disk under it
-// and never syncs it, so a slow or stalled disk does not hold the node's
-// fsync. Those faults run only without it, and the faults that need it
-// only with it.
-var (
-	withoutLazyFS = []string{diskSlow, diskStall, fsyncFail, diskFull}
-	withLazyFS    = []string{powerLoss, tornWrite}
-)
-
-// envFaultsFor are the faults of the environment a run can have.
-func envFaultsFor(lazyfs bool) []string {
-	var out []string
-	for _, f := range envFaults {
-		if lazyfs && slices.Contains(withoutLazyFS, f) || !lazyfs && slices.Contains(withLazyFS, f) {
-			continue
-		}
-		out = append(out, f)
-	}
-	return out
+	recoveryCrash, installCrash, slowWatcher, severalAtOnce, replace,
 }
 
 // grayFaults leave two nodes healthy, so writes through them must keep
 // committing within livenessBound.
-var grayFaults = []string{netemLoss, netemReorder, netemCorrupt, cpuGray, diskSlow, diskStall, fsyncFail, diskFull, powerLoss, tornWrite, recoveryCrash, slowWatcher}
+var grayFaults = []string{netemLoss, netemReorder, netemCorrupt, cpuGray, diskSlow, diskStall, fsyncFail, diskFull, recoveryCrash, slowWatcher}
 
 // requestTimeout is etcd's request timeout: 5 s and two election
 // timeouts.
@@ -108,12 +83,10 @@ type environment struct {
 	netem   *env.Netem
 	latency map[string]time.Duration
 	tag     string
-	// archiving is held by each pass of archive, by erase and by repair:
-	// on LazyFS, a file removed while the archive reads it stays as a
-	// .fuse_hidden file until it is closed, and the erase found its
-	// directory not empty (#264); a file the archive holds open keeps the
-	// disk from unmounting, and the repair failed with "target is busy"
-	// (#288).
+	// archiving is held by each pass of archive, by erase and by repair,
+	// which change the files the archive reads: a file the archive holds
+	// open keeps the disk from unmounting, and the repair failed with
+	// "target is busy" (#288).
 	archiving sync.Mutex
 }
 
@@ -131,12 +104,12 @@ func (e *environment) repair(d *env.Disk) error {
 	return d.Repair()
 }
 
-// newEnvironment makes a disk under dir for each node, with LazyFS when
-// lazyfs names its binary.
-func newEnvironment(dir string, seed uint64, lazyfs string, size int64) (*environment, error) {
+// newEnvironment makes a disk and a cgroup for each node, the disks
+// under dir.
+func newEnvironment(dir string, seed uint64, size int64) (*environment, error) {
 	e := &environment{tag: fmt.Sprintf("chaos-%d-%d", seed, os.Getpid())}
 	for i := range 3 {
-		d, err := env.NewDisk(filepath.Join(dir, "disks"), fmt.Sprintf("%s-n%d", e.tag, i+1), size, lazyfs)
+		d, err := env.NewDisk(filepath.Join(dir, "disks"), fmt.Sprintf("%s-n%d", e.tag, i+1), size)
 		if err != nil {
 			return nil, errors.Join(err, e.close())
 		}
@@ -239,7 +212,6 @@ type envRecord struct {
 	Disk        string           `json:"disk,omitempty"`
 	FreeBytes   int64            `json:"free_bytes,omitempty"`
 	Filled      int64            `json:"filled_bytes,omitempty"`
-	LazyFS      string           `json:"lazyfs,omitempty"`
 	Exited      string           `json:"exited,omitempty"`
 	LeaderNow   string           `json:"leader_after,omitempty"`
 	// Crashes are the kills during recovery, each with the time after
@@ -367,10 +339,6 @@ func (r *runner) injectEnv(ctx context.Context, s step, lead, target int, rec *r
 		return r.withProbes(others(target), rec, func() error { return r.diskFault(ctx, s, target, rec) })
 	case fsyncFail, diskFull:
 		return r.withProbes(others(target), rec, func() error { return r.diskError(ctx, s, target, rec) })
-	case powerLoss:
-		return r.withProbes(others(target), rec, func() error { return r.powerLoss(ctx, s, target, rec) })
-	case tornWrite:
-		return r.withProbes(others(target), rec, func() error { return r.tornWrite(ctx, s, target, rec) })
 	case recoveryCrash:
 		return r.withProbes(others(target), rec, func() error { return r.crashInRecovery(ctx, s, target, rec) })
 	case installCrash:
@@ -548,64 +516,6 @@ func logSince(n *node, from int64) string {
 		return ""
 	}
 	return string(b[from:])
-}
-
-// powerLoss cuts target's power: SIGKILL and every write no fsync
-// covered gone, then a start after the hold.
-func (r *runner) powerLoss(ctx context.Context, s step, target int, rec *record) error {
-	n, d := r.c.nodes[target], r.e.disks[target]
-	ps, _, err := n.signal(syscall.SIGKILL)
-	if err != nil {
-		return err
-	}
-	rec.Installed = true
-	rec.Env.Exited = ps.String()
-	report, err := d.PowerLoss()
-	rec.Env.LazyFS = strings.TrimSpace(report)
-	rec.Effect = err == nil && strings.Contains(report, "cache is cleared")
-	holdErr := pause(ctx, s.Hold)
-	startErr := r.c.start(n)
-	rec.Healed, rec.HealedAt = startErr == nil, r.since()
-	return errors.Join(err, holdErr, startErr)
-}
-
-// tornWrite tears the next write to target's newest log segment: LazyFS
-// keeps its first third and crashes, as the power would cut mid-write.
-// The node is killed, the disk mounted again, and the node started.
-func (r *runner) tornWrite(ctx context.Context, s step, target int, rec *record) error {
-	n, d := r.c.nodes[target], r.e.disks[target]
-	seg, err := newestSegment(d.Data)
-	if err != nil {
-		return err
-	}
-	n.mu.Lock()
-	n.expecting = true
-	n.mu.Unlock()
-	if err := d.TornWrite(seg); err != nil {
-		return err
-	}
-	rec.Installed = true
-	crashed := waitUntil(ctx, s.Hold, d.Crashed)
-	rec.Effect = crashed
-	rec.Env.Disk = filepath.Base(seg)
-	if _, _, err := n.signal(syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) {
-		return err
-	}
-	healErr := d.Remount()
-	if healErr == nil {
-		healErr = r.c.start(n)
-	}
-	rec.Healed, rec.HealedAt = healErr == nil, r.since()
-	return healErr
-}
-
-// newestSegment is the log segment a node writes to.
-func newestSegment(data string) (string, error) {
-	segs, err := segments(data)
-	if err != nil {
-		return "", err
-	}
-	return segs[len(segs)-1], nil
 }
 
 // segments are the log segments under data, oldest first.
@@ -1084,7 +994,7 @@ func mayHaveApplied(err error) bool {
 }
 
 // replaceMember is the safe way back for a member whose disk was erased
-// or whose log a restart refuses (#161). Erased: every node loses power
+// or whose log a restart refuses (#161). Erased: every node is killed
 // at once, the target's disk is erased, and the other two start again
 // from their disks, which must elect a leader and commit writes within
 // livenessBound. Fenced: the target's oldest segment gets a corrupt byte

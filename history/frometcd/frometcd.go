@@ -1,7 +1,7 @@
 // Package frometcd converts etcd's requests and responses to the history
 // format. The converters refuse request fields that the format cannot
 // hold, so a checker never sees a different request than the cluster did.
-// The simulator and the real-process chaos job both use it.
+// The simulator and the real-process chaos run both use it.
 package frometcd
 
 import (

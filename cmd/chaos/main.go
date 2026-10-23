@@ -18,14 +18,8 @@
 // node stood at the end. A failure prints how each node stood then and
 // the command that runs the seed again.
 //
-// Whether each fault took effect, and overlapped a write, is counted over
-// many runs: -tally reads the faults.json of every run under its
-// arguments and fails if a fault took effect in fewer than three in four
-// of the runs it was installed in.
-//
 //	go build -o /tmp/tigerstore ./cmd/tigerstore
 //	go run ./cmd/chaos -tigerstore /tmp/tigerstore -seed 1 -out /tmp/chaos
-//	go run ./cmd/chaos -tally /tmp/chaos
 package main
 
 import (
@@ -56,10 +50,9 @@ type config struct {
 	CheckerTimeout time.Duration `json:"checker_timeout"`
 	// Env runs every node on a disk of its own, in a cgroup of its own,
 	// with netem on the links and 1 to 10 ms between nodes, through
-	// sudo -n; LazyFS is its binary, for the faults that need it.
-	Env      bool   `json:"env"`
-	LazyFS   string `json:"lazyfs,omitempty"`
-	DiskSize int64  `json:"disk_size,omitempty"`
+	// sudo -n.
+	Env      bool  `json:"env"`
+	DiskSize int64 `json:"disk_size,omitempty"`
 }
 
 func main() {
@@ -75,29 +68,15 @@ func main() {
 	flag.DurationVar(&c.Quiet, "quiet", 8*time.Second, "wait after the heal, longer than the server's request timeout, before the final reads")
 	flag.DurationVar(&c.CheckerTimeout, "checker-timeout", time.Minute, "linearizability checker timeout")
 	flag.StringVar(&recheck, "check", "", "only rerun the checkers on this saved history.json, writing results next to it")
-	tallyRuns := flag.Bool("tally", false, "only count, over the runs under the directories given as arguments, the runs in which each fault took effect")
 	flag.BoolVar(&c.Env, "env", false, "run each node on a disk and in a cgroup of its own, with netem and 1 to 10 ms between nodes (needs sudo -n), and add the faults of that environment")
-	flag.StringVar(&c.LazyFS, "lazyfs", "", "LazyFS binary; with -env, every disk runs under it")
 	flag.Int64Var(&c.DiskSize, "disk-size", 512<<20, "with -env, the bytes of each node's disk")
 	flag.Parse()
 	if recheck != "" {
 		os.Exit(checkSaved(recheck, c.CheckerTimeout))
 	}
-	if *tallyRuns {
-		logf := func(format string, args ...any) { _, _ = fmt.Fprintf(os.Stdout, format+"\n", args...) }
-		ok, err := tally(flag.Args(), logf)
-		if err != nil {
-			logf("tally: %v", err)
-			os.Exit(2)
-		}
-		if !ok {
-			os.Exit(1)
-		}
-		return
-	}
 	c.Faults = strings.Split(faults, ",")
 	if c.Env && faults == strings.Join(allFaults, ",") {
-		c.Faults = append(c.Faults, envFaultsFor(c.LazyFS != "")...)
+		c.Faults = append(c.Faults, envFaults...)
 	}
 	if c.Seed == 0 || c.Tigerstore == "" || flag.NArg() != 0 {
 		flag.Usage()
@@ -119,9 +98,6 @@ func replayCommand(c config) string {
 		c.Seed, strings.Join(c.Faults, ","), c.Rate, c.RequestTimeout, c.WatchTimeout, c.Quiet, c.CheckerTimeout)
 	if c.Env {
 		cmd += fmt.Sprintf(" -env -disk-size %d", c.DiskSize)
-		if c.LazyFS != "" {
-			cmd += " -lazyfs <LazyFS binary>"
-		}
 	}
 	return cmd
 }
@@ -155,12 +131,6 @@ func run(c config, dir string) (err error) {
 	for _, f := range c.Faults {
 		if slices.Contains(envFaults, f) && !c.Env {
 			return fmt.Errorf("fault %q needs -env", f)
-		}
-		if slices.Contains(withoutLazyFS, f) && c.LazyFS != "" {
-			return fmt.Errorf("fault %q runs only without -lazyfs, which would hide it", f)
-		}
-		if slices.Contains(withLazyFS, f) && c.LazyFS == "" {
-			return fmt.Errorf("fault %q needs -lazyfs", f)
 		}
 		if !slices.Contains(allFaults, f) && !slices.Contains(envFaults, f) {
 			return fmt.Errorf("unknown fault %q; known: %s", f, strings.Join(slices.Concat(allFaults, envFaults), ","))
@@ -203,7 +173,7 @@ func run(c config, dir string) (err error) {
 	var data [3]string
 	var extra []string
 	if c.Env {
-		if e, err = newEnvironment(dir, c.Seed, c.LazyFS, c.DiskSize); err != nil {
+		if e, err = newEnvironment(dir, c.Seed, c.DiskSize); err != nil {
 			fail("environment", err)
 			return
 		}

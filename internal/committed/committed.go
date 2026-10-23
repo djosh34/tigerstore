@@ -1,5 +1,5 @@
 // Package committed reads the Raft log from the WALs of stopped nodes, for
-// the checks of the chaos runs and of etcd's robustness tests.
+// the checks of the chaos and rolling-upgrade runs.
 package committed
 
 import (

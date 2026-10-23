@@ -55,7 +55,7 @@ rm -rf data/node3                            # start on empty storage
   ...                                        # the node's other flags, as before
 ```
 
-The new member gets a new ID and catches up from the leader, with a snapshot once the leader no longer has the log from its start. With `--strict-reconfig-check` (the default), a removal or an add waits until the node that takes it has been connected to its peers for 5 s; until then it answers that the cluster is unhealthy, and the call can be repeated. The `replace-member` step of the chaos job (`cmd/chaos -env`) does this after an erased disk and after a refused log, under every checker (#161).
+The new member gets a new ID and catches up from the leader, with a snapshot once the leader no longer has the log from its start. With `--strict-reconfig-check` (the default), a removal or an add waits until the node that takes it has been connected to its peers for 5 s; until then it answers that the cluster is unhealthy, and the call can be repeated. The `replace-member` step of the nightly chaos run (`cmd/chaos -env`) does this after an erased disk and after a refused log, under every checker (#161).
 
 ## Tests
 
