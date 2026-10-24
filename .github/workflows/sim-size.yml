@@ -1,6 +1,9 @@
 name: sim-size
 run-name: sim-size ${{ inputs.objects }} x ${{ inputs.duration }} seed ${{ inputs.seed }}
 on:
+  push:
+    branches: [exp/401-sim-size]
+    paths: [.github/workflows/sim-size.yml]
   workflow_dispatch:
     inputs:
       objects:
@@ -32,9 +35,9 @@ jobs:
           go-version-file: go.mod
       - name: Generate parameter wrappers
         env:
-          OBJECTS: ${{ inputs.objects }}
-          DURATION: ${{ inputs.duration }}
-          SEED: ${{ inputs.seed }}
+          OBJECTS: ${{ inputs.objects || '[1000]' }}
+          DURATION: ${{ inputs.duration || '[60]' }}
+          SEED: ${{ inputs.seed || '1' }}
         run: |
           python3 - <<'PY'
           import json, os
@@ -63,8 +66,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        objects: ${{ fromJSON(inputs.objects) }}
-        duration: ${{ fromJSON(inputs.duration) }}
+        objects: ${{ fromJSON(inputs.objects || '[1000]') }}
+        duration: ${{ fromJSON(inputs.duration || '[60]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v7
@@ -75,8 +78,8 @@ jobs:
         env:
           OBJECTS: ${{ matrix.objects }}
           DURATION: ${{ matrix.duration }}
-          SEED: ${{ inputs.seed }}
-          WALL_SECONDS: ${{ inputs.wall_seconds }}
+          SEED: ${{ inputs.seed || '1' }}
+          WALL_SECONDS: ${{ inputs.wall_seconds || '600' }}
         run: |
           chmod +x "$RUNNER_TEMP/size-bin/size.test"
           python3 scripts/sim-size.py
