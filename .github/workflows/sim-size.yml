@@ -1,9 +1,6 @@
 name: sim-size
-run-name: sim-size ${{ inputs.objects }} x ${{ inputs.duration }} seed ${{ inputs.seed }}
+run-name: sim-size ${{ inputs.objects }} x ${{ inputs.duration }} seed ${{ inputs.seed }} values /${{ inputs.value_divisor }}
 on:
-  push:
-    branches: [exp/401-sim-size]
-    paths: [.github/workflows/sim-size.yml]
   workflow_dispatch:
     inputs:
       objects:
@@ -16,6 +13,10 @@ on:
         required: true
       seed:
         description: One harness and scheduler seed
+        default: '1'
+        required: true
+      value_divisor:
+        description: Divide histogram value sizes by this number (minimum 64 bytes), for a control
         default: '1'
         required: true
       wall_seconds:
@@ -38,16 +39,18 @@ jobs:
           OBJECTS: ${{ inputs.objects || '[1000]' }}
           DURATION: ${{ inputs.duration || '[60]' }}
           SEED: ${{ inputs.seed || '1' }}
+          DIVISOR: ${{ inputs.value_divisor || '1' }}
         run: |
           python3 - <<'PY'
           import json, os
-          objects=json.loads(os.environ['OBJECTS']); durations=json.loads(os.environ['DURATION']); seed=int(os.environ['SEED'])
+          objects=json.loads(os.environ['OBJECTS']); durations=json.loads(os.environ['DURATION']); seed=int(os.environ['SEED']); divisor=int(os.environ['DIVISOR'])
+          assert divisor>0
           assert all(type(n) is int and n>0 for n in objects+durations) and seed>0
           with open('internal/sim/size_parameters_test.go','w') as f:
             f.write('//go:build sim\n\npackage sim\nimport "testing"\n')
             for n in objects:
               for d in durations:
-                f.write(f'func TestSize_{n}_{d}(t *testing.T) {{ sizeProbe(t,{n},{d},{seed}) }}\n')
+                f.write(f'func TestSize_{n}_{d}(t *testing.T) {{ sizeProbe(t,{n},{d},{seed},{divisor}) }}\n')
           PY
       - name: Build as the simulator campaign does (no tests)
         run: scripts/sim.sh ./internal/sim '^$'
@@ -80,6 +83,7 @@ jobs:
           DURATION: ${{ matrix.duration }}
           SEED: ${{ inputs.seed || '1' }}
           WALL_SECONDS: ${{ inputs.wall_seconds || '600' }}
+          VALUE_DIVISOR: ${{ inputs.value_divisor || '1' }}
         run: |
           chmod +x "$RUNNER_TEMP/size-bin/size.test"
           python3 scripts/sim-size.py

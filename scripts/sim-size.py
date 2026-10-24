@@ -17,7 +17,8 @@ log = (root / 'size.log').open('w')
 cmd = ['/usr/bin/time', '-v', '-o', str(root / 'size-time.txt'),
        str(root / 'size-bin/size.test'), '-test.run', f'^TestSize_{n}_{duration}$',
        '-seeds', str(seed), '-logformat', 'raw']
-p = subprocess.Popen(cmd, stdout=log, stderr=log, start_new_session=True)
+child_env = dict(os.environ, GODEBUG='gctrace=1')
+p = subprocess.Popen(cmd, stdout=log, stderr=log, start_new_session=True, env=child_env)
 peak = 0
 outcome = None
 with (root / 'size-samples.jsonl').open('w') as samples:
@@ -49,7 +50,7 @@ with (root / 'size-samples.jsonl').open('w') as samples:
             # Kill only the child so GNU time can collect its final rusage.
             for pid in pids:
                 try:
-                    os.kill(int(pid), signal.SIGKILL)
+                    os.kill(int(pid), signal.SIGQUIT if outcome.startswith('memory_guard') else signal.SIGKILL)
                 except ProcessLookupError:
                     pass
             break
@@ -69,7 +70,8 @@ if m:
         elapsed = elapsed * 60 + float(part)
 sim = re.findall(r'(?<!churn_)sim_s=([\d.]+)', text)
 churn = re.findall(r'churn_s=([\d.]+)', text)
-result = dict(objects=n, duration_s=duration, seed=seed, wall_s=elapsed,
+result = dict(objects=n, duration_s=duration, seed=seed,
+              value_divisor=int(os.environ.get('VALUE_DIVISOR', '1')), wall_s=elapsed,
               peak_rss_kib=peak, last_sim_s=float(sim[-1]) if sim else 0,
               last_churn_s=float(churn[-1]) if churn else 0,
               exit_code=p.returncode,

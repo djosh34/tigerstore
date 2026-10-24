@@ -16,7 +16,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func sizeProbe(t *testing.T, objects, seconds int, seed uint64) {
+func sizeProbe(t *testing.T, objects, seconds int, seed uint64, valueDivisors ...int) {
+	divisor := 1
+	if len(valueDivisors) > 0 {
+		divisor = valueDivisors[0]
+	}
+	valueSize := func(bin int) int { return max(64, k8ssize.Buckets[bin].Size/divisor) }
 	// simrun.Bubble normally caps virtual time at an hour. Do not use it here.
 	gosim.SetSimulationTimeout(24 * time.Hour)
 	cfg := DefaultConfig(seed)
@@ -42,7 +47,7 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64) {
 			return &pb.RangeRequest{Key: k, RangeEnd: []byte("l"), Limit: 100}
 		case p < 90: // 40% update, 15% create (same fixed object pool)
 			b := k8ssize.Buckets[bins[i]]
-			val := make([]byte, b.Size)
+			val := make([]byte, valueSize(bins[i]))
 			for j := range val {
 				val[j] = byte('a' + (j+c.n)%26)
 			}
@@ -83,8 +88,7 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64) {
 		for worker := range 16 {
 			wg.Go(func() {
 				for i := worker; i < objects; i += 16 {
-					b := k8ssize.Buckets[bins[i]]
-					req := &pb.PutRequest{Key: fmt.Appendf(nil, "k%08d", i), Value: make([]byte, b.Size)}
+					req := &pb.PutRequest{Key: fmt.Appendf(nil, "k%08d", i), Value: make([]byte, valueSize(bins[i]))}
 					for {
 						_, err := s.call(s.nodes[worker%3], req, 3*Second)
 						if err == nil {
@@ -138,7 +142,7 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("SIZE_START objects=%d seconds=%d seed=%d\n", objects, seconds, seed)
+	fmt.Printf("SIZE_START objects=%d seconds=%d seed=%d value_divisor=%d\n", objects, seconds, seed, divisor)
 	err = s.run()
 	s.mu.Lock()
 	fmt.Printf("SIZE_DONE objects=%d target_s=%d sim_s=%.3f churn_s=%.3f loaded=%d calls=%d ok=%d compact=%d kills=%d err=%v\n", objects, seconds, float64(s.now())/float64(Second), float64(s.now()-phaseAt)/float64(Second), loaded, len(s.history), s.stats.OK, s.stats.Compactions, s.stats.Kills, err)
