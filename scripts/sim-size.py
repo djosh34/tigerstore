@@ -8,6 +8,7 @@ import signal
 import subprocess
 import time
 
+print(json.dumps({'cpus': os.cpu_count(), 'meminfo': Path('/proc/meminfo').read_text().splitlines()[:3]}), flush=True)
 root = Path(os.environ['RUNNER_TEMP'])
 n, duration, seed = (int(os.environ[k]) for k in ('OBJECTS', 'DURATION', 'SEED'))
 wall_limit = min(int(os.environ['WALL_SECONDS']), 19800)
@@ -60,6 +61,12 @@ timing = (root / 'size-time.txt').read_text() if (root / 'size-time.txt').exists
 m = re.search(r'Maximum resident set size \(kbytes\): (\d+)', timing)
 if m:
     peak = max(peak, int(m.group(1)))
+# Use rusage's elapsed time, not the five-second monitor polling interval.
+m = re.search(r'Elapsed \(wall clock\) time \(h:mm:ss or m:ss\): ([\d:.]+)', timing)
+if m:
+    elapsed = 0
+    for part in m.group(1).split(':'):
+        elapsed = elapsed * 60 + float(part)
 sim = re.findall(r'(?<!churn_)sim_s=([\d.]+)', text)
 churn = re.findall(r'churn_s=([\d.]+)', text)
 result = dict(objects=n, duration_s=duration, seed=seed, wall_s=elapsed,
