@@ -5,6 +5,7 @@ package sim
 // Throwaway capacity experiment for #401, not a correctness test. It keeps
 // the simulator's histories, traces, watches, disks and default fault mix.
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/k8ssize"
 	"github.com/jellevandenhooff/gosim"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -148,7 +150,9 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64, valueDivisors ..
 					if i >= 0 {
 						_, err := s.call(s.nodes[i], &pb.CompactionRequest{Revision: prev}, 3*Second)
 						fmt.Printf("SIZE_COMPACT revision=%d err=%v\n", prev, err)
-						if err == nil {
+						// A lost reply can leave the request already committed.
+						// Advance instead of retrying that stale target forever.
+						if err == nil || errors.Is(err, rpctypes.ErrGRPCCompacted) {
 							s.mu.Lock()
 							s.stats.Compactions++
 							s.mu.Unlock()
