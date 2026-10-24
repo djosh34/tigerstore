@@ -195,8 +195,30 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64, valueDivisors ..
 	err = s.run()
 	s.mu.Lock()
 	fmt.Printf("SIZE_DONE objects=%d target_s=%d sim_s=%.3f churn_s=%.3f loaded=%d calls=%d ok=%d compact=%d kills=%d err=%v\n", objects, seconds, float64(s.now())/float64(Second), float64(s.now()-phaseAt)/float64(Second), loaded, len(s.history), s.stats.OK, s.stats.Compactions, s.stats.Kills, err)
+	res := &Result{Clients: cfg.Clients + cfg.V3Clients}
+	res.History, res.Stats, res.Silences = s.history, s.stats, s.silences
+	res.HeldAppendAt = s.heldAppendAt
+	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
+	res.nodes = s.nodes
 	s.mu.Unlock()
+	// plan 4 review: the end of a seed as runSeed does it, the checks and
+	// the hashes, which #401 and #411 did not run.
+	fmt.Printf("SIZE_PHASE check_start\n")
+	var cerr error
+	if err == nil {
+		cerr = s.check(res)
+	}
+	msg := fmt.Sprint(cerr)
+	if len(msg) > 3000 {
+		msg = msg[:3000]
+	}
+	fmt.Printf("SIZE_PHASE check_done err=%s\n", msg)
+	res.Report = s.report()
 	s.shutdown()
+	res.Trace = s.trace
+	fmt.Printf("SIZE_PHASE hash_start history=%d trace=%d\n", len(res.History), len(res.Trace))
+	h := hashes(res)
+	fmt.Printf("SIZE_PHASE hash_done %s\n", h)
 	if err != nil {
 		t.Fatal(err)
 	}

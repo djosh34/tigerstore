@@ -36,14 +36,14 @@ with (root / 'size-samples.jsonl').open('w') as samples:
                 pass
         peak = max(peak, rss)
         text = (root / 'size.log').read_text(errors='replace')
-        progress = re.findall(r'SIZE_(?:PROGRESS|DONE|PRELOADED)[^\n]*', text)
+        progress = re.findall(r'SIZE_(?:PROGRESS|DONE|PRELOADED|PHASE)[^\n]*', text)
         latest = progress[-1] if progress else ''
         elapsed = time.monotonic() - start
         row = dict(wall_s=round(elapsed, 3), rss_kib=rss, progress=latest)
         print(json.dumps(row), flush=True)
         samples.write(json.dumps(row) + '\n'); samples.flush()
-        if rss > 12 * 1024 * 1024:
-            outcome = 'memory_guard_12GiB'
+        if rss > 15 * 1024 * 1024:
+            outcome = 'memory_guard_15GiB'
         elif elapsed >= wall_limit:
             outcome = 'wall_limit'
         if outcome:
