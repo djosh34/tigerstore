@@ -114,25 +114,39 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64, valueDivisors ..
 		s.mu.Unlock()
 		// Compact every five minutes, one interval behind, as the soak does.
 		s.wg.Go(func() {
-			var prev int64
+			prev := int64(objects) // preload completed before the first interval
 			for s.sleep(300 * Second) {
 				s.mu.Lock()
 				if s.now() >= s.stopAt {
 					s.mu.Unlock()
 					return
 				}
-				i := s.leaderIdx()
 				rev := int64(0)
 				for _, c := range s.clients {
 					rev = max(rev, c.rev)
 				}
 				s.mu.Unlock()
-				if i >= 0 && prev > 0 {
-					_, err := s.call(s.nodes[i], &pb.CompactionRequest{Revision: prev}, 3*Second)
-					if err == nil {
-						s.mu.Lock()
-						s.stats.Compactions++
-						s.mu.Unlock()
+				// Keep this interval's request pending across faults, rather than
+				// silently skipping every compaction when its tick has no leader.
+				for prev > 0 {
+					s.mu.Lock()
+					i, stopped := s.leaderIdx(), s.now() >= s.stopAt
+					s.mu.Unlock()
+					if stopped {
+						return
+					}
+					if i >= 0 {
+						_, err := s.call(s.nodes[i], &pb.CompactionRequest{Revision: prev}, 3*Second)
+						fmt.Printf("SIZE_COMPACT revision=%d err=%v\n", prev, err)
+						if err == nil {
+							s.mu.Lock()
+							s.stats.Compactions++
+							s.mu.Unlock()
+							break
+						}
+					}
+					if !s.sleep(Second) {
+						return
 					}
 				}
 				prev = rev
