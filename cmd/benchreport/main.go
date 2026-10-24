@@ -213,7 +213,8 @@ func report(w io.Writer, dir string) error {
 				if target != "etcd" && len(maxRuns) > 0 {
 					got := medianOf(maxRuns, throughput)
 					bar, hasBar := bars[bench]
-					hasBar = hasBar && rtt != "0"
+					rttMs, _ := strconv.ParseFloat(rtt, 64)
+					hasBar = hasBar && rttMs > 0
 					switch {
 					case len(etcdMax) > 0:
 						ratio := got / medianOf(etcdMax, throughput)
