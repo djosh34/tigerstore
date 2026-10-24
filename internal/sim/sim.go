@@ -54,10 +54,11 @@ const (
 // Config describes one run.
 type Config struct {
 	// Throwaway #401 capacity probe hooks. Nil preserves the normal simulator.
-	probeBefore  func(*Sim) error
-	probeRequest func(*client) proto.Message
-	probeWait    int64
-	Seed         uint64
+	probeBefore    func(*Sim) error
+	probeRequest   func(*client) proto.Message
+	probeWait      int64
+	probeWatchFrom int64
+	Seed           uint64
 	// Duration is the length of the phase with faults.
 	Duration int64
 	// Heal is how long clients run after scheduled healing. The liveness

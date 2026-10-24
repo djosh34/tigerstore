@@ -15,6 +15,10 @@ on:
         description: One harness and scheduler seed
         default: '1'
         required: true
+      watch_after_preload:
+        description: Start watches after the preload revision, as cmd/soak does (otherwise stock adversarial replay)
+        type: boolean
+        default: false
       value_divisor:
         description: Divide histogram value sizes by this number (minimum 64 bytes), for a control
         default: '1'
@@ -40,16 +44,18 @@ jobs:
           DURATION: ${{ inputs.duration || '[60]' }}
           SEED: ${{ inputs.seed || '1' }}
           DIVISOR: ${{ inputs.value_divisor || '1' }}
+          WATCH_LATEST: ${{ inputs.watch_after_preload || false }}
         run: |
           python3 - <<'PY'
           import json, os
           objects=json.loads(os.environ['OBJECTS']); durations=json.loads(os.environ['DURATION']); seed=int(os.environ['SEED']); divisor=int(os.environ['DIVISOR'])
+          watch_latest=int(os.environ['WATCH_LATEST'].lower()=='true')
           assert divisor>0
           assert all(type(n) is int and n>0 for n in objects+durations) and seed>0
           with open('internal/sim/size_parameters_test.go','w') as f:
             f.write('//go:build sim\n\npackage sim\nimport "testing"\n')
             for n,d in sorted({(1000,60)} | {(n,d) for n in objects for d in durations}):
-              f.write(f'func TestSize_{n}_{d}(t *testing.T) {{ sizeProbe(t,{n},{d},{seed},{divisor}) }}\n')
+              f.write(f'func TestSize_{n}_{d}(t *testing.T) {{ sizeProbe(t,{n},{d},{seed},{divisor},{watch_latest}) }}\n')
           PY
       - name: Build as the simulator campaign does (no tests)
         run: scripts/sim.sh ./internal/sim '^$'
@@ -66,6 +72,7 @@ jobs:
           SEED: ${{ inputs.seed }}
           WALL_SECONDS: '300'
           VALUE_DIVISOR: ${{ inputs.value_divisor || '1' }}
+          WATCH_AFTER_PRELOAD: ${{ inputs.watch_after_preload || false }}
         run: |
           python3 scripts/sim-size.py
           python3 -c 'import json,os; assert json.load(open(os.environ["RUNNER_TEMP"]+"/size-result.json"))["outcome"] == "finished"'
@@ -104,6 +111,7 @@ jobs:
           SEED: ${{ inputs.seed || '1' }}
           WALL_SECONDS: ${{ inputs.wall_seconds || '600' }}
           VALUE_DIVISOR: ${{ inputs.value_divisor || '1' }}
+          WATCH_AFTER_PRELOAD: ${{ inputs.watch_after_preload || false }}
         run: |
           chmod +x "$RUNNER_TEMP/size-bin/size.test"
           python3 scripts/sim-size.py

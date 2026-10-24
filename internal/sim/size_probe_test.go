@@ -35,7 +35,9 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64, valueDivisors ..
 	cfg.Faults.DiskCapacity = int(cfg.Faults.DiskBudget * 2)
 	bins := make([]int, objects)
 	var loaded int
+	var preloadRev int64
 	var phaseAt int64
+	watchLatest := len(valueDivisors) > 1 && valueDivisors[1] > 0
 	leaseAt := map[*client]int64{}
 	cfg.probeRequest = func(c *client) proto.Message {
 		s := c.sim // request holds s.mu
@@ -91,14 +93,19 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64, valueDivisors ..
 			wg.Go(func() {
 				for i := worker; i < objects; i += 16 {
 					req := &pb.PutRequest{Key: fmt.Appendf(nil, "k%08d", i), Value: make([]byte, valueSize(bins[i]))}
+					var resp proto.Message
 					for {
-						_, err := s.call(s.nodes[worker%3], req, 3*Second)
+						var err error
+						resp, err = s.call(s.nodes[worker%3], req, 3*Second)
 						if err == nil {
 							break
 						}
 						time.Sleep(100 * time.Millisecond)
 					}
 					s.mu.Lock()
+					if h, ok := resp.(interface{ GetHeader() *pb.ResponseHeader }); ok {
+						preloadRev = max(preloadRev, h.GetHeader().Revision)
+					}
 					loaded++
 					s.mu.Unlock()
 				}
@@ -107,10 +114,13 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64, valueDivisors ..
 		wg.Wait()
 		s.mu.Lock()
 		phaseAt = s.now()
+		if watchLatest {
+			s.cfg.probeWatchFrom = preloadRev + 1
+		}
 		s.healAt += phaseAt
 		s.stopAt += phaseAt
 		s.endAt += phaseAt
-		fmt.Printf("SIZE_PRELOADED objects=%d sim_s=%.3f\n", objects, float64(phaseAt)/float64(Second))
+		fmt.Printf("SIZE_PRELOADED objects=%d sim_s=%.3f revision=%d watch_from=%d\n", objects, float64(phaseAt)/float64(Second), preloadRev, s.cfg.probeWatchFrom)
 		s.mu.Unlock()
 		// Compact every five minutes, one interval behind, as the soak does.
 		s.wg.Go(func() {

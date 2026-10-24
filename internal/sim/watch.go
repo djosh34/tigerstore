@@ -85,6 +85,9 @@ func (s *Sim) startWatchers() {
 		if s.rng.IntN(2) == 0 {
 			w.next = 1
 		}
+		if s.cfg.probeWatchFrom > 0 {
+			w.next = s.cfg.probeWatchFrom
+		}
 		s.watchers = append(s.watchers, w)
 		wait, drop := s.rng.Int64N(Second), s.exp(3*Second)
 		s.wg.Go(func() { w.run(wait, drop) })

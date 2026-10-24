@@ -71,7 +71,8 @@ if m:
 sim = re.findall(r'(?<!churn_)sim_s=([\d.]+)', text)
 churn = re.findall(r'churn_s=([\d.]+)', text)
 result = dict(objects=n, duration_s=duration, seed=seed,
-              value_divisor=int(os.environ.get('VALUE_DIVISOR', '1')), wall_s=elapsed,
+              value_divisor=int(os.environ.get('VALUE_DIVISOR', '1')),
+              watch_after_preload=os.environ.get('WATCH_AFTER_PRELOAD', 'false').lower() == 'true', wall_s=elapsed,
               peak_rss_kib=peak, last_sim_s=float(sim[-1]) if sim else 0,
               last_churn_s=float(churn[-1]) if churn else 0,
               exit_code=p.returncode,
