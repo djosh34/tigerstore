@@ -40,6 +40,7 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64, valueDivisors ..
 	var preloadRev int64
 	var phaseAt int64
 	watchLatest := len(valueDivisors) > 1 && valueDivisors[1] > 0
+	compactPreload := len(valueDivisors) > 2 && valueDivisors[2] > 0
 	leaseAt := map[*client]int64{}
 	cfg.probeRequest = func(c *client) proto.Message {
 		s := c.sim // request holds s.mu
@@ -114,6 +115,24 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64, valueDivisors ..
 			})
 		}
 		wg.Wait()
+		if compactPreload {
+			for {
+				s.mu.Lock()
+				i := s.leaderIdx()
+				s.mu.Unlock()
+				if i >= 0 {
+					_, err := s.call(s.nodes[i], &pb.CompactionRequest{Revision: preloadRev}, 3*Second)
+					if err == nil || errors.Is(err, rpctypes.ErrGRPCCompacted) {
+						s.mu.Lock()
+						s.stats.Compactions++
+						s.mu.Unlock()
+						fmt.Printf("SIZE_INITIAL_COMPACT revision=%d err=%v\n", preloadRev, err)
+						break
+					}
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
 		s.mu.Lock()
 		phaseAt = s.now()
 		if watchLatest {
