@@ -29,6 +29,7 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64) {
 	bins := make([]int, objects)
 	var loaded int
 	var phaseAt int64
+	leaseAt := map[*client]int64{}
 	cfg.probeRequest = func(c *client) proto.Message {
 		s := c.sim // request holds s.mu
 		i := s.rng.IntN(objects)
@@ -50,7 +51,8 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64) {
 				put.Lease = c.leases[len(c.leases)-1]
 			}
 			// Reuse an event lease for a minute, with the soak's TTL of 120 s.
-			if b.Resource == "events" && (len(c.leases) == 0 || c.n%1500 == 0) {
+			if b.Resource == "events" && (len(c.leases) == 0 || s.now()-leaseAt[c] >= 60*Second) {
+				leaseAt[c] = s.now()
 				return &pb.LeaseGrantRequest{TTL: 120}
 			}
 			return put
