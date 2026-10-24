@@ -53,6 +53,10 @@ const (
 
 // Config describes one run.
 type Config struct {
+	// Throwaway #401 capacity probe hooks. Nil preserves the normal simulator.
+	probeBefore func(*Sim) error
+	probeRequest func(*client) proto.Message
+	probeWait int64
 	Seed uint64
 	// Duration is the length of the phase with faults.
 	Duration int64
@@ -769,6 +773,9 @@ func (s *Sim) run() error {
 		if err := s.start(n); err != nil {
 			return err
 		}
+	}
+	if s.cfg.probeBefore != nil {
+		if err := s.cfg.probeBefore(s); err != nil { return err }
 	}
 	s.schedule()
 	// The end can move while the run goes on (extendLiveness).

@@ -100,6 +100,7 @@ func (c *client) run() {
 			}
 			c.done(r, resp, err)
 			wait = 1 + s.rng.Int64N(20*Millisecond)
+			if s.cfg.probeWait > 0 { wait = s.cfg.probeWait }
 			s.mu.Unlock()
 			continue
 		}
@@ -123,6 +124,7 @@ func (c *client) run() {
 		c.done(r, resp, err)
 		// At least 1 ns, so the next call starts after this one returned.
 		wait = 1 + s.rng.Int64N(20*Millisecond)
+		if s.cfg.probeWait > 0 { wait = s.cfg.probeWait }
 		s.mu.Unlock()
 	}
 }
@@ -245,6 +247,7 @@ func (c *client) learn(resp proto.Message) {
 // the current and past revisions, prefix reads with limits, and
 // serializable reads.
 func (c *client) request() proto.Message {
+	if c.sim.cfg.probeRequest != nil { return c.sim.cfg.probeRequest(c) }
 	s := c.sim
 	k := s.rng.IntN(numKeys)
 	val := fmt.Appendf(nil, "c%d-%d", c.id, c.n)
