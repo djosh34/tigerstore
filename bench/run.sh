@@ -22,6 +22,13 @@
 # max calibration per store, then offers half of etcd's median max rate
 # to all stores for REPS repetitions. MIXED_RATE can override that rate.
 #
+# A run that fails writes its cause to <target>-<mode>-<rep>.failed, and
+# the other runs still run: one store's failure must not hide the others'
+# results. cmd/benchreport decides what a failure means. Where etcd has no
+# max result, the rate is RATE_FALLBACK; without it no rate runs run, and
+# <out dir>/<benchmark>/norate says why. The rate used goes to
+# <out dir>/<benchmark>/rate.
+#
 # Environment:
 #   TARGETS     target names in order (default "etcd"); target <name> runs
 #               the binary $BINS/<name>, as etcd if the name is etcd and as
@@ -42,15 +49,15 @@
 #               reference), alone puts the followers there and keeps the
 #               leader on the disk; written as <target>-<layout>-<rep>.json
 #   TMPFS_DIR   a directory on tmpfs for LAYOUTS (default /dev/shm/bench-data)
+#   RATE_FALLBACK  the rate where etcd has no max result (bench.yml passes
+#               the first RTT's)
 set -euo pipefail
 
 bench=$1
 out=$2
 read -r -a targets <<<"${TARGETS:-etcd}"
 read -r -a layout <<<"${LAYOUT:-3 0 1 2}"
-default_modes="max rate"
-if [ "$bench" = mixed-k8s ]; then default_modes=rate; fi
-read -r -a modes <<<"${MODES:-$default_modes}"
+read -r -a modes <<<"${MODES:-max rate}"
 reps=${REPS:-5}
 data=${DATA:-/tmp/bench-data}
 tmpfs=${TMPFS_DIR:-/dev/shm/bench-data}
@@ -91,9 +98,14 @@ keys=10000 warmup=3s duration=10s watchers=3
 # Each answer is about half a megabyte, so at max only 2 connections × 16
 # streams are busy: with the default 1,536, etcd v3.7.2 lost its leader.
 concurrency=()
+# Mixed reads are linearizable and go to all three nodes, so at 10 ms RTT a
+# request waits about 17 ms before any work, and a generator with N
+# requests in flight does at most N / 17 ms. 6 x 48 = 288 in flight allow
+# about 17,000/s, twice tigerstore's max without delay; the 96 of 6 x 16
+# capped it near 5,700/s (#414).
 if [ "$workload" = mixed ]; then
 	keys=1000000
-	concurrency=(-conns 6 -streams 16)
+	concurrency=(-conns 6 -streams 48)
 	if [ -n "${MIX+x}" ]; then concurrency+=(-mix "$MIX"); fi
 	# ~1.47 GB values per replica before log/index overhead. Three nodes
 	# run sequentially by target, never concurrently across targets. Keep
@@ -130,52 +142,66 @@ order() {
 	fi
 }
 
+# step <run> <name> <command...> runs one step of a run. If it fails, the
+# step and its last line of errors go to <run>.failed as the cause.
+step() {
+	local run=$1 name=$2 status=0
+	shift 2
+	"$@" 2>"$run.stderr" || status=$?
+	cat "$run.stderr" >&2
+	if [ "$status" -ne 0 ]; then
+		echo "$name exited $status: $(grep -v '^$' "$run.stderr" | tail -n 1)" >"$run.failed"
+	fi
+	rm "$run.stderr"
+	return "$status"
+}
+
 # once <target> <mode> <rep> <loadgen flags...>
 # Mode tmpfs or alone places the nodes as LAYOUTS says.
 once() {
 	local target=$1 mode=$2 rep=$3
 	shift 3
-	local dir=$data/$target place=()
+	local dir=$data/$target place=() run=$out/$bench/$target-$mode-$rep
 	case $mode in
 	tmpfs) place=(TMPFS_NODES="1 2 3") ;;
 	alone) place=(TMPFS_NODES="2 3" LEAD=1) ;;
 	esac
 	"$here/cluster.sh" stop "$dir"
-	env TMPFS_DIR="$tmpfs/$target" "${place[@]}" "$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"
-	cp "$dir/placement.json" "$out/$bench/$target-$mode-$rep.placement"
-	local status=0 endpoint_file=leader
+	local endpoint_file=leader
 	if [ "$workload" = mixed ]; then endpoint_file=endpoints; fi
-	taskset -c "${layout[0]}" "$loadgen" \
-		-endpoints "$(cat "$dir/$endpoint_file")" \
-		-cacert "$certs/ca.pem" -cert "$certs/client.pem" -key "$certs/client-key.pem" \
-		-pids "$(cat "$dir/pids")" \
-		-label "$target" \
-		-workload "$workload" \
-		-value-size "$size" \
-		-watchers "$watchers" \
-		-warmup "$warmup" \
-		-duration "$duration" \
-		-seed "$rep" \
-		${DISK:+-disk "$DISK"} \
-		-out "$out/$bench/$target-$mode-$rep.json" \
-		"$@" || status=$?
-	if [ "$status" -eq 0 ]; then
+	if step "$run" "cluster start" env TMPFS_DIR="$tmpfs/$target" "${place[@]}" "$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"; then
+		cp "$dir/placement.json" "$run.placement"
 		# The generator drove the leader on its CPUs only if the leader
 		# did not change during the run.
-		"$here/cluster.sh" check "$dir" || status=$?
+		if step "$run" loadgen taskset -c "${layout[0]}" "$loadgen" \
+			-endpoints "$(cat "$dir/$endpoint_file")" \
+			-cacert "$certs/ca.pem" -cert "$certs/client.pem" -key "$certs/client-key.pem" \
+			-pids "$(cat "$dir/pids")" \
+			-label "$target" \
+			-workload "$workload" \
+			-value-size "$size" \
+			-watchers "$watchers" \
+			-warmup "$warmup" \
+			-duration "$duration" \
+			-seed "$rep" \
+			${DISK:+-disk "$DISK"} \
+			-out "$run.json" \
+			"$@"; then
+			step "$run" "leader check" "$here/cluster.sh" check "$dir" || true
+		fi
 	fi
 	# Keep logs and a post-run memory/disk sample outside the CPU window.
+	# After a failure some nodes may be gone.
 	for node in 1 2 3; do
-		cp "$dir/n$node.log" "$out/$bench/$target-$mode-$rep-n$node.log" || status=1
+		if [ -f "$dir/n$node.log" ]; then cp "$dir/n$node.log" "$run-n$node.log"; fi
 	done
 	{
 		echo "target=$target mode=$mode rep=$rep"
-		ps -p "$(cat "$dir/pids")" -o pid,comm,rss,vsz
+		ps -p "$(cat "$dir/pids")" -o pid,comm,rss,vsz || true
 		free -b
 		du -sb "$dir"
-	} >"$out/$bench/$target-$mode-$rep.resources" || status=1
+	} >"$run.resources"
 	"$here/cluster.sh" stop "$dir"
-	return "$status"
 }
 
 if [ -e "$out/$bench" ]; then
@@ -183,8 +209,6 @@ if [ -e "$out/$bench" ]; then
 	exit 2
 fi
 mkdir -p "$out/$bench"
-# A run that fails stops the benchmark: its result is invalid, and a
-# comparison without it would be wrong.
 if [[ " ${modes[*]} " == *" max "* ]]; then
 	for rep in $(seq "$reps"); do
 		for target in $(order "$rep"); do
@@ -217,13 +241,21 @@ if [[ " ${modes[*]} " == *" rate "* ]]; then
 	if [[ " ${targets[*]} " != *" etcd "* ]]; then
 		ref=${targets[0]}
 	fi
-	if [[ " ${modes[*]} " == *" max "* ]] || [ "$workload" = mixed ]; then
-		rate=$(jq -s 'map(.throughput) | sort | .[length / 2 | floor] / 2 | floor' "$out/$bench/$ref"-max-*.json)
+	maxes=()
+	for f in "$out/$bench/$ref"-max-*.json; do
+		if [ -f "$f" ] && [ ! -f "${f%.json}.failed" ]; then maxes+=("$f"); fi
+	done
+	if [ "${#maxes[@]}" -gt 0 ]; then
+		rate=$(jq -s 'map(.throughput) | sort | (if length % 2 == 0 then (.[length / 2 - 1] + .[length / 2]) / 2 else .[length / 2 | floor] end) / 2 | floor' "${maxes[@]}")
+	elif [ -n "${RATE_FALLBACK:-}" ]; then
+		echo "$ref has no max result: the rate is RATE_FALLBACK, $RATE_FALLBACK" >&2
+		rate=$RATE_FALLBACK
 	else
-		echo "rate-only needs max results" >&2
-		exit 2
+		echo "$ref has no max result here or at the first RTT" | tee "$out/$bench/norate" >&2
+		exit 0
 	fi
 	if [ "$workload" = mixed ] && [ -n "${MIXED_RATE+x}" ]; then rate=$MIXED_RATE; fi
+	echo "$rate" >"$out/$bench/rate"
 	if [ "$workload" = delete ]; then
 		keys=$(awk -v r="$rate" -v w="${warmup%s}" -v d="${duration%s}" 'BEGIN { print int(r * (w + d) * 1.2) + 10000 }')
 	fi
