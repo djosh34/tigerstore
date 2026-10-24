@@ -229,3 +229,17 @@ func TestReportFailedTigerstoreRun(t *testing.T) {
 		t.Fatalf("report:\n%s", b.String())
 	}
 }
+
+func TestReportNoRate(t *testing.T) {
+	dir := t.TempDir()
+	writeAt(t, dir, "0", "put-1k", "etcd-max-1.failed", "loadgen exited 1: loadgen: request timed out\n")
+	writeAt(t, dir, "0", "put-1k", "main-max-1.json", `{"valid":true,"throughput":80000}`)
+	writeAt(t, dir, "0", "put-1k", "norate", "etcd has no max result here or at the first RTT\n")
+	var b strings.Builder
+	if err := report(&b, dir); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "- RTT 0 ms, put-1k: no rate runs, no shared rate: etcd has no max result here or at the first RTT") {
+		t.Fatalf("report:\n%s", b.String())
+	}
+}

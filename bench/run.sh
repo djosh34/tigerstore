@@ -25,8 +25,9 @@
 # A run that fails writes its cause to <target>-<mode>-<rep>.failed, and
 # the other runs still run: one store's failure must not hide the others'
 # results. cmd/benchreport decides what a failure means. Where etcd has no
-# max result, the rate is RATE_FALLBACK, or no rate runs run without it.
-# The rate used goes to <out dir>/<benchmark>/rate.
+# max result, the rate is RATE_FALLBACK; without it no rate runs run, and
+# <out dir>/<benchmark>/norate says why. The rate used goes to
+# <out dir>/<benchmark>/rate.
 #
 # Environment:
 #   TARGETS     target names in order (default "etcd"); target <name> runs
@@ -192,7 +193,7 @@ once() {
 	# Keep logs and a post-run memory/disk sample outside the CPU window.
 	# After a failure some nodes may be gone.
 	for node in 1 2 3; do
-		cp "$dir/n$node.log" "$run-n$node.log"
+		if [ -f "$dir/n$node.log" ]; then cp "$dir/n$node.log" "$run-n$node.log"; fi
 	done
 	{
 		echo "target=$target mode=$mode rep=$rep"
@@ -245,12 +246,12 @@ if [[ " ${modes[*]} " == *" rate "* ]]; then
 		if [ -f "$f" ] && [ ! -f "${f%.json}.failed" ]; then maxes+=("$f"); fi
 	done
 	if [ "${#maxes[@]}" -gt 0 ]; then
-		rate=$(jq -s 'map(.throughput) | sort | .[length / 2 | floor] / 2 | floor' "${maxes[@]}")
+		rate=$(jq -s 'map(.throughput) | sort | (if length % 2 == 0 then (.[length / 2 - 1] + .[length / 2]) / 2 else .[length / 2 | floor] end) / 2 | floor' "${maxes[@]}")
 	elif [ -n "${RATE_FALLBACK:-}" ]; then
 		echo "$ref has no max result: the rate is RATE_FALLBACK, $RATE_FALLBACK" >&2
 		rate=$RATE_FALLBACK
 	else
-		echo "$ref has no max result and RATE_FALLBACK is empty: no rate runs" >&2
+		echo "$ref has no max result here or at the first RTT" | tee "$out/$bench/norate" >&2
 		exit 0
 	fi
 	if [ "$workload" = mixed ] && [ -n "${MIXED_RATE+x}" ]; then rate=$MIXED_RATE; fi

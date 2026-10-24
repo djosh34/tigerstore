@@ -112,6 +112,7 @@ func report(w io.Writer, dir string) error {
 	all := map[key]runs{}
 	failed := map[key][]failure{}
 	var rtts, benches, targets []string
+	rttMs := map[string]float64{}
 	add := func(l *[]string, v string) {
 		if !slices.Contains(*l, v) {
 			*l = append(*l, v)
@@ -124,9 +125,11 @@ func report(w io.Writer, dir string) error {
 		}
 		benchDir := filepath.Dir(f)
 		k := key{strings.TrimPrefix(filepath.Base(filepath.Dir(benchDir)), "rtt-"), filepath.Base(benchDir), parts[0], parts[1]}
-		if _, err := strconv.ParseFloat(k.rtt, 64); err != nil {
-			return key{}, "", fmt.Errorf("%s: want a directory rtt-<ms>", f)
+		ms, err := strconv.ParseFloat(k.rtt, 64)
+		if err != nil {
+			return key{}, "", fmt.Errorf("%s: want a directory rtt-<ms>: %w", f, err)
 		}
+		rttMs[k.rtt] = ms
 		add(&rtts, k.rtt)
 		add(&benches, k.bench)
 		add(&targets, k.target)
@@ -178,11 +181,7 @@ func report(w io.Writer, dir string) error {
 			}
 		}
 	}
-	slices.SortFunc(rtts, func(a, b string) int {
-		x, _ := strconv.ParseFloat(a, 64)
-		y, _ := strconv.ParseFloat(b, 64)
-		return cmp.Compare(x, y)
-	})
+	slices.SortFunc(rtts, func(a, b string) int { return cmp.Compare(rttMs[a], rttMs[b]) })
 	slices.SortFunc(benches, benchOrder)
 	// etcd first, as the baseline.
 	slices.SortStableFunc(targets, func(a, b string) int {
@@ -213,8 +212,7 @@ func report(w io.Writer, dir string) error {
 				if target != "etcd" && len(maxRuns) > 0 {
 					got := medianOf(maxRuns, throughput)
 					bar, hasBar := bars[bench]
-					rttMs, _ := strconv.ParseFloat(rtt, 64)
-					hasBar = hasBar && rttMs > 0
+					hasBar = hasBar && rttMs[rtt] > 0
 					switch {
 					case len(etcdMax) > 0:
 						ratio := got / medianOf(etcdMax, throughput)
@@ -243,9 +241,21 @@ func report(w io.Writer, dir string) error {
 	p("\nBars at every RTT above 0: put-1k and txn-1k at least 10x etcd's max throughput, mixed-k8s at least 2.5x. A failed etcd run is reported and fails nothing; a failed tigerstore run or a missed bar fails the bench.\n")
 
 	var causes []string
-	for _, k := range sortedKeys(failed, rtts, benches, targets) {
-		for _, f := range failed[k] {
-			causes = append(causes, fmt.Sprintf("- RTT %s ms, %s, %s %s %s: %s\n", k.rtt, k.bench, k.target, k.mode, f.rep, f.cause))
+	for _, bench := range benches {
+		for _, rtt := range rtts {
+			b, err := os.ReadFile(filepath.Join(dir, "rtt-"+rtt, bench, "norate"))
+			if err == nil {
+				causes = append(causes, fmt.Sprintf("- RTT %s ms, %s: no rate runs, no shared rate: %s\n", rtt, bench, strings.TrimSpace(string(b))))
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			for _, target := range targets {
+				for _, mode := range append([]string{"max", "rate"}, layouts...) {
+					for _, f := range failed[key{rtt, bench, target, mode}] {
+						causes = append(causes, fmt.Sprintf("- RTT %s ms, %s, %s %s %s: %s\n", rtt, bench, target, mode, f.rep, f.cause))
+					}
+				}
+			}
 		}
 	}
 	if len(causes) > 0 {
@@ -319,24 +329,6 @@ func report(w io.Writer, dir string) error {
 	return errors.Join(problems...)
 }
 
-// sortedKeys returns the keys of m in the order of the tables.
-func sortedKeys[V any](m map[key]V, rtts, benches, targets []string) []key {
-	var ks []key
-	for _, bench := range benches {
-		for _, rtt := range rtts {
-			for _, target := range targets {
-				for _, mode := range append([]string{"max", "rate"}, layouts...) {
-					k := key{rtt, bench, target, mode}
-					if _, ok := m[k]; ok {
-						ks = append(ks, k)
-					}
-				}
-			}
-		}
-	}
-	return ks
-}
-
 // layouts are the max runs of bench/run.sh's LAYOUTS: tmpfs has all three
 // nodes on tmpfs, alone only the followers.
 var layouts = []string{"tmpfs", "alone"}
@@ -361,11 +353,11 @@ func ceilings(w io.Writer, dir string, rtts, benches, targets []string, all func
 			}
 			for line := range strings.SplitSeq(strings.TrimSpace(string(b)), "\n") {
 				if err := json.Unmarshal([]byte(line), &disk); err != nil {
-					return fmt.Errorf("%s diskbench: %w", bench, err)
+					return fmt.Errorf("%s at RTT %s ms, diskbench: %w", bench, rtt, err)
 				}
 			}
 			if disk.Max <= 0 {
-				return fmt.Errorf("%s diskbench: no max_mib_per_s", bench)
+				return fmt.Errorf("%s at RTT %s ms, diskbench: no max_mib_per_s", bench, rtt)
 			}
 			for _, target := range targets {
 				tmpfs := all(rtt, bench, target, "tmpfs")
@@ -381,7 +373,7 @@ func ceilings(w io.Writer, dir string, rtts, benches, targets []string, all func
 					got, _, _ := median(rs, func(r result) float64 { return r.Throughput })
 					perOp, _, _ := median(rs, func(r result) float64 { return r.DiskBytesPerOp })
 					if perOp <= 0 {
-						return fmt.Errorf("%s %s %s: no disk bytes per operation", bench, target, mode)
+						return fmt.Errorf("%s at RTT %s ms, %s %s: no disk bytes per operation", bench, rtt, target, mode)
 					}
 					ceiling := disk.Max * (1 << 20) / perOp
 					if !header {

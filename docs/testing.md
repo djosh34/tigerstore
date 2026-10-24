@@ -310,7 +310,7 @@ The `bench` workflow measures tigerstore and etcd v3.7.2 with 0, 2 and 10 ms of 
 
 `bench/netem.sh` delays every packet to or from a peer port on `lo` by half the RTT with `tc netem`. Client traffic goes through a plain FIFO with no delay. Both directions of a connection leave through the root qdisc of `lo`, so a round trip between two nodes takes the whole RTT. Both stores send all node-to-node traffic to peer ports, from ephemeral ports ([#400](https://github.com/djosh34/tigerstore/issues/400)). At 0 ms the same qdiscs run with no delay, so every RTT has the same packet path; the 0 ms numbers are therefore not those of older runs over plain loopback. Before each RTT, a probe records the TCP connect time to a peer port and to a client port, and the report shows both.
 
-The shared rate at an RTT is half of etcd's median max at that RTT. Where etcd has no max result, it is the rate of the job's first RTT, 0 ms by default.
+The shared rate at an RTT is half of etcd's median max at that RTT. Where etcd has no max result, it is the rate of the job's first RTT, 0 ms by default. If etcd has none there either, no rate runs run at that RTT, and the report names it with the failed runs.
 
 mixed-k8s keeps 288 requests in flight: 6 connections of 48 streams each. Its reads are linearizable and go to all three nodes, so at 10 ms a request waits about 17 ms before any work. 288 in flight then allow about 17,000 requests/s, twice tigerstore's max at 0 ms. The 96 of 6 × 16 capped the generator near 5,700/s. `bench/cluster.sh check` fails a run if the leader or the term changed during it, so every result that did not fail shows that the store kept its leader at that load.
 
