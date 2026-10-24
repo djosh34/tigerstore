@@ -48,9 +48,8 @@ jobs:
           assert all(type(n) is int and n>0 for n in objects+durations) and seed>0
           with open('internal/sim/size_parameters_test.go','w') as f:
             f.write('//go:build sim\n\npackage sim\nimport "testing"\n')
-            for n in objects:
-              for d in durations:
-                f.write(f'func TestSize_{n}_{d}(t *testing.T) {{ sizeProbe(t,{n},{d},{seed},{divisor}) }}\n')
+            for n,d in sorted({(1000,60)} | {(n,d) for n in objects for d in durations}):
+              f.write(f'func TestSize_{n}_{d}(t *testing.T) {{ sizeProbe(t,{n},{d},{seed},{divisor}) }}\n')
           PY
       - name: Build as the simulator campaign does (no tests)
         run: scripts/sim.sh ./internal/sim '^$'
@@ -58,6 +57,27 @@ jobs:
         run: |
           find .gosim/metatest -type f -name '*.test' -print
           cp "$(find .gosim/metatest -type f -name '*.test' | head -1)" "$RUNNER_TEMP/size.test"
+          mkdir -p "$RUNNER_TEMP/size-bin"
+          cp "$RUNNER_TEMP/size.test" "$RUNNER_TEMP/size-bin/size.test"
+      - name: Small validation before releasing matrix cells
+        env:
+          OBJECTS: '1000'
+          DURATION: '60'
+          SEED: ${{ inputs.seed }}
+          WALL_SECONDS: '300'
+          VALUE_DIVISOR: ${{ inputs.value_divisor || '1' }}
+        run: |
+          python3 scripts/sim-size.py
+          python3 -c 'import json,os; assert json.load(open(os.environ["RUNNER_TEMP"]+"/size-result.json"))["outcome"] == "finished"'
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: size-smoke
+          path: |
+            ${{ runner.temp }}/size.log
+            ${{ runner.temp }}/size-time.txt
+            ${{ runner.temp }}/size-samples.jsonl
+            ${{ runner.temp }}/size-result.json
       - uses: actions/upload-artifact@v6
         with:
           name: size-binary

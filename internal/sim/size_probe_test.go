@@ -29,8 +29,10 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64, valueDivisors ..
 	cfg.Clients, cfg.V3Clients = 16, 0
 	cfg.probeWait = 40 * Millisecond // at most 400 offered calls/s; faults reduce it
 	cfg.SegmentBytes = 4 << 20
-	// The normal 32 KiB/128 KiB budgets cannot hold even 1,000 objects.
-	cfg.Faults.DiskBudget, cfg.Faults.DiskCapacity = 0, 0
+	// Scale the normal 32 KiB/128 KiB limits, but keep a nonzero budget:
+	// budget=0 disables the production cleaner (node/clean.go).
+	cfg.Faults.DiskBudget = max(16<<20, int64(objects)*8<<10)
+	cfg.Faults.DiskCapacity = int(cfg.Faults.DiskBudget * 2)
 	bins := make([]int, objects)
 	var loaded int
 	var phaseAt int64
@@ -142,7 +144,7 @@ func sizeProbe(t *testing.T, objects, seconds int, seed uint64, valueDivisors ..
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("SIZE_START objects=%d seconds=%d seed=%d value_divisor=%d\n", objects, seconds, seed, divisor)
+	fmt.Printf("SIZE_START objects=%d seconds=%d seed=%d value_divisor=%d disk_budget=%d\n", objects, seconds, seed, divisor, cfg.Faults.DiskBudget)
 	err = s.run()
 	s.mu.Lock()
 	fmt.Printf("SIZE_DONE objects=%d target_s=%d sim_s=%.3f churn_s=%.3f loaded=%d calls=%d ok=%d compact=%d kills=%d err=%v\n", objects, seconds, float64(s.now())/float64(Second), float64(s.now()-phaseAt)/float64(Second), loaded, len(s.history), s.stats.OK, s.stats.Compactions, s.stats.Kills, err)
