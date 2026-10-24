@@ -25,6 +25,12 @@ on:
       layouts:
         description: extra max runs of the tigerstore refs in the put-1k and txn-1k jobs, tmpfs (all nodes on tmpfs, the CPU reference) and alone (followers on tmpfs), with the disk ceiling from diskbench
         default: tmpfs alone
+      targets:
+        description: stores to run, etcd, baseline and candidate
+        default: etcd baseline candidate
+      rtts:
+        description: node-to-node round-trip times in ms, one run of the benchmark each with netem on the peer ports (bench/netem.sh); empty for none
+        default: ""
 
 jobs:
   plan:
@@ -44,7 +50,7 @@ jobs:
       matrix:
         bench: ${{ fromJSON(needs.plan.outputs.benchmarks) }}
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 75
+    timeout-minutes: ${{ inputs.rtts && 240 || 75 }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -76,10 +82,14 @@ jobs:
           done
           cat commits.txt
       - run: scripts/dev-certs.sh certs
+      - name: Load netem
+        if: inputs.rtts != ''
+        run: sudo modprobe sch_netem || { sudo apt-get update -q && sudo apt-get install -yq "linux-modules-extra-$(uname -r)" && sudo modprobe sch_netem; }
       - name: Turn disk write barriers on and record the runner
         env:
           LAYOUT: 3 0 1 2
           BENCHMARK: ${{ matrix.bench }}
+          RTTS: ${{ inputs.rtts }}
         run: |
           sudo mount -o remount,barrier=1 /
           findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS
@@ -99,6 +109,9 @@ jobs:
             echo "generator, scripts and report: $GITHUB_SHA"
             echo "layout (generator, leader, followers): $LAYOUT"
             echo "both stores: 3 nodes on 127.0.0.1, client and peer TLS with client certificates, fresh data directory per run"
+            if [ -n "$RTTS" ]; then
+              echo "node-to-node RTT (ms): $RTTS, netem on the peer ports of lo, half the RTT per packet; client to node without delay (bench/netem.sh)"
+            fi
             if [ "$BENCHMARK" = mixed-k8s ]; then
               echo "mixed-k8s: 1M preloaded keys, <=128 puts and <=60 KiB per Txn at 300 Txns/s, measured size histogram, all endpoints, default mix plus resource watches; both stores GOMEMLIMIT=3GiB; rate is half etcd median max"
             fi
@@ -108,7 +121,8 @@ jobs:
           } | tee results/runner.md
       - name: Run ${{ matrix.bench }}
         env:
-          TARGETS: etcd baseline candidate
+          TARGETS: ${{ inputs.targets || 'etcd baseline candidate' }}
+          RTTS: ${{ inputs.rtts }}
           BINS: bin
           CERTS: certs
           LAYOUT: 3 0 1 2
@@ -131,7 +145,17 @@ jobs:
           fi
           DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")
           export DISK
-          DATA="$RUNNER_TEMP/bench-data" bench/run.sh "$BENCH" results
+          if [ -z "$RTTS" ]; then
+            DATA="$RUNNER_TEMP/bench-data" bench/run.sh "$BENCH" results
+          fi
+          for rtt in $RTTS; do
+            mkdir -p "results/rtt-$rtt"
+            bench/netem.sh on "$rtt"
+            bench/netem.sh probe | tee "results/rtt-$rtt/probe.txt"
+            DATA="$RUNNER_TEMP/bench-data" bench/run.sh "$BENCH" "results/rtt-$rtt"
+            bench/netem.sh show >"results/rtt-$rtt/netem.txt"
+            bench/netem.sh off
+          done
           if [ -n "$LAYOUTS" ]; then
             taskset -c 3 bin/diskbench -dir "$RUNNER_TEMP" | tee "results/$BENCH/diskbench.jsonl"
           fi
@@ -140,6 +164,7 @@ jobs:
       - name: Report
         env:
           BENCH: ${{ matrix.bench }}
+          RTTS: ${{ inputs.rtts }}
         run: |
           {
             cat results/runner.md
@@ -150,6 +175,14 @@ jobs:
               echo "test | store | requests/s per repetition | p99 ms per repetition"
               cat results/etcd-tool/summary.txt
               echo '```'
+            elif [ -n "$RTTS" ]; then
+              for rtt in $RTTS; do
+                echo "## RTT $rtt ms"
+                echo '```'
+                cat "results/rtt-$rtt/probe.txt"
+                echo '```'
+                bin/benchreport "results/rtt-$rtt"
+              done
             else
               bin/benchreport results
             fi
