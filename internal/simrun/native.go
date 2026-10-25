@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/jellevandenhooff/gosim/metatesting"
 )
@@ -25,6 +26,10 @@ const InGosim = false
 // Bubble runs f, which runs one simulation, in a synctest bubble, on whose
 // clock the nodes run.
 func Bubble(t *testing.T, f func(*testing.T)) { synctest.Test(t, f) }
+
+// BubbleFor is Bubble: natively a simulation has no timeout of virtual
+// time.
+func BubbleFor(t *testing.T, _ time.Duration, f func(*testing.T)) { synctest.Test(t, f) }
 
 // Artifact does nothing natively.
 func Artifact(string, []byte) {}
@@ -46,8 +51,20 @@ func Here(t *testing.T) bool {
 	return false
 }
 
+// passed are the variables of passedOn that are set, as KEY=VALUE.
+func passed() []string {
+	var env []string
+	for _, name := range passedOn {
+		if v := os.Getenv(name); v != "" {
+			env = append(env, name+"="+v)
+		}
+	}
+	return env
+}
+
 // Drive runs t's whole test, which runs the one harness seed seed, as a
-// gosim run with that seed and the planted bug of $SIM_PLANTED, and
+// gosim run with that seed, the planted bug of $SIM_PLANTED and the
+// profile of $SIM_LONG, and
 // reports true when scripts/sim.sh started it; the caller then returns.
 // It reports false when t runs its body here (Here).
 func Drive(t *testing.T, seed uint64) bool {
@@ -55,11 +72,7 @@ func Drive(t *testing.T, seed uint64) bool {
 	if Here(t) {
 		return false
 	}
-	var env []string
-	if bug := os.Getenv("SIM_PLANTED"); bug != "" {
-		env = append(env, "SIM_PLANTED="+bug)
-	}
-	r := Do(t, Run{Test: Top(strings.Split(t.Name(), "/"))[0], Seed: seed, Env: env})
+	r := Do(t, Run{Test: Top(strings.Split(t.Name(), "/"))[0], Seed: seed, Env: passed()})
 	keep(t, r.Artifacts, "")
 	return true
 }
@@ -168,17 +181,14 @@ func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.
 	known := knownFailures(t)
 	twice := int(envUint(t, "SIM_TWICE", 0))
 	test := Top(strings.Split(t.Name(), "/"))[0]
-	var planted []string
-	if bug := os.Getenv("SIM_PLANTED"); bug != "" {
-		planted = append(planted, "SIM_PLANTED="+bug)
-	}
+	passedEnv := passed()
 	anyFailed := false
 	if !here {
 		// A rule over the set can fail the test with no seed failed; the
 		// whole set then runs again.
 		t.Cleanup(func() {
 			if t.Failed() && !anyFailed {
-				t.Logf("replay: %s", Replay(dir(t), Pattern(t.Name()), append(set, planted...)))
+				t.Logf("replay: %s", Replay(dir(t), Pattern(t.Name()), append(set, passedEnv...)))
 			}
 		})
 	}
@@ -197,7 +207,7 @@ func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.
 				stop = add(seed, body(t, seed))
 				return
 			}
-			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, planted...)
+			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, passedEnv...)
 			var r *Result
 			if twice > 0 && i%max(1, len(seeds)/twice) == 0 {
 				r = twoRuns(t, Run{Test: test, Seed: seed, Env: env})

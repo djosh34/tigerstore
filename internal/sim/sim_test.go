@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -63,7 +64,8 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 	t.Helper()
 	var res *Result
 	var err error
-	simrun.Bubble(t, func(*testing.T) { res, err = runInspect(cfg, inspect) })
+	// An hour more than the run's length, which a run of hours needs.
+	simrun.BubbleFor(t, time.Duration(cfg.length())+time.Hour, func(*testing.T) { res, err = runInspect(cfg, inspect) })
 	if simrun.InGosim && res != nil {
 		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, hashes(res)))
 		simrun.Artifact("hashes", []byte(strings.Join(hashLines, "\n")+"\n"))
@@ -92,56 +94,78 @@ var hashLines []string
 
 // hashes are the hashes of a run's trace, its history and each node's
 // disk, now and right after its last crash. Under gosim, two runs of the
-// same seed must give the same.
+// same seed must give the same. Each is written straight into its hash,
+// which a long run's history and disks need: built in memory first, a
+// seed of 20,000 objects took 14.8 GiB there (#416).
 func hashes(res *Result) string {
-	sum := func(b []byte) string {
-		h := sha256.Sum256(b)
-		return hex.EncodeToString(h[:8])
+	sum := func(write func(io.Writer)) string {
+		h := sha256.New()
+		write(h)
+		return hex.EncodeToString(h.Sum(nil)[:8])
 	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "trace %s history %s", sum([]byte(strings.Join(res.Trace, "\n"))), sum(historyBytes(res)))
+	fmt.Fprintf(&out, "trace %s history %s",
+		sum(func(w io.Writer) { writeString(w, strings.Join(res.Trace, "\n")) }),
+		sum(func(w io.Writer) { writeHistory(w, res) }))
 	for _, n := range res.nodes {
-		var disk strings.Builder
-		for _, files := range []map[string][]byte{n.disk.Files(), n.crashImage} {
-			for _, name := range slices.Sorted(maps.Keys(files)) {
-				fmt.Fprintf(&disk, "%s %d %s\n", name, len(files[name]), files[name])
+		fmt.Fprintf(&out, " node%d %s", n.id, sum(func(w io.Writer) {
+			file := func(name string, data []byte) {
+				writef(w, "%s %d ", name, len(data))
+				writeBytes(w, data)
+				writeString(w, "\n")
 			}
-			disk.WriteString("\n")
-		}
-		fmt.Fprintf(&out, " node%d %s", n.id, sum([]byte(disk.String())))
+			n.disk.EachFile(file)
+			writeString(w, "\n")
+			for _, name := range slices.Sorted(maps.Keys(n.crashImage)) {
+				file(name, n.crashImage[name])
+			}
+			writeString(w, "\n")
+		}))
 	}
 	return out.String()
 }
 
-// historyBytes is every call and every watch response of a run, with its exact
-// times, for its hash.
-func historyBytes(res *Result) []byte {
-	var b []byte
+// writef, writeBytes and writeString write to a hash, whose writes never
+// fail.
+func writef(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
+}
+
+func writeBytes(w io.Writer, b []byte) {
+	_, _ = w.Write(b)
+}
+
+func writeString(w io.Writer, s string) {
+	_, _ = io.WriteString(w, s)
+}
+
+// writeHistory writes every call and every watch response of a run, with
+// its exact times, for its hash.
+func writeHistory(w io.Writer, res *Result) {
 	marshal := func(m proto.Message) {
 		if m == nil {
-			b = append(b, "nil\n"...)
+			writeString(w, "nil\n")
 			return
 		}
-		bytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
+		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
 		if err != nil {
-			b = fmt.Appendf(b, "%T: %v\n", m, err)
+			writef(w, "%T: %v\n", m, err)
 			return
 		}
-		b = fmt.Appendf(b, "%T %d %x\n", m, len(bytes), bytes)
+		writef(w, "%T %d %x\n", m, len(b), b)
 	}
 	for _, r := range res.History {
-		b = fmt.Appendf(b, "call %d %d %d %d %v %v\n", r.Client, r.Node, r.Call, r.Return, r.Err, r.Ambiguous)
+		writef(w, "call %d %d %d %d %v %v\n", r.Client, r.Node, r.Call, r.Return, r.Err, r.Ambiguous)
 		marshal(r.req)
 		marshal(r.Resp)
 	}
-	for _, w := range res.Watches {
-		b = fmt.Appendf(b, "watch %q %q %v %v %d\n", w.Key, w.End, w.PrevKV, w.ProgressNotify, w.Start)
-		for _, r := range w.Responses {
-			b = fmt.Appendf(b, "at %d\n", r.Time)
+	for _, wr := range res.Watches {
+		writef(w, "watch %q %q %v %v %d\n", wr.Key, wr.End, wr.PrevKV, wr.ProgressNotify, wr.Start)
+		for _, r := range wr.Responses {
+			writef(w, "at %d\n", r.Time)
 			marshal(r.Resp)
 		}
 	}
-	return b
 }
 
 // explainSim explains a scenario that drives s itself, as explain does a
@@ -305,6 +329,9 @@ func replayCommand(name string, seed uint64) string {
 	if activePlanted != "" {
 		env = append(env, "SIM_PLANTED="+activePlanted)
 	}
+	if simrun.Long() {
+		env = append(env, "SIM_LONG=1")
+	}
 	pattern := simrun.Pattern(name)
 	if !simrun.Race {
 		return simrun.Replay("./internal/sim", pattern, env)
@@ -332,13 +359,7 @@ func TestSeeds(t *testing.T) {
 		t.Logf("%+v, %d committed writes", st, len(a.Log))
 		return st
 	}, func(seed uint64, st Stats) bool {
-		took.add(seed, map[string]bool{
-			"crash": st.Crashes > 0, "link change": st.LinkChanges > 0, "two cold restarts": st.ColdRestarts >= 2,
-			"disk fault": st.DiskFaults > 0, "pause": st.Pauses > 0, "link stall": st.LinkStalls > 0,
-			"half-open link": st.HalfOpens > 0, "gray node": st.GrayNodes > 0, "gray client": st.GrayStreams > 0,
-			"kill": st.Kills > 0 || simrun.Race, "clientv3 call": st.V3OK > 0, "link fault": slices.ContainsFunc(st.Netem[:], func(n int) bool { return n > 0 }),
-			"connection reset": st.Resets > 0, "slow watcher": st.SlowWatchers > 0,
-		})
+		took.add(seed, faultsTaken(st))
 		ran++
 		total.Fenced += st.Fenced
 		total.Silences += st.Silences
@@ -386,6 +407,18 @@ func TestSeeds(t *testing.T) {
 	}
 	t.Logf("%d seeds: %d stalled leaders went silent", ran, total.Silences)
 	took.check(t)
+}
+
+// faultsTaken says which of the faults of a default run took effect in a
+// run with stats st.
+func faultsTaken(st Stats) map[string]bool {
+	return map[string]bool{
+		"crash": st.Crashes > 0, "link change": st.LinkChanges > 0, "two cold restarts": st.ColdRestarts >= 2,
+		"disk fault": st.DiskFaults > 0, "pause": st.Pauses > 0, "link stall": st.LinkStalls > 0,
+		"half-open link": st.HalfOpens > 0, "gray node": st.GrayNodes > 0, "gray client": st.GrayStreams > 0,
+		"kill": st.Kills > 0 || simrun.Race, "clientv3 call": st.V3OK > 0, "link fault": slices.ContainsFunc(st.Netem[:], func(n int) bool { return n > 0 }),
+		"connection reset": st.Resets > 0, "slow watcher": st.SlowWatchers > 0,
+	}
 }
 
 // effects counts, over a set of runs, the runs in which each fault took

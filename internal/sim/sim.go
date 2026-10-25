@@ -107,6 +107,12 @@ type Config struct {
 	MemoryBytes int64
 	// SegmentBytes is the size of the nodes' log segments, 8 KiB if 0.
 	SegmentBytes int64
+	// Objects, if set, makes the clients run the Kubernetes-shaped load
+	// of cmd/soak on that many objects instead of the small keys, with a
+	// watch on every resource prefix and a compaction every CompactEvery
+	// (kube.go).
+	Objects      int
+	CompactEvery int64
 	Faults       Faults
 	// damageKinds and netemKinds, if set, are the kinds of damage after a
 	// sync and of link faults that the run picks from, for the tests.
@@ -233,6 +239,15 @@ type Faults struct {
 	// healing.
 	HoldMask   uint64
 	HoldMaskAt int64
+}
+
+// length is how long a run of c lasts, unless the liveness rule makes its
+// clients run longer (extendLiveness): the faults and the healing, then
+// time for the cluster to settle after the clients stopped: leases still
+// expire for up to the leaseGrace of the longest TTL the clients ask for,
+// and the watch events of the last expiry need 2 s to arrive.
+func (c Config) length() int64 {
+	return c.Duration + c.Heal + leaseGrace(c.maxLeaseTTL()) + 2*Second
 }
 
 // DefaultConfig is a run of 20 virtual seconds with crashes, link changes,
@@ -467,6 +482,8 @@ type Sim struct {
 
 	clients  []*client
 	watchers []*watchClient
+	// kube is the Kubernetes-shaped load, if Config.Objects is set.
+	kube *kubeLoad
 	// expiredAt is when a lease first expired on any node.
 	expiredAt    map[int64]int64
 	expiredOrder []int64
@@ -720,10 +737,7 @@ func newSim(cfg Config) (*Sim, error) {
 		healAt:     cfg.Duration,
 		stopAt:     cfg.Duration + cfg.Heal,
 	}
-	// After the clients stop, give the cluster time to settle: leases
-	// still expire for up to leaseGrace, and the watch events of the last
-	// expiry need time to arrive.
-	s.endAt = s.stopAt + leaseGrace + 2*Second
+	s.endAt = cfg.length()
 	count := 3
 	if cfg.Membership {
 		count = 4
@@ -828,10 +842,17 @@ func (s *Sim) schedule() {
 	if s.cfg.Membership {
 		s.after(2*Second, s.changeMembership)
 	}
+	var kube []*kubeClient
+	if s.cfg.Objects > 0 {
+		kube = s.newKubeLoad()
+	}
 	for i := range s.cfg.Clients + s.cfg.V3Clients {
 		c := &client{id: i, sim: s, node: -1}
 		if i >= s.cfg.Clients {
 			c.node = i % 3
+		}
+		if kube != nil {
+			c.kube = kube[i]
 		}
 		s.clients = append(s.clients, c)
 		s.wg.Go(c.run)

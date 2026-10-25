@@ -184,6 +184,7 @@ It builds the gosim command, translates the package's tests (`gosim build-tests`
 - `SIM_TWICE`: how many seeds of a set, spread over it, run a second time; each must give the same hashes of its trace, its history (every call and watch response, with exact times) and every node's disk, now and after its last crash. Otherwise the seed fails with both sets of hashes, and both runs are saved, as `<run>-first` and `<run>-second`. CI's `sim` job runs 20 of each test's seeds twice.
 - `SIM_OUT`: where a failed run saves its trace, nodes, hashes, calls, history, disks and replay command.
 - `SIM_PLANTED`: the planted bug `TestPlanted` switches on.
+- `SIM_LONG`: with `1`, `TestKubernetesLoad` runs its long profile, as the nightly `kube-sim.yml` does.
 
 Plain `go test` skips the simulator's tests, with the `scripts/sim.sh` command that runs them. Under `-race` they run natively instead, in `testing/synctest` bubbles, as the `race-sim` job does; Go's scheduler then decides the order of the work, and a seed can play out differently from run to run. There is no other native run of the simulator.
 
@@ -237,6 +238,24 @@ Known limits until the parked recovery format ([#322](https://github.com/djosh34
 
 `sim-campaign.yml`, started by hand (`gh workflow run sim-campaign.yml -f test=<test> -f first=<seed>`), runs one test under gosim in 20 jobs of two processes from seed `first`: `TestSeeds` on 100,000 seeds, 2,500 a process, every checker on each, the witness checker in both modes among them, or `TestMembershipFaults` on 10,000 seeds, 250 a process. 1% of the seeds of each process run twice and must give the same hashes. For `TestSeeds`, each process of at least 64 seeds also runs the deliberate stalled-leader scenario. Its silence deadline and client-liveness checks must pass. Each process of 2,000 seeds or more must also have a stalled leader that went silent in its random seeds, and a write that a crash tore; CI's shards of 400 seeds are too small for those rules (#183, #218, #378). Each fault of the schedule must take effect in 95% of a process's seeds; a fault that misses in one seed fails no run on its own. A failed seed uploads its trace, how it left each node and its history.
 
+# Kubernetes-shaped load in the simulator
+
+`TestKubernetesLoad` runs the soak's load (`cmd/soak`) in the simulator, under every fault of `sim.DefaultConfig`, with every checker of a default seed: the simulator's own rules and the durability, revision, watch and witness checkers of package `check`. Its long profile has 10,000 objects and lasts 4 virtual hours, then the faults heal and the clients run on for 10 s. Sixteen clients, three of them clients of etcd's Go client, each own their share of the objects under `/registry/<resource>/sim-c<client>/`, with values of the sizes a Kubernetes 1.37 cluster held (`internal/k8ssize`). A client first creates its objects, eight in a Txn, then makes calls in the soak's mix, about 400 a second over all clients when the cluster answers, and backs off for up to a second after a failure:
+- creates, updates and deletes in Txns that compare the create or mod revision the client last saw, with a read of the object as the else branch, as the apiserver does;
+- linearizable reads, and lists of one of its resources in pages of 25 at the first page's revision;
+- events on leases of 120 s, at most 1,000 on a lease and a new lease every minute, which vanish when the lease expires;
+- a compaction every 5 virtual minutes to the newest revision seen when the interval before ended, tried again until it lands.
+
+A watch client watches each resource prefix, with previous values, progress notifications and a progress request about every 5 s; as the other watch clients, it drops its stream now and then and resumes on any node. Each seed must have compacted, paged through a list, had a lease expire, and had progress requests answered; a seed of the long profile must also have had each fault of a default seed take effect. The checks follow each lease's own TTL: a lease may outlive its last grant or keepalive by twice its TTL, as a leader change gives it the full TTL again, so the run's end waits 242 s after the clients stop, and no lease may expire before its TTL ran out.
+
+By default, as in `ci`'s `coverage` job and under the race detector in `race-sim`, it runs a short profile instead: 2 seeds of 1,000 objects for 2 virtual minutes, with a compaction every 20 s. `SIM_LONG=1` selects the long one.
+
+`kube-sim.yml` runs the long profile every night on `main`, and by hand (`gh workflow run kube-sim.yml --ref <branch>`). Its 20 jobs each run new seeds one after the other, each a process of its own, while the job has had less than 5 hours: about 25 seeds a job at 12 minutes each. The first seed of each job runs twice and must give the same hashes. The seeds come from the date: `YYYYMMDD` followed by seven digits, a block of 20,000 for each run of the day, the next free one when the workflow runs again that day, and 1,000 of each block for each job. Every seed prints its peak memory, its time and its replay command; a failing seed also prints its hashes, and its trace, nodes, history and disks are uploaded. A seed replays alone, with the same hashes:
+
+    SIM_LONG=1 SIM_SEED=<seed> SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestKubernetesLoad$'
+
+A long seed is one gosim run that takes about 12 minutes and up to 13 GiB, so it replays on a GitHub runner or a machine with 16 GB, not on a small one. `hashes` writes the history and each disk straight into its hash: built in memory first, a seed of 20,000 objects took 14.8 GiB there.
+
 # When a test fails
 
 Every failure says how the nodes stood and prints the command that runs it again:
@@ -249,7 +268,7 @@ Whether a fault took effect is a number counted over a set of runs, with a minim
 
 # Soak
 
-`soak.yml`, started by hand on `main` (`gh workflow run soak.yml --ref main`), runs `cmd/soak` for 5 hours: three tigerstore processes, each in a cgroup of its own with a 640 MiB memory limit and a 3 GiB disk budget, under 600,000 Kubernetes-shaped objects. They hold about 0.9 GB of values. The preloaded events expire with their leases after 2 minutes, which leaves about 0.6 GB: still more than the value cache's share of the limit, so reads miss the cache.
+`soak.yml` runs `cmd/soak` every night on `main`, for 5 hours with the date, `YYYYMMDD`, as its seed; started by hand (`gh workflow run soak.yml --ref main`) it takes `-f duration=` and `-f seed=`. Each run: three tigerstore processes, each in a cgroup of its own with a 640 MiB memory limit and a 3 GiB disk budget, under 600,000 Kubernetes-shaped objects. They hold about 0.9 GB of values. The preloaded events expire with their leases after 2 minutes, which leaves about 0.6 GB: still more than the value cache's share of the limit, so reads miss the cache.
 
 Sixteen workers make 400 calls per second in loadgen's mixed proportions:
 - creates and updates in Txns that compare the create or mod revision, as the apiserver does;

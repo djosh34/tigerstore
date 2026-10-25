@@ -20,8 +20,12 @@ const Race = false
 // Bubble runs f, which runs one simulation. gosim runs the whole test on
 // its clock already; it fails a run that takes longer than its timeout of
 // virtual time, which Bubble sets to an hour from now.
-func Bubble(t *testing.T, f func(*testing.T)) {
-	gosim.SetSimulationTimeout(time.Hour)
+func Bubble(t *testing.T, f func(*testing.T)) { BubbleFor(t, time.Hour, f) }
+
+// BubbleFor is Bubble with a timeout of d from now, for a simulation that
+// lasts longer than an hour.
+func BubbleFor(t *testing.T, d time.Duration, f func(*testing.T)) {
+	gosim.SetSimulationTimeout(d)
 	f(t)
 }
 

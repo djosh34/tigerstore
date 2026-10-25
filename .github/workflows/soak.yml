@@ -2,13 +2,17 @@
 # with a memory limit below the values it holds, under Kubernetes-shaped
 # churn with leases, compactions and watches, a node kill every few
 # minutes and a follower held behind the window now and then; cmd/soak
-# says what it checks. Started by hand on main:
+# says what it checks. It runs every night on main, for 5 hours with the
+# date, YYYYMMDD, as its seed, and can be started by hand:
 #   gh workflow run soak.yml --ref main
-# A shorter run for a try: -f duration=30m.
+# A shorter run for a try: -f duration=30m. release.yml looks for a run
+# whose title has "soak 5h".
 name: soak
-run-name: soak ${{ inputs.duration }}, seed ${{ inputs.seed }}
+run-name: soak ${{ inputs.duration || '5h' }}, seed ${{ inputs.seed || 'of the date' }}
 
 on:
+  schedule:
+    - cron: "0 22 * * *"
   workflow_dispatch:
     inputs:
       duration:
@@ -39,13 +43,15 @@ jobs:
           nproc; free -m; df -h "$RUNNER_TEMP"
       - name: Soak
         env:
-          DURATION: ${{ inputs.duration }}
+          DURATION: ${{ inputs.duration || '5h' }}
           SEED: ${{ inputs.seed }}
         # 600,000 objects hold about 0.9 GB of values. The preloaded
         # events go with their leases after 2 minutes, which leaves about
         # 0.6 GB, still above the value cache's share of each node's
         # 640 MiB limit, so reads miss the cache and go to the disk.
         run: |
+          SEED=${SEED:-$(date -u +%Y%m%d)}
+          echo "duration $DURATION, seed $SEED"
           "$RUNNER_TEMP/soak" -tigerstore "$RUNNER_TEMP/tigerstore" -out "$RUNNER_TEMP/soak-out" \
             -duration "$DURATION" -seed "$SEED" -objects 600000 -memory $((640 << 20)) \
             -disk-budget $((3 << 30)) -workers 16 -rate 400
