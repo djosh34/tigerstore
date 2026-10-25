@@ -25,6 +25,9 @@ import (
 // crosses the peers twice, and reads it back from every node, before and
 // after they all restart from their logs. One byte more is refused.
 func TestLargestRequest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("writes a 64 MiB request through three nodes")
+	}
 	const limit = core.MaxRequestBytesCeiling
 	// Three nodes in one process hold several copies of the value each;
 	// the garbage collector keeps them from adding up, which under the

@@ -1176,9 +1176,11 @@ func (n *Node) submit(r Request, p *pending) {
 	}
 	*p = pending{req: r, deadline: n.clock + int64(n.cfg.RequestTicks), ai: ai, aiCurrent: hasAI && !r.Caller.Verified}
 	n.tagWrite(p, ai, hasAI)
-	if sized != nil && writeSize(p) > maxWriteBytes {
-		// The client's encoding repeats fields, or the user's name is
-		// long: the entry would not fit in a peer frame or a log record.
+	if writeSize(p) > maxWriteBytes {
+		// The client's encoding repeats fields or carries unknown ones,
+		// also in a write that etcd does not size, such as a keepalive,
+		// or the user's name is long: the entry would not fit in a peer
+		// frame or a log record (#424). A read this large is refused too.
 		n.reply(r.ID, rpctypes.ErrGRPCRequestTooLarge)
 		return
 	}

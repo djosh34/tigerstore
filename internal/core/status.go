@@ -23,8 +23,10 @@ const (
 
 // Status answers Maintenance.Status from this node's state. DbSize and
 // DbSizeInUse are both what the space quota counts (mvcc.Store.Size), so
-// that etcd's quota alert, DbSize over the quota, reaches 100% where
-// NOSPACE starts. The log's own size is tigerstore_disk_bytes.
+// that etcd's quota alert, DbSize over the quota, measures what NOSPACE
+// does: a write that would take it to 100% is refused, as in etcd, where
+// the refusal comes before the write too. The log's own size is
+// tigerstore_disk_bytes.
 // DbSize is never 0, because etcdctl divides by it.
 func (n *Node) Status() *pb.StatusResponse {
 	st := n.rn.BasicStatus()

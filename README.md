@@ -217,6 +217,7 @@ tigerstore answers as etcd v3.7.2 does except for these points, from [Research: 
 - `--max-request-bytes` above 67,106,816 bytes (64 MiB less 2 KiB) is refused at startup: a write travels in one peer frame and one log record of at most 64 MiB.
 - `Status.dbSize`, `dbSizeInUse`, `etcd_mvcc_db_total_size_in_bytes` and `etcd_mvcc_db_total_size_in_use_in_bytes` are the size the quota compares, an estimate of etcd's database for the versions kept, so they are equal and `etcdctl endpoint status` shows no fragmentation. The log's own size is `tigerstore_disk_bytes`, with its budget in `tigerstore_disk_budget_bytes`. A compaction frees quota without a defragmentation.
 - `etcd_disk_backend_commit_duration_seconds` times a sync of the log, tigerstore's nearest to etcd's backend commit.
+- etcd's other bbolt metrics, `etcd_debugging_disk_backend_commit_{rebalance,spill,write}_duration_seconds`, `etcd_debugging_mvcc_db_compaction_{pause,total}_duration_milliseconds` and `etcd_mvcc_db_open_read_transactions`, are there and stay at zero.
 - `ETCD_VERIFY` is not used; tigerstore has its own corruption checks.
 - `--version` prints a `tigerstore Version:` line before etcd's lines.
 
