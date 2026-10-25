@@ -137,6 +137,15 @@ func readable(out []byte) string {
 // run's in a directory with suffix after its name, if set.
 func keep(t *testing.T, artifacts map[string][]byte, suffix string) {
 	t.Helper()
+	for _, d := range keepQuiet(t, artifacts, suffix) {
+		t.Logf("the run is saved in %s", d)
+	}
+}
+
+// keepQuiet is keep, which returns the directories it wrote instead of
+// logging them.
+func keepQuiet(t *testing.T, artifacts map[string][]byte, suffix string) []string {
+	t.Helper()
 	files := map[string][]byte{}
 	runs := map[string]bool{}
 	for name, b := range artifacts {
@@ -157,20 +166,22 @@ func keep(t *testing.T, artifacts map[string][]byte, suffix string) {
 		runs[run] = true
 	}
 	if len(files) == 0 {
-		return
+		return nil
 	}
 	out := os.Getenv("SIM_OUT")
 	if out == "" {
 		t.Logf("set SIM_OUT to save the files of %v", slices.Sorted(maps.Keys(runs)))
-		return
+		return nil
 	}
 	if err := WriteFiles(out, files); err != nil {
 		t.Errorf("saving the run in %s: %v", out, err)
-		return
+		return nil
 	}
-	for run := range runs {
-		t.Logf("the run is saved in %s", filepath.Join(out, run))
+	var dirs []string
+	for _, run := range slices.Sorted(maps.Keys(runs)) {
+		dirs = append(dirs, filepath.Join(out, run))
 	}
+	return dirs
 }
 
 // each runs the seeds: here under the race detector, otherwise each as a
@@ -238,31 +249,44 @@ func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.
 
 // twoRuns runs r twice, and fails t unless both give the same hashes.
 // With SIM_KEEP each run saves its files, which are kept, as first and
-// second, only when they differ or a run failed. A long profile's runs
-// save none: their files take gigabytes, and this process would hold both
-// runs' at once. Run alone, each seed saves its files when it fails.
+// second, only when they differ or a run failed. The first run's files
+// go to $SIM_OUT before the second run starts, so this process holds one
+// run's files at a time, which for a long profile take gigabytes; they
+// are removed again unless the runs differ.
 func twoRuns(t *testing.T, r Run) *Result {
 	t.Helper()
-	if !Long() {
-		r.Env = append(r.Env, "SIM_KEEP=1")
-	}
+	r.Env = append(r.Env, "SIM_KEEP=1")
 	first := Do(t, r)
 	if first.Failed {
 		keep(t, first.Artifacts, "")
 		return first
 	}
+	saved := keepQuiet(t, first.Artifacts, "first")
+	hashes := first.Artifacts["hashes"]
+	first.Artifacts = map[string][]byte{"hashes": hashes, "seed.json": first.Artifacts["seed.json"]}
 	second := Do(t, r)
+	differ := false
 	switch {
 	case second.Failed:
 		keep(t, second.Artifacts, "")
-	case len(first.Artifacts["hashes"]) == 0:
+	case len(hashes) == 0:
 		t.Errorf("seed %d left no hashes to compare", r.Seed)
-	case string(first.Artifacts["hashes"]) != string(second.Artifacts["hashes"]):
-		keep(t, first.Artifacts, "first")
+	case string(hashes) != string(second.Artifacts["hashes"]):
+		differ = true
+		for _, d := range saved {
+			t.Logf("the run is saved in %s", d)
+		}
 		keep(t, second.Artifacts, "second")
 		env := slices.DeleteFunc(slices.Clone(r.Env), func(v string) bool { return v == "SIM_KEEP=1" })
 		t.Errorf("seed %d played out differently the second time:\n%s\n%s\nreplay: %s", r.Seed,
-			first.Artifacts["hashes"], second.Artifacts["hashes"], Replay(dir(t), Pattern(t.Name()), append(env, "SIM_TWICE=1")))
+			hashes, second.Artifacts["hashes"], Replay(dir(t), Pattern(t.Name()), append(env, "SIM_TWICE=1")))
+	}
+	if !differ {
+		for _, d := range saved {
+			if err := os.RemoveAll(d); err != nil {
+				t.Error(err)
+			}
+		}
 	}
 	return first
 }

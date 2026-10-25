@@ -1,7 +1,6 @@
 package sim
 
 import (
-	"maps"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/simrun"
@@ -20,9 +20,9 @@ import (
 // 16 MiB at least, and a disk of twice that. The long profile has 10,000
 // objects for 4 virtual hours, with a compaction every 5 minutes, and
 // its faults twice as far apart as a default seed's: at the default
-// rates, 10,000 objects leave the cluster serving one call in ten, at
-// half of them about half the calls, and ten times further apart the
-// seed does not fit in a runner's memory. The short one has 1,000
+// rates the cluster answers one call in ten, with faults twice as far
+// apart about half, and ten times as far apart a seed does not fit in a
+// runner's memory. The short one has 1,000
 // objects for 2 minutes, with a compaction every 20 s.
 func kubeConfig(seed uint64, long bool) Config {
 	cfg := DefaultConfig(seed)
@@ -92,20 +92,18 @@ func TestKubernetesLoad(t *testing.T) {
 		if compactions == 0 || st.Revokes == 0 || pages == 0 || answers == 0 {
 			t.Fatalf("seed %d did too little to test anything: %d compactions in the log, %d revokes, %d later pages of lists, %d answers to progress requests", seed, compactions, st.Revokes, pages, answers)
 		}
-		took := faultsTaken(st)
 		if long {
-			// The long profile has no clientv3 clients (#440).
-			delete(took, "clientv3 call")
-		}
-		if long && slices.Contains(slices.Collect(maps.Values(took)), false) {
 			var missed []string
-			for name, ok := range took {
-				if !ok {
+			for name, ok := range faultsTaken(st) {
+				// The long profile has no clientv3 clients (#440).
+				if !ok && name != "clientv3 call" {
 					missed = append(missed, name)
 				}
 			}
-			slices.Sort(missed)
-			t.Fatalf("seed %d: these faults never took effect: %s", seed, strings.Join(missed, ", "))
+			if len(missed) > 0 {
+				slices.Sort(missed)
+				t.Fatalf("seed %d: these faults never took effect: %s", seed, strings.Join(missed, ", "))
+			}
 		}
 		t.Logf("seed %d: %+v, %d committed writes, %d compactions in the log, %d later pages of lists, %d answers to progress requests", seed, st, len(res.Log), compactions, pages, answers)
 		return st
@@ -188,5 +186,34 @@ func TestLeasesExpireByTTL(t *testing.T) {
 		if (err == nil) != c.ok {
 			t.Errorf("%s: %v", c.name, err)
 		}
+	}
+}
+
+// TestKubeListPagesReadAtOneRevision answers a list of a client's events
+// in three pages, each with a header newer than the one before, and
+// requires every page after the first to read at the first one's
+// revision.
+func TestKubeListPagesReadAtOneRevision(t *testing.T) {
+	s := &Sim{cfg: kubeConfig(1, false), rng: rand.New(rand.NewPCG(1, 2)), t0: time.Now()}
+	c := &client{id: 0, sim: s, node: -1, kube: s.newKubeLoad()[0]}
+	s.clients = []*client{c}
+	k := c.kube
+	k.created = len(k.all)
+	end := prefixEnd(k.prefixes[0])
+	k.list = &kubeList{from: k.prefixes[0], end: end}
+	for page, rev := range []int64{10, 20, 30} {
+		req, ok := c.request().(*pb.RangeRequest)
+		if !ok {
+			t.Fatalf("page %d: the client did not ask for a page", page)
+		}
+		if page > 0 && req.Revision != 10 {
+			t.Fatalf("page %d reads at revision %d, want the first page's 10", page, req.Revision)
+		}
+		resp := &pb.RangeResponse{
+			Header: &pb.ResponseHeader{Revision: rev},
+			Kvs:    []*mvccpb.KeyValue{{Key: k.groups[0][page].key, ModRevision: rev - 1}},
+			More:   true,
+		}
+		c.done(&Record{Client: 0, req: req}, resp, nil)
 	}
 }

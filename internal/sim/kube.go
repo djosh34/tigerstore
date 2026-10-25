@@ -299,7 +299,11 @@ func (c *client) kubeDone(r *Record) {
 			return
 		}
 		k.list.from = append(bytes.Clone(resp.Kvs[len(resp.Kvs)-1].Key), 0)
-		k.list.rev = resp.Header.Revision
+		if k.list.rev == 0 {
+			// The later pages read at the first one's revision; their
+			// headers hold the current one.
+			k.list.rev = resp.Header.Revision
+		}
 	case *pb.TxnResponse:
 		req := r.req.(*pb.TxnRequest)
 		if !resp.Succeeded {

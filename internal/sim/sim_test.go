@@ -246,12 +246,15 @@ func runFiles(dir, cmd string, res *Result) map[string]string {
 		"replay.txt": cmd + "\n",
 		"stats.txt":  fmt.Sprintf("%+v\n", res.Stats),
 		"hashes.txt": hashes(res) + "\n",
-		// Every call, as the clients saw it, also when the run failed
-		// before its checks built the committed log that history.json
-		// needs.
-		"calls.txt": calls(res),
 	}
+	// Every call, as the clients saw it, also when the run failed before
+	// its checks built the committed log that history.json needs. A long
+	// run's history takes gigabytes, so it gets calls.txt only without
+	// history.json.
 	h, err := res.Checkable()
+	if !simrun.Long() || !res.logged || err != nil {
+		files["calls.txt"] = calls(res)
+	}
 	switch {
 	case !res.logged:
 		files["replay.txt"] += "no history.json: the run failed before its checks built the committed log, which the checkers need; calls.txt has the calls\n"

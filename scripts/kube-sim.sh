@@ -44,6 +44,9 @@ while [ "$SECONDS" -lt $((MINUTES * 60)) ]; do
 		sleep 2
 	done
 	wait "$pid" || status=1
+	# sim.test's timeout ends it, but not its gosim process, which would
+	# go on beside the next seed.
+	pkill -KILL '^translated' || true
 	grep -E -- '^--- FAIL|^    --- FAIL|^(ok|FAIL|PASS)$|known failure|kube_test.go|gosim run of seed|test timed out' "$log" | cut -c1-2000 | head -20 || true
 	echo "seed $seed: peak $((peak / 1024)) MiB, $((SECONDS - start)) s${killed:+, killed past 14.5 GiB}"
 	if [ -n "$killed" ]; then
