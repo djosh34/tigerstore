@@ -298,8 +298,9 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 		st.track()
 		return r, nil
 	case *pb.CompactionRequest:
-		// Compact keeps the revision; physical compaction is the same,
-		// because it happens at once.
+		// The index drops the versions at once. A physical compaction's
+		// answer waits for the checkpoint the compaction cuts
+		// (heldCompact).
 		if err := st.kv.Compact(op.Revision); err != nil {
 			return nil, err
 		}

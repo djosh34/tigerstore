@@ -51,6 +51,21 @@ const SlowCommitTicks = 3
 // MaxRequestBytes is etcd's default --max-request-bytes.
 const MaxRequestBytes = 1536 * 1024
 
+// A write goes to the peers in one Raft message, a frame of at most 64
+// MiB, and to the log in one record of at most wal.MaxEntryBytes, also
+// 64 MiB. maxWriteBytes is the most a write may add to its entry, which
+// leaves room for the entry's own framing, the Raft message and the
+// record's header. MaxRequestBytesCeiling is the largest
+// --max-request-bytes a node takes: it leaves room below maxWriteBytes for
+// what a write adds to its request in the entry (batchFraming, an
+// authenticated write's identity) and for an encoding that is a little
+// larger than the one etcd measures. A request of exactly 64 MiB grows to
+// 67,108,880 bytes as a peer message.
+const (
+	maxWriteBytes          = wal.MaxEntryBytes - 1<<10
+	MaxRequestBytesCeiling = maxWriteBytes - 1<<10
+)
+
 // Config sets up one node.
 type Config struct {
 	// ID is this node's Raft ID, not 0.
@@ -403,6 +418,9 @@ type pending struct {
 	// refuse, if set, answers the request once its write applied: the
 	// NOSPACE alarm a refused write raised (quota.go).
 	refuse error
+	// held marks a physical compaction that applied and waits for its
+	// checkpoint (heldCompact), without a deadline.
+	held bool
 }
 
 // readBatch is the set of reads that share one ReadIndex request.
@@ -516,11 +534,12 @@ type Node struct {
 	readBatches  []*readBatch
 	nextReadCtx  uint64
 
-	// logBytes estimates the size of the durable log.
-	logBytes int64
 	// cutDue makes the next applied entry cut a checkpoint, once no copy
-	// is under way: a compaction applied.
-	cutDue bool
+	// is under way: a compaction applied. physical are the answers of
+	// physical compactions that wait for a durable checkpoint, oldest
+	// first.
+	cutDue   bool
+	physical []heldCompact
 
 	// log reads what left memory.
 	log Log
@@ -597,7 +616,6 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		streams:   map[uint64]*watchStream{},
 		snapWait:  map[uint64]int64{},
 		cold:      map[*ValueRead]struct{}{},
-		logBytes:  rec.Bytes,
 		noSpaceAt: -1,
 		tokens:    map[string]*simpleToken{},
 	}
@@ -1025,11 +1043,22 @@ var errCanceled = status.Error(codes.Canceled, context.Canceled.Error())
 // Cancel drops request id, whose client went away, if it waits for a
 // leader to be proposed: as etcd's raft.Node drops a proposal whose
 // context ends while no leader is known. Its answer is errCanceled. A
+// MoveLeader that waits for its transferee to lead fails with
+// ErrTimeoutLeaderTransfer, as etcd's does when its context ends. A
 // request that waits for anything else goes on, as in etcd, where it was
 // proposed already.
 func (n *Node) Cancel(id uint64) {
+	if n.err != nil {
+		return
+	}
+	if i := slices.IndexFunc(n.transfers, func(p *pending) bool { return p.req.ID == id }); i >= 0 {
+		p := n.transfers[i]
+		n.transfers = slices.Delete(n.transfers, i, i+1)
+		n.finish(p, ErrTimeoutLeaderTransfer)
+		return
+	}
 	p := n.waiting[id]
-	if n.err != nil || p == nil || p.done || p.refuse != nil || n.rn.BasicStatus().Lead != raft.None {
+	if p == nil || p.done || p.refuse != nil || n.rn.BasicStatus().Lead != raft.None {
 		return
 	}
 	switch {
@@ -1115,6 +1144,10 @@ func (n *Node) submit(r Request, p *pending) {
 		}
 		*p = pending{req: r, deadline: n.clock + int64(n.cfg.RequestTicks)}
 		n.tagWrite(p, ai, hasAI)
+		if writeSize(p) > maxWriteBytes {
+			n.reply(r.ID, rpctypes.ErrGRPCRequestTooLarge)
+			return
+		}
 		n.queueWrite(p)
 		n.timeouts = append(n.timeouts, p)
 		return
@@ -1143,6 +1176,12 @@ func (n *Node) submit(r Request, p *pending) {
 	}
 	*p = pending{req: r, deadline: n.clock + int64(n.cfg.RequestTicks), ai: ai, aiCurrent: hasAI && !r.Caller.Verified}
 	n.tagWrite(p, ai, hasAI)
+	if sized != nil && writeSize(p) > maxWriteBytes {
+		// The client's encoding repeats fields, or the user's name is
+		// long: the entry would not fit in a peer frame or a log record.
+		n.reply(r.ID, rpctypes.ErrGRPCRequestTooLarge)
+		return
+	}
 	switch op := r.Op.(type) {
 	case *pb.InternalRaftRequest:
 		// The identity comes from the caller only.
@@ -1423,7 +1462,7 @@ func (n *Node) expire() {
 	i, dropped, early := 0, false, false
 	for ; i < len(n.timeouts); i++ {
 		p := n.timeouts[i]
-		if p.done {
+		if p.done || p.held {
 			continue
 		}
 		if p.deadline > n.clock {
@@ -1444,10 +1483,6 @@ func (n *Node) expire() {
 			dropped = true
 			n.propBytes -= writeSize(p)
 			n.finish(p, errNotProposed)
-			continue
-		}
-		if _, ok := p.req.Op.(*pb.MoveLeaderRequest); ok {
-			n.finish(p, ErrTimeoutLeaderTransfer)
 			continue
 		}
 		if write {
@@ -1670,6 +1705,7 @@ func (n *Node) Persisted(job PersistJob) {
 	}
 	if job.Root != nil {
 		n.storage.ckpt = *job.Root
+		n.releaseCompacts()
 	}
 	if err := n.storage.add(job.Entries); err != nil {
 		n.fail(err)
@@ -1680,9 +1716,6 @@ func (n *Node) Persisted(job PersistJob) {
 			n.fail(err)
 			return
 		}
-	}
-	for _, e := range job.Entries {
-		n.logBytes += wal.EntryRecordBytes(e)
 	}
 	if len(job.Entries) > 0 {
 		durable := job.Entries[len(job.Entries)-1].GetIndex()
@@ -1746,6 +1779,7 @@ func (n *Node) Process() (Effects, error) {
 		n.runApply()
 		n.requestReads()
 		n.drainReady()
+		n.cutForCompacts()
 		// A write that a read queued, such as a Downgrade ENABLE once its
 		// read index applied, goes out in the same turn.
 		if len(n.proposals) > 0 && (!n.isLeader || len(n.own) < ownDepth) {
@@ -1778,9 +1812,13 @@ func (n *Node) Process() (Effects, error) {
 
 // stop fails every waiting request once the node stopped.
 func (n *Node) stop() {
-	for _, p := range n.timeouts {
+	for _, p := range slices.Concat(n.timeouts, n.transfers) {
 		n.finish(p, rpctypes.ErrGRPCStopped)
 	}
+	for _, h := range n.physical {
+		n.finish(h.p, rpctypes.ErrGRPCStopped)
+	}
+	n.physical = nil
 	for _, w := range n.tokenWaits {
 		n.reply(w.req.ID, rpctypes.ErrGRPCStopped)
 	}
@@ -2241,6 +2279,10 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 		}
 	}
 	n.timed = timedApply{op: opName(op), err: err}
+	if c, ok := op.(*pb.CompactionRequest); ok && c.Physical && err == nil && p != nil {
+		n.holdCompact(p, Reply{ID: p.req.ID, Resp: resp}, e.GetIndex())
+		return nil
+	}
 	if p != nil {
 		n.answer(p, Reply{ID: p.req.ID, Resp: resp, Err: err}, fills)
 	}

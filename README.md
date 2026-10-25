@@ -2,7 +2,7 @@
 
 A drop-in etcd replacement for Kubernetes: the etcd v3 API that kube-apiserver uses, consensus with [go.etcd.io/raft](https://github.com/etcd-io/raft), and its own storage. The Raft log is the value store. [docs/design.md](docs/design.md) describes what is built and what comes next.
 
-Work in progress. It serves Range, Put, DeleteRange, Txn, Compact, Watch, leases, MemberList, Maintenance.Status, Maintenance.Alarm, and the Lock and Election services over TLS, the gRPC health service, and `/health`, `/readyz`, `/livez` and `/version` on the client port.
+It serves every gRPC method of etcd v3.7.2's API (KV, Watch, Lease, Cluster, Maintenance and Auth), the Lock and Election services and the gRPC health service, with gzip compression, and etcd's grpc-gateway under `/v3/`. The client port also answers `/health`, `/readyz`, `/livez`, `/version`, `/metrics` with etcd's metric names, `/debug/vars` and, with `--enable-pprof`, `/debug/pprof/`. It takes etcd's flags, `ETCD_*` variables and `--config-file`, saves snapshots for `etcdctl snapshot save` and restores them with `tigerstore snapshot restore`, and runs etcd's gRPC proxy and TCP gateway as `tigerstore grpc-proxy start` and `tigerstore gateway start`. [Differences from etcd v3.7.2](#differences-from-etcd-v372) lists what is not the same.
 
 ## Install
 
@@ -175,6 +175,50 @@ rm -rf data/node3                            # start on empty storage
 ```
 
 The new member gets a new ID and catches up from the leader, with a snapshot once the leader no longer has the log from its start. With `--strict-reconfig-check` (the default), a removal or an add waits until the node that takes it has been connected to its peers for 5 s; until then it answers that the cluster is unhealthy, and the call can be repeated. The `replace-member` step of the nightly chaos run (`cmd/chaos -env`) does this after an erased disk and after a refused log, under every checker (#161).
+
+## Save and restore a snapshot
+
+`etcdctl snapshot save` saves a snapshot of a running cluster in tigerstore's own format. Each node of the new cluster restores the same file into an empty data directory, with its own `--name` and the new cluster's `--initial-cluster`, and then starts on it as a new cluster:
+
+```sh
+etcdctl --endpoints=https://127.0.0.1:2379 --cacert certs/ca.pem --cert certs/client.pem --key certs/client-key.pem \
+  snapshot save snap.db
+./tigerstore snapshot restore snap.db --name node1 --data-dir data/node1 \
+  --initial-cluster node1=https://127.0.0.1:2380,node2=https://127.0.0.1:22380,node3=https://127.0.0.1:12380
+```
+
+The restored cluster has the keys, revisions, leases, alarms, users and compaction of the snapshot, and the members of `--initial-cluster`.
+
+## Differences from etcd v3.7.2
+
+tigerstore answers as etcd v3.7.2 does except for these points, from [Research: what tigerstore lacks against etcd v3.7.2](https://github.com/djosh34/tigerstore/issues/399):
+
+- Snapshots are in tigerstore's own format: `etcdutl snapshot status` and `etcdutl snapshot restore` cannot read them.
+- tigerstore cannot take over an etcd cluster's data: it does not start on an etcd data directory or restore an etcd snapshot. `etcdctl make-mirror` copies keys and values only, without revisions or leases.
+- etcd cannot take over tigerstore's data either: tigerstore has no export to etcd's format.
+- `tigerstore snapshot restore` has no `--bump-revision` or `--mark-compacted`.
+- There is no `etcdutl defrag` or `etcdutl migrate`; `Defragment` runs the log's cleaner online.
+- A downgrade moves the version tigerstore reports, but its storage never goes down, a downgrade ends only by CANCEL, and `--downgrade-check-time` is ignored.
+- Peers speak tigerstore's own protocol, not etcd's Raft over HTTP, so etcd and tigerstore nodes cannot be in one cluster.
+- Peer URLs must be https, with TLS 1.3 and certificates checked on both ends; `--tls-max-version TLS1.2` is refused.
+- A member with several peer URLs is dialed at the first.
+- A client address serves http or https, not both.
+- The feature gate `SetMemberLocalAddr` is accepted but does not bind the address of outgoing peer connections.
+- With DNS SRV discovery over https and no peer CA file, a peer's certificate is checked for the host of its URL, not for the discovery domain.
+- `--snapshot-count`, `--snapshot-catchup-entries`, `--max-snapshots`, `--max-wals`, `--backend-*`, `--compaction-batch-limit` and `--compaction-sleep-interval` are accepted and ignored: tigerstore has no bbolt and cuts checkpoints by bytes.
+- The feature gates `FastLeaseKeepAlive`, `TxnModeWriteWithSharedBuffer` and `LeaseCheckpointPersist` are accepted and do nothing; lease checkpoints always persist.
+- `Hash` and `HashKV` count the versions etcd counts, but their numbers are not etcd's for the same data; the members of one cluster still compare with each other.
+- A lease keepalive is a Raft write: it needs a quorum and takes a round trip more than etcd's, which renews on the leader alone.
+- `LeaseLeases` and `LeaseTimeToLive` are linearizable reads, and on a follower `LeaseTimeToLive` reports the granted TTL, not the time left.
+- A watch stream closes with `Unavailable` when its client falls 4,096 responses or 64 MiB behind, when the node is short of memory, or when it installs a snapshot; etcd keeps slow watchers waiting. clientv3 and kube-apiserver resume the watch.
+- A watch with `prev_kv` from the compaction revision is canceled with that revision; etcd sends the events at it without their previous values, which kube-apiserver rejects.
+- A Range whose answer exceeds the memory budget is refused with `ResourceExhausted`; a smaller limit pages it.
+- The request size limit counts a 10-byte request ID, so a write a few bytes below `--max-request-bytes` can be refused where etcd takes it.
+- `--max-request-bytes` above 67,106,816 bytes (64 MiB less 2 KiB) is refused at startup: a write travels in one peer frame and one log record of at most 64 MiB.
+- `Status.dbSize`, `dbSizeInUse`, `etcd_mvcc_db_total_size_in_bytes` and `etcd_mvcc_db_total_size_in_use_in_bytes` are the size the quota compares, an estimate of etcd's database for the versions kept, so they are equal and `etcdctl endpoint status` shows no fragmentation. The log's own size is `tigerstore_disk_bytes`, with its budget in `tigerstore_disk_budget_bytes`. A compaction frees quota without a defragmentation.
+- `etcd_disk_backend_commit_duration_seconds` times a sync of the log, tigerstore's nearest to etcd's backend commit.
+- `ETCD_VERIFY` is not used; tigerstore has its own corruption checks.
+- `--version` prints a `tigerstore Version:` line before etcd's lines.
 
 ## Tests
 

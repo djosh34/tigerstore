@@ -184,7 +184,7 @@ func linearizableRead(s *Server, ctx context.Context) error { return s.healthRea
 // with ErrTimeout. Its error carries the error text etcd reports, without
 // gRPC's wrapper.
 func (s *Server) healthRead(ctx context.Context, serializable bool) error {
-	ctx, cancel := context.WithTimeout(ctx, healthTimeout)
+	ctx, cancel := context.WithTimeout(ctx, s.n.RequestTimeout())
 	defer cancel()
 	_, err := s.n.DoAs(ctx, core.RootCaller(), &pb.RangeRequest{Key: []byte("health"), KeysOnly: true, Limit: 1, Serializable: serializable})
 	if err == nil {

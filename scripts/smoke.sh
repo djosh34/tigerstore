@@ -121,10 +121,33 @@ has '"version":"3.7.2"' ctl endpoint status -w json || {
 has "Snapshot saved at" etcdctl --endpoints=https://127.0.0.1:$((2379 + off)) \
 	--cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
 	snapshot save "$work/snap.db"
-# tigerstore snapshot restore writes it into a new data directory.
+# tigerstore snapshot restore writes it into the data directory of a new
+# one-node cluster, which starts on it and serves the keys of the snapshot.
+rclient=$((2387 + off)) rpeer=https://127.0.0.1:$((2388 + off))
 restored=$("$work/tigerstore" snapshot restore "$work/snap.db" --name node1 --data-dir "$work/restored" \
-	--initial-cluster node1=https://127.0.0.1:1,node2=https://127.0.0.1:2,node3=https://127.0.0.1:3 2>&1)
+	--initial-cluster node1=$rpeer 2>&1)
 grep -q "restored the snapshot" <<<"$restored"
+"$work/tigerstore" --name node1 --data-dir "$work/restored" --initial-cluster node1=$rpeer \
+	--listen-peer-urls $rpeer --initial-advertise-peer-urls $rpeer \
+	--listen-client-urls https://127.0.0.1:$rclient --advertise-client-urls https://127.0.0.1:$rclient \
+	--cert-file "$work/certs/node1.pem" --key-file "$work/certs/node1-key.pem" \
+	--trusted-ca-file "$work/certs/ca.pem" --client-cert-auth \
+	--peer-cert-file "$work/certs/node1.pem" --peer-key-file "$work/certs/node1-key.pem" \
+	--peer-trusted-ca-file "$work/certs/ca.pem" --memory-budget-bytes $((512 << 20)) >"$work/data/restored.log" 2>&1 &
+echo $! >"$work/data/restored.pid"
+rctl() {
+	etcdctl --endpoints=https://127.0.0.1:$rclient --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" \
+		--key "$work/certs/client-key.pem" --command-timeout=5s "$@"
+}
+for _ in $(seq 50); do
+	got=$(rctl get w --prefix 2>/dev/null) && break
+	sleep 0.2
+done
+if [ "$got" != $'w0\nmarker\nw2\ny' ]; then
+	echo "get w --prefix from the restored node: got [$got], want [w0 marker w2 y]"
+	tail -20 "$work/data/restored.log"
+	exit 1
+fi
 version=$(curl -sf --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
 	"https://127.0.0.1:$((2379 + off))/version")
 if [ "$version" != '{"etcdserver":"3.7.2","etcdcluster":"3.7.0","storage":"3.7.0"}' ]; then

@@ -664,3 +664,47 @@ func (n *Node) RestoredCheckpoint(members []*pb.Member) (wal.Root, []byte, error
 	data = binary.LittleEndian.AppendUint32(data, crc32.Checksum(data, castagnoli))
 	return wal.Root{Index: n.applied, Term: term}, data, nil
 }
+
+// heldCompact is the answer to a physical compaction, which etcd v3.7.2
+// gives once its backend commit dropped the compacted versions. Every
+// compaction cuts a checkpoint (cutDue), which holds the index without
+// them; the answer waits until a checkpoint at or after the compaction's
+// entry is durable on this node, so its log no longer needs the entries
+// before it to know the compaction. It waits as long as the client does.
+type heldCompact struct {
+	p     *pending
+	reply Reply
+	index uint64
+}
+
+// holdCompact holds the answer to the physical compaction p, applied at
+// entry index.
+func (n *Node) holdCompact(p *pending, r Reply, index uint64) {
+	p.held = true
+	n.physical = append(n.physical, heldCompact{p: p, reply: r, index: index})
+}
+
+// releaseCompacts answers the physical compactions that the durable
+// checkpoint covers.
+func (n *Node) releaseCompacts() {
+	i := 0
+	for ; i < len(n.physical) && n.physical[i].index <= n.storage.ckpt.Index; i++ {
+		n.answer(n.physical[i].p, n.physical[i].reply, nil)
+	}
+	n.physical = n.physical[i:]
+}
+
+// cutForCompacts cuts the checkpoint that physical compactions wait for,
+// at the applied index, when a copy under way held back the cut their
+// compaction asked for and no entry applied since, as on a quiet cluster.
+func (n *Node) cutForCompacts() {
+	if len(n.physical) == 0 || !n.cutDue || n.copy != nil || n.paused != nil || n.err != nil {
+		return
+	}
+	term, err := n.termAt(n.applied)
+	if err != nil {
+		n.fail(err)
+		return
+	}
+	n.maybeCheckpoint(n.applied, term)
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
@@ -337,5 +339,81 @@ func TestEtcdMetrics(t *testing.T) {
 	}
 	if code, _ := get("/debug/pprof/goroutine?debug=1"); code != 200 {
 		t.Errorf("/debug/pprof/goroutine: %d", code)
+	}
+}
+
+// TestQuotaAlertRatio checks the ratio of etcd-mixin's
+// etcdDatabaseQuotaLowSpace alert, etcd_mvcc_db_total_size_in_bytes over
+// etcd_server_quota_backend_bytes. As in etcd v3.7.2, where the quota
+// compares the database's size, the size is what tigerstore's quota
+// compares: the ratio stays below 100% while writes go in, however large
+// the log grows, and the write NOSPACE refuses is one that would take it
+// to 100%. Status reports the same size.
+func TestQuotaAlertRatio(t *testing.T) {
+	const quota = 256 << 10
+	c := newClusterWith(t, func(c *cluster) {
+		c.coreConfig = func(cfg *core.Config) { cfg.QuotaBytes = quota }
+	})
+	cert, _, _, err := c.ca.Issue("client", 97)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	kv, m := c.client(1, cert), pb.NewMaintenanceClient(c.dial(1, cert))
+	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+		return kv.Put(ctx, &pb.PutRequest{Key: []byte("start"), Value: []byte("v")})
+	})
+	ratio := func() (float64, map[string]float64) {
+		t.Helper()
+		got := scrapeMetrics(t, c, cert)
+		st, err := m.Status(ctx, &pb.StatusRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		total, inUse := got["etcd_mvcc_db_total_size_in_bytes"], got["etcd_mvcc_db_total_size_in_use_in_bytes"]
+		if got["etcd_server_quota_backend_bytes"] != quota || st.DbSizeQuota != quota || total != inUse ||
+			float64(st.DbSize) != total || float64(st.DbSizeInUse) != total {
+			t.Fatalf("quota %v, size %v, in use %v; Status: quota %d, size %d, in use %d",
+				got["etcd_server_quota_backend_bytes"], total, inUse, st.DbSizeQuota, st.DbSize, st.DbSizeInUse)
+		}
+		return total / quota, got
+	}
+	value := make([]byte, 8<<10)
+	// One key written over and compacted each time: the log grows past
+	// the quota, the database does not.
+	for i := range 64 {
+		r, err := kv.Put(ctx, &pb.PutRequest{Key: []byte("k"), Value: value})
+		if err != nil {
+			t.Fatalf("put %d of k: %v", i, err)
+		}
+		if _, err := kv.Compact(ctx, &pb.CompactionRequest{Revision: r.Header.Revision}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if r, got := ratio(); r >= 0.5 || got["tigerstore_disk_bytes"] < 2*quota {
+		t.Fatalf("after 64 compacted writes of one key: ratio %.2f, log %v bytes", r, got["tigerstore_disk_bytes"])
+	}
+	// New keys until the quota refuses one.
+	for i := 0; ; i++ {
+		key := fmt.Appendf(nil, "k%03d", i)
+		before, _ := ratio()
+		_, err := kv.Put(ctx, &pb.PutRequest{Key: key, Value: value})
+		if err != nil {
+			cost := float64(256+len(key)+len(value)) / quota
+			if !errors.Is(err, rpctypes.ErrGRPCNoSpace) || before >= 1 || before+cost < 1 {
+				t.Fatalf("put %s at ratio %.4f with cost %.4f: %v", key, before, cost, err)
+			}
+			break
+		}
+		if after, _ := ratio(); after >= 1 {
+			t.Fatalf("put %s went in, and the ratio is %.4f", key, after)
+		}
+		if i > quota/len(value) {
+			t.Fatal("the quota never refused a put")
+		}
+	}
+	alarms, err := m.Alarm(ctx, &pb.AlarmRequest{})
+	if err != nil || len(alarms.Alarms) != 1 || alarms.Alarms[0].Alarm != pb.AlarmType_NOSPACE {
+		t.Fatalf("alarms after the refusal: %v, %v", alarms, err)
 	}
 }

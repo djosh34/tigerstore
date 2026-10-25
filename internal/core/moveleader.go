@@ -11,8 +11,9 @@ import (
 // MoveLeader follows etcd v3.7.2's (EtcdServer.MoveLeader): only the
 // leader takes it, the transferee must be a voting member, and Raft's
 // leadership transfer runs until this node sees the transferee lead.
-// etcd waits for that as long as the client does; the node answers
-// ErrTimeoutLeaderTransfer at the request's deadline.
+// Like etcd, the node waits for that as long as the client does, without
+// a deadline of its own: when the client goes away (Cancel), the request
+// fails with ErrTimeoutLeaderTransfer.
 
 // ErrTimeoutLeaderTransfer is etcd's answer to a transfer that did not
 // finish in time, which etcd's gRPC layer has no code for.
@@ -30,7 +31,6 @@ func (n *Node) moveLeader(p *pending, r *pb.MoveLeaderRequest) {
 	}
 	n.rn.TransferLeader(r.TargetID)
 	n.transfers = append(n.transfers, p)
-	n.timeouts = append(n.timeouts, p)
 	n.checkTransfers()
 }
 

@@ -402,8 +402,9 @@ func coreConfig(ec *embed.Config, ident identity) core.Config {
 	ccfg.TickMillis = int64(ec.TickMs)
 	ccfg.ElectionTicks = ec.ElectionTicks()
 	ccfg.NoPreVote = !ec.PreVote
-	// etcd's request timeout: 5 s plus two election timeouts.
-	ccfg.RequestTicks = int((5000 + 2*int64(ec.ElectionMs)) / int64(ec.TickMs))
+	// etcd's request timeout: 5 s plus two election timeouts, rounded up
+	// to whole ticks.
+	ccfg.RequestTicks = int((5000 + 2*int64(ec.ElectionMs) + int64(ec.TickMs) - 1) / int64(ec.TickMs))
 	ccfg.Name = ec.Name
 	for _, u := range ec.AdvertiseClientUrls {
 		ccfg.ClientURLs = append(ccfg.ClientURLs, u.String())

@@ -51,7 +51,7 @@ func (n *Node) Answer(from uint64, req []byte) ([]byte, error) {
 	if err := proto.Unmarshal(req[1:], r); err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), n.requestTimeout())
+	ctx, cancel := context.WithTimeout(context.Background(), n.RequestTimeout())
 	defer cancel()
 	// As etcd's peer handlers, these run without the client's identity;
 	// the node that took the call checked it.

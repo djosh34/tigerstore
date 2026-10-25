@@ -196,8 +196,6 @@ type Recovered struct {
 	// follows it. Every entry after the root's index up to Last is on
 	// disk; WAL.Entry reads them.
 	Last uint64
-	// Bytes is the size of the segments.
-	Bytes int64
 }
 
 // run is where a run of consecutive entries is in segment seq. offs[i] is
@@ -407,7 +405,6 @@ func open(fs FS, drop bool) (*WAL, *Recovered, error) {
 				return nil, nil, errors.Join(err, f.Close())
 			}
 		}
-		rec.Bytes += good
 		if !last {
 			if err := f.Close(); err != nil {
 				return nil, nil, err
@@ -449,7 +446,7 @@ func open(fs FS, drop bool) (*WAL, *Recovered, error) {
 		rec.HardState.Term, rec.HardState.Vote = saved.Term, saved.Vote
 		w.hs = rec.HardState
 	}
-	if err := w.openPacks(packs, rec); err != nil {
+	if err := w.openPacks(packs); err != nil {
 		return nil, nil, errors.Join(err, w.Close())
 	}
 	w.last = max(w.last, w.root.Index)
@@ -944,11 +941,6 @@ func (w *WAL) rootRecord(r Root) {
 		h = binary.LittleEndian.AppendUint64(h, p.id)
 	}
 	w.record(recRoot, h)
-}
-
-// EntryRecordBytes is the size of the record that stores e.
-func EntryRecordBytes(e *raftpb.Entry) int64 {
-	return recHdrSize + entryHdrSize + int64(len(e.GetData()))
 }
 
 // Append buffers entries and a hard state. Nothing is durable before Sync.

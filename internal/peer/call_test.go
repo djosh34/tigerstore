@@ -49,8 +49,12 @@ func TestCall(t *testing.T) {
 	if !errors.Is(err, status.Error(codes.OutOfRange, "no such revision")) {
 		t.Fatalf("failing call: %v", err)
 	}
-	if _, err := b.t.Call(context.Background(), 1, nil); status.Code(err) != codes.Unknown {
+	if _, err := b.t.Call(context.Background(), 1, []byte("hello")); status.Code(err) != codes.Unknown {
 		t.Fatalf("call to a node that answers none: %v", err)
+	}
+	// A probe, which the transport answers itself.
+	if got, err := b.t.Call(context.Background(), 1, nil); err != nil || len(got) != 0 {
+		t.Fatalf("probe: %q, %v", got, err)
 	}
 	// Ask, as a member that joins asks for the members before it has a
 	// transport: with its own certificate, from ID 0 (#200).

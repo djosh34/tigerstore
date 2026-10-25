@@ -21,10 +21,11 @@ const (
 	ClusterVersion = "3.7.0"
 )
 
-// Status answers Maintenance.Status from this node's state. DbSize is the
-// size of the log, which is all the node stores; it is never 0, because
-// etcdctl divides by it. DbSizeInUse is what the space quota counts
-// (mvcc.Store.Size).
+// Status answers Maintenance.Status from this node's state. DbSize and
+// DbSizeInUse are both what the space quota counts (mvcc.Store.Size), so
+// that etcd's quota alert, DbSize over the quota, reaches 100% where
+// NOSPACE starts. The log's own size is tigerstore_disk_bytes.
+// DbSize is never 0, because etcdctl divides by it.
 func (n *Node) Status() *pb.StatusResponse {
 	st := n.rn.BasicStatus()
 	// Header and body take the term from one snapshot; etcdctl prints one
@@ -36,8 +37,8 @@ func (n *Node) Status() *pb.StatusResponse {
 		DowngradeInfo:    &pb.DowngradeInfo{Enabled: n.state.downgradeEnabled, TargetVersion: n.state.downgradeTarget},
 		Version:          ServerVersion,
 		StorageVersion:   n.state.etcdVersion,
-		DbSize:           max(n.logBytes, 1),
-		DbSizeInUse:      n.kv.Size(),
+		DbSize:           n.dbSize(),
+		DbSizeInUse:      n.dbSize(),
 		DbSizeQuota:      cmp.Or(n.cfg.QuotaBytes, QuotaBytes),
 		Leader:           st.Lead,
 		RaftIndex:        st.GetCommit(),
@@ -51,6 +52,10 @@ func (n *Node) Status() *pb.StatusResponse {
 	resp.Errors = append(resp.Errors, n.state.alarmStrings()...)
 	return resp
 }
+
+// dbSize is what Status and the metrics report as etcd's database size,
+// in use and in all: mvcc.Store.Size, at least 1.
+func (n *Node) dbSize() int64 { return max(n.kv.Size(), 1) }
 
 // RaftStatus is Raft's view of this node: its role, term, leader, commit
 // and applied index. Test harnesses report it when a run fails.
@@ -138,8 +143,8 @@ func (n *Node) Metrics() Metrics {
 		Rev:              n.kv.Rev(),
 		CompactRev:       n.kv.CompactRev(),
 		AuthRevision:     n.state.auth.revision,
-		DbSize:           max(n.logBytes, 1),
-		DbSizeInUse:      n.kv.Size(),
+		DbSize:           n.dbSize(),
+		DbSizeInUse:      n.dbSize(),
 		QuotaBytes:       cmp.Or(n.cfg.QuotaBytes, QuotaBytes),
 		ProposalsPending: int64(len(n.waiting)),
 		Raft:             n.rn.Status(),
