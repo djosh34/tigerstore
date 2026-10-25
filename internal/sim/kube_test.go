@@ -19,28 +19,34 @@ import (
 // client, on segments of 4 MiB, with a disk budget of 8 KiB an object and
 // 16 MiB at least, and a disk of twice that. The long profile has 10,000
 // objects for 4 virtual hours, with a compaction every 5 minutes, and
-// its faults ten times further apart than a default seed's: at the
-// default rates, 10,000 objects leave the cluster serving one call in
-// seven, at a tenth of them most calls. The short one has 1,000 objects
-// for 2 minutes, with a compaction every 20 s.
+// its faults twice as far apart as a default seed's: at the default
+// rates, 10,000 objects leave the cluster serving one call in ten, at
+// half of them about half the calls, and ten times further apart the
+// seed does not fit in a runner's memory. The short one has 1,000
+// objects for 2 minutes, with a compaction every 20 s.
 func kubeConfig(seed uint64, long bool) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Clients, cfg.V3Clients = 13, 3
 	cfg.Objects, cfg.Duration, cfg.CompactEvery = 1000, 2*60*Second, 20*Second
 	if long {
 		cfg.Objects, cfg.Duration, cfg.CompactEvery = 10_000, 4*3600*Second, 5*60*Second
-		f := &cfg.Faults
-		for _, every := range []*int64{
-			&f.CrashEvery, &f.LinkEvery, &f.DiskErrorEvery, &f.StallEvery, &f.FSDownEvery, &f.DiskFullEvery,
-			&f.LinkStallEvery, &f.PauseEvery, &f.HalfOpenEvery, &f.GrayEvery, &f.SlowWatcherEvery, &f.NetemEvery, &f.ResetEvery,
-		} {
-			*every *= 10
-		}
+		spreadFaults(&cfg.Faults, 2)
 	}
 	cfg.SegmentBytes = 4 << 20
 	cfg.Faults.DiskBudget = max(16<<20, int64(cfg.Objects)*8<<10)
 	cfg.Faults.DiskCapacity = int(2 * cfg.Faults.DiskBudget)
 	return cfg
+}
+
+// spreadFaults makes the faults that come at random times come k times
+// further apart.
+func spreadFaults(f *Faults, k int64) {
+	for _, every := range []*int64{
+		&f.CrashEvery, &f.LinkEvery, &f.DiskErrorEvery, &f.StallEvery, &f.FSDownEvery, &f.DiskFullEvery,
+		&f.LinkStallEvery, &f.PauseEvery, &f.HalfOpenEvery, &f.GrayEvery, &f.SlowWatcherEvery, &f.NetemEvery, &f.ResetEvery,
+	} {
+		*every *= k
+	}
 }
 
 // TestKubernetesLoad runs the Kubernetes-shaped load of cmd/soak under
