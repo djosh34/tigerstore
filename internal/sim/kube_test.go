@@ -15,8 +15,8 @@ import (
 )
 
 // kubeConfig is a run of the Kubernetes-shaped load (kube.go) under every
-// fault of DefaultConfig, by 16 clients, 3 of them clients of etcd's Go
-// client, on segments of 4 MiB, with a disk budget of 8 KiB an object and
+// fault of DefaultConfig, by 16 clients, in the short profile 3 of them
+// clients of etcd's Go client, on segments of 4 MiB, with a disk budget of 8 KiB an object and
 // 16 MiB at least, and a disk of twice that. The long profile has 10,000
 // objects for 4 virtual hours, with a compaction every 5 minutes, and
 // its faults twice as far apart as a default seed's: at the default
@@ -31,6 +31,9 @@ func kubeConfig(seed uint64, long bool) Config {
 	if long {
 		cfg.Objects, cfg.Duration, cfg.CompactEvery = 10_000, 4*3600*Second, 5*60*Second
 		spreadFaults(&cfg.Faults, 2)
+		// A clientv3 call can spin for good in gRPC's transparent retry
+		// under gosim, one long seed in seven (#440).
+		cfg.Clients, cfg.V3Clients = 16, 0
 	}
 	cfg.SegmentBytes = 4 << 20
 	cfg.Faults.DiskBudget = max(16<<20, int64(cfg.Objects)*8<<10)
@@ -89,7 +92,12 @@ func TestKubernetesLoad(t *testing.T) {
 		if compactions == 0 || st.Revokes == 0 || pages == 0 || answers == 0 {
 			t.Fatalf("seed %d did too little to test anything: %d compactions in the log, %d revokes, %d later pages of lists, %d answers to progress requests", seed, compactions, st.Revokes, pages, answers)
 		}
-		if took := faultsTaken(st); long && slices.Contains(slices.Collect(maps.Values(took)), false) {
+		took := faultsTaken(st)
+		if long {
+			// The long profile has no clientv3 clients (#440).
+			delete(took, "clientv3 call")
+		}
+		if long && slices.Contains(slices.Collect(maps.Values(took)), false) {
 			var missed []string
 			for name, ok := range took {
 				if !ok {
