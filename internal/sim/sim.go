@@ -482,8 +482,10 @@ type Sim struct {
 
 	clients  []*client
 	watchers []*watchClient
-	// kube is the Kubernetes-shaped load, if Config.Objects is set.
-	kube *kubeLoad
+	// kube is the Kubernetes-shaped load, if Config.Objects is set, and
+	// values the one copy of each of its values.
+	kube   *kubeLoad
+	values *values
 	// expiredAt is when a lease first expired on any node.
 	expiredAt    map[int64]int64
 	expiredOrder []int64
@@ -668,6 +670,9 @@ type Result struct {
 	logged   bool
 	// Clients is the number of request clients.
 	Clients int
+	// values is the one copy of each value of a Kubernetes-shaped load,
+	// which the checkers' history shares too.
+	values *values
 }
 
 // Run runs one seed and checks it. The error describes the first broken
@@ -699,7 +704,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.History, res.Stats, res.Silences = s.history, s.stats, s.silences
 	res.HeldAppendAt = s.heldAppendAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
-	res.nodes = s.nodes
+	res.nodes, res.values = s.nodes, s.values
 	s.mu.Unlock()
 	if err == nil {
 		if err = s.check(res); err != nil {

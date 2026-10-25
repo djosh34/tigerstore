@@ -198,6 +198,9 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 	r.Ambiguous = err != nil && ambiguous(err)
 	s.history = append(s.history, r)
 	if c.kube != nil {
+		if err == nil {
+			s.values.shareMessage(resp)
+		}
 		c.kubeDone(r)
 	}
 	if r.v3 && err == nil {

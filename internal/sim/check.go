@@ -61,6 +61,9 @@ func (s *Sim) check(res *Result) error {
 			if _, ok := op.(*pb.Member); ok {
 				return nil
 			}
+			if s.values != nil {
+				s.values.shareMessage(op)
+			}
 			res.Log = append(res.Log, op)
 			return nil
 		}); err != nil {

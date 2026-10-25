@@ -114,6 +114,7 @@ type kubeList struct {
 func (s *Sim) newKubeLoad() []*kubeClient {
 	clients := s.cfg.Clients + s.cfg.V3Clients
 	s.kube = &kubeLoad{byKey: map[string]*kubeObject{}, compactAt: s.cfg.CompactEvery}
+	s.values = newValues()
 	var out []*kubeClient
 	for id := range clients {
 		kc := &kubeClient{}
@@ -232,6 +233,7 @@ func (c *client) kubePut(o *kubeObject) *pb.PutRequest {
 	for len(v) < size {
 		v = append(v, byte('a'+len(v)%26))
 	}
+	c.sim.values.add(v)
 	put := &pb.PutRequest{Key: o.key, Value: v}
 	if o.leased {
 		put.Lease = k.lease

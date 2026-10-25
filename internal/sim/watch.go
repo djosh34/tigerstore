@@ -232,6 +232,9 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 // client must leave it and start a new logical watch. The lock is held.
 func (w *watchClient) receive(r *pb.WatchResponse) bool {
 	s := w.sim
+	if s.values != nil {
+		s.values.shareMessage(r)
+	}
 	w.responses = append(w.responses, WatchRecord{Time: s.now(), Resp: r})
 	if r.Canceled && r.CompactRevision != 0 {
 		// The revision it needed is compacted. Like Kubernetes, start a

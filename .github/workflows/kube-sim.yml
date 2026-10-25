@@ -9,9 +9,10 @@
 # started by hand:
 #   gh workflow run kube-sim.yml --ref <branch>
 # -f minutes=1 runs one seed a job, as to measure their time and memory.
-# Each seed prints its peak memory, its time and the command that runs it
-# again; a failing seed prints its hashes, and its trace, how it left
-# each node, its history and its disks are uploaded with the job's logs.
+# scripts/kube-sim.sh runs a job's seeds. Each seed prints its peak
+# memory, its time and the command that runs it again; a failing seed
+# prints its hashes, and its trace, how it left each node, its history
+# and its disks are uploaded with the job's logs.
 name: kube-sim
 run-name: kube-sim ${{ github.event_name == 'schedule' && 'nightly' || format('on {0}', github.ref_name) }}
 
@@ -71,31 +72,12 @@ jobs:
       # Builds the gosim and native test binaries, and runs no test.
       - run: scripts/sim.sh ./internal/sim '^$'
       - name: Run seeds one after the other
-        shell: bash
         env:
           FIRST: ${{ needs.seeds.outputs.first }}
           SHARD: ${{ matrix.shard }}
           MINUTES: ${{ inputs.minutes || '300' }}
           SIM_OUT: ${{ runner.temp }}/sim-out
-        run: |
-          set -uo pipefail
-          export GOSIMTOOL="$GITHUB_WORKSPACE/.gosim/bin/gosim" SIM_LONG=1 SIM_SEEDS=1
-          cd internal/sim
-          seed=$((FIRST + SHARD * 1000))
-          twice=1
-          status=0
-          while [ "$SECONDS" -lt $((MINUTES * 60)) ]; do
-            log=$RUNNER_TEMP/seed-$seed.log
-            echo "seed $seed: replay: SIM_LONG=1 SIM_SEED=$seed SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestKubernetesLoad\$'"
-            SIM_SEED=$seed SIM_TWICE=$twice /usr/bin/time -v -o "$RUNNER_TEMP/time-$seed.txt" \
-              "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run '^TestKubernetesLoad$' -test.v -test.timeout 150m >"$log" 2>&1 || status=1
-            grep -E -- '^--- FAIL|^    --- FAIL|^(ok|FAIL|PASS)$|known failure|kube_test.go' "$log" | cut -c1-2000 | head -20 || true
-            awk -F': ' -v seed="$seed" '/Maximum resident/ { rss = $2 } /Elapsed/ { wall = $2 } END { printf "seed %s: peak %.2f GiB, %s\n", seed, rss / 1048576, wall }' "$RUNNER_TEMP/time-$seed.txt"
-            PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$log" -gosim
-            seed=$((seed + 1))
-            twice=0
-          done
-          exit $status
+        run: FIRST=$((FIRST + SHARD * 1000)) scripts/kube-sim.sh
       # The logs, with every seed's hashes, also when the campaign passed:
       # any seed of them replays alone with the same hashes.
       - if: always()
@@ -104,6 +86,5 @@ jobs:
           name: kube-sim-${{ matrix.shard }}
           path: |
             ${{ runner.temp }}/seed-*.log
-            ${{ runner.temp }}/time-*.txt
             ${{ runner.temp }}/sim-out
           retention-days: 30
