@@ -258,7 +258,8 @@ func runFiles(dir, cmd string, res *Result) map[string]string {
 	case err != nil:
 		files["replay.txt"] += fmt.Sprintf("no history.json: %v\n", err)
 	default:
-		b, err := json.MarshalIndent(h, "", "  ")
+		// Not indented: a long run's history takes gigabytes as it is.
+		b, err := json.Marshal(h)
 		if err != nil {
 			files["replay.txt"] += fmt.Sprintf("no history.json: %v\n", err)
 			break

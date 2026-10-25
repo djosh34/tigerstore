@@ -7,8 +7,9 @@
 #
 # The first seed runs twice and must give the same hashes. Each seed is a
 # gosim process of its own, with a Go memory limit of 12 GiB. A sampler
-# reads its memory every 2 s; the seed's line gives the peak, and a seed
-# past 14.5 GiB is killed, so that the machine and the logs survive. It
+# reads the memory of it and of its driver every 2 s; the seed's line
+# gives the peak, and a seed past 14.5 GiB is killed, so that the machine
+# and the logs survive. It
 # needs the binaries of scripts/sim.sh ./internal/sim '^$' and writes a
 # log per seed to OUT, $RUNNER_TEMP or /tmp by default.
 set -uo pipefail
@@ -30,12 +31,14 @@ while [ "$SECONDS" -lt $((MINUTES * 60)) ]; do
 	killed=""
 	while kill -0 "$pid" 2>/dev/null; do
 		# The gosim run is a process of its own, named after the
-		# translated test binary.
-		rss=$(ps -eo rss=,comm= | awk '$2 ~ /^translated/ { s += $1 } END { print s + 0 }')
+		# translated test binary; sim.test drives it and takes in its
+		# files.
+		rss=$(ps -eo rss=,comm= | awk '$2 ~ /^translated|^sim\.test$/ { s += $1 } END { print s + 0 }')
 		peak=$((rss > peak ? rss : peak))
 		if [ "$rss" -gt "$limit" ] && [ -z "$killed" ]; then
 			killed=yes
 			pkill -KILL '^translated' || true
+			kill -KILL "$pid" || true
 		fi
 		sleep 2
 	done

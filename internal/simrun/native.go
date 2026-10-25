@@ -234,10 +234,14 @@ func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.
 
 // twoRuns runs r twice, and fails t unless both give the same hashes.
 // With SIM_KEEP each run saves its files, which are kept, as first and
-// second, only when they differ or a run failed.
+// second, only when they differ or a run failed. A long profile's runs
+// save none: their files take gigabytes, and this process would hold both
+// runs' at once. Run alone, each seed saves its files when it fails.
 func twoRuns(t *testing.T, r Run) *Result {
 	t.Helper()
-	r.Env = append(r.Env, "SIM_KEEP=1")
+	if !Long() {
+		r.Env = append(r.Env, "SIM_KEEP=1")
+	}
 	first := Do(t, r)
 	if first.Failed {
 		keep(t, first.Artifacts, "")
