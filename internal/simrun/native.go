@@ -79,14 +79,18 @@ func Drive(t *testing.T, seed uint64) bool {
 
 // Do runs r in gosim. A failed run fails t, with the run's log, its
 // hashes and the command that runs it again; with -test.v Do logs a
-// passed run's log too.
+// passed run's log too, and how long each run took.
 func Do(t *testing.T, r Run) *Result {
 	t.Helper()
 	pkg, _ := pkgPath(t)
 	mt := metatesting.ForOtherPackage(t, pkg, tags...)
+	start := time.Now()
 	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: r.Env})
 	if err != nil {
 		t.Fatalf("running %s in gosim: %v", r.Test, err)
+	}
+	if testing.Verbose() {
+		t.Logf("the gosim run of seed %d took %v", r.Seed, time.Since(start).Round(time.Second))
 	}
 	if res.Failed {
 		t.Errorf("%s failed in gosim with seed %d: %s\n%s", r.Test, r.Seed, res.Err, readable(res.LogOutput))

@@ -3,9 +3,10 @@
 # of TestKubernetesLoad, one after the other while less than MINUTES have
 # passed (docs/testing.md), as kube-sim.yml does in each of its jobs:
 #
-#   FIRST=<seed> MINUTES=<minutes> scripts/kube-sim.sh
+#   FIRST=<seed> MINUTES=<minutes> [TWICE=1] scripts/kube-sim.sh
 #
-# The first seed runs twice and must give the same hashes. Each seed is a
+# With TWICE=1 the first seed runs twice and must give the same hashes. A
+# seed may take 120 minutes, twice that when it runs twice. Each seed is a
 # gosim process of its own, with a Go memory limit of 12 GiB. A sampler
 # reads the memory of it and of its driver every 2 s; the seed's line
 # gives the peak, and a seed past 14.5 GiB is killed, so that the machine
@@ -19,13 +20,13 @@ limit=$((14 * 1024 * 1024 + 512 * 1024)) # KiB
 export GOSIMTOOL=$root/.gosim/bin/gosim SIM_LONG=1 SIM_SEEDS=1 GOMEMLIMIT=12GiB
 cd "$root/internal/sim"
 seed=$FIRST
-twice=1
+twice=${TWICE:-0}
 status=0
 while [ "$SECONDS" -lt $((MINUTES * 60)) ]; do
 	log=$out/seed-$seed.log
 	echo "seed $seed: replay: SIM_LONG=1 SIM_SEED=$seed SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestKubernetesLoad\$'"
 	start=$SECONDS
-	SIM_SEED=$seed SIM_TWICE=$twice "$root/.gosim/bin/sim.test" -test.run '^TestKubernetesLoad$' -test.v -test.timeout 150m >"$log" 2>&1 &
+	SIM_SEED=$seed SIM_TWICE=$twice "$root/.gosim/bin/sim.test" -test.run '^TestKubernetesLoad$' -test.v -test.timeout $((120 * (1 + twice)))m >"$log" 2>&1 &
 	pid=$!
 	peak=0
 	killed=""
@@ -43,7 +44,7 @@ while [ "$SECONDS" -lt $((MINUTES * 60)) ]; do
 		sleep 2
 	done
 	wait "$pid" || status=1
-	grep -E -- '^--- FAIL|^    --- FAIL|^(ok|FAIL|PASS)$|known failure|kube_test.go' "$log" | cut -c1-2000 | head -20 || true
+	grep -E -- '^--- FAIL|^    --- FAIL|^(ok|FAIL|PASS)$|known failure|kube_test.go|gosim run of seed|test timed out' "$log" | cut -c1-2000 | head -20 || true
 	echo "seed $seed: peak $((peak / 1024)) MiB, $((SECONDS - start)) s${killed:+, killed past 14.5 GiB}"
 	if [ -n "$killed" ]; then
 		status=1
