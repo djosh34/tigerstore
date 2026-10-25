@@ -16,9 +16,6 @@ name: kube-sim
 run-name: kube-sim ${{ github.event_name == 'schedule' && 'nightly' || format('on {0}', github.ref_name) }}
 
 on:
-  # Temporary, to register the workflow for workflow_dispatch on the branch.
-  push:
-    branches: [work/416-k8s-sim-load]
   schedule:
     - cron: "0 5 * * *"
   workflow_dispatch:
@@ -37,7 +34,6 @@ permissions:
 
 jobs:
   seeds:
-    if: github.event_name != 'push'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     outputs:

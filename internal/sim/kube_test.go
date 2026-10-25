@@ -38,8 +38,14 @@ func kubeConfig(seed uint64, long bool) Config {
 // from seed 1, or, with SIM_LONG=1, as the nightly kube-sim workflow
 // sets, its long one. Each seed must have compacted, paged through a
 // list, had a lease expire and had progress requests answered; in a long
-// one, each fault must have taken effect too.
+// one, each fault must have taken effect too. It skips under the race
+// detector (#439).
 func TestKubernetesLoad(t *testing.T) {
+	if simrun.Race {
+		// Natively a run can hang when a TLS alert waits for a write lock
+		// and the synctest clock stops (#439).
+		t.Skip("the Kubernetes-shaped load runs under gosim (#439)")
+	}
 	long := simrun.Long()
 	simrun.Seeds(t, 1, 2, func(t *testing.T, seed uint64) Stats {
 		res := run(t, kubeConfig(seed, long))
