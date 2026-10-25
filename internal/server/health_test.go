@@ -209,7 +209,8 @@ func TestHealthTimeout(t *testing.T) {
 	}
 	took := time.Since(start)
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusServiceUnavailable || took < timeout || took > timeout+2*time.Second {
+	// The node counts the deadline in ticks, so it may end a tick early.
+	if resp.StatusCode != http.StatusServiceUnavailable || took < timeout-50*time.Millisecond || took > timeout+2*time.Second {
 		t.Fatalf("/readyz/linearizable_read without a quorum answered %d after %v, want 503 after %v", resp.StatusCode, took, timeout)
 	}
 }
