@@ -692,7 +692,9 @@ func faultCases() []faultCase {
 		// One kill in three, of half the crashes, has a power loss after it.
 		{"power loss after a kill", crashes, long, func(st Stats) int { return st.KillLosses }},
 		{"lost directory operation", unsynced, long, func(st Stats) int { return st.Disk.LostDirOps }},
-		{"failed sync", Faults{DiskErrorEvery: Second}, nil, func(st Stats) int { return st.Disk.FailedSyncs }},
+		// One disk fault in four is a failed sync: twice the rate makes a
+		// seed without one rare.
+		{"failed sync", Faults{DiskErrorEvery: 500 * Millisecond}, nil, func(st Stats) int { return st.Disk.FailedSyncs }},
 		{"EIO", Faults{DiskErrorEvery: Second}, nil, func(st Stats) int { return st.IOErrors }},
 		{"file system down", Faults{FSDownEvery: Second}, nil, func(st Stats) int { return min(st.FSDowns, st.DiskFaults) }},
 		{"read-only file system", Faults{FSDownEvery: Second}, nil, func(st Stats) int { return st.ReadOnlyStops }},

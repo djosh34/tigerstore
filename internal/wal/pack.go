@@ -188,7 +188,7 @@ func sortPackVals(p *Pack) {
 
 // openPacks opens the packs the newest root names, among the files
 // names, and removes the others.
-func (w *WAL) openPacks(names []string, rec *Recovered) error {
+func (w *WAL) openPacks(names []string) error {
 	removed := false
 	for _, name := range names {
 		var id uint64
@@ -218,7 +218,6 @@ func (w *WAL) openPacks(names []string, rec *Recovered) error {
 			return err
 		}
 		w.packs = append(w.packs, p)
-		rec.Bytes += p.size
 	}
 	slices.SortFunc(w.packs, func(a, b *Pack) int { return cmp.Compare(a.id, b.id) })
 	return nil

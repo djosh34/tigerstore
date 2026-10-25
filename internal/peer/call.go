@@ -85,9 +85,12 @@ func (t *TCP) answer(c net.Conn, r io.Reader, from uint64) error {
 		return err
 	}
 	var out []byte
-	if t.cfg.Answer == nil {
+	switch {
+	case len(req) == 0:
+		// A probe.
+	case t.cfg.Answer == nil:
 		err = errors.New("this node answers no calls")
-	} else {
+	default:
 		out, err = t.cfg.Answer(from, req)
 	}
 	if err != nil {

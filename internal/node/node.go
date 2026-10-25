@@ -851,7 +851,7 @@ func (n *Node) TransferLeadership(ctx context.Context) error {
 	case to == 0:
 		return rpctypes.ErrGRPCUnhealthy
 	}
-	ctx, cancel := context.WithTimeout(ctx, n.cfg.Tick*time.Duration(n.cfg.Core.RequestTicks))
+	ctx, cancel := context.WithTimeout(ctx, n.RequestTimeout())
 	defer cancel()
 	_, err = n.DoAs(ctx, core.RootCaller(), &pb.MoveLeaderRequest{TargetID: to})
 	return err
@@ -1644,6 +1644,8 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 			dir = dir || g.dir
 			upTo = max(upTo, g.end)
 		}
+		// The sync makes the batch durable from the write of its first group.
+		written := batch[0].times.flush
 		var early []syncedGroup
 		if err == nil && f != nil && (planted.On("B02") && n.Leader() == n.ID() || planted.On("B03") && n.Leader() != n.ID()) {
 			// Planted: report the appends durable before their sync, up to
@@ -1681,6 +1683,7 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 			}
 			syncTime := time.Since(start)
 			n.cfg.Metrics.WALFsync.Observe(syncTime.Seconds())
+			n.cfg.Metrics.BackendCommit.Observe(time.Since(written).Seconds())
 			if syncTime > n.cfg.Tick {
 				n.logf("slow log sync: %v", syncTime)
 			}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +16,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/k8ssize"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
@@ -127,13 +129,16 @@ func dumpState(t *testing.T, c *cluster, compacted int64) dump {
 	return d
 }
 
-// TestSnapshotRestore writes, deletes, grants leases, raises an alarm and
-// compacts with frequent checkpoints, so that the first segment is gone
-// and the snapshot carries a checkpoint and the values it names. It saves
-// a snapshot, restores it into three new data directories with tigerstore
-// snapshot restore's code, starts a cluster on them, and compares what a
-// client reads: every key now and at the compaction revision, the error
-// below it, the leases with their keys, and the alarms.
+// TestSnapshotRestore writes Kubernetes-shaped data, objects under
+// /registry/<resource>/ with the value sizes of k8ssize and events on a
+// lease, as kube-apiserver writes them; it updates and deletes them,
+// raises an alarm and compacts, with frequent checkpoints, so that the
+// first segment is gone and the snapshot carries a checkpoint and the
+// values it names. It saves a snapshot, restores it into three new data
+// directories with tigerstore snapshot restore's code, starts a cluster on
+// them, and compares what a client reads: every key now and at the
+// compaction revision, the error below it, the leases with their keys,
+// and the alarms.
 func TestSnapshotRestore(t *testing.T) {
 	c := newClusterWith(t, tinyCheckpoints)
 	cert, _, _, err := c.ca.Issue("client", 91)
@@ -142,25 +147,38 @@ func TestSnapshotRestore(t *testing.T) {
 	}
 	conn := c.dial(1, cert)
 	kv, lease := pb.NewKVClient(conn), pb.NewLeaseClient(conn)
+	// kube-apiserver attaches events to a lease of the event TTL, 1 h.
 	l := retry(t, func(ctx context.Context) (*pb.LeaseGrantResponse, error) {
 		return lease.LeaseGrant(ctx, &pb.LeaseGrantRequest{TTL: 3600})
 	})
 	retry(t, func(ctx context.Context) (*pb.AlarmResponse, error) {
 		return pb.NewMaintenanceClient(conn).Alarm(ctx, &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, Alarm: 9, MemberID: 7})
 	})
+	rng := rand.New(rand.NewPCG(1, 2))
+	var objects []k8ssize.Bucket
+	for range 40 {
+		objects = append(objects, k8ssize.Buckets[k8ssize.Draw(rng, "")])
+	}
+	objects = append(objects, k8ssize.Buckets[k8ssize.Draw(rng, "events")], k8ssize.Buckets[k8ssize.Draw(rng, "events")])
+	key := func(i int) []byte {
+		return fmt.Appendf(nil, "/registry/%s/default/object-%02d", objects[i].Resource, i)
+	}
 	var rev, compacted int64
-	for round := range 30 {
-		for i := range 20 {
-			req := &pb.PutRequest{Key: fmt.Appendf(nil, "k%02d", i), Value: fmt.Appendf(nil, "v%d.%d %0200d", i, round, 0)}
-			if i%5 == 0 {
+	const rounds = 12
+	for round := range rounds {
+		for i, o := range objects {
+			value := fmt.Appendf(nil, "%s round %d ", key(i), round)
+			value = append(value, bytes.Repeat([]byte("x"), max(0, o.Size-len(value)))...)
+			req := &pb.PutRequest{Key: key(i), Value: value}
+			if o.Resource == "events" {
 				req.Lease = l.ID
 			}
 			rev = retry(t, func(ctx context.Context) (*pb.PutResponse, error) { return kv.Put(ctx, req) }).Header.Revision
 		}
-		if _, err := kv.DeleteRange(context.Background(), &pb.DeleteRangeRequest{Key: fmt.Appendf(nil, "k%02d", round%20)}); err != nil {
+		if _, err := kv.DeleteRange(context.Background(), &pb.DeleteRangeRequest{Key: key(round % len(objects))}); err != nil {
 			t.Fatal(err)
 		}
-		if round < 29 {
+		if round < rounds-1 {
 			compacted = rev
 			retry(t, func(ctx context.Context) (*pb.CompactionResponse, error) {
 				return kv.Compact(ctx, &pb.CompactionRequest{Revision: rev})

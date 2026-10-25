@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
@@ -61,8 +62,18 @@ type family struct {
 	Labels []string `json:"labels,omitempty"`
 }
 
+// ownHelp holds the families whose help text tigerstore changes, to say
+// what it measures under etcd's name: etcd v3.7.2's help and tigerstore's.
+var ownHelp = map[string]struct{ etcd, tigerstore string }{
+	"etcd_disk_backend_commit_duration_seconds": {
+		"The latency distributions of commit called by backend.",
+		"The latency distributions of commit called by backend. tigerstore's database is its log: this is a log sync, from the write of the first records it makes durable to its end.",
+	},
+}
+
 // families records the families of a scrape, but tigerstore's own and
-// those of a cluster.
+// those of a cluster. A family in ownHelp must have tigerstore's help
+// from tigerstore, and is recorded with etcd's.
 func (r *run) families(do string, fams map[string]*dto.MetricFamily) {
 	out := map[string]family{}
 	for name, f := range fams {
@@ -75,7 +86,14 @@ func (r *run) families(do string, fams map[string]*dto.MetricFamily) {
 				labels[l.GetName()] = true
 			}
 		}
-		out[name] = family{Type: f.GetType().String(), Help: f.GetHelp(), Labels: slices.Sorted(maps.Keys(labels))}
+		help := f.GetHelp()
+		if own, ok := ownHelp[name]; ok && server(r.t) == "tigerstore" {
+			if help != own.tigerstore {
+				r.t.Errorf("%s has the help %q, want %q", name, help, own.tigerstore)
+			}
+			help = own.etcd
+		}
+		out[name] = family{Type: f.GetType().String(), Help: help, Labels: slices.Sorted(maps.Keys(labels))}
 	}
 	r.record(do, out, nil)
 }
@@ -187,6 +205,7 @@ func metricsCase(r *run) {
 		moved[d.name+"{"+strings.Join(d.labels, ",")+"}"] = series(after, d.name, d.labels...) - series(before, d.name, d.labels...)
 	}
 	r.record("counters moved by the calls", moved, nil)
+	r.record("backend commits after the calls", r.commitsAfter(before), nil)
 
 	resp, err := r.c.http2.Post(r.c.url+"/metrics", "text/plain", nil)
 	if err != nil {
@@ -202,6 +221,20 @@ func metricsCase(r *run) {
 	r.http("POST /debug/vars", r.c.http2, http.MethodPost, "/debug/vars")
 	r.http("pprof is off", r.c.http2, http.MethodGet, "/debug/pprof/")
 	r.debugVars()
+}
+
+// commitsAfter reports whether etcd_disk_backend_commit_duration_seconds
+// counts more commits than in the scrape before, within 2 s: etcd commits
+// its backend every 100 ms while writes wait, tigerstore syncs its log for
+// each write.
+func (r *run) commitsAfter(before map[string]*dto.MetricFamily) bool {
+	const name = "etcd_disk_backend_commit_duration_seconds"
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if series(r.scrape(r.c.http2, r.c.url+"/metrics"), name) > series(before, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // debugVars records the status, content type and variable names of

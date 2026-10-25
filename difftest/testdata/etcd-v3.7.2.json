@@ -4990,6 +4990,11 @@
       }
     },
     {
+      "do": "backend commits after the calls",
+      "code": "OK",
+      "result": true
+    },
+    {
       "do": "POST /metrics",
       "code": "OK",
       "result": {

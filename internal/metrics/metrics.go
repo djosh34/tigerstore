@@ -40,6 +40,11 @@ type Set struct {
 	// its writes, and WALWriteBytes counts the bytes written.
 	WALFsync, WALWrite prometheus.Histogram
 	WALWriteBytes      prometheus.Gauge
+	// BackendCommit is etcd's backend commit, which makes applied writes
+	// durable in its database. The log is tigerstore's database, so the
+	// nearest is a sync of the log: it times each, from the write of the
+	// first group of records it makes durable to its end.
+	BackendCommit prometheus.Histogram
 	// Defrag times Maintenance.Defragment's cleaning pass while
 	// DefragInflight is 1. BackendSnapshot times Maintenance.Snapshot.
 	Defrag          prometheus.Histogram
@@ -134,6 +139,11 @@ func exp2(start float64, count int) []float64 {
 	return prometheus.ExponentialBuckets(start, 2, count)
 }
 
+// backendCommitHelp is etcd's help text of
+// etcd_disk_backend_commit_duration_seconds, and what tigerstore times.
+const backendCommitHelp = "The latency distributions of commit called by backend. " +
+	"tigerstore's database is its log: this is a log sync, from the write of the first records it makes durable to its end."
+
 // New returns the metrics of a member with the feature gates features.
 func New(features []Feature) (*Set, error) {
 	s := &Set{
@@ -142,6 +152,7 @@ func New(features []Feature) (*Set, error) {
 		WALFsync:      histogram("etcd", "disk", "wal_fsync_duration_seconds", "The latency distributions of fsync called by WAL.", exp2(0.001, 14)),
 		WALWrite:      histogram("etcd", "disk", "wal_write_duration_seconds", "The latency distributions of write called by WAL.", exp2(0.001, 14)),
 		WALWriteBytes: gauge("etcd", "disk", "wal_write_bytes_total", "Total number of bytes written in WAL."),
+		BackendCommit: histogram("etcd", "disk", "backend_commit_duration_seconds", backendCommitHelp, exp2(0.001, 14)),
 
 		Defrag:          histogram("etcd", "disk", "backend_defrag_duration_seconds", "The latency distribution of backend defragmentation.", exp2(.1, 13)),
 		DefragInflight:  gauge("etcd", "disk", "defrag_inflight", "Whether or not defrag is active on the member. 1 means active, 0 means not."),
@@ -208,7 +219,7 @@ func New(features []Feature) (*Set, error) {
 	cs := []prometheus.Collector{
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-		s.WALFsync, s.WALWrite, s.WALWriteBytes, s.Defrag, s.DefragInflight, s.BackendSnapshot,
+		s.WALFsync, s.WALWrite, s.WALWriteBytes, s.BackendCommit, s.Defrag, s.DefragInflight, s.BackendSnapshot,
 		s.SnapSave, s.SnapFsync, s.SnapDBSave, s.SnapDBFsync, s.SnapshotApplyInProgress,
 		s.IndexCompactionPause, s.DBCompactionLast,
 		s.Apply, s.Range, s.Hash, s.HashRev, s.SlowApplies, s.Request,
@@ -236,7 +247,6 @@ func (s *Set) SetNode(m *core.Metrics) { s.node.Store(m) }
 // absent are etcd's metrics of parts tigerstore does not have, at zero.
 func absent() []prometheus.Collector {
 	return []prometheus.Collector{
-		histogram("etcd", "disk", "backend_commit_duration_seconds", "The latency distributions of commit called by backend.", exp2(0.001, 14)),
 		histogram("etcd_debugging", "disk", "backend_commit_rebalance_duration_seconds", "The latency distributions of commit.rebalance called by bboltdb backend.", exp2(0.001, 14)),
 		histogram("etcd_debugging", "disk", "backend_commit_spill_duration_seconds", "The latency distributions of commit.spill called by bboltdb backend.", exp2(0.001, 14)),
 		histogram("etcd_debugging", "disk", "backend_commit_write_duration_seconds", "The latency distributions of commit.write called by bboltdb backend.", exp2(0.001, 14)),

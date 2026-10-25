@@ -32,9 +32,9 @@ import (
 //     compactions took: members whose hash differs from a majority's get
 //     a CORRUPT alarm, or member 0 when no majority agrees.
 
-// requestTimeout is how long a node's own request may take, etcd's
-// ReqTimeout.
-func (n *Node) requestTimeout() time.Duration {
+// RequestTimeout is how long a request may take, etcd's ReqTimeout: 5 s
+// plus two election timeouts, as the command sets Core.RequestTicks.
+func (n *Node) RequestTimeout() time.Duration {
 	return time.Duration(n.cfg.Core.RequestTicks) * n.cfg.Tick
 }
 
@@ -52,7 +52,7 @@ func (n *Node) peerHashes(ctx context.Context, t peer.Transport, rev int64) []pe
 		if id == n.ID() {
 			continue
 		}
-		ctx, cancel := context.WithTimeout(ctx, n.requestTimeout())
+		ctx, cancel := context.WithTimeout(ctx, n.RequestTimeout())
 		p := peerHash{id: id, resp: &pb.HashKVResponse{}}
 		p.err = call(ctx, t, id, callHashKV, &pb.HashKVRequest{Revision: rev}, p.resp)
 		cancel()
@@ -67,7 +67,7 @@ func (n *Node) peerHashes(ctx context.Context, t peer.Transport, rev int64) []pe
 
 // hashKV is this node's HashKV answer.
 func (n *Node) hashKV(ctx context.Context, rev int64) (*pb.HashKVResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, n.requestTimeout())
+	ctx, cancel := context.WithTimeout(ctx, n.RequestTimeout())
 	defer cancel()
 	resp, err := n.DoAs(ctx, core.RootCaller(), &pb.HashKVRequest{Revision: rev})
 	if err != nil {
@@ -104,7 +104,7 @@ func (n *Node) periodicCheck(ctx context.Context, t peer.Transport) error {
 		return err
 	}
 	peers := n.peerHashes(ctx, t, h.HashRevision)
-	rctx, cancel := context.WithTimeout(ctx, n.requestTimeout())
+	rctx, cancel := context.WithTimeout(ctx, n.RequestTimeout())
 	_, err = n.DoAs(rctx, core.RootCaller(), &pb.RangeRequest{Key: []byte{0}, CountOnly: true})
 	cancel()
 	if err != nil {
@@ -205,7 +205,7 @@ func (n *Node) compactHashCheck(ctx context.Context, t peer.Transport, checked i
 
 // corruptAlarm raises a CORRUPT alarm for member id.
 func (n *Node) corruptAlarm(ctx context.Context, id uint64) {
-	ctx, cancel := context.WithTimeout(ctx, n.requestTimeout())
+	ctx, cancel := context.WithTimeout(ctx, n.RequestTimeout())
 	defer cancel()
 	_, err := n.DoAs(ctx, core.RootCaller(), &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, Alarm: pb.AlarmType_CORRUPT, MemberID: id})
 	if err != nil && !errors.Is(err, rpctypes.ErrGRPCStopped) {

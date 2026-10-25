@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"go.etcd.io/etcd/client/pkg/v3/types"
 	"go.etcd.io/etcd/server/v3/embed"
@@ -18,6 +20,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/server"
 	"github.com/djosh34/tigerstore/internal/testcert"
 )
@@ -338,6 +341,51 @@ func TestJoinComesFromIdentity(t *testing.T) {
 			if join := coreConfig(ec, got).Join; join != !want.first {
 				t.Errorf("%s restarted with %s: Join %v, want %v", name, state, join, !want.first)
 			}
+		}
+	}
+}
+
+// TestMaxRequestBytesCeiling checks that a --max-request-bytes whose
+// requests would not fit in a peer frame and a log record with their
+// encoding is refused, on the command line and in a configuration file,
+// and that the ceiling itself is taken.
+func TestMaxRequestBytesCeiling(t *testing.T) {
+	if _, err := parseArgs(t, "--max-request-bytes", strconv.Itoa(core.MaxRequestBytesCeiling)); err != nil {
+		t.Fatalf("--max-request-bytes at the ceiling: %v", err)
+	}
+	for _, n := range []int{core.MaxRequestBytesCeiling + 1, 64 << 20} {
+		if _, err := parseArgs(t, "--max-request-bytes", strconv.Itoa(n)); !errors.Is(err, errMaxRequestBytes) {
+			t.Errorf("--max-request-bytes %d: %v", n, err)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "etcd.yaml")
+	if err := os.WriteFile(path, []byte("max-request-bytes: 67108864\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseArgs(t, "--config-file", path); !errors.Is(err, errMaxRequestBytes) {
+		t.Errorf("max-request-bytes in a configuration file: %v", err)
+	}
+}
+
+// TestRequestTimeout checks etcd's request timeout, 5 s plus two election
+// timeouts, which the health checks and every request wait for, rounded
+// up to whole ticks.
+func TestRequestTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		heartbeat, election string
+		want                time.Duration
+	}{
+		{"100", "1000", 7 * time.Second},
+		{"100", "1500", 8 * time.Second},
+		{"150", "1500", 8100 * time.Millisecond},
+	} {
+		c, err := parseArgs(t, "--heartbeat-interval", tc.heartbeat, "--election-timeout", tc.election)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := coreConfig(&c.ec, identity{})
+		if got := time.Duration(cfg.RequestTicks) * time.Duration(cfg.TickMillis) * time.Millisecond; got != tc.want {
+			t.Errorf("heartbeat %s ms, election %s ms: the request timeout is %v, want %v", tc.heartbeat, tc.election, got, tc.want)
 		}
 	}
 }

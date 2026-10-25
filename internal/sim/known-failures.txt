@@ -8,3 +8,4 @@
 # internal/node, gets a file of its own.
 # Under the race detector a seed does not replay, so a bug that a run
 # there hits cannot be listed here.
+TestMembershipFaults 202610250103508 https://github.com/djosh34/tigerstore/issues/425

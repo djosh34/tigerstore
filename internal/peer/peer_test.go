@@ -15,7 +15,9 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/testcert"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 )
 
 // listen listens on addr, or on a free port if addr is empty. The tests
@@ -331,5 +333,56 @@ func TestFetchTellsRemoved(t *testing.T) {
 	}
 	if removed.Load() == 0 {
 		t.Fatal("the fetch did not tell the node it was removed")
+	}
+}
+
+// TestProbes checks that a node times probes to its peers, as etcd's
+// prober does, into etcd_network_peer_round_trip_time_seconds, the first
+// probeRetry after the peer is added.
+func TestProbes(t *testing.T) {
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	certs := map[uint64]tls.Certificate{}
+	for id := uint64(1); id <= 2; id++ {
+		c, _, _, err := ca.Issue("node", int64(id+1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		certs[id] = c
+	}
+	addrs, lns := listeners(t, 1, 2)
+	a := start(t, 1, lns[1], addrs, certs[1], ca.Pool)
+	b := start(t, 2, lns[2], addrs, certs[2], ca.Pool)
+	for _, e := range []*end{a, b} {
+		defer func() {
+			if err := e.t.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	s, ok := a.t.peer(2)
+	if !ok {
+		t.Fatal("node 1 has no sender to node 2")
+	}
+	if rtt, err := s.roundTrip(); err != nil || rtt <= 0 || rtt > time.Second {
+		t.Fatalf("a probe to node 2 took %v: %v", rtt, err)
+	}
+	probes := func() uint64 {
+		var m dto.Metric
+		if err := a.t.cfg.Metrics.PeerRoundTripTimes.WithLabelValues("2").(prometheus.Metric).Write(&m); err != nil {
+			t.Fatal(err)
+		}
+		return m.GetHistogram().GetSampleCount()
+	}
+	if n := probes(); n != 0 {
+		t.Fatalf("%d round trips observed before the first probe", n)
+	}
+	wait := probeRetry + 5*time.Second
+	for deadline := time.Now().Add(wait); probes() == 0; time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("no round trip to node 2 observed %v after the start", wait)
+		}
 	}
 }

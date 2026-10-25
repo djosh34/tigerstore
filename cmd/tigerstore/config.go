@@ -46,6 +46,11 @@ var (
 	errUsage = errors.New("bad usage")
 )
 
+// errMaxRequestBytes refuses a --max-request-bytes above
+// core.MaxRequestBytesCeiling: a request that large would not fit, with
+// its encoding, in one of tigerstore's peer frames and log records.
+var errMaxRequestBytes = errors.New("--max-request-bytes is too large")
+
 // config is a command line's configuration.
 type config struct {
 	ec           embed.Config
@@ -156,6 +161,10 @@ func (c *config) parse(args []string, stdout io.Writer) error {
 		err = c.fromFile(c.configFile)
 	} else {
 		err = c.fromCmdLine()
+	}
+	if err == nil && c.ec.MaxRequestBytes > core.MaxRequestBytesCeiling {
+		err = fmt.Errorf("%w: %d bytes; tigerstore carries a write in one peer frame and one log record of at most 64 MiB, "+
+			"which leaves room for requests of up to %d bytes", errMaxRequestBytes, c.ec.MaxRequestBytes, core.MaxRequestBytesCeiling)
 	}
 	c.ec.V2Deprecation = cconfig.V2DeprDefault
 	if c.ec.WarningUnaryRequestDuration == 0 {

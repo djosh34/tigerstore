@@ -242,7 +242,7 @@ func (st *stream) countEnd(s *status.Status) {
 // serveMetrics answers /metrics with the core's counts read just before.
 // If the node does not answer, the core's metrics are left out.
 func (s *Server) serveMetrics(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), healthTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), s.n.RequestTimeout())
 	defer cancel()
 	nm, err := s.n.Metrics(ctx)
 	s.metrics.scrape.Lock()
@@ -391,7 +391,7 @@ func (s *Server) serveVars(w http.ResponseWriter, r *http.Request) {
 	vars := map[string]string{}
 	expvar.Do(func(kv expvar.KeyValue) { vars[kv.Key] = kv.Value.String() })
 	vars["file_descriptor_limit"], vars["raft.status"] = strconv.FormatUint(metrics.FDLimit(), 10), "null"
-	ctx, cancel := context.WithTimeout(r.Context(), healthTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), s.n.RequestTimeout())
 	defer cancel()
 	if nm, err := s.n.Metrics(ctx); err == nil {
 		if b, err := json.Marshal(nm.Raft); err == nil {

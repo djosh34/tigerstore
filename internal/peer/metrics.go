@@ -11,6 +11,7 @@ import (
 type counters struct {
 	sent, sendFailures, received, receiveFailures, disconnected prometheus.Counter
 	active, heartbeatSent, heartbeatReceived                    prometheus.Gauge
+	rtt                                                         prometheus.Observer
 }
 
 func (t *TCP) countersOf(id uint64) *counters {
@@ -25,5 +26,6 @@ func (t *TCP) countersOf(id uint64) *counters {
 		active:            m.ActivePeers.WithLabelValues(local, remote),
 		heartbeatSent:     m.HeartbeatSent.WithLabelValues(remote),
 		heartbeatReceived: m.HeartbeatReceived.WithLabelValues(remote),
+		rtt:               m.PeerRoundTripTimes.WithLabelValues(remote),
 	}
 }

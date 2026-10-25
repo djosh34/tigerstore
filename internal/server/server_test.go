@@ -52,6 +52,8 @@ type cluster struct {
 	// wrap the transport each node runs with.
 	nodeConfig func(*node.Config)
 	wrap       func(id uint64, t peer.Transport) peer.Transport
+	// peerConfig, if set, changes the transports' configuration.
+	peerConfig func(*peer.Config)
 	// jwt, if set, makes the auth tokens, and serverConfig, if set,
 	// changes the servers' configuration.
 	jwt          *server.JWT
@@ -205,7 +207,11 @@ func (c *cluster) start(id uint64) {
 		// A restart: the stopped transport closed its listener.
 		pln = listenPeer(t, c.peerAddrs[id])
 	}
-	tr, err := peer.Start(peer.Config{ID: id, Listeners: []net.Listener{pln}, Peers: peers, Addr: c.peerAddrs[id], Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Removed: n.Removed, Logf: logf})
+	pcfg := peer.Config{ID: id, Listeners: []net.Listener{pln}, Peers: peers, Addr: c.peerAddrs[id], Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Removed: n.Removed, Logf: logf}
+	if c.peerConfig != nil {
+		c.peerConfig(&pcfg)
+	}
+	tr, err := peer.Start(pcfg)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,6 +16,8 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // TestGRPCHealth checks the gRPC health service against grpc-go's
@@ -170,5 +172,45 @@ func TestReadyzLivez(t *testing.T) {
 	c.running[1].stopNode()
 	if got, want := get("/livez"), failed("[-]serializable_read failed: etcdserver: server stopped\n\n"); got != want {
 		t.Fatalf("/livez of a stopped node = %+v, want %+v", got, want)
+	}
+}
+
+// TestHealthTimeout checks that the linearizable read of /readyz, /livez
+// and /health fails after etcd v3.7.2's request timeout, 5 s plus two
+// election timeouts, as the command sets Core.RequestTicks. Here the
+// election timeout is 1.5 s, so the read without a quorum fails after 8 s,
+// not after the 7 s of the default 1 s.
+func TestHealthTimeout(t *testing.T) {
+	const timeout = 5*time.Second + 2*1500*time.Millisecond
+	c := newClusterWith(t, func(c *cluster) {
+		c.coreConfig = func(cfg *core.Config) { cfg.RequestTicks = int(timeout / c.tick) }
+	})
+	cert, _, _, err := c.ca.Issue("client", 82)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+		return c.client(1, cert).Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("1")})
+	})
+	if got := c.nodes[1].RequestTimeout(); got != timeout {
+		t.Fatalf("the node's request timeout is %v, want %v", got, timeout)
+	}
+	c.running[2].stop()
+	c.running[3].stop()
+	delete(c.running, 2)
+	delete(c.running, 3)
+	hc := &http.Client{Timeout: 3 * timeout, Transport: &http.Transport{TLSClientConfig: &tls.Config{
+		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
+	}, ForceAttemptHTTP2: true}}
+	start := time.Now()
+	resp, err := hc.Get("https://" + c.running[1].addr + "/readyz/linearizable_read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	took := time.Since(start)
+	defer resp.Body.Close() //nolint:errcheck // closing a test response
+	// The node counts the deadline in ticks, so it may end a tick early.
+	if resp.StatusCode != http.StatusServiceUnavailable || took < timeout-50*time.Millisecond || took > timeout+2*time.Second {
+		t.Fatalf("/readyz/linearizable_read without a quorum answered %d after %v, want 503 after %v", resp.StatusCode, took, timeout)
 	}
 }

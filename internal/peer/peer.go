@@ -28,7 +28,10 @@
 // for a node that has none yet, with the second bit from the top set; then it writes the request, and the
 // other end writes the answer, each a 4-byte length and the bytes. An
 // answer starts with 0 and the answer's bytes, or with 1, a 4-byte gRPC
-// code and the error's message.
+// code and the error's message. A Call with an empty request is a probe,
+// which the transport answers itself with an empty answer: as etcd's
+// prober, each node times one to each peer every 30 s, or every 5 s while
+// they fail, for etcd_network_peer_round_trip_time_seconds.
 package peer
 
 import (
@@ -210,6 +213,11 @@ const (
 	// handshakeLogEvery is how often a failed handshake with one peer is
 	// logged. A dialer retries every second.
 	handshakeLogEvery = time.Minute
+	// probeEvery and probeRetry are etcd's statusMonitoringInterval and
+	// statusErrorInterval: how often a node times a probe to a peer, and
+	// how soon after a failed one, or after the peer is added, it tries.
+	probeEvery = 30 * time.Second
+	probeRetry = 5 * time.Second
 )
 
 // TCP is the transport over TLS on TCP.
@@ -361,6 +369,7 @@ func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
 			continue
 		}
 		next[id] = t.newSender(id, addr)
+		t.wg.Go(next[id].probe)
 	}
 	for id, s := range old {
 		if next[id] != s {
@@ -1087,6 +1096,51 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 		return nil, 0, err
 	}
 	return c, v, nil
+}
+
+// probe times a probe to the peer (Call) until the peer leaves or the
+// transport closes, and observes each round trip in the peer's
+// etcd_network_peer_round_trip_time_seconds. etcd observes its prober's
+// smoothed round trip at the same pace.
+func (s *sender) probe() {
+	wait := probeRetry
+	for {
+		select {
+		case <-time.After(wait):
+		case <-s.ctx.Done():
+			return
+		}
+		wait = probeRetry
+		if rtt, err := s.roundTrip(); err == nil {
+			s.counters.rtt.Observe(rtt.Seconds())
+			wait = probeEvery
+		}
+	}
+}
+
+// roundTrip sends the peer a probe on a connection of its own and returns
+// how long the request and the answer took, without the dial and the
+// handshake. An answer with an error, from a peer that does not know
+// probes, still counts.
+func (s *sender) roundTrip() (time.Duration, error) {
+	ctx, cancel := context.WithTimeout(s.ctx, probeRetry)
+	defer cancel()
+	c, _, err := s.dial(ctx, s.t.cfg.ID|callBit)
+	if err != nil {
+		return 0, err
+	}
+	defer s.t.untrack(c)
+	if err := c.SetDeadline(time.Now().Add(probeRetry)); err != nil {
+		return 0, err
+	}
+	start := time.Now()
+	if err := writeChunk(c, nil); err != nil {
+		return 0, err
+	}
+	if _, err := readChunk(c); err != nil {
+		return 0, err
+	}
+	return time.Since(start), nil
 }
 
 // handshake runs the TLS handshake, writes the preface with id and checks
