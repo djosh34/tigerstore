@@ -160,7 +160,9 @@ func TestSnapshotRestore(t *testing.T) {
 		objects = append(objects, k8ssize.Buckets[k8ssize.Draw(rng, "")])
 	}
 	objects = append(objects, k8ssize.Buckets[k8ssize.Draw(rng, "events")], k8ssize.Buckets[k8ssize.Draw(rng, "events")])
-	key := func(i int) []byte { return fmt.Appendf(nil, "/registry/%s/default/object-%02d", objects[i].Resource, i) }
+	key := func(i int) []byte {
+		return fmt.Appendf(nil, "/registry/%s/default/object-%02d", objects[i].Resource, i)
+	}
 	var rev, compacted int64
 	const rounds = 12
 	for round := range rounds {
