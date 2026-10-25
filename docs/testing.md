@@ -303,3 +303,34 @@ Each capacity job runs three members of one store, tigerstore or etcd v3.7.2, th
 A job fails when a checker, a value check or the driver fails, on a time limit, and on an OOM kill in tigerstore's proof or a cache case. The `max` cases and etcd's proof can end in an OOM kill during preload; the script then reports `capacity-limit` or `reference-preload-limit`, with the count and the cgroup's OOM counters, and the job passes. That outcome is the measured limit, not a pass of the proof. A small etcd proof with a 16 MiB preload checks the recorder and the checkers against etcd and must pass. The `etcd-index` job measures etcd's index bytes per key with its own `treeIndex` and the same keys; tigerstore reports its index bytes in `/metrics`.
 
 Results go on the issue that asked for them, not here.
+
+# Bench with latency between nodes
+
+The `bench` workflow measures tigerstore and etcd v3.7.2 with 0, 2 and 10 ms of round-trip time (RTT) between nodes ([#395](https://github.com/djosh34/tigerstore/issues/395), [#414](https://github.com/djosh34/tigerstore/issues/414)). It has one job per workload, put-1k, txn-1k and mixed-k8s. Each job runs the RTTs in turn on one runner, with 5 max and 5 rate repetitions per store and RTT.
+
+`bench/netem.sh` delays every packet to or from a peer port on `lo` by half the RTT with `tc netem`. Client traffic goes through a plain FIFO with no delay. Both directions of a connection leave through the root qdisc of `lo`, so a round trip between two nodes takes the whole RTT. Both stores send all node-to-node traffic to peer ports, from ephemeral ports ([#400](https://github.com/djosh34/tigerstore/issues/400)). At 0 ms the same qdiscs run with no delay, so every RTT has the same packet path; the 0 ms numbers are therefore not those of older runs over plain loopback. Before each RTT, a probe records the TCP connect time to a peer port and to a client port, and the report shows both.
+
+The shared rate at an RTT is half of etcd's median max at that RTT. Where etcd has no max result, it is the rate of the job's first RTT, 0 ms by default. If etcd has none there either, no rate runs run at that RTT, and the report names it with the failed runs.
+
+mixed-k8s keeps 288 requests in flight: 6 connections of 48 streams each. Its reads are linearizable and go to all three nodes, so at 10 ms a request waits about 17 ms before any work. 288 in flight then allow about 17,000 requests/s, twice tigerstore's max at 0 ms. The 96 of 6 × 16 capped the generator near 5,700/s. `bench/cluster.sh check` fails a run if the leader or the term changed during it, so every result that did not fail shows that the store kept its leader at that load.
+
+A run that fails writes its cause to `<target>-<mode>-<rep>.failed`, and the other runs still run. `cmd/benchreport` then writes one table across RTTs: per workload and store, the median max throughput, its ratio to etcd's, the shared rate, and p50 and p99 at that rate. The failed runs with their causes and the detail tables follow. The job fails on a failed tigerstore run, a harness failure or a missed bar. The bars hold at every RTT above 0: each tigerstore build's median max throughput is at least 10 times etcd's for put-1k and txn-1k, and 2.5 times for mixed-k8s ([#404](https://github.com/djosh34/tigerstore/issues/404)). A failed etcd run is reported and fails nothing; tigerstore's result then stands alone. A drop in tigerstore's own throughput with RTT is allowed.
+
+The put-1k and txn-1k jobs run the disk and CPU layouts and `diskbench` at the first RTT only, since they measure the disk and the CPU, not the network.
+
+To run it on a branch against `main` and etcd:
+
+```sh
+gh workflow run bench.yml --ref main -f candidate=<branch>
+```
+
+The inputs `benchmarks`, `rtts`, `targets`, `modes`, `reps` and `layouts` change what runs. By hand, on a Linux machine with sudo and the binaries in `bin` (`etcd`, `etcdctl`, `loadgen`, `benchreport` and a tigerstore named `candidate`):
+
+```sh
+scripts/dev-certs.sh certs
+sudo modprobe sch_netem
+bench/netem.sh on 10
+TARGETS="etcd candidate" CERTS=certs bench/run.sh put-1k results/rtt-10
+bench/netem.sh off
+bin/benchreport results
+```

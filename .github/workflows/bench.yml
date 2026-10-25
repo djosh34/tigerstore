@@ -1,7 +1,11 @@
 # Benchmarks a tigerstore ref against a baseline ref and etcd v3.7.2, back
 # to back on one runner, with disk write barriers on and pinned cores:
 # generator on CPU 3, leader on CPU 0, followers on CPUs 1 and 2. One job
-# per benchmark. Started by hand.
+# per benchmark runs it at every RTT between nodes in turn (bench/netem.sh),
+# so the RTTs share a runner and the first RTT's rate is there when etcd
+# has none. A failed etcd run is reported and leaves the job green; a
+# failed tigerstore run, a harness failure or a missed bar fails it
+# (cmd/benchreport). Started by hand.
 name: bench
 
 on:
@@ -16,14 +20,20 @@ on:
       benchmarks:
         description: space-separated benchmarks, put/txn/delete/range/list/watch with 1k or 10k, mixed-k8s (Kubernetes 1.37 dump sizes), etcd-tool (etcd's own benchmark tool), or profile (the candidate leader's CPU per step, bench/profile.sh)
         default: put-1k txn-1k mixed-k8s
+      rtts:
+        description: round-trip times between nodes in ms, run in this order; the first one's rate stands in where etcd has no max result
+        default: 0 2 10
+      targets:
+        description: stores to run, etcd, baseline and candidate
+        default: etcd baseline candidate
       modes:
-        description: max, rate (half etcd max), or both; default mixed calibration plus rate, others both
-        default: ""
+        description: max, rate (half etcd max), or both
+        default: max rate
       reps:
         description: repetitions
         default: "5"
       layouts:
-        description: extra max runs of the tigerstore refs in the put-1k and txn-1k jobs, tmpfs (all nodes on tmpfs, the CPU reference) and alone (followers on tmpfs), with the disk ceiling from diskbench
+        description: extra max runs of the tigerstore refs in the put-1k and txn-1k jobs at the first RTT, tmpfs (all nodes on tmpfs, the CPU reference) and alone (followers on tmpfs), with the disk ceiling from diskbench
         default: tmpfs alone
 
 jobs:
@@ -44,7 +54,9 @@ jobs:
       matrix:
         bench: ${{ fromJSON(needs.plan.outputs.benchmarks) }}
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 75
+    # mixed-k8s takes about 2 minutes a run, 90 runs at 3 RTTs and 3
+    # targets; GitHub ends a job after 6 hours.
+    timeout-minutes: ${{ matrix.bench == 'mixed-k8s' && 330 || 120 }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -76,10 +88,12 @@ jobs:
           done
           cat commits.txt
       - run: scripts/dev-certs.sh certs
+      - run: sudo modprobe sch_netem
       - name: Turn disk write barriers on and record the runner
         env:
           LAYOUT: 3 0 1 2
           BENCHMARK: ${{ matrix.bench }}
+          RTTS: ${{ inputs.rtts || '0 2 10' }}
         run: |
           sudo mount -o remount,barrier=1 /
           findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS
@@ -99,8 +113,9 @@ jobs:
             echo "generator, scripts and report: $GITHUB_SHA"
             echo "layout (generator, leader, followers): $LAYOUT"
             echo "both stores: 3 nodes on 127.0.0.1, client and peer TLS with client certificates, fresh data directory per run"
+            echo "RTT between nodes (ms): $RTTS, netem on the peer ports of lo, half the RTT per packet, the same qdiscs at 0; client to node without delay (bench/netem.sh)"
             if [ "$BENCHMARK" = mixed-k8s ]; then
-              echo "mixed-k8s: 1M preloaded keys, <=128 puts and <=60 KiB per Txn at 300 Txns/s, measured size histogram, all endpoints, default mix plus resource watches; both stores GOMEMLIMIT=3GiB; rate is half etcd median max"
+              echo "mixed-k8s: 1M preloaded keys, <=128 puts and <=60 KiB per Txn at 300 Txns/s, measured size histogram, all endpoints, 6 connections x 48 streams, default mix plus resource watches; both stores GOMEMLIMIT=3GiB"
             fi
             echo "both stores: --quota-backend-bytes 8 GiB; etcd only: --log-level warn, --peer-client-cert-auth, default safe persistence"
             echo "tigerstore: at least two Go processors on its one CPU (its own rule), peer certificates always verified"
@@ -108,11 +123,12 @@ jobs:
           } | tee results/runner.md
       - name: Run ${{ matrix.bench }}
         env:
-          TARGETS: etcd baseline candidate
+          TARGETS: ${{ inputs.targets || 'etcd baseline candidate' }}
+          RTTS: ${{ inputs.rtts || '0 2 10' }}
           BINS: bin
           CERTS: certs
           LAYOUT: 3 0 1 2
-          MODES: ${{ inputs.modes || (matrix.bench == 'mixed-k8s' && 'rate' || 'max rate') }}
+          MODES: ${{ inputs.modes || 'max rate' }}
           REPS: ${{ inputs.reps || '5' }}
           LAYOUTS: ${{ (matrix.bench == 'put-1k' || matrix.bench == 'txn-1k') && inputs.layouts || '' }}
           BENCH: ${{ matrix.bench }}
@@ -130,16 +146,32 @@ jobs:
             exit 0
           fi
           DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")
-          export DISK
-          DATA="$RUNNER_TEMP/bench-data" bench/run.sh "$BENCH" results
+          export DISK DATA="$RUNNER_TEMP/bench-data"
+          read -r -a rtts <<<"$RTTS"
+          first=results/rtt-${rtts[0]}
+          for rtt in "${rtts[@]}"; do
+            out=results/rtt-$rtt
+            mkdir -p "$out"
+            bench/netem.sh on "$rtt"
+            bench/netem.sh probe | tee "$out/probe.txt"
+            if [ "$out" = "$first" ]; then
+              bench/run.sh "$BENCH" "$out"
+            else
+              # Layouts measure disk and CPU, not the network: once is enough.
+              LAYOUTS="" RATE_FALLBACK=$(cat "$first/$BENCH/rate" 2>/dev/null || true) bench/run.sh "$BENCH" "$out"
+            fi
+            bench/netem.sh show >"$out/netem.txt"
+            bench/netem.sh off
+          done
           if [ -n "$LAYOUTS" ]; then
-            taskset -c 3 bin/diskbench -dir "$RUNNER_TEMP" | tee "results/$BENCH/diskbench.jsonl"
+            taskset -c 3 bin/diskbench -dir "$RUNNER_TEMP" | tee "$first/$BENCH/diskbench.jsonl"
           fi
-      # A failed run leaves no comparison: the report would be over the
-      # runs that survived. The raw results are uploaded either way.
+      # A harness failure leaves no comparison. The raw results are
+      # uploaded either way.
       - name: Report
         env:
           BENCH: ${{ matrix.bench }}
+          RTTS: ${{ inputs.rtts || '0 2 10' }}
         run: |
           {
             cat results/runner.md
@@ -151,6 +183,11 @@ jobs:
               cat results/etcd-tool/summary.txt
               echo '```'
             else
+              echo '```'
+              for rtt in $RTTS; do
+                echo "RTT $rtt ms: $(tr '\n' ' ' <"results/rtt-$rtt/probe.txt")"
+              done
+              echo '```'
               bin/benchreport results
             fi
           } >> "$GITHUB_STEP_SUMMARY"
