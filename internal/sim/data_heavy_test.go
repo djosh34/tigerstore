@@ -23,6 +23,11 @@ func TestDataHeavy_1000_65536_0(t *testing.T)  { dataHeavy(t, 1000, 65536, 0) }
 func TestDataHeavy_200_1048576_0(t *testing.T) { dataHeavy(t, 200, 1048576, 0) }
 func TestDataHeavy_10000_0_20(t *testing.T)    { dataHeavy(t, 10000, 0, 20) }
 func TestDataHeavy_1000_0_200(t *testing.T)    { dataHeavy(t, 1000, 0, 200) }
+func TestDataHeavy_200000_0_0(t *testing.T)    { dataHeavy(t, 200000, 0, 0) }
+func TestDataHeavy_300000_0_0(t *testing.T)    { dataHeavy(t, 300000, 0, 0) }
+func TestDataHeavy_400_1048576_0(t *testing.T) { dataHeavy(t, 400, 1048576, 0) }
+func TestDataHeavy_10000_0_40(t *testing.T)    { dataHeavy(t, 10000, 0, 40) }
+func TestDataHeavy_1000_0_400(t *testing.T)    { dataHeavy(t, 1000, 0, 400) }
 
 func dataHeavy(t *testing.T, objects, size, rounds int) {
 	if simrun.Drive(t, 1) {
@@ -33,7 +38,7 @@ func dataHeavy(t *testing.T, objects, size, rounds int) {
 	cfg.Objects, cfg.Clients, cfg.V3Clients = objects, 16, 0 // #440
 	cfg.Duration, cfg.CompactEvery = 120*Second, 20*Second
 	// DefaultConfig faults, unspread. Scale the disk budget for bytes as well
-	// as objects, with space for ~3 copies of live data; capacity is 2x budget.
+	// as objects, with space for ~3 copies of all bootstrap versions; capacity is 2x budget.
 	cfg.Faults.DiskBudget = max(32<<20, int64(objects)*int64(max(size, 2048))*int64(rounds+1)*3)
 	cfg.Faults.DiskCapacity = int(2 * cfg.Faults.DiskBudget)
 	cfg.dataLimits, cfg.probeValueBytes = true, size
@@ -80,7 +85,7 @@ func dataHeavy(t *testing.T, objects, size, rounds int) {
 				}
 			}
 			t.Logf("DATA449 checkpoint_copies=%d bytes=%d stats=%+v", len(s.checkpoints), copies, s.stats)
-			dataprobe.Profile("sim-check")
+			dataprobe.Profile("scenario-end")
 			return nil
 		})
 	})
@@ -88,10 +93,10 @@ func dataHeavy(t *testing.T, objects, size, rounds int) {
 	if res != nil {
 		t.Logf("DATA449 hashes %s", hashes(res))
 	}
-	dataprobe.Mark("independent")
 	if err != nil {
 		t.Fatal(err)
 	}
+	dataprobe.Mark("independent")
 	if err := independent(res); err != nil {
 		t.Fatal(err)
 	}

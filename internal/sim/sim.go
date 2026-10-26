@@ -715,6 +715,11 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
 	res.nodes, res.values = s.nodes, s.values
 	s.mu.Unlock()
+	// The capacity probe reports the frozen final store even if a checker
+	// rejects it, without bypassing or weakening that check.
+	if err == nil && inspect != nil && cfg.dataLimits {
+		err = inspect(s)
+	}
 	if err == nil {
 		if err = s.check(res); err != nil {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)
@@ -728,7 +733,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	s.mu.Lock()
 	res.cold = s.cold
 	s.mu.Unlock()
-	if err == nil && inspect != nil {
+	if err == nil && inspect != nil && !cfg.dataLimits {
 		err = inspect(s)
 	}
 	res.Report = s.report()

@@ -48,6 +48,11 @@ jobs:
           - TestDataHeavy_200_1048576_0
           - TestDataHeavy_10000_0_20
           - TestDataHeavy_1000_0_200
+          - TestDataHeavy_200000_0_0
+          - TestDataHeavy_300000_0_0
+          - TestDataHeavy_400_1048576_0
+          - TestDataHeavy_10000_0_40
+          - TestDataHeavy_1000_0_400
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v7

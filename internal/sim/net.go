@@ -423,7 +423,13 @@ func (c *conn) Write(b []byte) (int, error) {
 			s.mu.Unlock()
 			return len(b), nil
 		}
-		if room := sendBuffer - c.out.size; room > 0 {
+		buffer := sendBuffer
+		// #449's data-heavy probe uses a realistic socket buffer. The
+		// stock 2 KiB caps a cold restart's snapshot below a few MB/s.
+		if s.cfg.dataLimits {
+			buffer = 256 << 10
+		}
+		if room := buffer - c.out.size; room > 0 {
 			k := min(room, len(b)-n)
 			c.send(b[n : n+k])
 			if n += k; n == len(b) {
