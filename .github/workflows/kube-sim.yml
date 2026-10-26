@@ -15,6 +15,9 @@ on:
       minutes:
         description: Virtual minutes of each seed, 240 when empty
         default: ""
+      gogc:
+        description: GOGC of the gosim process
+        default: "100"
 
 permissions:
   contents: read
@@ -38,6 +41,7 @@ jobs:
         env:
           SEED: ${{ matrix.seed }}
           EXP441_MINUTES: ${{ inputs.minutes }}
+          GOGC: ${{ inputs.gogc || '100' }}
           OUT: ${{ runner.temp }}/exp441
         run: |
           if [[ "$SEED" != *" "* ]]; then
