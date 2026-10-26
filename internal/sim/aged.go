@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -53,6 +54,8 @@ type image struct {
 	// entries and bytes describe the size of the image.
 	entries int
 	bytes   int
+	// files counts each node's segments, checkpoints and packs.
+	files []string
 }
 
 // damage is a node's knowledge of the damage on its disk.
@@ -112,6 +115,18 @@ func (s *Sim) capture() (*image, error) {
 		img.ids = append(img.ids, n.id)
 		img.damage = append(img.damage, damage{n.corrupted, n.rotted, n.rotFile, n.rotEntry, n.rotSeg})
 		img.bytes += d.Bytes()
+		var segs, ckpts, packs int
+		for _, name := range d.DurableNames() {
+			switch {
+			case isSegment(name):
+				segs++
+			case isCheckpoint(name):
+				ckpts++
+			case strings.HasPrefix(name, "pack-"):
+				packs++
+			}
+		}
+		img.files = append(img.files, fmt.Sprintf("node %d: %d bytes, %d segments, %d checkpoints, %d packs", n.id, d.Bytes(), segs, ckpts, packs))
 	}
 	for _, c := range s.clients {
 		img.clients = append(img.clients, c.kube)

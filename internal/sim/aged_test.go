@@ -72,6 +72,9 @@ func TestAgedForks(t *testing.T) {
 		}
 		t.Logf("image: %d entries applied, %d writes, revision %d, compacted at %d, %d base calls, %d bytes on the three disks",
 			img.applied, img.entries, img.rev, img.compacted, len(img.base), img.bytes)
+		for _, f := range img.files {
+			t.Logf("image %s", f)
+		}
 		var total Stats
 		for i := range envInt(t, "SIM_FORKS", 2) {
 			t.Run(fmt.Sprintf("fork%d", i), func(t *testing.T) {
