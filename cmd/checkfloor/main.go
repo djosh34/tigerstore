@@ -86,11 +86,19 @@ func run(file string, h *history.History, reps int, names string) {
 		}
 		slices.Sort(times)
 		slices.Sort(alloc)
+		retained := float64(0)
+		if name == "floor" && err == nil {
+			b, e := check.Floor448Memory(h)
+			if e != nil {
+				panic(e)
+			}
+			retained = float64(b) / float64(len(h.Ops))
+		}
 		errstr := ""
 		if err != nil {
 			errstr = err.Error()
 		}
-		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"file": file, "checker": name, "n": len(h.Ops), "a": a, "effects": e, "log": len(h.Log), "watch_events": obs, "reps": len(times), "ns_op_median": times[len(times)/2], "allocated_B_op_median": alloc[len(alloc)/2], "error": errstr})
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"file": file, "checker": name, "n": len(h.Ops), "a": a, "effects": e, "log": len(h.Log), "watch_events": obs, "reps": len(times), "ns_op_median": times[len(times)/2], "allocated_B_op_median": alloc[len(alloc)/2], "retained_workspace_B_op": retained, "error": errstr})
 	}
 	runtime.KeepAlive(h)
 }

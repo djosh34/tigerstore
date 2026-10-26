@@ -540,6 +540,16 @@ func independent(res *Result) error {
 			errs = append(errs, fmt.Errorf("witness: %w", err))
 		}
 	}
+	mark("phase porcupine start")
+	if check.ShortEnough(h) {
+		if err := check.Linearizable(h, 3*time.Minute, porcupineSteps); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	mark("phase floor start")
+	if err := check.Floor448(h); err != nil {
+		errs = append(errs, err)
+	}
 	mark("phase checkers end")
 	exp441Save(h)
 	return errors.Join(errs...)

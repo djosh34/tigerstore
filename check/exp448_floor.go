@@ -12,32 +12,57 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"runtime"
 	"slices"
 
 	"github.com/djosh34/tigerstore/history"
 )
 
-func floorKey(q history.Request) string {
+type floor448Key struct {
+	value bool
+	text  string
+}
+
+func floorKey(q history.Request) floor448Key {
 	switch {
 	case q.Put != nil:
-		return "value:" + q.Put.Value
+		return floor448Key{true, q.Put.Value}
 	case q.Txn != nil:
 		for _, branch := range [][]history.TxnOp{q.Txn.Success, q.Txn.Failure} {
 			for _, o := range branch {
 				if o.Put != nil {
-					return "value:" + o.Put.Value
+					return floor448Key{true, o.Put.Value}
 				}
 			}
 		}
 	}
 	k, _ := fingerprint(q)
-	return "request:" + k
+	return floor448Key{false, k}
 }
 
 // Floor448 performs one replay, with successful non-changing operations
 // sorted by header revision. Historical reads use the replay's per-key
 // version lists. It never clones the full K-key state for an observation.
-func Floor448(h *history.History) error {
+func Floor448(h *history.History) error { return floor448(h, nil) }
+
+// Floor448Memory measures reachable auxiliary heap at the end of a check.
+// The input history is excluded. This is a separate, untimed run with GCs.
+func Floor448Memory(h *history.History) (uint64, error) {
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	err := floor448(h, func() { runtime.GC(); runtime.ReadMemStats(&after) })
+	runtime.KeepAlive(h)
+	if err != nil {
+		return 0, err
+	}
+	if after.HeapAlloc < before.HeapAlloc {
+		return 0, nil
+	}
+	return after.HeapAlloc - before.HeapAlloc, nil
+}
+
+func floor448(h *history.History, observe func()) error {
 	if err := h.Validate(); err != nil {
 		return err
 	}
@@ -58,7 +83,7 @@ func Floor448(h *history.History) error {
 	s.past = versions{}
 	outcomes := make([]outcome, len(h.Log))
 	bump := make([]bool, len(h.Log))
-	entries := map[string][]int{}
+	entries := map[floor448Key][]int{}
 	claimed := make([]bool, len(h.Log))
 	read := 0
 	flush := func() error {
@@ -200,6 +225,20 @@ func Floor448(h *history.History) error {
 		if p.rev < highest || p.write && p.rev == highest {
 			return fmt.Errorf("real-time revision violation")
 		}
+	}
+	if observe != nil {
+		observe()
+		// Keep the complete workspace live across the observer's GC.
+		runtime.KeepAlive(reqs)
+		runtime.KeepAlive(reads)
+		runtime.KeepAlive(s)
+		runtime.KeepAlive(outcomes)
+		runtime.KeepAlive(bump)
+		runtime.KeepAlive(entries)
+		runtime.KeepAlive(claimed)
+		runtime.KeepAlive(placed)
+		runtime.KeepAlive(points)
+		runtime.KeepAlive(returns)
 	}
 	return nil
 }
