@@ -53,13 +53,16 @@ func dataHeavy(t *testing.T, objects, size, rounds int) {
 			var keys, liveBytes int64
 			from := []byte{0}
 			for {
-				rr, err := st.Range(&pb.RangeRequest{Key: from, RangeEnd: []byte{0}, Limit: 128})
+				rr, err := st.Range(&pb.RangeRequest{Key: from, RangeEnd: []byte{0}, Limit: 128, KeysOnly: true})
 				if err != nil {
 					return err
 				}
 				for _, kv := range rr.Kvs {
 					keys++
-					liveBytes += int64(len(kv.Value))
+					refs := st.Refs(kv.Key)
+					if len(refs) > 0 {
+						liveBytes += int64(refs[len(refs)-1].Len)
+					}
 				}
 				if !rr.More || len(rr.Kvs) == 0 {
 					break
@@ -94,7 +97,7 @@ func dataHeavy(t *testing.T, objects, size, rounds int) {
 	}
 	dataprobe.Mark("done")
 	dataprobe.Profile("done")
-	t.Logf("DATA449 passed objects=%d size=%d overwrites=%d final_revision=%d log_ops=%d history=%d", objects, size, rounds, res.FinalRev, len(res.Log), len(res.History))
+	t.Logf("DATA449 passed objects=%d size=%d overwrites=%d final_revision=%d log_ops=%d history=%d stats=%+v", objects, size, rounds, res.FinalRev, len(res.Log), len(res.History), res.Stats)
 }
 
 func imageBytes(m map[string][]byte) int {

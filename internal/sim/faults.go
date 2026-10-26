@@ -705,7 +705,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	s.mu.Lock()
 	seed := s.rng.Uint64()
 	s.mu.Unlock()
-	r, err := newSim(Config{Seed: seed, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes})
+	r, err := newSim(Config{Seed: seed, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes, dataLimits: s.cfg.dataLimits})
 	if err != nil {
 		return err
 	}
