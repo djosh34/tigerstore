@@ -944,8 +944,10 @@ func (r *revisionOrder) insertOptional(rev int64) {
 		if o.late || o.from > rev || r.used[o.op] || !r.isReady(o) {
 			continue
 		}
-		s := r.optionalTrial(w.live, o)
-		if out := s.step(w.reqs[o.op], false); out.err == nil && s.rev == rev {
+		if r.testOptional(w.live, o, func(s *state, _ optional) bool {
+			out := s.step(w.reqs[o.op], false)
+			return out.err == nil && s.rev == rev
+		}) {
 			r.expire(w.h.Ops[o.op].Call, 0)
 			w.apply(o.op, w.reqs[o.op])
 			r.use(o.op)
@@ -1002,7 +1004,7 @@ func (r *revisionOrder) due(call, rev int64) []optional {
 	for _, o := range r.optional {
 		r.w.metrics.OptionalScans++
 		if o.late && !r.used[o.op] && (o.gone < call || o.by <= rev) {
-			if r.w.variant == "retired" || r.w.variant == "best" {
+			if r.w.variant == "retired" || r.w.variant == "best" || r.w.variant == "ultimate" {
 				if c := r.w.reqs[o.op].Compact; c != nil && c.Revision <= r.w.live.compacted {
 					// Compaction is monotone along this branch. The model
 					// would reject this optional op forever; leaving an
@@ -1077,13 +1079,13 @@ func (r *revisionOrder) putIn(o optional, take func(*state, optional) bool) {
 	}
 	if w.h.Ops[o.op].Req.Compact != nil {
 		for _, e := range r.due(w.h.Ops[o.op].Call, 0) {
-			if w.h.Ops[e.op].Req.LeaseRevoke != nil && !r.used[e.op] && r.takes(r.optionalTrial(w.live, e), e) {
+			if w.h.Ops[e.op].Req.LeaseRevoke != nil && !r.used[e.op] && r.testOptional(w.live, e, r.takes) {
 				w.apply(e.op, w.reqs[e.op])
 				r.use(e.op)
 			}
 		}
 	}
-	if take(r.optionalTrial(w.live, o), o) {
+	if r.testOptional(w.live, o, take) {
 		w.apply(o.op, w.reqs[o.op])
 		r.use(o.op)
 	}
@@ -1153,10 +1155,10 @@ type frame struct {
 }
 
 func (r *revisionOrder) checkpoints() bool {
-	return r.w.variant == "checkpoints" || r.w.variant == "both" || r.w.variant == "fast" || r.w.variant == "tuned" || r.w.variant == "best"
+	return r.w.variant == "checkpoints" || r.w.variant == "both" || r.w.variant == "fast" || r.w.variant == "tuned" || r.w.variant == "best" || r.w.variant == "ultimate"
 }
 func (r *revisionOrder) keyIndexed() bool {
-	return r.w.variant == "indexed" || r.w.variant == "both" || r.w.variant == "fast" || r.w.variant == "tuned" || r.w.variant == "best"
+	return r.w.variant == "indexed" || r.w.variant == "both" || r.w.variant == "fast" || r.w.variant == "tuned" || r.w.variant == "best" || r.w.variant == "ultimate"
 }
 
 func (r *revisionOrder) use(i int) {
@@ -1376,15 +1378,30 @@ func (r *revisionOrder) candidates(rev int64) []int {
 func (r *revisionOrder) fits(i int, rev int64) bool {
 	w := r.w
 	w.metrics.Fits++
-	if (w.variant == "prefilter" || w.variant == "fast" || w.variant == "tuned" || w.variant == "best") && readOnlyBranch(w.live, w.reqs[i]) {
+	if (w.variant == "prefilter" || w.variant == "fast" || w.variant == "tuned" || w.variant == "best" || w.variant == "ultimate") && readOnlyBranch(w.live, w.reqs[i]) {
 		w.metrics.ReadOnlyBranchRejected++
 		w.metrics.RejectModel++
 		return false
 	}
-	s := w.live.clone()
+	var s *state
+	if r.undoTrials() {
+		var restore func()
+		s, restore = r.trial(w.live, w.reqs[i])
+		defer restore()
+	} else {
+		s = w.live.clone()
+	}
 	for _, e := range r.due(w.h.Ops[i].Call, 0) {
-		if t := r.optionalTrial(s, e); r.takes(t, e) {
-			s = t
+		var accepted *state
+		if r.testOptional(s, e, func(t *state, o optional) bool {
+			if !r.takes(t, o) {
+				return false
+			}
+			accepted = t
+			return true
+		}) {
+			// takes requires no revision change, hence no changed key.
+			s = accepted
 		}
 	}
 	o := s.step(w.reqs[i], true)

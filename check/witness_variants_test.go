@@ -26,7 +26,7 @@ func TestRevisionSearchVariants(t *testing.T) {
 			if want != nil {
 				rejected++
 			}
-			for _, variant := range []string{"checkpoints", "indexed", "both", "prefilter", "fast", "optional", "scoped", "tuned", "retired", "best"} {
+			for _, variant := range []string{"checkpoints", "indexed", "both", "prefilter", "fast", "optional", "scoped", "tuned", "retired", "best", "undo", "ultimate"} {
 				var stats WitnessStats
 				got := Witnessed(h, FromRevisions, time.Second, RevisionSearch(variant), WitnessMetrics(&stats))
 				if (got == nil) != (want == nil) {

@@ -80,6 +80,21 @@ func TestScopedReplayMatchesFull(t *testing.T) {
 			if !reflect.DeepEqual(full, scoped) {
 				t.Fatalf("state %d request %d: full=%s scoped=%s", j, i, outputOf(full), outputOf(scoped))
 			}
+			for _, events := range []bool{false, true} {
+				s := w.stateAt(j)
+				before := s.clone()
+				want := s.clone().step(r, events)
+				order := &revisionOrder{w: w}
+				trial, restore := order.trial(s, r)
+				got := trial.step(r, events)
+				if !reflect.DeepEqual(want, got) {
+					t.Fatalf("trial state %d request %d: want=%s got=%s", j, i, outputOf(want), outputOf(got))
+				}
+				restore()
+				if !s.equal(before) {
+					t.Fatalf("trial state %d request %d changed original", j, i)
+				}
+			}
 		}
 	}
 }
