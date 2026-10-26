@@ -59,7 +59,7 @@ func Long() bool { return os.Getenv("SIM_LONG") == "1" }
 
 // passedOn are the variables besides the seeds that the driver passes to
 // each gosim run, which gets no other: the planted bug and the profile.
-var passedOn = []string{"SIM_PLANTED", "SIM_LONG", "SIM_AGE_MINUTES", "SIM_AGE_OBJECTS", "SIM_AGE_CHECK", "SIM_AGE_CALM", "SIM_FORKS", "SIM_FORK_FIRST", "SIM_FORK_SECONDS"}
+var passedOn = []string{"SIM_PLANTED", "SIM_LONG", "SIM_AGE_MINUTES", "SIM_AGE_OBJECTS", "SIM_AGE_CHECK", "SIM_AGE_CALM", "SIM_FORKS", "SIM_FORK_FIRST", "SIM_FORK_SECONDS", "SIM_FORK_RESEED"}
 
 // Pattern is the -run pattern of the test or subtest name. A subtest
 // named after a test function, such as TestSeeds's deliberate scenario,

@@ -1,0 +1,25 @@
+# running gosim
+! exec gosim test -run=Other -v .
+stdout 'metatest cannot be used from within gosim'
+
+! exec gosim test -run=Self -v .
+stdout 'metatest cannot be used from within gosim'
+
+-- machinecrash_test.go --
+package behavior_test
+
+import (
+	"testing"
+
+    "github.com/jellevandenhooff/gosim/metatesting"
+)
+
+func TestSelf(t *testing.T) {
+    mt := metatesting.ForCurrentPackage(t)
+    metatesting.CheckDeterministic(t, mt)
+}
+
+func TestOther(t *testing.T) {
+    mt := metatesting.ForOtherPackage(t, "foo")
+    metatesting.CheckDeterministic(t, mt)
+}

@@ -1,0 +1,13 @@
+{
+    "gopls": {
+        "build.env": {
+            "GOOS": "linux",
+        },
+        "formatting.local": "github.com/jellevandenhooff/gosim",
+        "formatting.gofumpt": true
+    },
+    "go.buildFlags": [
+        "-tags=sim,linkname",
+        "-ldflags=-checklinkname=0",
+    ],
+}

@@ -29,6 +29,6 @@ done
 wait "$pid"
 status=$?
 pkill -KILL '^translated' || true
-grep -E -- '--- (FAIL|PASS)|aged_test.go|gosim run|^(ok|FAIL|PASS)$|timed out|panic' "$log" | cut -c1-3000 | head -80
+grep -E -- '--- (FAIL|PASS)|aged_test.go|hashes|gosim run|^(ok|FAIL|PASS)$|timed out|panic' "$log" | cut -c1-3000 | head -80
 echo "cell: exit $status, peak $((peak / 1024)) MiB, $((SECONDS - start)) s${killed:+, killed past 14.5 GiB}"
 exit $status

@@ -1,0 +1,22 @@
+# running gosim
+! exec gosim test -run TestFail -v .
+stdout 'no good'
+
+exec gosim test -run TestPass -v .
+stdout 'quite good'
+
+
+-- machinecrash_test.go --
+package behavior_test
+
+import (
+	"testing"
+)
+
+func TestFail(t *testing.T) {
+	t.Fatal("no good")
+}
+
+func TestPass(t *testing.T) {
+	t.Log("quite good")
+}

@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04-arm, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: '**/go.sum'
+      - name: go.mod files are tidy
+        run: |
+          for dir in . cmd/gosim examples; do
+            (cd "$dir" && go mod tidy -diff)
+          done
+      # The format check, the translated tests in normal and race mode, and
+      # every module's go test.
+      - name: Test
+        run: GOFLAGS=-trimpath ./test.sh --concurrency 1
+
+  # ci is the required check: it passes when every job above passed.
+  ci:
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            if [ "$result" != success ]; then
+              echo "a needed job ended with: $result"
+              exit 1
+            fi
+          done

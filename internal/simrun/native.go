@@ -309,3 +309,6 @@ func dir(t *testing.T) string {
 	pkg, module := pkgPath(t)
 	return "./" + strings.TrimPrefix(pkg, module+"/")
 }
+
+// Reseed does nothing natively.
+func Reseed(uint64) {}

@@ -76,3 +76,7 @@ var afterSeed []func()
 // two simulations of one gosim run moves the later one, so work that only
 // some runs of a seed do, such as saving it for a double run, waits.
 func AfterSeed(f func()) { afterSeed = append(afterSeed, f) }
+
+// Reseed sets gosim's scheduler randomness from seed, so that what runs
+// next does not depend on what ran before in the same gosim run (#449).
+func Reseed(seed uint64) { gosim.Reseed(int64(seed)) }

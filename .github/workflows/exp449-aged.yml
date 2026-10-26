@@ -12,15 +12,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {name: a-age240-unchecked, objects: 10000, age: 240, forks: 0, fork: 120, check: 0, calm: 0, twice: 0}
-          - {name: b-age240-10x2min, objects: 10000, age: 240, forks: 10, fork: 120, check: 0, calm: 0, twice: 0}
-          - {name: c-age240-5x10min, objects: 10000, age: 240, forks: 5, fork: 600, check: 0, calm: 0, twice: 0}
-          - {name: d-age240-checked, objects: 10000, age: 240, forks: 0, fork: 120, check: 1, calm: 0, twice: 0}
-          - {name: e-calm240, objects: 10000, age: 240, forks: 0, fork: 120, check: 0, calm: 1, twice: 0}
-          - {name: f-calm240-10x2min, objects: 10000, age: 240, forks: 10, fork: 120, check: 0, calm: 1, twice: 0}
-          - {name: g-age60-3x2min-twice, objects: 10000, age: 60, forks: 3, fork: 120, check: 0, calm: 0, twice: 1, first: 0}
-          - {name: i-age60-fork2-alone-twice, objects: 10000, age: 60, forks: 1, fork: 120, check: 0, calm: 0, twice: 1, first: 2}
-          - {name: h-30k-calm60-5x2min, objects: 30000, age: 60, forks: 5, fork: 120, check: 0, calm: 1, twice: 0}
+          - {name: r1-1k-age20-forks0to2, objects: 1000, age: 20, forks: 3, fork: 60, check: 0, calm: 0, twice: 0, first: 0}
+          - {name: r2-1k-age20-fork2-alone, objects: 1000, age: 20, forks: 1, fork: 60, check: 0, calm: 0, twice: 0, first: 2}
+          - {name: r3-10k-age60-forks0to2, objects: 10000, age: 60, forks: 3, fork: 120, check: 0, calm: 0, twice: 0, first: 0}
+          - {name: r4-10k-age60-fork2-alone, objects: 10000, age: 60, forks: 1, fork: 120, check: 0, calm: 0, twice: 0, first: 2}
     name: ${{ matrix.name }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 355
@@ -38,6 +33,7 @@ jobs:
           SIM_FORKS: ${{ matrix.forks }}
           SIM_FORK_SECONDS: ${{ matrix.fork }}
           SIM_FORK_FIRST: ${{ matrix.first || 0 }}
+          SIM_FORK_RESEED: "1"
           SIM_AGE_CHECK: ${{ matrix.check }}
           SIM_AGE_CALM: ${{ matrix.calm }}
           SIM_TWICE: ${{ matrix.twice }}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
@@ -79,6 +80,13 @@ func TestAgedForks(t *testing.T) {
 			t.Logf("image %s", f)
 		}
 		var total Stats
+		// With SIM_FORK_RESEED=1 fork i starts at its own time, i slots
+		// after the aging run, with gosim's scheduler reseeded from its
+		// seed, so that it plays out the same alone as after the forks
+		// before it.
+		reseed := os.Getenv("SIM_FORK_RESEED") == "1"
+		const slot = 6 * time.Hour
+		base := time.Now()
 		first := envInt(t, "SIM_FORK_FIRST", 0)
 		for i := first; i < first+envInt(t, "SIM_FORKS", 2); i++ {
 			t.Run(fmt.Sprintf("fork%d", i), func(t *testing.T) {
@@ -90,9 +98,18 @@ func TestAgedForks(t *testing.T) {
 				cfg.Faults.DiskBudget = age.Faults.DiskBudget
 				cfg.Faults.DiskCapacity = age.Faults.DiskCapacity
 				cfg.from = img
+				if reseed {
+					wait := time.Until(base.Add(time.Duration(i) * slot))
+					if wait < 0 {
+						t.Fatalf("fork %d starts %s after its slot", i, -wait)
+					}
+					time.Sleep(wait)
+					simrun.Reseed(cfg.Seed)
+				}
 				res := run(t, cfg)
 				checkers(t, res)
 				st := res.Stats
+				t.Logf("fork %d (seed %d) hashes: %s", i, cfg.Seed, hashes(res))
 				t.Logf("fork %d (seed %d): %d calls after the base, %d log writes, final revision %d: %+v",
 					i, cfg.Seed, len(res.History)-len(img.base), len(res.Log), res.FinalRev, st)
 				total.OK += st.OK

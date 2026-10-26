@@ -5,7 +5,7 @@ go 1.27.2
 tool github.com/jellevandenhooff/gosim/cmd/gosim
 
 replace (
-	github.com/jellevandenhooff/gosim => github.com/djosh34/gosim v0.0.0-20261020180832-ad69b41b1d28
+	github.com/jellevandenhooff/gosim => ../gosimfork/gosim
 	github.com/jellevandenhooff/gosim/cmd/gosim => github.com/djosh34/gosim/cmd/gosim v0.0.0-20261020180832-ad69b41b1d28
 )
 

@@ -1,0 +1,22 @@
+# running gosim with -simtrace
+exec gosim test -run TestSyscall -simtrace= -v .
+! stdout 'SysOpenat'
+! stdout 'SysWrite'
+
+exec gosim test -run TestSyscall -simtrace=syscall -v .
+stdout 'SysOpenat.*hello'
+stdout 'SysWrite.*world'
+
+-- simtrace_test.go --
+package behavior_test
+
+import (
+    "os"
+	"testing"
+)
+
+func TestSyscall(t *testing.T) {
+	if err := os.WriteFile("hello", []byte("world"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
