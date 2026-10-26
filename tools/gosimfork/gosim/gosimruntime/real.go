@@ -21,7 +21,7 @@ var memoryProfiles int
 // RealMark writes msg to the real stderr with the real time since the
 // process started, the run's scheduler step and the real heap.
 func RealMark(msg string) {
-	if strings.HasPrefix(msg, "MEM448") {
+	if strings.HasPrefix(msg, "MEM448") && os.Getenv("GOSIM_MEMDIR") != "" {
 		runtime.GC()
 		if dir := os.Getenv("GOSIM_MEMDIR"); dir != "" {
 			memoryProfiles++

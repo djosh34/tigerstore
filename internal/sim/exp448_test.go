@@ -34,11 +34,13 @@ func TestMemory448(t *testing.T) {
 	mark("MEM448.baseline case=%s", os.Getenv("MEMCASE448"))
 	res := run(t, cfg)
 	mark("MEM448.result")
-	c := &count448{}
-	z, _ := gzip.NewWriterLevel(c, gzip.BestSpeed)
-	writeHistory(z, res)
-	_ = z.Close()
-	mark("COMPACT448 gzip-text-history=%d ops=%d", c.n, len(res.History))
+	if os.Getenv("COMPACT448") == "1" {
+		c := &count448{}
+		z, _ := gzip.NewWriterLevel(c, gzip.BestSpeed)
+		writeHistory(z, res)
+		_ = z.Close()
+		mark("COMPACT448 gzip-text-history=%d ops=%d", c.n, len(res.History))
+	}
 	checkers(t, res)
 	mark("MEM448.finished record=%d history-op=%d event=%d keyvalue=%d", unsafe.Sizeof(Record{}), unsafe.Sizeof(history.Op{}), unsafe.Sizeof(history.Event{}), unsafe.Sizeof(history.KeyValue{}))
 }

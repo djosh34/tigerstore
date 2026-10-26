@@ -49,6 +49,10 @@ func (s *Sim) mem448(stage string) {
 	mark("MEM448.%s virtual=%d objects=%d ops=%d record-size=%d request-proto=%d response-proto=%d watch-responses=%d watch-events=%d watch-proto=%d watch-record-size=%d log-records=%d log-data=%d log-record-size=%d trace-lines=%d trace-bytes=%d values-bytes=%d values-strings=%d checkpoints=%d budget=%d capacity=%d", stage, s.now()/Second, s.cfg.Objects, len(s.history), unsafe.Sizeof(Record{}), reqBytes, respBytes, watchResponses, watchEvents, watchBytes, unsafe.Sizeof(WatchRecord{}), len(s.log), logBytes, unsafe.Sizeof(logRec{}), len(s.trace), traceBytes, valuesBytes, stringsBytes, len(s.checkpoints), s.cfg.Faults.DiskBudget, s.cfg.Faults.DiskCapacity)
 	for _, n := range s.nodes {
 		mark("DISK448.%s node=%d memory=%+v crash-image=%d", stage, n.id, n.disk.Memory(), mapBytes448(n.crashImage))
+		if n.proc != nil {
+			c := n.proc.core
+			mark("STATE448.%s node=%d index-bytes=%d live-keys=%d entry-bytes=%d node-struct=%d", stage, n.id, c.Store().Bytes(), c.Store().Counts().Keys, c.EntryBytes(), unsafe.Sizeof(*c))
+		}
 	}
 	var ck simfs.Memory
 	for _, c := range s.checkpoints {

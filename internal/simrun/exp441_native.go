@@ -18,7 +18,7 @@ var memoryProfiles int
 
 // Mark writes msg with the real time to stderr (#441).
 func Mark(msg string) {
-	if strings.HasPrefix(msg, "MEM448") {
+	if strings.HasPrefix(msg, "MEM448") && os.Getenv("GOSIM_MEMDIR") != "" {
 		runtime.GC()
 		if dir := os.Getenv("GOSIM_MEMDIR"); dir != "" {
 			memoryProfiles++

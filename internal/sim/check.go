@@ -80,7 +80,7 @@ func (s *Sim) check(res *Result) error {
 		return err
 	}
 	res.Log, res.revs, res.logged = log, revs, true
-	mark("MEM448.model entries=%d", len(res.Log))
+	mark("MEM448.model entries=%d index-bytes=%d live-keys=%d", len(res.Log), model.Bytes(), model.Counts().Keys)
 	mark("own sameLatest+checkRecord start")
 	if err := s.sameLatestOn(model, last); err != nil {
 		return err

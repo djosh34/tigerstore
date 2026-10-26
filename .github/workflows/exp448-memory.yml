@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        case: [default, short, long10, data10]
+        case: [default, short, long30, data10]
     env:
       GOMAXPROCS: '2'
       GOFLAGS: '-p=1'
@@ -33,18 +33,25 @@ jobs:
         run: |
           set +e
           export EXP441_MINUTES=10
+          if [ "$MEMCASE448" = long30 ]; then export EXP441_MINUTES=30; fi
           if [ "$MEMCASE448" = data10 ]; then export OBJECTS448=50000; fi
-          for mode in native gosim; do
+          for mode in native gosim rawgosim; do
             out="$RUNNER_TEMP/mem448/$mode"
             mkdir -p "$out"
-            export GOSIM_MEMDIR="$out"
+            export GOSIM_MEMDIR="$out" COMPACT448=1
+            if [ "$mode" = rawgosim ]; then unset GOSIM_MEMDIR COMPACT448; fi
             if [ "$mode" = native ]; then export NATIVE448=1; unset GOSIMTOOL; limit=180; else unset NATIVE448; export GOSIMTOOL="$PWD/.gosim/bin/gosim"; limit=900; fi
-            (cd internal/sim; /usr/bin/time -v timeout --kill-after=10s ${limit}s ../../.gosim/bin/sim.test -test.run '^TestMemory448$' -test.v -test.timeout 14m) >"$out/run.log" 2>&1
+            (cd internal/sim; /usr/bin/time -v timeout --kill-after=10s ${limit}s ../../.gosim/bin/sim.test -test.run '^TestMemory448$' -test.v -test.timeout 14m) >"$out/run.log" 2>&1 &
+            pid=$!
+            (peak=0; while kill -0 "$pid" 2>/dev/null; do rss=$(ps -eo rss=,comm= | awk '$2 ~ /^translated|^sim\.test$/ {s+=$1} END {print s+0}'); if [ "$rss" -gt "$peak" ]; then peak=$rss; fi; sleep 0.1; done; echo "$peak" >"$out/peak-kib") &
+            sampler=$!
+            wait "$pid"
             status=$?
             pkill -KILL '^translated' || true
-            echo "$mode status=$status"
-            grep -E 'MEMSTAT|MEM448|DISK448|CHECKPOINT448|COMPACT448|REALMARK.*stats|Maximum resident|Elapsed|^---|^(PASS|FAIL)' "$out/run.log" | cut -c1-1400
-            for p in "$out"/*.pprof; do go tool pprof -top -inuse_space "$p" >"$p.txt" 2>&1; done
+            wait "$sampler"
+            echo "$mode status=$status peak-kib=$(cat "$out/peak-kib")"
+            grep -E 'MEMSTAT|MEM448|DISK448|STATE448|CHECKPOINT448|COMPACT448|REALMARK.*stats|Maximum resident|Elapsed|^---|^(PASS|FAIL)' "$out/run.log" | cut -c1-1400
+            for p in "$out"/*.pprof; do [ -f "$p" ] && go tool pprof -top -inuse_space "$p" >"$p.txt" 2>&1; done
           done
       - if: always()
         uses: actions/upload-artifact@v6
