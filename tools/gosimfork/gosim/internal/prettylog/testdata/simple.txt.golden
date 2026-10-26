@@ -1,0 +1,24 @@
+=== RUN   TestLogForPrettyTest
+    1 main/4     14:10:03.000 INF behavior/log_gosim_test.go:53 > hello info foo=bar
+    2 machine-2/5 14:10:23.000 INF behavior/log_gosim_test.go:58 > warn delay=0 ok=now
+    3 machine-2/5 14:10:23.000 INF behavior/log_gosim_test.go:59 > before
+<nil> machine-2/5 14:10:23.000 ERR gosimruntime/runtime.go:656 > uncaught panic panic=help traceback=[
+          "goroutine 9 [running]:",
+          "github.com/jellevandenhooff/gosim/gosimruntime.(*goroutine).exitpoint(0x1400045de40)",
+          "  /Users/jelle/hack/gosim/gosimruntime/runtime.go:728 +0x9c",
+          "panic({0x1011dc360?, 0x10147b090?})",
+          "  /opt/homebrew/Cellar/go/1.23.3/libexec/src/runtime/panic.go:785 +0x124",
+          "translated/github.com/jellevandenhooff/gosim/internal_/tests/behavior_test.ImplTestLogForPrettyTest.func1()",
+          "  /Users/jelle/hack/gosim/.gosim/translated/linux_arm64/github.com/jellevandenhooff/gosim/internal_/tests/behavior/log_gosim_test.go:60 +0xe0",
+          "translated/github.com/jellevandenhooff/gosim/internal_/simulation.(*Simulation).startMachine.func1()",
+          "  /Users/jelle/hack/gosim/.gosim/translated/linux_arm64/github.com/jellevandenhooff/gosim/internal_/simulation/simulation_gosim.go:96 +0x4c",
+          "github.com/jellevandenhooff/gosim/gosimruntime.(*goroutine).entrypoint(0x1400045de40, 0x14000461f50)",
+          "  /Users/jelle/hack/gosim/gosimruntime/runtime.go:712 +0x60",
+          "github.com/jellevandenhooff/gosim/gosimruntime.goroutineEntrypoint()",
+          "  /Users/jelle/hack/gosim/gosimruntime/runtime.go:705 +0x30",
+          "github.com/jellevandenhooff/gosim/internal/coro.(*Coro).Start.func1(0x0?)",
+          "  /Users/jelle/hack/gosim/internal/coro/coro_linkname.go:38 +0x24",
+          "created by github.com/jellevandenhooff/gosim/internal/coro.(*Coro).Start in goroutine 5",
+          "  /Users/jelle/hack/gosim/internal/coro/coro_linkname.go:36 +0x70",
+          ""
+        ]

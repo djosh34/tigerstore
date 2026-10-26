@@ -1,0 +1,4 @@
+#!/bin/sh
+# gosim is shorthand for running cmd/gosim, which is a module of its own:
+root=$(cd "$(dirname "$0")/.." && pwd)
+go build -C "$root/cmd/gosim" -o "$root/.gosim/gosimtool" . && exec "$root/.gosim/gosimtool" "$@"

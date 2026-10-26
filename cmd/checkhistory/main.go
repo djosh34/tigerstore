@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/djosh34/tigerstore/check"
@@ -37,6 +38,7 @@ type verdict struct {
 func main() {
 	timeout := flag.Duration("timeout", 10*time.Minute, "how long each checker may take on one file")
 	names := flag.String("checkers", "witness-log,witness-revisions", "comma-separated checkers to run")
+	parallel := flag.Bool("parallel", false, "also run the checkers again at once, each in a goroutine (#441)")
 	flag.Parse()
 	checkers := map[string]func(*history.History) error{
 		"witness-log":       func(h *history.History) error { return check.Witnessed(h, check.FromLog, *timeout) },
@@ -57,7 +59,9 @@ func main() {
 	out := json.NewEncoder(os.Stdout)
 	failed := false
 	for _, file := range flag.Args() {
+		readStart := time.Now()
 		h, err := read(file)
+		fmt.Fprintf(os.Stderr, "read %s in %.1f s\n", file, time.Since(readStart).Seconds())
 		if err != nil {
 			failed = true
 			if err := out.Encode(verdict{File: file, Checker: "read", Error: err.Error()}); err != nil {
@@ -82,6 +86,22 @@ func main() {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(2)
 			}
+		}
+		if *parallel {
+			start := time.Now()
+			var wg sync.WaitGroup
+			var mu sync.Mutex
+			for _, name := range run {
+				wg.Go(func() {
+					s := time.Now()
+					err := checkers[name](h)
+					mu.Lock()
+					defer mu.Unlock()
+					fmt.Fprintf(os.Stderr, "parallel %s: %.1f s, passed %v\n", name, time.Since(s).Seconds(), err == nil)
+				})
+			}
+			wg.Wait()
+			fmt.Fprintf(os.Stderr, "parallel all: %.1f s\n", time.Since(start).Seconds())
 		}
 	}
 	if failed {

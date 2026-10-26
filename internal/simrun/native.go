@@ -85,7 +85,9 @@ func Do(t *testing.T, r Run) *Result {
 	pkg, _ := pkgPath(t)
 	mt := metatesting.ForOtherPackage(t, pkg, tags...)
 	start := time.Now()
+	Mark(fmt.Sprintf("driver gosim start seed=%d", r.Seed))
 	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: r.Env})
+	Mark(fmt.Sprintf("driver gosim end seed=%d", r.Seed))
 	if err != nil {
 		t.Fatalf("running %s in gosim: %v", r.Test, err)
 	}
