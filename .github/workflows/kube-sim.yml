@@ -12,6 +12,9 @@ on:
       label:
         description: Label
         default: ""
+      minutes:
+        description: Virtual minutes of each seed, 240 when empty
+        default: ""
 
 permissions:
   contents: read
@@ -34,6 +37,7 @@ jobs:
       - name: Seed
         env:
           SEED: ${{ matrix.seed }}
+          EXP441_MINUTES: ${{ inputs.minutes }}
           OUT: ${{ runner.temp }}/exp441
         run: scripts/exp441.sh
       - if: always()
