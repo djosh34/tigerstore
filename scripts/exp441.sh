@@ -29,6 +29,6 @@ cd "$root"
 go build -o "$out/checkhistory" ./cmd/checkhistory
 if [ -f "$out/history.json.gz" ]; then
 	ls -la "$out/history.json.gz"
-	/usr/bin/time -v "$out/checkhistory" -timeout 150m -parallel -checkers durable,revisions,watches,witness-log,witness-revisions "$out/history.json.gz" 2>&1 | grep -vE '^\s+(Average|Socket|Signals|Swaps|Page size|File system|Exit status|Minor|Major|Voluntary|Involuntary|Percent)'
+	/usr/bin/time -v "$out/checkhistory" -timeout 150m -parallel -witness-variant ultimate -checkers durable,revisions,watches,witness-log,witness-revisions "$out/history.json.gz" 2>&1 | grep -vE '^\s+(Average|Socket|Signals|Swaps|Page size|File system|Exit status|Minor|Major|Voluntary|Involuntary|Percent)'
 fi
 exit $st

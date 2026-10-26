@@ -72,7 +72,17 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 		return fmt.Errorf("witness check needs a positive timeout, got %s", timeout)
 	}
 	w := newWitness(h, time.Now().Add(timeout))
-	w.maxSteps = optionsOf(opts).steps
+	o := optionsOf(opts)
+	w.maxSteps, w.variant = o.steps, o.variant
+	w.metrics, w.progress = o.stats, o.progress
+	if w.metrics == nil {
+		w.metrics = &WitnessStats{}
+	}
+	*w.metrics = WitnessStats{Ops: len(h.Ops), Keys: len(w.keys)}
+	defer func() { w.metrics.Steps = w.steps }()
+	if w.variant != "" && w.variant != "baseline" && w.variant != "checkpoints" && w.variant != "indexed" && w.variant != "both" && w.variant != "prefilter" && w.variant != "fast" && w.variant != "optional" && w.variant != "scoped" && w.variant != "tuned" && w.variant != "retired" && w.variant != "best" && w.variant != "undo" && w.variant != "ultimate" {
+		return fmt.Errorf("unknown revision search variant %q", w.variant)
+	}
 	var err error
 	switch mode {
 	case FromLog:
@@ -140,6 +150,10 @@ type witness struct {
 	// of a timeout.
 	observed, toObserve int
 	search              *revisionOrder
+	metrics             *WitnessStats
+	variant             string
+	progress            func(*WitnessStats)
+	scopeKeys           map[int][]string
 }
 
 // stoppedAt says how far a check got when it ran out of time.
@@ -209,6 +223,10 @@ func newWitness(h *history.History, deadline time.Time) *witness {
 // the steps ran out.
 func (w *witness) tick() bool {
 	w.steps++
+	w.metrics.Steps = w.steps
+	if w.steps%1024 == 0 && w.progress != nil {
+		w.progress(w.metrics)
+	}
 	if w.maxSteps > 0 && w.steps > w.maxSteps {
 		return true
 	}
@@ -263,7 +281,13 @@ func (w *witness) stateAt(j int) *state {
 // or its error at state j.
 func (w *witness) answers(i, j int) bool {
 	op := &w.h.Ops[i]
-	o := w.stateAt(j).step(w.reqs[i], false)
+	var s *state
+	if w.variant == "scoped" || w.variant == "tuned" || w.variant == "best" || w.variant == "ultimate" {
+		s = w.scopedState(i, j)
+	} else {
+		s = w.stateAt(j)
+	}
+	o := s.step(w.reqs[i], false)
 	if op.Err != nil {
 		return o.err != nil && sameError(o.err, op.Err)
 	}
