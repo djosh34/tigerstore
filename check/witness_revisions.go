@@ -944,7 +944,7 @@ func (r *revisionOrder) insertOptional(rev int64) {
 		if o.late || o.from > rev || r.used[o.op] || !r.isReady(o) {
 			continue
 		}
-		s := w.live.clone()
+		s := r.optionalTrial(w.live, o)
 		if out := s.step(w.reqs[o.op], false); out.err == nil && s.rev == rev {
 			r.expire(w.h.Ops[o.op].Call, 0)
 			w.apply(o.op, w.reqs[o.op])
@@ -1009,6 +1009,26 @@ func (r *revisionOrder) due(call, rev int64) []optional {
 	return out
 }
 
+// optionalTrial avoids copying every key for a grant or compaction:
+// these requests can only alter scalar fields or the lease list. Revoke
+// still gets a full copy, since it can delete arbitrary keys.
+func (r *revisionOrder) optionalTrial(s *state, o optional) *state {
+	r.w.metrics.OptionalTrials++
+	req := r.w.reqs[o.op]
+	if req.Compact != nil {
+		r.w.metrics.OptionalCompactTrials++
+	}
+	if (r.w.variant == "optional" || r.w.variant == "tuned") && req.LeaseRevoke == nil {
+		c := *s
+		if req.LeaseGrant != nil {
+			c.leases = slices.Clone(s.leases)
+		}
+		r.w.metrics.OptionalCloneKeysAvoided += int64(len(s.keys))
+		return &c
+	}
+	return s.clone()
+}
+
 // takes steps s through late optional o if it may go in now and the
 // model takes it without a write. The model goes before readsFit, which
 // places reads and costs far more: a compaction that an acked one made
@@ -1048,13 +1068,13 @@ func (r *revisionOrder) putIn(o optional, take func(*state, optional) bool) {
 	}
 	if w.h.Ops[o.op].Req.Compact != nil {
 		for _, e := range r.due(w.h.Ops[o.op].Call, 0) {
-			if w.h.Ops[e.op].Req.LeaseRevoke != nil && !r.used[e.op] && r.takes(w.live.clone(), e) {
+			if w.h.Ops[e.op].Req.LeaseRevoke != nil && !r.used[e.op] && r.takes(r.optionalTrial(w.live, e), e) {
 				w.apply(e.op, w.reqs[e.op])
 				r.use(e.op)
 			}
 		}
 	}
-	if take(w.live.clone(), o) {
+	if take(r.optionalTrial(w.live, o), o) {
 		w.apply(o.op, w.reqs[o.op])
 		r.use(o.op)
 	}
@@ -1124,9 +1144,11 @@ type frame struct {
 }
 
 func (r *revisionOrder) checkpoints() bool {
-	return r.w.variant == "checkpoints" || r.w.variant == "both"
+	return r.w.variant == "checkpoints" || r.w.variant == "both" || r.w.variant == "fast" || r.w.variant == "tuned"
 }
-func (r *revisionOrder) keyIndexed() bool { return r.w.variant == "indexed" || r.w.variant == "both" }
+func (r *revisionOrder) keyIndexed() bool {
+	return r.w.variant == "indexed" || r.w.variant == "both" || r.w.variant == "fast" || r.w.variant == "tuned"
+}
 
 func (r *revisionOrder) use(i int) {
 	if r.checkpoints() && !r.used[i] {
@@ -1345,9 +1367,14 @@ func (r *revisionOrder) candidates(rev int64) []int {
 func (r *revisionOrder) fits(i int, rev int64) bool {
 	w := r.w
 	w.metrics.Fits++
+	if (w.variant == "prefilter" || w.variant == "fast" || w.variant == "tuned") && readOnlyBranch(w.live, w.reqs[i]) {
+		w.metrics.ReadOnlyBranchRejected++
+		w.metrics.RejectModel++
+		return false
+	}
 	s := w.live.clone()
 	for _, e := range r.due(w.h.Ops[i].Call, 0) {
-		if t := s.clone(); r.takes(t, e) {
+		if t := r.optionalTrial(s, e); r.takes(t, e) {
 			s = t
 		}
 	}
@@ -1403,6 +1430,24 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 	}
 	w.metrics.FitsAccepted++
 	return true
+}
+
+// readOnlyBranch is a cheap, exact rejection before cloning the entire
+// store. Due optional mutations in fits never change keys or revisions,
+// so cannot change compares (which inspect keys, not lease existence or
+// compaction). A branch with no put or delete cannot write this gap.
+func readOnlyBranch(s *state, req history.Request) bool {
+	if req.Txn == nil {
+		return req.LeaseGrant != nil || req.Compact != nil
+	}
+	ops := req.Txn.Success
+	for _, c := range req.Txn.Compare {
+		if !s.compare(c) {
+			ops = req.Txn.Failure
+			break
+		}
+	}
+	return !slices.ContainsFunc(ops, func(o history.TxnOp) bool { return o.Put != nil || o.Delete != nil })
 }
 
 // finish places what follows the writer of rev: the acked mutations that

@@ -80,7 +80,7 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 	}
 	*w.metrics = WitnessStats{Ops: len(h.Ops), Keys: len(w.keys)}
 	defer func() { w.metrics.Steps = w.steps }()
-	if w.variant != "" && w.variant != "baseline" && w.variant != "checkpoints" && w.variant != "indexed" && w.variant != "both" {
+	if w.variant != "" && w.variant != "baseline" && w.variant != "checkpoints" && w.variant != "indexed" && w.variant != "both" && w.variant != "prefilter" && w.variant != "fast" && w.variant != "optional" && w.variant != "scoped" && w.variant != "tuned" {
 		return fmt.Errorf("unknown revision search variant %q", w.variant)
 	}
 	var err error
@@ -152,6 +152,7 @@ type witness struct {
 	search              *revisionOrder
 	metrics             *WitnessStats
 	variant             string
+	scopeKeys           map[int][]string
 }
 
 // stoppedAt says how far a check got when it ran out of time.
@@ -275,7 +276,13 @@ func (w *witness) stateAt(j int) *state {
 // or its error at state j.
 func (w *witness) answers(i, j int) bool {
 	op := &w.h.Ops[i]
-	o := w.stateAt(j).step(w.reqs[i], false)
+	var s *state
+	if w.variant == "scoped" || w.variant == "tuned" {
+		s = w.scopedState(i, j)
+	} else {
+		s = w.stateAt(j)
+	}
+	o := s.step(w.reqs[i], false)
 	if op.Err != nil {
 		return o.err != nil && sameError(o.err, op.Err)
 	}

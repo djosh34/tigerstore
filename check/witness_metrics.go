@@ -4,6 +4,9 @@ package check
 // one check; callers must not share it between concurrent checks.
 type WitnessStats struct {
 	Ops, Keys, Ambiguous, Resolved, Top                                       int
+	ReadOnlyBranchRejected                                                    int64
+	OptionalTrials, OptionalCompactTrials, OptionalCloneKeysAvoided           int64
+	ScopedAnswers, ScopedKeyCells, ScopedKeysAvoided                          int64
 	Steps                                                                     int64
 	GapFrames, CandidateScans, Candidates, Fits, FitsAccepted                 int64
 	RejectModel, RejectUnchanged, RejectLife, RejectRequired, RejectReachable int64

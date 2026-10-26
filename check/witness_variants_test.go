@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// All normal witness regressions run with both optimizations by default.
+// All normal witness regressions run with all optimizations by default.
 // Additionally compare each variant with the original search on valid and
 // deliberately stale histories, with no log or Effect to help the search.
 func TestRevisionSearchVariants(t *testing.T) {
@@ -26,7 +26,7 @@ func TestRevisionSearchVariants(t *testing.T) {
 			if want != nil {
 				rejected++
 			}
-			for _, variant := range []string{"checkpoints", "indexed", "both"} {
+			for _, variant := range []string{"checkpoints", "indexed", "both", "prefilter", "fast", "optional", "scoped", "tuned"} {
 				var stats WitnessStats
 				got := Witnessed(h, FromRevisions, time.Second, RevisionSearch(variant), WitnessMetrics(&stats))
 				if (got == nil) != (want == nil) {

@@ -23,13 +23,14 @@ func WitnessMetrics(s *WitnessStats) Option {
 	return func(o *options) { o.stats = s }
 }
 
-// RevisionSearch selects baseline, checkpoints, indexed, or both (#441).
+// RevisionSearch selects baseline, checkpoints, indexed, both, prefilter,
+// fast, optional, scoped, or tuned (all optimizations), for #441.
 func RevisionSearch(variant string) Option {
 	return func(o *options) { o.variant = variant }
 }
 
 func optionsOf(opts []Option) options {
-	o := options{variant: "both"}
+	o := options{variant: "tuned"}
 	for _, opt := range opts {
 		opt(&o)
 	}
