@@ -129,6 +129,9 @@ type Config struct {
 	// skipCheck leaves the checks out (#449, aged.go).
 	from      *image
 	skipCheck bool
+	// noFence leaves out the crash images that can fence a node for
+	// good, as an aging run needs all three nodes at its end.
+	noFence bool
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -1699,7 +1702,7 @@ func (s *Sim) powerLoss(n *node) {
 // refuse the log (#295). The lock is held.
 func (s *Sim) loseUnsynced(n *node) {
 	img := simfs.Image(s.rng.IntN(4))
-	if s.cfg.Membership || slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.corrupted || m.fenced) }) {
+	if s.cfg.Membership || s.cfg.noFence || slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.corrupted || m.fenced) }) {
 		img = simfs.Image(s.rng.IntN(2))
 	}
 	n.disk.CrashImage(s.rng, img)

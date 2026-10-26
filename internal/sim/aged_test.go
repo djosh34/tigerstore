@@ -46,9 +46,10 @@ func TestAgedForks(t *testing.T) {
 		age.Duration = int64(envInt(t, "SIM_AGE_MINUTES", 2)) * 60 * Second
 		age.Faults.DiskBudget = max(16<<20, int64(objects)*8<<10)
 		age.Faults.DiskCapacity = int(2 * age.Faults.DiskBudget)
-		// A damaged disk fences its node for good, and a fork needs all
-		// three: the aging run leaves damage to the forks.
-		age.Faults.Corrupt, age.Faults.Rot = false, false
+		// A damaged disk or a torn crash image fences its node for good,
+		// and a fork needs all three: the aging run leaves those to the
+		// forks.
+		age.Faults.Corrupt, age.Faults.Rot, age.noFence = false, false, true
 		if os.Getenv("SIM_AGE_CALM") == "1" {
 			spreadFaults(&age.Faults, 1000)
 		}
