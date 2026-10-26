@@ -150,6 +150,9 @@ func (c *client) kubeRequest() proto.Message {
 			}
 			l.compactAt += s.cfg.CompactEvery
 			mark("progress virtual=%ds history=%d", s.now()/Second, len(s.history))
+			if s.now()/(60*Second)%5 == 0 {
+				s.mem448("progress")
+			}
 		}
 		if l.compacting > 0 {
 			return &pb.CompactionRequest{Revision: l.compacting}

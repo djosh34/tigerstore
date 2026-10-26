@@ -1,0 +1,54 @@
+name: exp448-memory
+on:
+  push:
+    branches: [exp/448-memory]
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [default, short, long10, data10]
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: '-p=1'
+      GOMEMLIMIT: 12GiB
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Hardware
+        run: |
+          nproc; lscpu; free -b; df -B1 .
+          mkdir -p "$RUNNER_TEMP/mem448"
+      - name: Build
+        run: scripts/sim.sh ./internal/sim '^$'
+      - name: Native and gosim measurements
+        env:
+          MEMCASE448: ${{ matrix.case }}
+        run: |
+          set +e
+          export EXP441_MINUTES=10
+          if [ "$MEMCASE448" = data10 ]; then export OBJECTS448=50000; fi
+          for mode in native gosim; do
+            out="$RUNNER_TEMP/mem448/$mode"
+            mkdir -p "$out"
+            export GOSIM_MEMDIR="$out"
+            if [ "$mode" = native ]; then export NATIVE448=1; unset GOSIMTOOL; limit=180; else unset NATIVE448; export GOSIMTOOL="$PWD/.gosim/bin/gosim"; limit=900; fi
+            (cd internal/sim; /usr/bin/time -v timeout --kill-after=10s ${limit}s ../../.gosim/bin/sim.test -test.run '^TestMemory448$' -test.v -test.timeout 14m) >"$out/run.log" 2>&1
+            status=$?
+            pkill -KILL '^translated' || true
+            echo "$mode status=$status"
+            grep -E 'MEMSTAT|MEM448|DISK448|CHECKPOINT448|COMPACT448|REALMARK.*stats|Maximum resident|Elapsed|^---|^(PASS|FAIL)' "$out/run.log" | cut -c1-1400
+            for p in "$out"/*.pprof; do go tool pprof -top -inuse_space "$p" >"$p.txt" 2>&1; done
+          done
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: memory448-${{ matrix.case }}
+          path: ${{ runner.temp }}/mem448
+          retention-days: 7

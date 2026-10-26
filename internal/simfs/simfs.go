@@ -121,6 +121,8 @@ type Disk struct {
 	files int
 	// Counts counts what the disk's faults did.
 	Counts Counts
+	// Written counts accepted write bytes for the throwaway #448 experiment.
+	Written uint64
 }
 
 // Counts counts what a disk's faults did: writes a crash tore, crashes
@@ -781,6 +783,7 @@ func (h *Handle) WriteAt(p []byte, off int64) (int, error) {
 }
 
 func (h *Handle) write(off int, p []byte) {
+	h.d.Written += uint64(len(p))
 	p = slices.Clone(p)
 	h.f.data = apply(h.f.data, off, p)
 	h.f.pending = append(h.f.pending, write{off, p})

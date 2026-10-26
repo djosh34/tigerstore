@@ -521,6 +521,7 @@ func independent(res *Result) error {
 		return err
 	}
 	exp441Stats(h)
+	mark("MEM448.checkable ops=%d log=%d watches=%d", len(h.Ops), len(h.Log), len(h.Watches))
 	var errs []error
 	mark("phase durable start")
 	if err := check.Durable(h); err != nil {

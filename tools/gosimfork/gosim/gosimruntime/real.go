@@ -7,19 +7,33 @@ package gosimruntime
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"sync"
 	"time"
 )
 
 var realStart = time.Now()
+var memoryProfiles int
 
 // RealMark writes msg to the real stderr with the real time since the
 // process started, the run's scheduler step and the real heap.
 func RealMark(msg string) {
+	if strings.HasPrefix(msg, "MEM448") {
+		runtime.GC()
+		if dir := os.Getenv("GOSIM_MEMDIR"); dir != "" {
+			memoryProfiles++
+			if f, err := os.Create(filepath.Join(dir, fmt.Sprintf("heap-%03d.pprof", memoryProfiles))); err == nil {
+				_ = pprof.WriteHeapProfile(f)
+				_ = f.Close()
+			}
+		}
+	}
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
+	fmt.Fprintf(os.Stderr, "MEMSTAT heap=%d inuse=%d idle=%d released=%d sys=%d nextgc=%d stacks=%d totalalloc=%d tag=%s\n", ms.HeapAlloc, ms.HeapInuse, ms.HeapIdle, ms.HeapReleased, ms.Sys, ms.NextGC, ms.StackInuse, ms.TotalAlloc, msg)
 	fmt.Fprintf(os.Stderr, "REALMARK t=%.3f unix=%d step=%d heap=%dMiB sys=%dMiB gcs=%d gcpause=%.3fs gccpu=%.4f %s\n",
 		time.Since(realStart).Seconds(), time.Now().UnixNano(), GetStep(), ms.HeapAlloc>>20, ms.Sys>>20, ms.NumGC,
 		float64(ms.PauseTotalNs)/1e9, ms.GCCPUFraction, msg)

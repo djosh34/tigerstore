@@ -713,6 +713,9 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)
 		}
 	}
+	s.mu.Lock()
+	s.mem448("own-checks-end")
+	s.mu.Unlock()
 	mark("phase own-checks end log=%d", len(res.Log))
 	// The checks run the cold restarts, which keep their disks when they
 	// fail (#280).
@@ -810,6 +813,9 @@ func (s *Sim) run() error {
 		case <-s.failed():
 		}
 	}
+	s.mu.Lock()
+	s.mem448("load-end")
+	s.mu.Unlock()
 	mark("phase load end virtual=%ds", s.now()/Second)
 	s.mu.Lock()
 	s.stop()
