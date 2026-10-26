@@ -80,7 +80,7 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 	}
 	*w.metrics = WitnessStats{Ops: len(h.Ops), Keys: len(w.keys)}
 	defer func() { w.metrics.Steps = w.steps }()
-	if w.variant != "" && w.variant != "baseline" && w.variant != "checkpoints" && w.variant != "indexed" && w.variant != "both" && w.variant != "prefilter" && w.variant != "fast" && w.variant != "optional" && w.variant != "scoped" && w.variant != "tuned" {
+	if w.variant != "" && w.variant != "baseline" && w.variant != "checkpoints" && w.variant != "indexed" && w.variant != "both" && w.variant != "prefilter" && w.variant != "fast" && w.variant != "optional" && w.variant != "scoped" && w.variant != "tuned" && w.variant != "retired" && w.variant != "best" {
 		return fmt.Errorf("unknown revision search variant %q", w.variant)
 	}
 	var err error
@@ -277,7 +277,7 @@ func (w *witness) stateAt(j int) *state {
 func (w *witness) answers(i, j int) bool {
 	op := &w.h.Ops[i]
 	var s *state
-	if w.variant == "scoped" || w.variant == "tuned" {
+	if w.variant == "scoped" || w.variant == "tuned" || w.variant == "best" {
 		s = w.scopedState(i, j)
 	} else {
 		s = w.stateAt(j)

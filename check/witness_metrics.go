@@ -7,6 +7,7 @@ type WitnessStats struct {
 	ReadOnlyBranchRejected                                                    int64
 	OptionalTrials, OptionalCompactTrials, OptionalCloneKeysAvoided           int64
 	ScopedAnswers, ScopedKeyCells, ScopedKeysAvoided                          int64
+	SupersededOptionalSkipped                                                 int64
 	Steps                                                                     int64
 	GapFrames, CandidateScans, Candidates, Fits, FitsAccepted                 int64
 	RejectModel, RejectUnchanged, RejectLife, RejectRequired, RejectReachable int64

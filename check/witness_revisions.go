@@ -1002,6 +1002,15 @@ func (r *revisionOrder) due(call, rev int64) []optional {
 	for _, o := range r.optional {
 		r.w.metrics.OptionalScans++
 		if o.late && !r.used[o.op] && (o.gone < call || o.by <= rev) {
+			if r.w.variant == "retired" || r.w.variant == "best" {
+				if c := r.w.reqs[o.op].Compact; c != nil && c.Revision <= r.w.live.compacted {
+					// Compaction is monotone along this branch. The model
+					// would reject this optional op forever; leaving an
+					// ambiguous op out is legal. Re-evaluate after rollback.
+					r.w.metrics.SupersededOptionalSkipped++
+					continue
+				}
+			}
 			out = append(out, o)
 		}
 	}
@@ -1018,7 +1027,7 @@ func (r *revisionOrder) optionalTrial(s *state, o optional) *state {
 	if req.Compact != nil {
 		r.w.metrics.OptionalCompactTrials++
 	}
-	if (r.w.variant == "optional" || r.w.variant == "tuned") && req.LeaseRevoke == nil {
+	if (r.w.variant == "optional" || r.w.variant == "tuned" || r.w.variant == "best") && req.LeaseRevoke == nil {
 		c := *s
 		if req.LeaseGrant != nil {
 			c.leases = slices.Clone(s.leases)
@@ -1144,10 +1153,10 @@ type frame struct {
 }
 
 func (r *revisionOrder) checkpoints() bool {
-	return r.w.variant == "checkpoints" || r.w.variant == "both" || r.w.variant == "fast" || r.w.variant == "tuned"
+	return r.w.variant == "checkpoints" || r.w.variant == "both" || r.w.variant == "fast" || r.w.variant == "tuned" || r.w.variant == "best"
 }
 func (r *revisionOrder) keyIndexed() bool {
-	return r.w.variant == "indexed" || r.w.variant == "both" || r.w.variant == "fast" || r.w.variant == "tuned"
+	return r.w.variant == "indexed" || r.w.variant == "both" || r.w.variant == "fast" || r.w.variant == "tuned" || r.w.variant == "best"
 }
 
 func (r *revisionOrder) use(i int) {
@@ -1367,7 +1376,7 @@ func (r *revisionOrder) candidates(rev int64) []int {
 func (r *revisionOrder) fits(i int, rev int64) bool {
 	w := r.w
 	w.metrics.Fits++
-	if (w.variant == "prefilter" || w.variant == "fast" || w.variant == "tuned") && readOnlyBranch(w.live, w.reqs[i]) {
+	if (w.variant == "prefilter" || w.variant == "fast" || w.variant == "tuned" || w.variant == "best") && readOnlyBranch(w.live, w.reqs[i]) {
 		w.metrics.ReadOnlyBranchRejected++
 		w.metrics.RejectModel++
 		return false

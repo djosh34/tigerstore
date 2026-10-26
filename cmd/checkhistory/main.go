@@ -45,7 +45,7 @@ func main() {
 	names := flag.String("checkers", "witness-log,witness-revisions", "comma-separated checkers to run")
 	parallel := flag.Bool("parallel", false, "also run the checkers again at once, each in a goroutine (#441)")
 	metrics := flag.Bool("witness-stats", false, "print revision witness work counters")
-	variant := flag.String("witness-variant", "baseline", "baseline, checkpoints, indexed, both, prefilter, fast, optional, scoped, or tuned")
+	variant := flag.String("witness-variant", "baseline", "baseline, checkpoints, indexed, both, prefilter, fast, optional, scoped, tuned, retired, or best")
 	cpu := flag.String("cpuprofile", "", "CPU profile of checking (one file/checker only)")
 	flag.Parse()
 	var stats check.WitnessStats
