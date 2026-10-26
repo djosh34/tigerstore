@@ -43,7 +43,7 @@ func (s *Sim) scheduleDiskFaults() {
 		s.every(f.DiskFullEvery, s.diskFull)
 	}
 	if f.Checkpoint {
-		s.at(s.cfg.Duration/2+s.rng.Int64N(s.cfg.Duration/2)+1, func() {
+		s.at(s.faultStart+s.cfg.Duration/2+s.rng.Int64N(s.cfg.Duration/2)+1, func() {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			s.takeCheckpoint()
@@ -74,7 +74,7 @@ func (s *Sim) scheduleDiskFaults() {
 		s.downFor = min(3*Second+s.rng.Int64N(2*Second), s.cfg.Duration/2)
 		// The follower is back 2 s before healing, so that its first
 		// fetch, which the stream faults damage, comes during the faults.
-		s.at(1+s.rng.Int64N(max(s.cfg.Duration-s.downFor-2*Second, 1)), func() {
+		s.at(s.faultStart+1+s.rng.Int64N(max(s.cfg.Duration-s.downFor-2*Second, 1)), func() {
 			for !s.downFollower() && s.sleep(200*Millisecond) {
 			}
 		})

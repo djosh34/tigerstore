@@ -119,7 +119,11 @@ func (s *Sim) newKubeLoad() []*kubeClient {
 	for id := range clients {
 		kc := &kubeClient{}
 		byResource := map[string]int{}
-		for i := range s.cfg.Objects / clients {
+		count := s.cfg.Objects / clients
+		if s.cfg.dataLimits {
+			count = (s.cfg.Objects + clients - 1 - id) / clients
+		}
+		for i := range count {
 			bin := k8ssize.Draw(s.rng, "")
 			r := k8ssize.Buckets[bin].Resource
 			g, ok := byResource[r]
@@ -229,6 +233,9 @@ func (c *client) kubePut(o *kubeObject) *pb.PutRequest {
 	k.values++
 	o.bin = k8ssize.Draw(c.sim.rng, k8ssize.Buckets[o.bin].Resource)
 	size := k8ssize.Buckets[o.bin].Size
+	if c.sim.cfg.probeValueBytes > 0 {
+		size = c.sim.cfg.probeValueBytes
+	}
 	v := fmt.Appendf(make([]byte, 0, max(size, 64)), "c%d-%d %s ", c.id, k.values, o.key)
 	for len(v) < size {
 		v = append(v, byte('a'+len(v)%26))

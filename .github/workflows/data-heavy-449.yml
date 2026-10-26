@@ -1,0 +1,69 @@
+name: data-heavy-449
+on:
+  push:
+    branches: ['exp/449-data-size']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: '-p=1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: scripts/sim.sh ./internal/sim '^$'
+      - run: cp "$(find .gosim/metatest -type f -name '*.test' | head -1)" "$RUNNER_TEMP/translated.test"
+      - name: Smoke, all checkers
+        env:
+          CELL: TestDataHeavy
+          DATA449_BINARY: ${{ runner.temp }}/translated.test
+        run: python3 scripts/data-heavy-449.py
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: data449-smoke
+          path: ${{ runner.temp }}/data449
+      - uses: actions/upload-artifact@v6
+        with:
+          name: data449-binary
+          path: ${{ runner.temp }}/translated.test
+  cell:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        cell:
+          - TestDataHeavy_10000_0_0
+          - TestDataHeavy_30000_0_0
+          - TestDataHeavy_100000_0_0
+          - TestDataHeavy_1000_65536_0
+          - TestDataHeavy_200_1048576_0
+          - TestDataHeavy_10000_0_20
+          - TestDataHeavy_1000_0_200
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: data449-binary
+          path: ${{ runner.temp }}/bin
+      - name: One cell with guard
+        env:
+          CELL: ${{ matrix.cell }}
+          DATA449_BINARY: ${{ runner.temp }}/bin/translated.test
+          PROFILE: ${{ matrix.cell == 'TestDataHeavy_30000_0_0' && '1' || '0' }}
+        run: |
+          chmod +x "$DATA449_BINARY"
+          python3 scripts/data-heavy-449.py
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: data449-${{ matrix.cell }}
+          path: ${{ runner.temp }}/data449

@@ -114,6 +114,11 @@ type Config struct {
 	Objects      int
 	CompactEvery int64
 	Faults       Faults
+	// Throwaway #449 probe: bulk work before the ordinary schedule.
+	beforeSchedule  func(*Sim) error
+	probePhase      func(string)
+	dataLimits      bool
+	probeValueBytes int
 	// damageKinds and netemKinds, if set, are the kinds of damage after a
 	// sync and of link faults that the run picks from, for the tests.
 	damageKinds []damageKind
@@ -473,6 +478,7 @@ type Sim struct {
 	wg, procs sync.WaitGroup
 
 	healAt, stopAt, endAt int64
+	faultStart            int64
 	// servedRoot is the newest durable root of the source of the last
 	// snapshot served to each node, by Raft ID, when it was served.
 	servedRoot map[uint64]uint64
@@ -688,6 +694,9 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	}
 	res := &Result{Clients: cfg.Clients + cfg.V3Clients}
 	err = s.run()
+	if cfg.probePhase != nil {
+		cfg.probePhase("sim-check")
+	}
 	// A run that failed before its end keeps what it did so far, for its
 	// report; it has no committed log for the checkers.
 	s.mu.Lock()
@@ -710,6 +719,9 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		if err = s.check(res); err != nil {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)
 		}
+	}
+	if cfg.probePhase != nil {
+		cfg.probePhase("sim-check-done")
 	}
 	// The checks run the cold restarts, which keep their disks when they
 	// fail (#280).
@@ -781,12 +793,31 @@ func (s *Sim) addNode(i int, disk *simfs.Disk) {
 // run runs the workload and the faults until the end, then holds every
 // node still for the checks.
 func (s *Sim) run() error {
+	faults := s.cfg.Faults
+	if s.cfg.beforeSchedule != nil {
+		s.cfg.Faults = Faults{DiskBudget: faults.DiskBudget, DiskCapacity: faults.DiskCapacity}
+	}
 	if s.cfg.Membership {
 		s.nodes[3].inactive = true
 	}
 	for _, n := range s.nodes[:3] {
 		if err := s.start(n); err != nil {
 			return err
+		}
+	}
+	if s.cfg.beforeSchedule != nil {
+		if err := s.cfg.beforeSchedule(s); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		s.faultStart = s.now()
+		s.healAt += s.faultStart
+		s.stopAt += s.faultStart
+		s.endAt += s.faultStart
+		s.cfg.Faults = faults
+		s.mu.Unlock()
+		if s.cfg.probePhase != nil {
+			s.cfg.probePhase("scenario")
 		}
 	}
 	s.schedule()
@@ -848,18 +879,22 @@ func (s *Sim) schedule() {
 		s.after(2*Second, s.changeMembership)
 	}
 	var kube []*kubeClient
-	if s.cfg.Objects > 0 {
+	if s.cfg.Objects > 0 && len(s.clients) == 0 {
 		kube = s.newKubeLoad()
 	}
-	for i := range s.cfg.Clients + s.cfg.V3Clients {
-		c := &client{id: i, sim: s, node: -1}
-		if i >= s.cfg.Clients {
-			c.node = i % 3
+	if len(s.clients) == 0 {
+		for i := range s.cfg.Clients + s.cfg.V3Clients {
+			c := &client{id: i, sim: s, node: -1}
+			if i >= s.cfg.Clients {
+				c.node = i % 3
+			}
+			if kube != nil {
+				c.kube = kube[i]
+			}
+			s.clients = append(s.clients, c)
 		}
-		if kube != nil {
-			c.kube = kube[i]
-		}
-		s.clients = append(s.clients, c)
+	}
+	for _, c := range s.clients {
 		s.wg.Go(c.run)
 	}
 	s.startWatchers()
@@ -867,12 +902,12 @@ func (s *Sim) schedule() {
 	if f.CrashEvery > 0 {
 		s.every(f.CrashEvery, s.crashRandom)
 		// One crash at a uniform time, so that no run goes without.
-		s.at(1+s.rng.Int64N(s.cfg.Duration), s.crashRandom)
+		s.at(s.faultStart+1+s.rng.Int64N(s.cfg.Duration), s.crashRandom)
 	}
 	if f.LinkEvery > 0 {
 		s.wg.Go(s.changeLinks)
 		// One change at a uniform time, so that no run goes without.
-		s.at(1+s.rng.Int64N(s.cfg.Duration), func() {
+		s.at(s.faultStart+1+s.rng.Int64N(s.cfg.Duration), func() {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			if !s.healed {
@@ -1031,7 +1066,7 @@ func (s *Sim) every(mean int64, f func()) {
 // once runs f at a uniform time in the first part of the faults, then
 // again every retry until it reports true, unless the run healed.
 func (s *Sim) once(within, retry int64, f func() bool) {
-	s.at(1+s.rng.Int64N(within), func() {
+	s.at(s.faultStart+1+s.rng.Int64N(within), func() {
 		for !f() {
 			s.mu.Lock()
 			healed := s.healed
@@ -1100,6 +1135,11 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 	// see them.
 	cfg.ProgressTicks = 20
 	tinyLimits(&cfg)
+	if s.cfg.dataLimits {
+		cfg.WindowBytes, cfg.WindowMaxBytes = 4<<20, 8<<20
+		cfg.UnappliedBytes = 64 << 20
+		cfg.CheckpointBytes, cfg.CheckpointChunk = 4<<20, 32<<10
+	}
 	cfg.MemoryBytes = s.cfg.MemoryBytes
 	tick := TickTime
 	if d := s.cfg.Faults.DriftPerMille; d > 0 && !s.healed {
