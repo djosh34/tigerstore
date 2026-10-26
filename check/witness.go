@@ -72,7 +72,17 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 		return fmt.Errorf("witness check needs a positive timeout, got %s", timeout)
 	}
 	w := newWitness(h, time.Now().Add(timeout))
-	w.maxSteps = optionsOf(opts).steps
+	o := optionsOf(opts)
+	w.maxSteps, w.variant = o.steps, o.variant
+	w.metrics = o.stats
+	if w.metrics == nil {
+		w.metrics = &WitnessStats{}
+	}
+	*w.metrics = WitnessStats{Ops: len(h.Ops), Keys: len(w.keys)}
+	defer func() { w.metrics.Steps = w.steps }()
+	if w.variant != "" && w.variant != "baseline" && w.variant != "checkpoints" && w.variant != "indexed" && w.variant != "both" {
+		return fmt.Errorf("unknown revision search variant %q", w.variant)
+	}
 	var err error
 	switch mode {
 	case FromLog:
@@ -140,6 +150,8 @@ type witness struct {
 	// of a timeout.
 	observed, toObserve int
 	search              *revisionOrder
+	metrics             *WitnessStats
+	variant             string
 }
 
 // stoppedAt says how far a check got when it ran out of time.

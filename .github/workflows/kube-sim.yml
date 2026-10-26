@@ -1,51 +1,79 @@
-# Research #441, exp branch only: long seeds with timing marks and CPU
-# profiles, and the checkers natively on their saved histories.
+# Throwaway research branch exp/441-witness only; never merge.
 name: kube-sim
-run-name: exp441 ${{ inputs.label }}
-
+run-name: exp441 witness ${{ inputs.label }}
 on:
   workflow_dispatch:
     inputs:
-      seeds:
-        description: JSON list of seeds
+      source_run:
+        description: Run holding exp441-SEED artifacts
         required: true
+      seeds:
+        description: JSON array of seeds
+        required: true
+      variants:
+        description: JSON array of variants
+        default: '["baseline","checkpoints","indexed","both"]'
       label:
-        description: Label
-        default: ""
-      minutes:
-        description: Virtual minutes of each seed, 240 when empty
-        default: ""
-
+        description: Measurement label
+        default: ''
 permissions:
   contents: read
-
+  actions: read
 jobs:
-  seed:
+  witness:
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         seed: ${{ fromJSON(inputs.seeds) }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 355
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: '-p=1'
+      GOMEMLIMIT: 12GiB
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: scripts/sim.sh ./internal/sim '^$'
-      - run: nproc; free -m
-      - name: Seed
+      - run: go test ./check && go build -o checkhistory ./cmd/checkhistory
+      - name: Wait for this seed's artifact (poll every 10 minutes)
         env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ inputs.source_run }}
           SEED: ${{ matrix.seed }}
-          EXP441_MINUTES: ${{ inputs.minutes }}
-          OUT: ${{ runner.temp }}/exp441
-        run: scripts/exp441.sh
+        run: |
+          for i in $(seq 1 25); do
+            if gh api repos/djosh34/tigerstore/actions/runs/$SOURCE/artifacts --paginate --jq '.artifacts[].name' | grep -qx "exp441-$SEED"; then exit 0; fi
+            sleep 600
+          done
+          exit 1
+      - uses: actions/download-artifact@v5
+        with:
+          name: exp441-${{ matrix.seed }}
+          path: history-input
+          run-id: ${{ inputs.source_run }}
+          github-token: ${{ github.token }}
+      - name: Measure each variant, same history and runner
+        env:
+          VARIANTS: ${{ inputs.variants }}
+        run: |
+          mkdir results
+          nproc; free -m
+          for variant in $(echo "$VARIANTS" | jq -r '.[]'); do
+            /usr/bin/time -v -o results/$variant.time timeout 20m ./checkhistory \
+              -checkers witness-revisions -timeout 19m -witness-stats \
+              -witness-variant "$variant" -cpuprofile results/$variant.cpu \
+              history-input/history.json.gz > results/$variant.jsonl 2> results/$variant.stderr || true
+            cat results/$variant.jsonl results/$variant.stderr results/$variant.time
+            go tool pprof -top -nodecount=35 ./checkhistory results/$variant.cpu > results/$variant.profile.txt || true
+            cat results/$variant.profile.txt
+          done
+          grep REALMARK history-input/seed.log > results/simulator-marks.txt || true
       - if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: exp441-${{ matrix.seed }}
-          path: |
-            ${{ runner.temp }}/exp441/seed.log
-            ${{ runner.temp }}/exp441/cpu.*
-            ${{ runner.temp }}/exp441/history.json.gz
+          name: witness-${{ inputs.source_run }}-${{ matrix.seed }}
+          path: results
           retention-days: 14

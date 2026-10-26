@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"time"
@@ -26,27 +28,36 @@ import (
 
 // verdict is one checker's answer on one file.
 type verdict struct {
-	File    string  `json:"file"`
-	Checker string  `json:"checker"`
-	Ops     int     `json:"ops"`
-	Clients int     `json:"clients"`
-	Passed  bool    `json:"passed"`
-	Seconds float64 `json:"seconds"`
-	Error   string  `json:"error,omitempty"`
+	File       string              `json:"file"`
+	Checker    string              `json:"checker"`
+	Ops        int                 `json:"ops"`
+	Clients    int                 `json:"clients"`
+	Passed     bool                `json:"passed"`
+	Seconds    float64             `json:"seconds"`
+	Error      string              `json:"error,omitempty"`
+	Variant    string              `json:"variant,omitempty"`
+	Metrics    *check.WitnessStats `json:"metrics,omitempty"`
+	AllocBytes uint64              `json:"alloc_bytes,omitempty"`
 }
 
 func main() {
 	timeout := flag.Duration("timeout", 10*time.Minute, "how long each checker may take on one file")
 	names := flag.String("checkers", "witness-log,witness-revisions", "comma-separated checkers to run")
 	parallel := flag.Bool("parallel", false, "also run the checkers again at once, each in a goroutine (#441)")
+	metrics := flag.Bool("witness-stats", false, "print revision witness work counters")
+	variant := flag.String("witness-variant", "baseline", "baseline, checkpoints, indexed, or both")
+	cpu := flag.String("cpuprofile", "", "CPU profile of checking (one file/checker only)")
 	flag.Parse()
+	var stats check.WitnessStats
 	checkers := map[string]func(*history.History) error{
-		"witness-log":       func(h *history.History) error { return check.Witnessed(h, check.FromLog, *timeout) },
-		"witness-revisions": func(h *history.History) error { return check.Witnessed(h, check.FromRevisions, *timeout) },
-		"linearizable":      func(h *history.History) error { return check.Linearizable(h, *timeout) },
-		"watches":           check.Watches,
-		"durable":           check.Durable,
-		"revisions":         check.Revisions,
+		"witness-log": func(h *history.History) error { return check.Witnessed(h, check.FromLog, *timeout) },
+		"witness-revisions": func(h *history.History) error {
+			return check.Witnessed(h, check.FromRevisions, *timeout, check.WitnessMetrics(&stats), check.RevisionSearch(*variant))
+		},
+		"linearizable": func(h *history.History) error { return check.Linearizable(h, *timeout) },
+		"watches":      check.Watches,
+		"durable":      check.Durable,
+		"revisions":    check.Revisions,
 	}
 	var run []string
 	for name := range strings.SplitSeq(*names, ",") {
@@ -75,9 +86,29 @@ func main() {
 			clients[op.Client] = true
 		}
 		for _, name := range run {
+			var before, after runtime.MemStats
+			runtime.GC()
+			runtime.ReadMemStats(&before)
+			if *cpu != "" {
+				f, e := os.Create(*cpu)
+				if e != nil {
+					panic(e)
+				}
+				defer f.Close()
+				if e := pprof.StartCPUProfile(f); e != nil {
+					panic(e)
+				}
+			}
 			start := time.Now()
 			err := checkers[name](h)
 			v := verdict{File: file, Checker: name, Ops: len(h.Ops), Clients: len(clients), Passed: err == nil, Seconds: time.Since(start).Seconds()}
+			if *cpu != "" {
+				pprof.StopCPUProfile()
+			}
+			runtime.ReadMemStats(&after)
+			if *metrics && name == "witness-revisions" {
+				v.Variant, v.Metrics, v.AllocBytes = *variant, &stats, after.TotalAlloc-before.TotalAlloc
+			}
 			if err != nil {
 				failed = true
 				v.Error = err.Error()
