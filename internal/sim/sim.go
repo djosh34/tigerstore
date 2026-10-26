@@ -125,6 +125,10 @@ type Config struct {
 	// again with its page cache kept, and cutFails fails the next truncate
 	// with it. For the tests.
 	ckptCreateFaults, killLosses, syncFaultExits, cutFails bool
+	// from, if set, makes the run a fork of an aging run's image, and
+	// skipCheck leaves the checks out (#449, aged.go).
+	from      *image
+	skipCheck bool
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -706,7 +710,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
 	res.nodes, res.values = s.nodes, s.values
 	s.mu.Unlock()
-	if err == nil {
+	if err == nil && !cfg.skipCheck {
 		if err = s.check(res); err != nil {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)
 		}
@@ -762,6 +766,9 @@ func newSim(cfg Config) (*Sim, error) {
 	}
 	for i := range count {
 		s.addNode(i, simfs.New())
+	}
+	if cfg.from != nil {
+		s.fork(cfg.from)
 	}
 	return s, nil
 }
@@ -848,7 +855,10 @@ func (s *Sim) schedule() {
 		s.after(2*Second, s.changeMembership)
 	}
 	var kube []*kubeClient
-	if s.cfg.Objects > 0 {
+	switch {
+	case s.cfg.from != nil:
+		kube = s.forkLoad(s.cfg.from)
+	case s.cfg.Objects > 0:
 		kube = s.newKubeLoad()
 	}
 	for i := range s.cfg.Clients + s.cfg.V3Clients {
@@ -858,6 +868,9 @@ func (s *Sim) schedule() {
 		}
 		if kube != nil {
 			c.kube = kube[i]
+		}
+		if s.cfg.from != nil {
+			c.rev = s.cfg.from.rev
 		}
 		s.clients = append(s.clients, c)
 		s.wg.Go(c.run)

@@ -1,0 +1,48 @@
+# Research #449, exp branch only: an aged cluster and forks from it
+# (TestAgedForks). Each cell is a job.
+name: exp449-aged
+on:
+  push:
+    branches: [exp/449-aged-state-proto]
+permissions:
+  contents: read
+jobs:
+  cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: a-age240-unchecked, objects: 10000, age: 240, forks: 0, fork: 120, check: 0, calm: 0, twice: 0}
+          - {name: b-age240-10x2min, objects: 10000, age: 240, forks: 10, fork: 120, check: 0, calm: 0, twice: 0}
+          - {name: c-age240-5x10min, objects: 10000, age: 240, forks: 5, fork: 600, check: 0, calm: 0, twice: 0}
+          - {name: d-age240-checked, objects: 10000, age: 240, forks: 0, fork: 120, check: 1, calm: 0, twice: 0}
+          - {name: e-calm240, objects: 10000, age: 240, forks: 0, fork: 120, check: 0, calm: 1, twice: 0}
+          - {name: f-calm240-10x2min, objects: 10000, age: 240, forks: 10, fork: 120, check: 0, calm: 1, twice: 0}
+          - {name: g-age60-3x2min-twice, objects: 10000, age: 60, forks: 3, fork: 120, check: 0, calm: 0, twice: 1}
+          - {name: h-30k-calm60-5x2min, objects: 30000, age: 60, forks: 5, fork: 120, check: 0, calm: 1, twice: 0}
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: scripts/sim.sh ./internal/sim '^$'
+      - name: Cell
+        env:
+          SIM_SEED: "7"
+          SIM_AGE_OBJECTS: ${{ matrix.objects }}
+          SIM_AGE_MINUTES: ${{ matrix.age }}
+          SIM_FORKS: ${{ matrix.forks }}
+          SIM_FORK_SECONDS: ${{ matrix.fork }}
+          SIM_AGE_CHECK: ${{ matrix.check }}
+          SIM_AGE_CALM: ${{ matrix.calm }}
+          SIM_TWICE: ${{ matrix.twice }}
+        run: scripts/exp449.sh
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ runner.temp }}/cell.log
+          retention-days: 14
