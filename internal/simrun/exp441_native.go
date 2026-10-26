@@ -4,22 +4,21 @@ package simrun
 
 import (
 	"fmt"
+	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"time"
 )
 
-var markStart = time.Now()
-var realClock = make(chan chan time.Time)
+var markStart = realNow()
 
-func init() {
-	go func() {
-		for ch := range realClock {
-			ch <- time.Now()
-		}
-	}()
+func realNow() time.Time {
+	var ts unix.Timespec
+	if err := unix.ClockGettime(unix.CLOCK_REALTIME, &ts); err != nil {
+		panic(err)
+	}
+	return time.Unix(ts.Sec, ts.Nsec)
 }
-func realNow() time.Time { ch := make(chan time.Time); realClock <- ch; return <-ch }
 
 // Mark writes msg with the real time to stderr (#441).
 func Mark(msg string) {
