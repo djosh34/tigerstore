@@ -152,6 +152,8 @@ func heavyPreload(s *Sim, rounds int) error {
 				s.mu.Lock()
 				c.done(r, resp, err)
 				s.mu.Unlock()
+				// The independent format requires strictly separated calls.
+				time.Sleep(time.Nanosecond)
 				if err != nil {
 					return fmt.Errorf("preload round %d at %d: %w", round, at, err)
 				}
