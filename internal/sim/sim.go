@@ -698,6 +698,17 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		if r.Err == nil {
 			answered++
 		}
+		if r.Client >= cfg.Clients {
+			counts["v3_calls"]++
+			counts["v3_request_bytes"] += int64(proto.Size(r.req))
+		}
+	}
+	counts["unique_entries"] = int64(len(s.log))
+	for _, r := range s.log {
+		if r.known && len(r.data) > 0 {
+			counts["unique_data_entries"]++
+			counts["unique_entry_bytes"] += int64(len(r.data))
+		}
 	}
 	counts["calls"], counts["answered"], counts["virtual_ns"] = int64(len(s.history)), int64(answered), s.now()
 	b, _ := json.Marshal(counts)

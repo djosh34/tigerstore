@@ -1,5 +1,7 @@
 package core
 
+import "github.com/djosh34/tigerstore/internal/exp448stats"
+
 import (
 	"bytes"
 	"cmp"
@@ -248,6 +250,7 @@ func (st *State) track() {
 // ApplyPut runs one committed put, given by its fields, and returns the
 // previous version if the put asked for it.
 func (st *State) ApplyPut(op *mvcc.PutOp) (*mvccpb.KeyValue, error) {
+	exp448stats.PutApplies.Add(1)
 	st.changes = nil
 	if err := st.refused(true); err != nil {
 		return nil, err
@@ -277,6 +280,7 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 	}
 	switch op := op.(type) {
 	case *pb.PutRequest:
+		exp448stats.PutApplies.Add(1)
 		r, err := st.kv.Put(op)
 		if err != nil {
 			return nil, err
@@ -291,6 +295,7 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 		st.track()
 		return r, nil
 	case *pb.TxnRequest:
+		exp448stats.TxnApplies.Add(1)
 		r, err := st.kv.Txn(op)
 		if err != nil {
 			return nil, err

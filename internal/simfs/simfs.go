@@ -852,9 +852,11 @@ func (h *Handle) Sync() error {
 		return err
 	}
 	if h.f.cut {
+		exp448stats.SyncedBytes.Add(int64(len(h.f.data)))
 		h.f.durable = slices.Clone(h.f.data)
 	} else {
 		for _, w := range h.f.pending {
+			exp448stats.SyncedBytes.Add(int64(len(w.p)))
 			h.f.durable = apply(h.f.durable, w.off, w.p)
 		}
 	}

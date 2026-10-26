@@ -12,15 +12,17 @@ for mode in default short long; do
  for engine in gosim native; do
   dest=$out/$mode-$engine;mkdir -p "$dest"
   native=0; limit=12m; testtimeout=10m
-  if [[ $engine == native ]];then native=1; limit=2m; testtimeout=90s;fi
+  profileflags=()
+  if [[ $engine == native ]];then native=1; limit=2m; testtimeout=90s;profileflags=(-test.cpuprofile="$dest/native.pprof");fi
   # The native .test driver launches one translated binary per gosim seed.
-  (cd internal/sim; /usr/bin/time -v -o "$dest/time.txt" timeout --kill-after=10s "$limit" env SIM_SEED=$seed SIM_LONG=$long EXP441_MINUTES=10 EXP448_NATIVE=$native GOSIM_CPUPROFILE="$dest/cpu" "$root/.gosim/bin/sim.test" -test.run "^$test$" -test.v -test.timeout="$testtimeout") >"$dest/seed.log" 2>&1
+  (cd internal/sim; /usr/bin/time -v -o "$dest/time.txt" timeout --kill-after=10s "$limit" env SIM_SEED=$seed SIM_LONG=$long EXP441_MINUTES=10 EXP448_NATIVE=$native GOSIM_CPUPROFILE="$dest/cpu" "$root/.gosim/bin/sim.test" -test.run "^$test$" -test.v -test.timeout="$testtimeout" "${profileflags[@]}") >"$dest/seed.log" 2>&1
   echo "$mode $engine exit=$?"
   grep -E 'REALMARK|TIMERS448' "$dest/seed.log" | cut -c1-1200 || true
-  for profile in "$dest"/cpu.*; do
+  for profile in "$dest"/cpu.* "$dest"/native.pprof; do
    [[ -f $profile ]] || continue
    go tool pprof -top -nodecount=120 "$profile" > "$profile.top.txt" 2>&1
    go tool pprof -top -cum -nodecount=120 "$profile" > "$profile.cum.txt" 2>&1
+   python3 scripts/exp448-profile.py "$profile" > "$profile.groups.txt"
   done
  done
 done
