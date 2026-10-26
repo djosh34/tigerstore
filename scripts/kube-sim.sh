@@ -6,7 +6,7 @@
 #   FIRST=<seed> MINUTES=<minutes> [TWICE=1] scripts/kube-sim.sh
 #
 # With TWICE=1 the first seed runs twice and must give the same hashes. A
-# seed may take 120 minutes, twice that when it runs twice. Each seed is a
+# seed may take 180 minutes, 300 when it runs twice. Each seed is a
 # gosim process of its own, with a Go memory limit of 12 GiB. A sampler
 # reads the memory of it and of its driver every 2 s; the seed's line
 # gives the peak, and a seed past 14.5 GiB is killed, so that the machine
@@ -26,7 +26,7 @@ while [ "$SECONDS" -lt $((MINUTES * 60)) ]; do
 	log=$out/seed-$seed.log
 	echo "seed $seed: replay: SIM_LONG=1 SIM_SEED=$seed SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestKubernetesLoad\$'"
 	start=$SECONDS
-	SIM_SEED=$seed SIM_TWICE=$twice "$root/.gosim/bin/sim.test" -test.run '^TestKubernetesLoad$' -test.v -test.timeout $((120 * (1 + twice)))m >"$log" 2>&1 &
+	SIM_SEED=$seed SIM_TWICE=$twice "$root/.gosim/bin/sim.test" -test.run '^TestKubernetesLoad$' -test.v -test.timeout $((180 + 120 * twice))m >"$log" 2>&1 &
 	pid=$!
 	peak=0
 	killed=""

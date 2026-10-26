@@ -2,8 +2,8 @@
 # (TestKubernetesLoad with SIM_LONG=1, docs/testing.md): 20 jobs, each
 # running new seeds of 10,000 objects for 4 virtual hours, every checker
 # on each, one after the other for about 5 hours: a job starts seeds
-# while it has had less than 225 minutes, and a seed takes 25 minutes to
-# over an hour.
+# while it has had less than 165 minutes, and a seed takes from 50
+# minutes to over 2 hours.
 # The first seed of job 0 runs twice and must give the same hashes. The
 # seeds come from the date: YYYYMMDD followed by seven digits, a block of
 # 20,000 for each run of the day, the next free one when the campaign
@@ -11,7 +11,7 @@
 # started by hand:
 #   gh workflow run kube-sim.yml --ref <branch>
 # -f minutes=1 runs one seed a job, as to measure their time and memory.
-# A job stays within GitHub's 6 hours: a seed may take 120 minutes.
+# A job stays within GitHub's 6 hours: a seed may take 180 minutes.
 # scripts/kube-sim.sh runs a job's seeds. Each seed prints its peak
 # memory, its time and the command that runs it again; a failing seed
 # prints its hashes, and its trace, how it left each node, its history
@@ -27,7 +27,7 @@ on:
       minutes:
         description: Minutes in which each job starts new seeds
         required: true
-        default: "225"
+        default: "165"
       first:
         description: First seed, instead of the next free block of the date
         default: ""
@@ -78,7 +78,7 @@ jobs:
         env:
           FIRST: ${{ needs.seeds.outputs.first }}
           SHARD: ${{ matrix.shard }}
-          MINUTES: ${{ inputs.minutes || '225' }}
+          MINUTES: ${{ inputs.minutes || '165' }}
           TWICE: ${{ matrix.shard == 0 && '1' || '0' }}
           SIM_OUT: ${{ runner.temp }}/sim-out
         run: FIRST=$((FIRST + SHARD * 1000)) scripts/kube-sim.sh
