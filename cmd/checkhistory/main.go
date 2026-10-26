@@ -60,6 +60,7 @@ func main() {
 	checkers := map[string]func(*history.History) error{
 		"witness-log": func(h *history.History) error { return check.Witnessed(h, check.FromLog, *timeout) },
 		"witness-revisions": func(h *history.History) error {
+			stats = check.WitnessStats{}
 			return check.Witnessed(h, check.FromRevisions, *timeout, check.WitnessMetrics(&stats), check.RevisionSearch(*variant), check.WitnessProgress(progress))
 		},
 		"linearizable": func(h *history.History) error { return check.Linearizable(h, *timeout) },
