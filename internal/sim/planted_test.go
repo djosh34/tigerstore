@@ -262,7 +262,7 @@ func TestPlanted(t *testing.T) {
 		case c.witness && !witnessCatches(t, res):
 			return plantedRun{}
 		}
-		save(t, replayCommand(t.Name(), seed), res)
+		save(t, replayCommand(t.Name(), seed), res, true)
 		return plantedRun{Finding: err.Error()}
 	}, func(seed uint64, r plantedRun) bool {
 		tried++
