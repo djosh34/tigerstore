@@ -2,6 +2,7 @@ name: exp448-memory
 on:
   push:
     branches: [exp/448-memory]
+    paths: ['internal/sim/**', 'internal/simrun/**', 'internal/simfs/**', 'tools/gosimfork/**']
 permissions:
   contents: read
 jobs:
@@ -32,6 +33,7 @@ jobs:
           MEMCASE448: ${{ matrix.case }}
         run: |
           set +e
+          failed=0
           export EXP441_MINUTES=10
           if [ "$MEMCASE448" = long30 ]; then export EXP441_MINUTES=30; fi
           if [ "$MEMCASE448" = data10 ]; then export OBJECTS448=50000; fi
@@ -47,12 +49,14 @@ jobs:
             sampler=$!
             wait "$pid"
             status=$?
+            if [ "$status" -ne 0 ]; then failed=1; fi
             pkill -KILL '^translated' || true
             wait "$sampler"
             echo "$mode status=$status peak-kib=$(cat "$out/peak-kib")"
             grep -E 'MEMSTAT|MEM448|DISK448|STATE448|CHECKPOINT448|COMPACT448|REALMARK.*stats|Maximum resident|Elapsed|^---|^(PASS|FAIL)' "$out/run.log" | cut -c1-1400
-            for p in "$out"/*.pprof; do [ -f "$p" ] && go tool pprof -top -inuse_space "$p" >"$p.txt" 2>&1; done
+            for p in "$out"/*.pprof; do if [ -f "$p" ]; then go tool pprof -top -inuse_space "$p" >"$p.txt" 2>&1; fi; done
           done
+          exit "$failed"
       - if: always()
         uses: actions/upload-artifact@v6
         with:
