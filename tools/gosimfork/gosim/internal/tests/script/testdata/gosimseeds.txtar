@@ -1,0 +1,23 @@
+# running gosim with seeds
+exec gosim test -run TestRand -v .
+stdout 'TestRand.*seed 1'
+! stdout 'TestRand.*seed 2'
+
+exec gosim test -run TestRand -seeds 2-3,9 -v .
+! stdout 'TestRand.*seed 1$'
+stdout 'TestRand.*seed 2'
+stdout 'TestRand.*seed 3'
+! stdout 'TestRand.*seed 4'
+stdout 'TestRand.*seed 9'
+
+-- seed_test.go --
+package behavior_test
+
+import (
+	"math/rand"
+	"testing"
+)
+
+func TestRand(t *testing.T) {
+	t.Log(rand.Int())
+}

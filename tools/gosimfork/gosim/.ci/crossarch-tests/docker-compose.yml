@@ -1,0 +1,21 @@
+services:
+  test-linux-arm64:
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: ./.ci/crossarch-tests/Dockerfile.test
+    volumes:
+      - cache:/cache
+
+  test-linux-amd64:
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: ./.ci/crossarch-tests/Dockerfile.test
+    volumes:
+      - cache:/cache
+
+volumes:
+  cache:
+
+

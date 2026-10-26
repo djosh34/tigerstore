@@ -687,7 +687,9 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		return nil, err
 	}
 	res := &Result{Clients: cfg.Clients + cfg.V3Clients}
+	mark("phase run start seed=%d", cfg.Seed)
 	err = s.run()
+	mark("phase run end history=%d", len(s.history))
 	// A run that failed before its end keeps what it did so far, for its
 	// report; it has no committed log for the checkers.
 	s.mu.Lock()
@@ -711,6 +713,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)
 		}
 	}
+	mark("phase own-checks end log=%d", len(res.Log))
 	// The checks run the cold restarts, which keep their disks when they
 	// fail (#280).
 	s.mu.Lock()
@@ -725,6 +728,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if err == nil {
 		err = s.failure()
 	}
+	mark("phase shutdown end")
 	return res, err
 }
 
@@ -806,6 +810,7 @@ func (s *Sim) run() error {
 		case <-s.failed():
 		}
 	}
+	mark("phase load end virtual=%ds", s.now()/Second)
 	s.mu.Lock()
 	s.stop()
 	s.mu.Unlock()

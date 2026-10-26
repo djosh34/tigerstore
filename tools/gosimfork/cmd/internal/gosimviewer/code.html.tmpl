@@ -1,0 +1,7 @@
+<pre>
+{{ range .Lines }}<span id="L{{.Line}}"{{ if .Selected }} class="selected"{{ end }}>{{ printf "% 4d" .Line }}</span> {{ .Text }}
+{{ end }}
+</pre>
+<script>
+scrollTo({{ .File }}, {{ .Line }});
+</script>
