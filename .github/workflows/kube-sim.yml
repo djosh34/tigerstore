@@ -39,7 +39,19 @@ jobs:
           SEED: ${{ matrix.seed }}
           EXP441_MINUTES: ${{ inputs.minutes }}
           OUT: ${{ runner.temp }}/exp441
-        run: scripts/exp441.sh
+        run: |
+          if [[ "$SEED" != *" "* ]]; then
+            exec scripts/exp441.sh
+          fi
+          # Several seeds at once on this runner.
+          mkdir -p "$OUT"
+          for s in $SEED; do
+            OUT=$OUT/$s SEED=$s NOPKILL=1 NOCHECK=1 scripts/exp441.sh >"$OUT/$s.txt" 2>&1 &
+          done
+          ( peak=0; while sleep 5; do m=$(free -m | awk '/Mem:/ {print $3}'); [ "$m" -gt "$peak" ] && peak=$m && echo "$peak" >"$OUT/peak-used-mib"; done ) &
+          wait $(jobs -p | head -n -1)
+          echo "peak used memory of the runner: $(cat "$OUT/peak-used-mib") MiB"
+          for s in $SEED; do echo "== $s"; head -1 "$OUT/$s.txt"; grep -E 'driver gosim|phase (run|own-checks|hashes|checkable|witness|checkers)' "$OUT/$s.txt"; mkdir -p "$OUT/par"; cp "$OUT/$s.txt" "$OUT/par/"; done
       - if: always()
         uses: actions/upload-artifact@v6
         with:
@@ -48,4 +60,6 @@ jobs:
             ${{ runner.temp }}/exp441/seed.log
             ${{ runner.temp }}/exp441/cpu.*
             ${{ runner.temp }}/exp441/history.json.gz
+            ${{ runner.temp }}/exp441/par
+            ${{ runner.temp }}/exp441/*/cpu.*
           retention-days: 14

@@ -20,10 +20,11 @@ while kill -0 "$pid" 2>/dev/null; do
 done
 wait "$pid"
 st=$?
-pkill -KILL '^translated' || true
+[ -n "${NOPKILL:-}" ] || pkill -KILL '^translated' || true
 echo "seed $SEED: exit $st, peak $((peak / 1024)) MiB, $((SECONDS - start)) s"
 grep -E 'REALMARK|hashes:|gosim run of seed|^--- |^(ok|FAIL|PASS)$|kube_test.go' "$out/seed.log" | grep -v progress | cut -c1-600
 grep -E 'progress' "$out/seed.log" | awk 'NR%6==0' | cut -c1-300
+[ -z "${NOCHECK:-}" ] || exit $st
 cd "$root"
 go build -o "$out/checkhistory" ./cmd/checkhistory
 if [ -f "$out/history.json.gz" ]; then

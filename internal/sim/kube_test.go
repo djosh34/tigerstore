@@ -3,8 +3,8 @@ package sim
 import (
 	"math/rand/v2"
 	"os"
-	"strconv"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
