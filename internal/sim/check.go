@@ -61,6 +61,9 @@ func (s *Sim) check(res *Result) error {
 			if _, ok := op.(*pb.Member); ok {
 				return nil
 			}
+			if s.values != nil {
+				s.values.shareMessage(op)
+			}
 			res.Log = append(res.Log, op)
 			return nil
 		}); err != nil {
@@ -580,19 +583,42 @@ func sameLatest(a, b *mvcc.Store, log core.Log) error {
 	return nil
 }
 
-// leaseGrace is how long after its last grant or keepalive a lease may
-// still live at the end: the largest TTL the clients ask for, 4 s, plus a
-// leader change, after which the new leader gives the full TTL again.
-const leaseGrace = 8 * Second
+// leaseGrace is how long after its last grant or keepalive a lease of
+// ttl seconds may still live: its TTL, plus a leader change, after which
+// the new leader gives the full TTL again.
+func leaseGrace(ttl int64) int64 { return 2 * ttl * Second }
 
-// checkLeasesExpire requires every lease still granted at the end to have
-// been granted or kept alive within leaseGrace, so leases do expire, and
-// no lease to expire before its TTL ran out since its last successful
-// grant or renewal.
+// maxLeaseTTL is the longest TTL, in seconds, the clients ask for.
+func (c Config) maxLeaseTTL() int64 {
+	if c.Objects > 0 {
+		return kubeLeaseTTL
+	}
+	return maxTTL
+}
+
+// checkLeasesExpire checks the leases of the run (leasesExpire) and
+// counts the revokes in the log, expiries included.
 func (s *Sim) checkLeasesExpire(res *Result) error {
+	if err := leasesExpire(res.History, s.expiredAt, s.expiredOrder, s.live()[0].proc.core.Leases(), s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
+		return err
+	}
+	for _, op := range res.Log {
+		if _, ok := op.(*pb.LeaseRevokeRequest); ok {
+			res.Stats.Revokes++
+		}
+	}
+	return nil
+}
+
+// leasesExpire requires every lease that still lives at end to have been
+// granted or kept alive within the leaseGrace of its TTL, so leases do
+// expire, and no lease to expire, at expiredAt, before its TTL ran out
+// since its last successful grant or renewal, less the clock envelope of
+// driftPerMille.
+func leasesExpire(history []*Record, expiredAt map[int64]int64, order, alive []int64, end, driftPerMille int64) error {
 	renewed := map[int64]int64{}
 	ttl := map[int64]int64{}
-	for _, r := range res.History {
+	for _, r := range history {
 		switch resp := r.Resp.(type) {
 		case *pb.LeaseGrantResponse:
 			renewed[resp.ID] = max(renewed[resp.ID], r.Call)
@@ -603,13 +629,13 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 			}
 		}
 	}
-	for _, id := range s.expiredOrder {
-		at := s.expiredAt[id]
+	for _, id := range order {
+		at := expiredAt[id]
 		// The declared clock envelope: the leader's clock may run fast by
 		// DriftPerMille, and its ticks fall anywhere in a tick of real
 		// time. Go tickers never jump several ticks at once.
-		early := ttl[id]*Second*s.cfg.Faults.DriftPerMille/1000 + TickTime
-		if s.cfg.Faults.DriftPerMille == 0 {
+		early := ttl[id]*Second*driftPerMille/1000 + TickTime
+		if driftPerMille == 0 {
 			early = 0
 		}
 		if t, ok := renewed[id]; ok && at < t+ttl[id]*Second-early {
@@ -618,7 +644,7 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 		}
 	}
 	last := map[int64]int64{}
-	for _, r := range res.History {
+	for _, r := range history {
 		switch req := r.req.(type) {
 		case *pb.LeaseGrantRequest:
 			if g, ok := r.Resp.(*pb.LeaseGrantResponse); ok {
@@ -628,16 +654,11 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 			last[req.ID] = max(last[req.ID], r.Call)
 		}
 	}
-	for _, id := range s.live()[0].proc.core.Leases() {
+	for _, id := range alive {
 		t, known := last[id]
 		// A lease from an ambiguous grant has an ID no client learned.
-		if known && t < s.endAt-leaseGrace {
-			return fmt.Errorf("lease %d was last granted or kept alive at %d ms but still lives at %d ms", id, t/Millisecond, s.endAt/Millisecond)
-		}
-	}
-	for _, op := range res.Log {
-		if _, ok := op.(*pb.LeaseRevokeRequest); ok {
-			res.Stats.Revokes++
+		if known && t < end-leaseGrace(ttl[id]) {
+			return fmt.Errorf("lease %d with TTL %d s was last granted or kept alive at %d ms but still lives at %d ms", id, ttl[id], t/Millisecond, end/Millisecond)
 		}
 	}
 	return nil

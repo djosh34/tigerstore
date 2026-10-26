@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/jellevandenhooff/gosim/metatesting"
 )
@@ -25,6 +26,10 @@ const InGosim = false
 // Bubble runs f, which runs one simulation, in a synctest bubble, on whose
 // clock the nodes run.
 func Bubble(t *testing.T, f func(*testing.T)) { synctest.Test(t, f) }
+
+// BubbleFor is Bubble: natively a simulation has no timeout of virtual
+// time.
+func BubbleFor(t *testing.T, _ time.Duration, f func(*testing.T)) { synctest.Test(t, f) }
 
 // Artifact does nothing natively.
 func Artifact(string, []byte) {}
@@ -46,8 +51,20 @@ func Here(t *testing.T) bool {
 	return false
 }
 
+// passed are the variables of passedOn that are set, as KEY=VALUE.
+func passed() []string {
+	var env []string
+	for _, name := range passedOn {
+		if v := os.Getenv(name); v != "" {
+			env = append(env, name+"="+v)
+		}
+	}
+	return env
+}
+
 // Drive runs t's whole test, which runs the one harness seed seed, as a
-// gosim run with that seed and the planted bug of $SIM_PLANTED, and
+// gosim run with that seed, the planted bug of $SIM_PLANTED and the
+// profile of $SIM_LONG, and
 // reports true when scripts/sim.sh started it; the caller then returns.
 // It reports false when t runs its body here (Here).
 func Drive(t *testing.T, seed uint64) bool {
@@ -55,25 +72,25 @@ func Drive(t *testing.T, seed uint64) bool {
 	if Here(t) {
 		return false
 	}
-	var env []string
-	if bug := os.Getenv("SIM_PLANTED"); bug != "" {
-		env = append(env, "SIM_PLANTED="+bug)
-	}
-	r := Do(t, Run{Test: Top(strings.Split(t.Name(), "/"))[0], Seed: seed, Env: env})
+	r := Do(t, Run{Test: Top(strings.Split(t.Name(), "/"))[0], Seed: seed, Env: passed()})
 	keep(t, r.Artifacts, "")
 	return true
 }
 
 // Do runs r in gosim. A failed run fails t, with the run's log, its
 // hashes and the command that runs it again; with -test.v Do logs a
-// passed run's log too.
+// passed run's log too, and how long each run took.
 func Do(t *testing.T, r Run) *Result {
 	t.Helper()
 	pkg, _ := pkgPath(t)
 	mt := metatesting.ForOtherPackage(t, pkg, tags...)
+	start := time.Now()
 	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: r.Env})
 	if err != nil {
 		t.Fatalf("running %s in gosim: %v", r.Test, err)
+	}
+	if testing.Verbose() {
+		t.Logf("the gosim run of seed %d took %v", r.Seed, time.Since(start).Round(time.Second))
 	}
 	if res.Failed {
 		t.Errorf("%s failed in gosim with seed %d: %s\n%s", r.Test, r.Seed, res.Err, readable(res.LogOutput))
@@ -120,6 +137,15 @@ func readable(out []byte) string {
 // run's in a directory with suffix after its name, if set.
 func keep(t *testing.T, artifacts map[string][]byte, suffix string) {
 	t.Helper()
+	for _, d := range keepQuiet(t, artifacts, suffix) {
+		t.Logf("the run is saved in %s", d)
+	}
+}
+
+// keepQuiet is keep, which returns the directories it wrote instead of
+// logging them.
+func keepQuiet(t *testing.T, artifacts map[string][]byte, suffix string) []string {
+	t.Helper()
 	files := map[string][]byte{}
 	runs := map[string]bool{}
 	for name, b := range artifacts {
@@ -140,20 +166,22 @@ func keep(t *testing.T, artifacts map[string][]byte, suffix string) {
 		runs[run] = true
 	}
 	if len(files) == 0 {
-		return
+		return nil
 	}
 	out := os.Getenv("SIM_OUT")
 	if out == "" {
 		t.Logf("set SIM_OUT to save the files of %v", slices.Sorted(maps.Keys(runs)))
-		return
+		return nil
 	}
 	if err := WriteFiles(out, files); err != nil {
 		t.Errorf("saving the run in %s: %v", out, err)
-		return
+		return nil
 	}
-	for run := range runs {
-		t.Logf("the run is saved in %s", filepath.Join(out, run))
+	var dirs []string
+	for _, run := range slices.Sorted(maps.Keys(runs)) {
+		dirs = append(dirs, filepath.Join(out, run))
 	}
+	return dirs
 }
 
 // each runs the seeds: here under the race detector, otherwise each as a
@@ -168,17 +196,14 @@ func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.
 	known := knownFailures(t)
 	twice := int(envUint(t, "SIM_TWICE", 0))
 	test := Top(strings.Split(t.Name(), "/"))[0]
-	var planted []string
-	if bug := os.Getenv("SIM_PLANTED"); bug != "" {
-		planted = append(planted, "SIM_PLANTED="+bug)
-	}
+	passedEnv := passed()
 	anyFailed := false
 	if !here {
 		// A rule over the set can fail the test with no seed failed; the
 		// whole set then runs again.
 		t.Cleanup(func() {
 			if t.Failed() && !anyFailed {
-				t.Logf("replay: %s", Replay(dir(t), Pattern(t.Name()), append(set, planted...)))
+				t.Logf("replay: %s", Replay(dir(t), Pattern(t.Name()), append(set, passedEnv...)))
 			}
 		})
 	}
@@ -197,7 +222,7 @@ func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.
 				stop = add(seed, body(t, seed))
 				return
 			}
-			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, planted...)
+			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, passedEnv...)
 			var r *Result
 			if twice > 0 && i%max(1, len(seeds)/twice) == 0 {
 				r = twoRuns(t, Run{Test: test, Seed: seed, Env: env})
@@ -224,7 +249,10 @@ func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.
 
 // twoRuns runs r twice, and fails t unless both give the same hashes.
 // With SIM_KEEP each run saves its files, which are kept, as first and
-// second, only when they differ or a run failed.
+// second, only when they differ or a run failed. The first run's files
+// go to $SIM_OUT before the second run starts, so this process holds one
+// run's files at a time, which for a long profile take gigabytes; they
+// are removed again unless the runs differ.
 func twoRuns(t *testing.T, r Run) *Result {
 	t.Helper()
 	r.Env = append(r.Env, "SIM_KEEP=1")
@@ -233,18 +261,32 @@ func twoRuns(t *testing.T, r Run) *Result {
 		keep(t, first.Artifacts, "")
 		return first
 	}
+	saved := keepQuiet(t, first.Artifacts, "first")
+	hashes := first.Artifacts["hashes"]
+	first.Artifacts = map[string][]byte{"hashes": hashes, "seed.json": first.Artifacts["seed.json"]}
 	second := Do(t, r)
+	differ := false
 	switch {
 	case second.Failed:
 		keep(t, second.Artifacts, "")
-	case len(first.Artifacts["hashes"]) == 0:
+	case len(hashes) == 0:
 		t.Errorf("seed %d left no hashes to compare", r.Seed)
-	case string(first.Artifacts["hashes"]) != string(second.Artifacts["hashes"]):
-		keep(t, first.Artifacts, "first")
+	case string(hashes) != string(second.Artifacts["hashes"]):
+		differ = true
+		for _, d := range saved {
+			t.Logf("the run is saved in %s", d)
+		}
 		keep(t, second.Artifacts, "second")
 		env := slices.DeleteFunc(slices.Clone(r.Env), func(v string) bool { return v == "SIM_KEEP=1" })
 		t.Errorf("seed %d played out differently the second time:\n%s\n%s\nreplay: %s", r.Seed,
-			first.Artifacts["hashes"], second.Artifacts["hashes"], Replay(dir(t), Pattern(t.Name()), append(env, "SIM_TWICE=1")))
+			hashes, second.Artifacts["hashes"], Replay(dir(t), Pattern(t.Name()), append(env, "SIM_TWICE=1")))
+	}
+	if !differ {
+		for _, d := range saved {
+			if err := os.RemoveAll(d); err != nil {
+				t.Error(err)
+			}
+		}
 	}
 	return first
 }

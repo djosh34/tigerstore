@@ -25,8 +25,9 @@ type Run struct {
 	// Seed is gosim's seed: the harness seed, or 1 for a test that runs
 	// fixed seeds.
 	Seed uint64
-	// Env holds the variables, as KEY=VALUE, that the test reads its seeds
-	// and planted bug from: SIM_SEED, SIM_SEEDS and SIM_PLANTED.
+	// Env holds the variables, as KEY=VALUE, that the test reads its
+	// seeds, planted bug and profile from: SIM_SEED, SIM_SEEDS,
+	// SIM_PLANTED and SIM_LONG.
 	Env []string
 }
 
@@ -51,6 +52,14 @@ func Replay(dir, pattern string, env []string) string {
 	slices.Sort(env)
 	return strings.TrimSpace(strings.Join(env, " ")+" scripts/sim.sh "+dir) + " '" + pattern + "'"
 }
+
+// Long reports whether the tests run their long profiles ($SIM_LONG is 1),
+// as the nightly kube-sim workflow does.
+func Long() bool { return os.Getenv("SIM_LONG") == "1" }
+
+// passedOn are the variables besides the seeds that the driver passes to
+// each gosim run, which gets no other: the planted bug and the profile.
+var passedOn = []string{"SIM_PLANTED", "SIM_LONG"}
 
 // Pattern is the -run pattern of the test or subtest name. A subtest
 // named after a test function, such as TestSeeds's deliberate scenario,

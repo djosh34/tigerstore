@@ -73,6 +73,10 @@ func (r *Result) Checkable() (*history.History, error) {
 		} else if op.Resp, err = frometcd.Response(rec.Resp); err != nil {
 			return nil, err
 		}
+		if vs := r.values; vs != nil {
+			vs.shareRequest(&op.Req)
+			vs.shareResponse(op.Resp)
+		}
 		h.Ops = append(h.Ops, op)
 	}
 	for _, m := range r.Log {
@@ -82,6 +86,9 @@ func (r *Result) Checkable() (*history.History, error) {
 		req, err := frometcd.Request(m)
 		if err != nil {
 			return nil, err
+		}
+		if vs := r.values; vs != nil {
+			vs.shareRequest(&req)
 		}
 		h.Log = append(h.Log, req)
 	}
@@ -97,6 +104,9 @@ func (r *Result) Checkable() (*history.History, error) {
 			hr, err := watchResponse(wr)
 			if err != nil {
 				return nil, err
+			}
+			if vs := r.values; vs != nil {
+				vs.shareEvents(hr.Events)
 			}
 			hw.Responses = append(hw.Responses, hr)
 		}

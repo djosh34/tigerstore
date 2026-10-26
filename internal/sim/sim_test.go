@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -63,7 +64,8 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 	t.Helper()
 	var res *Result
 	var err error
-	simrun.Bubble(t, func(*testing.T) { res, err = runInspect(cfg, inspect) })
+	// An hour more than the run's length, which a run of hours needs.
+	simrun.BubbleFor(t, time.Duration(cfg.length())+time.Hour, func(*testing.T) { res, err = runInspect(cfg, inspect) })
 	if simrun.InGosim && res != nil {
 		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, hashes(res)))
 		simrun.Artifact("hashes", []byte(strings.Join(hashLines, "\n")+"\n"))
@@ -71,7 +73,9 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 		// differ, once the seed's last simulation is over.
 		if os.Getenv("SIM_KEEP") != "" {
 			cmd := replayCommand(t.Name(), cfg.Seed)
-			simrun.AfterSeed(func() { save(t, cmd, res) })
+			// A long run's history takes gigabytes, which a run kept
+			// only to compare with its second run leaves out.
+			simrun.AfterSeed(func() { save(t, cmd, res, !simrun.Long()) })
 		}
 	}
 	me := new(int)
@@ -92,56 +96,78 @@ var hashLines []string
 
 // hashes are the hashes of a run's trace, its history and each node's
 // disk, now and right after its last crash. Under gosim, two runs of the
-// same seed must give the same.
+// same seed must give the same. Each is written straight into its hash,
+// which a long run's history and disks need: built in memory first, a
+// seed of 20,000 objects took 14.8 GiB there (#416).
 func hashes(res *Result) string {
-	sum := func(b []byte) string {
-		h := sha256.Sum256(b)
-		return hex.EncodeToString(h[:8])
+	sum := func(write func(io.Writer)) string {
+		h := sha256.New()
+		write(h)
+		return hex.EncodeToString(h.Sum(nil)[:8])
 	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "trace %s history %s", sum([]byte(strings.Join(res.Trace, "\n"))), sum(historyBytes(res)))
+	fmt.Fprintf(&out, "trace %s history %s",
+		sum(func(w io.Writer) { writeString(w, strings.Join(res.Trace, "\n")) }),
+		sum(func(w io.Writer) { writeHistory(w, res) }))
 	for _, n := range res.nodes {
-		var disk strings.Builder
-		for _, files := range []map[string][]byte{n.disk.Files(), n.crashImage} {
-			for _, name := range slices.Sorted(maps.Keys(files)) {
-				fmt.Fprintf(&disk, "%s %d %s\n", name, len(files[name]), files[name])
+		fmt.Fprintf(&out, " node%d %s", n.id, sum(func(w io.Writer) {
+			file := func(name string, data []byte) {
+				writef(w, "%s %d ", name, len(data))
+				writeBytes(w, data)
+				writeString(w, "\n")
 			}
-			disk.WriteString("\n")
-		}
-		fmt.Fprintf(&out, " node%d %s", n.id, sum([]byte(disk.String())))
+			n.disk.EachFile(file)
+			writeString(w, "\n")
+			for _, name := range slices.Sorted(maps.Keys(n.crashImage)) {
+				file(name, n.crashImage[name])
+			}
+			writeString(w, "\n")
+		}))
 	}
 	return out.String()
 }
 
-// historyBytes is every call and every watch response of a run, with its exact
-// times, for its hash.
-func historyBytes(res *Result) []byte {
-	var b []byte
+// writef, writeBytes and writeString write to a hash, whose writes never
+// fail.
+func writef(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
+}
+
+func writeBytes(w io.Writer, b []byte) {
+	_, _ = w.Write(b)
+}
+
+func writeString(w io.Writer, s string) {
+	_, _ = io.WriteString(w, s)
+}
+
+// writeHistory writes every call and every watch response of a run, with
+// its exact times, for its hash.
+func writeHistory(w io.Writer, res *Result) {
 	marshal := func(m proto.Message) {
 		if m == nil {
-			b = append(b, "nil\n"...)
+			writeString(w, "nil\n")
 			return
 		}
-		bytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
+		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
 		if err != nil {
-			b = fmt.Appendf(b, "%T: %v\n", m, err)
+			writef(w, "%T: %v\n", m, err)
 			return
 		}
-		b = fmt.Appendf(b, "%T %d %x\n", m, len(bytes), bytes)
+		writef(w, "%T %d %x\n", m, len(b), b)
 	}
 	for _, r := range res.History {
-		b = fmt.Appendf(b, "call %d %d %d %d %v %v\n", r.Client, r.Node, r.Call, r.Return, r.Err, r.Ambiguous)
+		writef(w, "call %d %d %d %d %v %v\n", r.Client, r.Node, r.Call, r.Return, r.Err, r.Ambiguous)
 		marshal(r.req)
 		marshal(r.Resp)
 	}
-	for _, w := range res.Watches {
-		b = fmt.Appendf(b, "watch %q %q %v %v %d\n", w.Key, w.End, w.PrevKV, w.ProgressNotify, w.Start)
-		for _, r := range w.Responses {
-			b = fmt.Appendf(b, "at %d\n", r.Time)
+	for _, wr := range res.Watches {
+		writef(w, "watch %q %q %v %v %d\n", wr.Key, wr.End, wr.PrevKV, wr.ProgressNotify, wr.Start)
+		for _, r := range wr.Responses {
+			writef(w, "at %d\n", r.Time)
 			marshal(r.Resp)
 		}
 	}
-	return b
 }
 
 // explainSim explains a scenario that drives s itself, as explain does a
@@ -174,16 +200,17 @@ func explain(t *testing.T, cfg Config, res *Result) {
 	t.Logf("trace of seed %d:\n%s", cfg.Seed, strings.Join(res.Trace, "\n"))
 	t.Logf("the nodes at the end of seed %d:\n%s", cfg.Seed, res.Report)
 	t.Logf("hashes of seed %d: %s", cfg.Seed, hashes(res))
-	save(t, cmd, res)
+	save(t, cmd, res, true)
 	t.Logf("replay: %s", cmd)
 }
 
-// save keeps a run's files (runFiles) in $SIM_OUT, under the test's name.
-// Under gosim the driver writes them there.
-func save(t *testing.T, cmd string, res *Result) {
+// save keeps a run's files (runFiles), its history with history, in
+// $SIM_OUT, under the test's name. Under gosim the driver writes them
+// there.
+func save(t *testing.T, cmd string, res *Result, history bool) {
 	name := strings.ReplaceAll(t.Name(), "/", "_")
 	if simrun.InGosim {
-		for path, body := range runFiles(filepath.Join("$SIM_OUT", name), cmd, res) {
+		for path, body := range runFiles(filepath.Join("$SIM_OUT", name), cmd, res, history) {
 			simrun.Artifact(filepath.Join("sim-out", name, path), []byte(body))
 		}
 		return
@@ -194,7 +221,7 @@ func save(t *testing.T, cmd string, res *Result) {
 	}
 	dir := filepath.Join(out, name)
 	files := map[string][]byte{}
-	for path, body := range runFiles(dir, cmd, res) {
+	for path, body := range runFiles(dir, cmd, res, history) {
 		files[path] = []byte(body)
 	}
 	if err := simrun.WriteFiles(dir, files); err != nil {
@@ -213,28 +240,38 @@ func seedRange(first uint64, n int) []uint64 {
 	return seeds
 }
 
-// runFiles are a run's trace, node report, stats, hashes, history, disks
-// and replay command, by path, for a directory dir of their own.
-func runFiles(dir, cmd string, res *Result) map[string]string {
+// runFiles are a run's trace, node report, stats, hashes, history, with
+// history, disks and replay command, by path, for a directory dir of
+// their own.
+func runFiles(dir, cmd string, res *Result, history bool) map[string]string {
 	files := map[string]string{
 		"trace.txt":  strings.Join(res.Trace, "\n") + "\n",
 		"nodes.txt":  res.Report,
 		"replay.txt": cmd + "\n",
 		"stats.txt":  fmt.Sprintf("%+v\n", res.Stats),
 		"hashes.txt": hashes(res) + "\n",
-		// Every call, as the clients saw it, also when the run failed
-		// before its checks built the committed log that history.json
-		// needs.
-		"calls.txt": calls(res),
 	}
+	if !history {
+		files["replay.txt"] += "no history.json and no calls.txt: a long run kept to compare with its second run leaves them out; the replay command plays the seed again\n"
+		addDisks(files, res)
+		return files
+	}
+	// Every call, as the clients saw it, also when the run failed before
+	// its checks built the committed log that history.json needs. A long
+	// run's history takes gigabytes, so it gets calls.txt only without
+	// history.json.
 	h, err := res.Checkable()
+	if !simrun.Long() || !res.logged || err != nil {
+		files["calls.txt"] = calls(res)
+	}
 	switch {
 	case !res.logged:
 		files["replay.txt"] += "no history.json: the run failed before its checks built the committed log, which the checkers need; calls.txt has the calls\n"
 	case err != nil:
 		files["replay.txt"] += fmt.Sprintf("no history.json: %v\n", err)
 	default:
-		b, err := json.MarshalIndent(h, "", "  ")
+		// Not indented: a long run's history takes gigabytes as it is.
+		b, err := json.Marshal(h)
 		if err != nil {
 			files["replay.txt"] += fmt.Sprintf("no history.json: %v\n", err)
 			break
@@ -246,9 +283,14 @@ func runFiles(dir, cmd string, res *Result) map[string]string {
 		}
 		files["replay.txt"] += "go run ./cmd/checkhistory -checkers " + checkers + " " + filepath.Join(dir, "history.json") + "\n"
 	}
-	// Each node's last disk calls and its files now and right after its
-	// last crash, and the disks a failed cold restart started from, with
-	// that restart's disk calls (#274).
+	addDisks(files, res)
+	return files
+}
+
+// addDisks adds each node's last disk calls and its files now and right
+// after its last crash, and the disks a failed cold restart started from,
+// with that restart's disk calls (#274).
+func addDisks(files map[string]string, res *Result) {
 	for _, n := range res.nodes {
 		d := filepath.Join("disks", fmt.Sprintf("node%d", n.id))
 		files[filepath.Join(d, "calls.txt")] = strings.Join(n.diskLog, "\n") + "\n"
@@ -267,7 +309,6 @@ func runFiles(dir, cmd string, res *Result) map[string]string {
 			files[filepath.Join("cold", fmt.Sprintf("node%d-calls.txt", n.id))] = strings.Join(n.diskLog, "\n") + "\n"
 		}
 	}
-	return files
 }
 
 // calls is every call of a run, as the clients saw it.
@@ -305,6 +346,9 @@ func replayCommand(name string, seed uint64) string {
 	if activePlanted != "" {
 		env = append(env, "SIM_PLANTED="+activePlanted)
 	}
+	if simrun.Long() {
+		env = append(env, "SIM_LONG=1")
+	}
 	pattern := simrun.Pattern(name)
 	if !simrun.Race {
 		return simrun.Replay("./internal/sim", pattern, env)
@@ -332,13 +376,7 @@ func TestSeeds(t *testing.T) {
 		t.Logf("%+v, %d committed writes", st, len(a.Log))
 		return st
 	}, func(seed uint64, st Stats) bool {
-		took.add(seed, map[string]bool{
-			"crash": st.Crashes > 0, "link change": st.LinkChanges > 0, "two cold restarts": st.ColdRestarts >= 2,
-			"disk fault": st.DiskFaults > 0, "pause": st.Pauses > 0, "link stall": st.LinkStalls > 0,
-			"half-open link": st.HalfOpens > 0, "gray node": st.GrayNodes > 0, "gray client": st.GrayStreams > 0,
-			"kill": st.Kills > 0 || simrun.Race, "clientv3 call": st.V3OK > 0, "link fault": slices.ContainsFunc(st.Netem[:], func(n int) bool { return n > 0 }),
-			"connection reset": st.Resets > 0, "slow watcher": st.SlowWatchers > 0,
-		})
+		took.add(seed, faultsTaken(st))
 		ran++
 		total.Fenced += st.Fenced
 		total.Silences += st.Silences
@@ -386,6 +424,18 @@ func TestSeeds(t *testing.T) {
 	}
 	t.Logf("%d seeds: %d stalled leaders went silent", ran, total.Silences)
 	took.check(t)
+}
+
+// faultsTaken says which of the faults of a default run took effect in a
+// run with stats st.
+func faultsTaken(st Stats) map[string]bool {
+	return map[string]bool{
+		"crash": st.Crashes > 0, "link change": st.LinkChanges > 0, "two cold restarts": st.ColdRestarts >= 2,
+		"disk fault": st.DiskFaults > 0, "pause": st.Pauses > 0, "link stall": st.LinkStalls > 0,
+		"half-open link": st.HalfOpens > 0, "gray node": st.GrayNodes > 0, "gray client": st.GrayStreams > 0,
+		"kill": st.Kills > 0 || simrun.Race, "clientv3 call": st.V3OK > 0, "link fault": slices.ContainsFunc(st.Netem[:], func(n int) bool { return n > 0 }),
+		"connection reset": st.Resets > 0, "slow watcher": st.SlowWatchers > 0,
+	}
 }
 
 // effects counts, over a set of runs, the runs in which each fault took
@@ -1238,7 +1288,7 @@ func TestSaveRunKeepsDisks(t *testing.T) {
 	cfg := DefaultConfig(11)
 	cfg.Duration = 6 * Second
 	res := run(t, cfg)
-	files := runFiles("out", "replay", res)
+	files := runFiles("out", "replay", res, true)
 	calls := files[filepath.Join("disks", "node1", "calls.txt")]
 	if !strings.Contains(calls, " ms sync 0") || !strings.Contains(calls, " ms write 0") {
 		t.Fatalf("node 1's disk calls: %.200q", calls)

@@ -160,6 +160,14 @@ func (d *Disk) Files() map[string][]byte {
 	return out
 }
 
+// EachFile calls f with the name and the bytes of each file now, in name
+// order, without copying them; f must not keep or change them.
+func (d *Disk) EachFile(f func(name string, data []byte)) {
+	for _, name := range sortedNames(d.names) {
+		f(name, d.names[name].data)
+	}
+}
+
 // Image says what a crash keeps of the writes since a file's last sync.
 type Image int
 

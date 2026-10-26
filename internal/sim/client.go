@@ -46,9 +46,16 @@ type client struct {
 	v3    *clientv3.Client
 	lease clientv3.Lease
 	node  int
+	// kube is the client's part of the Kubernetes-shaped load, if the run
+	// has one (kube.go).
+	kube *kubeClient
 }
 
 const numKeys = 8
+
+// maxTTL is the longest TTL, in seconds, of the leases the clients of the
+// small keys ask for.
+const maxTTL = 4
 
 func key(i int) []byte { return fmt.Appendf(nil, "k%d", i) }
 
@@ -99,7 +106,7 @@ func (c *client) run() {
 				s.nodes[i].reloads = append(s.nodes[i].reloads, s.now())
 			}
 			c.done(r, resp, err)
-			wait = 1 + s.rng.Int64N(20*Millisecond)
+			wait = c.think(err)
 			s.mu.Unlock()
 			continue
 		}
@@ -121,10 +128,24 @@ func (c *client) run() {
 		}
 		s.mu.Lock()
 		c.done(r, resp, err)
-		// At least 1 ns, so the next call starts after this one returned.
-		wait = 1 + s.rng.Int64N(20*Millisecond)
+		wait = c.think(err)
 		s.mu.Unlock()
 	}
+}
+
+// think is how long the client waits after a call that ended with err
+// before its next: up to 20 ms, or the Kubernetes-shaped load's think
+// time, longer after a failure. The lock is held.
+func (c *client) think(err error) int64 {
+	s := c.sim
+	switch {
+	case c.kube == nil:
+		// At least 1 ns, so the next call starts after this one returned.
+		return 1 + s.rng.Int64N(20*Millisecond)
+	case err != nil:
+		return kubeThink + s.rng.Int64N(kubeBackoff)
+	}
+	return kubeThink
 }
 
 // call sends req to n's process as a client on the other end of a
@@ -176,6 +197,12 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 	r.Return, r.Resp, r.Err = s.now(), resp, err
 	r.Ambiguous = err != nil && ambiguous(err)
 	s.history = append(s.history, r)
+	if c.kube != nil {
+		if err == nil {
+			s.values.shareMessage(resp)
+		}
+		c.kubeDone(r)
+	}
 	if r.v3 && err == nil {
 		s.stats.V3OK++
 	}
@@ -245,6 +272,9 @@ func (c *client) learn(resp proto.Message) {
 // the current and past revisions, prefix reads with limits, and
 // serializable reads.
 func (c *client) request() proto.Message {
+	if c.kube != nil {
+		return c.kubeRequest()
+	}
 	s := c.sim
 	k := s.rng.IntN(numKeys)
 	val := fmt.Appendf(nil, "c%d-%d", c.id, c.n)
@@ -292,7 +322,7 @@ func (c *client) request() proto.Message {
 	case p < 98 && len(c.leases) > 0 && s.rng.IntN(2) == 0:
 		return &pb.LeaseKeepAliveRequest{ID: c.leases[len(c.leases)-1]}
 	case p < 98:
-		return &pb.LeaseGrantRequest{TTL: 2 + int64(s.rng.IntN(3))}
+		return &pb.LeaseGrantRequest{TTL: 2 + int64(s.rng.IntN(maxTTL-1))}
 	case p < 99:
 		// Compact a little behind the newest revision seen, as the
 		// Kubernetes compactor does, or half the time exactly where a

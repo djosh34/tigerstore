@@ -10,6 +10,7 @@ import (
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/k8ssize"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	tnode "github.com/djosh34/tigerstore/internal/node"
 )
@@ -23,6 +24,9 @@ type watchClient struct {
 	key, end []byte
 	prevKV   bool
 	progress bool
+	// requests makes the client ask its stream for progress now and then,
+	// as the apiserver does for a consistent read from its cache.
+	requests bool
 	// watchID is the ID of the current stream's watcher.
 	watchID int64
 	// start is the first revision of the watch, known once the first
@@ -65,19 +69,30 @@ type WatchResult struct {
 	Responses      []WatchRecord
 }
 
-// startWatchers starts the watch clients. The lock is held.
+// startWatchers starts the watch clients: four over the small keys, or
+// with the Kubernetes-shaped load one on each resource prefix, as the
+// apiserver keeps, with previous values, progress notifications and
+// progress requests. The lock is held.
 func (s *Sim) startWatchers() {
-	specs := []struct {
-		key, end         string
-		prevKV, progress bool
-	}{
-		{"k", "l", true, false},
-		{"k2", "k5", true, true},
-		{"k3", "", true, false},
-		{"k", "\x00", false, true},
+	type spec struct {
+		key, end                   string
+		prevKV, progress, requests bool
+	}
+	specs := []spec{
+		{"k", "l", true, false, false},
+		{"k2", "k5", true, true, false},
+		{"k3", "", true, false, false},
+		{"k", "\x00", false, true, false},
+	}
+	if s.cfg.Objects > 0 {
+		specs = nil
+		for _, r := range k8ssize.Resources() {
+			p := "/registry/" + r + "/"
+			specs = append(specs, spec{p, string(prefixEnd([]byte(p))), true, true, true})
+		}
 	}
 	for i, sp := range specs {
-		w := &watchClient{id: i, sim: s, key: []byte(sp.key), prevKV: sp.prevKV, progress: sp.progress}
+		w := &watchClient{id: i, sim: s, key: []byte(sp.key), prevKV: sp.prevKV, progress: sp.progress, requests: sp.requests}
 		if sp.end != "" {
 			w.end = []byte(sp.end)
 		}
@@ -137,6 +152,7 @@ func (w *watchClient) run(wait, dropAt int64) {
 // returns when to open the next one and when to drop that.
 func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64) {
 	s := w.sim
+	var ask <-chan time.Time
 	for {
 		s.mu.Lock()
 		// A drop comes at least 3 s before the end, as the next stream
@@ -145,6 +161,9 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 		// (#245). Drops after the clients stopped resume over compacted
 		// history, which catches B08.
 		p, untilDrop, dropping := w.proc, dropAt-s.now(), dropAt < s.endAt-3*Second
+		if w.requests && ask == nil {
+			ask = time.After(time.Duration(s.exp(progressEvery) - s.now()))
+		}
 		s.mu.Unlock()
 		t := time.NewTimer(time.Duration(max(untilDrop, 0)))
 		drop := t.C
@@ -153,6 +172,18 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 			drop = nil
 		}
 		select {
+		case <-ask:
+			t.Stop()
+			ask = nil
+			r := &pb.WatchRequest{RequestUnion: &pb.WatchRequest_ProgressRequest{ProgressRequest: &pb.WatchProgressRequest{}}}
+			if err := ws.Send(p.ctx, r); err != nil {
+				// The process went down; its stream with it.
+				s.mu.Lock()
+				s.tracef("watch %d: progress request: %v", w.id, err)
+				s.mu.Unlock()
+				ws.Close()
+				return 0, dropAt
+			}
 		case r := <-ws.C:
 			t.Stop()
 			ws.Taken(r)
@@ -201,6 +232,9 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 // client must leave it and start a new logical watch. The lock is held.
 func (w *watchClient) receive(r *pb.WatchResponse) bool {
 	s := w.sim
+	if s.values != nil {
+		s.values.shareMessage(r)
+	}
 	w.responses = append(w.responses, WatchRecord{Time: s.now(), Resp: r})
 	if r.Canceled && r.CompactRevision != 0 {
 		// The revision it needed is compacted. Like Kubernetes, start a
@@ -225,6 +259,12 @@ func (w *watchClient) receive(r *pb.WatchResponse) bool {
 			s.tracef("watch %d: created on node %d from %d", w.id, w.proc.n.id, w.start)
 		}
 		w.watchID = r.WatchId
+		return false
+	}
+	if r.WatchId == progressWatchID && len(r.Events) == 0 {
+		// The answer to a progress request: as a progress notification,
+		// every event up to its revision was delivered.
+		w.next = max(w.next, r.Header.Revision+1)
 		return false
 	}
 	if r.WatchId != w.watchID {
@@ -305,6 +345,14 @@ func (s *Sim) checkWatches(model *mvcc.Store, res *Result) error {
 	}
 	return nil
 }
+
+// progressWatchID is the watch ID of the answer to a progress request,
+// which goes to every watch of the stream: etcd's InvalidWatchID.
+const progressWatchID = -1
+
+// progressEvery is the mean time between progress requests of a watch
+// client that makes them.
+const progressEvery = 5 * Second
 
 // watchRestart is how long a watch client has at the end to create a
 // logical watch that a compaction restarted: a try, the wait of up to
