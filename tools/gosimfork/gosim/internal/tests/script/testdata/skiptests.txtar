@@ -1,0 +1,29 @@
+# This tests verifies that broken tests in dependencies are ignored.
+
+exec gosim test -v .
+stdout Hello
+
+! exec gosim test -v ./bad
+stderr badmarkerhere
+
+-- ok_test.go --
+package good
+
+import (
+    "testing"
+
+    "test/bad"
+)
+
+func TestDeps(t *testing.T) {
+    t.Log(bad.Public)
+}
+-- bad/fine.go --
+package bad
+
+var Public = "Hello"
+
+-- bad/bad_test.go --
+package bad_test
+
+badmarkerhere

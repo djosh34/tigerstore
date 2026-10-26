@@ -2,7 +2,9 @@ package sim
 
 import (
 	"math/rand/v2"
+	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +32,10 @@ func kubeConfig(seed uint64, long bool) Config {
 	cfg.Objects, cfg.Duration, cfg.CompactEvery = 1000, 2*60*Second, 20*Second
 	if long {
 		cfg.Objects, cfg.Duration, cfg.CompactEvery = 10_000, 4*3600*Second, 5*60*Second
+		// #441: EXP441_MINUTES shortens the long profile.
+		if m, err := strconv.Atoi(os.Getenv("EXP441_MINUTES")); err == nil && m > 0 {
+			cfg.Duration = int64(m) * 60 * Second
+		}
 		spreadFaults(&cfg.Faults, 2)
 		// A clientv3 call can spin for good in gRPC's transparent retry
 		// under gosim, one long seed in seven (#440).

@@ -1,0 +1,70 @@
+# metatest forwards logs
+
+# normally we do not see prefixed forwarded logs
+exec go test -run=Ok -race -count=1 -v .
+stdout hello
+! stdout 'metatest binary'
+
+# races do show up
+! exec go test -run=Bad -race -count=1 -v .
+stdout 'metatest binary: WARNING: DATA RACE'
+
+-- race_meta_test.go --
+//go:build !sim
+package behavior_test
+
+import (
+	"testing"
+
+    "github.com/jellevandenhooff/gosim/metatesting"
+)
+
+func TestOk(t *testing.T) {
+    mt := metatesting.ForCurrentPackage(t)
+	_, err := mt.Run(t, &metatesting.RunConfig{
+		Test:     "TestOk",
+		Seed:     1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBad(t *testing.T) {
+    mt := metatesting.ForCurrentPackage(t)
+	res, err := mt.Run(t, &metatesting.RunConfig{
+		Test:     "TestBad",
+		Seed:     1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+    if res.Failed {
+		t.Fatal(res.Err)
+    }
+}
+
+-- race_test.go --
+//go:build sim
+package behavior_test
+
+import (
+	"testing"
+)
+
+func TestOk(t *testing.T) {
+    t.Log("hello")
+}
+
+func TestBad(t *testing.T) {
+    // simple data race
+    var x int
+    done := make(chan struct{})
+    go func() {
+        x = 1
+        close(done)
+    }()
+    x = 2
+    <-done
+    _ = x
+}

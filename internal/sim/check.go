@@ -44,6 +44,7 @@ func (s *Sim) check(res *Result) error {
 			return err
 		}
 	}
+	mark("own committed-decode start")
 	final := last.proc.core.Store()
 	res.FinalRev = final.Rev()
 	ents, err := s.committed(s.live()[0].proc.core.Applied())
@@ -73,11 +74,13 @@ func (s *Sim) check(res *Result) error {
 	// The cluster compacts, so the checks read history from a model: the
 	// committed log replayed without compactions. It must end in the
 	// cluster's state.
+	mark("own replay start entries=%d", len(res.Log))
 	model, log, revs, err := replay(res.Log)
 	if err != nil {
 		return err
 	}
 	res.Log, res.revs, res.logged = log, revs, true
+	mark("own sameLatest+checkRecord start")
 	if err := s.sameLatestOn(model, last); err != nil {
 		return err
 	}
@@ -90,27 +93,35 @@ func (s *Sim) check(res *Result) error {
 				r.Client, r.Call/Millisecond, r.Node+1, err, r.req, r.Resp)
 		}
 	}
+	mark("own checkRealTime start")
 	if err := checkRealTime(res.History); err != nil {
 		return err
 	}
+	mark("own checkLog start")
 	if err := checkLog(res); err != nil {
 		return err
 	}
+	mark("own checkWatches start")
 	if err := s.checkWatches(model, res); err != nil {
 		return err
 	}
+	mark("own checkLeasesExpire start")
 	if err := s.checkLeasesExpire(res); err != nil {
 		return err
 	}
+	mark("own checkWatchersFreed start")
 	if err := s.checkWatchersFreed(); err != nil {
 		return err
 	}
+	mark("own checkColdRestarts start")
 	if err := s.checkColdRestarts(res); err != nil {
 		return err
 	}
+	mark("own checkRecoverable start")
 	if err := s.checkRecoverable(); err != nil {
 		return err
 	}
+	mark("own liveness start")
 	live := 0
 	liveFrom := s.liveFrom()
 	for _, r := range res.History {
