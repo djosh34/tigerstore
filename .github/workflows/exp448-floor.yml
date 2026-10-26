@@ -2,32 +2,11 @@ name: exp448 checker floor
 on:
   push:
     branches: [exp/448-check-floor]
-    paths: ['check/exp448_floor*', 'cmd/checkfloor/**', 'internal/sim/sim_test.go', '.github/workflows/exp448-floor.yml']
+    paths: ['.github/workflows/exp448-floor.yml']
 jobs:
-  gosim:
+  finish-native-large:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    env:
-      GOMAXPROCS: '2'
-      GOFLAGS: -p=1
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Short kube only, including Porcupine
-        run: |
-          mkdir -p "$RUNNER_TEMP/porcupine"
-          SIM_SEED=1 SIM_SEEDS=1 EXP441_OUT="$RUNNER_TEMP/porcupine" scripts/sim.sh ./internal/sim '^TestKubernetesLoad$' -test.v -test.timeout 8m 2>&1 | tee "$RUNNER_TEMP/porcupine/seed.log"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: exp448-gosim-porcupine
-          path: ${{ runner.temp }}/porcupine
-  native:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
+    timeout-minutes: 6
     env:
       GOMAXPROCS: '2'
       GOFLAGS: -p=1
@@ -38,23 +17,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Reuse already saved histories; no simulation
+      - name: Native revision witness with enough wall time, no simulation
         run: |
-          mkdir -p "$RUNNER_TEMP/floor"
-          gh run download 40283378568 -n exp448-short -D "$RUNNER_TEMP/floor/short"
-          gh run download 40282688114 -n exp441-202610260009002 -D "$RUNNER_TEMP/floor/60m"
-          gh run download 40282690495 -n exp441-202610260009002 -D "$RUNNER_TEMP/floor/120m"
-          lscpu | head -25
-          go version
-          go build -o "$RUNNER_TEMP/checkfloor" ./cmd/checkfloor
-          "$RUNNER_TEMP/checkfloor" -repeat 3 "$RUNNER_TEMP/floor/short/seeds/history.json.gz" "$RUNNER_TEMP/floor/short/kube/history.json.gz" "$RUNNER_TEMP/floor/60m/history.json.gz" "$RUNNER_TEMP/floor/120m/history.json.gz" | tee "$RUNNER_TEMP/native.jsonl"
-          "$RUNNER_TEMP/checkfloor" -repeat 3 -checkers floor,witness-log,witness-revisions -synthetic | tee "$RUNNER_TEMP/synthetic.jsonl"
-          "$RUNNER_TEMP/checkfloor" -repeat 3 -checkers linearizable "$RUNNER_TEMP/floor/short/seeds/history.json.gz" "$RUNNER_TEMP/floor/short/kube/history.json.gz" | tee "$RUNNER_TEMP/porcupine.jsonl"
+          gh run download 40282690495 -n exp441-202610260009002 -D "$RUNNER_TEMP/120m"
+          go build -o "$RUNNER_TEMP/checkhistory" ./cmd/checkhistory
+          "$RUNNER_TEMP/checkhistory" -timeout 180s -checkers witness-revisions "$RUNNER_TEMP/120m/history.json.gz" | tee "$RUNNER_TEMP/large.jsonl"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: exp448-native
-          path: |
-            ${{ runner.temp }}/native.jsonl
-            ${{ runner.temp }}/synthetic.jsonl
-            ${{ runner.temp }}/porcupine.jsonl
+          name: exp448-large-native
+          path: ${{ runner.temp }}/large.jsonl
