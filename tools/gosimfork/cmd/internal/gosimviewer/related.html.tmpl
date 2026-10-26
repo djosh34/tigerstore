@@ -1,0 +1,15 @@
+{{ range .Logs }}
+    <div style="margin: 0; font-family: monospace;">
+        {{ .Step }}
+        <a href="#" onclick="setFilter({focus: 'machine:{{ .Machine }}'})">{{ .Machine }}</a>/<a href="#" onclick="setFilter({focus: 'goroutine:{{ .Goroutine }}'})">{{.Goroutine}}</a>
+        {{ .Time | Time }}
+        {{ .Level | Level }}
+        <a href="#" onclick="show({index: {{ .Index }}, source: {{ .Source }} })">{{ .Source | Source }}</a>
+        &gt;
+        <span style="white-space-collapse: preserve;">{{ .Msg }}</span>
+        {{ range .Unknown }}
+            <span style="white-space-collapse: preserve;">{{ .Key }}={{ .Value }}</span>
+        {{ end }}
+    </div>
+{{ end }}
+{{ if .Truncated }}and more...{{ end }}

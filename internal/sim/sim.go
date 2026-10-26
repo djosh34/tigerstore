@@ -32,7 +32,9 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/proto"
 
+	"encoding/json"
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/exp448stats"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	tnode "github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
@@ -682,12 +684,25 @@ func Run(cfg Config) (*Result, error) { return runInspect(cfg, nil) }
 // runInspect runs cfg, then calls inspect, if set, while the nodes still
 // hold still for the checks.
 func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
+	exp448stats.Reset()
 	s, err := newSim(cfg)
 	if err != nil {
 		return nil, err
 	}
 	res := &Result{Clients: cfg.Clients + cfg.V3Clients}
+	mark("phase run start seed=%d", cfg.Seed)
 	err = s.run()
+	counts := exp448stats.Snapshot()
+	answered := 0
+	for _, r := range s.history {
+		if r.Err == nil {
+			answered++
+		}
+	}
+	counts["calls"], counts["answered"], counts["virtual_ns"] = int64(len(s.history)), int64(answered), s.now()
+	b, _ := json.Marshal(counts)
+	mark("WORK448 %s", b)
+	mark("phase run end history=%d", len(s.history))
 	// A run that failed before its end keeps what it did so far, for its
 	// report; it has no committed log for the checkers.
 	s.mu.Lock()
@@ -711,6 +726,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)
 		}
 	}
+	mark("phase own-checks end log=%d", len(res.Log))
 	// The checks run the cold restarts, which keep their disks when they
 	// fail (#280).
 	s.mu.Lock()
@@ -725,6 +741,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if err == nil {
 		err = s.failure()
 	}
+	mark("phase shutdown end")
 	return res, err
 }
 
@@ -806,6 +823,7 @@ func (s *Sim) run() error {
 		case <-s.failed():
 		}
 	}
+	mark("phase load end virtual=%ds", s.now()/Second)
 	s.mu.Lock()
 	s.stop()
 	s.mu.Unlock()
@@ -1412,6 +1430,8 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		p.core, n.pending, n.duringInstall = c, nil, nil
 	}
 	n.remember(c, s.now())
+	exp448stats.Sent.Add(int64(len(eff.Send)))
+	exp448stats.Applied.Add(int64(len(eff.Applied)))
 	for _, a := range eff.Applied {
 		s.record(n, a)
 	}

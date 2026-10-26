@@ -14,6 +14,8 @@
 // It implements wal.FS and is deterministic for a given random source.
 package simfs
 
+import "github.com/djosh34/tigerstore/internal/exp448stats"
+
 import (
 	"bytes"
 	"errors"
@@ -645,6 +647,7 @@ func (d *Disk) Remove(name string) error {
 
 // SyncDir makes the current set of names durable.
 func (d *Disk) SyncDir() error {
+	exp448stats.DirSyncs.Add(1)
 	if err := d.fault(OpSyncDir, ""); err != nil {
 		return err
 	}
@@ -776,6 +779,8 @@ func (h *Handle) WriteAt(p []byte, off int64) (int, error) {
 	if n > 0 {
 		h.write(int(off), p[:n])
 	}
+	exp448stats.Writes.Add(1)
+	exp448stats.Bytes.Add(int64(n))
 	h.d.tracef("write %s (file %d) at %d: %d of %d bytes, crc %08x, %v", h.name, h.f.id, off, n, len(p), crc32.ChecksumIEEE(p[:n]), err)
 	return n, err
 }
@@ -821,6 +826,7 @@ func (h *Handle) Truncate(size int64) error {
 
 // Sync makes the content durable.
 func (h *Handle) Sync() error {
+	exp448stats.Syncs.Add(1)
 	err := h.check(OpSync)
 	if rng := h.d.failSync; err == nil && rng != nil {
 		h.d.failSync = nil

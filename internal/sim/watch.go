@@ -1,5 +1,7 @@
 package sim
 
+import "github.com/djosh34/tigerstore/internal/exp448stats"
+
 import (
 	"errors"
 	"fmt"
@@ -231,6 +233,7 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 // receive takes a response of the current stream, and reports whether the
 // client must leave it and start a new logical watch. The lock is held.
 func (w *watchClient) receive(r *pb.WatchResponse) bool {
+	exp448stats.WatchEvents.Add(int64(len(r.Events)))
 	s := w.sim
 	if s.values != nil {
 		s.values.shareMessage(r)

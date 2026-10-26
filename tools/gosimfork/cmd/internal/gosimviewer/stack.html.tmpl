@@ -1,0 +1,4 @@
+<pre style="text-wrap: auto;">
+{{ range .Log.Stackframes }}<a href="#" onclick="show({source: {{ . }} })">{{ . | Source }}</a> {{ .Function }}
+{{ end }}
+</pre>

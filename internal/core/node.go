@@ -9,6 +9,8 @@
 // in production and in the simulator.
 package core
 
+import "github.com/djosh34/tigerstore/internal/exp448stats"
+
 import (
 	"cmp"
 	"context"
@@ -895,6 +897,7 @@ func (n *Node) AdvanceElection(ticks int) {
 
 // Tick advances the node's clock by one tick.
 func (n *Node) Tick() {
+	exp448stats.Ticks.Add(1)
 	if n.err != nil {
 		return
 	}
@@ -974,6 +977,7 @@ var (
 // Step hands the node a message from a peer. Like etcd's Process, it
 // refuses one from a removed member or to another member.
 func (n *Node) Step(m *raftpb.Message) error {
+	exp448stats.Delivered.Add(1)
 	if n.err != nil {
 		return n.err
 	}

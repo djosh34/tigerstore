@@ -1,0 +1,97 @@
+<html>
+<head>
+<title>gosim log viewer</title>
+<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js" integrity="sha256-SRlVzRgQdH19e5zLk2QAr7dg4G0l1T5FcrZLZWOyeE4=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha256-whL0tQWoY1Ku1iskqPFvmZ+CHsvmRWx/PIoEvIeWh4I=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/tippy.js@6.3.7/dist/tippy.umd.min.js" integrity="sha256-qx7gQMlSzXvTJCl8PBcHyzDQLGvX7NaFbiFY44WpsW4=" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tippy.js@6.3.7/dist/tippy.min.css">
+<style>
+.selected {
+    background-color: #F37736;
+}
+a {
+    color: black;
+}
+</style>
+</head>
+<body style="overflow: hidden;">
+<div id="root" style="display: flex; height: 100%">
+    <div style="width: 50%; display: flex; flex-direction: column;">
+        <div>
+            {{ $level := .LogLevel }}
+            {{ $focus := .Focus }}
+            <span style="font-family: monospace">
+                focus: {{ if .Focus }}{{ .Focus }} <a href="#" onclick="setFilter({focus: '' })">all logs</a>{{ else }}all logs{{ end }}</pre>;
+                log level:{{ range .LogLevels }} {{ if eq . $level }}{{ . | Level }}{{ else }}<a href="#" onclick="setFilter({level: {{ . }} })">{{ . | Level }}</a>{{ end }}{{ end }}</pre>;
+                <label for="syscalls">syscalls: </label><input id="syscalls" type="checkbox" onclick="setFilter({syscalls: event.target.checked})" {{ if .Syscalls }}checked{{ end }}/>
+            </span>
+        </div>
+        <div style="overflow: scroll;">
+{{ range .Logs }}
+    <div style="margin: 0; font-family: monospace; overflow: clip; text-overflow: ellipsis; text-wrap: nowrap;">
+        <span style="min-width: 3em; display: inline-block; text-align: right;">{{ .Step }}</span>
+        <span style="min-width: 6em; display: inline-block;"><a href="#" onclick="setFilter({focus: 'machine:{{ .Machine }}'})">{{ .Machine }}</a>/<a href="#" onclick="setFilter({focus: 'goroutine:{{ .Goroutine }}'})">{{.Goroutine}}</a></span>
+        {{ .Time | Time }}
+        {{ .Level | Level }}
+        <a href="#" onclick="show({index: {{ .Index }}, source: {{ .Source }} })">{{ .Source | Source }}</a>
+        &gt;
+        <span style="white-space-collapse: preserve;">{{ .Msg | ShortValue }}</span>
+        {{ range .Unknown }}
+            <span style="white-space-collapse: preserve;">{{ .Key }}={{ .Value | ShortValue }}</span>
+        {{ end }}
+    </div>
+{{ end }}
+            {{ if .Truncated }}and more...{{ end }}
+        </div>
+    </div>
+    <div style="width: 50%; display: flex; flex-direction: column;">
+        <div id="source" style="height: 40%; overflow: scroll">
+        </div>
+        <div id="stack" style="height: 40%; overflow: scroll">
+        </div>
+        <div id="related" style="height: 20%; overflow: scroll">
+        </div>
+    </div>
+</div>
+<script>
+var curFile = undefined;
+function show(opts) {
+    if (opts.index !== undefined) {
+        htmx.ajax("GET", "/related?index=" + opts.index, {target: "#related", source: "#related"});
+        htmx.ajax("GET", "/stack?index=" + opts.index, {target: "#stack", source: "#stack"});
+    }
+    if (opts.source !== undefined) {
+        htmx.ajax("GET", "/viewer?file=" + encodeURIComponent(opts.source.file) + "&line=" + opts.source.line, {target: "#source", source: "#source"});
+    }
+}
+function scrollTo(file, line) {
+    var element = document.getElementById("L"+line);
+    var newFile = file;
+    if (newFile !== curFile) {
+        curFile = newFile;
+        element.scrollIntoView({block: "center"});
+    } else {
+        element.scrollIntoViewIfNeeded({block: "center"});
+    }
+}
+function setFilter(update) {
+    var current = {
+        focus: {{ .Focus }},
+        level: {{ .LogLevel }},
+        syscalls: {{ .Syscalls }},
+    };
+    Object.assign(current, update);
+    var path = "/?focus=" + encodeURIComponent(current.focus) +
+        "&level=" + encodeURIComponent(current.level) +
+        "&syscalls=" + encodeURIComponent(current.syscalls);
+    window.location = path;
+}
+tippy.delegate("#root", {
+    target: '[data-tooltip]',
+    duration: 0,
+    maxWidth: "none",
+    content: function(e) { return e.getAttribute('data-tooltip'); },
+});
+</script>
+</body>
+</html>

@@ -67,7 +67,9 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 	// An hour more than the run's length, which a run of hours needs.
 	simrun.BubbleFor(t, time.Duration(cfg.length())+time.Hour, func(*testing.T) { res, err = runInspect(cfg, inspect) })
 	if simrun.InGosim && res != nil {
+		mark("phase hashes start")
 		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, hashes(res)))
+		mark("phase hashes end")
 		simrun.Artifact("hashes", []byte(strings.Join(hashLines, "\n")+"\n"))
 		// The driver's double runs keep both runs' files, for when they
 		// differ, once the seed's last simulation is over.
@@ -513,25 +515,33 @@ var (
 // independent runs the durability, revision and watch checkers of package
 // check on a run.
 func independent(res *Result) error {
+	mark("phase checkable start")
 	h, err := res.Checkable()
 	if err != nil {
 		return err
 	}
+	exp441Stats(h)
 	var errs []error
+	mark("phase durable start")
 	if err := check.Durable(h); err != nil {
 		errs = append(errs, fmt.Errorf("durability: %w", err))
 	}
+	mark("phase revisions start")
 	if err := check.Revisions(h); err != nil {
 		errs = append(errs, fmt.Errorf("revisions: %w", err))
 	}
+	mark("phase watches start")
 	if err := check.Watches(h); err != nil {
 		errs = append(errs, fmt.Errorf("watches: %w", err))
 	}
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
+		mark("phase witness-%s start", mode)
 		if err := check.Witnessed(h, mode, time.Minute, witnessSteps); err != nil {
 			errs = append(errs, fmt.Errorf("witness: %w", err))
 		}
 	}
+	mark("phase checkers end")
+	exp441Save(h)
 	return errors.Join(errs...)
 }
 
