@@ -85,7 +85,7 @@ func TestAgedForks(t *testing.T) {
 		// seed, so that it plays out the same alone as after the forks
 		// before it.
 		reseed := os.Getenv("SIM_FORK_RESEED") == "1"
-		const slot = 6 * time.Hour
+		const slot = 3 * time.Hour
 		base := time.Now()
 		first := envInt(t, "SIM_FORK_FIRST", 0)
 		for i := first; i < first+envInt(t, "SIM_FORKS", 2); i++ {
@@ -103,7 +103,8 @@ func TestAgedForks(t *testing.T) {
 					if wait < 0 {
 						t.Fatalf("fork %d starts %s after its slot", i, -wait)
 					}
-					time.Sleep(wait)
+					// gosim's timeout of virtual time must outlast the wait.
+					simrun.BubbleFor(t, wait+time.Hour, func(*testing.T) { time.Sleep(wait) })
 					simrun.Reseed(cfg.Seed)
 				}
 				res := run(t, cfg)
