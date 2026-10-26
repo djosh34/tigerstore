@@ -15,6 +15,9 @@ on:
       minutes:
         description: Virtual minutes of each seed, 240 when empty
         default: ""
+      crash:
+        description: EXP441_CRASH, how many times further apart crashes come
+        default: ""
       gogc:
         description: GOGC of the gosim process
         default: "100"
@@ -42,6 +45,7 @@ jobs:
           SEED: ${{ matrix.seed }}
           EXP441_MINUTES: ${{ inputs.minutes }}
           GOGC: ${{ inputs.gogc || '100' }}
+          EXP441_CRASH: ${{ inputs.crash }}
           OUT: ${{ runner.temp }}/exp441
         run: |
           if [[ "$SEED" != *" "* ]]; then

@@ -32,6 +32,10 @@ func kubeConfig(seed uint64, long bool) Config {
 	cfg.Objects, cfg.Duration, cfg.CompactEvery = 1000, 2*60*Second, 20*Second
 	if long {
 		cfg.Objects, cfg.Duration, cfg.CompactEvery = 10_000, 4*3600*Second, 5*60*Second
+		// #441: EXP441_CRASH spaces the crashes further apart.
+		if k, err := strconv.Atoi(os.Getenv("EXP441_CRASH")); err == nil && k > 0 {
+			cfg.Faults.CrashEvery *= int64(k)
+		}
 		// #441: EXP441_MINUTES shortens the long profile.
 		if m, err := strconv.Atoi(os.Getenv("EXP441_MINUTES")); err == nil && m > 0 {
 			cfg.Duration = int64(m) * 60 * Second
