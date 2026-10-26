@@ -1,0 +1,110 @@
+# exp 448: the runner's hardware, how many jobs run at once, and short
+# gosim seeds alone and four at once. Throwaway, never merged.
+name: exp448
+on:
+  push:
+    branches: [exp/448-sim-ceiling]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: hardware
+        run: |
+          nproc; lscpu; free -b; free -g; df -h; cat /proc/meminfo | head -5
+          cat /sys/fs/cgroup/memory.max 2>/dev/null || true
+          sudo apt-get install -y -qq fio >/dev/null 2>&1 || true
+          cd "$RUNNER_TEMP"
+          fio --name=seqw --rw=write --bs=1M --size=2G --direct=1 --numjobs=1 --output-format=terse --minimal | cut -d';' -f48,49 || true
+          fio --name=fsync --rw=write --bs=4k --size=64M --fsync=1 --numjobs=1 | grep -E 'IOPS|fsync|sync' | head -8 || true
+          fio --name=randr --rw=randread --bs=4k --size=1G --direct=1 --iodepth=32 --ioengine=libaio --runtime=15 --time_based | grep -E 'IOPS' || true
+          rm -f seqw* fsync* randr*
+      - name: memory and cpu
+        run: |
+          mkdir -p "$RUNNER_TEMP/mb" && cd "$RUNNER_TEMP/mb"
+          cat > main.go <<'GO'
+          package main
+
+          import (
+          	"crypto/sha256"
+          	"fmt"
+          	"sync"
+          	"time"
+          )
+
+          func copyBW(threads int) float64 {
+          	const n = 256 << 20
+          	var wg sync.WaitGroup
+          	start := time.Now()
+          	for t := 0; t < threads; t++ {
+          		wg.Add(1)
+          		go func() {
+          			defer wg.Done()
+          			a, b := make([]byte, n), make([]byte, n)
+          			for i := range a {
+          				a[i] = byte(i)
+          			}
+          			for r := 0; r < 8; r++ {
+          				copy(b, a)
+          			}
+          		}()
+          	}
+          	wg.Wait()
+          	return float64(threads) * 8 * n / time.Since(start).Seconds() / (1 << 30)
+          }
+
+          func sha(threads int) float64 {
+          	var wg sync.WaitGroup
+          	buf := make([]byte, 1<<20)
+          	start := time.Now()
+          	for t := 0; t < threads; t++ {
+          		wg.Add(1)
+          		go func() {
+          			defer wg.Done()
+          			for r := 0; r < 512; r++ {
+          				sha256.Sum256(buf)
+          			}
+          		}()
+          	}
+          	wg.Wait()
+          	return float64(threads) * 512 / time.Since(start).Seconds()
+          }
+
+          func main() {
+          	for _, th := range []int{1, 2, 4} {
+          		fmt.Printf("threads %d: copy %.1f GiB/s (incl. page faults), sha256 %.0f MiB/s\n", th, copyBW(th), sha(th))
+          	}
+          }
+          GO
+          go mod init mb >/dev/null 2>&1; go run .
+      - run: scripts/sim.sh ./internal/sim '^$'
+      - name: short seeds alone, then four processes at once
+        run: |
+          export GOSIMTOOL="$GITHUB_WORKSPACE/.gosim/bin/gosim"
+          cd internal/sim
+          t0=$SECONDS
+          SIM_SEED=1 SIM_SEEDS=40 /usr/bin/time -v "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run '^TestSeeds$' -test.v -test.timeout 30m > "$RUNNER_TEMP/alone.log" 2> "$RUNNER_TEMP/alone.time" || true
+          echo "alone: 40 seeds in $((SECONDS - t0)) s"; grep -E 'Maximum resident|Elapsed|User time' "$RUNNER_TEMP/alone.time"
+          grep -E 'gosim run of seed' "$RUNNER_TEMP/alone.log" | head -45
+          grep -E -- '--- FAIL|^ok|^FAIL|^PASS' "$RUNNER_TEMP/alone.log" | head
+          t0=$SECONDS
+          for p in 0 1 2 3; do
+            SIM_SEED=$((1 + p * 40)) SIM_SEEDS=40 "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run '^TestSeeds$' -test.v -test.timeout 30m > "$RUNNER_TEMP/four-$p.log" 2>&1 &
+          done
+          wait
+          echo "four at once: 160 seeds in $((SECONDS - t0)) s"
+          grep -h -E 'gosim run of seed' "$RUNNER_TEMP"/four-0.log | head -45
+  concurrency:
+    strategy:
+      matrix:
+        i: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - run: date -u +%s.%N; nproc; sleep 120; date -u +%s.%N
