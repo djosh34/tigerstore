@@ -32,7 +32,9 @@ func envInt(t *testing.T, name string, def int) int {
 //   - SIM_FORKS forks (2) of SIM_FORK_SECONDS virtual seconds (120)
 //     each, under the default faults, with a compaction every minute.
 //
-// Fork i of harness seed s has seed s<<16 + i.
+// Fork i of harness seed s has seed s<<16 + i. SIM_FORK_FIRST (0) is the
+// first fork's i, so that fork i replays alone after the aging run with
+// SIM_FORK_FIRST=i SIM_FORKS=1.
 func TestAgedForks(t *testing.T) {
 	if simrun.Race {
 		t.Skip("runs under gosim (#439)")
@@ -76,7 +78,8 @@ func TestAgedForks(t *testing.T) {
 			t.Logf("image %s", f)
 		}
 		var total Stats
-		for i := range envInt(t, "SIM_FORKS", 2) {
+		first := envInt(t, "SIM_FORK_FIRST", 0)
+		for i := first; i < first+envInt(t, "SIM_FORKS", 2); i++ {
 			t.Run(fmt.Sprintf("fork%d", i), func(t *testing.T) {
 				cfg := kubeConfig(seed<<16+uint64(i), false)
 				cfg.Clients, cfg.V3Clients = 16, 0
