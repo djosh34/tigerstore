@@ -73,7 +73,9 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 		// differ, once the seed's last simulation is over.
 		if os.Getenv("SIM_KEEP") != "" {
 			cmd := replayCommand(t.Name(), cfg.Seed)
-			simrun.AfterSeed(func() { save(t, cmd, res) })
+			// A long run's history takes gigabytes, which a run kept
+			// only to compare with its second run leaves out.
+			simrun.AfterSeed(func() { save(t, cmd, res, !simrun.Long()) })
 		}
 	}
 	me := new(int)
@@ -198,16 +200,17 @@ func explain(t *testing.T, cfg Config, res *Result) {
 	t.Logf("trace of seed %d:\n%s", cfg.Seed, strings.Join(res.Trace, "\n"))
 	t.Logf("the nodes at the end of seed %d:\n%s", cfg.Seed, res.Report)
 	t.Logf("hashes of seed %d: %s", cfg.Seed, hashes(res))
-	save(t, cmd, res)
+	save(t, cmd, res, true)
 	t.Logf("replay: %s", cmd)
 }
 
-// save keeps a run's files (runFiles) in $SIM_OUT, under the test's name.
-// Under gosim the driver writes them there.
-func save(t *testing.T, cmd string, res *Result) {
+// save keeps a run's files (runFiles), its history with history, in
+// $SIM_OUT, under the test's name. Under gosim the driver writes them
+// there.
+func save(t *testing.T, cmd string, res *Result, history bool) {
 	name := strings.ReplaceAll(t.Name(), "/", "_")
 	if simrun.InGosim {
-		for path, body := range runFiles(filepath.Join("$SIM_OUT", name), cmd, res) {
+		for path, body := range runFiles(filepath.Join("$SIM_OUT", name), cmd, res, history) {
 			simrun.Artifact(filepath.Join("sim-out", name, path), []byte(body))
 		}
 		return
@@ -218,7 +221,7 @@ func save(t *testing.T, cmd string, res *Result) {
 	}
 	dir := filepath.Join(out, name)
 	files := map[string][]byte{}
-	for path, body := range runFiles(dir, cmd, res) {
+	for path, body := range runFiles(dir, cmd, res, history) {
 		files[path] = []byte(body)
 	}
 	if err := simrun.WriteFiles(dir, files); err != nil {
@@ -237,15 +240,21 @@ func seedRange(first uint64, n int) []uint64 {
 	return seeds
 }
 
-// runFiles are a run's trace, node report, stats, hashes, history, disks
-// and replay command, by path, for a directory dir of their own.
-func runFiles(dir, cmd string, res *Result) map[string]string {
+// runFiles are a run's trace, node report, stats, hashes, history, with
+// history, disks and replay command, by path, for a directory dir of
+// their own.
+func runFiles(dir, cmd string, res *Result, history bool) map[string]string {
 	files := map[string]string{
 		"trace.txt":  strings.Join(res.Trace, "\n") + "\n",
 		"nodes.txt":  res.Report,
 		"replay.txt": cmd + "\n",
 		"stats.txt":  fmt.Sprintf("%+v\n", res.Stats),
 		"hashes.txt": hashes(res) + "\n",
+	}
+	if !history {
+		files["replay.txt"] += "no history.json and no calls.txt: a long run kept to compare with its second run leaves them out; the replay command plays the seed again\n"
+		addDisks(files, res)
+		return files
 	}
 	// Every call, as the clients saw it, also when the run failed before
 	// its checks built the committed log that history.json needs. A long
@@ -274,9 +283,14 @@ func runFiles(dir, cmd string, res *Result) map[string]string {
 		}
 		files["replay.txt"] += "go run ./cmd/checkhistory -checkers " + checkers + " " + filepath.Join(dir, "history.json") + "\n"
 	}
-	// Each node's last disk calls and its files now and right after its
-	// last crash, and the disks a failed cold restart started from, with
-	// that restart's disk calls (#274).
+	addDisks(files, res)
+	return files
+}
+
+// addDisks adds each node's last disk calls and its files now and right
+// after its last crash, and the disks a failed cold restart started from,
+// with that restart's disk calls (#274).
+func addDisks(files map[string]string, res *Result) {
 	for _, n := range res.nodes {
 		d := filepath.Join("disks", fmt.Sprintf("node%d", n.id))
 		files[filepath.Join(d, "calls.txt")] = strings.Join(n.diskLog, "\n") + "\n"
@@ -295,7 +309,6 @@ func runFiles(dir, cmd string, res *Result) map[string]string {
 			files[filepath.Join("cold", fmt.Sprintf("node%d-calls.txt", n.id))] = strings.Join(n.diskLog, "\n") + "\n"
 		}
 	}
-	return files
 }
 
 // calls is every call of a run, as the clients saw it.
@@ -1275,7 +1288,7 @@ func TestSaveRunKeepsDisks(t *testing.T) {
 	cfg := DefaultConfig(11)
 	cfg.Duration = 6 * Second
 	res := run(t, cfg)
-	files := runFiles("out", "replay", res)
+	files := runFiles("out", "replay", res, true)
 	calls := files[filepath.Join("disks", "node1", "calls.txt")]
 	if !strings.Contains(calls, " ms sync 0") || !strings.Contains(calls, " ms write 0") {
 		t.Fatalf("node 1's disk calls: %.200q", calls)
