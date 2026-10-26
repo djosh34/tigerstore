@@ -37,7 +37,7 @@ jobs:
           SIM_AGE_CHECK: ${{ matrix.check }}
           SIM_AGE_CALM: ${{ matrix.calm }}
           SIM_TWICE: ${{ matrix.twice }}
-        run: scripts/exp449.sh
+        run: bash scripts/exp449.sh
       - if: always()
         uses: actions/upload-artifact@v6
         with:
