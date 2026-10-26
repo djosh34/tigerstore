@@ -4,9 +4,10 @@ package check
 type Option func(*options)
 
 type options struct {
-	steps   int64
-	stats   *WitnessStats
-	variant string
+	steps    int64
+	stats    *WitnessStats
+	variant  string
+	progress func(*WitnessStats)
 }
 
 // MaxSteps fails a check, as its timeout does, once its search took n
@@ -28,6 +29,9 @@ func WitnessMetrics(s *WitnessStats) Option {
 func RevisionSearch(variant string) Option {
 	return func(o *options) { o.variant = variant }
 }
+
+// WitnessProgress reports counters synchronously, including during long searches.
+func WitnessProgress(f func(*WitnessStats)) Option { return func(o *options) { o.progress = f } }
 
 func optionsOf(opts []Option) options {
 	o := options{variant: "ultimate"}

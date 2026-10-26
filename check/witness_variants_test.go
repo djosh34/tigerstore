@@ -32,8 +32,8 @@ func TestRevisionSearchVariants(t *testing.T) {
 				if (got == nil) != (want == nil) {
 					t.Fatalf("history %d corrupt=%v variant=%s: baseline=%v got=%v", i, corrupt, variant, want, got)
 				}
-				if variant == "checkpoints" && (stats.Backtracks != baseline.Backtracks || stats.Fits != baseline.Fits) {
-					t.Fatalf("checkpoint changed search: %+v vs %+v", stats, baseline)
+				if (variant == "checkpoints" || variant == "undo") && (stats.Backtracks != baseline.Backtracks || stats.Fits != baseline.Fits) {
+					t.Fatalf("%s changed search: %+v vs %+v", variant, stats, baseline)
 				}
 			}
 		}

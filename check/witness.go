@@ -74,7 +74,7 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 	w := newWitness(h, time.Now().Add(timeout))
 	o := optionsOf(opts)
 	w.maxSteps, w.variant = o.steps, o.variant
-	w.metrics = o.stats
+	w.metrics, w.progress = o.stats, o.progress
 	if w.metrics == nil {
 		w.metrics = &WitnessStats{}
 	}
@@ -152,6 +152,7 @@ type witness struct {
 	search              *revisionOrder
 	metrics             *WitnessStats
 	variant             string
+	progress            func(*WitnessStats)
 	scopeKeys           map[int][]string
 }
 
@@ -222,6 +223,10 @@ func newWitness(h *history.History, deadline time.Time) *witness {
 // the steps ran out.
 func (w *witness) tick() bool {
 	w.steps++
+	w.metrics.Steps = w.steps
+	if w.steps%1024 == 0 && w.progress != nil {
+		w.progress(w.metrics)
+	}
 	if w.maxSteps > 0 && w.steps > w.maxSteps {
 		return true
 	}

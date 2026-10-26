@@ -49,10 +49,18 @@ func main() {
 	cpu := flag.String("cpuprofile", "", "CPU profile of checking (one file/checker only)")
 	flag.Parse()
 	var stats check.WitnessStats
+	var lastProgress time.Time
+	progress := func(s *check.WitnessStats) {
+		if *metrics && time.Since(lastProgress) >= 10*time.Second {
+			b, _ := json.Marshal(s)
+			fmt.Fprintf(os.Stderr, "WITNESS_PROGRESS %s\n", b)
+			lastProgress = time.Now()
+		}
+	}
 	checkers := map[string]func(*history.History) error{
 		"witness-log": func(h *history.History) error { return check.Witnessed(h, check.FromLog, *timeout) },
 		"witness-revisions": func(h *history.History) error {
-			return check.Witnessed(h, check.FromRevisions, *timeout, check.WitnessMetrics(&stats), check.RevisionSearch(*variant))
+			return check.Witnessed(h, check.FromRevisions, *timeout, check.WitnessMetrics(&stats), check.RevisionSearch(*variant), check.WitnessProgress(progress))
 		},
 		"linearizable": func(h *history.History) error { return check.Linearizable(h, *timeout) },
 		"watches":      check.Watches,

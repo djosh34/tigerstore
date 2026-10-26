@@ -9,6 +9,7 @@ type WitnessStats struct {
 	ScopedAnswers, ScopedKeyCells, ScopedKeysAvoided                          int64
 	SupersededOptionalSkipped                                                 int64
 	UndoTrials, UndoKeyCells, UndoDenseKeysAvoided                            int64
+	CurrentRevision, MaxRevisionReached                                       int64
 	Steps                                                                     int64
 	GapFrames, CandidateScans, Candidates, Fits, FitsAccepted                 int64
 	RejectModel, RejectUnchanged, RejectLife, RejectRequired, RejectReachable int64

@@ -1233,6 +1233,8 @@ func (r *revisionOrder) search() error {
 	}
 	for rev := int64(2); ; {
 		r.rev = rev
+		w.metrics.CurrentRevision = rev
+		w.metrics.MaxRevisionReached = max(w.metrics.MaxRevisionReached, rev)
 		if w.tick() {
 			return errWitnessTimeout
 		}
@@ -1378,6 +1380,9 @@ func (r *revisionOrder) candidates(rev int64) []int {
 func (r *revisionOrder) fits(i int, rev int64) bool {
 	w := r.w
 	w.metrics.Fits++
+	if w.metrics.Fits%4096 == 0 && w.progress != nil {
+		w.progress(w.metrics)
+	}
 	if (w.variant == "prefilter" || w.variant == "fast" || w.variant == "tuned" || w.variant == "best" || w.variant == "ultimate") && readOnlyBranch(w.live, w.reqs[i]) {
 		w.metrics.ReadOnlyBranchRejected++
 		w.metrics.RejectModel++
