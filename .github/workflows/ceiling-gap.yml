@@ -1,9 +1,6 @@
 name: ceiling-gap
 on:
   workflow_dispatch:
-  push:
-    branches: [exp/484-ceiling-gap]
-    paths: [.github/workflows/ceiling-gap.yml]
 jobs:
   measure:
     strategy:
@@ -74,6 +71,8 @@ jobs:
                 go tool pprof -top -nodecount=40 "$p" > "$p.top.txt" 2>/dev/null || true ;;
             esac
           done
+          python3 bench/ceiling-gap-profiles.py results > results/profiles.md
+          cat results/profiles.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v6
         if: always()
         with:
