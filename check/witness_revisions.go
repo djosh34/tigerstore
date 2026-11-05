@@ -111,6 +111,9 @@ type revisionOrder struct {
 	rev   int64
 	stack []*frame
 	backs int
+	// Diagnosis counters (prototype only).
+	diagDueCalls, diagDueVisits, diagInsertCalls, diagInsertVisits int64
+	diagFitsCalls, diagLifeVisits, diagMayCalls, diagRevokeVisits  int64
 }
 
 // progress says where the search is, for the report of a timeout.
@@ -413,11 +416,15 @@ func (r *revisionOrder) reachable(s *state, skip int) bool {
 // bound is below rev and that may still write k (touches). Any revoke may
 // delete a key.
 func (r *revisionOrder) may(s *state, k int, rev int64, skip int, create bool) bool {
+	r.diagMayCalls++
 	now := s.rev
 	ok := func(i int) bool {
 		op := &r.w.h.Ops[i]
 		if op.Resp != nil {
 			return op.Resp.Revision > now && op.Resp.Revision <= rev
+		}
+		if op.Req.LeaseRevoke != nil {
+			r.diagRevokeVisits++
 		}
 		return i != skip && !r.used[i] && r.lb[i] < rev && touches(s, op.Req, k, create)
 	}
@@ -919,6 +926,8 @@ func (r *revisionOrder) answered(ops []int) bool {
 // insertOptional puts in, at revision rev, every optional mutation that
 // may go in by now and that the model takes without a write.
 func (r *revisionOrder) insertOptional(rev int64) {
+	r.diagInsertCalls++
+	r.diagInsertVisits += int64(len(r.optional))
 	w := r.w
 	for _, o := range r.optional {
 		if o.late || o.from > rev || r.used[o.op] || !r.isReady(o) {
@@ -980,6 +989,8 @@ func (r *revisionOrder) readsFit(o optional) bool {
 // order: one called before a rejection returned may have to go in before
 // one called after it, which ends the rejection's states.
 func (r *revisionOrder) due(call, rev int64) []optional {
+	r.diagDueCalls++
+	r.diagDueVisits += int64(len(r.optional))
 	var out []optional
 	for _, o := range r.optional {
 		if o.late && !r.used[o.op] && (o.gone < call || o.by <= rev) {
@@ -1280,6 +1291,7 @@ func (r *revisionOrder) candidates(rev int64) []int {
 // no key that a client saw unchanged at rev, and an acked revoke gets its
 // answer.
 func (r *revisionOrder) fits(i int, rev int64) bool {
+	r.diagFitsCalls++
 	w := r.w
 	s, undo := r.try(w.live, w.reqs[i])
 	defer undo()
@@ -1308,6 +1320,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 		// life: created then, with no more versions than seen, and with
 		// exactly as many at the last write the client saw, which no
 		// later write can make up for (#386).
+		r.diagLifeVisits += int64(len(r.lives[e.KV.Key]))
 		for l, to := range r.lives[e.KV.Key] {
 			if l.c <= rev && rev <= to {
 				kv, ok := s.get(e.KV.Key)
