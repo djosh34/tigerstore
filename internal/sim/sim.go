@@ -711,7 +711,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 			f.shutdown()
 			// Every goroutine of the formation has ended.
 			res.Stats, res.Trace = f.stats, f.trace
-			return res, fmt.Errorf("seed %d: forming the cluster: %w", cfg.Seed, err)
+			return res, fmt.Errorf("forming the cluster: %w", err)
 		}
 		f.shutdown()
 	}
