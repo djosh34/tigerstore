@@ -79,11 +79,12 @@ func (s *Sim) exp473Mark() {
 				ckpts++
 			}
 		}
-		keys, vers := -1, -1
+		keys, vers, leases, empty := -1, -1, -1, -1
 		if n.proc != nil && n.proc.core != nil {
 			keys, vers = n.proc.core.Exp473Index()
+			leases, empty = n.proc.core.Exp473Leases()
 		}
-		fmt.Fprintf(&b, " n%d=disk:%d,files:%d,segs:%d,packs:%d,ckpts:%d,keys:%d,vers:%d", n.id, n.disk.Bytes(), len(names), segs, packs, ckpts, keys, vers)
+		fmt.Fprintf(&b, " n%d=disk:%d,files:%d,segs:%d,packs:%d,ckpts:%d,keys:%d,vers:%d,leases:%d,emptyleases:%d", n.id, n.disk.Bytes(), len(names), segs, packs, ckpts, keys, vers, leases, empty)
 	}
 	mark("%s", b.String())
 	if w := virtual / 1800; w > exp473.window {
