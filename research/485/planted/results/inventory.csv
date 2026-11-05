@@ -1,0 +1,30 @@
+bug,original_seed_budget,want_go_expression,requires_both_witness_modes
+B01a,64,staleRead,True
+B01b,64,staleRead,True
+B02,128,lostAppend + `|applied different entries`,False
+B03,128,lostAppend + `|applied different entries`,False
+B04a,256,`without noticing|` + refused,False
+B04c,256,inventedState + `|without noticing|` + refused + `|` + badValue + `|the record of entry \d+ in segment \d+ does not verify`,False
+B04b,256,lostAppend + `|applied different entries|applied the same log to different states`,False
+B05,128,lostAppend + `|` + refused,False
+B06a,32,badWatch,False
+B06b,32,badWatch,False
+B06c,32,badWatch,False
+B06d,32,`watch \d+ got an event at revision \d+ after one at`,False
+B07,64,badWatch,False
+B08,128,badWatch,False
+B09a,16,badState,False
+B09b,16,badState,False
+B10,64,badState + `|applied the same log to different states|` + badWatch,False
+B11,64,lostAppend + `|` + refused,False
+B12,256,lostAppend + `|` + refused + `|` + badValue + `|the record of entry \d+ in segment \d+ does not verify|damaged record followed by a valid one`,False
+B15,32,`no client sent it`,False
+B16,128,lostAppend + `|` + refused,False
+B18,16,`holds \d+ watchers`,False
+B19,64,refused + `|not on disk|` + stuck,False
+B20,64,`holds entries from \d+ in memory`,False
+B21,64,inventedState + `|wrote different checkpoints|already exists|` + refused,False
+B23,64,inventedState + `|wrote different checkpoints|` + stuck,False
+B24,16,badValue,False
+B25,64,badState + `|` + badWatch,False
+B27,64,inventedState + `|cold restart did not converge|` + stuck,False

@@ -2,6 +2,18 @@
 
 Exp branch only; not a PR, not a main change. Base `020e8c8f`.
 
+Completed results: [results/RESULTS.md](results/RESULTS.md), with the full
+203-cell interval/cost/rate table in [results/tables.md](results/tables.md).
+Primary run 42020412801 plus targeted recovery 42042610751; no missing cells.
+Run analysis tests with `python3 -m unittest discover -s research/485/planted`.
+`analyze.py ARTIFACT_DIRECTORY --out OUTPUT_DIRECTORY` reads both runs'
+JSONL files recursively. Keep their artifacts in separate subdirectories.
+
+The archived `recovery-42042610751.json` records the continuation of the
+one timed-out shard. `run.py` uses an optional active `recovery.json` to
+skip unrelated matrix simulations and pass per-bug starts/remaining
+budgets to the experiment test. No active manifest remains after recovery.
+
 ## Protocol
 
 29 DefaultConfig planted cases plus the identical config without a bug.

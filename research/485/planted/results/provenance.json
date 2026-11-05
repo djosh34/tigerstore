@@ -1,0 +1,287 @@
+{
+  "source_runs": [
+    {
+      "run_id": "42020412801",
+      "head_sha": "0a63d0659c2c27772e9e9e195d4cae45a3e937ba",
+      "conclusion": "failure",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801",
+      "runner_h": 23.695833333333333,
+      "jobs": [
+        {
+          "name": "planted (5, 1)",
+          "conclusion": "failure",
+          "elapsed_s": 6627.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455276"
+        },
+        {
+          "name": "planted (160, 0)",
+          "conclusion": "success",
+          "elapsed_s": 6024.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455486"
+        },
+        {
+          "name": "planted (320, 0)",
+          "conclusion": "success",
+          "elapsed_s": 7385.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455502"
+        },
+        {
+          "name": "planted (10, 0)",
+          "conclusion": "success",
+          "elapsed_s": 5618.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455514"
+        },
+        {
+          "name": "planted (40, 0)",
+          "conclusion": "success",
+          "elapsed_s": 4666.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455533"
+        },
+        {
+          "name": "planted (80, 1)",
+          "conclusion": "failure",
+          "elapsed_s": 6253.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455601"
+        },
+        {
+          "name": "planted (80, 0)",
+          "conclusion": "success",
+          "elapsed_s": 5696.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455610"
+        },
+        {
+          "name": "planted (10, 1)",
+          "conclusion": "failure",
+          "elapsed_s": 5675.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455611"
+        },
+        {
+          "name": "planted (320, 1)",
+          "conclusion": "failure",
+          "elapsed_s": 9076.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455620"
+        },
+        {
+          "name": "planted (20, 1)",
+          "conclusion": "success",
+          "elapsed_s": 4947.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455664"
+        },
+        {
+          "name": "planted (5, 0)",
+          "conclusion": "success",
+          "elapsed_s": 6463.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455692"
+        },
+        {
+          "name": "planted (160, 1)",
+          "conclusion": "failure",
+          "elapsed_s": 7053.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455744"
+        },
+        {
+          "name": "planted (20, 0)",
+          "conclusion": "success",
+          "elapsed_s": 4827.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455755"
+        },
+        {
+          "name": "planted (40, 1)",
+          "conclusion": "failure",
+          "elapsed_s": 4995.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42020412801/job/127221455813"
+        }
+      ]
+    },
+    {
+      "run_id": "42042610751",
+      "head_sha": "29ed415de5254943e7a4528272d1f785d2be4f0c",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751",
+      "runner_h": 0.9552777777777778,
+      "jobs": [
+        {
+          "name": "planted (20, 0)",
+          "conclusion": "success",
+          "elapsed_s": 83.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061004"
+        },
+        {
+          "name": "planted (80, 0)",
+          "conclusion": "success",
+          "elapsed_s": 86.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061038"
+        },
+        {
+          "name": "planted (40, 1)",
+          "conclusion": "success",
+          "elapsed_s": 82.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061090"
+        },
+        {
+          "name": "planted (40, 0)",
+          "conclusion": "success",
+          "elapsed_s": 80.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061111"
+        },
+        {
+          "name": "planted (320, 0)",
+          "conclusion": "success",
+          "elapsed_s": 131.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061177"
+        },
+        {
+          "name": "planted (20, 1)",
+          "conclusion": "success",
+          "elapsed_s": 113.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061192"
+        },
+        {
+          "name": "planted (320, 1)",
+          "conclusion": "success",
+          "elapsed_s": 2279.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061215"
+        },
+        {
+          "name": "planted (160, 1)",
+          "conclusion": "success",
+          "elapsed_s": 79.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061253"
+        },
+        {
+          "name": "planted (5, 1)",
+          "conclusion": "success",
+          "elapsed_s": 82.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061261"
+        },
+        {
+          "name": "planted (10, 1)",
+          "conclusion": "success",
+          "elapsed_s": 81.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061282"
+        },
+        {
+          "name": "planted (80, 1)",
+          "conclusion": "success",
+          "elapsed_s": 82.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061318"
+        },
+        {
+          "name": "planted (160, 0)",
+          "conclusion": "success",
+          "elapsed_s": 82.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061353"
+        },
+        {
+          "name": "planted (10, 0)",
+          "conclusion": "success",
+          "elapsed_s": 81.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061436"
+        },
+        {
+          "name": "planted (5, 0)",
+          "conclusion": "success",
+          "elapsed_s": 98.0,
+          "url": "https://github.com/djosh34/tigerstore/actions/runs/42042610751/job/127297061476"
+        }
+      ]
+    }
+  ],
+  "seed_files": [
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D10-shard0",
+      "sha256": "bc941d252a7a0ba338b9fe873a9c4d580dcdeabf0c145484c5cf2e31b1663ae3",
+      "rows": 4409
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D10-shard1",
+      "sha256": "91ba111c51ae0fd8bb68933919d93803d43091311c598af9366fbf8f96da5f4d",
+      "rows": 6123
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D160-shard0",
+      "sha256": "cf1de858debf0def084d31d8acaa031a08021e812902d85250780517d529b93d",
+      "rows": 6696
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D160-shard1",
+      "sha256": "b343f9a9e5d48c174a168569704a811700233b01c165aa001a6fa8abe6bf2058",
+      "rows": 7950
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D20-shard0",
+      "sha256": "1fac2253ebbdf461100e777d2d4c2707fbd3ff471325f958a91d3012ad5db61c",
+      "rows": 5078
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D20-shard1",
+      "sha256": "650614107c83ebdbb1c32d7a39e9afceb4f01ff61c39ec4178efb1772c2e549f",
+      "rows": 6430
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D320-shard0",
+      "sha256": "017b00705620c4c19cb24361c1d8d1e6cd512a14495905df3cd0f517631d39fd",
+      "rows": 6285
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D320-shard1",
+      "sha256": "e296a8bc3501c5b9adfb8aa2bef5c5e29ffe5b9f0206bba0e609da734c9a30d1",
+      "rows": 7117
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D40-shard0",
+      "sha256": "6407f55124a47cb5710dbafb8d65339d543ae953fe41975120d0ca0a68cd563a",
+      "rows": 6427
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D40-shard1",
+      "sha256": "9a4761dbe37078839e8e29def73498bcde53d11af3882c3da8d7f358ba960129",
+      "rows": 7308
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D5-shard0",
+      "sha256": "474b955d43fd04476b3ad1ea6f0c21a02b6b607b978e25753690517899ee2d0a",
+      "rows": 4756
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D5-shard1",
+      "sha256": "207db5db5208718ed59c4cac25e04ef6fe278797ee9e644438ea7ca87672b393",
+      "rows": 6996
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D80-shard0",
+      "sha256": "e808ce56b6f642d3af53c82cdca52cebc820e8aa4f8688a505d41dafc8dcea9b",
+      "rows": 6686
+    },
+    {
+      "source_run_id": "42020412801",
+      "artifact": "exp485-planted-D80-shard1",
+      "sha256": "2578e101c1b9b69c34b3a2cec8487d10833b0301baaeca7a2e4bd40be43b1dbd",
+      "rows": 7883
+    },
+    {
+      "source_run_id": "42042610751",
+      "artifact": "exp485-planted-D320-shard1",
+      "sha256": "9cac6340187c2787855e07c86abacf557380f8b7cff165e7b8d4a2826e57b74f",
+      "rows": 769
+    }
+  ],
+  "survey_seeds": 68850,
+  "rows": 90913,
+  "survey_catches": 61295,
+  "plain_survey_seeds": 646,
+  "analysis_test_command": "python3 -m unittest discover -s research/485/planted -p 'test_*.py' -v"
+}
