@@ -2,6 +2,7 @@ package sim
 
 import (
 	"math/rand/v2"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -60,12 +61,18 @@ func spreadFaults(f *Faults, k int64) {
 func TestKubernetesLoad(t *testing.T) { kubernetesLoad(t, false, 2) }
 
 // TestKubernetesLoadLong is TestKubernetesLoad with the long profile,
-// in which each fault must have taken effect too. It runs no seed unless
-// $SIM_SEEDS says how many, as kube-sim.yml and a campaign do: a seed
-// takes up to hours.
-func TestKubernetesLoadLong(t *testing.T) { kubernetesLoad(t, true, 0) }
+// in which each fault must have taken effect too. It skips unless
+// $SIM_SEEDS says how many seeds to run, as kube-sim.yml and a campaign
+// do: a seed takes up to hours.
+func TestKubernetesLoadLong(t *testing.T) {
+	if os.Getenv("SIM_SEEDS") == "" {
+		t.Skip("set SIM_SEEDS: a long seed takes up to hours")
+	}
+	kubernetesLoad(t, true, 0)
+}
 
-// kubernetesLoad runs n seeds of the profile, by default.
+// kubernetesLoad runs the long or the short profile on $SIM_SEEDS seeds,
+// n by default.
 func kubernetesLoad(t *testing.T, long bool, n int) {
 	if simrun.Race {
 		// Natively a run can hang when a TLS alert waits for a write lock

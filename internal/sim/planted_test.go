@@ -117,7 +117,9 @@ var plantedCases = map[string]plantedCase{
 	// unchecked snapshot's damaged entry can be what recovery refuses.
 	// With every fault on, few snapshot streams are damaged and installed;
 	// the effect test's damaged snapshot runs more.
-	"B22": {seeds: 256, cfg: damagedSnapshotConfig, want: inventedState + `|wrote different checkpoints|` + badValue + `|malformed|` + refused + `|installed a snapshot at \d+ from \d+, checkpoint \d+\n[^\n]*wal: corrupt log:`},
+	// A follower that installed the damaged snapshot can also write a
+	// checkpoint of it that does not parse.
+	"B22": {seeds: 256, cfg: damagedSnapshotConfig, want: inventedState + `|wrote different checkpoints|wrote checkpoint \d+: wal: corrupt log|` + badValue + `|malformed|` + refused + `|installed a snapshot at \d+ from \d+, checkpoint \d+\n[^\n]*wal: corrupt log:`},
 	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|` + stuck},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},

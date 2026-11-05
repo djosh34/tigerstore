@@ -7,8 +7,8 @@
 # A run is its commit, test and seed, so the file must be the same on
 # every machine and architecture, and whatever else the environment
 # holds; CI's replay jobs compare it. It needs the binaries of
-# scripts/sim.sh ./internal/sim '^$'. A failed seed still has its hashes;
-# a seed with no hashes fails the script.
+# scripts/sim.sh ./internal/sim '^$'. A failed seed, or one with no
+# hashes, fails the script; the file still has the hashes of the others.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 out=$1
@@ -16,20 +16,28 @@ export GOSIMTOOL=$root/.gosim/bin/gosim
 cd "$root/internal/sim"
 : >"$out"
 status=0
-# Each test, its first seed and the number of seeds.
+# Each test, its first seed and the number of seeds. Each seed runs alone,
+# as a replay does, so that a test's rules over its set do not apply and
+# a failed run fails the script.
 while read -r test first n; do
-	log=$(mktemp)
-	SIM_SEED=$first SIM_SEEDS=$n "$root/.gosim/bin/sim.test" -test.run "^$test\$" -test.v -test.timeout 30m >"$log" 2>&1 || true
-	# The driver logs each run's hashes, as "seed <seed>: trace ...", and
-	# a double run's twice.
-	grep -oE 'seed [0-9]+: trace [0-9a-f]+ history [0-9a-f]+( node[0-9]+ [0-9a-f]+)*' "$log" | sort -u | sed "s/^/$test /" >>"$out" || true
-	got=$(grep "^$test " "$out" | cut -d' ' -f3 | sort -u | wc -l)
-	if [ "$got" -ne "$n" ]; then
-		echo "$test: $got of $n seeds from $first left their hashes"
-		grep -E -- '^--- FAIL|^    --- FAIL|panic|^(ok|FAIL|PASS)$' "$log" | head -20 || true
-		status=1
-	fi
-	rm -f "$log"
+	for seed in $(seq "$first" $((first + n - 1))); do
+		log=$(mktemp)
+		if ! SIM_SEED=$seed SIM_SEEDS=1 "$root/.gosim/bin/sim.test" -test.run "^$test\$" -test.v -test.timeout 30m >"$log" 2>&1; then
+			echo "$test seed $seed failed:"
+			grep -E -- '^--- FAIL|^    --- FAIL|panic|replay:|^(ok|FAIL|PASS)$' "$log" | head -20 || true
+			status=1
+		fi
+		# The driver logs each run's hashes, as "seed <seed>: trace ...",
+		# and a double run's twice.
+		hashes=$(grep -oE 'seed [0-9]+: trace [0-9a-f]+ history [0-9a-f]+( node[0-9]+ [0-9a-f]+)*' "$log" | sort -u || true)
+		if [ -z "$hashes" ]; then
+			echo "$test seed $seed left no hashes"
+			status=1
+		else
+			echo "$hashes" | sed "s/^/$test /" >>"$out"
+		fi
+		rm -f "$log"
+	done
 done <<'EOF'
 TestSeeds 1 8
 TestMembershipFaults 1 4
