@@ -5,8 +5,8 @@
 # and the GitHub release. The image is pushed only after the upgrade
 # passed. The gates, all found by the check job:
 #   - on the commit, the newest finished ci push run, sim-campaign run of
-#     TestSeeds, of TestMembershipFaults, and chaos-env run, each of which
-#     must have succeeded;
+#     TestSeeds on 100,000 seeds, of TestMembershipFaults on 10,000, and
+#     chaos-env run, each of which must have succeeded;
 #   - the latest successful conformance run of tigerstore and 5-hour soak
 #     on main, linked in the notes with the bug batch's bench run, an
 #     input.
@@ -107,8 +107,8 @@ jobs:
           if [ "$CANDIDATE" = true ]; then
             image=$image-candidate
           else
-            seeds=$(gate sim-campaign.yml TestSeeds)
-            membership=$(gate sim-campaign.yml TestMembershipFaults)
+            seeds=$(gate sim-campaign.yml "TestSeeds, 100000 seeds ")
+            membership=$(gate sim-campaign.yml "TestMembershipFaults, 10000 seeds ")
             chaos=$(gate chaos-env.yml)
             conformance=$(newest conformance.yml "status=success&branch=main" "conformance tigerstore" | cut -d' ' -f1)
             soak=$(newest soak.yml "status=success&branch=main" "soak 5h" | cut -d' ' -f1)

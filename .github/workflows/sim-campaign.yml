@@ -1,31 +1,39 @@
-# The simulator seed campaigns under gosim, in 20 jobs of two processes,
-# every checker on each seed:
-#   - TestSeeds: 100,000 seeds, 2,500 a process, the witness checker in
+# A seed campaign of one simulator test under gosim, in up to 20 jobs of
+# two processes, every checker on each seed. The test is one that runs a
+# set of seeds (simrun.Seeds), such as TestSeeds, TestLinearizable,
+# TestMembershipFaults or TestKubernetesLoad. The seeds are split evenly
+# over the processes:
+#   - TestSeeds, 100,000 seeds: 2,500 a process, the witness checker in
 #     both modes among them (#148). Each process requires each fault to
 #     take effect in 95% of its seeds, and a process of 2,000 seeds or
 #     more a stalled leader that went silent and a write a crash tore
 #     too (#218, #233, #378).
-#   - TestMembershipFaults: 10,000 seeds, 250 a process.
-# Every seed is a gosim run of its own, and 1% of each process's seeds run
-# twice and must give the same hashes. Started by the worker:
-#   gh workflow run sim-campaign.yml -f test=<test> -f first=<seed>
+#   - TestMembershipFaults, 10,000 seeds: 250 a process.
+# A short campaign of any such test runs the same way with fewer seeds,
+# and a test's rules over a set apply only to a process with enough
+# seeds. Every seed is a gosim run of its own, and 1% of each process's
+# seeds run twice and must give the same hashes. Started by the worker:
+#   gh workflow run sim-campaign.yml -f test=<test> -f seeds=<count> -f first=<seed>
 # A failing seed prints its hashes and the command that runs it again,
 # and its trace, how it left each node, its history and its disks are
 # uploaded with the job's logs.
 name: sim-campaign
-# The title names the test, which release.yml looks for.
-run-name: sim-campaign ${{ inputs.test }} from seed ${{ inputs.first }}
+# The title names the test and the count, which release.yml looks for.
+run-name: sim-campaign ${{ inputs.test }}, ${{ inputs.seeds }} seeds from seed ${{ inputs.first }}
 
 on:
   workflow_dispatch:
     inputs:
       test:
-        description: The test to run
-        type: choice
-        options: [TestSeeds, TestMembershipFaults]
+        description: The simulator test to run, one that runs a set of seeds
+        required: true
         default: TestSeeds
+      seeds:
+        description: How many seeds
+        required: true
+        default: "100000"
       first:
-        description: First seed; the campaign runs it and the next 99,999 of TestSeeds, or 9,999 of TestMembershipFaults
+        description: The first seed
         required: true
         default: "1"
 
@@ -33,13 +41,38 @@ permissions:
   contents: read
 
 jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      per: ${{ steps.plan.outputs.per }}
+    steps:
+      - id: plan
+        env:
+          TEST: ${{ inputs.test }}
+          SEEDS: ${{ inputs.seeds }}
+          FIRST: ${{ inputs.first }}
+        run: |
+          set -euo pipefail
+          [[ "$TEST" =~ ^Test[A-Za-z0-9_]+$ ]] || { echo "test $TEST is not the name of a test"; exit 1; }
+          [[ "$SEEDS" =~ ^[1-9][0-9]*$ ]] || { echo "seeds $SEEDS is not a positive count"; exit 1; }
+          [[ "$FIRST" =~ ^[0-9]+$ ]] || { echo "first $FIRST is not a seed"; exit 1; }
+          # Two processes a job, at most 20 jobs, and every process but
+          # the last ones the same number of seeds.
+          jobs=$(( (SEEDS + 1) / 2 ))
+          jobs=$(( jobs > 20 ? 20 : jobs ))
+          per=$(( (SEEDS + 2 * jobs - 1) / (2 * jobs) ))
+          echo "$jobs jobs, $per seeds a process"
+          echo "shards=$(seq -s, 0 $((jobs - 1)) | sed 's/^/[/; s/$/]/')" >>"$GITHUB_OUTPUT"
+          echo "per=$per" >>"$GITHUB_OUTPUT"
   seeds:
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 90
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -51,35 +84,44 @@ jobs:
         shell: bash
         env:
           TEST: ${{ inputs.test }}
+          SEEDS: ${{ inputs.seeds }}
           FIRST: ${{ inputs.first }}
+          PER: ${{ needs.plan.outputs.per }}
           SHARD: ${{ matrix.shard }}
           SIM_OUT: ${{ runner.temp }}/sim-out
         run: |
           set -uo pipefail
           export GOSIMTOOL="$GITHUB_WORKSPACE/.gosim/bin/gosim"
-          export SIM_SEEDS=2500
-          if [ "$TEST" = TestMembershipFaults ]; then
-            SIM_SEEDS=250
-          fi
-          export SIM_TWICE=$((SIM_SEEDS / 100))
           cd internal/sim
           pids=()
+          procs=()
           for p in 0 1; do
-            seed=$((FIRST + (SHARD * 2 + p) * SIM_SEEDS))
-            echo "process $p: seeds $seed to $((seed + SIM_SEEDS - 1)) of $TEST"
-            SIM_SEED=$seed "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run "^$TEST\$" -test.v -test.timeout 85m >"$RUNNER_TEMP/seeds-$p.log" 2>&1 &
+            k=$((SHARD * 2 + p))
+            n=$((SEEDS - k * PER))
+            n=$((n > PER ? PER : n))
+            if [ "$n" -le 0 ]; then
+              continue
+            fi
+            seed=$((FIRST + k * PER))
+            echo "process $p: seeds $seed to $((seed + n - 1)) of $TEST"
+            SIM_SEED=$seed SIM_SEEDS=$n SIM_TWICE=$((n / 100)) "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run "^$TEST\$" -test.v -test.timeout 340m >"$RUNNER_TEMP/seeds-$p.log" 2>&1 &
             pids+=($!)
+            procs+=("$p")
           done
           status=0
-          for p in 0 1; do
-            wait "${pids[$p]}" || status=1
+          for pid in "${pids[@]}"; do
+            wait "$pid" || status=1
           done
           # The step's shell stops at the first failed command, and grep
           # fails once head has its 50 lines, so both processes are waited
           # for first.
-          for p in 0 1; do
+          for p in "${procs[@]}"; do
             grep -E -- '^--- FAIL|^    --- FAIL| seeds: |took effect|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$p.log" | head -50 || true
             PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$p.log" -gosim
+          done
+          # A test name that matches no test runs nothing and passes.
+          for p in "${procs[@]}"; do
+            grep -q -- "^=== RUN   $TEST\$" "$RUNNER_TEMP/seeds-$p.log" || { echo "process $p ran no test $TEST"; status=1; }
           done
           exit $status
       # The logs, with every seed's hashes, also when the campaign passed:
