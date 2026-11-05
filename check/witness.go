@@ -124,6 +124,10 @@ type witness struct {
 	// after events[:j].
 	events []event
 	states []summary
+	// times are the events' call and return times (eventTimes), built
+	// when bounds are first asked for: the witness from the log learns
+	// which op an event is after it applied it.
+	times *eventTimes
 	// live is the store after every event, past every version, and
 	// appended the key of each version in the order added.
 	live     *state
@@ -243,6 +247,9 @@ func (w *witness) apply(op int, req history.Request) outcome {
 	}
 	o.events = nil
 	w.events = append(w.events, event{op: op, req: req, out: o})
+	if w.times != nil {
+		w.times.push(w.h, op)
+	}
 	w.states = append(w.states, w.summary(&req))
 	if op >= 0 {
 		w.at[op] = place{set: true, at: len(w.events)}
@@ -540,6 +547,15 @@ func (w *witness) describe(i int) string { return describeOp(w.h, i) }
 // it at: after every event of an acked op that returned before its call,
 // and before every event of an op called after it returned.
 func (w *witness) eventBounds() func(op *history.Op) (int, int) {
+	if !w.slow {
+		if w.times == nil {
+			w.times = &eventTimes{}
+			for _, e := range w.events {
+				w.times.push(w.h, e.op)
+			}
+		}
+		return func(op *history.Op) (int, int) { return w.times.after(op.Call), w.times.before(op.Return) }
+	}
 	bound := w.boundAfter()
 	type call struct {
 		at    int64

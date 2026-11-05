@@ -1168,6 +1168,9 @@ func (r *revisionOrder) restore(m mark) {
 func (r *revisionOrder) restoreOrder(m mark) {
 	w := r.w
 	w.events, w.states = w.events[:m.events], w.states[:m.events+1]
+	if w.times != nil {
+		w.times.truncate(m.events)
+	}
 	for k := len(w.appended) - 1; k >= m.appended; k-- {
 		key := w.appended[k]
 		w.past[key] = w.past[key][:len(w.past[key])-1]
