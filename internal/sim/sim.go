@@ -707,9 +707,10 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		}
 		if err != nil {
 			// A failed formation is the run's failure, with its report.
-			res := &Result{Clients: cfg.Clients + cfg.V3Clients, Stats: f.stats, nodes: f.nodes, Report: f.report()}
+			res := &Result{Clients: cfg.Clients + cfg.V3Clients, nodes: f.nodes, Report: f.report()}
 			f.shutdown()
-			res.Trace = f.trace
+			// Every goroutine of the formation has ended.
+			res.Stats, res.Trace = f.stats, f.trace
 			return res, fmt.Errorf("seed %d: forming the cluster: %w", cfg.Seed, err)
 		}
 		f.shutdown()
