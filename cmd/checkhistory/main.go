@@ -15,7 +15,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"runtime"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -37,6 +40,7 @@ type verdict struct {
 func main() {
 	timeout := flag.Duration("timeout", 10*time.Minute, "how long each checker may take on one file")
 	names := flag.String("checkers", "witness-log,witness-revisions", "comma-separated checkers to run")
+	cpuprofile := flag.String("cpuprofile", "", "exp only: write a CPU profile of the checks")
 	flag.Parse()
 	checkers := map[string]func(*history.History) error{
 		"witness-log":       func(h *history.History) error { return check.Witnessed(h, check.FromLog, *timeout) },
@@ -71,8 +75,21 @@ func main() {
 			clients[op.Client] = true
 		}
 		for _, name := range run {
+			if *cpuprofile != "" {
+				runtime.GC()
+				f, err := os.Create(*cpuprofile)
+				if err != nil {
+					log.Fatal(err)
+				}
+				if err := pprof.StartCPUProfile(f); err != nil {
+					log.Fatal(err)
+				}
+			}
 			start := time.Now()
 			err := checkers[name](h)
+			if *cpuprofile != "" {
+				pprof.StopCPUProfile()
+			}
 			v := verdict{File: file, Checker: name, Ops: len(h.Ops), Clients: len(clients), Passed: err == nil, Seconds: time.Since(start).Seconds()}
 			if err != nil {
 				failed = true

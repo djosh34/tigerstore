@@ -1,0 +1,45 @@
+# Research for #499 (exp branch only): the witness from the revisions on
+# the busy no-fault histories of run 42119056245 (320 s, 191,599 ops, and
+# 1,280 s, 825,606 ops), with main's checker and this branch's, three
+# times each in turn, on one runner.
+name: exp499busy2
+on:
+  push:
+    branches: [exp/499-witness-busy2]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  witness:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: The histories
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42119056245 --repo "$GITHUB_REPOSITORY" -n diag499-paired -D "$RUNNER_TEMP/a"
+          find "$RUNNER_TEMP/a" -name 'history*' | xargs ls -la
+      - name: Three times each
+        run: |
+          go build -o "$RUNNER_TEMP/chk-new" ./cmd/checkhistory
+          git worktree add -q "$RUNNER_TEMP/main" origin/main
+          go build -C "$RUNNER_TEMP/main" -o "$RUNNER_TEMP/chk-old" ./cmd/checkhistory
+          for n in 320 1280; do
+            h=$(find "$RUNNER_TEMP/a" -name "history-$n*")
+            GODEBUG=gctrace=0 "$RUNNER_TEMP/chk-new" -checkers witness-revisions -timeout 60m -cpuprofile "$RUNNER_TEMP/new-$n.pprof" "$h" | cut -c1-200
+            go tool pprof -top -nodecount=35 "$RUNNER_TEMP/chk-new" "$RUNNER_TEMP/new-$n.pprof" | head -45
+            go tool pprof -top -cum -nodecount=35 "$RUNNER_TEMP/chk-new" "$RUNNER_TEMP/new-$n.pprof" | head -45
+          done
+          for h in $(find "$RUNNER_TEMP/a" -name 'history*' | sort); do
+            for b in old new old new old new; do
+              echo "== $b $(basename "$h")"
+              "$RUNNER_TEMP/chk-$b" -checkers witness-revisions -timeout 60m "$h" | cut -c1-400 || true
+            done
+          done
