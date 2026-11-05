@@ -97,11 +97,12 @@ func (s *Sim) exp473Mark() {
 	}
 }
 
-// exp473Config applies the switches of the counterfactual runs:
-// EXP473_HASH=nosort folds the leases into the state hash without sorting
-// them, and EXP473_LEASECKPT sets the lease checkpoint interval in ticks.
+// exp473Config applies the switches of the counterfactual runs: on
+// exp/485-sim-ceiling the state hash folds the leases in without sorting
+// them unless EXP473_HASH=sort (#483), and EXP473_LEASECKPT sets the lease
+// checkpoint interval in ticks.
 func exp473Config(cfg *core.Config) {
-	core.Exp473NoSort = os.Getenv("EXP473_HASH") == "nosort"
+	core.Exp473NoSort = os.Getenv("EXP473_HASH") != "sort"
 	if t, err := strconv.Atoi(os.Getenv("EXP473_LEASECKPT")); err == nil && t > 0 {
 		cfg.LeaseCheckpointTicks = t
 	}
