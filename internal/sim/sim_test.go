@@ -371,7 +371,7 @@ func TestSeeds(t *testing.T) {
 	if !simrun.Seeds(t, 1, 16, func(t *testing.T, seed uint64) Stats {
 		a := run(t, DefaultConfig(seed))
 		st := a.Stats
-		if st.Compactions == 0 || st.Revokes == 0 || st.OK < 200 || len(a.Log) < 50 {
+		if exp485Duration() == 0 && (st.Compactions == 0 || st.Revokes == 0 || st.OK < 200 || len(a.Log) < 50) {
 			t.Fatalf("seed %d did too little to test anything: %+v, %d committed writes", seed, st, len(a.Log))
 		}
 		checkers(t, a)

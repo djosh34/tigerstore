@@ -253,6 +253,14 @@ func (c Config) length() int64 {
 // DefaultConfig is a run of 20 virtual seconds with crashes, link changes,
 // delays and slow disks, then 10 seconds of healing.
 func DefaultConfig(seed uint64) Config {
+	cfg := defaultConfig(seed)
+	if d := exp485Duration(); d > 0 {
+		cfg.Duration = d * Second
+	}
+	return cfg
+}
+
+func defaultConfig(seed uint64) Config {
 	return Config{
 		Seed:          seed,
 		Duration:      20 * Second,
