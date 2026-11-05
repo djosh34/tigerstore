@@ -169,6 +169,11 @@ func (c *conn) flush() error {
 	if keep == 0 {
 		return nil
 	}
+	// EXPERIMENT #484: with FLOOR_NULL=1, preserve the real front end
+	// but replace the entire node/consensus/storage path by immediate replies.
+	if floorNull && c.floorComplete(b) {
+		return nil
+	}
 	err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)
 	if err == nil {
 		c.mu.Lock()
