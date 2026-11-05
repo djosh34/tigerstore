@@ -105,6 +105,12 @@ type revisionOrder struct {
 	putRevs, delRevs  [][]int64
 	putters, deleters [][]int
 	revokers          []int
+	// revokeRevs are the revisions of the acked revokes, in order, and
+	// revokesByLB the ambiguous ones by their lower bounds, of which the
+	// first revokePrefix are used (mayRevoke).
+	revokeRevs   []int64
+	revokesByLB  []int
+	revokePrefix int
 	// top is the highest revision any client saw.
 	top int64
 	// failure is the failure at the highest revision reached, and at its
@@ -340,6 +346,9 @@ func (r *revisionOrder) indexCounts() {
 			}
 		case req.LeaseRevoke != nil:
 			r.revokers = append(r.revokers, i)
+			if acked {
+				r.revokeRevs = append(r.revokeRevs, h.Ops[i].Resp.Revision)
+			}
 		}
 	}
 	for i := range h.Ops {
@@ -369,6 +378,7 @@ func (r *revisionOrder) indexCounts() {
 	for _, revs := range slices.Concat(r.putRevs, r.delRevs) {
 		slices.Sort(revs)
 	}
+	slices.Sort(r.revokeRevs)
 	r.countRevs = slices.Sorted(maps.Keys(r.counts))
 }
 
@@ -433,7 +443,40 @@ func (r *revisionOrder) may(s *state, k int, rev int64, skip int, create bool) b
 	if create {
 		return acked(r.putRevs[k]) || slices.ContainsFunc(r.putters[k], ok)
 	}
-	return acked(r.delRevs[k]) || slices.ContainsFunc(r.deleters[k], ok) || slices.ContainsFunc(r.revokers, ok)
+	if r.w.slow {
+		return acked(r.delRevs[k]) || slices.ContainsFunc(r.deleters[k], ok) || slices.ContainsFunc(r.revokers, ok)
+	}
+	return acked(r.delRevs[k]) || slices.ContainsFunc(r.deleters[k], ok) || acked(r.revokeRevs) || r.mayRevoke(rev, skip)
+}
+
+// mayRevoke reports whether an ambiguous revoke other than skip, not used
+// yet, may come before rev: one whose lower bound is below it. A revoke
+// may delete any key, and the ambiguous ones of a busy history are the
+// expiries of every lease it grants, which may scanned for every key of
+// every count (#499); so they are kept in the order of their lower
+// bounds, and the used ones at the front are passed for good, until
+// restore.
+func (r *revisionOrder) mayRevoke(rev int64, skip int) bool {
+	if r.revokesByLB == nil {
+		for _, i := range r.revokers {
+			if r.w.h.Ops[i].Resp == nil {
+				r.revokesByLB = append(r.revokesByLB, i)
+			}
+		}
+		slices.SortStableFunc(r.revokesByLB, func(a, b int) int { return cmp.Compare(r.lb[a], r.lb[b]) })
+	}
+	for r.revokePrefix < len(r.revokesByLB) && r.used[r.revokesByLB[r.revokePrefix]] {
+		r.revokePrefix++
+	}
+	for _, i := range r.revokesByLB[r.revokePrefix:] {
+		if r.lb[i] >= rev {
+			return false
+		}
+		if i != skip && !r.used[i] {
+			return true
+		}
+	}
+	return false
 }
 
 // touches reports whether req, placed after s, may still create key k,
@@ -1161,7 +1204,7 @@ func (r *revisionOrder) restore(m mark) {
 	}
 	clear(r.ready)
 	r.used = maps.Clone(m.used)
-	r.placedPrefix, r.dues = 0, nil
+	r.placedPrefix, r.dues, r.revokePrefix = 0, nil, 0
 }
 
 // restoreOrder goes back to the order of saveOrder.
