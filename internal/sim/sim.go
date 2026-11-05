@@ -718,7 +718,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 			res := &Result{Clients: cfg.Clients + cfg.V3Clients, nodes: f.nodes, Report: f.report()}
 			f.shutdown()
 			// Every goroutine of the formation has ended.
-			res.Stats, res.Trace = f.stats, f.trace
+			res.Stats, res.Trace, res.stacks = f.stats, f.trace, f.wallStacks
 			return res, fmt.Errorf("forming the cluster: %w", err)
 		}
 		f.shutdown()
@@ -839,6 +839,8 @@ func (s *Sim) run() error {
 	// LeaseCheckpoint feature, every second instead of 5 minutes, so
 	// that the clients' short leases get checkpoints too.
 	s.leaseCheckpoints = s.rng.IntN(2) == 0
+	// Saved before any node runs: a node that spins at once leaves this.
+	s.saveBlackbox()
 	for _, n := range s.nodes[:3] {
 		if err := s.start(n); err != nil {
 			return err
@@ -911,6 +913,9 @@ func formCluster(cfg Config) (*Sim, error) {
 	if cfg.Membership {
 		s.nodes[3].inactive = true
 	}
+	// The formation has a limit of real time too (watchWall).
+	s.saveBlackbox()
+	s.wg.Go(s.watchWall)
 	for _, n := range s.nodes[:3] {
 		if err := s.start(n); err != nil {
 			return s, err
@@ -944,9 +949,9 @@ var errWallLimit = errors.New("the run passed its limit of real time ($SIM_WALL)
 // that a run that takes too long ends with its report. It takes every
 // goroutine's stack first, while the nodes still run. A goroutine that
 // never blocks stops the run's clock too, and gosim ends that run itself;
-// for that run it saves the trace and how it left each node when it starts
-// and every 10 s of the run's time, which the driver then saves with the
-// stacks.
+// for that run it saves the trace and how it left each node every 10 s
+// of the run's time, as run and formCluster do before any node starts,
+// and the driver then saves them with the stacks.
 func (s *Sim) watchWall() {
 	s.saveBlackbox()
 	for tick := 1; s.sleep(100 * Millisecond); tick++ {

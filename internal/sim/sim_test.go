@@ -677,7 +677,11 @@ func TestWallLimit(t *testing.T) {
 	if simrun.Drive(t, 1) {
 		return
 	}
-	res, err := runSeed(t, DefaultConfig(1))
+	// Formed under the faults, so that the limit passes in the run rather
+	// than in the formation.
+	cfg := DefaultConfig(1)
+	cfg.FormUnderFaults = true
+	res, err := runSeed(t, cfg)
 	if !errors.Is(err, errWallLimit) {
 		t.Fatalf("a run past its limit of real time ended with %v", err)
 	}
@@ -686,10 +690,14 @@ func TestWallLimit(t *testing.T) {
 	if !strings.Contains(files["stacks.txt"], "tigerstore/internal_/peer") {
 		t.Fatalf("the saved stacks have none of the nodes' goroutines:\n%s", files["stacks.txt"])
 	}
-	for _, name := range []string{"trace.txt", "nodes.txt", "replay.txt", "calls.txt", "disks/node1/calls.txt"} {
+	for _, name := range []string{"trace.txt", "nodes.txt", "replay.txt", "disks/node1/calls.txt"} {
 		if files[name] == "" {
 			t.Errorf("the saved run has no %s", name)
 		}
+	}
+	// It may end before any call returned.
+	if _, ok := files["calls.txt"]; !ok {
+		t.Error("the saved run has no calls.txt")
 	}
 }
 
