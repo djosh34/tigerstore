@@ -86,6 +86,7 @@ func (s *Sim) exp473Mark() {
 		if n.proc != nil && n.proc.core != nil {
 			keys, vers = n.proc.core.Exp473Index()
 			leases, empty = n.proc.core.Exp473Leases()
+			fmt.Fprintf(&b, " s%d=%s", n.id, n.proc.core.Exp473LeaseState())
 		}
 		fmt.Fprintf(&b, " n%d=disk:%d,files:%d,segs:%d,packs:%d,ckpts:%d,keys:%d,vers:%d,leases:%d,emptyleases:%d", n.id, n.disk.Bytes(), len(names), segs, packs, ckpts, keys, vers, leases, empty)
 	}

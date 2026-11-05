@@ -1,5 +1,7 @@
 package core
 
+import "fmt"
+
 // Exp473 counts the work of node starts (research #473, exp branch only):
 // starts, checkpoints loaded and the keys and versions in them, entries
 // replayed after the checkpoint, and entries after the commit index read
@@ -27,4 +29,19 @@ func (n *Node) Exp473Leases() (leases, empty int) {
 		}
 	}
 	return leases, empty
+}
+
+// Exp473LeaseState reports whether the node leads, the cluster version,
+// and how many leases have a checkpoint scheduled and an expiry armed.
+func (n *Node) Exp473LeaseState() string {
+	sched, armed := 0, 0
+	for _, l := range n.state.leases {
+		if l.checkpointAt != 0 {
+			sched++
+		}
+		if l.expiry != 0 {
+			armed++
+		}
+	}
+	return fmt.Sprintf("leader:%v,version:%d,capable:%v,sched:%d,armed:%d,now:%d", n.isLeader, n.state.version, n.capable(), sched, armed, n.now)
 }
