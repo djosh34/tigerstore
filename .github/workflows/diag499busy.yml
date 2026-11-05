@@ -1,0 +1,47 @@
+name: diag499busy
+on:
+  push:
+    branches: [diag/499-witness-busy]
+permissions:
+  contents: read
+jobs:
+  busy:
+    strategy:
+      fail-fast: false
+      matrix:
+        seconds: [320, 1280]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: scripts/sim.sh ./internal/sim '^$'
+      - name: Generate history
+        env:
+          SECONDS_: ${{ matrix.seconds }}
+        run: |
+          mkdir -p evidence
+          cd internal/sim
+          GOSIMTOOL=$GITHUB_WORKSPACE/.gosim/bin/gosim SIM_OUT=$RUNNER_TEMP/out SIM_SEED=$SECONDS_ SIM_SEEDS=1 "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run '^TestExp499Busy$' -test.v -test.timeout 50m > "$GITHUB_WORKSPACE/evidence/seed.log" 2>&1
+          gzip -c $RUNNER_TEMP/out/*/history.json > "$GITHUB_WORKSPACE/evidence/history.json.gz"
+      - name: Profile and measure
+        run: |
+          go test ./check | tee evidence/tests.log
+          go build -o evidence/checkhistory ./cmd/checkhistory
+          for i in 1 2 3; do
+            evidence/checkhistory -checkers witness-revisions -timeout 20m evidence/history.json.gz | tee -a evidence/timing.jsonl
+          done
+          evidence/checkhistory -checkers witness-revisions -timeout 20m -cpuprofile evidence/cpu.pprof evidence/history.json.gz | tee evidence/profile.jsonl
+          go tool pprof -top evidence/checkhistory evidence/cpu.pprof > evidence/top.txt
+          go tool pprof -top -cum evidence/checkhistory evidence/cpu.pprof > evidence/cum.txt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: diag499-${{ matrix.seconds }}
+          path: evidence/
