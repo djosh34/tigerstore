@@ -393,6 +393,7 @@ func TestSeeds(t *testing.T) {
 		total.TornRefusals += st.TornRefusals
 		total.Packs += st.Packs
 		total.OutOfSpace += st.OutOfSpace
+		total.LeaseCheckpoints += st.LeaseCheckpoints
 		return false
 	}) {
 		return
@@ -407,9 +408,9 @@ func TestSeeds(t *testing.T) {
 	// each.
 	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0 ||
-		total.Disk.Reordered == 0 || total.Packs == 0 || total.OutOfSpace == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal, %d crashes that kept a write and lost an earlier one, %d packs, %d nodes out of space; each must happen",
-			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval, total.Disk.Reordered, total.Packs, total.OutOfSpace)
+		total.Disk.Reordered == 0 || total.Packs == 0 || total.OutOfSpace == 0 || total.LeaseCheckpoints == 0) {
+		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal, %d crashes that kept a write and lost an earlier one, %d packs, %d nodes out of space, %d lease checkpoints; each must happen",
+			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval, total.Disk.Reordered, total.Packs, total.OutOfSpace, total.LeaseCheckpoints)
 	}
 	// A crash tears a write in about 1 seed in 300, so 400 seeds have none
 	// about one time in four; a set of 2000, as in the seed campaign,
@@ -579,6 +580,75 @@ func linearizableConfig(seed uint64) Config {
 	cfg.Clients, cfg.V3Clients = 3, 1
 	cfg.NoLeases = true
 	return cfg
+}
+
+// TestNewestVersion runs 8 seeds and requires each member of a seed that
+// formed its cluster with no faults, as most seeds do, to have applied
+// the newest cluster version at its last turn, and lease checkpoints in
+// the log of some seed (#481). Under the faults alone a cluster almost
+// never took on the newest version, so code that needs it, as lease
+// checkpoints and member attributes, never ran.
+func TestNewestVersion(t *testing.T) {
+	type result struct {
+		Formed      bool
+		Checkpoints int
+	}
+	var calm, checkpointed int
+	if !simrun.Each(t, seedRange(1, 8), func(t *testing.T, seed uint64) result {
+		res := run(t, DefaultConfig(seed))
+		st := res.Stats
+		for _, n := range res.nodes {
+			if st.Formed && n.last.core != nil && n.last.version != core.MaxVersion {
+				t.Errorf("seed %d formed its cluster with no faults, but node %d ran at cluster version %d at its last turn, not %d", seed, n.id, n.last.version, core.MaxVersion)
+			}
+		}
+		t.Logf("seed %d: formed with no faults %v, %d lease checkpoints", seed, st.Formed, st.LeaseCheckpoints)
+		return result{st.Formed, st.LeaseCheckpoints}
+	}, func(_ uint64, r result) bool {
+		if r.Formed {
+			calm++
+		}
+		checkpointed += min(r.Checkpoints, 1)
+		return false
+	}) {
+		return
+	}
+	if !simrun.One() && !t.Failed() && (calm < 4 || checkpointed == 0) {
+		t.Fatalf("of 8 seeds, %d formed their cluster with no faults and %d checkpointed a lease; at least 4 and 1 must", calm, checkpointed)
+	}
+}
+
+// TestFormedClusterAnswers runs seeds that form their cluster first with
+// no faults at all after it, and requires every call to get a definite
+// answer, within 500 ms once the restarted nodes elected a leader, by 2 s:
+// the run starts on the formed disks with nothing held from the
+// formation. Moving the run's clock back after an in-run formation left
+// delivery times of the old clock on open connections, which held their
+// bytes for as long as the formation took, and calls took a second.
+func TestFormedClusterAnswers(t *testing.T) {
+	simrun.Each(t, []uint64{1, 2, 3}, func(t *testing.T, seed uint64) struct{} {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{}
+		cfg.Duration = 10 * Second
+		if !formsFirst(cfg) {
+			t.Fatalf("seed %d forms its cluster under the faults; this test needs one that forms it first", seed)
+		}
+		res := run(t, cfg)
+		slowest := int64(0)
+		for _, r := range res.History {
+			if r.Ambiguous {
+				t.Fatalf("seed %d: call at %s on node %d got no definite answer with no faults: %v", seed, seconds(r.Call), r.Node+1, r.Err)
+			}
+			if r.Call >= 2*Second {
+				slowest = max(slowest, r.Return-r.Call)
+			}
+		}
+		if slowest > 500*Millisecond {
+			t.Fatalf("seed %d: a call after 2 s took %s with no faults", seed, seconds(slowest))
+		}
+		t.Logf("seed %d: %d calls, the slowest after 2 s %s", seed, len(res.History), seconds(slowest))
+		return struct{}{}
+	}, nil)
 }
 
 // TestLinearizable checks short runs with Porcupine and the witness
@@ -830,6 +900,9 @@ func TestDamagedLastRecord(t *testing.T) {
 		// A power loss comes right after a node synced a new term or
 		// vote alone, so that its newest record holds it.
 		cfg.Faults = Faults{Corrupt: true, VoteCrash: true, CrashEvery: Second, MaxDown: Second}
+		// The crash comes at the first new term or vote, of the first
+		// elections, when the log holds no entry yet.
+		cfg.FormUnderFaults = true
 		cfg.Duration = 8 * Second
 		cfg.Heal = 8 * Second
 		cfg.damageKinds = []damageKind{lastRecord}
