@@ -1,6 +1,9 @@
 name: ceiling-gap
 on:
   workflow_dispatch:
+  push:
+    branches: [exp/484-ceiling-gap]
+    paths: [.github/workflows/ceiling-gap.yml]
 jobs:
   measure:
     strategy:
