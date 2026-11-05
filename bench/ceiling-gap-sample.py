@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Eight-second in-load snapshots; metrics readouts carry individual timestamps."""
-import json, os, pathlib, subprocess, sys, time
+import json, os, pathlib, stat, subprocess, sys, time
 out, cluster, certs, disk = sys.argv[1:]
 out = pathlib.Path(out)
 pids = pathlib.Path(cluster, 'pids').read_text().strip().split(',')
@@ -23,11 +23,26 @@ def sample():
         r['nodes'].append({'at':time.monotonic(), 'pid':pid, 'endpoint':ep, 'io':pathlib.Path('/proc',pid,'io').read_text(), 'metrics':vals, 'vars':json.loads(get(ep,'/debug/vars'))})
     return r
 
+def fds(i):
+    if os.getenv('GAP_BPF') != '1': return
+    targets={}; regular=[]
+    for pid in pids:
+        for fd in pathlib.Path('/proc',pid,'fd').glob('*'):
+            try:
+                targets[str(fd)]=os.readlink(fd)
+                if stat.S_ISREG(fd.stat().st_mode): regular.append(str(fd))
+            except FileNotFoundError: pass
+    (out/f'fds-{i}.json').write_text(json.dumps(targets))
+    if '-max-' in out.name:
+        with open(out/f'extents-{i}.txt','w') as f:
+            subprocess.run(['filefrag','-v',*regular],stdout=f,stderr=subprocess.STDOUT)
 rows=[sample()]
+fds(0)
 progress=[]
 for i in range(8):
     time.sleep(max(0, rows[0]['at']+i+1-time.monotonic()))
     progress.append({'at':time.monotonic(), 'vars':json.loads(get(leader,'/debug/vars'))})
+    fds(i+1)
     if i % 2 == 0:
         with open(out/f'tcp-{i}.txt','w') as f:
             subprocess.run(['ss','-tinp'],stdout=f,check=True)

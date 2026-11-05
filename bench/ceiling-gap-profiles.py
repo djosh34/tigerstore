@@ -47,7 +47,7 @@ for root in map(pathlib.Path,sys.argv[1:]):
    frac,total=parse(raw)
    row={'runner':root.name,'config':cfg,'node':node,'sampled_ns':total,'cpu_us_op':r['server_cpu_us_per_op_by_node'][idx],'steps_us_op':{k:v*r['server_cpu_us_per_op_by_node'][idx] for k,v in frac.items()},'shares':frac}
    allrows.append(row);group[(wl,place,int(rtt),variant,node)].append(row)
-pathlib.Path('/tmp/r484/gap-profile-derived.json').write_text(json.dumps(allrows,indent=2))
+(pathlib.Path(sys.argv[1])/'profile-derived.json').write_text(json.dumps(allrows,indent=2))
 print('| workload | layout | RTT | variant | node | top steps us/op (median [min,max]) |')
 print('|---|---|---:|---|---|---|')
 for key,rows in sorted(group.items()):

@@ -1,6 +1,12 @@
 name: ceiling-gap
 on:
   workflow_dispatch:
+    inputs:
+      phase:
+        description: full matrix or disk detail follow-up
+        default: full
+        type: choice
+        options: [full, detail]
 jobs:
   measure:
     strategy:
@@ -20,6 +26,7 @@ jobs:
         run: |
           mkdir -p bin results
           go build -o bin/loadgen ./cmd/loadgen
+          go build -o bin/diskbench ./cmd/diskbench
           go build -o bin/gap ./cmd/tigerstore
           git worktree add --detach "$RUNNER_TEMP/pure" bd1ade319a4d0bfc92082a8bf8d335aa01199428
           (cd "$RUNNER_TEMP/pure" && go build -o "$GITHUB_WORKSPACE/bin/pure" ./cmd/tigerstore)
@@ -54,11 +61,19 @@ jobs:
             lsblk
             sysctl net.ipv4.tcp_rmem net.ipv4.tcp_wmem net.core.rmem_max net.core.wmem_max
           } > results/runner.txt
+      - name: Install disk tracing tools
+        if: inputs.phase == 'detail'
+        run: sudo apt-get update -qq && sudo apt-get install -y bpftrace blktrace
       - name: Measure (three repetitions of each configuration)
         env:
           DATA: ${{ runner.temp }}/ceiling-gap
           OUT: results
+          GAP_PHASE: ${{ inputs.phase || 'full' }}
+          GAP_BPF: ${{ inputs.phase == 'detail' && '1' || '0' }}
         run: |
+          if [ "$GAP_PHASE" = detail ]; then
+            taskset -c 3 bin/diskbench -dir "$RUNNER_TEMP" | tee results/diskbench.jsonl
+          fi
           export DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")
           bench/ceiling-gap.sh | tee results/measure.log
       - name: Symbolized profiles

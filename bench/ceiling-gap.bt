@@ -1,0 +1,16 @@
+// Per-process, per-FD successful write-byte requests and fsync latency.
+// File-descriptor targets are captured by ceiling-gap-sample.py.
+BEGIN { printf("READY\n"); }
+tracepoint:syscalls:sys_enter_pwrite64,
+tracepoint:syscalls:sys_enter_write
+/pid == $1 || pid == $2 || pid == $3/
+{ @write_bytes[pid, args->fd] = sum(args->count); @write_calls[pid, args->fd] = count(); }
+tracepoint:syscalls:sys_enter_fsync,
+tracepoint:syscalls:sys_enter_fdatasync
+/pid == $1 || pid == $2 || pid == $3/
+{ @start[tid] = nsecs; @fd[tid] = args->fd; }
+tracepoint:syscalls:sys_exit_fsync,
+tracepoint:syscalls:sys_exit_fdatasync
+/@start[tid]/
+{ @sync_us[pid, @fd[tid]] = hist((nsecs - @start[tid])/1000); @sync_calls[pid, @fd[tid]] = count(); delete(@start[tid]); delete(@fd[tid]); }
+interval:s:20 { exit(); }
