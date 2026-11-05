@@ -29,7 +29,7 @@ import (
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
 		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
-		lb: map[int]int64{}, alive: map[int64]int64{}, grants: map[int64]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: map[int]bool{}, ready: map[int]bool{},
+		alive: map[int64]int64{}, grants: map[int64]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
 		counts: map[int64][]count{},
 	}
 	w.search = r
@@ -54,7 +54,7 @@ type revisionOrder struct {
 	// ambiguous are the ambiguous mutations, and lb the highest revision
 	// returned before each was called: it writes no revision up to it.
 	ambiguous []int
-	lb        map[int]int64
+	lb        []int64
 	// alive is, per lease, the highest revision at which an answer shows
 	// it in use: an acked put with it wrote that revision, or a key a
 	// client saw still had it there. Its revoke writes a later revision,
@@ -84,12 +84,12 @@ type revisionOrder struct {
 	// later answer needs, by the revision from which they may go, in call
 	// order.
 	optional []optional
-	used     map[int]bool
+	used     []bool
 	// mutations are the acked mutations by return time, which an
 	// optional one must follow if they returned before its call, and
 	// ready the optional ones whose mutations are all placed.
 	mutations []int
-	ready     map[int]bool
+	ready     []bool
 	// placedPrefix is how many of mutations, from the first, are placed
 	// in the order, as far as isReady has looked; dues indexes the
 	// optional mutations not used yet (dueIndex). restore drops both.
@@ -1169,7 +1169,7 @@ func leasesOf(req history.Request) []int64 {
 type mark struct {
 	events, appended, placed int
 	live                     *state
-	used                     map[int]bool
+	used                     []bool
 }
 
 // frame is a gap of the search: its revision, the candidates to write it,
@@ -1183,7 +1183,7 @@ type frame struct {
 
 func (r *revisionOrder) save() mark {
 	m := r.saveOrder()
-	m.used = maps.Clone(r.used)
+	m.used = slices.Clone(r.used)
 	return m
 }
 
@@ -1203,7 +1203,7 @@ func (r *revisionOrder) restore(m mark) {
 		}
 	}
 	clear(r.ready)
-	r.used = maps.Clone(m.used)
+	r.used = slices.Clone(m.used)
 	r.placedPrefix, r.dues, r.revokePrefix = 0, nil, 0
 }
 
