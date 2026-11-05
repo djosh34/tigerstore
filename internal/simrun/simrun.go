@@ -11,6 +11,7 @@ package simrun
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,9 +26,9 @@ type Run struct {
 	// Seed is gosim's seed: the harness seed, or 1 for a test that runs
 	// fixed seeds.
 	Seed uint64
-	// Env holds the variables, as KEY=VALUE, that the test reads its
-	// seeds, planted bug and profile from: SIM_SEED, SIM_SEEDS,
-	// SIM_PLANTED and SIM_LONG.
+	// Env holds the variables of runVars, as KEY=VALUE, that the run
+	// reads its seeds and planted variant from, and whether it keeps its
+	// files. Do passes the others of runVars empty.
 	Env []string
 }
 
@@ -53,13 +54,40 @@ func Replay(dir, pattern string, env []string) string {
 	return strings.TrimSpace(strings.Join(env, " ")+" scripts/sim.sh "+dir) + " '" + pattern + "'"
 }
 
-// Long reports whether the tests run their long profiles ($SIM_LONG is 1),
-// as the nightly kube-sim workflow does.
-func Long() bool { return os.Getenv("SIM_LONG") == "1" }
+// runVars are the only variables a gosim run gets, and it always gets
+// all of them, in this order, empty when not set. A run is its commit,
+// test and seed, and for TestPlanted its planted variant, whatever else
+// the environment holds. gosim's maps draw from the run's one random
+// stream for each entry past the fourth, and the run copies its
+// environment into such a map when it first reads a variable, so one
+// variable more or less would change every later choice (#482).
+var runVars = []string{"SIM_SEED", "SIM_SEEDS", "SIM_PLANTED", "SIM_CONTROL", "SIM_KEEP"}
 
-// passedOn are the variables besides the seeds that the driver passes to
-// each gosim run, which gets no other: the planted bug and the profile.
-var passedOn = []string{"SIM_PLANTED", "SIM_LONG"}
+// passedOn are the variables of runVars besides the seeds that the
+// driver takes from its own environment for each run: the planted bug,
+// and whether to run its seed without the bug.
+var passedOn = []string{"SIM_PLANTED", "SIM_CONTROL"}
+
+// runEnv is env with each variable of runVars, in their order, and
+// those that env does not set empty. A variable that is not one of them
+// is an error.
+func runEnv(env []string) ([]string, error) {
+	values := map[string]string{}
+	for _, kv := range env {
+		name, value, _ := strings.Cut(kv, "=")
+		if !slices.Contains(runVars, name) {
+			return nil, fmt.Errorf("%w: %s", errRunVar, name)
+		}
+		values[name] = value
+	}
+	out := make([]string, len(runVars))
+	for i, name := range runVars {
+		out[i] = name + "=" + values[name]
+	}
+	return out, nil
+}
+
+var errRunVar = errors.New("a gosim run takes only the variables " + strings.Join(runVars, ", "))
 
 // Pattern is the -run pattern of the test or subtest name. A subtest
 // named after a test function, such as TestSeeds's deliberate scenario,

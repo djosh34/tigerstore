@@ -2,6 +2,7 @@ package sim
 
 import (
 	"math/rand/v2"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -54,19 +55,31 @@ func spreadFaults(f *Faults, k int64) {
 
 // TestKubernetesLoad runs the Kubernetes-shaped load of cmd/soak under
 // every fault, with every checker: kubeConfig's short profile on 2 seeds
-// from seed 1, or, with SIM_LONG=1, as the nightly kube-sim workflow
-// sets, its long one. Each seed must have compacted, paged through a
-// list, had a lease expire and had progress requests answered; in a long
-// one, each fault must have taken effect too. It skips under the race
-// detector (#439).
-func TestKubernetesLoad(t *testing.T) {
+// from seed 1. Each seed must have compacted, paged through a list, had a
+// lease expire and had progress requests answered. It skips under the
+// race detector (#439).
+func TestKubernetesLoad(t *testing.T) { kubernetesLoad(t, false, 2) }
+
+// TestKubernetesLoadLong is TestKubernetesLoad with the long profile,
+// in which each fault must have taken effect too. It skips unless
+// $SIM_SEEDS says how many seeds to run, as kube-sim.yml and a campaign
+// do: a seed takes up to hours.
+func TestKubernetesLoadLong(t *testing.T) {
+	if os.Getenv("SIM_SEEDS") == "" {
+		t.Skip("set SIM_SEEDS: a long seed takes up to hours")
+	}
+	kubernetesLoad(t, true, 0)
+}
+
+// kubernetesLoad runs the long or the short profile on $SIM_SEEDS seeds,
+// n by default.
+func kubernetesLoad(t *testing.T, long bool, n int) {
 	if simrun.Race {
 		// Natively a run can hang when a TLS alert waits for a write lock
 		// and the synctest clock stops (#439).
 		t.Skip("the Kubernetes-shaped load runs under gosim (#439)")
 	}
-	long := simrun.Long()
-	simrun.Seeds(t, 1, 2, func(t *testing.T, seed uint64) Stats {
+	simrun.Seeds(t, 1, n, func(t *testing.T, seed uint64) Stats {
 		res := run(t, kubeConfig(seed, long))
 		checkers(t, res)
 		st := res.Stats
