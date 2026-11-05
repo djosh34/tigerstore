@@ -141,9 +141,10 @@ type witness struct {
 	// of a timeout.
 	observed, toObserve int
 	search              *revisionOrder
-	// scope caches the keys each op's request reads or writes (scopedState), and
-	// slow makes the witness copy the whole store for every try and
-	// answer instead, for the tests that compare the two (witness_trial.go).
+	// scope caches the keys each op's request reads or writes
+	// (scopedState), and slow makes the witness copy the whole store for
+	// every try and answer instead, for the tests that compare the two
+	// (witness_trial.go).
 	scope map[int][]string
 	slow  bool
 }

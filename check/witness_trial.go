@@ -26,7 +26,7 @@ func (r *revisionOrder) try(s *state, req history.Request) (t *state, undo func(
 		return s.clone(), func() {}
 	}
 	var written []int
-	// Every key of a request is in the store's keys (keysOf).
+	// Every key a request puts is in the store's keys (keysOf).
 	put := func(p *history.PutRequest) { written = append(written, s.index(p.Key)) }
 	del := func(d *history.DeleteRequest) {
 		lo, hi := s.span(d.Key, d.End)
