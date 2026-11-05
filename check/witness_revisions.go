@@ -920,8 +920,10 @@ func (r *revisionOrder) insertOptional(rev int64) {
 		if o.late || o.from > rev || r.used[o.op] || !r.isReady(o) {
 			continue
 		}
-		s := w.live.clone()
-		if out := s.step(w.reqs[o.op], false); out.err == nil && s.rev == rev {
+		if r.tryOptional(w.live, o, func(s *state, o optional) bool {
+			out := s.step(w.reqs[o.op], false)
+			return out.err == nil && s.rev == rev
+		}) {
 			r.expire(w.h.Ops[o.op].Call, 0)
 			w.apply(o.op, w.reqs[o.op])
 			r.used[o.op] = true
@@ -977,6 +979,13 @@ func (r *revisionOrder) due(call, rev int64) []optional {
 	var out []optional
 	for _, o := range r.optional {
 		if o.late && !r.used[o.op] && (o.gone < call || o.by <= rev) {
+			// A compaction to a revision the order already compacted
+			// fails in the model, and compaction only goes up along an
+			// order, so it would be tried again and again for nothing
+			// (#441). Going back below this point brings it back.
+			if c := r.w.reqs[o.op].Compact; c != nil && c.Revision <= r.w.live.compacted && !r.w.slow {
+				continue
+			}
 			out = append(out, o)
 		}
 	}
@@ -1023,13 +1032,13 @@ func (r *revisionOrder) putIn(o optional, take func(*state, optional) bool) {
 	}
 	if w.h.Ops[o.op].Req.Compact != nil {
 		for _, e := range r.due(w.h.Ops[o.op].Call, 0) {
-			if w.h.Ops[e.op].Req.LeaseRevoke != nil && !r.used[e.op] && r.takes(w.live.clone(), e) {
+			if w.h.Ops[e.op].Req.LeaseRevoke != nil && !r.used[e.op] && r.tryOptional(w.live, e, r.takes) {
 				w.apply(e.op, w.reqs[e.op])
 				r.used[e.op] = true
 			}
 		}
 	}
-	if take(w.live.clone(), o) {
+	if r.tryOptional(w.live, o, take) {
 		w.apply(o.op, w.reqs[o.op])
 		r.used[o.op] = true
 	}
@@ -1268,9 +1277,15 @@ func (r *revisionOrder) candidates(rev int64) []int {
 // answer.
 func (r *revisionOrder) fits(i int, rev int64) bool {
 	w := r.w
-	s := w.live.clone()
+	s, undo := r.try(w.live, w.reqs[i])
+	defer undo()
 	for _, e := range r.due(w.h.Ops[i].Call, 0) {
-		if t := s.clone(); r.takes(t, e) {
+		// takes accepts only an optional that changes no key, so its
+		// undo puts back nothing that s keeps.
+		t, undoE := r.try(s, w.reqs[e.op])
+		ok := r.takes(t, e)
+		undoE()
+		if ok {
 			s = t
 		}
 	}
