@@ -102,8 +102,9 @@ SERVER = [
 CLIENT = [
     ('GC background', r'runtime\.(gcBgMarkWorker|bgsweep|bgscavenge)'),
     ('TLS incl IO', r'crypto/tls\.'),
-    ('LIST/get validation', r'main\.(checkMixedRange|checkMixedKV)|main\.\(\*mixedLoad\)\.message'),
+    ('GET/LIST KV validation', r'main\.(checkMixedRange|checkMixedKV)'),
     ('watch validation/hash', r'main\.\(\*mixedWatch\)|main\.(eventDigest|mixedKV)|main\.\(\*mixedLedger\)'),
+    ('LIST sort / other unary validation', r'main\.\(\*mixedLoad\)\.message'),
     ('choose/build requests', r'main\.\(\*mixedLoad\)\.(choose|start|value|newKey|eligible)|main\.mixedTxn|internal/k8ssize\.Draw'),
     ('HTTP2/control', r'main\.\(\*conn\)\.(readLoop|read|onData|onHeaderBlock|flush|startStream|messages)'),
 ]

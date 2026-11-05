@@ -154,12 +154,13 @@ Each sample is assigned to the first matching category in ceiling-mixed-analyze.
 | category | RTT0 % | RTT0 us/op | RTT10 % | RTT10 us/op |
 |---|---|---|---|---|
 | GC background | 5.458 / 6.608 / 7.759 | 3.934 / 4.676 / 5.418 | 6.624 / 7.479 / 8.333 | 5.019 / 5.543 / 6.067 |
+| GET/LIST KV validation | 29.48 / 30.32 / 31.16 | 20.59 / 21.53 / 22.46 | 27.35 / 28.92 / 30.49 | 20.72 / 21.46 / 22.2 |
 | HTTP2/control | 6.866 / 6.881 / 6.897 | 4.816 / 4.883 / 4.95 | 7.265 / 7.61 / 7.955 | 5.504 / 5.648 / 5.791 |
-| LIST/get validation | 46.03 / 46.17 / 46.3 | 32.14 / 32.76 / 33.38 | 47.35 / 47.39 / 47.44 | 34.47 / 35.21 / 35.94 |
+| LIST sort / other unary validation | 11.97 / 12.8 / 13.62 | 8.63 / 9.071 / 9.511 | 13.83 / 15.67 / 17.52 | 10.07 / 11.67 / 13.27 |
 | TLS incl IO | 30 / 30.23 / 30.46 | 20.95 / 21.45 / 21.96 | 26.89 / 28.94 / 30.98 | 19.58 / 21.53 / 23.47 |
 | choose/build requests | 4.93 / 4.965 / 5 | 3.491 / 3.522 / 3.554 | 4.545 / 4.623 / 4.701 | 3.309 / 3.435 / 3.562 |
 | other | 1.034 / 1.398 / 1.761 | 0.7224 / 0.9957 / 1.269 | 1.282 / 1.493 / 1.705 | 0.9713 / 1.106 / 1.241 |
-| watch validation/hash | 3.276 / 3.751 / 4.225 | 2.287 / 2.667 / 3.046 | 1.709 / 2.465 / 3.22 | 1.295 / 1.82 / 2.344 |
+| watch validation/hash | 6.207 / 6.801 / 7.394 | 4.334 / 4.832 / 5.33 | 4.274 / 5.262 / 6.25 | 3.238 / 3.894 / 4.55 |
 
 ## Exclusive profile attribution, run 42023145903
 Each sample is assigned to the first matching category in ceiling-mixed-analyze.py. GC means background GC only; assists stay charged to callers. TLS includes record handling and IO, not just AES. Shares from 9 s server profiles multiply the full 10 s window CPU/op.
@@ -205,12 +206,13 @@ Each sample is assigned to the first matching category in ceiling-mixed-analyze.
 | category | RTT0 % | RTT0 us/op | RTT10 % | RTT10 us/op |
 |---|---|---|---|---|
 | GC background | 6.37 / 6.611 / 6.852 | 4.077 / 4.285 / 4.493 | 6.312 / 6.926 / 7.54 | 4.667 / 5.014 / 5.361 |
+| GET/LIST KV validation | 32.59 / 32.85 / 33.12 | 20.86 / 21.29 / 21.72 | 25.64 / 28.4 / 31.15 | 18.96 / 20.56 / 22.15 |
 | HTTP2/control | 6.074 / 6.708 / 7.341 | 3.887 / 4.351 / 4.814 | 7.341 / 7.418 / 7.495 | 5.22 / 5.381 / 5.542 |
-| LIST/get validation | 44.7 / 46.42 / 48.15 | 29.31 / 30.06 / 30.81 | 42.8 / 44.71 / 46.63 | 31.65 / 32.4 / 33.15 |
+| LIST sort / other unary validation | 9.625 / 11.11 / 12.59 | 6.312 / 7.185 / 8.059 | 12.7 / 13.15 / 13.61 | 9.029 / 9.547 / 10.06 |
 | TLS incl IO | 29.78 / 31.2 / 32.63 | 19.06 / 20.23 / 21.4 | 29.17 / 30.36 / 31.56 | 20.74 / 22.04 / 23.34 |
 | choose/build requests | 3.259 / 3.506 / 3.752 | 2.086 / 2.273 / 2.461 | 4.96 / 5.537 / 6.114 | 3.527 / 4.024 / 4.521 |
 | other | 1.305 / 1.467 / 1.63 | 0.8558 / 0.9494 / 1.043 | 0.9921 / 1.186 / 1.381 | 0.7054 / 0.8632 / 1.021 |
-| watch validation/hash | 3.426 / 4.083 / 4.741 | 2.247 / 2.64 / 3.034 | 3.373 / 3.856 / 4.339 | 2.398 / 2.804 / 3.209 |
+| watch validation/hash | 5.383 / 6.544 / 7.704 | 3.53 / 4.23 / 4.93 | 6.151 / 7.02 / 7.89 | 4.374 / 5.104 / 5.834 |
 
 ## Microbenchmarks, run 42019785137
 Nanoseconds per operation, three repeats, pinned CPU 3, -test.cpu 1. AES uses AES-128-GCM. General protobuf and production encoders are different APIs. Weighted LIST is a hot synthetic page model, not an exact replay of all measured pages.
