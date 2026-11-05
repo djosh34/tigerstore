@@ -28,7 +28,6 @@ jobs:
       GOFLAGS: '-p=1'
       EXP485_DURATION: ${{ matrix.duration }}
       EXP485_BUDGET: '180'
-      EXP485_OUT: ${{ runner.temp }}/exp485-planted
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -52,6 +51,7 @@ jobs:
       - name: Measure every seed; never stop at a catch
         env:
           SHARD: ${{ matrix.shard }}
+          EXP485_OUT: ${{ runner.temp }}/exp485-planted
         run: |
           if [ "$SHARD" = 0 ]; then
             export EXP485_BUGS='plain B01a B01b B02 B03 B04a B04b B04c B05 B06a B06b B06c B06d B07 B08 B09a'
