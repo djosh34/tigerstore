@@ -377,27 +377,32 @@ func (r *revisionOrder) indexCounts() {
 // run of revisions made the search try their orders until a count far
 // ahead failed them (#251).
 //
-// Only the counts of the next revision that has any, if within
-// countHorizon, are checked, so that each candidate costs little.
+// Check every observed count within countHorizon. Checking only the next
+// revision misses an irreversible loss that a later count already rules
+// out, then tries the permutations of every intervening gap (#425).
 func (r *revisionOrder) reachable(s *state, skip int) bool {
 	next := sort.Search(len(r.countRevs), func(k int) bool { return r.countRevs[k] >= s.rev })
 	if next == len(r.countRevs) || r.countRevs[next] > s.rev+countHorizon {
 		return true
 	}
-	rev := r.countRevs[next]
-	for _, c := range r.counts[rev] {
-		var sure, maybe int64
-		for k := c.lo; k < c.hi; k++ {
-			present := s.kvs[k].Version != 0
-			if present && !r.may(s, k, rev, skip, false) {
-				sure++
-			}
-			if present || r.may(s, k, rev, skip, true) {
-				maybe++
-			}
+	for _, rev := range r.countRevs[next:] {
+		if rev > s.rev+countHorizon {
+			break
 		}
-		if sure > c.n || maybe < c.n {
-			return false
+		for _, c := range r.counts[rev] {
+			var sure, maybe int64
+			for k := c.lo; k < c.hi; k++ {
+				present := s.kvs[k].Version != 0
+				if present && !r.may(s, k, rev, skip, false) {
+					sure++
+				}
+				if present || r.may(s, k, rev, skip, true) {
+					maybe++
+				}
+			}
+			if sure > c.n || maybe < c.n {
+				return false
+			}
 		}
 	}
 	return true
