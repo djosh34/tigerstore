@@ -103,6 +103,17 @@ func TestExp485Planted(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Optional experiment-only recovery: continue a timed-out cell without
+	// replaying its completed survey prefix. Normal runs leave these unset.
+	starts := map[string]uint64{}
+	budgets := map[string]float64{}
+	for key, dst := range map[string]any{"EXP485_START_SEEDS": &starts, "EXP485_REMAINING_BUDGETS": &budgets} {
+		if s := os.Getenv(key); s != "" {
+			if err := json.Unmarshal([]byte(s), dst); err != nil {
+				t.Fatalf("%s: %v", key, err)
+			}
+		}
+	}
 	controls := map[uint64]exp485Finding{}
 	controlWalls := map[uint64]float64{}
 	run := func(name string, seed uint64, phase string) (exp485Finding, exp485Row) {
@@ -151,8 +162,15 @@ func TestExp485Planted(t *testing.T) {
 			}
 			want = regexp.MustCompile(c.want)
 		}
+		cellFirst, cellBudget := first, budget
+		if v, ok := starts[name]; ok {
+			cellFirst = v
+		}
+		if v, ok := budgets[name]; ok {
+			cellBudget = v
+		}
 		elapsed := 0.0
-		for seed := first; seed < first+maxSeeds && elapsed < budget; seed++ {
+		for seed := cellFirst; seed < cellFirst+maxSeeds && elapsed < cellBudget; seed++ {
 			finding, row := run(name, seed, "survey")
 			elapsed += row.WallMS / 1000
 			if name == "" {

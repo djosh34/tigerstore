@@ -1,0 +1,19 @@
+{
+  "source_run_id": "42020412801",
+  "D": 320,
+  "shard": 1,
+  "cells": {
+    "B24": {
+      "first_seed": 1848,
+      "budget_s": 26.36959932099998
+    },
+    "B25": {
+      "first_seed": 1,
+      "budget_s": 180
+    },
+    "B27": {
+      "first_seed": 1,
+      "budget_s": 180
+    }
+  }
+}

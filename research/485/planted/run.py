@@ -11,8 +11,22 @@ import time
 root = Path(__file__).resolve().parents[3]
 out = Path(os.environ.get('EXP485_OUT', '/tmp/exp485-planted'))
 out.mkdir(parents=True, exist_ok=True)
+# A checked-in recovery manifest deliberately makes the push a tiny continuation,
+# not another 14-cell campaign. Remove it to run the original complete matrix.
+recovery_path = Path(__file__).with_name('recovery.json')
+recovery = json.loads(recovery_path.read_text()) if recovery_path.exists() else None
+if recovery:
+    if (int(os.environ['EXP485_DURATION']), int(os.environ['SHARD'])) != (recovery['D'], recovery['shard']):
+        (out / 'recovery-skipped.json').write_text(json.dumps(recovery, indent=2) + '\n')
+        print('Recovery: this matrix job has no unfinished cells', flush=True)
+        sys.exit(0)
+    os.environ['EXP485_BUGS'] = ' '.join(recovery['cells'])
+    os.environ['EXP485_START_SEEDS'] = json.dumps({b: c['first_seed'] for b, c in recovery['cells'].items()})
+    os.environ['EXP485_REMAINING_BUDGETS'] = json.dumps({b: c['budget_s'] for b, c in recovery['cells'].items()})
 meta = {k: os.environ.get(k) for k in ('EXP485_DURATION', 'EXP485_BUDGET', 'EXP485_BUGS', 'GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_JOB', 'GOMAXPROCS')}
 meta.update(platform=subprocess.check_output(['uname', '-a'], text=True).strip(), first_seed=1)
+if recovery:
+    meta['recovery'] = recovery
 (out / 'metadata.json').write_text(json.dumps(meta, indent=2) + '\n')
 env = dict(os.environ, GOSIMTOOL=str(root / '.gosim/bin/gosim'), SIM_SEED='1')
 with (out / 'seed.log').open('w') as log, (out / 'rss.csv').open('w') as samples:
