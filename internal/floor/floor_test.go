@@ -22,7 +22,7 @@ func BenchmarkFloorGCM(b *testing.B) {
 	a, _ := cipher.NewGCM(block)
 	nonce := make([]byte, 12)
 	aad := []byte{23, 3, 3, 0, 0}
-	for _, n := range []int{80, 1100, 1220, 16384} {
+	for _, n := range []int{80, 1103, 1221, 16384} {
 		p := make([]byte, n)
 		ct := a.Seal(nil, nonce, p, aad)
 		out := make([]byte, 0, n+32)
@@ -120,7 +120,9 @@ func TestFloorSizes(t *testing.T) {
 	for _, txn := range []bool{false, true} {
 		for _, batch := range []int{64, 256, 1536} {
 			data := Batch(txn, batch)
-			t.Logf("txn=%v key=%d request=%d batch=%d entry=%d WAL=%d", txn, len(Key(0)), len(Wire(txn)), batch, len(data), len(data)+26)
+			m := &raftpb.Message{Type: raftpb.MsgApp.Enum(), To: new(uint64(0x223456789abcdef0)), From: new(uint64(0x123456789abcdef0)), Term: new(uint64(2)), LogTerm: new(uint64(2)), Index: new(uint64(100000)), Commit: new(uint64(99999)), Entries: []*raftpb.Entry{{Term: new(uint64(2)), Index: new(uint64(100001)), Type: raftpb.EntryNormal.Enum(), Data: data}}}
+			ack := &raftpb.Message{Type: raftpb.MsgAppResp.Enum(), To: m.From, From: m.To, Term: m.Term, Index: new(uint64(100001))}
+			t.Logf("txn=%v key=%d request=%d batch=%d entry=%d WAL=%d peer_frame=%d ack_frame=%d", txn, len(Key(0)), len(Wire(txn)), batch, len(data), len(data)+26, proto.Size(m)+4, proto.Size(ack)+4)
 		}
 	}
 }

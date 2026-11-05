@@ -38,11 +38,11 @@ jobs:
           go build -o bin/floor-server ./cmd/tigerstore
           scripts/dev-certs.sh certs
       - name: Check exact fixture sizes
-        run: go test ./cmd/loadgen ./internal/floor -run '^TestFloor' -v | tee results/sizes.txt
+        run: go test ./cmd/loadgen ./internal/floor ./internal/server -run '^TestFloor' -v | tee results/sizes.txt
       - name: One-core primitives (three repetitions)
         run: |
           set -o pipefail
-          GOMAXPROCS=1 taskset -c 0 go test -p 1 ./internal/floor ./internal/core ./internal/wal ./internal/mvcc -run '^$' -bench '^BenchmarkFloor' -cpu 1 -benchtime=400ms -count=3 -benchmem | tee results/primitives.txt
+          GOMAXPROCS=1 taskset -c 0 go test -p 1 ./internal/floor ./internal/core ./internal/wal ./internal/mvcc ./internal/server -run '^$' -bench '^BenchmarkFloor' -cpu 1 -benchtime=400ms -count=3 -benchmem | tee results/primitives.txt
       - name: Real TLS/HTTP2 front end, immediate null backend
         run: bench/ceiling-floor.sh
       - name: Summary

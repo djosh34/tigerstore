@@ -10,7 +10,9 @@ import (
 	"testing"
 )
 
-var floorSink any
+var floorSink proto.Message
+var floorPutSink Put
+var floorDataSink []byte
 
 func BenchmarkFloorDecode(b *testing.B) {
 	for _, txn := range []bool{false, true} {
@@ -44,7 +46,7 @@ func BenchmarkFloorDecode(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					floorSink = p
+					floorPutSink = p
 				}
 			}
 		})
@@ -75,7 +77,7 @@ func BenchmarkFloorEncode(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					floorSink = data
+					floorDataSink = data
 				}
 				b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*batch), "ns/item")
 			})

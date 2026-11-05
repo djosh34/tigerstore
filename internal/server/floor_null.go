@@ -27,7 +27,7 @@ func (c *conn) floorComplete(b opBatch) bool {
 		reply := core.Reply{Rev: rev, Term: 2}
 		if _, ok := r.Op.(*pb.TxnRequest); ok {
 			h := &pb.ResponseHeader{ClusterId: c.cluster, MemberId: c.member, Revision: rev, RaftTerm: 2}
-			reply.Resp = &pb.TxnResponse{Header: h, Succeeded: true, Responses: []*pb.ResponseOp{{Response: &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{Header: h}}}}}
+			reply.Resp = &pb.TxnResponse{Header: h, Succeeded: true, Responses: []*pb.ResponseOp{{Response: &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{Header: &pb.ResponseHeader{Revision: rev}}}}}}
 		}
 		cs[i] = node.Completion{Tag: b.tags[i], Reply: reply}
 	}

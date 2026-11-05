@@ -41,7 +41,7 @@ func BenchmarkFloorTLS(b *testing.B) {
 		b.Fatal(err)
 	}
 	cert := tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
-	for _, n := range []int{80, 1100, 1220, 16384} {
+	for _, n := range []int{80, 1103, 1221, 16384} {
 		b.Run(fmt.Sprintf("seal_open/n%d", n), func(b *testing.B) {
 			a, z := net.Pipe()
 			defer a.Close()
