@@ -1,6 +1,8 @@
 name: ceiling-mixed
 on:
   workflow_dispatch:
+  push:
+    branches: [exp/484-ceiling-mixed]
 jobs:
   mixed:
     runs-on: ubuntu-24.04-arm
