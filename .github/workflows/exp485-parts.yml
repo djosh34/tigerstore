@@ -40,6 +40,7 @@ jobs:
           SEEDS: ${{ matrix.cell.seeds }}
           PROCS: ${{ matrix.cell.procs }}
           PROFILE: ${{ matrix.cell.profile }}
+          FAULTS: ${{ matrix.cell.faults }}
           FIRST: "1"
           OUT: ${{ runner.temp }}/cell
         run: research/485/parts/run.sh
@@ -48,29 +49,4 @@ jobs:
         with:
           name: exp485-parts-${{ matrix.cell.name }}
           path: ${{ runner.temp }}/cell
-          retention-days: 14
-  main:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: main
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: scripts/sim.sh ./internal/sim '^$'
-      - name: TestSeeds on main, 40 seeds in one process
-        run: |
-          cd internal/sim
-          start=$SECONDS
-          SIM_SEED=1 SIM_SEEDS=40 GOSIMTOOL=$GITHUB_WORKSPACE/.gosim/bin/gosim /usr/bin/time -v "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run '^TestSeeds$' -test.v -test.timeout 100m >"$RUNNER_TEMP/main.log" 2>"$RUNNER_TEMP/main.time" || true
-          echo "main: 40 seeds in $((SECONDS - start)) s"
-          grep -E 'Maximum resident|Elapsed|User time|System time' "$RUNNER_TEMP/main.time"
-          grep -E 'gosim run of seed|^--- FAIL|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/main.log" | head -60
-      - if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: exp485-parts-main
-          path: ${{ runner.temp }}/main.*
           retention-days: 14

@@ -1,16 +1,12 @@
 [
-  {"name": "d5",   "test": "TestSeeds", "d": 5,   "seeds": 60, "procs": 1, "profile": 0},
-  {"name": "d10",  "test": "TestSeeds", "d": 10,  "seeds": 50, "procs": 1, "profile": 0},
-  {"name": "d20",  "test": "TestSeeds", "d": 20,  "seeds": 40, "procs": 1, "profile": 0},
-  {"name": "d40",  "test": "TestSeeds", "d": 40,  "seeds": 30, "procs": 1, "profile": 0},
-  {"name": "d80",  "test": "TestSeeds", "d": 80,  "seeds": 20, "procs": 1, "profile": 0},
-  {"name": "d160", "test": "TestSeeds", "d": 160, "seeds": 12, "procs": 1, "profile": 0},
-  {"name": "d320", "test": "TestSeeds", "d": 320, "seeds": 8,  "procs": 1, "profile": 0},
-  {"name": "d640", "test": "TestSeeds", "d": 640, "seeds": 5,  "procs": 1, "profile": 0},
-  {"name": "d1280", "test": "TestSeeds", "d": 1280, "seeds": 3, "procs": 1, "profile": 0},
-  {"name": "p-d20",  "test": "TestSeeds", "d": 20,  "seeds": 20, "procs": 1, "profile": 1},
-  {"name": "p-d320", "test": "TestSeeds", "d": 320, "seeds": 4,  "procs": 1, "profile": 1},
-  {"name": "x4-d20",  "test": "TestSeeds", "d": 20,  "seeds": 40, "procs": 4, "profile": 0},
-  {"name": "x4-d320", "test": "TestSeeds", "d": 320, "seeds": 6,  "procs": 4, "profile": 0},
-  {"name": "kube-short", "test": "TestKubernetesLoad", "d": 0, "seeds": 6, "procs": 1, "profile": 1}
+  {"name": "none-d20",    "test": "TestSeeds", "d": 20,   "faults": "none", "seeds": 30, "procs": 1, "profile": 0},
+  {"name": "none-d320",   "test": "TestSeeds", "d": 320,  "faults": "none", "seeds": 6,  "procs": 1, "profile": 1},
+  {"name": "none-d1280",  "test": "TestSeeds", "d": 1280, "faults": "none", "seeds": 3,  "procs": 1, "profile": 0},
+  {"name": "x4-d80",      "test": "TestSeeds", "d": 80,   "faults": "4",    "seeds": 15, "procs": 1, "profile": 0},
+  {"name": "x4-d320",     "test": "TestSeeds", "d": 320,  "faults": "4",    "seeds": 8,  "procs": 1, "profile": 1},
+  {"name": "x4-d1280",    "test": "TestSeeds", "d": 1280, "faults": "4",    "seeds": 3,  "procs": 1, "profile": 0},
+  {"name": "x16-d320",    "test": "TestSeeds", "d": 320,  "faults": "16",   "seeds": 8,  "procs": 1, "profile": 0},
+  {"name": "x16-d1280",   "test": "TestSeeds", "d": 1280, "faults": "16",   "seeds": 3,  "procs": 1, "profile": 0},
+  {"name": "x16-d5120",   "test": "TestSeeds", "d": 5120, "faults": "16",   "seeds": 2,  "procs": 1, "profile": 0},
+  {"name": "none-x4procs-d320", "test": "TestSeeds", "d": 320, "faults": "none", "seeds": 4, "procs": 4, "profile": 0}
 ]

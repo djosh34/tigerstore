@@ -10,6 +10,7 @@ out=${OUT:?}
 mkdir -p "$out"
 export GOSIMTOOL=$root/.gosim/bin/gosim
 [ "${D:-0}" -gt 0 ] && export EXP485_DURATION=$D
+[ -n "${FAULTS:-}" ] && export EXP485_FAULTS=$FAULTS
 cd "$root/internal/sim"
 start=$SECONDS
 pids=()
@@ -30,6 +31,6 @@ while kill -0 "${pids[@]}" 2>/dev/null; do
 done
 st=0
 for pid in "${pids[@]}"; do wait "$pid" || st=1; done
-echo "cell test=$TEST D=$D seeds=$SEEDS procs=$PROCS: exit $st, wall $((SECONDS - start)) s, peak rss of sim processes $((peak / 1024)) MiB, peak runner used $used MiB"
+echo "cell test=$TEST D=$D faults=${FAULTS:-} seeds=$SEEDS procs=$PROCS: exit $st, wall $((SECONDS - start)) s, peak rss of sim processes $((peak / 1024)) MiB, peak runner used $used MiB"
 grep -h -E 'gosim run of seed|^--- FAIL|^(ok|FAIL|PASS)$' "$out"/seeds-*.log | head -80
 exit 0

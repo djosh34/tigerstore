@@ -257,6 +257,7 @@ func DefaultConfig(seed uint64) Config {
 	if d := exp485Duration(); d > 0 {
 		cfg.Duration = d * Second
 	}
+	exp485Faults(&cfg)
 	return cfg
 }
 
