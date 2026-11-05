@@ -1,8 +1,11 @@
 name: ceiling-hw
 on:
   workflow_dispatch:
-  push:
-    branches: [exp/484-ceiling-hw]
+    inputs:
+      tls_only:
+        description: Only verify actual tigerstore client and peer TLS negotiation
+        type: boolean
+        default: false
 jobs:
   hardware:
     if: github.event_name == 'workflow_dispatch'
@@ -29,6 +32,9 @@ jobs:
           go test -c -o bin/primitives.test ./bench/ceilinghw
           gcc -O3 -pthread -o bin/raw bench/ceilinghw/c/raw.c
           scripts/dev-certs.sh certs
+      - name: Build tigerstore for TLS-only probe
+        if: inputs.tls_only
+        run: go build -o bin/tigerstore ./cmd/tigerstore
       - name: Match bench disk and qdisc
         run: |
           sudo mount -o remount,barrier=1 /
@@ -36,7 +42,11 @@ jobs:
           if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
           sudo modprobe sch_netem
       - name: Measure hardware
+        if: ${{ !inputs.tls_only }}
         run: bash bench/ceilinghw/run.sh results
+      - name: Verify actual listener cipher suites
+        if: inputs.tls_only
+        run: bash bench/ceilinghw/tls.sh
       - uses: actions/upload-artifact@v6
         if: always()
         with:

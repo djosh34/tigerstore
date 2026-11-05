@@ -28,6 +28,7 @@ func main() {
 	duration := flag.Duration("duration", 3*time.Second, "")
 	streams := flag.Int("streams", 1, "")
 	certs := flag.String("certs", "certs", "")
+	alpn := flag.String("alpn", "", "optional TLS ALPN for a handshake probe")
 	flag.Parse()
 	var cfg *tls.Config
 	if *secure {
@@ -44,6 +45,9 @@ func main() {
 			panic("bad CA")
 		}
 		cfg = &tls.Config{MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13, Certificates: []tls.Certificate{cert}, RootCAs: pool, ClientCAs: pool, ClientAuth: tls.RequireAndVerifyClientCert, ServerName: "localhost"}
+		if *alpn != "" {
+			cfg.NextProtos = []string{*alpn}
+		}
 	}
 	if *server {
 		l, err := net.Listen("tcp", *addr)
@@ -83,6 +87,13 @@ func main() {
 			c = t
 		}
 		return c
+	}
+	if *mode == "handshake" {
+		c := dial()
+		defer c.Close()
+		state := c.(*tls.Conn).ConnectionState()
+		must(json.NewEncoder(os.Stdout).Encode(map[string]any{"version": state.Version, "cipher": tls.CipherSuiteName(state.CipherSuite), "alpn": state.NegotiatedProtocol}))
+		return
 	}
 	if *mode == "ping" {
 		c := dial()
