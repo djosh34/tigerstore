@@ -140,15 +140,16 @@ func Do(t *testing.T, r Run) *Result {
 const wallGrace = 10 * time.Minute
 
 // wallLimit is the limit of real time of each gosim run, $SIM_WALL as a
-// duration, by default 30 minutes, or 165 for a test named *Long. A run past it fails with its report,
-// and its stacks: the simulation stops itself, its checks too, and one
-// that never yields is ended wallGrace later (#499). The limit changes no
-// run before it passes, and it is not passed to the run.
+// duration, by default 30 minutes, or 165 for a test named *Long. A run
+// past it fails with its report, and its stacks: the simulation stops
+// itself, its checks too, and one that never yields is ended wallGrace
+// later (#499). The limit changes no run before it passes, and it is not
+// passed to the run.
 func wallLimit(t *testing.T) time.Duration {
 	t.Helper()
 	v := os.Getenv("SIM_WALL")
 	if v == "" && strings.HasSuffix(Top(strings.Split(t.Name(), "/"))[0], "Long") {
-		// A long seed takes up to about 3 hours, and its kill must come
+		// A long seed takes up to 2 hours or so, and its kill must come
 		// before the 180 minutes kube-sim.sh gives the test binary.
 		return 165 * time.Minute
 	}

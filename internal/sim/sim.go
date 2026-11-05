@@ -944,9 +944,11 @@ var errWallLimit = errors.New("the run passed its limit of real time ($SIM_WALL)
 // that a run that takes too long ends with its report. It takes every
 // goroutine's stack first, while the nodes still run. A goroutine that
 // never blocks stops the run's clock too, and gosim ends that run itself;
-// for that run it saves the trace and how it left each node every 10 s of
-// the run's time, which the driver then saves with the stacks.
+// for that run it saves the trace and how it left each node when it starts
+// and every 10 s of the run's time, which the driver then saves with the
+// stacks.
 func (s *Sim) watchWall() {
+	s.saveBlackbox()
 	for tick := 1; s.sleep(100 * Millisecond); tick++ {
 		if simrun.WallLimitPassed() {
 			stacks := simrun.Stacks()
@@ -956,15 +958,25 @@ func (s *Sim) watchWall() {
 			s.mu.Unlock()
 			return
 		}
-		if simrun.InGosim && tick%100 == 0 {
-			report := s.report()
-			s.mu.Lock()
-			trace := strings.Join(s.trace, "\n") + "\n"
-			s.mu.Unlock()
-			simrun.Artifact("blackbox/trace.txt", []byte(trace))
-			simrun.Artifact("blackbox/nodes.txt", []byte(report))
+		if tick%100 == 0 {
+			s.saveBlackbox()
 		}
 	}
+}
+
+// saveBlackbox saves the trace and how the run left each node so far,
+// under gosim, for the driver to keep if gosim ends a run that never
+// yields (watchWall).
+func (s *Sim) saveBlackbox() {
+	if !simrun.InGosim {
+		return
+	}
+	report := s.report()
+	s.mu.Lock()
+	trace := strings.Join(s.trace, "\n") + "\n"
+	s.mu.Unlock()
+	simrun.Artifact("blackbox/trace.txt", []byte(trace))
+	simrun.Artifact("blackbox/nodes.txt", []byte(report))
 }
 
 // settleSeconds is how long settle lets nodes that disagree at the end
