@@ -263,7 +263,9 @@ func BenchmarkClient(b *testing.B) {
 }
 
 // One large independent region per worker (128 MiB working set per worker,
-// source+destination), beyond runner caches. All workers copy once per op.
+// source+destination). This is copy throughput, not guaranteed DRAM-only
+// bandwidth: a runner may have an LLC as large as one worker's working set.
+// All workers copy once per op.
 func BenchmarkMemory(b *testing.B) {
 	for _, workers := range []int{1, 2, 4} {
 		b.Run(fmt.Sprintf("Threads%d", workers), func(b *testing.B) {
