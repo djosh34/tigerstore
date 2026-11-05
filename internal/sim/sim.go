@@ -670,6 +670,9 @@ type Result struct {
 	logged   bool
 	// Clients is the number of request clients.
 	Clients int
+	// long is set for a run of an hour or more, whose history takes
+	// gigabytes.
+	long bool
 	// values is the one copy of each value of a Kubernetes-shaped load,
 	// which the checkers' history shares too.
 	values *values
@@ -686,7 +689,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := &Result{Clients: cfg.Clients + cfg.V3Clients}
+	res := &Result{Clients: cfg.Clients + cfg.V3Clients, long: cfg.Duration >= 3600*Second}
 	err = s.run()
 	// A run that failed before its end keeps what it did so far, for its
 	// report; it has no committed log for the checkers.

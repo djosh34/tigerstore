@@ -188,6 +188,55 @@ jobs:
             ${{ runner.temp }}/sim-out
           retention-days: 30
 
+  # A run is its commit, test and seed (docs/testing.md): the same seeds
+  # give the same hashes on amd64 and arm64, and in a plain environment
+  # as in one with other variables, another time zone, other GC and
+  # GOMAXPROCS settings, a planted bug named and every seed run twice
+  # (#482).
+  replay:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: scripts/sim.sh ./internal/sim '^$'
+      - name: Run the seeds in a plain environment
+        run: env -i PATH="$PATH" HOME="$HOME" scripts/replay-hashes.sh "$RUNNER_TEMP/plain.txt"
+      - name: Run the seeds in another environment
+        shell: bash
+        run: |
+          for i in $(seq 1 40); do export "REPLAY_EXTRA_$i=$i"; done
+          # SIM_PLANTED reaches every gosim run but only TestPlanted reads
+          # it, and this build has no planted bugs. With the double runs'
+          # SIM_KEEP it made one variable too many before #482's fix.
+          SIM_PLANTED=B12 TZ=Asia/Kolkata LANG=C.UTF-8 GOGC=20 GOMAXPROCS=1 SIM_TWICE=8 SIM_OUT="$RUNNER_TEMP/sim-out" \
+            scripts/replay-hashes.sh "$RUNNER_TEMP/other.txt"
+      - name: Compare
+        run: diff "$RUNNER_TEMP/plain.txt" "$RUNNER_TEMP/other.txt"
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: replay-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/plain.txt
+            ${{ runner.temp }}/other.txt
+          retention-days: 30
+  replay-compare:
+    needs: replay
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: replay
+      - run: diff replay/replay-ubuntu-24.04/plain.txt replay/replay-ubuntu-24.04-arm/plain.txt
+
   # internal/sim/unimplemented.txt must list every hook that gosim does
   # not implement and that the translation of the simulator's tests meets.
   # gosim lists them by architecture; the file is the arm64 list.
@@ -540,7 +589,7 @@ jobs:
   # condition; no job here needs another, so nothing else skips them.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, gosim-hooks, membership, smoke, apiserver, configmaps, difftest, difffuzz, fuzz, coverage, race-sim, rolling-upgrade, past-ram]
+    needs: [lint, build, test, stress, determinism-lint, sim, replay, replay-compare, gosim-hooks, membership, smoke, apiserver, configmaps, difftest, difffuzz, fuzz, coverage, race-sim, rolling-upgrade, past-ram]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:

@@ -1,5 +1,5 @@
 # The nightly campaign of the simulator's Kubernetes-shaped load
-# (TestKubernetesLoad with SIM_LONG=1, docs/testing.md): 20 jobs, each
+# (TestKubernetesLoadLong, docs/testing.md): 20 jobs, each
 # running new seeds of 10,000 objects for 4 virtual hours, every checker
 # on each, one after the other for about 5 hours: a job starts seeds
 # while it has had less than 165 minutes, and a seed takes from 50

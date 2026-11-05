@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs seeds of the simulator's Kubernetes-shaped load, the long profile
-# of TestKubernetesLoad, one after the other while less than MINUTES have
+# of TestKubernetesLoadLong, one after the other while less than MINUTES have
 # passed (docs/testing.md), as kube-sim.yml does in each of its jobs:
 #
 #   FIRST=<seed> MINUTES=<minutes> [TWICE=1] scripts/kube-sim.sh
@@ -17,16 +17,16 @@ set -uo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 out=${OUT:-${RUNNER_TEMP:-/tmp}}
 limit=$((14 * 1024 * 1024 + 512 * 1024)) # KiB
-export GOSIMTOOL=$root/.gosim/bin/gosim SIM_LONG=1 SIM_SEEDS=1 GOMEMLIMIT=12GiB
+export GOSIMTOOL=$root/.gosim/bin/gosim SIM_SEEDS=1 GOMEMLIMIT=12GiB
 cd "$root/internal/sim"
 seed=$FIRST
 twice=${TWICE:-0}
 status=0
 while [ "$SECONDS" -lt $((MINUTES * 60)) ]; do
 	log=$out/seed-$seed.log
-	echo "seed $seed: replay: SIM_LONG=1 SIM_SEED=$seed SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestKubernetesLoad\$'"
+	echo "seed $seed: replay: SIM_SEED=$seed SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestKubernetesLoadLong\$'"
 	start=$SECONDS
-	SIM_SEED=$seed SIM_TWICE=$twice "$root/.gosim/bin/sim.test" -test.run '^TestKubernetesLoad$' -test.v -test.timeout $((180 + 120 * twice))m >"$log" 2>&1 &
+	SIM_SEED=$seed SIM_TWICE=$twice "$root/.gosim/bin/sim.test" -test.run '^TestKubernetesLoadLong$' -test.v -test.timeout $((180 + 120 * twice))m >"$log" 2>&1 &
 	pid=$!
 	peak=0
 	killed=""

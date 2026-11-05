@@ -235,11 +235,11 @@ func TestPlanted(t *testing.T) {
 	}
 	want := regexp.MustCompile(c.want)
 	control := os.Getenv("SIM_CONTROL") != ""
-	planted.Active, activePlanted = name, name
+	planted.Active, activePlanted, activeControl = name, name, control
 	if control {
 		planted.Active = ""
 	}
-	t.Cleanup(func() { planted.Active, activePlanted = "", "" })
+	t.Cleanup(func() { planted.Active, activePlanted, activeControl = "", "", false })
 	tried, caught := 0, false
 	if !simrun.Seeds(t, 1, c.seeds, func(t *testing.T, seed uint64) plantedRun {
 		res, err := runSeed(t, c.cfg(seed))

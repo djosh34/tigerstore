@@ -63,8 +63,7 @@ func passed() []string {
 }
 
 // Drive runs t's whole test, which runs the one harness seed seed, as a
-// gosim run with that seed, the planted bug of $SIM_PLANTED and the
-// profile of $SIM_LONG, and
+// gosim run with that seed and the planted bug of $SIM_PLANTED, and
 // reports true when scripts/sim.sh started it; the caller then returns.
 // It reports false when t runs its body here (Here).
 func Drive(t *testing.T, seed uint64) bool {
@@ -84,8 +83,12 @@ func Do(t *testing.T, r Run) *Result {
 	t.Helper()
 	pkg, _ := pkgPath(t)
 	mt := metatesting.ForOtherPackage(t, pkg, tags...)
+	env, err := runEnv(r.Env)
+	if err != nil {
+		t.Fatalf("running %s in gosim: %v", r.Test, err)
+	}
 	start := time.Now()
-	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: r.Env})
+	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: env})
 	if err != nil {
 		t.Fatalf("running %s in gosim: %v", r.Test, err)
 	}

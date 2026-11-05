@@ -75,7 +75,7 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 			cmd := replayCommand(t.Name(), cfg.Seed)
 			// A long run's history takes gigabytes, which a run kept
 			// only to compare with its second run leaves out.
-			simrun.AfterSeed(func() { save(t, cmd, res, !simrun.Long()) })
+			simrun.AfterSeed(func() { save(t, cmd, res, !res.long) })
 		}
 	}
 	me := new(int)
@@ -261,7 +261,7 @@ func runFiles(dir, cmd string, res *Result, history bool) map[string]string {
 	// run's history takes gigabytes, so it gets calls.txt only without
 	// history.json.
 	h, err := res.Checkable()
-	if !simrun.Long() || !res.logged || err != nil {
+	if !res.long || !res.logged || err != nil {
 		files["calls.txt"] = calls(res)
 	}
 	switch {
@@ -331,8 +331,12 @@ func addFiles(files map[string]string, dir string, disk map[string][]byte) {
 	}
 }
 
-// activePlanted is the planted bug TestPlanted switched on, if any.
-var activePlanted string
+// activePlanted is the planted bug TestPlanted switched on, if any, and
+// activeControl set when TestPlanted runs its seeds without it.
+var (
+	activePlanted string
+	activeControl bool
+)
 
 // replayCommand is the command that runs test name's run of seed again:
 // scripts/sim.sh, or go test natively under the race detector. A subtest
@@ -346,8 +350,8 @@ func replayCommand(name string, seed uint64) string {
 	if activePlanted != "" {
 		env = append(env, "SIM_PLANTED="+activePlanted)
 	}
-	if simrun.Long() {
-		env = append(env, "SIM_LONG=1")
+	if activeControl {
+		env = append(env, "SIM_CONTROL=1")
 	}
 	pattern := simrun.Pattern(name)
 	if !simrun.Race {
