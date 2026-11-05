@@ -1,0 +1,54 @@
+name: ceiling-mixed
+on:
+  workflow_dispatch:
+jobs:
+  mixed:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [1, 2]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build main servers and research generator
+        run: |
+          mkdir -p bin results
+          git worktree add --detach "$RUNNER_TEMP/main" bd1ade319a4d0bfc92082a8bf8d335aa01199428
+          (cd "$RUNNER_TEMP/main" && go build -o "$GITHUB_WORKSPACE/bin/tigerstore" ./cmd/tigerstore)
+          go build -o bin/loadgen-research ./cmd/loadgen
+          go test -c -o bin/loadgen.test ./cmd/loadgen
+          go build -o bin/diskbench ./cmd/diskbench
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
+          scripts/dev-certs.sh certs
+      - name: Setup and hardware
+        run: |
+          sudo mount -o remount,barrier=1 /
+          sudo modprobe sch_netem
+          test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
+          if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
+          { lscpu; free -b; findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS; uname -a; go version; git rev-parse HEAD; } >results/hardware.txt
+      - name: Primitive costs on one core
+        run: |
+          taskset -c 3 bin/loadgen.test -test.run '^$' -test.bench '^BenchmarkResearch484$' -test.benchtime 1s -test.count 3 -test.cpu 1 | tee results/primitives.txt
+          taskset -c 3 bin/diskbench -dir "$RUNNER_TEMP" | tee results/diskbench.jsonl
+      - name: Mixed main profiles, costs and in-flight control
+        run: bash bench/ceiling-mixed.sh
+      - name: Summary
+        if: always()
+        run: |
+          { echo '## Mixed-k8s issue 484 runner ${{ matrix.runner }}'; echo '```'; cat results/summary.jsonl results/diskbench.jsonl 2>/dev/null || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ceiling-mixed-${{ matrix.runner }}
+          path: results
+          retention-days: 30

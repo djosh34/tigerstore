@@ -67,12 +67,13 @@ type mixedGroup struct {
 }
 
 type mixedCall struct {
-	op    int
-	key   *mixedKey
-	group *mixedGroup
-	value []byte
-	batch []*mixedKey
-	floor int64 // latest acknowledged cluster revision when this call started
+	op                                 int
+	key                                *mixedKey
+	group                              *mixedGroup
+	value                              []byte
+	batch                              []*mixedKey
+	floor                              int64 // latest acknowledged cluster revision when this call started
+	requestBytes, replyBytes, listKeys int
 }
 
 type mixedLoad struct {
@@ -91,6 +92,7 @@ type mixedLoad struct {
 	preload      int
 	pending      *mixedCall
 	mix          [5]int
+	research     [5]researchOp
 }
 
 // Ownership makes LIST validation exact without holding back other groups.
@@ -292,6 +294,7 @@ func (w *mixedLoad) start(c *conn, st *stream) bool {
 		return false
 	}
 	call.floor = w.ledger.revision.Load()
+	call.requestBytes = len(m.b)
 	c.startStream(st, tpl)
 	w.calls[st.id] = *call
 	call.key.busy = true
@@ -371,6 +374,12 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 		return errors.New("mixed unary call returned a second message")
 	}
 	call := w.calls[st.id]
+	call.replyBytes += len(m)
+	if call.op == mixedList {
+		n, _ := varintField(m, rangeCount)
+		call.listKeys = min(500, int(n))
+	}
+	w.calls[st.id] = call
 	k := call.key
 	rev, err := responseRevision(m)
 	if err != nil {
@@ -483,6 +492,14 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 
 func (w *mixedLoad) done(st *stream, at int64, err error) {
 	call := w.calls[st.id]
+	if at >= w.wk.stats.winStart && at < w.wk.stats.winStop {
+		r := &w.research[call.op]
+		r.Ops++
+		r.RequestBytes += int64(call.requestBytes)
+		r.ReplyBytes += int64(call.replyBytes)
+		r.ListKeys += int64(call.listKeys)
+		r.LatencyNS += at - st.intended
+	}
 	delete(w.calls, st.id)
 	call.key.busy = false
 	g := &w.groups[call.key.group]
@@ -609,6 +626,7 @@ type (
 		events             int64
 		lat                hist
 		start, stop        int64
+		watchBytes         int64
 	}
 )
 
@@ -717,6 +735,11 @@ func (w *mixedWatch) response(m []byte) error {
 	if err != nil {
 		return err
 	}
+	w.ledger.mu.Lock()
+	if at := now(); at >= w.ledger.start && at < w.ledger.stop {
+		w.ledger.watchBytes += int64(len(m))
+	}
+	w.ledger.mu.Unlock()
 	return fields(m, func(n protowire.Number, v uint64, b []byte) error {
 		//exhaustive:ignore // other protobuf fields do not change watch state
 		switch n {
@@ -925,6 +948,7 @@ func runMixed(cfg config) (*result, error) {
 		for i, at := range []int64{t1, t2} {
 			time.Sleep(time.Duration(at - now()))
 			samples[i], sampleErr = sampleCPU(cfg.pids, cfg.disk)
+			researchBoundary(i)
 			if sampleErr != nil {
 				return
 			}
@@ -987,5 +1011,6 @@ func runMixed(cfg config) (*result, error) {
 		err = errors.Join(err, errors.New("mixed response validation failed"))
 	}
 	res.Valid = err == nil
+	writeResearch(loads, ledger.watchBytes)
 	return res, err
 }
