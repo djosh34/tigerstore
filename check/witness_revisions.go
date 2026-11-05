@@ -367,7 +367,7 @@ func (r *revisionOrder) indexCounts() {
 	r.countRevs = slices.Sorted(maps.Keys(r.counts))
 }
 
-// reachable reports whether the counts clients saw at the next revisions
+// reachable reports whether the counts clients saw at the revisions ahead
 // can still come true from s, the store right after its revision, once op
 // skip is placed: in each range, the keys present that no writer left can
 // delete are at most its count, and with the keys absent that a writer
@@ -377,27 +377,31 @@ func (r *revisionOrder) indexCounts() {
 // run of revisions made the search try their orders until a count far
 // ahead failed them (#251).
 //
-// Only the counts of the next revision that has any, if within
-// countHorizon, are checked, so that each candidate costs little.
+// The counts of every revision within countHorizon are checked. Only the
+// nearest one was before, and that one may be of other keys: in #425's
+// history a delete lost a key that a count 14 revisions later needs, and
+// the search tried every order of the writes in between, 15 million times
+// back, before it saw that count.
 func (r *revisionOrder) reachable(s *state, skip int) bool {
-	next := sort.Search(len(r.countRevs), func(k int) bool { return r.countRevs[k] >= s.rev })
-	if next == len(r.countRevs) || r.countRevs[next] > s.rev+countHorizon {
-		return true
-	}
-	rev := r.countRevs[next]
-	for _, c := range r.counts[rev] {
-		var sure, maybe int64
-		for k := c.lo; k < c.hi; k++ {
-			present := s.kvs[k].Version != 0
-			if present && !r.may(s, k, rev, skip, false) {
-				sure++
-			}
-			if present || r.may(s, k, rev, skip, true) {
-				maybe++
-			}
+	first := sort.Search(len(r.countRevs), func(k int) bool { return r.countRevs[k] >= s.rev })
+	for _, rev := range r.countRevs[first:] {
+		if rev > s.rev+countHorizon {
+			break
 		}
-		if sure > c.n || maybe < c.n {
-			return false
+		for _, c := range r.counts[rev] {
+			var sure, maybe int64
+			for k := c.lo; k < c.hi; k++ {
+				present := s.kvs[k].Version != 0
+				if present && !r.may(s, k, rev, skip, false) {
+					sure++
+				}
+				if present || r.may(s, k, rev, skip, true) {
+					maybe++
+				}
+			}
+			if sure > c.n || maybe < c.n {
+				return false
+			}
 		}
 	}
 	return true
