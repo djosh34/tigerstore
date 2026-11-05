@@ -17,6 +17,7 @@ type coreState struct {
 	at                          int64
 	role                        string
 	term, lead, commit, applied uint64
+	version                     uint32
 	members                     []*pb.Member
 }
 
@@ -30,7 +31,8 @@ func (n *node) remember(c *core.Node, now int64) {
 	}
 	n.last = coreState{
 		core: c, at: now, role: st.RaftState.String(),
-		term: st.GetTerm(), lead: st.Lead, commit: st.GetCommit(), applied: c.Applied(), members: members,
+		term: st.GetTerm(), lead: st.Lead, commit: st.GetCommit(), applied: c.Applied(),
+		version: c.ActiveVersion(), members: members,
 	}
 }
 
@@ -64,8 +66,8 @@ func (s *Sim) report() string {
 		}
 		b.WriteString("\n")
 		if l := n.last; l.core != nil {
-			fmt.Fprintf(&b, "  at its last turn, %s: %s, term %d, leader %d, commit %d, applied %d; members %s\n",
-				seconds(l.at), l.role, l.term, l.lead, l.commit, l.applied, describeMembers(l.members))
+			fmt.Fprintf(&b, "  at its last turn, %s: %s, term %d, leader %d, commit %d, applied %d, cluster version %d; members %s\n",
+				seconds(l.at), l.role, l.term, l.lead, l.commit, l.applied, l.version, describeMembers(l.members))
 		}
 		var lines []string
 		mark := fmt.Sprintf(" node %d: ", n.id)

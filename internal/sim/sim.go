@@ -54,6 +54,10 @@ const (
 // Config describes one run.
 type Config struct {
 	Seed uint64
+	// FormUnderFaults forms the cluster under the faults, from the run's
+	// first moment, as one seed in formUnderFaults does, for a scenario
+	// about a cluster's first elections.
+	FormUnderFaults bool
 	// Duration is the length of the phase with faults.
 	Duration int64
 	// Heal is how long clients run after scheduled healing. The liveness
@@ -473,6 +477,8 @@ type Sim struct {
 	wg, procs sync.WaitGroup
 
 	healAt, stopAt, endAt int64
+	// leaseCheckpoints is set when the nodes checkpoint their leases.
+	leaseCheckpoints bool
 	// servedRoot is the newest durable root of the source of the last
 	// snapshot served to each node, by Raft ID, when it was served.
 	servedRoot map[uint64]uint64
@@ -560,8 +566,12 @@ type Stats struct {
 	// Compactions counts successful compactions and WatchCompacted the
 	// watches that a compaction canceled.
 	Compactions, WatchCompacted int
-	// Revokes counts lease revokes in the log, expiries included.
-	Revokes int
+	// Revokes counts lease revokes in the log, expiries included, and
+	// LeaseCheckpoints the lease checkpoints in it.
+	Revokes, LeaseCheckpoints int
+	// FormedCalm is 1 when the run formed its cluster with no faults
+	// first (formCalm).
+	FormedCalm int
 	// DiskFaults counts failed writes and syncs that stopped a node,
 	// Silences leaders that went silent on a stalled disk, Fenced
 	// nodes that found their disk damaged, and ColdRestarts the
@@ -787,8 +797,17 @@ func (s *Sim) run() error {
 	if s.cfg.Membership {
 		s.nodes[3].inactive = true
 	}
+	// Half the seeds checkpoint their leases, as etcd does with its
+	// LeaseCheckpoint feature, every second instead of 5 minutes, so
+	// that the clients' short leases get checkpoints too.
+	s.leaseCheckpoints = s.rng.IntN(2) == 0
 	for _, n := range s.nodes[:3] {
 		if err := s.start(n); err != nil {
+			return err
+		}
+	}
+	if !s.cfg.FormUnderFaults && s.rng.IntN(formUnderFaults) != 0 {
+		if err := s.formCalm(); err != nil {
 			return err
 		}
 	}
@@ -817,6 +836,53 @@ func (s *Sim) run() error {
 		return err
 	}
 	return s.settle()
+}
+
+// formUnderFaults: one seed in formUnderFaults forms its cluster under
+// the faults, from its first moment. The others form it as a deployment
+// does, with no faults and no clients, until every member runs the
+// newest cluster version, and only then start the run's clock (#481).
+const formUnderFaults = 8
+
+// formLimit is how long a cluster with no faults may take to form and
+// take on the newest cluster version.
+const formLimit = 20 * Second
+
+// formCalm waits until each starting member applied the newest cluster
+// version, then starts the run's clock again at 0, so that the run's
+// times, as its duration and when its faults come, count from there.
+// Under the faults a confirmation round of the upgrade rarely completes,
+// and a member fenced for good blocks it for the rest of the run, as in
+// etcd, so without this almost no seed ran the code that needs the newest
+// version, such as lease checkpoints.
+func (s *Sim) formCalm() error {
+	for {
+		s.mu.Lock()
+		formed := true
+		for _, n := range s.nodes[:3] {
+			formed = formed && n.proc != nil && n.last.version == core.MaxVersion
+		}
+		at, err := s.now(), s.err
+		if formed {
+			s.t0 = s.t0.Add(time.Duration(at))
+			for _, n := range s.nodes[:3] {
+				n.since -= at
+				n.last.at -= at
+			}
+			s.stats.FormedCalm = 1
+			s.tracef("formed the cluster at cluster version %d in %s with no faults; the run's clock starts here", core.MaxVersion, seconds(at))
+		}
+		s.mu.Unlock()
+		switch {
+		case err != nil:
+			return err
+		case formed:
+			return nil
+		case at > formLimit:
+			return fmt.Errorf("seed %d: with no faults the cluster did not take on cluster version %d in %s:\n%s", s.cfg.Seed, core.MaxVersion, seconds(formLimit), s.report())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // settleSeconds is how long settle lets nodes that disagree at the end
@@ -1102,6 +1168,9 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 	// Progress notifications every 2 s instead of 10 minutes, so runs
 	// see them.
 	cfg.ProgressTicks = 20
+	if s.leaseCheckpoints {
+		cfg.LeaseCheckpointTicks = 10
+	}
 	tinyLimits(&cfg)
 	cfg.MemoryBytes = s.cfg.MemoryBytes
 	tick := TickTime
@@ -1414,7 +1483,11 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		}
 		p.core, n.pending, n.duringInstall = c, nil, nil
 	}
+	before := n.last.version
 	n.remember(c, s.now())
+	if v := n.last.version; v != before {
+		s.tracef("node %d: cluster version %d", n.id, v)
+	}
 	for _, a := range eff.Applied {
 		s.record(n, a)
 	}

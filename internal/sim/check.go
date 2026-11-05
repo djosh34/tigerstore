@@ -597,14 +597,18 @@ func (c Config) maxLeaseTTL() int64 {
 }
 
 // checkLeasesExpire checks the leases of the run (leasesExpire) and
-// counts the revokes in the log, expiries included.
+// counts the revokes in the log, expiries included, and the lease
+// checkpoints.
 func (s *Sim) checkLeasesExpire(res *Result) error {
 	if err := leasesExpire(res.History, s.expiredAt, s.expiredOrder, s.live()[0].proc.core.Leases(), s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
 		return err
 	}
 	for _, op := range res.Log {
-		if _, ok := op.(*pb.LeaseRevokeRequest); ok {
+		switch op.(type) {
+		case *pb.LeaseRevokeRequest:
 			res.Stats.Revokes++
+		case *pb.LeaseCheckpointRequest:
+			res.Stats.LeaseCheckpoints++
 		}
 	}
 	return nil

@@ -80,7 +80,10 @@ func (r *Result) Checkable() (*history.History, error) {
 		h.Ops = append(h.Ops, op)
 	}
 	for _, m := range r.Log {
-		if _, ok := m.(*pb.LeaseKeepAliveRequest); ok {
+		// A keepalive and a lease checkpoint change no key and no
+		// revision; they only move when a lease expires.
+		switch m.(type) {
+		case *pb.LeaseKeepAliveRequest, *pb.LeaseCheckpointRequest:
 			continue
 		}
 		req, err := frometcd.Request(m)
