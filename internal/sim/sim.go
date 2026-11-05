@@ -801,6 +801,7 @@ func (s *Sim) run() error {
 			return err
 		}
 	}
+	mark("phase boot end")
 	s.schedule()
 	// The end can move while the run goes on (extendLiveness).
 	for {
@@ -823,9 +824,11 @@ func (s *Sim) run() error {
 	s.stop()
 	s.mu.Unlock()
 	s.wg.Wait()
+	mark("phase stop end")
 	if err := s.freeze(); err != nil {
 		return err
 	}
+	mark("phase freeze end")
 	return s.settle()
 }
 

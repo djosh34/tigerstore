@@ -92,7 +92,7 @@ func Do(t *testing.T, r Run) *Result {
 		t.Fatalf("running %s in gosim: %v", r.Test, err)
 	}
 	if testing.Verbose() {
-		t.Logf("the gosim run of seed %d took %v", r.Seed, time.Since(start).Round(time.Second))
+		t.Logf("the gosim run of seed %d took %v", r.Seed, time.Since(start).Round(time.Millisecond))
 	}
 	if res.Failed {
 		t.Errorf("%s failed in gosim with seed %d: %s\n%s", r.Test, r.Seed, res.Err, readable(res.LogOutput))
