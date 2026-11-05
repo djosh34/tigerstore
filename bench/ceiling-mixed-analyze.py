@@ -90,7 +90,7 @@ SERVER = [
     ('TLS incl IO', r'crypto/tls\.'),
     ('range/list encode', r'internal/server\.(appendRangeReply|appendKV|kvSize)'),
     ('range/list index/read', r'internal/mvcc\.\(\*(Store|writer)\)\.(RangeKVs|rangeResult|rangeKeys|Range|fill|value)|internal/core\.\(\*Node\)\.serveRead'),
-    ('watch fanout/encode', r'internal/(core\.(\*Node\)\.(matchWatches|flushWatches|watchReply|watchEvent)|server\.(\(\*Server\)\.watch|sendFragments))'),
+    ('watch fanout/encode', r'internal/(core\.\(\*Node\)\.(matchWatches|flushWatches|watchReply|watchEvent)|server\.(\(\*Server\)\.watch|sendFragments))'),
     ('Raft', r'go.etcd.io/raft'),
     ('apply', r'internal/core\.\(\*Node\)\.(runApply|apply)|internal/mvcc\.\(\*(Store|writer)\)\.(Txn|txn|put|Put|deleteRange)'),
     ('peer transport', r'internal/peer\.'),
@@ -122,8 +122,8 @@ def main(root):
         result['rtt'] = int(re.search(r'rtt-(\d+)', f.parent.name)[1])
         result['streams'] = int(re.search(r'streams-(\d+)', f.parent.name)[1])
         assert result['valid'], f
-        starts = re.findall(r'\[(\d+):(\d+)\] -A R484', (f.parent/'wire-start.txt').read_text())
-        stops = re.findall(r'\[(\d+):(\d+)\] -A R484', (f.parent/'wire-stop.txt').read_text())
+        starts = re.findall(r'\[(\d+):(\d+)\] -A R484 [^\n]*-j RETURN', (f.parent/'wire-start.txt').read_text())
+        stops = re.findall(r'\[(\d+):(\d+)\] -A R484 [^\n]*-j RETURN', (f.parent/'wire-stop.txt').read_text())
         for i, name in enumerate(['peer_ip_bytes_per_op', 'client_ip_bytes_per_op']):
             result[name] = (int(stops[i][1])-int(starts[i][1]))/result['ops']
         result['generator_cpu_projection_ops_s'] = 1e6/result['client_cpu_us_per_op']

@@ -5,6 +5,9 @@ on:
       primitives_only:
         type: boolean
         default: false
+      diagnostics_only:
+        type: boolean
+        default: false
 jobs:
   mixed:
     runs-on: ubuntu-24.04-arm
@@ -42,13 +45,20 @@ jobs:
           if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
           { lscpu; free -b; findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS; uname -a; go version; git rev-parse HEAD; } >results/hardware.txt
       - name: Primitive costs on one core
+        if: ${{ !inputs.diagnostics_only }}
         run: |
           taskset -c 3 bin/loadgen.test -test.run '^$' -test.bench '^BenchmarkResearch484$' -test.benchtime 1s -test.count 3 -test.cpu 1 | tee results/primitives.txt
           taskset -c 3 bin/server.test -test.run '^$' -test.bench '^BenchmarkResearch484Encoding$' -test.benchtime 1s -test.count 3 -test.cpu 1 | tee results/encoding.txt
           taskset -c 3 bin/diskbench -dir "$RUNNER_TEMP" | tee results/diskbench.jsonl
       - name: Mixed main profiles, costs and in-flight control
         if: ${{ !inputs.primitives_only }}
-        run: bash bench/ceiling-mixed.sh
+        env:
+          DIAGNOSTICS: ${{ inputs.diagnostics_only }}
+        run: |
+          if [ "$DIAGNOSTICS" = true ]; then
+            export R484_REPS=1 R484_SPECS='0:48 2:48 10:48'
+          fi
+          bash bench/ceiling-mixed.sh
       - name: Summary
         if: always()
         run: |
