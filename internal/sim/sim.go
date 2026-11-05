@@ -701,9 +701,18 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	var f *Sim
 	if formsFirst(cfg) {
 		var err error
-		if f, err = formCluster(cfg); err != nil {
+		f, err = formCluster(cfg)
+		if f == nil {
 			return nil, err
 		}
+		if err != nil {
+			// A failed formation is the run's failure, with its report.
+			res := &Result{Clients: cfg.Clients + cfg.V3Clients, Stats: f.stats, nodes: f.nodes, Report: f.report()}
+			f.shutdown()
+			res.Trace = f.trace
+			return res, fmt.Errorf("seed %d: forming the cluster: %w", cfg.Seed, err)
+		}
+		f.shutdown()
 	}
 	s, err := newSim(cfg)
 	if err != nil {
@@ -881,21 +890,20 @@ func formsFirst(cfg Config) bool {
 
 // formCluster starts the first three nodes of cfg's cluster with no faults
 // and no clients, waits until each applied the newest cluster version,
-// and takes them down, as a process manager stops them. It returns the
-// run, whose nodes' disks hold what they wrote, with its record of the
-// entries they applied, and whose clock says how long it took.
+// and returns the run, whose nodes' disks hold what they wrote, with its
+// record of the entries they applied; the caller takes them down, as a
+// process manager stops them. A run that failed comes with the error.
 func formCluster(cfg Config) (*Sim, error) {
 	s, err := newSim(cfg)
 	if err != nil {
 		return nil, err
 	}
-	defer s.shutdown()
 	if cfg.Membership {
 		s.nodes[3].inactive = true
 	}
 	for _, n := range s.nodes[:3] {
 		if err := s.start(n); err != nil {
-			return nil, err
+			return s, err
 		}
 	}
 	for {
@@ -908,12 +916,12 @@ func formCluster(cfg Config) (*Sim, error) {
 		s.mu.Unlock()
 		switch {
 		case err != nil:
-			return nil, err
+			return s, err
 		case formed:
 			s.formed = at
 			return s, nil
 		case at > formLimit:
-			return nil, fmt.Errorf("seed %d: with no faults the cluster did not take on cluster version %d in %s:\n%s", cfg.Seed, core.MaxVersion, seconds(formLimit), s.report())
+			return s, fmt.Errorf("seed %d: with no faults the cluster did not take on cluster version %d in %s:\n%s", cfg.Seed, core.MaxVersion, seconds(formLimit), s.report())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
