@@ -27,7 +27,9 @@ for p in sorted(root.glob('*/result.json')):
  for i,(x,y) in enumerate(zip(a['nodes'],b['nodes'])):
   t=y['at']-x['at']; fs=metric(y,'etcd_disk_wal_fsync_duration_seconds_count')-metric(x,'etcd_disk_wal_fsync_duration_seconds_count')
   byte=metric(y,'etcd_disk_wal_write_bytes_total')-metric(x,'etcd_disk_wal_write_bytes_total')
-  nd={'fsync_s':fs/t,'wal_B_s':byte/t,'wal_B_fsync':byte/fs if fs else 0,'fsync_mean_ms':1000*(metric(y,'etcd_disk_wal_fsync_duration_seconds_sum')-metric(x,'etcd_disk_wal_fsync_duration_seconds_sum'))/fs if fs else 0,'wal_B_op':byte/t/r['throughput']}
+  ops=metric(y,'etcd_debugging_mvcc_current_revision')-metric(x,'etcd_debugging_mvcc_current_revision')
+  writes=metric(y,'etcd_disk_wal_write_duration_seconds_count')-metric(x,'etcd_disk_wal_write_duration_seconds_count')
+  nd={'applied_ops_s':ops/t,'ops_fsync':ops/fs if fs else 0,'fsync_s':fs/t,'wal_B_s':byte/t,'wal_B_fsync':byte/fs if fs else 0,'fsync_mean_ms':1000*(metric(y,'etcd_disk_wal_fsync_duration_seconds_sum')-metric(x,'etcd_disk_wal_fsync_duration_seconds_sum'))/fs if fs else 0,'wal_B_op':byte/ops if ops else 0,'wal_writes_s':writes/t,'wal_B_write':byte/writes if writes else 0,'wal_write_mean_us':1e6*(metric(y,'etcd_disk_wal_write_duration_seconds_sum')-metric(x,'etcd_disk_wal_write_duration_seconds_sum'))/writes if writes else 0}
   ix,iy=io(x['io']),io(y['io'])
   for k in ix: nd[k+'_s']=(iy[k]-ix[k])/t
   gx,gy=x['vars'].get('ceiling_gap',{}),y['vars'].get('ceiling_gap',{})

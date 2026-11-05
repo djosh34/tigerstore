@@ -17,6 +17,7 @@ once() {
  export GAP_TIMING=1 GAP_BLOCK=1 LEAD="" BENCH_FLAGS=--enable-pprof
  case "$variant" in
  wide) bin=bin/wide ;;
+ depth8) bin=bin/depth8 ;;
  streams512) streams=512 ;;
  streams1024) streams=1024 ;;
  pure|purerate) bin=bin/pure; export GAP_TIMING=0 GAP_BLOCK=0 ;;
@@ -73,6 +74,19 @@ once() {
  bench/cluster.sh stop "$root/c"
  jq -r --arg cfg "$(basename "$dest")" '[ $cfg, (.throughput|floor), (.latency_us.p50/1000), .server_cores_by_node, .client_cores, .disk_bytes_per_op ] | @json' "$dest/result.json"
 }
+if [ "${GAP_PHASE:-full}" = pipeline ]; then
+ for rep in 1 2 3; do
+  for wl in put txn; do
+   for rtt in 0 10; do
+    for variant in max depth8; do once "$wl" disk "$rtt" "$variant" "$rep"; done
+   done
+  done
+ done
+ bench/netem.sh off
+ python3 bench/ceiling-gap-report.py "$out" >"$out/summary.md"
+ cat "$out/summary.md" >>"$GITHUB_STEP_SUMMARY"
+ exit 0
+fi
 if [ "${GAP_PHASE:-full}" = detail ]; then
  for rep in 1 2 3; do
   for wl in put txn; do
