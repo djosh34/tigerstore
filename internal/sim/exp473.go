@@ -2,6 +2,8 @@ package sim
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -90,5 +92,15 @@ func (s *Sim) exp473Mark() {
 	if w := virtual / 1800; w > exp473.window {
 		exp473.window = w
 		simrun.ProfileNext(fmt.Sprintf("v%03d", w*30))
+	}
+}
+
+// exp473Config applies the switches of the counterfactual runs:
+// EXP473_HASH=nosort folds the leases into the state hash without sorting
+// them, and EXP473_LEASECKPT sets the lease checkpoint interval in ticks.
+func exp473Config(cfg *core.Config) {
+	core.Exp473NoSort = os.Getenv("EXP473_HASH") == "nosort"
+	if t, err := strconv.Atoi(os.Getenv("EXP473_LEASECKPT")); err == nil && t > 0 {
+		cfg.LeaseCheckpointTicks = t
 	}
 }

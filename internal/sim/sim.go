@@ -1105,6 +1105,7 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 	// see them.
 	cfg.ProgressTicks = 20
 	tinyLimits(&cfg)
+	exp473Config(&cfg)
 	cfg.MemoryBytes = s.cfg.MemoryBytes
 	tick := TickTime
 	if d := s.cfg.Faults.DriftPerMille; d > 0 && !s.healed {

@@ -129,12 +129,26 @@ func (st *State) Hash() uint64 {
 		h ^= h >> 29
 	}
 	mix(uint64(st.stamps))
-	for _, l := range st.sortedLeases() {
-		mix(uint64(l.id))
-		mix(uint64(l.ttl))
-		mix(uint64(l.stamp))
-		mix(uint64(l.remaining))
-		mix(uint64(len(l.keys)))
+	if Exp473NoSort {
+		// #473: the leases in any order, summed, with no sort.
+		var sum uint64
+		for _, l := range st.leases {
+			x := uint64(14695981039346656037)
+			for _, v := range [...]uint64{uint64(l.id), uint64(l.ttl), uint64(l.stamp), uint64(l.remaining), uint64(len(l.keys))} {
+				x = (x ^ v) * 0x100000001b3
+				x ^= x >> 29
+			}
+			sum += x
+		}
+		mix(sum)
+	} else {
+		for _, l := range st.sortedLeases() {
+			mix(uint64(l.id))
+			mix(uint64(l.ttl))
+			mix(uint64(l.stamp))
+			mix(uint64(l.remaining))
+			mix(uint64(len(l.keys)))
+		}
 	}
 	mix(uint64(st.version))
 	mix(st.versionEpoch)

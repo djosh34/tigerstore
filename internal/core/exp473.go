@@ -8,6 +8,9 @@ var Exp473 struct {
 	Starts, CkptLoads, CkptKeys, CkptVersions, Replayed, Tail int64
 }
 
+// Exp473NoSort makes State.Hash fold the leases in without sorting them.
+var Exp473NoSort bool
+
 // Exp473Index returns the keys and versions of the node's index.
 func (n *Node) Exp473Index() (keys, versions int) { return n.kv.Exp473Size() }
 
