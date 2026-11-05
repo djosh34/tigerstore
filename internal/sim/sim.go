@@ -115,7 +115,9 @@ type Config struct {
 	// of cmd/soak on that many objects instead of the small keys, with a
 	// watch on every resource prefix and a compaction every CompactEvery
 	// (kube.go).
-	Objects      int
+	Objects int
+	// ListPage is the limit of a page of the load's lists, kubePage if 0.
+	ListPage     int
 	CompactEvery int64
 	Faults       Faults
 	// damageKinds and netemKinds, if set, are the kinds of damage after a

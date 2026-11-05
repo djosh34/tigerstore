@@ -618,21 +618,15 @@ func TestNewestVersion(t *testing.T) {
 	}
 }
 
-// TestFormedClusterAnswers runs seeds that form their cluster first with
-// no faults at all after it, and requires no call to time out, and every
-// call to answer within 500 ms once the restarted nodes elected a leader,
-// by 2 s: the run starts on the formed disks with nothing held from the
-// formation. Moving the run's clock back after an in-run formation left
-// delivery times of the old clock on open connections, which held their
-// bytes for as long as the formation took, and calls timed out: seed 1
-// then timed out a call at 35 ms. A node that the restart left behind may
-// still start again from a snapshot, and a call in flight then gets
-// "server stopped", as it would in a real cluster; with the simulator's
-// tiny window such a node can fetch one snapshot after another, and a
-// call it drops times out, as seed 3 does on some schedules, so only
-// seeds 1 and 2 run.
+// TestFormedClusterAnswers runs seeds that form their cluster first, with
+// no faults after it, and requires no call to time out and every call to
+// answer within 500 ms from 2 s on: the run starts on the formed disks
+// with nothing held from the formation. A node left behind may start
+// again from a snapshot, and a call in flight then gets "server stopped",
+// as in a real cluster. Seed 3 times out a call while a node fetches one
+// snapshot after another (#518).
 func TestFormedClusterAnswers(t *testing.T) {
-	simrun.Each(t, []uint64{1, 2}, func(t *testing.T, seed uint64) struct{} {
+	simrun.Each(t, []uint64{1, 2, 3}, func(t *testing.T, seed uint64) struct{} {
 		cfg := DefaultConfig(seed)
 		cfg.Faults = Faults{}
 		cfg.Duration = 10 * Second

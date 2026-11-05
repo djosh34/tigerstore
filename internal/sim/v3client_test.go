@@ -13,8 +13,10 @@ import (
 // TestRetryPauseBlocks checks, under gosim, that the clientv3 clients'
 // stats handler makes a transparent retry wait and a first attempt not.
 // The spin of #440 needed a call to meet a transport in the moment it was
-// closing; 64 short seeds with clientv3 clients and resets every 300 ms
-// did not meet it without the pause. Seed 202610250141001 of the long
+// closing, which no short scenario met without the pause: 8 seeds with
+// resets every 100 ms, 64 with every fault and resets every 300 ms, 16
+// with crashes and resets every 200 ms, and a server that answers every
+// connection with a GOAWAY. Seed 202610250141001 of the long
 // profile on ad989ad9 did, and runs 42099847472 and 42099856592 show it
 // ending only with the pause (#440).
 func TestRetryPauseBlocks(t *testing.T) {

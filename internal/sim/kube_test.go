@@ -29,8 +29,12 @@ func kubeConfig(seed uint64, long bool) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Clients, cfg.V3Clients = 13, 3
 	cfg.Objects, cfg.Duration, cfg.CompactEvery = 1000, 2*60*Second, 20*Second
+	// A client's 62 objects split into small groups by resource, and a
+	// list pages only through a group of more than a page: with 25 a
+	// page, as the soak's, some schedules created none so large (#517).
+	cfg.ListPage = 8
 	if long {
-		cfg.Objects, cfg.Duration, cfg.CompactEvery = 10_000, 4*3600*Second, 5*60*Second
+		cfg.Objects, cfg.Duration, cfg.CompactEvery, cfg.ListPage = 10_000, 4*3600*Second, 5*60*Second, 0
 		spreadFaults(&cfg.Faults, 2)
 	}
 	cfg.SegmentBytes = 4 << 20
