@@ -1,8 +1,10 @@
 name: ceiling-mixed
 on:
   workflow_dispatch:
-  push:
-    branches: [exp/484-ceiling-mixed]
+    inputs:
+      primitives_only:
+        type: boolean
+        default: false
 jobs:
   mixed:
     runs-on: ubuntu-24.04-arm
@@ -25,6 +27,7 @@ jobs:
           (cd "$RUNNER_TEMP/main" && go build -o "$GITHUB_WORKSPACE/bin/tigerstore" ./cmd/tigerstore)
           go build -o bin/loadgen-research ./cmd/loadgen
           go test -c -o bin/loadgen.test ./cmd/loadgen
+          go test -c -o bin/server.test ./internal/server
           go build -o bin/diskbench ./cmd/diskbench
           curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
           echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
@@ -41,8 +44,10 @@ jobs:
       - name: Primitive costs on one core
         run: |
           taskset -c 3 bin/loadgen.test -test.run '^$' -test.bench '^BenchmarkResearch484$' -test.benchtime 1s -test.count 3 -test.cpu 1 | tee results/primitives.txt
+          taskset -c 3 bin/server.test -test.run '^$' -test.bench '^BenchmarkResearch484Encoding$' -test.benchtime 1s -test.count 3 -test.cpu 1 | tee results/encoding.txt
           taskset -c 3 bin/diskbench -dir "$RUNNER_TEMP" | tee results/diskbench.jsonl
       - name: Mixed main profiles, costs and in-flight control
+        if: ${{ !inputs.primitives_only }}
         run: bash bench/ceiling-mixed.sh
       - name: Summary
         if: always()
