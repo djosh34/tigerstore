@@ -1,8 +1,11 @@
 name: ceiling-hw
 on:
   workflow_dispatch:
+  push:
+    branches: [exp/484-ceiling-hw]
 jobs:
   hardware:
+    if: github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
