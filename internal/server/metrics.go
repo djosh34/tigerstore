@@ -397,6 +397,20 @@ func (s *Server) serveVars(w http.ResponseWriter, r *http.Request) {
 		if b, err := json.Marshal(nm.Raft); err == nil {
 			vars["raft.status"] = string(b)
 		}
+		progress := map[string]any{}
+		for id, p := range nm.Raft.Progress {
+			count, full := 0, false
+			if p.Inflights != nil {
+				count, full = p.Inflights.Count(), p.Inflights.Full()
+			}
+			progress[strconv.FormatUint(id, 16)] = map[string]any{
+				"match": p.Match, "next": p.Next, "state": p.State.String(),
+				"inflight_count": count, "full": full,
+			}
+		}
+		if b, err := json.Marshal(progress); err == nil {
+			vars["ceiling_gap_progress"] = string(b)
+		}
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	var b strings.Builder

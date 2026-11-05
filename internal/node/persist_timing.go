@@ -11,6 +11,7 @@ type persistTimes struct {
 }
 
 func (n *Node) logPersistTiming(done persistDone) {
+	gapPersist(done, time.Now())
 	p := done.times
 	if p.queued.IsZero() {
 		return

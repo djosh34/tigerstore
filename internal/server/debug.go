@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"net/http/pprof"
+	"os"
 	"runtime"
 	"strings"
 )
@@ -13,6 +14,9 @@ func pprofMux() *http.ServeMux {
 	// Only when nothing set it: 1 out of 5 mutex events, on average.
 	if runtime.SetMutexProfileFraction(-1) == 0 {
 		runtime.SetMutexProfileFraction(5)
+	}
+	if os.Getenv("GAP_BLOCK") == "1" {
+		runtime.SetBlockProfileRate(1000000) // one sample per blocked millisecond
 	}
 	const prefix = "/debug/pprof"
 	mux := http.NewServeMux()
