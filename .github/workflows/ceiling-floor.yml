@@ -1,8 +1,12 @@
 name: ceiling-floor
 on:
   workflow_dispatch:
+  push:
+    branches: [exp/484-ceiling-floor]
+    paths: [.github/workflows/ceiling-floor.yml]
 jobs:
   floor:
+    if: github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
