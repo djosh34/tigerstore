@@ -1,0 +1,45 @@
+# The GitHub side of the runner bench of #476 (scripts/bench476.sh): three
+# runs of each part on each runner, each run a job of its own, so each
+# gets a VM of its own. Runs on a push to exp/476-runner-bench only.
+name: bench476
+on:
+  push:
+    branches: [exp/476-runner-bench]
+
+permissions:
+  contents: read
+
+jobs:
+  micro-seeds:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, ubuntu-24.04]
+        rep: [1, 2, 3]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: scripts/bench476.sh tools
+      - run: scripts/bench476.sh micro
+      - run: scripts/bench476.sh seeds
+
+  kube:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, ubuntu-24.04]
+        rep: [1, 2, 3]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: scripts/bench476.sh kube
