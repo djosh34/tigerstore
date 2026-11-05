@@ -1,0 +1,3222 @@
+{
+  "primitives": {
+    "BenchmarkFloorGCM/seal/n80": {
+      "1": [
+        {
+          "ns": 98.05,
+          "batch_ns": 98.05,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 98.01,
+          "batch_ns": 98.01,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 98.03,
+          "batch_ns": 98.03,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 97.97,
+          "batch_ns": 97.97,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 97.99,
+          "batch_ns": 97.99,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 97.98,
+          "batch_ns": 97.98,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorGCM/open/n80": {
+      "1": [
+        {
+          "ns": 105.7,
+          "batch_ns": 105.7,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 105.6,
+          "batch_ns": 105.6,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 105.6,
+          "batch_ns": 105.6,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 105.6,
+          "batch_ns": 105.6,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 105.8,
+          "batch_ns": 105.8,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 105.7,
+          "batch_ns": 105.7,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorGCM/seal/n1103": {
+      "1": [
+        {
+          "ns": 347.1,
+          "batch_ns": 347.1,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 347.4,
+          "batch_ns": 347.4,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 347.2,
+          "batch_ns": 347.2,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 347.4,
+          "batch_ns": 347.4,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 347.7,
+          "batch_ns": 347.7,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 347.4,
+          "batch_ns": 347.4,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorGCM/open/n1103": {
+      "1": [
+        {
+          "ns": 346.7,
+          "batch_ns": 346.7,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 346.6,
+          "batch_ns": 346.6,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 346.6,
+          "batch_ns": 346.6,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 346.7,
+          "batch_ns": 346.7,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 346.5,
+          "batch_ns": 346.5,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 346.8,
+          "batch_ns": 346.8,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorGCM/seal/n1221": {
+      "1": [
+        {
+          "ns": 375.6,
+          "batch_ns": 375.6,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 375.6,
+          "batch_ns": 375.6,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 375.5,
+          "batch_ns": 375.5,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 376.1,
+          "batch_ns": 376.1,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 376.1,
+          "batch_ns": 376.1,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 375.9,
+          "batch_ns": 375.9,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorGCM/open/n1221": {
+      "1": [
+        {
+          "ns": 377.1,
+          "batch_ns": 377.1,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 376.9,
+          "batch_ns": 376.9,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 376.9,
+          "batch_ns": 376.9,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 377.4,
+          "batch_ns": 377.4,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 376.9,
+          "batch_ns": 376.9,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 377.1,
+          "batch_ns": 377.1,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorGCM/seal/n16384": {
+      "1": [
+        {
+          "ns": 4332.0,
+          "batch_ns": 4332.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 4332.0,
+          "batch_ns": 4332.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 4330.0,
+          "batch_ns": 4330.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 3948.0,
+          "batch_ns": 3948.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 3944.0,
+          "batch_ns": 3944.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 3938.0,
+          "batch_ns": 3938.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorGCM/open/n16384": {
+      "1": [
+        {
+          "ns": 3962.0,
+          "batch_ns": 3962.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 3960.0,
+          "batch_ns": 3960.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 3961.0,
+          "batch_ns": 3961.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 3962.0,
+          "batch_ns": 3962.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 3959.0,
+          "batch_ns": 3959.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 3965.0,
+          "batch_ns": 3965.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorH2": {
+      "1": [
+        {
+          "ns": 119.6,
+          "batch_ns": 119.6,
+          "bytes_per_batch": 48.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 118.5,
+          "batch_ns": 118.5,
+          "bytes_per_batch": 48.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 121.2,
+          "batch_ns": 121.2,
+          "bytes_per_batch": 48.0,
+          "allocs_per_batch": 1.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 118.9,
+          "batch_ns": 118.9,
+          "bytes_per_batch": 48.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 118.3,
+          "batch_ns": 118.3,
+          "bytes_per_batch": 48.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 120.0,
+          "batch_ns": 120.0,
+          "bytes_per_batch": 48.0,
+          "allocs_per_batch": 1.0
+        }
+      ]
+    },
+    "BenchmarkFloorPeer/put/b64": {
+      "1": [
+        {
+          "ns": 26.61,
+          "batch_ns": 1703.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 26.52,
+          "batch_ns": 1697.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 26.46,
+          "batch_ns": 1693.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 26.57,
+          "batch_ns": 1701.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 26.51,
+          "batch_ns": 1697.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 26.51,
+          "batch_ns": 1697.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorPeer/put/b256": {
+      "1": [
+        {
+          "ns": 24.2,
+          "batch_ns": 6195.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 24.18,
+          "batch_ns": 6190.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 24.26,
+          "batch_ns": 6211.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 26.99,
+          "batch_ns": 6910.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 26.97,
+          "batch_ns": 6904.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 26.9,
+          "batch_ns": 6886.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorPeer/put/b1536": {
+      "1": [
+        {
+          "ns": 29.77,
+          "batch_ns": 45732.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 29.57,
+          "batch_ns": 45425.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 29.56,
+          "batch_ns": 45409.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 29.05,
+          "batch_ns": 44626.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 29.18,
+          "batch_ns": 44828.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 29.23,
+          "batch_ns": 44894.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorPeer/txn/b64": {
+      "1": [
+        {
+          "ns": 29.78,
+          "batch_ns": 1906.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 29.79,
+          "batch_ns": 1907.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 30.08,
+          "batch_ns": 1925.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 29.73,
+          "batch_ns": 1903.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 29.69,
+          "batch_ns": 1900.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 30.01,
+          "batch_ns": 1921.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorPeer/txn/b256": {
+      "1": [
+        {
+          "ns": 29.78,
+          "batch_ns": 7624.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 29.78,
+          "batch_ns": 7624.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 29.7,
+          "batch_ns": 7602.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 31.26,
+          "batch_ns": 8003.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 31.17,
+          "batch_ns": 7980.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 31.24,
+          "batch_ns": 7996.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorPeer/txn/b1536": {
+      "1": [
+        {
+          "ns": 32.91,
+          "batch_ns": 50556.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 32.86,
+          "batch_ns": 50476.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 32.92,
+          "batch_ns": 50570.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 32.45,
+          "batch_ns": 49850.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 32.53,
+          "batch_ns": 49968.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 32.84,
+          "batch_ns": 50440.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorPeer/ack_decode": {
+      "1": [
+        {
+          "ns": 319.2,
+          "batch_ns": 319.2,
+          "bytes_per_batch": 248.0,
+          "allocs_per_batch": 6.0
+        },
+        {
+          "ns": 317.0,
+          "batch_ns": 317.0,
+          "bytes_per_batch": 248.0,
+          "allocs_per_batch": 6.0
+        },
+        {
+          "ns": 319.9,
+          "batch_ns": 319.9,
+          "bytes_per_batch": 248.0,
+          "allocs_per_batch": 6.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 300.9,
+          "batch_ns": 300.9,
+          "bytes_per_batch": 248.0,
+          "allocs_per_batch": 6.0
+        },
+        {
+          "ns": 299.9,
+          "batch_ns": 299.9,
+          "bytes_per_batch": 248.0,
+          "allocs_per_batch": 6.0
+        },
+        {
+          "ns": 299.7,
+          "batch_ns": 299.7,
+          "bytes_per_batch": 248.0,
+          "allocs_per_batch": 6.0
+        }
+      ]
+    },
+    "BenchmarkFloorSyscall": {
+      "1": [
+        {
+          "ns": 293.7,
+          "batch_ns": 293.7,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 293.5,
+          "batch_ns": 293.5,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 294.1,
+          "batch_ns": 294.1,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 297.9,
+          "batch_ns": 297.9,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 297.1,
+          "batch_ns": 297.1,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 296.5,
+          "batch_ns": 296.5,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorLogWrite/b64": {
+      "1": [
+        {
+          "ns": 62.4,
+          "batch_ns": 3994.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 62.17,
+          "batch_ns": 3979.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 61.91,
+          "batch_ns": 3962.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 62.13,
+          "batch_ns": 3976.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 61.56,
+          "batch_ns": 3940.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 61.89,
+          "batch_ns": 3961.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorLogWrite/b256": {
+      "1": [
+        {
+          "ns": 64.08,
+          "batch_ns": 16405.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 63.52,
+          "batch_ns": 16262.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 63.51,
+          "batch_ns": 16258.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 63.44,
+          "batch_ns": 16241.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 63.09,
+          "batch_ns": 16152.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 64.05,
+          "batch_ns": 16396.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorLogWrite/b1536": {
+      "1": [
+        {
+          "ns": 110.4,
+          "batch_ns": 169551.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 108.9,
+          "batch_ns": 167261.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 109.3,
+          "batch_ns": 167869.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 109.7,
+          "batch_ns": 168441.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 109.1,
+          "batch_ns": 167546.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 108.2,
+          "batch_ns": 166212.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorTLS/seal_open/n80": {
+      "1": [
+        {
+          "ns": 468.5,
+          "batch_ns": 468.5,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 468.2,
+          "batch_ns": 468.2,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 468.0,
+          "batch_ns": 468.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 468.1,
+          "batch_ns": 468.1,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 467.9,
+          "batch_ns": 467.9,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 468.1,
+          "batch_ns": 468.1,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorTLS/seal_open/n1103": {
+      "1": [
+        {
+          "ns": 1015.0,
+          "batch_ns": 1015.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 1023.0,
+          "batch_ns": 1023.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 1016.0,
+          "batch_ns": 1016.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 1015.0,
+          "batch_ns": 1015.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 1015.0,
+          "batch_ns": 1015.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 1016.0,
+          "batch_ns": 1016.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorTLS/seal_open/n1221": {
+      "1": [
+        {
+          "ns": 1090.0,
+          "batch_ns": 1090.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 1090.0,
+          "batch_ns": 1090.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 1090.0,
+          "batch_ns": 1090.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 1091.0,
+          "batch_ns": 1091.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 1089.0,
+          "batch_ns": 1089.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 1091.0,
+          "batch_ns": 1091.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorTLS/seal_open/n16384": {
+      "1": [
+        {
+          "ns": 9587.0,
+          "batch_ns": 9587.0,
+          "bytes_per_batch": 1.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 9588.0,
+          "batch_ns": 9588.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 9584.0,
+          "batch_ns": 9584.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 9581.0,
+          "batch_ns": 9581.0,
+          "bytes_per_batch": 1.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 9571.0,
+          "batch_ns": 9571.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 9588.0,
+          "batch_ns": 9588.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorDecode/put/protobuf": {
+      "1": [
+        {
+          "ns": 566.6,
+          "batch_ns": 566.6,
+          "bytes_per_batch": 1184.0,
+          "allocs_per_batch": 3.0
+        },
+        {
+          "ns": 573.1,
+          "batch_ns": 573.1,
+          "bytes_per_batch": 1184.0,
+          "allocs_per_batch": 3.0
+        },
+        {
+          "ns": 564.8,
+          "batch_ns": 564.8,
+          "bytes_per_batch": 1184.0,
+          "allocs_per_batch": 3.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 547.3,
+          "batch_ns": 547.3,
+          "bytes_per_batch": 1184.0,
+          "allocs_per_batch": 3.0
+        },
+        {
+          "ns": 560.5,
+          "batch_ns": 560.5,
+          "bytes_per_batch": 1184.0,
+          "allocs_per_batch": 3.0
+        },
+        {
+          "ns": 562.7,
+          "batch_ns": 562.7,
+          "bytes_per_batch": 1184.0,
+          "allocs_per_batch": 3.0
+        }
+      ]
+    },
+    "BenchmarkFloorDecode/put/real": {
+      "1": [
+        {
+          "ns": 28.42,
+          "batch_ns": 28.42,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 28.42,
+          "batch_ns": 28.42,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 28.41,
+          "batch_ns": 28.41,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 28.44,
+          "batch_ns": 28.44,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 28.41,
+          "batch_ns": 28.41,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 28.41,
+          "batch_ns": 28.41,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorDecode/txn/protobuf": {
+      "1": [
+        {
+          "ns": 1878.0,
+          "batch_ns": 1878.0,
+          "bytes_per_batch": 1952.0,
+          "allocs_per_batch": 17.0
+        },
+        {
+          "ns": 1867.0,
+          "batch_ns": 1867.0,
+          "bytes_per_batch": 1952.0,
+          "allocs_per_batch": 17.0
+        },
+        {
+          "ns": 1820.0,
+          "batch_ns": 1820.0,
+          "bytes_per_batch": 1952.0,
+          "allocs_per_batch": 17.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 1823.0,
+          "batch_ns": 1823.0,
+          "bytes_per_batch": 1952.0,
+          "allocs_per_batch": 17.0
+        },
+        {
+          "ns": 1822.0,
+          "batch_ns": 1822.0,
+          "bytes_per_batch": 1952.0,
+          "allocs_per_batch": 17.0
+        },
+        {
+          "ns": 1823.0,
+          "batch_ns": 1823.0,
+          "bytes_per_batch": 1952.0,
+          "allocs_per_batch": 17.0
+        }
+      ]
+    },
+    "BenchmarkFloorDecode/txn/real": {
+      "1": [
+        {
+          "ns": 719.4,
+          "batch_ns": 719.4,
+          "bytes_per_batch": 672.0,
+          "allocs_per_batch": 12.0
+        },
+        {
+          "ns": 722.2,
+          "batch_ns": 722.2,
+          "bytes_per_batch": 672.0,
+          "allocs_per_batch": 12.0
+        },
+        {
+          "ns": 721.2,
+          "batch_ns": 721.2,
+          "bytes_per_batch": 672.0,
+          "allocs_per_batch": 12.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 739.8,
+          "batch_ns": 739.8,
+          "bytes_per_batch": 672.0,
+          "allocs_per_batch": 12.0
+        },
+        {
+          "ns": 727.2,
+          "batch_ns": 727.2,
+          "bytes_per_batch": 672.0,
+          "allocs_per_batch": 12.0
+        },
+        {
+          "ns": 731.7,
+          "batch_ns": 731.7,
+          "bytes_per_batch": 672.0,
+          "allocs_per_batch": 12.0
+        }
+      ]
+    },
+    "BenchmarkFloorEncode/put/b64": {
+      "1": [
+        {
+          "ns": 279.8,
+          "batch_ns": 17908.0,
+          "bytes_per_batch": 73728.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 281.1,
+          "batch_ns": 17988.0,
+          "bytes_per_batch": 73728.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 281.9,
+          "batch_ns": 18041.0,
+          "bytes_per_batch": 73728.0,
+          "allocs_per_batch": 1.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 282.4,
+          "batch_ns": 18071.0,
+          "bytes_per_batch": 73728.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 283.4,
+          "batch_ns": 18136.0,
+          "bytes_per_batch": 73728.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 281.6,
+          "batch_ns": 18021.0,
+          "bytes_per_batch": 73728.0,
+          "allocs_per_batch": 1.0
+        }
+      ]
+    },
+    "BenchmarkFloorEncode/put/b256": {
+      "1": [
+        {
+          "ns": 308.6,
+          "batch_ns": 79001.0,
+          "bytes_per_batch": 286720.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 320.2,
+          "batch_ns": 81968.0,
+          "bytes_per_batch": 286720.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 318.2,
+          "batch_ns": 81466.0,
+          "bytes_per_batch": 286720.0,
+          "allocs_per_batch": 1.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 313.1,
+          "batch_ns": 80150.0,
+          "bytes_per_batch": 286720.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 316.5,
+          "batch_ns": 81018.0,
+          "bytes_per_batch": 286720.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 314.6,
+          "batch_ns": 80537.0,
+          "bytes_per_batch": 286720.0,
+          "allocs_per_batch": 1.0
+        }
+      ]
+    },
+    "BenchmarkFloorEncode/put/b1536": {
+      "1": [
+        {
+          "ns": 236.1,
+          "batch_ns": 362597.0,
+          "bytes_per_batch": 1720320.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 223.1,
+          "batch_ns": 342682.0,
+          "bytes_per_batch": 1720320.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 226.3,
+          "batch_ns": 347525.0,
+          "bytes_per_batch": 1720320.0,
+          "allocs_per_batch": 1.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 221.5,
+          "batch_ns": 340242.0,
+          "bytes_per_batch": 1720320.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 219.2,
+          "batch_ns": 336622.0,
+          "bytes_per_batch": 1720320.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 225.0,
+          "batch_ns": 345573.0,
+          "bytes_per_batch": 1720320.0,
+          "allocs_per_batch": 1.0
+        }
+      ]
+    },
+    "BenchmarkFloorEncode/txn/b64": {
+      "1": [
+        {
+          "ns": 292.3,
+          "batch_ns": 18709.0,
+          "bytes_per_batch": 81920.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 242.1,
+          "batch_ns": 15496.0,
+          "bytes_per_batch": 81920.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 240.3,
+          "batch_ns": 15382.0,
+          "bytes_per_batch": 81920.0,
+          "allocs_per_batch": 1.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 282.5,
+          "batch_ns": 18081.0,
+          "bytes_per_batch": 81920.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 246.3,
+          "batch_ns": 15766.0,
+          "bytes_per_batch": 81920.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 216.8,
+          "batch_ns": 13873.0,
+          "bytes_per_batch": 81920.0,
+          "allocs_per_batch": 1.0
+        }
+      ]
+    },
+    "BenchmarkFloorEncode/txn/b256": {
+      "1": [
+        {
+          "ns": 365.1,
+          "batch_ns": 93466.0,
+          "bytes_per_batch": 319488.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 362.5,
+          "batch_ns": 92793.0,
+          "bytes_per_batch": 319488.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 363.4,
+          "batch_ns": 93035.0,
+          "bytes_per_batch": 319488.0,
+          "allocs_per_batch": 1.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 363.5,
+          "batch_ns": 93069.0,
+          "bytes_per_batch": 319488.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 361.0,
+          "batch_ns": 92412.0,
+          "bytes_per_batch": 319488.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 364.3,
+          "batch_ns": 93268.0,
+          "bytes_per_batch": 319488.0,
+          "allocs_per_batch": 1.0
+        }
+      ]
+    },
+    "BenchmarkFloorEncode/txn/b1536": {
+      "1": [
+        {
+          "ns": 247.4,
+          "batch_ns": 379990.0,
+          "bytes_per_batch": 1900544.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 244.6,
+          "batch_ns": 375666.0,
+          "bytes_per_batch": 1900544.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 245.5,
+          "batch_ns": 377056.0,
+          "bytes_per_batch": 1900544.0,
+          "allocs_per_batch": 1.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 243.9,
+          "batch_ns": 374600.0,
+          "bytes_per_batch": 1900544.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 253.9,
+          "batch_ns": 390009.0,
+          "bytes_per_batch": 1900544.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 253.6,
+          "batch_ns": 389487.0,
+          "bytes_per_batch": 1900544.0,
+          "allocs_per_batch": 1.0
+        }
+      ]
+    },
+    "BenchmarkFloorRaft/b64": {
+      "1": [
+        {
+          "ns": 228.0,
+          "batch_ns": 14592.0,
+          "bytes_per_batch": 76728.0,
+          "allocs_per_batch": 73.0
+        },
+        {
+          "ns": 229.6,
+          "batch_ns": 14693.0,
+          "bytes_per_batch": 76728.0,
+          "allocs_per_batch": 73.0
+        },
+        {
+          "ns": 235.0,
+          "batch_ns": 15040.0,
+          "bytes_per_batch": 76728.0,
+          "allocs_per_batch": 73.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 229.1,
+          "batch_ns": 14659.0,
+          "bytes_per_batch": 76728.0,
+          "allocs_per_batch": 73.0
+        },
+        {
+          "ns": 224.8,
+          "batch_ns": 14387.0,
+          "bytes_per_batch": 76728.0,
+          "allocs_per_batch": 73.0
+        },
+        {
+          "ns": 234.6,
+          "batch_ns": 15017.0,
+          "bytes_per_batch": 76728.0,
+          "allocs_per_batch": 73.0
+        }
+      ]
+    },
+    "BenchmarkFloorRaft/b256": {
+      "1": [
+        {
+          "ns": 128.2,
+          "batch_ns": 32816.0,
+          "bytes_per_batch": 289720.0,
+          "allocs_per_batch": 73.0
+        },
+        {
+          "ns": 124.1,
+          "batch_ns": 31771.0,
+          "bytes_per_batch": 289720.0,
+          "allocs_per_batch": 73.0
+        },
+        {
+          "ns": 118.9,
+          "batch_ns": 30442.0,
+          "bytes_per_batch": 289720.0,
+          "allocs_per_batch": 73.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 124.7,
+          "batch_ns": 31925.0,
+          "bytes_per_batch": 289720.0,
+          "allocs_per_batch": 73.0
+        },
+        {
+          "ns": 126.4,
+          "batch_ns": 32367.0,
+          "bytes_per_batch": 289720.0,
+          "allocs_per_batch": 73.0
+        },
+        {
+          "ns": 129.6,
+          "batch_ns": 33166.0,
+          "bytes_per_batch": 289720.0,
+          "allocs_per_batch": 73.0
+        }
+      ]
+    },
+    "BenchmarkFloorRaft/b1536": {
+      "1": [
+        {
+          "ns": 61.48,
+          "batch_ns": 94431.0,
+          "bytes_per_batch": 1682360.0,
+          "allocs_per_batch": 73.0
+        },
+        {
+          "ns": 62.28,
+          "batch_ns": 95669.0,
+          "bytes_per_batch": 1682360.0,
+          "allocs_per_batch": 73.0
+        },
+        {
+          "ns": 63.3,
+          "batch_ns": 97231.0,
+          "bytes_per_batch": 1682360.0,
+          "allocs_per_batch": 73.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 61.14,
+          "batch_ns": 93915.0,
+          "bytes_per_batch": 1682360.0,
+          "allocs_per_batch": 73.0
+        },
+        {
+          "ns": 57.9,
+          "batch_ns": 88933.0,
+          "bytes_per_batch": 1682360.0,
+          "allocs_per_batch": 73.0
+        },
+        {
+          "ns": 63.8,
+          "batch_ns": 98001.0,
+          "bytes_per_batch": 1682361.0,
+          "allocs_per_batch": 73.0
+        }
+      ]
+    },
+    "BenchmarkFloorRecord/put/b64": {
+      "1": [
+        {
+          "ns": 66.34,
+          "batch_ns": 4246.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 66.35,
+          "batch_ns": 4246.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 66.3,
+          "batch_ns": 4243.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 66.15,
+          "batch_ns": 4233.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 66.05,
+          "batch_ns": 4227.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 66.19,
+          "batch_ns": 4236.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorRecord/put/b256": {
+      "1": [
+        {
+          "ns": 63.68,
+          "batch_ns": 16303.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 63.68,
+          "batch_ns": 16303.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 63.76,
+          "batch_ns": 16322.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 63.68,
+          "batch_ns": 16303.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 63.89,
+          "batch_ns": 16356.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 63.83,
+          "batch_ns": 16340.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorRecord/put/b1536": {
+      "1": [
+        {
+          "ns": 72.34,
+          "batch_ns": 111115.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 71.6,
+          "batch_ns": 109983.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 71.8,
+          "batch_ns": 110281.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 70.71,
+          "batch_ns": 108609.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 70.61,
+          "batch_ns": 108450.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 70.38,
+          "batch_ns": 108107.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorRecord/txn/b64": {
+      "1": [
+        {
+          "ns": 71.27,
+          "batch_ns": 4561.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 71.28,
+          "batch_ns": 4562.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 71.22,
+          "batch_ns": 4558.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 71.13,
+          "batch_ns": 4553.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 71.23,
+          "batch_ns": 4559.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 71.16,
+          "batch_ns": 4554.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorRecord/txn/b256": {
+      "1": [
+        {
+          "ns": 70.84,
+          "batch_ns": 18136.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 70.85,
+          "batch_ns": 18139.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 70.78,
+          "batch_ns": 18120.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 77.69,
+          "batch_ns": 19888.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 77.67,
+          "batch_ns": 19883.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 77.5,
+          "batch_ns": 19841.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorRecord/txn/b1536": {
+      "1": [
+        {
+          "ns": 79.26,
+          "batch_ns": 121744.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 79.62,
+          "batch_ns": 122295.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 79.71,
+          "batch_ns": 122433.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 78.4,
+          "batch_ns": 120422.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 78.24,
+          "batch_ns": 120175.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 78.13,
+          "batch_ns": 120006.0,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorApply/put": {
+      "1": [
+        {
+          "ns": 964.0,
+          "batch_ns": 964.0,
+          "bytes_per_batch": 136.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 919.1,
+          "batch_ns": 919.1,
+          "bytes_per_batch": 137.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 963.3,
+          "batch_ns": 963.3,
+          "bytes_per_batch": 137.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 694.5,
+          "batch_ns": 694.5,
+          "bytes_per_batch": 137.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 702.1,
+          "batch_ns": 702.1,
+          "bytes_per_batch": 139.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 708.3,
+          "batch_ns": 708.3,
+          "bytes_per_batch": 139.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorApply/txn": {
+      "1": [
+        {
+          "ns": 2314.0,
+          "batch_ns": 2314.0,
+          "bytes_per_batch": 617.0,
+          "allocs_per_batch": 10.0
+        },
+        {
+          "ns": 2254.0,
+          "batch_ns": 2254.0,
+          "bytes_per_batch": 618.0,
+          "allocs_per_batch": 10.0
+        },
+        {
+          "ns": 2250.0,
+          "batch_ns": 2250.0,
+          "bytes_per_batch": 617.0,
+          "allocs_per_batch": 10.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 1648.0,
+          "batch_ns": 1648.0,
+          "bytes_per_batch": 617.0,
+          "allocs_per_batch": 10.0
+        },
+        {
+          "ns": 1688.0,
+          "batch_ns": 1688.0,
+          "bytes_per_batch": 616.0,
+          "allocs_per_batch": 10.0
+        },
+        {
+          "ns": 1616.0,
+          "batch_ns": 1616.0,
+          "bytes_per_batch": 617.0,
+          "allocs_per_batch": 10.0
+        }
+      ]
+    },
+    "BenchmarkFloorIndex": {
+      "1": [
+        {
+          "ns": 269.9,
+          "batch_ns": 269.9,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 264.6,
+          "batch_ns": 264.6,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 267.3,
+          "batch_ns": 267.3,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 268.7,
+          "batch_ns": 268.7,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 265.9,
+          "batch_ns": 265.9,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        },
+        {
+          "ns": 265.6,
+          "batch_ns": 265.6,
+          "bytes_per_batch": 0.0,
+          "allocs_per_batch": 0.0
+        }
+      ]
+    },
+    "BenchmarkFloorReply/put": {
+      "1": [
+        {
+          "ns": 79.55,
+          "batch_ns": 79.55,
+          "bytes_per_batch": 64.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 80.39,
+          "batch_ns": 80.39,
+          "bytes_per_batch": 64.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 79.99,
+          "batch_ns": 79.99,
+          "bytes_per_batch": 64.0,
+          "allocs_per_batch": 1.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 78.36,
+          "batch_ns": 78.36,
+          "bytes_per_batch": 64.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 78.51,
+          "batch_ns": 78.51,
+          "bytes_per_batch": 64.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 78.39,
+          "batch_ns": 78.39,
+          "bytes_per_batch": 64.0,
+          "allocs_per_batch": 1.0
+        }
+      ]
+    },
+    "BenchmarkFloorReply/txn": {
+      "1": [
+        {
+          "ns": 143.6,
+          "batch_ns": 143.6,
+          "bytes_per_batch": 48.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 143.6,
+          "batch_ns": 143.6,
+          "bytes_per_batch": 48.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 143.0,
+          "batch_ns": 143.0,
+          "bytes_per_batch": 48.0,
+          "allocs_per_batch": 1.0
+        }
+      ],
+      "2": [
+        {
+          "ns": 140.0,
+          "batch_ns": 140.0,
+          "bytes_per_batch": 48.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 141.3,
+          "batch_ns": 141.3,
+          "bytes_per_batch": 48.0,
+          "allocs_per_batch": 1.0
+        },
+        {
+          "ns": 141.8,
+          "batch_ns": 141.8,
+          "bytes_per_batch": 48.0,
+          "allocs_per_batch": 1.0
+        }
+      ]
+    }
+  },
+  "nulls": {
+    "null-0-2/put": {
+      "1": [
+        {
+          "valid": true,
+          "label": "null-0-2",
+          "workload": "put",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 2798453,
+          "throughput": 466408.8333333333,
+          "acked": 3742278,
+          "latency_us": {
+            "count": 2798453,
+            "mean": 3150.8382728135866,
+            "p50": 3104.767,
+            "p90": 4800.511,
+            "p99": 6373.375,
+            "p999": 8945.663,
+            "max": 11933.606
+          },
+          "service_latency_us": {
+            "count": 2798453,
+            "mean": 3150.8382728135866,
+            "p50": 3104.767,
+            "p90": 4800.511,
+            "p99": 6373.375,
+            "p999": 8945.663,
+            "max": 11933.606
+          },
+          "cohort": 2798453,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 4.359551509351774,
+          "server_cpu_us_per_op_by_node": [
+            4.359551509351774
+          ],
+          "server_cores_by_node": [
+            2.033105637022919
+          ],
+          "client_cpu_us_per_op": 2.1209171638758986,
+          "client_cores": 0.9891037259876105,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0-2",
+          "workload": "put",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 2787282,
+          "throughput": 464547,
+          "acked": 3744323,
+          "latency_us": {
+            "count": 2787518,
+            "mean": 3164.213158661217,
+            "p50": 3104.767,
+            "p90": 4833.279,
+            "p99": 6635.519,
+            "p999": 9601.023,
+            "max": 14708.582
+          },
+          "service_latency_us": {
+            "count": 2787518,
+            "mean": 3164.213158661217,
+            "p50": 3104.767,
+            "p90": 4833.279,
+            "p99": 6635.519,
+            "p999": 9601.023,
+            "max": 14708.582
+          },
+          "cohort": 2787518,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 4.366260751513481,
+          "server_cpu_us_per_op_by_node": [
+            4.366260751513481
+          ],
+          "server_cores_by_node": [
+            2.028247331251952
+          ],
+          "client_cpu_us_per_op": 2.120891248176539,
+          "client_cores": 0.9852118915478392,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0-2",
+          "workload": "put",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 2822612,
+          "throughput": 470435.3333333333,
+          "acked": 3790633,
+          "latency_us": {
+            "count": 2822488,
+            "mean": 3124.8104125137115,
+            "p50": 3055.615,
+            "p90": 4767.743,
+            "p99": 6569.983,
+            "p999": 9207.807,
+            "max": 13116.67
+          },
+          "service_latency_us": {
+            "count": 2822488,
+            "mean": 3124.8104125137115,
+            "p50": 3055.615,
+            "p90": 4767.743,
+            "p99": 6569.983,
+            "p999": 9207.807,
+            "max": 13116.67
+          },
+          "cohort": 2822488,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 4.325780518186701,
+          "server_cpu_us_per_op_by_node": [
+            4.325780518186701
+          ],
+          "server_cores_by_node": [
+            2.0350129626934037
+          ],
+          "client_cpu_us_per_op": 2.0927789579297476,
+          "client_cores": 0.984523437916879,
+          "errors": {}
+        }
+      ],
+      "2": [
+        {
+          "valid": true,
+          "label": "null-0-2",
+          "workload": "put",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 2915793,
+          "throughput": 485965.5,
+          "acked": 3904527,
+          "latency_us": {
+            "count": 2915899,
+            "mean": 3020.729368537799,
+            "p50": 2957.311,
+            "p90": 4603.903,
+            "p99": 6275.071,
+            "p999": 9535.487,
+            "max": 12150.991
+          },
+          "service_latency_us": {
+            "count": 2915899,
+            "mean": 3020.729368537799,
+            "p50": 2957.311,
+            "p90": 4603.903,
+            "p99": 6275.071,
+            "p999": 9535.487,
+            "max": 12150.991
+          },
+          "cohort": 2915899,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 4.2321248456251865,
+          "server_cpu_us_per_op_by_node": [
+            4.2321248456251865
+          ],
+          "server_cores_by_node": [
+            2.0565343341663547
+          ],
+          "client_cpu_us_per_op": 2.024296992276201,
+          "client_cores": 0.983675203123813,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0-2",
+          "workload": "put",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 2910599,
+          "throughput": 485099.8333333333,
+          "acked": 3919322,
+          "latency_us": {
+            "count": 2910503,
+            "mean": 3027.419055620283,
+            "p50": 2957.311,
+            "p90": 4636.671,
+            "p99": 6373.375,
+            "p999": 9338.879,
+            "max": 11660.257
+          },
+          "service_latency_us": {
+            "count": 2910503,
+            "mean": 3027.419055620283,
+            "p50": 2957.311,
+            "p90": 4636.671,
+            "p99": 6373.375,
+            "p999": 9338.879,
+            "max": 11660.257
+          },
+          "cohort": 2910503,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 4.2740343138989605,
+          "server_cpu_us_per_op_by_node": [
+            4.2740343138989605
+          ],
+          "server_cores_by_node": [
+            2.073361461591602
+          ],
+          "client_cpu_us_per_op": 2.0264526305409984,
+          "client_cores": 0.9830451698156296,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0-2",
+          "workload": "put",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 2912297,
+          "throughput": 485382.8333333333,
+          "acked": 3896986,
+          "latency_us": {
+            "count": 2912279,
+            "mean": 3024.0733516205005,
+            "p50": 2973.695,
+            "p90": 4603.903,
+            "p99": 6111.231,
+            "p999": 8617.983,
+            "max": 12246.145
+          },
+          "service_latency_us": {
+            "count": 2912279,
+            "mean": 3024.0733516205005,
+            "p50": 2973.695,
+            "p90": 4603.903,
+            "p99": 6111.231,
+            "p999": 8617.983,
+            "max": 12246.145
+          },
+          "cohort": 2912279,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 4.271542359862336,
+          "server_cpu_us_per_op_by_node": [
+            4.271542359862336
+          ],
+          "server_cores_by_node": [
+            2.0731331118650003
+          ],
+          "client_cpu_us_per_op": 2.0340947369035507,
+          "client_cores": 0.9872193218472454,
+          "errors": {}
+        }
+      ]
+    },
+    "null-0-2/txn": {
+      "1": [
+        {
+          "valid": true,
+          "label": "null-0-2",
+          "workload": "txn",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 2614945,
+          "throughput": 435824.1666666667,
+          "acked": 3480617,
+          "latency_us": {
+            "count": 2614873,
+            "mean": 3355.871494683681,
+            "p50": 3334.143,
+            "p90": 4997.119,
+            "p99": 7159.807,
+            "p999": 9863.167,
+            "max": 13756.109
+          },
+          "service_latency_us": {
+            "count": 2614873,
+            "mean": 3355.871494683681,
+            "p50": 3334.143,
+            "p90": 4997.119,
+            "p99": 7159.807,
+            "p999": 9863.167,
+            "max": 13756.109
+          },
+          "cohort": 2614873,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 5.625357321090883,
+          "server_cpu_us_per_op_by_node": [
+            5.625357321090883
+          ],
+          "server_cores_by_node": [
+            2.451189760327176
+          ],
+          "client_cpu_us_per_op": 2.2344653520437334,
+          "client_cores": 0.973644566577208,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0-2",
+          "workload": "txn",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 2614479,
+          "throughput": 435746.5,
+          "acked": 3516016,
+          "latency_us": {
+            "count": 2614463,
+            "mean": 3356.3001225758403,
+            "p50": 3317.759,
+            "p90": 4964.351,
+            "p99": 7421.951,
+            "p999": 10452.991,
+            "max": 13607.768
+          },
+          "service_latency_us": {
+            "count": 2614463,
+            "mean": 3356.3001225758403,
+            "p50": 3317.759,
+            "p90": 4964.351,
+            "p99": 7421.951,
+            "p999": 10452.991,
+            "max": 13607.768
+          },
+          "cohort": 2614463,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 5.641659389882268,
+          "server_cpu_us_per_op_by_node": [
+            5.641659389882268
+          ],
+          "server_cores_by_node": [
+            2.4580825396782946
+          ],
+          "client_cpu_us_per_op": 2.226764108642678,
+          "client_cores": 0.970205678360014,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0-2",
+          "workload": "txn",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 2578197,
+          "throughput": 429699.5,
+          "acked": 3472712,
+          "latency_us": {
+            "count": 2578158,
+            "mean": 3404.2881750109964,
+            "p50": 3350.527,
+            "p90": 5062.655,
+            "p99": 7520.255,
+            "p999": 10649.599,
+            "max": 15321.437
+          },
+          "service_latency_us": {
+            "count": 2578158,
+            "mean": 3404.2881750109964,
+            "p50": 3350.527,
+            "p90": 5062.655,
+            "p99": 7520.255,
+            "p999": 10649.599,
+            "max": 15321.437
+          },
+          "cohort": 2578158,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 5.666750834013072,
+          "server_cpu_us_per_op_by_node": [
+            5.666750834013072
+          ],
+          "server_cores_by_node": [
+            2.435011529373756
+          ],
+          "client_cpu_us_per_op": 2.258070659456977,
+          "client_cores": 0.9702964275252016,
+          "errors": {}
+        }
+      ],
+      "2": [
+        {
+          "valid": true,
+          "label": "null-0-2",
+          "workload": "txn",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 2703407,
+          "throughput": 450567.8333333333,
+          "acked": 3633468,
+          "latency_us": {
+            "count": 2703419,
+            "mean": 3244.3863754264507,
+            "p50": 3219.455,
+            "p90": 4767.743,
+            "p99": 7258.111,
+            "p999": 10452.991,
+            "max": 13737.774
+          },
+          "service_latency_us": {
+            "count": 2703419,
+            "mean": 3244.3863754264507,
+            "p50": 3219.455,
+            "p90": 4767.743,
+            "p99": 7258.111,
+            "p999": 10452.991,
+            "max": 13737.774
+          },
+          "cohort": 2703419,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 5.559651210491058,
+          "server_cpu_us_per_op_by_node": [
+            5.559651210491058
+          ],
+          "server_cores_by_node": [
+            2.5043797189877703
+          ],
+          "client_cpu_us_per_op": 2.1446918647469655,
+          "client_cores": 0.9660898869725961,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0-2",
+          "workload": "txn",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 2629769,
+          "throughput": 438294.8333333333,
+          "acked": 3484186,
+          "latency_us": {
+            "count": 2629728,
+            "mean": 3337.468090486925,
+            "p50": 3268.607,
+            "p90": 4964.351,
+            "p99": 8142.847,
+            "p999": 11567.103,
+            "max": 14531.95
+          },
+          "service_latency_us": {
+            "count": 2629728,
+            "mean": 3337.468090486925,
+            "p50": 3268.607,
+            "p90": 4964.351,
+            "p99": 8142.847,
+            "p999": 11567.103,
+            "max": 14531.95
+          },
+          "cohort": 2629728,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 5.597449814033095,
+          "server_cpu_us_per_op_by_node": [
+            5.597449814033095
+          ],
+          "server_cores_by_node": [
+            2.4532485265761435
+          ],
+          "client_cpu_us_per_op": 2.1767006912013946,
+          "client_cores": 0.954003687554191,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0-2",
+          "workload": "txn",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 2685032,
+          "throughput": 447505.3333333333,
+          "acked": 3607167,
+          "latency_us": {
+            "count": 2685046,
+            "mean": 3267.136133567544,
+            "p50": 3235.839,
+            "p90": 4833.279,
+            "p99": 7454.719,
+            "p999": 9863.167,
+            "max": 14952.065
+          },
+          "service_latency_us": {
+            "count": 2685046,
+            "mean": 3267.136133567544,
+            "p50": 3235.839,
+            "p90": 4833.279,
+            "p99": 7454.719,
+            "p999": 9863.167,
+            "max": 14952.065
+          },
+          "cohort": 2685046,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 5.560455145413537,
+          "server_cpu_us_per_op_by_node": [
+            5.560455145413537
+          ],
+          "server_cores_by_node": [
+            2.4882455729119766
+          ],
+          "client_cpu_us_per_op": 2.156017134991315,
+          "client_cores": 0.9647951383421373,
+          "errors": {}
+        }
+      ]
+    },
+    "null-0/put": {
+      "1": [
+        {
+          "valid": true,
+          "label": "null-0",
+          "workload": "put",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 1723944,
+          "throughput": 287324,
+          "acked": 2298881,
+          "latency_us": {
+            "count": 1723962,
+            "mean": 5196.0766715177015,
+            "p50": 4407.295,
+            "p90": 9469.951,
+            "p99": 18546.687,
+            "p999": 24182.783,
+            "max": 28664.738
+          },
+          "service_latency_us": {
+            "count": 1723962,
+            "mean": 5196.0766715177015,
+            "p50": 4407.295,
+            "p90": 9469.951,
+            "p99": 18546.687,
+            "p999": 24182.783,
+            "max": 28664.738
+          },
+          "cohort": 1723962,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 3.4803914744330444,
+          "server_cpu_us_per_op_by_node": [
+            3.4803914744330444
+          ],
+          "server_cores_by_node": [
+            0.9999206767926704
+          ],
+          "client_cpu_us_per_op": 2.2701155025917314,
+          "client_cores": 0.6522069274172182,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0",
+          "workload": "put",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 1787990,
+          "throughput": 297998.3333333333,
+          "acked": 2382852,
+          "latency_us": {
+            "count": 1788008,
+            "mean": 5005.769908145266,
+            "p50": 4276.223,
+            "p90": 9142.271,
+            "p99": 18284.543,
+            "p999": 23789.567,
+            "max": 27390.138
+          },
+          "service_latency_us": {
+            "count": 1788008,
+            "mean": 5005.769908145266,
+            "p50": 4276.223,
+            "p90": 9142.271,
+            "p99": 18284.543,
+            "p999": 23789.567,
+            "max": 27390.138
+          },
+          "cohort": 1788008,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 3.3445377211281944,
+          "server_cpu_us_per_op_by_node": [
+            3.3445377211281944
+          ],
+          "server_cores_by_node": [
+            0.9966249648882609
+          ],
+          "client_cpu_us_per_op": 2.1997158820798774,
+          "client_cores": 0.6554842392396442,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0",
+          "workload": "put",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 1776493,
+          "throughput": 296082.1666666667,
+          "acked": 2379396,
+          "latency_us": {
+            "count": 1776545,
+            "mean": 5039.640254567151,
+            "p50": 4308.991,
+            "p90": 9207.807,
+            "p99": 19070.975,
+            "p999": 24182.783,
+            "max": 27793.935
+          },
+          "service_latency_us": {
+            "count": 1776545,
+            "mean": 5039.640254567151,
+            "p50": 4308.991,
+            "p90": 9207.807,
+            "p99": 19070.975,
+            "p999": 24182.783,
+            "max": 27793.935
+          },
+          "cohort": 1776545,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 3.3774408342729187,
+          "server_cpu_us_per_op_by_node": [
+            3.3774408342729187
+          ],
+          "server_cores_by_node": [
+            0.9999877414836064
+          ],
+          "client_cpu_us_per_op": 2.192434757693951,
+          "client_cores": 0.6491328758297862,
+          "errors": {}
+        }
+      ],
+      "2": [
+        {
+          "valid": true,
+          "label": "null-0",
+          "workload": "put",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 1870067,
+          "throughput": 311677.8333333333,
+          "acked": 2486353,
+          "latency_us": {
+            "count": 1870067,
+            "mean": 4779.675215910446,
+            "p50": 4136.959,
+            "p90": 8749.055,
+            "p99": 17891.327,
+            "p999": 22872.063,
+            "max": 24994.83
+          },
+          "service_latency_us": {
+            "count": 1870067,
+            "mean": 4779.675215910446,
+            "p50": 4136.959,
+            "p90": 8749.055,
+            "p99": 17891.327,
+            "p999": 22872.063,
+            "max": 24994.83
+          },
+          "cohort": 1870067,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 3.2030937928961905,
+          "server_cpu_us_per_op_by_node": [
+            3.2030937928961905
+          ],
+          "server_cores_by_node": [
+            0.9982769850897715
+          ],
+          "client_cpu_us_per_op": 2.1160477137984897,
+          "client_cores": 0.6594879415400625,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0",
+          "workload": "put",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 1901514,
+          "throughput": 316919,
+          "acked": 2551741,
+          "latency_us": {
+            "count": 1901384,
+            "mean": 4696.771018066314,
+            "p50": 3940.351,
+            "p90": 8749.055,
+            "p99": 18284.543,
+            "p999": 22609.919,
+            "max": 26659.041
+          },
+          "service_latency_us": {
+            "count": 1901384,
+            "mean": 4696.771018066314,
+            "p50": 3940.351,
+            "p90": 8749.055,
+            "p99": 18284.543,
+            "p999": 22609.919,
+            "max": 26659.041
+          },
+          "cohort": 1901384,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 3.1501214295556066,
+          "server_cpu_us_per_op_by_node": [
+            3.1501214295556066
+          ],
+          "server_cores_by_node": [
+            0.9983290854430747
+          ],
+          "client_cpu_us_per_op": 2.0931520882833365,
+          "client_cores": 0.6633568440832951,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0",
+          "workload": "put",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 1864572,
+          "throughput": 310762,
+          "acked": 2453078,
+          "latency_us": {
+            "count": 1864608,
+            "mean": 4795.781867622042,
+            "p50": 4087.807,
+            "p90": 8814.591,
+            "p99": 18153.471,
+            "p999": 23396.351,
+            "max": 27008.753
+          },
+          "service_latency_us": {
+            "count": 1864608,
+            "mean": 4795.781867622042,
+            "p50": 4087.807,
+            "p90": 8814.591,
+            "p99": 18153.471,
+            "p999": 23396.351,
+            "max": 27008.753
+          },
+          "cohort": 1864608,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 3.212533492941007,
+          "server_cpu_us_per_op_by_node": [
+            3.212533492941007
+          ],
+          "server_cores_by_node": [
+            0.998326384149761
+          ],
+          "client_cpu_us_per_op": 2.1159740680434975,
+          "client_cores": 0.6575597561694639,
+          "errors": {}
+        }
+      ]
+    },
+    "null-0/txn": {
+      "1": [
+        {
+          "valid": true,
+          "label": "null-0",
+          "workload": "txn",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 1303001,
+          "throughput": 217166.83333333334,
+          "acked": 1744466,
+          "latency_us": {
+            "count": 1303001,
+            "mean": 6889.5919518089395,
+            "p50": 6176.767,
+            "p90": 12943.359,
+            "p99": 21692.415,
+            "p999": 28114.943,
+            "max": 33858.758
+          },
+          "service_latency_us": {
+            "count": 1303001,
+            "mean": 6889.5919518089395,
+            "p50": 6176.767,
+            "p90": 12943.359,
+            "p99": 21692.415,
+            "p999": 28114.943,
+            "max": 33858.758
+          },
+          "cohort": 1303001,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 4.59708012503444,
+          "server_cpu_us_per_op_by_node": [
+            4.59708012503444
+          ],
+          "server_cores_by_node": [
+            0.9983965765980786
+          ],
+          "client_cpu_us_per_op": 2.3500028012257856,
+          "client_cores": 0.5103749962857439,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0",
+          "workload": "txn",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 1306211,
+          "throughput": 217701.83333333334,
+          "acked": 1752853,
+          "latency_us": {
+            "count": 1306359,
+            "mean": 6876.8945196802715,
+            "p50": 6176.767,
+            "p90": 12681.215,
+            "p99": 22740.991,
+            "p999": 27721.727,
+            "max": 30068.388
+          },
+          "service_latency_us": {
+            "count": 1306359,
+            "mean": 6876.8945196802715,
+            "p50": 6176.767,
+            "p90": 12681.215,
+            "p99": 22740.991,
+            "p999": 27721.727,
+            "max": 30068.388
+          },
+          "cohort": 1306359,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 4.593438579218825,
+          "server_cpu_us_per_op_by_node": [
+            4.593438579218825
+          ],
+          "server_cores_by_node": [
+            0.9999450351879633
+          ],
+          "client_cpu_us_per_op": 2.323687367508006,
+          "client_cores": 0.5058431948955702,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0",
+          "workload": "txn",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 1299137,
+          "throughput": 216522.83333333334,
+          "acked": 1736669,
+          "latency_us": {
+            "count": 1299284,
+            "mean": 6921.071354746922,
+            "p50": 6242.303,
+            "p90": 12812.287,
+            "p99": 22085.631,
+            "p999": 26673.151,
+            "max": 32708.192
+          },
+          "service_latency_us": {
+            "count": 1299284,
+            "mean": 6921.071354746922,
+            "p50": 6242.303,
+            "p90": 12812.287,
+            "p99": 22085.631,
+            "p999": 26673.151,
+            "max": 32708.192
+          },
+          "cohort": 1299284,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 4.61845055602296,
+          "server_cpu_us_per_op_by_node": [
+            4.61845055602296
+          ],
+          "server_cores_by_node": [
+            0.9999904602576741
+          ],
+          "client_cpu_us_per_op": 2.3495882266458428,
+          "client_cores": 0.508734646756259,
+          "errors": {}
+        }
+      ],
+      "2": [
+        {
+          "valid": true,
+          "label": "null-0",
+          "workload": "txn",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 1418963,
+          "throughput": 236493.83333333334,
+          "acked": 1891712,
+          "latency_us": {
+            "count": 1418790,
+            "mean": 6320.648002819304,
+            "p50": 5652.479,
+            "p90": 11567.103,
+            "p99": 21299.199,
+            "p999": 26279.935,
+            "max": 31428.036
+          },
+          "service_latency_us": {
+            "count": 1418790,
+            "mean": 6320.648002819304,
+            "p50": 5652.479,
+            "p90": 11567.103,
+            "p99": 21299.199,
+            "p999": 26279.935,
+            "max": 31428.036
+          },
+          "cohort": 1418790,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 4.228440065033408,
+          "server_cpu_us_per_op_by_node": [
+            4.228440065033408
+          ],
+          "server_cores_by_node": [
+            1.0000893948240537
+          ],
+          "client_cpu_us_per_op": 2.2555958118710637,
+          "client_cores": 0.5334821862832717,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0",
+          "workload": "txn",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 1381795,
+          "throughput": 230299.16666666666,
+          "acked": 1839394,
+          "latency_us": {
+            "count": 1381707,
+            "mean": 6489.588109504402,
+            "p50": 5783.551,
+            "p90": 12025.855,
+            "p99": 21561.343,
+            "p999": 26804.223,
+            "max": 32468.667
+          },
+          "service_latency_us": {
+            "count": 1381707,
+            "mean": 6489.588109504402,
+            "p50": 5783.551,
+            "p90": 12025.855,
+            "p99": 21561.343,
+            "p999": 26804.223,
+            "max": 32468.667
+          },
+          "cohort": 1381707,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 4.3349411453942155,
+          "server_cpu_us_per_op_by_node": [
+            4.3349411453942155
+          ],
+          "server_cores_by_node": [
+            0.9983705943542608
+          ],
+          "client_cpu_us_per_op": 2.2559091616339617,
+          "client_cores": 0.5195533906850549,
+          "errors": {}
+        },
+        {
+          "valid": true,
+          "label": "null-0",
+          "workload": "txn",
+          "value_size": 1024,
+          "keys": 10000,
+          "endpoints": [
+            "127.0.0.1:20010"
+          ],
+          "conns": 6,
+          "streams_per_conn": 256,
+          "offered_rate": 0,
+          "warmup_s": 2,
+          "duration_s": 6,
+          "ops": 1413923,
+          "throughput": 235653.83333333334,
+          "acked": 1897154,
+          "latency_us": {
+            "count": 1413923,
+            "mean": 6344.729642612787,
+            "p50": 5619.711,
+            "p90": 11698.175,
+            "p99": 21168.127,
+            "p999": 26017.791,
+            "max": 31970.119
+          },
+          "service_latency_us": {
+            "count": 1413923,
+            "mean": 6344.729642612787,
+            "p50": 5619.711,
+            "p90": 11698.175,
+            "p99": 21168.127,
+            "p999": 26017.791,
+            "max": 31970.119
+          },
+          "cohort": 1413923,
+          "cohort_failed": 0,
+          "unsent": 0,
+          "server_cpu_us_per_op": 4.243512553371011,
+          "server_cpu_us_per_op_by_node": [
+            4.243512553371011
+          ],
+          "server_cores_by_node": [
+            0.9999097153187264
+          ],
+          "client_cpu_us_per_op": 2.2420464197838212,
+          "client_cores": 0.5282991317078839,
+          "errors": {}
+        }
+      ]
+    }
+  }
+}
