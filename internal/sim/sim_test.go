@@ -589,20 +589,25 @@ func linearizableConfig(seed uint64) Config {
 // never took on the newest version, so code that needs it, as lease
 // checkpoints and member attributes, never ran.
 func TestNewestVersion(t *testing.T) {
-	type result struct{ Calm, Checkpoints int }
+	type result struct {
+		Formed      bool
+		Checkpoints int
+	}
 	var calm, checkpointed int
 	if !simrun.Each(t, seedRange(1, 8), func(t *testing.T, seed uint64) result {
 		res := run(t, DefaultConfig(seed))
 		st := res.Stats
 		for _, n := range res.nodes {
-			if st.FormedCalm == 1 && n.last.core != nil && n.last.version != core.MaxVersion {
+			if st.Formed && n.last.core != nil && n.last.version != core.MaxVersion {
 				t.Errorf("seed %d formed its cluster with no faults, but node %d ran at cluster version %d at its last turn, not %d", seed, n.id, n.last.version, core.MaxVersion)
 			}
 		}
-		t.Logf("seed %d: formed with no faults %v, %d lease checkpoints", seed, st.FormedCalm == 1, st.LeaseCheckpoints)
-		return result{st.FormedCalm, st.LeaseCheckpoints}
+		t.Logf("seed %d: formed with no faults %v, %d lease checkpoints", seed, st.Formed, st.LeaseCheckpoints)
+		return result{st.Formed, st.LeaseCheckpoints}
 	}, func(_ uint64, r result) bool {
-		calm += r.Calm
+		if r.Formed {
+			calm++
+		}
 		checkpointed += min(r.Checkpoints, 1)
 		return false
 	}) {
@@ -611,6 +616,39 @@ func TestNewestVersion(t *testing.T) {
 	if !simrun.One() && !t.Failed() && (calm < 4 || checkpointed == 0) {
 		t.Fatalf("of 8 seeds, %d formed their cluster with no faults and %d checkpointed a lease; at least 4 and 1 must", calm, checkpointed)
 	}
+}
+
+// TestFormedClusterAnswers runs seeds that form their cluster first with
+// no faults at all after it, and requires every call to get a definite
+// answer, within 500 ms once the restarted nodes elected a leader, by 2 s:
+// the run starts on the formed disks with nothing held from the
+// formation. Moving the run's clock back after an in-run formation left
+// delivery times of the old clock on open connections, which held their
+// bytes for as long as the formation took, and calls took a second.
+func TestFormedClusterAnswers(t *testing.T) {
+	simrun.Each(t, []uint64{1, 2, 3}, func(t *testing.T, seed uint64) struct{} {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{}
+		cfg.Duration = 10 * Second
+		if !formsFirst(cfg) {
+			t.Fatalf("seed %d forms its cluster under the faults; this test needs one that forms it first", seed)
+		}
+		res := run(t, cfg)
+		slowest := int64(0)
+		for _, r := range res.History {
+			if r.Ambiguous {
+				t.Fatalf("seed %d: call at %s on node %d got no definite answer with no faults: %v", seed, seconds(r.Call), r.Node+1, r.Err)
+			}
+			if r.Call >= 2*Second {
+				slowest = max(slowest, r.Return-r.Call)
+			}
+		}
+		if slowest > 500*Millisecond {
+			t.Fatalf("seed %d: a call after 2 s took %s with no faults", seed, seconds(slowest))
+		}
+		t.Logf("seed %d: %d calls, the slowest after 2 s %s", seed, len(res.History), seconds(slowest))
+		return struct{}{}
+	}, nil)
 }
 
 // TestLinearizable checks short runs with Porcupine and the witness

@@ -477,8 +477,11 @@ type Sim struct {
 	wg, procs sync.WaitGroup
 
 	healAt, stopAt, endAt int64
-	// leaseCheckpoints is set when the nodes checkpoint their leases.
+	// leaseCheckpoints is set when the nodes checkpoint their leases, and
+	// formed is how long the cluster took to form before the run, if it
+	// did (formCluster).
 	leaseCheckpoints bool
+	formed           int64
 	// servedRoot is the newest durable root of the source of the last
 	// snapshot served to each node, by Raft ID, when it was served.
 	servedRoot map[uint64]uint64
@@ -569,9 +572,9 @@ type Stats struct {
 	// Revokes counts lease revokes in the log, expiries included, and
 	// LeaseCheckpoints the lease checkpoints in it.
 	Revokes, LeaseCheckpoints int
-	// FormedCalm is 1 when the run formed its cluster with no faults
-	// first (formCalm).
-	FormedCalm int
+	// Formed is set when the run's cluster formed with no faults first
+	// (formCluster).
+	Formed bool
 	// DiskFaults counts failed writes and syncs that stopped a node,
 	// Silences leaders that went silent on a stalled disk, Fenced
 	// nodes that found their disk damaged, and ColdRestarts the
@@ -695,9 +698,26 @@ func Run(cfg Config) (*Result, error) { return runInspect(cfg, nil) }
 // runInspect runs cfg, then calls inspect, if set, while the nodes still
 // hold still for the checks.
 func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
+	var f *Sim
+	if formsFirst(cfg) {
+		var err error
+		if f, err = formCluster(cfg); err != nil {
+			return nil, err
+		}
+	}
 	s, err := newSim(cfg)
 	if err != nil {
 		return nil, err
+	}
+	if f != nil {
+		// The nodes start from the formed disks, and the run's record of
+		// committed entries and checkpoints goes on from the formation's.
+		for i, n := range s.nodes[:3] {
+			n.disk = f.nodes[i].disk
+			s.traceDisk(n)
+		}
+		s.log, s.maxLogged, s.ckpts, s.applied = f.log, f.maxLogged, f.ckpts, f.applied
+		s.formed, s.stats.Formed = f.formed, true
 	}
 	res := &Result{Clients: cfg.Clients + cfg.V3Clients, long: cfg.Duration >= 3600*Second}
 	err = s.run()
@@ -806,10 +826,10 @@ func (s *Sim) run() error {
 			return err
 		}
 	}
-	if !s.cfg.FormUnderFaults && s.rng.IntN(formUnderFaults) != 0 {
-		if err := s.formCalm(); err != nil {
-			return err
-		}
+	if s.formed > 0 {
+		s.mu.Lock()
+		s.tracef("the cluster formed at cluster version %d in %s with no faults, in a run of its own; the nodes start from its disks", core.MaxVersion, seconds(s.formed))
+		s.mu.Unlock()
 	}
 	s.schedule()
 	// The end can move while the run goes on (extendLiveness).
@@ -839,23 +859,45 @@ func (s *Sim) run() error {
 }
 
 // formUnderFaults: one seed in formUnderFaults forms its cluster under
-// the faults, from its first moment. The others form it as a deployment
-// does, with no faults and no clients, until every member runs the
-// newest cluster version, and only then start the run's clock (#481).
+// the faults, from the run's first moment. The others form it as a
+// deployment does, with no faults and no clients, in a run of its own
+// (formCluster), and the run starts its nodes from that run's disks
+// (#481). Under the faults a confirmation round of the upgrade rarely
+// completes, and a member fenced for good blocks it for the rest of the
+// run, as in etcd, so without this almost no seed ran the code that needs
+// the newest version, such as lease checkpoints.
 const formUnderFaults = 8
 
 // formLimit is how long a cluster with no faults may take to form and
 // take on the newest cluster version.
 const formLimit = 20 * Second
 
-// formCalm waits until each starting member applied the newest cluster
-// version, then starts the run's clock again at 0, so that the run's
-// times, as its duration and when its faults come, count from there.
-// Under the faults a confirmation round of the upgrade rarely completes,
-// and a member fenced for good blocks it for the rest of the run, as in
-// etcd, so without this almost no seed ran the code that needs the newest
-// version, such as lease checkpoints.
-func (s *Sim) formCalm() error {
+// formsFirst reports whether the run of cfg forms its cluster first. It
+// draws from a source of its own, so that the run's own draws do not
+// depend on it.
+func formsFirst(cfg Config) bool {
+	return !cfg.FormUnderFaults && rand.New(rand.NewPCG(cfg.Seed, 0x666f726d)).IntN(formUnderFaults) != 0
+}
+
+// formCluster starts the first three nodes of cfg's cluster with no faults
+// and no clients, waits until each applied the newest cluster version,
+// and takes them down, as a process manager stops them. It returns the
+// run, whose nodes' disks hold what they wrote, with its record of the
+// entries they applied, and whose clock says how long it took.
+func formCluster(cfg Config) (*Sim, error) {
+	s, err := newSim(cfg)
+	if err != nil {
+		return nil, err
+	}
+	defer s.shutdown()
+	if cfg.Membership {
+		s.nodes[3].inactive = true
+	}
+	for _, n := range s.nodes[:3] {
+		if err := s.start(n); err != nil {
+			return nil, err
+		}
+	}
 	for {
 		s.mu.Lock()
 		formed := true
@@ -863,23 +905,15 @@ func (s *Sim) formCalm() error {
 			formed = formed && n.proc != nil && n.last.version == core.MaxVersion
 		}
 		at, err := s.now(), s.err
-		if formed {
-			s.t0 = s.t0.Add(time.Duration(at))
-			for _, n := range s.nodes[:3] {
-				n.since -= at
-				n.last.at -= at
-			}
-			s.stats.FormedCalm = 1
-			s.tracef("formed the cluster at cluster version %d in %s with no faults; the run's clock starts here", core.MaxVersion, seconds(at))
-		}
 		s.mu.Unlock()
 		switch {
 		case err != nil:
-			return err
+			return nil, err
 		case formed:
-			return nil
+			s.formed = at
+			return s, nil
 		case at > formLimit:
-			return fmt.Errorf("seed %d: with no faults the cluster did not take on cluster version %d in %s:\n%s", s.cfg.Seed, core.MaxVersion, seconds(formLimit), s.report())
+			return nil, fmt.Errorf("seed %d: with no faults the cluster did not take on cluster version %d in %s:\n%s", cfg.Seed, core.MaxVersion, seconds(formLimit), s.report())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
