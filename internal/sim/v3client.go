@@ -14,9 +14,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
+	"google.golang.org/grpc/stats"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/server"
+	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
 // Besides the clients that enter at Node.Do, Config.V3Clients clients use
@@ -70,6 +72,7 @@ func (c *client) newV3() error {
 				Backoff:           backoff.Config{BaseDelay: 100 * time.Millisecond, Multiplier: 1.6, Jitter: 0.2, MaxDelay: time.Second},
 				MinConnectTimeout: time.Duration(dialTimeout),
 			}),
+			grpc.WithStatsHandler(retryPause{}),
 		},
 	})
 	if err != nil {
@@ -248,3 +251,17 @@ func v3Error(err error) error {
 	}
 	return err
 }
+
+type retryPause struct{}
+
+func (retryPause) TagRPC(ctx context.Context, _ *stats.RPCTagInfo) context.Context { return ctx }
+
+func (retryPause) HandleRPC(_ context.Context, s stats.RPCStats) {
+	if b, ok := s.(*stats.Begin); ok && b.IsTransparentRetryAttempt && simrun.InGosim {
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func (retryPause) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context { return ctx }
+
+func (retryPause) HandleConn(context.Context, stats.ConnStats) {}
