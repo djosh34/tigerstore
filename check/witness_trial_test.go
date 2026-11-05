@@ -1,6 +1,7 @@
 package check
 
 import (
+	"fmt"
 	"math/rand/v2"
 	"reflect"
 	"testing"
@@ -136,4 +137,109 @@ func TestFastWitnessMatchesSlow(t *testing.T) {
 		t.Fatalf("only %d stale histories failed", rejected)
 	}
 	t.Logf("%d stale histories failed with and without the speedups", rejected)
+}
+
+// leasedHistory runs random requests on four keys, one at a time in
+// order, from four clients whose calls overlap their neighbours': puts,
+// some on a lease, deletes of a key or a range, transactions that write in
+// either branch, counts of every key, reads of one key, some at the
+// revision the client saw last, lease grants and revokes, and compactions. A quarter of the
+// writes time out; half of those took effect, and the log has them.
+func leasedHistory(rng *rand.Rand) *history.History {
+	keys := []string{"a", "b", "c", "d"}
+	st := newState(keys)
+	h := &history.History{}
+	var leases []int64
+	for i := range 40 {
+		at := int64(i+1) * 10
+		key := keys[rng.IntN(len(keys))]
+		var req history.Request
+		switch rng.IntN(9) {
+		case 0:
+			p := &history.PutRequest{Key: key, Value: fmt.Sprintf("v%d", i), PrevKV: true}
+			if len(leases) > 0 && rng.IntN(2) == 0 {
+				p.Lease = leases[rng.IntN(len(leases))]
+			}
+			req.Put = p
+		case 1:
+			d := &history.DeleteRequest{Key: key, PrevKV: true}
+			if rng.IntN(2) == 0 {
+				d.End = history.AllKeys
+			}
+			req.Delete = d
+		case 2:
+			kv, _ := st.get(key)
+			req.Txn = &history.TxnRequest{
+				Compare: []history.Compare{{Key: key, Target: history.TargetMod, Result: history.Equal, Number: kv.ModRevision - rng.Int64N(2)}},
+				Success: []history.TxnOp{{Put: &history.PutRequest{Key: key, Value: fmt.Sprintf("v%d", i)}}, {Range: &history.RangeRequest{Key: "a", End: history.AllKeys}}},
+				Failure: []history.TxnOp{{Range: &history.RangeRequest{Key: key}}, {Delete: &history.DeleteRequest{Key: keys[rng.IntN(len(keys))]}}},
+			}
+		case 3:
+			req.Range = &history.RangeRequest{Key: "a", End: history.AllKeys, Limit: rng.Int64N(3), CountOnly: rng.IntN(3) == 0}
+		case 4:
+			req.LeaseGrant = &history.LeaseGrantRequest{ID: int64(len(leases) + 1), TTL: 10}
+			leases = append(leases, int64(len(leases)+1))
+		case 5:
+			if len(leases) == 0 {
+				req.Range = &history.RangeRequest{Key: key}
+				break
+			}
+			req.LeaseRevoke = &history.LeaseRevokeRequest{ID: leases[rng.IntN(len(leases))]}
+		case 6:
+			req.Compact = &history.CompactRequest{Revision: 1 + rng.Int64N(st.rev)}
+		case 7:
+			req.Range = &history.RangeRequest{Key: key, Revision: st.rev}
+		default:
+			req.Range = &history.RangeRequest{Key: key}
+		}
+		op := history.Op{Client: i % 4, Call: at - rng.Int64N(16), Return: at + rng.Int64N(16), Req: req}
+		if req.Mutates() && rng.IntN(4) == 0 {
+			op.Err = &history.Error{Code: "Unavailable", Message: "timed out", Ambiguous: true}
+			if rng.IntN(2) == 0 {
+				if o := st.step(req, false); o.err == nil && changes(req, o) {
+					h.Log = append(h.Log, req)
+				}
+			}
+		} else {
+			o := st.step(req, false)
+			op.Resp, op.Err = o.resp, o.err
+			if o.err == nil && changes(req, o) {
+				h.Log = append(h.Log, req)
+			}
+		}
+		h.Ops = append(h.Ops, op)
+	}
+	return h
+}
+
+// TestFastWitnessMatchesSlowWithLeases is TestFastWitnessMatchesSlow on
+// leasedHistory, in both modes, so that the search tries transactions,
+// revokes and compactions, with a stale answer put into every other one.
+// It requires the same verdict with and without the speedups, not a pass
+// of every true history: the witness from the revisions refuses some true
+// leasedHistory ones, as before them (#514).
+func TestFastWitnessMatchesSlowWithLeases(t *testing.T) {
+	rng := rand.New(rand.NewPCG(499, 513))
+	rejected := 0
+	for i := range 600 {
+		h := leasedHistory(rng)
+		stale := i%2 == 1
+		if stale && !staleAnswer(rng, h) {
+			continue
+		}
+		for _, mode := range []WitnessMode{FromLog, FromRevisions} {
+			want := Witnessed(h, mode, time.Minute, slowWitness())
+			got := Witnessed(h, mode, time.Minute)
+			if (got == nil) != (want == nil) {
+				t.Fatalf("history %d, stale %v, %s: slow %v, fast %v", i, stale, mode, want, got)
+			}
+			if stale && got != nil {
+				rejected++
+			}
+		}
+	}
+	if rejected < 100 {
+		t.Fatalf("only %d stale checks failed", rejected)
+	}
+	t.Logf("%d stale checks failed with and without the speedups", rejected)
 }

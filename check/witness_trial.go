@@ -11,8 +11,8 @@ import (
 // on top of the order so far. A copy of the whole store for every try cost
 // most of a long seed's check (#441): the store holds every key of the
 // history. So a try borrows the store and puts back only what it wrote
-// (try), and an answer is checked on the keys its request reads alone
-// (scopedState). Both give the model's exact outcome; the witness with
+// (try), and an answer is checked on the keys its request reads or writes
+// alone (scopedState). Both give the model's exact outcome; the witness with
 // slow set copies the whole store instead, for the tests that compare the
 // two.
 
@@ -26,11 +26,8 @@ func (r *revisionOrder) try(s *state, req history.Request) (t *state, undo func(
 		return s.clone(), func() {}
 	}
 	var written []int
-	put := func(p *history.PutRequest) {
-		if k := s.index(p.Key); k >= 0 {
-			written = append(written, k)
-		}
-	}
+	// Every key of a request is in the store's keys (keysOf).
+	put := func(p *history.PutRequest) { written = append(written, s.index(p.Key)) }
 	del := func(d *history.DeleteRequest) {
 		lo, hi := s.span(d.Key, d.End)
 		for k := lo; k < hi; k++ {

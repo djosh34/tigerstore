@@ -986,7 +986,10 @@ func (r *revisionOrder) due(call, rev int64) []optional {
 			// A compaction to a revision the order already compacted
 			// fails in the model, and compaction only goes up along an
 			// order, so it would be tried again and again for nothing
-			// (#441). Going back below this point brings it back.
+			// (#441). Going back below this point brings it back. Its
+			// try also placed the expiries due before it, which then go
+			// in at their own turn: the search goes another way, to the
+			// same verdict.
 			if c := r.w.reqs[o.op].Compact; c != nil && c.Revision <= r.w.live.compacted && !r.w.slow {
 				continue
 			}
