@@ -111,9 +111,16 @@ func Do(t *testing.T, r Run) *Result {
 	}
 	if res.Ended {
 		// The run never yielded past its limit; gosim ended it with what
-		// it had saved and every goroutine's stack.
-		res.Artifacts[filepath.Join("sim-out", strings.ReplaceAll(t.Name(), "/", "_"), "stacks.txt")] = res.Artifacts["gosim-stacks.txt"]
-		keep(t, res.Artifacts, "")
+		// it had saved, the trace and nodes the run's watchdog saved last,
+		// and every goroutine's stack, which the caller keeps as the run's
+		// files.
+		run := filepath.Join("sim-out", strings.ReplaceAll(t.Name(), "/", "_"))
+		res.Artifacts[filepath.Join(run, "stacks.txt")] = res.Artifacts["gosim-stacks.txt"]
+		for _, name := range []string{"trace.txt", "nodes.txt"} {
+			if b, ok := res.Artifacts["blackbox/"+name]; ok {
+				res.Artifacts[filepath.Join(run, name)] = b
+			}
+		}
 	}
 	if testing.Verbose() {
 		t.Logf("the gosim run of seed %d took %v", r.Seed, time.Since(start).Round(time.Second))
@@ -133,13 +140,18 @@ func Do(t *testing.T, r Run) *Result {
 const wallGrace = 10 * time.Minute
 
 // wallLimit is the limit of real time of each gosim run, $SIM_WALL as a
-// duration, 30 minutes by default. A run past it fails with its report,
+// duration, by default 30 minutes, or 165 for a test named *Long. A run past it fails with its report,
 // and its stacks: the simulation stops itself, its checks too, and one
 // that never yields is ended wallGrace later (#499). The limit changes no
 // run before it passes, and it is not passed to the run.
 func wallLimit(t *testing.T) time.Duration {
 	t.Helper()
 	v := os.Getenv("SIM_WALL")
+	if v == "" && strings.HasSuffix(Top(strings.Split(t.Name(), "/"))[0], "Long") {
+		// A long seed takes up to about 3 hours, and its kill must come
+		// before the 180 minutes kube-sim.sh gives the test binary.
+		return 165 * time.Minute
+	}
 	if v == "" {
 		return 30 * time.Minute
 	}

@@ -253,8 +253,13 @@ func runFiles(dir, cmd string, res *Result, history bool) map[string]string {
 	}
 	if simrun.WallLimitPassed() {
 		// The run took too long: where each goroutine was, the nodes'
-		// included.
-		files["stacks.txt"] = string(simrun.Stacks())
+		// included, as the run's watchdog saw them, or now when a check
+		// passed the limit after the run.
+		stacks := res.stacks
+		if stacks == nil {
+			stacks = simrun.Stacks()
+		}
+		files["stacks.txt"] = string(stacks)
 		files["replay.txt"] += "the run passed its limit of real time ($SIM_WALL); stacks.txt has every goroutine's stack\n"
 	}
 	if !history {
@@ -661,7 +666,7 @@ func TestFormedClusterAnswers(t *testing.T) {
 
 // TestWallLimit runs a seed whose limit of real time is 1 ms: the run must
 // fail as past its limit, and its saved files must have every goroutine's
-// stack next to its trace, history and disks (#499).
+// stack, the nodes' included, next to its trace, calls and disks (#499).
 func TestWallLimit(t *testing.T) {
 	if simrun.Race {
 		t.Skip("natively go test's -timeout bounds a run")
@@ -677,10 +682,11 @@ func TestWallLimit(t *testing.T) {
 		t.Fatalf("a run past its limit of real time ended with %v", err)
 	}
 	files := runFiles("$SIM_OUT/TestWallLimit", replayCommand(t.Name(), 1), res, true)
-	if !strings.Contains(files["stacks.txt"], "goroutine") {
-		t.Fatalf("the saved run has no stacks: %q", files["stacks.txt"])
+	// The nodes' own goroutines, as their peer transport's.
+	if !strings.Contains(files["stacks.txt"], "tigerstore/internal_/peer") {
+		t.Fatalf("the saved stacks have none of the nodes' goroutines:\n%s", files["stacks.txt"])
 	}
-	for _, name := range []string{"trace.txt", "nodes.txt", "replay.txt", "disks/node1/calls.txt"} {
+	for _, name := range []string{"trace.txt", "nodes.txt", "replay.txt", "calls.txt", "disks/node1/calls.txt"} {
 		if files[name] == "" {
 			t.Errorf("the saved run has no %s", name)
 		}

@@ -90,9 +90,6 @@ jobs:
           PER: ${{ needs.plan.outputs.per }}
           SHARD: ${{ matrix.shard }}
           SIM_OUT: ${{ runner.temp }}/sim-out
-          # A seed's limit of real time: a long Kubernetes-load seed takes
-          # up to about 3 hours, any other a few seconds.
-          SIM_WALL: ${{ contains(inputs.test, 'Long') && '170m' || '30m' }}
         run: |
           set -uo pipefail
           export GOSIMTOOL="$GITHUB_WORKSPACE/.gosim/bin/gosim"
