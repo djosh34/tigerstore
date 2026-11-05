@@ -283,6 +283,8 @@ type pipe struct {
 type chunk struct {
 	at int64
 	b  []byte
+	// damaged is set when a link fault damaged the chunk's bytes.
+	damaged bool
 }
 
 func newPipe() *pipe { return &pipe{wake: make(chan struct{})} }
@@ -354,6 +356,7 @@ func (c *conn) Read(b []byte) (int, error) {
 		case len(in.chunks) > 0:
 			at := max(in.chunks[0].at, s.link(c.to, c.from).stallUntil)
 			if at <= now {
+				damaged := in.chunks[0].damaged
 				k := copy(b, in.chunks[0].b)
 				if in.chunks[0].b = in.chunks[0].b[k:]; len(in.chunks[0].b) == 0 {
 					in.chunks = slices.Delete(in.chunks, 0, 1)
@@ -361,6 +364,15 @@ func (c *conn) Read(b []byte) (int, error) {
 				// A writer may wait for the room.
 				in.size -= k
 				in.signal()
+				if damaged {
+					// TLS refuses a damaged record and ends the
+					// connection, so it ends here, as the reader gets
+					// the damage. Its alert would wait for the write
+					// lock of a writer that waits for room, and under
+					// the race detector that wait on a mutex stops the
+					// synctest clock for good (#439).
+					s.net.reset(c)
+				}
 				s.mu.Unlock()
 				return k, nil
 			}
@@ -457,14 +469,14 @@ func (c *conn) send(b []byte) {
 	l := s.link(c.from, c.to)
 	b = slices.Clone(b)
 	at := s.now() + s.delay(l)
+	damaged := false
 	if l.netemUntil > s.now() {
-		var damaged bool
 		b, at, damaged = s.netem(l, b, at, c.out.last)
 		c.damaged = c.damaged || damaged
 	}
 	at = max(at, c.out.last)
 	c.out.last = at
-	c.out.chunks = append(c.out.chunks, chunk{at: at, b: b})
+	c.out.chunks = append(c.out.chunks, chunk{at: at, b: b, damaged: damaged})
 	c.out.size += len(b)
 	c.out.signal()
 }
