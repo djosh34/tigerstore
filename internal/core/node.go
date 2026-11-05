@@ -620,11 +620,16 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		tokens:    map[string]*simpleToken{},
 	}
 	n.setState(NewState(MinLeaseTTL(cfg), vals))
+	Exp473.Starts++
 	if root := rec.Root; root.Index > 0 {
 		state, last, err := loadCheckpoint(cfg, disk, root, vals)
 		if err != nil {
 			return nil, fmt.Errorf("%w at %d: %w", errLoadCheckpoint, root.Index, err)
 		}
+		k, v := state.kv.Exp473Size()
+		Exp473.CkptLoads++
+		Exp473.CkptKeys += int64(k)
+		Exp473.CkptVersions += int64(v)
 		n.setState(state)
 		n.applied, n.last, n.base, st.ckpt = root.Index, last, last.base, root
 		n.membershipAt = root.Index
@@ -640,6 +645,8 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	}
 	hs.Commit = max(hs.Commit, n.applied, boot)
 	n.readInline = true
+	Exp473.Replayed += int64(hs.Commit - n.applied)
+	Exp473.Tail += int64(rec.Last - min(rec.Last, hs.Commit))
 	term, err := n.replay(hs.Commit)
 	n.readInline = false
 	if err != nil {

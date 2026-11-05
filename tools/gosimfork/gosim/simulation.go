@@ -95,6 +95,9 @@ func WriteArtifact(name string, data []byte) {
 // RealMark writes msg to the real stderr with the real time (#441).
 func RealMark(msg string) { gosimruntime.RealMark(msg) }
 
+// RealProfileNext starts the next window of the run's CPU profile (#473).
+func RealProfileNext(tag string) { gosimruntime.RealProfileNext(tag) }
+
 // RealNanotime is the real clock (#441).
 func RealNanotime() int64 { return gosimruntime.RealNanotime() }
 

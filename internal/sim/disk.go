@@ -185,6 +185,7 @@ type file struct {
 func (f *file) ReadAll() (b []byte, err error) {
 	err = f.d.call(simfs.OpRead, f.name, func() (err error) {
 		b, err = f.f.ReadAll()
+		exp473Read(f.d.p, len(b))
 		return err
 	})
 	return b, err
@@ -193,6 +194,7 @@ func (f *file) ReadAll() (b []byte, err error) {
 func (f *file) ReadAt(p []byte, off int64) (n int, err error) {
 	err = f.d.call(simfs.OpRead, f.name, func() (err error) {
 		n, err = f.f.ReadAt(p, off)
+		exp473Read(f.d.p, n)
 		return err
 	})
 	return n, err

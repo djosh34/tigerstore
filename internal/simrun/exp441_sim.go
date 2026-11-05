@@ -19,3 +19,9 @@ func RealCreate(path string) io.WriteCloser {
 	}
 	return f
 }
+
+// ProfileNext starts the next window of the run's CPU profile (#473).
+func ProfileNext(tag string) { gosim.RealProfileNext(tag) }
+
+// RealNanotime is the real clock, outside the simulation (#473).
+func RealNanotime() int64 { return gosim.RealNanotime() }

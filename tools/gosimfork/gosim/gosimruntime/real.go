@@ -20,9 +20,13 @@ var realStart = time.Now()
 func RealMark(msg string) {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
-	fmt.Fprintf(os.Stderr, "REALMARK t=%.3f unix=%d step=%d heap=%dMiB sys=%dMiB gcs=%d gcpause=%.3fs gccpu=%.4f %s\n",
+	goroutines, timers := 0, 0
+	if g := gs.get(); g != nil {
+		goroutines, timers = len(g.goroutines), g.clock.heap.len()
+	}
+	fmt.Fprintf(os.Stderr, "REALMARK t=%.3f unix=%d step=%d heap=%dMiB sys=%dMiB gcs=%d gcpause=%.3fs gccpu=%.4f picks=%d fires=%d goroutines=%d timers=%d %s\n",
 		time.Since(realStart).Seconds(), time.Now().UnixNano(), GetStep(), ms.HeapAlloc>>20, ms.Sys>>20, ms.NumGC,
-		float64(ms.PauseTotalNs)/1e9, ms.GCCPUFraction, msg)
+		float64(ms.PauseTotalNs)/1e9, ms.GCCPUFraction, expPicks, expFires, goroutines, timers, msg)
 }
 
 // RealNanotime is the real clock.
@@ -70,7 +74,38 @@ func RealClose(id int) bool {
 	return f != nil && f.Close() == nil
 }
 
-var profileRuns int
+var (
+	profileRuns int
+	// profileFile is the profile being written, profilePath its name
+	// without the window's tag (#473).
+	profileFile *os.File
+	profilePath string
+	// expPicks counts the goroutine steps the scheduler ran, expFires the
+	// timers that fired (#473).
+	expPicks, expFires int64
+)
+
+// RealProfileNext ends the CPU profile's current window and starts the
+// next, in $GOSIM_CPUPROFILE.<run>.<tag> (#473).
+func RealProfileNext(tag string) {
+	if profileFile == nil {
+		return
+	}
+	pprof.StopCPUProfile()
+	profileFile.Close()
+	profileFile = nil
+	f, err := os.Create(profilePath + "." + tag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "REALMARK cpuprofile: %v\n", err)
+		return
+	}
+	if err := pprof.StartCPUProfile(f); err != nil {
+		fmt.Fprintf(os.Stderr, "REALMARK cpuprofile: %v\n", err)
+		f.Close()
+		return
+	}
+	profileFile = f
+}
 
 // startProfile starts a CPU profile of a run in $GOSIM_CPUPROFILE.<n>,
 // and returns what stops it.
@@ -80,7 +115,8 @@ func startProfile() func() {
 		return func() {}
 	}
 	profileRuns++
-	f, err := os.Create(fmt.Sprintf("%s.%d", path, profileRuns))
+	profilePath = fmt.Sprintf("%s.%d", path, profileRuns)
+	f, err := os.Create(profilePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "REALMARK cpuprofile: %v\n", err)
 		return func() {}
@@ -90,8 +126,12 @@ func startProfile() func() {
 		f.Close()
 		return func() {}
 	}
+	profileFile = f
 	return func() {
-		pprof.StopCPUProfile()
-		f.Close()
+		if profileFile != nil {
+			pprof.StopCPUProfile()
+			profileFile.Close()
+			profileFile = nil
+		}
 	}
 }

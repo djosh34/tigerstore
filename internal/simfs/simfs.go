@@ -154,8 +154,10 @@ func (d *Disk) tracef(format string, args ...any) {
 // Files returns a copy of every file's content, synced or not, by name.
 func (d *Disk) Files() map[string][]byte {
 	out := map[string][]byte{}
+	Exp473.Files++
 	for name, f := range d.names {
 		out[name] = slices.Clone(f.data)
+		Exp473.FilesBytes += int64(len(f.data))
 	}
 	return out
 }
@@ -325,8 +327,10 @@ func pieces(w write, unit int) []write {
 // a copy taken by pulling the power.
 func (d *Disk) Durable() *Disk {
 	c := New()
+	Exp473.Durables++
 	for _, name := range sortedNames(d.durable) {
 		f := d.durable[name]
+		Exp473.DurableBytes += 2 * int64(len(f.durable))
 		g := &file{id: f.id, data: slices.Clone(f.durable), durable: slices.Clone(f.durable)}
 		c.names[name] = g
 		c.durable[name] = g
@@ -341,8 +345,10 @@ func (d *Disk) Durable() *Disk {
 // and the bytes a failed sync left readable, which none does (#372).
 func (d *Disk) Copy() *Disk {
 	c := New()
+	Exp473.Copies++
 	for _, name := range sortedNames(d.names) {
 		f := d.names[name]
+		Exp473.CopyBytes += int64(len(f.data) + len(f.durable))
 		g := &file{id: f.id, data: slices.Clone(f.data), durable: slices.Clone(f.durable), cut: f.cut}
 		for _, w := range f.pending {
 			g.pending = append(g.pending, write{w.off, slices.Clone(w.p)})

@@ -257,6 +257,7 @@ func (s *scheduler) Run() error {
 				break
 			}
 			if handler != nil {
+				expFires++
 				handler.handler(handler)
 				// s.firetimer(handler)
 			}
@@ -279,6 +280,7 @@ func (s *scheduler) Run() error {
 			s.checksummer.recordIntInt(checksumKeyRunPick, uint64(pick.ID), uint64(s.fastrander.state))
 		}
 		s.current.set(pick)
+		expPicks++
 		pick.step()
 		s.current.set(nil)
 		if s.checksummer != nil {

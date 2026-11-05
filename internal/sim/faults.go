@@ -526,7 +526,7 @@ func (s *Sim) newCheckpoint() *checkpoint {
 // lock is held.
 func (s *Sim) takeCheckpoint() {
 	s.tracef("erase-one-disk copy")
-	s.checkpoints = append(s.checkpoints, s.newCheckpoint())
+	exp473Timed(&exp473.ckptNs, func() { s.checkpoints = append(s.checkpoints, s.newCheckpoint()) })
 }
 
 // checkColdRestarts erases each node's disk in turn at every checkpoint

@@ -24,3 +24,9 @@ func RealCreate(path string) io.WriteCloser {
 	}
 	return f
 }
+
+// ProfileNext does nothing outside gosim (#473).
+func ProfileNext(string) {}
+
+// RealNanotime is the real clock (#473).
+func RealNanotime() int64 { return time.Now().UnixNano() }

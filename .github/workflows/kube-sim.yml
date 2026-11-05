@@ -1,7 +1,7 @@
 # Research #441, exp branch only: long seeds with timing marks and CPU
 # profiles, and the checkers natively on their saved histories.
 name: kube-sim
-run-name: exp441 ${{ inputs.label }}
+run-name: exp473 ${{ inputs.label }}
 
 on:
   workflow_dispatch:

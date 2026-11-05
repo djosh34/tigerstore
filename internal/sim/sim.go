@@ -1166,7 +1166,9 @@ func (s *Sim) start(n *node) error {
 	cfg := s.nodeConfig(n, p)
 	s.tracef("node %d: starting", n.id)
 	s.mu.Unlock()
-	tn, err := tnode.NewOnFS(cfg, &disk{s: s, p: p})
+	var tn *tnode.Node
+	var err error
+	exp473Timed(&exp473.startNs, func() { tn, err = tnode.NewOnFS(cfg, &disk{s: s, p: p}) })
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n.starting = false
@@ -1639,7 +1641,7 @@ func (s *Sim) crash(n *node) {
 	n.mustLast, n.mustHS = n.floor(), n.hs
 	s.down(n)
 	s.loseUnsynced(n)
-	n.crashImage = n.disk.Files()
+	exp473Timed(&exp473.imageNs, func() { n.crashImage = n.disk.Files() })
 	s.tracef("node %d: crashed", n.id)
 	s.checkRecovery(n)
 }
@@ -1654,7 +1656,7 @@ func (s *Sim) kill(n *node) {
 	s.stats.Kills++
 	n.mustLast, n.mustHS = n.floor(), n.hs
 	s.down(n)
-	n.crashImage = n.disk.Files()
+	exp473Timed(&exp473.imageNs, func() { n.crashImage = n.disk.Files() })
 	s.tracef("node %d: killed", n.id)
 	s.checkRecovery(n)
 }
@@ -1676,7 +1678,7 @@ func (s *Sim) powerLoss(n *node) {
 	}
 	s.stats.PowerLosses++
 	s.loseUnsynced(n)
-	n.crashImage = n.disk.Files()
+	exp473Timed(&exp473.imageNs, func() { n.crashImage = n.disk.Files() })
 	s.tracef("node %d: lost power while down", n.id)
 	s.checkRecovery(n)
 }
@@ -1690,6 +1692,7 @@ func (s *Sim) powerLoss(n *node) {
 // (membershipConfig). An image of whole writes must never make recovery
 // refuse the log (#295). The lock is held.
 func (s *Sim) loseUnsynced(n *node) {
+	defer exp473Since(&exp473.loseNs, exp473Now())
 	img := simfs.Image(s.rng.IntN(4))
 	if s.cfg.Membership || slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.corrupted || m.fenced) }) {
 		img = simfs.Image(s.rng.IntN(2))
@@ -1705,6 +1708,10 @@ func (s *Sim) loseUnsynced(n *node) {
 // makes n a node that refuses to start, like one damaged on purpose. The
 // lock is held.
 func (s *Sim) checkRecovery(n *node) {
+	exp473Timed(&exp473.recoveryNs, func() { s.exp473CheckRecovery(n) })
+}
+
+func (s *Sim) exp473CheckRecovery(n *node) {
 	torn := n.tornCrash
 	n.tornCrash = false
 	w, rec, err := wal.Open(n.disk.Copy())
