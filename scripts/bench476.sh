@@ -7,6 +7,8 @@
 #   scripts/bench476.sh seeds   # cold build, then seeds 1 to 400 of TestSeeds,
 #                               # in one process and in four of 100
 #   scripts/bench476.sh kube    # seed 202611040014001 of TestKubernetesLoad, SIM_LONG=1
+#   scripts/bench476.sh public  # the settings of RunsOn's public runner bench
+#                               # (runs-on-demo/benchmark-public, bin/hw-bench.py)
 #
 # Each result is a line "R <name> <value> <unit>". TOOLS (default
 # /tmp/bench476) holds the tools and logs; WORK (default /tmp) is where
@@ -112,6 +114,29 @@ kube)
 	r kube_exit "$st" -
 	r kube_peak "$(sed -n 's/.*peak \([0-9]*\) MiB.*/\1/p' "$tools/kube.out")" MiB
 	r kube_stats "$(grep -o 'Messages:[0-9]* Dropped:[0-9]* Crashes:[0-9]*' "$tools/seed-202611040014001.log" | head -1 | tr ' ' ,)" -
+	;;
+public)
+	info
+	for i in 1 2 3; do
+		for t in 1 4; do
+			r "pub_cpu_t$t" "$("$sysbench" cpu --threads=$t --time=20 run | awk '/events per second/ {print $4}')" events/s
+		done
+		for op in read write; do
+			r "pub_mem_$op" "$("$sysbench" memory --memory-oper=$op --threads=4 --time=15 run | sed -n 's/.*(\([0-9.]*\) MiB\/sec).*/\1/p')" MiB/s
+		done
+		f=$work/bench476-fio
+		mkdir -p "$f"
+		# RunsOn uses libaio; this fio has psync, so the sequential
+		# write runs at queue depth 1 instead of 32.
+		"$fio" --name=sync --directory="$f" --rw=write --bs=4k --size=2g --direct=1 --fdatasync=1 --ioengine=psync \
+			--time_based --runtime=20 --ramp_time=2 --output-format=json >"$tools/pub-sync-$i.json" 2>"$tools/pub-sync-$i.err"
+		r pub_sync_iops "$(jq '.jobs[0].write.iops' "$tools/pub-sync-$i.json" 2>/dev/null || head -c 200 "$tools/pub-sync-$i.err" | tr ' ' _)" IOPS
+		rm -rf "$f"/*
+		"$fio" --name=seq --directory="$f" --rw=write --bs=1M --size=2g --direct=1 --ioengine=psync \
+			--time_based --runtime=20 --ramp_time=2 --output-format=json >"$tools/pub-seq-$i.json" 2>"$tools/pub-seq-$i.err"
+		r pub_seq_write "$(jq '.jobs[0].write.bw / 1024' "$tools/pub-seq-$i.json" 2>/dev/null || head -c 200 "$tools/pub-seq-$i.err" | tr ' ' _)" MiB/s
+		rm -rf "$f"
+	done
 	;;
 *)
 	echo "usage: $0 tools|micro|seeds|kube" >&2
