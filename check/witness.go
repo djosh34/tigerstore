@@ -124,6 +124,7 @@ type witness struct {
 	// after events[:j].
 	events []event
 	states []summary
+	bounds *eventTimes
 	// live is the store after every event, past every version, and
 	// appended the key of each version in the order added.
 	live     *state
@@ -242,6 +243,9 @@ func (w *witness) apply(op int, req history.Request) outcome {
 	}
 	o.events = nil
 	w.events = append(w.events, event{op: op, req: req, out: o})
+	if w.bounds != nil {
+		w.bounds.append(w.h, op)
+	}
 	w.states = append(w.states, w.summary(&req))
 	if op >= 0 {
 		w.at[op] = place{set: true, at: len(w.events)}
@@ -443,14 +447,6 @@ func (w *witness) seen(i int) bool {
 // order built so far. With set false it only checks that they all fit,
 // and sets nothing.
 func (w *witness) placeSeen(ops []int, set bool) error {
-	// The states of each revision.
-	first, last := map[int64]int{}, map[int64]int{}
-	for j, s := range w.states {
-		if _, ok := first[s.rev]; !ok {
-			first[s.rev] = j
-		}
-		last[s.rev] = j
-	}
 	events := w.eventBounds()
 	ops = slices.Clone(ops)
 	slices.SortFunc(ops, func(a, b int) int {
@@ -469,11 +465,12 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 		lo = max(lo, placed.before(op.Call))
 		f, l := lo, hi
 		if op.Resp != nil {
-			var ok bool
-			if f, ok = first[op.Resp.Revision]; !ok {
+			rev := op.Resp.Revision
+			f = sort.Search(len(w.states), func(j int) bool { return w.states[j].rev >= rev })
+			if f == len(w.states) || w.states[f].rev != rev {
 				return fmt.Errorf("%s got header revision %d, which no state of the order has (the last is %d)", w.describe(i), op.Resp.Revision, w.live.rev)
 			}
-			l = last[op.Resp.Revision]
+			l = sort.Search(len(w.states), func(j int) bool { return w.states[j].rev > rev }) - 1
 			lo, hi = max(lo, f), min(hi, l)
 		}
 		j, ok := w.find(i, lo, hi)
@@ -541,6 +538,17 @@ func (w *witness) describe(i int) string { return describeOp(w.h, i) }
 // it at: after every event of an acked op that returned before its call,
 // and before every event of an op called after it returned.
 func (w *witness) eventBounds() func(op *history.Op) (int, int) {
+	if !w.slow {
+		if w.bounds == nil {
+			w.bounds = newEventTimes()
+			for _, ev := range w.events {
+				w.bounds.append(w.h, ev.op)
+			}
+		}
+		return func(op *history.Op) (int, int) {
+			return w.bounds.after(op.Call), w.bounds.before(op.Return)
+		}
+	}
 	bound := w.boundAfter()
 	type call struct {
 		at    int64

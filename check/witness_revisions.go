@@ -88,8 +88,10 @@ type revisionOrder struct {
 	// mutations are the acked mutations by return time, which an
 	// optional one must follow if they returned before its call, and
 	// ready the optional ones whose mutations are all placed.
-	mutations []int
-	ready     map[int]bool
+	mutations      []int
+	ready          map[int]bool
+	deadlines      *optionalDeadlines
+	mutationPrefix int
 	// counts are, per revision, how many keys of a range clients saw
 	// then, and countRevs those revisions in order. putRevs and delRevs
 	// are, per key, the revisions whose acked writer may create or delete
@@ -114,6 +116,7 @@ type revisionOrder struct {
 	// Diagnosis counters (prototype only).
 	diagDueCalls, diagDueVisits, diagInsertCalls, diagInsertVisits int64
 	diagFitsCalls, diagLifeVisits, diagMayCalls, diagRevokeVisits  int64
+	diagIndexVisits                                                int64
 }
 
 // progress says where the search is, for the report of a timeout.
@@ -915,8 +918,13 @@ func (r *revisionOrder) answered(ops []int) bool {
 	if len(seen) == 0 || !slices.ContainsFunc(ops, func(i int) bool { return w.reqs[i].Compact != nil }) {
 		return true
 	}
-	m := r.save()
-	defer r.restore(m)
+	if w.slow {
+		m := r.save()
+		defer r.restore(m)
+	} else {
+		m := r.saveOrder()
+		defer r.restoreOrder(m)
+	}
 	for _, i := range ops {
 		w.apply(i, w.reqs[i])
 	}
@@ -927,9 +935,13 @@ func (r *revisionOrder) answered(ops []int) bool {
 // may go in by now and that the model takes without a write.
 func (r *revisionOrder) insertOptional(rev int64) {
 	r.diagInsertCalls++
-	r.diagInsertVisits += int64(len(r.optional))
 	w := r.w
-	for _, o := range r.optional {
+	options := r.optional
+	if !w.slow {
+		options = r.indexedOptional(0, rev, false)
+	}
+	r.diagInsertVisits += int64(len(options))
+	for _, o := range options {
 		if o.late || o.from > rev || r.used[o.op] || !r.isReady(o) {
 			continue
 		}
@@ -952,7 +964,16 @@ func (r *revisionOrder) isReady(o optional) bool {
 	}
 	w := r.w
 	unplaced := func(j int) bool { return !w.at[j].set }
-	if slices.ContainsFunc(r.mutations[:o.after], unplaced) || slices.ContainsFunc(o.follow, unplaced) {
+	var missing bool
+	if w.slow {
+		missing = slices.ContainsFunc(r.mutations[:o.after], unplaced)
+	} else {
+		for r.mutationPrefix < len(r.mutations) && !unplaced(r.mutations[r.mutationPrefix]) {
+			r.mutationPrefix++
+		}
+		missing = r.mutationPrefix < o.after
+	}
+	if missing || slices.ContainsFunc(o.follow, unplaced) {
 		return false
 	}
 	r.ready[o.op] = true
@@ -990,9 +1011,13 @@ func (r *revisionOrder) readsFit(o optional) bool {
 // one called after it, which ends the rejection's states.
 func (r *revisionOrder) due(call, rev int64) []optional {
 	r.diagDueCalls++
-	r.diagDueVisits += int64(len(r.optional))
+	options := r.optional
+	if !r.w.slow {
+		options = r.indexedOptional(call, rev, true)
+	}
+	r.diagDueVisits += int64(len(options))
 	var out []optional
-	for _, o := range r.optional {
+	for _, o := range options {
 		if o.late && !r.used[o.op] && (o.gone < call || o.by <= rev) {
 			// A compaction to a revision the order already compacted
 			// fails in the model, and compaction only goes up along an
@@ -1121,13 +1146,22 @@ type frame struct {
 	mark  mark
 }
 
-func (r *revisionOrder) save() mark {
+func (r *revisionOrder) saveOrder() mark {
 	w := r.w
-	return mark{events: len(w.events), appended: len(w.appended), placed: len(w.placed), live: w.live.clone(), used: maps.Clone(r.used)}
+	return mark{events: len(w.events), appended: len(w.appended), placed: len(w.placed), live: w.live.clone()}
 }
 
-func (r *revisionOrder) restore(m mark) {
+func (r *revisionOrder) save() mark {
+	m := r.saveOrder()
+	m.used = maps.Clone(r.used)
+	return m
+}
+
+func (r *revisionOrder) restoreOrder(m mark) {
 	w := r.w
+	if w.bounds != nil {
+		w.bounds.truncate(m.events)
+	}
 	w.events, w.states = w.events[:m.events], w.states[:m.events+1]
 	for k := len(w.appended) - 1; k >= m.appended; k-- {
 		key := w.appended[k]
@@ -1138,15 +1172,22 @@ func (r *revisionOrder) restore(m mark) {
 		w.at[i] = place{}
 	}
 	w.placed = w.placed[:m.placed]
-	// What observe placed belongs to the order given up.
-	for i, p := range w.at {
-		if p.seen {
-			w.at[i] = place{}
-		}
-	}
 	w.live = m.live.clone()
 	w.kvsRev = -1
+}
+
+func (r *revisionOrder) restore(m mark) {
+	r.restoreOrder(m)
+	// What observe placed belongs to the order given up. A compaction
+	// answer trial never places seen ops and need not scan the history.
+	for i, p := range r.w.at {
+		if p.seen {
+			r.w.at[i] = place{}
+		}
+	}
 	clear(r.ready)
+	r.mutationPrefix = 0
+	r.deadlines = nil
 	r.used = maps.Clone(m.used)
 }
 

@@ -4,12 +4,9 @@ on:
     branches: [diag/499-witness-busy]
 permissions:
   contents: read
+  actions: read
 jobs:
   busy:
-    strategy:
-      fail-fast: false
-      matrix:
-        seconds: [320, 1280]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     env:
@@ -21,27 +18,63 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: scripts/sim.sh ./internal/sim '^$'
-      - name: Generate history
-        env:
-          SECONDS_: ${{ matrix.seconds }}
+      - uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: 42114839028
+          pattern: diag499-*
+          path: histories
+      - name: Build both and check verdict regressions
         run: |
           mkdir -p evidence
-          cd internal/sim
-          GOSIMTOOL=$GITHUB_WORKSPACE/.gosim/bin/gosim SIM_OUT=$RUNNER_TEMP/out SIM_SEED=$SECONDS_ SIM_SEEDS=1 "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run '^TestExp499Busy$' -test.v -test.timeout 50m > "$GITHUB_WORKSPACE/evidence/seed.log" 2>&1
-          gzip -c $RUNNER_TEMP/out/*/history.json > "$GITHUB_WORKSPACE/evidence/history.json.gz"
-      - name: Profile and measure
-        run: |
-          go test ./check | tee evidence/tests.log
-          go build -o evidence/checkhistory ./cmd/checkhistory
-          for i in 1 2 3; do
-            evidence/checkhistory -checkers witness-revisions -timeout 20m evidence/history.json.gz | tee -a evidence/timing.jsonl
+          go test -v ./check > evidence/tests.log
+          go build -o evidence/checkhistory-new ./cmd/checkhistory
+          git worktree add -q $RUNNER_TEMP/old 02b0dce3f55b2c6294bf48053a04c89fc27d6296
+          go build -C $RUNNER_TEMP/old -o $GITHUB_WORKSPACE/evidence/checkhistory-old ./cmd/checkhistory
+          for s in 320 1280; do
+            cp histories/diag499-$s/history.json.gz evidence/history-$s.json.gz
           done
-          evidence/checkhistory -checkers witness-revisions -timeout 20m -cpuprofile evidence/cpu.pprof evidence/history.json.gz | tee evidence/profile.jsonl
-          go tool pprof -top evidence/checkhistory evidence/cpu.pprof > evidence/top.txt
-          go tool pprof -top -cum evidence/checkhistory evidence/cpu.pprof > evidence/cum.txt
+          uname -a > evidence/runner.txt
+          lscpu >> evidence/runner.txt
+          go version >> evidence/runner.txt
+      - name: Same runner, three unprofiled repetitions each
+        run: |
+          for i in 1 2 3; do
+            for s in 320 1280; do
+              for version in old new; do
+                evidence/checkhistory-$version -checkers witness-revisions -timeout 20m evidence/history-$s.json.gz | tee -a evidence/$version-$s.jsonl
+              done
+            done
+          done
+      - name: Profiles and work counts
+        run: |
+          for s in 320 1280; do
+            for version in old new; do
+              evidence/checkhistory-$version -checkers witness-revisions -timeout 20m -cpuprofile evidence/$version-$s.pprof evidence/history-$s.json.gz | tee evidence/profile-$version-$s.jsonl
+              go tool pprof -top evidence/checkhistory-$version evidence/$version-$s.pprof > evidence/top-$version-$s.txt
+              go tool pprof -top -cum evidence/checkhistory-$version evidence/$version-$s.pprof > evidence/cum-$version-$s.txt
+            done
+            DIAG499_HISTORY=$GITHUB_WORKSPACE/evidence/history-$s.json.gz go test -C $RUNNER_TEMP/old -run '^TestDiag499Counts$' -v ./check > evidence/counts-old-$s.txt
+            DIAG499_HISTORY=$GITHUB_WORKSPACE/evidence/history-$s.json.gz go test -run '^TestDiag499Counts$' -v ./check > evidence/counts-new-$s.txt
+          done
+      - name: Compare per-call costs against same-runner noise
+        run: |
+          python3 - <<'PY' | tee evidence/summary.txt
+          import json, statistics
+          for version in ['old','new']:
+              values = {}
+              for s in [320,1280]:
+                  rows=[json.loads(x) for x in open(f'evidence/{version}-{s}.jsonl')]
+                  assert len(rows)==3 and all(x['passed'] for x in rows)
+                  us=[x['seconds']*1e6/x['ops'] for x in rows]
+                  values[s]=us
+                  print(version,s,'seconds',[x['seconds'] for x in rows],'us/op',us,'median',statistics.median(us),'range',max(us)-min(us))
+              noise=max(max(v)-min(v) for v in values.values())
+              delta=statistics.median(values[1280])-statistics.median(values[320])
+              print(version,'delta us/op',delta,'noise (largest full range) us/op',noise,'PASS' if delta<=noise else 'FAIL')
+          PY
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: diag499-${{ matrix.seconds }}
+          name: diag499-paired
           path: evidence/
