@@ -119,9 +119,35 @@ def main(root):
         result = json.loads(f.read_text())
         result['run'] = str(f.parent.relative_to(root))
         result['detail'] = json.loads((f.parent/'detail.json').read_text())
+        result['runner'] = f.parent.parent.name
+        result['rep'] = int(re.search(r'rep-(\d+)', f.parent.name)[1])
         result['rtt'] = int(re.search(r'rtt-(\d+)', f.parent.name)[1])
+        result['profiles'] = {}
         result['streams'] = int(re.search(r'streams-(\d+)', f.parent.name)[1])
         assert result['valid'], f
+        assert sum(x['ops'] for x in result['detail']['ops_get_list_update_create_delete']) == result['ops'], f
+        place = json.loads((f.parent/'placement.json').read_text())
+        leader_port = int(place['leader'].split(':')[1])
+        ports = [leader_port]+[p for p in [20010,20020,20030] if p != leader_port]
+        raw_start = (f.parent/'wire-start.txt').read_text()
+        raw_stop = (f.parent/'wire-stop.txt').read_text()
+        # No-target rules count traffic without returning from the chain.
+        pattern = r'\[\d+:(\d+)\] -A R484 [^\n]*--ports (\d+)$'
+        a = {int(p):int(b) for b,p in re.findall(pattern, raw_start, re.M)}
+        b = {int(p):int(b) for b,p in re.findall(pattern, raw_stop, re.M)}
+        if a:
+            result['client_ip_bytes_per_op_by_node'] = [(b[p]-a[p])/result['ops'] for p in ports]
+        if (f.parent/'diskstats-start.txt').exists():
+            def diskstats(which):
+                return {v[2]:[int(v[5])*512, int(v[9])*512] for line in (f.parent/f'diskstats-{which}.txt').read_text().splitlines() if len(v:=line.split()) >= 10}
+            da, db = diskstats('start'), diskstats('stop')
+            result['disk_read_bytes_per_op'] = (db['sda1'][0]-da['sda1'][0])/result['ops']
+            result['external_disk_write_bytes_per_op'] = (db['sda1'][1]-da['sda1'][1])/result['ops']
+            def proc_io(pid, which):
+                return {k:int(v) for k,v in re.findall(r'(\w+): (\d+)', (f.parent/f'io-{pid}-{which}.txt').read_text())}
+            # write_bytes is storage IO charged to a process. wchar is NOT
+            # WAL bytes: sockets are included, so deliberately do not use it.
+            result['storage_write_bytes_per_op_by_node'] = [(proc_io(p,'stop')['write_bytes']-proc_io(p,'start')['write_bytes'])/result['ops'] for p in place['pids_leader_first'].split(',')]
         starts = re.findall(r'\[(\d+):(\d+)\] -A R484 [^\n]*-j RETURN', (f.parent/'wire-start.txt').read_text())
         stops = re.findall(r'\[(\d+):(\d+)\] -A R484 [^\n]*-j RETURN', (f.parent/'wire-stop.txt').read_text())
         for i, name in enumerate(['peer_ip_bytes_per_op', 'client_ip_bytes_per_op']):
@@ -159,6 +185,7 @@ def main(root):
                     index = 1+nonleaders.index(follower_port)
                 us = result['server_cpu_us_per_op_by_node'][index]
             print('\nPROFILE', result['run'], role, f'{cpu/1e9:.3f}s sampled', f'{us:.3f} us/op measured')
+            result['profiles'][role] = {'sampled_cpu_s':cpu/1e9, 'us_per_op':us, 'categories':{label:{'percent':100*ns/cpu, 'us_per_op':us*ns/cpu} for label,ns in counted.items()}}
             for label, ns in counted.most_common():
                 print(f'{label:27s} {100*ns/cpu:7.3f}% {us*ns/cpu:9.3f} us/op')
     for rtt, streams in sorted({(r['rtt'],r['streams']) for r in runs}):
@@ -171,10 +198,15 @@ def main(root):
             'follower2 cores': lambda r:r['server_cores_by_node'][2],
             'generator cores': lambda r:r['client_cores'],
             'server us/op': lambda r:r['server_cpu_us_per_op'],
+            'leader us/op': lambda r:r['server_cpu_us_per_op_by_node'][0],
+            'follower1 us/op': lambda r:r['server_cpu_us_per_op_by_node'][1],
+            'follower2 us/op': lambda r:r['server_cpu_us_per_op_by_node'][2],
             'generator us/op': lambda r:r['client_cpu_us_per_op'],
             'disk write bytes/op': lambda r:r['disk_bytes_per_op'],
             'peer IP bytes/op': lambda r:r['peer_ip_bytes_per_op'],
             'client IP bytes/op': lambda r:r['client_ip_bytes_per_op'],
+            'unary request protobuf bytes/op': lambda r:sum(x['request_pb_bytes'] for x in r['detail']['ops_get_list_update_create_delete'])/r['ops'],
+            'unary reply protobuf bytes/op': lambda r:sum(x['reply_pb_bytes'] for x in r['detail']['ops_get_list_update_create_delete'])/r['ops'],
             'watch protobuf bytes/op': lambda r:r['detail']['watch_pb_bytes']/r['ops'],
             'watch events/op':lambda r:r['watch']['events']/r['ops'],
             'mean latency ms':lambda r:r['latency_us']['mean']/1000,
@@ -185,6 +217,13 @@ def main(root):
         }
         for name, getter in getters.items():
             print(f'{name:33s} {spread([getter(r) for r in subset])}')
+        if all('disk_read_bytes_per_op' in r for r in subset):
+            for name in ['disk_read_bytes_per_op','external_disk_write_bytes_per_op']:
+                print(name, spread([r[name] for r in subset]))
+            for name in ['client_ip_bytes_per_op_by_node','storage_write_bytes_per_op_by_node']:
+                print(name, [spread([r[name][i] for r in subset]) for i in range(3)])
+        for runner in sorted({r['runner'] for r in subset}):
+            print('RUNNER',runner,'throughput',spread([r['throughput'] for r in subset if r['runner']==runner]))
         for i,name in enumerate(['get','list','update','create','delete']):
             op = [r['detail']['ops_get_list_update_create_delete'][i] for r in subset]
             print('OP',name,'request bytes',spread([x['request_pb_bytes']/x['ops'] for x in op]),'reply bytes',spread([x['reply_pb_bytes']/x['ops'] for x in op]),'keys',spread([x['list_keys']/x['ops'] for x in op]),'latency ms',spread([x['latency_ns']/x['ops']/1e6 for x in op]))
