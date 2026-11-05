@@ -1,0 +1,31 @@
+# Research for #440 (exp branch only): seed 202610250141001 of the long
+# Kubernetes profile, with its three clientv3 clients, on ad989ad9, where
+# it spins for good in gRPC's transparent retry; exp/440-fix adds the
+# simulator's pause on each transparent retry.
+name: exp440
+run-name: exp440 ${{ github.ref_name }}
+
+on:
+  push:
+    branches: [exp/440-base, exp/440-fix]
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: scripts/sim.sh ./internal/sim '^$'
+      - name: The seed, for at most 170 minutes
+        run: |
+          cd internal/sim
+          start=$SECONDS
+          GOSIMTOOL=$GITHUB_WORKSPACE/.gosim/bin/gosim SIM_LONG=1 SIM_SEED=202610250141001 SIM_SEEDS=1 timeout 170m "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run '^TestKubernetesLoad$' -test.v -test.timeout 175m >"$RUNNER_TEMP/seed.log" 2>&1 && st=0 || st=$?
+          echo "exit $st after $((SECONDS - start)) s"
+          grep -E -- '^--- |^    --- |hashes:|gosim run of seed|kube_test.go|test timed out|^(ok|PASS|FAIL)$' "$RUNNER_TEMP/seed.log" | cut -c1-400 | head -40
