@@ -1,12 +1,7 @@
 [
-  {"name": "none-d20",    "test": "TestSeeds", "d": 20,   "faults": "none", "seeds": 30, "procs": 1, "profile": 0},
-  {"name": "none-d320",   "test": "TestSeeds", "d": 320,  "faults": "none", "seeds": 6,  "procs": 1, "profile": 1},
-  {"name": "none-d1280",  "test": "TestSeeds", "d": 1280, "faults": "none", "seeds": 3,  "procs": 1, "profile": 0},
-  {"name": "x4-d80",      "test": "TestSeeds", "d": 80,   "faults": "4",    "seeds": 15, "procs": 1, "profile": 0},
-  {"name": "x4-d320",     "test": "TestSeeds", "d": 320,  "faults": "4",    "seeds": 8,  "procs": 1, "profile": 1},
-  {"name": "x4-d1280",    "test": "TestSeeds", "d": 1280, "faults": "4",    "seeds": 3,  "procs": 1, "profile": 0},
-  {"name": "x16-d320",    "test": "TestSeeds", "d": 320,  "faults": "16",   "seeds": 8,  "procs": 1, "profile": 0},
-  {"name": "x16-d1280",   "test": "TestSeeds", "d": 1280, "faults": "16",   "seeds": 3,  "procs": 1, "profile": 0},
-  {"name": "x16-d5120",   "test": "TestSeeds", "d": 5120, "faults": "16",   "seeds": 2,  "procs": 1, "profile": 0},
-  {"name": "none-x4procs-d320", "test": "TestSeeds", "d": 320, "faults": "none", "seeds": 4, "procs": 4, "profile": 0}
+  {"name": "amd64-d20",      "runner": "ubuntu-24.04", "test": "TestSeeds", "d": 20,  "faults": "", "seeds": 40, "procs": 1, "profile": 0},
+  {"name": "amd64-x4p-d20",  "runner": "ubuntu-24.04", "test": "TestSeeds", "d": 20,  "faults": "", "seeds": 40, "procs": 4, "profile": 0},
+  {"name": "amd64-none-d320","runner": "ubuntu-24.04", "test": "TestSeeds", "d": 320, "faults": "none", "seeds": 6, "procs": 1, "profile": 0},
+  {"name": "amd64-x16-d1280","runner": "ubuntu-24.04", "test": "TestSeeds", "d": 1280,"faults": "16", "seeds": 3, "procs": 1, "profile": 0},
+  {"name": "amd64-x2p-d20",  "runner": "ubuntu-24.04", "test": "TestSeeds", "d": 20,  "faults": "", "seeds": 40, "procs": 2, "profile": 0}
 ]

@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         cell: ${{ fromJSON(needs.plan.outputs.cells) }}
-    runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.cell.runner || 'ubuntu-24.04-arm' }}
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@v7
