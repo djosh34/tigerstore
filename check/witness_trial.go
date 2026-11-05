@@ -19,8 +19,8 @@ import (
 // try returns a state that shares s's values, for stepping req through,
 // and undo, which puts back every value req may have written: the keys
 // of a put, the range of a delete, both branches of a transaction, or
-// every key of a revoked lease. The scalars and leases of the state are
-// its own. undo must run before anything else changes s.
+// every key of a revoked lease. The scalars of the state are its own,
+// and so is its lease list when req changes it. undo must run before anything else changes s.
 func (r *revisionOrder) try(s *state, req history.Request) (t *state, undo func()) {
 	if r.w.slow {
 		return s.clone(), func() {}
@@ -64,12 +64,23 @@ func (r *revisionOrder) try(s *state, req history.Request) (t *state, undo func(
 		before[j] = s.kvs[k]
 	}
 	c := *s
-	c.leases = slices.Clone(s.leases)
+	if changesLeases(req) {
+		c.leases = slices.Clone(s.leases)
+	}
 	return &c, func() {
 		for j, k := range written {
 			s.kvs[k] = before[j]
 		}
 	}
+}
+
+// changesLeases reports whether the model changes the lease list for req.
+// Every other request only reads it, so a try or an answer of one shares
+// the list of the state it starts from: a busy history holds thousands of
+// leases, and their copies were most of what was left of an answer's cost
+// (#499).
+func changesLeases(req history.Request) bool {
+	return req.LeaseGrant != nil || req.LeaseRevoke != nil
 }
 
 // tryOptional reports whether take accepts optional o stepped through
@@ -95,7 +106,11 @@ func (w *witness) scopedState(i, j int) *state {
 		w.scope[i] = keys
 	}
 	sm := w.states[j]
-	s := &state{keys: keys, kvs: make([]history.KeyValue, len(keys)), leases: slices.Clone(sm.leases), rev: sm.rev, compacted: sm.compacted, past: w.past}
+	leases := sm.leases
+	if changesLeases(w.reqs[i]) {
+		leases = slices.Clone(leases)
+	}
+	s := &state{keys: keys, kvs: make([]history.KeyValue, len(keys)), leases: leases, rev: sm.rev, compacted: sm.compacted, past: w.past}
 	for k, key := range keys {
 		s.kvs[k], _ = w.past.at(key, sm.rev)
 	}

@@ -444,13 +444,11 @@ func (w *witness) seen(i int) bool {
 // order built so far. With set false it only checks that they all fit,
 // and sets nothing.
 func (w *witness) placeSeen(ops []int, set bool) error {
-	// The states of each revision.
-	first, last := map[int64]int{}, map[int64]int{}
-	for j, s := range w.states {
-		if _, ok := first[s.rev]; !ok {
-			first[s.rev] = j
-		}
-		last[s.rev] = j
+	// The states of a revision: the revisions of the states only go up,
+	// so a search finds them without a map of every state, which a
+	// compaction's trial built again at every try (#499).
+	first := func(rev int64) int {
+		return sort.Search(len(w.states), func(j int) bool { return w.states[j].rev >= rev })
 	}
 	events := w.eventBounds()
 	ops = slices.Clone(ops)
@@ -470,11 +468,11 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 		lo = max(lo, placed.before(op.Call))
 		f, l := lo, hi
 		if op.Resp != nil {
-			var ok bool
-			if f, ok = first[op.Resp.Revision]; !ok {
+			rev := op.Resp.Revision
+			if f = first(rev); f == len(w.states) || w.states[f].rev != rev {
 				return fmt.Errorf("%s got header revision %d, which no state of the order has (the last is %d)", w.describe(i), op.Resp.Revision, w.live.rev)
 			}
-			l = last[op.Resp.Revision]
+			l = first(rev+1) - 1
 			lo, hi = max(lo, f), min(hi, l)
 		}
 		j, ok := w.find(i, lo, hi)
