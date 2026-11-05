@@ -1,0 +1,67 @@
+name: exp485-planted
+
+on:
+  push:
+    branches: [exp/485-sim-ceiling]
+    paths: ['research/485/planted/**', '.github/workflows/exp485-planted.yml']
+
+permissions:
+  contents: read
+
+# No unrelated helper's push restarts this experiment. At most 14 runners.
+concurrency:
+  group: exp485-planted
+  cancel-in-progress: false
+
+jobs:
+  planted:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 155
+    strategy:
+      fail-fast: false
+      max-parallel: 14
+      matrix:
+        duration: [5, 10, 20, 40, 80, 160, 320]
+        shard: [0, 1]
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: '-p=1'
+      EXP485_DURATION: ${{ matrix.duration }}
+      EXP485_BUDGET: '180'
+      EXP485_OUT: ${{ runner.temp }}/exp485-planted
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install experiment-only test and base build fix
+        run: |
+          cp research/485/planted/exp485_planted_test.go.txt internal/sim/exp485_planted_test.go
+          # 020e8c8f inherited a stale 3-argument save call in the planted test.
+          # Keep the correction out of shared source files on this exp branch.
+          python3 - <<'PY'
+          p = 'internal/sim/planted_test.go'
+          s = open(p).read()
+          s = s.replace('save(t, replayCommand(t.Name(), seed), res)', 'save(t, replayCommand(t.Name(), seed), res, true)')
+          open(p, 'w').write(s)
+          PY
+      - name: Build planted gosim and native driver
+        env:
+          TAGS: planted
+        run: scripts/sim.sh ./internal/sim '^$'
+      - name: Measure every seed; never stop at a catch
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          if [ "$SHARD" = 0 ]; then
+            export EXP485_BUGS='plain B01a B01b B02 B03 B04a B04b B04c B05 B06a B06b B06c B06d B07 B08 B09a'
+          else
+            export EXP485_BUGS='B09b B10 B11 B12 B15 B16 B18 B19 B20 B21 B23 B24 B25 B27'
+          fi
+          python3 research/485/planted/run.py
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: exp485-planted-D${{ matrix.duration }}-shard${{ matrix.shard }}
+          path: ${{ runner.temp }}/exp485-planted
+          retention-days: 30

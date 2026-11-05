@@ -1,0 +1,185 @@
+//go:build planted
+
+// Copied into internal/sim only by the research workflow. Never merged.
+package sim
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/djosh34/tigerstore/internal/planted"
+	"github.com/djosh34/tigerstore/internal/simrun"
+)
+
+type exp485Finding struct {
+	Finding string `json:"finding"`
+	Witness bool   `json:"witness"`
+}
+
+type exp485Row struct {
+	Bug           string  `json:"bug"`
+	D             int64   `json:"D"`
+	Seed          uint64  `json:"seed"`
+	Phase         string  `json:"phase"`
+	Caught        bool    `json:"caught"`
+	OtherFail     bool    `json:"other_fail"`
+	BaselineFail  bool    `json:"baseline_fail"`
+	WallMS        float64 `json:"wall_ms"`
+	StartMS       int64   `json:"start_unix_ms"`
+	EndMS         int64   `json:"end_unix_ms"`
+	ViolationMS   *int64  `json:"violation_sim_ms"`
+	Finding       string  `json:"finding"`
+	ControlFor    string  `json:"control_for,omitempty"`
+	ControlWallMS float64 `json:"control_wall_ms,omitempty"`
+	ControlCached bool    `json:"control_cached,omitempty"`
+}
+
+var exp485At = regexp.MustCompile(`(?:seed \d+ at |call at )(\d+) ms`)
+
+// TestExp485Planted deliberately does not fail on findings or stop at a
+// catch. Every expected catch is compared against the identical unplanted
+// seed. Controls are shared across DefaultConfig cases in this driver;
+// their separate wall time is recorded, not silently charged as seed time.
+func TestExp485Planted(t *testing.T) {
+	d := exp485Duration()
+	if d == 0 {
+		t.Fatal("set EXP485_DURATION")
+	}
+	if simrun.InGosim {
+		name := os.Getenv("SIM_PLANTED")
+		c := plantedCase{cfg: DefaultConfig}
+		if name != "" {
+			var ok bool
+			c, ok = plantedCases[name]
+			if !ok {
+				t.Fatalf("unknown bug %s", name)
+			}
+		}
+		planted.Active, activePlanted = name, name
+		simrun.Seeds(t, 1, 1, func(t *testing.T, seed uint64) exp485Finding {
+			cfg := c.cfg(seed)
+			if cfg.Duration != d*Second || cfg.Heal != 10*Second {
+				t.Fatal("config overrides duration/heal")
+			}
+			res, err := runSeed(t, cfg)
+			if err == nil {
+				err = independent(res)
+			}
+			r := exp485Finding{Witness: true}
+			if err != nil {
+				r.Finding = err.Error()
+				if c.witness && regexp.MustCompile(c.want).MatchString(r.Finding) {
+					r.Witness = witnessCatches(t, res)
+				}
+			}
+			return r
+		}, nil)
+		return
+	}
+	if os.Getenv("GOSIMTOOL") == "" {
+		t.Skip("requires gosim driver")
+	}
+	budget, err := strconv.ParseFloat(os.Getenv("EXP485_BUDGET"), 64)
+	if err != nil || budget <= 0 {
+		t.Fatal("set positive EXP485_BUDGET (wall seconds per cell)")
+	}
+	maxSeeds := uint64(1000000)
+	if s := os.Getenv("EXP485_MAX_SEEDS"); s != "" {
+		maxSeeds, err = strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := uint64(1)
+	if s := os.Getenv("SIM_SEED"); s != "" {
+		first, err = strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	controls := map[uint64]exp485Finding{}
+	controlWalls := map[uint64]float64{}
+	run := func(name string, seed uint64, phase string) (exp485Finding, exp485Row) {
+		row := exp485Row{Bug: name, D: d, Seed: seed, Phase: phase}
+		row.StartMS = time.Now().UnixMilli()
+		start := time.Now()
+		env := []string{fmt.Sprintf("EXP485_DURATION=%d", d), fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1", "SIM_PLANTED=" + name}
+		result := simrun.Do(t, simrun.Run{Test: "TestExp485Planted", Seed: seed, Env: env})
+		row.WallMS = float64(time.Since(start).Nanoseconds()) / 1e6
+		row.EndMS = time.Now().UnixMilli()
+		var finding exp485Finding
+		if e := json.Unmarshal(result.Artifacts["seed.json"], &finding); e != nil {
+			finding.Finding = fmt.Sprintf("infrastructure: failed=%v missing result: %v", result.Failed, e)
+		}
+		row.Finding = finding.Finding
+		if m := exp485At.FindStringSubmatch(finding.Finding); m != nil {
+			v, _ := strconv.ParseInt(m[1], 10, 64)
+			row.ViolationMS = &v
+		}
+		return finding, row
+	}
+	emit := func(row exp485Row) {
+		if row.Bug == "" {
+			row.Bug = "plain"
+		}
+		b, err := json.Marshal(row)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Printf("EXP485 %s\n", b)
+	}
+	for _, name := range strings.Fields(os.Getenv("EXP485_BUGS")) {
+		if name == "plain" {
+			name = ""
+		}
+		var want *regexp.Regexp
+		if name != "" {
+			c, ok := plantedCases[name]
+			if !ok {
+				t.Fatalf("unknown case %s", name)
+			}
+			// Refuse even a newly added special config accidentally included.
+			cfg := c.cfg(first)
+			if cfg.Duration != d*Second || cfg.Heal != 10*Second {
+				t.Fatalf("%s overrides config", name)
+			}
+			want = regexp.MustCompile(c.want)
+		}
+		elapsed := 0.0
+		for seed := first; seed < first+maxSeeds && elapsed < budget; seed++ {
+			finding, row := run(name, seed, "survey")
+			elapsed += row.WallMS / 1000
+			if name == "" {
+				controls[seed] = finding
+				controlWalls[seed] = row.WallMS
+				row.OtherFail = finding.Finding != ""
+			} else if finding.Finding != "" {
+				if !want.MatchString(finding.Finding) {
+					row.OtherFail = true
+				} else if finding.Witness {
+					control, ok := controls[seed]
+					row.ControlCached = ok
+					if !ok {
+						var cr exp485Row
+						control, cr = run("", seed, "control")
+						cr.OtherFail = control.Finding != ""
+						cr.ControlFor = name
+						emit(cr)
+						controls[seed] = control
+						controlWalls[seed] = cr.WallMS
+					}
+					row.ControlWallMS = controlWalls[seed]
+					row.BaselineFail = control.Finding != ""
+					row.Caught = !row.BaselineFail
+				}
+			}
+			emit(row)
+		}
+	}
+}
