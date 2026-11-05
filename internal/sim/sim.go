@@ -38,6 +38,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/server"
 	"github.com/djosh34/tigerstore/internal/simfs"
+	"github.com/djosh34/tigerstore/internal/simrun"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -842,6 +843,7 @@ func (s *Sim) run() error {
 		s.mu.Unlock()
 	}
 	s.schedule()
+	s.wg.Go(s.watchWall)
 	// The end can move while the run goes on (extendLiveness).
 	for {
 		s.mu.Lock()
@@ -925,6 +927,23 @@ func formCluster(cfg Config) (*Sim, error) {
 			return s, fmt.Errorf("seed %d: with no faults the cluster did not take on cluster version %d in %s:\n%s", cfg.Seed, core.MaxVersion, seconds(formLimit), s.report())
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+var errWallLimit = errors.New("the run passed its limit of real time ($SIM_WALL)")
+
+// watchWall fails the run once it passed its limit of real time
+// (simrun.WallLimitPassed), looking every 100 ms of the run's time, so
+// that a run that takes too long ends with its report. A goroutine that
+// never blocks stops the run's clock too, and gosim ends that run itself.
+func (s *Sim) watchWall() {
+	for s.sleep(100 * Millisecond) {
+		if simrun.WallLimitPassed() {
+			s.mu.Lock()
+			s.fail("%w", errWallLimit)
+			s.mu.Unlock()
+			return
+		}
 	}
 }
 

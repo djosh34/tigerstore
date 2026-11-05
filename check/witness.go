@@ -72,7 +72,8 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 		return fmt.Errorf("witness check needs a positive timeout, got %s", timeout)
 	}
 	w := newWitness(h, time.Now().Add(timeout))
-	w.maxSteps = optionsOf(opts).steps
+	o := optionsOf(opts)
+	w.maxSteps, w.stop = o.steps, o.stop
 	var err error
 	switch mode {
 	case FromLog:
@@ -140,6 +141,8 @@ type witness struct {
 	// of a timeout.
 	observed, toObserve int
 	search              *revisionOrder
+	// stop, if set, stops the check as its deadline does (StopWhen).
+	stop func() bool
 }
 
 // stoppedAt says how far a check got when it ran out of time.
@@ -212,7 +215,7 @@ func (w *witness) tick() bool {
 	if w.maxSteps > 0 && w.steps > w.maxSteps {
 		return true
 	}
-	return w.steps%1024 == 0 && time.Now().After(w.deadline)
+	return w.steps%1024 == 0 && (time.Now().After(w.deadline) || w.stop != nil && w.stop())
 }
 
 // summary is the live store's summary after req. It shares the previous

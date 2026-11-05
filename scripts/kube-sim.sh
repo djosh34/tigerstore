@@ -17,7 +17,7 @@ set -uo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 out=${OUT:-${RUNNER_TEMP:-/tmp}}
 limit=$((14 * 1024 * 1024 + 512 * 1024)) # KiB
-export GOSIMTOOL=$root/.gosim/bin/gosim SIM_SEEDS=1 GOMEMLIMIT=12GiB
+export GOSIMTOOL=$root/.gosim/bin/gosim SIM_SEEDS=1 SIM_WALL=170m GOMEMLIMIT=12GiB
 cd "$root/internal/sim"
 seed=$FIRST
 twice=${TWICE:-0}
