@@ -11,7 +11,7 @@ def fmt(rows,f,d=2):
  values=[f(r) for r in rows]; meds=[S.median(f(r) for r in rows if r['runner']==n) for n in sorted({r['runner'] for r in rows})]
  return '/'.join(f'{v:.{d}f}' for v in meds)+f' [{min(values):.{d}f},{max(values):.{d}f}]'
 def keytext(k): return '| '+' | '.join(map(str,k))+' | '
-print('Values: runner 1 median / runner 2 median [minimum, maximum across all six repetitions]. Three repetitions per runner; full and detail are four separate VMs.\n')
+print('Values: runner 1 median / runner 2 median [minimum, maximum across all six repetitions]. Three repetitions per runner; each set uses a different pair of VMs.\n')
 print('## Throughput, CPU, latency and device bytes\n')
 print('| set | workload | layout | RTT ms | variant | ops/s | p50 ms | mean ms | leader us/op | leader/f1/f2 cores | generator cores | device B/op |')
 print('|---|---|---|---:|---|---:|---:|---:|---:|---|---:|---:|')
