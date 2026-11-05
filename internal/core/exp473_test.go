@@ -47,3 +47,21 @@ func TestExp473TickWithLeases(t *testing.T) {
 		fmt.Printf("exp473 leases=%d tick=%v restart=%v\n", leases, perTick, restart)
 	}
 }
+
+// TestExp473LeaseCheckpoint checks that a lease of 120 s gets checkpoints
+// with LeaseCheckpointTicks of 100, with and without a capable cluster.
+func TestExp473LeaseCheckpoint(t *testing.T) {
+	for _, capable := range []bool{false, true} {
+		s := startSingleWith(t, simfs.New(), 1, func(c *Config) { c.LeaseCheckpointTicks = 100 })
+		if capable {
+			s.capable()
+		}
+		s.ok(1, &pb.LeaseGrantRequest{ID: 7, TTL: 120})
+		for range 350 {
+			s.n.Tick()
+			s.run()
+		}
+		l := s.n.state.leases[7]
+		fmt.Printf("exp473 capable=%v version=%d remaining=%d\n", capable, s.n.state.version, l.remaining)
+	}
+}

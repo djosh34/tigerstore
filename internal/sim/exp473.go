@@ -62,6 +62,7 @@ func (s *Sim) exp473Mark() {
 	fmt.Fprintf(&b, " crashes=%d rcrashes=%d kills=%d plosses=%d diskfaults=%d ckpts=%d snapshots=%d reloads=%d packs=%d messages=%d ok=%d failed=%d",
 		st.Crashes, st.RecoveryCrashes, st.Kills, st.PowerLosses, st.DiskFaults, st.Checkpoints, st.Snapshots, st.Reloads, st.Packs, st.Messages, st.OK, st.Failed)
 	c := core.Exp473
+	fmt.Fprintf(&b, " env=%q leaseckpts=%d leaseckptcfg=%d", os.Getenv("EXP473_LEASECKPT"), c.LeaseCkpts, c.LeaseCkptCfg)
 	fmt.Fprintf(&b, " starts=%d ckptloads=%d ckptkeys=%d ckptvers=%d replayed=%d tail=%d", c.Starts, c.CkptLoads, c.CkptKeys, c.CkptVersions, c.Replayed, c.Tail)
 	f := simfs.Exp473
 	fmt.Fprintf(&b, " files=%d filesB=%d durables=%d durableB=%d copies=%d copyB=%d", f.Files, f.FilesBytes, f.Durables, f.DurableBytes, f.Copies, f.CopyBytes)

@@ -621,6 +621,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	}
 	n.setState(NewState(MinLeaseTTL(cfg), vals))
 	Exp473.Starts++
+	Exp473.LeaseCkptCfg = int64(cfg.LeaseCheckpointTicks)
 	if root := rec.Root; root.Index > 0 {
 		state, last, err := loadCheckpoint(cfg, disk, root, vals)
 		if err != nil {

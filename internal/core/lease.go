@@ -76,6 +76,7 @@ func (n *Node) checkpointLeases() {
 			continue
 		}
 		cps = append(cps, &pb.LeaseCheckpoint{ID: l.id, Remaining_TTL: left})
+		Exp473.LeaseCkpts++
 		if len(cps) == maxLeaseCheckpoints {
 			n.proposeInternal(&pb.LeaseCheckpointRequest{Checkpoints: cps})
 			cps = nil

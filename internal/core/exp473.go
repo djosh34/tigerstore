@@ -6,6 +6,9 @@ package core
 // into Raft's storage.
 var Exp473 struct {
 	Starts, CkptLoads, CkptKeys, CkptVersions, Replayed, Tail int64
+	// LeaseCkpts counts lease checkpoint proposals, LeaseCkptCfg the
+	// LeaseCheckpointTicks of the last node started.
+	LeaseCkpts, LeaseCkptCfg int64
 }
 
 // Exp473NoSort makes State.Hash fold the leases in without sorting them.
