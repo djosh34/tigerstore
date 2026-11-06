@@ -963,7 +963,7 @@ type readDone struct {
 // maxBacklog is the number of persist batches that may wait for the disk.
 // Beyond it the committer stops taking new inputs, but it keeps ticking
 // and taking finished disk writes.
-const maxBacklog = 64
+const maxBacklog = 4 // DIAG: force the same backpressure with fewer persist batches.
 
 // Run drives the node until ctx ends or the node fails. Messages for peers
 // go to t.
