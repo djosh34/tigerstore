@@ -29,8 +29,8 @@ jobs:
       - name: Five times each, in turn
         env:
           # The commits to compare, by name=ref.
-          REFS: main=origin/main before=ca33462dd9897465aa38feabce588b39167b2ac8 room=30b73f05af9deb8622c5ec7b4216b140ceffc10a pages=0761275d3e410542d6e9d4ba53182e7f7bd0906c
-          REPS: '8'
+          REFS: main=origin/main pages=0761275d3e410542d6e9d4ba53182e7f7bd0906c phases=9fdf0f33f69af2bfa5ef2e4e710a7dc5cdd0f2fd
+          REPS: '12'
           # Builds also run with the collector off.
           GCOFF: ''
         run: |
