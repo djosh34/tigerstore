@@ -48,6 +48,9 @@ func TestRecordLog(t *testing.T) {
 		},
 		{Client: 3, Call: 12, Return: 40, req: &pb.RangeRequest{Key: []byte("a")}, Err: rpctypes.ErrGRPCNoLeader, Ambiguous: false},
 		{Client: 4, Call: 13, Return: 50, v3: true, req: &pb.LeaseGrantRequest{TTL: 3}, Resp: (*pb.LeaseGrantResponse)(nil), Err: rpctypes.ErrGRPCNoLeader},
+		// Two sentinels with the same type and text stay apart.
+		{Client: 6, Call: 15, Return: 70, req: &pb.RangeRequest{Key: []byte("b")}, Err: errRefused},
+		{Client: 7, Call: 16, Return: 80, req: &pb.RangeRequest{Key: []byte("b")}, Err: errConnRefused},
 		{
 			Client: 5, Call: 14, Return: 60, req: &pb.DeleteRangeRequest{Key: []byte("a"), PrevKv: true},
 			Resp: &pb.DeleteRangeResponse{Deleted: 1, PrevKvs: []*mvccpb.KeyValue{kv("a", "v1")}},
