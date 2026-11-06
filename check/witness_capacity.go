@@ -119,14 +119,17 @@ func (r *revisionOrder) indexRoom() {
 			x.revokes[q.ID] = append(x.revokes[q.ID], rev)
 		}
 	}
-	x.fixed = slices.Collect(maps.Keys(r.writers))
 	for rev, i := range r.writers {
-		if q := r.w.reqs[i].LeaseRevoke; q != nil {
-			credit(rev, r.w.reqs[i])
+		if i == 0 {
+			continue
+		}
+		x.fixed = append(x.fixed, int64(rev))
+		if q := r.w.reqs[i-1].LeaseRevoke; q != nil {
+			credit(int64(rev), r.w.reqs[i-1])
 		}
 	}
 	for rev, i := range r.resolved {
-		if _, ok := r.writers[rev]; !ok {
+		if _, ok := r.writer(rev); !ok {
 			x.fixed = append(x.fixed, rev)
 			credit(rev, r.w.reqs[i])
 		}

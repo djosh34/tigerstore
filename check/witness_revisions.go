@@ -28,7 +28,7 @@ import (
 // needs them, after every answer that needs them left out.
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
-		w: w, writers: map[int64]int{},
+		w:     w,
 		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
 		counts: map[int64][]count{},
 	}
@@ -44,8 +44,9 @@ type revisionOrder struct {
 	w *witness
 	// writers are the acked ops that wrote each revision, and revokes the
 	// acked revokes at each header revision, which may have written it.
-	// revokes, others and seen are kept by revision, not in maps (byRev).
-	writers map[int64]int
+	// writers holds each one's op plus one, 0 for none (writer); revokes,
+	// others and seen are kept by revision, not in maps (byRev).
+	writers []int
 	revokes [][]int
 	// others are the acked mutations that changed no key, by header
 	// revision, in call order. seen are the acked ops that changed
@@ -199,6 +200,20 @@ func byRev(revs [][]int, rev int64) []int {
 	return revs[rev]
 }
 
+// writer returns the acked op that wrote revision rev, if any.
+func (r *revisionOrder) writer(rev int64) (int, bool) {
+	if rev < 0 || int(rev) >= len(r.writers) || r.writers[rev] == 0 {
+		return 0, false
+	}
+	return r.writers[rev] - 1, true
+}
+
+// setWriter notes acked op i as the writer of revision rev.
+func (r *revisionOrder) setWriter(rev int64, i int) {
+	r.writers = at(r.writers, rev)
+	r.writers[rev] = i + 1
+}
+
 // add appends v to revs[rev], which it grows to hold.
 func add(revs [][]int, rev int64, v int) [][]int {
 	revs = at(revs, rev)
@@ -237,10 +252,10 @@ func (r *revisionOrder) index() error {
 		switch {
 		case op.Req.Range != nil && op.Req.Range.Serializable:
 		case op.Resp != nil && bumps(op):
-			if j, ok := r.writers[op.Resp.Revision]; ok {
+			if j, ok := r.writer(op.Resp.Revision); ok {
 				return fmt.Errorf("%s and op %d both wrote revision %d", r.w.describe(i), j, op.Resp.Revision)
 			}
-			r.writers[op.Resp.Revision] = i
+			r.setWriter(op.Resp.Revision, i)
 		case op.Resp != nil && op.Req.LeaseRevoke != nil:
 			r.revokes = add(r.revokes, op.Resp.Revision, i)
 		case op.Resp != nil && mutation(op):
@@ -297,7 +312,7 @@ func (r *revisionOrder) index() error {
 		}
 		r.note(kv, unchangedTo)
 		r.top = max(r.top, kv.ModRevision)
-		if _, ok := r.writers[kv.ModRevision]; ok || kv.ModRevision < 2 || !valued {
+		if _, ok := r.writer(kv.ModRevision); ok || kv.ModRevision < 2 || !valued {
 			return
 		}
 		ops := values[[2]string{kv.Key, kv.Value}]
@@ -1381,7 +1396,7 @@ func (r *revisionOrder) search() error {
 // write places the writer of rev, the next candidate if rev is a gap.
 func (r *revisionOrder) write(rev int64) bool {
 	w := r.w
-	if i, ok := r.writers[rev]; ok {
+	if i, ok := r.writer(rev); ok {
 		r.expire(w.h.Ops[i].Call, 0)
 		o := w.apply(i, w.reqs[i])
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {

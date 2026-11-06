@@ -15,7 +15,7 @@ func roomOrder(keys []string, reqs ...history.Request) *revisionOrder {
 		s.kvs[k] = history.KeyValue{Key: key, CreateRevision: 2, ModRevision: 2, Version: 1}
 	}
 	w := &witness{h: &history.History{}, live: s, reqs: reqs}
-	r := &revisionOrder{w: w, writers: map[int64]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, counts: map[int64][]count{}, used: make([]bool, len(reqs)), lb: make([]int64, len(reqs))}
+	r := &revisionOrder{w: w, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, counts: map[int64][]count{}, used: make([]bool, len(reqs)), lb: make([]int64, len(reqs))}
 	for i, req := range reqs {
 		w.h.Ops = append(w.h.Ops, history.Op{Req: req, Err: &history.Error{Ambiguous: true}})
 		r.ambiguous = append(r.ambiguous, i)
@@ -109,7 +109,7 @@ func TestRoomTakesResolvedRevisions(t *testing.T) {
 func TestRoomDeletesAndCreatesAtOneRevision(t *testing.T) {
 	r := roomOrder([]string{"a"}, history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{{Delete: &history.DeleteRequest{Key: "a"}}, {Put: &history.PutRequest{Key: "a"}}}}})
 	r.w.h.Ops[0].Err, r.w.h.Ops[0].Resp = nil, &history.Response{Revision: 3, Txn: &history.TxnResponse{Succeeded: true}}
-	r.writers[3] = 0
+	r.setWriter(3, 0)
 	r.ambiguous = nil
 	r.lives["a"] = []lifeTo{{life{3, 3, 1}, 3}}
 	r.indexForRoom()
