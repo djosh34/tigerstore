@@ -702,7 +702,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	s.mu.Lock()
 	seed := s.rng.Uint64()
 	s.mu.Unlock()
-	r, err := newSim(Config{Seed: seed, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes})
+	r, err := newSimCerts(Config{Seed: seed, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes}, &s.net)
 	if err != nil {
 		return err
 	}
@@ -748,7 +748,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 			return err
 		}
 	}
-	if err := r.runFor(6 * Second); err != nil {
+	if err := r.runSettle(6*Second, c.applied); err != nil {
 		return err
 	}
 	refused := slices.ContainsFunc(r.nodes, func(n *node) bool { return n.inactive && !n.fenced })
@@ -824,6 +824,47 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 }
 
 // runFor lets a cold restart run for d, then freezes its nodes.
+// runSettle is runFor, which stops early, at a whole 100 ms of its time,
+// once every running node follows one leader and has applied at least
+// applied, all the same entries. A cold restart then has nothing left to
+// show.
+func (s *Sim) runSettle(d int64, applied uint64) error {
+	for end := s.now() + d; s.now() < end; {
+		if !s.sleep(min(100*Millisecond, end-s.now())) {
+			break
+		}
+		s.mu.Lock()
+		settled, failed := s.settled(applied), s.err != nil
+		s.mu.Unlock()
+		if settled || failed {
+			break
+		}
+	}
+	if err := s.failure(); err != nil {
+		return err
+	}
+	return s.freeze()
+}
+
+// settled reports whether every running node follows one leader and has
+// applied at least applied, the same index, as each last showed. The lock
+// is held.
+func (s *Sim) settled(applied uint64) bool {
+	var lead, at uint64
+	for _, n := range s.nodes {
+		if n.out() || n.proc == nil {
+			continue
+		}
+		l := n.last
+		switch {
+		case l.lead == 0, l.applied < applied, lead != 0 && (l.lead != lead || l.applied != at):
+			return false
+		}
+		lead, at = l.lead, l.applied
+	}
+	return lead != 0
+}
+
 func (s *Sim) runFor(d int64) error {
 	select {
 	case <-time.After(time.Duration(d)):

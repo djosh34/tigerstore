@@ -35,15 +35,21 @@ type network struct {
 // hosts are the names the nodes listen on.
 var hosts = []string{"node1", "node2", "node3", "member", "updated-member"}
 
-func (nw *network) init() error {
-	ca, err := testcert.NewCA()
-	if err != nil {
-		return err
+// init sets up an empty network with the CA and certificate of certs, or
+// new ones if certs is nil.
+func (nw *network) init(certs *network) error {
+	if certs != nil {
+		nw.ca, nw.cert = certs.ca, certs.cert
+	} else {
+		ca, err := testcert.NewCA()
+		if err != nil {
+			return err
+		}
+		if nw.cert, _, _, err = ca.IssueFor("tigerstore-sim", 2, nil, hosts); err != nil {
+			return err
+		}
+		nw.ca = ca.Pool
 	}
-	if nw.cert, _, _, err = ca.IssueFor("tigerstore-sim", 2, nil, hosts); err != nil {
-		return err
-	}
-	nw.ca = ca.Pool
 	nw.listeners, nw.conns = map[string]*listener{}, map[*conn]bool{}
 	return nil
 }

@@ -751,7 +751,11 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		}
 		f.shutdown()
 	}
-	s, err := newSim(cfg)
+	var certs *network
+	if f != nil {
+		certs = &f.net
+	}
+	s, err := newSimCerts(cfg, certs)
 	if err != nil {
 		return nil, err
 	}
@@ -815,7 +819,12 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 }
 
 // newSim sets up an empty run.
-func newSim(cfg Config) (*Sim, error) {
+func newSim(cfg Config) (*Sim, error) { return newSimCerts(cfg, nil) }
+
+// newSimCerts is newSim with the CA and certificate of certs, if set, as
+// a run's formation and cold restarts reuse the run's: making them is a
+// good part of a run's fixed cost.
+func newSimCerts(cfg Config, certs *network) (*Sim, error) {
 	s := &Sim{
 		cfg:        cfg,
 		rng:        rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
@@ -847,7 +856,7 @@ func newSim(cfg Config) (*Sim, error) {
 		}
 	}
 	s.setLinks(s.allLinks())
-	if err := s.net.init(); err != nil {
+	if err := s.net.init(certs); err != nil {
 		return nil, err
 	}
 	for i := range count {
