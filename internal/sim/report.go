@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
 )
@@ -22,16 +21,19 @@ type coreState struct {
 	members                     []*pb.Member
 }
 
-// remember keeps what core c of n shows now, after it applied applied.
-// The members are copied again only for a new core or after a
-// configuration change or a checkpoint, as copying them takes a
-// protobuf clone of each. The lock is held, on c's committer.
-func (n *node) remember(c *core.Node, now int64, applied []core.Applied) {
+// remember keeps what core c of n shows now, after the effects eff of its
+// turn. The members are the copy the core hands over after a change of
+// them (Effects.Members), a configuration change or a member's publish of
+// its name, and are copied again only for a new core or after a
+// checkpoint, as copying them takes a protobuf clone of each. The lock is
+// held, on c's committer.
+func (n *node) remember(c *core.Node, now int64, eff core.Effects) {
 	st := c.RaftStatus()
 	members := n.last.members
-	if n.last.core != c || slices.ContainsFunc(applied, func(a core.Applied) bool {
-		return a.Checkpoint || a.Type == raftpb.EntryConfChange || a.Type == raftpb.EntryConfChangeV2
-	}) {
+	switch {
+	case eff.Members != nil:
+		members = eff.Members
+	case n.last.core != c || slices.ContainsFunc(eff.Applied, func(a core.Applied) bool { return a.Checkpoint }):
 		members = c.Members()
 	}
 	n.last = coreState{

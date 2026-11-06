@@ -411,3 +411,61 @@ func TestStoreErr(t *testing.T) {
 		t.Errorf("the disk's store error is %v, want %v", err, errFull)
 	}
 }
+
+// TestRewrittenPagesGoBackToTheStore checks that pages rewritten after
+// they went to the Store go there again at the next sync, as a reused log
+// segment is rewritten from its start, and that the file reads what was
+// written last.
+func TestRewrittenPagesGoBackToTheStore(t *testing.T) {
+	d := simfs.New()
+	store := &memStore{}
+	d.KeepIn(store, simfs.PageBytes)
+	f, err := d.Create("a.wal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := func(c byte) []byte { return bytes.Repeat([]byte{c}, 8*simfs.PageBytes) }
+	for i, c := range []byte{'a', 'b'} {
+		if _, err := f.WriteAt(page(c), 0); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		// All but the last page of each version go to the store.
+		if got, want := len(store.pages), 7*(i+1); got != want {
+			t.Errorf("after version %c, the store holds %d pages, want %d", c, got, want)
+		}
+	}
+	if got := d.Files()["a.wal"]; !bytes.Equal(got, page('b')) {
+		t.Error("the file does not read its last version")
+	}
+	if err := d.StoreErr(); err != nil {
+		t.Error(err)
+	}
+}
+
+// TestStoreReadErr checks that a disk whose Store fails a read reports it.
+func TestStoreReadErr(t *testing.T) {
+	d := simfs.New()
+	store := &memStore{}
+	d.KeepIn(store, simfs.PageBytes)
+	f, err := d.Create("a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(bytes.Repeat([]byte{'x'}, 3*simfs.PageBytes)); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	errGone := errors.New("the host file is gone")
+	store.fail = errGone
+	if _, err := f.ReadAt(make([]byte, simfs.PageBytes), 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.StoreErr(); !errors.Is(err, errGone) {
+		t.Errorf("the disk's store error is %v, want %v", err, errGone)
+	}
+}

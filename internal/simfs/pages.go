@@ -48,8 +48,8 @@ type page struct {
 // where the page is nil or past the list. owned says which pages no other
 // pages share and are in memory, which a change may make in place; any
 // other page is never changed again, and a change goes to a new one. The
-// pages below stored went to the Store, if st has one, as far as they
-// were in memory.
+// pages below stored are in the Store, if st has one: a new page below it
+// lowers it, so that the next spill stores that page too.
 type pages struct {
 	blocks []*page
 	owned  []bool
@@ -103,6 +103,7 @@ func (p *pages) own(i int) *block {
 		copy(b[:], old)
 	}
 	p.blocks[i], p.owned[i] = &page{b: b}, true
+	p.stored = min(p.stored, i)
 	return b
 }
 
@@ -115,6 +116,7 @@ func (p *pages) set(i int, b *block) {
 		p.owned = append(p.owned, false)
 	}
 	p.blocks[i], p.owned[i] = &page{b: b}, true
+	p.stored = min(p.stored, i)
 }
 
 // read fills dst with the bytes at off, zeros past size.

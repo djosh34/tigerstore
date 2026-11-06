@@ -62,7 +62,7 @@ func (s *Sim) scheduleDiskFaults() {
 		s.once(s.cfg.Duration*3/4, 500*Millisecond, func() bool {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			if s.healed || slices.ContainsFunc(s.nodes, func(n *node) bool { return n.corrupted }) {
+			if s.healed || slices.ContainsFunc(s.nodes, (*node).mayBeDamaged) {
 				return true
 			}
 			// The node's committer rots a value at its next turn.
@@ -313,7 +313,7 @@ func (s *Sim) maybeCorrupt(n *node) {
 		return
 	}
 	for _, m := range s.nodes {
-		if m.corrupted || m.fenced {
+		if m.mayBeDamaged() || m.fenced {
 			return
 		}
 	}
@@ -824,7 +824,6 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	return nil
 }
 
-// runFor lets a cold restart run for d, then freezes its nodes.
 // runSettle is runFor, which stops early, at a whole 100 ms of its time,
 // once every running node follows one leader and has applied at least
 // applied, all the same entries. A cold restart then has nothing left to
@@ -866,6 +865,7 @@ func (s *Sim) settled(applied uint64) bool {
 	return lead != 0
 }
 
+// runFor lets a cold restart run for d, then freezes its nodes.
 func (s *Sim) runFor(d int64) error {
 	select {
 	case <-time.After(time.Duration(d)):

@@ -355,8 +355,8 @@ type node struct {
 	// hs is the term and vote the node holds durable: what its process
 	// recovered or later reported durable. mustLast and mustHS are what
 	// recovery must give after its process went down: the floor and hs
-	// then, which its next start checks. tornCrash is set while its last
-	// crash image may tear writes, until a start recovers it.
+	// then, which its next start checks. tornCrash is set from a crash
+	// image that tore writes until a start recovers the log (mayBeDamaged).
 	hs        hardState
 	mustLast  uint64
 	mustHS    hardState
@@ -819,8 +819,10 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if s.pages != nil {
 		res.Stats.KeptPages = s.pages.puts
 	}
-	if err == nil && s.pages != nil && s.pages.err != nil {
-		err = fmt.Errorf("the disks' pages on the runner's disk: %w", s.pages.err)
+	if s.pages != nil && s.pages.err != nil {
+		// A page that failed to read reads as zeros, which can fail the
+		// run as if a node were wrong: the host's error comes first.
+		err = errors.Join(fmt.Errorf("the disks' pages on the runner's disk: %w", s.pages.err), err)
 	}
 	return res, err
 }
@@ -1750,7 +1752,7 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		s.steppedDownAt = s.now()
 		s.tracef("node %d: the stalled leader stepped down", n.id)
 	}
-	n.remember(c, s.now(), eff.Applied)
+	n.remember(c, s.now(), eff)
 	if v := n.last.version; v != before {
 		s.tracef("node %d: cluster version %d", n.id, v)
 	}
@@ -2025,12 +2027,21 @@ func (s *Sim) powerLoss(n *node) {
 // refuse the log (#295). The lock is held.
 func (s *Sim) loseUnsynced(n *node) {
 	img := simfs.Image(s.rng.IntN(4))
-	if s.cfg.Membership || slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.corrupted || m.fenced) }) {
+	if s.cfg.Membership || slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) {
 		img = simfs.Image(s.rng.IntN(2))
 	}
 	n.disk.CrashImage(s.rng, img)
-	n.tornCrash = img >= simfs.Sectors
+	// Recovery may refuse the log since any torn image, until a start
+	// recovers it: a later image of whole writes keeps the tear.
+	n.tornCrash = n.tornCrash || img >= simfs.Sectors
 }
+
+// mayBeDamaged reports whether n's disk is damaged, or may be: a torn
+// crash image that no start recovered since may make recovery refuse its
+// log (loseUnsynced), which only its next start finds out. The faults that
+// must leave a quorum whole count such a node as damaged. The lock is
+// held.
+func (n *node) mayBeDamaged() bool { return n.corrupted || n.tornCrash }
 
 // down takes n's process down: its goroutines, disk calls and
 // connections fail, and its clients and watchers lose their connections.
