@@ -48,6 +48,9 @@ func CPUTime() (time.Duration, error) {
 	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano()), nil
 }
 
+// Aside runs f: natively there is no run's random stream to keep.
+func Aside(f func()) { f() }
+
 // Stacks returns every goroutine's stack.
 func Stacks() []byte {
 	buf := make([]byte, 1<<20)

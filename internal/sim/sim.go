@@ -574,10 +574,11 @@ type Sim struct {
 	// healing, which moves the start of the liveness rule.
 	diskFaultDue bool
 	lateStopAt   int64
-	history      []*Record
-	stats        Stats
-	membership   membershipWork
-	err          error
+	// records holds the clients' calls (recordlog.go).
+	records    *recordLog
+	stats      Stats
+	membership membershipWork
+	err        error
 	// loadFrom is the process's CPU time when the clients started, and
 	// loadCPU the CPU time from then until the last client stopped
 	// (markLoad).
@@ -779,7 +780,13 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		d.BadReads += c.BadReads
 		d.Misreads += c.Misreads
 	}
-	res.History, res.Stats, res.Silences = s.history, s.stats, s.silences
+	var history []*Record
+	var herr error
+	simrun.Aside(func() { history, herr = s.records.records() })
+	if herr != nil && err == nil {
+		err = fmt.Errorf("decoding the history: %w", herr)
+	}
+	res.History, res.Stats, res.Silences = history, s.stats, s.silences
 	res.HeldAppendAt, res.SteppedDownAt = s.heldAppendAt, s.steppedDownAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
 	res.nodes, res.values, res.stacks = s.nodes, s.values, s.wallStacks
@@ -820,6 +827,10 @@ func newSim(cfg Config) (*Sim, error) {
 		servedRoot: map[uint64]uint64{},
 		healAt:     cfg.Duration,
 		stopAt:     cfg.Duration + cfg.Heal,
+	}
+	var err error
+	if s.records, err = newRecordLog(); err != nil {
+		return nil, err
 	}
 	s.endAt = cfg.length()
 	count := 3
