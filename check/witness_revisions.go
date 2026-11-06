@@ -53,6 +53,9 @@ type revisionOrder struct {
 	// nothing, by header revision.
 	others [][]int
 	seen   [][]int
+	// ackedByCall are the acked ops but serializable reads, in call order
+	// (lowerBounds).
+	ackedByCall []int
 	// ambiguous are the ambiguous mutations, and lb the highest revision
 	// returned before each was called: it writes no revision up to it.
 	ambiguous []int
@@ -636,7 +639,9 @@ func (r *revisionOrder) lowerBounds() {
 			acked = append(acked, i)
 		}
 	}
-	slices.SortFunc(acked, func(a, b int) int { return cmp.Compare(h.Ops[a].Return, h.Ops[b].Return) })
+	// A bound is looked up by a time, which never falls between two ops
+	// of one time, so the order of ties changes nothing.
+	r.w.sorter.sort(acked, func(i int) int64 { return h.Ops[i].Return })
 	r.highest = make([]int64, len(acked))
 	r.returns = make([]int64, len(acked))
 	for k, i := range acked {
@@ -647,7 +652,8 @@ func (r *revisionOrder) lowerBounds() {
 		}
 	}
 	byCall := slices.Clone(acked)
-	slices.SortFunc(byCall, func(a, b int) int { return cmp.Compare(h.Ops[a].Call, h.Ops[b].Call) })
+	r.w.sorter.sort(byCall, func(i int) int64 { return h.Ops[i].Call })
+	r.ackedByCall = byCall
 	r.calls = make([]int64, len(byCall))
 	r.lowest = make([]int64, len(byCall))
 	for k := len(byCall) - 1; k >= 0; k-- {
@@ -671,12 +677,19 @@ func (r *revisionOrder) lowerBounds() {
 // neither side.
 func (r *revisionOrder) inRealTime() error {
 	h := r.w.h
-	for i := range h.Ops {
+	// The acked ops in call order, against the returns in order: each
+	// bound is the one boundAt gives, without a search per op.
+	n := 0
+	for _, i := range r.ackedByCall {
 		op := &h.Ops[i]
-		if op.Resp == nil || op.Req.Range != nil && op.Req.Range.Serializable {
-			continue
+		for n < len(r.returns) && r.returns[n] < op.Call {
+			n++
 		}
-		if before := r.boundAt(op.Call); before > op.Resp.Revision {
+		before := int64(1)
+		if n > 0 {
+			before = r.highest[n-1]
+		}
+		if before > op.Resp.Revision {
 			return fmt.Errorf("%s has no state that real time allows: it answers revision %d, but an op that returned before it was called answered %d", r.w.describe(i), op.Resp.Revision, before)
 		}
 	}

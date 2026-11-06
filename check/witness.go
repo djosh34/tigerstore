@@ -472,6 +472,29 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 	first := func(rev int64) int {
 		return sort.Search(len(w.states), func(j int) bool { return w.states[j].rev >= rev })
 	}
+	if set {
+		// observe places every op, so a table of the first state at each
+		// revision or later, made once, saves a search per op, whose cost
+		// grew with the order (#499).
+		top := w.states[len(w.states)-1].rev
+		starts := make([]int, top+2)
+		j := len(w.states)
+		for rev := top + 1; rev >= 0; rev-- {
+			for j > 0 && w.states[j-1].rev >= rev {
+				j--
+			}
+			starts[rev] = j
+		}
+		first = func(rev int64) int {
+			switch {
+			case rev < 0:
+				return 0
+			case rev > top+1:
+				return len(w.states)
+			}
+			return starts[rev]
+		}
+	}
 	events := w.eventBounds()
 	ops = slices.Clone(ops)
 	w.sorter.sort(ops, func(i int) int64 { return w.h.Ops[i].Call })
@@ -674,9 +697,11 @@ func (w *witness) verify() error {
 		}
 		return w.h.Ops[i].Return
 	}
+	// Ops of one time pass or fail together, so the order of ties changes
+	// only which op an error names.
 	byCall, byReturn := slices.Clone(ops), slices.Clone(ops)
-	slices.SortFunc(byCall, func(a, b int) int { return cmp.Compare(w.h.Ops[a].Call, w.h.Ops[b].Call) })
-	slices.SortFunc(byReturn, func(a, b int) int { return cmp.Compare(ret(a), ret(b)) })
+	w.sorter.sort(byCall, func(i int) int64 { return w.h.Ops[i].Call })
+	w.sorter.sort(byReturn, ret)
 	latest, by := place{}, -1
 	k := 0
 	for _, b := range byCall {
