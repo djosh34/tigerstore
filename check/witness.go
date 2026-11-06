@@ -73,7 +73,7 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 	}
 	w := newWitness(h, time.Now().Add(timeout))
 	o := optionsOf(opts)
-	w.maxSteps, w.slow = o.steps, o.slow
+	w.maxSteps, w.stop, w.slow = o.steps, o.stop, o.slow
 	var err error
 	switch mode {
 	case FromLog:
@@ -145,6 +145,8 @@ type witness struct {
 	// of a timeout.
 	observed, toObserve int
 	search              *revisionOrder
+	// stop, if set, stops the check as its deadline does (StopWhen).
+	stop func() bool
 	// scope caches the keys each op's request reads or writes
 	// (scopedState), and slow makes the witness copy the whole store for
 	// every try and answer instead, for the tests that compare the two
@@ -223,7 +225,7 @@ func (w *witness) tick() bool {
 	if w.maxSteps > 0 && w.steps > w.maxSteps {
 		return true
 	}
-	return w.steps%1024 == 0 && time.Now().After(w.deadline)
+	return w.steps%1024 == 0 && (time.Now().After(w.deadline) || w.stop != nil && w.stop())
 }
 
 // summary is the live store's summary, which shares its leases with the
