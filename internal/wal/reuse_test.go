@@ -585,8 +585,8 @@ func TestDropKeepsBeforeUnplaced(t *testing.T) {
 func TestHeaderWaitsForRecords(t *testing.T) {
 	d := simfs.New()
 	var writes []string
-	d.Trace = func(s string) {
-		if strings.HasPrefix(s, "write ") {
+	d.Trace = func(format string, args ...any) {
+		if s := fmt.Sprintf(format, args...); strings.HasPrefix(s, "write ") {
 			writes = append(writes, s)
 		}
 	}
