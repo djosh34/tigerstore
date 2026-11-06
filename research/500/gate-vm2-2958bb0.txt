@@ -1,0 +1,27 @@
+commit 2958bb06f32ef191842c3659e6ae72bb2f1a5c16
+model name	: INTEL(R) XEON(R) PLATINUM 8573C
+testing: warning: no tests to run
+round 1 native 5211 calls/core-s
+round 1 gosim 26472 calls answered, 441 failed, 4.513 s of CPU time: 5865 calls per core-second
+round 1 calm 18411 calls answered, 5.905 s of CPU time in the load, 6.721 s in the seed: 3118 calls per core-second, 0.816 s fixed
+round 2 native 5786 calls/core-s
+round 2 gosim 26401 calls answered, 408 failed, 4.303 s of CPU time: 6135 calls per core-second
+round 2 calm 18354 calls answered, 4.909 s of CPU time in the load, 5.664 s in the seed: 3739 calls per core-second, 0.755 s fixed
+round 3 native 5904 calls/core-s
+round 3 gosim 26397 calls answered, 482 failed, 4.042 s of CPU time: 6531 calls per core-second
+round 3 calm 19137 calls answered, 5.130 s of CPU time in the load, 5.843 s in the seed: 3730 calls per core-second, 0.713 s fixed
+round 4 native 5041 calls/core-s
+round 4 gosim 26290 calls answered, 490 failed, 4.383 s of CPU time: 5999 calls per core-second
+round 4 calm 18953 calls answered, 4.882 s of CPU time in the load, 5.576 s in the seed: 3882 calls per core-second, 0.694 s fixed
+round 5 native 6006 calls/core-s
+round 5 gosim 26308 calls answered, 462 failed, 4.307 s of CPU time: 6108 calls per core-second
+round 5 calm 20092 calls answered, 5.434 s of CPU time in the load, 6.157 s in the seed: 3698 calls per core-second, 0.724 s fixed
+round 6 native 6045 calls/core-s
+round 6 gosim 26535 calls answered, 445 failed, 4.089 s of CPU time: 6489 calls per core-second
+round 6 calm 19720 calls answered, 5.391 s of CPU time in the load, 6.115 s in the seed: 3658 calls per core-second, 0.724 s fixed
+round 7 native 5907 calls/core-s
+round 7 gosim 26375 calls answered, 429 failed, 3.991 s of CPU time: 6609 calls per core-second
+round 7 calm 14097 calls answered, 4.885 s of CPU time in the load, 5.760 s in the seed: 2886 calls per core-second, 0.875 s fixed
+round 8 native 5989 calls/core-s
+round 8 gosim 26188 calls answered, 636 failed, 4.777 s of CPU time: 5482 calls per core-second
+round 8 calm 19667 calls answered, 5.540 s of CPU time in the load, 6.332 s in the seed: 3550 calls per core-second, 0.792 s fixed
