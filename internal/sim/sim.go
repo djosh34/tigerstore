@@ -510,8 +510,9 @@ type Sim struct {
 	silences []int64
 	// stalledLeader is the leader StallLeaderAt stalled, and heldAppendAt
 	// when it handed its disk the oldest append that the stall holds.
-	stalledLeader *node
-	heldAppendAt  int64
+	stalledLeader           *node
+	heldAppendAt            int64
+	stalledLeaderStepDownAt int64
 	// gray is the gray node, or nil, and grayEnd when its gray period ends.
 	gray     *node
 	grayEnd  int64
@@ -663,6 +664,10 @@ type Result struct {
 	// disk the oldest append the stall holds.
 	Silences     []int64
 	HeldAppendAt int64
+	// StalledLeaderStepDownAt is when the leader StallLeaderAt stalled
+	// first stopped leading. Backpressure can make CheckQuorum step it
+	// down before its disk-stall silence threshold.
+	StalledLeaderStepDownAt int64
 	// Trace is what the run did, last of all, and Report how it left each
 	// node, for a failure's report.
 	Trace  []string
@@ -746,6 +751,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	}
 	res.History, res.Stats, res.Silences = s.history, s.stats, s.silences
 	res.HeldAppendAt = s.heldAppendAt
+	res.StalledLeaderStepDownAt = s.stalledLeaderStepDownAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
 	res.nodes, res.values = s.nodes, s.values
 	s.mu.Unlock()
@@ -1525,6 +1531,10 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 			s.fail("node %d started at term %d with vote %d, but held term %d and vote %d durable", n.id, hs.GetTerm(), hs.GetVote(), n.mustHS.term, n.mustHS.vote)
 		}
 		p.core, n.pending, n.duringInstall = c, nil, nil
+	}
+	if n == s.stalledLeader && s.stalledLeaderStepDownAt == 0 && c.Leader() != n.id {
+		s.stalledLeaderStepDownAt = s.now()
+		s.tracef("node %d: stalled leader stepped down", n.id)
 	}
 	before := n.last.version
 	n.remember(c, s.now())

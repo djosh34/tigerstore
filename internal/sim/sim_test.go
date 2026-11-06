@@ -687,8 +687,10 @@ func TestLinearizable(t *testing.T) {
 func atLeast(n int) int { return n * 95 / 100 }
 
 // TestStalledLeaderIsReplaced stalls the leader's disk for good at 5 s,
-// with no other fault. The leader would go on heartbeating, so it must go
-// silent for the others to elect another (#233): core.StallTicks
+// with no other fault. It must stop leading or go silent so the others
+// can elect another (#233). Backpressure can stop it receiving heartbeat
+// responses, so CheckQuorum may step it down before the silence deadline.
+// If it keeps leading, it must go silent by core.StallTicks
 // election timeouts after the oldest append it has not persisted, which
 // is the first one the stall holds, one queued before the stall or the
 // first after it. It must go silent by then, plus two ticks, as the core
@@ -704,24 +706,23 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 		cfg.LiveFrom = cfg.StallLeaderAt + 10*election
 		cfg.Duration = 25 * Second
 		res := run(t, cfg)
-		if len(res.Silences) == 0 || res.Stats.Silences == 0 {
-			for _, line := range res.Trace {
-				if strings.Contains(line, "DIAG") {
-					t.Log(line)
-				}
-			}
-			t.Fatalf("seed %d: the stalled leader never went silent", seed)
+		at, action := res.StalledLeaderStepDownAt, "stepped down"
+		if len(res.Silences) > 0 && (at == 0 || res.Silences[0] < at) {
+			at, action = res.Silences[0], "went silent"
+		}
+		if at == 0 {
+			t.Fatalf("seed %d: the stalled leader neither went silent nor stepped down", seed)
 		}
 		if res.HeldAppendAt == 0 {
 			t.Fatalf("seed %d: the stall held no append of the leader", seed)
 		}
 		limit := res.HeldAppendAt + core.StallTicks*election + 2*TickTime
-		if at := res.Silences[0]; at < cfg.StallLeaderAt || at > limit {
-			t.Fatalf("seed %d: the stalled leader went silent at %d ms, want between the stall at %d ms and %d ms, %d election timeouts and two ticks after its oldest held append at %d ms",
-				seed, at/Millisecond, cfg.StallLeaderAt/Millisecond, limit/Millisecond, core.StallTicks, res.HeldAppendAt/Millisecond)
+		if at < cfg.StallLeaderAt || at > limit {
+			t.Fatalf("seed %d: the stalled leader %s at %d ms, want between the stall at %d ms and %d ms, %d election timeouts and two ticks after its oldest held append at %d ms",
+				seed, action, at/Millisecond, cfg.StallLeaderAt/Millisecond, limit/Millisecond, core.StallTicks, res.HeldAppendAt/Millisecond)
 		}
 		checkers(t, res)
-		t.Logf("seed %d: stalled leader went silent at %d ms, deadline %d ms after its oldest held append at %d ms", seed, res.Silences[0]/Millisecond, limit/Millisecond, res.HeldAppendAt/Millisecond)
+		t.Logf("seed %d: stalled leader %s at %d ms, deadline %d ms after its oldest held append at %d ms", seed, action, at/Millisecond, limit/Millisecond, res.HeldAppendAt/Millisecond)
 		return struct{}{}
 	}, nil)
 }
