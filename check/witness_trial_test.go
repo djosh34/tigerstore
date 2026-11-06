@@ -317,3 +317,27 @@ func TestWitnessRejectsWhatNoOrderReaches(t *testing.T) {
 		})
 	}
 }
+
+// TestPlaceSeenRefusesAStaleFirstAnswer gives placeSeen a first answer of
+// a state the order no longer has: a read's answer changed to a value no
+// state holds, and its kept state id one that no state has. placeSeen
+// must search, find no state that answers, and refuse; it must not take
+// the kept place (review of #525).
+func TestPlaceSeenRefusesAStaleFirstAnswer(t *testing.T) {
+	b := newBuilder(t, "a")
+	b.put(0, "a", "one")
+	i := b.do(0, history.Request{Range: &history.RangeRequest{Key: "a"}})
+	h := b.done()
+	w := newWitness(h, time.Now().Add(time.Minute))
+	if err := w.fromRevisions(); err != nil {
+		t.Fatal(err)
+	}
+	if w.firsts[i].id == 0 {
+		t.Fatal("finish kept no first answer for the read")
+	}
+	h.Ops[i].Resp.Range.KVs[0].Value = "other"
+	w.firsts[i].id = w.lastID + 1
+	if err := w.placeSeen([]int{i}, false); err == nil {
+		t.Fatal("placeSeen took a first answer whose state the order no longer has")
+	}
+}
