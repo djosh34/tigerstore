@@ -1057,16 +1057,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	// term beatTerm.
 	beats := map[uint64]time.Time{}
 	var beatTerm uint64
-	blocked := false
 	for {
 		inbox := n.inbox
 		if len(backlog) >= maxBacklog {
 			inbox = nil
-			if !blocked {
-				n.logf("DIAG inbox disabled: backlog=%d persistQ=%d active peers [1=%v 2=%v 3=%v]", len(backlog), len(n.persistQ), !t.ActiveSince(1).IsZero(), !t.ActiveSince(2).IsZero(), !t.ActiveSince(3).IsZero())
-			}
 		}
-		blocked = inbox == nil
 		var toDisk chan<- persistBatch
 		var next persistBatch
 		if len(backlog) > 0 {

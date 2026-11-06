@@ -1043,7 +1043,6 @@ func (s *sender) connected(ctx context.Context, c net.Conn) error {
 	}()
 	err := s.write(ctx, c)
 	stop()
-	s.t.logf("DIAG message connection to %d ended: write=%v", s.id, err)
 	s.t.untrack(c)
 	<-read
 	if err == nil && s.ctx.Err() == nil {
@@ -1141,7 +1140,6 @@ func (s *sender) roundTrip() (time.Duration, error) {
 	if _, err := readChunk(c); err != nil {
 		return 0, err
 	}
-	s.t.logf("DIAG probe to %d succeeded; closing its separate call connection", s.id)
 	return time.Since(start), nil
 }
 

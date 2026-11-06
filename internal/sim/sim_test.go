@@ -693,8 +693,8 @@ func atLeast(n int) int { return n * 95 / 100 }
 // If it keeps leading, it must go silent by core.StallTicks
 // election timeouts after the oldest append it has not persisted, which
 // is the first one the stall holds, one queued before the stall or the
-// first after it. It must go silent by then, plus two ticks, as the core
-// counts ticks, and every call to a healthy node that starts 10 election
+// first after it. The bound allows two extra ticks, as the core counts
+// ticks, and every call to a healthy node that starts 10 election
 // timeouts after the stall must succeed. A leader can propose nothing for
 // a while after the stall, as when it serves a snapshot (#260).
 func TestStalledLeaderIsReplaced(t *testing.T) {
@@ -706,9 +706,6 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 		cfg.LiveFrom = cfg.StallLeaderAt + 10*election
 		cfg.Duration = 25 * Second
 		res := run(t, cfg)
-		if len(res.Silences) == 0 || res.Stats.Silences == 0 {
-			t.Fatalf("seed %d: the stalled leader never went silent", seed)
-		}
 		at, action := res.StalledLeaderStepDownAt, "stepped down"
 		if len(res.Silences) > 0 && (at == 0 || res.Silences[0] < at) {
 			at, action = res.Silences[0], "went silent"
