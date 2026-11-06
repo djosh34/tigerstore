@@ -1159,7 +1159,7 @@ func (r *revisionOrder) isReady(o optional) bool {
 		return true
 	}
 	w := r.w
-	unplaced := func(j int) bool { return !w.at[j].set }
+	unplaced := func(j int) bool { return !w.at[j].set() }
 	// Along one order a placed mutation stays placed, so the placed
 	// prefix of mutations only grows until restore.
 	for r.placedPrefix < len(r.mutations) && !unplaced(r.mutations[r.placedPrefix]) {
@@ -1193,7 +1193,7 @@ func (r *revisionOrder) readsFit(o optional) bool {
 	ops := slices.Clone(o.reads)
 	for i := range w.h.Ops {
 		op := &w.h.Ops[i]
-		if op.Return < call && !w.at[i].set && w.seen(i) && (op.Resp == nil || !mutation(op)) && !slices.Contains(o.reads, i) {
+		if op.Return < call && !w.at[i].set() && w.seen(i) && (op.Resp == nil || !mutation(op)) && !slices.Contains(o.reads, i) {
 			ops = append(ops, i)
 		}
 	}
@@ -1360,7 +1360,7 @@ func (r *revisionOrder) restore(m mark) {
 	r.restoreOrder(m)
 	// What observe placed belongs to the order given up.
 	for i, p := range r.w.at {
-		if p.seen {
+		if p.seen() {
 			r.w.at[i] = place{}
 		}
 	}

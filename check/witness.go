@@ -216,22 +216,39 @@ type firstAnswer struct {
 // state at-1 to state at; or, for an op that changed nothing (seen),
 // state at, among the other such ops there by call time.
 //
-// at is a state's number in 4 bytes, so that a place takes 16 bytes: the
-// witness reads the places of a busy history's ops out of order, and
-// their size made that cost more per op the longer the history (#499).
+// A place takes 16 bytes: whether it is set, whether the op is seen, and
+// its state's number share one word, as the witness reads the places of a
+// busy history's ops out of order, and their size made that cost more per
+// op the longer the history (#499). The zero place is unset.
 type place struct {
-	set  bool
-	seen bool
-	at   int32
+	bits uint64
 	rank int64
 }
 
+const (
+	placeSet  = 1 << 63
+	placeSeen = 1 << 62
+)
+
+// placeAt is the place of an op at state at, seen or not, with rank.
+func placeAt(at int, seen bool, rank int64) place {
+	p := place{bits: placeSet | uint64(at), rank: rank}
+	if seen {
+		p.bits |= placeSeen
+	}
+	return p
+}
+
+func (p place) set() bool  { return p.bits&placeSet != 0 }
+func (p place) seen() bool { return p.bits&placeSeen != 0 }
+func (p place) at() int    { return int(p.bits &^ (placeSet | placeSeen)) }
+
 func (p place) compare(q place) int {
-	if c := cmp.Compare(p.at, q.at); c != 0 {
+	if c := cmp.Compare(p.at(), q.at()); c != 0 {
 		return c
 	}
-	if p.seen != q.seen {
-		if p.seen {
+	if p.seen() != q.seen() {
+		if p.seen() {
 			return 1
 		}
 		return -1
@@ -285,7 +302,7 @@ func (w *witness) apply(op int, req *history.Request) outcome {
 	}
 	w.states = append(w.states, w.summary())
 	if op >= 0 {
-		w.at[op] = place{set: true, at: int32(len(w.events))}
+		w.at[op] = placeAt(len(w.events), false, 0)
 		w.placed = append(w.placed, op)
 	}
 	return o
@@ -372,7 +389,7 @@ func (w *witness) fromLog() error {
 		for _, e := range entries[k] {
 			if w.events[e].op < 0 && fits(e) {
 				w.events[e].op = i
-				w.at[i] = place{set: true, at: int32(e + 1)}
+				w.at[i] = placeAt(e+1, false, 0)
 				return true, nil
 			}
 		}
@@ -429,8 +446,8 @@ func (w *witness) boundAfter() func(t int64) int {
 	}
 	var rs []ret
 	for i := range w.h.Ops {
-		if p := w.at[i]; p.set && w.h.Ops[i].Resp != nil {
-			rs = append(rs, ret{w.returns[i], int(p.at)})
+		if p := w.at[i]; p.set() && w.h.Ops[i].Resp != nil {
+			rs = append(rs, ret{w.returns[i], p.at()})
 		}
 	}
 	slices.SortFunc(rs, func(a, b ret) int { return cmp.Compare(a.at, b.at) })
@@ -455,7 +472,7 @@ func (w *witness) boundAfter() func(t int64) int {
 func (w *witness) observe() error {
 	var ops []int
 	for i := range w.h.Ops {
-		if !w.at[i].set && w.seen(i) {
+		if !w.at[i].set() && w.seen(i) {
 			if op := &w.h.Ops[i]; op.Resp != nil && mutation(op) {
 				return fmt.Errorf("acked %s changed the store but has no place in the order", w.describe(i))
 			}
@@ -534,7 +551,7 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 		// op again at each state (#499).
 		if c := w.firsts[i]; !w.slow && c.id != 0 && lo <= c.at && c.at <= hi && c.at < len(w.states) && w.states[c.at].id == c.id {
 			if set {
-				w.at[i] = place{set: true, seen: true, at: int32(c.at), rank: op.Call}
+				w.at[i] = placeAt(c.at, true, op.Call)
 			}
 			placed.add(x, c.at)
 			continue
@@ -553,7 +570,7 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 			return w.unanswered(i, f, l, lo, hi)
 		}
 		if set {
-			w.at[i] = place{set: true, seen: true, at: int32(j), rank: op.Call}
+			w.at[i] = placeAt(j, true, op.Call)
 		}
 		placed.add(x, j)
 	}
@@ -629,8 +646,8 @@ func (w *witness) eventBounds() func(op *history.Op) (int, int) {
 	}
 	var cs []call
 	for i := range w.h.Ops {
-		if p := w.at[i]; p.set && !p.seen {
-			cs = append(cs, call{w.calls[i], int(p.at)})
+		if p := w.at[i]; p.set() && !p.seen() {
+			cs = append(cs, call{w.calls[i], p.at()})
 		}
 	}
 	slices.SortFunc(cs, func(a, b call) int { return cmp.Compare(a.at, b.at) })
@@ -706,7 +723,7 @@ func (w *witness) verify() error {
 	// is left out of byReturn.
 	var byCall, byReturn []int
 	for i, p := range w.at {
-		if p.set {
+		if p.set() {
 			byCall = append(byCall, i)
 			if err := w.h.Ops[i].Err; err == nil || !err.Ambiguous {
 				byReturn = append(byReturn, i)
