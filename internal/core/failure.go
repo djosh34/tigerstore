@@ -40,6 +40,15 @@ func FetchFailed(err error, sync func() error) error {
 	return fmt.Errorf("%w: %w", ErrFetch, err)
 }
 
+// ErrLostEntries stops a node that a heartbeat of its leader tells to
+// commit past the end of its log. The leader commits on a follower only
+// what the follower acknowledged, and the core acknowledges an entry only
+// once it is durable and in its storage, so the log lost entries it held:
+// a disk that lost synced writes, or damage that recovery cut as a torn
+// tail (docs/design.md, Recovery). Raft would panic on that heartbeat
+// (#493); the node stops before it, as for any other failure of the core.
+var ErrLostEntries = errors.New("core: the leader commits past the end of the log, which lost entries it acknowledged")
+
 // Failure is what a driver does once its node failed. The node driver acts
 // on FailureOf, so it treats every error alike.
 type Failure int

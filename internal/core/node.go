@@ -999,7 +999,27 @@ func (n *Node) Step(m *raftpb.Message) error {
 	if m.GetType() == raftpb.MsgHeartbeatResp {
 		n.snapshotDropped(m.GetFrom())
 	}
+	if err := n.checkCommit(m); err != nil {
+		n.fail(err)
+		return err
+	}
 	return n.rn.Step(m)
+}
+
+// checkCommit refuses a heartbeat that Raft would take and that commits
+// past the end of the node's log (ErrLostEntries).
+func (n *Node) checkCommit(m *raftpb.Message) error {
+	if m.GetType() != raftpb.MsgHeartbeat || m.GetTerm() < n.rn.BasicStatus().GetTerm() {
+		return nil
+	}
+	last, err := n.storage.LastIndex()
+	if err != nil {
+		return err
+	}
+	if m.GetCommit() > last {
+		return fmt.Errorf("%w: leader %d commits %d at term %d, the log ends at %d", ErrLostEntries, m.GetFrom(), m.GetCommit(), m.GetTerm(), last)
+	}
+	return nil
 }
 
 // holdProposal keeps a proposal that a peer forwarded while this node

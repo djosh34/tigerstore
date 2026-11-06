@@ -54,6 +54,9 @@ const (
 	// A node started again with an older term or vote than it held
 	// durable.
 	lostVote = `but held term \d+ and vote \d+ durable`
+	// A node whose leader commits past the end of its log, which lost
+	// entries it acknowledged (#493).
+	lostEntries = `lost entries it acknowledged`
 	// A watch that broke the watch rules.
 	badWatch = `watch \d+`
 	// A read or the replayed log that disagrees with the model; not a
@@ -98,7 +101,7 @@ var plantedCases = map[string]plantedCase{
 	"B11":  {seeds: 64, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	// Since a snapshot install starts the node again from its log (#238),
 	// that start can be where the damaged record is found.
-	"B12": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused + `|` + badValue + `|the record of entry \d+ in segment \d+ does not verify|damaged record followed by a valid one`},
+	"B12": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused + `|` + badValue + `|` + lostEntries + `|the record of entry \d+ in segment \d+ does not verify|damaged record followed by a valid one`},
 	"B15": {seeds: 32, cfg: DefaultConfig, want: `no client sent it`},
 	"B16": {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	// Followers forward their writes to the stalled leader, which stays
