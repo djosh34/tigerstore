@@ -6,6 +6,9 @@ type Option func(*options)
 type options struct {
 	steps int64
 	stop  func() bool
+	// slow makes the witness copy the whole store for every try and
+	// answer, as the tests that compare it with the fast one need.
+	slow bool
 }
 
 // MaxSteps fails a check, as its timeout does, once its search took n

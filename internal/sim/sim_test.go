@@ -664,9 +664,12 @@ func TestFormedClusterAnswers(t *testing.T) {
 	}, nil)
 }
 
-// TestWallLimit runs a seed whose limit of real time is 1 ms: the run must
-// fail as past its limit, and its saved files must have every goroutine's
-// stack, the nodes' included, next to its trace, calls and disks (#499).
+// TestWallLimit runs seeds whose limit of real time is 1 ms: each run
+// must fail as past its limit, and its saved files must have every
+// goroutine's stack, the nodes' included, next to its trace, calls and
+// disks (#499). Seed 1 forms its cluster under the faults, so the limit
+// passes in the run, and seed 2 forms it first, so it passes in the
+// formation, which has a watchdog of its own.
 func TestWallLimit(t *testing.T) {
 	if simrun.Race {
 		t.Skip("natively go test's -timeout bounds a run")
@@ -674,31 +677,32 @@ func TestWallLimit(t *testing.T) {
 	if !simrun.InGosim {
 		t.Setenv("SIM_WALL", "1ms")
 	}
-	if simrun.Drive(t, 1) {
-		return
-	}
-	// Formed under the faults, so that the limit passes in the run rather
-	// than in the formation.
-	cfg := DefaultConfig(1)
-	cfg.FormUnderFaults = true
-	res, err := runSeed(t, cfg)
-	if !errors.Is(err, errWallLimit) {
-		t.Fatalf("a run past its limit of real time ended with %v", err)
-	}
-	files := runFiles("$SIM_OUT/TestWallLimit", replayCommand(t.Name(), 1), res, true)
-	// The nodes' own goroutines, as their peer transport's.
-	if !strings.Contains(files["stacks.txt"], "tigerstore/internal_/peer") {
-		t.Fatalf("the saved stacks have none of the nodes' goroutines:\n%s", files["stacks.txt"])
-	}
-	for _, name := range []string{"trace.txt", "nodes.txt", "replay.txt", "disks/node1/calls.txt"} {
-		if files[name] == "" {
-			t.Errorf("the saved run has no %s", name)
+	simrun.Each(t, []uint64{1, 2}, func(t *testing.T, seed uint64) struct{} {
+		cfg := DefaultConfig(seed)
+		cfg.FormUnderFaults = seed == 1
+		if !cfg.FormUnderFaults && !formsFirst(cfg) {
+			t.Fatalf("seed %d forms its cluster under the faults; this test needs one that forms it first", seed)
 		}
-	}
-	// It may end before any call returned.
-	if _, ok := files["calls.txt"]; !ok {
-		t.Error("the saved run has no calls.txt")
-	}
+		res, err := runSeed(t, cfg)
+		if !errors.Is(err, errWallLimit) {
+			t.Fatalf("seed %d: a run past its limit of real time ended with %v", seed, err)
+		}
+		files := runFiles(fmt.Sprintf("$SIM_OUT/TestWallLimit/%d", seed), replayCommand(t.Name(), seed), res, true)
+		// The nodes' own goroutines, as their peer transport's.
+		if !strings.Contains(files["stacks.txt"], "tigerstore/internal_/peer") {
+			t.Fatalf("seed %d: the saved stacks have none of the nodes' goroutines:\n%s", seed, files["stacks.txt"])
+		}
+		for _, name := range []string{"trace.txt", "nodes.txt", "replay.txt", "disks/node1/calls.txt"} {
+			if files[name] == "" {
+				t.Errorf("seed %d: the saved run has no %s", seed, name)
+			}
+		}
+		// It may end before any call returned.
+		if _, ok := files["calls.txt"]; !ok {
+			t.Errorf("seed %d: the saved run has no calls.txt", seed)
+		}
+		return struct{}{}
+	}, nil)
 }
 
 // TestLinearizable checks short runs with Porcupine and the witness
