@@ -211,7 +211,6 @@ func (s *Sim) remount(n *node) {
 		s.loseUnsynced(n)
 		n.crashImage = n.disk.Files()
 		s.tracef("node %d: unmounted its disk, which kept what it synced", n.id)
-		s.checkRecovery(n)
 	}
 	n.disk.Remount()
 }
@@ -426,8 +425,7 @@ func sealedSegments(d *simfs.Disk) []string {
 
 // damageLastRecord flips a bit at the end of n's newest segment if that
 // loses the log only the term and vote of its last record, not an entry,
-// and checks what recovery then gives (checkRecovery, turn). The lock is
-// held.
+// and checks what recovery then gives (start, turn). The lock is held.
 func (s *Sim) damageLastRecord(n *node) bool {
 	name := newestSegment(n.disk)
 	size := len(n.disk.DurableBytes(name))
@@ -438,7 +436,6 @@ func (s *Sim) damageLastRecord(n *node) bool {
 	n.disk.FlipDurable(name, size-1)
 	after, err := recoveredLog(n)
 	if err == nil && after.Last == before.Last && (after.HardState.Term != before.HardState.Term || after.HardState.Vote != before.HardState.Vote) {
-		s.checkRecovery(n)
 		return true
 	}
 	n.disk.FlipDurable(name, size-1)

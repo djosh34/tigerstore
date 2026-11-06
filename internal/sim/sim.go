@@ -355,8 +355,8 @@ type node struct {
 	// hs is the term and vote the node holds durable: what its process
 	// recovered or later reported durable. mustLast and mustHS are what
 	// recovery must give after its process went down: the floor and hs
-	// then. tornCrash is set while its last crash image may tear writes,
-	// until checkRecovery.
+	// then, which its next start checks. tornCrash is set while its last
+	// crash image may tear writes, until a start recovers it.
 	hs        hardState
 	mustLast  uint64
 	mustHS    hardState
@@ -1437,7 +1437,6 @@ func (s *Sim) start(n *node) error {
 		s.loseUnsynced(n)
 		n.since, n.why = s.now(), "the run crashed it during recovery"
 		s.tracef("node %d: crashed during recovery", n.id)
-		s.checkRecovery(n)
 		s.restartLater(n, 1+s.rng.Int64N(Second))
 		return nil
 	}
@@ -1466,7 +1465,6 @@ func (s *Sim) start(n *node) error {
 		}
 		n.since, n.why = s.now(), fmt.Sprintf("failed to boot: %v", err)
 		s.tracef("node %d: failed to boot: %v", n.id, err)
-		s.checkRecovery(n)
 		s.restartLater(n, 1+s.rng.Int64N(Second))
 		return nil
 	}
@@ -1475,6 +1473,13 @@ func (s *Sim) start(n *node) error {
 		n.inactive = true
 		n.since, n.why = s.now(), fmt.Sprintf("left the cluster at its start: %v", err)
 		return nil
+	}
+	if n.tornCrash && !n.corrupted && errors.Is(err, wal.ErrCorrupt) {
+		// A crash tore writes so that the log looks damaged; the node is
+		// right to refuse it, as one whose disk was damaged on purpose.
+		n.corrupted = true
+		s.stats.TornRefusals++
+		s.tracef("node %d: its torn crash image looks damaged: %v", n.id, err)
 	}
 	if n.corrupted {
 		cancel()
@@ -1503,6 +1508,14 @@ func (s *Sim) start(n *node) error {
 		cancel()
 		return fmt.Errorf("node %d recovered a log that it read wrong without noticing", n.id)
 	}
+	// Recovery must give at least what the node reported durable before
+	// it went down. This open of the disk is the only one after a crash.
+	last, hs := tn.Recovered()
+	if last < n.mustLast {
+		cancel()
+		return fmt.Errorf("node %d recovered entries to %d, but reported %d durable", n.id, last, n.mustLast)
+	}
+	n.durableLast, n.hs, n.tornCrash = last, hardState{term: hs.Term, vote: hs.Vote}, false
 	ln := s.net.listen(s, p, n.addrs)
 	t, err := peer.Start(peer.Config{
 		ID: n.id, Listeners: []net.Listener{ln}, Peers: s.peerAddrs(n), Addr: n.addrs[0],
@@ -1902,7 +1915,6 @@ func (s *Sim) crash(n *node) {
 	s.loseUnsynced(n)
 	n.crashImage = n.disk.Files()
 	s.tracef("node %d: crashed", n.id)
-	s.checkRecovery(n)
 }
 
 // kill takes n's process down and leaves its disk as it is: the page
@@ -1917,7 +1929,6 @@ func (s *Sim) kill(n *node) {
 	s.down(n)
 	n.crashImage = n.disk.Files()
 	s.tracef("node %d: killed", n.id)
-	s.checkRecovery(n)
 }
 
 // powerLoss cuts n's power: a running process crashes and restarts
@@ -1939,7 +1950,6 @@ func (s *Sim) powerLoss(n *node) {
 	s.loseUnsynced(n)
 	n.crashImage = n.disk.Files()
 	s.tracef("node %d: lost power while down", n.id)
-	s.checkRecovery(n)
 }
 
 // loseUnsynced drops what n's disk did not sync, keeping a crash image of
@@ -1957,35 +1967,6 @@ func (s *Sim) loseUnsynced(n *node) {
 	}
 	n.disk.CrashImage(s.rng, img)
 	n.tornCrash = img >= simfs.Sectors
-}
-
-// checkRecovery checks that the next start of n will recover from its
-// disk, as it is now, every entry that its last process held durable, and
-// keeps the term and vote the log holds; the first turn of the next
-// process checks those (turn). A torn crash image that recovery refuses
-// makes n a node that refuses to start, like one damaged on purpose. The
-// lock is held.
-func (s *Sim) checkRecovery(n *node) {
-	torn := n.tornCrash
-	n.tornCrash = false
-	w, rec, err := wal.Open(n.disk.Copy())
-	if err != nil {
-		if torn && !n.corrupted && errors.Is(err, wal.ErrCorrupt) {
-			n.corrupted = true
-			s.stats.TornRefusals++
-			s.tracef("node %d: its torn crash image looks damaged: %v", n.id, err)
-		}
-		// A damaged disk; the next start finds out.
-		return
-	}
-	if err := w.Close(); err != nil {
-		s.fail("%w", err)
-		return
-	}
-	if rec.Last < n.mustLast {
-		s.fail("node %d recovered entries to %d, but reported %d durable", n.id, rec.Last, n.mustLast)
-	}
-	n.durableLast, n.hs = rec.Last, hardState{term: rec.HardState.Term, vote: rec.HardState.Vote}
 }
 
 // down takes n's process down: its goroutines, disk calls and
