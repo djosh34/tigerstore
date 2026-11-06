@@ -119,7 +119,11 @@ type Config struct {
 	// (kube.go).
 	Objects int
 	// ListPage is the limit of a page of the load's lists, kubePage if 0.
-	ListPage     int
+	ListPage int
+	// Window, if set, gives the nodes the core's default window of applied
+	// entries in memory instead of tinyLimits', for a test that needs a
+	// follower a little behind to catch up from the log, not a snapshot.
+	Window       bool
 	CompactEvery int64
 	Faults       Faults
 	// damageKinds and netemKinds, if set, are the kinds of damage after a
@@ -1277,6 +1281,10 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 		cfg.LeaseCheckpointTicks = 10
 	}
 	tinyLimits(&cfg)
+	if s.cfg.Window {
+		def := core.DefaultConfig(n.id, nil)
+		cfg.WindowBytes, cfg.WindowMaxBytes = def.WindowBytes, def.WindowMaxBytes
+	}
 	cfg.MemoryBytes = s.cfg.MemoryBytes
 	tick := TickTime
 	if d := s.cfg.Faults.DriftPerMille; d > 0 && !s.healed {
