@@ -29,8 +29,10 @@ jobs:
       - name: Five times each, in turn
         env:
           # The commits to compare, by name=ref.
-          REFS: main=origin/main answers=acaf0621dfc90c630c7703d023bc6d20d46a8ad0 grow=2de9fd59b3e6dc129e3c20d5580de955010f6489
+          REFS: grow=2de9fd59b3e6dc129e3c20d5580de955010f6489
           REPS: '6'
+          # Builds also run with the collector off.
+          GCOFF: grow
         run: |
           for nr in $REFS; do
             n=${nr%%=*}; ref=${nr#*=}
@@ -43,6 +45,10 @@ jobs:
                 n=${nr%%=*}
                 echo "== $n $(basename "$h") $rep"
                 "$RUNNER_TEMP/chk-$n" -checkers witness-revisions -timeout 60m "$h" | cut -c1-400 || true
+              done
+              for n in $GCOFF; do
+                echo "== $n-gcoff $(basename "$h") $rep"
+                GOGC=off "$RUNNER_TEMP/chk-$n" -checkers witness-revisions -timeout 60m "$h" | cut -c1-400 || true
               done
             done
           done
