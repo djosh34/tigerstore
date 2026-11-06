@@ -3,6 +3,7 @@ package check
 import (
 	"math/rand/v2"
 	"testing"
+	"time"
 
 	"github.com/djosh34/tigerstore/history"
 )
@@ -62,5 +63,39 @@ func TestEventTimesMatchScan(t *testing.T) {
 				t.Fatalf("room %d, step %d: before(%d) = %d, the scan says %d", size, step, at, got, before)
 			}
 		}
+	}
+}
+
+// TestSizeReservesOnlyWritesThatMayHappen checks what the witness reserves
+// for each key's versions: nothing for a rejected request, which writes
+// nothing, and of an acked transaction only the branch that ran. A
+// rejected transaction of many deletes, sent again and again, once made it
+// reserve their product (review of #528).
+func TestSizeReservesOnlyWritesThatMayHappen(t *testing.T) {
+	var dels []history.TxnOp
+	for range 1000 {
+		dels = append(dels, history.TxnOp{Delete: &history.DeleteRequest{Key: "absent"}})
+	}
+	rejected := history.Request{Txn: &history.TxnRequest{Success: dels}}
+	cas := history.Request{Txn: &history.TxnRequest{
+		Success: []history.TxnOp{{Put: &history.PutRequest{Key: "won", Value: "v"}}},
+		Failure: []history.TxnOp{{Put: &history.PutRequest{Key: "lost", Value: "v"}}},
+	}}
+	h := &history.History{}
+	for i := range 100 {
+		h.Ops = append(h.Ops, history.Op{Client: i, Call: int64(2 * i), Return: int64(2*i + 1), Req: rejected, Err: &history.Error{Code: "InvalidArgument", Message: "etcdserver: too many operations in txn request"}})
+	}
+	h.Ops = append(h.Ops, history.Op{Client: 100, Call: 300, Return: 301, Req: cas, Resp: &history.Response{Revision: 2, Txn: &history.TxnResponse{Succeeded: true, Results: []history.TxnOpResponse{{Put: &history.PutResponse{}}}}}})
+	w := newWitness(h, time.Now().Add(time.Minute))
+	r := &revisionOrder{w: w, limit: 2}
+	r.size()
+	if v := w.past["absent"]; v != nil {
+		t.Fatalf("a rejected request reserved %d versions of a key", cap(v.kvs))
+	}
+	if v := w.past["lost"]; v != nil {
+		t.Fatalf("the branch an acked transaction did not run reserved %d versions", cap(v.kvs))
+	}
+	if v := w.past["won"]; v == nil || cap(v.kvs) != 1 {
+		t.Fatalf("the branch an acked transaction ran reserved %v", v)
 	}
 }

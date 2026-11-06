@@ -251,30 +251,44 @@ func (r *revisionOrder) size() {
 	w.placed = slices.Grow(w.placed, n)
 	w.appended = slices.Grow(w.appended, n)
 	writes := map[string]int{}
-	for _, req := range w.reqs {
-		if !req.Mutates() {
+	for i, req := range w.reqs {
+		op := &w.h.Ops[i]
+		if !req.Mutates() || op.Err != nil && !op.Err.Ambiguous {
+			// A rejected request writes nothing (review of #528).
 			continue
 		}
-		for p := range putsIn(req) {
-			writes[p.Key]++
-		}
-		for _, k := range singleDeletes(req) {
+		for _, k := range namedWrites(req, op.Resp) {
 			writes[k]++
 		}
 	}
 	w.past.reserve(writes)
 }
 
-// singleDeletes lists the keys that req deletes by name, not by range.
-func singleDeletes(req history.Request) []string {
+// namedWrites lists the keys that req may write by name: what it puts,
+// and what it deletes by name, not by range. Of an acked transaction,
+// only the branch that ran.
+func namedWrites(req history.Request, resp *history.Response) []string {
 	var out []string
-	if d := req.Delete; d != nil && d.End == "" {
-		out = append(out, d.Key)
+	one := func(put *history.PutRequest, del *history.DeleteRequest) {
+		switch {
+		case put != nil:
+			out = append(out, put.Key)
+		case del != nil && del.End == "":
+			out = append(out, del.Key)
+		}
 	}
+	one(req.Put, req.Delete)
 	if t := req.Txn; t != nil {
-		for o := range t.Ops() {
-			if d := o.Delete; d != nil && d.End == "" {
-				out = append(out, d.Key)
+		branches := [][]history.TxnOp{t.Success, t.Failure}
+		if resp != nil && resp.Txn != nil {
+			branches = branches[:1]
+			if !resp.Txn.Succeeded {
+				branches = [][]history.TxnOp{t.Failure}
+			}
+		}
+		for _, ops := range branches {
+			for _, o := range ops {
+				one(o.Put, o.Delete)
 			}
 		}
 	}
