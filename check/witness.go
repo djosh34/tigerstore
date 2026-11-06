@@ -215,10 +215,14 @@ type firstAnswer struct {
 // place is where an op goes in the order: event at, which leads from
 // state at-1 to state at; or, for an op that changed nothing (seen),
 // state at, among the other such ops there by call time.
+//
+// at is a state's number in 4 bytes, so that a place takes 16 bytes: the
+// witness reads the places of a busy history's ops out of order, and
+// their size made that cost more per op the longer the history (#499).
 type place struct {
 	set  bool
 	seen bool
-	at   int
+	at   int32
 	rank int64
 }
 
@@ -281,7 +285,7 @@ func (w *witness) apply(op int, req *history.Request) outcome {
 	}
 	w.states = append(w.states, w.summary())
 	if op >= 0 {
-		w.at[op] = place{set: true, at: len(w.events)}
+		w.at[op] = place{set: true, at: int32(len(w.events))}
 		w.placed = append(w.placed, op)
 	}
 	return o
@@ -368,7 +372,7 @@ func (w *witness) fromLog() error {
 		for _, e := range entries[k] {
 			if w.events[e].op < 0 && fits(e) {
 				w.events[e].op = i
-				w.at[i] = place{set: true, at: e + 1}
+				w.at[i] = place{set: true, at: int32(e + 1)}
 				return true, nil
 			}
 		}
@@ -426,7 +430,7 @@ func (w *witness) boundAfter() func(t int64) int {
 	var rs []ret
 	for i := range w.h.Ops {
 		if p := w.at[i]; p.set && w.h.Ops[i].Resp != nil {
-			rs = append(rs, ret{w.returns[i], p.at})
+			rs = append(rs, ret{w.returns[i], int(p.at)})
 		}
 	}
 	slices.SortFunc(rs, func(a, b ret) int { return cmp.Compare(a.at, b.at) })
@@ -530,7 +534,7 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 		// op again at each state (#499).
 		if c := w.firsts[i]; !w.slow && c.id != 0 && lo <= c.at && c.at <= hi && c.at < len(w.states) && w.states[c.at].id == c.id {
 			if set {
-				w.at[i] = place{set: true, seen: true, at: c.at, rank: op.Call}
+				w.at[i] = place{set: true, seen: true, at: int32(c.at), rank: op.Call}
 			}
 			placed.add(x, c.at)
 			continue
@@ -549,7 +553,7 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 			return w.unanswered(i, f, l, lo, hi)
 		}
 		if set {
-			w.at[i] = place{set: true, seen: true, at: j, rank: op.Call}
+			w.at[i] = place{set: true, seen: true, at: int32(j), rank: op.Call}
 		}
 		placed.add(x, j)
 	}
@@ -626,7 +630,7 @@ func (w *witness) eventBounds() func(op *history.Op) (int, int) {
 	var cs []call
 	for i := range w.h.Ops {
 		if p := w.at[i]; p.set && !p.seen {
-			cs = append(cs, call{w.calls[i], p.at})
+			cs = append(cs, call{w.calls[i], int(p.at)})
 		}
 	}
 	slices.SortFunc(cs, func(a, b call) int { return cmp.Compare(a.at, b.at) })
