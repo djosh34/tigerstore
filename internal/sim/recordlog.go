@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
+	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
@@ -366,24 +367,72 @@ type span struct{ chunk, off, n uint32 }
 // chunk of its own.
 const arenaChunk = 1 << 20
 
-// arena keeps byte slices, copied into chunks that hold no pointers.
-type arena struct{ chunks [][]byte }
+// arenaKeep is how many of an arena's chunks stay in memory, the newest:
+// with a store, the older ones of arenaChunk bytes go there (#479).
+const arenaKeep = 64
+
+// arena keeps byte slices, copied into chunks that hold no pointers. With
+// a store, a chunk that is not among the newest arenaKeep goes there:
+// chunks[i] is then nil and at[i] where it is. A chunk's owner keeps its
+// slot of the store taken.
+type arena struct {
+	chunks [][]byte
+	store  simfs.Store
+	at     []int64
+	owners []*chunkOwner
+	// stored counts the chunks from the first that went to the store, or
+	// stay in memory for being larger than its slots.
+	stored int
+}
+
+// chunkOwner owns a chunk's slot in an arena's store.
+type chunkOwner struct{ chunk int }
 
 // add copies b into the arena.
 func (a *arena) add(b []byte) span {
 	last := len(a.chunks) - 1
 	if last < 0 || len(b) > cap(a.chunks[last])-len(a.chunks[last]) {
 		a.chunks = append(a.chunks, make([]byte, 0, max(arenaChunk, len(b))))
+		a.at = append(a.at, 0)
 		last++
+		a.spill()
 	}
 	c := a.chunks[last]
 	a.chunks[last] = append(c, b...)
 	return span{chunk: uint32(last), off: uint32(len(c)), n: uint32(len(b))}
 }
 
-// bytes returns the bytes of s, which the arena keeps.
+// spill moves the chunks past the newest arenaKeep to the store. A chunk
+// the store fails to take stays in memory, and the store keeps its error.
+func (a *arena) spill() {
+	for a.store != nil && len(a.chunks)-a.stored > arenaKeep {
+		i := a.stored
+		a.stored++
+		c := a.chunks[i]
+		if cap(c) != arenaChunk {
+			continue
+		}
+		o := &chunkOwner{chunk: i}
+		at, err := a.store.Put(o, c[:arenaChunk])
+		if err != nil {
+			return
+		}
+		a.chunks[i], a.at[i] = nil, at
+		a.owners = append(a.owners, o)
+	}
+}
+
+// bytes returns the bytes of s, which the arena keeps, or a copy read from
+// the store. A failed read gives zeros, and the store keeps its error.
 func (a *arena) bytes(s span) []byte {
-	return a.chunks[s.chunk][s.off : s.off+s.n : s.off+s.n]
+	if c := a.chunks[s.chunk]; c != nil {
+		return c[s.off : s.off+s.n : s.off+s.n]
+	}
+	b := make([]byte, s.n)
+	if err := a.store.Get(a.at[s.chunk]+int64(s.off), b); err != nil {
+		clear(b)
+	}
+	return b
 }
 
 // valueTable keeps each distinct value once.

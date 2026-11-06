@@ -576,11 +576,12 @@ type Sim struct {
 	lateStopAt   int64
 	// records holds the clients' calls (recordlog.go).
 	records *recordLog
-	// pages is where the nodes' disks keep their large files' pages.
-	pages      *keptPages
-	stats      Stats
-	membership membershipWork
-	err        error
+	// pages is where the nodes' disks keep their large files' pages, and
+	// chunks where the run's records keep their older bytes (arena).
+	pages, chunks *keptPages
+	stats         Stats
+	membership    membershipWork
+	err           error
 	// loadFrom is the process's CPU time when the clients started, and
 	// loadCPU the CPU time from then until the last client stopped
 	// (markLoad).
@@ -850,10 +851,14 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 // pagesErr is the first error of the run's pages on the runner's disk,
 // nil if there was none.
 func (s *Sim) pagesErr() error {
-	if s.pages == nil || s.pages.err == nil {
-		return nil
+	var errs []error
+	if s.pages != nil && s.pages.err != nil {
+		errs = append(errs, fmt.Errorf("the disks' pages on the runner's disk: %w", s.pages.err))
 	}
-	return fmt.Errorf("the disks' pages on the runner's disk: %w", s.pages.err)
+	if s.chunks != nil && s.chunks.err != nil {
+		errs = append(errs, fmt.Errorf("the history's chunks on the runner's disk: %w", s.chunks.err))
+	}
+	return errors.Join(errs...)
 }
 
 // keepFrom is the size from which a file of a node's disk keeps its synced
@@ -866,7 +871,7 @@ const keepFrom = 1 << 20
 // the run and its cold restarts share. A read or write of it that failed
 // fails the run with its first error: the disk read zeros instead.
 type keptPages struct {
-	pages *simrun.HostPages
+	pages simfs.Store
 	err   error
 	puts  int
 }
@@ -929,7 +934,7 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 	s.setLinks(s.allLinks())
 	var certs *network
 	if from != nil {
-		certs, s.pages = &from.net, from.pages
+		certs, s.pages, s.chunks = &from.net, from.pages, from.chunks
 	}
 	if err := s.net.init(certs); err != nil {
 		return nil, err
@@ -939,8 +944,15 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 		if err != nil {
 			return nil, fmt.Errorf("the disks' pages on the runner's disk: %w", err)
 		}
-		s.pages = &keptPages{pages: pages}
+		chunks, err := simrun.NewHostPages()
+		if err != nil {
+			return nil, fmt.Errorf("the history's chunks on the runner's disk: %w", err)
+		}
+		s.pages, s.chunks = &keptPages{pages: pages}, &keptPages{pages: chunks}
 	}
+	// The records of the calls and of the committed entries keep their
+	// older bytes on the runner's disk too (arena).
+	s.records.data.store, s.records.vals.bytes.store, s.log.data.store = s.chunks, s.chunks, s.chunks
 	for i := range count {
 		s.addNode(i, simfs.New())
 	}

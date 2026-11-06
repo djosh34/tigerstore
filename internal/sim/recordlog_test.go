@@ -1,8 +1,10 @@
 package sim
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -108,5 +110,75 @@ func TestRecordLog(t *testing.T) {
 	}
 	if &got[1].req.(*pb.TxnRequest).Success[2].GetRequestTxn().Success[0].GetRequestPut().Value[0] != &got[0].req.(*pb.PutRequest).Value[0] {
 		t.Error("two calls with the same value hold two copies of it")
+	}
+}
+
+// chunkStore is a Store in memory for TestArenaSpills, which fails every
+// read once fail is set.
+type chunkStore struct {
+	slots map[int64][]byte
+	fail  error
+}
+
+func (c *chunkStore) Put(_ any, p []byte) (int64, error) {
+	if c.slots == nil {
+		c.slots = map[int64][]byte{}
+	}
+	at := int64(len(c.slots)) * int64(len(p))
+	c.slots[at] = slices.Clone(p)
+	return at, nil
+}
+
+func (c *chunkStore) Get(off int64, p []byte) error {
+	if c.fail != nil {
+		return c.fail
+	}
+	for at, b := range c.slots {
+		if off >= at && off+int64(len(p)) <= at+int64(len(b)) {
+			copy(p, b[off-at:])
+			return nil
+		}
+	}
+	return fmt.Errorf("no slot holds %d bytes at %d", len(p), off)
+}
+
+// TestArenaSpills checks that an arena with a store keeps only its newest
+// arenaKeep chunks in memory, sends the older ones of arenaChunk bytes to
+// the store and reads back what was added from either, that a slice larger
+// than a chunk stays in memory, and that a failed read of the store is the
+// run's error (keptPages).
+func TestArenaSpills(t *testing.T) {
+	store := &chunkStore{}
+	kept := &keptPages{pages: store}
+	a := arena{store: kept}
+	var spans []span
+	var want [][]byte
+	for i := range 3 * (arenaKeep + 4) {
+		n := arenaChunk / 3
+		if i == 5 {
+			n = arenaChunk + 1
+		}
+		b := bytes.Repeat([]byte{byte(i)}, n)
+		spans, want = append(spans, a.add(b)), append(want, b)
+	}
+	if inMem := slices.IndexFunc(a.chunks, func(c []byte) bool { return c != nil }); len(store.slots) == 0 || inMem < 0 {
+		t.Fatalf("%d chunks in the store, %d in all", len(store.slots), len(a.chunks))
+	}
+	if n := len(a.chunks) - len(store.slots); n > arenaKeep+1 {
+		t.Errorf("%d chunks of %d stay in memory, want %d at most and the large one", n, len(a.chunks), arenaKeep)
+	}
+	for i, s := range spans {
+		if !bytes.Equal(a.bytes(s), want[i]) {
+			t.Fatalf("slice %d reads otherwise than it was added", i)
+		}
+	}
+	if kept.err != nil {
+		t.Fatal(kept.err)
+	}
+	errGone := errors.New("the runner's disk is gone")
+	store.fail = errGone
+	a.bytes(spans[0])
+	if !errors.Is(kept.err, errGone) {
+		t.Errorf("a failed read left %v, want %v", kept.err, errGone)
 	}
 }
