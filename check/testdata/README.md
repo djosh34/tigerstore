@@ -59,3 +59,8 @@ The seed no longer plays out that way (#482), so the file keeps it.
 The revision witness timed out on it after 50,000,000 steps (#425, #499).
 Both are full histories; `TestWitnessHardHistories` drops their log and
 effects.
+
+`witness-control-320-1529.json.gz` is control seed 1529 of the same
+sweep, with 320 s of faults, replayed the same way: 33,054 ops, as in the
+sweep. The revision witness timed out on it too, until it bounded the
+writes the revisions ahead need on all keys together (`roomReachable`).
