@@ -316,6 +316,23 @@ func signal(wake *chan struct{}) {
 	}
 }
 
+// take returns the channel that would wake whoever waits on *wake, nil
+// if none, for the caller to close once it let go of the lock: under
+// gosim a close yields, and a close with the lock held makes every
+// goroutine that runs meanwhile wait for the lock. The lock is held.
+func take(wake *chan struct{}) chan struct{} {
+	c := *wake
+	*wake = nil
+	return c
+}
+
+// wakeUp closes c, if it is a channel take gave. The lock is not held.
+func wakeUp(c chan struct{}) {
+	if c != nil {
+		close(c)
+	}
+}
+
 // signalBoth wakes p's reader and writers. The lock is held.
 func (p *pipe) signalBoth() {
 	signal(&p.readWake)
@@ -422,7 +439,7 @@ func (c *conn) Read(b []byte) (int, error) {
 				}
 				// A writer may wait for the room.
 				in.size -= k
-				signal(&in.roomWake)
+				room := take(&in.roomWake)
 				if damaged {
 					// TLS refuses a damaged record and ends the
 					// connection, so it ends here, as the reader gets
@@ -433,6 +450,7 @@ func (c *conn) Read(b []byte) (int, error) {
 					s.net.reset(c)
 				}
 				s.mu.Unlock()
+				wakeUp(room)
 				return k, nil
 			}
 			wait = at - now
@@ -498,11 +516,17 @@ func (c *conn) Write(b []byte) (int, error) {
 		}
 		if room := sendBuffer - c.out.size; room > 0 {
 			k := min(room, len(b)-n)
-			c.send(b[n : n+k])
+			reader := c.send(b[n : n+k])
 			if n += k; n == len(b) {
 				s.mu.Unlock()
+				wakeUp(reader)
 				return n, nil
 			}
+			// The reader gets what fit before the writer waits for room,
+			// which it looks for again.
+			s.mu.Unlock()
+			wakeUp(reader)
+			continue
 		}
 		if !blocked {
 			blocked = true
@@ -523,8 +547,9 @@ func (c *conn) Write(b []byte) (int, error) {
 }
 
 // send puts b on its way: it arrives after the link's delay and the
-// fault on the link, if any, in order. The lock is held.
-func (c *conn) send(b []byte) {
+// fault on the link, if any, in order. It returns the reader's wake, for
+// the caller to close after the lock (take). The lock is held.
+func (c *conn) send(b []byte) chan struct{} {
 	s := c.s
 	l := s.link(c.from, c.to)
 	b = slices.Clone(b)
@@ -538,7 +563,7 @@ func (c *conn) send(b []byte) {
 	c.out.last = at
 	c.out.chunks = append(c.out.chunks, chunk{at: at, b: b, damaged: damaged})
 	c.out.size += len(b)
-	signal(&c.out.readWake)
+	return take(&c.out.readWake)
 }
 
 func (c *conn) Close() error {
@@ -568,17 +593,19 @@ func (c *conn) SetDeadline(t time.Time) error {
 
 func (c *conn) SetReadDeadline(t time.Time) error {
 	c.s.mu.Lock()
-	defer c.s.mu.Unlock()
 	c.deadline = t
-	signal(&c.in.readWake)
+	reader := take(&c.in.readWake)
+	c.s.mu.Unlock()
+	wakeUp(reader)
 	return nil
 }
 
 func (c *conn) SetWriteDeadline(t time.Time) error {
 	c.s.mu.Lock()
-	defer c.s.mu.Unlock()
 	c.writeDeadline = t
-	signal(&c.out.roomWake)
+	writer := take(&c.out.roomWake)
+	c.s.mu.Unlock()
+	wakeUp(writer)
 	return nil
 }
 
