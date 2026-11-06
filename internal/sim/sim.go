@@ -971,7 +971,7 @@ func (s *Sim) watchWall() {
 
 // saveBlackbox saves the trace and how the run left each node so far,
 // under gosim, for the driver to keep if gosim ends a run that never
-// yields (watchWall).
+// yields or that panicked (watchWall).
 func (s *Sim) saveBlackbox() {
 	if !simrun.InGosim {
 		return
