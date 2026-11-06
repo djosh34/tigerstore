@@ -597,7 +597,8 @@ type Node struct {
 // New starts a node from what its log recovered: it loads the checkpoint
 // the root names, applies the committed entries after it, and hands Raft
 // the rest. It reads every entry from disk, one at a time.
-func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
+func New(cfg Config, rec *wal.Recovered, disk Log) (_ *Node, err error) {
+	defer RecoverRaft(&err)
 	st := newStorage()
 	c := newCache()
 	vals := &values{storage: st, log: disk, cache: c}
@@ -847,9 +848,22 @@ func (c *Config) every(now, s int64) bool {
 }
 
 // quietLogger drops raft's log lines. Its Panic methods still panic,
-// because raft relies on them for broken invariants.
+// because raft relies on them for broken invariants, with a value that
+// RecoverRaft knows.
 func quietLogger() raft.Logger {
-	return &raft.DefaultLogger{Logger: log.New(io.Discard, "", 0)}
+	return raftLogger{&raft.DefaultLogger{Logger: log.New(io.Discard, "", 0)}}
+}
+
+// raftLogger's Panic methods must not return: Raft calls them where it
+// cannot go on.
+type raftLogger struct{ *raft.DefaultLogger }
+
+func (raftLogger) Panic(v ...any) {
+	panic(raftPanic{fmt.Sprint(v...)}) //nolint:forbidigo // Raft goes on past a Panic that returns
+}
+
+func (raftLogger) Panicf(format string, v ...any) {
+	panic(raftPanic{fmt.Sprintf(format, v...)}) //nolint:forbidigo // Raft goes on past a Panicf that returns
 }
 
 // Err is the error that stopped the node, if any. A stopped node does

@@ -40,6 +40,35 @@ func FetchFailed(err error, sync func() error) error {
 	return fmt.Errorf("%w: %w", ErrFetch, err)
 }
 
+// ErrRaft stops a node whose Raft found one of its own rules broken, as a
+// heartbeat whose commit index is past the end of the node's log, which
+// only a log that lost acknowledged entries gives (#493). Raft panics then.
+// The core's Raft logger panics with its own value, and RecoverRaft turns
+// that into this error, with Raft's message, so the node stops as for any
+// other failure, and a process serving it ends with an error instead of
+// a crash.
+var ErrRaft = errors.New("core: Raft found its state broken")
+
+// raftPanic is what the core's Raft logger panics with. It prints Raft's
+// message if nothing recovers it.
+type raftPanic struct{ msg string }
+
+func (p raftPanic) Error() string { return "raft: " + p.msg }
+
+// RecoverRaft, deferred by a function that calls Raft, sets *err to
+// ErrRaft with Raft's message if Raft panicked. Any other panic goes on.
+func RecoverRaft(err *error) {
+	r := recover() //nolint:forbidigo // Raft reports a broken rule only by panicking through its logger
+	if r == nil {
+		return
+	}
+	p, ok := r.(raftPanic)
+	if !ok {
+		panic(r) //nolint:forbidigo // a panic that is not Raft's goes on as it was
+	}
+	*err = errors.Join(*err, fmt.Errorf("%w: %s", ErrRaft, p.msg))
+}
+
 // Failure is what a driver does once its node failed. The node driver acts
 // on FailureOf, so it treats every error alike.
 type Failure int

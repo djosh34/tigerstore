@@ -1033,7 +1033,8 @@ func (n *Node) run(ctx context.Context, t peer.Transport) error {
 
 // commit is the committer loop. It is the only goroutine that touches the
 // core, and it never blocks on the disk.
-func (n *Node) commit(ctx context.Context, t peer.Transport) error {
+func (n *Node) commit(ctx context.Context, t peer.Transport) (err error) {
+	defer core.RecoverRaft(&err)
 	ticker := time.NewTicker(n.cfg.Tick)
 	defer ticker.Stop()
 	waiters := map[uint64]waiter{}
