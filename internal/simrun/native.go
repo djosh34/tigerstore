@@ -18,6 +18,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/jellevandenhooff/gosim/gosimruntime"
 	"github.com/jellevandenhooff/gosim/metatesting"
 )
 
@@ -109,19 +110,7 @@ func Do(t *testing.T, r Run) *Result {
 	if err != nil {
 		t.Fatalf("running %s in gosim with seed %d: %v\nreplay: %s", r.Test, r.Seed, err, Replay(dir(t), Pattern(t.Name()), r.Env))
 	}
-	if res.Ended {
-		// The run never yielded past its limit; gosim ended it with what
-		// it had saved, the trace and nodes the run's watchdog saved last,
-		// and every goroutine's stack, which the caller keeps as the run's
-		// files.
-		run := filepath.Join("sim-out", strings.ReplaceAll(t.Name(), "/", "_"))
-		res.Artifacts[filepath.Join(run, "stacks.txt")] = res.Artifacts["gosim-stacks.txt"]
-		for _, name := range []string{"trace.txt", "nodes.txt"} {
-			if b, ok := res.Artifacts["blackbox/"+name]; ok {
-				res.Artifacts[filepath.Join(run, name)] = b
-			}
-		}
-	}
+	keepBlackbox(filepath.Join("sim-out", strings.ReplaceAll(t.Name(), "/", "_")), res)
 	if testing.Verbose() {
 		t.Logf("the gosim run of seed %d took %v", r.Seed, time.Since(start).Round(time.Second))
 	}
@@ -133,6 +122,41 @@ func Do(t *testing.T, r Run) *Result {
 		t.Logf("%s", readable(res.LogOutput))
 	}
 	return &Result{Failed: res.Failed, Artifacts: res.Artifacts}
+}
+
+// keepBlackbox adds to res's artifacts, as the files of the run in
+// directory run, what a run that gosim stopped short had saved: the trace
+// and nodes its watchdog saved last, at most 10 simulated seconds old,
+// and the stack of every goroutine, or the log with the panic. A run gosim
+// ended past its limit of real time never yielded again, and in a run that
+// panicked gosim stops every goroutine at once, so neither gets to write
+// its calls, history or disks, which a replay does not save either: it
+// stops the same way (#499). A file the run saved itself, as one that
+// panicked after its report, stays.
+func keepBlackbox(run string, res *metatesting.RunResult) {
+	files := map[string][]byte{}
+	switch {
+	case res.Ended:
+		files["stacks.txt"] = res.Artifacts["gosim-stacks.txt"]
+	case res.Err == gosimruntime.ErrPaniced.Error():
+		files["log.txt"] = []byte(readable(res.LogOutput))
+	default:
+		return
+	}
+	for _, name := range []string{"trace.txt", "nodes.txt"} {
+		if b, ok := res.Artifacts["blackbox/"+name]; ok {
+			files[name] = b
+		}
+	}
+	if res.Artifacts == nil {
+		res.Artifacts = map[string][]byte{}
+	}
+	for name, b := range files {
+		path := filepath.Join(run, name)
+		if _, ok := res.Artifacts[path]; !ok {
+			res.Artifacts[path] = b
+		}
+	}
 }
 
 // wallGrace is how long past its limit of real time a run that never
