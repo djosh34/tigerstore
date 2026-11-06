@@ -26,14 +26,23 @@ jobs:
         run: |
           gh run download 42119056245 --repo "$GITHUB_REPOSITORY" -n diag499-paired -D "$RUNNER_TEMP/a"
           find "$RUNNER_TEMP/a" -name 'history*' | xargs ls -la
-      - name: Three times each
+      - name: Five times each, in turn
+        env:
+          # The commits to compare, by name=ref.
+          REFS: main=origin/main first=3f5c9542901c79e44fd1f06d96c6108ca6c9e474 radix=eaff173824bd3734fc3c45442c3a8e4f79f91f25
+          REPS: '5'
         run: |
-          go build -o "$RUNNER_TEMP/chk-new" ./cmd/checkhistory
-          git worktree add -q "$RUNNER_TEMP/main" origin/main
-          go build -C "$RUNNER_TEMP/main" -o "$RUNNER_TEMP/chk-old" ./cmd/checkhistory
-          for h in $(find "$RUNNER_TEMP/a" -name 'history*' | sort); do
-            for b in old new old new old new; do
-              echo "== $b $(basename "$h")"
-              "$RUNNER_TEMP/chk-$b" -checkers witness-revisions -timeout 60m "$h" | cut -c1-400 || true
+          for nr in $REFS; do
+            n=${nr%%=*}; ref=${nr#*=}
+            git worktree add -q "$RUNNER_TEMP/src-$n" "$ref"
+            go build -C "$RUNNER_TEMP/src-$n" -o "$RUNNER_TEMP/chk-$n" ./cmd/checkhistory
+          done
+          for rep in $(seq "$REPS"); do
+            for h in $(find "$RUNNER_TEMP/a" -name 'history*' | sort); do
+              for nr in $REFS; do
+                n=${nr%%=*}
+                echo "== $n $(basename "$h") $rep"
+                "$RUNNER_TEMP/chk-$n" -checkers witness-revisions -timeout 60m "$h" | cut -c1-400 || true
+              done
             done
           done
