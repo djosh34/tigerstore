@@ -176,8 +176,14 @@ func writeHistory(w io.Writer, res *Result) {
 func explainSim(t *testing.T, cfg Config, s *Sim) {
 	t.Helper()
 	s.mu.Lock()
-	res := &Result{Clients: cfg.Clients + cfg.V3Clients, History: s.history, Stats: s.stats, nodes: s.nodes}
+	var history []*Record
+	var err error
+	simrun.Aside(func() { history, err = s.records.records() })
+	res := &Result{Clients: cfg.Clients + cfg.V3Clients, History: history, Stats: s.stats, nodes: s.nodes}
 	s.mu.Unlock()
+	if err != nil {
+		t.Errorf("decoding the history: %v", err)
+	}
 	res.Report = s.report()
 	s.mu.Lock()
 	res.Trace = slices.Clone(s.trace)

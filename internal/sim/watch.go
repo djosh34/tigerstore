@@ -13,6 +13,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/k8ssize"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	tnode "github.com/djosh34/tigerstore/internal/node"
+	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
 // watchClient keeps one logical watch open across node crashes, the way
@@ -32,8 +33,9 @@ type watchClient struct {
 	// start is the first revision of the watch, known once the first
 	// stream is created. next is the first revision not yet seen.
 	start, next int64
-	events      []*mvccpb.Event
-	responses   []WatchRecord
+	// responses are the responses of the current logical watch, kept in
+	// the run's recordLog.
+	responses []loggedWatch
 	// ended holds the logical watches that a compaction canceled; the
 	// client then started a new one from the current revision, at
 	// restartedAt.
@@ -56,8 +58,15 @@ type WatchRecord struct {
 // segment is a logical watch that a compaction ended.
 type segment struct {
 	start     int64
-	events    []*mvccpb.Event
-	responses []WatchRecord
+	responses []loggedWatch
+}
+
+// loggedWatch is a watch response in the run's recordLog: when the client
+// got it, and whether its events are the watch's next ones.
+type loggedWatch struct {
+	at     int64
+	msg    loggedMessage
+	events bool
 }
 
 // WatchResult is one logical watch at the end of a run.
@@ -74,23 +83,7 @@ type WatchResult struct {
 // apiserver keeps, with previous values, progress notifications and
 // progress requests. The lock is held.
 func (s *Sim) startWatchers() {
-	type spec struct {
-		key, end                   string
-		prevKV, progress, requests bool
-	}
-	specs := []spec{
-		{"k", "l", true, false, false},
-		{"k2", "k5", true, true, false},
-		{"k3", "", true, false, false},
-		{"k", "\x00", false, true, false},
-	}
-	if s.cfg.Objects > 0 {
-		specs = nil
-		for _, r := range k8ssize.Resources() {
-			p := "/registry/" + r + "/"
-			specs = append(specs, spec{p, string(prefixEnd([]byte(p))), true, true, true})
-		}
-	}
+	specs := watchSpecs(s.cfg.Objects)
 	for i, sp := range specs {
 		w := &watchClient{id: i, sim: s, key: []byte(sp.key), prevKV: sp.prevKV, progress: sp.progress, requests: sp.requests}
 		if sp.end != "" {
@@ -103,6 +96,32 @@ func (s *Sim) startWatchers() {
 		s.watchers = append(s.watchers, w)
 		wait, drop := s.rng.Int64N(Second), s.exp(3*Second)
 		s.wg.Go(func() { w.run(wait, drop) })
+	}
+}
+
+// watchSpec is a watch a client keeps open.
+type watchSpec struct {
+	key, end                   string
+	prevKV, progress, requests bool
+}
+
+// watchSpecs are the watches of the watch clients: four over the small
+// keys, or with the Kubernetes-shaped load on objects, one on each
+// resource prefix.
+func watchSpecs(objects int) []watchSpec {
+	if objects > 0 {
+		var specs []watchSpec
+		for _, r := range k8ssize.Resources() {
+			p := "/registry/" + r + "/"
+			specs = append(specs, watchSpec{p, string(prefixEnd([]byte(p))), true, true, true})
+		}
+		return specs
+	}
+	return []watchSpec{
+		{"k", "l", true, false, false},
+		{"k2", "k5", true, true, false},
+		{"k3", "", true, false, false},
+		{"k", "\x00", false, true, false},
 	}
 }
 
@@ -232,17 +251,21 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 // client must leave it and start a new logical watch. The lock is held.
 func (w *watchClient) receive(r *pb.WatchResponse) bool {
 	s := w.sim
-	if s.values != nil {
-		s.values.shareMessage(r)
+	var msg loggedMessage
+	var err error
+	simrun.Aside(func() { msg, err = s.records.encode(r) })
+	if err != nil {
+		s.fail("keeping a response of watch %d: %w", w.id, err)
+		return false
 	}
-	w.responses = append(w.responses, WatchRecord{Time: s.now(), Resp: r})
+	w.responses = append(w.responses, loggedWatch{at: s.now(), msg: msg})
 	if r.Canceled && r.CompactRevision != 0 {
 		// The revision it needed is compacted. Like Kubernetes, start a
 		// new logical watch from now.
 		s.stats.WatchCompacted++
 		s.tracef("watch %d: compacted at %d, starting again", w.id, r.CompactRevision)
-		w.ended = append(w.ended, segment{start: w.start, events: w.events, responses: w.responses})
-		w.start, w.next, w.events, w.responses = 0, 0, nil, nil
+		w.ended = append(w.ended, segment{start: w.start, responses: w.responses})
+		w.start, w.next, w.responses = 0, 0, nil
 		w.restartedAt = s.now()
 		return true
 	}
@@ -290,7 +313,7 @@ func (w *watchClient) receive(r *pb.WatchResponse) bool {
 		}
 		last = rev
 	}
-	w.events = append(w.events, r.Events...)
+	w.responses[len(w.responses)-1].events = true
 	// A revision is never split across responses, so the next stream can
 	// start after the last event.
 	w.next = last + 1
@@ -306,11 +329,15 @@ func (w *watchClient) receive(r *pb.WatchResponse) bool {
 // second try on another node (#259).
 func (s *Sim) checkWatches(model *mvcc.Store, res *Result) error {
 	for _, w := range s.watchers {
-		segs := append(slices.Clone(w.ended), segment{start: w.start, events: w.events, responses: w.responses})
-		for i, sg := range segs {
+		segs := append(slices.Clone(w.ended), segment{start: w.start, responses: w.responses})
+		for i, seg := range segs {
 			current := i == len(segs)-1
-			if current && sg.start == 0 && s.endAt-w.restartedAt < watchRestart && len(w.ended) > 0 {
+			if current && seg.start == 0 && s.endAt-w.restartedAt < watchRestart && len(w.ended) > 0 {
 				continue
+			}
+			sg, err := s.decodeSegment(seg)
+			if err != nil {
+				return err
 			}
 			res.Watches = append(res.Watches, WatchResult{
 				Key: w.key, End: w.end, PrevKV: w.prevKV, ProgressNotify: w.progress, Start: sg.start, Responses: sg.responses,
@@ -344,6 +371,33 @@ func (s *Sim) checkWatches(model *mvcc.Store, res *Result) error {
 		}
 	}
 	return nil
+}
+
+// decodedSegment is a logical watch as its client got it.
+type decodedSegment struct {
+	start     int64
+	events    []*mvccpb.Event
+	responses []WatchRecord
+}
+
+// decodeSegment returns seg's responses from the run's recordLog.
+func (s *Sim) decodeSegment(seg segment) (decodedSegment, error) {
+	out := decodedSegment{start: seg.start}
+	var err error
+	simrun.Aside(func() {
+		for _, lw := range seg.responses {
+			var m proto.Message
+			if m, err = s.records.decode(lw.msg); err != nil {
+				return
+			}
+			r := m.(*pb.WatchResponse)
+			out.responses = append(out.responses, WatchRecord{Time: lw.at, Resp: r})
+			if lw.events {
+				out.events = append(out.events, r.Events...)
+			}
+		}
+	})
+	return out, err
 }
 
 // progressWatchID is the watch ID of the answer to a progress request,

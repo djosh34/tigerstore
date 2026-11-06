@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jellevandenhooff/gosim"
+	"github.com/jellevandenhooff/gosim/gosimruntime"
 )
 
 // InGosim reports whether the tests run under gosim.
@@ -32,6 +33,21 @@ func BubbleFor(t *testing.T, d time.Duration, f func(*testing.T)) {
 // WallLimitPassed reports whether the run passed its limit of real time,
 // which the driver sets ($SIM_WALL).
 func WallLimitPassed() bool { return gosim.WallLimitPassed() }
+
+// CPUTime is the CPU time the process has used so far, on all of its
+// threads. It measures what a run's work costs, and must never change
+// what the run does.
+func CPUTime() (time.Duration, error) { return gosim.CPUTime() }
+
+// Aside runs f, which must not block, without drawing from the run's
+// random stream: gosim's maps draw from it on inserts and iteration, so
+// work the simulator does for itself, such as keeping its records, would
+// change every later choice of the run.
+func Aside(f func()) {
+	gosimruntime.BeginControlledNondeterminism()
+	defer gosimruntime.EndControlledNondeterminism()
+	f()
+}
 
 // Stacks returns every goroutine's stack, the simulated nodes' included.
 func Stacks() []byte { return gosim.Stacks() }

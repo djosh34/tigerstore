@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -36,6 +37,19 @@ func BubbleFor(t *testing.T, _ time.Duration, f func(*testing.T)) { synctest.Tes
 // WallLimitPassed reports false natively, where go test's -timeout bounds
 // a run.
 func WallLimitPassed() bool { return false }
+
+// CPUTime is the CPU time the process has used so far, on all of its
+// threads.
+func CPUTime() (time.Duration, error) {
+	var ru syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err != nil {
+		return 0, err
+	}
+	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano()), nil
+}
+
+// Aside runs f: natively there is no run's random stream to keep.
+func Aside(f func()) { f() }
 
 // Stacks returns every goroutine's stack.
 func Stacks() []byte {

@@ -311,6 +311,15 @@ func DefaultConfig(seed uint64) Config {
 	}
 }
 
+// CalmConfig is DefaultConfig with no faults: the run whose answered
+// calls per core-second the simulator's speed is measured by, against the
+// floor of the same calls (floor.go).
+func CalmConfig(seed uint64) Config {
+	cfg := DefaultConfig(seed)
+	cfg.Faults = Faults{}
+	return cfg
+}
+
 // node is one member's machine: its disk, which outlives its processes,
 // and the process running on it, if any.
 type node struct {
@@ -565,10 +574,15 @@ type Sim struct {
 	// healing, which moves the start of the liveness rule.
 	diskFaultDue bool
 	lateStopAt   int64
-	history      []*Record
-	stats        Stats
-	membership   membershipWork
-	err          error
+	// records holds the clients' calls (recordlog.go).
+	records    *recordLog
+	stats      Stats
+	membership membershipWork
+	err        error
+	// loadFrom is the process's CPU time when the clients started, and
+	// loadCPU the CPU time from then until the last client stopped
+	// (markLoad).
+	loadFrom, loadCPU time.Duration
 }
 
 // Stats counts what happened in a run.
@@ -707,6 +721,10 @@ type Result struct {
 	// values is the one copy of each value of a Kubernetes-shaped load,
 	// which the checkers' history shares too.
 	values *values
+	// LoadCPU is the process's CPU time, on all of its threads, from the
+	// clients' start until the last of them stopped: the cost of the
+	// load, without the formation of the cluster and the checks.
+	LoadCPU time.Duration
 }
 
 // Run runs one seed and checks it. The error describes the first broken
@@ -762,10 +780,17 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		d.BadReads += c.BadReads
 		d.Misreads += c.Misreads
 	}
-	res.History, res.Stats, res.Silences = s.history, s.stats, s.silences
+	var history []*Record
+	var herr error
+	simrun.Aside(func() { history, herr = s.records.records() })
+	if herr != nil && err == nil {
+		err = fmt.Errorf("decoding the history: %w", herr)
+	}
+	res.History, res.Stats, res.Silences = history, s.stats, s.silences
 	res.HeldAppendAt, res.SteppedDownAt = s.heldAppendAt, s.steppedDownAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
 	res.nodes, res.values, res.stacks = s.nodes, s.values, s.wallStacks
+	res.LoadCPU = s.loadCPU
 	s.mu.Unlock()
 	if err == nil {
 		if err = s.check(res); err != nil {
@@ -802,6 +827,10 @@ func newSim(cfg Config) (*Sim, error) {
 		servedRoot: map[uint64]uint64{},
 		healAt:     cfg.Duration,
 		stopAt:     cfg.Duration + cfg.Heal,
+	}
+	var err error
+	if s.records, err = newRecordLog(); err != nil {
+		return nil, err
 	}
 	s.endAt = cfg.length()
 	count := 3
@@ -1029,6 +1058,7 @@ func (s *Sim) schedule() {
 	if s.cfg.Objects > 0 {
 		kube = s.newKubeLoad()
 	}
+	s.markLoad(true)
 	for i := range s.cfg.Clients + s.cfg.V3Clients {
 		c := &client{id: i, sim: s, node: -1}
 		if i >= s.cfg.Clients {
@@ -1088,6 +1118,22 @@ func (s *Sim) schedule() {
 		s.at(s.cfg.StallLeaderAt, s.stallLeader)
 	}
 	s.at(s.healAt, s.heal)
+}
+
+// markLoad notes the process's CPU time as the clients start, or as one
+// stops, for the CPU time of the load (Result.LoadCPU): the last client to
+// stop ends it. Reading the CPU time changes nothing in the run. The lock
+// is held.
+func (s *Sim) markLoad(start bool) {
+	cpu, err := simrun.CPUTime()
+	switch {
+	case err != nil:
+		s.fail("reading the CPU time: %w", err)
+	case start:
+		s.loadFrom = cpu
+	default:
+		s.loadCPU = cpu - s.loadFrom
+	}
 }
 
 // now is the run's virtual time.
@@ -1266,47 +1312,57 @@ func (n *node) paused() int64 {
 
 // nodeConfig is the configuration of a process of n.
 func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
-	cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
-	cfg.Join = n.id > 3
-	for i := range 3 {
-		cfg.Members = append(cfg.Members, &pb.Member{ID: uint64(i + 1), PeerURLs: []string{peerURL(i)}})
-	}
+	cfg := baseNodeConfig(n.id, []string{peerURL(0), peerURL(1), peerURL(2)}, s.leaseCheckpoints)
 	if s.cfg.Membership {
-		cfg.Name = fmt.Sprintf("node%d", n.id)
+		cfg.Core.Name = fmt.Sprintf("node%d", n.id)
 	}
-	// Progress notifications every 2 s instead of 10 minutes, so runs
-	// see them.
-	cfg.ProgressTicks = 20
-	if s.leaseCheckpoints {
-		cfg.LeaseCheckpointTicks = 10
-	}
-	tinyLimits(&cfg)
 	if s.cfg.Window {
 		def := core.DefaultConfig(n.id, nil)
-		cfg.WindowBytes, cfg.WindowMaxBytes = def.WindowBytes, def.WindowMaxBytes
+		cfg.Core.WindowBytes, cfg.Core.WindowMaxBytes = def.WindowBytes, def.WindowMaxBytes
 	}
-	cfg.MemoryBytes = s.cfg.MemoryBytes
+	cfg.Core.MemoryBytes = s.cfg.MemoryBytes
 	tick := TickTime
 	if d := s.cfg.Faults.DriftPerMille; d > 0 && !s.healed {
 		tick += TickTime * (s.rng.Int64N(2*d+1) - d) / 1000
 	}
+	cfg.Tick = time.Duration(tick)
+	cfg.SegmentBytes = cmp.Or(s.cfg.SegmentBytes, cfg.SegmentBytes)
+	cfg.DiskBudget = s.cfg.Faults.DiskBudget
+	cfg.BeforeSync = func() { s.beforeSync(p) }
+	cfg.Turn = func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) }
+	cfg.Persisted = func(j core.PersistJob) { s.persisted(p, j) }
+	cfg.Logf = func(format string, args ...any) { s.logf(n, format, args...) }
+	return cfg
+}
+
+// baseNodeConfig is the configuration of node id of a cluster whose
+// first three members have peerURLs, as the runs and the floor (floor.go)
+// give it, before what a run adds.
+func baseNodeConfig(id uint64, peerURLs []string, leaseCheckpoints bool) tnode.Config {
+	cfg := core.DefaultConfig(id, []uint64{1, 2, 3})
+	cfg.Join = id > 3
+	for i, u := range peerURLs {
+		cfg.Members = append(cfg.Members, &pb.Member{ID: uint64(i + 1), PeerURLs: []string{u}})
+	}
+	// Progress notifications every 2 s instead of 10 minutes, so runs
+	// see them.
+	cfg.ProgressTicks = 20
+	if leaseCheckpoints {
+		cfg.LeaseCheckpointTicks = 10
+	}
+	tinyLimits(&cfg)
 	return tnode.Config{
 		Core: cfg,
-		Tick: time.Duration(tick),
+		Tick: time.Duration(TickTime),
 		// Small segments, so that most of the log is in sealed ones,
 		// where any damage is detectable.
-		SegmentBytes: cmp.Or(s.cfg.SegmentBytes, 8<<10),
-		DiskBudget:   s.cfg.Faults.DiskBudget,
+		SegmentBytes: 8 << 10,
 		// A watch stream 8 responses behind is closed, so that a slow
 		// watcher falls that far.
 		WatchQueue: 8,
-		BeforeSync: func() { s.beforeSync(p) },
-		Turn:       func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) },
-		Persisted:  func(j core.PersistJob) { s.persisted(p, j) },
 		// Several nodes share the process, so none can measure its
 		// memory; the value cache takes the whole budget.
 		Memory: func(int64) (int64, bool) { return 0, false },
-		Logf:   func(format string, args ...any) { s.logf(n, format, args...) },
 	}
 }
 

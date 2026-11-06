@@ -10,6 +10,8 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
 // Record is one client call as the client saw it.
@@ -84,6 +86,7 @@ func (c *client) run() {
 	for s.sleep(wait) {
 		s.mu.Lock()
 		if s.now() >= s.stopAt {
+			s.markLoad(false)
 			s.mu.Unlock()
 			return
 		}
@@ -196,11 +199,12 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 	s := c.sim
 	r.Return, r.Resp, r.Err = s.now(), resp, err
 	r.Ambiguous = err != nil && ambiguous(err)
-	s.history = append(s.history, r)
+	var kerr error
+	simrun.Aside(func() { kerr = s.records.add(r) })
+	if kerr != nil {
+		s.fail("keeping call %d of client %d: %w", c.n, c.id, kerr)
+	}
 	if c.kube != nil {
-		if err == nil {
-			s.values.shareMessage(resp)
-		}
 		c.kubeDone(r)
 	}
 	if r.v3 && err == nil {

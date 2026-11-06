@@ -123,7 +123,11 @@ func kubernetesLoad(t *testing.T, long bool, n int) {
 // requires every value they put to be unique, as checkLog needs to tell
 // the writes apart, and every object to be created first.
 func TestKubeValuesUnique(t *testing.T) {
-	s := &Sim{cfg: kubeConfig(1, false), rng: rand.New(rand.NewPCG(1, 2)), t0: time.Now()}
+	records, err := newRecordLog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Sim{cfg: kubeConfig(1, false), rng: rand.New(rand.NewPCG(1, 2)), t0: time.Now(), records: records}
 	for i, k := range s.newKubeLoad() {
 		s.clients = append(s.clients, &client{id: i, sim: s, node: -1, kube: k})
 	}
@@ -202,7 +206,11 @@ func TestLeasesExpireByTTL(t *testing.T) {
 // requires every page after the first to read at the first one's
 // revision.
 func TestKubeListPagesReadAtOneRevision(t *testing.T) {
-	s := &Sim{cfg: kubeConfig(1, false), rng: rand.New(rand.NewPCG(1, 2)), t0: time.Now()}
+	records, err := newRecordLog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Sim{cfg: kubeConfig(1, false), rng: rand.New(rand.NewPCG(1, 2)), t0: time.Now(), records: records}
 	c := &client{id: 0, sim: s, node: -1, kube: s.newKubeLoad()[0]}
 	s.clients = []*client{c}
 	k := c.kube
@@ -223,5 +231,34 @@ func TestKubeListPagesReadAtOneRevision(t *testing.T) {
 			More:   true,
 		}
 		c.done(&Record{Client: 0, req: req}, resp, nil)
+	}
+}
+
+// TestKubeValuesKeptOnce checks that a value of the Kubernetes-shaped load
+// is kept once: the load's shared copy, the call's request and the
+// history's decoded record all hold the same bytes.
+func TestKubeValuesKeptOnce(t *testing.T) {
+	records, err := newRecordLog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Sim{cfg: kubeConfig(1, false), rng: rand.New(rand.NewPCG(1, 2)), t0: time.Now(), records: records}
+	c := &client{id: 0, sim: s, node: -1, kube: s.newKubeLoad()[0]}
+	o := c.kube.all[0]
+	put := c.kubePut(o)
+	if err := records.add(&Record{req: put, Resp: &pb.PutResponse{Header: &pb.ResponseHeader{Revision: 2}}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := records.records()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := s.values.bytes[string(head(put.Value))]
+	back := got[0].req.(*pb.PutRequest).Value
+	if &kept[0] != &put.Value[0] || &back[0] != &kept[0] {
+		t.Error("the load, the request and the history hold different copies of a value")
+	}
+	if n := len(records.vals.spans); n != 1 {
+		t.Errorf("%d values kept, want 1", n)
 	}
 }
