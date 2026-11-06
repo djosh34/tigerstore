@@ -20,6 +20,9 @@ import (
 //     sweep with 80 s of faults, replayed on exp/485-sim-ceiling at
 //     0a63d065, which timed out after 50,000,000 steps; it needs fewer
 //     than 10,000 (#425, #499).
+//   - witness-control-320-1529: another unplanted #485 control, from the
+//     same replay, whose independent count/life bounds missed the joint
+//     capacity of the unfixed revisions; it needs 13,756 steps.
 func TestWitnessHardHistories(t *testing.T) {
 	for _, c := range []struct {
 		file  string
@@ -27,6 +30,7 @@ func TestWitnessHardHistories(t *testing.T) {
 	}{
 		{"witness-425.json.gz", 25_000},
 		{"witness-control-80-201.json.gz", 10_000},
+		{"witness-control-320-1529.json.gz", 50_000},
 	} {
 		t.Run(c.file, func(t *testing.T) {
 			f, err := os.Open("testdata/" + c.file)

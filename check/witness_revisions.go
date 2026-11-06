@@ -111,6 +111,7 @@ type revisionOrder struct {
 	revokeRevs   []int64
 	revokesByLB  []int
 	revokePrefix int
+	capacity     *capacityIndex
 	// top is the highest revision any client saw.
 	top int64
 	// failure is the failure at the highest revision reached, and at its
@@ -292,6 +293,7 @@ func (r *revisionOrder) index() error {
 		r.covered[k] = merge(ss)
 	}
 	r.indexCounts()
+	r.indexCapacity()
 	r.scheduleOptional()
 	return nil
 }
@@ -398,6 +400,9 @@ func (r *revisionOrder) indexCounts() {
 // the search tried every order of the writes in between, 15 million times
 // back, before it saw that count.
 func (r *revisionOrder) reachable(s *state, skip int) bool {
+	if !r.w.slow && !r.capacityReachable(s, skip) {
+		return false
+	}
 	first := sort.Search(len(r.countRevs), func(k int) bool { return r.countRevs[k] >= s.rev })
 	for _, rev := range r.countRevs[first:] {
 		if rev > s.rev+countHorizon {
