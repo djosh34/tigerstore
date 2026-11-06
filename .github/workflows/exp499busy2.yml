@@ -36,7 +36,9 @@ jobs:
             GODEBUG=gctrace=0 "$RUNNER_TEMP/chk-new" -checkers witness-revisions -timeout 60m -cpuprofile "$RUNNER_TEMP/new-$n.pprof" "$h" | cut -c1-200
             go tool pprof -top -nodecount=35 "$RUNNER_TEMP/chk-new" "$RUNNER_TEMP/new-$n.pprof" | head -45
             go tool pprof -top -cum -nodecount=35 "$RUNNER_TEMP/chk-new" "$RUNNER_TEMP/new-$n.pprof" | head -45
+            go tool pprof -peek 'revisionOrder..(write|fits|finish|candidates)$' "$RUNNER_TEMP/chk-new" "$RUNNER_TEMP/new-$n.pprof" | grep -v '^ *$' | head -90
           done
+          exit 0
           for h in $(find "$RUNNER_TEMP/a" -name 'history*' | sort); do
             for b in old new old new old new; do
               echo "== $b $(basename "$h")"
