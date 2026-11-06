@@ -705,6 +705,11 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 		cfg.Duration = 25 * Second
 		res := run(t, cfg)
 		if len(res.Silences) == 0 || res.Stats.Silences == 0 {
+			for _, line := range res.Trace {
+				if strings.Contains(line, "DIAG") {
+					t.Log(line)
+				}
+			}
 			t.Fatalf("seed %d: the stalled leader never went silent", seed)
 		}
 		if res.HeldAppendAt == 0 {
