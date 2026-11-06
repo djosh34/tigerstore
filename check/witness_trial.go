@@ -19,8 +19,9 @@ import (
 // try returns a state that shares s's values, for stepping req through,
 // and undo, which puts back every value req may have written: the keys
 // of a put, the range of a delete, both branches of a transaction, or
-// every key of a revoked lease. The scalars and leases of the state are
-// its own. undo must run before anything else changes s.
+// every key of a revoked lease. The scalars of the state are its own, and
+// its leases change only into a new set (leaseSet). undo must run before
+// anything else changes s.
 func (r *revisionOrder) try(s *state, req history.Request) (t *state, undo func()) {
 	if r.w.slow {
 		return s.clone(), func() {}
@@ -64,7 +65,6 @@ func (r *revisionOrder) try(s *state, req history.Request) (t *state, undo func(
 		before[j] = s.kvs[k]
 	}
 	c := *s
-	c.leases = slices.Clone(s.leases)
 	return &c, func() {
 		for j, k := range written {
 			s.kvs[k] = before[j]
@@ -95,7 +95,7 @@ func (w *witness) scopedState(i, j int) *state {
 		w.scope[i] = keys
 	}
 	sm := w.states[j]
-	s := &state{keys: keys, kvs: make([]history.KeyValue, len(keys)), leases: slices.Clone(sm.leases), rev: sm.rev, compacted: sm.compacted, past: w.past}
+	s := &state{keys: keys, kvs: make([]history.KeyValue, len(keys)), leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past}
 	for k, key := range keys {
 		s.kvs[k], _ = w.past.at(key, sm.rev)
 	}

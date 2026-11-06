@@ -16,8 +16,8 @@ import (
 )
 
 // kubeConfig is a run of the Kubernetes-shaped load (kube.go) under every
-// fault of DefaultConfig, by 16 clients, in the short profile 3 of them
-// clients of etcd's Go client, on segments of 4 MiB, with a disk budget of 8 KiB an object and
+// fault of DefaultConfig, by 16 clients, 3 of them clients of etcd's Go
+// client, on segments of 4 MiB, with a disk budget of 8 KiB an object and
 // 16 MiB at least, and a disk of twice that. The long profile has 10,000
 // objects for 4 virtual hours, with a compaction every 5 minutes, and
 // its faults twice as far apart as a default seed's: at the default
@@ -32,9 +32,11 @@ func kubeConfig(seed uint64, long bool) Config {
 	if long {
 		cfg.Objects, cfg.Duration, cfg.CompactEvery = 10_000, 4*3600*Second, 5*60*Second
 		spreadFaults(&cfg.Faults, 2)
-		// A clientv3 call can spin for good in gRPC's transparent retry
-		// under gosim, one long seed in seven (#440).
-		cfg.Clients, cfg.V3Clients = 16, 0
+	} else {
+		// A client's 62 objects split into small groups by resource, and a
+		// list pages only through a group of more than a page: with 25 a
+		// page, as the soak's, some schedules created none so large (#517).
+		cfg.ListPage = 8
 	}
 	cfg.SegmentBytes = 4 << 20
 	cfg.Faults.DiskBudget = max(16<<20, int64(cfg.Objects)*8<<10)
@@ -56,8 +58,7 @@ func spreadFaults(f *Faults, k int64) {
 // TestKubernetesLoad runs the Kubernetes-shaped load of cmd/soak under
 // every fault, with every checker: kubeConfig's short profile on 2 seeds
 // from seed 1. Each seed must have compacted, paged through a list, had a
-// lease expire and had progress requests answered. It skips under the
-// race detector (#439).
+// lease expire and had progress requests answered.
 func TestKubernetesLoad(t *testing.T) { kubernetesLoad(t, false, 2) }
 
 // TestKubernetesLoadLong is TestKubernetesLoad with the long profile,
@@ -74,11 +75,6 @@ func TestKubernetesLoadLong(t *testing.T) {
 // kubernetesLoad runs the long or the short profile on $SIM_SEEDS seeds,
 // n by default.
 func kubernetesLoad(t *testing.T, long bool, n int) {
-	if simrun.Race {
-		// Natively a run can hang when a TLS alert waits for a write lock
-		// and the synctest clock stops (#439).
-		t.Skip("the Kubernetes-shaped load runs under gosim (#439)")
-	}
 	simrun.Seeds(t, 1, n, func(t *testing.T, seed uint64) Stats {
 		res := run(t, kubeConfig(seed, long))
 		checkers(t, res)
@@ -108,8 +104,7 @@ func kubernetesLoad(t *testing.T, long bool, n int) {
 		if long {
 			var missed []string
 			for name, ok := range faultsTaken(st) {
-				// The long profile has no clientv3 clients (#440).
-				if !ok && name != "clientv3 call" {
+				if !ok {
 					missed = append(missed, name)
 				}
 			}

@@ -8,3 +8,5 @@
 # internal/node, gets a file of its own.
 # Under the race detector a seed does not replay, so a bug that a run
 # there hits cannot be listed here.
+TestFormedClusterAnswers 3 https://github.com/djosh34/tigerstore/issues/518
+TestMembershipFaults 19 https://github.com/djosh34/tigerstore/issues/523

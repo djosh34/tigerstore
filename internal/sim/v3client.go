@@ -14,9 +14,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
+	"google.golang.org/grpc/stats"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/server"
+	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
 // Besides the clients that enter at Node.Do, Config.V3Clients clients use
@@ -59,18 +61,9 @@ func (c *client) newV3() error {
 		Endpoints: []string{"https://" + clientAddr(c.node)},
 		TLS:       &tls.Config{RootCAs: s.net.ca},
 		Logger:    zap.NewNop(),
-		DialOptions: []grpc.DialOption{
-			grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
-				return s.net.dial(ctx, s, nil, addr)
-			}),
-			// gRPC's own backoff between dials grows to 2 minutes, which
-			// would hold a client of one node that was down a few times
-			// past the end of the run: calls wait for a connection.
-			grpc.WithConnectParams(grpc.ConnectParams{
-				Backoff:           backoff.Config{BaseDelay: 100 * time.Millisecond, Multiplier: 1.6, Jitter: 0.2, MaxDelay: time.Second},
-				MinConnectTimeout: time.Duration(dialTimeout),
-			}),
-		},
+		DialOptions: v3Options(func(ctx context.Context, addr string) (net.Conn, error) {
+			return s.net.dial(ctx, s, nil, addr)
+		}),
 	})
 	if err != nil {
 		return err
@@ -82,6 +75,42 @@ func (c *client) newV3() error {
 	c.v3, c.lease = cli, clientv3.NewLeaseFromLeaseClient(pb.NewLeaseClient(cli.ActiveConnection()), cli, 0)
 	return nil
 }
+
+// v3Options are the dial options of the clientv3 clients, which dial
+// with dial.
+func v3Options(dial func(context.Context, string) (net.Conn, error)) []grpc.DialOption {
+	return []grpc.DialOption{
+		grpc.WithContextDialer(dial),
+		// gRPC's own backoff between dials grows to 2 minutes, which would
+		// hold a client of one node that was down a few times past the end
+		// of the run: calls wait for a connection.
+		grpc.WithConnectParams(grpc.ConnectParams{
+			Backoff:           backoff.Config{BaseDelay: 100 * time.Millisecond, Multiplier: 1.6, Jitter: 0.2, MaxDelay: time.Second},
+			MinConnectTimeout: time.Duration(dialTimeout),
+		}),
+		grpc.WithStatsHandler(retryPause{}),
+	}
+}
+
+// retryPause makes each transparent retry of a call wait a millisecond
+// under gosim. gRPC retries at once, with no limit, a call whose attempt
+// got no stream, as on a transport that is closing. Natively the reader of
+// that transport soon marks it gone, but gosim runs one goroutine until it
+// blocks, and the loop never blocks: that reader never runs, the virtual
+// clock never moves, and the seed spins for good (#440).
+type retryPause struct{}
+
+func (retryPause) TagRPC(ctx context.Context, _ *stats.RPCTagInfo) context.Context { return ctx }
+
+func (retryPause) HandleRPC(_ context.Context, s stats.RPCStats) {
+	if b, ok := s.(*stats.Begin); ok && b.IsTransparentRetryAttempt && simrun.InGosim {
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func (retryPause) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context { return ctx }
+
+func (retryPause) HandleConn(context.Context, stats.ConnStats) {}
 
 // closeV3 closes client c's clientv3 client.
 func (c *client) closeV3() error {

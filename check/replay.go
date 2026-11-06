@@ -1,6 +1,7 @@
 package check
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -59,28 +60,54 @@ func (r *replay) read(q *history.RangeRequest, rev int64) *history.RangeResponse
 
 // versions holds, per key, every put and delete in revision order. A
 // delete is a KeyValue with Version 0.
-type versions map[string][]history.KeyValue
+type versions map[string]*keyVersions
+
+// keyVersions are a key's versions and where its last lookup ended. The
+// witness reads at the live revision, and at past ones mostly in their
+// order, so a lookup starts there and takes a few steps; a binary search of
+// every version grew with the history's length (#499).
+type keyVersions struct {
+	kvs []history.KeyValue
+	at  int
+}
 
 // add notes what events changed. A delete event's KV has Version 0, which
 // marks the delete.
 func (v versions) add(events []history.Event) {
 	for _, e := range events {
-		v[e.KV.Key] = append(v[e.KV.Key], e.KV)
+		vs := v[e.KV.Key]
+		if vs == nil {
+			vs = &keyVersions{}
+			v[e.KV.Key] = vs
+		}
+		vs.kvs = append(vs.kvs, e.KV)
 	}
+}
+
+// drop takes the newest version of key off.
+func (v versions) drop(key string) {
+	vs := v[key]
+	vs.kvs = vs.kvs[:len(vs.kvs)-1]
 }
 
 // at returns the key as it was at revision rev.
 func (v versions) at(key string, rev int64) (history.KeyValue, bool) {
-	vs := v[key]
-	i, _ := slices.BinarySearchFunc(vs, rev+1, func(kv history.KeyValue, rev int64) int {
-		switch {
-		case kv.ModRevision < rev:
-			return -1
-		case kv.ModRevision > rev:
-			return 1
+	k := v[key]
+	if k == nil {
+		return history.KeyValue{}, false
+	}
+	// i is the first version after rev.
+	vs, i := k.kvs, len(k.kvs)
+	if i > 0 && vs[i-1].ModRevision > rev {
+		i = min(k.at, i)
+		for n := 0; n < 4 && i < len(vs) && vs[i].ModRevision <= rev; n++ {
+			i++
 		}
-		return 0
-	})
+		if i > 0 && vs[i-1].ModRevision > rev || i < len(vs) && vs[i].ModRevision <= rev {
+			i, _ = slices.BinarySearchFunc(vs, rev+1, func(kv history.KeyValue, rev int64) int { return cmp.Compare(kv.ModRevision, rev) })
+		}
+	}
+	k.at = i
 	if i == 0 || vs[i-1].Version == 0 {
 		return history.KeyValue{}, false
 	}
