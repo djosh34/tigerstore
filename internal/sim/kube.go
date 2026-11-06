@@ -2,6 +2,7 @@ package sim
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 
@@ -139,6 +140,9 @@ func (s *Sim) newKubeLoad() []*kubeClient {
 	return out
 }
 
+// listPage is the limit of one page of the load's lists.
+func (s *Sim) listPage() int64 { return int64(cmp.Or(s.cfg.ListPage, kubePage)) }
+
 // kubeRequest picks the client's next call of the load. The lock is held.
 func (c *client) kubeRequest() proto.Message {
 	s, k := c.sim, c.kube
@@ -155,7 +159,7 @@ func (c *client) kubeRequest() proto.Message {
 		}
 	}
 	if l := k.list; l != nil {
-		return &pb.RangeRequest{Key: l.from, RangeEnd: l.end, Limit: kubePage, Revision: l.rev}
+		return &pb.RangeRequest{Key: l.from, RangeEnd: l.end, Limit: s.listPage(), Revision: l.rev}
 	}
 	if k.created < len(k.all) {
 		batch := k.all[k.created:min(k.created+kubeBatch, len(k.all))]
@@ -175,7 +179,7 @@ func (c *client) kubeRequest() proto.Message {
 	if p >= kubeGets && p < kubeLists {
 		end := prefixEnd(k.prefixes[g])
 		k.list = &kubeList{from: k.prefixes[g], end: end}
-		return &pb.RangeRequest{Key: k.prefixes[g], RangeEnd: end, Limit: kubePage}
+		return &pb.RangeRequest{Key: k.prefixes[g], RangeEnd: end, Limit: s.listPage()}
 	}
 	o := k.groups[g][s.rng.IntN(len(k.groups[g]))]
 	switch {

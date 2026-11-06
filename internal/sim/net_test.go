@@ -92,3 +92,36 @@ func TestWriteDeadline(t *testing.T) {
 		t.Fatalf("write past the buffer that nobody reads = %d, %v; want %d, a deadline", n, err, sendBuffer)
 	}
 }
+
+// TestDamagedReadFreesWriter reads damaged bytes on a connection whose
+// writer waits for room that its peer, which reads nothing, never makes:
+// the read ends the connection, so the write fails with a reset. Before
+// #439's fix the writer waited until the link fault ended, and a TLS
+// alert of the reader waited for the writer's lock meanwhile, which under
+// the race detector stops the synctest clock for good.
+func TestDamagedReadFreesWriter(t *testing.T) {
+	a := writer()
+	b := a.other
+	a.s.net = network{conns: map[*conn]bool{a: true, b: true}}
+	l := a.s.link(1, 0)
+	l.netem, l.netemUntil = flipped, 1000*Second
+	wrote := make(chan error, 1)
+	go func() {
+		_, err := a.Write(make([]byte, 2*sendBuffer))
+		wrote <- err
+	}()
+	if _, err := b.Write([]byte("record")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Read(make([]byte, 16)); err != nil {
+		t.Fatalf("the read of the damaged bytes = %v", err)
+	}
+	select {
+	case err := <-wrote:
+		if !errors.Is(err, errReset) {
+			t.Fatalf("the blocked write = %v, want a reset", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the write still waits for room after its reader got damaged bytes")
+	}
+}
