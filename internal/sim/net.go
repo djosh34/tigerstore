@@ -272,8 +272,8 @@ type pipe struct {
 	// size is how many bytes chunks holds.
 	size int
 	// last is when the last write arrives; eof is set once the writer
-	// closed, and err once the connection broke. wake is closed and
-	// replaced when any of them changes.
+	// closed, and err once the connection broke. wake, once a reader or
+	// writer waits on it (waiter), is closed when any of them changes.
 	last int64
 	eof  bool
 	err  error
@@ -287,11 +287,38 @@ type chunk struct {
 	damaged bool
 }
 
-func newPipe() *pipe { return &pipe{wake: make(chan struct{})} }
+func newPipe() *pipe { return &pipe{} }
 
+// waiter returns the channel that the next change of p closes. The lock
+// is held.
+func (p *pipe) waiter() chan struct{} {
+	if p.wake == nil {
+		p.wake = make(chan struct{})
+	}
+	return p.wake
+}
+
+// signal wakes whoever waits on p. The lock is held.
 func (p *pipe) signal() {
-	close(p.wake)
-	p.wake = make(chan struct{})
+	if p.wake != nil {
+		close(p.wake)
+		p.wake = nil
+	}
+}
+
+// waitFor waits until wake is closed or, if wait is not math.MaxInt64,
+// wait nanoseconds passed.
+func waitFor(wait int64, wake <-chan struct{}) {
+	if wait == math.MaxInt64 {
+		<-wake
+		return
+	}
+	t := time.NewTimer(time.Duration(wait))
+	select {
+	case <-t.C:
+	case <-wake:
+	}
+	t.Stop()
 }
 
 func (p *pipe) fail(err error) {
@@ -389,14 +416,9 @@ func (c *conn) Read(b []byte) (int, error) {
 			}
 			wait = min(wait, left)
 		}
-		wake := in.wake
+		wake := in.waiter()
 		s.mu.Unlock()
-		t := time.NewTimer(time.Duration(min(wait, math.MaxInt64/2)))
-		select {
-		case <-t.C:
-		case <-wake:
-		}
-		t.Stop()
+		waitFor(wait, wake)
 	}
 }
 
@@ -451,14 +473,9 @@ func (c *conn) Write(b []byte) (int, error) {
 		if !c.writeDeadline.IsZero() {
 			wait = max(int64(time.Until(c.writeDeadline)), 1)
 		}
-		wake := c.out.wake
+		wake := c.out.waiter()
 		s.mu.Unlock()
-		t := time.NewTimer(time.Duration(min(wait, math.MaxInt64/2)))
-		select {
-		case <-t.C:
-		case <-wake:
-		}
-		t.Stop()
+		waitFor(wait, wake)
 	}
 }
 
