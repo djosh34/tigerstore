@@ -149,8 +149,14 @@ type witness struct {
 	// (scopedState), and slow makes the witness copy the whole store for
 	// every try and answer instead, for the tests that compare the two
 	// (witness_trial.go).
-	scope map[int][]string
+	scope [][]string
 	slow  bool
+	// firstAnswers caches the first matching state of an acked op's
+	// revision, found by finish. State identities survive only while the
+	// prefix that produced them survives a search restore.
+	firstAnswers []firstAnswer
+	stateID      uint64
+	sortA, sortB []timedOp
 }
 
 // stoppedAt says how far a check got when it ran out of time.
@@ -175,7 +181,13 @@ type event struct {
 }
 
 // summary is what of the store an event can change besides the keys.
+type firstAnswer struct {
+	id uint64
+	at int
+}
+
 type summary struct {
+	id             uint64
 	rev, compacted int64
 	leases         leaseSet
 }
@@ -204,15 +216,23 @@ func (p place) compare(q place) int {
 }
 
 func newWitness(h *history.History, deadline time.Time) *witness {
-	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: map[int][]string{}}
+	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: make([][]string, len(h.Ops)), firstAnswers: make([]firstAnswer, len(h.Ops))}
 	w.reqs = make([]history.Request, len(h.Ops))
+	mutations := 0
 	for i := range h.Ops {
 		w.reqs[i] = modelRequest(&h.Ops[i])
+		if w.reqs[i].Mutates() {
+			mutations++
+		}
 	}
-	w.keys = keysOf(slices.Concat(w.reqs, h.Log))
+	capacity := max(mutations, len(h.Log))
+	w.events = make([]event, 0, capacity)
+	w.states = make([]summary, 0, capacity+1)
+	w.placed = make([]int, 0, capacity)
+	w.keys = keysOf(w.reqs, h.Log)
 	w.live = newState(w.keys)
 	w.live.past = w.past
-	w.states = []summary{w.summary()}
+	w.states = append(w.states, w.summary())
 	return w
 }
 
@@ -229,7 +249,8 @@ func (w *witness) tick() bool {
 // summary is the live store's summary, which shares its leases with the
 // live store (leaseSet).
 func (w *witness) summary() summary {
-	return summary{rev: w.live.rev, compacted: w.live.compacted, leases: w.live.leases}
+	w.stateID++
+	return summary{id: w.stateID, rev: w.live.rev, compacted: w.live.compacted, leases: w.live.leases}
 }
 
 // apply adds an event sent by op and replays it.
@@ -240,7 +261,11 @@ func (w *witness) apply(op int, req history.Request) outcome {
 		w.appended = append(w.appended, e.KV.Key)
 	}
 	o.events = nil
-	w.events = append(w.events, event{op: op, req: req, out: o})
+	saved := o
+	if w.search != nil {
+		saved = outcome{}
+	}
+	w.events = append(w.events, event{op: op, req: req, out: saved})
 	if w.times != nil {
 		w.times.push(w.h, op)
 	}
@@ -360,7 +385,7 @@ func (w *witness) fromLog() error {
 	}
 	// Then ambiguous ones, in call order, each at the first entry that
 	// comes after every acked mutation that returned before its call.
-	slices.SortFunc(ambiguous, func(a, b int) int { return cmp.Compare(w.h.Ops[a].Call, w.h.Ops[b].Call) })
+	w.sortOpsByTime(ambiguous, func(i int) int64 { return w.h.Ops[i].Call })
 	bound := w.boundAfter()
 	for _, i := range ambiguous {
 		op := &w.h.Ops[i]
@@ -453,9 +478,7 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 	}
 	events := w.eventBounds()
 	ops = slices.Clone(ops)
-	slices.SortFunc(ops, func(a, b int) int {
-		return cmp.Or(cmp.Compare(w.h.Ops[a].Call, w.h.Ops[b].Call), cmp.Compare(a, b))
-	})
+	w.sortOpsByTime(ops, func(i int) int64 { return w.h.Ops[i].Call })
 	placed := newPlacedMax(w.h, ops)
 	for _, i := range ops {
 		if w.tick() {
@@ -467,6 +490,17 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 		op := &w.h.Ops[i]
 		lo, hi := events(op)
 		lo = max(lo, placed.before(op.Call))
+		cached := w.firstAnswers[i]
+		j := cached.at
+		if !w.slow && cached.id != 0 && j >= lo && j <= hi && w.states[j].id == cached.id {
+			// finish searched from the first state of this revision.
+			// Its first match is still first if real time allows it.
+			if set {
+				w.at[i] = place{set: true, seen: true, at: j, rank: op.Call}
+			}
+			placed.add(i, j)
+			continue
+		}
 		f, l := lo, hi
 		if op.Resp != nil {
 			rev := op.Resp.Revision
@@ -580,23 +614,40 @@ func (w *witness) eventBounds() func(op *history.Op) (int, int) {
 type placedMax struct {
 	h       *history.History
 	returns []int64
-	rank    map[int]int
+	rank    []int
+	sparse  map[int]int
 	tree    []int
 }
 
 func newPlacedMax(h *history.History, ops []int) *placedMax {
-	p := &placedMax{h: h, rank: map[int]int{}, tree: make([]int, len(ops)+1)}
+	p := &placedMax{h: h, tree: make([]int, len(ops)+1)}
+	if len(ops) >= len(h.Ops)/8 {
+		p.rank = make([]int, len(h.Ops))
+	} else {
+		p.sparse = make(map[int]int, len(ops))
+	}
 	sorted := slices.Clone(ops)
+	// Most small sets are optional-read trials; keep those local.
 	slices.SortFunc(sorted, func(a, b int) int { return cmp.Or(cmp.Compare(h.Ops[a].Return, h.Ops[b].Return), cmp.Compare(a, b)) })
 	for k, i := range sorted {
-		p.rank[i] = k + 1
+		if p.rank != nil {
+			p.rank[i] = k + 1
+		} else {
+			p.sparse[i] = k + 1
+		}
 		p.returns = append(p.returns, h.Ops[i].Return)
 	}
 	return p
 }
 
 func (p *placedMax) add(i, j int) {
-	for k := p.rank[i]; k < len(p.tree); k += k & -k {
+	k := 0
+	if p.rank != nil {
+		k = p.rank[i]
+	} else {
+		k = p.sparse[i]
+	}
+	for ; k < len(p.tree); k += k & -k {
 		p.tree[k] = max(p.tree[k], j)
 	}
 }
@@ -628,8 +679,8 @@ func (w *witness) verify() error {
 		return w.h.Ops[i].Return
 	}
 	byCall, byReturn := slices.Clone(ops), slices.Clone(ops)
-	slices.SortFunc(byCall, func(a, b int) int { return cmp.Compare(w.h.Ops[a].Call, w.h.Ops[b].Call) })
-	slices.SortFunc(byReturn, func(a, b int) int { return cmp.Compare(ret(a), ret(b)) })
+	w.sortOpsByTime(byCall, func(i int) int64 { return w.h.Ops[i].Call })
+	w.sortOpsByTime(byReturn, ret)
 	latest, by := place{}, -1
 	k := 0
 	for _, b := range byCall {

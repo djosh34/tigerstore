@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -27,10 +26,22 @@ import (
 // order. Ambiguous ones of those kinds go in only when a later answer
 // needs them, after every answer that needs them left out.
 func (w *witness) fromRevisions() error {
+	var top int64 = 1
+	for i := range w.h.Ops {
+		if resp := w.h.Ops[i].Resp; resp != nil {
+			top = max(top, resp.Revision)
+		}
+	}
+	// Cap the dense prefix by the input size, not a client's revision.
+	// Observations beyond it go in the sparse part of each index.
+	n := int(min(top, int64(len(w.h.Ops)+1))) + 1
 	r := &revisionOrder{
-		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
-		alive: map[int64]int64{}, grants: map[int64]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
-		counts: map[int64][]count{},
+		w: w, writers: revisionWriters{dense: make([]int, n)},
+		revokes: revisionLists[int]{dense: make([]revisionRange, n)}, others: revisionLists[int]{dense: make([]revisionRange, n)}, seen: revisionLists[int]{dense: make([]revisionRange, n)},
+		alive: map[int64]int64{}, grants: map[int64]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
+		created: revisionLists[string]{dense: make([]revisionRange, n)}, written: revisionLists[string]{dense: make([]revisionRange, n)}, deleted: revisionLists[string]{dense: make([]revisionRange, n)},
+		counts:    revisionLists[count]{dense: make([]revisionRange, n)},
+		lifeHeads: revisionWriters{dense: make([]int, n)}, lifeByKey: map[string][]int{},
 	}
 	w.search = r
 	if err := r.index(); err != nil {
@@ -44,17 +55,20 @@ type revisionOrder struct {
 	w *witness
 	// writers are the acked ops that wrote each revision, and revokes the
 	// acked revokes at each header revision, which may have written it.
-	writers map[int64]int
-	revokes map[int64][]int
+	writers revisionWriters
+	revokes revisionLists[int]
 	// others are the acked mutations that changed no key, by header
 	// revision, in call order. seen are the acked ops that changed
 	// nothing, by header revision.
-	others map[int64][]int
-	seen   map[int64][]int
+	others revisionLists[int]
+	seen   revisionLists[int]
 	// ambiguous are the ambiguous mutations, and lb the highest revision
 	// returned before each was called: it writes no revision up to it.
 	ambiguous []int
 	lb        []int64
+	// candidates needs only revokes whose lease currently has a key.
+	ambiguousWrites []int
+	revokersByLease map[int64][]int
 	// alive is, per lease, the highest revision at which an answer shows
 	// it in use: an acked put with it wrote that revision, or a key a
 	// client saw still had it there. Its revoke writes a later revision,
@@ -79,7 +93,10 @@ type revisionOrder struct {
 	// deleted list, per revision, the keys a client saw it create, write
 	// or delete: the writer of that revision must.
 	lives                     map[string]map[life]int64
-	created, written, deleted map[int64][]string
+	created, written, deleted revisionLists[string]
+	lifeHeads                 revisionWriters
+	lifeValues                []keyLife
+	lifeByKey                 map[string][]int
 	// optional are the ambiguous mutations that change no key and that a
 	// later answer needs, by the revision from which they may go, in call
 	// order.
@@ -100,7 +117,7 @@ type revisionOrder struct {
 	// are, per key, the revisions whose acked writer may create or delete
 	// it, in order, and putters and deleters the ambiguous mutations that
 	// may; revokers are the revokes, which may delete any key (reachable).
-	counts            map[int64][]count
+	counts            revisionLists[count]
 	countRevs         []int64
 	putRevs, delRevs  [][]int64
 	putters, deleters [][]int
@@ -179,6 +196,7 @@ type span struct{ lo, hi int64 }
 // index sorts the ops into the maps of r.
 func (r *revisionOrder) index() error {
 	h := r.w.h
+	r.revokersByLease = map[int64][]int{}
 	values := map[[2]string][]int{}
 	for i := range h.Ops {
 		op := &h.Ops[i]
@@ -188,28 +206,33 @@ func (r *revisionOrder) index() error {
 		switch {
 		case op.Req.Range != nil && op.Req.Range.Serializable:
 		case op.Resp != nil && bumps(op):
-			if j, ok := r.writers[op.Resp.Revision]; ok {
+			if j, ok := r.writers.get(op.Resp.Revision); ok {
 				return fmt.Errorf("%s and op %d both wrote revision %d", r.w.describe(i), j, op.Resp.Revision)
 			}
-			r.writers[op.Resp.Revision] = i
+			r.writers.set(op.Resp.Revision, i)
 		case op.Resp != nil && op.Req.LeaseRevoke != nil:
-			r.revokes[op.Resp.Revision] = append(r.revokes[op.Resp.Revision], i)
+			r.revokes.add(op.Resp.Revision, i)
 		case op.Resp != nil && mutation(op):
-			r.others[op.Resp.Revision] = append(r.others[op.Resp.Revision], i)
+			r.others.add(op.Resp.Revision, i)
 		case op.Resp != nil:
-			r.seen[op.Resp.Revision] = append(r.seen[op.Resp.Revision], i)
+			r.seen.add(op.Resp.Revision, i)
 		case op.Err.Ambiguous && op.Req.Mutates():
 			if g := op.Req.LeaseGrant; g != nil && g.ID == 0 {
 				// Nobody learned its ID, so no answer depends on it.
 				continue
 			}
 			r.ambiguous = append(r.ambiguous, i)
+			if l := op.Req.LeaseRevoke; l != nil {
+				r.revokersByLease[l.ID] = append(r.revokersByLease[l.ID], i)
+			} else {
+				r.ambiguousWrites = append(r.ambiguousWrites, i)
+			}
 			for _, kv := range putsOf(op.Req) {
 				values[kv] = append(values[kv], i)
 			}
 		}
 	}
-	for _, ops := range r.others {
+	for _, ops := range r.others.all() {
 		r.byCall(ops)
 	}
 	r.lowerBounds()
@@ -236,11 +259,17 @@ func (r *revisionOrder) index() error {
 			r.alive[kv.Lease] = max(r.alive[kv.Lease], unchangedTo)
 		}
 		if kv.ModRevision < unchangedTo {
-			r.covered[kv.Key] = append(r.covered[kv.Key], span{kv.ModRevision, unchangedTo})
+			ss := r.covered[kv.Key]
+			if n := len(ss); n > 0 && kv.ModRevision <= ss[n-1].hi && ss[n-1].lo <= unchangedTo {
+				ss[n-1].lo = min(ss[n-1].lo, kv.ModRevision)
+				ss[n-1].hi = max(ss[n-1].hi, unchangedTo)
+			} else {
+				r.covered[kv.Key] = append(ss, span{kv.ModRevision, unchangedTo})
+			}
 		}
 		r.note(kv, unchangedTo)
 		r.top = max(r.top, kv.ModRevision)
-		if _, ok := r.writers[kv.ModRevision]; ok || kv.ModRevision < 2 || !valued {
+		if _, ok := r.writers.get(kv.ModRevision); ok || kv.ModRevision < 2 || !valued {
 			return
 		}
 		ops := values[[2]string{kv.Key, kv.Value}]
@@ -266,7 +295,7 @@ func (r *revisionOrder) index() error {
 				if e.Type == history.EventPut {
 					saw(e.KV, e.Revision(), true)
 				} else {
-					r.deleted[e.Revision()] = append(r.deleted[e.Revision()], e.KV.Key)
+					r.deleted.add(e.Revision(), e.KV.Key)
 				}
 			}
 		}
@@ -305,7 +334,7 @@ func (r *revisionOrder) indexCounts() {
 	h, s := r.w.h, r.w.live
 	add := func(rev int64, key, end string, n int64) {
 		lo, hi := s.span(key, end)
-		r.counts[rev] = append(r.counts[rev], count{rev: rev, lo: lo, hi: hi, n: n})
+		r.counts.add(rev, count{rev: rev, lo: lo, hi: hi, n: n})
 	}
 	n := len(s.keys)
 	r.putters, r.deleters, r.putRevs, r.delRevs = make([][]int, n), make([][]int, n), make([][]int64, n), make([][]int64, n)
@@ -379,7 +408,10 @@ func (r *revisionOrder) indexCounts() {
 		slices.Sort(revs)
 	}
 	slices.Sort(r.revokeRevs)
-	r.countRevs = slices.Sorted(maps.Keys(r.counts))
+	for rev := range r.counts.all() {
+		r.countRevs = append(r.countRevs, rev)
+	}
+	slices.Sort(r.countRevs)
 }
 
 // reachable reports whether the counts clients saw at the revisions ahead
@@ -403,7 +435,7 @@ func (r *revisionOrder) reachable(s *state, skip int) bool {
 		if rev > s.rev+countHorizon {
 			break
 		}
-		for _, c := range r.counts[rev] {
+		for _, c := range r.counts.get(rev) {
 			var sure, maybe int64
 			for k := c.lo; k < c.hi; k++ {
 				present := s.kvs[k].Version != 0
@@ -521,10 +553,17 @@ func (r *revisionOrder) note(kv history.KeyValue, to int64) {
 		return
 	}
 	if kv.Version == 0 {
-		r.written[kv.ModRevision] = append(r.written[kv.ModRevision], kv.Key)
+		r.written.add(kv.ModRevision, kv.Key)
 		return
 	}
 	l := life{kv.CreateRevision, kv.ModRevision, kv.Version}
+	if !r.w.slow {
+		if r.recordLife(kv.Key, l, to) {
+			r.created.add(l.c, kv.Key)
+			r.written.add(l.m, kv.Key)
+		}
+		return
+	}
 	m := r.lives[kv.Key]
 	if m == nil {
 		m = map[life]int64{}
@@ -534,15 +573,15 @@ func (r *revisionOrder) note(kv history.KeyValue, to int64) {
 		return
 	}
 	if _, ok := m[l]; !ok {
-		r.created[l.c] = append(r.created[l.c], kv.Key)
-		r.written[l.m] = append(r.written[l.m], kv.Key)
+		r.created.add(l.c, kv.Key)
+		r.written.add(l.m, kv.Key)
 	}
 	m[l] = to
 }
 
 func (r *revisionOrder) byCall(ops []int) {
 	h := r.w.h
-	slices.SortFunc(ops, func(a, b int) int { return cmp.Or(cmp.Compare(h.Ops[a].Call, h.Ops[b].Call), cmp.Compare(a, b)) })
+	r.w.sortOpsByTime(ops, func(i int) int64 { return h.Ops[i].Call })
 }
 
 // lowerBounds sets lb: for each ambiguous op, the highest header revision
@@ -555,7 +594,7 @@ func (r *revisionOrder) lowerBounds() {
 			acked = append(acked, i)
 		}
 	}
-	slices.SortFunc(acked, func(a, b int) int { return cmp.Compare(h.Ops[a].Return, h.Ops[b].Return) })
+	r.w.sortOpsByTime(acked, func(i int) int64 { return h.Ops[i].Return })
 	r.highest = make([]int64, len(acked))
 	r.returns = make([]int64, len(acked))
 	for k, i := range acked {
@@ -566,7 +605,7 @@ func (r *revisionOrder) lowerBounds() {
 		}
 	}
 	byCall := slices.Clone(acked)
-	slices.SortFunc(byCall, func(a, b int) int { return cmp.Compare(h.Ops[a].Call, h.Ops[b].Call) })
+	r.w.sortOpsByTime(byCall, func(i int) int64 { return h.Ops[i].Call })
 	r.calls = make([]int64, len(byCall))
 	r.lowest = make([]int64, len(byCall))
 	for k := len(byCall) - 1; k >= 0; k-- {
@@ -806,7 +845,7 @@ func (r *revisionOrder) scheduleOptional() {
 			r.mutations = append(r.mutations, i)
 		}
 	}
-	slices.SortFunc(r.mutations, func(a, b int) int { return cmp.Compare(h.Ops[a].Return, h.Ops[b].Return) })
+	r.w.sortOpsByTime(r.mutations, func(i int) int64 { return h.Ops[i].Return })
 	revoking := map[int64]bool{}
 	for _, i := range r.ambiguous {
 		op := &h.Ops[i]
@@ -952,7 +991,7 @@ func (r *revisionOrder) answered(ops []int) bool {
 			return false
 		}
 	}
-	seen := r.seen[w.live.rev]
+	seen := r.seen.get(w.live.rev)
 	if len(seen) == 0 || !slices.ContainsFunc(ops, func(i int) bool { return w.reqs[i].Compact != nil }) {
 		return true
 	}
@@ -1216,7 +1255,8 @@ func (r *revisionOrder) restoreOrder(m mark) {
 	}
 	for k := len(w.appended) - 1; k >= m.appended; k-- {
 		key := w.appended[k]
-		w.past[key] = w.past[key][:len(w.past[key])-1]
+		vs := w.past[key]
+		vs.kvs = vs.kvs[:len(vs.kvs)-1]
 	}
 	w.appended = w.appended[:m.appended]
 	for _, i := range w.placed[m.placed:] {
@@ -1284,7 +1324,7 @@ func (r *revisionOrder) search() error {
 // write places the writer of rev, the next candidate if rev is a gap.
 func (r *revisionOrder) write(rev int64) bool {
 	w := r.w
-	if i, ok := r.writers[rev]; ok {
+	if i, ok := r.writers.get(rev); ok {
 		r.expire(w.h.Ops[i].Call, 0)
 		o := w.apply(i, w.reqs[i])
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
@@ -1337,15 +1377,29 @@ func (r *revisionOrder) write(rev int64) bool {
 // every response and real-time constraint before passing.
 func (r *revisionOrder) candidates(rev int64) []int {
 	h := r.w.h
-	out := slices.Clone(r.revokes[rev])
+	out := slices.Clone(r.revokes.get(rev))
+	possible := r.ambiguous
+	if !r.w.slow {
+		possible = slices.Clone(r.ambiguousWrites)
+		var leases []int64
+		for _, kv := range r.w.live.kvs {
+			if kv.Version == 0 || kv.Lease == 0 || slices.Contains(leases, kv.Lease) {
+				continue
+			}
+			leases = append(leases, kv.Lease)
+			possible = append(possible, r.revokersByLease[kv.Lease]...)
+		}
+	}
 	var amb []int
-	for _, i := range r.ambiguous {
+	for _, i := range possible {
 		if at, ok := r.reserved[i]; ok && at != rev {
 			continue
 		}
-		if l := h.Ops[i].Req.LeaseRevoke; l != nil && r.grants[l.ID] <= 1 && r.alive[l.ID] >= rev {
-			// An answer shows the lease in use at rev or later (#237).
-			continue
+		if l := h.Ops[i].Req.LeaseRevoke; l != nil {
+			if r.grants[l.ID] <= 1 && r.alive[l.ID] >= rev {
+				// An answer shows the lease in use at rev or later (#237).
+				continue
+			}
 		}
 		if !r.used[i] && r.lb[i] < rev {
 			amb = append(amb, i)
@@ -1406,7 +1460,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 		// up for (#386). A write that reached the version early passed,
 		// and the search tried every order of the revisions up to that
 		// write before it failed there (#499).
-		for l, to := range r.lives[e.KV.Key] {
+		for l, to := range r.keyLives(e.KV.Key) {
 			if l.c <= rev && rev <= to {
 				kv, ok := s.get(e.KV.Key)
 				if !ok || kv.CreateRevision != l.c || rev < l.m && kv.Version >= l.v || rev >= l.m && kv.Version != l.v {
@@ -1416,17 +1470,17 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 		}
 	}
 	// What clients saw happen at rev must happen.
-	for _, k := range r.created[rev] {
+	for _, k := range r.created.get(rev) {
 		if kv, ok := s.get(k); !ok || kv.CreateRevision != rev {
 			return false
 		}
 	}
-	for _, k := range r.written[rev] {
+	for _, k := range r.written.get(rev) {
 		if kv, ok := s.get(k); !ok || kv.ModRevision != rev {
 			return false
 		}
 	}
-	for _, k := range r.deleted[rev] {
+	for _, k := range r.deleted.get(rev) {
 		if _, ok := s.get(k); ok || !slices.ContainsFunc(o.events, func(e history.Event) bool { return e.KV.Key == k }) {
 			return false
 		}
@@ -1443,7 +1497,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 	r.insertOptional(rev)
 	r.expireEarly(rev)
 	var acked []int
-	for _, i := range slices.Concat(r.others[rev], r.revokes[rev]) {
+	for _, i := range slices.Concat(r.others.get(rev), r.revokes.get(rev)) {
 		if !r.used[i] {
 			acked = append(acked, i)
 		}
@@ -1466,9 +1520,13 @@ func (r *revisionOrder) finish(rev int64) bool {
 	for first > 0 && w.states[first-1].rev == rev {
 		first--
 	}
-	for _, i := range r.seen[rev] {
-		if _, ok := w.find(i, first, len(w.states)-1); !ok {
+	for _, i := range r.seen.get(rev) {
+		j, ok := w.find(i, first, len(w.states)-1)
+		if !ok {
 			return r.dead(rev, w.unanswered(i, first, len(w.states)-1, first, len(w.states)-1))
+		}
+		if !w.slow {
+			w.firstAnswers[i] = firstAnswer{id: w.states[j].id, at: j}
 		}
 	}
 	return true

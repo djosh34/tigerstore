@@ -81,10 +81,10 @@ func TestReachableSeesCountsBeyondTheNearest(t *testing.T) {
 			r := &revisionOrder{
 				w:         &witness{h: &history.History{}},
 				countRevs: []int64{3, 5},
-				counts: map[int64][]count{
+				counts: revisionLists[count]{sparse: map[int64][]count{
 					3: {{rev: 3, lo: 0, hi: 1, n: 1}},
 					5: {{rev: 5, lo: 1, hi: 2, n: c.count}},
-				},
+				}},
 				putRevs: make([][]int64, 2), delRevs: make([][]int64, 2),
 				putters: make([][]int, 2), deleters: make([][]int, 2),
 			}

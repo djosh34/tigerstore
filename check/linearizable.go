@@ -200,7 +200,7 @@ func modelRequest(op *history.Op) history.Request {
 }
 
 // keysOf returns every key a put in reqs can create, sorted.
-func keysOf(reqs []history.Request) []string {
+func keysOf(batches ...[]history.Request) []string {
 	seen := map[string]bool{}
 	add := func(ops []history.TxnOp) {
 		for _, op := range ops {
@@ -209,13 +209,15 @@ func keysOf(reqs []history.Request) []string {
 			}
 		}
 	}
-	for _, r := range reqs {
-		switch {
-		case r.Put != nil:
-			seen[r.Put.Key] = true
-		case r.Txn != nil:
-			add(r.Txn.Success)
-			add(r.Txn.Failure)
+	for _, reqs := range batches {
+		for _, r := range reqs {
+			switch {
+			case r.Put != nil:
+				seen[r.Put.Key] = true
+			case r.Txn != nil:
+				add(r.Txn.Success)
+				add(r.Txn.Failure)
+			}
 		}
 	}
 	keys := make([]string, 0, len(seen))

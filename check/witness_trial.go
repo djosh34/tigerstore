@@ -89,9 +89,12 @@ func (w *witness) scopedState(i, j int) *state {
 	if w.slow {
 		return w.stateAt(j)
 	}
-	keys, ok := w.scope[i]
-	if !ok {
+	keys := w.scope[i]
+	if keys == nil {
 		keys = requestKeys(w.keys, w.reqs[i])
+		if keys == nil {
+			keys = []string{}
+		}
 		w.scope[i] = keys
 	}
 	sm := w.states[j]
@@ -109,6 +112,19 @@ func requestKeys(keys []string, req history.Request) []string {
 		return keys
 	}
 	all := &state{keys: keys}
+	var key, rangeEnd string
+	switch {
+	case req.Range != nil:
+		key, rangeEnd = req.Range.Key, req.Range.End
+	case req.Put != nil:
+		key = req.Put.Key
+	case req.Delete != nil:
+		key, rangeEnd = req.Delete.Key, req.Delete.End
+	}
+	if req.Range != nil || req.Put != nil || req.Delete != nil {
+		lo, hi := all.span(key, rangeEnd)
+		return keys[lo:hi]
+	}
 	var spans [][2]int
 	add := func(key, end string) {
 		if lo, hi := all.span(key, end); lo < hi {
