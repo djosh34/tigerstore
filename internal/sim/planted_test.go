@@ -201,7 +201,7 @@ func witnessCatches(t *testing.T, res *Result) bool {
 		t.Fatal(err)
 	}
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
-		err := check.Witnessed(h, mode, time.Minute, witnessSteps)
+		err := check.Witnessed(h, mode, time.Minute, witnessSteps, wallStop)
 		if err == nil || !witnessFinding.MatchString(err.Error()) {
 			t.Logf("the witness checker (%s) did not find the stale read on this seed: %v", mode, err)
 			return false

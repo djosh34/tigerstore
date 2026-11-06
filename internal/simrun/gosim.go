@@ -29,6 +29,13 @@ func BubbleFor(t *testing.T, d time.Duration, f func(*testing.T)) {
 	f(t)
 }
 
+// WallLimitPassed reports whether the run passed its limit of real time,
+// which the driver sets ($SIM_WALL).
+func WallLimitPassed() bool { return gosim.WallLimitPassed() }
+
+// Stacks returns every goroutine's stack, the simulated nodes' included.
+func Stacks() []byte { return gosim.Stacks() }
+
 // Artifact saves data under name for the driver of the run.
 func Artifact(name string, data []byte) { gosim.WriteArtifact(name, data) }
 

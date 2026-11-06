@@ -5,6 +5,7 @@ type Option func(*options)
 
 type options struct {
 	steps int64
+	stop  func() bool
 	// slow makes the witness copy the whole store for every try and
 	// answer, as the tests that compare it with the fast one need.
 	slow bool
@@ -17,6 +18,13 @@ type options struct {
 // bound that holds.
 func MaxSteps(n int64) Option {
 	return func(o *options) { o.steps = n }
+}
+
+// StopWhen fails a check, as its timeout does, once stop reports true;
+// the check asks it every 1,024 steps. Inside a simulation it is how a
+// limit of real time stops a check whose clock stands still.
+func StopWhen(stop func() bool) Option {
+	return func(o *options) { o.stop = stop }
 }
 
 func optionsOf(opts []Option) options {
