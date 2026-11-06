@@ -619,12 +619,10 @@ func TestNewestVersion(t *testing.T) {
 }
 
 // TestFormedClusterAnswers runs seeds that form their cluster first, with
-// no faults after it, and requires no call to time out and every call to
-// answer within 500 ms from 2 s on: the run starts on the formed disks
-// with nothing held from the formation. A node left behind may start
-// again from a snapshot, and a call in flight then gets "server stopped",
-// as in a real cluster. Seed 3 times out a call while a node fetches one
-// snapshot after another (#518).
+// no faults after it, and requires every call to get a definite answer,
+// within 500 ms from 2 s on: the run starts on the formed disks with
+// nothing held from the formation. Seed 3 times out a call while a node
+// fetches one snapshot after another (#518).
 func TestFormedClusterAnswers(t *testing.T) {
 	simrun.Each(t, []uint64{1, 2, 3}, func(t *testing.T, seed uint64) struct{} {
 		cfg := DefaultConfig(seed)
@@ -636,8 +634,8 @@ func TestFormedClusterAnswers(t *testing.T) {
 		res := run(t, cfg)
 		slowest := int64(0)
 		for _, r := range res.History {
-			if errors.Is(r.Err, errClientTimeout) {
-				t.Fatalf("seed %d: call at %s on node %d timed out with no faults", seed, seconds(r.Call), r.Node+1)
+			if r.Ambiguous {
+				t.Fatalf("seed %d: call at %s on node %d got no definite answer with no faults: %v", seed, seconds(r.Call), r.Node+1, r.Err)
 			}
 			if r.Call >= 2*Second {
 				slowest = max(slowest, r.Return-r.Call)

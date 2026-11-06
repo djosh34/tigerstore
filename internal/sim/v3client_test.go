@@ -2,38 +2,143 @@ package sim
 
 import (
 	"context"
+	"errors"
+	"net"
+	"sync"
 	"testing"
 	"time"
 
-	"google.golang.org/grpc/stats"
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
-// TestRetryPauseBlocks checks, under gosim, that the clientv3 clients'
-// stats handler makes a transparent retry wait and a first attempt not.
-// The spin of #440 needed a call to meet a transport in the moment it was
-// closing, which no short scenario met without the pause: 8 seeds with
-// resets every 100 ms, 64 with every fault and resets every 300 ms, 16
-// with crashes and resets every 200 ms, and a server that answers every
-// connection with a GOAWAY. Seed 202610250141001 of the long
-// profile on ad989ad9 did, and runs 42099847472 and 42099856592 show it
-// ending only with the pause (#440).
-func TestRetryPauseBlocks(t *testing.T) {
+// TestClosingTransportRetries is the spin of #440 made short. A
+// clientv3 client's connection breaks: its writer fails at once, but
+// its reader sees the break only a second later, as it did when gosim
+// ran another goroutine first. A call that starts in that second gets
+// no stream from the transport, which the client still counts as ready,
+// and gRPC retries it at once. Without the pause of v3Options that loop
+// never blocks, so under gosim the reader never runs, the clock never
+// moves, and the test runs until its time limit. With the pause the
+// clock moves, the reader closes the transport, and the call goes
+// through on a new connection.
+func TestClosingTransportRetries(t *testing.T) {
 	if simrun.Race {
-		t.Skip("the pause is for gosim")
+		t.Skip("the spin is gosim's")
 	}
 	if simrun.Drive(t, 1) {
 		return
 	}
-	for _, c := range []struct {
-		retry bool
-		want  time.Duration
-	}{{false, 0}, {true, time.Millisecond}} {
-		start := time.Now()
-		retryPause{}.HandleRPC(context.Background(), &stats.Begin{IsTransparentRetryAttempt: c.retry})
-		if got := time.Since(start); got != c.want {
-			t.Errorf("an attempt with transparent retry %v waited %v, want %v", c.retry, got, c.want)
+	lis := bufconn.Listen(1 << 16)
+	srv := grpc.NewServer()
+	pb.RegisterKVServer(srv, emptyKV{})
+	go func() { _ = srv.Serve(lis) }()
+	defer srv.Stop()
+
+	var (
+		mu   sync.Mutex
+		last *breakingConn
+	)
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints: []string{"http://kv"},
+		Logger:    zap.NewNop(),
+		DialOptions: v3Options(func(ctx context.Context, _ string) (net.Conn, error) {
+			c, err := lis.DialContext(ctx)
+			if err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			last = &breakingConn{Conn: c}
+			return last, nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cli.Close() }()
+	get := func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_, err := cli.Get(ctx, "k")
+		return err
+	}
+	if err := get(); err != nil {
+		t.Fatalf("the first call: %v", err)
+	}
+
+	mu.Lock()
+	last.breakWrites()
+	mu.Unlock()
+	// The first call's write fails in a flush, whose error the
+	// transport's writer does not check, and the second's ends that
+	// writer. Both wait for their
+	// answers until the reader sees the break, and then clientv3 tries
+	// them again.
+	waiting := make(chan error, 2)
+	for range 2 {
+		go func() { waiting <- get() }()
+		time.Sleep(10 * time.Millisecond)
+	}
+	// This call starts after the writer ended and before the reader saw
+	// the break.
+	if err := get(); err != nil {
+		t.Errorf("a call on the closing transport: %v", err)
+	}
+	for range 2 {
+		if err := <-waiting; err != nil {
+			t.Errorf("a call that broke the transport: %v", err)
 		}
 	}
+}
+
+// emptyKV answers each range with no keys.
+type emptyKV struct{ pb.UnimplementedKVServer }
+
+func (emptyKV) Range(context.Context, *pb.RangeRequest) (*pb.RangeResponse, error) {
+	return &pb.RangeResponse{Header: &pb.ResponseHeader{}}, nil
+}
+
+// breakingConn is a connection whose writes fail once it broke, and
+// whose reads end a second after that.
+type breakingConn struct {
+	net.Conn
+	mu     sync.Mutex
+	broken bool
+	once   sync.Once
+}
+
+var errBroken = errors.New("the connection broke")
+
+func (c *breakingConn) breakWrites() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.broken = true
+}
+
+func (c *breakingConn) Write(b []byte) (int, error) {
+	c.mu.Lock()
+	broken := c.broken
+	c.mu.Unlock()
+	if broken {
+		c.closeLater()
+		return 0, errBroken
+	}
+	return c.Conn.Write(b)
+}
+
+func (c *breakingConn) Close() error {
+	c.closeLater()
+	return nil
+}
+
+// closeLater closes the connection, which ends its reads, a second from
+// now.
+func (c *breakingConn) closeLater() {
+	c.once.Do(func() { time.AfterFunc(time.Second, func() { _ = c.Conn.Close() }) })
 }

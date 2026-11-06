@@ -61,19 +61,9 @@ func (c *client) newV3() error {
 		Endpoints: []string{"https://" + clientAddr(c.node)},
 		TLS:       &tls.Config{RootCAs: s.net.ca},
 		Logger:    zap.NewNop(),
-		DialOptions: []grpc.DialOption{
-			grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
-				return s.net.dial(ctx, s, nil, addr)
-			}),
-			// gRPC's own backoff between dials grows to 2 minutes, which
-			// would hold a client of one node that was down a few times
-			// past the end of the run: calls wait for a connection.
-			grpc.WithConnectParams(grpc.ConnectParams{
-				Backoff:           backoff.Config{BaseDelay: 100 * time.Millisecond, Multiplier: 1.6, Jitter: 0.2, MaxDelay: time.Second},
-				MinConnectTimeout: time.Duration(dialTimeout),
-			}),
-			grpc.WithStatsHandler(retryPause{}),
-		},
+		DialOptions: v3Options(func(ctx context.Context, addr string) (net.Conn, error) {
+			return s.net.dial(ctx, s, nil, addr)
+		}),
 	})
 	if err != nil {
 		return err
@@ -84,6 +74,22 @@ func (c *client) newV3() error {
 	// client it sends one again only when it never left.
 	c.v3, c.lease = cli, clientv3.NewLeaseFromLeaseClient(pb.NewLeaseClient(cli.ActiveConnection()), cli, 0)
 	return nil
+}
+
+// v3Options are the dial options of the clientv3 clients, which dial
+// with dial.
+func v3Options(dial func(context.Context, string) (net.Conn, error)) []grpc.DialOption {
+	return []grpc.DialOption{
+		grpc.WithContextDialer(dial),
+		// gRPC's own backoff between dials grows to 2 minutes, which would
+		// hold a client of one node that was down a few times past the end
+		// of the run: calls wait for a connection.
+		grpc.WithConnectParams(grpc.ConnectParams{
+			Backoff:           backoff.Config{BaseDelay: 100 * time.Millisecond, Multiplier: 1.6, Jitter: 0.2, MaxDelay: time.Second},
+			MinConnectTimeout: time.Duration(dialTimeout),
+		}),
+		grpc.WithStatsHandler(retryPause{}),
+	}
 }
 
 // retryPause makes each transparent retry of a call wait a millisecond
