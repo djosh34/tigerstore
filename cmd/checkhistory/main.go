@@ -15,7 +15,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -72,7 +74,11 @@ func main() {
 		}
 		for _, name := range run {
 			start := time.Now()
+			clear(check.Phases)
 			err := checkers[name](h)
+			for _, k := range slices.Sorted(maps.Keys(check.Phases)) {
+				fmt.Printf("PHASE %s %d\n", k, check.Phases[k].Microseconds())
+			}
 			v := verdict{File: file, Checker: name, Ops: len(h.Ops), Clients: len(clients), Passed: err == nil, Seconds: time.Since(start).Seconds()}
 			if err != nil {
 				failed = true

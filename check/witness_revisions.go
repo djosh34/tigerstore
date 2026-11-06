@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/djosh34/tigerstore/history"
 )
@@ -246,6 +247,8 @@ type span struct{ lo, hi int64 }
 
 // index sorts the ops into the maps of r.
 func (r *revisionOrder) index() error {
+	t0 := time.Now()
+	defer func() { Phases["index"] += time.Since(t0) }()
 	h := r.w.h
 	values := map[[2]string][]int{}
 	for i := range h.Ops {
@@ -330,6 +333,9 @@ func (r *revisionOrder) index() error {
 		}
 		r.resolved[kv.ModRevision] = ops[0]
 	}
+	Phases["index.ops"] += time.Since(t0)
+	tObs := time.Now()
+	defer func() { _ = tObs }()
 	for i := range h.Ops {
 		observed(&h.Ops[i], saw)
 	}
@@ -374,9 +380,16 @@ func (r *revisionOrder) index() error {
 	for k, ss := range r.covered {
 		r.covered[k] = merge(ss)
 	}
+	Phases["index.observed"] += time.Since(tObs)
+	tc := time.Now()
 	r.indexCounts()
+	Phases["index.counts"] += time.Since(tc)
+	tc = time.Now()
 	r.indexRoom()
+	Phases["index.room"] += time.Since(tc)
+	tc = time.Now()
 	r.scheduleOptional()
+	Phases["index.optional"] += time.Since(tc)
 	return nil
 }
 
@@ -1367,6 +1380,7 @@ func (r *revisionOrder) dead(rev int64, err error) bool {
 // gap, as after a revision it cannot explain.
 func (r *revisionOrder) search() error {
 	w := r.w
+	searchStart := time.Now()
 	if !r.finish(1) {
 		return r.failure
 	}
@@ -1377,11 +1391,16 @@ func (r *revisionOrder) search() error {
 		}
 		var ok bool
 		if rev > r.top {
+			Phases["search"] += time.Since(searchStart)
 			r.expireEnd()
+			to := time.Now()
 			err := w.observe()
+			Phases["observe"] += time.Since(to)
+			to = time.Now()
 			if err == nil {
 				err = w.verify()
 			}
+			Phases["verify"] += time.Since(to)
 			if err == nil {
 				return nil
 			}
@@ -1675,3 +1694,6 @@ func (r *revisionOrder) finish(rev int64) bool {
 	}
 	return true
 }
+
+// Phases are the times of the check's phases (exp/499-flat-phases only).
+var Phases = map[string]time.Duration{}

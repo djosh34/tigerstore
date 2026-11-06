@@ -71,7 +71,9 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 	if timeout <= 0 {
 		return fmt.Errorf("witness check needs a positive timeout, got %s", timeout)
 	}
+	tn := time.Now()
 	w := newWitness(h, time.Now().Add(timeout))
+	Phases["newWitness"] += time.Since(tn)
 	o := optionsOf(opts)
 	w.maxSteps, w.stop, w.slow = o.steps, o.stop, o.slow
 	var err error
