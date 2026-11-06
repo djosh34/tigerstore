@@ -34,8 +34,8 @@ type recordLog struct {
 	vals valueTable
 	// types are the messages' types, by index.
 	types []protoreflect.MessageType
-	// errs are the calls' errors, one of each kind (errKey), and
-	// errIndex finds them by the hash of their kind.
+	// errs are the calls' errors, one for the errors alike (errKind),
+	// and errIndex finds them by the hash of their kind.
 	errs     []error
 	errIndex hashTable
 	// scratch holds the values of the message being encoded.
@@ -63,8 +63,11 @@ type loggedMessage struct {
 	ids0, ids1 uint32
 }
 
-// errKind is the kind of an error: its type and message. Errors of one
-// kind are the same to the checks, so a run keeps the first of each.
+// errKind is the kind of an error: its type and message. A run keeps the
+// first error of each kind for the errors that it is and that are it
+// (errors.Is both ways), as the checks tell errors apart with errors.Is:
+// gRPC's status errors of one code and message share one, and two
+// sentinels with the same text stay apart.
 func errKind(err error) string { return fmt.Sprintf("%T %s", err, err) }
 
 // newRecordLog returns an empty recordLog. Protobuf sets up a message
@@ -123,7 +126,10 @@ func (l *recordLog) errorIndex(err error) int32 {
 		return -1
 	}
 	kind := errKind(err)
-	i, ok := l.errIndex.find(fnv64a([]byte(kind)), func(i uint32) bool { return errKind(l.errs[i]) == kind })
+	i, ok := l.errIndex.find(fnv64a([]byte(kind)), func(i uint32) bool {
+		kept := l.errs[i]
+		return errKind(kept) == kind && errors.Is(err, kept) && errors.Is(kept, err)
+	})
 	if !ok {
 		i = uint32(len(l.errs))
 		l.errs = append(l.errs, err)

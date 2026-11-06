@@ -205,9 +205,6 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 		s.fail("keeping call %d of client %d: %w", c.n, c.id, kerr)
 	}
 	if c.kube != nil {
-		if err == nil {
-			s.values.shareMessage(resp)
-		}
 		c.kubeDone(r)
 	}
 	if r.v3 && err == nil {

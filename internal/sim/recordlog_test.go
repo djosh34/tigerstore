@@ -91,7 +91,7 @@ func TestRecordLog(t *testing.T) {
 	}
 	for i, want := range calls {
 		g := got[i]
-		if g.Client != want.Client || g.Node != want.Node || g.Call != want.Call || g.Return != want.Return || g.Ambiguous != want.Ambiguous || g.v3 != want.v3 || !errors.Is(g.Err, want.Err) {
+		if g.Client != want.Client || g.Node != want.Node || g.Call != want.Call || g.Return != want.Return || g.Ambiguous != want.Ambiguous || g.v3 != want.v3 || !errors.Is(g.Err, want.Err) || !errors.Is(want.Err, g.Err) {
 			t.Errorf("call %d: got %+v, want %+v", i, g, want)
 		}
 		if !proto.Equal(g.req, want.req) || !proto.Equal(g.Resp, want.Resp) || fmt.Sprintf("%T", g.Resp) != fmt.Sprintf("%T", want.Resp) {
