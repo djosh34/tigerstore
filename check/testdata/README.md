@@ -48,3 +48,14 @@ saved by a local replay, and was cut the same way at header revision 64. A
 read answers revision 1 after a delete returned revision 5. The revision
 witness found that only once it had filled every gap, after it tried every
 other order of them, and ran out of its steps (#387).
+
+`witness-425.json.gz` is the history of #425's seed, saved from `main` at
+`bd1ade31`, where the revision witness timed out after 50,000,000 steps.
+The seed no longer plays out that way (#482), so the file keeps it.
+
+`witness-control-80-201.json.gz` is the unplanted control seed 201 of
+#485's sweep, with 80 s of faults, replayed on `exp/485-sim-ceiling` at
+`0a63d065` with that commit's environment: 12,480 ops, as in the sweep.
+The revision witness timed out on it after 50,000,000 steps (#425, #499).
+Both are full histories; `TestWitnessHardHistories` drops their log and
+effects.

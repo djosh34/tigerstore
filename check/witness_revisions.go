@@ -29,7 +29,7 @@ import (
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
 		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
-		alive: map[int64]int64{}, grants: map[int64]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
+		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
 		counts: map[int64][]count{},
 	}
 	w.search = r
@@ -61,6 +61,8 @@ type revisionOrder struct {
 	// unless the ID was granted more than once (grants).
 	alive  map[int64]int64
 	grants map[int64]int
+	// grantsOf are the ambiguous grants of each lease ID (fitsGranted).
+	grantsOf map[int64][]int
 	// returns and highest are the return times of the acked ops, in
 	// order, and the highest header revision of those up to each; calls
 	// and lowest their call times, in order, and the lowest header
@@ -204,6 +206,9 @@ func (r *revisionOrder) index() error {
 				continue
 			}
 			r.ambiguous = append(r.ambiguous, i)
+			if g := op.Req.LeaseGrant; g != nil {
+				r.grantsOf[g.ID] = append(r.grantsOf[g.ID], i)
+			}
 			for _, kv := range putsOf(op.Req) {
 				values[kv] = append(values[kv], i)
 			}
@@ -740,9 +745,9 @@ func (r *revisionOrder) scheduleOptional() {
 	present, gone := map[int64]int64{}, map[int64]int64{}
 	granted, revoked := map[int64]bool{}, map[int64]bool{}
 	// compacted are the compacted rejections, by the revision they asked
-	// for and their return; reads are the acked reads at a revision, and
+	// for, their call and their return; reads are the acked reads at a revision, and
 	// compactions the acked compactions.
-	type rejection struct{ rev, ret int64 }
+	type rejection struct{ rev, call, ret int64 }
 	var compacted []rejection
 	var compactions, reads []int
 	note := func(lease, rev int64) {
@@ -791,7 +796,7 @@ func (r *revisionOrder) scheduleOptional() {
 		case sameError(op.Err, errLeaseExists):
 			note(op.Req.LeaseGrant.ID, 1)
 		case sameError(op.Err, errCompacted):
-			compacted = append(compacted, rejection{requestedRevision(op.Req), op.Return})
+			compacted = append(compacted, rejection{requestedRevision(op.Req), op.Call, op.Return})
 		}
 	}
 	for _, w := range h.Watches {
@@ -863,7 +868,13 @@ func (r *revisionOrder) scheduleOptional() {
 			c := op.Req.Compact.Revision
 			goneAt := int64(math.MaxInt64)
 			for _, rj := range compacted {
-				if rj.rev <= c {
+				// An acked compaction to its revision or above that
+				// returned before it was called explains it in every
+				// order, as an acked revoke a lease found gone (#514).
+				explained := slices.ContainsFunc(compactions, func(k int) bool {
+					return h.Ops[k].Req.Compact.Revision >= rj.rev && h.Ops[k].Return < rj.call
+				})
+				if rj.rev <= c && !explained {
 					goneAt = min(goneAt, rj.ret)
 				}
 			}
@@ -893,42 +904,61 @@ func (r *revisionOrder) scheduleOptional() {
 	}
 }
 
-// maxSlotOrder bounds the acked mutations of one revision whose orders
-// slotOrder tries.
-const maxSlotOrder = 6
+// slotSteps bounds the steps of slotOrder's search.
+const slotSteps = 4096
 
 // slotOrder returns an order of ops, acked mutations that change no key
 // at the current revision, in call order: that one if the model gives
 // each its answer in it, else the first order that follows real time in
 // which it does, else call order. Two compactions at one revision, for
 // one, must go in the order of their revisions, and a compaction after
-// a grant that returned before a read below it was called (#284).
+// a grant that returned before a read below it was called (#284). The
+// search drops an order once an op in it breaks real time or gets another
+// answer, as answered would, so it reaches the orders of a revision with
+// many such ops, a busy one's grants, within slotSteps: a grant and a
+// revoke of its lease, or two compactions, whose calls overlap must go in
+// one order among them (#514).
 func (r *revisionOrder) slotOrder(ops []int) []int {
-	if len(ops) < 2 || len(ops) > maxSlotOrder || r.answered(ops) {
+	if len(ops) < 2 || r.answered(ops) {
 		return ops
 	}
+	w := r.w
 	order := make([]int, 0, len(ops))
-	used := make([]bool, len(ops))
-	var try func() bool
-	try = func() bool {
+	placed := make([]bool, len(ops))
+	steps := 0
+	var next func(s *state) bool
+	next = func(s *state) bool {
 		if len(order) == len(ops) {
 			return r.answered(order)
 		}
 		for k, i := range ops {
-			if used[k] {
+			if placed[k] {
 				continue
 			}
-			used[k] = true
-			order = append(order, i)
-			if try() {
-				return true
+			if steps++; steps > slotSteps {
+				return false
 			}
-			order = order[:len(order)-1]
-			used[k] = false
+			// Every op left that returned before its call goes first.
+			if slices.ContainsFunc(ops, func(j int) bool {
+				return w.h.Ops[j].Return < w.h.Ops[i].Call && !slices.Contains(order, j)
+			}) {
+				continue
+			}
+			t, undo := r.try(s, w.reqs[i])
+			if o := t.step(w.reqs[i], false); o.err == nil && matches(o, w.h.Ops[i].Resp) {
+				placed[k] = true
+				order = append(order, i)
+				if next(t) {
+					return true
+				}
+				order = order[:len(order)-1]
+				placed[k] = false
+			}
+			undo()
 		}
 		return false
 	}
-	if try() {
+	if next(w.live.clone()) {
 		return order
 	}
 	return ops
@@ -1293,7 +1323,7 @@ func (r *revisionOrder) write(rev int64) bool {
 		return true
 	}
 	if i, ok := r.resolved[rev]; ok && !r.used[i] && r.lb[i] < rev {
-		if r.fits(i, rev) {
+		if r.fitsGranted(i, rev) {
 			r.expire(w.h.Ops[i].Call, 0)
 			w.apply(i, w.reqs[i])
 			r.used[i] = true
@@ -1310,7 +1340,7 @@ func (r *revisionOrder) write(rev int64) bool {
 	}
 	for ; f.next < len(f.cands); f.next++ {
 		i := f.cands[f.next]
-		if r.used[i] || !r.fits(i, rev) {
+		if r.used[i] || !r.fitsGranted(i, rev) {
 			continue
 		}
 		r.expire(w.h.Ops[i].Call, 0)
@@ -1361,6 +1391,56 @@ func (r *revisionOrder) candidates(rev int64) []int {
 		return cmp.Or(cmp.Compare(revoke(a), revoke(b)), cmp.Compare(h.Ops[a].Call, h.Ops[b].Call), cmp.Compare(a, b))
 	})
 	return append(out, amb...)
+}
+
+// fitsGranted is fits, and if op i does not fit, it puts in first, for
+// each lease it puts on that no live lease matches, an ambiguous grant of
+// it not used yet that may come before rev, and keeps them if op i then
+// fits. No answer need show such a lease in use, so its grant need not be
+// an optional mutation, and an ambiguous put that a client saw write could
+// not go in at all (#514). A grant changes no key and no revision; a
+// wrong one is undone with the candidate.
+func (r *revisionOrder) fitsGranted(i int, rev int64) bool {
+	if r.fits(i, rev) {
+		return true
+	}
+	grants := r.grantsFor(leasesOf(r.w.reqs[i]), rev-1)
+	if len(grants) == 0 {
+		return false
+	}
+	m := r.saveOrder()
+	r.grant(grants)
+	if r.fits(i, rev) {
+		return true
+	}
+	r.restoreOrder(m)
+	for _, g := range grants {
+		r.used[g] = false
+	}
+	return false
+}
+
+// grantsFor returns, for each lease of ids that no live lease matches, an
+// ambiguous grant of it not used yet that may go in at revision at.
+func (r *revisionOrder) grantsFor(ids []int64, at int64) []int {
+	var grants []int
+	for _, id := range ids {
+		if r.w.live.hasLease(id) || slices.ContainsFunc(grants, func(g int) bool { return r.w.reqs[g].LeaseGrant.ID == id }) {
+			continue
+		}
+		if k := slices.IndexFunc(r.grantsOf[id], func(g int) bool { return !r.used[g] && r.lb[g] <= at }); k >= 0 {
+			grants = append(grants, r.grantsOf[id][k])
+		}
+	}
+	return grants
+}
+
+// grant puts in the grants.
+func (r *revisionOrder) grant(grants []int) {
+	for _, g := range grants {
+		r.w.apply(g, r.w.reqs[g])
+		r.used[g] = true
+	}
 }
 
 // fits reports whether op i can write revision rev next, after the

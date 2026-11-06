@@ -215,9 +215,9 @@ func leasedHistory(rng *rand.Rand) *history.History {
 // TestFastWitnessMatchesSlowWithLeases is TestFastWitnessMatchesSlow on
 // leasedHistory, in both modes, so that the search tries transactions,
 // revokes and compactions, with a stale answer put into every other one.
-// It requires the same verdict with and without the speedups, not a pass
-// of every true history: the witness from the revisions refuses some true
-// leasedHistory ones, as before them (#514).
+// It requires the same verdict with and without the speedups, and a pass
+// of every true history: the witness from the revisions refused some whose
+// ambiguous put used a lease that only an ambiguous grant made (#514).
 func TestFastWitnessMatchesSlowWithLeases(t *testing.T) {
 	rng := rand.New(rand.NewPCG(499, 513))
 	rejected := 0
@@ -233,6 +233,9 @@ func TestFastWitnessMatchesSlowWithLeases(t *testing.T) {
 			if (got == nil) != (want == nil) {
 				t.Fatalf("history %d, stale %v, %s: slow %v, fast %v", i, stale, mode, want, got)
 			}
+			if !stale && got != nil {
+				t.Fatalf("history %d, %s: a true history fails: %v", i, mode, got)
+			}
 			if stale && got != nil {
 				rejected++
 			}
@@ -242,4 +245,32 @@ func TestFastWitnessMatchesSlowWithLeases(t *testing.T) {
 		t.Fatalf("only %d stale checks failed", rejected)
 	}
 	t.Logf("%d stale checks failed with and without the speedups", rejected)
+}
+
+// TestWitnessTrueLeasedHistories checks true leasedHistory histories that
+// the witness from the revisions refused (#514), each the one leasedHistory
+// draws at that place from a PCG seed. TestFastWitnessMatchesSlowWithLeases
+// covers a fourth, its history 190: an ambiguous put on a lease that only
+// an ambiguous grant made (fitsGranted).
+//   - a grant and a revoke of its lease at one revision whose calls
+//     overlap, among more acked ops of that revision than the orders tried
+//     before (slotOrder): history 247 of PCG(10, 77);
+//   - two compactions at one revision in the order of their revisions,
+//     against their calls: history 113 of PCG(9, 77);
+//   - an ambiguous compaction put in for a rejection that an acked one
+//     explains, which pushed a later rejection's place past the revoke it
+//     needs: history 460 of PCG(2, 77).
+func TestWitnessTrueLeasedHistories(t *testing.T) {
+	for _, c := range []struct{ seed, stream, index uint64 }{
+		{10, 77, 247}, {9, 77, 113}, {2, 77, 460},
+	} {
+		rng := rand.New(rand.NewPCG(c.seed, c.stream))
+		var h *history.History
+		for i := uint64(0); i <= c.index; i++ {
+			h = leasedHistory(rng)
+		}
+		if err := Witnessed(h, FromRevisions, time.Minute); err != nil {
+			t.Errorf("history %d of PCG(%d, %d): %v", c.index, c.seed, c.stream, err)
+		}
+	}
 }
