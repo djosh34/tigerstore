@@ -2238,6 +2238,12 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 	}
 	n.state.who = who
 	switch kind {
+	case kindPut, kindDelete, kindTxn, kindCompact, kindGrant, kindRevoke, kindRenew, kindExpiry, kindLeaseCheckpoint, kindNoSpace:
+	default:
+		// The write may change what the state's meta hash covers.
+		n.state.metaKnown = false
+	}
+	switch kind {
 	case kindPut:
 		return n.applyPut(b, at, p)
 	case kindAuth:

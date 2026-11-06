@@ -564,6 +564,7 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 			l.keys[string(key)] = struct{}{}
 		}
 	})
+	st.leaseSum = st.sumLeases()
 	return st, lastCkpt{index: root.Index, size: tr.n, minRef: minRef, base: h.base}, nil
 }
 
@@ -641,6 +642,7 @@ func (n *Node) RestoredCheckpoint(members []*pb.Member) (wal.Root, []byte, error
 	st.members, st.removed, st.supports, st.runs = map[uint64]*pb.Member{}, map[uint64]bool{}, map[uint64]uint32{}, map[uint64]uint64{}
 	st.versionEpoch = n.applied
 	clear(st.confirmed)
+	st.metaKnown = false
 	for _, m := range members {
 		st.members[m.ID] = &pb.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs, IsLearner: m.IsLearner}
 		st.supports[m.ID] = st.version

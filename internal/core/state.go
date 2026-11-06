@@ -61,7 +61,11 @@ func newExpiry(id, stamp int64) *pb.LeaseCheckpoint {
 type State struct {
 	kv     *mvcc.Store
 	leases map[int64]*lease
-	minTTL int64
+	// leaseSum is the sum of the leases' hashes (lease.hash), kept in
+	// step with every change of a lease, so that Hash, which runs after
+	// every entry a simulated node applies, need not walk them.
+	leaseSum uint64
+	minTTL   int64
 	// stamps counts grants and keepalives, to stamp leases.
 	stamps int64
 	// version is the cluster version, supports the newest version each
@@ -96,6 +100,13 @@ type State struct {
 	etcdVersion      string
 	downgradeEnabled bool
 	downgradeTarget  string
+	// meta is the hash of the version table, the members, auth and etcd's
+	// version info (hashMeta), which only some entries change: metaKnown
+	// says it is current. A state starts without it, and the node drops
+	// it for every entry that is not a plain key or lease write
+	// (Node.applyWrite) and for every configuration change.
+	meta      uint64
+	metaKnown bool
 }
 
 // Changes are the key changes of the last write Apply ran. The slice is
@@ -129,25 +140,35 @@ func (st *State) Hash() uint64 {
 		h ^= h >> 29
 	}
 	mix(uint64(st.stamps))
-	// The leases add up in any order, so the hash needs no sort of them:
-	// it runs after every entry a simulated node applies (#483).
-	var leases uint64
-	for _, l := range st.leases {
-		leases += l.hash()
-	}
+	// The leases add up in any order, so the hash needs no sort of them
+	// (#483), and their sum is kept as they change (#500).
 	mix(uint64(len(st.leases)))
-	mix(leases)
+	mix(st.leaseSum)
 	mix(uint64(st.version))
 	mix(st.versionEpoch)
+	for _, a := range st.alarms {
+		mix(a.MemberID)
+		mix(uint64(a.Alarm))
+	}
+	if !st.metaKnown {
+		st.meta, st.metaKnown = st.hashMeta(), true
+	}
+	mix(st.meta)
+	return h
+}
+
+// hashMeta is the part of Hash that only some entries change (meta).
+func (st *State) hashMeta() uint64 {
+	h := uint64(0xcbf29ce484222325)
+	mix := func(x uint64) {
+		h = (h ^ x) * 0x100000001b3
+		h ^= h >> 29
+	}
 	for _, id := range slices.Sorted(maps.Keys(st.supports)) {
 		mix(id)
 		mix(uint64(st.supports[id]))
 		mix(st.runs[id])
 		mix(st.confirmed[id])
-	}
-	for _, a := range st.alarms {
-		mix(a.MemberID)
-		mix(uint64(a.Alarm))
 	}
 	for _, m := range st.memberList() {
 		mix(m.ID)
@@ -194,6 +215,15 @@ func (st *State) Hash() uint64 {
 	}
 	mix(uint64(crc32.Checksum([]byte(st.downgradeTarget), castagnoli)))
 	return h
+}
+
+// sumLeases adds up the leases' hashes, as leaseSum holds them.
+func (st *State) sumLeases() uint64 {
+	var sum uint64
+	for _, l := range st.leases {
+		sum += l.hash()
+	}
+	return sum
 }
 
 // hash is a hash of the lease, with its key count.
@@ -245,12 +275,16 @@ func (st *State) track() {
 		k := string(c.Key())
 		if id := c.PrevLease(); id != 0 {
 			if l, ok := st.leases[id]; ok {
+				st.leaseSum -= l.hash()
 				delete(l.keys, k)
+				st.leaseSum += l.hash()
 			}
 		}
 		if id := c.Lease(); id != 0 {
 			if l, ok := st.leases[id]; ok {
+				st.leaseSum -= l.hash()
 				l.keys[k] = struct{}{}
+				st.leaseSum += l.hash()
 			}
 		}
 	}
@@ -325,15 +359,19 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 		if l, ok := st.leases[op.ID]; ok {
 			resp.TTL = l.ttl
 			st.stamps++
+			st.leaseSum -= l.hash()
 			l.stamp = st.stamps
 			// A renewal ends the checkpointed TTL, as etcd's does.
 			l.remaining = 0
+			st.leaseSum += l.hash()
 		}
 		return resp, nil
 	case *pb.LeaseCheckpointRequest:
 		for _, c := range op.Checkpoints {
 			if l, ok := st.leases[c.ID]; ok {
+				st.leaseSum -= l.hash()
 				l.remaining = c.Remaining_TTL
+				st.leaseSum += l.hash()
 			}
 		}
 		return &pb.LeaseCheckpointResponse{Header: header(st.kv.Rev())}, nil
@@ -369,6 +407,7 @@ func (st *State) grant(r *pb.LeaseGrantRequest) (proto.Message, error) {
 	st.stamps++
 	l := &lease{id: r.ID, ttl: max(r.TTL, st.minTTL), keys: map[string]struct{}{}, stamp: st.stamps}
 	st.leases[r.ID] = l
+	st.leaseSum += l.hash()
 	return &pb.LeaseGrantResponse{Header: header(st.kv.Rev()), ID: l.id, TTL: l.ttl}, nil
 }
 
@@ -396,6 +435,7 @@ func (st *State) revoke(id int64) (proto.Message, error) {
 		}
 		st.track()
 	}
+	st.leaseSum -= l.hash()
 	delete(st.leases, id)
 	return &pb.LeaseRevokeResponse{Header: header(st.kv.Rev())}, nil
 }
