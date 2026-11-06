@@ -153,6 +153,10 @@ type witness struct {
 	// (witness_trial.go).
 	scope map[int][]string
 	slow  bool
+	// firsts are, per op, where finish found its answer, and lastID the
+	// id of the newest state (placeSeen).
+	firsts []firstAnswer
+	lastID uint64
 }
 
 // stoppedAt says how far a check got when it ran out of time.
@@ -178,8 +182,18 @@ type event struct {
 
 // summary is what of the store an event can change besides the keys.
 type summary struct {
+	// id tells this state from any other the order had at its place
+	// before a restore.
+	id             uint64
 	rev, compacted int64
 	leases         leaseSet
+}
+
+// firstAnswer is the first state at which an acked op that changed
+// nothing gets its answer, as finish found it, by its place and id.
+type firstAnswer struct {
+	at int
+	id uint64
 }
 
 // place is where an op goes in the order: event at, which leads from
@@ -206,7 +220,7 @@ func (p place) compare(q place) int {
 }
 
 func newWitness(h *history.History, deadline time.Time) *witness {
-	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: map[int][]string{}}
+	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: map[int][]string{}, firsts: make([]firstAnswer, len(h.Ops))}
 	w.reqs = make([]history.Request, len(h.Ops))
 	for i := range h.Ops {
 		w.reqs[i] = modelRequest(&h.Ops[i])
@@ -231,7 +245,8 @@ func (w *witness) tick() bool {
 // summary is the live store's summary, which shares its leases with the
 // live store (leaseSet).
 func (w *witness) summary() summary {
-	return summary{rev: w.live.rev, compacted: w.live.compacted, leases: w.live.leases}
+	w.lastID++
+	return summary{id: w.lastID, rev: w.live.rev, compacted: w.live.compacted, leases: w.live.leases}
 }
 
 // apply adds an event sent by op and replays it.
@@ -469,6 +484,18 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 		op := &w.h.Ops[i]
 		lo, hi := events(op)
 		lo = max(lo, placed.before(op.Call))
+		// finish found the first state of the op's revision that answers
+		// it. The states the order put at that revision since come after
+		// it, so if real time allows it and the state is still the one
+		// finish saw, no earlier one answers: the model need not step the
+		// op again at each state (#499).
+		if c := w.firsts[i]; !w.slow && c.id != 0 && lo <= c.at && c.at <= hi && c.at < len(w.states) && w.states[c.at].id == c.id {
+			if set {
+				w.at[i] = place{set: true, seen: true, at: c.at, rank: op.Call}
+			}
+			placed.add(i, c.at)
+			continue
+		}
 		f, l := lo, hi
 		if op.Resp != nil {
 			rev := op.Resp.Revision

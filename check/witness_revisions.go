@@ -1594,9 +1594,11 @@ func (r *revisionOrder) finish(rev int64) bool {
 		first--
 	}
 	for _, i := range r.seen[rev] {
-		if _, ok := w.find(i, first, len(w.states)-1); !ok {
+		j, ok := w.find(i, first, len(w.states)-1)
+		if !ok {
 			return r.dead(rev, w.unanswered(i, first, len(w.states)-1, first, len(w.states)-1))
 		}
+		w.firsts[i] = firstAnswer{at: j, id: w.states[j].id}
 	}
 	return true
 }
