@@ -12,12 +12,12 @@ import (
 	"github.com/djosh34/tigerstore/internal/core"
 )
 
-// TestRaftPanicStopsNode sends a follower a heartbeat from its leader
+// TestLostEntriesStopNode sends a follower a heartbeat from its leader
 // whose commit index is past the end of the follower's log, as a leader
 // sends one to a follower whose log lost entries it acknowledged. Raft
 // panics on it, which crashed the process; the node must stop with
-// core.ErrRaft instead, and the other nodes go on (#493).
-func TestRaftPanicStopsNode(t *testing.T) {
+// core.ErrLostEntries instead, and the other nodes go on (#493).
+func TestLostEntriesStopNode(t *testing.T) {
 	c, err := startThree(t, nil)
 	defer c.close()
 	if err != nil {
@@ -46,8 +46,8 @@ func TestRaftPanicStopsNode(t *testing.T) {
 	})
 	select {
 	case err := <-c.ran[f]:
-		if !errors.Is(err, core.ErrRaft) {
-			t.Fatalf("node %d stopped with %v, want core.ErrRaft", f, err)
+		if !errors.Is(err, core.ErrLostEntries) {
+			t.Fatalf("node %d stopped with %v, want core.ErrLostEntries", f, err)
 		}
 		t.Logf("node %d stopped: %v", f, err)
 	case <-time.After(10 * time.Second):

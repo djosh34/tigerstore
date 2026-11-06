@@ -54,9 +54,9 @@ const (
 	// A node started again with an older term or vote than it held
 	// durable.
 	lostVote = `but held term \d+ and vote \d+ durable`
-	// A node whose Raft found a rule of its own broken, as a commit index
-	// past the end of a log that lost acknowledged entries (#493).
-	raftBroken = `Raft found its state broken`
+	// A node whose leader commits past the end of its log, which lost
+	// entries it acknowledged (#493).
+	lostEntries = `lost entries it acknowledged`
 	// A watch that broke the watch rules.
 	badWatch = `watch \d+`
 	// A read or the replayed log that disagrees with the model; not a
@@ -101,7 +101,7 @@ var plantedCases = map[string]plantedCase{
 	"B11":  {seeds: 64, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	// Since a snapshot install starts the node again from its log (#238),
 	// that start can be where the damaged record is found.
-	"B12": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused + `|` + badValue + `|` + raftBroken + `|the record of entry \d+ in segment \d+ does not verify|damaged record followed by a valid one`},
+	"B12": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused + `|` + badValue + `|` + lostEntries + `|the record of entry \d+ in segment \d+ does not verify|damaged record followed by a valid one`},
 	"B15": {seeds: 32, cfg: DefaultConfig, want: `no client sent it`},
 	"B16": {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	// Followers forward their writes to the stalled leader, which stays
@@ -114,7 +114,7 @@ var plantedCases = map[string]plantedCase{
 	}},
 	"B18": {seeds: 16, cfg: DefaultConfig, want: `holds \d+ watchers`},
 	"B19": {seeds: 64, cfg: DefaultConfig, want: refused + `|not on disk|` + stuck},
-	"B20": {seeds: 64, cfg: DefaultConfig, want: `holds entries from \d+ in memory|` + raftBroken},
+	"B20": {seeds: 64, cfg: DefaultConfig, want: `holds entries from \d+ in memory`},
 	"B21": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|already exists|` + refused},
 	// The install starts the node again from its log (#238), where the
 	// unchecked snapshot's damaged entry can be what recovery refuses.
