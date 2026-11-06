@@ -1,0 +1,5 @@
+commit cd98d1e38d82b67c92d1b08ca7d6b053fc403e7f
+cpus 5, MemTotal:       18440100 kB
+campaign: exit 1, peak 15.81 GiB, wall 1155 s
+campaign-limit: exit 1, peak 7.22 GiB, wall 2401 s
+kube: exit 0, peak 3.47 GiB, wall 264 s
