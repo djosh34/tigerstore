@@ -1,10 +1,14 @@
 package sim
 
 import (
+	"errors"
 	"os"
+	"slices"
 	"testing"
 
+	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/simrun"
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 // TestBusySeeds runs TestSeeds's seeds with their faults for 1,280 s
@@ -44,4 +48,53 @@ func longSeeds(t *testing.T, config func(seed uint64) Config) {
 		t.Logf("%+v, %d committed writes", res.Stats, len(res.Log))
 		return res.Stats
 	}, func(uint64, Stats) bool { return false })
+}
+
+// TestHostErrorComesFirst checks that a run whose pages on the runner's
+// disk failed returns that error, joined with the run's own: a page that
+// failed to read reads as zeros, which can fail the run as if a node were
+// wrong.
+func TestHostErrorComesFirst(t *testing.T) {
+	errHost := errors.New("the runner's disk failed")
+	errRun := errors.New("a node is wrong")
+	cfg := CalmConfig(1)
+	cfg.Duration = 2 * Second
+	_, err := runWith(t, cfg, func(s *Sim) error {
+		s.pages.err = errHost
+		return errRun
+	})
+	if !errors.Is(err, errHost) || !errors.Is(err, errRun) {
+		t.Errorf("the run gave %v, want both %v and %v", err, errHost, errRun)
+	}
+}
+
+// TestCheckpointKnowsRefusedLogs checks that a disk copy for the cold
+// restarts counts as damaged when its node has a torn crash image that no
+// start recovered and recovery refuses its log: before the node's next
+// start finds out, a cold restart must not start from it. A torn image
+// that recovery takes, and a refused log without one, which the node's
+// damage marks, keep their disks good.
+func TestCheckpointKnowsRefusedLogs(t *testing.T) {
+	refused := simfs.New()
+	w, _, err := wal.Open(refused)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A commit past the last entry is a log recovery refuses.
+	w.Append(&wal.HardState{Term: 1, Commit: 3}, nil)
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	s := &Sim{nodes: []*node{
+		{id: 1, disk: refused, tornCrash: true},
+		{id: 2, disk: simfs.New(), tornCrash: true},
+		{id: 3, disk: refused},
+	}}
+	c := s.newCheckpoint()
+	if want := []bool{true, false, false}; !slices.Equal(c.bad, want) {
+		t.Errorf("the checkpoint's bad disks are %v, want %v", c.bad, want)
+	}
+	if err := s.failure(); err != nil {
+		t.Error(err)
+	}
 }

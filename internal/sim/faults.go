@@ -512,13 +512,29 @@ type coldDisks struct {
 func (s *Sim) newCheckpoint() *checkpoint {
 	c := &checkpoint{at: s.now(), applied: s.applied}
 	for _, n := range s.nodes {
-		c.disks = append(c.disks, n.disk.Durable())
-		c.bad = append(c.bad, n.corrupted)
+		d := n.disk.Durable()
+		c.disks = append(c.disks, d)
+		c.bad = append(c.bad, n.corrupted || n.tornCrash && s.refusesLog(d))
 		c.ids = append(c.ids, n.id)
 		c.inactive = append(c.inactive, n.inactive)
 		c.started = append(c.started, len(n.disk.DurableNames()) > 0)
 	}
 	return c
+}
+
+// refusesLog reports whether recovery refuses the log on d, a copy: a
+// torn crash image that no start recovered yet may make it look damaged
+// (mayBeDamaged), which a cold restart must not start from. Only a node
+// with such an image needs the open. The lock is held.
+func (s *Sim) refusesLog(d *simfs.Disk) bool {
+	w, _, err := wal.Open(d.Copy())
+	if err != nil {
+		return errors.Is(err, wal.ErrCorrupt)
+	}
+	if err := w.Close(); err != nil {
+		s.fail("%w", err)
+	}
+	return false
 }
 
 // takeCheckpoint keeps a copy of every disk for the cold restarts. The
