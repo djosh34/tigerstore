@@ -29,10 +29,10 @@ jobs:
       - name: Five times each, in turn
         env:
           # The commits to compare, by name=ref.
-          REFS: grow=2de9fd59b3e6dc129e3c20d5580de955010f6489
+          REFS: phases=9294eef855f187c6a9d89b81a18b630f87e099e4
           REPS: '6'
           # Builds also run with the collector off.
-          GCOFF: grow
+          GCOFF: ''
         run: |
           for nr in $REFS; do
             n=${nr%%=*}; ref=${nr#*=}
