@@ -745,9 +745,15 @@ func (r *revisionOrder) scheduleOptional() {
 	present, gone := map[int64]int64{}, map[int64]int64{}
 	granted, revoked := map[int64]bool{}, map[int64]bool{}
 	// compacted are the compacted rejections, by the revision they asked
-	// for, their call and their return; reads are the acked reads at a revision, and
+	// for, their call and their return, and whether they were reads; reads are the acked reads at a revision, and
 	// compactions the acked compactions.
-	type rejection struct{ rev, call, ret int64 }
+	type rejection struct {
+		rev, call, ret int64
+		read           bool
+	}
+	// compacts reports whether a compaction to c explains rejection rj: a
+	// read at a revision below c, or a compaction to c or below.
+	compacts := func(c int64, rj rejection) bool { return c > rj.rev || c == rj.rev && !rj.read }
 	var compacted []rejection
 	var compactions, reads []int
 	note := func(lease, rev int64) {
@@ -796,7 +802,7 @@ func (r *revisionOrder) scheduleOptional() {
 		case sameError(op.Err, errLeaseExists):
 			note(op.Req.LeaseGrant.ID, 1)
 		case sameError(op.Err, errCompacted):
-			compacted = append(compacted, rejection{requestedRevision(op.Req), op.Call, op.Return})
+			compacted = append(compacted, rejection{requestedRevision(op.Req), op.Call, op.Return, op.Req.Range != nil})
 		}
 	}
 	for _, w := range h.Watches {
@@ -872,9 +878,9 @@ func (r *revisionOrder) scheduleOptional() {
 				// returned before it was called explains it in every
 				// order, as an acked revoke a lease found gone (#514).
 				explained := slices.ContainsFunc(compactions, func(k int) bool {
-					return h.Ops[k].Req.Compact.Revision >= rj.rev && h.Ops[k].Return < rj.call
+					return compacts(h.Ops[k].Req.Compact.Revision, rj) && h.Ops[k].Return < rj.call
 				})
-				if rj.rev <= c && !explained {
+				if compacts(c, rj) && !explained {
 					goneAt = min(goneAt, rj.ret)
 				}
 			}
@@ -1420,16 +1426,25 @@ func (r *revisionOrder) fitsGranted(i int, rev int64) bool {
 	return false
 }
 
-// grantsFor returns, for each lease of ids that no live lease matches, an
-// ambiguous grant of it not used yet that may go in at revision at.
+// grantsFor returns, for each lease of ids that no live lease matches, the
+// ambiguous grant of it not used yet, called first, that may go in at
+// revision at.
 func (r *revisionOrder) grantsFor(ids []int64, at int64) []int {
 	var grants []int
 	for _, id := range ids {
 		if r.w.live.hasLease(id) || slices.ContainsFunc(grants, func(g int) bool { return r.w.reqs[g].LeaseGrant.ID == id }) {
 			continue
 		}
-		if k := slices.IndexFunc(r.grantsOf[id], func(g int) bool { return !r.used[g] && r.lb[g] <= at }); k >= 0 {
-			grants = append(grants, r.grantsOf[id][k])
+		// The one called first, which real time allows wherever it
+		// allows another.
+		first := -1
+		for _, g := range r.grantsOf[id] {
+			if !r.used[g] && r.lb[g] <= at && (first < 0 || r.w.h.Ops[g].Call < r.w.h.Ops[first].Call) {
+				first = g
+			}
+		}
+		if first >= 0 {
+			grants = append(grants, first)
 		}
 	}
 	return grants

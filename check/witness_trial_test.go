@@ -274,3 +274,22 @@ func TestWitnessTrueLeasedHistories(t *testing.T) {
 		}
 	}
 }
+
+// TestAckedCompactionDoesNotExplainEqualRead has an acked compaction to
+// revision 2, an ambiguous one to 3 that took effect, and a read at 2
+// rejected as compacted. A compaction to 2 rejects a compaction to 2 but
+// not a read at 2, so only the ambiguous one explains the read, and it
+// must go in (#514).
+func TestAckedCompactionDoesNotExplainEqualRead(t *testing.T) {
+	b := newBuilder(t, "a")
+	b.put(0, "a", "one")
+	b.put(0, "a", "two")
+	b.do(0, history.Request{Compact: &history.CompactRequest{Revision: 2}})
+	c := b.do(0, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+	b.do(0, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+	h := b.done()
+	h.Ops[c].Resp, h.Ops[c].Err = nil, errUnavailable
+	for _, mode := range bothModes {
+		mustPass(t, mode.String(), Witnessed(h, mode, time.Minute))
+	}
+}
