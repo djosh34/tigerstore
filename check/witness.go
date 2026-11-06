@@ -151,8 +151,16 @@ type witness struct {
 	// (scopedState), and slow makes the witness copy the whole store for
 	// every try and answer instead, for the tests that compare the two
 	// (witness_trial.go).
-	scope map[int][]string
+	scope [][]string
 	slow  bool
+	// firsts are, per op, where finish found its answer, and lastID the
+	// id of the newest state (placeSeen).
+	firsts []firstAnswer
+	lastID uint64
+	// sorter sorts ops by time (timeSorter), and scoped is the state
+	// scopedState fills.
+	sorter timeSorter
+	scoped state
 }
 
 // stoppedAt says how far a check got when it ran out of time.
@@ -178,8 +186,18 @@ type event struct {
 
 // summary is what of the store an event can change besides the keys.
 type summary struct {
+	// id tells this state from any other the order had at its place
+	// before a restore.
+	id             uint64
 	rev, compacted int64
 	leases         leaseSet
+}
+
+// firstAnswer is the first state at which an acked op that changed
+// nothing gets its answer, as finish found it, by its place and id.
+type firstAnswer struct {
+	at int
+	id uint64
 }
 
 // place is where an op goes in the order: event at, which leads from
@@ -206,7 +224,7 @@ func (p place) compare(q place) int {
 }
 
 func newWitness(h *history.History, deadline time.Time) *witness {
-	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: map[int][]string{}}
+	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: make([][]string, len(h.Ops)), firsts: make([]firstAnswer, len(h.Ops))}
 	w.reqs = make([]history.Request, len(h.Ops))
 	for i := range h.Ops {
 		w.reqs[i] = modelRequest(&h.Ops[i])
@@ -231,7 +249,8 @@ func (w *witness) tick() bool {
 // summary is the live store's summary, which shares its leases with the
 // live store (leaseSet).
 func (w *witness) summary() summary {
-	return summary{rev: w.live.rev, compacted: w.live.compacted, leases: w.live.leases}
+	w.lastID++
+	return summary{id: w.lastID, rev: w.live.rev, compacted: w.live.compacted, leases: w.live.leases}
 }
 
 // apply adds an event sent by op and replays it.
@@ -453,12 +472,33 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 	first := func(rev int64) int {
 		return sort.Search(len(w.states), func(j int) bool { return w.states[j].rev >= rev })
 	}
+	if set {
+		// observe places every op, so a table of the first state at each
+		// revision or later, made once, saves a search per op, whose cost
+		// grew with the order (#499).
+		top := w.states[len(w.states)-1].rev
+		starts := make([]int, top+2)
+		j := len(w.states)
+		for rev := top + 1; rev >= 0; rev-- {
+			for j > 0 && w.states[j-1].rev >= rev {
+				j--
+			}
+			starts[rev] = j
+		}
+		first = func(rev int64) int {
+			switch {
+			case rev < 0:
+				return 0
+			case rev > top+1:
+				return len(w.states)
+			}
+			return starts[rev]
+		}
+	}
 	events := w.eventBounds()
 	ops = slices.Clone(ops)
-	slices.SortFunc(ops, func(a, b int) int {
-		return cmp.Or(cmp.Compare(w.h.Ops[a].Call, w.h.Ops[b].Call), cmp.Compare(a, b))
-	})
-	placed := newPlacedMax(w.h, ops)
+	w.sorter.sort(ops, func(i int) int64 { return w.h.Ops[i].Call })
+	placed := newPlacedMax(w.h, ops, &w.sorter)
 	for _, i := range ops {
 		if w.tick() {
 			return errWitnessTimeout
@@ -469,6 +509,18 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 		op := &w.h.Ops[i]
 		lo, hi := events(op)
 		lo = max(lo, placed.before(op.Call))
+		// finish found the first state of the op's revision that answers
+		// it. The states the order put at that revision since come after
+		// it, so if real time allows it and the state is still the one
+		// finish saw, no earlier one answers: the model need not step the
+		// op again at each state (#499).
+		if c := w.firsts[i]; !w.slow && c.id != 0 && lo <= c.at && c.at <= hi && c.at < len(w.states) && w.states[c.at].id == c.id {
+			if set {
+				w.at[i] = place{set: true, seen: true, at: c.at, rank: op.Call}
+			}
+			placed.add(i, c.at)
+			continue
+		}
 		f, l := lo, hi
 		if op.Resp != nil {
 			rev := op.Resp.Revision
@@ -582,23 +634,39 @@ func (w *witness) eventBounds() func(op *history.Op) (int, int) {
 type placedMax struct {
 	h       *history.History
 	returns []int64
-	rank    map[int]int
-	tree    []int
+	// rank is, per op, its place by return: in a slice by op for a set of
+	// many, as observe's, else in a map.
+	rank   []int
+	ranked map[int]int
+	tree   []int
 }
 
-func newPlacedMax(h *history.History, ops []int) *placedMax {
-	p := &placedMax{h: h, rank: map[int]int{}, tree: make([]int, len(ops)+1)}
+func newPlacedMax(h *history.History, ops []int, sorter *timeSorter) *placedMax {
+	p := &placedMax{h: h, tree: make([]int, len(ops)+1)}
+	if len(ops) >= len(h.Ops)/8 {
+		p.rank = make([]int, len(h.Ops))
+	} else {
+		p.ranked = make(map[int]int, len(ops))
+	}
 	sorted := slices.Clone(ops)
-	slices.SortFunc(sorted, func(a, b int) int { return cmp.Or(cmp.Compare(h.Ops[a].Return, h.Ops[b].Return), cmp.Compare(a, b)) })
+	sorter.sort(sorted, func(i int) int64 { return h.Ops[i].Return })
 	for k, i := range sorted {
-		p.rank[i] = k + 1
+		if p.rank != nil {
+			p.rank[i] = k + 1
+		} else {
+			p.ranked[i] = k + 1
+		}
 		p.returns = append(p.returns, h.Ops[i].Return)
 	}
 	return p
 }
 
 func (p *placedMax) add(i, j int) {
-	for k := p.rank[i]; k < len(p.tree); k += k & -k {
+	k := p.ranked[i]
+	if p.rank != nil {
+		k = p.rank[i]
+	}
+	for ; k < len(p.tree); k += k & -k {
 		p.tree[k] = max(p.tree[k], j)
 	}
 }
@@ -629,9 +697,11 @@ func (w *witness) verify() error {
 		}
 		return w.h.Ops[i].Return
 	}
+	// Ops of one time pass or fail together, so the order of ties changes
+	// only which op an error names.
 	byCall, byReturn := slices.Clone(ops), slices.Clone(ops)
-	slices.SortFunc(byCall, func(a, b int) int { return cmp.Compare(w.h.Ops[a].Call, w.h.Ops[b].Call) })
-	slices.SortFunc(byReturn, func(a, b int) int { return cmp.Compare(ret(a), ret(b)) })
+	w.sorter.sort(byCall, func(i int) int64 { return w.h.Ops[i].Call })
+	w.sorter.sort(byReturn, ret)
 	latest, by := place{}, -1
 	k := 0
 	for _, b := range byCall {

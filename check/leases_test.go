@@ -17,8 +17,8 @@ func TestLeaseSetMatchesSortedSlice(t *testing.T) {
 	var all []kept
 	var set leaseSet
 	var want []int64
-	for step := range 20_000 {
-		id := rng.Int64N(3000)
+	for step := range 100_000 {
+		id := rng.Int64N(30_000)
 		if rng.IntN(3) == 0 {
 			set = set.without(id)
 			if i, ok := slices.BinarySearch(want, id); ok {
@@ -30,7 +30,7 @@ func TestLeaseSetMatchesSortedSlice(t *testing.T) {
 				want = slices.Insert(slices.Clone(want), i, id)
 			}
 		}
-		if step%97 == 0 {
+		if step%997 == 0 {
 			all = append(all, kept{set, want})
 		}
 	}
@@ -41,13 +41,18 @@ func TestLeaseSetMatchesSortedSlice(t *testing.T) {
 		if !slices.Equal(got, c.want) || c.set.n != len(c.want) {
 			t.Fatalf("set %d holds %d IDs (n %d), want %d", k, len(got), c.set.n, len(c.want))
 		}
-		for _, ch := range c.set.chunks {
-			if len(ch) == 0 || len(ch) > leaseChunk {
-				t.Fatalf("set %d has a chunk of %d", k, len(ch))
+		for _, page := range c.set.pages {
+			if len(page) == 0 || len(page) > leaseChunk {
+				t.Fatalf("set %d has a page of %d chunks", k, len(page))
+			}
+			for _, ch := range page {
+				if len(ch) == 0 || len(ch) > leaseChunk {
+					t.Fatalf("set %d has a chunk of %d", k, len(ch))
+				}
 			}
 		}
 		for range 50 {
-			id := rng.Int64N(3100)
+			id := rng.Int64N(30_100)
 			_, ok := slices.BinarySearch(c.want, id)
 			if c.set.has(id) != ok {
 				t.Fatalf("set %d has %d: %v, want %v", k, id, c.set.has(id), ok)
@@ -74,5 +79,22 @@ func TestLeaseSetMatchesSortedSlice(t *testing.T) {
 	}
 	if a.without(5).equal(b) || b.equal(a.without(5).with(500)) {
 		t.Fatal("different sets are equal")
+	}
+}
+
+// TestLeaseSetSplitsPages checks that a set of more IDs than a page holds
+// has several pages, and holds every ID.
+func TestLeaseSetSplitsPages(t *testing.T) {
+	var s leaseSet
+	for id := range int64(20_000) {
+		s = s.with(id * 7 % 20_011)
+	}
+	if len(s.pages) < 2 {
+		t.Fatalf("20,000 IDs are in %d pages", len(s.pages))
+	}
+	for id := range int64(20_000) {
+		if !s.has(id * 7 % 20_011) {
+			t.Fatalf("the set lost %d", id*7%20_011)
+		}
 	}
 }

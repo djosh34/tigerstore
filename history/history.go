@@ -18,6 +18,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"iter"
 	"slices"
 )
 
@@ -341,13 +342,27 @@ func InRange(key, start, end string) bool {
 	}
 }
 
+// Ops yields the ops of both branches of t, the success branch first,
+// without making a slice of them.
+func (t *TxnRequest) Ops() iter.Seq[TxnOp] {
+	return func(yield func(TxnOp) bool) {
+		for _, ops := range [2][]TxnOp{t.Success, t.Failure} {
+			for _, o := range ops {
+				if !yield(o) {
+					return
+				}
+			}
+		}
+	}
+}
+
 // Mutates reports whether the request can change the store.
 func (r Request) Mutates() bool {
 	switch {
 	case r.Put != nil, r.Delete != nil, r.LeaseGrant != nil, r.LeaseRevoke != nil, r.Compact != nil:
 		return true
 	case r.Txn != nil:
-		for _, op := range slices.Concat(r.Txn.Success, r.Txn.Failure) {
+		for op := range r.Txn.Ops() {
 			if op.Range == nil {
 				return true
 			}
@@ -457,7 +472,7 @@ func (r Request) validate() error {
 			return fmt.Errorf("compare on %q has target %d and result %d", c.Key, c.Target, c.Result)
 		}
 	}
-	for _, op := range slices.Concat(r.Txn.Success, r.Txn.Failure) {
+	for op := range r.Txn.Ops() {
 		n := 0
 		for _, set := range []bool{op.Range != nil, op.Put != nil, op.Delete != nil} {
 			if set {

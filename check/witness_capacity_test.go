@@ -15,7 +15,7 @@ func roomOrder(keys []string, reqs ...history.Request) *revisionOrder {
 		s.kvs[k] = history.KeyValue{Key: key, CreateRevision: 2, ModRevision: 2, Version: 1}
 	}
 	w := &witness{h: &history.History{}, live: s, reqs: reqs}
-	r := &revisionOrder{w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, counts: map[int64][]count{}, used: make([]bool, len(reqs)), lb: make([]int64, len(reqs))}
+	r := &revisionOrder{w: w, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, counts: map[int64][]count{}, used: make([]bool, len(reqs)), lb: make([]int64, len(reqs))}
 	for i, req := range reqs {
 		w.h.Ops = append(w.h.Ops, history.Op{Req: req, Err: &history.Error{Ambiguous: true}})
 		r.ambiguous = append(r.ambiguous, i)
@@ -24,7 +24,17 @@ func roomOrder(keys []string, reqs ...history.Request) *revisionOrder {
 }
 
 // index builds what roomReachable reads.
+// The lives the test sets go into note's slice by last write, as index
+// leaves them, under a limit past every revision they name.
 func (r *revisionOrder) indexForRoom() {
+	r.limit = 64
+	for key, ls := range r.lives {
+		k := r.w.live.index(key)
+		for _, l := range ls {
+			r.noted = at(r.noted, l.m)
+			r.noted[l.m] = append(r.noted[l.m], seenLife{k, l})
+		}
+	}
 	r.indexCounts()
 	r.indexRoom()
 }
@@ -51,12 +61,12 @@ func TestRoomBoundsKeysTogether(t *testing.T) {
 			r := roomOrder([]string{"a", "b"}, c.reqs...)
 			// One revision ahead, at 3: b at version 2, and a at version 2
 			// or gone.
-			r.lives["b"] = map[life]int64{{2, 3, 2}: 3}
+			r.lives["b"] = []lifeTo{{life{2, 3, 2}, 3}}
 			if c.deleteA {
 				r.countRevs = []int64{3}
 				r.counts[3] = []count{{rev: 3, lo: 0, hi: 1, n: 0}}
 			} else {
-				r.lives["a"] = map[life]int64{{2, 3, 2}: 3}
+				r.lives["a"] = []lifeTo{{life{2, 3, 2}, 3}}
 			}
 			r.indexForRoom()
 			if got := r.roomReachable(r.w.live, -1); got != c.want {
@@ -72,7 +82,7 @@ func TestRoomBoundsKeysTogether(t *testing.T) {
 func TestRoomCountsPutsOfOneRevision(t *testing.T) {
 	put := &history.PutRequest{Key: "a"}
 	r := roomOrder([]string{"a"}, history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{{Put: put}, {Put: put}}}})
-	r.lives["a"] = map[life]int64{{2, 3, 3}: 3}
+	r.lives["a"] = []lifeTo{{life{2, 3, 3}, 3}}
 	r.indexForRoom()
 	if !r.roomReachable(r.w.live, -1) {
 		t.Fatal("a transaction that puts a key twice adds two versions in one revision")
@@ -94,7 +104,7 @@ func TestRoomTakesResolvedRevisions(t *testing.T) {
 			r := roomOrder([]string{"a", "b"}, history.Request{Put: &history.PutRequest{Key: key}}, history.Request{Put: &history.PutRequest{Key: "a"}})
 			r.resolved[3] = 0
 			r.reserved[0] = 3
-			r.lives["a"] = map[life]int64{{2, 4, 3}: 4}
+			r.lives["a"] = []lifeTo{{life{2, 4, 3}, 4}}
 			r.indexForRoom()
 			if got := r.roomReachable(r.w.live, -1); got != (key == "a") {
 				t.Fatalf("roomReachable is %v with a resolved put of %s at 3", got, key)
@@ -109,9 +119,9 @@ func TestRoomTakesResolvedRevisions(t *testing.T) {
 func TestRoomDeletesAndCreatesAtOneRevision(t *testing.T) {
 	r := roomOrder([]string{"a"}, history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{{Delete: &history.DeleteRequest{Key: "a"}}, {Put: &history.PutRequest{Key: "a"}}}}})
 	r.w.h.Ops[0].Err, r.w.h.Ops[0].Resp = nil, &history.Response{Revision: 3, Txn: &history.TxnResponse{Succeeded: true}}
-	r.writers[3] = 0
+	r.setWriter(3, 0)
 	r.ambiguous = nil
-	r.lives["a"] = map[life]int64{{3, 3, 1}: 3}
+	r.lives["a"] = []lifeTo{{life{3, 3, 1}, 3}}
 	r.indexForRoom()
 	if !r.roomReachable(r.w.live, -1) {
 		t.Fatal("the writer that creates the key may delete its old life")

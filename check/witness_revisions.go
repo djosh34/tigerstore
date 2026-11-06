@@ -28,8 +28,8 @@ import (
 // needs them, after every answer that needs them left out.
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
-		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
-		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
+		w:     w,
+		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
 		counts: map[int64][]count{},
 	}
 	w.search = r
@@ -44,13 +44,22 @@ type revisionOrder struct {
 	w *witness
 	// writers are the acked ops that wrote each revision, and revokes the
 	// acked revokes at each header revision, which may have written it.
-	writers map[int64]int
-	revokes map[int64][]int
+	// writers holds each one's op plus one, 0 for none (writer); revokes,
+	// others and seen are kept by revision, not in maps (byRev).
+	writers []int
+	revokes [][]int
 	// others are the acked mutations that changed no key, by header
 	// revision, in call order. seen are the acked ops that changed
 	// nothing, by header revision.
-	others map[int64][]int
-	seen   map[int64][]int
+	others [][]int
+	seen   [][]int
+	// ackedByCall are the acked ops but serializable reads, in call order
+	// (lowerBounds).
+	ackedByCall []int
+	// limit is the highest revision any order can reach, and outOfRange
+	// the failure for the first a client saw beyond it (checkRange).
+	limit      int64
+	outOfRange error
 	// ambiguous are the ambiguous mutations, and lb the highest revision
 	// returned before each was called: it writes no revision up to it.
 	ambiguous []int
@@ -81,11 +90,15 @@ type revisionOrder struct {
 	// unchanged.
 	covered map[string][]span
 	// lives are, per key, the lives clients saw it in: created at c, last
-	// written at m with version v, still so at r. created, written and
-	// deleted list, per revision, the keys a client saw it create, write
-	// or delete: the writer of that revision must.
-	lives                     map[string]map[life]int64
-	created, written, deleted map[int64][]string
+	// written at m with version v, still so at to. note gathers them in
+	// noted, by m, and index sorts them by key. created, written and
+	// deleted list, per revision, the keys, by their index, a client saw
+	// it create, write or delete: the writer of that revision must. They
+	// are kept by revision, not in maps: on a busy history the maps' cost
+	// per op grew with their size (#499).
+	lives                     map[string][]lifeTo
+	noted                     [][]seenLife
+	created, written, deleted [][]int
 	// optional are the ambiguous mutations that change no key and that a
 	// later answer needs, by the revision from which they may go, in call
 	// order.
@@ -174,6 +187,68 @@ type optional struct {
 // written at m, with version v.
 type life struct{ c, m, v int64 }
 
+// lifeTo is a life seen still so at revision to.
+type lifeTo struct {
+	life
+	to int64
+}
+
+// seenLife is a life of key k, by its index, seen still so at to.
+type seenLife struct {
+	k int
+	lifeTo
+}
+
+// byRev returns revs[rev], or nothing past its end.
+func byRev(revs [][]int, rev int64) []int {
+	if rev < 0 || int(rev) >= len(revs) {
+		return nil
+	}
+	return revs[rev]
+}
+
+// checkRange reports whether no order rules revision rev out, from 0 to
+// limit, and keeps the first it rules out as outOfRange.
+func (r *revisionOrder) checkRange(rev int64) bool {
+	if rev >= 0 && rev <= r.limit {
+		return true
+	}
+	if r.outOfRange == nil {
+		r.outOfRange = fmt.Errorf("a client saw revision %d, which no order of the history's writes reaches: they make at most revision %d", rev, r.limit)
+	}
+	return false
+}
+
+// writer returns the acked op that wrote revision rev, if any.
+func (r *revisionOrder) writer(rev int64) (int, bool) {
+	if rev < 0 || int(rev) >= len(r.writers) || r.writers[rev] == 0 {
+		return 0, false
+	}
+	return r.writers[rev] - 1, true
+}
+
+// setWriter notes acked op i as the writer of revision rev.
+func (r *revisionOrder) setWriter(rev int64, i int) {
+	r.writers = at(r.writers, rev)
+	r.writers[rev] = i + 1
+}
+
+// add appends v to revs[rev], which it grows to hold.
+func add(revs [][]int, rev int64, v int) [][]int {
+	revs = at(revs, rev)
+	revs[rev] = append(revs[rev], v)
+	return revs
+}
+
+// at grows s to hold index i.
+func at[T any](s []T, i int64) []T {
+	if n := int(i) + 1; n > len(s) {
+		// Grown in place, without a slice of the zeros to add.
+		s = slices.Grow(s, n-len(s))[:n]
+	}
+	return s
+}
+
 // count is what an answer showed of the keys lo to hi of the key set at
 // revision rev: that n of them existed.
 type count struct {
@@ -188,25 +263,36 @@ type span struct{ lo, hi int64 }
 // index sorts the ops into the maps of r.
 func (r *revisionOrder) index() error {
 	h := r.w.h
+	// Each revision past the first takes a write, so none above limit
+	// can be in any order; the indexes by revision rely on it.
+	r.limit = 1
+	for i := range h.Ops {
+		if h.Ops[i].Req.Mutates() {
+			r.limit++
+		}
+	}
 	values := map[[2]string][]int{}
 	for i := range h.Ops {
 		op := &h.Ops[i]
 		if op.Resp != nil {
+			if !r.checkRange(op.Resp.Revision) {
+				return fmt.Errorf("%s: %w", r.w.describe(i), r.outOfRange)
+			}
 			r.top = max(r.top, op.Resp.Revision)
 		}
 		switch {
 		case op.Req.Range != nil && op.Req.Range.Serializable:
 		case op.Resp != nil && bumps(op):
-			if j, ok := r.writers[op.Resp.Revision]; ok {
+			if j, ok := r.writer(op.Resp.Revision); ok {
 				return fmt.Errorf("%s and op %d both wrote revision %d", r.w.describe(i), j, op.Resp.Revision)
 			}
-			r.writers[op.Resp.Revision] = i
+			r.setWriter(op.Resp.Revision, i)
 		case op.Resp != nil && op.Req.LeaseRevoke != nil:
-			r.revokes[op.Resp.Revision] = append(r.revokes[op.Resp.Revision], i)
+			r.revokes = add(r.revokes, op.Resp.Revision, i)
 		case op.Resp != nil && mutation(op):
-			r.others[op.Resp.Revision] = append(r.others[op.Resp.Revision], i)
+			r.others = add(r.others, op.Resp.Revision, i)
 		case op.Resp != nil:
-			r.seen[op.Resp.Revision] = append(r.seen[op.Resp.Revision], i)
+			r.seen = add(r.seen, op.Resp.Revision, i)
 		case op.Err.Ambiguous && op.Req.Mutates():
 			if g := op.Req.LeaseGrant; g != nil && g.ID == 0 {
 				// Nobody learned its ID, so no answer depends on it.
@@ -257,7 +343,7 @@ func (r *revisionOrder) index() error {
 		}
 		r.note(kv, unchangedTo)
 		r.top = max(r.top, kv.ModRevision)
-		if _, ok := r.writers[kv.ModRevision]; ok || kv.ModRevision < 2 || !valued {
+		if _, ok := r.writer(kv.ModRevision); ok || kv.ModRevision < 2 || !valued {
 			return
 		}
 		ops := values[[2]string{kv.Key, kv.Value}]
@@ -282,10 +368,20 @@ func (r *revisionOrder) index() error {
 				}
 				if e.Type == history.EventPut {
 					saw(e.KV, e.Revision(), true)
-				} else {
-					r.deleted[e.Revision()] = append(r.deleted[e.Revision()], e.KV.Key)
+				} else if r.checkRange(e.Revision()) {
+					// -1 for a key no request puts (note).
+					r.deleted = add(r.deleted, e.Revision(), r.w.live.index(e.KV.Key))
 				}
 			}
+		}
+	}
+	if r.outOfRange != nil {
+		return r.outOfRange
+	}
+	for _, ls := range r.noted {
+		for _, l := range ls {
+			key := r.w.live.keys[l.k]
+			r.lives[key] = append(r.lives[key], l.lifeTo)
 		}
 	}
 	// An ambiguous op seen writing two revisions wrote neither for sure.
@@ -310,6 +406,8 @@ func (r *revisionOrder) index() error {
 	}
 	r.indexCounts()
 	r.indexRoom()
+	// The room index was the last to read the noted lives.
+	r.noted = nil
 	r.scheduleOptional()
 	return nil
 }
@@ -354,7 +452,7 @@ func (r *revisionOrder) indexCounts() {
 		case req.Delete != nil:
 			del(req.Delete)
 		case req.Txn != nil:
-			for _, o := range slices.Concat(req.Txn.Success, req.Txn.Failure) {
+			for o := range req.Txn.Ops() {
 				if o.Put != nil {
 					put(o.Put)
 				}
@@ -538,32 +636,34 @@ func lostCompare(s *state, c history.Compare) bool {
 // shows of the key's life. One without a version, from a compare of the
 // mod revision, shows only the revision of its last write.
 func (r *revisionOrder) note(kv history.KeyValue, to int64) {
-	if kv.ModRevision < 2 {
+	if kv.ModRevision < 2 || !r.checkRange(kv.ModRevision) || kv.Version != 0 && !r.checkRange(kv.CreateRevision) {
 		return
 	}
-	if kv.Version == 0 {
-		r.written[kv.ModRevision] = append(r.written[kv.ModRevision], kv.Key)
+	// A key no request puts is -1: the store never holds it, so no writer
+	// can make what a client saw of it (fits).
+	k := r.w.live.index(kv.Key)
+	if kv.Version == 0 || k < 0 {
+		r.written = add(r.written, kv.ModRevision, k)
+		if kv.Version != 0 {
+			r.created = add(r.created, kv.CreateRevision, k)
+		}
 		return
 	}
 	l := life{kv.CreateRevision, kv.ModRevision, kv.Version}
-	m := r.lives[kv.Key]
-	if m == nil {
-		m = map[life]int64{}
-		r.lives[kv.Key] = m
+	r.noted = at(r.noted, l.m)
+	for j, s := range r.noted[l.m] {
+		if s.k == k && s.life == l {
+			r.noted[l.m][j].to = max(s.to, to)
+			return
+		}
 	}
-	if old, ok := m[l]; ok && old >= to {
-		return
-	}
-	if _, ok := m[l]; !ok {
-		r.created[l.c] = append(r.created[l.c], kv.Key)
-		r.written[l.m] = append(r.written[l.m], kv.Key)
-	}
-	m[l] = to
+	r.noted[l.m] = append(r.noted[l.m], seenLife{k, lifeTo{l, to}})
+	r.created, r.written = add(r.created, l.c, k), add(r.written, l.m, k)
 }
 
 func (r *revisionOrder) byCall(ops []int) {
 	h := r.w.h
-	slices.SortFunc(ops, func(a, b int) int { return cmp.Or(cmp.Compare(h.Ops[a].Call, h.Ops[b].Call), cmp.Compare(a, b)) })
+	r.w.sorter.sort(ops, func(i int) int64 { return h.Ops[i].Call })
 }
 
 // lowerBounds sets lb: for each ambiguous op, the highest header revision
@@ -576,7 +676,9 @@ func (r *revisionOrder) lowerBounds() {
 			acked = append(acked, i)
 		}
 	}
-	slices.SortFunc(acked, func(a, b int) int { return cmp.Compare(h.Ops[a].Return, h.Ops[b].Return) })
+	// A bound is looked up by a time, which never falls between two ops
+	// of one time, so the order of ties changes nothing.
+	r.w.sorter.sort(acked, func(i int) int64 { return h.Ops[i].Return })
 	r.highest = make([]int64, len(acked))
 	r.returns = make([]int64, len(acked))
 	for k, i := range acked {
@@ -587,7 +689,8 @@ func (r *revisionOrder) lowerBounds() {
 		}
 	}
 	byCall := slices.Clone(acked)
-	slices.SortFunc(byCall, func(a, b int) int { return cmp.Compare(h.Ops[a].Call, h.Ops[b].Call) })
+	r.w.sorter.sort(byCall, func(i int) int64 { return h.Ops[i].Call })
+	r.ackedByCall = byCall
 	r.calls = make([]int64, len(byCall))
 	r.lowest = make([]int64, len(byCall))
 	for k := len(byCall) - 1; k >= 0; k-- {
@@ -611,12 +714,19 @@ func (r *revisionOrder) lowerBounds() {
 // neither side.
 func (r *revisionOrder) inRealTime() error {
 	h := r.w.h
-	for i := range h.Ops {
+	// The acked ops in call order, against the returns in order: each
+	// bound is the one boundAt gives, without a search per op.
+	n := 0
+	for _, i := range r.ackedByCall {
 		op := &h.Ops[i]
-		if op.Resp == nil || op.Req.Range != nil && op.Req.Range.Serializable {
-			continue
+		for n < len(r.returns) && r.returns[n] < op.Call {
+			n++
 		}
-		if before := r.boundAt(op.Call); before > op.Resp.Revision {
+		before := int64(1)
+		if n > 0 {
+			before = r.highest[n-1]
+		}
+		if before > op.Resp.Revision {
 			return fmt.Errorf("%s has no state that real time allows: it answers revision %d, but an op that returned before it was called answered %d", r.w.describe(i), op.Resp.Revision, before)
 		}
 	}
@@ -650,7 +760,7 @@ func putsOf(req history.Request) [][2]string {
 	case req.Put != nil:
 		out = append(out, [2]string{req.Put.Key, req.Put.Value})
 	case req.Txn != nil:
-		for _, o := range slices.Concat(req.Txn.Success, req.Txn.Failure) {
+		for o := range req.Txn.Ops() {
 			if o.Put != nil {
 				out = append(out, [2]string{o.Put.Key, o.Put.Value})
 			}
@@ -1005,7 +1115,7 @@ func (r *revisionOrder) answered(ops []int) bool {
 			return false
 		}
 	}
-	seen := r.seen[w.live.rev]
+	seen := byRev(r.seen, w.live.rev)
 	if len(seen) == 0 || !slices.ContainsFunc(ops, func(i int) bool { return w.reqs[i].Compact != nil }) {
 		return true
 	}
@@ -1209,7 +1319,7 @@ func leasesOf(req history.Request) []int64 {
 	case req.Put != nil && req.Put.Lease != 0:
 		out = append(out, req.Put.Lease)
 	case req.Txn != nil:
-		for _, o := range slices.Concat(req.Txn.Success, req.Txn.Failure) {
+		for o := range req.Txn.Ops() {
 			if o.Put != nil && o.Put.Lease != 0 {
 				out = append(out, o.Put.Lease)
 			}
@@ -1337,7 +1447,7 @@ func (r *revisionOrder) search() error {
 // write places the writer of rev, the next candidate if rev is a gap.
 func (r *revisionOrder) write(rev int64) bool {
 	w := r.w
-	if i, ok := r.writers[rev]; ok {
+	if i, ok := r.writer(rev); ok {
 		r.expire(w.h.Ops[i].Call, 0)
 		o := w.apply(i, w.reqs[i])
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
@@ -1390,7 +1500,7 @@ func (r *revisionOrder) write(rev int64) bool {
 // every response and real-time constraint before passing.
 func (r *revisionOrder) candidates(rev int64) []int {
 	h := r.w.h
-	out := slices.Clone(r.revokes[rev])
+	out := slices.Clone(byRev(r.revokes, rev))
 	// A revoke writes a revision only if a key holds its lease (fits), and
 	// the ambiguous revokes of a busy history are its leases' expiries, so
 	// only those of the leases the live keys hold are tried: going through
@@ -1533,8 +1643,8 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 		// up for (#386). A write that reached the version early passed,
 		// and the search tried every order of the revisions up to that
 		// write before it failed there (#499).
-		for l, to := range r.lives[e.KV.Key] {
-			if l.c <= rev && rev <= to {
+		for _, l := range r.lives[e.KV.Key] {
+			if l.c <= rev && rev <= l.to {
 				kv, ok := s.get(e.KV.Key)
 				if !ok || kv.CreateRevision != l.c || rev < l.m && kv.Version >= l.v || rev >= l.m && kv.Version != l.v {
 					return false
@@ -1543,18 +1653,24 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 		}
 	}
 	// What clients saw happen at rev must happen.
-	for _, k := range r.created[rev] {
-		if kv, ok := s.get(k); !ok || kv.CreateRevision != rev {
+	for _, k := range byRev(r.created, rev) {
+		if k < 0 {
+			return false
+		}
+		if kv := s.kvs[k]; kv.Version == 0 || kv.CreateRevision != rev {
 			return false
 		}
 	}
-	for _, k := range r.written[rev] {
-		if kv, ok := s.get(k); !ok || kv.ModRevision != rev {
+	for _, k := range byRev(r.written, rev) {
+		if k < 0 {
+			return false
+		}
+		if kv := s.kvs[k]; kv.Version == 0 || kv.ModRevision != rev {
 			return false
 		}
 	}
-	for _, k := range r.deleted[rev] {
-		if _, ok := s.get(k); ok || !slices.ContainsFunc(o.events, func(e history.Event) bool { return e.KV.Key == k }) {
+	for _, k := range byRev(r.deleted, rev) {
+		if k < 0 || s.kvs[k].Version != 0 || !slices.ContainsFunc(o.events, func(e history.Event) bool { return e.KV.Key == s.keys[k] }) {
 			return false
 		}
 	}
@@ -1570,7 +1686,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 	r.insertOptional(rev)
 	r.expireEarly(rev)
 	var acked []int
-	for _, i := range slices.Concat(r.others[rev], r.revokes[rev]) {
+	for _, i := range slices.Concat(byRev(r.others, rev), byRev(r.revokes, rev)) {
 		if !r.used[i] {
 			acked = append(acked, i)
 		}
@@ -1593,10 +1709,12 @@ func (r *revisionOrder) finish(rev int64) bool {
 	for first > 0 && w.states[first-1].rev == rev {
 		first--
 	}
-	for _, i := range r.seen[rev] {
-		if _, ok := w.find(i, first, len(w.states)-1); !ok {
+	for _, i := range byRev(r.seen, rev) {
+		j, ok := w.find(i, first, len(w.states)-1)
+		if !ok {
 			return r.dead(rev, w.unanswered(i, first, len(w.states)-1, first, len(w.states)-1))
 		}
+		w.firsts[i] = firstAnswer{at: j, id: w.states[j].id}
 	}
 	return true
 }
