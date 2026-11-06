@@ -89,8 +89,8 @@ func (r *revisionOrder) indexRoom() {
 		if k < 0 {
 			continue
 		}
-		for l := range ls {
-			x.byM = append(x.byM, lifeOf{k, l})
+		for _, l := range ls {
+			x.byM = append(x.byM, lifeOf{k, l.life})
 			x.ends = append(x.ends, l.c, l.m)
 		}
 	}

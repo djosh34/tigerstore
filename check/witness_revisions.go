@@ -29,7 +29,7 @@ import (
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
 		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
-		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
+		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
 		counts: map[int64][]count{},
 	}
 	w.search = r
@@ -81,11 +81,15 @@ type revisionOrder struct {
 	// unchanged.
 	covered map[string][]span
 	// lives are, per key, the lives clients saw it in: created at c, last
-	// written at m with version v, still so at r. created, written and
-	// deleted list, per revision, the keys a client saw it create, write
-	// or delete: the writer of that revision must.
-	lives                     map[string]map[life]int64
-	created, written, deleted map[int64][]string
+	// written at m with version v, still so at to. note gathers them in
+	// noted, by m, and index sorts them by key. created, written and
+	// deleted list, per revision, the keys, by their index, a client saw
+	// it create, write or delete: the writer of that revision must. They
+	// are kept by revision, not in maps: on a busy history the maps' cost
+	// per op grew with their size (#499).
+	lives                     map[string][]lifeTo
+	noted                     [][]seenLife
+	created, written, deleted [][]int
 	// optional are the ambiguous mutations that change no key and that a
 	// later answer needs, by the revision from which they may go, in call
 	// order.
@@ -173,6 +177,34 @@ type optional struct {
 // life is what one observation of a key shows: created at c, last
 // written at m, with version v.
 type life struct{ c, m, v int64 }
+
+// lifeTo is a life seen still so at revision to.
+type lifeTo struct {
+	life
+	to int64
+}
+
+// seenLife is a life of key k, by its index, seen still so at to.
+type seenLife struct {
+	k int
+	lifeTo
+}
+
+// byRev returns revs[rev], or nothing past its end.
+func byRev(revs [][]int, rev int64) []int {
+	if rev < 0 || int(rev) >= len(revs) {
+		return nil
+	}
+	return revs[rev]
+}
+
+// at grows s to hold index i.
+func at[T any](s []T, i int64) []T {
+	if n := int(i) + 1; n > len(s) {
+		s = append(s, make([]T, n-len(s))...)
+	}
+	return s
+}
 
 // count is what an answer showed of the keys lo to hi of the key set at
 // revision rev: that n of them existed.
@@ -282,12 +314,21 @@ func (r *revisionOrder) index() error {
 				}
 				if e.Type == history.EventPut {
 					saw(e.KV, e.Revision(), true)
-				} else {
-					r.deleted[e.Revision()] = append(r.deleted[e.Revision()], e.KV.Key)
+				} else if k := r.w.live.index(e.KV.Key); k >= 0 {
+					rev := e.Revision()
+					r.deleted = at(r.deleted, rev)
+					r.deleted[rev] = append(r.deleted[rev], k)
 				}
 			}
 		}
 	}
+	for _, ls := range r.noted {
+		for _, l := range ls {
+			key := r.w.live.keys[l.k]
+			r.lives[key] = append(r.lives[key], l.lifeTo)
+		}
+	}
+	r.noted = nil
 	// An ambiguous op seen writing two revisions wrote neither for sure.
 	revOf := map[int]int64{}
 	for rev, i := range r.resolved {
@@ -538,27 +579,29 @@ func lostCompare(s *state, c history.Compare) bool {
 // shows of the key's life. One without a version, from a compare of the
 // mod revision, shows only the revision of its last write.
 func (r *revisionOrder) note(kv history.KeyValue, to int64) {
-	if kv.ModRevision < 2 {
+	k := r.w.live.index(kv.Key)
+	if kv.ModRevision < 2 || k < 0 {
 		return
 	}
+	add := func(revs [][]int, rev int64) [][]int {
+		revs = at(revs, rev)
+		revs[rev] = append(revs[rev], k)
+		return revs
+	}
 	if kv.Version == 0 {
-		r.written[kv.ModRevision] = append(r.written[kv.ModRevision], kv.Key)
+		r.written = add(r.written, kv.ModRevision)
 		return
 	}
 	l := life{kv.CreateRevision, kv.ModRevision, kv.Version}
-	m := r.lives[kv.Key]
-	if m == nil {
-		m = map[life]int64{}
-		r.lives[kv.Key] = m
+	r.noted = at(r.noted, l.m)
+	for j, s := range r.noted[l.m] {
+		if s.k == k && s.life == l {
+			r.noted[l.m][j].to = max(s.to, to)
+			return
+		}
 	}
-	if old, ok := m[l]; ok && old >= to {
-		return
-	}
-	if _, ok := m[l]; !ok {
-		r.created[l.c] = append(r.created[l.c], kv.Key)
-		r.written[l.m] = append(r.written[l.m], kv.Key)
-	}
-	m[l] = to
+	r.noted[l.m] = append(r.noted[l.m], seenLife{k, lifeTo{l, to}})
+	r.created, r.written = add(r.created, l.c), add(r.written, l.m)
 }
 
 func (r *revisionOrder) byCall(ops []int) {
@@ -1533,8 +1576,8 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 		// up for (#386). A write that reached the version early passed,
 		// and the search tried every order of the revisions up to that
 		// write before it failed there (#499).
-		for l, to := range r.lives[e.KV.Key] {
-			if l.c <= rev && rev <= to {
+		for _, l := range r.lives[e.KV.Key] {
+			if l.c <= rev && rev <= l.to {
 				kv, ok := s.get(e.KV.Key)
 				if !ok || kv.CreateRevision != l.c || rev < l.m && kv.Version >= l.v || rev >= l.m && kv.Version != l.v {
 					return false
@@ -1543,18 +1586,18 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 		}
 	}
 	// What clients saw happen at rev must happen.
-	for _, k := range r.created[rev] {
-		if kv, ok := s.get(k); !ok || kv.CreateRevision != rev {
+	for _, k := range byRev(r.created, rev) {
+		if kv := s.kvs[k]; kv.Version == 0 || kv.CreateRevision != rev {
 			return false
 		}
 	}
-	for _, k := range r.written[rev] {
-		if kv, ok := s.get(k); !ok || kv.ModRevision != rev {
+	for _, k := range byRev(r.written, rev) {
+		if kv := s.kvs[k]; kv.Version == 0 || kv.ModRevision != rev {
 			return false
 		}
 	}
-	for _, k := range r.deleted[rev] {
-		if _, ok := s.get(k); ok || !slices.ContainsFunc(o.events, func(e history.Event) bool { return e.KV.Key == k }) {
+	for _, k := range byRev(r.deleted, rev) {
+		if s.kvs[k].Version != 0 || !slices.ContainsFunc(o.events, func(e history.Event) bool { return e.KV.Key == s.keys[k] }) {
 			return false
 		}
 	}
