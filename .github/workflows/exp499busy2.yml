@@ -29,7 +29,7 @@ jobs:
       - name: Five times each, in turn
         env:
           # The commits to compare, by name=ref.
-          REFS: phases=d45b0c2bd9c19c53f4c3acb87cf13f4ab48a5a03
+          REFS: main=origin/main head=0761275d3e410542d6e9d4ba53182e7f7bd0906c cols=5f0bc4e5233f862d89a4a4aa4327c3cf2bcb736a
           REPS: '12'
           # Builds also run with the collector off.
           GCOFF: ''
@@ -55,8 +55,7 @@ jobs:
               for nr in $REFS; do
                 n=${nr%%=*}
                 echo "== $n $(basename "$h") $rep"
-                mkdir -p "$RUNNER_TEMP/prof"
-                CPUPROF="$RUNNER_TEMP/prof/$n-$(basename "$h" .json.gz)-$rep.pb" "$RUNNER_TEMP/chk-$n" -checkers witness-revisions -timeout 60m "$h" | cut -c1-400 || true
+                "$RUNNER_TEMP/chk-$n" -checkers witness-revisions -timeout 60m "$h" | cut -c1-400 || true
               done
               for n in $GCOFF; do
                 echo "== $n-gcoff $(basename "$h") $rep"
@@ -64,9 +63,3 @@ jobs:
               done
             done
           done
-      - uses: actions/upload-artifact@v6
-        with:
-          name: profiles
-          path: |
-            ${{ runner.temp }}/prof
-            ${{ runner.temp }}/chk-phases
