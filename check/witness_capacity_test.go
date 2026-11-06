@@ -130,3 +130,16 @@ func TestRoomRevokeDeletesKeysAPutMayAttach(t *testing.T) {
 		t.Fatalf("a revoke of lease 8, which no key uses, deletes keys %v", got)
 	}
 }
+
+// TestRoomRevokeOfALeaseAPutAttaches has key a with no lease now and a
+// count that needs it gone at 4: an ambiguous put may put it on lease 7 at
+// 3 and an ambiguous revoke of 7 delete it at 4, so the revoke covers the
+// deletion though a holds no lease now.
+func TestRoomRevokeOfALeaseAPutAttaches(t *testing.T) {
+	r := roomOrder([]string{"a"}, history.Request{Put: &history.PutRequest{Key: "a", Lease: 7}}, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 7}})
+	r.counts[4] = []count{{rev: 4, lo: 0, hi: 1, n: 0}}
+	r.indexForRoom()
+	if !r.roomReachable(r.w.live, -1) {
+		t.Fatal("a put on lease 7 and a revoke of 7 can delete the key by 4")
+	}
+}

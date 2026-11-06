@@ -31,7 +31,7 @@ func TestWitnessHardHistories(t *testing.T) {
 	}{
 		{"witness-425.json.gz", 25_000},
 		{"witness-control-80-201.json.gz", 10_000},
-		{"witness-control-320-1529.json.gz", 50_000},
+		{"witness-control-320-1529.json.gz", 20_000},
 	} {
 		t.Run(c.file, func(t *testing.T) {
 			f, err := os.Open("testdata/" + c.file)

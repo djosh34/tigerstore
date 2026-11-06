@@ -18,8 +18,8 @@ import (
 //
 // It is a relaxation of the search: a coordinate is one put of a key or
 // one deletion of it; a writer that holds its revision, acked or resolved,
-// covers what it may cover for free; an ambiguous op or an acked revoke is
-// an action that covers, in one revision, every put and deletion it may
+// and an acked revoke cover what they may cover for free; an ambiguous op
+// is an action that covers, in one revision, every put and deletion it may
 // make, in either branch, and may be taken again. The fewest actions that
 // cover what the revisions ahead need is then at most the revisions a real
 // order spends on them, so more than the free revisions proves the order
@@ -174,9 +174,8 @@ func (r *revisionOrder) coverers(s *state, need []int) []int {
 		}
 		if need[n+k] > 0 {
 			out = append(out, r.deleters[k]...)
-			if id := s.kvs[k].Lease; id != 0 {
-				out = append(out, x.revokesOf[id]...)
-			}
+			// A key holds a lease only from a put of the history, so its
+			// lease now is one of these.
 			for _, id := range x.leasesOf[k] {
 				out = append(out, x.revokesOf[id]...)
 			}
@@ -203,7 +202,7 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 	if x == nil || r.w.slow {
 		return true
 	}
-	n, now := len(s.keys), s.rev
+	now := s.rev
 	first := sort.Search(len(x.ends), func(j int) bool { return x.ends[j] > now })
 	for _, end := range x.ends[first:] {
 		if end > now+countHorizon {
@@ -232,27 +231,7 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 			if _, held := r.reserved[i]; i == skip || r.used[i] || r.lb[i] >= end || held {
 				continue
 			}
-			a := slices.Clone(x.actions[i])
-			if q := r.w.reqs[i].LeaseRevoke; q != nil {
-				for k, kv := range s.kvs {
-					if kv.Version != 0 && kv.Lease == q.ID {
-						a[n+k] = 1
-					}
-				}
-			}
-			add(a)
-		}
-		for rev, is := range r.revokes {
-			if rev <= now || rev > end {
-				continue
-			}
-			for _, i := range is {
-				a := make([]int, 2*n)
-				for _, k := range x.deleted(s, r.w.reqs[i]) {
-					a[n+k] = 1
-				}
-				add(a)
-			}
+			add(slices.Clone(x.actions[i]))
 		}
 		free := int(end-now) - between(x.fixed, now, end)
 		if fewestActions(need, actions, free) > free {
