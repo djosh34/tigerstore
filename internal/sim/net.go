@@ -313,18 +313,24 @@ func (p *pipe) signal() {
 }
 
 // waitFor waits until wake is closed or, if wait is not math.MaxInt64,
-// wait nanoseconds passed.
-func waitFor(wait int64, wake <-chan struct{}) {
+// wait nanoseconds passed, on the timer *t, which it makes once and then
+// reuses. Its callers look again after any wake, so one that comes late
+// from an earlier wait does no harm.
+func waitFor(t **time.Timer, wait int64, wake <-chan struct{}) {
 	if wait == math.MaxInt64 {
 		<-wake
 		return
 	}
-	t := time.NewTimer(time.Duration(wait))
-	select {
-	case <-t.C:
-	case <-wake:
+	if *t == nil {
+		*t = time.NewTimer(time.Duration(wait))
+	} else {
+		(*t).Reset(time.Duration(wait))
 	}
-	t.Stop()
+	select {
+	case <-(*t).C:
+	case <-wake:
+		(*t).Stop()
+	}
 }
 
 func (p *pipe) fail(err error) {
@@ -365,6 +371,8 @@ type conn struct {
 	damaged bool
 	// deadline and writeDeadline are the read and write deadlines.
 	deadline, writeDeadline time.Time
+	// readTimer and writeTimer wait out a read and a write (waitFor).
+	readTimer, writeTimer *time.Timer
 }
 
 func (c *conn) Read(b []byte) (int, error) {
@@ -424,7 +432,7 @@ func (c *conn) Read(b []byte) (int, error) {
 		}
 		wake := in.waiter()
 		s.mu.Unlock()
-		waitFor(wait, wake)
+		waitFor(&c.readTimer, wait, wake)
 	}
 }
 
@@ -481,7 +489,7 @@ func (c *conn) Write(b []byte) (int, error) {
 		}
 		wake := c.out.waiter()
 		s.mu.Unlock()
-		waitFor(wait, wake)
+		waitFor(&c.writeTimer, wait, wake)
 	}
 }
 
