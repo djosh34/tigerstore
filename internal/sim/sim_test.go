@@ -750,9 +750,10 @@ func atLeast(n int) int { return n * 95 / 100 }
 // node's queues, its committer takes no more messages, the followers'
 // answers included, and CheckQuorum steps it down after one election
 // timeout without them, which the race detector's scheduling reached
-// (#457), and gosim's seed 54 does. Every call to a healthy node that starts 10 election timeouts
-// after the stall must succeed. A leader can propose nothing for
-// a while after the stall, as when it serves a snapshot (#260).
+// (#457), and gosim's seed 54 does. Every call to a healthy node that
+// starts 10 election timeouts after the stall must succeed. A leader can
+// propose nothing for a while after the stall, as when it serves a
+// snapshot (#260).
 func TestStalledLeaderIsReplaced(t *testing.T) {
 	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
 	simrun.Each(t, []uint64{1, 2, 3, 54}, func(t *testing.T, seed uint64) struct{} {
