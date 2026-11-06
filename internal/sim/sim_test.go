@@ -706,6 +706,9 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 		cfg.LiveFrom = cfg.StallLeaderAt + 10*election
 		cfg.Duration = 25 * Second
 		res := run(t, cfg)
+		if len(res.Silences) == 0 || res.Stats.Silences == 0 {
+			t.Fatalf("seed %d: the stalled leader never went silent", seed)
+		}
 		at, action := res.StalledLeaderStepDownAt, "stepped down"
 		if len(res.Silences) > 0 && (at == 0 || res.Silences[0] < at) {
 			at, action = res.Silences[0], "went silent"
