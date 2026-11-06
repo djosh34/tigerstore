@@ -74,4 +74,4 @@ require (
 	k8s.io/utils v0.0.0-20260108192941-914a6e750570 // indirect
 )
 
-replace github.com/jellevandenhooff/gosim => github.com/djosh34/gosim v0.0.0-20261106151728-ab5c78bdcfb1
+replace github.com/jellevandenhooff/gosim => github.com/djosh34/gosim v0.0.0-20261106154919-abaf8d75009f
