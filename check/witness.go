@@ -157,6 +157,8 @@ type witness struct {
 	// id of the newest state (placeSeen).
 	firsts []firstAnswer
 	lastID uint64
+	// sorter sorts ops by time (timeSorter).
+	sorter timeSorter
 }
 
 // stoppedAt says how far a check got when it ran out of time.
@@ -470,10 +472,8 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 	}
 	events := w.eventBounds()
 	ops = slices.Clone(ops)
-	slices.SortFunc(ops, func(a, b int) int {
-		return cmp.Or(cmp.Compare(w.h.Ops[a].Call, w.h.Ops[b].Call), cmp.Compare(a, b))
-	})
-	placed := newPlacedMax(w.h, ops)
+	w.sorter.sort(ops, func(i int) int64 { return w.h.Ops[i].Call })
+	placed := newPlacedMax(w.h, ops, &w.sorter)
 	for _, i := range ops {
 		if w.tick() {
 			return errWitnessTimeout
@@ -613,10 +613,10 @@ type placedMax struct {
 	tree    []int
 }
 
-func newPlacedMax(h *history.History, ops []int) *placedMax {
+func newPlacedMax(h *history.History, ops []int, sorter *timeSorter) *placedMax {
 	p := &placedMax{h: h, rank: map[int]int{}, tree: make([]int, len(ops)+1)}
 	sorted := slices.Clone(ops)
-	slices.SortFunc(sorted, func(a, b int) int { return cmp.Or(cmp.Compare(h.Ops[a].Return, h.Ops[b].Return), cmp.Compare(a, b)) })
+	sorter.sort(sorted, func(i int) int64 { return h.Ops[i].Return })
 	for k, i := range sorted {
 		p.rank[i] = k + 1
 		p.returns = append(p.returns, h.Ops[i].Return)

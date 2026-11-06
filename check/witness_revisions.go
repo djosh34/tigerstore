@@ -563,7 +563,7 @@ func (r *revisionOrder) note(kv history.KeyValue, to int64) {
 
 func (r *revisionOrder) byCall(ops []int) {
 	h := r.w.h
-	slices.SortFunc(ops, func(a, b int) int { return cmp.Or(cmp.Compare(h.Ops[a].Call, h.Ops[b].Call), cmp.Compare(a, b)) })
+	r.w.sorter.sort(ops, func(i int) int64 { return h.Ops[i].Call })
 }
 
 // lowerBounds sets lb: for each ambiguous op, the highest header revision
