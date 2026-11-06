@@ -103,8 +103,10 @@ type Disk struct {
 	Fault func(op Op, name string) error
 
 	// Trace, if set, gets a line for every call that changes the disk,
-	// and for each file a crash keeps, for a failure's report (#274).
-	Trace func(string)
+	// and for each file a crash keeps, for a failure's report (#274): its
+	// format and arguments, as fmt.Sprintf takes them, so that a caller
+	// that keeps them formats only the lines it reports.
+	Trace func(format string, args ...any)
 
 	// Capacity, if set, is how many bytes the files may hold in all. A
 	// write past it stores what fits and fails with ErrNoSpace.
@@ -147,7 +149,7 @@ func New() *Disk {
 
 func (d *Disk) tracef(format string, args ...any) {
 	if d.Trace != nil {
-		d.Trace(fmt.Sprintf(format, args...))
+		d.Trace(format, args...)
 	}
 }
 
@@ -776,7 +778,9 @@ func (h *Handle) WriteAt(p []byte, off int64) (int, error) {
 	if n > 0 {
 		h.write(int(off), p[:n])
 	}
-	h.d.tracef("write %s (file %d) at %d: %d of %d bytes, crc %08x, %v", h.name, h.f.id, off, n, len(p), crc32.ChecksumIEEE(p[:n]), err)
+	if h.d.Trace != nil {
+		h.d.tracef("write %s (file %d) at %d: %d of %d bytes, crc %08x, %v", h.name, h.f.id, off, n, len(p), crc32.ChecksumIEEE(p[:n]), err)
+	}
 	return n, err
 }
 

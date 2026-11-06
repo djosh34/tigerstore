@@ -387,10 +387,10 @@ type node struct {
 	// rotStopped is set when it stopped on the rotted value too late for
 	// its restart to come before the end; it stays down (#265).
 	rotStopped bool
-	// diskLog holds the node's last disk calls, with their times, and
+	// diskLog holds the node's last disk calls (diskCall), and
 	// crashImage its files right after its last crash, for a failure's
 	// report (#274).
-	diskLog    []string
+	diskLog    []diskCall
 	crashImage map[string][]byte
 	// ckptDone are the checkpoint files closed right after their last
 	// sync, whose bytes count once the directory is synced;
@@ -562,12 +562,12 @@ type Sim struct {
 	// log is every committed entry as the first node applied it, with the
 	// state's hash after it, up to index maxLogged; ckpts are the hashes
 	// of the checkpoint files, by index.
-	log       map[uint64]logRec
+	log       *entryLog
 	maxLogged uint64
 	ckpts     map[uint64]ckptRec
 	// base, in a cold restart, is the run's record, which holds up to
 	// baseUpTo.
-	base     map[uint64]logRec
+	base     *entryLog
 	baseUpTo uint64
 	// diskFaultDue arms a disk fault at the next write of a log segment,
 	// after healing too; lateStopAt is when a node last stopped after
@@ -822,7 +822,7 @@ func newSim(cfg Config) (*Sim, error) {
 		t0:         time.Now(),
 		end:        make(chan struct{}),
 		expiredAt:  map[int64]int64{},
-		log:        map[uint64]logRec{},
+		log:        &entryLog{},
 		ckpts:      map[uint64]ckptRec{},
 		servedRoot: map[uint64]uint64{},
 		healAt:     cfg.Duration,
@@ -1182,12 +1182,29 @@ const traceLines, diskLines = 3000, 4000
 // traceDisk keeps the disk calls of n, with the run's time, in
 // n.diskLog. Disk calls run with the lock held.
 func (s *Sim) traceDisk(n *node) {
-	n.disk.Trace = func(line string) {
+	n.disk.Trace = func(format string, args ...any) {
 		if len(n.diskLog) == diskLines {
 			n.diskLog = slices.Delete(n.diskLog, 0, diskLines/4)
 		}
-		n.diskLog = append(n.diskLog, fmt.Sprintf("%9.3f ms %s", float64(s.now())/float64(Millisecond), line))
+		n.diskLog = append(n.diskLog, diskCall{at: s.now(), format: format, args: args})
 	}
+}
+
+// diskCall is a line of a node's disk log, kept unformatted: most runs
+// never report it.
+type diskCall struct {
+	at     int64
+	format string
+	args   []any
+}
+
+// diskLines returns n's disk log, formatted.
+func (n *node) diskLines() []string {
+	out := make([]string, len(n.diskLog))
+	for i, c := range n.diskLog {
+		out[i] = fmt.Sprintf("%9.3f ms ", float64(c.at)/float64(Millisecond)) + fmt.Sprintf(c.format, c.args...)
+	}
+	return out
 }
 
 // tracef adds a line to the trace. The lock is held.

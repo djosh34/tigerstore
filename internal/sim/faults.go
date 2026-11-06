@@ -683,7 +683,7 @@ func (s *Sim) holdsApplied(applied uint64) (bool, error) {
 			if err != nil {
 				return false, errors.Join(err, w.Close())
 			}
-			if b, ok := s.base[i]; ok && (b.term != e.GetTerm() || b.known && (b.typ != e.GetType() || !bytes.Equal(b.data, e.GetData()))) {
+			if b, ok := s.base.get(i); ok && (b.term != e.GetTerm() || b.known && (b.typ != e.GetType() || !bytes.Equal(s.base.bytes(b), e.GetData()))) {
 				holds = false
 			}
 		}

@@ -156,7 +156,7 @@ func TestColdRestartNoElectionLost(t *testing.T) {
 			{"missing entries", func(_ *Sim, c *checkpoint) { c.applied = 1352 }},
 			{"different entry", func(s *Sim, c *checkpoint) {
 				c.applied = 1344
-				s.log[1344] = logRec{term: 9}
+				s.log.put(1344, logRec{term: 9})
 			}},
 			{"different type", func(s *Sim, c *checkpoint) {
 				// Node 4's entry 1344 as it is, but recorded as a member
@@ -166,7 +166,7 @@ func TestColdRestartNoElectionLost(t *testing.T) {
 				if e.GetType() == raftpb.EntryConfChange {
 					t.Fatal("node 4's entry 1344 is a member change already")
 				}
-				s.log[1344] = logRec{term: e.GetTerm(), typ: raftpb.EntryConfChange, data: e.GetData(), known: true}
+				s.log.put(1344, logRec{term: e.GetTerm(), typ: raftpb.EntryConfChange, data: s.log.data.add(e.GetData()), known: true})
 			}},
 		} {
 			_, err := coldRestart84216(t, 2, c.change)
