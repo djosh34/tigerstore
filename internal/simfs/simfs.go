@@ -47,14 +47,26 @@ const (
 
 type file struct {
 	// id tells files apart in the trace across their renames.
-	id      int
-	data    []byte
-	durable []byte
+	id int
+	// durable is what the medium holds.
+	durable pages
+	// size is how long the file is now, synced or not, and dirty are the
+	// page cache's pages that differ from durable's or that a pending
+	// write touched. Every other page reads as durable's, with zeros past
+	// size, and at or past cutAt when cut. A dirty page holds zeros past
+	// size.
+	size  int
+	dirty map[int]*block
+	// diverged is set when the page cache may hold bytes that neither the
+	// medium nor a pending write holds: a failed sync left them readable
+	// (#372), or a bit rotted under the running node.
+	diverged bool
 	// pending are the writes since the last sync, oldest first.
 	pending []write
-	// cut is set when a truncate removed synced bytes, so data no longer
-	// starts with durable.
-	cut bool
+	// cut is set when a truncate removed synced bytes, so the content no
+	// longer starts with durable: its bytes at or past cutAt are gone.
+	cut   bool
+	cutAt int
 	// bad are the sectors of the medium, by index, that fail every read
 	// until a write covers them. misread, if set, makes the next read of
 	// synced bytes return them wrong.
@@ -75,17 +87,67 @@ type write struct {
 	p   []byte
 }
 
-// apply writes p at off into b, growing it with zeros as needed. An empty
-// p changes nothing.
-func apply(b []byte, off int, p []byte) []byte {
-	if len(p) == 0 {
-		return b
+// limit is where the clean pages' bytes end: past it they read as zeros.
+func (f *file) limit() int {
+	if f.cut {
+		return min(f.size, f.cutAt)
 	}
-	if end := off + len(p); end > len(b) {
-		b = append(b, make([]byte, end-len(b))...)
+	return f.size
+}
+
+// read fills dst with the content at off, zeros past size.
+func (f *file) read(dst []byte, off int) {
+	n := max(0, min(len(dst), f.size-off))
+	clear(dst[n:])
+	limit := f.limit()
+	for k := 0; k < n; {
+		o := off + k
+		i, at := o/PageBytes, o%PageBytes
+		m := min(n-k, PageBytes-at)
+		if d := f.dirty[i]; d != nil {
+			copy(dst[k:k+m], d[at:at+m])
+		} else {
+			c := max(0, min(m, limit-o))
+			f.durable.read(dst[k:k+c], o)
+			clear(dst[k+c : k+m])
+		}
+		k += m
 	}
-	copy(b[off:], p)
+}
+
+// content returns a copy of the content.
+func (f *file) content() []byte {
+	b := make([]byte, f.size)
+	f.read(b, 0)
 	return b
+}
+
+// clean returns page i as it reads without the page cache's own bytes.
+func (f *file) clean(i int) *block {
+	b := new(block)
+	lo := i * PageBytes
+	c := max(0, min(PageBytes, f.limit()-lo))
+	f.durable.read(b[:c], lo)
+	return b
+}
+
+// dirtyPage returns page i of the page cache for a change.
+func (f *file) dirtyPage(i int) *block {
+	if d := f.dirty[i]; d != nil {
+		return d
+	}
+	if f.dirty == nil {
+		f.dirty = map[int]*block{}
+	}
+	d := f.clean(i)
+	f.dirty[i] = d
+	return d
+}
+
+// reset makes the content what the medium holds, with nothing pending.
+func (f *file) reset() {
+	f.size = f.durable.size
+	f.dirty, f.diverged, f.pending, f.cut, f.cutAt = nil, false, nil, false, 0
 }
 
 var _ wal.FS = (*Disk)(nil)
@@ -157,16 +219,16 @@ func (d *Disk) tracef(format string, args ...any) {
 func (d *Disk) Files() map[string][]byte {
 	out := map[string][]byte{}
 	for name, f := range d.names {
-		out[name] = slices.Clone(f.data)
+		out[name] = f.content()
 	}
 	return out
 }
 
 // EachFile calls f with the name and the bytes of each file now, in name
-// order, without copying them; f must not keep or change them.
+// order.
 func (d *Disk) EachFile(f func(name string, data []byte)) {
 	for _, name := range sortedNames(d.names) {
-		f(name, d.names[name].data)
+		f(name, d.names[name].content())
 	}
 }
 
@@ -226,17 +288,17 @@ func (d *Disk) CrashImage(rng *rand.Rand, img Image) {
 	for _, name := range sortedNames(dir) {
 		f := dir[name]
 		d.names[name] = f
+		synced := f.durable.size
 		kept := f.survive(rng, img, &d.Counts)
 		if d.Trace != nil {
 			unsynced := 0
 			for _, w := range f.pending {
 				unsynced += len(w.p)
 			}
-			d.tracef("crash: %s (file %d) keeps %d bytes: %d synced, %d unsynced bytes written since, cut %v, %v", name, f.id, len(kept), len(f.durable), unsynced, f.cut, img)
+			d.tracef("crash: %s (file %d) keeps %d bytes: %d synced, %d unsynced bytes written since, cut %v, %v", name, f.id, kept.size, synced, unsynced, f.cut, img)
 		}
-		f.data = kept
-		f.durable = slices.Clone(kept)
-		f.pending, f.cut = nil, false
+		f.durable = kept
+		f.reset()
 	}
 	d.durable = maps.Clone(d.names)
 	d.dirOps = nil
@@ -245,9 +307,11 @@ func (d *Disk) CrashImage(rng *rand.Rand, img Image) {
 // survive returns f's synced content with what img keeps of its unsynced
 // writes applied, in the order they were made, and counts the writes it
 // tore and whether it kept one after an earlier one it lost. A file cut
-// below its synced size keeps only that.
-func (f *file) survive(rng *rand.Rand, img Image, c *Counts) []byte {
-	kept := slices.Clone(f.durable)
+// below its synced size keeps only that. f's synced content goes into
+// the result, which its caller puts in its place.
+func (f *file) survive(rng *rand.Rand, img Image, c *Counts) pages {
+	kept := f.durable
+	f.durable = pages{}
 	if f.cut || len(f.pending) == 0 {
 		return kept
 	}
@@ -269,7 +333,7 @@ func (f *file) survive(rng *rand.Rand, img Image, c *Counts) []byte {
 				break
 			}
 			k := min(len(stream), len(w.p))
-			kept = apply(kept, w.off, stream[:k])
+			kept.write(w.off, stream[:k])
 			stream = stream[k:]
 		}
 		return kept
@@ -282,7 +346,7 @@ func (f *file) survive(rng *rand.Rand, img Image, c *Counts) []byte {
 		}
 		switch k {
 		case 0:
-			kept = apply(kept, w.off, w.p)
+			kept.write(w.off, w.p)
 			reordered = reordered || lost
 		case 1:
 			lost = lost || len(w.p) > 0
@@ -295,7 +359,7 @@ func (f *file) survive(rng *rand.Rand, img Image, c *Counts) []byte {
 			n := 0
 			for _, p := range ps {
 				if rng.IntN(2) == 0 {
-					kept = apply(kept, p.off, p.p)
+					kept.write(p.off, p.p)
 					n++
 				}
 			}
@@ -329,7 +393,8 @@ func (d *Disk) Durable() *Disk {
 	c := New()
 	for _, name := range sortedNames(d.durable) {
 		f := d.durable[name]
-		g := &file{id: f.id, data: slices.Clone(f.durable), durable: slices.Clone(f.durable)}
+		g := &file{id: f.id, durable: f.durable.share()}
+		g.reset()
 		c.names[name] = g
 		c.durable[name] = g
 	}
@@ -345,7 +410,14 @@ func (d *Disk) Copy() *Disk {
 	c := New()
 	for _, name := range sortedNames(d.names) {
 		f := d.names[name]
-		g := &file{id: f.id, data: slices.Clone(f.data), durable: slices.Clone(f.durable), cut: f.cut}
+		g := &file{id: f.id, durable: f.durable.share(), size: f.size, diverged: f.diverged, cut: f.cut, cutAt: f.cutAt}
+		for i, p := range f.dirty {
+			if g.dirty == nil {
+				g.dirty = map[int]*block{}
+			}
+			b := *p
+			g.dirty[i] = &b
+		}
 		for _, w := range f.pending {
 			g.pending = append(g.pending, write{w.off, slices.Clone(w.p)})
 		}
@@ -374,7 +446,7 @@ func (d *Disk) Corrupt(rng *rand.Rand) bool {
 	}
 	var targets []string
 	for _, name := range segs[:len(segs)-1] {
-		if len(d.durable[name].durable) >= 64 {
+		if d.durable[name].durable.size >= 64 {
 			targets = append(targets, name)
 		}
 	}
@@ -383,30 +455,32 @@ func (d *Disk) Corrupt(rng *rand.Rand) bool {
 	}
 	f := d.durable[targets[rng.IntN(len(targets))]]
 	n := 16 + rng.IntN(49)
-	src := d.durable[names[rng.IntN(len(names))]].durable
-	if len(src) < n || len(f.durable) < n {
+	src := &d.durable[names[rng.IntN(len(names))]].durable
+	if src.size < n || f.durable.size < n {
 		return false
 	}
-	from := rng.IntN(len(src) - n + 1)
-	at := rng.IntN(len(f.durable) - n + 1)
-	if bytes.Equal(f.durable[at:at+n], src[from:from+n]) {
+	from := rng.IntN(src.size - n + 1)
+	at := rng.IntN(f.durable.size - n + 1)
+	b, old := make([]byte, n), make([]byte, n)
+	src.read(b, from)
+	f.durable.read(old, at)
+	if bytes.Equal(old, b) {
 		return false
 	}
-	copy(f.durable[at:at+n], slices.Clone(src[from:from+n]))
-	f.data = slices.Clone(f.durable)
-	f.pending, f.cut = nil, false
+	f.durable.write(at, b)
+	f.reset()
 	return true
 }
 
 // CorruptFile flips one bit of a file's synced bytes, if it has any.
 func (d *Disk) CorruptFile(rng *rand.Rand, name string) bool {
 	f, ok := d.durable[name]
-	if !ok || len(f.durable) == 0 {
+	if !ok || f.durable.size == 0 {
 		return false
 	}
-	f.durable[rng.IntN(len(f.durable))] ^= 1 << rng.IntN(8)
-	f.data = slices.Clone(f.durable)
-	f.pending, f.cut = nil, false
+	i := rng.IntN(f.durable.size)
+	f.durable.own(i / PageBytes)[i%PageBytes] ^= 1 << rng.IntN(8)
+	f.reset()
 	return true
 }
 
@@ -415,17 +489,17 @@ func (d *Disk) CorruptFile(rng *rand.Rand, name string) bool {
 // changed anything.
 func (d *Disk) LoseWrite(rng *rand.Rand, name string) bool {
 	f, ok := d.durable[name]
-	if !ok || len(f.durable) == 0 {
+	if !ok || f.durable.size == 0 {
 		return false
 	}
-	at := rng.IntN((len(f.durable)+SectorBytes-1)/SectorBytes) * SectorBytes
-	b := f.durable[at:min(at+SectorBytes, len(f.durable))]
+	at := rng.IntN((f.durable.size+SectorBytes-1)/SectorBytes) * SectorBytes
+	b := make([]byte, min(SectorBytes, f.durable.size-at))
+	f.durable.read(b, at)
 	if !slices.ContainsFunc(b, func(c byte) bool { return c != 0 }) {
 		return false
 	}
-	clear(b)
-	f.data = slices.Clone(f.durable)
-	f.pending, f.cut = nil, false
+	f.durable.write(at, make([]byte, len(b)))
+	f.reset()
 	d.tracef("lost the write of %s (file %d) at %d", name, f.id, at)
 	return true
 }
@@ -435,13 +509,13 @@ func (d *Disk) LoseWrite(rng *rand.Rand, name string) bool {
 // the file has such a sector.
 func (d *Disk) BadSector(rng *rand.Rand, name string) bool {
 	f, ok := d.durable[name]
-	if !ok || len(f.durable) == 0 {
+	if !ok || f.durable.size == 0 {
 		return false
 	}
 	if f.bad == nil {
 		f.bad = map[int]bool{}
 	}
-	s := rng.IntN((len(f.durable) + SectorBytes - 1) / SectorBytes)
+	s := rng.IntN((f.durable.size + SectorBytes - 1) / SectorBytes)
 	f.bad[s] = true
 	d.tracef("sector %d of %s (file %d) is bad", s, name, f.id)
 	return true
@@ -452,7 +526,7 @@ func (d *Disk) BadSector(rng *rand.Rand, name string) bool {
 // reports whether the file has synced bytes.
 func (d *Disk) Misread(rng *rand.Rand, name string) bool {
 	f, ok := d.names[name]
-	if !ok || len(f.durable) == 0 {
+	if !ok || f.durable.size == 0 {
 		return false
 	}
 	f.misread = rng
@@ -534,7 +608,7 @@ func (d *Disk) Erase() {
 func (d *Disk) Bytes() int {
 	n := 0
 	for _, f := range d.names {
-		n += len(f.data)
+		n += f.size
 	}
 	return n
 }
@@ -678,10 +752,10 @@ func (h *Handle) ReadAll() ([]byte, error) {
 	if err := h.check(OpRead); err != nil {
 		return nil, err
 	}
-	if err := h.readable(0, len(h.f.data)); err != nil {
+	if err := h.readable(0, h.f.size); err != nil {
 		return nil, err
 	}
-	b := slices.Clone(h.f.data)
+	b := h.f.content()
 	h.misread(b, 0)
 	return b, nil
 }
@@ -691,13 +765,14 @@ func (h *Handle) ReadAt(p []byte, off int64) (int, error) {
 	if err := h.check(OpRead); err != nil {
 		return 0, err
 	}
-	if off < 0 || off > int64(len(h.f.data)) {
+	if off < 0 || off > int64(h.f.size) {
 		return 0, io.EOF
 	}
 	if err := h.readable(int(off), int(off)+len(p)); err != nil {
 		return 0, err
 	}
-	n := copy(p, h.f.data[off:])
+	n := min(len(p), h.f.size-int(off))
+	h.f.read(p[:n], int(off))
 	h.misread(p[:n], int(off))
 	if n < len(p) {
 		return n, io.EOF
@@ -707,7 +782,7 @@ func (h *Handle) ReadAt(p []byte, off int64) (int, error) {
 
 // readable fails a read of bytes from to end that covers a bad sector.
 func (h *Handle) readable(from, end int) error {
-	end = min(end, len(h.f.data))
+	end = min(end, h.f.size)
 	for s := range h.f.bad {
 		if s*SectorBytes < end && (s+1)*SectorBytes > from {
 			h.d.tracef("read %s (file %d) at %d: sector %d is bad", h.name, h.f.id, from, s)
@@ -725,18 +800,19 @@ func (h *Handle) readable(from, end int) error {
 func (h *Handle) misread(b []byte, off int) {
 	f := h.f
 	rng := f.misread
-	end := min(off+len(b), len(f.durable))
+	end := min(off+len(b), f.durable.size)
 	if rng == nil || off >= end {
 		return
 	}
 	f.misread = nil
 	h.d.Counts.Misreads++
-	if s := (off + rng.IntN(end-off)) / SectorBytes; rng.IntN(2) == 0 && len(f.durable) >= 2*SectorBytes {
-		from := rng.IntN(len(f.durable)/SectorBytes - 1)
+	if s := (off + rng.IntN(end-off)) / SectorBytes; rng.IntN(2) == 0 && f.durable.size >= 2*SectorBytes {
+		from := rng.IntN(f.durable.size/SectorBytes - 1)
 		if from >= s {
 			from++
 		}
-		src := f.durable[from*SectorBytes : min((from+1)*SectorBytes, len(f.durable))]
+		src := make([]byte, min(SectorBytes, f.durable.size-from*SectorBytes))
+		f.durable.read(src, from*SectorBytes)
 		at := s * SectorBytes
 		lo, hi := max(at, off), min(at+len(src), end)
 		if lo < hi && !bytes.Equal(b[lo-off:hi-off], src[lo-at:hi-at]) {
@@ -752,7 +828,7 @@ func (h *Handle) misread(b []byte, off int) {
 
 // Write appends a copy of p.
 func (h *Handle) Write(p []byte) (int, error) {
-	return h.WriteAt(p, int64(len(h.f.data)))
+	return h.WriteAt(p, int64(h.f.size))
 }
 
 // WriteAt writes a copy of p at offset off, growing the file with zeros
@@ -768,12 +844,12 @@ func (h *Handle) WriteAt(p []byte, off int64) (int, error) {
 	}
 	if c := h.d.Capacity; c > 0 {
 		// What fits: the file may grow by the free bytes.
-		if limit := len(h.f.data) + c - h.d.Bytes(); int(off)+n > limit {
+		if limit := h.f.size + c - h.d.Bytes(); int(off)+n > limit {
 			n, err = max(0, min(n, limit-int(off))), ErrNoSpace
 		}
 	}
-	if gap := int(off) - len(h.f.data); gap > 0 && (n > 0 || err == nil) {
-		h.write(len(h.f.data), make([]byte, gap))
+	if gap := int(off) - h.f.size; gap > 0 && (n > 0 || err == nil) {
+		h.write(h.f.size, make([]byte, gap))
 	}
 	if n > 0 {
 		h.write(int(off), p[:n])
@@ -786,8 +862,15 @@ func (h *Handle) WriteAt(p []byte, off int64) (int, error) {
 
 func (h *Handle) write(off int, p []byte) {
 	p = slices.Clone(p)
-	h.f.data = apply(h.f.data, off, p)
-	h.f.pending = append(h.f.pending, write{off, p})
+	f := h.f
+	for k := 0; k < len(p); {
+		i, at := (off+k)/PageBytes, (off+k)%PageBytes
+		m := min(len(p)-k, PageBytes-at)
+		copy(f.dirtyPage(i)[at:at+m], p[k:k+m])
+		k += m
+	}
+	f.size = max(f.size, off+len(p))
+	f.pending = append(f.pending, write{off, p})
 	// The drive writes a bad sector again in a spare place.
 	for s := range h.f.bad {
 		if s*SectorBytes < off+len(p) && (s+1)*SectorBytes > off {
@@ -801,16 +884,28 @@ func (h *Handle) Truncate(size int64) error {
 	if err := h.check(OpTruncate); err != nil {
 		return err
 	}
-	if size < int64(len(h.f.data)) {
-		h.f.data = h.f.data[:size:size]
+	f := h.f
+	if n := int(size); n < f.size {
+		for i, d := range f.dirty {
+			switch lo := i * PageBytes; {
+			case lo >= n:
+				delete(f.dirty, i)
+			case n < lo+PageBytes:
+				clear(d[n-lo:])
+			}
+		}
+		f.size = n
 	}
 	for s := range h.f.bad {
 		if int64(s*SectorBytes) >= size {
 			delete(h.f.bad, s)
 		}
 	}
-	if size < int64(len(h.f.durable)) {
-		h.f.cut = true
+	if n := int(size); n < f.durable.size {
+		if !f.cut || n < f.cutAt {
+			f.cutAt = n
+		}
+		f.cut = true
 	}
 	h.d.tracef("truncate %s (file %d) to %d, cut %v", h.name, h.f.id, size, h.f.cut)
 	// A later sync keeps only what is left of the writes before it.
@@ -836,28 +931,56 @@ func (h *Handle) Sync() error {
 			h.f.durable = h.f.survive(rng, Writes, &h.d.Counts)
 		}
 		h.d.Counts.FailedSyncs++
-		h.d.tracef("sync %s (file %d) fails after %d bytes reached the disk", h.name, h.f.id, len(h.f.durable))
+		h.d.tracef("sync %s (file %d) fails after %d bytes reached the disk", h.name, h.f.id, h.f.durable.size)
 	}
+	f := h.f
 	if err != nil {
-		if errors.Is(err, ErrIO) && !h.f.cut {
+		if errors.Is(err, ErrIO) && !f.cut {
 			// As on Linux, a failed writeback marks the pages clean: the
 			// unsynced bytes stay readable but never reach the disk, which
 			// keeps what it had there, zeros past its end, and a later
 			// sync does not retry them.
-			h.f.durable = append(h.f.durable, make([]byte, max(0, len(h.f.data)-len(h.f.durable)))...)
-			h.f.pending = nil
+			f.durable.grow(f.size)
+			f.diverged = f.diverged || len(f.pending) > 0
+			f.pending = nil
 		}
 		return err
 	}
-	if h.f.cut {
-		h.f.durable = slices.Clone(h.f.data)
-	} else {
-		for _, w := range h.f.pending {
-			h.f.durable = apply(h.f.durable, w.off, w.p)
+	switch {
+	case f.cut || !f.diverged:
+		// The medium gets what the page cache holds: its pages become
+		// the medium's.
+		end := f.size
+		if !f.cut {
+			// Only the bytes written reach the medium: a truncate that
+			// cut no synced bytes may have left zeros past them.
+			end = f.durable.size
+			for _, w := range f.pending {
+				end = max(end, w.off+len(w.p))
+			}
 		}
+		f.durable.cut(f.limit())
+		for i, d := range f.dirty {
+			f.durable.set(i, d)
+		}
+		f.durable.size = f.size
+		f.durable.cut(end)
+		f.dirty, f.diverged = nil, false
+	default:
+		for _, w := range f.pending {
+			f.durable.write(w.off, w.p)
+		}
+		// The page cache keeps the pages that hold what the medium does
+		// not.
+		for i, d := range f.dirty {
+			if *d == *f.clean(i) {
+				delete(f.dirty, i)
+			}
+		}
+		f.diverged = len(f.dirty) > 0
 	}
-	h.f.pending, h.f.cut = nil, false
-	h.d.tracef("sync %s (file %d): %d bytes durable", h.name, h.f.id, len(h.f.durable))
+	f.pending, f.cut, f.cutAt = nil, false, 0
+	h.d.tracef("sync %s (file %d): %d bytes durable", h.name, f.id, f.durable.size)
 	return nil
 }
 
@@ -871,13 +994,38 @@ func (h *Handle) DropCache() error {
 	if h.closed {
 		return errClosed
 	}
-	for off := 0; off < len(h.f.data); off += PageBytes {
-		end := min(off+PageBytes, len(h.f.data))
-		if slices.ContainsFunc(h.f.pending, func(w write) bool { return w.off < end && w.off+len(w.p) > off }) {
+	f := h.f
+	// Only a dirty page, or one with synced bytes that a cut hides, reads
+	// otherwise than the disk does.
+	var touched []int
+	for i := range f.dirty {
+		touched = append(touched, i)
+	}
+	if f.cut {
+		for i := f.cutAt / PageBytes; i < pageCount(min(f.size, f.durable.size)); i++ {
+			if f.dirty[i] == nil {
+				touched = append(touched, i)
+			}
+		}
+	}
+	for _, i := range touched {
+		off := i * PageBytes
+		end := min(off+PageBytes, f.size)
+		if slices.ContainsFunc(f.pending, func(w write) bool { return w.off < end && w.off+len(w.p) > off }) {
 			continue
 		}
-		n := copy(h.f.data[off:end], h.f.durable[min(off, len(h.f.durable)):min(end, len(h.f.durable))])
-		clear(h.f.data[off+n : end])
+		// The page reads what the disk holds, even a part a truncate
+		// cut that no sync made final.
+		b := new(block)
+		f.durable.read(b[:end-off], off)
+		if *b == *f.clean(i) {
+			delete(f.dirty, i)
+		} else {
+			if f.dirty == nil {
+				f.dirty = map[int]*block{}
+			}
+			f.dirty[i] = b
+		}
 	}
 	return nil
 }
@@ -905,7 +1053,7 @@ func (d *Disk) DurableNames() []string { return sortedNames(d.durable) }
 // DurableBytes returns a copy of a file's synced bytes.
 func (d *Disk) DurableBytes(name string) []byte {
 	if f, ok := d.durable[name]; ok {
-		return slices.Clone(f.durable)
+		return f.durable.bytes()
 	}
 	return nil
 }
@@ -914,12 +1062,15 @@ func (d *Disk) DurableBytes(name string) []byte {
 // the file is in use, like a bit that rots under a running node.
 func (d *Disk) Rot(name string, off int) {
 	f := d.names[name]
-	if off < len(f.durable) {
-		f.durable[off] ^= 1
+	i, at := off/PageBytes, off%PageBytes
+	// The page cache's byte first, from what it reads now.
+	if off < f.size {
+		f.dirtyPage(i)[at] ^= 1
 	}
-	if off < len(f.data) {
-		f.data[off] ^= 1
+	if off < f.durable.size {
+		f.durable.own(i)[at] ^= 1
 	}
+	f.diverged = true
 	for _, w := range f.pending {
 		if off >= w.off && off < w.off+len(w.p) {
 			w.p[off-w.off] ^= 1
@@ -931,7 +1082,6 @@ func (d *Disk) Rot(name string, off int) {
 // rots on the medium.
 func (d *Disk) FlipDurable(name string, off int) {
 	f := d.durable[name]
-	f.durable[off] ^= 1
-	f.data = slices.Clone(f.durable)
-	f.pending, f.cut = nil, false
+	f.durable.own(off / PageBytes)[off%PageBytes] ^= 1
+	f.reset()
 }
