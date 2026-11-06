@@ -44,7 +44,7 @@ func sameError(a, b *history.Error) bool {
 type state struct {
 	keys      []string
 	kvs       []history.KeyValue
-	leases    []int64 // sorted
+	leases    leaseSet
 	rev       int64
 	compacted int64
 	// past, if set, holds every version before rev, so that the state
@@ -67,9 +67,7 @@ func (s *state) fingerprint() uint64 {
 	}
 	mix(s.rev)
 	mix(s.compacted)
-	for _, l := range s.leases {
-		mix(l)
-	}
+	s.leases.each(mix)
 	for _, kv := range s.kvs {
 		mix(kv.Version)
 		mix(kv.ModRevision)
@@ -94,12 +92,11 @@ func newState(keys []string) *state {
 func (s *state) clone() *state {
 	c := *s
 	c.kvs = slices.Clone(s.kvs)
-	c.leases = slices.Clone(s.leases)
 	return &c
 }
 
 func (s *state) equal(o *state) bool {
-	return s.rev == o.rev && s.compacted == o.compacted && slices.Equal(s.kvs, o.kvs) && slices.Equal(s.leases, o.leases)
+	return s.rev == o.rev && s.compacted == o.compacted && slices.Equal(s.kvs, o.kvs) && s.leases.equal(o.leases)
 }
 
 // index returns the position of key in s.keys, or -1.
@@ -120,8 +117,7 @@ func (s *state) get(key string) (history.KeyValue, bool) {
 }
 
 func (s *state) hasLease(id int64) bool {
-	_, ok := slices.BinarySearch(s.leases, id)
-	return ok
+	return s.leases.has(id)
 }
 
 // span returns the positions in s.keys that a range selects.
@@ -423,18 +419,16 @@ func (s *state) stepLeaseGrant(g *history.LeaseGrantRequest) outcome {
 	// ID zero is a grant whose ID nobody learned. No key can use it, so it
 	// changes nothing the model tracks.
 	if g.ID != 0 {
-		i, _ := slices.BinarySearch(s.leases, g.ID)
-		s.leases = slices.Insert(s.leases, i, g.ID)
+		s.leases = s.leases.with(g.ID)
 	}
 	return outcome{resp: &history.Response{Revision: s.rev, LeaseGrant: &history.LeaseGrantResponse{ID: g.ID, TTL: g.TTL}}}
 }
 
 func (s *state) stepLeaseRevoke(r *history.LeaseRevokeRequest, withEvents bool) outcome {
-	i, ok := slices.BinarySearch(s.leases, r.ID)
-	if !ok {
+	if !s.leases.has(r.ID) {
 		return outcome{err: errLeaseNotFound}
 	}
-	s.leases = slices.Delete(s.leases, i, i+1)
+	s.leases = s.leases.without(r.ID)
 	next := s.rev + 1
 	changed := false
 	var events []history.Event
