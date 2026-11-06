@@ -575,7 +575,9 @@ type Sim struct {
 	diskFaultDue bool
 	lateStopAt   int64
 	// records holds the clients' calls (recordlog.go).
-	records    *recordLog
+	records *recordLog
+	// pages is where the nodes' disks keep their large files' pages.
+	pages      *keptPages
 	stats      Stats
 	membership membershipWork
 	err        error
@@ -587,6 +589,9 @@ type Sim struct {
 
 // Stats counts what happened in a run.
 type Stats struct {
+	// KeptPages counts the synced pages the nodes' disks moved to the
+	// runner's disk (keptPages).
+	KeptPages             int
 	Messages, Dropped     int
 	Crashes, LinkChanges  int
 	OK, Failed, Ambiguous int
@@ -751,11 +756,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		}
 		f.shutdown()
 	}
-	var certs *network
-	if f != nil {
-		certs = &f.net
-	}
-	s, err := newSimCerts(cfg, certs)
+	s, err := newSimFrom(cfg, f)
 	if err != nil {
 		return nil, err
 	}
@@ -815,16 +816,55 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if err == nil {
 		err = s.failure()
 	}
+	if s.pages != nil {
+		res.Stats.KeptPages = s.pages.puts
+	}
+	if err == nil && s.pages != nil && s.pages.err != nil {
+		err = fmt.Errorf("the disks' pages on the runner's disk: %w", s.pages.err)
+	}
 	return res, err
 }
 
-// newSim sets up an empty run.
-func newSim(cfg Config) (*Sim, error) { return newSimCerts(cfg, nil) }
+// keepFrom is the size from which a file of a node's disk keeps its synced
+// pages on the runner's disk, out of memory: a long seed's log segments
+// and checkpoints (simfs.Disk.KeepIn, #479).
+const keepFrom = 1 << 20
 
-// newSimCerts is newSim with the CA and certificate of certs, if set, as
-// a run's formation and cold restarts reuse the run's: making them is a
-// good part of a run's fixed cost.
-func newSimCerts(cfg Config, certs *network) (*Sim, error) {
+// keptPages is where the nodes' disks keep the synced pages of their
+// large files: a file on the runner's disk, which the run's formation,
+// the run and its cold restarts share. A read or write of it that failed
+// fails the run with its first error: the disk read zeros instead.
+type keptPages struct {
+	pages *simrun.HostPages
+	err   error
+	puts  int
+}
+
+func (k *keptPages) Put(owner any, p []byte) (int64, error) {
+	k.puts++
+	at, err := k.pages.Put(owner, p)
+	if err != nil && k.err == nil {
+		k.err = err
+	}
+	return at, err
+}
+
+func (k *keptPages) Get(off int64, p []byte) error {
+	err := k.pages.Get(off, p)
+	if err != nil && k.err == nil {
+		k.err = err
+	}
+	return err
+}
+
+// newSim sets up an empty run.
+func newSim(cfg Config) (*Sim, error) { return newSimFrom(cfg, nil) }
+
+// newSimFrom is newSim with the CA and certificate of from, if set, as a
+// run reuses its formation's and a cold restart its run's: making them is
+// a good part of a run's fixed cost. Its disks keep their large files'
+// pages where from's do.
+func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 	s := &Sim{
 		cfg:        cfg,
 		rng:        rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
@@ -856,8 +896,19 @@ func newSimCerts(cfg Config, certs *network) (*Sim, error) {
 		}
 	}
 	s.setLinks(s.allLinks())
+	var certs *network
+	if from != nil {
+		certs, s.pages = &from.net, from.pages
+	}
 	if err := s.net.init(certs); err != nil {
 		return nil, err
+	}
+	if s.pages == nil {
+		pages, err := simrun.NewHostPages()
+		if err != nil {
+			return nil, fmt.Errorf("the disks' pages on the runner's disk: %w", err)
+		}
+		s.pages = &keptPages{pages: pages}
 	}
 	for i := range count {
 		s.addNode(i, simfs.New())
@@ -868,6 +919,9 @@ func newSimCerts(cfg Config, certs *network) (*Sim, error) {
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
 	n := &node{idx: i, id: uint64(i + 1), disk: disk, addrs: []string{peerAddr(i)}, wake: make(chan struct{})}
 	disk.Capacity = s.cfg.Faults.DiskCapacity
+	if s.pages != nil {
+		disk.KeepIn(s.pages, keepFrom)
+	}
 	s.traceDisk(n)
 	if i == 3 {
 		// The fourth member is added at memberURL and moves to

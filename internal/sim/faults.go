@@ -702,7 +702,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	s.mu.Lock()
 	seed := s.rng.Uint64()
 	s.mu.Unlock()
-	r, err := newSimCerts(Config{Seed: seed, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes}, &s.net)
+	r, err := newSimFrom(Config{Seed: seed, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes}, s)
 	if err != nil {
 		return err
 	}
@@ -730,6 +730,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	for i, d := range c.disks {
 		if i == erased {
 			d = simfs.New()
+			d.KeepIn(r.pages, keepFrom)
 		}
 		n := r.nodes[i]
 		n.disk, n.id = d.Durable(), c.ids[i]

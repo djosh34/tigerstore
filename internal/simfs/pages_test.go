@@ -2,6 +2,7 @@ package simfs_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"maps"
 	"math/rand/v2"
@@ -33,6 +34,37 @@ func newPair(t *testing.T) *pair {
 	p := &pair{t: t, disk: simfs.New(), model: ref.New()}
 	p.setup()
 	return p
+}
+
+// memStore is a Store in memory that counts what it holds and fails
+// every call once fail is set.
+type memStore struct {
+	pages map[int64][]byte
+	fail  error
+}
+
+func (m *memStore) Put(_ any, p []byte) (int64, error) {
+	if m.fail != nil {
+		return 0, m.fail
+	}
+	if m.pages == nil {
+		m.pages = map[int64][]byte{}
+	}
+	at := int64(len(m.pages)) * simfs.PageBytes
+	m.pages[at] = slices.Clone(p)
+	return at, nil
+}
+
+func (m *memStore) Get(off int64, p []byte) error {
+	if m.fail != nil {
+		return m.fail
+	}
+	b, ok := m.pages[off]
+	if !ok {
+		return fmt.Errorf("no page at %d", off)
+	}
+	copy(p, b)
+	return nil
 }
 
 // setup traces both disks, sets their capacity and opens a handle on each
@@ -155,6 +187,20 @@ func TestPagesMatchTheModel(t *testing.T) {
 func pagesMatch(t *testing.T, seed uint64) {
 	rng := rand.New(rand.NewPCG(seed, 500))
 	p := newPair(t)
+	// Half the seeds keep the synced pages of files of 8 KiB or more in a
+	// Store.
+	store := &memStore{}
+	if seed%2 == 1 {
+		p.disk.KeepIn(store, 2*simfs.PageBytes)
+		defer func() {
+			if len(store.pages) == 0 {
+				t.Error("no page went to the store")
+			}
+			if err := p.disk.StoreErr(); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
 	names := []string{"a.wal", "b.wal", "c.ckpt", "d"}
 	pick := func() string { return names[rng.IntN(len(names))] }
 	// size is a file's size now, from the model.
@@ -344,4 +390,24 @@ func (p *pair) fork(disk *simfs.Disk, model *ref.Disk, rng *rand.Rand) {
 	p.disk, p.model = disk, model
 	p.trace, p.modelTrace = nil, nil
 	p.setup2()
+}
+
+// TestStoreErr checks that a disk whose Store fails reports it.
+func TestStoreErr(t *testing.T) {
+	d := simfs.New()
+	errFull := errors.New("the host disk is full")
+	d.KeepIn(&memStore{fail: errFull}, simfs.PageBytes)
+	f, err := d.Create("a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(make([]byte, 3*simfs.PageBytes)); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.StoreErr(); !errors.Is(err, errFull) {
+		t.Errorf("the disk's store error is %v, want %v", err, errFull)
+	}
 }

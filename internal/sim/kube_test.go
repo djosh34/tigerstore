@@ -101,6 +101,11 @@ func kubernetesLoad(t *testing.T, long bool, n int) {
 		if compactions == 0 || st.Revokes == 0 || pages == 0 || answers == 0 {
 			t.Fatalf("seed %d did too little to test anything: %d compactions in the log, %d revokes, %d later pages of lists, %d answers to progress requests", seed, compactions, st.Revokes, pages, answers)
 		}
+		// Its log segments grow past keepFrom, so their synced pages go
+		// to the runner's disk (#479).
+		if st.KeptPages == 0 {
+			t.Fatalf("seed %d kept no page of its disks on the runner's disk", seed)
+		}
 		if long {
 			var missed []string
 			for name, ok := range faultsTaken(st) {

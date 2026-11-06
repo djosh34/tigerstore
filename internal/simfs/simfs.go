@@ -183,6 +183,9 @@ type Disk struct {
 	down error
 	// files counts the files created, for their ids.
 	files int
+	// st is where the synced pages of large files go, if anywhere
+	// (KeepIn), shared with the disk's copies.
+	st *storage
 	// Counts counts what the disk's faults did.
 	Counts Counts
 }
@@ -207,6 +210,29 @@ type dirOp struct {
 // New returns an empty disk.
 func New() *Disk {
 	return &Disk{names: map[string]*file{}, durable: map[string]*file{}}
+}
+
+// KeepIn makes the disk and the copies it makes from now on keep the
+// synced pages of each file of from bytes or more in s, all but its last,
+// instead of in memory. It changes nothing the disk does: a read of such
+// a page reads s. An error of s is the disk's StoreErr, and a page s
+// failed to read reads as zeros.
+func (d *Disk) KeepIn(s Store, from int) {
+	d.st = &storage{store: s, from: from}
+	for _, files := range []map[string]*file{d.names, d.durable} {
+		for _, f := range files {
+			f.durable.st = d.st
+		}
+	}
+}
+
+// StoreErr returns the first error of the disk's Store (KeepIn), which
+// leaves what the disk reads wrong: a caller must fail with it.
+func (d *Disk) StoreErr() error {
+	if d.st == nil {
+		return nil
+	}
+	return d.st.err
 }
 
 func (d *Disk) tracef(format string, args ...any) {
@@ -298,6 +324,7 @@ func (d *Disk) CrashImage(rng *rand.Rand, img Image) {
 			d.tracef("crash: %s (file %d) keeps %d bytes: %d synced, %d unsynced bytes written since, cut %v, %v", name, f.id, kept.size, synced, unsynced, f.cut, img)
 		}
 		f.durable = kept
+		f.durable.spill()
 		f.reset()
 	}
 	d.durable = maps.Clone(d.names)
@@ -399,6 +426,7 @@ func (d *Disk) Durable() *Disk {
 		c.durable[name] = g
 	}
 	c.files = d.files
+	c.st = d.st
 	return c
 }
 
@@ -425,6 +453,7 @@ func (d *Disk) Copy() *Disk {
 		c.durable[name] = g
 	}
 	c.files = d.files
+	c.st = d.st
 	return c
 }
 
@@ -664,7 +693,7 @@ func (d *Disk) Create(name string) (wal.File, error) {
 		return nil, fs.ErrExist
 	}
 	d.files++
-	f := &file{id: d.files}
+	f := &file{id: d.files, durable: pages{st: d.st}}
 	d.names[name] = f
 	d.dirOps = append(d.dirOps, dirOp{op: OpCreate, name: name, f: f})
 	d.tracef("create %s (file %d)", name, f.id)
@@ -980,6 +1009,7 @@ func (h *Handle) Sync() error {
 		f.diverged = len(f.dirty) > 0
 	}
 	f.pending, f.cut, f.cutAt = nil, false, 0
+	f.durable.spill()
 	h.d.tracef("sync %s (file %d): %d bytes durable", h.name, f.id, f.durable.size)
 	return nil
 }
