@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"maps"
 	"math/rand/v2"
 	"slices"
@@ -158,13 +160,43 @@ func sameFiles(disk *simfs.Disk, model *ref.Disk) string {
 	return ""
 }
 
+// sentinels pairs each error a disk call can give with the model's: an
+// error of simfs and one of the model are the same if they match the same
+// pair, by errors.Is.
+var sentinels = [][2]error{
+	{simfs.ErrNoSpace, ref.ErrNoSpace},
+	{simfs.ErrIO, ref.ErrIO},
+	{simfs.ErrReadOnly, ref.ErrReadOnly},
+	{simfs.ErrBadSector, ref.ErrBadSector},
+	{fs.ErrExist, fs.ErrExist},
+	{fs.ErrNotExist, fs.ErrNotExist},
+	{io.EOF, io.EOF},
+}
+
+// sameErr says whether err of simfs and the model's are the same: both
+// nil, or each matches the same sentinels and at least one.
+func sameErr(err, model error) bool {
+	if err == nil || model == nil {
+		return err == nil && model == nil
+	}
+	matched := false
+	for _, s := range sentinels {
+		a, b := errors.Is(err, s[0]), errors.Is(model, s[1])
+		if a != b {
+			return false
+		}
+		matched = matched || a
+	}
+	return matched
+}
+
 // both runs a call on the disk and on the model and fails unless they
-// give the same result.
+// give the same result and the same error.
 func (p *pair) both(step int, what string, a, b func() (any, error)) {
 	p.t.Helper()
 	ra, errA := a()
 	rb, errB := b()
-	if fmt.Sprint(ra, errA) != fmt.Sprint(rb, errB) {
+	if fmt.Sprint(ra) != fmt.Sprint(rb) || !sameErr(errA, errB) {
 		p.t.Fatalf("step %d (%s): %v, %v; the model %v, %v", step, what, ra, errA, rb, errB)
 	}
 }

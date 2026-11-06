@@ -752,7 +752,11 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 			f.shutdown()
 			// Every goroutine of the formation has ended.
 			res.Stats, res.Trace, res.stacks = f.stats, f.trace, f.wallStacks
-			return res, fmt.Errorf("forming the cluster: %w", err)
+			err = fmt.Errorf("forming the cluster: %w", err)
+			if pe := f.pagesErr(); pe != nil {
+				err = errors.Join(pe, err)
+			}
+			return res, err
 		}
 		f.shutdown()
 	}
@@ -819,12 +823,21 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if s.pages != nil {
 		res.Stats.KeptPages = s.pages.puts
 	}
-	if s.pages != nil && s.pages.err != nil {
-		// A page that failed to read reads as zeros, which can fail the
-		// run as if a node were wrong: the host's error comes first.
-		err = errors.Join(fmt.Errorf("the disks' pages on the runner's disk: %w", s.pages.err), err)
+	// A page that failed to read reads as zeros, which can fail the run as
+	// if a node were wrong: the host's error comes first.
+	if pe := s.pagesErr(); pe != nil {
+		err = errors.Join(pe, err)
 	}
 	return res, err
+}
+
+// pagesErr is the first error of the run's pages on the runner's disk,
+// nil if there was none.
+func (s *Sim) pagesErr() error {
+	if s.pages == nil || s.pages.err == nil {
+		return nil
+	}
+	return fmt.Errorf("the disks' pages on the runner's disk: %w", s.pages.err)
 }
 
 // keepFrom is the size from which a file of a node's disk keeps its synced

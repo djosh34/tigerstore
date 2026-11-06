@@ -371,14 +371,22 @@ type conn struct {
 	damaged bool
 	// deadline and writeDeadline are the read and write deadlines.
 	deadline, writeDeadline time.Time
-	// readTimer and writeTimer wait out a read and a write (waitFor).
+	// readTimer and writeTimer wait out a read and a write (waitFor),
+	// one caller at a time: reading and writing are set while one waits
+	// on them, and a call that waits beside it makes a timer of its own,
+	// as net.Conn allows calls at once.
 	readTimer, writeTimer *time.Timer
+	reading, writing      bool
 }
 
 func (c *conn) Read(b []byte) (int, error) {
 	s := c.s
+	mine := false
 	for {
 		s.mu.Lock()
+		if mine {
+			c.reading, mine = false, false
+		}
 		if c.closed {
 			s.mu.Unlock()
 			return 0, net.ErrClosed
@@ -431,16 +439,23 @@ func (c *conn) Read(b []byte) (int, error) {
 			wait = min(wait, left)
 		}
 		wake := in.waiter()
+		t := new(*time.Timer)
+		if !c.reading {
+			t, c.reading, mine = &c.readTimer, true, true
+		}
 		s.mu.Unlock()
-		waitFor(&c.readTimer, wait, wake)
+		waitFor(t, wait, wake)
 	}
 }
 
 func (c *conn) Write(b []byte) (int, error) {
 	s := c.s
-	n, blocked := 0, false
+	n, blocked, mine := 0, false, false
 	for {
 		s.mu.Lock()
+		if mine {
+			c.writing, mine = false, false
+		}
 		switch {
 		case c.closed:
 			s.mu.Unlock()
@@ -488,8 +503,12 @@ func (c *conn) Write(b []byte) (int, error) {
 			wait = max(int64(time.Until(c.writeDeadline)), 1)
 		}
 		wake := c.out.waiter()
+		t := new(*time.Timer)
+		if !c.writing {
+			t, c.writing, mine = &c.writeTimer, true, true
+		}
 		s.mu.Unlock()
-		waitFor(&c.writeTimer, wait, wake)
+		waitFor(t, wait, wake)
 	}
 }
 
