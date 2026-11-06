@@ -123,7 +123,11 @@ func kubernetesLoad(t *testing.T, long bool, n int) {
 // requires every value they put to be unique, as checkLog needs to tell
 // the writes apart, and every object to be created first.
 func TestKubeValuesUnique(t *testing.T) {
-	s := &Sim{cfg: kubeConfig(1, false), rng: rand.New(rand.NewPCG(1, 2)), t0: time.Now()}
+	records, err := newRecordLog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Sim{cfg: kubeConfig(1, false), rng: rand.New(rand.NewPCG(1, 2)), t0: time.Now(), records: records}
 	for i, k := range s.newKubeLoad() {
 		s.clients = append(s.clients, &client{id: i, sim: s, node: -1, kube: k})
 	}
@@ -202,7 +206,11 @@ func TestLeasesExpireByTTL(t *testing.T) {
 // requires every page after the first to read at the first one's
 // revision.
 func TestKubeListPagesReadAtOneRevision(t *testing.T) {
-	s := &Sim{cfg: kubeConfig(1, false), rng: rand.New(rand.NewPCG(1, 2)), t0: time.Now()}
+	records, err := newRecordLog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Sim{cfg: kubeConfig(1, false), rng: rand.New(rand.NewPCG(1, 2)), t0: time.Now(), records: records}
 	c := &client{id: 0, sim: s, node: -1, kube: s.newKubeLoad()[0]}
 	s.clients = []*client{c}
 	k := c.kube
