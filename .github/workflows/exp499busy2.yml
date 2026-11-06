@@ -29,7 +29,7 @@ jobs:
       - name: Five times each, in turn
         env:
           # The commits to compare, by name=ref.
-          REFS: main=origin/main maps=dc81d320fa679f06e46e00de679fca08918fbd4d writers=e6d8bd673dfa2cabf16319d424435225f56eed5f answers=acaf0621dfc90c630c7703d023bc6d20d46a8ad0
+          REFS: main=origin/main answers=acaf0621dfc90c630c7703d023bc6d20d46a8ad0 grow=2de9fd59b3e6dc129e3c20d5580de955010f6489
           REPS: '6'
         run: |
           for nr in $REFS; do
