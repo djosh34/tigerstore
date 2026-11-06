@@ -31,7 +31,13 @@ import (
 // acknowledged. Both keep Porcupine's search small, as etcd's robustness
 // tests do, and neither can hide a bug: a history with fewer ops, or with
 // narrower ones, is never easier to linearize.
-func (r *Result) Checkable() (*history.History, error) {
+func (r *Result) Checkable() (*history.History, error) { return r.checkable(false) }
+
+// checkable is Checkable, which with release drops History as it goes,
+// each call once it is converted: a long run's history takes gigabytes,
+// and the checks need only the copy they get (#500). A report decodes it
+// again (history).
+func (r *Result) checkable(release bool) (*history.History, error) {
 	h := &history.History{Target: r.FinalRev}
 	committed, err := r.committed()
 	if err != nil {
@@ -43,7 +49,10 @@ func (r *Result) Checkable() (*history.History, error) {
 	}
 	effectBy := r.effectBy(unique)
 	expiryClient := r.Clients + len(r.Watches)
-	for _, rec := range r.History {
+	for i, rec := range r.History {
+		if release {
+			r.History[i] = nil
+		}
 		if _, ok := rec.req.(*pb.LeaseKeepAliveRequest); ok {
 			continue
 		}
@@ -67,7 +76,7 @@ func (r *Result) Checkable() (*history.History, error) {
 			// Planted: a call that may have taken effect counts as one
 			// that certainly did not.
 			op.Err = historyError(rec.Err, rec.Ambiguous && !planted.On("B15"))
-			if pos, ok := unique[rec]; ok && op.Err.Ambiguous {
+			if pos, ok := unique[i]; ok && op.Err.Ambiguous {
 				op.Effect = &history.Effect{By: effectBy[pos], Revision: r.revs[pos]}
 			}
 		} else if op.Resp, err = frometcd.Response(rec.Resp); err != nil {
@@ -78,6 +87,9 @@ func (r *Result) Checkable() (*history.History, error) {
 			vs.shareResponse(op.Resp)
 		}
 		h.Ops = append(h.Ops, op)
+	}
+	if release {
+		r.History = nil
 	}
 	for _, m := range r.Log {
 		// A keepalive and a lease checkpoint change no key and no
@@ -139,11 +151,12 @@ func (r *Result) committed() (map[string][]int, error) {
 }
 
 // uniqueInLog returns the position in the committed log of the write of
-// each call that is the only call with its request and is in the log once.
-// Only then is that entry surely the call's.
-func (r *Result) uniqueInLog(committed map[string][]int) (map[*Record]int, error) {
-	calls := map[string][]*Record{}
-	for _, rec := range r.History {
+// each call that is the only call with its request and is in the log once,
+// by the call's position in History. Only then is that entry surely the
+// call's.
+func (r *Result) uniqueInLog(committed map[string][]int) (map[int]int, error) {
+	calls := map[string][]int{}
+	for i, rec := range r.History {
 		if !writeOp(rec.req) {
 			continue
 		}
@@ -151,12 +164,12 @@ func (r *Result) uniqueInLog(committed map[string][]int) (map[*Record]int, error
 		if err != nil {
 			return nil, err
 		}
-		calls[string(b)] = append(calls[string(b)], rec)
+		calls[string(b)] = append(calls[string(b)], i)
 	}
-	out := map[*Record]int{}
-	for b, recs := range calls {
-		if pos := committed[b]; len(recs) == 1 && len(pos) == 1 {
-			out[recs[0]] = pos[0]
+	out := map[int]int{}
+	for b, calls := range calls {
+		if pos := committed[b]; len(calls) == 1 && len(pos) == 1 {
+			out[calls[0]] = pos[0]
 		}
 	}
 	return out, nil
@@ -165,13 +178,13 @@ func (r *Result) uniqueInLog(committed map[string][]int) (map[*Record]int, error
 // effectBy returns, for each position in the committed log, the earliest
 // time a unique write at or after it was acknowledged, or math.MaxInt64 if
 // none was.
-func (r *Result) effectBy(unique map[*Record]int) []int64 {
+func (r *Result) effectBy(unique map[int]int) []int64 {
 	by := make([]int64, len(r.Log))
 	for i := range by {
 		by[i] = math.MaxInt64
 	}
-	for rec, pos := range unique {
-		if rec.Err == nil {
+	for call, pos := range unique {
+		if rec := r.History[call]; rec.Err == nil {
 			by[pos] = rec.Return
 		}
 	}

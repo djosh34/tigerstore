@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -116,5 +117,26 @@ func TestHistoryDecodesAgain(t *testing.T) {
 	writeHistory(&got, res)
 	if want.Len() == 0 || !bytes.Equal(got.Bytes(), want.Bytes()) {
 		t.Errorf("the history decoded again holds %d bytes, the run's %d, and they differ", got.Len(), want.Len())
+	}
+}
+
+// TestCheckableReleasing checks that the checks of a run get the same
+// history whether or not they drop the run's own as they convert it, as a
+// long run's do, and that the run's history is gone after.
+func TestCheckableReleasing(t *testing.T) {
+	res := run(t, DefaultConfig(1))
+	want, err := res.Checkable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := res.checkable(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Error("the history the checks get differs when the run's is dropped as it is converted")
+	}
+	if res.History != nil {
+		t.Errorf("the run still holds %d calls", len(res.History))
 	}
 }

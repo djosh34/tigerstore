@@ -543,14 +543,11 @@ var (
 // independent runs the durability, revision and watch checkers of package
 // check on a run.
 func independent(res *Result) error {
-	h, err := res.Checkable()
+	// A long run's checks drop its history as they convert it: they need
+	// only their own copy, and a report decodes it again (#500).
+	h, err := res.checkable(res.long)
 	if err != nil {
 		return err
-	}
-	if res.long {
-		// The checks need only their own copy, and a long run's
-		// history takes gigabytes: a report decodes it again (#500).
-		res.History = nil
 	}
 	var errs []error
 	if err := check.Durable(h); err != nil {
