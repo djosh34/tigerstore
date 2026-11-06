@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -120,6 +119,10 @@ type witness struct {
 	keys            []string
 	// reqs are the ops' requests as the model sees them.
 	reqs []history.Request
+	// calls and returns are the ops' times, by op: the passes and sorts by
+	// time read them from these and not from the ops, whose size made
+	// them cost more per op the longer the history (#499).
+	calls, returns []int64
 	// events are the mutations of the order, and states[j] is the store
 	// after events[:j].
 	events []event
@@ -226,8 +229,10 @@ func (p place) compare(q place) int {
 func newWitness(h *history.History, deadline time.Time) *witness {
 	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: make([][]string, len(h.Ops)), firsts: make([]firstAnswer, len(h.Ops))}
 	w.reqs = make([]history.Request, len(h.Ops))
+	w.calls, w.returns = make([]int64, len(h.Ops)), make([]int64, len(h.Ops))
 	for i := range h.Ops {
 		w.reqs[i] = modelRequest(&h.Ops[i])
+		w.calls[i], w.returns[i] = h.Ops[i].Call, h.Ops[i].Return
 	}
 	w.keys = keysOf(slices.Concat(w.reqs, h.Log))
 	w.live = newState(w.keys)
@@ -381,7 +386,7 @@ func (w *witness) fromLog() error {
 	}
 	// Then ambiguous ones, in call order, each at the first entry that
 	// comes after every acked mutation that returned before its call.
-	slices.SortFunc(ambiguous, func(a, b int) int { return cmp.Compare(w.h.Ops[a].Call, w.h.Ops[b].Call) })
+	slices.SortFunc(ambiguous, func(a, b int) int { return cmp.Compare(w.calls[a], w.calls[b]) })
 	bound := w.boundAfter()
 	for _, i := range ambiguous {
 		op := &w.h.Ops[i]
@@ -412,7 +417,7 @@ func (w *witness) boundAfter() func(t int64) int {
 	var rs []ret
 	for i := range w.h.Ops {
 		if p := w.at[i]; p.set && w.h.Ops[i].Resp != nil {
-			rs = append(rs, ret{w.h.Ops[i].Return, p.at})
+			rs = append(rs, ret{w.returns[i], p.at})
 		}
 	}
 	slices.SortFunc(rs, func(a, b ret) int { return cmp.Compare(a.at, b.at) })
@@ -497,8 +502,8 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 	}
 	events := w.eventBounds()
 	ops = slices.Clone(ops)
-	w.sorter.sort(ops, func(i int) int64 { return w.h.Ops[i].Call })
-	placed := newPlacedMax(w.h, ops, &w.sorter)
+	w.sorter.sort(ops, func(i int) int64 { return w.calls[i] })
+	placed := newPlacedMax(w.returns, ops, &w.sorter)
 	for x, i := range ops {
 		if w.tick() {
 			return errWitnessTimeout
@@ -612,7 +617,7 @@ func (w *witness) eventBounds() func(op *history.Op) (int, int) {
 	var cs []call
 	for i := range w.h.Ops {
 		if p := w.at[i]; p.set && !p.seen {
-			cs = append(cs, call{w.h.Ops[i].Call, p.at})
+			cs = append(cs, call{w.calls[i], p.at})
 		}
 	}
 	slices.SortFunc(cs, func(a, b call) int { return cmp.Compare(a.at, b.at) })
@@ -645,18 +650,19 @@ type placedMax struct {
 	swept, at int
 }
 
-// newPlacedMax is a placedMax of ops, which are in call order.
-func newPlacedMax(h *history.History, ops []int, sorter *timeSorter) *placedMax {
+// newPlacedMax is a placedMax of ops, which are in call order, with the
+// ops' returns by op.
+func newPlacedMax(returns []int64, ops []int, sorter *timeSorter) *placedMax {
 	m := len(ops)
 	p := &placedMax{returns: make([]int64, m), rank: make([]int, m), vals: make([]int, m)}
 	byReturn := make([]int, m)
 	for k := range byReturn {
 		byReturn[k] = k
 	}
-	sorter.sort(byReturn, func(k int) int64 { return h.Ops[ops[k]].Return })
+	sorter.sort(byReturn, func(k int) int64 { return returns[ops[k]] })
 	for k, x := range byReturn {
 		p.rank[x] = k
-		p.returns[k] = h.Ops[ops[x]].Return
+		p.returns[k] = returns[ops[x]]
 	}
 	return p
 }
@@ -683,30 +689,28 @@ func (p *placedMax) before(t int64) int {
 // before another was called comes before it. An ambiguous op never
 // returned.
 func (w *witness) verify() error {
-	var ops []int
+	// An ambiguous op never returned, so it is never before another: it
+	// is left out of byReturn.
+	var byCall, byReturn []int
 	for i, p := range w.at {
 		if p.set {
-			ops = append(ops, i)
+			byCall = append(byCall, i)
+			if err := w.h.Ops[i].Err; err == nil || !err.Ambiguous {
+				byReturn = append(byReturn, i)
+			}
 		}
-	}
-	ret := func(i int) int64 {
-		if w.h.Ops[i].Err != nil && w.h.Ops[i].Err.Ambiguous {
-			return math.MaxInt64
-		}
-		return w.h.Ops[i].Return
 	}
 	// Ops of one time pass or fail together, so the order of ties changes
 	// only which op an error names.
-	byCall, byReturn := slices.Clone(ops), slices.Clone(ops)
-	w.sorter.sort(byCall, func(i int) int64 { return w.h.Ops[i].Call })
-	w.sorter.sort(byReturn, ret)
+	w.sorter.sort(byCall, func(i int) int64 { return w.calls[i] })
+	w.sorter.sort(byReturn, func(i int) int64 { return w.returns[i] })
 	latest, by := place{}, -1
 	k := 0
 	for _, b := range byCall {
 		if w.tick() {
 			return errWitnessTimeout
 		}
-		for ; k < len(byReturn) && ret(byReturn[k]) < w.h.Ops[b].Call; k++ {
+		for ; k < len(byReturn) && w.returns[byReturn[k]] < w.calls[b]; k++ {
 			if a := byReturn[k]; by < 0 || w.at[a].compare(latest) > 0 {
 				latest, by = w.at[a], a
 			}

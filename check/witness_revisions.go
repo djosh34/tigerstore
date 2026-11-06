@@ -662,8 +662,7 @@ func (r *revisionOrder) note(kv history.KeyValue, to int64) {
 }
 
 func (r *revisionOrder) byCall(ops []int) {
-	h := r.w.h
-	r.w.sorter.sort(ops, func(i int) int64 { return h.Ops[i].Call })
+	r.w.sorter.sort(ops, func(i int) int64 { return r.w.calls[i] })
 }
 
 // lowerBounds sets lb: for each ambiguous op, the highest header revision
@@ -678,30 +677,30 @@ func (r *revisionOrder) lowerBounds() {
 	}
 	// A bound is looked up by a time, which never falls between two ops
 	// of one time, so the order of ties changes nothing.
-	r.w.sorter.sort(acked, func(i int) int64 { return h.Ops[i].Return })
+	r.w.sorter.sort(acked, func(i int) int64 { return r.w.returns[i] })
 	r.highest = make([]int64, len(acked))
 	r.returns = make([]int64, len(acked))
 	for k, i := range acked {
-		r.returns[k] = h.Ops[i].Return
+		r.returns[k] = r.w.returns[i]
 		r.highest[k] = h.Ops[i].Resp.Revision
 		if k > 0 {
 			r.highest[k] = max(r.highest[k], r.highest[k-1])
 		}
 	}
 	byCall := slices.Clone(acked)
-	r.w.sorter.sort(byCall, func(i int) int64 { return h.Ops[i].Call })
+	r.w.sorter.sort(byCall, func(i int) int64 { return r.w.calls[i] })
 	r.ackedByCall = byCall
 	r.calls = make([]int64, len(byCall))
 	r.lowest = make([]int64, len(byCall))
 	for k := len(byCall) - 1; k >= 0; k-- {
 		i := byCall[k]
-		r.calls[k], r.lowest[k] = h.Ops[i].Call, h.Ops[i].Resp.Revision
+		r.calls[k], r.lowest[k] = r.w.calls[i], h.Ops[i].Resp.Revision
 		if k+1 < len(byCall) {
 			r.lowest[k] = min(r.lowest[k], r.lowest[k+1])
 		}
 	}
 	for _, i := range r.ambiguous {
-		r.lb[i] = r.boundAt(h.Ops[i].Call)
+		r.lb[i] = r.boundAt(r.w.calls[i])
 	}
 }
 
@@ -944,7 +943,7 @@ func (r *revisionOrder) scheduleOptional() {
 			r.mutations = append(r.mutations, i)
 		}
 	}
-	slices.SortFunc(r.mutations, func(a, b int) int { return cmp.Compare(h.Ops[a].Return, h.Ops[b].Return) })
+	slices.SortFunc(r.mutations, func(a, b int) int { return cmp.Compare(r.w.returns[a], r.w.returns[b]) })
 	revoking := map[int64]bool{}
 	for _, i := range r.ambiguous {
 		op := &h.Ops[i]
@@ -1005,7 +1004,7 @@ func (r *revisionOrder) scheduleOptional() {
 				// before it was called explains it in every order, as
 				// an acked revoke a lease found gone (#514).
 				explained := slices.ContainsFunc(compactions, func(k int) bool {
-					return compacts(h.Ops[k].Req.Compact.Revision, rj) && h.Ops[k].Return < rj.call
+					return compacts(h.Ops[k].Req.Compact.Revision, rj) && r.w.returns[k] < rj.call
 				})
 				if compacts(c, rj) && !explained {
 					goneAt = min(goneAt, rj.ret)
@@ -1073,7 +1072,7 @@ func (r *revisionOrder) slotOrder(ops []int) []int {
 			}
 			// Every op left that returned before its call goes first.
 			if slices.ContainsFunc(ops, func(j int) bool {
-				return w.h.Ops[j].Return < w.h.Ops[i].Call && !slices.Contains(order, j)
+				return w.returns[j] < w.calls[i] && !slices.Contains(order, j)
 			}) {
 				continue
 			}
@@ -1107,7 +1106,7 @@ func (r *revisionOrder) answered(ops []int) bool {
 	s := w.live.clone()
 	for k, i := range ops {
 		for _, j := range ops[:k] {
-			if w.h.Ops[i].Return < w.h.Ops[j].Call {
+			if w.returns[i] < w.calls[j] {
 				return false
 			}
 		}
@@ -1189,7 +1188,7 @@ func (r *revisionOrder) readsFit(o optional) bool {
 	w := r.w
 	var call int64
 	for _, k := range o.reads {
-		call = max(call, w.h.Ops[k].Call)
+		call = max(call, w.calls[k])
 	}
 	ops := slices.Clone(o.reads)
 	for i := range w.h.Ops {
@@ -1448,7 +1447,7 @@ func (r *revisionOrder) search() error {
 func (r *revisionOrder) write(rev int64) bool {
 	w := r.w
 	if i, ok := r.writer(rev); ok {
-		r.expire(w.h.Ops[i].Call, 0)
+		r.expire(w.calls[i], 0)
 		o := w.apply(i, w.reqs[i])
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
 			return r.dead(rev, fmt.Errorf("acked %s, which wrote revision %d, gets %s from the model in the order so far; the order around it: %s", w.describe(i), rev, outputOf(o), w.around(len(w.events))))
@@ -1457,7 +1456,7 @@ func (r *revisionOrder) write(rev int64) bool {
 	}
 	if i, ok := r.resolved[rev]; ok && !r.used[i] && r.lb[i] < rev {
 		if r.fitsGranted(i, rev) {
-			r.expire(w.h.Ops[i].Call, 0)
+			r.expire(w.calls[i], 0)
 			w.apply(i, w.reqs[i])
 			r.used[i] = true
 			return true
@@ -1476,7 +1475,7 @@ func (r *revisionOrder) write(rev int64) bool {
 		if r.used[i] || !r.fitsGranted(i, rev) {
 			continue
 		}
-		r.expire(w.h.Ops[i].Call, 0)
+		r.expire(w.calls[i], 0)
 		w.apply(i, w.reqs[i])
 		r.used[i] = true
 		f.next++
@@ -1536,7 +1535,7 @@ func (r *revisionOrder) candidates(rev int64) []int {
 		return 0
 	}
 	slices.SortFunc(amb, func(a, b int) int {
-		return cmp.Or(cmp.Compare(revoke(a), revoke(b)), cmp.Compare(h.Ops[a].Call, h.Ops[b].Call), cmp.Compare(a, b))
+		return cmp.Or(cmp.Compare(revoke(a), revoke(b)), cmp.Compare(r.w.calls[a], r.w.calls[b]), cmp.Compare(a, b))
 	})
 	return append(out, amb...)
 }
@@ -1581,7 +1580,7 @@ func (r *revisionOrder) grantsFor(ids []int64, at int64) []int {
 		// allows another.
 		first := -1
 		for _, g := range r.grantsOf[id] {
-			if !r.used[g] && r.lb[g] <= at && (first < 0 || r.w.h.Ops[g].Call < r.w.h.Ops[first].Call) {
+			if !r.used[g] && r.lb[g] <= at && (first < 0 || r.w.calls[g] < r.w.calls[first]) {
 				first = g
 			}
 		}
@@ -1615,7 +1614,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 	}
 	s, undo := r.try(w.live, w.reqs[i])
 	defer undo()
-	for _, e := range r.due(w.h.Ops[i].Call, 0) {
+	for _, e := range r.due(w.calls[i], 0) {
 		// takes accepts only an optional that changes no key, so its
 		// undo puts back nothing that s keeps.
 		t, undoE := r.try(s, w.reqs[e.op])
@@ -1696,7 +1695,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 		if r.used[i] {
 			continue
 		}
-		r.expire(w.h.Ops[i].Call, 0)
+		r.expire(w.calls[i], 0)
 		o := w.apply(i, w.reqs[i])
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
 			return r.dead(rev, fmt.Errorf("acked %s gets %s from the model in the order so far; the order around it: %s", w.describe(i), outputOf(o), w.around(len(w.events))))
