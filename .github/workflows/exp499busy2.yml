@@ -29,7 +29,7 @@ jobs:
       - name: Five times each, in turn
         env:
           # The commits to compare, by name=ref.
-          REFS: main=origin/main sorts=8c0beaab31fef248d214d7e928afbede3cf69221 kept=4d0df408705623ec242bf6f016a7a65b4ccab285
+          REFS: main=origin/main head=a93b0b0d1ef654ee22c89cf72d188f1d35542a96
           REPS: '8'
           # Builds also run with the collector off.
           GCOFF: ''
@@ -39,8 +39,16 @@ jobs:
             git worktree add -q "$RUNNER_TEMP/src-$n" "$ref"
             go build -C "$RUNNER_TEMP/src-$n" -o "$RUNNER_TEMP/chk-$n" ./cmd/checkhistory
           done
+          # The 191,000 and 720,000 call points of the 1,280 s seed: its
+          # prefixes up to those calls (cmd/cutprefix).
+          go build -o "$RUNNER_TEMP/cutprefix" ./cmd/cutprefix
+          h1280=$(find "$RUNNER_TEMP/a" -name 'history-1280*')
+          mkdir -p "$RUNNER_TEMP/p"
+          for n in 191000 720000; do
+            "$RUNNER_TEMP/cutprefix" "$h1280" $n "$RUNNER_TEMP/p/prefix-$n.json.gz"
+          done
           for rep in $(seq "$REPS"); do
-            for h in $(find "$RUNNER_TEMP/a" -name 'history*' | sort); do
+            for h in "$RUNNER_TEMP/p/prefix-191000.json.gz" "$RUNNER_TEMP/p/prefix-720000.json.gz"; do
               for nr in $REFS; do
                 n=${nr%%=*}
                 echo "== $n $(basename "$h") $rep"
