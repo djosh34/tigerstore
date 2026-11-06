@@ -406,6 +406,8 @@ func (r *revisionOrder) index() error {
 	}
 	r.indexCounts()
 	r.indexRoom()
+	// The room index was the last to read the noted lives.
+	r.noted = nil
 	r.scheduleOptional()
 	return nil
 }

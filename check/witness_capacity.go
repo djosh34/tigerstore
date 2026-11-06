@@ -100,7 +100,6 @@ func (r *revisionOrder) indexRoom() {
 			counts[l.c+1]++
 		}
 	}
-	r.noted = nil
 	for c := 1; c < len(counts); c++ {
 		counts[c] += counts[c-1]
 	}
@@ -109,14 +108,17 @@ func (r *revisionOrder) indexRoom() {
 		x.byC[counts[l.c]] = l
 		counts[l.c]++
 	}
-	for _, rev := range r.countRevs {
-		mark(rev)
-	}
+	var lives []int64
 	for rev, ok := range marks {
 		if ok {
-			x.ends = append(x.ends, int64(rev))
+			lives = append(lives, int64(rev))
 		}
 	}
+	// A count's revision is the one its read asked for, which nothing
+	// bounds by limit, so the counts' are merged in order, not marked: a
+	// read at a far future revision must fail the check, not make a slice
+	// as long as its revision.
+	x.ends = unionRevs(lives, r.countRevs)
 	// The acked writers' puts and deletions are those of indexCounts, in
 	// either branch; the resolved writers' and the acked revokes' come on
 	// top.
@@ -205,6 +207,23 @@ func (r *revisionOrder) coverers(s *state, need []int) []int {
 	}
 	slices.Sort(out)
 	return slices.Compact(out)
+}
+
+// unionRevs returns the revisions of a and b, which are each in order and
+// once each, in order and once each.
+func unionRevs(a, b []int64) []int64 {
+	out := make([]int64, 0, len(a)+len(b))
+	for len(a) > 0 || len(b) > 0 {
+		switch {
+		case len(b) == 0 || len(a) > 0 && a[0] < b[0]:
+			out, a = append(out, a[0]), a[1:]
+		case len(a) == 0 || b[0] < a[0]:
+			out, b = append(out, b[0]), b[1:]
+		default:
+			out, a, b = append(out, a[0]), a[1:], b[1:]
+		}
+	}
+	return out
 }
 
 // between counts the revisions of revs, which are in order, after lo and

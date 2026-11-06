@@ -299,12 +299,15 @@ func TestAckedCompactionDoesNotExplainEqualRead(t *testing.T) {
 // answers, which the indexes by revision must still reject, and without a
 // panic or an allocation by what a client reported (review of #525): a
 // watch that saw a put of a key no request puts, and a range answered at
-// revision -1 and at the highest int64.
+// revision -1 and at the highest int64, and a read at a far future
+// revision whose count the room index once took as a slice's length.
 func TestWitnessRejectsWhatNoOrderReaches(t *testing.T) {
 	for name, js := range map[string]string{
-		"a key no request puts": `{"ops":[{"call":1,"return":2,"req":{"put":{"key":"a","value":"v"}},"err":{"ambiguous":true}}],"watches":[{"responses":[{"events":[{"type":1,"kv":{"key":"z","value":"v","createRevision":2,"modRevision":2,"version":1}}]}]}]}`,
-		"revision -1":           `{"ops":[{"call":1,"return":2,"req":{"range":{"key":"a"}},"resp":{"revision":-1,"range":{"count":0}}}]}`,
-		"the highest revision":  `{"ops":[{"call":1,"return":2,"req":{"range":{"key":"a"}},"resp":{"revision":9223372036854775807,"range":{"count":0}}}]}`,
+		"a key no request puts":           `{"ops":[{"call":1,"return":2,"req":{"put":{"key":"a","value":"v"}},"err":{"ambiguous":true}}],"watches":[{"responses":[{"events":[{"type":1,"kv":{"key":"z","value":"v","createRevision":2,"modRevision":2,"version":1}}]}]}]}`,
+		"revision -1":                     `{"ops":[{"call":1,"return":2,"req":{"range":{"key":"a"}},"resp":{"revision":-1,"range":{"count":0}}}]}`,
+		"the highest revision":            `{"ops":[{"call":1,"return":2,"req":{"range":{"key":"a"}},"resp":{"revision":9223372036854775807,"range":{"count":0}}}]}`,
+		"a read at a far future revision": `{"ops":[{"call":1,"return":2,"req":{"put":{"key":"a","value":"v"}},"resp":{"revision":2,"put":{}}},{"call":3,"return":4,"req":{"range":{"key":"a","revision":4611686018427387904}},"resp":{"revision":2,"range":{"count":1,"kvs":[{"key":"a","value":"v","createRevision":2,"modRevision":2,"version":1}]}}}]}`,
+		"a read at the highest revision":  `{"ops":[{"call":1,"return":2,"req":{"range":{"key":"a","revision":9223372036854775807}},"resp":{"revision":1,"range":{"count":0}}}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			var h history.History
