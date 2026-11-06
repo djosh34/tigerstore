@@ -18,6 +18,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/jellevandenhooff/gosim/gosimruntime"
 	"github.com/jellevandenhooff/gosim/metatesting"
 )
 
@@ -123,30 +124,37 @@ func Do(t *testing.T, r Run) *Result {
 	return &Result{Failed: res.Failed, Artifacts: res.Artifacts}
 }
 
-// gosimPanicked is the error of a gosim run in which a goroutine
-// panicked, gosim's ErrPaniced.
-const gosimPanicked = "paniced"
-
 // keepBlackbox adds to res's artifacts, as the files of the run in
 // directory run, what a run that gosim stopped short had saved: the trace
-// and nodes its watchdog saved last, at most 10 simulated seconds old, and
-// the stack of every goroutine, or the log with the panic. The replay
-// command gives the rest. A run gosim ended past
-// its limit of real time never yielded again, and in a run that panicked
-// gosim stops every goroutine at once: neither gets to write its own
-// files (#499).
+// and nodes its watchdog saved last, at most 10 simulated seconds old,
+// and the stack of every goroutine, or the log with the panic. A run gosim
+// ended past its limit of real time never yielded again, and in a run that
+// panicked gosim stops every goroutine at once, so neither gets to write
+// its calls, history or disks, which a replay does not save either: it
+// stops the same way (#499). A file the run saved itself, as one that
+// panicked after its report, stays.
 func keepBlackbox(run string, res *metatesting.RunResult) {
+	files := map[string][]byte{}
 	switch {
 	case res.Ended:
-		res.Artifacts[filepath.Join(run, "stacks.txt")] = res.Artifacts["gosim-stacks.txt"]
-	case res.Err == gosimPanicked:
-		res.Artifacts[filepath.Join(run, "log.txt")] = []byte(readable(res.LogOutput))
+		files["stacks.txt"] = res.Artifacts["gosim-stacks.txt"]
+	case res.Err == gosimruntime.ErrPaniced.Error():
+		files["log.txt"] = []byte(readable(res.LogOutput))
 	default:
 		return
 	}
 	for _, name := range []string{"trace.txt", "nodes.txt"} {
 		if b, ok := res.Artifacts["blackbox/"+name]; ok {
-			res.Artifacts[filepath.Join(run, name)] = b
+			files[name] = b
+		}
+	}
+	if res.Artifacts == nil {
+		res.Artifacts = map[string][]byte{}
+	}
+	for name, b := range files {
+		path := filepath.Join(run, name)
+		if _, ok := res.Artifacts[path]; !ok {
+			res.Artifacts[path] = b
 		}
 	}
 }
