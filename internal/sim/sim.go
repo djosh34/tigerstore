@@ -513,10 +513,12 @@ type Sim struct {
 	// applied is the highest index any node has applied.
 	applied  uint64
 	silences []int64
-	// stalledLeader is the leader StallLeaderAt stalled, and heldAppendAt
-	// when it handed its disk the oldest append that the stall holds.
+	// stalledLeader is the leader StallLeaderAt stalled, heldAppendAt
+	// when it handed its disk the oldest append that the stall holds, and
+	// steppedDownAt when it first stopped leading.
 	stalledLeader *node
 	heldAppendAt  int64
+	steppedDownAt int64
 	// gray is the gray node, or nil, and grayEnd when its gray period ends.
 	gray     *node
 	grayEnd  int64
@@ -665,9 +667,11 @@ type Result struct {
 	Stats   Stats
 	// Silences are the times leaders went silent on a stalled disk.
 	// HeldAppendAt is when the leader StallLeaderAt stalled handed its
-	// disk the oldest append the stall holds.
-	Silences     []int64
-	HeldAppendAt int64
+	// disk the oldest append the stall holds, and SteppedDownAt when it
+	// first stopped leading.
+	Silences      []int64
+	HeldAppendAt  int64
+	SteppedDownAt int64
 	// Trace is what the run did, last of all, and Report how it left each
 	// node, for a failure's report.
 	Trace  []string
@@ -753,7 +757,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		d.Misreads += c.Misreads
 	}
 	res.History, res.Stats, res.Silences = s.history, s.stats, s.silences
-	res.HeldAppendAt = s.heldAppendAt
+	res.HeldAppendAt, res.SteppedDownAt = s.heldAppendAt, s.steppedDownAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
 	res.nodes, res.values, res.stacks = s.nodes, s.values, s.wallStacks
 	s.mu.Unlock()
@@ -1583,6 +1587,10 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		p.core, n.pending, n.duringInstall = c, nil, nil
 	}
 	before := n.last.version
+	if n == s.stalledLeader && s.steppedDownAt == 0 && c.Leader() != n.id {
+		s.steppedDownAt = s.now()
+		s.tracef("node %d: the stalled leader stepped down", n.id)
+	}
 	n.remember(c, s.now())
 	if v := n.last.version; v != before {
 		s.tracef("node %d: cluster version %d", n.id, v)
