@@ -124,6 +124,10 @@ type witness struct {
 	// after events[:j].
 	events []event
 	states []summary
+	// times are the events' call and return times (eventTimes), built
+	// when bounds are first asked for: the witness from the log learns
+	// which op an event is after it applied it.
+	times *eventTimes
 	// live is the store after every event, past every version, and
 	// appended the key of each version in the order added.
 	live     *state
@@ -175,7 +179,7 @@ type event struct {
 // summary is what of the store an event can change besides the keys.
 type summary struct {
 	rev, compacted int64
-	leases         []int64
+	leases         leaseSet
 }
 
 // place is where an op goes in the order: event at, which leads from
@@ -210,7 +214,7 @@ func newWitness(h *history.History, deadline time.Time) *witness {
 	w.keys = keysOf(slices.Concat(w.reqs, h.Log))
 	w.live = newState(w.keys)
 	w.live.past = w.past
-	w.states = []summary{w.summary(nil)}
+	w.states = []summary{w.summary()}
 	return w
 }
 
@@ -224,16 +228,10 @@ func (w *witness) tick() bool {
 	return w.steps%1024 == 0 && (time.Now().After(w.deadline) || w.stop != nil && w.stop())
 }
 
-// summary is the live store's summary after req. It shares the previous
-// summary's lease list unless req changed the leases.
-func (w *witness) summary(req *history.Request) summary {
-	s := summary{rev: w.live.rev, compacted: w.live.compacted}
-	if req == nil || req.LeaseGrant != nil || req.LeaseRevoke != nil {
-		s.leases = slices.Clone(w.live.leases)
-	} else {
-		s.leases = w.states[len(w.states)-1].leases
-	}
-	return s
+// summary is the live store's summary, which shares its leases with the
+// live store (leaseSet).
+func (w *witness) summary() summary {
+	return summary{rev: w.live.rev, compacted: w.live.compacted, leases: w.live.leases}
 }
 
 // apply adds an event sent by op and replays it.
@@ -245,7 +243,10 @@ func (w *witness) apply(op int, req history.Request) outcome {
 	}
 	o.events = nil
 	w.events = append(w.events, event{op: op, req: req, out: o})
-	w.states = append(w.states, w.summary(&req))
+	if w.times != nil {
+		w.times.push(w.h, op)
+	}
+	w.states = append(w.states, w.summary())
 	if op >= 0 {
 		w.at[op] = place{set: true, at: len(w.events)}
 		w.placed = append(w.placed, op)
@@ -265,7 +266,7 @@ func (w *witness) stateAt(j int) *state {
 		}
 		w.kvsRev = sm.rev
 	}
-	return &state{keys: w.keys, kvs: slices.Clone(w.kvs), leases: slices.Clone(sm.leases), rev: sm.rev, compacted: sm.compacted, past: w.past}
+	return &state{keys: w.keys, kvs: slices.Clone(w.kvs), leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past}
 }
 
 // answers reports whether op i, which changed nothing, gets its response
@@ -446,13 +447,11 @@ func (w *witness) seen(i int) bool {
 // order built so far. With set false it only checks that they all fit,
 // and sets nothing.
 func (w *witness) placeSeen(ops []int, set bool) error {
-	// The states of each revision.
-	first, last := map[int64]int{}, map[int64]int{}
-	for j, s := range w.states {
-		if _, ok := first[s.rev]; !ok {
-			first[s.rev] = j
-		}
-		last[s.rev] = j
+	// The states of a revision: the revisions of the states only go up,
+	// so a search finds them without a map of every state, which a
+	// compaction's trial built again at every try (#499).
+	first := func(rev int64) int {
+		return sort.Search(len(w.states), func(j int) bool { return w.states[j].rev >= rev })
 	}
 	events := w.eventBounds()
 	ops = slices.Clone(ops)
@@ -472,11 +471,11 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 		lo = max(lo, placed.before(op.Call))
 		f, l := lo, hi
 		if op.Resp != nil {
-			var ok bool
-			if f, ok = first[op.Resp.Revision]; !ok {
+			rev := op.Resp.Revision
+			if f = first(rev); f == len(w.states) || w.states[f].rev != rev {
 				return fmt.Errorf("%s got header revision %d, which no state of the order has (the last is %d)", w.describe(i), op.Resp.Revision, w.live.rev)
 			}
-			l = last[op.Resp.Revision]
+			l = first(rev+1) - 1
 			lo, hi = max(lo, f), min(hi, l)
 		}
 		j, ok := w.find(i, lo, hi)
@@ -544,6 +543,15 @@ func (w *witness) describe(i int) string { return describeOp(w.h, i) }
 // it at: after every event of an acked op that returned before its call,
 // and before every event of an op called after it returned.
 func (w *witness) eventBounds() func(op *history.Op) (int, int) {
+	if !w.slow {
+		if w.times == nil {
+			w.times = &eventTimes{}
+			for _, e := range w.events {
+				w.times.push(w.h, e.op)
+			}
+		}
+		return func(op *history.Op) (int, int) { return w.times.after(op.Call), w.times.before(op.Return) }
+	}
 	bound := w.boundAfter()
 	type call struct {
 		at    int64
