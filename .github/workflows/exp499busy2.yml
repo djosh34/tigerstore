@@ -29,7 +29,7 @@ jobs:
       - name: Five times each, in turn
         env:
           # The commits to compare, by name=ref.
-          REFS: main=origin/main pages=0761275d3e410542d6e9d4ba53182e7f7bd0906c phases=9fdf0f33f69af2bfa5ef2e4e710a7dc5cdd0f2fd
+          REFS: phases=9fdf0f33f69af2bfa5ef2e4e710a7dc5cdd0f2fd
           REPS: '12'
           # Builds also run with the collector off.
           GCOFF: ''
@@ -42,6 +42,7 @@ jobs:
           # The 191,000 and 720,000 call points of the 1,280 s seed: its
           # prefixes up to those calls (cmd/cutprefix).
           go build -o "$RUNNER_TEMP/cutprefix" ./cmd/cutprefix
+          go build -o "$RUNNER_TEMP/scanprobe" ./cmd/scanprobe
           h1280=$(find "$RUNNER_TEMP/a" -name 'history-1280*')
           mkdir -p "$RUNNER_TEMP/p"
           for n in 191000 720000; do
@@ -49,6 +50,8 @@ jobs:
           done
           for rep in $(seq "$REPS"); do
             for h in "$RUNNER_TEMP/p/prefix-191000.json.gz" "$RUNNER_TEMP/p/prefix-720000.json.gz"; do
+              echo "== probe $(basename "$h") $rep"
+              "$RUNNER_TEMP/scanprobe" "$h" 2>/dev/null || true
               for nr in $REFS; do
                 n=${nr%%=*}
                 echo "== $n $(basename "$h") $rep"
