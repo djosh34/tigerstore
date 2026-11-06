@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -72,7 +73,12 @@ func main() {
 		}
 		for _, name := range run {
 			start := time.Now()
+			if pf := os.Getenv("CPUPROF"); pf != "" {
+				f, _ := os.Create(pf)
+				_ = pprof.StartCPUProfile(f)
+			}
 			err := checkers[name](h)
+			pprof.StopCPUProfile()
 			v := verdict{File: file, Checker: name, Ops: len(h.Ops), Clients: len(clients), Passed: err == nil, Seconds: time.Since(start).Seconds()}
 			if err != nil {
 				failed = true
