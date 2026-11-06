@@ -10,9 +10,10 @@ import (
 // b)) does, by radix over records that hold each op's time beside it, so
 // that the sort does not reach into the history at every comparison: on a
 // busy history the comparisons of those sorts grew with its length
-// (#499). It keeps its scratch records from one sort to the next.
+// (#499). It sorts only the ops that do not already stand in order. It
+// keeps its scratch records from one sort to the next.
 type timeSorter struct {
-	a, b []timedOp
+	a, b, c []timedOp
 }
 
 type timedOp struct {
@@ -29,14 +30,48 @@ func (t *timeSorter) sort(ops []int, at func(int) int64) {
 		return
 	}
 	if cap(t.a) < len(ops) {
-		t.a, t.b = make([]timedOp, len(ops)), make([]timedOp, len(ops))
+		t.a, t.b, t.c = make([]timedOp, len(ops)), make([]timedOp, len(ops)), make([]timedOp, len(ops))
 	}
 	a, b := t.a[:len(ops)], t.b[:len(ops)]
+	// A history's ops come nearly in the order of their returns, so most
+	// of them already stand in order: those stay in a, in place, and only
+	// the rest, in b, are sorted, then merged with them. The radix passes
+	// scatter over arrays as long as the history, which cost more per op
+	// the longer it is (#499).
+	kept, rest := 0, 0
+	for _, i := range ops {
+		v := timedOp{uint64(at(i)) ^ 1<<63, i}
+		if kept == 0 || !v.less(a[kept-1]) {
+			a[kept] = v
+			kept++
+		} else {
+			b[rest] = v
+			rest++
+		}
+	}
+	sorted := radix(b[:rest], t.c[:rest])
+	// Merge, by time and then number.
+	k := 0
+	for x, y := a[:kept], sorted; len(x) > 0 || len(y) > 0; k++ {
+		if len(y) == 0 || len(x) > 0 && !y[0].less(x[0]) {
+			ops[k], x = x[0].op, x[1:]
+		} else {
+			ops[k], y = y[0].op, y[1:]
+		}
+	}
+}
+
+func (v timedOp) less(w timedOp) bool { return v.key < w.key || v.key == w.key && v.op < w.op }
+
+// radix sorts a by key and then op, using b, of a's length, as scratch,
+// and returns whichever of the two holds the result.
+func radix(a, b []timedOp) []timedOp {
+	if len(a) < 2 {
+		return a
+	}
 	var differ uint64
-	for k, i := range ops {
-		// The sign bit flipped orders signed times as unsigned ones.
-		a[k] = timedOp{uint64(at(i)) ^ 1<<63, i}
-		differ |= a[k].key ^ a[0].key
+	for _, v := range a {
+		differ |= v.key ^ a[0].key
 	}
 	for shift := uint(0); shift < 64; shift += 8 {
 		if byte(differ>>shift) == 0 {
@@ -57,16 +92,14 @@ func (t *timeSorter) sort(ops []int, at func(int) int64) {
 		}
 		a, b = b, a
 	}
-	for k, v := range a {
-		ops[k] = v.op
-	}
 	// Ops of one time, by number.
 	for lo := 0; lo < len(a); {
 		hi := lo + 1
 		for hi < len(a) && a[hi].key == a[lo].key {
 			hi++
 		}
-		slices.Sort(ops[lo:hi])
+		slices.SortFunc(a[lo:hi], func(v, w timedOp) int { return cmp.Compare(v.op, w.op) })
 		lo = hi
 	}
+	return a
 }
