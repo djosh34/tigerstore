@@ -38,8 +38,10 @@ type recordLog struct {
 	// and errIndex finds them by the hash of their kind.
 	errs     []error
 	errIndex hashTable
-	// scratch holds the values of the message being encoded.
+	// scratch holds the values of the message being encoded, and buf its
+	// bytes, before data copies them.
 	scratch [][]byte
+	buf     []byte
 }
 
 // loggedRecord is a Record, without pointers.
@@ -157,10 +159,11 @@ func (l *recordLog) encode(m proto.Message) (loggedMessage, error) {
 	}
 	l.scratch = l.scratch[:0]
 	bare := withoutValues(m, func(v []byte) { l.scratch = append(l.scratch, v) })
-	b, err := proto.Marshal(bare)
+	b, err := proto.MarshalOptions{}.MarshalAppend(l.buf[:0], bare)
 	if err != nil {
 		return loggedMessage{}, err
 	}
+	l.buf = b
 	ids0 := uint32(len(l.ids))
 	for _, v := range l.scratch {
 		l.ids = append(l.ids, l.vals.add(v))
