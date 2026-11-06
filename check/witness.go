@@ -180,12 +180,21 @@ func (w *witness) stoppedAt() string {
 
 // event is one mutation of the order, sent by op, or by no op (-1): a
 // lease expiry, or a log entry that changed nothing.
+//
+// An event keeps its request by pointer, into the witness's requests or
+// the log, and of what the model gave it only what is read back: a busy
+// history's events took 112 bytes each, which the appends copied and the
+// collector scanned (#499).
 type event struct {
-	op  int
-	req history.Request
-	// out is what the model gave it.
-	out outcome
+	op         int
+	req        *history.Request
+	resp       *history.Response
+	err        *history.Error
+	historical bool
 }
+
+// out is what the model gave the event, without its watch events.
+func (e *event) out() outcome { return outcome{resp: e.resp, err: e.err, historical: e.historical} }
 
 // summary is what of the store an event can change besides the keys.
 type summary struct {
@@ -259,14 +268,14 @@ func (w *witness) summary() summary {
 }
 
 // apply adds an event sent by op and replays it.
-func (w *witness) apply(op int, req history.Request) outcome {
-	o := w.live.step(req, true)
+func (w *witness) apply(op int, req *history.Request) outcome {
+	o := w.live.step(*req, true)
 	w.past.add(o.events)
 	for _, e := range o.events {
 		w.appended = append(w.appended, e.KV.Key)
 	}
 	o.events = nil
-	w.events = append(w.events, event{op: op, req: req, out: o})
+	w.events = append(w.events, event{op: op, req: req, resp: o.resp, err: o.err, historical: o.historical})
 	if w.times != nil {
 		w.times.push(w.h, op)
 	}
@@ -323,11 +332,11 @@ func (w *witness) fromLog() error {
 	if len(w.h.Log) == 0 {
 		return errNoLog
 	}
-	for i, req := range w.h.Log {
-		if req.LeaseGrant != nil && req.LeaseGrant.ID == 0 {
+	for i := range w.h.Log {
+		if req := &w.h.Log[i]; req.LeaseGrant != nil && req.LeaseGrant.ID == 0 {
 			return fmt.Errorf("log entry %d grants a lease without its ID", i)
 		}
-		w.apply(-1, req)
+		w.apply(-1, &w.h.Log[i])
 	}
 	// Entries that changed the store, by their request. A grant is also
 	// filed with ID -1, for ambiguous grants whose ID the client never
@@ -339,10 +348,10 @@ func (w *witness) fromLog() error {
 		return err
 	}
 	for e, ev := range w.events {
-		if ev.out.err != nil || !changes(ev.req, ev.out) {
+		if ev.err != nil || !changes(*ev.req, ev.out()) {
 			continue
 		}
-		if err := file(ev.req, e); err != nil {
+		if err := file(*ev.req, e); err != nil {
 			return err
 		}
 		if g := ev.req.LeaseGrant; g != nil {
@@ -376,7 +385,7 @@ func (w *witness) fromLog() error {
 			ambiguous = append(ambiguous, i)
 			continue
 		}
-		ok, err := claim(i, w.reqs[i], func(e int) bool { return matches(w.events[e].out, op.Resp) })
+		ok, err := claim(i, w.reqs[i], func(e int) bool { return matches(w.events[e].out(), op.Resp) })
 		if err != nil {
 			return err
 		}
@@ -400,8 +409,8 @@ func (w *witness) fromLog() error {
 		}
 	}
 	for e, ev := range w.events {
-		if ev.op < 0 && ev.out.err == nil && changes(ev.req, ev.out) && ev.req.LeaseRevoke == nil {
-			return fmt.Errorf("log entry %d %s changed the store but no client sent it, or its client got an error that says it had no effect", e, describeRequest(ev.req))
+		if ev.op < 0 && ev.err == nil && changes(*ev.req, ev.out()) && ev.req.LeaseRevoke == nil {
+			return fmt.Errorf("log entry %d %s changed the store but no client sent it, or its client got an error that says it had no effect", e, describeRequest(*ev.req))
 		}
 	}
 	return nil
@@ -581,7 +590,7 @@ func (w *witness) around(j int) string {
 		if ev.op >= 0 {
 			who = fmt.Sprintf("op %d", ev.op)
 		}
-		parts = append(parts, fmt.Sprintf("event %d (%s, to revision %d) %s", e, who, w.states[e].rev, describeRequest(ev.req)))
+		parts = append(parts, fmt.Sprintf("event %d (%s, to revision %d) %s", e, who, w.states[e].rev, describeRequest(*ev.req)))
 	}
 	return strings.Join(parts, "; ")
 }

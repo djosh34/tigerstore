@@ -1124,7 +1124,7 @@ func (r *revisionOrder) answered(ops []int) bool {
 	m := r.saveOrder()
 	defer r.restoreOrder(m)
 	for _, i := range ops {
-		w.apply(i, w.reqs[i])
+		w.apply(i, &w.reqs[i])
 	}
 	return w.placeSeen(seen, false) == nil
 }
@@ -1146,7 +1146,7 @@ func (r *revisionOrder) insertOptional(rev int64) {
 			return out.err == nil && s.rev == rev
 		}) {
 			r.expire(w.h.Ops[o.op].Call, 0)
-			w.apply(o.op, w.reqs[o.op])
+			w.apply(o.op, &w.reqs[o.op])
 			r.used[o.op] = true
 		}
 	}
@@ -1270,13 +1270,13 @@ func (r *revisionOrder) putIn(o optional, take func(*state, optional) bool) {
 	if w.h.Ops[o.op].Req.Compact != nil {
 		for _, e := range r.due(w.h.Ops[o.op].Call, 0) {
 			if w.h.Ops[e.op].Req.LeaseRevoke != nil && !r.used[e.op] && r.tryOptional(w.live, e, r.takes) {
-				w.apply(e.op, w.reqs[e.op])
+				w.apply(e.op, &w.reqs[e.op])
 				r.used[e.op] = true
 			}
 		}
 	}
 	if r.tryOptional(w.live, o, take) {
-		w.apply(o.op, w.reqs[o.op])
+		w.apply(o.op, &w.reqs[o.op])
 		r.used[o.op] = true
 	}
 }
@@ -1448,7 +1448,7 @@ func (r *revisionOrder) write(rev int64) bool {
 	w := r.w
 	if i, ok := r.writer(rev); ok {
 		r.expire(w.calls[i], 0)
-		o := w.apply(i, w.reqs[i])
+		o := w.apply(i, &w.reqs[i])
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
 			return r.dead(rev, fmt.Errorf("acked %s, which wrote revision %d, gets %s from the model in the order so far; the order around it: %s", w.describe(i), rev, outputOf(o), w.around(len(w.events))))
 		}
@@ -1457,7 +1457,7 @@ func (r *revisionOrder) write(rev int64) bool {
 	if i, ok := r.resolved[rev]; ok && !r.used[i] && r.lb[i] < rev {
 		if r.fitsGranted(i, rev) {
 			r.expire(w.calls[i], 0)
-			w.apply(i, w.reqs[i])
+			w.apply(i, &w.reqs[i])
 			r.used[i] = true
 			return true
 		}
@@ -1476,7 +1476,7 @@ func (r *revisionOrder) write(rev int64) bool {
 			continue
 		}
 		r.expire(w.calls[i], 0)
-		w.apply(i, w.reqs[i])
+		w.apply(i, &w.reqs[i])
 		r.used[i] = true
 		f.next++
 		return true
@@ -1594,7 +1594,7 @@ func (r *revisionOrder) grantsFor(ids []int64, at int64) []int {
 // grant puts in the grants.
 func (r *revisionOrder) grant(grants []int) {
 	for _, g := range grants {
-		r.w.apply(g, r.w.reqs[g])
+		r.w.apply(g, &r.w.reqs[g])
 		r.used[g] = true
 	}
 }
@@ -1696,7 +1696,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 			continue
 		}
 		r.expire(w.calls[i], 0)
-		o := w.apply(i, w.reqs[i])
+		o := w.apply(i, &w.reqs[i])
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
 			return r.dead(rev, fmt.Errorf("acked %s gets %s from the model in the order so far; the order around it: %s", w.describe(i), outputOf(o), w.around(len(w.events))))
 		}
