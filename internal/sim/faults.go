@@ -313,7 +313,9 @@ func (s *Sim) maybeCorrupt(n *node) {
 		return
 	}
 	for _, m := range s.nodes {
-		if m.mayBeDamaged() || m.fenced {
+		// n's own torn image, if it has one, is what this crash just
+		// did: only the other nodes' leave the quorum short.
+		if m.corrupted || m.fenced || m != n && m.mayBeDamaged() {
 			return
 		}
 	}
