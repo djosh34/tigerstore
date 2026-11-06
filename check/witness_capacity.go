@@ -357,7 +357,7 @@ func putsIn(req history.Request) []*history.PutRequest {
 	}
 	var ps []*history.PutRequest
 	if req.Txn != nil {
-		for _, o := range slices.Concat(req.Txn.Success, req.Txn.Failure) {
+		for o := range req.Txn.Ops() {
 			if o.Put != nil {
 				ps = append(ps, o.Put)
 			}
@@ -390,7 +390,7 @@ func (x *room) deleted(s *state, req history.Request) []int {
 	case req.Delete != nil:
 		del(req.Delete)
 	case req.Txn != nil:
-		for _, o := range slices.Concat(req.Txn.Success, req.Txn.Failure) {
+		for o := range req.Txn.Ops() {
 			if o.Delete != nil {
 				del(o.Delete)
 			}

@@ -224,7 +224,8 @@ func add(revs [][]int, rev int64, v int) [][]int {
 // at grows s to hold index i.
 func at[T any](s []T, i int64) []T {
 	if n := int(i) + 1; n > len(s) {
-		s = append(s, make([]T, n-len(s))...)
+		// Grown in place, without a slice of the zeros to add.
+		s = slices.Grow(s, n-len(s))[:n]
 	}
 	return s
 }
@@ -416,7 +417,7 @@ func (r *revisionOrder) indexCounts() {
 		case req.Delete != nil:
 			del(req.Delete)
 		case req.Txn != nil:
-			for _, o := range slices.Concat(req.Txn.Success, req.Txn.Failure) {
+			for o := range req.Txn.Ops() {
 				if o.Put != nil {
 					put(o.Put)
 				}
@@ -709,7 +710,7 @@ func putsOf(req history.Request) [][2]string {
 	case req.Put != nil:
 		out = append(out, [2]string{req.Put.Key, req.Put.Value})
 	case req.Txn != nil:
-		for _, o := range slices.Concat(req.Txn.Success, req.Txn.Failure) {
+		for o := range req.Txn.Ops() {
 			if o.Put != nil {
 				out = append(out, [2]string{o.Put.Key, o.Put.Value})
 			}
@@ -1268,7 +1269,7 @@ func leasesOf(req history.Request) []int64 {
 	case req.Put != nil && req.Put.Lease != 0:
 		out = append(out, req.Put.Lease)
 	case req.Txn != nil:
-		for _, o := range slices.Concat(req.Txn.Success, req.Txn.Failure) {
+		for o := range req.Txn.Ops() {
 			if o.Put != nil && o.Put.Lease != 0 {
 				out = append(out, o.Put.Lease)
 			}
