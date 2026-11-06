@@ -761,8 +761,9 @@ func (r *revisionOrder) scheduleOptional() {
 	present, gone := map[int64]int64{}, map[int64]int64{}
 	granted, revoked := map[int64]bool{}, map[int64]bool{}
 	// compacted are the compacted rejections, by the revision they asked
-	// for, their call and their return, and whether they were reads; reads are the acked reads at a revision, and
-	// compactions the acked compactions.
+	// for, their call and their return, and whether they were reads;
+	// reads are the acked reads at a revision, and compactions the acked
+	// compactions.
 	type rejection struct {
 		rev, call, ret int64
 		read           bool
@@ -890,9 +891,9 @@ func (r *revisionOrder) scheduleOptional() {
 			c := op.Req.Compact.Revision
 			goneAt := int64(math.MaxInt64)
 			for _, rj := range compacted {
-				// An acked compaction to its revision or above that
-				// returned before it was called explains it in every
-				// order, as an acked revoke a lease found gone (#514).
+				// An acked compaction that compacts it and returned
+				// before it was called explains it in every order, as
+				// an acked revoke a lease found gone (#514).
 				explained := slices.ContainsFunc(compactions, func(k int) bool {
 					return compacts(h.Ops[k].Req.Compact.Revision, rj) && h.Ops[k].Return < rj.call
 				})
