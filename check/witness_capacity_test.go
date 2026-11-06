@@ -24,7 +24,17 @@ func roomOrder(keys []string, reqs ...history.Request) *revisionOrder {
 }
 
 // index builds what roomReachable reads.
+// The lives the test sets go into note's slice by last write, as index
+// leaves them, under a limit past every revision they name.
 func (r *revisionOrder) indexForRoom() {
+	r.limit = 64
+	for key, ls := range r.lives {
+		k := r.w.live.index(key)
+		for _, l := range ls {
+			r.noted = at(r.noted, l.m)
+			r.noted[l.m] = append(r.noted[l.m], seenLife{k, l})
+		}
+	}
 	r.indexCounts()
 	r.indexRoom()
 }

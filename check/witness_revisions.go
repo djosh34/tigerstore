@@ -57,7 +57,7 @@ type revisionOrder struct {
 	// (lowerBounds).
 	ackedByCall []int
 	// limit is the highest revision any order can reach, and outOfRange
-	// the failure for the first a client saw beyond it (inRange).
+	// the failure for the first a client saw beyond it (checkRange).
 	limit      int64
 	outOfRange error
 	// ambiguous are the ambiguous mutations, and lb the highest revision
@@ -207,9 +207,9 @@ func byRev(revs [][]int, rev int64) []int {
 	return revs[rev]
 }
 
-// inRange reports whether no order rules revision rev out: from 0 to
-// limit. The first that it rules out is outOfRange.
-func (r *revisionOrder) inRange(rev int64) bool {
+// checkRange reports whether no order rules revision rev out, from 0 to
+// limit, and keeps the first it rules out as outOfRange.
+func (r *revisionOrder) checkRange(rev int64) bool {
 	if rev >= 0 && rev <= r.limit {
 		return true
 	}
@@ -275,7 +275,7 @@ func (r *revisionOrder) index() error {
 	for i := range h.Ops {
 		op := &h.Ops[i]
 		if op.Resp != nil {
-			if !r.inRange(op.Resp.Revision) {
+			if !r.checkRange(op.Resp.Revision) {
 				return fmt.Errorf("%s: %w", r.w.describe(i), r.outOfRange)
 			}
 			r.top = max(r.top, op.Resp.Revision)
@@ -368,7 +368,7 @@ func (r *revisionOrder) index() error {
 				}
 				if e.Type == history.EventPut {
 					saw(e.KV, e.Revision(), true)
-				} else if r.inRange(e.Revision()) {
+				} else if r.checkRange(e.Revision()) {
 					// -1 for a key no request puts (note).
 					r.deleted = add(r.deleted, e.Revision(), r.w.live.index(e.KV.Key))
 				}
@@ -384,7 +384,6 @@ func (r *revisionOrder) index() error {
 			r.lives[key] = append(r.lives[key], l.lifeTo)
 		}
 	}
-	r.noted = nil
 	// An ambiguous op seen writing two revisions wrote neither for sure.
 	revOf := map[int]int64{}
 	for rev, i := range r.resolved {
@@ -635,7 +634,7 @@ func lostCompare(s *state, c history.Compare) bool {
 // shows of the key's life. One without a version, from a compare of the
 // mod revision, shows only the revision of its last write.
 func (r *revisionOrder) note(kv history.KeyValue, to int64) {
-	if kv.ModRevision < 2 || !r.inRange(kv.ModRevision) || kv.Version != 0 && !r.inRange(kv.CreateRevision) {
+	if kv.ModRevision < 2 || !r.checkRange(kv.ModRevision) || kv.Version != 0 && !r.checkRange(kv.CreateRevision) {
 		return
 	}
 	// A key no request puts is -1: the store never holds it, so no writer

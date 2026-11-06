@@ -1,7 +1,7 @@
 package check
 
 import (
-	"cmp"
+	"iter"
 	"maps"
 	"slices"
 	"sort"
@@ -72,7 +72,7 @@ func (r *revisionOrder) indexRoom() {
 	x := &room{puts: make([][]int64, n), deletes: make([][]int64, n), revokes: map[int64][]int64{}, attached: map[int64][]bool{}, actions: map[int][]int{}, leasesOf: make([][]int64, n), revokesOf: map[int64][]int{}}
 	r.room = x
 	for _, req := range r.w.reqs {
-		for _, p := range putsIn(req) {
+		for p := range putsIn(req) {
 			if k := s.index(p.Key); k >= 0 && p.Lease != 0 {
 				if x.attached[p.Lease] == nil {
 					x.attached[p.Lease] = make([]bool, n)
@@ -84,22 +84,39 @@ func (r *revisionOrder) indexRoom() {
 			}
 		}
 	}
-	for key, ls := range r.lives {
-		k := s.index(key)
-		if k < 0 {
-			continue
-		}
+	// The lives come by last write from note's slice, and by creation by
+	// counting: sorting them grew with the history (#499).
+	var marks []bool
+	mark := func(rev int64) {
+		marks = at(marks, rev)
+		marks[rev] = true
+	}
+	counts := make([]int, r.limit+2)
+	for _, ls := range r.noted {
 		for _, l := range ls {
-			x.byM = append(x.byM, lifeOf{k, l.life})
-			x.ends = append(x.ends, l.c, l.m)
+			x.byM = append(x.byM, lifeOf{l.k, l.life})
+			mark(l.c)
+			mark(l.m)
+			counts[l.c+1]++
 		}
 	}
-	x.byC = slices.Clone(x.byM)
-	slices.SortFunc(x.byM, func(a, b lifeOf) int { return cmp.Compare(a.m, b.m) })
-	slices.SortFunc(x.byC, func(a, b lifeOf) int { return cmp.Compare(a.c, b.c) })
-	x.ends = append(x.ends, r.countRevs...)
-	slices.Sort(x.ends)
-	x.ends = slices.Compact(x.ends)
+	r.noted = nil
+	for c := 1; c < len(counts); c++ {
+		counts[c] += counts[c-1]
+	}
+	x.byC = make([]lifeOf, len(x.byM))
+	for _, l := range x.byM {
+		x.byC[counts[l.c]] = l
+		counts[l.c]++
+	}
+	for _, rev := range r.countRevs {
+		mark(rev)
+	}
+	for rev, ok := range marks {
+		if ok {
+			x.ends = append(x.ends, int64(rev))
+		}
+	}
 	// The acked writers' puts and deletions are those of indexCounts, in
 	// either branch; the resolved writers' and the acked revokes' come on
 	// top.
@@ -107,7 +124,7 @@ func (r *revisionOrder) indexRoom() {
 		x.puts[k], x.deletes[k] = slices.Clone(r.putRevs[k]), slices.Clone(r.delRevs[k])
 	}
 	credit := func(rev int64, req history.Request) {
-		for _, p := range putsIn(req) {
+		for p := range putsIn(req) {
 			if k := s.index(p.Key); k >= 0 {
 				x.puts[k] = append(x.puts[k], rev)
 			}
@@ -119,19 +136,22 @@ func (r *revisionOrder) indexRoom() {
 			x.revokes[q.ID] = append(x.revokes[q.ID], rev)
 		}
 	}
-	for rev, i := range r.writers {
+	// The revisions an acked or resolved writer holds, in order.
+	held := slices.Clone(r.writers)
+	for rev, i := range r.resolved {
+		if _, ok := r.writer(rev); !ok {
+			held = at(held, rev)
+			held[rev] = -1
+			credit(rev, r.w.reqs[i])
+		}
+	}
+	for rev, i := range held {
 		if i == 0 {
 			continue
 		}
 		x.fixed = append(x.fixed, int64(rev))
-		if q := r.w.reqs[i-1].LeaseRevoke; q != nil {
+		if i > 0 && r.w.reqs[i-1].LeaseRevoke != nil {
 			credit(int64(rev), r.w.reqs[i-1])
-		}
-	}
-	for rev, i := range r.resolved {
-		if _, ok := r.writer(rev); !ok {
-			x.fixed = append(x.fixed, rev)
-			credit(rev, r.w.reqs[i])
 		}
 	}
 	// An acked revoke may or may not write its header revision; what it
@@ -141,13 +161,12 @@ func (r *revisionOrder) indexRoom() {
 			credit(int64(rev), r.w.reqs[i])
 		}
 	}
-	slices.Sort(x.fixed)
 	for _, revs := range slices.Concat(x.puts, x.deletes, slices.Collect(maps.Values(x.revokes))) {
 		slices.Sort(revs)
 	}
 	for _, i := range r.ambiguous {
 		a := make([]int, 2*n)
-		for _, p := range putsIn(r.w.reqs[i]) {
+		for p := range putsIn(r.w.reqs[i]) {
 			if k := s.index(p.Key); k >= 0 {
 				a[k]++
 			}
@@ -350,20 +369,21 @@ func fewestActions(need []int, actions [][]int, limit int) int {
 	return solve(need)
 }
 
-// putsIn returns the puts of req, in both branches of a transaction.
-func putsIn(req history.Request) []*history.PutRequest {
-	if req.Put != nil {
-		return []*history.PutRequest{req.Put}
-	}
-	var ps []*history.PutRequest
-	if req.Txn != nil {
-		for o := range req.Txn.Ops() {
-			if o.Put != nil {
-				ps = append(ps, o.Put)
+// putsIn yields the puts of req, in both branches of a transaction.
+func putsIn(req history.Request) iter.Seq[*history.PutRequest] {
+	return func(yield func(*history.PutRequest) bool) {
+		if req.Put != nil {
+			yield(req.Put)
+			return
+		}
+		if req.Txn != nil {
+			for o := range req.Txn.Ops() {
+				if o.Put != nil && !yield(o.Put) {
+					return
+				}
 			}
 		}
 	}
-	return ps
 }
 
 // deleted returns the keys req may delete, in order: those of a delete's
