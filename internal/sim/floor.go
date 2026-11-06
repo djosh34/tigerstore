@@ -68,8 +68,8 @@ type floor struct {
 	stop chan struct{}
 	// wg counts the clients and watches, serving the gRPC servers.
 	wg, serving sync.WaitGroup
-	res  FloorResult
-	errs []error
+	res         FloorResult
+	errs        []error
 }
 
 // floorNode is one node of the floor: its process and how to reach it.
