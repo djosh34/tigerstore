@@ -1,0 +1,4 @@
+cpus 5, MemTotal:       18440100 kB
+busy: exit 0, peak 0.38 GiB, wall 9 s
+kube: exit 0, peak 5.16 GiB, wall 318 s
+campaign: exit 1, peak 15.89 GiB, wall 1830 s
