@@ -88,6 +88,16 @@ func (v versions) add(events []history.Event) {
 	}
 }
 
+// reserve makes room for n versions of each key of writes, so that adding
+// them copies none (#499).
+func (v versions) reserve(writes map[string]int) {
+	for key, n := range writes {
+		if v[key] == nil {
+			v[key] = &keyVersions{kvs: make([]history.KeyValue, 0, n), revs: make([]int64, 0, n)}
+		}
+	}
+}
+
 // drop takes the newest version of key off.
 func (v versions) drop(key string) {
 	vs := v[key]

@@ -29,6 +29,23 @@ type eventTime struct{ firstReturn, lastCall int64 }
 
 var noTime = eventTime{firstReturn: math.MaxInt64, lastCall: math.MinInt64}
 
+// newEventTimes is an empty eventTimes with room for n events, so that
+// pushing them never builds the tree again (#499).
+func newEventTimes(n int) *eventTimes {
+	t := &eventTimes{}
+	if n > 0 {
+		t.leaves = 1
+		for t.leaves < n {
+			t.leaves *= 2
+		}
+		t.nodes = make([]eventTime, 2*t.leaves)
+		for i := range t.nodes {
+			t.nodes[i] = noTime
+		}
+	}
+	return t
+}
+
 func (t *eventTimes) set(i int, e eventTime) {
 	p := t.leaves + i
 	t.nodes[p] = e

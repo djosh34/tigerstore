@@ -233,6 +233,54 @@ func (r *revisionOrder) setWriter(rev int64, i int) {
 	r.writers[rev] = i + 1
 }
 
+// size makes the slices that grow with the order at the most they can
+// hold: by revision, limit+1; the order's events and placed ops, the
+// limit-1 mutations, and its states one more; each key's versions, as
+// many as the history's requests may write it. Grown as they filled, a
+// busy history's were copied each time they doubled, which cost more per
+// op the longer the history (#499).
+func (r *revisionOrder) size() {
+	n := int(r.limit) + 1
+	r.writers = make([]int, 0, n)
+	r.revokes, r.others, r.seen = make([][]int, 0, n), make([][]int, 0, n), make([][]int, 0, n)
+	r.created, r.written, r.deleted = make([][]int, 0, n), make([][]int, 0, n), make([][]int, 0, n)
+	r.noted = make([][]seenLife, 0, n)
+	w := r.w
+	w.events = slices.Grow(w.events, n)
+	w.states = slices.Grow(w.states, n)
+	w.placed = slices.Grow(w.placed, n)
+	w.appended = slices.Grow(w.appended, n)
+	writes := map[string]int{}
+	for _, req := range w.reqs {
+		if !req.Mutates() {
+			continue
+		}
+		for p := range putsIn(req) {
+			writes[p.Key]++
+		}
+		for _, k := range singleDeletes(req) {
+			writes[k]++
+		}
+	}
+	w.past.reserve(writes)
+}
+
+// singleDeletes lists the keys that req deletes by name, not by range.
+func singleDeletes(req history.Request) []string {
+	var out []string
+	if d := req.Delete; d != nil && d.End == "" {
+		out = append(out, d.Key)
+	}
+	if t := req.Txn; t != nil {
+		for o := range t.Ops() {
+			if d := o.Delete; d != nil && d.End == "" {
+				out = append(out, d.Key)
+			}
+		}
+	}
+	return out
+}
+
 // add appends v to revs[rev], which it grows to hold.
 func add(revs [][]int, rev int64, v int) [][]int {
 	revs = at(revs, rev)
@@ -271,6 +319,7 @@ func (r *revisionOrder) index() error {
 			r.limit++
 		}
 	}
+	r.size()
 	values := map[[2]string][]int{}
 	for i := range h.Ops {
 		op := &h.Ops[i]

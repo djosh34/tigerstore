@@ -632,7 +632,7 @@ func (w *witness) describe(i int) string { return describeOp(w.h, i) }
 func (w *witness) eventBounds() func(op *history.Op) (int, int) {
 	if !w.slow {
 		if w.times == nil {
-			w.times = &eventTimes{}
+			w.times = newEventTimes(cap(w.events))
 			for _, e := range w.events {
 				w.times.push(w.h, e.op)
 			}
