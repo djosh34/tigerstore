@@ -29,7 +29,7 @@ import (
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
 		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
-		lb: map[int]int64{}, alive: map[int64]int64{}, grants: map[int64]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: map[int]bool{}, ready: map[int]bool{},
+		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
 		counts: map[int64][]count{},
 	}
 	w.search = r
@@ -54,13 +54,19 @@ type revisionOrder struct {
 	// ambiguous are the ambiguous mutations, and lb the highest revision
 	// returned before each was called: it writes no revision up to it.
 	ambiguous []int
-	lb        map[int]int64
+	lb        []int64
 	// alive is, per lease, the highest revision at which an answer shows
 	// it in use: an acked put with it wrote that revision, or a key a
 	// client saw still had it there. Its revoke writes a later revision,
 	// unless the ID was granted more than once (grants).
 	alive  map[int64]int64
 	grants map[int64]int
+	// grantsOf are the ambiguous grants of each lease ID (fitsGranted),
+	// and revokesOfLease its ambiguous revokes; writing are the ambiguous
+	// ops but the revokes (candidates).
+	grantsOf       map[int64][]int
+	revokesOfLease map[int64][]int
+	writing        []int
 	// returns and highest are the return times of the acked ops, in
 	// order, and the highest header revision of those up to each; calls
 	// and lowest their call times, in order, and the lowest header
@@ -84,12 +90,17 @@ type revisionOrder struct {
 	// later answer needs, by the revision from which they may go, in call
 	// order.
 	optional []optional
-	used     map[int]bool
+	used     []bool
 	// mutations are the acked mutations by return time, which an
 	// optional one must follow if they returned before its call, and
 	// ready the optional ones whose mutations are all placed.
 	mutations []int
-	ready     map[int]bool
+	ready     []bool
+	// placedPrefix is how many of mutations, from the first, are placed
+	// in the order, as far as isReady has looked; dues indexes the
+	// optional mutations not used yet (dueIndex). restore drops both.
+	placedPrefix int
+	dues         *dueIndex
 	// counts are, per revision, how many keys of a range clients saw
 	// then, and countRevs those revisions in order. putRevs and delRevs
 	// are, per key, the revisions whose acked writer may create or delete
@@ -100,6 +111,15 @@ type revisionOrder struct {
 	putRevs, delRevs  [][]int64
 	putters, deleters [][]int
 	revokers          []int
+	// revokeRevs are the revisions of the acked revokes, in order, and
+	// revokesByLB the ambiguous ones by their lower bounds, of which the
+	// first revokePrefix are used (mayRevoke).
+	revokeRevs   []int64
+	revokesByLB  []int
+	revokePrefix int
+	// room bounds the writes the revisions ahead need together
+	// (roomReachable).
+	room *room
 	// top is the highest revision any client saw.
 	top int64
 	// failure is the failure at the highest revision reached, and at its
@@ -193,6 +213,14 @@ func (r *revisionOrder) index() error {
 				continue
 			}
 			r.ambiguous = append(r.ambiguous, i)
+			if l := op.Req.LeaseRevoke; l != nil {
+				r.revokesOfLease[l.ID] = append(r.revokesOfLease[l.ID], i)
+			} else {
+				r.writing = append(r.writing, i)
+			}
+			if g := op.Req.LeaseGrant; g != nil {
+				r.grantsOf[g.ID] = append(r.grantsOf[g.ID], i)
+			}
 			for _, kv := range putsOf(op.Req) {
 				values[kv] = append(values[kv], i)
 			}
@@ -281,6 +309,7 @@ func (r *revisionOrder) index() error {
 		r.covered[k] = merge(ss)
 	}
 	r.indexCounts()
+	r.indexRoom()
 	r.scheduleOptional()
 	return nil
 }
@@ -335,6 +364,9 @@ func (r *revisionOrder) indexCounts() {
 			}
 		case req.LeaseRevoke != nil:
 			r.revokers = append(r.revokers, i)
+			if acked {
+				r.revokeRevs = append(r.revokeRevs, h.Ops[i].Resp.Revision)
+			}
 		}
 	}
 	for i := range h.Ops {
@@ -364,6 +396,7 @@ func (r *revisionOrder) indexCounts() {
 	for _, revs := range slices.Concat(r.putRevs, r.delRevs) {
 		slices.Sort(revs)
 	}
+	slices.Sort(r.revokeRevs)
 	r.countRevs = slices.Sorted(maps.Keys(r.counts))
 }
 
@@ -383,6 +416,9 @@ func (r *revisionOrder) indexCounts() {
 // the search tried every order of the writes in between, 15 million times
 // back, before it saw that count.
 func (r *revisionOrder) reachable(s *state, skip int) bool {
+	if !r.roomReachable(s, skip) {
+		return false
+	}
 	first := sort.Search(len(r.countRevs), func(k int) bool { return r.countRevs[k] >= s.rev })
 	for _, rev := range r.countRevs[first:] {
 		if rev > s.rev+countHorizon {
@@ -428,7 +464,40 @@ func (r *revisionOrder) may(s *state, k int, rev int64, skip int, create bool) b
 	if create {
 		return acked(r.putRevs[k]) || slices.ContainsFunc(r.putters[k], ok)
 	}
-	return acked(r.delRevs[k]) || slices.ContainsFunc(r.deleters[k], ok) || slices.ContainsFunc(r.revokers, ok)
+	if r.w.slow {
+		return acked(r.delRevs[k]) || slices.ContainsFunc(r.deleters[k], ok) || slices.ContainsFunc(r.revokers, ok)
+	}
+	return acked(r.delRevs[k]) || slices.ContainsFunc(r.deleters[k], ok) || acked(r.revokeRevs) || r.mayRevoke(rev, skip)
+}
+
+// mayRevoke reports whether an ambiguous revoke other than skip, not used
+// yet, may come before rev: one whose lower bound is below it. A revoke
+// may delete any key, and the ambiguous ones of a busy history are the
+// expiries of every lease it grants, which may scanned for every key of
+// every count (#499); so they are kept in the order of their lower
+// bounds, and the used ones at the front are passed for good, until
+// restore.
+func (r *revisionOrder) mayRevoke(rev int64, skip int) bool {
+	if r.revokesByLB == nil {
+		for _, i := range r.revokers {
+			if r.w.h.Ops[i].Resp == nil {
+				r.revokesByLB = append(r.revokesByLB, i)
+			}
+		}
+		slices.SortStableFunc(r.revokesByLB, func(a, b int) int { return cmp.Compare(r.lb[a], r.lb[b]) })
+	}
+	for r.revokePrefix < len(r.revokesByLB) && r.used[r.revokesByLB[r.revokePrefix]] {
+		r.revokePrefix++
+	}
+	for _, i := range r.revokesByLB[r.revokePrefix:] {
+		if r.lb[i] >= rev {
+			return false
+		}
+		if i != skip && !r.used[i] {
+			return true
+		}
+	}
+	return false
 }
 
 // touches reports whether req, placed after s, may still create key k,
@@ -692,9 +761,16 @@ func (r *revisionOrder) scheduleOptional() {
 	present, gone := map[int64]int64{}, map[int64]int64{}
 	granted, revoked := map[int64]bool{}, map[int64]bool{}
 	// compacted are the compacted rejections, by the revision they asked
-	// for and their return; reads are the acked reads at a revision, and
-	// compactions the acked compactions.
-	type rejection struct{ rev, ret int64 }
+	// for, their call and their return, and whether they were reads;
+	// reads are the acked reads at a revision, and compactions the acked
+	// compactions.
+	type rejection struct {
+		rev, call, ret int64
+		read           bool
+	}
+	// compacts reports whether a compaction to c explains rejection rj: a
+	// read at a revision below c, or a compaction to c or below.
+	compacts := func(c int64, rj rejection) bool { return c > rj.rev || c == rj.rev && !rj.read }
 	var compacted []rejection
 	var compactions, reads []int
 	note := func(lease, rev int64) {
@@ -743,7 +819,7 @@ func (r *revisionOrder) scheduleOptional() {
 		case sameError(op.Err, errLeaseExists):
 			note(op.Req.LeaseGrant.ID, 1)
 		case sameError(op.Err, errCompacted):
-			compacted = append(compacted, rejection{requestedRevision(op.Req), op.Return})
+			compacted = append(compacted, rejection{requestedRevision(op.Req), op.Call, op.Return, op.Req.Range != nil})
 		}
 	}
 	for _, w := range h.Watches {
@@ -815,7 +891,13 @@ func (r *revisionOrder) scheduleOptional() {
 			c := op.Req.Compact.Revision
 			goneAt := int64(math.MaxInt64)
 			for _, rj := range compacted {
-				if rj.rev <= c {
+				// An acked compaction that compacts it and returned
+				// before it was called explains it in every order, as
+				// an acked revoke a lease found gone (#514).
+				explained := slices.ContainsFunc(compactions, func(k int) bool {
+					return compacts(h.Ops[k].Req.Compact.Revision, rj) && h.Ops[k].Return < rj.call
+				})
+				if compacts(c, rj) && !explained {
 					goneAt = min(goneAt, rj.ret)
 				}
 			}
@@ -845,42 +927,61 @@ func (r *revisionOrder) scheduleOptional() {
 	}
 }
 
-// maxSlotOrder bounds the acked mutations of one revision whose orders
-// slotOrder tries.
-const maxSlotOrder = 6
+// slotSteps bounds the steps of slotOrder's search.
+const slotSteps = 4096
 
 // slotOrder returns an order of ops, acked mutations that change no key
 // at the current revision, in call order: that one if the model gives
 // each its answer in it, else the first order that follows real time in
 // which it does, else call order. Two compactions at one revision, for
 // one, must go in the order of their revisions, and a compaction after
-// a grant that returned before a read below it was called (#284).
+// a grant that returned before a read below it was called (#284). The
+// search drops an order once an op in it breaks real time or gets another
+// answer, as answered would, so it reaches the orders of a revision with
+// many such ops, a busy one's grants, within slotSteps: a grant and a
+// revoke of its lease, or two compactions, whose calls overlap must go in
+// one order among them (#514).
 func (r *revisionOrder) slotOrder(ops []int) []int {
-	if len(ops) < 2 || len(ops) > maxSlotOrder || r.answered(ops) {
+	if len(ops) < 2 || r.answered(ops) {
 		return ops
 	}
+	w := r.w
 	order := make([]int, 0, len(ops))
-	used := make([]bool, len(ops))
-	var try func() bool
-	try = func() bool {
+	placed := make([]bool, len(ops))
+	steps := 0
+	var next func(s *state) bool
+	next = func(s *state) bool {
 		if len(order) == len(ops) {
 			return r.answered(order)
 		}
 		for k, i := range ops {
-			if used[k] {
+			if placed[k] {
 				continue
 			}
-			used[k] = true
-			order = append(order, i)
-			if try() {
-				return true
+			if steps++; steps > slotSteps {
+				return false
 			}
-			order = order[:len(order)-1]
-			used[k] = false
+			// Every op left that returned before its call goes first.
+			if slices.ContainsFunc(ops, func(j int) bool {
+				return w.h.Ops[j].Return < w.h.Ops[i].Call && !slices.Contains(order, j)
+			}) {
+				continue
+			}
+			t, undo := r.try(s, w.reqs[i])
+			if o := t.step(w.reqs[i], false); o.err == nil && matches(o, w.h.Ops[i].Resp) {
+				placed[k] = true
+				order = append(order, i)
+				if next(t) {
+					return true
+				}
+				order = order[:len(order)-1]
+				placed[k] = false
+			}
+			undo()
 		}
 		return false
 	}
-	if try() {
+	if next(w.live.clone()) {
 		return order
 	}
 	return ops
@@ -908,8 +1009,11 @@ func (r *revisionOrder) answered(ops []int) bool {
 	if len(seen) == 0 || !slices.ContainsFunc(ops, func(i int) bool { return w.reqs[i].Compact != nil }) {
 		return true
 	}
-	m := r.save()
-	defer r.restore(m)
+	// The trial applies ops and places nothing as seen; it marks nothing
+	// used and asks isReady and due nothing, so undoing the order is
+	// enough.
+	m := r.saveOrder()
+	defer r.restoreOrder(m)
 	for _, i := range ops {
 		w.apply(i, w.reqs[i])
 	}
@@ -920,7 +1024,11 @@ func (r *revisionOrder) answered(ops []int) bool {
 // may go in by now and that the model takes without a write.
 func (r *revisionOrder) insertOptional(rev int64) {
 	w := r.w
-	for _, o := range r.optional {
+	optionals := r.optional
+	if !w.slow {
+		optionals = r.earlyDue(rev)
+	}
+	for _, o := range optionals {
 		if o.late || o.from > rev || r.used[o.op] || !r.isReady(o) {
 			continue
 		}
@@ -943,7 +1051,16 @@ func (r *revisionOrder) isReady(o optional) bool {
 	}
 	w := r.w
 	unplaced := func(j int) bool { return !w.at[j].set }
-	if slices.ContainsFunc(r.mutations[:o.after], unplaced) || slices.ContainsFunc(o.follow, unplaced) {
+	// Along one order a placed mutation stays placed, so the placed
+	// prefix of mutations only grows until restore.
+	for r.placedPrefix < len(r.mutations) && !unplaced(r.mutations[r.placedPrefix]) {
+		r.placedPrefix++
+	}
+	missing := r.placedPrefix < o.after
+	if w.slow {
+		missing = slices.ContainsFunc(r.mutations[:o.after], unplaced)
+	}
+	if missing || slices.ContainsFunc(o.follow, unplaced) {
 		return false
 	}
 	r.ready[o.op] = true
@@ -980,8 +1097,12 @@ func (r *revisionOrder) readsFit(o optional) bool {
 // order: one called before a rejection returned may have to go in before
 // one called after it, which ends the rejection's states.
 func (r *revisionOrder) due(call, rev int64) []optional {
+	optionals := r.optional
+	if !r.w.slow {
+		optionals = r.lateDue(call, rev)
+	}
 	var out []optional
-	for _, o := range r.optional {
+	for _, o := range optionals {
 		if o.late && !r.used[o.op] && (o.gone < call || o.by <= rev) {
 			// A compaction to a revision the order already compacted
 			// fails in the model, and compaction only goes up along an
@@ -1101,7 +1222,7 @@ func leasesOf(req history.Request) []int64 {
 type mark struct {
 	events, appended, placed int
 	live                     *state
-	used                     map[int]bool
+	used                     []bool
 }
 
 // frame is a gap of the search: its revision, the candidates to write it,
@@ -1114,32 +1235,49 @@ type frame struct {
 }
 
 func (r *revisionOrder) save() mark {
+	m := r.saveOrder()
+	m.used = slices.Clone(r.used)
+	return m
+}
+
+// saveOrder marks the order so far: its events, versions, placements and
+// live store, without what the search keeps beside it.
+func (r *revisionOrder) saveOrder() mark {
 	w := r.w
-	return mark{events: len(w.events), appended: len(w.appended), placed: len(w.placed), live: w.live.clone(), used: maps.Clone(r.used)}
+	return mark{events: len(w.events), appended: len(w.appended), placed: len(w.placed), live: w.live.clone()}
 }
 
 func (r *revisionOrder) restore(m mark) {
+	r.restoreOrder(m)
+	// What observe placed belongs to the order given up.
+	for i, p := range r.w.at {
+		if p.seen {
+			r.w.at[i] = place{}
+		}
+	}
+	clear(r.ready)
+	r.used = slices.Clone(m.used)
+	r.placedPrefix, r.dues, r.revokePrefix = 0, nil, 0
+}
+
+// restoreOrder goes back to the order of saveOrder.
+func (r *revisionOrder) restoreOrder(m mark) {
 	w := r.w
 	w.events, w.states = w.events[:m.events], w.states[:m.events+1]
+	if w.times != nil {
+		w.times.truncate(m.events)
+	}
 	for k := len(w.appended) - 1; k >= m.appended; k-- {
 		key := w.appended[k]
-		w.past[key] = w.past[key][:len(w.past[key])-1]
+		w.past.drop(key)
 	}
 	w.appended = w.appended[:m.appended]
 	for _, i := range w.placed[m.placed:] {
 		w.at[i] = place{}
 	}
 	w.placed = w.placed[:m.placed]
-	// What observe placed belongs to the order given up.
-	for i, p := range w.at {
-		if p.seen {
-			w.at[i] = place{}
-		}
-	}
 	w.live = m.live.clone()
 	w.kvsRev = -1
-	clear(r.ready)
-	r.used = maps.Clone(m.used)
 }
 
 // dead notes why the search cannot go on at revision rev.
@@ -1208,7 +1346,7 @@ func (r *revisionOrder) write(rev int64) bool {
 		return true
 	}
 	if i, ok := r.resolved[rev]; ok && !r.used[i] && r.lb[i] < rev {
-		if r.fits(i, rev) {
+		if r.fitsGranted(i, rev) {
 			r.expire(w.h.Ops[i].Call, 0)
 			w.apply(i, w.reqs[i])
 			r.used[i] = true
@@ -1225,7 +1363,7 @@ func (r *revisionOrder) write(rev int64) bool {
 	}
 	for ; f.next < len(f.cands); f.next++ {
 		i := f.cands[f.next]
-		if r.used[i] || !r.fits(i, rev) {
+		if r.used[i] || !r.fitsGranted(i, rev) {
 			continue
 		}
 		r.expire(w.h.Ops[i].Call, 0)
@@ -1253,8 +1391,23 @@ func (r *revisionOrder) write(rev int64) bool {
 func (r *revisionOrder) candidates(rev int64) []int {
 	h := r.w.h
 	out := slices.Clone(r.revokes[rev])
+	// A revoke writes a revision only if a key holds its lease (fits), and
+	// the ambiguous revokes of a busy history are its leases' expiries, so
+	// only those of the leases the live keys hold are tried: going through
+	// all of them at every gap grew with the history (#499).
+	possible := r.ambiguous
+	if !r.w.slow {
+		possible = slices.Clone(r.writing)
+		var leases []int64
+		for _, kv := range r.w.live.kvs {
+			if kv.Version != 0 && kv.Lease != 0 && !slices.Contains(leases, kv.Lease) {
+				leases = append(leases, kv.Lease)
+				possible = append(possible, r.revokesOfLease[kv.Lease]...)
+			}
+		}
+	}
 	var amb []int
-	for _, i := range r.ambiguous {
+	for _, i := range possible {
 		if at, ok := r.reserved[i]; ok && at != rev {
 			continue
 		}
@@ -1278,12 +1431,78 @@ func (r *revisionOrder) candidates(rev int64) []int {
 	return append(out, amb...)
 }
 
+// fitsGranted is fits, and if op i does not fit, it puts in first, for
+// each lease it puts on that no live lease matches, an ambiguous grant of
+// it not used yet that may come before rev, and keeps them if op i then
+// fits. No answer need show such a lease in use, so its grant need not be
+// an optional mutation, and an ambiguous put that a client saw write could
+// not go in at all (#514). A grant changes no key and no revision; a
+// wrong one is undone with the candidate.
+func (r *revisionOrder) fitsGranted(i int, rev int64) bool {
+	if r.fits(i, rev) {
+		return true
+	}
+	grants := r.grantsFor(leasesOf(r.w.reqs[i]), rev-1)
+	if len(grants) == 0 {
+		return false
+	}
+	m := r.saveOrder()
+	r.grant(grants)
+	if r.fits(i, rev) {
+		return true
+	}
+	r.restoreOrder(m)
+	for _, g := range grants {
+		r.used[g] = false
+	}
+	return false
+}
+
+// grantsFor returns, for each lease of ids that no live lease matches, the
+// ambiguous grant of it not used yet, called first, that may go in at
+// revision at.
+func (r *revisionOrder) grantsFor(ids []int64, at int64) []int {
+	var grants []int
+	for _, id := range ids {
+		if r.w.live.hasLease(id) || slices.ContainsFunc(grants, func(g int) bool { return r.w.reqs[g].LeaseGrant.ID == id }) {
+			continue
+		}
+		// The one called first, which real time allows wherever it
+		// allows another.
+		first := -1
+		for _, g := range r.grantsOf[id] {
+			if !r.used[g] && r.lb[g] <= at && (first < 0 || r.w.h.Ops[g].Call < r.w.h.Ops[first].Call) {
+				first = g
+			}
+		}
+		if first >= 0 {
+			grants = append(grants, first)
+		}
+	}
+	return grants
+}
+
+// grant puts in the grants.
+func (r *revisionOrder) grant(grants []int) {
+	for _, g := range grants {
+		r.w.apply(g, r.w.reqs[g])
+		r.used[g] = true
+	}
+}
+
 // fits reports whether op i can write revision rev next, after the
 // expiries due before it: the model says it writes exactly rev, it changes
 // no key that a client saw unchanged at rev, and an acked revoke gets its
 // answer.
 func (r *revisionOrder) fits(i int, rev int64) bool {
 	w := r.w
+	if l := w.reqs[i].LeaseRevoke; l != nil && !slices.ContainsFunc(w.live.kvs, func(kv history.KeyValue) bool { return kv.Version != 0 && kv.Lease == l.ID }) {
+		// A revoke writes a revision only if a key holds its lease, and
+		// the due optionals below change no key. The ambiguous revokes
+		// of a busy history are its leases' expiries, tried at every gap
+		// (#499).
+		return false
+	}
 	s, undo := r.try(w.live, w.reqs[i])
 	defer undo()
 	for _, e := range r.due(w.h.Ops[i].Call, 0) {
@@ -1308,13 +1527,16 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			return false
 		}
 		// A key it changes inside a life a client saw stays in that
-		// life: created then, with no more versions than seen, and with
-		// exactly as many at the last write the client saw, which no
-		// later write can make up for (#386).
+		// life: created then, below the version seen before the last
+		// write the client saw, since each write adds one, and with
+		// exactly as many at that write, which no later write can make
+		// up for (#386). A write that reached the version early passed,
+		// and the search tried every order of the revisions up to that
+		// write before it failed there (#499).
 		for l, to := range r.lives[e.KV.Key] {
 			if l.c <= rev && rev <= to {
 				kv, ok := s.get(e.KV.Key)
-				if !ok || kv.CreateRevision != l.c || kv.Version > l.v || rev == l.m && kv.Version != l.v {
+				if !ok || kv.CreateRevision != l.c || rev < l.m && kv.Version >= l.v || rev >= l.m && kv.Version != l.v {
 					return false
 				}
 			}
