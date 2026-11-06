@@ -157,8 +157,10 @@ type witness struct {
 	// id of the newest state (placeSeen).
 	firsts []firstAnswer
 	lastID uint64
-	// sorter sorts ops by time (timeSorter).
+	// sorter sorts ops by time (timeSorter), and scoped is the state
+	// scopedState fills.
 	sorter timeSorter
+	scoped state
 }
 
 // stoppedAt says how far a check got when it ran out of time.

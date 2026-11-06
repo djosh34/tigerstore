@@ -84,19 +84,26 @@ func (r *revisionOrder) tryOptional(s *state, o optional, take func(*state, opti
 // only the keys its request can read or write, every key of each range it
 // names, so that a missing key, a count or an extra value is still checked,
 // and both branches and every compare of a transaction. A revoke can touch
-// any key and gets them all.
+// any key and gets them all. The state is the witness's own, until the
+// next call.
 func (w *witness) scopedState(i, j int) *state {
 	if w.slow {
 		return w.stateAt(j)
 	}
 	keys := w.scope[i]
 	if keys == nil {
-		// Not nil, so that a request of no keys is not looked at again.
-		keys = append([]string{}, requestKeys(w.keys, w.reqs[i])...)
+		keys = requestKeys(w.keys, w.reqs[i])
+		if keys == nil {
+			// So that a request of no keys is not looked at again.
+			keys = []string{}
+		}
 		w.scope[i] = keys
 	}
 	sm := w.states[j]
-	s := &state{keys: keys, kvs: make([]history.KeyValue, len(keys)), leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past}
+	// One state serves every answer: an answer keeps nothing of it, and a
+	// new one per answer was most of what the check allocated (#499).
+	s := &w.scoped
+	*s = state{keys: keys, kvs: slices.Grow(s.kvs[:0], len(keys))[:len(keys)], leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past}
 	for k, key := range keys {
 		s.kvs[k], _ = w.past.at(key, sm.rev)
 	}
@@ -110,6 +117,21 @@ func requestKeys(keys []string, req history.Request) []string {
 		return keys
 	}
 	all := &state{keys: keys}
+	// One span is a slice of keys, which costs nothing to keep: most
+	// requests are one, and their keys were a slice of their own per op
+	// (#499).
+	one := func(key, end string) []string {
+		lo, hi := all.span(key, end)
+		return keys[lo:hi:hi]
+	}
+	switch {
+	case req.Range != nil:
+		return one(req.Range.Key, req.Range.End)
+	case req.Put != nil:
+		return one(req.Put.Key, "")
+	case req.Delete != nil:
+		return one(req.Delete.Key, req.Delete.End)
+	}
 	var spans [][2]int
 	add := func(key, end string) {
 		if lo, hi := all.span(key, end); lo < hi {
@@ -128,14 +150,7 @@ func requestKeys(keys []string, req history.Request) []string {
 			}
 		}
 	}
-	switch {
-	case req.Range != nil:
-		add(req.Range.Key, req.Range.End)
-	case req.Put != nil:
-		add(req.Put.Key, "")
-	case req.Delete != nil:
-		add(req.Delete.Key, req.Delete.End)
-	case req.Txn != nil:
+	if req.Txn != nil {
 		for _, c := range req.Txn.Compare {
 			add(c.Key, "")
 		}
