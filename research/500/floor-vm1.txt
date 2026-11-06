@@ -1,0 +1,112 @@
++ git rev-parse HEAD
+44cddafca85e45b1007dc7fbb457c9d08420d014
++ go version
+go version go1.27.2 linux/amd64
++ nproc
+5
++ cat /sys/fs/cgroup/cpu.max
+400000 100000
++ grep -m1 'model name' /proc/cpuinfo
+model name	: INTEL(R) XEON(R) PLATINUM 8573C
++ free -g
+               total        used        free      shared  buff/cache   available
+Mem:              17           0          17           0           0          16
+Swap:              0           0           0
++ go test -c -o /tmp/m500/sim.test ./internal/sim
+go: downloading github.com/djosh34/gosim v0.0.0-20261106141000-70acbb3055cd
++ for p in 1 2 4
++ GOMAXPROCS=1
++ /tmp/m500/sim.test -test.run '^$' -test.bench '^BenchmarkFloor$' -test.benchtime 5x
+goos: linux
+goarch: amd64
+pkg: github.com/djosh34/tigerstore/internal/sim
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFloor 	       5	31100595507 ns/op	      6153 calls/core-s	     24576 calls/op	       464.6 failed/op
+PASS
++ for p in 1 2 4
++ GOMAXPROCS=2
++ /tmp/m500/sim.test -test.run '^$' -test.bench '^BenchmarkFloor$' -test.benchtime 5x
+goos: linux
+goarch: amd64
+pkg: github.com/djosh34/tigerstore/internal/sim
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFloor-2   	       5	31325536900 ns/op	      3068 calls/core-s	     24219 calls/op	       551.4 failed/op
+PASS
++ for p in 1 2 4
++ GOMAXPROCS=4
++ /tmp/m500/sim.test -test.run '^$' -test.bench '^BenchmarkFloor$' -test.benchtime 5x
+goos: linux
+goarch: amd64
+pkg: github.com/djosh34/tigerstore/internal/sim
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFloor-4   	       5	31125596916 ns/op	      2847 calls/core-s	     24669 calls/op	       468.2 failed/op
+PASS
++ SIM_SEEDS=5
++ scripts/sim.sh ./internal/sim '^TestFloorUnderGosim$' -test.v
++ grep -E 'calls|PASS|FAIL|ok'
+go: downloading github.com/djosh34/gosim/cmd/gosim v0.0.0-20261106141000-70acbb3055cd
+go: downloading golang.org/x/tools v0.52.0
+go: downloading github.com/dave/dst v0.27.3
+go: downloading golang.org/x/mod v0.42.0
+go: downloading golang.org/x/sync v0.24.0
+go: downloading github.com/mattn/go-sqlite3 v1.14.24
+    native.go:326: the gosim run of seed 1 took 4s
+        floor_test.go:52: 26472 calls answered, 441 failed, 4.325 s of CPU time: 6120 calls per core-second
+        --- PASS: TestFloorUnderGosim/1 (31.31s simulated)
+        --- PASS: TestFloorUnderGosim (31.31s simulated)
+    native.go:326: the gosim run of seed 2 took 4s
+        floor_test.go:52: 26401 calls answered, 408 failed, 4.311 s of CPU time: 6124 calls per core-second
+        --- PASS: TestFloorUnderGosim/2 (31.31s simulated)
+        --- PASS: TestFloorUnderGosim (31.31s simulated)
+    native.go:326: the gosim run of seed 3 took 4s
+        floor_test.go:52: 26397 calls answered, 482 failed, 4.279 s of CPU time: 6168 calls per core-second
+        --- PASS: TestFloorUnderGosim/3 (31.01s simulated)
+        --- PASS: TestFloorUnderGosim (31.01s simulated)
+    native.go:326: the gosim run of seed 4 took 4s
+        floor_test.go:52: 26290 calls answered, 490 failed, 4.281 s of CPU time: 6142 calls per core-second
+        --- PASS: TestFloorUnderGosim/4 (31.51s simulated)
+        --- PASS: TestFloorUnderGosim (31.51s simulated)
+    native.go:326: the gosim run of seed 5 took 5s
+        floor_test.go:52: 26308 calls answered, 462 failed, 4.753 s of CPU time: 5536 calls per core-second
+        --- PASS: TestFloorUnderGosim/5 (31.21s simulated)
+        --- PASS: TestFloorUnderGosim (31.21s simulated)
+    floor_test.go:60: 5 seeds of the floor under gosim: 131868 calls answered, 2283 failed, 21.949 s of CPU time: 6008 calls per core-second
+--- PASS: TestFloorUnderGosim (21.57s)
+    --- PASS: TestFloorUnderGosim/1 (4.40s)
+    --- PASS: TestFloorUnderGosim/2 (4.19s)
+    --- PASS: TestFloorUnderGosim/3 (4.17s)
+    --- PASS: TestFloorUnderGosim/4 (4.19s)
+    --- PASS: TestFloorUnderGosim/5 (4.62s)
+PASS
++ SIM_SEEDS=5
++ scripts/sim.sh ./internal/sim '^TestCalm$' -test.v
++ grep -E 'calls|PASS|FAIL|ok'
+    native.go:326: the gosim run of seed 1 took 6s
+        floor_test.go:92: 18391 calls answered, 5.082 s of CPU time in the load, 5.887 s in the seed: 3619 calls per core-second, 0.805 s fixed
+        --- PASS: TestCalm/1 (61.00s simulated)
+        --- PASS: TestCalm (61.00s simulated)
+    native.go:326: the gosim run of seed 2 took 5s
+        floor_test.go:92: 18301 calls answered, 5.149 s of CPU time in the load, 6.122 s in the seed: 3554 calls per core-second, 0.973 s fixed
+        --- PASS: TestCalm/2 (61.24s simulated)
+        --- PASS: TestCalm (61.24s simulated)
+    native.go:326: the gosim run of seed 3 took 6s
+        floor_test.go:92: 19022 calls answered, 5.584 s of CPU time in the load, 6.513 s in the seed: 3406 calls per core-second, 0.928 s fixed
+        --- PASS: TestCalm/3 (61.02s simulated)
+        --- PASS: TestCalm (61.02s simulated)
+    native.go:326: the gosim run of seed 4 took 6s
+        floor_test.go:92: 18690 calls answered, 5.238 s of CPU time in the load, 6.117 s in the seed: 3568 calls per core-second, 0.878 s fixed
+        --- PASS: TestCalm/4 (58.56s simulated)
+        --- PASS: TestCalm (58.56s simulated)
+    native.go:326: the gosim run of seed 5 took 14s
+        floor_test.go:92: 20117 calls answered, 13.090 s of CPU time in the load, 16.580 s in the seed: 1537 calls per core-second, 3.491 s fixed
+        --- PASS: TestCalm/5 (61.09s simulated)
+        --- PASS: TestCalm (61.09s simulated)
+    floor_test.go:103: 5 calm seeds: 94521 calls answered, 2768 per core-second of load, 1.415 s fixed per seed
+--- PASS: TestCalm (36.53s)
+    --- PASS: TestCalm/1 (5.53s)
+    --- PASS: TestCalm/2 (5.46s)
+    --- PASS: TestCalm/3 (5.90s)
+    --- PASS: TestCalm/4 (5.59s)
+    --- PASS: TestCalm/5 (14.06s)
+PASS
++ echo 0
