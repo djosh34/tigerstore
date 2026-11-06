@@ -26,6 +26,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +39,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/server"
 	"github.com/djosh34/tigerstore/internal/simfs"
+	"github.com/djosh34/tigerstore/internal/simrun"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -479,6 +481,9 @@ type Sim struct {
 	wg, procs sync.WaitGroup
 
 	healAt, stopAt, endAt int64
+	// wallStacks is every goroutine's stack when the run passed its limit
+	// of real time (watchWall).
+	wallStacks []byte
 	// leaseCheckpoints is set when the nodes checkpoint their leases, and
 	// formed is how long the cluster took to form before the run, if it
 	// did (formCluster).
@@ -688,6 +693,9 @@ type Result struct {
 	// long is set for a run of an hour or more, whose history takes
 	// gigabytes.
 	long bool
+	// stacks is every goroutine's stack when the run passed its limit of
+	// real time.
+	stacks []byte
 	// values is the one copy of each value of a Kubernetes-shaped load,
 	// which the checkers' history shares too.
 	values *values
@@ -712,7 +720,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 			res := &Result{Clients: cfg.Clients + cfg.V3Clients, nodes: f.nodes, Report: f.report()}
 			f.shutdown()
 			// Every goroutine of the formation has ended.
-			res.Stats, res.Trace = f.stats, f.trace
+			res.Stats, res.Trace, res.stacks = f.stats, f.trace, f.wallStacks
 			return res, fmt.Errorf("forming the cluster: %w", err)
 		}
 		f.shutdown()
@@ -749,7 +757,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.History, res.Stats, res.Silences = s.history, s.stats, s.silences
 	res.HeldAppendAt = s.heldAppendAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
-	res.nodes, res.values = s.nodes, s.values
+	res.nodes, res.values, res.stacks = s.nodes, s.values, s.wallStacks
 	s.mu.Unlock()
 	if err == nil {
 		if err = s.check(res); err != nil {
@@ -833,6 +841,8 @@ func (s *Sim) run() error {
 	// LeaseCheckpoint feature, every second instead of 5 minutes, so
 	// that the clients' short leases get checkpoints too.
 	s.leaseCheckpoints = s.rng.IntN(2) == 0
+	// Saved before any node runs: a node that spins at once leaves this.
+	s.saveBlackbox()
 	for _, n := range s.nodes[:3] {
 		if err := s.start(n); err != nil {
 			return err
@@ -844,6 +854,7 @@ func (s *Sim) run() error {
 		s.mu.Unlock()
 	}
 	s.schedule()
+	s.wg.Go(s.watchWall)
 	// The end can move while the run goes on (extendLiveness).
 	for {
 		s.mu.Lock()
@@ -904,6 +915,9 @@ func formCluster(cfg Config) (*Sim, error) {
 	if cfg.Membership {
 		s.nodes[3].inactive = true
 	}
+	// The formation has a limit of real time too (watchWall).
+	s.saveBlackbox()
+	s.wg.Go(s.watchWall)
 	for _, n := range s.nodes[:3] {
 		if err := s.start(n); err != nil {
 			return s, err
@@ -928,6 +942,48 @@ func formCluster(cfg Config) (*Sim, error) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+var errWallLimit = errors.New("the run passed its limit of real time ($SIM_WALL)")
+
+// watchWall fails the run once it passed its limit of real time
+// (simrun.WallLimitPassed), looking every 100 ms of the run's time, so
+// that a run that takes too long ends with its report. It takes every
+// goroutine's stack first, while the nodes still run. A goroutine that
+// never blocks stops the run's clock too, and gosim ends that run itself;
+// for that run it saves the trace and how it left each node every 10 s
+// of the run's time, as run and formCluster do before any node starts,
+// and the driver then saves them with the stacks.
+func (s *Sim) watchWall() {
+	s.saveBlackbox()
+	for tick := 1; s.sleep(100 * Millisecond); tick++ {
+		if simrun.WallLimitPassed() {
+			stacks := simrun.Stacks()
+			s.mu.Lock()
+			s.wallStacks = stacks
+			s.fail("%w", errWallLimit)
+			s.mu.Unlock()
+			return
+		}
+		if tick%100 == 0 {
+			s.saveBlackbox()
+		}
+	}
+}
+
+// saveBlackbox saves the trace and how the run left each node so far,
+// under gosim, for the driver to keep if gosim ends a run that never
+// yields or that panicked (watchWall).
+func (s *Sim) saveBlackbox() {
+	if !simrun.InGosim {
+		return
+	}
+	report := s.report()
+	s.mu.Lock()
+	trace := strings.Join(s.trace, "\n") + "\n"
+	s.mu.Unlock()
+	simrun.Artifact("blackbox/trace.txt", []byte(trace))
+	simrun.Artifact("blackbox/nodes.txt", []byte(report))
 }
 
 // settleSeconds is how long settle lets nodes that disagree at the end

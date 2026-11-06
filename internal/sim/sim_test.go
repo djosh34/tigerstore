@@ -251,6 +251,17 @@ func runFiles(dir, cmd string, res *Result, history bool) map[string]string {
 		"stats.txt":  fmt.Sprintf("%+v\n", res.Stats),
 		"hashes.txt": hashes(res) + "\n",
 	}
+	if simrun.WallLimitPassed() {
+		// The run took too long: where each goroutine was, the nodes'
+		// included, as the run's watchdog saw them, or now when a check
+		// passed the limit after the run.
+		stacks := res.stacks
+		if stacks == nil {
+			stacks = simrun.Stacks()
+		}
+		files["stacks.txt"] = string(stacks)
+		files["replay.txt"] += "the run passed its limit of real time ($SIM_WALL); stacks.txt has every goroutine's stack\n"
+	}
 	if !history {
 		files["replay.txt"] += "no history.json and no calls.txt: a long run kept to compare with its second run leaves them out; the replay command plays the seed again\n"
 		addDisks(files, res)
@@ -510,9 +521,11 @@ func checkers(t *testing.T, res *Result) {
 // checks are bounded by the steps of their search too. A typical check of
 // a run takes 4,000 to 10,000 steps. The witness checker's bound is about
 // a minute of its steps natively; Porcupine's search steps cost more.
+// A check also stops once the run passed its limit of real time.
 var (
 	witnessSteps   = check.MaxSteps(50_000_000)
 	porcupineSteps = check.MaxSteps(1_000_000)
+	wallStop       = check.StopWhen(simrun.WallLimitPassed)
 )
 
 // independent runs the durability, revision and watch checkers of package
@@ -533,7 +546,7 @@ func independent(res *Result) error {
 		errs = append(errs, fmt.Errorf("watches: %w", err))
 	}
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
-		if err := check.Witnessed(h, mode, time.Minute, witnessSteps); err != nil {
+		if err := check.Witnessed(h, mode, time.Minute, witnessSteps, wallStop); err != nil {
 			errs = append(errs, fmt.Errorf("witness: %w", err))
 		}
 	}
@@ -546,10 +559,10 @@ func independent(res *Result) error {
 // and another fails is a checker bug.
 func agree(h *history.History) error {
 	names := []string{"witness from the log", "witness from the revisions"}
-	errs := []error{check.Witnessed(h, check.FromLog, time.Minute, witnessSteps), check.Witnessed(h, check.FromRevisions, time.Minute, witnessSteps)}
+	errs := []error{check.Witnessed(h, check.FromLog, time.Minute, witnessSteps, wallStop), check.Witnessed(h, check.FromRevisions, time.Minute, witnessSteps, wallStop)}
 	if check.ShortEnough(h) {
 		names = append(names, "linearizability")
-		errs = append(errs, check.Linearizable(h, 3*time.Minute, porcupineSteps))
+		errs = append(errs, check.Linearizable(h, 3*time.Minute, porcupineSteps, wallStop))
 	}
 	failed := 0
 	var verdicts []string
@@ -645,6 +658,47 @@ func TestFormedClusterAnswers(t *testing.T) {
 			t.Fatalf("seed %d: a call after 2 s took %s with no faults", seed, seconds(slowest))
 		}
 		t.Logf("seed %d: %d calls, the slowest after 2 s %s", seed, len(res.History), seconds(slowest))
+		return struct{}{}
+	}, nil)
+}
+
+// TestWallLimit runs seeds whose limit of real time is 1 ms: each run
+// must fail as past its limit, and its saved files must have every
+// goroutine's stack, the nodes' included, next to its trace, calls and
+// disks (#499). Seed 1 forms its cluster under the faults, so the limit
+// passes in the run, and seed 2 forms it first, so it passes in the
+// formation, which has a watchdog of its own.
+func TestWallLimit(t *testing.T) {
+	if simrun.Race {
+		t.Skip("natively go test's -timeout bounds a run")
+	}
+	if !simrun.InGosim {
+		t.Setenv("SIM_WALL", "1ms")
+	}
+	simrun.Each(t, []uint64{1, 2}, func(t *testing.T, seed uint64) struct{} {
+		cfg := DefaultConfig(seed)
+		cfg.FormUnderFaults = seed == 1
+		if !cfg.FormUnderFaults && !formsFirst(cfg) {
+			t.Fatalf("seed %d forms its cluster under the faults; this test needs one that forms it first", seed)
+		}
+		res, err := runSeed(t, cfg)
+		if !errors.Is(err, errWallLimit) {
+			t.Fatalf("seed %d: a run past its limit of real time ended with %v", seed, err)
+		}
+		files := runFiles(fmt.Sprintf("$SIM_OUT/TestWallLimit/%d", seed), replayCommand(t.Name(), seed), res, true)
+		// The nodes' own goroutines, as their peer transport's.
+		if !strings.Contains(files["stacks.txt"], "tigerstore/internal_/peer") {
+			t.Fatalf("seed %d: the saved stacks have none of the nodes' goroutines:\n%s", seed, files["stacks.txt"])
+		}
+		for _, name := range []string{"trace.txt", "nodes.txt", "replay.txt", "disks/node1/calls.txt"} {
+			if files[name] == "" {
+				t.Errorf("seed %d: the saved run has no %s", seed, name)
+			}
+		}
+		// It may end before any call returned.
+		if _, ok := files["calls.txt"]; !ok {
+			t.Errorf("seed %d: the saved run has no calls.txt", seed)
+		}
 		return struct{}{}
 	}, nil)
 }
@@ -1318,7 +1372,7 @@ func TestWitnessGaps(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := check.Witnessed(h, check.FromRevisions, time.Minute, witnessSteps); err != nil {
+		if err := check.Witnessed(h, check.FromRevisions, time.Minute, witnessSteps, wallStop); err != nil {
 			t.Fatalf("seed %d: %v", seed, err)
 		}
 		return struct{}{}

@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/jellevandenhooff/gosim/gosimruntime"
 	"github.com/jellevandenhooff/gosim/metatesting"
 )
 
@@ -30,6 +32,21 @@ func Bubble(t *testing.T, f func(*testing.T)) { synctest.Test(t, f) }
 // BubbleFor is Bubble: natively a simulation has no timeout of virtual
 // time.
 func BubbleFor(t *testing.T, _ time.Duration, f func(*testing.T)) { synctest.Test(t, f) }
+
+// WallLimitPassed reports false natively, where go test's -timeout bounds
+// a run.
+func WallLimitPassed() bool { return false }
+
+// Stacks returns every goroutine's stack.
+func Stacks() []byte {
+	buf := make([]byte, 1<<20)
+	for {
+		if n := runtime.Stack(buf, true); n < len(buf) {
+			return buf[:n]
+		}
+		buf = make([]byte, 2*len(buf))
+	}
+}
 
 // Artifact does nothing natively.
 func Artifact(string, []byte) {}
@@ -87,11 +104,13 @@ func Do(t *testing.T, r Run) *Result {
 	if err != nil {
 		t.Fatalf("running %s in gosim: %v", r.Test, err)
 	}
+	limit := wallLimit(t)
 	start := time.Now()
-	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: env})
+	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: env, WallLimit: limit, WallKill: limit + wallGrace})
 	if err != nil {
-		t.Fatalf("running %s in gosim: %v", r.Test, err)
+		t.Fatalf("running %s in gosim with seed %d: %v\nreplay: %s", r.Test, r.Seed, err, Replay(dir(t), Pattern(t.Name()), r.Env))
 	}
+	keepBlackbox(filepath.Join("sim-out", strings.ReplaceAll(t.Name(), "/", "_")), res)
 	if testing.Verbose() {
 		t.Logf("the gosim run of seed %d took %v", r.Seed, time.Since(start).Round(time.Second))
 	}
@@ -103,6 +122,69 @@ func Do(t *testing.T, r Run) *Result {
 		t.Logf("%s", readable(res.LogOutput))
 	}
 	return &Result{Failed: res.Failed, Artifacts: res.Artifacts}
+}
+
+// keepBlackbox adds to res's artifacts, as the files of the run in
+// directory run, what a run that gosim stopped short had saved: the trace
+// and nodes its watchdog saved last, at most 10 simulated seconds old,
+// and the stack of every goroutine, or the log with the panic. A run gosim
+// ended past its limit of real time never yielded again, and in a run that
+// panicked gosim stops every goroutine at once, so neither gets to write
+// its calls, history or disks, which a replay does not save either: it
+// stops the same way (#499). A file the run saved itself, as one that
+// panicked after its report, stays.
+func keepBlackbox(run string, res *metatesting.RunResult) {
+	files := map[string][]byte{}
+	switch {
+	case res.Ended:
+		files["stacks.txt"] = res.Artifacts["gosim-stacks.txt"]
+	case res.Err == gosimruntime.ErrPaniced.Error():
+		files["log.txt"] = []byte(readable(res.LogOutput))
+	default:
+		return
+	}
+	for _, name := range []string{"trace.txt", "nodes.txt"} {
+		if b, ok := res.Artifacts["blackbox/"+name]; ok {
+			files[name] = b
+		}
+	}
+	if res.Artifacts == nil {
+		res.Artifacts = map[string][]byte{}
+	}
+	for name, b := range files {
+		path := filepath.Join(run, name)
+		if _, ok := res.Artifacts[path]; !ok {
+			res.Artifacts[path] = b
+		}
+	}
+}
+
+// wallGrace is how long past its limit of real time a run that never
+// yields gets before gosim ends it.
+const wallGrace = 10 * time.Minute
+
+// wallLimit is the limit of real time of each gosim run, $SIM_WALL as a
+// duration, by default 30 minutes, or 165 for a test named *Long. A run
+// past it fails with its report, and its stacks: the simulation stops
+// itself, its checks too, and one that never yields is ended wallGrace
+// later (#499). The limit changes no run before it passes, and it is not
+// passed to the run.
+func wallLimit(t *testing.T) time.Duration {
+	t.Helper()
+	v := os.Getenv("SIM_WALL")
+	if v == "" && strings.HasSuffix(Top(strings.Split(t.Name(), "/"))[0], "Long") {
+		// A long seed takes up to 2 hours or so, and its kill must come
+		// before the 180 minutes kube-sim.sh gives the test binary.
+		return 165 * time.Minute
+	}
+	if v == "" {
+		return 30 * time.Minute
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		t.Fatalf("SIM_WALL: %q is not a positive duration", v)
+	}
+	return d
 }
 
 // readable is a run's log as go test prints it: gosim writes what the

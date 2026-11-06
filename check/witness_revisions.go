@@ -367,7 +367,7 @@ func (r *revisionOrder) indexCounts() {
 	r.countRevs = slices.Sorted(maps.Keys(r.counts))
 }
 
-// reachable reports whether the counts clients saw at the next revisions
+// reachable reports whether the counts clients saw at the revisions ahead
 // can still come true from s, the store right after its revision, once op
 // skip is placed: in each range, the keys present that no writer left can
 // delete are at most its count, and with the keys absent that a writer
@@ -377,27 +377,31 @@ func (r *revisionOrder) indexCounts() {
 // run of revisions made the search try their orders until a count far
 // ahead failed them (#251).
 //
-// Only the counts of the next revision that has any, if within
-// countHorizon, are checked, so that each candidate costs little.
+// The counts of every revision within countHorizon are checked. Only the
+// nearest one was before, and that one may be of other keys: in #425's
+// history a delete lost a key that a count 14 revisions later needs, and
+// the search tried every order of the writes in between, 15 million times
+// back, before it saw that count.
 func (r *revisionOrder) reachable(s *state, skip int) bool {
-	next := sort.Search(len(r.countRevs), func(k int) bool { return r.countRevs[k] >= s.rev })
-	if next == len(r.countRevs) || r.countRevs[next] > s.rev+countHorizon {
-		return true
-	}
-	rev := r.countRevs[next]
-	for _, c := range r.counts[rev] {
-		var sure, maybe int64
-		for k := c.lo; k < c.hi; k++ {
-			present := s.kvs[k].Version != 0
-			if present && !r.may(s, k, rev, skip, false) {
-				sure++
-			}
-			if present || r.may(s, k, rev, skip, true) {
-				maybe++
-			}
+	first := sort.Search(len(r.countRevs), func(k int) bool { return r.countRevs[k] >= s.rev })
+	for _, rev := range r.countRevs[first:] {
+		if rev > s.rev+countHorizon {
+			break
 		}
-		if sure > c.n || maybe < c.n {
-			return false
+		for _, c := range r.counts[rev] {
+			var sure, maybe int64
+			for k := c.lo; k < c.hi; k++ {
+				present := s.kvs[k].Version != 0
+				if present && !r.may(s, k, rev, skip, false) {
+					sure++
+				}
+				if present || r.may(s, k, rev, skip, true) {
+					maybe++
+				}
+			}
+			if sure > c.n || maybe < c.n {
+				return false
+			}
 		}
 	}
 	return true
@@ -920,8 +924,10 @@ func (r *revisionOrder) insertOptional(rev int64) {
 		if o.late || o.from > rev || r.used[o.op] || !r.isReady(o) {
 			continue
 		}
-		s := w.live.clone()
-		if out := s.step(w.reqs[o.op], false); out.err == nil && s.rev == rev {
+		if r.tryOptional(w.live, o, func(s *state, o optional) bool {
+			out := s.step(w.reqs[o.op], false)
+			return out.err == nil && s.rev == rev
+		}) {
 			r.expire(w.h.Ops[o.op].Call, 0)
 			w.apply(o.op, w.reqs[o.op])
 			r.used[o.op] = true
@@ -977,6 +983,16 @@ func (r *revisionOrder) due(call, rev int64) []optional {
 	var out []optional
 	for _, o := range r.optional {
 		if o.late && !r.used[o.op] && (o.gone < call || o.by <= rev) {
+			// A compaction to a revision the order already compacted
+			// fails in the model, and compaction only goes up along an
+			// order, so it would be tried again and again for nothing
+			// (#441). Going back below this point brings it back. Its
+			// try also placed the expiries due before it, which then go
+			// in at their own turn: the search goes another way, to the
+			// same verdict.
+			if c := r.w.reqs[o.op].Compact; c != nil && c.Revision <= r.w.live.compacted && !r.w.slow {
+				continue
+			}
 			out = append(out, o)
 		}
 	}
@@ -1023,13 +1039,13 @@ func (r *revisionOrder) putIn(o optional, take func(*state, optional) bool) {
 	}
 	if w.h.Ops[o.op].Req.Compact != nil {
 		for _, e := range r.due(w.h.Ops[o.op].Call, 0) {
-			if w.h.Ops[e.op].Req.LeaseRevoke != nil && !r.used[e.op] && r.takes(w.live.clone(), e) {
+			if w.h.Ops[e.op].Req.LeaseRevoke != nil && !r.used[e.op] && r.tryOptional(w.live, e, r.takes) {
 				w.apply(e.op, w.reqs[e.op])
 				r.used[e.op] = true
 			}
 		}
 	}
-	if take(w.live.clone(), o) {
+	if r.tryOptional(w.live, o, take) {
 		w.apply(o.op, w.reqs[o.op])
 		r.used[o.op] = true
 	}
@@ -1268,9 +1284,15 @@ func (r *revisionOrder) candidates(rev int64) []int {
 // answer.
 func (r *revisionOrder) fits(i int, rev int64) bool {
 	w := r.w
-	s := w.live.clone()
+	s, undo := r.try(w.live, w.reqs[i])
+	defer undo()
 	for _, e := range r.due(w.h.Ops[i].Call, 0) {
-		if t := s.clone(); r.takes(t, e) {
+		// takes accepts only an optional that changes no key, so its
+		// undo puts back nothing that s keeps.
+		t, undoE := r.try(s, w.reqs[e.op])
+		ok := r.takes(t, e)
+		undoE()
+		if ok {
 			s = t
 		}
 	}

@@ -72,7 +72,8 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 		return fmt.Errorf("witness check needs a positive timeout, got %s", timeout)
 	}
 	w := newWitness(h, time.Now().Add(timeout))
-	w.maxSteps = optionsOf(opts).steps
+	o := optionsOf(opts)
+	w.maxSteps, w.stop, w.slow = o.steps, o.stop, o.slow
 	var err error
 	switch mode {
 	case FromLog:
@@ -140,6 +141,14 @@ type witness struct {
 	// of a timeout.
 	observed, toObserve int
 	search              *revisionOrder
+	// stop, if set, stops the check as its deadline does (StopWhen).
+	stop func() bool
+	// scope caches the keys each op's request reads or writes
+	// (scopedState), and slow makes the witness copy the whole store for
+	// every try and answer instead, for the tests that compare the two
+	// (witness_trial.go).
+	scope map[int][]string
+	slow  bool
 }
 
 // stoppedAt says how far a check got when it ran out of time.
@@ -193,7 +202,7 @@ func (p place) compare(q place) int {
 }
 
 func newWitness(h *history.History, deadline time.Time) *witness {
-	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1}
+	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: map[int][]string{}}
 	w.reqs = make([]history.Request, len(h.Ops))
 	for i := range h.Ops {
 		w.reqs[i] = modelRequest(&h.Ops[i])
@@ -212,7 +221,7 @@ func (w *witness) tick() bool {
 	if w.maxSteps > 0 && w.steps > w.maxSteps {
 		return true
 	}
-	return w.steps%1024 == 0 && time.Now().After(w.deadline)
+	return w.steps%1024 == 0 && (time.Now().After(w.deadline) || w.stop != nil && w.stop())
 }
 
 // summary is the live store's summary after req. It shares the previous
@@ -263,7 +272,7 @@ func (w *witness) stateAt(j int) *state {
 // or its error at state j.
 func (w *witness) answers(i, j int) bool {
 	op := &w.h.Ops[i]
-	o := w.stateAt(j).step(w.reqs[i], false)
+	o := w.scopedState(i, j).step(w.reqs[i], false)
 	if op.Err != nil {
 		return o.err != nil && sameError(o.err, op.Err)
 	}
