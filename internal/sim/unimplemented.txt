@@ -12,13 +12,6 @@ internal/abi.FuncPCABI0
 internal/abi.FuncPCABIInternal
 internal/bytealg.abigen_runtime_memequal
 internal/bytealg.abigen_runtime_memequal_varlen
-internal/cpu.cpuid
-internal/cpu.getGOAMD64level
-internal/cpu.getMIDR
-internal/cpu.getisar0
-internal/cpu.getisar1
-internal/cpu.getpfr0
-internal/cpu.xgetbv
 internal/poll.runtimeNano
 internal/poll.runtime_isPollServerDescriptor
 internal/poll.runtime_pollWaitCanceled

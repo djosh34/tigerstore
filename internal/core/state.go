@@ -129,13 +129,14 @@ func (st *State) Hash() uint64 {
 		h ^= h >> 29
 	}
 	mix(uint64(st.stamps))
-	for _, l := range st.sortedLeases() {
-		mix(uint64(l.id))
-		mix(uint64(l.ttl))
-		mix(uint64(l.stamp))
-		mix(uint64(l.remaining))
-		mix(uint64(len(l.keys)))
+	// The leases add up in any order, so the hash needs no sort of them:
+	// it runs after every entry a simulated node applies (#483).
+	var leases uint64
+	for _, l := range st.leases {
+		leases += l.hash()
 	}
+	mix(uint64(len(st.leases)))
+	mix(leases)
 	mix(uint64(st.version))
 	mix(st.versionEpoch)
 	for _, id := range slices.Sorted(maps.Keys(st.supports)) {
@@ -192,6 +193,16 @@ func (st *State) Hash() uint64 {
 		mix(1)
 	}
 	mix(uint64(crc32.Checksum([]byte(st.downgradeTarget), castagnoli)))
+	return h
+}
+
+// hash is a hash of the lease, with its key count.
+func (l *lease) hash() uint64 {
+	h := uint64(0xcbf29ce484222325)
+	for _, x := range []int64{l.id, l.ttl, l.stamp, l.remaining, int64(len(l.keys))} {
+		h = (h ^ uint64(x)) * 0x100000001b3
+		h ^= h >> 29
+	}
 	return h
 }
 

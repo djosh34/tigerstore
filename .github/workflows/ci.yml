@@ -191,8 +191,8 @@ jobs:
   # A run is its commit, test and seed (docs/testing.md): the same seeds
   # give the same hashes on amd64 and arm64, and in a plain environment
   # as in one with other variables, another time zone, other GC and
-  # GOMAXPROCS settings, a planted bug named and every seed run twice
-  # (#482).
+  # GOMAXPROCS settings, the CPU's features off, a planted bug named and
+  # every seed run twice (#482, #500).
   replay:
     strategy:
       fail-fast: false
@@ -215,7 +215,9 @@ jobs:
           # SIM_PLANTED reaches every gosim run but only TestPlanted reads
           # it, and this build has no planted bugs. With the double runs'
           # SIM_KEEP it made one variable too many before #482's fix.
-          SIM_PLANTED=B12 TZ=Asia/Kolkata LANG=C.UTF-8 GOGC=20 GOMAXPROCS=1 SIM_TWICE=8 SIM_OUT="$RUNNER_TEMP/sim-out" \
+          # GODEBUG=cpu.all=off hides the CPU's features from the runs, so
+          # crypto and CRC-32 run in Go instead of assembly (#500).
+          GODEBUG=cpu.all=off SIM_PLANTED=B12 TZ=Asia/Kolkata LANG=C.UTF-8 GOGC=20 GOMAXPROCS=1 SIM_TWICE=8 SIM_OUT="$RUNNER_TEMP/sim-out" \
             scripts/replay-hashes.sh "$RUNNER_TEMP/other.txt"
       - name: Compare
         run: diff "$RUNNER_TEMP/plain.txt" "$RUNNER_TEMP/other.txt"
