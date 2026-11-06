@@ -634,12 +634,17 @@ func TestNewestVersion(t *testing.T) {
 // TestFormedClusterAnswers runs seeds that form their cluster first, with
 // no faults after it, and requires every call to get a definite answer,
 // within 500 ms from 2 s on: the run starts on the formed disks with
-// nothing held from the formation. Seed 3 times out a call while a node
-// fetches one snapshot after another (#518).
+// nothing held from the formation. The nodes keep the core's default
+// window: with the simulator's tiny one, a follower a few entries behind,
+// as after an election, gets a snapshot, whose install starts its core
+// again and ends the calls it held. Seed 3 then timed out a call while a
+// node fetched one snapshot after another (#518), and seed 1 got "server
+// stopped" under the race detector.
 func TestFormedClusterAnswers(t *testing.T) {
 	simrun.Each(t, []uint64{1, 2, 3}, func(t *testing.T, seed uint64) struct{} {
 		cfg := DefaultConfig(seed)
 		cfg.Faults = Faults{}
+		cfg.Window = true
 		cfg.Duration = 10 * Second
 		if !formsFirst(cfg) {
 			t.Fatalf("seed %d forms its cluster under the faults; this test needs one that forms it first", seed)
