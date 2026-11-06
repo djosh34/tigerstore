@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"slices"
@@ -96,5 +97,24 @@ func TestCheckpointKnowsRefusedLogs(t *testing.T) {
 	}
 	if err := s.failure(); err != nil {
 		t.Error(err)
+	}
+}
+
+// TestHistoryDecodesAgain checks that a run whose checks dropped its
+// history, as a long run's do (independent), decodes the same history
+// again for a report.
+func TestHistoryDecodesAgain(t *testing.T) {
+	res := run(t, DefaultConfig(1))
+	var want, got bytes.Buffer
+	writeHistory(&want, res)
+	res.History = nil
+	history, err := res.history()
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.History = history
+	writeHistory(&got, res)
+	if want.Len() == 0 || !bytes.Equal(got.Bytes(), want.Bytes()) {
+		t.Errorf("the history decoded again holds %d bytes, the run's %d, and they differ", got.Len(), want.Len())
 	}
 }

@@ -730,6 +730,22 @@ type Result struct {
 	// clients' start until the last of them stopped: the cost of the
 	// load, without the formation of the cluster and the checks.
 	LoadCPU time.Duration
+	// records is the run's record of its calls, from which History was
+	// decoded: a long run's checks drop History once they have their own
+	// copy, and a report decodes it again (history).
+	records *recordLog
+}
+
+// history returns the run's calls: History, decoded again from the
+// run's records if a check dropped it.
+func (r *Result) history() ([]*Record, error) {
+	if r.History != nil || r.records == nil {
+		return r.History, nil
+	}
+	var history []*Record
+	var err error
+	simrun.Aside(func() { history, err = r.records.records() })
+	return history, err
 }
 
 // Run runs one seed and checks it. The error describes the first broken
@@ -798,7 +814,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.History, res.Stats, res.Silences = history, s.stats, s.silences
 	res.HeldAppendAt, res.SteppedDownAt = s.heldAppendAt, s.steppedDownAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
-	res.nodes, res.values, res.stacks = s.nodes, s.values, s.wallStacks
+	res.nodes, res.values, res.stacks, res.records = s.nodes, s.values, s.wallStacks, s.records
 	res.LoadCPU = s.loadCPU
 	s.mu.Unlock()
 	if err == nil {

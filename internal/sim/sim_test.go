@@ -203,6 +203,12 @@ func explain(t *testing.T, cfg Config, res *Result) {
 		t.Logf("replay: %s", cmd)
 		return
 	}
+	// A long run's checks drop its history once they have their own.
+	history, err := res.history()
+	if err != nil {
+		t.Errorf("decoding the history again: %v", err)
+	}
+	res.History = history
 	t.Logf("trace of seed %d:\n%s", cfg.Seed, strings.Join(res.Trace, "\n"))
 	t.Logf("the nodes at the end of seed %d:\n%s", cfg.Seed, res.Report)
 	t.Logf("hashes of seed %d: %s", cfg.Seed, hashes(res))
@@ -540,6 +546,11 @@ func independent(res *Result) error {
 	h, err := res.Checkable()
 	if err != nil {
 		return err
+	}
+	if res.long {
+		// The checks need only their own copy, and a long run's
+		// history takes gigabytes: a report decodes it again (#500).
+		res.History = nil
 	}
 	var errs []error
 	if err := check.Durable(h); err != nil {
