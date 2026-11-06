@@ -10,8 +10,9 @@ import (
 
 // TestEventTimesMatchScan pushes random events, acked or not, and takes
 // some back, and compares after and before at random times with a scan of
-// the events, from trees made empty and made with room for some events
-// (newEventTimes), so that pushes fill them and go past them.
+// the events, from trees made with room for 0 to 4,096 events
+// (newEventTimes): the small ones fill and grow, the large ones keep
+// room to spare.
 func TestEventTimesMatchScan(t *testing.T) {
 	rng := rand.New(rand.NewPCG(499, 515))
 	h := &history.History{}
@@ -86,8 +87,20 @@ func TestSizeReservesOnlyWritesThatMayHappen(t *testing.T) {
 		h.Ops = append(h.Ops, history.Op{Client: i, Call: int64(2 * i), Return: int64(2*i + 1), Req: rejected, Err: &history.Error{Code: "InvalidArgument", Message: "etcdserver: too many operations in txn request"}})
 	}
 	h.Ops = append(h.Ops, history.Op{Client: 100, Call: 300, Return: 301, Req: cas, Resp: &history.Response{Revision: 2, Txn: &history.TxnResponse{Succeeded: true, Results: []history.TxnOpResponse{{Put: &history.PutResponse{}}}}}})
+	// A compare that failed, acked: only the failure branch.
+	failed := history.Request{Txn: &history.TxnRequest{
+		Success: []history.TxnOp{{Put: &history.PutRequest{Key: "unrun", Value: "v"}}},
+		Failure: []history.TxnOp{{Put: &history.PutRequest{Key: "ran", Value: "v"}}},
+	}}
+	h.Ops = append(h.Ops, history.Op{Client: 101, Call: 302, Return: 303, Req: failed, Resp: &history.Response{Revision: 3, Txn: &history.TxnResponse{Succeeded: false, Results: []history.TxnOpResponse{{Put: &history.PutResponse{}}}}}})
+	// An ambiguous one may have run either branch.
+	either := history.Request{Txn: &history.TxnRequest{
+		Success: []history.TxnOp{{Put: &history.PutRequest{Key: "either-s", Value: "v"}}},
+		Failure: []history.TxnOp{{Delete: &history.DeleteRequest{Key: "either-f"}}},
+	}}
+	h.Ops = append(h.Ops, history.Op{Client: 102, Call: 304, Return: 305, Req: either, Err: &history.Error{Message: "context deadline exceeded", Ambiguous: true}})
 	w := newWitness(h, time.Now().Add(time.Minute))
-	r := &revisionOrder{w: w, limit: 2}
+	r := &revisionOrder{w: w, limit: 4}
 	r.size()
 	if v := w.past["absent"]; v != nil {
 		t.Fatalf("a rejected request reserved %d versions of a key", cap(v.kvs))
@@ -95,7 +108,12 @@ func TestSizeReservesOnlyWritesThatMayHappen(t *testing.T) {
 	if v := w.past["lost"]; v != nil {
 		t.Fatalf("the branch an acked transaction did not run reserved %d versions", cap(v.kvs))
 	}
-	if v := w.past["won"]; v == nil || cap(v.kvs) != 1 {
-		t.Fatalf("the branch an acked transaction ran reserved %v", v)
+	for _, key := range []string{"won", "ran", "either-s", "either-f"} {
+		if v := w.past[key]; v == nil || cap(v.kvs) != 1 {
+			t.Fatalf("a branch that may have run reserved %v for %q, want room for 1", v, key)
+		}
+	}
+	if v := w.past["unrun"]; v != nil {
+		t.Fatalf("the branch an acked transaction did not run reserved %d versions", cap(v.kvs))
 	}
 }
