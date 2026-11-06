@@ -278,12 +278,16 @@ type pipe struct {
 	// size is how many bytes chunks holds.
 	size int
 	// last is when the last write arrives; eof is set once the writer
-	// closed, and err once the connection broke. wake, once a reader or
-	// writer waits on it (waiter), is closed when any of them changes.
+	// closed, and err once the connection broke.
 	last int64
 	eof  bool
 	err  error
-	wake chan struct{}
+	// readWake, once the reader waits on it, is closed when bytes arrive,
+	// the writer closes, the connection breaks or the read deadline
+	// moves; roomWake, once a writer waits on it, when the reader makes
+	// room, the connection breaks or the write deadline moves. Apart, a
+	// write deadline set before each write wakes no reader.
+	readWake, roomWake chan struct{}
 }
 
 type chunk struct {
@@ -295,21 +299,27 @@ type chunk struct {
 
 func newPipe() *pipe { return &pipe{} }
 
-// waiter returns the channel that the next change of p closes. The lock
-// is held.
-func (p *pipe) waiter() chan struct{} {
-	if p.wake == nil {
-		p.wake = make(chan struct{})
+// waiter returns the channel that the next signal of *wake closes. The
+// lock is held.
+func waiter(wake *chan struct{}) chan struct{} {
+	if *wake == nil {
+		*wake = make(chan struct{})
 	}
-	return p.wake
+	return *wake
 }
 
-// signal wakes whoever waits on p. The lock is held.
-func (p *pipe) signal() {
-	if p.wake != nil {
-		close(p.wake)
-		p.wake = nil
+// signal wakes whoever waits on *wake. The lock is held.
+func signal(wake *chan struct{}) {
+	if *wake != nil {
+		close(*wake)
+		*wake = nil
 	}
+}
+
+// signalBoth wakes p's reader and writers. The lock is held.
+func (p *pipe) signalBoth() {
+	signal(&p.readWake)
+	signal(&p.roomWake)
 }
 
 // waitFor waits until wake is closed or, if wait is not math.MaxInt64,
@@ -337,7 +347,7 @@ func (p *pipe) fail(err error) {
 	if p.err == nil {
 		p.err = err
 	}
-	p.signal()
+	p.signalBoth()
 }
 
 // link is the directed link from host from to host to: between two nodes,
@@ -412,7 +422,7 @@ func (c *conn) Read(b []byte) (int, error) {
 				}
 				// A writer may wait for the room.
 				in.size -= k
-				in.signal()
+				signal(&in.roomWake)
 				if damaged {
 					// TLS refuses a damaged record and ends the
 					// connection, so it ends here, as the reader gets
@@ -438,7 +448,7 @@ func (c *conn) Read(b []byte) (int, error) {
 			}
 			wait = min(wait, left)
 		}
-		wake := in.waiter()
+		wake := waiter(&in.readWake)
 		t := new(*time.Timer)
 		if !c.reading {
 			t, c.reading, mine = &c.readTimer, true, true
@@ -502,7 +512,7 @@ func (c *conn) Write(b []byte) (int, error) {
 		if !c.writeDeadline.IsZero() {
 			wait = max(int64(time.Until(c.writeDeadline)), 1)
 		}
-		wake := c.out.waiter()
+		wake := waiter(&c.out.roomWake)
 		t := new(*time.Timer)
 		if !c.writing {
 			t, c.writing, mine = &c.writeTimer, true, true
@@ -528,7 +538,7 @@ func (c *conn) send(b []byte) {
 	c.out.last = at
 	c.out.chunks = append(c.out.chunks, chunk{at: at, b: b, damaged: damaged})
 	c.out.size += len(b)
-	c.out.signal()
+	signal(&c.out.readWake)
 }
 
 func (c *conn) Close() error {
@@ -540,8 +550,8 @@ func (c *conn) Close() error {
 	}
 	c.closed = true
 	c.out.eof = true
-	c.out.signal()
-	c.in.signal()
+	c.out.signalBoth()
+	c.in.signalBoth()
 	delete(s.net.conns, c)
 	return nil
 }
@@ -560,7 +570,7 @@ func (c *conn) SetReadDeadline(t time.Time) error {
 	c.s.mu.Lock()
 	defer c.s.mu.Unlock()
 	c.deadline = t
-	c.in.signal()
+	signal(&c.in.readWake)
 	return nil
 }
 
@@ -568,7 +578,7 @@ func (c *conn) SetWriteDeadline(t time.Time) error {
 	c.s.mu.Lock()
 	defer c.s.mu.Unlock()
 	c.writeDeadline = t
-	c.out.signal()
+	signal(&c.out.roomWake)
 	return nil
 }
 
