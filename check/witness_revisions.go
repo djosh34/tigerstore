@@ -1369,6 +1369,13 @@ func (r *revisionOrder) candidates(rev int64) []int {
 // answer.
 func (r *revisionOrder) fits(i int, rev int64) bool {
 	w := r.w
+	if l := w.reqs[i].LeaseRevoke; l != nil && !slices.ContainsFunc(w.live.kvs, func(kv history.KeyValue) bool { return kv.Version != 0 && kv.Lease == l.ID }) {
+		// A revoke writes a revision only if a key holds its lease, and
+		// the due optionals below change no key. The ambiguous revokes
+		// of a busy history are its leases' expiries, tried at every gap
+		// (#499).
+		return false
+	}
 	s, undo := r.try(w.live, w.reqs[i])
 	defer undo()
 	for _, e := range r.due(w.h.Ops[i].Call, 0) {
@@ -1393,13 +1400,16 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			return false
 		}
 		// A key it changes inside a life a client saw stays in that
-		// life: created then, with no more versions than seen, and with
-		// exactly as many at the last write the client saw, which no
-		// later write can make up for (#386).
+		// life: created then, below the version seen before the last
+		// write the client saw, since each write adds one, and with
+		// exactly as many at that write, which no later write can make
+		// up for (#386). A write that reached the version early passed,
+		// and the search tried every order of the revisions up to that
+		// write before it failed there (#499).
 		for l, to := range r.lives[e.KV.Key] {
 			if l.c <= rev && rev <= to {
 				kv, ok := s.get(e.KV.Key)
-				if !ok || kv.CreateRevision != l.c || kv.Version > l.v || rev == l.m && kv.Version != l.v {
+				if !ok || kv.CreateRevision != l.c || rev < l.m && kv.Version >= l.v || rev >= l.m && kv.Version != l.v {
 					return false
 				}
 			}
