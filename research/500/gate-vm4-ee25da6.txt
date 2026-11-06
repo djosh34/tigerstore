@@ -1,0 +1,40 @@
+commit ee25da66bca9a1957315f37f52ef17ded323f312
+model name	: INTEL(R) XEON(R) PLATINUM 8573C
+go: downloading github.com/djosh34/gosim v0.0.0-20261106165740-b5c4bd6762ea
+go: downloading github.com/djosh34/gosim/cmd/gosim v0.0.0-20261106165740-b5c4bd6762ea
+go: downloading golang.org/x/tools v0.52.0
+go: downloading github.com/dave/dst v0.27.3
+go: downloading golang.org/x/mod v0.42.0
+go: downloading golang.org/x/sync v0.24.0
+go: downloading github.com/mattn/go-sqlite3 v1.14.24
+testing: warning: no tests to run
+round 1 native 6505 calls/core-s
+round 1 gosim 26340 calls answered, 532 failed, 3.824 s of CPU time: 6888 calls per core-second
+round 1 calm 19678 calls answered, 4.355 s of CPU time in the load, 5.118 s in the seed: 4519 calls per core-second, 0.763 s fixed
+round 2 native 6202 calls/core-s
+round 2 gosim 26296 calls answered, 560 failed, 3.717 s of CPU time: 7075 calls per core-second
+round 2 calm 18248 calls answered, 3.948 s of CPU time in the load, 4.775 s in the seed: 4622 calls per core-second, 0.827 s fixed
+round 3 native 6363 calls/core-s
+round 3 gosim 26245 calls answered, 534 failed, 3.566 s of CPU time: 7360 calls per core-second
+round 3 calm 18563 calls answered, 4.066 s of CPU time in the load, 4.764 s in the seed: 4565 calls per core-second, 0.698 s fixed
+round 4 native 6327 calls/core-s
+round 4 gosim 26380 calls answered, 487 failed, 3.601 s of CPU time: 7325 calls per core-second
+round 4 calm 18558 calls answered, 3.989 s of CPU time in the load, 4.670 s in the seed: 4652 calls per core-second, 0.681 s fixed
+round 5 native 6364 calls/core-s
+round 5 gosim 26282 calls answered, 466 failed, 3.617 s of CPU time: 7266 calls per core-second
+round 5 calm 19639 calls answered, 4.434 s of CPU time in the load, 5.305 s in the seed: 4429 calls per core-second, 0.871 s fixed
+round 6 native 6359 calls/core-s
+round 6 gosim 26448 calls answered, 530 failed, 3.735 s of CPU time: 7081 calls per core-second
+round 6 calm 18339 calls answered, 4.269 s of CPU time in the load, 4.979 s in the seed: 4296 calls per core-second, 0.710 s fixed
+round 7 native 6380 calls/core-s
+round 7 gosim 26385 calls answered, 472 failed, 3.665 s of CPU time: 7198 calls per core-second
+round 7 calm 16543 calls answered, 4.234 s of CPU time in the load, 4.911 s in the seed: 3907 calls per core-second, 0.677 s fixed
+round 8 native 6688 calls/core-s
+round 8 gosim 26285 calls answered, 555 failed, 3.474 s of CPU time: 7565 calls per core-second
+round 8 calm 19815 calls answered, 4.277 s of CPU time in the load, 5.015 s in the seed: 4633 calls per core-second, 0.738 s fixed
+round 9 native 6238 calls/core-s
+round 9 gosim 26398 calls answered, 496 failed, 3.578 s of CPU time: 7379 calls per core-second
+round 9 calm 16666 calls answered, 4.276 s of CPU time in the load, 4.988 s in the seed: 3898 calls per core-second, 0.713 s fixed
+round 10 native 6381 calls/core-s
+round 10 gosim 26454 calls answered, 512 failed, 3.502 s of CPU time: 7555 calls per core-second
+round 10 calm 19950 calls answered, 4.267 s of CPU time in the load, 5.147 s in the seed: 4675 calls per core-second, 0.880 s fixed
