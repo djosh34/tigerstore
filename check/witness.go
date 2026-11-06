@@ -177,7 +177,7 @@ type event struct {
 // summary is what of the store an event can change besides the keys.
 type summary struct {
 	rev, compacted int64
-	leases         []int64
+	leases         leaseSet
 }
 
 // place is where an op goes in the order: event at, which leads from
@@ -212,7 +212,7 @@ func newWitness(h *history.History, deadline time.Time) *witness {
 	w.keys = keysOf(slices.Concat(w.reqs, h.Log))
 	w.live = newState(w.keys)
 	w.live.past = w.past
-	w.states = []summary{w.summary(nil)}
+	w.states = []summary{w.summary()}
 	return w
 }
 
@@ -226,16 +226,10 @@ func (w *witness) tick() bool {
 	return w.steps%1024 == 0 && time.Now().After(w.deadline)
 }
 
-// summary is the live store's summary after req. It shares the previous
-// summary's lease list unless req changed the leases.
-func (w *witness) summary(req *history.Request) summary {
-	s := summary{rev: w.live.rev, compacted: w.live.compacted}
-	if req == nil || req.LeaseGrant != nil || req.LeaseRevoke != nil {
-		s.leases = slices.Clone(w.live.leases)
-	} else {
-		s.leases = w.states[len(w.states)-1].leases
-	}
-	return s
+// summary is the live store's summary, which shares its leases with the
+// live store (leaseSet).
+func (w *witness) summary() summary {
+	return summary{rev: w.live.rev, compacted: w.live.compacted, leases: w.live.leases}
 }
 
 // apply adds an event sent by op and replays it.
@@ -250,7 +244,7 @@ func (w *witness) apply(op int, req history.Request) outcome {
 	if w.times != nil {
 		w.times.push(w.h, op)
 	}
-	w.states = append(w.states, w.summary(&req))
+	w.states = append(w.states, w.summary())
 	if op >= 0 {
 		w.at[op] = place{set: true, at: len(w.events)}
 		w.placed = append(w.placed, op)
@@ -270,7 +264,7 @@ func (w *witness) stateAt(j int) *state {
 		}
 		w.kvsRev = sm.rev
 	}
-	return &state{keys: w.keys, kvs: slices.Clone(w.kvs), leases: slices.Clone(sm.leases), rev: sm.rev, compacted: sm.compacted, past: w.past}
+	return &state{keys: w.keys, kvs: slices.Clone(w.kvs), leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past}
 }
 
 // answers reports whether op i, which changed nothing, gets its response
