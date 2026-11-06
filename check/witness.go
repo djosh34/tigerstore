@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -120,6 +119,10 @@ type witness struct {
 	keys            []string
 	// reqs are the ops' requests as the model sees them.
 	reqs []history.Request
+	// calls and returns are the ops' times, by op: the passes and sorts by
+	// time read them from these and not from the ops, whose size made
+	// them cost more per op the longer the history (#499).
+	calls, returns []int64
 	// events are the mutations of the order, and states[j] is the store
 	// after events[:j].
 	events []event
@@ -177,12 +180,21 @@ func (w *witness) stoppedAt() string {
 
 // event is one mutation of the order, sent by op, or by no op (-1): a
 // lease expiry, or a log entry that changed nothing.
+//
+// An event keeps its request by pointer, into the witness's requests or
+// the log, and of what the model gave it only what is read back: a busy
+// history's events took 112 bytes each, which the appends copied and the
+// collector scanned (#499).
 type event struct {
-	op  int
-	req history.Request
-	// out is what the model gave it.
-	out outcome
+	op         int
+	req        *history.Request
+	resp       *history.Response
+	err        *history.Error
+	historical bool
 }
+
+// out is what the model gave the event, without its watch events.
+func (e *event) out() outcome { return outcome{resp: e.resp, err: e.err, historical: e.historical} }
 
 // summary is what of the store an event can change besides the keys.
 type summary struct {
@@ -203,19 +215,40 @@ type firstAnswer struct {
 // place is where an op goes in the order: event at, which leads from
 // state at-1 to state at; or, for an op that changed nothing (seen),
 // state at, among the other such ops there by call time.
+//
+// A place takes 16 bytes: whether it is set, whether the op is seen, and
+// its state's number share one word, as the witness reads the places of a
+// busy history's ops out of order, and their size made that cost more per
+// op the longer the history (#499). The zero place is unset.
 type place struct {
-	set  bool
-	seen bool
-	at   int
+	bits uint64
 	rank int64
 }
 
+const (
+	placeSet  = 1 << 63
+	placeSeen = 1 << 62
+)
+
+// placeAt is the place of an op at state at, seen or not, with rank.
+func placeAt(at int, seen bool, rank int64) place {
+	p := place{bits: placeSet | uint64(at), rank: rank}
+	if seen {
+		p.bits |= placeSeen
+	}
+	return p
+}
+
+func (p place) set() bool  { return p.bits&placeSet != 0 }
+func (p place) seen() bool { return p.bits&placeSeen != 0 }
+func (p place) at() int    { return int(p.bits &^ (placeSet | placeSeen)) }
+
 func (p place) compare(q place) int {
-	if c := cmp.Compare(p.at, q.at); c != 0 {
+	if c := cmp.Compare(p.at(), q.at()); c != 0 {
 		return c
 	}
-	if p.seen != q.seen {
-		if p.seen {
+	if p.seen() != q.seen() {
+		if p.seen() {
 			return 1
 		}
 		return -1
@@ -226,8 +259,10 @@ func (p place) compare(q place) int {
 func newWitness(h *history.History, deadline time.Time) *witness {
 	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: make([][]string, len(h.Ops)), firsts: make([]firstAnswer, len(h.Ops))}
 	w.reqs = make([]history.Request, len(h.Ops))
+	w.calls, w.returns = make([]int64, len(h.Ops)), make([]int64, len(h.Ops))
 	for i := range h.Ops {
 		w.reqs[i] = modelRequest(&h.Ops[i])
+		w.calls[i], w.returns[i] = h.Ops[i].Call, h.Ops[i].Return
 	}
 	w.keys = keysOf(slices.Concat(w.reqs, h.Log))
 	w.live = newState(w.keys)
@@ -254,20 +289,20 @@ func (w *witness) summary() summary {
 }
 
 // apply adds an event sent by op and replays it.
-func (w *witness) apply(op int, req history.Request) outcome {
-	o := w.live.step(req, true)
+func (w *witness) apply(op int, req *history.Request) outcome {
+	o := w.live.step(*req, true)
 	w.past.add(o.events)
 	for _, e := range o.events {
 		w.appended = append(w.appended, e.KV.Key)
 	}
 	o.events = nil
-	w.events = append(w.events, event{op: op, req: req, out: o})
+	w.events = append(w.events, event{op: op, req: req, resp: o.resp, err: o.err, historical: o.historical})
 	if w.times != nil {
 		w.times.push(w.h, op)
 	}
 	w.states = append(w.states, w.summary())
 	if op >= 0 {
-		w.at[op] = place{set: true, at: len(w.events)}
+		w.at[op] = placeAt(len(w.events), false, 0)
 		w.placed = append(w.placed, op)
 	}
 	return o
@@ -318,11 +353,11 @@ func (w *witness) fromLog() error {
 	if len(w.h.Log) == 0 {
 		return errNoLog
 	}
-	for i, req := range w.h.Log {
-		if req.LeaseGrant != nil && req.LeaseGrant.ID == 0 {
+	for i := range w.h.Log {
+		if req := &w.h.Log[i]; req.LeaseGrant != nil && req.LeaseGrant.ID == 0 {
 			return fmt.Errorf("log entry %d grants a lease without its ID", i)
 		}
-		w.apply(-1, req)
+		w.apply(-1, &w.h.Log[i])
 	}
 	// Entries that changed the store, by their request. A grant is also
 	// filed with ID -1, for ambiguous grants whose ID the client never
@@ -334,10 +369,10 @@ func (w *witness) fromLog() error {
 		return err
 	}
 	for e, ev := range w.events {
-		if ev.out.err != nil || !changes(ev.req, ev.out) {
+		if ev.err != nil || !changes(*ev.req, ev.out()) {
 			continue
 		}
-		if err := file(ev.req, e); err != nil {
+		if err := file(*ev.req, e); err != nil {
 			return err
 		}
 		if g := ev.req.LeaseGrant; g != nil {
@@ -354,7 +389,7 @@ func (w *witness) fromLog() error {
 		for _, e := range entries[k] {
 			if w.events[e].op < 0 && fits(e) {
 				w.events[e].op = i
-				w.at[i] = place{set: true, at: e + 1}
+				w.at[i] = placeAt(e+1, false, 0)
 				return true, nil
 			}
 		}
@@ -371,7 +406,7 @@ func (w *witness) fromLog() error {
 			ambiguous = append(ambiguous, i)
 			continue
 		}
-		ok, err := claim(i, w.reqs[i], func(e int) bool { return matches(w.events[e].out, op.Resp) })
+		ok, err := claim(i, w.reqs[i], func(e int) bool { return matches(w.events[e].out(), op.Resp) })
 		if err != nil {
 			return err
 		}
@@ -381,7 +416,7 @@ func (w *witness) fromLog() error {
 	}
 	// Then ambiguous ones, in call order, each at the first entry that
 	// comes after every acked mutation that returned before its call.
-	slices.SortFunc(ambiguous, func(a, b int) int { return cmp.Compare(w.h.Ops[a].Call, w.h.Ops[b].Call) })
+	slices.SortFunc(ambiguous, func(a, b int) int { return cmp.Compare(w.calls[a], w.calls[b]) })
 	bound := w.boundAfter()
 	for _, i := range ambiguous {
 		op := &w.h.Ops[i]
@@ -395,8 +430,8 @@ func (w *witness) fromLog() error {
 		}
 	}
 	for e, ev := range w.events {
-		if ev.op < 0 && ev.out.err == nil && changes(ev.req, ev.out) && ev.req.LeaseRevoke == nil {
-			return fmt.Errorf("log entry %d %s changed the store but no client sent it, or its client got an error that says it had no effect", e, describeRequest(ev.req))
+		if ev.op < 0 && ev.err == nil && changes(*ev.req, ev.out()) && ev.req.LeaseRevoke == nil {
+			return fmt.Errorf("log entry %d %s changed the store but no client sent it, or its client got an error that says it had no effect", e, describeRequest(*ev.req))
 		}
 	}
 	return nil
@@ -411,8 +446,8 @@ func (w *witness) boundAfter() func(t int64) int {
 	}
 	var rs []ret
 	for i := range w.h.Ops {
-		if p := w.at[i]; p.set && w.h.Ops[i].Resp != nil {
-			rs = append(rs, ret{w.h.Ops[i].Return, p.at})
+		if p := w.at[i]; p.set() && w.h.Ops[i].Resp != nil {
+			rs = append(rs, ret{w.returns[i], p.at()})
 		}
 	}
 	slices.SortFunc(rs, func(a, b ret) int { return cmp.Compare(a.at, b.at) })
@@ -437,7 +472,7 @@ func (w *witness) boundAfter() func(t int64) int {
 func (w *witness) observe() error {
 	var ops []int
 	for i := range w.h.Ops {
-		if !w.at[i].set && w.seen(i) {
+		if !w.at[i].set() && w.seen(i) {
 			if op := &w.h.Ops[i]; op.Resp != nil && mutation(op) {
 				return fmt.Errorf("acked %s changed the store but has no place in the order", w.describe(i))
 			}
@@ -497,9 +532,9 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 	}
 	events := w.eventBounds()
 	ops = slices.Clone(ops)
-	w.sorter.sort(ops, func(i int) int64 { return w.h.Ops[i].Call })
-	placed := newPlacedMax(w.h, ops, &w.sorter)
-	for _, i := range ops {
+	w.sorter.sort(ops, func(i int) int64 { return w.calls[i] })
+	placed := newPlacedMax(w.returns, ops, &w.sorter)
+	for x, i := range ops {
 		if w.tick() {
 			return errWitnessTimeout
 		}
@@ -516,9 +551,9 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 		// op again at each state (#499).
 		if c := w.firsts[i]; !w.slow && c.id != 0 && lo <= c.at && c.at <= hi && c.at < len(w.states) && w.states[c.at].id == c.id {
 			if set {
-				w.at[i] = place{set: true, seen: true, at: c.at, rank: op.Call}
+				w.at[i] = placeAt(c.at, true, op.Call)
 			}
-			placed.add(i, c.at)
+			placed.add(x, c.at)
 			continue
 		}
 		f, l := lo, hi
@@ -535,9 +570,9 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 			return w.unanswered(i, f, l, lo, hi)
 		}
 		if set {
-			w.at[i] = place{set: true, seen: true, at: j, rank: op.Call}
+			w.at[i] = placeAt(j, true, op.Call)
 		}
-		placed.add(i, j)
+		placed.add(x, j)
 	}
 	return nil
 }
@@ -576,7 +611,7 @@ func (w *witness) around(j int) string {
 		if ev.op >= 0 {
 			who = fmt.Sprintf("op %d", ev.op)
 		}
-		parts = append(parts, fmt.Sprintf("event %d (%s, to revision %d) %s", e, who, w.states[e].rev, describeRequest(ev.req)))
+		parts = append(parts, fmt.Sprintf("event %d (%s, to revision %d) %s", e, who, w.states[e].rev, describeRequest(*ev.req)))
 	}
 	return strings.Join(parts, "; ")
 }
@@ -611,8 +646,8 @@ func (w *witness) eventBounds() func(op *history.Op) (int, int) {
 	}
 	var cs []call
 	for i := range w.h.Ops {
-		if p := w.at[i]; p.set && !p.seen {
-			cs = append(cs, call{w.h.Ops[i].Call, p.at})
+		if p := w.at[i]; p.set() && !p.seen() {
+			cs = append(cs, call{w.calls[i], p.at()})
 		}
 	}
 	slices.SortFunc(cs, func(a, b call) int { return cmp.Compare(a.at, b.at) })
@@ -630,85 +665,82 @@ func (w *witness) eventBounds() func(op *history.Op) (int, int) {
 }
 
 // placedMax keeps the latest state of the ops placed so far among a set,
-// by their return times.
+// by their return times. The set is in call order, and it is asked about
+// the ops in that order, so the times it is asked at only go up: it sweeps
+// the ops by return once, where a tree and a search per op cost more per
+// op the longer the history, from the arrays they reach into out of order
+// (#499).
 type placedMax struct {
-	h       *history.History
-	returns []int64
-	// rank is, per op, its place by return: in a slice by op for a set of
-	// many, as observe's, else in a map.
-	rank   []int
-	ranked map[int]int
-	tree   []int
+	// returns are the set's return times in order, rank each op's place
+	// there by its place in the set, and vals the state placed at each
+	// place, 0 until placed.
+	returns   []int64
+	rank      []int
+	vals      []int
+	swept, at int
 }
 
-func newPlacedMax(h *history.History, ops []int, sorter *timeSorter) *placedMax {
-	p := &placedMax{h: h, tree: make([]int, len(ops)+1)}
-	if len(ops) >= len(h.Ops)/8 {
-		p.rank = make([]int, len(h.Ops))
-	} else {
-		p.ranked = make(map[int]int, len(ops))
+// newPlacedMax is a placedMax of ops, which are in call order, with the
+// ops' returns by op.
+func newPlacedMax(returns []int64, ops []int, sorter *timeSorter) *placedMax {
+	m := len(ops)
+	p := &placedMax{returns: make([]int64, m), rank: make([]int, m), vals: make([]int, m)}
+	byReturn := make([]int, m)
+	for k := range byReturn {
+		byReturn[k] = k
 	}
-	sorted := slices.Clone(ops)
-	sorter.sort(sorted, func(i int) int64 { return h.Ops[i].Return })
-	for k, i := range sorted {
-		if p.rank != nil {
-			p.rank[i] = k + 1
-		} else {
-			p.ranked[i] = k + 1
-		}
-		p.returns = append(p.returns, h.Ops[i].Return)
+	sorter.sort(byReturn, func(k int) int64 { return returns[ops[k]] })
+	for k, x := range byReturn {
+		p.rank[x] = k
+		p.returns[k] = returns[ops[x]]
 	}
 	return p
 }
 
-func (p *placedMax) add(i, j int) {
-	k := p.ranked[i]
-	if p.rank != nil {
-		k = p.rank[i]
-	}
-	for ; k < len(p.tree); k += k & -k {
-		p.tree[k] = max(p.tree[k], j)
+// add records state j for the op at place x of the set.
+func (p *placedMax) add(x, j int) {
+	k := p.rank[x]
+	p.vals[k] = max(p.vals[k], j)
+	if k < p.swept {
+		p.at = max(p.at, j)
 	}
 }
 
 // before returns the latest state of a placed op that returned before t.
+// t is never below the last t asked.
 func (p *placedMax) before(t int64) int {
-	n := sort.Search(len(p.returns), func(k int) bool { return p.returns[k] >= t })
-	m := 0
-	for k := n; k > 0; k -= k & -k {
-		m = max(m, p.tree[k])
+	for ; p.swept < len(p.returns) && p.returns[p.swept] < t; p.swept++ {
+		p.at = max(p.at, p.vals[p.swept])
 	}
-	return m
+	return p.at
 }
 
 // verify checks that the order follows real time: an op that returned
 // before another was called comes before it. An ambiguous op never
 // returned.
 func (w *witness) verify() error {
-	var ops []int
+	// An ambiguous op never returned, so it is never before another: it
+	// is left out of byReturn.
+	var byCall, byReturn []int
 	for i, p := range w.at {
-		if p.set {
-			ops = append(ops, i)
+		if p.set() {
+			byCall = append(byCall, i)
+			if err := w.h.Ops[i].Err; err == nil || !err.Ambiguous {
+				byReturn = append(byReturn, i)
+			}
 		}
-	}
-	ret := func(i int) int64 {
-		if w.h.Ops[i].Err != nil && w.h.Ops[i].Err.Ambiguous {
-			return math.MaxInt64
-		}
-		return w.h.Ops[i].Return
 	}
 	// Ops of one time pass or fail together, so the order of ties changes
 	// only which op an error names.
-	byCall, byReturn := slices.Clone(ops), slices.Clone(ops)
-	w.sorter.sort(byCall, func(i int) int64 { return w.h.Ops[i].Call })
-	w.sorter.sort(byReturn, ret)
+	w.sorter.sort(byCall, func(i int) int64 { return w.calls[i] })
+	w.sorter.sort(byReturn, func(i int) int64 { return w.returns[i] })
 	latest, by := place{}, -1
 	k := 0
 	for _, b := range byCall {
 		if w.tick() {
 			return errWitnessTimeout
 		}
-		for ; k < len(byReturn) && ret(byReturn[k]) < w.h.Ops[b].Call; k++ {
+		for ; k < len(byReturn) && w.returns[byReturn[k]] < w.calls[b]; k++ {
 			if a := byReturn[k]; by < 0 || w.at[a].compare(latest) > 0 {
 				latest, by = w.at[a], a
 			}

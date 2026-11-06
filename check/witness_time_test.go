@@ -39,3 +39,23 @@ func TestTimeSorterMatchesSortFunc(t *testing.T) {
 		}
 	}
 }
+
+// TestPlaceKeepsLargeStateNumbers checks that a place keeps its state
+// number, past what 4 bytes hold, and its flags, and orders as its parts
+// do (review of #527).
+func TestPlaceKeepsLargeStateNumbers(t *testing.T) {
+	if (place{}).set() {
+		t.Fatal("the zero place is set")
+	}
+	for _, at := range []int{0, 1, 1<<31 - 1, 1 << 31, 1<<31 + 5, 1 << 40, 1<<62 - 1} {
+		for _, seen := range []bool{false, true} {
+			p := placeAt(at, seen, 7)
+			if !p.set() || p.seen() != seen || p.at() != at || p.rank != 7 {
+				t.Fatalf("placeAt(%d, %v, 7) gives set %v, seen %v, at %d, rank %d", at, seen, p.set(), p.seen(), p.at(), p.rank)
+			}
+			if at > 0 && placeAt(at-1, true, 9).compare(p) >= 0 {
+				t.Fatalf("a place at %d does not come before one at %d", at-1, at)
+			}
+		}
+	}
+}

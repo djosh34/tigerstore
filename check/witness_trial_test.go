@@ -79,8 +79,8 @@ func TestTryAndScopeMatchFullReplay(t *testing.T) {
 		h.Ops = append(h.Ops, history.Op{Req: r})
 	}
 	w := newWitness(h, time.Now().Add(time.Minute))
-	for i, r := range reqs {
-		w.apply(i, r)
+	for i := range reqs {
+		w.apply(i, &reqs[i])
 	}
 	for j := range w.states {
 		for i, r := range reqs {

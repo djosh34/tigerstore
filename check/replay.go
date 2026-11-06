@@ -1,10 +1,9 @@
 package check
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
-	"slices"
+	"sort"
 
 	"github.com/djosh34/tigerstore/history"
 )
@@ -64,11 +63,15 @@ type versions map[string]*keyVersions
 
 // keyVersions are a key's versions and where its last lookup ended. The
 // witness reads at the live revision, and at past ones mostly in their
-// order, so a lookup starts there and takes a few steps; a binary search of
-// every version grew with the history's length (#499).
+// order, so a lookup starts there and gallops out: a binary search of
+// every version grew with the history's length (#499). revs are the
+// versions' revisions, which a lookup searches: 8 bytes each beside the
+// versions' 64, as a lookup that reached into the versions themselves
+// cost more per op once a busy history's outgrew the cache (#499).
 type keyVersions struct {
-	kvs []history.KeyValue
-	at  int
+	kvs  []history.KeyValue
+	revs []int64
+	at   int
 }
 
 // add notes what events changed. A delete event's KV has Version 0, which
@@ -81,6 +84,7 @@ func (v versions) add(events []history.Event) {
 			v[e.KV.Key] = vs
 		}
 		vs.kvs = append(vs.kvs, e.KV)
+		vs.revs = append(vs.revs, e.KV.ModRevision)
 	}
 }
 
@@ -88,6 +92,7 @@ func (v versions) add(events []history.Event) {
 func (v versions) drop(key string) {
 	vs := v[key]
 	vs.kvs = vs.kvs[:len(vs.kvs)-1]
+	vs.revs = vs.revs[:len(vs.revs)-1]
 }
 
 // at returns the key as it was at revision rev.
@@ -96,22 +101,50 @@ func (v versions) at(key string, rev int64) (history.KeyValue, bool) {
 	if k == nil {
 		return history.KeyValue{}, false
 	}
-	// i is the first version after rev.
-	vs, i := k.kvs, len(k.kvs)
-	if i > 0 && vs[i-1].ModRevision > rev {
-		i = min(k.at, i)
-		for n := 0; n < 4 && i < len(vs) && vs[i].ModRevision <= rev; n++ {
-			i++
-		}
-		if i > 0 && vs[i-1].ModRevision > rev || i < len(vs) && vs[i].ModRevision <= rev {
-			i, _ = slices.BinarySearchFunc(vs, rev+1, func(kv history.KeyValue, rev int64) int { return cmp.Compare(kv.ModRevision, rev) })
-		}
+	i := len(k.revs)
+	if i > 0 && k.revs[i-1] > rev {
+		i = firstAbove(k.revs, rev, min(k.at, i))
 	}
 	k.at = i
-	if i == 0 || vs[i-1].Version == 0 {
+	if i == 0 || k.kvs[i-1].Version == 0 {
 		return history.KeyValue{}, false
 	}
-	return vs[i-1], true
+	return k.kvs[i-1], true
+}
+
+// firstAbove returns the first place in revs, which are in order, whose
+// revision is above rev, searching out from place from by steps that
+// double, so that its cost grows with how far the answer is from from,
+// not with the length of revs.
+func firstAbove(revs []int64, rev int64, from int) int {
+	lo, hi := 0, len(revs)
+	if from < len(revs) && revs[from] <= rev {
+		// Up: the answer is above from.
+		lo = from + 1
+		for step := 1; lo < hi; step *= 2 {
+			p := min(from+step, hi)
+			if p == hi || revs[p] > rev {
+				hi = p
+				break
+			}
+			lo = p + 1
+		}
+	} else {
+		// Down: the answer is at from or below it.
+		hi = from
+		for step := 1; lo < hi; step *= 2 {
+			p := max(from-step, lo)
+			if revs[p] <= rev {
+				lo = p + 1
+				break
+			}
+			hi = p
+			if p == 0 {
+				break
+			}
+		}
+	}
+	return lo + sort.Search(hi-lo, func(j int) bool { return revs[lo+j] > rev })
 }
 
 // read answers a range over keys at revision rev, which must not be above
