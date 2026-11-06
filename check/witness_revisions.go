@@ -56,6 +56,10 @@ type revisionOrder struct {
 	// ackedByCall are the acked ops but serializable reads, in call order
 	// (lowerBounds).
 	ackedByCall []int
+	// limit is the highest revision any order can reach, and outOfRange
+	// the failure for the first a client saw beyond it (inRange).
+	limit      int64
+	outOfRange error
 	// ambiguous are the ambiguous mutations, and lb the highest revision
 	// returned before each was called: it writes no revision up to it.
 	ambiguous []int
@@ -203,6 +207,18 @@ func byRev(revs [][]int, rev int64) []int {
 	return revs[rev]
 }
 
+// inRange reports whether no order rules revision rev out: from 0 to
+// limit. The first that it rules out is outOfRange.
+func (r *revisionOrder) inRange(rev int64) bool {
+	if rev >= 0 && rev <= r.limit {
+		return true
+	}
+	if r.outOfRange == nil {
+		r.outOfRange = fmt.Errorf("a client saw revision %d, which no order of the history's writes reaches: they make at most revision %d", rev, r.limit)
+	}
+	return false
+}
+
 // writer returns the acked op that wrote revision rev, if any.
 func (r *revisionOrder) writer(rev int64) (int, bool) {
 	if rev < 0 || int(rev) >= len(r.writers) || r.writers[rev] == 0 {
@@ -247,10 +263,21 @@ type span struct{ lo, hi int64 }
 // index sorts the ops into the maps of r.
 func (r *revisionOrder) index() error {
 	h := r.w.h
+	// Each revision past the first takes a write, so none above limit
+	// can be in any order; the indexes by revision rely on it.
+	r.limit = 1
+	for i := range h.Ops {
+		if h.Ops[i].Req.Mutates() {
+			r.limit++
+		}
+	}
 	values := map[[2]string][]int{}
 	for i := range h.Ops {
 		op := &h.Ops[i]
 		if op.Resp != nil {
+			if !r.inRange(op.Resp.Revision) {
+				return fmt.Errorf("%s: %w", r.w.describe(i), r.outOfRange)
+			}
 			r.top = max(r.top, op.Resp.Revision)
 		}
 		switch {
@@ -341,11 +368,15 @@ func (r *revisionOrder) index() error {
 				}
 				if e.Type == history.EventPut {
 					saw(e.KV, e.Revision(), true)
-				} else if k := r.w.live.index(e.KV.Key); k >= 0 {
-					r.deleted = add(r.deleted, e.Revision(), k)
+				} else if r.inRange(e.Revision()) {
+					// -1 for a key no request puts (note).
+					r.deleted = add(r.deleted, e.Revision(), r.w.live.index(e.KV.Key))
 				}
 			}
 		}
+	}
+	if r.outOfRange != nil {
+		return r.outOfRange
 	}
 	for _, ls := range r.noted {
 		for _, l := range ls {
@@ -604,12 +635,17 @@ func lostCompare(s *state, c history.Compare) bool {
 // shows of the key's life. One without a version, from a compare of the
 // mod revision, shows only the revision of its last write.
 func (r *revisionOrder) note(kv history.KeyValue, to int64) {
-	k := r.w.live.index(kv.Key)
-	if kv.ModRevision < 2 || k < 0 {
+	if kv.ModRevision < 2 || !r.inRange(kv.ModRevision) || kv.Version != 0 && !r.inRange(kv.CreateRevision) {
 		return
 	}
-	if kv.Version == 0 {
+	// A key no request puts is -1: the store never holds it, so no writer
+	// can make what a client saw of it (fits).
+	k := r.w.live.index(kv.Key)
+	if kv.Version == 0 || k < 0 {
 		r.written = add(r.written, kv.ModRevision, k)
+		if kv.Version != 0 {
+			r.created = add(r.created, kv.CreateRevision, k)
+		}
 		return
 	}
 	l := life{kv.CreateRevision, kv.ModRevision, kv.Version}
@@ -1617,17 +1653,23 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 	}
 	// What clients saw happen at rev must happen.
 	for _, k := range byRev(r.created, rev) {
+		if k < 0 {
+			return false
+		}
 		if kv := s.kvs[k]; kv.Version == 0 || kv.CreateRevision != rev {
 			return false
 		}
 	}
 	for _, k := range byRev(r.written, rev) {
+		if k < 0 {
+			return false
+		}
 		if kv := s.kvs[k]; kv.Version == 0 || kv.ModRevision != rev {
 			return false
 		}
 	}
 	for _, k := range byRev(r.deleted, rev) {
-		if s.kvs[k].Version != 0 || !slices.ContainsFunc(o.events, func(e history.Event) bool { return e.KV.Key == s.keys[k] }) {
+		if k < 0 || s.kvs[k].Version != 0 || !slices.ContainsFunc(o.events, func(e history.Event) bool { return e.KV.Key == s.keys[k] }) {
 			return false
 		}
 	}
