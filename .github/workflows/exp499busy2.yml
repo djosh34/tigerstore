@@ -29,8 +29,8 @@ jobs:
       - name: Five times each, in turn
         env:
           # The commits to compare, by name=ref.
-          REFS: main=origin/main radix=eaff173824bd3734fc3c45442c3a8e4f79f91f25 lives=26e04edd171769c7f6e439930d49886f85dbe5a7 maps=dc81d320fa679f06e46e00de679fca08918fbd4d
-          REPS: '5'
+          REFS: main=origin/main maps=dc81d320fa679f06e46e00de679fca08918fbd4d writers=e6d8bd673dfa2cabf16319d424435225f56eed5f answers=acaf0621dfc90c630c7703d023bc6d20d46a8ad0
+          REPS: '6'
         run: |
           for nr in $REFS; do
             n=${nr%%=*}; ref=${nr#*=}
