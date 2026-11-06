@@ -29,7 +29,7 @@ import (
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
 		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
-		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
+		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
 		counts: map[int64][]count{},
 	}
 	w.search = r
@@ -61,8 +61,12 @@ type revisionOrder struct {
 	// unless the ID was granted more than once (grants).
 	alive  map[int64]int64
 	grants map[int64]int
-	// grantsOf are the ambiguous grants of each lease ID (fitsGranted).
-	grantsOf map[int64][]int
+	// grantsOf are the ambiguous grants of each lease ID (fitsGranted),
+	// and revokesOfLease its ambiguous revokes; writing are the ambiguous
+	// ops but the revokes (candidates).
+	grantsOf       map[int64][]int
+	revokesOfLease map[int64][]int
+	writing        []int
 	// returns and highest are the return times of the acked ops, in
 	// order, and the highest header revision of those up to each; calls
 	// and lowest their call times, in order, and the lowest header
@@ -209,6 +213,11 @@ func (r *revisionOrder) index() error {
 				continue
 			}
 			r.ambiguous = append(r.ambiguous, i)
+			if l := op.Req.LeaseRevoke; l != nil {
+				r.revokesOfLease[l.ID] = append(r.revokesOfLease[l.ID], i)
+			} else {
+				r.writing = append(r.writing, i)
+			}
 			if g := op.Req.LeaseGrant; g != nil {
 				r.grantsOf[g.ID] = append(r.grantsOf[g.ID], i)
 			}
@@ -1259,7 +1268,7 @@ func (r *revisionOrder) restoreOrder(m mark) {
 	}
 	for k := len(w.appended) - 1; k >= m.appended; k-- {
 		key := w.appended[k]
-		w.past[key] = w.past[key][:len(w.past[key])-1]
+		w.past.drop(key)
 	}
 	w.appended = w.appended[:m.appended]
 	for _, i := range w.placed[m.placed:] {
@@ -1381,8 +1390,23 @@ func (r *revisionOrder) write(rev int64) bool {
 func (r *revisionOrder) candidates(rev int64) []int {
 	h := r.w.h
 	out := slices.Clone(r.revokes[rev])
+	// A revoke writes a revision only if a key holds its lease (fits), and
+	// the ambiguous revokes of a busy history are its leases' expiries, so
+	// only those of the leases the live keys hold are tried: going through
+	// all of them at every gap grew with the history (#499).
+	possible := r.ambiguous
+	if !r.w.slow {
+		possible = slices.Clone(r.writing)
+		var leases []int64
+		for _, kv := range r.w.live.kvs {
+			if kv.Version != 0 && kv.Lease != 0 && !slices.Contains(leases, kv.Lease) {
+				leases = append(leases, kv.Lease)
+				possible = append(possible, r.revokesOfLease[kv.Lease]...)
+			}
+		}
+	}
 	var amb []int
-	for _, i := range r.ambiguous {
+	for _, i := range possible {
 		if at, ok := r.reserved[i]; ok && at != rev {
 			continue
 		}

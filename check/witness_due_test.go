@@ -3,6 +3,7 @@ package check
 import (
 	"math/rand/v2"
 	"slices"
+	"sort"
 	"testing"
 	"time"
 
@@ -116,6 +117,43 @@ func TestDueIndexMatchesScan(t *testing.T) {
 		}
 		if got := ops(r.earlyDue(rev)); !slices.Equal(got, early) {
 			t.Fatalf("step %d: earlyDue(%d) = %v, the scan says %v", step, rev, got, early)
+		}
+	}
+}
+
+// TestVersionsAtMatchesSearch compares versions.at, which starts where its
+// last lookup ended, with a binary search of every version, along random
+// adds, drops as restore does, and lookups at any revision.
+func TestVersionsAtMatchesSearch(t *testing.T) {
+	rng := rand.New(rand.NewPCG(3, 521))
+	v := versions{}
+	var all []history.KeyValue
+	rev := int64(1)
+	for step := range 20_000 {
+		switch n := rng.IntN(10); {
+		case n < 4:
+			rev += rng.Int64N(3)
+			kv := history.KeyValue{Key: "a", ModRevision: rev, Version: rng.Int64N(3)}
+			v.add([]history.Event{{KV: kv}})
+			all = append(all, kv)
+		case n == 4 && len(all) > 0:
+			v.drop("a")
+			all = all[:len(all)-1]
+			if len(all) > 0 {
+				rev = all[len(all)-1].ModRevision
+			}
+		}
+		at := rng.Int64N(rev + 3)
+		if rng.IntN(2) == 0 {
+			at = rev - rng.Int64N(3)
+		}
+		i := sort.Search(len(all), func(j int) bool { return all[j].ModRevision > at })
+		want, wantOK := history.KeyValue{}, i > 0 && all[i-1].Version != 0
+		if wantOK {
+			want = all[i-1]
+		}
+		if got, ok := v.at("a", at); ok != wantOK || got != want {
+			t.Fatalf("step %d: at(%d) = %v %v, the search says %v %v", step, at, got, ok, want, wantOK)
 		}
 	}
 }
