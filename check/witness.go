@@ -499,7 +499,7 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 	ops = slices.Clone(ops)
 	w.sorter.sort(ops, func(i int) int64 { return w.h.Ops[i].Call })
 	placed := newPlacedMax(w.h, ops, &w.sorter)
-	for _, i := range ops {
+	for x, i := range ops {
 		if w.tick() {
 			return errWitnessTimeout
 		}
@@ -518,7 +518,7 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 			if set {
 				w.at[i] = place{set: true, seen: true, at: c.at, rank: op.Call}
 			}
-			placed.add(i, c.at)
+			placed.add(x, c.at)
 			continue
 		}
 		f, l := lo, hi
@@ -537,7 +537,7 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 		if set {
 			w.at[i] = place{set: true, seen: true, at: j, rank: op.Call}
 		}
-		placed.add(i, j)
+		placed.add(x, j)
 	}
 	return nil
 }
@@ -630,55 +630,53 @@ func (w *witness) eventBounds() func(op *history.Op) (int, int) {
 }
 
 // placedMax keeps the latest state of the ops placed so far among a set,
-// by their return times.
+// by their return times. The set is in call order, and it is asked about
+// the ops in that order, so the times it is asked at only go up: it sweeps
+// the ops by return once, where a tree and a search per op cost more per
+// op the longer the history, from the arrays they reach into out of order
+// (#499).
 type placedMax struct {
-	h       *history.History
-	returns []int64
-	// rank is, per op, its place by return: in a slice by op for a set of
-	// many, as observe's, else in a map.
-	rank   []int
-	ranked map[int]int
-	tree   []int
+	// returns are the set's return times in order, rank each op's place
+	// there by its place in the set, and vals the state placed at each
+	// place, 0 until placed.
+	returns   []int64
+	rank      []int
+	vals      []int
+	swept, at int
 }
 
+// newPlacedMax is a placedMax of ops, which are in call order.
 func newPlacedMax(h *history.History, ops []int, sorter *timeSorter) *placedMax {
-	p := &placedMax{h: h, tree: make([]int, len(ops)+1)}
-	if len(ops) >= len(h.Ops)/8 {
-		p.rank = make([]int, len(h.Ops))
-	} else {
-		p.ranked = make(map[int]int, len(ops))
+	m := len(ops)
+	p := &placedMax{returns: make([]int64, m), rank: make([]int, m), vals: make([]int, m)}
+	byReturn := make([]int, m)
+	for k := range byReturn {
+		byReturn[k] = k
 	}
-	sorted := slices.Clone(ops)
-	sorter.sort(sorted, func(i int) int64 { return h.Ops[i].Return })
-	for k, i := range sorted {
-		if p.rank != nil {
-			p.rank[i] = k + 1
-		} else {
-			p.ranked[i] = k + 1
-		}
-		p.returns = append(p.returns, h.Ops[i].Return)
+	sorter.sort(byReturn, func(k int) int64 { return h.Ops[ops[k]].Return })
+	for k, x := range byReturn {
+		p.rank[x] = k
+		p.returns[k] = h.Ops[ops[x]].Return
 	}
 	return p
 }
 
-func (p *placedMax) add(i, j int) {
-	k := p.ranked[i]
-	if p.rank != nil {
-		k = p.rank[i]
-	}
-	for ; k < len(p.tree); k += k & -k {
-		p.tree[k] = max(p.tree[k], j)
+// add records state j for the op at place x of the set.
+func (p *placedMax) add(x, j int) {
+	k := p.rank[x]
+	p.vals[k] = max(p.vals[k], j)
+	if k < p.swept {
+		p.at = max(p.at, j)
 	}
 }
 
 // before returns the latest state of a placed op that returned before t.
+// t is never below the last t asked.
 func (p *placedMax) before(t int64) int {
-	n := sort.Search(len(p.returns), func(k int) bool { return p.returns[k] >= t })
-	m := 0
-	for k := n; k > 0; k -= k & -k {
-		m = max(m, p.tree[k])
+	for ; p.swept < len(p.returns) && p.returns[p.swept] < t; p.swept++ {
+		p.at = max(p.at, p.vals[p.swept])
 	}
-	return m
+	return p.at
 }
 
 // verify checks that the order follows real time: an op that returned
