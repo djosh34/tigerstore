@@ -89,9 +89,10 @@ func (w *witness) scopedState(i, j int) *state {
 	if w.slow {
 		return w.stateAt(j)
 	}
-	keys, ok := w.scope[i]
-	if !ok {
-		keys = requestKeys(w.keys, w.reqs[i])
+	keys := w.scope[i]
+	if keys == nil {
+		// Not nil, so that a request of no keys is not looked at again.
+		keys = append([]string{}, requestKeys(w.keys, w.reqs[i])...)
 		w.scope[i] = keys
 	}
 	sm := w.states[j]

@@ -15,7 +15,7 @@ func roomOrder(keys []string, reqs ...history.Request) *revisionOrder {
 		s.kvs[k] = history.KeyValue{Key: key, CreateRevision: 2, ModRevision: 2, Version: 1}
 	}
 	w := &witness{h: &history.History{}, live: s, reqs: reqs}
-	r := &revisionOrder{w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, counts: map[int64][]count{}, used: make([]bool, len(reqs)), lb: make([]int64, len(reqs))}
+	r := &revisionOrder{w: w, writers: map[int64]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, counts: map[int64][]count{}, used: make([]bool, len(reqs)), lb: make([]int64, len(reqs))}
 	for i, req := range reqs {
 		w.h.Ops = append(w.h.Ops, history.Op{Req: req, Err: &history.Error{Ambiguous: true}})
 		r.ambiguous = append(r.ambiguous, i)

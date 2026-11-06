@@ -151,7 +151,7 @@ type witness struct {
 	// (scopedState), and slow makes the witness copy the whole store for
 	// every try and answer instead, for the tests that compare the two
 	// (witness_trial.go).
-	scope map[int][]string
+	scope [][]string
 	slow  bool
 	// firsts are, per op, where finish found its answer, and lastID the
 	// id of the newest state (placeSeen).
@@ -222,7 +222,7 @@ func (p place) compare(q place) int {
 }
 
 func newWitness(h *history.History, deadline time.Time) *witness {
-	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: map[int][]string{}, firsts: make([]firstAnswer, len(h.Ops))}
+	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: make([][]string, len(h.Ops)), firsts: make([]firstAnswer, len(h.Ops))}
 	w.reqs = make([]history.Request, len(h.Ops))
 	for i := range h.Ops {
 		w.reqs[i] = modelRequest(&h.Ops[i])
@@ -609,23 +609,39 @@ func (w *witness) eventBounds() func(op *history.Op) (int, int) {
 type placedMax struct {
 	h       *history.History
 	returns []int64
-	rank    map[int]int
-	tree    []int
+	// rank is, per op, its place by return: in a slice by op for a set of
+	// many, as observe's, else in a map.
+	rank   []int
+	ranked map[int]int
+	tree   []int
 }
 
 func newPlacedMax(h *history.History, ops []int, sorter *timeSorter) *placedMax {
-	p := &placedMax{h: h, rank: map[int]int{}, tree: make([]int, len(ops)+1)}
+	p := &placedMax{h: h, tree: make([]int, len(ops)+1)}
+	if len(ops) >= len(h.Ops)/8 {
+		p.rank = make([]int, len(h.Ops))
+	} else {
+		p.ranked = make(map[int]int, len(ops))
+	}
 	sorted := slices.Clone(ops)
 	sorter.sort(sorted, func(i int) int64 { return h.Ops[i].Return })
 	for k, i := range sorted {
-		p.rank[i] = k + 1
+		if p.rank != nil {
+			p.rank[i] = k + 1
+		} else {
+			p.ranked[i] = k + 1
+		}
 		p.returns = append(p.returns, h.Ops[i].Return)
 	}
 	return p
 }
 
 func (p *placedMax) add(i, j int) {
-	for k := p.rank[i]; k < len(p.tree); k += k & -k {
+	k := p.ranked[i]
+	if p.rank != nil {
+		k = p.rank[i]
+	}
+	for ; k < len(p.tree); k += k & -k {
 		p.tree[k] = max(p.tree[k], j)
 	}
 }

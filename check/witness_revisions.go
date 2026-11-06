@@ -28,7 +28,7 @@ import (
 // needs them, after every answer that needs them left out.
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
-		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
+		w: w, writers: map[int64]int{},
 		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
 		counts: map[int64][]count{},
 	}
@@ -44,13 +44,14 @@ type revisionOrder struct {
 	w *witness
 	// writers are the acked ops that wrote each revision, and revokes the
 	// acked revokes at each header revision, which may have written it.
+	// revokes, others and seen are kept by revision, not in maps (byRev).
 	writers map[int64]int
-	revokes map[int64][]int
+	revokes [][]int
 	// others are the acked mutations that changed no key, by header
 	// revision, in call order. seen are the acked ops that changed
 	// nothing, by header revision.
-	others map[int64][]int
-	seen   map[int64][]int
+	others [][]int
+	seen   [][]int
 	// ambiguous are the ambiguous mutations, and lb the highest revision
 	// returned before each was called: it writes no revision up to it.
 	ambiguous []int
@@ -198,6 +199,13 @@ func byRev(revs [][]int, rev int64) []int {
 	return revs[rev]
 }
 
+// add appends v to revs[rev], which it grows to hold.
+func add(revs [][]int, rev int64, v int) [][]int {
+	revs = at(revs, rev)
+	revs[rev] = append(revs[rev], v)
+	return revs
+}
+
 // at grows s to hold index i.
 func at[T any](s []T, i int64) []T {
 	if n := int(i) + 1; n > len(s) {
@@ -234,11 +242,11 @@ func (r *revisionOrder) index() error {
 			}
 			r.writers[op.Resp.Revision] = i
 		case op.Resp != nil && op.Req.LeaseRevoke != nil:
-			r.revokes[op.Resp.Revision] = append(r.revokes[op.Resp.Revision], i)
+			r.revokes = add(r.revokes, op.Resp.Revision, i)
 		case op.Resp != nil && mutation(op):
-			r.others[op.Resp.Revision] = append(r.others[op.Resp.Revision], i)
+			r.others = add(r.others, op.Resp.Revision, i)
 		case op.Resp != nil:
-			r.seen[op.Resp.Revision] = append(r.seen[op.Resp.Revision], i)
+			r.seen = add(r.seen, op.Resp.Revision, i)
 		case op.Err.Ambiguous && op.Req.Mutates():
 			if g := op.Req.LeaseGrant; g != nil && g.ID == 0 {
 				// Nobody learned its ID, so no answer depends on it.
@@ -315,9 +323,7 @@ func (r *revisionOrder) index() error {
 				if e.Type == history.EventPut {
 					saw(e.KV, e.Revision(), true)
 				} else if k := r.w.live.index(e.KV.Key); k >= 0 {
-					rev := e.Revision()
-					r.deleted = at(r.deleted, rev)
-					r.deleted[rev] = append(r.deleted[rev], k)
+					r.deleted = add(r.deleted, e.Revision(), k)
 				}
 			}
 		}
@@ -583,13 +589,8 @@ func (r *revisionOrder) note(kv history.KeyValue, to int64) {
 	if kv.ModRevision < 2 || k < 0 {
 		return
 	}
-	add := func(revs [][]int, rev int64) [][]int {
-		revs = at(revs, rev)
-		revs[rev] = append(revs[rev], k)
-		return revs
-	}
 	if kv.Version == 0 {
-		r.written = add(r.written, kv.ModRevision)
+		r.written = add(r.written, kv.ModRevision, k)
 		return
 	}
 	l := life{kv.CreateRevision, kv.ModRevision, kv.Version}
@@ -601,7 +602,7 @@ func (r *revisionOrder) note(kv history.KeyValue, to int64) {
 		}
 	}
 	r.noted[l.m] = append(r.noted[l.m], seenLife{k, lifeTo{l, to}})
-	r.created, r.written = add(r.created, l.c), add(r.written, l.m)
+	r.created, r.written = add(r.created, l.c, k), add(r.written, l.m, k)
 }
 
 func (r *revisionOrder) byCall(ops []int) {
@@ -1048,7 +1049,7 @@ func (r *revisionOrder) answered(ops []int) bool {
 			return false
 		}
 	}
-	seen := r.seen[w.live.rev]
+	seen := byRev(r.seen, w.live.rev)
 	if len(seen) == 0 || !slices.ContainsFunc(ops, func(i int) bool { return w.reqs[i].Compact != nil }) {
 		return true
 	}
@@ -1433,7 +1434,7 @@ func (r *revisionOrder) write(rev int64) bool {
 // every response and real-time constraint before passing.
 func (r *revisionOrder) candidates(rev int64) []int {
 	h := r.w.h
-	out := slices.Clone(r.revokes[rev])
+	out := slices.Clone(byRev(r.revokes, rev))
 	// A revoke writes a revision only if a key holds its lease (fits), and
 	// the ambiguous revokes of a busy history are its leases' expiries, so
 	// only those of the leases the live keys hold are tried: going through
@@ -1613,7 +1614,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 	r.insertOptional(rev)
 	r.expireEarly(rev)
 	var acked []int
-	for _, i := range slices.Concat(r.others[rev], r.revokes[rev]) {
+	for _, i := range slices.Concat(byRev(r.others, rev), byRev(r.revokes, rev)) {
 		if !r.used[i] {
 			acked = append(acked, i)
 		}
@@ -1636,7 +1637,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 	for first > 0 && w.states[first-1].rev == rev {
 		first--
 	}
-	for _, i := range r.seen[rev] {
+	for _, i := range byRev(r.seen, rev) {
 		j, ok := w.find(i, first, len(w.states)-1)
 		if !ok {
 			return r.dead(rev, w.unanswered(i, first, len(w.states)-1, first, len(w.states)-1))

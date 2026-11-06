@@ -135,7 +135,7 @@ func (r *revisionOrder) indexRoom() {
 	// may delete, it deletes for free either way.
 	for rev, is := range r.revokes {
 		for _, i := range is {
-			credit(rev, r.w.reqs[i])
+			credit(int64(rev), r.w.reqs[i])
 		}
 	}
 	slices.Sort(x.fixed)
