@@ -631,13 +631,11 @@ func TestNewestVersion(t *testing.T) {
 	}
 }
 
-// TestFormedClusterAnswers runs seeds that form their cluster first with
-// no faults at all after it, and requires every call to get a definite
-// answer, within 500 ms once the restarted nodes elected a leader, by 2 s:
-// the run starts on the formed disks with nothing held from the
-// formation. Moving the run's clock back after an in-run formation left
-// delivery times of the old clock on open connections, which held their
-// bytes for as long as the formation took, and calls took a second.
+// TestFormedClusterAnswers runs seeds that form their cluster first, with
+// no faults after it, and requires every call to get a definite answer,
+// within 500 ms from 2 s on: the run starts on the formed disks with
+// nothing held from the formation. Seed 3 times out a call while a node
+// fetches one snapshot after another (#518).
 func TestFormedClusterAnswers(t *testing.T) {
 	simrun.Each(t, []uint64{1, 2, 3}, func(t *testing.T, seed uint64) struct{} {
 		cfg := DefaultConfig(seed)
