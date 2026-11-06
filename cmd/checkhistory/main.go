@@ -17,6 +17,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"runtime/pprof"
 	"slices"
 	"strings"
 	"time"
@@ -75,7 +76,12 @@ func main() {
 		for _, name := range run {
 			start := time.Now()
 			clear(check.Phases)
+			if pf := os.Getenv("CPUPROF"); pf != "" {
+				f, _ := os.Create(pf)
+				_ = pprof.StartCPUProfile(f)
+			}
 			err := checkers[name](h)
+			pprof.StopCPUProfile()
 			for _, k := range slices.Sorted(maps.Keys(check.Phases)) {
 				fmt.Printf("PHASE %s %d\n", k, check.Phases[k].Microseconds())
 			}
