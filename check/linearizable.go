@@ -75,13 +75,15 @@ func Linearizable(h *history.History, timeout time.Duration, opts ...Option) err
 	}
 	keys := keysOf(reqs)
 
-	maxSteps := optionsOf(opts).steps
+	o := optionsOf(opts)
+	maxSteps := o.steps
 	var tripped, unsupported atomic.Bool
 	var steps atomic.Int64
 	m := porcupine.Model{
 		Init: func() any { return initial(keys) },
 		Step: func(st, in, out any) (bool, any) {
-			if maxSteps > 0 && steps.Add(1) > maxSteps {
+			n := steps.Add(1)
+			if maxSteps > 0 && n > maxSteps || o.stop != nil && n%1024 == 0 && o.stop() {
 				tripped.Store(true)
 			}
 			if tripped.Load() {
