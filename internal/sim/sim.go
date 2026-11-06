@@ -1853,6 +1853,9 @@ func (s *Sim) beforeSync(p *proc) {
 	s.hold(p, func() int64 { return max(n.stallUntil, n.pausedUntil) })
 	s.mu.Lock()
 	lat := 50*Microsecond + s.rng.Int64N(950*Microsecond)
+	if s.cfg.Faults == (Faults{}) {
+		lat = 1
+	}
 	if s.cfg.Faults.SlowDisk > 0 && !s.healed && s.rng.IntN(100) < s.cfg.Faults.SlowDisk {
 		lat = 20*Millisecond + s.rng.Int64N(80*Millisecond)
 	}
@@ -2087,6 +2090,10 @@ func (s *Sim) setLinks(mask uint64) {
 			// by direction.
 			l.base = 20*Microsecond + s.rng.Int64N(2*Millisecond)
 			l.jitter = s.rng.Int64N(l.base + 1)
+			if s.cfg.Faults == (Faults{}) {
+				// exp/500-nolatency: calm runs without modeled delays.
+				l.base, l.jitter = 1, 0
+			}
 			k++
 		}
 	}
