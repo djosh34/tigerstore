@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
 )
@@ -21,12 +22,16 @@ type coreState struct {
 	members                     []*pb.Member
 }
 
-// remember keeps what core c of n shows now. The lock is held, on c's
-// committer.
-func (n *node) remember(c *core.Node, now int64) {
+// remember keeps what core c of n shows now, after it applied applied.
+// The members are copied again only for a new core or after a
+// configuration change or a checkpoint, as copying them takes a
+// protobuf clone of each. The lock is held, on c's committer.
+func (n *node) remember(c *core.Node, now int64, applied []core.Applied) {
 	st := c.RaftStatus()
 	members := n.last.members
-	if n.last.core != c || n.last.applied != c.Applied() {
+	if n.last.core != c || slices.ContainsFunc(applied, func(a core.Applied) bool {
+		return a.Checkpoint || a.Type == raftpb.EntryConfChange || a.Type == raftpb.EntryConfChangeV2
+	}) {
 		members = c.Members()
 	}
 	n.last = coreState{

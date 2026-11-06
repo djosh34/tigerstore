@@ -1696,7 +1696,7 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		s.steppedDownAt = s.now()
 		s.tracef("node %d: the stalled leader stepped down", n.id)
 	}
-	n.remember(c, s.now())
+	n.remember(c, s.now(), eff.Applied)
 	if v := n.last.version; v != before {
 		s.tracef("node %d: cluster version %d", n.id, v)
 	}
