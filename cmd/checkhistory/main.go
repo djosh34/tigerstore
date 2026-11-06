@@ -43,12 +43,15 @@ func main() {
 	cpuprofile := flag.String("cpuprofile", "", "exp only: write a CPU profile of the checks")
 	flag.Parse()
 	checkers := map[string]func(*history.History) error{
-		"witness-log":       func(h *history.History) error { return check.Witnessed(h, check.FromLog, *timeout) },
-		"witness-revisions": func(h *history.History) error { return check.Witnessed(h, check.FromRevisions, *timeout) },
-		"linearizable":      func(h *history.History) error { return check.Linearizable(h, *timeout) },
-		"watches":           check.Watches,
-		"durable":           check.Durable,
-		"revisions":         check.Revisions,
+		"witness-log": func(h *history.History) error { return check.Witnessed(h, check.FromLog, *timeout) },
+		"witness-revisions": func(h *history.History) error {
+			err := check.Witnessed(h, check.FromRevisions, *timeout)
+			return err
+		},
+		"linearizable": func(h *history.History) error { return check.Linearizable(h, *timeout) },
+		"watches":      check.Watches,
+		"durable":      check.Durable,
+		"revisions":    check.Revisions,
 	}
 	var run []string
 	for name := range strings.SplitSeq(*names, ",") {
@@ -77,6 +80,7 @@ func main() {
 		for _, name := range run {
 			if *cpuprofile != "" {
 				runtime.GC()
+				runtime.MemProfileRate = 64 << 10
 				f, err := os.Create(*cpuprofile)
 				if err != nil {
 					log.Fatal(err)
@@ -85,10 +89,17 @@ func main() {
 					log.Fatal(err)
 				}
 			}
+			var m0, m1 runtime.MemStats
+			runtime.ReadMemStats(&m0)
 			start := time.Now()
 			err := checkers[name](h)
+			runtime.ReadMemStats(&m1)
+			fmt.Fprintf(os.Stderr, "check alloc %d MB, %d mallocs, %d GCs, live after %d MB, gc cpu %.2f\n", (m1.TotalAlloc-m0.TotalAlloc)>>20, m1.Mallocs-m0.Mallocs, m1.NumGC-m0.NumGC, m1.HeapAlloc>>20, m1.GCCPUFraction)
 			if *cpuprofile != "" {
 				pprof.StopCPUProfile()
+				mf, _ := os.Create(*cpuprofile + ".mem")
+				_ = pprof.Lookup("allocs").WriteTo(mf, 0)
+				mf.Close()
 			}
 			v := verdict{File: file, Checker: name, Ops: len(h.Ops), Clients: len(clients), Passed: err == nil, Seconds: time.Since(start).Seconds()}
 			if err != nil {

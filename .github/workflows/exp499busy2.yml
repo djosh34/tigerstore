@@ -31,14 +31,6 @@ jobs:
           go build -o "$RUNNER_TEMP/chk-new" ./cmd/checkhistory
           git worktree add -q "$RUNNER_TEMP/main" origin/main
           go build -C "$RUNNER_TEMP/main" -o "$RUNNER_TEMP/chk-old" ./cmd/checkhistory
-          for n in 320 1280; do
-            h=$(find "$RUNNER_TEMP/a" -name "history-$n*")
-            GODEBUG=gctrace=0 "$RUNNER_TEMP/chk-new" -checkers witness-revisions -timeout 60m -cpuprofile "$RUNNER_TEMP/new-$n.pprof" "$h" | cut -c1-200
-            go tool pprof -top -nodecount=35 "$RUNNER_TEMP/chk-new" "$RUNNER_TEMP/new-$n.pprof" | head -45
-            go tool pprof -top -cum -nodecount=35 "$RUNNER_TEMP/chk-new" "$RUNNER_TEMP/new-$n.pprof" | head -45
-            go tool pprof -peek 'revisionOrder..(write|fits|finish|candidates)$' "$RUNNER_TEMP/chk-new" "$RUNNER_TEMP/new-$n.pprof" | grep -v '^ *$' | head -90
-          done
-          exit 0
           for h in $(find "$RUNNER_TEMP/a" -name 'history*' | sort); do
             for b in old new old new old new; do
               echo "== $b $(basename "$h")"
