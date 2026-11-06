@@ -66,9 +66,10 @@ type floor struct {
 	lns map[string]*bufconn.Listener
 	// stop is closed when the clients stop.
 	stop chan struct{}
-	wg   sync.WaitGroup
-	res  FloorResult
-	errs []error
+	// wg counts the clients and watches, serving the gRPC servers.
+	wg, serving sync.WaitGroup
+	res         FloorResult
+	errs        []error
 }
 
 // floorNode is one node of the floor: its process and how to reach it.
@@ -132,7 +133,10 @@ func Floor(seed uint64, d time.Duration) (FloorResult, error) {
 	f.wg.Wait()
 	end, err := simrun.CPUTime()
 	f.res.CPU, f.res.Wall = end-cpu, time.Since(start)
-	return f.res, errors.Join(append(f.errs, err, f.shutdown(cancel))...)
+	err = errors.Join(err, f.shutdown(cancel))
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.res, errors.Join(append(f.errs, err)...)
 }
 
 // start starts node i of the floor's cluster, whose peer URLs are urls.
@@ -166,12 +170,12 @@ func (f *floor) start(ctx context.Context, i int, urls []string, leaseCheckpoint
 	}
 	n := &floorNode{node: tn, t: t, srv: srv, ran: make(chan error, 1)}
 	f.nodes = append(f.nodes, n)
-	go func() {
+	f.serving.Go(func() {
 		// Serve returns when the server stops.
 		if err := srv.Serve(f.lns[clientAddr(i)]); err != nil && !errors.Is(err, net.ErrClosed) {
 			f.fail(fmt.Errorf("node %d: serving clients: %w", id, err))
 		}
-	}()
+	})
 	go func() { n.ran <- tn.Run(ctx, t) }()
 	return nil
 }
@@ -205,7 +209,8 @@ func (f *floor) formed(ctx context.Context) error {
 	return errNoFloorCluster
 }
 
-// shutdown stops the clients' nodes and returns what went wrong in them.
+// shutdown stops the nodes and their servers, and returns what went
+// wrong in them.
 func (f *floor) shutdown(cancel context.CancelFunc) error {
 	cancel()
 	var errs []error
@@ -215,6 +220,7 @@ func (f *floor) shutdown(cancel context.CancelFunc) error {
 		}
 		errs = append(errs, n.srv.Stop(), n.t.Close())
 	}
+	f.serving.Wait()
 	return errors.Join(errs...)
 }
 
@@ -307,13 +313,18 @@ func (f *floor) fail(err error) {
 }
 
 // watch keeps watch sp open from revision next, as a watch client of a
-// run does: on a random node, closing the stream now and then and
-// resuming on another from the first revision not seen.
+// run does (watchClient.run): on a random node, closing the stream now
+// and then and resuming on another from the first revision not seen, with
+// the same waits.
 func (f *floor) watch(ctx context.Context, sp watchSpec, next, wait int64) {
+	var dropAt time.Time
 	for f.sleep(wait) {
 		f.mu.Lock()
 		n := f.nodes[f.src.rng.IntN(3)]
-		drop := f.exp(3 * Second)
+		if !time.Now().Before(dropAt) {
+			dropAt = time.Now().Add(time.Duration(f.exp(3 * Second)))
+		}
+		// The wait after a stream the node refused.
 		wait = 100*Millisecond + f.src.rng.Int64N(400*Millisecond)
 		f.mu.Unlock()
 		ws, err := n.node.OpenWatch(ctx, core.Caller{})
@@ -328,15 +339,18 @@ func (f *floor) watch(ctx context.Context, sp watchSpec, next, wait int64) {
 			ws.Close()
 			continue
 		}
-		next = f.follow(ws, next, drop)
+		next, wait, dropAt = f.follow(ws, next, dropAt)
 		ws.Close()
 	}
 }
 
-// follow reads stream ws until it ends, the drop comes or the clients
-// stop, and returns the first revision not seen.
-func (f *floor) follow(ws *tnode.WatchStream, next, drop int64) int64 {
-	t := time.NewTimer(time.Duration(drop))
+// follow reads stream ws until it ends, the drop at dropAt comes or the
+// clients stop, and returns the first revision not seen, how long to wait
+// before the next stream and when to drop that one: up to 2 s and a new
+// drop after a drop, no wait and the same drop after a stream that ended
+// or a compaction that canceled the watch.
+func (f *floor) follow(ws *tnode.WatchStream, next int64, dropAt time.Time) (int64, int64, time.Time) {
+	t := time.NewTimer(time.Until(dropAt))
 	defer t.Stop()
 	for {
 		select {
@@ -346,7 +360,7 @@ func (f *floor) follow(ws *tnode.WatchStream, next, drop int64) int64 {
 			case r.Canceled:
 				// A compaction passed it; a new logical watch starts
 				// from now.
-				return 0
+				return 0, 0, dropAt
 			case r.Created && next == 0:
 				next = r.Header.Revision + 1
 			case len(r.Events) > 0:
@@ -355,11 +369,13 @@ func (f *floor) follow(ws *tnode.WatchStream, next, drop int64) int64 {
 				next = max(next, r.Header.Revision+1)
 			}
 		case <-ws.Done():
-			return next
+			return next, 0, dropAt
 		case <-t.C:
-			return next
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			return next, f.src.rng.Int64N(2 * Second), time.Now().Add(time.Duration(f.exp(3 * Second)))
 		case <-f.stop:
-			return next
+			return next, 0, dropAt
 		}
 	}
 }

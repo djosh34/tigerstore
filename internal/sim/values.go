@@ -12,21 +12,23 @@ import (
 )
 
 // values keeps one copy of each value the clients of the Kubernetes-shaped
-// load put, so that the run's records of it share that copy: the answers
-// that return it, read from a disk or decoded by clientv3, its watch
-// events, the committed log and the checkers' history would otherwise
-// each hold their own, and a long run holds hundreds of thousands. A
-// value is shared only where it is equal byte for byte to the one put,
-// so the records hold exactly what the nodes answered. Every value starts
-// with a part of its own, up to its first space (kubePut), by which it is
-// found.
+// load put, so that the run's records of it share that copy: the
+// committed log and the checkers' history would otherwise each hold their
+// own, and a long run holds hundreds of thousands. A value is shared only
+// where it is equal byte for byte to the one put, so the records hold
+// exactly what the nodes answered. Every value starts with a part of its
+// own, up to its first space (kubePut), by which it is found.
+//
+// The copy it keeps is the one in the run's recordLog, which keeps each
+// value of the calls and the watch responses once too (recordlog.go).
 type values struct {
 	bytes   map[string][]byte
 	strings map[string]string
+	table   *valueTable
 }
 
-func newValues() *values {
-	return &values{bytes: map[string][]byte{}, strings: map[string]string{}}
+func newValues(table *valueTable) *values {
+	return &values{bytes: map[string][]byte{}, strings: map[string]string{}, table: table}
 }
 
 // head is the part of v by which it is found.
@@ -41,8 +43,12 @@ func headString(v string) string {
 	return h
 }
 
-// add keeps v, a value a client puts.
-func (vs *values) add(v []byte) { vs.bytes[string(head(v))] = v }
+// add keeps v, a value a client puts, and returns the copy it keeps.
+func (vs *values) add(v []byte) []byte {
+	kept := vs.table.get(vs.table.add(v))
+	vs.bytes[string(head(v))] = kept
+	return kept
+}
 
 // share returns the kept copy of v, if it is equal to v, or else v.
 func (vs *values) share(v []byte) []byte {

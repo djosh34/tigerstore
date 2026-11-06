@@ -62,14 +62,20 @@ func TestFloorUnderGosim(t *testing.T) {
 }
 
 // calmCost is what a calm seed cost: the calls answered, the CPU time of
-// its load, and that of the whole seed.
+// its load, and that of the whole seed. InRun is set for a seed that forms
+// its cluster in the run, under its load, which the totals leave out.
 type calmCost struct {
 	Answered   int
 	Load, Seed time.Duration
+	InRun      bool
 }
 
 // TestCalm runs calm seeds with every check, and measures the simulator's
-// answered calls per core-second of load and the fixed cost per seed.
+// answered calls per core-second of load and the fixed cost per seed. The
+// load starts as the nodes start from the disks of their formed cluster,
+// so it holds their first election, which the floor's does not; one seed
+// in formUnderFaults forms its cluster in the run, under its load, and is
+// left out.
 func TestCalm(t *testing.T) {
 	if simrun.Race {
 		t.Skip("it measures gosim runs")
@@ -77,6 +83,10 @@ func TestCalm(t *testing.T) {
 	var total calmCost
 	seeds := 0
 	if !simrun.Seeds(t, 1, 1, func(t *testing.T, seed uint64) calmCost {
+		if !formsFirst(CalmConfig(seed)) {
+			t.Logf("seed %d forms its cluster under its load; it is left out", seed)
+			return calmCost{InRun: true}
+		}
 		before, err := simrun.CPUTime()
 		if err != nil {
 			t.Fatal(err)
@@ -92,6 +102,9 @@ func TestCalm(t *testing.T) {
 			c.Answered, c.Load.Seconds(), c.Seed.Seconds(), float64(c.Answered)/c.Load.Seconds(), (c.Seed - c.Load).Seconds())
 		return c
 	}, func(_ uint64, c calmCost) bool {
+		if c.InRun {
+			return false
+		}
 		total.Answered += c.Answered
 		total.Load += c.Load
 		total.Seed += c.Seed
