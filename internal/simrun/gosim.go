@@ -33,6 +33,11 @@ func BubbleFor(t *testing.T, d time.Duration, f func(*testing.T)) {
 // which the driver sets ($SIM_WALL).
 func WallLimitPassed() bool { return gosim.WallLimitPassed() }
 
+// CPUTime is the CPU time the process has used so far, on all of its
+// threads. It measures what a run's work costs, and must never change
+// what the run does.
+func CPUTime() (time.Duration, error) { return gosim.CPUTime() }
+
 // Stacks returns every goroutine's stack, the simulated nodes' included.
 func Stacks() []byte { return gosim.Stacks() }
 

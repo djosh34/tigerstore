@@ -74,23 +74,7 @@ type WatchResult struct {
 // apiserver keeps, with previous values, progress notifications and
 // progress requests. The lock is held.
 func (s *Sim) startWatchers() {
-	type spec struct {
-		key, end                   string
-		prevKV, progress, requests bool
-	}
-	specs := []spec{
-		{"k", "l", true, false, false},
-		{"k2", "k5", true, true, false},
-		{"k3", "", true, false, false},
-		{"k", "\x00", false, true, false},
-	}
-	if s.cfg.Objects > 0 {
-		specs = nil
-		for _, r := range k8ssize.Resources() {
-			p := "/registry/" + r + "/"
-			specs = append(specs, spec{p, string(prefixEnd([]byte(p))), true, true, true})
-		}
-	}
+	specs := watchSpecs(s.cfg.Objects)
 	for i, sp := range specs {
 		w := &watchClient{id: i, sim: s, key: []byte(sp.key), prevKV: sp.prevKV, progress: sp.progress, requests: sp.requests}
 		if sp.end != "" {
@@ -103,6 +87,32 @@ func (s *Sim) startWatchers() {
 		s.watchers = append(s.watchers, w)
 		wait, drop := s.rng.Int64N(Second), s.exp(3*Second)
 		s.wg.Go(func() { w.run(wait, drop) })
+	}
+}
+
+// watchSpec is a watch a client keeps open.
+type watchSpec struct {
+	key, end                   string
+	prevKV, progress, requests bool
+}
+
+// watchSpecs are the watches of the watch clients: four over the small
+// keys, or with the Kubernetes-shaped load on objects, one on each
+// resource prefix.
+func watchSpecs(objects int) []watchSpec {
+	if objects > 0 {
+		var specs []watchSpec
+		for _, r := range k8ssize.Resources() {
+			p := "/registry/" + r + "/"
+			specs = append(specs, watchSpec{p, string(prefixEnd([]byte(p))), true, true, true})
+		}
+		return specs
+	}
+	return []watchSpec{
+		{"k", "l", true, false, false},
+		{"k2", "k5", true, true, false},
+		{"k3", "", true, false, false},
+		{"k", "\x00", false, true, false},
 	}
 }
 

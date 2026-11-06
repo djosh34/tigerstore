@@ -3,6 +3,7 @@ package sim
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -57,13 +58,19 @@ func (s *Sim) serve(p *proc) error {
 // newV3 makes client c's clientv3 client, for the node it calls.
 func (c *client) newV3() error {
 	s := c.sim
+	return c.dialV3(clientAddr(c.node), s.net.ca, func(ctx context.Context, addr string) (net.Conn, error) {
+		return s.net.dial(ctx, s, nil, addr)
+	})
+}
+
+// dialV3 makes client c's clientv3 client, for the gRPC server at addr,
+// whose certificate ca signed, with dial.
+func (c *client) dialV3(addr string, ca *x509.CertPool, dial func(context.Context, string) (net.Conn, error)) error {
 	cli, err := clientv3.New(clientv3.Config{
-		Endpoints: []string{"https://" + clientAddr(c.node)},
-		TLS:       &tls.Config{RootCAs: s.net.ca},
-		Logger:    zap.NewNop(),
-		DialOptions: v3Options(func(ctx context.Context, addr string) (net.Conn, error) {
-			return s.net.dial(ctx, s, nil, addr)
-		}),
+		Endpoints:   []string{"https://" + addr},
+		TLS:         &tls.Config{RootCAs: ca},
+		Logger:      zap.NewNop(),
+		DialOptions: v3Options(dial),
 	})
 	if err != nil {
 		return err

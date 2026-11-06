@@ -84,6 +84,7 @@ func (c *client) run() {
 	for s.sleep(wait) {
 		s.mu.Lock()
 		if s.now() >= s.stopAt {
+			s.markLoad(false)
 			s.mu.Unlock()
 			return
 		}
