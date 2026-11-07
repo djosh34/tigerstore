@@ -43,6 +43,9 @@ func TestDiag524Preload(t *testing.T) {
 	}
 	value := make([]byte, 60<<10)
 	jobs := make(chan int, 6000)
+	ctx, cancelAll := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancelAll()
+	var sent, completed atomic.Int64
 	var workers sync.WaitGroup
 	var failed atomic.Int64
 	var maxLatency atomic.Int64
@@ -50,15 +53,18 @@ func TestDiag524Preload(t *testing.T) {
 	for i := 0; i < 96; i++ {
 		workers.Go(func() {
 			for i := range jobs {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				if ctx.Err() != nil {
+					continue
+				}
 				at := time.Now()
 				_, err := clients[i%3].Txn(ctx, &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte(fmt.Sprintf("key%d", i%3)), Value: value}}}}})
 				d := time.Since(at).Nanoseconds()
 				for old := maxLatency.Load(); d > old && !maxLatency.CompareAndSwap(old, d); old = maxLatency.Load() {
 				}
-				cancel()
-				if err != nil && failed.Add(1) <= 10 {
-					t.Logf("request error after %v: %v", time.Duration(d), err)
+				completed.Add(1)
+				if err != nil && failed.Add(1) == 1 {
+					t.Logf("first request error on node %d after %v: %v", i%3+1, time.Duration(d), err)
+					cancelAll()
 				}
 			}
 		})
@@ -66,11 +72,15 @@ func TestDiag524Preload(t *testing.T) {
 	// Fixed arrivals, not a closed loop. Each run offers the same work.
 	for i := 0; i < 6000; i++ {
 		time.Sleep(time.Until(start.Add(time.Duration(i) * time.Second / 300)))
+		if ctx.Err() != nil {
+			break
+		}
 		jobs <- i
+		sent.Add(1)
 	}
 	close(jobs)
 	workers.Wait()
-	t.Logf("6000 Txns, 300/s, 60 KiB each: elapsed=%v errors=%d max=%v", time.Since(start), failed.Load(), time.Duration(maxLatency.Load()))
+	t.Logf("300 Txns/s, 60 KiB each: sent=%d completed=%d elapsed=%v errors=%d max=%v", sent.Load(), completed.Load(), time.Since(start), failed.Load(), time.Duration(maxLatency.Load()))
 	if failed.Load() > 0 {
 		t.Fatalf("%d requests failed", failed.Load())
 	}
