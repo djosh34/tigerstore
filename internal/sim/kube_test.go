@@ -36,7 +36,7 @@ func kubeConfig(seed uint64, long bool) Config {
 		// A client's 62 objects split into small groups by resource, and a
 		// list pages only through a group of more than a page: with 25 a
 		// page, as the soak's, some schedules created none so large (#517).
-		cfg.ListPage = 25
+		cfg.ListPage = 8
 	}
 	cfg.SegmentBytes = 4 << 20
 	cfg.Faults.DiskBudget = max(16<<20, int64(cfg.Objects)*8<<10)
@@ -87,12 +87,12 @@ func kubernetesLoad(t *testing.T, long bool, n int) {
 			}
 		}
 		for _, r := range res.History {
+			if req, ok := r.req.(*pb.RangeRequest); ok && r.Err == nil && req.Limit > 0 && req.Revision > 0 {
+				pages++
+			}
 			if req, ok := r.req.(*pb.RangeRequest); ok && req.Limit > 0 {
 				if req.Revision > 0 {
 					laterCalls++
-					if r.Err == nil {
-						pages++
-					}
 				} else if r.Err == nil {
 					resp := r.Resp.(*pb.RangeResponse)
 					firstPages++
@@ -110,7 +110,12 @@ func kubernetesLoad(t *testing.T, long bool, n int) {
 				}
 			}
 		}
-		t.Logf("LIST coverage: limit %d, %d successful first pages, %d with More, largest count %d, %d later calls, %d successful later pages", (&Sim{cfg: kubeConfig(seed, long)}).listPage(), firstPages, firstMore, maxCount, laterCalls, pages)
+		t.Logf("LIST coverage: %d successful first pages, %d with More, largest count %d, %d later calls, %d successful later pages", firstPages, firstMore, maxCount, laterCalls, pages)
+		for _, n := range res.nodes {
+			if n.fenced {
+				t.Logf("node %d: injected damage %v, %s", n.id, st.Damage, n.why)
+			}
+		}
 		// The checkers drop a long run's history, so they come after the
 		// counts.
 		checkers(t, res)
