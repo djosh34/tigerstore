@@ -529,6 +529,42 @@ func TestRewrittenTailStaysOut(t *testing.T) {
 	}
 }
 
+// TestCutPagesStayOut checks that the pages a truncate drops from a file
+// that alone held them never go to the Store: they are dead once cut.
+func TestCutPagesStayOut(t *testing.T) {
+	d := simfs.New()
+	store := &memStore{}
+	d.KeepIn(store, 16)
+	write := func(name string, n int) wal.File {
+		t.Helper()
+		f, err := d.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.Write(make([]byte, n*simfs.PageBytes)); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	a := write("a.log", 8)
+	if err := a.Truncate(simfs.PageBytes); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	write("b.log", 16)
+	if n := len(store.pages); n != 1 {
+		t.Errorf("the store holds %d pages, want 1: the 7 cut pages are dead", n)
+	}
+	if got := d.Files()["a.log"]; len(got) != simfs.PageBytes {
+		t.Errorf("a.log reads %d bytes, want %d", len(got), simfs.PageBytes)
+	}
+}
+
 // TestSyncedPagesLeaveMemory checks that a disk keeps in memory only the
 // newest synced pages of its cache, the others in the Store, and reads all
 // of them back.
