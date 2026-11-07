@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 // A checkpoint holds the index as it was at one revision, copied in
@@ -98,8 +100,11 @@ func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done b
 // ErrBadCheckpoint means that the keys of a checkpoint do not parse.
 var ErrBadCheckpoint = errors.New("mvcc: malformed checkpoint")
 
-// MaxKeyBytes bounds a key in a checkpoint; a request is smaller.
-const MaxKeyBytes = 4 << 20
+// MaxKeyBytes is the one bound on a key: a put refuses a longer one
+// (CheckPutOp), and a checkpoint's readers take every key up to it
+// (#438). A key comes in a Raft entry, so no request the node takes can
+// carry a longer one.
+const MaxKeyBytes = wal.MaxEntryBytes
 
 // Load reads the keys of a checkpoint, up to the end mark, into an empty
 // store and sets its revisions. It returns the lowest entry index that a

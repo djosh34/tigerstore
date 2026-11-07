@@ -19,8 +19,8 @@ type storage struct {
 	// at, oldest first; a snapshot names the one of its index.
 	confs []confAt
 	// data[i] is the data of entry first+i in memory, and cum[i] the
-	// data bytes of the entries up to and including it, counted from
-	// base.
+	// bytes of the entries up to and including it, counted from base:
+	// each entry's data and entryOverhead.
 	first uint64
 	data  [][]byte
 	cum   []int64
@@ -29,6 +29,12 @@ type storage struct {
 	// it is past the window.
 	ckpt wal.Root
 }
+
+// entryOverhead is what an entry in memory holds besides its data: the
+// Raft entry, its fields, and its slots in the storage's slices, measured
+// at about 160 bytes. Counting it makes the window bound memory, also when
+// it holds many small entries such as lease keepalives (#431).
+const entryOverhead = 160
 
 // confAt is a Raft configuration and the index it took effect at.
 type confAt struct {
@@ -125,7 +131,7 @@ func (s *storage) add(ents []*raftpb.Entry) error {
 		total = s.cum[len(s.cum)-1]
 	}
 	for _, e := range ents {
-		total += int64(len(e.GetData()))
+		total += int64(len(e.GetData())) + entryOverhead
 		s.cum = append(s.cum, total)
 		s.data = append(s.data, e.GetData())
 	}
@@ -140,7 +146,7 @@ func (s *storage) entryData(index uint64) ([]byte, bool) {
 	return s.data[index-s.first], true
 }
 
-// bytes returns the data bytes of the entries in memory up to index.
+// bytes returns the bytes of the entries in memory up to index.
 func (s *storage) bytes(index uint64) int64 {
 	if index < s.first || len(s.cum) == 0 {
 		return 0
@@ -149,7 +155,7 @@ func (s *storage) bytes(index uint64) int64 {
 	return s.cum[i] - s.base
 }
 
-// total returns the data bytes of every entry in memory.
+// total returns the bytes of every entry in memory.
 func (s *storage) total() int64 { return s.bytes(s.first + uint64(len(s.cum))) }
 
 // trim drops the entries up to index from memory.

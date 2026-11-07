@@ -73,7 +73,8 @@ type Metrics struct {
 	Committed, Applied uint64
 	mvcc.Counts
 	// IndexBytes estimates what the index takes in memory, and
-	// WindowBytes is the data of the Raft entries in memory.
+	// WindowBytes is what the Raft entries in memory hold, their data
+	// and entryOverhead each.
 	IndexBytes, WindowBytes int64
 	// The node driver adds the rest: MapBytes estimates what the map of
 	// where entries and values are on disk takes in memory, DiskBytes is

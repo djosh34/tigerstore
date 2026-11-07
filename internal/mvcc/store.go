@@ -482,6 +482,22 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 // is reused by the next write.
 func (s *Store) Changes() []Change { return s.changes }
 
+// keptChanges is the most changes whose room the store keeps for the
+// next write; a larger array, left by a write of many keys, goes.
+const keptChanges = 4096
+
+// resetChanges forgets the changes of the last write. The slots are
+// cleared, so the array holds no key alive that a compaction removes
+// (#437).
+func (s *Store) resetChanges() {
+	if cap(s.changes) > keptChanges {
+		s.changes = nil
+		return
+	}
+	clear(s.changes)
+	s.changes = s.changes[:0]
+}
+
 // Refs returns the positions of the values of every version of a key.
 // The simulator uses them to damage a value on disk.
 func (s *Store) Refs(key []byte) []Ref {
@@ -612,7 +628,7 @@ func (s *Store) Compact(rev int64) error {
 	case rev > s.rev:
 		return rpctypes.ErrGRPCFutureRev
 	}
-	s.changes = s.changes[:0]
+	s.resetChanges()
 	pending := s.pendingCompact()
 	h := newRevHash(rev, s.compactRev)
 	s.compactRev = rev
@@ -621,8 +637,7 @@ func (s *Store) Compact(rev int64) error {
 		// they go once it is done, but no longer count.
 		s.frozen.compact = rev
 	}
-	var gone []*keyIndex
-	s.keys.Ascend(func(k *keyIndex) bool {
+	s.sweep(func(k *keyIndex) bool {
 		from, to := k.dropped(pending), k.dropped(rev)
 		h.key(k, from)
 		s.counts.Compacted += int64(to - from)
@@ -632,12 +647,8 @@ func (s *Store) Compact(rev int64) error {
 				s.sum ^= versionHash(k.key, &k.vers[i])
 			}
 		}
-		if s.frozen == nil && s.dropFirst(k, to) {
-			gone = append(gone, k)
-		}
-		return true
+		return s.frozen == nil && s.dropFirst(k, to)
 	})
-	s.remove(gone)
 	s.compactHash = h.sum()
 	return nil
 }
@@ -656,14 +667,45 @@ func (k *keyIndex) dropped(rev int64) int {
 // drop removes the versions that a compaction at rev drops, and the keys
 // left without any.
 func (s *Store) drop(rev int64) {
-	var gone []*keyIndex
-	s.keys.Ascend(func(k *keyIndex) bool {
-		if s.dropFirst(k, k.dropped(rev)) {
-			gone = append(gone, k)
+	s.sweep(func(k *keyIndex) bool { return s.dropFirst(k, k.dropped(rev)) })
+}
+
+// removeBatch is how many keys left without versions a sweep collects
+// before it takes them out of the index.
+const removeBatch = 1024
+
+// sweep calls fn for every key in order. fn reports whether it left the
+// key without versions; such keys leave the index in batches, so that a
+// sweep never holds a list of every key it removes (#437).
+func (s *Store) sweep(fn func(*keyIndex) bool) {
+	var from *keyIndex
+	gone := make([]*keyIndex, 0, removeBatch)
+	for {
+		full := false
+		visit := func(k *keyIndex) bool {
+			if fn(k) {
+				gone = append(gone, k)
+				full = len(gone) == removeBatch
+			}
+			return !full
 		}
-		return true
-	})
-	s.remove(gone)
+		if from == nil {
+			s.keys.Ascend(visit)
+		} else {
+			// The last key visited is gone from the index, so the walk
+			// goes on after it.
+			s.keys.AscendGreaterOrEqual(from, visit)
+		}
+		if full {
+			from = &keyIndex{key: gone[len(gone)-1].key}
+		}
+		s.remove(gone)
+		clear(gone)
+		gone = gone[:0]
+		if !full {
+			return
+		}
+	}
 }
 
 // dropFirst removes k's i oldest versions and reports whether none is

@@ -3,11 +3,13 @@ package mvcc
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 )
 
 // randomOp applies one random put, delete or compaction.
@@ -81,5 +83,30 @@ func TestCheckpointCopyIsFrozen(t *testing.T) {
 				t.Fatalf("seed %d: a checkpoint cut at %d of %d bytes loaded", seed, cut, len(b))
 			}
 		}
+	}
+}
+
+// TestCheckpointLoadsEveryKeyItTakes puts a key longer than the old bound
+// of the checkpoint's readers, 4 MiB: the checkpoint that holds it loads
+// and its refs walk. A key past MaxKeyBytes is refused by the put (#438).
+func TestCheckpointLoadsEveryKeyItTakes(t *testing.T) {
+	s := New(&Heap{})
+	key := bytes.Repeat([]byte{'k'}, 4<<20+1)
+	if _, err := s.Put(&pb.PutRequest{Key: key, Value: []byte("v")}); err != nil {
+		t.Fatal(err)
+	}
+	s.Freeze()
+	var b []byte
+	for done := false; !done; {
+		b, _, done = s.CopyFrozen(b, 1<<20)
+	}
+	if _, err := New(&Heap{}).Load(bufio.NewReader(bytes.NewReader(b)), s.Rev(), s.CompactRev()); err != nil {
+		t.Fatalf("a key of %d bytes went in, but the checkpoint holding it does not load: %v", len(key), err)
+	}
+	if err := WalkRefs(bufio.NewReader(bytes.NewReader(b)), func(Ref) error { return nil }); err != nil {
+		t.Fatalf("a key of %d bytes went in, but the walk of the checkpoint's refs fails: %v", len(key), err)
+	}
+	if err := CheckPutOp(&PutOp{Key: make([]byte, MaxKeyBytes+1)}); !errors.Is(err, rpctypes.ErrGRPCRequestTooLarge) {
+		t.Fatalf("a put of a key of MaxKeyBytes+1 bytes: %v, want %v", err, rpctypes.ErrGRPCRequestTooLarge)
 	}
 }

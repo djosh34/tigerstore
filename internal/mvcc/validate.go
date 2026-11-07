@@ -53,6 +53,8 @@ func CheckPutOp(r *PutOp) error {
 	switch {
 	case len(r.Key) == 0:
 		return rpctypes.ErrGRPCEmptyKey
+	case len(r.Key) > MaxKeyBytes:
+		return rpctypes.ErrGRPCRequestTooLarge
 	case r.IgnoreValue && len(r.Value) != 0:
 		return rpctypes.ErrGRPCValueProvided
 	case r.IgnoreLease && r.Lease != 0:
