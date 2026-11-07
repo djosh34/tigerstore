@@ -188,6 +188,11 @@ func (s *single) do(id uint64, op proto.Message) Reply {
 	s.n.Submit(Request{ID: id, Op: op, Caller: s.as})
 	for _, r := range s.run() {
 		if r.ID == id {
+			if _, ok := op.(*pb.RangeRequest); ok && r.Err == nil {
+				// A Range answers as Reply.Range; the driver builds the
+				// message.
+				r.Resp = rangeResp(r)
+			}
 			return r
 		}
 	}
@@ -217,7 +222,7 @@ func TestRejectedTxnKeepsNodeRunning(t *testing.T) {
 	if r.Err != nil {
 		t.Fatal(r.Err)
 	}
-	got, _ := r.Resp.(*pb.RangeResponse)
+	got := rangeResp(r)
 	if got == nil || len(got.Kvs) != 1 || string(got.Kvs[0].Key) != "c" {
 		t.Fatalf("after restart = %v", r.Resp)
 	}
@@ -452,3 +457,7 @@ func TestReplayTracksNoWrites(t *testing.T) {
 		t.Fatalf("a restart that replays 50,000 puts allocates %d bytes with a memory budget, %d without", with, without)
 	}
 }
+
+// rangeResp is the answer of a Range reply of one piece as etcd's
+// message, as the driver builds it.
+func rangeResp(r Reply) *pb.RangeResponse { return r.Range.Response() }

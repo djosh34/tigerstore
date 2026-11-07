@@ -74,7 +74,7 @@ func TestQuota(t *testing.T) {
 	if got[200] != nil || !errors.Is(got[201], rpctypes.ErrGRPCNoSpace) {
 		t.Fatalf("the two puts: %v", got)
 	}
-	if r := s.do(202, &pb.RangeRequest{Key: []byte("a2")}); r.Err != nil || len(r.Resp.(*pb.RangeResponse).Kvs) != 1 {
+	if r := s.do(202, &pb.RangeRequest{Key: []byte("a2")}); r.Err != nil || len(rangeResp(r).Kvs) != 1 {
 		t.Fatalf("the put that reached the quota did not apply: %v", r)
 	}
 	if got := s.alarms(203, &pb.AlarmRequest{}); len(got) != 1 {

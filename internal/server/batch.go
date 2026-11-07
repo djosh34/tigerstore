@@ -57,7 +57,7 @@ func (c *conn) admit(st *stream) {
 		st.finish(rpctypes.ErrGRPCNoLeader)
 		return
 	}
-	req := core.Request{Compact: st.rpc.compact, Caller: c.callerOf(st)}
+	req := core.Request{Caller: c.callerOf(st)}
 	if st.rpc.wirePut {
 		// The put stays in its wire form; the node copies it into the
 		// Raft entry as it is.
@@ -267,7 +267,8 @@ func estimate(cp *node.Completion) int64 {
 		}
 		return int64(proto.Size(cp.Resp))
 	case cp.Tag.(*stream).rpc.compact:
-		return 5 + rangeReplyBound(&cp.Range)
+		// A piece of a range answer, the first with the header.
+		return 5 + headerBound + fieldsOf(cp.Range.KVs) + 2 + 1 + binary.MaxVarintLen64
 	}
 	return replyEstimate
 }
@@ -311,11 +312,14 @@ func (c *conn) completeWaiting() {
 	}
 }
 
-// finished is one encoded reply, or an error, for a stream.
+// finished is one encoded reply, or an error, for a stream: a whole
+// reply, or a piece of one (core.Reply.Rest). more says that pieces
+// follow it, and cont that it follows a piece.
 type finished struct {
-	st  *stream
-	msg []byte
-	err error
+	st         *stream
+	msg        []byte
+	err        error
+	more, cont bool
 	// granted is the ID of a lease the node granted, for its span.
 	granted int64
 }
@@ -333,22 +337,25 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 	now := time.Now()
 	for _, cs := range batches {
 		for _, cp := range cs {
-			f := finished{st: cp.Tag.(*stream), err: cp.Err}
-			c.logSlow(f.st, now.Sub(f.st.admitted))
+			st := cp.Tag.(*stream)
+			f := finished{st: st, err: cp.Err, more: cp.Rest, cont: st.piece != nil}
+			if !f.cont {
+				c.logSlow(st, now.Sub(st.admitted))
+			}
 			if g, ok := cp.Resp.(*pb.LeaseGrantResponse); ok {
 				f.granted = g.ID
 			}
 			switch {
 			case f.err != nil:
-			case f.st.rpc.wirePut:
+			case st.rpc.wirePut:
 				// One buffer per reply: a slow stream keeps only its own
 				// reply alive, which its reply charge counts.
 				msg, err := c.appendPutReply(make([]byte, 0, 5+putResponseSize), &cp.Reply)
 				if f.err = err; err == nil {
 					f.msg = msg
 				}
-			case f.st.rpc.compact && cp.Resp == nil:
-				f.msg, f.err = appendRangeReply(c.cluster, c.member, cp.Term, &cp.Range)
+			case st.rpc.compact && cp.Resp == nil:
+				f.msg, f.err = c.rangePiece(st, &cp.Reply)
 			default:
 				if t, ok := cp.Resp.(*pb.TxnResponse); ok {
 					f.msg, f.err = appendTxnReply(t)
@@ -356,34 +363,116 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 					f.msg, f.err = marshal(cp.Resp)
 				}
 			}
-			if f.err == nil {
-				f.msg, f.err = f.st.compress(f.msg)
+			if f.err == nil && !f.more && !f.cont {
+				// A message in pieces goes out uncompressed, as gRPC
+				// allows any message to.
+				f.msg, f.err = st.compress(f.msg)
+			}
+			if f.err != nil && f.more {
+				// The node keeps the rest, which nobody takes now.
+				c.s.n.Cancel(st.nodeID)
+				f.more = false
 			}
 			out = append(out, f)
 		}
 		clear(cs)
 	}
+	var broken, next []*stream
 	c.mu.Lock()
 	for _, f := range out {
-		c.releaseReqLocked(f.st)
-		if f.st.reset || f.st.done.Swap(true) {
+		st := f.st
+		if !f.cont {
+			c.releaseReqLocked(st)
+		}
+		end := !f.more && f.err == nil
+		if st.reset || (end && st.done.Swap(true)) || (!end && st.done.Load()) {
 			// Reset by the client or ended at its deadline: the reply is
-			// dropped.
+			// dropped, and the rest of an answer in pieces with it.
+			if f.more {
+				c.s.n.Cancel(st.nodeID)
+			}
 			continue
 		}
-		c.chargeLocked(&f.st.replyHeld, len(f.msg))
-		if f.st.span != nil && f.granted != 0 {
-			f.st.span.SetAttributes(attribute.Int64("id", f.granted))
+		if f.cont && f.err != nil {
+			// Part of the message went out: the stream can only break.
+			broken = append(broken, st)
+			continue
+		}
+		c.releaseLocked(&st.replyHeld)
+		c.chargeLocked(&st.replyHeld, len(f.msg))
+		if st.span != nil && f.granted != 0 {
+			st.span.SetAttributes(attribute.Int64("id", f.granted))
+		}
+		if f.more {
+			if st.space == nil {
+				st.space = make(chan struct{}, 1)
+			}
+			st.pushLocked(f.msg, false, nil)
+			next = append(next, st)
+			continue
 		}
 		var s *status.Status
 		if f.err != nil {
 			s = status.Convert(toStatus(f.err))
 		}
-		f.st.pushLocked(f.msg, true, s)
+		st.pushLocked(f.msg, true, s)
 	}
 	c.waitingReplies.Add(-waiting)
 	c.creditLocked()
 	c.mu.Unlock()
+	for _, st := range broken {
+		c.resetStream(st.id, http2.ErrCodeInternal)
+	}
+	for _, st := range next {
+		go c.nextPiece(st)
+	}
+}
+
+// rangePiece encodes a piece of a range's answer: the first comes with
+// the message's prefix and header, the last with its more and count. An
+// answer of one piece is one message as any reply.
+func (c *conn) rangePiece(st *stream, r *core.Reply) ([]byte, error) {
+	switch {
+	case st.piece == nil && !r.Rest:
+		return appendRangeReply(c.cluster, c.member, r.Term, &r.Range)
+	case st.piece == nil:
+		st.piece = &r.Range
+		b, err := appendRangeStart(nil, c.cluster, c.member, r.Term, &r.Range)
+		if err != nil {
+			return nil, err
+		}
+		return appendKVs(b, r.Range.KVs), nil
+	}
+	b := appendKVs(make([]byte, 0, fieldsOf(r.Range.KVs)+12), r.Range.KVs)
+	if !r.Rest {
+		b = appendRangeEnd(b, st.piece)
+	}
+	return b, nil
+}
+
+// nextPiece asks the node for the next piece of st's answer once the
+// writer took most of the last, so a slow client holds back the work and
+// the node holds one piece of the answer at a time.
+func (c *conn) nextPiece(st *stream) {
+	for {
+		c.mu.Lock()
+		gone, ready := st.reset || c.closed, st.queued <= core.PieceBytes/2
+		c.mu.Unlock()
+		switch {
+		case gone:
+			c.s.n.Cancel(st.nodeID)
+			return
+		case ready:
+			c.s.n.Next(st.nodeID)
+			return
+		}
+		select {
+		case <-st.space:
+		case <-c.ctx.Done():
+			c.s.n.Cancel(st.nodeID)
+			return
+		}
+	}
 }
 
 // nodeStopped fails every call the node still holds once it stopped. The
@@ -458,56 +547,62 @@ func headerSize(cluster, member uint64, rev int64, term uint64) int {
 	return n
 }
 
-// kvOverhead is the most a KeyValue message adds to its key and value in
-// a RangeResponse: its tag and length, the key's and the value's tags and
-// lengths, three revisions and a lease.
-const kvOverhead = 2*(1+binary.MaxVarintLen32) + 2*(1+binary.MaxVarintLen32) + 4*(1+binary.MaxVarintLen64)
-
-// rangeReplyBound is at least the size of the RangeResponse
-// appendRangeReply encodes, from the size of the keys and values that
-// RangeKVs counted, without a pass over the KVs.
-func rangeReplyBound(res *mvcc.RangeResult) int64 {
-	header := 1 + 1 + 4*(1+binary.MaxVarintLen64)
-	return int64(header) + res.Bytes + int64(len(res.KVs))*kvOverhead + 2 + 1 + binary.MaxVarintLen64
-}
-
-// rangeReplySize is the size of the RangeResponse appendRangeReply
-// encodes.
-func rangeReplySize(cluster, member uint64, term uint64, res *mvcc.RangeResult) int {
-	size := 1 + protowire.SizeBytes(headerSize(cluster, member, res.Rev, term))
-	for i := range res.KVs {
-		size += 1 + protowire.SizeBytes(kvSize(&res.KVs[i]))
-	}
+// rangeSize is the size of the RangeResponse of res: its header, the
+// KeyValue fields of the whole answer (res.Fields), more and count.
+func rangeSize(cluster, member uint64, term uint64, res *mvcc.RangeResult) int64 {
+	size := int64(1+protowire.SizeBytes(headerSize(cluster, member, res.Rev, term))) + res.Fields
 	if res.More {
 		size += 2
 	}
 	if res.Count != 0 {
-		size += 1 + protowire.SizeVarint(uint64(res.Count))
+		size += int64(1 + protowire.SizeVarint(uint64(res.Count)))
 	}
 	return size
 }
 
+// headerBound is the most the header field of a response takes.
+const headerBound = 1 + 1 + 4*(1+binary.MaxVarintLen64)
+
+// fieldsOf is the size of kvs as KeyValue fields.
+func fieldsOf(kvs []mvcc.KV) int64 {
+	n := int64(0)
+	for i := range kvs {
+		n += int64(kvs[i].FieldSize())
+	}
+	return n
+}
+
 // appendRangeReply encodes the gRPC message of a RangeResponse built from
-// the index's values: the value bytes are copied once, here, into the
-// reply, with no KeyValue message per key. It sizes each KV once, and
-// fills in the message length, which has a fixed width, at the end.
+// the index's values, whole: the value bytes are copied once, here, into
+// the reply, with no KeyValue message per key.
 func appendRangeReply(cluster, member uint64, term uint64, res *mvcc.RangeResult) ([]byte, error) {
-	bound := rangeReplyBound(res)
-	if bound > 1<<31-1 {
-		size := rangeReplySize(cluster, member, term, res)
-		if size > 1<<31-1 {
-			return nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
-		}
-		bound = int64(size)
+	b, err := appendRangeStart(nil, cluster, member, term, res)
+	if err != nil {
+		return nil, err
 	}
-	b := make([]byte, 5, 5+bound)
-	b = appendHeader(b, cluster, member, res.Rev, term)
-	for i := range res.KVs {
-		kv := &res.KVs[i]
-		b = protowire.AppendTag(b, 2, protowire.BytesType)
-		b = protowire.AppendVarint(b, uint64(kvSize(kv)))
-		b = appendKV(b, kv)
+	return appendRangeEnd(appendKVs(b, res.KVs), res), nil
+}
+
+// appendRangeStart appends the gRPC message prefix of the RangeResponse
+// of res, uncompressed, and its header: what comes before its KeyValues.
+// The message is sized from the whole answer, so its KeyValues can follow
+// in pieces (core.Node.Next).
+func appendRangeStart(b []byte, cluster, member uint64, term uint64, res *mvcc.RangeResult) ([]byte, error) {
+	size := rangeSize(cluster, member, term, res)
+	if size > 1<<31-1 {
+		return nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
 	}
+	if b == nil {
+		b = make([]byte, 0, 5+min(size, headerBound+fieldsOf(res.KVs)+12))
+	}
+	b = append(b, 0)
+	b = binary.BigEndian.AppendUint32(b, uint32(size))
+	return appendHeader(b, cluster, member, res.Rev, term), nil
+}
+
+// appendRangeEnd appends what a RangeResponse holds after its KeyValues:
+// more and count.
+func appendRangeEnd(b []byte, res *mvcc.RangeResult) []byte {
 	if res.More {
 		b = protowire.AppendTag(b, 3, protowire.VarintType)
 		b = protowire.AppendVarint(b, 1)
@@ -516,29 +611,18 @@ func appendRangeReply(cluster, member uint64, term uint64, res *mvcc.RangeResult
 		b = protowire.AppendTag(b, 4, protowire.VarintType)
 		b = protowire.AppendVarint(b, uint64(res.Count))
 	}
-	binary.BigEndian.PutUint32(b[1:], uint32(len(b)-5))
-	return b, nil
+	return b
 }
 
-// kvSize is the size of a KeyValue message; fields at their zero value
-// are left out, as protobuf does.
-func kvSize(kv *mvcc.KV) int {
-	n := 0
-	if len(kv.Key) > 0 {
-		n += 1 + protowire.SizeBytes(len(kv.Key))
+// appendKVs appends kvs as the KeyValue fields of a RangeResponse.
+func appendKVs(b []byte, kvs []mvcc.KV) []byte {
+	for i := range kvs {
+		kv := &kvs[i]
+		b = protowire.AppendTag(b, 2, protowire.BytesType)
+		b = protowire.AppendVarint(b, uint64(kv.Size(len(kv.Value))))
+		b = appendKV(b, kv)
 	}
-	for _, v := range [...]int64{kv.CreateRevision, kv.ModRevision, kv.Version} {
-		if v != 0 {
-			n += 1 + protowire.SizeVarint(uint64(v))
-		}
-	}
-	if len(kv.Value) > 0 {
-		n += 1 + protowire.SizeBytes(len(kv.Value))
-	}
-	if kv.Lease != 0 {
-		n += 1 + protowire.SizeVarint(uint64(kv.Lease))
-	}
-	return n
+	return b
 }
 
 func appendKV(b []byte, kv *mvcc.KV) []byte {

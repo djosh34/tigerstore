@@ -15,6 +15,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/mvcc"
 )
 
 // stream is one HTTP/2 stream: a gRPC call or an HTTP request.
@@ -90,8 +92,11 @@ type stream struct {
 	trace      context.Context
 	traceBegan time.Time
 	span       trace.Span
-	ended      bool // the writer took the end of the stream
-	reset      bool // the stream or connection is gone; output is dropped
+	// piece is the first part of an answer that comes in pieces, once it
+	// went out (rangePiece). Only complete uses it.
+	piece *mvcc.RangeResult
+	ended bool // the writer took the end of the stream
+	reset bool // the stream or connection is gone; output is dropped
 }
 
 type outKind byte

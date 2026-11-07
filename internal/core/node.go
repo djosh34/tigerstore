@@ -131,9 +131,13 @@ type Config struct {
 	// MemoryBytes is the memory the whole process may use, the value
 	// cache included: the Go memory limit less room for the garbage
 	// collector. The cache takes what the rest of the process leaves, as
-	// the driver measures it (SetOtherMemory). A Range answer larger than
-	// MemoryBytes is refused. 0 turns the cache and that check off.
+	// the driver measures it (SetOtherMemory). A Range sorted by value
+	// whose values pass MemoryBytes is refused. 0 turns the cache and
+	// that check off.
 	MemoryBytes int64
+	// PieceBytes is about the most one piece of a large answer holds
+	// (pieces.go); 0 means PieceBytes.
+	PieceBytes int
 	// SnapshotTicks is how long a leader waits for a follower to fetch a
 	// snapshot before it sends another.
 	SnapshotTicks int
@@ -234,9 +238,6 @@ type Request struct {
 	// Wire, if set, is Op in the client's encoding, decoded with
 	// UnmarshalAlias. It goes into the Raft entry as it is.
 	Wire []byte
-	// Compact asks for a range's answer as Reply.Range, which the driver
-	// encodes itself, instead of a RangeResponse message.
-	Compact bool
 	// Chunk asks for a range as one chunk of a RangeStream
 	// (mvcc.Store.RangeChunk): no count beyond the limit.
 	Chunk bool
@@ -293,8 +294,11 @@ type Reply struct {
 	Rev    int64
 	Term   uint64
 	PrevKv *mvccpb.KeyValue
-	// Range is the answer to a Compact range.
+	// Range is the answer to a range, or the next piece of an answer
+	// (Next): only its KVs then.
 	Range mvcc.RangeResult
+	// Rest says that more pieces of the answer follow (pieces.go).
+	Rest bool
 }
 
 // UpToInstall returns the jobs up to the first with an install, that one
@@ -572,6 +576,8 @@ type Node struct {
 
 	streams  map[uint64]*watchStream
 	watchers []*watcher
+	// pieced are the answers that go out in pieces, by request ID.
+	pieced map[uint64]*pieced
 
 	// cold are the value reads under way. watchRead is the read of this
 	// turn's watch events.
@@ -617,6 +623,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	c := newCache()
 	vals := &values{storage: st, log: disk, cache: c}
 	cfg.MaxRequestBytes = cmp.Or(cfg.MaxRequestBytes, MaxRequestBytes)
+	cfg.PieceBytes = cmp.Or(cfg.PieceBytes, PieceBytes)
 	cfg.MaxTxnOps = cmp.Or(cfg.MaxTxnOps, mvcc.MaxTxnOps)
 	n := &Node{
 		cfg:         cfg,
@@ -629,6 +636,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		vote:        rec.HardState.Vote,
 		waiting:     map[uint64]*pending{},
 		streams:     map[uint64]*watchStream{},
+		pieced:      map[uint64]*pieced{},
 		snapWait:    map[uint64]int64{},
 		cold:        map[*ValueRead]struct{}{},
 		noSpaceAt:   -1,
@@ -844,6 +852,7 @@ func (n *Node) setState(st *State) {
 	if n.cfg.MemoryBytes > 0 {
 		n.kv.Replaced = n.cache.drop
 	}
+	n.kv.SortBytes = n.cfg.MemoryBytes
 }
 
 // MinLeaseTTL is etcd's smallest lease TTL: 1.5 election timeouts, rounded
@@ -1096,6 +1105,8 @@ func (n *Node) Cancel(id uint64) {
 	if n.err != nil {
 		return
 	}
+	// An answer in pieces whose receiver went away.
+	delete(n.pieced, id)
 	if i := slices.IndexFunc(n.transfers, func(p *pending) bool { return p.req.ID == id }); i >= 0 {
 		p := n.transfers[i]
 		n.transfers = slices.Delete(n.transfers, i, i+1)
@@ -1871,6 +1882,7 @@ func (n *Node) stop() {
 	}
 	n.tokenWaits = nil
 	n.confMessages, n.props, n.propBytesHeld = nil, nil, 0
+	clear(n.pieced)
 	n.timeouts, n.proposals, n.reads, n.readBatches, n.early, n.confs, n.transfers = nil, nil, nil, nil, nil, nil, nil
 }
 
@@ -2061,6 +2073,7 @@ func (n *Node) serveRead(p *pending) {
 	}
 	var resp proto.Message
 	var err error
+	var cursors []*mvcc.Cursor
 	rep := Reply{ID: p.req.ID}
 	if p.aiCurrent {
 		p.ai.revision = n.state.auth.revision
@@ -2078,22 +2091,15 @@ func (n *Node) serveRead(p *pending) {
 		resp, err = n.credentials(op)
 		rep.Rev = int64(n.state.auth.revision)
 	case *pb.RangeRequest:
-		if p.req.Compact {
-			var res mvcc.RangeResult
-			if res, err = n.kv.RangeKVs(op, n.cfg.MemoryBytes); err == nil {
-				rep.Term, rep.Range = n.term, res
+		// Every Range answers as Reply.Range, in pieces if it is large;
+		// the driver builds the message.
+		var res mvcc.RangeResult
+		var c *mvcc.Cursor
+		if res, c, err = n.kv.RangeFirst(op, !p.req.Chunk, n.cfg.PieceBytes); err == nil {
+			rep.Term, rep.Range = n.term, res
+			if c != nil {
+				cursors = []*mvcc.Cursor{c}
 			}
-			break
-		}
-		var r *pb.RangeResponse
-		if p.req.Chunk {
-			r, err = n.kv.RangeChunk(op)
-		} else {
-			r, err = n.kv.Range(op)
-		}
-		if err == nil {
-			n.fillHeader(r.Header)
-			resp = r
 		}
 	case *pb.TxnRequest:
 		var r *pb.TxnResponse
@@ -2160,6 +2166,7 @@ func (n *Node) serveRead(p *pending) {
 		return
 	}
 	rep.Resp, rep.Err = resp, err
+	n.startPieces(&rep, cursors)
 	n.answer(p, rep, n.kv.TakeFills())
 }
 

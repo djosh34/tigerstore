@@ -127,8 +127,9 @@ type input struct {
 	batch       *batch
 	msg         *raftpb.Message
 	unreachable uint64
-	// cancel is a request whose client went away (Cancel).
-	cancel uint64
+	// cancel is a request whose client went away (Cancel), and next one
+	// whose receiver asks for the next piece of its answer (Next).
+	cancel, next uint64
 	// advance moves the election clock (AdjustTicks).
 	advance int
 	// removed is a peer's answer that the cluster removed this node.
@@ -970,6 +971,12 @@ func (n *Node) Cancel(id uint64) {
 	go n.tell(input{cancel: id})
 }
 
+// Next asks for the next piece of the answer to request id, whose last
+// reply had Rest set, once its receiver took that one (core.Node.Next).
+// The piece comes as a reply like the first. It waits for room in the
+// inbox.
+func (n *Node) Next(id uint64) { n.tell(input{next: id}) }
+
 // Do runs one request and waits for its reply.
 func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) {
 	return n.DoAs(ctx, core.Caller{}, op)
@@ -1005,6 +1012,30 @@ func (n *Node) doReply(ctx context.Context, r *request) (core.Reply, error) {
 	if err := n.put(ctx, input{req: r}); err != nil {
 		return core.Reply{}, err
 	}
+	rep, err := n.await(ctx, r)
+	if err != nil {
+		return rep, err
+	}
+	if _, ok := r.op.(*pb.RangeRequest); ok {
+		// A caller of Do takes the answer whole: it asks for every piece
+		// and builds the message.
+		res, term := rep.Range, rep.Term
+		for rep.Rest {
+			n.Next(r.id)
+			if rep, err = n.await(ctx, r); err != nil {
+				return rep, err
+			}
+			res.KVs = append(res.KVs, rep.Range.KVs...)
+		}
+		resp := res.Response()
+		resp.Header.ClusterId, resp.Header.MemberId, resp.Header.RaftTerm = n.cfg.Core.ClusterID, n.cfg.Core.ID, term
+		rep.Resp = resp
+	}
+	return rep, nil
+}
+
+// await waits for the next reply to r.
+func (n *Node) await(ctx context.Context, r *request) (core.Reply, error) {
 	select {
 	case rep := <-r.reply:
 		return rep, rep.Err
@@ -1450,7 +1481,9 @@ func (n *Node) completeAll(replies []core.Reply, waiters map[uint64]waiter, grou
 		if !ok {
 			continue
 		}
-		delete(waiters, r.ID)
+		if !r.Rest {
+			delete(waiters, r.ID)
+		}
 		if w.reply != nil {
 			w.reply <- r
 			continue
@@ -1509,6 +1542,8 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		n.core.Unreachable(in.unreachable)
 	case in.cancel != 0:
 		n.core.Cancel(in.cancel)
+	case in.next != 0:
+		n.core.Next(in.next)
 	case in.advance != 0:
 		n.core.AdvanceElection(in.advance)
 	case in.removed:
