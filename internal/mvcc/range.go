@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
+	"google.golang.org/protobuf/proto"
 )
 
 // Every Range reads through a Cursor, a piece at a time (#505). A piece
@@ -173,18 +174,55 @@ func pushLimit(r *pb.RangeRequest) int64 {
 // Range answers r whole, as etcd's message: for reads whose answer is
 // small, such as a node's own, and for tests.
 func (s *Store) Range(r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	return s.reader().rangeMessage(r, true)
+	s.counts.Ranges++
+	w := s.reader()
+	w.room = math.MaxInt
+	return w.rangeMessage(r, true)
 }
 
-// rangeMessage answers r whole as etcd's message. Values only the log
-// has come as fills into the message.
+// Rest is the part of a message's KeyValues that comes in later pieces:
+// Msg, a *pb.RangeResponse or a *pb.DeleteRangeResponse in a Txn's or a
+// DeleteRange's answer, holds the first piece, N and Fields count and
+// size every KeyValue it has in the whole answer, and Cursor reads the
+// rest.
+type Rest struct {
+	Msg       proto.Message
+	N, Fields int64
+	Cursor    *Cursor
+}
+
+// TakeRests returns the Rests of the answer of the last Txn or
+// DeleteRange, in the order its message holds them, and forgets them.
+// Their KeyValues share the room of PieceBytes; past it, a message gets
+// the first keys that fit, or none.
+func (s *Store) TakeRests() []Rest {
+	r := s.rests
+	s.rests = nil
+	return r
+}
+
+// rangeMessage answers r as etcd's message, with as many KeyValues as
+// the room of the request's answer holds, and a Rest for the others.
+// Values only the log has come as fills into the message.
 func (w *writer) rangeMessage(r *pb.RangeRequest, total bool) (*pb.RangeResponse, error) {
-	res, _, err := w.rangeAt(r, total, math.MaxInt, false)
+	res, c, err := w.rangeAt(r, total, w.room, false)
 	if err != nil {
 		return nil, err
 	}
 	resp := res.Response()
+	w.took(resp, &res, c)
 	return resp, w.s.fillValues(res.KVs, resp.Kvs)
+}
+
+// took charges the first piece of res to the room of the answer, and
+// keeps a Rest for msg if c reads more.
+func (w *writer) took(msg proto.Message, res *RangeResult, c *Cursor) {
+	for i := range res.KVs {
+		w.room -= res.KVs[i].FieldSize()
+	}
+	if c != nil {
+		w.s.rests = append(w.s.rests, Rest{Msg: msg, N: res.N, Fields: res.Fields, Cursor: c})
+	}
 }
 
 // RangeFirst reads the first piece of r, of at most room bytes of
@@ -194,6 +232,7 @@ func (w *writer) rangeMessage(r *pb.RangeRequest, total bool) (*pb.RangeResponse
 // holds only the keys it saw, as one chunk of etcd's RangeStream does.
 // Values only the log has come as fills (TakeFills).
 func (s *Store) RangeFirst(r *pb.RangeRequest, total bool, room int) (RangeResult, *Cursor, error) {
+	s.counts.Ranges++
 	return s.reader().rangeAt(r, total, room, true)
 }
 
@@ -201,7 +240,6 @@ func (s *Store) RangeFirst(r *pb.RangeRequest, total bool, room int) (RangeResul
 // fill, the KVs keep their values to read, for fillValues.
 func (w *writer) rangeAt(r *pb.RangeRequest, total bool, room int, fill bool) (RangeResult, *Cursor, error) {
 	s := w.s
-	s.counts.Ranges++
 	p, err := w.position(r)
 	if err != nil {
 		return RangeResult{}, nil, err
@@ -249,7 +287,7 @@ func (w *writer) rangeAt(r *pb.RangeRequest, total bool, room int, fill bool) (R
 		if full {
 			return true
 		}
-		if len(kvs) > 0 && size+int(f) > room {
+		if (len(kvs) > 0 || room <= 0) && size+int(f) > room {
 			full, c.next = true, k.key
 			return true
 		}
@@ -352,7 +390,7 @@ func (c *Cursor) take(room int, read bool) ([]KV, bool, error) {
 	n, size := 0, 0
 	for n < len(c.list) {
 		f := 1 + protowire.SizeBytes(c.list[n].Size(int(c.list[n].ref.Len)))
-		if n > 0 && size+f > room {
+		if (n > 0 || room <= 0) && size+f > room {
 			break
 		}
 		size += f

@@ -297,8 +297,13 @@ type Reply struct {
 	// Range is the answer to a range, or the next piece of an answer
 	// (Next): only its KVs then.
 	Range mvcc.RangeResult
-	// Rest says that more pieces of the answer follow (pieces.go).
-	Rest bool
+	// Rest says that more pieces of the answer follow (pieces.go), and
+	// Rests are the messages of a Txn's or a DeleteRange's answer whose
+	// KeyValues they bring, in order.
+	Rest  bool
+	Rests []mvcc.Rest
+	// cursors read the rest of the answer, for Next.
+	cursors []*mvcc.Cursor
 }
 
 // UpToInstall returns the jobs up to the first with an install, that one
@@ -853,6 +858,7 @@ func (n *Node) setState(st *State) {
 		n.kv.Replaced = n.cache.drop
 	}
 	n.kv.SortBytes = n.cfg.MemoryBytes
+	n.kv.PieceBytes = n.cfg.PieceBytes
 }
 
 // MinLeaseTTL is etcd's smallest lease TTL: 1.5 election timeouts, rounded
@@ -2107,6 +2113,7 @@ func (n *Node) serveRead(p *pending) {
 		if err == nil {
 			n.fillHeader(r.Header)
 			resp = r
+			rep.Rests = n.kv.TakeRests()
 		}
 	case *pb.LeaseTimeToLiveRequest:
 		// Only the leader counts the time a lease has left. etcd's
@@ -2165,8 +2172,7 @@ func (n *Node) serveRead(p *pending) {
 		n.fail(err)
 		return
 	}
-	rep.Resp, rep.Err = resp, err
-	n.startPieces(&rep, cursors)
+	rep.Resp, rep.Err, rep.cursors = resp, err, cursors
 	n.answer(p, rep, n.kv.TakeFills())
 }
 
@@ -2332,11 +2338,11 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 	if errors.Is(err, errInternal) {
 		return err
 	}
-	fills := n.kv.TakeFills()
+	fills, rests := n.kv.TakeFills(), n.kv.TakeRests()
 	if err == nil {
 		n.matchWatches()
 		if !room {
-			resp, err, fills = nil, n.overQuota(p), nil
+			resp, err, fills, rests = nil, n.overQuota(p), nil, nil
 		}
 	}
 	n.timed = timedApply{op: opName(op), err: err}
@@ -2345,7 +2351,7 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 		return nil
 	}
 	if p != nil {
-		n.answer(p, Reply{ID: p.req.ID, Resp: resp, Err: err}, fills)
+		n.answer(p, Reply{ID: p.req.ID, Resp: resp, Err: err, Rests: rests}, fills)
 	}
 	return nil
 }

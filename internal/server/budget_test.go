@@ -12,6 +12,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
 	"google.golang.org/protobuf/proto"
@@ -106,12 +107,14 @@ func readAnswer(t *testing.T, fr *http2.Framer) []byte {
 	}
 }
 
-// TestRangeHeldBackBySlowClient asks for a Range of 48 MiB on a client
-// that takes nothing past its first 64 KiB. While it waits, the process
-// must hold about a piece of the answer, not all of it: the node builds
-// the next piece only once the stream took the last. Then the client reads
-// the rest, which must be the whole answer in one message (#505).
-func TestRangeHeldBackBySlowClient(t *testing.T) {
+// TestAnswersHeldBackBySlowClient asks for answers of 48 MiB on a client
+// that takes nothing past its first 64 KiB: a Range, a Range inside a
+// Txn, and a DeleteRange with its previous values. While the client
+// waits, the process must hold about a piece of the answer, not all of
+// it: the node builds the next piece only once the stream took the last.
+// Then the client reads the rest, which must be the whole answer in one
+// message (#505).
+func TestAnswersHeldBackBySlowClient(t *testing.T) {
 	c := newCluster(t)
 	cert, _, _, err := c.ca.Issue("client", 96)
 	if err != nil {
@@ -131,31 +134,54 @@ func TestRangeHeldBackBySlowClient(t *testing.T) {
 			return kv.Txn(ctx, &pb.TxnRequest{Success: ops})
 		})
 	}
-	before := heapInUse()
-	r := &pb.RangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), Serializable: true}
-	fr, closeConn := rawCall(t, c, 1, cert, "/etcdserverpb.KV/Range", r)
-	defer closeConn()
-	// Let the node and the writer go as far as they would.
-	time.Sleep(time.Second)
-	held := heapInUse() - before
-	t.Logf("a Range of %d MiB holds %d KiB while its client takes nothing", keys*size>>20, held>>10)
-	if held > 8<<20 {
-		t.Fatalf("a Range of %d MiB holds %d MiB while its client takes nothing", keys*size>>20, held>>20)
-	}
-	msg := readAnswer(t, fr)
-	if len(msg) < 5 || int(binary.BigEndian.Uint32(msg[1:5])) != len(msg)-5 {
-		t.Fatalf("the answer is %d bytes, its prefix says %d", len(msg), binary.BigEndian.Uint32(msg[1:5]))
-	}
-	var resp pb.RangeResponse
-	if err := proto.Unmarshal(msg[5:], &resp); err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Kvs) != keys || resp.Count != keys {
-		t.Fatalf("the answer holds %d keys, count %d, want %d", len(resp.Kvs), resp.Count, keys)
-	}
-	for i, kv := range resp.Kvs {
-		if string(kv.Key) != fmt.Sprintf("big/%05d", i) || !bytes.Equal(kv.Value, value) {
-			t.Fatalf("key %d of the answer is %q", i, kv.Key)
+	all := &pb.RangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), Serializable: true}
+	heldBack := func(path string, req, resp proto.Message) {
+		t.Helper()
+		before := heapInUse()
+		fr, closeConn := rawCall(t, c, 1, cert, path, req)
+		defer closeConn()
+		// Let the node and the writer go as far as they would.
+		time.Sleep(time.Second)
+		held := heapInUse() - before
+		t.Logf("%s of %d MiB holds %d KiB while its client takes nothing", path, keys*size>>20, held>>10)
+		if held > 8<<20 {
+			t.Fatalf("%s of %d MiB holds %d MiB while its client takes nothing", path, keys*size>>20, held>>20)
+		}
+		msg := readAnswer(t, fr)
+		if len(msg) < 5 || int(binary.BigEndian.Uint32(msg[1:5])) != len(msg)-5 {
+			t.Fatalf("%s: the answer is %d bytes, its prefix says %d", path, len(msg), binary.BigEndian.Uint32(msg[1:5]))
+		}
+		if err := proto.Unmarshal(msg[5:], resp); err != nil {
+			t.Fatal(err)
 		}
 	}
+	check := func(what string, kvs []*mvccpb.KeyValue) {
+		t.Helper()
+		if len(kvs) != keys {
+			t.Fatalf("%s holds %d keys, want %d", what, len(kvs), keys)
+		}
+		for i, kv := range kvs {
+			if string(kv.Key) != fmt.Sprintf("big/%05d", i) || !bytes.Equal(kv.Value, value) {
+				t.Fatalf("key %d of %s is %q", i, what, kv.Key)
+			}
+		}
+	}
+	var r pb.RangeResponse
+	heldBack("/etcdserverpb.KV/Range", all, &r)
+	check("the Range", r.Kvs)
+	var txn pb.TxnResponse
+	heldBack("/etcdserverpb.KV/Txn", &pb.TxnRequest{Success: []*pb.RequestOp{
+		{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0")}}},
+		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("after"), Value: []byte("1")}}},
+	}}, &txn)
+	if len(txn.Responses) != 2 || txn.Responses[1].GetResponsePut() == nil {
+		t.Fatalf("the Txn answered %d ops", len(txn.Responses))
+	}
+	check("the Txn's range", txn.Responses[0].GetResponseRange().Kvs)
+	var del pb.DeleteRangeResponse
+	heldBack("/etcdserverpb.KV/DeleteRange", &pb.DeleteRangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), PrevKv: true}, &del)
+	if del.Deleted != keys {
+		t.Fatalf("the DeleteRange deleted %d keys, want %d", del.Deleted, keys)
+	}
+	check("the DeleteRange's previous values", del.PrevKvs)
 }

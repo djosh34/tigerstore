@@ -338,7 +338,7 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 	for _, cs := range batches {
 		for _, cp := range cs {
 			st := cp.Tag.(*stream)
-			f := finished{st: st, err: cp.Err, more: cp.Rest, cont: st.piece != nil}
+			f := finished{st: st, err: cp.Err, more: cp.Rest, cont: st.holes != nil}
 			if !f.cont {
 				c.logSlow(st, now.Sub(st.admitted))
 			}
@@ -347,6 +347,8 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 			}
 			switch {
 			case f.err != nil:
+			case f.cont:
+				f.msg = fillHole(st, cp.Range.KVs)
 			case st.rpc.wirePut:
 				// One buffer per reply: a slow stream keeps only its own
 				// reply alive, which its reply charge counts.
@@ -355,11 +357,18 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 					f.msg = msg
 				}
 			case st.rpc.compact && cp.Resp == nil:
-				f.msg, f.err = c.rangePiece(st, &cp.Reply)
+				f.msg, f.err = c.rangeReply(st, &cp.Reply)
 			default:
-				if t, ok := cp.Resp.(*pb.TxnResponse); ok {
-					f.msg, f.err = appendTxnReply(t)
-				} else {
+				switch r := cp.Resp.(type) {
+				case *pb.TxnResponse:
+					f.msg, st.holes, f.err = appendTxnPieces(r, cp.Rests)
+				case *pb.DeleteRangeResponse:
+					if len(cp.Rests) > 0 {
+						f.msg, st.holes, f.err = appendDeletePieces(r, cp.Rests)
+						break
+					}
+					f.msg, f.err = marshal(r)
+				default:
 					f.msg, f.err = marshal(cp.Resp)
 				}
 			}
@@ -428,26 +437,32 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 	}
 }
 
-// rangePiece encodes a piece of a range's answer: the first comes with
-// the message's prefix and header, the last with its more and count. An
-// answer of one piece is one message as any reply.
-func (c *conn) rangePiece(st *stream, r *core.Reply) ([]byte, error) {
-	switch {
-	case st.piece == nil && !r.Rest:
-		return appendRangeReply(c.cluster, c.member, r.Term, &r.Range)
-	case st.piece == nil:
-		st.piece = &r.Range
-		b, err := appendRangeStart(nil, c.cluster, c.member, r.Term, &r.Range)
-		if err != nil {
-			return nil, err
-		}
-		return appendKVs(b, r.Range.KVs), nil
-	}
-	b := appendKVs(make([]byte, 0, fieldsOf(r.Range.KVs)+12), r.Range.KVs)
+// rangeReply encodes the answer of a Range: whole, or, if pieces
+// follow, its first piece, with the message's prefix and header, and a
+// hole for the rest (holes).
+func (c *conn) rangeReply(st *stream, r *core.Reply) ([]byte, error) {
 	if !r.Rest {
-		b = appendRangeEnd(b, st.piece)
+		return appendRangeReply(c.cluster, c.member, r.Term, &r.Range)
 	}
-	return b, nil
+	b, err := appendRangeStart(nil, c.cluster, c.member, r.Term, &r.Range)
+	if err != nil {
+		return nil, err
+	}
+	st.holes = []hole{{num: 2, left: r.Range.N - int64(len(r.Range.KVs)), after: appendRangeEnd(nil, &r.Range)}}
+	return appendKVs(b, 2, r.Range.KVs), nil
+}
+
+// fillHole encodes a piece of an answer: the KeyValues of the stream's
+// first hole, and once they are all out, what the message holds after
+// them.
+func fillHole(st *stream, kvs []mvcc.KV) []byte {
+	h := &st.holes[0]
+	b := appendKVs(make([]byte, 0, fieldsOf(kvs)+int64(len(h.after))), h.num, kvs)
+	if h.left -= int64(len(kvs)); h.left <= 0 {
+		b = append(b, h.after...)
+		st.holes = st.holes[1:]
+	}
+	return b
 }
 
 // nextPiece asks the node for the next piece of st's answer once the
@@ -580,7 +595,7 @@ func appendRangeReply(cluster, member uint64, term uint64, res *mvcc.RangeResult
 	if err != nil {
 		return nil, err
 	}
-	return appendRangeEnd(appendKVs(b, res.KVs), res), nil
+	return appendRangeEnd(appendKVs(b, 2, res.KVs), res), nil
 }
 
 // appendRangeStart appends the gRPC message prefix of the RangeResponse
@@ -614,11 +629,12 @@ func appendRangeEnd(b []byte, res *mvcc.RangeResult) []byte {
 	return b
 }
 
-// appendKVs appends kvs as the KeyValue fields of a RangeResponse.
-func appendKVs(b []byte, kvs []mvcc.KV) []byte {
+// appendKVs appends kvs as KeyValue fields num, those of a RangeResponse
+// (2) or a DeleteRangeResponse (3).
+func appendKVs(b []byte, num protowire.Number, kvs []mvcc.KV) []byte {
 	for i := range kvs {
 		kv := &kvs[i]
-		b = protowire.AppendTag(b, 2, protowire.BytesType)
+		b = protowire.AppendTag(b, num, protowire.BytesType)
 		b = protowire.AppendVarint(b, uint64(kv.Size(len(kv.Value))))
 		b = appendKV(b, kv)
 	}

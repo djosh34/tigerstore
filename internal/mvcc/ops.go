@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"math"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -21,6 +22,9 @@ type writer struct {
 	s       *Store
 	begin   int64
 	changed bool
+	// room is what the KeyValues of the request's answer may take; the
+	// rest of them come in pieces (TakeRests).
+	room int
 	// done are the results of a transaction's finished compares, and
 	// resume how far an earlier run of it got.
 	done   []bool
@@ -29,14 +33,17 @@ type writer struct {
 
 func (s *Store) start() *writer {
 	s.resetChanges()
-	s.fills = nil
-	return &writer{s: s, begin: s.rev}
+	return s.reader()
 }
 
 // reader starts a read outside any write.
 func (s *Store) reader() *writer {
-	s.fills = nil
-	return &writer{s: s, begin: s.rev}
+	s.fills, s.rests = nil, nil
+	room := s.PieceBytes
+	if room <= 0 {
+		room = math.MaxInt
+	}
+	return &writer{s: s, begin: s.rev, room: room}
 }
 
 // finish moves the store to the next revision if the request changed a key.
@@ -64,7 +71,10 @@ func header(r int64) *pb.ResponseHeader { return &pb.ResponseHeader{Revision: r}
 // plus one keys, and Count holds the keys it saw, not every key in the
 // range. A chunk's limit keeps it small, so it is read whole.
 func (s *Store) RangeChunk(r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	return s.reader().rangeMessage(r, false)
+	s.counts.Ranges++
+	w := s.reader()
+	w.room = math.MaxInt
+	return w.rangeMessage(r, false)
 }
 
 // PutOp is a put request's fields. Key and Value are kept without
@@ -248,6 +258,19 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 		w.s.counts.Ranges++
 	}
 	resp := &pb.DeleteRangeResponse{}
+	if d.PrevKv {
+		// The previous values are a range just before the delete, read
+		// through a cursor as any range's, so a large one comes in pieces.
+		res, c, err := w.rangeAt(&pb.RangeRequest{Key: d.Key, RangeEnd: d.RangeEnd}, true, w.room, false)
+		if err != nil {
+			return nil, err
+		}
+		resp.PrevKvs = KeyValues(res.KVs)
+		w.took(resp, &res, c)
+		if err := w.s.fillValues(res.KVs, resp.PrevKvs); err != nil {
+			return nil, err
+		}
+	}
 	var del []*keyIndex
 	w.s.ascend(d.Key, d.RangeEnd, func(k *keyIndex) bool {
 		if k.vers[len(k.vers)-1].ver != 0 {
@@ -255,16 +278,6 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 		}
 		return true
 	})
-	if d.PrevKv {
-		resp.PrevKvs = make([]*mvccpb.KeyValue, len(del))
-		for i, k := range del {
-			kv, err := w.s.kv(k, &k.vers[len(k.vers)-1])
-			if err != nil {
-				return nil, err
-			}
-			resp.PrevKvs[i] = kv
-		}
-	}
 	for _, k := range del {
 		w.add(k, version{})
 	}
@@ -575,6 +588,7 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 		var out pb.ResponseOp
 		switch t := op.Request.(type) {
 		case *pb.RequestOp_RequestRange:
+			w.s.counts.Ranges++
 			rr, err := w.rangeMessage(t.RequestRange, true)
 			if err != nil {
 				return nil, 0, err

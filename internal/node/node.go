@@ -1016,9 +1016,9 @@ func (n *Node) doReply(ctx context.Context, r *request) (core.Reply, error) {
 	if err != nil {
 		return rep, err
 	}
+	// A caller of Do takes the answer whole: it asks for every piece and
+	// builds the message.
 	if _, ok := r.op.(*pb.RangeRequest); ok {
-		// A caller of Do takes the answer whole: it asks for every piece
-		// and builds the message.
 		res, term := rep.Range, rep.Term
 		for rep.Rest {
 			n.Next(r.id)
@@ -1030,9 +1030,39 @@ func (n *Node) doReply(ctx context.Context, r *request) (core.Reply, error) {
 		resp := res.Response()
 		resp.Header.ClusterId, resp.Header.MemberId, resp.Header.RaftTerm = n.cfg.Core.ClusterID, n.cfg.Core.ID, term
 		rep.Resp = resp
+		return rep, nil
 	}
-	return rep, nil
+	first, rests := rep, rep.Rests
+	for rep.Rest {
+		n.Next(r.id)
+		if rep, err = n.await(ctx, r); err != nil {
+			return rep, err
+		}
+		// A piece brings KeyValues of the first message that lacks some.
+		if len(rests) == 0 {
+			return core.Reply{}, errPieceTooMany
+		}
+		kvs := mvcc.KeyValues(rep.Range.KVs)
+		switch m := rests[0].Msg.(type) {
+		case *pb.RangeResponse:
+			m.Kvs = append(m.Kvs, kvs...)
+			if int64(len(m.Kvs)) == rests[0].N {
+				rests = rests[1:]
+			}
+		case *pb.DeleteRangeResponse:
+			m.PrevKvs = append(m.PrevKvs, kvs...)
+			if int64(len(m.PrevKvs)) == rests[0].N {
+				rests = rests[1:]
+			}
+		}
+	}
+	first.Rest, first.Rests = false, nil
+	return first, nil
 }
+
+// errPieceTooMany is a piece of an answer that has no message left to
+// fill: a bug in the core.
+var errPieceTooMany = errors.New("node: a piece of an answer that no message lacks")
 
 // await waits for the next reply to r.
 func (n *Node) await(ctx context.Context, r *request) (core.Reply, error) {

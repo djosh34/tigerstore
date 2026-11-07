@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"slices"
 	"sort"
+
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // history is every change since the compaction revision, in revision
@@ -125,3 +127,30 @@ func (s *Store) Changed(pos int64) Change {
 
 // HistoryStart is the position of the oldest change the history holds.
 func (s *Store) HistoryStart() int64 { return s.hist.first }
+
+// ChangesFrom is the history position of the first change of the last
+// write, Changes()[0].
+func (s *Store) ChangesFrom() int64 { return s.hist.end() - int64(len(s.changes)) }
+
+// EventSize is the size of the event of the change as one element of a
+// WatchResponse's events, with the previous version if withPrev is set,
+// its values counted by their length, as Event builds it.
+func (c Change) EventSize(withPrev bool) int {
+	v := &c.k.vers[c.i]
+	kv := KV{Key: c.k.key, ModRevision: v.mod.main}
+	n := 0
+	valueLen := 0
+	if v.ver != 0 {
+		kv = c.k.kvValue(v)
+		valueLen = int(v.value.Len)
+	} else {
+		// The type field: DELETE is 1, PUT the default 0.
+		n += 2
+	}
+	n += 1 + protowire.SizeBytes(kv.Size(valueLen))
+	if p := c.prev(withPrev); p != nil {
+		prev := c.k.kvValue(p)
+		n += 1 + protowire.SizeBytes(prev.Size(int(p.value.Len)))
+	}
+	return 1 + protowire.SizeBytes(n)
+}

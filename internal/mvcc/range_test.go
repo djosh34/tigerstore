@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 )
@@ -232,4 +233,106 @@ func TestHistoryInRevisionOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(loaded)
+}
+
+// TestTxnRestsMakeTheAnswer runs a Txn with two ranges and a delete with
+// previous values under a room of 64 bytes for its KeyValues, and adds
+// what each Rest's cursor reads to its message: the answer must be the
+// one a store without the room gives, and every range or delete past the
+// room must have a Rest.
+func TestTxnRestsMakeTheAnswer(t *testing.T) {
+	stores := [2]*Store{New(&Heap{}), New(&Heap{})}
+	stores[1].PieceBytes = 64
+	op := func(o any) *pb.RequestOp {
+		switch o := o.(type) {
+		case *pb.PutRequest:
+			return &pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: o}}
+		case *pb.RangeRequest:
+			return &pb.RequestOp{Request: &pb.RequestOp_RequestRange{RequestRange: o}}
+		case *pb.DeleteRangeRequest:
+			return &pb.RequestOp{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: o}}
+		}
+		return nil
+	}
+	txn := &pb.TxnRequest{Success: []*pb.RequestOp{
+		op(&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("b")}),
+		op(&pb.PutRequest{Key: []byte("x"), Value: []byte("new")}),
+		op(&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("z")}),
+		op(&pb.DeleteRangeRequest{Key: []byte("c"), RangeEnd: []byte("d"), PrevKv: true}),
+	}}
+	var resps [2]*pb.TxnResponse
+	for i, s := range stores {
+		for j := range 20 {
+			put(t, s, fmt.Sprintf("a%02d", j), fmt.Sprintf("value of a%02d", j))
+			put(t, s, fmt.Sprintf("c%02d", j), fmt.Sprintf("value of c%02d", j))
+		}
+		resp, err := s.Txn(txn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rests := s.TakeRests()
+		if i == 0 && len(rests) > 0 {
+			t.Fatalf("%d rests without a room", len(rests))
+		}
+		if i == 1 && len(rests) != 3 {
+			t.Fatalf("%d rests under a room of 64 bytes, want one per range and delete", len(rests))
+		}
+		for _, r := range rests {
+			for done := false; !done; {
+				kvs, d, err := r.Cursor.Next(64)
+				if err != nil {
+					t.Fatal(err)
+				}
+				done = d
+				switch m := r.Msg.(type) {
+				case *pb.RangeResponse:
+					m.Kvs = append(m.Kvs, KeyValues(kvs)...)
+				case *pb.DeleteRangeResponse:
+					m.PrevKvs = append(m.PrevKvs, KeyValues(kvs)...)
+				}
+			}
+		}
+		resps[i] = resp
+	}
+	if !proto.Equal(resps[0], resps[1]) {
+		t.Fatalf("in pieces %v, whole %v", resps[1], resps[0])
+	}
+}
+
+// TestEventSize sizes the events of puts, overwrites, deletes and a Txn
+// that writes a key it deleted, with and without previous values, as
+// protobuf encodes them in a WatchResponse.
+func TestEventSize(t *testing.T) {
+	s := New(&Heap{})
+	var all []Change
+	keep := func() { all = append(all, s.Changes()...) }
+	put(t, s, "a", "1")
+	keep()
+	put(t, s, "a", "22")
+	keep()
+	if _, err := s.DeleteRange(&pb.DeleteRangeRequest{Key: []byte("a")}); err != nil {
+		t.Fatal(err)
+	}
+	keep()
+	put(t, s, "b", "")
+	keep()
+	if _, err := s.Txn(&pb.TxnRequest{Success: []*pb.RequestOp{
+		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("c"), Value: []byte("333"), Lease: 0}}},
+		{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte("b")}}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	keep()
+	for _, c := range all {
+		for _, withPrev := range []bool{false, true} {
+			ev, err := c.Event(withPrev)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := proto.Size(&pb.WatchResponse{Events: []*mvccpb.Event{ev}})
+			if got := c.EventSize(withPrev); got != want {
+				t.Fatalf("%s at %d, prev %v: sized %d, encoded %d", c.Key(), c.ModRev(), withPrev, got, want)
+			}
+		}
+	}
 }

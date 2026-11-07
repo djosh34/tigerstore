@@ -8,6 +8,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/mvcc"
 )
 
 // The TxnResponse encoder below writes what protobuf's deterministic
@@ -16,16 +19,108 @@ import (
 // value are left out, a set message field is written even when empty, and
 // fields go in number order.
 
-// appendTxnReply encodes the gRPC message of a TxnResponse.
+// appendTxnReply encodes the gRPC message of a TxnResponse whole.
 func appendTxnReply(r *pb.TxnResponse) ([]byte, error) {
-	size := txnRespSize(r)
-	if size > 1<<31-1 {
-		return nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
+	b, holes, err := appendTxnPieces(r, nil)
+	if len(holes) > 0 {
+		return nil, status.Error(codes.Internal, "server: a whole Txn reply with KeyValues to come")
 	}
-	b := make([]byte, 0, 5+size)
-	b = append(b, 0)
-	b = binary.BigEndian.AppendUint32(b, uint32(size))
-	return appendTxnResp(b, r), nil
+	return b, err
+}
+
+// appendTxnPieces encodes the gRPC message of a TxnResponse, uncompressed,
+// up to the KeyValues of the first message in rests, and returns what
+// follows as holes: the KeyValues of each message in rests that later
+// pieces bring, and the bytes after them (core.Reply.Rests).
+func appendTxnPieces(r *pb.TxnResponse, rests []mvcc.Rest) ([]byte, []hole, error) {
+	e := &txnEnc{rests: map[proto.Message]*mvcc.Rest{}}
+	for i := range rests {
+		e.rests[rests[i].Msg] = &rests[i]
+	}
+	size := e.txnRespSize(r)
+	if size > 1<<31-1 {
+		return nil, nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
+	}
+	e.b = make([]byte, 0, 5+min(size, 1<<20))
+	e.b = append(e.b, 0)
+	e.b = binary.BigEndian.AppendUint32(e.b, uint32(size))
+	e.appendTxnResp(r)
+	return e.end()
+}
+
+// appendDeletePieces is appendTxnPieces for a DeleteRangeResponse.
+func appendDeletePieces(r *pb.DeleteRangeResponse, rests []mvcc.Rest) ([]byte, []hole, error) {
+	e := &txnEnc{rests: map[proto.Message]*mvcc.Rest{}}
+	for i := range rests {
+		e.rests[rests[i].Msg] = &rests[i]
+	}
+	size := e.deleteRespSize(r)
+	if size > 1<<31-1 {
+		return nil, nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
+	}
+	e.b = make([]byte, 0, 5+min(size, 1<<20))
+	e.b = append(e.b, 0)
+	e.b = binary.BigEndian.AppendUint32(e.b, uint32(size))
+	e.appendDeleteFields(r)
+	return e.end()
+}
+
+// txnEnc encodes a response whose messages in rests have KeyValues to
+// come: each such message's size counts all of them, and its encoding
+// stops after the KeyValues it holds, at a hole.
+type txnEnc struct {
+	rests map[proto.Message]*mvcc.Rest
+	b     []byte
+	head  []byte
+	holes []hole
+}
+
+// hole is where later pieces bring left KeyValues as field num; after
+// is what the message holds after them, up to the next hole.
+type hole struct {
+	num   protowire.Number
+	left  int64
+	after []byte
+}
+
+// gap ends the bytes before a hole of n KeyValues as field num.
+func (e *txnEnc) gap(num protowire.Number, n int64) {
+	if len(e.holes) == 0 {
+		e.head = e.b
+	} else {
+		e.holes[len(e.holes)-1].after = e.b
+	}
+	e.holes = append(e.holes, hole{num: num, left: n})
+	e.b = nil
+}
+
+// end returns the bytes before the first hole and the holes.
+func (e *txnEnc) end() ([]byte, []hole, error) {
+	if len(e.holes) == 0 {
+		return e.b, nil, nil
+	}
+	e.holes[len(e.holes)-1].after = e.b
+	return e.head, e.holes, nil
+}
+
+// kvs is the size of the KeyValue fields of msg, which holds kvs: all
+// those it has in the whole answer if it is in rests.
+func (e *txnEnc) kvs(msg proto.Message, kvs []*mvccpb.KeyValue) int {
+	if r, ok := e.rests[msg]; ok {
+		return int(r.Fields)
+	}
+	return kvsSize(kvs)
+}
+
+// appendKVs appends kvs as field num of msg, and a hole for the rest if
+// msg is in rests.
+func (e *txnEnc) appendKVs(msg proto.Message, num protowire.Number, kvs []*mvccpb.KeyValue) {
+	for _, kv := range kvs {
+		e.b = appendKeyValue(e.b, num, kv)
+	}
+	if r, ok := e.rests[msg]; ok {
+		e.gap(num, r.N-int64(len(kvs)))
+	}
 }
 
 func sizeMsg(n int) int { return 1 + protowire.SizeBytes(n) }
@@ -121,8 +216,8 @@ func kvsSize(kvs []*mvccpb.KeyValue) int {
 	return n
 }
 
-func rangeRespSize(r *pb.RangeResponse) int {
-	return headerField(r.Header) + kvsSize(r.Kvs) + sizeBool(r.More) + sizeVarint(uint64(r.Count))
+func (e *txnEnc) rangeRespSize(r *pb.RangeResponse) int {
+	return headerField(r.Header) + e.kvs(r, r.Kvs) + sizeBool(r.More) + sizeVarint(uint64(r.Count))
 }
 
 func putRespSize(r *pb.PutResponse) int {
@@ -133,30 +228,33 @@ func putRespSize(r *pb.PutResponse) int {
 	return n
 }
 
-func deleteRespSize(r *pb.DeleteRangeResponse) int {
-	return headerField(r.Header) + sizeVarint(uint64(r.Deleted)) + kvsSize(r.PrevKvs)
+func (e *txnEnc) deleteRespSize(r *pb.DeleteRangeResponse) int {
+	return headerField(r.Header) + sizeVarint(uint64(r.Deleted)) + e.kvs(r, r.PrevKvs)
 }
 
-func txnRespSize(r *pb.TxnResponse) int {
+func (e *txnEnc) txnRespSize(r *pb.TxnResponse) int {
 	n := headerField(r.Header) + sizeBool(r.Succeeded)
 	for _, op := range r.Responses {
-		n += sizeMsg(respOpSize(op))
+		n += sizeMsg(e.respOpSize(op))
 	}
 	return n
 }
 
+// txnRespSize is the size of a TxnResponse with every KeyValue in it.
+func txnRespSize(r *pb.TxnResponse) int { return (&txnEnc{}).txnRespSize(r) }
+
 // respOpSize is the size of a ResponseOp. A set member of its oneof
 // counts even when nil, as an empty message, as protobuf writes it.
-func respOpSize(op *pb.ResponseOp) int {
+func (e *txnEnc) respOpSize(op *pb.ResponseOp) int {
 	switch r := op.Response.(type) {
 	case *pb.ResponseOp_ResponseRange:
-		return sizeMsg(rangeRespSize(orEmpty(r.ResponseRange)))
+		return sizeMsg(e.rangeRespSize(orEmpty(r.ResponseRange)))
 	case *pb.ResponseOp_ResponsePut:
 		return sizeMsg(putRespSize(orEmpty(r.ResponsePut)))
 	case *pb.ResponseOp_ResponseDeleteRange:
-		return sizeMsg(deleteRespSize(orEmpty(r.ResponseDeleteRange)))
+		return sizeMsg(e.deleteRespSize(orEmpty(r.ResponseDeleteRange)))
 	case *pb.ResponseOp_ResponseTxn:
-		return sizeMsg(txnRespSize(orEmpty(r.ResponseTxn)))
+		return sizeMsg(e.txnRespSize(orEmpty(r.ResponseTxn)))
 	}
 	return 0
 }
@@ -169,46 +267,45 @@ func orEmpty[M any](m *M) *M {
 	return m
 }
 
-func appendTxnResp(b []byte, r *pb.TxnResponse) []byte {
-	b = appendRespHeader(b, r.Header)
-	b = appendBool(b, 2, r.Succeeded)
+func (e *txnEnc) appendTxnResp(r *pb.TxnResponse) {
+	e.b = appendRespHeader(e.b, r.Header)
+	e.b = appendBool(e.b, 2, r.Succeeded)
 	for _, op := range r.Responses {
-		b = appendMsgHeader(b, 3, respOpSize(op))
-		b = appendRespOp(b, op)
+		e.b = appendMsgHeader(e.b, 3, e.respOpSize(op))
+		e.appendRespOp(op)
 	}
-	return b
 }
 
-func appendRespOp(b []byte, op *pb.ResponseOp) []byte {
+// appendDeleteFields appends the fields of a DeleteRangeResponse.
+func (e *txnEnc) appendDeleteFields(dr *pb.DeleteRangeResponse) {
+	e.b = appendRespHeader(e.b, dr.Header)
+	e.b = appendVarint(e.b, 2, uint64(dr.Deleted))
+	e.appendKVs(dr, 3, dr.PrevKvs)
+}
+
+func (e *txnEnc) appendRespOp(op *pb.ResponseOp) {
 	switch r := op.Response.(type) {
 	case *pb.ResponseOp_ResponseRange:
 		rr := orEmpty(r.ResponseRange)
-		b = appendMsgHeader(b, 1, rangeRespSize(rr))
-		b = appendRespHeader(b, rr.Header)
-		for _, kv := range rr.Kvs {
-			b = appendKeyValue(b, 2, kv)
-		}
-		b = appendBool(b, 3, rr.More)
-		b = appendVarint(b, 4, uint64(rr.Count))
+		e.b = appendMsgHeader(e.b, 1, e.rangeRespSize(rr))
+		e.b = appendRespHeader(e.b, rr.Header)
+		e.appendKVs(rr, 2, rr.Kvs)
+		e.b = appendBool(e.b, 3, rr.More)
+		e.b = appendVarint(e.b, 4, uint64(rr.Count))
 	case *pb.ResponseOp_ResponsePut:
 		pr := orEmpty(r.ResponsePut)
-		b = appendMsgHeader(b, 2, putRespSize(pr))
-		b = appendRespHeader(b, pr.Header)
+		e.b = appendMsgHeader(e.b, 2, putRespSize(pr))
+		e.b = appendRespHeader(e.b, pr.Header)
 		if pr.PrevKv != nil {
-			b = appendKeyValue(b, 2, pr.PrevKv)
+			e.b = appendKeyValue(e.b, 2, pr.PrevKv)
 		}
 	case *pb.ResponseOp_ResponseDeleteRange:
 		dr := orEmpty(r.ResponseDeleteRange)
-		b = appendMsgHeader(b, 3, deleteRespSize(dr))
-		b = appendRespHeader(b, dr.Header)
-		b = appendVarint(b, 2, uint64(dr.Deleted))
-		for _, kv := range dr.PrevKvs {
-			b = appendKeyValue(b, 3, kv)
-		}
+		e.b = appendMsgHeader(e.b, 3, e.deleteRespSize(dr))
+		e.appendDeleteFields(dr)
 	case *pb.ResponseOp_ResponseTxn:
 		tr := orEmpty(r.ResponseTxn)
-		b = appendMsgHeader(b, 4, txnRespSize(tr))
-		b = appendTxnResp(b, tr)
+		e.b = appendMsgHeader(e.b, 4, e.txnRespSize(tr))
+		e.appendTxnResp(tr)
 	}
-	return b
 }

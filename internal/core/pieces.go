@@ -58,9 +58,15 @@ func (n *Node) sendPiece(r Reply, fills []mvcc.Fill) {
 	v.replies = append(v.replies, r)
 }
 
-// startPieces keeps the cursors of an answer whose first reply r goes out
-// with Rest set.
-func (n *Node) startPieces(r *Reply, cursors []*mvcc.Cursor) {
+// startPieces keeps the cursors of r, a reply that goes out, and sets
+// Rest if it has any: those of a Range, or of the Rests of a Txn or a
+// DeleteRange.
+func (n *Node) startPieces(r *Reply) {
+	cursors := r.cursors
+	for _, rest := range r.Rests {
+		cursors = append(cursors, rest.Cursor)
+	}
+	r.cursors = nil
 	if len(cursors) == 0 {
 		return
 	}

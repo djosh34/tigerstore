@@ -276,6 +276,10 @@ type Store struct {
 	// hist every change since the compaction revision.
 	changes []Change
 	hist    history
+	// PieceBytes, if above 0, is the room of the KeyValues of a Txn's or
+	// a DeleteRange's answer; rests are the parts past it (TakeRests).
+	PieceBytes int
+	rests      []Rest
 	// fills are the values that responses and events wait for.
 	fills []Fill
 	// resume is how far the next transaction's compares got (Resume).
@@ -474,19 +478,29 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 		}
 		ev = &mvccpb.Event{Type: mvccpb.Event_PUT, Kv: kv}
 	}
-	j := c.i - 1
-	for j >= 0 && c.k.vers[j].mod.main == v.mod.main {
-		j--
-	}
-	create := v.ver != 0 && v.create == v.mod.main
-	if withPrev && !create && j >= 0 && c.k.vers[j].ver != 0 {
-		prev, err := s.kv(c.k, &c.k.vers[j])
+	if p := c.prev(withPrev); p != nil {
+		prev, err := s.kv(c.k, p)
 		if err != nil {
 			return nil, err
 		}
 		ev.PrevKv = prev
 	}
 	return ev, nil
+}
+
+// prev is the version an event of the change carries as its previous
+// one, if withPrev is set and it has one (Event).
+func (c Change) prev(withPrev bool) *version {
+	v := &c.k.vers[c.i]
+	j := c.i - 1
+	for j >= 0 && c.k.vers[j].mod.main == v.mod.main {
+		j--
+	}
+	create := v.ver != 0 && v.create == v.mod.main
+	if !withPrev || create || j < 0 || c.k.vers[j].ver == 0 {
+		return nil
+	}
+	return &c.k.vers[j]
 }
 
 // Changes returns the changes of the last applied write request. The slice
