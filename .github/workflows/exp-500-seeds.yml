@@ -1,0 +1,48 @@
+# An experiment of #500, on its throwaway branch only: how many processes
+# of seeds a campaign runner should run at once, and whether the
+# campaign-shaped seed runs beside the others (research/500).
+name: exp-500-seeds
+on:
+  push:
+    branches: [exp/500-seeds]
+permissions:
+  contents: read
+jobs:
+  throughput:
+    strategy:
+      fail-fast: false
+      matrix:
+        procs: [1, 2, 3, 4, 6]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: scripts/sim.sh ./internal/sim '^$'
+      - run: research/500/seeds-per-machine.sh "$RUNNER_TEMP/out" ${{ matrix.procs }} 32
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: throughput-${{ matrix.procs }}
+          path: ${{ runner.temp }}/out
+  beside:
+    strategy:
+      fail-fast: false
+      matrix:
+        procs: [2, 3, 4]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: scripts/sim.sh ./internal/sim '^$'
+      - run: CAMPAIGN=1 research/500/seeds-per-machine.sh "$RUNNER_TEMP/out" ${{ matrix.procs }} 2000
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: beside-${{ matrix.procs }}
+          path: ${{ runner.temp }}/out
