@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"net/url"
 	"os"
@@ -152,6 +153,9 @@ type input struct {
 	snapshot         uint64
 	fetching, served bool
 	serveErr         error
+	// at is when a peer, a client or a helper queued the input, from which
+	// the committer could have run (turn); zero if not noted.
+	at time.Time
 }
 
 // watchBytes is how many bytes of responses a watch stream may fall
@@ -284,6 +288,7 @@ func (n *Node) OpenWatch(ctx context.Context, c core.Caller) (*WatchStream, erro
 }
 
 func (n *Node) put(ctx context.Context, in input) error {
+	in.at = time.Now()
 	select {
 	case n.inbox <- in:
 		return nil
@@ -935,7 +940,7 @@ func (n *Node) Recovered() (last uint64, hs wal.HardState) {
 // committer is behind, which slows down that peer's connection.
 func (n *Node) Deliver(m *raftpb.Message) {
 	select {
-	case n.inbox <- input{msg: m}:
+	case n.inbox <- input{msg: m, at: time.Now()}:
 	case <-n.done:
 	}
 }
@@ -1117,56 +1122,106 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	wake := time.NewTimer(n.cfg.Tick)
 	defer wake.Stop()
 	wakeAt := int64(1)
-	// tick gives the core the ticks of wall time up to now, entered being
-	// the tick at which the committer last began to wait. A ticker that
-	// drops ticks is the model: Raft takes no burst of ticks from a
-	// committer that was late, and requests still time out by the wall
-	// clock (Elapse). The ticks that passed while it was busy go to the
-	// core as one Tick and the rest by Elapse. Each tick it waited is a
-	// Tick, up to the one that was due (wakeAt), so Raft sees the same
-	// ticks as if each had come on time; those after it passed while it
-	// waited for a CPU to run on, which a ticker drops too.
-	//
-	// held is set when a peer's message waits for a node that does not
-	// lead: Raft's election clock then stops a tick short of the due
-	// tick, and the message, which may be its leader's heartbeat, steps
-	// first. A node starved of CPU would otherwise count its leader dead
-	// for the time it could not read the heartbeats already waiting for
-	// it, where a ticker's dropped ticks slowed its clock instead.
-	//
-	// Memory is measured at most once a tick, on a turn: only a turn makes
-	// it grow. tick reports whether the core had a tick, after which it
-	// takes a turn.
-	tick := func(entered int64, held bool) bool {
+	// tick gives the core the ticks of wall time up to now, at most most
+	// of them as Ticks, entered being the tick at which the committer last
+	// began to wait and ran the tick from which it could have run again: a
+	// queued input's or the due tick (wakeAt). A ticker that drops ticks
+	// is the model. Raft takes no burst of ticks from a committer that was
+	// late, by its own work or for a CPU to run on, and requests still
+	// time out by the wall clock (Elapse). The ticks it waited are Ticks
+	// up to ran, as if each had come on time; of those after, as of those
+	// that passed while it was busy, only one is, as a ticker holds one
+	// tick for a goroutine that has not taken it, and the rest go by
+	// Elapse. Past most Ticks tick stops, and the next call goes on from
+	// there; late says whether a turn had its one late Tick. It reports
+	// whether it moved the core's clocks.
+	late := false
+	tick := func(entered, ran, most int64) bool {
 		now := int64(time.Since(started) / n.cfg.Tick)
-		last := wakeAt
-		if held && n.core.Leader() != n.cfg.Core.ID {
-			last--
-		}
-		ticked := entered > clock || now > clock
-		if entered > clock {
+		from := clock
+		give := func() bool {
+			if most == 0 {
+				return false
+			}
 			n.core.Tick()
+			most--
 			clock++
-			if entered > clock {
-				n.core.Elapse(entered - clock)
-				clock = entered
+			return true
+		}
+		if entered > clock && !late {
+			if !give() {
+				return false
+			}
+			late = true
+		}
+		if entered > clock {
+			n.core.Elapse(entered - clock)
+			clock = entered
+		}
+		for clock < now && clock < ran {
+			if !give() {
+				return clock > from
 			}
 		}
-		for ; clock < now && clock < last; clock++ {
-			n.core.Tick()
+		if clock < now && clock < wakeAt && !late {
+			if !give() {
+				return clock > from
+			}
+			late = true
 		}
 		if now > clock {
 			n.core.Elapse(now - clock)
 			clock = now
 		}
-		if now > measured {
-			n.measureMemory(streams)
-			measured = now
-		}
-		return ticked
+		return clock > from
 	}
 	// ins are the inputs of a turn.
 	var ins []input
+	// turn begins a turn: it takes first, the input the select took if
+	// any, and the inputs queued after it, and gives the core the ticks
+	// that passed and the inputs. The committer could have run from the
+	// earliest of them was queued, or from its due tick. Raft's election
+	// clock must also not run ahead of a message already waiting for it:
+	// so while a peer's message waits for a node that does not lead, the
+	// core gets the ticks up to one short of its due tick, due Ticks away,
+	// then the inputs, and then the rest of the ticks, in the same turn.
+	// Memory is measured at most once a tick, on a turn: only a turn makes
+	// it grow. turn reports whether the core got a tick or an input, after
+	// which it runs.
+	turn := func(entered int64, first *input, inbox <-chan input, due int64) bool {
+		ins = ins[:0]
+		if first != nil {
+			ins = append(ins, *first)
+		}
+		if inbox != nil {
+			ins = n.takeInputs(ins)
+		}
+		ran := wakeAt
+		for _, in := range ins {
+			if !in.at.IsZero() {
+				ran = min(ran, max(int64(in.at.Sub(started)/n.cfg.Tick), clock))
+			}
+		}
+		held := hasMessage(ins) && n.core.Leader() != n.cfg.Core.ID
+		most := int64(math.MaxInt64)
+		if held {
+			most = due - 1
+		}
+		late = false
+		moved := tick(entered, ran, most)
+		for i := range ins {
+			n.handle(ins[i], waiters, streams)
+			ins[i] = input{}
+		}
+		if held {
+			moved = tick(entered, ran, math.MaxInt64) || moved
+		}
+		if clock > measured {
+			n.measureMemory(streams)
+			measured = clock
+		}
+		return moved || len(ins) > 0
+	}
 	// beats holds when this node last sent each peer a heartbeat, in
 	// term beatTerm.
 	beats := map[uint64]time.Time{}
@@ -1198,22 +1253,17 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			}
 			paced = pace.C
 		}
-		if at := clock + n.core.Due(); at != wakeAt {
+		due := n.core.Due()
+		if at := clock + due; at != wakeAt {
 			wakeAt = at
 			wake.Reset(time.Until(started.Add(time.Duration(at) * n.cfg.Tick)))
 		}
 		entered := int64(time.Since(started) / n.cfg.Tick)
 		select {
 		case in := <-inbox:
-			ins = n.takeInputs(append(ins[:0], in))
-			tick(entered, hasMessage(ins))
-			for i := range ins {
-				n.handle(ins[i], waiters, streams)
-				ins[i] = input{}
-			}
-			ins = ins[:0]
+			turn(entered, &in, inbox, due)
 		case done := <-n.persisted:
-			tick(entered, len(n.inbox) > 0)
+			turn(entered, nil, inbox, due)
 			if done.err != nil {
 				if core.FailureOf(done.err) == core.Reload {
 					n.dropAll(waiters, streams, rpctypes.ErrGRPCStopped)
@@ -1230,38 +1280,30 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		case toDisk <- next:
 			backlog[0] = persistBatch{}
 			backlog = backlog[1:]
-			if !tick(entered, len(n.inbox) > 0) {
+			if !turn(entered, nil, inbox, due) {
 				continue
 			}
 		case toWriter <- chunk:
 			chunks[0] = core.CheckpointChunk{}
 			chunks = chunks[1:]
-			if !tick(entered, len(n.inbox) > 0) {
+			if !turn(entered, nil, inbox, due) {
 				continue
 			}
 		case toReader <- read:
 			reads[0] = nil
 			reads = reads[1:]
-			if !tick(entered, len(n.inbox) > 0) {
+			if !turn(entered, nil, inbox, due) {
 				continue
 			}
 		case d := <-n.readDone:
-			tick(entered, len(n.inbox) > 0)
+			turn(entered, nil, inbox, due)
 			n.core.ValuesRead(d.read, d.err)
 		case <-paced:
-			tick(entered, len(n.inbox) > 0)
+			turn(entered, nil, inbox, due)
 			pace = nil
 			n.core.CopyCheckpoint()
 		case <-wake.C:
-			if inbox != nil {
-				ins = n.takeInputs(ins[:0])
-			}
-			tick(entered, hasMessage(ins))
-			for i := range ins {
-				n.handle(ins[i], waiters, streams)
-				ins[i] = input{}
-			}
-			ins = ins[:0]
+			turn(entered, nil, inbox, due)
 		case <-ctx.Done():
 			return nil
 		}
@@ -2209,6 +2251,7 @@ func (n *Node) readValues(ctx context.Context) {
 
 // tell hands the committer an input from a helper goroutine.
 func (n *Node) tell(in input) {
+	in.at = time.Now()
 	select {
 	case n.inbox <- in:
 	case <-n.done:

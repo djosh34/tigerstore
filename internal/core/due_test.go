@@ -115,11 +115,15 @@ func TestDueHoldsTicks(t *testing.T) {
 			t.Errorf("follower %d woke %d times for a tick while it heard from its leader", i+1, woken)
 		}
 	}
+	// Raft draws each node's timeout at random, so two candidates can
+	// split the vote and draw again; 20 timeouts leave room for that.
 	d.c.down[lead] = true
-	for range 3 * DefaultConfig(1, nil).ElectionTicks {
+	limit := 20 * DefaultConfig(1, nil).ElectionTicks
+	for range limit {
+		if l := d.c.leader(); l >= 0 && l != lead {
+			return
+		}
 		d.tick()
 	}
-	if l := d.c.leader(); l < 0 || l == lead {
-		t.Fatalf("no new leader %d ticks after leader %d went down: %s", 3*DefaultConfig(1, nil).ElectionTicks, lead+1, d.c.describe())
-	}
+	t.Fatalf("no new leader %d ticks after leader %d went down: %s", limit, lead+1, d.c.describe())
 }
