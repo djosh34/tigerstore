@@ -1436,6 +1436,9 @@ func RemoveFiles(fs FS, names []string, spares int) (int, error) {
 			if err := fs.SyncDir(); err != nil {
 				return i, err
 			}
+			if i == len(names)-1 {
+				return len(names), nil
+			}
 		}
 	}
 	return len(names), fs.SyncDir()

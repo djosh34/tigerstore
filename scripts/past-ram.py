@@ -43,8 +43,10 @@ def classify(result, progress):
     # A member at its memory.max can also reclaim instead of being killed:
     # etcd then reads its database pages back from disk until a write
     # times out (#419). Every member must have hit the limit, and the
-    # driver must have stopped on that timeout, in max mode only.
-    reclaim = (result["mode"] == "max" and len(groups) == 3
+    # driver must have stopped on that timeout, for etcd in max mode
+    # only: tigerstore keeps to its memory budget, so for it this is a
+    # failure.
+    reclaim = (result["kind"] == "etcd" and result["mode"] == "max" and len(groups) == 3
                and all(g["events"].get("max", 0) > 0 for g in groups)
                and bool(progress) and progress[-1].get("failure") == "etcdserver: request timed out")
     if (len(groups) != 3 or not (oom or reclaim)

@@ -44,8 +44,8 @@ class ClassificationTests(unittest.TestCase):
         # Run 40075627047 (#419): etcd's three members hit memory.max
         # 7,115 to 11,992 times, none was killed, and a write timed out
         # at 280,256 objects.
-        def run(mode="max", failure="etcdserver: request timed out", hits=(11992, 7115, 10747)):
-            result = self.result("etcd", mode)
+        def run(mode="max", failure="etcdserver: request timed out", hits=(11992, 7115, 10747), kind="etcd"):
+            result = self.result(kind, mode)
             result["failure"] = "driver exited 1; see progress.jsonl and driver.log"
             result["last_acknowledged"].update(objects=280256, live_bytes=410807279)
             result["final_cgroups"] = [dict(events=dict(oom_kill=0, max=n)) for n in hits]
@@ -59,6 +59,7 @@ class ClassificationTests(unittest.TestCase):
             ("proof mode", run(mode="proof")),
             ("another error", run(failure="value mismatch")),
             ("a member below its limit", run(hits=(11992, 0, 10747))),
+            ("tigerstore", run(kind="tigerstore")),
         ]:
             with self.subTest(name):
                 self.assertEqual(result["outcome"], "failed")

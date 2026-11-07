@@ -155,3 +155,45 @@ func TestCheckpointChunkOfAHotKey(t *testing.T) {
 		t.Fatalf("a walk of the refs of one key with 20,000 versions allocated %d bytes", alloc)
 	}
 }
+
+// TestCopyFrozenInSmallChunks copies an index of short, long and hot keys
+// in chunks of 97 bytes: each chunk passes the limit by at most one
+// version and a key's uvarints, a chunk can stop inside a key of 3 KiB or
+// inside a key's 300 versions, and the chunks load as the same index
+// (#434, #435).
+func TestCopyFrozenInSmallChunks(t *testing.T) {
+	rng := rand.New(rand.NewPCG(4, 35))
+	s := New(&Heap{})
+	for i := range 2000 {
+		var key []byte
+		switch {
+		case i%400 == 0:
+			key = fmt.Appendf(nil, "long-%d-%s", i, bytes.Repeat([]byte{'x'}, 3000))
+		case i%3 == 0:
+			key = []byte("hot")
+		default:
+			key = fmt.Appendf(nil, "k%04d", rng.IntN(500))
+		}
+		if _, err := s.Put(&pb.PutRequest{Key: key, Value: []byte("v")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Freeze()
+	const limit, slack = 97, 2*10 + 5*10 + 3*10 + 4
+	var all []byte
+	for done := false; !done; {
+		var b []byte
+		b, _, done = s.CopyFrozen(nil, limit)
+		if len(b) > limit+slack {
+			t.Fatalf("a chunk with a limit of %d holds %d bytes", limit, len(b))
+		}
+		all = append(all, b...)
+	}
+	loaded := New(&Heap{})
+	if _, err := loaded.Load(bufio.NewReader(bytes.NewReader(all)), s.Rev(), s.CompactRev()); err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Hash() != s.Hash() {
+		t.Fatal("the chunks load as another index")
+	}
+}

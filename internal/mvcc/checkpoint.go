@@ -2,7 +2,6 @@ package mvcc
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -33,11 +32,12 @@ import (
 type frozen struct {
 	rev int64
 	// next is the key the next chunk starts at, nil before the first
-	// chunk, and ver how many of its versions are copied already: a
-	// chunk can stop inside one key's versions (#435).
-	next    []byte
-	ver     int
-	started bool
+	// chunk. keyOff and ver are how far the copy of next got: the bytes
+	// of its key, and its versions, both 0 if it is not begun. A chunk can
+	// stop inside a key's bytes or its versions (#435).
+	next        []byte
+	keyOff, ver int
+	started     bool
 	// compact is the newest compaction that waits for the copy, or 0.
 	compact int64
 }
@@ -47,33 +47,43 @@ func (s *Store) Freeze() { s.frozen = &frozen{rev: s.rev} }
 
 // CopyFrozen appends the next keys of the frozen index to b until b holds
 // at least limit bytes, and the lowest entry index that a value among
-// them is in, 0 for none. It stops between two versions, also of one
-// key, so a chunk passes limit by at most one version. done is true once
-// every key is out; then the end mark is appended and the compactions
-// that waited are done.
+// them is in, 0 for none. It stops inside a key's bytes or between two
+// of its versions, so a chunk passes limit by at most one version and
+// the uvarints around a key. done is true once every key is out; then the
+// end mark is appended and the compactions that waited are done.
 func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done bool) {
 	f := s.frozen
-	more := false
+	more, first := false, true
 	copyKey := func(k *keyIndex) bool {
-		from := 0
-		if f.ver > 0 && bytes.Equal(k.key, f.next) {
-			from = f.ver
+		keyOff, from := 0, 0
+		if first {
+			// The walk starts at the key the last chunk stopped in.
+			keyOff, from = f.keyOff, f.ver
+			f.keyOff, f.ver, first = 0, 0, false
 		}
-		f.ver = 0
-		if from == 0 && len(b) >= limit {
-			f.next, more = k.key, true
-			return false
-		}
-		n := 0
-		for n < len(k.vers) && k.vers[n].mod.main <= f.rev {
-			n++
-		}
+		// The versions at or below the frozen revision come first.
+		n := k.at(f.rev) + 1
 		if n == 0 {
 			return true
 		}
+		begun := keyOff > 0 || from > 0
+		if !begun && len(b) >= limit {
+			f.next, more = k.key, true
+			return false
+		}
 		if from == 0 {
-			b = binary.AppendUvarint(b, uint64(len(k.key)))
-			b = append(b, k.key...)
+			if !begun {
+				b = binary.AppendUvarint(b, uint64(len(k.key)))
+			}
+			take := len(k.key) - keyOff
+			if room := limit - len(b); take > room && room > 0 {
+				take = room
+			}
+			b = append(b, k.key[keyOff:keyOff+take]...)
+			if keyOff += take; keyOff < len(k.key) {
+				f.next, f.keyOff, more = k.key, keyOff, true
+				return false
+			}
 			b = binary.AppendUvarint(b, uint64(n))
 		}
 		for i := from; i < n; i++ {

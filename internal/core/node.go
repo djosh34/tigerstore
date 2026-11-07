@@ -556,8 +556,11 @@ type Node struct {
 	// copy is the checkpoint being copied, last the newest one finished,
 	// sinceCkpt the entry bytes applied since the last cut, and base the
 	// size the next cut is measured against (maybeCheckpoint).
-	copy      *copying
-	last      lastCkpt
+	copy *copying
+	last lastCkpt
+	// unwritten is the newest checkpoint finished whose write the driver
+	// has not reported yet, or 0.
+	unwritten uint64
 	sinceCkpt int64
 	base      int64
 	// unpersisted is the entry bytes on their way to the disk, and

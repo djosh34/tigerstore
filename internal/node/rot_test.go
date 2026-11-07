@@ -11,6 +11,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simfs"
 )
 
@@ -35,11 +36,11 @@ func damagedValueIsRefused(t *testing.T) (err error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	ran := make(chan error, 1)
 	go func() { ran <- n.Run(ctx, noPeers{}) }()
+	stopped := false
 	defer func() {
 		cancel()
-		if rerr := <-ran; rerr != nil && !errors.Is(rerr, errDamagedRead) {
-			// Without the planted bug the node stops on the damage.
-			t.Logf("the node stopped: %v", rerr)
+		if !stopped {
+			<-ran
 		}
 	}()
 	value := fmt.Appendf(nil, "the value that rots %01000d", 7)
@@ -68,8 +69,19 @@ func damagedValueIsRefused(t *testing.T) (err error) {
 	defer rcancel()
 	r, err := n.Do(rctx, &pb.RangeRequest{Key: []byte("rot")})
 	if err != nil {
-		// The read failed, as it must: the node saw the damage.
-		return nil
+		// The read failed. It must be because the node stopped on the
+		// value's checksum, as it must, not for another reason.
+		stopped = true
+		select {
+		case rerr := <-ran:
+			if !errors.Is(rerr, mvcc.ErrBadValue) {
+				return fmt.Errorf("the read failed with %w, and the node stopped with %w, not on the checksum", err, rerr)
+			}
+			return nil
+		case <-time.After(5 * time.Second):
+			stopped = false
+			return fmt.Errorf("the read failed with %w, and the node goes on", err)
+		}
 	}
 	if kvs := r.(*pb.RangeResponse).Kvs; len(kvs) == 1 && !bytes.Equal(kvs[0].Value, value) {
 		return errDamagedRead

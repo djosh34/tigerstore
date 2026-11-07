@@ -343,6 +343,9 @@ type copying struct {
 	crc         uint32
 	size        int64
 	minRef      uint64
+	// head is the part of the header not handed out yet: it goes in
+	// pieces, as the keys do (#434).
+	head []byte
 }
 
 // lastCkpt is the newest checkpoint finished: its index, size, the lowest
@@ -358,15 +361,16 @@ type lastCkpt struct {
 // entries applied since the last one pass CheckpointBytes and
 // CheckpointRatio times the base, the size of the newest checkpoint
 // finished when the last one was cut, or once a compaction applied. It
-// waits for the copy of the checkpoint before, which the driver paces by
-// its disk, and then cuts at the next applied entry: a cut never hands
-// out the rest of a copy at once (#434). Nodes copy at their own speed, so
-// they may cut at different indexes.
+// waits for the checkpoint before: for its copy, which the driver paces
+// by its disk, and for the driver to report it written, so that its root
+// counts (CheckpointWritten). Then it cuts at the next applied entry: a
+// cut never hands out the rest of a copy at once (#434). Nodes copy and
+// write at their own speed, so they may cut at different indexes.
 func (n *Node) maybeCheckpoint(index, term uint64) {
 	if n.sinceCkpt >= max(n.cfg.CheckpointBytes, n.cfg.CheckpointRatio*n.base) {
 		n.cutDue = true
 	}
-	if !n.cutDue || n.copy != nil {
+	if !n.cutDue || n.copy != nil || n.unwritten != 0 {
 		return
 	}
 	n.cutDue = false
@@ -383,10 +387,12 @@ func (n *Node) maybeCheckpoint(index, term uint64) {
 		n.fail(err)
 		return
 	}
-	n.copy = &copying{index: index, term: term, crc: crc32.Update(0, castagnoli, data), size: int64(len(data))}
+	// The header is the leases and auth at the cut, about 8 bytes a
+	// lease; it goes out in pieces before the keys.
+	n.copy = &copying{index: index, term: term, head: data}
 	n.kv.Freeze()
 	n.sinceCkpt = 0
-	n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{Index: index, Data: data})
+	n.copyChunk(n.cfg.CheckpointChunk)
 }
 
 // header is the checkpoint header of the state, but for its base.
@@ -409,9 +415,19 @@ func (st *State) header(index, term uint64) *ckptHeader {
 	return h
 }
 
-// copyChunk copies about limit bytes more of the checkpoint under way.
+// copyChunk copies about limit bytes more of the checkpoint under way:
+// of its header, then of its keys.
 func (n *Node) copyChunk(limit int) {
 	c := n.copy
+	if len(c.head) > 0 {
+		k := min(limit, len(c.head))
+		data := c.head[:k:k]
+		c.head = c.head[k:]
+		c.crc = crc32.Update(c.crc, castagnoli, data)
+		c.size += int64(k)
+		n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{Index: c.index, Data: data})
+		return
+	}
 	data, minRef, done := n.kv.CopyFrozen(make([]byte, 0, limit+1024), limit)
 	c.crc = crc32.Update(c.crc, castagnoli, data)
 	c.size += int64(len(data))
@@ -422,7 +438,7 @@ func (n *Node) copyChunk(limit int) {
 		data = binary.LittleEndian.AppendUint32(data, c.crc)
 		c.size += 4
 		n.last = lastCkpt{index: c.index, size: c.size, minRef: c.minRef}
-		n.copy = nil
+		n.copy, n.unwritten = nil, c.index
 	}
 	n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{Index: c.index, Data: data, Done: done})
 }
@@ -452,6 +468,9 @@ func (n *Node) CheckpointWritten(index uint64, err error) {
 	if err != nil {
 		n.fail(fmt.Errorf("core: write the checkpoint at %d: %w", index, err))
 		return
+	}
+	if index == n.unwritten {
+		n.unwritten = 0
 	}
 	if n.err != nil || index != n.last.index || index <= n.storage.ckpt.Index {
 		// An older checkpoint than the newest durable one; it never
@@ -647,12 +666,20 @@ func (n *Node) RestoredCheckpoint(members []*pb.Member, w io.Writer) (wal.Root, 
 	if err != nil {
 		return wal.Root{}, err
 	}
-	data, err := st.header(n.applied, term).encode()
+	head, err := st.header(n.applied, term).encode()
 	if err != nil {
 		return wal.Root{}, err
 	}
-	crc := crc32.Checksum(data, castagnoli)
+	crc := crc32.Checksum(head, castagnoli)
+	for len(head) > 0 {
+		k := min(n.cfg.CheckpointChunk, len(head))
+		if _, err := w.Write(head[:k]); err != nil {
+			return wal.Root{}, err
+		}
+		head = head[k:]
+	}
 	n.kv.Freeze()
+	var data []byte
 	for done := false; !done; {
 		if _, err := w.Write(data); err != nil {
 			return wal.Root{}, err
@@ -700,7 +727,7 @@ func (n *Node) releaseCompacts() {
 // at the applied index, when a copy under way held back the cut their
 // compaction asked for and no entry applied since, as on a quiet cluster.
 func (n *Node) cutForCompacts() {
-	if len(n.physical) == 0 || !n.cutDue || n.copy != nil || n.paused != nil || n.err != nil {
+	if len(n.physical) == 0 || !n.cutDue || n.copy != nil || n.unwritten != 0 || n.paused != nil || n.err != nil {
 		return
 	}
 	term, err := n.termAt(n.applied)
