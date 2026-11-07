@@ -1864,7 +1864,7 @@ func (n *Node) Process() (Effects, error) {
 		n.runApply()
 		n.requestReads()
 		n.drainReady()
-		n.cutForCompacts()
+		n.cutWaiting()
 		// A write that a read queued, such as a Downgrade ENABLE once its
 		// read index applied, goes out in the same turn.
 		if len(n.proposals) > 0 && (!n.isLeader || len(n.own) < ownDepth) {

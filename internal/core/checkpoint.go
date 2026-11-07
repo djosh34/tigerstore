@@ -723,11 +723,14 @@ func (n *Node) releaseCompacts() {
 	n.physical = n.physical[i:]
 }
 
-// cutForCompacts cuts the checkpoint that physical compactions wait for,
-// at the applied index, when a copy under way held back the cut their
-// compaction asked for and no entry applied since, as on a quiet cluster.
-func (n *Node) cutForCompacts() {
-	if len(n.physical) == 0 || !n.cutDue || n.copy != nil || n.unwritten != 0 || n.applyWaits() || n.err != nil {
+// cutWaiting cuts the checkpoint that is due, at the applied index, once
+// nothing holds it back any more, when no entry applied since: a copy or
+// a write held back the cut a compaction asked for or the log's growth
+// made due, and no entry comes, as on a quiet cluster or one that refuses
+// writes at NOSPACE until that very cut frees space. Physical
+// compactions wait for it too.
+func (n *Node) cutWaiting() {
+	if !n.cutDue || n.copy != nil || n.unwritten != 0 || n.applyWaits() || n.err != nil {
 		return
 	}
 	term, err := n.termAt(n.applied)

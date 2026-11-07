@@ -20,7 +20,7 @@ type storage struct {
 	confs []confAt
 	// data[i] is the data of entry first+i in memory, and cum[i] the
 	// bytes of the entries up to and including it, counted from base:
-	// each entry's data and entryOverhead.
+	// each entry's data and EntryOverhead.
 	first uint64
 	data  [][]byte
 	cum   []int64
@@ -30,11 +30,11 @@ type storage struct {
 	ckpt wal.Root
 }
 
-// entryOverhead is what an entry in memory holds besides its data: the
+// EntryOverhead is what an entry in memory holds besides its data: the
 // Raft entry, its fields, and its slots in the storage's slices, measured
 // at about 160 bytes. Counting it makes the window bound memory, also when
 // it holds many small entries such as lease keepalives (#431).
-const entryOverhead = 160
+const EntryOverhead = 160
 
 // confAt is a Raft configuration and the index it took effect at.
 type confAt struct {
@@ -131,7 +131,7 @@ func (s *storage) add(ents []*raftpb.Entry) error {
 		total = s.cum[len(s.cum)-1]
 	}
 	for _, e := range ents {
-		total += int64(len(e.GetData())) + entryOverhead
+		total += int64(len(e.GetData())) + EntryOverhead
 		s.cum = append(s.cum, total)
 		s.data = append(s.data, e.GetData())
 	}

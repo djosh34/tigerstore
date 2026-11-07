@@ -13,8 +13,8 @@ import (
 
 // TestCompactionCuts checks that every compaction cuts a checkpoint, in
 // every cluster version, and that one applied while a copy is under way
-// waits for it: the next entry after the copy cuts, with one copy at a
-// time.
+// waits for it: once the copy is written, the due cut follows at the
+// applied index with no entry to apply, one copy at a time.
 func TestCompactionCuts(t *testing.T) {
 	for _, version := range []uint32{1, MaxVersion} {
 		t.Run(fmt.Sprintf("version=%d", version), func(t *testing.T) {
@@ -47,12 +47,8 @@ func TestCompactionCuts(t *testing.T) {
 			}
 			s.holdCopy = false
 			s.run()
-			if got := s.n.DurableCheckpoint().Index; got != copying {
-				t.Fatalf("the checkpoint is at %d after the copy at %d", got, copying)
-			}
-			put(7)
-			if got, want := s.n.DurableCheckpoint().Index, s.n.Applied(); got != want {
-				t.Fatalf("the entry after the copy is %d, the checkpoint %d", want, got)
+			if got, want := s.n.DurableCheckpoint().Index, s.n.Applied(); got != want || got == copying {
+				t.Fatalf("after the copy at %d the checkpoint is at %d, want the due cut at %d", copying, got, want)
 			}
 		})
 	}

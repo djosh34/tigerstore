@@ -1243,9 +1243,8 @@ func TestSlowFetch(t *testing.T) {
 // serve again 2 s after the connection fails. A call that a node answers
 // with "server stopped" as it starts again from its log after a snapshot
 // install is left out, as the liveness rule does: the simulator's window
-// of 16 bytes (tinyLimits) makes a follower that falls one entry behind
-// install a snapshot, which under 12 clients happens every 10 to 20 ms
-// (#266).
+// of a few entries (tinyLimits) makes a follower that falls a few entries
+// behind install a snapshot, which under 12 clients happens often (#266).
 func TestHalfOpenLink(t *testing.T) {
 	simrun.Each(t, []uint64{4001, 4002, 4003}, func(t *testing.T, seed uint64) struct{} {
 		cfg := DefaultConfig(seed)
