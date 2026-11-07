@@ -12,8 +12,10 @@ import (
 // timeout, so that it leads at once; with initial, a node of a larger
 // cluster waits up to wait for connections to more than one peer and
 // then moves it to two ticks before, so that a cluster that starts
-// together elects a leader sooner.
-func (n *Node) AdjustTicks(ctx context.Context, activePeers func() int, initial bool, wait time.Duration) error {
+// together elects a leader sooner. activePeers returns the peers
+// connected and a channel closed once that may have changed; etcd looks
+// every 50 ms instead.
+func (n *Node) AdjustTicks(ctx context.Context, activePeers func() (int, <-chan struct{}), initial bool, wait time.Duration) error {
 	m, err := n.Metrics(ctx)
 	if err != nil {
 		return err
@@ -27,19 +29,21 @@ func (n *Node) AdjustTicks(ctx context.Context, activePeers func() int, initial 
 		n.logf("skipping initial election tick advance")
 		return nil
 	}
-	const every = 50 * time.Millisecond
-	for range int(wait / every) {
-		select {
-		case <-time.After(every):
-		case <-ctx.Done():
-			return nil
-		}
-		if activePeers() > 1 {
+	timeout := time.After(wait)
+	for {
+		active, moved := activePeers()
+		if active > 1 {
 			n.logf("initialized peer connections; fast-forwarding %d election ticks", election-2)
 			return n.advance(ctx, election-2)
 		}
+		select {
+		case <-moved:
+		case <-timeout:
+			return nil
+		case <-ctx.Done():
+			return nil
+		}
 	}
-	return nil
 }
 
 func (n *Node) advance(ctx context.Context, ticks int) error {

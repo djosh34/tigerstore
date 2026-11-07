@@ -48,6 +48,9 @@ func CPUTime() (time.Duration, error) {
 	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano()), nil
 }
 
+// TimerFirings is 0 natively, where nothing counts the timers that fire.
+func TimerFirings() uint64 { return 0 }
+
 // Aside runs f: natively there is no run's random stream to keep.
 func Aside(f func()) { f() }
 

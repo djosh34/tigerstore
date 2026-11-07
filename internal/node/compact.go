@@ -135,20 +135,17 @@ func (n *Node) compactPeriodically(ctx context.Context, period time.Duration) {
 // compactByRevision is etcd's Revision compactor.
 func (n *Node) compactByRevision(ctx context.Context, retention int64, every time.Duration) {
 	var prev int64
-	for sleep(ctx, every) {
-		if !n.leads() {
-			continue
-		}
+	n.onLeaderBeats(ctx, every, func() {
 		rev, err := n.revision(ctx)
 		if err != nil {
 			return
 		}
 		rev -= retention
 		if rev <= 0 || rev == prev {
-			continue
+			return
 		}
 		if n.autoCompact(ctx, rev) {
 			prev = rev
 		}
-	}
+	})
 }

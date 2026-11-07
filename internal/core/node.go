@@ -447,6 +447,12 @@ type Node struct {
 	kv      *mvcc.Store
 
 	now int64
+	// electionFrom is the tick from which Raft's election clock counts,
+	// as far as the node knows, and raftState, raftTerm and raftLead are
+	// Raft's role, term and leader then (noteRaft).
+	electionFrom       int64
+	raftState          raft.StateType
+	raftTerm, raftLead uint64
 	// clock is the time requests wait by: the ticks of wall time, which
 	// Elapse moves on past the ticks a busy driver missed, as etcd's
 	// request timeouts run on the wall clock while its Raft loop is stuck.
@@ -466,6 +472,10 @@ type Node struct {
 	// membershipAt is where Counters.membershipSnapshot last counted.
 	membershipAt uint64
 	leaseSeq     uint64
+	// expiries holds the armed leases by the tick their expiry is next
+	// due, and checkpoints those with a checkpoint by its tick: on the
+	// leader only (lease.go).
+	expiries, checkpoints leaseQueue
 	// announcedAt is the tick this node last proposed its version.
 	announcedAt int64
 	// confMessages wait for Raft to apply the preceding configuration
@@ -575,9 +585,11 @@ type Node struct {
 
 	// hashes are the hashes the last compactions took, oldest first.
 	hashes []mvcc.KVHash
-	// tokens are the simple tokens this node assigned (auth.go), and
-	// tokenWaits the requests whose token's entry is not applied yet.
+	// tokens are the simple tokens this node assigned (auth.go), tokenDue
+	// the earliest tick one may expire at, and tokenWaits the requests
+	// whose token's entry is not applied yet.
 	tokens     map[string]*simpleToken
+	tokenDue   int64
 	tokenWaits []tokenWait
 	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
 	// or -1 once an alarm change of it applied. diskAlarm says that this
@@ -604,20 +616,22 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	cfg.MaxRequestBytes = cmp.Or(cfg.MaxRequestBytes, MaxRequestBytes)
 	cfg.MaxTxnOps = cmp.Or(cfg.MaxTxnOps, mvcc.MaxTxnOps)
 	n := &Node{
-		cfg:       cfg,
-		storage:   st,
-		values:    vals,
-		cache:     c,
-		log:       disk,
-		term:      rec.HardState.Term,
-		voteTerm:  rec.HardState.Term,
-		vote:      rec.HardState.Vote,
-		waiting:   map[uint64]*pending{},
-		streams:   map[uint64]*watchStream{},
-		snapWait:  map[uint64]int64{},
-		cold:      map[*ValueRead]struct{}{},
-		noSpaceAt: -1,
-		tokens:    map[string]*simpleToken{},
+		cfg:         cfg,
+		storage:     st,
+		values:      vals,
+		cache:       c,
+		log:         disk,
+		term:        rec.HardState.Term,
+		voteTerm:    rec.HardState.Term,
+		vote:        rec.HardState.Vote,
+		waiting:     map[uint64]*pending{},
+		streams:     map[uint64]*watchStream{},
+		snapWait:    map[uint64]int64{},
+		cold:        map[*ValueRead]struct{}{},
+		noSpaceAt:   -1,
+		tokens:      map[string]*simpleToken{},
+		expiries:    leaseQueue{at: (*lease).due, pos: func(l *lease) *int { return &l.epos }},
+		checkpoints: leaseQueue{at: func(l *lease) int64 { return l.checkpointAt }, pos: func(l *lease) *int { return &l.cpos }},
 	}
 	n.setState(NewState(MinLeaseTTL(cfg), vals))
 	if root := rec.Root; root.Index > 0 {
@@ -891,6 +905,8 @@ func (n *Node) AdvanceElection(ticks int) {
 	for range ticks {
 		n.rn.Tick()
 	}
+	n.electionFrom -= int64(ticks)
+	n.noteRaft(nil)
 }
 
 // Tick advances the node's clock by one tick.
@@ -905,6 +921,7 @@ func (n *Node) Tick() {
 		return
 	}
 	n.rn.Tick()
+	n.noteRaft(nil)
 	if n.removeAt != 0 {
 		return
 	}
@@ -1003,7 +1020,9 @@ func (n *Node) Step(m *raftpb.Message) error {
 		n.fail(err)
 		return err
 	}
-	return n.rn.Step(m)
+	err := n.rn.Step(m)
+	n.noteRaft(m)
+	return err
 }
 
 // checkCommit refuses a heartbeat that Raft would take and that commits
@@ -1854,6 +1873,7 @@ func (n *Node) drainReady() {
 	for n.err == nil && n.rn.HasReady() {
 		n.handleReady(n.rn.Ready())
 	}
+	n.noteRaft(nil)
 }
 
 func (n *Node) handleReady(rd raft.Ready) {
@@ -2361,7 +2381,18 @@ func (n *Node) applyPut(b []byte, at int, p *pending) error {
 // applyOp runs one write. Request errors (an unknown lease, a missing key
 // for ignore_value) are answers; any other error stops the node.
 func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
+	var revoked *lease
+	switch op := op.(type) {
+	case *pb.LeaseRevokeRequest:
+		revoked = n.state.leases[op.ID]
+	case *pb.LeaseCheckpoint:
+		revoked = n.state.leases[op.ID]
+	}
 	resp, err := n.state.Apply(op)
+	if revoked != nil && n.state.leases[revoked.id] != revoked {
+		n.expiries.remove(revoked)
+		n.checkpoints.remove(revoked)
+	}
 	if err != nil {
 		if _, cold := errors.AsType[*mvcc.ColdError](err); cold || errors.Is(err, errInternal) || isAnswer(err) {
 			return nil, err

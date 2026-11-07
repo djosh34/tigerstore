@@ -302,11 +302,10 @@ func concurrentCleaning(t *testing.T, seed uint64) (err error) {
 		return fmt.Errorf("no concurrent cleaning: packs=%d removes=%d", packs, removes)
 	}
 	t.Logf("seed=%d pack-syncs=%d segment-removes=%d crash-cuts=%d", seed, packs, removes, len(cuts))
-	for _, stage := range []string{"pack-synced", "root-buffered", "root-synced", "removed"} {
-		if cuts[stage] == nil {
-			return fmt.Errorf("missing production cleaner crash boundary %s", stage)
-		}
-	}
+	// A value lost at any crash boundary the run reached is the failure,
+	// whichever boundaries the run's schedule reached (#504: under B29 a
+	// pass can remove the old segments itself, before the cleaner's own
+	// removal); only a run that lost nothing must have reached them all.
 	for stage, disk := range cuts {
 		if err := checkCrashReferences(stage, disk); err != nil {
 			return err
@@ -328,7 +327,15 @@ func concurrentCleaning(t *testing.T, seed uint64) (err error) {
 	go func() { rdone <- restarted.Run(rctx, noPeers{}) }()
 	err = checkValues(restarted, want)
 	rcancel()
-	return lostValue(errors.Join(err, <-rdone))
+	if err = lostValue(errors.Join(err, <-rdone)); err != nil {
+		return err
+	}
+	for _, stage := range []string{"pack-synced", "root-buffered", "root-synced", "removed"} {
+		if cuts[stage] == nil {
+			return fmt.Errorf("missing production cleaner crash boundary %s", stage)
+		}
+	}
+	return nil
 }
 
 // lostValue marks a read of a value the log no longer has as a lost value.

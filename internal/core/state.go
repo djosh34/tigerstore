@@ -42,6 +42,9 @@ type lease struct {
 	expiry       int64
 	revokeAt     int64
 	checkpointAt int64
+	// epos and cpos are its places in the leader's queues of expiries
+	// and checkpoints (leaseQueue).
+	epos, cpos int
 }
 
 // newExpiry is the leader's decision that a lease expired. It goes in the
@@ -424,15 +427,7 @@ func (st *State) revoke(id int64) (proto.Message, error) {
 	}
 	slices.Sort(keys)
 	if len(keys) > 0 {
-		del := &pb.TxnRequest{}
-		for _, k := range keys {
-			del.Success = append(del.Success, &pb.RequestOp{Request: &pb.RequestOp_RequestDeleteRange{
-				RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte(k)},
-			}})
-		}
-		if _, err := st.kv.Txn(del); err != nil {
-			return nil, fmt.Errorf("%w: revoking lease %d: %w", errInternal, id, err)
-		}
+		st.kv.DeleteKeys(keys)
 		st.track()
 	}
 	st.leaseSum -= l.hash()

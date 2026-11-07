@@ -1409,7 +1409,7 @@ func (r *revisionOrder) search() error {
 	for rev := int64(2); ; {
 		r.rev = rev
 		if w.tick() {
-			return errWitnessTimeout
+			return ErrWitnessTimeout
 		}
 		var ok bool
 		if rev > r.top {
@@ -1421,7 +1421,7 @@ func (r *revisionOrder) search() error {
 			if err == nil {
 				return nil
 			}
-			if errors.Is(err, errWitnessTimeout) {
+			if errors.Is(err, ErrWitnessTimeout) {
 				return err
 			}
 			ok = r.dead(rev, err)

@@ -21,10 +21,14 @@ import (
 )
 
 // plantedCase is how a planted bug must be caught: within seeds runs of
-// cfg, by a failure whose message matches want, the assertion the
-// semantics pre-work on #47 names for it. Any other failure fails the
-// test, so a bug cannot pass on an unrelated check or a crash. extra adds
-// an assertion of the case's own. With witness, the witness checker in
+// cfg, by a failing check on a seed that passes without the bug
+// (failsUnplanted), so that the failure is the bug's. want names the
+// checks expected to catch it, the assertions the semantics pre-work on
+// #47 names; another check counts too and is logged, as a schedule that
+// moves can reach another check first (#537). A failure that decides
+// nothing about the run, a crash, a stop for lack of real time or a
+// witness search that ran out (decides), is no catch and fails the test.
+// extra adds an assertion of the case's own. With witness, the witness checker in
 // both modes must fail the same seed's history on its own too: Porcupine
 // cannot check the full runs (#112). Each cfg also runs in the plain
 // tests (TestSeeds, TestStalledLeaderIsReplaced), where it must pass.
@@ -96,7 +100,9 @@ var plantedCases = map[string]plantedCase{
 	"B07":  {seeds: 64, cfg: DefaultConfig, want: badWatch},
 	"B08":  {seeds: 128, cfg: DefaultConfig, want: badWatch},
 	"B09a": {seeds: 16, cfg: DefaultConfig, want: badState},
-	"B09b": {seeds: 16, cfg: DefaultConfig, want: badState},
+	// B09b fires on a key's older versions, which a node that started
+	// from a checkpoint no longer holds, so replicas can also part on it.
+	"B09b": {seeds: 16, cfg: DefaultConfig, want: badState + `|applied the same log to different states`},
 	"B10":  {seeds: 64, cfg: DefaultConfig, want: badState + `|applied the same log to different states|` + badWatch},
 	"B11":  {seeds: 64, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	// Since a snapshot install starts the node again from its log (#238),
@@ -125,7 +131,11 @@ var plantedCases = map[string]plantedCase{
 	"B22": {seeds: 256, cfg: damagedSnapshotConfig, want: inventedState + `|wrote different checkpoints|wrote checkpoint \d+: wal: corrupt log|` + badValue + `|malformed|` + refused + `|installed a snapshot at \d+ from \d+, checkpoint \d+\n[^\n]*wal: corrupt log:`},
 	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|` + stuck},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
-	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},
+	// B25 shows only when a client reads the one value the rot fault
+	// damages before the cleaner, which checks every value it copies,
+	// finds it: about one seed in 40 to 60 (seed 7 on main at 3723d60f,
+	// 67 on #537's a802850a), so 64 seeds missed it one run in five.
+	"B25": {seeds: 256, cfg: DefaultConfig, want: badState + `|` + badWatch},
 	// The real driver's disk goroutine ends at an install, so a core that
 	// goes on writes nothing more.
 	"B27": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|cold restart did not converge|` + stuck},
@@ -259,13 +269,15 @@ func TestPlanted(t *testing.T) {
 			return plantedRun{}
 		case control:
 			return plantedRun{Finding: err.Error()}
+		case !decides(err):
+			t.Fatalf("seed %d of %s failed without a finding about the run, which catches nothing: %v", seed, name, err)
 		case openBugs.MatchString(err.Error()) && !want.MatchString(err.Error()):
 			t.Logf("seed %d of %s hit an open bug instead, #357 or #361, and catches nothing: %v", seed, name, err)
 			return plantedRun{}
-		case !want.MatchString(err.Error()):
-			t.Fatalf("%s failed on another check than the expected one (%s): %v", name, c.want, err)
 		case c.witness && !witnessCatches(t, res):
 			return plantedRun{}
+		case !want.MatchString(err.Error()):
+			t.Logf("seed %d of %s failed a check other than the expected ones (%s); it catches the bug if the seed passes without it: %v", seed, name, c.want, err)
 		}
 		save(t, replayCommand(t.Name(), seed), res, true)
 		return plantedRun{Finding: err.Error()}
@@ -275,7 +287,13 @@ func TestPlanted(t *testing.T) {
 			return false
 		}
 		caught = true
-		t.Logf("%s (%s) caught by seed %d: %s", name, planted.Bugs[name], seed, r.Finding)
+		if !want.MatchString(r.Finding) {
+			// The seed passes without the bug, but the bug may only have
+			// moved the schedule onto another failure: one to look at.
+			t.Logf("%s (%s) caught by seed %d with a check outside the expected ones (%s), which may be another bug the moved schedule reached: %s", name, planted.Bugs[name], seed, c.want, r.Finding)
+		} else {
+			t.Logf("%s (%s) caught by seed %d: %s", name, planted.Bugs[name], seed, r.Finding)
+		}
 		t.Logf("replay: %s", replayCommand(fmt.Sprintf("%s/%d", t.Name(), seed), seed))
 		return true
 	}) {

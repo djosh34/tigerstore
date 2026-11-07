@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -261,5 +262,50 @@ func TestLeaseCheckpointAfterRenewal(t *testing.T) {
 	tick(3 * tps)
 	if l := s.n.state.leases[7]; l.remaining == 0 {
 		t.Fatal("no checkpoint in the 3 s after a keepalive")
+	}
+}
+
+// TestLeaseExpiriesAreRated expires 3,000 leases together, each with a
+// key: the leader revokes at most 1,000 a second, as etcd does (#432).
+func TestLeaseExpiriesAreRated(t *testing.T) {
+	s := startSingle(t, simfs.New(), 1)
+	const leases = 3000
+	for i := range leases {
+		if r := s.do(uint64(2*i+1), &pb.LeaseGrantRequest{ID: int64(i + 1), TTL: 5}); r.Err != nil {
+			t.Fatal(r.Err)
+		}
+		if r := s.do(uint64(2*i+2), &pb.PutRequest{Key: fmt.Appendf(nil, "k%05d", i), Lease: int64(i + 1)}); r.Err != nil {
+			t.Fatal(r.Err)
+		}
+	}
+	// A tick is 100 ms.
+	var perTick []int
+	for tick := 0; len(s.n.Leases()) > 0 && tick < 1000; tick++ {
+		s.n.Tick()
+		n := 0
+		for range 100 {
+			eff, err := s.n.Process()
+			if err != nil {
+				t.Fatal(err)
+			}
+			n += len(eff.Expired)
+			s.persistAll(eff.Persist)
+			if len(eff.Persist) == 0 {
+				break
+			}
+		}
+		perTick = append(perTick, n)
+	}
+	if left := len(s.n.Leases()); left > 0 {
+		t.Fatalf("%d leases left after %d ticks", left, len(perTick))
+	}
+	for i := range perTick {
+		sum := 0
+		for _, n := range perTick[i:min(i+10, len(perTick))] {
+			sum += n
+		}
+		if sum > 1000 {
+			t.Fatalf("%d leases expired within one second (10 ticks from tick %d); etcd revokes at most 1,000 a second", sum, i)
+		}
 	}
 }

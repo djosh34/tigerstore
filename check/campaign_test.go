@@ -53,7 +53,7 @@ func TestRefutedPlantedPrefixes(t *testing.T) {
 			// Without the check before the search, the search runs out
 			// of these steps on this cut; with it, it takes none.
 			err = Witnessed(&h, FromRevisions, timeout, MaxSteps(100_000))
-			if errors.Is(err, errWitnessTimeout) {
+			if errors.Is(err, ErrWitnessTimeout) {
 				t.Fatalf("revision witness: %v", err)
 			}
 			mustFail(t, "revision witness", err, "real time allows")

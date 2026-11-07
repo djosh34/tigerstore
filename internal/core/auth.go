@@ -507,7 +507,11 @@ func (n *Node) authenticate(r *pb.InternalAuthenticateRequest, index uint64, h *
 	resp := &pb.AuthenticateResponse{Header: h}
 	if r.SimpleToken != "" {
 		resp.Token = r.SimpleToken + "." + strconv.FormatUint(index, 10)
-		n.tokens[resp.Token] = &simpleToken{user: r.Name, expires: n.now + int64(n.tokenTicks())}
+		expires := n.now + int64(n.tokenTicks())
+		if len(n.tokens) == 0 || expires < n.tokenDue {
+			n.tokenDue = expires
+		}
+		n.tokens[resp.Token] = &simpleToken{user: r.Name, expires: expires}
 	}
 	return resp, nil
 }
@@ -523,11 +527,21 @@ func (n *Node) invalidateTokens(user string) {
 	}
 }
 
-// expireTokens drops the simple tokens that were not used in time.
+// expireTokens drops the simple tokens that were not used in time, and
+// notes when the next may expire. A use only moves a token's expiry
+// later, so tokenDue is never after the earliest.
 func (n *Node) expireTokens() {
+	if n.tokenDue > n.now {
+		return
+	}
+	n.tokenDue = 0
 	for t, st := range n.tokens {
 		if st.expires <= n.now {
 			delete(n.tokens, t)
+			continue
+		}
+		if n.tokenDue == 0 || st.expires < n.tokenDue {
+			n.tokenDue = st.expires
 		}
 	}
 }

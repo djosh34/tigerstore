@@ -50,7 +50,8 @@ import (
 // compaction cuts a checkpoint, so the space it frees comes back.
 
 const (
-	// cleanTick is how often the cleaner measures the disk.
+	// cleanTick is how often at most the cleaner runs: it runs only after
+	// the log changed, and while writes go on, about this often.
 	cleanTick = 20 * time.Millisecond
 	// cleanLive bounds the live bytes that one pass copies into a pack.
 	cleanLive = 64 << 20
@@ -117,9 +118,9 @@ func (c *cleaner) spares() int {
 }
 
 // clean removes what durable roots made obsolete, and measures the disk
-// every cleanTick and cleans within the budget, as the comment at the top
-// says. A failed write, or a value that does not match its checksum,
-// stops the node.
+// and cleans within the budget, as the comment at the top says, each time
+// the log changed, at most every cleanTick. A failed write, or a value
+// that does not match its checksum, stops the node.
 func (n *Node) clean(ctx context.Context) {
 	c := &cleaner{n: n}
 	if err := c.run(ctx); err != nil && ctx.Err() == nil {
@@ -132,9 +133,8 @@ func (n *Node) clean(ctx context.Context) {
 
 func (c *cleaner) run(ctx context.Context) error {
 	budget := c.n.cfg.DiskBudget
-	tick := time.NewTicker(cleanTick)
-	defer tick.Stop()
 	for {
+		ran := time.Now()
 		if budget > 0 {
 			used, err := c.n.log.fs.Usage()
 			if err != nil {
@@ -144,7 +144,11 @@ func (c *cleaner) run(ctx context.Context) error {
 			c.past = used >= budget
 			c.short = used >= budget-budget/4
 		}
-		c.remove()
+		if c.remove() && budget > 0 {
+			// Measure what the removal freed: nothing else may wake
+			// the cleaner, and the NOSPACE alarm clears by the measure.
+			continue
+		}
 		if budget > 0 && c.pending == nil {
 			start := time.Now()
 			did, err := c.pass(ctx, c.short)
@@ -161,9 +165,15 @@ func (c *cleaner) run(ctx context.Context) error {
 				continue
 			}
 		}
+		// Nothing more to do until the log changes, a failed removal is
+		// tried again, or Defragment asks.
+		var retry <-chan time.Time
+		if wait := time.Until(c.retryAt); wait > 0 {
+			retry = time.After(wait)
+		}
 		select {
-		case <-tick.C:
-		case <-c.n.log.retry:
+		case <-c.n.log.kick:
+		case <-retry:
 		case done := <-c.n.defragQ:
 			err := c.defrag(ctx)
 			done <- err
@@ -171,6 +181,9 @@ func (c *cleaner) run(ctx context.Context) error {
 				return err
 			}
 		case <-ctx.Done():
+			return nil
+		}
+		if !sleep(ctx, cleanTick-time.Since(ran)) {
 			return nil
 		}
 	}
@@ -186,7 +199,10 @@ func (c *cleaner) defrag(ctx context.Context) error {
 	for c.pending == nil {
 		did, err := c.pass(ctx, true)
 		if errors.Is(err, errServing) {
-			if !sleep(ctx, 10*time.Millisecond) {
+			// The end of the fetch kicks the cleaner.
+			select {
+			case <-c.n.log.kick:
+			case <-ctx.Done():
 				return ctx.Err()
 			}
 			continue
@@ -484,8 +500,9 @@ func (c *cleaner) walk(f io.Reader, ckpt uint64, fn func(wal.FileID, mvcc.Ref) e
 // remove drops from the log what durable roots made obsolete and what
 // the last pass replaced, unless a snapshot fetch or a value read is under
 // way, as either may read it. It then removes their files, outside the
-// lock, and while space is short the spare files.
-func (c *cleaner) remove() {
+// lock, and while space is short the spare files. It reports whether it
+// removed a file.
+func (c *cleaner) remove() bool {
 	l := c.n.log
 	l.mu.Lock()
 	if (l.removal != nil || c.pending != nil) && l.serving == 0 && l.reading.TryLock() {
@@ -496,7 +513,6 @@ func (c *cleaner) remove() {
 			c.keep = max(c.keep, r.root.Index)
 			l.ckpts = slices.DeleteFunc(l.ckpts, func(ck wal.Root) bool { return ck.Index < r.root.Index })
 			l.removal = nil
-			l.held.Store(false)
 		}
 		if rm := c.pending; rm != nil {
 			names, err := l.w.DropCleaned(rm.upto, rm.drop)
@@ -510,28 +526,34 @@ func (c *cleaner) remove() {
 			c.n.logf("drop old files of the log: %v", err)
 		}
 	}
+	// The end of a read or a fetch wakes the cleaner while a removal
+	// waits for it.
+	l.held.Store(l.removal != nil || c.pending != nil)
 	l.mu.Unlock()
 	if time.Now().Before(c.retryAt) {
-		return
+		return false
 	}
 	k, err := wal.RemoveFiles(l.fs, c.files, c.spares())
+	removed := k > 0
 	if k > 0 {
 		c.n.cleaningStage("removed")
 	}
 	c.files = c.files[k:]
 	if err == nil && c.keep > c.kept {
 		if err = l.w.RemoveCheckpoints(c.keep); err == nil {
-			c.kept = c.keep
+			c.kept, removed = c.keep, true
 		}
 	}
 	if err == nil && c.short && !c.sparesGone {
 		err = wal.RemoveSpares(l.fs, 0)
 		c.sparesGone = err == nil
+		removed = removed || c.sparesGone
 	}
 	c.sparesGone = c.sparesGone && c.short
 	if err != nil {
 		c.failed(err)
 	}
+	return removed
 }
 
 // failed logs and counts a failed removal, which the cleaner tries again
@@ -542,8 +564,12 @@ func (c *cleaner) failed(err error) {
 	c.n.logf("remove old files of the log: %v; trying again in %v", err, removeRetry)
 }
 
-// sleep waits for d and reports whether ctx is still live.
+// sleep waits for d, if more than 0, and reports whether ctx is still
+// live.
 func sleep(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {

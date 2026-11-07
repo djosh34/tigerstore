@@ -91,12 +91,12 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 		return fmt.Errorf("unknown witness mode %d", mode)
 	}
 	if err == nil && time.Now().After(w.deadline) {
-		err = errWitnessTimeout
+		err = ErrWitnessTimeout
 	}
 	switch {
-	case errors.Is(err, errWitnessTimeout) && w.maxSteps > 0 && w.steps > w.maxSteps:
+	case errors.Is(err, ErrWitnessTimeout) && w.maxSteps > 0 && w.steps > w.maxSteps:
 		err = fmt.Errorf("%w after %d steps; %s", err, w.maxSteps, w.stoppedAt())
-	case errors.Is(err, errWitnessTimeout):
+	case errors.Is(err, ErrWitnessTimeout):
 		err = fmt.Errorf("%w; %s", err, w.stoppedAt())
 	}
 	if err != nil {
@@ -105,8 +105,9 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 	return nil
 }
 
-// errWitnessTimeout ends a check that passed its deadline.
-var errWitnessTimeout = errors.New("timed out")
+// ErrWitnessTimeout ends a check that passed its deadline or its steps
+// (MaxSteps): it decides nothing about the history.
+var ErrWitnessTimeout = errors.New("timed out")
 
 // witness is one check: the order it builds, the replay of its events
 // through the model, and where each op goes.
@@ -536,7 +537,7 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 	placed := newPlacedMax(w.returns, ops, &w.sorter)
 	for x, i := range ops {
 		if w.tick() {
-			return errWitnessTimeout
+			return ErrWitnessTimeout
 		}
 		if set {
 			w.observed++
@@ -738,7 +739,7 @@ func (w *witness) verify() error {
 	k := 0
 	for _, b := range byCall {
 		if w.tick() {
-			return errWitnessTimeout
+			return ErrWitnessTimeout
 		}
 		for ; k < len(byReturn) && w.returns[byReturn[k]] < w.calls[b]; k++ {
 			if a := byReturn[k]; by < 0 || w.at[a].compare(latest) > 0 {

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"net/url"
 	"os"
@@ -152,6 +153,9 @@ type input struct {
 	snapshot         uint64
 	fetching, served bool
 	serveErr         error
+	// at is when a peer, a client or a helper queued the input, from which
+	// the committer could have run (turn); zero if not noted.
+	at time.Time
 }
 
 // watchBytes is how many bytes of responses a watch stream may fall
@@ -284,6 +288,7 @@ func (n *Node) OpenWatch(ctx context.Context, c core.Caller) (*WatchStream, erro
 }
 
 func (n *Node) put(ctx context.Context, in input) error {
+	in.at = time.Now()
 	select {
 	case n.inbox <- in:
 		return nil
@@ -381,9 +386,13 @@ type Node struct {
 	done     chan struct{}
 
 	// leader is the leader the committer saw last, for readers outside it,
-	// and learner whether this node is a learner.
-	leader  atomic.Uint64
-	learner atomic.Bool
+	// and learner whether this node is a learner. leaderMoved is closed
+	// and replaced each time leader changes, under leaderMu
+	// (LeaderChange).
+	leader      atomic.Uint64
+	leaderMu    sync.Mutex
+	leaderMoved chan struct{}
+	learner     atomic.Bool
 	// etcdVersion is etcd's cluster version the committer saw last, and
 	// authEnabled whether auth was on.
 	etcdVersion atomic.Pointer[string]
@@ -435,15 +444,18 @@ type diskLog struct {
 	// ckpts are the durable checkpoints whose files are on disk, which
 	// the persist goroutine adds to and the cleaner drops from before it
 	// removes older files, and serving counts the snapshot fetches under
-	// way, during which nothing is removed.
+	// way, during which nothing is removed. Only fetchStarted and
+	// fetchEnded change it, so that the end of a fetch always wakes the
+	// cleaner, which Defragment waits on.
 	ckpts   []wal.Root
 	serving int
 	// removal is what the newest durable root made obsolete, which waits
-	// for the cleaner; held is set while it waits, and retry wakes the
-	// cleaner.
+	// for the cleaner; held is set while it or what a cleaning pass
+	// replaced waits, for a value read or a snapshot fetch to end. kick
+	// wakes the cleaner (kickCleaner).
 	removal *rootRemoval
 	held    atomic.Bool
-	retry   chan struct{}
+	kick    chan struct{}
 	// used is the size of the log's files when the cleaner measured them
 	// last, plus what the disk goroutines wrote since, cleaned the bytes
 	// that cleaning wrote, and removeFailures the removals of files that
@@ -524,10 +536,33 @@ func (l *diskLog) readDone() {
 // wake wakes the cleaner if a removal waits.
 func (l *diskLog) wake() {
 	if l.held.Load() {
-		select {
-		case l.retry <- struct{}{}:
-		default:
-		}
+		l.kickCleaner()
+	}
+}
+
+// fetchStarted counts a snapshot fetch under way, during which nothing is
+// removed from the log, and returns the durable checkpoints it may serve.
+func (l *diskLog) fetchStarted() []wal.Root {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.serving++
+	return slices.Clone(l.ckpts)
+}
+
+// fetchEnded ends a fetch fetchStarted counted, and wakes the cleaner,
+// whose removals and Defragment may have waited for it.
+func (l *diskLog) fetchEnded() {
+	l.mu.Lock()
+	l.serving--
+	l.mu.Unlock()
+	l.kickCleaner()
+}
+
+// kickCleaner wakes the cleaner: the log changed, so it may have work.
+func (l *diskLog) kickCleaner() {
+	select {
+	case l.kick <- struct{}{}:
+	default:
 	}
 }
 
@@ -638,11 +673,12 @@ func newOnDisk(cfg Config, path string, dir FS) (*Node, error) {
 		cfg.Memory = newMemoryGauge().read
 	}
 	n := &Node{
-		cfg:    cfg,
-		log:    &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead, retry: make(chan struct{}, 1)},
-		inbox:  make(chan input, 8192),
-		done:   make(chan struct{}),
-		memory: cfg.Memory,
+		cfg:         cfg,
+		log:         &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead, kick: make(chan struct{}, 1)},
+		inbox:       make(chan input, 8192),
+		done:        make(chan struct{}),
+		leaderMoved: make(chan struct{}),
+		memory:      cfg.Memory,
 		// Defragment sends to it from gRPC goroutines, so a reload keeps
 		// it.
 		defragQ: make(chan chan error),
@@ -746,7 +782,7 @@ func (n *Node) open() error {
 	n.nextQ = make(chan struct{})
 	n.readQ = make(chan *core.ValueRead)
 	n.readDone = make(chan readDone, readers)
-	n.leader.Store(0)
+	n.setLeader(0)
 	v := c.EtcdVersion()
 	n.etcdVersion.Store(&v)
 	n.authEnabled.Store(c.AuthEnabled())
@@ -864,6 +900,26 @@ func (n *Node) TransferLeadership(ctx context.Context) error {
 // Leader is the leader the node knows of, or 0.
 func (n *Node) Leader() uint64 { return n.leader.Load() }
 
+// LeaderChange returns the leader the node knows of, or 0, and a channel
+// that is closed once that changes: work that waits for a leader, or for
+// none, waits on it instead of looking again and again.
+func (n *Node) LeaderChange() (uint64, <-chan struct{}) {
+	n.leaderMu.Lock()
+	defer n.leaderMu.Unlock()
+	return n.leader.Load(), n.leaderMoved
+}
+
+// setLeader notes the leader the committer saw, and wakes those that wait
+// for it to change.
+func (n *Node) setLeader(l uint64) {
+	n.leaderMu.Lock()
+	defer n.leaderMu.Unlock()
+	if n.leader.Swap(l) != l {
+		close(n.leaderMoved)
+		n.leaderMoved = make(chan struct{})
+	}
+}
+
 // EtcdVersion is etcd's cluster version, which is also the storage
 // version, as /version and Snapshot report them.
 func (n *Node) EtcdVersion() string { return *n.etcdVersion.Load() }
@@ -884,7 +940,7 @@ func (n *Node) Recovered() (last uint64, hs wal.HardState) {
 // committer is behind, which slows down that peer's connection.
 func (n *Node) Deliver(m *raftpb.Message) {
 	select {
-	case n.inbox <- input{msg: m}:
+	case n.inbox <- input{msg: m, at: time.Now()}:
 	case <-n.done:
 	}
 }
@@ -1044,8 +1100,6 @@ func (n *Node) run(ctx context.Context, t peer.Transport) error {
 // commit is the committer loop. It is the only goroutine that touches the
 // core, and it never blocks on the disk.
 func (n *Node) commit(ctx context.Context, t peer.Transport) error {
-	ticker := time.NewTicker(n.cfg.Tick)
-	defer ticker.Stop()
 	waiters := map[uint64]waiter{}
 	var groups []completions
 	groupOf := map[Completer]int{}
@@ -1059,10 +1113,66 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	var reads []*core.ValueRead
 	streams := map[uint64]*WatchStream{}
 	var term uint64 // the term logged last
-	// clock is the ticks the core's request clock has had; the ticks of
-	// wall time it missed while the committer was busy go to it with
-	// Elapse, so that requests time out by the wall clock.
-	started, clock := time.Now(), int64(0)
+	// The core's time-based work runs on deadlines (core.Node.Due): the
+	// committer wakes when the next tick with work is due, or when
+	// something happens, and then hands the core the ticks of wall time
+	// that passed (tickClock). measured is the tick of the last measure of
+	// memory.
+	started, measured := time.Now(), int64(0)
+	clock := tickClock{due: 1}
+	wake := time.NewTimer(n.cfg.Tick)
+	defer wake.Stop()
+	wallTick := func(t time.Time) int64 { return int64(t.Sub(started) / n.cfg.Tick) }
+	// ins are the inputs of a turn.
+	var ins []input
+	// turn begins a turn: it takes first, the input the select took if
+	// any, and the inputs queued after it, and gives the core the ticks
+	// that passed and the inputs. waited is the tick at which the
+	// committer began to wait, and dueIn how many Ticks away the core's
+	// next work was then. The committer could have run again from when
+	// the earliest input was queued, or from the due tick. Raft's election
+	// clock must also not run ahead of a message already waiting for it:
+	// so while a peer's message waits for a node that does not lead, the
+	// core gets the ticks up to one short of its due tick, then the
+	// inputs, and then the rest of the ticks, in the same turn. Memory is
+	// measured at most once a tick, on a turn: only a turn makes it grow.
+	// turn reports whether the core got a tick or an input, after which it
+	// runs.
+	turn := func(waited int64, first *input, inbox <-chan input, dueIn int64) bool {
+		ins = ins[:0]
+		if first != nil {
+			ins = append(ins, *first)
+		}
+		if inbox != nil {
+			ins = n.takeInputs(ins)
+		}
+		ready := clock.due
+		for _, in := range ins {
+			if !in.at.IsZero() {
+				ready = min(ready, max(wallTick(in.at), clock.at))
+			}
+		}
+		held := hasMessage(ins) && n.core.Leader() != n.cfg.Core.ID
+		limit := int64(math.MaxInt64)
+		if held {
+			limit = dueIn - 1
+		}
+		clock.lateTicked = false
+		now := wallTick(time.Now())
+		moved := clock.advance(n.core, now, waited, ready, limit)
+		for i := range ins {
+			n.handle(ins[i], waiters, streams)
+			ins[i] = input{}
+		}
+		if held {
+			moved = clock.advance(n.core, wallTick(time.Now()), waited, ready, math.MaxInt64) || moved
+		}
+		if clock.at > measured {
+			n.measureMemory(streams)
+			measured = clock.at
+		}
+		return moved || len(ins) > 0
+	}
 	// beats holds when this node last sent each peer a heartbeat, in
 	// term beatTerm.
 	beats := map[uint64]time.Time{}
@@ -1094,25 +1204,25 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			}
 			paced = pace.C
 		}
+		due := n.core.Due()
+		if at := clock.at + due; at != clock.due {
+			clock.due = at
+			wake.Reset(time.Until(started.Add(time.Duration(at) * n.cfg.Tick)))
+		}
+		entered := wallTick(time.Now())
 		select {
 		case in := <-inbox:
-			n.handle(in, waiters, streams)
-		drain:
-			for range 4096 {
-				select {
-				case in := <-n.inbox:
-					n.handle(in, waiters, streams)
-				default:
-					break drain
-				}
-			}
+			turn(entered, &in, inbox, due)
 		case done := <-n.persisted:
+			// A failed write ends the run before the turn takes the queued
+			// inputs: the next run serves them.
 			if done.err != nil {
 				if core.FailureOf(done.err) == core.Reload {
 					n.dropAll(waiters, streams, rpctypes.ErrGRPCStopped)
 				}
 				return done.err
 			}
+			turn(entered, nil, inbox, due)
 			for _, j := range done.jobs {
 				n.core.Persisted(j)
 				if n.cfg.Persisted != nil {
@@ -1123,28 +1233,30 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		case toDisk <- next:
 			backlog[0] = persistBatch{}
 			backlog = backlog[1:]
-			continue
+			if !turn(entered, nil, inbox, due) {
+				continue
+			}
 		case toWriter <- chunk:
 			chunks[0] = core.CheckpointChunk{}
 			chunks = chunks[1:]
-			continue
+			if !turn(entered, nil, inbox, due) {
+				continue
+			}
 		case toReader <- read:
 			reads[0] = nil
 			reads = reads[1:]
-			continue
+			if !turn(entered, nil, inbox, due) {
+				continue
+			}
 		case d := <-n.readDone:
+			turn(entered, nil, inbox, due)
 			n.core.ValuesRead(d.read, d.err)
 		case <-paced:
+			turn(entered, nil, inbox, due)
 			pace = nil
 			n.core.CopyCheckpoint()
-		case <-ticker.C:
-			n.core.Tick()
-			clock++
-			if behind := int64(time.Since(started)/n.cfg.Tick) - clock; behind > 0 {
-				n.core.Elapse(behind)
-				clock += behind
-			}
-			n.measureMemory(streams)
+		case <-wake.C:
+			turn(entered, nil, inbox, due)
 		case <-ctx.Done():
 			return nil
 		}
@@ -1214,7 +1326,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		if l, tm := n.core.Leader(), n.core.Term(); l != n.leader.Load() || tm != term {
 			n.logf("leader is %d at term %d", l, tm)
-			n.leader.Store(l)
+			n.setLeader(l)
 			term = tm
 		}
 		if v := n.core.EtcdVersion(); v != *n.etcdVersion.Load() {
@@ -1229,6 +1341,25 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			return err
 		}
 	}
+}
+
+// takeInputs adds to ins the inputs already queued, up to 4096, and
+// returns it.
+func (n *Node) takeInputs(ins []input) []input {
+	for range 4096 {
+		select {
+		case in := <-n.inbox:
+			ins = append(ins, in)
+		default:
+			return ins
+		}
+	}
+	return ins
+}
+
+// hasMessage reports whether ins holds a message from a peer.
+func hasMessage(ins []input) bool {
+	return slices.ContainsFunc(ins, func(in input) bool { return in.msg != nil })
 }
 
 // heartbeatSent is etcd's TimeoutDetector on the leader's heartbeats: a
@@ -1795,7 +1926,7 @@ func (n *Node) durable(g written) {
 		}
 	}
 	l.mu.Unlock()
-	l.wake()
+	l.kickCleaner()
 	for _, pr := range g.packs {
 		n.cleaningStage("root-synced")
 		close(pr.synced)
@@ -1870,6 +2001,7 @@ func (n *Node) prepareSegments(ctx context.Context) {
 			}
 			return
 		}
+		n.log.kickCleaner()
 		select {
 		case n.nextQ <- struct{}{}:
 		case <-ctx.Done():
@@ -1978,6 +2110,7 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 		for err == nil {
 			_, err = f.Write(c.Data)
 			n.log.used.Add(int64(len(c.Data)))
+			n.log.kickCleaner()
 			if err != nil || c.Done {
 				break
 			}
@@ -2034,10 +2167,7 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 // peer transport calls it.
 func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	n.tell(input{snapshot: id, fetching: true})
-	n.log.mu.Lock()
-	n.log.serving++
-	ckpts := slices.Clone(n.log.ckpts)
-	n.log.mu.Unlock()
+	ckpts := n.log.fetchStarted()
 	m, to := n.cfg.Metrics, peerLabel(id)
 	m.SnapshotSendInflights.WithLabelValues(to).Inc()
 	start := time.Now()
@@ -2049,10 +2179,7 @@ func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	} else {
 		m.SnapshotSendFailures.WithLabelValues(to).Inc()
 	}
-	n.log.mu.Lock()
-	n.log.serving--
-	n.log.mu.Unlock()
-	n.log.wake()
+	n.log.fetchEnded()
 	n.tell(input{snapshot: id, served: true, serveErr: err})
 	return err
 }
@@ -2077,6 +2204,7 @@ func (n *Node) readValues(ctx context.Context) {
 
 // tell hands the committer an input from a helper goroutine.
 func (n *Node) tell(in input) {
+	in.at = time.Now()
 	select {
 	case n.inbox <- in:
 	case <-n.done:
