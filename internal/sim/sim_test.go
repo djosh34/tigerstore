@@ -270,10 +270,10 @@ func seedRange(first uint64, n int) []uint64 {
 const raceRuns = 60
 
 // searchSeeds is seedRange(first, n) for a search that stops at its event,
-// cut to raceRuns under the race detector.
+// cut to raceRuns under the race detector, except for a replay of one seed.
 func searchSeeds(first uint64, n int) []uint64 {
 	seeds := seedRange(first, n)
-	if simrun.Race {
+	if simrun.Race && !simrun.One() {
 		seeds = seeds[:min(n, raceRuns)]
 	}
 	return seeds
@@ -1230,7 +1230,7 @@ func TestSlowFetch(t *testing.T) {
 	switch {
 	case simrun.One() || t.Failed() || older > 0 && failed > 0 && during > 0:
 	case simrun.Race:
-		t.Logf("race coverage of these paths was skipped this run: in %d runs under the race detector, %d snapshots installed from an older checkpoint, %d fetches the leader could not serve, %d checkpoints finished during an install; gosim's seeds must have each", raceRuns, older, failed, during)
+		t.Logf("race coverage of the paths that never happened was skipped this run: in %d runs under the race detector, %d snapshots installed from an older checkpoint, %d fetches the leader could not serve, %d checkpoints finished during an install; gosim's seeds must have each", raceRuns, older, failed, during)
 	default:
 		t.Fatalf("%d snapshots installed from an older checkpoint, %d fetches the leader could not serve, %d checkpoints finished during an install; each must happen", older, failed, during)
 	}
