@@ -11,6 +11,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding/gzip"
 
@@ -21,7 +22,9 @@ import (
 // TestRangeReplyClients reads pages through real TLS clients, the node
 // driver and the socket writer, on a node whose process uses more than its
 // memory budget, so its value cache stays empty. Every page must finish,
-// gzip replies on separate connections included.
+// gzip replies on separate connections included. A short election timeout
+// on a busy runner can change the leader. Retry the same page as an etcd
+// client would, without resetting the deadline or advancing the page.
 func TestRangeReplyClients(t *testing.T) {
 	var mu sync.Mutex
 	var trace [4096]string
@@ -97,7 +100,7 @@ func TestRangeReplyClients(t *testing.T) {
 			key := []byte("range/")
 			var revision int64
 			for page := range 3 {
-				r, err := client.Range(ctx, &pb.RangeRequest{Key: key, RangeEnd: []byte("range0"), Limit: 1000, Revision: revision}, options...)
+				r, err := rangeWithLeaderRetry(t, ctx, client, &pb.RangeRequest{Key: key, RangeEnd: []byte("range0"), Limit: 1000, Revision: revision}, options...)
 				if err != nil {
 					errs <- fmt.Errorf("client %d page %d: %w", i, page, err)
 					return
@@ -122,5 +125,25 @@ func TestRangeReplyClients(t *testing.T) {
 	close(errs)
 	for err := range errs {
 		t.Error(err)
+	}
+}
+
+// rangeWithLeaderRetry retries only the transient election errors, using
+// the caller's original context, request (including revision), connection
+// and compression options. Other errors and invalid replies still fail.
+func rangeWithLeaderRetry(t *testing.T, ctx context.Context, client pb.KVClient, req *pb.RangeRequest, options ...grpc.CallOption) (*pb.RangeResponse, error) {
+	t.Helper()
+	for {
+		r, err := client.Range(ctx, req, options...)
+		e := rpctypes.Error(err)
+		if e != rpctypes.ErrLeaderChanged && e != rpctypes.ErrNoLeader {
+			return r, err
+		}
+		t.Logf("retry Range key=%q revision=%d after %v", req.Key, req.Revision, err)
+		select {
+		case <-time.After(10 * time.Millisecond):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 }
