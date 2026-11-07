@@ -1179,15 +1179,21 @@ func (r *revisionOrder) isReady(o optional) bool {
 
 // readsFit reports whether the order built so far answers the acked reads
 // that optional o must come after, with the ops that change nothing and
-// that returned before the last of them was called, as observe would
-// place them. A rejection among those can need another optional
-// compaction first, which then goes in before o (#277, seed 8238917).
+// returned before the last read's call or o's own call for a compaction,
+// as observe would place them. A rejection among those can need another
+// optional compaction first, which then goes in before o (#277, seed
+// 8238917), or an acked revoke first (#514).
 func (r *revisionOrder) readsFit(o optional) bool {
-	if len(o.reads) == 0 {
+	w := r.w
+	if len(o.reads) == 0 && w.reqs[o.op].Compact == nil {
 		return true
 	}
-	w := r.w
+	// Every answer returned before a compaction's call must still have
+	// a place before it, not only successful historical reads (#514).
 	var call int64
+	if w.reqs[o.op].Compact != nil {
+		call = w.calls[o.op]
+	}
 	for _, k := range o.reads {
 		call = max(call, w.calls[k])
 	}
@@ -1414,6 +1420,16 @@ func (r *revisionOrder) search() error {
 		}
 		var ok bool
 		if rev > r.top {
+			// An optional compaction may need a revision no successful
+			// answer saw. Only then keep a mark for an unseen suffix.
+			future := rev <= r.limit && slices.ContainsFunc(r.optional, func(o optional) bool {
+				c := w.reqs[o.op].Compact
+				return !r.used[o.op] && c != nil && c.Revision >= rev && c.Revision <= r.limit
+			})
+			var m mark
+			if future {
+				m = r.save()
+			}
 			r.expireEnd()
 			err := w.observe()
 			if err == nil {
@@ -1426,6 +1442,12 @@ func (r *revisionOrder) search() error {
 				return err
 			}
 			ok = r.dead(rev, err)
+			// Try an unseen suffix only for that compaction, and verify
+			// the whole order again after each write (#514).
+			if future {
+				r.restore(m)
+				ok = r.write(rev) && r.finish(rev)
+			}
 		} else {
 			ok = r.write(rev) && r.finish(rev)
 		}

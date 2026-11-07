@@ -10,10 +10,11 @@ import (
 	"github.com/djosh34/tigerstore/history"
 )
 
-// These are the two remaining examples from #514. Indexes are zero-based;
-// drawing a stale answer would consume more random numbers and change them.
+// The first two are the remaining examples from #514. The last two were
+// found by this diagnosis's scan. Indexes are zero-based; drawing a stale
+// answer would consume more random numbers and change them.
 func TestDiag514Examples(t *testing.T) {
-	for _, c := range []struct{ seed, index uint64 }{{124, 546}, {154, 675}} {
+	for _, c := range []struct{ seed, index uint64 }{{124, 546}, {154, 675}, {131, 590}, {175, 295}} {
 		t.Run(fmt.Sprintf("PCG-%d-77-history-%d", c.seed, c.index), func(t *testing.T) {
 			rng := rand.New(rand.NewPCG(c.seed, 77))
 			var h *history.History
@@ -71,6 +72,58 @@ func TestDiag514SmallAndFalseHistories(t *testing.T) {
 			for _, slow := range []bool{false, true} {
 				if err := Witnessed(h, FromRevisions, time.Minute, func(o *options) { o.slow = slow }); (err == nil) != want {
 					t.Errorf("revisions, slow %v: want pass %v, got %v", slow, want, err)
+				}
+			}
+		})
+	}
+}
+
+// A failed revoke that returned before an ambiguous compaction was called
+// needs the acked revoke before that compaction, even though the acked
+// revoke and the compaction overlap. The rejection must have a place.
+func TestDiag514CompactionWaitsForRejection(t *testing.T) {
+	b := newBuilder(t, "a")
+	b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 1, TTL: 10}})
+	b.put(1, "a", "one")
+	r := b.do(2, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 1}})
+	e := b.do(3, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 1}})
+	c := b.do(0, history.Request{Compact: &history.CompactRequest{Revision: 1}})
+	b.do(1, history.Request{Compact: &history.CompactRequest{Revision: 1}})
+	h := b.done()
+	h.Ops[r].Call, h.Ops[r].Return = 45, 65
+	h.Ops[e].Call, h.Ops[e].Return = 50, 60
+	h.Ops[c].Call, h.Ops[c].Return = 62, 75
+	h.Ops[c].Resp, h.Ops[c].Err = nil, errUnavailable
+	mustPass(t, "Porcupine", Linearizable(h, time.Minute))
+	for _, slow := range []bool{false, true} {
+		mustPass(t, fmt.Sprintf("revisions, slow %v", slow), Witnessed(h, FromRevisions, time.Minute, func(o *options) { o.slow = slow }))
+	}
+}
+
+// A rejection may need a compaction to a revision that only an ambiguous
+// write reached, beyond every successful answer's header. Without that
+// write no order can explain the rejection, even with the compaction.
+func TestDiag514UnseenSuffixCompaction(t *testing.T) {
+	for _, writes := range []bool{true, false} {
+		t.Run(fmt.Sprintf("writes-%v", writes), func(t *testing.T) {
+			b := newBuilder(t, "a", "b")
+			b.put(0, "a", "one")
+			p := b.put(1, "b", "two")
+			c := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+			b.do(3, history.Request{Compact: &history.CompactRequest{Revision: 2}})
+			h := b.done()
+			for _, i := range []int{p, c} {
+				h.Ops[i].Resp, h.Ops[i].Err = nil, errUnavailable
+			}
+			if !writes {
+				h.Ops[p].Req = history.Request{Delete: &history.DeleteRequest{Key: "b"}}
+			}
+			if err := Linearizable(h, time.Minute); (err == nil) != writes {
+				t.Fatalf("Porcupine: want pass %v, got %v", writes, err)
+			}
+			for _, slow := range []bool{false, true} {
+				if err := Witnessed(h, FromRevisions, time.Minute, func(o *options) { o.slow = slow }); (err == nil) != writes {
+					t.Errorf("revisions, slow %v: want pass %v, got %v", slow, writes, err)
 				}
 			}
 		})
