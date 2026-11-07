@@ -520,7 +520,7 @@ func TestQueuedInstalls(t *testing.T) {
 		leader.log.mu.Lock()
 		leader.log.serving--
 		leader.log.mu.Unlock()
-		leader.log.wake()
+		leader.log.kickCleaner()
 	}()
 	// The final compaction may be the checkpoint entry itself. Create
 	// the second install's tail instead of relying on an incidental one.

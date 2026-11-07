@@ -498,9 +498,11 @@ func TestDefragment(t *testing.T) {
 		t.Fatalf("Defragment answered %v while a snapshot was served", err)
 	case <-time.After(200 * time.Millisecond):
 	}
+	// The fetch ends as Serve ends one: it wakes the cleaner.
 	l.mu.Lock()
 	l.serving--
 	l.mu.Unlock()
+	l.kickCleaner()
 	if err := <-defragged; err != nil {
 		t.Fatal(err)
 	}
