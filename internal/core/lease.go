@@ -39,9 +39,6 @@ func (n *Node) arm(id int64) {
 		l.expiry = n.now + n.cfg.ticksOf(l.left()) + 1
 		l.revokeAt = 0
 		n.expiries.set(l)
-		if l.checkpointAt != 0 {
-			n.checkpoints.set(l)
-		}
 	}
 }
 
@@ -90,10 +87,6 @@ func (n *Node) checkpointLeases() {
 			break
 		}
 		n.checkpoints.remove(l)
-		if l.expiry == 0 {
-			// arm queues it again.
-			continue
-		}
 		l.checkpointAt = 0
 		left := n.cfg.ceilSeconds(l.expiry - n.now - 1)
 		if left >= l.ttl {

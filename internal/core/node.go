@@ -834,9 +834,6 @@ func (n *Node) setState(st *State) {
 		st.alarmsGen = n.state.alarmsGen + 1
 	}
 	n.state, n.kv = st, st.Store()
-	// The queues hold leases of the state before.
-	n.expiries.reset()
-	n.checkpoints.reset()
 	if n.cfg.MemoryBytes > 0 {
 		n.kv.TrackWritten()
 		n.kv.Replaced = n.cache.drop

@@ -239,7 +239,9 @@ func (n *Node) wantsAnnounce() bool {
 	if n.leader == raft.None || st.runs[n.cfg.ID] > n.cfg.Run {
 		return false
 	}
-	unchanged := st.supports[n.cfg.ID] == ownVersion(n.cfg) && st.runs[n.cfg.ID] == n.cfg.Run
-	needsConfirmation := st.supportedVersion(st.versionMembers()) > st.version && (st.versionEpoch == 0 || st.confirmed[n.cfg.ID] != st.versionEpoch)
-	return !unchanged || needsConfirmation
+	if st.supports[n.cfg.ID] != ownVersion(n.cfg) || st.runs[n.cfg.ID] != n.cfg.Run {
+		return true
+	}
+	// A confirmation is needed while a newer format waits for it.
+	return (st.versionEpoch == 0 || st.confirmed[n.cfg.ID] != st.versionEpoch) && st.supportedVersion(st.versionMembers()) > st.version
 }

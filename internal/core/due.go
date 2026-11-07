@@ -22,6 +22,9 @@ import (
 // 1: Tick does nothing that shows before then.
 func (n *Node) Due() int64 {
 	due := n.raftDue()
+	if due <= n.now+1 {
+		return 1
+	}
 	if n.removeAt != 0 {
 		due = min(due, n.removeAt)
 	}
@@ -41,15 +44,15 @@ func (n *Node) Due() int64 {
 		}
 	}
 	if n.wantsPublish() {
-		due = min(due, n.publishedAt+int64(n.cfg.ElectionTicks))
+		due = min(due, n.again(n.publishedAt))
 	}
 	if n.wantsAnnounce() {
-		due = min(due, n.announcedAt+int64(n.cfg.ElectionTicks))
+		due = min(due, n.again(n.announcedAt))
 	}
-	if n.noSpaceAt >= 0 {
+	if at := n.noSpaceAt + leaseRetryTicks; n.noSpaceAt >= 0 && at > n.now {
 		// The driver's turn then proposes the alarm change again
-		// (SetDisk), if it still has to.
-		due = min(due, n.noSpaceAt+leaseRetryTicks)
+		// (SetDisk), if it still has to; from then on any turn does.
+		due = min(due, at)
 	}
 	if len(n.tokens) > 0 {
 		due = min(due, n.secondEnd(n.tokenDue))
@@ -60,6 +63,16 @@ func (n *Node) Due() int64 {
 		due = min(due, (n.now/p+1)*p)
 	}
 	return max(due-n.now, 1)
+}
+
+// again is the tick at which a proposal made at tick at, or never if 0,
+// goes out again: an election timeout later, as publish and
+// announceVersion retry.
+func (n *Node) again(at int64) int64 {
+	if at == 0 {
+		return n.now + 1
+	}
+	return at + int64(n.cfg.ElectionTicks)
 }
 
 // raftDue is the next tick at which Raft may act on a tick. A leader acts

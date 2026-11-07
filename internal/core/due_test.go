@@ -21,23 +21,21 @@ type dueDriver struct {
 	woken [3]int
 }
 
+// newDueDriver starts the cores. Each wakes at the first tick, as a core
+// takes a turn before its driver asks it what is due.
 func newDueDriver(t *testing.T) *dueDriver {
-	d := &dueDriver{t: t, c: newMemCluster(t, func(*Config) {})}
-	for i, n := range d.c.nodes {
-		d.wake[i] = n.Due()
-	}
-	return d
+	return &dueDriver{t: t, c: newMemCluster(t, func(*Config) {})}
 }
 
 // catchUp gives core i the ticks up to now. Each before its due tick must
-// put nothing out.
+// put nothing out, the last before an input too.
 func (d *dueDriver) catchUp(i int) {
 	n := d.c.nodes[i]
 	for d.last[i] < d.now {
 		d.last[i]++
 		n.Tick()
-		if d.last[i] == d.now {
-			return
+		if d.last[i] >= d.wake[i] {
+			continue
 		}
 		eff, err := n.Process()
 		if err != nil {
