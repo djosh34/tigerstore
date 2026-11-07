@@ -1,0 +1,77 @@
+package server_test
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+)
+
+// TestDiag524Preload isolates the mixed-k8s preload: 300 ~60 KiB Txns/s,
+// requests spread across all three nodes. It overwrites three keys, so the
+// index stays small. Run on an isolated Actions host with netem on 10.
+func TestDiag524Preload(t *testing.T) {
+	if os.Getenv("DIAG524_NET") == "" {
+		t.Skip("needs an isolated host with netem on the bench peer ports")
+	}
+	c := newClusterWith(t, func(c *cluster) {
+		c.tick = 100 * time.Millisecond
+		for id, ln := range c.peerLns {
+			if err := ln.Close(); err != nil {
+				t.Fatal(err)
+			}
+			ln = listenPeer(t, fmt.Sprintf("127.0.0.1:%d", 20000+10*id+1))
+			c.peerLns[id], c.peerAddrs[id] = ln, ln.Addr().String()
+		}
+	})
+	cert, _, _, err := c.ca.Issue("client", 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var clients []pb.KVClient
+	for id := uint64(1); id <= 3; id++ {
+		kv := c.client(id, cert)
+		retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+			return kv.Put(ctx, &pb.PutRequest{Key: []byte("ready"), Value: []byte("1")})
+		})
+		clients = append(clients, kv)
+	}
+	value := make([]byte, 60<<10)
+	jobs := make(chan int, 6000)
+	var workers sync.WaitGroup
+	var failed atomic.Int64
+	var maxLatency atomic.Int64
+	start := time.Now()
+	for i := 0; i < 96; i++ {
+		workers.Go(func() {
+			for i := range jobs {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				at := time.Now()
+				_, err := clients[i%3].Txn(ctx, &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte(fmt.Sprintf("key%d", i%3)), Value: value}}}}})
+				d := time.Since(at).Nanoseconds()
+				for old := maxLatency.Load(); d > old && !maxLatency.CompareAndSwap(old, d); old = maxLatency.Load() {
+				}
+				cancel()
+				if err != nil && failed.Add(1) <= 10 {
+					t.Logf("request error after %v: %v", time.Duration(d), err)
+				}
+			}
+		})
+	}
+	// Fixed arrivals, not a closed loop. Each run offers the same work.
+	for i := 0; i < 6000; i++ {
+		time.Sleep(time.Until(start.Add(time.Duration(i) * time.Second / 300)))
+		jobs <- i
+	}
+	close(jobs)
+	workers.Wait()
+	t.Logf("6000 Txns, 300/s, 60 KiB each: elapsed=%v errors=%d max=%v", time.Since(start), failed.Load(), time.Duration(maxLatency.Load()))
+	if failed.Load() > 0 {
+		t.Fatalf("%d requests failed", failed.Load())
+	}
+}

@@ -133,7 +133,9 @@ jobs:
           LAYOUTS: ${{ (matrix.bench == 'put-1k' || matrix.bench == 'txn-1k') && inputs.layouts || '' }}
           BENCH: ${{ matrix.bench }}
         run: |
-          if [ "$BENCH" = diag-tcp ]; then
+          if [ "$BENCH" = diag-tcp ] || [ "$BENCH" = diag-preload ]; then
+            pkg=./internal/peer test=TestDiag524TLSBulk
+            if [ "$BENCH" = diag-preload ]; then pkg=./internal/server test=TestDiag524Preload; fi
             mkdir -p results/diag-tcp
             for mode in egress ingress egress-again; do
               export DIAG524_EGRESS=1
@@ -142,7 +144,7 @@ jobs:
               bench/netem.sh probe | tee "results/diag-tcp/$mode-probe.txt"
               (while true; do date -u; ss -tinm '( sport = :20021 or dport = :20021 )'; sleep 1; done) >"results/diag-tcp/$mode-sockets.txt" &
               monitor=$!
-              DIAG524_NET=1 GOFLAGS=-p=2 go test ./internal/peer -run '^TestDiag524TLSBulk$' -v -count=1 -timeout=150s 2>&1 | tee "results/diag-tcp/$mode.txt" || true
+              DIAG524_NET=1 GOFLAGS=-p=2 go test "$pkg" -run "^$test$" -v -count=1 -timeout=150s 2>&1 | tee "results/diag-tcp/$mode.txt" || true
               kill "$monitor" || true
               wait "$monitor" || true
               bench/netem.sh show >"results/diag-tcp/$mode-netem.txt"
@@ -192,7 +194,7 @@ jobs:
         run: |
           {
             cat results/runner.md
-            if [ "$BENCH" = diag-tcp ]; then
+            if [ "$BENCH" = diag-tcp ] || [ "$BENCH" = diag-preload ]; then
               echo '```'
               cat results/diag-tcp/{egress,ingress,egress-again}.txt
               echo '```'
