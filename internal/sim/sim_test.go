@@ -261,6 +261,24 @@ func seedRange(first uint64, n int) []uint64 {
 	return seeds
 }
 
+// raceRuns is how many runs a search for a rare event makes under the race
+// detector. There the runs are not the seeds' and the event can take a
+// long streak to come, at 10 s or more a run, which must not take race-sim
+// past its timeout (#500). A search that stops there without its event
+// says that it skipped race coverage of it; gosim's seeds still must
+// reach it.
+const raceRuns = 60
+
+// searchSeeds is seedRange(first, n) for a search that stops at its event,
+// cut to raceRuns under the race detector.
+func searchSeeds(first uint64, n int) []uint64 {
+	seeds := seedRange(first, n)
+	if simrun.Race {
+		seeds = seeds[:min(n, raceRuns)]
+	}
+	return seeds
+}
+
 // runFiles are a run's trace, node report, stats, hashes, history, with
 // history, disks and replay command, by path, for a directory dir of
 // their own.
@@ -1197,7 +1215,7 @@ func TestSlowFetch(t *testing.T) {
 	var older, failed, during int
 	// Each of the three happens in about one seed in 20 to 50; the search
 	// stops once all did.
-	if !simrun.Each(t, seedRange(5001, 200), func(t *testing.T, seed uint64) Stats {
+	if !simrun.Each(t, searchSeeds(5001, 200), func(t *testing.T, seed uint64) Stats {
 		res := run(t, slowFetchConfig(seed))
 		checkers(t, res)
 		return res.Stats
@@ -1209,7 +1227,11 @@ func TestSlowFetch(t *testing.T) {
 	}) {
 		return
 	}
-	if !simrun.One() && !t.Failed() && (older == 0 || failed == 0 || during == 0) {
+	switch {
+	case simrun.One() || t.Failed() || older > 0 && failed > 0 && during > 0:
+	case simrun.Race:
+		t.Logf("race coverage of these paths was skipped this run: in %d runs under the race detector, %d snapshots installed from an older checkpoint, %d fetches the leader could not serve, %d checkpoints finished during an install; gosim's seeds must have each", raceRuns, older, failed, during)
+	default:
 		t.Fatalf("%d snapshots installed from an older checkpoint, %d fetches the leader could not serve, %d checkpoints finished during an install; each must happen", older, failed, during)
 	}
 }
@@ -1356,21 +1378,12 @@ func TestRotInAnEntryRecord(t *testing.T) {
 // of reloading on every fetch (#201, campaign seed 5038431). Every run
 // must pass the checkers.
 //
-// Under the race detector the runs are not the seeds' and a fence is rare:
-// one in about 45 runs, at 10 s or more each. There the test stops after
-// raceSeeds runs, fenced or not, so that a long streak without one cannot
-// take race-sim past its timeout, and says so when it skipped the path;
-// gosim's seeds still must fence (#500). Making the race build reach the
-// path directly needs a damaged leader whose follower falls behind its
-// compaction, which elections decide.
+// Under the race detector it stops after raceRuns runs. Making the race
+// build reach the path directly needs a damaged leader whose follower falls
+// behind its compaction, which elections decide.
 func TestSnapshotFromCorruptLeader(t *testing.T) {
-	const raceSeeds = 60
-	seeds := seedRange(1, 200)
-	if simrun.Race {
-		seeds = seeds[:raceSeeds]
-	}
 	fenced := false
-	if !simrun.Each(t, seeds, func(t *testing.T, seed uint64) Stats {
+	if !simrun.Each(t, searchSeeds(1, 200), func(t *testing.T, seed uint64) Stats {
 		res := run(t, DefaultConfig(seed))
 		checkers(t, res)
 		return res.Stats
@@ -1386,7 +1399,7 @@ func TestSnapshotFromCorruptLeader(t *testing.T) {
 	switch {
 	case simrun.One() || t.Failed() || fenced:
 	case simrun.Race:
-		t.Logf("race coverage of this path was skipped this run: none of %d runs under the race detector fenced a node after a serve failed on its own damage; gosim's seeds must, and internal/node's TestServeCorruptRecordStops serves a damaged record under -race", raceSeeds)
+		t.Logf("race coverage of this path was skipped this run: none of %d runs under the race detector fenced a node after a serve failed on its own damage; gosim's seeds must, and internal/node's TestServeCorruptRecordStops serves a damaged record under -race", raceRuns)
 	default:
 		t.Fatal("no run fenced a node after it failed a serve on its own damage")
 	}
