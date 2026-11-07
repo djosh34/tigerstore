@@ -96,7 +96,9 @@ var plantedCases = map[string]plantedCase{
 	"B07":  {seeds: 64, cfg: DefaultConfig, want: badWatch},
 	"B08":  {seeds: 128, cfg: DefaultConfig, want: badWatch},
 	"B09a": {seeds: 16, cfg: DefaultConfig, want: badState},
-	"B09b": {seeds: 16, cfg: DefaultConfig, want: badState},
+	// B09b fires on a key's older versions, which a node that started
+	// from a checkpoint no longer holds, so replicas can also part on it.
+	"B09b": {seeds: 16, cfg: DefaultConfig, want: badState + `|applied the same log to different states`},
 	"B10":  {seeds: 64, cfg: DefaultConfig, want: badState + `|applied the same log to different states|` + badWatch},
 	"B11":  {seeds: 64, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	// Since a snapshot install starts the node again from its log (#238),
