@@ -674,13 +674,13 @@ func (n *Node) passed(w *watcher) bool {
 	return w.prevKV && w.next < n.kv.HistoryEnd() && n.kv.Changed(w.next).ModRev() <= n.kv.CompactRev()
 }
 
-// passedBig reports whether a compaction passed the next change of the
+// passedBig reports whether a compaction reached the next change of the
 // response a watcher sends in parts, which then cannot go on as its first
-// part said: the change is gone, or, with prev_kv, the compaction is at
-// its revision, so its previous value is gone.
+// part said: the change is gone, or a compaction at its revision may have
+// removed it, or, with prev_kv, its previous value.
 func (n *Node) passedBig(w *watcher) bool {
 	b := w.big
-	return b.pos < n.kv.HistoryStart() || (w.prevKV && n.kv.Changed(b.pos).ModRev() <= n.kv.CompactRev())
+	return b.pos < n.kv.HistoryStart() || n.kv.Changed(b.pos).ModRev() <= n.kv.CompactRev()
 }
 
 // catchUpOne sends a watcher its next response of history: up to

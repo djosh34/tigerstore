@@ -457,3 +457,55 @@ func TestCatchUpSendsEachChangeOfAKey(t *testing.T) {
 		t.Fatalf("after a compaction at the revision the watcher got %q, want %q", strings.Join(got, " "), want)
 	}
 }
+
+// TestCompactionAtPartsWithoutPrevKV deletes 300 keys and puts the last
+// of them again in one Txn, for a watcher without prev_kv, with pieces of
+// 2 KiB, and compacts at that revision right after the first part. The
+// compaction removes the delete of the key put again, which the first
+// part counted: the stream must break rather than send fewer bytes than
+// the first part said.
+func TestCompactionAtPartsWithoutPrevKV(t *testing.T) {
+	s := startSingleWith(t, simfs.New(), 1, func(c *Config) { c.PieceBytes = 2 << 10 })
+	for i := range 300 {
+		s.n.Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "k%03d", i), Value: []byte("v")}})
+	}
+	s.run()
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("k"), RangeEnd: []byte("l")}))
+	s.run()
+	s.responses()
+	compacted := false
+	s.afterTurn = func(eff Effects) {
+		for _, w := range eff.Watch {
+			if w.More && !compacted {
+				compacted = true
+				s.n.Submit(Request{ID: 900, Op: &pb.CompactionRequest{Revision: s.n.kv.Rev()}})
+			}
+		}
+	}
+	r := s.do(500, &pb.TxnRequest{Success: []*pb.RequestOp{
+		{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte("k"), RangeEnd: []byte{0}}}},
+		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("k299"), Value: []byte("again")}}},
+	}})
+	if r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	for range 10 {
+		s.run()
+	}
+	if !compacted {
+		t.Fatal("setup: the revision went in no parts")
+	}
+	var declared, sent int64
+	for _, p := range s.watch {
+		if p.Broken {
+			return
+		}
+		declared = max(declared, p.EventBytes)
+		for _, ev := range p.Resp.Events {
+			sent += int64(proto.Size(&pb.WatchResponse{Events: []*mvccpb.Event{ev}}))
+		}
+	}
+	if sent != declared {
+		t.Fatalf("the stream did not break: the first part said %d bytes, %d went out", declared, sent)
+	}
+}

@@ -166,9 +166,6 @@ func (w *writer) add(k *keyIndex, v version) {
 	w.changed = true
 	w.s.changes = append(w.s.changes, Change{s: w.s, k: k, i: len(k.vers) - 1})
 	w.s.hist.add(k, v.mod.main)
-	if n := len(k.vers); n > 1 && k.vers[n-2].mod.main == v.mod.main {
-		w.s.hist.changedTwice(v.mod.main)
-	}
 }
 
 // put writes one key and returns its previous version if p asks for it.

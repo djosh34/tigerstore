@@ -21,17 +21,6 @@ type history struct {
 	base   int64
 	starts []int64
 	keys   []*keyIndex
-	// twice holds, in order, the revisions that change a key more than
-	// once, as a Txn that deletes a range and puts a key in it again does.
-	twice []int64
-}
-
-// changedTwice notes that revision main, the newest, changes a key more
-// than once.
-func (h *history) changedTwice(main int64) {
-	if n := len(h.twice); n == 0 || h.twice[n-1] != main {
-		h.twice = append(h.twice, main)
-	}
 }
 
 // add logs the change of k at revision main, the newest of the store.
@@ -61,8 +50,6 @@ func (h *history) drop(rev int64) {
 	} else {
 		n = int64(len(h.starts))
 	}
-	i, _ := slices.BinarySearch(h.twice, rev)
-	h.twice = slices.Delete(h.twice, 0, i)
 	// The dropped slots are cleared, so they keep no removed key alive.
 	clear(h.keys[:cut-h.first])
 	h.keys = h.keys[cut-h.first:]
@@ -83,21 +70,19 @@ func (h *history) revision(pos int64) int64 {
 }
 
 // rebuild logs every version of the index from revision from on, as Load
-// finds them, in revision order.
+// finds them, in revision order. A version a compaction removed leaves an
+// empty slot where a later one of its revision follows, so that each
+// change's slot stays at its sub-revision (Changed).
 func (h *history) rebuild(s *Store, from int64) {
 	type logged struct {
 		mod rev
 		k   *keyIndex
 	}
 	var all []logged
-	var twice []int64
 	s.keys.Ascend(func(k *keyIndex) bool {
-		for i, v := range k.vers {
+		for _, v := range k.vers {
 			if v.mod.main >= from {
 				all = append(all, logged{v.mod, k})
-				if i > 0 && k.vers[i-1].mod.main == v.mod.main {
-					twice = append(twice, v.mod.main)
-				}
 			}
 		}
 		return true
@@ -109,11 +94,17 @@ func (h *history) rebuild(s *Store, from int64) {
 		return cmp.Compare(a.mod.sub, b.mod.sub)
 	})
 	*h = history{}
+	main, sub := int64(0), int64(0)
 	for _, l := range all {
-		h.add(l.k, l.mod.main)
+		if l.mod.main != main {
+			main, sub = l.mod.main, 0
+		}
+		for ; sub < l.mod.sub; sub++ {
+			h.add(nil, main)
+		}
+		h.add(l.k, main)
+		sub++
 	}
-	slices.Sort(twice)
-	h.twice = slices.Compact(twice)
 }
 
 // HistoryFrom is the position of the first change at revision rev or
@@ -136,29 +127,24 @@ func (s *Store) HistoryFrom(rev int64) int64 {
 func (s *Store) HistoryEnd() int64 { return s.HistoryFrom(s.rev + 1) }
 
 // Changed returns the change at position pos, which must be at or after
-// the history's start and before HistoryEnd. A key that changed more than
-// once in a revision has a slot for each change, in order: the last slot
-// takes its last version at the revision, the one before the version
-// before. A slot whose version a compaction removed is Gone, as etcd's
-// backend no longer holds it.
+// the history's start and before HistoryEnd. A write logs its changes in
+// the order of their sub-revisions, from 0, so a change's slot is its
+// revision's first plus its sub-revision: a key that changed more than
+// once in a revision has a slot for each change. A slot whose version a
+// compaction removed is Gone, as etcd's backend no longer holds it.
 func (s *Store) Changed(pos int64) Change {
 	h := &s.hist
 	k := h.keys[pos-h.first]
 	main := h.revision(pos)
-	i := k.at(main)
-	if _, twice := slices.BinarySearch(h.twice, main); twice {
-		// Rare: count the key's later slots in the revision.
-		end := h.end()
-		if j := main + 1 - h.base; j < int64(len(h.starts)) {
-			end = h.starts[j]
-		}
-		for p := pos + 1; p < end; p++ {
-			if h.keys[p-h.first] == k {
-				i--
-			}
-		}
+	if k == nil {
+		return Change{s: s, i: -1, main: main}
 	}
-	if i < 0 || k.vers[i].mod.main != main {
+	sub := pos - h.starts[main-h.base]
+	i := k.at(main)
+	for i >= 0 && k.vers[i].mod.main == main && k.vers[i].mod.sub > sub {
+		i--
+	}
+	if i < 0 || k.vers[i].mod != (rev{main: main, sub: sub}) {
 		return Change{s: s, k: k, i: -1, main: main}
 	}
 	return Change{s: s, k: k, i: i}

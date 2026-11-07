@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -422,5 +423,77 @@ func TestSortOrderNoneSorts(t *testing.T) {
 func TestKVBytes(t *testing.T) {
 	if size := unsafe.Sizeof(KV{}); size > kvBytes {
 		t.Fatalf("a KV takes %d bytes, the sorted list counts %d", size, kvBytes)
+	}
+}
+
+// TestHistoryOfAKeyChangedTwice deletes a range and puts a key of it
+// again in one Txn, many times, compacts at one such revision, and walks
+// the history from there: the changes that are not Gone are every version
+// the index holds, in order, also after the store is loaded from a
+// checkpoint, which keeps the slots of removed versions empty. A walk of
+// a revision of 100,000 deletes and one put takes linear time.
+func TestHistoryOfAKeyChangedTwice(t *testing.T) {
+	s := New(&Heap{})
+	again := func(n int) {
+		t.Helper()
+		for i := range n {
+			put(t, s, fmt.Sprintf("k%06d", i), "v")
+		}
+		if _, err := s.Txn(&pb.TxnRequest{Success: []*pb.RequestOp{
+			{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte("k"), RangeEnd: []byte("l")}}},
+			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("k000001"), Value: []byte("again")}}},
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	again(3)
+	compact := s.Rev()
+	again(3)
+	if err := s.Compact(compact); err != nil {
+		t.Fatal(err)
+	}
+	check := func(s *Store) {
+		t.Helper()
+		want := s.History([]byte{0}, []byte{0}, compact)
+		var got []Change
+		gone := 0
+		for pos := s.HistoryFrom(compact); pos < s.HistoryEnd(); pos++ {
+			if c := s.Changed(pos); c.Gone() {
+				gone++
+			} else {
+				got = append(got, c)
+			}
+		}
+		if len(got) != len(want) || gone == 0 {
+			t.Fatalf("%d changes and %d gone, want %d and some gone", len(got), gone, len(want))
+		}
+		for i := range got {
+			if got[i].k != want[i].k || got[i].i != want[i].i {
+				t.Fatalf("change %d is %s at %d, want %s at %d", i, got[i].Key(), got[i].ModRev(), want[i].Key(), want[i].ModRev())
+			}
+		}
+	}
+	check(s)
+	s.Freeze()
+	var b []byte
+	for done := false; !done; {
+		b, _, done = s.CopyFrozen(b, 1<<20)
+	}
+	loaded := New(&Heap{})
+	if _, err := loaded.Load(bufio.NewReader(bytes.NewReader(b)), s.Rev(), s.CompactRev()); err != nil {
+		t.Fatal(err)
+	}
+	check(loaded)
+
+	again(100_000)
+	start := time.Now()
+	n := 0
+	for pos := s.HistoryFrom(s.Rev()); pos < s.HistoryEnd(); pos++ {
+		if !s.Changed(pos).Gone() {
+			n++
+		}
+	}
+	if took := time.Since(start); n != 100_001 || took > 2*time.Second {
+		t.Fatalf("a walk of the revision found %d changes in %v", n, took)
 	}
 }
