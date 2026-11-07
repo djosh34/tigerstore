@@ -761,7 +761,7 @@ func (r *Result) history() ([]*Record, error) {
 	if r.chunks != nil && r.chunks.err != nil {
 		// A chunk on the runner's disk that failed to read decoded as
 		// zeros.
-		err = errors.Join(err, fmt.Errorf("the history's chunks on the runner's disk: %w", r.chunks.err))
+		err = errors.Join(err, fmt.Errorf("%w: the history's chunks: %w", errRunnerDisk, r.chunks.err))
 	}
 	return history, err
 }
@@ -870,13 +870,18 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 func (s *Sim) pagesErr() error {
 	var errs []error
 	if s.pages != nil && s.pages.err != nil {
-		errs = append(errs, fmt.Errorf("the disks' pages on the runner's disk: %w", s.pages.err))
+		errs = append(errs, fmt.Errorf("%w: the disks' pages: %w", errRunnerDisk, s.pages.err))
 	}
 	if s.chunks != nil && s.chunks.err != nil {
-		errs = append(errs, fmt.Errorf("the history's chunks on the runner's disk: %w", s.chunks.err))
+		errs = append(errs, fmt.Errorf("%w: the history's chunks: %w", errRunnerDisk, s.chunks.err))
 	}
 	return errors.Join(errs...)
 }
+
+// errRunnerDisk marks a failure of the runner's own disk, which holds the
+// pages and chunks a run keeps outside memory: a run with one says
+// nothing of the nodes, whose reads of it may have got zeros.
+var errRunnerDisk = errors.New("the runner's disk failed")
 
 // keepPages is how many synced pages a node's disk, with its copies,
 // keeps in memory as a cache: the others are on the runner's disk only
@@ -959,11 +964,11 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 	if s.pages == nil {
 		pages, err := simrun.NewHostPages()
 		if err != nil {
-			return nil, fmt.Errorf("the disks' pages on the runner's disk: %w", err)
+			return nil, fmt.Errorf("%w: the disks' pages: %w", errRunnerDisk, err)
 		}
 		chunks, err := simrun.NewHostPages()
 		if err != nil {
-			return nil, fmt.Errorf("the history's chunks on the runner's disk: %w", err)
+			return nil, fmt.Errorf("%w: the history's chunks: %w", errRunnerDisk, err)
 		}
 		s.pages, s.chunks = &keptPages{pages: pages}, &keptPages{pages: chunks}
 	}
