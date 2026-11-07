@@ -546,3 +546,58 @@ func TestPartsAfterACompactionAtTheirRevision(t *testing.T) {
 		t.Fatalf("%d parts brought %d events, want 300 in parts", parts, events)
 	}
 }
+
+// TestPartsAfterACompactionHeldByACopy compacts at revision R while a
+// checkpoint copy holds the compaction back, so the versions it drops
+// stay in memory, and watches from R without prev_kv, with pieces of 2
+// KiB. R deletes 300 keys and puts the last again, so the compaction
+// drops the delete of that key. The response must not count it: the copy
+// finishing between its parts would remove it, and the parts would fall
+// short of what the first one said.
+func TestPartsAfterACompactionHeldByACopy(t *testing.T) {
+	s := startSingleWith(t, simfs.New(), 1, func(c *Config) { c.PieceBytes = 2 << 10 })
+	for i := range 300 {
+		s.n.Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "k%03d", i), Value: []byte("v")}})
+	}
+	s.run()
+	s.holdCopy = true
+	s.ok(400, &pb.CompactionRequest{Revision: s.n.kv.Rev()})
+	r := s.do(500, &pb.TxnRequest{Success: []*pb.RequestOp{
+		{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte("k"), RangeEnd: []byte{0}}}},
+		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("k299"), Value: []byte("again")}}},
+	}})
+	if r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	rev := r.Resp.(*pb.TxnResponse).Header.Revision
+	s.ok(501, &pb.CompactionRequest{Revision: rev})
+	released := false
+	s.afterTurn = func(eff Effects) {
+		for _, w := range eff.Watch {
+			if w.More && !released {
+				released = true
+				s.holdCopy = false
+			}
+		}
+	}
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("k"), RangeEnd: []byte("l"), StartRevision: rev}))
+	for range 20 {
+		s.run()
+	}
+	if !released {
+		t.Fatal("setup: the revision went in no parts")
+	}
+	var declared, sent int64
+	for _, p := range s.watch {
+		if p.Broken {
+			return
+		}
+		declared = max(declared, p.EventBytes)
+		for _, ev := range p.Resp.Events {
+			sent += int64(proto.Size(&pb.WatchResponse{Events: []*mvccpb.Event{ev}}))
+		}
+	}
+	if sent != declared {
+		t.Fatalf("the first part said %d bytes, %d went out", declared, sent)
+	}
+}

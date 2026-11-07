@@ -131,7 +131,8 @@ func (s *Store) HistoryEnd() int64 { return s.HistoryFrom(s.rev + 1) }
 // the order of their sub-revisions, from 0, so a change's slot is its
 // revision's first plus its sub-revision: a key that changed more than
 // once in a revision has a slot for each change. A slot whose version a
-// compaction removed is Gone, as etcd's backend no longer holds it.
+// compaction removed, or drops once the checkpoint copy it waits for is
+// done, is Gone, as etcd's backend no longer holds it.
 func (s *Store) Changed(pos int64) Change {
 	h := &s.hist
 	k := h.keys[pos-h.first]
@@ -145,6 +146,11 @@ func (s *Store) Changed(pos int64) Change {
 		i--
 	}
 	if i < 0 || k.vers[i].mod != (rev{main: main, sub: sub}) {
+		return Change{s: s, k: k, i: -1, main: main}
+	}
+	// A compaction that waits for a checkpoint copy has dropped the
+	// version for every reader but the copy.
+	if c := s.pendingCompact(); c > 0 && i < k.dropped(c) {
 		return Change{s: s, k: k, i: -1, main: main}
 	}
 	return Change{s: s, k: k, i: i}
