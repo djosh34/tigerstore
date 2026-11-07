@@ -1,5 +1,7 @@
 # A seed campaign of one simulator test of internal/sim under gosim, in
-# up to 20 jobs of two processes, every checker on each seed. The test is
+# up to 10 jobs of four processes, one a CPU of the runner, every checker
+# on each seed (four a runner give 3.1 times the seeds a minute of one,
+# against 1.7 times for two: #500). The test is
 # one that runs a set of seeds (simrun.Seeds), such as TestSeeds,
 # TestLinearizable, TestMembershipFaults or TestKubernetesLoad. The seeds
 # are split evenly over the processes:
@@ -57,12 +59,14 @@ jobs:
           [[ "$TEST" =~ ^Test[A-Za-z0-9_]+$ ]] || { echo "test $TEST is not the name of a test"; exit 1; }
           [[ "$SEEDS" =~ ^[1-9][0-9]*$ ]] || { echo "seeds $SEEDS is not a positive count"; exit 1; }
           [[ "$FIRST" =~ ^[0-9]+$ ]] || { echo "first $FIRST is not a seed"; exit 1; }
-          # Two processes a job, at most 20 jobs, every process but the
-          # last the same number of seeds, and at most one process empty.
-          jobs=$(( (SEEDS + 1) / 2 ))
-          jobs=$(( jobs > 20 ? 20 : jobs ))
-          per=$(( (SEEDS + 2 * jobs - 1) / (2 * jobs) ))
-          jobs=$(( (SEEDS + 2 * per - 1) / (2 * per) ))
+          # The seeds of a process are as many as with up to 40 processes,
+          # so that a process of TestSeeds keeps its 2,500 seeds and the
+          # rules of a set of 2,000; four processes a job, every process
+          # but the last the same number of seeds.
+          procs=$(( (SEEDS + 1) / 2 ))
+          procs=$(( procs > 40 ? 40 : procs ))
+          per=$(( (SEEDS + procs - 1) / procs ))
+          jobs=$(( (SEEDS + 4 * per - 1) / (4 * per) ))
           echo "$jobs jobs, $per seeds a process"
           echo "shards=$(seq -s, 0 $((jobs - 1)) | sed 's/^/[/; s/$/]/')" >>"$GITHUB_OUTPUT"
           echo "per=$per" >>"$GITHUB_OUTPUT"
@@ -81,7 +85,7 @@ jobs:
           go-version-file: go.mod
       # Builds the gosim and native test binaries, and runs no test.
       - run: scripts/sim.sh ./internal/sim '^$'
-      - name: Run the seeds in two processes
+      - name: Run the seeds in four processes
         shell: bash
         env:
           TEST: ${{ inputs.test }}
@@ -96,8 +100,8 @@ jobs:
           cd internal/sim
           pids=()
           procs=()
-          for p in 0 1; do
-            k=$((SHARD * 2 + p))
+          for p in 0 1 2 3; do
+            k=$((SHARD * 4 + p))
             n=$((SEEDS - k * PER))
             n=$((n > PER ? PER : n))
             if [ "$n" -le 0 ]; then
@@ -114,7 +118,7 @@ jobs:
             wait "$pid" || status=1
           done
           # The step's shell stops at the first failed command, and grep
-          # fails once head has its 50 lines, so both processes are waited
+          # fails once head has its 50 lines, so all processes are waited
           # for first.
           for p in "${procs[@]}"; do
             grep -E -- '^--- FAIL|^    --- FAIL| seeds: |took effect|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$p.log" | head -50 || true
