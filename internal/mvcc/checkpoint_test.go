@@ -197,3 +197,31 @@ func TestCopyFrozenInSmallChunks(t *testing.T) {
 		t.Fatal("the chunks load as another index")
 	}
 }
+
+// TestLongKeyAtChunkEnd starts a key of 4 MiB with 0 to 30 bytes left in
+// a chunk of 1 KiB, its length's uvarint among them: no chunk may hold
+// the whole key, and the chunks load (#435).
+func TestLongKeyAtChunkEnd(t *testing.T) {
+	long := bytes.Repeat([]byte{'b'}, 4<<20)
+	for first := 990; first <= 1020; first++ {
+		s := New(&Heap{})
+		for _, k := range [][]byte{bytes.Repeat([]byte{'a'}, first), long} {
+			if _, err := s.Put(&pb.PutRequest{Key: k, Value: []byte("v")}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		s.Freeze()
+		var all []byte
+		for done := false; !done; {
+			var b []byte
+			b, _, done = s.CopyFrozen(nil, 1024)
+			if len(b) > 1024+64 {
+				t.Fatalf("with a first key of %d bytes, a chunk with a limit of 1 KiB holds %d bytes", first, len(b))
+			}
+			all = append(all, b...)
+		}
+		if _, err := New(&Heap{}).Load(bufio.NewReader(bytes.NewReader(all)), s.Rev(), s.CompactRev()); err != nil {
+			t.Fatalf("with a first key of %d bytes: %v", first, err)
+		}
+	}
+}

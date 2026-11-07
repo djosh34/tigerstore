@@ -75,9 +75,12 @@ func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done b
 			if !begun {
 				b = binary.AppendUvarint(b, uint64(len(k.key)))
 			}
+			// At least one byte of the key goes, so that the chunk stops
+			// inside it, with its length written, even when the length
+			// filled the chunk.
 			take := len(k.key) - keyOff
-			if room := limit - len(b); take > room && room > 0 {
-				take = room
+			if room := limit - len(b); take > room {
+				take = max(room, 1)
 			}
 			b = append(b, k.key[keyOff:keyOff+take]...)
 			if keyOff += take; keyOff < len(k.key) {
