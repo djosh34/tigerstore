@@ -63,6 +63,10 @@ func (r *Router) accept() {
 			w.Go(func() { splice(a, b) })
 			w.Go(func() { splice(b, a) })
 			w.Wait()
+			// Both directions ended: the sockets go now, not when the
+			// collector finds them.
+			_ = a.Close()
+			_ = b.Close()
 			r.mu.Lock()
 			delete(r.conns, a)
 			delete(r.conns, b)

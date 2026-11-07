@@ -4,7 +4,10 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime/debug"
+	"strings"
 	"testing"
+	"time"
 )
 
 // TestRouterPicksByDialer dials a Router from this process: the Router
@@ -60,5 +63,83 @@ func TestRouterPicksByDialer(t *testing.T) {
 	}
 	if s := mine.Stats(); s.Conns != 1 || s.ForwardBytes != 4 {
 		t.Fatalf("the picked proxy relayed %+v", s)
+	}
+}
+
+// TestRouterClosesFinishedConnections passes 12 connections through a
+// Router to an echo server, each ending gracefully, with the collector
+// off: once they are done, the Router must hold none of their sockets
+// open, or a long chaos run could use up its descriptors.
+func TestRouterClosesFinishedConnections(t *testing.T) {
+	defer debug.SetGCPercent(debug.SetGCPercent(-1))
+	up, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer up.Close() //nolint:errcheck // test listener
+	go func() {
+		for {
+			c, err := up.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				_, _ = io.Copy(c, c)
+				_ = c.Close()
+			}()
+		}
+	}()
+	r, err := Route("127.0.0.1:0", up.Addr().String(), func(*net.TCPConn) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close() //nolint:errcheck // test router
+	// sockets counts the process's open sockets. io.Copy between TCP
+	// connections also keeps pipes, in a pool of Go's, which the
+	// collector frees.
+	sockets := func() int {
+		es, err := os.ReadDir("/proc/self/fd")
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, e := range es {
+			if l, err := os.Readlink("/proc/self/fd/" + e.Name()); err == nil && strings.HasPrefix(l, "socket:") {
+				n++
+			}
+		}
+		return n
+	}
+	before := sockets()
+	for range 12 {
+		c, err := net.Dial("tcp", r.Addr())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.Write([]byte("ping")); err != nil {
+			t.Fatal(err)
+		}
+		_ = c.(*net.TCPConn).CloseWrite()
+		if _, err := io.ReadAll(c); err != nil {
+			t.Fatal(err)
+		}
+		_ = c.Close()
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		r.mu.Lock()
+		open := len(r.conns)
+		r.mu.Unlock()
+		if open == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the Router still tracks %d sockets", open)
+		}
+	}
+	// The echo server closes its ends in goroutines of its own.
+	for deadline := time.Now().Add(2 * time.Second); sockets() > before; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d sockets open after 12 finished connections, %d before", sockets(), before)
+		}
 	}
 }

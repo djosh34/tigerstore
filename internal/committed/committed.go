@@ -53,11 +53,7 @@ func Prefix(ns []Node) ([]*raftpb.Entry, error) {
 	for _, n := range ns {
 		for i := n.First; i <= n.Commit; i++ {
 			a, b := n.Entries[i-n.First], best.Entries[i-1]
-			// Each node writes the bootstrap membership changes itself,
-			// with the peer addresses of its own --initial-cluster, which
-			// name the proxies; only their terms and types must agree.
-			sameData := a.GetType() != raftpb.EntryNormal || bytes.Equal(a.Data, b.Data)
-			if a.GetTerm() != b.GetTerm() || a.GetType() != b.GetType() || !sameData {
+			if a.GetTerm() != b.GetTerm() || a.GetType() != b.GetType() || !bytes.Equal(a.Data, b.Data) {
 				return nil, fmt.Errorf("conflicting committed entries at index %d in %s and %s", i, n.Dir, best.Dir)
 			}
 		}

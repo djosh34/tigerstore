@@ -32,8 +32,11 @@ type link struct {
 
 // cluster is three tigerstore processes behind one proxy per link.
 type cluster struct {
-	dir     string
-	bin     string
+	dir string
+	bin string
+	// nodes are guarded by nodesMu for the routers' dialer, which runs
+	// from before newCluster fills them.
+	nodesMu sync.Mutex
 	nodes   [3]*node
 	clients [3]*link    // client to node i
 	peers   [3][3]*link // node i to node j
@@ -199,7 +202,9 @@ func newCluster(dir, bin string, seed uint64, data [3]string, extra []string) (*
 		if err != nil {
 			return nil, errors.Join(err, c.closeProxies())
 		}
+		c.nodesMu.Lock()
 		c.nodes[i] = n
+		c.nodesMu.Unlock()
 	}
 	return c, nil
 }
@@ -222,7 +227,10 @@ func (c *cluster) closeProxies() error {
 func (c *cluster) dialer(conn *net.TCPConn) int {
 	var pids []int
 	byPid := map[int]int{}
-	for i, n := range c.nodes {
+	c.nodesMu.Lock()
+	nodes := c.nodes
+	c.nodesMu.Unlock()
+	for i, n := range nodes {
 		if n == nil {
 			continue
 		}
