@@ -77,7 +77,6 @@ func TestKubernetesLoadLong(t *testing.T) {
 func kubernetesLoad(t *testing.T, long bool, n int) {
 	simrun.Seeds(t, 1, n, func(t *testing.T, seed uint64) Stats {
 		res := run(t, kubeConfig(seed, long))
-		checkers(t, res)
 		st := res.Stats
 		// A compaction whose answer a fault lost is often in the log.
 		compactions, pages, answers := 0, 0, 0
@@ -98,6 +97,9 @@ func kubernetesLoad(t *testing.T, long bool, n int) {
 				}
 			}
 		}
+		// The checkers drop a long run's history, so they come after the
+		// counts.
+		checkers(t, res)
 		if compactions == 0 || st.Revokes == 0 || pages == 0 || answers == 0 {
 			t.Fatalf("seed %d did too little to test anything: %d compactions in the log, %d revokes, %d later pages of lists, %d answers to progress requests", seed, compactions, st.Revokes, pages, answers)
 		}

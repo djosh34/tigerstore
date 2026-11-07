@@ -576,11 +576,12 @@ type Sim struct {
 	lateStopAt   int64
 	// records holds the clients' calls (recordlog.go).
 	records *recordLog
-	// pages is where the nodes' disks keep their large files' pages.
-	pages      *keptPages
-	stats      Stats
-	membership membershipWork
-	err        error
+	// pages is where the nodes' disks keep their large files' pages, and
+	// chunks where the run's records keep their older bytes (arena).
+	pages, chunks *keptPages
+	stats         Stats
+	membership    membershipWork
+	err           error
 	// loadFrom is the process's CPU time when the clients started, and
 	// loadCPU the CPU time from then until the last client stopped
 	// (markLoad).
@@ -730,6 +731,31 @@ type Result struct {
 	// clients' start until the last of them stopped: the cost of the
 	// load, without the formation of the cluster and the checks.
 	LoadCPU time.Duration
+	// records is the run's record of its calls, from which History was
+	// decoded: a long run's checks drop History once they have their own
+	// copy, and a report decodes it again (history). chunks is where
+	// records keeps its older bytes.
+	records *recordLog
+	chunks  *keptPages
+	// hashed is the run's hashes, taken before its checks (hashes).
+	hashed string
+}
+
+// history returns the run's calls: History, decoded again from the
+// run's records if a check dropped it.
+func (r *Result) history() ([]*Record, error) {
+	if r.History != nil || r.records == nil {
+		return r.History, nil
+	}
+	var history []*Record
+	var err error
+	simrun.Aside(func() { history, err = r.records.records() })
+	if r.chunks != nil && r.chunks.err != nil {
+		// A chunk on the runner's disk that failed to read decoded as
+		// zeros.
+		err = errors.Join(err, fmt.Errorf("the history's chunks on the runner's disk: %w", r.chunks.err))
+	}
+	return history, err
 }
 
 // Run runs one seed and checks it. The error describes the first broken
@@ -798,7 +824,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.History, res.Stats, res.Silences = history, s.stats, s.silences
 	res.HeldAppendAt, res.SteppedDownAt = s.heldAppendAt, s.steppedDownAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
-	res.nodes, res.values, res.stacks = s.nodes, s.values, s.wallStacks
+	res.nodes, res.values, res.stacks, res.records, res.chunks = s.nodes, s.values, s.wallStacks, s.records, s.chunks
 	res.LoadCPU = s.loadCPU
 	s.mu.Unlock()
 	if err == nil {
@@ -834,10 +860,14 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 // pagesErr is the first error of the run's pages on the runner's disk,
 // nil if there was none.
 func (s *Sim) pagesErr() error {
-	if s.pages == nil || s.pages.err == nil {
-		return nil
+	var errs []error
+	if s.pages != nil && s.pages.err != nil {
+		errs = append(errs, fmt.Errorf("the disks' pages on the runner's disk: %w", s.pages.err))
 	}
-	return fmt.Errorf("the disks' pages on the runner's disk: %w", s.pages.err)
+	if s.chunks != nil && s.chunks.err != nil {
+		errs = append(errs, fmt.Errorf("the history's chunks on the runner's disk: %w", s.chunks.err))
+	}
+	return errors.Join(errs...)
 }
 
 // keepFrom is the size from which a file of a node's disk keeps its synced
@@ -850,7 +880,7 @@ const keepFrom = 1 << 20
 // the run and its cold restarts share. A read or write of it that failed
 // fails the run with its first error: the disk read zeros instead.
 type keptPages struct {
-	pages *simrun.HostPages
+	pages simfs.Store
 	err   error
 	puts  int
 }
@@ -913,7 +943,7 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 	s.setLinks(s.allLinks())
 	var certs *network
 	if from != nil {
-		certs, s.pages = &from.net, from.pages
+		certs, s.pages, s.chunks = &from.net, from.pages, from.chunks
 	}
 	if err := s.net.init(certs); err != nil {
 		return nil, err
@@ -923,8 +953,17 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 		if err != nil {
 			return nil, fmt.Errorf("the disks' pages on the runner's disk: %w", err)
 		}
-		s.pages = &keptPages{pages: pages}
+		chunks, err := simrun.NewHostPages()
+		if err != nil {
+			return nil, fmt.Errorf("the history's chunks on the runner's disk: %w", err)
+		}
+		s.pages, s.chunks = &keptPages{pages: pages}, &keptPages{pages: chunks}
 	}
+	// The records of the calls and of the committed entries keep their
+	// older bytes on the runner's disk too (arena). The values stay in
+	// memory: a value read from the disk is a copy of its own, and the
+	// Kubernetes load and the history share one copy of each (values).
+	s.records.data.store, s.log.data.store = s.chunks, s.chunks
 	for i := range count {
 		s.addNode(i, simfs.New())
 	}
