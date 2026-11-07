@@ -408,3 +408,52 @@ func TestFilteredCatchUpReadsNoValues(t *testing.T) {
 		t.Fatalf("the NOPUT watcher's catch-up read %d bytes of values it leaves out", read)
 	}
 }
+
+// TestCatchUpSendsEachChangeOfAKey deletes the keys from "a" on and puts
+// "a" again in one Txn, as the difffuzz case delete-then-put does,
+// then watches from that revision: the watcher gets the delete and the
+// put, in order, as etcd sends them, not the put twice; after a
+// compaction at that revision, the put alone.
+func TestCatchUpSendsEachChangeOfAKey(t *testing.T) {
+	s := startSingle(t, simfs.New(), 1)
+	s.put(1, "old")
+	r := s.do(2, &pb.TxnRequest{Success: []*pb.RequestOp{
+		{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte("a"), RangeEnd: []byte{0}}}},
+		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("a"), Value: []byte("new")}}},
+	}})
+	if r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	rev := r.Resp.(*pb.TxnResponse).Header.Revision
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("a"), StartRevision: rev, PrevKv: true}))
+	for range 5 {
+		s.run()
+	}
+	var got []string
+	for _, r := range s.responses() {
+		for _, ev := range r.Events {
+			got = append(got, fmt.Sprintf("%v %s", ev.Type, ev.Kv.Value))
+		}
+	}
+	if want := "DELETE  PUT new"; strings.Join(got, " ") != want {
+		t.Fatalf("the watcher got %q, want %q", strings.Join(got, " "), want)
+	}
+	// A compaction at the revision removes the delete, as etcd's does:
+	// a watcher from there gets the put alone.
+	s.ok(3, &pb.CompactionRequest{Revision: rev})
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{WatchId: 5, Key: []byte("a"), StartRevision: rev}))
+	for range 5 {
+		s.run()
+	}
+	got = nil
+	for _, r := range s.responses() {
+		for _, ev := range r.Events {
+			if r.WatchId == 5 {
+				got = append(got, fmt.Sprintf("%v %s", ev.Type, ev.Kv.Value))
+			}
+		}
+	}
+	if want := "PUT new"; strings.Join(got, " ") != want {
+		t.Fatalf("after a compaction at the revision the watcher got %q, want %q", strings.Join(got, " "), want)
+	}
+}

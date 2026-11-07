@@ -439,13 +439,20 @@ type Change struct {
 	s *Store
 	k *keyIndex
 	i int
+	// main is the revision of a change that is Gone.
+	main int64
 }
 
 // Key is the changed key.
 func (c Change) Key() []byte { return c.k.key }
 
 // ModRev is the main revision of the change.
-func (c Change) ModRev() int64 { return c.k.vers[c.i].mod.main }
+func (c Change) ModRev() int64 {
+	if c.i < 0 {
+		return c.main
+	}
+	return c.k.vers[c.i].mod.main
+}
 
 // Lease is the lease of the key after the change, 0 for a delete.
 func (c Change) Lease() int64 { return c.k.vers[c.i].lease }

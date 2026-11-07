@@ -473,9 +473,10 @@ func (w *watcher) takes(key []byte, rev int64) bool {
 }
 
 // wants reports whether the watcher delivers change c, its filters
-// included, without building its event.
+// included, without building its event. A change a compaction removed
+// goes to no watcher.
 func (w *watcher) wants(c mvcc.Change) bool {
-	if !w.takes(c.Key(), c.ModRev()) {
+	if c.Gone() || !w.takes(c.Key(), c.ModRev()) {
 		return false
 	}
 	if c.Deletes() {

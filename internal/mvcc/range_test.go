@@ -372,7 +372,7 @@ func TestTxnRangesShareTheRoom(t *testing.T) {
 // TestSortOrderNoneSorts reads with a target other than the key and the
 // order NONE, which etcd sorts ascending: with a limit, it sorts only the
 // first limit+1 keys, as etcd pushes that limit into the index. A list
-// that passes SortBytes is refused.
+// that passes SortBytes is refused, but not inside a Txn.
 func TestSortOrderNoneSorts(t *testing.T) {
 	s := New(&Heap{})
 	for _, k := range []string{"c", "b", "a"} {
@@ -403,8 +403,18 @@ func TestSortOrderNoneSorts(t *testing.T) {
 		}
 	}
 	s.SortBytes = 2 * kvBytes
-	if _, err := s.Range(&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("z"), SortTarget: pb.RangeRequest_MOD}); !errors.Is(err, ErrTooLarge) {
+	sorted := &pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("z"), SortTarget: pb.RangeRequest_MOD}
+	if _, _, err := s.RangeFirst(sorted, true, 1<<20); !errors.Is(err, ErrTooLarge) {
 		t.Errorf("a sorted list of three keys over a budget of two: %v, want ErrTooLarge", err)
+	}
+	// Inside a write the limit, which is the node's own, does not apply:
+	// every node must apply the write alike.
+	txn, err := s.Txn(&pb.TxnRequest{Success: []*pb.RequestOp{
+		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("d"), Value: []byte("v")}}},
+		{Request: &pb.RequestOp_RequestRange{RequestRange: sorted}},
+	}})
+	if err != nil || len(txn.Responses[1].GetResponseRange().Kvs) != 4 {
+		t.Errorf("a Txn with a sorted range over the budget: %v, %v", txn, err)
 	}
 }
 

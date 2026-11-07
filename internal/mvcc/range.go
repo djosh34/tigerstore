@@ -330,8 +330,9 @@ func keeps(r *pb.RangeRequest, kv *KV) bool {
 // sorted reads an answer in another order than the keys': every key goes
 // into a list, which is sorted, and the pieces come from it. A sort by
 // value reads every value at once. The list stays until the last piece,
-// so it is refused once it, with the values a sort by value reads, passes
-// SortBytes. As etcd does, an order of NONE with a target other than the
+// so a Range (fill) is refused once it, with the values a sort by value
+// reads, passes SortBytes. A range of a write being applied never is:
+// the limit is the node's own, and every node must apply the write alike. As etcd does, an order of NONE with a target other than the
 // key sorts only the first limit+1 keys.
 func (c *Cursor) sorted(res RangeResult, total bool, room int, fill bool) (RangeResult, *Cursor, error) {
 	r, s := c.r, c.s
@@ -358,7 +359,7 @@ func (c *Cursor) sorted(res RangeResult, total bool, room int, fill bool) (Range
 		if byValue {
 			held += int64(kv.ref.Len)
 		}
-		if s.SortBytes > 0 && held > s.SortBytes {
+		if fill && s.SortBytes > 0 && held > s.SortBytes {
 			tooLarge = true
 			return false
 		}
