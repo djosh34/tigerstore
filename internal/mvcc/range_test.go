@@ -497,3 +497,23 @@ func TestHistoryOfAKeyChangedTwice(t *testing.T) {
 		t.Fatalf("a walk of the revision found %d changes in %v", n, took)
 	}
 }
+
+// TestReadBeforeAKeyChangedTwice puts a key and deletes it again in one
+// Txn at revision R: a read at R-1 must not see it, since it did not
+// exist then, and a read at R must not either.
+func TestReadBeforeAKeyChangedTwice(t *testing.T) {
+	s := New(&Heap{})
+	put(t, s, "a", "v")
+	if _, err := s.Txn(&pb.TxnRequest{Success: []*pb.RequestOp{
+		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("b"), Value: []byte("new")}}},
+		{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte("b"), RangeEnd: []byte{0}}}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []int64{s.Rev() - 1, s.Rev()} {
+		resp, _, _ := pieces(t, s, &pb.RangeRequest{Key: []byte("b"), Revision: r}, true, 1<<20)
+		if len(resp.Kvs) != 0 {
+			t.Errorf("a read at %d sees %q, which did not exist then", r, resp.Kvs[0].Value)
+		}
+	}
+}

@@ -127,7 +127,7 @@ func at(r int64) rev { return rev{main: r + 1} }
 // exists there.
 func (k *keyIndex) visible(p rev) (*version, bool) {
 	i := k.at(p.main)
-	if i >= 0 && k.vers[i].mod.main == p.main && k.vers[i].mod.sub >= p.sub {
+	for i >= 0 && k.vers[i].mod.main == p.main && k.vers[i].mod.sub >= p.sub {
 		i--
 	}
 	if i < 0 || k.vers[i].ver == 0 {

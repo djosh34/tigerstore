@@ -140,6 +140,13 @@ type watchParts struct{ left int64 }
 var errPartsShort = status.Error(codes.Internal, "server: a watch response in parts did not match its size")
 
 func (p *watchParts) send(st *stream, r core.WatchResponse) error {
+	// The part waits in the stream's queue: it takes no more room than
+	// its bytes.
+	size := 0
+	for _, ev := range r.Resp.Events {
+		n := proto.Size(ev)
+		size += 1 + protowire.SizeVarint(uint64(n)) + n
+	}
 	var b []byte
 	if !r.Cont {
 		head, err := proto.Marshal(&pb.WatchResponse{
@@ -149,13 +156,16 @@ func (p *watchParts) send(st *stream, r core.WatchResponse) error {
 		if err != nil {
 			return status.Errorf(codes.Internal, "grpc: error while marshaling: %v", err)
 		}
-		size := int64(len(head)) + r.EventBytes
-		if size > 1<<31-1 {
-			return status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
+		if whole := int64(len(head)) + r.EventBytes; whole > 1<<31-1 {
+			return status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", whole)
 		}
-		b = binary.BigEndian.AppendUint32([]byte{0}, uint32(size))
+		b = make([]byte, 0, 5+len(head)+size)
+		b = append(b, 0)
+		b = binary.BigEndian.AppendUint32(b, uint32(int64(len(head))+r.EventBytes))
 		b = append(b, head...)
 		p.left = r.EventBytes
+	} else {
+		b = make([]byte, 0, size)
 	}
 	events := len(b)
 	for _, ev := range r.Resp.Events {
