@@ -607,3 +607,49 @@ func TestHeaderWaitsForRecords(t *testing.T) {
 		t.Fatalf("writes: %s, want one at 0 with the header and the records", strings.Join(writes, "; "))
 	}
 }
+
+// stopAfter is a directory whose removal number n fails after it was
+// done, as a crash right after it would leave it.
+type stopAfter struct {
+	*simfs.Disk
+	n int
+}
+
+var errStopped = errors.New("stopped")
+
+func (s *stopAfter) Remove(name string) error {
+	if err := s.Disk.Remove(name); err != nil {
+		return err
+	}
+	if s.n--; s.n == 0 {
+		return errStopped
+	}
+	return nil
+}
+
+// TestRemovedSegmentsLeaveNoGap removes two segments and crashes right
+// after the second removal, before RemoveFiles synced the directory at its
+// end. Whatever the crash keeps, the first segment is not on disk while
+// the second is gone: recovery would refuse that gap (#523).
+func TestRemovedSegmentsLeaveNoGap(t *testing.T) {
+	names := []string{"0000000000000001.wal", "0000000000000002.wal", "0000000000000003.wal"}
+	for seed := range uint64(64) {
+		d := simfs.New()
+		for _, name := range names {
+			if _, err := d.Create(name); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := d.SyncDir(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := wal.RemoveFiles(&stopAfter{Disk: d, n: 2}, names[:2], 0); !errors.Is(err, errStopped) {
+			t.Fatalf("seed %d: RemoveFiles: %v, want the stop", seed, err)
+		}
+		d.Crash(rand.New(rand.NewPCG(seed, 523)))
+		on := d.DurableNames()
+		if slices.Contains(on, names[0]) && !slices.Contains(on, names[1]) {
+			t.Fatalf("seed %d: after the crash the disk holds %v: segment 1 without segment 2", seed, on)
+		}
+	}
+}
