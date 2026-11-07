@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -128,13 +129,14 @@ func TestColdEventAndRangeKVs(t *testing.T) {
 	if string(ev.Kv.Value) != "2" || string(ev.PrevKv.Value) != "1" || ev.PrevKv.ModRevision != 2 {
 		t.Fatalf("event after the reads: %v", ev)
 	}
-	res, err := s.RangeKVs(&pb.RangeRequest{Key: []byte("a")}, 0)
+	res, _, err := s.RangeFirst(&pb.RangeRequest{Key: []byte("a")}, true, 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The key and the value on disk, by its length.
-	if res.Bytes != 2 {
-		t.Fatalf("a range of one key and value of 1 byte counts %d bytes", res.Bytes)
+	// The size of the KeyValue field counts the value on disk by its
+	// length.
+	if want := int64(proto.Size(&pb.RangeResponse{Kvs: []*mvccpb.KeyValue{{Key: []byte("a"), Value: []byte("2"), CreateRevision: 2, ModRevision: 3, Version: 2}}})); res.Fields != want {
+		t.Fatalf("a range of one key with a value of 1 byte counts %d bytes of fields, want %d", res.Fields, want)
 	}
 	fillAll(t, s, h)
 	if string(res.KVs[0].Value) != "2" {
@@ -225,59 +227,57 @@ func TestFillChecksum(t *testing.T) {
 	}
 }
 
-// TestRangeKVsBytes counts the keys and values of an answer, also when a
-// sort by value has already read the values, and no values for KeysOnly:
-// the writer charges a reply by these bytes before it encodes it.
-func TestRangeKVsBytes(t *testing.T) {
+// TestRangeFields sizes the KeyValue fields of an answer as protobuf
+// encodes them, also when a sort by value has already read the values,
+// and with no values for KeysOnly: the writer sizes the message it sends
+// by them before it has every value.
+func TestRangeFields(t *testing.T) {
 	s := New(&Heap{})
 	put(t, s, "a", strings.Repeat("v", 1<<20))
 	put(t, s, "b", "12")
-	for _, c := range []struct {
-		r    *pb.RangeRequest
-		want int64
-	}{
-		{&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c")}, 2 + 1<<20 + 2},
-		{&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), SortTarget: pb.RangeRequest_VALUE}, 2 + 1<<20 + 2},
-		{&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), KeysOnly: true}, 2},
+	for _, r := range []*pb.RangeRequest{
+		{Key: []byte("a"), RangeEnd: []byte("c")},
+		{Key: []byte("a"), RangeEnd: []byte("c"), SortTarget: pb.RangeRequest_VALUE},
+		{Key: []byte("a"), RangeEnd: []byte("c"), KeysOnly: true},
 	} {
-		res, err := s.RangeKVs(c.r, 0)
+		res, _, err := s.RangeFirst(r, true, 64)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.Bytes != c.want {
-			t.Errorf("%v: %d bytes, want %d", c.r, res.Bytes, c.want)
+		want, err := s.Range(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := int64(proto.Size(&pb.RangeResponse{Kvs: want.Kvs})); res.Fields != n || res.N != 2 {
+			t.Errorf("%v: %d keys, %d bytes of fields, want 2 and %d", r, res.N, res.Fields, n)
 		}
 	}
 }
 
-// TestRangeTooLarge checks the one size check: an answer whose keys and
-// values pass the limit is refused before any value is read, and the
-// values of keys that a page drops count only for a sort on values.
-func TestRangeTooLarge(t *testing.T) {
+// TestSortByValueTooLarge checks the one check left of the size of an
+// answer: a sort by value needs every value at once, and is refused when
+// they pass SortBytes, before any value is read. Every other answer goes
+// out in pieces, whatever its size.
+func TestSortByValueTooLarge(t *testing.T) {
 	h := &coldHeap{}
 	s := New(h)
 	put(t, s, "a", strings.Repeat("v", 100))
 	put(t, s, "b", strings.Repeat("v", 100))
 	h.evict()
-	page := &pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), Limit: 1}
 	byValue := &pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), Limit: 1, SortTarget: pb.RangeRequest_VALUE, SortOrder: pb.RangeRequest_ASCEND}
 	whole := &pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c")}
-	keys := &pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), KeysOnly: true}
 	for _, c := range []struct {
 		r     *pb.RangeRequest
 		limit int64
 		ok    bool
 	}{
-		{page, 101, true},
-		{page, 100, false},
-		{byValue, 201, false},
-		{byValue, 202, true},
-		{whole, 201, false},
-		{keys, 2, true},
-		{whole, 0, true},
+		{byValue, 199, false},
+		{byValue, 200, true},
+		{whole, 1, true},
 	} {
+		s.SortBytes = c.limit
 		// A sort on values that fits still needs them from disk first.
-		_, err := s.RangeKVs(c.r, c.limit)
+		_, _, err := s.RangeFirst(c.r, true, 1<<20)
 		if _, cold := errors.AsType[*ColdError](err); c.ok && err != nil && !cold {
 			t.Errorf("%v under %d: %v", c.r, c.limit, err)
 		}

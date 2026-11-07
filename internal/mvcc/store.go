@@ -41,6 +41,9 @@ type Values interface {
 	// writes, without its Sum. value is not empty. Place may keep it as
 	// it is.
 	Place(value []byte) (Ref, error)
+	// Copies reports whether Read copies the value r names out of a Raft
+	// entry in memory, which it does into the arena it is given.
+	Copies(r Ref) bool
 	// Read returns the bytes r names if they are in memory, and false if
 	// only the log on disk has them. The caller may keep the bytes, as a
 	// response or a watch event does, but must not change them. Bytes it
@@ -120,6 +123,9 @@ func (h *Heap) Place(value []byte) (Ref, error) {
 	h.vals = append(h.vals, value)
 	return Ref{Index: uint64(len(h.vals)), Len: uint32(len(value))}, nil
 }
+
+// Copies is false: a Heap hands out the values it kept.
+func (h *Heap) Copies(Ref) bool { return false }
 
 // Read returns a value Place kept.
 func (h *Heap) Read(r Ref, _ *[]byte) ([]byte, bool, error) {
@@ -258,13 +264,18 @@ type Store struct {
 	// LeaseExists reports whether a lease is granted. Nil means that no
 	// lease exists, so every Put with a lease fails.
 	LeaseExists func(id int64) bool
+	// SortBytes, if above 0, bounds the values a Range sorted by value
+	// reads at once (ErrTooLarge).
+	SortBytes int64
 	// Replaced, if set, gets the value of a key's newest version when a
 	// put or a delete replaces that version and the new one does not keep
 	// the value. Older revisions may still read it.
 	Replaced func(Ref)
 
-	// changes collects the changes of the request being applied.
+	// changes collects the changes of the request being applied, and
+	// hist every change since the compaction revision.
 	changes []Change
+	hist    history
 	// fills are the values that responses and events wait for.
 	fills []Fill
 	// resume is how far the next transaction's compares got (Resume).
@@ -288,10 +299,10 @@ type Store struct {
 }
 
 // Bytes estimates what the index takes in memory: per key its record,
-// its place in the B-tree and its bytes, and 64 bytes per version its
-// array has room for.
+// its place in the B-tree and its bytes, 64 bytes per version its array
+// has room for, and the history's 8 bytes a change and a revision.
 func (s *Store) Bytes() int64 {
-	return int64(s.keys.Len())*64 + s.keyBytes + s.versions*64
+	return int64(s.keys.Len())*64 + s.keyBytes + s.versions*64 + 8*int64(cap(s.hist.keys)+cap(s.hist.starts))
 }
 
 // written is a value a put wrote to key k.
@@ -629,6 +640,7 @@ func (s *Store) Compact(rev int64) error {
 		return rpctypes.ErrGRPCFutureRev
 	}
 	s.resetChanges()
+	s.hist.drop(rev)
 	pending := s.pendingCompact()
 	h := newRevHash(rev, s.compactRev)
 	s.compactRev = rev

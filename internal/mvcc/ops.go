@@ -5,14 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
-	"math"
-	"sort"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -63,310 +59,12 @@ func (w *writer) cur() int64 {
 
 func header(r int64) *pb.ResponseHeader { return &pb.ResponseHeader{Revision: r} }
 
-// KV is one key's version as a range returns it: the fields of an
-// mvccpb.KeyValue, as a value. Key is the index's slice, Value the one
-// Values returned; neither may change.
-type KV struct {
-	Key, Value                                  []byte
-	CreateRevision, ModRevision, Version, Lease int64
-	ref                                         Ref
-}
-
-// RangeResult is a range's answer without its header: the store's
-// revision, for the header, the keys, their count and whether more were
-// left out.
-type RangeResult struct {
-	Rev   int64
-	KVs   []KV
-	Count int64
-	// Bytes is the size of the keys and values of KVs, set by RangeKVs.
-	Bytes int64
-	More  bool
-	// values is set when the KVs still need their values.
-	values bool
-}
-
-// Range reads keys at the current or a past revision.
-func (s *Store) Range(r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	return s.reader().rangeKeys(r, true)
-}
-
-// RangeKVs is Range without building protobuf messages: one slice of
-// values instead of a message per key, for drivers that encode the
-// response themselves. If limit is above 0, an answer whose keys and
-// values take more than limit bytes is refused before any value is read.
-func (s *Store) RangeKVs(r *pb.RangeRequest, limit int64) (RangeResult, error) {
-	w := s.reader()
-	res, err := w.rangeResult(r, true, limit)
-	if err != nil {
-		return res, err
-	}
-	// Values still to read count by their length; values a sort already
-	// read count as they are.
-	values := 0
-	for i := range res.KVs {
-		kv := &res.KVs[i]
-		res.Bytes += int64(len(kv.Key) + len(kv.Value))
-		if res.values {
-			values += int(kv.ref.Len)
-		}
-	}
-	res.Bytes += int64(values)
-	if !res.values {
-		return res, nil
-	}
-	// The values of an answer with several take one allocation; make
-	// zeroes it, which a copy of one value alone does not need.
-	var arena *[]byte
-	if len(res.KVs) > 1 {
-		b := make([]byte, 0, values)
-		arena = &b
-	}
-	for i := range res.KVs {
-		kv := &res.KVs[i]
-		if err := s.fill(kv.Key, kv.ref, &kv.Value, arena); err != nil {
-			return RangeResult{}, err
-		}
-	}
-	return res, nil
-}
-
-// rangeKeys answers r as etcd's message. Without total, as rangeResult.
-func (w *writer) rangeKeys(r *pb.RangeRequest, total bool) (*pb.RangeResponse, error) {
-	res, err := w.rangeResult(r, total, 0)
-	if err != nil {
-		return nil, err
-	}
-	resp := res.Response()
-	if res.values {
-		for i := range res.KVs {
-			if err := w.s.fill(res.KVs[i].Key, res.KVs[i].ref, &resp.Kvs[i].Value, nil); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return resp, nil
-}
-
-// Response is the range's answer as etcd's message, with the revision in
-// its header.
-func (res *RangeResult) Response() *pb.RangeResponse {
-	resp := &pb.RangeResponse{Header: header(res.Rev), Count: res.Count, More: res.More}
-	if len(res.KVs) > 0 {
-		kvs := make([]mvccpb.KeyValue, len(res.KVs))
-		resp.Kvs = make([]*mvccpb.KeyValue, len(res.KVs))
-		for i, kv := range res.KVs {
-			kvs[i] = mvccpb.KeyValue{
-				Key: kv.Key, Value: kv.Value, CreateRevision: kv.CreateRevision,
-				ModRevision: kv.ModRevision, Version: kv.Version, Lease: kv.Lease,
-			}
-			resp.Kvs[i] = &kvs[i]
-		}
-	}
-	return resp
-}
-
 // RangeChunk answers one chunk of a RangeStream as etcd v3.7.2's range
 // without a total count does: the index walk stops once it has the limit
 // plus one keys, and Count holds the keys it saw, not every key in the
-// range.
+// range. A chunk's limit keeps it small, so it is read whole.
 func (s *Store) RangeChunk(r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	return s.reader().rangeKeys(r, false)
-}
-
-// rangeResult answers r without the values, unless it sorts by them, and
-// sets values if they are still to be read. Without total, the walk stops
-// at the pushed-down limit and Count holds only the keys it saw. An
-// answer larger than limit, if above 0, is refused (tooLarge).
-func (w *writer) rangeResult(r *pb.RangeRequest, total bool, limit int64) (RangeResult, error) {
-	w.s.counts.Ranges++
-	cur := w.cur()
-	at := r.Revision
-	if at <= 0 {
-		at = cur
-	}
-	if at > cur {
-		return RangeResult{}, rpctypes.ErrGRPCFutureRev
-	}
-	if at < w.s.compactRev {
-		return RangeResult{}, rpctypes.ErrGRPCCompacted
-	}
-
-	// etcd pushes limit+1 into the index only with the default order and no
-	// revision filters. It decides the default order before it turns a NONE
-	// order with a non-key target into ASCEND.
-	pushLimit := int64(0)
-	if r.Limit > 0 && r.Limit < math.MaxInt64 && IsDefaultOrdering(r.SortTarget, r.SortOrder) && !hasRevisionFilters(r) {
-		pushLimit = r.Limit + 1
-	}
-	var kvs []KV
-	count := int64(0)
-	w.s.ascend(r.Key, r.RangeEnd, func(k *keyIndex) bool {
-		v, ok := k.live(at)
-		if !ok {
-			return true
-		}
-		if !total && pushLimit > 0 && int64(len(kvs)) >= pushLimit {
-			return false
-		}
-		count++
-		if !r.CountOnly && (pushLimit == 0 || int64(len(kvs)) < pushLimit) {
-			kvs = append(kvs, k.kvValue(v))
-		}
-		return true
-	})
-
-	kvs = filterKVs(kvs, r)
-	byValue := r.SortTarget == pb.RangeRequest_VALUE
-	if byValue {
-		// A VALUE sort reads the values of every candidate, also of keys
-		// the limit drops.
-		if err := tooLarge(kvs, true, limit); err != nil {
-			return RangeResult{}, err
-		}
-		if err := w.s.readNow(kvs); err != nil {
-			return RangeResult{}, err
-		}
-	}
-	sortKVs(kvs, r)
-
-	res := RangeResult{Rev: cur, Count: count, values: !r.KeysOnly && !byValue}
-	if r.Limit > 0 && int64(len(kvs)) > r.Limit {
-		kvs = kvs[:r.Limit]
-		res.More = true
-	}
-	if !byValue {
-		// Only the page's values are read, after this returns.
-		if err := tooLarge(kvs, !r.KeysOnly, limit); err != nil {
-			return RangeResult{}, err
-		}
-	}
-	if r.KeysOnly {
-		// Without a sort on values, etcd reads only the key index, which
-		// has no lease.
-		for i := range kvs {
-			kvs[i].Value = nil
-			if !byValue {
-				kvs[i].Lease = 0
-			}
-		}
-	}
-	res.KVs = kvs
-	return res, nil
-}
-
-// ErrTooLarge refuses a Range answer larger than the node's whole memory
-// budget, which it could never hold. The client can ask for a smaller
-// page.
-var ErrTooLarge = status.Error(codes.ResourceExhausted, "tigerstore: Range answer exceeds the memory budget; use a smaller limit")
-
-// tooLarge returns ErrTooLarge if the keys of kvs, and their values if
-// values is set, take more than limit bytes, and limit is above 0.
-func tooLarge(kvs []KV, values bool, limit int64) error {
-	if limit <= 0 {
-		return nil
-	}
-	var bytes int64
-	for _, kv := range kvs {
-		bytes += int64(len(kv.Key))
-		if values {
-			bytes += int64(kv.ref.Len)
-		}
-	}
-	if bytes > limit {
-		return ErrTooLarge
-	}
-	return nil
-}
-
-// readNow reads the value of every KV at once, for a sort on them. If
-// some are only on disk, it returns a ColdError that needs them all.
-func (s *Store) readNow(kvs []KV) error {
-	var cold []Fill
-	for i := range kvs {
-		kv := &kvs[i]
-		b, ok, err := s.value(kv.Key, kv.ref, nil)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			cold = append(cold, Fill{Key: kv.Key, Ref: kv.ref})
-		}
-		kv.Value = b
-	}
-	if len(cold) > 0 {
-		return &ColdError{Need: cold}
-	}
-	return nil
-}
-
-// IsDefaultOrdering reports whether a range returns keys in the order the
-// index holds them.
-func IsDefaultOrdering(t pb.RangeRequest_SortTarget, o pb.RangeRequest_SortOrder) bool {
-	return o == pb.RangeRequest_NONE || (t == pb.RangeRequest_KEY && o == pb.RangeRequest_ASCEND)
-}
-
-func hasRevisionFilters(r *pb.RangeRequest) bool {
-	return r.MinModRevision != 0 || r.MaxModRevision != 0 ||
-		r.MinCreateRevision != 0 || r.MaxCreateRevision != 0
-}
-
-func filterKVs(kvs []KV, r *pb.RangeRequest) []KV {
-	if !hasRevisionFilters(r) {
-		return kvs
-	}
-	out := kvs[:0]
-	for _, kv := range kvs {
-		switch {
-		case r.MaxModRevision != 0 && kv.ModRevision > r.MaxModRevision:
-		case r.MinModRevision != 0 && kv.ModRevision < r.MinModRevision:
-		case r.MaxCreateRevision != 0 && kv.CreateRevision > r.MaxCreateRevision:
-		case r.MinCreateRevision != 0 && kv.CreateRevision < r.MinCreateRevision:
-		default:
-			out = append(out, kv)
-		}
-	}
-	return out
-}
-
-// kvSort sorts with sort.Sort like etcd, so that ties end in the same order.
-type kvSort struct {
-	kvs  []KV
-	less func(a, b *KV) bool
-}
-
-func (s kvSort) Len() int           { return len(s.kvs) }
-func (s kvSort) Swap(i, j int)      { s.kvs[i], s.kvs[j] = s.kvs[j], s.kvs[i] }
-func (s kvSort) Less(i, j int) bool { return s.less(&s.kvs[i], &s.kvs[j]) }
-
-func sortKVs(kvs []KV, r *pb.RangeRequest) {
-	order := r.SortOrder
-	if r.SortTarget != pb.RangeRequest_KEY && order == pb.RangeRequest_NONE {
-		order = pb.RangeRequest_ASCEND
-	}
-	if IsDefaultOrdering(r.SortTarget, order) {
-		return
-	}
-	var less func(a, b *KV) bool
-	switch r.SortTarget {
-	case pb.RangeRequest_KEY:
-		less = func(a, b *KV) bool { return bytes.Compare(a.Key, b.Key) < 0 }
-	case pb.RangeRequest_VERSION:
-		less = func(a, b *KV) bool { return a.Version < b.Version }
-	case pb.RangeRequest_CREATE:
-		less = func(a, b *KV) bool { return a.CreateRevision < b.CreateRevision }
-	case pb.RangeRequest_MOD:
-		less = func(a, b *KV) bool { return a.ModRevision < b.ModRevision }
-	case pb.RangeRequest_VALUE:
-		less = func(a, b *KV) bool { return bytes.Compare(a.Value, b.Value) < 0 }
-	default:
-		return
-	}
-	var s sort.Interface = kvSort{kvs, less}
-	if order == pb.RangeRequest_DESCEND {
-		s = sort.Reverse(s)
-	}
-	sort.Sort(s)
+	return s.reader().rangeMessage(r, false)
 }
 
 // PutOp is a put request's fields. Key and Value are kept without
@@ -464,6 +162,7 @@ func (w *writer) add(k *keyIndex, v version) {
 	}
 	w.changed = true
 	w.s.changes = append(w.s.changes, Change{s: w.s, k: k, i: len(k.vers) - 1})
+	w.s.hist.add(k, v.mod.main)
 }
 
 // put writes one key and returns its previous version if p asks for it.
@@ -876,7 +575,7 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 		var out pb.ResponseOp
 		switch t := op.Request.(type) {
 		case *pb.RequestOp_RequestRange:
-			rr, err := w.rangeKeys(t.RequestRange, true)
+			rr, err := w.rangeMessage(t.RequestRange, true)
 			if err != nil {
 				return nil, 0, err
 			}

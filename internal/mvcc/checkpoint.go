@@ -149,8 +149,12 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 	var prev []byte
 	for {
 		k, err := readKey(r, rev)
-		if err != nil || k == nil {
+		if err != nil {
 			return minRef, err
+		}
+		if k == nil {
+			s.hist.rebuild(s, max(compactRev, 0))
+			return minRef, nil
 		}
 		if prev != nil && string(prev) >= string(k.key) {
 			return 0, fmt.Errorf("%w: key %q after %q", ErrBadCheckpoint, k.key, prev)
@@ -174,6 +178,7 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 		s.keys.ReplaceOrInsert(k)
 	}
 }
+
 
 // WalkRefs calls fn for the value of every version in the keys of a
 // checkpoint, without building an index. It reads one version at a time

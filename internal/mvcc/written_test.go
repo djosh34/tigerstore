@@ -69,7 +69,8 @@ func TestBytes(t *testing.T) {
 		if s.keys.Len() != keys {
 			t.Fatalf("%d keys, want %d", s.keys.Len(), keys)
 		}
-		if got := s.Bytes(); got != int64(keys)*64+keyBytes+room*64 {
+		hist := 8 * int64(cap(s.hist.keys)+cap(s.hist.starts))
+		if got := s.Bytes(); got != int64(keys)*64+keyBytes+room*64+hist {
 			t.Fatalf("Bytes = %d, want %d keys, %d key bytes, room for %d versions", got, keys, keyBytes, room)
 		}
 	}
