@@ -1,0 +1,73 @@
+=== RUN   TestRangeReplyClients
+    server_test.go:170: node 1: recovering the log
+    server_test.go:170: node 1: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 3; voters [1 2 3]
+    server_test.go:170: node 2: recovering the log
+    server_test.go:170: node 2: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 3; voters [1 2 3]
+    server_test.go:170: node 3: recovering the log
+    server_test.go:170: node 1: leader is 0 at term 1
+    server_test.go:170: node 1: slow log sync: 20.509118ms
+    server_test.go:170: node 1: slow write to the log: 3 entries, 132 bytes in 20.65716ms
+    server_test.go:170: node 1: persist timing: entries=1..3 queued=2026-11-07T21:23:26.007683373Z end=2026-11-07T21:23:26.028493367Z total=20.809995ms queue=88.334µs append=24.167µs flush=21.583µs sync_queue=13.167µs sync=20.597243ms report=65.501µs
+    server_test.go:170: node 3: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 3; voters [1 2 3]
+    server_test.go:170: node 1: persist timing: entries=0..0 queued=2026-11-07T21:23:26.048010438Z end=2026-11-07T21:23:26.060338175Z total=12.327696ms queue=12.234904ms append=4.833µs flush=334ns sync_queue=12.458µs sync=167ns report=75µs
+    server_test.go:170: node 2: leader is 0 at term 1
+    server_test.go:170: node 1: leader is 0 at term 2
+    server_test.go:170: node 3: leader is 0 at term 2
+    server_test.go:170: node 2: leader is 0 at term 2
+    server_test.go:170: node 1: leader is 1 at term 2
+    server_test.go:170: node 3: leader is 1 at term 2
+    server_test.go:170: node 2: leader is 1 at term 2
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 12.387936ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 12.451978ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 15.96179ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 16.024249ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 25.245802ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 25.345511ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 10.091631ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 10.181965ms
+    server_test.go:170: node 3: leader is 0 at term 2
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 21.197987ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 21.274113ms
+    server_test.go:170: node 3: slow write to the log: 0 entries, 0 bytes in 29.632879ms
+    server_test.go:170: node 3: persist timing: entries=0..0 queued=2026-11-07T21:23:26.795658357Z end=2026-11-07T21:23:26.825501237Z total=29.842838ms queue=80.708µs append=3.959µs flush=333ns sync_queue=29.627545ms sync=125ns report=130.168µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 26.933895ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 26.99452ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 108.563905ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 108.565655ms
+    server_test.go:170: node 3: leader is 1 at term 2
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 950.746µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 1.029621ms
+    server_test.go:170: node 1: leader is 0 at term 2
+    server_test.go:170: node 1: peer: 1 messages to 2 waited over 100ms in their queue, the longest 104.835019ms; the last a MsgHeartbeat
+    server_test.go:170: node 1: persist timing: entries=0..0 queued=2026-11-07T21:23:27.303265648Z end=2026-11-07T21:23:27.33395199Z total=30.686342ms queue=30.5523ms append=6.125µs flush=333ns sync_queue=82.168µs sync=83ns report=45.333µs
+    server_test.go:170: node 1: leader is 0 at term 3
+    server_test.go:170: node 3: leader is 0 at term 3
+    server_test.go:170: node 2: leader is 0 at term 3
+    server_test.go:170: node 1: leader is 1 at term 3
+    server_test.go:170: node 2: leader is 1 at term 3
+    server_test.go:170: node 3: leader is 1 at term 3
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 7.077531ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 7.168365ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 3.720803ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 3.788011ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 15.052326ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 15.143035ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 6.716237ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 6.841529ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 8.975458ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 9.060792ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 2.264962ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 2.343753ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 3.127883ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 3.201716ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 25.238385ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 25.331052ms
+    rangepressure_test.go:124: client 10 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 8 page 0: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 12 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 2 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 4 page 0: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 0 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 6 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 14 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+--- FAIL: TestRangeReplyClients (2.08s)

@@ -1,0 +1,726 @@
+=== RUN   TestRangeReplyClients
+    server_test.go:170: node 1: recovering the log
+    server_test.go:170: node 1: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 3; voters [1 2 3]
+    server_test.go:170: node 2: recovering the log
+    server_test.go:170: node 2: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 3; voters [1 2 3]
+    server_test.go:170: node 3: recovering the log
+    server_test.go:170: node 1: leader is 0 at term 1
+    server_test.go:170: node 3: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 3; voters [1 2 3]
+    server_test.go:170: node 1: slow log sync: 17.327218ms
+    server_test.go:170: node 1: slow write to the log: 3 entries, 132 bytes in 17.513385ms
+    server_test.go:170: node 1: persist timing: entries=1..3 queued=2026-11-07T21:03:39.151740375Z end=2026-11-07T21:03:39.169376094Z total=17.635719ms queue=68.167µs append=79.25µs flush=28.334µs sync_queue=12.666µs sync=17.392135ms report=55.167µs
+    server_test.go:170: node 2: leader is 0 at term 1
+    server_test.go:170: node 3: leader is 0 at term 1
+    server_test.go:170: node 1: leader is 0 at term 2
+    server_test.go:170: node 2: leader is 0 at term 2
+    server_test.go:170: node 3: leader is 0 at term 2
+    server_test.go:170: node 1: leader is 1 at term 2
+    server_test.go:170: node 2: leader is 1 at term 2
+    server_test.go:170: node 3: leader is 1 at term 2
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 33.64937ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 33.706371ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 7.9614ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 7.956774ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 26.543541ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 26.6135ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 31.759486ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 31.840986ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 26.634292ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 26.701084ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 63.748907ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 63.814324ms
+    server_test.go:170: node 2: leader is 0 at term 2
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 17.650576ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 17.694577ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 383.609µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 445.359µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 242.442µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 242.567µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 181.149µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 182.108µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 363.359µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 363.609µs
+    server_test.go:170: node 1: peer: 1 messages to 3 waited over 100ms in their queue, the longest 143.53706ms; the last a MsgHeartbeat
+    server_test.go:170: node 2: leader is 1 at term 2
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 43.198297ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 43.160463ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 131.81352ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 131.844729ms
+    server_test.go:170: node 3: leader is 0 at term 2
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 91.159012ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 91.168512ms
+    server_test.go:170: node 3: slow write to the log: 0 entries, 0 bytes in 61.177661ms
+    server_test.go:170: node 3: leader is 1 at term 2
+    server_test.go:170: node 3: persist timing: entries=0..0 queued=2026-11-07T21:03:40.475750751Z end=2026-11-07T21:03:40.537973042Z total=62.222333ms queue=126.459µs append=5.042µs flush=375ns sync_queue=61.171452ms sync=125ns report=918.88µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 38.687772ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 38.690314ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 14.348517ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 14.415851ms
+    server_test.go:170: node 2: persist timing: entries=0..0 queued=2026-11-07T21:03:40.64743142Z end=2026-11-07T21:03:40.6640553Z total=16.623922ms queue=16.515671ms append=4.75µs flush=375ns sync_queue=17.084µs sync=208ns report=85.834µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 613.611µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 733.361µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 4.852592ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 4.936217ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 979.862µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 1.059362ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 20.769343ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 20.829801ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 55.658447ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 55.730447ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 41.094577ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 41.159119ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 75.829554ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 75.901722ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 30.84648ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 30.925398ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 59.14134ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 59.11934ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 852.529µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 852.195µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 52.477971ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 52.482887ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 35.980216ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 36.042634ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 22.216143ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 22.299351ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 576.402µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 641.569µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 6.580059ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 6.660518ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 564.485µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 638.111µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 20.394508ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 20.384424ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 84.148516ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 84.137766ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 245.692µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 308.067µs
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 10ms, exceeded 1.057988ms
+    server_test.go:170: node 1: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 10ms, exceeded 1.112447ms
+    server_test.go:170: node 1: leader is 0 at term 2
+    server_test.go:170: node 3: leader is 0 at term 2
+    server_test.go:170: node 3: leader is 0 at term 3
+    server_test.go:170: node 1: leader is 0 at term 3
+    server_test.go:170: node 2: leader is 0 at term 3
+    server_test.go:170: node 3: leader is 3 at term 3
+    server_test.go:170: node 2: leader is 3 at term 3
+    server_test.go:170: node 1: leader is 3 at term 3
+    rangepressure_test.go:124: client 7 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 9 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 8 page 2: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 15 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 11 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 2 page 2: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 5 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 13 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 1 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 10 page 2: rpc error: code = Unavailable desc = etcdserver: leader changed
+    rangepressure_test.go:124: client 3 page 1: rpc error: code = Unavailable desc = etcdserver: leader changed
+    server_test.go:170: node 1: peer: 2 messages to 3 waited over 100ms in their queue, the longest 123.158617ms; the last a MsgHeartbeat
+    server_test.go:170: node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 127.0.0.1:33534->127.0.0.1:34993: write: connection reset by peer
+    server_test.go:170: node 3: peer: send to 1: EOF
+    server_test.go:170: node 3: peer: receive from 127.0.0.1:53426: EOF
+    server_test.go:170: node 3: peer: receive from 127.0.0.1:53436: EOF
+    server_test.go:170: node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 127.0.0.1:40800->127.0.0.1:43547: write: broken pipe
+    rangepressure_test.go:33: DIAGNOSTIC LEADER LOSS:
+        1896.721ms node=2 recv MsgHeartbeat from=1 term=2 queued=201.209µs
+        1896.732ms node=2 recv MsgHeartbeat from=1 term=2 queued=204.834µs
+        1896.741ms node=2 recv MsgHeartbeat from=1 term=2 queued=202.001µs
+        1896.769ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.781ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.788ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.795ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.804ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.810ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.817ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.823ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.829ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.835ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.842ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.848ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.855ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.861ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.868ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.875ms node=2 send MsgHeartbeatResp to=1 term=2
+        1896.881ms node=2 send MsgHeartbeatResp to=1 term=2
+        1915.894ms node=1 turn at=186 due=187 now=188 waited=186 ready=187 dueIn=1 held=false inputs=0 backlog=0
+        1915.952ms node=1 Tick now=106 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0010b60c0 false} 2:{40 41 40 StateReplicate 0 true false 0xc0010b6100 false} 3:{40 41 40 StateReplicate 0 true false 0xc0010b6140 false}]
+        1916.077ms node=1 send MsgHeartbeat to=2 term=2
+        1916.097ms node=1 send MsgHeartbeat to=3 term=2
+        1916.109ms node=1 send MsgHeartbeat to=2 term=2
+        1916.118ms node=1 send MsgHeartbeat to=3 term=2
+        1916.126ms node=1 send MsgHeartbeat to=2 term=2
+        1916.134ms node=1 send MsgHeartbeat to=3 term=2
+        1976.456ms node=3 turn at=172 due=181 now=181 waited=172 ready=173 dueIn=9 held=true inputs=5 backlog=0
+        1976.490ms node=3 Tick now=132 role=StateFollower term=2 lead=1 progress=map[]
+        1976.528ms node=3 Tick now=133 role=StateFollower term=2 lead=1 progress=map[]
+        1976.544ms node=3 recv MsgHeartbeat from=1 term=2 queued=80.198762ms
+        1976.573ms node=3 recv MsgHeartbeat from=1 term=2 queued=80.217346ms
+        1976.586ms node=3 recv MsgHeartbeat from=1 term=2 queued=80.224262ms
+        1976.598ms node=3 recv MsgHeartbeat from=1 term=2 queued=80.230721ms
+        1976.616ms node=3 recv MsgHeartbeat from=1 term=2 queued=80.237971ms
+        1976.655ms node=3 send MsgHeartbeatResp to=1 term=2
+        1976.673ms node=3 send MsgHeartbeatResp to=1 term=2
+        1976.680ms node=3 send MsgHeartbeatResp to=1 term=2
+        1976.687ms node=3 send MsgHeartbeatResp to=1 term=2
+        1976.695ms node=3 send MsgHeartbeatResp to=1 term=2
+        1977.083ms node=1 turn at=188 due=189 now=194 waited=188 ready=189 dueIn=1 held=false inputs=0 backlog=0
+        1977.109ms node=1 Tick now=107 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0010b6800 false} 2:{40 41 40 StateReplicate 0 true false 0xc0010b6840 false} 3:{40 41 40 StateReplicate 0 true false 0xc0010b6880 false}]
+        1977.218ms node=1 send MsgHeartbeat to=2 term=2
+        1977.290ms node=1 send MsgHeartbeat to=3 term=2
+        1977.794ms node=1 turn at=194 due=195 now=195 waited=194 ready=195 dueIn=1 held=false inputs=0 backlog=0
+        1977.815ms node=1 Tick now=108 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0010b6a00 false} 2:{40 41 40 StateReplicate 0 true false 0xc0010b6a40 false} 3:{40 41 40 StateReplicate 0 true false 0xc0010b6a80 false}]
+        1977.889ms node=1 send MsgHeartbeat to=2 term=2
+        1977.900ms node=1 send MsgHeartbeat to=3 term=2
+        1978.832ms node=1 turn at=195 due=196 now=195 waited=195 ready=195 dueIn=1 held=false inputs=16 backlog=0
+        1978.848ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=126.084µs
+        1978.872ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=143.417µs
+        1978.887ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=151.626µs
+        1978.900ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=159.584µs
+        1978.912ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=165.543µs
+        1978.923ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=171.542µs
+        1978.935ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=178.001µs
+        1978.945ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=183.626µs
+        1978.956ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=189.626µs
+        1978.967ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=195.042µs
+        1978.978ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=200.501µs
+        1978.989ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=201.501µs
+        1979.000ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=197.085µs
+        1979.010ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=203.001µs
+        1979.021ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=208.709µs
+        1979.034ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=214.251µs
+        2071.883ms node=1 turn at=195 due=196 now=204 waited=195 ready=196 dueIn=1 held=false inputs=0 backlog=0
+        2071.924ms node=1 Tick now=109 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0010b7200 false} 2:{40 41 40 StateReplicate 0 false false 0xc0010b7240 false} 3:{40 41 40 StateReplicate 0 true false 0xc0010b7280 false}]
+        2073.706ms node=1 send MsgHeartbeat to=2 term=2
+        2073.798ms node=1 send MsgHeartbeat to=3 term=2
+        2092.265ms node=1 turn at=204 due=205 now=206 waited=204 ready=205 dueIn=1 held=false inputs=0 backlog=0
+        2092.311ms node=1 Tick now=110 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0010b7440 false} 2:{40 41 40 StateReplicate 0 false false 0xc0010b7480 false} 3:{40 41 40 StateReplicate 0 true false 0xc0010b74c0 false}]
+        2092.414ms node=1 send MsgHeartbeat to=2 term=2
+        2092.437ms node=1 send MsgHeartbeat to=3 term=2
+        2092.459ms node=2 turn at=181 due=191 now=200 waited=181 ready=191 dueIn=10 held=false inputs=0 backlog=0
+        2092.476ms node=2 Tick now=138 role=StateFollower term=2 lead=1 progress=map[]
+        2092.495ms node=2 Tick now=139 role=StateFollower term=2 lead=1 progress=map[]
+        2092.507ms node=2 Tick now=140 role=StateFollower term=2 lead=1 progress=map[]
+        2092.517ms node=2 Tick now=141 role=StateFollower term=2 lead=1 progress=map[]
+        2092.528ms node=2 Tick now=142 role=StateFollower term=2 lead=1 progress=map[]
+        2092.559ms node=2 Tick now=143 role=StateFollower term=2 lead=1 progress=map[]
+        2092.575ms node=2 Tick now=144 role=StateFollower term=2 lead=1 progress=map[]
+        2092.586ms node=2 Tick now=145 role=StateFollower term=2 lead=1 progress=map[]
+        2092.595ms node=2 Tick now=146 role=StateFollower term=2 lead=1 progress=map[]
+        2092.605ms node=2 Tick now=147 role=StateFollower term=2 lead=1 progress=map[]
+        2108.337ms node=2 turn at=200 due=201 now=202 waited=200 ready=201 dueIn=1 held=false inputs=0 backlog=0
+        2108.363ms node=2 Tick now=148 role=StateFollower term=2 lead=1 progress=map[]
+        2108.497ms node=3 turn at=181 due=191 now=195 waited=181 ready=190 dueIn=10 held=true inputs=5 backlog=0
+        2108.515ms node=3 Tick now=134 role=StateFollower term=2 lead=1 progress=map[]
+        2108.534ms node=3 Tick now=135 role=StateFollower term=2 lead=1 progress=map[]
+        2108.545ms node=3 Tick now=136 role=StateFollower term=2 lead=1 progress=map[]
+        2108.556ms node=3 Tick now=137 role=StateFollower term=2 lead=1 progress=map[]
+        2108.566ms node=3 Tick now=138 role=StateFollower term=2 lead=1 progress=map[]
+        2108.576ms node=3 Tick now=139 role=StateFollower term=2 lead=1 progress=map[]
+        2108.586ms node=3 Tick now=140 role=StateFollower term=2 lead=1 progress=map[]
+        2108.596ms node=3 Tick now=141 role=StateFollower term=2 lead=1 progress=map[]
+        2108.606ms node=3 Tick now=142 role=StateFollower term=2 lead=1 progress=map[]
+        2108.618ms node=3 recv MsgHeartbeat from=1 term=2 queued=46.680958ms
+        2108.643ms node=3 recv MsgHeartbeat from=1 term=2 queued=46.697334ms
+        2108.655ms node=3 recv MsgHeartbeat from=1 term=2 queued=46.703542ms
+        2108.668ms node=3 recv MsgHeartbeat from=1 term=2 queued=46.704833ms
+        2108.678ms node=3 recv MsgHeartbeat from=1 term=2 queued=46.708917ms
+        2108.690ms node=3 Tick now=143 role=StateFollower term=2 lead=1 progress=map[]
+        2108.718ms node=3 send MsgHeartbeatResp to=1 term=2
+        2108.731ms node=3 send MsgHeartbeatResp to=1 term=2
+        2108.739ms node=3 send MsgHeartbeatResp to=1 term=2
+        2108.746ms node=3 send MsgHeartbeatResp to=1 term=2
+        2108.754ms node=3 send MsgHeartbeatResp to=1 term=2
+        2143.092ms node=1 turn at=206 due=207 now=211 waited=206 ready=207 dueIn=1 held=false inputs=0 backlog=0
+        2143.151ms node=1 Tick now=111 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0010d0900 false} 2:{40 41 40 StateReplicate 0 false false 0xc0010d0940 false} 3:{40 41 40 StateReplicate 0 true false 0xc0010d0980 false}]
+        2143.260ms node=1 send MsgHeartbeat to=2 term=2
+        2143.361ms node=1 send MsgHeartbeat to=3 term=2
+        2143.623ms node=2 turn at=202 due=203 now=205 waited=202 ready=203 dueIn=1 held=false inputs=0 backlog=0
+        2143.644ms node=2 Tick now=149 role=StateFollower term=2 lead=1 progress=map[]
+        2160.989ms node=2 turn at=205 due=206 now=207 waited=205 ready=206 dueIn=1 held=false inputs=0 backlog=0
+        2161.023ms node=2 Tick now=150 role=StateFollower term=2 lead=1 progress=map[]
+        2161.875ms node=3 turn at=195 due=204 now=200 waited=195 ready=200 dueIn=9 held=true inputs=3 backlog=0
+        2161.898ms node=3 Tick now=144 role=StateFollower term=2 lead=1 progress=map[]
+        2161.924ms node=3 Tick now=145 role=StateFollower term=2 lead=1 progress=map[]
+        2161.936ms node=3 Tick now=146 role=StateFollower term=2 lead=1 progress=map[]
+        2161.950ms node=3 Tick now=147 role=StateFollower term=2 lead=1 progress=map[]
+        2161.959ms node=3 Tick now=148 role=StateFollower term=2 lead=1 progress=map[]
+        2161.970ms node=3 recv MsgHeartbeat from=1 term=2 queued=136.542µs
+        2161.995ms node=3 recv MsgHeartbeat from=1 term=2 queued=153.459µs
+        2162.010ms node=3 recv MsgHeartbeat from=1 term=2 queued=149.168µs
+        2162.041ms node=3 send MsgHeartbeatResp to=1 term=2
+        2162.055ms node=3 send MsgHeartbeatResp to=1 term=2
+        2162.063ms node=3 send MsgHeartbeatResp to=1 term=2
+        2170.949ms node=2 turn at=207 due=208 now=208 waited=207 ready=208 dueIn=1 held=false inputs=0 backlog=0
+        2170.984ms node=2 Tick now=151 role=StateFollower term=2 lead=1 progress=map[]
+        2222.258ms node=1 turn at=211 due=212 now=219 waited=211 ready=212 dueIn=1 held=false inputs=0 backlog=0
+        2222.301ms node=1 Tick now=112 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0010d1400 false} 2:{40 41 40 StateReplicate 0 false false 0xc0010d1440 false} 3:{40 41 40 StateReplicate 0 true false 0xc0010d1480 false}]
+        2222.402ms node=1 send MsgHeartbeat to=2 term=2
+        2222.480ms node=1 send MsgHeartbeat to=3 term=2
+        2223.184ms node=2 turn at=208 due=209 now=213 waited=208 ready=209 dueIn=1 held=true inputs=8 backlog=0
+        2223.200ms node=2 recv MsgHeartbeat from=1 term=2 queued=18.629975ms
+        2223.228ms node=2 recv MsgHeartbeat from=1 term=2 queued=18.650308ms
+        2223.242ms node=2 recv MsgHeartbeat from=1 term=2 queued=18.658558ms
+        2223.252ms node=2 recv MsgHeartbeat from=1 term=2 queued=18.658183ms
+        2223.263ms node=2 recv MsgHeartbeat from=1 term=2 queued=18.659809ms
+        2223.274ms node=2 recv MsgHeartbeat from=1 term=2 queued=18.66185ms
+        2223.284ms node=2 recv MsgHeartbeat from=1 term=2 queued=18.667017ms
+        2223.293ms node=2 recv MsgHeartbeat from=1 term=2 queued=18.667725ms
+        2223.306ms node=2 Tick now=152 role=StateFollower term=2 lead=1 progress=map[]
+        2223.341ms node=2 send MsgHeartbeatResp to=1 term=2
+        2223.353ms node=2 send MsgHeartbeatResp to=1 term=2
+        2223.360ms node=2 send MsgHeartbeatResp to=1 term=2
+        2223.368ms node=2 send MsgHeartbeatResp to=1 term=2
+        2223.375ms node=2 send MsgHeartbeatResp to=1 term=2
+        2223.382ms node=2 send MsgHeartbeatResp to=1 term=2
+        2223.389ms node=2 send MsgHeartbeatResp to=1 term=2
+        2223.396ms node=2 send MsgHeartbeatResp to=1 term=2
+        2243.103ms node=1 turn at=219 due=220 now=221 waited=219 ready=220 dueIn=1 held=false inputs=0 backlog=0
+        2243.142ms node=1 Tick now=113 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0011303c0 false} 2:{40 41 40 StateReplicate 0 false false 0xc001130400 false} 3:{40 41 40 StateReplicate 0 true false 0xc001130440 false}]
+        2243.255ms node=1 send MsgHeartbeat to=2 term=2
+        2243.331ms node=1 send MsgHeartbeat to=3 term=2
+        2244.176ms node=1 turn at=221 due=222 now=221 waited=221 ready=221 dueIn=1 held=false inputs=8 backlog=0
+        2244.199ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=99.209µs
+        2244.235ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=117.626µs
+        2244.254ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=129.292µs
+        2244.269ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=138.959µs
+        2244.280ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=144.834µs
+        2244.295ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=147.125µs
+        2244.311ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=158.126µs
+        2244.321ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=163.168µs
+        2315.263ms node=1 turn at=221 due=222 now=228 waited=221 ready=221 dueIn=1 held=false inputs=26 backlog=0
+        2315.306ms node=1 Tick now=114 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc001130c40 false} 2:{40 41 40 StateReplicate 0 false false 0xc001130c80 false} 3:{40 41 40 StateReplicate 0 true false 0xc001130cc0 false}]
+        2315.390ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=70.970463ms
+        2315.422ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=70.995797ms
+        2315.435ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.003046ms
+        2315.448ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.003379ms
+        2315.460ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.009171ms
+        2315.470ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.01463ms
+        2315.481ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.020005ms
+        2315.491ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.01213ms
+        2315.502ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.018589ms
+        2315.513ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.024922ms
+        2315.524ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.030547ms
+        2315.534ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.036172ms
+        2315.544ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.04138ms
+        2315.561ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.053838ms
+        2315.573ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.060796ms
+        2315.583ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.065672ms
+        2315.593ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.068547ms
+        2315.603ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.059339ms
+        2315.613ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.064547ms
+        2315.623ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.069297ms
+        2315.633ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.074172ms
+        2315.644ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.07913ms
+        2315.653ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.084256ms
+        2315.663ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.089381ms
+        2315.675ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=71.096089ms
+        2315.738ms node=1 send MsgHeartbeat to=2 term=2
+        2315.815ms node=1 send MsgHeartbeat to=3 term=2
+        2315.860ms node=1 send MsgHeartbeat to=2 term=2
+        2315.868ms node=1 send MsgHeartbeat to=3 term=2
+        2332.136ms node=1 turn at=228 due=229 now=230 waited=228 ready=229 dueIn=1 held=false inputs=0 backlog=0
+        2332.175ms node=1 Tick now=115 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc001131e40 false} 2:{40 41 40 StateReplicate 0 true false 0xc001131e80 false} 3:{40 41 40 StateReplicate 0 true false 0xc001131ec0 false}]
+        2332.282ms node=1 send MsgHeartbeat to=2 term=2
+        2332.304ms node=1 send MsgHeartbeat to=3 term=2
+        2332.514ms node=3 turn at=200 due=210 now=217 waited=200 ready=210 dueIn=10 held=false inputs=0 backlog=0
+        2332.537ms node=3 Tick now=149 role=StateFollower term=2 lead=1 progress=map[]
+        2332.556ms node=3 Tick now=150 role=StateFollower term=2 lead=1 progress=map[]
+        2332.570ms node=3 Tick now=151 role=StateFollower term=2 lead=1 progress=map[]
+        2332.581ms node=3 Tick now=152 role=StateFollower term=2 lead=1 progress=map[]
+        2332.592ms node=3 Tick now=153 role=StateFollower term=2 lead=1 progress=map[]
+        2332.601ms node=3 Tick now=154 role=StateFollower term=2 lead=1 progress=map[]
+        2332.611ms node=3 Tick now=155 role=StateFollower term=2 lead=1 progress=map[]
+        2332.621ms node=3 Tick now=156 role=StateFollower term=2 lead=1 progress=map[]
+        2332.632ms node=3 Tick now=157 role=StateFollower term=2 lead=1 progress=map[]
+        2332.644ms node=3 Tick now=158 role=StateFollower term=2 lead=1 progress=map[]
+        2346.613ms node=1 turn at=230 due=231 now=231 waited=230 ready=231 dueIn=1 held=false inputs=0 backlog=0
+        2346.656ms node=1 Tick now=116 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc000f085c0 false} 2:{40 41 40 StateReplicate 0 true false 0xc000f08600 false} 3:{40 41 40 StateReplicate 0 true false 0xc000f08640 false}]
+        2346.762ms node=1 send MsgHeartbeat to=2 term=2
+        2346.783ms node=1 send MsgHeartbeat to=3 term=2
+        2346.925ms node=2 turn at=213 due=222 now=226 waited=213 ready=222 dueIn=9 held=false inputs=0 backlog=0
+        2346.943ms node=2 Tick now=153 role=StateFollower term=2 lead=1 progress=map[]
+        2346.964ms node=2 Tick now=154 role=StateFollower term=2 lead=1 progress=map[]
+        2346.977ms node=2 Tick now=155 role=StateFollower term=2 lead=1 progress=map[]
+        2346.988ms node=2 Tick now=156 role=StateFollower term=2 lead=1 progress=map[]
+        2346.999ms node=2 Tick now=157 role=StateFollower term=2 lead=1 progress=map[]
+        2347.009ms node=2 Tick now=158 role=StateFollower term=2 lead=1 progress=map[]
+        2347.020ms node=2 Tick now=159 role=StateFollower term=2 lead=1 progress=map[]
+        2347.029ms node=2 Tick now=160 role=StateFollower term=2 lead=1 progress=map[]
+        2347.039ms node=2 Tick now=161 role=StateFollower term=2 lead=1 progress=map[]
+        2364.667ms node=3 turn at=217 due=218 now=220 waited=217 ready=218 dueIn=1 held=false inputs=0 backlog=0
+        2364.698ms node=3 Tick now=159 role=StateFollower term=2 lead=1 progress=map[]
+        2364.757ms node=1 turn at=231 due=232 now=233 waited=231 ready=232 dueIn=1 held=false inputs=0 backlog=0
+        2364.782ms node=1 Tick now=117 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc000f08d00 false} 2:{40 41 40 StateReplicate 0 true false 0xc000f08d40 false} 3:{40 41 40 StateReplicate 0 true false 0xc000f08d80 false}]
+        2364.888ms node=1 send MsgHeartbeat to=2 term=2
+        2364.910ms node=1 send MsgHeartbeat to=3 term=2
+        2364.921ms node=1 send MsgHeartbeat to=2 term=2
+        2364.933ms node=1 send MsgHeartbeat to=3 term=2
+        2364.950ms node=2 turn at=226 due=227 now=228 waited=226 ready=227 dueIn=1 held=false inputs=0 backlog=0
+        2364.970ms node=2 Tick now=162 role=StateFollower term=2 lead=1 progress=map[]
+        2377.512ms node=2 turn at=228 due=229 now=229 waited=228 ready=229 dueIn=1 held=false inputs=0 backlog=0
+        2377.555ms node=2 Tick now=163 role=StateFollower term=2 lead=1 progress=map[]
+        2398.006ms node=2 turn at=229 due=230 now=231 waited=229 ready=230 dueIn=1 held=false inputs=0 backlog=0
+        2398.055ms node=2 Tick now=164 role=StateFollower term=2 lead=1 progress=map[]
+        2420.730ms node=1 turn at=233 due=234 now=239 waited=233 ready=234 dueIn=1 held=false inputs=1 backlog=0
+        2420.772ms node=1 Tick now=118 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc000f09100 false} 2:{40 41 40 StateReplicate 0 true false 0xc000f09140 false} 3:{40 41 40 StateReplicate 0 true false 0xc000f09180 false}]
+        2420.897ms node=1 send MsgHeartbeat to=2 term=2
+        2420.972ms node=1 send MsgHeartbeat to=3 term=2
+        2421.009ms node=1 send MsgHeartbeat to=2 term=2
+        2421.018ms node=1 send MsgHeartbeat to=3 term=2
+        2421.103ms node=3 turn at=220 due=221 now=226 waited=220 ready=221 dueIn=1 held=true inputs=8 backlog=0
+        2421.117ms node=3 recv MsgHeartbeat from=1 term=2 queued=22.001951ms
+        2421.139ms node=3 recv MsgHeartbeat from=1 term=2 queued=22.007285ms
+        2421.151ms node=3 recv MsgHeartbeat from=1 term=2 queued=22.009034ms
+        2421.161ms node=3 recv MsgHeartbeat from=1 term=2 queued=22.012784ms
+        2421.172ms node=3 recv MsgHeartbeat from=1 term=2 queued=21.994076ms
+        2421.182ms node=3 recv MsgHeartbeat from=1 term=2 queued=21.994534ms
+        2421.196ms node=3 recv MsgHeartbeat from=1 term=2 queued=21.999492ms
+        2421.206ms node=3 recv MsgHeartbeat from=1 term=2 queued=22.002701ms
+        2421.219ms node=3 Tick now=160 role=StateFollower term=2 lead=1 progress=map[]
+        2421.252ms node=3 send MsgHeartbeatResp to=1 term=2
+        2421.267ms node=3 send MsgHeartbeatResp to=1 term=2
+        2421.275ms node=3 send MsgHeartbeatResp to=1 term=2
+        2421.283ms node=3 send MsgHeartbeatResp to=1 term=2
+        2421.289ms node=3 send MsgHeartbeatResp to=1 term=2
+        2421.297ms node=3 send MsgHeartbeatResp to=1 term=2
+        2421.305ms node=3 send MsgHeartbeatResp to=1 term=2
+        2421.313ms node=3 send MsgHeartbeatResp to=1 term=2
+        2421.460ms node=2 turn at=231 due=232 now=233 waited=231 ready=232 dueIn=1 held=true inputs=8 backlog=0
+        2421.478ms node=2 recv MsgHeartbeat from=1 term=2 queued=2.927348ms
+        2421.500ms node=2 recv MsgHeartbeat from=1 term=2 queued=2.934433ms
+        2421.513ms node=2 recv MsgHeartbeat from=1 term=2 queued=2.937016ms
+        2421.526ms node=2 recv MsgHeartbeat from=1 term=2 queued=2.943599ms
+        2421.537ms node=2 recv MsgHeartbeat from=1 term=2 queued=2.948932ms
+        2421.546ms node=2 recv MsgHeartbeat from=1 term=2 queued=2.946183ms
+        2421.561ms node=2 recv MsgHeartbeat from=1 term=2 queued=2.951141ms
+        2421.573ms node=2 recv MsgHeartbeat from=1 term=2 queued=2.951683ms
+        2421.586ms node=2 Tick now=165 role=StateFollower term=2 lead=1 progress=map[]
+        2421.621ms node=2 send MsgHeartbeatResp to=1 term=2
+        2421.633ms node=2 send MsgHeartbeatResp to=1 term=2
+        2421.641ms node=2 send MsgHeartbeatResp to=1 term=2
+        2421.648ms node=2 send MsgHeartbeatResp to=1 term=2
+        2421.656ms node=2 send MsgHeartbeatResp to=1 term=2
+        2421.663ms node=2 send MsgHeartbeatResp to=1 term=2
+        2421.670ms node=2 send MsgHeartbeatResp to=1 term=2
+        2421.677ms node=2 send MsgHeartbeatResp to=1 term=2
+        2427.912ms node=1 turn at=239 due=240 now=240 waited=239 ready=240 dueIn=1 held=false inputs=0 backlog=0
+        2427.962ms node=1 Tick now=119 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc000f09980 false} 2:{40 41 40 StateReplicate 0 false false 0xc000f099c0 false} 3:{40 41 40 StateReplicate 0 false false 0xc000f09a00 false}]
+        2428.083ms node=1 send MsgHeartbeat to=2 term=2
+        2428.110ms node=1 send MsgHeartbeat to=3 term=2
+        2439.397ms node=1 turn at=240 due=241 now=241 waited=240 ready=240 dueIn=1 held=false inputs=1 backlog=0
+        2439.444ms node=1 Tick now=120 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc000f09bc0 false} 2:{40 41 40 StateReplicate 0 false false 0xc000f09c00 false} 3:{40 41 40 StateReplicate 0 false false 0xc000f09c40 false}]
+        2439.587ms node=1 send MsgHeartbeat to=2 term=2
+        2439.608ms node=1 send MsgHeartbeat to=3 term=2
+        2439.620ms node=1 send MsgHeartbeat to=2 term=2
+        2439.628ms node=1 send MsgHeartbeat to=3 term=2
+        2439.638ms node=1 send MsgHeartbeat to=2 term=2
+        2439.646ms node=1 send MsgHeartbeat to=3 term=2
+        2456.840ms node=1 turn at=241 due=242 now=242 waited=241 ready=242 dueIn=1 held=false inputs=0 backlog=0
+        2456.880ms node=1 Tick now=121 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc001184bc0 false} 2:{40 41 40 StateReplicate 0 false false 0xc001184c00 false} 3:{40 41 40 StateReplicate 0 false false 0xc001184c40 false}]
+        2457.002ms node=1 send MsgHeartbeat to=2 term=2
+        2457.022ms node=1 send MsgHeartbeat to=3 term=2
+        2457.037ms node=1 send MsgHeartbeat to=2 term=2
+        2457.046ms node=1 send MsgHeartbeat to=3 term=2
+        2457.504ms node=1 send MsgHeartbeat to=2 term=2
+        2457.529ms node=1 send MsgHeartbeat to=3 term=2
+        2457.554ms node=1 turn at=242 due=243 now=243 waited=243 ready=243 dueIn=1 held=false inputs=0 backlog=0
+        2457.578ms node=1 Tick now=122 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc001184e40 false} 2:{40 41 40 StateReplicate 0 false false 0xc001184e80 false} 3:{40 41 40 StateReplicate 0 false false 0xc001184ec0 false}]
+        2457.663ms node=1 send MsgHeartbeat to=2 term=2
+        2457.675ms node=1 send MsgHeartbeat to=3 term=2
+        2458.886ms node=1 turn at=243 due=244 now=243 waited=243 ready=243 dueIn=1 held=false inputs=8 backlog=0
+        2458.903ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=81.792µs
+        2458.928ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=99.834µs
+        2458.940ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=93.126µs
+        2458.952ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=99.501µs
+        2458.964ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=105.917µs
+        2458.980ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=117.168µs
+        2458.992ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=124.167µs
+        2459.003ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=131.209µs
+        2499.587ms node=1 turn at=243 due=244 now=247 waited=243 ready=243 dueIn=1 held=false inputs=9 backlog=0
+        2499.626ms node=1 Tick now=123 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012a2640 false} 2:{40 41 40 StateReplicate 0 false false 0xc0012a2680 false} 3:{40 41 40 StateReplicate 0 true false 0xc0012a26c0 false}]
+        2499.727ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=38.201079ms
+        2499.752ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=38.220538ms
+        2499.772ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=38.236079ms
+        2499.784ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=38.243288ms
+        2499.795ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=38.248829ms
+        2499.806ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=38.254996ms
+        2499.816ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=38.260913ms
+        2499.828ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=38.267538ms
+        2499.881ms node=1 send MsgHeartbeat to=2 term=2
+        2499.971ms node=1 send MsgHeartbeat to=3 term=2
+        2500.012ms node=1 send MsgHeartbeat to=2 term=2
+        2500.027ms node=1 send MsgHeartbeat to=3 term=2
+        2500.037ms node=1 send MsgHeartbeat to=2 term=2
+        2500.051ms node=1 send MsgHeartbeat to=3 term=2
+        2510.344ms node=3 turn at=226 due=235 now=235 waited=226 ready=230 dueIn=9 held=true inputs=8 backlog=0
+        2510.381ms node=3 Tick now=161 role=StateFollower term=2 lead=1 progress=map[]
+        2510.411ms node=3 Tick now=162 role=StateFollower term=2 lead=1 progress=map[]
+        2510.431ms node=3 Tick now=163 role=StateFollower term=2 lead=1 progress=map[]
+        2510.446ms node=3 Tick now=164 role=StateFollower term=2 lead=1 progress=map[]
+        2510.457ms node=3 Tick now=165 role=StateFollower term=2 lead=1 progress=map[]
+        2510.470ms node=3 recv MsgHeartbeat from=1 term=2 queued=49.046429ms
+        2510.503ms node=3 recv MsgHeartbeat from=1 term=2 queued=49.071721ms
+        2510.516ms node=3 recv MsgHeartbeat from=1 term=2 queued=49.074721ms
+        2510.527ms node=3 recv MsgHeartbeat from=1 term=2 queued=49.076096ms
+        2510.539ms node=3 recv MsgHeartbeat from=1 term=2 queued=49.08243ms
+        2510.551ms node=3 recv MsgHeartbeat from=1 term=2 queued=49.089888ms
+        2510.562ms node=3 recv MsgHeartbeat from=1 term=2 queued=49.088721ms
+        2510.577ms node=3 recv MsgHeartbeat from=1 term=2 queued=49.096804ms
+        2510.614ms node=3 send MsgHeartbeatResp to=1 term=2
+        2510.629ms node=3 send MsgHeartbeatResp to=1 term=2
+        2510.637ms node=3 send MsgHeartbeatResp to=1 term=2
+        2510.648ms node=3 send MsgHeartbeatResp to=1 term=2
+        2510.656ms node=3 send MsgHeartbeatResp to=1 term=2
+        2510.667ms node=3 send MsgHeartbeatResp to=1 term=2
+        2510.677ms node=3 send MsgHeartbeatResp to=1 term=2
+        2510.691ms node=3 send MsgHeartbeatResp to=1 term=2
+        2510.724ms node=2 turn at=233 due=242 now=242 waited=233 ready=237 dueIn=9 held=true inputs=6 backlog=0
+        2510.741ms node=2 Tick now=166 role=StateFollower term=2 lead=1 progress=map[]
+        2510.760ms node=2 Tick now=167 role=StateFollower term=2 lead=1 progress=map[]
+        2510.772ms node=2 Tick now=168 role=StateFollower term=2 lead=1 progress=map[]
+        2510.782ms node=2 Tick now=169 role=StateFollower term=2 lead=1 progress=map[]
+        2510.795ms node=2 Tick now=170 role=StateFollower term=2 lead=1 progress=map[]
+        2510.806ms node=2 recv MsgHeartbeat from=1 term=2 queued=49.200388ms
+        2510.826ms node=2 recv MsgHeartbeat from=1 term=2 queued=49.213263ms
+        2510.838ms node=2 recv MsgHeartbeat from=1 term=2 queued=49.215722ms
+        2510.848ms node=2 recv MsgHeartbeat from=1 term=2 queued=49.217472ms
+        2510.858ms node=2 recv MsgHeartbeat from=1 term=2 queued=49.221346ms
+        2510.868ms node=2 recv MsgHeartbeat from=1 term=2 queued=49.220805ms
+        2510.896ms node=2 send MsgHeartbeatResp to=1 term=2
+        2510.910ms node=2 send MsgHeartbeatResp to=1 term=2
+        2510.919ms node=2 send MsgHeartbeatResp to=1 term=2
+        2510.926ms node=2 send MsgHeartbeatResp to=1 term=2
+        2510.937ms node=2 send MsgHeartbeatResp to=1 term=2
+        2510.948ms node=2 send MsgHeartbeatResp to=1 term=2
+        2511.299ms node=1 turn at=247 due=248 now=248 waited=247 ready=248 dueIn=1 held=false inputs=0 backlog=0
+        2511.330ms node=1 Tick now=124 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012a3280 false} 2:{40 41 40 StateReplicate 0 true false 0xc0012a32c0 false} 3:{40 41 40 StateReplicate 0 true false 0xc0012a3300 false}]
+        2511.434ms node=1 send MsgHeartbeat to=2 term=2
+        2511.447ms node=1 send MsgHeartbeat to=3 term=2
+        2511.456ms node=1 send MsgHeartbeat to=2 term=2
+        2511.464ms node=1 send MsgHeartbeat to=3 term=2
+        2511.472ms node=1 send MsgHeartbeat to=2 term=2
+        2511.479ms node=1 send MsgHeartbeat to=3 term=2
+        2531.897ms node=1 turn at=248 due=249 now=250 waited=248 ready=249 dueIn=1 held=false inputs=0 backlog=0
+        2531.936ms node=1 Tick now=125 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012a3600 false} 2:{40 41 40 StateReplicate 0 true false 0xc0012a3640 false} 3:{40 41 40 StateReplicate 0 true false 0xc0012a3680 false}]
+        2532.042ms node=1 send MsgHeartbeat to=2 term=2
+        2532.119ms node=1 send MsgHeartbeat to=3 term=2
+        2532.220ms node=3 turn at=235 due=245 now=237 waited=235 ready=237 dueIn=10 held=true inputs=8 backlog=0
+        2532.236ms node=3 Tick now=166 role=StateFollower term=2 lead=1 progress=map[]
+        2532.256ms node=3 Tick now=167 role=StateFollower term=2 lead=1 progress=map[]
+        2532.268ms node=3 recv MsgHeartbeat from=1 term=2 queued=947.713µs
+        2532.290ms node=3 recv MsgHeartbeat from=1 term=2 queued=960.589µs
+        2532.303ms node=3 recv MsgHeartbeat from=1 term=2 queued=954.506µs
+        2532.314ms node=3 recv MsgHeartbeat from=1 term=2 queued=958.381µs
+        2532.324ms node=3 recv MsgHeartbeat from=1 term=2 queued=963.797µs
+        2532.335ms node=3 recv MsgHeartbeat from=1 term=2 queued=964.963µs
+        2532.345ms node=3 recv MsgHeartbeat from=1 term=2 queued=969.963µs
+        2532.360ms node=3 recv MsgHeartbeat from=1 term=2 queued=979.839µs
+        2532.386ms node=3 send MsgHeartbeatResp to=1 term=2
+        2532.397ms node=3 send MsgHeartbeatResp to=1 term=2
+        2532.404ms node=3 send MsgHeartbeatResp to=1 term=2
+        2532.411ms node=3 send MsgHeartbeatResp to=1 term=2
+        2532.419ms node=3 send MsgHeartbeatResp to=1 term=2
+        2532.426ms node=3 send MsgHeartbeatResp to=1 term=2
+        2532.433ms node=3 send MsgHeartbeatResp to=1 term=2
+        2532.440ms node=3 send MsgHeartbeatResp to=1 term=2
+        2532.563ms node=2 turn at=242 due=252 now=244 waited=242 ready=244 dueIn=10 held=true inputs=10 backlog=0
+        2532.580ms node=2 Tick now=171 role=StateFollower term=2 lead=1 progress=map[]
+        2532.597ms node=2 Tick now=172 role=StateFollower term=2 lead=1 progress=map[]
+        2532.608ms node=2 recv MsgHeartbeat from=1 term=2 queued=843.587µs
+        2532.623ms node=2 recv MsgHeartbeat from=1 term=2 queued=851.213µs
+        2532.634ms node=2 recv MsgHeartbeat from=1 term=2 queued=856.338µs
+        2532.644ms node=2 recv MsgHeartbeat from=1 term=2 queued=860.672µs
+        2532.654ms node=2 recv MsgHeartbeat from=1 term=2 queued=861.005µs
+        2532.664ms node=2 recv MsgHeartbeat from=1 term=2 queued=865.963µs
+        2532.673ms node=2 recv MsgHeartbeat from=1 term=2 queued=870.13µs
+        2532.685ms node=2 recv MsgHeartbeat from=1 term=2 queued=873.63µs
+        2532.695ms node=2 recv MsgHeartbeat from=1 term=2 queued=877.88µs
+        2532.705ms node=2 recv MsgHeartbeat from=1 term=2 queued=879.797µs
+        2532.731ms node=2 send MsgHeartbeatResp to=1 term=2
+        2532.742ms node=2 send MsgHeartbeatResp to=1 term=2
+        2532.749ms node=2 send MsgHeartbeatResp to=1 term=2
+        2532.757ms node=2 send MsgHeartbeatResp to=1 term=2
+        2532.763ms node=2 send MsgHeartbeatResp to=1 term=2
+        2532.770ms node=2 send MsgHeartbeatResp to=1 term=2
+        2532.779ms node=2 send MsgHeartbeatResp to=1 term=2
+        2532.785ms node=2 send MsgHeartbeatResp to=1 term=2
+        2532.793ms node=2 send MsgHeartbeatResp to=1 term=2
+        2532.800ms node=2 send MsgHeartbeatResp to=1 term=2
+        2550.776ms node=1 turn at=250 due=251 now=252 waited=250 ready=251 dueIn=1 held=false inputs=0 backlog=0
+        2550.829ms node=1 Tick now=126 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012c2000 false} 2:{40 41 40 StateReplicate 0 true false 0xc0012c2040 false} 3:{40 41 40 StateReplicate 0 true false 0xc0012c2080 false}]
+        2550.962ms node=1 send MsgHeartbeat to=2 term=2
+        2550.988ms node=1 send MsgHeartbeat to=3 term=2
+        2551.013ms node=1 send MsgHeartbeat to=2 term=2
+        2551.020ms node=1 send MsgHeartbeat to=3 term=2
+        2551.028ms node=1 send MsgHeartbeat to=2 term=2
+        2551.036ms node=1 send MsgHeartbeat to=3 term=2
+        2552.302ms node=1 turn at=252 due=253 now=252 waited=252 ready=252 dueIn=1 held=false inputs=16 backlog=0
+        2552.318ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=111.459µs
+        2552.343ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=129.709µs
+        2552.357ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=138.085µs
+        2552.370ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=146.376µs
+        2552.382ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=152.96µs
+        2552.394ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=160.543µs
+        2552.407ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=163.209µs
+        2552.418ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=169.042µs
+        2552.429ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=175.335µs
+        2552.440ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=181.834µs
+        2552.450ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=187.001µs
+        2552.460ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=192.418µs
+        2552.471ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=199.043µs
+        2552.483ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=205.668µs
+        2552.493ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=211.668µs
+        2552.505ms node=1 recv MsgHeartbeatResp from=2 term=2 queued=219.002µs
+        2575.541ms node=1 turn at=252 due=253 now=254 waited=252 ready=253 dueIn=1 held=false inputs=16 backlog=0
+        2575.583ms node=1 Tick now=127 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012c2800 false} 2:{40 41 40 StateReplicate 0 true false 0xc0012c2840 false} 3:{40 41 40 StateReplicate 0 true false 0xc0012c2880 false}]
+        2575.663ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.570661ms
+        2575.695ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.594662ms
+        2575.707ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.601578ms
+        2575.727ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.616079ms
+        2575.738ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.621745ms
+        2575.751ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.63012ms
+        2575.762ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.635453ms
+        2575.772ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.636578ms
+        2575.783ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.634245ms
+        2575.801ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.64712ms
+        2575.811ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.652536ms
+        2575.822ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.645328ms
+        2575.832ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.651411ms
+        2575.841ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.656287ms
+        2575.851ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.661662ms
+        2575.862ms node=1 recv MsgHeartbeatResp from=3 term=2 queued=14.667745ms
+        2577.597ms node=1 send MsgHeartbeat to=2 term=2
+        2577.693ms node=1 send MsgHeartbeat to=3 term=2
+        2577.754ms node=1 turn at=254 due=255 now=255 waited=255 ready=255 dueIn=1 held=false inputs=0 backlog=0
+        2577.774ms node=1 Tick now=128 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012c2e00 false} 2:{40 41 40 StateReplicate 0 true false 0xc0012c2e40 false} 3:{40 41 40 StateReplicate 0 true false 0xc0012c2e80 false}]
+        2579.547ms node=1 send MsgHeartbeat to=2 term=2
+        2579.581ms node=1 send MsgHeartbeat to=3 term=2
+        2591.542ms node=1 turn at=255 due=256 now=256 waited=255 ready=256 dueIn=1 held=false inputs=0 backlog=0
+        2591.590ms node=1 Tick now=129 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012c3040 false} 2:{40 41 40 StateReplicate 0 false false 0xc0012c3080 false} 3:{40 41 40 StateReplicate 0 false false 0xc0012c30c0 false}]
+        2591.696ms node=1 send MsgHeartbeat to=2 term=2
+        2591.719ms node=1 send MsgHeartbeat to=3 term=2
+        2612.106ms node=1 turn at=256 due=257 now=258 waited=256 ready=257 dueIn=1 held=false inputs=0 backlog=0
+        2612.161ms node=1 Tick now=130 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012c3280 false} 2:{40 41 40 StateReplicate 0 false false 0xc0012c32c0 false} 3:{40 41 40 StateReplicate 0 false false 0xc0012c3300 false}]
+        2612.261ms node=1 send MsgHeartbeat to=2 term=2
+        2612.355ms node=1 send MsgHeartbeat to=3 term=2
+        2632.227ms node=2 turn at=244 due=254 now=254 waited=244 ready=254 dueIn=10 held=false inputs=0 backlog=0
+        2632.270ms node=2 Tick now=173 role=StateFollower term=2 lead=1 progress=map[]
+        2632.307ms node=2 Tick now=174 role=StateFollower term=2 lead=1 progress=map[]
+        2632.321ms node=2 Tick now=175 role=StateFollower term=2 lead=1 progress=map[]
+        2632.338ms node=2 Tick now=176 role=StateFollower term=2 lead=1 progress=map[]
+        2632.350ms node=2 Tick now=177 role=StateFollower term=2 lead=1 progress=map[]
+        2632.361ms node=2 Tick now=178 role=StateFollower term=2 lead=1 progress=map[]
+        2632.371ms node=2 Tick now=179 role=StateFollower term=2 lead=1 progress=map[]
+        2632.382ms node=2 Tick now=180 role=StateFollower term=2 lead=1 progress=map[]
+        2632.392ms node=2 Tick now=181 role=StateFollower term=2 lead=1 progress=map[]
+        2632.402ms node=2 Tick now=182 role=StateFollower term=2 lead=1 progress=map[]
+        2652.487ms node=1 turn at=258 due=259 now=262 waited=258 ready=259 dueIn=1 held=false inputs=0 backlog=0
+        2652.541ms node=1 Tick now=131 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012c3780 false} 2:{40 41 40 StateReplicate 0 false false 0xc0012c37c0 false} 3:{40 41 40 StateReplicate 0 false false 0xc0012c3800 false}]
+        2652.656ms node=1 send MsgHeartbeat to=2 term=2
+        2652.740ms node=1 send MsgHeartbeat to=3 term=2
+        2652.817ms node=3 turn at=237 due=247 now=249 waited=237 ready=247 dueIn=10 held=false inputs=0 backlog=0
+        2652.838ms node=3 Tick now=168 role=StateFollower term=2 lead=1 progress=map[]
+        2652.857ms node=3 Tick now=169 role=StateFollower term=2 lead=1 progress=map[]
+        2652.876ms node=3 Tick now=170 role=StateFollower term=2 lead=1 progress=map[]
+        2652.888ms node=3 Tick now=171 role=StateFollower term=2 lead=1 progress=map[]
+        2652.899ms node=3 Tick now=172 role=StateFollower term=2 lead=1 progress=map[]
+        2652.908ms node=3 Tick now=173 role=StateFollower term=2 lead=1 progress=map[]
+        2652.918ms node=3 Tick now=174 role=StateFollower term=2 lead=1 progress=map[]
+        2652.928ms node=3 Tick now=175 role=StateFollower term=2 lead=1 progress=map[]
+        2652.938ms node=3 Tick now=176 role=StateFollower term=2 lead=1 progress=map[]
+        2652.949ms node=3 Tick now=177 role=StateFollower term=2 lead=1 progress=map[]
+        2652.978ms node=2 turn at=254 due=255 now=256 waited=254 ready=255 dueIn=1 held=false inputs=0 backlog=0
+        2652.993ms node=2 Tick now=183 role=StateFollower term=2 lead=1 progress=map[]
+        2654.516ms node=2 turn at=256 due=257 now=257 waited=256 ready=257 dueIn=1 held=false inputs=0 backlog=0
+        2654.534ms node=2 Tick now=184 role=StateFollower term=2 lead=1 progress=map[]
+        2672.599ms node=2 turn at=257 due=258 now=258 waited=257 ready=258 dueIn=1 held=false inputs=0 backlog=0
+        2672.638ms node=2 Tick now=185 role=StateFollower term=2 lead=1 progress=map[]
+        2692.785ms node=2 turn at=258 due=259 now=260 waited=258 ready=259 dueIn=1 held=false inputs=0 backlog=0
+        2692.832ms node=2 Tick now=186 role=StateFollower term=2 lead=1 progress=map[]
+        2713.056ms node=2 turn at=260 due=261 now=262 waited=260 ready=261 dueIn=1 held=false inputs=0 backlog=0
+        2713.097ms node=2 Tick now=187 role=StateFollower term=2 lead=1 progress=map[]
+        2756.595ms node=1 turn at=262 due=263 now=272 waited=262 ready=263 dueIn=1 held=false inputs=3 backlog=0
+        2756.638ms node=1 Tick now=132 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012eea80 false} 2:{40 41 40 StateReplicate 0 false false 0xc0012eeac0 false} 3:{40 41 40 StateReplicate 0 false false 0xc0012eeb00 false}]
+        2756.802ms node=1 send MsgHeartbeat to=2 term=2
+        2756.878ms node=1 send MsgHeartbeat to=3 term=2
+        2756.910ms node=1 send MsgHeartbeat to=2 term=2
+        2756.919ms node=1 send MsgHeartbeat to=3 term=2
+        2757.024ms node=3 turn at=249 due=250 now=259 waited=249 ready=250 dueIn=1 held=true inputs=9 backlog=0
+        2757.039ms node=3 recv MsgHeartbeat from=1 term=2 queued=1.786384ms
+        2757.063ms node=3 recv MsgHeartbeat from=1 term=2 queued=1.797135ms
+        2757.079ms node=3 recv MsgHeartbeat from=1 term=2 queued=1.805676ms
+        2757.090ms node=3 recv MsgHeartbeat from=1 term=2 queued=1.811135ms
+        2757.100ms node=3 recv MsgHeartbeat from=1 term=2 queued=1.81126ms
+        2757.119ms node=3 recv MsgHeartbeat from=1 term=2 queued=1.825093ms
+        2757.129ms node=3 recv MsgHeartbeat from=1 term=2 queued=1.829968ms
+        2757.139ms node=3 recv MsgHeartbeat from=1 term=2 queued=1.831385ms
+        2757.149ms node=3 recv MsgHeartbeat from=1 term=2 queued=1.832843ms
+        2757.163ms node=3 Tick now=178 role=StateFollower term=2 lead=1 progress=map[]
+        2757.197ms node=3 send MsgHeartbeatResp to=1 term=2
+        2757.209ms node=3 send MsgHeartbeatResp to=1 term=2
+        2757.217ms node=3 send MsgHeartbeatResp to=1 term=2
+        2757.224ms node=3 send MsgHeartbeatResp to=1 term=2
+        2757.231ms node=3 send MsgHeartbeatResp to=1 term=2
+        2757.238ms node=3 send MsgHeartbeatResp to=1 term=2
+        2757.245ms node=3 send MsgHeartbeatResp to=1 term=2
+        2757.252ms node=3 send MsgHeartbeatResp to=1 term=2
+        2757.259ms node=3 send MsgHeartbeatResp to=1 term=2
+        2758.360ms node=1 turn at=272 due=273 now=273 waited=272 ready=273 dueIn=1 held=false inputs=0 backlog=0
+        2758.386ms node=1 Tick now=133 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012eefc0 false} 2:{40 41 40 StateReplicate 0 false false 0xc0012ef000 false} 3:{40 41 40 StateReplicate 0 false false 0xc0012ef040 false}]
+        2758.466ms node=1 send MsgHeartbeat to=2 term=2
+        2758.480ms node=1 send MsgHeartbeat to=3 term=2
+        2759.432ms node=2 turn at=262 due=263 now=267 waited=262 ready=263 dueIn=1 held=true inputs=9 backlog=0
+        2759.447ms node=2 recv MsgHeartbeat from=1 term=2 queued=2.981974ms
+        2759.469ms node=2 recv MsgHeartbeat from=1 term=2 queued=2.993099ms
+        2759.482ms node=2 recv MsgHeartbeat from=1 term=2 queued=3.000891ms
+        2759.494ms node=2 recv MsgHeartbeat from=1 term=2 queued=3.006599ms
+        2759.504ms node=2 recv MsgHeartbeat from=1 term=2 queued=3.000058ms
+        2759.514ms node=2 recv MsgHeartbeat from=1 term=2 queued=3.005266ms
+        2759.524ms node=2 recv MsgHeartbeat from=1 term=2 queued=3.009807ms
+        2759.534ms node=2 recv MsgHeartbeat from=1 term=2 queued=3.010641ms
+        2759.543ms node=2 recv MsgHeartbeat from=1 term=2 queued=3.011516ms
+        2759.556ms node=2 Tick now=188 role=StateFollower term=2 lead=1 progress=map[]
+        2759.591ms node=2 send MsgHeartbeatResp to=1 term=2
+        2759.603ms node=2 send MsgHeartbeatResp to=1 term=2
+        2759.610ms node=2 send MsgHeartbeatResp to=1 term=2
+        2759.617ms node=2 send MsgHeartbeatResp to=1 term=2
+        2759.624ms node=2 send MsgHeartbeatResp to=1 term=2
+        2759.631ms node=2 send MsgHeartbeatResp to=1 term=2
+        2759.642ms node=2 send MsgHeartbeatResp to=1 term=2
+        2759.648ms node=2 send MsgHeartbeatResp to=1 term=2
+        2759.655ms node=2 send MsgHeartbeatResp to=1 term=2
+        2773.889ms node=1 turn at=273 due=274 now=274 waited=273 ready=274 dueIn=1 held=false inputs=0 backlog=0
+        2773.942ms node=1 Tick now=134 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012ef500 false} 2:{40 41 40 StateReplicate 0 false false 0xc0012ef540 false} 3:{40 41 40 StateReplicate 0 false false 0xc0012ef5c0 false}]
+        2774.052ms node=1 send MsgHeartbeat to=2 term=2
+        2774.076ms node=1 send MsgHeartbeat to=3 term=2
+        2794.108ms node=1 turn at=274 due=275 now=276 waited=274 ready=275 dueIn=1 held=false inputs=0 backlog=0
+        2794.166ms node=1 Tick now=135 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012ef740 false} 2:{40 41 40 StateReplicate 0 false false 0xc0012ef780 false} 3:{40 41 40 StateReplicate 0 false false 0xc0012ef7c0 false}]
+        2794.297ms node=1 send MsgHeartbeat to=2 term=2
+        2794.380ms node=1 send MsgHeartbeat to=3 term=2
+        2794.419ms node=1 send MsgHeartbeat to=2 term=2
+        2794.433ms node=1 send MsgHeartbeat to=3 term=2
+        2815.344ms node=1 turn at=276 due=277 now=278 waited=276 ready=277 dueIn=1 held=false inputs=0 backlog=0
+        2815.383ms node=1 Tick now=136 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012ef940 false} 2:{40 41 40 StateReplicate 0 false false 0xc0012ef980 false} 3:{40 41 40 StateReplicate 0 false false 0xc0012ef9c0 false}]
+        2815.475ms node=1 send MsgHeartbeat to=2 term=2
+        2815.544ms node=1 send MsgHeartbeat to=3 term=2
+        2827.253ms node=1 turn at=278 due=279 now=279 waited=278 ready=279 dueIn=1 held=false inputs=0 backlog=0
+        2827.286ms node=1 Tick now=137 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012efb40 false} 2:{40 41 40 StateReplicate 0 false false 0xc0012efb80 false} 3:{40 41 40 StateReplicate 0 false false 0xc0012efbc0 false}]
+        2827.374ms node=1 send MsgHeartbeat to=2 term=2
+        2827.391ms node=1 send MsgHeartbeat to=3 term=2
+        2845.669ms node=2 turn at=267 due=276 now=276 waited=267 ready=276 dueIn=9 held=false inputs=0 backlog=0
+        2845.709ms node=2 Tick now=189 role=StateFollower term=2 lead=1 progress=map[]
+        2845.741ms node=2 Tick now=190 role=StateFollower term=2 lead=1 progress=map[]
+        2845.759ms node=2 Tick now=191 role=StateFollower term=2 lead=1 progress=map[]
+        2845.772ms node=2 Tick now=192 role=StateFollower term=2 lead=1 progress=map[]
+        2845.783ms node=2 Tick now=193 role=StateFollower term=2 lead=1 progress=map[]
+        2845.799ms node=2 Tick now=194 role=StateFollower term=2 lead=1 progress=map[]
+        2845.810ms node=2 Tick now=195 role=StateFollower term=2 lead=1 progress=map[]
+        2845.820ms node=2 Tick now=196 role=StateFollower term=2 lead=1 progress=map[]
+        2845.833ms node=2 Tick now=197 role=StateFollower term=2 lead=1 progress=map[]
+        2846.088ms node=1 turn at=279 due=280 now=281 waited=279 ready=280 dueIn=1 held=false inputs=0 backlog=0
+        2846.121ms node=1 Tick now=138 role=StateLeader term=2 lead=1 progress=map[1:{40 41 0 StateReplicate 0 true false 0xc0012f6080 false} 2:{40 41 40 StateReplicate 0 false false 0xc0012f60c0 false} 3:{40 41 40 StateReplicate 0 false false 0xc0012f6100 false}]
+        2846.190ms node=1 raft: WARN: 1 stepped down to follower since quorum is not active
+        2846.222ms node=1 raft: INFO: 1 became follower at term 2
+        2846.241ms node=1 raft: INFO: 1 no leader at term 2; dropping index reading msg
+--- FAIL: TestRangeReplyClients (3.13s)
