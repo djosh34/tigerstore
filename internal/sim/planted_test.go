@@ -287,7 +287,13 @@ func TestPlanted(t *testing.T) {
 			return false
 		}
 		caught = true
-		t.Logf("%s (%s) caught by seed %d: %s", name, planted.Bugs[name], seed, r.Finding)
+		if !want.MatchString(r.Finding) {
+			// The seed passes without the bug, but the bug may only have
+			// moved the schedule onto another failure: one to look at.
+			t.Logf("%s (%s) caught by seed %d with a check outside the expected ones (%s), which may be another bug the moved schedule reached: %s", name, planted.Bugs[name], seed, c.want, r.Finding)
+		} else {
+			t.Logf("%s (%s) caught by seed %d: %s", name, planted.Bugs[name], seed, r.Finding)
+		}
 		t.Logf("replay: %s", replayCommand(fmt.Sprintf("%s/%d", t.Name(), seed), seed))
 		return true
 	}) {
