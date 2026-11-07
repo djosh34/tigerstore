@@ -19,49 +19,39 @@ import (
 // value are left out, a set message field is written even when empty, and
 // fields go in number order.
 
-// appendTxnReply encodes the gRPC message of a TxnResponse whole.
-func appendTxnReply(r *pb.TxnResponse) ([]byte, error) {
-	b, holes, err := appendTxnPieces(r, nil)
-	if len(holes) > 0 {
-		return nil, status.Error(codes.Internal, "server: a whole Txn reply with KeyValues to come")
-	}
-	return b, err
-}
-
 // appendTxnPieces encodes the gRPC message of a TxnResponse, uncompressed,
 // up to the KeyValues of the first message in rests, and returns what
 // follows as holes: the KeyValues of each message in rests that later
 // pieces bring, and the bytes after them (core.Reply.Rests).
 func appendTxnPieces(r *pb.TxnResponse, rests []mvcc.Rest) ([]byte, []hole, error) {
-	e := &txnEnc{rests: map[proto.Message]*mvcc.Rest{}}
-	for i := range rests {
-		e.rests[rests[i].Msg] = &rests[i]
-	}
-	size := e.txnRespSize(r)
-	if size > 1<<31-1 {
-		return nil, nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
-	}
-	e.b = make([]byte, 0, 5+min(size, 1<<20))
-	e.b = append(e.b, 0)
-	e.b = binary.BigEndian.AppendUint32(e.b, uint32(size))
-	e.appendTxnResp(r)
-	return e.end()
+	e := newTxnEnc(rests)
+	return e.message(e.txnRespSize(r), func() { e.appendTxnResp(r) })
 }
 
 // appendDeletePieces is appendTxnPieces for a DeleteRangeResponse.
 func appendDeletePieces(r *pb.DeleteRangeResponse, rests []mvcc.Rest) ([]byte, []hole, error) {
+	e := newTxnEnc(rests)
+	return e.message(e.deleteRespSize(r), func() { e.appendDeleteFields(r) })
+}
+
+func newTxnEnc(rests []mvcc.Rest) *txnEnc {
 	e := &txnEnc{rests: map[proto.Message]*mvcc.Rest{}}
 	for i := range rests {
 		e.rests[rests[i].Msg] = &rests[i]
 	}
-	size := e.deleteRespSize(r)
+	return e
+}
+
+// message encodes a gRPC message of size bytes whose fields fields
+// appends.
+func (e *txnEnc) message(size int, fields func()) ([]byte, []hole, error) {
 	if size > 1<<31-1 {
 		return nil, nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
 	}
 	e.b = make([]byte, 0, 5+min(size, 1<<20))
 	e.b = append(e.b, 0)
 	e.b = binary.BigEndian.AppendUint32(e.b, uint32(size))
-	e.appendDeleteFields(r)
+	fields()
 	return e.end()
 }
 

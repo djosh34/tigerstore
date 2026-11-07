@@ -13,8 +13,9 @@ import (
 )
 
 // TestRevokeInSteps revokes a lease with 10,000 keys: each turn deletes at
-// most revokeKeys of them, a read between the steps sees every key and
-// the revision before the revoke, and at the end every key is gone at one
+// most revokeKeys of them, a read between the steps sees every key, the
+// lease with all of them, the hash and the revision before the revoke,
+// and at the end every key is gone at one
 // revision, the watcher gets all 10,000 deletes at it, and a restart that
 // replays the revoke has the same state (#505).
 func TestRevokeInSteps(t *testing.T) {
@@ -37,6 +38,7 @@ func TestRevokeInSteps(t *testing.T) {
 	s.run()
 	s.responses()
 	steps := 0
+	hash32 := s.n.state.Hash32()
 	s.afterTurn = func(Effects) {
 		if s.n.revoke == nil {
 			return
@@ -51,6 +53,12 @@ func TestRevokeInSteps(t *testing.T) {
 		}
 		if r.Count != keys || r.Header.Revision != before {
 			t.Fatalf("between the revoke's steps a read sees %d keys at revision %d, want %d at %d", r.Count, r.Header.Revision, keys, before)
+		}
+		if l := s.n.state.timeToLive(&pb.LeaseTimeToLiveRequest{ID: 7, Keys: true}, -1); len(l.Keys) != keys {
+			t.Fatalf("between the revoke's steps the lease has %d keys, want %d", len(l.Keys), keys)
+		}
+		if h := s.n.state.Hash32(); h != hash32 {
+			t.Fatalf("between the revoke's steps the hash is %x, want %x as before", h, hash32)
 		}
 	}
 	// The watcher's client takes nothing during the revoke: its stream

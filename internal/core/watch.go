@@ -20,13 +20,15 @@ import (
 // set: the server splits it as etcd does when it is large, once its
 // values are read, and clears the mark.
 //
-// A revision whose events for a watcher pass a piece is one response
-// built in parts, as etcd sends it in one message (#428): its first part
-// has EventBytes, the size of all its events as the message encodes
-// them; every part but the last has More, and every part but the first
-// has Cont and only events. To a watcher that asked for fragments it goes
-// as etcd's fragments instead: responses of about a piece each, with
-// Fragment set on all but the last, which Fragmented marks as final.
+// A response whose events for a watcher pass a piece, a catch-up of many
+// revisions or one large revision, is built in parts, as etcd sends it in
+// one message (#428): its first part has EventBytes, the size of all its
+// events as the message encodes them; every part but the last has More,
+// and every part but the first has Cont and only events. To a watcher
+// that asked for fragments it goes as etcd's fragments instead: responses
+// of about a piece each, all with Fragmented set, and Resp.Fragment set
+// on all but the last. Either way the stream sends nothing else between
+// them.
 type WatchResponse struct {
 	Stream     uint64
 	Resp       *pb.WatchResponse
@@ -37,20 +39,26 @@ type WatchResponse struct {
 	// compaction passed its revision, or its watcher was cancelled,
 	// before its last part. The driver ends the stream.
 	Broken bool
+	// part marks a part of a response in parts, fragments included.
+	part bool
 }
 
 // invalidWatchID marks responses that belong to no single watcher.
 const invalidWatchID = -1
 
 // catchUpRevs caps the revisions in one response, like etcd's
-// watchBatchMaxRevs, and PieceBytes its events' bytes. A revision is
-// never split across responses, and each response has the current
-// revision as its header, as in etcd.
+// watchBatchMaxRevs. A revision is never split across responses, and each
+// response has the current revision as its header, as in etcd.
 const catchUpRevs = 1000
 
-// catchUpScan caps the changes a catch-up step reads from the history
-// for one watcher, whether they match it or not.
-const catchUpScan = 1 << 16
+// catchUpScan caps the changes a catch-up response reads from the history
+// for one watcher, whether they match it or not, and catchUpBytes its
+// events, half of gRPC's largest message: past either, the next revision
+// goes in the next response.
+const (
+	catchUpScan  = 1 << 16
+	catchUpBytes = 1 << 30
+)
 
 const (
 	errDuplicateWatchID = "mvcc: duplicate watch ID provided on the WatchStream"
@@ -92,17 +100,17 @@ type watcher struct {
 	// big is the revision it sends in parts.
 	behind bool
 	next   int64
-	big    *bigRevision
+	big    *bigResponse
 	// sent is set when the watcher got events since the last progress
 	// tick; etcd then skips its progress notification.
 	sent bool
 	dead bool
 }
 
-// bigRevision is a revision whose events for a watcher pass a piece,
-// which goes out as one response in parts: its changes are at history
-// positions pos up to end, and its events take bytes.
-type bigRevision struct {
+// bigResponse is a response whose events for a watcher pass a piece,
+// which goes out in parts: its changes are at history positions pos up to
+// end, whole revisions, and its events take bytes.
+type bigResponse struct {
 	pos, end int64
 	bytes    int64
 	started  bool
@@ -157,25 +165,26 @@ const replyBytes = 64
 // are done and every response before it went out. events is the size of
 // its events, which with the rest of it counts against the stream's room.
 func (n *Node) watchReply(s *watchStream, r *pb.WatchResponse, waits []*ValueRead, events int) {
-	n.watchPart(s, WatchResponse{Stream: s.id, Resp: r}, waits, events)
+	n.watchPart(s, WatchResponse{Stream: s.id, Resp: r}, waits, events, false)
 }
 
-// watchPart sends a response, or a part of one, as watchReply does. Every
-// part but the first goes without a header.
-func (n *Node) watchPart(s *watchStream, resp WatchResponse, waits []*ValueRead, events int) {
+// watchPart sends a response, or a part of one, as watchReply does; more
+// says that parts follow it. Every part but the first goes without a
+// header. While a stream sends a response in parts, the rest of its
+// output waits for the last part.
+func (n *Node) watchPart(s *watchStream, resp WatchResponse, waits []*ValueRead, events int, more bool) {
 	if !resp.Cont {
 		resp.Resp.Header = n.watchHeader()
 	}
 	n.counters.Events += int64(len(resp.Resp.Events))
 	s.room -= int64(events + replyBytes)
 	s.slots--
-	inParts := resp.More || resp.Cont
-	if s.big != nil && !inParts {
+	if s.big != nil && !resp.part {
 		s.after = append(s.after, heldWatch{resp: resp, waits: waits})
 		return
 	}
 	n.queueWatch(s, resp, waits)
-	if inParts && !resp.More {
+	if resp.part && !more {
 		// The last part: what waited for it goes now, in order.
 		after := s.after
 		s.big, s.after = nil, nil
@@ -561,6 +570,7 @@ func (n *Node) flushWatches() {
 // current revision, if its stream has room; else it falls behind.
 func (n *Node) flushWatcher(w *watcher) {
 	if !w.stream.hasRoom() {
+		n.counters.FellBehind++
 		n.fallBehind(w)
 		return
 	}
@@ -578,7 +588,6 @@ func (w *watcher) clearPending() {
 // fallBehind drops a watcher's queued events: it reads them, and what
 // follows, from the history once its stream has room.
 func (n *Node) fallBehind(w *watcher) {
-	n.counters.FellBehind++
 	if len(w.pending) > 0 {
 		w.next = w.pendFrom
 	} else {
@@ -588,7 +597,8 @@ func (n *Node) fallBehind(w *watcher) {
 	w.clearPending()
 }
 
-// FellBehind counts the times a watcher fell behind, as Metrics does.
+// FellBehind counts the times a watcher fell behind because its stream
+// had no room, as Metrics does.
 func (n *Node) FellBehind() int64 { return n.counters.FellBehind }
 
 // CatchingUp reports whether a watcher that is behind has room to take
@@ -618,7 +628,7 @@ func (n *Node) catchUp() {
 			// The stream sends another watcher's response in parts.
 			continue
 		}
-		if w.big != nil && w.big.pos < n.kv.HistoryStart() {
+		if w.big != nil && n.passedBig(w) {
 			broken = append(broken, w.stream)
 			continue
 		}
@@ -655,41 +665,42 @@ func (n *Node) passed(w *watcher) bool {
 	return w.prevKV && w.next < n.kv.HistoryEnd() && n.kv.Changed(w.next).ModRev() <= n.kv.CompactRev()
 }
 
-// catchUpOne sends a watcher its next piece of history.
+// passedBig reports whether a compaction passed the next change of the
+// response a watcher sends in parts, which then cannot go on as its first
+// part said: the change is gone, or, with prev_kv, the compaction is at
+// its revision, so its previous value is gone.
+func (n *Node) passedBig(w *watcher) bool {
+	b := w.big
+	return b.pos < n.kv.HistoryStart() || (w.prevKV && n.kv.Changed(b.pos).ModRev() <= n.kv.CompactRev())
+}
+
+// catchUpOne sends a watcher its next response of history: up to
+// catchUpRevs revisions, as etcd groups them. One whose events pass a
+// piece goes in parts.
 func (n *Node) catchUpOne(w *watcher) {
 	if w.big != nil {
 		n.bigPart(w)
 		return
 	}
 	end := n.kv.HistoryEnd()
-	// Find where the piece ends: before a revision that would pass the
-	// bounds, or after a revision that alone passes a piece, which goes
-	// in parts.
 	stop, size, revs, last := w.next, 0, 0, int64(0)
-	revStart, revSize := w.next, 0
 	for scanned := 0; stop < end; stop++ {
 		c := n.kv.Changed(stop)
 		if r := c.ModRev(); r != last {
-			if revs == catchUpRevs || size >= n.cfg.PieceBytes || scanned >= catchUpScan {
+			if revs == catchUpRevs || scanned >= catchUpScan || size >= catchUpBytes {
 				break
 			}
-			revs, last, revStart, revSize = revs+1, r, stop, 0
+			revs, last = revs+1, r
 		}
 		scanned++
-		if !w.wants(c) {
-			continue
+		if w.wants(c) {
+			size += c.EventSize(w.withPrev())
 		}
-		es := c.EventSize(w.withPrev())
-		size, revSize = size+es, revSize+es
-		if revSize > n.cfg.PieceBytes {
-			if revStart > w.next {
-				// Earlier revisions go now; this one goes next, alone.
-				stop = revStart
-				break
-			}
-			n.startBig(w, last)
-			return
-		}
+	}
+	if size > n.cfg.PieceBytes {
+		w.big = &bigResponse{pos: w.next, end: stop, bytes: int64(size)}
+		n.bigPart(w)
+		return
 	}
 	var evs []*mvccpb.Event
 	bytes := 0
@@ -722,20 +733,6 @@ func (n *Node) catchUpOne(w *watcher) {
 	}
 }
 
-// startBig begins the revision rev, at the watcher's position, which goes
-// out as one response in parts: it sizes the revision's events first, so
-// the first part can say how large the message is.
-func (n *Node) startBig(w *watcher, rev int64) {
-	b := &bigRevision{pos: w.next, end: n.kv.HistoryFrom(rev + 1)}
-	for pos := b.pos; pos < b.end; pos++ {
-		if c := n.kv.Changed(pos); w.wants(c) {
-			b.bytes += int64(c.EventSize(w.withPrev()))
-		}
-	}
-	w.big = b
-	n.bigPart(w)
-}
-
 // bigPart sends the next part of the revision a watcher sends in parts:
 // events of about PieceBytes.
 func (n *Node) bigPart(w *watcher) {
@@ -761,18 +758,20 @@ func (n *Node) bigPart(w *watcher) {
 	if fills := n.kv.TakeFills(); len(fills) > 0 {
 		waits = append(waits, n.readValues(fills))
 	}
-	part := WatchResponse{Stream: w.stream.id, Resp: &pb.WatchResponse{WatchId: w.id, Events: evs}, More: b.pos < b.end, Cont: b.started}
+	more := b.pos < b.end
+	part := WatchResponse{Stream: w.stream.id, Resp: &pb.WatchResponse{WatchId: w.id, Events: evs}, More: more, Cont: b.started, part: true}
 	switch {
 	case w.fragment:
-		part.Resp.Fragment, part.Fragmented, part.More, part.Cont = part.More, true, false, false
+		part.Resp.Fragment, part.Fragmented, part.More, part.Cont = more, true, false, false
 	case !b.started:
 		part.EventBytes = b.bytes
-		if part.More {
-			w.stream.big = w
-		}
+	}
+	if !b.started && more {
+		// The stream sends nothing else until the last part.
+		w.stream.big = w
 	}
 	b.started = true
-	n.watchPart(w.stream, part, waits, bytes)
+	n.watchPart(w.stream, part, waits, bytes, more)
 	w.sent = true
 	if b.pos == b.end {
 		w.big, w.next = nil, b.end

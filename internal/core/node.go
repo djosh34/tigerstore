@@ -238,8 +238,9 @@ type Request struct {
 	// Wire, if set, is Op in the client's encoding, decoded with
 	// UnmarshalAlias. It goes into the Raft entry as it is.
 	Wire []byte
-	// Chunk asks for a range as one chunk of a RangeStream
-	// (mvcc.Store.RangeChunk): no count beyond the limit.
+	// Chunk asks for a range as one chunk of a RangeStream, as etcd
+	// v3.7.2's range without a total count: the walk stops once it has
+	// the limit plus one keys, and Count holds the keys it saw.
 	Chunk bool
 	// Caller is the client as etcd's size limit for writes sees it.
 	Caller Caller
@@ -297,11 +298,11 @@ type Reply struct {
 	// Range is the answer to a range, or the next piece of an answer
 	// (Next): only its KVs then.
 	Range mvcc.RangeResult
-	// Rest says that more pieces of the answer follow (pieces.go), and
-	// Rests are the messages of a Txn's or a DeleteRange's answer whose
-	// KeyValues they bring, in order.
-	Rest  bool
-	Rests []mvcc.Rest
+	// MorePieces says that more pieces of the answer follow (pieces.go),
+	// and Rests are the messages of a Txn's or a DeleteRange's answer
+	// whose KeyValues they bring, in order.
+	MorePieces bool
+	Rests      []mvcc.Rest
 	// cursors read the rest of the answer, for Next.
 	cursors []*mvcc.Cursor
 }

@@ -15,7 +15,7 @@ import (
 func (s *single) rest(id uint64, first Reply) (int, []Reply) {
 	s.t.Helper()
 	n, replies := 0, []Reply{first}
-	for r := first; r.Rest; {
+	for r := first; r.MorePieces; {
 		s.n.Next(id)
 		got := false
 		for _, rep := range s.run() {
@@ -52,8 +52,8 @@ func TestTxnRangeIsBounded(t *testing.T) {
 		t.Fatal(r.Err)
 	}
 	first := r.Resp.(*pb.TxnResponse).Responses[0].GetResponseRange()
-	if !r.Rest || len(r.Rests) != 1 || len(first.Kvs) > 64<<10/1500+1 {
-		t.Fatalf("a Txn's range of 3 MB answered %d keys at once, rest %v", len(first.Kvs), r.Rest)
+	if !r.MorePieces || len(r.Rests) != 1 || len(first.Kvs) > 64<<10/1500+1 {
+		t.Fatalf("a Txn's range of 3 MB answered %d keys at once, rest %v", len(first.Kvs), r.MorePieces)
 	}
 	if n, _ := s.rest(5001, r); n+len(first.Kvs) != 2000 || first.Count != 2000 {
 		t.Fatalf("the pieces brought %d keys and the first %d, count %d, want 2000", n, len(first.Kvs), first.Count)

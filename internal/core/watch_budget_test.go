@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -42,7 +43,8 @@ func TestOneTurnWatchResponseIsBounded(t *testing.T) {
 // TestCatchUpWaitsForRoom starts a watch from revision 1 over 4.5 MB of
 // history on a stream with room for 64 KiB: the node hands out about a
 // piece more than the room, and the rest only as the stream gets room
-// again. The events come whole and in order (#420).
+// again, the catch-up's response of up to 1,000 revisions in parts. The
+// events come whole and in order (#420).
 func TestCatchUpWaitsForRoom(t *testing.T) {
 	s := startSingleWith(t, simfs.New(), 1, func(c *Config) {
 		c.PieceBytes = 32 << 10
@@ -68,8 +70,11 @@ func TestCatchUpWaitsForRoom(t *testing.T) {
 	}
 	events, last := 0, int64(0)
 	for range 400 {
-		for _, r := range s.responses() {
-			for _, ev := range r.Events {
+		// Parts of a response may come over several turns.
+		parts := s.watch
+		s.watch = nil
+		for _, w := range parts {
+			for _, ev := range w.Resp.Events {
 				if ev.Kv.ModRevision < last {
 					t.Fatalf("revision %d after %d", ev.Kv.ModRevision, last)
 				}
@@ -193,5 +198,129 @@ func TestPartsSizeTheirFilteredEvents(t *testing.T) {
 	}
 	if len(s.watch) < 2 || s.watch[0].EventBytes != events {
 		t.Fatalf("%d parts; the first says %d bytes of events, they take %d", len(s.watch), s.watch[0].EventBytes, events)
+	}
+}
+
+// bigDeleteSetup puts 300 keys of 1 KiB with pieces of 32 KiB, and a
+// watcher with prev_kv, and fragment if asked, over them.
+func bigDeleteSetup(t *testing.T, fragment bool) *single {
+	s := startSingleWith(t, simfs.New(), 1, func(c *Config) { c.PieceBytes = 32 << 10 })
+	for i := range 300 {
+		s.n.Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "k%03d", i), Value: make([]byte, 1024)}})
+	}
+	s.run()
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("k"), RangeEnd: []byte("l"), PrevKv: true, Fragment: fragment}))
+	s.run()
+	s.responses()
+	return s
+}
+
+// TestCompactionAtPartsBreaksTheStream compacts at the revision of a
+// delete of 300 keys right after its first part went out to a watcher
+// with prev_kv. The previous values of the parts still to come are gone,
+// so the stream must break rather than send them without, or send fewer
+// bytes than the first part said.
+func TestCompactionAtPartsBreaksTheStream(t *testing.T) {
+	s := bigDeleteSetup(t, false)
+	compacted := false
+	s.afterTurn = func(eff Effects) {
+		for _, w := range eff.Watch {
+			if w.More && !compacted {
+				compacted = true
+				s.n.Submit(Request{ID: 900, Op: &pb.CompactionRequest{Revision: s.n.kv.Rev()}})
+			}
+		}
+	}
+	s.do(500, &pb.DeleteRangeRequest{Key: []byte("k"), RangeEnd: []byte("l")})
+	s.run()
+	var declared, sent int64
+	for _, p := range s.watch {
+		if p.Broken {
+			return
+		}
+		declared = max(declared, p.EventBytes)
+		for _, ev := range p.Resp.Events {
+			if ev.PrevKv == nil {
+				t.Fatal("a delete went to a watcher with prev_kv without its previous value")
+			}
+			sent += int64(proto.Size(&pb.WatchResponse{Events: []*mvccpb.Event{ev}}))
+		}
+	}
+	t.Fatalf("the stream did not break: the first part said %d bytes, %d went out", declared, sent)
+}
+
+// TestFragmentsDoNotInterleave deletes 300 keys at one revision for a
+// watcher that asked for fragments, and creates another watch on the
+// stream after the first fragment: nothing may come between the
+// fragments, or clientv3 drops it while it waits for the rest.
+func TestFragmentsDoNotInterleave(t *testing.T) {
+	s := bigDeleteSetup(t, true)
+	created := false
+	s.afterTurn = func(eff Effects) {
+		for _, w := range eff.Watch {
+			if w.Fragmented && w.Resp.Fragment && !created {
+				created = true
+				s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("z")}))
+			}
+		}
+	}
+	s.do(500, &pb.DeleteRangeRequest{Key: []byte("k"), RangeEnd: []byte("l")})
+	s.run()
+	if !created {
+		t.Fatal("the revision went in no fragments")
+	}
+	open := false
+	for i, w := range s.watch {
+		if open && !w.Fragmented {
+			t.Fatalf("response %d, of watch %d, comes between the fragments of watch 0", i, w.Resp.WatchId)
+		}
+		open = w.Fragmented && w.Resp.Fragment
+	}
+}
+
+// TestCatchUpGroupsAsEtcd writes three revisions that each pass a piece
+// and watches from the first, as the difftest's fragments case does with
+// 1 MiB: etcd sends the three in one response, or as three fragments to a
+// watcher that asked for them. The response goes in parts.
+func TestCatchUpGroupsAsEtcd(t *testing.T) {
+	s := startSingleWith(t, simfs.New(), 1, func(c *Config) { c.PieceBytes = 32 << 10 })
+	var first int64
+	for i := range 3 {
+		r := s.do(uint64(i+1), &pb.PutRequest{Key: []byte("f"), Value: make([]byte, 33<<10)})
+		if r.Err != nil {
+			t.Fatal(r.Err)
+		}
+		if i == 0 {
+			first = r.Resp.(*pb.PutResponse).Header.Revision
+		}
+	}
+	for id, fragment := range []bool{false, true} {
+		s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{WatchId: int64(id + 1), Key: []byte("f"), StartRevision: first, Fragment: fragment}))
+		for range 10 {
+			s.run()
+		}
+		var shape []string
+		for _, w := range s.watch {
+			if len(w.Resp.Events) == 0 {
+				continue
+			}
+			part := strings.Repeat("e", len(w.Resp.Events))
+			switch {
+			case w.Cont:
+				shape[len(shape)-1] += part
+				continue
+			case w.Resp.Fragment:
+				part += "+"
+			}
+			shape = append(shape, part)
+		}
+		s.watch = nil
+		want := "eee"
+		if fragment {
+			want = "e+ e+ e"
+		}
+		if got := strings.Join(shape, " "); got != want {
+			t.Errorf("fragment %v: the catch-up came as %q, want %q", fragment, got, want)
+		}
 	}
 }

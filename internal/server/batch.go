@@ -251,12 +251,12 @@ type completed struct {
 	next  *completed
 }
 
-// replyEstimate is the size counted for a reply that is an error or a
-// put in wire form.
+// replyEstimate is the size counted for a reply that is an error.
 const replyEstimate = 64
 
-// estimate is the size a reply will take once encoded. A range answer
-// counts its header at its largest.
+// estimate is the size a reply will take once encoded. A range answer,
+// a piece of any answer, or a put in wire form counts its KeyValues, if
+// any, and a header at its largest.
 func estimate(cp *node.Completion) int64 {
 	switch {
 	case cp.Err != nil:
@@ -266,11 +266,8 @@ func estimate(cp *node.Completion) int64 {
 			return 5 + int64(txnRespSize(t))
 		}
 		return int64(proto.Size(cp.Resp))
-	case cp.Tag.(*stream).rpc.compact:
-		// A piece of a range answer, the first with the header.
-		return 5 + headerBound + fieldsOf(cp.Range.KVs) + 2 + 1 + binary.MaxVarintLen64
 	}
-	return replyEstimate
+	return 5 + headerBound + fieldsOf(cp.Range.KVs) + 2 + 1 + binary.MaxVarintLen64
 }
 
 // Complete takes replies from the node's committer. It pushes them onto a
@@ -313,7 +310,7 @@ func (c *conn) completeWaiting() {
 }
 
 // finished is one encoded reply, or an error, for a stream: a whole
-// reply, or a piece of one (core.Reply.Rest). more says that pieces
+// reply, or a piece of one (core.Reply.MorePieces). more says that pieces
 // follow it, and cont that it follows a piece.
 type finished struct {
 	st         *stream
@@ -338,7 +335,7 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 	for _, cs := range batches {
 		for _, cp := range cs {
 			st := cp.Tag.(*stream)
-			f := finished{st: st, err: cp.Err, more: cp.Rest, cont: st.holes != nil}
+			f := finished{st: st, err: cp.Err, more: cp.MorePieces, cont: st.holes != nil}
 			if !f.cont {
 				c.logSlow(st, now.Sub(st.admitted))
 			}
@@ -441,7 +438,7 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 // follow, its first piece, with the message's prefix and header, and a
 // hole for the rest (holes).
 func (c *conn) rangeReply(st *stream, r *core.Reply) ([]byte, error) {
-	if !r.Rest {
+	if !r.MorePieces {
 		return appendRangeReply(c.cluster, c.member, r.Term, &r.Range)
 	}
 	b, err := appendRangeStart(nil, c.cluster, c.member, r.Term, &r.Range)
@@ -471,7 +468,7 @@ func fillHole(st *stream, kvs []mvcc.KV) []byte {
 func (c *conn) nextPiece(st *stream) {
 	for {
 		c.mu.Lock()
-		gone, ready := st.reset || c.closed, st.queued <= core.PieceBytes/2
+		gone, ready := st.reset || c.closed, st.queued <= c.s.n.PieceBytes()/2
 		c.mu.Unlock()
 		switch {
 		case gone:

@@ -5,10 +5,10 @@ import (
 )
 
 // A large answer is built a piece at a time (#505). Its first reply has
-// Rest set and holds the first piece, with the count and the encoded size
-// of the whole answer. The receiver asks for each next piece with Next
-// once it took the one before, so a slow client holds back the work, and
-// an answer holds at most one piece in memory. An answer that fits in one
+// MorePieces set and holds the first piece, with the count and the
+// encoded size of the whole answer. The receiver asks for each next
+// piece with Next once it took the one before, so a slow client holds back
+// the work, and an answer holds at most one piece in memory. An answer that fits in one
 // piece is a reply as any other.
 
 // PieceBytes is about the most one piece of an answer holds: its keys and
@@ -22,7 +22,7 @@ type pieced struct {
 }
 
 // Next builds the next piece of the answer to request id, for the next
-// Effects: a Reply with the piece's KVs in Range.KVs, and Rest set while
+// Effects: a Reply with the piece's KVs in Range.KVs, and MorePieces set while
 // more follow. Its values wait for a read from the log as a reply's do.
 // A compaction past the answer's revision ends it with ErrCompacted. An
 // answer that ended, or that the node dropped, gets nothing.
@@ -40,8 +40,8 @@ func (n *Node) Next(id uint64) {
 	if done {
 		p.cursors = p.cursors[1:]
 	}
-	rep := Reply{ID: id, Err: err, Range: mvcc.RangeResult{KVs: kvs}, Rest: err == nil && len(p.cursors) > 0}
-	if !rep.Rest {
+	rep := Reply{ID: id, Err: err, Range: mvcc.RangeResult{KVs: kvs}, MorePieces: err == nil && len(p.cursors) > 0}
+	if !rep.MorePieces {
 		delete(n.pieced, id)
 	}
 	n.sendPiece(rep, n.kv.TakeFills())
@@ -59,8 +59,8 @@ func (n *Node) sendPiece(r Reply, fills []mvcc.Fill) {
 }
 
 // startPieces keeps the cursors of r, a reply that goes out, and sets
-// Rest if it has any: those of a Range, or of the Rests of a Txn or a
-// DeleteRange.
+// MorePieces if it has any: those of a Range, or of the Rests of a Txn
+// or a DeleteRange.
 func (n *Node) startPieces(r *Reply) {
 	cursors := r.cursors
 	for _, rest := range r.Rests {
@@ -70,6 +70,6 @@ func (n *Node) startPieces(r *Reply) {
 	if len(cursors) == 0 {
 		return
 	}
-	r.Rest = true
+	r.MorePieces = true
 	n.pieced[r.ID] = &pieced{cursors: cursors}
 }

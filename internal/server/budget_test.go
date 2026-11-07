@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"runtime/pprof"
 	"testing"
 	"time"
 
@@ -275,4 +276,51 @@ func readWatch(t *testing.T, fr *http2.Framer, done func(*pb.WatchResponse) bool
 			}
 		}
 	}
+}
+
+// TestResetEndsAnAnswerInPieces resets a Range of 8 MiB after its first
+// piece, while the server waits for its client to take that piece before
+// it asks the node for the next. The reset must end the wait and the rest
+// of the answer at once, not when the connection closes.
+func TestResetEndsAnAnswerInPieces(t *testing.T) {
+	c := newCluster(t)
+	cert, _, _, err := c.ca.Issue("client", 96)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kv := c.client(1, cert)
+	value := bytes.Repeat([]byte("v"), 16<<10)
+	for batch := range 8 {
+		var ops []*pb.RequestOp
+		for j := range 64 {
+			ops = append(ops, &pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{
+				Key: fmt.Appendf(nil, "big/%05d", batch*64+j), Value: value,
+			}}})
+		}
+		retry(t, func(ctx context.Context) (*pb.TxnResponse, error) {
+			return kv.Txn(ctx, &pb.TxnRequest{Success: ops})
+		})
+	}
+	waiting := func() bool {
+		var b bytes.Buffer
+		if err := pprof.Lookup("goroutine").WriteTo(&b, 1); err != nil {
+			t.Fatal(err)
+		}
+		return bytes.Contains(b.Bytes(), []byte("(*conn).nextPiece"))
+	}
+	until := func(what string, ok func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(5 * time.Second); !ok(); time.Sleep(10 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatal(what)
+			}
+		}
+	}
+	fr, closeConn := rawCall(t, c, 1, cert, "/etcdserverpb.KV/Range", &pb.RangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), Serializable: true})
+	defer closeConn()
+	until("no piece waits for the client", waiting)
+	if err := fr.WriteRSTStream(1, http2.ErrCodeCancel); err != nil {
+		t.Fatal(err)
+	}
+	until("the next piece still waits after the client reset the stream", func() bool { return !waiting() })
 }

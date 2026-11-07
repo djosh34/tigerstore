@@ -489,3 +489,12 @@ func (st *stream) expire() {
 		st.cancel()
 	}
 }
+
+// wake tells a sender that waits on space to look again: the writer took
+// output, or the stream was reset. A stream without space has none.
+func (st *stream) wake() {
+	select {
+	case st.space <- struct{}{}:
+	default:
+	}
+}

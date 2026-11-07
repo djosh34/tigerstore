@@ -427,6 +427,9 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 		c.cancelLocked(st)
 		st.out = nil
 		st.queued = 0
+		// An answer in pieces is no longer at the node, but its next piece
+		// may wait for room (nextPiece): wake it, so it ends the answer.
+		st.wake()
 	}
 	if code != 0 {
 		c.addCtrl(ctrlFrame{kind: ctrlRST, id: id, val: uint32(code)})

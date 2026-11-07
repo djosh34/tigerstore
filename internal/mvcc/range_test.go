@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"strings"
 	"testing"
+	"unsafe"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -364,5 +365,44 @@ func TestTxnRangesShareTheRoom(t *testing.T) {
 	}
 	if rests := s.TakeRests(); len(rests) != 16 {
 		t.Fatalf("%d of sixteen ranges have a Rest", len(rests))
+	}
+}
+
+// TestSortOrderNoneSorts reads with a target other than the key and the
+// order NONE, which etcd sorts ascending: with a limit, it sorts only the
+// first limit+1 keys, as etcd pushes that limit into the index. A list
+// that passes SortBytes is refused.
+func TestSortOrderNoneSorts(t *testing.T) {
+	s := New(&Heap{})
+	for _, k := range []string{"c", "b", "a"} {
+		put(t, s, k, "v")
+	}
+	keys := func(r *pb.RangeResponse) string {
+		var out []string
+		for _, kv := range r.Kvs {
+			out = append(out, string(kv.Key))
+		}
+		return strings.Join(out, " ")
+	}
+	for _, target := range []pb.RangeRequest_SortTarget{pb.RangeRequest_MOD, pb.RangeRequest_CREATE, pb.RangeRequest_VALUE} {
+		r := &pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("z"), SortTarget: target}
+		if target == pb.RangeRequest_VALUE {
+			// Values in the order c, b, a.
+			for i, k := range []string{"c", "b", "a"} {
+				put(t, s, k, fmt.Sprint(i))
+			}
+		}
+		if got := keys(get(t, s, r)); got != "c b a" {
+			t.Errorf("%v with order NONE: %q, want %q", target, got, "c b a")
+		}
+		r.Limit = 1
+		resp, _, _ := pieces(t, s, r, true, 1)
+		if got := keys(resp); got != "b" || !resp.More || resp.Count != 3 {
+			t.Errorf("%v with order NONE and limit 1: %q, more %v, count %d, want %q, more, count 3", target, got, resp.More, resp.Count, "b")
+		}
+	}
+	s.SortBytes = 2 * int64(unsafe.Sizeof(KV{}))
+	if _, err := s.Range(&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("z"), SortTarget: pb.RangeRequest_MOD}); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("a sorted list of three keys over a budget of two: %v, want ErrTooLarge", err)
 	}
 }

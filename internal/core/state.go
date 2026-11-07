@@ -433,10 +433,13 @@ const revokeKeys = 4096
 // goes on in the next step (RevokePiece).
 var errRevoking = errors.New("core: a revoke goes on")
 
-// revoking is a revoke under way: the lease and the deletion of its keys.
+// revoking is a revoke under way: the lease, the deletion of its keys,
+// and the next key to delete, at or after next. The lease keeps its keys
+// until the last step, so a read between steps finds it as it was.
 type revoking struct {
 	lease *lease
 	del   *mvcc.Deletion
+	next  string
 }
 
 // revoke deletes the lease and every key attached to it, at one revision.
@@ -459,24 +462,27 @@ func (st *State) revoke(id int64) (proto.Message, error) {
 
 // RevokePiece deletes the next keys of the lease being revoked, up to
 // revokeKeys, and returns errRevoking while some are left. The last step
-// moves the store to the revoke's revision, removes the lease and
-// returns the response. Changes are those of the step.
+// moves the store to the revoke's revision, removes the lease with its
+// keys and returns the response. Changes are those of the step.
 func (st *State) RevokePiece() (proto.Message, error) {
 	r := st.revoking
 	l := r.lease
 	keys := make([]string, 0, min(l.keys.Len(), revokeKeys))
-	l.keys.Ascend(func(k string) bool {
+	more := false
+	l.keys.AscendGreaterOrEqual(r.next, func(k string) bool {
+		if len(keys) == revokeKeys {
+			more = true
+			return false
+		}
 		keys = append(keys, k)
-		return len(keys) < revokeKeys
+		return true
 	})
-	st.leaseSum -= l.hash()
-	for _, k := range keys {
-		l.keys.Delete(k)
-	}
-	st.leaseSum += l.hash()
 	r.del.Delete(keys)
-	st.track()
-	if l.keys.Len() > 0 {
+	// Every change is a delete of a key of this lease, which goes whole
+	// at the last step: no lease's keys change before.
+	st.changes = st.kv.Changes()
+	if more {
+		r.next = keys[len(keys)-1] + "\x00"
 		return nil, errRevoking
 	}
 	r.del.Finish()

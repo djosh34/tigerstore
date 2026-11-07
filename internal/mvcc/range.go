@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"math"
 	"sort"
+	"unsafe"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -97,10 +98,10 @@ func KeyValues(kvs []KV) []*mvccpb.KeyValue {
 	return out
 }
 
-// ErrTooLarge refuses a Range sorted by value whose values, which the sort
-// needs at once, pass Store.SortBytes. The client can ask for another
-// order or a narrower range.
-var ErrTooLarge = status.Error(codes.ResourceExhausted, "tigerstore: a Range sorted by value needs more values at once than the node has room for; narrow the range or sort by another target")
+// ErrTooLarge refuses a sorted Range whose list, which the sort needs at
+// once, passes Store.SortBytes: a KV for each key, and each value for a
+// sort by value. The client can ask for key order or a narrower range.
+var ErrTooLarge = status.Error(codes.ResourceExhausted, "tigerstore: a sorted Range needs more keys at once than the node has room for; narrow the range or read it in key order")
 
 // Cursor reads the rest of a Range answer, a piece at a time.
 type Cursor struct {
@@ -251,8 +252,8 @@ func (w *writer) rangeAt(r *pb.RangeRequest, total bool, room int, fill bool) (R
 		c.left = r.Limit
 	}
 	res := RangeResult{Rev: w.cur()}
-	if !IsDefaultOrdering(r.SortTarget, r.SortOrder) || r.SortTarget == pb.RangeRequest_VALUE {
-		return c.sorted(res, room, fill)
+	if !IsDefaultOrdering(r.SortTarget, sortOrder(r)) {
+		return c.sorted(res, total, room, fill)
 	}
 	// A walk in key order: it collects the first piece, then, if the
 	// answer goes on, counts and sizes the rest without reading values.
@@ -276,8 +277,8 @@ func (w *writer) rangeAt(r *pb.RangeRequest, total bool, room int, fill bool) (R
 			return true
 		}
 		kv := k.kvValue(v)
-		if !keeps(r, &kv) || res.N == c.left {
-			res.More = res.More || keeps(r, &kv)
+		if kept := keeps(r, &kv); !kept || res.N == c.left {
+			res.More = res.More || kept
 			return true
 		}
 		if r.KeysOnly {
@@ -325,30 +326,46 @@ func keeps(r *pb.RangeRequest, kv *KV) bool {
 
 // sorted reads an answer in another order than the keys': every key goes
 // into a list, which is sorted, and the pieces come from it. A sort by
-// value reads every value at once.
-func (c *Cursor) sorted(res RangeResult, room int, fill bool) (RangeResult, *Cursor, error) {
+// value reads every value at once. The list stays until the last piece,
+// so it is refused once it, with the values a sort by value reads, passes
+// SortBytes. As etcd does, an order of NONE with a target other than the
+// key sorts only the first limit+1 keys.
+func (c *Cursor) sorted(res RangeResult, total bool, room int, fill bool) (RangeResult, *Cursor, error) {
 	r, s := c.r, c.s
+	byValue := r.SortTarget == pb.RangeRequest_VALUE
+	push := pushLimit(r)
 	var kvs []KV
+	held := int64(0)
+	tooLarge := false
 	s.ascend(r.Key, r.RangeEnd, func(k *keyIndex) bool {
 		v, ok := k.visible(c.pos)
 		if !ok {
 			return true
 		}
-		res.Count++
-		if kv := k.kvValue(v); !r.CountOnly && keeps(r, &kv) {
-			kvs = append(kvs, kv)
+		pushed := push > 0 && int64(len(kvs)) >= push
+		if pushed && !total {
+			return false
 		}
+		res.Count++
+		kv := k.kvValue(v)
+		if pushed || r.CountOnly || !keeps(r, &kv) {
+			return true
+		}
+		held += int64(unsafe.Sizeof(kv))
+		if byValue {
+			held += int64(kv.ref.Len)
+		}
+		if s.SortBytes > 0 && held > s.SortBytes {
+			tooLarge = true
+			return false
+		}
+		kvs = append(kvs, kv)
 		return true
 	})
-	byValue := r.SortTarget == pb.RangeRequest_VALUE
+	if tooLarge {
+		return RangeResult{}, nil, ErrTooLarge
+	}
 	if byValue {
-		values := 0
-		for i := range kvs {
-			values += int(kvs[i].ref.Len)
-		}
-		if s.SortBytes > 0 && int64(values) > s.SortBytes {
-			return RangeResult{}, nil, ErrTooLarge
-		}
 		if err := s.readNow(kvs); err != nil {
 			return RangeResult{}, nil, err
 		}
@@ -366,10 +383,6 @@ func (c *Cursor) sorted(res RangeResult, room int, fill bool) (RangeResult, *Cur
 			if !byValue {
 				kv.Lease = 0
 			}
-		}
-		if byValue {
-			// The value is read already; the piece takes it as it is.
-			kv.ref.Len = uint32(len(kv.Value))
 		}
 		res.Fields += int64(1 + protowire.SizeBytes(kv.Size(int(kv.ref.Len))))
 	}
@@ -532,11 +545,17 @@ func (s kvSort) Len() int           { return len(s.kvs) }
 func (s kvSort) Swap(i, j int)      { s.kvs[i], s.kvs[j] = s.kvs[j], s.kvs[i] }
 func (s kvSort) Less(i, j int) bool { return s.less(&s.kvs[i], &s.kvs[j]) }
 
-func sortKVs(kvs []KV, r *pb.RangeRequest) {
-	order := r.SortOrder
-	if r.SortTarget != pb.RangeRequest_KEY && order == pb.RangeRequest_NONE {
-		order = pb.RangeRequest_ASCEND
+// sortOrder is the order r is sorted in: etcd turns NONE into ASCEND for
+// a target other than the key.
+func sortOrder(r *pb.RangeRequest) pb.RangeRequest_SortOrder {
+	if r.SortTarget != pb.RangeRequest_KEY && r.SortOrder == pb.RangeRequest_NONE {
+		return pb.RangeRequest_ASCEND
 	}
+	return r.SortOrder
+}
+
+func sortKVs(kvs []KV, r *pb.RangeRequest) {
+	order := sortOrder(r)
 	if IsDefaultOrdering(r.SortTarget, order) {
 		return
 	}

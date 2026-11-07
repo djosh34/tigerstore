@@ -1077,10 +1077,13 @@ func (n *Node) Cancel(id uint64) {
 }
 
 // Next asks for the next piece of the answer to request id, whose last
-// reply had Rest set, once its receiver took that one (core.Node.Next).
+// reply had MorePieces set, once its receiver took that one (core.Node.Next).
 // The piece comes as a reply like the first. It waits for room in the
 // inbox.
 func (n *Node) Next(id uint64) { n.tell(input{next: id}) }
+
+// PieceBytes is about the most one piece of a large answer holds.
+func (n *Node) PieceBytes() int { return cmp.Or(n.cfg.Core.PieceBytes, core.PieceBytes) }
 
 // Do runs one request and waits for its reply.
 func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) {
@@ -1125,7 +1128,7 @@ func (n *Node) doReply(ctx context.Context, r *request) (core.Reply, error) {
 	// builds the message.
 	if _, ok := r.op.(*pb.RangeRequest); ok {
 		res, term := rep.Range, rep.Term
-		for rep.Rest {
+		for rep.MorePieces {
 			n.Next(r.id)
 			if rep, err = n.await(ctx, r); err != nil {
 				return rep, err
@@ -1138,7 +1141,7 @@ func (n *Node) doReply(ctx context.Context, r *request) (core.Reply, error) {
 		return rep, nil
 	}
 	first, rests := rep, rep.Rests
-	for rep.Rest {
+	for rep.MorePieces {
 		n.Next(r.id)
 		if rep, err = n.await(ctx, r); err != nil {
 			return rep, err
@@ -1161,7 +1164,7 @@ func (n *Node) doReply(ctx context.Context, r *request) (core.Reply, error) {
 			}
 		}
 	}
-	first.Rest, first.Rests = false, nil
+	first.MorePieces, first.Rests = false, nil
 	return first, nil
 }
 
@@ -1615,7 +1618,7 @@ func (n *Node) completeAll(replies []core.Reply, waiters map[uint64]waiter, grou
 		if !ok {
 			continue
 		}
-		if !r.Rest {
+		if !r.MorePieces {
 			delete(waiters, r.ID)
 		}
 		if w.reply != nil {

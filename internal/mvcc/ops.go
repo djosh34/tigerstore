@@ -69,17 +69,6 @@ func (w *writer) cur() int64 {
 
 func header(r int64) *pb.ResponseHeader { return &pb.ResponseHeader{Revision: r} }
 
-// RangeChunk answers one chunk of a RangeStream as etcd v3.7.2's range
-// without a total count does: the index walk stops once it has the limit
-// plus one keys, and Count holds the keys it saw, not every key in the
-// range. A chunk's limit keeps it small, so it is read whole.
-func (s *Store) RangeChunk(r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	s.counts.Ranges++
-	w := s.reader()
-	w.room = math.MaxInt
-	return w.rangeMessage(r, false)
-}
-
 // PutOp is a put request's fields. Key and Value are kept without
 // copying.
 type PutOp struct {
