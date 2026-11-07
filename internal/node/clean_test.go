@@ -542,7 +542,11 @@ func TestCleanerMeasuresAfterRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer n.log.close()
+	defer func() {
+		if err := n.log.close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	f, err := fs.Create("obsolete-pack")
 	if err != nil {
 		t.Fatal(err)
