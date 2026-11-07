@@ -359,9 +359,12 @@ func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any,
 
 // Node is a running node.
 type Node struct {
-	cfg       Config
-	core      *core.Node
-	log       *diskLog
+	cfg  Config
+	core *core.Node
+	log  *diskLog
+	// recovered is the last entry index and the hard state the node's
+	// last recovery of its log found (Recovered).
+	recovered wal.Recovered
 	inbox     chan input
 	persistQ  chan persistBatch
 	persisted chan persistDone
@@ -685,6 +688,7 @@ func (n *Node) open() error {
 	if err != nil {
 		return err
 	}
+	n.recovered = wal.Recovered{Last: rec.Last, HardState: rec.HardState}
 	if n.cfg.SegmentBytes > 0 {
 		w.SetSegmentBytes(n.cfg.SegmentBytes)
 	}
@@ -869,6 +873,12 @@ func (n *Node) AuthEnabled() bool { return n.authEnabled.Load() }
 
 // Done is closed when the node stopped.
 func (n *Node) Done() <-chan struct{} { return n.done }
+
+// Recovered returns the last entry index and the hard state that the
+// node's last recovery of its log found, before it appended anything.
+func (n *Node) Recovered() (last uint64, hs wal.HardState) {
+	return n.recovered.Last, n.recovered.HardState
+}
 
 // Deliver hands the node a message from a peer. It blocks while the
 // committer is behind, which slows down that peer's connection.

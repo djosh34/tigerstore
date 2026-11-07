@@ -176,7 +176,7 @@ func (s *Sim) converged() (*node, error) {
 			return nil, fmt.Errorf("node %d and node %d applied the same log to different states", n.id, first.id)
 		}
 	}
-	if r := s.log[fc.Applied()]; r.hash != fc.Hash() {
+	if r, _ := s.log.get(fc.Applied()); r.hash != fc.Hash() {
 		return nil, fmt.Errorf("node %d applied the same log to different states than node %d did", first.id, r.node)
 	}
 	for _, n := range live {

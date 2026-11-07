@@ -220,6 +220,7 @@ func (st *State) applyMembers(op byte, m *pb.Member, index uint64) {
 // applyConfChange applies a committed configuration change entry and
 // answers the request waiting for it on this node.
 func (n *Node) applyConfChange(e *raftpb.Entry) error {
+	n.state.metaKnown = false
 	var cc raftpb.ConfChange
 	if err := proto.Unmarshal(e.GetData(), &cc); err != nil {
 		return fmt.Errorf("%w: %w", errBadBatch, err)

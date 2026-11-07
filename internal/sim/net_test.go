@@ -125,3 +125,31 @@ func TestDamagedReadFreesWriter(t *testing.T) {
 		t.Fatal("the write still waits for room after its reader got damaged bytes")
 	}
 }
+
+// TestReadsAtOnceMeetTheirDeadline checks that two reads that wait at once
+// on an empty connection, as net.Conn allows, both end at its read
+// deadline: they wait on timers of their own, not on one that only one of
+// them would hear (#533).
+func TestReadsAtOnceMeetTheirDeadline(t *testing.T) {
+	b := writer().other
+	if err := b.SetReadDeadline(time.Now().Add(20 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	errs := make(chan error, 2)
+	for range 2 {
+		go func() {
+			_, err := b.Read(make([]byte, 1))
+			errs <- err
+		}()
+	}
+	for range 2 {
+		select {
+		case err := <-errs:
+			if !errors.Is(err, os.ErrDeadlineExceeded) {
+				t.Errorf("a read past its deadline gave %v, want %v", err, os.ErrDeadlineExceeded)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("a read waited past its deadline")
+		}
+	}
+}

@@ -355,8 +355,8 @@ type node struct {
 	// hs is the term and vote the node holds durable: what its process
 	// recovered or later reported durable. mustLast and mustHS are what
 	// recovery must give after its process went down: the floor and hs
-	// then. tornCrash is set while its last crash image may tear writes,
-	// until checkRecovery.
+	// then, which its next start checks. tornCrash is set from a crash
+	// image that tore writes until a start recovers the log (mayBeDamaged).
 	hs        hardState
 	mustLast  uint64
 	mustHS    hardState
@@ -387,10 +387,10 @@ type node struct {
 	// rotStopped is set when it stopped on the rotted value too late for
 	// its restart to come before the end; it stays down (#265).
 	rotStopped bool
-	// diskLog holds the node's last disk calls, with their times, and
+	// diskLog holds the node's last disk calls (diskCall), and
 	// crashImage its files right after its last crash, for a failure's
 	// report (#274).
-	diskLog    []string
+	diskLog    []diskCall
 	crashImage map[string][]byte
 	// ckptDone are the checkpoint files closed right after their last
 	// sync, whose bytes count once the directory is synced;
@@ -562,12 +562,12 @@ type Sim struct {
 	// log is every committed entry as the first node applied it, with the
 	// state's hash after it, up to index maxLogged; ckpts are the hashes
 	// of the checkpoint files, by index.
-	log       map[uint64]logRec
+	log       *entryLog
 	maxLogged uint64
 	ckpts     map[uint64]ckptRec
 	// base, in a cold restart, is the run's record, which holds up to
 	// baseUpTo.
-	base     map[uint64]logRec
+	base     *entryLog
 	baseUpTo uint64
 	// diskFaultDue arms a disk fault at the next write of a log segment,
 	// after healing too; lateStopAt is when a node last stopped after
@@ -575,7 +575,9 @@ type Sim struct {
 	diskFaultDue bool
 	lateStopAt   int64
 	// records holds the clients' calls (recordlog.go).
-	records    *recordLog
+	records *recordLog
+	// pages is where the nodes' disks keep their large files' pages.
+	pages      *keptPages
 	stats      Stats
 	membership membershipWork
 	err        error
@@ -587,6 +589,9 @@ type Sim struct {
 
 // Stats counts what happened in a run.
 type Stats struct {
+	// KeptPages counts the synced pages the nodes' disks moved to the
+	// runner's disk (keptPages).
+	KeptPages             int
 	Messages, Dropped     int
 	Crashes, LinkChanges  int
 	OK, Failed, Ambiguous int
@@ -747,11 +752,15 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 			f.shutdown()
 			// Every goroutine of the formation has ended.
 			res.Stats, res.Trace, res.stacks = f.stats, f.trace, f.wallStacks
-			return res, fmt.Errorf("forming the cluster: %w", err)
+			err = fmt.Errorf("forming the cluster: %w", err)
+			if pe := f.pagesErr(); pe != nil {
+				err = errors.Join(pe, err)
+			}
+			return res, err
 		}
 		f.shutdown()
 	}
-	s, err := newSim(cfg)
+	s, err := newSimFrom(cfg, f)
 	if err != nil {
 		return nil, err
 	}
@@ -811,18 +820,73 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if err == nil {
 		err = s.failure()
 	}
+	if s.pages != nil {
+		res.Stats.KeptPages = s.pages.puts
+	}
+	// A page that failed to read reads as zeros, which can fail the run as
+	// if a node were wrong: the host's error comes first.
+	if pe := s.pagesErr(); pe != nil {
+		err = errors.Join(pe, err)
+	}
 	return res, err
 }
 
+// pagesErr is the first error of the run's pages on the runner's disk,
+// nil if there was none.
+func (s *Sim) pagesErr() error {
+	if s.pages == nil || s.pages.err == nil {
+		return nil
+	}
+	return fmt.Errorf("the disks' pages on the runner's disk: %w", s.pages.err)
+}
+
+// keepFrom is the size from which a file of a node's disk keeps its synced
+// pages on the runner's disk, out of memory: a long seed's log segments
+// and checkpoints (simfs.Disk.KeepIn, #479).
+const keepFrom = 1 << 20
+
+// keptPages is where the nodes' disks keep the synced pages of their
+// large files: a file on the runner's disk, which the run's formation,
+// the run and its cold restarts share. A read or write of it that failed
+// fails the run with its first error: the disk read zeros instead.
+type keptPages struct {
+	pages *simrun.HostPages
+	err   error
+	puts  int
+}
+
+func (k *keptPages) Put(owner any, p []byte) (int64, error) {
+	k.puts++
+	at, err := k.pages.Put(owner, p)
+	if err != nil && k.err == nil {
+		k.err = err
+	}
+	return at, err
+}
+
+func (k *keptPages) Get(off int64, p []byte) error {
+	err := k.pages.Get(off, p)
+	if err != nil && k.err == nil {
+		k.err = err
+	}
+	return err
+}
+
 // newSim sets up an empty run.
-func newSim(cfg Config) (*Sim, error) {
+func newSim(cfg Config) (*Sim, error) { return newSimFrom(cfg, nil) }
+
+// newSimFrom is newSim with the CA and certificate of from, if set, as a
+// run reuses its formation's and a cold restart its run's: making them is
+// a good part of a run's fixed cost. Its disks keep their large files'
+// pages where from's do.
+func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 	s := &Sim{
 		cfg:        cfg,
 		rng:        rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
 		t0:         time.Now(),
 		end:        make(chan struct{}),
 		expiredAt:  map[int64]int64{},
-		log:        map[uint64]logRec{},
+		log:        &entryLog{},
 		ckpts:      map[uint64]ckptRec{},
 		servedRoot: map[uint64]uint64{},
 		healAt:     cfg.Duration,
@@ -847,8 +911,19 @@ func newSim(cfg Config) (*Sim, error) {
 		}
 	}
 	s.setLinks(s.allLinks())
-	if err := s.net.init(); err != nil {
+	var certs *network
+	if from != nil {
+		certs, s.pages = &from.net, from.pages
+	}
+	if err := s.net.init(certs); err != nil {
 		return nil, err
+	}
+	if s.pages == nil {
+		pages, err := simrun.NewHostPages()
+		if err != nil {
+			return nil, fmt.Errorf("the disks' pages on the runner's disk: %w", err)
+		}
+		s.pages = &keptPages{pages: pages}
 	}
 	for i := range count {
 		s.addNode(i, simfs.New())
@@ -859,6 +934,9 @@ func newSim(cfg Config) (*Sim, error) {
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
 	n := &node{idx: i, id: uint64(i + 1), disk: disk, addrs: []string{peerAddr(i)}, wake: make(chan struct{})}
 	disk.Capacity = s.cfg.Faults.DiskCapacity
+	if s.pages != nil {
+		disk.KeepIn(s.pages, keepFrom)
+	}
 	s.traceDisk(n)
 	if i == 3 {
 		// The fourth member is added at memberURL and moves to
@@ -1182,12 +1260,29 @@ const traceLines, diskLines = 3000, 4000
 // traceDisk keeps the disk calls of n, with the run's time, in
 // n.diskLog. Disk calls run with the lock held.
 func (s *Sim) traceDisk(n *node) {
-	n.disk.Trace = func(line string) {
+	n.disk.Trace = func(format string, args ...any) {
 		if len(n.diskLog) == diskLines {
 			n.diskLog = slices.Delete(n.diskLog, 0, diskLines/4)
 		}
-		n.diskLog = append(n.diskLog, fmt.Sprintf("%9.3f ms %s", float64(s.now())/float64(Millisecond), line))
+		n.diskLog = append(n.diskLog, diskCall{at: s.now(), format: format, args: args})
 	}
+}
+
+// diskCall is a line of a node's disk log, kept unformatted: most runs
+// never report it.
+type diskCall struct {
+	at     int64
+	format string
+	args   []any
+}
+
+// diskLines returns n's disk log, formatted.
+func (n *node) diskLines() []string {
+	out := make([]string, len(n.diskLog))
+	for i, c := range n.diskLog {
+		out[i] = fmt.Sprintf("%9.3f ms ", float64(c.at)/float64(Millisecond)) + fmt.Sprintf(c.format, c.args...)
+	}
+	return out
 }
 
 // tracef adds a line to the trace. The lock is held.
@@ -1420,7 +1515,6 @@ func (s *Sim) start(n *node) error {
 		s.loseUnsynced(n)
 		n.since, n.why = s.now(), "the run crashed it during recovery"
 		s.tracef("node %d: crashed during recovery", n.id)
-		s.checkRecovery(n)
 		s.restartLater(n, 1+s.rng.Int64N(Second))
 		return nil
 	}
@@ -1449,7 +1543,6 @@ func (s *Sim) start(n *node) error {
 		}
 		n.since, n.why = s.now(), fmt.Sprintf("failed to boot: %v", err)
 		s.tracef("node %d: failed to boot: %v", n.id, err)
-		s.checkRecovery(n)
 		s.restartLater(n, 1+s.rng.Int64N(Second))
 		return nil
 	}
@@ -1458,6 +1551,13 @@ func (s *Sim) start(n *node) error {
 		n.inactive = true
 		n.since, n.why = s.now(), fmt.Sprintf("left the cluster at its start: %v", err)
 		return nil
+	}
+	if n.tornCrash && !n.corrupted && errors.Is(err, wal.ErrCorrupt) {
+		// A crash tore writes so that the log looks damaged; the node is
+		// right to refuse it, as one whose disk was damaged on purpose.
+		n.corrupted = true
+		s.stats.TornRefusals++
+		s.tracef("node %d: its torn crash image looks damaged: %v", n.id, err)
 	}
 	if n.corrupted {
 		cancel()
@@ -1486,6 +1586,14 @@ func (s *Sim) start(n *node) error {
 		cancel()
 		return fmt.Errorf("node %d recovered a log that it read wrong without noticing", n.id)
 	}
+	// Recovery must give at least what the node reported durable before
+	// it went down. This open of the disk is the only one after a crash.
+	last, hs := tn.Recovered()
+	if last < n.mustLast {
+		cancel()
+		return fmt.Errorf("node %d recovered entries to %d, but reported %d durable", n.id, last, n.mustLast)
+	}
+	n.durableLast, n.hs, n.tornCrash = last, hardState{term: hs.Term, vote: hs.Vote}, false
 	ln := s.net.listen(s, p, n.addrs)
 	t, err := peer.Start(peer.Config{
 		ID: n.id, Listeners: []net.Listener{ln}, Peers: s.peerAddrs(n), Addr: n.addrs[0],
@@ -1657,7 +1765,7 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		s.steppedDownAt = s.now()
 		s.tracef("node %d: the stalled leader stepped down", n.id)
 	}
-	n.remember(c, s.now())
+	n.remember(c, s.now(), eff)
 	if v := n.last.version; v != before {
 		s.tracef("node %d: cluster version %d", n.id, v)
 	}
@@ -1885,7 +1993,6 @@ func (s *Sim) crash(n *node) {
 	s.loseUnsynced(n)
 	n.crashImage = n.disk.Files()
 	s.tracef("node %d: crashed", n.id)
-	s.checkRecovery(n)
 }
 
 // kill takes n's process down and leaves its disk as it is: the page
@@ -1900,7 +2007,6 @@ func (s *Sim) kill(n *node) {
 	s.down(n)
 	n.crashImage = n.disk.Files()
 	s.tracef("node %d: killed", n.id)
-	s.checkRecovery(n)
 }
 
 // powerLoss cuts n's power: a running process crashes and restarts
@@ -1922,7 +2028,6 @@ func (s *Sim) powerLoss(n *node) {
 	s.loseUnsynced(n)
 	n.crashImage = n.disk.Files()
 	s.tracef("node %d: lost power while down", n.id)
-	s.checkRecovery(n)
 }
 
 // loseUnsynced drops what n's disk did not sync, keeping a crash image of
@@ -1935,41 +2040,21 @@ func (s *Sim) powerLoss(n *node) {
 // refuse the log (#295). The lock is held.
 func (s *Sim) loseUnsynced(n *node) {
 	img := simfs.Image(s.rng.IntN(4))
-	if s.cfg.Membership || slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.corrupted || m.fenced) }) {
+	if s.cfg.Membership || slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) {
 		img = simfs.Image(s.rng.IntN(2))
 	}
 	n.disk.CrashImage(s.rng, img)
-	n.tornCrash = img >= simfs.Sectors
+	// Recovery may refuse the log since any torn image, until a start
+	// recovers it: a later image of whole writes keeps the tear.
+	n.tornCrash = n.tornCrash || img >= simfs.Sectors
 }
 
-// checkRecovery checks that the next start of n will recover from its
-// disk, as it is now, every entry that its last process held durable, and
-// keeps the term and vote the log holds; the first turn of the next
-// process checks those (turn). A torn crash image that recovery refuses
-// makes n a node that refuses to start, like one damaged on purpose. The
-// lock is held.
-func (s *Sim) checkRecovery(n *node) {
-	torn := n.tornCrash
-	n.tornCrash = false
-	w, rec, err := wal.Open(n.disk.Copy())
-	if err != nil {
-		if torn && !n.corrupted && errors.Is(err, wal.ErrCorrupt) {
-			n.corrupted = true
-			s.stats.TornRefusals++
-			s.tracef("node %d: its torn crash image looks damaged: %v", n.id, err)
-		}
-		// A damaged disk; the next start finds out.
-		return
-	}
-	if err := w.Close(); err != nil {
-		s.fail("%w", err)
-		return
-	}
-	if rec.Last < n.mustLast {
-		s.fail("node %d recovered entries to %d, but reported %d durable", n.id, rec.Last, n.mustLast)
-	}
-	n.durableLast, n.hs = rec.Last, hardState{term: rec.HardState.Term, vote: rec.HardState.Vote}
-}
+// mayBeDamaged reports whether n's disk is damaged, or may be: a torn
+// crash image that no start recovered since may make recovery refuse its
+// log (loseUnsynced), which only its next start finds out. The faults that
+// must leave a quorum whole count such a node as damaged. The lock is
+// held.
+func (n *node) mayBeDamaged() bool { return n.corrupted || n.tornCrash }
 
 // down takes n's process down: its goroutines, disk calls and
 // connections fail, and its clients and watchers lose their connections.

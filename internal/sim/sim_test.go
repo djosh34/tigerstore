@@ -310,7 +310,7 @@ func runFiles(dir, cmd string, res *Result, history bool) map[string]string {
 func addDisks(files map[string]string, res *Result) {
 	for _, n := range res.nodes {
 		d := filepath.Join("disks", fmt.Sprintf("node%d", n.id))
-		files[filepath.Join(d, "calls.txt")] = strings.Join(n.diskLog, "\n") + "\n"
+		files[filepath.Join(d, "calls.txt")] = strings.Join(n.diskLines(), "\n") + "\n"
 		addFiles(files, filepath.Join(d, "now"), n.disk.Files())
 		addFiles(files, filepath.Join(d, "after-crash"), n.crashImage)
 	}
@@ -323,7 +323,7 @@ func addDisks(files map[string]string, res *Result) {
 			addFiles(files, filepath.Join("cold", fmt.Sprintf("copy-at-%dms", c.at/Millisecond), name), d.Files())
 		}
 		for _, n := range c.nodes {
-			files[filepath.Join("cold", fmt.Sprintf("node%d-calls.txt", n.id))] = strings.Join(n.diskLog, "\n") + "\n"
+			files[filepath.Join("cold", fmt.Sprintf("node%d-calls.txt", n.id))] = strings.Join(n.diskLines(), "\n") + "\n"
 		}
 	}
 }

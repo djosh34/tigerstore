@@ -77,7 +77,7 @@ func TestCopiesKeepFileIDs(t *testing.T) {
 	}
 	for name, c := range map[string]*simfs.Disk{"Durable": d.Durable(), "Copy": d.Copy()} {
 		var lines []string
-		c.Trace = func(s string) { lines = append(lines, s) }
+		c.Trace = func(format string, args ...any) { lines = append(lines, fmt.Sprintf(format, args...)) }
 		if _, err := c.Create("b"); err != nil {
 			t.Fatal(err)
 		}

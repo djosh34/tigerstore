@@ -62,7 +62,7 @@ func (s *Sim) scheduleDiskFaults() {
 		s.once(s.cfg.Duration*3/4, 500*Millisecond, func() bool {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			if s.healed || slices.ContainsFunc(s.nodes, func(n *node) bool { return n.corrupted }) {
+			if s.healed || slices.ContainsFunc(s.nodes, (*node).mayBeDamaged) {
 				return true
 			}
 			// The node's committer rots a value at its next turn.
@@ -211,7 +211,6 @@ func (s *Sim) remount(n *node) {
 		s.loseUnsynced(n)
 		n.crashImage = n.disk.Files()
 		s.tracef("node %d: unmounted its disk, which kept what it synced", n.id)
-		s.checkRecovery(n)
 	}
 	n.disk.Remount()
 }
@@ -314,7 +313,9 @@ func (s *Sim) maybeCorrupt(n *node) {
 		return
 	}
 	for _, m := range s.nodes {
-		if m.corrupted || m.fenced {
+		// n's own torn image, if it has one, is what this crash just
+		// did: only the other nodes' leave the quorum short.
+		if m.corrupted || m.fenced || m != n && m.mayBeDamaged() {
 			return
 		}
 	}
@@ -426,8 +427,7 @@ func sealedSegments(d *simfs.Disk) []string {
 
 // damageLastRecord flips a bit at the end of n's newest segment if that
 // loses the log only the term and vote of its last record, not an entry,
-// and checks what recovery then gives (checkRecovery, turn). The lock is
-// held.
+// and checks what recovery then gives (start, turn). The lock is held.
 func (s *Sim) damageLastRecord(n *node) bool {
 	name := newestSegment(n.disk)
 	size := len(n.disk.DurableBytes(name))
@@ -438,7 +438,6 @@ func (s *Sim) damageLastRecord(n *node) bool {
 	n.disk.FlipDurable(name, size-1)
 	after, err := recoveredLog(n)
 	if err == nil && after.Last == before.Last && (after.HardState.Term != before.HardState.Term || after.HardState.Vote != before.HardState.Vote) {
-		s.checkRecovery(n)
 		return true
 	}
 	n.disk.FlipDurable(name, size-1)
@@ -513,13 +512,29 @@ type coldDisks struct {
 func (s *Sim) newCheckpoint() *checkpoint {
 	c := &checkpoint{at: s.now(), applied: s.applied}
 	for _, n := range s.nodes {
-		c.disks = append(c.disks, n.disk.Durable())
-		c.bad = append(c.bad, n.corrupted)
+		d := n.disk.Durable()
+		c.disks = append(c.disks, d)
+		c.bad = append(c.bad, n.corrupted || n.tornCrash && s.refusesLog(d))
 		c.ids = append(c.ids, n.id)
 		c.inactive = append(c.inactive, n.inactive)
 		c.started = append(c.started, len(n.disk.DurableNames()) > 0)
 	}
 	return c
+}
+
+// refusesLog reports whether recovery refuses the log on d, a copy: a
+// torn crash image that no start recovered yet may make it look damaged
+// (mayBeDamaged), which a cold restart must not start from. Only a node
+// with such an image needs the open. The lock is held.
+func (s *Sim) refusesLog(d *simfs.Disk) bool {
+	w, _, err := wal.Open(d.Copy())
+	if err != nil {
+		return errors.Is(err, wal.ErrCorrupt)
+	}
+	if err := w.Close(); err != nil {
+		s.fail("%w", err)
+	}
+	return false
 }
 
 // takeCheckpoint keeps a copy of every disk for the cold restarts. The
@@ -683,7 +698,7 @@ func (s *Sim) holdsApplied(applied uint64) (bool, error) {
 			if err != nil {
 				return false, errors.Join(err, w.Close())
 			}
-			if b, ok := s.base[i]; ok && (b.term != e.GetTerm() || b.known && (b.typ != e.GetType() || !bytes.Equal(b.data, e.GetData()))) {
+			if b, ok := s.base.get(i); ok && (b.term != e.GetTerm() || b.known && (b.typ != e.GetType() || !bytes.Equal(s.base.bytes(b), e.GetData()))) {
 				holds = false
 			}
 		}
@@ -705,7 +720,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	s.mu.Lock()
 	seed := s.rng.Uint64()
 	s.mu.Unlock()
-	r, err := newSim(Config{Seed: seed, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes})
+	r, err := newSimFrom(Config{Seed: seed, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes}, s)
 	if err != nil {
 		return err
 	}
@@ -733,6 +748,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	for i, d := range c.disks {
 		if i == erased {
 			d = simfs.New()
+			d.KeepIn(r.pages, keepFrom)
 		}
 		n := r.nodes[i]
 		n.disk, n.id = d.Durable(), c.ids[i]
@@ -751,7 +767,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 			return err
 		}
 	}
-	if err := r.runFor(6 * Second); err != nil {
+	if err := r.runSettle(6*Second, c.applied); err != nil {
 		return err
 	}
 	refused := slices.ContainsFunc(r.nodes, func(n *node) bool { return n.inactive && !n.fenced })
@@ -824,6 +840,47 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 		}
 	}
 	return nil
+}
+
+// runSettle is runFor, which stops early, at a whole 100 ms of its time,
+// once every running node follows one leader and has applied at least
+// applied, all the same entries. A cold restart then has nothing left to
+// show.
+func (s *Sim) runSettle(d int64, applied uint64) error {
+	for end := s.now() + d; s.now() < end; {
+		if !s.sleep(min(100*Millisecond, end-s.now())) {
+			break
+		}
+		s.mu.Lock()
+		settled, failed := s.settled(applied), s.err != nil
+		s.mu.Unlock()
+		if settled || failed {
+			break
+		}
+	}
+	if err := s.failure(); err != nil {
+		return err
+	}
+	return s.freeze()
+}
+
+// settled reports whether every running node follows one leader and has
+// applied at least applied, the same index, as each last showed. The lock
+// is held.
+func (s *Sim) settled(applied uint64) bool {
+	var lead, at uint64
+	for _, n := range s.nodes {
+		if n.out() || n.proc == nil {
+			continue
+		}
+		l := n.last
+		switch {
+		case l.lead == 0, l.applied < applied, lead != 0 && (l.lead != lead || l.applied != at):
+			return false
+		}
+		lead, at = l.lead, l.applied
+	}
+	return lead != 0
 }
 
 // runFor lets a cold restart run for d, then freezes its nodes.

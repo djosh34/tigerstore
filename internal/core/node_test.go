@@ -93,6 +93,18 @@ func startSingleWith(t testing.TB, disk *simfs.Disk, boot uint64, change func(*C
 
 // run processes until the node is idle, persisting at once, and returns
 // the replies.
+// checkHash checks that the state's hash, with its meta part kept from
+// an earlier entry, is the hash of the state as it is.
+func (s *single) checkHash() {
+	s.t.Helper()
+	st := s.n.state
+	kept := st.Hash()
+	st.metaKnown = false
+	if h := st.Hash(); h != kept {
+		s.t.Fatalf("the state hash with its kept meta part is %x, the state's is %x", kept, h)
+	}
+}
+
 func (s *single) run() []Reply {
 	s.t.Helper()
 	var out []Reply
@@ -104,6 +116,7 @@ func (s *single) run() []Reply {
 		if err != nil {
 			s.t.Fatalf("node stopped: %v", err)
 		}
+		s.checkHash()
 		out = append(out, eff.Replies...)
 		s.watch = append(s.watch, eff.Watch...)
 		if s.holdCkpt {

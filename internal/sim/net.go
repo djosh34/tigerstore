@@ -35,15 +35,21 @@ type network struct {
 // hosts are the names the nodes listen on.
 var hosts = []string{"node1", "node2", "node3", "member", "updated-member"}
 
-func (nw *network) init() error {
-	ca, err := testcert.NewCA()
-	if err != nil {
-		return err
+// init sets up an empty network with the CA and certificate of certs, or
+// new ones if certs is nil.
+func (nw *network) init(certs *network) error {
+	if certs != nil {
+		nw.ca, nw.cert = certs.ca, certs.cert
+	} else {
+		ca, err := testcert.NewCA()
+		if err != nil {
+			return err
+		}
+		if nw.cert, _, _, err = ca.IssueFor("tigerstore-sim", 2, nil, hosts); err != nil {
+			return err
+		}
+		nw.ca = ca.Pool
 	}
-	if nw.cert, _, _, err = ca.IssueFor("tigerstore-sim", 2, nil, hosts); err != nil {
-		return err
-	}
-	nw.ca = ca.Pool
 	nw.listeners, nw.conns = map[string]*listener{}, map[*conn]bool{}
 	return nil
 }
@@ -272,8 +278,8 @@ type pipe struct {
 	// size is how many bytes chunks holds.
 	size int
 	// last is when the last write arrives; eof is set once the writer
-	// closed, and err once the connection broke. wake is closed and
-	// replaced when any of them changes.
+	// closed, and err once the connection broke. wake, once a reader or
+	// writer waits on it (waiter), is closed when any of them changes.
 	last int64
 	eof  bool
 	err  error
@@ -287,11 +293,44 @@ type chunk struct {
 	damaged bool
 }
 
-func newPipe() *pipe { return &pipe{wake: make(chan struct{})} }
+func newPipe() *pipe { return &pipe{} }
 
+// waiter returns the channel that the next change of p closes. The lock
+// is held.
+func (p *pipe) waiter() chan struct{} {
+	if p.wake == nil {
+		p.wake = make(chan struct{})
+	}
+	return p.wake
+}
+
+// signal wakes whoever waits on p. The lock is held.
 func (p *pipe) signal() {
-	close(p.wake)
-	p.wake = make(chan struct{})
+	if p.wake != nil {
+		close(p.wake)
+		p.wake = nil
+	}
+}
+
+// waitFor waits until wake is closed or, if wait is not math.MaxInt64,
+// wait nanoseconds passed, on the timer *t, which it makes once and then
+// reuses. Its callers look again after any wake, so one that comes late
+// from an earlier wait does no harm.
+func waitFor(t **time.Timer, wait int64, wake <-chan struct{}) {
+	if wait == math.MaxInt64 {
+		<-wake
+		return
+	}
+	if *t == nil {
+		*t = time.NewTimer(time.Duration(wait))
+	} else {
+		(*t).Reset(time.Duration(wait))
+	}
+	select {
+	case <-(*t).C:
+	case <-wake:
+		(*t).Stop()
+	}
 }
 
 func (p *pipe) fail(err error) {
@@ -332,12 +371,22 @@ type conn struct {
 	damaged bool
 	// deadline and writeDeadline are the read and write deadlines.
 	deadline, writeDeadline time.Time
+	// readTimer and writeTimer wait out a read and a write (waitFor),
+	// one caller at a time: reading and writing are set while one waits
+	// on them, and a call that waits beside it makes a timer of its own,
+	// as net.Conn allows calls at once.
+	readTimer, writeTimer *time.Timer
+	reading, writing      bool
 }
 
 func (c *conn) Read(b []byte) (int, error) {
 	s := c.s
+	mine := false
 	for {
 		s.mu.Lock()
+		if mine {
+			c.reading, mine = false, false
+		}
 		if c.closed {
 			s.mu.Unlock()
 			return 0, net.ErrClosed
@@ -389,22 +438,24 @@ func (c *conn) Read(b []byte) (int, error) {
 			}
 			wait = min(wait, left)
 		}
-		wake := in.wake
-		s.mu.Unlock()
-		t := time.NewTimer(time.Duration(min(wait, math.MaxInt64/2)))
-		select {
-		case <-t.C:
-		case <-wake:
+		wake := in.waiter()
+		t := new(*time.Timer)
+		if !c.reading {
+			t, c.reading, mine = &c.readTimer, true, true
 		}
-		t.Stop()
+		s.mu.Unlock()
+		waitFor(t, wait, wake)
 	}
 }
 
 func (c *conn) Write(b []byte) (int, error) {
 	s := c.s
-	n, blocked := 0, false
+	n, blocked, mine := 0, false, false
 	for {
 		s.mu.Lock()
+		if mine {
+			c.writing, mine = false, false
+		}
 		switch {
 		case c.closed:
 			s.mu.Unlock()
@@ -451,14 +502,13 @@ func (c *conn) Write(b []byte) (int, error) {
 		if !c.writeDeadline.IsZero() {
 			wait = max(int64(time.Until(c.writeDeadline)), 1)
 		}
-		wake := c.out.wake
-		s.mu.Unlock()
-		t := time.NewTimer(time.Duration(min(wait, math.MaxInt64/2)))
-		select {
-		case <-t.C:
-		case <-wake:
+		wake := c.out.waiter()
+		t := new(*time.Timer)
+		if !c.writing {
+			t, c.writing, mine = &c.writeTimer, true, true
 		}
-		t.Stop()
+		s.mu.Unlock()
+		waitFor(t, wait, wake)
 	}
 }
 

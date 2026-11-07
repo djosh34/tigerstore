@@ -37,13 +37,45 @@ func tinyLimits(cfg *core.Config) {
 type logRec struct {
 	term uint64
 	typ  raftpb.EntryType
-	data []byte
+	// data is the entry's data in its entryLog.
+	data span
 	// known is false when only the hash is known: the state came from a
 	// checkpoint.
 	known bool
 	hash  uint64
 	node  uint64
 }
+
+// entryLog is the record of committed entries, by index, in memory that
+// holds no pointers, as a run applies one entry after the other on every
+// node and keeps them all.
+type entryLog struct {
+	recs []logRec
+	// set marks the indexes that have a record.
+	set  []bool
+	data arena
+}
+
+// get returns the record of index i.
+func (l *entryLog) get(i uint64) (logRec, bool) {
+	if i >= uint64(len(l.recs)) || !l.set[i] {
+		return logRec{}, false
+	}
+	return l.recs[i], true
+}
+
+// put keeps r at index i.
+func (l *entryLog) put(i uint64, r logRec) {
+	if i >= uint64(len(l.recs)) {
+		n := max(i+1, 2*uint64(len(l.recs)))
+		l.recs = append(l.recs, make([]logRec, n-uint64(len(l.recs)))...)
+		l.set = append(l.set, make([]bool, n-uint64(len(l.set)))...)
+	}
+	l.recs[i], l.set[i] = r, true
+}
+
+// bytes returns the data of r, which the log keeps.
+func (l *entryLog) bytes(r logRec) []byte { return l.data.bytes(r.data) }
 
 // record checks an entry a node applied, or the state it loaded from a
 // checkpoint, against what the other nodes have at that index, and keeps
@@ -55,19 +87,19 @@ func (s *Sim) record(n *node, a core.Applied) {
 		// run's own record is the truth.
 		log = s.base
 	}
-	r, ok := log[a.Index]
+	r, ok := log.get(a.Index)
 	if !ok {
-		log[a.Index] = logRec{term: a.Term, typ: a.Type, data: a.Data, known: !a.Checkpoint, hash: a.Hash, node: n.id}
+		log.put(a.Index, logRec{term: a.Term, typ: a.Type, data: log.data.add(a.Data), known: !a.Checkpoint, hash: a.Hash, node: n.id})
 		s.maxLogged = max(s.maxLogged, a.Index)
 		return
 	}
 	switch {
-	case r.term != a.Term || (r.known && !a.Checkpoint && !bytes.Equal(r.data, a.Data)):
+	case r.term != a.Term || (r.known && !a.Checkpoint && !bytes.Equal(log.bytes(r), a.Data)):
 		s.fail("node %d and node %d applied different entries at index %d", n.id, r.node, a.Index)
 		return
 	case !r.known && !a.Checkpoint:
-		r.typ, r.data, r.known = a.Type, a.Data, true
-		log[a.Index] = r
+		r.typ, r.data, r.known = a.Type, log.data.add(a.Data), true
+		log.put(a.Index, r)
 	}
 	if r.hash != a.Hash {
 		s.fail("node %d and node %d applied the same log to different states at index %d", n.id, r.node, a.Index)
@@ -79,11 +111,11 @@ func (s *Sim) record(n *node, a core.Applied) {
 func (s *Sim) committed(last uint64) ([]*raftpb.Entry, error) {
 	out := make([]*raftpb.Entry, 0, last)
 	for i := uint64(1); i <= last; i++ {
-		r, ok := s.log[i]
+		r, ok := s.log.get(i)
 		if !ok || !r.known {
 			return nil, fmt.Errorf("the record of committed entries has no entry %d", i)
 		}
-		out = append(out, &raftpb.Entry{Term: new(r.term), Index: new(i), Type: r.typ.Enum(), Data: r.data})
+		out = append(out, &raftpb.Entry{Term: new(r.term), Index: new(i), Type: r.typ.Enum(), Data: s.log.bytes(r)})
 	}
 	return out, nil
 }
@@ -257,9 +289,9 @@ func newestSegment(d *simfs.Disk) string {
 // start. It runs on the node's committer, with its core c. The lock is
 // held.
 func (s *Sim) rot(n *node, c *core.Node) {
-	if slices.ContainsFunc(s.nodes, func(m *node) bool { return m.corrupted }) {
-		// A crash damaged a node since the rot was due; a quorum must
-		// stay whole.
+	if slices.ContainsFunc(s.nodes, (*node).mayBeDamaged) {
+		// A crash damaged a node since the rot was due, or may have; a
+		// quorum must stay whole.
 		return
 	}
 	w, _, err := wal.Open(n.disk.Durable())
