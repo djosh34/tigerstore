@@ -146,7 +146,7 @@ jobs:
               if [ "$mode" = ingress ]; then export DIAG524_EGRESS=0; fi
               bench/netem.sh on 10
               bench/netem.sh probe | tee "results/diag-tcp/$mode-probe.txt"
-              (while true; do date -u; ss -tinm '( sport = :20021 or dport = :20021 )'; sleep 1; done) >"results/diag-tcp/$mode-sockets.txt" &
+              (while true; do date -u; ss -tinm '( sport = :20011 or dport = :20011 or sport = :20021 or dport = :20021 or sport = :20031 or dport = :20031 )'; sleep 1; done) >"results/diag-tcp/$mode-sockets.txt" &
               monitor=$!
               DIAG524_NET=1 GOFLAGS=-p=2 go test "$pkg" -run "^$test$" -v -count=1 -timeout=150s 2>&1 | tee "results/diag-tcp/$mode.txt" || true
               kill "$monitor" || true

@@ -42,7 +42,7 @@ func TestDiag524Preload(t *testing.T) {
 		clients = append(clients, kv)
 	}
 	value := make([]byte, 60<<10)
-	jobs := make(chan int, 6000)
+	jobs := []chan int{make(chan int, 2000), make(chan int, 2000), make(chan int, 2000)}
 	ctx, cancelAll := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancelAll()
 	var sent, completed atomic.Int64
@@ -50,14 +50,18 @@ func TestDiag524Preload(t *testing.T) {
 	var failed atomic.Int64
 	var maxLatency atomic.Int64
 	start := time.Now()
-	for i := 0; i < 96; i++ {
+	// Each endpoint has its own 96 slots, as in the bench. A shared
+	// worker pool would let one slow follower throttle the other clients
+	// and hide the lag.
+	for worker := 0; worker < 288; worker++ {
+		endpoint := worker % 3
 		workers.Go(func() {
-			for i := range jobs {
+			for i := range jobs[endpoint] {
 				if ctx.Err() != nil {
 					continue
 				}
 				at := time.Now()
-				_, err := clients[i%3].Txn(ctx, &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte(fmt.Sprintf("key%d", i%3)), Value: value}}}}})
+				_, err := clients[endpoint].Txn(ctx, &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte(fmt.Sprintf("key%d", i%3)), Value: value}}}}})
 				d := time.Since(at).Nanoseconds()
 				for old := maxLatency.Load(); d > old && !maxLatency.CompareAndSwap(old, d); old = maxLatency.Load() {
 				}
@@ -75,10 +79,12 @@ func TestDiag524Preload(t *testing.T) {
 		if ctx.Err() != nil {
 			break
 		}
-		jobs <- i
+		jobs[i%3] <- i
 		sent.Add(1)
 	}
-	close(jobs)
+	for _, q := range jobs {
+		close(q)
+	}
 	workers.Wait()
 	t.Logf("300 Txns/s, 60 KiB each: sent=%d completed=%d elapsed=%v errors=%d max=%v", sent.Load(), completed.Load(), time.Since(start), failed.Load(), time.Duration(maxLatency.Load()))
 	if failed.Load() > 0 {
