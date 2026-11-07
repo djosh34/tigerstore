@@ -567,10 +567,18 @@ func (n *Node) flushWatches() {
 }
 
 // flushWatcher sends a watcher's queued events in one response with the
-// current revision, if its stream has room; else it falls behind.
+// current revision, if its stream has room and sends no response in
+// parts; else it falls behind.
 func (n *Node) flushWatcher(w *watcher) {
 	if !w.stream.hasRoom() {
 		n.counters.FellBehind++
+		n.fallBehind(w)
+		return
+	}
+	if b := w.stream.big; b != nil && b != w {
+		// The stream sends another watcher's response in parts, and what
+		// comes after it would wait with no room counted: the watcher
+		// reads its events from the history once the parts are out.
 		n.fallBehind(w)
 		return
 	}
@@ -706,7 +714,7 @@ func (n *Node) catchUpOne(w *watcher) {
 	bytes := 0
 	for pos := w.next; pos < stop; pos++ {
 		c := n.kv.Changed(pos)
-		if !w.takes(c.Key(), c.ModRev()) {
+		if !w.wants(c) {
 			continue
 		}
 		ev, err := w.event(c)
@@ -741,7 +749,7 @@ func (n *Node) bigPart(w *watcher) {
 	bytes := 0
 	for ; b.pos < b.end && bytes < n.cfg.PieceBytes; b.pos++ {
 		c := n.kv.Changed(b.pos)
-		if !w.takes(c.Key(), c.ModRev()) {
+		if !w.wants(c) {
 			continue
 		}
 		ev, err := w.event(c)

@@ -324,3 +324,87 @@ func TestCatchUpGroupsAsEtcd(t *testing.T) {
 		}
 	}
 }
+
+// TestPartsHoldNothingPastTheRoom sends a delete of 300 keys in parts on a
+// stream that has room for two responses a turn, while another watcher on
+// the stream gets a write after each part. Its events must wait in the
+// history, not pile up behind the parts and go out at once with the
+// last, past the stream's room.
+func TestPartsHoldNothingPastTheRoom(t *testing.T) {
+	s := bigDeleteSetup(t, false)
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("z")}))
+	s.run()
+	s.responses()
+	const slots = 2
+	s.room = 1 << 30
+	s.n.WatchRoom(1, s.room, slots)
+	puts, most := 0, 0
+	s.afterTurn = func(eff Effects) {
+		most = max(most, len(eff.Watch))
+		for _, w := range eff.Watch {
+			if w.More {
+				puts++
+				s.n.Submit(Request{ID: uint64(1000 + puts), Op: &pb.PutRequest{Key: []byte("z"), Value: []byte("v")}})
+			}
+		}
+		s.n.WatchRoom(1, s.room, slots)
+	}
+	s.do(500, &pb.DeleteRangeRequest{Key: []byte("k"), RangeEnd: []byte("l")})
+	for range 20 {
+		s.run()
+	}
+	if puts < 2 {
+		t.Fatalf("setup: %d writes during the parts", puts)
+	}
+	if most > slots {
+		t.Fatalf("a turn sent %d responses on a stream with room for %d", most, slots)
+	}
+	events := 0
+	for _, r := range s.responses() {
+		if r.WatchId == 1 {
+			events += len(r.Events)
+		}
+	}
+	if events != puts {
+		t.Fatalf("the other watcher got %d events of %d", events, puts)
+	}
+}
+
+// TestFilteredCatchUpReadsNoValues catches up a NOPUT watcher over 100
+// puts of 64 KiB whose values left memory, and one delete: it gets only
+// the delete, so it must read none of the values it leaves out.
+func TestFilteredCatchUpReadsNoValues(t *testing.T) {
+	s := startSingleWith(t, simfs.New(), 1, func(c *Config) {
+		c.PieceBytes = 32 << 10
+		c.WindowBytes, c.WindowMaxBytes = 512, 1024
+	})
+	for i := range 100 {
+		s.n.Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "p%03d", i), Value: make([]byte, 64<<10)}})
+		s.run()
+	}
+	if r := s.do(500, &pb.DeleteRangeRequest{Key: []byte("p000")}); r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	read := 0
+	s.afterTurn = func(eff Effects) {
+		for _, r := range eff.Reads {
+			for _, f := range r.fills {
+				read += int(f.Ref.Len)
+			}
+		}
+	}
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("p"), RangeEnd: []byte("q"), StartRevision: 1, Filters: []pb.WatchCreateRequest_FilterType{pb.WatchCreateRequest_NOPUT}}))
+	for range 10 {
+		s.run()
+	}
+	events := 0
+	for _, r := range s.responses() {
+		events += len(r.Events)
+	}
+	if events != 1 {
+		t.Fatalf("the NOPUT watcher got %d events, want the delete", events)
+	}
+	if read > 0 {
+		t.Fatalf("the NOPUT watcher's catch-up read %d bytes of values it leaves out", read)
+	}
+}
