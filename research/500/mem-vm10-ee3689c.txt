@@ -1,0 +1,6 @@
+commit ee3689c4ff2cea7e452e7c9e4a8d46e74fbd73ef
+model name	: AMD EPYC 9V74 80-Core Processor
+cpus 5, MemTotal:       18440100 kB
+busy: exit 0, peak 0.29 GiB, wall 6 s
+kube: exit 0, peak 3.36 GiB, wall 276 s
+campaign: exit 0, peak 7.30 GiB, wall 247 s

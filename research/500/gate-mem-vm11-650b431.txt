@@ -1,0 +1,38 @@
+commit 650b4314e3d96a2e56451aa707bacd4d2b9e218d
+model name	: AMD EPYC 9V74 80-Core Processor
+testing: warning: no tests to run
+round 1 native 6467 calls/core-s
+round 1 gosim 26282 calls answered, 574 failed, 3.159 s of CPU time: 8320 calls per core-second
+round 1 calm 19831 calls answered, 3.116 s of CPU time in the load, 3.729 s in the seed: 6365 calls per core-second, 0.614 s fixed
+round 1 faulted 7106 calls answered, 1.218 s of CPU time in the load, 1.518 s in the seed: 5835 calls per core-second, 0.301 s fixed
+round 2 native 6799 calls/core-s
+round 2 gosim 26369 calls answered, 413 failed, 3.148 s of CPU time: 8376 calls per core-second
+round 2 calm 18431 calls answered, 2.836 s of CPU time in the load, 3.640 s in the seed: 6499 calls per core-second, 0.804 s fixed
+round 2 faulted 4935 calls answered, 0.700 s of CPU time in the load, 0.944 s in the seed: 7048 calls per core-second, 0.244 s fixed
+round 3 native 7157 calls/core-s
+round 3 gosim 26169 calls answered, 535 failed, 3.026 s of CPU time: 8649 calls per core-second
+round 3 calm 19321 calls answered, 2.902 s of CPU time in the load, 3.491 s in the seed: 6657 calls per core-second, 0.589 s fixed
+round 3 faulted 7119 calls answered, 1.245 s of CPU time in the load, 1.558 s in the seed: 5717 calls per core-second, 0.313 s fixed
+round 4 native 7156 calls/core-s
+round 4 gosim 26358 calls answered, 576 failed, 2.922 s of CPU time: 9019 calls per core-second
+round 4 calm 18565 calls answered, 2.746 s of CPU time in the load, 3.398 s in the seed: 6761 calls per core-second, 0.652 s fixed
+round 4 faulted 5234 calls answered, 0.698 s of CPU time in the load, 0.870 s in the seed: 7500 calls per core-second, 0.173 s fixed
+round 5 native 7111 calls/core-s
+round 5 gosim 26275 calls answered, 496 failed, 2.875 s of CPU time: 9140 calls per core-second
+round 5 calm 20065 calls answered, 2.926 s of CPU time in the load, 3.578 s in the seed: 6858 calls per core-second, 0.652 s fixed
+round 5 faulted 4078 calls answered, 0.587 s of CPU time in the load, 0.777 s in the seed: 6943 calls per core-second, 0.189 s fixed
+round 6 native 7196 calls/core-s
+round 6 gosim 26377 calls answered, 496 failed, 2.856 s of CPU time: 9236 calls per core-second
+round 6 calm 15844 calls answered, 2.717 s of CPU time in the load, 3.232 s in the seed: 5832 calls per core-second, 0.516 s fixed
+round 6 faulted 7521 calls answered, 1.255 s of CPU time in the load, 1.549 s in the seed: 5993 calls per core-second, 0.295 s fixed
+round 7 native 7371 calls/core-s
+round 7 gosim 26406 calls answered, 465 failed, 2.850 s of CPU time: 9265 calls per core-second
+round 7 calm 20487 calls answered, 3.046 s of CPU time in the load, 3.652 s in the seed: 6725 calls per core-second, 0.605 s fixed
+round 7 faulted 4310 calls answered, 0.599 s of CPU time in the load, 0.778 s in the seed: 7193 calls per core-second, 0.179 s fixed
+round 8 native 7243 calls/core-s
+round 8 gosim 26266 calls answered, 561 failed, 2.909 s of CPU time: 9028 calls per core-second
+round 8 calm 20582 calls answered, 3.026 s of CPU time in the load, 3.616 s in the seed: 6801 calls per core-second, 0.590 s fixed
+round 8 faulted 7266 calls answered, 1.231 s of CPU time in the load, 1.536 s in the seed: 5903 calls per core-second, 0.305 s fixed
+busy: exit 0, peak 0.28 GiB, wall 6 s
+kube: exit 0, peak 3.54 GiB, wall 271 s
+campaign: exit 0, peak 7.03 GiB, wall 252 s
