@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"strconv"
 	"strings"
 	"testing"
 	"unsafe"
@@ -196,7 +197,7 @@ func TestTxnRangeReadsItsPosition(t *testing.T) {
 func TestHistoryInRevisionOrder(t *testing.T) {
 	s := New(&Heap{})
 	for i := range 30 {
-		put(t, s, fmt.Sprintf("k%02d", i%7), fmt.Sprint(i))
+		put(t, s, fmt.Sprintf("k%02d", i%7), strconv.Itoa(i))
 		if i%10 == 9 {
 			if _, err := s.DeleteRange(&pb.DeleteRangeRequest{Key: []byte("k"), RangeEnd: []byte("l")}); err != nil {
 				t.Fatal(err)
@@ -389,7 +390,7 @@ func TestSortOrderNoneSorts(t *testing.T) {
 		if target == pb.RangeRequest_VALUE {
 			// Values in the order c, b, a.
 			for i, k := range []string{"c", "b", "a"} {
-				put(t, s, k, fmt.Sprint(i))
+				put(t, s, k, strconv.Itoa(i))
 			}
 		}
 		if got := keys(get(t, s, r)); got != "c b a" {

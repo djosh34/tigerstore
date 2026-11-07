@@ -20,13 +20,13 @@ import (
 	"github.com/djosh34/tigerstore/internal/testmem"
 )
 
-// rawCall opens a TLS connection to node id that speaks HTTP/2 frames by
+// rawCall opens a TLS connection to node 1 that speaks HTTP/2 frames by
 // hand, sends one gRPC call of path with req, and returns the framer. The
 // client grants no more than the default windows of 64 KiB, so it takes
 // nothing more until the test reads and credits it.
-func rawCall(t *testing.T, c *cluster, id uint64, cert tls.Certificate, path string, req proto.Message) (*http2.Framer, func()) {
+func rawCall(t *testing.T, c *cluster, cert tls.Certificate, path string, req proto.Message) (*http2.Framer, func()) {
 	t.Helper()
-	tc, err := tls.Dial("tcp", c.running[id].addr, &tls.Config{
+	tc, err := tls.Dial("tcp", c.running[1].addr, &tls.Config{
 		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost", NextProtos: []string{"h2"},
 	})
 	if err != nil {
@@ -134,7 +134,7 @@ func TestAnswersHeldBackBySlowClient(t *testing.T) {
 	heldBack := func(path string, req, resp proto.Message, limit int64) {
 		t.Helper()
 		peak := testmem.Peak()
-		fr, closeConn := rawCall(t, c, 1, cert, path, req)
+		fr, closeConn := rawCall(t, c, cert, path, req)
 		defer closeConn()
 		// Let the node and the writer go as far as they would.
 		time.Sleep(time.Second)
@@ -186,14 +186,14 @@ func TestAnswersHeldBackBySlowClient(t *testing.T) {
 	// the bounds the three would hold 144 MiB.
 	peak := testmem.Peak()
 	watch := func(w *pb.WatchCreateRequest) (*http2.Framer, func()) {
-		return rawCall(t, c, 1, cert, "/etcdserverpb.Watch/Watch", &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: w}})
+		return rawCall(t, c, cert, "/etcdserverpb.Watch/Watch", &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: w}})
 	}
 	catchUp, closeCatchUp := watch(&pb.WatchCreateRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), StartRevision: 1})
 	defer closeCatchUp()
 	big, closeBig := watch(&pb.WatchCreateRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), PrevKv: true})
 	defer closeBig()
 	time.Sleep(time.Second)
-	delFr, closeDel := rawCall(t, c, 1, cert, "/etcdserverpb.KV/DeleteRange", &pb.DeleteRangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), PrevKv: true})
+	delFr, closeDel := rawCall(t, c, cert, "/etcdserverpb.KV/DeleteRange", &pb.DeleteRangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), PrevKv: true})
 	defer closeDel()
 	time.Sleep(2 * time.Second)
 	held, _ := peak()
@@ -316,7 +316,7 @@ func TestResetEndsAnAnswerInPieces(t *testing.T) {
 			}
 		}
 	}
-	fr, closeConn := rawCall(t, c, 1, cert, "/etcdserverpb.KV/Range", &pb.RangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), Serializable: true})
+	fr, closeConn := rawCall(t, c, cert, "/etcdserverpb.KV/Range", &pb.RangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), Serializable: true})
 	defer closeConn()
 	until("no piece waits for the client", waiting)
 	if err := fr.WriteRSTStream(1, http2.ErrCodeCancel); err != nil {

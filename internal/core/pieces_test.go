@@ -11,10 +11,10 @@ import (
 )
 
 // rest asks for the pieces of the answer to id after its first reply,
-// and returns their KVs' count and the replies.
-func (s *single) rest(id uint64, first Reply) (int, []Reply) {
+// and returns their KVs' count.
+func (s *single) rest(id uint64, first Reply) int {
 	s.t.Helper()
-	n, replies := 0, []Reply{first}
+	n := 0
 	for r := first; r.MorePieces; {
 		s.n.Next(id)
 		got := false
@@ -30,9 +30,8 @@ func (s *single) rest(id uint64, first Reply) (int, []Reply) {
 			s.t.Fatalf("a piece of the answer to %d: %v", id, r.Err)
 		}
 		n += len(r.Range.KVs)
-		replies = append(replies, r)
 	}
-	return n, replies
+	return n
 }
 
 // TestTxnRangeIsBounded reads 3 MB inside a Txn: its first reply holds
@@ -55,7 +54,7 @@ func TestTxnRangeIsBounded(t *testing.T) {
 	if !r.MorePieces || len(r.Rests) != 1 || len(first.Kvs) > 64<<10/1500+1 {
 		t.Fatalf("a Txn's range of 3 MB answered %d keys at once, rest %v", len(first.Kvs), r.MorePieces)
 	}
-	if n, _ := s.rest(5001, r); n+len(first.Kvs) != 2000 || first.Count != 2000 {
+	if n := s.rest(5001, r); n+len(first.Kvs) != 2000 || first.Count != 2000 {
 		t.Fatalf("the pieces brought %d keys and the first %d, count %d, want 2000", n, len(first.Kvs), first.Count)
 	}
 }
@@ -73,7 +72,7 @@ func TestRangeFromCacheAllocatesOnce(t *testing.T) {
 	all := &pb.RangeRequest{Key: []byte("k"), RangeEnd: []byte("l")}
 	read := func(id uint64) int {
 		r := s.do(id, all)
-		n, _ := s.rest(id, r)
+		n := s.rest(id, r)
 		return n + len(r.Range.KVs)
 	}
 	read(9000) // warm the cache
