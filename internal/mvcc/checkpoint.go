@@ -179,7 +179,6 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 	}
 }
 
-
 // WalkRefs calls fn for the value of every version in the keys of a
 // checkpoint, without building an index. It reads one version at a time
 // and skips the key's bytes, so it holds no key and no list of versions
