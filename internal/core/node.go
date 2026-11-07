@@ -1510,6 +1510,8 @@ func (n *Node) expire() {
 			break
 		}
 		_, write := n.waiting[p.req.ID]
+		last, _ := n.storage.LastIndex()
+		log.Printf("diag524: timeout node=%d leader=%d req=%d op=%T write=%t queued=%t early=%t applied=%d commit=%d last=%d unpersisted=%d reads=%d proposals=%d", n.cfg.ID, n.leader, p.req.ID, p.req.Op, write, p.queued, p.early, n.applied, n.commit, last, n.unpersisted, len(n.readBatches), len(n.proposals))
 		if write {
 			n.counters.ProposalsFailed++
 		} else {

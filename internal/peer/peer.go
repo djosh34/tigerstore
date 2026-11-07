@@ -680,7 +680,11 @@ func (t *TCP) frames(r io.Reader, from uint64, cs *counters) error {
 		if m.GetType() == raftpb.MsgHeartbeat {
 			cs.heartbeatReceived.SetToCurrentTime()
 		}
+		began := time.Now()
 		t.cfg.Deliver(m)
+		if d := time.Since(began); d > 100*time.Millisecond {
+			t.logf("diag524: deliver %s (%d bytes) from %d blocked %v", m.GetType(), n, from, d)
+		}
 	}
 }
 
@@ -1233,8 +1237,12 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 		if err := c.SetWriteDeadline(s.t.writeDeadline()); err != nil {
 			return err
 		}
+		began := time.Now()
 		if _, err := w.Write(buf); err != nil {
 			return err
+		}
+		if d := time.Since(began); d > 100*time.Millisecond {
+			s.t.logf("diag524: write %s (%d bytes) to %d blocked %v; ctrl=%d data=%d", m.GetType(), len(buf), s.id, d, len(s.ctrl), len(s.data))
 		}
 		s.counters.sent.Add(float64(len(buf)))
 		if m.GetType() == raftpb.MsgHeartbeat {
