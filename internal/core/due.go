@@ -14,9 +14,11 @@ import (
 // Due is the earliest of them. Until then a Tick only moves the clocks and
 // Raft's election clock, and its checks find nothing to do, so a driver
 // may hold the ticks back and wake only when one is due or something
-// happens. It then gives the core every tick it held back, each a Tick, in
-// order, before anything else, and Raft sees the same ticks as if each had
-// come on time.
+// happens. It then gives the core, in order, each tick it held back up to
+// the moment it could have run again, as if each had come on time; of the
+// ticks after, which passed while it waited for a CPU or was busy, one is
+// a Tick and the rest go to Elapse, as a ticker drops them
+// (node.Node.commit).
 
 // Due is how many ticks may pass before a tick has work to do, at least
 // 1: Tick does nothing that shows before then.
