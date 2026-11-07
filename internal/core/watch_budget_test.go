@@ -509,3 +509,40 @@ func TestCompactionAtPartsWithoutPrevKV(t *testing.T) {
 		t.Fatalf("the stream did not break: the first part said %d bytes, %d went out", declared, sent)
 	}
 }
+
+// TestPartsAfterACompactionAtTheirRevision deletes 300 keys at revision R,
+// compacts at R, and only then watches from R without prev_kv, with
+// pieces of 2 KiB: the response goes in parts and must arrive whole. The
+// compaction came before the response was sized and took nothing it
+// counted, so it must not break the stream, which would break again on
+// every retry from R.
+func TestPartsAfterACompactionAtTheirRevision(t *testing.T) {
+	s := startSingleWith(t, simfs.New(), 1, func(c *Config) { c.PieceBytes = 2 << 10 })
+	for i := range 300 {
+		s.n.Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "k%03d", i), Value: []byte("v")}})
+	}
+	s.run()
+	r := s.do(500, &pb.DeleteRangeRequest{Key: []byte("k"), RangeEnd: []byte("l")})
+	if r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	rev := r.Resp.(*pb.DeleteRangeResponse).Header.Revision
+	s.ok(501, &pb.CompactionRequest{Revision: rev})
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("k"), RangeEnd: []byte("l"), StartRevision: rev}))
+	for range 20 {
+		s.run()
+	}
+	parts, events := 0, 0
+	for _, p := range s.watch {
+		if p.Broken {
+			t.Fatalf("the stream broke after %d events", events)
+		}
+		if p.More || p.Cont {
+			parts++
+		}
+		events += len(p.Resp.Events)
+	}
+	if parts < 2 || events != 300 {
+		t.Fatalf("%d parts brought %d events, want 300 in parts", parts, events)
+	}
+}

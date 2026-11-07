@@ -109,10 +109,12 @@ type watcher struct {
 
 // bigResponse is a response whose events for a watcher pass a piece,
 // which goes out in parts: its changes are at history positions pos up to
-// end, whole revisions, and its events take bytes.
+// end, whole revisions, and its events take bytes, as sized after the
+// compaction at revision compact.
 type bigResponse struct {
 	pos, end int64
 	bytes    int64
+	compact  int64
 	started  bool
 }
 
@@ -674,13 +676,18 @@ func (n *Node) passed(w *watcher) bool {
 	return w.prevKV && w.next < n.kv.HistoryEnd() && n.kv.Changed(w.next).ModRev() <= n.kv.CompactRev()
 }
 
-// passedBig reports whether a compaction reached the next change of the
-// response a watcher sends in parts, which then cannot go on as its first
-// part said: the change is gone, or a compaction at its revision may have
-// removed it, or, with prev_kv, its previous value.
+// passedBig reports whether a compaction since the response a watcher
+// sends in parts was sized reached its next change, which then cannot go
+// on as its first part said: the change is gone, or a compaction at its
+// revision may have removed it, or, with prev_kv, its previous value. A
+// compaction before the response was sized took nothing it counted.
 func (n *Node) passedBig(w *watcher) bool {
 	b := w.big
-	return b.pos < n.kv.HistoryStart() || n.kv.Changed(b.pos).ModRev() <= n.kv.CompactRev()
+	if b.pos < n.kv.HistoryStart() {
+		return true
+	}
+	c := n.kv.CompactRev()
+	return c != b.compact && n.kv.Changed(b.pos).ModRev() <= c
 }
 
 // catchUpOne sends a watcher its next response of history: up to
@@ -707,7 +714,7 @@ func (n *Node) catchUpOne(w *watcher) {
 		}
 	}
 	if size > n.cfg.PieceBytes {
-		w.big = &bigResponse{pos: w.next, end: stop, bytes: int64(size)}
+		w.big = &bigResponse{pos: w.next, end: stop, bytes: int64(size), compact: n.kv.CompactRev()}
 		n.bigPart(w)
 		return
 	}
