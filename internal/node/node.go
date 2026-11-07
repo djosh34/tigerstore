@@ -439,7 +439,9 @@ type diskLog struct {
 	// ckpts are the durable checkpoints whose files are on disk, which
 	// the persist goroutine adds to and the cleaner drops from before it
 	// removes older files, and serving counts the snapshot fetches under
-	// way, during which nothing is removed.
+	// way, during which nothing is removed. Only fetchStarted and
+	// fetchEnded change it, so that the end of a fetch always wakes the
+	// cleaner, which Defragment waits on.
 	ckpts   []wal.Root
 	serving int
 	// removal is what the newest durable root made obsolete, which waits
@@ -531,6 +533,24 @@ func (l *diskLog) wake() {
 	if l.held.Load() {
 		l.kickCleaner()
 	}
+}
+
+// fetchStarted counts a snapshot fetch under way, during which nothing is
+// removed from the log, and returns the durable checkpoints it may serve.
+func (l *diskLog) fetchStarted() []wal.Root {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.serving++
+	return slices.Clone(l.ckpts)
+}
+
+// fetchEnded ends a fetch fetchStarted counted, and wakes the cleaner,
+// whose removals and Defragment may have waited for it.
+func (l *diskLog) fetchEnded() {
+	l.mu.Lock()
+	l.serving--
+	l.mu.Unlock()
+	l.kickCleaner()
 }
 
 // kickCleaner wakes the cleaner: the log changed, so it may have work.
@@ -2108,10 +2128,7 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 // peer transport calls it.
 func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	n.tell(input{snapshot: id, fetching: true})
-	n.log.mu.Lock()
-	n.log.serving++
-	ckpts := slices.Clone(n.log.ckpts)
-	n.log.mu.Unlock()
+	ckpts := n.log.fetchStarted()
 	m, to := n.cfg.Metrics, peerLabel(id)
 	m.SnapshotSendInflights.WithLabelValues(to).Inc()
 	start := time.Now()
@@ -2123,10 +2140,7 @@ func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	} else {
 		m.SnapshotSendFailures.WithLabelValues(to).Inc()
 	}
-	n.log.mu.Lock()
-	n.log.serving--
-	n.log.mu.Unlock()
-	n.log.kickCleaner()
+	n.log.fetchEnded()
 	n.tell(input{snapshot: id, served: true, serveErr: err})
 	return err
 }

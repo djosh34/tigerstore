@@ -488,9 +488,7 @@ func TestDefragment(t *testing.T) {
 	defer cancel()
 	// A snapshot served meanwhile holds Defragment back until it ends.
 	l := r.n.log
-	l.mu.Lock()
-	l.serving++
-	l.mu.Unlock()
+	l.fetchStarted()
 	defragged := make(chan error, 1)
 	go func() { defragged <- r.n.Defragment(ctx) }()
 	select {
@@ -498,11 +496,7 @@ func TestDefragment(t *testing.T) {
 		t.Fatalf("Defragment answered %v while a snapshot was served", err)
 	case <-time.After(200 * time.Millisecond):
 	}
-	// The fetch ends as Serve ends one: it wakes the cleaner.
-	l.mu.Lock()
-	l.serving--
-	l.mu.Unlock()
-	l.kickCleaner()
+	l.fetchEnded()
 	if err := <-defragged; err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"slices"
 
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
@@ -77,16 +76,8 @@ func snapshotPad(n int64) int64 { return (512 - n%512) % 512 }
 // anything it calls start with the size of the whole file. Nothing is
 // removed from the log while it runs.
 func (n *Node) Snapshot(ctx context.Context, w io.Writer, start func(size int64) error) (SnapshotInfo, []byte, error) {
-	n.log.mu.Lock()
-	n.log.serving++
-	ckpts := slices.Clone(n.log.ckpts)
-	n.log.mu.Unlock()
-	defer func() {
-		n.log.mu.Lock()
-		n.log.serving--
-		n.log.mu.Unlock()
-		n.log.kickCleaner()
-	}()
+	ckpts := n.log.fetchStarted()
+	defer n.log.fetchEnded()
 	ch := make(chan snapshotPoint, 1)
 	if err := n.put(ctx, input{snapshotPoint: ch}); err != nil {
 		return SnapshotInfo{}, nil, err
