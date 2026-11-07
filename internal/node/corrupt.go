@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -214,53 +215,50 @@ func (n *Node) corruptAlarm(ctx context.Context, id uint64) {
 }
 
 // checkHashes runs the periodic and compaction hash checks on the leader
-// until ctx ends. A node that does not lead waits until it does.
+// until ctx ends, each on its own beat.
 func (n *Node) checkHashes(ctx context.Context, t peer.Transport) {
-	var checked int64
-	for {
-		lead, moved := n.LeaderChange()
-		if lead == n.ID() {
-			checked = n.checkWhileLeading(ctx, t, moved, checked)
-		}
-		select {
-		case <-moved:
-		case <-ctx.Done():
-			return
-		case <-n.done:
-			return
-		}
-	}
-}
-
-// checkWhileLeading runs the hash checks on their beats until the leader
-// moves (moved is closed) or the node stops. checked is the revision the
-// compaction hash check got to, which it returns.
-func (n *Node) checkWhileLeading(ctx context.Context, t peer.Transport, moved <-chan struct{}, checked int64) int64 {
-	var periodic, compact <-chan time.Time
+	var wg sync.WaitGroup
 	if d := n.cfg.CorruptCheckTime; d > 0 {
-		tk := time.NewTicker(d)
-		defer tk.Stop()
-		periodic = tk.C
+		wg.Go(func() {
+			n.onLeaderBeats(ctx, d, func() {
+				if err := n.periodicCheck(ctx, t); err != nil && ctx.Err() == nil {
+					n.logf("corruption check: %v", err)
+				}
+			})
+		})
 	}
 	if d := n.cfg.CompactHashCheckTime; d > 0 {
-		tk := time.NewTicker(d)
-		defer tk.Stop()
-		compact = tk.C
+		var checked int64
+		wg.Go(func() {
+			n.onLeaderBeats(ctx, d, func() { checked = n.compactHashCheck(ctx, t, checked) })
+		})
 	}
+	wg.Wait()
+}
+
+// onLeaderBeats calls fn on the beats of every, counted from now, at which
+// this node leads, until ctx ends or the node stops: what a ticker that
+// does nothing while the node follows would run, as etcd's leader-only
+// checks do. While the node follows, it waits for the leader to change
+// instead of waking on each beat.
+func (n *Node) onLeaderBeats(ctx context.Context, every time.Duration, fn func()) {
+	start := time.Now()
 	for {
+		lead, moved := n.LeaderChange()
+		var beat <-chan time.Time
+		if lead == n.ID() {
+			beat = time.After(every - time.Since(start)%every)
+		}
 		select {
-		case <-periodic:
-			if err := n.periodicCheck(ctx, t); err != nil && ctx.Err() == nil {
-				n.logf("corruption check: %v", err)
+		case <-beat:
+			if n.leads() {
+				fn()
 			}
-		case <-compact:
-			checked = n.compactHashCheck(ctx, t, checked)
 		case <-moved:
-			return checked
 		case <-ctx.Done():
-			return checked
+			return
 		case <-n.done:
-			return checked
+			return
 		}
 	}
 }

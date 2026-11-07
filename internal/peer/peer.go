@@ -317,9 +317,9 @@ func Start(cfg Config) (*TCP, error) {
 	return t, nil
 }
 
-// ActivePeers is the number of peers this node has a connection to, as
+// activePeers is the number of peers this node has a connection to, as
 // etcd's transport counts them.
-func (t *TCP) ActivePeers() int {
+func (t *TCP) activePeers() int {
 	n := 0
 	for _, s := range *t.senders.Load() {
 		if s.version.Load() != 0 {
@@ -329,12 +329,12 @@ func (t *TCP) ActivePeers() int {
 	return n
 }
 
-// ActiveChange returns ActivePeers and a channel that is closed once a
-// connection to a peer starts or ends.
+// ActiveChange returns the number of peers this node has a connection
+// to, and a channel that is closed once a connection starts or ends.
 func (t *TCP) ActiveChange() (int, <-chan struct{}) {
 	t.activeMu.Lock()
 	defer t.activeMu.Unlock()
-	return t.ActivePeers(), t.activeMoved
+	return t.activePeers(), t.activeMoved
 }
 
 // activeChanged wakes those that wait for a connection to start or end.
