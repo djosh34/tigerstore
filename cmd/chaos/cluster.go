@@ -38,15 +38,16 @@ type cluster struct {
 	clients [3]*link    // client to node i
 	peers   [3][3]*link // node i to node j
 	links   []*link
+	// routers take the peer connections to node j, at the one address
+	// every node's --initial-cluster gives node j, and hand each to the
+	// link of the node that dialed it (#283).
+	routers [3]*proxy.Router
 	tls     *tls.Config
 	ids     [3]uint64 // member ID of each node
 	// data are the nodes' data directories, and started, if set, runs for
 	// each process the cluster starts.
 	data    [3]string
 	started func(i, pid int) error
-	// peerPorts are the ports the nodes listen on for peers, past the
-	// proxies.
-	peerPorts [3]int
 }
 
 // node is one tigerstore process and its restarts.
@@ -118,7 +119,6 @@ func newCluster(dir, bin string, seed uint64, data [3]string, extra []string) (*
 			_ = ln.Close()
 		}
 	}()
-	defer func() { c.peerPorts = peerPort }()
 	for i := range 3 {
 		for _, port := range []*int{&clientPort[i], &peerPort[i]} {
 			ln, p, err := testport.Listen()
@@ -154,18 +154,26 @@ func newCluster(dir, bin string, seed uint64, data [3]string, extra []string) (*
 			}
 		}
 	}
-	for i := range 3 {
-		// Node i reaches node j at the proxy of link i to j, so its
-		// --initial-cluster differs from the other nodes' in the peer
-		// addresses. Raft IDs are positions in the list and match.
-		var members []string
-		for j := range 3 {
-			addr := fmt.Sprintf("127.0.0.1:%d", peerPort[j])
-			if j != i {
-				addr = c.peers[i][j].Proxy.Addr()
+	for j := range 3 {
+		r, err := proxy.Route("127.0.0.1:0", fmt.Sprintf("127.0.0.1:%d", peerPort[j]), func(conn *net.TCPConn) string {
+			if i := c.dialer(conn); i >= 0 && i != j {
+				return c.peers[i][j].Proxy.Addr()
 			}
-			members = append(members, fmt.Sprintf("node%d=https://%s", j+1, addr))
+			return ""
+		})
+		if err != nil {
+			return nil, errors.Join(err, c.closeProxies())
 		}
+		c.routers[j] = r
+	}
+	// Every node gets the same --initial-cluster, which names each node
+	// by its router, as a real cluster's names each node by its address:
+	// so they all compute one cluster ID from it (#283).
+	var members []string
+	for j := range 3 {
+		members = append(members, fmt.Sprintf("node%d=https://%s", j+1, c.routers[j].Addr()))
+	}
+	for i := range 3 {
 		name := fmt.Sprintf("node%d", i+1)
 		log, err := os.OpenFile(filepath.Join(dir, name+".log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
@@ -178,7 +186,7 @@ func newCluster(dir, bin string, seed uint64, data [3]string, extra []string) (*
 			"--name", name, "--data-dir", c.data[i],
 			"--initial-cluster", strings.Join(members, ","),
 			"--listen-peer-urls", fmt.Sprintf("https://127.0.0.1:%d", peerPort[i]),
-			"--initial-advertise-peer-urls", fmt.Sprintf("https://127.0.0.1:%d", peerPort[i]),
+			"--initial-advertise-peer-urls", "https://" + c.routers[i].Addr(),
 			"--listen-client-urls", fmt.Sprintf("https://127.0.0.1:%d", clientPort[i]),
 			"--advertise-client-urls", "https://" + c.clients[i].Proxy.Addr(),
 			"--cert-file", cert, "--key-file", key, "--trusted-ca-file", caFile, "--client-cert-auth",
@@ -198,10 +206,38 @@ func newCluster(dir, bin string, seed uint64, data [3]string, extra []string) (*
 
 func (c *cluster) closeProxies() error {
 	var errs []error
+	for _, r := range c.routers {
+		if r != nil {
+			errs = append(errs, r.Close())
+		}
+	}
 	for _, l := range c.links {
 		errs = append(errs, l.Proxy.Close())
 	}
 	return errors.Join(errs...)
+}
+
+// dialer is the node whose process dialed conn, a connection a router
+// took, or -1 for another process, such as a test's own probe.
+func (c *cluster) dialer(conn *net.TCPConn) int {
+	var pids []int
+	byPid := map[int]int{}
+	for i, n := range c.nodes {
+		if n == nil {
+			continue
+		}
+		n.mu.Lock()
+		if n.cmd != nil && n.cmd.Process != nil {
+			pids = append(pids, n.cmd.Process.Pid)
+			byPid[n.cmd.Process.Pid] = i
+		}
+		n.mu.Unlock()
+	}
+	pid, err := proxy.Dialer(conn, pids)
+	if err != nil {
+		return -1
+	}
+	return byPid[pid]
 }
 
 // start starts the process of n.

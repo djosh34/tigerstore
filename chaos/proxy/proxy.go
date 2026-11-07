@@ -2,7 +2,9 @@
 // Each link of a cluster (one client to one node, or one node to another)
 // gets its own Proxy. A Proxy relays the bytes of every connection it
 // accepts to one upstream address without terminating TLS, and applies
-// the one Fault installed with Set until the next Set.
+// the one Fault installed with Set until the next Set. The links into one
+// node can share an address through a Router, which passes each
+// connection on to the Proxy of the side that dialed it.
 //
 // Forward is the direction from the side that connected to the proxy to
 // the upstream; Backward is the reply direction. A seed fixes the random
