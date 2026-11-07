@@ -607,8 +607,10 @@ func mix(x uint64) uint64 {
 }
 
 // History returns every change to keys in [key, end) at main revision
-// from or later, in revision order. end follows Range: empty means only
-// key, "\x00" means every key from key on.
+// from or later, in revision order, all at once: for the simulator's
+// model and for tests. A node reads its history a piece at a time, from a
+// position (HistoryFrom). end follows Range: empty means only key, "\x00"
+// means every key from key on.
 func (s *Store) History(key, end []byte, from int64) []Change {
 	var out []Change
 	s.ascend(key, end, func(k *keyIndex) bool {
