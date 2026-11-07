@@ -124,3 +124,74 @@ func TestBigRevisionGoesInParts(t *testing.T) {
 		t.Fatalf("%d responses, the first with %d events", len(rs), len(rs[0].Events))
 	}
 }
+
+// TestPartsDoNotInterleave deletes 300 keys of 1 KiB at one revision for
+// two watchers with prev_kv on one stream: each gets the revision as a
+// response in parts, and no other response comes between the parts of
+// one, as a gRPC message takes nothing in its middle (#505).
+func TestPartsDoNotInterleave(t *testing.T) {
+	s := startSingleWith(t, simfs.New(), 1, func(c *Config) { c.PieceBytes = 32 << 10 })
+	for i := range 300 {
+		s.n.Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "k%03d", i), Value: make([]byte, 1024)}})
+	}
+	s.run()
+	for range 2 {
+		s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("k"), RangeEnd: []byte("l"), PrevKv: true}))
+	}
+	s.run()
+	s.responses()
+	if r := s.do(500, &pb.DeleteRangeRequest{Key: []byte("k"), RangeEnd: []byte("l")}); r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	open := int64(-1)
+	for i, p := range s.watch {
+		switch {
+		case open >= 0 && p.Resp.WatchId != open:
+			t.Fatalf("response %d, of watch %d, comes inside the response in parts of watch %d", i, p.Resp.WatchId, open)
+		case p.More:
+			open = p.Resp.WatchId
+		default:
+			open = -1
+		}
+	}
+	rs := s.responses()
+	if len(rs) != 2 || len(rs[0].Events) != 300 || len(rs[1].Events) != 300 {
+		t.Fatalf("%d responses for the two watchers", len(rs))
+	}
+}
+
+// TestPartsSizeTheirFilteredEvents writes a revision of 100 puts and 300
+// deletes with values of 1 KiB, for a watcher with prev_kv that filters
+// out deletes: its response in parts says the size of the events it
+// gets, not of every change.
+func TestPartsSizeTheirFilteredEvents(t *testing.T) {
+	s := startSingleWith(t, simfs.New(), 1, func(c *Config) { c.PieceBytes = 32 << 10 })
+	for i := range 300 {
+		s.n.Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "b%03d", i), Value: make([]byte, 1024)}})
+	}
+	s.run()
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("a"), RangeEnd: []byte("c"), PrevKv: true, Filters: []pb.WatchCreateRequest_FilterType{pb.WatchCreateRequest_NODELETE}}))
+	s.run()
+	s.responses()
+	// The deletes come after the puts, so the sizing walks over them.
+	txn := &pb.TxnRequest{}
+	for i := range 100 {
+		txn.Success = append(txn.Success, &pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: fmt.Appendf(nil, "a%03d", i), Value: make([]byte, 1024)}}})
+	}
+	txn.Success = append(txn.Success, &pb.RequestOp{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte("b"), RangeEnd: []byte("c")}}})
+	if r := s.do(500, txn); r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	var events int64
+	for _, p := range s.watch {
+		for _, ev := range p.Resp.Events {
+			if ev.Type == mvccpb.DELETE {
+				t.Fatal("a watcher with NODELETE got a delete")
+			}
+			events += int64(proto.Size(&pb.WatchResponse{Events: []*mvccpb.Event{ev}}))
+		}
+	}
+	if len(s.watch) < 2 || s.watch[0].EventBytes != events {
+		t.Fatalf("%d parts; the first says %d bytes of events, they take %d", len(s.watch), s.watch[0].EventBytes, events)
+	}
+}

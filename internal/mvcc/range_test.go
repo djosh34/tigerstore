@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"strings"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -334,5 +335,34 @@ func TestEventSize(t *testing.T) {
 				t.Fatalf("%s at %d, prev %v: sized %d, encoded %d", c.Key(), c.ModRev(), withPrev, got, want)
 			}
 		}
+	}
+}
+
+// TestTxnRangesShareTheRoom runs a Txn of sixteen ranges over values of
+// 1 KiB under a room of 32 KiB: the first reply's KeyValues, values
+// included, keep to the room between them, and the rest come as Rests.
+func TestTxnRangesShareTheRoom(t *testing.T) {
+	s := New(&Heap{})
+	for i := range 100 {
+		put(t, s, fmt.Sprintf("k%03d", i), strings.Repeat("v", 1024))
+	}
+	s.PieceBytes = 32 << 10
+	txn := &pb.TxnRequest{}
+	for range 16 {
+		txn.Success = append(txn.Success, &pb.RequestOp{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("k"), RangeEnd: []byte("l")}}})
+	}
+	resp, err := s.Txn(txn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	size := 0
+	for _, r := range resp.Responses {
+		size += proto.Size(&pb.RangeResponse{Kvs: r.GetResponseRange().Kvs})
+	}
+	if size > s.PieceBytes+2<<10 {
+		t.Fatalf("the first reply of sixteen ranges holds %d bytes of KeyValues, with a room of %d", size, s.PieceBytes)
+	}
+	if rests := s.TakeRests(); len(rests) != 16 {
+		t.Fatalf("%d of sixteen ranges have a Rest", len(rests))
 	}
 }

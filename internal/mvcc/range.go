@@ -218,7 +218,9 @@ func (w *writer) rangeMessage(r *pb.RangeRequest, total bool) (*pb.RangeResponse
 // keeps a Rest for msg if c reads more.
 func (w *writer) took(msg proto.Message, res *RangeResult, c *Cursor) {
 	for i := range res.KVs {
-		w.room -= res.KVs[i].FieldSize()
+		// The values are not filled yet: they count by their length.
+		kv := &res.KVs[i]
+		w.room -= 1 + protowire.SizeBytes(kv.Size(int(kv.ref.Len)))
 	}
 	if c != nil {
 		w.s.rests = append(w.s.rests, Rest{Msg: msg, N: res.N, Fields: res.Fields, Cursor: c})

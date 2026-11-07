@@ -173,9 +173,10 @@ const (
 var ErrWatchTooSlow = status.Error(codes.Unavailable, "tigerstore: watch stream fell too far behind")
 
 // ErrWatchBroken closes a watch stream in the middle of a response in
-// parts whose revision a compaction removed. The client resumes from the
-// last revision it got, which the compaction passed too.
-var ErrWatchBroken = status.Error(codes.Unavailable, "tigerstore: a compaction removed the revision a watch response was sending")
+// parts that cannot be finished: a compaction removed its revision, or
+// its watcher was cancelled. The client resumes from the last revision it
+// got.
+var ErrWatchBroken = status.Error(codes.Unavailable, "tigerstore: a watch response in parts could not be finished")
 
 // ErrSnapshotInstalled closes the watch streams of a node whose state a
 // snapshot replaced. Clients resume from the revision they reached.

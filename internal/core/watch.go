@@ -33,9 +33,9 @@ type WatchResponse struct {
 	EventBytes int64
 	More, Cont bool
 	Fragmented bool
-	// Broken says that a compaction passed the revision of a response
-	// in parts before its last part: the stream cannot finish its
-	// message, and the driver ends it.
+	// Broken says that the stream cannot finish a response in parts: a
+	// compaction passed its revision, or its watcher was cancelled,
+	// before its last part. The driver ends the stream.
 	Broken bool
 }
 
@@ -126,6 +126,11 @@ type watchStream struct {
 	// room and slots are the bytes and responses the stream may still
 	// take, as its driver last said (WatchRoom), less those sent since.
 	room, slots int64
+	// big is the watcher whose response in parts the stream is sending,
+	// and after the responses that wait for its last part: a gRPC message
+	// takes nothing else in its middle.
+	big   *watcher
+	after []heldWatch
 }
 
 // hasRoom reports whether the stream may take another response with
@@ -164,6 +169,25 @@ func (n *Node) watchPart(s *watchStream, resp WatchResponse, waits []*ValueRead,
 	n.counters.Events += int64(len(resp.Resp.Events))
 	s.room -= int64(events + replyBytes)
 	s.slots--
+	inParts := resp.More || resp.Cont
+	if s.big != nil && !inParts {
+		s.after = append(s.after, heldWatch{resp: resp, waits: waits})
+		return
+	}
+	n.queueWatch(s, resp, waits)
+	if inParts && !resp.More {
+		// The last part: what waited for it goes now, in order.
+		after := s.after
+		s.big, s.after = nil, nil
+		for _, h := range after {
+			n.queueWatch(s, h.resp, h.waits)
+		}
+	}
+}
+
+// queueWatch sends a response once the reads in waits are done and every
+// response before it went out.
+func (n *Node) queueWatch(s *watchStream, resp WatchResponse, waits []*ValueRead) {
 	waits = slices.DeleteFunc(waits, func(v *ValueRead) bool { return v.done })
 	if len(s.held) == 0 && len(waits) == 0 {
 		n.out.Watch = append(n.out.Watch, resp)
@@ -302,6 +326,13 @@ func (n *Node) removeWatch(w *watcher) {
 	w.dead = true
 	delete(w.stream.byID, w.id)
 	n.pruneWatchers()
+	if s := w.stream; s.big == w && n.streams[s.id] == s {
+		// Its response in parts is half out, and no other message can
+		// follow on the stream: the stream breaks, and its client
+		// resumes.
+		n.out.Watch = append(n.out.Watch, WatchResponse{Stream: s.id, Broken: true})
+		n.CloseWatchStream(s.id)
+	}
 }
 
 // pruneWatchers drops dead watchers once they are half of the list.
@@ -430,6 +461,18 @@ func (w *watcher) filters(ev *mvccpb.Event) bool {
 // of key, filters aside.
 func (w *watcher) takes(key []byte, rev int64) bool {
 	return rev >= w.start && mvcc.InRange(key, w.key, w.end)
+}
+
+// wants reports whether the watcher delivers change c, its filters
+// included, without building its event.
+func (w *watcher) wants(c mvcc.Change) bool {
+	if !w.takes(c.Key(), c.ModRev()) {
+		return false
+	}
+	if c.Deletes() {
+		return !w.noDelete
+	}
+	return !w.noPut
 }
 
 // matchWatches queues the changes of the write just applied for every
@@ -571,6 +614,10 @@ func (n *Node) catchUp() {
 		if w.dead || !w.behind || !w.stream.hasRoom() {
 			continue
 		}
+		if b := w.stream.big; b != nil && b != w {
+			// The stream sends another watcher's response in parts.
+			continue
+		}
 		if w.big != nil && w.big.pos < n.kv.HistoryStart() {
 			broken = append(broken, w.stream)
 			continue
@@ -629,7 +676,7 @@ func (n *Node) catchUpOne(w *watcher) {
 			revs, last, revStart, revSize = revs+1, r, stop, 0
 		}
 		scanned++
-		if !w.takes(c.Key(), c.ModRev()) {
+		if !w.wants(c) {
 			continue
 		}
 		es := c.EventSize(w.withPrev())
@@ -681,7 +728,7 @@ func (n *Node) catchUpOne(w *watcher) {
 func (n *Node) startBig(w *watcher, rev int64) {
 	b := &bigRevision{pos: w.next, end: n.kv.HistoryFrom(rev + 1)}
 	for pos := b.pos; pos < b.end; pos++ {
-		if c := n.kv.Changed(pos); w.takes(c.Key(), c.ModRev()) {
+		if c := n.kv.Changed(pos); w.wants(c) {
 			b.bytes += int64(c.EventSize(w.withPrev()))
 		}
 	}
@@ -720,6 +767,9 @@ func (n *Node) bigPart(w *watcher) {
 		part.Resp.Fragment, part.Fragmented, part.More, part.Cont = part.More, true, false, false
 	case !b.started:
 		part.EventBytes = b.bytes
+		if part.More {
+			w.stream.big = w
+		}
 	}
 	b.started = true
 	n.watchPart(w.stream, part, waits, bytes)

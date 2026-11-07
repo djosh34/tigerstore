@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/simfs"
+	"github.com/djosh34/tigerstore/internal/testmem"
 )
 
 // TestRevokeInSteps revokes a lease with 10,000 keys: each turn deletes at
@@ -104,5 +105,54 @@ func TestRevokeInSteps(t *testing.T) {
 	again := startSingle(t, disk.Copy(), 2)
 	if h := again.n.Hash(); h != hash {
 		t.Fatalf("a restart that replays the revoke has hash %x, want %x", h, hash)
+	}
+}
+
+// TestRevokePeakMemory revokes a lease of 50,000 keys with values of
+// 1 KiB, once by request and once by its expiry, beside a watcher of
+// those keys with prev_kv whose stream has room for 64 KiB. Built at once,
+// the watcher's 50,000 events with their previous values would take over
+// 50 MiB; in steps, with the watcher behind, the heap peaks at a few MiB
+// above what the revoke leaves, its tombstones in the index (#505).
+func TestRevokePeakMemory(t *testing.T) {
+	for _, expiry := range []bool{false, true} {
+		t.Run(map[bool]string{false: "request", true: "expiry"}[expiry], func(t *testing.T) {
+			s := startSingle(t, simfs.New(), 1)
+			if r := s.do(1, &pb.LeaseGrantRequest{ID: 7, TTL: 3}); r.Err != nil {
+				t.Fatal(r.Err)
+			}
+			for i := range 50_000 {
+				s.n.Submit(Request{ID: uint64(i + 2), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "k%05d", i), Value: make([]byte, 1024), Lease: 7}})
+				if i%1000 == 999 {
+					s.run()
+				}
+			}
+			s.run()
+			s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("k"), RangeEnd: []byte("l"), PrevKv: true}))
+			s.run()
+			s.responses()
+			s.room = 64 << 10
+			s.n.WatchRoom(1, s.room, 1<<20)
+			peak := testmem.Peak()
+			if expiry {
+				for range 100 {
+					if _, ok := s.n.state.leases[7]; !ok {
+						break
+					}
+					s.n.Tick()
+					s.run()
+				}
+			} else if r := s.do(60_000, &pb.LeaseRevokeRequest{ID: 7}); r.Err != nil {
+				t.Fatal(r.Err)
+			}
+			held, kept := peak()
+			if _, ok := s.n.state.leases[7]; ok {
+				t.Fatal("the lease is still there")
+			}
+			t.Logf("a revoke of 50,000 keys peaks at %d KiB, %d KiB above what it leaves", held>>10, (held-kept)>>10)
+			if held-kept > 4<<20 {
+				t.Fatalf("a revoke of 50,000 keys peaks at %d KiB above what it leaves", (held-kept)>>10)
+			}
+		})
 	}
 }
