@@ -32,9 +32,9 @@ on:
       reps:
         description: repetitions
         default: "5"
-      netem_egress:
-        description: diagnostic only, 1 restores the original egress netem, 0 uses ingress prototype
-        default: "1"
+      rcvbuf:
+        description: diagnostic only, TCP initial receive buffer in bytes (empty keeps host default)
+        default: ""
       layouts:
         description: extra max runs of the tigerstore refs in the put-1k and txn-1k jobs at the first RTT, tmpfs (all nodes on tmpfs, the CPU reference) and alone (followers on tmpfs), with the disk ceiling from diskbench
         default: tmpfs alone
@@ -135,15 +135,21 @@ jobs:
           REPS: ${{ inputs.reps || '5' }}
           LAYOUTS: ${{ (matrix.bench == 'put-1k' || matrix.bench == 'txn-1k') && inputs.layouts || '' }}
           BENCH: ${{ matrix.bench }}
-          DIAG524_EGRESS: ${{ inputs.netem_egress || '1' }}
+          DIAG524_RCVBUF: ${{ inputs.rcvbuf }}
         run: |
-          if [ "$BENCH" = diag-tcp ] || [ "$BENCH" = diag-preload ]; then
+          if [ -n "$DIAG524_RCVBUF" ]; then
+            old=$(sysctl -n net.ipv4.tcp_rmem)
+            sudo sysctl -w net.ipv4.tcp_rmem="$(awk -v n="$DIAG524_RCVBUF" '{$2=n; print}' <<<"$old")"
+          fi
+          if [ "$BENCH" = diag-tcp ] || [ "$BENCH" = diag-preload ] || [ "$BENCH" = diag-rcvbuf ]; then
             pkg=./internal/peer test=TestDiag524TLSBulk
-            if [ "$BENCH" = diag-preload ]; then pkg=./internal/server test=TestDiag524Preload; fi
+            if [ "$BENCH" != diag-tcp ]; then pkg=./internal/server test=TestDiag524Preload; fi
             mkdir -p results/diag-tcp
-            for mode in egress ingress egress-again; do
-              export DIAG524_EGRESS=1
-              if [ "$mode" = ingress ]; then export DIAG524_EGRESS=0; fi
+            original=$(sysctl -n net.ipv4.tcp_rmem)
+            for mode in default buffered default-again; do
+              setting=$original
+              if [ "$mode" = buffered ]; then setting=$(awk '{$2=1048576; print}' <<<"$original"); fi
+              sudo sysctl -w net.ipv4.tcp_rmem="$setting" | tee "results/diag-tcp/$mode-sysctl.txt"
               bench/netem.sh on 10
               bench/netem.sh probe | tee "results/diag-tcp/$mode-probe.txt"
               (while true; do date -u; ss -tinm '( sport = :20011 or dport = :20011 or sport = :20021 or dport = :20021 or sport = :20031 or dport = :20031 )'; sleep 1; done) >"results/diag-tcp/$mode-sockets.txt" &
@@ -154,6 +160,7 @@ jobs:
               bench/netem.sh show >"results/diag-tcp/$mode-netem.txt"
               bench/netem.sh off
             done
+            sudo sysctl -w net.ipv4.tcp_rmem="$original"
             exit 0
           fi
           if [ "$BENCH" = profile ]; then
@@ -198,9 +205,9 @@ jobs:
         run: |
           {
             cat results/runner.md
-            if [ "$BENCH" = diag-tcp ] || [ "$BENCH" = diag-preload ]; then
+            if [ "$BENCH" = diag-tcp ] || [ "$BENCH" = diag-preload ] || [ "$BENCH" = diag-rcvbuf ]; then
               echo '```'
-              cat results/diag-tcp/{egress,ingress,egress-again}.txt
+              cat results/diag-tcp/{default,buffered,default-again}.txt
               echo '```'
             elif [ "$BENCH" = profile ]; then
               cat results/profile/*.steps.md
