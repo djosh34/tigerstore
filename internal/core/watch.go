@@ -381,7 +381,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 	}
 	created.WatchId = id
 	n.watchReply(s, created, nil, 0)
-	if w.start <= rev {
+	if w.start <= rev || n.revoke != nil {
 		// Like etcd, a watch from below the compaction is canceled. A
 		// watch with prev_kv from the compaction revision itself is too:
 		// the versions before it are gone, and etcd would send its events
@@ -390,7 +390,9 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 			n.compacted(w, c)
 			return
 		}
-		// It catches up from the history (catchUp), a piece at a time.
+		// It catches up from the history (catchUp), a piece at a time;
+		// during a revoke in steps it does, too, as the revoke's revision
+		// is not whole yet.
 		w.behind, w.next = true, n.kv.HistoryFrom(w.start)
 	}
 	s.byID[id] = w
@@ -452,6 +454,12 @@ func (n *Node) matchWatches() {
 		var sizes [2]int
 		for _, w := range n.watchers {
 			if w.dead || w.behind || !w.takes(c.Key(), c.ModRev()) {
+				continue
+			}
+			if n.revoke != nil {
+				// A revoke in steps: its revision is not whole yet, so
+				// the watcher reads it from the history once it is.
+				n.fallBehind(w)
 				continue
 			}
 			if c.ModRev() != w.pendLast && len(w.pending) > 0 && (w.pendRevs >= catchUpRevs || w.pendBytes >= n.cfg.PieceBytes) {
@@ -658,7 +666,7 @@ func (n *Node) catchUpOne(w *watcher) {
 		n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id, Events: evs, Fragment: w.fragment && len(evs) > 1}, waits, bytes)
 		w.sent = true
 	}
-	if w.next == end {
+	if w.next == end && n.revoke == nil {
 		w.behind = false
 	}
 }
@@ -714,7 +722,7 @@ func (n *Node) bigPart(w *watcher) {
 	w.sent = true
 	if b.pos == b.end {
 		w.big, w.next = nil, b.end
-		if w.next == n.kv.HistoryEnd() {
+		if w.next == n.kv.HistoryEnd() && n.revoke == nil {
 			w.behind = false
 		}
 	}

@@ -146,7 +146,7 @@ func (w *writer) position(r *pb.RangeRequest) (rev, error) {
 	case !w.changed:
 		return at(cur), nil
 	}
-	return rev{main: w.begin + 1, sub: int64(len(w.s.changes))}, nil
+	return rev{main: w.begin + 1, sub: w.subs}, nil
 }
 
 // compacted reports whether a compaction removed versions a read at p may

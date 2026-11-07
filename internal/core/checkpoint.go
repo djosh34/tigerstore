@@ -258,7 +258,7 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 	h.rev, h.compact, h.stamps, h.base = sv(), sv(), sv(), sv()
 	n = uv()
 	for i := uint64(0); i < n && err == nil; i++ {
-		l := &lease{id: sv(), ttl: sv(), stamp: sv(), remaining: sv(), keys: map[string]struct{}{}}
+		l := &lease{id: sv(), ttl: sv(), stamp: sv(), remaining: sv(), keys: newLeaseKeys()}
 		h.leases = append(h.leases, l)
 	}
 	n = uv()
@@ -574,7 +574,7 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 	}
 	st.kv.EachLeased(func(key []byte, id int64) {
 		if l, ok := st.leases[id]; ok {
-			l.keys[string(key)] = struct{}{}
+			l.keys.ReplaceOrInsert(string(key))
 		}
 	})
 	st.leaseSum = st.sumLeases()
@@ -727,7 +727,7 @@ func (n *Node) releaseCompacts() {
 // at the applied index, when a copy under way held back the cut their
 // compaction asked for and no entry applied since, as on a quiet cluster.
 func (n *Node) cutForCompacts() {
-	if len(n.physical) == 0 || !n.cutDue || n.copy != nil || n.unwritten != 0 || n.paused != nil || n.err != nil {
+	if len(n.physical) == 0 || !n.cutDue || n.copy != nil || n.unwritten != 0 || n.applyWaits() || n.err != nil {
 		return
 	}
 	term, err := n.termAt(n.applied)

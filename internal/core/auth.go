@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -691,10 +690,13 @@ func (n *Node) leaseKeysAllowed(ai authInfo, id int64, write bool) error {
 	if l == nil {
 		return nil
 	}
-	for _, k := range slices.Sorted(maps.Keys(l.keys)) {
-		if err := a.permitted(ai, []byte(k), nil, write); err != nil {
-			return err
-		}
+	var err error
+	l.keys.Ascend(func(k string) bool {
+		err = a.permitted(ai, []byte(k), nil, write)
+		return err == nil
+	})
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -773,10 +775,13 @@ func (st *State) leaseAllowed(who authInfo, id int64) error {
 	if l == nil || st.auth.admin(&who) == nil {
 		return nil
 	}
-	for _, k := range slices.Sorted(maps.Keys(l.keys)) {
-		if err := st.auth.permitted(who, []byte(k), nil, true); err != nil {
-			return err
-		}
+	var err error
+	l.keys.Ascend(func(k string) bool {
+		err = st.auth.permitted(who, []byte(k), nil, true)
+		return err == nil
+	})
+	if err != nil {
+		return err
 	}
 	return nil
 }

@@ -166,7 +166,6 @@ const (
 	watchQueue = 4096
 )
 
-
 // ErrWatchTooSlow closes a watch stream whose queue filled anyway, which
 // the room the core keeps to should prevent. It is Unavailable because
 // clientv3 resumes watches after that code and gives up after most
@@ -1375,10 +1374,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			}
 			paced = pace.C
 		}
-		// A watcher that catches up with room for its next piece gets a
-		// turn at once.
+		// A watcher that catches up with room for its next piece, or a
+		// revoke's next step, gets a turn at once.
 		var produce <-chan time.Time
-		if n.core.CatchingUp() {
+		if n.core.Working() {
 			produce = copyNow
 		}
 		due := n.core.Due()

@@ -22,6 +22,9 @@ type writer struct {
 	s       *Store
 	begin   int64
 	changed bool
+	// subs counts the changes of the request so far: the next one's sub
+	// revision.
+	subs int64
 	// room is what the KeyValues of the request's answer may take; the
 	// rest of them come in pieces (TakeRests).
 	room int
@@ -51,7 +54,7 @@ func (w *writer) finish() {
 	if w.changed {
 		w.s.rev = w.begin + 1
 		if planted.On("B09a") {
-			w.s.rev = w.begin + int64(len(w.s.changes))
+			w.s.rev = w.begin + w.subs
 		}
 	}
 }
@@ -154,10 +157,11 @@ func (w *writer) latest(key []byte) (*keyIndex, *version) {
 }
 
 func (w *writer) add(k *keyIndex, v version) {
-	v.mod = rev{main: w.begin + 1, sub: int64(len(w.s.changes))}
+	v.mod = rev{main: w.begin + 1, sub: w.subs}
 	if planted.On("B09a") {
-		v.mod = rev{main: w.begin + 1 + int64(len(w.s.changes))}
+		v.mod = rev{main: w.begin + 1 + w.subs}
 	}
+	w.subs++
 	if n := len(k.vers); n > 0 && w.s.Replaced != nil {
 		if old := k.vers[n-1]; old.ver != 0 && old.value.Len > 0 && old.value != v.value {
 			w.s.Replaced(old.value)
@@ -287,23 +291,41 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 	return resp, nil
 }
 
-// DeleteKeys deletes keys, which are sorted, in one write at one
-// revision, as a lease revoke does (#432). As in etcd's lessor, each key
-// is a delete of its own in the counts, and the write counts as a
-// transaction when it has more than one; a key already gone is skipped.
-func (s *Store) DeleteKeys(keys []string) {
-	w := s.start()
+// Deletion deletes keys at one revision over several calls, as a lease
+// revoke of many keys does (#505). The store moves to the revision only
+// when it is done, so a read sees all of its deletes or none; nothing
+// else may write meanwhile. As in etcd's lessor, each key is a delete of
+// its own in the counts, and the write counts as a transaction when it
+// has more than one; a key already gone is skipped.
+type Deletion struct {
+	w *writer
+	n int
+}
+
+// StartDeletes starts a Deletion.
+func (s *Store) StartDeletes() *Deletion { return &Deletion{w: s.start()} }
+
+// Delete deletes keys, which are sorted and come after those of earlier
+// calls. Changes then returns the changes of this call alone.
+func (d *Deletion) Delete(keys []string) {
+	s := d.w.s
+	s.resetChanges()
 	for _, key := range keys {
 		if k, ok := s.get([]byte(key)); ok && k.vers[len(k.vers)-1].ver != 0 {
-			w.add(k, version{})
+			d.w.add(k, version{})
 			s.counts.Keys--
 		}
 	}
 	s.counts.Deletes += int64(len(keys))
-	if len(keys) > 1 {
-		s.counts.Txns++
+	d.n += len(keys)
+}
+
+// Finish moves the store to the Deletion's revision.
+func (d *Deletion) Finish() {
+	if d.n > 1 {
+		d.w.s.counts.Txns++
 	}
-	w.finish()
+	d.w.finish()
 }
 
 // Txn runs a transaction. Compares and checks read the state before the

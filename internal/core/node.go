@@ -589,12 +589,14 @@ type Node struct {
 	cold      map[*ValueRead]struct{}
 	watchRead *ValueRead
 	// applyQ holds Raft's apply messages not applied yet: while paused
-	// waits for values from the log, ordered apply waits with it. resume
-	// is the write that runs again after its read. readInline is set
-	// while the node starts: nothing else waits then, so a write reads
-	// the values it needs itself.
+	// waits for values from the log, or revoke takes its steps, ordered
+	// apply waits with it. resume is the write that runs again after its
+	// read, or the one after a revoke. readInline is set while the node
+	// starts: nothing else waits then, so a write reads the values it
+	// needs itself.
 	applyQ         []*raftpb.Message
 	paused, resume *pausedWrite
+	revoke         *revokeWrite
 	readInline     bool
 
 	// hashes are the hashes the last compactions took, oldest first.
@@ -817,6 +819,19 @@ func (n *Node) replay(commit uint64) (uint64, error) {
 		}
 		if err := n.apply([]*raftpb.Entry{e}); err != nil {
 			return 0, err
+		}
+		// A revoke in steps takes them all now; the entry then goes on
+		// from the write after it.
+		for n.revoke != nil {
+			if n.revokeStep(); n.err != nil {
+				return 0, n.err
+			}
+			if n.revoke == nil {
+				if err := n.apply([]*raftpb.Entry{e}); err != nil {
+					return 0, err
+				}
+				n.resume = nil
+			}
 		}
 	}
 	return term, nil
@@ -1839,7 +1854,12 @@ func (n *Node) Process() (Effects, error) {
 		}
 		n.proposeConfs()
 		n.proposeConfMessages()
-		// Apply messages left behind by a snapshot install.
+		// A revoke takes its next step, and ordered apply goes on behind
+		// it once it is done; then apply messages left behind by a
+		// snapshot install.
+		if n.revoke != nil {
+			n.revokeStep()
+		}
 		n.runApply()
 		n.requestReads()
 		n.drainReady()
@@ -2200,7 +2220,7 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 		if err := n.applyEntry(e); err != nil {
 			return fmt.Errorf("core: apply entry %d: %w", e.GetIndex(), err)
 		}
-		if n.paused != nil {
+		if n.applyWaits() {
 			return nil
 		}
 		n.applied = e.GetIndex()
@@ -2254,7 +2274,7 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 		start := t.Now()
 		n.timed = timedApply{}
 		err := n.applyWrite(e, k, origin, boot, id, kind, b, at)
-		if err == nil && n.paused == nil {
+		if err == nil && !n.applyWaits() {
 			t.Applied(n.timed.op, n.timed.err == nil || errors.Is(n.timed.err, rpctypes.ErrGRPCCompacted), t.Now()-start)
 		}
 		return err
@@ -2314,6 +2334,13 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 	}
 	room := n.quotaLeft(quotaCost(op))
 	resp, err := n.applyOp(op)
+	if errors.Is(err, errRevoking) {
+		// Ordered apply waits for the revoke's steps (revokeStep).
+		n.matchWatches()
+		r := n.revoke
+		r.index, r.write, r.p, r.room = e.GetIndex(), k, p, room
+		return errPaused
+	}
 	for {
 		cold, ok := errors.AsType[*mvcc.ColdError](err)
 		if !ok {
@@ -2409,6 +2436,17 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 		revoked = n.state.leases[op.ID]
 	}
 	resp, err := n.state.Apply(op)
+	if errors.Is(err, errRevoking) {
+		// The revoke goes on in steps (revokeStep), whose last ends here.
+		n.revoke = &revokeWrite{op: op, lease: revoked}
+		return nil, err
+	}
+	return n.afterApply(op, revoked, resp, err)
+}
+
+// afterApply does what follows an applied write: revoked is the lease
+// the write found, if it revokes one.
+func (n *Node) afterApply(op proto.Message, revoked *lease, resp proto.Message, err error) (proto.Message, error) {
 	if revoked != nil && n.state.leases[revoked.id] != revoked {
 		n.expiries.remove(revoked)
 		n.checkpoints.remove(revoked)

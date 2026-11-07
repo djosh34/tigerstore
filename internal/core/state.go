@@ -1,9 +1,9 @@
 package core
 
 import (
-	"bytes"
 	"cmp"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"maps"
@@ -14,6 +14,8 @@ import (
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/google/btree"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 )
@@ -31,8 +33,10 @@ const maxLeaseTTL = 9_000_000_000
 // last proposed the lease's expiry.
 type lease struct {
 	id, ttl int64
-	keys    map[string]struct{}
-	stamp   int64
+	// keys are the keys attached to the lease, in order, so that a revoke
+	// takes them a piece at a time.
+	keys  *btree.BTreeG[string]
+	stamp int64
 	// remaining is the remaining TTL in seconds the last checkpoint took,
 	// 0 for none (lease.go).
 	remaining int64
@@ -69,6 +73,9 @@ type State struct {
 	// every entry a simulated node applies, need not walk them.
 	leaseSum uint64
 	minTTL   int64
+	// revoking is the revoke whose keys go a piece at a time, if one is
+	// under way (RevokePiece).
+	revoking *revoking
 	// stamps counts grants and keepalives, to stamp leases.
 	stamps int64
 	// version is the cluster version, supports the newest version each
@@ -232,7 +239,7 @@ func (st *State) sumLeases() uint64 {
 // hash is a hash of the lease, with its key count.
 func (l *lease) hash() uint64 {
 	h := uint64(0xcbf29ce484222325)
-	for _, x := range []int64{l.id, l.ttl, l.stamp, l.remaining, int64(len(l.keys))} {
+	for _, x := range []int64{l.id, l.ttl, l.stamp, l.remaining, int64(l.keys.Len())} {
 		h = (h ^ uint64(x)) * 0x100000001b3
 		h ^= h >> 29
 	}
@@ -279,14 +286,14 @@ func (st *State) track() {
 		if id := c.PrevLease(); id != 0 {
 			if l, ok := st.leases[id]; ok {
 				st.leaseSum -= l.hash()
-				delete(l.keys, k)
+				l.keys.Delete(k)
 				st.leaseSum += l.hash()
 			}
 		}
 		if id := c.Lease(); id != 0 {
 			if l, ok := st.leases[id]; ok {
 				st.leaseSum -= l.hash()
-				l.keys[k] = struct{}{}
+				l.keys.ReplaceOrInsert(k)
 				st.leaseSum += l.hash()
 			}
 		}
@@ -408,30 +415,74 @@ func (st *State) grant(r *pb.LeaseGrantRequest) (proto.Message, error) {
 		return nil, rpctypes.ErrGRPCLeaseExist
 	}
 	st.stamps++
-	l := &lease{id: r.ID, ttl: max(r.TTL, st.minTTL), keys: map[string]struct{}{}, stamp: st.stamps}
+	l := &lease{id: r.ID, ttl: max(r.TTL, st.minTTL), keys: newLeaseKeys(), stamp: st.stamps}
 	st.leases[r.ID] = l
 	st.leaseSum += l.hash()
 	return &pb.LeaseGrantResponse{Header: header(st.kv.Rev()), ID: l.id, TTL: l.ttl}, nil
 }
 
-// revoke deletes the lease and every key attached to it in one write, so
-// the keys go at one revision. A lease without keys changes no revision.
+// newLeaseKeys is the empty set of a lease's keys.
+func newLeaseKeys() *btree.BTreeG[string] {
+	return btree.NewG(32, func(a, b string) bool { return a < b })
+}
+
+// revokeKeys is how many keys a revoke deletes in one step.
+const revokeKeys = 4096
+
+// errRevoking says that a revoke deleted a piece of its lease's keys and
+// goes on in the next step (RevokePiece).
+var errRevoking = errors.New("core: a revoke goes on")
+
+// revoking is a revoke under way: the lease and the deletion of its keys.
+type revoking struct {
+	lease *lease
+	del   *mvcc.Deletion
+}
+
+// revoke deletes the lease and every key attached to it, at one revision.
+// A lease without keys changes no revision. Up to revokeKeys of its keys
+// go at once; past that the revoke takes steps, and returns errRevoking
+// until the last (RevokePiece).
 func (st *State) revoke(id int64) (proto.Message, error) {
 	l, ok := st.leases[id]
 	if !ok {
 		return nil, rpctypes.ErrGRPCLeaseNotFound
 	}
-	keys := make([]string, 0, len(l.keys))
-	for k := range l.keys {
+	if l.keys.Len() == 0 {
+		st.leaseSum -= l.hash()
+		delete(st.leases, id)
+		return &pb.LeaseRevokeResponse{Header: header(st.kv.Rev())}, nil
+	}
+	st.revoking = &revoking{lease: l, del: st.kv.StartDeletes()}
+	return st.RevokePiece()
+}
+
+// RevokePiece deletes the next keys of the lease being revoked, up to
+// revokeKeys, and returns errRevoking while some are left. The last step
+// moves the store to the revoke's revision, removes the lease and
+// returns the response. Changes are those of the step.
+func (st *State) RevokePiece() (proto.Message, error) {
+	r := st.revoking
+	l := r.lease
+	keys := make([]string, 0, min(l.keys.Len(), revokeKeys))
+	l.keys.Ascend(func(k string) bool {
 		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	if len(keys) > 0 {
-		st.kv.DeleteKeys(keys)
-		st.track()
-	}
+		return len(keys) < revokeKeys
+	})
 	st.leaseSum -= l.hash()
-	delete(st.leases, id)
+	for _, k := range keys {
+		l.keys.Delete(k)
+	}
+	st.leaseSum += l.hash()
+	r.del.Delete(keys)
+	st.track()
+	if l.keys.Len() > 0 {
+		return nil, errRevoking
+	}
+	r.del.Finish()
+	st.revoking = nil
+	st.leaseSum -= l.hash()
+	delete(st.leases, l.id)
 	return &pb.LeaseRevokeResponse{Header: header(st.kv.Rev())}, nil
 }
 
@@ -449,10 +500,10 @@ func (st *State) timeToLive(r *pb.LeaseTimeToLiveRequest, remaining int64) *pb.L
 		resp.TTL = remaining
 	}
 	if r.Keys {
-		for k := range l.keys {
+		l.keys.Ascend(func(k string) bool {
 			resp.Keys = append(resp.Keys, []byte(k))
-		}
-		slices.SortFunc(resp.Keys, bytes.Compare)
+			return true
+		})
 	}
 	return resp
 }

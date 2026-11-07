@@ -42,6 +42,8 @@ type single struct {
 	// room, if set, is the room the test gives each watch stream itself
 	// (WatchRoom).
 	room int64
+	// afterTurn, if set, sees each turn's effects.
+	afterTurn func(Effects)
 }
 
 // newMember starts node 1 of peers on an empty simulated disk, without
@@ -128,6 +130,9 @@ func (s *single) run() []Reply {
 			s.t.Fatalf("node stopped: %v", err)
 		}
 		s.checkHash()
+		if s.afterTurn != nil {
+			s.afterTurn(eff)
+		}
 		out = append(out, eff.Replies...)
 		s.watch = append(s.watch, eff.Watch...)
 		if s.holdCkpt {
@@ -142,7 +147,7 @@ func (s *single) run() []Reply {
 				s.n.ValuesRead(r, r.Run())
 			}
 		}
-		if len(eff.Persist) == 0 && (!s.n.Copying() || s.holdCopy) && len(eff.Checkpoint) == 0 && (len(eff.Reads) == 0 || s.hold) && !s.n.CatchingUp() {
+		if len(eff.Persist) == 0 && (!s.n.Copying() || s.holdCopy) && len(eff.Checkpoint) == 0 && (len(eff.Reads) == 0 || s.hold) && !s.n.Working() {
 			return out
 		}
 		for _, j := range eff.Persist {
