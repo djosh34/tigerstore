@@ -8,16 +8,12 @@
 #   bench/netem.sh show
 #   bench/netem.sh off
 #
-# on puts a prio qdisc at the root of lo: packets to or from a peer port
-# (BENCH_PORT + 10 * n + 1 for nodes 1 to 3) go to band 2, a netem qdisc
-# that delays each packet by half the RTT; every other packet goes to band
-# 1, a plain FIFO. On lo both directions of a connection leave through the
-# same root, so a round trip between two nodes is delayed by the whole RTT.
-# The stores dial from ephemeral ports, so each packet matches one port.
-# The netem limit is high so the queue never drops at the bench's rates.
-# RTT 0 installs the same qdiscs with no delay, so every RTT has the same
-# path. probe prints the median TCP connect time, one round trip, to the
-# peer and the client port of node 2 while nothing else listens there.
+# Prototype for #524: delay at ingress, not at the sending socket's
+# egress. tc-netem(8) warns that egress netem interacts with TCP Small
+# Queues. Redirect only packets to/from peer ports into an IFB, so clients
+# stay undelayed. On lo both directions pass ingress, each delayed by half
+# the RTT. DIAG524_EGRESS=1 restores the original harness for comparison.
+# probe times a TCP connect to peer and client ports without a store.
 set -euo pipefail
 
 port=${BENCH_PORT:-20000}
@@ -26,7 +22,20 @@ case ${1:-} in
 on)
 	rtt=${2:?on needs an RTT in ms}
 	half=$(awk -v r="$rtt" 'BEGIN { printf "%.3fms", r / 2 }')
-	sudo tc qdisc del dev lo root 2>/dev/null || true
+	"$0" off
+	if [ "${DIAG524_EGRESS:-0}" != 1 ]; then
+		sudo modprobe ifb
+		sudo ip link add ifb524 type ifb
+		sudo ip link set ifb524 up
+		sudo tc qdisc add dev ifb524 root netem delay "$half" limit 1000000
+		sudo tc qdisc add dev lo clsact
+		for n in 1 2 3; do
+			for dir in dport sport; do
+				sudo tc filter add dev lo ingress protocol ip prio 1 u32 match ip "$dir" $((port + 10 * n + 1)) 0xffff action mirred egress redirect dev ifb524
+			done
+		done
+		exit 0
+	fi
 	sudo tc qdisc add dev lo root handle 1: prio bands 2 priomap 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 	sudo tc qdisc add dev lo parent 1:1 handle 10: pfifo limit 100000
 	sudo tc qdisc add dev lo parent 1:2 handle 20: netem delay "$half" limit 1000000
@@ -55,9 +64,13 @@ PY
 show)
 	sudo tc -s qdisc show dev lo
 	sudo tc filter show dev lo
+	sudo tc filter show dev lo ingress 2>/dev/null || true
+	sudo tc -s qdisc show dev ifb524 2>/dev/null || true
 	;;
 off)
 	sudo tc qdisc del dev lo root 2>/dev/null || true
+	sudo tc qdisc del dev lo clsact 2>/dev/null || true
+	sudo ip link del ifb524 2>/dev/null || true
 	;;
 *)
 	echo "usage: $0 on <rtt ms> | probe | show | off" >&2

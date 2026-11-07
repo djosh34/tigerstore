@@ -133,6 +133,23 @@ jobs:
           LAYOUTS: ${{ (matrix.bench == 'put-1k' || matrix.bench == 'txn-1k') && inputs.layouts || '' }}
           BENCH: ${{ matrix.bench }}
         run: |
+          if [ "$BENCH" = diag-tcp ]; then
+            mkdir -p results/diag-tcp
+            for mode in egress ingress egress-again; do
+              export DIAG524_EGRESS=1
+              if [ "$mode" = ingress ]; then export DIAG524_EGRESS=0; fi
+              bench/netem.sh on 10
+              bench/netem.sh probe | tee "results/diag-tcp/$mode-probe.txt"
+              (while true; do date -u; ss -tinm '( sport = :20021 or dport = :20021 )'; sleep 1; done) >"results/diag-tcp/$mode-sockets.txt" &
+              monitor=$!
+              DIAG524_NET=1 GOFLAGS=-p=2 go test ./internal/peer -run '^TestDiag524TLSBulk$' -v -count=1 -timeout=150s 2>&1 | tee "results/diag-tcp/$mode.txt" || true
+              kill "$monitor" || true
+              wait "$monitor" || true
+              bench/netem.sh show >"results/diag-tcp/$mode-netem.txt"
+              bench/netem.sh off
+            done
+            exit 0
+          fi
           if [ "$BENCH" = profile ]; then
             for wl in put txn range list; do
               TMPFS_DIR=/dev/shm/bench-profile bench/profile.sh bin/candidate "$wl" results/profile
@@ -175,7 +192,11 @@ jobs:
         run: |
           {
             cat results/runner.md
-            if [ "$BENCH" = profile ]; then
+            if [ "$BENCH" = diag-tcp ]; then
+              echo '```'
+              cat results/diag-tcp/{egress,ingress,egress-again}.txt
+              echo '```'
+            elif [ "$BENCH" = profile ]; then
               cat results/profile/*.steps.md
             elif [ "$BENCH" = etcd-tool ]; then
               echo '```'
