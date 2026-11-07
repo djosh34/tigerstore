@@ -169,9 +169,9 @@ func (r *Result) uniqueInLog(committed map[string][]int) (map[int]int, error) {
 		calls[string(b)] = append(calls[string(b)], i)
 	}
 	out := map[int]int{}
-	for b, calls := range calls {
-		if pos := committed[b]; len(calls) == 1 && len(pos) == 1 {
-			out[calls[0]] = pos[0]
+	for b, at := range calls {
+		if pos := committed[b]; len(at) == 1 && len(pos) == 1 {
+			out[at[0]] = pos[0]
 		}
 	}
 	return out, nil

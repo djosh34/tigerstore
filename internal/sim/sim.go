@@ -960,8 +960,10 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 		s.pages, s.chunks = &keptPages{pages: pages}, &keptPages{pages: chunks}
 	}
 	// The records of the calls and of the committed entries keep their
-	// older bytes on the runner's disk too (arena).
-	s.records.data.store, s.records.vals.bytes.store, s.log.data.store = s.chunks, s.chunks, s.chunks
+	// older bytes on the runner's disk too (arena). The values stay in
+	// memory: a value read from the disk is a copy of its own, and the
+	// Kubernetes load and the history share one copy of each (values).
+	s.records.data.store, s.log.data.store = s.chunks, s.chunks
 	for i := range count {
 		s.addNode(i, simfs.New())
 	}
