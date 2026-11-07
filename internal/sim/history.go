@@ -38,6 +38,11 @@ func (r *Result) Checkable() (*history.History, error) { return r.checkable(fals
 // and the checks need only the copy they get (#500). A report decodes it
 // again (history).
 func (r *Result) checkable(release bool) (*history.History, error) {
+	if release {
+		// Also when a call fails to convert: a report then decodes the
+		// whole history again, not what is left of it.
+		defer func() { r.History = nil }()
+	}
 	h := &history.History{Target: r.FinalRev}
 	committed, err := r.committed()
 	if err != nil {
@@ -87,9 +92,6 @@ func (r *Result) checkable(release bool) (*history.History, error) {
 			vs.shareResponse(op.Resp)
 		}
 		h.Ops = append(h.Ops, op)
-	}
-	if release {
-		r.History = nil
 	}
 	for _, m := range r.Log {
 		// A keepalive and a lease checkpoint change no key and no

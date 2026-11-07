@@ -59,13 +59,14 @@ jobs:
           [[ "$TEST" =~ ^Test[A-Za-z0-9_]+$ ]] || { echo "test $TEST is not the name of a test"; exit 1; }
           [[ "$SEEDS" =~ ^[1-9][0-9]*$ ]] || { echo "seeds $SEEDS is not a positive count"; exit 1; }
           [[ "$FIRST" =~ ^[0-9]+$ ]] || { echo "first $FIRST is not a seed"; exit 1; }
-          # The seeds of a process are as many as with up to 40 processes,
-          # so that a process of TestSeeds keeps its 2,500 seeds and the
-          # rules of a set of 2,000; four processes a job, every process
-          # but the last the same number of seeds.
-          procs=$(( (SEEDS + 1) / 2 ))
-          procs=$(( procs > 40 ? 40 : procs ))
-          per=$(( (SEEDS + procs - 1) / procs ))
+          # A process gets the seeds it got with two processes a job and
+          # at most 20 jobs, so that a process of TestSeeds keeps its 2,500
+          # seeds and the rules of a set of 2,000; four such processes
+          # make a job, every process but the last the same number of
+          # seeds.
+          jobs=$(( (SEEDS + 1) / 2 ))
+          jobs=$(( jobs > 20 ? 20 : jobs ))
+          per=$(( (SEEDS + 2 * jobs - 1) / (2 * jobs) ))
           jobs=$(( (SEEDS + 4 * per - 1) / (4 * per) ))
           echo "$jobs jobs, $per seeds a process"
           echo "shards=$(seq -s, 0 $((jobs - 1)) | sed 's/^/[/; s/$/]/')" >>"$GITHUB_OUTPUT"

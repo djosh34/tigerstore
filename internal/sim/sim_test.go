@@ -67,7 +67,7 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 	// An hour more than the run's length, which a run of hours needs.
 	simrun.BubbleFor(t, time.Duration(cfg.length())+time.Hour, func(*testing.T) { res, err = runInspect(cfg, inspect) })
 	if simrun.InGosim && res != nil {
-		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, hashes(res)))
+		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, runHashes(res)))
 		simrun.Artifact("hashes", []byte(strings.Join(hashLines, "\n")+"\n"))
 		// The driver's double runs keep both runs' files, for when they
 		// differ, once the seed's last simulation is over.
@@ -89,6 +89,15 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 		}
 	})
 	return res, err
+}
+
+// runHashes is the run's hashes, taken once (Result.hashed): the first
+// time comes before its checks, which drop a long run's history.
+func runHashes(res *Result) string {
+	if res.hashed == "" {
+		res.hashed = hashes(res)
+	}
+	return res.hashed
 }
 
 // hashLines are the hashes of each run of the test, in order.
@@ -189,7 +198,7 @@ func explainSim(t *testing.T, cfg Config, s *Sim) {
 	res.Trace = slices.Clone(s.trace)
 	s.mu.Unlock()
 	if simrun.InGosim {
-		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, hashes(res)))
+		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, runHashes(res)))
 		simrun.Artifact("hashes", []byte(strings.Join(hashLines, "\n")+"\n"))
 	}
 	explain(t, cfg, res)
@@ -211,7 +220,7 @@ func explain(t *testing.T, cfg Config, res *Result) {
 	res.History = history
 	t.Logf("trace of seed %d:\n%s", cfg.Seed, strings.Join(res.Trace, "\n"))
 	t.Logf("the nodes at the end of seed %d:\n%s", cfg.Seed, res.Report)
-	t.Logf("hashes of seed %d: %s", cfg.Seed, hashes(res))
+	t.Logf("hashes of seed %d: %s", cfg.Seed, runHashes(res))
 	save(t, cmd, res, true)
 	t.Logf("replay: %s", cmd)
 }
@@ -261,7 +270,7 @@ func runFiles(dir, cmd string, res *Result, history bool) map[string]string {
 		"nodes.txt":  res.Report,
 		"replay.txt": cmd + "\n",
 		"stats.txt":  fmt.Sprintf("%+v\n", res.Stats),
-		"hashes.txt": hashes(res) + "\n",
+		"hashes.txt": runHashes(res) + "\n",
 	}
 	if simrun.WallLimitPassed() {
 		// The run took too long: where each goroutine was, the nodes'
@@ -544,7 +553,11 @@ var (
 // check on a run.
 func independent(res *Result) error {
 	// A long run's checks drop its history as they convert it: they need
-	// only their own copy, and a report decodes it again (#500).
+	// only their own copy, and a report decodes it again (#500). Its
+	// hashes, which cover the history, are taken before.
+	if res.long {
+		runHashes(res)
+	}
 	h, err := res.checkable(res.long)
 	if err != nil {
 		return err

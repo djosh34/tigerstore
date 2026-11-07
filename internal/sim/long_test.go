@@ -8,6 +8,8 @@ import (
 	"slices"
 	"testing"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/simrun"
 	"github.com/djosh34/tigerstore/internal/wal"
@@ -138,5 +140,57 @@ func TestCheckableReleasing(t *testing.T) {
 	}
 	if res.History != nil {
 		t.Errorf("the run still holds %d calls", len(res.History))
+	}
+}
+
+// TestDroppedHistoryOnError checks that checks that drop a run's history
+// as they convert it drop all of it when a call fails to convert, so a
+// report decodes the whole history again rather than what is left.
+func TestDroppedHistoryOnError(t *testing.T) {
+	res := run(t, DefaultConfig(1))
+	n := len(res.History)
+	// A sort order on a range etcd's history model refuses.
+	res.History = append(res.History, &Record{req: &pb.RangeRequest{Key: []byte("k"), SortOrder: pb.RangeRequest_ASCEND}})
+	if _, err := res.checkable(true); err == nil {
+		t.Fatal("a call that cannot convert converted")
+	}
+	if res.History != nil {
+		t.Fatalf("after the error the run holds %d calls", len(res.History))
+	}
+	history, err := res.history()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != n || slices.Contains(history, nil) {
+		t.Errorf("the history decoded again holds %d calls, want %d, none nil", len(history), n)
+	}
+}
+
+// TestHistoryChunkErr checks that a history decoded again for a report
+// returns the error of a chunk on the runner's disk that failed to read.
+func TestHistoryChunkErr(t *testing.T) {
+	res := run(t, DefaultConfig(1))
+	res.History = nil
+	errGone := errors.New("the runner's disk is gone")
+	res.chunks.err = errGone
+	if _, err := res.history(); !errors.Is(err, errGone) {
+		t.Errorf("decoding again gave %v, want %v", err, errGone)
+	}
+}
+
+// TestLongRunHashes checks that a long run's hashes, which cover its
+// history, are the same after its checks dropped the history.
+func TestLongRunHashes(t *testing.T) {
+	res := run(t, DefaultConfig(1))
+	want := hashes(res)
+	res.long = true
+	if err := independent(res); err != nil {
+		t.Fatal(err)
+	}
+	if res.History != nil {
+		t.Fatal("the checks of a long run kept its history")
+	}
+	if got := runHashes(res); got != want {
+		t.Errorf("after the checks the hashes are %s, want %s", got, want)
 	}
 }

@@ -733,8 +733,12 @@ type Result struct {
 	LoadCPU time.Duration
 	// records is the run's record of its calls, from which History was
 	// decoded: a long run's checks drop History once they have their own
-	// copy, and a report decodes it again (history).
+	// copy, and a report decodes it again (history). chunks is where
+	// records keeps its older bytes.
 	records *recordLog
+	chunks  *keptPages
+	// hashed is the run's hashes, taken before its checks (hashes).
+	hashed string
 }
 
 // history returns the run's calls: History, decoded again from the
@@ -746,6 +750,11 @@ func (r *Result) history() ([]*Record, error) {
 	var history []*Record
 	var err error
 	simrun.Aside(func() { history, err = r.records.records() })
+	if r.chunks != nil && r.chunks.err != nil {
+		// A chunk on the runner's disk that failed to read decoded as
+		// zeros.
+		err = errors.Join(err, fmt.Errorf("the history's chunks on the runner's disk: %w", r.chunks.err))
+	}
 	return history, err
 }
 
@@ -815,7 +824,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.History, res.Stats, res.Silences = history, s.stats, s.silences
 	res.HeldAppendAt, res.SteppedDownAt = s.heldAppendAt, s.steppedDownAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
-	res.nodes, res.values, res.stacks, res.records = s.nodes, s.values, s.wallStacks, s.records
+	res.nodes, res.values, res.stacks, res.records, res.chunks = s.nodes, s.values, s.wallStacks, s.records, s.chunks
 	res.LoadCPU = s.loadCPU
 	s.mu.Unlock()
 	if err == nil {
