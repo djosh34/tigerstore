@@ -80,14 +80,27 @@ func kubernetesLoad(t *testing.T, long bool, n int) {
 		st := res.Stats
 		// A compaction whose answer a fault lost is often in the log.
 		compactions, pages, answers := 0, 0, 0
+		firstPages, firstMore, laterCalls, maxCount := 0, 0, 0, int64(0)
 		for _, op := range res.Log {
 			if _, ok := op.(*pb.CompactionRequest); ok {
 				compactions++
 			}
 		}
 		for _, r := range res.History {
-			if req, ok := r.req.(*pb.RangeRequest); ok && r.Err == nil && req.Limit > 0 && req.Revision > 0 {
-				pages++
+			if req, ok := r.req.(*pb.RangeRequest); ok && req.Limit > 0 {
+				if req.Revision > 0 {
+					laterCalls++
+					if r.Err == nil {
+						pages++
+					}
+				} else if r.Err == nil {
+					resp := r.Resp.(*pb.RangeResponse)
+					firstPages++
+					maxCount = max(maxCount, resp.Count)
+					if resp.More {
+						firstMore++
+					}
+				}
 			}
 		}
 		for _, w := range res.Watches {
@@ -97,6 +110,7 @@ func kubernetesLoad(t *testing.T, long bool, n int) {
 				}
 			}
 		}
+		t.Logf("LIST coverage: limit %d, %d successful first pages, %d with More, largest count %d, %d later calls, %d successful later pages", (&Sim{cfg: kubeConfig(seed, long)}).listPage(), firstPages, firstMore, maxCount, laterCalls, pages)
 		// The checkers drop a long run's history, so they come after the
 		// counts.
 		checkers(t, res)
