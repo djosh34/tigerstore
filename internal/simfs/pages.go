@@ -4,8 +4,8 @@ package simfs
 // blocks that every disk and image with those bytes shares: a crash image,
 // a copy of the disk and the disk itself hold the same blocks until one of
 // them changes a page, which then gets a block of its own. A disk with a
-// Store moves the synced pages of its large files there, out of memory
-// (#479).
+// Store keeps every synced page there, out of memory, behind a cache of
+// its newest synced pages (#479, #500).
 
 // block is one page of bytes. It holds no pointers, so the collector
 // never scans it.
@@ -22,12 +22,16 @@ type Store interface {
 	Get(off int64, p []byte) error
 }
 
-// storage is a disk's Store, shared with its copies: the size from which
-// a file's synced pages go there, and the first error the Store gave.
+// storage is a disk's Store, shared with its copies, and its cache: the
+// synced pages that keep their bytes in memory, at most max, the newest.
+// A page leaves the cache for the Store when max newer ones came in after
+// it (keep). err is the first error the Store gave.
 type storage struct {
 	store Store
-	from  int
 	err   error
+	cache []*page
+	next  int
+	max   int
 }
 
 // fail keeps the first error of the Store.
@@ -37,32 +41,59 @@ func (st *storage) fail(err error) {
 	}
 }
 
+// keep puts pg in the cache, and moves the page it takes the place of, if
+// any, to the Store. A dead page goes nowhere: no file or image holds it.
+func (st *storage) keep(pg *page) {
+	pg.cached = true
+	if len(st.cache) < st.max {
+		st.cache = append(st.cache, pg)
+		return
+	}
+	old := pg
+	if st.max > 0 {
+		old, st.cache[st.next] = st.cache[st.next], pg
+		st.next = (st.next + 1) % st.max
+	}
+	if old.dead || old.b == nil || st.err != nil {
+		return
+	}
+	at, err := st.store.Put(old, old.b[:])
+	if err != nil {
+		st.fail(err)
+		return
+	}
+	old.b, old.at = nil, at
+}
+
 // page is one page of a file's content, in memory or, once b is nil, in
-// the Store at at.
+// the Store at at. cached is set once it went into its storage's cache,
+// and dead once the one file that held it let go of it.
 type page struct {
-	b  *block
-	at int64
+	b      *block
+	at     int64
+	cached bool
+	dead   bool
 }
 
 // pages is a file's content: size bytes, page i in blocks[i], or zeros
 // where the page is nil or past the list. owned says which pages no other
 // pages share and are in memory, which a change may make in place; any
 // other page is never changed again, and a change goes to a new one. The
-// pages below stored are in the Store, if st has one: a new page below it
-// lowers it, so that the next spill stores that page too.
+// pages below cached went into the cache, if st has one: a new page below
+// it lowers it, so that the next sync or crash keeps that page too.
 type pages struct {
 	blocks []*page
 	owned  []bool
 	size   int
 	st     *storage
-	stored int
+	cached int
 }
 
 // share returns a copy of p that shares its pages, which neither then
 // changes in place.
 func (p *pages) share() pages {
 	clear(p.owned)
-	return pages{blocks: append([]*page(nil), p.blocks...), size: p.size, st: p.st, stored: p.stored}
+	return pages{blocks: append([]*page(nil), p.blocks...), size: p.size, st: p.st, cached: p.cached}
 }
 
 // get returns page i for reading, nil for zeros, read into scratch if it
@@ -85,16 +116,26 @@ func (p *pages) get(i int, scratch *[]byte) []byte {
 	return *scratch
 }
 
-// own returns page i for a change, a new block if it has none, shares it
-// or keeps it in the Store, and grows the list to hold it.
-func (p *pages) own(i int) *block {
+// replace makes pg page i, as a page p owns, and lets go of the page
+// there: dead if p alone held it.
+func (p *pages) replace(i int, pg *page) {
 	for len(p.blocks) <= i {
 		p.blocks = append(p.blocks, nil)
 	}
 	for len(p.owned) <= i {
 		p.owned = append(p.owned, false)
 	}
-	if p.owned[i] {
+	if old := p.blocks[i]; old != nil && p.owned[i] {
+		old.dead, old.b = true, nil
+	}
+	p.blocks[i], p.owned[i] = pg, true
+	p.cached = min(p.cached, i)
+}
+
+// own returns page i for a change, a new block if it has none, shares it
+// or keeps it in the Store, and grows the list to hold it.
+func (p *pages) own(i int) *block {
+	if i < len(p.owned) && p.owned[i] && p.blocks[i].b != nil {
 		return p.blocks[i].b
 	}
 	b := new(block)
@@ -102,22 +143,12 @@ func (p *pages) own(i int) *block {
 	if old := p.get(i, &scratch); old != nil {
 		copy(b[:], old)
 	}
-	p.blocks[i], p.owned[i] = &page{b: b}, true
-	p.stored = min(p.stored, i)
+	p.replace(i, &page{b: b})
 	return b
 }
 
 // set makes b page i, as a block p owns: b must be no one else's.
-func (p *pages) set(i int, b *block) {
-	for len(p.blocks) <= i {
-		p.blocks = append(p.blocks, nil)
-	}
-	for len(p.owned) <= i {
-		p.owned = append(p.owned, false)
-	}
-	p.blocks[i], p.owned[i] = &page{b: b}, true
-	p.stored = min(p.stored, i)
-}
+func (p *pages) set(i int, b *block) { p.replace(i, &page{b: b}) }
 
 // read fills dst with the bytes at off, zeros past size.
 func (p *pages) read(dst []byte, off int) {
@@ -167,37 +198,31 @@ func (p *pages) cut(size int) {
 		clear(p.own(size / PageBytes)[at:])
 	}
 	n := min(len(p.blocks), pageCount(size))
+	for i := n; i < len(p.blocks); i++ {
+		if old := p.blocks[i]; old != nil && i < len(p.owned) && p.owned[i] {
+			old.dead, old.b = true, nil
+		}
+	}
 	clear(p.blocks[n:])
 	p.blocks = p.blocks[:n]
 	p.owned = p.owned[:min(len(p.owned), n)]
-	p.stored = min(p.stored, n)
+	p.cached = min(p.cached, n)
 	p.size = size
 }
 
-// spill moves the pages of a file of at least the Store's size there,
-// all but the last, which takes the next writes.
-func (p *pages) spill() {
+// keep puts the file's synced pages that came since the last time into
+// the cache, which moves older ones to the Store.
+func (p *pages) keep() {
 	st := p.st
-	if st == nil || st.store == nil || st.err != nil || p.size < st.from {
+	if st == nil || st.store == nil {
 		return
 	}
-	last := pageCount(p.size) - 1
-	for i := p.stored; i < min(last, len(p.blocks)); i++ {
-		pg := p.blocks[i]
-		if pg == nil || pg.b == nil {
-			continue
-		}
-		at, err := st.store.Put(pg, pg.b[:])
-		if err != nil {
-			st.fail(err)
-			return
-		}
-		pg.b, pg.at = nil, at
-		if i < len(p.owned) {
-			p.owned[i] = false
+	for i := p.cached; i < len(p.blocks); i++ {
+		if pg := p.blocks[i]; pg != nil && pg.b != nil && !pg.cached {
+			st.keep(pg)
 		}
 	}
-	p.stored = max(p.stored, last)
+	p.cached = len(p.blocks)
 }
 
 // pageCount is how many pages size bytes take.
