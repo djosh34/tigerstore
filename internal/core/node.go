@@ -545,9 +545,9 @@ type Node struct {
 	nextReadCtx  uint64
 
 	// cutDue makes the next applied entry cut a checkpoint, once no copy
-	// is under way: a compaction applied. physical are the answers of
-	// physical compactions that wait for a durable checkpoint, oldest
-	// first.
+	// is under way: enough entries or a compaction applied since the last
+	// cut (maybeCheckpoint). physical are the answers of physical
+	// compactions that wait for a durable checkpoint, oldest first.
 	cutDue   bool
 	physical []heldCompact
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"runtime"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -108,5 +109,49 @@ func TestCheckpointLoadsEveryKeyItTakes(t *testing.T) {
 	}
 	if err := CheckPutOp(&PutOp{Key: make([]byte, MaxKeyBytes+1)}); !errors.Is(err, rpctypes.ErrGRPCRequestTooLarge) {
 		t.Fatalf("a put of a key of MaxKeyBytes+1 bytes: %v, want %v", err, rpctypes.ErrGRPCRequestTooLarge)
+	}
+}
+
+// TestCheckpointChunkOfAHotKey copies a key with 20,000 versions in
+// chunks of 1 KiB: each chunk stops inside the key's versions, the chunks
+// load as one checkpoint, and a walk of the refs holds no list of the
+// versions (#435).
+func TestCheckpointChunkOfAHotKey(t *testing.T) {
+	s := New(&Heap{})
+	for range 20_000 {
+		if _, err := s.Put(&pb.PutRequest{Key: []byte("hot"), Value: []byte("v")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Freeze()
+	var all []byte
+	for done := false; !done; {
+		var b []byte
+		b, _, done = s.CopyFrozen(nil, 1024)
+		if len(b) > 1024+64 {
+			t.Fatalf("a chunk with a limit of 1 KiB holds %d bytes", len(b))
+		}
+		all = append(all, b...)
+	}
+	loaded := New(&Heap{})
+	if _, err := loaded.Load(bufio.NewReader(bytes.NewReader(all)), s.Rev(), s.CompactRev()); err != nil {
+		t.Fatal(err)
+	}
+	if k, ok := loaded.get([]byte("hot")); !ok || len(k.vers) != 20_000 {
+		t.Fatalf("the loaded checkpoint lost versions of the hot key")
+	}
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	refs := 0
+	if err := WalkRefs(bufio.NewReader(bytes.NewReader(all)), func(Ref) error { refs++; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	runtime.ReadMemStats(&after)
+	if refs != 20_000 {
+		t.Fatalf("the walk visited %d refs, want 20000", refs)
+	}
+	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > 64<<10 {
+		t.Fatalf("a walk of the refs of one key with 20,000 versions allocated %d bytes", alloc)
 	}
 }
