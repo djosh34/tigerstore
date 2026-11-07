@@ -25,8 +25,10 @@ import (
 // (failsUnplanted), so that the failure is the bug's. want names the
 // checks expected to catch it, the assertions the semantics pre-work on
 // #47 names; another check counts too and is logged, as a schedule that
-// moves can reach another check first (#537). A crash is no catch. extra
-// adds an assertion of the case's own. With witness, the witness checker in
+// moves can reach another check first (#537). A failure that decides
+// nothing about the run, a crash, a stop for lack of real time or a
+// witness search that ran out (decides), is no catch and fails the test.
+// extra adds an assertion of the case's own. With witness, the witness checker in
 // both modes must fail the same seed's history on its own too: Porcupine
 // cannot check the full runs (#112). Each cfg also runs in the plain
 // tests (TestSeeds, TestStalledLeaderIsReplaced), where it must pass.
@@ -267,6 +269,8 @@ func TestPlanted(t *testing.T) {
 			return plantedRun{}
 		case control:
 			return plantedRun{Finding: err.Error()}
+		case !decides(err):
+			t.Fatalf("seed %d of %s failed without a finding about the run, which catches nothing: %v", seed, name, err)
 		case openBugs.MatchString(err.Error()) && !want.MatchString(err.Error()):
 			t.Logf("seed %d of %s hit an open bug instead, #357 or #361, and catches nothing: %v", seed, name, err)
 			return plantedRun{}
