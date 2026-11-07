@@ -210,9 +210,9 @@ tigerstore answers as etcd v3.7.2 does except for these points, from [Research: 
 - `Hash` and `HashKV` count the versions etcd counts, but their numbers are not etcd's for the same data; the members of one cluster still compare with each other.
 - A lease keepalive is a Raft write: it needs a quorum and takes a round trip more than etcd's, which renews on the leader alone.
 - `LeaseLeases` and `LeaseTimeToLive` are linearizable reads, and on a follower `LeaseTimeToLive` reports the granted TTL, not the time left.
-- A watch stream closes with `Unavailable` when its client falls 4,096 responses or 64 MiB behind, when the node is short of memory, or when it installs a snapshot; etcd keeps slow watchers waiting. clientv3 and kube-apiserver resume the watch.
+- A slow watch client holds back its own stream only: its watchers fall behind and catch up from the node's history once it reads again, as etcd's do. A stream closes with `Unavailable` when its node installs a snapshot, or when a compaction removes the revision of a large response it is sending in parts; clientv3 and kube-apiserver resume the watch.
 - A watch with `prev_kv` from the compaction revision is canceled with that revision; etcd sends the events at it without their previous values, which kube-apiserver rejects.
-- A Range whose answer exceeds the memory budget is refused with `ResourceExhausted`; a smaller limit pages it.
+- A large Range, Txn or DeleteRange answer goes out a piece at a time as the client takes it, uncompressed. A Range sorted by value whose values exceed the memory budget is refused with `ResourceExhausted`.
 - The request size limit counts a 10-byte request ID, so a write a few bytes below `--max-request-bytes` can be refused where etcd takes it.
 - `--max-request-bytes` above 67,106,816 bytes (64 MiB less 2 KiB) is refused at startup: a write travels in one peer frame and one log record of at most 64 MiB.
 - `Status.dbSize`, `dbSizeInUse`, `etcd_mvcc_db_total_size_in_bytes` and `etcd_mvcc_db_total_size_in_use_in_bytes` are the size the quota compares, an estimate of etcd's database for the versions kept, so they are equal and `etcdctl endpoint status` shows no fragmentation. The log's own size is `tigerstore_disk_bytes`, with its budget in `tigerstore_disk_budget_bytes`. A compaction frees quota without a defragmentation.

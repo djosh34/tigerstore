@@ -37,8 +37,9 @@ type Counters struct {
 	// HeartbeatSendFailures the heartbeats a stalled leader dropped
 	// (Node.stalled), etcd's etcd_server_heartbeat_send_failures_total.
 	SlowCommits, HeartbeatSendFailures int64
-	// Events counts the watch events this node sent.
-	Events int64
+	// Events counts the watch events this node sent, and FellBehind the
+	// times a watcher fell behind because its stream had no room.
+	Events, FellBehind int64
 	// AlarmGauges is etcd_debugging_server_alarms as etcd keeps it: each
 	// alarm activation applied adds one, even of an active alarm, and
 	// each deactivation of an active one takes one away. Alarms that were

@@ -535,6 +535,7 @@ func (w *watcher) clearPending() {
 // fallBehind drops a watcher's queued events: it reads them, and what
 // follows, from the history once its stream has room.
 func (n *Node) fallBehind(w *watcher) {
+	n.counters.FellBehind++
 	if len(w.pending) > 0 {
 		w.next = w.pendFrom
 	} else {
@@ -543,6 +544,9 @@ func (n *Node) fallBehind(w *watcher) {
 	w.behind = true
 	w.clearPending()
 }
+
+// FellBehind counts the times a watcher fell behind, as Metrics does.
+func (n *Node) FellBehind() int64 { return n.counters.FellBehind }
 
 // CatchingUp reports whether a watcher that is behind has room to take
 // its next piece, so the driver gives the node another turn at once.

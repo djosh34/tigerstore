@@ -946,7 +946,7 @@ func faultCases() []faultCase {
 		// A stall past the write timeout, one in four, on a link that
 		// carries something.
 		{"write deadline", Faults{LinkStallEvery: 300 * Millisecond}, longer, func(st Stats) int { return st.WriteTimeouts }},
-		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.WatchersCut }},
+		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.WatchersBehind }},
 	}
 	for i := range numNetem {
 		k := netemKind(i)
