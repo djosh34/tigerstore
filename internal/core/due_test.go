@@ -17,8 +17,10 @@ type dueDriver struct {
 	// core was given last and the tick its next is due.
 	now        int64
 	last, wake [3]int64
-	// woken counts the cores that woke because a tick was due.
-	woken [3]int
+	// woken counts the cores that woke because a tick was due, and
+	// campaigned is the first tick any core asked for a vote at, or 0.
+	woken      [3]int
+	campaigned int64
 }
 
 // newDueDriver starts the cores. Each wakes at the first tick, as a core
@@ -63,6 +65,11 @@ func (d *dueDriver) tick() {
 				d.t.Fatal(err)
 			}
 			msgs = append(msgs, eff.Send...)
+			for _, m := range eff.Send {
+				if t := m.GetType(); d.campaigned == 0 && (t == raftpb.MsgPreVote || t == raftpb.MsgVote) {
+					d.campaigned = d.now
+				}
+			}
 			if len(eff.Persist) == 0 {
 				break
 			}
@@ -115,15 +122,23 @@ func TestDueHoldsTicks(t *testing.T) {
 			t.Errorf("follower %d woke %d times for a tick while it heard from its leader", i+1, woken)
 		}
 	}
-	// Raft draws each node's timeout at random, so two candidates can
-	// split the vote and draw again; 20 timeouts leave room for that.
+	// A follower campaigns once its timeout passes, which Raft draws below
+	// twice ElectionTicks. Two candidates can split the vote and draw
+	// again, so a new leader gets 20 timeouts.
 	d.c.down[lead] = true
-	limit := 20 * DefaultConfig(1, nil).ElectionTicks
+	downAt, election := d.now, int64(DefaultConfig(1, nil).ElectionTicks)
+	d.campaigned = 0
+	limit := 20 * election
 	for range limit {
 		if l := d.c.leader(); l >= 0 && l != lead {
-			return
+			break
 		}
 		d.tick()
 	}
-	t.Fatalf("no new leader %d ticks after leader %d went down: %s", limit, lead+1, d.c.describe())
+	if l := d.c.leader(); l < 0 || l == lead {
+		t.Fatalf("no new leader %d ticks after leader %d went down: %s", limit, lead+1, d.c.describe())
+	}
+	if d.campaigned == 0 || d.campaigned-downAt > 2*election {
+		t.Fatalf("the first campaign came at tick %d, %d ticks after leader %d went down; Raft's largest timeout is %d", d.campaigned, d.campaigned-downAt, lead+1, 2*election-1)
+	}
 }

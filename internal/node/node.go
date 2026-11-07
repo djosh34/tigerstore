@@ -1114,81 +1114,30 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	streams := map[uint64]*WatchStream{}
 	var term uint64 // the term logged last
 	// The core's time-based work runs on deadlines (core.Node.Due): the
-	// committer wakes when the next tick with work is due, at wakeAt, or
-	// when something happens, and then gives the core the ticks of wall
-	// time that passed (tick). clock is the ticks the core has had, by
-	// Tick or Elapse, and measured the tick of the last measure of memory.
-	started, clock, measured := time.Now(), int64(0), int64(0)
+	// committer wakes when the next tick with work is due, or when
+	// something happens, and then hands the core the ticks of wall time
+	// that passed (tickClock). measured is the tick of the last measure of
+	// memory.
+	started, measured := time.Now(), int64(0)
+	clock := tickClock{due: 1}
 	wake := time.NewTimer(n.cfg.Tick)
 	defer wake.Stop()
-	wakeAt := int64(1)
-	// tick gives the core the ticks of wall time up to now, at most most
-	// of them as Ticks, entered being the tick at which the committer last
-	// began to wait and ran the tick from which it could have run again: a
-	// queued input's or the due tick (wakeAt). A ticker that drops ticks
-	// is the model. Raft takes no burst of ticks from a committer that was
-	// late, by its own work or for a CPU to run on, and requests still
-	// time out by the wall clock (Elapse). The ticks it waited are Ticks
-	// up to ran, as if each had come on time; of those after, as of those
-	// that passed while it was busy, only one is, as a ticker holds one
-	// tick for a goroutine that has not taken it, and the rest go by
-	// Elapse. Past most Ticks tick stops, and the next call goes on from
-	// there; late says whether a turn had its one late Tick. It reports
-	// whether it moved the core's clocks.
-	late := false
-	tick := func(entered, ran, most int64) bool {
-		now := int64(time.Since(started) / n.cfg.Tick)
-		from := clock
-		give := func() bool {
-			if most == 0 {
-				return false
-			}
-			n.core.Tick()
-			most--
-			clock++
-			return true
-		}
-		if entered > clock && !late {
-			if !give() {
-				return false
-			}
-			late = true
-		}
-		if entered > clock {
-			n.core.Elapse(entered - clock)
-			clock = entered
-		}
-		for clock < now && clock < ran {
-			if !give() {
-				return clock > from
-			}
-		}
-		if clock < now && clock < wakeAt && !late {
-			if !give() {
-				return clock > from
-			}
-			late = true
-		}
-		if now > clock {
-			n.core.Elapse(now - clock)
-			clock = now
-		}
-		return clock > from
-	}
+	wallTick := func(t time.Time) int64 { return int64(t.Sub(started) / n.cfg.Tick) }
 	// ins are the inputs of a turn.
 	var ins []input
 	// turn begins a turn: it takes first, the input the select took if
 	// any, and the inputs queued after it, and gives the core the ticks
-	// that passed and the inputs. The committer could have run from the
-	// earliest of them was queued, or from its due tick. Raft's election
-	// clock must also not run ahead of a message already waiting for it:
-	// so while a peer's message waits for a node that does not lead, the
-	// core gets the ticks up to one short of its due tick, due Ticks away,
-	// then the inputs, and then the rest of the ticks, in the same turn.
-	// Memory is measured at most once a tick, on a turn: only a turn makes
-	// it grow. turn reports whether the core got a tick or an input, after
-	// which it runs.
-	turn := func(entered int64, first *input, inbox <-chan input, due int64) bool {
+	// that passed and the inputs. waited is the tick at which the
+	// committer began to wait, and dueIn how many Ticks away the core's
+	// next work was then. The committer could have run again from the earliest
+	// input was queued, or from the due tick. Raft's election clock must
+	// also not run ahead of a message already waiting for it: so while a
+	// peer's message waits for a node that does not lead, the core gets
+	// the ticks up to one short of its due tick, then the inputs, and then
+	// the rest of the ticks, in the same turn. Memory is measured at most
+	// once a tick, on a turn: only a turn makes it grow. turn reports
+	// whether the core got a tick or an input, after which it runs.
+	turn := func(waited int64, first *input, inbox <-chan input, dueIn int64) bool {
 		ins = ins[:0]
 		if first != nil {
 			ins = append(ins, *first)
@@ -1196,29 +1145,30 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if inbox != nil {
 			ins = n.takeInputs(ins)
 		}
-		ran := wakeAt
+		ready := clock.due
 		for _, in := range ins {
 			if !in.at.IsZero() {
-				ran = min(ran, max(int64(in.at.Sub(started)/n.cfg.Tick), clock))
+				ready = min(ready, max(wallTick(in.at), clock.at))
 			}
 		}
 		held := hasMessage(ins) && n.core.Leader() != n.cfg.Core.ID
-		most := int64(math.MaxInt64)
+		limit := int64(math.MaxInt64)
 		if held {
-			most = due - 1
+			limit = dueIn - 1
 		}
-		late = false
-		moved := tick(entered, ran, most)
+		clock.lateTicked = false
+		now := wallTick(time.Now())
+		moved := clock.advance(n.core, now, waited, ready, limit)
 		for i := range ins {
 			n.handle(ins[i], waiters, streams)
 			ins[i] = input{}
 		}
 		if held {
-			moved = tick(entered, ran, math.MaxInt64) || moved
+			moved = clock.advance(n.core, wallTick(time.Now()), waited, ready, math.MaxInt64) || moved
 		}
-		if clock > measured {
+		if clock.at > measured {
 			n.measureMemory(streams)
-			measured = clock
+			measured = clock.at
 		}
 		return moved || len(ins) > 0
 	}
@@ -1254,22 +1204,24 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			paced = pace.C
 		}
 		due := n.core.Due()
-		if at := clock + due; at != wakeAt {
-			wakeAt = at
+		if at := clock.at + due; at != clock.due {
+			clock.due = at
 			wake.Reset(time.Until(started.Add(time.Duration(at) * n.cfg.Tick)))
 		}
-		entered := int64(time.Since(started) / n.cfg.Tick)
+		entered := wallTick(time.Now())
 		select {
 		case in := <-inbox:
 			turn(entered, &in, inbox, due)
 		case done := <-n.persisted:
-			turn(entered, nil, inbox, due)
+			// A failed write ends the run before the turn takes the queued
+			// inputs: the next run serves them.
 			if done.err != nil {
 				if core.FailureOf(done.err) == core.Reload {
 					n.dropAll(waiters, streams, rpctypes.ErrGRPCStopped)
 				}
 				return done.err
 			}
+			turn(entered, nil, inbox, due)
 			for _, j := range done.jobs {
 				n.core.Persisted(j)
 				if n.cfg.Persisted != nil {
