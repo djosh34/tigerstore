@@ -36,7 +36,7 @@ func kubeConfig(seed uint64, long bool) Config {
 		// A client's 62 objects split into small groups by resource, and a
 		// list pages only through a group of more than a page: with 25 a
 		// page, as the soak's, some schedules created none so large (#517).
-		cfg.ListPage = 8
+		cfg.ListPage = 25
 	}
 	cfg.SegmentBytes = 4 << 20
 	cfg.Faults.DiskBudget = max(16<<20, int64(cfg.Objects)*8<<10)
