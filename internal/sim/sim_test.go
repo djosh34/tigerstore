@@ -1359,7 +1359,10 @@ func TestRotInAnEntryRecord(t *testing.T) {
 // Under the race detector the runs are not the seeds' and a fence is rare:
 // one in about 45 runs, at 10 s or more each. There the test stops after
 // raceSeeds runs, fenced or not, so that a long streak without one cannot
-// take race-sim past its timeout; gosim's seeds still must fence (#500).
+// take race-sim past its timeout, and says so when it skipped the path;
+// gosim's seeds still must fence (#500). Making the race build reach the
+// path directly needs a damaged leader whose follower falls behind its
+// compaction, which elections decide.
 func TestSnapshotFromCorruptLeader(t *testing.T) {
 	const raceSeeds = 60
 	seeds := seedRange(1, 200)
@@ -1383,7 +1386,7 @@ func TestSnapshotFromCorruptLeader(t *testing.T) {
 	switch {
 	case simrun.One() || t.Failed() || fenced:
 	case simrun.Race:
-		t.Logf("none of %d runs under the race detector fenced a node; gosim's seeds must", raceSeeds)
+		t.Logf("race coverage of this path was skipped this run: none of %d runs under the race detector fenced a node after a serve failed on its own damage; gosim's seeds must, and internal/node's TestServeCorruptRecordStops serves a damaged record under -race", raceSeeds)
 	default:
 		t.Fatal("no run fenced a node after it failed a serve on its own damage")
 	}
