@@ -214,8 +214,28 @@ func (n *Node) corruptAlarm(ctx context.Context, id uint64) {
 }
 
 // checkHashes runs the periodic and compaction hash checks on the leader
-// until ctx ends.
+// until ctx ends. A node that does not lead waits until it does.
 func (n *Node) checkHashes(ctx context.Context, t peer.Transport) {
+	var checked int64
+	for {
+		lead, moved := n.LeaderChange()
+		if lead == n.ID() {
+			checked = n.checkWhileLeading(ctx, t, moved, checked)
+		}
+		select {
+		case <-moved:
+		case <-ctx.Done():
+			return
+		case <-n.done:
+			return
+		}
+	}
+}
+
+// checkWhileLeading runs the hash checks on their beats until the leader
+// moves (moved is closed) or the node stops. checked is the revision the
+// compaction hash check got to, which it returns.
+func (n *Node) checkWhileLeading(ctx context.Context, t peer.Transport, moved <-chan struct{}, checked int64) int64 {
 	var periodic, compact <-chan time.Time
 	if d := n.cfg.CorruptCheckTime; d > 0 {
 		tk := time.NewTicker(d)
@@ -227,23 +247,20 @@ func (n *Node) checkHashes(ctx context.Context, t peer.Transport) {
 		defer tk.Stop()
 		compact = tk.C
 	}
-	var checked int64
 	for {
 		select {
 		case <-periodic:
-			if n.Leader() == n.ID() {
-				if err := n.periodicCheck(ctx, t); err != nil && ctx.Err() == nil {
-					n.logf("corruption check: %v", err)
-				}
+			if err := n.periodicCheck(ctx, t); err != nil && ctx.Err() == nil {
+				n.logf("corruption check: %v", err)
 			}
 		case <-compact:
-			if n.Leader() == n.ID() {
-				checked = n.compactHashCheck(ctx, t, checked)
-			}
+			checked = n.compactHashCheck(ctx, t, checked)
+		case <-moved:
+			return checked
 		case <-ctx.Done():
-			return
+			return checked
 		case <-n.done:
-			return
+			return checked
 		}
 	}
 }

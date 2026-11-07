@@ -225,19 +225,21 @@ func (n *Node) applyVersion(index, origin uint64, b []byte) error {
 // proposals. Once all members support a newer format, each must confirm
 // that epoch. A node that has rolled back sends its lower support instead.
 func (n *Node) announceVersion() {
-	own := ownVersion(n.cfg)
-	st := n.state
-	if n.leader == raft.None || st.runs[n.cfg.ID] > n.cfg.Run {
-		return
-	}
-	unchanged := st.supports[n.cfg.ID] == own && st.runs[n.cfg.ID] == n.cfg.Run
-	needsConfirmation := st.supportedVersion(st.versionMembers()) > st.version && (st.versionEpoch == 0 || st.confirmed[n.cfg.ID] != st.versionEpoch)
-	if unchanged && !needsConfirmation {
-		return
-	}
-	if n.announcedAt != 0 && n.now-n.announcedAt < int64(n.cfg.ElectionTicks) {
+	if !n.wantsAnnounce() || n.announcedAt != 0 && n.now-n.announcedAt < int64(n.cfg.ElectionTicks) {
 		return
 	}
 	n.announcedAt = n.now
-	n.proposeInternal(confirmation(own, n.cfg.Run, st.versionEpoch))
+	n.proposeInternal(confirmation(ownVersion(n.cfg), n.cfg.Run, n.state.versionEpoch))
+}
+
+// wantsAnnounce reports whether this node has a support or a confirmation
+// to announce, and a leader to propose it to.
+func (n *Node) wantsAnnounce() bool {
+	st := n.state
+	if n.leader == raft.None || st.runs[n.cfg.ID] > n.cfg.Run {
+		return false
+	}
+	unchanged := st.supports[n.cfg.ID] == ownVersion(n.cfg) && st.runs[n.cfg.ID] == n.cfg.Run
+	needsConfirmation := st.supportedVersion(st.versionMembers()) > st.version && (st.versionEpoch == 0 || st.confirmed[n.cfg.ID] != st.versionEpoch)
+	return !unchanged || needsConfirmation
 }

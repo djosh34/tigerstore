@@ -27,6 +27,10 @@ import (
 // apply before it proposes it again; Raft may drop a proposal.
 const leaseRetryTicks = 10
 
+// leaseRevokeRate is how many expired leases the leader revokes a second
+// at most, etcd's leaseRevokeRate.
+const leaseRevokeRate = 1000
+
 // arm starts or renews a lease's expiry on the leader. The current tick
 // may be nearly over, so the lease gets one tick more than its TTL and
 // never expires early.
@@ -34,7 +38,20 @@ func (n *Node) arm(id int64) {
 	if l, ok := n.state.leases[id]; ok {
 		l.expiry = n.now + n.cfg.ticksOf(l.left()) + 1
 		l.revokeAt = 0
+		n.expiries.set(l)
+		if l.checkpointAt != 0 {
+			n.checkpoints.set(l)
+		}
 	}
+}
+
+// due is the tick at which the leader next proposes the lease's expiry:
+// at its expiry, or once its last proposal had leaseRetryTicks to apply.
+func (l *lease) due() int64 {
+	if l.revokeAt != 0 {
+		return l.revokeAt + leaseRetryTicks
+	}
+	return l.expiry
 }
 
 // left is the TTL a lease gets when the leader arms it: the remaining
@@ -56,6 +73,7 @@ func (n *Node) scheduleCheckpoint(id int64) {
 		return
 	}
 	l.checkpointAt = n.now + every
+	n.checkpoints.set(l)
 }
 
 // checkpointLeases proposes the checkpoints that are due, on the leader,
@@ -66,8 +84,14 @@ func (n *Node) checkpointLeases() {
 		return
 	}
 	var cps []*pb.LeaseCheckpoint
-	for _, l := range n.state.sortedLeases() {
-		if l.checkpointAt == 0 || l.checkpointAt > n.now || l.expiry == 0 {
+	for {
+		l := n.checkpoints.first()
+		if l == nil || l.checkpointAt > n.now {
+			break
+		}
+		n.checkpoints.remove(l)
+		if l.expiry == 0 {
+			// arm queues it again.
 			continue
 		}
 		l.checkpointAt = 0
@@ -92,6 +116,8 @@ const maxLeaseCheckpoints = 1000
 // leadershipChanged arms every lease when this node becomes leader and
 // disarms them when it stops being leader.
 func (n *Node) leadershipChanged() {
+	n.expiries.reset()
+	n.checkpoints.reset()
 	for _, l := range n.state.sortedLeases() {
 		l.expiry, l.revokeAt, l.checkpointAt = 0, 0, 0
 		if n.isLeader {
@@ -112,7 +138,9 @@ func (n *Node) remaining(id int64) int64 {
 	return max(0, n.cfg.floorSeconds(l.expiry-n.now-1))
 }
 
-// expireLeases proposes the revoke of every expired lease, on the leader.
+// expireLeases proposes the revoke of the expired leases, on the leader,
+// in the order of their expiry and at most leaseRevokeRate a second, as
+// etcd's lessor does.
 func (n *Node) expireLeases() {
 	if !n.isLeader && planted.On("B10") {
 		for _, l := range n.state.sortedLeases() {
@@ -130,14 +158,13 @@ func (n *Node) expireLeases() {
 	if !n.isLeader || n.tooManyRequests(true) {
 		return
 	}
-	for _, l := range n.state.sortedLeases() {
-		if l.expiry == 0 || l.expiry > n.now {
-			continue
-		}
-		if l.revokeAt != 0 && n.now-l.revokeAt < leaseRetryTicks {
-			continue
+	for range max(1, leaseRevokeRate*n.cfg.TickMillis/1000) {
+		l := n.expiries.first()
+		if l == nil || l.due() > n.now {
+			return
 		}
 		l.revokeAt = n.now
+		n.expiries.set(l)
 		n.proposeInternal(newExpiry(l.id, l.stamp))
 	}
 }

@@ -575,6 +575,25 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 	return resp, nil
 }
 
+// DeleteKeys deletes keys, which are sorted, in one write at one
+// revision, as a lease revoke does (#432). As in etcd's lessor, each key
+// is a delete of its own in the counts, and the write counts as a
+// transaction when it has more than one; a key already gone is skipped.
+func (s *Store) DeleteKeys(keys []string) {
+	w := s.start()
+	for _, key := range keys {
+		if k, ok := s.get([]byte(key)); ok && k.vers[len(k.vers)-1].ver != 0 {
+			w.add(k, version{})
+			s.counts.Keys--
+		}
+	}
+	s.counts.Deletes += int64(len(keys))
+	if len(keys) > 1 {
+		s.counts.Txns++
+	}
+	w.finish()
+}
+
 // Txn runs a transaction. Compares and checks read the state before the
 // transaction; reads inside it see its own earlier writes. An error after
 // checkTxn passed is a bug, and the caller must stop using the store.

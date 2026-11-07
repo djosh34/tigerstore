@@ -288,7 +288,7 @@ func start(c *config, lg *zap.Logger) error {
 		cancel()
 	}()
 	go func() {
-		if err := n.AdjustTicks(ctx, t.ActivePeers, ec.InitialElectionTickAdvance, rafthttp.ConnReadTimeout); err != nil && ctx.Err() == nil {
+		if err := n.AdjustTicks(ctx, t.ActiveChange, ec.InitialElectionTickAdvance, rafthttp.ConnReadTimeout); err != nil && ctx.Err() == nil {
 			lg.Warn("adjust election ticks", zap.Error(err))
 		}
 	}()
