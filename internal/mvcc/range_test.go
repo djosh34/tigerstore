@@ -402,8 +402,15 @@ func TestSortOrderNoneSorts(t *testing.T) {
 			t.Errorf("%v with order NONE and limit 1: %q, more %v, count %d, want %q, more, count 3", target, got, resp.More, resp.Count, "b")
 		}
 	}
-	s.SortBytes = 2 * int64(unsafe.Sizeof(KV{}))
+	s.SortBytes = 2 * kvBytes
 	if _, err := s.Range(&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("z"), SortTarget: pb.RangeRequest_MOD}); !errors.Is(err, ErrTooLarge) {
 		t.Errorf("a sorted list of three keys over a budget of two: %v, want ErrTooLarge", err)
+	}
+}
+
+// TestKVBytes checks that a sorted list counts at least what a KV takes.
+func TestKVBytes(t *testing.T) {
+	if size := unsafe.Sizeof(KV{}); size > kvBytes {
+		t.Fatalf("a KV takes %d bytes, the sorted list counts %d", size, kvBytes)
 	}
 }

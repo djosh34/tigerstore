@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"math"
 	"sort"
-	"unsafe"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -97,6 +96,10 @@ func KeyValues(kvs []KV) []*mvccpb.KeyValue {
 	}
 	return out
 }
+
+// kvBytes is what a KV takes in a sorted list, as measured on a 64-bit
+// platform (TestKVBytes).
+const kvBytes = 104
 
 // ErrTooLarge refuses a sorted Range whose list, which the sort needs at
 // once, passes Store.SortBytes: a KV for each key, and each value for a
@@ -351,7 +354,7 @@ func (c *Cursor) sorted(res RangeResult, total bool, room int, fill bool) (Range
 		if pushed || r.CountOnly || !keeps(r, &kv) {
 			return true
 		}
-		held += int64(unsafe.Sizeof(kv))
+		held += kvBytes
 		if byValue {
 			held += int64(kv.ref.Len)
 		}

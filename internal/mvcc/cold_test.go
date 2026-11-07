@@ -271,8 +271,9 @@ func TestSortByValueTooLarge(t *testing.T) {
 		limit int64
 		ok    bool
 	}{
-		{byValue, 199, false},
-		{byValue, 200, true},
+		// Two KVs in the list and their 200 bytes of values.
+		{byValue, 2*kvBytes + 199, false},
+		{byValue, 2*kvBytes + 200, true},
 		{whole, 1, true},
 	} {
 		s.SortBytes = c.limit
