@@ -870,10 +870,10 @@ func (s *Sim) pagesErr() error {
 	return errors.Join(errs...)
 }
 
-// keepFrom is the size from which a file of a node's disk keeps its synced
-// pages on the runner's disk, out of memory: a long seed's log segments
-// and checkpoints (simfs.Disk.KeepIn, #479).
-const keepFrom = 1 << 20
+// keepPages is how many synced pages a node's disk, with its copies,
+// keeps in memory as a cache: the others are on the runner's disk only
+// (simfs.Disk.KeepIn, #479), 4 MiB a disk.
+const keepPages = 1024
 
 // keptPages is where the nodes' disks keep the synced pages of their
 // large files: a file on the runner's disk, which the run's formation,
@@ -974,7 +974,7 @@ func (s *Sim) addNode(i int, disk *simfs.Disk) {
 	n := &node{idx: i, id: uint64(i + 1), disk: disk, addrs: []string{peerAddr(i)}, wake: make(chan struct{})}
 	disk.Capacity = s.cfg.Faults.DiskCapacity
 	if s.pages != nil {
-		disk.KeepIn(s.pages, keepFrom)
+		disk.KeepIn(s.pages, keepPages)
 	}
 	s.traceDisk(n)
 	if i == 3 {

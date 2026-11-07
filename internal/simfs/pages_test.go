@@ -219,11 +219,11 @@ func TestPagesMatchTheModel(t *testing.T) {
 func pagesMatch(t *testing.T, seed uint64) {
 	rng := rand.New(rand.NewPCG(seed, 500))
 	p := newPair(t)
-	// Half the seeds keep the synced pages of files of 8 KiB or more in a
-	// Store.
+	// Half the seeds keep the synced pages in a Store, behind a cache of
+	// 2 pages, so that pages leave memory and are read back all the time.
 	store := &memStore{}
 	if seed%2 == 1 {
-		p.disk.KeepIn(store, 2*simfs.PageBytes)
+		p.disk.KeepIn(store, 2)
 		defer func() {
 			if len(store.pages) == 0 {
 				t.Error("no page went to the store")
@@ -428,7 +428,7 @@ func (p *pair) fork(disk *simfs.Disk, model *ref.Disk, rng *rand.Rand) {
 func TestStoreErr(t *testing.T) {
 	d := simfs.New()
 	errFull := errors.New("the host disk is full")
-	d.KeepIn(&memStore{fail: errFull}, simfs.PageBytes)
+	d.KeepIn(&memStore{fail: errFull}, 0)
 	f, err := d.Create("a")
 	if err != nil {
 		t.Fatal(err)
@@ -451,7 +451,7 @@ func TestStoreErr(t *testing.T) {
 func TestRewrittenPagesGoBackToTheStore(t *testing.T) {
 	d := simfs.New()
 	store := &memStore{}
-	d.KeepIn(store, simfs.PageBytes)
+	d.KeepIn(store, 0)
 	f, err := d.Create("a.wal")
 	if err != nil {
 		t.Fatal(err)
@@ -464,8 +464,8 @@ func TestRewrittenPagesGoBackToTheStore(t *testing.T) {
 		if err := f.Sync(); err != nil {
 			t.Fatal(err)
 		}
-		// All but the last page of each version go to the store.
-		if got, want := len(store.pages), 7*(i+1); got != want {
+		// With no cache, every page of each version goes to the store.
+		if got, want := len(store.pages), 8*(i+1); got != want {
 			t.Errorf("after version %c, the store holds %d pages, want %d", c, got, want)
 		}
 	}
@@ -481,7 +481,7 @@ func TestRewrittenPagesGoBackToTheStore(t *testing.T) {
 func TestStoreReadErr(t *testing.T) {
 	d := simfs.New()
 	store := &memStore{}
-	d.KeepIn(store, simfs.PageBytes)
+	d.KeepIn(store, 0)
 	f, err := d.Create("a")
 	if err != nil {
 		t.Fatal(err)
@@ -499,5 +499,100 @@ func TestStoreReadErr(t *testing.T) {
 	}
 	if err := d.StoreErr(); !errors.Is(err, errGone) {
 		t.Errorf("the disk's store error is %v, want %v", err, errGone)
+	}
+}
+
+// TestRewrittenTailStaysOut checks that a page that a file alone held and
+// replaced, as each sync of a log replaces its last page, never goes to
+// the Store: it is dead once replaced.
+func TestRewrittenTailStaysOut(t *testing.T) {
+	d := simfs.New()
+	store := &memStore{}
+	d.KeepIn(store, 2)
+	f, err := d.Create("a.wal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 100 {
+		if _, err := f.Write([]byte{byte(i)}); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Sync(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := len(store.pages); n != 0 {
+		t.Errorf("the store holds %d pages, want none: each was replaced", n)
+	}
+	if got := d.Files()["a.wal"]; len(got) != 100 || got[99] != 99 {
+		t.Errorf("the file reads %d bytes", len(got))
+	}
+}
+
+// TestCutPagesStayOut checks that the pages a truncate drops from a file
+// that alone held them never go to the Store: they are dead once cut.
+func TestCutPagesStayOut(t *testing.T) {
+	d := simfs.New()
+	store := &memStore{}
+	d.KeepIn(store, 16)
+	write := func(name string, n int) wal.File {
+		t.Helper()
+		f, err := d.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.Write(make([]byte, n*simfs.PageBytes)); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	a := write("a.log", 8)
+	if err := a.Truncate(simfs.PageBytes); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	write("b.log", 16)
+	if n := len(store.pages); n != 1 {
+		t.Errorf("the store holds %d pages, want 1: the 7 cut pages are dead", n)
+	}
+	if got := d.Files()["a.log"]; len(got) != simfs.PageBytes {
+		t.Errorf("a.log reads %d bytes, want %d", len(got), simfs.PageBytes)
+	}
+}
+
+// TestSyncedPagesLeaveMemory checks that a disk keeps in memory only the
+// newest synced pages of its cache, the others in the Store, and reads all
+// of them back.
+func TestSyncedPagesLeaveMemory(t *testing.T) {
+	d := simfs.New()
+	store := &memStore{}
+	d.KeepIn(store, 8)
+	f, err := d.Create("a.ckpt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := make([]byte, 64*simfs.PageBytes)
+	for i := range want {
+		want[i] = byte(i / simfs.PageBytes)
+	}
+	if _, err := f.Write(want); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(store.pages); got != 64-8 {
+		t.Errorf("the store holds %d pages, want %d", got, 64-8)
+	}
+	if got := d.Files()["a.ckpt"]; !bytes.Equal(got, want) {
+		t.Error("the file does not read what was written")
+	}
+	if err := d.StoreErr(); err != nil {
+		t.Error(err)
 	}
 }
