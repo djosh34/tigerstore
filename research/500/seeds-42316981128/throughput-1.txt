@@ -1,0 +1,7 @@
+procs 1, seeds 32 a process, test TestSeeds
+cpus 4, MemTotal:       16324148 kB
+wall 44 s
+process 0: 32 seeds ended, 0 failed
+seeds per minute: 43.6
+simulation process 18625: peak 0.27 GiB
+least MemAvailable: 14.19 GiB

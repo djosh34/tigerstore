@@ -1,0 +1,11 @@
+procs 3, seeds 2000 a process, test TestSeeds, process 0 the campaign-shaped seed
+cpus 4, MemTotal:       16324148 kB
+wall 305 s
+process 0: 1 seeds ended, 0 failed
+process 1: 0 seeds ended, 0 failed
+process 2: 0 seeds ended, 0 failed
+seeds per minute: 0.2
+simulation process 19214: peak 0.30 GiB
+simulation process 19215: peak 7.13 GiB
+simulation process 19217: peak 0.32 GiB
+least MemAvailable: 7.21 GiB
