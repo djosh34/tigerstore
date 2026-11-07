@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -214,32 +215,46 @@ func (n *Node) corruptAlarm(ctx context.Context, id uint64) {
 }
 
 // checkHashes runs the periodic and compaction hash checks on the leader
-// until ctx ends.
+// until ctx ends, each on its own beat.
 func (n *Node) checkHashes(ctx context.Context, t peer.Transport) {
-	var periodic, compact <-chan time.Time
+	var wg sync.WaitGroup
 	if d := n.cfg.CorruptCheckTime; d > 0 {
-		tk := time.NewTicker(d)
-		defer tk.Stop()
-		periodic = tk.C
-	}
-	if d := n.cfg.CompactHashCheckTime; d > 0 {
-		tk := time.NewTicker(d)
-		defer tk.Stop()
-		compact = tk.C
-	}
-	var checked int64
-	for {
-		select {
-		case <-periodic:
-			if n.Leader() == n.ID() {
+		wg.Go(func() {
+			n.onLeaderBeats(ctx, d, func() {
 				if err := n.periodicCheck(ctx, t); err != nil && ctx.Err() == nil {
 					n.logf("corruption check: %v", err)
 				}
+			})
+		})
+	}
+	if d := n.cfg.CompactHashCheckTime; d > 0 {
+		var checked int64
+		wg.Go(func() {
+			n.onLeaderBeats(ctx, d, func() { checked = n.compactHashCheck(ctx, t, checked) })
+		})
+	}
+	wg.Wait()
+}
+
+// onLeaderBeats calls fn on the beats of every, counted from now, at which
+// this node leads, until ctx ends or the node stops: what a ticker that
+// does nothing while the node follows would run, as etcd's leader-only
+// checks do. While the node follows, it waits for the leader to change
+// instead of waking on each beat.
+func (n *Node) onLeaderBeats(ctx context.Context, every time.Duration, fn func()) {
+	start := time.Now()
+	for {
+		lead, moved := n.LeaderChange()
+		var beat <-chan time.Time
+		if lead == n.ID() {
+			beat = time.After(every - time.Since(start)%every)
+		}
+		select {
+		case <-beat:
+			if n.leads() {
+				fn()
 			}
-		case <-compact:
-			if n.Leader() == n.ID() {
-				checked = n.compactHashCheck(ctx, t, checked)
-			}
+		case <-moved:
 		case <-ctx.Done():
 			return
 		case <-n.done:

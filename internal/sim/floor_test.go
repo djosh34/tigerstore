@@ -62,11 +62,15 @@ func TestFloorUnderGosim(t *testing.T) {
 }
 
 // calmCost is what a calm seed cost: the calls answered, the CPU time of
-// its load, and that of the whole seed. InRun is set for a seed that forms
-// its cluster in the run, under its load, which the totals leave out.
+// its load, and that of the whole seed; the timers that fired in its load
+// and how long that lasted in the run's time (wakeups_test.go). InRun is
+// set for a seed that forms its cluster in the run, under its load, which
+// the totals leave out.
 type calmCost struct {
 	Answered   int
 	Load, Seed time.Duration
+	Fired      uint64
+	Span       time.Duration
 	InRun      bool
 }
 
@@ -103,12 +107,12 @@ func loadCost(t *testing.T, name string, config func(uint64) Config) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		c := calmCost{Answered: res.Stats.OK, Load: res.LoadCPU, Seed: after - before, InRun: !formsFirst(config(seed))}
+		c := calmCost{Answered: res.Stats.OK, Load: res.LoadCPU, Seed: after - before, Fired: res.LoadFired, Span: time.Duration(res.LoadTime), InRun: !formsFirst(config(seed))}
 		if c.InRun {
 			t.Logf("seed %d forms its cluster under its load; the totals leave it out", seed)
 		}
-		t.Logf("%d calls answered, %.3f s of CPU time in the load, %.3f s in the seed: %.0f calls per core-second, %.3f s fixed",
-			c.Answered, c.Load.Seconds(), c.Seed.Seconds(), float64(c.Answered)/c.Load.Seconds(), (c.Seed - c.Load).Seconds())
+		t.Logf("%d calls answered, %.3f s of CPU time in the load, %.3f s in the seed: %.0f calls per core-second, %.3f s fixed; %.1f timers fired a second",
+			c.Answered, c.Load.Seconds(), c.Seed.Seconds(), float64(c.Answered)/c.Load.Seconds(), (c.Seed - c.Load).Seconds(), perSecond(c.Fired, c.Span))
 		return c
 	}, func(_ uint64, c calmCost) bool {
 		if c.InRun {
@@ -117,6 +121,8 @@ func loadCost(t *testing.T, name string, config func(uint64) Config) {
 		total.Answered += c.Answered
 		total.Load += c.Load
 		total.Seed += c.Seed
+		total.Fired += c.Fired
+		total.Span += c.Span
 		seeds++
 		return false
 	}) {
@@ -126,6 +132,6 @@ func loadCost(t *testing.T, name string, config func(uint64) Config) {
 		t.Logf("no %s seed to measure: each formed its cluster under its load", name)
 		return
 	}
-	t.Logf("%d %s seeds: %d calls answered, %.0f per core-second of load, %.3f s fixed per seed",
-		seeds, name, total.Answered, float64(total.Answered)/total.Load.Seconds(), (total.Seed-total.Load).Seconds()/float64(seeds))
+	t.Logf("%d %s seeds: %d calls answered, %.0f per core-second of load, %.3f s fixed per seed, %.1f timers fired a second of load",
+		seeds, name, total.Answered, float64(total.Answered)/total.Load.Seconds(), (total.Seed-total.Load).Seconds()/float64(seeds), perSecond(total.Fired, total.Span))
 }

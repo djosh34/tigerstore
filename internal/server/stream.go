@@ -117,9 +117,10 @@ var (
 	errAborted    = errors.New("server: send aborted")
 )
 
-// A stream that requires a leader checks for one every election timeout
-// and ends after maxNoLeader checks in a row find none, as etcd's
-// monitorLeader does for every stream.
+// A stream that requires a leader ends once its node has known none for
+// maxNoLeader election timeouts in a row. etcd's monitorLeader looks every
+// election timeout and ends it after maxNoLeader looks in a row find none,
+// so between two and three timeouts after the leader went.
 const maxNoLeader = 3
 
 // receive takes the payload of a DATA frame. Framer storage is reused by
@@ -451,23 +452,20 @@ func (c *conn) runStream(st *stream) {
 	st.finish(st.rpc.stream(c.s, st))
 }
 
-// monitorLeader ends a stream that requires a leader once maxNoLeader
-// checks in a row find none.
+// monitorLeader ends a stream that requires a leader once the node has
+// known none for maxNoLeader election timeouts in a row.
 func (c *conn) monitorLeader(st *stream) {
-	ticker := time.NewTicker(c.s.n.ElectionTimeout())
-	defer ticker.Stop()
-	noLeader := 0
 	for {
+		lead, moved := c.s.n.LeaderChange()
+		var gone <-chan time.Time
+		if lead == 0 {
+			gone = time.After(maxNoLeader * c.s.n.ElectionTimeout())
+		}
 		select {
 		case <-st.ctx.Done():
 			return
-		case <-ticker.C:
-		}
-		if c.s.n.Leader() != 0 {
-			noLeader = 0
-			continue
-		}
-		if noLeader++; noLeader >= maxNoLeader {
+		case <-moved:
+		case <-gone:
 			st.finish(rpctypes.ErrGRPCNoLeader)
 			st.cancel()
 			return

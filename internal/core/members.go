@@ -568,18 +568,21 @@ func (n *Node) readyToPromote(id uint64) error {
 // publish theirs once they start, until the members hold them; again
 // every election timeout, as Raft may drop a proposal.
 func (n *Node) publish() {
-	m := n.state.members[n.cfg.ID]
-	if m == nil || n.leader == raft.None || !n.capable() || n.cfg.Name == "" {
-		return
-	}
-	if m.Name == n.cfg.Name && slices.Equal(m.ClientURLs, n.cfg.ClientURLs) {
-		return
-	}
-	if n.publishedAt != 0 && n.now-n.publishedAt < int64(n.cfg.ElectionTicks) {
+	if !n.wantsPublish() || n.publishedAt != 0 && n.now-n.publishedAt < int64(n.cfg.ElectionTicks) {
 		return
 	}
 	n.publishedAt = n.now
 	n.queueWrite(&pending{req: Request{Op: &pb.Member{ID: n.cfg.ID, Name: n.cfg.Name, ClientURLs: n.cfg.ClientURLs}}})
+}
+
+// wantsPublish reports whether this node's member does not hold its name
+// and client URLs yet, and it can propose them.
+func (n *Node) wantsPublish() bool {
+	m := n.state.members[n.cfg.ID]
+	if m == nil || n.leader == raft.None || !n.capable() || n.cfg.Name == "" {
+		return false
+	}
+	return m.Name != n.cfg.Name || !slices.Equal(m.ClientURLs, n.cfg.ClientURLs)
 }
 
 // applyAttributes sets a member's name and client URLs, a write of kind

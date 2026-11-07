@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/osfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -487,9 +488,7 @@ func TestDefragment(t *testing.T) {
 	defer cancel()
 	// A snapshot served meanwhile holds Defragment back until it ends.
 	l := r.n.log
-	l.mu.Lock()
-	l.serving++
-	l.mu.Unlock()
+	l.fetchStarted()
 	defragged := make(chan error, 1)
 	go func() { defragged <- r.n.Defragment(ctx) }()
 	select {
@@ -497,9 +496,7 @@ func TestDefragment(t *testing.T) {
 		t.Fatalf("Defragment answered %v while a snapshot was served", err)
 	case <-time.After(200 * time.Millisecond):
 	}
-	l.mu.Lock()
-	l.serving--
-	l.mu.Unlock()
+	l.fetchEnded()
 	if err := <-defragged; err != nil {
 		t.Fatal(err)
 	}
@@ -527,4 +524,56 @@ func TestDefragment(t *testing.T) {
 func median(xs []int64) int64 {
 	s := slices.Sorted(slices.Values(xs))
 	return s[len(s)/2]
+}
+
+// TestCleanerMeasuresAfterRemoval removes a file the log dropped on a
+// node where nothing else happens: the cleaner measures again what the
+// removal freed, so a NOSPACE alarm can clear (#538).
+func TestCleanerMeasuresAfterRemoval(t *testing.T) {
+	fs, err := osfs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := NewOnFS(Config{Core: core.DefaultConfig(1, []uint64{1}), DiskBudget: 32 << 10}, fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := n.log.close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	f, err := fs.Create("obsolete-pack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.Write(make([]byte, 64<<10)); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	c := &cleaner{n: n, files: []string{"obsolete-pack"}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- c.run(ctx) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		actual, err := fs.Usage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := n.log.used.Load()
+		if got == actual && actual < n.cfg.DiskBudget {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the cleaner went idle after a removal with %d bytes measured, %d on disk, budget %d", got, actual, n.cfg.DiskBudget)
+		}
+	}
 }

@@ -39,6 +39,12 @@ func WallLimitPassed() bool { return gosim.WallLimitPassed() }
 // what the run does.
 func CPUTime() (time.Duration, error) { return gosim.CPUTime() }
 
+// TimerFirings is how many timers fired in the run so far: wake-ups from
+// time.Sleep, sends on timers' and tickers' channels and AfterFunc calls,
+// of the nodes and the simulator alike. Reading it changes nothing in the
+// run.
+func TimerFirings() uint64 { return gosim.TimerFirings() }
+
 // Aside runs f, which must not block, without drawing from the run's
 // random stream: gosim's maps draw from it on inserts and iteration, so
 // work the simulator does for itself, such as keeping its records, would

@@ -250,6 +250,11 @@ type TCP struct {
 	// logged holds when a failed handshake was last logged, by peer.
 	logMu  sync.Mutex
 	logged map[string]time.Time
+
+	// activeMoved is closed and replaced, under activeMu, each time a
+	// connection to a peer starts or ends (ActiveChange).
+	activeMu    sync.Mutex
+	activeMoved chan struct{}
 }
 
 // Start listens for peers and starts one writer per peer.
@@ -291,16 +296,17 @@ func Start(cfg Config) (*TCP, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &TCP{
-		cfg:        cfg,
-		clientCert: clientCert,
-		verify:     verify,
-		lns:        lns,
-		ctx:        ctx,
-		cancel:     cancel,
-		conns:      map[net.Conn]struct{}{},
-		inbound:    map[net.Conn]inbound{},
-		logged:     map[string]time.Time{},
-		remotes:    map[uint64]*sender{},
+		cfg:         cfg,
+		clientCert:  clientCert,
+		verify:      verify,
+		lns:         lns,
+		ctx:         ctx,
+		cancel:      cancel,
+		conns:       map[net.Conn]struct{}{},
+		activeMoved: make(chan struct{}),
+		inbound:     map[net.Conn]inbound{},
+		logged:      map[string]time.Time{},
+		remotes:     map[uint64]*sender{},
 	}
 	t.self.Store(&cfg.Addr)
 	t.senders.Store(&map[uint64]*sender{})
@@ -311,9 +317,9 @@ func Start(cfg Config) (*TCP, error) {
 	return t, nil
 }
 
-// ActivePeers is the number of peers this node has a connection to, as
+// activePeers is the number of peers this node has a connection to, as
 // etcd's transport counts them.
-func (t *TCP) ActivePeers() int {
+func (t *TCP) activePeers() int {
 	n := 0
 	for _, s := range *t.senders.Load() {
 		if s.version.Load() != 0 {
@@ -321,6 +327,22 @@ func (t *TCP) ActivePeers() int {
 		}
 	}
 	return n
+}
+
+// ActiveChange returns the number of peers this node has a connection
+// to, and a channel that is closed once a connection starts or ends.
+func (t *TCP) ActiveChange() (int, <-chan struct{}) {
+	t.activeMu.Lock()
+	defer t.activeMu.Unlock()
+	return t.activePeers(), t.activeMoved
+}
+
+// activeChanged wakes those that wait for a connection to start or end.
+func (t *TCP) activeChanged() {
+	t.activeMu.Lock()
+	defer t.activeMu.Unlock()
+	close(t.activeMoved)
+	t.activeMoved = make(chan struct{})
 }
 
 // ActiveSince is since when this node has had a connection to peer id,
@@ -1008,11 +1030,13 @@ func (s *sender) run() {
 		backoff = 50 * time.Millisecond
 		s.version.Store(uint32(v))
 		s.since.Store(time.Now().UnixNano())
+		s.t.activeChanged()
 		s.counters.active.Inc()
 		err = s.connected(ctx, c)
 		s.counters.active.Dec()
 		s.version.Store(0)
 		s.since.Store(0)
+		s.t.activeChanged()
 		s.reportWaits()
 		if err != nil && ctx.Err() == nil {
 			s.counters.disconnected.Inc()

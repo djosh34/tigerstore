@@ -381,9 +381,13 @@ type Node struct {
 	done     chan struct{}
 
 	// leader is the leader the committer saw last, for readers outside it,
-	// and learner whether this node is a learner.
-	leader  atomic.Uint64
-	learner atomic.Bool
+	// and learner whether this node is a learner. leaderMoved is closed
+	// and replaced each time leader changes, under leaderMu
+	// (LeaderChange).
+	leader      atomic.Uint64
+	leaderMu    sync.Mutex
+	leaderMoved chan struct{}
+	learner     atomic.Bool
 	// etcdVersion is etcd's cluster version the committer saw last, and
 	// authEnabled whether auth was on.
 	etcdVersion atomic.Pointer[string]
@@ -435,15 +439,18 @@ type diskLog struct {
 	// ckpts are the durable checkpoints whose files are on disk, which
 	// the persist goroutine adds to and the cleaner drops from before it
 	// removes older files, and serving counts the snapshot fetches under
-	// way, during which nothing is removed.
+	// way, during which nothing is removed. Only fetchStarted and
+	// fetchEnded change it, so that the end of a fetch always wakes the
+	// cleaner, which Defragment waits on.
 	ckpts   []wal.Root
 	serving int
 	// removal is what the newest durable root made obsolete, which waits
-	// for the cleaner; held is set while it waits, and retry wakes the
-	// cleaner.
+	// for the cleaner; held is set while it or what a cleaning pass
+	// replaced waits, for a value read or a snapshot fetch to end. kick
+	// wakes the cleaner (kickCleaner).
 	removal *rootRemoval
 	held    atomic.Bool
-	retry   chan struct{}
+	kick    chan struct{}
 	// used is the size of the log's files when the cleaner measured them
 	// last, plus what the disk goroutines wrote since, cleaned the bytes
 	// that cleaning wrote, and removeFailures the removals of files that
@@ -524,10 +531,33 @@ func (l *diskLog) readDone() {
 // wake wakes the cleaner if a removal waits.
 func (l *diskLog) wake() {
 	if l.held.Load() {
-		select {
-		case l.retry <- struct{}{}:
-		default:
-		}
+		l.kickCleaner()
+	}
+}
+
+// fetchStarted counts a snapshot fetch under way, during which nothing is
+// removed from the log, and returns the durable checkpoints it may serve.
+func (l *diskLog) fetchStarted() []wal.Root {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.serving++
+	return slices.Clone(l.ckpts)
+}
+
+// fetchEnded ends a fetch fetchStarted counted, and wakes the cleaner,
+// whose removals and Defragment may have waited for it.
+func (l *diskLog) fetchEnded() {
+	l.mu.Lock()
+	l.serving--
+	l.mu.Unlock()
+	l.kickCleaner()
+}
+
+// kickCleaner wakes the cleaner: the log changed, so it may have work.
+func (l *diskLog) kickCleaner() {
+	select {
+	case l.kick <- struct{}{}:
+	default:
 	}
 }
 
@@ -638,11 +668,12 @@ func newOnDisk(cfg Config, path string, dir FS) (*Node, error) {
 		cfg.Memory = newMemoryGauge().read
 	}
 	n := &Node{
-		cfg:    cfg,
-		log:    &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead, retry: make(chan struct{}, 1)},
-		inbox:  make(chan input, 8192),
-		done:   make(chan struct{}),
-		memory: cfg.Memory,
+		cfg:         cfg,
+		log:         &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead, kick: make(chan struct{}, 1)},
+		inbox:       make(chan input, 8192),
+		done:        make(chan struct{}),
+		leaderMoved: make(chan struct{}),
+		memory:      cfg.Memory,
 		// Defragment sends to it from gRPC goroutines, so a reload keeps
 		// it.
 		defragQ: make(chan chan error),
@@ -746,7 +777,7 @@ func (n *Node) open() error {
 	n.nextQ = make(chan struct{})
 	n.readQ = make(chan *core.ValueRead)
 	n.readDone = make(chan readDone, readers)
-	n.leader.Store(0)
+	n.setLeader(0)
 	v := c.EtcdVersion()
 	n.etcdVersion.Store(&v)
 	n.authEnabled.Store(c.AuthEnabled())
@@ -863,6 +894,26 @@ func (n *Node) TransferLeadership(ctx context.Context) error {
 
 // Leader is the leader the node knows of, or 0.
 func (n *Node) Leader() uint64 { return n.leader.Load() }
+
+// LeaderChange returns the leader the node knows of, or 0, and a channel
+// that is closed once that changes: work that waits for a leader, or for
+// none, waits on it instead of looking again and again.
+func (n *Node) LeaderChange() (uint64, <-chan struct{}) {
+	n.leaderMu.Lock()
+	defer n.leaderMu.Unlock()
+	return n.leader.Load(), n.leaderMoved
+}
+
+// setLeader notes the leader the committer saw, and wakes those that wait
+// for it to change.
+func (n *Node) setLeader(l uint64) {
+	n.leaderMu.Lock()
+	defer n.leaderMu.Unlock()
+	if n.leader.Swap(l) != l {
+		close(n.leaderMoved)
+		n.leaderMoved = make(chan struct{})
+	}
+}
 
 // EtcdVersion is etcd's cluster version, which is also the storage
 // version, as /version and Snapshot report them.
@@ -1044,8 +1095,6 @@ func (n *Node) run(ctx context.Context, t peer.Transport) error {
 // commit is the committer loop. It is the only goroutine that touches the
 // core, and it never blocks on the disk.
 func (n *Node) commit(ctx context.Context, t peer.Transport) error {
-	ticker := time.NewTicker(n.cfg.Tick)
-	defer ticker.Stop()
 	waiters := map[uint64]waiter{}
 	var groups []completions
 	groupOf := map[Completer]int{}
@@ -1059,10 +1108,65 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	var reads []*core.ValueRead
 	streams := map[uint64]*WatchStream{}
 	var term uint64 // the term logged last
-	// clock is the ticks the core's request clock has had; the ticks of
-	// wall time it missed while the committer was busy go to it with
-	// Elapse, so that requests time out by the wall clock.
-	started, clock := time.Now(), int64(0)
+	// The core's time-based work runs on deadlines (core.Node.Due): the
+	// committer wakes when the next tick with work is due, at wakeAt, or
+	// when something happens, and then gives the core the ticks of wall
+	// time that passed (tick). clock is the ticks the core has had, by
+	// Tick or Elapse, and measured the tick of the last measure of memory.
+	started, clock, measured := time.Now(), int64(0), int64(0)
+	wake := time.NewTimer(n.cfg.Tick)
+	defer wake.Stop()
+	wakeAt := int64(1)
+	// tick gives the core the ticks of wall time up to now, entered being
+	// the tick at which the committer last began to wait. A ticker that
+	// drops ticks is the model: Raft takes no burst of ticks from a
+	// committer that was late, and requests still time out by the wall
+	// clock (Elapse). The ticks that passed while it was busy go to the
+	// core as one Tick and the rest by Elapse. Each tick it waited is a
+	// Tick, up to the one that was due (wakeAt), so Raft sees the same
+	// ticks as if each had come on time; those after it passed while it
+	// waited for a CPU to run on, which a ticker drops too.
+	//
+	// held is set when a peer's message waits for a node that does not
+	// lead: Raft's election clock then stops a tick short of the due
+	// tick, and the message, which may be its leader's heartbeat, steps
+	// first. A node starved of CPU would otherwise count its leader dead
+	// for the time it could not read the heartbeats already waiting for
+	// it, where a ticker's dropped ticks slowed its clock instead.
+	//
+	// Memory is measured at most once a tick, on a turn: only a turn makes
+	// it grow. tick reports whether the core had a tick, after which it
+	// takes a turn.
+	tick := func(entered int64, held bool) bool {
+		now := int64(time.Since(started) / n.cfg.Tick)
+		last := wakeAt
+		if held && n.core.Leader() != n.cfg.Core.ID {
+			last--
+		}
+		ticked := entered > clock || now > clock
+		if entered > clock {
+			n.core.Tick()
+			clock++
+			if entered > clock {
+				n.core.Elapse(entered - clock)
+				clock = entered
+			}
+		}
+		for ; clock < now && clock < last; clock++ {
+			n.core.Tick()
+		}
+		if now > clock {
+			n.core.Elapse(now - clock)
+			clock = now
+		}
+		if now > measured {
+			n.measureMemory(streams)
+			measured = now
+		}
+		return ticked
+	}
+	// ins are the inputs of a turn.
+	var ins []input
 	// beats holds when this node last sent each peer a heartbeat, in
 	// term beatTerm.
 	beats := map[uint64]time.Time{}
@@ -1094,19 +1198,22 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			}
 			paced = pace.C
 		}
+		if at := clock + n.core.Due(); at != wakeAt {
+			wakeAt = at
+			wake.Reset(time.Until(started.Add(time.Duration(at) * n.cfg.Tick)))
+		}
+		entered := int64(time.Since(started) / n.cfg.Tick)
 		select {
 		case in := <-inbox:
-			n.handle(in, waiters, streams)
-		drain:
-			for range 4096 {
-				select {
-				case in := <-n.inbox:
-					n.handle(in, waiters, streams)
-				default:
-					break drain
-				}
+			ins = n.takeInputs(append(ins[:0], in))
+			tick(entered, hasMessage(ins))
+			for i := range ins {
+				n.handle(ins[i], waiters, streams)
+				ins[i] = input{}
 			}
+			ins = ins[:0]
 		case done := <-n.persisted:
+			tick(entered, len(n.inbox) > 0)
 			if done.err != nil {
 				if core.FailureOf(done.err) == core.Reload {
 					n.dropAll(waiters, streams, rpctypes.ErrGRPCStopped)
@@ -1123,28 +1230,38 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		case toDisk <- next:
 			backlog[0] = persistBatch{}
 			backlog = backlog[1:]
-			continue
+			if !tick(entered, len(n.inbox) > 0) {
+				continue
+			}
 		case toWriter <- chunk:
 			chunks[0] = core.CheckpointChunk{}
 			chunks = chunks[1:]
-			continue
+			if !tick(entered, len(n.inbox) > 0) {
+				continue
+			}
 		case toReader <- read:
 			reads[0] = nil
 			reads = reads[1:]
-			continue
+			if !tick(entered, len(n.inbox) > 0) {
+				continue
+			}
 		case d := <-n.readDone:
+			tick(entered, len(n.inbox) > 0)
 			n.core.ValuesRead(d.read, d.err)
 		case <-paced:
+			tick(entered, len(n.inbox) > 0)
 			pace = nil
 			n.core.CopyCheckpoint()
-		case <-ticker.C:
-			n.core.Tick()
-			clock++
-			if behind := int64(time.Since(started)/n.cfg.Tick) - clock; behind > 0 {
-				n.core.Elapse(behind)
-				clock += behind
+		case <-wake.C:
+			if inbox != nil {
+				ins = n.takeInputs(ins[:0])
 			}
-			n.measureMemory(streams)
+			tick(entered, hasMessage(ins))
+			for i := range ins {
+				n.handle(ins[i], waiters, streams)
+				ins[i] = input{}
+			}
+			ins = ins[:0]
 		case <-ctx.Done():
 			return nil
 		}
@@ -1214,7 +1331,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		if l, tm := n.core.Leader(), n.core.Term(); l != n.leader.Load() || tm != term {
 			n.logf("leader is %d at term %d", l, tm)
-			n.leader.Store(l)
+			n.setLeader(l)
 			term = tm
 		}
 		if v := n.core.EtcdVersion(); v != *n.etcdVersion.Load() {
@@ -1229,6 +1346,25 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			return err
 		}
 	}
+}
+
+// takeInputs adds to ins the inputs already queued, up to 4096, and
+// returns it.
+func (n *Node) takeInputs(ins []input) []input {
+	for range 4096 {
+		select {
+		case in := <-n.inbox:
+			ins = append(ins, in)
+		default:
+			return ins
+		}
+	}
+	return ins
+}
+
+// hasMessage reports whether ins holds a message from a peer.
+func hasMessage(ins []input) bool {
+	return slices.ContainsFunc(ins, func(in input) bool { return in.msg != nil })
 }
 
 // heartbeatSent is etcd's TimeoutDetector on the leader's heartbeats: a
@@ -1795,7 +1931,7 @@ func (n *Node) durable(g written) {
 		}
 	}
 	l.mu.Unlock()
-	l.wake()
+	l.kickCleaner()
 	for _, pr := range g.packs {
 		n.cleaningStage("root-synced")
 		close(pr.synced)
@@ -1870,6 +2006,7 @@ func (n *Node) prepareSegments(ctx context.Context) {
 			}
 			return
 		}
+		n.log.kickCleaner()
 		select {
 		case n.nextQ <- struct{}{}:
 		case <-ctx.Done():
@@ -1978,6 +2115,7 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 		for err == nil {
 			_, err = f.Write(c.Data)
 			n.log.used.Add(int64(len(c.Data)))
+			n.log.kickCleaner()
 			if err != nil || c.Done {
 				break
 			}
@@ -2034,10 +2172,7 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 // peer transport calls it.
 func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	n.tell(input{snapshot: id, fetching: true})
-	n.log.mu.Lock()
-	n.log.serving++
-	ckpts := slices.Clone(n.log.ckpts)
-	n.log.mu.Unlock()
+	ckpts := n.log.fetchStarted()
 	m, to := n.cfg.Metrics, peerLabel(id)
 	m.SnapshotSendInflights.WithLabelValues(to).Inc()
 	start := time.Now()
@@ -2049,10 +2184,7 @@ func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	} else {
 		m.SnapshotSendFailures.WithLabelValues(to).Inc()
 	}
-	n.log.mu.Lock()
-	n.log.serving--
-	n.log.mu.Unlock()
-	n.log.wake()
+	n.log.fetchEnded()
 	n.tell(input{snapshot: id, served: true, serveErr: err})
 	return err
 }

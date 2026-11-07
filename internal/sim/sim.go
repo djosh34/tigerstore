@@ -584,8 +584,11 @@ type Sim struct {
 	err           error
 	// loadFrom is the process's CPU time when the clients started, and
 	// loadCPU the CPU time from then until the last client stopped
-	// (markLoad).
-	loadFrom, loadCPU time.Duration
+	// (markLoad); firedFrom and loadFired count the timers that fired, and
+	// loadAt and loadTime are the run's time, the same way.
+	loadFrom, loadCPU    time.Duration
+	firedFrom, loadFired uint64
+	loadAt, loadTime     int64
 }
 
 // Stats counts what happened in a run.
@@ -731,6 +734,11 @@ type Result struct {
 	// clients' start until the last of them stopped: the cost of the
 	// load, without the formation of the cluster and the checks.
 	LoadCPU time.Duration
+	// LoadFired is how many timers fired in that time, under gosim, and
+	// LoadTime how long it lasted in the run's time: the wake-ups of the
+	// nodes, their clients and the simulator per simulated second.
+	LoadFired uint64
+	LoadTime  int64
 	// records is the run's record of its calls, from which History was
 	// decoded: a long run's checks drop History once they have their own
 	// copy, and a report decodes it again (history). chunks is where
@@ -825,7 +833,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.HeldAppendAt, res.SteppedDownAt = s.heldAppendAt, s.steppedDownAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
 	res.nodes, res.values, res.stacks, res.records, res.chunks = s.nodes, s.values, s.wallStacks, s.records, s.chunks
-	res.LoadCPU = s.loadCPU
+	res.LoadCPU, res.LoadFired, res.LoadTime = s.loadCPU, s.loadFired, s.loadTime
 	s.mu.Unlock()
 	if err == nil {
 		if err = s.check(res); err != nil {
@@ -1237,19 +1245,21 @@ func (s *Sim) schedule() {
 	s.at(s.healAt, s.heal)
 }
 
-// markLoad notes the process's CPU time as the clients start, or as one
-// stops, for the CPU time of the load (Result.LoadCPU): the last client to
-// stop ends it. Reading the CPU time changes nothing in the run. The lock
-// is held.
+// markLoad notes the process's CPU time, the timers fired and the run's
+// time as the clients start, or as one stops, for what the load cost
+// (Result.LoadCPU, LoadFired and LoadTime): the last client to stop ends
+// it. Reading the CPU time or the timers changes nothing in the run. The
+// lock is held.
 func (s *Sim) markLoad(start bool) {
 	cpu, err := simrun.CPUTime()
+	fired := simrun.TimerFirings()
 	switch {
 	case err != nil:
 		s.fail("reading the CPU time: %w", err)
 	case start:
-		s.loadFrom = cpu
+		s.loadFrom, s.firedFrom, s.loadAt = cpu, fired, s.now()
 	default:
-		s.loadCPU = cpu - s.loadFrom
+		s.loadCPU, s.loadFired, s.loadTime = cpu-s.loadFrom, fired-s.firedFrom, s.now()-s.loadAt
 	}
 }
 
