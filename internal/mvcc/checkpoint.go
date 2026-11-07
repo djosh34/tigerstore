@@ -48,9 +48,10 @@ func (s *Store) Freeze() { s.frozen = &frozen{rev: s.rev} }
 // CopyFrozen appends the next keys of the frozen index to b until b holds
 // at least limit bytes, and the lowest entry index that a value among
 // them is in, 0 for none. It stops inside a key's bytes or between two
-// of its versions, so a chunk passes limit by at most one version and
-// the uvarints around a key. done is true once every key is out; then the
-// end mark is appended and the compactions that waited are done.
+// of its versions, so a chunk passes limit by at most one version, one
+// byte of a key and the uvarints around a key. done is true once every
+// key is out; then the end mark is appended and the compactions that
+// waited are done.
 func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done bool) {
 	f := s.frozen
 	more, first := false, true
