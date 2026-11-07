@@ -76,7 +76,17 @@ type calmCost struct {
 // so it holds their first election, which the floor's does not; one seed
 // in formUnderFaults forms its cluster in the run, under its load; it runs
 // and is checked, and the totals leave it out.
-func TestCalm(t *testing.T) {
+func TestCalm(t *testing.T) { loadCost(t, "calm", CalmConfig) }
+
+// TestFaultedLoad is TestCalm on seeds with every fault (DefaultConfig),
+// for the cost of a faulted run beside the calm one (#500).
+func TestFaultedLoad(t *testing.T) { loadCost(t, "faulted", DefaultConfig) }
+
+// loadCost runs seeds of config, every checker on each, and logs the
+// calls each answered per core-second of its load and its fixed cost. A
+// seed whose cluster forms under its load runs and is checked, but the
+// totals leave it out.
+func loadCost(t *testing.T, name string, config func(uint64) Config) {
 	if simrun.Race {
 		t.Skip("it measures gosim runs")
 	}
@@ -87,13 +97,13 @@ func TestCalm(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res := run(t, CalmConfig(seed))
+		res := run(t, config(seed))
 		checkers(t, res)
 		after, err := simrun.CPUTime()
 		if err != nil {
 			t.Fatal(err)
 		}
-		c := calmCost{Answered: res.Stats.OK, Load: res.LoadCPU, Seed: after - before, InRun: !formsFirst(CalmConfig(seed))}
+		c := calmCost{Answered: res.Stats.OK, Load: res.LoadCPU, Seed: after - before, InRun: !formsFirst(config(seed))}
 		if c.InRun {
 			t.Logf("seed %d forms its cluster under its load; the totals leave it out", seed)
 		}
@@ -113,9 +123,9 @@ func TestCalm(t *testing.T) {
 		return
 	}
 	if seeds == 0 {
-		t.Log("no calm seed to measure: each formed its cluster under its load")
+		t.Logf("no %s seed to measure: each formed its cluster under its load", name)
 		return
 	}
-	t.Logf("%d calm seeds: %d calls answered, %.0f per core-second of load, %.3f s fixed per seed",
-		seeds, total.Answered, float64(total.Answered)/total.Load.Seconds(), (total.Seed-total.Load).Seconds()/float64(seeds))
+	t.Logf("%d %s seeds: %d calls answered, %.0f per core-second of load, %.3f s fixed per seed",
+		seeds, name, total.Answered, float64(total.Answered)/total.Load.Seconds(), (total.Seed-total.Load).Seconds()/float64(seeds))
 }
