@@ -25,7 +25,7 @@ var Bugs = map[string]string{
 	"B10":  "followers expire leases on their own clock, without the log",
 	"B11":  "the disk driver treats a failed fsync as success",
 	"B12":  "the WAL keeps going after a short write",
-	"B13":  "the node driver waits for a slow watch stream instead of closing it",
+	"B13":  "the node driver gives a watch stream room whatever its client holds, and waits for the client",
 	"B14":  "the peer writer has no write deadline",
 	"B15":  "the history treats a call that timed out as certainly aborted",
 	"B16":  "WAL rotation moves to a new segment without the old one's last sync",

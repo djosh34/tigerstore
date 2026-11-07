@@ -14,10 +14,16 @@ func create(c *pb.WatchCreateRequest) *pb.WatchRequest {
 	return &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: c}}
 }
 
-// responses returns and forgets the watch responses gathered so far.
+// responses returns and forgets the watch responses gathered so far, the
+// parts of a response in parts put together.
 func (s *single) responses() []*pb.WatchResponse {
 	var out []*pb.WatchResponse
 	for _, w := range s.watch {
+		if w.Cont {
+			last := out[len(out)-1]
+			last.Events = append(last.Events, w.Resp.Events...)
+			continue
+		}
 		out = append(out, w.Resp)
 	}
 	s.watch = nil

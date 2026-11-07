@@ -39,6 +39,9 @@ type single struct {
 	holdCopy bool
 	// as is the caller of the requests do submits.
 	as Caller
+	// room, if set, is the room the test gives each watch stream itself
+	// (WatchRoom).
+	room int64
 }
 
 // newMember starts node 1 of peers on an empty simulated disk, without
@@ -113,6 +116,13 @@ func (s *single) run() []Reply {
 		if !s.holdCopy {
 			s.n.CopyCheckpoint()
 		}
+		// Every watch stream takes what it gets, unless a test gives it
+		// room of its own.
+		for id := range s.n.streams {
+			if s.room == 0 {
+				s.n.WatchRoom(id, 1<<30, 1<<20)
+			}
+		}
 		eff, err := s.n.Process()
 		if err != nil {
 			s.t.Fatalf("node stopped: %v", err)
@@ -132,7 +142,7 @@ func (s *single) run() []Reply {
 				s.n.ValuesRead(r, r.Run())
 			}
 		}
-		if len(eff.Persist) == 0 && (!s.n.Copying() || s.holdCopy) && len(eff.Checkpoint) == 0 && (len(eff.Reads) == 0 || s.hold) {
+		if len(eff.Persist) == 0 && (!s.n.Copying() || s.holdCopy) && len(eff.Checkpoint) == 0 && (len(eff.Reads) == 0 || s.hold) && !s.n.CatchingUp() {
 			return out
 		}
 		for _, j := range eff.Persist {

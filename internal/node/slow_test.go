@@ -36,11 +36,13 @@ func (noPeers) Call(context.Context, uint64, []byte) ([]byte, error) {
 	return nil, errors.New("no peers")
 }
 
-// slowWatcherIsCut opens a watch stream with a queue of 8 responses on a
-// single node, never reads it, and writes 50 keys it watches, one at a
-// time. The stream must be closed as too slow, and a Put and a Range must
-// then each finish within 10 election timeouts.
-func slowWatcherIsCut(t *testing.T) error {
+// slowWatcherWaits opens a watch stream with a queue of 8 responses on a
+// single node, does not read it, and writes 50 keys it watches, one at a
+// time, each of which must finish within 10 election timeouts, and so
+// must a Put and a Range after them. The stream stays open: its watcher
+// falls behind, and once the client reads, it gets all 50 events in
+// order (#505).
+func slowWatcherWaits(t *testing.T) error {
 	cfg := core.DefaultConfig(1, []uint64{1})
 	// The bound below is 10 election timeouts; with 10 ms ticks that is
 	// 1 s, which a few slow fsyncs on a shared runner can exceed.
@@ -98,14 +100,6 @@ func slowWatcherIsCut(t *testing.T) error {
 			return fmt.Errorf("%w: put %d did not finish within %v: %w", errSlowWatcher, i, bound, err)
 		}
 	}
-	select {
-	case <-ws.Done():
-		if !errors.Is(ws.Err(), ErrWatchTooSlow) {
-			return fmt.Errorf("the slow stream ended with %w", ws.Err())
-		}
-	case <-time.After(bound):
-		return fmt.Errorf("%w: the slow stream was never closed", errSlowWatcher)
-	}
 	if err := put(51); err != nil {
 		return fmt.Errorf("%w: a put after it did not finish within %v: %w", errSlowWatcher, bound, err)
 	}
@@ -114,19 +108,37 @@ func slowWatcherIsCut(t *testing.T) error {
 	if _, err := n.Do(rctx, &pb.RangeRequest{Key: []byte("k1")}); err != nil {
 		return fmt.Errorf("%w: a read after it did not finish within %v: %w", errSlowWatcher, bound, err)
 	}
+	next := int64(0)
+	for next < 51 {
+		select {
+		case r := <-ws.C:
+			ws.Taken(r)
+			for _, ev := range r.Events {
+				if want := fmt.Sprintf("k%d", next+1); string(ev.Kv.Key) != want {
+					return fmt.Errorf("the slow stream got %s, want %s", ev.Kv.Key, want)
+				}
+				next++
+			}
+		case <-ws.Done():
+			return fmt.Errorf("the slow stream was closed: %w", ws.Err())
+		case <-time.After(10 * bound):
+			return fmt.Errorf("the slow stream got %d of 51 events", next)
+		}
+	}
 	return nil
 }
 
-// TestSlowWatcherIsCut: see slowWatcherIsCut.
-func TestSlowWatcherIsCut(t *testing.T) {
-	if err := slowWatcherIsCut(t); err != nil {
+// TestSlowWatcherWaits: see slowWatcherWaits.
+func TestSlowWatcherWaits(t *testing.T) {
+	if err := slowWatcherWaits(t); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// TestWatchBytesBound closes a watch stream that is behind by more bytes
-// than its limit, although its count of responses is far below the queue.
-func TestWatchBytesBound(t *testing.T) {
+// TestWatchRoomBound writes 20 KiB to a stream with room for 8 KiB that
+// is not read: the stream holds at most about its room, stays open, and
+// once read gets every event in order (#505).
+func TestWatchRoomBound(t *testing.T) {
 	cfg := core.DefaultConfig(1, []uint64{1})
 	n, err := New(Config{Core: cfg, DataDir: t.TempDir(), Tick: 50 * time.Millisecond, WatchBytes: 8 << 10, Logf: t.Logf})
 	if err != nil {
@@ -144,7 +156,7 @@ func TestWatchBytesBound(t *testing.T) {
 	put := func(i int) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, err := n.Do(ctx, &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", i), Value: make([]byte, 1024)})
+		_, err := n.Do(ctx, &pb.PutRequest{Key: fmt.Appendf(nil, "k%02d", i), Value: make([]byte, 1024)})
 		return err
 	}
 	deadline := time.Now().Add(10 * time.Second)
@@ -167,21 +179,34 @@ func TestWatchBytesBound(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	select {
-	case <-ws.Done():
-		if !errors.Is(ws.Err(), ErrWatchTooSlow) {
-			t.Fatalf("the stream ended with %v", ws.Err())
+	if q := ws.queued.Load(); q > 8<<10+2<<10 {
+		t.Fatalf("a stream with room for 8 KiB holds %d bytes", q)
+	}
+	next := 1
+	for next <= 20 {
+		select {
+		case r := <-ws.C:
+			ws.Taken(r)
+			for _, ev := range r.Events {
+				if want := fmt.Sprintf("k%02d", next); string(ev.Kv.Key) != want {
+					t.Fatalf("the stream got %s, want %s", ev.Kv.Key, want)
+				}
+				next++
+			}
+		case <-ws.Done():
+			t.Fatalf("the stream was closed: %v", ws.Err())
+		case <-time.After(5 * time.Second):
+			t.Fatalf("the stream got %d of 20 events", next-1)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatalf("a stream behind by 20 KiB was not closed; %d responses queued", len(ws.C))
 	}
 }
 
-// TestMemoryPressureClosesSlowestWatch runs a node whose process uses
-// more than its whole memory budget, so the value cache cannot give
-// anything back. After a collection, the node must close the watch stream
-// that is furthest behind as too slow, and keep one that keeps up.
-func TestMemoryPressureClosesSlowestWatch(t *testing.T) {
+// TestMemoryPressureHoldsWatches runs a node whose process uses more
+// than its whole memory budget, so the value cache cannot give anything
+// back. Its watch streams then get no events, whether their clients read
+// or not, and none is closed: their watchers wait, while writes go on
+// (#505).
+func TestMemoryPressureHoldsWatches(t *testing.T) {
 	cfg := core.DefaultConfig(1, []uint64{1})
 	cfg.MemoryBytes = 1
 	n, err := New(Config{Core: cfg, DataDir: t.TempDir(), Tick: 20 * time.Millisecond, Logf: t.Logf})
@@ -205,17 +230,6 @@ func TestMemoryPressureClosesSlowestWatch(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	watch := func(key string) *WatchStream {
-		t.Helper()
-		ws, err := n.OpenWatch(ctx, core.Caller{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := ws.Send(ctx, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{Key: []byte(key)}}}); err != nil {
-			t.Fatal(err)
-		}
-		return ws
-	}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -228,35 +242,87 @@ func TestMemoryPressureClosesSlowestWatch(t *testing.T) {
 			t.Fatal("the node never took a write")
 		}
 	}
-	slow, fast := watch("k"), watch("z")
-	// The fast client takes its created response; the slow one never
-	// reads.
+	ws, err := n.OpenWatch(ctx, core.Caller{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.Send(ctx, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{Key: []byte("k")}}}); err != nil {
+		t.Fatal(err)
+	}
+	// The created response goes out whatever the room.
 	select {
-	case r := <-fast.C:
-		fast.Taken(r)
+	case r := <-ws.C:
+		ws.Taken(r)
+		if !r.Created {
+			t.Fatalf("the first response is %v", r)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("no created response")
 	}
 	for range 3 {
 		put("k")
-	}
-	for {
 		runtime.GC()
-		select {
-		case <-slow.Done():
-			if !errors.Is(slow.Err(), ErrWatchTooSlow) {
-				t.Fatalf("the slow stream ended with %v", slow.Err())
+	}
+	select {
+	case r := <-ws.C:
+		t.Fatalf("a node over its memory budget sent %v", r)
+	case <-ws.Done():
+		t.Fatalf("a node over its memory budget closed a stream: %v", ws.Err())
+	case <-time.After(time.Second):
+	}
+}
+
+// TestBigRevisionReachesPrevKVWatcher deletes 300 keys of 1 KiB at one
+// revision, on a stream whose room is 256 KiB, for a watcher with
+// prev_kv that reads at once. The revision is larger than the room, so
+// it goes out in parts, as one response; the stream must not be closed
+// for it (#428).
+func TestBigRevisionReachesPrevKVWatcher(t *testing.T) {
+	n, err := New(Config{Core: core.DefaultConfig(1, []uint64{1}), DataDir: t.TempDir(), Tick: 10 * time.Millisecond, WatchBytes: 256 << 10, Logf: t.Logf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	ran := make(chan error, 1)
+	go func() { ran <- n.Run(ctx, noPeers{}) }()
+	defer func() { cancel(); <-ran }()
+	do := func(op *pb.RequestOp) {
+		t.Helper()
+		for {
+			cctx, c := context.WithTimeout(ctx, 5*time.Second)
+			_, err := n.Do(cctx, &pb.TxnRequest{Success: []*pb.RequestOp{op}})
+			c()
+			if err == nil {
+				return
 			}
-			select {
-			case <-fast.Done():
-				t.Fatalf("the stream that kept up was closed too: %v", fast.Err())
-			default:
-			}
-			return
-		case <-time.After(20 * time.Millisecond):
+			time.Sleep(10 * time.Millisecond)
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("the stream furthest behind was not closed")
+	}
+	for i := range 300 {
+		do(&pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: fmt.Appendf(nil, "k%03d", i), Value: make([]byte, 1024)}}})
+	}
+	do(&pb.RequestOp{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte("k"), RangeEnd: []byte("l")}}})
+	rev := int64(302) // 300 puts from revision 2, then the delete
+	ws, err := n.OpenWatch(ctx, core.Caller{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.Send(ctx, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{Key: []byte("k"), RangeEnd: []byte("l"), StartRevision: rev, PrevKv: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	events := 0
+	for events < 300 {
+		select {
+		case r := <-ws.C:
+			ws.Taken(r)
+			events += len(r.Events)
+			if len(r.Events) > 0 && len(r.Events) != 300 {
+				t.Fatalf("the revision of 300 deletes came in a response of %d", len(r.Events))
+			}
+		case <-ws.Done():
+			t.Fatalf("the stream closed after %d events: %v", events, ws.Err())
+		case <-time.After(5 * time.Second):
+			t.Fatalf("a watcher with prev_kv that reads at once got %d of the 300 deletes of one revision", events)
 		}
 	}
 }

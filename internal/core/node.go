@@ -1855,11 +1855,12 @@ func (n *Node) Process() (Effects, error) {
 			// goes out ahead of the events it covers.
 			for _, w := range n.watchers {
 				if !w.dead && w.progress && len(w.pending) > 0 {
-					n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id}, nil)
+					n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id}, nil, 0)
 				}
 			}
 		}
 		n.flushWatches()
+		n.catchUp()
 		if n.err == nil {
 			n.trimWindow()
 			n.fitCache()

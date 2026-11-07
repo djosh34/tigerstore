@@ -135,7 +135,9 @@ func TestAnswersHeldBackBySlowClient(t *testing.T) {
 		})
 	}
 	all := &pb.RangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), Serializable: true}
-	heldBack := func(path string, req, resp proto.Message) {
+	// heldBack sends req on a client that takes nothing, checks that the
+	// process then holds at most limit bytes more, and reads the answer.
+	heldBack := func(path string, req, resp proto.Message, limit int64) {
 		t.Helper()
 		before := heapInUse()
 		fr, closeConn := rawCall(t, c, 1, cert, path, req)
@@ -144,7 +146,7 @@ func TestAnswersHeldBackBySlowClient(t *testing.T) {
 		time.Sleep(time.Second)
 		held := heapInUse() - before
 		t.Logf("%s of %d MiB holds %d KiB while its client takes nothing", path, keys*size>>20, held>>10)
-		if held > 8<<20 {
+		if held > limit {
 			t.Fatalf("%s of %d MiB holds %d MiB while its client takes nothing", path, keys*size>>20, held>>20)
 		}
 		msg := readAnswer(t, fr)
@@ -167,21 +169,109 @@ func TestAnswersHeldBackBySlowClient(t *testing.T) {
 		}
 	}
 	var r pb.RangeResponse
-	heldBack("/etcdserverpb.KV/Range", all, &r)
+	heldBack("/etcdserverpb.KV/Range", all, &r, 8<<20)
 	check("the Range", r.Kvs)
 	var txn pb.TxnResponse
 	heldBack("/etcdserverpb.KV/Txn", &pb.TxnRequest{Success: []*pb.RequestOp{
 		{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0")}}},
 		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("after"), Value: []byte("1")}}},
-	}}, &txn)
+	}}, &txn, 8<<20)
 	if len(txn.Responses) != 2 || txn.Responses[1].GetResponsePut() == nil {
 		t.Fatalf("the Txn answered %d ops", len(txn.Responses))
 	}
 	check("the Txn's range", txn.Responses[0].GetResponseRange().Kvs)
+	// A watch from revision 1 catches up over the whole history, and one
+	// with prev_kv from now gets the delete below: 3,072 events of one
+	// revision with 48 MiB of previous values. Neither client reads until
+	// the delete is done. A stream holds at most its room of 8 MiB, and
+	// the server's queue 4 MiB more.
+	before := heapInUse()
+	watch := func(w *pb.WatchCreateRequest) (*http2.Framer, func()) {
+		return rawCall(t, c, 1, cert, "/etcdserverpb.Watch/Watch", &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: w}})
+	}
+	catchUp, closeCatchUp := watch(&pb.WatchCreateRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), StartRevision: 1})
+	defer closeCatchUp()
+	big, closeBig := watch(&pb.WatchCreateRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), PrevKv: true})
+	defer closeBig()
+	time.Sleep(time.Second)
 	var del pb.DeleteRangeResponse
-	heldBack("/etcdserverpb.KV/DeleteRange", &pb.DeleteRangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), PrevKv: true}, &del)
+	// The watcher with prev_kv takes the delete's events, as much as its
+	// stream has room for: 8 MiB, and 4 MiB in the server's queue.
+	heldBack("/etcdserverpb.KV/DeleteRange", &pb.DeleteRangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), PrevKv: true}, &del, 8<<20+12<<20)
 	if del.Deleted != keys {
 		t.Fatalf("the DeleteRange deleted %d keys, want %d", del.Deleted, keys)
 	}
 	check("the DeleteRange's previous values", del.PrevKvs)
+	time.Sleep(time.Second)
+	held := heapInUse() - before
+	t.Logf("two watches of 48 MiB each hold %d KiB while their clients take nothing", held>>10)
+	if held > 2*(12<<20)+8<<20 {
+		t.Fatalf("two watches of 48 MiB each hold %d MiB while their clients take nothing", held>>20)
+	}
+	var puts []*mvccpb.KeyValue
+	readWatch(t, catchUp, func(r *pb.WatchResponse) bool {
+		for _, ev := range r.Events {
+			if ev.Type == mvccpb.PUT {
+				puts = append(puts, ev.Kv)
+			}
+		}
+		return len(puts) == keys
+	})
+	check("the catch-up", puts)
+	readWatch(t, big, func(r *pb.WatchResponse) bool {
+		if len(r.Events) == 0 {
+			return false
+		}
+		if len(r.Events) != keys {
+			t.Fatalf("the revision of %d deletes came in a response of %d events", keys, len(r.Events))
+		}
+		var prev []*mvccpb.KeyValue
+		for _, ev := range r.Events {
+			prev = append(prev, ev.PrevKv)
+		}
+		check("the deletes' previous values", prev)
+		return true
+	})
+}
+
+// readWatch reads the gRPC messages of stream 1, crediting every byte
+// back, until done says so for one.
+func readWatch(t *testing.T, fr *http2.Framer, done func(*pb.WatchResponse) bool) {
+	t.Helper()
+	var buf []byte
+	for {
+		f, err := fr.ReadFrame()
+		if err != nil {
+			t.Fatalf("reading a watch: %v", err)
+		}
+		switch f := f.(type) {
+		case *http2.DataFrame:
+			buf = append(buf, f.Data()...)
+			if n := len(f.Data()); n > 0 {
+				if err := fr.WriteWindowUpdate(0, uint32(n)); err != nil {
+					t.Fatal(err)
+				}
+				if err := fr.WriteWindowUpdate(1, uint32(n)); err != nil {
+					t.Fatal(err)
+				}
+			}
+		case *http2.MetaHeadersFrame:
+			if f.StreamEnded() {
+				t.Fatalf("the watch ended: %v", f.Fields)
+			}
+		case *http2.RSTStreamFrame:
+			t.Fatalf("the watch was reset with %v", f.ErrCode)
+		}
+		for len(buf) >= 5 && len(buf) >= 5+int(binary.BigEndian.Uint32(buf[1:5])) {
+			n := int(binary.BigEndian.Uint32(buf[1:5]))
+			var r pb.WatchResponse
+			if err := proto.Unmarshal(buf[5:5+n], &r); err != nil {
+				t.Fatal(err)
+			}
+			buf = buf[5+n:]
+			if done(&r) {
+				return
+			}
+		}
+	}
 }

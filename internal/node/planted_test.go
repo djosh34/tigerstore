@@ -21,7 +21,7 @@ func TestPlanted(t *testing.T) {
 		// caught is how the scenario fails when it catches the bug.
 		caught error
 	}{
-		"B13": {slowWatcherIsCut, errSlowWatcher},
+		"B13": {slowWatcherWaits, errSlowWatcher},
 		"B25": {damagedValueIsRefused, errDamagedRead},
 		"B26": {followerRetriesFetch, errFollowerStopped},
 		"B29": {cleanSeed1, errLostValue},
