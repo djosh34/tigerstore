@@ -171,6 +171,10 @@ once() {
 	if [ "$workload" = mixed ]; then endpoint_file=endpoints; fi
 	if step "$run" "cluster start" env TMPFS_DIR="$tmpfs/$target" "${place[@]}" "$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"; then
 		cp "$dir/placement.json" "$run.placement"
+		# Diagnostic only: observe the delayed sockets throughout the
+		# preload, not just after the failure. Keep this on the generator CPU.
+		(taskset -c "${layout[0]}" bash -c 'while true; do date -u; ss -tinm "( sport = :20011 or dport = :20011 or sport = :20021 or dport = :20021 or sport = :20031 or dport = :20031 )"; sleep 1; done') >"$run.sockets" &
+		local monitor=$!
 		# The generator drove the leader on its CPUs only if the leader
 		# did not change during the run.
 		if step "$run" loadgen taskset -c "${layout[0]}" "$loadgen" \
@@ -189,6 +193,8 @@ once() {
 			"$@"; then
 			step "$run" "leader check" "$here/cluster.sh" check "$dir" || true
 		fi
+		kill "$monitor" || true
+		wait "$monitor" || true
 	fi
 	# Keep logs and a post-run memory/disk sample outside the CPU window.
 	# After a failure some nodes may be gone.
