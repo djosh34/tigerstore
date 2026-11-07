@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -42,7 +43,15 @@ func TestDiag524Preload(t *testing.T) {
 		clients = append(clients, kv)
 	}
 	value := make([]byte, 60<<10)
-	jobs := []chan int{make(chan int, 2000), make(chan int, 2000), make(chan int, 2000)}
+	rate := 300
+	if value := os.Getenv("DIAG524_RATE"); value != "" {
+		rate, err = strconv.Atoi(value)
+		if err != nil || rate <= 0 {
+			t.Fatalf("invalid DIAG524_RATE: %q", value)
+		}
+	}
+	count := rate * 20
+	jobs := []chan int{make(chan int, count), make(chan int, count), make(chan int, count)}
 	ctx, cancelAll := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancelAll()
 	var sent, completed atomic.Int64
@@ -74,8 +83,8 @@ func TestDiag524Preload(t *testing.T) {
 		})
 	}
 	// Fixed arrivals, not a closed loop. Each run offers the same work.
-	for i := 0; i < 6000; i++ {
-		time.Sleep(time.Until(start.Add(time.Duration(i) * time.Second / 300)))
+	for i := 0; i < count; i++ {
+		time.Sleep(time.Until(start.Add(time.Duration(i) * time.Second / time.Duration(rate))))
 		if ctx.Err() != nil {
 			break
 		}
@@ -86,7 +95,7 @@ func TestDiag524Preload(t *testing.T) {
 		close(q)
 	}
 	workers.Wait()
-	t.Logf("300 Txns/s, 60 KiB each: sent=%d completed=%d elapsed=%v errors=%d max=%v", sent.Load(), completed.Load(), time.Since(start), failed.Load(), time.Duration(maxLatency.Load()))
+	t.Logf("%d Txns/s, 60 KiB each: sent=%d completed=%d elapsed=%v errors=%d max=%v", rate, sent.Load(), completed.Load(), time.Since(start), failed.Load(), time.Duration(maxLatency.Load()))
 	if failed.Load() > 0 {
 		t.Fatalf("%d requests failed", failed.Load())
 	}

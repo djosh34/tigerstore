@@ -147,7 +147,7 @@ jobs:
             mkdir -p results/diag-tcp
             original=$(sysctl -n net.ipv4.tcp_rmem)
             count=1
-            if [ "$BENCH" = diag-rcvbuf ]; then count=3; fi
+            if [ "$BENCH" = diag-rcvbuf ]; then count=3; export DIAG524_RATE=600; fi
             for mode in default buffered default-again; do
               setting=$original
               if [ "$mode" = buffered ]; then setting=$(awk '{$2=1048576; print}' <<<"$original"); fi
