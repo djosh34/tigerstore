@@ -144,7 +144,11 @@ func (c *cleaner) run(ctx context.Context) error {
 			c.past = used >= budget
 			c.short = used >= budget-budget/4
 		}
-		c.remove()
+		if c.remove() && budget > 0 {
+			// Measure what the removal freed: nothing else may wake
+			// the cleaner, and the NOSPACE alarm clears by the measure.
+			continue
+		}
 		if budget > 0 && c.pending == nil {
 			start := time.Now()
 			did, err := c.pass(ctx, c.short)
@@ -496,8 +500,9 @@ func (c *cleaner) walk(f io.Reader, ckpt uint64, fn func(wal.FileID, mvcc.Ref) e
 // remove drops from the log what durable roots made obsolete and what
 // the last pass replaced, unless a snapshot fetch or a value read is under
 // way, as either may read it. It then removes their files, outside the
-// lock, and while space is short the spare files.
-func (c *cleaner) remove() {
+// lock, and while space is short the spare files. It reports whether it
+// removed a file.
+func (c *cleaner) remove() bool {
 	l := c.n.log
 	l.mu.Lock()
 	if (l.removal != nil || c.pending != nil) && l.serving == 0 && l.reading.TryLock() {
@@ -526,26 +531,29 @@ func (c *cleaner) remove() {
 	l.held.Store(l.removal != nil || c.pending != nil)
 	l.mu.Unlock()
 	if time.Now().Before(c.retryAt) {
-		return
+		return false
 	}
 	k, err := wal.RemoveFiles(l.fs, c.files, c.spares())
+	removed := k > 0
 	if k > 0 {
 		c.n.cleaningStage("removed")
 	}
 	c.files = c.files[k:]
 	if err == nil && c.keep > c.kept {
 		if err = l.w.RemoveCheckpoints(c.keep); err == nil {
-			c.kept = c.keep
+			c.kept, removed = c.keep, true
 		}
 	}
 	if err == nil && c.short && !c.sparesGone {
 		err = wal.RemoveSpares(l.fs, 0)
 		c.sparesGone = err == nil
+		removed = removed || c.sparesGone
 	}
 	c.sparesGone = c.sparesGone && c.short
 	if err != nil {
 		c.failed(err)
 	}
+	return removed
 }
 
 // failed logs and counts a failed removal, which the cleaner tries again
