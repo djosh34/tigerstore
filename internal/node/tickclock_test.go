@@ -61,3 +61,16 @@ func TestTickClockGoesOn(t *testing.T) {
 		t.Errorf("got %q, want %q", s, "T T T E2")
 	}
 }
+
+// TestTickClockOneLateTick gives a turn its one late Tick in its first
+// call, then moves the clock a tick on before the second, as a held turn
+// can: the second call has no late Tick of its own.
+func TestTickClockOneLateTick(t *testing.T) {
+	var got steps
+	k := tickClock{due: 5}
+	k.advance(&got, 4, 0, 2, math.MaxInt64)
+	k.advance(&got, 6, 0, 2, math.MaxInt64)
+	if s := strings.Join(got, " "); s != "T T T E1 E2" {
+		t.Errorf("got %q, want %q", s, "T T T E1 E2")
+	}
+}

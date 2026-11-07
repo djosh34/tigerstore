@@ -1129,14 +1129,15 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	// any, and the inputs queued after it, and gives the core the ticks
 	// that passed and the inputs. waited is the tick at which the
 	// committer began to wait, and dueIn how many Ticks away the core's
-	// next work was then. The committer could have run again from the earliest
-	// input was queued, or from the due tick. Raft's election clock must
-	// also not run ahead of a message already waiting for it: so while a
-	// peer's message waits for a node that does not lead, the core gets
-	// the ticks up to one short of its due tick, then the inputs, and then
-	// the rest of the ticks, in the same turn. Memory is measured at most
-	// once a tick, on a turn: only a turn makes it grow. turn reports
-	// whether the core got a tick or an input, after which it runs.
+	// next work was then. The committer could have run again from when
+	// the earliest input was queued, or from the due tick. Raft's election
+	// clock must also not run ahead of a message already waiting for it:
+	// so while a peer's message waits for a node that does not lead, the
+	// core gets the ticks up to one short of its due tick, then the
+	// inputs, and then the rest of the ticks, in the same turn. Memory is
+	// measured at most once a tick, on a turn: only a turn makes it grow.
+	// turn reports whether the core got a tick or an input, after which it
+	// runs.
 	turn := func(waited int64, first *input, inbox <-chan input, dueIn int64) bool {
 		ins = ins[:0]
 		if first != nil {
