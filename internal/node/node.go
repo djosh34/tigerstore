@@ -1118,16 +1118,31 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	defer wake.Stop()
 	wakeAt := int64(1)
 	// tick gives the core the ticks of wall time up to now, entered being
-	// the tick at which the committer last began to wait. The ticks that
-	// passed while it was busy go to the core as one Tick and the rest by
-	// Elapse, as a ticker that drops ticks would deliver them: requests
-	// still time out by the wall clock, and Raft takes no burst of ticks
-	// from a stalled committer. Each tick it waited is a Tick, so Raft
-	// sees the same ticks as if each had come on time. Memory is measured
-	// at most once a tick, on a turn: only a turn makes it grow. It reports
-	// whether the core had a tick, after which it takes a turn.
-	tick := func(entered int64) bool {
+	// the tick at which the committer last began to wait. A ticker that
+	// drops ticks is the model: Raft takes no burst of ticks from a
+	// committer that was late, and requests still time out by the wall
+	// clock (Elapse). The ticks that passed while it was busy go to the
+	// core as one Tick and the rest by Elapse. Each tick it waited is a
+	// Tick, up to the one that was due (wakeAt), so Raft sees the same
+	// ticks as if each had come on time; those after it passed while it
+	// waited for a CPU to run on, which a ticker drops too.
+	//
+	// held is set when a peer's message waits for a node that does not
+	// lead: Raft's election clock then stops a tick short of the due
+	// tick, and the message, which may be its leader's heartbeat, steps
+	// first. A node starved of CPU would otherwise count its leader dead
+	// for the time it could not read the heartbeats already waiting for
+	// it, where a ticker's dropped ticks slowed its clock instead.
+	//
+	// Memory is measured at most once a tick, on a turn: only a turn makes
+	// it grow. tick reports whether the core had a tick, after which it
+	// takes a turn.
+	tick := func(entered int64, held bool) bool {
 		now := int64(time.Since(started) / n.cfg.Tick)
+		last := wakeAt
+		if held && n.core.Leader() != n.cfg.Core.ID {
+			last--
+		}
 		ticked := entered > clock || now > clock
 		if entered > clock {
 			n.core.Tick()
@@ -1137,8 +1152,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				clock = entered
 			}
 		}
-		for ; clock < now; clock++ {
+		for ; clock < now && clock < last; clock++ {
 			n.core.Tick()
+		}
+		if now > clock {
+			n.core.Elapse(now - clock)
+			clock = now
 		}
 		if now > measured {
 			n.measureMemory(streams)
@@ -1146,6 +1165,8 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		return ticked
 	}
+	// ins are the inputs of a turn.
+	var ins []input
 	// beats holds when this node last sent each peer a heartbeat, in
 	// term beatTerm.
 	beats := map[uint64]time.Time{}
@@ -1184,19 +1205,15 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		entered := int64(time.Since(started) / n.cfg.Tick)
 		select {
 		case in := <-inbox:
-			tick(entered)
-			n.handle(in, waiters, streams)
-		drain:
-			for range 4096 {
-				select {
-				case in := <-n.inbox:
-					n.handle(in, waiters, streams)
-				default:
-					break drain
-				}
+			ins = n.takeInputs(append(ins[:0], in))
+			tick(entered, hasMessage(ins))
+			for i := range ins {
+				n.handle(ins[i], waiters, streams)
+				ins[i] = input{}
 			}
+			ins = ins[:0]
 		case done := <-n.persisted:
-			tick(entered)
+			tick(entered, len(n.inbox) > 0)
 			if done.err != nil {
 				if core.FailureOf(done.err) == core.Reload {
 					n.dropAll(waiters, streams, rpctypes.ErrGRPCStopped)
@@ -1213,30 +1230,38 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		case toDisk <- next:
 			backlog[0] = persistBatch{}
 			backlog = backlog[1:]
-			if !tick(entered) {
+			if !tick(entered, len(n.inbox) > 0) {
 				continue
 			}
 		case toWriter <- chunk:
 			chunks[0] = core.CheckpointChunk{}
 			chunks = chunks[1:]
-			if !tick(entered) {
+			if !tick(entered, len(n.inbox) > 0) {
 				continue
 			}
 		case toReader <- read:
 			reads[0] = nil
 			reads = reads[1:]
-			if !tick(entered) {
+			if !tick(entered, len(n.inbox) > 0) {
 				continue
 			}
 		case d := <-n.readDone:
-			tick(entered)
+			tick(entered, len(n.inbox) > 0)
 			n.core.ValuesRead(d.read, d.err)
 		case <-paced:
-			tick(entered)
+			tick(entered, len(n.inbox) > 0)
 			pace = nil
 			n.core.CopyCheckpoint()
 		case <-wake.C:
-			tick(entered)
+			if inbox != nil {
+				ins = n.takeInputs(ins[:0])
+			}
+			tick(entered, hasMessage(ins))
+			for i := range ins {
+				n.handle(ins[i], waiters, streams)
+				ins[i] = input{}
+			}
+			ins = ins[:0]
 		case <-ctx.Done():
 			return nil
 		}
@@ -1321,6 +1346,25 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			return err
 		}
 	}
+}
+
+// takeInputs adds to ins the inputs already queued, up to 4096, and
+// returns it.
+func (n *Node) takeInputs(ins []input) []input {
+	for range 4096 {
+		select {
+		case in := <-n.inbox:
+			ins = append(ins, in)
+		default:
+			return ins
+		}
+	}
+	return ins
+}
+
+// hasMessage reports whether ins holds a message from a peer.
+func hasMessage(ins []input) bool {
+	return slices.ContainsFunc(ins, func(in input) bool { return in.msg != nil })
 }
 
 // heartbeatSent is etcd's TimeoutDetector on the leader's heartbeats: a
