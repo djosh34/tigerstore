@@ -1159,8 +1159,14 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		clock.lateTicked = false
 		now := wallTick(time.Now())
+		if f := n.cfg.Core.Tracef; f != nil && (now > clock.at || hasMessage(ins)) {
+			f("turn at=%d due=%d now=%d waited=%d ready=%d dueIn=%d held=%v inputs=%d backlog=%d", clock.at, clock.due, now, waited, ready, dueIn, held, len(ins), len(backlog))
+		}
 		moved := clock.advance(n.core, now, waited, ready, limit)
 		for i := range ins {
+			if f, m := n.cfg.Core.Tracef, ins[i].msg; f != nil && m != nil {
+				f("recv %s from=%d term=%d queued=%v", m.GetType(), m.GetFrom(), m.GetTerm(), time.Since(ins[i].at))
+			}
 			n.handle(ins[i], waiters, streams)
 			ins[i] = input{}
 		}
@@ -1294,6 +1300,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			beatTerm = tm
 		}
 		for _, m := range eff.Send {
+			if f := n.cfg.Core.Tracef; f != nil {
+				f("send %s to=%d term=%d", m.GetType(), m.GetTo(), m.GetTerm())
+			}
 			if m.GetType() == raftpb.MsgHeartbeat {
 				n.heartbeatSent(beats, m.GetTo())
 			}

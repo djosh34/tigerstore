@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"google.golang.org/grpc/encoding/gzip"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/node"
 )
 
 // TestRangeReplyClients reads pages through real TLS clients, the node
@@ -20,7 +23,42 @@ import (
 // memory budget, so its value cache stays empty. Every page must finish,
 // gzip replies on separate connections included.
 func TestRangeReplyClients(t *testing.T) {
+	var mu sync.Mutex
+	var trace [4096]string
+	var pos int
+	var losses []string
+	started := time.Now()
+	t.Cleanup(func() {
+		for _, loss := range losses {
+			t.Logf("DIAGNOSTIC LEADER LOSS:\n%s", loss)
+		}
+	})
 	c := newClusterWith(t, func(c *cluster) {
+		if os.Getenv("TIGERSTORE_DIAG_539") != "" {
+			c.nodeConfig = func(cfg *node.Config) {
+				id := cfg.Core.ID
+				cfg.Core.Tracef = func(format string, args ...any) {
+					line := fmt.Sprintf("%9.3fms node=%d %s", float64(time.Since(started))/float64(time.Millisecond), id, fmt.Sprintf(format, args...))
+					mu.Lock()
+					trace[pos%len(trace)] = strings.TrimSpace(line)
+					pos++
+					mu.Unlock()
+				}
+				var previous uint64
+				cfg.Turn = func(n *core.Node, _ core.Effects, _ error) {
+					if previous == id && n.Leader() != id {
+						mu.Lock()
+						var lines []string
+						for j := max(0, pos-600); j < pos; j++ {
+							lines = append(lines, trace[j%len(trace)])
+						}
+						losses = append(losses, strings.Join(lines, "\n"))
+						mu.Unlock()
+					}
+					previous = n.Leader()
+				}
+			}
+		}
 		c.coreConfig = func(cfg *core.Config) {
 			cfg.MemoryBytes = 12 << 20
 			cfg.WindowBytes, cfg.WindowMaxBytes = 4<<10, 8<<10

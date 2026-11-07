@@ -178,6 +178,8 @@ type Config struct {
 	// revokes are taken up to twice the gap between commit and apply that
 	// refuses other writes (tooManyRequests).
 	PriorityRequest bool
+	// Tracef is opt-in diagnostic output on the diagnosis branch.
+	Tracef func(string, ...any)
 	// Timer, if set, times applies and ranges for the metrics.
 	Timer Timer
 }
@@ -806,6 +808,10 @@ func (n *Node) replay(commit uint64) (uint64, error) {
 // uncommitted entries and on bytes in flight from the budget for entries
 // that are not applied yet.
 func raftConfig(cfg Config, st *storage, applied uint64) *raft.Config {
+	logger := quietLogger()
+	if cfg.Tracef != nil {
+		logger = &raft.DefaultLogger{Logger: log.New(raftTraceWriter{cfg.Tracef}, "raft: ", 0)}
+	}
 	return &raft.Config{
 		ID:                        cfg.ID,
 		ElectionTick:              cfg.ElectionTicks,
@@ -820,7 +826,7 @@ func raftConfig(cfg Config, st *storage, applied uint64) *raft.Config {
 		CheckQuorum:               true,
 		PreVote:                   !cfg.NoPreVote,
 		ReadOnlyOption:            raft.ReadOnlySafe,
-		Logger:                    quietLogger(),
+		Logger:                    logger,
 	}
 }
 
@@ -858,6 +864,13 @@ func (c *Config) floorSeconds(ticks int64) int64 { return ticks * c.TickMillis /
 // period, at its last tick.
 func (c *Config) every(now, s int64) bool {
 	return now*c.TickMillis/(s*1000) != (now-1)*c.TickMillis/(s*1000)
+}
+
+type raftTraceWriter struct{ trace func(string, ...any) }
+
+func (w raftTraceWriter) Write(p []byte) (int, error) {
+	w.trace("%s", p)
+	return len(p), nil
 }
 
 // quietLogger drops raft's log lines. Its Panic methods still panic,
@@ -919,6 +932,10 @@ func (n *Node) Tick() {
 	if n.removeAt != 0 && n.now >= n.removeAt {
 		n.fail(ErrRemoved)
 		return
+	}
+	if n.cfg.Tracef != nil {
+		st := n.rn.Status()
+		n.cfg.Tracef("Tick now=%d role=%s term=%d lead=%d progress=%v", n.now, st.RaftState, st.GetTerm(), st.Lead, st.Progress)
 	}
 	n.rn.Tick()
 	n.noteRaft(nil)
