@@ -1096,7 +1096,8 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 	}); err != nil {
 		return err
 	}
-	peerURL := fmt.Sprintf("https://127.0.0.1:%d", r.c.peerPorts[target])
+	// The new member is reached at the node's router, as the old one was.
+	peerURL := "https://" + r.c.routers[target].Addr()
 	var newID uint64
 	if err := retry("add the new member", func(c context.Context, ambiguous bool) error {
 		added, err := ctl.MemberAdd(c, []string{peerURL})
