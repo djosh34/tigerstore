@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
@@ -23,6 +24,7 @@ const (
 	recvWindow     = 1 << 30
 	recvWindowStep = recvWindow / 2
 	writeTimeout   = 10 * time.Second
+	dialTimeout    = 5 * time.Second
 	maxStreamID    = 1<<31 - 1
 )
 
@@ -128,21 +130,16 @@ type streamIncr struct {
 var clientTLS *tls.Config
 
 func dial(addr string) (*conn, error) {
-	d := &net.Dialer{Timeout: 5 * time.Second}
+	d := &net.Dialer{Timeout: dialTimeout}
 	var nc net.Conn
 	var err error
-	if clientTLS != nil {
-		var tc *tls.Conn
-		tc, err = tls.DialWithDialer(d, "tcp", addr, clientTLS)
-		if err == nil && tc.ConnectionState().NegotiatedProtocol != "h2" {
-			err = errors.Join(fmt.Errorf("%s: the server did not negotiate h2", addr), tc.Close())
-		}
-		nc = tc
-	} else {
-		nc, err = d.Dial("tcp", addr)
-	}
-	if err != nil {
+	if nc, err = d.Dial("tcp", addr); err != nil {
 		return nil, err
+	}
+	if clientTLS != nil {
+		if nc, err = clientHandshake(nc, addr); err != nil {
+			return nil, err
+		}
 	}
 	c := &conn{
 		addr:       addr,
@@ -187,6 +184,40 @@ func dial(addr string) (*conn, error) {
 	}
 	return c, nil
 }
+
+// clientHandshake runs TLS over nc. TLS reads its records through a large
+// buffer, so that one read system call brings in many records: reading
+// them one or two at a time took 30% of the generator's core on the
+// mixed workload (#506).
+func clientHandshake(nc net.Conn, addr string) (net.Conn, error) {
+	cfg := clientTLS
+	if cfg.ServerName == "" {
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, errors.Join(err, nc.Close())
+		}
+		cfg = cfg.Clone()
+		cfg.ServerName = host
+	}
+	tc := tls.Client(bufferedConn{nc, bufio.NewReaderSize(nc, 256<<10)}, cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	defer cancel()
+	if err := tc.HandshakeContext(ctx); err != nil {
+		return nil, errors.Join(err, nc.Close())
+	}
+	if tc.ConnectionState().NegotiatedProtocol != "h2" {
+		return nil, errors.Join(fmt.Errorf("%s: the server did not negotiate h2", addr), tc.Close())
+	}
+	return tc, nil
+}
+
+// bufferedConn is a connection that reads through a buffer.
+type bufferedConn struct {
+	net.Conn
+	r *bufio.Reader
+}
+
+func (b bufferedConn) Read(p []byte) (int, error) { return b.r.Read(p) }
 
 func (c *conn) failure() error {
 	c.mu.Lock()

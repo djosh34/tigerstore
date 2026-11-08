@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime/pprof"
 	"slices"
 	"strconv"
 	"strings"
@@ -52,6 +53,7 @@ type config struct {
 	label       string
 	seed        uint64
 	out         string
+	cpuprofile  string
 	cacert      string
 	cert, key   string
 }
@@ -80,6 +82,7 @@ func parseFlags(args []string) (config, error) {
 	fs.StringVar(&cfg.label, "label", "", "name of the store under test, copied into the result")
 	fs.Uint64Var(&cfg.seed, "seed", 1, "random seed")
 	fs.StringVar(&cfg.out, "out", "", "write the JSON result to this file instead of stdout")
+	fs.StringVar(&cfg.cpuprofile, "cpuprofile", "", "write a CPU profile of the measurement window to this file")
 	fs.StringVar(&cfg.cacert, "cacert", "", "CA certificate of the servers; with it, connections use TLS 1.3")
 	fs.StringVar(&cfg.cert, "cert", "", "client certificate for TLS")
 	fs.StringVar(&cfg.key, "key", "", "client key for TLS")
@@ -220,6 +223,27 @@ func main() {
 		fmt.Fprintln(os.Stderr, "loadgen:", err)
 		os.Exit(1)
 	}
+}
+
+// profile is the file of the CPU profile being taken.
+var profile *os.File
+
+// profileCPU starts a CPU profile into path, or stops it. Each measured
+// step of a ramp writes the file anew.
+func profileCPU(path string, start bool) error {
+	if !start {
+		pprof.StopCPUProfile()
+		return profile.Close()
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	if err := pprof.StartCPUProfile(f); err != nil {
+		return errors.Join(err, f.Close())
+	}
+	profile = f
+	return nil
 }
 
 func writeResult(path string, res *result) error {
@@ -562,6 +586,12 @@ func (s *session) measure(streams int) (*result, error) {
 				return
 			}
 			samples[i] = s
+			if cfg.cpuprofile != "" {
+				if err := profileCPU(cfg.cpuprofile, i == 0); err != nil {
+					sampleErr = err
+					return
+				}
+			}
 		}
 	})
 	phaseErr := runPhase(s.workers, s.loads, phase{rate: cfg.rate / float64(cfg.conns), start: t0, stop: t2, drain: drainTimeout, limit: streams})
