@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -14,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djosh34/tigerstore/internal/bufconn"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
 )
@@ -185,10 +185,8 @@ func dial(addr string) (*conn, error) {
 	return c, nil
 }
 
-// clientHandshake runs TLS over nc. TLS reads its records through a large
-// buffer, so that one read system call brings in many records: reading
-// them one or two at a time took 30% of the generator's core on the
-// mixed workload (#506).
+// clientHandshake runs TLS over nc, reading its records through a large
+// buffer (bufconn).
 func clientHandshake(nc net.Conn, addr string) (net.Conn, error) {
 	cfg := clientTLS
 	if cfg.ServerName == "" {
@@ -199,7 +197,7 @@ func clientHandshake(nc net.Conn, addr string) (net.Conn, error) {
 		cfg = cfg.Clone()
 		cfg.ServerName = host
 	}
-	tc := tls.Client(bufferedConn{nc, bufio.NewReaderSize(nc, 256<<10)}, cfg)
+	tc := tls.Client(bufconn.New(nc, 256<<10), cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
 	defer cancel()
 	if err := tc.HandshakeContext(ctx); err != nil {
@@ -210,14 +208,6 @@ func clientHandshake(nc net.Conn, addr string) (net.Conn, error) {
 	}
 	return tc, nil
 }
-
-// bufferedConn is a connection that reads through a buffer.
-type bufferedConn struct {
-	net.Conn
-	r *bufio.Reader
-}
-
-func (b bufferedConn) Read(p []byte) (int, error) { return b.r.Read(p) }
 
 func (c *conn) failure() error {
 	c.mu.Lock()
