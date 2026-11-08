@@ -25,6 +25,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -135,12 +136,30 @@ func main() {
 	s := &server{watchers: make(map[*watcher]struct{})}
 	valueSize := flag.Int("value-size", 1024, "value bytes of each key-value a Range answers, and of a deleted key's previous value")
 	flag.IntVar(&s.listKeys, "list-keys", 300, "key-values a Range over a range of keys answers")
+	cpuprofile := flag.String("cpuprofile", "", "write a CPU profile of the whole run to this file")
 	flag.Parse()
 	s.value = make([]byte, *valueSize)
-	if err := run(s, strings.Split(*listen, ","), *cert, *key); err != nil {
+	if err := profiled(*cpuprofile, func() error { return run(s, strings.Split(*listen, ","), *cert, *key) }); err != nil {
 		fmt.Fprintln(os.Stderr, "nullstore:", err)
 		os.Exit(1)
 	}
+}
+
+// profiled runs f, with a CPU profile into path unless path is "".
+func profiled(path string, f func() error) error {
+	if path == "" {
+		return f()
+	}
+	out, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	if err := pprof.StartCPUProfile(out); err != nil {
+		return errors.Join(err, out.Close())
+	}
+	err = f()
+	pprof.StopCPUProfile()
+	return errors.Join(err, out.Close())
 }
 
 func run(s *server, addrs []string, cert, key string) error {
@@ -176,7 +195,11 @@ func run(s *server, addrs []string, cert, key string) error {
 // the error of a listener that stopped.
 func (s *server) serve(kp tls.Certificate, lns []net.Listener) (*grpc.Server, <-chan error) {
 	creds := credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{kp}, MinVersion: tls.VersionTLS13})
-	srv := grpc.NewServer(grpc.Creds(creds), grpc.ForceServerCodec(rawCodec{}), grpc.UnknownServiceHandler(s.handle))
+	// Workers run the calls, so that a call starts no goroutine and grows
+	// no new stack; a watch keeps its worker, so there are enough for the
+	// watches and the calls.
+	srv := grpc.NewServer(grpc.Creds(creds), grpc.ForceServerCodec(rawCodec{}), grpc.UnknownServiceHandler(s.handle), grpc.NumStreamWorkers(256),
+		grpc.WriteBufferSize(512<<10), grpc.ReadBufferSize(256<<10))
 	errs := make(chan error, len(lns))
 	for _, ln := range lns {
 		go func() { errs <- srv.Serve(ln) }()
@@ -261,10 +284,15 @@ func (s *server) rangeAnswer(req []byte) []byte {
 	case bytes.Count(key, []byte("/")) < 3:
 		n = 0
 	}
-	resp := header(rev)
+	digits := []byte("000000")
+	kvSize := keyValueSize(len(key)+len(digits), len(s.value), rev)
+	resp := make([]byte, 0, 32+n*(kvSize+protowire.SizeTag(rangeKVs)+protowire.SizeVarint(uint64(kvSize))))
+	resp = appendHeader(resp, rev)
 	for i := range n {
-		k := fmt.Appendf(append([]byte(nil), key...), "%06d", i)
-		resp = appendBytesField(resp, rangeKVs, keyValue(k, s.value, rev))
+		for d, v := len(digits)-1, i; d >= 0; d, v = d-1, v/10 {
+			digits[d] = byte('0' + v%10)
+		}
+		resp = appendKeyValue(resp, rangeKVs, key, digits, s.value, rev)
 	}
 	resp = protowire.AppendVarint(protowire.AppendTag(resp, rangeMore, protowire.VarintType), 1)
 	return protowire.AppendVarint(protowire.AppendTag(resp, rangeCount, protowire.VarintType), uint64(n+1))
@@ -311,7 +339,7 @@ func (s *server) watch(ss grpc.ServerStream) error {
 		}
 		resp := header(e.rev)
 		for {
-			resp = appendBytesField(resp, watchEvents, e.encode())
+			resp = e.appendEncoded(resp, watchEvents)
 			if len(resp) > 64<<10 || len(w.events) == 0 {
 				break
 			}
@@ -323,14 +351,22 @@ func (s *server) watch(ss grpc.ServerStream) error {
 	}
 }
 
-func (e event) encode() []byte {
-	var b []byte
+// appendEncoded appends e as field n.
+func (e event) appendEncoded(b []byte, n protowire.Number) []byte {
+	size := protowire.SizeTag(eventKV) + protowire.SizeBytes(keyValueSize(len(e.key), len(e.value), e.rev))
+	if e.deleted {
+		size += protowire.SizeTag(eventType) + protowire.SizeVarint(deleteEvent)
+	}
+	if e.prev != nil {
+		size += protowire.SizeTag(eventPrevKV) + protowire.SizeBytes(keyValueSize(len(e.key), len(e.prev), e.rev-1))
+	}
+	b = protowire.AppendVarint(protowire.AppendTag(b, n, protowire.BytesType), uint64(size))
 	if e.deleted {
 		b = protowire.AppendVarint(protowire.AppendTag(b, eventType, protowire.VarintType), deleteEvent)
 	}
-	b = appendBytesField(b, eventKV, keyValue(e.key, e.value, e.rev))
+	b = appendKeyValue(b, eventKV, e.key, nil, e.value, e.rev)
 	if e.prev != nil {
-		b = appendBytesField(b, eventPrevKV, keyValue(e.key, e.prev, e.rev-1))
+		b = appendKeyValue(b, eventPrevKV, e.key, nil, e.prev, e.rev-1)
 	}
 	return b
 }
@@ -351,20 +387,36 @@ func (s *server) publish(e event) {
 	}
 }
 
-func header(rev int64) []byte {
-	h := protowire.AppendVarint(protowire.AppendTag(nil, headerRevision, protowire.VarintType), uint64(rev))
-	return appendBytesField(nil, respHeader, h)
+func header(rev int64) []byte { return appendHeader(nil, rev) }
+
+// appendHeader appends a response header with revision rev.
+func appendHeader(b []byte, rev int64) []byte {
+	b = protowire.AppendTag(b, respHeader, protowire.BytesType)
+	b = protowire.AppendVarint(b, uint64(protowire.SizeTag(headerRevision)+protowire.SizeVarint(uint64(rev))))
+	return protowire.AppendVarint(protowire.AppendTag(b, headerRevision, protowire.VarintType), uint64(rev))
 }
 
-func keyValue(key, value []byte, rev int64) []byte {
-	kv := appendBytesField(nil, kvKey, key)
-	for _, f := range [...]struct {
-		n protowire.Number
-		v int64
-	}{{kvCreate, 1}, {kvMod, rev}, {kvVersion, 1}} {
-		kv = protowire.AppendVarint(protowire.AppendTag(kv, f.n, protowire.VarintType), uint64(f.v))
-	}
-	return appendBytesField(kv, kvValue, value)
+// keyValueSize is the size of a key-value that appendKeyValue writes.
+func keyValueSize(keyLen, valueLen int, rev int64) int {
+	return protowire.SizeTag(kvKey) + protowire.SizeBytes(keyLen) +
+		protowire.SizeTag(kvCreate) + protowire.SizeVarint(1) +
+		protowire.SizeTag(kvMod) + protowire.SizeVarint(uint64(rev)) +
+		protowire.SizeTag(kvVersion) + protowire.SizeVarint(1) +
+		protowire.SizeTag(kvValue) + protowire.SizeBytes(valueLen)
+}
+
+// appendKeyValue appends a key-value as field n, its key being key and
+// then suffix, created at revision 1 and changed at rev.
+func appendKeyValue(b []byte, n protowire.Number, key, suffix, value []byte, rev int64) []byte {
+	b = protowire.AppendTag(b, n, protowire.BytesType)
+	b = protowire.AppendVarint(b, uint64(keyValueSize(len(key)+len(suffix), len(value), rev)))
+	b = protowire.AppendTag(b, kvKey, protowire.BytesType)
+	b = protowire.AppendVarint(b, uint64(len(key)+len(suffix)))
+	b = append(append(b, key...), suffix...)
+	b = protowire.AppendVarint(protowire.AppendTag(b, kvCreate, protowire.VarintType), 1)
+	b = protowire.AppendVarint(protowire.AppendTag(b, kvMod, protowire.VarintType), uint64(rev))
+	b = protowire.AppendVarint(protowire.AppendTag(b, kvVersion, protowire.VarintType), 1)
+	return protowire.AppendBytes(protowire.AppendTag(b, kvValue, protowire.BytesType), value)
 }
 
 func appendBytesField(b []byte, n protowire.Number, v []byte) []byte {
