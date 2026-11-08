@@ -153,6 +153,11 @@ type keyIndex struct {
 // at returns the position of the newest version with main revision <= r,
 // or -1.
 func (k *keyIndex) at(r int64) int {
+	// Most reads and writes look at the newest version, so it goes first,
+	// before a search through a long history.
+	if n := len(k.vers); n > 0 && k.vers[n-1].mod.main <= r {
+		return n - 1
+	}
 	lo, hi := 0, len(k.vers)
 	for lo < hi {
 		m := int(uint(lo+hi) >> 1)
