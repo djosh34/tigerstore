@@ -233,8 +233,9 @@ func readKey(r *bufio.Reader) (*keyIndex, error) {
 }
 
 // readN reads n bytes into a slice of exactly n bytes, which it grows,
-// from 64 KiB, by doubling as the bytes come: a damaged length costs no
-// more memory than twice the bytes the input holds.
+// from 64 KiB, by doubling as the bytes come: a damaged length costs a
+// few times the bytes the input holds (while it copies, the old and the
+// new slice are both alive), never the length it names.
 func readN(r io.Reader, n uint64) ([]byte, error) {
 	b := make([]byte, 0, min(n, 64<<10))
 	for uint64(len(b)) < n {
