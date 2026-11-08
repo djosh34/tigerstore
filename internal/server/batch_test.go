@@ -122,10 +122,11 @@ func TestHeaderBlockRules(t *testing.T) {
 		{Name: "content-type", Value: "application/grpc"},
 	}
 	send := func(id uint32, b []byte, last bool) error {
-		if c.hdr.id != id {
+		first := c.hdr.id != id
+		if first {
 			c.hdr = reqHeaders{id: id}
 		}
-		return c.headerFragment(b, last)
+		return c.headerFragment(b, first, last)
 	}
 	// Stream 1 has an uppercase name; its fields still go into the table.
 	if err := send(1, block(append(put, hpack.HeaderField{Name: "X-Upper", Value: "v"})...), true); err != nil {
@@ -164,7 +165,7 @@ func TestHeaderBlockRules(t *testing.T) {
 	}
 	// So does a fragment that could decode past the limit.
 	c.hdr = reqHeaders{id: 9}
-	if err := c.headerFragment(make([]byte, 2*maxHeaderList+1), false); err == nil {
+	if err := c.headerFragment(make([]byte, 2*maxHeaderList+1), true, false); err == nil {
 		t.Fatal("an oversized fragment was decoded")
 	}
 }
@@ -217,5 +218,51 @@ func TestRangeReplyTooLarge(t *testing.T) {
 	}
 	if _, err := appendRangeReply(1, 2, 3, &res); status.Code(err) != codes.ResourceExhausted {
 		t.Fatalf("an answer over 2 GiB: %v", err)
+	}
+}
+
+// TestHeaderCacheTakesWholeBlocks checks that the cache of decoded header
+// blocks answers only for a block in one HEADERS frame: bytes it holds,
+// as the last fragment of a block that began with part of a field, are
+// the rest of that field to the decoder.
+func TestHeaderCacheTakesWholeBlocks(t *testing.T) {
+	c := testConn(t)
+	c.hdec = hpack.NewDecoder(4096, c.onField)
+	var buf bytes.Buffer
+	enc := hpack.NewEncoder(&buf)
+	block := func() []byte {
+		buf.Reset()
+		for _, f := range []hpack.HeaderField{
+			{Name: ":method", Value: "POST"},
+			{Name: ":path", Value: "/etcdserverpb.KV/Put"},
+			{Name: "content-type", Value: "application/grpc"},
+		} {
+			if err := enc.WriteField(f); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return bytes.Clone(buf.Bytes())
+	}
+	send := func(id uint32, b []byte, first, last bool) error {
+		if first {
+			c.hdr = reqHeaders{id: id}
+		}
+		return c.headerFragment(b, first, last)
+	}
+	if err := send(1, block(), true, true); err != nil {
+		t.Fatal(err)
+	}
+	indexed := block()
+	if err := send(3, indexed, true, true); err != nil || c.streams[3] == nil {
+		t.Fatalf("a block of indexed fields: %v", err)
+	}
+	if _, ok := c.blocks[string(indexed)]; !ok {
+		t.Fatal("a block of indexed fields was not cached")
+	}
+	if err := send(5, []byte{0x40}, true, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := send(5, indexed, false, true); err == nil && c.streams[5] != nil {
+		t.Fatal("the last fragment of a longer block was answered from the cache")
 	}
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Measures what the shared disk gives to synced appends: one writer, as
 # cmd/ceiling measures it, and three at once, as three nodes write their
-# logs, at 1 MiB and 4 MiB a sync, into files with their room reserved. It
+# logs, at 1 MiB and 4 MiB a sync, into new files that grow. It
 # prints the MiB/s the writers got together and the bytes the device wrote
 # per byte asked.
 #
@@ -14,7 +14,6 @@ sectors() { awk -v d="$dev" '$3 == d {print $10}' /proc/diskstats; }
 run() {
 	local writers=$1 group=$2 i
 	rm -f "$dir"/probe-*
-	for i in $(seq "$writers"); do fallocate -l "${mib}M" "$dir/probe-$i"; done
 	sync
 	local s0 t0 t1 s1 count=$((mib / group))
 	s0=$(sectors)

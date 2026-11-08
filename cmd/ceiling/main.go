@@ -7,10 +7,9 @@
 //     a journal; the best of three group sizes;
 //   - the same with three writers at once, each on a file of its own, as
 //     the three nodes write their logs to the one disk, for comparison;
-//   - three writers appending to new files with their room reserved, as a
-//     log of a new cluster does: buffered writes, each followed by an
-//     fdatasync that also records the written blocks in the journal, for
-//     comparison;
+//   - three writers appending to new files that grow, as the logs of a
+//     new cluster do: buffered writes, each followed by an fdatasync that
+//     also records the new blocks and size in the journal, for comparison;
 //   - how many bytes one core encodes into protobuf key-values, encrypts
 //     with AES-128-GCM, the cipher the stores' TLS 1.3 negotiates, and
 //     sends on a loopback TCP socket.
@@ -166,8 +165,8 @@ func (r *report) disk(dir string, size int64, dur time.Duration) (err error) {
 }
 
 // measureFresh has three writers append group bytes at a time to new
-// files of size bytes reserved with fallocate, each write followed by an
-// fdatasync, and returns their bytes together.
+// files, up to size bytes each, each write followed by an fdatasync, and
+// returns their bytes together.
 func measureFresh(dir string, size int64, group int, dur time.Duration) (cell, error) {
 	cells := make([]cell, 3)
 	errs := make([]error, 3)
@@ -195,9 +194,6 @@ func appendFresh(name string, size int64, group int, dur time.Duration) (c cell,
 		return cell{}, err
 	}
 	defer func() { err = errors.Join(err, unix.Close(fd)) }()
-	if err := unix.Fallocate(fd, 0, 0, size); err != nil {
-		return cell{}, err
-	}
 	buf := make([]byte, group)
 	c = cell{Group: group}
 	start := time.Now()

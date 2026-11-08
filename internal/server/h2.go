@@ -347,9 +347,9 @@ func (c *conn) onFrame(f http2.Frame) error {
 	switch f := f.(type) {
 	case *http2.HeadersFrame:
 		c.hdr = reqHeaders{id: f.StreamID, ended: f.StreamEnded()}
-		return c.headerFragment(f.HeaderBlockFragment(), f.HeadersEnded())
+		return c.headerFragment(f.HeaderBlockFragment(), true, f.HeadersEnded())
 	case *http2.ContinuationFrame:
-		return c.headerFragment(f.HeaderBlockFragment(), f.HeadersEnded())
+		return c.headerFragment(f.HeaderBlockFragment(), false, f.HeadersEnded())
 	case *http2.DataFrame:
 		return c.onData(f)
 	case *http2.WindowUpdateFrame:
@@ -494,9 +494,11 @@ const maxHeaderList = 1 << 20
 
 // headerFragment decodes part of a header block. The Framer checks that
 // CONTINUATION frames follow their HEADERS frame.
-func (c *conn) headerFragment(b []byte, last bool) error {
+func (c *conn) headerFragment(b []byte, first, last bool) error {
 	h := &c.hdr
-	whole := last && h.size == 0 && !h.bad
+	// Only a block in one HEADERS frame may come from blocks: the last
+	// fragment of a longer one continues what the decoder holds.
+	whole := first && last
 	if whole {
 		if known, ok := c.blocks[string(b)]; ok {
 			known.id, known.ended = h.id, h.ended

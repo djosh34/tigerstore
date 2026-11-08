@@ -160,7 +160,7 @@ jobs:
           fi
           if [ "$BENCH" = profile-disk ]; then
             DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")
-            for b in ${PROFILES:-put-1k txn-1k mixed-k8s}; do
+            for b in put-1k txn-1k mixed-k8s; do
               DISK=$DISK DATA="$RUNNER_TEMP/bench-data" bench/profile-disk.sh bin/candidate "$b" results/profile-disk
             done
             exit 0
