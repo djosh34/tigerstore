@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/rand/v2"
-	"sync/atomic"
 
 	"google.golang.org/protobuf/encoding/protowire"
 )
@@ -15,9 +13,9 @@ import (
 // with conn.mu held.
 type load interface {
 	handler
-	// start begins one request on c for st, or returns false if it has
-	// nothing to send right now.
-	start(c *conn, st *stream) bool
+	// start begins one request on c for st, with at most limit requests
+	// in flight on c, or returns false if it has nothing to send now.
+	start(c *conn, st *stream, limit int) bool
 	// exhausted reports that the load will never send again.
 	exhausted() bool
 }
@@ -33,15 +31,18 @@ type stats struct {
 	acked             int64 // successful completions in the whole phase
 	cohort            int64 // requests that arrived in the window, by outcome below
 	cohortFailed      int64 // of those, the ones that failed
-	resp              hist  // latency from the intended send time
-	service           hist  // latency from the actual send time
-	errs              map[string]int64
+	// written and read sum stream.written and stream.read over the
+	// successful completions in the window.
+	written, read int64
+	resp          hist // latency from the intended send time
+	service       hist // latency from the actual send time
+	errs          map[string]int64
 }
 
-// complete counts the end of a unary call. A success needs exactly one
-// response message.
+// complete counts the end of a call. A success needs exactly one response
+// message, or at least one on a stream that may send many.
 func (s *stats) complete(st *stream, at int64, err error) {
-	if err == nil && st.msgs != 1 {
+	if err == nil && (st.msgs == 0 || st.msgs > 1 && !st.many) {
 		err = fmt.Errorf("%d response messages to a unary call", st.msgs)
 	}
 	inCohort := st.intended >= s.winStart && st.intended < s.winStop
@@ -58,6 +59,8 @@ func (s *stats) complete(st *stream, at int64, err error) {
 	s.acked++
 	if at >= s.winStart && at < s.winStop {
 		s.ops++
+		s.written += st.written
+		s.read += st.read
 	}
 	if inCohort {
 		s.resp.record(at - st.intended)
@@ -65,42 +68,15 @@ func (s *stats) complete(st *stream, at int64, err error) {
 	}
 }
 
-// revisionSet records the revision of every write, to catch a revision
-// that two writes got. Writes on different connections finish in any
-// order, so it only checks that each revision comes once.
-type revisionSet struct{ words []atomic.Uint64 }
-
-// maxCheckedRevision bounds the revisions the set holds: 64 Mi bits, more
-// than any run here writes.
-const maxCheckedRevision = 1 << 26
-
-func newRevisionSet() *revisionSet {
-	return &revisionSet{words: make([]atomic.Uint64, maxCheckedRevision/64)}
-}
-
-// add records the revision of a write and fails if it came before.
-func (r *revisionSet) add(rev int64) error {
-	if rev <= 0 || rev >= maxCheckedRevision {
-		return fmt.Errorf("write revision %d outside the checked range", rev)
-	}
-	bit := uint64(1) << (rev % 64)
-	if r.words[rev/64].Or(bit)&bit != 0 {
-		return fmt.Errorf("revision %d returned for two writes", rev)
-	}
-	return nil
-}
-
 // base is what every request load shares.
 type base struct {
-	tpl    *template
-	ks     keys
-	own    []int // the keys this connection uses
-	vals   values
-	rng    *rand.Rand
-	stats  *stats
-	limit  int // streams in flight on this connection
-	writes *revisionSet
-	last   []byte // the pool value that fill copied last
+	tpl   *template
+	ks    keys
+	own   []int // the keys this connection uses
+	vals  values
+	rng   *rand.Rand
+	stats *stats
+	last  []byte // the pool value that fill copied last
 }
 
 func (b *base) done(st *stream, at int64, err error) { b.stats.complete(st, at, err) }
@@ -122,15 +98,14 @@ func (b *base) fill(r []byte, k int) []byte {
 // putLoad overwrites keys with Put.
 type putLoad struct {
 	base
-	once  bool     // put each key once, in order, then stop
-	next  int      // with once: the next key
-	revs  []int64  // if set: the mod revision of each key after its put
-	vals  [][]byte // if set: the value of each key after its put
-	stamp bool     // write the intended send time into the value
+	once  bool    // put each key once, in order, then stop
+	next  int     // with once: the next key
+	revs  []int64 // if set: the mod revision of each key after its put
+	stamp bool    // write the intended send time into the value
 }
 
-func (w *putLoad) start(c *conn, st *stream) bool {
-	if w.exhausted() || !c.canStart(w.tpl, w.limit) {
+func (w *putLoad) start(c *conn, st *stream, limit int) bool {
+	if w.exhausted() || !c.canStart(w.tpl.dataLen, limit) {
 		return false
 	}
 	var k int
@@ -141,10 +116,8 @@ func (w *putLoad) start(c *conn, st *stream) bool {
 		k = w.own[w.rng.IntN(len(w.own))]
 	}
 	st.slot = k
+	st.written = int64(w.ks.size + w.vals.size)
 	v := w.fill(c.startStream(st, w.tpl), k)
-	if w.vals != nil {
-		w.vals[k] = w.last
-	}
 	if w.stamp {
 		binary.LittleEndian.PutUint64(v, uint64(st.intended))
 	}
@@ -154,20 +127,19 @@ func (w *putLoad) start(c *conn, st *stream) bool {
 func (w *putLoad) exhausted() bool { return w.once && w.next == len(w.own) }
 
 func (w *putLoad) message(st *stream, m []byte) error {
+	if w.revs == nil {
+		return nil
+	}
 	rev, err := responseRevision(m)
-	if err != nil {
-		return err
-	}
-	if err := w.writes.add(rev); err != nil {
-		return err
-	}
-	if w.revs != nil {
-		w.revs[st.slot] = rev
-	}
-	return nil
+	w.revs[st.slot] = rev
+	return err
 }
 
 var errCASFailed = errors.New("CAS txn did not succeed")
+
+// revisionBytes is what a compare on a revision makes durable besides its
+// key: the revision as a fixed 8-byte integer.
+const revisionBytes = 8
 
 // casLoad updates keys with the compare-and-swap Txn of Kubernetes. A key is
 // never in flight twice, and each update compares against the mod revision
@@ -186,14 +158,16 @@ func newCASLoad(b base, revs []int64) *casLoad {
 	return w
 }
 
-func (w *casLoad) start(c *conn, st *stream) bool {
-	if w.n == 0 || !c.canStart(w.tpl, w.limit) {
+func (w *casLoad) start(c *conn, st *stream, limit int) bool {
+	if w.n == 0 || !c.canStart(w.tpl.dataLen, limit) {
 		return false
 	}
 	k := w.ring[w.head]
 	w.head = (w.head + 1) % len(w.ring)
 	w.n--
 	st.slot = k
+	// The compare's key and revision, and the put's key and value.
+	st.written = int64(2*w.ks.size + revisionBytes + w.vals.size)
 	r := c.startStream(st, w.tpl)
 	w.fill(r, k)
 	patchRevision(r[w.tpl.rev:], w.revs[k])
@@ -202,40 +176,15 @@ func (w *casLoad) start(c *conn, st *stream) bool {
 
 func (w *casLoad) exhausted() bool { return false }
 
+// message keeps the revision of the put for the next compare. A Txn that
+// did not succeed means the generator lost track of its keys.
 func (w *casLoad) message(st *stream, m []byte) error {
-	rev, err := responseRevision(m)
+	rev, ok, err := txnOutcome(m)
 	if err != nil {
 		return err
 	}
-	ok, err := varintField(m, txnSucceeded)
-	if err != nil {
-		return err
-	}
-	if ok != 1 {
+	if !ok {
 		return errCASFailed
-	}
-	// The success branch is one put, which answers with one response.
-	var puts, ops int
-	err = fields(m, func(num protowire.Number, _ uint64, b []byte) error {
-		if num != txnResponses {
-			return nil
-		}
-		ops++
-		return fields(b, func(n protowire.Number, _ uint64, put []byte) error {
-			if n == opResponsePut && put != nil {
-				puts++
-			}
-			return nil
-		})
-	})
-	if err != nil {
-		return err
-	}
-	if ops != 1 || puts != 1 {
-		return fmt.Errorf("CAS txn answered %d operations with %d put responses, want one put", ops, puts)
-	}
-	if err := w.writes.add(rev); err != nil {
-		return err
 	}
 	w.revs[st.slot] = rev
 	return nil
@@ -253,46 +202,27 @@ type deleteLoad struct {
 	next int
 }
 
-func (w *deleteLoad) start(c *conn, st *stream) bool {
-	if w.exhausted() || !c.canStart(w.tpl, w.limit) {
+func (w *deleteLoad) start(c *conn, st *stream, limit int) bool {
+	if w.exhausted() || !c.canStart(w.tpl.dataLen, limit) {
 		return false
 	}
 	k := w.own[w.next]
 	w.next++
 	st.slot = k
+	st.written = int64(w.ks.size)
 	w.fill(c.startStream(st, w.tpl), k)
 	return true
 }
 
 func (w *deleteLoad) exhausted() bool { return w.next == len(w.own) }
 
-func (w *deleteLoad) message(_ *stream, m []byte) error {
-	rev, err := responseRevision(m)
-	if err != nil {
-		return err
-	}
-	if err := w.writes.add(rev); err != nil {
-		return err
-	}
-	n, err := varintField(m, delDeleted)
-	if err != nil {
-		return err
-	}
-	if n != 1 {
-		return fmt.Errorf("delete removed %d keys, want 1", n)
-	}
-	return nil
-}
+func (w *deleteLoad) message(*stream, []byte) error { return nil }
 
 // rangeLoad reads single keys with linearizable Range.
-type rangeLoad struct {
-	base
-	valueSize int
-	want      [][]byte // the value the preload put for each key
-}
+type rangeLoad struct{ base }
 
-func (w *rangeLoad) start(c *conn, st *stream) bool {
-	if !c.canStart(w.tpl, w.limit) {
+func (w *rangeLoad) start(c *conn, st *stream, limit int) bool {
+	if !c.canStart(w.tpl.dataLen, limit) {
 		return false
 	}
 	k := w.own[w.rng.IntN(len(w.own))]
@@ -304,43 +234,9 @@ func (w *rangeLoad) start(c *conn, st *stream) bool {
 func (w *rangeLoad) exhausted() bool { return false }
 
 func (w *rangeLoad) message(st *stream, m []byte) error {
-	if _, err := responseRevision(m); err != nil {
-		return err
-	}
-	var count uint64
-	kvs := 0
-	err := fields(m, func(num protowire.Number, v uint64, b []byte) error {
-		//exhaustive:ignore // the default case handles the rest
-		switch num {
-		case rangeCount:
-			count = v
-		case rangeKVs:
-			kvs++
-			key, err := bytesField(b, kvKey)
-			if err != nil {
-				return err
-			}
-			if !bytes.Equal(key, w.ks.key(st.slot)) {
-				return fmt.Errorf("range returned key %q, want %q", key, w.ks.key(st.slot))
-			}
-			val, err := bytesField(b, kvValue)
-			if err != nil {
-				return err
-			}
-			if !bytes.Equal(val, w.want[st.slot]) {
-				return fmt.Errorf("range returned a %d byte value that is not the one put", len(val))
-			}
-		default:
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	if count != 1 || kvs != 1 {
-		return fmt.Errorf("range returned count %d with %d kvs, want 1", count, kvs)
-	}
-	return nil
+	n, err := rangeBytes(m)
+	st.read += n
+	return err
 }
 
 // watchLoad holds the watch streams of one connection. Each event's value
@@ -357,11 +253,10 @@ type watchLoad struct {
 type watchStream struct {
 	created bool
 	failed  bool
-	lastRev int64
 	events  int64
 }
 
-// message checks one watch response. A watch never ends, so it counts its
+// message reads one watch response. A watch never ends, so it counts its
 // first bad response itself and ignores the stream after that.
 func (w *watchLoad) message(st *stream, m []byte) error {
 	ws := &w.streams[st.slot]
@@ -399,46 +294,17 @@ func (w *watchLoad) response(ws *watchStream, m []byte, at int64) error {
 }
 
 func (w *watchLoad) event(ws *watchStream, e []byte, at int64) error {
-	var kv []byte
-	err := fields(e, func(num protowire.Number, v uint64, b []byte) error {
-		//exhaustive:ignore // the default case handles the rest
-		switch num {
-		case eventType:
-			if v == eventTypeDelete {
-				return errors.New("unexpected delete event")
-			}
-		case eventKV:
-			kv = b
-		default:
-		}
-		return nil
-	})
+	kv, err := bytesField(e, eventKV)
 	if err != nil {
 		return err
 	}
-	var rev int64
-	var val []byte
-	err = fields(kv, func(num protowire.Number, v uint64, b []byte) error {
-		//exhaustive:ignore // the default case handles the rest
-		switch num {
-		case kvModRevision:
-			rev = int64(v)
-		case kvValue:
-			val = b
-		default:
-		}
-		return nil
-	})
+	val, err := bytesField(kv, kvValue)
 	if err != nil {
 		return err
-	}
-	if rev <= ws.lastRev {
-		return fmt.Errorf("watch event at revision %d after %d", rev, ws.lastRev)
 	}
 	if len(val) < 8 {
 		return errors.New("watch event value too short for a timestamp")
 	}
-	ws.lastRev = rev
 	ws.events++
 	// Event throughput counts deliveries in the window; latency counts
 	// every event of a put sent in the window, however late it arrives.
@@ -462,19 +328,15 @@ func (w *watchLoad) done(_ *stream, _ int64, err error) {
 
 // listLoad lists the first page of one namespace, as kube-apiserver
 // starts a list of a resource in a namespace: a range over the
-// namespace's prefix with a limit. It does not page further. Its answers
-// must hold the namespace's key count, a full page of its keys in order,
-// values of the size put, and "more" exactly when keys were left out.
+// namespace's prefix with a limit. It does not page further.
 type listLoad struct {
 	base
-	page      int
-	valueSize int
-	starts    [][]byte // per namespace: its prefix
-	ends      [][]byte // per namespace: the end of its range
+	starts [][]byte // per namespace: its prefix
+	ends   [][]byte // per namespace: the end of its range
 }
 
-func newListLoad(b base, page, valueSize int) *listLoad {
-	w := &listLoad{base: b, page: page, valueSize: valueSize}
+func newListLoad(b base) *listLoad {
+	w := &listLoad{base: b}
 	for ns := range nsCount {
 		p := listPrefix(ns)
 		w.starts = append(w.starts, p)
@@ -483,17 +345,8 @@ func newListLoad(b base, page, valueSize int) *listLoad {
 	return w
 }
 
-// inNamespace is how many of the keys live in namespace ns.
-func (w *listLoad) inNamespace(ns int) int {
-	n := w.ks.n / nsCount
-	if ns < w.ks.n%nsCount {
-		n++
-	}
-	return n
-}
-
-func (w *listLoad) start(c *conn, st *stream) bool {
-	if !c.canStart(w.tpl, w.limit) {
+func (w *listLoad) start(c *conn, st *stream, limit int) bool {
+	if !c.canStart(w.tpl.dataLen, limit) {
 		return false
 	}
 	ns := w.rng.IntN(nsCount)
@@ -507,48 +360,7 @@ func (w *listLoad) start(c *conn, st *stream) bool {
 func (w *listLoad) exhausted() bool { return false }
 
 func (w *listLoad) message(st *stream, m []byte) error {
-	if _, err := responseRevision(m); err != nil {
-		return err
-	}
-	ns := st.slot
-	var count uint64
-	var last []byte
-	kvs, more := 0, false
-	err := fields(m, func(num protowire.Number, v uint64, b []byte) error {
-		//exhaustive:ignore // the default case handles the rest
-		switch num {
-		case rangeCount:
-			count = v
-		case rangeMore:
-			more = v != 0
-		case rangeKVs:
-			kvs++
-			key, err := bytesField(b, kvKey)
-			if err != nil {
-				return err
-			}
-			if !bytes.HasPrefix(key, w.starts[ns]) || bytes.Compare(key, last) <= 0 {
-				return fmt.Errorf("list returned key %q out of order or outside %q", key, w.starts[ns])
-			}
-			last = key
-			val, err := bytesField(b, kvValue)
-			if err != nil {
-				return err
-			}
-			if len(val) != w.valueSize {
-				return fmt.Errorf("list returned a %d byte value, want %d", len(val), w.valueSize)
-			}
-		default:
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	want := w.inNamespace(ns)
-	if int(count) != want || kvs != min(w.page, want) || more != (want > w.page) {
-		return fmt.Errorf("list of namespace %d returned count %d with %d keys and more %v, want %d with %d and more %v",
-			ns, count, kvs, more, want, min(w.page, want), want > w.page)
-	}
-	return nil
+	n, err := rangeBytes(m)
+	st.read += n
+	return err
 }

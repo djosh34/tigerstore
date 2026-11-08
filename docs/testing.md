@@ -276,7 +276,7 @@ Whether a fault took effect is a number counted over a set of runs, with a minim
 
 `soak.yml` runs `cmd/soak` every night on `main`, for 5 hours with the date, `YYYYMMDD`, as its seed; started by hand (`gh workflow run soak.yml --ref main`) it takes `-f duration=` and `-f seed=`. Each run: three tigerstore processes, each in a cgroup of its own with a 640 MiB memory limit and a 3 GiB disk budget, under 600,000 Kubernetes-shaped objects. They hold about 0.9 GB of values. The preloaded events expire with their leases after 2 minutes, which leaves about 0.6 GB: still more than the value cache's share of the limit, so reads miss the cache.
 
-Sixteen workers make 400 calls per second in loadgen's mixed proportions:
+Sixteen workers make 400 calls per second in the proportions loadgen's mixed workload had before [#503](https://github.com/djosh34/tigerstore/issues/503), which read and list more than kube-apiserver does:
 - creates and updates in Txns that compare the create or mod revision, as the apiserver does;
 - deletes;
 - linearizable reads and paginated lists, as Range calls;
@@ -337,11 +337,13 @@ The `bench` workflow measures tigerstore and etcd v3.7.2 with 0, 2 and 10 ms of 
 
 The shared rate at an RTT is half of etcd's median max at that RTT. Where etcd has no max result, it is the rate of the job's first RTT, 0 ms by default. If etcd has none there either, no rate runs run at that RTT, and the report names it with the failed runs.
 
-mixed-k8s keeps 288 requests in flight: 6 connections of 48 streams each. Its reads are linearizable and go to all three nodes, so at 10 ms a request waits about 17 ms before any work. 288 in flight then allow about 17,000 requests/s, twice tigerstore's max at 0 ms. The 96 of 6 × 16 capped the generator near 5,700/s. `bench/cluster.sh check` fails a run if the leader or the term changed during it, so every result that did not fail shows that the store kept its leader at that load.
+Before any store runs, each job measures its runner and its generator. `cmd/ceiling`, pinned to the generator's CPU, measures the most the disk under the nodes makes durable (O_DIRECT writes and fdatasync into a file already written, the best of three group sizes), how fast one core encodes key-values, encrypts them with AES-128-GCM and sends them over loopback TCP, and the kernel and CPU ([#503](https://github.com/djosh34/tigerstore/issues/503)). Then `bench/run.sh` with `MODES=generator` runs the job's workload once against `cmd/nullstore`, which answers every call at once from the nodes' CPUs: the generator's own ceiling.
 
-A run that fails writes its cause to `<target>-<mode>-<rep>.failed`, and the other runs still run. `cmd/benchreport` then writes one table across RTTs: per workload and store, the median max throughput, its ratio to etcd's, the shared rate, and p50 and p99 at that rate. The failed runs with their causes and the detail tables follow. The job fails on a failed tigerstore run, a harness failure or a missed bar. The bars hold at every RTT above 0: each tigerstore build's median max throughput is at least 10 times etcd's for put-1k and txn-1k, and 2.5 times for mixed-k8s ([#404](https://github.com/djosh34/tigerstore/issues/404)). A failed etcd run is reported and fails nothing; tigerstore's result then stands alone. A drop in tigerstore's own throughput with RTT is allowed.
+Every max run starts at 6 connections of 256 streams, 48 for mixed-k8s, and loadgen doubles the streams after each measured step while throughput climbs by 5% or more (`-ramp`, at most five doublings); the best step is the result. So the requests in flight are never what limits a store, at any RTT. Rate runs keep the starting streams. Delete and watch do not ramp: delete would run out of keys, and watch follows the puts. `bench/cluster.sh check` fails a run if the leader or the term changed during it, so every result that did not fail shows that the store kept its leader at that load.
 
-The put-1k and txn-1k jobs run the disk and CPU layouts and `diskbench` at the first RTT only, since they measure the disk and the CPU, not the network.
+A run that fails writes its cause to `<target>-<mode>-<rep>.failed`, and the other runs still run. `cmd/benchreport` then writes one table across RTTs: per workload and store, the median max throughput, its ratio to etcd's, the shared rate, and p50 and p99 at that rate. The failed runs with their causes and the detail tables follow, with the requests in flight where the ramp stopped and the leader's CPU per operation. Then come the noise between the repeated max runs of each store on this runner, the runner, each workload's ceiling and every store's share of it, and the generator's ceiling next to the most of its core it used at tigerstore's max. A ceiling is the most operations a second the runner allows for the least work an operation must do: the disk's bandwidth over the key, value and compare bytes the three nodes must make durable on the one disk they share, and for mixed-k8s the lower of that and the three nodes' cores over the key and value bytes its reads and watch events carry, at the measured per-byte rates. The job fails on a failed tigerstore run, a harness failure or a missed bar. The bars hold at every RTT above 0: each tigerstore build's median max throughput is at least 10 times etcd's for put-1k and txn-1k, and 2.5 times for mixed-k8s ([#404](https://github.com/djosh34/tigerstore/issues/404)). A failed etcd run is reported and fails nothing; tigerstore's result then stands alone. A drop in tigerstore's own throughput with RTT is allowed.
+
+The `layouts` input adds max runs of the tigerstore builds at the first RTT with all three nodes on tmpfs, or only the followers, to tell the disk's share from the CPU's.
 
 To run it on a branch against `main` and etcd:
 
@@ -349,11 +351,14 @@ To run it on a branch against `main` and etcd:
 gh workflow run bench.yml --ref main -f candidate=<branch>
 ```
 
-The inputs `benchmarks`, `rtts`, `targets`, `modes`, `reps` and `layouts` change what runs. By hand, on a Linux machine with sudo and the binaries in `bin` (`etcd`, `etcdctl`, `loadgen`, `benchreport` and a tigerstore named `candidate`):
+The inputs `benchmarks`, `rtts`, `targets`, `modes`, `reps` and `layouts` change what runs. By hand, on a Linux machine with sudo and the binaries in `bin` (`etcd`, `etcdctl`, `loadgen`, `nullstore`, `ceiling`, `benchreport` and a tigerstore named `candidate`):
 
 ```sh
 scripts/dev-certs.sh certs
 sudo modprobe sch_netem
+mkdir -p results
+bin/ceiling -dir /tmp >results/ceiling.json
+MODES=generator CERTS=certs bench/run.sh put-1k results
 bench/netem.sh on 10
 TARGETS="etcd candidate" CERTS=certs bench/run.sh put-1k results/rtt-10
 bench/netem.sh off

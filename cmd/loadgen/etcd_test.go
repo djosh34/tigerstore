@@ -78,18 +78,20 @@ func TestEtcdWorkloads(t *testing.T) {
 		workload  string
 		valueSize int
 		rate      float64
+		ramp      bool
 	}{
-		{"put", 1024, 0},
-		{"put", 10240, 300},
-		{"txn", 1024, 0},
-		{"txn", 10240, 300},
-		{"delete", 1024, 3000},
-		{"range", 1024, 0},
-		{"range", 10240, 300},
-		{"list", 1024, 0},
-		{"watch", 1024, 2000},
-		{"mixed", 1024, 500},
-		{"mixed", 1024, 0},
+		{"put", 1024, 0, false},
+		{"put", 1024, 0, true},
+		{"put", 10240, 300, false},
+		{"txn", 1024, 0, true},
+		{"txn", 10240, 300, false},
+		{"delete", 1024, 3000, false},
+		{"range", 1024, 0, false},
+		{"range", 10240, 300, false},
+		{"list", 1024, 0, false},
+		{"watch", 1024, 2000, false},
+		{"mixed", 1024, 500, false},
+		{"mixed", 1024, 0, true},
 	} {
 		endpoint, serverPID := ep, pid
 		if tc.workload == "mixed" {
@@ -109,6 +111,7 @@ func TestEtcdWorkloads(t *testing.T) {
 			page:      100,
 			pids:      []int{serverPID},
 			seed:      1,
+			ramp:      tc.ramp,
 		}
 		if tc.workload == "mixed" {
 			cfg.preloadRate = 300
@@ -123,8 +126,17 @@ func TestEtcdWorkloads(t *testing.T) {
 		if tc.workload == "watch" && (res.Watch.Events < res.Ops*3/2 || res.Watch.Latency.Count == 0) {
 			t.Fatalf("%+v: %d events for %d puts and 3 watchers", tc, res.Watch.Events, res.Ops)
 		}
-		if tc.workload == "mixed" && (res.Watch == nil || res.Watch.ServerCPUUsPerEvent != 0) {
-			t.Fatal("mixed attributed total CPU to watch events")
+		if tc.workload == "mixed" && (res.Watch == nil || res.Watch.Events == 0 || res.Watch.Latency.Count == 0) {
+			t.Fatalf("%+v: no mixed watch events or delays: %+v", tc, res.Watch)
+		}
+		if tc.ramp && (len(res.Ramp) < 2 || res.StreamsPerConn < cfg.streams) {
+			t.Fatalf("%+v: ramp %+v ended at %d streams", tc, res.Ramp, res.StreamsPerConn)
+		}
+		if res.Ops > 0 && tc.workload != "range" && tc.workload != "list" && res.MinWrittenBytesPerOp == 0 {
+			t.Fatalf("%+v: no written bytes per op", tc)
+		}
+		if res.Ops > 0 && (tc.workload == "range" || tc.workload == "list" || tc.workload == "mixed") && res.MinReadBytesPerOp == 0 {
+			t.Fatalf("%+v: no read bytes per op", tc)
 		}
 		t.Log(res.oneLine())
 	}
@@ -189,7 +201,7 @@ func TestEtcdCASDetectsStaleRevision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		b := base{tpl: tpl, ks: ks, vals: *makeValues(64, 1), rng: wk.rng, stats: &wk.stats, limit: 4, writes: newRevisionSet()}
+		b := base{tpl: tpl, ks: ks, vals: *makeValues(64, 1), rng: wk.rng, stats: &wk.stats}
 		for k := range ks.n {
 			b.own = append(b.own, k)
 		}
@@ -201,7 +213,7 @@ func TestEtcdCASDetectsStaleRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := now()
-	if err := wk.run(&putLoad{base: pre, once: true, revs: revs}, phase{start: start, stop: start + int64(5*time.Second), drain: time.Second}); err != nil {
+	if err := wk.run(&putLoad{base: pre, once: true, revs: revs}, phase{start: start, stop: start + int64(5*time.Second), drain: time.Second, limit: 4}); err != nil {
 		t.Fatal(err)
 	}
 	for i := range revs {
@@ -209,7 +221,7 @@ func TestEtcdCASDetectsStaleRevision(t *testing.T) {
 	}
 	start = now()
 	wk.stats.winStart, wk.stats.winStop = start, start+int64(time.Second)
-	if err := wk.run(newCASLoad(mk(casRequest(ks.size, 64)), revs), phase{start: start, stop: start + int64(200*time.Millisecond), drain: time.Second}); err != nil {
+	if err := wk.run(newCASLoad(mk(casRequest(ks.size, 64)), revs), phase{start: start, stop: start + int64(200*time.Millisecond), drain: time.Second, limit: 4}); err != nil {
 		t.Fatal(err)
 	}
 	if wk.stats.ops != 0 || wk.stats.errs[errCASFailed.Error()] == 0 {
@@ -231,9 +243,9 @@ func TestEtcdServerError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := base{tpl: tpl, ks: keys{n: 1}, own: []int{0}, vals: *makeValues(64, 1), rng: wk.rng, stats: &wk.stats, limit: 1, writes: newRevisionSet()}
+	b := base{tpl: tpl, ks: keys{n: 1}, own: []int{0}, vals: *makeValues(64, 1), rng: wk.rng, stats: &wk.stats}
 	start := now()
-	if err := wk.run(&putLoad{base: b, once: true}, phase{start: start, stop: start + int64(time.Second), drain: time.Second}); err != nil {
+	if err := wk.run(&putLoad{base: b, once: true}, phase{start: start, stop: start + int64(time.Second), drain: time.Second, limit: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if len(wk.stats.errs) != 1 {

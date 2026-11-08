@@ -1,10 +1,14 @@
 # Benchmarks a tigerstore ref against a baseline ref and etcd v3.7.2, back
 # to back on one runner, with disk write barriers on and pinned cores:
-# generator on CPU 3, leader on CPU 0, followers on CPUs 1 and 2. One job
-# per benchmark runs it at every RTT between nodes in turn (bench/netem.sh),
-# so the RTTs share a runner and the first RTT's rate is there when etcd
-# has none. A failed etcd run is reported and leaves the job green; a
-# failed tigerstore run, a harness failure or a missed bar fails it
+# generator on CPU 3, leader on CPU 0, followers on CPUs 1 and 2. Each job
+# first measures its runner (cmd/ceiling: the shared disk's durable
+# bandwidth, a core's encode, encrypt and send rates, the kernel and CPU)
+# and the generator's own ceiling against cmd/nullstore, then runs its
+# benchmark at every RTT between nodes in turn (bench/netem.sh), so the
+# RTTs share a runner and the first RTT's rate is there when etcd has none.
+# The report puts every store against the benchmark's ceiling on this
+# runner. A failed etcd run is reported and leaves the job green; a failed
+# tigerstore run, a harness failure or a missed bar fails it
 # (cmd/benchreport). Started by hand.
 name: bench
 
@@ -33,8 +37,8 @@ on:
         description: repetitions
         default: "5"
       layouts:
-        description: extra max runs of the tigerstore refs in the put-1k and txn-1k jobs at the first RTT, tmpfs (all nodes on tmpfs, the CPU reference) and alone (followers on tmpfs), with the disk ceiling from diskbench
-        default: tmpfs alone
+        description: extra max runs of the tigerstore refs in the put-1k and txn-1k jobs at the first RTT, tmpfs (all nodes on tmpfs) and alone (followers on tmpfs)
+        default: ""
 
 jobs:
   plan:
@@ -54,8 +58,9 @@ jobs:
       matrix:
         bench: ${{ fromJSON(needs.plan.outputs.benchmarks) }}
     runs-on: ubuntu-24.04-arm
-    # mixed-k8s takes about 2 minutes a run, 90 runs at 3 RTTs and 3
-    # targets; GitHub ends a job after 6 hours.
+    # mixed-k8s takes about 2 minutes a rate run and 3 a max run with its
+    # ramp, 90 runs at 3 RTTs and 3 targets; GitHub ends a job after 6
+    # hours.
     timeout-minutes: ${{ matrix.bench == 'mixed-k8s' && 330 || 120 }}
     steps:
       - uses: actions/checkout@v7
@@ -78,7 +83,8 @@ jobs:
         run: |
           go build -o bin/loadgen ./cmd/loadgen
           go build -o bin/benchreport ./cmd/benchreport
-          go build -o bin/diskbench ./cmd/diskbench
+          go build -o bin/ceiling ./cmd/ceiling
+          go build -o bin/nullstore ./cmd/nullstore
           for target in baseline candidate; do
             ref=$BASELINE
             if [ "$target" = candidate ]; then ref=$CANDIDATE; fi
@@ -121,6 +127,21 @@ jobs:
             echo "tigerstore: at least two Go processors on its one CPU (its own rule), peer certificates always verified"
             echo '```'
           } | tee results/runner.md
+      # Nothing else runs yet: the disk and the CPU are the runner's alone.
+      - name: Measure the runner
+        if: matrix.bench != 'profile' && matrix.bench != 'etcd-tool'
+        run: |
+          taskset -c 3 bin/ceiling -dir "$RUNNER_TEMP" \
+            -disk "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)" \
+            -cpu "$(lscpu | sed -n 's/^Model name: *//p' | head -n 1)" | tee results/ceiling.json
+      - name: Measure the generator against nullstore
+        if: matrix.bench != 'profile' && matrix.bench != 'etcd-tool'
+        env:
+          BINS: bin
+          CERTS: certs
+          LAYOUT: 3 0 1 2
+          MODES: generator
+        run: bench/run.sh "${{ matrix.bench }}" results
       - name: Run ${{ matrix.bench }}
         env:
           TARGETS: ${{ inputs.targets || 'etcd baseline candidate' }}
@@ -163,9 +184,6 @@ jobs:
             bench/netem.sh show >"$out/netem.txt"
             bench/netem.sh off
           done
-          if [ -n "$LAYOUTS" ]; then
-            taskset -c 3 bin/diskbench -dir "$RUNNER_TEMP" | tee "$first/$BENCH/diskbench.jsonl"
-          fi
       # A harness failure leaves no comparison. The raw results are
       # uploaded either way.
       - name: Report

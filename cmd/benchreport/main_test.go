@@ -39,7 +39,7 @@ func TestReport(t *testing.T) {
 	if err := report(&b, dir); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(b.String(), "| put-1k | 0 | main | max | 1,000") {
+	if !strings.Contains(b.String(), "| put-1k | 0 | main | max | 0 / 0 / 0 | 1,000") {
 		t.Fatalf("report:\n%s", b.String())
 	}
 }
@@ -114,35 +114,59 @@ func TestReportRefusesUnequalRuns(t *testing.T) {
 
 func TestReportCeilings(t *testing.T) {
 	dir := t.TempDir()
-	write(t, dir, "etcd-max-1.json", valid)
-	write(t, dir, "main-max-1.json", `{"valid": true, "throughput": 90000, "disk_bytes_per_op": 3495.25}`)
-	write(t, dir, "main-tmpfs-1.json", `{"valid": true, "throughput": 120000}`)
-	write(t, dir, "main-alone-1.json", `{"valid": true, "throughput": 110000, "disk_bytes_per_op": 1165.08}`)
-	write(t, dir, "diskbench.jsonl", "{\"group_bytes\":1048576,\"mib_per_s\":333.3}\n{\"max_mib_per_s\":333.3}\n")
-	// A second benchmark gets a table of its own.
-	writeAt(t, dir, "0", "txn-1k", "etcd-max-1.json", valid)
-	writeAt(t, dir, "0", "txn-1k", "main-max-1.json", `{"valid": true, "throughput": 60000, "disk_bytes_per_op": 3495.25}`)
-	writeAt(t, dir, "0", "txn-1k", "main-tmpfs-1.json", `{"valid": true, "throughput": 80000}`)
-	writeAt(t, dir, "0", "txn-1k", "main-alone-1.json", `{"valid": true, "throughput": 70000, "disk_bytes_per_op": 1165.08}`)
-	writeAt(t, dir, "0", "txn-1k", "diskbench.jsonl", "{\"max_mib_per_s\":333.3}\n")
+	if err := os.WriteFile(filepath.Join(dir, "ceiling.json"), []byte(`{"kernel":"7.0","cpu":"Neoverse-N2","disk":"sda1","disk_mib_per_s":300,"encode_ns_per_byte":0.05,"encrypt_ns_per_byte":0.25,"send_ns_per_byte":0.2}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, "etcd-max-1.json", `{"valid":true,"throughput":9000,"min_written_bytes_per_op":1048.576}`)
+	write(t, dir, "main-max-1.json", `{"valid":true,"throughput":90000,"min_written_bytes_per_op":1048.576,"disk_bytes_per_op":3495.25}`)
+	writeAt(t, dir, "0", "mixed-k8s", "etcd-max-1.json", `{"valid":true,"throughput":6000,"min_written_bytes_per_op":1048.576,"min_read_bytes_per_op":100000,"client_cores":0.1}`)
+	writeAt(t, dir, "0", "mixed-k8s", "main-max-1.json", `{"valid":true,"throughput":30000,"min_written_bytes_per_op":1048.576,"min_read_bytes_per_op":100000,"client_cores":0.3}`)
+	if err := os.WriteFile(filepath.Join(dir, "generator-mixed-k8s.json"), []byte(`{"valid":true,"throughput":50000,"client_cores":0.5,"client_cpu_us_per_op":10}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	var b strings.Builder
 	if err := report(&b, dir); err != nil {
 		t.Fatal(err)
 	}
-	// 333.3 MiB/s over 3,495.25 bytes is 99,990/s, under the 120,000 on
-	// tmpfs; over 1,165.08 bytes it is 299,971/s, so tmpfs is the lower.
+	// 300 MiB/s over 3 nodes of 1,048.576 bytes is 100,000/s. 3 cores over
+	// 100,000 bytes at 0.5 ns a byte is 60,000/s.
 	for _, want := range []string{
-		"| put-1k | main | shared disk | 90,000 | 3495 | 99,990 | 120,000 | 90.0% |",
-		"| put-1k | main | leader alone | 110,000 | 1165 | 299,971 | 120,000 | 91.7% |",
-		"| put-1k | 0 | main | tmpfs | 120,000",
-		"txn-1k at RTT 0 ms: the disk takes 333.3 MiB/s",
+		"kernel 7.0, CPU Neoverse-N2. The three nodes keep their data on one shared disk, sda1",
+		"| put-1k | 1049 | 100,000 | 0 | - | 100,000 |",
+		"| mixed-k8s | 1049 | 100,000 | 100000 | 60,000 | 60,000 |",
+		"| put-1k | main | 0 | 90,000 | 90.0% | 3,495 |",
+		"| put-1k | etcd | 0 | 9,000 | 9.0% | - |",
+		"| mixed-k8s | main | 0 | 30,000 | 50.0% |",
+		"| mixed-k8s | 50,000 | 0.50 | 10.00 | 100,000 | 0.30 (main at 0 ms) |",
 	} {
 		if !strings.Contains(b.String(), want) {
 			t.Fatalf("missing %s in report:\n%s", want, b.String())
 		}
 	}
-	if n := strings.Count(b.String(), "| Benchmark | Store | Layout |"); n != 2 {
-		t.Fatalf("%d ceiling tables, want one per benchmark:\n%s", n, b.String())
+}
+
+func TestReportNoise(t *testing.T) {
+	dir := t.TempDir()
+	for i, n := range []int{90, 100, 110} {
+		write(t, dir, fmt.Sprintf("main-max-%d.json", i+1), fmt.Sprintf(`{"valid":true,"throughput":%d}`, n))
+	}
+	var b strings.Builder
+	if err := report(&b, dir); err != nil {
+		t.Fatal(err)
+	}
+	if want := "| put-1k | 0 | main | 3 | 90 / 100 / 110 | 20.0% | 10.0% |"; !strings.Contains(b.String(), want) {
+		t.Fatalf("missing %s in report:\n%s", want, b.String())
+	}
+}
+
+func TestReportRefusesInvalidGenerator(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "main-max-1.json", valid)
+	if err := os.WriteFile(filepath.Join(dir, "generator-put-1k.json"), []byte(`{"valid":false}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := report(io.Discard, dir); !errors.Is(err, errInvalidResult) {
+		t.Fatalf("an invalid generator run was reported: %v", err)
 	}
 }
 
