@@ -354,12 +354,15 @@ func TestNoSpace(t *testing.T) {
 }
 
 // TestSharedValues writes one 32 KiB value, then 100 puts of its key with
-// ignore_value, which all name that value, then other keys until cleaning
-// copies it. The pack must hold it once.
+// ignore_value, which all name that value, and cleans the segment that
+// holds it: the pack must hold it once. A compaction at revision 1 drops
+// none of the 101 versions but makes a checkpoint of them durable, and a
+// put of 40 KiB seals the segment, so the cleaning pass of Defragment can
+// take it. Nothing comes near the disk budget: writing until cleaning
+// started on its own raced the budget's alarm (#546).
 func TestSharedValues(t *testing.T) {
-	const budget = 512 << 10
-	dir := t.TempDir()
-	r := runClean(t, dir, budget)
+	r := runClean(t, t.TempDir(), 512<<10)
+	alarmsAllowed(t, r.n)
 	big := []byte(fmt.Sprintf("%032768d", 1))
 	// One deadline and no retry, since a retried put that committed would
 	// add a version.
@@ -373,25 +376,21 @@ func TestSharedValues(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for round := 0; ; round++ {
-		if round == 100 {
-			t.Fatalf("nothing was cleaned in %d rounds", round)
-		}
-		if _, err := putAll(r.n, round, keys(fmt.Sprintf("r%03d-", round), 10)...); err != nil {
-			t.Fatalf("round %d: %v", round, err)
-		}
-		m, err := r.n.Metrics(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if m.CleanedBytes == 0 {
-			continue
-		}
-		// Each round writes about 10 KiB of other values.
-		if want := int64(len(big) + (round+1)*12<<10); m.CleanedBytes > want {
-			t.Fatalf("cleaning wrote %d bytes into packs, more than the %d bytes of all live values", m.CleanedBytes, want)
-		}
-		break
+	if _, err := r.n.Do(ctx, &pb.CompactionRequest{Revision: 1, Physical: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.n.Do(ctx, &pb.PutRequest{Key: []byte("padding"), Value: make([]byte, 40<<10)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.n.Defragment(ctx); err != nil {
+		t.Fatal(err)
+	}
+	m, err := r.n.Metrics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.CleanedBytes < int64(len(big)) || m.CleanedBytes > int64(len(big))+1<<10 {
+		t.Fatalf("cleaning wrote %d bytes into packs, want the %d bytes of the shared value once", m.CleanedBytes, len(big))
 	}
 	resp, err := r.n.Do(ctx, &pb.RangeRequest{Key: []byte("big")})
 	if err != nil {
