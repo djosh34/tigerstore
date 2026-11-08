@@ -137,12 +137,20 @@ var ErrBadCheckpoint = errors.New("mvcc: malformed checkpoint")
 // carry a longer one.
 const MaxKeyBytes = wal.MaxEntryBytes
 
+// maxLoadRev bounds the store revision a checkpoint may name (Load).
+const maxLoadRev = 1 << 62
+
 // Load reads the keys of a checkpoint, up to the end mark, into an empty
 // store and sets its revisions. It returns the lowest entry index that a
 // value is in, 0 for none. A compaction above the store's revision is
 // malformed: every read would fail as compacted.
 func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err error) {
-	if rev < 1 || compactRev > rev {
+	// A store revision of 2^62 or more leaves too little room before the
+	// largest int64 for the writes and history arithmetic that follow, and
+	// no store gets there (2^62 writes at a million a second take 146,000
+	// years); a compaction below -1, a store's "never", would let a later
+	// one wrap.
+	if rev < 1 || rev >= maxLoadRev || compactRev < -1 || compactRev > rev {
 		return 0, fmt.Errorf("%w: revision %d compacted at %d", ErrBadCheckpoint, rev, compactRev)
 	}
 	s.rev, s.compactRev = rev, compactRev
