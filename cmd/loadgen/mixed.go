@@ -77,6 +77,7 @@ type mixedKey struct {
 	key       []byte
 	bin       int
 	mod       int64 // 0 while the key does not exist
+	size      int   // the bytes of its value
 	busy      bool  // a write of it is in flight
 	group     int
 	liveIndex int // index in the owner's live-key slice
@@ -234,21 +235,23 @@ func (w *mixedLoad) choose() *mixedCall {
 	return call
 }
 
-// request encodes call into w.buf and returns its path and the bytes it
-// must make durable on each node.
-func (w *mixedLoad) request(call *mixedCall) (string, int64) {
+// request encodes call into w.buf and returns its path, the bytes it must
+// make durable on each node, and the key and value bytes of the watch
+// event a write makes, previous key-value included: the read work a
+// write causes, whenever its event arrives.
+func (w *mixedLoad) request(call *mixedCall) (path string, written, event int64) {
 	w.buf = w.buf[:0]
 	switch call.op {
 	case mixedGet:
 		w.buf = protowire.AppendTag(w.buf, rangeKey, protowire.BytesType)
 		w.buf = protowire.AppendBytes(w.buf, call.key.key)
 		w.buf = appendVarintField(w.buf, rangeLimit, 1)
-		return "/etcdserverpb.KV/Range", 0
+		return "/etcdserverpb.KV/Range", 0, 0
 	case mixedRev:
 		w.buf = protowire.AppendTag(w.buf, rangeKey, protowire.BytesType)
 		w.buf = protowire.AppendBytes(w.buf, w.revKeys[w.wk.rng.IntN(len(w.revKeys))])
 		w.buf = appendVarintField(w.buf, rangeLimit, 1)
-		return "/etcdserverpb.KV/Range", 0
+		return "/etcdserverpb.KV/Range", 0, 0
 	case mixedList:
 		g := call.key.group
 		w.buf = protowire.AppendTag(w.buf, rangeKey, protowire.BytesType)
@@ -256,7 +259,7 @@ func (w *mixedLoad) request(call *mixedCall) (string, int64) {
 		w.buf = protowire.AppendTag(w.buf, rangeEnd, protowire.BytesType)
 		w.buf = protowire.AppendBytes(w.buf, w.ends[g])
 		w.buf = appendVarintField(w.buf, rangeLimit, listPage)
-		return "/etcdserverpb.KV/RangeStream", 0
+		return "/etcdserverpb.KV/RangeStream", 0, 0
 	}
 	k := call.key
 	// The compare: the key's mod revision, 0 for a create.
@@ -264,7 +267,12 @@ func (w *mixedLoad) request(call *mixedCall) (string, int64) {
 	w.cmp = protowire.AppendTag(w.cmp, cmpKey, protowire.BytesType)
 	w.cmp = protowire.AppendBytes(w.cmp, k.key)
 	w.cmp = appendVarintField(w.cmp, cmpModRevision, uint64(k.mod))
-	written := int64(len(k.key) + revisionBytes + len(k.key))
+	written = int64(len(k.key) + revisionBytes + len(k.key))
+	// The event's key-value, and its previous one but after a create.
+	event = int64(len(k.key) + len(call.value))
+	if call.op != mixedCreate {
+		event += int64(len(k.key) + k.size)
+	}
 	// The success branch: one put or delete of the key.
 	w.op = protowire.AppendTag(w.op[:0], putKey, protowire.BytesType)
 	w.op = protowire.AppendBytes(w.op, k.key)
@@ -275,7 +283,9 @@ func (w *mixedLoad) request(call *mixedCall) (string, int64) {
 		w.op = protowire.AppendTag(w.op, putValue, protowire.BytesType)
 		w.op = protowire.AppendBytes(w.op, call.value)
 		written += int64(len(call.value))
-		if call.op == mixedCreate && w.lease != 0 && w.resources[k.group/w.namespaces] == "events" {
+		// kube-apiserver puts an event with its lease, on create and on
+		// update alike.
+		if w.lease != 0 && w.resources[k.group/w.namespaces] == "events" {
 			w.op = appendVarintField(w.op, putLease, uint64(w.lease))
 			written += revisionBytes
 		}
@@ -295,7 +305,7 @@ func (w *mixedLoad) request(call *mixedCall) (string, int64) {
 		w.buf = protowire.AppendTag(w.buf, opRange, protowire.BytesType)
 		w.buf = protowire.AppendBytes(w.buf, w.fail)
 	}
-	return "/etcdserverpb.KV/Txn", written
+	return "/etcdserverpb.KV/Txn", written, event
 }
 
 func appendVarintField(b []byte, num protowire.Number, v uint64) []byte {
@@ -310,11 +320,11 @@ func (w *mixedLoad) start(c *conn, st *stream, limit int) bool {
 		return false
 	}
 	call := w.pending
-	path, written := w.request(call)
+	path, written, event := w.request(call)
 	if !c.canStart(messageLen(w.buf), limit) {
 		return false
 	}
-	st.written = written
+	st.written, st.read = written, event
 	st.many = call.op == mixedList
 	c.startMessage(st, path, w.buf)
 	w.calls[st.id] = *call
@@ -356,6 +366,7 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 	}
 	k := call.key
 	k.mod = rev
+	k.size = len(call.value)
 	w.ledger.wrote(rev, st.intended)
 	switch call.op {
 	case mixedDelete:
@@ -363,7 +374,7 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 		w.live[k.liveIndex] = last
 		last.liveIndex = k.liveIndex
 		w.live = w.live[:len(w.live)-1]
-		k.mod = 0
+		k.mod, k.size = 0, 0
 		w.absent = append(w.absent, k)
 	case mixedCreate:
 		k.liveIndex = len(w.live)
@@ -402,7 +413,9 @@ func (p *mixedPreload) start(c *conn, st *stream, limit int) bool {
 		k := p.w.live[i]
 		put := newMsg()
 		put.bytes(putKey, k.key)
-		put.bytes(putValue, p.w.value(k))
+		v := p.w.value(k)
+		k.size = len(v)
+		put.bytes(putValue, v)
 		op := newMsg()
 		op.sub(opPut, put)
 		if len(m.b)+len(op.b)+16 > min(60<<10, int(c.streamWin)) {
@@ -453,7 +466,6 @@ type mixedLedger struct {
 	start, stop int64
 	lat         hist
 	count       int64 // events that arrived in the window
-	read        int64 // their key and value bytes, previous key-value included
 }
 
 func newMixedLedger() *mixedLedger {
@@ -467,7 +479,7 @@ func (l *mixedLedger) window(start, stop int64) {
 	clear(l.writes)
 	clear(l.events)
 	l.start, l.stop = start, stop
-	l.lat, l.count, l.read = hist{}, 0, 0
+	l.lat, l.count = hist{}, 0
 }
 
 func (l *mixedLedger) wrote(rev, intended int64) {
@@ -481,12 +493,11 @@ func (l *mixedLedger) wrote(rev, intended int64) {
 	l.writes[rev] = intended
 }
 
-func (l *mixedLedger) saw(rev, at, bytes int64) {
+func (l *mixedLedger) saw(rev, at int64) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if at >= l.start && at < l.stop {
 		l.count++
-		l.read += bytes
 	}
 	if intended, ok := l.writes[rev]; ok {
 		delete(l.writes, rev)
@@ -535,24 +546,15 @@ func (w *mixedWatch) response(m []byte, at int64) error {
 				return errors.New("mixed watch canceled or compacted")
 			}
 		case watchEvents:
-			var rev, bytes int64
-			err := fields(b, func(n protowire.Number, _ uint64, kv []byte) error {
-				if n != eventKV && n != eventPrevKV {
-					return nil
-				}
-				k, err := kvBytes(kv)
-				bytes += k
-				if err != nil || n != eventKV {
-					return err
-				}
-				r, err := varintField(kv, kvModRevision)
-				rev = int64(r)
-				return err
-			})
+			kv, err := bytesField(b, eventKV)
 			if err != nil {
 				return err
 			}
-			w.ledger.saw(rev, at, bytes)
+			rev, err := varintField(kv, kvModRevision)
+			if err != nil {
+				return err
+			}
+			w.ledger.saw(int64(rev), at)
 		}
 		return nil
 	})

@@ -170,13 +170,18 @@ type result struct {
 	// MinWrittenBytesPerOp is the fewest bytes an operation must make
 	// durable on each node: the keys and values of its writes, and the
 	// key and revision of a compare. MinReadBytesPerOp is the key and
-	// value bytes its reads and watch events carried. Both are means over
-	// the operations of the window.
+	// value bytes its reads carried, and in mixed the bytes of the watch
+	// events its writes make, previous key-values included, counted when
+	// the write completes. Both are means over the operations of the
+	// window.
 	MinWrittenBytesPerOp float64 `json:"min_written_bytes_per_op"`
 	MinReadBytesPerOp    float64 `json:"min_read_bytes_per_op"`
-	// Ramp has every step of -ramp, the chosen one included.
-	Ramp   []rampStep       `json:"ramp,omitempty"`
-	Errors map[string]int64 `json:"errors"`
+	// Ramp has every step of -ramp, the chosen one included. RampClimbing
+	// is set when the last step still climbed: the requests in flight may
+	// still have limited the store.
+	Ramp         []rampStep       `json:"ramp,omitempty"`
+	RampClimbing bool             `json:"ramp_climbing,omitempty"`
+	Errors       map[string]int64 `json:"errors"`
 }
 
 // rampStep is one step of -ramp.
@@ -291,11 +296,12 @@ func run(cfg config) (*result, error) {
 			best, bestErr = res, err
 		}
 		if err != nil || !cfg.ramp || !climbing || step == maxRampSteps {
+			if cfg.ramp {
+				best.Ramp = ramp
+				best.RampClimbing = err == nil && climbing
+			}
 			break
 		}
-	}
-	if cfg.ramp {
-		best.Ramp = ramp
 	}
 	return best, bestErr
 }
@@ -828,7 +834,6 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 		l := s.ledger
 		l.mu.Lock()
 		res.Watch = &watchResult{Watchers: len(s.mixedWatches), Events: l.count, EventsPerS: float64(l.count) / cfg.duration.Seconds(), Latency: l.lat.summary()}
-		read += l.read
 		l.mu.Unlock()
 	}
 	if res.Ops > 0 {

@@ -6,11 +6,14 @@
 //	nullstore -listen <host:port>[,<host:port>...] -cert <file> -key <file>
 //
 // Every write succeeds with the next revision. A Range of one key answers
-// one key-value with a value of -value-size bytes, a Range over a range of
-// keys -list-keys of them, and a RangeStream the same in one message. A
-// watch gets an event for every put or delete under its range, with the
-// put's value, and a previous key-value of the same size after a Txn that
-// compared a mod revision other than 0, as an update does.
+// one key-value with a value of -value-size bytes, but none for a key with
+// no name under its resource, such as /registry/pods, which kube-apiserver
+// reads only for the revision. A Range over a range of keys answers
+// -list-keys of them, and a RangeStream the same in one message. A watch
+// gets an event for every put or delete under its range: a put's event
+// has the put's value, and a previous key-value of the same size after a
+// Txn that compared a mod revision other than 0, as an update does; a
+// delete's event has a previous key-value of -value-size bytes.
 package main
 
 import (
@@ -103,9 +106,10 @@ func (rawCodec) Unmarshal(data []byte, v any) error {
 func (rawCodec) Name() string { return "proto" }
 
 type server struct {
-	valueSize, listKeys int
-	revision            atomic.Int64
-	lease               atomic.Int64
+	listKeys int
+	value    []byte // -value-size bytes
+	revision atomic.Int64
+	lease    atomic.Int64
 
 	mu       sync.RWMutex
 	watchers map[*watcher]struct{}
@@ -119,9 +123,9 @@ type watcher struct {
 
 type event struct {
 	key, value []byte
+	prev       []byte // the previous value; nil for none
 	rev        int64
 	deleted    bool
-	prev       bool
 }
 
 func main() {
@@ -129,9 +133,10 @@ func main() {
 	cert := flag.String("cert", "", "server certificate")
 	key := flag.String("key", "", "server key")
 	s := &server{watchers: make(map[*watcher]struct{})}
-	flag.IntVar(&s.valueSize, "value-size", 1024, "value bytes of each key-value a Range answers")
+	valueSize := flag.Int("value-size", 1024, "value bytes of each key-value a Range answers, and of a deleted key's previous value")
 	flag.IntVar(&s.listKeys, "list-keys", 300, "key-values a Range over a range of keys answers")
 	flag.Parse()
+	s.value = make([]byte, *valueSize)
 	if err := run(s, strings.Split(*listen, ","), *cert, *key); err != nil {
 		fmt.Fprintln(os.Stderr, "nullstore:", err)
 		os.Exit(1)
@@ -200,7 +205,7 @@ func (s *server) handle(_ any, ss grpc.ServerStream) error {
 		resp = header(rev)
 	case "/etcdserverpb.KV/DeleteRange":
 		rev := s.revision.Add(1)
-		s.publish(event{key: field(req, putKey), rev: rev, deleted: true, prev: true})
+		s.publish(event{key: field(req, putKey), prev: s.value, rev: rev, deleted: true})
 		resp = protowire.AppendVarint(protowire.AppendTag(header(rev), delDeleted, protowire.VarintType), 1)
 	case "/etcdserverpb.KV/Txn":
 		resp = s.txn(req)
@@ -225,34 +230,41 @@ func (s *server) txn(req []byte) []byte {
 	resp := protowire.AppendVarint(protowire.AppendTag(header(rev), txnSucceeded, protowire.VarintType), 1)
 	each(req, txnSuccess, func(op []byte) {
 		if put := field(op, opPut); put != nil {
-			s.publish(event{key: field(put, putKey), value: field(put, putValue), rev: rev, prev: update})
+			e := event{key: field(put, putKey), value: field(put, putValue), rev: rev}
+			if update {
+				e.prev = e.value
+			}
+			s.publish(e)
 			resp = appendBytesField(resp, txnResponses, appendBytesField(nil, opPut, header(rev)))
 			return
 		}
-		s.publish(event{key: field(field(op, opDelete), putKey), rev: rev, deleted: true, prev: true})
+		s.publish(event{key: field(field(op, opDelete), putKey), prev: s.value, rev: rev, deleted: true})
 		deleted := protowire.AppendVarint(protowire.AppendTag(header(rev), delDeleted, protowire.VarintType), 1)
 		resp = appendBytesField(resp, txnResponses, appendBytesField(nil, opDelete, deleted))
 	})
 	return resp
 }
 
-// rangeAnswer answers one key-value for a Range of one key, and -list-keys
-// within the limit for a Range over a range of keys.
+// rangeAnswer answers one key-value for a Range of one named key, none for
+// a resource's prefix key, and -list-keys within the limit for a Range
+// over a range of keys.
 func (s *server) rangeAnswer(req []byte) []byte {
 	rev := s.revision.Load()
 	key := field(req, rangeKey)
 	n := 1
-	if field(req, rangeEnd) != nil {
+	switch {
+	case field(req, rangeEnd) != nil:
 		n = s.listKeys
 		if limit := int(varint(req, rangeLimit)); limit > 0 {
 			n = min(n, limit)
 		}
+	case bytes.Count(key, []byte("/")) < 3:
+		n = 0
 	}
-	value := make([]byte, s.valueSize)
 	resp := header(rev)
 	for i := range n {
 		k := fmt.Appendf(append([]byte(nil), key...), "%06d", i)
-		resp = appendBytesField(resp, rangeKVs, keyValue(k, value, rev))
+		resp = appendBytesField(resp, rangeKVs, keyValue(k, s.value, rev))
 	}
 	resp = protowire.AppendVarint(protowire.AppendTag(resp, rangeMore, protowire.VarintType), 1)
 	return protowire.AppendVarint(protowire.AppendTag(resp, rangeCount, protowire.VarintType), uint64(n+1))
@@ -317,8 +329,8 @@ func (e event) encode() []byte {
 		b = protowire.AppendVarint(protowire.AppendTag(b, eventType, protowire.VarintType), deleteEvent)
 	}
 	b = appendBytesField(b, eventKV, keyValue(e.key, e.value, e.rev))
-	if e.prev {
-		b = appendBytesField(b, eventPrevKV, keyValue(e.key, e.value, e.rev-1))
+	if e.prev != nil {
+		b = appendBytesField(b, eventPrevKV, keyValue(e.key, e.prev, e.rev-1))
 	}
 	return b
 }

@@ -28,7 +28,7 @@ func TestEtcdClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{valueSize: 10, listKeys: 3, watchers: make(map[*watcher]struct{})}
+	s := &server{value: make([]byte, 10), listKeys: 3, watchers: make(map[*watcher]struct{})}
 	srv, _ := s.serve(kp, []net.Listener{ln})
 	defer srv.Stop()
 	c, err := clientv3.New(clientv3.Config{
@@ -72,12 +72,17 @@ func TestEtcdClient(t *testing.T) {
 		}
 		events = append(events, w.Events...)
 	}
-	if string(events[1].Kv.Value) != "v2" || events[1].PrevKv == nil || events[0].PrevKv != nil || events[2].Type != clientv3.EventTypeDelete {
+	if string(events[1].Kv.Value) != "v2" || events[1].PrevKv == nil || events[0].PrevKv != nil ||
+		events[2].Type != clientv3.EventTypeDelete || events[2].PrevKv == nil || len(events[2].PrevKv.Value) != 10 {
 		t.Fatalf("events %v", events)
 	}
 	get, err := c.Get(ctx, "/registry/pods/a")
 	if err != nil || len(get.Kvs) != 1 || len(get.Kvs[0].Value) != 10 {
 		t.Fatalf("get: %v %v", get, err)
+	}
+	rev, err := c.Get(ctx, "/registry/pods", clientv3.WithLimit(1))
+	if err != nil || len(rev.Kvs) != 0 || rev.Header.Revision != 3 {
+		t.Fatalf("revision read: %v %v", rev, err)
 	}
 	list, err := c.Get(ctx, "/registry/pods/", clientv3.WithPrefix(), clientv3.WithLimit(2))
 	if err != nil || len(list.Kvs) != 2 || !list.More {

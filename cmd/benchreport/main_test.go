@@ -157,6 +157,22 @@ func TestReportNoise(t *testing.T) {
 	if want := "| put-1k | 0 | main | 3 | 90 / 100 / 110 | 20.0% | 10.0% |"; !strings.Contains(b.String(), want) {
 		t.Fatalf("missing %s in report:\n%s", want, b.String())
 	}
+	if strings.Contains(b.String(), "still climbed") {
+		t.Fatalf("a ramp that stopped was reported as climbing:\n%s", b.String())
+	}
+}
+
+func TestReportRampClimbing(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "main-max-1.json", `{"valid":true,"throughput":100,"ramp_climbing":true}`)
+	write(t, dir, "main-max-2.json", `{"valid":true,"throughput":100}`)
+	var b strings.Builder
+	if err := report(&b, dir); err != nil {
+		t.Fatal(err)
+	}
+	if want := "- RTT 0 ms, put-1k, main max: 1 of 2 runs"; !strings.Contains(b.String(), want) {
+		t.Fatalf("missing %s in report:\n%s", want, b.String())
+	}
 }
 
 func TestReportRefusesInvalidGenerator(t *testing.T) {

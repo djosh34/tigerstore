@@ -81,6 +81,7 @@ type result struct {
 	DiskBytesPerOp       float64   `json:"disk_bytes_per_op"`
 	MinWrittenBytesPerOp float64   `json:"min_written_bytes_per_op"`
 	MinReadBytesPerOp    float64   `json:"min_read_bytes_per_op"`
+	RampClimbing         bool      `json:"ramp_climbing"`
 	Watch                *struct {
 		EventsPerS          float64 `json:"events_per_s"`
 		ServerCPUUsPerEvent float64 `json:"server_cpu_us_per_event"`
@@ -341,6 +342,21 @@ func report(w io.Writer, dir string) error {
 			num(rs, func(r result) float64 { return float64(r.Unsent) }, "%.0f"), len(rs))
 	})
 	p("\nServer cores per node are leader first, then the two followers.\n")
+	var climbing []string
+	each(func(rtt, bench, target, mode string, rs runs) {
+		n := 0
+		for _, r := range rs {
+			if r.RampClimbing {
+				n++
+			}
+		}
+		if n > 0 {
+			climbing = append(climbing, fmt.Sprintf("- RTT %s ms, %s, %s %s: %d of %d runs\n", rtt, bench, target, mode, n, len(rs)))
+		}
+	})
+	if len(climbing) > 0 {
+		p("\nMax runs whose throughput still climbed at the last step of the ramp, so the requests in flight may have limited them:\n\n%s", strings.Join(climbing, ""))
+	}
 	noise(w, rtts, benches, targets, func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] })
 	if err := ceilings(w, dir, rtts, benches, targets, func(rtt, bench, target string) runs {
 		return all[key{rtt, bench, target, "max"}]

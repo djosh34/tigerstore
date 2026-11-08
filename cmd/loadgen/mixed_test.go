@@ -106,7 +106,7 @@ func testMixed(t *testing.T, keys int) (*mixedLoad, *conn) {
 func TestMixedRequests(t *testing.T) {
 	w, _ := testMixed(t, 1)
 	w.lease = 99
-	k := &mixedKey{key: []byte("/registry/events/bench-000-0000/object-000000000001"), mod: 17}
+	k := &mixedKey{key: []byte("/registry/events/bench-000-0000/object-000000000001"), mod: 17, size: 40}
 	k.group = slices.Index(w.resources, "events") * w.namespaces
 	value := []byte("the value")
 	cmp := func(rev int64) []*pb.Compare {
@@ -118,44 +118,54 @@ func TestMixedRequests(t *testing.T) {
 		path    string
 		want    proto.Message
 		written int
+		event   int // the key and value bytes of the watch event
 	}{
-		{mixedCall{op: mixedGet, key: k}, "/etcdserverpb.KV/Range", &pb.RangeRequest{Key: k.key, Limit: 1}, 0},
+		{mixedCall{op: mixedGet, key: k}, "/etcdserverpb.KV/Range", &pb.RangeRequest{Key: k.key, Limit: 1}, 0, 0},
 		{
 			mixedCall{op: mixedList, key: k},
 			"/etcdserverpb.KV/RangeStream",
-			&pb.RangeRequest{Key: w.prefixes[k.group], RangeEnd: prefixEnd(w.prefixes[k.group]), Limit: listPage}, 0,
+			&pb.RangeRequest{Key: w.prefixes[k.group], RangeEnd: prefixEnd(w.prefixes[k.group]), Limit: listPage}, 0, 0,
 		},
+		// An event keeps its lease when it is updated, as in
+		// kube-apiserver's GuaranteedUpdate.
 		{mixedCall{op: mixedUpdate, key: k, value: value}, "/etcdserverpb.KV/Txn", &pb.TxnRequest{
 			Compare: cmp(17),
-			Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: k.key, Value: value}}}},
+			Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: k.key, Value: value, Lease: 99}}}},
 			Failure: get,
-		}, 2*len(k.key) + 8 + len(value)},
+		}, 2*len(k.key) + 16 + len(value), 2*len(k.key) + len(value) + 40},
 		{mixedCall{op: mixedDelete, key: k}, "/etcdserverpb.KV/Txn", &pb.TxnRequest{
 			Compare: cmp(17),
 			Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: k.key}}}},
 			Failure: get,
-		}, 2*len(k.key) + 8},
+		}, 2*len(k.key) + 8, 2*len(k.key) + 40},
 	} {
-		path, written := w.request(&tc.call)
+		path, written, event := w.request(&tc.call)
 		got := tc.want.ProtoReflect().New().Interface()
 		if err := proto.Unmarshal(w.buf, got); err != nil {
 			t.Fatal(err)
 		}
-		if path != tc.path || !proto.Equal(got, tc.want) || written != int64(tc.written) {
-			t.Fatalf("call %d: %s %v, %d bytes; want %s %v, %d", tc.call.op, path, got, written, tc.path, tc.want, tc.written)
+		if path != tc.path || !proto.Equal(got, tc.want) || written != int64(tc.written) || event != int64(tc.event) {
+			t.Fatalf("call %d: %s %v, %d bytes, event %d; want %s %v, %d, %d", tc.call.op, path, got, written, event, tc.path, tc.want, tc.written, tc.event)
 		}
 	}
 	// A create compares the mod revision with 0, which must be on the
-	// wire, and an event takes the events' lease.
+	// wire, and an event takes the events' lease. Its event has no
+	// previous key-value.
 	k.mod = 0
-	_, written := w.request(&mixedCall{op: mixedCreate, key: k, value: value})
+	_, written, event := w.request(&mixedCall{op: mixedCreate, key: k, value: value})
 	got := &pb.TxnRequest{}
 	if err := proto.Unmarshal(w.buf, got); err != nil {
 		t.Fatal(err)
 	}
 	want := &pb.TxnRequest{Compare: cmp(0), Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: k.key, Value: value, Lease: 99}}}}}
-	if !proto.Equal(got, want) || written != int64(2*len(k.key)+16+len(value)) {
-		t.Fatalf("create: %v, %d bytes", got, written)
+	if !proto.Equal(got, want) || written != int64(2*len(k.key)+16+len(value)) || event != int64(len(k.key)+len(value)) {
+		t.Fatalf("create: %v, %d bytes, event %d", got, written, event)
+	}
+	// A pod has no lease.
+	k.group = slices.Index(w.resources, "pods") * w.namespaces
+	w.request(&mixedCall{op: mixedCreate, key: k, value: value})
+	if err := proto.Unmarshal(w.buf, got); err != nil || got.Success[0].GetRequestPut().Lease != 0 {
+		t.Fatalf("pod create %v: %v", got, err)
 	}
 	if _, ok := got.Compare[0].TargetUnion.(*pb.Compare_ModRevision); !ok {
 		t.Fatal("create sent no mod revision")
@@ -202,8 +212,8 @@ func TestMixedTransitions(t *testing.T) {
 			if len(w.live) != 0 || len(w.absent) != 1 || k.mod != 0 {
 				t.Fatalf("after delete: %d live, %d absent, mod %d", len(w.live), len(w.absent), k.mod)
 			}
-		} else if len(w.live) != 1 || k.mod != int64(i+3) {
-			t.Fatalf("after step %d: %d live, mod %d", i, len(w.live), k.mod)
+		} else if len(w.live) != 1 || k.mod != int64(i+3) || k.size != len("next value") {
+			t.Fatalf("after step %d: %d live, mod %d, size %d", i, len(w.live), k.mod, k.size)
 		}
 	}
 	if w.wk.stats.acked != 4 || len(w.wk.stats.errs) != 0 {
@@ -251,27 +261,27 @@ func TestMixedLedger(t *testing.T) {
 		l := newMixedLedger()
 		l.window(1, 100)
 		if watchFirst {
-			l.saw(3, 30, 50)
+			l.saw(3, 30)
 		}
 		l.wrote(3, 10)
 		if !watchFirst {
-			l.saw(3, 30, 50)
+			l.saw(3, 30)
 		}
-		if len(l.writes)+len(l.events) != 0 || l.lat.n != 1 || l.lat.min != 20 || l.count != 1 || l.read != 50 {
+		if len(l.writes)+len(l.events) != 0 || l.lat.n != 1 || l.lat.min != 20 || l.count != 1 {
 			t.Fatalf("watch first %v: %+v", watchFirst, l)
 		}
 		// An event after the window counts no bytes, and a write meant
 		// for before it no delay.
 		l.wrote(4, 0)
-		l.saw(4, 200, 50)
+		l.saw(4, 200)
 		if l.lat.n != 1 || l.count != 1 {
 			t.Fatalf("outside the window: %+v", l)
 		}
 	}
 }
 
-// TestMixedWatchEvent reads the revision and the key and value bytes of a
-// watch event and its previous key-value.
+// TestMixedWatchEvent reads the revision of a watch event, and refuses a
+// canceled watch.
 func TestMixedWatchEvent(t *testing.T) {
 	l := newMixedLedger()
 	l.window(0, 1<<62)
@@ -293,8 +303,8 @@ func TestMixedWatchEvent(t *testing.T) {
 	if err := w.response(event, 5); err != nil {
 		t.Fatal(err)
 	}
-	if l.count != 1 || l.read != 16+100+16+40 || l.events[9] != 5 {
-		t.Fatalf("event: count %d, %d bytes, events %v", l.count, l.read, l.events)
+	if l.count != 1 || l.events[9] != 5 {
+		t.Fatalf("event: count %d, events %v", l.count, l.events)
 	}
 	canceled, err := proto.Marshal(&pb.WatchResponse{Canceled: true})
 	if err != nil {
