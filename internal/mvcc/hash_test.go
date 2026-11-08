@@ -24,8 +24,8 @@ func del(t *testing.T, s *Store, k string) {
 	}
 }
 
-// history writes a, b, a again, deletes b and writes c: revisions 2 to 6.
-func history(t *testing.T) *Store {
+// fiveWrites writes a, b, a again, deletes b and writes c: revisions 2 to 6.
+func fiveWrites(t *testing.T) *Store {
 	t.Helper()
 	s := New(&Heap{})
 	put(t, s, "a", "1")
@@ -37,7 +37,7 @@ func history(t *testing.T) *Store {
 }
 
 func TestHashKVRevisions(t *testing.T) {
-	s := history(t)
+	s := fiveWrites(t)
 	h := hashKV(t, s, 0)
 	if h.Revision != 6 || h.CompactRevision != -1 {
 		t.Fatalf("HashKV(0) = %+v, want revision 6 and compaction revision -1, as etcd before any compaction", h)
@@ -65,7 +65,7 @@ func TestHashKVRevisions(t *testing.T) {
 }
 
 func TestHashKVSeesValues(t *testing.T) {
-	a, b := history(t), history(t)
+	a, b := fiveWrites(t), fiveWrites(t)
 	if hashKV(t, a, 0) != hashKV(t, b, 0) {
 		t.Fatal("the same writes hash differently")
 	}
@@ -81,7 +81,7 @@ func TestHashKVSeesValues(t *testing.T) {
 // a tombstone at C never does.
 func TestHashKVCompactedVersions(t *testing.T) {
 	// a=1 at 2, b=1 at 3, a=2 at 4, b deleted at 5, c=1 at 6.
-	compacted := history(t)
+	compacted := fiveWrites(t)
 	if err := compacted.Compact(5); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestHashKVCompactedVersions(t *testing.T) {
 	}
 	// A checkpoint copy holds the compaction back; the hash must not see
 	// the versions it keeps for the copy.
-	frozen := history(t)
+	frozen := fiveWrites(t)
 	frozen.Freeze()
 	if err := frozen.Compact(5); err != nil {
 		t.Fatal(err)
@@ -141,7 +141,7 @@ func TestHashKVNoLiveKey(t *testing.T) {
 // copy holds the compaction back.
 func TestCompactHash(t *testing.T) {
 	for _, frozen := range []bool{false, true} {
-		s := history(t)
+		s := fiveWrites(t)
 		if err := s.Compact(3); err != nil {
 			t.Fatal(err)
 		}

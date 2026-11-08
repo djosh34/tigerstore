@@ -41,6 +41,9 @@ type Values interface {
 	// writes, without its Sum. value is not empty. Place may keep it as
 	// it is.
 	Place(value []byte) (Ref, error)
+	// Copies reports whether Read copies the value r names out of a Raft
+	// entry in memory, which it does into the arena it is given.
+	Copies(r Ref) bool
 	// Read returns the bytes r names if they are in memory, and false if
 	// only the log on disk has them. The caller may keep the bytes, as a
 	// response or a watch event does, but must not change them. Bytes it
@@ -120,6 +123,9 @@ func (h *Heap) Place(value []byte) (Ref, error) {
 	h.vals = append(h.vals, value)
 	return Ref{Index: uint64(len(h.vals)), Len: uint32(len(value))}, nil
 }
+
+// Copies is false: a Heap hands out the values it kept.
+func (h *Heap) Copies(Ref) bool { return false }
 
 // Read returns a value Place kept.
 func (h *Heap) Read(r Ref, _ *[]byte) ([]byte, bool, error) {
@@ -258,13 +264,22 @@ type Store struct {
 	// LeaseExists reports whether a lease is granted. Nil means that no
 	// lease exists, so every Put with a lease fails.
 	LeaseExists func(id int64) bool
+	// SortBytes, if above 0, bounds the values a Range sorted by value
+	// reads at once (ErrTooLarge).
+	SortBytes int64
 	// Replaced, if set, gets the value of a key's newest version when a
 	// put or a delete replaces that version and the new one does not keep
 	// the value. Older revisions may still read it.
 	Replaced func(Ref)
 
-	// changes collects the changes of the request being applied.
+	// changes collects the changes of the request being applied, and
+	// hist every change since the compaction revision.
 	changes []Change
+	hist    history
+	// PieceBytes, if above 0, is the room of the KeyValues of a Txn's or
+	// a DeleteRange's answer; rests are the parts past it (TakeRests).
+	PieceBytes int
+	rests      []Rest
 	// fills are the values that responses and events wait for.
 	fills []Fill
 	// resume is how far the next transaction's compares got (Resume).
@@ -288,10 +303,10 @@ type Store struct {
 }
 
 // Bytes estimates what the index takes in memory: per key its record,
-// its place in the B-tree and its bytes, and 64 bytes per version its
-// array has room for.
+// its place in the B-tree and its bytes, 64 bytes per version its array
+// has room for, and the history's 8 bytes a change and a revision.
 func (s *Store) Bytes() int64 {
-	return int64(s.keys.Len())*64 + s.keyBytes + s.versions*64
+	return int64(s.keys.Len())*64 + s.keyBytes + s.versions*64 + 8*int64(cap(s.hist.keys)+cap(s.hist.starts))
 }
 
 // written is a value a put wrote to key k.
@@ -424,13 +439,20 @@ type Change struct {
 	s *Store
 	k *keyIndex
 	i int
+	// main is the revision of a change that is Gone.
+	main int64
 }
 
 // Key is the changed key.
 func (c Change) Key() []byte { return c.k.key }
 
 // ModRev is the main revision of the change.
-func (c Change) ModRev() int64 { return c.k.vers[c.i].mod.main }
+func (c Change) ModRev() int64 {
+	if c.i < 0 {
+		return c.main
+	}
+	return c.k.vers[c.i].mod.main
+}
 
 // Lease is the lease of the key after the change, 0 for a delete.
 func (c Change) Lease() int64 { return c.k.vers[c.i].lease }
@@ -463,19 +485,29 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 		}
 		ev = &mvccpb.Event{Type: mvccpb.Event_PUT, Kv: kv}
 	}
-	j := c.i - 1
-	for j >= 0 && c.k.vers[j].mod.main == v.mod.main {
-		j--
-	}
-	create := v.ver != 0 && v.create == v.mod.main
-	if withPrev && !create && j >= 0 && c.k.vers[j].ver != 0 {
-		prev, err := s.kv(c.k, &c.k.vers[j])
+	if p := c.prev(withPrev); p != nil {
+		prev, err := s.kv(c.k, p)
 		if err != nil {
 			return nil, err
 		}
 		ev.PrevKv = prev
 	}
 	return ev, nil
+}
+
+// prev is the version an event of the change carries as its previous
+// one, if withPrev is set and it has one (Event).
+func (c Change) prev(withPrev bool) *version {
+	v := &c.k.vers[c.i]
+	j := c.i - 1
+	for j >= 0 && c.k.vers[j].mod.main == v.mod.main {
+		j--
+	}
+	create := v.ver != 0 && v.create == v.mod.main
+	if !withPrev || create || j < 0 || c.k.vers[j].ver == 0 {
+		return nil
+	}
+	return &c.k.vers[j]
 }
 
 // Changes returns the changes of the last applied write request. The slice
@@ -582,8 +614,10 @@ func mix(x uint64) uint64 {
 }
 
 // History returns every change to keys in [key, end) at main revision
-// from or later, in revision order. end follows Range: empty means only
-// key, "\x00" means every key from key on.
+// from or later, in revision order, all at once: for the simulator's
+// model and for tests. A node reads its history a piece at a time, from a
+// position (HistoryFrom). end follows Range: empty means only key, "\x00"
+// means every key from key on.
 func (s *Store) History(key, end []byte, from int64) []Change {
 	var out []Change
 	s.ascend(key, end, func(k *keyIndex) bool {
@@ -629,6 +663,7 @@ func (s *Store) Compact(rev int64) error {
 		return rpctypes.ErrGRPCFutureRev
 	}
 	s.resetChanges()
+	s.hist.drop(rev)
 	pending := s.pendingCompact()
 	h := newRevHash(rev, s.compactRev)
 	s.compactRev = rev

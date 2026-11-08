@@ -90,8 +90,11 @@ type stream struct {
 	trace      context.Context
 	traceBegan time.Time
 	span       trace.Span
-	ended      bool // the writer took the end of the stream
-	reset      bool // the stream or connection is gone; output is dropped
+	// holes are where the pieces of an answer that comes in pieces go,
+	// once its first part went out (fillHole). Only complete uses them.
+	holes []hole
+	ended bool // the writer took the end of the stream
+	reset bool // the stream or connection is gone; output is dropped
 }
 
 type outKind byte
@@ -484,5 +487,14 @@ func (st *stream) expire() {
 	st.c.mu.Unlock()
 	if st.cancel != nil {
 		st.cancel()
+	}
+}
+
+// wake tells a sender that waits on space to look again: the writer took
+// output, or the stream was reset. A stream without space has none.
+func (st *stream) wake() {
+	select {
+	case st.space <- struct{}{}:
+	default:
 	}
 }

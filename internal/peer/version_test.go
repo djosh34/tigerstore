@@ -178,14 +178,16 @@ func TestRejectsBadPreface(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Node 2 speaks 1-2, so a preface of 2-3 picks 2 while ALPN chose 1.
-	b := startWith(t, 2, lns[2], addrs, cert, ca.Pool, func(c *Config) { c.minVersion, c.maxVersion = 1, 2 })
+	// Its cluster is 7.
+	b := startWith(t, 2, lns[2], addrs, cert, ca.Pool, func(c *Config) { c.minVersion, c.maxVersion, c.ClusterID = 1, 2, 7 })
 	defer func() {
 		if err := b.t.Close(); err != nil {
 			t.Error(err)
 		}
 	}()
-	preface := func(magic string, lo, hi byte, id uint64, addr string) []byte {
+	preface := func(magic string, lo, hi byte, id, cluster uint64, addr string) []byte {
 		p := binary.BigEndian.AppendUint64(append([]byte(magic), lo, hi), id)
+		p = binary.BigEndian.AppendUint64(p, cluster)
 		return append(append(p, byte(len(addr))), addr...)
 	}
 	old := binary.BigEndian.AppendUint64(nil, 1)
@@ -195,14 +197,16 @@ func TestRejectsBadPreface(t *testing.T) {
 		p      []byte
 		reply  []byte
 	}{
-		{"version 1", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 1, ""), []byte{1}},
+		{"version 1", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 1, 7, ""), []byte{1}},
 		{"a version-0 node, no ALPN", nil, old, nil},
-		{"the old preface with ALPN", []string{"tigerstore-peer/1"}, append(old, 0, 0, 0, 0, 0), nil},
-		{"bad magic", []string{"tigerstore-peer/1"}, preface("XX", 1, 1, 1, ""), nil},
-		{"unknown peer without an address", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 9, ""), nil},
-		{"unknown peer with a bad address", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 9, "no port"), nil},
-		{"preface range beyond ALPN", []string{"tigerstore-peer/1"}, preface("TS", 2, 3, 1, ""), []byte{0}},
-		{"no shared version in the preface", []string{"tigerstore-peer/1"}, preface("TS", 3, 4, 1, ""), []byte{0}},
+		{"the old preface with ALPN", []string{"tigerstore-peer/1"}, append(old, make([]byte, 13)...), nil},
+		{"bad magic", []string{"tigerstore-peer/1"}, preface("XX", 1, 1, 1, 7, ""), nil},
+		{"unknown peer without an address", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 9, 7, ""), nil},
+		{"unknown peer with a bad address", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 9, 7, "no port"), nil},
+		{"preface range beyond ALPN", []string{"tigerstore-peer/1"}, preface("TS", 2, 3, 1, 7, ""), []byte{0}},
+		{"no shared version in the preface", []string{"tigerstore-peer/1"}, preface("TS", 3, 4, 1, 7, ""), []byte{0}},
+		{"a member of another cluster", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 1, 8, ""), []byte{clusterReply}},
+		{"a node without an ID asks another cluster's", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, callBit, 0, ""), []byte{1}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

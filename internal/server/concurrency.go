@@ -147,14 +147,14 @@ func (c client) waitDeletes(ctx context.Context, prefix []byte, maxCreate int64)
 
 // watchEvents watches as clientv3 does for the concurrency package. It
 // hands f every response with events until f reports that it is done.
-// When the node drops the watch stream, because it fell behind or the
-// node installed a snapshot, it watches again after the last event, as
-// clientv3 resumes a watch.
+// When the node drops the watch stream, because a response in parts
+// could not be finished or the node installed a snapshot, it watches
+// again after the last event, as clientv3 resumes a watch.
 func (c client) watchEvents(ctx context.Context, req *pb.WatchCreateRequest, f func(*pb.WatchResponse) bool) error {
 	req = proto.CloneOf(req)
 	for {
 		err := c.watchOnce(ctx, req, f)
-		if !errors.Is(err, node.ErrWatchTooSlow) && !errors.Is(err, node.ErrSnapshotInstalled) {
+		if !errors.Is(err, node.ErrWatchTooSlow) && !errors.Is(err, node.ErrWatchBroken) && !errors.Is(err, node.ErrSnapshotInstalled) {
 			return err
 		}
 	}

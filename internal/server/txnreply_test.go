@@ -74,9 +74,9 @@ func TestTxnReplyEncoding(t *testing.T) {
 	r := rand.New(rand.NewPCG(3, 4))
 	for i := range 5000 {
 		resp := randTxnResp(r, 2)
-		got, err := appendTxnReply(resp)
-		if err != nil {
-			t.Fatal(err)
+		got, holes, err := appendTxnPieces(resp, nil)
+		if err != nil || len(holes) > 0 {
+			t.Fatal(err, holes)
 		}
 		body, err := proto.MarshalOptions{Deterministic: true}.Marshal(resp)
 		if err != nil {

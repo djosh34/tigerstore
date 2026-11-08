@@ -74,8 +74,9 @@ func TestGzip(t *testing.T) {
 }
 
 // TestWatchFragments checks etcd's watch fragmentation: a watcher that
-// asks for fragments gets a response of 2 MiB or more in parts below
-// that, all but the last marked, and another watcher gets it whole.
+// asks for fragments gets a revision with 3 MiB of previous values in
+// parts below 2 MiB, all but the last marked, and another watcher gets
+// it whole, in one message.
 func TestWatchFragments(t *testing.T) {
 	c := newCluster(t)
 	cert, _, _, err := c.ca.Issue("client", 82)
@@ -84,21 +85,22 @@ func TestWatchFragments(t *testing.T) {
 	}
 	conn := c.dial(1, cert)
 	kv := pb.NewKVClient(conn)
-	var first int64
+	// Three values of 1 MiB, deleted at one revision: with prev_kv its
+	// events take 3 MiB.
 	for i := range 3 {
-		put := retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
-			return kv.Put(ctx, &pb.PutRequest{Key: []byte("f"), Value: bytes.Repeat([]byte{byte('a' + i)}, 1<<20)})
+		retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+			return kv.Put(ctx, &pb.PutRequest{Key: []byte{'f', byte('a' + i)}, Value: bytes.Repeat([]byte{byte('a' + i)}, 1<<20)})
 		})
-		if i == 0 {
-			first = put.Header.Revision
-		}
 	}
+	first := retry(t, func(ctx context.Context) (*pb.DeleteRangeResponse, error) {
+		return kv.DeleteRange(ctx, &pb.DeleteRangeRequest{Key: []byte("f"), RangeEnd: []byte("g")})
+	}).Header.Revision
 	for _, fragment := range []bool{true, false} {
 		w, err := pb.NewWatchClient(conn).Watch(context.Background(), grpc.MaxCallRecvMsgSize(8<<20))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := w.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{Key: []byte("f"), StartRevision: first, Fragment: fragment}}}); err != nil {
+		if err := w.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{Key: []byte("f"), RangeEnd: []byte("g"), StartRevision: first, Fragment: fragment, PrevKv: true}}}); err != nil {
 			t.Fatal(err)
 		}
 		var parts []string

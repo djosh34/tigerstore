@@ -3,12 +3,14 @@ package server_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding/gzip"
 
@@ -18,7 +20,8 @@ import (
 // TestRangeReplyClients reads pages through real TLS clients, the node
 // driver and the socket writer, on a node whose process uses more than its
 // memory budget, so its value cache stays empty. Every page must finish,
-// gzip replies on separate connections included.
+// gzip replies on separate connections included; a page that a change of
+// leader fails is read again, as clientv3 does.
 func TestRangeReplyClients(t *testing.T) {
 	c := newClusterWith(t, func(c *cluster) {
 		c.coreConfig = func(cfg *core.Config) {
@@ -59,7 +62,16 @@ func TestRangeReplyClients(t *testing.T) {
 			key := []byte("range/")
 			var revision int64
 			for page := range 3 {
-				r, err := client.Range(ctx, &pb.RangeRequest{Key: key, RangeEnd: []byte("range0"), Limit: 1000, Revision: revision}, options...)
+				req := &pb.RangeRequest{Key: key, RangeEnd: []byte("range0"), Limit: 1000, Revision: revision}
+				r, err := client.Range(ctx, req, options...)
+				// A leader that loses its quorum check steps down, as
+				// etcd's does, when the CPU is starved under -race; the
+				// read fails with "leader changed" or "no leader", which
+				// clientv3 retries (#539).
+				for err != nil && leaderMoved(err) && ctx.Err() == nil {
+					time.Sleep(10 * time.Millisecond)
+					r, err = client.Range(ctx, req, options...)
+				}
 				if err != nil {
 					errs <- fmt.Errorf("client %d page %d: %w", i, page, err)
 					return
@@ -85,4 +97,11 @@ func TestRangeReplyClients(t *testing.T) {
 	for err := range errs {
 		t.Error(err)
 	}
+}
+
+// leaderMoved reports whether err is a read that failed because the
+// node's leader changed or went, which a client retries.
+func leaderMoved(err error) bool {
+	e := rpctypes.Error(err)
+	return errors.Is(e, rpctypes.ErrLeaderChanged) || errors.Is(e, rpctypes.ErrNoLeader)
 }

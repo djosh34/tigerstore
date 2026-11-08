@@ -131,9 +131,13 @@ type Config struct {
 	// MemoryBytes is the memory the whole process may use, the value
 	// cache included: the Go memory limit less room for the garbage
 	// collector. The cache takes what the rest of the process leaves, as
-	// the driver measures it (SetOtherMemory). A Range answer larger than
-	// MemoryBytes is refused. 0 turns the cache and that check off.
+	// the driver measures it (SetOtherMemory). A Range sorted by value
+	// whose values pass MemoryBytes is refused. 0 turns the cache and
+	// that check off.
 	MemoryBytes int64
+	// PieceBytes is about the most one piece of a large answer holds
+	// (pieces.go); 0 means PieceBytes.
+	PieceBytes int
 	// SnapshotTicks is how long a leader waits for a follower to fetch a
 	// snapshot before it sends another.
 	SnapshotTicks int
@@ -234,11 +238,9 @@ type Request struct {
 	// Wire, if set, is Op in the client's encoding, decoded with
 	// UnmarshalAlias. It goes into the Raft entry as it is.
 	Wire []byte
-	// Compact asks for a range's answer as Reply.Range, which the driver
-	// encodes itself, instead of a RangeResponse message.
-	Compact bool
-	// Chunk asks for a range as one chunk of a RangeStream
-	// (mvcc.Store.RangeChunk): no count beyond the limit.
+	// Chunk asks for a range as one chunk of a RangeStream, as etcd
+	// v3.7.2's range without a total count: the walk stops once it has
+	// the limit plus one keys, and Count holds the keys it saw.
 	Chunk bool
 	// Caller is the client as etcd's size limit for writes sees it.
 	Caller Caller
@@ -293,8 +295,16 @@ type Reply struct {
 	Rev    int64
 	Term   uint64
 	PrevKv *mvccpb.KeyValue
-	// Range is the answer to a Compact range.
+	// Range is the answer to a range, or the next piece of an answer
+	// (Next): only its KVs then.
 	Range mvcc.RangeResult
+	// MorePieces says that more pieces of the answer follow (pieces.go),
+	// and Rests are the messages of a Txn's or a DeleteRange's answer
+	// whose KeyValues they bring, in order.
+	MorePieces bool
+	Rests      []mvcc.Rest
+	// cursors read the rest of the answer, for Next.
+	cursors []*mvcc.Cursor
 }
 
 // UpToInstall returns the jobs up to the first with an install, that one
@@ -572,18 +582,22 @@ type Node struct {
 
 	streams  map[uint64]*watchStream
 	watchers []*watcher
+	// pieced are the answers that go out in pieces, by request ID.
+	pieced map[uint64]*pieced
 
 	// cold are the value reads under way. watchRead is the read of this
 	// turn's watch events.
 	cold      map[*ValueRead]struct{}
 	watchRead *ValueRead
 	// applyQ holds Raft's apply messages not applied yet: while paused
-	// waits for values from the log, ordered apply waits with it. resume
-	// is the write that runs again after its read. readInline is set
-	// while the node starts: nothing else waits then, so a write reads
-	// the values it needs itself.
+	// waits for values from the log, or revoke takes its steps, ordered
+	// apply waits with it. resume is the write that runs again after its
+	// read, or the one after a revoke. readInline is set while the node
+	// starts: nothing else waits then, so a write reads the values it
+	// needs itself.
 	applyQ         []*raftpb.Message
 	paused, resume *pausedWrite
+	revoke         *revokeWrite
 	readInline     bool
 
 	// hashes are the hashes the last compactions took, oldest first.
@@ -617,6 +631,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	c := newCache()
 	vals := &values{storage: st, log: disk, cache: c}
 	cfg.MaxRequestBytes = cmp.Or(cfg.MaxRequestBytes, MaxRequestBytes)
+	cfg.PieceBytes = cmp.Or(cfg.PieceBytes, PieceBytes)
 	cfg.MaxTxnOps = cmp.Or(cfg.MaxTxnOps, mvcc.MaxTxnOps)
 	n := &Node{
 		cfg:         cfg,
@@ -629,6 +644,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		vote:        rec.HardState.Vote,
 		waiting:     map[uint64]*pending{},
 		streams:     map[uint64]*watchStream{},
+		pieced:      map[uint64]*pieced{},
 		snapWait:    map[uint64]int64{},
 		cold:        map[*ValueRead]struct{}{},
 		noSpaceAt:   -1,
@@ -805,6 +821,19 @@ func (n *Node) replay(commit uint64) (uint64, error) {
 		if err := n.apply([]*raftpb.Entry{e}); err != nil {
 			return 0, err
 		}
+		// A revoke in steps takes them all now; the entry then goes on
+		// from the write after it.
+		for n.revoke != nil {
+			if n.revokeStep(); n.err != nil {
+				return 0, n.err
+			}
+			if n.revoke == nil {
+				if err := n.apply([]*raftpb.Entry{e}); err != nil {
+					return 0, err
+				}
+				n.resume = nil
+			}
+		}
 	}
 	return term, nil
 }
@@ -844,6 +873,8 @@ func (n *Node) setState(st *State) {
 	if n.cfg.MemoryBytes > 0 {
 		n.kv.Replaced = n.cache.drop
 	}
+	n.kv.SortBytes = n.cfg.MemoryBytes
+	n.kv.PieceBytes = n.cfg.PieceBytes
 }
 
 // MinLeaseTTL is etcd's smallest lease TTL: 1.5 election timeouts, rounded
@@ -1096,6 +1127,8 @@ func (n *Node) Cancel(id uint64) {
 	if n.err != nil {
 		return
 	}
+	// An answer in pieces whose receiver went away.
+	delete(n.pieced, id)
 	if i := slices.IndexFunc(n.transfers, func(p *pending) bool { return p.req.ID == id }); i >= 0 {
 		p := n.transfers[i]
 		n.transfers = slices.Delete(n.transfers, i, i+1)
@@ -1822,7 +1855,12 @@ func (n *Node) Process() (Effects, error) {
 		}
 		n.proposeConfs()
 		n.proposeConfMessages()
-		// Apply messages left behind by a snapshot install.
+		// A revoke takes its next step, and ordered apply goes on behind
+		// it once it is done; then apply messages left behind by a
+		// snapshot install.
+		if n.revoke != nil {
+			n.revokeStep()
+		}
 		n.runApply()
 		n.requestReads()
 		n.drainReady()
@@ -1838,11 +1876,12 @@ func (n *Node) Process() (Effects, error) {
 			// goes out ahead of the events it covers.
 			for _, w := range n.watchers {
 				if !w.dead && w.progress && len(w.pending) > 0 {
-					n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id}, nil)
+					n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id}, nil, 0)
 				}
 			}
 		}
 		n.flushWatches()
+		n.catchUp()
 		if n.err == nil {
 			n.trimWindow()
 			n.fitCache()
@@ -1871,6 +1910,7 @@ func (n *Node) stop() {
 	}
 	n.tokenWaits = nil
 	n.confMessages, n.props, n.propBytesHeld = nil, nil, 0
+	clear(n.pieced)
 	n.timeouts, n.proposals, n.reads, n.readBatches, n.early, n.confs, n.transfers = nil, nil, nil, nil, nil, nil, nil
 }
 
@@ -2061,6 +2101,7 @@ func (n *Node) serveRead(p *pending) {
 	}
 	var resp proto.Message
 	var err error
+	var cursors []*mvcc.Cursor
 	rep := Reply{ID: p.req.ID}
 	if p.aiCurrent {
 		p.ai.revision = n.state.auth.revision
@@ -2078,22 +2119,15 @@ func (n *Node) serveRead(p *pending) {
 		resp, err = n.credentials(op)
 		rep.Rev = int64(n.state.auth.revision)
 	case *pb.RangeRequest:
-		if p.req.Compact {
-			var res mvcc.RangeResult
-			if res, err = n.kv.RangeKVs(op, n.cfg.MemoryBytes); err == nil {
-				rep.Term, rep.Range = n.term, res
+		// Every Range answers as Reply.Range, in pieces if it is large;
+		// the driver builds the message.
+		var res mvcc.RangeResult
+		var c *mvcc.Cursor
+		if res, c, err = n.kv.RangeFirst(op, !p.req.Chunk, n.cfg.PieceBytes); err == nil {
+			rep.Term, rep.Range = n.term, res
+			if c != nil {
+				cursors = []*mvcc.Cursor{c}
 			}
-			break
-		}
-		var r *pb.RangeResponse
-		if p.req.Chunk {
-			r, err = n.kv.RangeChunk(op)
-		} else {
-			r, err = n.kv.Range(op)
-		}
-		if err == nil {
-			n.fillHeader(r.Header)
-			resp = r
 		}
 	case *pb.TxnRequest:
 		var r *pb.TxnResponse
@@ -2101,6 +2135,7 @@ func (n *Node) serveRead(p *pending) {
 		if err == nil {
 			n.fillHeader(r.Header)
 			resp = r
+			rep.Rests = n.kv.TakeRests()
 		}
 	case *pb.LeaseTimeToLiveRequest:
 		// Only the leader counts the time a lease has left. etcd's
@@ -2159,7 +2194,7 @@ func (n *Node) serveRead(p *pending) {
 		n.fail(err)
 		return
 	}
-	rep.Resp, rep.Err = resp, err
+	rep.Resp, rep.Err, rep.cursors = resp, err, cursors
 	n.answer(p, rep, n.kv.TakeFills())
 }
 
@@ -2186,7 +2221,7 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 		if err := n.applyEntry(e); err != nil {
 			return fmt.Errorf("core: apply entry %d: %w", e.GetIndex(), err)
 		}
-		if n.paused != nil {
+		if n.applyWaits() {
 			return nil
 		}
 		n.applied = e.GetIndex()
@@ -2240,7 +2275,7 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 		start := t.Now()
 		n.timed = timedApply{}
 		err := n.applyWrite(e, k, origin, boot, id, kind, b, at)
-		if err == nil && n.paused == nil {
+		if err == nil && !n.applyWaits() {
 			t.Applied(n.timed.op, n.timed.err == nil || errors.Is(n.timed.err, rpctypes.ErrGRPCCompacted), t.Now()-start)
 		}
 		return err
@@ -2300,6 +2335,13 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 	}
 	room := n.quotaLeft(quotaCost(op))
 	resp, err := n.applyOp(op)
+	if errors.Is(err, errRevoking) {
+		// Ordered apply waits for the revoke's steps (revokeStep).
+		n.matchWatches()
+		r := n.revoke
+		r.index, r.write, r.p, r.room = e.GetIndex(), k, p, room
+		return errPaused
+	}
 	for {
 		cold, ok := errors.AsType[*mvcc.ColdError](err)
 		if !ok {
@@ -2325,11 +2367,11 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 	if errors.Is(err, errInternal) {
 		return err
 	}
-	fills := n.kv.TakeFills()
+	fills, rests := n.kv.TakeFills(), n.kv.TakeRests()
 	if err == nil {
 		n.matchWatches()
 		if !room {
-			resp, err, fills = nil, n.overQuota(p), nil
+			resp, err, fills, rests = nil, n.overQuota(p), nil, nil
 		}
 	}
 	n.timed = timedApply{op: opName(op), err: err}
@@ -2338,7 +2380,7 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 		return nil
 	}
 	if p != nil {
-		n.answer(p, Reply{ID: p.req.ID, Resp: resp, Err: err}, fills)
+		n.answer(p, Reply{ID: p.req.ID, Resp: resp, Err: err, Rests: rests}, fills)
 	}
 	return nil
 }
@@ -2395,6 +2437,17 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 		revoked = n.state.leases[op.ID]
 	}
 	resp, err := n.state.Apply(op)
+	if errors.Is(err, errRevoking) {
+		// The revoke goes on in steps (revokeStep), whose last ends here.
+		n.revoke = &revokeWrite{op: op, lease: revoked}
+		return nil, err
+	}
+	return n.afterApply(op, revoked, resp, err)
+}
+
+// afterApply does what follows an applied write: revoked is the lease
+// the write found, if it revokes one.
+func (n *Node) afterApply(op proto.Message, revoked *lease, resp proto.Message, err error) (proto.Message, error) {
 	if revoked != nil && n.state.leases[revoked.id] != revoked {
 		n.expiries.remove(revoked)
 		n.checkpoints.remove(revoked)

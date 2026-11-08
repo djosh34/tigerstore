@@ -59,11 +59,11 @@ type Config struct {
 	ForceNewCluster bool
 	// Tick is the length of one Raft tick.
 	Tick time.Duration
-	// WatchQueue is how many responses a watch stream may fall behind
-	// before it is closed; 0 means watchQueue.
+	// WatchQueue and WatchBytes are how many responses and bytes a watch
+	// stream may hold for its client; 0 means watchQueue and watchBytes.
+	// Past them its watchers fall behind and catch up from the history
+	// as the client takes what it holds (core.Node.WatchRoom).
 	WatchQueue int
-	// WatchBytes is how many bytes of responses a watch stream may fall
-	// behind before it is closed; 0 means watchBytes.
 	WatchBytes int64
 	// SegmentBytes is the size after which the log starts a new segment;
 	// 0 means wal.SegmentBytes. Tests make it small, so that old segments
@@ -127,8 +127,9 @@ type input struct {
 	batch       *batch
 	msg         *raftpb.Message
 	unreachable uint64
-	// cancel is a request whose client went away (Cancel).
-	cancel uint64
+	// cancel is a request whose client went away (Cancel), and next one
+	// whose receiver asks for the next piece of its answer (Next).
+	cancel, next uint64
 	// advance moves the election clock (AdjustTicks).
 	advance int
 	// removed is a peer's answer that the cluster removed this node.
@@ -158,18 +159,24 @@ type input struct {
 	at time.Time
 }
 
-// watchBytes is how many bytes of responses a watch stream may fall
-// behind before the node closes it, whatever their count.
-const watchBytes = 64 << 20
+// watchBytes and watchQueue are how many bytes and responses a watch
+// stream holds for its client at most, by default.
+const (
+	watchBytes = 8 << 20
+	watchQueue = 4096
+)
 
-// watchQueue is how many responses a watch stream may fall behind before
-// the node closes it. The client then reconnects and resumes.
-const watchQueue = 4096
-
-// ErrWatchTooSlow closes a watch stream whose client does not keep up. It
-// is Unavailable because clientv3 resumes watches after that code and
-// gives up after most others.
+// ErrWatchTooSlow closes a watch stream whose queue filled anyway, which
+// the room the core keeps to should prevent. It is Unavailable because
+// clientv3 resumes watches after that code and gives up after most
+// others.
 var ErrWatchTooSlow = status.Error(codes.Unavailable, "tigerstore: watch stream fell too far behind")
+
+// ErrWatchBroken closes a watch stream in the middle of a response in
+// parts that cannot be finished: a compaction removed its revision, or
+// its watcher was cancelled. The client resumes from the last revision it
+// got.
+var ErrWatchBroken = status.Error(codes.Unavailable, "tigerstore: a watch response in parts could not be finished")
 
 // ErrSnapshotInstalled closes the watch streams of a node whose state a
 // snapshot replaced. Clients resume from the revision they reached.
@@ -181,17 +188,65 @@ type WatchStream struct {
 	id uint64
 	// caller is the stream's client, for its permissions.
 	caller core.Caller
-	// C carries the responses in order. Whoever takes one calls Taken.
+	// C carries the responses in order, whole. Whoever takes one calls
+	// Taken. P carries them instead on a stream opened in parts
+	// (OpenWatchParts): a response of one large revision comes in
+	// several parts (core.WatchResponse), which TakenPart reports.
 	C chan *pb.WatchResponse
-	// queued is the size of the responses in C.
+	P chan core.WatchResponse
+	// merging is the response a stream that takes whole responses builds
+	// from parts.
+	merging *pb.WatchResponse
+	// queued is the size of the responses in C or P. full is set while
+	// the stream had too little room for the core to send on it, so that
+	// taking a response wakes the committer.
 	queued atomic.Int64
+	full   atomic.Bool
 	done   chan struct{}
 	err    error
 }
 
 // Taken reports that a response from C was taken, so its bytes no longer
-// count against the stream's limit.
-func (ws *WatchStream) Taken(r *pb.WatchResponse) { ws.queued.Add(-int64(proto.Size(r))) }
+// count against the stream's room.
+func (ws *WatchStream) Taken(r *pb.WatchResponse) { ws.took(int64(proto.Size(r))) }
+
+// TakenPart reports that a part from P was taken.
+func (ws *WatchStream) TakenPart(r core.WatchResponse) { ws.took(int64(proto.Size(r.Resp))) }
+
+// took counts n bytes taken, and wakes the committer if the stream was
+// short of room and now has half of it again.
+func (ws *WatchStream) took(n int64) {
+	if ws.queued.Add(-n) <= ws.n.watchBytes()/2 && ws.full.CompareAndSwap(true, false) {
+		select {
+		case ws.n.roomFreed <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// watchBytes is the room of a watch stream.
+func (n *Node) watchBytes() int64 { return cmp.Or(n.cfg.WatchBytes, watchBytes) }
+
+// room is the bytes and responses with events the stream may still
+// take. A quarter of its queue is kept for responses without events,
+// which go out whatever the room: created, cancelled, progress.
+func (ws *WatchStream) room(n *Node, memFull bool) (bytes, responses int64) {
+	q, used := cap(ws.C), len(ws.C)
+	if ws.P != nil {
+		q, used = cap(ws.P), len(ws.P)
+	}
+	if planted.On("B13") {
+		return n.watchBytes(), int64(q)
+	}
+	bytes, responses = n.watchBytes()-ws.queued.Load(), int64(q-q/4-used)
+	if memFull {
+		// The process is at its memory budget: nothing more goes out
+		// until the clients take what their streams hold.
+		bytes = 0
+	}
+	ws.full.Store(bytes <= n.watchBytes()/2 || responses <= 0)
+	return bytes, responses
+}
 
 // Done is closed when the node dropped the stream; Err then says why.
 func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
@@ -287,6 +342,51 @@ func (n *Node) OpenWatch(ctx context.Context, c core.Caller) (*WatchStream, erro
 	return ws, nil
 }
 
+// OpenWatchParts starts a watch stream whose responses come in parts on
+// P, for a server that sends a large response as it comes.
+func (n *Node) OpenWatchParts(ctx context.Context, c core.Caller) (*WatchStream, error) {
+	ws := &WatchStream{n: n, id: n.nextID.Add(1), caller: c, P: make(chan core.WatchResponse, cmp.Or(n.cfg.WatchQueue, watchQueue)), done: make(chan struct{})}
+	if err := n.put(ctx, input{watchOpen: ws}); err != nil {
+		return nil, err
+	}
+	return ws, nil
+}
+
+// deliver hands a stream a response or a part of one. It reports false
+// if the stream's queue is full, which the room the core keeps to should
+// prevent.
+func (ws *WatchStream) deliver(r core.WatchResponse) bool {
+	if ws.P != nil {
+		ws.queued.Add(int64(proto.Size(r.Resp)))
+		select {
+		case ws.P <- r:
+			return true
+		default:
+			return false
+		}
+	}
+	// A stream of whole responses gets the parts or fragments of one
+	// merged.
+	if ws.merging != nil {
+		ws.merging.Events = append(ws.merging.Events, r.Resp.Events...)
+	} else {
+		ws.merging = r.Resp
+	}
+	if r.More || (r.Fragmented && r.Resp.Fragment) {
+		return true
+	}
+	ws.merging.Fragment = false
+	whole := ws.merging
+	ws.merging = nil
+	ws.queued.Add(int64(proto.Size(whole)))
+	select {
+	case ws.C <- whole:
+		return true
+	default:
+		return false
+	}
+}
+
 func (n *Node) put(ctx context.Context, in input) error {
 	in.at = time.Now()
 	select {
@@ -371,6 +471,11 @@ type Node struct {
 	// last recovery of its log found (Recovered).
 	recovered wal.Recovered
 	inbox     chan input
+	// roomFreed wakes the committer when a watch stream short of room got
+	// some back (WatchStream.took), and memFull says that the process is
+	// at its memory budget, so watch streams get none (measureMemory).
+	roomFreed chan struct{}
+	memFull   bool
 	persistQ  chan persistBatch
 	persisted chan persistDone
 	ckptQ     chan core.CheckpointChunk
@@ -676,6 +781,7 @@ func newOnDisk(cfg Config, path string, dir FS) (*Node, error) {
 		cfg:         cfg,
 		log:         &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead, kick: make(chan struct{}, 1)},
 		inbox:       make(chan input, 8192),
+		roomFreed:   make(chan struct{}, 1),
 		done:        make(chan struct{}),
 		leaderMoved: make(chan struct{}),
 		memory:      cfg.Memory,
@@ -970,6 +1076,15 @@ func (n *Node) Cancel(id uint64) {
 	go n.tell(input{cancel: id})
 }
 
+// Next asks for the next piece of the answer to request id, whose last
+// reply had MorePieces set, once its receiver took that one (core.Node.Next).
+// The piece comes as a reply like the first. It waits for room in the
+// inbox.
+func (n *Node) Next(id uint64) { n.tell(input{next: id}) }
+
+// PieceBytes is about the most one piece of a large answer holds.
+func (n *Node) PieceBytes() int { return cmp.Or(n.cfg.Core.PieceBytes, core.PieceBytes) }
+
 // Do runs one request and waits for its reply.
 func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) {
 	return n.DoAs(ctx, core.Caller{}, op)
@@ -1005,6 +1120,60 @@ func (n *Node) doReply(ctx context.Context, r *request) (core.Reply, error) {
 	if err := n.put(ctx, input{req: r}); err != nil {
 		return core.Reply{}, err
 	}
+	rep, err := n.await(ctx, r)
+	if err != nil {
+		return rep, err
+	}
+	// A caller of Do takes the answer whole: it asks for every piece and
+	// builds the message.
+	if _, ok := r.op.(*pb.RangeRequest); ok {
+		res, term := rep.Range, rep.Term
+		for rep.MorePieces {
+			n.Next(r.id)
+			if rep, err = n.await(ctx, r); err != nil {
+				return rep, err
+			}
+			res.KVs = append(res.KVs, rep.Range.KVs...)
+		}
+		resp := res.Response()
+		resp.Header.ClusterId, resp.Header.MemberId, resp.Header.RaftTerm = n.cfg.Core.ClusterID, n.cfg.Core.ID, term
+		rep.Resp = resp
+		return rep, nil
+	}
+	first, rests := rep, rep.Rests
+	for rep.MorePieces {
+		n.Next(r.id)
+		if rep, err = n.await(ctx, r); err != nil {
+			return rep, err
+		}
+		// A piece brings KeyValues of the first message that lacks some.
+		if len(rests) == 0 {
+			return core.Reply{}, errPieceTooMany
+		}
+		kvs := mvcc.KeyValues(rep.Range.KVs)
+		switch m := rests[0].Msg.(type) {
+		case *pb.RangeResponse:
+			m.Kvs = append(m.Kvs, kvs...)
+			if int64(len(m.Kvs)) == rests[0].N {
+				rests = rests[1:]
+			}
+		case *pb.DeleteRangeResponse:
+			m.PrevKvs = append(m.PrevKvs, kvs...)
+			if int64(len(m.PrevKvs)) == rests[0].N {
+				rests = rests[1:]
+			}
+		}
+	}
+	first.MorePieces, first.Rests = false, nil
+	return first, nil
+}
+
+// errPieceTooMany is a piece of an answer that has no message left to
+// fill: a bug in the core.
+var errPieceTooMany = errors.New("node: a piece of an answer that no message lacks")
+
+// await waits for the next reply to r.
+func (n *Node) await(ctx context.Context, r *request) (core.Reply, error) {
 	select {
 	case rep := <-r.reply:
 		return rep, rep.Err
@@ -1168,7 +1337,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			moved = clock.advance(n.core, wallTick(time.Now()), waited, ready, math.MaxInt64) || moved
 		}
 		if clock.at > measured {
-			n.measureMemory(streams)
+			n.measureMemory()
 			measured = clock.at
 		}
 		return moved || len(ins) > 0
@@ -1208,6 +1377,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				pace = time.NewTimer(checkpointPace)
 			}
 			paced = pace.C
+		}
+		// A watcher that catches up with room for its next piece, or a
+		// revoke's next step, gets a turn at once.
+		var produce <-chan time.Time
+		if n.core.Working() {
+			produce = copyNow
 		}
 		due := n.core.Due()
 		if at := clock.at + due; at != clock.due {
@@ -1262,6 +1437,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			n.core.CopyCheckpoint()
 		case <-wake.C:
 			turn(entered, nil, inbox, due)
+		case <-n.roomFreed:
+			turn(entered, nil, inbox, due)
+		case <-produce:
+			turn(entered, nil, inbox, due)
 		case <-ctx.Done():
 			return nil
 		}
@@ -1273,6 +1452,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		if b := n.cfg.DiskBudget; b > 0 {
 			n.core.SetDisk(n.log.used.Load(), b)
+		}
+		for id, ws := range streams {
+			bytes, responses := ws.room(n, n.memFull)
+			n.core.WatchRoom(id, bytes, responses)
 		}
 		eff, err := n.core.Process()
 		if n.cfg.Turn != nil {
@@ -1310,23 +1493,16 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			if !ok {
 				continue
 			}
-			if planted.On("B13") {
-				// Planted: wait for a slow watcher instead of closing it.
+			switch {
+			case w.Broken:
+				n.closeStream(streams, w.Stream, ErrWatchBroken)
+			case planted.On("B13") && ws.P == nil && !w.More && !w.Cont:
+				// Planted: the stream got room whatever it held (room),
+				// and the committer waits for its client.
+				ws.queued.Add(int64(proto.Size(w.Resp)))
 				ws.C <- w.Resp
-				continue
-			}
-			// A stream falls too far behind by count or by bytes.
-			size := int64(proto.Size(w.Resp))
-			sent := false
-			if ws.queued.Add(size) <= cmp.Or(n.cfg.WatchBytes, watchBytes) {
-				select {
-				case ws.C <- w.Resp:
-					sent = true
-				default:
-				}
-			}
-			if !sent {
-				n.closeTooSlow(streams, w.Stream)
+			case !ws.deliver(w):
+				n.closeStream(streams, w.Stream, ErrWatchTooSlow)
 			}
 		}
 		if l, tm := n.core.Leader(), n.core.Term(); l != n.leader.Load() || tm != term {
@@ -1382,40 +1558,32 @@ func (n *Node) heartbeatSent(beats map[uint64]time.Time, to uint64) {
 }
 
 // measureMemory gives the core what the process uses besides the value
-// cache, so the cache takes only what the rest leaves. When the rest alone
-// is at the limit, which leaves the cache nothing, it closes the watch
-// stream that is furthest behind, as one too slow: its client resumes
-// from the last revision it got. One stream goes per collection, which
-// shows what that freed.
-func (n *Node) measureMemory(streams map[uint64]*WatchStream) {
+// cache, so the cache takes only what the rest leaves. While the rest
+// alone is at the limit, which leaves the cache nothing, the watch streams
+// get no room: their watchers fall behind and catch up from the history
+// once the memory is back under the limit (#505).
+func (n *Node) measureMemory() {
 	limit := n.cfg.Core.MemoryBytes
 	if limit <= 0 {
 		return
 	}
 	other, fresh := n.memory(n.core.CacheLow())
 	n.core.SetOtherMemory(other)
-	if !fresh || other < limit {
+	if !fresh {
 		return
 	}
-	var slowest uint64
-	var behind int64
-	for id, ws := range streams {
-		if q := ws.queued.Load(); q > behind {
-			slowest, behind = id, q
-		}
-	}
-	if behind > 0 {
-		n.logf("memory: %d bytes in use besides the cache, limit %d; closing watch stream %d, %d bytes behind", other, limit, slowest, behind)
-		n.closeTooSlow(streams, slowest)
+	if full := other >= limit; full != n.memFull {
+		n.logf("memory: %d bytes in use besides the cache, limit %d; watch streams take more: %v", other, limit, !full)
+		n.memFull = full
 	}
 }
 
-// closeTooSlow closes a watch stream whose client fell too far behind.
-func (n *Node) closeTooSlow(streams map[uint64]*WatchStream, id uint64) {
+// closeStream closes a watch stream with err.
+func (n *Node) closeStream(streams map[uint64]*WatchStream, id uint64, err error) {
 	ws := streams[id]
 	delete(streams, id)
 	n.core.CloseWatchStream(id)
-	ws.err = ErrWatchTooSlow
+	ws.err = err
 	close(ws.done)
 }
 
@@ -1450,7 +1618,9 @@ func (n *Node) completeAll(replies []core.Reply, waiters map[uint64]waiter, grou
 		if !ok {
 			continue
 		}
-		delete(waiters, r.ID)
+		if !r.MorePieces {
+			delete(waiters, r.ID)
+		}
 		if w.reply != nil {
 			w.reply <- r
 			continue
@@ -1509,6 +1679,8 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		n.core.Unreachable(in.unreachable)
 	case in.cancel != 0:
 		n.core.Cancel(in.cancel)
+	case in.next != 0:
+		n.core.Next(in.next)
 	case in.advance != 0:
 		n.core.AdvanceElection(in.advance)
 	case in.removed:

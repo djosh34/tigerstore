@@ -102,13 +102,14 @@ func (s *Store) pendingCompact() int64 {
 	return 0
 }
 
-// HashAll hashes every version in the index, as HashKV does, without its
-// rules for compacted versions.
+// HashAll hashes every version in the index up to the revision, as HashKV
+// does, without its rules for compacted versions.
 func (s *Store) HashAll() uint32 {
 	h := newKVHasher()
 	pending := s.pendingCompact()
 	s.keys.Ascend(func(k *keyIndex) bool {
-		for i := k.dropped(pending); i < len(k.vers); i++ {
+		for i := k.dropped(pending); i < len(k.vers) && k.vers[i].mod.main <= s.rev; i++ {
+			// The deletes of a revoke under way are past the revision.
 			h.add(k.key, &k.vers[i])
 		}
 		return true

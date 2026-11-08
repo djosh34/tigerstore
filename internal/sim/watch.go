@@ -421,9 +421,9 @@ func (w *watchClient) lastNode() uint64 {
 	return w.proc.n.id
 }
 
-// slowWatcher makes a random watch client slow for 2 to 5 s: it falls
-// behind its stream until the node closes it as too slow, and then
-// resumes on a new one.
+// slowWatcher makes a random watch client slow for 2 to 5 s: its stream
+// fills, and its watcher on the node falls behind and catches up from the
+// history once the client takes what the stream holds.
 func (s *Sim) slowWatcher() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
