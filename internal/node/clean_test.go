@@ -295,7 +295,7 @@ func TestNoSpace(t *testing.T) {
 		}
 		for ; ; round++ {
 			if round == 400 {
-				t.Fatalf("no NOSPACE again in %d rounds of new keys", round)
+				t.Fatalf("no lease grant refused at NOSPACE by round %d of new keys", round)
 			}
 			_, err := putAll(r.n, round, keys(fmt.Sprintf("r%03d-", round), 20)...)
 			if errors.Is(err, rpctypes.ErrGRPCNoSpace) {
@@ -380,9 +380,10 @@ func TestNoSpace(t *testing.T) {
 // TestSharedValues writes one 32 KiB value, then 100 puts of its key with
 // ignore_value, which all name that value, and cleans the segment that
 // holds it: the pack must hold it once. A compaction at revision 1 drops
-// none of the 101 versions but makes a checkpoint of them durable, a put
-// of 40 KiB seals the segment, and a small put waits for the next one, so
-// the cleaning pass of Defragment can take it. Nothing comes near the
+// none of the 101 versions but makes a checkpoint of them durable. The
+// log keeps its newest two segments from cleaning: a put of 40 KiB starts
+// a new segment, and a small put commits only once it is placed, so the
+// value's segment is no longer among them when Defragment cleans. Nothing comes near the
 // disk budget: writing until cleaning started on its own raced the
 // budget's alarm (#546).
 func TestSharedValues(t *testing.T) {
