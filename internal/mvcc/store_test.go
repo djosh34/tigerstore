@@ -2,6 +2,7 @@ package mvcc
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -476,5 +477,38 @@ func TestKeyIsCopied(t *testing.T) {
 	key[0] = 'z'
 	if r := get(t, s, &pb.RangeRequest{Key: []byte("a")}); keys(r.Kvs) != "a=1;" {
 		t.Fatalf("after the request's bytes changed: %s", keys(r.Kvs))
+	}
+}
+
+// TestCompactLeavesNoDeletedKeys deletes more keys than one batch of a
+// sweep and compacts them away: the index keeps only the live key, and the
+// store's array of changes holds none of the deleted ones (#437).
+func TestCompactLeavesNoDeletedKeys(t *testing.T) {
+	s := New(&Heap{})
+	for i := range 3*removeBatch + 7 {
+		if _, err := s.Put(&pb.PutRequest{Key: fmt.Appendf(nil, "k%06d", i), Value: []byte("v")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.DeleteRange(&pb.DeleteRangeRequest{Key: []byte("k"), RangeEnd: []byte("l")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Put(&pb.PutRequest{Key: []byte("later"), Value: []byte("v")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Compact(s.Rev()); err != nil {
+		t.Fatal(err)
+	}
+	if n := s.keys.Len(); n != 1 {
+		t.Fatalf("after the compaction the index has %d keys, want 1", n)
+	}
+	held := 0
+	for _, c := range s.changes[:cap(s.changes)] {
+		if c.k != nil {
+			held++
+		}
+	}
+	if held > 0 {
+		t.Fatalf("after the compaction the store still holds %d deleted keys in its changes", held)
 	}
 }

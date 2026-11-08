@@ -131,8 +131,8 @@ func TestCacheFillsAsEntriesLeave(t *testing.T) {
 	}
 
 	old := s.n.kv.Refs([]byte("a"))[0]
+	deleted := s.n.kv.Refs([]byte("b"))[0]
 	rev := s.n.kv.Rev()
-	before := len(s.n.cache.items)
 	s.ok(600, &pb.PutRequest{Key: []byte("a"), Value: []byte("new")})
 	s.ok(601, &pb.DeleteRangeRequest{Key: []byte("b")})
 	// A put that keeps the value keeps it cached.
@@ -140,8 +140,8 @@ func TestCacheFillsAsEntriesLeave(t *testing.T) {
 	if _, ok := s.n.cache.items[old]; ok {
 		t.Fatal("the overwritten value of a is still cached")
 	}
-	if len(s.n.cache.items) != before-2 {
-		t.Fatalf("%d values cached after an overwrite and a delete", len(s.n.cache.items))
+	if _, ok := s.n.cache.items[deleted]; ok {
+		t.Fatal("the deleted value of b is still cached")
 	}
 	if !s.cached("c") {
 		t.Fatal("a put with ignore_value dropped the value it keeps")

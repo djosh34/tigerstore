@@ -1407,7 +1407,9 @@ func (w *WAL) drop(n int) ([]string, error) {
 // file while fewer than spares are on disk. It returns how many it
 // removed before an error. A file that is gone already counts as removed,
 // so a retry of the rest goes on where an error stopped it, and segments
-// still go only from the front.
+// still go only from the front. The directory is synced after each
+// segment, so that a crash cannot keep the removal of a segment and lose
+// that of one before it: recovery refuses a log with such a gap (#523).
 func RemoveFiles(fs FS, names []string, spares int) (int, error) {
 	if len(names) == 0 {
 		return 0, nil
@@ -1429,6 +1431,14 @@ func RemoveFiles(fs FS, names []string, spares int) (int, error) {
 		}
 		if err != nil && !errors.Is(err, iofs.ErrNotExist) {
 			return i, err
+		}
+		if serr == nil {
+			if err := fs.SyncDir(); err != nil {
+				return i, err
+			}
+			if i == len(names)-1 {
+				return len(names), nil
+			}
 		}
 	}
 	return len(names), fs.SyncDir()

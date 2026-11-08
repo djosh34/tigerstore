@@ -104,8 +104,19 @@ func Restore(path, dataDir string, members []*pb.Member, skipHash bool) (Snapsho
 	if err != nil {
 		return info, err
 	}
-	root, ckpt, err := n.RestoredCheckpoint(members)
+	// The checkpoint goes to a file of its own, from which the new log
+	// reads it, so the restore never holds it whole (#436).
+	ckpt := filepath.Join(tmp, "checkpoint")
+	out, err := os.Create(ckpt)
 	if err != nil {
+		return info, err
+	}
+	w := bufio.NewWriterSize(out, 256<<10)
+	root, err := n.RestoredCheckpoint(members, w)
+	if err == nil {
+		err = w.Flush()
+	}
+	if err = errors.Join(err, out.Close()); err != nil {
 		return info, err
 	}
 	pr, pw := io.Pipe()
@@ -145,12 +156,10 @@ func receive(r io.Reader, dir string, in *core.Install) error {
 }
 
 // restoredLog reads a restored log, with the checkpoint that gives the
-// state its new members in place of any on disk.
+// state its new members, in the file ckpt, in place of any on disk.
 type restoredLog struct {
 	*wal.WAL
-	ckpt []byte
+	ckpt string
 }
 
-func (l restoredLog) Checkpoint(uint64) (io.ReadCloser, error) {
-	return io.NopCloser(bytes.NewReader(l.ckpt)), nil
-}
+func (l restoredLog) Checkpoint(uint64) (io.ReadCloser, error) { return os.Open(l.ckpt) }

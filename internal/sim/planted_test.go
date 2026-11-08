@@ -131,11 +131,6 @@ var plantedCases = map[string]plantedCase{
 	"B22": {seeds: 256, cfg: damagedSnapshotConfig, want: inventedState + `|wrote different checkpoints|wrote checkpoint \d+: wal: corrupt log|` + badValue + `|malformed|` + refused + `|installed a snapshot at \d+ from \d+, checkpoint \d+\n[^\n]*wal: corrupt log:`},
 	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|` + stuck},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
-	// B25 shows only when a client reads the one value the rot fault
-	// damages before the cleaner, which checks every value it copies,
-	// finds it: about one seed in 40 to 60 (seed 7 on main at 3723d60f,
-	// 67 on #537's a802850a), so 64 seeds missed it one run in five.
-	"B25": {seeds: 256, cfg: DefaultConfig, want: badState + `|` + badWatch},
 	// The real driver's disk goroutine ends at an install, so a core that
 	// goes on writes nothing more.
 	"B27": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|cold restart did not converge|` + stuck},
@@ -160,6 +155,11 @@ var openBugs = regexp.MustCompile(`reported \d+ durable|held term \d+ and vote \
 var plantedElsewhere = map[string]string{
 	"B13": "internal/node",
 	"B14": "internal/peer",
+	// B25 shows in the simulator only when a client reads the one value
+	// the rot fault damages before the cleaner, which checks every value
+	// it copies, finds it: about one seed in 50 (#541). The node's
+	// scenario reads a damaged value every time.
+	"B25": "internal/node",
 	"B26": "internal/node",
 	"B29": "internal/node",
 	"B30": "internal/node",
