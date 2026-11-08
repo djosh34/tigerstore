@@ -256,7 +256,7 @@ type Store struct {
 	// byKey holds the same keys as keys, for lookups of one key: at a
 	// million keys a lookup in the B-tree took 3 µs and one in the map
 	// 0.3 µs (#506).
-	byKey map[string]*keyIndex
+	byKey      map[string]*keyIndex
 	rev        int64
 	compactRev int64
 	values     Values
