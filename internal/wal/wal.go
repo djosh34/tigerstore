@@ -467,7 +467,7 @@ func open(fs FS, drop bool) (*WAL, *Recovered, error) {
 		return nil, nil, errors.Join(err, w.Close())
 	}
 	if w.seg == nil {
-		if err := PrepareSegment(fs, w.seq+1, w.maxSize); err != nil {
+		if err := PrepareSegment(fs, w.seq+1, 0); err != nil {
 			return nil, nil, errors.Join(err, w.closePacks())
 		}
 		w.start(nil)
@@ -796,7 +796,8 @@ func (w *WAL) setRoot(r Root) {
 // PrepareSegment readies the file of segment seq, for Rotate, under a
 // name that is not a segment's: a file it readied before for another
 // segment than seq-1, which may wait for Place, the oldest spare, or a new
-// file with size bytes reserved (File.Allocate). A sync into a new file
+// file with size bytes reserved (File.Allocate), none if size is 0: the
+// node driver reserves them, Open and Sync do not. A sync into a new file
 // that grows also allocates its blocks: on ext4 that wrote 2.5% more to
 // the disk than the log, and three nodes sharing a disk did 3% fewer puts
 // a second than with the room reserved (#506). Its name is durable when it returns. A file readied before for
@@ -838,8 +839,10 @@ func PrepareSegment(fs FS, seq uint64, size int64) error {
 			if err != nil {
 				return err
 			}
-			if err := f.Allocate(size); err != nil {
-				return errors.Join(err, f.Close())
+			if size > 0 {
+				if err := f.Allocate(size); err != nil {
+					return errors.Join(err, f.Close())
+				}
 			}
 			return errors.Join(f.Close(), fs.SyncDir())
 		}
@@ -1053,7 +1056,7 @@ func (w *WAL) Sync() error {
 		return errors.Join(err, w.CutUnsynced(w.seg))
 	}
 	w.synced = w.size
-	if err := PrepareSegment(w.fs, w.seq+1, w.maxSize); err != nil {
+	if err := PrepareSegment(w.fs, w.seq+1, 0); err != nil {
 		return err
 	}
 	return errors.Join(w.Rotate().Close(), w.Place(), w.fs.SyncDir())
