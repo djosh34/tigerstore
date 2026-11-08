@@ -54,6 +54,12 @@ type stream struct {
 	status   string // HTTP :status of the response headers
 	msgs     int    // complete response messages received
 	err      error  // the first bad response, reported when the stream ends
+	// many allows more than one response message, as a RangeStream sends.
+	many bool
+	// written is the fewest bytes the call must make durable on each
+	// node; read is the key and value bytes its answer carried. Both feed
+	// the ceilings of cmd/benchreport.
+	written, read int64
 }
 
 type outBuf []byte
@@ -218,14 +224,14 @@ func (c *conn) newStream(h handler) *stream {
 	return st
 }
 
-// canStart reports whether a request of t can start now. The caller holds
-// c.mu.
-func (c *conn) canStart(t *template, limit int) bool {
+// canStart reports whether a request of dataLen DATA bytes can start now,
+// with at most limit streams in flight. The caller holds c.mu.
+func (c *conn) canStart(dataLen, limit int) bool {
 	return c.err == nil &&
 		len(c.streams) < limit &&
 		uint32(len(c.streams)) < c.maxStreams &&
-		c.sendWin >= int64(t.dataLen) &&
-		int64(c.streamWin) >= int64(t.dataLen) &&
+		c.sendWin >= int64(dataLen) &&
+		int64(c.streamWin) >= int64(dataLen) &&
 		c.nextID < maxStreamID
 }
 
@@ -249,6 +255,40 @@ func (c *conn) startStream(st *stream, t *template) []byte {
 	c.sendWin -= int64(t.dataLen)
 	return b
 }
+
+// startMessage appends a call of path on a new stream for st that sends
+// the one message m and ends the stream, framed at send time, for requests
+// whose size changes from call to call. The caller holds c.mu and has
+// checked canStart with messageLen(m).
+func (c *conn) startMessage(st *stream, path string, m []byte) {
+	st.id = c.nextID
+	c.nextID += 2
+	block := c.headerBlock(path)
+	c.out = appendFrameHeader(c.out, len(block), http2.FrameHeaders, http2.FlagHeadersEndHeaders)
+	binary.BigEndian.PutUint32(c.out[len(c.out)-4:], st.id)
+	c.out = append(c.out, block...)
+	total := messageLen(m)
+	for pos := 0; pos < total; {
+		end := min(pos+maxDataFrame, total)
+		var flags http2.Flags
+		if end == total {
+			flags = http2.FlagDataEndStream
+		}
+		c.out = appendFrameHeader(c.out, end-pos, http2.FrameData, flags)
+		binary.BigEndian.PutUint32(c.out[len(c.out)-4:], st.id)
+		if pos == 0 {
+			c.out = binary.BigEndian.AppendUint32(append(c.out, 0), uint32(len(m)))
+			pos = grpcPrefixLen
+		}
+		c.out = append(c.out, m[pos-grpcPrefixLen:end-grpcPrefixLen]...)
+		pos = end
+	}
+	c.streams[st.id] = st
+	c.sendWin -= int64(messageLen(m))
+}
+
+// messageLen is the DATA bytes of a call that sends m.
+func messageLen(m []byte) int { return grpcPrefixLen + len(m) }
 
 // headerBlock is a header block of a path, valid while the table is at
 // generation gen.

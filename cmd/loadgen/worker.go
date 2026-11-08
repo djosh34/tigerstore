@@ -18,6 +18,8 @@ type phase struct {
 	start, stop int64
 	// drain is how long requests may stay in flight after stop.
 	drain time.Duration
+	// limit is the most requests in flight on the connection.
+	limit int
 }
 
 // worker drives one connection: it owns the writer side.
@@ -31,8 +33,6 @@ type worker struct {
 	stats    stats
 	// unsent counts arrivals that were never sent by the end of the drain.
 	unsent int64
-	// preloaded is stats.acked before the measured phase.
-	preloaded int64
 }
 
 func newWorker(c *conn, seed uint64) *worker {
@@ -88,7 +88,7 @@ func (wk *worker) run(l load, p phase) error {
 			}
 			st := c.newStream(l)
 			st.intended, st.sent = intended, t
-			if !l.start(c, st) {
+			if !l.start(c, st, p.limit) {
 				c.free = append(c.free, st)
 				break
 			}

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -9,6 +11,11 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
+	"golang.org/x/net/http2"
+	"google.golang.org/protobuf/proto"
 )
 
 // fakeServer is a plaintext HTTP/2 server that answers like a gRPC server,
@@ -17,7 +24,6 @@ import (
 //
 //	/ok      a PutResponse in two DATA frames
 //	/error   a trailers-only FailedPrecondition response
-//	/garbage a response that is not protobuf
 //	/reset   a reset stream
 type fakeServer struct {
 	addr      string
@@ -26,8 +32,6 @@ type fakeServer struct {
 	slowReads time.Duration
 	// rev is the last revision answered; every write gets the next one.
 	rev atomic.Int64
-	// repeat answers every write with revision 42 instead.
-	repeat bool
 }
 
 const fakeMaxStreams = 8
@@ -80,9 +84,6 @@ func (fs *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.Set("Trailer", "Grpc-Status")
 		hdr := newMsg()
 		rev := fs.rev.Add(1)
-		if fs.repeat {
-			rev = 42
-		}
 		hdr.varint(headerRevision, uint64(rev))
 		resp := newMsg()
 		resp.sub(respHeader, hdr)
@@ -95,10 +96,6 @@ func (fs *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/error":
 		h.Set("Grpc-Status", "9")
 		h.Set("Grpc-Message", "boom")
-	case "/garbage":
-		h.Set("Trailer", "Grpc-Status")
-		_, _ = w.Write([]byte{0, 0, 0, 0, 2, 0xff, 0xff})
-		h.Set("Grpc-Status", "0")
 	case "/reset":
 		//nolint:forbidigo // net/http resets the stream when a handler panics with ErrAbortHandler
 		panic(http.ErrAbortHandler)
@@ -118,20 +115,19 @@ func fakeRun(t *testing.T, fs *fakeServer, path string, valueSize int, rate floa
 		t.Fatal(err)
 	}
 	vals := makeValues(valueSize, 1)
-	writes := newRevisionSet()
 	c, err := dial(fs.addr)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.close()
 	wk := newWorker(c, 1)
-	b := base{tpl: tpl, ks: ks, vals: *vals, rng: wk.rng, stats: &wk.stats, limit: 64, writes: writes}
+	b := base{tpl: tpl, ks: ks, vals: *vals, rng: wk.rng, stats: &wk.stats}
 	for k := range ks.n {
 		b.own = append(b.own, k)
 	}
 	start := now()
 	wk.stats.winStart, wk.stats.winStop = start, start+int64(d)
-	if err := wk.run(&putLoad{base: b}, phase{rate: rate, start: start, stop: start + int64(d), drain: 5 * time.Second}); err != nil {
+	if err := wk.run(&putLoad{base: b}, phase{rate: rate, start: start, stop: start + int64(d), drain: 5 * time.Second, limit: 64}); err != nil {
 		t.Fatal(err)
 	}
 	return &wk.stats
@@ -171,9 +167,8 @@ func TestFakeServerOpenLoop(t *testing.T) {
 func TestFakeServerErrors(t *testing.T) {
 	fs := startFake(t, 0, time.Second)
 	for path, want := range map[string]string{
-		"/error":   "grpc FailedPrecondition: boom",
-		"/garbage": "malformed protobuf response",
-		"/reset":   "stream reset",
+		"/error": "grpc FailedPrecondition: boom",
+		"/reset": "stream reset",
 	} {
 		s := fakeRun(t, fs, path, 1024, 0, 100*time.Millisecond)
 		if s.ops != 0 || len(s.errs) != 1 {
@@ -194,17 +189,6 @@ func TestFakeServerPings(t *testing.T) {
 	s := fakeRun(t, fs, "/ok", 1024, 10, time.Second)
 	if len(s.errs) > 0 || s.ops < 3 {
 		t.Fatalf("ops %d, errors %v", s.ops, s.errs)
-	}
-}
-
-// TestRepeatedRevisionFails answers every write with the same revision:
-// the run must report it.
-func TestRepeatedRevisionFails(t *testing.T) {
-	fs := startFake(t, 0, time.Second)
-	fs.repeat = true
-	s := fakeRun(t, fs, "/ok", 64, 0, 100*time.Millisecond)
-	if s.errs["revision 42 returned for two writes"] == 0 {
-		t.Fatalf("repeated revisions were not caught: errors %v", s.errs)
 	}
 }
 
@@ -244,53 +228,87 @@ func TestFailedCPUSampleIsInvalid(t *testing.T) {
 	}
 }
 
-// TestResponseShapes feeds the CAS and Range handlers answers that look
-// right on the surface: each must be refused.
-func TestResponseShapes(t *testing.T) {
-	header := func(rev uint64) *msg {
-		h := newMsg()
-		h.varint(headerRevision, rev)
-		return h
+// TestAnswerSizes reads a Txn's outcome and a Range's key and value bytes
+// from real etcd answers, and refuses a CAS that did not succeed.
+func TestAnswerSizes(t *testing.T) {
+	txn, err := proto.Marshal(&pb.TxnResponse{
+		Header: &pb.ResponseHeader{Revision: 6}, Succeeded: true,
+		Responses: []*pb.ResponseOp{{Response: &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	ks := makeKeys(1)
-	b := base{ks: ks, writes: newRevisionSet()}
-	st := &stream{slot: 0}
-
-	cas := newCASLoad(b, make([]int64, 1))
-	noOps := newMsg()
-	noOps.sub(respHeader, header(5))
-	noOps.varint(txnSucceeded, 1)
-	if err := cas.message(st, noOps.b); err == nil {
-		t.Fatal("a CAS answer without a put response was taken")
+	if rev, ok, err := txnOutcome(txn); err != nil || !ok || rev != 6 {
+		t.Fatalf("txnOutcome: %d %v %v", rev, ok, err)
 	}
-	put := newMsg()
-	put.sub(respHeader, header(6))
-	op := newMsg()
-	op.sub(opResponsePut, put)
-	ok := newMsg()
-	ok.sub(respHeader, header(6))
-	ok.varint(txnSucceeded, 1)
-	ok.sub(txnResponses, op)
-	if err := cas.message(st, ok.b); err != nil {
-		t.Fatalf("a good CAS answer: %v", err)
+	cas := newCASLoad(base{ks: makeKeys(1)}, make([]int64, 1))
+	if err := cas.message(&stream{}, txn); err != nil || cas.revs[0] != 6 {
+		t.Fatalf("a good CAS answer: %v, revision %d", err, cas.revs[0])
+	}
+	failed, err := proto.Marshal(&pb.TxnResponse{Header: &pb.ResponseHeader{Revision: 7}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cas.message(&stream{}, failed); !errors.Is(err, errCASFailed) {
+		t.Fatalf("a failed CAS: %v", err)
+	}
+	if _, _, err := txnOutcome(nil); err == nil {
+		t.Fatal("an answer without a header was taken")
 	}
 
-	want := []byte("the value that was put")
-	rng := &rangeLoad{base: b, valueSize: len(want), want: [][]byte{want}}
-	answer := func(value []byte) []byte {
-		kv := newMsg()
-		kv.bytes(kvKey, ks.key(0))
-		kv.bytes(kvValue, value)
-		r := newMsg()
-		r.sub(respHeader, header(7))
-		r.sub(rangeKVs, kv)
-		r.varint(rangeCount, 1)
-		return r.b
+	r, err := proto.Marshal(&pb.RangeResponse{Header: &pb.ResponseHeader{Revision: 7}, Count: 9, More: true, Kvs: []*mvccpb.KeyValue{
+		{Key: []byte("abc"), Value: make([]byte, 100), ModRevision: 5, CreateRevision: 2, Version: 3},
+		{Key: []byte("de"), Value: make([]byte, 7), Lease: 4},
+	}})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := rng.message(st, answer(make([]byte, len(want)))); err == nil {
-		t.Fatal("a range answer with zeros of the right size was taken")
+	if n, err := rangeBytes(r); err != nil || n != 3+100+2+7 {
+		t.Fatalf("rangeBytes: %d, %v", n, err)
 	}
-	if err := rng.message(st, answer(want)); err != nil {
-		t.Fatalf("a good range answer: %v", err)
+	st := &stream{}
+	if err := (&rangeLoad{}).message(st, r); err != nil || st.read != 112 {
+		t.Fatalf("range read %d bytes: %v", st.read, err)
+	}
+}
+
+// TestLargeMessageFrames sends a message larger than a DATA frame and reads
+// it back as an HTTP/2 server would.
+func TestLargeMessageFrames(t *testing.T) {
+	c := &conn{addr: "h:1", streams: make(map[uint32]*stream), nextID: 1, sendWin: 1 << 30, streamWin: 1 << 30, maxStreams: 100}
+	m := make([]byte, 40000)
+	for i := range m {
+		m[i] = byte(i)
+	}
+	if !c.canStart(messageLen(m), 1) {
+		t.Fatal("cannot start")
+	}
+	st := c.newStream(nil)
+	c.startMessage(st, "/p", m)
+	if c.sendWin != 1<<30-int64(messageLen(m)) {
+		t.Fatalf("send window %d", c.sendWin)
+	}
+	fr := http2.NewFramer(nil, bytes.NewReader(c.out))
+	var got []byte
+	for {
+		f, err := fr.ReadFrame()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f.Header().StreamID != st.id {
+			t.Fatalf("frame on stream %d", f.Header().StreamID)
+		}
+		if d, ok := f.(*http2.DataFrame); ok {
+			if d.Length > maxDataFrame {
+				t.Fatalf("DATA frame of %d bytes", d.Length)
+			}
+			got = append(got, d.Data()...)
+			if d.StreamEnded() {
+				break
+			}
+		}
+	}
+	if !bytes.Equal(got[:grpcPrefixLen], []byte{0, 0, 0, 0x9c, 0x40}) || !bytes.Equal(got[grpcPrefixLen:], m) {
+		t.Fatal("the frames do not carry the message")
 	}
 }

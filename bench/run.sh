@@ -6,11 +6,18 @@
 #
 # <benchmark> is <workload>-<size>: workload put, txn, delete, range, list
 # or watch, size 1k or 10k. Each repetition starts a fresh 3-node cluster per
-# target and run, so no run sees another's data. Two kinds of run:
+# target and run, so no run sees another's data. Three kinds of run:
 #
-#   max   every stream busy (6 connections x 256 streams): throughput
-#   rate  open-loop Poisson arrivals at half of etcd's median max
-#         throughput: latency at the same load for every target
+#   max        every stream busy, from 6 connections x 256 streams, which
+#              double while throughput climbs by 5% or more (loadgen
+#              -ramp), but for delete and watch, which would run out of
+#              keys or only follow the puts: throughput
+#   rate       open-loop Poisson arrivals at half of etcd's median max
+#              throughput: latency at the same load for every target
+#   generator  one max run against cmd/nullstore, which answers every
+#              call at once, on the nodes' CPUs: the generator's own
+#              ceiling, written to <out dir>/generator-<benchmark>.json;
+#              it runs alone, before any other mode
 #
 # Each repetition runs every target once, in TARGETS order on odd
 # repetitions and reversed on even ones, so drift on the runner does not
@@ -41,6 +48,7 @@
 #   MODES       which runs (default "max rate")
 #   REPS        repetitions (default 5)
 #   LOADGEN     loadgen binary (default: loadgen in BINS)
+#   NULLSTORE   nullstore binary (default: nullstore in BINS)
 #   DATA        directory for cluster data, on the disk under test (default /tmp/bench-data)
 #   DISK        device or partition of DATA in /proc/diskstats, such as
 #               sda1; each result then has the bytes it wrote per operation
@@ -64,6 +72,7 @@ tmpfs=${TMPFS_DIR:-/dev/shm/bench-data}
 read -r -a extra_layouts <<<"${LAYOUTS:-}"
 bins=$(realpath "${BINS:-bin}")
 loadgen=${LOADGEN:-$bins/loadgen}
+nullstore=${NULLSTORE:-$bins/nullstore}
 certs=$(realpath "${CERTS:?CERTS must name a dev-certs.sh directory}")
 export CERTS=$certs ETCDCTL=$bins/etcdctl
 here=$(dirname "$0")
@@ -90,7 +99,7 @@ fi
 # that runs out is invalid: 600,000 keys over 0.5 + 3.5 s last up to 150k
 # deletes/s. The 10 KiB run preloads fewer keys, to keep the disk it fills
 # small, so it is shorter still: 300,000 keys over 0.5 + 1.5 s.
-keys=10000 warmup=3s duration=10s watchers=3
+keys=10000 warmup=3s duration=10s watchers=3 ramp=(-ramp)
 # A LIST asks for the first page of one namespace of 100: 1,000 keys
 # each, pages of 500 (the loadgen default), so every answer holds a count
 # of 1,000, 500 keys and "more". It does not page further. With 10 KiB
@@ -100,9 +109,8 @@ keys=10000 warmup=3s duration=10s watchers=3
 concurrency=()
 # Mixed reads are linearizable and go to all three nodes, so at 10 ms RTT a
 # request waits about 17 ms before any work, and a generator with N
-# requests in flight does at most N / 17 ms. 6 x 48 = 288 in flight allow
-# about 17,000/s, twice tigerstore's max without delay; the 96 of 6 x 16
-# capped it near 5,700/s (#414).
+# requests in flight does at most N / 17 ms. Its max runs start at 6 x 48
+# = 288 in flight and double from there; rate runs keep 288.
 if [ "$workload" = mixed ]; then
 	keys=1000000
 	concurrency=(-conns 6 -streams 48)
@@ -117,6 +125,7 @@ fi
 # closes a stream 64 MiB behind. One watcher of 10 KiB takes about as many
 # bytes as three of 1 KiB.
 if [ "$workload" = watch ] && [ "$size" = 10240 ]; then watchers=1; fi
+if [ "$workload" = watch ] || [ "$workload" = delete ]; then ramp=(); fi
 if [ "$workload" = list ]; then
 	if [ "$size" = 1024 ]; then keys=100000; else keys=10000; fi
 	concurrency=(-conns 2 -streams 16)
@@ -204,6 +213,53 @@ once() {
 	"$here/cluster.sh" stop "$dir"
 }
 
+# generator runs loadgen against nullstore on the nodes' CPUs, as the max
+# runs drive a cluster.
+generator() {
+	local ports=() pid status=0 endpoints keys=$keys
+	for i in 1 2 3; do ports+=("127.0.0.1:$((${BENCH_PORT:-20000} + 10 * i))"); done
+	endpoints=${ports[0]}
+	if [ "$workload" = mixed ]; then endpoints=$(IFS=,; echo "${ports[*]}"); fi
+	# A LIST answers a page of 500 of the 1,000 keys of a namespace, as
+	# list does; mixed's values have the dump's mean size and its pages
+	# about the 300 keys #484 measured.
+	local values=(-value-size "$size" -list-keys 1000)
+	if [ "$workload" = mixed ]; then values=(-value-size 1458 -list-keys 300); fi
+	# nullstore deletes faster than the stores' budget of keys lasts.
+	if [ "$workload" = delete ]; then keys=$((keys * 10)); fi
+	taskset -c "$(IFS=,; echo "${layout[*]:1}")" "$nullstore" -listen "$(IFS=,; echo "${ports[*]}")" \
+		-cert "$certs/node1.pem" -key "$certs/node1-key.pem" "${values[@]}" &
+	pid=$!
+	local up=""
+	for _ in $(seq 100); do
+		if (exec 3<>"/dev/tcp/127.0.0.1/${ports[2]##*:}") 2>/dev/null; then
+			up=yes
+			break
+		fi
+		sleep 0.1
+	done
+	if [ -z "$up" ]; then
+		echo "nullstore did not listen within 10s" >&2
+		kill "$pid" || true
+		return 1
+	fi
+	taskset -c "${layout[0]}" "$loadgen" \
+		-endpoints "$endpoints" \
+		-cacert "$certs/ca.pem" -cert "$certs/client.pem" -key "$certs/client-key.pem" \
+		-pids "$pid" -label nullstore -workload "$workload" -value-size "$size" \
+		-watchers "$watchers" -warmup "$warmup" -duration "$duration" -seed 1 \
+		-out "$out/generator-$bench.json" -keys "$keys" "${concurrency[@]}" "${ramp[@]}" || status=$?
+	kill "$pid"
+	wait "$pid" || true
+	return "$status"
+}
+
+if [[ " ${modes[*]} " == *" generator "* ]]; then
+	mkdir -p "$out"
+	generator
+	exit 0
+fi
+
 if [ -e "$out/$bench" ]; then
 	echo "$out/$bench exists; results of different runs must not mix" >&2
 	exit 2
@@ -212,7 +268,7 @@ mkdir -p "$out/$bench"
 if [[ " ${modes[*]} " == *" max "* ]]; then
 	for rep in $(seq "$reps"); do
 		for target in $(order "$rep"); do
-			once "$target" max "$rep" -keys "$keys" "${concurrency[@]}"
+			once "$target" max "$rep" -keys "$keys" "${concurrency[@]}" "${ramp[@]}"
 		done
 	done
 fi
@@ -230,7 +286,7 @@ done
 if [ "$workload" = mixed ] && [[ " ${modes[*]} " == *" rate "* ]] && [[ " ${modes[*]} " != *" max "* ]]; then
 	# One measured max point per store, with the same mixed concurrency.
 	for target in $(order 1); do
-		once "$target" max 1 -keys "$keys" "${concurrency[@]}"
+		once "$target" max 1 -keys "$keys" "${concurrency[@]}" "${ramp[@]}"
 	done
 fi
 

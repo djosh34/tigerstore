@@ -5,6 +5,13 @@
 // stamped out from prebuilt frames, and open-loop Poisson arrivals whose
 // latency counts from the time each request was meant to be sent. The
 // workloads use Kubernetes-shaped keys and the requests kube-apiserver sends.
+//
+// It measures the store, so it does as little as it can on its one core:
+// it never checks an answer (the simulator checks correctness), it reads
+// only what the next request needs, a write's revision and outcome, and the
+// sizes of the key-values a read returned, from their lengths. With -ramp,
+// the requests in flight double after each measured step until throughput
+// stops climbing, and the best step is the result.
 package main
 
 import (
@@ -21,6 +28,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/djosh34/tigerstore/internal/k8ssize"
 )
 
 type config struct {
@@ -37,6 +46,7 @@ type config struct {
 	duration    time.Duration
 	watchers    int
 	page        int
+	ramp        bool
 	pids        []int
 	disk        string
 	label       string
@@ -64,6 +74,7 @@ func parseFlags(args []string) (config, error) {
 	fs.DurationVar(&cfg.duration, "duration", 10*time.Second, "measurement window")
 	fs.IntVar(&cfg.watchers, "watchers", 4, "watch workload: watch streams on the key prefix")
 	fs.IntVar(&cfg.page, "page", 500, "list workload: the limit of each LIST page; keys spread over 100 namespaces")
+	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step until throughput climbs less than 5%, at most 5 times; the best step is the result")
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
 	fs.StringVar(&cfg.disk, "disk", "", "device or partition in /proc/diskstats, such as sda1, whose bytes written in the window are reported per operation")
 	fs.StringVar(&cfg.label, "label", "", "name of the store under test, copied into the result")
@@ -94,6 +105,8 @@ func parseFlags(args []string) (config, error) {
 		return cfg, errors.New("-value-size must be at least 8, to hold the watch timestamp")
 	case cfg.workload == "watch" && cfg.watchers < 1:
 		return cfg, errors.New("watch needs -watchers >= 1")
+	case cfg.ramp && (cfg.rate > 0 || cfg.workload == "delete" || cfg.workload == "watch"):
+		return cfg, errors.New("-ramp needs max load (-rate 0) and a workload that does not run out of keys or watch")
 	case cfg.rate < 0 || cfg.preloadRate < 0 || math.IsNaN(cfg.rate) || math.IsInf(cfg.rate, 0) || math.IsNaN(cfg.preloadRate) || math.IsInf(cfg.preloadRate, 0) || cfg.duration <= 0 || cfg.warmup < 0:
 		return cfg, errors.New("need finite non-negative -rate and -preload-rate, -duration > 0 and -warmup >= 0")
 	}
@@ -142,7 +155,10 @@ type result struct {
 	// any makes the result invalid.
 	Unsent int64        `json:"unsent"`
 	Watch  *watchResult `json:"watch,omitempty"`
-	// CPU over the measurement window.
+	// CPU over the measurement window. The first of -pids is the leader,
+	// so LeaderCPUUsPerOp is the leader's alone; ServerCPUUsPerOp sums
+	// every node.
+	LeaderCPUUsPerOp   float64   `json:"leader_cpu_us_per_op"`
 	ServerCPUUsPerOp   float64   `json:"server_cpu_us_per_op"`
 	ServerCPUUsPerNode []float64 `json:"server_cpu_us_per_op_by_node"`
 	ServerCores        []float64 `json:"server_cores_by_node"`
@@ -150,8 +166,30 @@ type result struct {
 	ClientCores        float64   `json:"client_cores"`
 	// DiskBytesPerOp counts every byte -disk wrote in the window, from
 	// all servers on it and anything else, per operation.
-	DiskBytesPerOp float64          `json:"disk_bytes_per_op,omitempty"`
-	Errors         map[string]int64 `json:"errors"`
+	DiskBytesPerOp float64 `json:"disk_bytes_per_op,omitempty"`
+	// MinWrittenBytesPerOp is the fewest bytes an operation must make
+	// durable on each node: the keys and values of its writes, and the
+	// key and revision of a compare. MinReadBytesPerOp is the key and
+	// value bytes its reads carried, and in mixed the bytes of the watch
+	// events its writes make, previous key-values included, counted when
+	// the write completes. Both are means over the operations of the
+	// window.
+	MinWrittenBytesPerOp float64 `json:"min_written_bytes_per_op"`
+	MinReadBytesPerOp    float64 `json:"min_read_bytes_per_op"`
+	// Ramp has every step of -ramp, the chosen one included. RampClimbing
+	// is set when the last step still climbed: the requests in flight may
+	// still have limited the store.
+	Ramp         []rampStep       `json:"ramp,omitempty"`
+	RampClimbing bool             `json:"ramp_climbing,omitempty"`
+	Errors       map[string]int64 `json:"errors"`
+}
+
+// rampStep is one step of -ramp.
+type rampStep struct {
+	StreamsPerConn int     `json:"streams_per_conn"`
+	Throughput     float64 `json:"throughput"`
+	ClientCores    float64 `json:"client_cores"`
+	LeaderCores    float64 `json:"leader_cores"`
 }
 
 type watchResult struct {
@@ -198,8 +236,8 @@ func writeResult(path string, res *result) error {
 }
 
 func (r *result) oneLine() string {
-	s := fmt.Sprintf("%s %s %dB: %.0f ops/s, p50 %.0fus p99 %.0fus p99.9 %.0fus, server %.1f us/op, client %.1f us/op",
-		r.Label, r.Workload, r.ValueSize, r.Throughput, r.Latency.P50, r.Latency.P99, r.Latency.P999,
+	s := fmt.Sprintf("%s %s %dB, %d in flight: %.0f ops/s, p50 %.0fus p99 %.0fus p99.9 %.0fus, server %.1f us/op, client %.1f us/op",
+		r.Label, r.Workload, r.ValueSize, r.Conns*r.StreamsPerConn, r.Throughput, r.Latency.P50, r.Latency.P99, r.Latency.P999,
 		r.ServerCPUUsPerOp, r.ClientCPUUsPerOp)
 	if r.Watch != nil {
 		s += fmt.Sprintf(", watch %.0f events/s p99 %.0fus", r.Watch.EventsPerS, r.Watch.Latency.P99)
@@ -215,6 +253,14 @@ const (
 	drainTimeout   = 10 * time.Second
 )
 
+// rampGain is the least gain in throughput from doubling the requests in
+// flight that -ramp takes for still climbing, and maxRampSteps the most
+// doublings it tries.
+const (
+	rampGain     = 1.05
+	maxRampSteps = 5
+)
+
 func run(cfg config) (*result, error) {
 	if cfg.cacert != "" {
 		c, err := loadTLS(cfg.cacert, cfg.cert, cfg.key)
@@ -223,36 +269,120 @@ func run(cfg config) (*result, error) {
 		}
 		clientTLS = c
 	}
+	if cfg.mix == "" {
+		cfg.mix = defaultMix
+	}
+	s := &session{cfg: cfg, stop: make(chan struct{})}
+	defer s.close()
+	setup := s.setupKV
 	if cfg.workload == "mixed" {
-		return runMixed(cfg)
+		setup = s.setupMixed
+	}
+	if err := setup(); err != nil {
+		return nil, err
+	}
+	var best *result
+	var bestErr error
+	var ramp []rampStep
+	for step, streams := 0, cfg.streams; ; step, streams = step+1, streams*2 {
+		res, err := s.measure(streams)
+		leader := 0.0
+		if len(res.ServerCores) > 0 {
+			leader = res.ServerCores[0]
+		}
+		ramp = append(ramp, rampStep{StreamsPerConn: streams, Throughput: res.Throughput, ClientCores: res.ClientCores, LeaderCores: leader})
+		climbing := best == nil || res.Throughput >= best.Throughput*rampGain
+		if best == nil || err != nil || res.Throughput > best.Throughput {
+			best, bestErr = res, err
+		}
+		if err != nil || !cfg.ramp || !climbing || step == maxRampSteps {
+			if cfg.ramp {
+				best.Ramp = ramp
+				best.RampClimbing = err == nil && climbing
+			}
+			break
+		}
+	}
+	return best, bestErr
+}
+
+// session is the connections and loads of one run, which every step of
+// -ramp measures again.
+type session struct {
+	cfg     config
+	workers []*worker
+	loads   []load
+	// The watch workload's watches.
+	watches    []*watchLoad
+	watchConns []*conn
+	// mixed's watches and their ledger.
+	mixed        []*mixedLoad
+	mixedWatches []*mixedWatch
+	ledger       *mixedLedger
+	// stop ends the goroutines in control, which send the watch
+	// connections' control frames.
+	stop    chan struct{}
+	control sync.WaitGroup
+}
+
+func (s *session) close() {
+	close(s.stop)
+	s.control.Wait()
+	for _, c := range s.watchConns {
+		c.close()
+	}
+	for _, wk := range s.workers {
+		wk.c.close()
+	}
+}
+
+// dial opens the request connections, round robin over the endpoints.
+func (s *session) dial() error {
+	for i := range s.cfg.conns {
+		c, err := dial(s.cfg.endpoints[i%len(s.cfg.endpoints)])
+		if err != nil {
+			return err
+		}
+		s.workers = append(s.workers, newWorker(c, s.cfg.seed+uint64(i)))
+	}
+	return nil
+}
+
+// preload runs loads to the end, before any measurement.
+func (s *session) preload(loads []load, rate float64) error {
+	start := now()
+	err := runPhase(s.workers, loads, phase{rate: rate, start: start, stop: start + int64(preloadTimeout), drain: drainTimeout, limit: s.cfg.streams})
+	if err != nil {
+		return fmt.Errorf("preload: %w", err)
+	}
+	for _, l := range loads {
+		if !l.exhausted() {
+			return fmt.Errorf("preload did not finish in %v", preloadTimeout)
+		}
+	}
+	if err := phaseErrors(s.workers); err != nil {
+		return fmt.Errorf("preload: %w", err)
+	}
+	return nil
+}
+
+func (s *session) setupKV() error {
+	cfg := s.cfg
+	if err := s.dial(); err != nil {
+		return err
 	}
 	ks := makeKeys(cfg.keys)
 	vals := makeValues(cfg.valueSize, cfg.seed)
-	writes := newRevisionSet()
-
-	var workers []*worker
-	defer func() {
-		for _, wk := range workers {
-			wk.c.close()
-		}
-	}()
-	for i := range cfg.conns {
-		c, err := dial(cfg.endpoints[i%len(cfg.endpoints)])
-		if err != nil {
-			return nil, err
-		}
-		workers = append(workers, newWorker(c, cfg.seed+uint64(i)))
-	}
 	// base returns the per-connection parts of a load on worker i.
 	base := func(i int, path string, m *msg) (base, error) {
-		wk := workers[i]
+		wk := s.workers[i]
 		t, err := newTemplate(path, m, true)
 		if err != nil {
 			return base{}, err
 		}
 		v := *vals
 		v.off = i * (valuePoolSize / cfg.conns) / cfg.valueSize * cfg.valueSize
-		b := base{tpl: t, ks: ks, vals: v, rng: wk.rng, stats: &wk.stats, limit: cfg.streams, writes: writes}
+		b := base{tpl: t, ks: ks, vals: v, rng: wk.rng, stats: &wk.stats}
 		for k := i; k < cfg.keys; k += cfg.conns {
 			b.own = append(b.own, k)
 		}
@@ -260,34 +390,22 @@ func run(cfg config) (*result, error) {
 	}
 
 	var revs []int64
-	var putVals [][]byte
 	if cfg.workload == "txn" || cfg.workload == "range" || cfg.workload == "list" || cfg.workload == "delete" {
 		revs = make([]int64, cfg.keys)
-		putVals = make([][]byte, cfg.keys)
-		loads := make([]load, len(workers))
-		for i := range workers {
+		loads := make([]load, len(s.workers))
+		for i := range s.workers {
 			b, err := base(i, "/etcdserverpb.KV/Put", putRequest(ks.size, cfg.valueSize))
 			if err != nil {
-				return nil, err
+				return err
 			}
-			loads[i] = &putLoad{base: b, once: true, revs: revs, vals: putVals}
+			loads[i] = &putLoad{base: b, once: true, revs: revs}
 		}
-		start := now()
-		if err := runPhase(workers, loads, phase{start: start, stop: start + int64(preloadTimeout), drain: drainTimeout}); err != nil {
-			return nil, fmt.Errorf("preload: %w", err)
-		}
-		for _, l := range loads {
-			if !l.exhausted() {
-				return nil, fmt.Errorf("preload of %d keys did not finish in %v", cfg.keys, preloadTimeout)
-			}
-		}
-		if err := phaseErrors(workers); err != nil {
-			return nil, fmt.Errorf("preload: %w", err)
+		if err := s.preload(loads, 0); err != nil {
+			return err
 		}
 	}
 
-	loads := make([]load, len(workers))
-	for i := range workers {
+	for i := range s.workers {
 		var m *msg
 		switch cfg.workload {
 		case "put", "watch":
@@ -303,59 +421,133 @@ func run(cfg config) (*result, error) {
 		}
 		b, err := base(i, kvPath(cfg.workload), m)
 		if err != nil {
-			return nil, err
+			return err
 		}
+		var l load
 		switch cfg.workload {
 		case "put":
-			loads[i] = &putLoad{base: b}
+			l = &putLoad{base: b}
 		case "watch":
-			loads[i] = &putLoad{base: b, stamp: true}
+			l = &putLoad{base: b, stamp: true}
 		case "txn":
-			loads[i] = newCASLoad(b, revs)
+			l = newCASLoad(b, revs)
 		case "delete":
-			loads[i] = &deleteLoad{base: b}
+			l = &deleteLoad{base: b}
 		case "range":
-			loads[i] = &rangeLoad{base: b, valueSize: cfg.valueSize, want: putVals}
+			l = &rangeLoad{base: b}
 		case "list":
-			loads[i] = newListLoad(b, cfg.page, cfg.valueSize)
+			l = newListLoad(b)
 		}
+		s.loads = append(s.loads, l)
 	}
-
-	var watches []*watchLoad
-	var watchConns []*conn
-	stopControl := make(chan struct{})
-	var control sync.WaitGroup
-	closeWatches := func() {
-		close(stopControl)
-		control.Wait()
-		for _, c := range watchConns {
-			c.close()
-		}
-		watchConns = nil
-	}
-	defer func() {
-		if watchConns != nil {
-			closeWatches()
-		}
-	}()
 	if cfg.workload == "watch" {
 		var err error
-		watchConns, watches, err = startWatches(cfg, &control, stopControl)
+		s.watchConns, s.watches, err = startWatches(cfg, &s.control, s.stop)
+		return err
+	}
+	return nil
+}
+
+func (s *session) setupMixed() error {
+	cfg := s.cfg
+	if err := s.dial(); err != nil {
+		return err
+	}
+	s.ledger = newMixedLedger()
+	lease, err := grantLease(s.workers[0].c, eventTTL)
+	if err != nil {
+		return err
+	}
+	var preloads []load
+	for i, wk := range s.workers {
+		w, err := newMixedLoad(wk, cfg, i, s.ledger)
 		if err != nil {
-			return nil, err
+			return err
+		}
+		w.lease = lease
+		s.mixed = append(s.mixed, w)
+		s.loads = append(s.loads, w)
+		preloads = append(preloads, &mixedPreload{w: w, batch: make(map[uint32][]*mixedKey)})
+	}
+	if err := s.preload(preloads, cfg.preloadRate/float64(cfg.conns)); err != nil {
+		return err
+	}
+	// Watch from the revision after the preload, as kube-apiserver's watch
+	// cache does after its LIST. No write starts until every watch is
+	// created.
+	var revision int64
+	for _, w := range s.mixed {
+		for _, k := range w.live {
+			revision = max(revision, k.mod)
 		}
 	}
+	for i, r := range k8ssize.Resources() {
+		c, err := dial(cfg.endpoints[i%len(cfg.endpoints)])
+		if err != nil {
+			return err
+		}
+		s.watchConns = append(s.watchConns, c)
+		prefix := []byte("/registry/" + r + "/")
+		tpl, err := newTemplate("/etcdserverpb.Watch/Watch", watchRequestFrom(prefix, revision+1), false)
+		if err != nil {
+			return err
+		}
+		w := &mixedWatch{ledger: s.ledger, prefix: prefix}
+		s.mixedWatches = append(s.mixedWatches, w)
+		c.mu.Lock()
+		c.startStream(c.newStream(w), tpl)
+		c.mu.Unlock()
+		if err := c.flush(); err != nil {
+			return err
+		}
+		s.control.Go(func() { c.serveControl(s.stop) })
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		ready := true
+		for i, c := range s.watchConns {
+			c.mu.Lock()
+			w := s.mixedWatches[i]
+			ready = ready && w.created
+			err := errors.Join(c.err, w.err)
+			c.mu.Unlock()
+			if err != nil {
+				return err
+			}
+		}
+		if ready {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return errors.New("mixed watches not created within 10s")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
 
+// measure runs one measured phase with at most streams requests in flight
+// per connection.
+func (s *session) measure(streams int) (*result, error) {
+	cfg := s.cfg
 	t0 := now() + int64(50*time.Millisecond)
 	t1 := t0 + int64(cfg.warmup)
 	t2 := t1 + int64(cfg.duration)
-	for _, wk := range workers {
-		wk.stats.winStart, wk.stats.winStop = t1, t2
+	for i, wk := range s.workers {
+		wk.c.mu.Lock()
+		// Every step, and every store, gets the same arrival schedule for
+		// the seed, however the preload or an earlier step went.
+		wk.arrivals = newArrivalRNG(cfg.seed + uint64(i))
+		wk.stats = stats{winStart: t1, winStop: t2, errs: make(map[string]int64)}
 		wk.unsent = 0
-		wk.preloaded = wk.stats.acked
+		wk.c.mu.Unlock()
 	}
-	for _, w := range watches {
+	for i, w := range s.watches {
+		s.watchConns[i].mu.Lock()
 		w.stats.winStart, w.stats.winStop = t1, t2
+		s.watchConns[i].mu.Unlock()
+	}
+	if s.ledger != nil {
+		s.ledger.window(t1, t2)
 	}
 
 	var samples [2]cpuSample
@@ -372,8 +564,7 @@ func run(cfg config) (*result, error) {
 			samples[i] = s
 		}
 	})
-	perConn := cfg.rate / float64(cfg.conns)
-	phaseErr := runPhase(workers, loads, phase{rate: perConn, start: t0, stop: t2, drain: drainTimeout})
+	phaseErr := runPhase(s.workers, s.loads, phase{rate: cfg.rate / float64(cfg.conns), start: t0, stop: t2, drain: drainTimeout, limit: streams})
 	sampler.Wait()
 
 	var errs []error
@@ -384,23 +575,19 @@ func run(cfg config) (*result, error) {
 		errs = append(errs, fmt.Errorf("server CPU: %w", sampleErr))
 	}
 	if cfg.workload == "delete" {
-		for _, l := range loads {
+		for _, l := range s.loads {
 			if l.exhausted() {
 				errs = append(errs, fmt.Errorf("delete ran out of its %d keys; raise -keys", cfg.keys))
 				break
 			}
 		}
 	}
-	if len(watches) > 0 {
-		if err := awaitWatches(workers, watchConns, watches); err != nil {
+	if len(s.watches) > 0 {
+		if err := awaitWatches(s.workers, s.watchConns, s.watches); err != nil {
 			errs = append(errs, err)
 		}
-		// Closed connections stop calling the watch handlers, so the
-		// summary can read them.
-		closeWatches()
 	}
-
-	res := summarize(cfg, workers, watches, samples)
+	res := s.summarize(streams, samples)
 	if len(res.Errors) > 0 {
 		errs = append(errs, fmt.Errorf("%d kinds of request errors, see the result", len(res.Errors)))
 	}
@@ -478,7 +665,7 @@ func startWatches(cfg config, control *sync.WaitGroup, stop <-chan struct{}) ([]
 		watches = append(watches, w)
 		c.mu.Lock()
 		for s := range count {
-			if !c.canStart(t, count) {
+			if !c.canStart(t.dataLen, count) {
 				c.mu.Unlock()
 				return conns, nil, fmt.Errorf("%s: cannot open watch stream %d", c.addr, s)
 			}
@@ -574,7 +761,8 @@ func awaitWatches(workers []*worker, conns []*conn, watches []*watchLoad) error 
 	}
 }
 
-func summarize(cfg config, workers []*worker, watches []*watchLoad, samples [2]cpuSample) *result {
+func (s *session) summarize(streams int, samples [2]cpuSample) *result {
+	cfg := s.cfg
 	res := &result{
 		Label:          cfg.label,
 		Workload:       cfg.workload,
@@ -582,20 +770,23 @@ func summarize(cfg config, workers []*worker, watches []*watchLoad, samples [2]c
 		Keys:           cfg.keys,
 		Endpoints:      cfg.endpoints,
 		Conns:          cfg.conns,
-		StreamsPerConn: cfg.streams,
+		StreamsPerConn: streams,
 		OfferedRate:    cfg.rate,
 		WarmupS:        cfg.warmup.Seconds(),
 		DurationS:      cfg.duration.Seconds(),
 		Errors:         make(map[string]int64),
 	}
 	var resp, service hist
-	for _, wk := range workers {
+	var written, read int64
+	for _, wk := range s.workers {
 		wk.c.mu.Lock()
 		res.Ops += wk.stats.ops
-		res.Acked += wk.stats.acked - wk.preloaded
+		res.Acked += wk.stats.acked
 		res.Cohort += wk.stats.cohort
 		res.CohortFailed += wk.stats.cohortFailed
 		res.Unsent += wk.unsent
+		written += wk.stats.written
+		read += wk.stats.read
 		resp.merge(&wk.stats.resp)
 		service.merge(&wk.stats.service)
 		for e, n := range wk.stats.errs {
@@ -607,19 +798,47 @@ func summarize(cfg config, workers []*worker, watches []*watchLoad, samples [2]c
 	res.Latency = resp.summary()
 	res.ServiceLatency = service.summary()
 
-	if len(watches) > 0 {
+	if len(s.watches) > 0 {
 		var lat hist
 		wr := &watchResult{Watchers: cfg.watchers}
-		for _, w := range watches {
+		for i, w := range s.watches {
+			s.watchConns[i].mu.Lock()
 			wr.Events += w.events
 			lat.merge(&w.lat)
 			for e, n := range w.stats.errs {
 				res.Errors[e] += n
 			}
+			s.watchConns[i].mu.Unlock()
 		}
 		wr.EventsPerS = float64(wr.Events) / cfg.duration.Seconds()
 		wr.Latency = lat.summary()
 		res.Watch = wr
+	}
+	if s.ledger != nil {
+		res.ValueSize = 0
+		res.SizeSource = "k8s-1.37-dump"
+		res.Mix = cfg.mix
+		for i, w := range s.mixed {
+			s.workers[i].c.mu.Lock()
+			res.LiveKeys += len(w.live)
+			s.workers[i].c.mu.Unlock()
+		}
+		for i, w := range s.mixedWatches {
+			c := s.watchConns[i]
+			c.mu.Lock()
+			if err := errors.Join(c.err, w.err); err != nil {
+				res.Errors["watch "+string(w.prefix)+": "+err.Error()]++
+			}
+			c.mu.Unlock()
+		}
+		l := s.ledger
+		l.mu.Lock()
+		res.Watch = &watchResult{Watchers: len(s.mixedWatches), Events: l.count, EventsPerS: float64(l.count) / cfg.duration.Seconds(), Latency: l.lat.summary()}
+		l.mu.Unlock()
+	}
+	if res.Ops > 0 {
+		res.MinWrittenBytesPerOp = float64(written) / float64(res.Ops)
+		res.MinReadBytesPerOp = float64(read) / float64(res.Ops)
 	}
 
 	elapsed := time.Duration(samples[1].at - samples[0].at)
@@ -638,6 +857,9 @@ func summarize(cfg config, workers []*worker, watches []*watchLoad, samples [2]c
 		total += d
 		res.ServerCPUUsPerNode = append(res.ServerCPUUsPerNode, perOp(d, res.Ops))
 		res.ServerCores = append(res.ServerCores, d.Seconds()/elapsed.Seconds())
+	}
+	if len(res.ServerCPUUsPerNode) > 0 {
+		res.LeaderCPUUsPerOp = res.ServerCPUUsPerNode[0]
 	}
 	res.ServerCPUUsPerOp = perOp(total, res.Ops)
 	self := samples[1].self - samples[0].self

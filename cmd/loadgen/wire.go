@@ -21,6 +21,9 @@ const (
 	rangeLimit = 3
 	putKey     = 1 // PutRequest
 	putValue   = 2
+	putLease   = 3
+	leaseTTL   = 1 // LeaseGrantRequest
+	leaseID    = 2 // LeaseGrantResponse
 	delKey     = 1 // DeleteRangeRequest
 
 	txnCompare = 1 // TxnRequest
@@ -50,6 +53,7 @@ const (
 	opResponsePut         = 2
 	opResponseDeleteRange = 3 // ResponseOp
 	rangeKVs              = 2 // RangeResponse
+	rangeStreamResponse   = 1 // RangeStreamResponse.range_response
 	rangeMore             = 3
 	rangeCount            = 4
 	delDeleted            = 2 // DeleteRangeResponse
@@ -367,4 +371,60 @@ func responseRevision(m []byte) (int64, error) {
 		return 0, errors.New("response has no header revision")
 	}
 	return int64(rev), nil
+}
+
+// txnOutcome returns the header revision of a TxnResponse and whether it
+// succeeded, in one pass over its top-level fields: the responses inside
+// are skipped, not read.
+func txnOutcome(m []byte) (rev int64, succeeded bool, err error) {
+	var header []byte
+	err = fields(m, func(n protowire.Number, v uint64, b []byte) error {
+		//exhaustive:ignore // the other fields are skipped
+		switch n {
+		case respHeader:
+			header = b
+		case txnSucceeded:
+			succeeded = v == 1
+		default:
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, false, err
+	}
+	r, err := varintField(header, headerRevision)
+	if err != nil {
+		return 0, false, err
+	}
+	if r == 0 {
+		return 0, false, errors.New("response has no header revision")
+	}
+	return int64(r), succeeded, nil
+}
+
+// rangeBytes returns the key and value bytes of the key-values in a
+// RangeResponse. It reads their lengths and never looks at the bytes.
+func rangeBytes(m []byte) (int64, error) {
+	var n int64
+	err := fields(m, func(num protowire.Number, _ uint64, kv []byte) error {
+		if num != rangeKVs {
+			return nil
+		}
+		k, err := kvBytes(kv)
+		n += k
+		return err
+	})
+	return n, err
+}
+
+// kvBytes returns the key and value bytes of one mvccpb.KeyValue.
+func kvBytes(kv []byte) (int64, error) {
+	var n int64
+	err := fields(kv, func(num protowire.Number, _ uint64, b []byte) error {
+		if num == kvKey || num == kvValue {
+			n += int64(len(b))
+		}
+		return nil
+	})
+	return n, err
 }

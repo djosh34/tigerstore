@@ -18,8 +18,9 @@ import (
 	"github.com/djosh34/tigerstore/internal/k8ssize"
 )
 
-// The mix of a worker's calls, in percent, as loadgen's mixed workload:
-// get, list, update, create, delete.
+// The mix of a worker's calls, in percent, as loadgen's mixed workload had
+// it before #503: get, list, update, create, delete. The soak reads and
+// lists more than kube-apiserver does, to check those paths for leaks.
 var mix = [5]int{25, 10, 40, 15, 10}
 
 const (
