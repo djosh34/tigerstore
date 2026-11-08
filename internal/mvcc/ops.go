@@ -209,8 +209,7 @@ func (w *writer) put(p *PutOp) (*mvccpb.KeyValue, error) {
 	if k == nil {
 		// A copy, so that the index keeps no Raft entry alive.
 		k = &keyIndex{key: bytes.Clone(p.Key)}
-		w.s.keys.ReplaceOrInsert(k)
-		w.s.keyBytes += int64(len(k.key))
+		w.s.insert(k)
 	}
 	w.add(k, v)
 	w.s.counts.PutBytes += int64(len(p.Key)) + int64(v.value.Len)

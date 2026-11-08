@@ -66,11 +66,11 @@ func TestBytes(t *testing.T) {
 			room += int64(cap(k.vers))
 			return true
 		})
-		if s.keys.Len() != keys {
-			t.Fatalf("%d keys, want %d", s.keys.Len(), keys)
+		if s.keys.Len() != keys || len(s.byKey) != keys {
+			t.Fatalf("%d keys and %d in the map, want %d", s.keys.Len(), len(s.byKey), keys)
 		}
 		hist := 8 * int64(cap(s.hist.keys)+cap(s.hist.starts))
-		if got := s.Bytes(); got != int64(keys)*64+keyBytes+room*64+hist {
+		if got := s.Bytes(); got != int64(keys)*(64+keySlot)+2*keyBytes+room*64+hist {
 			t.Fatalf("Bytes = %d, want %d keys, %d key bytes, room for %d versions", got, keys, keyBytes, room)
 		}
 	}
