@@ -1,0 +1,12 @@
+diff --git a/internal/node/clean_test.go b/internal/node/clean_test.go
+index 6a385ac7..a7851b56 100644
+--- a/internal/node/clean_test.go
++++ b/internal/node/clean_test.go
+@@ -360,6 +360,7 @@ func TestSharedValues(t *testing.T) {
+ 	const budget = 512 << 10
+ 	dir := t.TempDir()
+ 	r := runClean(t, dir, budget)
++	alarmsAllowed(t, r.n) // DIAG546: do not race the cluster-version handshake.
+ 	big := []byte(fmt.Sprintf("%032768d", 1))
+ 	// One deadline and no retry, since a retried put that committed would
+ 	// add a version.

@@ -1,0 +1,313 @@
+=== RUN   TestDiag546SharedValues
+=== RUN   TestDiag546SharedValues/original-slow-log
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: slow log sync: 369.759756ms
+    node.go:812: slow write to the log: 1 entries, 12 bytes in 369.833547ms
+    node.go:812: persist timing: entries=1..1 queued=2026-11-08T03:03:02.835955218Z end=2026-11-08T03:03:03.205864849Z total=369.90963ms queue=18.5µs append=2.708µs flush=7.25µs sync_queue=20.083µs sync=369.803214ms report=57.875µs
+    node.go:812: leader is 0 at term 2
+    node.go:812: slow log sync: 76.054741ms
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 76.109533ms
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:03.536939981Z end=2026-11-08T03:03:03.613194556Z total=76.254575ms queue=48.583µs append=2.292µs flush=11.625µs sync_queue=2.667µs sync=76.092616ms report=96.792µs
+    node.go:812: leader is 1 at term 2
+    node.go:812: slow log sync: 75.602032ms
+    node.go:812: slow write to the log: 2 entries, 32793 bytes in 76.451826ms
+    node.go:812: persist timing: entries=2..3 queued=2026-11-08T03:03:03.61327514Z end=2026-11-08T03:03:03.689799882Z total=76.524784ms queue=16.125µs append=130.042µs flush=18.042µs sync_queue=656.293µs sync=75.64724ms report=57.042µs
+    diag_546_test.go:225: checkpoint copied index=3
+    node.go:812: slow log sync: 76.654618ms
+    node.go:812: slow write to the log: 1 entries, 20 bytes in 130.589623ms
+    node.go:812: persist timing: entries=4..4 queued=2026-11-08T03:03:03.636035462Z end=2026-11-08T03:03:03.766778085Z total=130.742581ms queue=13.791µs append=53.785546ms flush=11.25µs sync_queue=2.583µs sync=76.790035ms report=139.376µs
+    node.go:812: slow log sync: 75.868074ms
+    node.go:812: slow write to the log: 1 entries, 21 bytes in 152.706651ms
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 150.801311ms
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 75.837407ms
+    node.go:812: persist timing: entries=5..5 queued=2026-11-08T03:03:03.689886383Z end=2026-11-08T03:03:03.842802201Z total=152.915818ms queue=75.542µs append=11.667µs flush=4.542µs sync_queue=76.727368ms sync=75.962866ms report=133.833µs
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:03.691879847Z end=2026-11-08T03:03:03.842848867Z total=150.969062ms queue=2.834µs append=1.125µs flush=2.833µs sync_queue=74.818904ms sync=75.962866ms report=180.5µs
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:03.766853502Z end=2026-11-08T03:03:03.842863034Z total=76.009532ms queue=3.458µs append=1.875µs flush=4.333µs sync_queue=75.831074ms sync=42ns report=168.75µs
+    node.go:812: slow log sync: 76.157449ms
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 76.251575ms
+    node.go:812: slow write to the log: 1 entries, 21 bytes in 76.22545ms
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:03.842846242Z end=2026-11-08T03:03:03.919165984Z total=76.319742ms queue=28.875µs append=2.042µs flush=4.917µs sync_queue=38.25µs sync=76.206116ms report=39.542µs
+    node.go:812: persist timing: entries=6..6 queued=2026-11-08T03:03:03.842915034Z end=2026-11-08T03:03:03.919216693Z total=76.3017ms queue=1.542µs append=750ns flush=1.417µs sync_queue=1.625µs sync=76.206116ms report=90.25µs
+    diag_546_test.go:258: round=-1 err=<nil> files(seg,ckpt,pack,spare,other)=[2 1 0 0 4] bytes=[41213 82 0 0 64] measured=41359 cleaned=0 roots=[3] eligible=[]
+    diag_546_test.go:260: before rounds: cluster version=1
+    diag_546_test.go:267: round=0 err=<nil> files(seg,ckpt,pack,spare,other)=[2 1 0 0 4] bytes=[51657 82 0 0 64] measured=51803 cleaned=0 roots=[3] eligible=[]
+    diag_546_test.go:267: round=1 err=<nil> files(seg,ckpt,pack,spare,other)=[2 2 0 0 4] bytes=[62068 142 0 0 64] measured=62274 cleaned=0 roots=[3] eligible=[]
+    diag_546_test.go:225: checkpoint copied index=106
+    diag_546_test.go:267: round=2 err=<nil> files(seg,ckpt,pack,spare,other)=[2 2 0 0 5] bytes=[72512 142 0 0 64] measured=74845 cleaned=0 roots=[3] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=3 err=<nil> files(seg,ckpt,pack,spare,other)=[3 3 0 0 4] bytes=[83122 2201 0 0 64] measured=85387 cleaned=0 roots=[3 106] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=108
+    diag_546_test.go:267: round=4 err=<nil> files(seg,ckpt,pack,spare,other)=[3 3 0 0 4] bytes=[93566 4698 0 0 64] measured=98328 cleaned=0 roots=[3 106] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=5 err=<nil> files(seg,ckpt,pack,spare,other)=[3 3 0 0 4] bytes=[104010 4698 0 0 64] measured=108772 cleaned=0 roots=[3 106] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=6 err=<nil> files(seg,ckpt,pack,spare,other)=[4 4 0 0 4] bytes=[114587 4758 0 0 64] measured=119409 cleaned=0 roots=[3 106] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=110
+    diag_546_test.go:267: round=7 err=<nil> files(seg,ckpt,pack,spare,other)=[4 4 0 0 4] bytes=[125031 4758 0 0 64] measured=129853 cleaned=0 roots=[3 106 108] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=8 err=<nil> files(seg,ckpt,pack,spare,other)=[4 5 0 0 4] bytes=[135480 7813 0 0 64] measured=143357 cleaned=0 roots=[3 106 108] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=112
+    diag_546_test.go:267: round=9 err=<nil> files(seg,ckpt,pack,spare,other)=[4 5 0 0 4] bytes=[145924 11306 0 0 64] measured=157294 cleaned=0 roots=[3 106 108 110] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=114
+    diag_546_test.go:267: round=10 err=<nil> files(seg,ckpt,pack,spare,other)=[5 6 0 0 4] bytes=[156544 15357 0 0 64] measured=171965 cleaned=0 roots=[3 106 108 110 112] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=11 err=<nil> files(seg,ckpt,pack,spare,other)=[5 6 0 0 4] bytes=[167036 15357 0 0 64] measured=182457 cleaned=0 roots=[3 106 108 110 112 114] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=12 err=<nil> files(seg,ckpt,pack,spare,other)=[5 7 0 0 4] bytes=[177490 15417 0 0 64] measured=192971 cleaned=0 roots=[3 106 108 110 112 114] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=116
+    diag_546_test.go:267: round=13 err=<nil> files(seg,ckpt,pack,spare,other)=[5 7 0 0 4] bytes=[187944 19906 0 0 64] measured=207914 cleaned=0 roots=[3 106 108 110 112 114] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=14 err=<nil> files(seg,ckpt,pack,spare,other)=[6 3 0 0 4] bytes=[198531 8660 0 0 64] measured=207255 cleaned=0 roots=[114] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:225: checkpoint copied index=118
+    diag_546_test.go:267: round=15 err=<nil> files(seg,ckpt,pack,spare,other)=[6 3 0 0 4] bytes=[208985 13647 0 0 64] measured=222696 cleaned=0 roots=[114 116] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:267: round=16 err=<nil> files(seg,ckpt,pack,spare,other)=[6 4 0 0 4] bytes=[219477 13707 0 0 64] measured=233248 cleaned=0 roots=[114 116 118] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:225: checkpoint copied index=120
+    diag_546_test.go:267: round=17 err=<nil> files(seg,ckpt,pack,spare,other)=[6 4 0 0 4] bytes=[229931 19192 0 0 64] measured=249187 cleaned=0 roots=[114 116 118] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:267: round=18 err=<nil> files(seg,ckpt,pack,spare,other)=[7 5 0 0 4] bytes=[240518 19252 0 0 64] measured=259834 cleaned=0 roots=[114 116 118] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:225: checkpoint copied index=122
+    diag_546_test.go:267: round=19 err=<nil> files(seg,ckpt,pack,spare,other)=[7 5 0 0 4] bytes=[250972 19252 0 0 64] measured=270288 cleaned=0 roots=[114 116 118 120] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:267: round=20 err=<nil> files(seg,ckpt,pack,spare,other)=[7 6 0 0 4] bytes=[261431 25295 0 0 64] measured=286790 cleaned=0 roots=[114 116 118 120] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:225: checkpoint copied index=124
+    diag_546_test.go:267: round=21 err=<nil> files(seg,ckpt,pack,spare,other)=[7 6 0 0 4] bytes=[271918 25295 0 0 64] measured=297277 cleaned=0 roots=[114 116 118 120 122] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:267: round=22 err=<nil> files(seg,ckpt,pack,spare,other)=[8 6 0 0 4] bytes=[282505 31776 0 0 64] measured=314345 cleaned=0 roots=[114 116 118 120 122] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:267: round=23 err=<nil> files(seg,ckpt,pack,spare,other)=[8 7 0 0 4] bytes=[292959 31836 0 0 64] measured=324859 cleaned=0 roots=[114 116 118 120 122 124] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:225: checkpoint copied index=127
+    diag_546_test.go:267: round=24 err=<nil> files(seg,ckpt,pack,spare,other)=[8 7 0 0 4] bytes=[303413 39064 0 0 64] measured=342541 cleaned=0 roots=[114 116 118 120 122 124] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:225: checkpoint copied index=129
+    diag_546_test.go:267: round=25 err=<nil> files(seg,ckpt,pack,spare,other)=[8 8 0 0 4] bytes=[313905 46870 0 0 64] measured=360839 cleaned=0 roots=[114 116 118 120 122 124] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:267: round=26 err=<nil> files(seg,ckpt,pack,spare,other)=[9 9 0 0 4] bytes=[324493 46930 0 0 64] measured=371487 cleaned=0 roots=[114 116 118 120 122 124 127 129] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:267: round=27 err=<nil> files(seg,ckpt,pack,spare,other)=[9 9 0 0 4] bytes=[334948 46930 0 0 64] measured=381942 cleaned=0 roots=[114 116 118 120 122 124 127 129] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:225: checkpoint copied index=131
+    diag_546_test.go:267: round=28 err=<nil> files(seg,ckpt,pack,spare,other)=[9 10 0 0 4] bytes=[345441 55255 0 0 64] measured=400760 cleaned=0 roots=[114 116 118 120 122 124 127 129] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:267: round=29 err=<nil> files(seg,ckpt,pack,spare,other)=[9 10 0 0 4] bytes=[355896 55255 0 0 64] measured=411215 cleaned=0 roots=[114 116 118 120 122 124 127 129 131] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:225: checkpoint copied index=133
+    diag_546_test.go:267: round=30 err=<nil> files(seg,ckpt,pack,spare,other)=[10 10 0 0 4] bytes=[366446 64037 0 0 64] measured=430547 cleaned=0 roots=[114 116 118 120 122 124 127 129 131] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:225: checkpoint copied index=135
+    diag_546_test.go:267: round=31 err=<nil> files(seg,ckpt,pack,spare,other)=[10 11 0 0 4] bytes=[376939 64098 0 0 64] measured=441101 cleaned=0 roots=[114 116 118 120 122 124 127 129 131 133] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:267: round=32 err=<nil> files(seg,ckpt,pack,spare,other)=[10 12 0 0 4] bytes=[387399 73459 0 0 64] measured=460922 cleaned=0 roots=[114 116 118 120 122 124 127 129 131 133] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:267: round=33 err=<nil> files(seg,ckpt,pack,spare,other)=[10 12 0 0 4] bytes=[397887 73459 0 0 64] measured=471410 cleaned=0 roots=[114 116 118 120 122 124 127 129 131 133 135] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0}]
+    diag_546_test.go:225: checkpoint copied index=137
+    diag_546_test.go:267: round=34 err=<nil> files(seg,ckpt,pack,spare,other)=[11 2 1 0 4] bytes=[408475 19240 0 0 64] measured=427779 cleaned=0 roots=[135] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41995 0} {{false 5} 41949 0} {{false 6} 41987 0} {{false 7} 41987 0} {{false 8} 42026 0} {{false 9} 41953 0}]
+    diag_546_test.go:225: checkpoint copied index=139
+    diag_546_test.go:267: round=35 err=<nil> files(seg,ckpt,pack,spare,other)=[11 3 1 0 4] bytes=[418968 29637 313796 0 64] measured=448669 cleaned=0 roots=[135 137] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41995 0} {{false 5} 41949 0} {{false 6} 41987 0} {{false 7} 41987 0} {{false 8} 42026 0} {{false 9} 41953 0}]
+    diag_546_test.go:267: round=36 err=<nil> files(seg,ckpt,pack,spare,other)=[11 3 1 0 4] bytes=[429469 29637 313796 0 64] measured=459231 cleaned=0 roots=[135 137 139] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41995 0} {{false 5} 41949 0} {{false 6} 41987 0} {{false 7} 41987 0} {{false 8} 42026 0} {{false 9} 41953 0} {{true 0} 313796 308068}]
+    node.go:812: cleaning below checkpoint 135: 8 files into a pack of 313796 bytes
+    diag_546_test.go:283: first cleaned at round 36; cluster version=1
+    diag_546_test.go:290: round loop took 53.078918ms; refused=-1
+--- PASS: TestDiag546SharedValues (1.18s)
+    --- PASS: TestDiag546SharedValues/original-slow-log (1.18s)
+=== RUN   TestDiag546SharedValues
+=== RUN   TestDiag546SharedValues/original-slow-log
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: slow log sync: 369.855172ms
+    node.go:812: slow write to the log: 1 entries, 12 bytes in 369.947506ms
+    node.go:812: persist timing: entries=1..1 queued=2026-11-08T03:03:04.015670832Z end=2026-11-08T03:03:04.385719546Z total=370.048715ms queue=33.084µs append=1.917µs flush=6.75µs sync_queue=1.5µs sync=369.936922ms report=68.542µs
+    node.go:812: leader is 0 at term 2
+    node.go:812: slow log sync: 94.300257ms
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 94.356299ms
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:04.96652897Z end=2026-11-08T03:03:05.061084812Z total=94.555842ms queue=99.667µs append=1.667µs flush=7.458µs sync_queue=834ns sync=94.34584ms report=100.376µs
+    node.go:812: leader is 1 at term 2
+    node.go:812: slow log sync: 75.505198ms
+    node.go:812: slow write to the log: 2 entries, 32794 bytes in 80.869131ms
+    node.go:812: persist timing: entries=2..3 queued=2026-11-08T03:03:05.061159229Z end=2026-11-08T03:03:05.142166444Z total=81.007256ms queue=24.625µs append=21µs flush=26.708µs sync_queue=5.2111ms sync=75.610115ms report=113.708µs
+    diag_546_test.go:225: checkpoint copied index=3
+    node.go:812: slow log sync: 76.507451ms
+    node.go:812: slow write to the log: 1 entries, 21 bytes in 152.231607ms
+    node.go:812: persist timing: entries=4..4 queued=2026-11-08T03:03:05.066466829Z end=2026-11-08T03:03:05.218746353Z total=152.279524ms queue=4.083µs append=75.66674ms flush=12.542µs sync_queue=1.958µs sync=76.550159ms report=44.042µs
+    node.go:812: slow log sync: 92.08625ms
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 168.657993ms
+    node.go:812: slow write to the log: 1 entries, 22 bytes in 168.605201ms
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 166.92482ms
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:05.142241194Z end=2026-11-08T03:03:05.311036812Z total=168.795577ms queue=13.792µs append=1.459µs flush=1.625µs sync_queue=76.464534ms sync=92.190042ms report=124.125µs
+    node.go:812: persist timing: entries=5..5 queued=2026-11-08T03:03:05.142325194Z end=2026-11-08T03:03:05.311072854Z total=168.747702ms queue=5.417µs append=1.875µs flush=12.208µs sync_queue=76.377951ms sync=92.190042ms report=160.209µs
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:05.144016699Z end=2026-11-08T03:03:05.311107062Z total=167.090321ms queue=3.417µs append=875ns flush=3.625µs sync_queue=74.697987ms sync=92.190042ms report=194.375µs
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 92.323417ms
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:05.218827103Z end=2026-11-08T03:03:05.311168521Z total=92.341418ms queue=3.792µs append=2.208µs flush=9.333µs sync_queue=92.311751ms sync=42ns report=14.292µs
+    node.go:812: slow log sync: 76.335576ms
+    node.go:812: slow write to the log: 1 entries, 22 bytes in 76.389033ms
+    node.go:812: persist timing: entries=6..6 queued=2026-11-08T03:03:05.311203396Z end=2026-11-08T03:03:05.38767343Z total=76.470034ms queue=1.917µs append=750ns flush=1.333µs sync_queue=1.083µs sync=76.385659ms report=79.292µs
+    diag_546_test.go:258: round=-1 err=<nil> files(seg,ckpt,pack,spare,other)=[2 1 0 0 4] bytes=[41315 82 0 0 64] measured=41461 cleaned=0 roots=[3] eligible=[]
+    diag_546_test.go:260: before rounds: cluster version=1
+    diag_546_test.go:267: round=0 err=<nil> files(seg,ckpt,pack,spare,other)=[2 1 0 0 4] bytes=[51760 82 0 0 64] measured=51906 cleaned=0 roots=[3] eligible=[]
+    diag_546_test.go:267: round=1 err=<nil> files(seg,ckpt,pack,spare,other)=[2 1 0 0 4] bytes=[62205 82 0 0 64] measured=62351 cleaned=0 roots=[3] eligible=[]
+    diag_546_test.go:225: checkpoint copied index=106
+    diag_546_test.go:267: round=2 err=<nil> files(seg,ckpt,pack,spare,other)=[3 2 0 0 4] bytes=[72745 142 0 0 64] measured=72951 cleaned=0 roots=[3] eligible=[{{false 1} 33007 0}]
+    diag_546_test.go:267: round=3 err=<nil> files(seg,ckpt,pack,spare,other)=[3 3 0 0 4] bytes=[83228 2201 0 0 64] measured=85493 cleaned=0 roots=[3 106] eligible=[{{false 1} 33007 0}]
+    diag_546_test.go:267: round=4 err=<nil> files(seg,ckpt,pack,spare,other)=[3 3 0 0 4] bytes=[93673 2201 0 0 64] measured=95938 cleaned=0 roots=[3 106] eligible=[{{false 1} 33007 0}]
+    diag_546_test.go:225: checkpoint copied index=108
+    diag_546_test.go:267: round=5 err=<nil> files(seg,ckpt,pack,spare,other)=[3 3 0 0 4] bytes=[104085 4698 0 0 64] measured=108847 cleaned=0 roots=[3 106] eligible=[{{false 1} 33007 0}]
+    diag_546_test.go:267: round=6 err=<nil> files(seg,ckpt,pack,spare,other)=[4 4 0 0 4] bytes=[114696 4758 0 0 64] measured=119518 cleaned=0 roots=[3 106] eligible=[{{false 1} 33007 0}]
+    diag_546_test.go:225: checkpoint copied index=110
+    diag_546_test.go:267: round=7 err=<nil> files(seg,ckpt,pack,spare,other)=[4 5 0 0 4] bytes=[125179 7813 0 0 64] measured=133056 cleaned=0 roots=[3 106 108] eligible=[{{false 1} 33007 0}]
+    diag_546_test.go:267: round=8 err=<nil> files(seg,ckpt,pack,spare,other)=[4 5 0 0 4] bytes=[135624 7813 0 0 64] measured=143501 cleaned=0 roots=[3 106 108 110] eligible=[{{false 1} 33007 0}]
+    diag_546_test.go:225: checkpoint copied index=112
+    diag_546_test.go:267: round=9 err=<nil> files(seg,ckpt,pack,spare,other)=[4 2 0 0 4] bytes=[146069 6608 0 0 64] measured=157439 cleaned=0 roots=[110] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:267: round=10 err=<nil> files(seg,ckpt,pack,spare,other)=[5 2 0 0 4] bytes=[156619 6608 0 0 64] measured=163291 cleaned=0 roots=[110] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:267: round=11 err=<nil> files(seg,ckpt,pack,spare,other)=[5 3 0 0 4] bytes=[167112 6668 0 0 64] measured=173844 cleaned=0 roots=[110 112] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:225: checkpoint copied index=115
+    diag_546_test.go:267: round=12 err=<nil> files(seg,ckpt,pack,spare,other)=[5 3 0 0 4] bytes=[177567 10908 0 0 64] measured=188539 cleaned=0 roots=[110 112] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:267: round=13 err=<nil> files(seg,ckpt,pack,spare,other)=[5 4 0 0 4] bytes=[188027 10968 0 0 64] measured=199059 cleaned=0 roots=[110 112] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:225: checkpoint copied index=117
+    diag_546_test.go:267: round=14 err=<nil> files(seg,ckpt,pack,spare,other)=[6 4 0 0 4] bytes=[198482 15706 0 0 64] measured=214252 cleaned=0 roots=[110 112 115] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:225: checkpoint copied index=119
+    diag_546_test.go:267: round=15 err=<nil> files(seg,ckpt,pack,spare,other)=[6 5 0 0 4] bytes=[209103 21002 0 0 64] measured=230169 cleaned=0 roots=[110 112 115 117] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:267: round=16 err=<nil> files(seg,ckpt,pack,spare,other)=[6 6 0 0 4] bytes=[219596 21062 0 0 64] measured=240722 cleaned=0 roots=[110 112 115 117] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:267: round=17 err=<nil> files(seg,ckpt,pack,spare,other)=[6 6 0 0 4] bytes=[230051 21062 0 0 64] measured=251177 cleaned=0 roots=[110 112 115 117 119] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:225: checkpoint copied index=121
+    diag_546_test.go:267: round=18 err=<nil> files(seg,ckpt,pack,spare,other)=[7 6 0 0 4] bytes=[240601 26796 0 0 64] measured=267461 cleaned=0 roots=[110 112 115 117 119] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:267: round=19 err=<nil> files(seg,ckpt,pack,spare,other)=[7 7 0 0 4] bytes=[251061 26856 0 0 64] measured=277981 cleaned=0 roots=[110 112 115 117 119] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:225: checkpoint copied index=123
+    diag_546_test.go:267: round=20 err=<nil> files(seg,ckpt,pack,spare,other)=[7 7 0 0 4] bytes=[261516 26856 0 0 64] measured=288436 cleaned=0 roots=[110 112 115 117 119 121] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:267: round=21 err=<nil> files(seg,ckpt,pack,spare,other)=[7 8 0 0 4] bytes=[272009 33148 0 0 64] measured=305221 cleaned=0 roots=[110 112 115 117 119 121] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:225: checkpoint copied index=125
+    diag_546_test.go:267: round=22 err=<nil> files(seg,ckpt,pack,spare,other)=[8 8 0 0 4] bytes=[282464 39878 0 0 64] measured=322534 cleaned=0 roots=[110 112 115 117 119 121 123] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:267: round=23 err=<nil> files(seg,ckpt,pack,spare,other)=[8 9 0 0 4] bytes=[293085 39938 0 0 64] measured=333087 cleaned=0 roots=[110 112 115 117 119 121 123 125] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:225: checkpoint copied index=127
+    diag_546_test.go:267: round=24 err=<nil> files(seg,ckpt,pack,spare,other)=[8 9 0 0 4] bytes=[303540 47166 0 0 64] measured=350808 cleaned=0 roots=[110 112 115 117 119 121 123 125] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:225: checkpoint copied index=129
+    diag_546_test.go:267: round=25 err=<nil> files(seg,ckpt,pack,spare,other)=[8 10 0 0 4] bytes=[314000 47226 0 0 64] measured=361323 cleaned=0 roots=[110 112 115 117 119 121 123 125 127] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:267: round=26 err=<nil> files(seg,ckpt,pack,spare,other)=[9 11 0 0 4] bytes=[324622 55032 0 0 64] measured=379718 cleaned=0 roots=[110 112 115 117 119 121 123 125 127] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:267: round=27 err=<nil> files(seg,ckpt,pack,spare,other)=[9 11 0 0 4] bytes=[335078 55032 0 0 64] measured=390174 cleaned=0 roots=[110 112 115 117 119 121 123 125 127 129] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:225: checkpoint copied index=131
+    diag_546_test.go:267: round=28 err=<nil> files(seg,ckpt,pack,spare,other)=[9 11 0 0 4] bytes=[345534 63296 0 0 64] measured=408894 cleaned=0 roots=[110 112 115 117 119 121 123 125 127 129] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:267: round=29 err=<nil> files(seg,ckpt,pack,spare,other)=[9 12 0 0 4] bytes=[356028 63357 0 0 64] measured=419449 cleaned=0 roots=[110 112 115 117 119 121 123 125 127 129 131] eligible=[{{false 1} 33007 0} {{false 2} 39610 0}]
+    diag_546_test.go:225: checkpoint copied index=133
+    diag_546_test.go:267: round=30 err=<nil> files(seg,ckpt,pack,spare,other)=[10 2 0 0 4] bytes=[366579 17167 0 0 64] measured=438782 cleaned=0 roots=[131] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:267: round=31 err=<nil> files(seg,ckpt,pack,spare,other)=[10 3 0 0 4] bytes=[377073 17228 0 0 64] measured=394365 cleaned=0 roots=[131] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:225: checkpoint copied index=135
+    diag_546_test.go:267: round=32 err=<nil> files(seg,ckpt,pack,spare,other)=[10 3 0 0 4] bytes=[387529 26528 0 0 64] measured=414121 cleaned=0 roots=[131 133] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:267: round=33 err=<nil> files(seg,ckpt,pack,spare,other)=[10 4 0 0 4] bytes=[398023 26589 0 0 64] measured=424676 cleaned=0 roots=[131 133] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:225: checkpoint copied index=137
+    diag_546_test.go:267: round=34 err=<nil> files(seg,ckpt,pack,spare,other)=[11 5 0 0 4] bytes=[408579 36468 0 0 64] measured=445144 cleaned=0 roots=[131 133 135] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:225: checkpoint copied index=139
+    diag_546_test.go:267: round=35 err=<nil> files(seg,ckpt,pack,spare,other)=[11 5 0 0 4] bytes=[419068 46804 0 0 64] measured=465936 cleaned=0 roots=[131 133 135 137] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:267: round=36 err=<nil> files(seg,ckpt,pack,spare,other)=[11 5 0 0 4] bytes=[429529 46804 0 0 64] measured=476430 cleaned=0 roots=[131 133 135 137] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:267: round=37 err=<nil> files(seg,ckpt,pack,spare,other)=[11 6 0 0 4] bytes=[440018 46865 0 0 64] measured=486947 cleaned=0 roots=[131 133 135 137 139] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:225: checkpoint copied index=141
+    diag_546_test.go:267: round=38 err=<nil> files(seg,ckpt,pack,spare,other)=[12 6 0 0 4] bytes=[450569 57719 0 0 64] measured=508352 cleaned=0 roots=[131 133 135 137 139] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:267: round=39 err=<nil> files(seg,ckpt,pack,spare,other)=[12 7 0 0 4] bytes=[461063 57780 0 0 64] measured=518907 cleaned=0 roots=[131 133 135 137 139 141] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:225: checkpoint copied index=143
+    diag_546_test.go:267: round=40 err=<nil> files(seg,ckpt,pack,spare,other)=[12 7 0 0 4] bytes=[471519 69152 0 0 64] measured=540735 cleaned=0 roots=[131 133 135 137 139 141] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:267: round=41 err=<nil> files(seg,ckpt,pack,spare,other)=[12 7 0 0 4] bytes=[481980 69152 0 0 64] measured=551196 cleaned=0 roots=[131 133 135 137 139 141] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:267: round=42 err=<nil> files(seg,ckpt,pack,spare,other)=[13 8 0 0 4] bytes=[492564 69213 0 0 64] measured=561841 cleaned=0 roots=[131 133 135 137 139 141 143] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:225: checkpoint copied index=146
+    diag_546_test.go:267: round=43 err=<nil> files(seg,ckpt,pack,spare,other)=[13 8 0 0 4] bytes=[503058 81362 0 0 64] measured=584484 cleaned=0 roots=[131 133 135 137 139 141 143] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0}]
+    diag_546_test.go:267: round=44 err=<nil> files(seg,ckpt,pack,spare,other)=[13 2 0 0 4] bytes=[513514 12271 0 0 64] measured=537282 cleaned=0 roots=[146] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0} {{false 9} 41995 0} {{false 10} 41995 0} {{false 11} 41995 0}]
+    diag_546_test.go:267: round=45 err=<nil> files(seg,ckpt,pack,spare,other)=[13 2 0 0 4] bytes=[523970 12271 0 0 64] measured=536305 cleaned=0 roots=[146] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0} {{false 9} 41995 0} {{false 10} 41995 0} {{false 11} 41995 0}]
+    diag_546_test.go:225: checkpoint copied index=149
+    diag_546_test.go:267: round=46 err=<nil> files(seg,ckpt,pack,spare,other)=[13 2 1 0 5] bytes=[534393 25197 0 0 64] measured=559654 cleaned=0 roots=[146] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0} {{false 9} 41995 0} {{false 10} 41995 0} {{false 11} 41995 0}]
+    diag_546_test.go:267: round=47 err=<nil> files(seg,ckpt,pack,spare,other)=[14 3 1 0 4] bytes=[545028 25258 438716 0 64] measured=570350 cleaned=0 roots=[146 149] eligible=[{{false 1} 33007 0} {{false 2} 39610 0} {{false 3} 41913 0} {{false 4} 41961 0} {{false 5} 41991 0} {{false 6} 41991 0} {{false 7} 41991 0} {{false 8} 41992 0} {{false 9} 41995 0} {{false 10} 41995 0} {{false 11} 41995 0} {{true 0} 438716 430468}]
+    node.go:812: cleaning below checkpoint 146: 11 files into a pack of 438716 bytes
+    diag_546_test.go:267: round=48 err=<nil> files(seg,ckpt,pack,spare,other)=[13 3 1 0 4] bytes=[522510 25258 438716 0 64] measured=580839 cleaned=438716 roots=[149] eligible=[{{false 12} 41995 0} {{true 0} 438716 430468}]
+    diag_546_test.go:283: first cleaned at round 48; cluster version=1
+    diag_546_test.go:290: round loop took 67.333589ms; refused=-1
+--- PASS: TestDiag546SharedValues (1.49s)
+    --- PASS: TestDiag546SharedValues/original-slow-log (1.49s)
+=== RUN   TestDiag546SharedValues
+=== RUN   TestDiag546SharedValues/original-slow-log
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: slow log sync: 369.983673ms
+    node.go:812: slow write to the log: 1 entries, 12 bytes in 370.061923ms
+    node.go:812: persist timing: entries=1..1 queued=2026-11-08T03:03:05.501383457Z end=2026-11-08T03:03:05.871555839Z total=370.17234ms queue=44.333µs append=10.792µs flush=6.708µs sync_queue=4µs sync=370.039881ms report=66.626µs
+    node.go:812: leader is 0 at term 2
+    node.go:812: slow log sync: 76.138533ms
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 76.194783ms
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:06.202617471Z end=2026-11-08T03:03:06.279001963Z total=76.384492ms queue=97.167µs append=1.5µs flush=5.791µs sync_queue=1.125µs sync=76.18595ms report=92.959µs
+    node.go:812: leader is 1 at term 2
+    node.go:812: slow log sync: 75.254739ms
+    node.go:812: slow write to the log: 2 entries, 32793 bytes in 75.602948ms
+    node.go:812: persist timing: entries=2..3 queued=2026-11-08T03:03:06.279122755Z end=2026-11-08T03:03:06.354894787Z total=75.772074ms queue=30.75µs append=9µs flush=19.542µs sync_queue=265.584µs sync=75.308614ms report=138.584µs
+    diag_546_test.go:225: checkpoint copied index=3
+    node.go:812: slow log sync: 75.978699ms
+    node.go:812: slow write to the log: 1 entries, 20 bytes in 128.837325ms
+    node.go:812: persist timing: entries=4..4 queued=2026-11-08T03:03:06.302033119Z end=2026-11-08T03:03:06.430955986Z total=128.922909ms queue=19.167µs append=52.788251ms flush=17.208µs sync_queue=10.125µs sync=76.021491ms report=66.667µs
+    node.go:812: slow log sync: 76.486409ms
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 152.49165ms
+    node.go:812: slow write to the log: 1 entries, 21 bytes in 152.476025ms
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 150.724519ms
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:06.354983496Z end=2026-11-08T03:03:06.507554437Z total=152.570983ms queue=18.25µs append=1.541µs flush=4.334µs sync_queue=75.904615ms sync=76.580826ms report=61.417µs
+    node.go:812: persist timing: entries=5..5 queued=2026-11-08T03:03:06.355027621Z end=2026-11-08T03:03:06.507598604Z total=152.571025ms queue=11.541µs append=1.084µs flush=2.458µs sync_queue=75.869532ms sync=76.580826ms report=105.584µs
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 76.594118ms
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:06.356791418Z end=2026-11-08T03:03:06.507699896Z total=150.908478ms queue=3.583µs append=1.042µs flush=3.75µs sync_queue=74.112401ms sync=76.580826ms report=206.876µs
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:06.431023403Z end=2026-11-08T03:03:06.507713313Z total=76.68991ms queue=4.25µs append=1.917µs flush=5.417µs sync_queue=76.586576ms sync=83ns report=91.667µs
+    node.go:812: slow log sync: 76.067491ms
+    node.go:812: slow write to the log: 1 entries, 21 bytes in 76.130199ms
+    node.go:812: persist timing: entries=6..6 queued=2026-11-08T03:03:06.507695355Z end=2026-11-08T03:03:06.584004388Z total=76.308992ms queue=91.959µs append=2.667µs flush=6.708µs sync_queue=5.875µs sync=76.114741ms report=87.042µs
+    diag_546_test.go:258: round=-1 err=<nil> files(seg,ckpt,pack,spare,other)=[2 1 0 0 4] bytes=[41213 82 0 0 64] measured=41359 cleaned=0 roots=[3] eligible=[]
+    diag_546_test.go:260: before rounds: cluster version=1
+    diag_546_test.go:267: round=0 err=<nil> files(seg,ckpt,pack,spare,other)=[2 1 0 0 4] bytes=[51657 82 0 0 64] measured=51803 cleaned=0 roots=[3] eligible=[]
+    diag_546_test.go:267: round=1 err=<nil> files(seg,ckpt,pack,spare,other)=[2 2 0 0 4] bytes=[62068 142 0 0 64] measured=62274 cleaned=0 roots=[3] eligible=[]
+    diag_546_test.go:267: round=2 err=<nil> files(seg,ckpt,pack,spare,other)=[3 2 0 0 4] bytes=[72640 142 0 0 64] measured=72846 cleaned=0 roots=[3] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=106
+    diag_546_test.go:267: round=3 err=<nil> files(seg,ckpt,pack,spare,other)=[3 2 0 0 4] bytes=[83051 2141 0 0 64] measured=85256 cleaned=0 roots=[3] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=4 err=<nil> files(seg,ckpt,pack,spare,other)=[3 3 0 0 4] bytes=[93533 2201 0 0 64] measured=95798 cleaned=0 roots=[3] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=108
+    diag_546_test.go:267: round=5 err=<nil> files(seg,ckpt,pack,spare,other)=[3 3 0 0 4] bytes=[103977 2201 0 0 64] measured=106242 cleaned=0 roots=[3 106] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=6 err=<nil> files(seg,ckpt,pack,spare,other)=[4 3 0 0 4] bytes=[114549 4698 0 0 64] measured=119311 cleaned=0 roots=[3 106] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=7 err=<nil> files(seg,ckpt,pack,spare,other)=[4 4 0 0 4] bytes=[125031 4758 0 0 64] measured=129853 cleaned=0 roots=[3 106 108] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=111
+    diag_546_test.go:267: round=8 err=<nil> files(seg,ckpt,pack,spare,other)=[4 4 0 0 4] bytes=[135475 8002 0 0 64] measured=143541 cleaned=0 roots=[3 106 108] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=9 err=<nil> files(seg,ckpt,pack,spare,other)=[4 5 0 0 4] bytes=[145957 8062 0 0 64] measured=154083 cleaned=0 roots=[3 106 108] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=113
+    diag_546_test.go:267: round=10 err=<nil> files(seg,ckpt,pack,spare,other)=[5 5 0 0 4] bytes=[156506 8062 0 0 64] measured=164632 cleaned=0 roots=[3 106 108 111] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=11 err=<nil> files(seg,ckpt,pack,spare,other)=[5 6 0 0 4] bytes=[166998 11864 0 0 64] measured=178926 cleaned=0 roots=[3 106 108 111 113] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=115
+    diag_546_test.go:267: round=12 err=<nil> files(seg,ckpt,pack,spare,other)=[5 6 0 0 4] bytes=[177419 16104 0 0 64] measured=193587 cleaned=0 roots=[3 106 108 111 113] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=13 err=<nil> files(seg,ckpt,pack,spare,other)=[5 7 0 0 4] bytes=[187944 16164 0 0 64] measured=204172 cleaned=0 roots=[3 106 108 111 113] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=117
+    diag_546_test.go:267: round=14 err=<nil> files(seg,ckpt,pack,spare,other)=[6 7 0 0 4] bytes=[198365 20902 0 0 64] measured=219331 cleaned=0 roots=[3 106 108 111 113 115] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=15 err=<nil> files(seg,ckpt,pack,spare,other)=[6 8 0 0 4] bytes=[208985 20962 0 0 64] measured=230011 cleaned=0 roots=[3 106 108 111 113 115 117] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=119
+    diag_546_test.go:267: round=16 err=<nil> files(seg,ckpt,pack,spare,other)=[6 8 0 0 4] bytes=[219406 24998 0 0 64] measured=245668 cleaned=0 roots=[3 106 108 111 113 115 117] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=17 err=<nil> files(seg,ckpt,pack,spare,other)=[6 9 0 0 4] bytes=[229931 26258 0 0 64] measured=256253 cleaned=0 roots=[3 106 108 111 113 115 117] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=121
+    diag_546_test.go:267: round=18 err=<nil> files(seg,ckpt,pack,spare,other)=[7 9 0 0 4] bytes=[240352 31992 0 0 64] measured=272408 cleaned=0 roots=[3 106 108 111 113 115 117 119] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=19 err=<nil> files(seg,ckpt,pack,spare,other)=[7 10 0 0 4] bytes=[250972 32052 0 0 64] measured=283088 cleaned=0 roots=[3 106 108 111 113 115 117 119 121] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=123
+    diag_546_test.go:267: round=20 err=<nil> files(seg,ckpt,pack,spare,other)=[7 10 0 0 4] bytes=[261426 38284 0 0 64] measured=299774 cleaned=0 roots=[3 106 108 111 113 115 117 119 121] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=21 err=<nil> files(seg,ckpt,pack,spare,other)=[7 11 0 0 4] bytes=[271918 38344 0 0 64] measured=310326 cleaned=0 roots=[3 106 108 111 113 115 117 119 121] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=125
+    diag_546_test.go:267: round=22 err=<nil> files(seg,ckpt,pack,spare,other)=[8 12 0 0 4] bytes=[282505 45134 0 0 64] measured=327703 cleaned=0 roots=[3 106 108 111 113 115 117 119 121 123] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=23 err=<nil> files(seg,ckpt,pack,spare,other)=[8 12 0 0 4] bytes=[292959 45134 0 0 64] measured=338157 cleaned=0 roots=[3 106 108 111 113 115 117 119 121 123 125] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=127
+    diag_546_test.go:267: round=24 err=<nil> files(seg,ckpt,pack,spare,other)=[8 12 0 0 4] bytes=[303413 52362 0 0 64] measured=355839 cleaned=0 roots=[3 106 108 111 113 115 117 119 121 123 125] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=25 err=<nil> files(seg,ckpt,pack,spare,other)=[8 13 0 0 4] bytes=[313905 52422 0 0 64] measured=366391 cleaned=0 roots=[3 106 108 111 113 115 117 119 121 123 125] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=129
+    diag_546_test.go:267: round=26 err=<nil> files(seg,ckpt,pack,spare,other)=[9 13 0 0 4] bytes=[324455 60168 0 0 64] measured=384687 cleaned=0 roots=[3 106 108 111 113 115 117 119 121 123 125 127] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:267: round=27 err=<nil> files(seg,ckpt,pack,spare,other)=[9 14 0 0 4] bytes=[334915 60228 0 0 64] measured=395240 cleaned=0 roots=[3 106 108 111 113 115 117 119 121 123 125 127] eligible=[{{false 1} 33006 0}]
+    diag_546_test.go:225: checkpoint copied index=131
+    diag_546_test.go:267: round=28 err=<nil> files(seg,ckpt,pack,spare,other)=[9 14 0 0 4] bytes=[345403 68492 0 0 64] measured=413926 cleaned=0 roots=[129] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:267: round=29 err=<nil> files(seg,ckpt,pack,spare,other)=[9 2 0 0 4] bytes=[355858 16130 0 0 64] measured=372052 cleaned=0 roots=[129] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:267: round=30 err=<nil> files(seg,ckpt,pack,spare,other)=[10 3 0 0 4] bytes=[366446 16191 0 0 64] measured=382701 cleaned=0 roots=[129] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:225: checkpoint copied index=134
+    diag_546_test.go:267: round=31 err=<nil> files(seg,ckpt,pack,spare,other)=[10 3 0 0 4] bytes=[376901 25232 0 0 64] measured=402197 cleaned=0 roots=[129 131] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:267: round=32 err=<nil> files(seg,ckpt,pack,spare,other)=[10 4 0 0 4] bytes=[387394 25293 0 0 64] measured=412751 cleaned=0 roots=[129 131] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:225: checkpoint copied index=136
+    diag_546_test.go:267: round=33 err=<nil> files(seg,ckpt,pack,spare,other)=[10 4 0 0 4] bytes=[397849 25293 0 0 64] measured=423206 cleaned=0 roots=[129 131 134] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:267: round=34 err=<nil> files(seg,ckpt,pack,spare,other)=[11 5 0 0 4] bytes=[408437 34913 0 0 64] measured=443414 cleaned=0 roots=[129 131 134] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:225: checkpoint copied index=138
+    diag_546_test.go:267: round=35 err=<nil> files(seg,ckpt,pack,spare,other)=[11 5 0 0 4] bytes=[418859 44990 0 0 64] measured=463913 cleaned=0 roots=[129 131 134 136] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:267: round=36 err=<nil> files(seg,ckpt,pack,spare,other)=[11 6 0 0 4] bytes=[429352 45051 0 0 64] measured=474467 cleaned=0 roots=[129 131 134 136] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:225: checkpoint copied index=140
+    diag_546_test.go:267: round=37 err=<nil> files(seg,ckpt,pack,spare,other)=[11 6 0 0 4] bytes=[439807 55646 0 0 64] measured=495517 cleaned=0 roots=[129 131 134 136 138] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:267: round=38 err=<nil> files(seg,ckpt,pack,spare,other)=[12 6 0 0 4] bytes=[450262 55646 0 0 64] measured=505972 cleaned=0 roots=[129 131 134 136 138] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:225: checkpoint copied index=143
+    diag_546_test.go:267: round=39 err=<nil> files(seg,ckpt,pack,spare,other)=[12 7 0 0 4] bytes=[460883 67079 0 0 64] measured=528026 cleaned=0 roots=[129 131 134 136 138 140] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:267: round=40 err=<nil> files(seg,ckpt,pack,spare,other)=[12 7 0 0 4] bytes=[471376 67079 0 0 64] measured=538519 cleaned=0 roots=[129 131 134 136 138 140 143] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:267: round=41 err=<nil> files(seg,ckpt,pack,spare,other)=[12 8 0 0 4] bytes=[481831 67140 0 0 64] measured=549035 cleaned=0 roots=[129 131 134 136 138 140 143] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:225: checkpoint copied index=146
+    diag_546_test.go:267: round=42 err=<nil> files(seg,ckpt,pack,spare,other)=[13 8 0 0 4] bytes=[492381 79289 0 0 64] measured=571734 cleaned=0 roots=[129 131 134 136 138 140 143] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:267: round=43 err=<nil> files(seg,ckpt,pack,spare,other)=[13 8 0 0 4] bytes=[502874 79289 0 0 64] measured=582227 cleaned=0 roots=[129 131 134 136 138 140 143] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:267: round=44 err=<nil> files(seg,ckpt,pack,spare,other)=[13 9 0 0 4] bytes=[513329 79350 0 0 64] measured=592743 cleaned=0 roots=[129 131 134 136 138 140 143 146] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:267: round=45 err=<nil> files(seg,ckpt,pack,spare,other)=[13 9 0 0 4] bytes=[523784 79350 0 0 64] measured=603198 cleaned=0 roots=[129 131 134 136 138 140 143 146] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0}]
+    diag_546_test.go:225: checkpoint copied index=149
+    diag_546_test.go:267: round=46 err=<nil> files(seg,ckpt,pack,spare,other)=[14 2 1 0 4] bytes=[534372 25197 86016 0 64] measured=559633 cleaned=0 roots=[146] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0} {{false 8} 41988 0} {{false 9} 41953 0} {{false 10} 41991 0} {{false 11} 41991 0}]
+    diag_546_test.go:267: round=47 err=<nil> files(seg,ckpt,pack,spare,other)=[14 3 1 0 4] bytes=[544827 25258 438716 0 64] measured=570149 cleaned=0 roots=[146 149] eligible=[{{false 1} 33006 0} {{false 2} 39506 0} {{false 3} 41909 0} {{false 4} 41957 0} {{false 5} 41987 0} {{false 6} 41987 0} {{false 7} 41987 0} {{false 8} 41988 0} {{false 9} 41953 0} {{false 10} 41991 0} {{false 11} 41991 0}]
+    diag_546_test.go:225: checkpoint copied index=152
+    node.go:812: cleaning below checkpoint 146: 11 files into a pack of 438716 bytes
+    diag_546_test.go:267: round=48 err=<nil> files(seg,ckpt,pack,spare,other)=[13 3 1 0 4] bytes=[522322 38961 438716 0 64] measured=594353 cleaned=438716 roots=[149] eligible=[{{false 12} 41991 0} {{true 0} 438716 430468}]
+    diag_546_test.go:283: first cleaned at round 48; cluster version=1
+    diag_546_test.go:290: round loop took 46.793357ms; refused=-1
+--- PASS: TestDiag546SharedValues (1.18s)
+    --- PASS: TestDiag546SharedValues/original-slow-log (1.18s)
+PASS
+ok  	github.com/djosh34/tigerstore/internal/node	3.876s

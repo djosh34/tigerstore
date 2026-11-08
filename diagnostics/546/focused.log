@@ -1,0 +1,29 @@
+=== RUN   TestDiag546FocusedSharedValues
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    node.go:812: cleaning below checkpoint 107: 1 files into a pack of 32826 bytes
+    diag_546_test.go:178: checkpoint=106 refs=101 unique=1 disk=117454 cleaned=32826
+--- PASS: TestDiag546FocusedSharedValues (1.50s)
+=== RUN   TestDiag546FocusedSharedValues
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    node.go:812: cleaning below checkpoint 107: 1 files into a pack of 32826 bytes
+    diag_546_test.go:178: checkpoint=106 refs=101 unique=1 disk=117349 cleaned=32826
+--- PASS: TestDiag546FocusedSharedValues (1.17s)
+=== RUN   TestDiag546FocusedSharedValues
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    node.go:812: cleaning below checkpoint 107: 1 files into a pack of 32826 bytes
+    diag_546_test.go:178: checkpoint=106 refs=101 unique=1 disk=117349 cleaned=32826
+--- PASS: TestDiag546FocusedSharedValues (1.54s)
+PASS
+ok  	github.com/djosh34/tigerstore/internal/node	4.225s

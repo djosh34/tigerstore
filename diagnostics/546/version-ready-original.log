@@ -1,0 +1,88 @@
+--- FAIL: TestSharedValues (1.53s)
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    clean_test.go:382: round 39: rpc error: code = ResourceExhausted desc = etcdserver: mvcc: database space exceeded
+--- FAIL: TestSharedValues (1.28s)
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    clean_test.go:382: round 40: rpc error: code = ResourceExhausted desc = etcdserver: mvcc: database space exceeded
+--- FAIL: TestSharedValues (1.34s)
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    clean_test.go:382: round 39: rpc error: code = ResourceExhausted desc = etcdserver: mvcc: database space exceeded
+--- FAIL: TestSharedValues (1.20s)
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    clean_test.go:382: round 40: rpc error: code = ResourceExhausted desc = etcdserver: mvcc: database space exceeded
+--- FAIL: TestSharedValues (1.23s)
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    clean_test.go:382: round 40: rpc error: code = ResourceExhausted desc = etcdserver: mvcc: database space exceeded
+--- FAIL: TestSharedValues (1.33s)
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    clean_test.go:382: round 41: rpc error: code = ResourceExhausted desc = etcdserver: mvcc: database space exceeded
+--- FAIL: TestSharedValues (1.73s)
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    clean_test.go:382: round 41: rpc error: code = ResourceExhausted desc = etcdserver: mvcc: database space exceeded
+--- FAIL: TestSharedValues (1.67s)
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    node.go:812: slow log sync: 77.434579ms
+    node.go:812: slow write to the log: 1 entries, 21 bytes in 77.751997ms
+    node.go:812: persist timing: entries=4..4 queued=2026-11-08T03:03:55.351282234Z end=2026-11-08T03:03:55.429455482Z total=78.173248ms queue=15.208µs append=2.292µs flush=22.542µs sync_queue=4.875µs sync=77.722038ms report=406.293µs
+    node.go:812: slow log sync: 57.622016ms
+    node.go:812: slow write to the log: 1 entries, 32796 bytes in 62.805282ms
+    node.go:812: persist timing: entries=5..5 queued=2026-11-08T03:03:55.430533486Z end=2026-11-08T03:03:55.49340131Z total=62.867824ms queue=9.958µs append=29.833µs flush=33µs sync_queue=5.05135ms sync=57.690808ms report=52.875µs
+    node.go:812: slow log sync: 71.842519ms
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 72.05327ms
+    node.go:812: slow write to the log: 1 entries, 24 bytes in 71.905978ms
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:55.493521435Z end=2026-11-08T03:03:55.565649914Z total=72.128478ms queue=35.875µs append=1.833µs flush=148.959µs sync_queue=14.959µs sync=71.886894ms report=39.958µs
+    node.go:812: persist timing: entries=6..6 queued=2026-11-08T03:03:55.493588435Z end=2026-11-08T03:03:55.565686372Z total=72.097937ms queue=129.209µs append=1.042µs flush=1.25µs sync_queue=3.167µs sync=71.886894ms report=76.375µs
+    node.go:812: slow write to the log: 0 entries, 0 bytes in 50.039325ms
+    node.go:812: slow write to the log: 1 entries, 24 bytes in 50.050201ms
+    node.go:812: persist timing: entries=0..0 queued=2026-11-08T03:03:55.565717414Z end=2026-11-08T03:03:55.615902615Z total=50.1852ms queue=5µs append=1.375µs flush=11.833µs sync_queue=49.708991ms sync=316.751µs report=141.25µs
+    node.go:812: persist timing: entries=7..7 queued=2026-11-08T03:03:55.565806456Z end=2026-11-08T03:03:55.61594049Z total=50.133992ms queue=16.291µs append=1.084µs flush=4.75µs sync_queue=49.616032ms sync=316.751µs report=179.084µs
+    clean_test.go:382: round 39: rpc error: code = ResourceExhausted desc = etcdserver: mvcc: database space exceeded
+--- FAIL: TestSharedValues (1.54s)
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    clean_test.go:382: round 39: rpc error: code = ResourceExhausted desc = etcdserver: mvcc: database space exceeded
+--- FAIL: TestSharedValues (1.50s)
+    node.go:812: recovering the log
+    node.go:812: recovered the log up to entry 0: last entry 0 at term 0; term 1, vote 0, commit 1; voters [1]
+    node.go:812: leader is 0 at term 1
+    node.go:812: leader is 0 at term 2
+    node.go:812: leader is 1 at term 2
+    clean_test.go:382: round 39: rpc error: code = ResourceExhausted desc = etcdserver: mvcc: database space exceeded
+FAIL
+FAIL	github.com/djosh34/tigerstore/internal/node	27.758s
+FAIL

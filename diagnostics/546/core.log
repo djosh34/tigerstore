@@ -1,0 +1,6 @@
+=== RUN   TestDiag546CutWaitingWithoutWrites
+    diag_546_test.go:25: before release: unwritten=18 applied=102 sinceCkpt=87360 cutDue=true
+    diag_546_test.go:30: after release without requests: last=102 applied=102 unwritten=0 cutDue=false
+--- PASS: TestDiag546CutWaitingWithoutWrites (0.01s)
+PASS
+ok  	github.com/djosh34/tigerstore/internal/core	0.013s
