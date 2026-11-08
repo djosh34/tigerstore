@@ -531,7 +531,7 @@ func (c *conn) headerFragment(b []byte, last bool) error {
 	} else {
 		// The block may have changed the tables, which other blocks'
 		// indexes name.
-		clear(c.blocks)
+		c.blocks = nil
 	}
 	if !h.bad {
 		return c.onHeaders(h)

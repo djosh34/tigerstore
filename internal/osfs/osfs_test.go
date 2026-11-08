@@ -141,3 +141,48 @@ func TestDropCacheReportsHeldPage(t *testing.T) {
 		t.Fatalf("drop once the pipe let the page go = %v", err)
 	}
 }
+
+// TestAllocatedSegments checks that a reserved file reads as zeros of its
+// size, and that a log whose segments had room reserved, and so end in
+// zeros, recovers every entry.
+func TestAllocatedSegments(t *testing.T) {
+	dir, err := osfs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := dir.Create("reserved")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Allocate(1 << 20); err != nil {
+		t.Fatal(err)
+	}
+	b, err := f.ReadAll()
+	if err != nil || len(b) != 1<<20 || !bytes.Equal(b, make([]byte, 1<<20)) {
+		t.Fatalf("a reserved file read %d bytes, err %v", len(b), err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	w, _, err := wal.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.SetSegmentBytes(4 << 10)
+	for i := uint64(1); i <= 200; i++ {
+		w.Append(&wal.HardState{Term: 1, Commit: i}, []*raftpb.Entry{{Term: new(uint64(1)), Index: new(i), Data: []byte("value")}})
+		if err := w.Sync(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, rec, err := wal.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Last != 200 || rec.HardState.Commit != 200 {
+		t.Fatalf("recovered entries to %d, commit %d", rec.Last, rec.HardState.Commit)
+	}
+}

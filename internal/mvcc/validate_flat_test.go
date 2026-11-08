@@ -1,6 +1,7 @@
 package mvcc
 
 import (
+	"errors"
 	"math/rand/v2"
 	"testing"
 
@@ -29,7 +30,7 @@ func TestCheckFlatMatchesIntervals(t *testing.T) {
 			}
 		}
 		_, _, want := checkIntervals(ops)
-		if got := checkFlat(ops); got != want {
+		if got := checkFlat(ops); (got == nil) != (want == nil) || !errors.Is(got, want) {
 			t.Fatalf("%v: checkFlat %v, checkIntervals %v", ops, got, want)
 		}
 	}

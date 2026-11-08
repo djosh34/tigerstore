@@ -132,6 +132,26 @@ type file struct {
 	noSync bool
 }
 
+// Allocate reserves size bytes with fallocate, which also sets the size.
+// A file system that cannot reserve room leaves the file as it is.
+func (f file) Allocate(size int64) error {
+	rc, err := f.SyscallConn()
+	if err != nil {
+		return err
+	}
+	cerr := rc.Control(func(fd uintptr) {
+		for {
+			if err = unix.Fallocate(int(fd), 0, 0, size); !errors.Is(err, unix.EINTR) {
+				return
+			}
+		}
+	})
+	if errors.Is(err, unix.EOPNOTSUPP) {
+		err = nil
+	}
+	return errors.Join(cerr, err)
+}
+
 // Sync makes the content durable with fdatasync, which also persists a
 // changed size but not times: on blocks that are allocated and written
 // already, it commits nothing to the journal of ext4.

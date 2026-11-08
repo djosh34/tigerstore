@@ -851,6 +851,14 @@ func (h *Handle) Sync() error {
 	return nil
 }
 
+// Allocate does nothing, as in simfs.
+func (h *Handle) Allocate(int64) error {
+	if h.closed {
+		return errClosed
+	}
+	return nil
+}
+
 // DropCache drops the file's clean pages, as fadvise(POSIX_FADV_DONTNEED)
 // does: a page that no write since the last sync touched reads what the
 // disk holds, zeros past its end, so bytes that a failed sync left there
