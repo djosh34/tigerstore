@@ -2,6 +2,7 @@ package mvcc
 
 import (
 	"cmp"
+	"fmt"
 	"slices"
 	"sort"
 
@@ -72,8 +73,11 @@ func (h *history) revision(pos int64) int64 {
 // rebuild logs every version of the index from revision from on, as Load
 // finds them, in revision order. A version a compaction removed leaves an
 // empty slot where a later one of its revision follows, so that each
-// change's slot stays at its sub-revision (Changed).
-func (h *history) rebuild(s *Store, from int64) {
+// change's slot stays at its sub-revision (Changed). Only a key changed
+// twice in one write leaves such a gap, behind its kept change, so a
+// checkpoint whose gaps need more empty slots than it has versions is
+// malformed.
+func (h *history) rebuild(s *Store, from int64) error {
 	type logged struct {
 		mod rev
 		k   *keyIndex
@@ -95,9 +99,13 @@ func (h *history) rebuild(s *Store, from int64) {
 	})
 	*h = history{}
 	main, sub := int64(0), int64(0)
+	empty := int64(0)
 	for _, l := range all {
 		if l.mod.main != main {
 			main, sub = l.mod.main, 0
+		}
+		if empty += l.mod.sub - sub; empty > int64(len(all)) {
+			return fmt.Errorf("%w: revision %d has a change at sub-revision %d after %d", ErrBadCheckpoint, main, l.mod.sub, sub)
 		}
 		for ; sub < l.mod.sub; sub++ {
 			h.add(nil, main)
@@ -105,6 +113,7 @@ func (h *history) rebuild(s *Store, from int64) {
 		h.add(l.k, main)
 		sub++
 	}
+	return nil
 }
 
 // HistoryFrom is the position of the first change at revision rev or

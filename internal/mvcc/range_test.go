@@ -517,3 +517,18 @@ func TestReadBeforeAKeyChangedTwice(t *testing.T) {
 		}
 	}
 }
+
+// TestRebuildRefusesAHugeSubRevision loads a store whose one version has
+// a sub-revision of 2^40, as a damaged checkpoint could: the history must
+// refuse it as malformed rather than fill 2^40 empty slots.
+func TestRebuildRefusesAHugeSubRevision(t *testing.T) {
+	s := New(&Heap{})
+	put(t, s, "a", "v")
+	s.keys.Ascend(func(k *keyIndex) bool {
+		k.vers[0].mod.sub = 1 << 40
+		return false
+	})
+	if err := s.hist.rebuild(s, 0); !errors.Is(err, ErrBadCheckpoint) {
+		t.Fatalf("a rebuild over a sub-revision of 2^40: %v, want ErrBadCheckpoint", err)
+	}
+}

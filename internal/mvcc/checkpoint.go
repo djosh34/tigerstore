@@ -153,8 +153,7 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 			return minRef, err
 		}
 		if k == nil {
-			s.hist.rebuild(s, max(compactRev, 0))
-			return minRef, nil
+			return minRef, s.hist.rebuild(s, max(compactRev, 0))
 		}
 		if prev != nil && string(prev) >= string(k.key) {
 			return 0, fmt.Errorf("%w: key %q after %q", ErrBadCheckpoint, k.key, prev)
