@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Takes CPU profiles of all three nodes while a workload runs at max on the
 # disk, as the bench runs it: back to back 5 s profiles of every node until
-# the generator ends, and one heap profile of each node at the end.
+# the generator ends, a 2 s execution trace of each node early on, and one
+# heap profile of each node at the end.
 #
 #   bench/profile-disk.sh <tigerstore binary> <benchmark> <out dir>
 #
@@ -48,6 +49,14 @@ snap() {
 i=0
 while kill -0 "$gen" 2>/dev/null; do
 	if [ "$i" = 2 ]; then snap start; fi
+	if [ "$i" = 4 ]; then
+		# An execution trace of every node: what each goroutine waits on.
+		for ep in "${eps[@]}"; do
+			get "$ep" "trace?seconds=2" "$out/$bench-trace-${ep##*:}.out" &
+		done
+		wait "${!}"
+		sleep 2.5
+	fi
 	i=$((i + 1))
 	curls=()
 	for ep in "${eps[@]}"; do
