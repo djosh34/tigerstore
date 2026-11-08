@@ -537,6 +537,7 @@ func TestRebuildRefusesAHugeSubRevision(t *testing.T) {
 		}},
 		{"revision past the store's", func(s *Store, v []*version) { v[1].mod.main = s.rev + 1 }},
 		{"revisions far apart", func(s *Store, v []*version) { s.rev, v[1].mod.main = 1<<40, 1<<40 }},
+		{"store revision far past its versions", func(s *Store, _ []*version) { s.rev = 1 << 24 }},
 		{"two sub-revisions at the largest int64", func(_ *Store, v []*version) {
 			v[0].mod, v[1].mod = rev{main: 2, sub: math.MaxInt64}, rev{main: 2, sub: math.MaxInt64}
 		}},
@@ -609,9 +610,10 @@ func TestCheckpointOfAKeyChangedThrice(t *testing.T) {
 
 // TestLoadRefusesRevisionsWithoutRoom loads empty checkpoints at the
 // largest int64 revision and at 2^62, too near it for the writes after the
-// load, and ones compacted below -1, a store's "never", which lets a later
-// compaction wrap: all are malformed. A store just below 2^62, and one
-// never compacted, at -1, load.
+// load, ones compacted below -1, a store's "never", which lets a later
+// compaction wrap, and one at revision 5 never compacted, which would
+// hold versions: all are malformed. An empty store just below 2^62 and
+// compacted there, and a new one at revision 1, never compacted, load.
 func TestLoadRefusesRevisionsWithoutRoom(t *testing.T) {
 	empty := []byte{0}
 	for _, c := range []struct {
@@ -620,10 +622,11 @@ func TestLoadRefusesRevisionsWithoutRoom(t *testing.T) {
 	}{
 		{math.MaxInt64, 0, false},
 		{maxLoadRev, 0, false},
-		{maxLoadRev - 1, 0, true},
+		{maxLoadRev - 1, maxLoadRev - 1, true},
 		{5, -2, false},
 		{5, math.MinInt64, false},
-		{5, -1, true},
+		{1, -1, true},
+		{5, -1, false},
 	} {
 		_, err := New(&Heap{}).Load(bufio.NewReader(bytes.NewReader(empty)), c.rev, c.compact)
 		if c.ok != (err == nil) || (err != nil && !errors.Is(err, ErrBadCheckpoint)) {

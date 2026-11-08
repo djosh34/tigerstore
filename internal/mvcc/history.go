@@ -106,8 +106,13 @@ func (h *history) rebuild(s *Store, from int64) error {
 		return cmp.Compare(a.mod.sub, b.mod.sub)
 	})
 	*h = history{}
-	if n := len(all); n > 0 && all[n-1].mod.main-all[0].mod.main > int64(n) {
-		return fmt.Errorf("%w: %d versions span revisions %d to %d", ErrBadCheckpoint, n, all[0].mod.main, all[n-1].mod.main)
+	// Every revision after the compaction, and after revision 1, where a
+	// store starts with no change, keeps a change: so a store has at least
+	// as many versions as revisions from there up to its own. The history
+	// then spans no more revisions than versions, also once the next write
+	// extends it to the store's revision.
+	if span := s.rev - max(from, 1); span > int64(len(all)) {
+		return fmt.Errorf("%w: %d versions for revisions %d to %d", ErrBadCheckpoint, len(all), max(from, 1), s.rev)
 	}
 	var subs []int64
 	main, sub := int64(0), int64(0)
