@@ -183,8 +183,12 @@ func TestServeKeepsItsFiles(t *testing.T) {
 			t.Fatalf("the node stopped: %v", <-ran)
 		}
 	}
-	// Let the last checkpoint's root become durable.
+	// Let the last checkpoint's root become durable, then apply one
+	// entry past it, so a root at the applied index is a newer one.
 	time.Sleep(500 * time.Millisecond)
+	if do(&pb.PutRequest{Key: []byte("after"), Value: []byte("v")}) != nil {
+		t.Fatalf("the node stopped: %v", <-ran)
+	}
 	cancel()
 	if err := <-ran; err != nil {
 		t.Fatal(err)
@@ -204,6 +208,9 @@ func TestServeKeepsItsFiles(t *testing.T) {
 	}
 	if n.log.w.Has(1) {
 		t.Fatal("setup: entry 1 is still on disk")
+	}
+	if ckpt.Index >= n.core.Applied() {
+		t.Fatalf("setup: the checkpoint at %d is at the applied index %d", ckpt.Index, n.core.Applied())
 	}
 	// The test stops the disk goroutines before their directory goes.
 	pctx, pcancel := context.WithCancel(context.Background())

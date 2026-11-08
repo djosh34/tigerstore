@@ -545,9 +545,9 @@ type Node struct {
 	nextReadCtx  uint64
 
 	// cutDue makes the next applied entry cut a checkpoint, once no copy
-	// is under way: a compaction applied. physical are the answers of
-	// physical compactions that wait for a durable checkpoint, oldest
-	// first.
+	// is under way: enough entries or a compaction applied since the last
+	// cut (maybeCheckpoint). physical are the answers of physical
+	// compactions that wait for a durable checkpoint, oldest first.
 	cutDue   bool
 	physical []heldCompact
 
@@ -556,8 +556,11 @@ type Node struct {
 	// copy is the checkpoint being copied, last the newest one finished,
 	// sinceCkpt the entry bytes applied since the last cut, and base the
 	// size the next cut is measured against (maybeCheckpoint).
-	copy      *copying
-	last      lastCkpt
+	copy *copying
+	last lastCkpt
+	// unwritten is the newest checkpoint finished whose write the driver
+	// has not reported yet, or 0.
+	unwritten uint64
 	sinceCkpt int64
 	base      int64
 	// unpersisted is the entry bytes on their way to the disk, and
@@ -659,9 +662,13 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Forget what the replay wrote: its entries never enter memory, so
-	// none of their values go into the cache.
-	n.fillCache(n.applied)
+	// Only now does the store keep the values that puts write, for the
+	// cache: the replay's entries never enter memory, so none of their
+	// values go into it, and a record of each would only take memory
+	// (#433).
+	if n.cfg.MemoryBytes > 0 {
+		n.kv.TrackWritten()
+	}
 	if hs.Commit > 0 {
 		snap := &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(hs.Commit), Term: new(term), ConfState: st.confAt(hs.Commit)}}
 		if err := st.reset(snap); err != nil {
@@ -835,7 +842,6 @@ func (n *Node) setState(st *State) {
 	}
 	n.state, n.kv = st, st.Store()
 	if n.cfg.MemoryBytes > 0 {
-		n.kv.TrackWritten()
 		n.kv.Replaced = n.cache.drop
 	}
 }
@@ -879,8 +885,8 @@ func (n *Node) Applied() uint64 { return n.applied }
 // Hash is the hash of the replicated state: the index and the leases.
 func (n *Node) Hash() uint64 { return n.state.Hash() }
 
-// EntryBytes is the data bytes of the Raft entries the node holds in
-// memory, those on their way to the disk included.
+// EntryBytes is the bytes of the Raft entries the node holds in memory
+// (storage.total), and the data of those on their way to the disk.
 func (n *Node) EntryBytes() int64 { return n.storage.total() + n.unpersisted }
 
 // FirstIndex is the first entry the node holds in memory.
@@ -1820,7 +1826,7 @@ func (n *Node) Process() (Effects, error) {
 		n.runApply()
 		n.requestReads()
 		n.drainReady()
-		n.cutForCompacts()
+		n.cutWaiting()
 		// A write that a read queued, such as a Downgrade ENABLE once its
 		// read index applied, goes out in the same turn.
 		if len(n.proposals) > 0 && (!n.isLeader || len(n.own) < ownDepth) {

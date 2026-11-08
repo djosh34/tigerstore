@@ -32,7 +32,7 @@ type writer struct {
 }
 
 func (s *Store) start() *writer {
-	s.changes = s.changes[:0]
+	s.resetChanges()
 	s.fills = nil
 	return &writer{s: s, begin: s.rev}
 }

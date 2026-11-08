@@ -39,7 +39,17 @@ def classify(result, progress):
         return
     groups = result.get("final_cgroups", [])
     ack = result.get("last_acknowledged", {})
-    if (len(groups) != 3 or not any(g["events"]["oom_kill"] for g in groups)
+    oom = any(g["events"]["oom_kill"] for g in groups)
+    # A member at its memory.max can also reclaim instead of being killed:
+    # etcd then reads its database pages back from disk until a write
+    # times out (#419). Every member must have hit the limit, and the
+    # driver must have stopped on that timeout, for etcd in max mode
+    # only: tigerstore keeps to its memory budget, so for it this is a
+    # failure.
+    reclaim = (result["kind"] == "etcd" and result["mode"] == "max" and len(groups) == 3
+               and all(g["events"].get("max", 0) > 0 for g in groups)
+               and bool(progress) and progress[-1].get("failure") == "etcdserver: request timed out")
+    if (len(groups) != 3 or not (oom or reclaim)
             or ack.get("objects", 0) <= 0 or ack.get("live_bytes", 0) <= 0
             or ack.get("phase") != "preload" or result["kills"]
             or "mixed_start" in result or "checker_exit" in result):
@@ -50,8 +60,10 @@ def classify(result, progress):
         if failure != "driver exited 1; see progress.jsonl and driver.log" or not progress:
             return
         last = progress[-1]
-        if (last["phase"] != "preload-failed"
-                or not last.get("failure", "").startswith("rpc error: code = Unavailable desc = ")):
+        if last["phase"] != "preload-failed":
+            return
+        if not (last.get("failure", "").startswith("rpc error: code = Unavailable desc = ")
+                or (reclaim and not oom)):
             return
     if any(row["phase"] not in ("preload", "preload-failed") for row in progress):
         return
@@ -63,7 +75,8 @@ def classify(result, progress):
         outcome = "reference-preload-limit"
     else:
         return
-    result.update(outcome=outcome, limit="cgroup-oom", termination=failure, failure=None)
+    limit = "cgroup-oom" if oom else "cgroup-reclaim"
+    result.update(outcome=outcome, limit=limit, termination=failure, failure=None)
 
 
 def main():

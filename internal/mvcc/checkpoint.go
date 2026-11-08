@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 // A checkpoint holds the index as it was at one revision, copied in
@@ -29,9 +31,13 @@ import (
 // frozen is a checkpoint copy under way.
 type frozen struct {
 	rev int64
-	// next is the first key not copied yet; nil before the first chunk.
-	next    []byte
-	started bool
+	// next is the key the next chunk starts at, nil before the first
+	// chunk. keyOff and ver are how far the copy of next got: the bytes
+	// of its key, and its versions, both 0 if it is not begun. A chunk can
+	// stop inside a key's bytes or its versions (#435).
+	next        []byte
+	keyOff, ver int
+	started     bool
 	// compact is the newest compaction that waits for the copy, or 0.
 	compact int64
 }
@@ -41,27 +47,54 @@ func (s *Store) Freeze() { s.frozen = &frozen{rev: s.rev} }
 
 // CopyFrozen appends the next keys of the frozen index to b until b holds
 // at least limit bytes, and the lowest entry index that a value among
-// them is in, 0 for none. done is true once every key is out; then the
-// end mark is appended and the compactions that waited are done.
+// them is in, 0 for none. It stops inside a key's bytes or between two
+// of its versions, so a chunk passes limit by at most one version, one
+// byte of a key and the uvarints around a key. done is true once every
+// key is out; then the end mark is appended and the compactions that
+// waited are done.
 func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done bool) {
 	f := s.frozen
-	more := false
+	more, first := false, true
 	copyKey := func(k *keyIndex) bool {
-		if len(b) >= limit {
-			f.next, more = k.key, true
-			return false
+		keyOff, from := 0, 0
+		if first {
+			// The walk starts at the key the last chunk stopped in.
+			keyOff, from = f.keyOff, f.ver
+			f.keyOff, f.ver, first = 0, 0, false
 		}
-		n := 0
-		for n < len(k.vers) && k.vers[n].mod.main <= f.rev {
-			n++
-		}
+		// The versions at or below the frozen revision come first.
+		n := k.at(f.rev) + 1
 		if n == 0 {
 			return true
 		}
-		b = binary.AppendUvarint(b, uint64(len(k.key)))
-		b = append(b, k.key...)
-		b = binary.AppendUvarint(b, uint64(n))
-		for i := range n {
+		begun := keyOff > 0 || from > 0
+		if !begun && len(b) >= limit {
+			f.next, more = k.key, true
+			return false
+		}
+		if from == 0 {
+			if !begun {
+				b = binary.AppendUvarint(b, uint64(len(k.key)))
+			}
+			// At least one byte of the key goes, so that the chunk stops
+			// inside it, with its length written, even when the length
+			// filled the chunk.
+			take := len(k.key) - keyOff
+			if room := limit - len(b); take > room {
+				take = max(room, 1)
+			}
+			b = append(b, k.key[keyOff:keyOff+take]...)
+			if keyOff += take; keyOff < len(k.key) {
+				f.next, f.keyOff, more = k.key, keyOff, true
+				return false
+			}
+			b = binary.AppendUvarint(b, uint64(n))
+		}
+		for i := from; i < n; i++ {
+			if i > from && len(b) >= limit {
+				f.next, f.ver, more = k.key, i, true
+				return false
+			}
 			v := &k.vers[i]
 			b = binary.AppendVarint(b, v.mod.main)
 			b = binary.AppendVarint(b, v.mod.sub)
@@ -98,8 +131,11 @@ func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done b
 // ErrBadCheckpoint means that the keys of a checkpoint do not parse.
 var ErrBadCheckpoint = errors.New("mvcc: malformed checkpoint")
 
-// MaxKeyBytes bounds a key in a checkpoint; a request is smaller.
-const MaxKeyBytes = 4 << 20
+// MaxKeyBytes is the one bound on a key: a put refuses a longer one
+// (CheckPutOp), and a checkpoint's readers take every key up to it
+// (#438). A key comes in a Raft entry, so no request the node takes can
+// carry a longer one.
+const MaxKeyBytes = wal.MaxEntryBytes
 
 // Load reads the keys of a checkpoint, up to the end mark, into an empty
 // store and sets its revisions. It returns the lowest entry index that a
@@ -140,14 +176,27 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 }
 
 // WalkRefs calls fn for the value of every version in the keys of a
-// checkpoint, without building an index.
+// checkpoint, without building an index. It reads one version at a time
+// and skips the key's bytes, so it holds no key and no list of versions
+// (#435).
 func WalkRefs(r *bufio.Reader, fn func(Ref) error) error {
 	for {
-		k, err := readKey(r, -1)
-		if err != nil || k == nil {
+		n, err := readKeyHead(r)
+		if err != nil || n == 0 {
 			return err
 		}
-		for _, v := range k.vers {
+		if _, err := r.Discard(int(n)); err != nil {
+			return loadError(err)
+		}
+		count, err := readCount(r, -1, nil)
+		if err != nil {
+			return err
+		}
+		for range count {
+			v, err := readVersion(r)
+			if err != nil {
+				return err
+			}
 			if v.value.Len > 0 {
 				if err := fn(v.value); err != nil {
 					return err
@@ -160,52 +209,81 @@ func WalkRefs(r *bufio.Reader, fn func(Ref) error) error {
 // readKey reads one key of a checkpoint, or nil at the end mark. A key
 // has at most rev versions unless rev is negative.
 func readKey(r *bufio.Reader, rev int64) (*keyIndex, error) {
-	n, err := binary.ReadUvarint(r)
-	if err != nil {
-		return nil, loadError(err)
-	}
-	if n == 0 {
-		return nil, nil
-	}
-	if n > MaxKeyBytes {
-		return nil, fmt.Errorf("%w: key of %d bytes", ErrBadCheckpoint, n)
+	n, err := readKeyHead(r)
+	if err != nil || n == 0 {
+		return nil, err
 	}
 	k := &keyIndex{key: make([]byte, n)}
 	if _, err := io.ReadFull(r, k.key); err != nil {
 		return nil, loadError(err)
 	}
-	count, err := binary.ReadUvarint(r)
+	count, err := readCount(r, rev, k.key)
 	if err != nil {
-		return nil, loadError(err)
-	}
-	if count == 0 || (rev >= 0 && count > uint64(rev)) || count > 1<<32 {
-		return nil, fmt.Errorf("%w: %d versions of key %q", ErrBadCheckpoint, count, k.key)
+		return nil, err
 	}
 	k.vers = make([]version, 0, min(count, 1024))
 	for range count {
-		var v version
-		for _, x := range [...]*int64{&v.mod.main, &v.mod.sub, &v.create, &v.ver, &v.lease} {
-			if *x, err = binary.ReadVarint(r); err != nil {
-				return nil, loadError(err)
-			}
+		v, err := readVersion(r)
+		if err != nil {
+			return nil, err
 		}
-		var off, length uint64
-		for _, x := range [...]*uint64{&v.value.Index, &off, &length} {
-			if *x, err = binary.ReadUvarint(r); err != nil {
-				return nil, loadError(err)
-			}
-		}
-		var sum [4]byte
-		if _, err := io.ReadFull(r, sum[:]); err != nil {
-			return nil, loadError(err)
-		}
-		if off > 1<<32-1 || length > 1<<32-1 {
-			return nil, fmt.Errorf("%w: value at %d+%d", ErrBadCheckpoint, off, length)
-		}
-		v.value.Off, v.value.Len, v.value.Sum = uint32(off), uint32(length), binary.LittleEndian.Uint32(sum[:])
 		k.vers = append(k.vers, v)
 	}
 	return k, nil
+}
+
+// readKeyHead reads the length of the next key, 0 at the end mark, and
+// checks it against MaxKeyBytes.
+func readKeyHead(r *bufio.Reader) (uint64, error) {
+	n, err := binary.ReadUvarint(r)
+	if err != nil {
+		return 0, loadError(err)
+	}
+	if n > MaxKeyBytes {
+		return 0, fmt.Errorf("%w: key of %d bytes", ErrBadCheckpoint, n)
+	}
+	return n, nil
+}
+
+// readCount reads how many versions the key has: at least one, and at
+// most rev unless rev is negative.
+func readCount(r *bufio.Reader, rev int64, key []byte) (uint64, error) {
+	count, err := binary.ReadUvarint(r)
+	if err != nil {
+		return 0, loadError(err)
+	}
+	if count == 0 || (rev >= 0 && count > uint64(rev)) || count > 1<<32 {
+		return 0, fmt.Errorf("%w: %d versions of key %q", ErrBadCheckpoint, count, key)
+	}
+	return count, nil
+}
+
+// readVersion reads one version of a key.
+func readVersion(r *bufio.Reader) (version, error) {
+	var v version
+	var err error
+	for _, x := range [...]*int64{&v.mod.main, &v.mod.sub, &v.create, &v.ver, &v.lease} {
+		if *x, err = binary.ReadVarint(r); err != nil {
+			return v, loadError(err)
+		}
+	}
+	var off, length uint64
+	for _, x := range [...]*uint64{&v.value.Index, &off, &length} {
+		if *x, err = binary.ReadUvarint(r); err != nil {
+			return v, loadError(err)
+		}
+	}
+	// Peek reads the checksum in place, so a version allocates nothing.
+	sum, err := r.Peek(4)
+	if err != nil {
+		return v, loadError(err)
+	}
+	if off > 1<<32-1 || length > 1<<32-1 {
+		return v, fmt.Errorf("%w: value at %d+%d", ErrBadCheckpoint, off, length)
+	}
+	v.value.Off, v.value.Len, v.value.Sum = uint32(off), uint32(length), binary.LittleEndian.Uint32(sum)
+	_, err = r.Discard(4)
+	return v, err
 }
 
 func loadError(err error) error {

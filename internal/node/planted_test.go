@@ -22,6 +22,7 @@ func TestPlanted(t *testing.T) {
 		caught error
 	}{
 		"B13": {slowWatcherIsCut, errSlowWatcher},
+		"B25": {damagedValueIsRefused, errDamagedRead},
 		"B26": {followerRetriesFetch, errFollowerStopped},
 		"B29": {cleanSeed1, errLostValue},
 		"B30": {cleanSeed1, errLostValue},

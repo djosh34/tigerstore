@@ -19,10 +19,14 @@ import (
 // The simulator runs design E's steps with tiny limits, so that every
 // seed cuts checkpoints, removes segments, reads values from disk and
 // sends snapshots: a window of a few entries, a checkpoint every few
-// kilobytes of log, and 8 KiB segments.
+// kilobytes of log, and 8 KiB segments. The window counts what an entry
+// holds besides its data too: two small entries, and the leader keeps four
+// for a follower behind. A window that holds no entry sends every follower
+// that is one entry behind a snapshot, and one that installs snapshots on a
+// slow disk never catches up.
 func tinyLimits(cfg *core.Config) {
-	cfg.WindowBytes = 16
-	cfg.WindowMaxBytes = 32
+	cfg.WindowBytes = 2 * (16 + core.EntryOverhead)
+	cfg.WindowMaxBytes = 4 * (16 + core.EntryOverhead)
 	cfg.UnappliedBytes = 16 << 10
 	cfg.CheckpointBytes = 256
 	cfg.CheckpointRatio = 2

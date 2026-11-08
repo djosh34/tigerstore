@@ -1198,7 +1198,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			toReader, read = n.readQ, reads[0]
 		}
 		var paced <-chan time.Time
-		if n.core.Copying() && len(chunks) == 0 {
+		switch {
+		case n.core.CutWaits() && len(chunks) == 0:
+			// The next cut waits for this copy: its next part goes as
+			// soon as the writer took the last.
+			paced = copyNow
+		case n.core.Copying() && len(chunks) == 0:
 			if pace == nil {
 				pace = time.NewTimer(checkpointPace)
 			}
@@ -2086,6 +2091,14 @@ func (n *Node) staged(stage string) error {
 // checkpointPace is how often the committer copies the next part of a
 // checkpoint: with 32 KiB parts, about 32 MB/s.
 const checkpointPace = time.Millisecond
+
+// copyNow is always ready: the committer copies the next part of a
+// checkpoint at once.
+var copyNow = func() <-chan time.Time {
+	c := make(chan time.Time)
+	close(c)
+	return c
+}()
 
 // checkpointSyncBytes is how much of a checkpoint the writer writes
 // between syncs.

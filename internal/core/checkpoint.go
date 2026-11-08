@@ -343,6 +343,9 @@ type copying struct {
 	crc         uint32
 	size        int64
 	minRef      uint64
+	// head is the part of the header not handed out yet: it goes in
+	// pieces, as the keys do (#434).
+	head []byte
 }
 
 // lastCkpt is the newest checkpoint finished: its index, size, the lowest
@@ -354,23 +357,23 @@ type lastCkpt struct {
 	base   int64
 }
 
-// maybeCheckpoint runs after each applied entry. It cuts a checkpoint
-// once the entries applied since the last one pass CheckpointBytes and
-// CheckpointRatio times the base: the size of the newest checkpoint
-// finished when the last one was cut. Every node knows that size, however
-// far its copy got, so every node cuts at the same index; a copy still
-// under way then is finished at once. A compaction also cuts one
-// (cutDue), but only once no copy is under way, so a compaction during a
-// copy cuts at the first entry after it, where nodes may differ.
+// maybeCheckpoint runs after each applied entry. A cut is due once the
+// entries applied since the last one pass CheckpointBytes and
+// CheckpointRatio times the base, the size of the newest checkpoint
+// finished when the last one was cut, or once a compaction applied. It
+// waits for the checkpoint before: for its copy, which the driver paces
+// by its disk, and for the driver to report it written, so that its root
+// counts (CheckpointWritten). Then it cuts at the next applied entry: a
+// cut never hands out the rest of a copy at once (#434). Nodes copy and
+// write at their own speed, so they may cut at different indexes.
 func (n *Node) maybeCheckpoint(index, term uint64) {
-	full := n.sinceCkpt >= max(n.cfg.CheckpointBytes, n.cfg.CheckpointRatio*n.base)
-	if !full && (!n.cutDue || n.copy != nil) {
+	if n.sinceCkpt >= max(n.cfg.CheckpointBytes, n.cfg.CheckpointRatio*n.base) {
+		n.cutDue = true
+	}
+	if !n.cutDue || n.copy != nil || n.unwritten != 0 {
 		return
 	}
 	n.cutDue = false
-	if n.copy != nil {
-		n.copyChunk(-1)
-	}
 	if planted.On("B21") && n.rn != nil {
 		// Planted: the checkpoint names the committed index, not the
 		// applied one.
@@ -384,10 +387,12 @@ func (n *Node) maybeCheckpoint(index, term uint64) {
 		n.fail(err)
 		return
 	}
-	n.copy = &copying{index: index, term: term, crc: crc32.Update(0, castagnoli, data), size: int64(len(data))}
+	// The header is the leases and auth at the cut, about 8 bytes a
+	// lease; it goes out in pieces before the keys.
+	n.copy = &copying{index: index, term: term, head: data}
 	n.kv.Freeze()
 	n.sinceCkpt = 0
-	n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{Index: index, Data: data})
+	n.copyChunk(n.cfg.CheckpointChunk)
 }
 
 // header is the checkpoint header of the state, but for its base.
@@ -410,36 +415,41 @@ func (st *State) header(index, term uint64) *ckptHeader {
 	return h
 }
 
-// copyChunk copies about limit bytes more of the checkpoint under way, or
-// all of it if limit is negative.
+// copyChunk copies about limit bytes more of the checkpoint under way:
+// of its header, then of its keys.
 func (n *Node) copyChunk(limit int) {
 	c := n.copy
-	for {
-		max := limit
-		if limit < 0 {
-			max = 1 << 20
-		}
-		data, minRef, done := n.kv.CopyFrozen(make([]byte, 0, max+1024), max)
+	if len(c.head) > 0 {
+		k := min(limit, len(c.head))
+		data := c.head[:k:k]
+		c.head = c.head[k:]
 		c.crc = crc32.Update(c.crc, castagnoli, data)
-		c.size += int64(len(data))
-		if minRef != 0 && (c.minRef == 0 || minRef < c.minRef) {
-			c.minRef = minRef
-		}
-		if done {
-			data = binary.LittleEndian.AppendUint32(data, c.crc)
-			c.size += 4
-			n.last = lastCkpt{index: c.index, size: c.size, minRef: c.minRef}
-			n.copy = nil
-		}
-		n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{Index: c.index, Data: data, Done: done})
-		if done || limit >= 0 {
-			return
-		}
+		c.size += int64(k)
+		n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{Index: c.index, Data: data})
+		return
 	}
+	data, minRef, done := n.kv.CopyFrozen(make([]byte, 0, limit+1024), limit)
+	c.crc = crc32.Update(c.crc, castagnoli, data)
+	c.size += int64(len(data))
+	if minRef != 0 && (c.minRef == 0 || minRef < c.minRef) {
+		c.minRef = minRef
+	}
+	if done {
+		data = binary.LittleEndian.AppendUint32(data, c.crc)
+		c.size += 4
+		n.last = lastCkpt{index: c.index, size: c.size, minRef: c.minRef}
+		n.copy, n.unwritten = nil, c.index
+	}
+	n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{Index: c.index, Data: data, Done: done})
 }
 
 // Copying reports whether a checkpoint is being copied out of the index.
 func (n *Node) Copying() bool { return n.copy != nil }
+
+// CutWaits reports whether the next cut waits for the copy under way. The
+// driver then copies the next part as soon as its disk took the last one,
+// without its usual pause.
+func (n *Node) CutWaits() bool { return n.copy != nil && n.cutDue }
 
 // CopyCheckpoint copies the next part of the checkpoint under way, about
 // CheckpointChunk bytes, for the next Effects. The driver paces it: the
@@ -458,6 +468,9 @@ func (n *Node) CheckpointWritten(index uint64, err error) {
 	if err != nil {
 		n.fail(fmt.Errorf("core: write the checkpoint at %d: %w", index, err))
 		return
+	}
+	if index == n.unwritten {
+		n.unwritten = 0
 	}
 	if n.err != nil || index != n.last.index || index <= n.storage.ckpt.Index {
 		// An older checkpoint than the newest durable one; it never
@@ -630,12 +643,14 @@ func (t *trailerReader) add(p []byte) {
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
 // RestoredCheckpoint gives the state the members of a restored cluster,
-// as etcdutl snapshot restore does, and returns a whole checkpoint of it
-// at the applied index, for the new log to start from. Each member
-// supports the cluster version.
-func (n *Node) RestoredCheckpoint(members []*pb.Member) (wal.Root, []byte, error) {
-	if n.copy != nil {
-		n.copyChunk(-1)
+// as etcdutl snapshot restore does, and writes a whole checkpoint of it
+// at the applied index to w, in parts of about CheckpointChunk bytes, for
+// the new log to start from (#436). Each member supports the cluster
+// version.
+func (n *Node) RestoredCheckpoint(members []*pb.Member, w io.Writer) (wal.Root, error) {
+	// A copy that the replay started is not needed; its parts go nowhere.
+	for n.copy != nil {
+		n.copyChunk(n.cfg.CheckpointChunk)
 		n.out.Checkpoint = nil
 	}
 	st := n.state
@@ -649,22 +664,34 @@ func (n *Node) RestoredCheckpoint(members []*pb.Member) (wal.Root, []byte, error
 	}
 	term, err := n.termAt(n.applied)
 	if err != nil {
-		return wal.Root{}, nil, err
+		return wal.Root{}, err
 	}
-	data, err := st.header(n.applied, term).encode()
+	head, err := st.header(n.applied, term).encode()
 	if err != nil {
-		return wal.Root{}, nil, err
+		return wal.Root{}, err
+	}
+	crc := crc32.Checksum(head, castagnoli)
+	for len(head) > 0 {
+		k := min(n.cfg.CheckpointChunk, len(head))
+		if _, err := w.Write(head[:k]); err != nil {
+			return wal.Root{}, err
+		}
+		head = head[k:]
 	}
 	n.kv.Freeze()
-	for {
-		b, _, done := n.kv.CopyFrozen(nil, 1<<20)
-		data = append(data, b...)
-		if done {
-			break
+	var data []byte
+	for done := false; !done; {
+		if _, err := w.Write(data); err != nil {
+			return wal.Root{}, err
 		}
+		data, _, done = n.kv.CopyFrozen(data[:0], n.cfg.CheckpointChunk)
+		crc = crc32.Update(crc, castagnoli, data)
 	}
-	data = binary.LittleEndian.AppendUint32(data, crc32.Checksum(data, castagnoli))
-	return wal.Root{Index: n.applied, Term: term}, data, nil
+	data = binary.LittleEndian.AppendUint32(data, crc)
+	if _, err := w.Write(data); err != nil {
+		return wal.Root{}, err
+	}
+	return wal.Root{Index: n.applied, Term: term}, nil
 }
 
 // heldCompact is the answer to a physical compaction, which etcd v3.7.2
@@ -696,11 +723,14 @@ func (n *Node) releaseCompacts() {
 	n.physical = n.physical[i:]
 }
 
-// cutForCompacts cuts the checkpoint that physical compactions wait for,
-// at the applied index, when a copy under way held back the cut their
-// compaction asked for and no entry applied since, as on a quiet cluster.
-func (n *Node) cutForCompacts() {
-	if len(n.physical) == 0 || !n.cutDue || n.copy != nil || n.paused != nil || n.err != nil {
+// cutWaiting cuts the checkpoint that is due, at the applied index, once
+// nothing holds it back any more, when no entry applied since: a copy or
+// a write held back the cut a compaction asked for or the log's growth
+// made due, and no entry comes, as on a quiet cluster or one that refuses
+// writes at NOSPACE until that very cut frees space. Physical
+// compactions wait for it too.
+func (n *Node) cutWaiting() {
+	if !n.cutDue || n.copy != nil || n.unwritten != 0 || n.paused != nil || n.err != nil {
 		return
 	}
 	term, err := n.termAt(n.applied)

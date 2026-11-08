@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -420,5 +421,34 @@ func TestLoneLeaderWaitsForItsDisk(t *testing.T) {
 	got := s.run()
 	if len(got) != 1 || got[0].ID != 1 || got[0].Err != nil {
 		t.Fatalf("the held write: %+v", got)
+	}
+}
+
+// TestReplayTracksNoWrites restarts a node that replays 50,000 puts, with
+// and without a memory budget: the budget turns on the record of written
+// values for the cache, which the replay must not fill, as its entries
+// never enter memory (#433).
+func TestReplayTracksNoWrites(t *testing.T) {
+	disk := simfs.New()
+	noCut := func(c *Config) { c.CheckpointBytes = 1 << 40 }
+	s := startSingleWith(t, disk, 1, noCut)
+	for i := range 50_000 {
+		s.n.Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", i%100), Value: []byte("v")}})
+		if i%500 == 499 {
+			s.run()
+		}
+	}
+	s.run()
+	restart := func(memory int64) uint64 {
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		startSingleWith(t, disk.Copy(), 1, func(c *Config) { noCut(c); c.MemoryBytes = memory })
+		runtime.ReadMemStats(&after)
+		return after.TotalAlloc - before.TotalAlloc
+	}
+	without, with := restart(0), restart(1<<30)
+	if with > without+1<<20 {
+		t.Fatalf("a restart that replays 50,000 puts allocates %d bytes with a memory budget, %d without", with, without)
 	}
 }
