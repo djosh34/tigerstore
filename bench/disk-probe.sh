@@ -18,10 +18,13 @@ run() {
 	local s0 t0 t1 s1 count=$((mib / group))
 	s0=$(sectors)
 	t0=$(date +%s.%N)
+	local pids=()
 	for i in $(seq "$writers"); do
 		dd if=/dev/zero of="$dir/probe-$i" bs="${group}M" count="$count" oflag=dsync conv=notrunc status=none &
+		pids+=("$!")
 	done
-	wait
+	# A writer that failed wrote nothing to measure (#556).
+	for i in "${pids[@]}"; do wait "$i"; done
 	t1=$(date +%s.%N)
 	s1=$(sectors)
 	awk -v w="$writers" -v g="$group" -v n=$((writers * count * group)) -v s="$((s1 - s0))" -v t0="$t0" -v t1="$t1" \

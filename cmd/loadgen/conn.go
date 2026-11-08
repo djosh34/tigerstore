@@ -115,6 +115,7 @@ type conn struct {
 	recvUnacked  int64
 	gotSettings  bool
 	hdrStream    uint32
+	inBlock      bool // a header block of hdrStream waits for its CONTINUATION
 	hdrEnd       bool
 	hdrStatus    string
 	grpcStatus   string
@@ -451,8 +452,17 @@ func (c *conn) read() error {
 		n := int(head[0])<<16 | int(head[1])<<8 | int(head[2])
 		typ, flags := http2.FrameType(head[3]), head[4]
 		id := binary.BigEndian.Uint32(head[5:9]) & (1<<31 - 1)
-		if 9+n > c.br.Size() {
-			return fmt.Errorf("a %v frame of %d bytes, past the largest frame", typ, n)
+		if n > maxDataFrame {
+			return fmt.Errorf("%w: a %v frame of %d bytes, past the largest", errFrame, typ, n)
+		}
+		// A header block that does not end in its frame goes on in the
+		// CONTINUATION frames of its stream, with no other frame between
+		// (RFC 9113, 6.10).
+		switch {
+		case c.inBlock && (typ != http2.FrameContinuation || id != c.hdrStream):
+			return fmt.Errorf("%w: a %v frame of stream %d inside the header block of stream %d", errFrame, typ, id, c.hdrStream)
+		case !c.inBlock && typ == http2.FrameContinuation:
+			return fmt.Errorf("%w: a CONTINUATION frame of stream %d outside a header block", errFrame, id)
 		}
 		frame, err := c.br.Peek(9 + n)
 		if err != nil {
@@ -480,12 +490,11 @@ func (c *conn) read() error {
 			c.hdrStream = id
 			c.hdrEnd = flags&flagEndStream != 0
 			c.hdrStatus, c.grpcStatus, c.grpcMessage, c.hasGRPCState = "", "", "", false
-			err = c.onHeaderBlock(frag, flags&flagEndHeaders != 0)
+			c.inBlock = flags&flagEndHeaders == 0
+			err = c.onHeaderBlock(frag, !c.inBlock)
 		case http2.FrameContinuation:
-			if id != c.hdrStream {
-				return errors.New("CONTINUATION on the wrong stream")
-			}
-			err = c.onHeaderBlock(p, flags&flagEndHeaders != 0)
+			c.inBlock = flags&flagEndHeaders == 0
+			err = c.onHeaderBlock(p, !c.inBlock)
 		case http2.FrameRSTStream:
 			if len(p) != 4 {
 				return errFrame

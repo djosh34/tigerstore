@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/hpack"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -312,3 +314,52 @@ func TestLargeMessageFrames(t *testing.T) {
 		t.Fatal("the frames do not carry the message")
 	}
 }
+
+// TestReadHeaderBlockSequence checks that the frame reader takes a header
+// block only as HTTP/2 allows it: a frame between HEADERS and its
+// CONTINUATION, a CONTINUATION of another stream or of no block, and a
+// frame past the largest size end the connection (#555).
+func TestReadHeaderBlockSequence(t *testing.T) {
+	type done struct {
+		ended bool
+		err   error
+	}
+	for name, write := range map[string]func(fr *http2.Framer) error{
+		"DATA inside a header block": func(fr *http2.Framer) error {
+			return errors.Join(
+				fr.WriteHeaders(http2.HeadersFrameParam{StreamID: 1, BlockFragment: []byte{0x88}}),
+				fr.WriteData(1, false, []byte{0, 0, 0, 0, 0}),
+				fr.WriteContinuation(1, true, nil))
+		},
+		"CONTINUATION of another stream": func(fr *http2.Framer) error {
+			return errors.Join(
+				fr.WriteHeaders(http2.HeadersFrameParam{StreamID: 1, BlockFragment: []byte{0x88}}),
+				fr.WriteContinuation(3, true, nil))
+		},
+		"CONTINUATION of no block": func(fr *http2.Framer) error {
+			return fr.WriteContinuation(1, true, nil)
+		},
+		"a frame past the largest": func(fr *http2.Framer) error {
+			return fr.WriteData(1, false, make([]byte, maxDataFrame+1))
+		},
+	} {
+		var wire bytes.Buffer
+		if err := write(http2.NewFramer(&wire, nil)); err != nil {
+			t.Fatal(err)
+		}
+		var d done
+		h := handlerFunc(func(err error) { d = done{true, err} })
+		c := &conn{br: bufio.NewReaderSize(bytes.NewReader(wire.Bytes()), 64<<10), streams: map[uint32]*stream{1: {id: 1, h: h}}, wake: make(chan struct{}, 1)}
+		c.dec = hpack.NewDecoder(4096, c.headerField)
+		if err := c.read(); !errors.Is(err, errFrame) {
+			t.Errorf("%s: read ended with %v, stream done %+v", name, err, d)
+		}
+	}
+}
+
+// handlerFunc is a handler that takes no messages and reports how its
+// stream ended.
+type handlerFunc func(error)
+
+func (handlerFunc) message(*stream, []byte) error        { return nil }
+func (h handlerFunc) done(_ *stream, _ int64, err error) { h(err) }
