@@ -430,7 +430,7 @@ func TestKVBytes(t *testing.T) {
 // again in one Txn, many times, compacts at one such revision, and walks
 // the history from there: the changes that are not Gone are every version
 // the index holds, in order, also after the store is loaded from a
-// checkpoint, which keeps the slots of removed versions empty. A walk of
+// checkpoint, which keeps the sub-revisions of that revision. A walk of
 // a revision of 100,000 deletes and one put takes linear time.
 func TestHistoryOfAKeyChangedTwice(t *testing.T) {
 	s := New(&Heap{})
@@ -452,7 +452,9 @@ func TestHistoryOfAKeyChangedTwice(t *testing.T) {
 	if err := s.Compact(compact); err != nil {
 		t.Fatal(err)
 	}
-	check := func(s *Store) {
+	// live says the store compacted itself: its history keeps a slot for
+	// each removed change, which is Gone. A loaded store has none.
+	check := func(s *Store, live bool) {
 		t.Helper()
 		want := s.History([]byte{0}, []byte{0}, compact)
 		var got []Change
@@ -464,8 +466,8 @@ func TestHistoryOfAKeyChangedTwice(t *testing.T) {
 				got = append(got, c)
 			}
 		}
-		if len(got) != len(want) || gone == 0 {
-			t.Fatalf("%d changes and %d gone, want %d and some gone", len(got), gone, len(want))
+		if len(got) != len(want) || live != (gone > 0) {
+			t.Fatalf("%d changes and %d gone, want %d, and gone ones only in a live store (%v)", len(got), gone, len(want), live)
 		}
 		for i := range got {
 			if got[i].k != want[i].k || got[i].i != want[i].i {
@@ -473,7 +475,7 @@ func TestHistoryOfAKeyChangedTwice(t *testing.T) {
 			}
 		}
 	}
-	check(s)
+	check(s, true)
 	s.Freeze()
 	var b []byte
 	for done := false; !done; {
@@ -483,7 +485,7 @@ func TestHistoryOfAKeyChangedTwice(t *testing.T) {
 	if _, err := loaded.Load(bufio.NewReader(bytes.NewReader(b)), s.Rev(), s.CompactRev()); err != nil {
 		t.Fatal(err)
 	}
-	check(loaded)
+	check(loaded, false)
 
 	again(100_000)
 	start := time.Now()
@@ -518,17 +520,85 @@ func TestReadBeforeAKeyChangedTwice(t *testing.T) {
 	}
 }
 
-// TestRebuildRefusesAHugeSubRevision loads a store whose one version has
-// a sub-revision of 2^40, as a damaged checkpoint could: the history must
-// refuse it as malformed rather than fill 2^40 empty slots.
+// TestRebuildRefusesAHugeSubRevision loads stores with one damaged
+// version, as a damaged checkpoint could hold: a sub-revision of 2^40,
+// a negative one before a large one, a revision past the store's, and a
+// revision far past the others. The history must refuse each as
+// malformed rather than fill or span that many slots.
 func TestRebuildRefusesAHugeSubRevision(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		damage func(s *Store, vers []*version)
+	}{
+		{"huge sub-revision", func(_ *Store, v []*version) { v[1].mod.sub = 1 << 40 }},
+		{"negative then large sub-revision", func(_ *Store, v []*version) {
+			v[0].mod, v[1].mod = rev{main: 2, sub: -(1 << 40)}, rev{main: 2, sub: 1 << 30}
+		}},
+		{"revision past the store's", func(s *Store, v []*version) { v[1].mod.main = s.rev + 1 }},
+		{"revisions far apart", func(s *Store, v []*version) { s.rev, v[1].mod.main = 1<<40, 1<<40 }},
+	} {
+		s := New(&Heap{})
+		put(t, s, "a", "v")
+		put(t, s, "b", "v")
+		var vers []*version
+		s.keys.Ascend(func(k *keyIndex) bool {
+			vers = append(vers, &k.vers[0])
+			return true
+		})
+		c.damage(s, vers)
+		if err := s.hist.rebuild(s, 0); !errors.Is(err, ErrBadCheckpoint) {
+			t.Errorf("%s: %v, want ErrBadCheckpoint", c.name, err)
+		}
+	}
+}
+
+// TestCheckpointOfAKeyChangedThrice deletes a key, puts it and deletes it
+// again in one Txn, compacts at that revision, which keeps only the last
+// delete, and loads the store's checkpoint: the load must take it, though
+// the one version it keeps has two removed changes before it, and the
+// history from that revision must hold the changes the index keeps.
+func TestCheckpointOfAKeyChangedThrice(t *testing.T) {
 	s := New(&Heap{})
 	put(t, s, "a", "v")
-	s.keys.Ascend(func(k *keyIndex) bool {
-		k.vers[0].mod.sub = 1 << 40
-		return false
-	})
-	if err := s.hist.rebuild(s, 0); !errors.Is(err, ErrBadCheckpoint) {
-		t.Fatalf("a rebuild over a sub-revision of 2^40: %v, want ErrBadCheckpoint", err)
+	del := &pb.RequestOp{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte("a"), RangeEnd: []byte{0}}}}
+	if _, err := s.Txn(&pb.TxnRequest{Success: []*pb.RequestOp{
+		del,
+		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("a"), Value: []byte("again")}}},
+		del,
+	}}); err != nil {
+		t.Fatal(err)
 	}
+	compact := s.Rev()
+	if err := s.Compact(compact); err != nil {
+		t.Fatal(err)
+	}
+	check := func(s *Store) {
+		t.Helper()
+		want := s.History([]byte{0}, []byte{0}, compact)
+		var got []Change
+		for pos := s.HistoryFrom(compact); pos < s.HistoryEnd(); pos++ {
+			if c := s.Changed(pos); !c.Gone() {
+				got = append(got, c)
+			}
+		}
+		if len(got) != len(want) {
+			t.Fatalf("%d changes, want %d", len(got), len(want))
+		}
+		for i := range got {
+			if got[i].k != want[i].k || got[i].i != want[i].i {
+				t.Fatalf("change %d is %s at %d, want %s at %d", i, got[i].Key(), got[i].ModRev(), want[i].Key(), want[i].ModRev())
+			}
+		}
+	}
+	check(s)
+	s.Freeze()
+	var b []byte
+	for done := false; !done; {
+		b, _, done = s.CopyFrozen(b, 1<<20)
+	}
+	loaded := New(&Heap{})
+	if _, err := loaded.Load(bufio.NewReader(bytes.NewReader(b)), s.Rev(), s.CompactRev()); err != nil {
+		t.Fatalf("the store's own checkpoint does not load: %v", err)
+	}
+	check(loaded)
 }

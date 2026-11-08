@@ -22,6 +22,11 @@ type history struct {
 	base   int64
 	starts []int64
 	keys   []*keyIndex
+	// baseSubs, if set, are the sub-revisions of the changes of revision
+	// base, as a checkpoint load finds them: a compaction at that revision
+	// may have removed some of them, so a change's slot no longer tells its
+	// sub-revision (rebuild).
+	baseSubs []int64
 }
 
 // add logs the change of k at revision main, the newest of the store.
@@ -51,6 +56,7 @@ func (h *history) drop(rev int64) {
 	} else {
 		n = int64(len(h.starts))
 	}
+	h.baseSubs = nil
 	// The dropped slots are cleared, so they keep no removed key alive.
 	clear(h.keys[:cut-h.first])
 	h.keys = h.keys[cut-h.first:]
@@ -71,12 +77,13 @@ func (h *history) revision(pos int64) int64 {
 }
 
 // rebuild logs every version of the index from revision from on, as Load
-// finds them, in revision order. A version a compaction removed leaves an
-// empty slot where a later one of its revision follows, so that each
-// change's slot stays at its sub-revision (Changed). Only a key changed
-// twice in one write leaves such a gap, behind its kept change, so a
-// checkpoint whose gaps need more empty slots than it has versions is
-// malformed.
+// finds them, in revision order. Every revision after from keeps all its
+// changes, so their sub-revisions run from 0 and each change's slot tells
+// its sub-revision (Changed). A compaction at from may have removed some
+// of that revision's changes, so their sub-revisions are kept (baseSubs).
+// A checkpoint whose versions break this, or that span more revisions
+// than it has versions, is malformed: so the history never holds more
+// than about one slot per version.
 func (h *history) rebuild(s *Store, from int64) error {
 	type logged struct {
 		mod rev
@@ -98,20 +105,30 @@ func (h *history) rebuild(s *Store, from int64) error {
 		return cmp.Compare(a.mod.sub, b.mod.sub)
 	})
 	*h = history{}
+	if n := len(all); n > 0 && all[n-1].mod.main-all[0].mod.main > int64(n) {
+		return fmt.Errorf("%w: %d versions span revisions %d to %d", ErrBadCheckpoint, n, all[0].mod.main, all[n-1].mod.main)
+	}
+	var subs []int64
 	main, sub := int64(0), int64(0)
-	empty := int64(0)
 	for _, l := range all {
 		if l.mod.main != main {
 			main, sub = l.mod.main, 0
 		}
-		if empty += l.mod.sub - sub; empty > int64(len(all)) {
-			return fmt.Errorf("%w: revision %d has a change at sub-revision %d after %d", ErrBadCheckpoint, main, l.mod.sub, sub)
+		bad := l.mod.main > s.rev || l.mod.sub < sub
+		if main == from {
+			// The compaction's own revision: its changes in order.
+			subs = append(subs, l.mod.sub)
+		} else {
+			bad = bad || l.mod.sub != sub
 		}
-		for ; sub < l.mod.sub; sub++ {
-			h.add(nil, main)
+		if bad {
+			return fmt.Errorf("%w: a change at revision %d, sub-revision %d, where %d comes next, in a store at revision %d", ErrBadCheckpoint, l.mod.main, l.mod.sub, sub, s.rev)
 		}
 		h.add(l.k, main)
-		sub++
+		sub = l.mod.sub + 1
+	}
+	if len(subs) > 0 {
+		h.baseSubs = subs
 	}
 	return nil
 }
@@ -138,18 +155,19 @@ func (s *Store) HistoryEnd() int64 { return s.HistoryFrom(s.rev + 1) }
 // Changed returns the change at position pos, which must be at or after
 // the history's start and before HistoryEnd. A write logs its changes in
 // the order of their sub-revisions, from 0, so a change's slot is its
-// revision's first plus its sub-revision: a key that changed more than
-// once in a revision has a slot for each change. A slot whose version a
-// compaction removed, or drops once the checkpoint copy it waits for is
-// done, is Gone, as etcd's backend no longer holds it.
+// revision's first plus its sub-revision, or, after a checkpoint load, the
+// one kept for it (baseSubs): a key that changed more than once in a
+// revision has a slot for each change. A slot whose version a compaction
+// removed, or drops once the checkpoint copy it waits for is done, is
+// Gone, as etcd's backend no longer holds it.
 func (s *Store) Changed(pos int64) Change {
 	h := &s.hist
 	k := h.keys[pos-h.first]
 	main := h.revision(pos)
-	if k == nil {
-		return Change{s: s, i: -1, main: main}
-	}
 	sub := pos - h.starts[main-h.base]
+	if main == h.base && h.baseSubs != nil {
+		sub = h.baseSubs[pos-h.first]
+	}
 	i := k.at(main)
 	for i >= 0 && k.vers[i].mod.main == main && k.vers[i].mod.sub > sub {
 		i--
