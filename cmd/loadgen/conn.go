@@ -153,7 +153,7 @@ func dial(addr string) (*conn, error) {
 		ready:      make(chan struct{}),
 		gone:       make(chan struct{}),
 	}
-	c.fr = http2.NewFramer(&c.out, bufio.NewReaderSize(nc, 64<<10))
+	c.fr = http2.NewFramer(&c.out, nc)
 	c.fr.SetReuseFrames()
 	c.dec = hpack.NewDecoder(4096, c.headerField)
 
