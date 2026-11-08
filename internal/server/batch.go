@@ -75,7 +75,13 @@ func (c *conn) admit(st *stream) {
 		req.Op, req.Wire = st.rpc.op(), st.body
 		switch req.Op.(type) {
 		case *pb.TxnRequest, *pb.RangeRequest:
-			if err := core.DecodeAlias(st.body, req.Op); err != nil {
+			var err error
+			if _, ok := req.Op.(*pb.TxnRequest); ok {
+				err = core.DecodeTxn(&req)
+			} else {
+				err = core.DecodeAlias(st.body, req.Op)
+			}
+			if err != nil {
 				st.finish(unmarshalError(err))
 				return
 			}

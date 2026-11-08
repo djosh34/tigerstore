@@ -244,6 +244,11 @@ type Request struct {
 	Chunk bool
 	// Caller is the client as etcd's size limit for writes sees it.
 	Caller Caller
+	// places are where the values of a transaction's puts start in Wire,
+	// which DecodeTxn noted, so that the node that took it applies it
+	// without decoding its entry again; placed says DecodeTxn ran.
+	places []place
+	placed bool
 }
 
 // Caller is a client as etcd v3.7.2's size limit for writes sees it. With
@@ -2286,6 +2291,33 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 	return err
 }
 
+// decodeWrite decodes the write of kind in b, which starts at offset at
+// of its entry, and notes where its values are, as the index names them
+// by their place in the entry. A transaction that this node took and
+// decoded (DecodeTxn) is not decoded again: the entry holds the bytes it
+// was decoded from, so its values are at the same offsets, from at.
+func (n *Node) decodeWrite(p *pending, kind byte, b []byte, at int) (proto.Message, error) {
+	if p != nil && p.req.placed && kind == kindTxn && len(p.req.Wire) == len(b) {
+		for _, pc := range p.req.places {
+			n.values.places = append(n.values.places, place{start: pc.start, off: pc.off + uint32(at)})
+		}
+		return p.req.Op, nil
+	}
+	op, err := newOp(kind)
+	if err != nil {
+		return nil, err
+	}
+	if txn, ok := op.(*pb.TxnRequest); ok {
+		err = decodeTxnPlaced(b, txn, at, &n.values.placer)
+	} else {
+		err = DecodeAlias(b, op)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errBadBatch, err)
+	}
+	return op, nil
+}
+
 // applyWrite applies the k-th write of entry e.
 func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind byte, b []byte, at int) error {
 	var p *pending
@@ -2319,19 +2351,9 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 		n.timed.op = "VersionAnnounce"
 		return n.applyVersion(e.GetIndex(), origin, b)
 	}
-	op, err := newOp(kind)
+	op, err := n.decodeWrite(p, kind, b, at)
 	if err != nil {
 		return err
-	}
-	// The op's values are slices of the entry; the index names them
-	// by where they are in it.
-	if txn, ok := op.(*pb.TxnRequest); ok {
-		err = decodeTxnPlaced(b, txn, at, &n.values.placer)
-	} else {
-		err = DecodeAlias(b, op)
-	}
-	if err != nil {
-		return fmt.Errorf("%w: %w", errBadBatch, err)
 	}
 	room := n.quotaLeft(quotaCost(op))
 	resp, err := n.applyOp(op)
