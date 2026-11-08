@@ -37,8 +37,8 @@ jobs:
               for rel in ['internal/core/version.go', 'internal/peer/peer.go']:
                   source = (root / rel).read_text()
                   if rel.endswith('version.go'):
-                      assert source.count('const MaxVersion = 3') == 1
-                      source = source.replace('const MaxVersion = 3', f'const MaxVersion = {version}')
+                      assert source.count('const MaxVersion = 4') == 1
+                      source = source.replace('const MaxVersion = 4', f'const MaxVersion = {version}')
                       if os.environ['MODE'] == 'confirmation-removed':
                           guard = 'if a.hasEpoch {'
                           assert source.count(guard) == 1
