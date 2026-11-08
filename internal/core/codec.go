@@ -300,12 +300,11 @@ func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message)
 			return err
 		}
 		if kind == kindShortTxn {
-			t := &pb.TxnRequest{}
-			if err := decodeShort(b, t, 0, nil); err != nil {
+			if err := decodeShort(b, op.(*pb.TxnRequest), 0, nil); err != nil {
 				return err
 			}
 			// The checks keep what they decode: no slices of the entry.
-			op = proto.Clone(t)
+			op = proto.Clone(op)
 		} else if err := proto.Unmarshal(b, op); err != nil {
 			return fmt.Errorf("%w: %w", errBadBatch, err)
 		}

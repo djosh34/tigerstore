@@ -3,3 +3,11 @@
 *.prof
 /.gosim/
 /dist/
+/benchreport
+/ceiling
+/chaos
+/checkhistory
+/loadgen
+/nullstore
+/pastram
+/soak

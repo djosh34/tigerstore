@@ -82,7 +82,7 @@ func CheckTxn(r *pb.TxnRequest, maxOps int) error {
 	}
 	for _, ops := range [][]*pb.RequestOp{r.Success, r.Failure} {
 		var err error
-		if slices.ContainsFunc(ops, func(op *pb.RequestOp) bool { return op.GetRequestTxn() != nil }) {
+		if len(ops) > flatOps || slices.ContainsFunc(ops, func(op *pb.RequestOp) bool { return op.GetRequestTxn() != nil }) {
 			_, _, err = checkIntervals(ops)
 		} else {
 			err = checkFlat(ops)
@@ -94,8 +94,12 @@ func CheckTxn(r *pb.TxnRequest, maxOps int) error {
 	return nil
 }
 
-// checkFlat is checkIntervals for ops without a nested transaction, as
-// most are: it compares each put with the puts before it and with the
+// flatOps is the most ops that checkFlat compares pairwise; a longer
+// branch, as --max-txn-ops allows, builds checkIntervals' map.
+const flatOps = 16
+
+// checkFlat is checkIntervals for a few ops without a nested transaction,
+// as most are: it compares each put with the puts before it and with the
 // deletes, and builds no map.
 func checkFlat(ops []*pb.RequestOp) error {
 	var dels []interval
