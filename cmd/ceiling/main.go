@@ -5,6 +5,8 @@
 //     sequential log: O_DIRECT writes into a file that is already written,
 //     each followed by an fdatasync, so no write allocates blocks or commits
 //     a journal; the best of three group sizes;
+//   - the same with three writers at once, each on a file of its own, as
+//     the three nodes write their logs to the one disk, for comparison;
 //   - how many bytes one core encodes into protobuf key-values, encrypts
 //     with AES-128-GCM, the cipher the stores' TLS 1.3 negotiates, and
 //     sends on a loopback TCP socket.
@@ -28,6 +30,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -42,6 +45,10 @@ type report struct {
 	// DiskMiBps is the best of DiskGroups.
 	DiskMiBps  float64 `json:"disk_mib_per_s"`
 	DiskGroups []cell  `json:"disk_groups"`
+	// DiskThreeMiBps is the best of DiskThreeGroups, three writers at
+	// once, their bytes together.
+	DiskThreeMiBps  float64 `json:"disk_three_mib_per_s"`
+	DiskThreeGroups []cell  `json:"disk_three_groups"`
 	// One core's cost per byte of each step a byte of an answer takes.
 	EncodeNsPerByte  float64 `json:"encode_ns_per_byte"`
 	EncryptNsPerByte float64 `json:"encrypt_ns_per_byte"`
@@ -109,6 +116,35 @@ func (r *report) disk(dir string, size int64, dur time.Duration) (err error) {
 		}
 		r.DiskGroups = append(r.DiskGroups, c)
 		r.DiskMiBps = max(r.DiskMiBps, c.MiBps)
+	}
+	var names []string
+	for i := range 3 {
+		n := filepath.Join(dir, fmt.Sprintf("ceiling-%d.data", i))
+		names = append(names, n)
+		if err := fill(n, size/3); err != nil {
+			return errors.Join(err, removeIfThere(n))
+		}
+		defer func() { err = errors.Join(err, os.Remove(n)) }()
+	}
+	for _, group := range []int{256 << 10, 1 << 20, 4 << 20} {
+		cells := make([]cell, len(names))
+		errs := make([]error, len(names))
+		var wg sync.WaitGroup
+		for i, n := range names {
+			wg.Go(func() { cells[i], errs[i] = measureDisk(n, size/3, group, dur) })
+		}
+		wg.Wait()
+		if err := errors.Join(errs...); err != nil {
+			return err
+		}
+		c := cell{Group: group}
+		for _, w := range cells {
+			c.Writes += w.Writes
+			c.Seconds = max(c.Seconds, w.Seconds)
+		}
+		c.MiBps = float64(c.Writes) * float64(group) / (1 << 20) / c.Seconds
+		r.DiskThreeGroups = append(r.DiskThreeGroups, c)
+		r.DiskThreeMiBps = max(r.DiskThreeMiBps, c.MiBps)
 	}
 	return nil
 }
