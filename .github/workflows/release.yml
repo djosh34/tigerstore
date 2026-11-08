@@ -246,6 +246,13 @@ jobs:
             echo "There is no release before $VERSION, so no binary to upgrade from: the upgrade passes without a run."
             exit 0
           fi
+          if [ "$previous" = v0.1.0 ]; then
+            # v0.1.0 speaks peer protocol 2, without the cluster ID; this
+            # binary speaks only 3. No cluster runs v0.1.0, so there is no
+            # upgrade from it (#283; owner, round 14 of #498).
+            echo "No upgrade from v0.1.0: it speaks peer protocol 2, which $VERSION does not."
+            exit 0
+          fi
           echo "upgrading from $previous to $VERSION"
           gh release download "$previous" --repo "$REPO" --pattern "tigerstore-$previous-linux-arm64" --dir "$RUNNER_TEMP/previous"
           export ROLLING_OLD=$RUNNER_TEMP/previous/tigerstore-$previous-linux-arm64

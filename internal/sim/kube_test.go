@@ -10,8 +10,10 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
@@ -267,5 +269,61 @@ func TestKubeValuesKeptOnce(t *testing.T) {
 	}
 	if n := len(records.vals.spans); n != 1 {
 		t.Errorf("%d values kept, want 1", n)
+	}
+}
+
+// TestKubeListsPageAfterSparseCreates runs the short load's first creates
+// against a real store, with three of each client's batches committed
+// and the others failed, as a run with faults can leave them, and then
+// lists every group of every client once. The short profile's page must
+// be small enough that some group still takes a later page: with 25 keys
+// a page none did, and TestKubernetesLoad then read no later page under
+// the race detector (#517).
+func TestKubeListsPageAfterSparseCreates(t *testing.T) {
+	records, err := newRecordLog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Sim{cfg: kubeConfig(1, false), rng: rand.New(rand.NewPCG(1, 2)), t0: time.Now(), records: records}
+	store := mvcc.New(&mvcc.Heap{})
+	store.LeaseExists = func(int64) bool { return true }
+	later := 0
+	for id, k := range s.newKubeLoad() {
+		c := &client{id: id, sim: s, node: -1, kube: k}
+		for batches := 0; k.created < len(k.all); {
+			r := &Record{Client: id, req: c.kubeRequest()}
+			switch req := r.req.(type) {
+			case *pb.LeaseGrantRequest:
+				r.Resp = &pb.LeaseGrantResponse{Header: &pb.ResponseHeader{Revision: store.Rev()}, ID: int64(id + 1), TTL: req.TTL}
+			case *pb.TxnRequest:
+				if batches++; batches > 3 {
+					r.Err = rpctypes.ErrGRPCNoLeader
+					break
+				}
+				if r.Resp, err = store.Txn(req); err != nil {
+					t.Fatal(err)
+				}
+			default:
+				t.Fatalf("a first create sent %T", req)
+			}
+			c.kubeDone(r)
+		}
+		for _, prefix := range k.prefixes {
+			k.list = &kubeList{from: prefix, end: prefixEnd(prefix)}
+			for k.list != nil {
+				req := c.kubeRequest().(*pb.RangeRequest)
+				resp, err := store.Range(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if req.Revision != 0 {
+					later++
+				}
+				c.kubeDone(&Record{Client: id, req: req, Resp: resp})
+			}
+		}
+	}
+	if later == 0 {
+		t.Fatalf("with %d keys a page, no list of %d committed keys took a later page", s.listPage(), store.Counts().Keys)
 	}
 }
