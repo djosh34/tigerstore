@@ -106,7 +106,7 @@ func (s *single) get(id uint64, key string, rev int64) (string, bool) {
 	if !ok || r.Err != nil {
 		s.t.Fatalf("read of %s: %v, %v", key, ok, r.Err)
 	}
-	kvs := r.Resp.(*pb.RangeResponse).Kvs
+	kvs := rangeResp(r).Kvs
 	if len(kvs) != 1 {
 		s.t.Fatalf("read of %s: %d keys", key, len(kvs))
 	}

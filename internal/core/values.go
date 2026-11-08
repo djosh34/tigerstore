@@ -74,6 +74,16 @@ func (v *values) Place(value []byte) (mvcc.Ref, error) {
 	return mvcc.Ref{}, errNotPlaced
 }
 
+// Copies reports whether Read copies the value r names out of a Raft
+// entry in memory.
+func (v *values) Copies(r mvcc.Ref) bool {
+	if v.entry != nil && r.Index == v.index {
+		return true
+	}
+	_, ok := v.storage.entryData(r.Index)
+	return ok
+}
+
 // Read returns a copy of a value from its entry in memory, or one from
 // the cache or fetched, and false if only the log has it. Responses and
 // watch events keep what it returns, maybe for long behind a slow client,

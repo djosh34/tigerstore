@@ -54,7 +54,7 @@ func TestColdReadsCompleteInReverse(t *testing.T) {
 		if !ok || r.Err != nil {
 			t.Fatalf("reply %d: %+v", id, r)
 		}
-		kvs := r.Resp.(*pb.RangeResponse).Kvs
+		kvs := rangeResp(r).Kvs
 		if len(kvs) != 1 || string(kvs[0].Value) != want {
 			t.Fatalf("reply %d: %v, want %s", id, kvs, want)
 		}

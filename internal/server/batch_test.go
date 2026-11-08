@@ -182,7 +182,7 @@ func TestRangeReplyEncoding(t *testing.T) {
 				Lease: r.Int64N(5) - 2,
 			}
 			res.KVs = append(res.KVs, kv)
-			res.Bytes += int64(len(kv.Key) + len(kv.Value))
+			res.Fields += int64(kv.FieldSize())
 		}
 		cluster, member, term := uint64(i), r.Uint64(), r.Uint64N(3)
 		got, err := appendRangeReply(cluster, member, term, &res)
@@ -200,8 +200,8 @@ func TestRangeReplyEncoding(t *testing.T) {
 		if !bytes.Equal(got, want) {
 			t.Fatalf("case %d:\n got %x\nwant %x", i, got, want)
 		}
-		if bound := 5 + rangeReplyBound(&res); bound < int64(len(got)) {
-			t.Fatalf("case %d: bound %d under the %d bytes encoded", i, bound, len(got))
+		if size := rangeSize(cluster, member, term, &res); size != int64(len(got)-5) {
+			t.Fatalf("case %d: sized %d, encoded %d", i, size, len(got)-5)
 		}
 	}
 }
@@ -213,7 +213,7 @@ func TestRangeReplyTooLarge(t *testing.T) {
 	res := mvcc.RangeResult{KVs: make([]mvcc.KV, 2049)}
 	for i := range res.KVs {
 		res.KVs[i] = mvcc.KV{Key: []byte("k"), Value: v}
-		res.Bytes += 1 + 1<<20
+		res.Fields += int64(res.KVs[i].FieldSize())
 	}
 	if _, err := appendRangeReply(1, 2, 3, &res); status.Code(err) != codes.ResourceExhausted {
 		t.Fatalf("an answer over 2 GiB: %v", err)

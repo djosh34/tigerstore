@@ -438,8 +438,10 @@ type proc struct {
 	cancel context.CancelFunc
 	// core is the core the committer ran last, and parked, while set, is
 	// closed once the committer holds still for the checks at the end.
-	core   *core.Node
-	parked chan struct{}
+	// fellBehind is its count of watchers that fell behind.
+	core       *core.Node
+	fellBehind int64
+	parked     chan struct{}
 	// srv is the gRPC server of a voting node of the first three.
 	srv *server.Server
 }
@@ -676,9 +678,11 @@ type Stats struct {
 	// buffer, and WriteTimeouts those that reached their write deadline.
 	Netem                                [numNetem]int
 	Resets, BlockedWrites, WriteTimeouts int
-	// SlowWatchers counts the watch clients that turned slow, and
-	// WatchersCut the watch streams a node closed as too slow.
-	SlowWatchers, WatchersCut int
+	// SlowWatchers counts the watch clients that turned slow,
+	// WatchersBehind the times a node's watcher fell behind because its
+	// stream had no room, and WatchersCut the streams a node closed
+	// because their queue filled anyway, which the room should prevent.
+	SlowWatchers, WatchersBehind, WatchersCut int
 	// MembershipChanges counts each completed stage, and MembershipFaults
 	// those completed before healing. Attempts include failed calls.
 	MembershipChanges, MembershipFaults [4]int
@@ -1506,8 +1510,8 @@ func baseNodeConfig(id uint64, peerURLs []string, leaseCheckpoints bool) tnode.C
 		// Small segments, so that most of the log is in sealed ones,
 		// where any damage is detectable.
 		SegmentBytes: 8 << 10,
-		// A watch stream 8 responses behind is closed, so that a slow
-		// watcher falls that far.
+		// A watch stream holds 8 responses, so that a slow watcher's
+		// fills and its watcher falls behind.
 		WatchQueue: 8,
 		// Several nodes share the process, so none can measure its
 		// memory; the value cache takes the whole budget.
@@ -1812,7 +1816,11 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 			// Raft never moves back a term, or a vote within one.
 			s.fail("node %d started at term %d with vote %d, but held term %d and vote %d durable", n.id, hs.GetTerm(), hs.GetVote(), n.mustHS.term, n.mustHS.vote)
 		}
-		p.core, n.pending, n.duringInstall = c, nil, nil
+		p.core, p.fellBehind, n.pending, n.duringInstall = c, 0, nil, nil
+	}
+	if f := c.FellBehind(); f > p.fellBehind {
+		s.stats.WatchersBehind += int(f - p.fellBehind)
+		p.fellBehind = f
 	}
 	before := n.last.version
 	if n == s.stalledLeader && s.steppedDownAt == 0 && c.Leader() != n.id {

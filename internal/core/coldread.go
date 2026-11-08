@@ -125,6 +125,7 @@ func (n *Node) answer(p *pending, r Reply, fills []mvcc.Fill) {
 	if p.refuse != nil {
 		r, fills = Reply{ID: r.ID, Err: p.refuse}, nil
 	}
+	n.startPieces(&r)
 	if len(fills) == 0 {
 		n.out.Replies = append(n.out.Replies, r)
 		return
@@ -153,13 +154,13 @@ func batch(c *mvcc.Compares) bool { return c != nil && c.Batch }
 // runApply applies Raft's apply messages in order, until a write waits
 // for values.
 func (n *Node) runApply() {
-	for len(n.applyQ) > 0 && n.paused == nil && n.err == nil {
+	for len(n.applyQ) > 0 && !n.applyWaits() && n.err == nil {
 		m := n.applyQ[0]
 		if err := n.apply(m.Entries); err != nil {
 			n.fail(err)
 			return
 		}
-		if n.paused != nil {
+		if n.applyWaits() {
 			return
 		}
 		n.applyQ[0] = nil

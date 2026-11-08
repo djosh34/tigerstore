@@ -127,10 +127,7 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 	queued := st.queued
 	defer func() {
 		if st.queued < queued {
-			select {
-			case st.space <- struct{}{}:
-			default:
-			}
+			st.wake()
 		}
 	}()
 	for len(st.out) > 0 {

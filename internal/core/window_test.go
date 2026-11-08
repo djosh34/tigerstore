@@ -248,7 +248,7 @@ func TestRestartFromCheckpoint(t *testing.T) {
 	if r.Err != nil {
 		t.Fatal(r.Err)
 	}
-	kvs := r.Resp.(*pb.RangeResponse).Kvs
+	kvs := rangeResp(r).Kvs
 	for k, kv := range kvs {
 		if string(kv.Value) != fmt.Sprintf("value %d of round 29", k) {
 			t.Fatalf("k%d is %q after the restart", k, kv.Value)
@@ -640,7 +640,7 @@ func TestRepliesCopyValues(t *testing.T) {
 	if r.Err != nil {
 		t.Fatal(r.Err)
 	}
-	if v := r.Resp.(*pb.RangeResponse).Kvs[0].Value; shared(v, second) {
+	if v := rangeResp(r).Kvs[0].Value; shared(v, second) {
 		t.Fatal("a range's value is a slice of its entry")
 	}
 }

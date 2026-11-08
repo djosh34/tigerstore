@@ -258,7 +258,7 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 	h.rev, h.compact, h.stamps, h.base = sv(), sv(), sv(), sv()
 	n = uv()
 	for i := uint64(0); i < n && err == nil; i++ {
-		l := &lease{id: sv(), ttl: sv(), stamp: sv(), remaining: sv(), keys: map[string]struct{}{}}
+		l := &lease{id: sv(), ttl: sv(), stamp: sv(), remaining: sv(), keys: newLeaseKeys()}
 		h.leases = append(h.leases, l)
 	}
 	n = uv()
@@ -574,7 +574,7 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 	}
 	st.kv.EachLeased(func(key []byte, id int64) {
 		if l, ok := st.leases[id]; ok {
-			l.keys[string(key)] = struct{}{}
+			l.keys.ReplaceOrInsert(string(key))
 		}
 	})
 	st.leaseSum = st.sumLeases()
@@ -730,7 +730,7 @@ func (n *Node) releaseCompacts() {
 // writes at NOSPACE until that very cut frees space. Physical
 // compactions wait for it too.
 func (n *Node) cutWaiting() {
-	if !n.cutDue || n.copy != nil || n.unwritten != 0 || n.paused != nil || n.err != nil {
+	if !n.cutDue || n.copy != nil || n.unwritten != 0 || n.applyWaits() || n.err != nil {
 		return
 	}
 	term, err := n.termAt(n.applied)

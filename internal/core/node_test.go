@@ -39,6 +39,11 @@ type single struct {
 	holdCopy bool
 	// as is the caller of the requests do submits.
 	as Caller
+	// room, if set, is the room the test gives each watch stream itself
+	// (WatchRoom).
+	room int64
+	// afterTurn, if set, sees each turn's effects.
+	afterTurn func(Effects)
 }
 
 // newMember starts node 1 of peers on an empty simulated disk, without
@@ -113,11 +118,21 @@ func (s *single) run() []Reply {
 		if !s.holdCopy {
 			s.n.CopyCheckpoint()
 		}
+		// Every watch stream takes what it gets, unless a test gives it
+		// room of its own.
+		for id := range s.n.streams {
+			if s.room == 0 {
+				s.n.WatchRoom(id, 1<<30, 1<<20)
+			}
+		}
 		eff, err := s.n.Process()
 		if err != nil {
 			s.t.Fatalf("node stopped: %v", err)
 		}
 		s.checkHash()
+		if s.afterTurn != nil {
+			s.afterTurn(eff)
+		}
 		out = append(out, eff.Replies...)
 		s.watch = append(s.watch, eff.Watch...)
 		if s.holdCkpt {
@@ -132,7 +147,7 @@ func (s *single) run() []Reply {
 				s.n.ValuesRead(r, r.Run())
 			}
 		}
-		if len(eff.Persist) == 0 && (!s.n.Copying() || s.holdCopy) && len(eff.Checkpoint) == 0 && (len(eff.Reads) == 0 || s.hold) {
+		if len(eff.Persist) == 0 && (!s.n.Copying() || s.holdCopy) && len(eff.Checkpoint) == 0 && (len(eff.Reads) == 0 || s.hold) && !s.n.Working() {
 			return out
 		}
 		for _, j := range eff.Persist {
@@ -188,6 +203,11 @@ func (s *single) do(id uint64, op proto.Message) Reply {
 	s.n.Submit(Request{ID: id, Op: op, Caller: s.as})
 	for _, r := range s.run() {
 		if r.ID == id {
+			if _, ok := op.(*pb.RangeRequest); ok && r.Err == nil {
+				// A Range answers as Reply.Range; the driver builds the
+				// message.
+				r.Resp = rangeResp(r)
+			}
 			return r
 		}
 	}
@@ -217,7 +237,7 @@ func TestRejectedTxnKeepsNodeRunning(t *testing.T) {
 	if r.Err != nil {
 		t.Fatal(r.Err)
 	}
-	got, _ := r.Resp.(*pb.RangeResponse)
+	got := rangeResp(r)
 	if got == nil || len(got.Kvs) != 1 || string(got.Kvs[0].Key) != "c" {
 		t.Fatalf("after restart = %v", r.Resp)
 	}
@@ -452,3 +472,7 @@ func TestReplayTracksNoWrites(t *testing.T) {
 		t.Fatalf("a restart that replays 50,000 puts allocates %d bytes with a memory budget, %d without", with, without)
 	}
 }
+
+// rangeResp is the answer of a Range reply of one piece as etcd's
+// message, as the driver builds it.
+func rangeResp(r Reply) *pb.RangeResponse { return r.Range.Response() }

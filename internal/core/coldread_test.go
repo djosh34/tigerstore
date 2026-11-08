@@ -103,7 +103,6 @@ func TestColdRepliesWait(t *testing.T) {
 	reqs := []Request{
 		{ID: 201, Op: &pb.RangeRequest{Key: []byte("d")}},
 		{ID: 202, Op: all},
-		{ID: 203, Op: all, Compact: true},
 		{ID: 204, Op: all, Chunk: true},
 		{ID: 205, Op: &pb.PutRequest{Key: []byte("a"), Value: []byte("new"), PrevKv: true}},
 		{ID: 206, Put: put},
@@ -150,12 +149,9 @@ func TestColdRepliesWait(t *testing.T) {
 		202: "[d=vd e=ve]",
 		204: "[d=vd e=ve]",
 	} {
-		if r := got[id]; r.Err != nil || value(r.Resp.(*pb.RangeResponse).Kvs) != want {
+		if r := got[id]; r.Err != nil || value(rangeResp(r).Kvs) != want {
 			t.Fatalf("range %d: %v, want %s", id, r, want)
 		}
-	}
-	if r := got[203]; r.Err != nil || len(r.Range.KVs) != 2 || string(r.Range.KVs[1].Value) != "ve" {
-		t.Fatalf("range without messages: %+v", r)
 	}
 	if r := got[205]; r.Err != nil || string(r.Resp.(*pb.PutResponse).PrevKv.Value) != "va" {
 		t.Fatalf("put with prev_kv: %v", r)
@@ -264,7 +260,7 @@ func TestColdValueCompareWaitsInOrder(t *testing.T) {
 	if s.n.Leader() != 1 || s.n.Applied() != before {
 		t.Fatalf("leader %d, applied %d, want 1 and %d", s.n.Leader(), s.n.Applied(), before)
 	}
-	if r := s.do(301, &pb.RangeRequest{Key: []byte("h"), Serializable: true}); r.Err != nil || len(r.Resp.(*pb.RangeResponse).Kvs) != 1 {
+	if r := s.do(301, &pb.RangeRequest{Key: []byte("h"), Serializable: true}); r.Err != nil || len(rangeResp(r).Kvs) != 1 {
 		t.Fatalf("read while apply waits: %v", r)
 	}
 	got := release(t, s)
@@ -275,14 +271,14 @@ func TestColdValueCompareWaitsInOrder(t *testing.T) {
 		t.Fatalf("write after the compare: %v", r)
 	}
 	var keys []string
-	for _, kv := range got[203].Resp.(*pb.RangeResponse).GetKvs() {
+	for _, kv := range rangeResp(got[203]).GetKvs() {
 		keys = append(keys, string(kv.Key))
 	}
 	if !slices.Equal(keys, []string{"c", "b", "a"}) {
 		t.Fatalf("sort by value: %v, %v", keys, got[203].Err)
 	}
 	r := s.do(302, &pb.RangeRequest{Key: []byte("a")})
-	if v := r.Resp.(*pb.RangeResponse).Kvs[0].Value; string(v) != "after" {
+	if v := rangeResp(r).Kvs[0].Value; string(v) != "after" {
 		t.Fatalf("a is %q", v)
 	}
 }
@@ -322,7 +318,7 @@ func TestColdReadKeepsItsSegment(t *testing.T) {
 		t.Fatalf("checkpoint %d, first file %s, want a checkpoint and %s", s.n.DurableCheckpoint().Index, disk.DurableNames()[0], first)
 	}
 	got := release(t, s)
-	if r := got[201]; r.Err != nil || string(r.Resp.(*pb.RangeResponse).Kvs[0].Value) != "va" {
+	if r := got[201]; r.Err != nil || string(rangeResp(r).Kvs[0].Value) != "va" {
 		t.Fatalf("old value: %v", r)
 	}
 	churn()

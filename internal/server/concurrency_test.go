@@ -32,11 +32,11 @@ func (noPeers) Call(context.Context, uint64, []byte) ([]byte, error) {
 	return nil, errors.New("no peers")
 }
 
-// TestWatchEventsResumes holds the first event that watchEvents hands
-// on while 20 more puts land. The node's watch queue holds one response,
-// so it drops the stream as too slow. watchEvents must watch again after
-// the last event it handed on: every put arrives once, in order.
-func TestWatchEventsResumes(t *testing.T) {
+// TestWatchEventsWaitsForItsReader holds the first event that
+// watchEvents hands on while 20 more puts land. The node's watch queue
+// holds one response, so the watcher falls behind and catches up once
+// the reader takes it: every put arrives once, in order.
+func TestWatchEventsWaitsForItsReader(t *testing.T) {
 	n, err := node.New(node.Config{Core: core.DefaultConfig(1, []uint64{1}), DataDir: t.TempDir(), Tick: 50 * time.Millisecond, WatchQueue: 1, Logf: t.Logf})
 	if err != nil {
 		t.Fatal(err)
