@@ -3,6 +3,7 @@ package mvcc
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 
@@ -114,7 +115,9 @@ func (h *history) rebuild(s *Store, from int64) error {
 		if l.mod.main != main {
 			main, sub = l.mod.main, 0
 		}
-		bad := l.mod.main > s.rev || l.mod.sub < sub
+		// A revision or sub-revision at the largest int64 has no next
+		// one, which the slots below count on; no store gets there.
+		bad := l.mod.main > s.rev || l.mod.main == math.MaxInt64 || l.mod.sub == math.MaxInt64 || l.mod.sub < sub
 		if main == from {
 			// The compaction's own revision: its changes in order.
 			subs = append(subs, l.mod.sub)

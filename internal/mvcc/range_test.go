@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -536,6 +537,12 @@ func TestRebuildRefusesAHugeSubRevision(t *testing.T) {
 		}},
 		{"revision past the store's", func(s *Store, v []*version) { v[1].mod.main = s.rev + 1 }},
 		{"revisions far apart", func(s *Store, v []*version) { s.rev, v[1].mod.main = 1<<40, 1<<40 }},
+		{"revision at the largest int64", func(s *Store, v []*version) {
+			s.rev, v[0].mod, v[1].mod = math.MaxInt64, rev{main: math.MaxInt64 - 1}, rev{main: math.MaxInt64}
+		}},
+		{"two sub-revisions at the largest int64", func(_ *Store, v []*version) {
+			v[0].mod, v[1].mod = rev{main: 2, sub: math.MaxInt64}, rev{main: 2, sub: math.MaxInt64}
+		}},
 	} {
 		s := New(&Heap{})
 		put(t, s, "a", "v")
