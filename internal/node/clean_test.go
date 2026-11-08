@@ -356,10 +356,11 @@ func TestNoSpace(t *testing.T) {
 // TestSharedValues writes one 32 KiB value, then 100 puts of its key with
 // ignore_value, which all name that value, and cleans the segment that
 // holds it: the pack must hold it once. A compaction at revision 1 drops
-// none of the 101 versions but makes a checkpoint of them durable, and a
-// put of 40 KiB seals the segment, so the cleaning pass of Defragment can
-// take it. Nothing comes near the disk budget: writing until cleaning
-// started on its own raced the budget's alarm (#546).
+// none of the 101 versions but makes a checkpoint of them durable, a put
+// of 40 KiB seals the segment, and a small put waits for the next one, so
+// the cleaning pass of Defragment can take it. Nothing comes near the
+// disk budget: writing until cleaning started on its own raced the
+// budget's alarm (#546).
 func TestSharedValues(t *testing.T) {
 	r := runClean(t, t.TempDir(), 512<<10)
 	alarmsAllowed(t, r.n)
@@ -380,6 +381,13 @@ func TestSharedValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := r.n.Do(ctx, &pb.PutRequest{Key: []byte("padding"), Value: make([]byte, 40<<10)}); err != nil {
+		t.Fatal(err)
+	}
+	// The put of 40 KiB can commit before the next segment is placed,
+	// while the newest two segments, the shared value's among them, are
+	// still kept back from cleaning. A small put commits only into the
+	// next one.
+	if _, err := r.n.Do(ctx, &pb.PutRequest{Key: []byte("padding"), Value: []byte("v")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.n.Defragment(ctx); err != nil {
