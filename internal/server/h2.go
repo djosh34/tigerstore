@@ -80,6 +80,13 @@ type conn struct {
 	// read, with no allocation for fields from the HPACK tables.
 	hdec *hpack.Decoder
 	hdr  reqHeaders
+	// blocks are the headers of gRPC calls whose block held only indexed
+	// fields, by the block's bytes. Such a block does not change the
+	// HPACK tables, so while no other block changed them, the same bytes
+	// decode to the same headers. A client sends the same block for
+	// every call of one method once its fields are in the table; decoding
+	// it took 3% of a leader's core with transactions (#506).
+	blocks map[string]reqHeaders
 
 	mu        sync.Mutex
 	streams   map[uint32]*stream
@@ -489,6 +496,14 @@ const maxHeaderList = 1 << 20
 // CONTINUATION frames follow their HEADERS frame.
 func (c *conn) headerFragment(b []byte, last bool) error {
 	h := &c.hdr
+	whole := last && h.size == 0 && !h.bad
+	if whole {
+		if known, ok := c.blocks[string(b)]; ok {
+			known.id, known.ended = h.id, h.ended
+			*h = known
+			return c.onHeaders(h)
+		}
+	}
 	// As x/net does since CVE-2023-45288: a block that already broke the
 	// rules, or whose fragments could decode past the limit, ends the
 	// connection instead of being decoded on.
@@ -503,6 +518,20 @@ func (c *conn) headerFragment(b []byte, last bool) error {
 	}
 	if err := c.hdec.Close(); err != nil {
 		return http2.ConnectionError(http2.ErrCodeCompression)
+	}
+	if whole && onlyIndexed(b) {
+		if !h.bad && h.traceMD == nil && h.fields == nil && len(c.blocks) < maxBlocks {
+			if c.blocks == nil {
+				c.blocks = make(map[string]reqHeaders)
+			}
+			known := *h
+			known.id, known.ended = 0, false
+			c.blocks[string(b)] = known
+		}
+	} else {
+		// The block may have changed the tables, which other blocks'
+		// indexes name.
+		clear(c.blocks)
 	}
 	if !h.bad {
 		return c.onHeaders(h)
@@ -525,6 +554,29 @@ func (c *conn) headerFragment(b []byte, last bool) error {
 	c.mu.Unlock()
 	c.resetStream(h.id, http2.ErrCodeProtocol)
 	return nil
+}
+
+// maxBlocks bounds the header blocks a connection keeps decoded.
+const maxBlocks = 64
+
+// onlyIndexed reports whether a header block holds only indexed fields
+// (RFC 7541, 6.1): a set top bit, then an integer with a 7-bit prefix.
+func onlyIndexed(b []byte) bool {
+	for len(b) > 0 {
+		if b[0]&0x80 == 0 {
+			return false
+		}
+		more := b[0]&0x7f == 0x7f
+		b = b[1:]
+		for more {
+			if len(b) == 0 {
+				return false
+			}
+			more = b[0]&0x80 != 0
+			b = b[1:]
+		}
+	}
+	return true
 }
 
 // onField takes one decoded header field. The hpack decoder state must
