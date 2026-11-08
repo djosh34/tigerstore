@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -153,7 +154,10 @@ func dial(addr string) (*conn, error) {
 		ready:      make(chan struct{}),
 		gone:       make(chan struct{}),
 	}
-	c.fr = http2.NewFramer(&c.out, nc)
+	// The frame reader reads through a buffer above TLS too: each read of
+	// TLS checks the handshake under a deferred unlock, which costs more
+	// than copying a record once more.
+	c.fr = http2.NewFramer(&c.out, bufio.NewReaderSize(nc, 64<<10))
 	c.fr.SetReuseFrames()
 	c.dec = hpack.NewDecoder(4096, c.headerField)
 
