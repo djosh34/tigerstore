@@ -252,7 +252,8 @@ func alarmsAllowed(t *testing.T, n *Node) {
 // it answers NOSPACE to 10 rounds in a row, as etcd does past its quota:
 // past the budget, the node raises its NOSPACE alarm. Every other answer
 // is a success, the node never stops, and its files stay near the budget.
-// Reads and deletes still work, and a lease grant gets NOSPACE too. Once
+// Reads and deletes still work, and a lease grant gets NOSPACE too, once
+// the alarm stays raised. Once
 // the keys are deleted and compacted, the node clears its alarm and takes
 // writes again.
 func TestNoSpace(t *testing.T) {
@@ -263,8 +264,8 @@ func TestNoSpace(t *testing.T) {
 	if _, err := do(r.n, &pb.PutRequest{Key: []byte("start"), Value: []byte("v")}); err != nil {
 		t.Fatal(err)
 	}
-	refused := 0
-	for round := 0; refused < 10; round++ {
+	refused, round := 0, 0
+	for ; refused < 10; round++ {
 		if round == 200 {
 			t.Fatalf("no NOSPACE in %d rounds of new keys", round)
 		}
@@ -280,8 +281,31 @@ func TestNoSpace(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := r.n.Do(ctx, &pb.LeaseGrantRequest{TTL: 10}); !errors.Is(err, rpctypes.ErrGRPCNoSpace) {
-		t.Fatalf("lease grant at NOSPACE: %v", err)
+	// The node clears its alarm once cleaning brings its files under the
+	// budget, which a pass can do right after the refusals (#550). A grant
+	// that goes through then is right; the test writes new keys until
+	// NOSPACE comes back and asks again.
+	for {
+		_, err := r.n.Do(ctx, &pb.LeaseGrantRequest{TTL: 10})
+		if errors.Is(err, rpctypes.ErrGRPCNoSpace) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("lease grant at NOSPACE: %v", err)
+		}
+		for ; ; round++ {
+			if round == 400 {
+				t.Fatalf("no NOSPACE again in %d rounds of new keys", round)
+			}
+			_, err := putAll(r.n, round, keys(fmt.Sprintf("r%03d-", round), 20)...)
+			if errors.Is(err, rpctypes.ErrGRPCNoSpace) {
+				round++
+				break
+			}
+			if err != nil {
+				t.Fatalf("round %d: %v", round, err)
+			}
+		}
 	}
 	for _, op := range []proto.Message{
 		&pb.RangeRequest{Key: []byte("start")},
