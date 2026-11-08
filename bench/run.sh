@@ -221,10 +221,11 @@ generator() {
 	endpoints=${ports[0]}
 	if [ "$workload" = mixed ]; then endpoints=$(IFS=,; echo "${ports[*]}"); fi
 	# A LIST answers a page of 500 of the 1,000 keys of a namespace, as
-	# list does; mixed's values have the dump's mean size and its pages
-	# about the 300 keys #484 measured.
+	# list does; mixed's values have the dump's mean size, and its pages
+	# 190 keys, so the generator reads what it reads from a store: 7,809
+	# key and value bytes per call against tigerstore's 7,846 (#506).
 	local values=(-value-size "$size" -list-keys 1000)
-	if [ "$workload" = mixed ]; then values=(-value-size 1458 -list-keys 300); fi
+	if [ "$workload" = mixed ]; then values=(-value-size 1458 -list-keys 190); fi
 	# nullstore deletes faster than the stores' budget of keys lasts.
 	if [ "$workload" = delete ]; then keys=$((keys * 10)); fi
 	taskset -c "$(IFS=,; echo "${layout[*]:1}")" "$nullstore" -listen "$(IFS=,; echo "${ports[*]}")" \
