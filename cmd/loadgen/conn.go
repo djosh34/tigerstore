@@ -78,7 +78,8 @@ func (o *outBuf) Write(p []byte) (int, error) {
 type conn struct {
 	addr string
 	nc   net.Conn
-	fr   *http2.Framer // reads from nc, writes to out
+	fr   *http2.Framer // writes to out
+	br   *bufio.Reader // reads from nc, owned by the reader goroutine
 	out  outBuf        // frames not yet written, owned by the writer goroutine
 
 	mu         sync.Mutex
@@ -154,11 +155,11 @@ func dial(addr string) (*conn, error) {
 		ready:      make(chan struct{}),
 		gone:       make(chan struct{}),
 	}
-	// The frame reader reads through a buffer above TLS too: each read of
-	// TLS checks the handshake under a deferred unlock, which costs more
-	// than copying a record once more.
-	c.fr = http2.NewFramer(&c.out, bufio.NewReaderSize(nc, 64<<10))
-	c.fr.SetReuseFrames()
+	// Frames are read through a buffer above TLS too: each read of TLS
+	// checks the handshake under a deferred unlock, which costs more than
+	// copying a record once more. The framer only writes.
+	c.br = bufio.NewReaderSize(nc, 64<<10)
+	c.fr = http2.NewFramer(&c.out, nil)
 	c.dec = hpack.NewDecoder(4096, c.headerField)
 
 	c.out = append(c.out, http2.ClientPreface...)
@@ -422,45 +423,103 @@ func (c *conn) readLoop() {
 	c.signal()
 }
 
+// HTTP/2 frame flags (RFC 9113, 6).
+const (
+	flagEndStream  = 0x1
+	flagAck        = 0x1
+	flagEndHeaders = 0x4
+	flagPadded     = 0x8
+	flagPriority   = 0x20
+)
+
+var errFrame = errors.New("malformed HTTP/2 frame")
+
+// read reads frames in place from c.br: a frame's payload is a slice of the
+// buffer until the next frame, which saves copying every byte the server
+// sends once more. The server's frames are at most 16 KiB, the HTTP/2
+// default, as the generator never raises SETTINGS_MAX_FRAME_SIZE.
 func (c *conn) read() error {
+	size := 0
 	for {
-		f, err := c.fr.ReadFrame()
+		if _, err := c.br.Discard(size); err != nil {
+			return err
+		}
+		head, err := c.br.Peek(9)
 		if err != nil {
 			return err
 		}
-		switch f := f.(type) {
-		case *http2.DataFrame:
-			err = c.onData(f)
-		case *http2.HeadersFrame:
-			c.hdrStream = f.StreamID
-			c.hdrEnd = f.StreamEnded()
+		n := int(head[0])<<16 | int(head[1])<<8 | int(head[2])
+		typ, flags := http2.FrameType(head[3]), head[4]
+		id := binary.BigEndian.Uint32(head[5:9]) & (1<<31 - 1)
+		if 9+n > c.br.Size() {
+			return fmt.Errorf("a %v frame of %d bytes, past the largest frame", typ, n)
+		}
+		frame, err := c.br.Peek(9 + n)
+		if err != nil {
+			return err
+		}
+		size = 9 + n
+		p := frame[9:]
+		//exhaustive:ignore // other frames need no answer
+		switch typ {
+		case http2.FrameData:
+			data, ok := unpad(p, flags)
+			if !ok {
+				return errFrame
+			}
+			err = c.onData(id, n, data, flags&flagEndStream != 0)
+		case http2.FrameHeaders:
+			frag, ok := unpad(p, flags)
+			if ok && flags&flagPriority != 0 {
+				ok = len(frag) >= 5
+				frag = frag[min(5, len(frag)):]
+			}
+			if !ok {
+				return errFrame
+			}
+			c.hdrStream = id
+			c.hdrEnd = flags&flagEndStream != 0
 			c.hdrStatus, c.grpcStatus, c.grpcMessage, c.hasGRPCState = "", "", "", false
-			err = c.onHeaderBlock(f.HeaderBlockFragment(), f.HeadersEnded())
-		case *http2.ContinuationFrame:
-			if f.StreamID != c.hdrStream {
+			err = c.onHeaderBlock(frag, flags&flagEndHeaders != 0)
+		case http2.FrameContinuation:
+			if id != c.hdrStream {
 				return errors.New("CONTINUATION on the wrong stream")
 			}
-			err = c.onHeaderBlock(f.HeaderBlockFragment(), f.HeadersEnded())
-		case *http2.RSTStreamFrame:
-			c.endStream(f.StreamID, fmt.Errorf("stream reset: %v", f.ErrCode))
-		case *http2.SettingsFrame:
-			err = c.onSettings(f)
-		case *http2.WindowUpdateFrame:
-			if f.StreamID == 0 {
+			err = c.onHeaderBlock(p, flags&flagEndHeaders != 0)
+		case http2.FrameRSTStream:
+			if len(p) != 4 {
+				return errFrame
+			}
+			c.endStream(id, fmt.Errorf("stream reset: %v", http2.ErrCode(binary.BigEndian.Uint32(p))))
+		case http2.FrameSettings:
+			if flags&flagAck == 0 {
+				err = c.onSettings(p)
+			}
+		case http2.FrameWindowUpdate:
+			if len(p) != 4 {
+				return errFrame
+			}
+			if id == 0 {
 				c.mu.Lock()
-				c.sendWin += int64(f.Increment)
+				c.sendWin += int64(binary.BigEndian.Uint32(p) & (1<<31 - 1))
 				c.mu.Unlock()
 				c.signal()
 			}
-		case *http2.PingFrame:
-			if !f.IsAck() {
+		case http2.FramePing:
+			if len(p) != 8 {
+				return errFrame
+			}
+			if flags&flagAck == 0 {
 				c.mu.Lock()
-				c.pings = append(c.pings, f.Data)
+				c.pings = append(c.pings, [8]byte(p))
 				c.mu.Unlock()
 				c.signal()
 			}
-		case *http2.GoAwayFrame:
-			return fmt.Errorf("GOAWAY %v: %q", f.ErrCode, f.DebugData())
+		case http2.FrameGoAway:
+			if len(p) < 8 {
+				return errFrame
+			}
+			return fmt.Errorf("GOAWAY %v: %q", http2.ErrCode(binary.BigEndian.Uint32(p[4:8])), p[8:])
 		}
 		if err != nil {
 			return err
@@ -468,29 +527,43 @@ func (c *conn) read() error {
 	}
 }
 
-func (c *conn) onSettings(f *http2.SettingsFrame) error {
-	if f.IsAck() {
-		return nil
+// unpad returns the payload of a DATA or HEADERS frame without its
+// padding, and false if the padding does not fit.
+func unpad(p []byte, flags byte) ([]byte, bool) {
+	if flags&flagPadded == 0 {
+		return p, true
+	}
+	if len(p) == 0 || int(p[0]) >= len(p) {
+		return nil, false
+	}
+	return p[1 : len(p)-int(p[0])], true
+}
+
+// onSettings applies the server's settings, 6 bytes each.
+func (c *conn) onSettings(p []byte) error {
+	if len(p)%6 != 0 {
+		return errFrame
 	}
 	c.mu.Lock()
-	err := f.ForeachSetting(func(s http2.Setting) error {
+	var err error
+	for ; len(p) > 0 && err == nil; p = p[6:] {
+		v := binary.BigEndian.Uint32(p[2:6])
 		//exhaustive:ignore // the default case handles the rest
-		switch s.ID {
+		switch http2.SettingID(binary.BigEndian.Uint16(p[:2])) {
 		case http2.SettingMaxConcurrentStreams:
-			c.maxStreams = s.Val
+			c.maxStreams = v
 		case http2.SettingInitialWindowSize:
-			c.streamWin = s.Val
+			c.streamWin = v
 		case http2.SettingHeaderTableSize:
-			c.encoder().SetMaxDynamicTableSizeLimit(s.Val)
+			c.encoder().SetMaxDynamicTableSizeLimit(v)
 			c.gen++
 		case http2.SettingMaxFrameSize:
-			if s.Val < maxDataFrame {
-				return fmt.Errorf("server max frame size %d is below the HTTP/2 minimum", s.Val)
+			if v < maxDataFrame {
+				err = fmt.Errorf("server max frame size %d is below the HTTP/2 minimum", v)
 			}
 		default:
 		}
-		return nil
-	})
+	}
 	c.settingsAck = true
 	c.mu.Unlock()
 	if err != nil {
@@ -504,8 +577,10 @@ func (c *conn) onSettings(f *http2.SettingsFrame) error {
 	return nil
 }
 
-func (c *conn) onData(f *http2.DataFrame) error {
-	n := int64(f.Length)
+// onData takes a DATA frame of stream id: length bytes against the flow
+// control windows, of which data are the message bytes.
+func (c *conn) onData(id uint32, length int, data []byte, end bool) error {
+	n := int64(length)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.recvUnacked += n
@@ -514,7 +589,7 @@ func (c *conn) onData(f *http2.DataFrame) error {
 		c.recvUnacked = 0
 		c.signal()
 	}
-	st := c.streams[f.StreamID]
+	st := c.streams[id]
 	if st == nil {
 		return nil
 	}
@@ -527,9 +602,9 @@ func (c *conn) onData(f *http2.DataFrame) error {
 	// A bad response is reported when the stream ends, because until then
 	// it still counts against the server's stream limit.
 	if st.err == nil {
-		st.err = c.messages(st, f.Data())
+		st.err = c.messages(st, data)
 	}
-	if f.StreamEnded() {
+	if end {
 		c.finish(st, errors.New("stream ended without trailers"))
 	}
 	return nil
