@@ -129,13 +129,13 @@ jobs:
           } | tee results/runner.md
       # Nothing else runs yet: the disk and the CPU are the runner's alone.
       - name: Measure the runner
-        if: matrix.bench != 'profile' && matrix.bench != 'etcd-tool'
+        if: matrix.bench != 'profile' && matrix.bench != 'profile-disk' && matrix.bench != 'etcd-tool'
         run: |
           taskset -c 3 bin/ceiling -dir "$RUNNER_TEMP" \
             -disk "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)" \
             -cpu "$(lscpu | sed -n 's/^Model name: *//p' | head -n 1)" | tee results/ceiling.json
       - name: Measure the generator against nullstore
-        if: matrix.bench != 'profile' && matrix.bench != 'etcd-tool'
+        if: matrix.bench != 'profile' && matrix.bench != 'profile-disk' && matrix.bench != 'etcd-tool'
         env:
           BINS: bin
           CERTS: certs
@@ -154,6 +154,13 @@ jobs:
           LAYOUTS: ${{ (matrix.bench == 'put-1k' || matrix.bench == 'txn-1k') && inputs.layouts || '' }}
           BENCH: ${{ matrix.bench }}
         run: |
+          if [ "$BENCH" = profile-disk ]; then
+            DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")
+            for b in ${PROFILES:-put-1k txn-1k mixed-k8s}; do
+              DISK=$DISK DATA="$RUNNER_TEMP/bench-data" bench/profile-disk.sh bin/candidate "$b" results/profile-disk
+            done
+            exit 0
+          fi
           if [ "$BENCH" = profile ]; then
             for wl in put txn range list; do
               TMPFS_DIR=/dev/shm/bench-profile bench/profile.sh bin/candidate "$wl" results/profile
@@ -193,7 +200,9 @@ jobs:
         run: |
           {
             cat results/runner.md
-            if [ "$BENCH" = profile ]; then
+            if [ "$BENCH" = profile-disk ]; then
+              echo "profiles in the artifact"
+            elif [ "$BENCH" = profile ]; then
               cat results/profile/*.steps.md
             elif [ "$BENCH" = etcd-tool ]; then
               echo '```'
