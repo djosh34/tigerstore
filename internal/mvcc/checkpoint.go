@@ -156,7 +156,7 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 	s.rev, s.compactRev = rev, compactRev
 	var prev []byte
 	for {
-		k, err := readKey(r, rev)
+		k, err := readKey(r)
 		if err != nil {
 			return minRef, err
 		}
@@ -199,7 +199,7 @@ func WalkRefs(r *bufio.Reader, fn func(Ref) error) error {
 		if _, err := r.Discard(int(n)); err != nil {
 			return loadError(err)
 		}
-		count, err := readCount(r, -1, nil)
+		count, err := readCount(r, nil)
 		if err != nil {
 			return err
 		}
@@ -217,18 +217,18 @@ func WalkRefs(r *bufio.Reader, fn func(Ref) error) error {
 	}
 }
 
-// readKey reads one key of a checkpoint, or nil at the end mark. A key
-// has at most rev versions unless rev is negative.
-func readKey(r *bufio.Reader, rev int64) (*keyIndex, error) {
+// readKey reads one key of a checkpoint, or nil at the end mark.
+func readKey(r *bufio.Reader) (*keyIndex, error) {
 	n, err := readKeyHead(r)
 	if err != nil || n == 0 {
 		return nil, err
 	}
-	k := &keyIndex{key: make([]byte, n)}
-	if _, err := io.ReadFull(r, k.key); err != nil {
+	key, err := readN(r, n)
+	if err != nil {
 		return nil, loadError(err)
 	}
-	count, err := readCount(r, rev, k.key)
+	k := &keyIndex{key: key}
+	count, err := readCount(r, k.key)
 	if err != nil {
 		return nil, err
 	}
@@ -241,6 +241,27 @@ func readKey(r *bufio.Reader, rev int64) (*keyIndex, error) {
 		k.vers = append(k.vers, v)
 	}
 	return k, nil
+}
+
+// readN reads n bytes into a slice of exactly n bytes, which it grows,
+// from 64 KiB, by doubling as the bytes come: a damaged length costs a
+// few times the bytes the input holds (while it copies, the old and the
+// new slice are both alive), never the length it names.
+func readN(r io.Reader, n uint64) ([]byte, error) {
+	b := make([]byte, 0, min(n, 64<<10))
+	for uint64(len(b)) < n {
+		if len(b) == cap(b) {
+			grown := make([]byte, len(b), min(n, 2*uint64(cap(b))))
+			copy(grown, b)
+			b = grown
+		}
+		m, err := io.ReadFull(r, b[len(b):cap(b)])
+		b = b[:len(b)+m]
+		if err != nil {
+			return nil, err
+		}
+	}
+	return b, nil
 }
 
 // readKeyHead reads the length of the next key, 0 at the end mark, and
@@ -256,14 +277,17 @@ func readKeyHead(r *bufio.Reader) (uint64, error) {
 	return n, nil
 }
 
-// readCount reads how many versions the key has: at least one, and at
-// most rev unless rev is negative.
-func readCount(r *bufio.Reader, rev int64, key []byte) (uint64, error) {
+// readCount reads how many versions the key has: at least one. A key can
+// change more than once in a revision, as a Txn that deletes it, puts it
+// and deletes it again does, so the store's revision does not bound the
+// count (#548); readKey grows its versions as it reads them, so a wrong
+// count costs no memory the input does not hold.
+func readCount(r *bufio.Reader, key []byte) (uint64, error) {
 	count, err := binary.ReadUvarint(r)
 	if err != nil {
 		return 0, loadError(err)
 	}
-	if count == 0 || (rev >= 0 && count > uint64(rev)) || count > 1<<32 {
+	if count == 0 || count > 1<<32 {
 		return 0, fmt.Errorf("%w: %d versions of key %q", ErrBadCheckpoint, count, key)
 	}
 	return count, nil
