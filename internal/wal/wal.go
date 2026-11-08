@@ -88,10 +88,6 @@ type File interface {
 	Truncate(size int64) error
 	// Sync makes the content durable.
 	Sync() error
-	// Allocate reserves size bytes for a new, empty file, which read as
-	// zeros until written, so that its syncs allocate no blocks. A disk
-	// that does not reserve room may do nothing.
-	Allocate(size int64) error
 	// DropCache drops the file's pages that hold no unsynced write from
 	// the page cache, so that later reads of them read the disk. It fails
 	// if one of them stays.
@@ -467,7 +463,7 @@ func open(fs FS, drop bool) (*WAL, *Recovered, error) {
 		return nil, nil, errors.Join(err, w.Close())
 	}
 	if w.seg == nil {
-		if err := PrepareSegment(fs, w.seq+1, 0); err != nil {
+		if err := PrepareSegment(fs, w.seq+1); err != nil {
 			return nil, nil, errors.Join(err, w.closePacks())
 		}
 		w.start(nil)
@@ -796,17 +792,13 @@ func (w *WAL) setRoot(r Root) {
 // PrepareSegment readies the file of segment seq, for Rotate, under a
 // name that is not a segment's: a file it readied before for another
 // segment than seq-1, which may wait for Place, the oldest spare, or a new
-// file with size bytes reserved (File.Allocate), none if size is 0: the
-// node driver reserves them, Open and Sync do not. A sync into a new file
-// that grows also allocates its blocks: on ext4 that wrote 2.5% more to
-// the disk than the log, and three nodes sharing a disk did 3% fewer puts
-// a second than with the room reserved (#506). Its name is durable when it returns. A file readied before for
+// file. Its name is durable when it returns. A file readied before for
 // seq itself is removed: a crash after Place, before the directory sync,
 // can have left records of segment seq in it, which would verify after
 // the new ones. As a spare it could come back to seq through the file of
 // seq+1, when another such crash loses seq's name again (#274). A spare
 // that a removal took meanwhile is skipped.
-func PrepareSegment(fs FS, seq uint64, size int64) error {
+func PrepareSegment(fs FS, seq uint64) error {
 	for {
 		names, err := fs.List()
 		if err != nil {
@@ -838,11 +830,6 @@ func PrepareSegment(fs FS, seq uint64, size int64) error {
 			f, err := fs.Create(nextName(seq))
 			if err != nil {
 				return err
-			}
-			if size > 0 {
-				if err := f.Allocate(size); err != nil {
-					return errors.Join(err, f.Close())
-				}
 			}
 			return errors.Join(f.Close(), fs.SyncDir())
 		}
@@ -1056,7 +1043,7 @@ func (w *WAL) Sync() error {
 		return errors.Join(err, w.CutUnsynced(w.seg))
 	}
 	w.synced = w.size
-	if err := PrepareSegment(w.fs, w.seq+1, 0); err != nil {
+	if err := PrepareSegment(w.fs, w.seq+1); err != nil {
 		return err
 	}
 	return errors.Join(w.Rotate().Close(), w.Place(), w.fs.SyncDir())

@@ -236,7 +236,7 @@ func TestCutKeepsDriverSyncs(t *testing.T) {
 		}
 		w.Synced(w.Segment(), w.Size())
 		w.Append(nil, []*raftpb.Entry{entry(1, 2, "b")})
-		if err := errors.Join(w.Flush(), w.Seal(), wal.PrepareSegment(d, w.Seq()+1, 0)); err != nil {
+		if err := errors.Join(w.Flush(), w.Seal(), wal.PrepareSegment(d, w.Seq()+1)); err != nil {
 			t.Fatal(err)
 		}
 		old := w.Rotate()

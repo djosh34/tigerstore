@@ -472,12 +472,6 @@ func (f *memFile) Sync() error {
 	return f.f.Sync()
 }
 
-func (f *memFile) Allocate(size int64) error {
-	f.d.mu.Lock()
-	defer f.d.mu.Unlock()
-	return f.f.Allocate(size)
-}
-
 func (f *memFile) DropCache() error {
 	f.d.mu.Lock()
 	defer f.d.mu.Unlock()

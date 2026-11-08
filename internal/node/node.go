@@ -2171,7 +2171,7 @@ func (n *Node) prepareSegments(ctx context.Context) {
 	seq := n.log.w.Seq() + 1
 	n.log.mu.Unlock()
 	for {
-		if err := wal.PrepareSegment(n.log.fs, seq, cmp.Or(n.cfg.SegmentBytes, int64(wal.SegmentBytes))); err != nil {
+		if err := wal.PrepareSegment(n.log.fs, seq); err != nil {
 			select {
 			case n.persisted <- persistDone{err: fmt.Errorf("%w: prepare segment %d: %w", core.ErrDisk, seq, err)}:
 			case <-ctx.Done():

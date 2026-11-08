@@ -372,7 +372,7 @@ func TestPrepareSegment(t *testing.T) {
 	}
 	prepare := func(seq uint64, want string) {
 		t.Helper()
-		if err := wal.PrepareSegment(d, seq, 0); err != nil {
+		if err := wal.PrepareSegment(d, seq); err != nil {
 			t.Fatal(err)
 		}
 		if got := names(); got != want {
@@ -427,7 +427,7 @@ func TestFileOfALostSegmentName(t *testing.T) {
 	// start readies the next segment's file, as a node does when it starts.
 	start := func() {
 		t.Helper()
-		if err := wal.PrepareSegment(d, w.Seq()+1, 0); err != nil {
+		if err := wal.PrepareSegment(d, w.Seq()+1); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -442,7 +442,7 @@ func TestFileOfALostSegmentName(t *testing.T) {
 			t.Fatal(err)
 		}
 		old := w.Rotate()
-		if err := errors.Join(wal.PrepareSegment(d, w.Seq()+1, 0), old.Sync(), old.Close(), w.Place()); err != nil {
+		if err := errors.Join(wal.PrepareSegment(d, w.Seq()+1), old.Sync(), old.Close(), w.Place()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -555,7 +555,7 @@ func TestDropKeepsBeforeUnplaced(t *testing.T) {
 	w.SetSegmentBytes(1)
 	fill(t, w, 1, 4)
 	w.Append(&wal.HardState{Term: 1, Vote: 2, Commit: 4}, []*raftpb.Entry{entry(1, 5, "v5")})
-	if err := errors.Join(w.Flush(), w.Seal(), wal.PrepareSegment(d, w.Seq()+1, 0)); err != nil {
+	if err := errors.Join(w.Flush(), w.Seal(), wal.PrepareSegment(d, w.Seq()+1)); err != nil {
 		t.Fatal(err)
 	}
 	old := w.Rotate()

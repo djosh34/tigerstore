@@ -143,10 +143,6 @@ func (f *concurrentFile) Sync() error {
 
 func (f *concurrentFile) DropCache() error { return serialErr(f.d, f.f.DropCache) }
 
-func (f *concurrentFile) Allocate(size int64) error {
-	return serialErr(f.d, func() error { return f.f.Allocate(size) })
-}
-
 func (f *concurrentFile) Close() error {
 	f.d.mu.Lock()
 	defer f.d.mu.Unlock()
