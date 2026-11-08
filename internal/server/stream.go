@@ -82,7 +82,7 @@ type stream struct {
 	began       time.Time
 	readonlyTxn bool
 	// admitted is when the node got the request of a call it runs, for
-	// logSlow.
+	// logSlow, or the call's start if it is timed (began).
 	admitted time.Time
 	// trace is the context of the call's server span and traceBegan its
 	// start, span the inner span of a unary call; all are nil without

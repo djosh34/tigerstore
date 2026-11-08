@@ -109,11 +109,12 @@ type conn struct {
 	// atNode is the calls the node has and has not answered.
 	atNode map[*stream]struct{}
 
-	// lastRead is when the reader last got a frame, in Unix nanoseconds,
-	// and wrote is set when the writer sends HEADERS or DATA, which
-	// forgives the client's pings (keepalive.go). lastPing and
-	// pingStrikes are the reader's.
-	lastRead    atomic.Int64
+	// frames counts the frames the reader got, and wrote is set when the
+	// writer sends HEADERS or DATA, which forgives the client's pings
+	// (keepalive.go). A count, not a time: a clock read per frame took
+	// 2% of a leader's core (#506). lastPing and pingStrikes are the
+	// reader's.
+	frames      atomic.Uint64
 	wrote       atomic.Bool
 	lastPing    time.Time
 	pingStrikes int
@@ -172,7 +173,6 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		initWin:  65535,
 		maxFrame: 16384,
 	}
-	c.lastRead.Store(time.Now().UnixNano())
 	c.caller = caller(s.cfg.TLS, nc)
 	c.fr = http2.NewFramer(c.bw, c.br)
 	c.hdec = hpack.NewDecoder(4096, c.onField)
@@ -323,7 +323,7 @@ func (c *conn) readLoop() error {
 		if err != nil {
 			return err
 		}
-		c.lastRead.Store(time.Now().UnixNano())
+		c.frames.Add(1)
 		f, err := c.fr.ReadFrameForHeader(fh)
 		if err != nil {
 			if _, ok := errors.AsType[http2.StreamError](err); ok && fh.Type == http2.FrameHeaders {

@@ -100,7 +100,12 @@ func (c *conn) admit(st *stream) {
 		}
 	}
 	c.startOpSpan(st, &req)
-	st.admitted = time.Now()
+	// A timed call's start serves as its admission: one clock read less
+	// per call.
+	st.admitted = st.began
+	if st.admitted.IsZero() {
+		st.admitted = time.Now()
+	}
 	st.reqSize = len(st.body)
 	st.body = nil
 	c.batch.reqs = append(c.batch.reqs, req)
