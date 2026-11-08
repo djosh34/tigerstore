@@ -212,10 +212,11 @@ func readKey(r *bufio.Reader) (*keyIndex, error) {
 	if err != nil || n == 0 {
 		return nil, err
 	}
-	k := &keyIndex{key: make([]byte, n)}
-	if _, err := io.ReadFull(r, k.key); err != nil {
+	key, err := readN(r, n)
+	if err != nil {
 		return nil, loadError(err)
 	}
+	k := &keyIndex{key: key}
 	count, err := readCount(r, k.key)
 	if err != nil {
 		return nil, err
@@ -229,6 +230,26 @@ func readKey(r *bufio.Reader) (*keyIndex, error) {
 		k.vers = append(k.vers, v)
 	}
 	return k, nil
+}
+
+// readN reads n bytes into a slice of exactly n bytes, which it grows,
+// from 64 KiB, by doubling as the bytes come: a damaged length costs no
+// more memory than twice the bytes the input holds.
+func readN(r io.Reader, n uint64) ([]byte, error) {
+	b := make([]byte, 0, min(n, 64<<10))
+	for uint64(len(b)) < n {
+		if len(b) == cap(b) {
+			grown := make([]byte, len(b), min(n, 2*uint64(cap(b))))
+			copy(grown, b)
+			b = grown
+		}
+		m, err := io.ReadFull(r, b[len(b):cap(b)])
+		b = b[:len(b)+m]
+		if err != nil {
+			return nil, err
+		}
+	}
+	return b, nil
 }
 
 // readKeyHead reads the length of the next key, 0 at the end mark, and

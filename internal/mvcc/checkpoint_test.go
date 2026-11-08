@@ -3,6 +3,7 @@ package mvcc
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -257,5 +258,22 @@ func TestCheckpointOfAKeyChangedThreeTimesInARevision(t *testing.T) {
 	}
 	if loaded.Hash() != s.Hash() {
 		t.Fatalf("the loaded store's hash is %x, the store's %x", loaded.Hash(), s.Hash())
+	}
+}
+
+// TestDamagedKeyLengthCostsNoMemory loads a checkpoint of four bytes that
+// says its first key takes MaxKeyBytes: the load must fail without making
+// room for a key the input does not hold.
+func TestDamagedKeyLengthCostsNoMemory(t *testing.T) {
+	b := binary.AppendUvarint(nil, MaxKeyBytes)
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, err := New(&Heap{}).Load(bufio.NewReader(bytes.NewReader(b)), 2, 0)
+	runtime.ReadMemStats(&after)
+	if !errors.Is(err, ErrBadCheckpoint) {
+		t.Fatalf("a key length past the input: %v, want ErrBadCheckpoint", err)
+	}
+	if got := after.TotalAlloc - before.TotalAlloc; got > 1<<20 {
+		t.Fatalf("the load allocated %d bytes for a key the input does not hold", got)
 	}
 }
