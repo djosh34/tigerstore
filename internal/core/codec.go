@@ -130,7 +130,7 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 		case p.req.Op == nil:
 			body = p.req.Put.Wire
 		case kind == kindShortTxn:
-			body = appendShort(nil, p.req.Op.(*pb.TxnRequest))
+			// Written straight into the entry below.
 		case p.req.Wire != nil:
 			body = p.req.Wire
 		default:
@@ -139,18 +139,26 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 				return nil, err
 			}
 		}
+		size := len(body)
+		if kind == kindShortTxn {
+			size = shortSize(p.req.Op.(*pb.TxnRequest))
+		}
 		if w := p.who; w != nil {
 			head := binary.AppendUvarint(nil, w.revision)
 			head = binary.AppendUvarint(head, uint64(len(w.user)))
 			head = append(append(head, w.user...), kind)
 			buf = append(buf, kindAuthed)
-			buf = binary.AppendUvarint(buf, uint64(len(head)+len(body)))
+			buf = binary.AppendUvarint(buf, uint64(len(head)+size))
 			buf = append(buf, head...)
 		} else {
 			buf = append(buf, kind)
-			buf = binary.AppendUvarint(buf, uint64(len(body)))
+			buf = binary.AppendUvarint(buf, uint64(size))
 		}
-		buf = append(buf, body...)
+		if kind == kindShortTxn {
+			buf = appendShort(buf, p.req.Op.(*pb.TxnRequest))
+		} else {
+			buf = append(buf, body...)
+		}
 	}
 	return buf, nil
 }

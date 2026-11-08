@@ -150,3 +150,16 @@ func TestShortTxnInBatch(t *testing.T) {
 		decodeAll(t, data, []*pending{{req: Request{ID: 3, Op: update}}})
 	}
 }
+
+// TestShortSize checks shortSize against appendShort.
+func TestShortSize(t *testing.T) {
+	r := rand.New(rand.NewPCG(9, 10))
+	for range 5000 {
+		txn := randomShortish(r)
+		if isShort(txn) {
+			if got, want := shortSize(txn), len(appendShort(nil, txn)); got != want {
+				t.Fatalf("%v: size %d, short form %d bytes", txn, got, want)
+			}
+		}
+	}
+}

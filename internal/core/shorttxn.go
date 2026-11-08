@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -84,6 +85,26 @@ func isShort(t *pb.TxnRequest) bool {
 }
 
 func hasUnknown(m proto.Message) bool { return len(m.ProtoReflect().GetUnknown()) > 0 }
+
+// shortSize is the size of the short form of t, which isShort accepted.
+func shortSize(t *pb.TxnRequest) int {
+	c := t.Compare[0]
+	n := 1 + protowire.SizeVarint(uint64(uint32(c.Result))) + protowire.SizeVarint(uint64(uint32(c.Target))) + 1
+	switch u := c.TargetUnion.(type) {
+	case *pb.Compare_Version:
+		n += protowire.SizeVarint(uint64(u.Version))
+	case *pb.Compare_CreateRevision:
+		n += protowire.SizeVarint(uint64(u.CreateRevision))
+	case *pb.Compare_ModRevision:
+		n += protowire.SizeVarint(uint64(u.ModRevision))
+	case *pb.Compare_Lease:
+		n += protowire.SizeVarint(uint64(u.Lease))
+	}
+	if put := t.Success[0].GetRequestPut(); put != nil {
+		n += protowire.SizeVarint(uint64(put.Lease)) + len(put.Value)
+	}
+	return n + protowire.SizeBytes(len(c.Key))
+}
 
 // appendShort appends the short form of t, which isShort accepted.
 func appendShort(b []byte, t *pb.TxnRequest) []byte {
