@@ -43,7 +43,7 @@ func TestCacheLRU(t *testing.T) {
 		t.Fatalf("after a drop: value 2 there %v, %d bytes", ok, c.bytes)
 	}
 	c.setLimit(0)
-	if len(c.items) != 0 || c.bytes != 0 || c.head.next != &c.head {
+	if len(c.items) != 0 || c.bytes != 0 || c.entries[0].next != 0 {
 		t.Fatalf("a limit of 0 left %d values, %d bytes", len(c.items), c.bytes)
 	}
 	if c.hits != 2 {
@@ -209,5 +209,33 @@ func TestCacheLow(t *testing.T) {
 	}
 	if low, now := s.n.CacheLow(), s.n.cache.bytes; low != now || now == 0 {
 		t.Fatalf("next span: low %d, cache %d", low, now)
+	}
+}
+
+// TestCacheRebuildKeepsOrder checks that making the map and the entries
+// again keeps the values and their order of use.
+func TestCacheRebuildKeepsOrder(t *testing.T) {
+	c := newCache()
+	c.setLimit(1 << 20)
+	ref := func(i uint64) mvcc.Ref { return mvcc.Ref{Index: i, Len: 10} }
+	for i := uint64(1); i <= 10; i++ {
+		c.add(ref(i), []byte{byte(i)})
+	}
+	// Used last: 2, then 4.
+	c.get(ref(2))
+	c.get(ref(4))
+	for i := uint64(5); i <= 9; i++ {
+		c.drop(ref(i))
+	}
+	if c.peak != 5 || len(c.entries) != 6 {
+		t.Fatalf("after the rebuild: peak %d, %d entries", c.peak, len(c.entries))
+	}
+	// Room for two values: 4 and 2 were used last.
+	c.setLimit(2*(10+cachedOverhead) + 5*slotOverhead)
+	for i := uint64(1); i <= 10; i++ {
+		v, ok := c.get(ref(i))
+		if ok != (i == 2 || i == 4) || ok && v[0] != byte(i) {
+			t.Fatalf("value %d: cached %v, %v", i, ok, v)
+		}
 	}
 }
