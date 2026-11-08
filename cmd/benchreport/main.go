@@ -384,6 +384,7 @@ type runner struct {
 	Disk             string  `json:"disk"`
 	DiskMiBps        float64 `json:"disk_mib_per_s"`
 	DiskThreeMiBps   float64 `json:"disk_three_mib_per_s"`
+	DiskFreshMiBps   float64 `json:"disk_fresh_mib_per_s"`
 	EncodeNsPerByte  float64 `json:"encode_ns_per_byte"`
 	EncryptNsPerByte float64 `json:"encrypt_ns_per_byte"`
 	SendNsPerByte    float64 `json:"send_ns_per_byte"`
@@ -419,6 +420,9 @@ func ceilings(w io.Writer, dir string, rtts, benches, targets []string, all maxR
 		rn.Kernel, rn.CPU, rn.Disk, rn.DiskMiBps, rn.EncodeNsPerByte, rn.EncryptNsPerByte, rn.SendNsPerByte)
 	if rn.DiskThreeMiBps > 0 {
 		p("Three writers at once, as the three nodes write, made %.1f MiB/s durable together.\n", rn.DiskThreeMiBps)
+	}
+	if rn.DiskFreshMiBps > 0 {
+		p("Three writers appending to new files, as the logs of a new cluster do, made %.1f MiB/s durable together.\n", rn.DiskFreshMiBps)
 	}
 	p("\n| Benchmark | Durable bytes/op per node | Disk limit ops/s | Read bytes/op | CPU limit ops/s | Ceiling ops/s |\n|---|---|---|---|---|---|\n")
 	ceiling := map[string]float64{}
