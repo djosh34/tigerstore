@@ -2,7 +2,11 @@
 // cluster, for load generators that write Kubernetes-shaped objects.
 package k8ssize
 
-import "math/rand/v2"
+import (
+	"math/rand/v2"
+	"sort"
+	"sync"
+)
 
 // Bucket is one row of the histogram: a resource, an exact value size,
 // and how many objects of that resource had it.
@@ -438,25 +442,42 @@ var Buckets = []Bucket{
 }
 
 // Draw returns the index of a row drawn by count, among the rows of
-// resource, or among all rows if resource is "".
+// resource, or among all rows if resource is "". It draws as a walk of
+// the rows in order would, through tables made once.
 func Draw(r *rand.Rand, resource string) int {
+	t := tables()[resource]
 	total := 0
-	for _, b := range Buckets {
-		if resource == "" || resource == b.Resource {
-			total += b.Count
-		}
+	if len(t.ends) > 0 {
+		total = t.ends[len(t.ends)-1]
 	}
 	n := r.IntN(total)
-	for i, b := range Buckets {
-		if resource == "" || resource == b.Resource {
-			n -= b.Count
-			if n < 0 {
-				return i
-			}
-		}
-	}
-	return 0
+	return t.rows[sort.SearchInts(t.ends, n+1)]
 }
+
+// table lists rows of Buckets and the running total of their counts.
+type table struct {
+	rows, ends []int
+}
+
+// tables are the draw tables of every resource, and of all rows under "".
+var tables = sync.OnceValue(func() map[string]table {
+	m := map[string]table{}
+	add := func(name string, i int) {
+		t := m[name]
+		total := 0
+		if len(t.ends) > 0 {
+			total = t.ends[len(t.ends)-1]
+		}
+		t.rows = append(t.rows, i)
+		t.ends = append(t.ends, total+Buckets[i].Count)
+		m[name] = t
+	}
+	for i, b := range Buckets {
+		add("", i)
+		add(b.Resource, i)
+	}
+	return m
+})
 
 // Resources lists the resources of the rows, in order.
 func Resources() []string {

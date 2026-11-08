@@ -41,3 +41,35 @@ func TestBuckets(t *testing.T) {
 		}
 	}
 }
+
+// TestDrawWalks checks that a draw picks the row a walk of the rows in
+// order picks for the same random number, so a seed draws the same
+// sizes as before.
+func TestDrawWalks(t *testing.T) {
+	walk := func(r *rand.Rand, resource string) int {
+		total := 0
+		for _, b := range Buckets {
+			if resource == "" || resource == b.Resource {
+				total += b.Count
+			}
+		}
+		n := r.IntN(total)
+		for i, b := range Buckets {
+			if resource == "" || resource == b.Resource {
+				n -= b.Count
+				if n < 0 {
+					return i
+				}
+			}
+		}
+		return -1
+	}
+	a, b := rand.New(rand.NewPCG(3, 4)), rand.New(rand.NewPCG(3, 4))
+	for _, resource := range append(Resources(), "") {
+		for range 2000 {
+			if got, want := Draw(a, resource), walk(b, resource); got != want {
+				t.Fatalf("%q: drew row %d, a walk drew %d", resource, got, want)
+			}
+		}
+	}
+}
