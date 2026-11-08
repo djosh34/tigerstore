@@ -205,10 +205,8 @@ jobs:
           {
             cat results/runner.md
             if [ "$BENCH" = disk-probe ]; then
-            bench/disk-probe.sh "$RUNNER_TEMP" "$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")" | tee results/disk-probe.txt
-            exit 0
-          fi
-          if [ "$BENCH" = profile-disk ]; then
+              echo '```'; cat results/disk-probe.txt; echo '```'
+            elif [ "$BENCH" = profile-disk ]; then
               echo "profiles in the artifact"
             elif [ "$BENCH" = profile ]; then
               cat results/profile/*.steps.md
