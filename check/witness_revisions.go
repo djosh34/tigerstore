@@ -1039,8 +1039,9 @@ func (r *revisionOrder) scheduleOptional() {
 // slotSteps bounds the steps of slotOrder's search.
 const slotSteps = 4096
 
-// slotOrder returns an order of ops, acked mutations that change no key
-// at the current revision, in call order: that one if the model gives
+// slotOrder returns an order of ops, mutations that change no key at the
+// current revision, in call order: acked ones, and ambiguous grants that
+// acked revokes need (finish). It returns that order if the model gives
 // each its answer in it, else the first order that follows real time in
 // which it does, else call order. Two compactions at one revision, for
 // one, must go in the order of their revisions, and a compaction after
@@ -1070,14 +1071,15 @@ func (r *revisionOrder) slotOrder(ops []int) []int {
 			if steps++; steps > slotSteps {
 				return false
 			}
-			// Every op left that returned before its call goes first.
+			// Every acked op left that returned before its call goes
+			// first; an ambiguous op's return is no deadline.
 			if slices.ContainsFunc(ops, func(j int) bool {
-				return w.returns[j] < w.calls[i] && !slices.Contains(order, j)
+				return w.acked(j) && w.returns[j] < w.calls[i] && !slices.Contains(order, j)
 			}) {
 				continue
 			}
 			t, undo := r.try(s, w.reqs[i])
-			if o := t.step(w.reqs[i], false); o.err == nil && matches(o, w.h.Ops[i].Resp) {
+			if o := t.step(w.reqs[i], false); o.err == nil && w.gives(i, o) {
 				placed[k] = true
 				order = append(order, i)
 				if next(t) {
@@ -1106,11 +1108,11 @@ func (r *revisionOrder) answered(ops []int) bool {
 	s := w.live.clone()
 	for k, i := range ops {
 		for _, j := range ops[:k] {
-			if w.returns[i] < w.calls[j] {
+			if w.acked(i) && w.returns[i] < w.calls[j] {
 				return false
 			}
 		}
-		if o := s.step(w.reqs[i], false); o.err != nil || !matches(o, w.h.Ops[i].Resp) {
+		if o := s.step(w.reqs[i], false); o.err != nil || !w.gives(i, o) {
 			return false
 		}
 	}
@@ -1178,15 +1180,21 @@ func (r *revisionOrder) isReady(o optional) bool {
 
 // readsFit reports whether the order built so far answers the acked reads
 // that optional o must come after, with the ops that change nothing and
-// that returned before the last of them was called, as observe would
-// place them. A rejection among those can need another optional
-// compaction first, which then goes in before o (#277, seed 8238917).
+// that returned before the last of them was called, or, for a
+// compaction, before its own call, as observe would place them. A
+// rejection among those can need another optional compaction first,
+// which then goes in before o (#277, seed 8238917), or an acked revoke
+// (#514).
 func (r *revisionOrder) readsFit(o optional) bool {
-	if len(o.reads) == 0 {
+	w := r.w
+	compact := w.reqs[o.op].Compact != nil
+	if len(o.reads) == 0 && !compact {
 		return true
 	}
-	w := r.w
 	var call int64
+	if compact {
+		call = w.calls[o.op]
+	}
 	for _, k := range o.reads {
 		call = max(call, w.calls[k])
 	}
@@ -1413,6 +1421,16 @@ func (r *revisionOrder) search() error {
 		}
 		var ok bool
 		if rev > r.top {
+			// An optional compaction may need a revision that no answer
+			// saw: then an unseen write past the top is tried too (#514).
+			unseen := rev <= r.limit && slices.ContainsFunc(r.optional, func(o optional) bool {
+				c := w.reqs[o.op].Compact
+				return !r.used[o.op] && c != nil && c.Revision >= rev && c.Revision <= r.limit
+			})
+			var m mark
+			if unseen {
+				m = r.save()
+			}
 			r.expireEnd()
 			err := w.observe()
 			if err == nil {
@@ -1425,6 +1443,11 @@ func (r *revisionOrder) search() error {
 				return err
 			}
 			ok = r.dead(rev, err)
+			if unseen {
+				// The whole order is checked again after the write.
+				r.restore(m)
+				ok = r.write(rev) && r.finish(rev)
+			}
 		} else {
 			ok = r.write(rev) && r.finish(rev)
 		}
@@ -1690,6 +1713,19 @@ func (r *revisionOrder) finish(rev int64) bool {
 			acked = append(acked, i)
 		}
 	}
+	// A revoke can need a grant that insertOptional puts in only once
+	// some of the revision's acked mutations are in: slotOrder then finds
+	// no order without it, though one with the grant among them works
+	// (#514). The only grant of such a lease joins the search; a lease
+	// with more grants keeps its scheduling, as one of them may need a
+	// revoke first.
+	var leases []int64
+	for _, i := range acked {
+		if l := w.reqs[i].LeaseRevoke; l != nil && r.grants[l.ID] == 1 {
+			leases = append(leases, l.ID)
+		}
+	}
+	acked = append(acked, r.grantsFor(leases, rev)...)
 	r.byCall(acked)
 	for _, i := range r.slotOrder(acked) {
 		if r.used[i] {
@@ -1697,8 +1733,8 @@ func (r *revisionOrder) finish(rev int64) bool {
 		}
 		r.expire(w.calls[i], 0)
 		o := w.apply(i, &w.reqs[i])
-		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
-			return r.dead(rev, fmt.Errorf("acked %s gets %s from the model in the order so far; the order around it: %s", w.describe(i), outputOf(o), w.around(len(w.events))))
+		if o.err != nil || !w.gives(i, o) {
+			return r.dead(rev, fmt.Errorf("%s gets %s from the model in the order so far; the order around it: %s", w.describe(i), outputOf(o), w.around(len(w.events))))
 		}
 		r.used[i] = true
 		r.insertOptional(rev)

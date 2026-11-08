@@ -15,6 +15,12 @@
 # same root, so a round trip between two nodes is delayed by the whole RTT.
 # The stores dial from ephemeral ports, so each packet matches one port.
 # The netem limit is high so the queue never drops at the bench's rates.
+# on also starts every TCP receive buffer at 1 MiB instead of 128 KiB,
+# keeping the kernel's minimum and maximum: with a delay on lo, autotuning
+# could leave a peer connection's window near 107 KiB, which caps it at
+# about 10 MB/s at 10 ms RTT. A follower behind such a link fell behind
+# the others, and the writes it took timed out after 7 s, in etcd's runs
+# as in tigerstore's (#524).
 # RTT 0 installs the same qdiscs with no delay, so every RTT has the same
 # path. probe prints the median TCP connect time, one round trip, to the
 # peer and the client port of node 2 while nothing else listens there.
@@ -26,6 +32,8 @@ case ${1:-} in
 on)
 	rtt=${2:?on needs an RTT in ms}
 	half=$(awk -v r="$rtt" 'BEGIN { printf "%.3fms", r / 2 }')
+	read -r low _ high < <(sysctl -n net.ipv4.tcp_rmem)
+	sudo sysctl -q -w net.ipv4.tcp_rmem="$low 1048576 $high"
 	sudo tc qdisc del dev lo root 2>/dev/null || true
 	sudo tc qdisc add dev lo root handle 1: prio bands 2 priomap 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 	sudo tc qdisc add dev lo parent 1:1 handle 10: pfifo limit 100000

@@ -627,6 +627,13 @@ func outputOf(o outcome) string {
 // describe names op i for a failure.
 func (w *witness) describe(i int) string { return describeOp(w.h, i) }
 
+// acked reports whether op i got an answer.
+func (w *witness) acked(i int) bool { return w.h.Ops[i].Resp != nil }
+
+// gives reports whether outcome o of op i is its answer: any outcome for
+// an op that got none, an ambiguous one the search places.
+func (w *witness) gives(i int, o outcome) bool { return !w.acked(i) || matches(o, w.h.Ops[i].Resp) }
+
 // eventBounds returns, for an op, the states that the placed events allow
 // it at: after every event of an acked op that returned before its call,
 // and before every event of an op called after it returned.
