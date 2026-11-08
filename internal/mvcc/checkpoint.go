@@ -148,7 +148,7 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 	s.rev, s.compactRev = rev, compactRev
 	var prev []byte
 	for {
-		k, err := readKey(r, rev)
+		k, err := readKey(r)
 		if err != nil || k == nil {
 			return minRef, err
 		}
@@ -188,7 +188,7 @@ func WalkRefs(r *bufio.Reader, fn func(Ref) error) error {
 		if _, err := r.Discard(int(n)); err != nil {
 			return loadError(err)
 		}
-		count, err := readCount(r, -1, nil)
+		count, err := readCount(r, nil)
 		if err != nil {
 			return err
 		}
@@ -206,9 +206,8 @@ func WalkRefs(r *bufio.Reader, fn func(Ref) error) error {
 	}
 }
 
-// readKey reads one key of a checkpoint, or nil at the end mark. A key
-// has at most rev versions unless rev is negative.
-func readKey(r *bufio.Reader, rev int64) (*keyIndex, error) {
+// readKey reads one key of a checkpoint, or nil at the end mark.
+func readKey(r *bufio.Reader) (*keyIndex, error) {
 	n, err := readKeyHead(r)
 	if err != nil || n == 0 {
 		return nil, err
@@ -217,7 +216,7 @@ func readKey(r *bufio.Reader, rev int64) (*keyIndex, error) {
 	if _, err := io.ReadFull(r, k.key); err != nil {
 		return nil, loadError(err)
 	}
-	count, err := readCount(r, rev, k.key)
+	count, err := readCount(r, k.key)
 	if err != nil {
 		return nil, err
 	}
@@ -245,14 +244,17 @@ func readKeyHead(r *bufio.Reader) (uint64, error) {
 	return n, nil
 }
 
-// readCount reads how many versions the key has: at least one, and at
-// most rev unless rev is negative.
-func readCount(r *bufio.Reader, rev int64, key []byte) (uint64, error) {
+// readCount reads how many versions the key has: at least one. A key can
+// change more than once in a revision, as a Txn that deletes it, puts it
+// and deletes it again does, so the store's revision does not bound the
+// count (#548); readKey grows its versions as it reads them, so a wrong
+// count costs no memory the input does not hold.
+func readCount(r *bufio.Reader, key []byte) (uint64, error) {
 	count, err := binary.ReadUvarint(r)
 	if err != nil {
 		return 0, loadError(err)
 	}
-	if count == 0 || (rev >= 0 && count > uint64(rev)) || count > 1<<32 {
+	if count == 0 || count > 1<<32 {
 		return 0, fmt.Errorf("%w: %d versions of key %q", ErrBadCheckpoint, count, key)
 	}
 	return count, nil

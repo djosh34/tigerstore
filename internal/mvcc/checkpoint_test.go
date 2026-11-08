@@ -225,3 +225,37 @@ func TestLongKeyAtChunkEnd(t *testing.T) {
 		}
 	}
 }
+
+// TestCheckpointOfAKeyChangedThreeTimesInARevision puts a key at revision
+// 2, then deletes it, puts it and deletes it again in one Txn at revision
+// 3: the key has 4 versions in a store at revision 3, and the store's own
+// checkpoint must load (#548).
+func TestCheckpointOfAKeyChangedThreeTimesInARevision(t *testing.T) {
+	s := New(&Heap{})
+	if _, err := s.Put(&pb.PutRequest{Key: []byte("a"), Value: []byte("v")}); err != nil {
+		t.Fatal(err)
+	}
+	del := &pb.RequestOp{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte("a"), RangeEnd: []byte{0}}}}
+	if _, err := s.Txn(&pb.TxnRequest{Success: []*pb.RequestOp{
+		del,
+		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("a"), Value: []byte("again")}}},
+		del,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if s.Rev() != 3 {
+		t.Fatalf("setup: the store is at revision %d, want 3", s.Rev())
+	}
+	s.Freeze()
+	var b []byte
+	for done := false; !done; {
+		b, _, done = s.CopyFrozen(b, 1<<20)
+	}
+	loaded := New(&Heap{})
+	if _, err := loaded.Load(bufio.NewReader(bytes.NewReader(b)), s.Rev(), s.CompactRev()); err != nil {
+		t.Fatalf("the store's own checkpoint at revision %d does not load: %v", s.Rev(), err)
+	}
+	if loaded.Hash() != s.Hash() {
+		t.Fatalf("the loaded store's hash is %x, the store's %x", loaded.Hash(), s.Hash())
+	}
+}
