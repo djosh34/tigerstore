@@ -17,11 +17,12 @@
 // The ceiling of a benchmark is the most operations a second the runner
 // allows for the least work the operation must do. Its disk limit is the
 // disk's durable bandwidth over the bytes each operation must make durable
-// on three nodes, which share the one disk. For mixed-k8s it is the lower of
-// that and its CPU limit: the nodes' three cores over the key and value
-// bytes its reads and watch events must carry, each byte encoded, encrypted
-// and sent at the runner's measured rates. The bytes per operation are
-// medians over the max runs of every store.
+// on three nodes, which share the one disk. Its CPU limit is the cores of
+// the nodes the generator sends to over the key and value bytes its reads
+// and watch events must carry, each byte encoded, encrypted and sent at
+// the runner's measured rates: three cores for mixed-k8s, the leader's one
+// for the rest. The ceiling is the lower of the two. The bytes per
+// operation are medians over the max runs of every store.
 //
 // After the tables it exits 1 if a tigerstore run failed or a tigerstore
 // target missed its bar at an RTT above 0. A failed etcd run is reported
@@ -73,6 +74,7 @@ type result struct {
 	} `json:"latency_us"`
 	Unsent               int64     `json:"unsent"`
 	Conns                int       `json:"conns"`
+	Endpoints            []string  `json:"endpoints"`
 	StreamsPerConn       int       `json:"streams_per_conn"`
 	LeaderCPUUsPerOp     float64   `json:"leader_cpu_us_per_op"`
 	ServerCores          []float64 `json:"server_cores_by_node"`
@@ -310,7 +312,7 @@ func report(w io.Writer, dir string) error {
 			num(rs, func(r result) float64 { return r.LeaderCPUUsPerOp }, "%.1f"),
 			num(rs, func(r result) float64 { return r.ClientCPUUsPerOp }, "%.1f"), len(rs))
 	})
-	p("\nStatistics are min / median / max over the repetitions that did not fail, not pooled percentiles. Runs is that count. At max every stream is busy, and the requests in flight doubled until throughput climbed less than 5%%; In flight is where it stopped. Open loop uses the shared rate. Latency starts at the scheduled arrival time. Leader CPU is the leader's process alone; the followers' cores are in the next table.\n")
+	p("\nStatistics are min / median / max over the repetitions that did not fail, not pooled percentiles. Runs is that count. At max every stream is busy, and the requests in flight doubled until throughput climbed less than 5%%; In flight is the limit on requests in flight at the step with the most throughput. txn-1k never has more in flight than its 10,000 keys. Open loop uses the shared rate. Latency starts at the scheduled arrival time. Leader CPU is the leader's process alone; the followers' cores are in the next table.\n")
 
 	hasWatches := false
 	each(func(_, _, _, _ string, rs runs) { hasWatches = hasWatches || rs[0].Watch != nil })
@@ -432,8 +434,10 @@ func ceilings(w io.Writer, dir string, rtts, benches, targets []string, all maxR
 		if written > 0 {
 			disk = rn.DiskMiBps * (1 << 20) / (nodes * written)
 		}
+		// Each node the requests go to serves them on its one core.
+		cores := medianOf(rs, func(r result) float64 { return float64(min(max(len(r.Endpoints), 1), nodes)) })
 		if read > 0 && perByte > 0 {
-			cpu = nodes * 1e9 / (read * perByte)
+			cpu = cores * 1e9 / (read * perByte)
 		}
 		c := min(disk, cpu)
 		if math.IsInf(c, 1) {
@@ -442,7 +446,7 @@ func ceilings(w io.Writer, dir string, rtts, benches, targets []string, all maxR
 		ceiling[bench] = c
 		p("| %s | %.0f | %s | %.0f | %s | %s |\n", bench, written, limit(disk), read, limit(cpu), thousands(c))
 	}
-	p("\nThe ceiling is the lower limit. Durable bytes are the keys and values each operation writes and the key and revision of each compare; read bytes are the keys and values its reads and watch events carry. Both are medians over the max runs of every store.\n")
+	p("\nThe ceiling is the lower limit. The CPU limit counts the cores of the nodes the requests go to: all three for mixed-k8s, the leader's alone for the rest. Durable bytes are the keys and values each operation writes and the key and revision of each compare; read bytes are the keys and values its reads and watch events carry. Both are medians over the max runs of every store.\n")
 	p("\n| Benchmark | Store | RTT ms | Max ops/s | Share of the ceiling | Disk bytes/op written |\n|---|---|---|---|---|---|\n")
 	for _, bench := range benches {
 		c, ok := ceiling[bench]

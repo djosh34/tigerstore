@@ -216,7 +216,7 @@ once() {
 # generator runs loadgen against nullstore on the nodes' CPUs, as the max
 # runs drive a cluster.
 generator() {
-	local ports=() pid status=0 endpoints
+	local ports=() pid status=0 endpoints keys=$keys
 	for i in 1 2 3; do ports+=("127.0.0.1:$((${BENCH_PORT:-20000} + 10 * i))"); done
 	endpoints=${ports[0]}
 	if [ "$workload" = mixed ]; then endpoints=$(IFS=,; echo "${ports[*]}"); fi
@@ -225,10 +225,24 @@ generator() {
 	# about the 300 keys #484 measured.
 	local values=(-value-size "$size" -list-keys 1000)
 	if [ "$workload" = mixed ]; then values=(-value-size 1458 -list-keys 300); fi
+	# nullstore deletes faster than the stores' budget of keys lasts.
+	if [ "$workload" = delete ]; then keys=$((keys * 10)); fi
 	taskset -c "$(IFS=,; echo "${layout[*]:1}")" "$nullstore" -listen "$(IFS=,; echo "${ports[*]}")" \
 		-cert "$certs/node1.pem" -key "$certs/node1-key.pem" "${values[@]}" &
 	pid=$!
-	sleep 1
+	local up=""
+	for _ in $(seq 100); do
+		if (exec 3<>"/dev/tcp/127.0.0.1/${ports[2]##*:}") 2>/dev/null; then
+			up=yes
+			break
+		fi
+		sleep 0.1
+	done
+	if [ -z "$up" ]; then
+		echo "nullstore did not listen within 10s" >&2
+		kill "$pid" || true
+		return 1
+	fi
 	taskset -c "${layout[0]}" "$loadgen" \
 		-endpoints "$endpoints" \
 		-cacert "$certs/ca.pem" -cert "$certs/client.pem" -key "$certs/client-key.pem" \

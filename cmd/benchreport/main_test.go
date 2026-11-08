@@ -119,8 +119,12 @@ func TestReportCeilings(t *testing.T) {
 	}
 	write(t, dir, "etcd-max-1.json", `{"valid":true,"throughput":9000,"min_written_bytes_per_op":1048.576}`)
 	write(t, dir, "main-max-1.json", `{"valid":true,"throughput":90000,"min_written_bytes_per_op":1048.576,"disk_bytes_per_op":3495.25}`)
-	writeAt(t, dir, "0", "mixed-k8s", "etcd-max-1.json", `{"valid":true,"throughput":6000,"min_written_bytes_per_op":1048.576,"min_read_bytes_per_op":100000,"client_cores":0.1}`)
-	writeAt(t, dir, "0", "mixed-k8s", "main-max-1.json", `{"valid":true,"throughput":30000,"min_written_bytes_per_op":1048.576,"min_read_bytes_per_op":100000,"client_cores":0.3}`)
+	three := `"endpoints":["a","b","c"]`
+	writeAt(t, dir, "0", "mixed-k8s", "etcd-max-1.json", `{"valid":true,"throughput":6000,"min_written_bytes_per_op":1048.576,"min_read_bytes_per_op":100000,"client_cores":0.1,`+three+`}`)
+	writeAt(t, dir, "0", "mixed-k8s", "main-max-1.json", `{"valid":true,"throughput":30000,"min_written_bytes_per_op":1048.576,"min_read_bytes_per_op":100000,"client_cores":0.3,`+three+`}`)
+	// range reads from the leader alone: one core, 20,000/s.
+	writeAt(t, dir, "0", "range-1k", "etcd-max-1.json", `{"valid":true,"throughput":2000,"min_read_bytes_per_op":100000,"endpoints":["a"]}`)
+	writeAt(t, dir, "0", "range-1k", "main-max-1.json", `{"valid":true,"throughput":10000,"min_read_bytes_per_op":100000,"endpoints":["a"]}`)
 	if err := os.WriteFile(filepath.Join(dir, "generator-mixed-k8s.json"), []byte(`{"valid":true,"throughput":50000,"client_cores":0.5,"client_cpu_us_per_op":10}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -137,6 +141,8 @@ func TestReportCeilings(t *testing.T) {
 		"| put-1k | main | 0 | 90,000 | 90.0% | 3,495 |",
 		"| put-1k | etcd | 0 | 9,000 | 9.0% | - |",
 		"| mixed-k8s | main | 0 | 30,000 | 50.0% |",
+		"| range-1k | 0 | - | 100000 | 20,000 | 20,000 |",
+		"| range-1k | main | 0 | 10,000 | 50.0% |",
 		"| mixed-k8s | 50,000 | 0.50 | 10.00 | 100,000 | 0.30 (main at 0 ms) |",
 	} {
 		if !strings.Contains(b.String(), want) {
