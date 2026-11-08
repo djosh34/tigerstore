@@ -39,8 +39,15 @@ gen=$!
 get() {
 	curl -fsS --cacert "$certs/ca.pem" --cert "$certs/client.pem" --key "$certs/client-key.pem" "https://$1/debug/pprof/$2" -o "$3" || true
 }
+snap() {
+	for ep in "${eps[@]}"; do
+		get "$ep" ../../metrics "$out/$bench-metrics-$1-${ep##*:}.txt"
+	done
+	if [ -n "${DISK:-}" ]; then { date +%s.%N; grep " $DISK " /proc/diskstats; } >"$out/$bench-diskstats-$1.txt"; fi
+}
 i=0
 while kill -0 "$gen" 2>/dev/null; do
+	if [ "$i" = 2 ]; then snap start; fi
 	i=$((i + 1))
 	curls=()
 	for ep in "${eps[@]}"; do
@@ -50,6 +57,7 @@ while kill -0 "$gen" 2>/dev/null; do
 		curls+=($!)
 	done
 	wait "${curls[@]}"
+	snap last
 done
 for ep in "${eps[@]}"; do
 	get "$ep" heap "$out/$bench-heap-${ep##*:}.pprof"

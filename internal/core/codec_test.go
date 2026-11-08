@@ -25,8 +25,9 @@ func TestBatchRoundTrip(t *testing.T) {
 		{req: Request{ID: 8, Op: &pb.DeleteRangeRequest{Key: []byte("b"), RangeEnd: []byte("c")}}},
 		{req: Request{ID: 9, Op: &pb.TxnRequest{Compare: []*pb.Compare{{Key: []byte("a")}}}}},
 	}
+	size := map[uint32]int{}
 	for format := uint32(1); format <= MaxVersion; format++ {
-		data, err := encodeBatch(format, 2, 99, ops, 0)
+		data, err := encodeBatch(format, 2, 1<<40, ops, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -34,6 +35,12 @@ func TestBatchRoundTrip(t *testing.T) {
 			t.Fatalf("format %d starts with %d", format, data[0])
 		}
 		decodeAll(t, data, ops)
+		size[format] = len(data)
+	}
+	// From originVersion, the origin and boot come once per entry.
+	once := protowire.SizeVarint(2) + protowire.SizeVarint(1<<40)
+	if got, want := size[originVersion], size[originVersion-1]-(len(ops)-1)*once; got != want {
+		t.Errorf("format %d took %d bytes, want %d", originVersion, got, want)
 	}
 	if err := DecodeBatch([]byte{0, MaxVersion + 1, 0}, func(_, _, _ uint64, _ proto.Message) error { return nil }); err == nil {
 		t.Fatal("an unknown format decoded")
@@ -52,7 +59,7 @@ func decodeAll(t *testing.T, data []byte, ops []*pending) {
 		if want == nil {
 			want = &pb.PutRequest{Key: []byte("w"), Value: []byte("2"), Lease: 5, PrevKv: true}
 		}
-		if origin != 2 || boot != 99 || id != ops[i].req.ID || !proto.Equal(op, want) {
+		if origin != 2 || boot != 1<<40 || id != ops[i].req.ID || !proto.Equal(op, want) {
 			t.Errorf("write %d decoded as %d/%d/%d %v", i, origin, boot, id, op)
 		}
 		i++
