@@ -2303,11 +2303,25 @@ func (n *Node) decodeWrite(p *pending, kind byte, b []byte, at int) (proto.Messa
 		}
 		return p.req.Op, nil
 	}
+	if p != nil && kind == kindShortTxn {
+		// The entry holds the request's short form, which ends with the
+		// value of its put.
+		t, ok := p.req.Op.(*pb.TxnRequest)
+		if !ok {
+			return nil, errBadBatch
+		}
+		if put := t.Success[0].GetRequestPut(); put != nil && len(put.Value) > 0 {
+			n.values.places = append(n.values.places, place{start: &put.Value[0], off: uint32(at + len(b) - len(put.Value))})
+		}
+		return t, nil
+	}
 	op, err := newOp(kind)
 	if err != nil {
 		return nil, err
 	}
-	if txn, ok := op.(*pb.TxnRequest); ok {
+	if kind == kindShortTxn {
+		err = decodeShort(b, op.(*pb.TxnRequest), at, &n.values.placer)
+	} else if txn, ok := op.(*pb.TxnRequest); ok {
 		err = decodeTxnPlaced(b, txn, at, &n.values.placer)
 	} else {
 		err = DecodeAlias(b, op)
@@ -2331,7 +2345,7 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 	}
 	n.state.who = who
 	switch kind {
-	case kindPut, kindDelete, kindTxn, kindCompact, kindGrant, kindRevoke, kindRenew, kindExpiry, kindLeaseCheckpoint, kindNoSpace:
+	case kindPut, kindDelete, kindTxn, kindShortTxn, kindCompact, kindGrant, kindRevoke, kindRenew, kindExpiry, kindLeaseCheckpoint, kindNoSpace:
 	default:
 		// The write may change what the state's meta hash covers.
 		n.state.metaKnown = false

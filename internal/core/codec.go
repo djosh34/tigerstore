@@ -62,6 +62,9 @@ const (
 	// kindLeaseCheckpoint is the leader's checkpoint of leases' remaining
 	// TTLs, a LeaseCheckpointRequest (lease.go).
 	kindLeaseCheckpoint = 15
+	// kindShortTxn is a TxnRequest of kube-apiserver's shape with its key
+	// written once (shorttxn.go), from format 4.
+	kindShortTxn = 16
 )
 
 var errBadBatch = errors.New("core: malformed batch")
@@ -82,7 +85,7 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 	}
 	for _, p := range ps {
 		var kind byte
-		switch p.req.Op.(type) {
+		switch op := p.req.Op.(type) {
 		case nil:
 			kind = kindPut
 		case *pb.PutRequest:
@@ -91,6 +94,9 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 			kind = kindDelete
 		case *pb.TxnRequest:
 			kind = kindTxn
+			if once && isShort(op) {
+				kind = kindShortTxn
+			}
 		case *pb.CompactionRequest:
 			kind = kindCompact
 		case *pb.LeaseGrantRequest:
@@ -123,6 +129,8 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 		switch {
 		case p.req.Op == nil:
 			body = p.req.Put.Wire
+		case kind == kindShortTxn:
+			body = appendShort(nil, p.req.Op.(*pb.TxnRequest))
 		case p.req.Wire != nil:
 			body = p.req.Wire
 		default:
@@ -241,7 +249,7 @@ func newOp(kind byte) (proto.Message, error) {
 		return &pb.PutRequest{}, nil
 	case kindDelete:
 		return &pb.DeleteRangeRequest{}, nil
-	case kindTxn:
+	case kindTxn, kindShortTxn:
 		return &pb.TxnRequest{}, nil
 	case kindCompact:
 		return &pb.CompactionRequest{}, nil
@@ -283,7 +291,14 @@ func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message)
 		if err != nil {
 			return err
 		}
-		if err := proto.Unmarshal(b, op); err != nil {
+		if kind == kindShortTxn {
+			t := &pb.TxnRequest{}
+			if err := decodeShort(b, t, 0, nil); err != nil {
+				return err
+			}
+			// The checks keep what they decode: no slices of the entry.
+			op = proto.Clone(t)
+		} else if err := proto.Unmarshal(b, op); err != nil {
 			return fmt.Errorf("%w: %w", errBadBatch, err)
 		}
 		return fn(origin, boot, id, op)

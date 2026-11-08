@@ -283,11 +283,17 @@ func TestTakenTxnAppliesAsItsEntry(t *testing.T) {
 			Success: []*pb.RequestOp{put("a", "three"), {Request: &pb.RequestOp_RequestTxn{RequestTxn: &pb.TxnRequest{Success: []*pb.RequestOp{put("c", "inner")}}}}},
 			Failure: []*pb.RequestOp{put("d", "failure")},
 		},
+		// kube-apiserver's update, whose entry has the short form.
+		{
+			Compare: []*pb.Compare{{Key: []byte("b"), Target: pb.Compare_MOD, TargetUnion: &pb.Compare_ModRevision{ModRevision: 2}}},
+			Success: []*pb.RequestOp{put("b", "updated")},
+			Failure: []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("b")}}}},
+		},
 	}
 	var hashes [2]uint64
 	for i, taken := range []bool{true, false} {
 		disk := simfs.New()
-		s := startSingle(t, disk, 1)
+		s := startSingle(t, disk, 1).capable()
 		for j, txn := range txns {
 			wire := mustMarshal(t, txn)
 			req := Request{ID: uint64(10 + j), Op: &pb.TxnRequest{}, Wire: wire}
@@ -303,10 +309,13 @@ func TestTakenTxnAppliesAsItsEntry(t *testing.T) {
 			s.n.Submit(req)
 			s.run()
 		}
+		if s.n.ActiveVersion() < originVersion {
+			t.Fatalf("the node runs version %d, without short transactions", s.n.ActiveVersion())
+		}
 		if got := s.keys(); got != "a b c " {
 			t.Fatalf("taken %v: keys %q", taken, got)
 		}
-		for k, want := range map[string]string{"a": "three", "b": "two", "c": "inner"} {
+		for k, want := range map[string]string{"a": "three", "b": "updated", "c": "inner"} {
 			r, _ := s.ok(uint64(100+k[0]), &pb.RangeRequest{Key: []byte(k)}).(*pb.RangeResponse)
 			if len(r.Kvs) != 1 || string(r.Kvs[0].Value) != want {
 				t.Fatalf("taken %v: %s = %v", taken, k, r.Kvs)
