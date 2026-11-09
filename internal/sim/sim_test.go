@@ -944,8 +944,11 @@ func faultCases() []faultCase {
 		{"connection reset", Faults{ResetEvery: Second}, nil, func(st Stats) int { return st.Resets }},
 		{"full send buffer", Faults{LinkStallEvery: 500 * Millisecond}, nil, func(st Stats) int { return st.BlockedWrites }},
 		// A stall past the write timeout, one in four, on a link that
-		// carries something.
-		{"write deadline", Faults{LinkStallEvery: 300 * Millisecond}, longer, func(st Stats) int { return st.WriteTimeouts }},
+		// carries something. Over 200 seeds, a stall every 300 ms hit it
+		// in about 90% of seeds, every 200 ms in about 80%, and every
+		// 400 ms in 93% (#568). Why closer stalls hit it less often was
+		// not measured.
+		{"write deadline", Faults{LinkStallEvery: 400 * Millisecond}, longer, func(st Stats) int { return st.WriteTimeouts }},
 		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.WatchersBehind }},
 	}
 	for i := range numNetem {
@@ -1377,14 +1380,19 @@ func TestRotInAnEntryRecord(t *testing.T) {
 // of reloading on every fetch (#201, campaign seed 5038431). Every run
 // must pass the checkers.
 //
-// Under the race detector it stops after raceRuns runs. Making the race
+// Under the race detector it makes at most raceRuns runs, here all twenty
+// of its seeds. Making the race
 // build reach the path directly needs a damaged leader whose follower falls
 // behind its compaction, which elections decide. Seeds 1 to 200 reached
-// it until each peer got a control and a data connection (#553), which
-// moved every seed; seed 309 does now.
+// it until a connection's lock became a channel (#567) and each peer got
+// a control and a data connection (#553), which each moved every seed;
+// seed 37 does now. The range starts there, so that a hit costs one seed
+// and a miss twenty, not the hundreds that ran the package out of time.
+// Reaching the path on purpose is #569.
 func TestSnapshotFromCorruptLeader(t *testing.T) {
 	fenced := false
-	if !simrun.Each(t, searchSeeds(201, 200), func(t *testing.T, seed uint64) Stats {
+	seeds := searchSeeds(37, 20)
+	if !simrun.Each(t, seeds, func(t *testing.T, seed uint64) Stats {
 		res := run(t, DefaultConfig(seed))
 		checkers(t, res)
 		return res.Stats
@@ -1400,7 +1408,7 @@ func TestSnapshotFromCorruptLeader(t *testing.T) {
 	switch {
 	case simrun.One() || t.Failed() || fenced:
 	case simrun.Race:
-		t.Logf("race coverage of this path was skipped this run: none of %d runs under the race detector fenced a node after a serve failed on its own damage; gosim's seeds must, and internal/node's TestServeCorruptRecordStops serves a damaged record under -race", raceRuns)
+		t.Logf("race coverage of this path was skipped this run: none of %d runs under the race detector fenced a node after a serve failed on its own damage; gosim's seeds must, and internal/node's TestServeCorruptRecordStops serves a damaged record under -race", len(seeds))
 	default:
 		t.Fatal("no run fenced a node after it failed a serve on its own damage")
 	}

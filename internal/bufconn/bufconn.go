@@ -11,7 +11,6 @@ import (
 	"bufio"
 	"crypto/tls"
 	"net"
-	"sync"
 )
 
 // Conn is a connection that reads through a buffer, and, once Buffer was
@@ -19,25 +18,33 @@ import (
 type Conn struct {
 	net.Conn
 	r *bufio.Reader
-	// mu guards w and buffered: TLS may write from a reading goroutine,
-	// as when it answers a key update, while another one flushes.
-	mu       sync.Mutex
+	// mu, a slot that a holder fills, guards w and buffered: TLS may
+	// write from a reading goroutine, as when it answers a key update, or
+	// from a closing one, while another one flushes. A flush holds it
+	// while its write waits, until the write deadline; a goroutine that
+	// waits on a channel is durably blocked under synctest, and one in
+	// sync.Mutex.Lock is not, which stopped the simulator's clock before
+	// the deadline came (#567).
+	mu       chan struct{}
 	w        *bufio.Writer
 	buffered bool
 }
+
+func (c *Conn) lock()   { c.mu <- struct{}{} }
+func (c *Conn) unlock() { <-c.mu }
 
 // New returns c with buffers of size bytes. Writes go straight to c until
 // Buffer, so that a TLS handshake over it, which waits for the other
 // side's answers, needs no flush.
 func New(c net.Conn, size int) *Conn {
-	return &Conn{Conn: c, r: bufio.NewReaderSize(c, size), w: bufio.NewWriterSize(c, size)}
+	return &Conn{Conn: c, r: bufio.NewReaderSize(c, size), w: bufio.NewWriterSize(c, size), mu: make(chan struct{}, 1)}
 }
 
 func (c *Conn) Read(p []byte) (int, error) { return c.r.Read(p) }
 
 func (c *Conn) Write(p []byte) (int, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.lock()
+	defer c.unlock()
 	if !c.buffered {
 		return c.Conn.Write(p)
 	}
@@ -46,15 +53,15 @@ func (c *Conn) Write(p []byte) (int, error) {
 
 // Buffer makes writes wait in the buffer until Flush, or until it is full.
 func (c *Conn) Buffer() {
-	c.mu.Lock()
+	c.lock()
 	c.buffered = true
-	c.mu.Unlock()
+	c.unlock()
 }
 
 // Flush writes what waits in the buffer.
 func (c *Conn) Flush() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.lock()
+	defer c.unlock()
 	return c.w.Flush()
 }
 
