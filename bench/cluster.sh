@@ -35,6 +35,10 @@ certs=${CERTS:-}
 
 # ctl runs etcdctl against $endpoints with the client certificate.
 ctl() {
+	if [ "${BENCH_CLIENT_SCHEME:-https}" = http ]; then
+		"$etcdctl" --endpoints "$endpoints" --command-timeout 2s "$@"
+		return
+	fi
 	"$etcdctl" --endpoints "$endpoints" --cacert "$certs/ca.pem" \
 		--cert "$certs/client.pem" --key "$certs/client-key.pem" --command-timeout 2s "$@"
 }
@@ -142,7 +146,7 @@ start() {
 
 	local pids=""
 	for i in 1 2 3; do
-		local client="https://127.0.0.1:$((port + 10 * i))"
+		local client="${BENCH_CLIENT_SCHEME:-https}://127.0.0.1:$((port + 10 * i))"
 		local peer="https://127.0.0.1:$((port + 10 * i + 1))"
 		# The quota is etcd's suggested maximum, so long write runs do not
 		# hit the 2 GiB default. etcd-only flags: tigerstore always
