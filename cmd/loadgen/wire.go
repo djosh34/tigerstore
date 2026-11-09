@@ -417,14 +417,32 @@ func rangeBytes(m []byte) (int64, error) {
 	return n, err
 }
 
-// kvBytes returns the key and value bytes of one mvccpb.KeyValue.
+// kvBytes returns the key and value bytes of one mvccpb.KeyValue. It
+// reads only the lengths of its bytes fields, as a LIST page holds
+// hundreds of key-values.
 func kvBytes(kv []byte) (int64, error) {
 	var n int64
-	err := fields(kv, func(num protowire.Number, _ uint64, b []byte) error {
-		if num == kvKey || num == kvValue {
-			n += int64(len(b))
+	for len(kv) > 0 {
+		num, typ, l := protowire.ConsumeTag(kv)
+		if l < 0 {
+			return 0, errBadProto
 		}
-		return nil
-	})
-	return n, err
+		kv = kv[l:]
+		if typ != protowire.BytesType {
+			if l = protowire.ConsumeFieldValue(num, typ, kv); l < 0 {
+				return 0, errBadProto
+			}
+			kv = kv[l:]
+			continue
+		}
+		size, l := protowire.ConsumeVarint(kv)
+		if l < 0 || size > uint64(len(kv)-l) {
+			return 0, errBadProto
+		}
+		if num == kvKey || num == kvValue {
+			n += int64(size)
+		}
+		kv = kv[l+int(size):]
+	}
+	return n, nil
 }

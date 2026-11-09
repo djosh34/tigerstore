@@ -445,7 +445,22 @@ var Buckets = []Bucket{
 // resource, or among all rows if resource is "". It draws as a walk of
 // the rows in order would, through tables made once.
 func Draw(r *rand.Rand, resource string) int {
-	t := tables()[resource]
+	return tables().byName[resource].draw(r)
+}
+
+// DrawLike is Draw among the rows of the resource of row, without looking
+// the resource up by its name: a load generator draws a size for every
+// write.
+func DrawLike(r *rand.Rand, row int) int {
+	return tables().byRow[row].draw(r)
+}
+
+// table lists rows of Buckets and the running total of their counts.
+type table struct {
+	rows, ends []int
+}
+
+func (t *table) draw(r *rand.Rand) int {
 	total := 0
 	if len(t.ends) > 0 {
 		total = t.ends[len(t.ends)-1]
@@ -454,29 +469,34 @@ func Draw(r *rand.Rand, resource string) int {
 	return t.rows[sort.SearchInts(t.ends, n+1)]
 }
 
-// table lists rows of Buckets and the running total of their counts.
-type table struct {
-	rows, ends []int
+// drawTables are the draw tables of every resource by its name, and of
+// all rows under "", and the table of each row's resource by the row.
+type drawTables struct {
+	byName map[string]*table
+	byRow  []*table
 }
 
-// tables are the draw tables of every resource, and of all rows under "".
-var tables = sync.OnceValue(func() map[string]table {
-	m := map[string]table{}
-	add := func(name string, i int) {
-		t := m[name]
-		total := 0
-		if len(t.ends) > 0 {
-			total = t.ends[len(t.ends)-1]
+var tables = sync.OnceValue(func() drawTables {
+	t := drawTables{byName: map[string]*table{}, byRow: make([]*table, len(Buckets))}
+	add := func(name string, i int) *table {
+		tb := t.byName[name]
+		if tb == nil {
+			tb = &table{}
+			t.byName[name] = tb
 		}
-		t.rows = append(t.rows, i)
-		t.ends = append(t.ends, total+Buckets[i].Count)
-		m[name] = t
+		total := 0
+		if len(tb.ends) > 0 {
+			total = tb.ends[len(tb.ends)-1]
+		}
+		tb.rows = append(tb.rows, i)
+		tb.ends = append(tb.ends, total+Buckets[i].Count)
+		return tb
 	}
 	for i, b := range Buckets {
 		add("", i)
-		add(b.Resource, i)
+		t.byRow[i] = add(b.Resource, i)
 	}
-	return m
+	return t
 })
 
 // Resources lists the resources of the rows, in order.

@@ -72,4 +72,9 @@ func TestDrawWalks(t *testing.T) {
 			}
 		}
 	}
+	for row, bucket := range Buckets {
+		if got, want := DrawLike(a, row), walk(b, bucket.Resource); got != want {
+			t.Fatalf("like row %d: drew row %d, a walk drew %d", row, got, want)
+		}
+	}
 }

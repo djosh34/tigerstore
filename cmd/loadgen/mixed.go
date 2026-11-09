@@ -175,7 +175,7 @@ func (w *mixedLoad) newKey() *mixedKey {
 
 // value draws the next value of k: a size of its resource, from the pool.
 func (w *mixedLoad) value(k *mixedKey) []byte {
-	k.bin = k8ssize.Draw(w.wk.rng, k8ssize.Buckets[k.bin].Resource)
+	k.bin = k8ssize.DrawLike(w.wk.rng, k.bin)
 	w.pool.size = k8ssize.Buckets[k.bin].Size
 	return w.pool.next()
 }

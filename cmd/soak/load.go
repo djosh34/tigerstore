@@ -202,7 +202,7 @@ func (w *worker) violate(format string, args ...any) error {
 // up to a size drawn from o's resource.
 func (w *worker) value(o *object) []byte {
 	w.seq++
-	o.bin = k8ssize.Draw(w.rng, k8ssize.Buckets[o.bin].Resource)
+	o.bin = k8ssize.DrawLike(w.rng, o.bin)
 	size := k8ssize.Buckets[o.bin].Size
 	b := fmt.Appendf(make([]byte, 0, max(size, 64)), "soak|%s|%d|", o.key, w.seq)
 	for len(b) < size {
