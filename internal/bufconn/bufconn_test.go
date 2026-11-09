@@ -80,9 +80,7 @@ func (slowConn) Write([]byte) (int, error) {
 // goroutine outside the bubble may touch the channels that would free it.
 func TestWriteBehindFlushIsDurable(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		a, b := net.Pipe()
-		defer func() { _ = a.Close(); _ = b.Close() }()
-		c := New(slowConn{a}, 1024)
+		c := New(slowConn{}, 1024)
 		c.Buffer()
 		if _, err := c.Write([]byte("held")); err != nil {
 			t.Fatal(err)
