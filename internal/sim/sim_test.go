@@ -1379,10 +1379,12 @@ func TestRotInAnEntryRecord(t *testing.T) {
 //
 // Under the race detector it stops after raceRuns runs. Making the race
 // build reach the path directly needs a damaged leader whose follower falls
-// behind its compaction, which elections decide.
+// behind its compaction, which elections decide. Seeds 1 to 200 reached
+// it until each peer got a control and a data connection (#553), which
+// moved every seed; seed 309 does now.
 func TestSnapshotFromCorruptLeader(t *testing.T) {
 	fenced := false
-	if !simrun.Each(t, searchSeeds(1, 200), func(t *testing.T, seed uint64) Stats {
+	if !simrun.Each(t, searchSeeds(201, 200), func(t *testing.T, seed uint64) Stats {
 		res := run(t, DefaultConfig(seed))
 		checkers(t, res)
 		return res.Stats
