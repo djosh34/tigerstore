@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       script:
-        description: bench/research575.sh or bench/research575-headroom.sh
+        description: bench/research575.sh, research575-headroom.sh or research575-perkind.sh
         default: bench/research575-headroom.sh
       points:
         description: GiB added to the leader's Go memory limit, one run each
