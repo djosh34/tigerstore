@@ -1380,7 +1380,8 @@ func TestRotInAnEntryRecord(t *testing.T) {
 // of reloading on every fetch (#201, campaign seed 5038431). Every run
 // must pass the checkers.
 //
-// Under the race detector it stops after raceRuns runs. Making the race
+// Under the race detector it makes at most raceRuns runs, here all twenty
+// of its seeds. Making the race
 // build reach the path directly needs a damaged leader whose follower falls
 // behind its compaction, which elections decide. Seeds 1 to 200 reached
 // it until a connection's lock became a channel (#567), which moved every
@@ -1389,7 +1390,8 @@ func TestRotInAnEntryRecord(t *testing.T) {
 // time. Reaching the path on purpose is #569.
 func TestSnapshotFromCorruptLeader(t *testing.T) {
 	fenced := false
-	if !simrun.Each(t, searchSeeds(279, 20), func(t *testing.T, seed uint64) Stats {
+	seeds := searchSeeds(279, 20)
+	if !simrun.Each(t, seeds, func(t *testing.T, seed uint64) Stats {
 		res := run(t, DefaultConfig(seed))
 		checkers(t, res)
 		return res.Stats
@@ -1405,7 +1407,7 @@ func TestSnapshotFromCorruptLeader(t *testing.T) {
 	switch {
 	case simrun.One() || t.Failed() || fenced:
 	case simrun.Race:
-		t.Logf("race coverage of this path was skipped this run: none of %d runs under the race detector fenced a node after a serve failed on its own damage; gosim's seeds must, and internal/node's TestServeCorruptRecordStops serves a damaged record under -race", raceRuns)
+		t.Logf("race coverage of this path was skipped this run: none of %d runs under the race detector fenced a node after a serve failed on its own damage; gosim's seeds must, and internal/node's TestServeCorruptRecordStops serves a damaged record under -race", len(seeds))
 	default:
 		t.Fatal("no run fenced a node after it failed a serve on its own damage")
 	}
