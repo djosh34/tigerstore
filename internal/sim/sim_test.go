@@ -944,11 +944,11 @@ func faultCases() []faultCase {
 		{"connection reset", Faults{ResetEvery: Second}, nil, func(st Stats) int { return st.Resets }},
 		{"full send buffer", Faults{LinkStallEvery: 500 * Millisecond}, nil, func(st Stats) int { return st.BlockedWrites }},
 		// A stall past the write timeout, one in four, on a link that
-		// carries something. A stall every 300 ms hit it in 8 of 10 seeds
-		// once a connection's lock became a channel (#567), which moved
-		// every seed, and in only one of this case's three: every 200 ms
-		// gives each seed more chances.
-		{"write deadline", Faults{LinkStallEvery: 200 * Millisecond}, longer, func(st Stats) int { return st.WriteTimeouts }},
+		// carries something. Over 200 seeds, a stall every 300 ms hit it
+		// in about 90% of seeds, every 200 ms in about 80%, and every
+		// 400 ms in 93%: stalls closer together overlap, and fewer of
+		// them outlast the timeout (#568).
+		{"write deadline", Faults{LinkStallEvery: 400 * Millisecond}, longer, func(st Stats) int { return st.WriteTimeouts }},
 		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.WatchersBehind }},
 	}
 	for i := range numNetem {
