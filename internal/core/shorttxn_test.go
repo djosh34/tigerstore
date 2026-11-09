@@ -163,3 +163,23 @@ func TestShortSize(t *testing.T) {
 		}
 	}
 }
+
+// TestDecodeTxnAllocs checks that kube-apiserver's update decodes with its
+// messages in one block: the block and the places of its value.
+func TestDecodeTxnAllocs(t *testing.T) {
+	wire := mustMarshal(t, &pb.TxnRequest{
+		Compare: []*pb.Compare{{Key: []byte("/registry/pods/a"), Target: pb.Compare_MOD, TargetUnion: &pb.Compare_ModRevision{ModRevision: 7}}},
+		Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("/registry/pods/a"), Value: []byte("pod")}}}},
+		Failure: []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("/registry/pods/a")}}}},
+	})
+	var txn pb.TxnRequest
+	if n := testing.AllocsPerRun(100, func() {
+		txn = pb.TxnRequest{}
+		req := Request{Op: &txn, Wire: wire}
+		if err := DecodeTxn(&req); err != nil {
+			t.Fatal(err)
+		}
+	}); n > 2 {
+		t.Fatalf("%v allocations to decode an update", n)
+	}
+}

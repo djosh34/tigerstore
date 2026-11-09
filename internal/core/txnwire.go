@@ -116,7 +116,79 @@ func decodeTxnAlias(b []byte, m *pb.TxnRequest) error {
 // entry, and records in pl where the values of its puts start.
 func decodeTxnPlaced(b []byte, m *pb.TxnRequest, at int, pl *placer) error {
 	// The top message counts as one level, as in protobuf.
-	return decodeTxn(b, m, protowire.DefaultRecursionLimit-1, at, pl)
+	return decodeTxn(b, m, protowire.DefaultRecursionLimit-1, at, pl, new(txnBlock))
+}
+
+// txnBlock holds the messages of a transaction of the common shape, one
+// compare and a put or a read in each branch, in one allocation: decoding
+// one message at a time made twelve, a fifth of a leader's allocations
+// with transactions (#506). A transaction with more takes the rest from
+// the heap, and nested ones take none from it.
+type txnBlock struct {
+	compares         [1]*pb.Compare
+	success, failure [1]*pb.RequestOp
+	cmp              pb.Compare
+	mod              pb.Compare_ModRevision
+	ops              [2]pb.RequestOp
+	put              pb.PutRequest
+	putOp            pb.RequestOp_RequestPut
+	rng              pb.RangeRequest
+	rngOp            pb.RequestOp_RequestRange
+	nops             int
+	cmpUsed, modUsed bool
+	putUsed, rngUsed bool
+}
+
+func (a *txnBlock) compare() *pb.Compare {
+	if a == nil || a.cmpUsed {
+		return &pb.Compare{}
+	}
+	a.cmpUsed = true
+	return &a.cmp
+}
+
+func (a *txnBlock) modRevision(v int64) *pb.Compare_ModRevision {
+	if a == nil || a.modUsed {
+		return &pb.Compare_ModRevision{ModRevision: v}
+	}
+	a.modUsed = true
+	a.mod.ModRevision = v
+	return &a.mod
+}
+
+func (a *txnBlock) op() *pb.RequestOp {
+	if a == nil || a.nops == len(a.ops) {
+		return &pb.RequestOp{}
+	}
+	a.nops++
+	return &a.ops[a.nops-1]
+}
+
+func (a *txnBlock) putRequest() *pb.RequestOp_RequestPut {
+	if a == nil || a.putUsed {
+		return &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{}}
+	}
+	a.putUsed = true
+	a.putOp.RequestPut = &a.put
+	return &a.putOp
+}
+
+func (a *txnBlock) rangeRequest() *pb.RequestOp_RequestRange {
+	if a == nil || a.rngUsed {
+		return &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{}}
+	}
+	a.rngUsed = true
+	a.rngOp.RequestRange = &a.rng
+	return &a.rngOp
+}
+
+// appendTo appends op to ops, whose first element goes into backing, an
+// array of the block, when ops is still empty.
+func appendTo(ops []*pb.RequestOp, backing *[1]*pb.RequestOp, op *pb.RequestOp) []*pb.RequestOp {
+	if ops == nil && backing != nil {
+		ops = backing[:0:1]
+	}
+	return append(ops, op)
 }
 
 // offsetIn returns where sub, the bytes of the field just read, starts in
@@ -125,7 +197,7 @@ func offsetIn(whole, rest, sub []byte) int { return len(whole) - len(rest) - len
 
 // decodeTxn decodes a TxnRequest; depth is how many more levels of nested
 // messages may follow. at and pl are as in decodeTxnPlaced; pl may be nil.
-func decodeTxn(b []byte, m *pb.TxnRequest, depth, at int, pl *placer) error {
+func decodeTxn(b []byte, m *pb.TxnRequest, depth, at int, pl *placer, a *txnBlock) error {
 	whole := b
 	for len(b) > 0 {
 		f, rest, err := nextField(b)
@@ -138,20 +210,27 @@ func decodeTxn(b []byte, m *pb.TxnRequest, depth, at int, pl *placer) error {
 			if depth <= 0 {
 				return errTooDeep
 			}
-			c := &pb.Compare{}
+			c := a.compare()
+			if m.Compare == nil && a != nil {
+				m.Compare = a.compares[:0:1]
+			}
 			m.Compare = append(m.Compare, c)
-			err = decodeCompare(f.b, c)
+			err = decodeCompare(f.b, c, a)
 		case f.bytesField(2), f.bytesField(3):
 			if depth <= 0 {
 				return errTooDeep
 			}
-			op := &pb.RequestOp{}
-			if f.num == 2 {
-				m.Success = append(m.Success, op)
-			} else {
-				m.Failure = append(m.Failure, op)
+			op := a.op()
+			var success, failure *[1]*pb.RequestOp
+			if a != nil {
+				success, failure = &a.success, &a.failure
 			}
-			err = decodeOp(f.b, op, depth-1, at+offsetIn(whole, b, f.b), pl)
+			if f.num == 2 {
+				m.Success = appendTo(m.Success, success, op)
+			} else {
+				m.Failure = appendTo(m.Failure, failure, op)
+			}
+			err = decodeOp(f.b, op, depth-1, at+offsetIn(whole, b, f.b), pl, a)
 		default:
 			keepUnknown(m, &f)
 		}
@@ -162,7 +241,7 @@ func decodeTxn(b []byte, m *pb.TxnRequest, depth, at int, pl *placer) error {
 	return nil
 }
 
-func decodeCompare(b []byte, m *pb.Compare) error {
+func decodeCompare(b []byte, m *pb.Compare, a *txnBlock) error {
 	for len(b) > 0 {
 		f, rest, err := nextField(b)
 		if err != nil {
@@ -181,7 +260,7 @@ func decodeCompare(b []byte, m *pb.Compare) error {
 		case f.varintField(5):
 			m.TargetUnion = &pb.Compare_CreateRevision{CreateRevision: int64(f.v)}
 		case f.varintField(6):
-			m.TargetUnion = &pb.Compare_ModRevision{ModRevision: int64(f.v)}
+			m.TargetUnion = a.modRevision(int64(f.v))
 		case f.bytesField(7):
 			m.TargetUnion = &pb.Compare_Value{Value: f.b}
 		case f.varintField(8):
@@ -198,7 +277,7 @@ func decodeCompare(b []byte, m *pb.Compare) error {
 // decodeOp decodes a RequestOp. A request that comes again merges into
 // the first if it is of the same kind, and replaces it if not, as in
 // protobuf.
-func decodeOp(b []byte, m *pb.RequestOp, depth, at int, pl *placer) error {
+func decodeOp(b []byte, m *pb.RequestOp, depth, at int, pl *placer, a *txnBlock) error {
 	whole := b
 	for len(b) > 0 {
 		f, rest, err := nextField(b)
@@ -217,14 +296,14 @@ func decodeOp(b []byte, m *pb.RequestOp, depth, at int, pl *placer) error {
 		case 1:
 			r, ok := m.Request.(*pb.RequestOp_RequestRange)
 			if !ok {
-				r = &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{}}
+				r = a.rangeRequest()
 				m.Request = r
 			}
 			err = decodeRange(f.b, r.RequestRange)
 		case 2:
 			r, ok := m.Request.(*pb.RequestOp_RequestPut)
 			if !ok {
-				r = &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{}}
+				r = a.putRequest()
 				m.Request = r
 			}
 			err = decodePutRequest(f.b, r.RequestPut, at+offsetIn(whole, b, f.b), pl)
@@ -241,7 +320,7 @@ func decodeOp(b []byte, m *pb.RequestOp, depth, at int, pl *placer) error {
 				r = &pb.RequestOp_RequestTxn{RequestTxn: &pb.TxnRequest{}}
 				m.Request = r
 			}
-			err = decodeTxn(f.b, r.RequestTxn, depth-1, at+offsetIn(whole, b, f.b), pl)
+			err = decodeTxn(f.b, r.RequestTxn, depth-1, at+offsetIn(whole, b, f.b), pl, nil)
 		}
 		if err != nil {
 			return err

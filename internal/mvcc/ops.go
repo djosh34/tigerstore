@@ -587,14 +587,20 @@ func (w *writer) checkSortValues(r *pb.RangeRequest) error {
 // header, as in etcd.
 func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int, error) {
 	ops := branch(r, path[0])
-	resp := &pb.TxnResponse{
-		Header:    &pb.ResponseHeader{},
-		Succeeded: path[0],
-		Responses: make([]*pb.ResponseOp, len(ops)),
+	blk := new(txnResult)
+	resp := &blk.resp
+	resp.Header, resp.Succeeded = &blk.header, path[0]
+	if len(ops) <= len(blk.responses) {
+		resp.Responses = blk.responses[:len(ops)]
+	} else {
+		resp.Responses = make([]*pb.ResponseOp, len(ops))
 	}
 	n := 0
 	for i, op := range ops {
-		var out pb.ResponseOp
+		out := &pb.ResponseOp{}
+		if i == 0 {
+			out = &blk.first
+		}
 		switch t := op.Request.(type) {
 		case *pb.RequestOp_RequestRange:
 			w.s.counts.Ranges++
@@ -609,7 +615,14 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 			if err != nil {
 				return nil, 0, err
 			}
-			out.Response = &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{Header: header(w.begin + 1), PrevKv: prev}}
+			if i == 0 {
+				blk.putHeader.Revision = w.begin + 1
+				blk.put = pb.PutResponse{Header: &blk.putHeader, PrevKv: prev}
+				blk.putOp.ResponsePut = &blk.put
+				out.Response = &blk.putOp
+			} else {
+				out.Response = &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{Header: header(w.begin + 1), PrevKv: prev}}
+			}
 		case *pb.RequestOp_RequestDeleteRange:
 			d, err := w.deleteRange(t.RequestDeleteRange)
 			if err != nil {
@@ -625,7 +638,19 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 			n += subN + 1
 			path = path[subN+1:]
 		}
-		resp.Responses[i] = &out
+		resp.Responses[i] = out
 	}
 	return resp, n, nil
+}
+
+// txnResult holds the response of a transaction and of its first
+// operation, a put as most are, in one allocation instead of seven.
+type txnResult struct {
+	resp      pb.TxnResponse
+	header    pb.ResponseHeader
+	responses [1]*pb.ResponseOp
+	first     pb.ResponseOp
+	putOp     pb.ResponseOp_ResponsePut
+	put       pb.PutResponse
+	putHeader pb.ResponseHeader
 }
