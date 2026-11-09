@@ -8,6 +8,7 @@ golang.org/x/sys/unix.SyscallNoError
 golang.org/x/sys/unix.gettimeofday
 golang.org/x/sys/unix.runtime_getAuxv
 golang.org/x/sys/unix.vgetrandom
+hash/maphash.comparableHashUnimplemented
 internal/abi.FuncPCABI0
 internal/abi.FuncPCABIInternal
 internal/bytealg.abigen_runtime_memequal
@@ -64,6 +65,17 @@ internal/runtime/atomic.Xchgint64
 internal/runtime/atomic.Xchguintptr
 internal/runtime/atomic.casPointer
 internal/runtime/atomic.storePointer
+internal/runtime/maps.bootstrapRand
+internal/runtime/maps.fatal
+internal/runtime/maps.memHash32AES
+internal/runtime/maps.memHash64AES
+internal/runtime/maps.memHashAES
+internal/runtime/maps.newarray
+internal/runtime/maps.newobject
+internal/runtime/maps.rand
+internal/runtime/maps.typeString
+internal/runtime/maps.typedmemclr
+internal/runtime/maps.typedmemmove
 internal/runtime/sys.DITEnabled
 internal/runtime/sys.DisableDIT
 internal/runtime/sys.EnableDIT

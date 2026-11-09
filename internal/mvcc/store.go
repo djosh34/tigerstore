@@ -275,19 +275,22 @@ type Store struct {
 	byKey keyTable
 	// recs are the records of the keys in chunks of recChunk that never
 	// move, so a *keyIndex stays valid. The first two slots are the keys
-	// a walk of keys starts and stops at (probes). The slots of keys
-	// removed go to limbo and are taken again after the next compaction
-	// or drop (free), when nothing names them any more.
-	recs        [][]keyIndex
-	used        uint32
-	free, limbo []uint32
-	probes      [2][]byte
+	// a walk of keys starts and stops at (probes). The slots of removed
+	// keys are taken again (free): the history drops a key's changes
+	// before a compaction removes it, and the written list checks a
+	// value's Ref, which no other key's version has.
+	recs   [][]keyIndex
+	used   uint32
+	free   []uint32
+	probes [2][]byte
 	// arena holds the bytes of the keys, many to a chunk, so they are not
-	// objects of their own (addKey). deadKeys are the bytes of the keys
+	// objects of their own (addKey); arenaBytes is the room of its chunks.
+	// deadKeys are the bytes of the keys
 	// removed since the arena was last packed (pack).
-	arena    [][]byte
-	filling  int
-	deadKeys int64
+	arena      [][]byte
+	filling    int
+	arenaBytes int64
+	deadKeys   int64
 
 	rev        int64
 	compactRev int64
@@ -341,12 +344,12 @@ type Store struct {
 	trackWritten bool
 }
 
-// Bytes estimates what the index takes in memory: a record per slot made,
-// per key its place in the B-tree, byKey's entries, the arena's bytes of
-// keys present and removed, 64 bytes per version its array has room for,
-// and the history's 4 bytes a change and 8 a revision.
+// Bytes estimates what the index takes in memory: the room allocated for
+// records, free slots, byKey's entries and the arena's chunks, per key its
+// place in the B-tree, 64 bytes per version its array has room for, and
+// the history's 4 bytes a change and 8 a revision (#560).
 func (s *Store) Bytes() int64 {
-	return int64(s.used)*recBytes + int64(s.keys.Len())*keySlot + 8*int64(len(s.byKey.entries)) + s.keyBytes + s.deadKeys + s.versions*64 + 4*int64(cap(s.hist.keys)) + 8*int64(cap(s.hist.starts))
+	return int64(len(s.recs))*recChunk*recBytes + 4*int64(cap(s.free)) + int64(s.keys.Len())*keySlot + 8*int64(len(s.byKey.entries)) + s.arenaBytes + s.versions*64 + 4*int64(cap(s.hist.keys)) + 8*int64(cap(s.hist.starts))
 }
 
 // recBytes is the size of a record, and keySlot estimates a key's room in
@@ -390,11 +393,13 @@ func (s *Store) addKey(k *keyIndex, key []byte) {
 	if len(key) > keyChunk/4 {
 		k.chunk = uint32(len(s.arena))
 		s.arena = append(s.arena, bytes.Clone(key))
+		s.arenaBytes += int64(cap(s.arena[k.chunk]))
 		return
 	}
 	if s.filling < 0 || len(s.arena[s.filling])+len(key) > cap(s.arena[s.filling]) {
 		s.filling = len(s.arena)
 		s.arena = append(s.arena, make([]byte, 0, keyChunk))
+		s.arenaBytes += keyChunk
 	}
 	c := &s.arena[s.filling]
 	k.chunk, k.off = uint32(s.filling), uint32(len(*c))
@@ -409,7 +414,7 @@ func (s *Store) pack() {
 		return
 	}
 	old := s.arena
-	s.arena, s.filling, s.deadKeys = nil, -1, 0
+	s.arena, s.filling, s.arenaBytes, s.deadKeys = nil, -1, 0, 0
 	s.each(func(k *keyIndex) bool {
 		end := k.off + k.n
 		s.addKey(k, old[k.chunk][k.off:end])
@@ -566,16 +571,12 @@ func (s *Store) ascendFrom(key []byte, fn func(*keyIndex) bool) { s.walk(key, ni
 
 // walk calls fn for every key from start on, and before end if end is
 // not nil, in order, until fn returns false. The B-tree compares its keys
-// with the probes, slots 0 and 1, through the whole walk; fn may walk the
-// keys too, so they are set again after each call.
+// with the probes, slots 0 and 1, through the whole walk; a walk inside
+// fn sets them too, and gives them back before it returns.
 func (s *Store) walk(start, end []byte, fn func(*keyIndex) bool) {
 	old := s.probes
 	s.probes = [2][]byte{start, end}
-	visit := func(id uint32) bool {
-		ok := fn(s.rec(id))
-		s.probes = [2][]byte{start, end}
-		return ok
-	}
+	visit := func(id uint32) bool { return fn(s.rec(id)) }
 	if end == nil {
 		s.keys.AscendGreaterOrEqual(0, visit)
 	} else {
@@ -828,7 +829,6 @@ func (s *Store) Compact(rev int64) error {
 	}
 	s.resetChanges()
 	s.hist.drop(rev)
-	s.release()
 	pending := s.pendingCompact()
 	h := newRevHash(rev, s.compactRev)
 	s.compactRev = rev
@@ -868,7 +868,6 @@ func (k *keyIndex) dropped(rev int64) int {
 // drop removes the versions that a compaction at rev drops, and the keys
 // left without any.
 func (s *Store) drop(rev int64) {
-	s.release()
 	s.sweep(func(k *keyIndex) bool { return s.dropFirst(k, k.dropped(rev)) })
 	s.pack()
 }
@@ -927,23 +926,15 @@ func (s *Store) dropFirst(k *keyIndex, i int) bool {
 	return len(k.vers) == 0
 }
 
-// remove takes keys without versions out of the index. Their slots wait
-// in limbo until the next compaction or drop, as a Change taken before
-// this one may still name them.
+// remove takes keys without versions out of the index and frees their
+// slots.
 func (s *Store) remove(gone []*keyIndex) {
 	for _, k := range gone {
 		s.keys.Delete(k.id)
 		s.byKey.remove(s, s.key(k))
 		s.keyBytes -= int64(k.n)
 		s.deadKeys += int64(k.n)
-		s.limbo = append(s.limbo, k.id)
+		s.free = append(s.free, k.id)
 		*k = keyIndex{id: k.id}
 	}
-}
-
-// release lets the slots of the keys that the compaction or drop before
-// removed be taken again.
-func (s *Store) release() {
-	s.free = append(s.free, s.limbo...)
-	s.limbo = s.limbo[:0]
 }

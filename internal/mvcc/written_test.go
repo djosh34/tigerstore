@@ -3,8 +3,10 @@ package mvcc
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -53,26 +55,34 @@ func TestLeavingAndReplaced(t *testing.T) {
 	}
 }
 
-// TestBytes checks that the index estimate follows the keys, their bytes
-// and the room their version arrays have through puts, deletes, two
-// compactions and a checkpoint load, and that a compaction gives back the
-// array of a key that lost most of its versions.
+// TestBytes checks that the index estimate counts the room allocated for
+// records, free slots, the key table, the arena's chunks, version arrays
+// and the history, through puts, deletes, two compactions and a checkpoint
+// load, and that a compaction gives back the array of a key that lost most
+// of its versions. Long keys that each take a chunk, and leave its tail
+// unused, count with their chunks (#560).
 func TestBytes(t *testing.T) {
-	check := func(s *Store, keys int) {
+	check := func(s *Store, keys int) int64 {
 		t.Helper()
-		var keyBytes, room int64
+		var room int64
 		s.each(func(k *keyIndex) bool {
-			keyBytes += int64(len(s.key(k)))
 			room += int64(cap(k.vers))
 			return true
 		})
 		if s.keys.Len() != keys || s.byKey.n != keys {
-			t.Fatalf("%d keys and %d in the map, want %d", s.keys.Len(), s.byKey.n, keys)
+			t.Fatalf("%d keys and %d in the table, want %d", s.keys.Len(), s.byKey.n, keys)
 		}
-		hist := 4*int64(cap(s.hist.keys)) + 8*int64(cap(s.hist.starts))
-		if got := s.Bytes(); got != int64(s.used)*recBytes+int64(keys)*keySlot+8*int64(len(s.byKey.entries))+keyBytes+s.deadKeys+room*64+hist {
-			t.Fatalf("Bytes = %d, want %d keys, %d key bytes, room for %d versions", got, keys, keyBytes, room)
+		allocated := 4*int64(cap(s.free)) + 8*int64(cap(s.byKey.entries)) + room*64 + 4*int64(cap(s.hist.keys)) + 8*int64(cap(s.hist.starts))
+		for _, c := range s.recs {
+			allocated += int64(cap(c)) * recBytes
 		}
+		for _, c := range s.arena {
+			allocated += int64(cap(c))
+		}
+		if got, want := s.Bytes(), allocated+int64(keys)*keySlot; got != want {
+			t.Fatalf("Bytes = %d, want %d: %d allocated and %d keys", got, want, allocated, keys)
+		}
+		return s.Bytes()
 	}
 	s := New(&Heap{})
 	put(t, s, "a", "1")
@@ -86,14 +96,13 @@ func TestBytes(t *testing.T) {
 	for i := range 1000 {
 		put(t, s, "hot", strconv.Itoa(i))
 	}
-	check(s, 3)
+	before := check(s, 3)
 	if err := s.Compact(s.Rev()); err != nil {
 		t.Fatal(err)
 	}
 	// The tombstone of bb is older than the compaction, so bb goes.
-	check(s, 2)
-	if s.Bytes() > 1024 {
-		t.Fatalf("Bytes = %d after the compaction left one version per key", s.Bytes())
+	if after := check(s, 2); before-after < 900*64 {
+		t.Fatalf("Bytes went from %d to %d when a compaction dropped 999 versions", before, after)
 	}
 	put(t, s, "c", "4")
 	if err := s.Compact(s.Rev()); err != nil {
@@ -110,4 +119,12 @@ func TestBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(loaded, 3)
+	long := New(&Heap{})
+	for i := range 100 {
+		key := fmt.Sprintf("%04d", i)
+		put(t, long, key+strings.Repeat("x", keyChunk/5+1-len(key)), "")
+	}
+	if got := check(long, 100); got < 100*(keyChunk/5) {
+		t.Fatalf("Bytes = %d for 100 keys of %d bytes", got, keyChunk/5+1)
+	}
 }
