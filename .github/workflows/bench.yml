@@ -1,232 +1,48 @@
-# Benchmarks a tigerstore ref against a baseline ref and etcd v3.7.2, back
-# to back on one runner, with disk write barriers on and pinned cores:
-# generator on CPU 3, leader on CPU 0, followers on CPUs 1 and 2. Each job
-# first measures its runner (cmd/ceiling: the shared disk's durable
-# bandwidth, a core's encode, encrypt and send rates, the kernel and CPU)
-# and the generator's own ceiling against cmd/nullstore, then runs its
-# benchmark at every RTT between nodes in turn (bench/netem.sh), so the
-# RTTs share a runner and the first RTT's rate is there when etcd has none.
-# The report puts every store against the benchmark's ceiling on this
-# runner. A failed etcd run is reported and leaves the job green; a failed
-# tigerstore run, a harness failure or a missed bar fails it
-# (cmd/benchreport). Started by hand.
 name: bench
-
 on:
   workflow_dispatch:
-    inputs:
-      candidate:
-        description: tigerstore ref to measure
-        default: main
-      baseline:
-        description: tigerstore ref to compare against
-        default: main
-      benchmarks:
-        description: space-separated benchmarks, put/txn/delete/range/list/watch with 1k or 10k, mixed-k8s (Kubernetes 1.37 dump sizes), etcd-tool (etcd's own benchmark tool), or profile (the candidate leader's CPU per step, bench/profile.sh)
-        default: put-1k txn-1k mixed-k8s
-      rtts:
-        description: round-trip times between nodes in ms, run in this order; the first one's rate stands in where etcd has no max result
-        default: 0 2 10
-      targets:
-        description: stores to run, etcd, baseline and candidate
-        default: etcd baseline candidate
-      modes:
-        description: max, rate (half etcd max), or both
-        default: max rate
-      reps:
-        description: repetitions
-        default: "5"
-      layouts:
-        description: extra max runs of the tigerstore refs in the put-1k and txn-1k jobs at the first RTT, tmpfs (all nodes on tmpfs) and alone (followers on tmpfs)
-        default: ""
-
 jobs:
-  plan:
+  research576:
     runs-on: ubuntu-24.04-arm
-    outputs:
-      benchmarks: ${{ steps.plan.outputs.benchmarks }}
-    steps:
-      - id: plan
-        env:
-          BENCHMARKS: ${{ inputs.benchmarks || 'put-1k txn-1k mixed-k8s' }}
-        run: echo "benchmarks=$(jq -cn --arg b "$BENCHMARKS" '$b | split(" ") | map(select(. != ""))')" >> "$GITHUB_OUTPUT"
-
-  bench:
-    needs: plan
-    strategy:
-      fail-fast: false
-      matrix:
-        bench: ${{ fromJSON(needs.plan.outputs.benchmarks) }}
-    runs-on: ubuntu-24.04-arm
-    # mixed-k8s takes about 2 minutes a rate run and 3 a max run with its
-    # ramp, 90 runs at 3 RTTs and 3 targets; GitHub ends a job after 6
-    # hours.
-    timeout-minutes: ${{ matrix.bench == 'mixed-k8s' && 330 || 120 }}
+    timeout-minutes: 35
+    env:
+      GOFLAGS: -p=2
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Install etcd v3.7.2
+      - name: Tools and runner
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
-          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
-          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
-          mkdir -p bin
-          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
-      - name: Build the generator, the report and both tigerstore refs
-        env:
-          CANDIDATE: ${{ inputs.candidate || 'main' }}
-          BASELINE: ${{ inputs.baseline || 'main' }}
-        run: |
-          go build -o bin/loadgen ./cmd/loadgen
-          go build -o bin/benchreport ./cmd/benchreport
-          go build -o bin/ceiling ./cmd/ceiling
-          go build -o bin/nullstore ./cmd/nullstore
-          for target in baseline candidate; do
-            ref=$BASELINE
-            if [ "$target" = candidate ]; then ref=$CANDIDATE; fi
-            git worktree add --detach "$RUNNER_TEMP/$target" "origin/$ref" 2>/dev/null || git worktree add --detach "$RUNNER_TEMP/$target" "$ref"
-            (cd "$RUNNER_TEMP/$target" && go build -o "$GITHUB_WORKSPACE/bin/$target" ./cmd/tigerstore)
-            echo "$target $ref $(git -C "$RUNNER_TEMP/$target" rev-parse HEAD)" >> commits.txt
-          done
-          cat commits.txt
-      - run: scripts/dev-certs.sh certs
-      - run: sudo modprobe sch_netem
-      - name: Turn disk write barriers on and record the runner
-        env:
-          LAYOUT: 3 0 1 2
-          BENCHMARK: ${{ matrix.bench }}
-          RTTS: ${{ inputs.rtts || '0 2 10' }}
-        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq liburing-dev libssl-dev bpftrace strace linux-tools-common
+          mkdir -p results bin
+          { uname -a; lscpu; go version; openssl version -a; ulimit -l; cat /proc/sys/kernel/io_uring_disabled; grep -E 'Seccomp|Cap' /proc/self/status; } | tee results/runner.txt
           sudo mount -o remount,barrier=1 /
-          findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS
-          test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
-          if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
-          mkdir -p results
-          {
-            echo "## Runner"
-            echo '```'
-            lscpu | grep -E 'Model name|^CPU\(s\)|Thread'
-            free -b | head -2
-            findmnt -T "$RUNNER_TEMP" -n -o SOURCE,FSTYPE,OPTIONS
-            uname -r
-            go version
-            bin/etcd --version | head -1
-            cat commits.txt
-            echo "generator, scripts and report: $GITHUB_SHA"
-            echo "layout (generator, leader, followers): $LAYOUT"
-            echo "both stores: 3 nodes on 127.0.0.1, client and peer TLS with client certificates, fresh data directory per run"
-            echo "RTT between nodes (ms): $RTTS, netem on the peer ports of lo, half the RTT per packet, the same qdiscs at 0; client to node without delay (bench/netem.sh)"
-            if [ "$BENCHMARK" = mixed-k8s ]; then
-              echo "mixed-k8s: 1M preloaded keys, <=128 puts and <=60 KiB per Txn at 300 Txns/s, measured size histogram, all endpoints, 6 connections x 48 streams, default mix plus resource watches; both stores GOMEMLIMIT=3GiB"
-            fi
-            echo "both stores: --quota-backend-bytes 8 GiB; etcd only: --log-level warn, --peer-client-cert-auth, default safe persistence"
-            echo "tigerstore: at least two Go processors on its one CPU (its own rule), peer certificates always verified"
-            echo '```'
-          } | tee results/runner.md
-      # Nothing else runs yet: the disk and the CPU are the runner's alone.
-      - name: Measure the runner
-        if: matrix.bench != 'profile' && matrix.bench != 'profile-disk' && matrix.bench != 'disk-probe' && matrix.bench != 'etcd-tool'
+          findmnt -T "$RUNNER_TEMP" | tee -a results/runner.txt
+          sudo modprobe tls || true
+          grep -E '^tls|^chacha|^aes' /proc/modules | tee -a results/runner.txt || true
+          gcc -O2 -Wall -o bin/io576 bench/research576/io.c -luring
+          GOFLAGS=-p=2 go build -o bin/tigerstore ./cmd/tigerstore
+          GOFLAGS=-p=2 go build -o bin/loadgen ./cmd/loadgen
+          GOFLAGS=-p=2 go test -c -o bin/crypto576.test ./bench/research576/crypto
+          scripts/dev-certs.sh certs
+          curl -fsSL https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz | tar xz -C "$RUNNER_TEMP"
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
+      - name: Primitive measurements
         run: |
-          taskset -c 3 bin/ceiling -dir "$RUNNER_TEMP" \
-            -disk "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)" \
-            -cpu "$(lscpu | sed -n 's/^Model name: *//p' | head -n 1)" | tee results/ceiling.json
-      - name: Measure the generator against nullstore
-        if: matrix.bench != 'profile' && matrix.bench != 'profile-disk' && matrix.bench != 'disk-probe' && matrix.bench != 'etcd-tool'
-        env:
-          BINS: bin
-          CERTS: certs
-          LAYOUT: 3 0 1 2
-          MODES: generator
-        run: bench/run.sh "${{ matrix.bench }}" results
-      - name: Run ${{ matrix.bench }}
-        env:
-          TARGETS: ${{ inputs.targets || 'etcd baseline candidate' }}
-          RTTS: ${{ inputs.rtts || '0 2 10' }}
-          BINS: bin
-          CERTS: certs
-          LAYOUT: 3 0 1 2
-          MODES: ${{ inputs.modes || 'max rate' }}
-          REPS: ${{ inputs.reps || '5' }}
-          LAYOUTS: ${{ (matrix.bench == 'put-1k' || matrix.bench == 'txn-1k') && inputs.layouts || '' }}
-          BENCH: ${{ matrix.bench }}
-        run: |
-          if [ "$BENCH" = disk-probe ]; then
-            bench/disk-probe.sh "$RUNNER_TEMP" "$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")" | tee results/disk-probe.txt
-            exit 0
-          fi
-          if [ "$BENCH" = profile-disk ]; then
-            DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")
-            for b in put-1k txn-1k mixed-k8s; do
-              DISK=$DISK DATA="$RUNNER_TEMP/bench-data" bench/profile-disk.sh bin/candidate "$b" results/profile-disk
-            done
-            exit 0
-          fi
-          if [ "$BENCH" = profile ]; then
-            for wl in put txn range list; do
-              TMPFS_DIR=/dev/shm/bench-profile bench/profile.sh bin/candidate "$wl" results/profile
-            done
-            exit 0
-          fi
-          if [ "$BENCH" = etcd-tool ]; then
-            git clone -q --depth 1 -b v3.7.2 https://github.com/etcd-io/etcd "$RUNNER_TEMP/etcd-src"
-            (cd "$RUNNER_TEMP/etcd-src/tools/benchmark" && go build -o "$GITHUB_WORKSPACE/bin/benchmark" .)
-            DATA="$RUNNER_TEMP/bench-data" bench/etcdbench.sh bin/benchmark results/etcd-tool
-            exit 0
-          fi
-          DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")
-          export DISK DATA="$RUNNER_TEMP/bench-data"
-          read -r -a rtts <<<"$RTTS"
-          first=results/rtt-${rtts[0]}
-          for rtt in "${rtts[@]}"; do
-            out=results/rtt-$rtt
-            mkdir -p "$out"
-            bench/netem.sh on "$rtt"
-            bench/netem.sh probe | tee "$out/probe.txt"
-            if [ "$out" = "$first" ]; then
-              bench/run.sh "$BENCH" "$out"
-            else
-              # Layouts measure disk and CPU, not the network: once is enough.
-              LAYOUTS="" RATE_FALLBACK=$(cat "$first/$BENCH/rate" 2>/dev/null || true) bench/run.sh "$BENCH" "$out"
-            fi
-            bench/netem.sh show >"$out/netem.txt"
-            bench/netem.sh off
+          for rep in 1 2 3; do
+            bin/io576 "$RUNNER_TEMP/io576" | tee "results/io-$rep.txt"
           done
-      # A harness failure leaves no comparison. The raw results are
-      # uploaded either way.
-      - name: Report
-        env:
-          BENCH: ${{ matrix.bench }}
-          RTTS: ${{ inputs.rtts || '0 2 10' }}
-        run: |
-          {
-            cat results/runner.md
-            if [ "$BENCH" = disk-probe ]; then
-              echo '```'; cat results/disk-probe.txt; echo '```'
-            elif [ "$BENCH" = profile-disk ]; then
-              echo "profiles in the artifact"
-            elif [ "$BENCH" = profile ]; then
-              cat results/profile/*.steps.md
-            elif [ "$BENCH" = etcd-tool ]; then
-              echo '```'
-              echo "test | store | requests/s per repetition | p99 ms per repetition"
-              cat results/etcd-tool/summary.txt
-              echo '```'
-            else
-              echo '```'
-              for rtt in $RTTS; do
-                echo "RTT $rtt ms: $(tr '\n' ' ' <"results/rtt-$rtt/probe.txt")"
-              done
-              echo '```'
-              bin/benchreport results
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          taskset -c 0 bin/crypto576.test -test.run '^$' -test.bench . -test.benchtime 500ms -test.count 3 -test.cpu 1 | tee results/go-crypto.txt
+          for bits in 128 256; do
+            taskset -c 0 openssl speed -seconds 2 -bytes 16384 -evp aes-$bits-gcm -aead 2>&1 | tee "results/openssl-$bits.txt"
+          done
+      - name: Mixed path counts and current profile
+        run: bench/research576/mixed.sh
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: bench-${{ matrix.bench }}
+          name: research576
           path: results
           retention-days: 30

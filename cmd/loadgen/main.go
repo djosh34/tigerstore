@@ -586,6 +586,9 @@ func (s *session) measure(streams int) (*result, error) {
 				return
 			}
 			samples[i] = s
+			if marker := os.Getenv("RESEARCH576_MARKER"); marker != "" {
+				_ = os.WriteFile(marker+fmt.Sprint(i), []byte("window"), 0600)
+			}
 			if cfg.cpuprofile != "" {
 				if err := profileCPU(cfg.cpuprofile, i == 0); err != nil {
 					sampleErr = err
