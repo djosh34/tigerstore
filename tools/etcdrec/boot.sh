@@ -41,6 +41,8 @@ import sys
 from pathlib import Path
 r=Path(sys.argv[1]);s=Path('k8stest/kind.yaml').read_text().replace('CERTS',str(r/'client-certs'))
 s=s.replace('  - role: worker\n  - role: worker\n','  - role: worker\n')
+# /16 has only 256 default /24 node CIDRs; 500 synthetic nodes need more.
+s=s.replace('apiVersion: kind.x-k8s.io/v1alpha4\n', 'apiVersion: kind.x-k8s.io/v1alpha4\nnetworking:\n  podSubnet: "10.240.0.0/12"\n')
 s=s.replace('          - https://172.30.0.1:20020\n','').replace('          - https://172.30.0.1:20030\n','')
 (r/'results/kind.yaml').write_text(s)
 PY
@@ -73,7 +75,7 @@ python3 - "${NODES:-100}" <<'PY' | kubectl create -f -
 import json,sys
 nodes=[]
 for i in range(int(sys.argv[1])):
- nodes.append({'apiVersion':'v1','kind':'Node','metadata':{'name':f'kwok-{i:04d}','annotations':{'kwok.x-k8s.io/node':'fake'},'labels':{'kubernetes.io/hostname':f'kwok-{i:04d}','kubernetes.io/os':'linux','kubernetes.io/arch':'arm64','node-role.kubernetes.io/agent':'','research-579':'fake'}},'spec':{},'status':{'capacity':{'cpu':'32','memory':'128Gi','pods':'110'},'allocatable':{'cpu':'32','memory':'128Gi','pods':'110'}}})
+ nodes.append({'apiVersion':'v1','kind':'Node','metadata':{'name':f'kwok-{i:04d}','annotations':{'kwok.x-k8s.io/node':'fake'},'labels':{'kubernetes.io/hostname':f'kwok-{i:04d}','kubernetes.io/os':'linux','kubernetes.io/arch':'arm64','node-role.kubernetes.io/agent':'','research-579':'fake'}},'spec':{},'status':{'addresses':[{'type':'InternalIP','address':f'172.30.{128+i//254}.{1+i%254}'},{'type':'Hostname','address':f'kwok-{i:04d}'}],'capacity':{'cpu':'32','memory':'128Gi','pods':'110'},'allocatable':{'cpu':'32','memory':'128Gi','pods':'110'}}})
 print(json.dumps({'apiVersion':'v1','kind':'List','items':nodes}))
 PY
 kubectl wait --for=condition=Ready node -l research-579=fake --timeout=240s
@@ -81,3 +83,6 @@ kubectl get nodes -o wide > "$root/results/nodes-before.txt"
 # 3 minutes lets node creation, scheduler caches and controller work settle.
 sleep 180
 kubectl get --raw '/readyz?verbose' > "$root/results/readyz.txt"
+kubectl -n kube-system get pods -o wide > "$root/results/pods-settled.txt"
+# Refuse a supposed idle baseline with infrastructure CrashLoop churn.
+kubectl -n kube-system get pods -o json | python3 -c 'import json,sys; p=json.load(sys.stdin)["items"]; bad=[x["metadata"]["name"] for x in p for c in x.get("status",{}).get("containerStatuses",[]) if c.get("state",{}).get("waiting",{}).get("reason")=="CrashLoopBackOff"]; assert not bad, bad'

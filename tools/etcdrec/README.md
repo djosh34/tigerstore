@@ -28,7 +28,11 @@ and CL2 waits for their parallelism count to be Running, not completed. Other
 stages are unchanged, and effective stages are saved in artifacts. Nodes are annotated for KWOK; their allocatable/capacity is
 32 CPUs, 128Gi and 110 pods. The real worker is tainted against test workloads.
 Kind's infrastructure DaemonSets select real nodes only, preventing synthetic
-kube-proxy/kindnet pods from being counted as idle workloads. Three minutes of
+kube-proxy/kindnet pods from being counted as idle workloads. Synthetic node
+InternalIPs are unique unused addresses on the Docker bridge, not the shared
+KWOK pod IP (avoiding invalid CNI next-hop routes). The pod subnet is expanded
+to `10.240.0.0/12`; a default /16 has too few /24 node CIDRs for 500 nodes.
+A settled infrastructure CrashLoop is treated as a boot failure. Three minutes of
 settling precede the first measurement; idle is ten minutes.
 
 The kwok-friendly clusterloader2 variant is based on perf-tests commit

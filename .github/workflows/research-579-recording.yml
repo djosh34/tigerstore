@@ -60,6 +60,7 @@ jobs:
           kubectl get pods -A -o wide > "$REC_ROOT/results/pods-after.txt" 2>&1 || true
           kubectl get --raw /metrics > "$REC_ROOT/results/apiserver-metrics-after.txt" 2>&1 || true
           kubectl -n kube-system logs deployment/kwok-controller --tail=100 > "$REC_ROOT/results/kwok.log" 2>&1 || true
+          kubectl -n kube-system logs -l app=kindnet --all-containers=true --prefix --tail=100 > "$REC_ROOT/results/kindnet.log" 2>&1 || true
           docker logs recording-control-plane > "$REC_ROOT/results/kind.log" 2>&1 || true
           if [ -f "$REC_ROOT/results/windows.jsonl" ]; then
             python3 tools/etcdrec/summarize.py "$REC_ROOT/results/record.jsonl" "$REC_ROOT/results/windows.jsonl" "$REC_ROOT/results"
