@@ -4,7 +4,7 @@
 Calls table counts client request *messages*, including messages on persistent
 Watch/LeaseKeepAlive streams. rpc_starts counts transport RPCs separately.
 In-flight percentiles are exact time-weighted state durations, not per-call
-samples; both all RPCs and non-streaming RPCs are reported. Writes are successful
+samples; all RPCs and nonpersistent RPCs (including finite RangeStream) are reported. Writes are successful
 puts/deletes only, with sizes for puts. Values never enter this process.
 """
 import collections as C
@@ -43,11 +43,11 @@ def weighted(hist):
 
 
 def request_shape(method, d):
-    if method == 'Range':
-        if d.get('count_only'): return 'Range count_only'
-        if not d.get('range_end'): return 'Range single limit=' + str(d.get('limit', 0))
+    if method in ('Range', 'RangeStream'):
+        if d.get('count_only'): return method + ' count_only'
+        if not d.get('range_end'): return method + ' single limit=' + str(d.get('limit', 0))
         lim = d.get('limit', 0)
-        return 'Range prefix limit=' + ('1 probe' if lim == 1 else '>1 page' if lim > 1 else '0 unbounded')
+        return method + ' prefix limit=' + ('1 probe' if lim == 1 else '>1 page' if lim > 1 else '0 unbounded')
     if method == 'Txn':
         comp = ','.join(c['target'] + ':' + c['result'] for c in d.get('compare', [])) or 'none'
         def ops(a):
@@ -76,6 +76,7 @@ def summarize(events, start, end):
     duration = end-start
     shapes, methods, rpcstarts, errors = C.Counter(), C.Counter(), C.Counter(), C.Counter()
     pending = {}
+    range_stream_bytes = C.Counter()
     all_conns, open_conns, seen_conns = set(), set(), set()
     active, hist_all, hist_unary, hist_conn = {}, C.Counter(), C.Counter(), C.Counter()
     prev = start
@@ -119,6 +120,10 @@ def summarize(events, start, end):
             if inside: rpcstarts[method]+=1
         if phase=='end':
             active.pop(cid,None)
+            if method == 'RangeStream' and cid in pending:
+                _,req,reqt=pending.pop(cid)
+                if inside and not e.get('error'): resources[prefix(req['key'])]['read_bytes'].append(range_stream_bytes[cid])
+                range_stream_bytes.pop(cid,None)
             if inside and e.get('error'): errors[method+': '+e['error']]+=1
         if method=='Watch' and phase=='start': streams.add(cid)
         if phase=='request':
@@ -130,8 +135,8 @@ def summarize(events, start, end):
                 requests_in_window.add(cid);methods[method]+=1;shapes[request_shape(method,d)]+=1
                 for p in set(prefix(k) for k in primary_keys(method,d)):
                     resources[p]['calls'][method]+=1
-                if method=='Range' and d.get('range_end'):
-                    range_keys[(d['key'],d.get('limit',0),bool(d.get('count_only')))]+=1
+                if method in ('Range','RangeStream') and d.get('range_end'):
+                    range_keys[(method,d['key'],d.get('limit',0),bool(d.get('count_only')))]+=1
                 if method=='Compaction' or method=='Compact': compacts.append({'t':t,'revision':d.get('revision'),'physical':d.get('physical')})
         if phase=='response':
             if method=='Watch':
@@ -141,7 +146,9 @@ def summarize(events, start, end):
                     for event in d.get('events',[]):
                         p=prefix(event.get('kv',{}).get('key','unknown'));resources[p]['events']+=1;resources[p]['event_bytes']+=event.get('_bytes',0)
                     if not d.get('events') and not d.get('created') and not d.get('canceled'):
-                        p=prefix(watch_defs.get((cid,wid),{}).get('key','unknown'));resources[p]['progress_responses']+=1
+                        p='broadcast' if wid == -1 else prefix(watch_defs.get((cid,wid),{}).get('key','unknown'));resources[p]['progress_responses']+=1
+            elif method == 'RangeStream':
+                range_stream_bytes[cid] += e['bytes']
             elif method!='LeaseKeepAlive' and cid in pending:
                 _,req,reqt=pending.pop(cid)
                 if inside:
@@ -174,7 +181,7 @@ def summarize(events, start, end):
                 wstreams.discard(c);wactive={k:v for k,v in wactive.items() if k[0]!=c}
     active_at_start=dict(C.Counter(prefix(v['key']) for v in wactive.values()))
     total=sum(shapes.values())
-    return {'duration_s':duration,'request_messages':total,'request_messages_per_s':total/duration,'rpc_starts':dict(rpcstarts),'rpc_starts_per_s':sum(rpcstarts.values())/duration,'methods':dict(methods),'shapes':{k:{'n':v,'share_pct':100*v/total} for k,v in shapes.most_common()},'resources':outresources,'key_popularity':{'distinct_keys_put':len(writes),'successful_puts':nw,'top_1pct_keys_put_share_pct':100*sum(top[:math.ceil(.01*len(top))])/nw if nw else 0,'top_10pct_keys_put_share_pct':100*sum(top[:math.ceil(.1*len(top))])/nw if nw else 0,'repeat_put_intervals_s':stats(intervals),'per_key_put_count':dict(sorted((k,len(ts)) for k,ts in writes.items()))},'ranges': [{'key':k,'limit':l,'count_only':c,'n':n} for (k,l,c),n in range_keys.most_common()],'connections_seen':len(seen_conns),'connection_concurrency':weighted(hist_conn),'inflight_all_rpc':weighted(hist_all),'inflight_unary':weighted(hist_unary),'inflight_hist_duration_s':dict(hist_all),'watch_streams_at_start':len(wstreams),'watch_stream_starts':rpcstarts['Watch'],'active_watches_at_start':active_at_start,'watch_progress_requests':shapes['Watch progress'],'compactions':compacts,'txn_results':dict(txns),'txn_failure_pct':100*txns['failed']/txns['responses'] if txns['responses'] else 0,'rpc_errors':dict(errors)}
+    return {'duration_s':duration,'request_messages':total,'request_messages_per_s':total/duration,'rpc_starts':dict(rpcstarts),'rpc_starts_per_s':sum(rpcstarts.values())/duration,'methods':dict(methods),'shapes':{k:{'n':v,'share_pct':100*v/total} for k,v in shapes.most_common()},'resources':outresources,'key_popularity':{'distinct_keys_put':len(writes),'successful_puts':nw,'top_1pct_keys_put_share_pct':100*sum(top[:math.ceil(.01*len(top))])/nw if nw else 0,'top_10pct_keys_put_share_pct':100*sum(top[:math.ceil(.1*len(top))])/nw if nw else 0,'repeat_put_intervals_s':stats(intervals),'per_key_put_count':dict(sorted((k,len(ts)) for k,ts in writes.items()))},'ranges': [{'method':method,'key':k,'limit':l,'count_only':c,'n':n} for (method,k,l,c),n in range_keys.most_common()],'connections_seen':len(seen_conns),'connection_concurrency':weighted(hist_conn),'inflight_all_rpc':weighted(hist_all),'inflight_unary':weighted(hist_unary),'inflight_hist_duration_s':dict(hist_all),'watch_streams_at_start':len(wstreams),'watch_stream_starts':rpcstarts['Watch'],'active_watches_at_start':active_at_start,'watch_progress_requests':shapes['Watch progress'],'compactions':compacts,'txn_results':dict(txns),'txn_failure_pct':100*txns['failed']/txns['responses'] if txns['responses'] else 0,'rpc_errors':dict(errors)}
 
 
 def markdown(name,s):

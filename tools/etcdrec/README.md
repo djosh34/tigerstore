@@ -13,11 +13,13 @@ not the recorder's backend connection.
 Request/response metadata, status, deadlines and half-close are forwarded. It
 decodes a copy through etcd's protobuf descriptors, converts keys/range ends to
 strings, and replaces every other bytes field (including nested values and
-comparison values) with its byte length. JSONL contains connection open/close,
+comparison values) with its byte length. Finite `KV/RangeStream` is recorded as
+well as `KV/Range` (etcd 3.7 supports the former). JSONL contains connection open/close,
 RPC start/end, and every request/response message. `bytes` is the uncompressed
 protobuf payload size (not HTTP2, TLS, TCP or gRPC framing bytes). Each nested
 message's `_bytes` is its protobuf serialized size. Range replies retain only
-header, count, KV count, more and total size; watch events retain key, sizes,
+header, count, KV count, more and total size, including each RangeStream chunk;
+watch events retain key, sizes,
 revisions and event kind. No object values are persisted by the recorder.
 
 KWOK is pinned to v0.8.0, with release `kwok.yaml` and `stage-fast.yaml`.
@@ -65,7 +67,9 @@ provide evidence of feature settings, not just an assumption about flags.
   transport RPC starts are reported separately; streams begun before the
   window do not count as new RPCs inside it.
 - In-flight concurrency is the exact time-weighted start/end state distribution;
-  persistent Watch/KeepAlive RPCs are included in `all_rpc`, excluded in `unary`.
+  persistent Watch/KeepAlive RPCs are included in `all_rpc`, excluded in the
+  legacy-named `unary` statistic. That statistic includes finite RangeStream
+  requests; it means nonpersistent requests, not literally unary-only RPCs.
   The JSON includes both as well as connection concurrency.
 - Resource-prefix call counts count each distinct primary key prefix once per
   request; a transaction's compare key (or success-op key if no compare) is
@@ -77,7 +81,8 @@ provide evidence of feature settings, not just an assumption about flags.
   puts. Repeated-key intervals use consecutive successful puts within the
   window; they are left/right censored at the boundaries. No object-value
   contents or logical-object decompression are involved.
-- Read sizes are whole Range response protobuf bytes; nested transaction range
+- Read sizes are whole Range response protobuf bytes, or the sum of all
+  RangeStream chunk bytes in a completed finite RPC; nested transaction range
   replies are also included, attributed to their requested resource key.
 - Prefix ranges at limit one are labeled `probe` in summaries as a call shape;
   attribution to a particular HTTP LIST is not proven by the recording alone.

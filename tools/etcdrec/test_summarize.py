@@ -26,4 +26,12 @@ class SummaryTest(unittest.TestCase):
   self.assertAlmostEqual(s['inflight_unary']['mean'],.6)
   self.assertAlmostEqual(s['resources']['/registry/leases/']['watch_events_per_s'],.1)
 
+ def test_range_stream_is_a_finite_list_with_chunk_bytes_summed(self):
+  es=[{'t':0,'phase':'conn_open','conn':1},{'t':1,'phase':'start','conn':1,'call':1,'method':'/etcdserverpb.KV/RangeStream'},{'t':2,'phase':'request','conn':1,'call':1,'method':'/etcdserverpb.KV/RangeStream','data':{'key':'/registry/pods/','range_end':'/registry/pods0','limit':10000}},{'t':3,'phase':'response','call':1,'method':'/etcdserverpb.KV/RangeStream','bytes':64},{'t':4,'phase':'response','call':1,'method':'/etcdserverpb.KV/RangeStream','bytes':40},{'t':5,'phase':'end','call':1,'method':'/etcdserverpb.KV/RangeStream','error':''}]
+  s=m.summarize(es,.5,6)
+  self.assertEqual(s['shapes']['RangeStream prefix limit=>1 page']['n'],1)
+  self.assertEqual(s['resources']['/registry/pods/']['read_response_bytes']['mean'],104)
+  self.assertEqual(s['ranges'][0]['method'],'RangeStream')
+  self.assertEqual(s['inflight_unary']['max'],1)
+
 if __name__=='__main__':unittest.main()

@@ -137,10 +137,22 @@ func decode(method string, b []byte, response bool) map[string]any {
 	if err = proto.Unmarshal(b, m); err != nil {
 		return map[string]any{"decode_error": err.Error()}
 	}
-	// A Range response needs counts/size, not every key. Avoid huge logs on LISTs.
-	if response && parts[1] == "Range" {
-		fs := desc.Fields()
-		return map[string]any{"count": m.Get(fs.ByName("count")).Int(), "kvs_count": m.Get(fs.ByName("kvs")).List().Len(), "more": m.Get(fs.ByName("more")).Bool(), "header": shape(m.Get(fs.ByName("header")).Message())}
+	// Range and finite RangeStream replies need counts/size, not every key.
+	// RangeStream header/count/more occur only on its final chunk.
+	if response && (parts[1] == "Range" || parts[1] == "RangeStream") {
+		rm := m.ProtoReflect()
+		if parts[1] == "RangeStream" {
+			rm = rm.Get(desc.Fields().ByName("range_response")).Message()
+		}
+		fs := rm.Descriptor().Fields()
+		out := map[string]any{"count": rm.Get(fs.ByName("count")).Int(), "kvs_count": rm.Get(fs.ByName("kvs")).List().Len(), "more": rm.Get(fs.ByName("more")).Bool(), "_bytes": proto.Size(rm.Interface())}
+		if rm.Has(fs.ByName("header")) {
+			out["header"] = shape(rm.Get(fs.ByName("header")).Message())
+		}
+		if parts[1] == "RangeStream" {
+			return map[string]any{"range_response": out}
+		}
+		return out
 	}
 	return shape(m.ProtoReflect())
 }

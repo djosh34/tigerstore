@@ -141,5 +141,18 @@ func TestWatchStreamingAndEventLengths(t *testing.T) {
 	}
 }
 
+func TestRangeStreamPartialChunksAreSummarized(t *testing.T) {
+	wire, _ := proto.Marshal(&pb.RangeStreamResponse{RangeResponse: &pb.RangeResponse{Kvs: []*mvccpb.KeyValue{{Key: []byte("/registry/pods/ns/p"), Value: []byte("NEVER_STORE")}}}})
+	d := decode("/etcdserverpb.KV/RangeStream", wire, true)
+	rr := d["range_response"].(map[string]any)
+	if rr["kvs_count"] != 1 || rr["header"] != nil {
+		t.Fatalf("partial chunk: %v", d)
+	}
+	j, _ := json.Marshal(d)
+	if strings.Contains(string(j), "NEVER_STORE") {
+		t.Fatal("value leaked")
+	}
+}
+
 // Keep the stats import tied to the expected context propagation API.
 var _ stats.Handler = (*recorder)(nil)
