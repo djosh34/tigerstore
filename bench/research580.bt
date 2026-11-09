@@ -1,0 +1,17 @@
+BEGIN { @t0 = nsecs; }
+tracepoint:raw_syscalls:sys_enter /pid == LPID/ { @calls[args.id] = count(); }
+tracepoint:syscalls:sys_enter_write /pid == LPID/ { @ws[tid] = nsecs; }
+tracepoint:syscalls:sys_exit_write /pid == LPID && @ws[tid]/ {
+	@write_n = count(); @write_ns = sum(nsecs - @ws[tid]);
+	if (args.ret > 0) { @write_bytes = sum(args.ret); @write_size = hist(args.ret); @write_ns_by_size[args.ret >= 65536 ? 3 : (args.ret >= 16384 ? 2 : (args.ret >= 2048 ? 1 : 0))] = stats(nsecs - @ws[tid]); }
+	delete(@ws[tid]);
+}
+tracepoint:syscalls:sys_enter_read /pid == LPID/ { @rs[tid] = nsecs; }
+tracepoint:syscalls:sys_exit_read /pid == LPID && @rs[tid]/ {
+	@read_n = count(); @read_ns = sum(nsecs - @rs[tid]);
+	if (args.ret > 0) { @read_bytes = sum(args.ret); @read_size = hist(args.ret); }
+	delete(@rs[tid]);
+}
+tracepoint:syscalls:sys_enter_fdatasync /pid == LPID/ { @fs[tid] = nsecs; }
+tracepoint:syscalls:sys_exit_fdatasync /pid == LPID && @fs[tid]/ { @fdatasync_n = count(); @fdatasync_ns = sum(nsecs - @fs[tid]); delete(@fs[tid]); }
+interval:s:10 { printf("elapsed_ns %d\n", nsecs - @t0); clear(@ws); clear(@rs); clear(@fs); exit(); }

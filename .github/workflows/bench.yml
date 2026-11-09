@@ -40,6 +40,9 @@ jobs:
           sudo mount -o remount,barrier=1 /
           mkdir -p results
           { uname -a; lscpu | grep -E 'Model name|^CPU\(s\)'; free -b | head -2; go version; git rev-parse HEAD; } | tee results/runner.txt
+      - name: Install bpftrace
+        if: contains(inputs.variants, 'trace')
+        run: sudo apt-get update -q && sudo apt-get install -y -q bpftrace && bpftrace --version
       - name: Ablations
         if: inputs.what == 'ablate'
         env:

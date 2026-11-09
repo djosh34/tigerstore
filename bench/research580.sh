@@ -23,13 +23,14 @@ n=${#variants[@]}
 for rep in $(seq 1 "$reps"); do
 	for k in $(seq 0 $((n - 1))); do
 		v=${variants[$(((k + rep - 1) % n))]}
-		scheme=https mix=18,10,2,50,12,8 nogc=0 follow=0
+		scheme=https mix=18,10,2,50,12,8 nogc=0 follow=0 trace=0
 		case $v in
 		nogc) nogc=1 ;;
 		plain) scheme=http ;;
 		follow) follow=1 ;;
 		nolist) mix=20,10,0,50,12,8 ;;
 		bold) scheme=http follow=1 nogc=1 ;;
+		trace) trace=1 ;;
 		esac
 		tag=$v-$rep
 		bench/cluster.sh stop "$dir" || true
@@ -54,10 +55,17 @@ for rep in $(seq 1 "$reps"); do
 		while [ ! -f "${marker}0" ]; do kill -0 "$gen" 2>/dev/null || break; sleep 0.05; done
 		if [ "$nogc" = 1 ]; then kill -USR1 "$lpid"; fi
 		grep -E '^(VmRSS|VmHWM)' "/proc/$lpid/status" >"$out/$tag.mem-start" || true
-		if [ "$rep" = 1 ]; then
+		{ date +%s.%N; grep -E '^cpu[0-3] ' /proc/stat; } >"$out/$tag.stat-start"
+		if [ "$trace" = 1 ]; then
+			# Ten seconds inside the window: every system call of the leader,
+			# and for read, write and fdatasync their count, bytes and time.
+			sed "s/LPID/$lpid/g" bench/research580.bt >"$RUNNER_TEMP/r580.bt"
+			sudo bpftrace "$RUNNER_TEMP/r580.bt" 2>"$out/$tag.bpf.err" | tee "$out/$tag.bpf" >/dev/null || true
+		elif [ "$rep" = 1 ]; then
 			curl -fsS "${curlt[@]}" "$scheme://$leader/debug/pprof/profile?seconds=10" -o "$out/$tag.pprof" || true
 		fi
 		while [ ! -f "${marker}1" ]; do kill -0 "$gen" 2>/dev/null || break; sleep 0.05; done
+		{ date +%s.%N; grep -E '^cpu[0-3] ' /proc/stat; } >"$out/$tag.stat-end"
 		grep -E '^(VmRSS|VmHWM)' "/proc/$lpid/status" >"$out/$tag.mem-end" || true
 		wait "$gen" || echo "$tag loadgen failed" | tee -a "$out/failures"
 		cp "$dir/n1.log" "$out/$tag-n1.log"; cp "$dir/n2.log" "$out/$tag-n2.log"; cp "$dir/n3.log" "$out/$tag-n3.log"
