@@ -12,9 +12,11 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	mvccpb "go.etcd.io/etcd/api/v3/mvccpb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -54,6 +56,15 @@ func TestProxyUnaryAndRedaction(t *testing.T) {
 	}
 	if res.Count != 1 || res.Header.Revision != 41 || head.Get("test-header")[0] != "yes" || tail.Get("test-trailer")[0] != "yes" {
 		t.Fatalf("forwarding changed: %v %v %v", res, head, tail)
+	}
+	r.mu.Lock()
+	logged := buf.String()
+	r.mu.Unlock()
+	if strings.Contains(logged, `"conn":null`) || !strings.Contains(logged, `"conn":1`) {
+		t.Fatalf("connection context lost: %s", logged)
+	}
+	if _, err = pb.NewKVClient(c).Compact(context.Background(), &pb.CompactionRequest{Revision: 1}); status.Code(err) != codes.Unimplemented {
+		t.Fatalf("status changed: %v", err)
 	}
 	p := &pb.PutRequest{Key: []byte("/registry/secrets/test"), Value: []byte("SECRET_NEVER_LOG"), Lease: 123}
 	wire, _ := proto.Marshal(p)

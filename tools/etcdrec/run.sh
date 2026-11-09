@@ -6,6 +6,7 @@ import json,sys,time
 with open(sys.argv[1],'a') as f: f.write(json.dumps({'scenario':sys.argv[2],'phase':sys.argv[3],'t':time.time()})+'\n')
 PY
 }
+kubectl get --raw /metrics > "$root/results/apiserver-metrics-idle-start.txt"
 mark idle start
 sleep "${IDLE_SECONDS:-600}"
 mark idle end
@@ -44,6 +45,7 @@ CL2_DELETE_OPERATION_TIMEOUT_BUFFER: 120
 YAML
 # The file contains rendered config and sanitized kubeconfig; no private certs
 # are intentionally copied into artifacts.
+kubectl get --raw /metrics > "$root/results/apiserver-metrics-load-start.txt"
 mark load start
 set +e
 timeout --signal=INT --kill-after=60s 35m clusterloader2 \
@@ -53,6 +55,7 @@ timeout --signal=INT --kill-after=60s 35m clusterloader2 \
 rc=$?
 set -e
 mark load end
+kubectl get --raw /metrics > "$root/results/apiserver-metrics-load-end.txt"
 echo "$rc" > "$root/results/clusterloader2-exit-code.txt"
 # Copy only structured result files, not kubeconfigs or pod objects with values.
 mkdir -p "$root/results/cl2-report"

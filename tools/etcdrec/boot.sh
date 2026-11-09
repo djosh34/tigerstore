@@ -55,6 +55,10 @@ curl -fsSL --retry 3 https://github.com/kubernetes-sigs/kwok/releases/download/v
 curl -fsSL --retry 3 https://github.com/kubernetes-sigs/kwok/releases/download/v0.8.0/stage-fast.yaml -o "$root/results/stage-fast.yaml"
 kubectl apply -f "$root/results/kwok.yaml"
 kubectl apply -f "$root/results/stage-fast.yaml"
+# Upstream load Jobs run pause forever; CL2 waits for parallelism Running pods,
+# not completed Jobs. KWOK's generic fast stage would instantly complete them.
+kubectl delete stage pod-complete
+kubectl get stages -o yaml > "$root/results/kwok-stages-effective.yaml"
 kubectl -n kube-system rollout status deployment/kwok-controller --timeout=240s
 kubectl -n kube-system get pod -l app=kwok-controller -o json > "$root/results/kwok-pods.json"
 # Fake nodes have no taint so the unmodified CL2 load templates can schedule.
