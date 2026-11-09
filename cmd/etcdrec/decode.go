@@ -8,80 +8,66 @@ import (
 	"github.com/djosh34/tigerstore/internal/k8strace"
 )
 
-// The methods the log decodes. Others keep only their sizes.
-const (
-	methodRange          = "/etcdserverpb.KV/Range"
-	methodRangeStream    = "/etcdserverpb.KV/RangeStream"
-	methodPut            = "/etcdserverpb.KV/Put"
-	methodDelete         = "/etcdserverpb.KV/DeleteRange"
-	methodTxn            = "/etcdserverpb.KV/Txn"
-	methodCompact        = "/etcdserverpb.KV/Compact"
-	methodWatch          = "/etcdserverpb.Watch/Watch"
-	methodLeaseGrant     = "/etcdserverpb.Lease/LeaseGrant"
-	methodLeaseRevoke    = "/etcdserverpb.Lease/LeaseRevoke"
-	methodLeaseKeepAlive = "/etcdserverpb.Lease/LeaseKeepAlive"
-	methodLeaseTTL       = "/etcdserverpb.Lease/LeaseTimeToLive"
-)
 
 // decodeRequest decodes a request message of method, or returns nil for a
 // method the log does not decode.
 func decodeRequest(method string, b []byte) (*k8strace.Request, error) {
 	switch method {
-	case methodRange, methodRangeStream:
+	case k8strace.MethodRange, k8strace.MethodRangeStream:
 		var m pb.RangeRequest
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Request{Range: rangeReq(&m)}, nil
-	case methodPut:
+	case k8strace.MethodPut:
 		var m pb.PutRequest
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Request{Put: putReq(&m)}, nil
-	case methodDelete:
+	case k8strace.MethodDelete:
 		var m pb.DeleteRangeRequest
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Request{Delete: deleteReq(&m)}, nil
-	case methodTxn:
+	case k8strace.MethodTxn:
 		var m pb.TxnRequest
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Request{Txn: txnReq(&m)}, nil
-	case methodCompact:
+	case k8strace.MethodCompact:
 		var m pb.CompactionRequest
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Request{Compact: &k8strace.Compact{Rev: m.Revision, Physical: m.Physical}}, nil
-	case methodLeaseGrant:
+	case k8strace.MethodLeaseGrant:
 		var m pb.LeaseGrantRequest
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Request{LeaseGrant: &k8strace.LeaseGrant{TTL: m.TTL, ID: m.ID}}, nil
-	case methodLeaseRevoke:
+	case k8strace.MethodLeaseRevoke:
 		var m pb.LeaseRevokeRequest
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Request{Lease: &m.ID}, nil
-	case methodLeaseKeepAlive:
+	case k8strace.MethodLeaseKeepAlive:
 		var m pb.LeaseKeepAliveRequest
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Request{Lease: &m.ID}, nil
-	case methodLeaseTTL:
+	case k8strace.MethodLeaseTTL:
 		var m pb.LeaseTimeToLiveRequest
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Request{Lease: &m.ID}, nil
-	case methodWatch:
+	case k8strace.MethodWatch:
 		var m pb.WatchRequest
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
@@ -111,7 +97,7 @@ func deleteReq(m *pb.DeleteRangeRequest) *k8strace.Delete {
 func txnReq(m *pb.TxnRequest) *k8strace.Txn {
 	t := &k8strace.Txn{Success: ops(m.Success), Failure: ops(m.Failure)}
 	for _, c := range m.Compare {
-		cmp := k8strace.Compare{Target: int32(c.Target), Result: int32(c.Result), Key: string(c.Key), End: string(c.RangeEnd)}
+		cmp := k8strace.LogCompare{Target: int32(c.Target), Result: int32(c.Result), Key: string(c.Key), End: string(c.RangeEnd)}
 		switch u := c.TargetUnion.(type) {
 		case *pb.Compare_Version:
 			cmp.Value = u.Version
@@ -129,10 +115,10 @@ func txnReq(m *pb.TxnRequest) *k8strace.Txn {
 	return t
 }
 
-func ops(in []*pb.RequestOp) []k8strace.Op {
-	var out []k8strace.Op
+func ops(in []*pb.RequestOp) []k8strace.LogOp {
+	var out []k8strace.LogOp
 	for _, o := range in {
-		var op k8strace.Op
+		var op k8strace.LogOp
 		switch r := o.Request.(type) {
 		case *pb.RequestOp_RequestRange:
 			op.Range = rangeReq(r.RequestRange)
@@ -173,13 +159,13 @@ func watchReq(m *pb.WatchRequest) *k8strace.WatchRequest {
 // a method the log does not decode.
 func decodeResponse(method string, b []byte) (*k8strace.Response, error) {
 	switch method {
-	case methodRange:
+	case k8strace.MethodRange:
 		var m pb.RangeResponse
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return rangeResp(&m), nil
-	case methodRangeStream:
+	case k8strace.MethodRangeStream:
 		var m pb.RangeStreamResponse
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
@@ -188,7 +174,7 @@ func decodeResponse(method string, b []byte) (*k8strace.Response, error) {
 			return &k8strace.Response{}, nil
 		}
 		return rangeResp(m.RangeResponse), nil
-	case methodPut:
+	case k8strace.MethodPut:
 		var m pb.PutResponse
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
@@ -198,49 +184,49 @@ func decodeResponse(method string, b []byte) (*k8strace.Response, error) {
 			r.Prev = []k8strace.KV{kv(m.PrevKv)}
 		}
 		return r, nil
-	case methodDelete:
+	case k8strace.MethodDelete:
 		var m pb.DeleteRangeResponse
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return deleteResp(&m), nil
-	case methodTxn:
+	case k8strace.MethodTxn:
 		var m pb.TxnResponse
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return txnResp(&m), nil
-	case methodCompact:
+	case k8strace.MethodCompact:
 		var m pb.CompactionResponse
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Response{Rev: m.GetHeader().GetRevision()}, nil
-	case methodLeaseGrant:
+	case k8strace.MethodLeaseGrant:
 		var m pb.LeaseGrantResponse
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Response{Rev: m.GetHeader().GetRevision(), Lease: m.ID, TTL: m.TTL}, nil
-	case methodLeaseRevoke:
+	case k8strace.MethodLeaseRevoke:
 		var m pb.LeaseRevokeResponse
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Response{Rev: m.GetHeader().GetRevision()}, nil
-	case methodLeaseKeepAlive:
+	case k8strace.MethodLeaseKeepAlive:
 		var m pb.LeaseKeepAliveResponse
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Response{Rev: m.GetHeader().GetRevision(), Lease: m.ID, TTL: m.TTL}, nil
-	case methodLeaseTTL:
+	case k8strace.MethodLeaseTTL:
 		var m pb.LeaseTimeToLiveResponse
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 		return &k8strace.Response{Rev: m.GetHeader().GetRevision(), Lease: m.ID, TTL: m.TTL}, nil
-	case methodWatch:
+	case k8strace.MethodWatch:
 		var m pb.WatchResponse
 		if err := proto.Unmarshal(b, &m); err != nil {
 			return nil, err

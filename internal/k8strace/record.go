@@ -31,6 +31,21 @@ type Record struct {
 	Err string `json:"err,omitempty"`
 }
 
+// The methods the log decodes. Others keep only their sizes.
+const (
+	MethodRange          = "/etcdserverpb.KV/Range"
+	MethodRangeStream    = "/etcdserverpb.KV/RangeStream"
+	MethodPut            = "/etcdserverpb.KV/Put"
+	MethodDelete         = "/etcdserverpb.KV/DeleteRange"
+	MethodTxn            = "/etcdserverpb.KV/Txn"
+	MethodCompact        = "/etcdserverpb.KV/Compact"
+	MethodWatch          = "/etcdserverpb.Watch/Watch"
+	MethodLeaseGrant     = "/etcdserverpb.Lease/LeaseGrant"
+	MethodLeaseRevoke    = "/etcdserverpb.Lease/LeaseRevoke"
+	MethodLeaseKeepAlive = "/etcdserverpb.Lease/LeaseKeepAlive"
+	MethodLeaseTTL       = "/etcdserverpb.Lease/LeaseTimeToLive"
+)
+
 // The events of a Record.
 const (
 	EventOpen = "open"
@@ -91,16 +106,16 @@ type Delete struct {
 
 // Txn is a TxnRequest.
 type Txn struct {
-	Compare []Compare `json:"compare,omitempty"`
-	Success []Op      `json:"success,omitempty"`
-	Failure []Op      `json:"failure,omitempty"`
+	Compare []LogCompare `json:"compare,omitempty"`
+	Success []LogOp      `json:"success,omitempty"`
+	Failure []LogOp      `json:"failure,omitempty"`
 }
 
-// Compare is one compare of a Txn. Target is etcd's CompareTarget: 0
+// LogCompare is one compare of a Txn. Target is etcd's CompareTarget: 0
 // version, 1 create revision, 2 mod revision, 3 value, 4 lease. Result is
 // its CompareResult: 0 equal, 1 greater, 2 less, 3 not equal. Value is the
 // number compared against, or the value's length for target 3.
-type Compare struct {
+type LogCompare struct {
 	Target int32  `json:"target"`
 	Result int32  `json:"result"`
 	Key    string `json:"key"`
@@ -118,8 +133,8 @@ const (
 	TargetLease   = 4
 )
 
-// Op is one RequestOp of a Txn: exactly one field is set.
-type Op struct {
+// LogOp is one RequestOp of a Txn: exactly one field is set.
+type LogOp struct {
 	Range  *Range  `json:"range,omitempty"`
 	Put    *Put    `json:"put,omitempty"`
 	Delete *Delete `json:"delete,omitempty"`

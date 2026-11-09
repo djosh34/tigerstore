@@ -15,7 +15,7 @@ on:
         default: small medium-crds large crd-heavy many-namespaces
       seconds:
         description: seconds of churn, the recording's window
-        default: "1200"
+        default: "600"
   push:
     branches: [work/601-*]
     paths: [.github/workflows/k8s-record.yml]
@@ -51,17 +51,21 @@ jobs:
           RECORD: ${{ runner.temp }}/k8stest/results/record.jsonl.gz
       - name: Record ${{ matrix.shape }}
         env:
-          SECONDS_OF_CHURN: ${{ inputs.seconds || '1200' }}
+          SECONDS_OF_CHURN: ${{ inputs.seconds || '600' }}
         run: |
           echo "replay: gh workflow run k8s-record.yml --repo ${{ github.repository }} --ref ${{ github.ref_name }} -f shapes=${{ matrix.shape }} -f seconds=$SECONDS_OF_CHURN"
           timeout --kill-after=60s 90m bash k8stest/record.sh "${{ matrix.shape }}" "$SECONDS_OF_CHURN"
       - name: Build the trace
+        env:
+          SHAPE: ${{ matrix.shape }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          set -o pipefail
           r=$K8S_ROOT/results
-          go run ./cmd/k8strace convert -shape "${{ matrix.shape }}" -commit "$GITHUB_SHA" \
-            -run "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+          about="Shape $SHAPE of k8stest/shapes.json: $(jq -c --arg s "$SHAPE" '.[$s]' k8stest/shapes.json). Recorded on commit $GITHUB_SHA by $RUN: kind with Kubernetes v1.37.0, kwok v0.8.0, $(cat "$r/nodes-count.txt") nodes and $(cat "$r/pods-count.txt") pods at the end, a three-node tigerstore; the window is the churn of k8stest/load.py, $(jq -c .actions "$r/churn.json")."
+          go run ./cmd/k8strace convert -shape "$SHAPE" -about "$about" \
             -start "$(cat "$r/window-start")" -end "$(cat "$r/window-end")" \
-            -out "$r/${{ matrix.shape }}.trace.gz" "$r/record.jsonl.gz" | tee "$r/trace-summary.md"
+            -out "$r/$SHAPE.trace.gz" "$r/record.jsonl.gz" | tee "$r/trace-summary.md"
           cat "$r/trace-summary.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Collect
         if: always()
