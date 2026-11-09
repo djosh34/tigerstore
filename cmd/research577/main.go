@@ -38,6 +38,7 @@ var reps = flag.Int("reps", 3, "independent observations")
 var helper = flag.String("helper", "", "internal: TCP drainer or source")
 var certDir = flag.String("certs", "certs", "development TLS certificates")
 var sink uint64
+var only = flag.String("only", "", "more: skip the transport sweep; transport: only it")
 
 func emit(v any) {
 	if err := json.NewEncoder(os.Stdout).Encode(v); err != nil {
@@ -624,7 +625,12 @@ func main() {
 	emit(map[string]any{"kind": "runtime", "go": runtime.Version(), "arch": runtime.GOARCH, "gomaxprocs": runtime.GOMAXPROCS(0), "duration": duration.String(), "cpu_clock": "RUSAGE_SELF user+system; separate TCP helper excluded"})
 	fs, _ := fixtures()
 	reportCounts(fs)
-	primitives(fs)
-	transport()
+	if *only != "transport" {
+		primitives(fs)
+		more(fs)
+	}
+	if *only != "more" {
+		transport()
+	}
 	emit(map[string]any{"kind": "sink", "value": sink})
 }

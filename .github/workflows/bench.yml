@@ -1,4 +1,4 @@
-# Research-only replacement on research/577-primitive-budget. Never a campaign
+# Research-only replacement on research/577-primitive-budget and research/577-floor. Never a campaign
 # or ceiling change. Independent primitive loops; no tigerstore server is run.
 name: bench
 on:
@@ -43,8 +43,9 @@ jobs:
       - name: Measure CPU 0, with a separate TCP source or drainer on CPU 3
         run: |
           mkdir -p results
-          { git rev-parse HEAD; lscpu; free -b; uname -a; go version; } > results/runner.txt
-          taskset -c 0 bin/research577 -certs certs -reps 3 -duration 400ms | tee results/primitives.jsonl
+          sudo mount -o remount,barrier=1 /
+          { git rev-parse HEAD; lscpu; free -b; uname -a; go version; findmnt -T "$RUNNER_TEMP"; } > results/runner.txt
+          taskset -c 0 bin/research577 -certs certs -reps 3 -duration 400ms -disk-dir "$RUNNER_TEMP/r577-disk" | tee results/primitives.jsonl
       - uses: actions/upload-artifact@v6
         if: always()
         with:
