@@ -409,7 +409,7 @@ func TestCompact(t *testing.T) {
 	if len(h) != 2 || string(h[0].Key()) != "a" || string(h[1].Key()) != "c" || event(t, h[1], false).Type != mvccpb.Event_DELETE {
 		t.Fatalf("history after compaction has %d changes", len(h))
 	}
-	if _, ok := s.keys.Get(&keyIndex{key: []byte("b")}); ok {
+	if _, ok := s.get([]byte("b")); ok {
 		t.Fatal("a key deleted before the compaction is still indexed")
 	}
 	put(t, s, "a", "3")

@@ -56,6 +56,7 @@ func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done b
 	f := s.frozen
 	more, first := false, true
 	copyKey := func(k *keyIndex) bool {
+		key := s.key(k)
 		keyOff, from := 0, 0
 		if first {
 			// The walk starts at the key the last chunk stopped in.
@@ -69,30 +70,30 @@ func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done b
 		}
 		begun := keyOff > 0 || from > 0
 		if !begun && len(b) >= limit {
-			f.next, more = k.key, true
+			f.next, more = key, true
 			return false
 		}
 		if from == 0 {
 			if !begun {
-				b = binary.AppendUvarint(b, uint64(len(k.key)))
+				b = binary.AppendUvarint(b, uint64(len(key)))
 			}
 			// At least one byte of the key goes, so that the chunk stops
 			// inside it, with its length written, even when the length
 			// filled the chunk.
-			take := len(k.key) - keyOff
+			take := len(key) - keyOff
 			if room := limit - len(b); take > room {
 				take = max(room, 1)
 			}
-			b = append(b, k.key[keyOff:keyOff+take]...)
-			if keyOff += take; keyOff < len(k.key) {
-				f.next, f.keyOff, more = k.key, keyOff, true
+			b = append(b, key[keyOff:keyOff+take]...)
+			if keyOff += take; keyOff < len(key) {
+				f.next, f.keyOff, more = key, keyOff, true
 				return false
 			}
 			b = binary.AppendUvarint(b, uint64(n))
 		}
 		for i := from; i < n; i++ {
 			if i > from && len(b) >= limit {
-				f.next, f.ver, more = k.key, i, true
+				f.next, f.ver, more = key, i, true
 				return false
 			}
 			v := &k.vers[i]
@@ -112,10 +113,10 @@ func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done b
 		return true
 	}
 	if f.started {
-		s.keys.AscendGreaterOrEqual(&keyIndex{key: f.next}, copyKey)
+		s.ascendFrom(f.next, copyKey)
 	} else {
 		f.started = true
-		s.keys.Ascend(copyKey)
+		s.each(copyKey)
 	}
 	if more {
 		return b, minRef, false
@@ -181,7 +182,7 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 				s.sum ^= versionHash(k.key, v)
 			}
 		}
-		s.insert(k)
+		s.insert(k.key, k.vers)
 	}
 }
 
@@ -217,7 +218,7 @@ func WalkRefs(r *bufio.Reader, fn func(Ref) error) error {
 }
 
 // readKey reads one key of a checkpoint, or nil at the end mark.
-func readKey(r *bufio.Reader) (*keyIndex, error) {
+func readKey(r *bufio.Reader) (*loaded, error) {
 	n, err := readKeyHead(r)
 	if err != nil || n == 0 {
 		return nil, err
@@ -226,7 +227,7 @@ func readKey(r *bufio.Reader) (*keyIndex, error) {
 	if err != nil {
 		return nil, loadError(err)
 	}
-	k := &keyIndex{key: key}
+	k := &loaded{key: key}
 	count, err := readCount(r, k.key)
 	if err != nil {
 		return nil, err
@@ -330,9 +331,9 @@ func loadError(err error) error {
 // EachLeased calls fn for every key whose newest version is live and has
 // a lease, to rebuild the leases' key sets after a load.
 func (s *Store) EachLeased(fn func(key []byte, lease int64)) {
-	s.keys.Ascend(func(k *keyIndex) bool {
+	s.each(func(k *keyIndex) bool {
 		if v := &k.vers[len(k.vers)-1]; v.ver != 0 && v.lease != 0 {
-			fn(k.key, v.lease)
+			fn(s.key(k), v.lease)
 		}
 		return true
 	})

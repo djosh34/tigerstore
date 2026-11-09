@@ -158,10 +158,10 @@ func (w *writer) add(k *keyIndex, v version) {
 	}
 	c := cap(k.vers)
 	k.vers = append(k.vers, v)
-	w.s.size += rowBytes(k.key, &v)
+	w.s.size += rowBytes(w.s.key(k), &v)
 	w.s.versions += int64(cap(k.vers) - c)
 	if w.s.track {
-		w.s.sum ^= versionHash(k.key, &v)
+		w.s.sum ^= versionHash(w.s.key(k), &v)
 	}
 	w.changed = true
 	w.s.changes = append(w.s.changes, Change{s: w.s, k: k, i: len(k.vers) - 1})
@@ -207,14 +207,13 @@ func (w *writer) put(p *PutOp) (*mvccpb.KeyValue, error) {
 		v.create, v.ver = old.create, old.ver+1
 	}
 	if k == nil {
-		// A copy, so that the index keeps no Raft entry alive.
-		k = &keyIndex{key: bytes.Clone(p.Key)}
-		w.s.insert(k)
+		// insert copies the key, so the index keeps no Raft entry alive.
+		k = w.s.insert(p.Key, nil)
 	}
 	w.add(k, v)
 	w.s.counts.PutBytes += int64(len(p.Key)) + int64(v.value.Len)
 	if w.s.trackWritten && v.value.Len > 0 && (!p.IgnoreValue || prev == nil) {
-		w.s.written = append(w.s.written, written{k: k, ref: v.value})
+		w.s.written = append(w.s.written, written{id: k.id, ref: v.value})
 	}
 	return prevKV, nil
 }
@@ -432,15 +431,15 @@ func (w *writer) compare(c *pb.Compare) (bool, error) {
 			return true
 		}
 		matched = true
-		kv := k.kvValue(v)
+		kv := w.s.kvValue(k, v)
 		if c.Target == pb.Compare_VALUE {
 			// Only a compare on the value reads it.
 			var in bool
-			if kv.Value, in, err = w.s.value(k.key, v.value, nil); err != nil {
+			if kv.Value, in, err = w.s.value(kv.Key, v.value, nil); err != nil {
 				return false
 			}
 			if !in {
-				cold = append(cold, Fill{Key: k.key, Ref: v.value})
+				cold = append(cold, Fill{Key: kv.Key, Ref: v.value})
 				size += int64(v.value.Len)
 				return size < compareBatch
 			}
@@ -450,7 +449,7 @@ func (w *writer) compare(c *pb.Compare) (bool, error) {
 			return false
 		}
 		if len(cold) == 0 {
-			last = k.key
+			last = w.s.key(k)
 		}
 		return true
 	})
@@ -576,7 +575,7 @@ func (w *writer) checkSortValues(r *pb.RangeRequest) error {
 	var kvs []KV
 	w.s.ascend(r.Key, r.RangeEnd, func(k *keyIndex) bool {
 		if v, ok := k.live(at); ok {
-			kvs = append(kvs, k.kvValue(v))
+			kvs = append(kvs, w.s.kvValue(k, v))
 		}
 		return true
 	})

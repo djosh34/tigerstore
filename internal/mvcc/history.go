@@ -13,16 +13,17 @@ import (
 // history is every change since the compaction revision, in revision
 // order, by its key: a watch catches up from a position in it a piece at
 // a time, as etcd's unsynced watchers read the backend by revision (#505).
-// It takes 8 bytes a change and 8 a revision. Positions count every
+// It takes 4 bytes a change and 8 a revision. Positions count every
 // change since the store began, so a position stays valid as the history
 // drops its oldest revisions.
 type history struct {
-	// keys[i] is the key of the change at position first+i. starts[j] is
-	// the position of the first change of revision base+j.
+	// keys[i] is the slot of the key of the change at position first+i
+	// (Store.rec). starts[j] is the position of the first change of
+	// revision base+j.
 	first  int64
 	base   int64
 	starts []int64
-	keys   []*keyIndex
+	keys   []uint32
 	// baseSubs, if set, are the sub-revisions of the changes of revision
 	// base, as a checkpoint load finds them: a compaction at that revision
 	// may have removed some of them, so a change's slot no longer tells its
@@ -38,7 +39,7 @@ func (h *history) add(k *keyIndex, main int64) {
 	for h.base+int64(len(h.starts)) <= main {
 		h.starts = append(h.starts, h.first+int64(len(h.keys)))
 	}
-	h.keys = append(h.keys, k)
+	h.keys = append(h.keys, k.id)
 }
 
 // end is the position after the last change logged.
@@ -58,8 +59,6 @@ func (h *history) drop(rev int64) {
 		n = int64(len(h.starts))
 	}
 	h.baseSubs = nil
-	// The dropped slots are cleared, so they keep no removed key alive.
-	clear(h.keys[:cut-h.first])
 	h.keys = h.keys[cut-h.first:]
 	h.starts = h.starts[n:]
 	h.first, h.base = cut, rev
@@ -91,7 +90,7 @@ func (h *history) rebuild(s *Store, from int64) error {
 		k   *keyIndex
 	}
 	var all []logged
-	s.keys.Ascend(func(k *keyIndex) bool {
+	s.each(func(k *keyIndex) bool {
 		for _, v := range k.vers {
 			if v.mod.main >= from {
 				all = append(all, logged{v.mod, k})
@@ -171,7 +170,7 @@ func (s *Store) HistoryEnd() int64 { return s.HistoryFrom(s.rev + 1) }
 // Gone, as etcd's backend no longer holds it.
 func (s *Store) Changed(pos int64) Change {
 	h := &s.hist
-	k := h.keys[pos-h.first]
+	k := s.rec(h.keys[pos-h.first])
 	main := h.revision(pos)
 	sub := pos - h.starts[main-h.base]
 	if main == h.base && h.baseSubs != nil {
@@ -210,11 +209,11 @@ func (s *Store) ChangesFrom() int64 { return s.hist.end() - int64(len(s.changes)
 // its values counted by their length, as Event builds it.
 func (c Change) EventSize(withPrev bool) int {
 	v := &c.k.vers[c.i]
-	kv := KV{Key: c.k.key, ModRevision: v.mod.main}
+	kv := KV{Key: c.s.key(c.k), ModRevision: v.mod.main}
 	n := 0
 	valueLen := 0
 	if v.ver != 0 {
-		kv = c.k.kvValue(v)
+		kv = c.s.kvValue(c.k, v)
 		valueLen = int(v.value.Len)
 	} else {
 		// The type field: DELETE is 1, PUT the default 0.
@@ -222,7 +221,7 @@ func (c Change) EventSize(withPrev bool) int {
 	}
 	n += 1 + protowire.SizeBytes(kv.Size(valueLen))
 	if p := c.prev(withPrev); p != nil {
-		prev := c.k.kvValue(p)
+		prev := c.s.kvValue(c.k, p)
 		n += 1 + protowire.SizeBytes(prev.Size(int(p.value.Len)))
 	}
 	return 1 + protowire.SizeBytes(n)

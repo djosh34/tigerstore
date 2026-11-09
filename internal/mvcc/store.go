@@ -144,8 +144,18 @@ type version struct {
 	value  Ref
 }
 
-// keyIndex holds every version of one key, oldest first.
+// keyIndex holds every version of one key, oldest first. id is its slot
+// in the store's records (Store.rec), and chunk, off and n place its bytes
+// in the store's arena (Store.key): a record holds no pointer but to its
+// versions.
 type keyIndex struct {
+	vers          []version
+	id            uint32
+	chunk, off, n uint32
+}
+
+// loaded is a key as a checkpoint holds it (readKey).
+type loaded struct {
 	key  []byte
 	vers []version
 }
@@ -179,21 +189,21 @@ func (k *keyIndex) live(r int64) (*version, bool) {
 	return &k.vers[i], true
 }
 
-// kvValue returns a version without its value, which fill adds.
-func (k *keyIndex) kvValue(v *version) KV {
-	return KV{Key: k.key, CreateRevision: v.create, ModRevision: v.mod.main, Version: v.ver, Lease: v.lease, ref: v.value}
+// kvValue returns a version of k without its value, which fill adds.
+func (s *Store) kvValue(k *keyIndex, v *version) KV {
+	return KV{Key: s.key(k), CreateRevision: v.create, ModRevision: v.mod.main, Version: v.ver, Lease: v.lease, ref: v.value}
 }
 
 // kv returns a version with its value, or with a Fill for it.
 func (s *Store) kv(k *keyIndex, v *version) (*mvccpb.KeyValue, error) {
 	kv := &mvccpb.KeyValue{
-		Key:            k.key,
+		Key:            s.key(k),
 		CreateRevision: v.create,
 		ModRevision:    v.mod.main,
 		Version:        v.ver,
 		Lease:          v.lease,
 	}
-	if err := s.fill(k.key, v.value, &kv.Value, nil); err != nil {
+	if err := s.fill(kv.Key, v.value, &kv.Value, nil); err != nil {
 		return nil, err
 	}
 	return kv, nil
@@ -252,11 +262,36 @@ func check(key []byte, r Ref, b []byte) error {
 
 // Store is the key index with every revision since the last compaction.
 type Store struct {
-	keys *btree.BTreeG[*keyIndex]
-	// byKey holds the same keys as keys, for lookups of one key: at a
-	// million keys a lookup in the B-tree took 3 µs and one in the map
-	// 0.3 µs (#506).
-	byKey      map[string]*keyIndex
+	// keys orders the keys and byKey finds one: at a million keys a
+	// lookup in the B-tree took 3 µs and one in a hash table 0.3 µs
+	// (#506). Both name a key by its record's slot and hold no pointer.
+	// The garbage collector walks every pointer of the index at each
+	// collection: with a pointer per key in the B-tree, two in a Go map
+	// and a record, its bytes and a copy for the map as objects of their
+	// own, a collection of a million keys took 115 ms, and 17 ms with
+	// slots and the keys' bytes in an arena; the index took 331 MB and
+	// then 221 MB (#506).
+	keys  *btree.BTreeG[uint32]
+	byKey keyTable
+	// recs are the records of the keys in chunks of recChunk that never
+	// move, so a *keyIndex stays valid. The first two slots are the keys
+	// a walk of keys starts and stops at (probes). The slots of removed
+	// keys are taken again (free): the history drops a key's changes
+	// before a compaction removes it, and the written list checks a
+	// value's Ref, which no other key's version has.
+	recs   [][]keyIndex
+	used   uint32
+	free   []uint32
+	probes [2][]byte
+	// arena holds the bytes of the keys, many to a chunk, so they are not
+	// objects of their own (addKey); arenaBytes is the room of its chunks.
+	// deadKeys are the bytes of the keys
+	// removed since the arena was last packed (pack).
+	arena      [][]byte
+	filling    int
+	arenaBytes int64
+	deadKeys   int64
+
 	rev        int64
 	compactRev int64
 	values     Values
@@ -309,28 +344,109 @@ type Store struct {
 	trackWritten bool
 }
 
-// Bytes estimates what the index takes in memory: per key its record,
-// its place in the B-tree, its slot in byKey and its bytes twice, 64
-// bytes per version its array has room for, and the history's 8 bytes a
-// change and a revision.
+// Bytes estimates what the index takes in memory: the room allocated for
+// records, free slots, byKey's entries and the arena's chunks, per key its
+// place in the B-tree, 64 bytes per version its array has room for, and
+// the history's 4 bytes a change and 8 a revision (#560).
 func (s *Store) Bytes() int64 {
-	return int64(s.keys.Len())*(64+keySlot) + 2*s.keyBytes + s.versions*64 + 8*int64(cap(s.hist.keys)+cap(s.hist.starts))
+	return int64(len(s.recs))*recChunk*recBytes + 4*int64(cap(s.free)) + int64(s.keys.Len())*keySlot + 8*int64(len(s.byKey.entries)) + s.arenaBytes + s.versions*64 + 4*int64(cap(s.hist.keys)) + 8*int64(cap(s.hist.starts))
 }
 
-// keySlot estimates a key's slot in byKey with the room a Go map keeps
-// free: a string header and a pointer.
-const keySlot = 40
+// recBytes is the size of a record, and keySlot estimates a key's room in
+// the B-tree: its slot number, in nodes about two thirds full.
+const (
+	recBytes = 40
+	keySlot  = 6
+)
 
-// insert adds a new key to the index.
-func (s *Store) insert(k *keyIndex) {
-	s.keys.ReplaceOrInsert(k)
-	s.byKey[string(k.key)] = k
-	s.keyBytes += int64(len(k.key))
+// recChunk is how many records a chunk of Store.recs holds.
+const recChunk = 4096
+
+// rec returns the record in slot id.
+func (s *Store) rec(id uint32) *keyIndex { return &s.recs[id/recChunk][id%recChunk] }
+
+// keyOf is the key of slot id, or of a probe.
+func (s *Store) keyOf(id uint32) []byte {
+	if id < uint32(len(s.probes)) {
+		return s.probes[id]
+	}
+	return s.key(s.rec(id))
 }
 
-// written is a value a put wrote to key k.
+// key returns k's bytes, which nobody may change; nil for the record of
+// a removed key.
+func (s *Store) key(k *keyIndex) []byte {
+	if k.n == 0 {
+		return nil
+	}
+	end := k.off + k.n
+	return s.arena[k.chunk][k.off:end:end]
+}
+
+// keyChunk is the room of an allocation of the arena. A key longer than a
+// quarter of it gets one of its own.
+const keyChunk = 1 << 20
+
+// addKey copies key into the arena and places k's bytes there.
+func (s *Store) addKey(k *keyIndex, key []byte) {
+	k.off, k.n = 0, uint32(len(key))
+	if len(key) > keyChunk/4 {
+		k.chunk = uint32(len(s.arena))
+		s.arena = append(s.arena, bytes.Clone(key))
+		s.arenaBytes += int64(cap(s.arena[k.chunk]))
+		return
+	}
+	if s.filling < 0 || len(s.arena[s.filling])+len(key) > cap(s.arena[s.filling]) {
+		s.filling = len(s.arena)
+		s.arena = append(s.arena, make([]byte, 0, keyChunk))
+		s.arenaBytes += keyChunk
+	}
+	c := &s.arena[s.filling]
+	k.chunk, k.off = uint32(s.filling), uint32(len(*c))
+	*c = append(*c, key...)
+}
+
+// pack copies the keys into a new arena once the removed keys' bytes are
+// more than those left: the old arena's memory then goes, but for the
+// keys that answers still hold. A compaction walks every key anyway.
+func (s *Store) pack() {
+	if s.deadKeys <= max(s.keyBytes, keyChunk) {
+		return
+	}
+	old := s.arena
+	s.arena, s.filling, s.arenaBytes, s.deadKeys = nil, -1, 0, 0
+	s.each(func(k *keyIndex) bool {
+		end := k.off + k.n
+		s.addKey(k, old[k.chunk][k.off:end])
+		return true
+	})
+}
+
+// insert adds key to the index with its versions, in a record of its
+// own, and returns that record. The key's bytes go to the arena.
+func (s *Store) insert(key []byte, vers []version) *keyIndex {
+	var id uint32
+	if n := len(s.free); n > 0 {
+		id, s.free = s.free[n-1], s.free[:n-1]
+	} else {
+		id = s.used
+		if id%recChunk == 0 {
+			s.recs = append(s.recs, make([]keyIndex, recChunk))
+		}
+		s.used++
+	}
+	r := s.rec(id)
+	*r = keyIndex{vers: vers, id: id}
+	s.addKey(r, key)
+	s.keys.ReplaceOrInsert(id)
+	s.byKey.add(s, id)
+	s.keyBytes += int64(len(key))
+	return r
+}
+
+// written is a value a put wrote to the key in slot id.
 type written struct {
-	k   *keyIndex
+	id  uint32
 	ref Ref
 }
 
@@ -344,7 +460,7 @@ func (s *Store) TrackWritten() { s.trackWritten = true }
 func (s *Store) Leaving(index uint64, fn func(Ref)) {
 	n := 0
 	for ; n < len(s.written) && s.written[n].ref.Index <= index; n++ {
-		if w := s.written[n]; w.k.current(w.ref) {
+		if w := s.written[n]; s.rec(w.id).current(w.ref) {
 			fn(w.ref)
 		}
 	}
@@ -385,15 +501,19 @@ type Counts struct{ Puts, Deletes, Ranges, Txns, PutBytes, Compacted, Keys int64
 // New returns an empty store at revision 1, the revision etcd starts at,
 // that keeps its values in v.
 func New(v Values) *Store {
-	return &Store{
-		keys:   btree.NewG(32, func(a, b *keyIndex) bool { return bytes.Compare(a.key, b.key) < 0 }),
-		byKey:  map[string]*keyIndex{},
-		values: v,
-		rev:    1,
+	s := &Store{
+		byKey:   newKeyTable(),
+		filling: -1,
+		used:    uint32(len(Store{}.probes)),
+		recs:    [][]keyIndex{make([]keyIndex, recChunk)},
+		values:  v,
+		rev:     1,
 		// etcd's compacted revision starts at -1, so a read at revision
 		// -1 inside a transaction is not "compacted".
 		compactRev: -1,
 	}
+	s.keys = btree.NewG(32, func(a, b uint32) bool { return bytes.Compare(s.keyOf(a), s.keyOf(b)) < 0 })
+	return s
 }
 
 // Counts returns the operations the store has seen.
@@ -439,16 +559,44 @@ func (s *Store) ascend(key, end []byte, fn func(*keyIndex) bool) {
 			fn(k)
 		}
 	case len(end) == 1 && end[0] == 0:
-		s.keys.AscendGreaterOrEqual(&keyIndex{key: key}, fn)
+		s.ascendFrom(key, fn)
 	default:
-		s.keys.AscendRange(&keyIndex{key: key}, &keyIndex{key: end}, fn)
+		s.walk(key, end, fn)
 	}
+}
+
+// ascendFrom calls fn for every key from key on, in order, until fn
+// returns false.
+func (s *Store) ascendFrom(key []byte, fn func(*keyIndex) bool) { s.walk(key, nil, fn) }
+
+// walk calls fn for every key from start on, and before end if end is
+// not nil, in order, until fn returns false. The B-tree compares its keys
+// with the probes, slots 0 and 1, through the whole walk; a walk inside
+// fn sets them too, and gives them back before it returns.
+func (s *Store) walk(start, end []byte, fn func(*keyIndex) bool) {
+	old := s.probes
+	s.probes = [2][]byte{start, end}
+	visit := func(id uint32) bool { return fn(s.rec(id)) }
+	if end == nil {
+		s.keys.AscendGreaterOrEqual(0, visit)
+	} else {
+		s.keys.AscendRange(0, 1, visit)
+	}
+	s.probes = old
+}
+
+// each calls fn for every key in order until fn returns false.
+func (s *Store) each(fn func(*keyIndex) bool) {
+	s.keys.Ascend(func(id uint32) bool { return fn(s.rec(id)) })
 }
 
 // get returns the index entry of key.
 func (s *Store) get(key []byte) (*keyIndex, bool) {
-	k, ok := s.byKey[string(key)]
-	return k, ok
+	id, ok := s.byKey.get(s, key)
+	if !ok {
+		return nil, false
+	}
+	return s.rec(id), true
 }
 
 // Change is one key change made by a write request.
@@ -461,7 +609,7 @@ type Change struct {
 }
 
 // Key is the changed key.
-func (c Change) Key() []byte { return c.k.key }
+func (c Change) Key() []byte { return c.s.key(c.k) }
 
 // ModRev is the main revision of the change.
 func (c Change) ModRev() int64 {
@@ -494,7 +642,7 @@ func (c Change) PrevLease() int64 {
 func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 	s := c.s
 	v := &c.k.vers[c.i]
-	ev := &mvccpb.Event{Type: mvccpb.Event_DELETE, Kv: &mvccpb.KeyValue{Key: c.k.key, ModRevision: v.mod.main}}
+	ev := &mvccpb.Event{Type: mvccpb.Event_DELETE, Kv: &mvccpb.KeyValue{Key: c.s.key(c.k), ModRevision: v.mod.main}}
 	if v.ver != 0 {
 		kv, err := s.kv(c.k, v)
 		if err != nil {
@@ -583,9 +731,9 @@ func (s *Store) versionSum() uint64 {
 		pending = s.frozen.compact
 	}
 	var sum uint64
-	s.keys.Ascend(func(k *keyIndex) bool {
+	s.each(func(k *keyIndex) bool {
 		for i := k.dropped(pending); i < len(k.vers); i++ {
-			sum ^= versionHash(k.key, &k.vers[i])
+			sum ^= versionHash(s.key(k), &k.vers[i])
 		}
 		return true
 	})
@@ -691,16 +839,17 @@ func (s *Store) Compact(rev int64) error {
 	}
 	s.sweep(func(k *keyIndex) bool {
 		from, to := k.dropped(pending), k.dropped(rev)
-		h.key(k, from)
+		h.key(s.key(k), k, from)
 		s.counts.Compacted += int64(to - from)
 		for i := from; i < to; i++ {
-			s.size -= rowBytes(k.key, &k.vers[i])
+			s.size -= rowBytes(s.key(k), &k.vers[i])
 			if s.track {
-				s.sum ^= versionHash(k.key, &k.vers[i])
+				s.sum ^= versionHash(s.key(k), &k.vers[i])
 			}
 		}
 		return s.frozen == nil && s.dropFirst(k, to)
 	})
+	s.pack()
 	s.compactHash = h.sum()
 	return nil
 }
@@ -720,6 +869,7 @@ func (k *keyIndex) dropped(rev int64) int {
 // left without any.
 func (s *Store) drop(rev int64) {
 	s.sweep(func(k *keyIndex) bool { return s.dropFirst(k, k.dropped(rev)) })
+	s.pack()
 }
 
 // removeBatch is how many keys left without versions a sweep collects
@@ -730,7 +880,7 @@ const removeBatch = 1024
 // key without versions; such keys leave the index in batches, so that a
 // sweep never holds a list of every key it removes (#437).
 func (s *Store) sweep(fn func(*keyIndex) bool) {
-	var from *keyIndex
+	var from []byte
 	gone := make([]*keyIndex, 0, removeBatch)
 	for {
 		full := false
@@ -742,14 +892,14 @@ func (s *Store) sweep(fn func(*keyIndex) bool) {
 			return !full
 		}
 		if from == nil {
-			s.keys.Ascend(visit)
+			s.each(visit)
 		} else {
 			// The last key visited is gone from the index, so the walk
 			// goes on after it.
-			s.keys.AscendGreaterOrEqual(from, visit)
+			s.ascendFrom(from, visit)
 		}
 		if full {
-			from = &keyIndex{key: gone[len(gone)-1].key}
+			from = s.key(gone[len(gone)-1])
 		}
 		s.remove(gone)
 		clear(gone)
@@ -776,11 +926,15 @@ func (s *Store) dropFirst(k *keyIndex, i int) bool {
 	return len(k.vers) == 0
 }
 
-// remove takes keys without versions out of the index.
+// remove takes keys without versions out of the index and frees their
+// slots.
 func (s *Store) remove(gone []*keyIndex) {
 	for _, k := range gone {
-		s.keys.Delete(k)
-		delete(s.byKey, string(k.key))
-		s.keyBytes -= int64(len(k.key))
+		s.keys.Delete(k.id)
+		s.byKey.remove(s, s.key(k))
+		s.keyBytes -= int64(k.n)
+		s.deadKeys += int64(k.n)
+		s.free = append(s.free, k.id)
+		*k = keyIndex{id: k.id}
 	}
 }
