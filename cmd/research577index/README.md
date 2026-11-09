@@ -68,10 +68,14 @@ MsgStorageAppendResp/MsgStorageApplyResp steps replace it.
 
 Only leader turns (Propose/Step/HasReady/Ready/storage handlers) are enclosed in
 CPU/allocation samples. Followers run synchronously on the same pinned core,
-but entirely outside those intervals. Transport queues are preallocated, and
-there is no serialization, memcpy of payloads, disk durability or network I/O.
-The 1/64/512 KiB immutable payload buffer is reused: this measures RawNode's
-reference/size bookkeeping, not encoding or copying the payload bytes.
+but entirely outside those intervals. Transport queues are preallocated; there
+is no serialization, disk durability or network I/O. The benchmark reuses an
+immutable 1/64/512 KiB input buffer and does not explicitly copy it. HOWEVER,
+RawNode's own raft.appendEntry calls proto.Clone on every proposed entry
+(raft v3.7.0 raft.go:812-820), which DOES allocate and copy the payload. That
+internal copy is included in measured CPU and TotalAlloc. The measurements
+confirm almost exactly payload_size * entries additional bytes per batch.
+This corrects the initial methodology text shipped in the measured artifacts.
 
 One ReadOnlySafe ReadIndex round is measured separately, including heartbeat
 responses from real followers and Ready.ReadStates completion. Write and read
