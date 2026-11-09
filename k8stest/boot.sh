@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # A three-member TLS store on the Docker bridge, one kind control plane
 # and two workers. Run only on a disposable Actions runner.
+#
+# With RECORD set to a file, cmd/etcdrec stands between kube-apiserver and
+# the store and logs every call there (k8stest/record.sh): the members
+# listen on 127.0.0.1 and the recorder on their addresses on the bridge.
 set -euo pipefail
 root=${K8S_ROOT:?}
 store=${STORE:-tigerstore}
+record=${RECORD:-}
 mkdir -p "$root"/{bin,certs,client-certs,data,results}
 case $(uname -m) in
   aarch64) arch=arm64 ;;
@@ -33,6 +38,7 @@ case "$store" in
       exit 1
     fi
     CGO_ENABLED=0 go build -trimpath -o "$root/bin/tigerstore" ./cmd/tigerstore
+    if [ -n "$record" ]; then CGO_ENABLED=0 go build -trimpath -o "$root/bin/etcdrec" ./cmd/etcdrec; fi
     go version -m "$root/bin/tigerstore" | tee "$root/results/build-info.txt"
     grep -F "vcs.revision=$(git rev-parse HEAD)" "$root/results/build-info.txt"
     grep -F 'vcs.modified=false' "$root/results/build-info.txt"
@@ -61,8 +67,12 @@ cp "$root/certs/ca.pem" "$root/certs/client.pem" "$root/certs/client-key.pem" "$
 # Peers are host processes. Loopback avoids Docker's host-to-bridge SNAT,
 # which otherwise changes the source address checked against the peer SANs.
 initial="n1=https://127.0.0.1:20011,n2=https://127.0.0.1:20021,n3=https://127.0.0.1:20031"
+listen=() direct=()
 for i in 1 2 3; do
   client="https://$gateway:$((20000 + 10 * i))"
+  listen+=("$gateway:$((20000 + 10 * i))")
+  if [ -n "$record" ]; then client="https://127.0.0.1:$((21000 + 10 * i))"; fi
+  direct+=("$client")
   peer="https://127.0.0.1:$((20001 + 10 * i))"
   extra=()
   if [ "$store" = tigerstore ]; then extra+=(--memory-budget-bytes 1073741824); fi
@@ -76,7 +86,16 @@ for i in 1 2 3; do
     --peer-trusted-ca-file "$root/certs/ca.pem" --peer-client-cert-auth \
     --quota-backend-bytes 8589934592 "${extra[@]}" >"$root/results/n$i.log" 2>&1 &
 done
-export ETCDCTL_ENDPOINTS="https://$gateway:20010,https://$gateway:20020,https://$gateway:20030"
+if [ -n "$record" ]; then
+  backends=("${direct[@]#https://}")
+  "$root/bin/etcdrec" -listen "$(IFS=,; echo "${listen[*]}")" -backend "$(IFS=,; echo "${backends[*]}")" \
+    -cacert "$root/certs/ca.pem" -cert "$root/certs/node1.pem" -key "$root/certs/node1-key.pem" \
+    -client-cert "$root/certs/client.pem" -client-key "$root/certs/client-key.pem" \
+    -out "$record" >"$root/results/etcdrec.log" 2>&1 &
+  echo $! >"$root/etcdrec.pid"
+fi
+# etcdctl reaches the members directly, so its calls are never recorded.
+export ETCDCTL_ENDPOINTS="$(IFS=,; echo "${direct[*]}")"
 export ETCDCTL_CACERT="$root/certs/ca.pem" ETCDCTL_CERT="$root/certs/client.pem" ETCDCTL_KEY="$root/certs/client-key.pem"
 export ETCDCTL_COMMAND_TIMEOUT=5s
 {

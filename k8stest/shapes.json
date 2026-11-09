@@ -1,0 +1,32 @@
+{
+  "small": {
+    "about": "a small team cluster: few nodes and namespaces, no CRDs",
+    "nodes": 10, "namespaces": 5, "deployments": 2, "replicas": 3,
+    "configmaps": 5, "secrets": 3, "services": 1, "crds": 0, "crs": 0,
+    "workers": 4
+  },
+  "medium-crds": {
+    "about": "a mid-size cluster with a few operators' CRDs",
+    "nodes": 50, "namespaces": 20, "deployments": 4, "replicas": 5,
+    "configmaps": 10, "secrets": 5, "services": 2, "crds": 3, "crs": 20,
+    "workers": 8
+  },
+  "large": {
+    "about": "many nodes and pods, no CRDs",
+    "nodes": 200, "namespaces": 40, "deployments": 5, "replicas": 12,
+    "configmaps": 8, "secrets": 4, "services": 3, "crds": 0, "crs": 0,
+    "workers": 8
+  },
+  "crd-heavy": {
+    "about": "a platform cluster where custom objects outnumber pods",
+    "nodes": 20, "namespaces": 10, "deployments": 2, "replicas": 2,
+    "configmaps": 5, "secrets": 2, "services": 1, "crds": 15, "crs": 40,
+    "workers": 8
+  },
+  "many-namespaces": {
+    "about": "many small tenants, each in a namespace of its own",
+    "nodes": 30, "namespaces": 250, "deployments": 1, "replicas": 1,
+    "configmaps": 3, "secrets": 2, "services": 1, "crds": 1, "crs": 3,
+    "workers": 8
+  }
+}
