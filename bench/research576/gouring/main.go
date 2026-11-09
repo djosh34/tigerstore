@@ -30,6 +30,7 @@ var started time.Time
 var done = make(chan struct{})
 var stopOnce sync.Once
 var zcNotifications, zcCopied uint64
+var netReply []byte
 
 func check(e error) {
 	if e != nil {
@@ -70,6 +71,10 @@ func special(b byte) bool {
 	return false
 }
 func netServer() {
+	netReply = make([]byte, 262144)
+	for i := range netReply {
+		netReply[i] = 7
+	}
 	l, e := net.Listen("tcp", *addr)
 	check(e)
 	fmt.Println("READY")
@@ -88,10 +93,7 @@ func netServer() {
 func netConn(c net.Conn) {
 	defer c.Close()
 	buf := make([]byte, 65536)
-	out := make([]byte, 262144)
-	for i := range out {
-		out[i] = 7
-	}
+	out := netReply // shared immutable bytes, matching the ring server
 	pending := 0
 	for {
 		var n int
@@ -177,6 +179,9 @@ func client() {
 					check(e)
 					_, e = io.ReadFull(c, buf)
 					check(e)
+					if buf[0] != 7 || buf[len(buf)-1] != 7 {
+						panic("bad reply bytes")
+					}
 					n += uint64(*depth)
 				}
 				total.Add(n)

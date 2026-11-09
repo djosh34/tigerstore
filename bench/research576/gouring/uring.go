@@ -52,6 +52,7 @@ type pbuf struct {
 type connection struct {
 	FD        int
 	Remainder int
+	Opcode    byte
 	Pending   int
 	Busy      bool
 	Closed    bool
@@ -222,8 +223,8 @@ func uringServer() {
 			}
 			bid := uint16(c.Flags >> 16)
 			b := recv[int(bid)*recvSize : int(bid)*recvSize+int(c.Res)]
-			// Requests are 100 bytes, first byte is opcode; incomplete frames need only
-			// a remainder count because ordinary request contents are intentionally ignored.
+			// Requests are 100 bytes; retain the opcode across partial frames.
+			var requests uint64
 			pos := 0
 			if state.Remainder > 0 {
 				take := min(100-state.Remainder, len(b))
@@ -231,13 +232,17 @@ func uringServer() {
 				pos += take
 				if state.Remainder == 100 {
 					state.Remainder = 0
-					state.Pending += *reply
-					if measuring.Load() {
-						count.Add(1)
+					if state.Opcode == 254 {
+						begin()
+						state.Pending += *reply
+					} else if state.Opcode == 253 {
+						stopped = true
+					} else {
+						state.Pending += *reply
+						requests++
 					}
 				}
 			}
-			var requests uint64
 			for pos+100 <= len(b) {
 				v := b[pos]
 				pos += 100
@@ -251,7 +256,12 @@ func uringServer() {
 					requests++
 				}
 			}
-			state.Remainder += len(b) - pos
+			if pos < len(b) {
+				if state.Remainder == 0 {
+					state.Opcode = b[pos]
+				}
+				state.Remainder += len(b) - pos
+			}
 			if measuring.Load() {
 				count.Add(requests)
 			}

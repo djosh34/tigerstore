@@ -19,6 +19,7 @@ jobs:
           mkdir -p results
           { uname -a; lscpu; go version; ulimit -l; cat /proc/sys/kernel/io_uring_disabled; grep -E 'Seccomp|Cap' /proc/self/status; } | tee results/runner.txt
           cd bench/research576/gouring
+          go test ./...
           go build -o "$GITHUB_WORKSPACE/gouring576" .
       - name: Measure
         run: bash bench/research576/gouring/run.sh
