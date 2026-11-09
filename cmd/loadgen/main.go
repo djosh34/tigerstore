@@ -586,6 +586,10 @@ func (s *session) measure(streams int) (*result, error) {
 				return
 			}
 			samples[i] = s
+			if err := research573Boundary(i); err != nil {
+				sampleErr = err
+				return
+			}
 			if cfg.cpuprofile != "" {
 				if err := profileCPU(cfg.cpuprofile, i == 0); err != nil {
 					sampleErr = err

@@ -1,0 +1,38 @@
+name: research573
+on:
+  workflow_dispatch:
+jobs:
+  measure:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Tools and unmodified server
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bpftrace
+          mkdir -p bin results "$RUNNER_TEMP/base"
+          git archive 407cf5ec | tar xf - -C "$RUNNER_TEMP/base"
+          (cd "$RUNNER_TEMP/base" && go build -o "$GITHUB_WORKSPACE/bin/candidate" ./cmd/tigerstore)
+          go build -o bin/loadgen ./cmd/loadgen
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
+          scripts/dev-certs.sh certs
+          sudo mount -o remount,barrier=1 /
+          { git rev-parse HEAD; git rev-parse 407cf5ec; uname -a; lscpu; free -b; go version; findmnt -T "$RUNNER_TEMP"; bpftrace --version; } > results/runner.txt
+          go tool nm bin/candidate | grep runtime.memmove > results/memmove-symbol.txt
+      - name: Measure
+        run: bench/research573.sh
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: research573
+          path: results
+          retention-days: 30
