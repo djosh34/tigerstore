@@ -15,6 +15,25 @@ sudo bpftrace -l 'kprobe:__arch_copy_*' > results/kprobes.txt 2>&1 || true
 sudo bpftrace -l 'kprobe:*copy*iter*' >> results/kprobes.txt 2>&1 || true
 for mode in ${MODES:-sys copy}; do
 	dir=$RUNNER_TEMP/research573-cluster
+	if [ "$mode" = mix ]; then
+		# The leader's CPU per op with LIST at 0% and 6% of calls, the
+		# difference taken from updates, twice each in alternating order.
+		for rep in 1 2; do
+			for mix in 18,10,0,52,12,8 18,10,6,46,12,8 18,10,2,50,12,8; do
+				out=$PWD/results/mix/$mix-$rep
+				mkdir -p "$out"
+				bench/cluster.sh stop "$dir"
+				bench/cluster.sh start tigerstore "$PWD/bin/candidate" "$dir" 0 1 2
+				taskset -c 3 bin/loadgen -endpoints "$(<"$dir/endpoints")" \
+					-cacert "$CERTS/ca.pem" -cert "$CERTS/client.pem" -key "$CERTS/client-key.pem" \
+					-pids "$(<"$dir/pids")" -workload mixed -keys 1000000 -conns 6 -streams 96 -watchers 3 \
+					-mix "$mix" -warmup 3s -duration 20s -seed "$rep" -out "$out/result.json" >"$out/loadgen.stdout" 2>"$out/loadgen.stderr"
+				bench/cluster.sh check "$dir"
+				bench/cluster.sh stop "$dir"
+			done
+		done
+		continue
+	fi
 	export OUT=$PWD/results/$mode
 	mkdir -p "$OUT"
 	bench/cluster.sh stop "$dir"

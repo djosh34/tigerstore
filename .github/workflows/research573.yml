@@ -1,6 +1,10 @@
 name: research573
 on:
   workflow_dispatch:
+    inputs:
+      modes:
+        description: space-separated modes of bench/research573.sh (sys copy mix)
+        default: sys copy
 jobs:
   measure:
     runs-on: ubuntu-24.04-arm
@@ -31,10 +35,12 @@ jobs:
           { git rev-parse HEAD; git rev-parse 407cf5ec; uname -a; lscpu; free -b; go version; findmnt -T "$RUNNER_TEMP"; bpftrace --version; } > results/runner.txt
           go tool nm bin/candidate | grep runtime.memmove > results/memmove-symbol.txt
       - name: Measure
+        env:
+          MODES: ${{ inputs.modes }}
         run: bench/research573.sh
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: research573
+          name: research573-${{ github.run_id }}
           path: results
           retention-days: 30
