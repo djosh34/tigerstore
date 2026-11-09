@@ -573,6 +573,11 @@ func (s *session) measure(streams int) (*result, error) {
 	if s.ledger != nil {
 		s.ledger.window(t1, t2)
 	}
+	if os.Getenv("RESEARCH574") != "" {
+		for _, w := range s.mixed {
+			w.census = newCensus574()
+		}
+	}
 
 	var samples [2]cpuSample
 	var sampleErr error
@@ -617,6 +622,7 @@ func (s *session) measure(streams int) (*result, error) {
 			errs = append(errs, err)
 		}
 	}
+	s.censusReport()
 	res := s.summarize(streams, samples)
 	if len(res.Errors) > 0 {
 		errs = append(errs, fmt.Errorf("%d kinds of request errors, see the result", len(res.Errors)))

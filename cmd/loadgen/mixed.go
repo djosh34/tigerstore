@@ -90,6 +90,7 @@ type mixedCall struct {
 }
 
 type mixedLoad struct {
+	census     *census574
 	wk         *worker
 	owner      int
 	namespaces int
@@ -340,6 +341,7 @@ func (w *mixedLoad) exhausted() bool { return false }
 // message reads the sizes of a read's answer, and the outcome and revision
 // of a write, which the next write of the key compares against.
 func (w *mixedLoad) message(st *stream, m []byte) error {
+	w.censusMessage(st, m)
 	call := w.calls[st.id]
 	switch call.op {
 	case mixedGet:
@@ -384,6 +386,7 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 }
 
 func (w *mixedLoad) done(st *stream, at int64, err error) {
+	w.censusDone(st, err)
 	call := w.calls[st.id]
 	delete(w.calls, st.id)
 	if call.op >= mixedUpdate {
