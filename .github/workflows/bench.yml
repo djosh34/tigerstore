@@ -6,6 +6,10 @@ on:
         description: Only AF_ALG diagnostics, TLS sendfile opt-in, and AWS-LC dispatch follow-up
         type: boolean
         default: false
+      kernel_only:
+        description: Disposable-runner AF_ALG-only follow-up; skip AWS-LC build
+        type: boolean
+        default: false
 jobs:
   research576:
     runs-on: ubuntu-24.04-arm
@@ -27,6 +31,10 @@ jobs:
           findmnt -T "$RUNNER_TEMP" | tee -a results/runner.txt
           sudo modprobe tls || true
           { sudo modprobe algif_aead; grep -E 'CONFIG_CRYPTO_USER_API|CONFIG_TLS' "/boot/config-$(uname -r)"; modinfo algif_aead; } > results/kernel-crypto-config.txt 2>&1 || true
+          if [[ '${{ github.event.inputs.kernel_only }}' == true ]]; then
+            # Disposable bench host only: distro's install /bin/false blocks this test API by default.
+            sudo modprobe --ignore-install algif_aead 2>&1 | tee results/afalg-explicit-load.txt || true
+          fi
           cat /proc/crypto > results/proc-crypto-before.txt
           cat /proc/sys/net/core/optmem_max | tee -a results/runner.txt
           git clone -q https://github.com/axboe/liburing.git "$RUNNER_TEMP/liburing"
@@ -74,7 +82,7 @@ jobs:
             done
           done
       - name: Build recent AWS-LC and measure
-        if: always()
+        if: always() && github.event.inputs.kernel_only != 'true'
         run: |
           set -o pipefail
           git clone -q https://github.com/aws/aws-lc.git "$RUNNER_TEMP/aws-lc"

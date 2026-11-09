@@ -109,4 +109,8 @@ production configuration recommendation. aes.c authenticates a round trip at
 each size outside the timed loop. See cpucap/internal.h and modes/gcm.c at the
 pinned revision. `gh workflow run bench.yml --ref research/576-primitives -f
 followup=true` runs just AF_ALG/config diagnostics, kTLS sendfile with/without
-TLS_TX_ZEROCOPY_RO, and default/patched AWS-LC crypto.
+TLS_TX_ZEROCOPY_RO, and default/patched AWS-LC crypto. An additional `-f kernel_only=true` skips
+AWS-LC and explicitly loads algif_aead with modprobe --ignore-install on this
+disposable runner; the distro blocks that user-space crypto test API by default
+with an install /bin/false directive. This does not describe production policy
+or a requirement for kTLS (which uses kernel-internal AEAD and already works).
