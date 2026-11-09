@@ -4,7 +4,7 @@ on:
 jobs:
   research576:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       GOFLAGS: -p=2
     steps:
@@ -22,22 +22,11 @@ jobs:
           findmnt -T "$RUNNER_TEMP" | tee -a results/runner.txt
           sudo modprobe tls || true
           grep -E '^tls|^chacha|^aes' /proc/modules | tee -a results/runner.txt || true
-          gcc -O2 -Wall -o bin/io576 bench/research576/io.c -luring
           GOFLAGS=-p=2 go build -o bin/tigerstore ./cmd/tigerstore
           GOFLAGS=-p=2 go build -o bin/loadgen ./cmd/loadgen
-          GOFLAGS=-p=2 go test -c -o bin/crypto576.test ./bench/research576/crypto
           scripts/dev-certs.sh certs
           curl -fsSL https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz | tar xz -C "$RUNNER_TEMP"
           cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
-      - name: Primitive measurements
-        run: |
-          for rep in 1 2 3; do
-            bin/io576 "$RUNNER_TEMP/io576" | tee "results/io-$rep.txt"
-          done
-          taskset -c 0 bin/crypto576.test -test.run '^$' -test.bench . -test.benchtime 500ms -test.count 3 -test.cpu 1 | tee results/go-crypto.txt
-          for bits in 128 256; do
-            taskset -c 0 openssl speed -seconds 2 -bytes 16384 -evp aes-$bits-gcm -aead 2>&1 | tee "results/openssl-$bits.txt"
-          done
       - name: Mixed path counts and current profile
         run: bench/research576/mixed.sh
       - uses: actions/upload-artifact@v6
