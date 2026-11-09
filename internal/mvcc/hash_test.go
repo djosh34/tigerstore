@@ -89,8 +89,8 @@ func TestHashKVCompactedVersions(t *testing.T) {
 	// alive at 6, only a=2 counts below or at 5.
 	want := newKVHasher()
 	for _, k := range []string{"a", "c"} {
-		ki, _ := compacted.keys.Get(&keyIndex{key: []byte(k)})
-		want.add(ki.key, &ki.vers[len(ki.vers)-1])
+		ki, _ := compacted.get([]byte(k))
+		want.add(compacted.key(ki), &ki.vers[len(ki.vers)-1])
 	}
 	if got := hashKV(t, compacted, 6); got.Hash != want.sum {
 		t.Fatalf("HashKV(6) after compacting at 5 = %x, want %x", got.Hash, want.sum)
@@ -120,10 +120,10 @@ func TestHashKVNoLiveKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	del(t, s, "a")
-	ki, _ := s.keys.Get(&keyIndex{key: []byte("a")})
+	ki, _ := s.get([]byte("a"))
 	want := newKVHasher()
 	for i := range ki.vers {
-		want.add(ki.key, &ki.vers[i])
+		want.add(s.key(ki), &ki.vers[i])
 	}
 	if got := hashKV(t, s, 4); got.Hash != want.sum {
 		t.Fatalf("HashKV(4) = %x, want %x over a=2 and its tombstone", got.Hash, want.sum)

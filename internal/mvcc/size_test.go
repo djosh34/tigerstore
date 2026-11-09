@@ -15,10 +15,10 @@ import (
 // a 17-byte revision key, a tombstone mark, and the marshaled KeyValue.
 func etcdRows(s *Store) int64 {
 	var n int64
-	s.keys.Ascend(func(k *keyIndex) bool {
+	s.each(func(k *keyIndex) bool {
 		for i := k.dropped(s.pendingCompact()); i < len(k.vers); i++ {
 			v := &k.vers[i]
-			kv := &mvccpb.KeyValue{Key: k.key}
+			kv := &mvccpb.KeyValue{Key: s.key(k)}
 			n += 17
 			if v.ver == 0 {
 				n++

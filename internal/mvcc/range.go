@@ -279,7 +279,7 @@ func (w *writer) rangeAt(r *pb.RangeRequest, total bool, room int, fill bool) (R
 		if r.CountOnly {
 			return true
 		}
-		kv := k.kvValue(v)
+		kv := s.kvValue(k, v)
 		if kept := keeps(r, &kv); !kept || res.N == c.left {
 			res.More = res.More || kept
 			return true
@@ -294,7 +294,7 @@ func (w *writer) rangeAt(r *pb.RangeRequest, total bool, room int, fill bool) (R
 			return true
 		}
 		if (len(kvs) > 0 || room <= 0) && size+int(f) > room {
-			full, c.next = true, k.key
+			full, c.next = true, kv.Key
 			return true
 		}
 		size += int(f)
@@ -351,7 +351,7 @@ func (c *Cursor) sorted(res RangeResult, total bool, room int, fill bool) (Range
 			return false
 		}
 		res.Count++
-		kv := k.kvValue(v)
+		kv := s.kvValue(k, v)
 		if pushed || r.CountOnly || !keeps(r, &kv) {
 			return true
 		}
@@ -454,7 +454,7 @@ func (c *Cursor) Next(room int) ([]KV, bool, error) {
 		if !ok {
 			return true
 		}
-		kv := k.kvValue(v)
+		kv := c.s.kvValue(k, v)
 		if !keeps(r, &kv) {
 			return true
 		}
@@ -463,7 +463,7 @@ func (c *Cursor) Next(room int) ([]KV, bool, error) {
 		}
 		f := 1 + protowire.SizeBytes(kv.Size(int(kv.ref.Len)))
 		if len(kvs) > 0 && size+f > room {
-			c.next, stopped = k.key, true
+			c.next, stopped = c.s.key(k), true
 			return false
 		}
 		size += f

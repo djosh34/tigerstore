@@ -61,16 +61,16 @@ func TestBytes(t *testing.T) {
 	check := func(s *Store, keys int) {
 		t.Helper()
 		var keyBytes, room int64
-		s.keys.Ascend(func(k *keyIndex) bool {
-			keyBytes += int64(len(k.key))
+		s.each(func(k *keyIndex) bool {
+			keyBytes += int64(len(s.key(k)))
 			room += int64(cap(k.vers))
 			return true
 		})
-		if s.keys.Len() != keys || len(s.byKey) != keys {
-			t.Fatalf("%d keys and %d in the map, want %d", s.keys.Len(), len(s.byKey), keys)
+		if s.keys.Len() != keys || s.byKey.n != keys {
+			t.Fatalf("%d keys and %d in the map, want %d", s.keys.Len(), s.byKey.n, keys)
 		}
-		hist := 8 * int64(cap(s.hist.keys)+cap(s.hist.starts))
-		if got := s.Bytes(); got != int64(keys)*(64+keySlot)+2*keyBytes+room*64+hist {
+		hist := 4*int64(cap(s.hist.keys)) + 8*int64(cap(s.hist.starts))
+		if got := s.Bytes(); got != int64(s.used)*recBytes+int64(keys)*keySlot+8*int64(len(s.byKey.entries))+keyBytes+s.deadKeys+room*64+hist {
 			t.Fatalf("Bytes = %d, want %d keys, %d key bytes, room for %d versions", got, keys, keyBytes, room)
 		}
 	}

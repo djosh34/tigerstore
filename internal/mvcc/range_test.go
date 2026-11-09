@@ -546,7 +546,7 @@ func TestRebuildRefusesAHugeSubRevision(t *testing.T) {
 		put(t, s, "a", "v")
 		put(t, s, "b", "v")
 		var vers []*version
-		s.keys.Ascend(func(k *keyIndex) bool {
+		s.each(func(k *keyIndex) bool {
 			vers = append(vers, &k.vers[0])
 			return true
 		})

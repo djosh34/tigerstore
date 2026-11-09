@@ -41,8 +41,8 @@ func (s *Store) HashKV(rev int64) (KVHash, error) {
 	}
 	h := newRevHash(rev, c)
 	pending := s.pendingCompact()
-	s.keys.Ascend(func(k *keyIndex) bool {
-		h.key(k, k.dropped(pending))
+	s.each(func(k *keyIndex) bool {
+		h.key(s.key(k), k, k.dropped(pending))
 		return true
 	})
 	return h.sum(), nil
@@ -63,7 +63,7 @@ func newRevHash(rev, c int64) *revHash {
 // key adds k's versions from its from-th on. etcd's rule for versions at
 // or below c depends on whether any key exists at rev, which is known
 // only at the end: both sums are kept.
-func (h *revHash) key(k *keyIndex, from int) {
+func (h *revHash) key(key []byte, k *keyIndex, from int) {
 	seen := k.at(h.rev)
 	if seen >= 0 && k.vers[seen].ver != 0 {
 		h.anyLive = true
@@ -74,9 +74,9 @@ func (h *revHash) key(k *keyIndex, from int) {
 			continue
 		}
 		if v.mod.main > h.c || (i == seen && v.ver != 0) {
-			h.live.add(k.key, v)
+			h.live.add(key, v)
 		}
-		h.dead.add(k.key, v)
+		h.dead.add(key, v)
 	}
 }
 
@@ -107,10 +107,10 @@ func (s *Store) pendingCompact() int64 {
 func (s *Store) HashAll() uint32 {
 	h := newKVHasher()
 	pending := s.pendingCompact()
-	s.keys.Ascend(func(k *keyIndex) bool {
+	s.each(func(k *keyIndex) bool {
 		for i := k.dropped(pending); i < len(k.vers) && k.vers[i].mod.main <= s.rev; i++ {
 			// The deletes of a revoke under way are past the revision.
-			h.add(k.key, &k.vers[i])
+			h.add(s.key(k), &k.vers[i])
 		}
 		return true
 	})
