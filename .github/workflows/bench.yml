@@ -15,31 +15,51 @@ jobs:
       - name: Tools and runner
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq liburing-dev libssl-dev bpftrace strace linux-tools-common
+          sudo apt-get install -y -qq libssl-dev strace cmake ninja-build
           mkdir -p results bin
           { uname -a; lscpu; go version; openssl version -a; ulimit -l; cat /proc/sys/kernel/io_uring_disabled; grep -E 'Seccomp|Cap' /proc/self/status; } | tee results/runner.txt
           sudo mount -o remount,barrier=1 /
           findmnt -T "$RUNNER_TEMP" | tee -a results/runner.txt
           sudo modprobe tls || true
-          grep -E '^tls|^chacha|^aes' /proc/modules | tee -a results/runner.txt || true
-          gcc -O2 -Wall -o bin/io576 bench/research576/io.c -luring
-          GOFLAGS=-p=2 go build -o bin/tigerstore ./cmd/tigerstore
-          GOFLAGS=-p=2 go build -o bin/loadgen ./cmd/loadgen
+          cat /proc/crypto > results/proc-crypto-before.txt
+          cat /proc/sys/net/core/optmem_max | tee -a results/runner.txt
+          git clone -q https://github.com/axboe/liburing.git "$RUNNER_TEMP/liburing"
+          cd "$RUNNER_TEMP/liburing"
+          git checkout c63f4aa6f930bed36589b4c738a9da5a6cd564bd
+          ./configure --cc=gcc --cxx=g++ --prefix="$RUNNER_TEMP/uring"
+          make -j2 -C src
+          make -C src install
+          cd "$GITHUB_WORKSPACE"
+          git -C "$RUNNER_TEMP/liburing" rev-parse HEAD | tee results/liburing-version.txt
+          gcc -O2 -g -Wall -I"$RUNNER_TEMP/uring/include" -o bin/io576 bench/research576/io.c "$RUNNER_TEMP/uring/lib/liburing.a" -lcrypto -lpthread
           GOFLAGS=-p=2 go test -c -o bin/crypto576.test ./bench/research576/crypto
-          scripts/dev-certs.sh certs
-          curl -fsSL https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz | tar xz -C "$RUNNER_TEMP"
-          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
       - name: Primitive measurements
         run: |
-          for rep in 1 2 3; do
-            bin/io576 "$RUNNER_TEMP/io576" | tee "results/io-$rep.txt"
-          done
+          bash bench/research576/run.sh
+          cat /proc/crypto > results/proc-crypto-after.txt
+          cat /proc/net/tls_stat > results/tls-stat.txt
+      - name: Go and OpenSSL crypto
+        if: always()
+        run: |
           taskset -c 0 bin/crypto576.test -test.run '^$' -test.bench . -test.benchtime 500ms -test.count 3 -test.cpu 1 | tee results/go-crypto.txt
-          for bits in 128 256; do
-            taskset -c 0 openssl speed -seconds 2 -bytes 16384 -evp aes-$bits-gcm -aead 2>&1 | tee "results/openssl-$bits.txt"
+          for rep in 1 2 3; do
+            for bits in 128 256; do
+              for bytes in 1024 16384; do
+                taskset -c 0 openssl speed -seconds 1 -bytes "$bytes" -evp aes-$bits-gcm -aead 2>&1 | tee "results/openssl-$bits-$bytes-$rep.txt"
+              done
+            done
           done
-      - name: Mixed path counts and current profile
-        run: bench/research576/mixed.sh
+      - name: Build recent AWS-LC and measure
+        if: always()
+        run: |
+          git clone -q https://github.com/aws/aws-lc.git "$RUNNER_TEMP/aws-lc"
+          git -C "$RUNNER_TEMP/aws-lc" checkout bab562f6ad169475bd46e08de57e6d5cde239fef
+          git -C "$RUNNER_TEMP/aws-lc" rev-parse HEAD | tee results/aws-lc-version.txt
+          cmake -S "$RUNNER_TEMP/aws-lc" -B "$RUNNER_TEMP/aws-lc/build" -GNinja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_LIBSSL=OFF -DDISABLE_PERL=OFF
+          cmake --build "$RUNNER_TEMP/aws-lc/build" --target bssl -j2
+          for rep in 1 2 3; do
+            taskset -c 0 "$RUNNER_TEMP/aws-lc/build/tool/bssl" speed -filter AES-128-GCM,AES-256-GCM -chunks 1024,16384 -timeout 1 2>&1 | tee "results/aws-lc-$rep.txt"
+          done
       - uses: actions/upload-artifact@v6
         if: always()
         with:

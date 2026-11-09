@@ -19,53 +19,59 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <signal.h>
 #include <poll.h>
-#define CHECK(x) do { if(!(x)){perror(#x);exit(1);} }while(0)
-static double clockns(clockid_t id){struct timespec t;clock_gettime(id,&t);return t.tv_sec*1e9+t.tv_nsec;}
+#include <openssl/evp.h>
+#define CHECK(x) do { if(!(x)){fprintf(stderr,"FAIL line=%d %s errno=%d %s\n",__LINE__,#x,errno,strerror(errno));exit(1);} }while(0)
+#define NC 32
+static long calls;
+static double ns(clockid_t id){struct timespec t;clock_gettime(id,&t);return t.tv_sec*1e9+t.tv_nsec;}
 static void pin(int cpu){cpu_set_t c;CPU_ZERO(&c);CPU_SET(cpu,&c);CHECK(sched_setaffinity(0,sizeof(c),&c)==0);}
-static void pair(int *a,int *b){int l=socket(AF_INET,SOCK_STREAM,0);CHECK(l>=0);struct sockaddr_in sa={.sin_family=AF_INET,.sin_addr.s_addr=htonl(INADDR_LOOPBACK)};CHECK(bind(l,(void*)&sa,sizeof(sa))==0);CHECK(listen(l,64)==0);socklen_t n=sizeof(sa);CHECK(getsockname(l,(void*)&sa,&n)==0);*a=socket(AF_INET,SOCK_STREAM,0);CHECK(connect(*a,(void*)&sa,n)==0);*b=accept(l,0,0);CHECK(*b>=0);close(l);int one=1;setsockopt(*a,IPPROTO_TCP,TCP_NODELAY,&one,sizeof(one));}
-static void complete(struct io_uring *r,int n,int expected){for(int j=0;j<n;j++){struct io_uring_cqe *c;int e=io_uring_wait_cqe(r,&c);if(e<0 || c->res!=expected){fprintf(stderr,"completion e=%d res=%d expected=%d\n",e,e<0?0:c->res,expected);exit(1);}io_uring_cqe_seen(r,c);}}
-static void nettest(int size,int batch,int mode,struct io_uring *r){
- int tx[32],rx[32];for(int j=0;j<32;j++)pair(&tx[j],&rx[j]);
- pid_t child=fork();CHECK(child>=0);
- if(!child){pin(1);struct pollfd p[32];for(int j=0;j<32;j++){close(tx[j]);p[j]=(struct pollfd){.fd=rx[j],.events=POLLIN};}char *buf=malloc(1<<20);int live=32;while(live){CHECK(poll(p,32,-1)>0);for(int j=0;j<32;j++){if(p[j].revents){ssize_t n=read(p[j].fd,buf,1<<20);CHECK(n>=0);if(n==0){close(p[j].fd);p[j].fd=-1;live--;}}}}_exit(0);}
- for(int j=0;j<32;j++)close(rx[j]);
- char *buf;CHECK(posix_memalign((void*)&buf,4096,size)==0);memset(buf,42,size);
- if(mode==2){int one=1;for(int j=0;j<32;j++)CHECK(setsockopt(tx[j],SOL_SOCKET,SO_ZEROCOPY,&one,sizeof(one))==0);}
- int groups=(32*1024*1024)/(size*batch);long long calls=0,copied=0,events=0;double t=clockns(CLOCK_MONOTONIC),cpu=clockns(CLOCK_PROCESS_CPUTIME_ID);
- for(int i=0;i<groups;i++){
-  for(int j=0;j<batch;j++){
-   if(mode==1){struct io_uring_sqe *s=io_uring_get_sqe(r);CHECK(s);io_uring_prep_send(s,tx[j],buf,size,MSG_NOSIGNAL);}
-   else {ssize_t n=send(tx[j],buf,size,MSG_NOSIGNAL|(mode==2?MSG_ZEROCOPY:0));CHECK(n==size);calls++;}
-  }
-  if(mode==1){CHECK(io_uring_submit_and_wait(r,batch)>=0);calls++;complete(r,batch,size);}
- }
- double cp=clockns(CLOCK_PROCESS_CPUTIME_ID)-cpu,wall=clockns(CLOCK_MONOTONIC)-t;
- // Every message references the same immutable buffer until close; never reuse it before completion.
- if(mode==2){for(int j=0;j<batch;j++){unsigned done=0;int tries=0;while(done<(unsigned)groups && tries++<10000){char ctrl[512],x;struct iovec iov={&x,1};struct msghdr msg={.msg_iov=&iov,.msg_iovlen=1,.msg_control=ctrl,.msg_controllen=sizeof(ctrl)};if(recvmsg(tx[j],&msg,MSG_ERRQUEUE)<0){CHECK(errno==EAGAIN);usleep(1000);continue;}for(struct cmsghdr *cm=CMSG_FIRSTHDR(&msg);cm;cm=CMSG_NXTHDR(&msg,cm)){if(cm->cmsg_level==SOL_IP && cm->cmsg_type==IP_RECVERR){struct sock_extended_err *e=(void*)CMSG_DATA(cm);if(e->ee_origin==SO_EE_ORIGIN_ZEROCOPY){unsigned k=e->ee_data-e->ee_info+1;done+=k;events+=k;if(e->ee_code==SO_EE_CODE_ZEROCOPY_COPIED)copied+=k;}}}}CHECK(done==(unsigned)groups);}}
- printf("net mode=%s size=%d batch=%d sends=%d sender_cpu_ns/send=%.1f wall_GB/s=%.3f submit_or_send_calls=%lld copied_completions=%lld/%lld\n",mode==0?"send":mode==1?"uring_send":"MSG_ZEROCOPY",size,batch,groups*batch,cp/(groups*batch),(double)groups*batch*size/wall,calls,copied,events);
- for(int j=0;j<32;j++)close(tx[j]);int status;waitpid(child,&status,0);CHECK(status==0);free(buf);
+static void *allocbuf(size_t n){void *p;CHECK(posix_memalign(&p,4096,n)==0);memset(p,42,n);return p;}
+static void pair(int *a,int *b){int l=socket(AF_INET,SOCK_STREAM,0);CHECK(l>=0);struct sockaddr_in sa={.sin_family=AF_INET,.sin_addr.s_addr=htonl(INADDR_LOOPBACK)};CHECK(bind(l,(void*)&sa,sizeof(sa))==0);CHECK(listen(l,64)==0);socklen_t n=sizeof(sa);CHECK(getsockname(l,(void*)&sa,&n)==0);*a=socket(AF_INET,SOCK_STREAM,0);CHECK(connect(*a,(void*)&sa,n)==0);*b=accept(l,0,0);CHECK(*b>=0);close(l);int one=1;CHECK(setsockopt(*a,IPPROTO_TCP,TCP_NODELAY,&one,sizeof(one))==0);}
+static void tls(int tx,int rx){struct tls12_crypto_info_aes_gcm_128 info={.info={.version=TLS_1_3_VERSION,.cipher_type=TLS_CIPHER_AES_GCM_128}};CHECK(setsockopt(tx,IPPROTO_TCP,TCP_ULP,"tls",4)==0);CHECK(setsockopt(rx,IPPROTO_TCP,TCP_ULP,"tls",4)==0);CHECK(setsockopt(tx,SOL_TLS,TLS_TX,&info,sizeof(info))==0);CHECK(setsockopt(rx,SOL_TLS,TLS_RX,&info,sizeof(info))==0);}
+static unsigned rf(int f){return f==1?IORING_SETUP_SINGLE_ISSUER|IORING_SETUP_DEFER_TASKRUN|IORING_SETUP_COOP_TASKRUN:f==2?IORING_SETUP_SQPOLL|IORING_SETUP_SQ_AFF:0;}
+static void ringinit(struct io_uring *r,int f){struct io_uring_params p={.flags=rf(f),.sq_thread_cpu=2,.sq_thread_idle=1000};int e=io_uring_queue_init_params(512,r,&p);if(e){fprintf(stderr,"ringinit flags=%x error=%s\n",p.flags,strerror(-e));exit(2);}}
+// Count actual blocking enter calls ourselves; submit API count is exact enters except SQPOLL.
+static void submit(struct io_uring *r){int e=io_uring_submit(r);CHECK(e>=0);calls++;}
+static struct io_uring_cqe *get(struct io_uring *r){struct io_uring_cqe *c;while(io_uring_peek_cqe(r,&c)==-EAGAIN){int e=io_uring_enter(r->ring_fd,0,1,IORING_ENTER_GETEVENTS,NULL);calls++;CHECK(e>=0);}return c;}
+struct rxresult {double cpu;long calls,cqes;unsigned long long bytes;};
+static void receiver(int *rx,int size,int mode,int flags,int out,int ready){
+ pin(1);struct io_uring r;struct io_uring_buf_ring *br=NULL;char *buf=allocbuf(65536),*pool=NULL;const int nb=256,bs=65536;struct pollfd p[NC];
+ for(int j=0;j<NC;j++)p[j]=(struct pollfd){.fd=rx[j],.events=POLLIN};
+ if(mode==2){ringinit(&r,flags);int e; br=io_uring_setup_buf_ring(&r,nb,1,0,&e);CHECK(br);pool=allocbuf((size_t)nb*bs);for(int j=0;j<nb;j++)io_uring_buf_ring_add(br,pool+(size_t)j*bs,bs,j,nb-1,j);io_uring_buf_ring_advance(br,nb);for(int j=0;j<NC;j++){struct io_uring_sqe *s=io_uring_get_sqe(&r);io_uring_prep_recv_multishot(s,rx[j],NULL,0,0);s->flags|=IOSQE_BUFFER_SELECT;s->buf_group=1;s->user_data=j;}submit(&r);}
+ calls=0;struct rxresult res={0};double c=ns(CLOCK_PROCESS_CPUTIME_ID);CHECK(write(ready,"x",1)==1);close(ready);int live=NC;
+ if(mode==2){while(live){struct io_uring_cqe *q=get(&r);int n=q->res;unsigned fl=q->flags;int j=q->user_data;res.cqes++;io_uring_cqe_seen(&r,q);if(n>0)res.bytes+=n;if(fl&IORING_CQE_F_BUFFER){int bid=fl>>IORING_CQE_BUFFER_SHIFT;io_uring_buf_ring_add(br,pool+(size_t)bid*bs,bs,bid,nb-1,0);io_uring_buf_ring_advance(br,1);}if(!(fl&IORING_CQE_F_MORE)){if(n==0){close(rx[j]);live--;}else {CHECK(n>0 || n==-ENOBUFS);struct io_uring_sqe *s=io_uring_get_sqe(&r);io_uring_prep_recv_multishot(s,rx[j],NULL,0,0);s->flags|=IOSQE_BUFFER_SELECT;s->buf_group=1;s->user_data=j;submit(&r);}}}}
+ else {while(live){calls++;CHECK(poll(p,NC,-1)>0);for(int j=0;j<NC;j++)if(p[j].revents){calls++;ssize_t n=read(p[j].fd,buf,mode==0?size:65536);CHECK(n>=0);if(n==0){close(p[j].fd);p[j].fd=-1;live--;}else res.bytes+=n;}}}
+ res.cpu=ns(CLOCK_PROCESS_CPUTIME_ID)-c;res.calls=calls;CHECK(write(out,&res,sizeof(res))==sizeof(res));_exit(0);
 }
-static void disktest(char *path,int batch,int mode,int direct,struct io_uring *r){
- int fd=open(path,O_CREAT|O_RDWR|O_TRUNC|(direct?O_DIRECT:0),0600);CHECK(fd>=0);CHECK(posix_fallocate(fd,0,1<<20)==0);
- char *buf;CHECK(posix_memalign((void*)&buf,4096,1<<20)==0);memset(buf,7,1<<20);CHECK(pwrite(fd,buf,1<<20,0)==1<<20);CHECK(fdatasync(fd)==0);
- struct iovec v={buf,1<<20};if(mode==2){int e=io_uring_register_buffers(r,&v,1);if(e<0){printf("register_buffers failed=%s\n",strerror(-e));close(fd);free(buf);return;}}
- double t=clockns(CLOCK_MONOTONIC),cpu=clockns(CLOCK_PROCESS_CPUTIME_ID);int groups=64;
+static void drainzc(int *tx,long *done,long *copied,long *errcalls){for(int j=0;j<NC;j++)for(;;){char ctrl[512],v;struct iovec iov={&v,1};struct msghdr m={.msg_iov=&iov,.msg_iovlen=1,.msg_control=ctrl,.msg_controllen=sizeof(ctrl)};(*errcalls)++;if(recvmsg(tx[j],&m,MSG_ERRQUEUE|MSG_DONTWAIT)<0){CHECK(errno==EAGAIN);break;}for(struct cmsghdr *cm=CMSG_FIRSTHDR(&m);cm;cm=CMSG_NXTHDR(&m,cm))if(cm->cmsg_level==SOL_IP && cm->cmsg_type==IP_RECVERR){struct sock_extended_err *e=(void*)CMSG_DATA(cm);if(e->ee_origin==SO_EE_ORIGIN_ZEROCOPY){long n=e->ee_data-e->ee_info+1;*done+=n;if(e->ee_code==SO_EE_CODE_ZEROCOPY_COPIED)*copied+=n;}}}}
+// modes: write, writev32, bigwrite32, uring, fixed, send_zc, send_zc_fixed, msgzc, sendfile, splice, evp+write.
+static const char *mn[]={"write","writev32","bigwrite32","uring","fixed","send_zc","send_zc_fixed","msgzc","sendfile","splice","evp_write"};
+static void nettest(int size,int mode,int batch,int flags,int ktls,int rmode){
+ int tx[NC],rx[NC],out[2],ready[2];for(int j=0;j<NC;j++){pair(&tx[j],&rx[j]);if(ktls)tls(tx[j],rx[j]);}CHECK(pipe(out)==0);CHECK(pipe(ready)==0);
+ pid_t child=fork();CHECK(child>=0);if(!child){for(int j=0;j<NC;j++)close(tx[j]);close(out[0]);close(ready[0]);receiver(rx,size,rmode,flags,out[1],ready[1]);}
+ for(int j=0;j<NC;j++)close(rx[j]);close(out[1]);close(ready[1]);char v;CHECK(read(ready[0],&v,1)==1);close(ready[0]);
+ struct io_uring r;int ur=mode>=3&&mode<=6,zc=mode==5||mode==6;char *buf=allocbuf((size_t)size*32+64);if(ur){ringinit(&r,flags);if(mode==4||mode==6){struct iovec iov={buf,(size_t)size*32+64};int e=io_uring_register_buffers(&r,&iov,1);CHECK(e==0);}}
+ if(mode==7){int one=1;for(int j=0;j<NC;j++)CHECK(setsockopt(tx[j],SOL_SOCKET,SO_ZEROCOPY,&one,sizeof(one))==0);}
+ int file=-1,pp[2];if(mode==8||mode==9){file=memfd_create("payload",0);CHECK(file>=0);CHECK(write(file,buf,size)==size);if(mode==9){CHECK(pipe(pp)==0);}}
+ EVP_CIPHER_CTX *evp=NULL;unsigned char key[16]={0},iv[12]={0};char *encrypted=NULL;if(mode==10){evp=EVP_CIPHER_CTX_new();CHECK(evp);CHECK(EVP_EncryptInit_ex(evp,EVP_aes_128_gcm(),NULL,key,iv)==1);encrypted=allocbuf(size+64);}
+ // Equal message count per connection, enough calls to time small sizes; immutable source until all notifications.
+ int messages=getenv("SHORT")?1024:((16<<20)/size);if(messages<4096&&!getenv("SHORT"))messages=4096;messages=(messages+1023)/1024*1024;
+ int chunk=(mode==1||mode==2)?32:1,groups=messages/(chunk*batch);long sendcalls=0,shorts=0,zc_done=0,copied=0,zc_sends=0,errcalls=0,notif=0,notcopied=0;calls=0;double t=ns(CLOCK_MONOTONIC),c=ns(CLOCK_PROCESS_CPUTIME_ID);
  for(int i=0;i<groups;i++){
-  for(int j=0;j<batch;j++){
-   if(mode==0)CHECK(pwrite(fd,buf+j*4096,4096,j*4096)==4096);
-   else {struct io_uring_sqe *s=io_uring_get_sqe(r);CHECK(s);if(mode==2)io_uring_prep_write_fixed(s,fd,buf+j*4096,4096,j*4096,0);else io_uring_prep_write(s,fd,buf+j*4096,4096,j*4096);}
-  }
-  if(mode){CHECK(io_uring_submit_and_wait(r,batch)>=0);complete(r,batch,4096);struct io_uring_sqe *s=io_uring_get_sqe(r);io_uring_prep_fsync(s,fd,IORING_FSYNC_DATASYNC);CHECK(io_uring_submit_and_wait(r,1)>=0);complete(r,1,0);}else CHECK(fdatasync(fd)==0);
+  if(ur){int remain[NC],offset[NC],pending=batch;for(int j=0;j<batch;j++){remain[j]=size;offset[j]=0;}while(pending){int n=0;for(int j=0;j<batch;j++)if(remain[j]){int fd=tx[(i*batch+j)%NC];struct io_uring_sqe *s=io_uring_get_sqe(&r);CHECK(s);if(zc){if(mode==6)io_uring_prep_send_zc_fixed(s,fd,buf+offset[j],remain[j],MSG_NOSIGNAL,IORING_SEND_ZC_REPORT_USAGE,0);else io_uring_prep_send_zc(s,fd,buf+offset[j],remain[j],MSG_NOSIGNAL,IORING_SEND_ZC_REPORT_USAGE);}else {io_uring_prep_send(s,fd,buf+offset[j],remain[j],MSG_NOSIGNAL);if(mode==4){s->ioprio|=IORING_RECVSEND_FIXED_BUF;s->buf_index=0;}}s->user_data=j;n++;}submit(&r);int expected=n;for(int k=0;k<expected;k++){struct io_uring_cqe *q=get(&r);int res=q->res,j=q->user_data;unsigned fl=q->flags;io_uring_cqe_seen(&r,q);if(fl&IORING_CQE_F_NOTIF){notif++;if(!(res&IORING_NOTIF_USAGE_ZC_COPIED))notcopied++;continue;}CHECK(res>0);if(fl&IORING_CQE_F_MORE)expected++;if(res<remain[j])shorts++;remain[j]-=res;offset[j]+=res;CHECK(remain[j]>=0);}pending=0;for(int j=0;j<batch;j++)if(remain[j])pending++;}}
+  else for(int j=0;j<batch;j++){int fd=tx[(i*batch+j)%NC];int total=size*chunk,off=0;char *src=buf;if(mode==10){int len,fin;uint64_t nonce=(uint64_t)i*batch+j;memcpy(iv,&nonce,8);CHECK(EVP_EncryptInit_ex(evp,NULL,NULL,NULL,iv)==1);CHECK(EVP_EncryptUpdate(evp,(void*)encrypted,&len,(void*)buf,size)==1);CHECK(EVP_EncryptFinal_ex(evp,(void*)(encrypted+len),&fin)==1);CHECK(EVP_CIPHER_CTX_ctrl(evp,EVP_CTRL_GCM_GET_TAG,16,encrypted+size)==1);src=encrypted;total+=16;}
+   while(off<total){ssize_t n;if(mode==8){off_t pos=off;n=sendfile(fd,file,&pos,total-off);}else if(mode==9){off_t pos=off;int left=total-off;ssize_t k=splice(file,&pos,pp[1],NULL,left,0);CHECK(k>0);n=0;while(n<k){ssize_t z=splice(pp[0],NULL,fd,NULL,k-n,0);CHECK(z>0);n+=z;sendcalls++;}sendcalls++;}else if(mode==1&&off==0){struct iovec vs[32];for(int k=0;k<32;k++)vs[k]=(struct iovec){src+(size_t)k*size,size};n=writev(fd,vs,32);}else if(mode==7){n=send(fd,src+off,total-off,MSG_ZEROCOPY|MSG_NOSIGNAL);zc_sends++;}else n=write(fd,src+off,total-off);CHECK(n>0);if(mode!=9)sendcalls++;if(n<total-off)shorts++;off+=n;}}
+  if(mode==7 && (i%16==0))drainzc(tx,&zc_done,&copied,&errcalls);
  }
- double cp=clockns(CLOCK_PROCESS_CPUTIME_ID)-cpu,wall=clockns(CLOCK_MONOTONIC)-t;
- printf("disk mode=%s direct=%d batch4k=%d groups=%d issuer_cpu_us/group=%.3f durable_us/group=%.3f MiB/s=%.2f\n",mode==0?"pwrite+fdatasync":mode==1?"uring":"uring_fixed",direct,batch,groups,cp/groups/1e3,wall/groups/1e3,groups*batch*4096.0/(wall/1e9)/(1<<20));
- if(mode==2)io_uring_unregister_buffers(r);close(fd);unlink(path);free(buf);
+ if(mode==7){int tries=0;while(zc_done<zc_sends&&tries++<10000){drainzc(tx,&zc_done,&copied,&errcalls);if(zc_done<zc_sends)usleep(100);}CHECK(zc_done==zc_sends);}
+ double cpu=ns(CLOCK_PROCESS_CPUTIME_ID)-c,wall=ns(CLOCK_MONOTONIC)-t;long enters=calls;for(int j=0;j<NC;j++)close(tx[j]);struct rxresult rr;CHECK(read(out[0],&rr,sizeof(rr))==sizeof(rr));int status;CHECK(waitpid(child,&status,0)==child);CHECK(status==0);unsigned long long expected=(unsigned long long)messages*(size+(mode==10?16:0));CHECK(rr.bytes==expected);
+ printf("NET mode=%s size=%d batch=%d flags=%d tls=%d rx=%d messages=%d tx_ns=%.2f rx_ns=%.2f wall_ns=%.2f tx_calls=%.5f rx_calls=%.5f shorts=%ld zc_copied=%ld zc_done=%ld zc_notif=%ld zc_notcopied=%ld rx_cqes=%ld\n",mn[mode],size,batch,flags,ktls,rmode,messages,cpu/messages,rr.cpu/messages,wall/messages,(sendcalls+errcalls+enters)/(double)messages,rr.calls/(double)messages,shorts,copied,zc_done,notif,notcopied,rr.cqes);
+ if(ur)io_uring_queue_exit(&r);if(evp)EVP_CIPHER_CTX_free(evp);free(encrypted);free(buf);if(file>=0)close(file);if(mode==9){close(pp[0]);close(pp[1]);}close(out[0]);
 }
-static void ktls(){int tx,rx;pair(&tx,&rx);int e=setsockopt(tx,IPPROTO_TCP,TCP_ULP,"tls",sizeof("tls"));printf("ktls TCP_ULP ret=%d errno=%d\n",e,e?errno:0);if(e==0){struct tls12_crypto_info_aes_gcm_128 info={.info={.version=TLS_1_3_VERSION,.cipher_type=TLS_CIPHER_AES_GCM_128}};e=setsockopt(tx,SOL_TLS,TLS_TX,&info,sizeof(info));printf("ktls TLS1.3 AES128 TX ret=%d errno=%d\n",e,e?errno:0);}close(tx);close(rx);}
-int main(int argc,char **argv){setbuf(stdout,0);CHECK(argc==2);pin(0);ktls();double t=clockns(CLOCK_PROCESS_CPUTIME_ID);for(int i=0;i<1000000;i++)syscall(SYS_getpid);printf("getpid_cpu_ns=%.1f\n",(clockns(CLOCK_PROCESS_CPUTIME_ID)-t)/1e6);
- struct io_uring r;int e=io_uring_queue_init(512,&r,0);printf("io_uring_queue_init=%d (%s)\n",e,e<0?strerror(-e):"OK");int have=e==0;
- if(have){for(int batch=1;batch<=32;batch*=8){t=clockns(CLOCK_PROCESS_CPUTIME_ID);for(int i=0;i<8192;i++){for(int j=0;j<batch;j++)io_uring_prep_nop(io_uring_get_sqe(&r));CHECK(io_uring_submit_and_wait(&r,batch)>=0);complete(&r,batch,0);}printf("uring_nop batch=%d cpu_ns/op=%.1f\n",batch,(clockns(CLOCK_PROCESS_CPUTIME_ID)-t)/(8192*batch));}t=clockns(CLOCK_PROCESS_CPUTIME_ID);for(int i=0;i<8192;i++){for(int j=0;j<32;j++)io_uring_prep_nop(io_uring_get_sqe(&r));CHECK(io_uring_submit_and_wait(&r,32)>=0);complete(&r,32,0);}printf("uring_nop batch=32 cpu_ns/op=%.1f\n",(clockns(CLOCK_PROCESS_CPUTIME_ID)-t)/(8192*32));}
- for(int size=1024;size<=65536;size*= (size==1024?16:4)){nettest(size,1,0,&r);nettest(size,32,0,&r);if(have){nettest(size,1,1,&r);nettest(size,32,1,&r);}nettest(size,32,2,&r);}
- for(int direct=0;direct<=1;direct++){for(int batch=1;batch<=256;batch*=16){disktest(argv[1],batch,0,direct,&r);if(have){disktest(argv[1],batch,1,direct,&r);disktest(argv[1],batch,2,direct,&r);}}}
- if(have)io_uring_queue_exit(&r);return 0;}
+static void disk(char *path,int size,int mode,int direct){int fd=open(path,O_CREAT|O_RDWR|O_TRUNC|(direct?O_DIRECT:0),0600);CHECK(fd>=0);const int span=16<<20;CHECK(posix_fallocate(fd,0,span)==0);char *buf=allocbuf(size);CHECK(pwrite(fd,buf,size,0)==size);CHECK(fdatasync(fd)==0);struct io_uring r;if(mode){ringinit(&r,0);if(mode>=2){struct iovec v={buf,size};CHECK(io_uring_register_buffers(&r,&v,1)==0);}if(mode==3)CHECK(io_uring_register_files(&r,&fd,1)==0);}
+ int groups=128;calls=0;double cpu=ns(CLOCK_PROCESS_CPUTIME_ID),wall=ns(CLOCK_MONOTONIC);for(int i=0;i<groups;i++){off_t pos=(i*size)%(span-size+1);pos=pos/4096*4096;if(!mode){CHECK(pwrite(fd,buf,size,pos)==size);CHECK(fdatasync(fd)==0);calls+=2;}else{struct io_uring_sqe *s=io_uring_get_sqe(&r);if(mode>=2)io_uring_prep_write_fixed(s,mode==3?0:fd,buf,size,pos,0);else io_uring_prep_write(s,fd,buf,size,pos);s->flags|=IOSQE_IO_LINK;if(mode==3)s->flags|=IOSQE_FIXED_FILE;s->user_data=1;s=io_uring_get_sqe(&r);io_uring_prep_fsync(s,mode==3?0:fd,IORING_FSYNC_DATASYNC);if(mode==3)s->flags|=IOSQE_FIXED_FILE;s->user_data=2;submit(&r);for(int k=0;k<2;k++){struct io_uring_cqe *q=get(&r);CHECK(q->res==(q->user_data==1?size:0));io_uring_cqe_seen(&r,q);}}}
+ cpu=ns(CLOCK_PROCESS_CPUTIME_ID)-cpu;wall=ns(CLOCK_MONOTONIC)-wall;printf("DISK size=%d mode=%d direct=%d groups=%d issuer_ns=%.2f wall_ns=%.2f calls=%.5f\n",size,mode,direct,groups,cpu/groups,wall/groups,calls/(double)groups);if(mode)io_uring_queue_exit(&r);free(buf);close(fd);unlink(path);}
+static void config(void){struct io_uring_params p={0};struct io_uring r;int e=io_uring_queue_init_params(512,&r,&p);printf("CONFIG init=%d features=0x%x sq=%u cq=%u\n",e,p.features,p.sq_entries,p.cq_entries);CHECK(e==0);struct io_uring_probe *pr=io_uring_get_probe_ring(&r);for(int op=0;pr&&op<=pr->last_op;op++)if(io_uring_opcode_supported(pr,op))printf("OP %d\n",op);io_uring_free_probe(pr);double c=ns(CLOCK_PROCESS_CPUTIME_ID);for(int i=0;i<1000000;i++)syscall(SYS_getpid);printf("GETPID ns=%.2f\n",(ns(CLOCK_PROCESS_CPUTIME_ID)-c)/1e6);for(int b=1;b<=32;b=(b==1?8:32)){calls=0;c=ns(CLOCK_PROCESS_CPUTIME_ID);for(int i=0;i<8192;i++){for(int j=0;j<b;j++)io_uring_prep_nop(io_uring_get_sqe(&r));submit(&r);for(int j=0;j<b;j++){struct io_uring_cqe *q=get(&r);CHECK(q->res==0);io_uring_cqe_seen(&r,q);}}printf("NOP batch=%d ns=%.2f calls=%.5f\n",b,(ns(CLOCK_PROCESS_CPUTIME_ID)-c)/(8192*b),calls/(8192.0*b));if(b==32)break;}io_uring_queue_exit(&r);}
+int main(int argc,char **argv){setbuf(stdout,NULL);pin(0);alarm(45);if(argc==2&&!strcmp(argv[1],"config"))config();else if(argc==9&&!strcmp(argv[1],"net"))nettest(atoi(argv[2]),atoi(argv[3]),atoi(argv[4]),atoi(argv[5]),atoi(argv[6]),atoi(argv[7]));else if(argc==6&&!strcmp(argv[1],"disk"))disk(argv[2],atoi(argv[3]),atoi(argv[4]),atoi(argv[5]));else{fprintf(stderr,"usage: config | net size mode batch flags tls rx unused | disk path size mode direct\n");return 1;}return 0;}
