@@ -16,6 +16,7 @@ sudo bpftrace -l 'kprobe:*copy*iter*' >> results/kprobes.txt 2>&1 || true
 for mode in ${MODES:-sys copy}; do
 	dir=$RUNNER_TEMP/research573-cluster
 	if [ "$mode" = mix ]; then
+		unset RESEARCH573_BOUNDARY
 		# The leader's CPU per op with LIST at 0% and 6% of calls, the
 		# difference taken from updates, twice each in alternating order.
 		for rep in 1 2; do
