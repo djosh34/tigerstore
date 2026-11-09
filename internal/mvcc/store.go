@@ -285,8 +285,8 @@ type Store struct {
 	probes [2][]byte
 	// arena holds the bytes of the keys, many to a chunk, so they are not
 	// objects of their own (addKey); arenaBytes is the room of its chunks.
-	// deadKeys are the bytes of the keys
-	// removed since the arena was last packed (pack).
+	// deadKeys are the bytes of the keys removed since the arena was last
+	// packed (pack).
 	arena      [][]byte
 	filling    int
 	arenaBytes int64
