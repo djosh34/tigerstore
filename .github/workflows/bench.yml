@@ -10,6 +10,10 @@ on:
         description: Disposable-runner AF_ALG-only follow-up; skip AWS-LC build
         type: boolean
         default: false
+      disk_only:
+        description: Disk follow-up with io-wq affinity explicitly restricted to CPU 0
+        type: boolean
+        default: false
 jobs:
   research576:
     runs-on: ubuntu-24.04-arm
@@ -31,7 +35,7 @@ jobs:
           findmnt -T "$RUNNER_TEMP" | tee -a results/runner.txt
           sudo modprobe tls || true
           { sudo modprobe algif_aead; grep -E 'CONFIG_CRYPTO_USER_API|CONFIG_TLS' "/boot/config-$(uname -r)"; modinfo algif_aead; } > results/kernel-crypto-config.txt 2>&1 || true
-          if [[ '${{ github.event.inputs.kernel_only }}' == true ]]; then
+          if [[ '${{ github.event.inputs.kernel_only }}' == true && '${{ github.event.inputs.disk_only }}' != true ]]; then
             # Disposable bench host only: distro's install /bin/false blocks this test API by default.
             sudo modprobe --ignore-install algif_aead 2>&1 | tee results/afalg-explicit-load.txt || true
           fi
@@ -49,6 +53,7 @@ jobs:
           gcc -O3 -o bin/aes576 bench/research576/aes.c -lcrypto
           GOFLAGS=-p=2 go test -c -o bin/crypto576.test ./bench/research576/crypto
       - name: Kernel crypto and follow-up
+        if: github.event.inputs.disk_only != 'true'
         run: |
           set -o pipefail
           for rep in 1 2 3; do
@@ -64,6 +69,19 @@ jobs:
           done
           cat /proc/crypto > results/proc-crypto-after.txt
           cat /proc/net/tls_stat > results/tls-stat.txt
+      - name: One-core disk affinity follow-up
+        if: github.event.inputs.disk_only == 'true'
+        run: |
+          set -o pipefail
+          for rep in 1 2 3; do
+            for size in 4096 16384 65536 262144; do
+              for direct in 0 1; do
+                for mode in 0 1 2 3; do
+                  taskset -c 0 bin/io576 disk "$RUNNER_TEMP/io576" "$size" "$mode" "$direct"
+                done
+              done
+            done 2>&1 | tee "results/io-$rep.txt"
+          done
       - name: Primitive measurements
         if: github.event.inputs.followup != 'true'
         run: |

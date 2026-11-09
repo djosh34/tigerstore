@@ -87,7 +87,11 @@ DATASYNC. Modes: 0 pwrite+fdatasync; 1 linked io_uring WRITE+FSYNC(DATASYNC);
 2 registered WRITE_FIXED + linked FSYNC; 3 same plus registered file descriptor.
 A single submit_and_wait(2) submits and waits for the linked pair. DIRECT adds
 O_DIRECT to each mode (4 KiB alignment). `cpu_ns` is process CPU, `issuer_ns`
-only the main thread, `wall_ns` average wall latency per group; no percentile
+only the main thread. The initial main matrix pinned only the issuer; kernel
+io-wq defaults to the cpuset, not the issuer's taskset mask. The final disk
+follow-up explicitly calls io_uring_register_iowq_aff to CPU 0 and marks
+wq_cpu=0 in every record. Use that follow-up for one-core comparisons.
+`wall_ns` is average wall latency per group; no percentile
 latencies or hardware power-loss durability tests are claimed. All CPU figures
 include syscall execution, but kernel work outside the process/thread group is
 not charged to it.
@@ -114,3 +118,5 @@ AWS-LC and explicitly loads algif_aead with modprobe --ignore-install on this
 disposable runner; the distro blocks that user-space crypto test API by default
 with an install /bin/false directive. This does not describe production policy
 or a requirement for kTLS (which uses kernel-internal AEAD and already works).
+Adding `-f disk_only=true` skips crypto and measures only the CPU-0-constrained
+disk matrix, still using the one-job workflow.
