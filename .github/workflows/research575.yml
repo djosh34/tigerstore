@@ -1,7 +1,5 @@
 name: research575 allocation census
 on:
-  push:
-    branches: [research/575-allocation-census]
   workflow_dispatch:
 jobs:
   measure:
@@ -28,6 +26,9 @@ jobs:
         run: |
           sudo mount -o remount,barrier=1 /
           bash bench/research575.sh
+      - name: Per-operation allocation census
+        if: always()
+        run: python3 bench/research575-analyze.py results/524288 results/65536
       - uses: actions/upload-artifact@v6
         if: always()
         with:
