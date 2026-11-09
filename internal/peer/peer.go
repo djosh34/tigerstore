@@ -899,11 +899,14 @@ type sender struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	ctrl, data lane
-	// version is the protocol version of the control lane's connection to
-	// the peer, 0 while there is none, and since when it is up in Unix
-	// nanoseconds. The peer counts as connected while that connection is.
+	// version is the protocol version of the connection to the peer, 0
+	// while there is none, and since when it is up in Unix nanoseconds.
+	// up counts the lanes whose connection is up: the peer counts as
+	// connected, once, while one is.
 	version  atomic.Uint32
 	since    atomic.Int64
+	upMu     sync.Mutex
+	up       int
 	counters *counters
 }
 
@@ -1038,11 +1041,9 @@ func (s *sender) run() {
 }
 
 // runLane dials the peer for lane l and writes it, again after each
-// failure. The control lane's connection is the peer's: it sets the
-// version, the time it is up since and the active count.
+// failure.
 func (s *sender) runLane(l *lane) {
 	ctx := s.ctx
-	main := l == &s.ctrl
 	backoff := 50 * time.Millisecond
 	for ctx.Err() == nil {
 		c, v, err := s.dial(ctx, s.t.cfg.ID)
@@ -1056,25 +1057,49 @@ func (s *sender) runLane(l *lane) {
 			continue
 		}
 		backoff = 50 * time.Millisecond
-		if main {
-			s.version.Store(uint32(v))
-			s.since.Store(time.Now().UnixNano())
-			s.t.activeChanged()
-			s.counters.active.Inc()
-		}
+		s.laneUp(v)
 		err = s.connected(ctx, c, l)
-		if main {
-			s.counters.active.Dec()
-			s.version.Store(0)
-			s.since.Store(0)
-			s.t.activeChanged()
-		}
+		s.laneDown()
 		s.reportWaits(l)
 		if err != nil && ctx.Err() == nil {
 			s.counters.disconnected.Inc()
 			s.t.logf("peer: send %s to %d: %v", l.name, s.id, err)
 			s.drop(l)
 		}
+	}
+}
+
+// laneUp counts a lane's connection of version v as up. The first one
+// makes the peer connected.
+func (s *sender) laneUp(v byte) {
+	s.upMu.Lock()
+	s.up++
+	first := s.up == 1
+	if first {
+		s.version.Store(uint32(v))
+		s.since.Store(time.Now().UnixNano())
+		s.counters.active.Inc()
+	}
+	s.upMu.Unlock()
+	if first {
+		s.t.activeChanged()
+	}
+}
+
+// laneDown counts a lane's connection as down. The last one makes the
+// peer disconnected.
+func (s *sender) laneDown() {
+	s.upMu.Lock()
+	s.up--
+	last := s.up == 0
+	if last {
+		s.counters.active.Dec()
+		s.version.Store(0)
+		s.since.Store(0)
+	}
+	s.upMu.Unlock()
+	if last {
+		s.t.activeChanged()
 	}
 }
 
