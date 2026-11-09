@@ -318,9 +318,15 @@ func parse(b []byte, depth int) uint64 {
 }
 func encodeKV(b []byte, k *mvccpb.KeyValue) []byte {
 	b = bfield(b, 1, k.Key)
-	b = vfield(b, 2, uint64(k.CreateRevision))
-	b = vfield(b, 3, uint64(k.ModRevision))
-	b = vfield(b, 4, uint64(k.Version))
+	if k.CreateRevision != 0 {
+		b = vfield(b, 2, uint64(k.CreateRevision))
+	}
+	if k.ModRevision != 0 {
+		b = vfield(b, 3, uint64(k.ModRevision))
+	}
+	if k.Version != 0 {
+		b = vfield(b, 4, uint64(k.Version))
+	}
 	if len(k.Value) > 0 {
 		b = bfield(b, 5, k.Value)
 	}

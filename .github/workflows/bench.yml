@@ -37,6 +37,7 @@ jobs:
           go-version-file: go.mod
       - name: Build independent primitives and prepare certificates
         run: |
+          go test ./cmd/research577
           go build -o bin/research577 ./cmd/research577
           scripts/dev-certs.sh certs
       - name: Measure CPU 0, with a separate TCP source or drainer on CPU 3
