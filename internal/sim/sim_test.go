@@ -946,8 +946,8 @@ func faultCases() []faultCase {
 		// A stall past the write timeout, one in four, on a link that
 		// carries something. Over 200 seeds, a stall every 300 ms hit it
 		// in about 90% of seeds, every 200 ms in about 80%, and every
-		// 400 ms in 93%: stalls closer together overlap, and fewer of
-		// them outlast the timeout (#568).
+		// 400 ms in 93% (#568). Why closer stalls hit it less often was
+		// not measured.
 		{"write deadline", Faults{LinkStallEvery: 400 * Millisecond}, longer, func(st Stats) int { return st.WriteTimeouts }},
 		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.WatchersBehind }},
 	}
