@@ -6,9 +6,11 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/testcert"
@@ -107,5 +109,80 @@ func TestControlPassesHeldData(t *testing.T) {
 	release()
 	if m := receive(t, b, 1)[0]; m.GetType() != raftpb.MsgApp || len(m.Entries[0].Data) != size {
 		t.Fatalf("after the release: a %s with %d entries", m.GetType(), len(m.Entries))
+	}
+}
+
+// TestLostLanesCountThePeerOnce is #563: node 2 closes node 1's two lane
+// connections one at a time, while node 1 dials no more. With one lane
+// down the peer is still connected and not lost; with both down it is
+// disconnected and counted lost once.
+func TestLostLanesCountThePeerOnce(t *testing.T) {
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, _, _, err := ca.Issue("node", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addrs, lns := listeners(t, 1, 2)
+	var dials atomic.Int64
+	a := startWith(t, 1, lns[1], addrs, cert, ca.Pool, func(c *Config) {
+		c.Dial = func(ctx context.Context, addr string) (net.Conn, error) {
+			if dials.Add(1) > 2 {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
+			return (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+		}
+	})
+	b := start(t, 2, lns[2], addrs, cert, ca.Pool)
+	defer func() {
+		if err := a.t.Close(); err != nil {
+			t.Error(err)
+		}
+		if err := b.t.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	s, _ := a.t.peer(2)
+	lanesUp := func(want int) {
+		t.Helper()
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
+			s.upMu.Lock()
+			up := s.up
+			s.upMu.Unlock()
+			if up == want {
+				return
+			}
+		}
+		t.Fatalf("%d lanes never were up", want)
+	}
+	lanesUp(2)
+	b.t.mu.Lock()
+	var conns []net.Conn
+	for c, in := range b.t.inbound {
+		if in.id == 1 {
+			conns = append(conns, c)
+		}
+	}
+	b.t.mu.Unlock()
+	if len(conns) != 2 {
+		t.Fatalf("node 2 holds %d connections from node 1, want 2", len(conns))
+	}
+	for i, c := range conns {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+		lanesUp(1 - i)
+		// The lane counts itself down before it dials again.
+		for deadline := time.Now().Add(5 * time.Second); dials.Load() < int64(3+i) && time.Now().Before(deadline); {
+			time.Sleep(time.Millisecond)
+		}
+		active := testutil.ToFloat64(a.t.cfg.Metrics.ActivePeers.WithLabelValues("1", "2"))
+		lost := testutil.ToFloat64(a.t.cfg.Metrics.DisconnectedPeers.WithLabelValues("1", "2"))
+		if active != float64(1-i) || lost != float64(i) {
+			t.Errorf("with %d of 2 lanes closed: etcd_network_active_peers %g and etcd_network_disconnected_peers_total %g, want %d and %d", i+1, active, lost, 1-i, i)
+		}
 	}
 }
