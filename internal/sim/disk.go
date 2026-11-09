@@ -233,7 +233,9 @@ func (f *file) Sync() error {
 	})
 }
 
-func (f *file) Allocate(size int64) error { return f.f.Allocate(size) }
+func (f *file) Allocate(size int64) error {
+	return f.d.call(simfs.OpWrite, f.name, func() error { return f.f.Allocate(size) })
+}
 
 func (f *file) DropCache() error {
 	return f.d.call(simfs.OpRead, f.name, f.f.DropCache)

@@ -89,3 +89,20 @@ func TestTxnReplyEncoding(t *testing.T) {
 		}
 	}
 }
+
+// TestUpdateReplyAllocs bounds the allocations of the reply to
+// kube-apiserver's update, which has no reads to come: its buffer.
+func TestUpdateReplyAllocs(t *testing.T) {
+	resp := &pb.TxnResponse{
+		Header:    &pb.ResponseHeader{Revision: 7},
+		Succeeded: true,
+		Responses: []*pb.ResponseOp{{Response: &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{Header: &pb.ResponseHeader{Revision: 7}}}}},
+	}
+	if n := testing.AllocsPerRun(200, func() {
+		if _, _, err := appendTxnPieces(resp, nil); err != nil {
+			t.Fatal(err)
+		}
+	}); n > 1 {
+		t.Fatalf("%v allocations for the reply to an update", n)
+	}
+}

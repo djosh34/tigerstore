@@ -143,12 +143,41 @@ func TestDropCacheReportsHeldPage(t *testing.T) {
 }
 
 // TestAllocatedSegments checks that a file with room reserved keeps its
-// size, and that a log whose segments had room reserved recovers every
-// entry.
+// size and has the blocks, and that a log with a spare segment reserved
+// as the node driver reserves one recovers every entry.
 func TestAllocatedSegments(t *testing.T) {
-	dir, err := osfs.New(t.TempDir())
+	root := t.TempDir()
+	dir, err := osfs.New(root)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// reserved is the room the files in root hold beyond their size.
+	reserved := func() int64 {
+		t.Helper()
+		ents, err := os.ReadDir(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var n int64
+		for _, e := range ents {
+			var st unix.Stat_t
+			if err := unix.Stat(root+"/"+e.Name(), &st); err != nil {
+				t.Fatal(err)
+			}
+			n += max(st.Blocks*512-st.Size, 0)
+		}
+		return n
+	}
+	probe, err := os.Create(root + "/probe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	perr := unix.Fallocate(int(probe.Fd()), unix.FALLOC_FL_KEEP_SIZE, 0, 4096)
+	if err := errors.Join(probe.Close(), os.Remove(root+"/probe")); err != nil {
+		t.Fatal(err)
+	}
+	if errors.Is(perr, unix.EOPNOTSUPP) {
+		t.Skip("the file system cannot reserve room")
 	}
 	f, err := dir.Create("reserved")
 	if err != nil {
@@ -161,7 +190,10 @@ func TestAllocatedSegments(t *testing.T) {
 	if used, uerr := dir.Usage(); err != nil || uerr != nil || len(b) != 0 || used != 0 {
 		t.Fatalf("a reserved file read %d bytes and counts %d, err %v %v", len(b), used, err, uerr)
 	}
-	if err := f.Close(); err != nil {
+	if r := reserved(); r < 1<<20 {
+		t.Fatalf("a file with 1 MiB reserved holds %d reserved bytes", r)
+	}
+	if err := errors.Join(f.Close(), dir.Remove("reserved")); err != nil {
 		t.Fatal(err)
 	}
 	w, _, err := wal.Open(dir)
@@ -174,6 +206,12 @@ func TestAllocatedSegments(t *testing.T) {
 		if err := w.Sync(); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := errors.Join(w.Flush(), w.Seal(), wal.PrepareSegment(dir, w.Seq()+1, 1<<20)); err != nil {
+		t.Fatal(err)
+	}
+	if r := reserved(); r < 1<<20 {
+		t.Fatalf("the spare segment holds %d reserved bytes, want 1 MiB", r)
 	}
 	if err := w.Close(); err != nil {
 		t.Fatal(err)

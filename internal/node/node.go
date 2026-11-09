@@ -70,7 +70,9 @@ type Config struct {
 	// go.
 	SegmentBytes int64
 	// DiskBudget is how many bytes the log's files may take; 0 means no
-	// budget, and cleaning only for Defragment (clean.go).
+	// budget, and cleaning only for Defragment (clean.go). It counts the
+	// files' sizes: the room reserved for the next segments, up to about
+	// two SegmentBytes, is not in it until written.
 	DiskBudget int64
 	// AutoCompaction is etcd's --auto-compaction-mode and
 	// --auto-compaction-retention, as ParseCompaction gives them

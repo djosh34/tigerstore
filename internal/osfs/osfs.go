@@ -134,8 +134,9 @@ type file struct {
 
 // Allocate reserves size bytes with fallocate, keeping the size: the
 // file reads and counts as before (Usage), and a sync of the writes into
-// the reserved blocks allocates none.
-// A file system that cannot reserve room leaves the file as it is.
+// the reserved blocks allocates none. The reservation only saves time, so
+// a file system that cannot reserve room, or has none left to reserve,
+// leaves the file as it is: the writes find out whether the disk is full.
 func (f file) Allocate(size int64) error {
 	rc, err := f.SyscallConn()
 	if err != nil {
@@ -148,7 +149,7 @@ func (f file) Allocate(size int64) error {
 			}
 		}
 	})
-	if errors.Is(err, unix.EOPNOTSUPP) {
+	if errors.Is(err, unix.EOPNOTSUPP) || errors.Is(err, unix.ENOSPC) {
 		err = nil
 	}
 	return errors.Join(cerr, err)

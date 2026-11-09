@@ -354,7 +354,8 @@ func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 		}
 		return nil, err
 	}
-	resp.Header = header(w.cur())
+	// The response's header is in its block (txnResult).
+	resp.Header.Revision = w.cur()
 	w.finish()
 	return resp, nil
 }
@@ -597,9 +598,11 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 	}
 	n := 0
 	for i, op := range ops {
-		out := &pb.ResponseOp{}
+		var out *pb.ResponseOp
 		if i == 0 {
 			out = &blk.first
+		} else {
+			out = &pb.ResponseOp{}
 		}
 		switch t := op.Request.(type) {
 		case *pb.RequestOp_RequestRange:

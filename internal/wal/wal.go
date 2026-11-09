@@ -799,9 +799,10 @@ func (w *WAL) setRoot(r Root) {
 // file with size bytes reserved (File.Allocate), none if size is 0: the
 // node driver reserves them, Open and Sync do not. A sync into a new file
 // that grows also allocates its blocks: on ext4 that wrote 2.5% more to
-// the disk than the log, and three nodes sharing a disk did 3% fewer puts
-// a second than with the room reserved (#506). Its name is durable when it returns. A file readied before for
-// seq itself is removed: a crash after Place, before the directory sync,
+// the disk than the log, and three nodes sharing a disk did 1.5 to 2%
+// fewer puts a second than with the room reserved (#506). Its name is
+// durable when it returns. A file readied before for seq itself is
+// removed: a crash after Place, before the directory sync,
 // can have left records of segment seq in it, which would verify after
 // the new ones. As a spare it could come back to seq through the file of
 // seq+1, when another such crash loses seq's name again (#274). A spare

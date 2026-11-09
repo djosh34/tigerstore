@@ -512,3 +512,29 @@ func TestCompactLeavesNoDeletedKeys(t *testing.T) {
 		t.Fatalf("after the compaction the store still holds %d deleted keys in its changes", held)
 	}
 }
+
+// TestUpdateTxnAllocs bounds the allocations of kube-apiserver's update,
+// a compare of the key's mod revision and a put of it: the response takes
+// one block for its header, its op and the put's answer (txnResult). With
+// a message each it took 10 allocations; it took 5 when the first op's
+// message was made before the block was used, and 4 with a header of its
+// own on top of the block's (#566).
+func TestUpdateTxnAllocs(t *testing.T) {
+	s := New(&Heap{})
+	put(t, s, "/registry/pods/a", "pod")
+	key := []byte("/registry/pods/a")
+	union := &pb.Compare_ModRevision{}
+	r := &pb.TxnRequest{
+		Compare: []*pb.Compare{{Key: key, Target: pb.Compare_MOD, Result: pb.Compare_EQUAL, TargetUnion: union}},
+		Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: []byte("pod")}}}},
+	}
+	if n := testing.AllocsPerRun(200, func() {
+		union.ModRevision = s.Rev()
+		resp, err := s.Txn(r)
+		if err != nil || !resp.Succeeded {
+			t.Fatalf("the update: %v", err)
+		}
+	}); n > 3 {
+		t.Fatalf("%v allocations for an update", n)
+	}
+}
