@@ -35,7 +35,12 @@ func appendDeletePieces(r *pb.DeleteRangeResponse, rests []mvcc.Rest) ([]byte, [
 }
 
 func newTxnEnc(rests []mvcc.Rest) *txnEnc {
-	e := &txnEnc{rests: map[proto.Message]*mvcc.Rest{}}
+	e := &txnEnc{}
+	if len(rests) > 0 {
+		// Most transactions have no reads to come, and a lookup in a nil
+		// map finds nothing.
+		e.rests = make(map[proto.Message]*mvcc.Rest, len(rests))
+	}
 	for i := range rests {
 		e.rests[rests[i].Msg] = &rests[i]
 	}
