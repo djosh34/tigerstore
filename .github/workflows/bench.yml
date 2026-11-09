@@ -32,6 +32,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           git -C "$RUNNER_TEMP/liburing" rev-parse HEAD | tee results/liburing-version.txt
           gcc -O2 -g -Wall -I"$RUNNER_TEMP/uring/include" -o bin/io576 bench/research576/io.c "$RUNNER_TEMP/uring/lib/liburing.a" -lcrypto -lpthread
+          gcc -O3 -o bin/aes576 bench/research576/aes.c -lcrypto
           GOFLAGS=-p=2 go test -c -o bin/crypto576.test ./bench/research576/crypto
       - name: Primitive measurements
         run: |
@@ -41,6 +42,10 @@ jobs:
       - name: Go and OpenSSL crypto
         if: always()
         run: |
+          for rep in 1 2 3; do
+            taskset -c 0 bin/aes576 evp | tee "results/evp-cpu-$rep.txt"
+            taskset -c 0 bin/aes576 afalg 2>&1 | tee "results/afalg-cpu-$rep.txt" || true
+          done
           taskset -c 0 bin/crypto576.test -test.run '^$' -test.bench . -test.benchtime 500ms -test.count 3 -test.cpu 1 | tee results/go-crypto.txt
           for rep in 1 2 3; do
             for bits in 128 256; do
@@ -55,10 +60,13 @@ jobs:
           git clone -q https://github.com/aws/aws-lc.git "$RUNNER_TEMP/aws-lc"
           git -C "$RUNNER_TEMP/aws-lc" checkout bab562f6ad169475bd46e08de57e6d5cde239fef
           git -C "$RUNNER_TEMP/aws-lc" rev-parse HEAD | tee results/aws-lc-version.txt
-          cmake -S "$RUNNER_TEMP/aws-lc" -B "$RUNNER_TEMP/aws-lc/build" -GNinja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_LIBSSL=OFF -DDISABLE_PERL=OFF
+          cmake -S "$RUNNER_TEMP/aws-lc" -B "$RUNNER_TEMP/aws-lc/build" -GNinja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_LIBSSL=ON -DBUILD_TOOL=ON -DDISABLE_PERL=OFF
           cmake --build "$RUNNER_TEMP/aws-lc/build" --target bssl -j2
+          gcc -O3 -I"$RUNNER_TEMP/aws-lc/include" -o bin/aws-aes576 bench/research576/aes.c "$RUNNER_TEMP/aws-lc/build/crypto/libcrypto.a" -lpthread
           for rep in 1 2 3; do
-            taskset -c 0 "$RUNNER_TEMP/aws-lc/build/tool/bssl" speed -filter AES-128-GCM,AES-256-GCM -chunks 1024,16384 -timeout 1 2>&1 | tee "results/aws-lc-$rep.txt"
+            taskset -c 0 "$RUNNER_TEMP/aws-lc/build/tool/bssl" speed -filter EVP-AES-128-GCM,EVP-AES-256-GCM,AEAD-AES-128-GCM,AEAD-AES-256-GCM -chunks 1024,16384 -timeout 1 2>&1 | tee "results/aws-lc-$rep.txt"
+            taskset -c 0 bin/aws-aes576 evp | tee "results/aws-evp-cpu-$rep.txt"
+            OPENSSL_armcap='|0x1000' taskset -c 0 bin/aws-aes576 evp | tee "results/aws-forced8x-cpu-$rep.txt"
           done
       - uses: actions/upload-artifact@v6
         if: always()
