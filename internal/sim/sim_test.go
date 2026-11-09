@@ -1382,10 +1382,14 @@ func TestRotInAnEntryRecord(t *testing.T) {
 //
 // Under the race detector it stops after raceRuns runs. Making the race
 // build reach the path directly needs a damaged leader whose follower falls
-// behind its compaction, which elections decide.
+// behind its compaction, which elections decide. Seeds 1 to 200 reached
+// it until a connection's lock became a channel (#567), which moved every
+// seed; seed 279 does now. The range starts there, so that a hit costs one
+// seed and a miss twenty, not the hundreds that ran the package out of
+// time. Reaching the path on purpose is #569.
 func TestSnapshotFromCorruptLeader(t *testing.T) {
 	fenced := false
-	if !simrun.Each(t, searchSeeds(1, 200), func(t *testing.T, seed uint64) Stats {
+	if !simrun.Each(t, searchSeeds(279, 20), func(t *testing.T, seed uint64) Stats {
 		res := run(t, DefaultConfig(seed))
 		checkers(t, res)
 		return res.Stats
