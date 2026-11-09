@@ -24,7 +24,7 @@ jobs:
     env:
       GOFLAGS: -p=2
       GOMAXPROCS: '4'
-      REC_ROOT: ${{ runner.temp }}/recording579
+      REC_ROOT: /tmp/recording579
       NODES: ${{ inputs.nodes || '100' }}
       IDLE_SECONDS: ${{ inputs.idle_seconds || '600' }}
       PERF_COMMIT: 01a4367bce12691ea1e910394290b72a90b4fa65
@@ -66,6 +66,6 @@ jobs:
         if: always()
         with:
           name: research-579-recording-${{ github.run_id }}
-          path: ${{ runner.temp }}/recording579/results
+          path: /tmp/recording579/results
           retention-days: 30
           if-no-files-found: error
