@@ -21,7 +21,7 @@ import (
 
 // MaxVersion is the newest cluster version, and so entry format, this
 // build supports. It reads every format up to it.
-const MaxVersion = 3
+const MaxVersion = 4
 
 // featureVersion is the cluster version, and entry format, from which
 // entries may hold the writes of etcd's features that format 2 has no
@@ -29,6 +29,11 @@ const MaxVersion = 3
 // up to their deadline, as writes wait for a leader. A fresh cluster
 // activates it once every member has confirmed its support.
 const featureVersion = 3
+
+// originVersion is the cluster version, and entry format, from which an
+// entry names its origin node and boot once instead of with every write
+// (codec.go).
+const originVersion = 4
 
 // capable reports whether the cluster version allows the kinds of
 // featureVersion.

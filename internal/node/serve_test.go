@@ -184,21 +184,33 @@ func TestServeKeepsItsFiles(t *testing.T) {
 		}
 	}
 	// Let the last checkpoint's root become durable, then apply one
-	// entry past it, so a root at the applied index is a newer one.
-	time.Sleep(500 * time.Millisecond)
-	if do(&pb.PutRequest{Key: []byte("after"), Value: []byte("v")}) != nil {
-		t.Fatalf("the node stopped: %v", <-ran)
+	// entry past it, so a root at the applied index is a newer one. A
+	// cut that waited for a slow copy of the checkpoint before can land
+	// on that entry, as under the race detector on a busy runner: then
+	// the node runs once more and applies another.
+	var ckpt wal.Root
+	for try := 1; ; try++ {
+		time.Sleep(500 * time.Millisecond)
+		if do(&pb.PutRequest{Key: fmt.Appendf(nil, "after-%d", try), Value: []byte("v")}) != nil {
+			t.Fatalf("the node stopped: %v", <-ran)
+		}
+		cancel()
+		if err := <-ran; err != nil {
+			t.Fatal(err)
+		}
+		if n, err = New(cfg); err != nil {
+			t.Fatal(err)
+		}
+		ckpt = n.log.ckpts[len(n.log.ckpts)-1]
+		if ckpt.Index < n.core.Applied() {
+			break
+		}
+		if try == 5 {
+			t.Fatalf("setup: the checkpoint at %d is at the applied index %d", ckpt.Index, n.core.Applied())
+		}
+		ctx, cancel = context.WithCancel(context.Background())
+		go func() { ran <- n.Run(ctx, noPeers{}) }()
 	}
-	cancel()
-	if err := <-ran; err != nil {
-		t.Fatal(err)
-	}
-
-	n, err = New(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ckpt := n.log.ckpts[len(n.log.ckpts)-1]
 	st, err := os.Stat(filepath.Join(dir, "wal", wal.CheckpointName(ckpt.Index)))
 	if err != nil {
 		t.Fatalf("setup: checkpoint at %d: %v", ckpt.Index, err)
@@ -208,9 +220,6 @@ func TestServeKeepsItsFiles(t *testing.T) {
 	}
 	if n.log.w.Has(1) {
 		t.Fatal("setup: entry 1 is still on disk")
-	}
-	if ckpt.Index >= n.core.Applied() {
-		t.Fatalf("setup: the checkpoint at %d is at the applied index %d", ckpt.Index, n.core.Applied())
 	}
 	// The test stops the disk goroutines before their directory goes.
 	pctx, pcancel := context.WithCancel(context.Background())

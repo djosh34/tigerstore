@@ -153,6 +153,11 @@ type keyIndex struct {
 // at returns the position of the newest version with main revision <= r,
 // or -1.
 func (k *keyIndex) at(r int64) int {
+	// Most reads and writes look at the newest version, so it goes first,
+	// before a search through a long history.
+	if n := len(k.vers); n > 0 && k.vers[n-1].mod.main <= r {
+		return n - 1
+	}
 	lo, hi := 0, len(k.vers)
 	for lo < hi {
 		m := int(uint(lo+hi) >> 1)
@@ -248,8 +253,10 @@ func check(key []byte, r Ref, b []byte) error {
 // Store is the key index with every revision since the last compaction.
 type Store struct {
 	keys *btree.BTreeG[*keyIndex]
-	// probe is the key a lookup searches for, so that it allocates none.
-	probe      keyIndex
+	// byKey holds the same keys as keys, for lookups of one key: at a
+	// million keys a lookup in the B-tree took 3 µs and one in the map
+	// 0.3 µs (#506).
+	byKey      map[string]*keyIndex
 	rev        int64
 	compactRev int64
 	values     Values
@@ -303,10 +310,22 @@ type Store struct {
 }
 
 // Bytes estimates what the index takes in memory: per key its record,
-// its place in the B-tree and its bytes, 64 bytes per version its array
-// has room for, and the history's 8 bytes a change and a revision.
+// its place in the B-tree, its slot in byKey and its bytes twice, 64
+// bytes per version its array has room for, and the history's 8 bytes a
+// change and a revision.
 func (s *Store) Bytes() int64 {
-	return int64(s.keys.Len())*64 + s.keyBytes + s.versions*64 + 8*int64(cap(s.hist.keys)+cap(s.hist.starts))
+	return int64(s.keys.Len())*(64+keySlot) + 2*s.keyBytes + s.versions*64 + 8*int64(cap(s.hist.keys)+cap(s.hist.starts))
+}
+
+// keySlot estimates a key's slot in byKey with the room a Go map keeps
+// free: a string header and a pointer.
+const keySlot = 40
+
+// insert adds a new key to the index.
+func (s *Store) insert(k *keyIndex) {
+	s.keys.ReplaceOrInsert(k)
+	s.byKey[string(k.key)] = k
+	s.keyBytes += int64(len(k.key))
 }
 
 // written is a value a put wrote to key k.
@@ -368,6 +387,7 @@ type Counts struct{ Puts, Deletes, Ranges, Txns, PutBytes, Compacted, Keys int64
 func New(v Values) *Store {
 	return &Store{
 		keys:   btree.NewG(32, func(a, b *keyIndex) bool { return bytes.Compare(a.key, b.key) < 0 }),
+		byKey:  map[string]*keyIndex{},
 		values: v,
 		rev:    1,
 		// etcd's compacted revision starts at -1, so a read at revision
@@ -425,12 +445,9 @@ func (s *Store) ascend(key, end []byte, fn func(*keyIndex) bool) {
 	}
 }
 
-// get returns the index entry of key. No lookup runs inside another, so
-// one probe serves them all.
+// get returns the index entry of key.
 func (s *Store) get(key []byte) (*keyIndex, bool) {
-	s.probe.key = key
-	k, ok := s.keys.Get(&s.probe)
-	s.probe.key = nil
+	k, ok := s.byKey[string(key)]
 	return k, ok
 }
 
@@ -763,6 +780,7 @@ func (s *Store) dropFirst(k *keyIndex, i int) bool {
 func (s *Store) remove(gone []*keyIndex) {
 	for _, k := range gone {
 		s.keys.Delete(k)
+		delete(s.byKey, string(k.key))
 		s.keyBytes -= int64(len(k.key))
 	}
 }

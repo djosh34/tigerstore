@@ -22,8 +22,15 @@ import (
 // That is entry format 1. Every later format starts with a 0 byte and its
 // number, then the batch; a format 1 batch never starts with 0, as it
 // holds at least one write. Format 2 adds only that header. Format 3
-// adds the kinds from kindAlarm on (featureVersion). Which format a node
-// writes is the cluster version (version.go).
+// adds the kinds from kindAlarm on (featureVersion). Format 4
+// (originVersion) writes the origin node and boot once, after the count,
+// as every write of an entry comes from the node that proposed it:
+//
+//	uvarint count | uvarint origin node | uvarint origin boot, then per
+//	write: uvarint request ID | u8 kind | uvarint length | protobuf request
+//
+// That saves about 20 bytes per write on every node's disk and link.
+// Which format a node writes is the cluster version (version.go).
 
 const (
 	kindPut     = 1
@@ -55,6 +62,9 @@ const (
 	// kindLeaseCheckpoint is the leader's checkpoint of leases' remaining
 	// TTLs, a LeaseCheckpointRequest (lease.go).
 	kindLeaseCheckpoint = 15
+	// kindShortTxn is a TxnRequest of kube-apiserver's shape with its key
+	// written once (shorttxn.go), from format 4.
+	kindShortTxn = 16
 )
 
 var errBadBatch = errors.New("core: malformed batch")
@@ -68,9 +78,14 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 		buf = append(buf, 0, byte(format))
 	}
 	buf = binary.AppendUvarint(buf, uint64(len(ps)))
+	once := format >= originVersion
+	if once {
+		buf = binary.AppendUvarint(buf, origin)
+		buf = binary.AppendUvarint(buf, boot)
+	}
 	for _, p := range ps {
 		var kind byte
-		switch p.req.Op.(type) {
+		switch op := p.req.Op.(type) {
 		case nil:
 			kind = kindPut
 		case *pb.PutRequest:
@@ -79,6 +94,9 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 			kind = kindDelete
 		case *pb.TxnRequest:
 			kind = kindTxn
+			if once && isShort(op) {
+				kind = kindShortTxn
+			}
 		case *pb.CompactionRequest:
 			kind = kindCompact
 		case *pb.LeaseGrantRequest:
@@ -102,13 +120,17 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 		default:
 			return nil, fmt.Errorf("core: cannot propose %T", p.req.Op)
 		}
-		buf = binary.AppendUvarint(buf, origin)
-		buf = binary.AppendUvarint(buf, boot)
+		if !once {
+			buf = binary.AppendUvarint(buf, origin)
+			buf = binary.AppendUvarint(buf, boot)
+		}
 		buf = binary.AppendUvarint(buf, p.req.ID)
 		var body []byte
 		switch {
 		case p.req.Op == nil:
 			body = p.req.Put.Wire
+		case kind == kindShortTxn:
+			// Written straight into the entry below.
 		case p.req.Wire != nil:
 			body = p.req.Wire
 		default:
@@ -117,18 +139,26 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 				return nil, err
 			}
 		}
+		size := len(body)
+		if kind == kindShortTxn {
+			size = shortSize(p.req.Op.(*pb.TxnRequest))
+		}
 		if w := p.who; w != nil {
 			head := binary.AppendUvarint(nil, w.revision)
 			head = binary.AppendUvarint(head, uint64(len(w.user)))
 			head = append(append(head, w.user...), kind)
 			buf = append(buf, kindAuthed)
-			buf = binary.AppendUvarint(buf, uint64(len(head)+len(body)))
+			buf = binary.AppendUvarint(buf, uint64(len(head)+size))
 			buf = append(buf, head...)
 		} else {
 			buf = append(buf, kind)
-			buf = binary.AppendUvarint(buf, uint64(len(body)))
+			buf = binary.AppendUvarint(buf, uint64(size))
 		}
-		buf = append(buf, body...)
+		if kind == kindShortTxn {
+			buf = appendShort(buf, p.req.Op.(*pb.TxnRequest))
+		} else {
+			buf = append(buf, body...)
+		}
 	}
 	return buf, nil
 }
@@ -154,25 +184,27 @@ func unwrapAuth(kind byte, b []byte, at int) (byte, []byte, int, authInfo, error
 	return kind, rest, at + len(b) - len(rest), ai, nil
 }
 
-// skipFormat returns the data of a Raft entry without its format header.
-func skipFormat(data []byte) ([]byte, error) {
+// skipFormat returns the format of the data of a Raft entry and the data
+// without its format header.
+func skipFormat(data []byte) (uint32, []byte, error) {
 	if len(data) == 0 || data[0] != 0 {
-		return data, nil
+		return 1, data, nil
 	}
 	if len(data) < 2 {
-		return nil, errBadBatch
+		return 0, nil, errBadBatch
 	}
-	if f := data[1]; f < 2 || f > MaxVersion {
-		return nil, fmt.Errorf("%w: entry format %d; this build reads formats up to %d", errBadBatch, f, MaxVersion)
+	f := uint32(data[1])
+	if f < 2 || f > MaxVersion {
+		return 0, nil, fmt.Errorf("%w: entry format %d; this build reads formats up to %d", errBadBatch, f, MaxVersion)
 	}
-	return data[2:], nil
+	return f, data[2:], nil
 }
 
 // walkBatch calls fn for every write in the data of a Raft entry, with
 // the write's bytes in place and where they start in data.
 func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte, at int) error) error {
 	whole := data
-	data, err := skipFormat(data)
+	format, data, err := skipFormat(data)
 	if err != nil {
 		return err
 	}
@@ -180,13 +212,25 @@ func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte
 	if !ok {
 		return errBadBatch
 	}
-	for range n {
-		var origin, boot, id, size uint64
+	once := format >= originVersion
+	var origin, boot uint64
+	if once {
 		if origin, data, ok = uvarint(data); !ok {
 			return errBadBatch
 		}
 		if boot, data, ok = uvarint(data); !ok {
 			return errBadBatch
+		}
+	}
+	for range n {
+		var id, size uint64
+		if !once {
+			if origin, data, ok = uvarint(data); !ok {
+				return errBadBatch
+			}
+			if boot, data, ok = uvarint(data); !ok {
+				return errBadBatch
+			}
 		}
 		if id, data, ok = uvarint(data); !ok || len(data) == 0 {
 			return errBadBatch
@@ -213,7 +257,7 @@ func newOp(kind byte) (proto.Message, error) {
 		return &pb.PutRequest{}, nil
 	case kindDelete:
 		return &pb.DeleteRangeRequest{}, nil
-	case kindTxn:
+	case kindTxn, kindShortTxn:
 		return &pb.TxnRequest{}, nil
 	case kindCompact:
 		return &pb.CompactionRequest{}, nil
@@ -255,7 +299,13 @@ func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message)
 		if err != nil {
 			return err
 		}
-		if err := proto.Unmarshal(b, op); err != nil {
+		if kind == kindShortTxn {
+			if err := decodeShort(b, op.(*pb.TxnRequest), 0, nil); err != nil {
+				return err
+			}
+			// The checks keep what they decode: no slices of the entry.
+			op = proto.Clone(op)
+		} else if err := proto.Unmarshal(b, op); err != nil {
 			return fmt.Errorf("%w: %w", errBadBatch, err)
 		}
 		return fn(origin, boot, id, op)

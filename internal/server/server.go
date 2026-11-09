@@ -23,6 +23,7 @@ import (
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
 
+	"github.com/djosh34/tigerstore/internal/bufconn"
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
@@ -256,7 +257,9 @@ func (s *Server) serveConn(nc net.Conn, l Listener) {
 		if traffic == TrafficGRPC {
 			cfg = s.grpcTLS
 		}
-		tc := tls.Server(nc, cfg)
+		// TLS reads its records through a buffer, so one read takes in
+		// as many as the kernel holds (bufconn).
+		tc := tls.Server(bufconn.New(nc, ioBuffer), cfg)
 		ctx, cancel := context.WithTimeout(s.ctx, handshakeTimeout)
 		err := tc.HandshakeContext(ctx)
 		cancel()

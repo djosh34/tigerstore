@@ -70,10 +70,12 @@ func (c *conn) checkPing() error {
 
 // keepalive pings a client that sent nothing for the keepalive time and
 // closes the connection when nothing arrives for the timeout after that,
-// as grpc-go's server does.
+// as grpc-go's server does, with one difference: it counts the time from
+// its own check that saw the client's last frames, not from the frames, so
+// a ping comes one to two keepalive times after them.
 func (c *conn) keepalive() {
 	every, timeout := c.s.keepaliveTime, c.s.keepaliveTimeout
-	prev := c.lastRead.Load()
+	prev := c.frames.Load()
 	outstanding := false
 	var left time.Duration
 	t := time.NewTimer(every)
@@ -84,10 +86,10 @@ func (c *conn) keepalive() {
 			return
 		case <-t.C:
 		}
-		if last := c.lastRead.Load(); last > prev {
+		if n := c.frames.Load(); n != prev {
 			outstanding = false
-			t.Reset(time.Duration(last-time.Now().UnixNano()) + every)
-			prev = last
+			t.Reset(every)
+			prev = n
 			continue
 		}
 		if outstanding && left <= 0 {

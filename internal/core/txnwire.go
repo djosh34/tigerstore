@@ -1,6 +1,8 @@
 package core
 
 import (
+	"errors"
+	"fmt"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -83,6 +85,26 @@ func DecodeAlias(b []byte, m proto.Message) error {
 		return decodeRange(b, m)
 	}
 	return UnmarshalAlias(b, m)
+}
+
+// errNotTxn is the error of DecodeTxn for a request that is not a
+// transaction.
+var errNotTxn = errors.New("core: DecodeTxn needs a TxnRequest")
+
+// DecodeTxn decodes r.Wire into r.Op, a TxnRequest, as DecodeAlias does,
+// and notes where the values of its puts start in r.Wire, so that the
+// node applies the request without decoding its entry again.
+func DecodeTxn(r *Request) error {
+	t, ok := r.Op.(*pb.TxnRequest)
+	if !ok {
+		return fmt.Errorf("%w: %T", errNotTxn, r.Op)
+	}
+	var pl placer
+	if err := decodeTxnPlaced(r.Wire, t, 0, &pl); err != nil {
+		return err
+	}
+	r.places, r.placed = pl.places, true
+	return nil
 }
 
 // decodeTxnAlias decodes a TxnRequest, as UnmarshalAlias does.

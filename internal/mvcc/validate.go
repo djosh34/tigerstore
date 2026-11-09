@@ -1,6 +1,9 @@
 package mvcc
 
 import (
+	"bytes"
+	"slices"
+
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/grpc/codes"
@@ -77,11 +80,49 @@ func CheckTxn(r *pb.TxnRequest, maxOps int) error {
 	if err := validateTxn(r, maxOps); err != nil {
 		return err
 	}
-	if _, _, err := checkIntervals(r.Success); err != nil {
-		return err
+	for _, ops := range [][]*pb.RequestOp{r.Success, r.Failure} {
+		var err error
+		if len(ops) > flatOps || slices.ContainsFunc(ops, func(op *pb.RequestOp) bool { return op.GetRequestTxn() != nil }) {
+			_, _, err = checkIntervals(ops)
+		} else {
+			err = checkFlat(ops)
+		}
+		if err != nil {
+			return err
+		}
 	}
-	_, _, err := checkIntervals(r.Failure)
-	return err
+	return nil
+}
+
+// flatOps is the most ops that checkFlat compares pairwise; a longer
+// branch, as --max-txn-ops allows, builds checkIntervals' map.
+const flatOps = 16
+
+// checkFlat is checkIntervals for a few ops without a nested transaction,
+// as most are: it compares each put with the puts before it and with the
+// deletes, and builds no map.
+func checkFlat(ops []*pb.RequestOp) error {
+	var dels []interval
+	for _, op := range ops {
+		if d := op.GetRequestDeleteRange(); d != nil {
+			dels = append(dels, deleteInterval(d))
+		}
+	}
+	for i, op := range ops {
+		p := op.GetRequestPut()
+		if p == nil {
+			continue
+		}
+		if len(dels) > 0 && hits(dels, string(p.Key)) {
+			return rpctypes.ErrGRPCDuplicateKey
+		}
+		for _, prev := range ops[:i] {
+			if q := prev.GetRequestPut(); q != nil && bytes.Equal(q.Key, p.Key) {
+				return rpctypes.ErrGRPCDuplicateKey
+			}
+		}
+	}
+	return nil
 }
 
 func validateTxn(r *pb.TxnRequest, maxOps int) error {

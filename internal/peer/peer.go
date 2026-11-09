@@ -56,6 +56,7 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/bufconn"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -296,7 +297,7 @@ func Start(cfg Config) (*TCP, error) {
 	}
 	var lns []net.Listener
 	for _, raw := range cfg.Listeners {
-		lns = append(lns, tls.NewListener(raw, scfg))
+		lns = append(lns, tls.NewListener(bufconn.Listener{Listener: raw, Size: ioBuffer}, scfg))
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &TCP{
@@ -1109,7 +1110,7 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	c := tls.Client(raw, &tls.Config{
+	c := tls.Client(bufconn.New(raw, ioBuffer), &tls.Config{
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return s.t.clientCert() },
 		RootCAs:              s.t.cfg.CA,
 		InsecureSkipVerify:   s.t.cfg.InsecureSkipVerify, //nolint:gosec // etcd's --peer-auto-tls
@@ -1218,13 +1219,24 @@ func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) (byte, e
 }
 
 // write sends frames until the connection fails or the transport closes.
+// Frames gather above TLS, so that small ones share a record, and the
+// records under it, so that they share a system call.
 func (s *sender) write(ctx context.Context, c net.Conn) error {
 	w := bufio.NewWriterSize(c, ioBuffer)
+	under := bufconn.Under(c)
+	if under != nil {
+		under.Buffer()
+	}
 	var buf []byte
 	for {
 		if !s.pending() {
 			if err := w.Flush(); err != nil {
 				return err
+			}
+			if under != nil {
+				if err := under.Flush(); err != nil {
+					return err
+				}
 			}
 		}
 		m, ok := s.next(ctx)

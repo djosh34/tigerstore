@@ -75,7 +75,13 @@ func (c *conn) admit(st *stream) {
 		req.Op, req.Wire = st.rpc.op(), st.body
 		switch req.Op.(type) {
 		case *pb.TxnRequest, *pb.RangeRequest:
-			if err := core.DecodeAlias(st.body, req.Op); err != nil {
+			var err error
+			if _, ok := req.Op.(*pb.TxnRequest); ok {
+				err = core.DecodeTxn(&req)
+			} else {
+				err = core.DecodeAlias(st.body, req.Op)
+			}
+			if err != nil {
 				st.finish(unmarshalError(err))
 				return
 			}
@@ -94,7 +100,12 @@ func (c *conn) admit(st *stream) {
 		}
 	}
 	c.startOpSpan(st, &req)
-	st.admitted = time.Now()
+	// A timed call's start serves as its admission: one clock read less
+	// per call.
+	st.admitted = st.began
+	if st.admitted.IsZero() {
+		st.admitted = time.Now()
+	}
 	st.reqSize = len(st.body)
 	st.body = nil
 	c.batch.reqs = append(c.batch.reqs, req)

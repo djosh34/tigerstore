@@ -80,6 +80,13 @@ type conn struct {
 	// read, with no allocation for fields from the HPACK tables.
 	hdec *hpack.Decoder
 	hdr  reqHeaders
+	// blocks are the headers of gRPC calls whose block held only indexed
+	// fields, by the block's bytes. Such a block does not change the
+	// HPACK tables, so while no other block changed them, the same bytes
+	// decode to the same headers. A client sends the same block for
+	// every call of one method once its fields are in the table; decoding
+	// it took 3% of a leader's core with transactions (#506).
+	blocks map[string]reqHeaders
 
 	mu        sync.Mutex
 	streams   map[uint32]*stream
@@ -102,11 +109,12 @@ type conn struct {
 	// atNode is the calls the node has and has not answered.
 	atNode map[*stream]struct{}
 
-	// lastRead is when the reader last got a frame, in Unix nanoseconds,
-	// and wrote is set when the writer sends HEADERS or DATA, which
-	// forgives the client's pings (keepalive.go). lastPing and
-	// pingStrikes are the reader's.
-	lastRead    atomic.Int64
+	// frames counts the frames the reader got, and wrote is set when the
+	// writer sends HEADERS or DATA, which forgives the client's pings
+	// (keepalive.go). A count, not a time: a clock read per frame took
+	// 2% of a leader's core (#506). lastPing and pingStrikes are the
+	// reader's.
+	frames      atomic.Uint64
 	wrote       atomic.Bool
 	lastPing    time.Time
 	pingStrikes int
@@ -165,7 +173,6 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		initWin:  65535,
 		maxFrame: 16384,
 	}
-	c.lastRead.Store(time.Now().UnixNano())
 	c.caller = caller(s.cfg.TLS, nc)
 	c.fr = http2.NewFramer(c.bw, c.br)
 	c.hdec = hpack.NewDecoder(4096, c.onField)
@@ -316,7 +323,7 @@ func (c *conn) readLoop() error {
 		if err != nil {
 			return err
 		}
-		c.lastRead.Store(time.Now().UnixNano())
+		c.frames.Add(1)
 		f, err := c.fr.ReadFrameForHeader(fh)
 		if err != nil {
 			if _, ok := errors.AsType[http2.StreamError](err); ok && fh.Type == http2.FrameHeaders {
@@ -340,9 +347,9 @@ func (c *conn) onFrame(f http2.Frame) error {
 	switch f := f.(type) {
 	case *http2.HeadersFrame:
 		c.hdr = reqHeaders{id: f.StreamID, ended: f.StreamEnded()}
-		return c.headerFragment(f.HeaderBlockFragment(), f.HeadersEnded())
+		return c.headerFragment(f.HeaderBlockFragment(), true, f.HeadersEnded())
 	case *http2.ContinuationFrame:
-		return c.headerFragment(f.HeaderBlockFragment(), f.HeadersEnded())
+		return c.headerFragment(f.HeaderBlockFragment(), false, f.HeadersEnded())
 	case *http2.DataFrame:
 		return c.onData(f)
 	case *http2.WindowUpdateFrame:
@@ -487,8 +494,18 @@ const maxHeaderList = 1 << 20
 
 // headerFragment decodes part of a header block. The Framer checks that
 // CONTINUATION frames follow their HEADERS frame.
-func (c *conn) headerFragment(b []byte, last bool) error {
+func (c *conn) headerFragment(b []byte, first, last bool) error {
 	h := &c.hdr
+	// Only a block in one HEADERS frame may come from blocks: the last
+	// fragment of a longer one continues what the decoder holds.
+	whole := first && last
+	if whole {
+		if known, ok := c.blocks[string(b)]; ok {
+			known.id, known.ended = h.id, h.ended
+			*h = known
+			return c.onHeaders(h)
+		}
+	}
 	// As x/net does since CVE-2023-45288: a block that already broke the
 	// rules, or whose fragments could decode past the limit, ends the
 	// connection instead of being decoded on.
@@ -503,6 +520,20 @@ func (c *conn) headerFragment(b []byte, last bool) error {
 	}
 	if err := c.hdec.Close(); err != nil {
 		return http2.ConnectionError(http2.ErrCodeCompression)
+	}
+	if whole && onlyIndexed(b) {
+		if !h.bad && h.traceMD == nil && h.fields == nil && len(c.blocks) < maxBlocks {
+			if c.blocks == nil {
+				c.blocks = make(map[string]reqHeaders)
+			}
+			known := *h
+			known.id, known.ended = 0, false
+			c.blocks[string(b)] = known
+		}
+	} else {
+		// The block may have changed the tables, which other blocks'
+		// indexes name.
+		c.blocks = nil
 	}
 	if !h.bad {
 		return c.onHeaders(h)
@@ -525,6 +556,29 @@ func (c *conn) headerFragment(b []byte, last bool) error {
 	c.mu.Unlock()
 	c.resetStream(h.id, http2.ErrCodeProtocol)
 	return nil
+}
+
+// maxBlocks bounds the header blocks a connection keeps decoded.
+const maxBlocks = 64
+
+// onlyIndexed reports whether a header block holds only indexed fields
+// (RFC 7541, 6.1): a set top bit, then an integer with a 7-bit prefix.
+func onlyIndexed(b []byte) bool {
+	for len(b) > 0 {
+		if b[0]&0x80 == 0 {
+			return false
+		}
+		more := b[0]&0x7f == 0x7f
+		b = b[1:]
+		for more {
+			if len(b) == 0 {
+				return false
+			}
+			more = b[0]&0x80 != 0
+			b = b[1:]
+		}
+	}
+	return true
 }
 
 // onField takes one decoded header field. The hpack decoder state must

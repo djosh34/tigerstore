@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
+	"github.com/djosh34/tigerstore/internal/simfs"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
@@ -25,8 +26,9 @@ func TestBatchRoundTrip(t *testing.T) {
 		{req: Request{ID: 8, Op: &pb.DeleteRangeRequest{Key: []byte("b"), RangeEnd: []byte("c")}}},
 		{req: Request{ID: 9, Op: &pb.TxnRequest{Compare: []*pb.Compare{{Key: []byte("a")}}}}},
 	}
+	size := map[uint32]int{}
 	for format := uint32(1); format <= MaxVersion; format++ {
-		data, err := encodeBatch(format, 2, 99, ops, 0)
+		data, err := encodeBatch(format, 2, 1<<40, ops, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -34,6 +36,12 @@ func TestBatchRoundTrip(t *testing.T) {
 			t.Fatalf("format %d starts with %d", format, data[0])
 		}
 		decodeAll(t, data, ops)
+		size[format] = len(data)
+	}
+	// From originVersion, the origin and boot come once per entry.
+	once := protowire.SizeVarint(2) + protowire.SizeVarint(1<<40)
+	if got, want := size[originVersion], size[originVersion-1]-(len(ops)-1)*once; got != want {
+		t.Errorf("format %d took %d bytes, want %d", originVersion, got, want)
 	}
 	if err := DecodeBatch([]byte{0, MaxVersion + 1, 0}, func(_, _, _ uint64, _ proto.Message) error { return nil }); err == nil {
 		t.Fatal("an unknown format decoded")
@@ -52,7 +60,7 @@ func decodeAll(t *testing.T, data []byte, ops []*pending) {
 		if want == nil {
 			want = &pb.PutRequest{Key: []byte("w"), Value: []byte("2"), Lease: 5, PrevKv: true}
 		}
-		if origin != 2 || boot != 99 || id != ops[i].req.ID || !proto.Equal(op, want) {
+		if origin != 2 || boot != 1<<40 || id != ops[i].req.ID || !proto.Equal(op, want) {
 			t.Errorf("write %d decoded as %d/%d/%d %v", i, origin, boot, id, op)
 		}
 		i++
@@ -258,4 +266,74 @@ func checkPut(p *Put, c Caller) error {
 		return err
 	}
 	return checkPutSize(p, c.extra, MaxRequestBytes)
+}
+
+// TestTakenTxnAppliesAsItsEntry checks that a transaction applied from
+// the decode of the node that took it (DecodeTxn) leaves the same state,
+// values placed in the entry included, as one decoded from its entry,
+// and reads back the same values, after a restart too.
+func TestTakenTxnAppliesAsItsEntry(t *testing.T) {
+	put := func(k, v string) *pb.RequestOp {
+		return &pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte(k), Value: []byte(v)}}}
+	}
+	txns := []*pb.TxnRequest{
+		{Success: []*pb.RequestOp{put("a", "one"), put("b", "two")}},
+		{
+			Compare: []*pb.Compare{{Key: []byte("a"), Target: pb.Compare_VALUE, TargetUnion: &pb.Compare_Value{Value: []byte("one")}}},
+			Success: []*pb.RequestOp{put("a", "three"), {Request: &pb.RequestOp_RequestTxn{RequestTxn: &pb.TxnRequest{Success: []*pb.RequestOp{put("c", "inner")}}}}},
+			Failure: []*pb.RequestOp{put("d", "failure")},
+		},
+		// kube-apiserver's update, whose entry has the short form.
+		{
+			Compare: []*pb.Compare{{Key: []byte("b"), Target: pb.Compare_MOD, TargetUnion: &pb.Compare_ModRevision{ModRevision: 2}}},
+			Success: []*pb.RequestOp{put("b", "updated")},
+			Failure: []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("b")}}}},
+		},
+	}
+	var hashes [2]uint64
+	for i, taken := range []bool{true, false} {
+		disk := simfs.New()
+		s := startSingle(t, disk, 1).capable()
+		for j, txn := range txns {
+			wire := mustMarshal(t, txn)
+			req := Request{ID: uint64(10 + j), Op: &pb.TxnRequest{}, Wire: wire}
+			var err error
+			if taken {
+				err = DecodeTxn(&req)
+			} else {
+				err = DecodeAlias(wire, req.Op)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.n.Submit(req)
+			s.run()
+		}
+		if s.n.ActiveVersion() < originVersion {
+			t.Fatalf("the node runs version %d, without short transactions", s.n.ActiveVersion())
+		}
+		if got := s.keys(); got != "a b c " {
+			t.Fatalf("taken %v: keys %q", taken, got)
+		}
+		for k, want := range map[string]string{"a": "three", "b": "updated", "c": "inner"} {
+			r, _ := s.ok(uint64(100+k[0]), &pb.RangeRequest{Key: []byte(k)}).(*pb.RangeResponse)
+			if len(r.Kvs) != 1 || string(r.Kvs[0].Value) != want {
+				t.Fatalf("taken %v: %s = %v", taken, k, r.Kvs)
+			}
+		}
+		hashes[i] = s.n.Hash()
+		if err := s.log.Close(); err != nil {
+			t.Fatal(err)
+		}
+		s = startSingle(t, disk, 2)
+		if s.n.Hash() != hashes[i] {
+			t.Fatalf("taken %v: another state after a restart", taken)
+		}
+		if err := s.log.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if hashes[0] != hashes[1] {
+		t.Fatal("the taken transactions left another state than their entries")
+	}
 }

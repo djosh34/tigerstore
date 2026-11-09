@@ -383,6 +383,8 @@ type runner struct {
 	CPU              string  `json:"cpu"`
 	Disk             string  `json:"disk"`
 	DiskMiBps        float64 `json:"disk_mib_per_s"`
+	DiskThreeMiBps   float64 `json:"disk_three_mib_per_s"`
+	DiskFreshMiBps   float64 `json:"disk_fresh_mib_per_s"`
 	EncodeNsPerByte  float64 `json:"encode_ns_per_byte"`
 	EncryptNsPerByte float64 `json:"encrypt_ns_per_byte"`
 	SendNsPerByte    float64 `json:"send_ns_per_byte"`
@@ -416,6 +418,12 @@ func ceilings(w io.Writer, dir string, rtts, benches, targets []string, all maxR
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
 	p("\nThe runner: kernel %s, CPU %s. The three nodes keep their data on one shared disk, %s, which makes at most %.1f MiB/s durable (O_DIRECT writes and fdatasync on written space). One core encodes key-values at %.3f ns a byte, encrypts them with AES-128-GCM at %.3f and sends them over loopback TCP at %.3f.\n",
 		rn.Kernel, rn.CPU, rn.Disk, rn.DiskMiBps, rn.EncodeNsPerByte, rn.EncryptNsPerByte, rn.SendNsPerByte)
+	if rn.DiskThreeMiBps > 0 {
+		p("Three writers at once, as the three nodes write, made %.1f MiB/s durable together.\n", rn.DiskThreeMiBps)
+	}
+	if rn.DiskFreshMiBps > 0 {
+		p("Three writers appending to new files, as the logs of a new cluster do, made %.1f MiB/s durable together.\n", rn.DiskFreshMiBps)
+	}
 	p("\n| Benchmark | Durable bytes/op per node | Disk limit ops/s | Read bytes/op | CPU limit ops/s | Ceiling ops/s |\n|---|---|---|---|---|---|\n")
 	ceiling := map[string]float64{}
 	for _, bench := range benches {
