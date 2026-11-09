@@ -1,6 +1,8 @@
 name: research577index
 on:
   workflow_dispatch:
+  push:
+    branches: [research/577-index-raft]
 jobs:
   primitives:
     strategy:
