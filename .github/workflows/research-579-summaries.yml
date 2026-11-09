@@ -1,0 +1,43 @@
+name: research-579-summaries
+on:
+  push:
+    branches: [research/579-recording]
+    paths: ['.github/workflows/research-579-summaries.yml']
+  workflow_dispatch:
+    inputs:
+      run_ids:
+        description: Comma-separated recording run IDs to summarize with the latest parser
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  summarize:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_IDS: ${{ inputs.run_ids }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download immutable original recordings and summarize
+        run: |
+          python3 -B -m unittest discover -s tools/etcdrec -p 'test_*.py'
+          for id in ${RUN_IDS//,/ }; do
+            [[ "$id" =~ ^[0-9]+$ ]]
+            dir="$RUNNER_TEMP/summaries/$id"
+            mkdir -p "$dir"
+            gh run download "$id" --repo djosh34/tigerstore --name "research-579-recording-$id" --dir "$dir"
+            python3 -B tools/etcdrec/summarize.py "$dir/record.jsonl.gz" "$dir/windows.jsonl" "$dir"
+            for f in "$dir/"*-summary.md; do cat "$f" >> "$GITHUB_STEP_SUMMARY"; done
+          done
+      - uses: actions/upload-artifact@v6
+        with:
+          name: research-579-summaries-${{ github.run_id }}
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/summaries/**/*-summary.json
+            ${{ runner.temp }}/summaries/**/*-summary.md
+            ${{ runner.temp }}/summaries/**/windows.jsonl
