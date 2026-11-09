@@ -1,0 +1,10 @@
+NR = {63: "read", 64: "write", 66: "writev", 82: "fsync", 83: "fdatasync", 98: "futex", 22: "epoll_pwait", 207: "sendto", 211: "sendmsg",
+      212: "recvmsg", 206: "sendto", 113: "clock_gettime", 124: "sched_yield", 129: "kill", 130: "tkill", 131: "tgkill", 135: "rt_sigprocmask",
+      139: "rt_sigreturn", 101: "nanosleep", 226: "mprotect", 233: "madvise", 222: "mmap", 215: "munmap", 278: "getrandom", 67: "pread64",
+      68: "pwrite64", 69: "preadv", 70: "pwritev", 43: "statfs", 56: "openat", 57: "close", 79: "newfstatat", 80: "fstat", 25: "fcntl",
+      29: "ioctl", 242: "accept4", 203: "connect", 172: "getpid", 178: "gettid", 167: "prctl", 165: "getrusage", 134: "rt_sigaction",
+      115: "clock_nanosleep", 21: "epoll_ctl", 61: "getdents64", 84: "sync_file_range", 47: "fallocate", 220: "clone", 435: "clone3",
+      132: "sigaltstack", 46: "ftruncate", 35: "unlinkat", 38: "renameat", 34: "mkdirat", 48: "faccessat", 17: "getcwd", 166: "umask",
+      174: "getuid", 175: "geteuid", 160: "uname", 179: "sysinfo", 261: "prlimit64", 123: "sched_getaffinity", 122: "sched_setaffinity",
+      44: "fstatfs", 62: "lseek", 81: "sync", 267: "syncfs", 59: "pipe2", 23: "dup", 24: "dup3", 19: "eventfd2", 20: "epoll_create1",
+      200: "bind", 201: "listen", 204: "getsockname", 205: "getpeername", 208: "setsockopt", 209: "getsockopt", 210: "shutdown"}
