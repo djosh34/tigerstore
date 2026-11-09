@@ -200,7 +200,7 @@ const (
 	// maxFrame caps one received message. Raft messages are capped at 4
 	// MiB of entries, plus headers.
 	maxFrame = 64 << 20
-	// maxQueued caps the estimated bytes in each of a peer's two queues.
+	// maxQueued caps the estimated bytes in each of a peer's two lanes.
 	maxQueued = 64 << 20
 	// controlQueue and dataQueue cap the queued messages per peer.
 	controlQueue = 4096
@@ -432,10 +432,10 @@ func (t *TCP) newSender(id uint64, addr string) *sender {
 		addr:     addr,
 		ctx:      ctx,
 		cancel:   cancel,
-		ctrl:     make(chan queued, controlQueue),
-		data:     make(chan queued, dataQueue),
 		counters: t.countersOf(id),
 	}
+	s.ctrl.name, s.ctrl.q = "control", make(chan queued, controlQueue)
+	s.data.name, s.data.q = "data", make(chan queued, dataQueue)
 	t.wg.Go(s.run)
 	return s
 }
@@ -884,23 +884,35 @@ func (f *fetchConn) Close() error {
 	return nil
 }
 
-// sender owns the connection to one peer.
+// sender owns the connections to one peer: one for each lane, control
+// and data. A frame is written and read whole, so a heartbeat behind a 64
+// MiB append on one connection waits for all of it to be marshaled, sent,
+// read and decoded: the followers' election timeouts ran out, and they
+// elected a leader whose log lacked the append (#553). On a connection of
+// their own, control messages pass while data is under way, as etcd sends
+// appends on a stream of their own.
 type sender struct {
 	t    *TCP
 	id   uint64
 	addr string
 	// ctx ends when the transport closes or the peer leaves.
-	ctx    context.Context
-	cancel context.CancelFunc
-	ctrl   chan queued
-	data   chan queued
-	// ctrlBytes and dataBytes are the estimated bytes in each queue.
-	ctrlBytes, dataBytes atomic.Int64
-	// version is the protocol version of the connection to the peer, 0
-	// while there is none, and since when it is up in Unix nanoseconds.
+	ctx        context.Context
+	cancel     context.CancelFunc
+	ctrl, data lane
+	// version is the protocol version of the control lane's connection to
+	// the peer, 0 while there is none, and since when it is up in Unix
+	// nanoseconds. The peer counts as connected while that connection is.
 	version  atomic.Uint32
 	since    atomic.Int64
 	counters *counters
+}
+
+// lane is one of a sender's queues, with the connection that writes it.
+type lane struct {
+	name string
+	q    chan queued
+	// bytes are the estimated bytes in q.
+	bytes atomic.Int64
 	// Writer only: messages that waited longer than slowQueue since the
 	// last report, the longest wait among them, the last one's type, and
 	// the report's time.
@@ -929,99 +941,87 @@ func size(m *raftpb.Message) int64 {
 	return n
 }
 
-// isData reports whether a message goes on the data queue. Appends and
+// isData reports whether a message goes on the data lane. Appends and
 // snapshots do, empty appends included, so that they stay in order with
 // each other, and so do proposals that a follower forwards to the leader,
 // which carry whole write batches. Everything else (heartbeats, votes,
-// ReadIndex and their responses) goes ahead of them.
+// ReadIndex and their responses) goes on the control lane, which no data
+// holds up.
 func isData(m *raftpb.Message) bool {
 	t := m.GetType()
 	return t == raftpb.MsgApp || t == raftpb.MsgSnap || t == raftpb.MsgProp
 }
 
 func (s *sender) send(m *raftpb.Message) {
-	q, budget := s.ctrl, &s.ctrlBytes
+	l := &s.ctrl
 	if isData(m) {
-		q, budget = s.data, &s.dataBytes
+		l = &s.data
 	}
 	n := size(m)
-	if budget.Add(n) > maxQueued {
-		budget.Add(-n)
+	if l.bytes.Add(n) > maxQueued {
+		l.bytes.Add(-n)
 		s.counters.sendFailures.Inc()
 		s.t.cfg.Unreachable(s.id)
 		return
 	}
 	select {
-	case q <- queued{m, time.Now()}:
+	case l.q <- queued{m, time.Now()}:
 	default:
-		budget.Add(-n)
+		l.bytes.Add(-n)
 		s.counters.sendFailures.Inc()
 		s.t.cfg.Unreachable(s.id)
 	}
 }
 
-// next returns the next message, control messages first, and whether the
-// queues hold more right now.
-func (s *sender) next(ctx context.Context) (*raftpb.Message, bool) {
+// next returns the next message of lane l.
+func (s *sender) next(ctx context.Context, l *lane) (*raftpb.Message, bool) {
 	var q queued
 	select {
-	case q = <-s.ctrl:
-		s.ctrlBytes.Add(-size(q.m))
-	default:
-		select {
-		case q = <-s.ctrl:
-			s.ctrlBytes.Add(-size(q.m))
-		case q = <-s.data:
-			s.dataBytes.Add(-size(q.m))
-		case <-ctx.Done():
-			return nil, false
-		}
+	case q = <-l.q:
+		l.bytes.Add(-size(q.m))
+	case <-ctx.Done():
+		return nil, false
 	}
-	s.waited(q)
+	s.waited(l, q)
 	return q.m, true
 }
 
-// waited logs messages that waited long in their queue, at most once a
+// waited logs messages that waited long in their lane, at most once a
 // second, with the longest wait, so that a stall on a link can be told
 // apart from a slow disk or a slow committer.
-func (s *sender) waited(q queued) {
+func (s *sender) waited(l *lane, q queued) {
 	d := time.Since(q.at)
 	if d <= slowQueue {
 		return
 	}
-	s.slow++
-	if d > s.slowest {
-		s.slowest = d
+	l.slow++
+	if d > l.slowest {
+		l.slowest = d
 	}
-	s.last = q.m.GetType()
-	if time.Since(s.slowReport) >= time.Second {
-		s.reportWaits()
+	l.last = q.m.GetType()
+	if time.Since(l.slowReport) >= time.Second {
+		s.reportWaits(l)
 	}
 }
 
-// reportWaits logs the long waits counted since the last report. The
-// writer also calls it when a connection ends, so the waits right before
-// a failure are not lost.
-func (s *sender) reportWaits() {
-	if s.slow == 0 {
+// reportWaits logs the long waits counted in lane l since the last
+// report. The writer also calls it when a connection ends, so the waits
+// right before a failure are not lost.
+func (s *sender) reportWaits(l *lane) {
+	if l.slow == 0 {
 		return
 	}
-	s.t.logf("peer: %d messages to %d waited over %v in their queue, the longest %v; the last a %s",
-		s.slow, s.id, slowQueue, s.slowest, s.last)
-	s.slow, s.slowest, s.slowReport = 0, 0, time.Now()
+	s.t.logf("peer: %d %s messages to %d waited over %v in their queue, the longest %v; the last a %s",
+		l.slow, l.name, s.id, slowQueue, l.slowest, l.last)
+	l.slow, l.slowest, l.slowReport = 0, 0, time.Now()
 }
 
-func (s *sender) pending() bool { return len(s.ctrl) > 0 || len(s.data) > 0 }
-
-// drop empties the queues after a failed connection.
-func (s *sender) drop() {
+// drop empties lane l after a failed connection.
+func (s *sender) drop(l *lane) {
 	for {
 		select {
-		case q := <-s.ctrl:
-			s.ctrlBytes.Add(-size(q.m))
-			s.counters.sendFailures.Inc()
-		case q := <-s.data:
-			s.dataBytes.Add(-size(q.m))
+		case q := <-l.q:
+			l.bytes.Add(-size(q.m))
 			s.counters.sendFailures.Inc()
 		default:
 			s.t.cfg.Unreachable(s.id)
@@ -1030,13 +1030,24 @@ func (s *sender) drop() {
 	}
 }
 
+// run writes the data lane on a connection of its own and the control
+// lane on another, until the peer leaves or the transport closes.
 func (s *sender) run() {
+	s.t.wg.Go(func() { s.runLane(&s.data) })
+	s.runLane(&s.ctrl)
+}
+
+// runLane dials the peer for lane l and writes it, again after each
+// failure. The control lane's connection is the peer's: it sets the
+// version, the time it is up since and the active count.
+func (s *sender) runLane(l *lane) {
 	ctx := s.ctx
+	main := l == &s.ctrl
 	backoff := 50 * time.Millisecond
 	for ctx.Err() == nil {
 		c, v, err := s.dial(ctx, s.t.cfg.ID)
 		if err != nil {
-			s.drop()
+			s.drop(l)
 			select {
 			case <-time.After(backoff):
 			case <-ctx.Done():
@@ -1045,20 +1056,24 @@ func (s *sender) run() {
 			continue
 		}
 		backoff = 50 * time.Millisecond
-		s.version.Store(uint32(v))
-		s.since.Store(time.Now().UnixNano())
-		s.t.activeChanged()
-		s.counters.active.Inc()
-		err = s.connected(ctx, c)
-		s.counters.active.Dec()
-		s.version.Store(0)
-		s.since.Store(0)
-		s.t.activeChanged()
-		s.reportWaits()
+		if main {
+			s.version.Store(uint32(v))
+			s.since.Store(time.Now().UnixNano())
+			s.t.activeChanged()
+			s.counters.active.Inc()
+		}
+		err = s.connected(ctx, c, l)
+		if main {
+			s.counters.active.Dec()
+			s.version.Store(0)
+			s.since.Store(0)
+			s.t.activeChanged()
+		}
+		s.reportWaits(l)
 		if err != nil && ctx.Err() == nil {
 			s.counters.disconnected.Inc()
-			s.t.logf("peer: send to %d: %v", s.id, err)
-			s.drop()
+			s.t.logf("peer: send %s to %d: %v", l.name, s.id, err)
+			s.drop(l)
 		}
 	}
 }
@@ -1068,7 +1083,7 @@ func (s *sender) run() {
 // so a read ends only when the connection does: a node with nothing to
 // send still sees the peer close it, as when the cluster removed this
 // node, and dials again to hear why (#263).
-func (s *sender) connected(ctx context.Context, c net.Conn) error {
+func (s *sender) connected(ctx context.Context, c net.Conn, l *lane) error {
 	ctx, stop := context.WithCancel(ctx)
 	var rerr error
 	read := make(chan struct{})
@@ -1082,7 +1097,7 @@ func (s *sender) connected(ctx context.Context, c net.Conn) error {
 			rerr = err
 		}
 	}()
-	err := s.write(ctx, c)
+	err := s.write(ctx, c, l)
 	stop()
 	s.t.untrack(c)
 	<-read
@@ -1218,10 +1233,10 @@ func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) (byte, e
 	return v, c.SetDeadline(time.Time{})
 }
 
-// write sends frames until the connection fails or the transport closes.
-// Frames gather above TLS, so that small ones share a record, and the
-// records under it, so that they share a system call.
-func (s *sender) write(ctx context.Context, c net.Conn) error {
+// write sends the frames of lane l until the connection fails or the
+// transport closes. Frames gather above TLS, so that small ones share a
+// record, and the records under it, so that they share a system call.
+func (s *sender) write(ctx context.Context, c net.Conn, l *lane) error {
 	w := bufio.NewWriterSize(c, ioBuffer)
 	under := bufconn.Under(c)
 	if under != nil {
@@ -1229,7 +1244,7 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 	}
 	var buf []byte
 	for {
-		if !s.pending() {
+		if len(l.q) == 0 {
 			if err := w.Flush(); err != nil {
 				return err
 			}
@@ -1239,7 +1254,7 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 				}
 			}
 		}
-		m, ok := s.next(ctx)
+		m, ok := s.next(ctx, l)
 		if !ok {
 			return nil
 		}

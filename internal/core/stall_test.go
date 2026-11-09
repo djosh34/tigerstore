@@ -88,3 +88,27 @@ func TestSlowCommitWarns(t *testing.T) {
 		t.Fatalf("the longest commit wait is %d ticks, want about %d", m.MaxCommitWait, want)
 	}
 }
+
+// TestStallAllowsForSize is #553: a leader whose own 64 MiB append takes
+// more than StallTicks election timeouts is not stuck if it writes at
+// least stallBytesPerTick a tick, so it stays heard; one that writes
+// slower than that, or a small append that takes as long, goes silent.
+func TestStallAllowsForSize(t *testing.T) {
+	const election = 10
+	base := int64(StallTicks * election)
+	for _, c := range []struct {
+		bytes, at int64
+		silent    bool
+	}{
+		{bytes: 100, at: base - 1, silent: false},
+		{bytes: 100, at: base, silent: true},
+		{bytes: 64 << 20, at: base, silent: false},
+		{bytes: 64 << 20, at: base + 64 - 1, silent: false},
+		{bytes: 64 << 20, at: base + 64, silent: true},
+	} {
+		n := &Node{cfg: Config{ElectionTicks: election}, isLeader: true, now: c.at, appending: []appendAt{{at: 0, bytes: c.bytes}}}
+		if got := n.stalled(); got != c.silent {
+			t.Errorf("an append of %d bytes at tick %d: stalled %v, want %v", c.bytes, c.at, got, c.silent)
+		}
+	}
+}

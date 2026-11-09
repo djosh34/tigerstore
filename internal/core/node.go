@@ -41,6 +41,14 @@ import (
 // leader, and it steps down when it hears the new term. It never stops.
 const StallTicks = 2
 
+// stallBytesPerTick is the slowest a disk that is not stuck writes: an
+// append also gets a tick for each stallBytesPerTick of its entries, 10
+// MiB/s at a real node's 100 ms tick. A disk is judged by how fast it
+// writes, not by how long one write takes: a 64 MiB append took more than
+// two election timeouts under the race detector, its leader went silent,
+// and the followers elected a leader without the entry (#553).
+const stallBytesPerTick = 1 << 20
+
 // SlowCommitTicks is how many election timeouts a leader's entry may wait
 // to commit before the leader warns (Effects.SlowCommit) and counts it
 // (Counters.SlowCommits). Nothing else happens: as in etcd, a leader whose
@@ -519,9 +527,10 @@ type Node struct {
 	props         []*raftpb.Message
 	propBytesHeld int64
 	// appending holds the tick at which each local append with entries
-	// went to disk, oldest first; appends finish in order. If the oldest
-	// gets too old on the leader, it sends nothing to its peers (stalled).
-	appending []int64
+	// went to disk, and its entries' bytes, oldest first; appends finish
+	// in order. If the oldest gets too old for its size on the leader, it
+	// sends nothing to its peers (stalled).
+	appending []appendAt
 	// uncommitted holds the last index and the tick of each local append
 	// with entries since this node became leader, until they commit.
 	// maxCommitWait is the most ticks one of them waited to commit, those
@@ -2017,7 +2026,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			n.unpersisted += job.bytes
 			n.out.Persist = append(n.out.Persist, job)
 			if len(job.Entries) > 0 {
-				n.appending = append(n.appending, n.now)
+				n.appending = append(n.appending, appendAt{n.now, job.bytes})
 				if n.isLeader {
 					n.uncommitted = append(n.uncommitted, proposedAt{job.Entries[len(job.Entries)-1].GetIndex(), n.now})
 				}
@@ -2602,12 +2611,21 @@ func (n *Node) slowCommits() bool {
 	return wait >= int64(cmp.Or(n.cfg.SlowCommitElections, SlowCommitTicks))*int64(n.cfg.ElectionTicks)
 }
 
+// appendAt is a local append with entries: the tick it went to disk and
+// its entries' bytes.
+type appendAt struct{ at, bytes int64 }
+
 // stalled reports whether this node leads and its oldest append not yet
-// durable has taken StallElections election timeouts: its disk is stuck,
-// and it sends nothing to its peers until the disk catches up.
+// durable has taken StallElections election timeouts and a tick for each
+// stallBytesPerTick of its entries: its disk is stuck, and it sends
+// nothing to its peers until the disk catches up.
 func (n *Node) stalled() bool {
-	limit := int64(cmp.Or(n.cfg.StallElections, StallTicks)) * int64(n.cfg.ElectionTicks)
-	return !planted.On("B17") && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= limit
+	if planted.On("B17") || !n.isLeader || len(n.appending) == 0 {
+		return false
+	}
+	a := n.appending[0]
+	limit := int64(cmp.Or(n.cfg.StallElections, StallTicks))*int64(n.cfg.ElectionTicks) + a.bytes/stallBytesPerTick
+	return n.now-a.at >= limit
 }
 
 // maxHeld bounds the messages held while a term or vote change is not yet
