@@ -12,10 +12,15 @@ type offsets struct {
 	Head, Tail, Mask, Entries, Flags, Dropped, Array, Reserved uint32
 	Addr                                                       uint64
 }
+type cqOffsets struct {
+	Head, Tail, Mask, Entries, Overflow, CQEs, Flags, Reserved uint32
+	Addr                                                       uint64
+}
 type params struct {
 	SQ, CQ, Flags, CPU, Idle, Features, WQ uint32
 	Reserved                               [3]uint32
-	S, C                                   offsets
+	S                                      offsets
+	C                                      cqOffsets
 }
 type sqe struct {
 	Op, Flags        uint8
@@ -77,7 +82,7 @@ func uringServer() {
 	if unsafe.Sizeof(p) != 120 || unsafe.Sizeof(sqe{}) != 64 {
 		panic("ABI")
 	}
-	size := max(int(p.S.Array+p.SQ*4), int(p.C.Array+p.CQ*16))
+	size := max(int(p.S.Array+p.SQ*4), int(p.C.CQEs+p.CQ*16))
 	if p.Features&1 == 0 {
 		panic("single mmap required")
 	}
@@ -164,7 +169,7 @@ func uringServer() {
 		head := atomic.LoadUint32(ch)
 		tail := atomic.LoadUint32(ct)
 		for head != tail {
-			c := *(*cqe)(unsafe.Pointer(&rings[p.C.Array+(head&cm)*16]))
+			c := *(*cqe)(unsafe.Pointer(&rings[p.C.CQEs+(head&cm)*16]))
 			head++
 			kind := c.Data & 255
 			if kind == 1 {
@@ -188,6 +193,12 @@ func uringServer() {
 			state := &conns[i]
 			if kind == 3 {
 				if c.Flags&8 != 0 {
+					if measuring.Load() {
+						zcNotifications++
+						if uint32(c.Res)&(1<<31) != 0 {
+							zcCopied++
+						}
+					}
 					continue
 				}
 				state.Busy = false
@@ -262,14 +273,14 @@ func uringServer() {
 				q.Len = uint32(min(s.Pending, sendSize))
 				q.OpFlags = unix.MSG_NOSIGNAL
 				if op == 47 {
-					q.Priority = 4
+					q.Priority = 4 | 8 // fixed registered buffer + report zero-copy fallback
 				}
 				s.Busy = true
 			}
 		}
 	}
 	finish()
-	if *ptr[uint32](rings, p.C.Flags) != 0 {
+	if *ptr[uint32](rings, p.C.Overflow) != 0 {
 		panic("CQ overflow")
 	}
 	runtime.KeepAlive(recv)

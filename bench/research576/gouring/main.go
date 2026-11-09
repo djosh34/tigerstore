@@ -29,6 +29,7 @@ var startCPU int64
 var started time.Time
 var done = make(chan struct{})
 var stopOnce sync.Once
+var zcNotifications, zcCopied uint64
 
 func check(e error) {
 	if e != nil {
@@ -45,6 +46,7 @@ func begin() {
 	startCPU = cpu()
 	started = time.Now()
 	count.Store(0)
+	zcNotifications, zcCopied = 0, 0
 	measuring.Store(true)
 }
 func finish() {
@@ -54,7 +56,7 @@ func finish() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	n := count.Load()
-	json.NewEncoder(os.Stdout).Encode(map[string]any{"mode": *mode, "reply": *reply, "requests": n, "seconds": elapsed.Seconds(), "rps": float64(n) / elapsed.Seconds(), "cpu_us_per_req": float64(endCPU-startCPU) / 1000 / float64(n), "mallocs": m.Mallocs - startMem.Mallocs, "allocs_per_req": float64(m.Mallocs-startMem.Mallocs) / float64(n), "bytes_allocated": m.TotalAlloc - startMem.TotalAlloc, "gomaxprocs": runtime.GOMAXPROCS(0)})
+	json.NewEncoder(os.Stdout).Encode(map[string]any{"mode": *mode, "reply": *reply, "requests": n, "seconds": elapsed.Seconds(), "rps": float64(n) / elapsed.Seconds(), "cpu_us_per_req": float64(endCPU-startCPU) / 1000 / float64(n), "mallocs": m.Mallocs - startMem.Mallocs, "allocs_per_req": float64(m.Mallocs-startMem.Mallocs) / float64(n), "bytes_allocated": m.TotalAlloc - startMem.TotalAlloc, "gomaxprocs": runtime.GOMAXPROCS(0), "zc_notifications": zcNotifications, "zc_copied": zcCopied})
 }
 func special(b byte) bool {
 	if b == 254 {
