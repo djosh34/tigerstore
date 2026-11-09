@@ -49,7 +49,12 @@ def request_shape(method, d):
         lim = d.get('limit', 0)
         return method + ' prefix limit=' + ('1 probe' if lim == 1 else '>1 page' if lim > 1 else '0 unbounded')
     if method == 'Txn':
-        comp = ','.join(c['target'] + ':' + c['result'] for c in d.get('compare', [])) or 'none'
+        def compare_shape(c):
+            target=c['target']; field={'MOD':'mod_revision','CREATE':'create_revision','VERSION':'version','LEASE':'lease'}.get(target)
+            value=c.get(field) if field else None
+            bucket='(0)' if value == 0 else '(>0)' if isinstance(value,int) and value > 0 else '(<0)' if isinstance(value,int) and value < 0 else ''
+            return target+bucket+':'+c['result']
+        comp = ','.join(compare_shape(c) for c in d.get('compare', [])) or 'none'
         def ops(a):
             return ','.join(('put+lease' if x['request_put'].get('lease') else 'put') if 'request_put' in x else 'delete' if 'request_delete_range' in x else 'range' if 'request_range' in x else 'txn' for x in a) or 'none'
         return f"Txn {comp} success={ops(d.get('success', []))} failure={ops(d.get('failure', []))}"
@@ -87,6 +92,7 @@ def summarize(events, start, end):
     watched_roots = {e['data']['create_request']['key'].rstrip('/') for e in events if e['phase']=='request' and 'create_request' in e.get('data',{}) and e['data']['create_request']['key'].endswith('/')}
     txns = C.Counter()
     compacts = []
+    lease_ttls = C.Counter()
     streams = set()
     watch_defs = {}
     watch_pending = C.defaultdict(list)
@@ -141,6 +147,7 @@ def summarize(events, start, end):
                     root_probe_keys[d['key']] += 1
                 if method in ('Range','RangeStream') and d.get('range_end'):
                     range_keys[(method,d['key'],d.get('limit',0),bool(d.get('count_only')))]+=1
+                if method=='LeaseGrant': lease_ttls[d.get('TTL',d.get('ttl'))] += 1
                 if method=='Compaction' or method=='Compact': compacts.append({'t':t,'revision':d.get('revision'),'physical':d.get('physical')})
         if phase=='response':
             if method=='Watch':
@@ -167,6 +174,7 @@ def summarize(events, start, end):
     hist_all[len(active)]+=dt;hist_unary[sum(x not in ('Watch','LeaseKeepAlive') for x in active.values())]+=dt;hist_conn[len(open_conns)]+=dt
     top=sorted((len(ts) for ts in writes.values()),reverse=True);nw=sum(top)
     intervals=[b-a for ts in writes.values() for a,b in zip(ts,ts[1:])]
+    top_keys=[{'key':k,'puts':len(writes[k]),'repeat_intervals_s':stats([b-a for a,b in zip(writes[k],writes[k][1:])])} for k in sorted(writes,key=lambda k:len(writes[k]),reverse=True)[:20]]
     outresources={}
     for p,r in sorted(resources.items()):
         outresources[p]={'calls':dict(r['calls']),'put_count':len(r['puts']),'delete_count':r['deletes'],'writes_per_s':(len(r['puts'])+r['deletes'])/duration,'put_value_bytes':stats(r['puts']),'read_response_bytes':stats(r['read_bytes']),'watch_events_per_s':r['events']/duration,'watch_event_bytes':r['event_bytes'],'watch_events':r['events'],'watch_creates':r['watch_creates'],'watch_progress_responses':r['progress_responses']}
@@ -185,7 +193,7 @@ def summarize(events, start, end):
                 wstreams.discard(c);wactive={k:v for k,v in wactive.items() if k[0]!=c}
     active_at_start=dict(C.Counter(prefix(v['key']) for v in wactive.values()))
     total=sum(shapes.values())
-    return {'duration_s':duration,'request_messages':total,'request_messages_per_s':total/duration,'rpc_starts':dict(rpcstarts),'rpc_starts_per_s':sum(rpcstarts.values())/duration,'methods':dict(methods),'shapes':{k:{'n':v,'share_pct':100*v/total} for k,v in shapes.most_common()},'resources':outresources,'key_popularity':{'distinct_keys_put':len(writes),'successful_puts':nw,'top_1pct_keys_put_share_pct':100*sum(top[:math.ceil(.01*len(top))])/nw if nw else 0,'top_10pct_keys_put_share_pct':100*sum(top[:math.ceil(.1*len(top))])/nw if nw else 0,'repeat_put_intervals_s':stats(intervals),'per_key_put_count':dict(sorted((k,len(ts)) for k,ts in writes.items()))},'ranges': [{'method':method,'key':k,'limit':l,'count_only':c,'n':n} for (method,k,l,c),n in range_keys.most_common()],'resource_root_single_key_limit1':{'n':sum(root_probe_keys.values()),'keys':dict(root_probe_keys)},'connections_seen':len(seen_conns),'connection_concurrency':weighted(hist_conn),'inflight_all_rpc':weighted(hist_all),'inflight_unary':weighted(hist_unary),'inflight_hist_duration_s':dict(hist_all),'watch_streams_at_start':len(wstreams),'watch_stream_starts':rpcstarts['Watch'],'active_watches_at_start':active_at_start,'active_watch_keys_at_start':dict(C.Counter(v['key'] for v in wactive.values())),'active_watch_configs_at_start':list(wactive.values()),'watch_progress_requests':shapes['Watch progress'],'compactions':compacts,'txn_results':dict(txns),'txn_failure_pct':100*txns['failed']/txns['responses'] if txns['responses'] else 0,'rpc_errors':dict(errors)}
+    return {'duration_s':duration,'request_messages':total,'request_messages_per_s':total/duration,'rpc_starts':dict(rpcstarts),'rpc_starts_per_s':sum(rpcstarts.values())/duration,'methods':dict(methods),'shapes':{k:{'n':v,'share_pct':100*v/total} for k,v in shapes.most_common()},'resources':outresources,'key_popularity':{'distinct_keys_put':len(writes),'successful_puts':nw,'top_1pct_keys_put_share_pct':100*sum(top[:math.ceil(.01*len(top))])/nw if nw else 0,'top_10pct_keys_put_share_pct':100*sum(top[:math.ceil(.1*len(top))])/nw if nw else 0,'repeat_put_intervals_s':stats(intervals),'top_put_keys':top_keys,'per_key_put_count':dict(sorted((k,len(ts)) for k,ts in writes.items()))},'ranges': [{'method':method,'key':k,'limit':l,'count_only':c,'n':n} for (method,k,l,c),n in range_keys.most_common()],'resource_root_single_key_limit1':{'n':sum(root_probe_keys.values()),'keys':dict(root_probe_keys)},'connections_seen':len(seen_conns),'connection_concurrency':weighted(hist_conn),'inflight_all_rpc':weighted(hist_all),'inflight_unary':weighted(hist_unary),'inflight_hist_duration_s':dict(hist_all),'watch_streams_at_start':len(wstreams),'watch_stream_starts':rpcstarts['Watch'],'active_watches_at_start':active_at_start,'active_watch_keys_at_start':dict(C.Counter(v['key'] for v in wactive.values())),'active_watch_configs_at_start':list(wactive.values()),'watch_progress_requests':shapes['Watch progress'],'lease_grant_ttl_counts':dict(lease_ttls),'compactions':compacts,'txn_results':dict(txns),'txn_failure_pct':100*txns['failed']/txns['responses'] if txns['responses'] else 0,'rpc_errors':dict(errors)}
 
 
 def markdown(name,s):
