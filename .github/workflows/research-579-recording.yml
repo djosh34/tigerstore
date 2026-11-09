@@ -12,6 +12,9 @@ on:
       idle_seconds:
         type: string
         default: '600'
+      run_load:
+        type: boolean
+        default: true
 permissions:
   contents: read
 concurrency:
@@ -26,6 +29,7 @@ jobs:
       GOMAXPROCS: '4'
       REC_ROOT: /tmp/recording579
       NODES: ${{ inputs.nodes || '100' }}
+      RUN_LOAD: ${{ github.event_name != 'workflow_dispatch' || inputs.run_load }}
       IDLE_SECONDS: ${{ inputs.idle_seconds || '600' }}
       PERF_COMMIT: 01a4367bce12691ea1e910394290b72a90b4fa65
     steps:
@@ -37,6 +41,7 @@ jobs:
         run: |
           mkdir -p "$REC_ROOT"/{bin,results,perf}
           go test ./tools/etcdrec
+          python3 -B -m unittest discover -s tools/etcdrec -p 'test_*.py'
           go build -o "$REC_ROOT/bin/etcdrec" ./tools/etcdrec
           curl -fsSL --retry 3 "https://github.com/kubernetes/perf-tests/archive/$PERF_COMMIT.tar.gz" | tar xz --strip-components=1 -C "$REC_ROOT/perf"
           cd "$REC_ROOT/perf/clusterloader2"

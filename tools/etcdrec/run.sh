@@ -10,6 +10,7 @@ mark idle start
 sleep "${IDLE_SECONDS:-600}"
 mark idle end
 kubectl get --raw /metrics > "$root/results/apiserver-metrics-idle-end.txt"
+if [ "${RUN_LOAD:-true}" = false ]; then exit 0; fi
 # Upstream load lifecycle, with real-network/SLO/Prometheus measurements, DNS
 # checks, scheduler microbenchmark and separate pod-startup microbenchmark
 # omitted. The actual create / scale-and-update / delete modules are unchanged.
