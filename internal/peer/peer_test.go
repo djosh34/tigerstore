@@ -171,8 +171,14 @@ func TestSendInOrderAndReconnect(t *testing.T) {
 	if a.unreachable.Load() == 0 {
 		t.Fatal("no unreachable report while the peer was down")
 	}
-	if n := testutil.ToFloat64(a.t.cfg.Metrics.DisconnectedPeers.WithLabelValues("1", "2")); n == 0 {
-		t.Fatal("etcd_network_disconnected_peers_total did not count the lost peer")
+	// Both lanes' connections fail; the peer counts as lost once.
+	lost := func() float64 { return testutil.ToFloat64(a.t.cfg.Metrics.DisconnectedPeers.WithLabelValues("1", "2")) }
+	for wait := time.Now().Add(10 * time.Second); lost() == 0 && time.Now().Before(wait); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(500 * time.Millisecond)
+	if n := lost(); n != 1 {
+		t.Fatalf("etcd_network_disconnected_peers_total counted the lost peer %g times, want once", n)
 	}
 
 	// Node 2 comes back on the same address and gets new messages.

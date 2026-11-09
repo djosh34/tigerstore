@@ -41,12 +41,16 @@ import (
 // leader, and it steps down when it hears the new term. It never stops.
 const StallTicks = 2
 
-// stallBytesPerTick is the slowest a disk that is not stuck writes: an
-// append also gets a tick for each stallBytesPerTick of its entries, 10
-// MiB/s at a real node's 100 ms tick. A disk is judged by how fast it
-// writes, not by how long one write takes: a 64 MiB append took more than
-// two election timeouts under the race detector, its leader went silent,
-// and the followers elected a leader without the entry (#553).
+// stallBytesPerTick is the slowest a disk that is not stuck writes: the
+// oldest append also gets a tick for each stallBytesPerTick of the entry
+// bytes still on their way to the disk, 10 MiB/s at a real node's 100 ms
+// tick. A disk is judged by how fast it writes, not by how long one write
+// takes: a 64 MiB append took more than two election timeouts under the
+// race detector, its leader went silent, and the followers elected a
+// leader without the entry (#553). The driver writes the jobs queued
+// behind the oldest in one group with it, so their bytes count too, and
+// the time counts from the disk's last progress: an append that waited
+// behind a large one that finished is not late for it (#564).
 const stallBytesPerTick = 1 << 20
 
 // SlowCommitTicks is how many election timeouts a leader's entry may wait
@@ -527,10 +531,12 @@ type Node struct {
 	props         []*raftpb.Message
 	propBytesHeld int64
 	// appending holds the tick at which each local append with entries
-	// went to disk, and its entries' bytes, oldest first; appends finish
-	// in order. If the oldest gets too old for its size on the leader, it
-	// sends nothing to its peers (stalled).
-	appending []appendAt
+	// went to disk, oldest first; appends finish in order, and durableAt
+	// is the tick the last one did. If the disk makes no progress for too
+	// long for the bytes still to write on the leader, it sends nothing to
+	// its peers (stalled).
+	appending []int64
+	durableAt int64
 	// uncommitted holds the last index and the tick of each local append
 	// with entries since this node became leader, until they commit.
 	// maxCommitWait is the most ticks one of them waited to commit, those
@@ -1817,6 +1823,7 @@ func (n *Node) Persisted(job PersistJob) {
 			n.own = n.own[1:]
 		}
 		n.appending = n.appending[1:]
+		n.durableAt = n.now
 	}
 	if job.newVote {
 		n.unsyncedVotes--
@@ -2026,7 +2033,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			n.unpersisted += job.bytes
 			n.out.Persist = append(n.out.Persist, job)
 			if len(job.Entries) > 0 {
-				n.appending = append(n.appending, appendAt{n.now, job.bytes})
+				n.appending = append(n.appending, n.now)
 				if n.isLeader {
 					n.uncommitted = append(n.uncommitted, proposedAt{job.Entries[len(job.Entries)-1].GetIndex(), n.now})
 				}
@@ -2611,21 +2618,20 @@ func (n *Node) slowCommits() bool {
 	return wait >= int64(cmp.Or(n.cfg.SlowCommitElections, SlowCommitTicks))*int64(n.cfg.ElectionTicks)
 }
 
-// appendAt is a local append with entries: the tick it went to disk and
-// its entries' bytes.
-type appendAt struct{ at, bytes int64 }
-
-// stalled reports whether this node leads and its oldest append not yet
-// durable has taken StallElections election timeouts and a tick for each
-// stallBytesPerTick of its entries: its disk is stuck, and it sends
-// nothing to its peers until the disk catches up.
+// stalled reports whether this node leads and its disk, with appends
+// not yet durable, has made none durable for StallElections election
+// timeouts and a tick for each stallBytesPerTick of the entry bytes still
+// on their way to it: since the oldest such append went to disk, or the
+// last append before it became durable, whichever is later. Its disk is
+// stuck then, and it sends nothing to its peers until the disk catches
+// up. The entries queued are bounded, so a disk that writes nothing still
+// trips it.
 func (n *Node) stalled() bool {
 	if planted.On("B17") || !n.isLeader || len(n.appending) == 0 {
 		return false
 	}
-	a := n.appending[0]
-	limit := int64(cmp.Or(n.cfg.StallElections, StallTicks))*int64(n.cfg.ElectionTicks) + a.bytes/stallBytesPerTick
-	return n.now-a.at >= limit
+	limit := int64(cmp.Or(n.cfg.StallElections, StallTicks))*int64(n.cfg.ElectionTicks) + n.unpersisted/stallBytesPerTick
+	return n.now-max(n.appending[0], n.durableAt) >= limit
 }
 
 // maxHeld bounds the messages held while a term or vote change is not yet

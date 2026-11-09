@@ -728,7 +728,7 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 	mode = id & (fetchBit | callBit)
 	id &^= fetchBit | callBit
 	if cluster := binary.BigEndian.Uint64(p[12:20]); cluster != t.cfg.ClusterID && (id != 0 || mode != callBit) {
-		err = c.SetWriteDeadline(t.writeDeadline())
+		err = c.SetWriteDeadline(t.writeDeadline(0))
 		if err == nil {
 			_, err = c.Write([]byte{clusterReply})
 		}
@@ -739,7 +739,7 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 		switch {
 		case (*t.removed.Load())[id]:
 			// As etcd's peers answer a removed member, so that it stops.
-			err = c.SetWriteDeadline(t.writeDeadline())
+			err = c.SetWriteDeadline(t.writeDeadline(0))
 			if err == nil {
 				_, err = c.Write([]byte{removedReply})
 			}
@@ -760,7 +760,7 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 		err = fmt.Errorf("peer %d chose %s in ALPN, but its preface picks version %d", id, name, v)
 		v = 0
 	}
-	if werr := c.SetWriteDeadline(t.writeDeadline()); werr != nil {
+	if werr := c.SetWriteDeadline(t.writeDeadline(0)); werr != nil {
 		return 0, 0, 0, errors.Join(err, werr)
 	}
 	if _, werr := c.Write([]byte{v}); werr != nil {
@@ -833,7 +833,7 @@ type deadlineWriter struct {
 }
 
 func (w *deadlineWriter) Write(p []byte) (int, error) {
-	if err := w.c.SetWriteDeadline(w.t.writeDeadline()); err != nil {
+	if err := w.c.SetWriteDeadline(w.t.writeDeadline(len(p))); err != nil {
 		return 0, err
 	}
 	return w.c.Write(p)
@@ -854,7 +854,7 @@ func (t *TCP) Fetch(ctx context.Context, id, first, last uint64) (io.ReadCloser,
 	var span [16]byte
 	binary.BigEndian.PutUint64(span[:], first)
 	binary.BigEndian.PutUint64(span[8:], last)
-	if err := c.SetWriteDeadline(t.writeDeadline()); err != nil {
+	if err := c.SetWriteDeadline(t.writeDeadline(0)); err != nil {
 		t.untrack(c)
 		return nil, err
 	}
@@ -1059,10 +1059,10 @@ func (s *sender) runLane(l *lane) {
 		backoff = 50 * time.Millisecond
 		s.laneUp(v)
 		err = s.connected(ctx, c, l)
-		s.laneDown()
+		failed := err != nil && ctx.Err() == nil
+		s.laneDown(failed)
 		s.reportWaits(l)
-		if err != nil && ctx.Err() == nil {
-			s.counters.disconnected.Inc()
+		if failed {
 			s.t.logf("peer: send %s to %d: %v", l.name, s.id, err)
 			s.drop(l)
 		}
@@ -1070,7 +1070,8 @@ func (s *sender) runLane(l *lane) {
 }
 
 // laneUp counts a lane's connection of version v as up. The first one
-// makes the peer connected.
+// makes the peer connected, with its version: both lanes offer the same
+// range, so they agree on it.
 func (s *sender) laneUp(v byte) {
 	s.upMu.Lock()
 	s.up++
@@ -1086,13 +1087,17 @@ func (s *sender) laneUp(v byte) {
 	}
 }
 
-// laneDown counts a lane's connection as down. The last one makes the
-// peer disconnected.
-func (s *sender) laneDown() {
+// laneDown counts a lane's connection as down, failed if it ended on an
+// error. The last one makes the peer disconnected, and counts the peer as
+// lost once, as etcd counts a peer going inactive, if it failed.
+func (s *sender) laneDown(failed bool) {
 	s.upMu.Lock()
 	s.up--
 	last := s.up == 0
 	if last {
+		if failed {
+			s.counters.disconnected.Inc()
+		}
 		s.counters.active.Dec()
 		s.version.Store(0)
 		s.since.Store(0)
@@ -1300,7 +1305,7 @@ func (s *sender) write(ctx context.Context, c net.Conn, l *lane) error {
 		if err != nil {
 			return err
 		}
-		if err := c.SetWriteDeadline(s.t.writeDeadline()); err != nil {
+		if err := c.SetWriteDeadline(s.t.writeDeadline(len(buf))); err != nil {
 			return err
 		}
 		if _, err := w.Write(buf); err != nil {
@@ -1313,14 +1318,23 @@ func (s *sender) write(ctx context.Context, c net.Conn, l *lane) error {
 	}
 }
 
-// writeDeadline is when a write that has not finished fails the
-// connection, so that a stalled peer is dropped and reported.
-func (t *TCP) writeDeadline() time.Time {
+// writeDeadline is when a write of a frame of n bytes that has not
+// finished fails the connection, so that a stalled peer is dropped and
+// reported. A frame also gets the time it takes at slowLink: with heartbeats
+// on a connection of their own, a 64 MiB append on a link too slow to carry
+// it in the write timeout would fail its connection and be sent again for
+// good while the leader stays in office.
+func (t *TCP) writeDeadline(n int) time.Time {
 	if planted.On("B14") {
 		// Planted: no deadline; a stalled peer holds the writer.
 		return time.Time{}
 	}
-	return time.Now().Add(cmp.Or(t.cfg.WriteTimeout, defaultTimeout))
+	return time.Now().Add(cmp.Or(t.cfg.WriteTimeout, defaultTimeout) + time.Duration(n)*time.Second/slowLink)
 }
+
+// slowLink is the slowest link, in bytes a second, that a frame's write
+// deadline allows for: 10 MiB/s, as the leader's stall guard allows its
+// disk.
+const slowLink = 10 << 20
 
 func (t *TCP) readTimeout() time.Duration { return cmp.Or(t.cfg.ReadTimeout, defaultTimeout) }

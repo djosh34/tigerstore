@@ -100,7 +100,7 @@ func (t *TCP) answer(c net.Conn, r io.Reader, from uint64) error {
 	} else {
 		out = append([]byte{0}, out...)
 	}
-	if err := c.SetWriteDeadline(t.writeDeadline()); err != nil {
+	if err := c.SetWriteDeadline(t.writeDeadline(0)); err != nil {
 		return err
 	}
 	return writeChunk(c, out)
