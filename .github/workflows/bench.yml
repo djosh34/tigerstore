@@ -4,14 +4,14 @@ on:
 jobs:
   census:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 25
+    timeout-minutes: 40
     strategy:
-      max-parallel: 2
+      max-parallel: 3
       matrix:
         include:
-          - {name: current-1, seed: 1, mix: '18,10,2,50,12,8'}
-          - {name: current-5, seed: 5, mix: '18,10,2,50,12,8'}
-          - {name: old-1, seed: 1, mix: '25,0,10,40,15,10'}
+          - {name: d10, seed: 1, mix: '18,10,2,50,12,8', duration: 10s}
+          - {name: d60, seed: 1, mix: '18,10,2,50,12,8', duration: 60s}
+          - {name: d180, seed: 1, mix: '18,10,2,50,12,8', duration: 180s}
     env:
       GOFLAGS: -p=2
     steps:
@@ -32,6 +32,7 @@ jobs:
       - name: Record response reuse, not throughput
         env:
           SEED: ${{ matrix.seed }}
+          DURATION: ${{ matrix.duration }}
           MIX: ${{ matrix.mix }}
           CERTS: certs
           ETCDCTL: bin/etcdctl
@@ -54,7 +55,7 @@ jobs:
           taskset -c 3 bin/loadgen -endpoints "$(cat "$dir/endpoints")" \
             -cacert certs/ca.pem -cert certs/client.pem -key certs/client-key.pem \
             -pids "$(cat "$dir/pids")" -workload mixed -keys 1000000 \
-            -conns 6 -streams 48 -warmup 3s -duration 10s -seed "$SEED" \
+            -conns 6 -streams 48 -warmup 3s -duration "$DURATION" -seed "$SEED" \
             -mix "$MIX" -out results/result.json 2>&1 | tee results/census.log
           sample after
           cp "$dir"/n*.log results/
