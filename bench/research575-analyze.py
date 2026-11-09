@@ -116,6 +116,26 @@ def recipe(stack):
     return 'dependency/stdlib', 'bounded typed reuse at caller if exposed, else fork or control-plane allocation exception'
 
 
+def cpu(path):
+    # Exclusive first-match stack attribution: GC assists are not also allocation.
+    totals = {}
+    for stack, values in profile(path).items():
+        names = ' '.join(x[0] for x in stack)
+        if any(s in names for s in ('runtime.gcBgMarkWorker', 'runtime.gcAssistAlloc', 'runtime.gcStart', 'runtime.gcMarkDone', 'runtime.bgsweep', 'runtime.bgscavenge')):
+            cat = 'GC'
+        elif any(s in names for s in ('runtime.mallocgc', 'runtime.newobject', 'runtime.makeslice', 'runtime.growslice')):
+            cat = 'allocation'
+        elif 'github.com/google/btree' in names:
+            cat = 'Btree'
+        elif 'crypto/tls' in names:
+            cat = 'TLS (includes IO below it)'
+        else:
+            cat = 'other'
+        totals[cat] = totals.get(cat, 0) + values.get('cpu', 0)
+    total = sum(totals.values())
+    print(path, 'sampled CPU seconds', total/1e9, 'exclusive shares', {k: round(v/total*100, 2) for k, v in totals.items()})
+
+
 def census(out):
     out = Path(out)
     result = json.loads((out/'result.json').read_text())
@@ -149,3 +169,5 @@ def census(out):
 if __name__ == '__main__':
     for arg in sys.argv[1:]:
         census(arg)
+        for path in Path(arg).glob('*.cpu'):
+            cpu(path)
