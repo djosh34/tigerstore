@@ -139,19 +139,25 @@ func stalledPeerIsDropped(t *testing.T) error {
 	case <-time.After(10 * time.Second):
 		return errors.New("nothing arrived before the stall")
 	}
-	stalled := proxy.stallOpen()
-	if len(stalled) != 1 {
-		return fmt.Errorf("%d connections before the stall, want 1", len(stalled))
+	// One connection for each lane, control and data (#553).
+	for wait := time.Now().Add(5 * time.Second); proxy.accepted.Load() < 2 && time.Now().Before(wait); {
+		time.Sleep(10 * time.Millisecond)
 	}
+	stalled := proxy.stallOpen()
+	if len(stalled) != 2 {
+		return fmt.Errorf("%d connections before the stall, want 2", len(stalled))
+	}
+	opened := proxy.accepted.Load()
 	unreachable := a.unreachable.Load()
 	big := strings.Repeat("x", 128<<10)
 	for i := range uint64(200) {
 		a.t.Send(msg(10+i, big))
 	}
-	// The stall is in place once the forwarder got the next bytes and
+	// The stall is in place once a forwarder got the next bytes and
 	// stopped; from then on node 1's writes fill the socket and block.
 	select {
 	case <-stalled[0].held:
+	case <-stalled[1].held:
 	case <-time.After(5 * time.Second):
 		return errors.New("the stall never took effect")
 	}
@@ -163,7 +169,7 @@ func stalledPeerIsDropped(t *testing.T) error {
 			if string(m.Entries[0].Data) != "after" {
 				continue
 			}
-			if proxy.accepted.Load() < 2 {
+			if proxy.accepted.Load() <= opened {
 				return errors.New("a message arrived after the stall without a new connection")
 			}
 			if a.unreachable.Load() == unreachable {

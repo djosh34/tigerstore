@@ -1472,7 +1472,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			n.logf("warning: the leader's oldest entry has waited %d election timeouts to commit", cmp.Or(n.cfg.Core.SlowCommitElections, core.SlowCommitTicks))
 		}
 		if eff.Silent {
-			n.logf("warning: the leader's disk write has taken %d election timeouts; sending nothing to peers until it is durable", cmp.Or(n.cfg.Core.StallElections, core.StallTicks))
+			n.logf("warning: the leader's disk write has taken %d election timeouts and more than its size allows; sending nothing to peers until it is durable", cmp.Or(n.cfg.Core.StallElections, core.StallTicks))
 		}
 		if eff.Members != nil {
 			n.setMembers(eff.Members)
