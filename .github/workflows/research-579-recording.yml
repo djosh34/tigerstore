@@ -1,0 +1,71 @@
+name: research-579-recording
+run-name: research 579 recording (${{ inputs.nodes || '100' }} kwok nodes)
+on:
+  push:
+    branches: [research/579-recording]
+    paths: ['tools/etcdrec/**', '.github/workflows/research-579-recording.yml']
+  workflow_dispatch:
+    inputs:
+      nodes:
+        type: string
+        default: '100'
+      idle_seconds:
+        type: string
+        default: '600'
+permissions:
+  contents: read
+concurrency:
+  group: research-579-recording
+  cancel-in-progress: false
+jobs:
+  record:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 110
+    env:
+      GOFLAGS: -p=2
+      GOMAXPROCS: '4'
+      REC_ROOT: ${{ runner.temp }}/recording579
+      NODES: ${{ inputs.nodes || '100' }}
+      IDLE_SECONDS: ${{ inputs.idle_seconds || '600' }}
+      PERF_COMMIT: 01a4367bce12691ea1e910394290b72a90b4fa65
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Build recorder and pinned clusterloader2 (one build at a time)
+        run: |
+          mkdir -p "$REC_ROOT"/{bin,results,perf}
+          go test ./tools/etcdrec
+          go build -o "$REC_ROOT/bin/etcdrec" ./tools/etcdrec
+          curl -fsSL --retry 3 "https://github.com/kubernetes/perf-tests/archive/$PERF_COMMIT.tar.gz" | tar xz --strip-components=1 -C "$REC_ROOT/perf"
+          cd "$REC_ROOT/perf/clusterloader2"
+          go build -o "$REC_ROOT/bin/clusterloader2" ./cmd/clusterloader.go
+          "$REC_ROOT/bin/clusterloader2" --help > "$REC_ROOT/results/cl2-help.txt" 2>&1 || true
+      - name: Boot real Kubernetes 1.37.0, stock etcd 3.7.2, kwok 0.8.0
+        run: bash tools/etcdrec/boot.sh
+      - name: Record idle and kwok-friendly upstream load test
+        run: bash tools/etcdrec/run.sh
+      - name: Collect and summarize (no values or credentials)
+        if: always()
+        run: |
+          export PATH="$REC_ROOT/bin:$PATH"
+          mkdir -p "$REC_ROOT/results"
+          kubectl get nodes -o wide > "$REC_ROOT/results/nodes-after.txt" 2>&1 || true
+          kubectl get pods -A -o wide > "$REC_ROOT/results/pods-after.txt" 2>&1 || true
+          kubectl get --raw /metrics > "$REC_ROOT/results/apiserver-metrics-after.txt" 2>&1 || true
+          kubectl -n kube-system logs deployment/kwok-controller --tail=100 > "$REC_ROOT/results/kwok.log" 2>&1 || true
+          docker logs recording-control-plane > "$REC_ROOT/results/kind.log" 2>&1 || true
+          if [ -f "$REC_ROOT/results/windows.jsonl" ]; then
+            python3 tools/etcdrec/summarize.py "$REC_ROOT/results/record.jsonl" "$REC_ROOT/results/windows.jsonl" "$REC_ROOT/results"
+            for f in "$REC_ROOT/results/"*-summary.md; do test ! -f "$f" || cat "$f" >> "$GITHUB_STEP_SUMMARY"; done
+          fi
+          if [ -f "$REC_ROOT/proxy.pid" ];then kill "$(<"$REC_ROOT/proxy.pid")" || true;fi
+          if [ -f "$REC_ROOT/results/record.jsonl" ];then gzip "$REC_ROOT/results/record.jsonl";fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: research-579-recording-${{ github.run_id }}
+          path: ${{ runner.temp }}/recording579/results
+          retention-days: 30
+          if-no-files-found: error
