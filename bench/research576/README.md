@@ -73,7 +73,9 @@ read. Especially for large write batching, the sender may finish before the
 receiver drains. Use both per-side CPU columns and their sum when comparing
 network-wide CPU. Do not infer delivered GB/s from sender wall time.
 
-Calls count data-path send/read/poll/submit/wait APIs, not setup/teardown.
+Calls count data-path send/read/poll/submit/wait APIs, excluding setup and
+close calls. RX counters include the final 32 EOF reads and associated polls,
+amortized over the logical message count.
 Non-SQPOLL sends have one submit syscall per submission plus any completion
 wait syscalls. SQPOLL's `tx_calls` counts submit API invocations even if they do
 not enter the kernel: **use the separate strace run to get its actual syscall
