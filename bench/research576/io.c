@@ -49,7 +49,7 @@ static void drainzc(int *tx,long *done,long *copied,long *errcalls){for(int j=0;
 // modes: write, writev32, bigwrite32, uring, fixed, send_zc, send_zc_fixed, msgzc, sendfile, splice, evp+write.
 static const char *mn[]={"write","writev32","bigwrite32","uring","fixed","send_zc","send_zc_fixed","msgzc","sendfile","splice","evp_write"};
 static void nettest(int size,int mode,int batch,int flags,int ktls,int rmode){
- int tx[NC],rx[NC],out[2],ready[2];for(int j=0;j<NC;j++){pair(&tx[j],&rx[j]);if(ktls)tls(tx[j],rx[j]);}CHECK(pipe(out)==0);CHECK(pipe(ready)==0);
+ int tx[NC],rx[NC],out[2],ready[2];for(int j=0;j<NC;j++){pair(&tx[j],&rx[j]);if(ktls)tls(tx[j],rx[j]);if(ktls==2){int one=1;CHECK(setsockopt(tx[j],SOL_TLS,TLS_TX_ZEROCOPY_RO,&one,sizeof(one))==0);}}CHECK(pipe(out)==0);CHECK(pipe(ready)==0);
  pid_t child=fork();CHECK(child>=0);if(!child){for(int j=0;j<NC;j++)close(tx[j]);close(out[0]);close(ready[0]);receiver(rx,size,rmode,flags,out[1],ready[1]);}
  for(int j=0;j<NC;j++)close(rx[j]);close(out[1]);close(ready[1]);char v;CHECK(read(ready[0],&v,1)==1);close(ready[0]);
  struct io_uring r;int ur=mode>=3&&mode<=6,zc=mode==5||mode==6;char *buf=allocbuf((size_t)size*32+64);if(ur){ringinit(&r,flags);if(mode==4||mode==6){struct iovec iov={buf,(size_t)size*32+64};int e=io_uring_register_buffers(&r,&iov,1);CHECK(e==0);}}

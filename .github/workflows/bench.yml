@@ -1,6 +1,11 @@
 name: bench
 on:
   workflow_dispatch:
+    inputs:
+      followup:
+        description: Only AF_ALG diagnostics, TLS sendfile opt-in, and AWS-LC dispatch follow-up
+        type: boolean
+        default: false
 jobs:
   research576:
     runs-on: ubuntu-24.04-arm
@@ -21,6 +26,7 @@ jobs:
           sudo mount -o remount,barrier=1 /
           findmnt -T "$RUNNER_TEMP" | tee -a results/runner.txt
           sudo modprobe tls || true
+          { sudo modprobe algif_aead; grep -E 'CONFIG_CRYPTO_USER_API|CONFIG_TLS' "/boot/config-$(uname -r)"; modinfo algif_aead; } > results/kernel-crypto-config.txt 2>&1 || true
           cat /proc/crypto > results/proc-crypto-before.txt
           cat /proc/sys/net/core/optmem_max | tee -a results/runner.txt
           git clone -q https://github.com/axboe/liburing.git "$RUNNER_TEMP/liburing"
@@ -34,18 +40,31 @@ jobs:
           gcc -O2 -g -Wall -I"$RUNNER_TEMP/uring/include" -o bin/io576 bench/research576/io.c "$RUNNER_TEMP/uring/lib/liburing.a" -lcrypto -lpthread
           gcc -O3 -o bin/aes576 bench/research576/aes.c -lcrypto
           GOFLAGS=-p=2 go test -c -o bin/crypto576.test ./bench/research576/crypto
+      - name: Kernel crypto and follow-up
+        run: |
+          set -o pipefail
+          for rep in 1 2 3; do
+            taskset -c 0 bin/aes576 evp | tee "results/evp-cpu-$rep.txt"
+            taskset -c 0 bin/aes576 afalg 2>&1 | tee "results/afalg-cpu-$rep.txt" || echo "AF_ALG unsupported rep=$rep"
+            if [[ '${{ github.event.inputs.followup }}' == true ]]; then
+              for size in 256 1024 4096 16384 65536; do
+                for tls in 1 2; do
+                  taskset -c 0 bin/io576 net "$size" 8 1 0 "$tls" 0 unused
+                done
+              done 2>&1 | tee "results/io-$rep.txt"
+            fi
+          done
+          cat /proc/crypto > results/proc-crypto-after.txt
+          cat /proc/net/tls_stat > results/tls-stat.txt
       - name: Primitive measurements
+        if: github.event.inputs.followup != 'true'
         run: |
           bash bench/research576/run.sh
           cat /proc/crypto > results/proc-crypto-after.txt
           cat /proc/net/tls_stat > results/tls-stat.txt
       - name: Go and OpenSSL crypto
-        if: always()
+        if: always() && github.event.inputs.followup != 'true'
         run: |
-          for rep in 1 2 3; do
-            taskset -c 0 bin/aes576 evp | tee "results/evp-cpu-$rep.txt"
-            taskset -c 0 bin/aes576 afalg 2>&1 | tee "results/afalg-cpu-$rep.txt" || true
-          done
           taskset -c 0 bin/crypto576.test -test.run '^$' -test.bench . -test.benchtime 500ms -test.count 3 -test.cpu 1 | tee results/go-crypto.txt
           for rep in 1 2 3; do
             for bits in 128 256; do
@@ -57,6 +76,7 @@ jobs:
       - name: Build recent AWS-LC and measure
         if: always()
         run: |
+          set -o pipefail
           git clone -q https://github.com/aws/aws-lc.git "$RUNNER_TEMP/aws-lc"
           git -C "$RUNNER_TEMP/aws-lc" checkout bab562f6ad169475bd46e08de57e6d5cde239fef
           git -C "$RUNNER_TEMP/aws-lc" rev-parse HEAD | tee results/aws-lc-version.txt
@@ -64,9 +84,20 @@ jobs:
           cmake --build "$RUNNER_TEMP/aws-lc/build" --target bssl -j2
           gcc -O3 -I"$RUNNER_TEMP/aws-lc/include" -o bin/aws-aes576 bench/research576/aes.c "$RUNNER_TEMP/aws-lc/build/crypto/libcrypto.a" -lpthread
           for rep in 1 2 3; do
-            taskset -c 0 "$RUNNER_TEMP/aws-lc/build/tool/bssl" speed -filter EVP-AES-128-GCM,EVP-AES-256-GCM,AEAD-AES-128-GCM,AEAD-AES-256-GCM -chunks 1024,16384 -timeout 1 2>&1 | tee "results/aws-lc-$rep.txt"
+            if [[ '${{ github.event.inputs.followup }}' != true ]]; then
+              taskset -c 0 "$RUNNER_TEMP/aws-lc/build/tool/bssl" speed -filter EVP-AES-128-GCM,EVP-AES-256-GCM,AEAD-AES-128-GCM,AEAD-AES-256-GCM -chunks 1024,16384 -timeout 1 2>&1 | tee "results/aws-lc-$rep.txt"
+            fi
             taskset -c 0 bin/aws-aes576 evp | tee "results/aws-evp-cpu-$rep.txt"
-            OPENSSL_armcap='|0x1000' taskset -c 0 bin/aws-aes576 evp | tee "results/aws-forced8x-cpu-$rep.txt"
+          done
+          # Experimental: enable the 8x/SHA3 implementation on this SHA3-capable N2.
+          # AWS-LC deliberately does not select it by default for N2; no ISA features are added.
+          python3 -c 'import os,pathlib; p=pathlib.Path(os.environ["RUNNER_TEMP"])/"aws-lc/crypto/fipsmodule/cpucap/internal.h"; s=p.read_text(); old="return (CRYPTO_is_ARMv8_SHA3_capable() &&"; assert s.count(old)==1; p.write_text(s.replace(old,"return (CRYPTO_is_ARMv8_SHA3_capable() ||"))'
+          git -C "$RUNNER_TEMP/aws-lc" diff | tee results/aws-8x-dispatch.patch
+          cmake --build "$RUNNER_TEMP/aws-lc/build" --target bssl -j2
+          gcc -O3 -I"$RUNNER_TEMP/aws-lc/include" -o bin/aws-8x-aes576 bench/research576/aes.c "$RUNNER_TEMP/aws-lc/build/crypto/libcrypto.a" -lpthread
+          for rep in 1 2 3; do
+            taskset -c 0 bin/aws-8x-aes576 evp | tee "results/aws-forced8x-cpu-$rep.txt"
+            taskset -c 0 "$RUNNER_TEMP/aws-lc/build/tool/bssl" speed -filter EVP-AES-128-GCM,EVP-AES-256-GCM -chunks 1024,16384 -timeout 1 2>&1 | tee "results/aws-forced8x-speed-$rep.txt"
           done
       - uses: actions/upload-artifact@v6
         if: always()

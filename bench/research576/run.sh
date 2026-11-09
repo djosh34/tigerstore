@@ -37,5 +37,5 @@ done
 # Separate small traced runs: do not confuse traced wall/CPU with untraced measurements.
 for spec in '0 1 0 0' '1 1 0 0' '3 1 0 0' '3 32 0 0' '4 32 0 0' '5 32 0 0' '7 32 0 0' '3 32 0 2' '3 32 1 2' '3 32 2 0'; do
   read -r mode batch flags rx <<< "$spec"
-  SHORT=1 taskset -c 0 strace -ff -qq -e trace=write,writev,sendto,sendmsg,recvmsg,read,poll,io_uring_enter,sendfile,splice -o "results/strace-$mode-$batch-$flags-$rx" bin/io576 net 1024 "$mode" "$batch" "$flags" 0 "$rx" unused > "results/trace-case-$mode-$batch-$flags-$rx.txt" 2>&1 || true
+  SHORT=1 taskset -c 0 strace -ff -qq -e trace=write,writev,sendto,sendmsg,recvmsg,read,poll,ppoll,io_uring_enter,sendfile,splice -o "results/strace-$mode-$batch-$flags-$rx" bin/io576 net 1024 "$mode" "$batch" "$flags" 0 "$rx" unused > "results/trace-case-$mode-$batch-$flags-$rx.txt" 2>&1 || true
 done
