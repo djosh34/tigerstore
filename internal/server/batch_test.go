@@ -261,12 +261,18 @@ func TestHeaderCacheTakesWholeBlocks(t *testing.T) {
 	}
 	// A table size update of 0 empties the table that the cached bytes
 	// index (#554); part of a field makes them its rest.
-	for id, head := range map[uint32][]byte{5: {0x20}, 7: {0x40}} {
-		if err := send(id, head, true, false); err != nil {
+	for _, tc := range []struct {
+		id   uint32
+		head []byte
+	}{{5, []byte{0x20}}, {7, []byte{0x40}}} {
+		if _, ok := c.blocks[string(indexed)]; !ok {
+			t.Fatalf("stream %d: the indexed block is not cached to test against", tc.id)
+		}
+		if err := send(tc.id, tc.head, true, false); err != nil {
 			t.Fatal(err)
 		}
-		if err := send(id, indexed, false, true); err == nil && c.streams[id] != nil {
-			t.Fatalf("stream %d: the last fragment of a longer block was answered from the cache", id)
+		if err := send(tc.id, indexed, false, true); err == nil && c.streams[tc.id] != nil {
+			t.Fatalf("stream %d: the last fragment of a longer block was answered from the cache", tc.id)
 		}
 	}
 }
