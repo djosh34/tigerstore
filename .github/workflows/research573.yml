@@ -1,7 +1,5 @@
 name: research573
 on:
-  push:
-    branches: [research/573-cpu-alloc-syscalls]
   workflow_dispatch:
 jobs:
   measure:
