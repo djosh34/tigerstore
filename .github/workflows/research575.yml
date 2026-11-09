@@ -1,10 +1,17 @@
 name: research575 allocation census
 on:
   workflow_dispatch:
+    inputs:
+      script:
+        description: bench/research575.sh or bench/research575-headroom.sh
+        default: bench/research575-headroom.sh
+      points:
+        description: GiB added to the leader's Go memory limit, one run each
+        default: 0 1 3 0 1 3
 jobs:
   measure:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       GOFLAGS: -p=2
     steps:
@@ -23,12 +30,11 @@ jobs:
           cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
           scripts/dev-certs.sh certs
       - name: Measure
+        env:
+          POINTS: ${{ inputs.points }}
         run: |
           sudo mount -o remount,barrier=1 /
-          bash bench/research575.sh
-      - name: Per-operation allocation census
-        if: always()
-        run: python3 bench/research575-analyze.py results/524288 results/65536
+          bash ${{ inputs.script }}
       - uses: actions/upload-artifact@v6
         if: always()
         with:
