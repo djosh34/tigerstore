@@ -156,6 +156,10 @@ type recordConn struct {
 	rd, wr direction
 	out    []byte // the records of one Write
 	hdr    [recordHeaderLen]byte
+	// err ended the records: a record that failed, a key update, an alert
+	// or the end of nc. Every later open returns it, so Peek returns it
+	// once the bytes before it are taken.
+	err error
 }
 
 // clientHandshake runs crypto/tls's handshake on nc and returns the record
@@ -257,8 +261,17 @@ func (rc *recordConn) whole() bool {
 }
 
 // open opens the next record into pt, reading it from nc first if it is
-// not all there.
+// not all there. Once one fails, open returns that error every time.
 func (rc *recordConn) open() error {
+	if rc.err == nil {
+		rc.err = rc.openRecord()
+	}
+	return rc.err
+}
+
+// openRecord opens the next record, as open does, and returns why it
+// could not.
+func (rc *recordConn) openRecord() error {
 	if err := rc.fill(recordHeaderLen); err != nil {
 		return err
 	}
@@ -314,7 +327,7 @@ func postHandshake(m []byte) error {
 		if len(m) < 4 {
 			return fmt.Errorf("%w: a handshake message cut short", errRecord)
 		}
-		n := 4 + int(m[1])<<16 | int(m[2])<<8 | int(m[3])
+		n := 4 + (int(m[1])<<16 | int(m[2])<<8 | int(m[3]))
 		if n > len(m) {
 			return fmt.Errorf("%w: a handshake message across records", errRecord)
 		}
@@ -353,11 +366,8 @@ func (rc *recordConn) Discard(n int) (int, error) {
 // Buffered opens every whole record already read and returns the bytes
 // Peek can return without reading from nc.
 func (rc *recordConn) Buffered() int {
-	for rc.whole() {
-		if rc.open() != nil {
-			// The next Peek opens it again and fails.
-			break
-		}
+	// An error stays for Peek, after the bytes before it (open).
+	for rc.whole() && rc.open() == nil {
 	}
 	return rc.pw - rc.pr
 }
