@@ -6,10 +6,11 @@
 //
 // <dir> holds one directory rtt-<ms> per round-trip time between nodes, each
 // with one directory per benchmark, with files named
-// <target>-<mode>-<rep>.json, mode max, rate, or the layouts tmpfs and alone
-// that only tigerstore targets run. A run that failed has
-// <target>-<mode>-<rep>.failed with its cause, and its result, if any, is
-// left out. A ceiling.json in <dir> (cmd/ceiling) adds the runner, the
+// <target>-<mode>-<seed>.<rep>.json, mode max, rate, or the layouts tmpfs
+// and alone that only tigerstore targets run, and the run's placement in
+// <target>-<mode>-<seed>.<rep>.placement, which names its leader. A run that
+// failed has <target>-<mode>-<seed>.<rep>.failed with its cause, and its
+// result, if any, is left out. A ceiling.json in <dir> (cmd/ceiling) adds the runner, the
 // ceiling of each benchmark and each store's share of it; a
 // generator-<benchmark>.json, loadgen's run against cmd/nullstore, adds the
 // generator's own ceiling.
@@ -24,9 +25,8 @@
 // for the rest. The ceiling is the lower of the two. The bytes per
 // operation are medians over the max runs of every store.
 //
-// After the tables it exits 1 if a tigerstore run failed or a tigerstore
-// target missed its bar at an RTT above 0. A failed etcd run is reported
-// and is no error: where etcd has no max result, tigerstore's stands alone.
+// After the tables it exits 1 if a tigerstore run failed. A failed etcd run
+// is reported and is no error: etcd runs for comparison only.
 package main
 
 import (
@@ -46,18 +46,12 @@ import (
 
 // errInvalidResult is a result that loadgen marked invalid in a run that
 // did not fail, errUnequalRuns targets that ran a bench a different number
-// of times, errRunFailed a tigerstore run that failed and errBarMissed a
-// tigerstore target below its bar.
+// of times, and errRunFailed a tigerstore run that failed.
 var (
 	errInvalidResult = errors.New("invalid result")
 	errUnequalRuns   = errors.New("unequal runs")
 	errRunFailed     = errors.New("tigerstore run failed")
-	errBarMissed     = errors.New("bar missed")
 )
-
-// bars are the least median max throughput of every tigerstore target over
-// etcd's, at every RTT above 0 (#404).
-var bars = map[string]float64{"put-1k": 10, "txn-1k": 10, "mixed-k8s": 2.5}
 
 // result is the part of a loadgen result the tables use.
 type result struct {
@@ -84,6 +78,14 @@ type result struct {
 	MinWrittenBytesPerOp float64   `json:"min_written_bytes_per_op"`
 	MinReadBytesPerOp    float64   `json:"min_read_bytes_per_op"`
 	RampClimbing         bool      `json:"ramp_climbing"`
+	PerOp                perOp     `json:"per_op"`
+	K8s                  *struct {
+		Shape  string `json:"shape"`
+		Copies int    `json:"copies"`
+	} `json:"k8s"`
+	// Seed and Leader come from the run's file names: the seed it ran,
+	// and the node that led it, n1 to n3.
+	Seed, Leader string `json:"-"`
 	Watch                *struct {
 		EventsPerS          float64 `json:"events_per_s"`
 		ServerCPUUsPerEvent float64 `json:"server_cpu_us_per_event"`
@@ -96,6 +98,16 @@ type result struct {
 			P99  float64 `json:"p99"`
 		} `json:"latency_us"`
 	} `json:"watch"`
+}
+
+// perOp is what an operation carried on average (cmd/loadgen).
+type perOp struct {
+	OutBytes float64 `json:"out_bytes"`
+	InBytes  float64 `json:"in_bytes"`
+	KVs      float64 `json:"kvs"`
+	Writes   float64 `json:"writes"`
+	Creates  float64 `json:"creates"`
+	Deletes  float64 `json:"deletes"`
 }
 
 // runs holds the repetitions of one benchmark, target and mode.
@@ -168,7 +180,7 @@ func report(w io.Writer, dir string) error {
 		failed[k] = append(failed[k], failure{rep, strings.TrimSpace(string(b))})
 	}
 	for _, f := range files {
-		k, _, err := parse(f, ".json")
+		k, rep, err := parse(f, ".json")
 		if err != nil {
 			return err
 		}
@@ -186,14 +198,27 @@ func report(w io.Writer, dir string) error {
 		if !r.Valid {
 			return fmt.Errorf("%s: %w in a run that did not fail", f, errInvalidResult)
 		}
+		r.Seed, _, _ = strings.Cut(rep, ".")
+		if r.Leader, err = leader(strings.TrimSuffix(f, ".json") + ".placement"); err != nil {
+			return err
+		}
 		all[k] = append(all[k], r)
 	}
-	// Every target ran the same runs, failed or not, or the comparison is
-	// unfair. etcd runs no layouts.
+	// Every target that ran a benchmark at an RTT ran the same runs there,
+	// failed or not, or the comparison is unfair. etcd runs no layouts, and
+	// may run at the first RTT only.
 	count := func(k key) int { return len(all[k]) + len(failed[k]) }
+	ran := func(rtt, bench, target string) bool {
+		for _, mode := range []string{"max", "rate"} {
+			if count(key{rtt, bench, target, mode}) > 0 {
+				return true
+			}
+		}
+		return false
+	}
 	for _, k := range append(slices.Collect(maps.Keys(all)), slices.Collect(maps.Keys(failed))...) {
 		for _, t := range targets {
-			if t == "etcd" && slices.Contains(layouts, k.mode) {
+			if t == "etcd" && slices.Contains(layouts, k.mode) || !ran(k.rtt, k.bench, t) {
 				continue
 			}
 			other := key{k.rtt, k.bench, t, k.mode}
@@ -231,17 +256,9 @@ func report(w io.Writer, dir string) error {
 				over := "-"
 				etcdMax := all[key{rtt, bench, "etcd", "max"}]
 				if target != "etcd" && len(maxRuns) > 0 {
-					got := medianOf(maxRuns, throughput)
-					bar, hasBar := bars[bench]
-					hasBar = hasBar && rttMs[rtt] > 0
 					switch {
 					case len(etcdMax) > 0:
-						ratio := got / medianOf(etcdMax, throughput)
-						over = fmt.Sprintf("%.1fx", ratio)
-						if hasBar && ratio < bar {
-							over += fmt.Sprintf(", below %gx", bar)
-							problems = append(problems, fmt.Errorf("%w: %s at RTT %s ms, %s: %.1fx etcd's max throughput, the bar is %gx", errBarMissed, bench, rtt, target, ratio, bar))
-						}
+						over = fmt.Sprintf("%.1fx", medianOf(maxRuns, throughput)/medianOf(etcdMax, throughput))
 					case len(failed[key{rtt, bench, "etcd", "max"}]) > 0:
 						over = "etcd failed"
 					}
@@ -258,8 +275,7 @@ func report(w io.Writer, dir string) error {
 			}
 		}
 	}
-	p("\nMedians over the runs that did not fail. RTT is the round trip between nodes; clients reach the nodes without delay. Max over etcd is the store's median max throughput over etcd's at the same RTT. The rate is half of etcd's median max at that RTT, the same for every store, or the first RTT's rate where etcd has no max result. Failed runs counts every mode and layout.\n")
-	p("\nBars at every RTT above 0: put-1k and txn-1k at least 10x etcd's max throughput, mixed-k8s at least 2.5x. A failed etcd run is reported and fails nothing; a failed tigerstore run or a missed bar fails the bench.\n")
+	p("\nMedians over every seed's runs that did not fail; the shares of the ceiling, seed by seed, are below. RTT is the round trip between nodes; clients reach the nodes without delay. Max over etcd is the store's median max throughput over etcd's at the same RTT, for comparison only: etcd runs at the first RTT. The rate is half of etcd's median max, the same for every store and RTT. Failed runs counts every mode and layout. A failed etcd run is reported and fails nothing; a failed tigerstore run fails the bench.\n")
 
 	var causes []string
 	for _, bench := range benches {
@@ -371,6 +387,30 @@ func report(w io.Writer, dir string) error {
 		return err
 	}
 	return errors.Join(problems...)
+}
+
+// leader returns the node that led a run, n1 to n3, from the placement
+// bench/cluster.sh wrote: node i's client port ends in i0. A run without a
+// placement, as one whose cluster did not start, has none.
+func leader(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var pl struct {
+		Leader string `json:"leader"`
+	}
+	if err := json.Unmarshal(b, &pl); err != nil {
+		return "", fmt.Errorf("%s: %w", path, err)
+	}
+	_, port, _ := strings.Cut(pl.Leader, ":")
+	if len(port) < 2 {
+		return "", fmt.Errorf("%s: leader %q has no port", path, pl.Leader)
+	}
+	return "n" + port[len(port)-2:len(port)-1], nil
 }
 
 // layouts are the max runs of bench/run.sh's LAYOUTS: tmpfs has all three

@@ -220,26 +220,6 @@ func TestReportAcrossRTTs(t *testing.T) {
 	}
 }
 
-func TestReportBars(t *testing.T) {
-	dir := t.TempDir()
-	// At RTT 0 there is no bar; at 2 ms, 9x misses put's 10x and 2.6x
-	// meets mixed-k8s's 2.5x.
-	maxAt(t, dir, "0", "put-1k", 4000, 4000)
-	maxAt(t, dir, "2", "put-1k", 4000, 36000)
-	maxAt(t, dir, "2", "mixed-k8s", 3000, 7800)
-	var b strings.Builder
-	err := report(&b, dir)
-	if !errors.Is(err, errBarMissed) {
-		t.Fatalf("a missed bar passed: %v", err)
-	}
-	if !strings.Contains(err.Error(), "put-1k at RTT 2 ms, main: 9.0x") || strings.Contains(err.Error(), "mixed-k8s") || strings.Contains(err.Error(), "RTT 0") {
-		t.Fatalf("wrong bars missed: %v", err)
-	}
-	if !strings.Contains(b.String(), "| put-1k | main | 2 | 36,000 | 9.0x, below 10x |") {
-		t.Fatalf("the miss is not in the table:\n%s", b.String())
-	}
-}
-
 func TestReportFailedEtcdRunStandsAlone(t *testing.T) {
 	dir := t.TempDir()
 	maxAt(t, dir, "0", "mixed-k8s", 3000, 8000)
