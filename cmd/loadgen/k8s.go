@@ -92,6 +92,8 @@ type k8sKeys struct {
 	// end, which every copy shares; prefixKey for a key under no watched
 	// prefix, which gets the copy's prefix in front.
 	split []int32
+	// cache marks, by call, the watch cache's calls (Trace.WatchCache).
+	cache []bool
 }
 
 const (
@@ -114,7 +116,7 @@ func newK8sKeys(t *k8strace.Trace) *k8sKeys {
 			}
 		}
 	}
-	k := &k8sKeys{split: make([]int32, len(t.Keys))}
+	k := &k8sKeys{split: make([]int32, len(t.Keys)), cache: t.WatchCache()}
 	for i, name := range t.Keys {
 		k.split[i] = prefixKey
 		if keep[name] {
@@ -130,21 +132,11 @@ func newK8sKeys(t *k8strace.Trace) *k8sKeys {
 	return k
 }
 
-// cacheRead reports whether call reads many keys of a whole watched
-// resource, as kube-apiserver's watch cache lists it. Such a read spans
-// every copy, and the bigger cluster has one watch cache per resource, as
-// the recording did: only copy 0 sends it. A read of one key of it, such
-// as the revision a consistent LIST waits on, every copy sends.
-func (k *k8sKeys) cacheRead(c *k8strace.Call) bool {
-	return (c.Kind == k8strace.CallRange || c.Kind == k8strace.CallRangeStream) &&
-		c.Op.End >= 0 && k.split[c.Op.Key] == keepKey && c.Op.Limit != 1
-}
-
-// leftToCopy0 reports whether copy cp leaves call to copy 0: whole-resource
+// leftToCopy0 reports whether copy cp leaves call i to copy 0: whole-resource
 // reads and progress requests come from kube-apiserver's watch cache, one
 // per resource, which a bigger cluster still has only one of.
-func (cp *k8sCopy) leftToCopy0(c *k8strace.Call) bool {
-	return cp.id != 0 && (cp.keys.cacheRead(c) || c.Kind == k8strace.CallProgress)
+func (cp *k8sCopy) leftToCopy0(i int32) bool {
+	return cp.id != 0 && cp.keys.cache[i]
 }
 
 // keyOf returns key k of copy cp.
@@ -296,7 +288,7 @@ func (w *k8sLoad) start(c *conn, st *stream, limit int) bool {
 				break
 			}
 			call := &cp.t.Calls[i]
-			if cp.leftToCopy0(call) {
+			if cp.leftToCopy0(i) {
 				w.cacheReads++
 				cp.reply(i, 1)
 				continue

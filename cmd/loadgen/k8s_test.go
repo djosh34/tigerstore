@@ -279,18 +279,20 @@ func TestLeftToCopy0(t *testing.T) {
 	tr := &k8strace.Trace{
 		Keys:    []string{"/registry/pods/", "/registry/pods0", "/registry/pods/ns/p"},
 		Watches: []k8strace.WatchStream{{Creates: []k8strace.Watch{{Key: 0, End: 1}}}},
+		Calls: []k8strace.Call{
+			{Kind: k8strace.CallRangeStream, Op: k8strace.Op{Kind: k8strace.OpRange, Key: 0, End: 1, Limit: 10000}},
+			{Kind: k8strace.CallProgress},
+			{Kind: k8strace.CallRange, Op: k8strace.Op{Kind: k8strace.OpRange, Key: 2, End: -1}},
+		},
 	}
 	keys := newK8sKeys(tr)
-	list := &k8strace.Call{Kind: k8strace.CallRangeStream, Op: k8strace.Op{Kind: k8strace.OpRange, Key: 0, End: 1, Limit: 10000}}
-	progress := &k8strace.Call{Kind: k8strace.CallProgress}
-	get := &k8strace.Call{Kind: k8strace.CallRange, Op: k8strace.Op{Kind: k8strace.OpRange, Key: 2, End: -1}}
 	zero, one := newCopy(tr, keys, tr.From(0), 0), newCopy(tr, keys, tr.From(0), 1)
-	for _, c := range []*k8strace.Call{list, progress, get} {
-		if zero.leftToCopy0(c) {
-			t.Errorf("copy 0 leaves %s to itself", k8strace.KindNames[c.Kind])
+	for i := range tr.Calls {
+		if zero.leftToCopy0(int32(i)) {
+			t.Errorf("copy 0 leaves %s to itself", k8strace.KindNames[tr.Calls[i].Kind])
 		}
 	}
-	if !one.leftToCopy0(list) || !one.leftToCopy0(progress) || one.leftToCopy0(get) {
+	if !one.leftToCopy0(0) || !one.leftToCopy0(1) || one.leftToCopy0(2) {
 		t.Error("copy 1 leaves the list and the progress request, and sends the GET")
 	}
 }
