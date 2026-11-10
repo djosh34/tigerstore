@@ -166,7 +166,9 @@ const indexKeys = 1 << 20
 
 func (p *primitives) index(d time.Duration) (err error) {
 	rng := rand.New(rand.NewPCG(1, 2))
-	key := func() string { return fmt.Sprintf("/registry/pods/namespace-%04d/pod-%033d", rng.IntN(1000), rng.Uint64()) }
+	key := func() string {
+		return fmt.Sprintf("/registry/pods/namespace-%04d/pod-%033d", rng.IntN(1000), rng.Uint64())
+	}
 	keys := make([]string, indexKeys)
 	hash := make(map[string]int32, indexKeys)
 	tree := btree.NewG(32, func(a, b string) bool { return a < b })
@@ -175,7 +177,10 @@ func (p *primitives) index(d time.Duration) (err error) {
 		hash[keys[i]] = int32(i)
 		tree.ReplaceOrInsert(keys[i])
 	}
-	if p.LookupNs, err = perCall(d, func() { sink = uint64(hash[keys[rng.IntN(indexKeys)]]) }); err != nil {
+	var found int32
+	p.LookupNs, err = perCall(d, func() { found = hash[keys[rng.IntN(indexKeys)]] })
+	runtime.KeepAlive(found)
+	if err != nil {
 		return err
 	}
 	// Inserts of new keys, then deletes of the same keys, each of a key
@@ -206,12 +211,9 @@ func (p *primitives) index(d time.Duration) (err error) {
 	}
 	var at uint32
 	p.MissNs, err = perCall(d, func() { at = next[at] })
-	sink = uint64(at)
+	runtime.KeepAlive(at)
 	return err
 }
-
-// sink keeps the loops' results, so the compiler keeps their work.
-var sink uint64
 
 // loopback returns the bytes a second conns loopback TCP connections carry
 // together for d, 64 KiB a write.
