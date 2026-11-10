@@ -15,20 +15,27 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+
+	"github.com/djosh34/tigerstore/internal/peer"
 )
 
 // linkProxy forwards one directed peer link. stall makes the connections
 // open at that moment stop reading from the sender, so its writes back up;
-// held is closed once one of them stopped. Later connections work.
+// held is closed once one of them stopped. Later connections work, and
+// replaced is closed once one of them has carried an entry's worth of
+// bytes: the sender's data connection came back. The prober's connections
+// carry far less.
 type linkProxy struct {
-	ln       net.Listener
-	target   string
-	accepted atomic.Int64
-	mu       sync.Mutex
-	open     []*atomic.Bool
-	held     chan struct{}
-	heldOnce sync.Once
-	release  chan struct{}
+	ln           net.Listener
+	target       string
+	mu           sync.Mutex
+	open         []*atomic.Bool
+	afterStall   bool
+	held         chan struct{}
+	heldOnce     sync.Once
+	replaced     chan struct{}
+	replacedOnce sync.Once
+	release      chan struct{}
 }
 
 func newLinkProxy(t *testing.T, target string) *linkProxy {
@@ -37,7 +44,7 @@ func newLinkProxy(t *testing.T, target string) *linkProxy {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &linkProxy{ln: ln, target: target, held: make(chan struct{}), release: make(chan struct{})}
+	p := &linkProxy{ln: ln, target: target, held: make(chan struct{}), replaced: make(chan struct{}), release: make(chan struct{})}
 	t.Cleanup(func() {
 		ln.Close() //nolint:errcheck // closing a test listener
 		close(p.release)
@@ -49,10 +56,24 @@ func newLinkProxy(t *testing.T, target string) *linkProxy {
 func (p *linkProxy) stall() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.afterStall = true
 	for _, s := range p.open {
 		s.Store(true)
 	}
 }
+
+func (p *linkProxy) wasReplaced() bool {
+	select {
+	case <-p.replaced:
+		return true
+	default:
+		return false
+	}
+}
+
+// entryBytes is what a new connection must carry to count as the sender's
+// data connection: one 64 KiB entry.
+const entryBytes = 64 << 10
 
 func (p *linkProxy) serve() {
 	for {
@@ -65,10 +86,10 @@ func (p *linkProxy) serve() {
 			in.Close() //nolint:errcheck // the peer redials
 			continue
 		}
-		p.accepted.Add(1)
 		stalled := &atomic.Bool{}
 		p.mu.Lock()
 		p.open = append(p.open, stalled)
+		fresh := p.afterStall
 		p.mu.Unlock()
 		go func() {
 			io.Copy(in, out) //nolint:errcheck // ends with the connection
@@ -76,6 +97,7 @@ func (p *linkProxy) serve() {
 		}()
 		go func() {
 			buf := make([]byte, 32<<10)
+			carried := 0
 			for {
 				n, err := in.Read(buf)
 				if stalled.Load() {
@@ -86,6 +108,9 @@ func (p *linkProxy) serve() {
 				if n > 0 {
 					if _, werr := out.Write(buf[:n]); werr != nil {
 						return
+					}
+					if carried += n; fresh && carried >= entryBytes {
+						p.replacedOnce.Do(func() { close(p.replaced) })
 					}
 				}
 				if err != nil {
@@ -100,15 +125,17 @@ func (p *linkProxy) serve() {
 // TestStalledPeerLinkKeepsQuorum runs every peer link through a proxy and
 // stalls the leader's link to one follower while a client writes 64 KiB
 // values through the other follower. The leader's writer to the stalled
-// follower backs up until its write deadline drops the connection; until
-// then and after, the leader and the other follower are a quorum, so every
-// write must commit within 10 election timeouts.
+// follower backs up until its write deadline, 10 s here, drops the
+// connection; until then and after, the leader and the other follower are
+// a quorum, so every write must commit well within that.
 func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
+	const writeTimeout = 10 * time.Second
 	proxies := map[[2]uint64]*linkProxy{}
 	c := newClusterWith(t, func(c *cluster) {
-		// The 64 KiB puts below make fsyncs slow on a shared runner; 50 ms
-		// ticks give the 10 election timeouts below 5 s.
+		// The 64 KiB puts below make fsyncs slow on a shared runner, so
+		// the ticks are 50 ms, not 10.
 		c.tick = 50 * time.Millisecond
+		c.peerConfig = func(cfg *peer.Config) { cfg.WriteTimeout = writeTimeout }
 		c.via = map[[2]uint64]string{}
 		for from := uint64(1); from <= 3; from++ {
 			for to := uint64(1); to <= 3; to++ {
@@ -145,16 +172,16 @@ func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
 	stalled, healthy := leader%3+1, (leader+1)%3+1
 	proxy := proxies[[2]uint64{leader, stalled}]
 	kv := c.client(healthy, cert)
-	before := proxy.accepted.Load()
 	proxy.stall()
 
-	// Well under the peer's 5 s write deadline, so a leader held up by the
-	// stalled link fails here.
-	bound := time.Second
-	value := bytes.Repeat([]byte("v"), 64<<10)
+	// Well under the write deadline, so a leader held up by the stalled
+	// link fails here. A sync of the shared runner's disk can take over a
+	// second (#608).
+	bound := 4 * time.Second
+	value := bytes.Repeat([]byte("v"), entryBytes)
 	deadline := time.Now().Add(30 * time.Second)
 	puts := 0
-	for proxy.accepted.Load() == before && time.Now().Before(deadline) {
+	for !proxy.wasReplaced() && time.Now().Before(deadline) {
 		ctx, cancel := context.WithTimeout(context.Background(), bound)
 		_, err := kv.Put(ctx, &pb.PutRequest{Key: []byte("q"), Value: value})
 		cancel()
@@ -171,7 +198,7 @@ func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
 	default:
 		t.Fatal("the stall never took effect")
 	}
-	if proxy.accepted.Load() == before {
+	if !proxy.wasReplaced() {
 		t.Fatalf("after %d puts, the leader's writer never hit its write deadline", puts)
 	}
 	t.Logf("%d puts of 64 KiB committed while the link from node %d to node %d was stalled", puts, leader, stalled)
