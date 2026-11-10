@@ -98,7 +98,7 @@ func (wk *worker) run(l load, p phase) error {
 			full = len(c.out) >= 256<<10
 		}
 		c.appendControl()
-		inflight := len(c.streams) - c.held
+		inflight := c.streams.n - c.held
 		exhausted := l.exhausted()
 		c.mu.Unlock()
 		if err != nil {
@@ -129,12 +129,12 @@ func (wk *worker) run(l load, p phase) error {
 			}
 			// Requests still in flight fail too, once: their streams are
 			// forgotten, so a late answer counts nothing.
-			for id, st := range c.streams {
-				if st.held {
+			for _, st := range c.streams.slots {
+				if st == nil || st.held {
 					continue
 				}
 				inWindow(st.intended)
-				delete(c.streams, id)
+				c.streams.remove(st)
 			}
 			c.mu.Unlock()
 			return fmt.Errorf("%s: %d requests in flight and %d never sent %v after the phase", c.addr, inflight, len(backlog), p.drain)

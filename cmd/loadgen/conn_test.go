@@ -278,7 +278,7 @@ func TestAnswerSizes(t *testing.T) {
 // TestLargeMessageFrames sends a message larger than a DATA frame and reads
 // it back as an HTTP/2 server would.
 func TestLargeMessageFrames(t *testing.T) {
-	c := &conn{addr: "h:1", streams: make(map[uint32]*stream), nextID: 1, sendWin: 1 << 30, streamWin: 1 << 30, maxStreams: 100}
+	c := &conn{addr: "h:1", streams: newStreamTable(), nextID: 1, sendWin: 1 << 30, streamWin: 1 << 30, maxStreams: 100}
 	m := make([]byte, 40000)
 	for i := range m {
 		m[i] = byte(i)
@@ -350,7 +350,8 @@ func TestReadHeaderBlockSequence(t *testing.T) {
 		}
 		var d done
 		h := handlerFunc(func(err error) { d = done{true, err} })
-		c := &conn{br: bufio.NewReaderSize(bytes.NewReader(wire.Bytes()), 64<<10), streams: map[uint32]*stream{1: {id: 1, h: h}}, wake: make(chan struct{}, 1)}
+		c := &conn{br: bufio.NewReaderSize(bytes.NewReader(wire.Bytes()), 64<<10), streams: newStreamTable(), wake: make(chan struct{}, 1)}
+		c.streams.put(&stream{id: 1, h: h})
 		c.dec = hpack.NewDecoder(4096, c.headerField)
 		if err := c.read(); !errors.Is(err, errFrame) {
 			t.Errorf("%s: read ended with %v, stream done %+v", name, err, d)
@@ -399,5 +400,27 @@ func TestTableEffect(t *testing.T) {
 		if got := tableEffect(c.block); got != c.want {
 			t.Errorf("%s: %d, want %d", c.name, got, c.want)
 		}
+	}
+}
+
+// TestStreamTable finds open streams by ID, and skips an ID whose slot an
+// older stream, such as a watch, still holds.
+func TestStreamTable(t *testing.T) {
+	c := &conn{streams: newStreamTable(), nextID: 1}
+	watch := &stream{id: c.newID()}
+	c.streams.put(watch)
+	c.nextID = 1 + 2*streamSlots // the watch's slot again
+	id := c.newID()
+	if id != 3+2*streamSlots {
+		t.Fatalf("new stream %d, want %d", id, 3+2*streamSlots)
+	}
+	st := &stream{id: id}
+	c.streams.put(st)
+	if c.streams.get(1) != watch || c.streams.get(id) != st || c.streams.get(1+2*streamSlots) != nil || c.streams.n != 2 {
+		t.Fatal("lookups or count wrong")
+	}
+	c.streams.remove(st)
+	if c.streams.get(id) != nil || c.streams.n != 1 {
+		t.Fatal("removed stream still there")
 	}
 }

@@ -89,7 +89,7 @@ type conn struct {
 	out  outBuf        // frames not yet written, owned by the writer goroutine
 
 	mu      sync.Mutex
-	streams map[uint32]*stream
+	streams streamTable
 	held    int // of streams, the watch streams that stay open, not requests
 	// The k8s watches that wait for a progress request on c; mail guards
 	// them, apart from mu (post).
@@ -145,6 +145,54 @@ type frameReader interface {
 	Buffered() int
 }
 
+// streamTable holds a connection's open streams in slots by ID, a slot a
+// load away, where a map cost 5% of the generator's core. A new stream
+// skips an ID whose slot still holds an open stream, such as a watch:
+// HTTP/2 allows gaps between a client's stream IDs (RFC 9113, 5.1.1).
+type streamTable struct {
+	slots []*stream
+	n     int // open streams
+}
+
+// streamSlots is the slots of a table, more than the streams a connection
+// may have open.
+const streamSlots = 1 << 13
+
+func newStreamTable() streamTable { return streamTable{slots: make([]*stream, streamSlots)} }
+
+func slotOf(id uint32) uint32 { return id >> 1 & (streamSlots - 1) }
+
+// get returns the open stream id, or nil.
+func (t *streamTable) get(id uint32) *stream {
+	if st := t.slots[slotOf(id)]; st != nil && st.id == id {
+		return st
+	}
+	return nil
+}
+
+func (t *streamTable) put(st *stream) {
+	t.slots[slotOf(st.id)] = st
+	t.n++
+}
+
+func (t *streamTable) remove(st *stream) {
+	if s := &t.slots[slotOf(st.id)]; *s == st {
+		*s = nil
+		t.n--
+	}
+}
+
+// newID returns the ID of a new stream of c: the next one whose slot is
+// free.
+func (c *conn) newID() uint32 {
+	for c.streams.slots[slotOf(c.nextID)] != nil {
+		c.nextID += 2
+	}
+	id := c.nextID
+	c.nextID += 2
+	return id
+}
+
 type streamIncr struct {
 	id   uint32
 	incr uint32
@@ -174,7 +222,7 @@ func dial(addr string) (*conn, error) {
 		nc:         nc,
 		br:         br,
 		w:          w,
-		streams:    make(map[uint32]*stream),
+		streams:    newStreamTable(),
 		nextID:     1,
 		sendWin:    65535,
 		maxStreams: math.MaxUint32,
@@ -254,8 +302,9 @@ func (c *conn) newStream(h handler) *stream {
 // with at most limit streams in flight. The caller holds c.mu.
 func (c *conn) canStart(dataLen, limit int) bool {
 	return c.err == nil &&
-		len(c.streams)-c.held < limit &&
-		uint32(len(c.streams)) < c.maxStreams &&
+		c.streams.n-c.held < limit &&
+		uint32(c.streams.n) < c.maxStreams &&
+		c.streams.n < streamSlots/2 &&
 		c.sendWin >= int64(dataLen) &&
 		int64(c.streamWin) >= int64(dataLen) &&
 		c.nextID < maxStreamID
@@ -265,8 +314,7 @@ func (c *conn) canStart(dataLen, limit int) bool {
 // bytes of its DATA frames, for the caller to fill in keys and values
 // before the next flush. The caller holds c.mu and has checked canStart.
 func (c *conn) startStream(st *stream, t *template) []byte {
-	st.id = c.nextID
-	c.nextID += 2
+	st.id = c.newID()
 	block := c.headerBlock(t.path)
 	c.out = appendFrameHeader(c.out, len(block), http2.FrameHeaders, http2.FlagHeadersEndHeaders)
 	binary.BigEndian.PutUint32(c.out[len(c.out)-4:], st.id)
@@ -277,7 +325,7 @@ func (c *conn) startStream(st *stream, t *template) []byte {
 	for _, off := range t.frames {
 		binary.BigEndian.PutUint32(b[off+5:], st.id)
 	}
-	c.streams[st.id] = st
+	c.streams.put(st)
 	c.sendWin -= int64(t.dataLen)
 	st.c.Out += int64(t.dataLen)
 	return b
@@ -297,13 +345,12 @@ func (c *conn) startMessage(st *stream, path string, m []byte) {
 // watch stream, and returns b with its HEADERS frame. The caller holds
 // c.mu and sends the stream's messages with appendMessage.
 func (c *conn) openStream(b []byte, st *stream, path string) []byte {
-	st.id = c.nextID
-	c.nextID += 2
+	st.id = c.newID()
 	block := c.headerBlock(path)
 	b = appendFrameHeader(b, len(block), http2.FrameHeaders, http2.FlagHeadersEndHeaders)
 	binary.BigEndian.PutUint32(b[len(b)-4:], st.id)
 	b = append(b, block...)
-	c.streams[st.id] = st
+	c.streams.put(st)
 	return b
 }
 
@@ -437,9 +484,11 @@ func (c *conn) readLoop() {
 	if c.err == nil {
 		c.err = fmt.Errorf("%s: %w", c.addr, err)
 	}
-	for id, st := range c.streams {
-		delete(c.streams, id)
-		st.h.done(st, at, c.err)
+	for _, st := range c.streams.slots {
+		if st != nil {
+			c.streams.remove(st)
+			st.h.done(st, at, c.err)
+		}
 	}
 	c.signal()
 }
@@ -633,7 +682,7 @@ func (c *conn) onData(id uint32, length int, data []byte, end bool) {
 		c.recvUnacked = 0
 		c.signal()
 	}
-	st := c.streams[id]
+	st := c.streams.get(id)
 	if st == nil {
 		return
 	}
@@ -683,7 +732,7 @@ func (c *conn) onHeaderBlock(frag []byte, end bool) error {
 	if err := c.decode(frag, end); err != nil || !end {
 		return err
 	}
-	st := c.streams[c.hdrStream]
+	st := c.streams.get(c.hdrStream)
 	if st == nil {
 		return nil
 	}
@@ -908,7 +957,7 @@ func (c *conn) headerField(f hpack.HeaderField) {
 }
 
 func (c *conn) endStream(id uint32, err error) {
-	if st := c.streams[id]; st != nil {
+	if st := c.streams.get(id); st != nil {
 		c.finish(st, err)
 	}
 }
@@ -918,7 +967,7 @@ func (c *conn) finish(st *stream, err error) {
 	if st.err != nil {
 		err = st.err
 	}
-	delete(c.streams, st.id)
+	c.streams.remove(st)
 	st.h.done(st, now(), err)
 	c.free = append(c.free, st)
 	c.signal()
