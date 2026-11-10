@@ -156,15 +156,16 @@ func (c *cache) remove(i int32) {
 	c.bytes -= c.slabs.room(e.slot, int(e.ref.Len)) + cachedOverhead
 	c.slabs.free(e.slot)
 	c.free = append(c.free, i)
-	if len(c.items) <= c.peak/2 || c.slabs.slack() > max(c.slabs.used/2, maxSlack) {
+	if len(c.items) <= c.peak/2 || c.slabs.slack() > max(c.slabs.used/2, minRebuildSlack) {
 		c.rebuild()
 	}
 	c.low = min(c.low, c.bytes)
 }
 
-// maxSlack is the room of freed slots that the cache keeps however few
-// values it holds, so that it does not rebuild for little.
-const maxSlack = 4 << 20
+// minRebuildSlack is the least room of freed slots that makes the cache
+// rebuild, however few values it holds, so that it does not rebuild for
+// little.
+const minRebuildSlack = 4 << 20
 
 // rebuild makes the map, the entries and the slabs again with room for
 // only the values cached, in the same order, so the memory of those that

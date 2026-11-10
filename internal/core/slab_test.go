@@ -108,13 +108,18 @@ func TestCacheRebuildsForNewSizes(t *testing.T) {
 	for i := range 2 * limit / 1100 {
 		c.add(mvcc.Ref{Index: uint64(1<<30 + i), Len: 1100}, make([]byte, 1100))
 	}
-	held := int64(0)
+	// The chunks hold the slots in use, the freed slots the cache allows
+	// before it rebuilds, and the unused end of each class's last chunk.
+	held, classes := int64(0), int64(0)
 	for _, cl := range c.slabs.classes {
+		if len(cl.chunks) > 0 {
+			classes++
+		}
 		for _, ch := range cl.chunks {
 			held += int64(len(ch))
 		}
 	}
-	if c.slabs.slack() > max(c.slabs.used/2, maxSlack) || held > c.slabs.used*3/2+maxSlack+int64(numClasses)*chunkBytes {
-		t.Fatalf("the cache counts %d bytes, its slots in use %d, and its chunks hold %d with %d in freed slots", c.bytes, c.slabs.used, held, c.slabs.slack())
+	if bound := c.slabs.used + max(c.slabs.used/2, minRebuildSlack) + classes*chunkBytes; held > bound {
+		t.Fatalf("the slots in use take %d bytes, and the chunks hold %d, more than %d", c.slabs.used, held, bound)
 	}
 }
