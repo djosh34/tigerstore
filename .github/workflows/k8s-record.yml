@@ -16,9 +16,6 @@ on:
       seconds:
         description: seconds of churn, the recording's window
         default: "600"
-  push:
-    branches: [work/601-*]
-    paths: [.github/workflows/k8s-record.yml]
 
 permissions:
   contents: read
