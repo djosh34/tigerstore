@@ -171,8 +171,14 @@ func TestSendInOrderAndReconnect(t *testing.T) {
 	if a.unreachable.Load() == 0 {
 		t.Fatal("no unreachable report while the peer was down")
 	}
-	if n := testutil.ToFloat64(a.t.cfg.Metrics.DisconnectedPeers.WithLabelValues("1", "2")); n == 0 {
-		t.Fatal("etcd_network_disconnected_peers_total did not count the lost peer")
+	// Both lanes' connections fail; the peer counts as lost once.
+	lost := func() float64 { return testutil.ToFloat64(a.t.cfg.Metrics.DisconnectedPeers.WithLabelValues("1", "2")) }
+	for wait := time.Now().Add(10 * time.Second); lost() == 0 && time.Now().Before(wait); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(500 * time.Millisecond)
+	if n := lost(); n != 1 {
+		t.Fatalf("etcd_network_disconnected_peers_total counted the lost peer %g times, want once", n)
 	}
 
 	// Node 2 comes back on the same address and gets new messages.
@@ -265,13 +271,14 @@ func TestControlQueueIsCapped(t *testing.T) {
 		t.Fatal(err)
 	}
 	tr := &TCP{cfg: Config{Unreachable: func(uint64) { dropped.Add(1) }, Metrics: set}}
-	s := &sender{t: tr, id: 2, ctrl: make(chan queued, controlQueue), data: make(chan queued, dataQueue), counters: tr.countersOf(2)}
+	s := &sender{t: tr, id: 2, counters: tr.countersOf(2)}
+	s.ctrl.q, s.data.q = make(chan queued, controlQueue), make(chan queued, dataQueue)
 	big := make([]byte, 1<<20)
 	for range 100 {
 		s.send(&raftpb.Message{Type: raftpb.MsgHeartbeat.Enum(), Context: big})
 	}
-	if dropped.Load() == 0 || s.ctrlBytes.Load() > maxQueued {
-		t.Fatalf("queued %d bytes of heartbeats with %d drops; the cap is %d", s.ctrlBytes.Load(), dropped.Load(), maxQueued)
+	if dropped.Load() == 0 || s.ctrl.bytes.Load() > maxQueued {
+		t.Fatalf("queued %d bytes of heartbeats with %d drops; the cap is %d", s.ctrl.bytes.Load(), dropped.Load(), maxQueued)
 	}
 	// Each drop is a send failure to the peer, as etcd counts them.
 	if got := testutil.ToFloat64(set.PeerSentFailures.WithLabelValues("2")); got != float64(dropped.Load()) {

@@ -802,10 +802,15 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	}
 	// The leader may have proposed a lease expiry just before the end, so
 	// the follower has yet to learn that it committed (seed 736998125).
-	// One more second settles that.
-	if a, _ := disagree(r.nodes); a != nil {
+	// Such proposals come about once a second, so one more second can end
+	// just after the next one (seed 135 on #553): the nodes run on a tenth
+	// of a second at a time, for up to three seconds, until they agree.
+	for range 30 {
+		if a, _ := disagree(r.nodes); a == nil {
+			break
+		}
 		r.thaw()
-		if err := r.runFor(Second); err != nil {
+		if err := r.runFor(Second / 10); err != nil {
 			return err
 		}
 	}

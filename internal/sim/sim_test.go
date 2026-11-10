@@ -1384,13 +1384,14 @@ func TestRotInAnEntryRecord(t *testing.T) {
 // of its seeds. Making the race
 // build reach the path directly needs a damaged leader whose follower falls
 // behind its compaction, which elections decide. Seeds 1 to 200 reached
-// it until a connection's lock became a channel (#567), which moved every
-// seed; seed 279 does now. The range starts there, so that a hit costs one
-// seed and a miss twenty, not the hundreds that ran the package out of
-// time. Reaching the path on purpose is #569.
+// it until a connection's lock became a channel (#567) and each peer got
+// a control and a data connection (#553), which each moved every seed;
+// seed 37 does now. The range starts there, so that a hit costs one seed
+// and a miss twenty, not the hundreds that ran the package out of time.
+// Reaching the path on purpose is #569.
 func TestSnapshotFromCorruptLeader(t *testing.T) {
 	fenced := false
-	seeds := searchSeeds(279, 20)
+	seeds := searchSeeds(37, 20)
 	if !simrun.Each(t, seeds, func(t *testing.T, seed uint64) Stats {
 		res := run(t, DefaultConfig(seed))
 		checkers(t, res)
