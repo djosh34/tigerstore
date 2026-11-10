@@ -266,10 +266,14 @@ type k8sLoad struct {
 }
 
 // k8sCall is the call of the trace a stream carries, and what it writes
-// if its Txn's compares fail.
+// if its Txn's compares fail. It keeps the call's kind, and whether it
+// reads at a revision: by the answer, the trace's call has long left the
+// cache, and reading it again cost 5% of the generator's core.
 type k8sCall struct {
 	cp     *k8sCopy
 	i      int32
+	kind   uint8
+	atRev  bool
 	failed tally
 }
 
@@ -312,7 +316,7 @@ func (w *k8sLoad) start(c *conn, st *stream, limit int) bool {
 			}
 			st.many = call.Kind == k8strace.CallRangeStream
 			c.startMessage(st, paths[call.Kind], w.buf)
-			st.k8s = k8sCall{cp: cp, i: i, failed: w.enc.failed}
+			st.k8s = k8sCall{cp: cp, i: i, kind: call.Kind, atRev: call.Op.Rev != 0, failed: w.enc.failed}
 			w.wrote(st, &w.enc.ok)
 			return true
 		}
@@ -376,7 +380,7 @@ func (w *k8sLoad) exhausted() bool {
 
 func (w *k8sLoad) message(st *stream, m []byte) error {
 	call := &st.k8s
-	switch call.cp.t.Calls[call.i].Kind {
+	switch call.kind {
 	case k8strace.CallRange:
 		return rangeReply(st, m, true)
 	case k8strace.CallRangeStream:
@@ -413,9 +417,8 @@ func (w *k8sLoad) message(st *stream, m []byte) error {
 
 func (w *k8sLoad) done(st *stream, at int64, err error) {
 	call := &st.k8s
-	c := &call.cp.t.Calls[call.i]
 	var status *grpcStatus
-	if (c.Kind == k8strace.CallRange || c.Kind == k8strace.CallRangeStream) && c.Op.Rev != 0 &&
+	if (call.kind == k8strace.CallRange || call.kind == k8strace.CallRangeStream) && call.atRev && err != nil &&
 		errors.As(err, &status) && status.code == codeOutOfRange {
 		w.compacted++
 		err, st.msgs, st.rev = nil, 1, 1
