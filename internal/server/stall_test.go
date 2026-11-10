@@ -24,7 +24,7 @@ import (
 // held is closed once one of them stopped. Later connections work, and
 // replaced is closed once one of them has carried an entry's worth of
 // bytes: the sender's data connection came back. The prober's connections
-// carry far less (#608).
+// carry far less.
 type linkProxy struct {
 	ln           net.Listener
 	target       string
@@ -178,7 +178,7 @@ func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
 	// link fails here. A sync of the shared runner's disk can take over a
 	// second (#608).
 	bound := 4 * time.Second
-	value := bytes.Repeat([]byte("v"), 64<<10)
+	value := bytes.Repeat([]byte("v"), entryBytes)
 	deadline := time.Now().Add(30 * time.Second)
 	puts := 0
 	for !proxy.wasReplaced() && time.Now().Before(deadline) {
