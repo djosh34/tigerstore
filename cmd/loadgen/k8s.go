@@ -147,16 +147,16 @@ func (cp *k8sCopy) leftToCopy0(c *k8strace.Call) bool {
 	return cp.id != 0 && (cp.keys.cacheRead(c) || c.Kind == k8strace.CallProgress)
 }
 
-// appendKey appends key k of copy cp.
-func (cp *k8sCopy) appendKey(b []byte, k int32) []byte {
+// keyOf returns key k of copy cp.
+func (cp *k8sCopy) keyOf(k int32) []byte {
 	name := cp.t.Keys[k]
 	switch at := cp.keys.split[k]; at {
 	case keepKey:
-		return append(b, name...)
+		return []byte(name)
 	case prefixKey:
-		return append(append(b, cp.prefix...), name...)
+		return append(append([]byte(nil), cp.prefix...), name...)
 	default:
-		return append(append(append(b, name[:at]...), cp.tag...), name[at:]...)
+		return append(append([]byte(name[:at]), cp.tag...), name[at:]...)
 	}
 }
 
@@ -283,6 +283,7 @@ type k8sCall struct {
 func (w *k8sLoad) wrote(st *stream, t *tally) {
 	st.written = t.bytes
 	st.c.Writes, st.c.Creates, st.c.Deletes = t.writes, t.creates, t.deletes
+	st.c.Entries, st.c.Checks, st.c.Leases = t.entries, t.checks, t.leases
 }
 
 func (w *k8sLoad) start(c *conn, st *stream, limit int) bool {
@@ -464,13 +465,13 @@ const (
 	delPrevKVs      = 3 // DeleteRangeResponse
 )
 
-// txnKVs counts the key-values a TxnResponse carries, in its ranges and
-// its previous key-values, nested Txns included.
+// txnKVs counts the key-values a TxnResponse carries, those its ranges
+// read and the previous ones of its writes, nested Txns included.
 func txnKVs(st *stream, m []byte) error {
-	kv := func(b []byte) error {
+	read := func(b []byte, count *int64) error {
 		n, err := kvBytes(b)
 		st.read += n
-		st.c.KVs++
+		*count++
 		return err
 	}
 	return fields(m, func(num protowire.Number, _ uint64, op []byte) error {
@@ -483,21 +484,21 @@ func txnKVs(st *stream, m []byte) error {
 			case opResponseRange:
 				return fields(r, func(num protowire.Number, _ uint64, b []byte) error {
 					if num == rangeKVs {
-						return kv(b)
+						return read(b, &st.c.KVs)
 					}
 					return nil
 				})
 			case opResponsePut:
 				return fields(r, func(num protowire.Number, _ uint64, b []byte) error {
 					if num == putRespPrevKV {
-						return kv(b)
+						return read(b, &st.c.PrevKVs)
 					}
 					return nil
 				})
 			case opResponseDeleteRange:
 				return fields(r, func(num protowire.Number, _ uint64, b []byte) error {
 					if num == delPrevKVs {
-						return kv(b)
+						return read(b, &st.c.PrevKVs)
 					}
 					return nil
 				})
@@ -573,7 +574,7 @@ func (ws *k8sWatch) response(m []byte) error {
 			}
 			if inWindow {
 				ws.stats.read += read
-				ws.stats.c.KVs += kvs
+				ws.stats.c.Events += kvs
 				ws.stats.events++
 			}
 		}

@@ -193,17 +193,19 @@ type result struct {
 	K8s *k8sResult `json:"k8s,omitempty"`
 }
 
-// perOp is counts over the operations of a window. Out and In are the
-// gRPC message bytes the calls sent and got, watch events included, and
-// KVs the key-values in their answers and events, previous ones too.
-// Writes are the keys the calls put or deleted when they succeeded.
+// perOp is counts over the operations of a window, as counts has them.
 type perOp struct {
 	OutBytes float64 `json:"out_bytes"`
 	InBytes  float64 `json:"in_bytes"`
 	KVs      float64 `json:"kvs"`
+	PrevKVs  float64 `json:"prev_kvs"`
+	Events   float64 `json:"event_kvs"`
 	Writes   float64 `json:"writes"`
 	Creates  float64 `json:"creates"`
 	Deletes  float64 `json:"deletes"`
+	Entries  float64 `json:"entries"`
+	Checks   float64 `json:"checks"`
+	Leases   float64 `json:"leases"`
 }
 
 // rampStep is one step of -ramp.
@@ -809,8 +811,10 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 		res.MinReadBytesPerOp = float64(read) / float64(res.Ops)
 		n := float64(res.Ops)
 		res.PerOp = perOp{
-			OutBytes: float64(cnt.Out) / n, InBytes: float64(cnt.In) / n, KVs: float64(cnt.KVs) / n,
+			OutBytes: float64(cnt.Out) / n, InBytes: float64(cnt.In) / n,
+			KVs: float64(cnt.KVs) / n, PrevKVs: float64(cnt.PrevKVs) / n, Events: float64(cnt.Events) / n,
 			Writes: float64(cnt.Writes) / n, Creates: float64(cnt.Creates) / n, Deletes: float64(cnt.Deletes) / n,
+			Entries: float64(cnt.Entries) / n, Checks: float64(cnt.Checks) / n, Leases: float64(cnt.Leases) / n,
 		}
 	}
 

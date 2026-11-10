@@ -59,14 +59,23 @@ type encoder struct {
 	ok, failed tally
 }
 
-// tally is what a request writes. Bytes is the fewest it makes durable
-// on each node: the keys and values it puts, the keys it deletes, and the
-// key and revision of each compare. Creates are puts that compare a mod
-// or create revision of 0.
+// tally is what a request writes and looks up, as counts has it. Bytes
+// is the fewest it makes durable on each node: the keys and values it
+// puts, a put's lease ID, the keys it deletes, a granted lease's ID and
+// TTL, a revoked lease's ID and a compaction's revision, as fixed 8-byte
+// integers. A Txn's compares count their key and revision if the branch
+// it takes writes: a Txn that only reads keeps nothing. A lease
+// keepalive makes nothing durable: etcd renews leases on the leader
+// alone. Creates are puts that compare a mod or create revision of 0.
 type tally struct {
 	bytes                    int64
 	writes, creates, deletes int64
+	entries, checks, leases  int64
 }
+
+// idBytes is what a lease ID, a TTL or a revision makes durable: a fixed
+// 8-byte integer.
+const idBytes = 8
 
 // lengthWidth is the bytes a nested message's length takes: a varint
 // padded with continuation bytes, which protobuf decoders accept, as they
@@ -156,19 +165,27 @@ func (e *encoder) value(b []byte, num protowire.Number, n int) []byte {
 func (e *encoder) request(b []byte, c *k8strace.Call) []byte {
 	e.ok, e.failed = tally{}, tally{}
 	switch c.Kind {
-	case k8strace.CallRange, k8strace.CallRangeStream, k8strace.CallPut, k8strace.CallDelete:
+	case k8strace.CallRange, k8strace.CallRangeStream:
+		return e.op(b, &c.Op, &e.ok)
+	case k8strace.CallPut, k8strace.CallDelete:
+		e.ok.entries = 1
 		return e.op(b, &c.Op, &e.ok)
 	case k8strace.CallTxn:
 		return e.txn(b, &c.Op, &e.ok, &e.failed)
 	case k8strace.CallCompact:
+		e.ok = tally{bytes: idBytes, entries: 1}
 		return appendVarintNZ(b, compactRevision, e.cp.rev(c.Rev, -1))
 	case k8strace.CallLeaseGrant:
+		e.ok = tally{bytes: 2 * idBytes, entries: 1, leases: 1}
 		return appendVarintNZ(b, leaseTTL, c.TTL)
 	case k8strace.CallProgress:
 		return protowire.AppendBytes(protowire.AppendTag(b, watchProgressReq, protowire.BytesType), nil)
+	case k8strace.CallLeaseRevoke:
+		e.ok = tally{bytes: idBytes, entries: 1, leases: 1}
 	default:
-		return appendVarintNZ(b, leaseRequestID, e.cp.lease(c.Lease))
+		e.ok.leases = 1
 	}
+	return appendVarintNZ(b, leaseRequestID, e.cp.lease(c.Lease))
 }
 
 // op appends the fields of a Range, Put or Delete request, or a Txn's.
@@ -186,11 +203,16 @@ func (e *encoder) op(b []byte, o *k8strace.Op, t *tally) []byte {
 		var n int
 		b, n = e.key(b, putKey, o.Key)
 		b = e.value(b, putValue, int(o.Size))
-		b = appendVarintNZ(b, putLease, e.cp.lease(o.Lease))
+		lease := e.cp.lease(o.Lease)
+		b = appendVarintNZ(b, putLease, lease)
 		b = appendBool(b, putPrevKV, o.Flags&k8strace.FlagPrevKV != 0)
 		b = appendBool(b, putIgnoreValue, o.Flags&k8strace.FlagIgnoreValue != 0)
 		b = appendBool(b, putIgnoreLease, o.Flags&k8strace.FlagIgnoreLease != 0)
 		t.bytes += int64(n + int(o.Size))
+		if lease != 0 {
+			t.bytes += idBytes
+			t.leases++
+		}
 		t.writes++
 		return b
 	case k8strace.OpDelete:
@@ -212,6 +234,7 @@ func (e *encoder) op(b []byte, o *k8strace.Op, t *tally) []byte {
 func (e *encoder) txn(b []byte, o *k8strace.Op, ok, failed *tally) []byte {
 	var compared int64
 	create := false
+	before := [2]tally{*ok, *failed}
 	for i := range o.Compare {
 		c := &o.Compare[i]
 		m, start := openField(b, txnCompare)
@@ -235,14 +258,40 @@ func (e *encoder) txn(b []byte, o *k8strace.Op, ok, failed *tally) []byte {
 		compared += int64(n) + revisionBytes
 		create = create || (c.Target == k8strace.TargetMod || c.Target == k8strace.TargetCreate) && c.Rev == 0
 	}
-	ok.bytes += compared
-	failed.bytes += compared
 	puts := ok.writes - ok.deletes
 	b = e.branch(b, txnSuccess, o.Success, ok)
 	if create {
 		ok.creates += ok.writes - ok.deletes - puts
 	}
-	return e.branch(b, txnFailure, o.Failure, failed)
+	b = e.branch(b, txnFailure, o.Failure, failed)
+	for i, t := range [2]*tally{ok, failed} {
+		ops := o.Success
+		if i == 1 {
+			ops = o.Failure
+		}
+		t.checks += unchecked(o.Compare, ops)
+		if t.writes > before[i].writes {
+			t.bytes += compared
+			t.entries = 1
+		}
+	}
+	return b
+}
+
+// unchecked returns the compares whose key no op of ops reads or writes:
+// each looks the key up on its own.
+func unchecked(cmps []k8strace.Compare, ops []k8strace.Op) int64 {
+	var n int64
+next:
+	for i := range cmps {
+		for j := range ops {
+			if ops[j].Kind != k8strace.OpTxn && ops[j].Key == cmps[i].Key {
+				continue next
+			}
+		}
+		n++
+	}
+	return n
 }
 
 // opFields are the RequestOp fields of the op kinds.

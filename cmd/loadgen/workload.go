@@ -72,22 +72,35 @@ func (s *stats) complete(st *stream, at int64, err error) {
 	}
 }
 
-// counts are what calls carried, for the CPU floor of cmd/benchreport:
-// the gRPC message bytes they sent and got, watch events included, the
-// key-values their answers and events held, and the keys they put,
-// created and deleted.
+// counts are what calls carried, for the CPU floor of cmd/benchreport.
+// Out and In are the gRPC message bytes they sent and got, watch events
+// included. KVs are the key-values that reads answered with, PrevKVs the
+// previous key-values that writes answered with, and Events the
+// key-values of watch events, previous ones included. Writes are the keys
+// the calls put or deleted, of which Creates were new and Deletes
+// deleted. Entries are the calls that made something durable, a log
+// entry each. Checks are the keys that compares looked up and no op of
+// the call touched. Leases are the lease calls, and the puts that attach
+// a key to a lease: each looks up the lease.
 type counts struct {
-	Out, In, KVs             int64
+	Out, In                  int64
+	KVs, PrevKVs, Events     int64
 	Writes, Creates, Deletes int64
+	Entries, Checks, Leases  int64
 }
 
 func (c *counts) add(o *counts) {
 	c.Out += o.Out
 	c.In += o.In
 	c.KVs += o.KVs
+	c.PrevKVs += o.PrevKVs
+	c.Events += o.Events
 	c.Writes += o.Writes
 	c.Creates += o.Creates
 	c.Deletes += o.Deletes
+	c.Entries += o.Entries
+	c.Checks += o.Checks
+	c.Leases += o.Leases
 }
 
 // base is what every request load shares.
@@ -149,7 +162,7 @@ func (w *putLoad) start(c *conn, st *stream, limit int) bool {
 func (w *putLoad) exhausted() bool { return w.once && w.next == len(w.own) }
 
 func (w *putLoad) message(st *stream, m []byte) error {
-	st.c.Writes = 1
+	st.c.Writes, st.c.Entries = 1, 1
 	if w.revs == nil {
 		return nil
 	}
@@ -210,7 +223,7 @@ func (w *casLoad) message(st *stream, m []byte) error {
 		return errCASFailed
 	}
 	w.revs[st.slot] = rev
-	st.c.Writes = 1
+	st.c.Writes, st.c.Entries = 1, 1
 	return nil
 }
 
@@ -241,7 +254,7 @@ func (w *deleteLoad) start(c *conn, st *stream, limit int) bool {
 func (w *deleteLoad) exhausted() bool { return w.next == len(w.own) }
 
 func (w *deleteLoad) message(st *stream, _ []byte) error {
-	st.c.Writes, st.c.Deletes = 1, 1
+	st.c.Writes, st.c.Deletes, st.c.Entries = 1, 1, 1
 	return nil
 }
 

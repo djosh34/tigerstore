@@ -124,10 +124,10 @@ func TestCopyWaits(t *testing.T) {
 		t.Fatalf("after call 1's reply: %d, %v, finished %v", i, ok, cp.finished())
 	}
 	// The watched prefix stays shared; the pod gets the copy's tag.
-	if got := string(cp.appendKey(nil, 1)); got != "/registry/pods/c003.ns/p" {
+	if got := string(cp.keyOf(1)); got != "/registry/pods/c003.ns/p" {
 		t.Errorf("key %q", got)
 	}
-	if got := string(cp.appendKey(nil, 0)); got != "/registry/pods/" {
+	if got := string(cp.keyOf(0)); got != "/registry/pods/" {
 		t.Errorf("watched prefix %q", got)
 	}
 
@@ -178,7 +178,7 @@ func sameTxn(cp *k8sCopy, got *pb.TxnRequest, want *k8strace.Op) error {
 			default:
 				return fmt.Errorf("op %d is empty", i)
 			}
-			if want := string(cp.appendKey(nil, o.Key)); string(key) != want {
+			if want := string(cp.keyOf(o.Key)); string(key) != want {
 				return fmt.Errorf("op %d has key %q, want %q", i, key, want)
 			}
 		}
@@ -193,8 +193,8 @@ func sameTxn(cp *k8sCopy, got *pb.TxnRequest, want *k8strace.Op) error {
 	return nil
 }
 
-// TestTxnKVs counts the key-values a Txn's answer carries: a range's, a
-// put's and a delete's previous ones, and a nested Txn's.
+// TestTxnKVs counts the key-values a Txn's answer carries: a range's and
+// a nested Txn's as reads, a put's and a delete's previous ones apart.
 func TestTxnKVs(t *testing.T) {
 	kv := &mvccpb.KeyValue{Key: []byte("/k"), Value: []byte("12345")}
 	resp := &pb.TxnResponse{Header: &pb.ResponseHeader{Revision: 9}, Responses: []*pb.ResponseOp{
@@ -213,8 +213,63 @@ func TestTxnKVs(t *testing.T) {
 	if err := txnKVs(&st, m); err != nil {
 		t.Fatal(err)
 	}
-	if st.c.KVs != 5 || st.read != 5*7 {
-		t.Errorf("%d key-values of %d bytes, want 5 of 35", st.c.KVs, st.read)
+	if st.c.KVs != 2 || st.c.PrevKVs != 3 || st.read != 5*7 {
+		t.Errorf("%d read and %d previous key-values of %d bytes, want 2 and 3 of 35", st.c.KVs, st.c.PrevKVs, st.read)
+	}
+}
+
+// TestTally counts what each kind of call makes durable and looks up: a
+// put's lease ID, a CAS's compare only toward a branch that writes, a
+// compare of a key no op touches as a check, and lease calls and
+// compactions as entries of IDs.
+func TestTally(t *testing.T) {
+	const key, other = 0, 1
+	tr := &k8strace.Trace{Keys: []string{"/registry/pods/ns/a", "/registry/pods/ns/b"}, Calls: make([]k8strace.Call, 1)}
+	cp := newCopy(tr, newK8sKeys(tr), &k8strace.Start{}, 0)
+	cp.grants[0] = 5 // call 0 granted lease 1
+	n := int64(len(tr.Keys[key]) + len(cp.tag))
+	cmp := []k8strace.Compare{{Target: k8strace.TargetMod, Key: key, End: -1, Rev: 0}}
+	put := k8strace.Op{Kind: k8strace.OpPut, Key: key, End: -1, Size: 100, Lease: 1}
+	get := k8strace.Op{Kind: k8strace.OpRange, Key: key, End: -1}
+	for _, c := range []struct {
+		name       string
+		call       k8strace.Call
+		ok, failed tally
+	}{
+		{
+			"put with a lease",
+			k8strace.Call{Kind: k8strace.CallPut, Op: put},
+			tally{bytes: n + 100 + idBytes, writes: 1, entries: 1, leases: 1},
+			tally{},
+		},
+		{
+			"CAS that reads on failure",
+			k8strace.Call{Kind: k8strace.CallTxn, Op: k8strace.Op{
+				Kind: k8strace.OpTxn, Compare: cmp,
+				Success: []k8strace.Op{put}, Failure: []k8strace.Op{get},
+			}},
+			tally{bytes: 2*n + revisionBytes + 100 + idBytes, writes: 1, creates: 1, entries: 1, leases: 1},
+			tally{},
+		},
+		{
+			"compare of a key no op touches",
+			k8strace.Call{Kind: k8strace.CallTxn, Op: k8strace.Op{
+				Kind:    k8strace.OpTxn,
+				Compare: []k8strace.Compare{{Target: k8strace.TargetVersion, Key: other, End: -1}}, Success: []k8strace.Op{get},
+			}},
+			tally{checks: 1},
+			tally{checks: 1},
+		},
+		{"lease grant", k8strace.Call{Kind: k8strace.CallLeaseGrant, TTL: 60}, tally{bytes: 2 * idBytes, entries: 1, leases: 1}, tally{}},
+		{"lease revoke", k8strace.Call{Kind: k8strace.CallLeaseRevoke, Lease: 1}, tally{bytes: idBytes, entries: 1, leases: 1}, tally{}},
+		{"lease keepalive", k8strace.Call{Kind: k8strace.CallLeaseKeepAlive, Lease: 1}, tally{leases: 1}, tally{}},
+		{"compaction", k8strace.Call{Kind: k8strace.CallCompact}, tally{bytes: idBytes, entries: 1}, tally{}},
+	} {
+		e := encoder{cp: cp, values: make([]byte, 1<<10)}
+		e.request(nil, &c.call)
+		if e.ok != c.ok || e.failed != c.failed {
+			t.Errorf("%s: %+v and %+v, want %+v and %+v", c.name, e.ok, e.failed, c.ok, c.failed)
+		}
 	}
 }
 

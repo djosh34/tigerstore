@@ -250,6 +250,9 @@ type k8sResult struct {
 	// resources and progress requests, that copies other than 0 left out
 	// (leftToCopy0).
 	CacheReads int64 `json:"cache_reads"`
+	// ItemBytes are the key and value bytes of the keys every copy's start
+	// wrote, the result's Keys.
+	ItemBytes int64 `json:"item_bytes"`
 }
 
 // k8sErrors returns what went wrong with the watches, or a copy that ran
@@ -272,9 +275,16 @@ func (s *session) k8sErrors() error {
 
 func (s *session) summarizeK8s(res *result) {
 	r := &k8sResult{Shape: s.trace.Shape, Seed: s.cfg.seed, Copies: s.cfg.copies, Calls: len(s.trace.Calls), Left: len(s.trace.Calls)}
+	var keys int
 	for i, w := range s.k8s {
 		c := s.workers[i].c
 		c.mu.Lock()
+		for _, cp := range w.copies {
+			keys += len(cp.start.Items)
+			for _, it := range cp.start.Items {
+				r.ItemBytes += int64(len(cp.keyOf(it.Key))) + int64(it.Size)
+			}
+		}
 		r.Compacted += w.compacted
 		r.Skipped += w.skipped
 		r.CacheReads += w.cacheReads
@@ -290,6 +300,7 @@ func (s *session) summarizeK8s(res *result) {
 		ws.c.mu.Unlock()
 	}
 	res.K8s = r
+	res.Keys = keys
 	res.ValueSize = 0
 	res.SizeSource = "recording " + s.trace.Shape
 	res.Watch = &watchResult{Watchers: len(s.trace.Watches), Events: events, EventsPerS: float64(events) / s.cfg.duration.Seconds()}
