@@ -60,9 +60,8 @@ type stream struct {
 	// held marks a stream that stays open, a watch, which is no request.
 	many, held bool
 	// written is the fewest bytes the call must make durable on each
-	// node; read is the key and value bytes its answer carried. Both feed
-	// the ceilings of cmd/benchreport.
-	written, read int64
+	// node, for the ceilings of cmd/benchreport.
+	written int64
 	// rev is the header revision of the answer, and k8s the call of the
 	// k8s replay.
 	rev int64

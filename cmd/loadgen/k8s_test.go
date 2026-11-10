@@ -213,8 +213,8 @@ func TestTxnKVs(t *testing.T) {
 	if err := txnKVs(&st, m); err != nil {
 		t.Fatal(err)
 	}
-	if st.c.KVs != 2 || st.c.PrevKVs != 3 || st.read != 5*7 {
-		t.Errorf("%d read and %d previous key-values of %d bytes, want 2 and 3 of 35", st.c.KVs, st.c.PrevKVs, st.read)
+	if st.c.KVs != 2 || st.c.PrevKVs != 3 {
+		t.Errorf("%d read and %d previous key-values, want 2 and 3", st.c.KVs, st.c.PrevKVs)
 	}
 }
 

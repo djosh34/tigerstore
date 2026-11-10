@@ -266,12 +266,12 @@ func TestAnswerSizes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n, kvs, err := rangeBytes(r); err != nil || n != 3+100+2+7 || kvs != 2 {
-		t.Fatalf("rangeBytes: %d, %v", n, err)
+	if kvs, err := rangeKVCount(r); err != nil || kvs != 2 {
+		t.Fatalf("rangeKVCount: %d, %v", kvs, err)
 	}
 	st := &stream{}
-	if err := (&rangeLoad{}).message(st, r); err != nil || st.read != 112 {
-		t.Fatalf("range read %d bytes: %v", st.read, err)
+	if err := (&rangeLoad{}).message(st, r); err != nil || st.c.KVs != 2 {
+		t.Fatalf("range read %d key-values: %v", st.c.KVs, err)
 	}
 }
 

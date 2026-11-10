@@ -74,7 +74,6 @@ type result struct {
 	ClientCores          float64   `json:"client_cores"`
 	DiskBytesPerOp       float64   `json:"disk_bytes_per_op"`
 	MinWrittenBytesPerOp float64   `json:"min_written_bytes_per_op"`
-	MinReadBytesPerOp    float64   `json:"min_read_bytes_per_op"`
 	RampClimbing         bool      `json:"ramp_climbing"`
 	PerOp                perOp     `json:"per_op"`
 	Keys                 int       `json:"keys"`

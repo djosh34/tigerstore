@@ -401,30 +401,14 @@ func txnOutcome(m []byte) (rev int64, succeeded bool, err error) {
 	return int64(r), succeeded, nil
 }
 
-// rangeBytes returns the key and value bytes of the key-values in a
-// RangeResponse, and how many there are. It reads their lengths and never
-// looks at the bytes.
-func rangeBytes(m []byte) (n, kvs int64, err error) {
-	err = fields(m, func(num protowire.Number, _ uint64, kv []byte) error {
-		if num != rangeKVs {
-			return nil
-		}
-		k, err := kvBytes(kv)
-		n += k
-		kvs++
-		return err
-	})
-	return n, kvs, err
-}
-
-// kvBytes returns the key and value bytes of one mvccpb.KeyValue.
-func kvBytes(kv []byte) (int64, error) {
-	var n int64
-	err := fields(kv, func(num protowire.Number, _ uint64, b []byte) error {
-		if num == kvKey || num == kvValue {
-			n += int64(len(b))
+// rangeKVCount returns how many key-values a RangeResponse holds, from
+// their tags alone.
+func rangeKVCount(m []byte) (kvs int64, err error) {
+	err = fields(m, func(num protowire.Number, _ uint64, _ []byte) error {
+		if num == rangeKVs {
+			kvs++
 		}
 		return nil
 	})
-	return n, err
+	return kvs, err
 }

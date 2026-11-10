@@ -135,8 +135,8 @@ func TestEtcdWorkloads(t *testing.T) {
 		if res.Ops > 0 && tc.workload != "range" && tc.workload != "list" && res.MinWrittenBytesPerOp == 0 {
 			t.Fatalf("%+v: no written bytes per op", tc)
 		}
-		if res.Ops > 0 && (tc.workload == "range" || tc.workload == "list" || tc.workload == "k8s") && res.MinReadBytesPerOp == 0 {
-			t.Fatalf("%+v: no read bytes per op", tc)
+		if res.Ops > 0 && (tc.workload == "range" || tc.workload == "list") && res.PerOp.KVs == 0 {
+			t.Fatalf("%+v: no key-values read per op", tc)
 		}
 		t.Log(res.oneLine())
 	}

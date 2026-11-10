@@ -426,9 +426,8 @@ func (w *k8sLoad) done(st *stream, at int64, err error) {
 	w.wk.stats.complete(st, at, err)
 }
 
-// rangeReply takes in a RangeResponse in one pass: the key and value
-// bytes and the key-values it carried, and its header's revision, which
-// it must have if needRev.
+// rangeReply takes in a RangeResponse in one pass: the key-values it
+// carried, and its header's revision, which it must have if needRev.
 func rangeReply(st *stream, m []byte, needRev bool) error {
 	err := fields(m, func(num protowire.Number, _ uint64, b []byte) error {
 		//exhaustive:ignore // count and more are not needed
@@ -438,10 +437,7 @@ func rangeReply(st *stream, m []byte, needRev bool) error {
 			st.rev = int64(rev)
 			return err
 		case rangeKVs:
-			n, err := kvBytes(b)
-			st.read += n
 			st.c.KVs++
-			return err
 		}
 		return nil
 	})
@@ -462,11 +458,14 @@ const (
 // txnKVs counts the key-values a TxnResponse carries, those its ranges
 // read and the previous ones of its writes, nested Txns included.
 func txnKVs(st *stream, m []byte) error {
-	read := func(b []byte, count *int64) error {
-		n, err := kvBytes(b)
-		st.read += n
-		*count++
-		return err
+	// countField counts the fields num of r into n.
+	countField := func(r []byte, num protowire.Number, n *int64) error {
+		return fields(r, func(f protowire.Number, _ uint64, _ []byte) error {
+			if f == num {
+				*n++
+			}
+			return nil
+		})
 	}
 	return fields(m, func(num protowire.Number, _ uint64, op []byte) error {
 		if num != txnResponses {
@@ -476,26 +475,11 @@ func txnKVs(st *stream, m []byte) error {
 			//exhaustive:ignore // a ResponseOp has no other answers
 			switch num {
 			case opResponseRange:
-				return fields(r, func(num protowire.Number, _ uint64, b []byte) error {
-					if num == rangeKVs {
-						return read(b, &st.c.KVs)
-					}
-					return nil
-				})
+				return countField(r, rangeKVs, &st.c.KVs)
 			case opResponsePut:
-				return fields(r, func(num protowire.Number, _ uint64, b []byte) error {
-					if num == putRespPrevKV {
-						return read(b, &st.c.PrevKVs)
-					}
-					return nil
-				})
+				return countField(r, putRespPrevKV, &st.c.PrevKVs)
 			case opResponseDeleteRange:
-				return fields(r, func(num protowire.Number, _ uint64, b []byte) error {
-					if num == delPrevKVs {
-						return read(b, &st.c.PrevKVs)
-					}
-					return nil
-				})
+				return countField(r, delPrevKVs, &st.c.PrevKVs)
 			case opResponseTxn:
 				return txnKVs(st, r)
 			}
@@ -553,13 +537,10 @@ func (ws *k8sWatch) response(m []byte) error {
 			}
 		case watchEvents:
 			events = true
-			var read, kvs int64
-			err := fields(b, func(n protowire.Number, _ uint64, kv []byte) error {
+			var kvs int64
+			err := fields(b, func(n protowire.Number, _ uint64, _ []byte) error {
 				if n == eventKV || n == eventPrevKV {
-					k, err := kvBytes(kv)
-					read += k
 					kvs++
-					return err
 				}
 				return nil
 			})
@@ -567,7 +548,6 @@ func (ws *k8sWatch) response(m []byte) error {
 				return err
 			}
 			if inWindow {
-				ws.stats.read += read
 				ws.stats.c.Events += kvs
 				ws.stats.events++
 			}

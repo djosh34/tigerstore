@@ -173,13 +173,9 @@ type result struct {
 	// all servers on it and anything else, per operation.
 	DiskBytesPerOp float64 `json:"disk_bytes_per_op,omitempty"`
 	// MinWrittenBytesPerOp is the fewest bytes an operation must make
-	// durable on each node: the keys and values of its writes, and the
-	// key and revision of a compare. MinReadBytesPerOp is the key and
-	// value bytes its reads carried, and in k8s the key and value bytes
-	// of the watch events that came in the window, previous key-values
-	// included. Both are means over the operations of the window.
+	// durable on each node (tally), a mean over the operations of the
+	// window.
 	MinWrittenBytesPerOp float64 `json:"min_written_bytes_per_op"`
-	MinReadBytesPerOp    float64 `json:"min_read_bytes_per_op"`
 	// PerOp is what the window's calls carried, per operation, for the
 	// least CPU an operation needs (cmd/benchreport).
 	PerOp perOp `json:"per_op"`
@@ -755,7 +751,7 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 		Errors:         make(map[string]int64),
 	}
 	var resp, service hist
-	var written, read int64
+	var written int64
 	var cnt counts
 	add := func(st *stats) {
 		cnt.add(&st.c)
@@ -764,7 +760,6 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 		res.Cohort += st.cohort
 		res.CohortFailed += st.cohortFailed
 		written += st.written
-		read += st.read
 		resp.merge(&st.resp)
 		service.merge(&st.service)
 		for e, n := range st.errs {
@@ -808,7 +803,6 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 	}
 	if res.Ops > 0 {
 		res.MinWrittenBytesPerOp = float64(written) / float64(res.Ops)
-		res.MinReadBytesPerOp = float64(read) / float64(res.Ops)
 		n := float64(res.Ops)
 		res.PerOp = perOp{
 			OutBytes: float64(cnt.Out) / n, InBytes: float64(cnt.In) / n,

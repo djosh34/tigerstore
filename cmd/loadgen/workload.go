@@ -31,10 +31,10 @@ type stats struct {
 	acked             int64 // successful completions in the whole phase
 	cohort            int64 // requests that arrived in the window, by outcome below
 	cohortFailed      int64 // of those, the ones that failed
-	// written and read sum stream.written and stream.read over the
-	// successful completions in the window.
-	written, read int64
-	c             counts
+	// written sums stream.written over the successful completions in the
+	// window.
+	written int64
+	c       counts
 	// events counts the watch events that came in the window, in k8s.
 	events  int64
 	resp    hist // latency from the intended send time
@@ -63,7 +63,6 @@ func (s *stats) complete(st *stream, at int64, err error) {
 	if at >= s.winStart && at < s.winStop {
 		s.ops++
 		s.written += st.written
-		s.read += st.read
 		s.c.add(&st.c)
 	}
 	if inCohort {
@@ -274,8 +273,7 @@ func (w *rangeLoad) start(c *conn, st *stream, limit int) bool {
 func (w *rangeLoad) exhausted() bool { return false }
 
 func (w *rangeLoad) message(st *stream, m []byte) error {
-	n, kvs, err := rangeBytes(m)
-	st.read += n
+	kvs, err := rangeKVCount(m)
 	st.c.KVs += kvs
 	return err
 }
@@ -401,8 +399,7 @@ func (w *listLoad) start(c *conn, st *stream, limit int) bool {
 func (w *listLoad) exhausted() bool { return false }
 
 func (w *listLoad) message(st *stream, m []byte) error {
-	n, kvs, err := rangeBytes(m)
-	st.read += n
+	kvs, err := rangeKVCount(m)
 	st.c.KVs += kvs
 	return err
 }
