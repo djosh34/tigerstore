@@ -547,7 +547,7 @@ func TestRebuildRefusesAHugeSubRevision(t *testing.T) {
 		put(t, s, "b", "v")
 		var vers []*version
 		s.each(func(k *keyIndex) bool {
-			vers = append(vers, &k.vers[0])
+			vers = append(vers, &k.vers()[0])
 			return true
 		})
 		c.damage(s, vers)

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"fmt"
 	"runtime"
 	"testing"
@@ -60,8 +61,9 @@ func TestTxnRangeIsBounded(t *testing.T) {
 }
 
 // TestRangeFromCacheAllocatesOnce reads 3 MB whose values are in the
-// cache, in pieces: the values come as the cache holds them, so the read
-// allocates far less than the answer (#430).
+// cache, in pieces: each piece copies its values out of the cache's slabs
+// into one buffer, so the read allocates its answer once, not twice
+// (#430, #602).
 func TestRangeFromCacheAllocatesOnce(t *testing.T) {
 	s := startSingleWith(t, simfs.New(), 1, func(c *Config) { c.MemoryBytes = 1 << 30; c.WindowBytes, c.WindowMaxBytes = 512, 1024 })
 	for i := range 2000 {
@@ -87,7 +89,47 @@ func TestRangeFromCacheAllocatesOnce(t *testing.T) {
 	if n != 2000 {
 		t.Fatalf("the answer has %d keys, want 2000", n)
 	}
-	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > uint64(size)/2 {
+	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > uint64(size)*3/2 {
 		t.Fatalf("a Range of %d bytes from the cache allocated %d bytes", size, alloc)
+	}
+}
+
+// TestAnswerKeepsCachedValue reads a value from the cache, then frees its
+// slot and gives the slot to another value of its size: the answer, which
+// the driver encodes later, must still hold the value it read, so a cache
+// hit is copied out of the slabs (#602).
+func TestAnswerKeepsCachedValue(t *testing.T) {
+	s := startSingleWith(t, simfs.New(), 1, func(c *Config) { c.MemoryBytes = 1 << 30; c.WindowBytes, c.WindowMaxBytes = 512, 1024 })
+	id := uint64(0)
+	put := func(key string, value []byte) {
+		t.Helper()
+		id++
+		if r := s.do(id, &pb.PutRequest{Key: []byte(key), Value: value}); r.Err != nil {
+			t.Fatal(r.Err)
+		}
+	}
+	// Small writes push an entry out of the window, and its value into
+	// the cache.
+	leave := func() {
+		for i := range 20 {
+			put(fmt.Sprintf("f%02d", i), make([]byte, 100))
+		}
+	}
+	a, b := bytes.Repeat([]byte("a"), 1500), bytes.Repeat([]byte("b"), 1500)
+	put("k", a)
+	leave()
+	hits := s.n.Metrics().CacheHits
+	id++
+	r := s.do(id, &pb.RangeRequest{Key: []byte("k")})
+	if r.Err != nil || len(r.Range.KVs) != 1 || s.n.Metrics().CacheHits != hits+1 {
+		t.Fatalf("the read of k: %v, %d values, %d cache hits", r.Err, len(r.Range.KVs), s.n.Metrics().CacheHits-hits)
+	}
+	got := r.Range.KVs[0].Value
+	// Overwriting k frees its slot, and b takes it once its entry leaves.
+	put("k", []byte("x"))
+	put("other", b)
+	leave()
+	if !bytes.Equal(got, a) {
+		t.Fatalf("the answer's value changed after its slot was taken again: %q...", got[:8])
 	}
 }

@@ -16,8 +16,8 @@ import (
 func etcdRows(s *Store) int64 {
 	var n int64
 	s.each(func(k *keyIndex) bool {
-		for i := k.dropped(s.pendingCompact()); i < len(k.vers); i++ {
-			v := &k.vers[i]
+		for i := k.dropped(s.pendingCompact()); i < len(k.vers()); i++ {
+			v := &k.vers()[i]
 			kv := &mvccpb.KeyValue{Key: s.key(k)}
 			n += 17
 			if v.ver == 0 {

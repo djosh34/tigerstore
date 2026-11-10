@@ -158,6 +158,28 @@ func appendShort(b []byte, t *pb.TxnRequest) []byte {
 	return b
 }
 
+// shortParts are the messages a decoded short transaction points to, in
+// one allocation instead of one each: a Kubernetes write is one, and the
+// leader decodes every one (#602).
+type shortParts struct {
+	compare   pb.Compare
+	version   pb.Compare_Version
+	create    pb.Compare_CreateRevision
+	mod       pb.Compare_ModRevision
+	lease     pb.Compare_Lease
+	compares  [1]*pb.Compare
+	success   [1]*pb.RequestOp
+	failure   [1]*pb.RequestOp
+	successOp pb.RequestOp
+	failureOp pb.RequestOp
+	put       pb.RequestOp_RequestPut
+	putReq    pb.PutRequest
+	del       pb.RequestOp_RequestDeleteRange
+	delReq    pb.DeleteRangeRequest
+	rangeOp   pb.RequestOp_RequestRange
+	rangeReq  pb.RangeRequest
+}
+
 // decodeShort decodes a short transaction that starts at offset at of its
 // entry into m, and records in pl where the value of its put starts. The
 // bytes fields are slices of b.
@@ -179,7 +201,9 @@ func decodeShort(b []byte, m *pb.TxnRequest, at int, pl *placer) error {
 	if !ok || len(rest) == 0 || result > 1<<32-1 || target > 1<<32-1 {
 		return errBadBatch
 	}
-	c := &pb.Compare{Result: pb.Compare_CompareResult(int32(uint32(result))), Target: pb.Compare_CompareTarget(int32(uint32(target)))}
+	p := new(shortParts)
+	c := &p.compare
+	c.Result, c.Target = pb.Compare_CompareResult(int32(uint32(result))), pb.Compare_CompareTarget(int32(uint32(target)))
 	field := rest[0]
 	rest = rest[1:]
 	if field != numberNone {
@@ -189,13 +213,17 @@ func decodeShort(b []byte, m *pb.TxnRequest, at int, pl *placer) error {
 		}
 		switch field {
 		case numberVersion:
-			c.TargetUnion = &pb.Compare_Version{Version: int64(n)}
+			p.version.Version = int64(n)
+			c.TargetUnion = &p.version
 		case numberCreate:
-			c.TargetUnion = &pb.Compare_CreateRevision{CreateRevision: int64(n)}
+			p.create.CreateRevision = int64(n)
+			c.TargetUnion = &p.create
 		case numberMod:
-			c.TargetUnion = &pb.Compare_ModRevision{ModRevision: int64(n)}
+			p.mod.ModRevision = int64(n)
+			c.TargetUnion = &p.mod
 		case numberLease:
-			c.TargetUnion = &pb.Compare_Lease{Lease: int64(n)}
+			p.lease.Lease = int64(n)
+			c.TargetUnion = &p.lease
 		default:
 			return errBadBatch
 		}
@@ -213,23 +241,33 @@ func decodeShort(b []byte, m *pb.TxnRequest, at int, pl *placer) error {
 	key := rest[:n:n]
 	c.Key = key
 	value := rest[n:]
-	m.Compare = []*pb.Compare{c}
+	p.compares[0] = c
+	m.Compare = p.compares[:]
 	prev := flags&shortPrevKV != 0
 	if flags&shortDelete != 0 {
 		if len(value) != 0 {
 			return errBadBatch
 		}
-		m.Success = []*pb.RequestOp{{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: key, PrevKv: prev}}}}
+		p.delReq.Key, p.delReq.PrevKv = key, prev
+		p.del.RequestDeleteRange = &p.delReq
+		p.successOp.Request = &p.del
 	} else {
 		value = slices.Clip(value)
 		pl.add(value, at+len(whole)-len(value))
-		m.Success = []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{
-			Key: key, Value: value, Lease: int64(lease), PrevKv: prev,
-			IgnoreValue: flags&shortIgnoreValue != 0, IgnoreLease: flags&shortIgnoreLease != 0,
-		}}}}
+		r := &p.putReq
+		r.Key, r.Value, r.Lease, r.PrevKv = key, value, int64(lease), prev
+		r.IgnoreValue, r.IgnoreLease = flags&shortIgnoreValue != 0, flags&shortIgnoreLease != 0
+		p.put.RequestPut = r
+		p.successOp.Request = &p.put
 	}
+	p.success[0] = &p.successOp
+	m.Success = p.success[:]
 	if flags&shortRead != 0 {
-		m.Failure = []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: key}}}}
+		p.rangeReq.Key = key
+		p.rangeOp.RequestRange = &p.rangeReq
+		p.failureOp.Request = &p.rangeOp
+		p.failure[0] = &p.failureOp
+		m.Failure = p.failure[:]
 	}
 	return nil
 }

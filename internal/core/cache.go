@@ -1,8 +1,6 @@
 package core
 
 import (
-	"bytes"
-
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -18,17 +16,20 @@ import (
 // uses, as the driver measures it, so the cache shrinks as anything else
 // grows. A value is named by its Raft position, which no later write
 // changes, so the cache never hands out a stale value; dropping
-// overwritten ones frees memory.
+// overwritten ones frees memory. The values are in slabs, whose slots are
+// taken again, so a reader copies what get returns before the cache
+// changes.
 type cache struct {
-	// bytes counts every value with cachedOverhead and every slot of
-	// items up to peak with slotOverhead, and low is the smallest it was
-	// since the last CacheLow.
+	// bytes counts every value by its room in the slabs with
+	// cachedOverhead and every slot of items up to peak with
+	// slotOverhead, and low is the smallest it was since the last
+	// CacheLow.
 	limit, bytes, low int64
 	// items names the entry of each cached value. Neither items nor
 	// entries holds a pointer, so the garbage collector does not walk
 	// them: with a million values cached, walking records that pointed
 	// at each other and at their values took a fifth of a node's core
-	// (#506). vals holds the values, one per entry.
+	// (#506). slabs holds the values (#602).
 	items map[mvcc.Ref]int32
 	// peak is the most values items held since it was made. A Go map
 	// keeps its memory as it empties, so items is made again once it
@@ -37,7 +38,7 @@ type cache struct {
 	// entries[0] is the start and end of the ring of cached values, the
 	// most recently used after it; free lists the entries not in use.
 	entries []cached
-	vals    [][]byte
+	slabs   slabs
 	free    []int32
 	// hits are the values the cache returned, and misses those read from
 	// the log.
@@ -45,19 +46,19 @@ type cache struct {
 }
 
 // cached is one value in the cache, by the entries before and after it
-// in the ring.
+// in the ring, and its slot in the slabs.
 type cached struct {
 	ref        mvcc.Ref
 	prev, next int32
+	slot       slot
 }
 
-// cachedOverhead estimates what a cached value takes besides its bytes
-// and its map slot: its entry, its slice header, and the rounding up of a
-// small value's allocation. slotOverhead estimates a slot of the map with
-// the room Go keeps free in it. A million one-byte values took 148 bytes
-// each on Go 1.27, 83 of them in the map.
+// cachedOverhead is what a cached value takes besides its slot and its
+// map slot: its entry. slotOverhead estimates a slot of the map with the
+// room Go keeps free in it; a million one-byte values took 83 bytes each
+// in the map on Go 1.27.
 const (
-	cachedOverhead = 80
+	cachedOverhead = 40
 	slotOverhead   = 96
 )
 
@@ -84,23 +85,30 @@ func (c *cache) get(r mvcc.Ref) ([]byte, bool) {
 	c.hits++
 	c.unlink(i)
 	c.push(i)
-	return c.vals[i], true
+	e := &c.entries[i]
+	return c.slabs.bytes(e.slot, int(e.ref.Len)), true
 }
 
-// add keeps val, the bytes r names, which nobody may change afterwards.
+// has reports whether the cache holds the value r names, and does not
+// mark it used.
+func (c *cache) has(r mvcc.Ref) bool {
+	_, ok := c.items[r]
+	return ok
+}
+
+// add copies val, the bytes r names, into the cache.
 func (c *cache) add(r mvcc.Ref, val []byte) {
 	if _, ok := c.items[r]; ok || c.limit <= 0 {
 		return
 	}
+	e := cached{ref: r, slot: c.slabs.put(val)}
 	var i int32
 	if n := len(c.free); n > 0 {
 		i, c.free = c.free[n-1], c.free[:n-1]
-		c.entries[i] = cached{ref: r}
-		c.vals[i] = val
+		c.entries[i] = e
 	} else {
 		i = int32(len(c.entries))
-		c.entries = append(c.entries, cached{ref: r})
-		c.vals = append(c.vals, val)
+		c.entries = append(c.entries, e)
 	}
 	c.items[r] = i
 	if len(c.items) > c.peak {
@@ -108,7 +116,7 @@ func (c *cache) add(r mvcc.Ref, val []byte) {
 		c.bytes += slotOverhead
 	}
 	c.push(i)
-	c.bytes += int64(len(val)) + cachedOverhead
+	c.bytes += c.slabs.room(e.slot, len(val)) + cachedOverhead
 	c.fit()
 }
 
@@ -129,7 +137,7 @@ func (c *cache) setLimit(limit int64) {
 // clear forgets every value.
 func (c *cache) clear() {
 	c.items, c.peak = map[mvcc.Ref]int32{}, 0
-	c.entries, c.vals, c.free = []cached{{}}, [][]byte{nil}, nil
+	c.entries, c.free, c.slabs = []cached{{}}, nil, slabs{}
 	c.bytes, c.low = 0, 0
 }
 
@@ -143,9 +151,10 @@ func (c *cache) fit() {
 
 func (c *cache) remove(i int32) {
 	c.unlink(i)
-	delete(c.items, c.entries[i].ref)
-	c.bytes -= int64(len(c.vals[i])) + cachedOverhead
-	c.vals[i] = nil
+	e := &c.entries[i]
+	delete(c.items, e.ref)
+	c.bytes -= c.slabs.room(e.slot, int(e.ref.Len)) + cachedOverhead
+	c.slabs.free(e.slot)
 	c.free = append(c.free, i)
 	if len(c.items) <= c.peak/2 {
 		c.bytes -= int64(c.peak-len(c.items)) * slotOverhead
@@ -154,23 +163,23 @@ func (c *cache) remove(i int32) {
 	c.low = min(c.low, c.bytes)
 }
 
-// rebuild makes the map and the entries again with room for only the
-// values cached, in the same order, so the memory of those that went is
-// freed.
+// rebuild makes the map, the entries and the slabs again with room for
+// only the values cached, in the same order, so the memory of those that
+// went is freed.
 func (c *cache) rebuild() {
 	items := make(map[mvcc.Ref]int32, len(c.items))
 	entries := make([]cached, 1, len(c.items)+1)
-	vals := make([][]byte, 1, len(c.items)+1)
+	var sl slabs
 	for i := c.entries[0].next; i != 0; i = c.entries[i].next {
+		e := &c.entries[i]
 		n := int32(len(entries))
-		items[c.entries[i].ref] = n
-		entries = append(entries, cached{ref: c.entries[i].ref, prev: n - 1, next: n + 1})
-		vals = append(vals, c.vals[i])
+		items[e.ref] = n
+		entries = append(entries, cached{ref: e.ref, prev: n - 1, next: n + 1, slot: sl.put(c.slabs.bytes(e.slot, int(e.ref.Len)))})
 	}
 	last := int32(len(entries) - 1)
 	entries[0].next, entries[0].prev = min(1, last), last
 	entries[last].next = 0
-	c.items, c.peak, c.entries, c.vals, c.free = items, len(items), entries, vals, nil
+	c.items, c.peak, c.entries, c.slabs, c.free = items, len(items), entries, sl, nil
 }
 
 // push puts entry i at the front of the ring.
@@ -193,7 +202,7 @@ func (n *Node) fillCache(index uint64) {
 	n.kv.Leaving(index, func(r mvcc.Ref) {
 		data, ok := n.storage.entryData(r.Index)
 		if ok && uint64(r.Off)+uint64(r.Len) <= uint64(len(data)) {
-			n.cache.add(r, bytes.Clone(data[r.Off:r.Off+r.Len]))
+			n.cache.add(r, data[r.Off:r.Off+r.Len])
 		}
 	})
 }
