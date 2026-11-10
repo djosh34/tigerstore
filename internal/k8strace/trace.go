@@ -163,19 +163,22 @@ func (t *Trace) Write(path string) (err error) {
 	return gz.Close()
 }
 
+func readGzip(r io.Reader) ([]byte, error) {
+	gz, err := gzip.NewReader(r)
+	if err != nil {
+		return nil, err
+	}
+	return io.ReadAll(gz)
+}
+
 // Read reads a trace that Write wrote.
 func Read(path string) (*Trace, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return nil, err
-	}
-	b, err := io.ReadAll(gz)
-	if err != nil {
+	b, err := readGzip(f)
+	if err := errors.Join(err, f.Close()); err != nil {
 		return nil, err
 	}
 	t, err := decode(b)

@@ -34,9 +34,11 @@ type stats struct {
 	// written and read sum stream.written and stream.read over the
 	// successful completions in the window.
 	written, read int64
-	resp          hist // latency from the intended send time
-	service       hist // latency from the actual send time
-	errs          map[string]int64
+	// events counts the watch events that came in the window, in k8s.
+	events  int64
+	resp    hist // latency from the intended send time
+	service hist // latency from the actual send time
+	errs    map[string]int64
 }
 
 // complete counts the end of a call. A success needs exactly one response

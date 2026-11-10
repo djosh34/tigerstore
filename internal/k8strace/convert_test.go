@@ -36,7 +36,8 @@ func unary(id int64, method string, req *Request, resp *Response) []Record {
 	}
 }
 
-func cas(key string, mod int64, size int) *Request {
+func cas(mod int64, size int) *Request {
+	const key = "/a"
 	return &Request{Txn: &Txn{
 		Compare: []LogCompare{{Target: TargetMod, Key: key, Value: mod}},
 		Success: []LogOp{{Put: &Put{Key: key, Size: size}}},
@@ -54,7 +55,7 @@ func TestConvert(t *testing.T) {
 	add := func(r []Record) { recs = append(recs, r...) }
 	// Before the window: /a is created at revision 5; a watch on /
 	// opens.
-	add(unary(1, MethodTxn, cas("/a", 0, 10), &Response{Rev: 5, Succeeded: true, Ops: []Response{{Rev: 5}}}))
+	add(unary(1, MethodTxn, cas(0, 10), &Response{Rev: 5, Succeeded: true, Ops: []Response{{Rev: 5}}}))
 	recs = append(recs,
 		Record{Event: EventOpen, Call: 2, Method: MethodWatch},
 		Record{Event: EventReq, Call: 2, Req: &Request{Watch: &WatchRequest{Create: &WatchCreate{Key: "/", End: "0", PrevKV: true}}}},
@@ -62,13 +63,13 @@ func TestConvert(t *testing.T) {
 	)
 	start := int64(len(recs)+1) * 1000
 	// The window. Call 0: update /a from the preload's revision.
-	add(unary(3, MethodTxn, cas("/a", 5, 20), &Response{Rev: 6, Succeeded: true, Ops: []Response{{Rev: 6}}}))
+	add(unary(3, MethodTxn, cas(5, 20), &Response{Rev: 6, Succeeded: true, Ops: []Response{{Rev: 6}}}))
 	// The watch delivers /a at 6. Call 1: update /a from that event.
 	recs = append(recs, Record{Event: EventResp, Call: 2, Resp: &Response{Rev: 6, Watch: &WatchResponse{ID: 7, Events: []Event{{KV: KV{Key: "/a", Mod: 6, Size: 20}}}}}})
-	add(unary(4, MethodTxn, cas("/a", 6, 30), &Response{Rev: 7, Succeeded: true, Ops: []Response{{Rev: 7}}}))
+	add(unary(4, MethodTxn, cas(6, 30), &Response{Rev: 7, Succeeded: true, Ops: []Response{{Rev: 7}}}))
 	// Call 2: a GET of /a. Call 3: an update from what it returned.
 	add(unary(5, MethodRange, &Request{Range: &Range{Key: "/a"}}, &Response{Rev: 7, Count: 1, KVs: []KV{{Key: "/a", Mod: 7}}}))
-	add(unary(6, MethodTxn, cas("/a", 7, 40), &Response{Rev: 8, Succeeded: true, Ops: []Response{{Rev: 8}}}))
+	add(unary(6, MethodTxn, cas(7, 40), &Response{Rev: 8, Succeeded: true, Ops: []Response{{Rev: 8}}}))
 	// Call 4: a grant. Call 5: a put with its lease.
 	add(unary(7, MethodLeaseGrant, &Request{LeaseGrant: &LeaseGrant{TTL: 3600}}, &Response{Rev: 8, Lease: 99, TTL: 3600}))
 	add(unary(8, MethodPut, &Request{Put: &Put{Key: "/e", Size: 5, Lease: 99}}, &Response{Rev: 9}))
@@ -76,7 +77,7 @@ func TestConvert(t *testing.T) {
 	add(unary(9, MethodRange, &Request{Range: &Range{Key: "/", End: "0", Limit: 1}}, &Response{Rev: 9, Count: 2, More: true, KVs: []KV{{Key: "/a", Mod: 8}}}))
 	add(unary(10, MethodRange, &Request{Range: &Range{Key: "/a\x00", End: "0", Limit: 1, Rev: 9}}, &Response{Rev: 9, Count: 1, KVs: []KV{{Key: "/e", Mod: 9}}}))
 	// Call 8: a stale update, from a revision no key has, which fails.
-	add(unary(11, MethodTxn, cas("/a", 3, 50), &Response{Rev: 9, Ops: []Response{{Rev: 9, KVs: []KV{{Key: "/a", Mod: 8}}}}}))
+	add(unary(11, MethodTxn, cas(3, 50), &Response{Rev: 9, Ops: []Response{{Rev: 9, KVs: []KV{{Key: "/a", Mod: 8}}}}}))
 	// Call 9: a progress request on the watch.
 	recs = append(recs, Record{Event: EventReq, Call: 2, Req: &Request{Watch: &WatchRequest{Progress: true}}})
 	end := int64(len(recs)+1) * 1000
@@ -120,7 +121,7 @@ func TestConvert(t *testing.T) {
 		{CallTxn, nil, -1},       // the preload's /a
 		{CallTxn, []int32{0}, 1}, // the event of call 0's write
 		{CallRange, nil, 0},
-		{CallTxn, []int32{2}, 2}, // what the GET returned, written by call 1
+		{CallTxn, []int32{1, 2}, 2}, // what the GET returned, written by call 1
 		{CallLeaseGrant, nil, 0},
 		{CallPut, []int32{4}, 0},
 		{CallRange, nil, 0},

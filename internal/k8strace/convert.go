@@ -88,7 +88,6 @@ type fixup struct {
 	owner int32
 	key   string
 	rev   int64
-	watch bool // learned from a watch event: wait on the write that made it
 }
 
 type progressCall struct {
@@ -410,20 +409,13 @@ func (c *converter) ops(t *Call, in []LogOp) ([]Op, bool) {
 }
 
 // learned resolves a key's mod or create revision that the call names: it
-// waits on the reply the client learned it from, and its value comes from
-// the write that made it, once the whole log is read.
+// waits on the reply the client learned it from, and, once the whole log
+// is read, on the write that made it, whose reply gives its value.
 func (c *converter) learned(t *Call, key string, rev int64, at *Rev) {
-	f := fixup{at: at, owner: c.owner(), key: key, rev: rev}
-	if d, ok := c.seen[revKey{key, rev}]; ok {
-		switch d.call {
-		case deliveredByWatch:
-			f.watch = true
-		case deliveredEarlier:
-		default:
-			c.wait(t, d.call)
-		}
+	if d, ok := c.seen[revKey{key, rev}]; ok && d.call >= 0 {
+		c.wait(t, d.call)
 	}
-	c.fixups = append(c.fixups, f)
+	c.fixups = append(c.fixups, fixup{at: at, owner: c.owner(), key: key, rev: rev})
 }
 
 func (c *converter) leaseRef(t *Call, id int64) LeaseRef {

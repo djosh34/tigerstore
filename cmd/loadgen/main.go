@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/djosh34/tigerstore/internal/k8ssize"
+	"github.com/djosh34/tigerstore/internal/k8strace"
 )
 
 type config struct {
@@ -56,9 +57,11 @@ type config struct {
 	cpuprofile  string
 	cacert      string
 	cert, key   string
+	traces      string
+	copies      int
 }
 
-var workloads = []string{"put", "txn", "delete", "range", "list", "watch", "mixed"}
+var workloads = []string{"put", "txn", "delete", "range", "list", "watch", "mixed", "k8s"}
 
 func parseFlags(args []string) (config, error) {
 	var cfg config
@@ -86,6 +89,8 @@ func parseFlags(args []string) (config, error) {
 	fs.StringVar(&cfg.cacert, "cacert", "", "CA certificate of the servers; with it, connections use TLS 1.3")
 	fs.StringVar(&cfg.cert, "cert", "", "client certificate for TLS")
 	fs.StringVar(&cfg.key, "key", "", "client key for TLS")
+	fs.StringVar(&cfg.traces, "traces", "bench/recordings", "k8s: the directory of recorded traces, one of which the seed draws")
+	fs.IntVar(&cfg.copies, "copies", 64, "k8s: copies of the recorded cluster that share the store")
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
 	}
@@ -106,6 +111,8 @@ func parseFlags(args []string) (config, error) {
 		return cfg, errors.New("need -conns >= 1, -streams >= 1 and -keys >= -conns")
 	case cfg.valueSize < 8:
 		return cfg, errors.New("-value-size must be at least 8, to hold the watch timestamp")
+	case cfg.workload == "k8s" && (cfg.copies < cfg.conns || traceDir(cfg.traces) != nil):
+		return cfg, errors.Join(errors.New("k8s needs -copies >= -conns and a -traces directory"), traceDir(cfg.traces))
 	case cfg.workload == "watch" && cfg.watchers < 1:
 		return cfg, errors.New("watch needs -watchers >= 1")
 	case cfg.ramp && (cfg.rate > 0 || cfg.workload == "delete" || cfg.workload == "watch"):
@@ -185,6 +192,8 @@ type result struct {
 	Ramp         []rampStep       `json:"ramp,omitempty"`
 	RampClimbing bool             `json:"ramp_climbing,omitempty"`
 	Errors       map[string]int64 `json:"errors"`
+	// K8s describes a k8s run.
+	K8s *k8sResult `json:"k8s,omitempty"`
 }
 
 // rampStep is one step of -ramp.
@@ -299,8 +308,11 @@ func run(cfg config) (*result, error) {
 	s := &session{cfg: cfg, stop: make(chan struct{})}
 	defer s.close()
 	setup := s.setupKV
-	if cfg.workload == "mixed" {
+	switch cfg.workload {
+	case "mixed":
 		setup = s.setupMixed
+	case "k8s":
+		setup = s.setupK8s
 	}
 	if err := setup(); err != nil {
 		return nil, err
@@ -343,6 +355,10 @@ type session struct {
 	mixed        []*mixedLoad
 	mixedWatches []*mixedWatch
 	ledger       *mixedLedger
+	// k8s's recording and the loads of its copies.
+	trace      *k8strace.Trace
+	k8s        []*k8sLoad
+	k8sWatches []*k8sWatch
 	// stop ends the goroutines in control, which send the watch
 	// connections' control frames.
 	stop    chan struct{}
@@ -573,6 +589,11 @@ func (s *session) measure(streams int) (*result, error) {
 	if s.ledger != nil {
 		s.ledger.window(t1, t2)
 	}
+	for _, ws := range s.k8sWatches {
+		ws.c.mu.Lock()
+		ws.stats = stats{winStart: t1, winStop: t2, errs: make(map[string]int64)}
+		ws.c.mu.Unlock()
+	}
 
 	var samples [2]cpuSample
 	var sampleErr error
@@ -614,6 +635,11 @@ func (s *session) measure(streams int) (*result, error) {
 	}
 	if len(s.watches) > 0 {
 		if err := awaitWatches(s.workers, s.watchConns, s.watches); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if s.trace != nil {
+		if err := s.k8sErrors(); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -808,21 +834,30 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 	}
 	var resp, service hist
 	var written, read int64
-	for _, wk := range s.workers {
-		wk.c.mu.Lock()
-		res.Ops += wk.stats.ops
-		res.Acked += wk.stats.acked
-		res.Cohort += wk.stats.cohort
-		res.CohortFailed += wk.stats.cohortFailed
-		res.Unsent += wk.unsent
-		written += wk.stats.written
-		read += wk.stats.read
-		resp.merge(&wk.stats.resp)
-		service.merge(&wk.stats.service)
-		for e, n := range wk.stats.errs {
+	add := func(st *stats) {
+		res.Ops += st.ops
+		res.Acked += st.acked
+		res.Cohort += st.cohort
+		res.CohortFailed += st.cohortFailed
+		written += st.written
+		read += st.read
+		resp.merge(&st.resp)
+		service.merge(&st.service)
+		for e, n := range st.errs {
 			res.Errors[e] += n
 		}
+	}
+	for _, wk := range s.workers {
+		wk.c.mu.Lock()
+		add(&wk.stats)
+		res.Unsent += wk.unsent
 		wk.c.mu.Unlock()
+	}
+	// The k8s watches answer progress requests and carry events.
+	for _, ws := range s.k8sWatches {
+		ws.c.mu.Lock()
+		add(&ws.stats)
+		ws.c.mu.Unlock()
 	}
 	res.Throughput = float64(res.Ops) / cfg.duration.Seconds()
 	res.Latency = resp.summary()
@@ -865,6 +900,9 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 		l.mu.Lock()
 		res.Watch = &watchResult{Watchers: len(s.mixedWatches), Events: l.count, EventsPerS: float64(l.count) / cfg.duration.Seconds(), Latency: l.lat.summary()}
 		l.mu.Unlock()
+	}
+	if s.trace != nil {
+		s.summarizeK8s(res)
 	}
 	if res.Ops > 0 {
 		res.MinWrittenBytesPerOp = float64(written) / float64(res.Ops)

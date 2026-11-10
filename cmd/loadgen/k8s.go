@@ -1,0 +1,524 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"math/rand/v2"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+
+	"google.golang.org/protobuf/encoding/protowire"
+
+	"github.com/djosh34/tigerstore/internal/k8strace"
+)
+
+// The k8s workload replays a recording of a real Kubernetes control plane
+// (bench/recordings). The seed draws one of the recordings, a cluster
+// shape, and where in it each copy begins. The copies make one cluster
+// that many times bigger: each copy's objects get a tag of their own
+// right after their resource's prefix, as if each copy's namespaces and
+// cluster-scoped objects had other names (/registry/pods/c007.ns/name).
+// The recorded watches, on whole resources, see every copy's objects, so
+// the store has the watchers of one real cluster. A LIST of a whole
+// resource reads every copy's objects; a LIST of a namespace reads one
+// copy's. Keys outside every watched resource get a prefix per copy.
+//
+// A call goes out once every reply it waits on has come: the replies its
+// apiserver learned the revisions and leases it names from. It names the
+// revisions and leases those replies gave in this replay, not the
+// recorded numbers. So a copy runs as fast as the store lets it, and
+// conflicts on a key happen where they happened in the recording.
+
+// maxBlocked is how many calls of a copy may wait on replies before the
+// copy looks no further ahead.
+const maxBlocked = 4096
+
+// k8sCopy is one copy of the cluster.
+type k8sCopy struct {
+	t      *k8strace.Trace
+	start  *k8strace.Start
+	id     int
+	keys   *k8sKeys
+	tag    []byte // inserted after a key's resource prefix
+	prefix []byte // in front of a key under no watched prefix
+	next   int    // the next call to look at
+	// revs are the replies' header revisions by call, 0 until it came;
+	// grants the leases calls granted.
+	revs     []int64
+	grants   map[int32]int64
+	itemRevs []int64 // the preload's revision of each start item
+	leaseIDs []int64 // the IDs of the start's leases
+	blocked  map[int32][]int32
+	unmet    map[int32]int32
+	ready    []int32
+	back     int32 // a call taken from ready that could not start, or -1
+}
+
+func newCopy(t *k8strace.Trace, keys *k8sKeys, start *k8strace.Start, id int) *k8sCopy {
+	return &k8sCopy{
+		t: t, keys: keys, start: start, id: id, tag: fmt.Appendf(nil, "c%03d.", id), prefix: fmt.Appendf(nil, "/c%03d", id),
+		next: start.K, revs: make([]int64, len(t.Calls)), grants: map[int32]int64{},
+		itemRevs: make([]int64, len(start.Items)), leaseIDs: make([]int64, len(start.Leases)),
+		blocked: map[int32][]int32{}, unmet: map[int32]int32{}, back: -1,
+	}
+}
+
+// k8sKeys says where each key of a trace gets a copy's tag.
+type k8sKeys struct {
+	// split is, by key, where the tag goes: after that many bytes, the
+	// key's watched prefix; keepKey for a watched prefix itself or its
+	// end, which every copy shares; prefixKey for a key under no watched
+	// prefix, which gets the copy's prefix in front.
+	split []int32
+}
+
+const (
+	keepKey   = -1
+	prefixKey = -2
+)
+
+// newK8sKeys finds each key's watched prefix: the longest key of a range
+// watch that the key starts with.
+func newK8sKeys(t *k8strace.Trace) *k8sKeys {
+	keep := map[string]bool{"\x00": true}
+	var prefixes []string
+	for _, ws := range t.Watches {
+		for _, w := range ws.Creates {
+			if w.End >= 0 {
+				p := t.Keys[w.Key]
+				prefixes = append(prefixes, p)
+				keep[p] = true
+				keep[string(prefixEnd([]byte(p)))] = true
+			}
+		}
+	}
+	k := &k8sKeys{split: make([]int32, len(t.Keys))}
+	for i, name := range t.Keys {
+		k.split[i] = prefixKey
+		if keep[name] {
+			k.split[i] = keepKey
+			continue
+		}
+		for _, p := range prefixes {
+			if strings.HasPrefix(name, p) && int32(len(p)) > k.split[i] {
+				k.split[i] = int32(len(p))
+			}
+		}
+	}
+	return k
+}
+
+// cacheRead reports whether call reads many keys of a whole watched
+// resource, as kube-apiserver's watch cache lists it. Such a read spans
+// every copy, and the bigger cluster has one watch cache per resource, as
+// the recording did: only copy 0 sends it. A read of one key of it, such
+// as the revision a consistent LIST waits on, every copy sends.
+func (k *k8sKeys) cacheRead(c *k8strace.Call) bool {
+	return (c.Kind == k8strace.CallRange || c.Kind == k8strace.CallRangeStream) &&
+		c.Op.End >= 0 && k.split[c.Op.Key] == keepKey && c.Op.Limit != 1
+}
+
+// keyLen is the length of key k in copy cp.
+func (cp *k8sCopy) keyLen(k int32) int {
+	n := len(cp.t.Keys[k])
+	switch cp.keys.split[k] {
+	case keepKey:
+		return n
+	case prefixKey:
+		return n + len(cp.prefix)
+	}
+	return n + len(cp.tag)
+}
+
+// appendKey appends key k of copy cp.
+func (cp *k8sCopy) appendKey(b []byte, k int32) []byte {
+	name := cp.t.Keys[k]
+	switch at := cp.keys.split[k]; at {
+	case keepKey:
+		return append(b, name...)
+	case prefixKey:
+		return append(append(b, cp.prefix...), name...)
+	default:
+		return append(append(append(b, name[:at]...), cp.tag...), name[at:]...)
+	}
+}
+
+// answered(w) reports whether call w's reply has come, or w is before
+// the copy's start.
+func (cp *k8sCopy) answered(w int32) bool { return int(w) < cp.start.K || cp.revs[w] != 0 }
+
+// nextReady returns a call whose waits are over.
+func (cp *k8sCopy) nextReady() (int32, bool) {
+	if cp.back >= 0 {
+		i := cp.back
+		cp.back = -1
+		return i, true
+	}
+	for len(cp.ready) == 0 && cp.next < len(cp.t.Calls) && len(cp.unmet) < maxBlocked {
+		i := int32(cp.next)
+		cp.next++
+		var n int32
+		for _, w := range cp.t.Calls[i].Waits {
+			if !cp.answered(w) {
+				cp.blocked[w] = append(cp.blocked[w], i)
+				n++
+			}
+		}
+		if n == 0 {
+			cp.ready = append(cp.ready, i)
+		} else {
+			cp.unmet[i] = n
+		}
+	}
+	if len(cp.ready) == 0 {
+		return 0, false
+	}
+	i := cp.ready[0]
+	cp.ready = cp.ready[1:]
+	return i, true
+}
+
+// reply records call i's reply and frees the calls that waited on it.
+func (cp *k8sCopy) reply(i int32, rev int64) {
+	cp.revs[i] = max(rev, 1)
+	for _, j := range cp.blocked[i] {
+		if cp.unmet[j]--; cp.unmet[j] == 0 {
+			delete(cp.unmet, j)
+			cp.ready = append(cp.ready, j)
+		}
+	}
+	delete(cp.blocked, i)
+}
+
+// finished reports whether the copy has sent the last call of the trace.
+func (cp *k8sCopy) finished() bool {
+	return cp.next == len(cp.t.Calls) && len(cp.ready) == 0 && len(cp.unmet) == 0 && cp.back < 0
+}
+
+// rev is the replay's revision for a revision of call i: of key's write
+// for a compare, key -1 otherwise. A compare against a write the start
+// overwrote, or one the recording learned before its window, gets 1,
+// which no live key has; a read at a revision from before the start
+// reads the newest.
+func (cp *k8sCopy) rev(r k8strace.Rev, key int32, _ int32) int64 {
+	switch {
+	case r == 0:
+		return 0
+	case r == k8strace.RevStale:
+		return 1
+	case !cp.start.Before(r):
+		return cp.revs[r-1]
+	case key < 0:
+		return 0
+	}
+	if it, ok := cp.start.Item(key, r); ok {
+		return cp.itemRevs[it]
+	}
+	return 1
+}
+
+// lease is the replay's ID of a lease, 0 if it is gone.
+func (cp *k8sCopy) lease(l k8strace.LeaseRef, _ int32) int64 {
+	switch {
+	case l == 0:
+		return 0
+	case l > 0 && int(l-1) >= cp.start.K:
+		return cp.grants[int32(l-1)]
+	}
+	if i, ok := cp.start.Lease(l); ok {
+		return cp.leaseIDs[i]
+	}
+	return 0
+}
+
+// k8sLoad replays the copies of one connection.
+type k8sLoad struct {
+	wk      *worker
+	copies  []*k8sCopy
+	watches []*k8sWatch // shared by every copy
+	rr      int
+	calls   map[uint32]k8sCall
+	enc     encoder
+	buf     []byte
+	// compacted counts reads at a revision that another copy's
+	// compaction removed first; kube-apiserver lists again then.
+	compacted int64
+	// skipped counts lease calls whose lease the start no longer has.
+	skipped int64
+	// cacheReads counts reads of a whole watched resource that copies
+	// other than 0 left to copy 0.
+	cacheReads int64
+}
+
+type k8sCall struct {
+	cp              *k8sCopy
+	i               int32
+	written, failed int64
+}
+
+func (w *k8sLoad) start(c *conn, st *stream, limit int) bool {
+	for range len(w.copies) {
+		cp := w.copies[w.rr]
+		w.rr = (w.rr + 1) % len(w.copies)
+		for {
+			i, ok := cp.nextReady()
+			if !ok {
+				break
+			}
+			call := &cp.t.Calls[i]
+			if call.Kind == k8strace.CallProgress {
+				if !w.progress(cp, i) {
+					cp.back = i
+					return false
+				}
+				continue
+			}
+			if cp.id != 0 && cp.keys.cacheRead(call) {
+				w.cacheReads++
+				cp.reply(i, 1)
+				continue
+			}
+			if (call.Kind == k8strace.CallLeaseRevoke || call.Kind == k8strace.CallLeaseKeepAlive || call.Kind == k8strace.CallLeaseTTL) && cp.lease(call.Lease, i) == 0 {
+				w.skipped++
+				cp.reply(i, 1)
+				continue
+			}
+			w.enc.cp, w.enc.call = cp, i
+			w.buf = w.enc.request(w.buf[:0], call)
+			if !c.canStart(messageLen(w.buf), limit) {
+				cp.back = i
+				return false
+			}
+			st.written = w.enc.written
+			st.many = call.Kind == k8strace.CallRangeStream
+			c.startMessage(st, paths[call.Kind], w.buf)
+			w.calls[st.id] = k8sCall{cp: cp, i: i, written: w.enc.written, failed: w.enc.failed}
+			return true
+		}
+	}
+	return false
+}
+
+// progress sends a progress request on the recorded watch stream of call
+// i, which every copy shares. Its answer, a progress notification on that
+// stream, counts as an operation there. No call waits on it.
+func (w *k8sLoad) progress(cp *k8sCopy, i int32) bool {
+	ws := w.watches[cp.t.Calls[i].Stream]
+	w.buf = w.enc.request(w.buf[:0], &cp.t.Calls[i])
+	c := ws.c
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.err == nil && c.sendWin < int64(messageLen(w.buf)) {
+		return false
+	}
+	if c.err == nil {
+		c.enqueue(c.appendMessage(c.queued, ws.st, w.buf, false))
+		ws.pending = append(ws.pending, now())
+	}
+	cp.reply(i, 1)
+	return true
+}
+
+func (w *k8sLoad) exhausted() bool {
+	for _, cp := range w.copies {
+		if !cp.finished() {
+			return false
+		}
+	}
+	return true
+}
+
+func (w *k8sLoad) message(st *stream, m []byte) error {
+	call := w.calls[st.id]
+	switch call.cp.t.Calls[call.i].Kind {
+	case k8strace.CallRange:
+		n, err := rangeBytes(m)
+		st.read += n
+		if err != nil {
+			return err
+		}
+	case k8strace.CallRangeStream:
+		r, err := bytesField(m, rangeStreamResponse)
+		if err != nil {
+			return err
+		}
+		n, err := rangeBytes(r)
+		st.read += n
+		if err != nil {
+			return err
+		}
+		if rev, ok := headerRev(r); ok {
+			st.rev = rev
+		}
+		return nil
+	case k8strace.CallTxn:
+		rev, ok, err := txnOutcome(m)
+		if err != nil {
+			return err
+		}
+		st.rev = rev
+		if !ok {
+			st.written = call.failed
+		}
+		return nil
+	case k8strace.CallLeaseGrant:
+		id, err := varintField(m, leaseID)
+		if err != nil {
+			return err
+		}
+		call.cp.grants[call.i] = int64(id)
+	}
+	rev, ok := headerRev(m)
+	if !ok {
+		return errors.New("response has no header revision")
+	}
+	st.rev = rev
+	return nil
+}
+
+func (w *k8sLoad) done(st *stream, at int64, err error) {
+	call := w.calls[st.id]
+	delete(w.calls, st.id)
+	c := &call.cp.t.Calls[call.i]
+	if err != nil && (c.Kind == k8strace.CallRange || c.Kind == k8strace.CallRangeStream) && c.Op.Rev != 0 &&
+		strings.Contains(err.Error(), "required revision has been compacted") {
+		w.compacted++
+		err, st.msgs, st.rev = nil, 1, 1
+	}
+	if err == nil {
+		call.cp.reply(call.i, st.rev)
+	}
+	w.wk.stats.complete(st, at, err)
+}
+
+// headerRev returns header.revision of a response, if it has a header.
+func headerRev(m []byte) (int64, bool) {
+	h, err := bytesField(m, respHeader)
+	if err != nil || h == nil {
+		return 0, false
+	}
+	rev, err := varintField(h, headerRevision)
+	return int64(rev), err == nil && rev != 0
+}
+
+// k8sWatch is one of the recorded watch streams, which every copy's
+// objects come through. Its stats count the progress answers and the
+// events, under its connection's lock.
+type k8sWatch struct {
+	c        *conn
+	st       *stream
+	creates  int
+	created  int
+	pending  []int64 // when each progress request not yet answered went out
+	stats    stats
+	err      error
+	progress stream // the call a progress answer completes, for stats
+}
+
+func (ws *k8sWatch) message(_ *stream, m []byte) error {
+	if ws.err == nil {
+		ws.err = ws.response(m)
+	}
+	return nil
+}
+
+func (ws *k8sWatch) response(m []byte) error {
+	var id uint64
+	var created, events bool
+	at := now()
+	inWindow := at >= ws.stats.winStart && at < ws.stats.winStop
+	err := fields(m, func(n protowire.Number, v uint64, b []byte) error {
+		//exhaustive:ignore // other fields do not change the watch
+		switch n {
+		case watchResponseID:
+			id = v
+		case watchCreated:
+			created = v == 1
+		case watchCanceled, watchCompactRev:
+			if v != 0 {
+				return errors.New("watch canceled or compacted")
+			}
+		case watchEvents:
+			events = true
+			var read int64
+			err := fields(b, func(n protowire.Number, _ uint64, kv []byte) error {
+				if n == eventKV || n == eventPrevKV {
+					k, err := kvBytes(kv)
+					read += k
+					return err
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			if inWindow {
+				ws.stats.read += read
+				ws.stats.events++
+			}
+		}
+		return nil
+	})
+	switch {
+	case err != nil:
+		return err
+	case created:
+		ws.created++
+	case !events && int64(id) == -1 && len(ws.pending) > 0:
+		// The answer to the oldest progress request.
+		sent := ws.pending[0]
+		ws.pending = ws.pending[1:]
+		ws.progress = stream{intended: sent, sent: sent, msgs: 1}
+		ws.stats.complete(&ws.progress, at, nil)
+	}
+	return nil
+}
+
+func (ws *k8sWatch) done(_ *stream, _ int64, err error) {
+	if err == nil {
+		err = errors.New("watch stream ended")
+	}
+	if ws.err == nil {
+		ws.err = err
+	}
+}
+
+// pickTrace draws one recording of dir, by the seed.
+func pickTrace(dir string, rng *rand.Rand) (*k8strace.Trace, error) {
+	names, err := filepath.Glob(filepath.Join(dir, "*.trace.gz"))
+	if err != nil {
+		return nil, err
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no recordings (*.trace.gz) in %s", dir)
+	}
+	slices.Sort(names)
+	return k8strace.Read(names[rng.IntN(len(names))])
+}
+
+// firstQuarter is the part of a trace a copy may begin in, so every copy
+// has most of the trace ahead of it.
+func firstQuarter(t *k8strace.Trace) int { return max(len(t.Calls)/4, 1) }
+
+var errTraceTooShort = errors.New("a copy ran out of its recording; record longer windows or replay more copies")
+
+// checkCopies fails a measurement in which a copy reached the end of the
+// trace: from then on it sent nothing, and the load was no longer the
+// recording's.
+func checkCopies(copies []*k8sCopy) error {
+	for _, cp := range copies {
+		if cp.next == len(cp.t.Calls) {
+			return fmt.Errorf("copy %d: %w", cp.id, errTraceTooShort)
+		}
+	}
+	return nil
+}
+
+func traceDir(dir string) error {
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		return fmt.Errorf("-traces %q: not a directory", dir)
+	}
+	return nil
+}

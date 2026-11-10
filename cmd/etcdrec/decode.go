@@ -8,7 +8,6 @@ import (
 	"github.com/djosh34/tigerstore/internal/k8strace"
 )
 
-
 // decodeRequest decodes a request message of method, or returns nil for a
 // method the log does not decode.
 func decodeRequest(method string, b []byte) (*k8strace.Request, error) {

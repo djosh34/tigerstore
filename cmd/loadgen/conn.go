@@ -63,6 +63,8 @@ type stream struct {
 	// node; read is the key and value bytes its answer carried. Both feed
 	// the ceilings of cmd/benchreport.
 	written, read int64
+	// rev is the header revision of the answer, for the k8s replay.
+	rev int64
 }
 
 type outBuf []byte
@@ -84,6 +86,7 @@ type conn struct {
 
 	mu         sync.Mutex
 	streams    map[uint32]*stream
+	queued     []byte // frames from queueMessage, for the writer
 	free       []*stream
 	nextID     uint32
 	sendWin    int64  // connection-level send window
@@ -288,30 +291,46 @@ func (c *conn) startStream(st *stream, t *template) []byte {
 // whose size changes from call to call. The caller holds c.mu and has
 // checked canStart with messageLen(m).
 func (c *conn) startMessage(st *stream, path string, m []byte) {
+	c.out = c.openStream(c.out, st, path)
+	c.out = c.appendMessage(c.out, st, m, true)
+}
+
+// openStream starts a stream of path for st that stays open, such as a
+// watch stream, and returns b with its HEADERS frame. The caller holds
+// c.mu and sends the stream's messages with appendMessage.
+func (c *conn) openStream(b []byte, st *stream, path string) []byte {
 	st.id = c.nextID
 	c.nextID += 2
 	block := c.headerBlock(path)
-	c.out = appendFrameHeader(c.out, len(block), http2.FrameHeaders, http2.FlagHeadersEndHeaders)
-	binary.BigEndian.PutUint32(c.out[len(c.out)-4:], st.id)
-	c.out = append(c.out, block...)
+	b = appendFrameHeader(b, len(block), http2.FrameHeaders, http2.FlagHeadersEndHeaders)
+	binary.BigEndian.PutUint32(b[len(b)-4:], st.id)
+	b = append(b, block...)
+	c.streams[st.id] = st
+	return b
+}
+
+// appendMessage returns b with the message m on the open stream st, and
+// the stream ended after it if end. The caller holds c.mu and has checked
+// the connection's send window.
+func (c *conn) appendMessage(b []byte, st *stream, m []byte, end bool) []byte {
 	total := messageLen(m)
 	for pos := 0; pos < total; {
-		end := min(pos+maxDataFrame, total)
+		stop := min(pos+maxDataFrame, total)
 		var flags http2.Flags
-		if end == total {
+		if stop == total && end {
 			flags = http2.FlagDataEndStream
 		}
-		c.out = appendFrameHeader(c.out, end-pos, http2.FrameData, flags)
-		binary.BigEndian.PutUint32(c.out[len(c.out)-4:], st.id)
+		b = appendFrameHeader(b, stop-pos, http2.FrameData, flags)
+		binary.BigEndian.PutUint32(b[len(b)-4:], st.id)
 		if pos == 0 {
-			c.out = binary.BigEndian.AppendUint32(append(c.out, 0), uint32(len(m)))
+			b = binary.BigEndian.AppendUint32(append(b, 0), uint32(len(m)))
 			pos = grpcPrefixLen
 		}
-		c.out = append(c.out, m[pos-grpcPrefixLen:end-grpcPrefixLen]...)
-		pos = end
+		b = append(b, m[pos-grpcPrefixLen:stop-grpcPrefixLen]...)
+		pos = stop
 	}
-	c.streams[st.id] = st
-	c.sendWin -= int64(messageLen(m))
+	c.sendWin -= int64(total)
+	return b
 }
 
 // messageLen is the DATA bytes of a call that sends m.
@@ -387,6 +406,17 @@ func (c *conn) appendControl() {
 		_ = c.fr.WriteWindowUpdate(s.id, s.incr)
 	}
 	c.streamIncr = c.streamIncr[:0]
+	c.out = append(c.out, c.queued...)
+	c.queued = c.queued[:0]
+}
+
+// enqueue adds frames for the connection's writer to send, from a
+// goroutine that is not the writer, which owns c.out: the writer moves
+// them into c.out with the control frames, and signal wakes it. The
+// caller holds c.mu and builds the frames on c.queued.
+func (c *conn) enqueue(b []byte) {
+	c.queued = b
+	c.signal()
 }
 
 // flush writes the pending frames. Only the writer goroutine calls it.

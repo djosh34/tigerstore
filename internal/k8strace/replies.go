@@ -195,10 +195,10 @@ func (c *converter) finish() *Trace {
 	for _, f := range c.fixups {
 		k := revKey{f.key, f.rev}
 		if p, ok := c.producers[k]; ok && p < f.owner {
+			// The value comes from the write: in the replay it may
+			// still be in flight when the reply that carried it comes.
 			*f.at = Rev(p + 1)
-			if f.watch {
-				c.waitOn(f.owner, p)
-			}
+			c.waitOn(f.owner, p)
 			continue
 		}
 		if i, ok := items[k]; ok {

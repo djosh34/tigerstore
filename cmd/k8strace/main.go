@@ -24,7 +24,7 @@ func main() {
 	}
 }
 
-var errUsage = errors.New("usage: k8strace convert [flags] <log> | k8strace show <trace>...")
+var errUsage = errors.New("usage: k8strace convert [flags] <log>, or k8strace show <trace> [<trace>]")
 
 func run(args []string) error {
 	if len(args) == 0 {
@@ -39,7 +39,9 @@ func run(args []string) error {
 			if err != nil {
 				return err
 			}
-			fmt.Println(k8strace.Markdown(t, nil))
+			if _, err := fmt.Fprintln(os.Stdout, k8strace.Markdown(t, nil)); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
@@ -63,15 +65,14 @@ func convert(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	t, dropped, err := k8strace.Convert(f, k8strace.Window{Start: *start, End: *end})
-	if err != nil {
+	if err := errors.Join(err, f.Close()); err != nil {
 		return err
 	}
 	t.Shape, t.About = *shape, *about
 	if err := t.Write(*out); err != nil {
 		return err
 	}
-	fmt.Print(k8strace.Markdown(t, dropped))
-	return nil
+	_, err = fmt.Fprint(os.Stdout, k8strace.Markdown(t, dropped))
+	return err
 }

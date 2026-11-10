@@ -35,6 +35,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
 
@@ -114,6 +115,7 @@ func run(listen, backend []string, cacert, cert, key, clientCert, clientKey, out
 	serverTLS := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{serverKP}, ClientCAs: pool, ClientAuth: tls.RequireAndVerifyClientCert}
 	clientTLS := &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool, Certificates: []tls.Certificate{clientKP}}
 	var servers []*grpc.Server
+	var backends []*grpc.ClientConn
 	served := make(chan error, len(listen))
 	for i := range listen {
 		cc, err := grpc.NewClient(backend[i], grpc.WithTransportCredentials(credentials.NewTLS(clientTLS)),
@@ -121,18 +123,24 @@ func run(listen, backend []string, cacert, cert, key, clientCert, clientKey, out
 		if err != nil {
 			return err
 		}
-		defer cc.Close()
+		backends = append(backends, cc)
 		ln, err := net.Listen("tcp", listen[i])
 		if err != nil {
 			return err
 		}
 		p := &proxy{log: l, node: i + 1, backend: cc}
+		// The keepalive rules are etcd's defaults, so the apiserver's
+		// pings every 30 s are fine, as they are to the store.
 		s := grpc.NewServer(grpc.Creds(credentials.NewTLS(serverTLS)), grpc.ForceServerCodec(rawCodec{}),
+			grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 5 * time.Second, PermitWithoutStream: true}),
+			grpc.KeepaliveParams(keepalive.ServerParameters{Time: 2 * time.Hour, Timeout: 20 * time.Second}),
 			grpc.UnknownServiceHandler(p.call), grpc.StatsHandler(p),
 			grpc.MaxRecvMsgSize(maxMessage), grpc.MaxSendMsgSize(maxMessage))
 		servers = append(servers, s)
 		go func() { served <- s.Serve(ln) }()
-		fmt.Printf("etcdrec: node %d: %s -> %s\n", i+1, listen[i], backend[i])
+		if _, err := fmt.Fprintf(os.Stdout, "etcdrec: node %d: %s -> %s\n", i+1, listen[i], backend[i]); err != nil {
+			return err
+		}
 	}
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
@@ -144,7 +152,11 @@ func run(listen, backend []string, cacert, cert, key, clientCert, clientKey, out
 	for _, s := range servers {
 		s.Stop()
 	}
-	return errors.Join(serveErr, l.close())
+	errs := []error{serveErr, l.close()}
+	for _, cc := range backends {
+		errs = append(errs, cc.Close())
+	}
+	return errors.Join(errs...)
 }
 
 // journal writes the records, one at a time, in the order of their times.
