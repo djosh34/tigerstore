@@ -141,6 +141,12 @@ type streamIncr struct {
 // without it connections are plain text (HTTP/2 with prior knowledge).
 var clientTLS *tls.Config
 
+// readPause, if set, is how long a connection's reader waits when it has
+// read everything, before it reads again: a read that finds nothing costs
+// the generator a system call and a wakeup, and the answers that gather
+// meanwhile come in one read. -coalesce sets it, at max load.
+var readPause time.Duration
+
 func dial(addr string) (*conn, error) {
 	d := &net.Dialer{Timeout: dialTimeout}
 	var nc net.Conn
@@ -482,6 +488,10 @@ func (c *conn) read() error {
 	for {
 		if _, err := c.br.Discard(size); err != nil {
 			return err
+		}
+		if readPause > 0 && c.br.Buffered() == 0 {
+			// Let answers gather, so that one read takes many.
+			time.Sleep(readPause)
 		}
 		head, err := c.br.Peek(9)
 		if err != nil {

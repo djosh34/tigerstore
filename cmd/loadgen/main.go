@@ -89,7 +89,7 @@ func parseFlags(args []string) (config, error) {
 	fs.StringVar(&cfg.key, "key", "", "client key for TLS")
 	fs.StringVar(&cfg.traces, "traces", "bench/recordings", "k8s: the directory of recorded traces, one of which the seed draws")
 	fs.IntVar(&cfg.copies, "copies", 64, "k8s: copies of the recorded cluster that share the store")
-	fs.DurationVar(&cfg.coalesce, "coalesce", 0, "at max load, hold requests back up to this long after a write while half the streams are busy, so one write carries many")
+	fs.DurationVar(&cfg.coalesce, "coalesce", 0, "at max load, hold requests back up to this long after a write while many are in flight, so one write carries many, and wait as long before a read that would find nothing")
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
 	}
@@ -304,6 +304,9 @@ const (
 )
 
 func run(cfg config) (*result, error) {
+	if cfg.rate == 0 {
+		readPause = cfg.coalesce
+	}
 	if cfg.cacert != "" {
 		c, err := loadTLS(cfg.cacert, cfg.cert, cfg.key)
 		if err != nil {
