@@ -45,8 +45,8 @@ on:
       reps:
         description: repetitions of each seed
         default: "3"
-      profile_generator:
-        description: write loadgen's CPU profile of every run into the artifact
+      profile:
+        description: write loadgen's CPU profile of every run, and the leader's of every tigerstore run, into the artifact
         type: boolean
         default: false
       layouts:
@@ -175,7 +175,7 @@ jobs:
           LAYOUT: 3 0 1 2
           MODES: ${{ inputs.modes || 'max rate' }}
           REPS: ${{ inputs.reps || '3' }}
-          PROFILE_GENERATOR: ${{ inputs.profile_generator && 'yes' || '' }}
+          PROFILE: ${{ inputs.profile && 'yes' || '' }}
           SEEDS: ${{ needs.plan.outputs.seeds }}
           LAYOUTS: ${{ (matrix.bench == 'put-1k' || matrix.bench == 'txn-1k') && inputs.layouts || '' }}
           BENCH: ${{ matrix.bench }}
