@@ -235,7 +235,9 @@ func (rc *recordConn) fill(n int) error {
 	if rc.iw-rc.ir >= n {
 		return nil
 	}
-	if len(rc.in)-rc.ir < n {
+	// Each read gets at least half the buffer: a read into what is left
+	// at its end took in little, and doubled the reads.
+	if len(rc.in)-rc.iw < len(rc.in)/2 || len(rc.in)-rc.ir < n {
 		rc.iw = copy(rc.in, rc.in[rc.ir:rc.iw])
 		rc.ir = 0
 	}

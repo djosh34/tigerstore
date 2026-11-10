@@ -98,10 +98,26 @@ type k8sKeys struct {
 // k8sKey is a key and where a copy's tag goes in it: after split bytes,
 // the key's watched prefix; keepKey for a watched prefix itself or its
 // end, which every copy shares; prefixKey for a key under no watched
-// prefix, which gets the copy's prefix in front.
+// prefix, which gets the copy's prefix in front. A key of up to
+// inlineKey bytes, as every recorded key is, is held in the entry
+// itself: a key's bytes elsewhere cost a cache miss more each time a
+// request carries it.
 type k8sKey struct {
-	name  string
-	split int32
+	name   string
+	split  int32
+	n      int32 // bytes in inline, 0 if the key is longer
+	inline [inlineKey]byte
+}
+
+// inlineKey makes an entry 128 bytes.
+const inlineKey = 104
+
+// text returns the key's bytes.
+func (k *k8sKey) text() []byte {
+	if k.n > 0 {
+		return k.inline[:k.n]
+	}
+	return []byte(k.name)
 }
 
 const (
@@ -127,6 +143,9 @@ func newK8sKeys(t *k8strace.Trace) *k8sKeys {
 	k := &k8sKeys{keys: make([]k8sKey, len(t.Keys)), cache: t.WatchCache()}
 	for i, name := range t.Keys {
 		k.keys[i] = k8sKey{name: name, split: prefixKey}
+		if len(name) <= inlineKey {
+			k.keys[i].n = int32(copy(k.keys[i].inline[:], name))
+		}
 		if keep[name] {
 			k.keys[i].split = keepKey
 			continue
@@ -150,14 +169,14 @@ func (cp *k8sCopy) leftToCopy0(i int32) bool {
 // keyOf returns key k of copy cp.
 func (cp *k8sCopy) keyOf(k int32) []byte {
 	key := &cp.keys.keys[k]
-	name := key.name
+	name := key.text()
 	switch at := key.split; at {
 	case keepKey:
-		return []byte(name)
+		return append([]byte(nil), name...)
 	case prefixKey:
 		return append(append([]byte(nil), cp.prefix...), name...)
 	default:
-		return append(append([]byte(name[:at]), cp.tag...), name[at:]...)
+		return append(append(append([]byte(nil), name[:at]...), cp.tag...), name[at:]...)
 	}
 }
 

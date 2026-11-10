@@ -122,7 +122,7 @@ func appendVarintNZ(b []byte, num protowire.Number, v int64) []byte {
 // lookup is a cache miss.
 func (e *encoder) key(b []byte, num protowire.Number, k int32) ([]byte, int) {
 	key := &e.cp.keys.keys[k]
-	name, at := key.name, key.split
+	name, at := key.text(), key.split
 	extra := e.cp.tag
 	switch at {
 	case keepKey:
