@@ -157,3 +157,61 @@ func TestConvert(t *testing.T) {
 		t.Errorf("read back\n%+v\nwant\n%+v", back, tr)
 	}
 }
+
+// TestConvertRestartsAndExpiry keeps a restarted watch as one stream, with
+// the progress requests of both pointing at it, and drops a lease whose
+// TTL ran out before the window, with its key, while a live one stays.
+func TestConvertRestartsAndExpiry(t *testing.T) {
+	watch := &Request{Watch: &WatchRequest{Create: &WatchCreate{Key: "/r/", End: "/r0", PrevKV: true}}}
+	progress := &Request{Watch: &WatchRequest{Progress: true}}
+	recs := []Record{
+		// A 1 s lease and a 1 h lease, each with a key.
+		{T: 1, Event: EventOpen, Call: 1, Method: MethodLeaseGrant},
+		{T: 2, Event: EventReq, Call: 1, Req: &Request{LeaseGrant: &LeaseGrant{TTL: 1}}},
+		{T: 3, Event: EventResp, Call: 1, Resp: &Response{Rev: 1, Lease: 11, TTL: 1}},
+		{T: 4, Event: EventOpen, Call: 2, Method: MethodLeaseGrant},
+		{T: 5, Event: EventReq, Call: 2, Req: &Request{LeaseGrant: &LeaseGrant{TTL: 3600}}},
+		{T: 6, Event: EventResp, Call: 2, Resp: &Response{Rev: 1, Lease: 12, TTL: 3600}},
+		{T: 7, Event: EventOpen, Call: 3, Method: MethodPut},
+		{T: 8, Event: EventReq, Call: 3, Req: &Request{Put: &Put{Key: "/short", Size: 1, Lease: 11}}},
+		{T: 9, Event: EventResp, Call: 3, Resp: &Response{Rev: 2}},
+		{T: 10, Event: EventOpen, Call: 4, Method: MethodPut},
+		{T: 11, Event: EventReq, Call: 4, Req: &Request{Put: &Put{Key: "/long", Size: 1, Lease: 12}}},
+		{T: 12, Event: EventResp, Call: 4, Resp: &Response{Rev: 3}},
+		// A watch, open when the window opens 2 s later, restarted in it.
+		{T: 13, Event: EventOpen, Call: 5, Method: MethodWatch},
+		{T: 14, Event: EventReq, Call: 5, Req: watch},
+		{T: 2e9, Event: EventReq, Call: 5, Req: progress},
+		{T: 2e9 + 1, Event: EventEnd, Call: 5, Err: "canceled"},
+		{T: 2e9 + 2, Event: EventOpen, Call: 6, Method: MethodWatch},
+		{T: 2e9 + 3, Event: EventReq, Call: 6, Req: watch},
+		{T: 2e9 + 4, Event: EventReq, Call: 6, Req: progress},
+	}
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	enc := json.NewEncoder(gz)
+	for i := range recs {
+		if err := enc.Encode(&recs[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	tr, _, err := Convert(&buf, Window{Start: 2e9, End: 3e9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.Watches) != 1 {
+		t.Errorf("%d watch streams, want the restarted one once", len(tr.Watches))
+	}
+	if len(tr.Calls) != 2 || tr.Calls[0].Stream != 0 || tr.Calls[1].Stream != 0 {
+		t.Errorf("progress calls %+v, want both on stream 0", tr.Calls)
+	}
+	if len(tr.Leases) != 1 || tr.Leases[0] != 3600 {
+		t.Errorf("leases %v, want only the 1 h one", tr.Leases)
+	}
+	if len(tr.Preload) != 1 || tr.Keys[tr.Preload[0].Key] != "/long" {
+		t.Errorf("preload %+v, want only /long", tr.Preload)
+	}
+}

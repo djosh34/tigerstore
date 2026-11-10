@@ -1,6 +1,9 @@
 package k8strace
 
-import "slices"
+import (
+	"fmt"
+	"slices"
+)
 
 // response takes in what a reply tells: which keys clients now know at
 // which revisions, who made each revision, which leases exist, and, for a
@@ -44,9 +47,13 @@ func (c *converter) response(r *Record, cl *call) {
 		c.txnDone(q.Txn, resp, resp.Rev, by, before)
 	case q.LeaseGrant != nil:
 		if before {
-			c.leases[resp.Lease] = resp.TTL
+			c.leases[resp.Lease] = lease{ttl: resp.TTL, at: r.T}
 		} else {
 			c.grants[resp.Lease] = idx
+		}
+	case q.Lease != nil && cl.method == MethodLeaseKeepAlive && before:
+		if _, ok := c.leases[*q.Lease]; ok && resp.TTL > 0 {
+			c.leases[*q.Lease] = lease{ttl: resp.TTL, at: r.T}
 		}
 	case q.Lease != nil && cl.method == MethodLeaseRevoke && before:
 		delete(c.leases, *q.Lease)
@@ -214,20 +221,24 @@ func (c *converter) finish() *Trace {
 		c.preloadLease(id)
 	}
 	for _, id := range c.leaseOrder {
-		t.Leases = append(t.Leases, c.leases[id])
+		t.Leases = append(t.Leases, c.leases[id].ttl)
 	}
 	ids := make([]int64, 0, len(c.watches))
 	for id := range c.watches {
 		ids = append(ids, id)
 	}
 	slices.Sort(ids)
+	// A stream that watches what another already does is the same watch,
+	// restarted: kube-apiserver cancels its watches every few minutes and
+	// opens them again from where they were. It stays one stream, as the
+	// apiserver never had both open for long.
 	streams := map[int64]int32{}
+	same := map[string]int32{}
 	for _, id := range ids {
 		ws := c.watches[id]
 		if !ws.inWindow {
 			continue
 		}
-		streams[id] = int32(len(t.Watches))
 		var s WatchStream
 		for _, w := range ws.creates {
 			if w.canceled {
@@ -235,6 +246,13 @@ func (c *converter) finish() *Trace {
 			}
 			s.Creates = append(s.Creates, Watch{Key: c.key(w.Key), End: c.end(w.End), PrevKV: w.PrevKV, Progress: w.Progress, Filters: w.Filters})
 		}
+		what := fmt.Sprint(s.Creates)
+		if i, ok := same[what]; ok {
+			streams[id] = i
+			continue
+		}
+		same[what] = int32(len(t.Watches))
+		streams[id] = int32(len(t.Watches))
 		t.Watches = append(t.Watches, s)
 	}
 	for _, p := range c.progress {

@@ -357,6 +357,7 @@ func (d *dec) op(o *Op, owner int32) {
 func (t *Trace) check() error {
 	keys := int32(len(t.Keys))
 	bad := func(what string, i int) error { return fmt.Errorf("%w: %s at call %d", errBadTrace, what, i) }
+	badAt := func(what string, i int) error { return fmt.Errorf("%w: %s %d", errBadTrace, what, i) }
 	key := func(k int32) bool { return k >= 0 && k < keys }
 	end := func(k int32) bool { return k >= -1 && k < keys }
 	lease := func(l LeaseRef, owner int32) bool {
@@ -367,13 +368,13 @@ func (t *Trace) check() error {
 	}
 	for i, it := range t.Preload {
 		if !key(it.Key) || !lease(it.Lease, 0) {
-			return bad("preload item", -i)
+			return badAt("preload item", i)
 		}
 	}
-	for _, ws := range t.Watches {
+	for i, ws := range t.Watches {
 		for _, w := range ws.Creates {
 			if !key(w.Key) || !end(w.End) {
-				return bad("watch", -1)
+				return badAt("watch stream", i)
 			}
 		}
 	}
@@ -383,7 +384,7 @@ func (t *Trace) check() error {
 			return false
 		}
 		for _, c := range o.Compare {
-			if !key(c.Key) || !end(c.End) || !rev(c.Rev, owner) {
+			if !key(c.Key) || !end(c.End) || !rev(c.Rev, owner) || c.Target == TargetLease && !lease(LeaseRef(c.Value), owner) {
 				return false
 			}
 		}

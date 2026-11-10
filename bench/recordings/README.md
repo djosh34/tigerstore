@@ -30,7 +30,7 @@ go run ./cmd/k8strace show bench/recordings/*.trace.gz
 
 ## The recordings
 
-All five come from run [42716639345](https://github.com/djosh34/tigerstore/actions/runs/42716639345), on commit 6eb2be95. The converter of the commit that adds them built the traces from that run's logs.
+All five come from run [42716639345](https://github.com/djosh34/tigerstore/actions/runs/42716639345), on commit 6eb2be95. The converter of the commit that adds them built the traces from that run's logs. That run keeps its artifacts, the logs among them, for 30 days, until 2026-12-09; the workflow now keeps them 90. After that, a change to the converter needs new recordings, which are new workloads.
 
 | Shape | Kwok nodes | Namespaces | Deployments x replicas each | Config maps, secrets, services each | CRDs x objects each | Calls in 10 min | Calls/s | Write calls | Calls that wait on a reply | Longest chain | Keys at the start |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -40,7 +40,7 @@ All five come from run [42716639345](https://github.com/djosh34/tigerstore/actio
 | crd-heavy | 20 | 10 | 2 x 2 | 5, 2, 1 | 15 x 40 | 722,470 | 1,190 | 354,956 | 199,554 | 301 | 6,939 |
 | many-namespaces | 30 | 250 | 1 x 1 | 3, 2, 1 | 1 x 3 | 289,690 | 483 | 123,885 | 102,856 | 297 | 5,922 |
 
-In every shape, 40 to 47% of the calls are single-key GETs, which kube-apiserver's watch cache does not serve. Most of the rest are CAS Txns: updates, creates and deletes, each comparing a mod revision. 3 to 15% are progress requests on watch streams, which back consistent reads from the cache. LISTs are about 1%. kube-apiserver keeps 120 to 150 watch streams open, one per resource.
+In every shape, 40 to 47% of the calls are single-key GETs, which kube-apiserver's watch cache does not serve. Most of the rest are CAS Txns: updates, creates and deletes, each comparing a mod revision. 3 to 15% are progress requests on watch streams, which back consistent reads from the cache. LISTs are about 1%. kube-apiserver watches 74 to 89 resource prefixes, one stream each, and cancels and reopens each every few minutes from its revision; a trace keeps each watch as one stream.
 
 ## What a trace holds
 

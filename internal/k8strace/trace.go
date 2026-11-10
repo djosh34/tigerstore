@@ -126,7 +126,8 @@ type Op struct {
 }
 
 // Compare is a Txn's compare. Rev is the number compared against for a
-// mod or create revision; Value is it for a version or a value's length.
+// mod or create revision; Value is it for a version or a value's length,
+// and holds a LeaseRef for a lease.
 type Compare struct {
 	Target, Result int32
 	Key, End       int32

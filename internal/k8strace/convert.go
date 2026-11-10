@@ -25,7 +25,9 @@ var errBadLog = errors.New("bad log")
 //
 // The keys, values and leases alive when the window opened become the
 // preload: every write sent before the window counts, answered before it
-// or not. Every call sent in the window becomes a Call, in the order they
+// or not, and a lease whose TTL ran out before the window is gone, with
+// its keys. A watch that kube-apiserver cancelled and opened again is one
+// stream. Every call sent in the window becomes a Call, in the order they
 // were sent. A revision a call names is replaced by a reference to the
 // reply that gave it, and the call waits on the reply it learned that
 // revision from: a reply that carried the key at that revision, or, for
@@ -90,6 +92,12 @@ type fixup struct {
 	rev   int64
 }
 
+// lease is a lease granted before the window: its TTL in seconds, and
+// when it was last granted or kept alive, in ns since the Unix epoch.
+type lease struct {
+	ttl, at int64
+}
+
 type progressCall struct {
 	index  int32
 	stream int64
@@ -123,7 +131,7 @@ type converter struct {
 	keyList []string
 	// Before the window: the store's keys and leases.
 	state  map[string]stateKV
-	leases map[int64]int64 // lease ID: TTL
+	leases map[int64]lease
 	// What clients have learned so far, and who made each revision.
 	seen      map[revKey]delivery
 	headers   map[int64]int32 // revision: the last window call whose reply had it as its header
@@ -142,7 +150,7 @@ type converter struct {
 func newConverter(w Window) *converter {
 	return &converter{
 		w: w, dropped: Dropped{}, calls: map[int64]*call{}, ended: map[int64]bool{}, keys: map[string]int32{},
-		state: map[string]stateKV{}, leases: map[int64]int64{},
+		state: map[string]stateKV{}, leases: map[int64]lease{},
 		seen: map[revKey]delivery{}, headers: map[int64]int32{}, producers: map[revKey]int32{},
 		grants: map[int64]int32{}, watches: map[int64]*watchStream{},
 	}
@@ -210,6 +218,7 @@ func (c *converter) add(r *Record) error {
 			for _, ws := range c.watches {
 				ws.inWindow = ws.inWindow || ws.open
 			}
+			c.expire()
 		}
 		if ws := c.watches[r.Call]; ws != nil {
 			ws.inWindow = true
@@ -428,6 +437,22 @@ func (c *converter) leaseRef(t *Call, id int64) LeaseRef {
 	}
 	c.dropped["lease unknown when the window opened, left out"]++
 	return 0
+}
+
+// expire drops the leases whose TTL ran out before the window opened, and
+// the keys the store deleted with them.
+func (c *converter) expire() {
+	for id, l := range c.leases {
+		if l.at+l.ttl*1e9 >= c.w.Start {
+			continue
+		}
+		delete(c.leases, id)
+		for k, kv := range c.state {
+			if kv.lease == id {
+				delete(c.state, k)
+			}
+		}
+	}
 }
 
 // preloadLease numbers the leases alive when the window opened in the

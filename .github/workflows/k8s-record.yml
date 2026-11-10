@@ -72,4 +72,4 @@ jobs:
         with:
           name: record-${{ matrix.shape }}
           path: ${{ runner.temp }}/k8stest/results
-          retention-days: 30
+          retention-days: 90

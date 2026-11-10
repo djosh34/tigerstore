@@ -135,6 +135,8 @@ func run(listen, backend []string, cacert, cert, key, clientCert, clientKey, out
 			grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 5 * time.Second, PermitWithoutStream: true}),
 			grpc.KeepaliveParams(keepalive.ServerParameters{Time: 2 * time.Hour, Timeout: 20 * time.Second}),
 			grpc.UnknownServiceHandler(p.call), grpc.StatsHandler(p),
+			// Stop waits for the calls, so none logs after the log closes.
+			grpc.WaitForHandlers(true),
 			grpc.MaxRecvMsgSize(maxMessage), grpc.MaxSendMsgSize(maxMessage))
 		servers = append(servers, s)
 		go func() { served <- s.Serve(ln) }()
@@ -255,28 +257,41 @@ func (p *proxy) call(_ any, ss grpc.ServerStream) (callErr error) {
 			}
 			p.log.write(r)
 			if err := cs.SendMsg(&b); err != nil {
+				cancel()
 				sent <- err
 				return
 			}
 		}
 	}()
-	header, err := cs.Header()
-	if err != nil {
+	// The call ends when the node's side does. An error of the client's
+	// side that came first is the call's too.
+	end := func(err error) error {
+		select {
+		case e := <-sent:
+			if e != nil && !errors.Is(e, io.EOF) {
+				err = errors.Join(err, e)
+			}
+		default:
+		}
 		return err
 	}
+	header, err := cs.Header()
+	if err != nil {
+		return end(err)
+	}
 	if err := ss.SendHeader(header); err != nil {
-		return err
+		return end(err)
 	}
 	for {
 		var b []byte
 		err := cs.RecvMsg(&b)
 		if errors.Is(err, io.EOF) {
 			ss.SetTrailer(cs.Trailer())
-			return nil
+			return end(nil)
 		}
 		if err != nil {
 			ss.SetTrailer(cs.Trailer())
-			return err
+			return end(err)
 		}
 		r := k8strace.Record{Event: k8strace.EventResp, Call: id, Bytes: len(b)}
 		r.Resp, err = decodeResponse(method, b)
@@ -285,7 +300,7 @@ func (p *proxy) call(_ any, ss grpc.ServerStream) (callErr error) {
 		}
 		p.log.write(r)
 		if err := ss.SendMsg(&b); err != nil {
-			return err
+			return end(err)
 		}
 	}
 }
