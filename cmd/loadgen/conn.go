@@ -468,13 +468,13 @@ const (
 
 var errFrame = errors.New("malformed HTTP/2 frame")
 
-// read reads frames in place from c.br: a frame's payload is a slice of the
-// buffer until the next frame, which saves copying every byte the server
-// sends once more. The server's frames are at most 16 KiB, the HTTP/2
-// default, as the generator never raises SETTINGS_MAX_FRAME_SIZE.
-// read reads frames until the connection fails. It holds c.mu while it
-// handles the frames it has read already, and lets go of it before a read
-// that may block: one lock for a buffer of frames, not one a frame.
+// read reads frames in place from c.br until the connection fails: a
+// frame's payload is a slice of the buffer until the next frame, which
+// saves copying every byte the server sends once more. The server's frames
+// are at most 16 KiB, the HTTP/2 default, as the generator never raises
+// SETTINGS_MAX_FRAME_SIZE. It holds c.mu while it handles the frames it
+// has read already, and lets go of it before a read that may block: one
+// lock for a buffer of frames, not one a frame.
 func (c *conn) read() (err error) {
 	locked := false
 	defer func() {
@@ -870,12 +870,30 @@ func hpackString(b []byte) ([]byte, bool) {
 	return b[n:], true
 }
 
+// grpcStatus is a call that ended with a gRPC status other than OK.
+type grpcStatus struct {
+	code    int // -1 for a grpc-status that is no number
+	text    string
+	message string
+}
+
+func (e *grpcStatus) Error() string {
+	if e.code < 0 {
+		return fmt.Sprintf("grpc-status %q: %s", e.text, e.message)
+	}
+	return fmt.Sprintf("grpc %s: %s", grpcCodeName(e.code), e.message)
+}
+
+// codeOutOfRange is the gRPC status etcd gives a read at a compacted
+// revision.
+const codeOutOfRange = 11
+
 func grpcError(code, message string) error {
 	n, err := strconv.Atoi(code)
 	if err != nil {
-		return fmt.Errorf("grpc-status %q: %s", code, message)
+		n = -1
 	}
-	return fmt.Errorf("grpc %s: %s", grpcCodeName(n), message)
+	return &grpcStatus{code: n, text: code, message: message}
 }
 
 func grpcCodeName(n int) string {

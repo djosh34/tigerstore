@@ -5,14 +5,8 @@
 //     sequential log: O_DIRECT writes into a file that is already written,
 //     each followed by an fdatasync, so no write allocates blocks or commits
 //     a journal; the best of three group sizes;
-//   - the same with three writers at once, each on a file of its own, as
-//     the three nodes write their logs to the one disk, for comparison;
-//   - three writers appending to new files that grow, as the logs of a
-//     new cluster do: buffered writes, each followed by an fdatasync that
-//     also records the new blocks and size in the journal, for comparison;
-//   - how many bytes one core encodes into protobuf key-values, encrypts
-//     with AES-128-GCM, the cipher the stores' TLS 1.3 negotiates, and
-//     sends on a loopback TCP socket.
+//   - the primitives the least CPU of an operation is made of, and
+//     loopback's bandwidth (primitives.go).
 //
 // It prints one JSON object. Run it pinned to one CPU, with nothing else
 // running.
@@ -21,24 +15,17 @@
 package main
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"io/fs"
-	"net"
 	"os"
 	"path/filepath"
-	"runtime"
-	"sync"
 	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
-	"google.golang.org/protobuf/encoding/protowire"
 )
 
 type report struct {
@@ -48,18 +35,6 @@ type report struct {
 	// DiskMiBps is the best of DiskGroups.
 	DiskMiBps  float64 `json:"disk_mib_per_s"`
 	DiskGroups []cell  `json:"disk_groups"`
-	// DiskThreeMiBps is the best of DiskThreeGroups, three writers at
-	// once, their bytes together.
-	DiskThreeMiBps  float64 `json:"disk_three_mib_per_s"`
-	DiskThreeGroups []cell  `json:"disk_three_groups"`
-	// DiskFreshMiBps is the best of DiskFreshGroups, three writers
-	// appending to new files, their bytes together.
-	DiskFreshMiBps  float64 `json:"disk_fresh_mib_per_s"`
-	DiskFreshGroups []cell  `json:"disk_fresh_groups"`
-	// One core's cost per byte of each step a byte of an answer takes.
-	EncodeNsPerByte  float64 `json:"encode_ns_per_byte"`
-	EncryptNsPerByte float64 `json:"encrypt_ns_per_byte"`
-	SendNsPerByte    float64 `json:"send_ns_per_byte"`
 	// Primitives are the steps of the least CPU an operation needs.
 	Primitives primitives `json:"primitives"`
 }
@@ -102,15 +77,6 @@ func (r *report) measure(dir string, size int64, dur, cpuTime time.Duration) err
 	if err := r.disk(dir, size, dur); err != nil {
 		return err
 	}
-	r.EncodeNsPerByte = perByte(cpuTime, encode())
-	seal, err := encrypt()
-	if err != nil {
-		return err
-	}
-	r.EncryptNsPerByte = perByte(cpuTime, seal)
-	if r.SendNsPerByte, err = send(cpuTime); err != nil {
-		return err
-	}
 	return r.Primitives.measure(cpuTime, dir)
 }
 
@@ -128,90 +94,7 @@ func (r *report) disk(dir string, size int64, dur time.Duration) (err error) {
 		r.DiskGroups = append(r.DiskGroups, c)
 		r.DiskMiBps = max(r.DiskMiBps, c.MiBps)
 	}
-	var names []string
-	for i := range 3 {
-		n := filepath.Join(dir, fmt.Sprintf("ceiling-%d.data", i))
-		names = append(names, n)
-		if err := fill(n, size/3); err != nil {
-			return errors.Join(err, removeIfThere(n))
-		}
-		defer func() { err = errors.Join(err, os.Remove(n)) }()
-	}
-	for _, group := range []int{256 << 10, 1 << 20, 4 << 20} {
-		cells := make([]cell, len(names))
-		errs := make([]error, len(names))
-		var wg sync.WaitGroup
-		for i, n := range names {
-			wg.Go(func() { cells[i], errs[i] = measureDisk(n, size/3, group, dur) })
-		}
-		wg.Wait()
-		if err := errors.Join(errs...); err != nil {
-			return err
-		}
-		c := cell{Group: group}
-		for _, w := range cells {
-			c.Writes += w.Writes
-			c.Seconds = max(c.Seconds, w.Seconds)
-		}
-		c.MiBps = float64(c.Writes) * float64(group) / (1 << 20) / c.Seconds
-		r.DiskThreeGroups = append(r.DiskThreeGroups, c)
-		r.DiskThreeMiBps = max(r.DiskThreeMiBps, c.MiBps)
-	}
-	for _, group := range []int{1 << 20, 4 << 20} {
-		c, err := measureFresh(dir, size/3, group, dur)
-		if err != nil {
-			return err
-		}
-		r.DiskFreshGroups = append(r.DiskFreshGroups, c)
-		r.DiskFreshMiBps = max(r.DiskFreshMiBps, c.MiBps)
-	}
 	return nil
-}
-
-// measureFresh has three writers append group bytes at a time to new
-// files, up to size bytes each, each write followed by an fdatasync, and
-// returns their bytes together.
-func measureFresh(dir string, size int64, group int, dur time.Duration) (cell, error) {
-	cells := make([]cell, 3)
-	errs := make([]error, 3)
-	var wg sync.WaitGroup
-	for i := range cells {
-		wg.Go(func() {
-			name := filepath.Join(dir, fmt.Sprintf("ceiling-fresh-%d.data", i))
-			cells[i], errs[i] = appendFresh(name, size, group, dur)
-			errs[i] = errors.Join(errs[i], removeIfThere(name))
-		})
-	}
-	wg.Wait()
-	c := cell{Group: group}
-	for _, w := range cells {
-		c.Writes += w.Writes
-		c.Seconds = max(c.Seconds, w.Seconds)
-	}
-	c.MiBps = float64(c.Writes) * float64(group) / (1 << 20) / c.Seconds
-	return c, errors.Join(errs...)
-}
-
-func appendFresh(name string, size int64, group int, dur time.Duration) (c cell, err error) {
-	fd, err := unix.Open(name, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL, 0o600)
-	if err != nil {
-		return cell{}, err
-	}
-	defer func() { err = errors.Join(err, unix.Close(fd)) }()
-	buf := make([]byte, group)
-	c = cell{Group: group}
-	start := time.Now()
-	for off := int64(0); time.Since(start) < dur && off+int64(group) <= size; off += int64(group) {
-		if _, err := unix.Pwrite(fd, buf, off); err != nil {
-			return c, err
-		}
-		if err := unix.Fdatasync(fd); err != nil {
-			return c, err
-		}
-		c.Writes++
-	}
-	c.Seconds = time.Since(start).Seconds()
-	return c, nil
 }
 
 // removeIfThere removes name if it exists.
@@ -280,102 +163,6 @@ func aligned(n int) []byte {
 		b[i] = byte(i*7 + 13)
 	}
 	return b
-}
-
-// perByte runs step until d has passed and returns the time per byte it
-// handled. step returns the bytes of one call.
-func perByte(d time.Duration, step func() int) float64 {
-	var n int64
-	start := time.Now()
-	for time.Since(start) < d {
-		n += int64(step())
-	}
-	return float64(time.Since(start).Nanoseconds()) / float64(n)
-}
-
-// encode returns a step that encodes a page of 300 key-values of a 60-byte
-// key and a 1,458-byte value, the mean of the Kubernetes dump, as a
-// RangeResponse carries them. The bytes it counts are keys and values.
-func encode() func() int {
-	key := make([]byte, 60)
-	value := make([]byte, 1458)
-	var kv, page []byte
-	return func() int {
-		page = page[:0]
-		for range 300 {
-			kv = protowire.AppendBytes(protowire.AppendTag(kv[:0], 1, protowire.BytesType), key)
-			kv = protowire.AppendVarint(protowire.AppendTag(kv, 3, protowire.VarintType), 1<<40)
-			kv = protowire.AppendBytes(protowire.AppendTag(kv, 5, protowire.BytesType), value)
-			page = protowire.AppendBytes(protowire.AppendTag(page, 2, protowire.BytesType), kv)
-		}
-		return 300 * (len(key) + len(value))
-	}
-}
-
-// encrypt returns a step that seals one TLS record of 16 KiB.
-func encrypt() (func() int, error) {
-	// Fixed key and nonce: this times the cipher and protects nothing.
-	block, err := aes.NewCipher(make([]byte, 16))
-	if err != nil {
-		return nil, err
-	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	nonce := make([]byte, aead.NonceSize())
-	record := make([]byte, 16<<10)
-	out := make([]byte, 0, len(record)+aead.Overhead())
-	return func() int {
-		out = aead.Seal(out[:0], nonce, record, nil)
-		return len(record)
-	}, nil
-}
-
-// send writes 16 KiB at a time to a loopback TCP socket that another
-// goroutine drains, and returns the CPU time of the writing thread per
-// byte, which leaves the reader's out.
-func send(d time.Duration) (ns float64, err error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer func() { err = errors.Join(err, ln.Close()) }()
-	drained := make(chan error, 1)
-	go func() {
-		c, err := ln.Accept()
-		if err != nil {
-			drained <- err
-			return
-		}
-		_, err = io.Copy(io.Discard, c)
-		drained <- errors.Join(err, c.Close())
-	}()
-	c, err := net.Dial("tcp", ln.Addr().String())
-	if err != nil {
-		return 0, err
-	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	before, err := threadCPU()
-	if err != nil {
-		return 0, errors.Join(err, c.Close())
-	}
-	chunk := make([]byte, 16<<10)
-	var n int64
-	for start := time.Now(); time.Since(start) < d; {
-		w, err := c.Write(chunk)
-		n += int64(w)
-		if err != nil {
-			return 0, errors.Join(err, c.Close())
-		}
-	}
-	after, err := threadCPU()
-	err = errors.Join(err, c.Close(), <-drained)
-	if err != nil {
-		return 0, err
-	}
-	return float64((after - before).Nanoseconds()) / float64(n), nil
 }
 
 // threadCPU returns the user and system CPU time of the calling thread.

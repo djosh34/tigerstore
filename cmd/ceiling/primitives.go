@@ -105,7 +105,24 @@ func sizedCost(d time.Duration, step func(size int) func()) (cost, error) {
 	return fit(small, large, s, l), err
 }
 
+// measure times every primitive for d each, the log's on a file in dir.
 func (p *primitives) measure(d time.Duration, dir string) error {
+	if err := p.cpu(d); err != nil {
+		return err
+	}
+	if err := p.wal(d, dir); err != nil {
+		return err
+	}
+	if err := p.index(d); err != nil {
+		return err
+	}
+	var err error
+	p.LoopbackBytesPerS, err = loopback(d, 3)
+	return err
+}
+
+// cpu times the primitives that need neither a disk nor much memory.
+func (p *primitives) cpu(d time.Duration) error {
 	// Fixed key and nonce: this times the cipher and protects nothing.
 	block, err := aes.NewCipher(make([]byte, 16))
 	if err != nil {
@@ -161,17 +178,7 @@ func (p *primitives) measure(d time.Duration, dir string) error {
 	}); err != nil {
 		return err
 	}
-	if err := p.wal(d, dir); err != nil {
-		return err
-	}
-	if err := p.index(d); err != nil {
-		return err
-	}
-	if err := p.messages(d); err != nil {
-		return err
-	}
-	p.LoopbackBytesPerS, err = loopback(d, 3)
-	return err
+	return p.messages(d)
 }
 
 func (p *primitives) messages(d time.Duration) (err error) {

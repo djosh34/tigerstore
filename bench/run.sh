@@ -29,7 +29,7 @@
 # k8s runs max only: 64 copies of the recorded cluster on 3 connections,
 # its preload at 300 Txns/s. A run is <target>-<mode>-<seed>.<rep>.
 #
-# A run that fails writes its cause to <target>-<mode>-<rep>.failed, and
+# A run that fails writes its cause to <run>.failed, and
 # the other runs still run: one store's failure must not hide the others'
 # results. cmd/benchreport decides what a failure means. Where etcd has no
 # max result, the rate is RATE_FALLBACK; without it no rate runs run, and

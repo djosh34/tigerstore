@@ -230,11 +230,16 @@ jobs:
           BENCH: ${{ matrix.bench }}
           RTTS: ${{ inputs.rtts || '0 2 10' }}
           SEEDS: ${{ needs.plan.outputs.seeds }}
+          TARGETS: ${{ inputs.targets || 'etcd baseline candidate' }}
+          MODES: ${{ inputs.modes || 'max rate' }}
+          REPS: ${{ inputs.reps || '3' }}
+          LAYOUTS: ${{ inputs.layouts }}
           JOB_START: ${{ steps.start.outputs.at }}
         run: |
           {
             cat results/runner.md
-            echo "Replay: \`gh workflow run bench.yml --repo ${{ github.repository }} -f candidate=${{ inputs.candidate || 'main' }} -f baseline=${{ inputs.baseline || 'main' }} -f benchmarks=$BENCH -f seeds=\"$SEEDS\"\`. The job took $(( ($(date +%s) - JOB_START) / 60 )) minutes up to the report."
+            sha() { awk -v t="$1" '$1 == t { print $3 }' commits.txt; }
+            echo "Replay: \`gh workflow run bench.yml --repo ${{ github.repository }} --ref ${{ github.ref_name }} -f candidate=$(sha candidate) -f baseline=$(sha baseline) -f benchmarks=$BENCH -f seeds=\"$SEEDS\" -f rtts=\"$RTTS\" -f targets=\"$TARGETS\" -f modes=\"$MODES\" -f reps=$REPS -f layouts=\"$LAYOUTS\"\`, with ${{ github.ref_name }} at $GITHUB_SHA, which ran the generator, the scripts and the report. The job took $(( ($(date +%s) - JOB_START) / 60 )) minutes up to the report."
             if [ "$BENCH" = disk-probe ]; then
               echo '```'; cat results/disk-probe.txt; echo '```'
             elif [ "$BENCH" = profile-disk ]; then

@@ -221,9 +221,6 @@ func loadOf(rs runs) load {
 		Endpoints: m(func(r result) float64 { return float64(min(max(len(r.Endpoints), 1), nodes)) }),
 	}
 	l.Conns = m(func(r result) float64 { return float64(max(r.Conns, 1)) }) / l.Endpoints
-	if rs[0].K8s != nil {
-		l.Conns++ // the watch connection of each node
-	}
 	return l
 }
 

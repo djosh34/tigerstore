@@ -108,8 +108,10 @@ func parseFlags(args []string) (config, error) {
 		return cfg, errors.New("need -conns >= 1, -streams >= 1 and -keys >= -conns")
 	case cfg.valueSize < 8:
 		return cfg, errors.New("-value-size must be at least 8, to hold the watch timestamp")
-	case cfg.workload == "k8s" && (cfg.copies < cfg.conns || traceDir(cfg.traces) != nil):
-		return cfg, errors.Join(errors.New("k8s needs -copies >= -conns and a -traces directory"), traceDir(cfg.traces))
+	case cfg.workload == "k8s" && cfg.copies < cfg.conns:
+		return cfg, errors.New("k8s needs -copies >= -conns")
+	case cfg.workload == "k8s" && traceDir(cfg.traces) != nil:
+		return cfg, traceDir(cfg.traces)
 	case cfg.workload == "watch" && cfg.watchers < 1:
 		return cfg, errors.New("watch needs -watchers >= 1")
 	case cfg.ramp && (cfg.rate > 0 || cfg.workload == "delete" || cfg.workload == "watch"):

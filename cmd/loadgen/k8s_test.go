@@ -115,7 +115,7 @@ func TestCopyWaits(t *testing.T) {
 	if i, ok := cp.nextReady(); !ok || i != 1 {
 		t.Fatalf("after call 0's reply: %d, %v; want 1", i, ok)
 	}
-	if got := cp.rev(tr.Calls[1].Op.Compare[0].Rev, 1, 1); got != 500 {
+	if got := cp.rev(tr.Calls[1].Op.Compare[0].Rev, 1); got != 500 {
 		t.Errorf("call 1 compares against %d, want call 0's revision 500", got)
 	}
 	cp.reply(1, 501)
@@ -137,7 +137,7 @@ func TestCopyWaits(t *testing.T) {
 	if i, ok := late.nextReady(); !ok || i != 1 {
 		t.Fatalf("a copy from call 1: %d, %v", i, ok)
 	}
-	if got := late.rev(tr.Calls[1].Op.Compare[0].Rev, 1, 1); got != 42 {
+	if got := late.rev(tr.Calls[1].Op.Compare[0].Rev, 1); got != 42 {
 		t.Errorf("compares against %d, want the preload's 42", got)
 	}
 }

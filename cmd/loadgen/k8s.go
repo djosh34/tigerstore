@@ -214,7 +214,7 @@ func (cp *k8sCopy) finished() bool {
 // overwrote, or one the recording learned before its window, gets 1,
 // which no live key has; a read at a revision from before the start
 // reads the newest.
-func (cp *k8sCopy) rev(r k8strace.Rev, key int32, _ int32) int64 {
+func (cp *k8sCopy) rev(r k8strace.Rev, key int32) int64 {
 	switch {
 	case r == 0:
 		return 0
@@ -232,7 +232,7 @@ func (cp *k8sCopy) rev(r k8strace.Rev, key int32, _ int32) int64 {
 }
 
 // lease is the replay's ID of a lease, 0 if it is gone.
-func (cp *k8sCopy) lease(l k8strace.LeaseRef, _ int32) int64 {
+func (cp *k8sCopy) lease(l k8strace.LeaseRef) int64 {
 	switch {
 	case l == 0:
 		return 0
@@ -291,12 +291,15 @@ func (w *k8sLoad) start(c *conn, st *stream, limit int) bool {
 				w.progress(cp, i)
 				continue
 			}
-			if cp.id != 0 && cp.keys.cacheRead(call) {
+			// Whole-resource reads and progress requests come from
+			// kube-apiserver's watch cache, one per resource, which a
+			// bigger cluster still has only one of: copy 0 sends them.
+			if cp.id != 0 && (cp.keys.cacheRead(call) || call.Kind == k8strace.CallProgress) {
 				w.cacheReads++
 				cp.reply(i, 1)
 				continue
 			}
-			if (call.Kind == k8strace.CallLeaseRevoke || call.Kind == k8strace.CallLeaseKeepAlive || call.Kind == k8strace.CallLeaseTTL) && cp.lease(call.Lease, i) == 0 {
+			if (call.Kind == k8strace.CallLeaseRevoke || call.Kind == k8strace.CallLeaseKeepAlive || call.Kind == k8strace.CallLeaseTTL) && cp.lease(call.Lease) == 0 {
 				w.skipped++
 				cp.reply(i, 1)
 				continue
@@ -349,8 +352,11 @@ func (c *conn) sendPosted() {
 	at := now()
 	for _, ws := range posted {
 		if c.sendWin < int64(messageLen(progressRequest)) {
-			// The window is closed: the request waits for the next turn.
-			c.post(ws)
+			// The window is closed: the request waits, and the
+			// WINDOW_UPDATE that opens it wakes the writer.
+			c.mail.Lock()
+			c.posted = append(c.posted, ws)
+			c.mail.Unlock()
 			continue
 		}
 		c.out = c.appendMessage(c.out, ws.st, progressRequest, false)
@@ -408,8 +414,9 @@ func (w *k8sLoad) message(st *stream, m []byte) error {
 func (w *k8sLoad) done(st *stream, at int64, err error) {
 	call := &st.k8s
 	c := &call.cp.t.Calls[call.i]
-	if err != nil && (c.Kind == k8strace.CallRange || c.Kind == k8strace.CallRangeStream) && c.Op.Rev != 0 &&
-		strings.Contains(err.Error(), "required revision has been compacted") {
+	var status *grpcStatus
+	if (c.Kind == k8strace.CallRange || c.Kind == k8strace.CallRangeStream) && c.Op.Rev != 0 &&
+		errors.As(err, &status) && status.code == codeOutOfRange {
 		w.compacted++
 		err, st.msgs, st.rev = nil, 1, 1
 	}
@@ -556,8 +563,14 @@ func checkCopies(copies []*k8sCopy) error {
 }
 
 func traceDir(dir string) error {
-	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
-		return fmt.Errorf("-traces %q: not a directory", dir)
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("-traces: %w", err)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("-traces %q: %w", dir, errNotDir)
 	}
 	return nil
 }
+
+var errNotDir = errors.New("not a directory")

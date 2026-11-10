@@ -5,24 +5,21 @@ import (
 	"time"
 )
 
-// TestCPURates checks that every per-byte rate is measured and plausible:
-// above 0 and under 100 ns a byte on any machine this runs on.
-func TestCPURates(t *testing.T) {
-	seal, err := encrypt()
-	if err != nil {
+// TestCPUPrimitives checks that each primitive that needs no disk is
+// measured and plausible: some cost, under a millisecond a call, and no
+// negative cost a byte.
+func TestCPUPrimitives(t *testing.T) {
+	var p primitives
+	if err := p.cpu(20 * time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
-	sendNs, err := send(50 * time.Millisecond)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, ns := range map[string]float64{
-		"encode":  perByte(50*time.Millisecond, encode()),
-		"encrypt": perByte(50*time.Millisecond, seal),
-		"send":    sendNs,
+	for name, c := range map[string]cost{
+		"seal": p.Seal, "open": p.Open, "send": p.Send, "recv": p.Recv,
+		"crc": p.CRC, "copy": p.Copy, "parse": p.Parse,
+		"frames": {CallNs: p.FrameNs}, "kv": {CallNs: p.KVNs},
 	} {
-		if !(ns > 0 && ns < 100) {
-			t.Errorf("%s: %v ns a byte", name, ns)
+		if c.ByteNs < 0 || c.CallNs < 0 || c.CallNs+c.ByteNs <= 0 || c.CallNs > 1e6 {
+			t.Errorf("%s: %+v", name, c)
 		}
 	}
 }

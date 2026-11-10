@@ -161,13 +161,13 @@ func (e *encoder) request(b []byte, c *k8strace.Call) []byte {
 	case k8strace.CallTxn:
 		return e.txn(b, &c.Op, &e.ok, &e.failed)
 	case k8strace.CallCompact:
-		return appendVarintNZ(b, compactRevision, e.cp.rev(c.Rev, -1, e.call))
+		return appendVarintNZ(b, compactRevision, e.cp.rev(c.Rev, -1))
 	case k8strace.CallLeaseGrant:
 		return appendVarintNZ(b, leaseTTL, c.TTL)
 	case k8strace.CallProgress:
 		return protowire.AppendBytes(protowire.AppendTag(b, watchProgressReq, protowire.BytesType), nil)
 	default:
-		return appendVarintNZ(b, leaseRequestID, e.cp.lease(c.Lease, e.call))
+		return appendVarintNZ(b, leaseRequestID, e.cp.lease(c.Lease))
 	}
 }
 
@@ -178,7 +178,7 @@ func (e *encoder) op(b []byte, o *k8strace.Op, t *tally) []byte {
 		b, _ = e.key(b, rangeKey, o.Key)
 		b = e.end(b, rangeEnd, o.End)
 		b = appendVarintNZ(b, rangeLimit, o.Limit)
-		b = appendVarintNZ(b, rangeRevision, e.cp.rev(o.Rev, -1, e.call))
+		b = appendVarintNZ(b, rangeRevision, e.cp.rev(o.Rev, -1))
 		b = appendBool(b, rangeSerializable, o.Flags&k8strace.FlagSerializable != 0)
 		b = appendBool(b, rangeKeysOnly, o.Flags&k8strace.FlagKeysOnly != 0)
 		return appendBool(b, rangeCountOnly, o.Flags&k8strace.FlagCountOnly != 0)
@@ -186,7 +186,7 @@ func (e *encoder) op(b []byte, o *k8strace.Op, t *tally) []byte {
 		var n int
 		b, n = e.key(b, putKey, o.Key)
 		b = e.value(b, putValue, int(o.Size))
-		b = appendVarintNZ(b, putLease, e.cp.lease(o.Lease, e.call))
+		b = appendVarintNZ(b, putLease, e.cp.lease(o.Lease))
 		b = appendBool(b, putPrevKV, o.Flags&k8strace.FlagPrevKV != 0)
 		b = appendBool(b, putIgnoreValue, o.Flags&k8strace.FlagIgnoreValue != 0)
 		b = appendBool(b, putIgnoreLease, o.Flags&k8strace.FlagIgnoreLease != 0)
@@ -222,13 +222,13 @@ func (e *encoder) txn(b []byte, o *k8strace.Op, ok, failed *tally) []byte {
 		case k8strace.TargetVersion:
 			m = appendVarintField(m, cmpVersion, uint64(c.Value))
 		case k8strace.TargetCreate:
-			m = appendVarintField(m, cmpCreateRevision, uint64(e.cp.rev(c.Rev, c.Key, e.call)))
+			m = appendVarintField(m, cmpCreateRevision, uint64(e.cp.rev(c.Rev, c.Key)))
 		case k8strace.TargetMod:
-			m = appendVarintField(m, cmpModRevision, uint64(e.cp.rev(c.Rev, c.Key, e.call)))
+			m = appendVarintField(m, cmpModRevision, uint64(e.cp.rev(c.Rev, c.Key)))
 		case k8strace.TargetValue:
 			m = e.value(m, cmpValue, int(c.Value))
 		case k8strace.TargetLease:
-			m = appendVarintField(m, cmpLease, uint64(e.cp.lease(k8strace.LeaseRef(c.Value), e.call)))
+			m = appendVarintField(m, cmpLease, uint64(e.cp.lease(k8strace.LeaseRef(c.Value))))
 		}
 		m = e.end(m, cmpRangeEnd, c.End)
 		b = closeField(m, start)
