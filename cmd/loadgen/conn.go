@@ -472,11 +472,24 @@ var errFrame = errors.New("malformed HTTP/2 frame")
 // buffer until the next frame, which saves copying every byte the server
 // sends once more. The server's frames are at most 16 KiB, the HTTP/2
 // default, as the generator never raises SETTINGS_MAX_FRAME_SIZE.
-func (c *conn) read() error {
+// read reads frames until the connection fails. It holds c.mu while it
+// handles the frames it has read already, and lets go of it before a read
+// that may block: one lock for a buffer of frames, not one a frame.
+func (c *conn) read() (err error) {
+	locked := false
+	defer func() {
+		if locked {
+			c.mu.Unlock()
+		}
+	}()
 	size := 0
 	for {
 		if _, err := c.br.Discard(size); err != nil {
 			return err
+		}
+		if locked && c.br.Buffered() < 9 {
+			c.mu.Unlock()
+			locked = false
 		}
 		head, err := c.br.Peek(9)
 		if err != nil {
@@ -497,9 +510,17 @@ func (c *conn) read() error {
 		case !c.inBlock && typ == http2.FrameContinuation:
 			return fmt.Errorf("%w: a CONTINUATION frame of stream %d outside a header block", errFrame, id)
 		}
+		if locked && c.br.Buffered() < 9+n {
+			c.mu.Unlock()
+			locked = false
+		}
 		frame, err := c.br.Peek(9 + n)
 		if err != nil {
 			return err
+		}
+		if !locked {
+			c.mu.Lock()
+			locked = true
 		}
 		size = 9 + n
 		p := frame[9:]
@@ -510,7 +531,7 @@ func (c *conn) read() error {
 			if !ok {
 				return errFrame
 			}
-			err = c.onData(id, n, data, flags&flagEndStream != 0)
+			c.onData(id, n, data, flags&flagEndStream != 0)
 		case http2.FrameHeaders:
 			frag, ok := unpad(p, flags)
 			if ok && flags&flagPriority != 0 {
@@ -542,9 +563,7 @@ func (c *conn) read() error {
 				return errFrame
 			}
 			if id == 0 {
-				c.mu.Lock()
 				c.sendWin += int64(binary.BigEndian.Uint32(p) & (1<<31 - 1))
-				c.mu.Unlock()
 				c.signal()
 			}
 		case http2.FramePing:
@@ -552,9 +571,7 @@ func (c *conn) read() error {
 				return errFrame
 			}
 			if flags&flagAck == 0 {
-				c.mu.Lock()
 				c.pings = append(c.pings, [8]byte(p))
-				c.mu.Unlock()
 				c.signal()
 			}
 		case http2.FrameGoAway:
@@ -581,12 +598,12 @@ func unpad(p []byte, flags byte) ([]byte, bool) {
 	return p[1 : len(p)-int(p[0])], true
 }
 
-// onSettings applies the server's settings, 6 bytes each.
+// onSettings applies the server's settings, 6 bytes each. The frame
+// handlers run with c.mu held (read).
 func (c *conn) onSettings(p []byte) error {
 	if len(p)%6 != 0 {
 		return errFrame
 	}
-	c.mu.Lock()
 	var err error
 	for ; len(p) > 0 && err == nil; p = p[6:] {
 		v := binary.BigEndian.Uint32(p[2:6])
@@ -607,7 +624,6 @@ func (c *conn) onSettings(p []byte) error {
 		}
 	}
 	c.settingsAck = true
-	c.mu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -620,11 +636,10 @@ func (c *conn) onSettings(p []byte) error {
 }
 
 // onData takes a DATA frame of stream id: length bytes against the flow
-// control windows, of which data are the message bytes.
-func (c *conn) onData(id uint32, length int, data []byte, end bool) error {
+// control windows, of which data are the message bytes. The caller holds
+// c.mu.
+func (c *conn) onData(id uint32, length int, data []byte, end bool) {
 	n := int64(length)
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.recvUnacked += n
 	if c.recvUnacked >= recvWindowStep {
 		c.connWinIncr += uint32(c.recvUnacked)
@@ -633,7 +648,7 @@ func (c *conn) onData(id uint32, length int, data []byte, end bool) error {
 	}
 	st := c.streams[id]
 	if st == nil {
-		return nil
+		return
 	}
 	st.unacked += n
 	if st.unacked >= recvWindowStep {
@@ -649,7 +664,6 @@ func (c *conn) onData(id uint32, length int, data []byte, end bool) error {
 	if end {
 		c.finish(st, errors.New("stream ended without trailers"))
 	}
-	return nil
 }
 
 // messages hands each complete gRPC message in p to the stream's handler and
@@ -682,8 +696,6 @@ func (c *conn) onHeaderBlock(frag []byte, end bool) error {
 	if err := c.decode(frag, end); err != nil || !end {
 		return err
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	st := c.streams[c.hdrStream]
 	if st == nil {
 		return nil
@@ -891,8 +903,6 @@ func (c *conn) headerField(f hpack.HeaderField) {
 }
 
 func (c *conn) endStream(id uint32, err error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	if st := c.streams[id]; st != nil {
 		c.finish(st, err)
 	}
