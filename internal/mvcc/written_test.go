@@ -66,7 +66,7 @@ func TestBytes(t *testing.T) {
 		t.Helper()
 		var room int64
 		s.each(func(k *keyIndex) bool {
-			room += int64(cap(k.vers))
+			room += int64(cap(k.vs()))
 			return true
 		})
 		if s.keys.Len() != keys || s.byKey.n != keys {

@@ -91,7 +91,7 @@ func (h *history) rebuild(s *Store, from int64) error {
 	}
 	var all []logged
 	s.each(func(k *keyIndex) bool {
-		for _, v := range k.vers {
+		for _, v := range k.vs() {
 			if v.mod.main >= from {
 				all = append(all, logged{v.mod, k})
 			}
@@ -177,10 +177,10 @@ func (s *Store) Changed(pos int64) Change {
 		sub = h.baseSubs[pos-h.first]
 	}
 	i := k.at(main)
-	for i >= 0 && k.vers[i].mod.main == main && k.vers[i].mod.sub > sub {
+	for i >= 0 && k.vs()[i].mod.main == main && k.vs()[i].mod.sub > sub {
 		i--
 	}
-	if i < 0 || k.vers[i].mod != (rev{main: main, sub: sub}) {
+	if i < 0 || k.vs()[i].mod != (rev{main: main, sub: sub}) {
 		return Change{s: s, k: k, i: -1, main: main}
 	}
 	// A compaction that waits for a checkpoint copy has dropped the
@@ -198,7 +198,7 @@ func (c Change) Gone() bool { return c.i < 0 }
 func (s *Store) HistoryStart() int64 { return s.hist.first }
 
 // Deletes reports whether the change deletes its key.
-func (c Change) Deletes() bool { return c.k.vers[c.i].ver == 0 }
+func (c Change) Deletes() bool { return c.k.vs()[c.i].ver == 0 }
 
 // ChangesFrom is the history position of the first change of the last
 // write, Changes()[0].
@@ -208,7 +208,7 @@ func (s *Store) ChangesFrom() int64 { return s.hist.end() - int64(len(s.changes)
 // WatchResponse's events, with the previous version if withPrev is set,
 // its values counted by their length, as Event builds it.
 func (c Change) EventSize(withPrev bool) int {
-	v := &c.k.vers[c.i]
+	v := &c.k.vs()[c.i]
 	kv := KV{Key: c.s.key(c.k), ModRevision: v.mod.main}
 	n := 0
 	valueLen := 0

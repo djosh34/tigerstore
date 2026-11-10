@@ -96,7 +96,7 @@ func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done b
 				f.next, f.ver, more = key, i, true
 				return false
 			}
-			v := &k.vers[i]
+			v := &k.vs()[i]
 			b = binary.AppendVarint(b, v.mod.main)
 			b = binary.AppendVarint(b, v.mod.sub)
 			b = binary.AppendVarint(b, v.create)
@@ -168,12 +168,12 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 			return 0, fmt.Errorf("%w: key %q after %q", ErrBadCheckpoint, k.key, prev)
 		}
 		prev = k.key
-		s.versions += int64(cap(k.vers))
-		if k.vers[len(k.vers)-1].ver != 0 {
+		s.versions += int64(cap(k.vs()))
+		if k.vs()[len(k.vs())-1].ver != 0 {
 			s.counts.Keys++
 		}
-		for i := range k.vers {
-			v := &k.vers[i]
+		for i := range k.vs() {
+			v := &k.vs()[i]
 			if v.value.Len > 0 && (minRef == 0 || v.value.Index < minRef) {
 				minRef = v.value.Index
 			}
@@ -182,7 +182,7 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 				s.sum ^= versionHash(k.key, v)
 			}
 		}
-		s.insert(k.key, k.vers)
+		s.insert(k.key, k.vs())
 	}
 }
 
@@ -332,7 +332,7 @@ func loadError(err error) error {
 // a lease, to rebuild the leases' key sets after a load.
 func (s *Store) EachLeased(fn func(key []byte, lease int64)) {
 	s.each(func(k *keyIndex) bool {
-		if v := &k.vers[len(k.vers)-1]; v.ver != 0 && v.lease != 0 {
+		if v := &k.vs()[len(k.vs())-1]; v.ver != 0 && v.lease != 0 {
 			fn(s.key(k), v.lease)
 		}
 		return true

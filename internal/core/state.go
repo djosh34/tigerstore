@@ -282,15 +282,20 @@ func (st *State) sortedLeases() []*lease {
 func (st *State) track() {
 	st.changes = st.kv.Changes()
 	for _, c := range st.changes {
+		prev, cur := c.PrevLease(), c.Lease()
+		if prev == 0 && cur == 0 || prev == cur {
+			// The key stays where it was (prototype #602: no string).
+			continue
+		}
 		k := string(c.Key())
-		if id := c.PrevLease(); id != 0 {
+		if id := prev; id != 0 {
 			if l, ok := st.leases[id]; ok {
 				st.leaseSum -= l.hash()
 				l.keys.Delete(k)
 				st.leaseSum += l.hash()
 			}
 		}
-		if id := c.Lease(); id != 0 {
+		if id := cur; id != 0 {
 			if l, ok := st.leases[id]; ok {
 				st.leaseSum -= l.hash()
 				l.keys.ReplaceOrInsert(k)

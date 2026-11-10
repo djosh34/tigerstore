@@ -96,7 +96,13 @@ func (v *values) Read(r mvcc.Ref, arena *[]byte) ([]byte, bool, error) {
 	}
 	if !ok {
 		if b, ok := v.cache.get(r); ok {
-			return b, true, nil
+			// The cache's slot may hold another value later: copy it.
+			if arena == nil {
+				return bytes.Clone(b), true, nil
+			}
+			start := len(*arena)
+			*arena = append(*arena, b...)
+			return (*arena)[start:len(*arena):len(*arena)], true, nil
 		}
 		b, ok := v.fetched[r]
 		return b, ok, nil

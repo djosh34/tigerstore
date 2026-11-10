@@ -19,8 +19,10 @@ import (
 
 // stream is one HTTP/2 stream: a gRPC call or an HTTP request.
 type stream struct {
-	c  *conn
-	id uint32
+	// outBuf is out's first array (prototype #602).
+	outBuf [3]outItem
+	c      *conn
+	id     uint32
 	// ctx ends with the call: done, reset, timed out or connection
 	// closed. Calls that the node runs have none.
 	ctx        context.Context
@@ -362,7 +364,7 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 	}
 	if st.out == nil {
 		// Headers, a message and trailers, the whole of a unary reply.
-		st.out = make([]outItem, 0, 3)
+		st.out = st.outBuf[:0]
 	}
 	if msg != nil {
 		st.c.metrics.sent.add(int64(len(msg) - 5))

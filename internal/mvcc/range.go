@@ -127,13 +127,13 @@ func at(r int64) rev { return rev{main: r + 1} }
 // exists there.
 func (k *keyIndex) visible(p rev) (*version, bool) {
 	i := k.at(p.main)
-	for i >= 0 && k.vers[i].mod.main == p.main && k.vers[i].mod.sub >= p.sub {
+	for i >= 0 && k.vs()[i].mod.main == p.main && k.vs()[i].mod.sub >= p.sub {
 		i--
 	}
-	if i < 0 || k.vers[i].ver == 0 {
+	if i < 0 || k.vs()[i].ver == 0 {
 		return nil, false
 	}
-	return &k.vers[i], true
+	return &k.vs()[i], true
 }
 
 // position is where a range of the request being applied reads: at

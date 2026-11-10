@@ -219,7 +219,7 @@ func TestCacheRebuildKeepsOrder(t *testing.T) {
 	c.setLimit(1 << 20)
 	ref := func(i uint64) mvcc.Ref { return mvcc.Ref{Index: i, Len: 10} }
 	for i := uint64(1); i <= 10; i++ {
-		c.add(ref(i), []byte{byte(i)})
+		c.add(ref(i), append([]byte{byte(i)}, make([]byte, 9)...))
 	}
 	// Used last: 2, then 4.
 	c.get(ref(2))

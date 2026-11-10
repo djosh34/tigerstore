@@ -65,11 +65,11 @@ func newRevHash(rev, c int64) *revHash {
 // only at the end: both sums are kept.
 func (h *revHash) key(key []byte, k *keyIndex, from int) {
 	seen := k.at(h.rev)
-	if seen >= 0 && k.vers[seen].ver != 0 {
+	if seen >= 0 && k.vs()[seen].ver != 0 {
 		h.anyLive = true
 	}
-	for i := from; i < len(k.vers); i++ {
-		v := &k.vers[i]
+	for i := from; i < len(k.vs()); i++ {
+		v := &k.vs()[i]
 		if v.mod.main > h.rev || (v.mod.main == h.c && v.ver == 0) {
 			continue
 		}
@@ -108,9 +108,9 @@ func (s *Store) HashAll() uint32 {
 	h := newKVHasher()
 	pending := s.pendingCompact()
 	s.each(func(k *keyIndex) bool {
-		for i := k.dropped(pending); i < len(k.vers) && k.vers[i].mod.main <= s.rev; i++ {
+		for i := k.dropped(pending); i < len(k.vs()) && k.vs()[i].mod.main <= s.rev; i++ {
 			// The deletes of a revoke under way are past the revision.
-			h.add(s.key(k), &k.vers[i])
+			h.add(s.key(k), &k.vs()[i])
 		}
 		return true
 	})

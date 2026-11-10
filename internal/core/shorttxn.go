@@ -162,6 +162,7 @@ func appendShort(b []byte, t *pb.TxnRequest) []byte {
 // entry into m, and records in pl where the value of its put starts. The
 // bytes fields are slices of b.
 func decodeShort(b []byte, m *pb.TxnRequest, at int, pl *placer) error {
+	sc := new(shortParts)
 	if len(b) == 0 {
 		return errBadBatch
 	}
@@ -179,7 +180,8 @@ func decodeShort(b []byte, m *pb.TxnRequest, at int, pl *placer) error {
 	if !ok || len(rest) == 0 || result > 1<<32-1 || target > 1<<32-1 {
 		return errBadBatch
 	}
-	c := &pb.Compare{Result: pb.Compare_CompareResult(int32(uint32(result))), Target: pb.Compare_CompareTarget(int32(uint32(target)))}
+	c := &sc.c
+	c.Result, c.Target = pb.Compare_CompareResult(int32(uint32(result))), pb.Compare_CompareTarget(int32(uint32(target)))
 	field := rest[0]
 	rest = rest[1:]
 	if field != numberNone {
@@ -189,13 +191,17 @@ func decodeShort(b []byte, m *pb.TxnRequest, at int, pl *placer) error {
 		}
 		switch field {
 		case numberVersion:
-			c.TargetUnion = &pb.Compare_Version{Version: int64(n)}
+			sc.ver.Version = int64(n)
+			c.TargetUnion = &sc.ver
 		case numberCreate:
-			c.TargetUnion = &pb.Compare_CreateRevision{CreateRevision: int64(n)}
+			sc.create.CreateRevision = int64(n)
+			c.TargetUnion = &sc.create
 		case numberMod:
-			c.TargetUnion = &pb.Compare_ModRevision{ModRevision: int64(n)}
+			sc.mod.ModRevision = int64(n)
+			c.TargetUnion = &sc.mod
 		case numberLease:
-			c.TargetUnion = &pb.Compare_Lease{Lease: int64(n)}
+			sc.lease.Lease = int64(n)
+			c.TargetUnion = &sc.lease
 		default:
 			return errBadBatch
 		}
@@ -213,23 +219,51 @@ func decodeShort(b []byte, m *pb.TxnRequest, at int, pl *placer) error {
 	key := rest[:n:n]
 	c.Key = key
 	value := rest[n:]
-	m.Compare = []*pb.Compare{c}
+	sc.cmp[0] = c
+	m.Compare = sc.cmp[:]
 	prev := flags&shortPrevKV != 0
 	if flags&shortDelete != 0 {
 		if len(value) != 0 {
 			return errBadBatch
 		}
-		m.Success = []*pb.RequestOp{{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: key, PrevKv: prev}}}}
+		sc.dreq.Key, sc.dreq.PrevKv = key, prev
+		sc.del.RequestDeleteRange = &sc.dreq
+		sc.sop.Request = &sc.del
 	} else {
 		value = slices.Clip(value)
 		pl.add(value, at+len(whole)-len(value))
-		m.Success = []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{
-			Key: key, Value: value, Lease: int64(lease), PrevKv: prev,
-			IgnoreValue: flags&shortIgnoreValue != 0, IgnoreLease: flags&shortIgnoreLease != 0,
-		}}}}
+		sc.preq.Key, sc.preq.Value, sc.preq.Lease, sc.preq.PrevKv = key, value, int64(lease), prev
+		sc.preq.IgnoreValue, sc.preq.IgnoreLease = flags&shortIgnoreValue != 0, flags&shortIgnoreLease != 0
+		sc.put.RequestPut = &sc.preq
+		sc.sop.Request = &sc.put
 	}
+	sc.succ[0] = &sc.sop
+	m.Success = sc.succ[:]
 	if flags&shortRead != 0 {
-		m.Failure = []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: key}}}}
+		sc.rreq.Key = key
+		sc.rng.RequestRange = &sc.rreq
+		sc.fop.Request = &sc.rng
+		sc.fail[0] = &sc.fop
+		m.Failure = sc.fail[:]
 	}
 	return nil
+}
+
+// shortParts are the parts of a decoded short transaction, in one
+// allocation (prototype #602).
+type shortParts struct {
+	c          pb.Compare
+	ver        pb.Compare_Version
+	create     pb.Compare_CreateRevision
+	mod        pb.Compare_ModRevision
+	lease      pb.Compare_Lease
+	cmp        [1]*pb.Compare
+	succ, fail [1]*pb.RequestOp
+	sop, fop   pb.RequestOp
+	del        pb.RequestOp_RequestDeleteRange
+	dreq       pb.DeleteRangeRequest
+	put        pb.RequestOp_RequestPut
+	preq       pb.PutRequest
+	rng        pb.RequestOp_RequestRange
+	rreq       pb.RangeRequest
 }

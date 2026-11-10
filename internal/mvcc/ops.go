@@ -138,7 +138,7 @@ func (w *writer) latest(key []byte) (*keyIndex, *version) {
 	if !ok {
 		return nil, nil
 	}
-	v := &k.vers[len(k.vers)-1]
+	v := &k.vs()[len(k.vs())-1]
 	if v.ver == 0 {
 		return k, nil
 	}
@@ -151,20 +151,20 @@ func (w *writer) add(k *keyIndex, v version) {
 		v.mod = rev{main: w.begin + 1 + w.subs}
 	}
 	w.subs++
-	if n := len(k.vers); n > 0 && w.s.Replaced != nil {
-		if old := k.vers[n-1]; old.ver != 0 && old.value.Len > 0 && old.value != v.value {
+	if n := len(k.vs()); n > 0 && w.s.Replaced != nil {
+		if old := k.vs()[n-1]; old.ver != 0 && old.value.Len > 0 && old.value != v.value {
 			w.s.Replaced(old.value)
 		}
 	}
-	c := cap(k.vers)
-	k.vers = append(k.vers, v)
+	c := cap(k.vs())
+	k.set(append(k.vs(), v))
 	w.s.size += rowBytes(w.s.key(k), &v)
-	w.s.versions += int64(cap(k.vers) - c)
+	w.s.versions += int64(cap(k.vs()) - c)
 	if w.s.track {
 		w.s.sum ^= versionHash(w.s.key(k), &v)
 	}
 	w.changed = true
-	w.s.changes = append(w.s.changes, Change{s: w.s, k: k, i: len(k.vers) - 1})
+	w.s.changes = append(w.s.changes, Change{s: w.s, k: k, i: len(k.vs()) - 1})
 	w.s.hist.add(k, v.mod.main)
 }
 
@@ -202,8 +202,8 @@ func (w *writer) put(p *PutOp) (*mvccpb.KeyValue, error) {
 	} else {
 		w.s.counts.Keys++
 	}
-	if prev == nil && planted.On("B09b") && k != nil && len(k.vers) >= 2 && k.vers[len(k.vers)-2].ver != 0 {
-		old := k.vers[len(k.vers)-2]
+	if prev == nil && planted.On("B09b") && k != nil && len(k.vs()) >= 2 && k.vs()[len(k.vs())-2].ver != 0 {
+		old := k.vs()[len(k.vs())-2]
 		v.create, v.ver = old.create, old.ver+1
 	}
 	if k == nil {
@@ -264,7 +264,7 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 	}
 	var del []*keyIndex
 	w.s.ascend(d.Key, d.RangeEnd, func(k *keyIndex) bool {
-		if k.vers[len(k.vers)-1].ver != 0 {
+		if k.vs()[len(k.vs())-1].ver != 0 {
 			del = append(del, k)
 		}
 		return true
@@ -298,7 +298,7 @@ func (d *Deletion) Delete(keys []string) {
 	s := d.w.s
 	s.resetChanges()
 	for _, key := range keys {
-		if k, ok := s.get([]byte(key)); ok && k.vers[len(k.vers)-1].ver != 0 {
+		if k, ok := s.get([]byte(key)); ok && k.vs()[len(k.vs())-1].ver != 0 {
 			d.w.add(k, version{})
 			s.counts.Keys--
 		}
@@ -587,14 +587,22 @@ func (w *writer) checkSortValues(r *pb.RangeRequest) error {
 // header, as in etcd.
 func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int, error) {
 	ops := branch(r, path[0])
-	resp := &pb.TxnResponse{
-		Header:    &pb.ResponseHeader{},
-		Succeeded: path[0],
-		Responses: make([]*pb.ResponseOp, len(ops)),
+	tb := &txnParts{}
+	resp := &tb.resp
+	resp.Header, resp.Succeeded = &tb.hdr, path[0]
+	parts := tb.one[:]
+	if len(ops) > 1 {
+		parts = make([]opParts, len(ops))
+	}
+	if len(ops) <= 1 {
+		resp.Responses = tb.ptrs[:len(ops)]
+	} else {
+		resp.Responses = make([]*pb.ResponseOp, len(ops))
 	}
 	n := 0
 	for i, op := range ops {
-		var out pb.ResponseOp
+		pp := &parts[i]
+		out := &pp.out
 		switch t := op.Request.(type) {
 		case *pb.RequestOp_RequestRange:
 			w.s.counts.Ranges++
@@ -602,20 +610,25 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 			if err != nil {
 				return nil, 0, err
 			}
-			out.Response = &pb.ResponseOp_ResponseRange{ResponseRange: rr}
+			pp.rng.ResponseRange = rr
+			out.Response = &pp.rng
 		case *pb.RequestOp_RequestPut:
 			op := putOp(t.RequestPut)
 			prev, err := w.put(&op)
 			if err != nil {
 				return nil, 0, err
 			}
-			out.Response = &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{Header: header(w.begin + 1), PrevKv: prev}}
+			pp.hdr.Revision = w.begin + 1
+			pp.putResp.Header, pp.putResp.PrevKv = &pp.hdr, prev
+			pp.put.ResponsePut = &pp.putResp
+			out.Response = &pp.put
 		case *pb.RequestOp_RequestDeleteRange:
 			d, err := w.deleteRange(t.RequestDeleteRange)
 			if err != nil {
 				return nil, 0, err
 			}
-			out.Response = &pb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: d}
+			pp.del.ResponseDeleteRange = d
+			out.Response = &pp.del
 		case *pb.RequestOp_RequestTxn:
 			sub, subN, err := w.executeTxn(t.RequestTxn, path[1:])
 			if err != nil {
@@ -625,7 +638,25 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 			n += subN + 1
 			path = path[subN+1:]
 		}
-		resp.Responses[i] = &out
+		resp.Responses[i] = out
 	}
 	return resp, n, nil
+}
+
+// txnParts are a transaction response's parts, with those of its one op,
+// in one allocation (prototype #602).
+type txnParts struct {
+	resp pb.TxnResponse
+	hdr  pb.ResponseHeader
+	ptrs [1]*pb.ResponseOp
+	one  [1]opParts
+}
+
+type opParts struct {
+	out     pb.ResponseOp
+	rng     pb.ResponseOp_ResponseRange
+	put     pb.ResponseOp_ResponsePut
+	putResp pb.PutResponse
+	hdr     pb.ResponseHeader
+	del     pb.ResponseOp_ResponseDeleteRange
 }

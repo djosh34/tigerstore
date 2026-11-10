@@ -1,8 +1,6 @@
 package core
 
 import (
-	"bytes"
-
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -37,7 +35,7 @@ type cache struct {
 	// entries[0] is the start and end of the ring of cached values, the
 	// most recently used after it; free lists the entries not in use.
 	entries []cached
-	vals    [][]byte
+	slabs   slabs
 	free    []int32
 	// hits are the values the cache returned, and misses those read from
 	// the log.
@@ -49,6 +47,7 @@ type cache struct {
 type cached struct {
 	ref        mvcc.Ref
 	prev, next int32
+	slot       slot
 }
 
 // cachedOverhead estimates what a cached value takes besides its bytes
@@ -84,7 +83,7 @@ func (c *cache) get(r mvcc.Ref) ([]byte, bool) {
 	c.hits++
 	c.unlink(i)
 	c.push(i)
-	return c.vals[i], true
+	return c.slabs.bytes(c.entries[i].slot, int(c.entries[i].ref.Len)), true
 }
 
 // add keeps val, the bytes r names, which nobody may change afterwards.
@@ -95,12 +94,10 @@ func (c *cache) add(r mvcc.Ref, val []byte) {
 	var i int32
 	if n := len(c.free); n > 0 {
 		i, c.free = c.free[n-1], c.free[:n-1]
-		c.entries[i] = cached{ref: r}
-		c.vals[i] = val
+		c.entries[i] = cached{ref: r, slot: c.slabs.put(val)}
 	} else {
 		i = int32(len(c.entries))
-		c.entries = append(c.entries, cached{ref: r})
-		c.vals = append(c.vals, val)
+		c.entries = append(c.entries, cached{ref: r, slot: c.slabs.put(val)})
 	}
 	c.items[r] = i
 	if len(c.items) > c.peak {
@@ -129,7 +126,8 @@ func (c *cache) setLimit(limit int64) {
 // clear forgets every value.
 func (c *cache) clear() {
 	c.items, c.peak = map[mvcc.Ref]int32{}, 0
-	c.entries, c.vals, c.free = []cached{{}}, [][]byte{nil}, nil
+	c.entries, c.free = []cached{{}}, nil
+	c.slabs = slabs{}
 	c.bytes, c.low = 0, 0
 }
 
@@ -144,8 +142,8 @@ func (c *cache) fit() {
 func (c *cache) remove(i int32) {
 	c.unlink(i)
 	delete(c.items, c.entries[i].ref)
-	c.bytes -= int64(len(c.vals[i])) + cachedOverhead
-	c.vals[i] = nil
+	c.bytes -= int64(c.entries[i].ref.Len) + cachedOverhead
+	c.slabs.free(c.entries[i].slot)
 	c.free = append(c.free, i)
 	if len(c.items) <= c.peak/2 {
 		c.bytes -= int64(c.peak-len(c.items)) * slotOverhead
@@ -160,17 +158,15 @@ func (c *cache) remove(i int32) {
 func (c *cache) rebuild() {
 	items := make(map[mvcc.Ref]int32, len(c.items))
 	entries := make([]cached, 1, len(c.items)+1)
-	vals := make([][]byte, 1, len(c.items)+1)
 	for i := c.entries[0].next; i != 0; i = c.entries[i].next {
 		n := int32(len(entries))
 		items[c.entries[i].ref] = n
-		entries = append(entries, cached{ref: c.entries[i].ref, prev: n - 1, next: n + 1})
-		vals = append(vals, c.vals[i])
+		entries = append(entries, cached{ref: c.entries[i].ref, prev: n - 1, next: n + 1, slot: c.entries[i].slot})
 	}
 	last := int32(len(entries) - 1)
 	entries[0].next, entries[0].prev = min(1, last), last
 	entries[last].next = 0
-	c.items, c.peak, c.entries, c.vals, c.free = items, len(items), entries, vals, nil
+	c.items, c.peak, c.entries, c.free = items, len(items), entries, nil
 }
 
 // push puts entry i at the front of the ring.
@@ -193,7 +189,7 @@ func (n *Node) fillCache(index uint64) {
 	n.kv.Leaving(index, func(r mvcc.Ref) {
 		data, ok := n.storage.entryData(r.Index)
 		if ok && uint64(r.Off)+uint64(r.Len) <= uint64(len(data)) {
-			n.cache.add(r, bytes.Clone(data[r.Off:r.Off+r.Len]))
+			n.cache.add(r, data[r.Off:r.Off+r.Len])
 		}
 	})
 }
