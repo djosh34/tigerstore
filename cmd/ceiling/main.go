@@ -111,7 +111,7 @@ func (r *report) measure(dir string, size int64, dur, cpuTime time.Duration) err
 	if r.SendNsPerByte, err = send(cpuTime); err != nil {
 		return err
 	}
-	return r.Primitives.measure(cpuTime)
+	return r.Primitives.measure(cpuTime, dir)
 }
 
 func (r *report) disk(dir string, size int64, dur time.Duration) (err error) {
