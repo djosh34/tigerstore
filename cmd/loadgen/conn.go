@@ -3,18 +3,17 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/djosh34/tigerstore/internal/bufconn"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
 )
@@ -85,7 +84,8 @@ type conn struct {
 	addr string
 	nc   net.Conn
 	fr   *http2.Framer // writes to out
-	br   *bufio.Reader // reads from nc, owned by the reader goroutine
+	br   frameReader   // reads from nc, owned by the reader goroutine
+	w    io.Writer     // writes to nc, owned by the writer goroutine
 	out  outBuf        // frames not yet written, owned by the writer goroutine
 
 	mu      sync.Mutex
@@ -137,6 +137,14 @@ type conn struct {
 	hasGRPCState bool
 }
 
+// frameReader is what the reader takes frames from: a buffer over the
+// connection, or the TLS record layer.
+type frameReader interface {
+	Peek(n int) ([]byte, error)
+	Discard(n int) (int, error)
+	Buffered() int
+}
+
 type streamIncr struct {
 	id   uint32
 	incr uint32
@@ -148,19 +156,24 @@ var clientTLS *tls.Config
 
 func dial(addr string) (*conn, error) {
 	d := &net.Dialer{Timeout: dialTimeout}
-	var nc net.Conn
-	var err error
-	if nc, err = d.Dial("tcp", addr); err != nil {
+	nc, err := d.Dial("tcp", addr)
+	if err != nil {
 		return nil, err
 	}
+	var br frameReader = bufio.NewReaderSize(nc, 64<<10)
+	var w io.Writer = nc
 	if clientTLS != nil {
-		if nc, err = clientHandshake(nc, addr); err != nil {
+		rc, err := clientHandshake(nc, addr)
+		if err != nil {
 			return nil, err
 		}
+		br, w = rc, rc
 	}
 	c := &conn{
 		addr:       addr,
 		nc:         nc,
+		br:         br,
+		w:          w,
 		streams:    make(map[uint32]*stream),
 		nextID:     1,
 		sendWin:    65535,
@@ -170,10 +183,6 @@ func dial(addr string) (*conn, error) {
 		ready:      make(chan struct{}),
 		gone:       make(chan struct{}),
 	}
-	// Frames are read through a buffer above TLS too: each read of TLS
-	// checks the handshake under a deferred unlock, which costs more than
-	// copying a record once more. The framer only writes.
-	c.br = bufio.NewReaderSize(nc, 64<<10)
 	c.fr = http2.NewFramer(&c.out, nil)
 	c.dec = hpack.NewDecoder(4096, c.headerField)
 
@@ -203,30 +212,6 @@ func dial(addr string) (*conn, error) {
 		return nil, fmt.Errorf("%s: server stream window %d is smaller than one request", addr, c.streamWin)
 	}
 	return c, nil
-}
-
-// clientHandshake runs TLS over nc, reading its records through a large
-// buffer (bufconn).
-func clientHandshake(nc net.Conn, addr string) (net.Conn, error) {
-	cfg := clientTLS
-	if cfg.ServerName == "" {
-		host, _, err := net.SplitHostPort(addr)
-		if err != nil {
-			return nil, errors.Join(err, nc.Close())
-		}
-		cfg = cfg.Clone()
-		cfg.ServerName = host
-	}
-	tc := tls.Client(bufconn.New(nc, 256<<10), cfg)
-	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
-	defer cancel()
-	if err := tc.HandshakeContext(ctx); err != nil {
-		return nil, errors.Join(err, nc.Close())
-	}
-	if tc.ConnectionState().NegotiatedProtocol != "h2" {
-		return nil, errors.Join(fmt.Errorf("%s: the server did not negotiate h2", addr), tc.Close())
-	}
-	return tc, nil
 }
 
 func (c *conn) failure() error {
@@ -430,7 +415,9 @@ func (c *conn) flush() error {
 	if err := c.nc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 		return err
 	}
-	_, err := c.nc.Write(c.out)
+	// The record layer seals in place, with a byte after the frames.
+	c.out = append(c.out, 0)[:len(c.out)]
+	_, err := c.w.Write(c.out)
 	c.out = c.out[:0]
 	if err != nil {
 		return fmt.Errorf("%s: write: %w", c.addr, err)
