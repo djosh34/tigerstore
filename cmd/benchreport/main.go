@@ -36,7 +36,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -120,17 +119,21 @@ type key struct{ rtt, bench, target, mode string }
 type failure struct{ rep, cause string }
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: benchreport <dir>")
+	if len(os.Args) < 2 || len(os.Args) > 3 {
+		fmt.Fprintln(os.Stderr, "usage: benchreport <dir> [<recordings>]")
 		os.Exit(2)
 	}
-	if err := report(os.Stdout, os.Args[1]); err != nil {
+	traces := "bench/recordings"
+	if len(os.Args) == 3 {
+		traces = os.Args[2]
+	}
+	if err := report(os.Stdout, os.Args[1], traces); err != nil {
 		fmt.Fprintln(os.Stderr, "benchreport:", err)
 		os.Exit(1)
 	}
 }
 
-func report(w io.Writer, dir string) error {
+func report(w io.Writer, dir, traces string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "rtt-*", "*", "*.json"))
 	if err != nil {
 		return err
@@ -375,11 +378,13 @@ func report(w io.Writer, dir string) error {
 		p("\nMax runs whose throughput still climbed at the last step of the ramp, so the requests in flight may have limited them:\n\n%s", strings.Join(climbing, ""))
 	}
 	shapes(w, rtts, benches, targets, func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] })
-	if err := ceilings(w, dir, rtts, benches, targets, func(rtt, bench, target string) runs {
+	more, err := ceilings(w, dir, traces, rtts, benches, targets, func(rtt, bench, target string) runs {
 		return all[key{rtt, bench, target, "max"}]
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
+	problems = append(problems, more...)
 	if err := generator(w, dir, benches, targets, func(rtt, bench, target string) runs {
 		return all[key{rtt, bench, target, "max"}]
 	}, rtts); err != nil {
@@ -415,116 +420,6 @@ func leader(path string) (string, error) {
 // layouts are the max runs of bench/run.sh's LAYOUTS: tmpfs has all three
 // nodes on tmpfs, alone only the followers.
 var layouts = []string{"tmpfs", "alone"}
-
-// runner is what cmd/ceiling measured on the bench's runner.
-type runner struct {
-	Kernel           string  `json:"kernel"`
-	CPU              string  `json:"cpu"`
-	Disk             string  `json:"disk"`
-	DiskMiBps        float64 `json:"disk_mib_per_s"`
-	DiskThreeMiBps   float64 `json:"disk_three_mib_per_s"`
-	DiskFreshMiBps   float64 `json:"disk_fresh_mib_per_s"`
-	EncodeNsPerByte  float64 `json:"encode_ns_per_byte"`
-	EncryptNsPerByte float64 `json:"encrypt_ns_per_byte"`
-	SendNsPerByte    float64 `json:"send_ns_per_byte"`
-}
-
-// nodes is the cluster's size: the nodes that write every durable byte to
-// the one shared disk, and the cores that serve the reads.
-const nodes = 3
-
-// maxRuns returns the max runs of a target at an RTT in a benchmark.
-type maxRuns func(rtt, bench, target string) runs
-
-// ceilings prints the runner, each benchmark's ceiling, and each store's
-// share of it, if dir has a ceiling.json.
-func ceilings(w io.Writer, dir string, rtts, benches, targets []string, all maxRuns) error {
-	b, err := os.ReadFile(filepath.Join(dir, "ceiling.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	var rn runner
-	if err := json.Unmarshal(b, &rn); err != nil {
-		return fmt.Errorf("ceiling.json: %w", err)
-	}
-	if rn.DiskMiBps <= 0 {
-		return errors.New("ceiling.json: no disk bandwidth")
-	}
-	perByte := rn.EncodeNsPerByte + rn.EncryptNsPerByte + rn.SendNsPerByte
-	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
-	p("\nThe runner: kernel %s, CPU %s. The three nodes keep their data on one shared disk, %s, which makes at most %.1f MiB/s durable (O_DIRECT writes and fdatasync on written space). One core encodes key-values at %.3f ns a byte, encrypts them with AES-128-GCM at %.3f and sends them over loopback TCP at %.3f.\n",
-		rn.Kernel, rn.CPU, rn.Disk, rn.DiskMiBps, rn.EncodeNsPerByte, rn.EncryptNsPerByte, rn.SendNsPerByte)
-	if rn.DiskThreeMiBps > 0 {
-		p("Three writers at once, as the three nodes write, made %.1f MiB/s durable together.\n", rn.DiskThreeMiBps)
-	}
-	if rn.DiskFreshMiBps > 0 {
-		p("Three writers appending to new files, as the logs of a new cluster do, made %.1f MiB/s durable together.\n", rn.DiskFreshMiBps)
-	}
-	p("\n| Benchmark | Durable bytes/op per node | Disk limit ops/s | Read bytes/op | CPU limit ops/s | Ceiling ops/s |\n|---|---|---|---|---|---|\n")
-	ceiling := map[string]float64{}
-	for _, bench := range benches {
-		var rs runs
-		for _, rtt := range rtts {
-			for _, target := range targets {
-				rs = append(rs, all(rtt, bench, target)...)
-			}
-		}
-		if len(rs) == 0 {
-			continue
-		}
-		written := medianOf(rs, func(r result) float64 { return r.MinWrittenBytesPerOp })
-		read := medianOf(rs, func(r result) float64 { return r.MinReadBytesPerOp })
-		disk, cpu := math.Inf(1), math.Inf(1)
-		if written > 0 {
-			disk = rn.DiskMiBps * (1 << 20) / (nodes * written)
-		}
-		// Each node the requests go to serves them on its one core.
-		cores := medianOf(rs, func(r result) float64 { return float64(min(max(len(r.Endpoints), 1), nodes)) })
-		if read > 0 && perByte > 0 {
-			cpu = cores * 1e9 / (read * perByte)
-		}
-		c := min(disk, cpu)
-		if math.IsInf(c, 1) {
-			continue
-		}
-		ceiling[bench] = c
-		p("| %s | %.0f | %s | %.0f | %s | %s |\n", bench, written, limit(disk), read, limit(cpu), thousands(c))
-	}
-	p("\nThe ceiling is the lower limit. The CPU limit counts the cores of the nodes the requests go to: all three for mixed-k8s, the leader's alone for the rest. Durable bytes are the keys and values each operation writes and the key and revision of each compare; read bytes are the keys and values its reads and watch events carry. Both are medians over the max runs of every store.\n")
-	p("\n| Benchmark | Store | RTT ms | Max ops/s | Share of the ceiling | Disk bytes/op written |\n|---|---|---|---|---|---|\n")
-	for _, bench := range benches {
-		c, ok := ceiling[bench]
-		if !ok {
-			continue
-		}
-		for _, target := range targets {
-			for _, rtt := range rtts {
-				rs := all(rtt, bench, target)
-				if len(rs) == 0 {
-					continue
-				}
-				got := medianOf(rs, func(r result) float64 { return r.Throughput })
-				disk := "-"
-				if d := medianOf(rs, func(r result) float64 { return r.DiskBytesPerOp }); d > 0 {
-					disk = thousands(d)
-				}
-				p("| %s | %s | %s | %s | %.1f%% | %s |\n", bench, target, rtt, thousands(got), 100*got/c, disk)
-			}
-		}
-	}
-	p("\nMedians over the max runs. Disk bytes/op written counts every byte the shared disk took in the window, from all three nodes, per operation.\n")
-	return nil
-}
-
-func limit(v float64) string {
-	if math.IsInf(v, 1) {
-		return "-"
-	}
-	return thousands(v)
-}
 
 // generator prints loadgen's own ceiling, from its run against
 // cmd/nullstore, next to the most of its core it used at a tigerstore
