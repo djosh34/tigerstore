@@ -86,7 +86,7 @@ type result struct {
 	// Seed and Leader come from the run's file names: the seed it ran,
 	// and the node that led it, n1 to n3.
 	Seed, Leader string `json:"-"`
-	Watch                *struct {
+	Watch        *struct {
 		EventsPerS          float64 `json:"events_per_s"`
 		ServerCPUUsPerEvent float64 `json:"server_cpu_us_per_event"`
 		Latency             struct {
