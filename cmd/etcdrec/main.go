@@ -81,13 +81,16 @@ func main() {
 	clientKey := flag.String("client-key", "", "key of -client-cert")
 	out := flag.String("out", "", "the log, gzipped JSON lines")
 	flag.Parse()
-	if err := run(strings.Split(*listen, ","), strings.Split(*backend, ","), *cacert, *cert, *key, *clientCert, *clientKey, *out); err != nil {
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	if err := run(strings.Split(*listen, ","), strings.Split(*backend, ","), *cacert, *cert, *key, *clientCert, *clientKey, *out, stop); err != nil {
 		fmt.Fprintln(os.Stderr, "etcdrec:", err)
 		os.Exit(1)
 	}
 }
 
-func run(listen, backend []string, cacert, cert, key, clientCert, clientKey, out string) error {
+// run records until stop, or until a listener fails.
+func run(listen, backend []string, cacert, cert, key, clientCert, clientKey, out string, stop <-chan os.Signal) error {
 	if len(listen) != len(backend) || out == "" {
 		return errors.New("need as many -listen as -backend addresses, and -out")
 	}
@@ -114,6 +117,7 @@ func run(listen, backend []string, cacert, cert, key, clientCert, clientKey, out
 	l := newJournal(f)
 	serverTLS := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{serverKP}, ClientCAs: pool, ClientAuth: tls.RequireAndVerifyClientCert}
 	clientTLS := &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool, Certificates: []tls.Certificate{clientKP}}
+	var forwarders sync.WaitGroup
 	var servers []*grpc.Server
 	var backends []*grpc.ClientConn
 	served := make(chan error, len(listen))
@@ -128,7 +132,7 @@ func run(listen, backend []string, cacert, cert, key, clientCert, clientKey, out
 		if err != nil {
 			return err
 		}
-		p := &proxy{log: l, node: i + 1, backend: cc}
+		p := &proxy{log: l, node: i + 1, backend: cc, forwarders: &forwarders}
 		// The keepalive rules are etcd's defaults, so the apiserver's
 		// pings every 30 s are fine, as they are to the store.
 		s := grpc.NewServer(grpc.Creds(credentials.NewTLS(serverTLS)), grpc.ForceServerCodec(rawCodec{}),
@@ -144,16 +148,17 @@ func run(listen, backend []string, cacert, cert, key, clientCert, clientKey, out
 			return err
 		}
 	}
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	var serveErr error
 	select {
-	case <-signals:
+	case <-stop:
 	case serveErr = <-served:
 	}
 	for _, s := range servers {
 		s.Stop()
 	}
+	// Every call has returned, so each forwarder's next receive fails and
+	// it ends.
+	forwarders.Wait()
 	errs := []error{serveErr, l.close()}
 	for _, cc := range backends {
 		errs = append(errs, cc.Close())
@@ -200,6 +205,9 @@ type proxy struct {
 	log     *journal
 	node    int
 	backend *grpc.ClientConn
+	// forwarders are the goroutines that pass a call's requests on; they
+	// log too, so the log closes only after they end.
+	forwarders *sync.WaitGroup
 }
 
 type connKey struct{}
@@ -237,7 +245,7 @@ func (p *proxy) call(_ any, ss grpc.ServerStream) (callErr error) {
 		return err
 	}
 	sent := make(chan error, 1)
-	go func() {
+	p.forwarders.Go(func() {
 		for {
 			var b []byte
 			err := ss.RecvMsg(&b)
@@ -262,7 +270,7 @@ func (p *proxy) call(_ any, ss grpc.ServerStream) (callErr error) {
 				return
 			}
 		}
-	}()
+	})
 	// The call ends when the node's side does. An error of the client's
 	// side that came first is the call's too.
 	end := func(err error) error {
