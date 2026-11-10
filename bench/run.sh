@@ -31,10 +31,10 @@
 #
 # A run that fails writes its cause to <run>.failed, and
 # the other runs still run: one store's failure must not hide the others'
-# results. cmd/benchreport decides what a failure means. Where etcd has no
-# max result, the rate is RATE_FALLBACK; without it no rate runs run, and
-# <out dir>/<benchmark>/norate says why. The rate used goes to
-# <out dir>/<benchmark>/rate.
+# results. cmd/benchreport decides what a failure means. The rate is
+# RATE_FALLBACK when it is set, else half of etcd's median max here; with
+# neither, no rate runs run, and <out dir>/<benchmark>/norate says why. The
+# rate used goes to <out dir>/<benchmark>/rate.
 #
 # Environment:
 #   TARGETS     target names in order (default "etcd"); target <name> runs
@@ -61,8 +61,8 @@
 #               reference), alone puts the followers there and keeps the
 #               leader on the disk; written as <target>-<layout>-<rep>.json
 #   TMPFS_DIR   a directory on tmpfs for LAYOUTS (default /dev/shm/bench-data)
-#   RATE_FALLBACK  the rate where etcd has no max result (bench.yml passes
-#               the first RTT's)
+#   RATE_FALLBACK  the rate to use, the first RTT's, which bench.yml passes
+#               to the other RTTs: etcd runs at the first RTT only
 set -euo pipefail
 
 bench=$1
@@ -307,11 +307,11 @@ if [[ " ${modes[*]} " == *" rate "* ]]; then
 	for f in "$out/$bench/$ref"-max-*.json; do
 		if [ -f "$f" ] && [ ! -f "${f%.json}.failed" ]; then maxes+=("$f"); fi
 	done
-	if [ "${#maxes[@]}" -gt 0 ]; then
-		rate=$(jq -s 'map(.throughput) | sort | (if length % 2 == 0 then (.[length / 2 - 1] + .[length / 2]) / 2 else .[length / 2 | floor] end) / 2 | floor' "${maxes[@]}")
-	elif [ -n "${RATE_FALLBACK:-}" ]; then
-		echo "$ref has no max result: the rate is RATE_FALLBACK, $RATE_FALLBACK" >&2
+	if [ -n "${RATE_FALLBACK:-}" ]; then
+		# Every RTT gets the first RTT's rate, where etcd ran.
 		rate=$RATE_FALLBACK
+	elif [ "${#maxes[@]}" -gt 0 ]; then
+		rate=$(jq -s 'map(.throughput) | sort | (if length % 2 == 0 then (.[length / 2 - 1] + .[length / 2]) / 2 else .[length / 2 | floor] end) / 2 | floor' "${maxes[@]}")
 	else
 		echo "$ref has no max result here or at the first RTT" | tee "$out/$bench/norate" >&2
 		exit 0

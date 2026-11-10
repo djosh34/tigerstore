@@ -118,15 +118,15 @@ func TestConvert(t *testing.T) {
 		return c.Op.Rev
 	}
 	wants := []want{
-		{CallTxn, nil, -1},       // the preload's /a
-		{CallTxn, []int32{0}, 1}, // the event of call 0's write
-		{CallRange, nil, 0},
+		{CallTxn, nil, -1},          // the preload's /a
+		{CallTxn, []int32{0}, 1},    // the event of call 0's write
+		{CallRange, []int32{1}, 0},  // after call 1's write of /a answered
 		{CallTxn, []int32{1, 2}, 2}, // what the GET returned, written by call 1
 		{CallLeaseGrant, nil, 0},
 		{CallPut, []int32{4}, 0},
 		{CallRange, nil, 0},
-		{CallRange, []int32{6}, 7}, // the first page's revision
-		{CallTxn, nil, RevStale},
+		{CallRange, []int32{6}, 7},      // the first page's revision
+		{CallTxn, []int32{3}, RevStale}, // after call 3, the last write of /a, which came after call 2
 		{CallProgress, nil, 0},
 	}
 	if len(tr.Calls) != len(wants) {
@@ -213,5 +213,32 @@ func TestConvertRestartsAndExpiry(t *testing.T) {
 	}
 	if len(tr.Preload) != 1 || tr.Keys[tr.Preload[0].Key] != "/long" {
 		t.Errorf("preload %+v, want only /long", tr.Preload)
+	}
+}
+
+// TestConvertConflictOrder keeps the order of calls on a key that did not
+// overlap, and leaves calls that overlapped free to race: two puts of /k
+// in flight together wait on nothing; a GET sent after both answered waits
+// on the one that answered last.
+func TestConvertConflictOrder(t *testing.T) {
+	put := &Request{Put: &Put{Key: "/k", Size: 1}}
+	recs := []Record{
+		{Event: EventOpen, Call: 1, Method: MethodPut},
+		{Event: EventReq, Call: 1, Req: put},
+		{Event: EventOpen, Call: 2, Method: MethodPut},
+		{Event: EventReq, Call: 2, Req: put},
+		{Event: EventResp, Call: 2, Resp: &Response{Rev: 2}},
+		{Event: EventResp, Call: 1, Resp: &Response{Rev: 3}},
+	}
+	recs = append(recs, unary(3, MethodRange, &Request{Range: &Range{Key: "/k"}}, &Response{Rev: 3, Count: 1})...)
+	tr, _, err := Convert(logOf(t, recs...), Window{Start: 1000, End: int64(len(recs)+1) * 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]int32{nil, nil, {0}}
+	for i, w := range want {
+		if !reflect.DeepEqual(tr.Calls[i].Waits, w) {
+			t.Errorf("call %d waits on %v, want %v", i, tr.Calls[i].Waits, w)
+		}
 	}
 }

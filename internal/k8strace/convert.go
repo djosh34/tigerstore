@@ -76,11 +76,12 @@ const (
 )
 
 type call struct {
-	method string
-	index  int32 // in the trace, or notInWindow
-	reqs   []*Request
-	resps  []*Response
-	start  int64
+	method  string
+	index   int32 // in the trace, or notInWindow
+	reqs    []*Request
+	resps   []*Response
+	start   int64
+	touches []touch
 }
 
 // fixup is a revision of a window call to resolve once the whole log is
@@ -137,6 +138,13 @@ type converter struct {
 	headers   map[int64]int32 // revision: the last window call whose reply had it as its header
 	producers map[revKey]int32
 	grants    map[int64]int32 // lease ID: the window call that granted it
+	// By key, the last window call that had answered and wrote it, and
+	// the calls that had answered and only read it since. A call that
+	// comes after another on the same key has answered waits on it, if
+	// either writes: conflicts on a key keep the order they had, and calls
+	// that overlapped stay free to race.
+	lastWrite map[string]int32
+	reads     map[string][]int32
 	fixups    []fixup
 	watches   map[int64]*watchStream
 	started   bool
@@ -153,6 +161,7 @@ func newConverter(w Window) *converter {
 		state: map[string]stateKV{}, leases: map[int64]lease{},
 		seen: map[revKey]delivery{}, headers: map[int64]int32{}, producers: map[revKey]int32{},
 		grants: map[int64]int32{}, watches: map[int64]*watchStream{},
+		lastWrite: map[string]int32{}, reads: map[string][]int32{},
 	}
 }
 
@@ -293,7 +302,74 @@ func (c *converter) request(r *Record, cl *call) error {
 	default:
 		return fmt.Errorf("%w: call %d: %s with no request", errBadLog, r.Call, cl.method)
 	}
+	cl.touches = touches(q, cl.touches[:0])
+	for _, k := range cl.touches {
+		if w, ok := c.lastWrite[k.key]; ok {
+			c.wait(t, w)
+		}
+		if k.write {
+			for _, r := range c.reads[k.key] {
+				c.wait(t, r)
+			}
+		}
+	}
 	return nil
+}
+
+// touch is a key a call reads or writes.
+type touch struct {
+	key   string
+	write bool
+}
+
+// touches appends the single keys request q reads or writes: what a
+// Range, Put or Delete names, and a Txn's compares and the ops of both its
+// branches. A key a Txn may put or delete in either branch counts as
+// written. Ranges over many keys are left out.
+func touches(q *Request, out []touch) []touch {
+	add := func(k string, write bool) {
+		for i := range out {
+			if out[i].key == k {
+				out[i].write = out[i].write || write
+				return
+			}
+		}
+		out = append(out, touch{k, write})
+	}
+	var op func(o *LogOp)
+	var txn func(t *Txn)
+	op = func(o *LogOp) {
+		switch {
+		case o.Range != nil && o.Range.End == "":
+			add(o.Range.Key, false)
+		case o.Put != nil:
+			add(o.Put.Key, true)
+		case o.Delete != nil && o.Delete.End == "":
+			add(o.Delete.Key, true)
+		case o.Txn != nil:
+			txn(o.Txn)
+		}
+	}
+	txn = func(t *Txn) {
+		for _, c := range t.Compare {
+			if c.End == "" {
+				add(c.Key, false)
+			}
+		}
+		for i := range t.Success {
+			op(&t.Success[i])
+		}
+		for i := range t.Failure {
+			op(&t.Failure[i])
+		}
+	}
+	switch {
+	case q.Txn != nil:
+		txn(q.Txn)
+	default:
+		op(&LogOp{Range: q.Range, Put: q.Put, Delete: q.Delete})
+	}
+	return out
 }
 
 // drop takes the call just added out of the trace again.

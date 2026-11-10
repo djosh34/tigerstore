@@ -395,7 +395,7 @@ func (w *k8sLoad) message(st *stream, m []byte) error {
 		if !ok {
 			w.wrote(st, &call.failed)
 		}
-		return nil
+		return txnKVs(st, m)
 	case k8strace.CallLeaseGrant:
 		id, err := varintField(m, leaseID)
 		if err != nil {
@@ -449,6 +449,59 @@ func rangeReply(st *stream, m []byte, needRev bool) error {
 		err = errors.New("response has no header revision")
 	}
 	return err
+}
+
+// The fields of the answers inside a TxnResponse (etcd v3.7.2 rpc.proto).
+const (
+	opResponseRange = 1 // ResponseOp
+	opResponseTxn   = 4
+	putRespPrevKV   = 2 // PutResponse
+	delPrevKVs      = 3 // DeleteRangeResponse
+)
+
+// txnKVs counts the key-values a TxnResponse carries, in its ranges and
+// its previous key-values, nested Txns included.
+func txnKVs(st *stream, m []byte) error {
+	kv := func(b []byte) error {
+		n, err := kvBytes(b)
+		st.read += n
+		st.c.KVs++
+		return err
+	}
+	return fields(m, func(num protowire.Number, _ uint64, op []byte) error {
+		if num != txnResponses {
+			return nil
+		}
+		return fields(op, func(num protowire.Number, _ uint64, r []byte) error {
+			//exhaustive:ignore // a ResponseOp has no other answers
+			switch num {
+			case opResponseRange:
+				return fields(r, func(num protowire.Number, _ uint64, b []byte) error {
+					if num == rangeKVs {
+						return kv(b)
+					}
+					return nil
+				})
+			case opResponsePut:
+				return fields(r, func(num protowire.Number, _ uint64, b []byte) error {
+					if num == putRespPrevKV {
+						return kv(b)
+					}
+					return nil
+				})
+			case opResponseDeleteRange:
+				return fields(r, func(num protowire.Number, _ uint64, b []byte) error {
+					if num == delPrevKVs {
+						return kv(b)
+					}
+					return nil
+				})
+			case opResponseTxn:
+				return txnKVs(st, r)
+			}
+			return nil
+		})
+	})
 }
 
 // headerRev returns header.revision of a response, if it has a header.

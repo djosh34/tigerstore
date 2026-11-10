@@ -19,6 +19,16 @@ func (c *converter) response(r *Record, cl *call) {
 	}
 	cl.resps = append(cl.resps, resp)
 	idx := cl.index
+	if idx != notInWindow && len(cl.resps) == 1 {
+		for _, k := range cl.touches {
+			if k.write {
+				c.lastWrite[k.key] = idx
+				delete(c.reads, k.key)
+			} else {
+				c.reads[k.key] = append(c.reads[k.key], idx)
+			}
+		}
+	}
 	before := idx == notInWindow && cl.start < c.w.Start
 	if idx == notInWindow && !before {
 		return

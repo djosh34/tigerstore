@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/k8strace"
@@ -190,4 +191,29 @@ func sameTxn(cp *k8sCopy, got *pb.TxnRequest, want *k8strace.Op) error {
 		return fmt.Errorf("failure: %w", err)
 	}
 	return nil
+}
+
+// TestTxnKVs counts the key-values a Txn's answer carries: a range's, a
+// put's and a delete's previous ones, and a nested Txn's.
+func TestTxnKVs(t *testing.T) {
+	kv := &mvccpb.KeyValue{Key: []byte("/k"), Value: []byte("12345")}
+	resp := &pb.TxnResponse{Header: &pb.ResponseHeader{Revision: 9}, Responses: []*pb.ResponseOp{
+		{Response: &pb.ResponseOp_ResponseRange{ResponseRange: &pb.RangeResponse{Kvs: []*mvccpb.KeyValue{kv}}}},
+		{Response: &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{PrevKv: kv}}},
+		{Response: &pb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &pb.DeleteRangeResponse{PrevKvs: []*mvccpb.KeyValue{kv, kv}}}},
+		{Response: &pb.ResponseOp_ResponseTxn{ResponseTxn: &pb.TxnResponse{Responses: []*pb.ResponseOp{
+			{Response: &pb.ResponseOp_ResponseRange{ResponseRange: &pb.RangeResponse{Kvs: []*mvccpb.KeyValue{kv}}}},
+		}}}},
+	}}
+	m, err := proto.Marshal(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st stream
+	if err := txnKVs(&st, m); err != nil {
+		t.Fatal(err)
+	}
+	if st.c.KVs != 5 || st.read != 5*7 {
+		t.Errorf("%d key-values of %d bytes, want 5 of 35", st.c.KVs, st.read)
+	}
 }
