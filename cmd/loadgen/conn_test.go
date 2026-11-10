@@ -265,7 +265,7 @@ func TestAnswerSizes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n, err := rangeBytes(r); err != nil || n != 3+100+2+7 {
+	if n, kvs, err := rangeBytes(r); err != nil || n != 3+100+2+7 || kvs != 2 {
 		t.Fatalf("rangeBytes: %d, %v", n, err)
 	}
 	st := &stream{}

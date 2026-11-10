@@ -55,11 +55,18 @@ type encoder struct {
 	values  []byte // random bytes that values are cut from
 	off     int
 	scratch [][]byte
-	// written is the fewest bytes the call makes durable on each node
-	// when its Txn succeeds, failed when it does not: the keys and values
-	// it puts, the keys it deletes, and the key and revision of each
-	// compare.
-	written, failed int64
+	// ok is what the call writes when its Txn's compares hold, failed
+	// when they do not.
+	ok, failed tally
+}
+
+// tally is what a request writes. Bytes is the fewest it makes durable
+// on each node: the keys and values it puts, the keys it deletes, and the
+// key and revision of each compare. Creates are puts that compare a mod
+// or create revision of 0.
+type tally struct {
+	bytes                    int64
+	writes, creates, deletes int64
 }
 
 func (e *encoder) sub(depth int) []byte {
@@ -111,12 +118,12 @@ func (e *encoder) value(b []byte, num protowire.Number, n int) []byte {
 
 // request appends the request of call to b.
 func (e *encoder) request(b []byte, c *k8strace.Call) []byte {
-	e.written, e.failed = 0, 0
+	e.ok, e.failed = tally{}, tally{}
 	switch c.Kind {
 	case k8strace.CallRange, k8strace.CallRangeStream, k8strace.CallPut, k8strace.CallDelete:
-		return e.op(b, &c.Op, 0, &e.written)
+		return e.op(b, &c.Op, 0, &e.ok)
 	case k8strace.CallTxn:
-		return e.txn(b, &c.Op, 0, &e.written, &e.failed)
+		return e.txn(b, &c.Op, 0, &e.ok, &e.failed)
 	case k8strace.CallCompact:
 		return appendVarintNZ(b, compactRevision, e.cp.rev(c.Rev, -1, e.call))
 	case k8strace.CallLeaseGrant:
@@ -129,7 +136,7 @@ func (e *encoder) request(b []byte, c *k8strace.Call) []byte {
 }
 
 // op appends the fields of a Range, Put or Delete request, or a Txn's.
-func (e *encoder) op(b []byte, o *k8strace.Op, depth int, written *int64) []byte {
+func (e *encoder) op(b []byte, o *k8strace.Op, depth int, t *tally) []byte {
 	switch o.Kind {
 	case k8strace.OpRange:
 		b = e.key(b, rangeKey, o.Key)
@@ -146,23 +153,27 @@ func (e *encoder) op(b []byte, o *k8strace.Op, depth int, written *int64) []byte
 		b = appendBool(b, putPrevKV, o.Flags&k8strace.FlagPrevKV != 0)
 		b = appendBool(b, putIgnoreValue, o.Flags&k8strace.FlagIgnoreValue != 0)
 		b = appendBool(b, putIgnoreLease, o.Flags&k8strace.FlagIgnoreLease != 0)
-		*written += int64(e.cp.keyLen(o.Key) + int(o.Size))
+		t.bytes += int64(e.cp.keyLen(o.Key) + int(o.Size))
+		t.writes++
 		return b
 	case k8strace.OpDelete:
 		b = e.key(b, delKey, o.Key)
 		b = e.end(b, delRangeEnd, o.End)
-		*written += int64(e.cp.keyLen(o.Key))
+		t.bytes += int64(e.cp.keyLen(o.Key))
+		t.writes++
+		t.deletes++
 		return appendBool(b, delPrevKV, o.Flags&k8strace.FlagPrevKV != 0)
 	}
 	// A nested Txn's outcome is not known; its success branch counts.
-	var discard int64
-	return e.txn(b, o, depth, written, &discard)
+	var discard tally
+	return e.txn(b, o, depth, t, &discard)
 }
 
-// txn appends a TxnRequest's fields, and adds the bytes it makes durable
-// to ok when its compares hold and to failed when they do not.
-func (e *encoder) txn(b []byte, o *k8strace.Op, depth int, ok, failed *int64) []byte {
+// txn appends a TxnRequest's fields, and adds what it writes to ok when
+// its compares hold and to failed when they do not.
+func (e *encoder) txn(b []byte, o *k8strace.Op, depth int, ok, failed *tally) []byte {
 	var compared int64
+	create := false
 	for i := range o.Compare {
 		c := &o.Compare[i]
 		m := e.sub(depth)
@@ -185,21 +196,26 @@ func (e *encoder) txn(b []byte, o *k8strace.Op, depth int, ok, failed *int64) []
 		b = protowire.AppendBytes(protowire.AppendTag(b, txnCompare, protowire.BytesType), m)
 		e.keep(depth, m)
 		compared += int64(e.cp.keyLen(c.Key)) + revisionBytes
+		create = create || (c.Target == k8strace.TargetMod || c.Target == k8strace.TargetCreate) && c.Rev == 0
 	}
-	*ok += compared
-	*failed += compared
+	ok.bytes += compared
+	failed.bytes += compared
+	puts := ok.writes - ok.deletes
 	b = e.branch(b, txnSuccess, o.Success, depth, ok)
+	if create {
+		ok.creates += ok.writes - ok.deletes - puts
+	}
 	return e.branch(b, txnFailure, o.Failure, depth, failed)
 }
 
 // opFields are the RequestOp fields of the op kinds.
 var opFields = [...]protowire.Number{k8strace.OpRange: opRange, k8strace.OpPut: opPut, k8strace.OpDelete: opDeleteRange, k8strace.OpTxn: opTxn}
 
-func (e *encoder) branch(b []byte, num protowire.Number, ops []k8strace.Op, depth int, written *int64) []byte {
+func (e *encoder) branch(b []byte, num protowire.Number, ops []k8strace.Op, depth int, t *tally) []byte {
 	for i := range ops {
 		o := &ops[i]
 		body := e.sub(depth + 1)
-		body = e.op(body, o, depth+2, written)
+		body = e.op(body, o, depth+2, t)
 		e.keep(depth+1, body)
 		m := e.sub(depth)
 		m = protowire.AppendBytes(protowire.AppendTag(m, opFields[o.Kind], protowire.BytesType), body)
@@ -207,4 +223,8 @@ func (e *encoder) branch(b []byte, num protowire.Number, ops []k8strace.Op, dept
 		b = protowire.AppendBytes(protowire.AppendTag(b, num, protowire.BytesType), m)
 	}
 	return b
+}
+
+func appendVarintField(b []byte, num protowire.Number, v uint64) []byte {
+	return protowire.AppendVarint(protowire.AppendTag(b, num, protowire.VarintType), v)
 }

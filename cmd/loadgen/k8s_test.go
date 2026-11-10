@@ -11,14 +11,19 @@ import (
 	"github.com/djosh34/tigerstore/internal/k8strace"
 )
 
+// testTraceDir is bench/recordings, or K8S_TRACES.
+func testTraceDir() string {
+	if dir := os.Getenv("K8S_TRACES"); dir != "" {
+		return dir
+	}
+	return filepath.Join("..", "..", "bench", "recordings")
+}
+
 // testTraces returns the recordings in bench/recordings, which every
 // replay test runs over.
 func testTraces(t *testing.T) []*k8strace.Trace {
 	t.Helper()
-	dir := os.Getenv("K8S_TRACES")
-	if dir == "" {
-		dir = filepath.Join("..", "..", "bench", "recordings")
-	}
+	dir := testTraceDir()
 	names, err := filepath.Glob(filepath.Join(dir, "*.trace.gz"))
 	if err != nil {
 		t.Fatal(err)

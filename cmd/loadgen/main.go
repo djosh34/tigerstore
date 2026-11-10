@@ -30,14 +30,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/djosh34/tigerstore/internal/k8ssize"
 	"github.com/djosh34/tigerstore/internal/k8strace"
 )
 
 type config struct {
 	endpoints   []string
 	workload    string
-	mix         string
 	valueSize   int
 	keys        int
 	conns       int
@@ -61,19 +59,18 @@ type config struct {
 	copies      int
 }
 
-var workloads = []string{"put", "txn", "delete", "range", "list", "watch", "mixed", "k8s"}
+var workloads = []string{"put", "txn", "delete", "range", "list", "watch", "k8s"}
 
 func parseFlags(args []string) (config, error) {
 	var cfg config
 	fs := flag.NewFlagSet("loadgen", flag.ContinueOnError)
 	endpoints := fs.String("endpoints", "127.0.0.1:2379", "comma-separated host:port of the cluster's client endpoints; connections go round robin")
 	fs.StringVar(&cfg.workload, "workload", "put", "one of "+strings.Join(workloads, ", "))
-	fs.StringVar(&cfg.mix, "mix", defaultMix, "mixed percentages: get,list,update,create,delete; watches on every resource prefix")
 	fs.IntVar(&cfg.valueSize, "value-size", 1024, "value size in bytes")
 	fs.IntVar(&cfg.keys, "keys", 10000, "number of keys; delete deletes each once, so it needs at least as many as it sends")
 	fs.IntVar(&cfg.conns, "conns", 6, "HTTP/2 connections for requests")
 	fs.IntVar(&cfg.streams, "streams", 256, "requests in flight per connection at most")
-	fs.Float64Var(&cfg.preloadRate, "preload-rate", 300, "mixed preload Txns per second across all connections; 0 keeps the preload slots busy")
+	fs.Float64Var(&cfg.preloadRate, "preload-rate", 300, "k8s preload Txns per second across all connections; 0 keeps the preload slots busy")
 	fs.Float64Var(&cfg.rate, "rate", 0, "open-loop arrivals per second over all connections; 0 keeps every stream busy")
 	fs.DurationVar(&cfg.warmup, "warmup", 2*time.Second, "load before the measurement window")
 	fs.DurationVar(&cfg.duration, "duration", 10*time.Second, "measurement window")
@@ -120,9 +117,6 @@ func parseFlags(args []string) (config, error) {
 	case cfg.rate < 0 || cfg.preloadRate < 0 || math.IsNaN(cfg.rate) || math.IsInf(cfg.rate, 0) || math.IsNaN(cfg.preloadRate) || math.IsInf(cfg.preloadRate, 0) || cfg.duration <= 0 || cfg.warmup < 0:
 		return cfg, errors.New("need finite non-negative -rate and -preload-rate, -duration > 0 and -warmup >= 0")
 	}
-	if _, err := parseMix(cfg.mix); err != nil {
-		return cfg, err
-	}
 	return cfg, nil
 }
 
@@ -136,9 +130,7 @@ type result struct {
 	Workload       string   `json:"workload"`
 	ValueSize      int      `json:"value_size"`
 	Keys           int      `json:"keys"`
-	LiveKeys       int      `json:"live_keys,omitempty"`
 	SizeSource     string   `json:"size_source,omitempty"`
-	Mix            string   `json:"mix,omitempty"`
 	Endpoints      []string `json:"endpoints"`
 	Conns          int      `json:"conns"`
 	StreamsPerConn int      `json:"streams_per_conn"`
@@ -180,12 +172,14 @@ type result struct {
 	// MinWrittenBytesPerOp is the fewest bytes an operation must make
 	// durable on each node: the keys and values of its writes, and the
 	// key and revision of a compare. MinReadBytesPerOp is the key and
-	// value bytes its reads carried, and in mixed the bytes of the watch
-	// events its writes make, previous key-values included, counted when
-	// the write completes. Both are means over the operations of the
-	// window.
+	// value bytes its reads carried, and in k8s the key and value bytes
+	// of the watch events that came in the window, previous key-values
+	// included. Both are means over the operations of the window.
 	MinWrittenBytesPerOp float64 `json:"min_written_bytes_per_op"`
 	MinReadBytesPerOp    float64 `json:"min_read_bytes_per_op"`
+	// PerOp is what the window's calls carried, per operation, for the
+	// least CPU an operation needs (cmd/benchreport).
+	PerOp perOp `json:"per_op"`
 	// Ramp has every step of -ramp, the chosen one included. RampClimbing
 	// is set when the last step still climbed: the requests in flight may
 	// still have limited the store.
@@ -194,6 +188,19 @@ type result struct {
 	Errors       map[string]int64 `json:"errors"`
 	// K8s describes a k8s run.
 	K8s *k8sResult `json:"k8s,omitempty"`
+}
+
+// perOp is counts over the operations of a window. Out and In are the
+// gRPC message bytes the calls sent and got, watch events included, and
+// KVs the key-values in their answers and events, previous ones too.
+// Writes are the keys the calls put or deleted when they succeeded.
+type perOp struct {
+	OutBytes float64 `json:"out_bytes"`
+	InBytes  float64 `json:"in_bytes"`
+	KVs      float64 `json:"kvs"`
+	Writes   float64 `json:"writes"`
+	Creates  float64 `json:"creates"`
+	Deletes  float64 `json:"deletes"`
 }
 
 // rampStep is one step of -ramp.
@@ -302,16 +309,10 @@ func run(cfg config) (*result, error) {
 		}
 		clientTLS = c
 	}
-	if cfg.mix == "" {
-		cfg.mix = defaultMix
-	}
 	s := &session{cfg: cfg, stop: make(chan struct{})}
 	defer s.close()
 	setup := s.setupKV
-	switch cfg.workload {
-	case "mixed":
-		setup = s.setupMixed
-	case "k8s":
+	if cfg.workload == "k8s" {
 		setup = s.setupK8s
 	}
 	if err := setup(); err != nil {
@@ -351,10 +352,6 @@ type session struct {
 	// The watch workload's watches.
 	watches    []*watchLoad
 	watchConns []*conn
-	// mixed's watches and their ledger.
-	mixed        []*mixedLoad
-	mixedWatches []*mixedWatch
-	ledger       *mixedLedger
 	// k8s's recording and the loads of its copies.
 	trace      *k8strace.Trace
 	k8s        []*k8sLoad
@@ -488,83 +485,6 @@ func (s *session) setupKV() error {
 	return nil
 }
 
-func (s *session) setupMixed() error {
-	cfg := s.cfg
-	if err := s.dial(); err != nil {
-		return err
-	}
-	s.ledger = newMixedLedger()
-	lease, err := grantLease(s.workers[0].c, eventTTL)
-	if err != nil {
-		return err
-	}
-	var preloads []load
-	for i, wk := range s.workers {
-		w, err := newMixedLoad(wk, cfg, i, s.ledger)
-		if err != nil {
-			return err
-		}
-		w.lease = lease
-		s.mixed = append(s.mixed, w)
-		s.loads = append(s.loads, w)
-		preloads = append(preloads, &mixedPreload{w: w, batch: make(map[uint32][]*mixedKey)})
-	}
-	if err := s.preload(preloads, cfg.preloadRate/float64(cfg.conns)); err != nil {
-		return err
-	}
-	// Watch from the revision after the preload, as kube-apiserver's watch
-	// cache does after its LIST. No write starts until every watch is
-	// created.
-	var revision int64
-	for _, w := range s.mixed {
-		for _, k := range w.live {
-			revision = max(revision, k.mod)
-		}
-	}
-	for i, r := range k8ssize.Resources() {
-		c, err := dial(cfg.endpoints[i%len(cfg.endpoints)])
-		if err != nil {
-			return err
-		}
-		s.watchConns = append(s.watchConns, c)
-		prefix := []byte("/registry/" + r + "/")
-		tpl, err := newTemplate("/etcdserverpb.Watch/Watch", watchRequestFrom(prefix, revision+1), false)
-		if err != nil {
-			return err
-		}
-		w := &mixedWatch{ledger: s.ledger, prefix: prefix}
-		s.mixedWatches = append(s.mixedWatches, w)
-		c.mu.Lock()
-		c.startStream(c.newStream(w), tpl)
-		c.mu.Unlock()
-		if err := c.flush(); err != nil {
-			return err
-		}
-		s.control.Go(func() { c.serveControl(s.stop) })
-	}
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		ready := true
-		for i, c := range s.watchConns {
-			c.mu.Lock()
-			w := s.mixedWatches[i]
-			ready = ready && w.created
-			err := errors.Join(c.err, w.err)
-			c.mu.Unlock()
-			if err != nil {
-				return err
-			}
-		}
-		if ready {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return errors.New("mixed watches not created within 10s")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
-
 // measure runs one measured phase with at most streams requests in flight
 // per connection.
 func (s *session) measure(streams int) (*result, error) {
@@ -585,9 +505,6 @@ func (s *session) measure(streams int) (*result, error) {
 		s.watchConns[i].mu.Lock()
 		w.stats.winStart, w.stats.winStop = t1, t2
 		s.watchConns[i].mu.Unlock()
-	}
-	if s.ledger != nil {
-		s.ledger.window(t1, t2)
 	}
 	for _, ws := range s.k8sWatches {
 		ws.c.mu.Lock()
@@ -834,7 +751,9 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 	}
 	var resp, service hist
 	var written, read int64
+	var cnt counts
 	add := func(st *stats) {
+		cnt.add(&st.c)
 		res.Ops += st.ops
 		res.Acked += st.acked
 		res.Cohort += st.cohort
@@ -879,34 +798,17 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 		wr.Latency = lat.summary()
 		res.Watch = wr
 	}
-	if s.ledger != nil {
-		res.ValueSize = 0
-		res.SizeSource = "k8s-1.37-dump"
-		res.Mix = cfg.mix
-		for i, w := range s.mixed {
-			s.workers[i].c.mu.Lock()
-			res.LiveKeys += len(w.live)
-			s.workers[i].c.mu.Unlock()
-		}
-		for i, w := range s.mixedWatches {
-			c := s.watchConns[i]
-			c.mu.Lock()
-			if err := errors.Join(c.err, w.err); err != nil {
-				res.Errors["watch "+string(w.prefix)+": "+err.Error()]++
-			}
-			c.mu.Unlock()
-		}
-		l := s.ledger
-		l.mu.Lock()
-		res.Watch = &watchResult{Watchers: len(s.mixedWatches), Events: l.count, EventsPerS: float64(l.count) / cfg.duration.Seconds(), Latency: l.lat.summary()}
-		l.mu.Unlock()
-	}
 	if s.trace != nil {
 		s.summarizeK8s(res)
 	}
 	if res.Ops > 0 {
 		res.MinWrittenBytesPerOp = float64(written) / float64(res.Ops)
 		res.MinReadBytesPerOp = float64(read) / float64(res.Ops)
+		n := float64(res.Ops)
+		res.PerOp = perOp{
+			OutBytes: float64(cnt.Out) / n, InBytes: float64(cnt.In) / n, KVs: float64(cnt.KVs) / n,
+			Writes: float64(cnt.Writes) / n, Creates: float64(cnt.Creates) / n, Deletes: float64(cnt.Deletes) / n,
+		}
 	}
 
 	elapsed := time.Duration(samples[1].at - samples[0].at)

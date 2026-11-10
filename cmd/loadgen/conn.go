@@ -65,6 +65,7 @@ type stream struct {
 	written, read int64
 	// rev is the header revision of the answer, for the k8s replay.
 	rev int64
+	c   counts
 }
 
 type outBuf []byte
@@ -283,6 +284,7 @@ func (c *conn) startStream(st *stream, t *template) []byte {
 	}
 	c.streams[st.id] = st
 	c.sendWin -= int64(t.dataLen)
+	st.c.Out += int64(t.dataLen)
 	return b
 }
 
@@ -293,6 +295,7 @@ func (c *conn) startStream(st *stream, t *template) []byte {
 func (c *conn) startMessage(st *stream, path string, m []byte) {
 	c.out = c.openStream(c.out, st, path)
 	c.out = c.appendMessage(c.out, st, m, true)
+	st.c.Out += int64(messageLen(m))
 }
 
 // openStream starts a stream of path for st that stays open, such as a
@@ -665,6 +668,7 @@ func (c *conn) messages(st *stream, p []byte) error {
 			break
 		}
 		st.msgs++
+		st.c.In += grpcPrefixLen + int64(n)
 		if err := st.h.message(st, p[grpcPrefixLen:grpcPrefixLen+int(n)]); err != nil {
 			return err
 		}

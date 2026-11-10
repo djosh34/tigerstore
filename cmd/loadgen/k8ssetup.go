@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"math/rand/v2"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protowire"
@@ -14,11 +13,11 @@ import (
 // keys and leases, and opens the recorded watches.
 func (s *session) setupK8s() error {
 	cfg := s.cfg
-	rng := rand.New(rand.NewPCG(cfg.seed, 0x6b387374726163))
-	t, err := pickTrace(cfg.traces, rng)
+	d, err := k8strace.DrawSeed(cfg.traces, cfg.seed, cfg.copies)
 	if err != nil {
 		return err
 	}
+	t, rng := d.Trace, d.Rand
 	s.trace = t
 	if err := s.dial(); err != nil {
 		return err
@@ -31,8 +30,8 @@ func (s *session) setupK8s() error {
 	for i, wk := range s.workers {
 		s.k8s = append(s.k8s, &k8sLoad{wk: wk, calls: map[uint32]k8sCall{}, enc: encoder{values: values, off: i * len(values) / len(s.workers)}})
 	}
-	for id := range cfg.copies {
-		cp := newCopy(t, keys, t.From(rng.IntN(firstQuarter(t))), id)
+	for id, k := range d.Starts {
+		cp := newCopy(t, keys, t.From(k), id)
 		w := s.k8s[id%len(s.k8s)]
 		w.copies = append(w.copies, cp)
 	}

@@ -3,10 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"os"
-	"path/filepath"
-	"slices"
 	"strings"
 
 	"google.golang.org/protobuf/encoding/protowire"
@@ -253,9 +250,15 @@ type k8sLoad struct {
 }
 
 type k8sCall struct {
-	cp              *k8sCopy
-	i               int32
-	written, failed int64
+	cp         *k8sCopy
+	i          int32
+	ok, failed tally
+}
+
+// wrote sets what st writes, as it is known so far.
+func (w *k8sLoad) wrote(st *stream, t *tally) {
+	st.written = t.bytes
+	st.c.Writes, st.c.Creates, st.c.Deletes = t.writes, t.creates, t.deletes
 }
 
 func (w *k8sLoad) start(c *conn, st *stream, limit int) bool {
@@ -291,10 +294,10 @@ func (w *k8sLoad) start(c *conn, st *stream, limit int) bool {
 				cp.back = i
 				return false
 			}
-			st.written = w.enc.written
 			st.many = call.Kind == k8strace.CallRangeStream
 			c.startMessage(st, paths[call.Kind], w.buf)
-			w.calls[st.id] = k8sCall{cp: cp, i: i, written: w.enc.written, failed: w.enc.failed}
+			w.calls[st.id] = k8sCall{cp: cp, i: i, ok: w.enc.ok, failed: w.enc.failed}
+			w.wrote(st, &w.enc.ok)
 			return true
 		}
 	}
@@ -334,8 +337,9 @@ func (w *k8sLoad) message(st *stream, m []byte) error {
 	call := w.calls[st.id]
 	switch call.cp.t.Calls[call.i].Kind {
 	case k8strace.CallRange:
-		n, err := rangeBytes(m)
+		n, kvs, err := rangeBytes(m)
 		st.read += n
+		st.c.KVs += kvs
 		if err != nil {
 			return err
 		}
@@ -344,8 +348,9 @@ func (w *k8sLoad) message(st *stream, m []byte) error {
 		if err != nil {
 			return err
 		}
-		n, err := rangeBytes(r)
+		n, kvs, err := rangeBytes(r)
 		st.read += n
+		st.c.KVs += kvs
 		if err != nil {
 			return err
 		}
@@ -360,7 +365,7 @@ func (w *k8sLoad) message(st *stream, m []byte) error {
 		}
 		st.rev = rev
 		if !ok {
-			st.written = call.failed
+			w.wrote(st, &call.failed)
 		}
 		return nil
 	case k8strace.CallLeaseGrant:
@@ -442,11 +447,12 @@ func (ws *k8sWatch) response(m []byte) error {
 			}
 		case watchEvents:
 			events = true
-			var read int64
+			var read, kvs int64
 			err := fields(b, func(n protowire.Number, _ uint64, kv []byte) error {
 				if n == eventKV || n == eventPrevKV {
 					k, err := kvBytes(kv)
 					read += k
+					kvs++
 					return err
 				}
 				return nil
@@ -456,11 +462,15 @@ func (ws *k8sWatch) response(m []byte) error {
 			}
 			if inWindow {
 				ws.stats.read += read
+				ws.stats.c.KVs += kvs
 				ws.stats.events++
 			}
 		}
 		return nil
 	})
+	if inWindow {
+		ws.stats.c.In += grpcPrefixLen + int64(len(m))
+	}
 	switch {
 	case err != nil:
 		return err
@@ -470,7 +480,7 @@ func (ws *k8sWatch) response(m []byte) error {
 		// The answer to the oldest progress request.
 		sent := ws.pending[0]
 		ws.pending = ws.pending[1:]
-		ws.progress = stream{intended: sent, sent: sent, msgs: 1}
+		ws.progress = stream{intended: sent, sent: sent, msgs: 1, c: counts{Out: grpcPrefixLen + 2}}
 		ws.stats.complete(&ws.progress, at, nil)
 	}
 	return nil
@@ -484,23 +494,6 @@ func (ws *k8sWatch) done(_ *stream, _ int64, err error) {
 		ws.err = err
 	}
 }
-
-// pickTrace draws one recording of dir, by the seed.
-func pickTrace(dir string, rng *rand.Rand) (*k8strace.Trace, error) {
-	names, err := filepath.Glob(filepath.Join(dir, "*.trace.gz"))
-	if err != nil {
-		return nil, err
-	}
-	if len(names) == 0 {
-		return nil, fmt.Errorf("no recordings (*.trace.gz) in %s", dir)
-	}
-	slices.Sort(names)
-	return k8strace.Read(names[rng.IntN(len(names))])
-}
-
-// firstQuarter is the part of a trace a copy may begin in, so every copy
-// has most of the trace ahead of it.
-func firstQuarter(t *k8strace.Trace) int { return max(len(t.Calls)/4, 1) }
 
 var errTraceTooShort = errors.New("a copy ran out of its recording; record longer windows or replay more copies")
 

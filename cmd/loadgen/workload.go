@@ -34,6 +34,7 @@ type stats struct {
 	// written and read sum stream.written and stream.read over the
 	// successful completions in the window.
 	written, read int64
+	c             counts
 	// events counts the watch events that came in the window, in k8s.
 	events  int64
 	resp    hist // latency from the intended send time
@@ -63,11 +64,30 @@ func (s *stats) complete(st *stream, at int64, err error) {
 		s.ops++
 		s.written += st.written
 		s.read += st.read
+		s.c.add(&st.c)
 	}
 	if inCohort {
 		s.resp.record(at - st.intended)
 		s.service.record(at - st.sent)
 	}
+}
+
+// counts are what calls carried, for the CPU floor of cmd/benchreport:
+// the gRPC message bytes they sent and got, watch events included, the
+// key-values their answers and events held, and the keys they put,
+// created and deleted.
+type counts struct {
+	Out, In, KVs             int64
+	Writes, Creates, Deletes int64
+}
+
+func (c *counts) add(o *counts) {
+	c.Out += o.Out
+	c.In += o.In
+	c.KVs += o.KVs
+	c.Writes += o.Writes
+	c.Creates += o.Creates
+	c.Deletes += o.Deletes
 }
 
 // base is what every request load shares.
@@ -129,6 +149,7 @@ func (w *putLoad) start(c *conn, st *stream, limit int) bool {
 func (w *putLoad) exhausted() bool { return w.once && w.next == len(w.own) }
 
 func (w *putLoad) message(st *stream, m []byte) error {
+	st.c.Writes = 1
 	if w.revs == nil {
 		return nil
 	}
@@ -189,6 +210,7 @@ func (w *casLoad) message(st *stream, m []byte) error {
 		return errCASFailed
 	}
 	w.revs[st.slot] = rev
+	st.c.Writes = 1
 	return nil
 }
 
@@ -218,7 +240,10 @@ func (w *deleteLoad) start(c *conn, st *stream, limit int) bool {
 
 func (w *deleteLoad) exhausted() bool { return w.next == len(w.own) }
 
-func (w *deleteLoad) message(*stream, []byte) error { return nil }
+func (w *deleteLoad) message(st *stream, _ []byte) error {
+	st.c.Writes, st.c.Deletes = 1, 1
+	return nil
+}
 
 // rangeLoad reads single keys with linearizable Range.
 type rangeLoad struct{ base }
@@ -236,8 +261,9 @@ func (w *rangeLoad) start(c *conn, st *stream, limit int) bool {
 func (w *rangeLoad) exhausted() bool { return false }
 
 func (w *rangeLoad) message(st *stream, m []byte) error {
-	n, err := rangeBytes(m)
+	n, kvs, err := rangeBytes(m)
 	st.read += n
+	st.c.KVs += kvs
 	return err
 }
 
@@ -362,7 +388,8 @@ func (w *listLoad) start(c *conn, st *stream, limit int) bool {
 func (w *listLoad) exhausted() bool { return false }
 
 func (w *listLoad) message(st *stream, m []byte) error {
-	n, err := rangeBytes(m)
+	n, kvs, err := rangeBytes(m)
 	st.read += n
+	st.c.KVs += kvs
 	return err
 }
