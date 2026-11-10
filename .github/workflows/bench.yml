@@ -141,7 +141,7 @@ jobs:
             if [ "$BENCHMARK" = k8s ]; then
               echo "k8s: a recorded Kubernetes 1.37 control plane per seed (bench/recordings), 64 copies of it on all endpoints, 8 connections x 32 streams, the recorded watches; both stores GOMEMLIMIT=3GiB"
             fi
-            echo "seeds: $SEEDS
+            echo "seeds: $SEEDS"
             echo "both stores: --quota-backend-bytes 8 GiB; etcd only: --log-level warn, --peer-client-cert-auth, default safe persistence"
             echo "tigerstore: at least two Go processors on its one CPU (its own rule), peer certificates always verified"
             echo '```'
@@ -229,7 +229,7 @@ jobs:
         run: |
           {
             cat results/runner.md
-            echo "Replay: \`gh workflow run bench.yml --repo ${{ github.repository }} -f candidate=${{ inputs.candidate || 'main' }} -f baseline=${{ inputs.baseline || 'main' }} -f benchmarks=$BENCH -f seeds=\"$SEEDS\"\`. The job took $(( ($(date +%s) - JOB_START) / 60 )) minutes up to the report.
+            echo "Replay: \`gh workflow run bench.yml --repo ${{ github.repository }} -f candidate=${{ inputs.candidate || 'main' }} -f baseline=${{ inputs.baseline || 'main' }} -f benchmarks=$BENCH -f seeds=\"$SEEDS\"\`. The job took $(( ($(date +%s) - JOB_START) / 60 )) minutes up to the report."
             if [ "$BENCH" = disk-probe ]; then
               echo '```'; cat results/disk-probe.txt; echo '```'
             elif [ "$BENCH" = profile-disk ]; then

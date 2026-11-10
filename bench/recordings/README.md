@@ -37,7 +37,7 @@ All five come from run [42716639345](https://github.com/djosh34/tigerstore/actio
 | small | 10 | 5 | 2 x 3 | 5, 3, 1 | none | 253,625 | 423 | 102,526 | 82,443 | 442 | 722 |
 | medium-crds | 50 | 20 | 4 x 5 | 10, 5, 2 | 3 x 20 | 421,587 | 702 | 197,450 | 137,956 | 295 | 3,991 |
 | large | 200 | 40 | 5 x 12 | 8, 4, 3 | none | 348,951 | 581 | 166,916 | 133,635 | 295 | 9,377 |
-| crd-heavy | 20 | 10 | 2 x 2 | 5, 2, 1 | 15 x 40 | see `k8strace show` | | | | | |
+| crd-heavy | 20 | 10 | 2 x 2 | 5, 2, 1 | 15 x 40 | 722,470 | 1,190 | 354,956 | 199,554 | 301 | 6,939 |
 | many-namespaces | 30 | 250 | 1 x 1 | 3, 2, 1 | 1 x 3 | 289,690 | 483 | 123,885 | 102,856 | 297 | 5,922 |
 
 In every shape, 40 to 47% of the calls are single-key GETs, which kube-apiserver's watch cache does not serve. Most of the rest are CAS Txns: updates, creates and deletes, each comparing a mod revision. 3 to 15% are progress requests on watch streams, which back consistent reads from the cache. LISTs are about 1%. kube-apiserver keeps 120 to 150 watch streams open, one per resource.
