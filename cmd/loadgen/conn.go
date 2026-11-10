@@ -3,18 +3,17 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/djosh34/tigerstore/internal/bufconn"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
 )
@@ -57,12 +56,17 @@ type stream struct {
 	status   string // HTTP :status of the response headers
 	msgs     int    // complete response messages received
 	err      error  // the first bad response, reported when the stream ends
-	// many allows more than one response message, as a RangeStream sends.
-	many bool
+	// many allows more than one response message, as a RangeStream sends;
+	// held marks a stream that stays open, a watch, which is no request.
+	many, held bool
 	// written is the fewest bytes the call must make durable on each
-	// node; read is the key and value bytes its answer carried. Both feed
-	// the ceilings of cmd/benchreport.
-	written, read int64
+	// node, for the ceilings of cmd/benchreport.
+	written int64
+	// rev is the header revision of the answer, and k8s the call of the
+	// k8s replay.
+	rev int64
+	k8s k8sCall
+	c   counts
 }
 
 type outBuf []byte
@@ -79,18 +83,26 @@ type conn struct {
 	addr string
 	nc   net.Conn
 	fr   *http2.Framer // writes to out
-	br   *bufio.Reader // reads from nc, owned by the reader goroutine
-	out  outBuf        // frames not yet written, owned by the writer goroutine
+	br   frameReader   // reads from nc, owned by the reader goroutine
+	w    io.Writer     // writes to nc, owned by the writer goroutine
+	// writeBy is the write deadline set on nc, owned by the writer.
+	writeBy time.Time
+	out     outBuf // frames not yet written, owned by the writer goroutine
 
-	mu         sync.Mutex
-	streams    map[uint32]*stream
-	free       []*stream
-	nextID     uint32
-	sendWin    int64  // connection-level send window
-	maxStreams uint32 // the server's SETTINGS_MAX_CONCURRENT_STREAMS
-	streamWin  uint32 // the server's SETTINGS_INITIAL_WINDOW_SIZE
-	err        error  // set once the connection failed
-	closing    bool
+	mu      sync.Mutex
+	streams streamTable
+	held    int // of streams, the watch streams that stay open, not requests
+	// The k8s watches that wait for a progress request on c; mail guards
+	// them, apart from mu (post).
+	mail          sync.Mutex
+	posted, spare []*k8sWatch
+	free          []*stream
+	nextID        uint32
+	sendWin       int64  // connection-level send window
+	maxStreams    uint32 // the server's SETTINGS_MAX_CONCURRENT_STREAMS
+	streamWin     uint32 // the server's SETTINGS_INITIAL_WINDOW_SIZE
+	err           error  // set once the connection failed
+	closing       bool
 	// Control frames the reader wants sent; the writer sends them.
 	settingsAck bool
 	pings       [][8]byte
@@ -117,10 +129,69 @@ type conn struct {
 	hdrStream    uint32
 	inBlock      bool // a header block of hdrStream waits for its CONTINUATION
 	hdrEnd       bool
+	continued    bool                 // the block being decoded came in more than one frame
+	hdrCache     map[string]hdrFields // blocks whose meaning cannot change, decoded
+	emptyTable   bool                 // the last block that changed the table emptied it
 	hdrStatus    string
 	grpcStatus   string
 	grpcMessage  string
 	hasGRPCState bool
+}
+
+// frameReader is what the reader takes frames from: a buffer over the
+// connection, or the TLS record layer.
+type frameReader interface {
+	Peek(n int) ([]byte, error)
+	Discard(n int) (int, error)
+	Buffered() int
+}
+
+// streamTable holds a connection's open streams in slots by ID, a slot a
+// load away, where a map cost 5% of the generator's core. A new stream
+// skips an ID whose slot still holds an open stream, such as a watch:
+// HTTP/2 allows gaps between a client's stream IDs (RFC 9113, 5.1.1).
+type streamTable struct {
+	slots []*stream
+	n     int // open streams
+}
+
+// streamSlots is the slots of a table, more than the streams a connection
+// may have open.
+const streamSlots = 1 << 13
+
+func newStreamTable() streamTable { return streamTable{slots: make([]*stream, streamSlots)} }
+
+func slotOf(id uint32) uint32 { return id >> 1 & (streamSlots - 1) }
+
+// get returns the open stream id, or nil.
+func (t *streamTable) get(id uint32) *stream {
+	if st := t.slots[slotOf(id)]; st != nil && st.id == id {
+		return st
+	}
+	return nil
+}
+
+func (t *streamTable) put(st *stream) {
+	t.slots[slotOf(st.id)] = st
+	t.n++
+}
+
+func (t *streamTable) remove(st *stream) {
+	if s := &t.slots[slotOf(st.id)]; *s == st {
+		*s = nil
+		t.n--
+	}
+}
+
+// newID returns the ID of a new stream of c: the next one whose slot is
+// free.
+func (c *conn) newID() uint32 {
+	for c.streams.slots[slotOf(c.nextID)] != nil {
+		c.nextID += 2
+	}
+	id := c.nextID
+	c.nextID += 2
+	return id
 }
 
 type streamIncr struct {
@@ -134,20 +205,25 @@ var clientTLS *tls.Config
 
 func dial(addr string) (*conn, error) {
 	d := &net.Dialer{Timeout: dialTimeout}
-	var nc net.Conn
-	var err error
-	if nc, err = d.Dial("tcp", addr); err != nil {
+	nc, err := d.Dial("tcp", addr)
+	if err != nil {
 		return nil, err
 	}
+	var br frameReader = bufio.NewReaderSize(nc, 64<<10)
+	var w io.Writer = nc
 	if clientTLS != nil {
-		if nc, err = clientHandshake(nc, addr); err != nil {
+		rc, err := clientHandshake(nc, addr)
+		if err != nil {
 			return nil, err
 		}
+		br, w = rc, rc
 	}
 	c := &conn{
 		addr:       addr,
 		nc:         nc,
-		streams:    make(map[uint32]*stream),
+		br:         br,
+		w:          w,
+		streams:    newStreamTable(),
 		nextID:     1,
 		sendWin:    65535,
 		maxStreams: math.MaxUint32,
@@ -156,10 +232,6 @@ func dial(addr string) (*conn, error) {
 		ready:      make(chan struct{}),
 		gone:       make(chan struct{}),
 	}
-	// Frames are read through a buffer above TLS too: each read of TLS
-	// checks the handshake under a deferred unlock, which costs more than
-	// copying a record once more. The framer only writes.
-	c.br = bufio.NewReaderSize(nc, 64<<10)
 	c.fr = http2.NewFramer(&c.out, nil)
 	c.dec = hpack.NewDecoder(4096, c.headerField)
 
@@ -189,30 +261,6 @@ func dial(addr string) (*conn, error) {
 		return nil, fmt.Errorf("%s: server stream window %d is smaller than one request", addr, c.streamWin)
 	}
 	return c, nil
-}
-
-// clientHandshake runs TLS over nc, reading its records through a large
-// buffer (bufconn).
-func clientHandshake(nc net.Conn, addr string) (net.Conn, error) {
-	cfg := clientTLS
-	if cfg.ServerName == "" {
-		host, _, err := net.SplitHostPort(addr)
-		if err != nil {
-			return nil, errors.Join(err, nc.Close())
-		}
-		cfg = cfg.Clone()
-		cfg.ServerName = host
-	}
-	tc := tls.Client(bufconn.New(nc, 256<<10), cfg)
-	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
-	defer cancel()
-	if err := tc.HandshakeContext(ctx); err != nil {
-		return nil, errors.Join(err, nc.Close())
-	}
-	if tc.ConnectionState().NegotiatedProtocol != "h2" {
-		return nil, errors.Join(fmt.Errorf("%s: the server did not negotiate h2", addr), tc.Close())
-	}
-	return tc, nil
 }
 
 func (c *conn) failure() error {
@@ -255,8 +303,9 @@ func (c *conn) newStream(h handler) *stream {
 // with at most limit streams in flight. The caller holds c.mu.
 func (c *conn) canStart(dataLen, limit int) bool {
 	return c.err == nil &&
-		len(c.streams) < limit &&
-		uint32(len(c.streams)) < c.maxStreams &&
+		c.streams.n-c.held < limit &&
+		uint32(c.streams.n) < c.maxStreams &&
+		c.streams.n < streamSlots/2 &&
 		c.sendWin >= int64(dataLen) &&
 		int64(c.streamWin) >= int64(dataLen) &&
 		c.nextID < maxStreamID
@@ -266,8 +315,7 @@ func (c *conn) canStart(dataLen, limit int) bool {
 // bytes of its DATA frames, for the caller to fill in keys and values
 // before the next flush. The caller holds c.mu and has checked canStart.
 func (c *conn) startStream(st *stream, t *template) []byte {
-	st.id = c.nextID
-	c.nextID += 2
+	st.id = c.newID()
 	block := c.headerBlock(t.path)
 	c.out = appendFrameHeader(c.out, len(block), http2.FrameHeaders, http2.FlagHeadersEndHeaders)
 	binary.BigEndian.PutUint32(c.out[len(c.out)-4:], st.id)
@@ -278,8 +326,9 @@ func (c *conn) startStream(st *stream, t *template) []byte {
 	for _, off := range t.frames {
 		binary.BigEndian.PutUint32(b[off+5:], st.id)
 	}
-	c.streams[st.id] = st
+	c.streams.put(st)
 	c.sendWin -= int64(t.dataLen)
+	st.c.Out += int64(t.dataLen)
 	return b
 }
 
@@ -288,30 +337,46 @@ func (c *conn) startStream(st *stream, t *template) []byte {
 // whose size changes from call to call. The caller holds c.mu and has
 // checked canStart with messageLen(m).
 func (c *conn) startMessage(st *stream, path string, m []byte) {
-	st.id = c.nextID
-	c.nextID += 2
+	c.out = c.openStream(c.out, st, path)
+	c.out = c.appendMessage(c.out, st, m, true)
+	st.c.Out += int64(messageLen(m))
+}
+
+// openStream starts a stream of path for st that stays open, such as a
+// watch stream, and returns b with its HEADERS frame. The caller holds
+// c.mu and sends the stream's messages with appendMessage.
+func (c *conn) openStream(b []byte, st *stream, path string) []byte {
+	st.id = c.newID()
 	block := c.headerBlock(path)
-	c.out = appendFrameHeader(c.out, len(block), http2.FrameHeaders, http2.FlagHeadersEndHeaders)
-	binary.BigEndian.PutUint32(c.out[len(c.out)-4:], st.id)
-	c.out = append(c.out, block...)
+	b = appendFrameHeader(b, len(block), http2.FrameHeaders, http2.FlagHeadersEndHeaders)
+	binary.BigEndian.PutUint32(b[len(b)-4:], st.id)
+	b = append(b, block...)
+	c.streams.put(st)
+	return b
+}
+
+// appendMessage returns b with the message m on the open stream st, and
+// the stream ended after it if end. The caller holds c.mu and has checked
+// the connection's send window.
+func (c *conn) appendMessage(b []byte, st *stream, m []byte, end bool) []byte {
 	total := messageLen(m)
 	for pos := 0; pos < total; {
-		end := min(pos+maxDataFrame, total)
+		stop := min(pos+maxDataFrame, total)
 		var flags http2.Flags
-		if end == total {
+		if stop == total && end {
 			flags = http2.FlagDataEndStream
 		}
-		c.out = appendFrameHeader(c.out, end-pos, http2.FrameData, flags)
-		binary.BigEndian.PutUint32(c.out[len(c.out)-4:], st.id)
+		b = appendFrameHeader(b, stop-pos, http2.FrameData, flags)
+		binary.BigEndian.PutUint32(b[len(b)-4:], st.id)
 		if pos == 0 {
-			c.out = binary.BigEndian.AppendUint32(append(c.out, 0), uint32(len(m)))
+			b = binary.BigEndian.AppendUint32(append(b, 0), uint32(len(m)))
 			pos = grpcPrefixLen
 		}
-		c.out = append(c.out, m[pos-grpcPrefixLen:end-grpcPrefixLen]...)
-		pos = end
+		b = append(b, m[pos-grpcPrefixLen:stop-grpcPrefixLen]...)
+		pos = stop
 	}
-	c.streams[st.id] = st
-	c.sendWin -= int64(messageLen(m))
+	c.sendWin -= int64(total)
+	return b
 }
 
 // messageLen is the DATA bytes of a call that sends m.
@@ -387,6 +452,7 @@ func (c *conn) appendControl() {
 		_ = c.fr.WriteWindowUpdate(s.id, s.incr)
 	}
 	c.streamIncr = c.streamIncr[:0]
+	c.sendPosted()
 }
 
 // flush writes the pending frames. Only the writer goroutine calls it.
@@ -394,10 +460,17 @@ func (c *conn) flush() error {
 	if len(c.out) == 0 {
 		return nil
 	}
-	if err := c.nc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
-		return err
+	// Every write has at least half of writeTimeout; renewing the deadline
+	// only once half of it has passed spares a timer change per write.
+	if t := time.Now(); t.Add(writeTimeout / 2).After(c.writeBy) {
+		c.writeBy = t.Add(writeTimeout)
+		if err := c.nc.SetWriteDeadline(c.writeBy); err != nil {
+			return err
+		}
 	}
-	_, err := c.nc.Write(c.out)
+	// The record layer seals in place, with a byte after the frames.
+	c.out = append(c.out, 0)[:len(c.out)]
+	_, err := c.w.Write(c.out)
 	c.out = c.out[:0]
 	if err != nil {
 		return fmt.Errorf("%s: write: %w", c.addr, err)
@@ -417,9 +490,11 @@ func (c *conn) readLoop() {
 	if c.err == nil {
 		c.err = fmt.Errorf("%s: %w", c.addr, err)
 	}
-	for id, st := range c.streams {
-		delete(c.streams, id)
-		st.h.done(st, at, c.err)
+	for _, st := range c.streams.slots {
+		if st != nil {
+			c.streams.remove(st)
+			st.h.done(st, at, c.err)
+		}
 	}
 	c.signal()
 }
@@ -435,15 +510,28 @@ const (
 
 var errFrame = errors.New("malformed HTTP/2 frame")
 
-// read reads frames in place from c.br: a frame's payload is a slice of the
-// buffer until the next frame, which saves copying every byte the server
-// sends once more. The server's frames are at most 16 KiB, the HTTP/2
-// default, as the generator never raises SETTINGS_MAX_FRAME_SIZE.
-func (c *conn) read() error {
+// read reads frames in place from c.br until the connection fails: a
+// frame's payload is a slice of the buffer until the next frame, which
+// saves copying every byte the server sends once more. The server's frames
+// are at most 16 KiB, the HTTP/2 default, as the generator never raises
+// SETTINGS_MAX_FRAME_SIZE. It holds c.mu while it handles the frames it
+// has read already, and lets go of it before a read that may block: one
+// lock for a buffer of frames, not one a frame.
+func (c *conn) read() (err error) {
+	locked := false
+	defer func() {
+		if locked {
+			c.mu.Unlock()
+		}
+	}()
 	size := 0
 	for {
 		if _, err := c.br.Discard(size); err != nil {
 			return err
+		}
+		if locked && c.br.Buffered() < 9 {
+			c.mu.Unlock()
+			locked = false
 		}
 		head, err := c.br.Peek(9)
 		if err != nil {
@@ -464,9 +552,17 @@ func (c *conn) read() error {
 		case !c.inBlock && typ == http2.FrameContinuation:
 			return fmt.Errorf("%w: a CONTINUATION frame of stream %d outside a header block", errFrame, id)
 		}
+		if locked && c.br.Buffered() < 9+n {
+			c.mu.Unlock()
+			locked = false
+		}
 		frame, err := c.br.Peek(9 + n)
 		if err != nil {
 			return err
+		}
+		if !locked {
+			c.mu.Lock()
+			locked = true
 		}
 		size = 9 + n
 		p := frame[9:]
@@ -477,7 +573,7 @@ func (c *conn) read() error {
 			if !ok {
 				return errFrame
 			}
-			err = c.onData(id, n, data, flags&flagEndStream != 0)
+			c.onData(id, n, data, flags&flagEndStream != 0)
 		case http2.FrameHeaders:
 			frag, ok := unpad(p, flags)
 			if ok && flags&flagPriority != 0 {
@@ -509,9 +605,7 @@ func (c *conn) read() error {
 				return errFrame
 			}
 			if id == 0 {
-				c.mu.Lock()
 				c.sendWin += int64(binary.BigEndian.Uint32(p) & (1<<31 - 1))
-				c.mu.Unlock()
 				c.signal()
 			}
 		case http2.FramePing:
@@ -519,9 +613,7 @@ func (c *conn) read() error {
 				return errFrame
 			}
 			if flags&flagAck == 0 {
-				c.mu.Lock()
 				c.pings = append(c.pings, [8]byte(p))
-				c.mu.Unlock()
 				c.signal()
 			}
 		case http2.FrameGoAway:
@@ -548,12 +640,12 @@ func unpad(p []byte, flags byte) ([]byte, bool) {
 	return p[1 : len(p)-int(p[0])], true
 }
 
-// onSettings applies the server's settings, 6 bytes each.
+// onSettings applies the server's settings, 6 bytes each. The frame
+// handlers run with c.mu held (read).
 func (c *conn) onSettings(p []byte) error {
 	if len(p)%6 != 0 {
 		return errFrame
 	}
-	c.mu.Lock()
 	var err error
 	for ; len(p) > 0 && err == nil; p = p[6:] {
 		v := binary.BigEndian.Uint32(p[2:6])
@@ -574,7 +666,6 @@ func (c *conn) onSettings(p []byte) error {
 		}
 	}
 	c.settingsAck = true
-	c.mu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -587,20 +678,19 @@ func (c *conn) onSettings(p []byte) error {
 }
 
 // onData takes a DATA frame of stream id: length bytes against the flow
-// control windows, of which data are the message bytes.
-func (c *conn) onData(id uint32, length int, data []byte, end bool) error {
+// control windows, of which data are the message bytes. The caller holds
+// c.mu.
+func (c *conn) onData(id uint32, length int, data []byte, end bool) {
 	n := int64(length)
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.recvUnacked += n
 	if c.recvUnacked >= recvWindowStep {
 		c.connWinIncr += uint32(c.recvUnacked)
 		c.recvUnacked = 0
 		c.signal()
 	}
-	st := c.streams[id]
+	st := c.streams.get(id)
 	if st == nil {
-		return nil
+		return
 	}
 	st.unacked += n
 	if st.unacked >= recvWindowStep {
@@ -616,7 +706,6 @@ func (c *conn) onData(id uint32, length int, data []byte, end bool) error {
 	if end {
 		c.finish(st, errors.New("stream ended without trailers"))
 	}
-	return nil
 }
 
 // messages hands each complete gRPC message in p to the stream's handler and
@@ -635,6 +724,7 @@ func (c *conn) messages(st *stream, p []byte) error {
 			break
 		}
 		st.msgs++
+		st.c.In += grpcPrefixLen + int64(n)
 		if err := st.h.message(st, p[grpcPrefixLen:grpcPrefixLen+int(n)]); err != nil {
 			return err
 		}
@@ -645,18 +735,10 @@ func (c *conn) messages(st *stream, p []byte) error {
 }
 
 func (c *conn) onHeaderBlock(frag []byte, end bool) error {
-	if _, err := c.dec.Write(frag); err != nil {
+	if err := c.decode(frag, end); err != nil || !end {
 		return err
 	}
-	if !end {
-		return nil
-	}
-	if err := c.dec.Close(); err != nil {
-		return err
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	st := c.streams[c.hdrStream]
+	st := c.streams.get(c.hdrStream)
 	if st == nil {
 		return nil
 	}
@@ -684,12 +766,176 @@ func (c *conn) onHeaderBlock(frag []byte, end bool) error {
 	return nil
 }
 
+// decode decodes a fragment of a header block into the hdr fields.
+// Servers send the same few blocks for every answer, so a whole block
+// whose meaning cannot change is decoded once and its fields kept: one that
+// leaves HPACK's dynamic table as it was, until another block changes the
+// table; and one that empties the table first and adds nothing, as
+// tigerstore's do, while the table is still empty.
+func (c *conn) decode(frag []byte, end bool) error {
+	whole := end && !c.continued
+	c.continued = !end
+	if whole {
+		if f, ok := c.hdrCache[string(frag)]; ok && (f.effect == keeps || c.emptyTable) {
+			c.hdrStatus, c.grpcStatus, c.grpcMessage, c.hasGRPCState = f.status, f.grpcStatus, f.grpcMessage, f.hasGRPCState
+			return nil
+		}
+	}
+	if _, err := c.dec.Write(frag); err != nil {
+		return err
+	}
+	if !end {
+		return nil
+	}
+	if err := c.dec.Close(); err != nil {
+		return err
+	}
+	effect := changes
+	if whole {
+		effect = tableEffect(frag)
+	}
+	switch effect {
+	case changes:
+		clear(c.hdrCache)
+		c.emptyTable = false
+		return nil
+	case empties:
+		c.emptyTable = true
+	case keeps:
+	}
+	if len(c.hdrCache) < 64 {
+		if c.hdrCache == nil {
+			c.hdrCache = map[string]hdrFields{}
+		}
+		c.hdrCache[string(frag)] = hdrFields{c.hdrStatus, c.grpcStatus, c.grpcMessage, c.hasGRPCState, effect}
+	}
+	return nil
+}
+
+// hdrFields are the fields of a decoded header block that loadgen reads,
+// and what the block does to the dynamic table.
+type hdrFields struct {
+	status, grpcStatus, grpcMessage string
+	hasGRPCState                    bool
+	effect                          effect
+}
+
+// effect is what a header block does to HPACK's dynamic table.
+type effect int
+
+const (
+	// keeps leaves the table as it was.
+	keeps effect = iota
+	// empties sets the table's size to 0 first, which empties it, and
+	// adds nothing: the block means the same whatever came before.
+	empties
+	// changes adds to the table or resizes it, or is a block tableEffect
+	// cannot read.
+	changes
+)
+
+// tableEffect tells what an HPACK header block does to the dynamic table
+// (RFC 7541, 6): a literal with incremental indexing adds to it, and a
+// size update, which only the block's start may hold, resizes it. After
+// an update to 0, an indexed field may name only the static table.
+func tableEffect(b []byte) effect {
+	e := keeps
+	fields := false
+	for len(b) > 0 {
+		var ok bool
+		switch first := b[0]; {
+		case first&0x80 != 0: // indexed field
+			var index uint64
+			index, b, ok = hpackInt(b, 7)
+			fields = true
+			if e == empties && index > staticTableLen {
+				return changes
+			}
+		case first&0xe0 == 0x20: // a size update, before any field
+			var size uint64
+			size, b, ok = hpackInt(b, 5)
+			if fields || size != 0 {
+				return changes
+			}
+			e = empties
+		case first&0xc0 == 0x40: // adds to the table
+			return changes
+		default: // literal without indexing, or never indexed
+			var index uint64
+			index, b, ok = hpackInt(b, 4)
+			fields = true
+			if ok && index == 0 {
+				b, ok = hpackString(b)
+			}
+			if ok {
+				b, ok = hpackString(b)
+			}
+		}
+		if !ok {
+			return changes
+		}
+	}
+	return e
+}
+
+// staticTableLen is the size of HPACK's static table.
+const staticTableLen = 61
+
+// hpackInt reads an integer with an n-bit prefix (RFC 7541, 5.1).
+func hpackInt(b []byte, n uint) (uint64, []byte, bool) {
+	if len(b) == 0 {
+		return 0, nil, false
+	}
+	limit := uint64(1)<<n - 1
+	v := uint64(b[0]) & limit
+	b = b[1:]
+	if v < limit {
+		return v, b, true
+	}
+	for shift := uint(0); len(b) > 0 && shift < 63; shift += 7 {
+		v += uint64(b[0]&0x7f) << shift
+		last := b[0]&0x80 == 0
+		b = b[1:]
+		if last {
+			return v, b, true
+		}
+	}
+	return 0, nil, false
+}
+
+// hpackString skips a string literal (RFC 7541, 5.2).
+func hpackString(b []byte) ([]byte, bool) {
+	n, b, ok := hpackInt(b, 7)
+	if !ok || n > uint64(len(b)) {
+		return nil, false
+	}
+	return b[n:], true
+}
+
+// grpcStatus is a call that ended with a gRPC status other than OK.
+type grpcStatus struct {
+	code    int // -1 for a grpc-status that is no number
+	text    string
+	message string
+}
+
+func (e *grpcStatus) Error() string {
+	if e.code < 0 {
+		return fmt.Sprintf("grpc-status %q: %s", e.text, e.message)
+	}
+	return fmt.Sprintf("grpc %s: %s", grpcCodeName(e.code), e.message)
+}
+
+// codeOutOfRange is the gRPC status etcd gives a read at a compacted
+// revision.
+const codeOutOfRange = 11
+
 func grpcError(code, message string) error {
 	n, err := strconv.Atoi(code)
 	if err != nil {
-		return fmt.Errorf("grpc-status %q: %s", code, message)
+		n = -1
 	}
-	return fmt.Errorf("grpc %s: %s", grpcCodeName(n), message)
+	return &grpcStatus{code: n, text: code, message: message}
 }
 
 func grpcCodeName(n int) string {
@@ -717,9 +963,7 @@ func (c *conn) headerField(f hpack.HeaderField) {
 }
 
 func (c *conn) endStream(id uint32, err error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if st := c.streams[id]; st != nil {
+	if st := c.streams.get(id); st != nil {
 		c.finish(st, err)
 	}
 }
@@ -729,7 +973,7 @@ func (c *conn) finish(st *stream, err error) {
 	if st.err != nil {
 		err = st.err
 	}
-	delete(c.streams, st.id)
+	c.streams.remove(st)
 	st.h.done(st, now(), err)
 	c.free = append(c.free, st)
 	c.signal()

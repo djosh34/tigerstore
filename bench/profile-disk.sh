@@ -6,8 +6,8 @@
 #
 #   bench/profile-disk.sh <tigerstore binary> <benchmark> <out dir>
 #
-# <benchmark> is put-1k, txn-1k or mixed-k8s. Environment as in
-# bench/run.sh: BINS, CERTS, LAYOUT, DATA, DISK.
+# <benchmark> is put-1k, txn-1k or k8s. Environment as in bench/run.sh:
+# BINS, CERTS, LAYOUT, DATA, DISK, TRACES; SEED picks k8s's recording.
 set -euo pipefail
 bin=$(realpath "$1")
 bench=$2
@@ -22,8 +22,9 @@ mkdir -p "$out"
 wl=${bench%-*}
 flags=(-keys 10000 -conns 6 -streams 512 -value-size 1024 -warmup 3s -duration 30s)
 endpoint_file=leader
-if [ "$wl" = mixed ]; then
-	flags=(-keys 1000000 -conns 6 -streams 96 -warmup 3s -duration 40s)
+if [ "$bench" = k8s ]; then
+	wl=k8s
+	flags=(-conns 3 -streams 128 -copies 64 -traces "$(realpath "${TRACES:-$here/recordings}")" -seed "${SEED:-1}" -warmup 3s -duration 40s)
 	endpoint_file=endpoints
 	export BENCH_GOMEMLIMIT=3GiB
 fi

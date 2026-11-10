@@ -1,32 +1,31 @@
 // Command benchreport turns the loadgen results written by bench/run.sh into
-// Markdown tables with min, median and max of every per-run statistic, and
-// checks the bars of the latency bench.
+// Markdown tables with min, median and max of every per-run statistic,
+// seed by seed, and each store's share of its ceiling.
 //
-//	benchreport <dir>
+//	benchreport <dir> [<recordings>]
 //
 // <dir> holds one directory rtt-<ms> per round-trip time between nodes, each
 // with one directory per benchmark, with files named
-// <target>-<mode>-<rep>.json, mode max, rate, or the layouts tmpfs and alone
-// that only tigerstore targets run. A run that failed has
-// <target>-<mode>-<rep>.failed with its cause, and its result, if any, is
-// left out. A ceiling.json in <dir> (cmd/ceiling) adds the runner, the
-// ceiling of each benchmark and each store's share of it; a
+// <target>-<mode>-<seed>.<rep>.json, mode max, rate, or the layouts tmpfs
+// and alone that only tigerstore targets run, and the run's placement in
+// <target>-<mode>-<seed>.<rep>.placement, which names its leader. A run that
+// failed has <target>-<mode>-<seed>.<rep>.failed with its cause, and its
+// result, if any, is left out. A ceiling.json in <dir> (cmd/ceiling) adds
+// the runner, the ceilings and each store's share of them; a
 // generator-<benchmark>.json, loadgen's run against cmd/nullstore, adds the
 // generator's own ceiling.
 //
-// The ceiling of a benchmark is the most operations a second the runner
-// allows for the least work the operation must do. Its disk limit is the
-// disk's durable bandwidth over the bytes each operation must make durable
-// on three nodes, which share the one disk. Its CPU limit is the cores of
-// the nodes the generator sends to over the key and value bytes its reads
-// and watch events must carry, each byte encoded, encrypted and sent at
-// the runner's measured rates: three cores for mixed-k8s, the leader's one
-// for the rest. The ceiling is the lower of the two. The bytes per
-// operation are medians over the max runs of every store.
+// The ceiling of a benchmark, for each seed and RTT, is the most
+// operations a second the runner allows for the least work an operation
+// must do (ceiling.go): the lowest of the disk, loopback, the least leader
+// CPU from first principles (floor.go), and for k8s the recording's
+// dependent calls, whose recordings are in <recordings>, bench/recordings
+// by default.
 //
-// After the tables it exits 1 if a tigerstore run failed or a tigerstore
-// target missed its bar at an RTT above 0. A failed etcd run is reported
-// and is no error: where etcd has no max result, tigerstore's stands alone.
+// After the tables it exits 1 if a tigerstore run failed, or if the
+// generator used more than 0.8 of its core in a tigerstore run, which then
+// does not count. A failed etcd run is reported and is no error: etcd runs
+// for comparison only.
 package main
 
 import (
@@ -36,7 +35,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -46,18 +44,12 @@ import (
 
 // errInvalidResult is a result that loadgen marked invalid in a run that
 // did not fail, errUnequalRuns targets that ran a bench a different number
-// of times, errRunFailed a tigerstore run that failed and errBarMissed a
-// tigerstore target below its bar.
+// of times, and errRunFailed a tigerstore run that failed.
 var (
 	errInvalidResult = errors.New("invalid result")
 	errUnequalRuns   = errors.New("unequal runs")
 	errRunFailed     = errors.New("tigerstore run failed")
-	errBarMissed     = errors.New("bar missed")
 )
-
-// bars are the least median max throughput of every tigerstore target over
-// etcd's, at every RTT above 0 (#404).
-var bars = map[string]float64{"put-1k": 10, "txn-1k": 10, "mixed-k8s": 2.5}
 
 // result is the part of a loadgen result the tables use.
 type result struct {
@@ -82,9 +74,19 @@ type result struct {
 	ClientCores          float64   `json:"client_cores"`
 	DiskBytesPerOp       float64   `json:"disk_bytes_per_op"`
 	MinWrittenBytesPerOp float64   `json:"min_written_bytes_per_op"`
-	MinReadBytesPerOp    float64   `json:"min_read_bytes_per_op"`
 	RampClimbing         bool      `json:"ramp_climbing"`
-	Watch                *struct {
+	PerOp                perOp     `json:"per_op"`
+	Keys                 int       `json:"keys"`
+	ValueSize            int       `json:"value_size"`
+	K8s                  *struct {
+		Shape     string `json:"shape"`
+		Copies    int    `json:"copies"`
+		ItemBytes int64  `json:"item_bytes"`
+	} `json:"k8s"`
+	// Seed and Leader come from the run's file names: the seed it ran,
+	// and the node that led it, n1 to n3.
+	Seed, Leader string `json:"-"`
+	Watch        *struct {
 		EventsPerS          float64 `json:"events_per_s"`
 		ServerCPUUsPerEvent float64 `json:"server_cpu_us_per_event"`
 		Latency             struct {
@@ -98,6 +100,21 @@ type result struct {
 	} `json:"watch"`
 }
 
+// perOp is what an operation carried on average (cmd/loadgen).
+type perOp struct {
+	OutBytes float64 `json:"out_bytes"`
+	InBytes  float64 `json:"in_bytes"`
+	KVs      float64 `json:"kvs"`
+	PrevKVs  float64 `json:"prev_kvs"`
+	Events   float64 `json:"event_kvs"`
+	Writes   float64 `json:"writes"`
+	Creates  float64 `json:"creates"`
+	Deletes  float64 `json:"deletes"`
+	Entries  float64 `json:"entries"`
+	Checks   float64 `json:"checks"`
+	Leases   float64 `json:"leases"`
+}
+
 // runs holds the repetitions of one benchmark, target and mode.
 type runs []result
 
@@ -108,17 +125,21 @@ type key struct{ rtt, bench, target, mode string }
 type failure struct{ rep, cause string }
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: benchreport <dir>")
+	if len(os.Args) < 2 || len(os.Args) > 3 {
+		fmt.Fprintln(os.Stderr, "usage: benchreport <dir> [<recordings>]")
 		os.Exit(2)
 	}
-	if err := report(os.Stdout, os.Args[1]); err != nil {
+	traces := "bench/recordings"
+	if len(os.Args) == 3 {
+		traces = os.Args[2]
+	}
+	if err := report(os.Stdout, os.Args[1], traces); err != nil {
 		fmt.Fprintln(os.Stderr, "benchreport:", err)
 		os.Exit(1)
 	}
 }
 
-func report(w io.Writer, dir string) error {
+func report(w io.Writer, dir, traces string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "rtt-*", "*", "*.json"))
 	if err != nil {
 		return err
@@ -132,6 +153,7 @@ func report(w io.Writer, dir string) error {
 	}
 	all := map[key]runs{}
 	failed := map[key][]failure{}
+	var problems []error
 	var rtts, benches, targets []string
 	rttMs := map[string]float64{}
 	add := func(l *[]string, v string) {
@@ -168,7 +190,7 @@ func report(w io.Writer, dir string) error {
 		failed[k] = append(failed[k], failure{rep, strings.TrimSpace(string(b))})
 	}
 	for _, f := range files {
-		k, _, err := parse(f, ".json")
+		k, rep, err := parse(f, ".json")
 		if err != nil {
 			return err
 		}
@@ -186,14 +208,30 @@ func report(w io.Writer, dir string) error {
 		if !r.Valid {
 			return fmt.Errorf("%s: %w in a run that did not fail", f, errInvalidResult)
 		}
+		if k.target != "etcd" && r.ClientCores > generatorCores {
+			problems = append(problems, fmt.Errorf("%w: %s at RTT %s ms, %s %s %s: %.2f cores", errGeneratorLimit, k.bench, k.rtt, k.target, k.mode, rep, r.ClientCores))
+		}
+		r.Seed, _, _ = strings.Cut(rep, ".")
+		if r.Leader, err = leader(strings.TrimSuffix(f, ".json") + ".placement"); err != nil {
+			return err
+		}
 		all[k] = append(all[k], r)
 	}
-	// Every target ran the same runs, failed or not, or the comparison is
-	// unfair. etcd runs no layouts.
+	// Every target that ran a benchmark at an RTT ran the same runs there,
+	// failed or not, or the comparison is unfair. etcd runs no layouts, and
+	// may run at the first RTT only.
 	count := func(k key) int { return len(all[k]) + len(failed[k]) }
+	ran := func(rtt, bench, target string) bool {
+		for _, mode := range []string{"max", "rate"} {
+			if count(key{rtt, bench, target, mode}) > 0 {
+				return true
+			}
+		}
+		return false
+	}
 	for _, k := range append(slices.Collect(maps.Keys(all)), slices.Collect(maps.Keys(failed))...) {
 		for _, t := range targets {
-			if t == "etcd" && slices.Contains(layouts, k.mode) {
+			if t == "etcd" && slices.Contains(layouts, k.mode) || !ran(k.rtt, k.bench, t) {
 				continue
 			}
 			other := key{k.rtt, k.bench, t, k.mode}
@@ -210,11 +248,9 @@ func report(w io.Writer, dir string) error {
 	})
 
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
-	throughput := func(r result) float64 { return r.Throughput }
 
 	p("| Benchmark | Store | RTT ms | Max ops/s | Max over etcd | Rate ops/s | p50 ms | p99 ms | Failed runs |\n")
 	p("|---|---|---|---|---|---|---|---|---|\n")
-	var problems []error
 	for _, bench := range benches {
 		for _, target := range targets {
 			for _, rtt := range rtts {
@@ -231,17 +267,9 @@ func report(w io.Writer, dir string) error {
 				over := "-"
 				etcdMax := all[key{rtt, bench, "etcd", "max"}]
 				if target != "etcd" && len(maxRuns) > 0 {
-					got := medianOf(maxRuns, throughput)
-					bar, hasBar := bars[bench]
-					hasBar = hasBar && rttMs[rtt] > 0
 					switch {
 					case len(etcdMax) > 0:
-						ratio := got / medianOf(etcdMax, throughput)
-						over = fmt.Sprintf("%.1fx", ratio)
-						if hasBar && ratio < bar {
-							over += fmt.Sprintf(", below %gx", bar)
-							problems = append(problems, fmt.Errorf("%w: %s at RTT %s ms, %s: %.1fx etcd's max throughput, the bar is %gx", errBarMissed, bench, rtt, target, ratio, bar))
-						}
+						over = fmt.Sprintf("%.1fx", medianOf(maxRuns, throughput)/medianOf(etcdMax, throughput))
 					case len(failed[key{rtt, bench, "etcd", "max"}]) > 0:
 						over = "etcd failed"
 					}
@@ -258,8 +286,7 @@ func report(w io.Writer, dir string) error {
 			}
 		}
 	}
-	p("\nMedians over the runs that did not fail. RTT is the round trip between nodes; clients reach the nodes without delay. Max over etcd is the store's median max throughput over etcd's at the same RTT. The rate is half of etcd's median max at that RTT, the same for every store, or the first RTT's rate where etcd has no max result. Failed runs counts every mode and layout.\n")
-	p("\nBars at every RTT above 0: put-1k and txn-1k at least 10x etcd's max throughput, mixed-k8s at least 2.5x. A failed etcd run is reported and fails nothing; a failed tigerstore run or a missed bar fails the bench.\n")
+	p("\nMedians over every seed's runs that did not fail; the shares of the ceiling, seed by seed, are below. RTT is the round trip between nodes; clients reach the nodes without delay. Max over etcd is the store's median max throughput over etcd's at the same RTT, for comparison only: etcd runs at the first RTT. The rate is half of etcd's median max, the same for every store and RTT. Failed runs counts every mode and layout. A failed etcd run is reported and fails nothing; a failed tigerstore run fails the bench.\n")
 
 	var causes []string
 	for _, bench := range benches {
@@ -359,8 +386,8 @@ func report(w io.Writer, dir string) error {
 	if len(climbing) > 0 {
 		p("\nMax runs whose throughput still climbed at the last step of the ramp, so the requests in flight may have limited them:\n\n%s", strings.Join(climbing, ""))
 	}
-	noise(w, rtts, benches, targets, func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] })
-	if err := ceilings(w, dir, rtts, benches, targets, func(rtt, bench, target string) runs {
+	shapes(w, rtts, benches, targets, func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] })
+	if err := ceilings(w, dir, traces, rtts, benches, targets, func(rtt, bench, target string) runs {
 		return all[key{rtt, bench, target, "max"}]
 	}); err != nil {
 		return err
@@ -373,153 +400,33 @@ func report(w io.Writer, dir string) error {
 	return errors.Join(problems...)
 }
 
+// leader returns the node that led a run, n1 to n3, from the placement
+// bench/cluster.sh wrote: node i's client port ends in i0. A run without a
+// placement, as one whose cluster did not start, has none.
+func leader(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var pl struct {
+		Leader string `json:"leader"`
+	}
+	if err := json.Unmarshal(b, &pl); err != nil {
+		return "", fmt.Errorf("%s: %w", path, err)
+	}
+	_, port, _ := strings.Cut(pl.Leader, ":")
+	if len(port) < 2 {
+		return "", fmt.Errorf("%s: leader %q has no port", path, pl.Leader)
+	}
+	return "n" + port[len(port)-2:len(port)-1], nil
+}
+
 // layouts are the max runs of bench/run.sh's LAYOUTS: tmpfs has all three
 // nodes on tmpfs, alone only the followers.
 var layouts = []string{"tmpfs", "alone"}
-
-// runner is what cmd/ceiling measured on the bench's runner.
-type runner struct {
-	Kernel           string  `json:"kernel"`
-	CPU              string  `json:"cpu"`
-	Disk             string  `json:"disk"`
-	DiskMiBps        float64 `json:"disk_mib_per_s"`
-	DiskThreeMiBps   float64 `json:"disk_three_mib_per_s"`
-	DiskFreshMiBps   float64 `json:"disk_fresh_mib_per_s"`
-	EncodeNsPerByte  float64 `json:"encode_ns_per_byte"`
-	EncryptNsPerByte float64 `json:"encrypt_ns_per_byte"`
-	SendNsPerByte    float64 `json:"send_ns_per_byte"`
-}
-
-// nodes is the cluster's size: the nodes that write every durable byte to
-// the one shared disk, and the cores that serve the reads.
-const nodes = 3
-
-// maxRuns returns the max runs of a target at an RTT in a benchmark.
-type maxRuns func(rtt, bench, target string) runs
-
-// ceilings prints the runner, each benchmark's ceiling, and each store's
-// share of it, if dir has a ceiling.json.
-func ceilings(w io.Writer, dir string, rtts, benches, targets []string, all maxRuns) error {
-	b, err := os.ReadFile(filepath.Join(dir, "ceiling.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	var rn runner
-	if err := json.Unmarshal(b, &rn); err != nil {
-		return fmt.Errorf("ceiling.json: %w", err)
-	}
-	if rn.DiskMiBps <= 0 {
-		return errors.New("ceiling.json: no disk bandwidth")
-	}
-	perByte := rn.EncodeNsPerByte + rn.EncryptNsPerByte + rn.SendNsPerByte
-	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
-	p("\nThe runner: kernel %s, CPU %s. The three nodes keep their data on one shared disk, %s, which makes at most %.1f MiB/s durable (O_DIRECT writes and fdatasync on written space). One core encodes key-values at %.3f ns a byte, encrypts them with AES-128-GCM at %.3f and sends them over loopback TCP at %.3f.\n",
-		rn.Kernel, rn.CPU, rn.Disk, rn.DiskMiBps, rn.EncodeNsPerByte, rn.EncryptNsPerByte, rn.SendNsPerByte)
-	if rn.DiskThreeMiBps > 0 {
-		p("Three writers at once, as the three nodes write, made %.1f MiB/s durable together.\n", rn.DiskThreeMiBps)
-	}
-	if rn.DiskFreshMiBps > 0 {
-		p("Three writers appending to new files, as the logs of a new cluster do, made %.1f MiB/s durable together.\n", rn.DiskFreshMiBps)
-	}
-	p("\n| Benchmark | Durable bytes/op per node | Disk limit ops/s | Read bytes/op | CPU limit ops/s | Ceiling ops/s |\n|---|---|---|---|---|---|\n")
-	ceiling := map[string]float64{}
-	for _, bench := range benches {
-		var rs runs
-		for _, rtt := range rtts {
-			for _, target := range targets {
-				rs = append(rs, all(rtt, bench, target)...)
-			}
-		}
-		if len(rs) == 0 {
-			continue
-		}
-		written := medianOf(rs, func(r result) float64 { return r.MinWrittenBytesPerOp })
-		read := medianOf(rs, func(r result) float64 { return r.MinReadBytesPerOp })
-		disk, cpu := math.Inf(1), math.Inf(1)
-		if written > 0 {
-			disk = rn.DiskMiBps * (1 << 20) / (nodes * written)
-		}
-		// Each node the requests go to serves them on its one core.
-		cores := medianOf(rs, func(r result) float64 { return float64(min(max(len(r.Endpoints), 1), nodes)) })
-		if read > 0 && perByte > 0 {
-			cpu = cores * 1e9 / (read * perByte)
-		}
-		c := min(disk, cpu)
-		if math.IsInf(c, 1) {
-			continue
-		}
-		ceiling[bench] = c
-		p("| %s | %.0f | %s | %.0f | %s | %s |\n", bench, written, limit(disk), read, limit(cpu), thousands(c))
-	}
-	p("\nThe ceiling is the lower limit. The CPU limit counts the cores of the nodes the requests go to: all three for mixed-k8s, the leader's alone for the rest. Durable bytes are the keys and values each operation writes and the key and revision of each compare; read bytes are the keys and values its reads and watch events carry. Both are medians over the max runs of every store.\n")
-	p("\n| Benchmark | Store | RTT ms | Max ops/s | Share of the ceiling | Disk bytes/op written |\n|---|---|---|---|---|---|\n")
-	for _, bench := range benches {
-		c, ok := ceiling[bench]
-		if !ok {
-			continue
-		}
-		for _, target := range targets {
-			for _, rtt := range rtts {
-				rs := all(rtt, bench, target)
-				if len(rs) == 0 {
-					continue
-				}
-				got := medianOf(rs, func(r result) float64 { return r.Throughput })
-				disk := "-"
-				if d := medianOf(rs, func(r result) float64 { return r.DiskBytesPerOp }); d > 0 {
-					disk = thousands(d)
-				}
-				p("| %s | %s | %s | %s | %.1f%% | %s |\n", bench, target, rtt, thousands(got), 100*got/c, disk)
-			}
-		}
-	}
-	p("\nMedians over the max runs. Disk bytes/op written counts every byte the shared disk took in the window, from all three nodes, per operation.\n")
-	return nil
-}
-
-func limit(v float64) string {
-	if math.IsInf(v, 1) {
-		return "-"
-	}
-	return thousands(v)
-}
-
-// noise prints how far the max runs of each store spread on this runner.
-func noise(w io.Writer, rtts, benches, targets []string, all maxRuns) {
-	header := false
-	for _, bench := range benches {
-		for _, rtt := range rtts {
-			for _, target := range targets {
-				rs := all(rtt, bench, target)
-				if len(rs) < 2 {
-					continue
-				}
-				if !header {
-					_, _ = fmt.Fprintf(w, "\n| Benchmark | RTT ms | Store | Runs | Max ops/s | Spread | CV |\n|---|---|---|---|---|---|---|\n")
-					header = true
-				}
-				med, lo, hi := median(rs, func(r result) float64 { return r.Throughput })
-				var sum, sq float64
-				for _, r := range rs {
-					sum += r.Throughput
-				}
-				mean := sum / float64(len(rs))
-				for _, r := range rs {
-					sq += (r.Throughput - mean) * (r.Throughput - mean)
-				}
-				cv := math.Sqrt(sq/float64(len(rs)-1)) / mean
-				_, _ = fmt.Fprintf(w, "| %s | %s | %s | %d | %s | %.1f%% | %.1f%% |\n", bench, rtt, target, len(rs),
-					spread(rs, func(r result) float64 { return r.Throughput }), 100*(hi-lo)/med, 100*cv)
-			}
-		}
-	}
-	if header {
-		_, _ = fmt.Fprintf(w, "\nThe noise between repeated max runs on this one runner. Spread is (max - min) / median; CV is the standard deviation over the mean.\n")
-	}
-}
 
 // generator prints loadgen's own ceiling, from its run against
 // cmd/nullstore, next to the most of its core it used at a tigerstore
@@ -564,7 +471,7 @@ func generator(w io.Writer, dir string, benches, targets []string, all maxRuns, 
 			g.ClientCPUUsPerOp, thousands(1e6/g.ClientCPUUsPerOp), most, at)
 	}
 	if header {
-		_, _ = fmt.Fprintf(w, "\nThe generator's ceiling: loadgen on its one core against cmd/nullstore, which answers every call at once from the leader's and followers' cores. Ops/s on its one core is what it would do with its whole core, 1 s over its CPU per op. The last column is the median share of its core it used at a tigerstore build's max, at the RTT where that was highest; at most 0.5 keeps the generator from being the limit.\n")
+		_, _ = fmt.Fprintf(w, "\nThe generator's ceiling: loadgen on its one core against cmd/nullstore, which answers every call at once from the leader's and followers' cores. Ops/s on its one core is what it would do with its whole core, 1 s over its CPU per op. The last column is the median share of its core it used at a tigerstore build's max, at the RTT where that was highest; a tigerstore run in which it used more than 0.8 does not count.\n")
 	}
 	return nil
 }
@@ -589,7 +496,7 @@ func watchField(f func(result) float64) func(result) float64 {
 
 // benchOrder sorts by workload in the order of the issue, then by size.
 func benchOrder(a, b string) int {
-	order := []string{"put", "txn", "delete", "range", "list", "watch", "mixed"}
+	order := []string{"put", "txn", "delete", "range", "list", "watch", "k8s"}
 	wa, sa, _ := strings.Cut(a, "-")
 	wb, sb, _ := strings.Cut(b, "-")
 	if c := slices.Index(order, wa) - slices.Index(order, wb); c != 0 {

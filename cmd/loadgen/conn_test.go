@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -265,19 +266,19 @@ func TestAnswerSizes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n, err := rangeBytes(r); err != nil || n != 3+100+2+7 {
-		t.Fatalf("rangeBytes: %d, %v", n, err)
+	if kvs, err := rangeKVCount(r); err != nil || kvs != 2 {
+		t.Fatalf("rangeKVCount: %d, %v", kvs, err)
 	}
 	st := &stream{}
-	if err := (&rangeLoad{}).message(st, r); err != nil || st.read != 112 {
-		t.Fatalf("range read %d bytes: %v", st.read, err)
+	if err := (&rangeLoad{}).message(st, r); err != nil || st.c.KVs != 2 {
+		t.Fatalf("range read %d key-values: %v", st.c.KVs, err)
 	}
 }
 
 // TestLargeMessageFrames sends a message larger than a DATA frame and reads
 // it back as an HTTP/2 server would.
 func TestLargeMessageFrames(t *testing.T) {
-	c := &conn{addr: "h:1", streams: make(map[uint32]*stream), nextID: 1, sendWin: 1 << 30, streamWin: 1 << 30, maxStreams: 100}
+	c := &conn{addr: "h:1", streams: newStreamTable(), nextID: 1, sendWin: 1 << 30, streamWin: 1 << 30, maxStreams: 100}
 	m := make([]byte, 40000)
 	for i := range m {
 		m[i] = byte(i)
@@ -349,7 +350,8 @@ func TestReadHeaderBlockSequence(t *testing.T) {
 		}
 		var d done
 		h := handlerFunc(func(err error) { d = done{true, err} })
-		c := &conn{br: bufio.NewReaderSize(bytes.NewReader(wire.Bytes()), 64<<10), streams: map[uint32]*stream{1: {id: 1, h: h}}, wake: make(chan struct{}, 1)}
+		c := &conn{br: bufio.NewReaderSize(bytes.NewReader(wire.Bytes()), 64<<10), streams: newStreamTable(), wake: make(chan struct{}, 1)}
+		c.streams.put(&stream{id: 1, h: h})
 		c.dec = hpack.NewDecoder(4096, c.headerField)
 		if err := c.read(); !errors.Is(err, errFrame) {
 			t.Errorf("%s: read ended with %v, stream done %+v", name, err, d)
@@ -363,3 +365,62 @@ type handlerFunc func(error)
 
 func (handlerFunc) message(*stream, []byte) error        { return nil }
 func (h handlerFunc) done(_ *stream, _ int64, err error) { h(err) }
+
+// TestTableEffect tells header blocks that add to HPACK's dynamic table
+// from those that only use it, and from tigerstore's, which empty it first
+// and add nothing: the encoder indexes new fields the first time it sends
+// them and refers to them after.
+func TestTableEffect(t *testing.T) {
+	var buf bytes.Buffer
+	enc := hpack.NewEncoder(&buf)
+	block := func(fields ...hpack.HeaderField) []byte {
+		buf.Reset()
+		for _, f := range fields {
+			if err := enc.WriteField(f); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return slices.Clone(buf.Bytes())
+	}
+	trailers := []hpack.HeaderField{{Name: "grpc-status", Value: "0"}, {Name: "grpc-message", Value: ""}}
+	for _, c := range []struct {
+		name  string
+		block []byte
+		want  effect
+	}{
+		{"the first block adds its fields", block(trailers...), changes},
+		{"the same fields again refer to the table", block(trailers...), keeps},
+		{"a never-indexed field leaves the table alone", block(hpack.HeaderField{Name: "x-secret", Value: "1", Sensitive: true}), keeps},
+		{"tigerstore's trailers empty the table and add nothing", append([]byte{0x20}, block(hpack.HeaderField{Name: "grpc-status", Value: "0", Sensitive: true})...), empties},
+		{"an emptied table has no entry 62 to name", []byte{0x20, 0x80 | 62}, changes},
+		{"a size update after a field", []byte{0x88, 0x20}, changes},
+		{"a size update to more than 0", []byte{0x3f, 0x01}, changes},
+		{"a block cut short", []byte{0xff}, changes},
+	} {
+		if got := tableEffect(c.block); got != c.want {
+			t.Errorf("%s: %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+// TestStreamTable finds open streams by ID, and skips an ID whose slot an
+// older stream, such as a watch, still holds.
+func TestStreamTable(t *testing.T) {
+	c := &conn{streams: newStreamTable(), nextID: 1}
+	watch := &stream{id: c.newID()}
+	c.streams.put(watch)
+	c.nextID = 1 + 2*streamSlots // the watch's slot again
+	id := c.newID()
+	if id != 3+2*streamSlots {
+		t.Fatalf("new stream %d, want %d", id, 3+2*streamSlots)
+	}
+	st := &stream{id: id}
+	c.streams.put(st)
+	if c.streams.get(1) != watch || c.streams.get(id) != st || c.streams.get(1+2*streamSlots) != nil || c.streams.n != 2 {
+		t.Fatal("lookups or count wrong")
+	}
+	c.streams.remove(st)
+	if c.streams.get(id) != nil || c.streams.n != 1 {
+		t.Fatal("removed stream still there")
+	}
+}

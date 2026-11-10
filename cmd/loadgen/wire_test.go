@@ -28,7 +28,7 @@ func TestPaddedRevision(t *testing.T) {
 // its fields to the table, as grpc-go's encoder does, and the second sends
 // only references to them, which decode to the same headers.
 func TestHeadersIndexed(t *testing.T) {
-	c := &conn{addr: "h:1", nextID: 1, streams: map[uint32]*stream{}}
+	c := &conn{addr: "h:1", nextID: 1, streams: newStreamTable()}
 	tpl, err := newTemplate("/etcdserverpb.KV/Range", putRequest(4, 8), true)
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +64,7 @@ func TestCASTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &conn{addr: "h:1", nextID: 7, streams: map[uint32]*stream{}}
+	c := &conn{addr: "h:1", nextID: 7, streams: newStreamTable()}
 	r := c.startStream(&stream{}, tpl)
 	for _, off := range tpl.keys {
 		copy(r[off:], ks.key(2))

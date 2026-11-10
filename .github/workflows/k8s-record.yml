@@ -1,0 +1,75 @@
+# Records what a real Kubernetes 1.37 control plane sends to etcd, for the
+# bench's realistic workload (bench/recordings/README.md). One job per
+# cluster shape of k8stest/shapes.json: kind with its kube-apiserver, watch
+# cache, controller-manager, scheduler and two real kubelets, kwok nodes,
+# and a three-node tigerstore built from this commit, with cmd/etcdrec
+# between the apiserver and the store (k8stest/boot.sh, k8stest/record.sh).
+# The artifact has the log, the window and the trace cmd/k8strace builds.
+name: k8s-record
+
+on:
+  workflow_dispatch:
+    inputs:
+      shapes:
+        description: space-separated shapes of k8stest/shapes.json
+        default: small medium-crds large crd-heavy many-namespaces
+      seconds:
+        description: seconds of churn, the recording's window
+        default: "600"
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      shapes: ${{ steps.plan.outputs.shapes }}
+    steps:
+      - id: plan
+        env:
+          SHAPES: ${{ inputs.shapes || 'small medium-crds large crd-heavy many-namespaces' }}
+        run: echo "shapes=$(jq -cn --arg s "$SHAPES" '$s | split(" ") | map(select(. != ""))')" >> "$GITHUB_OUTPUT"
+
+  record:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        shape: ${{ fromJSON(needs.plan.outputs.shapes) }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    env:
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/kind
+        env:
+          RECORD: ${{ runner.temp }}/k8stest/results/record.jsonl.gz
+      - name: Record ${{ matrix.shape }}
+        env:
+          SECONDS_OF_CHURN: ${{ inputs.seconds || '600' }}
+        run: |
+          echo "replay: gh workflow run k8s-record.yml --repo ${{ github.repository }} --ref ${{ github.ref_name }} -f shapes=${{ matrix.shape }} -f seconds=$SECONDS_OF_CHURN"
+          timeout --kill-after=60s 90m bash k8stest/record.sh "${{ matrix.shape }}" "$SECONDS_OF_CHURN"
+      - name: Build the trace
+        env:
+          SHAPE: ${{ matrix.shape }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -o pipefail
+          r=$K8S_ROOT/results
+          about="Shape $SHAPE of k8stest/shapes.json: $(jq -c --arg s "$SHAPE" '.[$s]' k8stest/shapes.json). Recorded on commit $GITHUB_SHA by $RUN: kind with Kubernetes v1.37.0, kwok v0.8.0, $(cat "$r/nodes-count.txt") nodes and $(cat "$r/pods-count.txt") pods at the end, a three-node tigerstore; the window is the churn of k8stest/load.py, $(jq -c .actions "$r/churn.json")."
+          go run ./cmd/k8strace convert -shape "$SHAPE" -about "$about" \
+            -start "$(cat "$r/window-start")" -end "$(cat "$r/window-end")" \
+            -out "$r/$SHAPE.trace.gz" "$r/record.jsonl.gz" | tee "$r/trace-summary.md"
+          cat "$r/trace-summary.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Collect
+        if: always()
+        run: bash k8stest/collect.sh || true
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: record-${{ matrix.shape }}
+          path: ${{ runner.temp }}/k8stest/results
+          retention-days: 90
