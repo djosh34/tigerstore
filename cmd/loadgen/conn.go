@@ -57,8 +57,9 @@ type stream struct {
 	status   string // HTTP :status of the response headers
 	msgs     int    // complete response messages received
 	err      error  // the first bad response, reported when the stream ends
-	// many allows more than one response message, as a RangeStream sends.
-	many bool
+	// many allows more than one response message, as a RangeStream sends;
+	// held marks a stream that stays open, a watch, which is no request.
+	many, held bool
 	// written is the fewest bytes the call must make durable on each
 	// node; read is the key and value bytes its answer carried. Both feed
 	// the ceilings of cmd/benchreport.
@@ -87,16 +88,20 @@ type conn struct {
 	br   *bufio.Reader // reads from nc, owned by the reader goroutine
 	out  outBuf        // frames not yet written, owned by the writer goroutine
 
-	mu         sync.Mutex
-	streams    map[uint32]*stream
-	queued     []byte // frames from queueMessage, for the writer
-	free       []*stream
-	nextID     uint32
-	sendWin    int64  // connection-level send window
-	maxStreams uint32 // the server's SETTINGS_MAX_CONCURRENT_STREAMS
-	streamWin  uint32 // the server's SETTINGS_INITIAL_WINDOW_SIZE
-	err        error  // set once the connection failed
-	closing    bool
+	mu      sync.Mutex
+	streams map[uint32]*stream
+	held    int // of streams, the watch streams that stay open, not requests
+	// The k8s watches that wait for a progress request on c; mail guards
+	// them, apart from mu (post).
+	mail          sync.Mutex
+	posted, spare []*k8sWatch
+	free          []*stream
+	nextID        uint32
+	sendWin       int64  // connection-level send window
+	maxStreams    uint32 // the server's SETTINGS_MAX_CONCURRENT_STREAMS
+	streamWin     uint32 // the server's SETTINGS_INITIAL_WINDOW_SIZE
+	err           error  // set once the connection failed
+	closing       bool
 	// Control frames the reader wants sent; the writer sends them.
 	settingsAck bool
 	pings       [][8]byte
@@ -140,12 +145,6 @@ type streamIncr struct {
 // clientTLS, if set, is the TLS configuration of every connection;
 // without it connections are plain text (HTTP/2 with prior knowledge).
 var clientTLS *tls.Config
-
-// readPause, if set, is how long a connection's reader waits when it has
-// read everything, before it reads again: a read that finds nothing costs
-// the generator a system call and a wakeup, and the answers that gather
-// meanwhile come in one read. -coalesce sets it, at max load.
-var readPause time.Duration
 
 func dial(addr string) (*conn, error) {
 	d := &net.Dialer{Timeout: dialTimeout}
@@ -270,7 +269,7 @@ func (c *conn) newStream(h handler) *stream {
 // with at most limit streams in flight. The caller holds c.mu.
 func (c *conn) canStart(dataLen, limit int) bool {
 	return c.err == nil &&
-		len(c.streams) < limit &&
+		len(c.streams)-c.held < limit &&
 		uint32(len(c.streams)) < c.maxStreams &&
 		c.sendWin >= int64(dataLen) &&
 		int64(c.streamWin) >= int64(dataLen) &&
@@ -420,17 +419,7 @@ func (c *conn) appendControl() {
 		_ = c.fr.WriteWindowUpdate(s.id, s.incr)
 	}
 	c.streamIncr = c.streamIncr[:0]
-	c.out = append(c.out, c.queued...)
-	c.queued = c.queued[:0]
-}
-
-// enqueue adds frames for the connection's writer to send, from a
-// goroutine that is not the writer, which owns c.out: the writer moves
-// them into c.out with the control frames, and signal wakes it. The
-// caller holds c.mu and builds the frames on c.queued.
-func (c *conn) enqueue(b []byte) {
-	c.queued = b
-	c.signal()
+	c.sendPosted()
 }
 
 // flush writes the pending frames. Only the writer goroutine calls it.
@@ -488,10 +477,6 @@ func (c *conn) read() error {
 	for {
 		if _, err := c.br.Discard(size); err != nil {
 			return err
-		}
-		if readPause > 0 && c.br.Buffered() == 0 {
-			// Let answers gather, so that one read takes many.
-			time.Sleep(readPause)
 		}
 		head, err := c.br.Peek(9)
 		if err != nil {

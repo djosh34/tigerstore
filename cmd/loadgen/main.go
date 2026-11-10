@@ -57,7 +57,6 @@ type config struct {
 	cert, key   string
 	traces      string
 	copies      int
-	coalesce    time.Duration
 }
 
 var workloads = []string{"put", "txn", "delete", "range", "list", "watch", "k8s"}
@@ -89,7 +88,6 @@ func parseFlags(args []string) (config, error) {
 	fs.StringVar(&cfg.key, "key", "", "client key for TLS")
 	fs.StringVar(&cfg.traces, "traces", "bench/recordings", "k8s: the directory of recorded traces, one of which the seed draws")
 	fs.IntVar(&cfg.copies, "copies", 64, "k8s: copies of the recorded cluster that share the store")
-	fs.DurationVar(&cfg.coalesce, "coalesce", 0, "at max load, hold requests back up to this long after a write while many are in flight, so one write carries many, and wait as long before a read that would find nothing")
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
 	}
@@ -304,9 +302,6 @@ const (
 )
 
 func run(cfg config) (*result, error) {
-	if cfg.rate == 0 {
-		readPause = cfg.coalesce
-	}
 	if cfg.cacert != "" {
 		c, err := loadTLS(cfg.cacert, cfg.cert, cfg.key)
 		if err != nil {
@@ -537,7 +532,7 @@ func (s *session) measure(streams int) (*result, error) {
 			}
 		}
 	})
-	phaseErr := runPhase(s.workers, s.loads, phase{rate: cfg.rate / float64(cfg.conns), start: t0, stop: t2, drain: drainTimeout, limit: streams, coalesce: cfg.coalesce})
+	phaseErr := runPhase(s.workers, s.loads, phase{rate: cfg.rate / float64(cfg.conns), start: t0, stop: t2, drain: drainTimeout, limit: streams})
 	sampler.Wait()
 
 	var errs []error
@@ -655,7 +650,7 @@ func startWatches(cfg config, control *sync.WaitGroup, stop <-chan struct{}) ([]
 		if err := c.flush(); err != nil {
 			return conns, nil, err
 		}
-		control.Go(func() { c.serveControl(stop, 0) })
+		control.Go(func() { c.serveControl(stop) })
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -682,23 +677,9 @@ func startWatches(cfg config, control *sync.WaitGroup, stop <-chan struct{}) ([]
 }
 
 // serveControl sends the control frames of a connection that has no request
-// writer, such as window updates for watch data, and what others queued on
-// it, until stop is closed. With coalesce, it writes at most once in that
-// time, so that progress requests from many calls go out together.
-func (c *conn) serveControl(stop <-chan struct{}, coalesce time.Duration) {
-	var flushed time.Time
-	timer := time.NewTimer(time.Hour)
-	defer timer.Stop()
+// writer, such as window updates for watch data, until stop is closed.
+func (c *conn) serveControl(stop <-chan struct{}) {
 	for {
-		if wait := coalesce - time.Since(flushed); wait > 0 {
-			timer.Reset(wait)
-			select {
-			case <-timer.C:
-			case <-stop:
-				return
-			}
-		}
-		flushed = time.Now()
 		c.mu.Lock()
 		c.appendControl()
 		failed := c.err != nil

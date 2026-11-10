@@ -20,16 +20,7 @@ type phase struct {
 	drain time.Duration
 	// limit is the most requests in flight on the connection.
 	limit int
-	// coalesce, at max load, holds requests back for up to this long
-	// after the last write while coalesceInFlight requests, or half of
-	// limit, are in flight, so that one write carries many: each write
-	// to loopback costs the generator microseconds. Zero writes at once.
-	coalesce time.Duration
 }
-
-// coalesceInFlight is enough requests in flight that answers keep coming
-// while new requests wait to be written together.
-const coalesceInFlight = 64
 
 // worker drives one connection: it owns the writer side.
 type worker struct {
@@ -69,7 +60,6 @@ func (wk *worker) run(l load, p phase) error {
 	}
 	var backlog []int64 // intended times of arrivals not yet sent
 	deadline := p.stop + int64(p.drain)
-	var flushed int64 // when the last write went out
 	for {
 		t := now()
 		if p.rate > 0 {
@@ -108,20 +98,17 @@ func (wk *worker) run(l load, p phase) error {
 			full = len(c.out) >= 256<<10
 		}
 		c.appendControl()
-		inflight := len(c.streams)
+		inflight := len(c.streams) - c.held
 		exhausted := l.exhausted()
 		c.mu.Unlock()
 		if err != nil {
 			return err
 		}
-		over := (t >= p.stop && len(backlog) == 0) || exhausted
-		hold := p.rate == 0 && p.coalesce > 0 && !full && !over && inflight >= min(p.limit/2, coalesceInFlight) && t-flushed < int64(p.coalesce)
-		if !hold {
-			if err := c.flush(); err != nil {
-				return err
-			}
-			flushed = t
+		if err := c.flush(); err != nil {
+			return err
 		}
+
+		over := (t >= p.stop && len(backlog) == 0) || exhausted
 
 		if over && inflight == 0 {
 			return nil
@@ -143,6 +130,9 @@ func (wk *worker) run(l load, p phase) error {
 			// Requests still in flight fail too, once: their streams are
 			// forgotten, so a late answer counts nothing.
 			for id, st := range c.streams {
+				if st.held {
+					continue
+				}
 				inWindow(st.intended)
 				delete(c.streams, id)
 			}
@@ -157,9 +147,6 @@ func (wk *worker) run(l load, p phase) error {
 		wait := deadline
 		if !over && t < p.stop {
 			wait = min(next, p.stop)
-		}
-		if hold {
-			wait = min(wait, flushed+int64(p.coalesce))
 		}
 		if wait <= t {
 			continue

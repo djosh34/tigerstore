@@ -300,10 +300,7 @@ func (w *k8sLoad) start(c *conn, st *stream, limit int) bool {
 			}
 			call := &cp.t.Calls[i]
 			if call.Kind == k8strace.CallProgress {
-				if !w.progress(cp, i) {
-					cp.back = i
-					return false
-				}
+				w.progress(cp, i)
 				continue
 			}
 			if cp.id != 0 && cp.keys.cacheRead(call) {
@@ -335,21 +332,43 @@ func (w *k8sLoad) start(c *conn, st *stream, limit int) bool {
 // progress sends a progress request on the recorded watch stream of call
 // i, which every copy shares. Its answer, a progress notification on that
 // stream, counts as an operation there. No call waits on it.
-func (w *k8sLoad) progress(cp *k8sCopy, i int32) bool {
-	ws := w.watches[cp.t.Calls[i].Stream]
-	w.buf = w.enc.request(w.buf[:0], &cp.t.Calls[i])
-	c := ws.c
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.err == nil && c.sendWin < int64(messageLen(w.buf)) {
-		return false
-	}
-	if c.err == nil {
-		c.enqueue(c.appendMessage(c.queued, ws.st, w.buf, false))
-		ws.pending = append(ws.pending, now())
-	}
+func (w *k8sLoad) progress(cp *k8sCopy, i int32) {
+	w.watches[cp.t.Calls[i].Stream].c.post(w.watches[cp.t.Calls[i].Stream])
 	cp.reply(i, 1)
-	return true
+}
+
+// progressRequest is a WatchRequest with an empty progress_request.
+var progressRequest = []byte{watchProgressReq<<3 | 2, 0}
+
+// post asks c's writer to send a progress request on the watch ws, which
+// streams on c. A worker that holds another connection's lock may call
+// it: it takes c's mailbox lock, never c.mu, so no two workers wait on
+// each other's connection.
+func (c *conn) post(ws *k8sWatch) {
+	c.mail.Lock()
+	c.posted = append(c.posted, ws)
+	c.mail.Unlock()
+	c.signal()
+}
+
+// sendPosted writes the progress requests posted to c. Its writer calls
+// it with c.mu held.
+func (c *conn) sendPosted() {
+	c.mail.Lock()
+	posted := c.posted
+	c.posted = c.spare[:0]
+	c.mail.Unlock()
+	at := now()
+	for _, ws := range posted {
+		if c.sendWin < int64(messageLen(progressRequest)) {
+			// The window is closed: the request waits for the next turn.
+			c.post(ws)
+			continue
+		}
+		c.out = c.appendMessage(c.out, ws.st, progressRequest, false)
+		ws.pending = append(ws.pending, at)
+	}
+	c.spare = posted
 }
 
 func (w *k8sLoad) exhausted() bool {

@@ -53,28 +53,23 @@ func (s *session) setupK8s() error {
 }
 
 // openWatches opens the recorded watch streams, from the revision after
-// the preload, round robin over one connection per endpoint, and waits
-// until the store has created every watch.
+// the preload, round robin over the request connections, which
+// kube-apiserver's etcd clients also share between calls and watches, and
+// waits until the store has created every watch. No worker runs yet, so
+// it writes on the connections itself.
 func (s *session) openWatches() error {
-	for _, e := range s.cfg.endpoints {
-		c, err := dial(e)
-		if err != nil {
-			return err
-		}
-		s.watchConns = append(s.watchConns, c)
-		s.control.Go(func() { c.serveControl(s.stop, s.cfg.coalesce) })
-	}
 	// Keys of watches are the recorded ones, whatever the copy: any copy
 	// writes them out the same.
-	cp := s.k8s[0].copies[0]
-	enc := encoder{cp: cp}
+	enc := encoder{cp: s.k8s[0].copies[0]}
 	var m, create []byte
 	for i, ws := range s.trace.Watches {
-		c := s.watchConns[i%len(s.watchConns)]
+		c := s.workers[i%len(s.workers)].c
 		kw := &k8sWatch{c: c, creates: len(ws.Creates), stats: stats{errs: make(map[string]int64)}}
 		c.mu.Lock()
 		kw.st = c.newStream(kw)
-		c.enqueue(c.openStream(c.queued, kw.st, paths[k8strace.CallProgress]))
+		kw.st.held = true
+		c.held++
+		c.out = c.openStream(c.out, kw.st, paths[k8strace.CallProgress])
 		for _, x := range ws.Creates {
 			create = enc.key(create[:0], watchKey, x.Key)
 			create = enc.end(create, watchRangeEnd, x.End)
@@ -88,9 +83,13 @@ func (s *session) openWatches() error {
 			}
 			create = appendBool(create, watchPrevKV, x.PrevKV)
 			m = protowire.AppendBytes(protowire.AppendTag(m[:0], watchCreate, protowire.BytesType), create)
-			c.enqueue(c.appendMessage(c.queued, kw.st, m, false))
+			c.out = c.appendMessage(c.out, kw.st, m, false)
 		}
+		c.appendControl()
 		c.mu.Unlock()
+		if err := c.flush(); err != nil {
+			return err
+		}
 		s.k8sWatches = append(s.k8sWatches, kw)
 	}
 	deadline := time.Now().Add(30 * time.Second)

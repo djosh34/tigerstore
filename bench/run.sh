@@ -118,11 +118,9 @@ concurrency=()
 # flight does at most N / 17 ms. Its max runs start at 3 x 64 = 192 in
 # flight and double from there; calls that wait on replies hold fewer.
 if [ "$workload" = k8s ]; then
-	# Writes and reads on loopback cost the generator more than anything
-	# else, so it uses one connection per node, as an apiserver does, and
-	# at max holds requests back up to 1 ms to send many in a write, and
-	# waits as long before a read that would find nothing.
-	concurrency=(-conns 3 -streams 64 -copies 64 -traces "$traces" -coalesce "${COALESCE:-1ms}")
+	# One connection per node, as each of kube-apiserver's etcd clients
+	# has; the watches share them.
+	concurrency=(-conns 3 -streams 64 -copies 64 -traces "$traces")
 	if [[ " ${modes[*]} " != *" generator "* ]]; then modes=(max); fi
 	# Up to about 1 GB of values per replica, as many as the 64 copies'
 	# starts hold, on the 16 GB runner.
