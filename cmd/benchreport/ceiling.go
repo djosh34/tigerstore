@@ -90,9 +90,10 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
 	p("\nThe runner: kernel %s, CPU %s. The three nodes keep their data on one shared disk, %s, which makes at most %.1f MiB/s durable. Loopback carries %.2f GB/s on three connections. A durable 4 KiB write takes %.0f µs.\n",
 		rn.Kernel, rn.CPU, rn.Disk, rn.DiskMiBps, pr.LoopbackBps/1e9, pr.SyncLatencyNs/1e3)
-	p("\nPrimitives, each timed alone on one core: TLS seal %.0f ns a record + %.3f ns/B, open %.0f + %.3f; TCP send %.0f ns a call + %.3f ns/B, receive %.0f + %.3f; CRC32C %.3f ns/B; copy %.3f ns/B; O_DIRECT write %.0f ns a call + %.3f ns/B; fdatasync %.0f ns; at a million keys a hash lookup %.0f ns, a B-tree insert %.0f ns and delete %.0f ns; a cold read %.0f ns.\n",
+	p("\nPrimitives, each timed alone on one core: TLS seal %.0f ns a record + %.3f ns/B, open %.0f + %.3f; TCP send %.0f ns a call + %.3f ns/B, receive %.0f + %.3f; CRC32C %.3f ns/B; copy %.3f ns/B; O_DIRECT write %.0f ns a call + %.3f ns/B; fdatasync %.0f ns; at a million keys a hash lookup %.0f ns, a B-tree insert %.0f ns and delete %.0f ns; a cold read %.0f ns; a request parsed %.0f ns a call + %.3f ns/B, a call's HTTP/2 frames %.0f ns, a key-value's metadata %.0f ns.\n",
 		pr.Seal.CallNs, pr.Seal.ByteNs, pr.Open.CallNs, pr.Open.ByteNs, pr.Send.CallNs, pr.Send.ByteNs, pr.Recv.CallNs, pr.Recv.ByteNs,
-		pr.CRC.ByteNs, pr.Copy.ByteNs, pr.Write.CallNs, pr.Write.ByteNs, pr.Sync.CallNs, pr.LookupNs, pr.InsertNs, pr.DeleteNs, pr.MissNs)
+		pr.CRC.ByteNs, pr.Copy.ByteNs, pr.Write.CallNs, pr.Write.ByteNs, pr.Sync.CallNs, pr.LookupNs, pr.InsertNs, pr.DeleteNs, pr.MissNs,
+		pr.Parse.CallNs, pr.Parse.ByteNs, pr.FrameNs, pr.KVNs)
 	p("\n| Benchmark | Seed | Shape | RTT ms | Durable B/op per node | Disk ops/s | Network ops/s | Leader CPU µs/op | CPU ops/s | Dependent calls ops/s | Ceiling ops/s | Limited by |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	type cell struct{ bench, seed, rtt string }
 	ceil := map[cell]float64{}

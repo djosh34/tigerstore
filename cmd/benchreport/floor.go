@@ -21,6 +21,9 @@ type primitives struct {
 	InsertNs      float64 `json:"insert_ns"`
 	DeleteNs      float64 `json:"delete_ns"`
 	MissNs        float64 `json:"miss_ns"`
+	Parse         cost    `json:"proto_parse"`
+	FrameNs       float64 `json:"h2_frames_ns"`
+	KVNs          float64 `json:"kv_metadata_ns"`
 	LoopbackBps   float64 `json:"loopback_bytes_per_s"`
 }
 
@@ -74,7 +77,12 @@ func floor(p primitives, l load) []part {
 	out := o.InBytes/e + peers*entries
 	sockets := (l.Conns + peers) / turnOps // receives, and sends, per operation
 	reads := o.KVs / e
+	// The leader parses its share of the calls and every forwarded write,
+	// frames its share of the calls, and encodes the key-values of its
+	// share of the answers and events.
+	calls := 1/e + (1-1/e)*o.Writes
 	return []part{
+		{"protobuf and HTTP/2", calls*(p.Parse.CallNs+p.FrameNs) + in*p.Parse.ByteNs + reads*p.KVNs},
 		{"TLS open", in*p.Open.ByteNs + (sockets+in/recordBytes)*p.Open.CallNs},
 		{"TLS seal", out*p.Seal.ByteNs + (sockets+out/recordBytes)*p.Seal.CallNs},
 		{"socket receives", in*p.Recv.ByteNs + sockets*p.Recv.CallNs},

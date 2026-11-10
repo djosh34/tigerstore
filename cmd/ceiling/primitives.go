@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/google/btree"
 	"golang.org/x/sys/unix"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // The primitives are the steps the least CPU of an operation is made of,
@@ -49,6 +51,14 @@ type primitives struct {
 	InsertNs float64 `json:"insert_ns"`
 	DeleteNs float64 `json:"delete_ns"`
 	MissNs   float64 `json:"miss_ns"`
+	// Messages: a protobuf request walked field by field, without copies,
+	// per call and per byte; the frames of one gRPC call over HTTP/2, a
+	// HEADERS and a DATA frame header with the gRPC prefix, read and
+	// written; and the metadata of one key-value an answer carries, its
+	// key and revisions, the value not copied.
+	Parse   cost    `json:"proto_parse"`
+	FrameNs float64 `json:"h2_frames_ns"`
+	KVNs    float64 `json:"kv_metadata_ns"`
 	// LoopbackBytesPerS is what three loopback TCP connections carry
 	// together, each with its writer and reader on threads of their own.
 	LoopbackBytesPerS float64 `json:"loopback_bytes_per_s"`
@@ -63,7 +73,7 @@ type cost struct {
 // fit returns the cost of a step that handles small and large bytes a
 // call, from its CPU time per call at each size.
 func fit(small, large int, smallNs, largeNs float64) cost {
-	perByte := (largeNs - smallNs) / float64(large-small)
+	perByte := max((largeNs-smallNs)/float64(large-small), 0)
 	return cost{CallNs: max(smallNs-perByte*float64(small), 0), ByteNs: perByte}
 }
 
@@ -157,8 +167,96 @@ func (p *primitives) measure(d time.Duration, dir string) error {
 	if err := p.index(d); err != nil {
 		return err
 	}
+	if err := p.messages(d); err != nil {
+		return err
+	}
 	p.LoopbackBytesPerS, err = loopback(d, 3)
 	return err
+}
+
+func (p *primitives) messages(d time.Duration) (err error) {
+	// A Txn as kube-apiserver sends it: a compare of a key's mod
+	// revision, a put of the key, and a read of it on failure.
+	txn := func(value int) []byte {
+		key := make([]byte, 60)
+		var cmp, put, op, get, m []byte
+		cmp = protowire.AppendVarint(protowire.AppendTag(cmp, 2, protowire.VarintType), 2)
+		cmp = protowire.AppendBytes(protowire.AppendTag(cmp, 3, protowire.BytesType), key)
+		cmp = protowire.AppendVarint(protowire.AppendTag(cmp, 6, protowire.VarintType), 1<<30)
+		put = protowire.AppendBytes(protowire.AppendTag(put, 1, protowire.BytesType), key)
+		put = protowire.AppendBytes(protowire.AppendTag(put, 2, protowire.BytesType), make([]byte, value))
+		op = protowire.AppendBytes(protowire.AppendTag(op, 2, protowire.BytesType), put)
+		get = protowire.AppendBytes(protowire.AppendTag(get, 1, protowire.BytesType), protowire.AppendBytes(protowire.AppendTag(nil, 1, protowire.BytesType), key))
+		m = protowire.AppendBytes(protowire.AppendTag(m, 1, protowire.BytesType), cmp)
+		m = protowire.AppendBytes(protowire.AppendTag(m, 2, protowire.BytesType), op)
+		return protowire.AppendBytes(protowire.AppendTag(m, 3, protowire.BytesType), get)
+	}
+	var walkErr error
+	var walk func(b []byte, depth int)
+	walk = func(b []byte, depth int) {
+		for len(b) > 0 {
+			num, typ, n := protowire.ConsumeTag(b)
+			if n < 0 {
+				walkErr = protowire.ParseError(n)
+				return
+			}
+			b = b[n:]
+			m := protowire.ConsumeFieldValue(num, typ, b)
+			if m < 0 {
+				walkErr = protowire.ParseError(m)
+				return
+			}
+			// A Txn's success and failure ops hold a RequestOp, which
+			// holds the put or range; compares and those hold no
+			// messages.
+			if typ == protowire.BytesType && (depth == 0 && num != 1 || depth == 1) {
+				v, _ := protowire.ConsumeBytes(b)
+				walk(v, depth+1)
+			}
+			b = b[m:]
+		}
+	}
+	small, large := txn(100), txn(4000)
+	s, err := perCall(d, func() { walk(small, 0) })
+	if err != nil {
+		return err
+	}
+	l, err := perCall(d, func() { walk(large, 0) })
+	if err != nil {
+		return err
+	}
+	p.Parse = fit(len(small), len(large), s, l)
+	if walkErr != nil {
+		return walkErr
+	}
+	var frames []byte
+	var header [9]byte
+	if p.FrameNs, err = perCall(d, func() {
+		frames = appendFrame(frames[:0], 0x1, 12, 1)
+		frames = appendFrame(frames, 0x0, 300, 1)
+		frames = append(frames, 0, 0, 0, 1, 44)
+		copy(header[:], frames[9:18]) // the DATA frame's header
+		if binary.BigEndian.Uint32(header[5:])&(1<<31-1) != 1 {
+			walkErr = errors.New("frame: wrong stream")
+		}
+	}); err != nil {
+		return err
+	}
+	key := make([]byte, 60)
+	var kv []byte
+	p.KVNs, err = perCall(d, func() {
+		kv = protowire.AppendBytes(protowire.AppendTag(kv[:0], 1, protowire.BytesType), key)
+		kv = protowire.AppendVarint(protowire.AppendTag(kv, 2, protowire.VarintType), 1<<30)
+		kv = protowire.AppendVarint(protowire.AppendTag(kv, 3, protowire.VarintType), 1<<30)
+		kv = protowire.AppendVarint(protowire.AppendTag(kv, 4, protowire.VarintType), 7)
+	})
+	return errors.Join(err, walkErr)
+}
+
+// appendFrame appends an HTTP/2 frame header of length bytes.
+func appendFrame(b []byte, typ byte, length int, stream uint32) []byte {
+	b = append(b, byte(length>>16), byte(length>>8), byte(length), typ, 0)
+	return binary.BigEndian.AppendUint32(b, stream)
 }
 
 // indexKeys is the size of the index the lookups run in.
