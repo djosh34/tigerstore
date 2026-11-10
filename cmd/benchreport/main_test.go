@@ -115,8 +115,8 @@ func TestReportRefusesUnequalRuns(t *testing.T) {
 // TestReportCeilings puts each seed against the lowest of its limits. With
 // every primitive free but a 1 µs lookup, the leader's floor is 1 µs a
 // put. The disk allows 100,000 puts a second, loopback 50,000: the
-// network is the ceiling. A generator that would need more than half its
-// core at the target fails the report.
+// network is the ceiling. A run in which the generator used more than 0.8
+// of its core fails the report.
 func TestReportCeilings(t *testing.T) {
 	dir := t.TempDir()
 	// Loopback bytes a put: 1,100 out, 30 in, and the entry of 1,048.576
@@ -126,24 +126,24 @@ func TestReportCeilings(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "ceiling.json"), []byte(ceiling), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	run := `{"valid":true,"throughput":40000,"min_written_bytes_per_op":1048.576,"client_cpu_us_per_op":%d,"conns":6,"endpoints":["a"],"per_op":{"out_bytes":1100,"in_bytes":30,"writes":1,"entries":1}}`
-	writeAt(t, dir, "0", "put-1k", "main-max-1.1.json", fmt.Sprintf(run, 5))
+	run := `{"valid":true,"throughput":40000,"min_written_bytes_per_op":1048.576,"client_cores":%.2f,"conns":6,"endpoints":["a"],"per_op":{"out_bytes":1100,"in_bytes":30,"writes":1,"entries":1}}`
+	writeAt(t, dir, "0", "put-1k", "main-max-1.1.json", fmt.Sprintf(run, 0.8))
 	var b strings.Builder
 	if err := report(&b, dir, ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
 		"| put-1k | 1 | - | 0 | 1049 | 100,000 | 50,000 | 1.00 | 1,000,000 | - | 50,000 | network |",
-		"| put-1k | 1 | 0 | main | 40,000 | 80.0% | 40,000 | 0.20 |",
+		"| put-1k | 1 | 0 | main | 40,000 | 80.0% | 40,000 | 0.80 |",
 		"index lookups 1.000",
 	} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("no %q in\n%s", want, b.String())
 		}
 	}
-	writeAt(t, dir, "0", "put-1k", "main-max-1.1.json", fmt.Sprintf(run, 20))
-	if err := report(io.Discard, dir, ""); !errors.Is(err, errGeneratorLimit) || !strings.Contains(err.Error(), "0.80 cores") {
-		t.Errorf("a generator at 0.8 cores gave %v", err)
+	writeAt(t, dir, "0", "put-1k", "main-max-1.1.json", fmt.Sprintf(run, 0.81))
+	if err := report(io.Discard, dir, ""); !errors.Is(err, errGeneratorLimit) || !strings.Contains(err.Error(), "0.81 cores") {
+		t.Errorf("a generator at 0.81 cores gave %v", err)
 	}
 }
 

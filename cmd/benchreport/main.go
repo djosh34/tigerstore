@@ -23,9 +23,9 @@
 // by default.
 //
 // After the tables it exits 1 if a tigerstore run failed, or if the
-// generator would need more than half its core at a workload's target. A
-// failed etcd run is reported and is no error: etcd runs for comparison
-// only.
+// generator used more than 0.8 of its core in a tigerstore run, which then
+// does not count. A failed etcd run is reported and is no error: etcd runs
+// for comparison only.
 package main
 
 import (
@@ -153,6 +153,7 @@ func report(w io.Writer, dir, traces string) error {
 	}
 	all := map[key]runs{}
 	failed := map[key][]failure{}
+	var problems []error
 	var rtts, benches, targets []string
 	rttMs := map[string]float64{}
 	add := func(l *[]string, v string) {
@@ -207,6 +208,9 @@ func report(w io.Writer, dir, traces string) error {
 		if !r.Valid {
 			return fmt.Errorf("%s: %w in a run that did not fail", f, errInvalidResult)
 		}
+		if k.target != "etcd" && r.ClientCores > generatorCores {
+			problems = append(problems, fmt.Errorf("%w: %s at RTT %s ms, %s %s %s: %.2f cores", errGeneratorLimit, k.bench, k.rtt, k.target, k.mode, rep, r.ClientCores))
+		}
 		r.Seed, _, _ = strings.Cut(rep, ".")
 		if r.Leader, err = leader(strings.TrimSuffix(f, ".json") + ".placement"); err != nil {
 			return err
@@ -247,7 +251,6 @@ func report(w io.Writer, dir, traces string) error {
 
 	p("| Benchmark | Store | RTT ms | Max ops/s | Max over etcd | Rate ops/s | p50 ms | p99 ms | Failed runs |\n")
 	p("|---|---|---|---|---|---|---|---|---|\n")
-	var problems []error
 	for _, bench := range benches {
 		for _, target := range targets {
 			for _, rtt := range rtts {
@@ -384,13 +387,11 @@ func report(w io.Writer, dir, traces string) error {
 		p("\nMax runs whose throughput still climbed at the last step of the ramp, so the requests in flight may have limited them:\n\n%s", strings.Join(climbing, ""))
 	}
 	shapes(w, rtts, benches, targets, func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] })
-	more, err := ceilings(w, dir, traces, rtts, benches, targets, func(rtt, bench, target string) runs {
+	if err := ceilings(w, dir, traces, rtts, benches, targets, func(rtt, bench, target string) runs {
 		return all[key{rtt, bench, target, "max"}]
-	})
-	if err != nil {
+	}); err != nil {
 		return err
 	}
-	problems = append(problems, more...)
 	if err := generator(w, dir, benches, targets, func(rtt, bench, target string) runs {
 		return all[key{rtt, bench, target, "max"}]
 	}, rtts); err != nil {
@@ -470,7 +471,7 @@ func generator(w io.Writer, dir string, benches, targets []string, all maxRuns, 
 			g.ClientCPUUsPerOp, thousands(1e6/g.ClientCPUUsPerOp), most, at)
 	}
 	if header {
-		_, _ = fmt.Fprintf(w, "\nThe generator's ceiling: loadgen on its one core against cmd/nullstore, which answers every call at once from the leader's and followers' cores. Ops/s on its one core is what it would do with its whole core, 1 s over its CPU per op. The last column is the median share of its core it used at a tigerstore build's max, at the RTT where that was highest; at most 0.5 keeps the generator from being the limit.\n")
+		_, _ = fmt.Fprintf(w, "\nThe generator's ceiling: loadgen on its one core against cmd/nullstore, which answers every call at once from the leader's and followers' cores. Ops/s on its one core is what it would do with its whole core, 1 s over its CPU per op. The last column is the median share of its core it used at a tigerstore build's max, at the RTT where that was highest; a tigerstore run in which it used more than 0.8 does not count.\n")
 	}
 	return nil
 }

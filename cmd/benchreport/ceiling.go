@@ -34,13 +34,13 @@ type maxRuns func(rtt, bench, target string) runs
 // targetShare is the share of its ceiling a workload must reach (#498).
 const targetShare = 0.8
 
-// halfCore is the most of its one core the generator may use at a
-// workload's target rate (#503).
-const halfCore = 0.5
+// generatorCores is the most of its one core the generator may use in a
+// run; a run that used more does not count (#601).
+const generatorCores = 0.8
 
-// errGeneratorLimit is a generator that would need more than half its core
-// to drive a workload at its target rate.
-var errGeneratorLimit = errors.New("the generator would be the limit")
+// errGeneratorLimit is a run whose generator used more than generatorCores
+// of its core.
+var errGeneratorLimit = errors.New("the generator was the limit")
 
 // limits are the four limits of one benchmark, seed and RTT, in ops/s; a
 // limit that does not apply is +Inf.
@@ -69,22 +69,21 @@ func (l limits) ceiling() (float64, string) {
 // make durable on three nodes; loopback's bandwidth over the bytes it
 // sends; one core over the least leader CPU it needs (floor); and, for
 // k8s, the most calls a second the recording's dependent calls allow at
-// the RTT. It returns a problem for a workload whose target rate would
-// take the generator more than half its core.
-func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, all maxRuns) ([]error, error) {
+// the RTT.
+func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, all maxRuns) error {
 	b, err := os.ReadFile(filepath.Join(dir, "ceiling.json"))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return nil
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 	var rn runner
 	if err := json.Unmarshal(b, &rn); err != nil {
-		return nil, fmt.Errorf("ceiling.json: %w", err)
+		return fmt.Errorf("ceiling.json: %w", err)
 	}
 	if rn.DiskMiBps <= 0 || rn.Primitives.LoopbackBps <= 0 {
-		return nil, errors.New("ceiling.json: no disk or loopback bandwidth")
+		return errors.New("ceiling.json: no disk or loopback bandwidth")
 	}
 	pr := rn.Primitives
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
@@ -123,7 +122,7 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 			var chains map[string]float64
 			if rs[0].K8s != nil && traces != "" {
 				if chains, err = chainLimits(traces, seed, rs[0].K8s.Copies, rtts, pr.SyncLatencyNs); err != nil {
-					return nil, err
+					return err
 				}
 			}
 			for _, rtt := range rtts {
@@ -156,8 +155,7 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 		}
 		p("| %s | %s | %s |\n", f.bench, f.seed, strings.Join(s, "; "))
 	}
-	var problems []error
-	p("\n| Benchmark | Seed | RTT ms | Store | Median max ops/s | Share of the ceiling | Target ops/s | Generator cores at the target |\n|---|---|---|---|---|---|---|---|\n")
+	p("\n| Benchmark | Seed | RTT ms | Store | Median max ops/s | Share of the ceiling | Target ops/s | Most generator cores in a run |\n|---|---|---|---|---|---|---|---|\n")
 	for _, bench := range benches {
 		for _, rtt := range rtts {
 			for _, target := range targets {
@@ -169,17 +167,17 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 					}
 					got := medianOf(rs, throughput)
 					goal := targetShare * c
-					cores := medianOf(rs, func(r result) float64 { return r.ClientCPUUsPerOp }) * goal / 1e6
-					p("| %s | %s | %s | %s | %s | %.1f%% | %s | %.2f |\n", bench, seed, rtt, target, thousands(got), 100*got/c, thousands(goal), cores)
-					if target != "etcd" && cores > halfCore {
-						problems = append(problems, fmt.Errorf("%w: %s seed %s at RTT %s ms, %s: %.2f cores at %s ops/s", errGeneratorLimit, bench, seed, rtt, target, cores, thousands(goal)))
+					cores := 0.0
+					for _, r := range rs {
+						cores = max(cores, r.ClientCores)
 					}
+					p("| %s | %s | %s | %s | %s | %.1f%% | %s | %.2f |\n", bench, seed, rtt, target, thousands(got), 100*got/c, thousands(goal), cores)
 				}
 			}
 		}
 	}
-	p("\nShare is the median of the seed's max runs over its ceiling at that RTT. Generator cores at the target is loadgen's CPU per operation in those runs times the target rate; above %.1f the generator would be the limit, and the bench fails.\n", halfCore)
-	return problems, nil
+	p("\nShare is the median of the seed's max runs over its ceiling at that RTT. The last column is the most of its one core the generator used in any of those runs; a tigerstore run in which it used more than %.1f does not count, and the bench fails.\n", generatorCores)
+	return nil
 }
 
 // loadOf is what the operations of rs carried: medians over the runs.
