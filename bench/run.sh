@@ -117,7 +117,7 @@ concurrency=()
 # flight and double from there; calls that wait on replies hold fewer.
 if [ "$workload" = k8s ]; then
 	concurrency=(-conns 8 -streams 32 -copies 64 -traces "$traces")
-	modes=(max)
+	if [[ " ${modes[*]} " != *" generator "* ]]; then modes=(max); fi
 	# Up to about 1 GB of values per replica, as many as the 64 copies'
 	# starts hold, on the 16 GB runner.
 	export BENCH_GOMEMLIMIT=3GiB
