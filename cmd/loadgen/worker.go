@@ -20,6 +20,11 @@ type phase struct {
 	drain time.Duration
 	// limit is the most requests in flight on the connection.
 	limit int
+	// coalesce, at max load, holds requests back for up to this long
+	// after the last write while at least half of limit is in flight,
+	// so that one write carries many: each write to loopback costs the
+	// generator microseconds. Zero writes at once.
+	coalesce time.Duration
 }
 
 // worker drives one connection: it owns the writer side.
@@ -60,6 +65,7 @@ func (wk *worker) run(l load, p phase) error {
 	}
 	var backlog []int64 // intended times of arrivals not yet sent
 	deadline := p.stop + int64(p.drain)
+	var flushed int64 // when the last write went out
 	for {
 		t := now()
 		if p.rate > 0 {
@@ -104,11 +110,15 @@ func (wk *worker) run(l load, p phase) error {
 		if err != nil {
 			return err
 		}
-		if err := c.flush(); err != nil {
-			return err
+		over := (t >= p.stop && len(backlog) == 0) || exhausted
+		hold := p.rate == 0 && p.coalesce > 0 && !full && !over && inflight >= p.limit/2 && t-flushed < int64(p.coalesce)
+		if !hold {
+			if err := c.flush(); err != nil {
+				return err
+			}
+			flushed = t
 		}
 
-		over := (t >= p.stop && len(backlog) == 0) || exhausted
 		if over && inflight == 0 {
 			return nil
 		}
@@ -143,6 +153,9 @@ func (wk *worker) run(l load, p phase) error {
 		wait := deadline
 		if !over && t < p.stop {
 			wait = min(next, p.stop)
+		}
+		if hold {
+			wait = min(wait, flushed+int64(p.coalesce))
 		}
 		if wait <= t {
 			continue

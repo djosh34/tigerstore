@@ -116,7 +116,9 @@ concurrency=()
 # flight does at most N / 17 ms. Its max runs start at 8 x 32 = 256 in
 # flight and double from there; calls that wait on replies hold fewer.
 if [ "$workload" = k8s ]; then
-	concurrency=(-conns 8 -streams 32 -copies 64 -traces "$traces")
+	# Writes to loopback cost the generator more than anything else, so
+	# at max it holds requests back up to 200 µs to send many in a write.
+	concurrency=(-conns 8 -streams 32 -copies 64 -traces "$traces" -coalesce "${COALESCE:-200us}")
 	if [[ " ${modes[*]} " != *" generator "* ]]; then modes=(max); fi
 	# Up to about 1 GB of values per replica, as many as the 64 copies'
 	# starts hold, on the 16 GB runner.

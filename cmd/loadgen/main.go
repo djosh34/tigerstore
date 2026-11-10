@@ -57,6 +57,7 @@ type config struct {
 	cert, key   string
 	traces      string
 	copies      int
+	coalesce    time.Duration
 }
 
 var workloads = []string{"put", "txn", "delete", "range", "list", "watch", "k8s"}
@@ -88,6 +89,7 @@ func parseFlags(args []string) (config, error) {
 	fs.StringVar(&cfg.key, "key", "", "client key for TLS")
 	fs.StringVar(&cfg.traces, "traces", "bench/recordings", "k8s: the directory of recorded traces, one of which the seed draws")
 	fs.IntVar(&cfg.copies, "copies", 64, "k8s: copies of the recorded cluster that share the store")
+	fs.DurationVar(&cfg.coalesce, "coalesce", 0, "at max load, hold requests back up to this long after a write while half the streams are busy, so one write carries many")
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
 	}
@@ -532,7 +534,7 @@ func (s *session) measure(streams int) (*result, error) {
 			}
 		}
 	})
-	phaseErr := runPhase(s.workers, s.loads, phase{rate: cfg.rate / float64(cfg.conns), start: t0, stop: t2, drain: drainTimeout, limit: streams})
+	phaseErr := runPhase(s.workers, s.loads, phase{rate: cfg.rate / float64(cfg.conns), start: t0, stop: t2, drain: drainTimeout, limit: streams, coalesce: cfg.coalesce})
 	sampler.Wait()
 
 	var errs []error
