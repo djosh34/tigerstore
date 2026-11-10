@@ -122,11 +122,11 @@ func TestReportCeilings(t *testing.T) {
 	// Loopback bytes a put: 1,100 out, 30 in, and the entry of 1,048.576
 	// bytes and its 16-byte header to both followers.
 	loop := (1100 + 30 + 2*(1048.576+16)) * 50000
-	ceiling := fmt.Sprintf(`{"kernel":"k","cpu":"c","disk":"sda1","disk_mib_per_s":300,"primitives":{"lookup_ns":1000,"loopback_bytes_per_s":%f}}`, loop)
+	ceiling := fmt.Sprintf(`{"kernel":"k","cpu":"c","disk":"sda1","disk_mib_per_s":300,"primitives":{"index":[{"keys":10000,"lookup_ns":1000}],"loopback_bytes_per_s":%f}}`, loop)
 	if err := os.WriteFile(filepath.Join(dir, "ceiling.json"), []byte(ceiling), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	run := `{"valid":true,"throughput":40000,"min_written_bytes_per_op":1048.576,"client_cpu_us_per_op":%d,"conns":6,"endpoints":["a"],"per_op":{"out_bytes":1100,"in_bytes":30,"writes":1}}`
+	run := `{"valid":true,"throughput":40000,"min_written_bytes_per_op":1048.576,"client_cpu_us_per_op":%d,"conns":6,"endpoints":["a"],"per_op":{"out_bytes":1100,"in_bytes":30,"writes":1,"entries":1}}`
 	writeAt(t, dir, "0", "put-1k", "main-max-1.1.json", fmt.Sprintf(run, 5))
 	var b strings.Builder
 	if err := report(&b, dir, ""); err != nil {
@@ -278,5 +278,41 @@ func TestReportShapes(t *testing.T) {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("no line %q in\n%s", want, b.String())
 		}
+	}
+}
+
+// TestFloor charges a watch event's key-value only its metadata, a read
+// and a previous value a lookup or a cold read too, takes the index and
+// the cold read at the largest size the store reaches, and spreads a
+// turn's fdatasync over every call in flight.
+func TestFloor(t *testing.T) {
+	p := primitives{
+		Index: []indexCost{{Keys: 1e4, LookupNs: 10, InsertNs: 20}, {Keys: 1e6, LookupNs: 100, InsertNs: 200}},
+		Miss:  []missCost{{Bytes: 1 << 20, Ns: 5}, {Bytes: 256 << 20, Ns: 50}},
+		KVNs:  1,
+		Sync:  cost{CallNs: 1000},
+	}
+	parts := func(l load) map[string]float64 {
+		m := map[string]float64{}
+		for _, x := range floor(p, l) {
+			m[x.Name] = x.Ns
+		}
+		return m
+	}
+	small := parts(load{Endpoints: 1, Turn: 100, Keys: 5e5, Bytes: 10 << 20, PerOp: perOp{KVs: 1, PrevKVs: 1, Events: 3, Writes: 1, Creates: 1, Checks: 1, Leases: 1}})
+	for name, want := range map[string]float64{
+		"protobuf and HTTP/2":       5,      // 5 key-values' metadata
+		"index lookups":             4 * 10, // the read, the write, the check, the lease, at 10,000 keys
+		"index inserts and deletes": 20,
+		"cold value reads":          2 * 5, // the read and the previous value, in 1 MiB
+		"fdatasync":                 10,    // 1,000 ns over 100 calls
+	} {
+		if small[name] != want {
+			t.Errorf("%s: %g ns, want %g", name, small[name], want)
+		}
+	}
+	big := parts(load{Endpoints: 1, Turn: 100, Keys: 2e6, Bytes: 1 << 30, PerOp: perOp{KVs: 1}})
+	if big["index lookups"] != 100 || big["cold value reads"] != 50 {
+		t.Errorf("at 2 million keys and 1 GiB: lookups %g ns, cold reads %g ns, want 100 and 50", big["index lookups"], big["cold value reads"])
 	}
 }

@@ -77,9 +77,12 @@ type result struct {
 	MinReadBytesPerOp    float64   `json:"min_read_bytes_per_op"`
 	RampClimbing         bool      `json:"ramp_climbing"`
 	PerOp                perOp     `json:"per_op"`
+	Keys                 int       `json:"keys"`
+	ValueSize            int       `json:"value_size"`
 	K8s                  *struct {
-		Shape  string `json:"shape"`
-		Copies int    `json:"copies"`
+		Shape     string `json:"shape"`
+		Copies    int    `json:"copies"`
+		ItemBytes int64  `json:"item_bytes"`
 	} `json:"k8s"`
 	// Seed and Leader come from the run's file names: the seed it ran,
 	// and the node that led it, n1 to n3.
@@ -103,9 +106,14 @@ type perOp struct {
 	OutBytes float64 `json:"out_bytes"`
 	InBytes  float64 `json:"in_bytes"`
 	KVs      float64 `json:"kvs"`
+	PrevKVs  float64 `json:"prev_kvs"`
+	Events   float64 `json:"event_kvs"`
 	Writes   float64 `json:"writes"`
 	Creates  float64 `json:"creates"`
 	Deletes  float64 `json:"deletes"`
+	Entries  float64 `json:"entries"`
+	Checks   float64 `json:"checks"`
+	Leases   float64 `json:"leases"`
 }
 
 // runs holds the repetitions of one benchmark, target and mode.

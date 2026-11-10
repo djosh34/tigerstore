@@ -90,9 +90,16 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
 	p("\nThe runner: kernel %s, CPU %s. The three nodes keep their data on one shared disk, %s, which makes at most %.1f MiB/s durable. Loopback carries %.2f GB/s on three connections. A durable 4 KiB write takes %.0f µs.\n",
 		rn.Kernel, rn.CPU, rn.Disk, rn.DiskMiBps, pr.LoopbackBps/1e9, pr.SyncLatencyNs/1e3)
-	p("\nPrimitives, each timed alone on one core: TLS seal %.0f ns a record + %.3f ns/B, open %.0f + %.3f; TCP send %.0f ns a call + %.3f ns/B, receive %.0f + %.3f; CRC32C %.3f ns/B; copy %.3f ns/B; O_DIRECT write %.0f ns a call + %.3f ns/B; fdatasync %.0f ns; at a million keys a hash lookup %.0f ns, a B-tree insert %.0f ns and delete %.0f ns; a cold read %.0f ns; a request parsed %.0f ns a call + %.3f ns/B, a call's HTTP/2 frames %.0f ns, a key-value's metadata %.0f ns.\n",
+	var index, miss []string
+	for _, x := range pr.Index {
+		index = append(index, fmt.Sprintf("at %s keys a hash lookup %.0f ns, a B-tree insert %.0f ns and delete %.0f ns", thousands(x.Keys), x.LookupNs, x.InsertNs, x.DeleteNs))
+	}
+	for _, x := range pr.Miss {
+		miss = append(miss, fmt.Sprintf("%.0f ns in %.0f MiB", x.Ns, x.Bytes/(1<<20)))
+	}
+	p("\nPrimitives, each timed alone on one core: TLS seal %.0f ns a record + %.3f ns/B, open %.0f + %.3f; TCP send %.0f ns a call + %.3f ns/B, receive %.0f + %.3f; CRC32C %.3f ns/B; copy %.3f ns/B; O_DIRECT write %.0f ns a call + %.3f ns/B; fdatasync %.0f ns; %s; a cold read %s of data; a request parsed %.0f ns a call + %.3f ns/B, a call's HTTP/2 frames %.0f ns, a key-value's metadata %.0f ns.\n",
 		pr.Seal.CallNs, pr.Seal.ByteNs, pr.Open.CallNs, pr.Open.ByteNs, pr.Send.CallNs, pr.Send.ByteNs, pr.Recv.CallNs, pr.Recv.ByteNs,
-		pr.CRC.ByteNs, pr.Copy.ByteNs, pr.Write.CallNs, pr.Write.ByteNs, pr.Sync.CallNs, pr.LookupNs, pr.InsertNs, pr.DeleteNs, pr.MissNs,
+		pr.CRC.ByteNs, pr.Copy.ByteNs, pr.Write.CallNs, pr.Write.ByteNs, pr.Sync.CallNs, strings.Join(index, "; "), strings.Join(miss, ", "),
 		pr.Parse.CallNs, pr.Parse.ByteNs, pr.FrameNs, pr.KVNs)
 	p("\n| Benchmark | Seed | Shape | RTT ms | Durable B/op per node | Disk ops/s | Network ops/s | Leader CPU µs/op | CPU ops/s | Dependent calls ops/s | Ceiling ops/s | Limited by |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	type cell struct{ bench, seed, rtt string }
@@ -140,7 +147,7 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 			}
 		}
 	}
-	p("\nThe ceiling is the lowest limit. Disk: the shared disk's bandwidth over three times the bytes an operation must make durable, its keys and values and each compare's key and revision. Network: loopback's bandwidth over what an operation sends, all nodes together. Leader CPU: one core over the least CPU the leader needs, the primitives above times what the operation carries (cmd/loadgen's per-operation counts, medians over the seed's max runs of every store); the parts are below. Dependent calls: each copy of the recording makes its calls from where it starts in no less than the longest chain of calls that wait on replies, a write taking the RTT and a durable write, a linearizable read the RTT (k8s only). The target is %.0f%% of the ceiling.\n", 100*targetShare)
+	p("\nThe ceiling is the lowest limit. Disk: the shared disk's bandwidth over three times the bytes an operation must make durable, its keys and values and each compare's key and revision. Network: loopback's bandwidth over what an operation sends, all nodes together. Leader CPU: one core over the least CPU the leader needs, the primitives above times what the operation carries (cmd/loadgen's per-operation counts, medians over the seed's max runs of every store, so a measure of the mix those runs made, not a count from the seed alone); the parts are below. It takes the index and the cold reads at the largest size measured that the store's keys and data reach, and a turn of the leader's loop as every call in flight, so it never overstates. Dependent calls: each copy of the recording makes its calls from where it starts in no less than the longest chain of calls that wait on replies, a write taking the RTT and a durable write, a linearizable read the RTT (k8s only). The target is %.0f%% of the ceiling.\n", 100*targetShare)
 	p("\n| Benchmark | Seed | Least leader CPU, µs/op by part |\n|---|---|---|\n")
 	for _, f := range floors {
 		var s []string
@@ -183,15 +190,33 @@ func loadOf(rs runs) load {
 			OutBytes: m(func(r result) float64 { return r.PerOp.OutBytes }),
 			InBytes:  m(func(r result) float64 { return r.PerOp.InBytes }),
 			KVs:      m(func(r result) float64 { return r.PerOp.KVs }),
+			PrevKVs:  m(func(r result) float64 { return r.PerOp.PrevKVs }),
+			Events:   m(func(r result) float64 { return r.PerOp.Events }),
 			Writes:   m(func(r result) float64 { return r.PerOp.Writes }),
 			Creates:  m(func(r result) float64 { return r.PerOp.Creates }),
 			Deletes:  m(func(r result) float64 { return r.PerOp.Deletes }),
+			Entries:  m(func(r result) float64 { return r.PerOp.Entries }),
+			Checks:   m(func(r result) float64 { return r.PerOp.Checks }),
+			Leases:   m(func(r result) float64 { return r.PerOp.Leases }),
 		},
 		Durable:   m(func(r result) float64 { return r.MinWrittenBytesPerOp }),
 		Endpoints: m(func(r result) float64 { return float64(min(max(len(r.Endpoints), 1), nodes)) }),
+		Turn:      m(func(r result) float64 { return float64(r.Conns * r.StreamsPerConn) }),
+		Keys:      m(func(r result) float64 { return float64(r.Keys) }),
+		Bytes:     m(storedBytes),
 	}
 	l.Conns = m(func(r result) float64 { return float64(max(r.Conns, 1)) }) / l.Endpoints
 	return l
+}
+
+// storedBytes is what the store held in run r: the bytes of the keys and
+// values the k8s copies started with, or for put and txn their keys'
+// values.
+func storedBytes(r result) float64 {
+	if r.K8s != nil {
+		return float64(r.K8s.ItemBytes)
+	}
+	return float64(r.Keys) * float64(r.ValueSize)
 }
 
 // chainLimits returns, by RTT, the most calls a second the dependent calls

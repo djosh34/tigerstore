@@ -165,11 +165,13 @@ func aligned(n int) []byte {
 	return b
 }
 
-// threadCPU returns the user and system CPU time of the calling thread.
+// threadCPU returns the user and system CPU time of the calling thread,
+// to the nanosecond: getrusage may count it in whole scheduler ticks,
+// too coarse for the short phases of churn.
 func threadCPU() (time.Duration, error) {
-	var ru unix.Rusage
-	if err := unix.Getrusage(unix.RUSAGE_THREAD, &ru); err != nil {
+	var ts unix.Timespec
+	if err := unix.ClockGettime(unix.CLOCK_THREAD_CPUTIME_ID, &ts); err != nil {
 		return 0, err
 	}
-	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano()), nil
+	return time.Duration(ts.Nano()), nil
 }

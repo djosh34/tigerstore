@@ -44,13 +44,11 @@ type primitives struct {
 	// SyncLatencyNs is the wall time of a 4 KiB O_DIRECT write and its
 	// fdatasync, the least time a write takes to be durable.
 	SyncLatencyNs float64 `json:"sync_latency_ns"`
-	// The index at a million keys of 60 bytes: a lookup in a hash map,
-	// and an insert or a delete in a B-tree, each with the cache misses
-	// a big index has; and a read of a cold value, one miss.
-	LookupNs float64 `json:"lookup_ns"`
-	InsertNs float64 `json:"insert_ns"`
-	DeleteNs float64 `json:"delete_ns"`
-	MissNs   float64 `json:"miss_ns"`
+	// The index at each size a workload's keys may have, and a read of a
+	// cold value in data of each size; cmd/benchreport takes the largest
+	// size a workload reaches.
+	Index []indexCost `json:"index"`
+	Miss  []missCost  `json:"miss"`
 	// Messages: a protobuf request walked field by field, without copies,
 	// per call and per byte; the frames of one gRPC call over HTTP/2, a
 	// HEADERS and a DATA frame header with the gRPC prefix, read and
@@ -62,6 +60,23 @@ type primitives struct {
 	// LoopbackBytesPerS is what three loopback TCP connections carry
 	// together, each with its writer and reader on threads of their own.
 	LoopbackBytesPerS float64 `json:"loopback_bytes_per_s"`
+}
+
+// indexCost is the index at Keys keys of 60 bytes: a lookup in a hash map,
+// and an insert of a key the B-tree does not have or a delete of one it
+// has, each with the cache misses an index of that size has.
+type indexCost struct {
+	Keys     int     `json:"keys"`
+	LookupNs float64 `json:"lookup_ns"`
+	InsertNs float64 `json:"insert_ns"`
+	DeleteNs float64 `json:"delete_ns"`
+}
+
+// missCost is a read of a value in Bytes of data, where the last read
+// was elsewhere: a step of a chase through that many bytes.
+type missCost struct {
+	Bytes int64   `json:"bytes"`
+	Ns    float64 `json:"ns"`
 }
 
 // cost is a primitive's CPU time: per call, plus per byte.
@@ -266,58 +281,103 @@ func appendFrame(b []byte, typ byte, length int, stream uint32) []byte {
 	return binary.BigEndian.AppendUint32(b, stream)
 }
 
-// indexKeys is the size of the index the lookups run in.
-const indexKeys = 1 << 20
+// indexSizes are the keys the index is timed at: put and txn hold 10,000
+// keys, and the k8s recordings 160,000 to 1.07 million over 64 copies.
+var indexSizes = []int{1e4, 1e5, 1e6}
 
-func (p *primitives) index(d time.Duration) (err error) {
+// missSizes are the bytes of data a cold read is timed in: within a
+// core's cache, and up to more than the last-level cache holds. The k8s
+// recordings hold 185 MiB to 1.3 GiB over 64 copies.
+var missSizes = []int64{1 << 20, 16 << 20, 64 << 20, 256 << 20}
+
+func (p *primitives) index(d time.Duration) error {
 	rng := rand.New(rand.NewPCG(1, 2))
 	key := func() string {
 		return fmt.Sprintf("/registry/pods/namespace-%04d/pod-%033d", rng.IntN(1000), rng.Uint64())
 	}
-	keys := make([]string, indexKeys)
-	hash := make(map[string]int32, indexKeys)
-	tree := btree.NewG(32, func(a, b string) bool { return a < b })
-	for i := range keys {
-		keys[i] = key()
-		hash[keys[i]] = int32(i)
-		tree.ReplaceOrInsert(keys[i])
+	for _, n := range indexSizes {
+		keys := make([]string, n)
+		hash := make(map[string]int32, n)
+		tree := btree.NewG(32, func(a, b string) bool { return a < b })
+		for i := range keys {
+			keys[i] = key()
+			hash[keys[i]] = int32(i)
+			tree.ReplaceOrInsert(keys[i])
+		}
+		c := indexCost{Keys: n}
+		var found int32
+		var err error
+		if c.LookupNs, err = perCall(d, func() { found = hash[keys[rng.IntN(n)]] }); err != nil {
+			return err
+		}
+		runtime.KeepAlive(found)
+		fresh := make([]string, max(n/8, 1000))
+		for i := range fresh {
+			fresh[i] = key()
+		}
+		if c.InsertNs, c.DeleteNs, err = churn(d, tree, fresh); err != nil {
+			return err
+		}
+		p.Index = append(p.Index, c)
 	}
-	var found int32
-	p.LookupNs, err = perCall(d, func() { found = hash[keys[rng.IntN(indexKeys)]] })
-	runtime.KeepAlive(found)
-	if err != nil {
-		return err
+	for _, size := range missSizes {
+		// A chase through size bytes of pointers in a random cycle: each
+		// step waits for the one before.
+		next := make([]uint32, size/4)
+		order := rng.Perm(len(next))
+		for j := range order {
+			next[order[j]] = uint32(order[(j+1)%len(order)])
+		}
+		var at uint32
+		ns, err := perCall(d, func() { at = next[at] })
+		if err != nil {
+			return err
+		}
+		runtime.KeepAlive(at)
+		p.Miss = append(p.Miss, missCost{Bytes: size, Ns: ns})
 	}
-	// Inserts of new keys, then deletes of the same keys, each of a key
-	// the tree has.
-	fresh := make([]string, indexKeys)
-	for i := range fresh {
-		fresh[i] = key()
+	return nil
+}
+
+// errNotFresh is an insert that found its key, or a delete that did not:
+// the timing would be of something else.
+var errNotFresh = errors.New("a fresh key was already in the tree, or gone before its delete")
+
+// churn times inserts of keys tree does not have and deletes of keys it
+// has, per key: in rounds until d has passed, it inserts every key of
+// fresh, then deletes them all again.
+func churn(d time.Duration, tree *btree.BTreeG[string], fresh []string) (insertNs, deleteNs float64, err error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	var inserting, deleting time.Duration
+	var n int
+	for start := time.Now(); time.Since(start) < d; n += len(fresh) {
+		t0, err := threadCPU()
+		if err != nil {
+			return 0, 0, err
+		}
+		for _, k := range fresh {
+			if _, had := tree.ReplaceOrInsert(k); had {
+				return 0, 0, errNotFresh
+			}
+		}
+		t1, err := threadCPU()
+		if err != nil {
+			return 0, 0, err
+		}
+		for _, k := range fresh {
+			if _, had := tree.Delete(k); !had {
+				return 0, 0, errNotFresh
+			}
+		}
+		t2, err := threadCPU()
+		if err != nil {
+			return 0, 0, err
+		}
+		inserting += t1 - t0
+		deleting += t2 - t1
 	}
-	var inserted, deleted int
-	if p.InsertNs, err = perCall(d, func() {
-		tree.ReplaceOrInsert(fresh[inserted%len(fresh)])
-		inserted++
-	}); err != nil {
-		return err
-	}
-	if p.DeleteNs, err = perCall(d, func() {
-		tree.Delete(fresh[deleted%min(inserted, len(fresh))])
-		deleted++
-	}); err != nil {
-		return err
-	}
-	// A chase through 256 MiB of pointers in a random cycle: each step
-	// waits for the one before, a miss each.
-	next := make([]uint32, 64<<20)
-	order := rng.Perm(len(next))
-	for j := range order {
-		next[order[j]] = uint32(order[(j+1)%len(order)])
-	}
-	var at uint32
-	p.MissNs, err = perCall(d, func() { at = next[at] })
-	runtime.KeepAlive(at)
-	return err
+	return float64(inserting.Nanoseconds()) / float64(n), float64(deleting.Nanoseconds()) / float64(n), nil
 }
 
 // loopback returns the bytes a second conns loopback TCP connections carry
