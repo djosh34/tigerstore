@@ -235,7 +235,6 @@ func report(w io.Writer, dir string) error {
 	})
 
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
-	throughput := func(r result) float64 { return r.Throughput }
 
 	p("| Benchmark | Store | RTT ms | Max ops/s | Max over etcd | Rate ops/s | p50 ms | p99 ms | Failed runs |\n")
 	p("|---|---|---|---|---|---|---|---|---|\n")
@@ -375,7 +374,7 @@ func report(w io.Writer, dir string) error {
 	if len(climbing) > 0 {
 		p("\nMax runs whose throughput still climbed at the last step of the ramp, so the requests in flight may have limited them:\n\n%s", strings.Join(climbing, ""))
 	}
-	noise(w, rtts, benches, targets, func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] })
+	shapes(w, rtts, benches, targets, func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] })
 	if err := ceilings(w, dir, rtts, benches, targets, func(rtt, bench, target string) runs {
 		return all[key{rtt, bench, target, "max"}]
 	}); err != nil {
@@ -525,40 +524,6 @@ func limit(v float64) string {
 		return "-"
 	}
 	return thousands(v)
-}
-
-// noise prints how far the max runs of each store spread on this runner.
-func noise(w io.Writer, rtts, benches, targets []string, all maxRuns) {
-	header := false
-	for _, bench := range benches {
-		for _, rtt := range rtts {
-			for _, target := range targets {
-				rs := all(rtt, bench, target)
-				if len(rs) < 2 {
-					continue
-				}
-				if !header {
-					_, _ = fmt.Fprintf(w, "\n| Benchmark | RTT ms | Store | Runs | Max ops/s | Spread | CV |\n|---|---|---|---|---|---|---|\n")
-					header = true
-				}
-				med, lo, hi := median(rs, func(r result) float64 { return r.Throughput })
-				var sum, sq float64
-				for _, r := range rs {
-					sum += r.Throughput
-				}
-				mean := sum / float64(len(rs))
-				for _, r := range rs {
-					sq += (r.Throughput - mean) * (r.Throughput - mean)
-				}
-				cv := math.Sqrt(sq/float64(len(rs)-1)) / mean
-				_, _ = fmt.Fprintf(w, "| %s | %s | %s | %d | %s | %.1f%% | %.1f%% |\n", bench, rtt, target, len(rs),
-					spread(rs, func(r result) float64 { return r.Throughput }), 100*(hi-lo)/med, 100*cv)
-			}
-		}
-	}
-	if header {
-		_, _ = fmt.Fprintf(w, "\nThe noise between repeated max runs on this one runner. Spread is (max - min) / median; CV is the standard deviation over the mean.\n")
-	}
 }
 
 // generator prints loadgen's own ceiling, from its run against

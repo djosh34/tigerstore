@@ -151,23 +151,6 @@ func TestReportCeilings(t *testing.T) {
 	}
 }
 
-func TestReportNoise(t *testing.T) {
-	dir := t.TempDir()
-	for i, n := range []int{90, 100, 110} {
-		write(t, dir, fmt.Sprintf("main-max-%d.json", i+1), fmt.Sprintf(`{"valid":true,"throughput":%d}`, n))
-	}
-	var b strings.Builder
-	if err := report(&b, dir); err != nil {
-		t.Fatal(err)
-	}
-	if want := "| put-1k | 0 | main | 3 | 90 / 100 / 110 | 20.0% | 10.0% |"; !strings.Contains(b.String(), want) {
-		t.Fatalf("missing %s in report:\n%s", want, b.String())
-	}
-	if strings.Contains(b.String(), "still climbed") {
-		t.Fatalf("a ramp that stopped was reported as climbing:\n%s", b.String())
-	}
-}
-
 func TestReportRampClimbing(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "main-max-1.json", `{"valid":true,"throughput":100,"ramp_climbing":true}`)
@@ -267,5 +250,37 @@ func TestReportNoRate(t *testing.T) {
 	}
 	if !strings.Contains(b.String(), "- RTT 0 ms, put-1k: no rate runs, no shared rate: etcd has no max result here or at the first RTT") {
 		t.Fatalf("report:\n%s", b.String())
+	}
+}
+
+// TestReportShapes judges the candidate seed by seed: two shapes of very
+// different speed, the candidate 20% faster on both, is a gain beyond the
+// spread of either, though the two shapes together spread far wider. Each
+// run names the node that led it.
+func TestReportShapes(t *testing.T) {
+	dir := t.TempDir()
+	run := func(target, seed string, rep int, ops float64, shape string, port int) {
+		name := fmt.Sprintf("%s-max-%s.%d", target, seed, rep)
+		writeAt(t, dir, "0", "k8s", name+".json", fmt.Sprintf(`{"valid":true,"throughput":%g,"k8s":{"shape":%q,"copies":64}}`, ops, shape))
+		writeAt(t, dir, "0", "k8s", name+".placement", fmt.Sprintf(`{"leader":"127.0.0.1:%d"}`, port))
+	}
+	for rep, jitter := range []float64{0.99, 1, 1.01} {
+		run("baseline", "7", rep+1, 10000*jitter, "small", 20010)
+		run("candidate", "7", rep+1, 12000*jitter, "small", 20020)
+		run("baseline", "42", rep+1, 100000*jitter, "large", 20030)
+		run("candidate", "42", rep+1, 120000*jitter, "large", 20010)
+	}
+	var b strings.Builder
+	if err := report(&b, dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"| k8s | 7 | small | 0 | candidate | 11,880 (n2), 12,000 (n2), 12,120 (n2) | 12,000 | 2.0% | +20.0% |",
+		"| k8s | 42 | large | 0 | baseline | 99,000 (n3), 100,000 (n3), 101,000 (n3) | 100,000 | 2.0% | - |",
+		"| k8s | 42 | large | 0 | candidate | 118,800 (n1), 120,000 (n1), 121,200 (n1) | 120,000 | 2.0% | +20.0% |",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("no line %q in\n%s", want, b.String())
+		}
 	}
 }
