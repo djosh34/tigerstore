@@ -4,14 +4,18 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"errors"
+	"fmt"
 	"hash/crc32"
 	"io"
+	"math/rand/v2"
 	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"time"
 
+	"github.com/google/btree"
 	"golang.org/x/sys/unix"
 )
 
@@ -38,6 +42,16 @@ type primitives struct {
 	// SyncLatencyNs is the wall time of a 4 KiB O_DIRECT write and its
 	// fdatasync, the least time a write takes to be durable.
 	SyncLatencyNs float64 `json:"sync_latency_ns"`
+	// The index at a million keys of 60 bytes: a lookup in a hash map,
+	// and an insert or a delete in a B-tree, each with the cache misses
+	// a big index has; and a read of a cold value, one miss.
+	LookupNs float64 `json:"lookup_ns"`
+	InsertNs float64 `json:"insert_ns"`
+	DeleteNs float64 `json:"delete_ns"`
+	MissNs   float64 `json:"miss_ns"`
+	// LoopbackBytesPerS is what three loopback TCP connections carry
+	// together, each with its writer and reader on threads of their own.
+	LoopbackBytesPerS float64 `json:"loopback_bytes_per_s"`
 }
 
 // cost is a primitive's CPU time: per call, plus per byte.
@@ -137,7 +151,108 @@ func (p *primitives) measure(d time.Duration, dir string) error {
 	}); err != nil {
 		return err
 	}
-	return p.wal(d, dir)
+	if err := p.wal(d, dir); err != nil {
+		return err
+	}
+	if err := p.index(d); err != nil {
+		return err
+	}
+	p.LoopbackBytesPerS, err = loopback(d, 3)
+	return err
+}
+
+// indexKeys is the size of the index the lookups run in.
+const indexKeys = 1 << 20
+
+func (p *primitives) index(d time.Duration) (err error) {
+	rng := rand.New(rand.NewPCG(1, 2))
+	key := func() string { return fmt.Sprintf("/registry/pods/namespace-%04d/pod-%033d", rng.IntN(1000), rng.Uint64()) }
+	keys := make([]string, indexKeys)
+	hash := make(map[string]int32, indexKeys)
+	tree := btree.NewG(32, func(a, b string) bool { return a < b })
+	for i := range keys {
+		keys[i] = key()
+		hash[keys[i]] = int32(i)
+		tree.ReplaceOrInsert(keys[i])
+	}
+	if p.LookupNs, err = perCall(d, func() { sink = uint64(hash[keys[rng.IntN(indexKeys)]]) }); err != nil {
+		return err
+	}
+	// Inserts of new keys, then deletes of the same keys, each of a key
+	// the tree has.
+	fresh := make([]string, indexKeys)
+	for i := range fresh {
+		fresh[i] = key()
+	}
+	var inserted, deleted int
+	if p.InsertNs, err = perCall(d, func() {
+		tree.ReplaceOrInsert(fresh[inserted%len(fresh)])
+		inserted++
+	}); err != nil {
+		return err
+	}
+	if p.DeleteNs, err = perCall(d, func() {
+		tree.Delete(fresh[deleted%min(inserted, len(fresh))])
+		deleted++
+	}); err != nil {
+		return err
+	}
+	// A chase through 256 MiB of pointers in a random cycle: each step
+	// waits for the one before, a miss each.
+	next := make([]uint32, 64<<20)
+	order := rng.Perm(len(next))
+	for j := range order {
+		next[order[j]] = uint32(order[(j+1)%len(order)])
+	}
+	var at uint32
+	p.MissNs, err = perCall(d, func() { at = next[at] })
+	sink = uint64(at)
+	return err
+}
+
+// sink keeps the loops' results, so the compiler keeps their work.
+var sink uint64
+
+// loopback returns the bytes a second conns loopback TCP connections carry
+// together for d, 64 KiB a write.
+func loopback(d time.Duration, conns int) (float64, error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	errs := make(chan error, 2*conns)
+	var total atomic.Int64
+	start := time.Now()
+	for range conns {
+		go func() {
+			c, err := ln.Accept()
+			if err != nil {
+				errs <- err
+				return
+			}
+			n, err := io.Copy(io.Discard, c)
+			total.Add(n)
+			errs <- errors.Join(err, c.Close())
+		}()
+		go func() {
+			c, err := net.Dial("tcp", ln.Addr().String())
+			if err != nil {
+				errs <- err
+				return
+			}
+			chunk := make([]byte, 64<<10)
+			for time.Since(start) < d && err == nil {
+				_, err = c.Write(chunk)
+			}
+			errs <- errors.Join(err, c.Close())
+		}()
+	}
+	var all []error
+	for range 2 * conns {
+		all = append(all, <-errs)
+	}
+	elapsed := time.Since(start)
+	return float64(total.Load()) / elapsed.Seconds(), errors.Join(append(all, ln.Close())...)
 }
 
 // wal times O_DIRECT writes of 64 KiB and 1 MiB into a file already
