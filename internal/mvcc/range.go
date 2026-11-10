@@ -481,8 +481,8 @@ func (c *Cursor) Next(room int) ([]KV, bool, error) {
 
 // fillValues sets the value of each KV that is in memory, or of its
 // message in msgs if that is not nil, and keeps a Fill for each that only
-// the log has. The values copied out of Raft entries share one allocation
-// of their exact size; a value from the cache stays its own (#430).
+// the log has. The values copied out of Raft entries or out of the cache
+// share one allocation of their exact size (#430, #602).
 func (s *Store) fillValues(kvs []KV, msgs []*mvccpb.KeyValue) error {
 	copied := 0
 	for i := range kvs {

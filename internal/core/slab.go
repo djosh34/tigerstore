@@ -13,9 +13,13 @@ import "math/bits"
 // A slot that is freed takes the next value of its class, so the bytes
 // that bytes returned may change after free: a reader that keeps them
 // copies them first. Chunks are never given back; the cache makes all
-// its slabs again when it rebuilds (cache.rebuild).
+// its slabs again when it rebuilds (cache.rebuild), as it does once the
+// slots freed and not yet taken again take too much room (slack).
 type slabs struct {
 	classes [numClasses]slabClass
+	// used is the room of the slots that hold a value, and freed that of
+	// the slots on the classes' free lists.
+	used, freed int64
 	// big holds the values larger than maxSlot, and bigFree its unused
 	// places.
 	big     [][]byte
@@ -94,6 +98,7 @@ func (sl *slabs) put(val []byte) slot {
 	var n uint32
 	if k := len(c.free); k > 0 {
 		n, c.free = c.free[k-1], c.free[:k-1]
+		sl.freed -= int64(size)
 	} else {
 		n = c.used
 		c.used++
@@ -101,6 +106,7 @@ func (sl *slabs) put(val []byte) slot {
 			c.chunks = append(c.chunks, make([]byte, int(per)*size))
 		}
 	}
+	sl.used += int64(size)
 	off := int(n%per) * size
 	copy(c.chunks[n/per][off:off+size], val)
 	return slot{n: n, class: uint8(ci)}
@@ -127,7 +133,14 @@ func (sl *slabs) free(s slot) {
 	}
 	c := &sl.classes[s.class]
 	c.free = append(c.free, s.n)
+	sl.used -= int64(classSizes[s.class])
+	sl.freed += int64(classSizes[s.class])
 }
+
+// slack is the room of the slots freed and not taken again, which making
+// the slabs again would give back. The slots that the last chunk of each
+// class has never handed out do not count: new slabs have those too.
+func (sl *slabs) slack() int64 { return sl.freed }
 
 // room is the memory a value of n bytes takes in s.
 func (sl *slabs) room(s slot, n int) int64 {

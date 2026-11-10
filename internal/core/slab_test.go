@@ -92,3 +92,29 @@ func TestCacheRebuildFreesSlabs(t *testing.T) {
 		}
 	}
 }
+
+// TestCacheRebuildsForNewSizes fills the cache with values of one size,
+// then with values of the next class: the first class's slots empty as
+// its values go, and once their room passes half of what the values in use
+// take, the cache makes its slabs again, so the chunks it holds stay near
+// what it counts (#602).
+func TestCacheRebuildsForNewSizes(t *testing.T) {
+	c := newCache()
+	const limit = 32 << 20
+	c.setLimit(limit)
+	for i := range 2 * limit / 1000 {
+		c.add(mvcc.Ref{Index: uint64(i + 1), Len: 1000}, make([]byte, 1000))
+	}
+	for i := range 2 * limit / 1100 {
+		c.add(mvcc.Ref{Index: uint64(1<<30 + i), Len: 1100}, make([]byte, 1100))
+	}
+	held := int64(0)
+	for _, cl := range c.slabs.classes {
+		for _, ch := range cl.chunks {
+			held += int64(len(ch))
+		}
+	}
+	if c.slabs.slack() > max(c.slabs.used/2, maxSlack) || held > c.slabs.used*3/2+maxSlack+int64(numClasses)*chunkBytes {
+		t.Fatalf("the cache counts %d bytes, its slots in use %d, and its chunks hold %d with %d in freed slots", c.bytes, c.slabs.used, held, c.slabs.slack())
+	}
+}

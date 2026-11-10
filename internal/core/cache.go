@@ -156,17 +156,24 @@ func (c *cache) remove(i int32) {
 	c.bytes -= c.slabs.room(e.slot, int(e.ref.Len)) + cachedOverhead
 	c.slabs.free(e.slot)
 	c.free = append(c.free, i)
-	if len(c.items) <= c.peak/2 {
-		c.bytes -= int64(c.peak-len(c.items)) * slotOverhead
+	if len(c.items) <= c.peak/2 || c.slabs.slack() > max(c.slabs.used/2, maxSlack) {
 		c.rebuild()
 	}
 	c.low = min(c.low, c.bytes)
 }
 
+// maxSlack is the room of freed slots that the cache keeps however few
+// values it holds, so that it does not rebuild for little.
+const maxSlack = 4 << 20
+
 // rebuild makes the map, the entries and the slabs again with room for
 // only the values cached, in the same order, so the memory of those that
-// went is freed.
+// went is freed. The cache does so when its map holds half the values it
+// held at most, or when the slabs' freed slots take more than half the
+// room of those in use: values of a new size fill new chunks, and the old
+// size's chunks stay as its values go (#602).
 func (c *cache) rebuild() {
+	c.bytes -= int64(c.peak-len(c.items)) * slotOverhead
 	items := make(map[mvcc.Ref]int32, len(c.items))
 	entries := make([]cached, 1, len(c.items)+1)
 	var sl slabs
