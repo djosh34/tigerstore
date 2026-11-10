@@ -26,7 +26,7 @@
 # Each repetition runs every target once, in TARGETS order on odd
 # repetitions and reversed on even ones, so drift on the runner does not
 # favour one target. k8s drives all three endpoints; others use the leader.
-# k8s runs max only: 64 copies of the recorded cluster on 8 connections,
+# k8s runs max only: 64 copies of the recorded cluster on 3 connections,
 # its preload at 300 Txns/s. A run is <target>-<mode>-<seed>.<rep>.
 #
 # A run that fails writes its cause to <target>-<mode>-<rep>.failed, and
@@ -115,12 +115,13 @@ keys=10000 warmup=3s duration=10s watchers=3 ramp=(-ramp)
 concurrency=()
 # k8s's reads are linearizable and go to all three nodes, so at 10 ms RTT
 # a call waits about 17 ms before any work, and a generator with N calls in
-# flight does at most N / 17 ms. Its max runs start at 8 x 32 = 256 in
+# flight does at most N / 17 ms. Its max runs start at 3 x 64 = 192 in
 # flight and double from there; calls that wait on replies hold fewer.
 if [ "$workload" = k8s ]; then
-	# Writes to loopback cost the generator more than anything else, so
-	# at max it holds requests back up to 200 µs to send many in a write.
-	concurrency=(-conns 8 -streams 32 -copies 64 -traces "$traces" -coalesce "${COALESCE:-200us}")
+	# Writes and reads on loopback cost the generator more than anything
+	# else, so it uses one connection per node, as an apiserver does, and
+	# at max holds requests back up to 500 µs to send many in a write.
+	concurrency=(-conns 3 -streams 64 -copies 64 -traces "$traces" -coalesce "${COALESCE:-500us}")
 	if [[ " ${modes[*]} " != *" generator "* ]]; then modes=(max); fi
 	# Up to about 1 GB of values per replica, as many as the 64 copies'
 	# starts hold, on the 16 GB runner.

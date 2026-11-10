@@ -47,9 +47,14 @@ type k8sCopy struct {
 	grants   map[int32]int64
 	itemRevs []int64 // the preload's revision of each start item
 	leaseIDs []int64 // the IDs of the start's leases
-	blocked  map[int32][]int32
-	unmet    map[int32]int32
-	ready    []int32
+	// waiters[i] is the first of the calls that wait on call i's reply,
+	// in nodes (index + 1, 0 for none); unmet counts the replies a
+	// waiting call still waits on.
+	waiters []int32
+	nodes   []waiter
+	free    int32 // the first free node (index + 1), 0 for none
+	unmet   map[int32]int32
+	ready   []int32
 	back     int32 // a call taken from ready that could not start, or -1
 }
 
@@ -58,8 +63,26 @@ func newCopy(t *k8strace.Trace, keys *k8sKeys, start *k8strace.Start, id int) *k
 		t: t, keys: keys, start: start, id: id, tag: fmt.Appendf(nil, "c%03d.", id), prefix: fmt.Appendf(nil, "/c%03d", id),
 		next: start.K, revs: make([]int64, len(t.Calls)), grants: map[int32]int64{},
 		itemRevs: make([]int64, len(start.Items)), leaseIDs: make([]int64, len(start.Leases)),
-		blocked: map[int32][]int32{}, unmet: map[int32]int32{}, back: -1,
+		waiters: make([]int32, len(t.Calls)), unmet: map[int32]int32{}, back: -1,
 	}
+}
+
+// waiter is a call waiting on a reply, in a list of the reply's waiters.
+type waiter struct {
+	call, next int32
+}
+
+// wait adds call j to the waiters of call w.
+func (cp *k8sCopy) wait(w, j int32) {
+	n := cp.free
+	if n == 0 {
+		cp.nodes = append(cp.nodes, waiter{})
+		n = int32(len(cp.nodes))
+	} else {
+		cp.free = cp.nodes[n-1].next
+	}
+	cp.nodes[n-1] = waiter{call: j, next: cp.waiters[w]}
+	cp.waiters[w] = n
 }
 
 // k8sKeys says where each key of a trace gets a copy's tag.
@@ -159,7 +182,7 @@ func (cp *k8sCopy) nextReady() (int32, bool) {
 		var n int32
 		for _, w := range cp.t.Calls[i].Waits {
 			if !cp.answered(w) {
-				cp.blocked[w] = append(cp.blocked[w], i)
+				cp.wait(w, i)
 				n++
 			}
 		}
@@ -180,13 +203,17 @@ func (cp *k8sCopy) nextReady() (int32, bool) {
 // reply records call i's reply and frees the calls that waited on it.
 func (cp *k8sCopy) reply(i int32, rev int64) {
 	cp.revs[i] = max(rev, 1)
-	for _, j := range cp.blocked[i] {
+	for n := cp.waiters[i]; n != 0; {
+		node := &cp.nodes[n-1]
+		j, next := node.call, node.next
 		if cp.unmet[j]--; cp.unmet[j] == 0 {
 			delete(cp.unmet, j)
 			cp.ready = append(cp.ready, j)
 		}
+		node.next, cp.free = cp.free, n
+		n = next
 	}
-	delete(cp.blocked, i)
+	cp.waiters[i] = 0
 }
 
 // finished reports whether the copy has sent the last call of the trace.
