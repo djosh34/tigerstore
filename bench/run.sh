@@ -49,8 +49,10 @@
 #   SEEDS       space-separated seeds (default 1)
 #   REPS        repetitions of each seed (default 3)
 #   TRACES      k8s's recordings (default bench/recordings)
-#   PROFILE_GENERATOR  set to anything: every run writes loadgen's CPU
-#               profile of its measured window to <run>.loadgen.pprof
+#   PROFILE     set to anything: every run writes loadgen's CPU profile
+#               of its measured window to <run>.loadgen.pprof, and every
+#               tigerstore run its leader's CPU profiles, 10 s each from
+#               the start of loadgen to its end, to <run>.leader.<n>.pprof
 #   LOADGEN     loadgen binary (default: loadgen in BINS)
 #   NULLSTORE   nullstore binary (default: nullstore in BINS)
 #   DATA        directory for cluster data, on the disk under test (default /tmp/bench-data)
@@ -81,6 +83,7 @@ loadgen=${LOADGEN:-$bins/loadgen}
 nullstore=${NULLSTORE:-$bins/nullstore}
 certs=$(realpath "${CERTS:?CERTS must name a dev-certs.sh directory}")
 export CERTS=$certs ETCDCTL=$bins/etcdctl
+if [ -n "${PROFILE:-}" ]; then export BENCH_FLAGS="${BENCH_FLAGS:-} --enable-pprof"; fi
 here=$(dirname "$0")
 
 workload=${bench%-*}
@@ -186,6 +189,11 @@ once() {
 	if [ "$workload" = k8s ]; then endpoint_file=endpoints; fi
 	if step "$run" "cluster start" env TMPFS_DIR="$tmpfs/$target" "${place[@]}" "$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"; then
 		cp "$dir/placement.json" "$run.placement"
+		local profiler=""
+		if [ -n "${PROFILE:-}" ] && [ "$target" != etcd ]; then
+			profile_leader "$(cat "$dir/leader")" "$run" &
+			profiler=$!
+		fi
 		# The generator drove the leader on its CPUs only if the leader
 		# did not change during the run.
 		if step "$run" loadgen taskset -c "${layout[0]}" "$loadgen" \
@@ -201,9 +209,13 @@ once() {
 			-seed "$seed" \
 			${DISK:+-disk "$DISK"} \
 			-out "$run.json" \
-			${PROFILE_GENERATOR:+-cpuprofile "$run.loadgen.pprof"} \
+			${PROFILE:+-cpuprofile "$run.loadgen.pprof"} \
 			"$@"; then
 			step "$run" "leader check" "$here/cluster.sh" check "$dir" || true
+		fi
+		if [ -n "$profiler" ]; then
+			kill "$profiler" 2>/dev/null || true
+			wait "$profiler" 2>/dev/null || true
 		fi
 	fi
 	# Keep logs and a post-run memory/disk sample outside the CPU window.
@@ -220,10 +232,20 @@ once() {
 	"$here/cluster.sh" stop "$dir"
 }
 
+# profile_leader <endpoint> <run> takes the leader's CPU profile, 10 s at a
+# time, until it is killed.
+profile_leader() {
+	local n=0
+	while curl -fsS --cacert "$certs/ca.pem" --cert "$certs/client.pem" --key "$certs/client-key.pem" \
+		"https://$1/debug/pprof/profile?seconds=10" -o "$2.leader.$n.pprof"; do
+		n=$((n + 1))
+	done
+}
+
 # generator runs loadgen against nullstore on the nodes' CPUs, as the max
 # runs drive a cluster. k8s has none: nullstore does not answer all of a
-# recording's calls, and cmd/benchreport puts loadgen's CPU per op in the
-# k8s runs against the target rate instead.
+# recording's calls, and cmd/benchreport checks the generator's cores in
+# each k8s run instead.
 generator() {
 	local ports=() pid status=0 keys=$keys
 	for i in 1 2 3; do ports+=("127.0.0.1:$((${BENCH_PORT:-20000} + 10 * i))"); done
