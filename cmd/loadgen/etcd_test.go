@@ -90,11 +90,11 @@ func TestEtcdWorkloads(t *testing.T) {
 		{"range", 10240, 300, false},
 		{"list", 1024, 0, false},
 		{"watch", 1024, 2000, false},
-		{"mixed", 1024, 500, false},
-		{"mixed", 1024, 0, true},
+		{"k8s", 0, 0, false},
+		{"k8s", 0, 0, true},
 	} {
 		endpoint, serverPID := ep, pid
-		if tc.workload == "mixed" {
+		if tc.workload == "k8s" {
 			endpoint, serverPID = startEtcd(t)
 		}
 		cfg := config{
@@ -113,8 +113,8 @@ func TestEtcdWorkloads(t *testing.T) {
 			seed:      1,
 			ramp:      tc.ramp,
 		}
-		if tc.workload == "mixed" {
-			cfg.preloadRate = 300
+		if tc.workload == "k8s" {
+			cfg.preloadRate, cfg.copies, cfg.traces = 300, 4, testTraceDir()
 		}
 		res, err := run(cfg)
 		if err != nil {
@@ -126,8 +126,8 @@ func TestEtcdWorkloads(t *testing.T) {
 		if tc.workload == "watch" && (res.Watch.Events < res.Ops*3/2 || res.Watch.Latency.Count == 0) {
 			t.Fatalf("%+v: %d events for %d puts and 3 watchers", tc, res.Watch.Events, res.Ops)
 		}
-		if tc.workload == "mixed" && (res.Watch == nil || res.Watch.Events == 0 || res.Watch.Latency.Count == 0) {
-			t.Fatalf("%+v: no mixed watch events or delays: %+v", tc, res.Watch)
+		if tc.workload == "k8s" && (res.Watch == nil || res.Watch.Events == 0 || res.K8s == nil || res.K8s.Shape == "") {
+			t.Fatalf("%+v: no k8s watch events or shape: %+v %+v", tc, res.Watch, res.K8s)
 		}
 		if tc.ramp && (len(res.Ramp) < 2 || res.StreamsPerConn < cfg.streams) {
 			t.Fatalf("%+v: ramp %+v ended at %d streams", tc, res.Ramp, res.StreamsPerConn)
@@ -135,8 +135,8 @@ func TestEtcdWorkloads(t *testing.T) {
 		if res.Ops > 0 && tc.workload != "range" && tc.workload != "list" && res.MinWrittenBytesPerOp == 0 {
 			t.Fatalf("%+v: no written bytes per op", tc)
 		}
-		if res.Ops > 0 && (tc.workload == "range" || tc.workload == "list" || tc.workload == "mixed") && res.MinReadBytesPerOp == 0 {
-			t.Fatalf("%+v: no read bytes per op", tc)
+		if res.Ops > 0 && (tc.workload == "range" || tc.workload == "list") && res.PerOp.KVs == 0 {
+			t.Fatalf("%+v: no key-values read per op", tc)
 		}
 		t.Log(res.oneLine())
 	}

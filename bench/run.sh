@@ -5,8 +5,12 @@
 #   bench/run.sh <benchmark> <out dir>
 #
 # <benchmark> is <workload>-<size>: workload put, txn, delete, range, list
-# or watch, size 1k or 10k. Each repetition starts a fresh 3-node cluster per
-# target and run, so no run sees another's data. Three kinds of run:
+# or watch, size 1k or 10k; or k8s, the replay of a recorded Kubernetes
+# control plane (bench/recordings, loadgen's k8s workload). Each run starts
+# a fresh 3-node cluster, so no run sees another's data. Each seed of SEEDS
+# runs REPS times per target and mode; for k8s the seed draws the cluster
+# shape and where each copy of it begins, so repeats of a seed measure the
+# same workload. Three kinds of run:
 #
 #   max        every stream busy, from 6 connections x 256 streams, which
 #              double while throughput climbs by 5% or more (loadgen
@@ -21,20 +25,16 @@
 #
 # Each repetition runs every target once, in TARGETS order on odd
 # repetitions and reversed on even ones, so drift on the runner does not
-# favour one target. Mixed drives all three endpoints; others use the leader.
-# mixed-k8s uses the Kubernetes 1.37 dump sizes, not a fixed byte size.
-# Preload has a separate 300 Txns/s arrival rate to limit setup bursts.
-# Its mix is get/list/update/create/delete = 25/10/40/15/10, plus watches
-# on each resource. MIX overrides it. A mixed rate-only job first runs one
-# max calibration per store, then offers half of etcd's median max rate
-# to all stores for REPS repetitions. MIXED_RATE can override that rate.
+# favour one target. k8s drives all three endpoints; others use the leader.
+# k8s runs max only: 64 copies of the recorded cluster on 3 connections,
+# its preload at 300 Txns/s. A run is <target>-<mode>-<seed>.<rep>.
 #
-# A run that fails writes its cause to <target>-<mode>-<rep>.failed, and
+# A run that fails writes its cause to <run>.failed, and
 # the other runs still run: one store's failure must not hide the others'
-# results. cmd/benchreport decides what a failure means. Where etcd has no
-# max result, the rate is RATE_FALLBACK; without it no rate runs run, and
-# <out dir>/<benchmark>/norate says why. The rate used goes to
-# <out dir>/<benchmark>/rate.
+# results. cmd/benchreport decides what a failure means. The rate is
+# RATE_FALLBACK when it is set, else half of etcd's median max here; with
+# neither, no rate runs run, and <out dir>/<benchmark>/norate says why. The
+# rate used goes to <out dir>/<benchmark>/rate.
 #
 # Environment:
 #   TARGETS     target names in order (default "etcd"); target <name> runs
@@ -46,7 +46,11 @@
 #   LAYOUT      CPU lists for the generator, the leader and the two
 #               followers (default "3 0 1 2")
 #   MODES       which runs (default "max rate")
-#   REPS        repetitions (default 5)
+#   SEEDS       space-separated seeds (default 1)
+#   REPS        repetitions of each seed (default 3)
+#   TRACES      k8s's recordings (default bench/recordings)
+#   PROFILE_GENERATOR  set to anything: every run writes loadgen's CPU
+#               profile of its measured window to <run>.loadgen.pprof
 #   LOADGEN     loadgen binary (default: loadgen in BINS)
 #   NULLSTORE   nullstore binary (default: nullstore in BINS)
 #   DATA        directory for cluster data, on the disk under test (default /tmp/bench-data)
@@ -57,8 +61,8 @@
 #               reference), alone puts the followers there and keeps the
 #               leader on the disk; written as <target>-<layout>-<rep>.json
 #   TMPFS_DIR   a directory on tmpfs for LAYOUTS (default /dev/shm/bench-data)
-#   RATE_FALLBACK  the rate where etcd has no max result (bench.yml passes
-#               the first RTT's)
+#   RATE_FALLBACK  the rate to use, the first RTT's, which bench.yml passes
+#               to the other RTTs: etcd runs at the first RTT only
 set -euo pipefail
 
 bench=$1
@@ -66,7 +70,9 @@ out=$2
 read -r -a targets <<<"${TARGETS:-etcd}"
 read -r -a layout <<<"${LAYOUT:-3 0 1 2}"
 read -r -a modes <<<"${MODES:-max rate}"
-reps=${REPS:-5}
+read -r -a seeds <<<"${SEEDS:-1}"
+reps=${REPS:-3}
+traces=$(realpath "${TRACES:-$(dirname "$0")/recordings}")
 data=${DATA:-/tmp/bench-data}
 tmpfs=${TMPFS_DIR:-/dev/shm/bench-data}
 read -r -a extra_layouts <<<"${LAYOUTS:-}"
@@ -82,8 +88,8 @@ case ${bench##*-} in
 1k) size=1024 ;;
 10k) size=10240 ;;
 k8s)
-	if [ "$workload" != mixed ]; then echo "k8s size needs mixed" >&2; exit 2; fi
-	size=1024 # ignored by mixed; values come from the dump table
+	workload=k8s
+	size=1024 # ignored: values have the recorded sizes
 	;;
 *)
 	echo "unknown size in $bench" >&2
@@ -107,17 +113,17 @@ keys=10000 warmup=3s duration=10s watchers=3 ramp=(-ramp)
 # Each answer is about half a megabyte, so at max only 2 connections × 16
 # streams are busy: with the default 1,536, etcd v3.7.2 lost its leader.
 concurrency=()
-# Mixed reads are linearizable and go to all three nodes, so at 10 ms RTT a
-# request waits about 17 ms before any work, and a generator with N
-# requests in flight does at most N / 17 ms. Its max runs start at 6 x 48
-# = 288 in flight and double from there; rate runs keep 288.
-if [ "$workload" = mixed ]; then
-	keys=1000000
-	concurrency=(-conns 6 -streams 48)
-	if [ -n "${MIX+x}" ]; then concurrency+=(-mix "$MIX"); fi
-	# ~1.47 GB values per replica before log/index overhead. Three nodes
-	# run sequentially by target, never concurrently across targets. Keep
-	# growing-log churn short on the 16 GB runner, without resizing values.
+# k8s's reads are linearizable and go to all three nodes, so at 10 ms RTT
+# a call waits about 17 ms before any work, and a generator with N calls in
+# flight does at most N / 17 ms. Its max runs start at 3 x 64 = 192 in
+# flight and double from there; calls that wait on replies hold fewer.
+if [ "$workload" = k8s ]; then
+	# One connection per node, as each of kube-apiserver's etcd clients
+	# has; the watches share them.
+	concurrency=(-conns 3 -streams 64 -copies 64 -traces "$traces")
+	if [[ " ${modes[*]} " != *" generator "* ]]; then modes=(max); fi
+	# Up to about 1 GB of values per replica, as many as the 64 copies'
+	# starts hold, on the 16 GB runner.
 	export BENCH_GOMEMLIMIT=3GiB
 fi
 # Three watchers of 10 KiB events take about 300 MB/s at max, more than
@@ -165,19 +171,19 @@ step() {
 	return "$status"
 }
 
-# once <target> <mode> <rep> <loadgen flags...>
+# once <target> <mode> <seed> <rep> <loadgen flags...>
 # Mode tmpfs or alone places the nodes as LAYOUTS says.
 once() {
-	local target=$1 mode=$2 rep=$3
-	shift 3
-	local dir=$data/$target place=() run=$out/$bench/$target-$mode-$rep
+	local target=$1 mode=$2 seed=$3 rep=$4
+	shift 4
+	local dir=$data/$target place=() run=$out/$bench/$target-$mode-$seed.$rep
 	case $mode in
 	tmpfs) place=(TMPFS_NODES="1 2 3") ;;
 	alone) place=(TMPFS_NODES="2 3" LEAD=1) ;;
 	esac
 	"$here/cluster.sh" stop "$dir"
 	local endpoint_file=leader
-	if [ "$workload" = mixed ]; then endpoint_file=endpoints; fi
+	if [ "$workload" = k8s ]; then endpoint_file=endpoints; fi
 	if step "$run" "cluster start" env TMPFS_DIR="$tmpfs/$target" "${place[@]}" "$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"; then
 		cp "$dir/placement.json" "$run.placement"
 		# The generator drove the leader on its CPUs only if the leader
@@ -192,9 +198,10 @@ once() {
 			-watchers "$watchers" \
 			-warmup "$warmup" \
 			-duration "$duration" \
-			-seed "$rep" \
+			-seed "$seed" \
 			${DISK:+-disk "$DISK"} \
 			-out "$run.json" \
+			${PROFILE_GENERATOR:+-cpuprofile "$run.loadgen.pprof"} \
 			"$@"; then
 			step "$run" "leader check" "$here/cluster.sh" check "$dir" || true
 		fi
@@ -205,7 +212,7 @@ once() {
 		if [ -f "$dir/n$node.log" ]; then cp "$dir/n$node.log" "$run-n$node.log"; fi
 	done
 	{
-		echo "target=$target mode=$mode rep=$rep"
+		echo "target=$target mode=$mode seed=$seed rep=$rep"
 		ps -p "$(cat "$dir/pids")" -o pid,comm,rss,vsz || true
 		free -b
 		du -sb "$dir"
@@ -214,18 +221,15 @@ once() {
 }
 
 # generator runs loadgen against nullstore on the nodes' CPUs, as the max
-# runs drive a cluster.
+# runs drive a cluster. k8s has none: nullstore does not answer all of a
+# recording's calls, and cmd/benchreport puts loadgen's CPU per op in the
+# k8s runs against the target rate instead.
 generator() {
-	local ports=() pid status=0 endpoints keys=$keys
+	local ports=() pid status=0 keys=$keys
 	for i in 1 2 3; do ports+=("127.0.0.1:$((${BENCH_PORT:-20000} + 10 * i))"); done
-	endpoints=${ports[0]}
-	if [ "$workload" = mixed ]; then endpoints=$(IFS=,; echo "${ports[*]}"); fi
 	# A LIST answers a page of 500 of the 1,000 keys of a namespace, as
-	# list does; mixed's values have the dump's mean size, and its pages
-	# 190 keys, so the generator reads what it reads from a store: 7,809
-	# key and value bytes per call against tigerstore's 7,846 (#506).
+	# list does.
 	local values=(-value-size "$size" -list-keys 1000)
-	if [ "$workload" = mixed ]; then values=(-value-size 1458 -list-keys 190); fi
 	# nullstore deletes faster than the stores' budget of keys lasts.
 	if [ "$workload" = delete ]; then keys=$((keys * 10)); fi
 	taskset -c "$(IFS=,; echo "${layout[*]:1}")" "$nullstore" -listen "$(IFS=,; echo "${ports[*]}")" \
@@ -245,7 +249,7 @@ generator() {
 		return 1
 	fi
 	taskset -c "${layout[0]}" "$loadgen" \
-		-endpoints "$endpoints" \
+		-endpoints "${ports[0]}" \
 		-cacert "$certs/ca.pem" -cert "$certs/client.pem" -key "$certs/client-key.pem" \
 		-pids "$pid" -label nullstore -workload "$workload" -value-size "$size" \
 		-watchers "$watchers" -warmup "$warmup" -duration "$duration" -seed 1 \
@@ -257,9 +261,27 @@ generator() {
 
 if [[ " ${modes[*]} " == *" generator "* ]]; then
 	mkdir -p "$out"
-	generator
+	if [ "$workload" != k8s ]; then generator; fi
 	exit 0
 fi
+
+# runs <mode> <loadgen flags...> runs mode for every seed, REPS times
+# each, every target once a repetition, the order turning each time.
+# A layout mode runs tigerstore targets only.
+runs() {
+	local mode=$1 n=0
+	shift
+	for seed in "${seeds[@]}"; do
+		for rep in $(seq "$reps"); do
+			n=$((n + 1))
+			for target in $(order "$n"); do
+				if [ "$mode" = max ] || [ "$mode" = rate ] || [ "$(kind "$target")" = tigerstore ]; then
+					once "$target" "$mode" "$seed" "$rep" "$@"
+				fi
+			done
+		done
+	done
+}
 
 if [ -e "$out/$bench" ]; then
 	echo "$out/$bench exists; results of different runs must not mix" >&2
@@ -267,29 +289,12 @@ if [ -e "$out/$bench" ]; then
 fi
 mkdir -p "$out/$bench"
 if [[ " ${modes[*]} " == *" max "* ]]; then
-	for rep in $(seq "$reps"); do
-		for target in $(order "$rep"); do
-			once "$target" max "$rep" -keys "$keys" "${concurrency[@]}" "${ramp[@]}"
-		done
-	done
+	runs max -keys "$keys" "${concurrency[@]}" "${ramp[@]}"
 fi
 
 for mode in "${extra_layouts[@]}"; do
-	for rep in $(seq "$reps"); do
-		for target in $(order "$rep"); do
-			if [ "$(kind "$target")" = tigerstore ]; then
-				once "$target" "$mode" "$rep" -keys "$keys" "${concurrency[@]}"
-			fi
-		done
-	done
+	runs "$mode" -keys "$keys" "${concurrency[@]}"
 done
-
-if [ "$workload" = mixed ] && [[ " ${modes[*]} " == *" rate "* ]] && [[ " ${modes[*]} " != *" max "* ]]; then
-	# One measured max point per store, with the same mixed concurrency.
-	for target in $(order 1); do
-		once "$target" max 1 -keys "$keys" "${concurrency[@]}" "${ramp[@]}"
-	done
-fi
 
 if [[ " ${modes[*]} " == *" rate "* ]]; then
 	# Half of etcd's median max throughput, or of the first target's
@@ -302,23 +307,18 @@ if [[ " ${modes[*]} " == *" rate "* ]]; then
 	for f in "$out/$bench/$ref"-max-*.json; do
 		if [ -f "$f" ] && [ ! -f "${f%.json}.failed" ]; then maxes+=("$f"); fi
 	done
-	if [ "${#maxes[@]}" -gt 0 ]; then
-		rate=$(jq -s 'map(.throughput) | sort | (if length % 2 == 0 then (.[length / 2 - 1] + .[length / 2]) / 2 else .[length / 2 | floor] end) / 2 | floor' "${maxes[@]}")
-	elif [ -n "${RATE_FALLBACK:-}" ]; then
-		echo "$ref has no max result: the rate is RATE_FALLBACK, $RATE_FALLBACK" >&2
+	if [ -n "${RATE_FALLBACK:-}" ]; then
+		# Every RTT gets the first RTT's rate, where etcd ran.
 		rate=$RATE_FALLBACK
+	elif [ "${#maxes[@]}" -gt 0 ]; then
+		rate=$(jq -s 'map(.throughput) | sort | (if length % 2 == 0 then (.[length / 2 - 1] + .[length / 2]) / 2 else .[length / 2 | floor] end) / 2 | floor' "${maxes[@]}")
 	else
 		echo "$ref has no max result here or at the first RTT" | tee "$out/$bench/norate" >&2
 		exit 0
 	fi
-	if [ "$workload" = mixed ] && [ -n "${MIXED_RATE+x}" ]; then rate=$MIXED_RATE; fi
 	echo "$rate" >"$out/$bench/rate"
 	if [ "$workload" = delete ]; then
 		keys=$(awk -v r="$rate" -v w="${warmup%s}" -v d="${duration%s}" 'BEGIN { print int(r * (w + d) * 1.2) + 10000 }')
 	fi
-	for rep in $(seq "$reps"); do
-		for target in $(order "$rep"); do
-			once "$target" rate "$rep" -keys "$keys" -rate "$rate" "${concurrency[@]}"
-		done
-	done
+	runs rate -keys "$keys" -rate "$rate" "${concurrency[@]}"
 fi
