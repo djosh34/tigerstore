@@ -46,15 +46,14 @@ var paths = [k8strace.CallKinds]string{
 	k8strace.CallProgress:       "/etcdserverpb.Watch/Watch",
 }
 
-// encoder writes the requests of one copy's calls. Nested messages are
-// built in scratch buffers, one per depth, so a request allocates
-// nothing once they have grown.
+// encoder writes the requests of one copy's calls. A nested message is
+// written in place, behind a length of fixed width that is filled in
+// after it (openField, closeField), so no byte of a request is copied twice.
 type encoder struct {
-	cp      *k8sCopy
-	call    int32
-	values  []byte // random bytes that values are cut from
-	off     int
-	scratch [][]byte
+	cp     *k8sCopy
+	call   int32
+	values []byte // random bytes that values are cut from
+	off    int
 	// ok is what the call writes when its Txn's compares hold, failed
 	// when they do not.
 	ok, failed tally
@@ -69,14 +68,31 @@ type tally struct {
 	writes, creates, deletes int64
 }
 
-func (e *encoder) sub(depth int) []byte {
-	for len(e.scratch) <= depth {
-		e.scratch = append(e.scratch, nil)
-	}
-	return e.scratch[depth][:0]
+// lengthWidth is the bytes a nested message's length takes: a varint
+// padded with continuation bytes, which protobuf decoders accept, as they
+// accept the padded revisions of putRevision. 4 bytes hold 2^28 - 1, more
+// than a request may be.
+const lengthWidth = 4
+
+// openField appends the tag of a nested message num and room for its length,
+// and returns where the message starts.
+func openField(b []byte, num protowire.Number) ([]byte, int) {
+	b = protowire.AppendTag(b, num, protowire.BytesType)
+	return append(b, make([]byte, lengthWidth)...), len(b) + lengthWidth
 }
 
-func (e *encoder) keep(depth int, b []byte) { e.scratch[depth] = b }
+// closeField writes the length of the nested message that starts at start and
+// ends b.
+func closeField(b []byte, start int) []byte {
+	n := len(b) - start
+	at := b[start-lengthWidth : start]
+	for i := range lengthWidth - 1 {
+		at[i] = byte(n&0x7f) | 0x80
+		n >>= 7
+	}
+	at[lengthWidth-1] = byte(n)
+	return b
+}
 
 func appendBool(b []byte, num protowire.Number, v bool) []byte {
 	if !v {
@@ -121,9 +137,9 @@ func (e *encoder) request(b []byte, c *k8strace.Call) []byte {
 	e.ok, e.failed = tally{}, tally{}
 	switch c.Kind {
 	case k8strace.CallRange, k8strace.CallRangeStream, k8strace.CallPut, k8strace.CallDelete:
-		return e.op(b, &c.Op, 0, &e.ok)
+		return e.op(b, &c.Op, &e.ok)
 	case k8strace.CallTxn:
-		return e.txn(b, &c.Op, 0, &e.ok, &e.failed)
+		return e.txn(b, &c.Op, &e.ok, &e.failed)
 	case k8strace.CallCompact:
 		return appendVarintNZ(b, compactRevision, e.cp.rev(c.Rev, -1, e.call))
 	case k8strace.CallLeaseGrant:
@@ -136,7 +152,7 @@ func (e *encoder) request(b []byte, c *k8strace.Call) []byte {
 }
 
 // op appends the fields of a Range, Put or Delete request, or a Txn's.
-func (e *encoder) op(b []byte, o *k8strace.Op, depth int, t *tally) []byte {
+func (e *encoder) op(b []byte, o *k8strace.Op, t *tally) []byte {
 	switch o.Kind {
 	case k8strace.OpRange:
 		b = e.key(b, rangeKey, o.Key)
@@ -166,17 +182,17 @@ func (e *encoder) op(b []byte, o *k8strace.Op, depth int, t *tally) []byte {
 	}
 	// A nested Txn's outcome is not known; its success branch counts.
 	var discard tally
-	return e.txn(b, o, depth, t, &discard)
+	return e.txn(b, o, t, &discard)
 }
 
 // txn appends a TxnRequest's fields, and adds what it writes to ok when
 // its compares hold and to failed when they do not.
-func (e *encoder) txn(b []byte, o *k8strace.Op, depth int, ok, failed *tally) []byte {
+func (e *encoder) txn(b []byte, o *k8strace.Op, ok, failed *tally) []byte {
 	var compared int64
 	create := false
 	for i := range o.Compare {
 		c := &o.Compare[i]
-		m := e.sub(depth)
+		m, start := openField(b, txnCompare)
 		m = appendVarintNZ(m, cmpResult, int64(c.Result))
 		m = appendVarintNZ(m, cmpTarget, int64(c.Target))
 		m = e.key(m, cmpKey, c.Key)
@@ -193,34 +209,31 @@ func (e *encoder) txn(b []byte, o *k8strace.Op, depth int, ok, failed *tally) []
 			m = appendVarintField(m, cmpLease, uint64(e.cp.lease(k8strace.LeaseRef(c.Value), e.call)))
 		}
 		m = e.end(m, cmpRangeEnd, c.End)
-		b = protowire.AppendBytes(protowire.AppendTag(b, txnCompare, protowire.BytesType), m)
-		e.keep(depth, m)
+		b = closeField(m, start)
 		compared += int64(e.cp.keyLen(c.Key)) + revisionBytes
 		create = create || (c.Target == k8strace.TargetMod || c.Target == k8strace.TargetCreate) && c.Rev == 0
 	}
 	ok.bytes += compared
 	failed.bytes += compared
 	puts := ok.writes - ok.deletes
-	b = e.branch(b, txnSuccess, o.Success, depth, ok)
+	b = e.branch(b, txnSuccess, o.Success, ok)
 	if create {
 		ok.creates += ok.writes - ok.deletes - puts
 	}
-	return e.branch(b, txnFailure, o.Failure, depth, failed)
+	return e.branch(b, txnFailure, o.Failure, failed)
 }
 
 // opFields are the RequestOp fields of the op kinds.
 var opFields = [...]protowire.Number{k8strace.OpRange: opRange, k8strace.OpPut: opPut, k8strace.OpDelete: opDeleteRange, k8strace.OpTxn: opTxn}
 
-func (e *encoder) branch(b []byte, num protowire.Number, ops []k8strace.Op, depth int, t *tally) []byte {
+func (e *encoder) branch(b []byte, num protowire.Number, ops []k8strace.Op, t *tally) []byte {
 	for i := range ops {
 		o := &ops[i]
-		body := e.sub(depth + 1)
-		body = e.op(body, o, depth+2, t)
-		e.keep(depth+1, body)
-		m := e.sub(depth)
-		m = protowire.AppendBytes(protowire.AppendTag(m, opFields[o.Kind], protowire.BytesType), body)
-		e.keep(depth, m)
-		b = protowire.AppendBytes(protowire.AppendTag(b, num, protowire.BytesType), m)
+		var reqOp, body int
+		b, reqOp = openField(b, num)
+		b, body = openField(b, opFields[o.Kind])
+		b = e.op(b, o, t)
+		b = closeField(closeField(b, body), reqOp)
 	}
 	return b
 }

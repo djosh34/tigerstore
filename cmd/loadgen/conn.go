@@ -122,7 +122,8 @@ type conn struct {
 	inBlock      bool // a header block of hdrStream waits for its CONTINUATION
 	hdrEnd       bool
 	continued    bool                 // the block being decoded came in more than one frame
-	hdrCache     map[string]hdrFields // blocks that keep the table, decoded
+	hdrCache     map[string]hdrFields // blocks whose meaning cannot change, decoded
+	emptyTable   bool                 // the last block that changed the table emptied it
 	hdrStatus    string
 	grpcStatus   string
 	grpcMessage  string
@@ -714,16 +715,17 @@ func (c *conn) onHeaderBlock(frag []byte, end bool) error {
 	return nil
 }
 
-// decode decodes a fragment of a header block into the hdr fields. A
-// whole block that leaves HPACK's dynamic table as it was decodes the same
-// way until another block changes the table, so its fields are kept and
-// the next such block is not decoded again: servers send the same few
-// blocks for every answer.
+// decode decodes a fragment of a header block into the hdr fields.
+// Servers send the same few blocks for every answer, so a whole block
+// whose meaning cannot change is decoded once and its fields kept: one that
+// leaves HPACK's dynamic table as it was, until another block changes the
+// table; and one that empties the table first and adds nothing, as
+// tigerstore's do, while the table is still empty.
 func (c *conn) decode(frag []byte, end bool) error {
 	whole := end && !c.continued
 	c.continued = !end
 	if whole {
-		if f, ok := c.hdrCache[string(frag)]; ok {
+		if f, ok := c.hdrCache[string(frag)]; ok && (f.effect == keeps || c.emptyTable) {
 			c.hdrStatus, c.grpcStatus, c.grpcMessage, c.hasGRPCState = f.status, f.grpcStatus, f.grpcMessage, f.hasGRPCState
 			return nil
 		}
@@ -737,38 +739,80 @@ func (c *conn) decode(frag []byte, end bool) error {
 	if err := c.dec.Close(); err != nil {
 		return err
 	}
-	switch {
-	case !whole || !keepsTable(frag):
+	effect := changes
+	if whole {
+		effect = tableEffect(frag)
+	}
+	switch effect {
+	case changes:
 		clear(c.hdrCache)
-	case len(c.hdrCache) < 64:
+		c.emptyTable = false
+		return nil
+	case empties:
+		c.emptyTable = true
+	case keeps:
+	}
+	if len(c.hdrCache) < 64 {
 		if c.hdrCache == nil {
 			c.hdrCache = map[string]hdrFields{}
 		}
-		c.hdrCache[string(frag)] = hdrFields{c.hdrStatus, c.grpcStatus, c.grpcMessage, c.hasGRPCState}
+		c.hdrCache[string(frag)] = hdrFields{c.hdrStatus, c.grpcStatus, c.grpcMessage, c.hasGRPCState, effect}
 	}
 	return nil
 }
 
-// hdrFields are the fields of a decoded header block that loadgen reads.
+// hdrFields are the fields of a decoded header block that loadgen reads,
+// and what the block does to the dynamic table.
 type hdrFields struct {
 	status, grpcStatus, grpcMessage string
 	hasGRPCState                    bool
+	effect                          effect
 }
 
-// keepsTable reports whether an HPACK header block leaves the dynamic
-// table as it was: it has no literal with incremental indexing and no
-// table size update (RFC 7541, 6). A block it cannot read does not.
-func keepsTable(b []byte) bool {
+// effect is what a header block does to HPACK's dynamic table.
+type effect int
+
+const (
+	// keeps leaves the table as it was.
+	keeps effect = iota
+	// empties sets the table's size to 0 first, which empties it, and
+	// adds nothing: the block means the same whatever came before.
+	empties
+	// changes adds to the table or resizes it, or is a block tableEffect
+	// cannot read.
+	changes
+)
+
+// tableEffect tells what an HPACK header block does to the dynamic table
+// (RFC 7541, 6): a literal with incremental indexing adds to it, and a
+// size update, which only the block's start may hold, resizes it. After
+// an update to 0, an indexed field may name only the static table.
+func tableEffect(b []byte) effect {
+	e := keeps
+	fields := false
 	for len(b) > 0 {
 		var ok bool
 		switch first := b[0]; {
 		case first&0x80 != 0: // indexed field
-			_, b, ok = hpackInt(b, 7)
-		case first&0xc0 == 0x40, first&0xe0 == 0x20: // adds to the table, or resizes it
-			return false
+			var index uint64
+			index, b, ok = hpackInt(b, 7)
+			fields = true
+			if e == empties && index > staticTableLen {
+				return changes
+			}
+		case first&0xe0 == 0x20: // a size update, before any field
+			var size uint64
+			size, b, ok = hpackInt(b, 5)
+			if fields || size != 0 {
+				return changes
+			}
+			e = empties
+		case first&0xc0 == 0x40: // adds to the table
+			return changes
 		default: // literal without indexing, or never indexed
 			var index uint64
 			index, b, ok = hpackInt(b, 4)
+			fields = true
 			if ok && index == 0 {
 				b, ok = hpackString(b)
 			}
@@ -777,11 +821,14 @@ func keepsTable(b []byte) bool {
 			}
 		}
 		if !ok {
-			return false
+			return changes
 		}
 	}
-	return true
+	return e
 }
+
+// staticTableLen is the size of HPACK's static table.
+const staticTableLen = 61
 
 // hpackInt reads an integer with an n-bit prefix (RFC 7541, 5.1).
 func hpackInt(b []byte, n uint) (uint64, []byte, bool) {

@@ -62,7 +62,7 @@ func (s *session) openWatches() error {
 			return err
 		}
 		s.watchConns = append(s.watchConns, c)
-		s.control.Go(func() { c.serveControl(s.stop) })
+		s.control.Go(func() { c.serveControl(s.stop, s.cfg.coalesce) })
 	}
 	// Keys of watches are the recorded ones, whatever the copy: any copy
 	// writes them out the same.

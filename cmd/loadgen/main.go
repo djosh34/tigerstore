@@ -652,7 +652,7 @@ func startWatches(cfg config, control *sync.WaitGroup, stop <-chan struct{}) ([]
 		if err := c.flush(); err != nil {
 			return conns, nil, err
 		}
-		control.Go(func() { c.serveControl(stop) })
+		control.Go(func() { c.serveControl(stop, 0) })
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -679,9 +679,20 @@ func startWatches(cfg config, control *sync.WaitGroup, stop <-chan struct{}) ([]
 }
 
 // serveControl sends the control frames of a connection that has no request
-// writer, such as window updates for watch data, until stop is closed.
-func (c *conn) serveControl(stop <-chan struct{}) {
+// writer, such as window updates for watch data, and what others queued on
+// it, until stop is closed. With coalesce, it writes at most once in that
+// time, so that progress requests from many calls go out together.
+func (c *conn) serveControl(stop <-chan struct{}, coalesce time.Duration) {
+	var flushed time.Time
 	for {
+		if wait := coalesce - time.Since(flushed); wait > 0 {
+			select {
+			case <-time.After(wait):
+			case <-stop:
+				return
+			}
+		}
+		flushed = time.Now()
 		c.mu.Lock()
 		c.appendControl()
 		failed := c.err != nil

@@ -365,10 +365,11 @@ type handlerFunc func(error)
 func (handlerFunc) message(*stream, []byte) error        { return nil }
 func (h handlerFunc) done(_ *stream, _ int64, err error) { h(err) }
 
-// TestKeepsTable tells header blocks that add to HPACK's dynamic table
-// from those that only use it: the encoder indexes new fields the first
-// time it sends them and refers to them after.
-func TestKeepsTable(t *testing.T) {
+// TestTableEffect tells header blocks that add to HPACK's dynamic table
+// from those that only use it, and from tigerstore's, which empty it first
+// and add nothing: the encoder indexes new fields the first time it sends
+// them and refers to them after.
+func TestTableEffect(t *testing.T) {
 	var buf bytes.Buffer
 	enc := hpack.NewEncoder(&buf)
 	block := func(fields ...hpack.HeaderField) []byte {
@@ -381,20 +382,22 @@ func TestKeepsTable(t *testing.T) {
 		return slices.Clone(buf.Bytes())
 	}
 	trailers := []hpack.HeaderField{{Name: "grpc-status", Value: "0"}, {Name: "grpc-message", Value: ""}}
-	if keepsTable(block(trailers...)) {
-		t.Error("the first block adds its fields to the table")
-	}
-	if !keepsTable(block(trailers...)) {
-		t.Error("the same fields again only refer to the table")
-	}
-	if !keepsTable(block(hpack.HeaderField{Name: "x-secret", Value: "1", Sensitive: true})) {
-		t.Error("a never-indexed field leaves the table alone")
-	}
-	enc.SetMaxDynamicTableSize(100)
-	if keepsTable(block(trailers...)) {
-		t.Error("a size update changes the table")
-	}
-	if keepsTable([]byte{0xff}) {
-		t.Error("a block cut short is not known to keep the table")
+	for _, c := range []struct {
+		name  string
+		block []byte
+		want  effect
+	}{
+		{"the first block adds its fields", block(trailers...), changes},
+		{"the same fields again refer to the table", block(trailers...), keeps},
+		{"a never-indexed field leaves the table alone", block(hpack.HeaderField{Name: "x-secret", Value: "1", Sensitive: true}), keeps},
+		{"tigerstore's trailers empty the table and add nothing", append([]byte{0x20}, block(hpack.HeaderField{Name: "grpc-status", Value: "0", Sensitive: true})...), empties},
+		{"an emptied table has no entry 62 to name", []byte{0x20, 0x80 | 62}, changes},
+		{"a size update after a field", []byte{0x88, 0x20}, changes},
+		{"a size update to more than 0", []byte{0x3f, 0x01}, changes},
+		{"a block cut short", []byte{0xff}, changes},
+	} {
+		if got := tableEffect(c.block); got != c.want {
+			t.Errorf("%s: %d, want %d", c.name, got, c.want)
+		}
 	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -79,8 +80,10 @@ func TestRequestsDecode(t *testing.T) {
 			if err := (proto.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(buf, m); err != nil {
 				t.Fatalf("%s: call %d (%s): %v", tr.Shape, i, k8strace.KindNames[c.Kind], err)
 			}
-			if txn, ok := m.(*pb.TxnRequest); ok && len(txn.Compare) != len(c.Op.Compare) {
-				t.Fatalf("%s: call %d: %d compares, want %d", tr.Shape, i, len(txn.Compare), len(c.Op.Compare))
+			if txn, ok := m.(*pb.TxnRequest); ok {
+				if err := sameTxn(cp, txn, &c.Op); err != nil {
+					t.Fatalf("%s: call %d: %v", tr.Shape, i, err)
+				}
 			}
 		}
 	}
@@ -137,4 +140,54 @@ func TestCopyWaits(t *testing.T) {
 	if got := late.rev(tr.Calls[1].Op.Compare[0].Rev, 1, 1); got != 42 {
 		t.Errorf("compares against %d, want the preload's 42", got)
 	}
+}
+
+// sameTxn checks a decoded Txn against the trace's: its compares, and
+// each op of both branches, with its kind, the copy's key and the value
+// size.
+func sameTxn(cp *k8sCopy, got *pb.TxnRequest, want *k8strace.Op) error {
+	if len(got.Compare) != len(want.Compare) || len(got.Success) != len(want.Success) || len(got.Failure) != len(want.Failure) {
+		return fmt.Errorf("%d compares, %d and %d ops; want %d, %d and %d",
+			len(got.Compare), len(got.Success), len(got.Failure), len(want.Compare), len(want.Success), len(want.Failure))
+	}
+	ops := func(got []*pb.RequestOp, want []k8strace.Op) error {
+		for i, o := range want {
+			var key []byte
+			switch r := got[i].Request.(type) {
+			case *pb.RequestOp_RequestRange:
+				key = r.RequestRange.Key
+				if o.Kind != k8strace.OpRange {
+					return fmt.Errorf("op %d is a range, want kind %d", i, o.Kind)
+				}
+			case *pb.RequestOp_RequestPut:
+				key = r.RequestPut.Key
+				if o.Kind != k8strace.OpPut || len(r.RequestPut.Value) != int(o.Size) {
+					return fmt.Errorf("op %d is a put of %d bytes, want kind %d of %d", i, len(r.RequestPut.Value), o.Kind, o.Size)
+				}
+			case *pb.RequestOp_RequestDeleteRange:
+				key = r.RequestDeleteRange.Key
+				if o.Kind != k8strace.OpDelete {
+					return fmt.Errorf("op %d is a delete, want kind %d", i, o.Kind)
+				}
+			case *pb.RequestOp_RequestTxn:
+				if o.Kind != k8strace.OpTxn {
+					return fmt.Errorf("op %d is a txn, want kind %d", i, o.Kind)
+				}
+				return sameTxn(cp, r.RequestTxn, &want[i])
+			default:
+				return fmt.Errorf("op %d is empty", i)
+			}
+			if want := string(cp.appendKey(nil, o.Key)); string(key) != want {
+				return fmt.Errorf("op %d has key %q, want %q", i, key, want)
+			}
+		}
+		return nil
+	}
+	if err := ops(got.Success, want.Success); err != nil {
+		return fmt.Errorf("success: %w", err)
+	}
+	if err := ops(got.Failure, want.Failure); err != nil {
+		return fmt.Errorf("failure: %w", err)
+	}
+	return nil
 }
