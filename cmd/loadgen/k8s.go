@@ -42,18 +42,19 @@ type k8sCopy struct {
 	prefix []byte // in front of a key under no watched prefix
 	next   int    // the next call to look at
 	// revs are the replies' header revisions by call, 0 until it came;
-	// grants the leases calls granted.
+	// while a call waits on replies, minus how many it still waits on.
+	// grants are the leases calls granted.
 	revs     []int64
 	grants   map[int32]int64
 	itemRevs []int64 // the preload's revision of each start item
 	leaseIDs []int64 // the IDs of the start's leases
 	// waiters[i] is the first of the calls that wait on call i's reply,
-	// in nodes (index + 1, 0 for none); unmet counts the replies a
-	// waiting call still waits on.
+	// in nodes (index + 1, 0 for none); blocked counts the calls that
+	// wait.
 	waiters []int32
 	nodes   []waiter
 	free    int32 // the first free node (index + 1), 0 for none
-	unmet   map[int32]int32
+	blocked int
 	ready   []int32
 	back    int32 // a call taken from ready that could not start, or -1
 }
@@ -63,7 +64,7 @@ func newCopy(t *k8strace.Trace, keys *k8sKeys, start *k8strace.Start, id int) *k
 		t: t, keys: keys, start: start, id: id, tag: fmt.Appendf(nil, "c%03d.", id), prefix: fmt.Appendf(nil, "/c%03d", id),
 		next: start.K, revs: make([]int64, len(t.Calls)), grants: map[int32]int64{},
 		itemRevs: make([]int64, len(start.Items)), leaseIDs: make([]int64, len(start.Leases)),
-		waiters: make([]int32, len(t.Calls)), unmet: map[int32]int32{}, back: -1,
+		waiters: make([]int32, len(t.Calls)), back: -1,
 	}
 }
 
@@ -154,7 +155,7 @@ func (cp *k8sCopy) keyOf(k int32) []byte {
 
 // answered(w) reports whether call w's reply has come, or w is before
 // the copy's start.
-func (cp *k8sCopy) answered(w int32) bool { return int(w) < cp.start.K || cp.revs[w] != 0 }
+func (cp *k8sCopy) answered(w int32) bool { return int(w) < cp.start.K || cp.revs[w] > 0 }
 
 // nextReady returns a call whose waits are over.
 func (cp *k8sCopy) nextReady() (int32, bool) {
@@ -163,7 +164,7 @@ func (cp *k8sCopy) nextReady() (int32, bool) {
 		cp.back = -1
 		return i, true
 	}
-	for len(cp.ready) == 0 && cp.next < len(cp.t.Calls) && len(cp.unmet) < maxBlocked {
+	for len(cp.ready) == 0 && cp.next < len(cp.t.Calls) && cp.blocked < maxBlocked {
 		i := int32(cp.next)
 		cp.next++
 		var n int32
@@ -176,7 +177,8 @@ func (cp *k8sCopy) nextReady() (int32, bool) {
 		if n == 0 {
 			cp.ready = append(cp.ready, i)
 		} else {
-			cp.unmet[i] = n
+			cp.revs[i] = -int64(n)
+			cp.blocked++
 		}
 	}
 	if len(cp.ready) == 0 {
@@ -193,8 +195,8 @@ func (cp *k8sCopy) reply(i int32, rev int64) {
 	for n := cp.waiters[i]; n != 0; {
 		node := &cp.nodes[n-1]
 		j, next := node.call, node.next
-		if cp.unmet[j]--; cp.unmet[j] == 0 {
-			delete(cp.unmet, j)
+		if cp.revs[j]++; cp.revs[j] == 0 {
+			cp.blocked--
 			cp.ready = append(cp.ready, j)
 		}
 		node.next, cp.free = cp.free, n
@@ -205,7 +207,7 @@ func (cp *k8sCopy) reply(i int32, rev int64) {
 
 // finished reports whether the copy has sent the last call of the trace.
 func (cp *k8sCopy) finished() bool {
-	return cp.next == len(cp.t.Calls) && len(cp.ready) == 0 && len(cp.unmet) == 0 && cp.back < 0
+	return cp.next == len(cp.t.Calls) && len(cp.ready) == 0 && cp.blocked == 0 && cp.back < 0
 }
 
 // rev is the replay's revision for a revision of call i: of key's write

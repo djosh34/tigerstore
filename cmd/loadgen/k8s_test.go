@@ -225,7 +225,7 @@ func TestTxnKVs(t *testing.T) {
 func TestTally(t *testing.T) {
 	const key, other = 0, 1
 	tr := &k8strace.Trace{Keys: []string{"/registry/pods/ns/a", "/registry/pods/ns/b"}, Calls: make([]k8strace.Call, 1)}
-	cp := newCopy(tr, newK8sKeys(tr), &k8strace.Start{}, 0)
+	cp := newCopy(tr, newK8sKeys(tr), tr.From(0), 0)
 	cp.grants[0] = 5 // call 0 granted lease 1
 	n := int64(len(tr.Keys[key]) + len(cp.tag))
 	cmp := []k8strace.Compare{{Target: k8strace.TargetMod, Key: key, End: -1, Rev: 0}}

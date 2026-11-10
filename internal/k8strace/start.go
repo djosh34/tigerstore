@@ -7,9 +7,9 @@ type Start struct {
 	K      int
 	Items  []StartItem
 	Leases []int64 // TTLs
-	// itemOf maps a key to its item; leaseOf a lease of the trace to its
-	// index in Leases.
-	itemOf  map[int32]int32
+	// itemOf is, by key, its item's index plus one, 0 for none; leaseOf
+	// maps a lease of the trace to its index in Leases.
+	itemOf  []int32
 	leaseOf map[LeaseRef]int32
 }
 
@@ -25,7 +25,7 @@ type StartItem struct {
 
 // From returns the store before call k.
 func (t *Trace) From(k int) *Start {
-	s := &Start{K: k, itemOf: map[int32]int32{}, leaseOf: map[LeaseRef]int32{}}
+	s := &Start{K: k, itemOf: make([]int32, len(t.Keys)), leaseOf: map[LeaseRef]int32{}}
 	live := map[int32]StartItem{} // by key
 	leases := map[LeaseRef]int64{}
 	for i, ttl := range t.Leases {
@@ -111,8 +111,8 @@ func (t *Trace) From(k int) *Start {
 		} else {
 			it.Lease = 0
 		}
-		s.itemOf[it.Key] = int32(len(s.Items))
 		s.Items = append(s.Items, it)
+		s.itemOf[it.Key] = int32(len(s.Items))
 	}
 	return s
 }
@@ -120,8 +120,8 @@ func (t *Trace) From(k int) *Start {
 // Item returns the start's item of key if the write r left it, for a
 // compare that names r: a revision from before the start.
 func (s *Start) Item(key int32, r Rev) (int32, bool) {
-	i, ok := s.itemOf[key]
-	if !ok || s.Items[i].Writer != r {
+	i := s.itemOf[key] - 1
+	if i < 0 || s.Items[i].Writer != r {
 		return 0, false
 	}
 	return i, true
