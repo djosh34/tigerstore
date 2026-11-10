@@ -85,7 +85,9 @@ type conn struct {
 	fr   *http2.Framer // writes to out
 	br   frameReader   // reads from nc, owned by the reader goroutine
 	w    io.Writer     // writes to nc, owned by the writer goroutine
-	out  outBuf        // frames not yet written, owned by the writer goroutine
+	// writeBy is the write deadline set on nc, owned by the writer.
+	writeBy time.Time
+	out     outBuf // frames not yet written, owned by the writer goroutine
 
 	mu      sync.Mutex
 	streams streamTable
@@ -458,8 +460,13 @@ func (c *conn) flush() error {
 	if len(c.out) == 0 {
 		return nil
 	}
-	if err := c.nc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
-		return err
+	// Every write has at least half of writeTimeout; renewing the deadline
+	// only once half of it has passed spares a timer change per write.
+	if t := time.Now(); t.Add(writeTimeout / 2).After(c.writeBy) {
+		c.writeBy = t.Add(writeTimeout)
+		if err := c.nc.SetWriteDeadline(c.writeBy); err != nil {
+			return err
+		}
 	}
 	// The record layer seals in place, with a byte after the frames.
 	c.out = append(c.out, 0)[:len(c.out)]
