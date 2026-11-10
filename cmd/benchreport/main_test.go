@@ -142,7 +142,7 @@ func TestReportCeilings(t *testing.T) {
 		}
 	}
 	writeAt(t, dir, "0", "put-1k", "main-max-1.1.json", fmt.Sprintf(run, 0.81))
-	if err := report(io.Discard, dir, ""); !errors.Is(err, errGeneratorLimit) || !strings.Contains(err.Error(), "0.81 cores") {
+	if err := report(io.Discard, dir, ""); !errors.Is(err, errGeneratorLimit) || !strings.Contains(err.Error(), "0.81 of its core") {
 		t.Errorf("a generator at 0.81 cores gave %v", err)
 	}
 }
@@ -314,5 +314,28 @@ func TestFloor(t *testing.T) {
 	big := parts(load{Endpoints: 1, Turn: 100, Keys: 2e6, Bytes: 1 << 30, PerOp: perOp{KVs: 1}})
 	if big["index lookups"] != 100 || big["cold value reads"] != 50 {
 		t.Errorf("at 2 million keys and 1 GiB: lookups %g ns, cold reads %g ns, want 100 and 50", big["index lookups"], big["cold value reads"])
+	}
+}
+
+// TestReportGeneratorLimitFailsRun checks that a run in which the generator
+// used more than 0.8 of its core does not count: it is a failed run with
+// its cores as the cause, left out of the medians, and the bench fails.
+func TestReportGeneratorLimitFailsRun(t *testing.T) {
+	dir := t.TempDir()
+	writeAt(t, dir, "0", "put-1k", "main-max-1.1.json", `{"valid":true,"throughput":100000,"client_cores":0.9}`)
+	writeAt(t, dir, "0", "put-1k", "main-max-1.2.json", `{"valid":true,"throughput":50000,"client_cores":0.5}`)
+	var b strings.Builder
+	err := report(&b, dir, "")
+	if !errors.Is(err, errGeneratorLimit) || !errors.Is(err, errRunFailed) {
+		t.Fatalf("a run at 0.9 cores gave %v", err)
+	}
+	for _, want := range []string{
+		"| put-1k | main | 0 | 50,000 |",
+		"| 1 of 2 |",
+		"main max 1.1: the generator used 0.90 of its core, more than 0.8",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("no %q in\n%s", want, b.String())
+		}
 	}
 }

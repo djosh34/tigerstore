@@ -209,7 +209,11 @@ func report(w io.Writer, dir, traces string) error {
 			return fmt.Errorf("%s: %w in a run that did not fail", f, errInvalidResult)
 		}
 		if k.target != "etcd" && r.ClientCores > generatorCores {
-			problems = append(problems, fmt.Errorf("%w: %s at RTT %s ms, %s %s %s: %.2f cores", errGeneratorLimit, k.bench, k.rtt, k.target, k.mode, rep, r.ClientCores))
+			// The run does not count: it is a failed run, with the cause.
+			cause := fmt.Sprintf("the generator used %.2f of its core, more than %.1f", r.ClientCores, generatorCores)
+			failed[k] = append(failed[k], failure{rep, cause})
+			problems = append(problems, fmt.Errorf("%w: %s at RTT %s ms, %s %s %s: %s", errGeneratorLimit, k.bench, k.rtt, k.target, k.mode, rep, cause))
+			continue
 		}
 		r.Seed, _, _ = strings.Cut(rep, ".")
 		if r.Leader, err = leader(strings.TrimSuffix(f, ".json") + ".placement"); err != nil {
