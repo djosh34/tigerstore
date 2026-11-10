@@ -1,8 +1,8 @@
 // Command benchreport turns the loadgen results written by bench/run.sh into
-// Markdown tables with min, median and max of every per-run statistic, and
-// checks the bars of the latency bench.
+// Markdown tables with min, median and max of every per-run statistic,
+// seed by seed, and each store's share of its ceiling.
 //
-//	benchreport <dir>
+//	benchreport <dir> [<recordings>]
 //
 // <dir> holds one directory rtt-<ms> per round-trip time between nodes, each
 // with one directory per benchmark, with files named
@@ -10,23 +10,22 @@
 // and alone that only tigerstore targets run, and the run's placement in
 // <target>-<mode>-<seed>.<rep>.placement, which names its leader. A run that
 // failed has <target>-<mode>-<seed>.<rep>.failed with its cause, and its
-// result, if any, is left out. A ceiling.json in <dir> (cmd/ceiling) adds the runner, the
-// ceiling of each benchmark and each store's share of it; a
+// result, if any, is left out. A ceiling.json in <dir> (cmd/ceiling) adds
+// the runner, the ceilings and each store's share of them; a
 // generator-<benchmark>.json, loadgen's run against cmd/nullstore, adds the
 // generator's own ceiling.
 //
-// The ceiling of a benchmark is the most operations a second the runner
-// allows for the least work the operation must do. Its disk limit is the
-// disk's durable bandwidth over the bytes each operation must make durable
-// on three nodes, which share the one disk. Its CPU limit is the cores of
-// the nodes the generator sends to over the key and value bytes its reads
-// and watch events must carry, each byte encoded, encrypted and sent at
-// the runner's measured rates: three cores for mixed-k8s, the leader's one
-// for the rest. The ceiling is the lower of the two. The bytes per
-// operation are medians over the max runs of every store.
+// The ceiling of a benchmark, for each seed and RTT, is the most
+// operations a second the runner allows for the least work an operation
+// must do (ceiling.go): the lowest of the disk, loopback, the least leader
+// CPU from first principles (floor.go), and for k8s the recording's
+// dependent calls, whose recordings are in <recordings>, bench/recordings
+// by default.
 //
-// After the tables it exits 1 if a tigerstore run failed. A failed etcd run
-// is reported and is no error: etcd runs for comparison only.
+// After the tables it exits 1 if a tigerstore run failed, or if the
+// generator would need more than half its core at a workload's target. A
+// failed etcd run is reported and is no error: etcd runs for comparison
+// only.
 package main
 
 import (
@@ -489,7 +488,7 @@ func watchField(f func(result) float64) func(result) float64 {
 
 // benchOrder sorts by workload in the order of the issue, then by size.
 func benchOrder(a, b string) int {
-	order := []string{"put", "txn", "delete", "range", "list", "watch", "mixed"}
+	order := []string{"put", "txn", "delete", "range", "list", "watch", "k8s"}
 	wa, sa, _ := strings.Cut(a, "-")
 	wb, sb, _ := strings.Cut(b, "-")
 	if c := slices.Index(order, wa) - slices.Index(order, wb); c != 0 {
