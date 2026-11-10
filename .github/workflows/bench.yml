@@ -143,7 +143,7 @@ jobs:
             echo "both stores: 3 nodes on 127.0.0.1, client and peer TLS with client certificates, fresh data directory per run"
             echo "RTT between nodes (ms): $RTTS, netem on the peer ports of lo, half the RTT per packet, the same qdiscs at 0; client to node without delay (bench/netem.sh)"
             if [ "$BENCHMARK" = k8s ]; then
-              echo "k8s: a recorded Kubernetes 1.37 control plane per seed (bench/recordings), 64 copies of it on all endpoints, 3 connections x 64 streams and 500 µs write coalescing, the recorded watches; both stores GOMEMLIMIT=3GiB"
+              echo "k8s: a recorded Kubernetes 1.37 control plane per seed (bench/recordings), 64 copies of it on all endpoints, 3 connections x 64 streams, writes and reads coalesced over 1 ms, the recorded watches; both stores GOMEMLIMIT=3GiB"
             fi
             echo "seeds: $SEEDS"
             echo "both stores: --quota-backend-bytes 8 GiB; etcd only: --log-level warn, --peer-client-cert-auth, default safe persistence"

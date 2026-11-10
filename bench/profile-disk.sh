@@ -24,7 +24,7 @@ flags=(-keys 10000 -conns 6 -streams 512 -value-size 1024 -warmup 3s -duration 3
 endpoint_file=leader
 if [ "$bench" = k8s ]; then
 	wl=k8s
-	flags=(-conns 3 -streams 128 -coalesce 500us -copies 64 -traces "$(realpath "${TRACES:-$here/recordings}")" -seed "${SEED:-1}" -warmup 3s -duration 40s)
+	flags=(-conns 3 -streams 128 -coalesce 1ms -copies 64 -traces "$(realpath "${TRACES:-$here/recordings}")" -seed "${SEED:-1}" -warmup 3s -duration 40s)
 	endpoint_file=endpoints
 	export BENCH_GOMEMLIMIT=3GiB
 fi

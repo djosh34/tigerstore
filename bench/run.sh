@@ -120,8 +120,9 @@ concurrency=()
 if [ "$workload" = k8s ]; then
 	# Writes and reads on loopback cost the generator more than anything
 	# else, so it uses one connection per node, as an apiserver does, and
-	# at max holds requests back up to 500 µs to send many in a write.
-	concurrency=(-conns 3 -streams 64 -copies 64 -traces "$traces" -coalesce "${COALESCE:-500us}")
+	# at max holds requests back up to 1 ms to send many in a write, and
+	# waits as long before a read that would find nothing.
+	concurrency=(-conns 3 -streams 64 -copies 64 -traces "$traces" -coalesce "${COALESCE:-1ms}")
 	if [[ " ${modes[*]} " != *" generator "* ]]; then modes=(max); fi
 	# Up to about 1 GB of values per replica, as many as the 64 copies'
 	# starts hold, on the 16 GB runner.
