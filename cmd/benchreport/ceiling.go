@@ -176,7 +176,7 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 			}
 		}
 	}
-	p("\nShare is the median of the seed's max runs over its ceiling at that RTT. The last column is the most of its one core the generator used in any of those runs; a tigerstore run in which it used more than %.1f does not count, and the bench fails.\n", generatorCores)
+	p("\nShare is the median of the seed's max runs over its ceiling at that RTT. The last column is the most of its one core the generator used in any of those runs; a tigerstore run in which it used more than %.1f does not count: it is a failed run, left out of these medians, and the bench fails.\n", generatorCores)
 	return nil
 }
 
