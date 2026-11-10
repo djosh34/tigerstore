@@ -55,7 +55,7 @@ type k8sCopy struct {
 	free    int32 // the first free node (index + 1), 0 for none
 	unmet   map[int32]int32
 	ready   []int32
-	back     int32 // a call taken from ready that could not start, or -1
+	back    int32 // a call taken from ready that could not start, or -1
 }
 
 func newCopy(t *k8strace.Trace, keys *k8sKeys, start *k8strace.Start, id int) *k8sCopy {
