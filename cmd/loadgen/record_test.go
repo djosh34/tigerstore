@@ -13,9 +13,9 @@ import (
 )
 
 // TestRecordLayer talks to crypto/tls's server through the record layer.
-// The server sends session tickets after the handshake, which the record
-// layer drops; it echoes 200 KiB, which crosses many records both ways;
-// and its close_notify reads as the end.
+// The server echoes 200 KiB, which crosses many records both ways, and its
+// close_notify reads as the end. It sends no session ticket, as the client
+// keeps no session cache; TestSessionTicketLength takes one in.
 func TestRecordLayer(t *testing.T) {
 	ca, err := testcert.NewCA()
 	if err != nil {
