@@ -3,6 +3,9 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"errors"
+	"io"
+	"net"
 	"runtime"
 	"time"
 )
@@ -16,6 +19,10 @@ type primitives struct {
 	// TLS 1.3 records, AES-128-GCM, the cipher the stores negotiate.
 	Seal cost `json:"tls_seal"`
 	Open cost `json:"tls_open"`
+	// Loopback TCP: the writer's CPU per write, which on loopback also
+	// runs the receiver's TCP work, and the reader's per read.
+	Send cost `json:"tcp_send"`
+	Recv cost `json:"tcp_recv"`
 }
 
 // cost is a primitive's CPU time: per call, plus per byte.
@@ -89,5 +96,65 @@ func (p *primitives) measure(d time.Duration) error {
 	if err == nil {
 		err = openErr
 	}
+	if err != nil {
+		return err
+	}
+	const small, large = 4 << 10, 64 << 10
+	sendS, recvS, err := tcp(d, small)
+	if err != nil {
+		return err
+	}
+	sendL, recvL, err := tcp(d, large)
+	p.Send, p.Recv = fit(small, large, sendS, sendL), fit(small, large, recvS, recvL)
 	return err
+}
+
+// tcp writes size bytes at a time to a loopback TCP connection for d
+// while another thread reads them, size bytes a read at most, and returns
+// the CPU time of each side per call.
+func tcp(d time.Duration, size int) (sendNs, recvNs float64, err error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, 0, err
+	}
+	type result struct {
+		ns  float64
+		err error
+	}
+	read := make(chan result, 1)
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		c, err := ln.Accept()
+		if err != nil {
+			read <- result{err: err}
+			return
+		}
+		buf := make([]byte, size)
+		before, err := threadCPU()
+		var calls int64
+		for err == nil {
+			_, err = c.Read(buf)
+			calls++
+		}
+		after, cpuErr := threadCPU()
+		if errors.Is(err, io.EOF) {
+			err = nil
+		}
+		read <- result{float64((after - before).Nanoseconds()) / float64(calls), errors.Join(err, cpuErr, c.Close())}
+	}()
+	c, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		return 0, 0, errors.Join(err, ln.Close())
+	}
+	chunk := make([]byte, size)
+	var writeErr error
+	sendNs, err = perCall(d, func() {
+		if _, werr := c.Write(chunk); werr != nil {
+			writeErr = werr
+		}
+	})
+	err = errors.Join(err, writeErr, c.Close())
+	r := <-read
+	return sendNs, r.ns, errors.Join(err, r.err, ln.Close())
 }
