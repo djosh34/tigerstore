@@ -121,7 +121,8 @@ func appendVarintNZ(b []byte, num protowire.Number, v int64) []byte {
 // looks the key up once: over a trace's tens of thousands of keys, each
 // lookup is a cache miss.
 func (e *encoder) key(b []byte, num protowire.Number, k int32) ([]byte, int) {
-	name, at := e.cp.t.Keys[k], e.cp.keys.split[k]
+	key := &e.cp.keys.keys[k]
+	name, at := key.name, key.split
 	extra := e.cp.tag
 	switch at {
 	case keepKey:

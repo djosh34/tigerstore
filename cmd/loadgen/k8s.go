@@ -88,13 +88,20 @@ func (cp *k8sCopy) wait(w, j int32) {
 
 // k8sKeys says where each key of a trace gets a copy's tag.
 type k8sKeys struct {
-	// split is, by key, where the tag goes: after that many bytes, the
-	// key's watched prefix; keepKey for a watched prefix itself or its
-	// end, which every copy shares; prefixKey for a key under no watched
-	// prefix, which gets the copy's prefix in front.
-	split []int32
+	// keys are the trace's keys, each with where the tag goes, side by
+	// side, so a key costs one cache miss less.
+	keys []k8sKey
 	// cache marks, by call, the watch cache's calls (Trace.WatchCache).
 	cache []bool
+}
+
+// k8sKey is a key and where a copy's tag goes in it: after split bytes,
+// the key's watched prefix; keepKey for a watched prefix itself or its
+// end, which every copy shares; prefixKey for a key under no watched
+// prefix, which gets the copy's prefix in front.
+type k8sKey struct {
+	name  string
+	split int32
 }
 
 const (
@@ -117,16 +124,16 @@ func newK8sKeys(t *k8strace.Trace) *k8sKeys {
 			}
 		}
 	}
-	k := &k8sKeys{split: make([]int32, len(t.Keys)), cache: t.WatchCache()}
+	k := &k8sKeys{keys: make([]k8sKey, len(t.Keys)), cache: t.WatchCache()}
 	for i, name := range t.Keys {
-		k.split[i] = prefixKey
+		k.keys[i] = k8sKey{name: name, split: prefixKey}
 		if keep[name] {
-			k.split[i] = keepKey
+			k.keys[i].split = keepKey
 			continue
 		}
 		for _, p := range prefixes {
-			if strings.HasPrefix(name, p) && int32(len(p)) > k.split[i] {
-				k.split[i] = int32(len(p))
+			if strings.HasPrefix(name, p) && int32(len(p)) > k.keys[i].split {
+				k.keys[i].split = int32(len(p))
 			}
 		}
 	}
@@ -142,8 +149,9 @@ func (cp *k8sCopy) leftToCopy0(i int32) bool {
 
 // keyOf returns key k of copy cp.
 func (cp *k8sCopy) keyOf(k int32) []byte {
-	name := cp.t.Keys[k]
-	switch at := cp.keys.split[k]; at {
+	key := &cp.keys.keys[k]
+	name := key.name
+	switch at := key.split; at {
 	case keepKey:
 		return []byte(name)
 	case prefixKey:
