@@ -246,8 +246,8 @@ func (p *proxy) call(_ any, ss grpc.ServerStream) (callErr error) {
 				return
 			}
 			if err != nil {
-				cancel()
 				sent <- err
+				cancel()
 				return
 			}
 			r := k8strace.Record{Event: k8strace.EventReq, Call: id, Bytes: len(b)}
@@ -257,8 +257,8 @@ func (p *proxy) call(_ any, ss grpc.ServerStream) (callErr error) {
 			}
 			p.log.write(r)
 			if err := cs.SendMsg(&b); err != nil {
-				cancel()
 				sent <- err
+				cancel()
 				return
 			}
 		}

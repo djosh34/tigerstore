@@ -140,6 +140,13 @@ func (k *k8sKeys) cacheRead(c *k8strace.Call) bool {
 		c.Op.End >= 0 && k.split[c.Op.Key] == keepKey && c.Op.Limit != 1
 }
 
+// leftToCopy0 reports whether copy cp leaves call to copy 0: whole-resource
+// reads and progress requests come from kube-apiserver's watch cache, one
+// per resource, which a bigger cluster still has only one of.
+func (cp *k8sCopy) leftToCopy0(c *k8strace.Call) bool {
+	return cp.id != 0 && (cp.keys.cacheRead(c) || c.Kind == k8strace.CallProgress)
+}
+
 // appendKey appends key k of copy cp.
 func (cp *k8sCopy) appendKey(b []byte, k int32) []byte {
 	name := cp.t.Keys[k]
@@ -287,16 +294,13 @@ func (w *k8sLoad) start(c *conn, st *stream, limit int) bool {
 				break
 			}
 			call := &cp.t.Calls[i]
-			if call.Kind == k8strace.CallProgress {
-				w.progress(cp, i)
-				continue
-			}
-			// Whole-resource reads and progress requests come from
-			// kube-apiserver's watch cache, one per resource, which a
-			// bigger cluster still has only one of: copy 0 sends them.
-			if cp.id != 0 && (cp.keys.cacheRead(call) || call.Kind == k8strace.CallProgress) {
+			if cp.leftToCopy0(call) {
 				w.cacheReads++
 				cp.reply(i, 1)
+				continue
+			}
+			if call.Kind == k8strace.CallProgress {
+				w.progress(cp, i)
 				continue
 			}
 			if (call.Kind == k8strace.CallLeaseRevoke || call.Kind == k8strace.CallLeaseKeepAlive || call.Kind == k8strace.CallLeaseTTL) && cp.lease(call.Lease) == 0 {

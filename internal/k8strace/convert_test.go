@@ -219,7 +219,7 @@ func TestConvertRestartsAndExpiry(t *testing.T) {
 // TestConvertConflictOrder keeps the order of calls on a key that did not
 // overlap, and leaves calls that overlapped free to race: two puts of /k
 // in flight together wait on nothing; a GET sent after both answered waits
-// on the one that answered last.
+// on both, so neither can come after it.
 func TestConvertConflictOrder(t *testing.T) {
 	put := &Request{Put: &Put{Key: "/k", Size: 1}}
 	recs := []Record{
@@ -235,7 +235,7 @@ func TestConvertConflictOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := [][]int32{nil, nil, {0}}
+	want := [][]int32{nil, nil, {0, 1}}
 	for i, w := range want {
 		if !reflect.DeepEqual(tr.Calls[i].Waits, w) {
 			t.Errorf("call %d waits on %v, want %v", i, tr.Calls[i].Waits, w)

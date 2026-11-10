@@ -81,6 +81,7 @@ type call struct {
 	reqs    []*Request
 	resps   []*Response
 	start   int64
+	sent    int64 // the window call's request
 	touches []touch
 }
 
@@ -138,16 +139,17 @@ type converter struct {
 	headers   map[int64]int32 // revision: the last window call whose reply had it as its header
 	producers map[revKey]int32
 	grants    map[int64]int32 // lease ID: the window call that granted it
-	// By key, the last window call that had answered and wrote it, and
-	// the calls that had answered and only read it since. A call that
-	// comes after another on the same key has answered waits on it, if
-	// either writes: conflicts on a key keep the order they had, and calls
-	// that overlapped stay free to race.
-	lastWrite map[string]int32
-	reads     map[string][]int32
-	fixups    []fixup
-	watches   map[int64]*watchStream
-	started   bool
+	// By key, the window calls that had answered and wrote it, and those
+	// that only read it, each but those another of them came after. A
+	// call waits on every earlier call on its key that had answered before
+	// it was sent, if either writes: conflicts on a key keep the order
+	// they had, and calls that overlapped stay free to race. These lists
+	// hold the latest such calls; the waits of those reach the rest.
+	writes  map[string][]answered
+	reads   map[string][]answered
+	fixups  []fixup
+	watches map[int64]*watchStream
+	started bool
 	// The window's progress requests and the watch calls they went on.
 	progress []progressCall
 	// The leases alive when the window opened, in the order the trace
@@ -161,7 +163,7 @@ func newConverter(w Window) *converter {
 		state: map[string]stateKV{}, leases: map[int64]lease{},
 		seen: map[revKey]delivery{}, headers: map[int64]int32{}, producers: map[revKey]int32{},
 		grants: map[int64]int32{}, watches: map[int64]*watchStream{},
-		lastWrite: map[string]int32{}, reads: map[string][]int32{},
+		writes: map[string][]answered{}, reads: map[string][]answered{},
 	}
 }
 
@@ -274,6 +276,7 @@ func (c *converter) request(r *Record, cl *call) error {
 		cl.resps = nil
 	}
 	cl.index = int32(len(c.trace))
+	cl.sent = r.T
 	t := &Call{At: c.at(r.T), Kind: kind}
 	c.trace = append(c.trace, t)
 	q := r.Req
@@ -304,16 +307,41 @@ func (c *converter) request(r *Record, cl *call) error {
 	}
 	cl.touches = touches(q, cl.touches[:0])
 	for _, k := range cl.touches {
-		if w, ok := c.lastWrite[k.key]; ok {
-			c.wait(t, w)
+		for _, w := range c.writes[k.key] {
+			c.wait(t, w.call)
 		}
 		if k.write {
 			for _, r := range c.reads[k.key] {
-				c.wait(t, r)
+				c.wait(t, r.call)
 			}
 		}
 	}
 	return nil
+}
+
+// answered is a window call that has answered, and when it was sent.
+type answered struct {
+	call int32
+	sent int64
+	at   int64
+}
+
+// answer takes in that window call cl, sent at sent, answered at at: a
+// write takes the place of the calls on its keys that had answered before
+// it was sent, which it waits on; a read joins the reads.
+func (c *converter) answer(cl *call, at int64) {
+	a := answered{call: cl.index, sent: cl.sent, at: at}
+	after := func(l []answered) []answered {
+		return slices.DeleteFunc(l, func(x answered) bool { return x.at < a.sent })
+	}
+	for _, k := range cl.touches {
+		if k.write {
+			c.writes[k.key] = append(after(c.writes[k.key]), a)
+			c.reads[k.key] = after(c.reads[k.key])
+		} else {
+			c.reads[k.key] = append(c.reads[k.key], a)
+		}
+	}
 }
 
 // touch is a key a call reads or writes.
