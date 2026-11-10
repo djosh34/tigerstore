@@ -85,3 +85,56 @@ func TestRequestsDecode(t *testing.T) {
 		}
 	}
 }
+
+// TestCopyWaits sends a call only once the replies it waits on came, and
+// names the revisions those replies gave: a create, an update that waits
+// on it, and a read that waits on the update. A copy that starts at call
+// 1 has call 0 behind it, in its start.
+func TestCopyWaits(t *testing.T) {
+	tr := &k8strace.Trace{
+		Keys:    []string{"/registry/pods/", "/registry/pods/ns/p", "/registry/pods0"},
+		Watches: []k8strace.WatchStream{{Creates: []k8strace.Watch{{Key: 0, End: 2}}}},
+		Calls: []k8strace.Call{
+			{Kind: k8strace.CallTxn, Op: k8strace.Op{Kind: k8strace.OpTxn, Compare: []k8strace.Compare{{Target: k8strace.TargetMod, Key: 1}}, Success: []k8strace.Op{{Kind: k8strace.OpPut, Key: 1, End: -1, Size: 5}}}},
+			{Kind: k8strace.CallTxn, Waits: []int32{0}, Op: k8strace.Op{Kind: k8strace.OpTxn, Compare: []k8strace.Compare{{Target: k8strace.TargetMod, Key: 1, Rev: 1}}, Success: []k8strace.Op{{Kind: k8strace.OpPut, Key: 1, End: -1, Size: 6}}}},
+			{Kind: k8strace.CallRange, Waits: []int32{1}, Op: k8strace.Op{Kind: k8strace.OpRange, Key: 1, End: -1}},
+		},
+	}
+	keys := newK8sKeys(tr)
+	cp := newCopy(tr, keys, tr.From(0), 3)
+	if i, ok := cp.nextReady(); !ok || i != 0 {
+		t.Fatalf("first ready call %d, %v; want 0", i, ok)
+	}
+	if i, ok := cp.nextReady(); ok {
+		t.Fatalf("call %d is ready before call 0's reply", i)
+	}
+	cp.reply(0, 500)
+	if i, ok := cp.nextReady(); !ok || i != 1 {
+		t.Fatalf("after call 0's reply: %d, %v; want 1", i, ok)
+	}
+	if got := cp.rev(tr.Calls[1].Op.Compare[0].Rev, 1, 1); got != 500 {
+		t.Errorf("call 1 compares against %d, want call 0's revision 500", got)
+	}
+	cp.reply(1, 501)
+	if i, ok := cp.nextReady(); !ok || i != 2 || !cp.finished() {
+		t.Fatalf("after call 1's reply: %d, %v, finished %v", i, ok, cp.finished())
+	}
+	// The watched prefix stays shared; the pod gets the copy's tag.
+	if got := string(cp.appendKey(nil, 1)); got != "/registry/pods/c003.ns/p" {
+		t.Errorf("key %q", got)
+	}
+	if got := string(cp.appendKey(nil, 0)); got != "/registry/pods/" {
+		t.Errorf("watched prefix %q", got)
+	}
+
+	// From call 1 on, call 0 is the start's: call 1 is ready at once and
+	// compares against the revision the preload gives the key.
+	late := newCopy(tr, keys, tr.From(1), 4)
+	late.itemRevs[0] = 42
+	if i, ok := late.nextReady(); !ok || i != 1 {
+		t.Fatalf("a copy from call 1: %d, %v", i, ok)
+	}
+	if got := late.rev(tr.Calls[1].Op.Compare[0].Rev, 1, 1); got != 42 {
+		t.Errorf("compares against %d, want the preload's 42", got)
+	}
+}
