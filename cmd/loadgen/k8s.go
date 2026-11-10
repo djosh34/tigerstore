@@ -140,18 +140,6 @@ func (k *k8sKeys) cacheRead(c *k8strace.Call) bool {
 		c.Op.End >= 0 && k.split[c.Op.Key] == keepKey && c.Op.Limit != 1
 }
 
-// keyLen is the length of key k in copy cp.
-func (cp *k8sCopy) keyLen(k int32) int {
-	n := len(cp.t.Keys[k])
-	switch cp.keys.split[k] {
-	case keepKey:
-		return n
-	case prefixKey:
-		return n + len(cp.prefix)
-	}
-	return n + len(cp.tag)
-}
-
 // appendKey appends key k of copy cp.
 func (cp *k8sCopy) appendKey(b []byte, k int32) []byte {
 	name := cp.t.Keys[k]
@@ -384,27 +372,14 @@ func (w *k8sLoad) message(st *stream, m []byte) error {
 	call := &st.k8s
 	switch call.cp.t.Calls[call.i].Kind {
 	case k8strace.CallRange:
-		n, kvs, err := rangeBytes(m)
-		st.read += n
-		st.c.KVs += kvs
-		if err != nil {
-			return err
-		}
+		return rangeReply(st, m, true)
 	case k8strace.CallRangeStream:
 		r, err := bytesField(m, rangeStreamResponse)
 		if err != nil {
 			return err
 		}
-		n, kvs, err := rangeBytes(r)
-		st.read += n
-		st.c.KVs += kvs
-		if err != nil {
-			return err
-		}
-		if rev, ok := headerRev(r); ok {
-			st.rev = rev
-		}
-		return nil
+		// Only the last chunk has the header.
+		return rangeReply(st, r, false)
 	case k8strace.CallTxn:
 		rev, ok, err := txnOutcome(m)
 		if err != nil {
@@ -442,6 +417,31 @@ func (w *k8sLoad) done(st *stream, at int64, err error) {
 		call.cp.reply(call.i, st.rev)
 	}
 	w.wk.stats.complete(st, at, err)
+}
+
+// rangeReply takes in a RangeResponse in one pass: the key and value
+// bytes and the key-values it carried, and its header's revision, which
+// it must have if needRev.
+func rangeReply(st *stream, m []byte, needRev bool) error {
+	err := fields(m, func(num protowire.Number, _ uint64, b []byte) error {
+		//exhaustive:ignore // count and more are not needed
+		switch num {
+		case respHeader:
+			rev, err := varintField(b, headerRevision)
+			st.rev = int64(rev)
+			return err
+		case rangeKVs:
+			n, err := kvBytes(b)
+			st.read += n
+			st.c.KVs++
+			return err
+		}
+		return nil
+	})
+	if err == nil && needRev && st.rev == 0 {
+		err = errors.New("response has no header revision")
+	}
+	return err
 }
 
 // headerRev returns header.revision of a response, if it has a header.

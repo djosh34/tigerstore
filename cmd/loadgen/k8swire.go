@@ -108,10 +108,29 @@ func appendVarintNZ(b []byte, num protowire.Number, v int64) []byte {
 	return appendVarintField(b, num, uint64(v))
 }
 
-func (e *encoder) key(b []byte, num protowire.Number, k int32) []byte {
-	b = protowire.AppendTag(b, num, protowire.BytesType)
-	b = protowire.AppendVarint(b, uint64(e.cp.keyLen(k)))
-	return e.cp.appendKey(b, k)
+// key appends key k of the copy as field num and returns its length. It
+// looks the key up once: over a trace's tens of thousands of keys, each
+// lookup is a cache miss.
+func (e *encoder) key(b []byte, num protowire.Number, k int32) ([]byte, int) {
+	name, at := e.cp.t.Keys[k], e.cp.keys.split[k]
+	extra := e.cp.tag
+	switch at {
+	case keepKey:
+		extra = nil
+	case prefixKey:
+		extra = e.cp.prefix
+	}
+	n := len(name) + len(extra)
+	b = protowire.AppendVarint(protowire.AppendTag(b, num, protowire.BytesType), uint64(n))
+	switch at {
+	case keepKey:
+		b = append(b, name...)
+	case prefixKey:
+		b = append(append(b, extra...), name...)
+	default:
+		b = append(append(append(b, name[:at]...), extra...), name[at:]...)
+	}
+	return b, n
 }
 
 // end writes a range end, none for a single key.
@@ -119,7 +138,8 @@ func (e *encoder) end(b []byte, num protowire.Number, k int32) []byte {
 	if k < 0 {
 		return b
 	}
-	return e.key(b, num, k)
+	b, _ = e.key(b, num, k)
+	return b
 }
 
 func (e *encoder) value(b []byte, num protowire.Number, n int) []byte {
@@ -155,7 +175,7 @@ func (e *encoder) request(b []byte, c *k8strace.Call) []byte {
 func (e *encoder) op(b []byte, o *k8strace.Op, t *tally) []byte {
 	switch o.Kind {
 	case k8strace.OpRange:
-		b = e.key(b, rangeKey, o.Key)
+		b, _ = e.key(b, rangeKey, o.Key)
 		b = e.end(b, rangeEnd, o.End)
 		b = appendVarintNZ(b, rangeLimit, o.Limit)
 		b = appendVarintNZ(b, rangeRevision, e.cp.rev(o.Rev, -1, e.call))
@@ -163,19 +183,21 @@ func (e *encoder) op(b []byte, o *k8strace.Op, t *tally) []byte {
 		b = appendBool(b, rangeKeysOnly, o.Flags&k8strace.FlagKeysOnly != 0)
 		return appendBool(b, rangeCountOnly, o.Flags&k8strace.FlagCountOnly != 0)
 	case k8strace.OpPut:
-		b = e.key(b, putKey, o.Key)
+		var n int
+		b, n = e.key(b, putKey, o.Key)
 		b = e.value(b, putValue, int(o.Size))
 		b = appendVarintNZ(b, putLease, e.cp.lease(o.Lease, e.call))
 		b = appendBool(b, putPrevKV, o.Flags&k8strace.FlagPrevKV != 0)
 		b = appendBool(b, putIgnoreValue, o.Flags&k8strace.FlagIgnoreValue != 0)
 		b = appendBool(b, putIgnoreLease, o.Flags&k8strace.FlagIgnoreLease != 0)
-		t.bytes += int64(e.cp.keyLen(o.Key) + int(o.Size))
+		t.bytes += int64(n + int(o.Size))
 		t.writes++
 		return b
 	case k8strace.OpDelete:
-		b = e.key(b, delKey, o.Key)
+		var n int
+		b, n = e.key(b, delKey, o.Key)
 		b = e.end(b, delRangeEnd, o.End)
-		t.bytes += int64(e.cp.keyLen(o.Key))
+		t.bytes += int64(n)
 		t.writes++
 		t.deletes++
 		return appendBool(b, delPrevKV, o.Flags&k8strace.FlagPrevKV != 0)
@@ -195,7 +217,7 @@ func (e *encoder) txn(b []byte, o *k8strace.Op, ok, failed *tally) []byte {
 		m, start := openField(b, txnCompare)
 		m = appendVarintNZ(m, cmpResult, int64(c.Result))
 		m = appendVarintNZ(m, cmpTarget, int64(c.Target))
-		m = e.key(m, cmpKey, c.Key)
+		m, n := e.key(m, cmpKey, c.Key)
 		switch c.Target {
 		case k8strace.TargetVersion:
 			m = appendVarintField(m, cmpVersion, uint64(c.Value))
@@ -210,7 +232,7 @@ func (e *encoder) txn(b []byte, o *k8strace.Op, ok, failed *tally) []byte {
 		}
 		m = e.end(m, cmpRangeEnd, c.End)
 		b = closeField(m, start)
-		compared += int64(e.cp.keyLen(c.Key)) + revisionBytes
+		compared += int64(n) + revisionBytes
 		create = create || (c.Target == k8strace.TargetMod || c.Target == k8strace.TargetCreate) && c.Rev == 0
 	}
 	ok.bytes += compared

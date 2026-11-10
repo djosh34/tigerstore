@@ -71,7 +71,7 @@ func (s *session) openWatches() error {
 		c.held++
 		c.out = c.openStream(c.out, kw.st, paths[k8strace.CallProgress])
 		for _, x := range ws.Creates {
-			create = enc.key(create[:0], watchKey, x.Key)
+			create, _ = enc.key(create[:0], watchKey, x.Key)
 			create = enc.end(create, watchRangeEnd, x.End)
 			create = appendBool(create, watchProgress, x.Progress)
 			if len(x.Filters) > 0 {
@@ -184,7 +184,7 @@ func (p *k8sPreload) start(c *conn, st *stream, limit int) bool {
 		}
 		it := &x.cp.start.Items[x.i]
 		p.w.enc.cp = x.cp
-		p.put = p.w.enc.key(p.put[:0], putKey, it.Key)
+		p.put, _ = p.w.enc.key(p.put[:0], putKey, it.Key)
 		p.put = p.w.enc.value(p.put, putValue, int(it.Size))
 		if it.Lease != 0 {
 			p.put = appendVarintField(p.put, putLease, uint64(x.cp.leaseIDs[it.Lease-1]))
