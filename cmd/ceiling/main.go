@@ -60,6 +60,8 @@ type report struct {
 	EncodeNsPerByte  float64 `json:"encode_ns_per_byte"`
 	EncryptNsPerByte float64 `json:"encrypt_ns_per_byte"`
 	SendNsPerByte    float64 `json:"send_ns_per_byte"`
+	// Primitives are the steps of the least CPU an operation needs.
+	Primitives primitives `json:"primitives"`
 }
 
 type cell struct {
@@ -106,8 +108,10 @@ func (r *report) measure(dir string, size int64, dur, cpuTime time.Duration) err
 		return err
 	}
 	r.EncryptNsPerByte = perByte(cpuTime, seal)
-	r.SendNsPerByte, err = send(cpuTime)
-	return err
+	if r.SendNsPerByte, err = send(cpuTime); err != nil {
+		return err
+	}
+	return r.Primitives.measure(cpuTime)
 }
 
 func (r *report) disk(dir string, size int64, dur time.Duration) (err error) {
