@@ -159,8 +159,9 @@ func TestLostLanesCountThePeerOnce(t *testing.T) {
 		t.Fatalf("%d lanes never were up", want)
 	}
 	lanesUp(2)
-	// Node 1 counts a lane up once it has dialed; node 2 holds the
-	// connection once it has read its preface, a moment later (#606).
+	// Node 1 counts a lane up once it reads node 2's answer to its
+	// preface; node 2 answers before it holds the connection in inbound,
+	// so it may hold it a moment later (#606).
 	var conns []net.Conn
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
 		conns = conns[:0]
