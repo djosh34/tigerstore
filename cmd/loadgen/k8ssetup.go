@@ -28,7 +28,7 @@ func (s *session) setupK8s() error {
 	}
 	keys := newK8sKeys(t)
 	for i, wk := range s.workers {
-		s.k8s = append(s.k8s, &k8sLoad{wk: wk, calls: map[uint32]k8sCall{}, enc: encoder{values: values, off: i * len(values) / len(s.workers)}})
+		s.k8s = append(s.k8s, &k8sLoad{wk: wk, enc: encoder{values: values, off: i * len(values) / len(s.workers)}})
 	}
 	for id, k := range d.Starts {
 		cp := newCopy(t, keys, t.From(k), id)

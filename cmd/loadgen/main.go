@@ -684,10 +684,13 @@ func startWatches(cfg config, control *sync.WaitGroup, stop <-chan struct{}) ([]
 // time, so that progress requests from many calls go out together.
 func (c *conn) serveControl(stop <-chan struct{}, coalesce time.Duration) {
 	var flushed time.Time
+	timer := time.NewTimer(time.Hour)
+	defer timer.Stop()
 	for {
 		if wait := coalesce - time.Since(flushed); wait > 0 {
+			timer.Reset(wait)
 			select {
-			case <-time.After(wait):
+			case <-timer.C:
 			case <-stop:
 				return
 			}

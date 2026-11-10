@@ -236,7 +236,6 @@ type k8sLoad struct {
 	copies  []*k8sCopy
 	watches []*k8sWatch // shared by every copy
 	rr      int
-	calls   map[uint32]k8sCall
 	enc     encoder
 	buf     []byte
 	// compacted counts reads at a revision that another copy's
@@ -249,10 +248,12 @@ type k8sLoad struct {
 	cacheReads int64
 }
 
+// k8sCall is the call of the trace a stream carries, and what it writes
+// if its Txn's compares fail.
 type k8sCall struct {
-	cp         *k8sCopy
-	i          int32
-	ok, failed tally
+	cp     *k8sCopy
+	i      int32
+	failed tally
 }
 
 // wrote sets what st writes, as it is known so far.
@@ -296,7 +297,7 @@ func (w *k8sLoad) start(c *conn, st *stream, limit int) bool {
 			}
 			st.many = call.Kind == k8strace.CallRangeStream
 			c.startMessage(st, paths[call.Kind], w.buf)
-			w.calls[st.id] = k8sCall{cp: cp, i: i, ok: w.enc.ok, failed: w.enc.failed}
+			st.k8s = k8sCall{cp: cp, i: i, failed: w.enc.failed}
 			w.wrote(st, &w.enc.ok)
 			return true
 		}
@@ -334,7 +335,7 @@ func (w *k8sLoad) exhausted() bool {
 }
 
 func (w *k8sLoad) message(st *stream, m []byte) error {
-	call := w.calls[st.id]
+	call := &st.k8s
 	switch call.cp.t.Calls[call.i].Kind {
 	case k8strace.CallRange:
 		n, kvs, err := rangeBytes(m)
@@ -384,8 +385,7 @@ func (w *k8sLoad) message(st *stream, m []byte) error {
 }
 
 func (w *k8sLoad) done(st *stream, at int64, err error) {
-	call := w.calls[st.id]
-	delete(w.calls, st.id)
+	call := &st.k8s
 	c := &call.cp.t.Calls[call.i]
 	if err != nil && (c.Kind == k8strace.CallRange || c.Kind == k8strace.CallRangeStream) && c.Op.Rev != 0 &&
 		strings.Contains(err.Error(), "required revision has been compacted") {

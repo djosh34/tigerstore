@@ -63,8 +63,10 @@ type stream struct {
 	// node; read is the key and value bytes its answer carried. Both feed
 	// the ceilings of cmd/benchreport.
 	written, read int64
-	// rev is the header revision of the answer, for the k8s replay.
+	// rev is the header revision of the answer, and k8s the call of the
+	// k8s replay.
 	rev int64
+	k8s k8sCall
 	c   counts
 }
 
