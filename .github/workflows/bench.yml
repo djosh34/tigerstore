@@ -45,6 +45,10 @@ on:
       reps:
         description: repetitions of each seed
         default: "3"
+      profile_generator:
+        description: write loadgen's CPU profile of every run into the artifact
+        type: boolean
+        default: false
       layouts:
         description: extra max runs of the tigerstore refs in the put-1k and txn-1k jobs at the first RTT, tmpfs (all nodes on tmpfs) and alone (followers on tmpfs)
         default: ""
@@ -171,6 +175,7 @@ jobs:
           LAYOUT: 3 0 1 2
           MODES: ${{ inputs.modes || 'max rate' }}
           REPS: ${{ inputs.reps || '3' }}
+          PROFILE_GENERATOR: ${{ inputs.profile_generator && 'yes' || '' }}
           SEEDS: ${{ needs.plan.outputs.seeds }}
           LAYOUTS: ${{ (matrix.bench == 'put-1k' || matrix.bench == 'txn-1k') && inputs.layouts || '' }}
           BENCH: ${{ matrix.bench }}

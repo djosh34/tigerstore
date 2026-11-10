@@ -21,11 +21,15 @@ type phase struct {
 	// limit is the most requests in flight on the connection.
 	limit int
 	// coalesce, at max load, holds requests back for up to this long
-	// after the last write while at least half of limit is in flight,
-	// so that one write carries many: each write to loopback costs the
-	// generator microseconds. Zero writes at once.
+	// after the last write while coalesceInFlight requests, or half of
+	// limit, are in flight, so that one write carries many: each write
+	// to loopback costs the generator microseconds. Zero writes at once.
 	coalesce time.Duration
 }
+
+// coalesceInFlight is enough requests in flight that answers keep coming
+// while new requests wait to be written together.
+const coalesceInFlight = 64
 
 // worker drives one connection: it owns the writer side.
 type worker struct {
@@ -111,7 +115,7 @@ func (wk *worker) run(l load, p phase) error {
 			return err
 		}
 		over := (t >= p.stop && len(backlog) == 0) || exhausted
-		hold := p.rate == 0 && p.coalesce > 0 && !full && !over && inflight >= p.limit/2 && t-flushed < int64(p.coalesce)
+		hold := p.rate == 0 && p.coalesce > 0 && !full && !over && inflight >= min(p.limit/2, coalesceInFlight) && t-flushed < int64(p.coalesce)
 		if !hold {
 			if err := c.flush(); err != nil {
 				return err

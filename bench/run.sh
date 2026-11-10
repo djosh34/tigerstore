@@ -49,6 +49,8 @@
 #   SEEDS       space-separated seeds (default 1)
 #   REPS        repetitions of each seed (default 3)
 #   TRACES      k8s's recordings (default bench/recordings)
+#   PROFILE_GENERATOR  set to anything: every run writes loadgen's CPU
+#               profile of its measured window to <run>.loadgen.pprof
 #   LOADGEN     loadgen binary (default: loadgen in BINS)
 #   NULLSTORE   nullstore binary (default: nullstore in BINS)
 #   DATA        directory for cluster data, on the disk under test (default /tmp/bench-data)
@@ -199,6 +201,7 @@ once() {
 			-seed "$seed" \
 			${DISK:+-disk "$DISK"} \
 			-out "$run.json" \
+			${PROFILE_GENERATOR:+-cpuprofile "$run.loadgen.pprof"} \
 			"$@"; then
 			step "$run" "leader check" "$here/cluster.sh" check "$dir" || true
 		fi
