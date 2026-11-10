@@ -159,16 +159,25 @@ func TestLostLanesCountThePeerOnce(t *testing.T) {
 		t.Fatalf("%d lanes never were up", want)
 	}
 	lanesUp(2)
-	b.t.mu.Lock()
+	// Node 1 counts a lane up once it reads node 2's answer to its
+	// preface; node 2 answers before it holds the connection in inbound,
+	// so it may hold it a moment later (#606).
 	var conns []net.Conn
-	for c, in := range b.t.inbound {
-		if in.id == 1 {
-			conns = append(conns, c)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		conns = conns[:0]
+		b.t.mu.Lock()
+		for c, in := range b.t.inbound {
+			if in.id == 1 {
+				conns = append(conns, c)
+			}
 		}
-	}
-	b.t.mu.Unlock()
-	if len(conns) != 2 {
-		t.Fatalf("node 2 holds %d connections from node 1, want 2", len(conns))
+		b.t.mu.Unlock()
+		if len(conns) == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("node 2 holds %d connections from node 1, want 2", len(conns))
+		}
 	}
 	for i, c := range conns {
 		if err := c.Close(); err != nil {
