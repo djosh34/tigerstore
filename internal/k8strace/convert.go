@@ -319,20 +319,19 @@ func (c *converter) request(r *Record, cl *call) error {
 	return nil
 }
 
-// answered is a window call that has answered, and when it was sent.
+// answered is a window call that has answered, and when.
 type answered struct {
 	call int32
-	sent int64
 	at   int64
 }
 
-// answer takes in that window call cl, sent at sent, answered at at: a
-// write takes the place of the calls on its keys that had answered before
-// it was sent, which it waits on; a read joins the reads.
+// answer takes in that window call cl answered at at: a write takes the
+// place of the calls on its keys that had answered before it was sent,
+// which it waits on; a read joins the reads.
 func (c *converter) answer(cl *call, at int64) {
-	a := answered{call: cl.index, sent: cl.sent, at: at}
+	a := answered{call: cl.index, at: at}
 	after := func(l []answered) []answered {
-		return slices.DeleteFunc(l, func(x answered) bool { return x.at < a.sent })
+		return slices.DeleteFunc(l, func(x answered) bool { return x.at < cl.sent })
 	}
 	for _, k := range cl.touches {
 		if k.write {

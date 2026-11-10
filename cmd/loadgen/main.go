@@ -110,16 +110,15 @@ func parseFlags(args []string) (config, error) {
 		return cfg, errors.New("-value-size must be at least 8, to hold the watch timestamp")
 	case cfg.workload == "k8s" && cfg.copies < cfg.conns:
 		return cfg, errors.New("k8s needs -copies >= -conns")
-	case cfg.workload == "k8s":
-		if err := traceDir(cfg.traces); err != nil {
-			return cfg, err
-		}
 	case cfg.workload == "watch" && cfg.watchers < 1:
 		return cfg, errors.New("watch needs -watchers >= 1")
 	case cfg.ramp && (cfg.rate > 0 || cfg.workload == "delete" || cfg.workload == "watch"):
 		return cfg, errors.New("-ramp needs max load (-rate 0) and a workload that does not run out of keys or watch")
 	case cfg.rate < 0 || cfg.preloadRate < 0 || math.IsNaN(cfg.rate) || math.IsInf(cfg.rate, 0) || math.IsNaN(cfg.preloadRate) || math.IsInf(cfg.preloadRate, 0) || cfg.duration <= 0 || cfg.warmup < 0:
 		return cfg, errors.New("need finite non-negative -rate and -preload-rate, -duration > 0 and -warmup >= 0")
+	}
+	if cfg.workload == "k8s" {
+		return cfg, traceDir(cfg.traces)
 	}
 	return cfg, nil
 }

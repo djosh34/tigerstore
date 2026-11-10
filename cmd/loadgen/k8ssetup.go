@@ -246,8 +246,9 @@ type k8sResult struct {
 	// Skipped lease calls whose lease the copy's start no longer had.
 	Compacted int64 `json:"compacted"`
 	Skipped   int64 `json:"skipped"`
-	// CacheReads counts reads of whole watched resources that copies
-	// other than 0 left out (cacheRead).
+	// CacheReads counts the watch cache's calls, reads of whole watched
+	// resources and progress requests, that copies other than 0 left out
+	// (leftToCopy0).
 	CacheReads int64 `json:"cache_reads"`
 }
 

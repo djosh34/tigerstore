@@ -239,3 +239,26 @@ func TestLeftToCopy0(t *testing.T) {
 		t.Error("copy 1 leaves the list and the progress request, and sends the GET")
 	}
 }
+
+// TestK8sFlags refuses bad flags for k8s as for any workload, and a
+// -traces that is no directory.
+func TestK8sFlags(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct {
+		name string
+		args []string
+		ok   bool
+	}{
+		{"good", []string{"-traces", dir}, true},
+		{"no duration", []string{"-traces", dir, "-duration", "0"}, false},
+		{"negative rate", []string{"-traces", dir, "-rate", "-5"}, false},
+		{"ramp at a rate", []string{"-traces", dir, "-ramp", "-rate", "100"}, false},
+		{"fewer copies than connections", []string{"-traces", dir, "-copies", "2", "-conns", "3"}, false},
+		{"no traces", []string{"-traces", filepath.Join(dir, "none")}, false},
+	} {
+		_, err := parseFlags(append([]string{"-workload", "k8s"}, c.args...))
+		if (err == nil) != c.ok {
+			t.Errorf("%s: error %v", c.name, err)
+		}
+	}
+}

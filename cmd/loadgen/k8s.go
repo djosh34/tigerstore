@@ -265,8 +265,9 @@ type k8sLoad struct {
 	compacted int64
 	// skipped counts lease calls whose lease the start no longer has.
 	skipped int64
-	// cacheReads counts reads of a whole watched resource that copies
-	// other than 0 left to copy 0.
+	// cacheReads counts the watch cache's calls, reads of a whole watched
+	// resource and progress requests, that copies other than 0 left to
+	// copy 0 (leftToCopy0).
 	cacheReads int64
 }
 
