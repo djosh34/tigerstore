@@ -200,6 +200,10 @@ func (l *journal) close() error {
 	return errors.Join(l.err, l.gz.Close(), l.f.Close())
 }
 
+// forwarded, if set, runs when a forwarder has received a request and
+// before it logs it: a test holds it there to stop the proxy meanwhile.
+var forwarded func()
+
 // proxy forwards the calls of one listener to its node.
 type proxy struct {
 	log     *journal
@@ -257,6 +261,9 @@ func (p *proxy) call(_ any, ss grpc.ServerStream) (callErr error) {
 				sent <- err
 				cancel()
 				return
+			}
+			if forwarded != nil {
+				forwarded()
 			}
 			r := k8strace.Record{Event: k8strace.EventReq, Call: id, Bytes: len(b)}
 			r.Req, err = decodeRequest(method, b)
