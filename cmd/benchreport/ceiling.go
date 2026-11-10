@@ -162,7 +162,7 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 					}
 					got := medianOf(rs, throughput)
 					goal := targetShare * c
-					cores := medianOf(rs, func(r result) float64 { return generatorAt(r, goal) })
+					cores := medianOf(rs, func(r result) float64 { return r.ClientCPUUsPerOp }) * goal / 1e6
 					p("| %s | %s | %s | %s | %s | %.1f%% | %s | %.2f |\n", bench, seed, rtt, target, thousands(got), 100*got/c, thousands(goal), cores)
 					if target != "etcd" && cores > halfCore {
 						problems = append(problems, fmt.Errorf("%w: %s seed %s at RTT %s ms, %s: %.2f cores at %s ops/s", errGeneratorLimit, bench, seed, rtt, target, cores, thousands(goal)))
@@ -171,38 +171,8 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 			}
 		}
 	}
-	p("\nShare is the median of the seed's max runs over its ceiling at that RTT. Generator cores at the target is the median over those runs of what loadgen would use at the target rate: a straight line through the cores it used at each step of the run's ramp, against the step's throughput, taken at the target, but never less than the most cores a step used (generatorAt). Above %.1f the generator would be the limit, and the bench fails.\n", halfCore)
+	p("\nShare is the median of the seed's max runs over its ceiling at that RTT. Generator cores at the target is loadgen's CPU per operation in those runs times the target rate; above %.1f the generator would be the limit, and the bench fails.\n", halfCore)
 	return problems, nil
-}
-
-// generatorAt estimates the cores loadgen would use at rate ops/s from
-// run r. The ramp measured them at several rates: a least-squares line
-// through those steps, taken at rate, and never less than the most any
-// step used. loadgen's cores do not grow in proportion to its rate, since
-// each read and write carries more calls as the rate rises, so a line
-// through the steps is what the measurements support. A run without a
-// ramp of two steps or more is taken in proportion, its CPU per
-// operation times the rate.
-func generatorAt(r result, rate float64) float64 {
-	if len(r.Ramp) < 2 {
-		return r.ClientCPUUsPerOp * rate / 1e6
-	}
-	var n, sx, sy, sxx, sxy, most float64
-	for _, s := range r.Ramp {
-		n++
-		sx += s.Throughput
-		sy += s.ClientCores
-		sxx += s.Throughput * s.Throughput
-		sxy += s.Throughput * s.ClientCores
-		most = max(most, s.ClientCores)
-	}
-	d := n*sxx - sx*sx
-	if d <= 0 {
-		return r.ClientCPUUsPerOp * rate / 1e6
-	}
-	slope := (n*sxy - sx*sy) / d
-	at := (sy - slope*sx) / n
-	return max(at+slope*rate, most)
 }
 
 // loadOf is what the operations of rs carried: medians over the runs.

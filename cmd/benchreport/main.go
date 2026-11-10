@@ -76,14 +76,8 @@ type result struct {
 	MinWrittenBytesPerOp float64   `json:"min_written_bytes_per_op"`
 	MinReadBytesPerOp    float64   `json:"min_read_bytes_per_op"`
 	RampClimbing         bool      `json:"ramp_climbing"`
-	// Ramp is each step of a max run: its throughput and the cores the
-	// generator used.
-	Ramp []struct {
-		Throughput  float64 `json:"throughput"`
-		ClientCores float64 `json:"client_cores"`
-	} `json:"ramp"`
-	PerOp perOp `json:"per_op"`
-	K8s   *struct {
+	PerOp                perOp     `json:"per_op"`
+	K8s                  *struct {
 		Shape  string `json:"shape"`
 		Copies int    `json:"copies"`
 	} `json:"k8s"`

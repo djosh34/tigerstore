@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -278,37 +277,6 @@ func TestReportShapes(t *testing.T) {
 	} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("no line %q in\n%s", want, b.String())
-		}
-	}
-}
-
-// TestGeneratorAt reads the generator's cores at a target off its ramp: a
-// line through the steps, at least the most a step used, and in proportion
-// to the rate without a ramp.
-func TestGeneratorAt(t *testing.T) {
-	ramp := func(steps ...[2]float64) result {
-		var r result
-		r.ClientCPUUsPerOp = 3
-		for _, s := range steps {
-			r.Ramp = append(r.Ramp, struct {
-				Throughput  float64 `json:"throughput"`
-				ClientCores float64 `json:"client_cores"`
-			}{s[0], s[1]})
-		}
-		return r
-	}
-	for _, c := range []struct {
-		name string
-		r    result
-		want float64
-	}{
-		{"cores grow with the rate", ramp([2]float64{50000, 0.2}, [2]float64{100000, 0.3}), 0.4},
-		{"flat cores stay flat", ramp([2]float64{50000, 0.34}, [2]float64{100000, 0.34}), 0.34},
-		{"falling cores count the most a step used", ramp([2]float64{50000, 0.4}, [2]float64{100000, 0.3}), 0.4},
-		{"no ramp: in proportion", ramp([2]float64{100000, 0.3}), 0.45},
-	} {
-		if got := generatorAt(c.r, 150000); math.Abs(got-c.want) > 1e-9 {
-			t.Errorf("%s: %.4f cores, want %.4f", c.name, got, c.want)
 		}
 	}
 }
