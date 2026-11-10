@@ -15,6 +15,8 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+
+	"github.com/djosh34/tigerstore/internal/peer"
 )
 
 // linkProxy forwards one directed peer link. stall makes the connections
@@ -100,15 +102,18 @@ func (p *linkProxy) serve() {
 // TestStalledPeerLinkKeepsQuorum runs every peer link through a proxy and
 // stalls the leader's link to one follower while a client writes 64 KiB
 // values through the other follower. The leader's writer to the stalled
-// follower backs up until its write deadline drops the connection; until
-// then and after, the leader and the other follower are a quorum, so every
-// write must commit within 10 election timeouts.
+// follower backs up until its write deadline, or the follower's read
+// deadline, drops the connection, both 10 s here; until then and after,
+// the leader and the other follower are a quorum, so every write must
+// commit well within that.
 func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
+	const timeout = 10 * time.Second
 	proxies := map[[2]uint64]*linkProxy{}
 	c := newClusterWith(t, func(c *cluster) {
 		// The 64 KiB puts below make fsyncs slow on a shared runner; 50 ms
 		// ticks give the 10 election timeouts below 5 s.
 		c.tick = 50 * time.Millisecond
+		c.peerConfig = func(cfg *peer.Config) { cfg.WriteTimeout, cfg.ReadTimeout = timeout, timeout }
 		c.via = map[[2]uint64]string{}
 		for from := uint64(1); from <= 3; from++ {
 			for to := uint64(1); to <= 3; to++ {
@@ -148,9 +153,10 @@ func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
 	before := proxy.accepted.Load()
 	proxy.stall()
 
-	// Well under the peer's 5 s write deadline, so a leader held up by the
-	// stalled link fails here.
-	bound := time.Second
+	// Well under the deadlines, so a leader held up by the stalled
+	// link fails here. A sync of the shared runner's disk can take over a
+	// second (#608).
+	bound := 4 * time.Second
 	value := bytes.Repeat([]byte("v"), 64<<10)
 	deadline := time.Now().Add(30 * time.Second)
 	puts := 0
