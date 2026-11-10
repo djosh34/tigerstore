@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -363,3 +364,37 @@ type handlerFunc func(error)
 
 func (handlerFunc) message(*stream, []byte) error        { return nil }
 func (h handlerFunc) done(_ *stream, _ int64, err error) { h(err) }
+
+// TestKeepsTable tells header blocks that add to HPACK's dynamic table
+// from those that only use it: the encoder indexes new fields the first
+// time it sends them and refers to them after.
+func TestKeepsTable(t *testing.T) {
+	var buf bytes.Buffer
+	enc := hpack.NewEncoder(&buf)
+	block := func(fields ...hpack.HeaderField) []byte {
+		buf.Reset()
+		for _, f := range fields {
+			if err := enc.WriteField(f); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return slices.Clone(buf.Bytes())
+	}
+	trailers := []hpack.HeaderField{{Name: "grpc-status", Value: "0"}, {Name: "grpc-message", Value: ""}}
+	if keepsTable(block(trailers...)) {
+		t.Error("the first block adds its fields to the table")
+	}
+	if !keepsTable(block(trailers...)) {
+		t.Error("the same fields again only refer to the table")
+	}
+	if !keepsTable(block(hpack.HeaderField{Name: "x-secret", Value: "1", Sensitive: true})) {
+		t.Error("a never-indexed field leaves the table alone")
+	}
+	enc.SetMaxDynamicTableSize(100)
+	if keepsTable(block(trailers...)) {
+		t.Error("a size update changes the table")
+	}
+	if keepsTable([]byte{0xff}) {
+		t.Error("a block cut short is not known to keep the table")
+	}
+}

@@ -121,6 +121,8 @@ type conn struct {
 	hdrStream    uint32
 	inBlock      bool // a header block of hdrStream waits for its CONTINUATION
 	hdrEnd       bool
+	continued    bool                 // the block being decoded came in more than one frame
+	hdrCache     map[string]hdrFields // blocks that keep the table, decoded
 	hdrStatus    string
 	grpcStatus   string
 	grpcMessage  string
@@ -679,13 +681,7 @@ func (c *conn) messages(st *stream, p []byte) error {
 }
 
 func (c *conn) onHeaderBlock(frag []byte, end bool) error {
-	if _, err := c.dec.Write(frag); err != nil {
-		return err
-	}
-	if !end {
-		return nil
-	}
-	if err := c.dec.Close(); err != nil {
+	if err := c.decode(frag, end); err != nil || !end {
 		return err
 	}
 	c.mu.Lock()
@@ -716,6 +712,106 @@ func (c *conn) onHeaderBlock(frag []byte, end bool) error {
 	}
 	c.finish(st, err)
 	return nil
+}
+
+// decode decodes a fragment of a header block into the hdr fields. A
+// whole block that leaves HPACK's dynamic table as it was decodes the same
+// way until another block changes the table, so its fields are kept and
+// the next such block is not decoded again: servers send the same few
+// blocks for every answer.
+func (c *conn) decode(frag []byte, end bool) error {
+	whole := end && !c.continued
+	c.continued = !end
+	if whole {
+		if f, ok := c.hdrCache[string(frag)]; ok {
+			c.hdrStatus, c.grpcStatus, c.grpcMessage, c.hasGRPCState = f.status, f.grpcStatus, f.grpcMessage, f.hasGRPCState
+			return nil
+		}
+	}
+	if _, err := c.dec.Write(frag); err != nil {
+		return err
+	}
+	if !end {
+		return nil
+	}
+	if err := c.dec.Close(); err != nil {
+		return err
+	}
+	switch {
+	case !whole || !keepsTable(frag):
+		clear(c.hdrCache)
+	case len(c.hdrCache) < 64:
+		if c.hdrCache == nil {
+			c.hdrCache = map[string]hdrFields{}
+		}
+		c.hdrCache[string(frag)] = hdrFields{c.hdrStatus, c.grpcStatus, c.grpcMessage, c.hasGRPCState}
+	}
+	return nil
+}
+
+// hdrFields are the fields of a decoded header block that loadgen reads.
+type hdrFields struct {
+	status, grpcStatus, grpcMessage string
+	hasGRPCState                    bool
+}
+
+// keepsTable reports whether an HPACK header block leaves the dynamic
+// table as it was: it has no literal with incremental indexing and no
+// table size update (RFC 7541, 6). A block it cannot read does not.
+func keepsTable(b []byte) bool {
+	for len(b) > 0 {
+		var ok bool
+		switch first := b[0]; {
+		case first&0x80 != 0: // indexed field
+			_, b, ok = hpackInt(b, 7)
+		case first&0xc0 == 0x40, first&0xe0 == 0x20: // adds to the table, or resizes it
+			return false
+		default: // literal without indexing, or never indexed
+			var index uint64
+			index, b, ok = hpackInt(b, 4)
+			if ok && index == 0 {
+				b, ok = hpackString(b)
+			}
+			if ok {
+				b, ok = hpackString(b)
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// hpackInt reads an integer with an n-bit prefix (RFC 7541, 5.1).
+func hpackInt(b []byte, n uint) (uint64, []byte, bool) {
+	if len(b) == 0 {
+		return 0, nil, false
+	}
+	limit := uint64(1)<<n - 1
+	v := uint64(b[0]) & limit
+	b = b[1:]
+	if v < limit {
+		return v, b, true
+	}
+	for shift := uint(0); len(b) > 0 && shift < 63; shift += 7 {
+		v += uint64(b[0]&0x7f) << shift
+		last := b[0]&0x80 == 0
+		b = b[1:]
+		if last {
+			return v, b, true
+		}
+	}
+	return 0, nil, false
+}
+
+// hpackString skips a string literal (RFC 7541, 5.2).
+func hpackString(b []byte) ([]byte, bool) {
+	n, b, ok := hpackInt(b, 7)
+	if !ok || n > uint64(len(b)) {
+		return nil, false
+	}
+	return b[n:], true
 }
 
 func grpcError(code, message string) error {
