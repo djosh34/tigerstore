@@ -89,6 +89,8 @@ func (p memPeer) Close() error { return nil }
 
 func (p memPeer) SetPeers(map[uint64]string, []uint64) {}
 
+func (memPeer) HeldEntries(uint64) bool { return false }
+
 func (p memPeer) ActiveSince(id uint64) time.Time {
 	p.net.mu.Lock()
 	defer p.net.mu.Unlock()

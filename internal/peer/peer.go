@@ -57,6 +57,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/bufconn"
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -78,6 +79,9 @@ type Transport interface {
 	// ActiveSince is since when this node has had a connection to peer
 	// id, the zero time while it has none.
 	ActiveSince(id uint64) time.Time
+	// HeldEntries reports whether the connection to peer id carries the
+	// messages of held entries (core.HeldForm).
+	HeldEntries(id uint64) bool
 	Close() error
 }
 
@@ -160,13 +164,17 @@ const (
 	// minVersion and maxVersion are the protocol versions this binary
 	// speaks. Version 0 stands for the unversioned protocol from before
 	// version 1. Version 2 added the dialer's address to the preface
-	// (#250), and version 3 the cluster ID (#283). No release spoke
+	// (#250), version 3 the cluster ID (#283), and version 4 the messages
+	// of held entries (core.HeldForm, #602). No release spoke
 	// version 1, and only v0.1.0 spoke version 2, which no cluster runs,
 	// so this binary speaks neither (owner, round 14 of #498). A release
 	// that raises maxVersion keeps minVersion at or below the previous
 	// release's maxVersion, so that nodes can be upgraded one at a time.
 	minVersion = 3
-	maxVersion = 3
+	maxVersion = 4
+	// heldVersion is the first version that carries the messages of held
+	// entries.
+	heldVersion = 4
 )
 
 // magic starts the preface.
@@ -366,6 +374,14 @@ func (t *TCP) ActiveSince(id uint64) time.Time {
 		return time.Unix(0, ns)
 	}
 	return time.Time{}
+}
+
+// HeldEntries reports whether the connection to peer id speaks a version
+// that carries the messages of held entries. A connection made later to an
+// older binary drops those still queued (sender.write).
+func (t *TCP) HeldEntries(id uint64) bool {
+	s, ok := t.peer(id)
+	return ok && s.version.Load() >= heldVersion
 }
 
 // peer returns the sender of peer id.
@@ -1069,7 +1085,7 @@ func (s *sender) runLane(l *lane) {
 		}
 		backoff = 50 * time.Millisecond
 		s.laneUp(v)
-		err = s.connected(ctx, c, l)
+		err = s.connected(ctx, c, l, v)
 		failed := err != nil && ctx.Err() == nil
 		s.laneDown(failed)
 		s.reportWaits(l)
@@ -1124,7 +1140,7 @@ func (s *sender) laneDown(failed bool) {
 // so a read ends only when the connection does: a node with nothing to
 // send still sees the peer close it, as when the cluster removed this
 // node, and dials again to hear why (#263).
-func (s *sender) connected(ctx context.Context, c net.Conn, l *lane) error {
+func (s *sender) connected(ctx context.Context, c net.Conn, l *lane, v byte) error {
 	ctx, stop := context.WithCancel(ctx)
 	var rerr error
 	read := make(chan struct{})
@@ -1138,7 +1154,7 @@ func (s *sender) connected(ctx context.Context, c net.Conn, l *lane) error {
 			rerr = err
 		}
 	}()
-	err := s.write(ctx, c, l)
+	err := s.write(ctx, c, l, v)
 	stop()
 	s.t.untrack(c)
 	<-read
@@ -1278,10 +1294,11 @@ func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) (byte, e
 	return v, c.SetDeadline(time.Time{})
 }
 
-// write sends the frames of lane l until the connection fails or the
-// transport closes. Frames gather above TLS, so that small ones share a
-// record, and the records under it, so that they share a system call.
-func (s *sender) write(ctx context.Context, c net.Conn, l *lane) error {
+// write sends the frames of lane l, on a connection of version v, until
+// the connection fails or the transport closes. Frames gather above TLS,
+// so that small ones share a record, and the records under it, so that
+// they share a system call.
+func (s *sender) write(ctx context.Context, c net.Conn, l *lane, v byte) error {
 	w := bufio.NewWriterSize(c, ioBuffer)
 	under := bufconn.Under(c)
 	if under != nil {
@@ -1302,6 +1319,12 @@ func (s *sender) write(ctx context.Context, c net.Conn, l *lane) error {
 		m, ok := s.next(ctx, l)
 		if !ok {
 			return nil
+		}
+		if v < heldVersion && core.HeldForm(m) {
+			// Queued while the link spoke a newer version: an older peer
+			// would take a named entry for its data. Raft sends again
+			// what the follower misses, in full now (HeldEntries).
+			continue
 		}
 		n := proto.Size(m)
 		if n > maxFrame {

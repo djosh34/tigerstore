@@ -38,6 +38,9 @@ type memCluster struct {
 	noSpace int
 	// onReply lets a test inspect expected errors instead of failing on them.
 	onReply func(int, Reply)
+	// drop, if set, takes the messages it returns true for out of
+	// delivery.
+	drop func(*raftpb.Message) bool
 }
 
 func newMemCluster(t *testing.T, change func(*Config)) *memCluster {
@@ -132,7 +135,7 @@ func (c *memCluster) step() {
 			c.msgs = append(c.msgs, m)
 			continue
 		}
-		if c.down[m.GetTo()-1] || c.down[m.GetFrom()-1] {
+		if c.down[m.GetTo()-1] || c.down[m.GetFrom()-1] || c.drop != nil && c.drop(m) {
 			continue
 		}
 		if err := c.nodes[m.GetTo()-1].Step(m); err != nil && !errors.Is(err, errFromRemoved) {

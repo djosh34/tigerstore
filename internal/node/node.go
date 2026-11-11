@@ -868,7 +868,7 @@ func (n *Node) open() error {
 	}
 	cfg := n.cfg.Core
 	cfg.Boot, cfg.Run = rand.Uint64(), run
-	cfg.ConnectedTicks = n.connectedTicks
+	cfg.ConnectedTicks, cfg.HeldEntries = n.connectedTicks, n.heldEntries
 	cfg.Timer = newTimer(n.cfg.Metrics, cmp.Or(n.cfg.WarningApplyDuration, warningApply), n.logf)
 	c, err := core.New(cfg, rec, n.log)
 	if err != nil {
@@ -939,6 +939,13 @@ func (n *Node) setMembers(ms []*pb.Member) {
 
 // connectedTicks is how many ticks the transport has had a connection
 // to peer id, -1 while it has none or Run has not started.
+// heldEntries is core.Config.HeldEntries: whether the transport's
+// connection to peer id carries the messages of held entries.
+func (n *Node) heldEntries(id uint64) bool {
+	t, ok := n.transport.Load().(peer.Transport)
+	return ok && t.HeldEntries(id)
+}
+
 func (n *Node) connectedTicks(id uint64) int64 {
 	t, ok := n.transport.Load().(peer.Transport)
 	if !ok {

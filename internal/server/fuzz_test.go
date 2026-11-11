@@ -35,6 +35,7 @@ func (alone) Call(context.Context, uint64, []byte) ([]byte, error) {
 }
 func (alone) SetPeers(map[uint64]string, []uint64) {}
 func (alone) ActiveSince(uint64) time.Time         { return time.Time{} }
+func (alone) HeldEntries(uint64) bool              { return false }
 func (alone) Close() error                         { return nil }
 
 var (
