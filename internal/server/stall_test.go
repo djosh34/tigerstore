@@ -125,9 +125,9 @@ func (p *linkProxy) serve() {
 // TestStalledPeerLinkKeepsQuorum runs every peer link through a proxy and
 // stalls the leader's link to one follower while a client writes 64 KiB
 // values through the leader. Writes through a follower would cross the
-// stalled link only by their key (core/held.go) and never fill it. The leader's writer to the stalled
-// follower backs up until its write deadline, 10 s here, drops the
-// connection; until then and after, the leader and the other follower are
+// stalled link only by their key (core/held.go) and never fill it. The
+// leader's writer to the stalled follower backs up until its write
+// deadline, 10 s here, drops the connection; until then and after, the leader and the other follower are
 // a quorum, so every write must commit well within that.
 func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
 	const writeTimeout = 10 * time.Second

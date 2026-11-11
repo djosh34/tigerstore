@@ -319,3 +319,64 @@ func TestHeldFormsNeverReachAnOlderPeer(t *testing.T) {
 		t.Fatal("HeldEntries reports a connection of version 3 as carrying held entries")
 	}
 }
+
+// TestHeldFormsDroppedAfterDowngrade connects nodes 1 and 2 at version 4,
+// then starts node 2 again speaking only version 3, as a rolling
+// downgrade does. Node 1 keeps sending named appends, as a core that still
+// believes the old connection does, and plain ones: once it has dialed
+// again at version 3, its writer drops every named append and delivers
+// the rest.
+func TestHeldFormsDroppedAfterDowngrade(t *testing.T) {
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	certs := map[uint64]tls.Certificate{}
+	for id := uint64(1); id <= 2; id++ {
+		if certs[id], _, _, err = ca.Issue("node", int64(id+1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	addrs, lns := listeners(t, 1, 2)
+	a := start(t, 1, lns[1], addrs, certs[1], ca.Pool)
+	t.Cleanup(func() {
+		if err := a.t.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	b := start(t, 2, lns[2], addrs, certs[2], ca.Pool)
+	a.t.Send(msg(1, "x"))
+	receive(t, b, 1)
+	if !a.t.HeldEntries(2) {
+		t.Fatal("a connection of version 4 does not carry held entries")
+	}
+	if err := b.t.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b = startWith(t, 2, nil, addrs, certs[2], ca.Pool, func(c *Config) { c.minVersion, c.maxVersion = 3, 3 })
+	t.Cleanup(func() {
+		if err := b.t.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	deadline := time.After(10 * time.Second)
+	for i := uint64(2); ; i += 2 {
+		named := msg(i, "a key, not the entry")
+		named.Context = []byte("TSH\x02\x00")
+		a.t.Send(named)
+		a.t.Send(msg(i+1, "x"))
+		select {
+		case m := <-b.got:
+			if core.HeldForm(m) || m.GetIndex()%2 == 0 {
+				t.Fatalf("node 2, started again at version 3, got %v", m)
+			}
+			if a.t.HeldEntries(2) {
+				t.Fatal("HeldEntries reports the connection of version 3 as carrying held entries")
+			}
+			return
+		case <-deadline:
+			t.Fatal("node 2 got nothing in 10 s after it started again")
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+}
