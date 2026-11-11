@@ -130,6 +130,14 @@ type Config struct {
 	// sync and of link faults that the run picks from, for the tests.
 	damageKinds []damageKind
 	netemKinds  []netemKind
+	// scenario, if set, drives the cluster once its nodes started and
+	// before the clients start, and noCheckpoints keeps the nodes from
+	// writing checkpoints as their log grows, so that no checkpoint or
+	// cleaner reads a record the scenario damaged before a snapshot serve
+	// does; a compaction still writes one, and the scenario sends none.
+	// For the tests.
+	scenario      func(*Sim) error
+	noCheckpoints bool
 	// ckptCreateFaults makes every disk fault EIO on the next creation of
 	// a checkpoint file, and every such creation take 50 ms; killLosses
 	// makes every crash a kill followed by a power loss; syncFaultExits
@@ -1024,6 +1032,11 @@ func (s *Sim) run() error {
 		s.tracef("the cluster formed at cluster version %d in %s with no faults, in a run of its own; the nodes start from its disks", core.MaxVersion, seconds(s.formed))
 		s.mu.Unlock()
 	}
+	if s.cfg.scenario != nil {
+		if err := s.cfg.scenario(s); err != nil {
+			return err
+		}
+	}
 	s.schedule()
 	s.wg.Go(s.watchWall)
 	// The end can move while the run goes on (extendLiveness).
@@ -1474,6 +1487,9 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 		cfg.Core.WindowBytes, cfg.Core.WindowMaxBytes = def.WindowBytes, def.WindowMaxBytes
 	}
 	cfg.Core.MemoryBytes = s.cfg.MemoryBytes
+	if s.cfg.noCheckpoints {
+		cfg.Core.CheckpointBytes = 1 << 40
+	}
 	tick := TickTime
 	if d := s.cfg.Faults.DriftPerMille; d > 0 && !s.healed {
 		tick += TickTime * (s.rng.Int64N(2*d+1) - d) / 1000

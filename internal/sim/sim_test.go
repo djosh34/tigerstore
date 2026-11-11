@@ -1373,47 +1373,6 @@ func TestRotInAnEntryRecord(t *testing.T) {
 	checkers(t, res)
 }
 
-// TestSnapshotFromCorruptLeader runs seeds until one in which a damaged
-// node fails to serve a snapshot on its own damage and is then fenced, as
-// when a node serves a snapshot from a damaged old record. Serving it must
-// stop that node, so the follower can catch up from a healthy node instead
-// of reloading on every fetch (#201, campaign seed 5038431). Every run
-// must pass the checkers.
-//
-// Under the race detector it makes at most raceRuns runs, here all twenty
-// of its seeds. Making the race
-// build reach the path directly needs a damaged leader whose follower falls
-// behind its compaction, which elections decide. Seeds 1 to 200 reached
-// it until a connection's lock became a channel (#567) and each peer got
-// a control and a data connection (#553), which each moved every seed;
-// seed 37 does now. The range starts there, so that a hit costs one seed
-// and a miss twenty, not the hundreds that ran the package out of time.
-// Reaching the path on purpose is #569.
-func TestSnapshotFromCorruptLeader(t *testing.T) {
-	fenced := false
-	seeds := searchSeeds(37, 20)
-	if !simrun.Each(t, seeds, func(t *testing.T, seed uint64) Stats {
-		res := run(t, DefaultConfig(seed))
-		checkers(t, res)
-		return res.Stats
-	}, func(seed uint64, st Stats) bool {
-		if st.FencedAfterServe > 0 {
-			fenced = true
-			t.Logf("seed %d: %+v", seed, st)
-		}
-		return fenced
-	}) {
-		return
-	}
-	switch {
-	case simrun.One() || t.Failed() || fenced:
-	case simrun.Race:
-		t.Logf("race coverage of this path was skipped this run: none of %d runs under the race detector fenced a node after a serve failed on its own damage; gosim's seeds must, and internal/node's TestServeCorruptRecordStops serves a damaged record under -race", len(seeds))
-	default:
-		t.Fatal("no run fenced a node after it failed a serve on its own damage")
-	}
-}
-
 // TestAmbiguousWritesInTheLog runs seed 1320469923, whose history has 8
 // ambiguous writes, all in the committed log, in its first 7.3 s. Each
 // one Porcupine had to fork into took effect or not, at any time after
