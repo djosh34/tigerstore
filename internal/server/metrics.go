@@ -165,6 +165,7 @@ func buildServerMetrics(set *metrics.Set, extensive bool) (*serverMetrics, []pro
 // is timed. c.mu is held.
 func (st *stream) countStart() {
 	st.calls.started.add(1)
+	metrics.ClientCalls.Add(1)
 	if st.rpc.reqType != "" || st.c.s.metrics.handling != nil {
 		st.began = time.Now()
 	}

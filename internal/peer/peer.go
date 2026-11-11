@@ -260,6 +260,11 @@ type TCP struct {
 	// connection to a peer starts or ends (ActiveChange).
 	activeMu    sync.Mutex
 	activeMoved chan struct{}
+
+	// Prototype 602-5: the peer connections' system calls and the
+	// traffic's counts (count.go).
+	io bufconn.Counts
+	pc pcounts
 }
 
 // Start listens for peers and starts one writer per peer.
@@ -319,6 +324,7 @@ func Start(cfg Config) (*TCP, error) {
 	for _, ln := range lns {
 		t.wg.Go(func() { t.accept(ln) })
 	}
+	t.wg.Go(t.logCounts)
 	return t, nil
 }
 
@@ -616,6 +622,9 @@ func (t *TCP) accept(ln net.Listener) {
 // returns the error that ended it, nil after a snapshot was served or
 // after a failed handshake, which it logs itself.
 func (t *TCP) receive(c net.Conn) error {
+	if b := bufconn.Under(c); b != nil {
+		b.SetCounts(&t.io)
+	}
 	if err := c.SetReadDeadline(time.Now().Add(t.readTimeout())); err != nil {
 		return err
 	}
@@ -682,6 +691,7 @@ func (t *TCP) frames(r io.Reader, from uint64, cs *counters) error {
 			return fmt.Errorf("peer %d sent a message from %d", from, m.GetFrom())
 		}
 		cs.received.Add(float64(len(hdr) + len(buf)))
+		t.pc.framesRecv.Add(int64(len(hdr) + len(buf)))
 		if m.GetType() == raftpb.MsgHeartbeat {
 			cs.heartbeatReceived.SetToCurrentTime()
 		}
@@ -1155,7 +1165,11 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	c := tls.Client(bufconn.New(raw, ioBuffer), &tls.Config{
+	under := bufconn.New(raw, ioBuffer)
+	if id&(fetchBit|callBit) == 0 {
+		under.SetCounts(&s.t.io)
+	}
+	c := tls.Client(under, &tls.Config{
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return s.t.clientCert() },
 		RootCAs:              s.t.cfg.CA,
 		InsecureSkipVerify:   s.t.cfg.InsecureSkipVerify, //nolint:gosec // etcd's --peer-auto-tls
@@ -1312,6 +1326,7 @@ func (s *sender) write(ctx context.Context, c net.Conn, l *lane) error {
 			return err
 		}
 		s.counters.sent.Add(float64(len(buf)))
+		s.t.pc.count(m, len(buf))
 		if m.GetType() == raftpb.MsgHeartbeat {
 			s.counters.heartbeatSent.SetToCurrentTime()
 		}

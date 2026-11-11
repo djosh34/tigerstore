@@ -11,7 +11,38 @@ import (
 	"bufio"
 	"crypto/tls"
 	"net"
+	"sync/atomic"
 )
+
+// Counts are the system calls of the connections that share them, and
+// their bytes (prototypes 602-4 and 602-5).
+type Counts struct{ Reads, Writes, ReadBytes, WriteBytes atomic.Int64 }
+
+// raw counts the calls into the connection under the buffers.
+type raw struct{ c *Conn }
+
+func (r raw) Read(p []byte) (int, error) {
+	if k := r.c.count.Load(); k != nil {
+		n, err := r.c.Conn.Read(p)
+		k.Reads.Add(1)
+		k.ReadBytes.Add(int64(n))
+		return n, err
+	}
+	return r.c.Conn.Read(p)
+}
+
+func (r raw) Write(p []byte) (int, error) {
+	if k := r.c.count.Load(); k != nil {
+		n, err := r.c.Conn.Write(p)
+		k.Writes.Add(1)
+		k.WriteBytes.Add(int64(n))
+		return n, err
+	}
+	return r.c.Conn.Write(p)
+}
+
+// SetCounts makes the connection count its system calls in k.
+func (c *Conn) SetCounts(k *Counts) { c.count.Store(k) }
 
 // Conn is a connection that reads through a buffer, and, once Buffer was
 // called, writes into one until Flush.
@@ -28,6 +59,7 @@ type Conn struct {
 	mu       chan struct{}
 	w        *bufio.Writer
 	buffered bool
+	count    atomic.Pointer[Counts]
 }
 
 func (c *Conn) lock()   { c.mu <- struct{}{} }
@@ -37,7 +69,9 @@ func (c *Conn) unlock() { <-c.mu }
 // Buffer, so that a TLS handshake over it, which waits for the other
 // side's answers, needs no flush.
 func New(c net.Conn, size int) *Conn {
-	return &Conn{Conn: c, r: bufio.NewReaderSize(c, size), w: bufio.NewWriterSize(c, size), mu: make(chan struct{}, 1)}
+	b := &Conn{Conn: c, mu: make(chan struct{}, 1)}
+	b.r, b.w = bufio.NewReaderSize(raw{b}, size), bufio.NewWriterSize(raw{b}, size)
+	return b
 }
 
 func (c *Conn) Read(p []byte) (int, error) { return c.r.Read(p) }
@@ -46,7 +80,7 @@ func (c *Conn) Write(p []byte) (int, error) {
 	c.lock()
 	defer c.unlock()
 	if !c.buffered {
-		return c.Conn.Write(p)
+		return raw{c}.Write(p)
 	}
 	return c.w.Write(p)
 }

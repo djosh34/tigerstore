@@ -23,6 +23,11 @@ import (
 	"github.com/djosh34/tigerstore/internal/core"
 )
 
+// ClientCalls counts the gRPC calls this process's servers started
+// (prototype 602-5: the peer transport logs it, so that its counts can be
+// taken per operation).
+var ClientCalls atomic.Int64
+
 // ServerVersion is the version etcd_server_version reports.
 const ServerVersion = core.ServerVersion
 
