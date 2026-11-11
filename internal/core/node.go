@@ -552,6 +552,12 @@ type Node struct {
 	// Appends of forwarded proposals do not hold anything.
 	own      []uint64
 	awaitOwn bool
+	// Prototype 602-4: fwd are the proposals forwarded by followers that
+	// wait on the leader to join its next batch, one MsgProp with them all.
+	// fwdWait says a follower's forward is on its way: it forwards the next
+	// once an append with entries comes from the leader, or a tick passes.
+	fwd     []*raftpb.Message
+	fwdWait bool
 	// otherMemory is what the process uses besides the value cache, as
 	// the driver measured it last.
 	otherMemory int64
@@ -979,6 +985,7 @@ func (n *Node) Tick() {
 	}
 	n.rn.Tick()
 	n.noteRaft(nil)
+	n.fwdWait = false
 	if n.removeAt != 0 {
 		return
 	}
@@ -1069,6 +1076,13 @@ func (n *Node) Step(m *raftpb.Message) error {
 			n.holdProposal(m)
 			return nil
 		}
+		if n.isLeader {
+			n.fwd = append(n.fwd, m)
+			return nil
+		}
+	}
+	if m.GetType() == raftpb.MsgApp && len(m.Entries) > 0 {
+		n.fwdWait = false
 	}
 	if m.GetType() == raftpb.MsgHeartbeatResp {
 		n.snapshotDropped(m.GetFrom())
@@ -1713,6 +1727,18 @@ func (n *Node) propose() {
 	if n.rn.BasicStatus().Lead == raft.None {
 		return
 	}
+	// Prototype 602-4: a follower forwards one batch at a time.
+	if !n.isLeader && n.fwdWait {
+		return
+	}
+	// The forwarded proposals and the leader's own batches go into Raft as
+	// one proposal, so each follower gets one append for them all.
+	var ents []*raftpb.Entry
+	for _, m := range n.fwd {
+		ents = append(ents, m.Entries...)
+	}
+	n.fwd = nil
+	var own [][]*pending
 	// A write that timed out while it waited already left the queue
 	// (expire), so it never goes out.
 	props := n.proposals
@@ -1720,6 +1746,7 @@ func (n *Node) propose() {
 	for _, p := range props {
 		p.queued = false
 	}
+	added := int64(0)
 	for len(props) > 0 {
 		end, size := 0, 0
 		for end < len(props) && (end == 0 || size+writeSize(props[end]) <= n.cfg.MaxBatchBytes) {
@@ -1728,13 +1755,43 @@ func (n *Node) propose() {
 		}
 		// Writes wait while the entries not applied yet fill their
 		// budget, so that memory holds no more of them.
-		if unapplied := n.unapplied(); unapplied > 0 && unapplied+int64(size) > n.cfg.UnappliedBytes {
+		if unapplied := n.unapplied() + added; unapplied > 0 && unapplied+int64(size) > n.cfg.UnappliedBytes {
 			n.requeue(props)
+			break
+		}
+		data, err := encodeBatch(n.state.version, n.cfg.ID, n.cfg.Boot, props[:end], size)
+		if err != nil {
+			n.fail(err)
 			return
 		}
-		n.proposeEntry(props[:end], size)
+		added += int64(len(data))
+		ents = append(ents, &raftpb.Entry{Data: data})
+		own = append(own, props[:end])
 		props = props[end:]
 	}
+	if len(ents) == 0 {
+		return
+	}
+	n.unready += added
+	err := n.rn.Step(&raftpb.Message{Type: raftpb.MsgProp.Enum(), From: new(n.cfg.ID), Entries: ents})
+	if err != nil {
+		if !errors.Is(err, raft.ErrProposalDropped) {
+			n.fail(err)
+			return
+		}
+		// Raft dropped the proposal, so none of these requests will apply.
+		for _, b := range own {
+			for _, p := range b {
+				n.finish(p, errDropped)
+			}
+		}
+		return
+	}
+	// On the leader, the next local append with entries carries this
+	// batch; writes wait while ownDepth such appends are on their way
+	// (own). A follower forwards one batch at a time (fwdWait).
+	n.awaitOwn = n.isLeader
+	n.fwdWait = !n.isLeader
 }
 
 // requeue puts writes back in the queue, unproposed.
@@ -1750,27 +1807,6 @@ func (n *Node) requeue(props []*pending) {
 // the leader transfers its leadership: etcd returns raft's error, which
 // its gRPC layer has no code for.
 var errDropped = status.Error(codes.Unknown, raft.ErrProposalDropped.Error())
-
-// proposeEntry proposes one Raft entry with props.
-func (n *Node) proposeEntry(props []*pending, size int) {
-	data, err := encodeBatch(n.state.version, n.cfg.ID, n.cfg.Boot, props, size)
-	if err != nil {
-		n.fail(err)
-		return
-	}
-	n.unready += int64(len(data))
-	if err := n.rn.Propose(data); err != nil {
-		// Raft dropped the proposal, so none of these requests will apply.
-		for _, p := range props {
-			n.finish(p, errDropped)
-		}
-		return
-	}
-	// On the leader, the next local append with entries carries this
-	// batch; writes wait while ownDepth such appends are on their way
-	// (own). A follower only forwards, so nothing waits.
-	n.awaitOwn = n.isLeader
-}
 
 // requestReads asks Raft for one read index for all queued reads.
 func (n *Node) requestReads() {
@@ -1888,7 +1924,7 @@ func (n *Node) Process() (Effects, error) {
 		n.cutWaiting()
 		// A write that a read queued, such as a Downgrade ENABLE once its
 		// read index applied, goes out in the same turn.
-		if len(n.proposals) > 0 && (!n.isLeader || len(n.own) < ownDepth) {
+		if len(n.proposals)+len(n.fwd) > 0 && (!n.isLeader || len(n.own) < ownDepth) {
 			n.propose()
 			n.drainReady()
 		}
@@ -1911,10 +1947,74 @@ func (n *Node) Process() (Effects, error) {
 	if n.err != nil || n.removeAt != 0 {
 		n.stop()
 	}
+	n.out.Send = coalesce(n.out.Send)
 	out := n.out
 	n.out = Effects{}
 	n.watchRead = nil
 	return out, n.err
+}
+
+// coalesce merges, within one turn, the messages to the same peer that
+// one message can carry (prototype 602-4): an append that follows another
+// append of the same term to the same peer joins it when its entries go
+// on where the other's end, and an append without entries, which only
+// moves the commit, folds into its neighbour; of successive accepting
+// append responses of the same term to the same peer, only the newest
+// goes. Only messages next to each other in the stream to that peer
+// merge, so the order of the rest stays.
+func coalesce(msgs []*raftpb.Message) []*raftpb.Message {
+	if len(msgs) < 2 {
+		return msgs
+	}
+	last := map[uint64]int{}
+	out := msgs[:0]
+	for _, m := range msgs {
+		to := m.GetTo()
+		if i, ok := last[to]; ok && mergeApp(out[i], m) {
+			continue
+		}
+		if i, ok := last[to]; ok && replaces(out[i], m) {
+			out[i] = m
+			continue
+		}
+		last[to] = len(out)
+		out = append(out, m)
+	}
+	clear(msgs[len(out):])
+	return out
+}
+
+// mergeApp folds append m into append p, the one before it to the same peer,
+// if one message can carry both.
+func mergeApp(p, m *raftpb.Message) bool {
+	if p.GetType() != raftpb.MsgApp || m.GetType() != raftpb.MsgApp || p.GetTerm() != m.GetTerm() {
+		return false
+	}
+	commit := max(p.GetCommit(), m.GetCommit())
+	switch {
+	case len(m.Entries) == 0:
+	case len(p.Entries) == 0:
+		if p.GetIndex() != m.GetIndex() {
+			return false
+		}
+		p.Entries = m.Entries
+	default:
+		e := p.Entries[len(p.Entries)-1]
+		if e.GetIndex() != m.GetIndex() || e.GetTerm() != m.GetLogTerm() {
+			return false
+		}
+		// Raft's log owns the arrays of the entries.
+		p.Entries = append(slices.Clip(p.Entries), m.Entries...)
+	}
+	p.Commit = new(commit)
+	return true
+}
+
+// replaces reports whether append response m makes p, the one before it
+// to the same peer, needless.
+func replaces(p, m *raftpb.Message) bool {
+	return p.GetType() == raftpb.MsgAppResp && m.GetType() == raftpb.MsgAppResp &&
+		p.GetTerm() == m.GetTerm() && !p.GetReject() && !m.GetReject() && m.GetIndex() >= p.GetIndex()
 }
 
 // stop fails every waiting request once the node stopped.
@@ -1930,7 +2030,7 @@ func (n *Node) stop() {
 		n.reply(w.req.ID, rpctypes.ErrGRPCStopped)
 	}
 	n.tokenWaits = nil
-	n.confMessages, n.props, n.propBytesHeld = nil, nil, 0
+	n.confMessages, n.props, n.propBytesHeld, n.fwd = nil, nil, 0, nil
 	clear(n.pieced)
 	n.timeouts, n.proposals, n.reads, n.readBatches, n.early, n.confs, n.transfers = nil, nil, nil, nil, nil, nil, nil
 }
@@ -1953,6 +2053,11 @@ func (n *Node) handleReady(rd raft.Ready) {
 			// and never reach the disk; wait for nothing from it.
 			n.own, n.awaitOwn = nil, false
 			n.uncommitted = nil
+			// Held forwards go to the new leader (stepProposals).
+			for _, m := range n.fwd {
+				n.holdProposal(m)
+			}
+			n.fwd, n.fwdWait = nil, false
 			if leader {
 				n.electedAt = n.clock
 			}
