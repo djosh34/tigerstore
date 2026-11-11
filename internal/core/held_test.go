@@ -347,9 +347,10 @@ func TestForwarderForgets(t *testing.T) {
 
 // TestLeaderChangeWithNamedAppends holds node 3's side copies and the
 // leader's named appends to it, then has the leader hand over to node 2
-// and stop. The old appends come to node 3 late and wait for entries it never
-// gets; it drops them, and the new leader sends what it misses in full.
-// Every write a client got an answer for is applied on both survivors.
+// and stop. The old appends come to node 3 late and wait for entries it
+// never gets, and it drops them without harm: node 3 and the new leader
+// end with the same state, so every write a client got an answer for is
+// applied on both survivors.
 func TestLeaderChangeWithNamedAppends(t *testing.T) {
 	c := heldCluster(t)
 	var stale []*raftpb.Message
