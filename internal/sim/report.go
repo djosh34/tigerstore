@@ -17,8 +17,10 @@ type coreState struct {
 	at                          int64
 	role                        string
 	term, lead, commit, applied uint64
-	version                     uint32
-	members                     []*pb.Member
+	// first is the first index of the entries the core holds in memory.
+	first   uint64
+	version uint32
+	members []*pb.Member
 }
 
 // remember keeps what core c of n shows now, after the effects eff of its
@@ -38,7 +40,7 @@ func (n *node) remember(c *core.Node, now int64, eff core.Effects) {
 	}
 	n.last = coreState{
 		core: c, at: now, role: st.RaftState.String(),
-		term: st.GetTerm(), lead: st.Lead, commit: st.GetCommit(), applied: c.Applied(),
+		term: st.GetTerm(), lead: st.Lead, commit: st.GetCommit(), applied: c.Applied(), first: c.FirstIndex(),
 		version: c.ActiveVersion(), members: members,
 	}
 }

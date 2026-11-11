@@ -88,7 +88,9 @@ func serveDamage(s *Sim) error {
 		s.mu.Lock()
 		c.done(r, resp, err)
 		if i == 0 && err == nil {
-			first = leader.proc.core.Applied()
+			// What the leader's committer recorded at its last turn: the
+			// scenario never reads a running core.
+			first = leader.last.applied
 		}
 		s.mu.Unlock()
 		if err != nil {
@@ -96,8 +98,8 @@ func serveDamage(s *Sim) error {
 		}
 	}
 	if err := wait("first put out of the leader's window with the healthy follower caught up", func() bool {
-		return leader.proc != nil && leader.proc.core.FirstIndex() > first+2 &&
-			healthy.proc != nil && healthy.proc.core != nil && healthy.proc.core.Applied() >= leader.proc.core.Applied()
+		return leader.proc != nil && leader.last.first > first+2 &&
+			healthy.proc != nil && healthy.last.applied >= leader.last.applied
 	}); err != nil {
 		return err
 	}
