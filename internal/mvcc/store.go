@@ -347,6 +347,12 @@ type Store struct {
 	// SortBytes, if above 0, bounds the values a Range sorted by value
 	// reads at once (ErrTooLarge).
 	SortBytes int64
+	// Unanswered says that nobody reads the answer of the writes applied
+	// now, as on a node where no client waits for them. They then skip
+	// the reads that only their answer needs: a Txn's ranges, which
+	// answer with no KeyValues, and the previous values of a put or a
+	// delete (#561). Their counts and checks stay as they are.
+	Unanswered bool
 	// Replaced, if set, gets the value of a key's newest version when a
 	// put or a delete replaces that version and the new one does not keep
 	// the value. Older revisions may still read it.

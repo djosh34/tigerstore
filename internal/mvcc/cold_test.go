@@ -378,3 +378,132 @@ func TestCompareInBatches(t *testing.T) {
 		t.Errorf("k05 changed after the first batch: succeeded %v after %d batches, want false after 1", ok, n)
 	}
 }
+
+// TestUnansweredWritesReadNothing applies each write that reads besides
+// writing to two stores: one answered with its values in memory, and one
+// Unanswered, as a node where no client waits is, with its values on
+// disk (#561). The unanswered one asks for no value, not even those a
+// range sorts by, its answer holds none, and both end with the same keys,
+// revision and counts.
+func TestUnansweredWritesReadNothing(t *testing.T) {
+	rng := func(r *pb.RangeRequest) *pb.RequestOp {
+		return &pb.RequestOp{Request: &pb.RequestOp_RequestRange{RequestRange: r}}
+	}
+	ops := []proto.Message{
+		&pb.PutRequest{Key: []byte("a"), Value: []byte("new"), PrevKv: true},
+		&pb.DeleteRangeRequest{Key: []byte("b"), RangeEnd: []byte("d"), PrevKv: true},
+		&pb.TxnRequest{Success: []*pb.RequestOp{
+			rng(&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("z")}),
+			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("b"), Value: []byte("new"), PrevKv: true}}},
+			rng(&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("z"), SortTarget: pb.RangeRequest_VALUE, SortOrder: pb.RangeRequest_DESCEND}),
+		}},
+	}
+	for _, op := range ops {
+		var stores [2]*Store
+		var resps [2]proto.Message
+		for i := range stores {
+			h := &coldHeap{}
+			s := New(h)
+			stores[i] = s
+			for _, kv := range [][2]string{{"a", "1"}, {"b", "2"}, {"c", "3"}} {
+				put(t, s, kv[0], kv[1])
+			}
+			if i == 1 {
+				h.evict()
+				s.Unanswered = true
+			}
+			var err error
+			switch op := op.(type) {
+			case *pb.PutRequest:
+				resps[i], err = s.Put(op)
+			case *pb.DeleteRangeRequest:
+				resps[i], err = s.DeleteRange(op)
+			case *pb.TxnRequest:
+				resps[i], err = s.Txn(op)
+			}
+			if err != nil {
+				t.Fatalf("%v, unanswered %v: %v", op, s.Unanswered, err)
+			}
+		}
+		a, b := stores[0], stores[1]
+		if n := len(b.TakeFills()); n != 0 {
+			t.Fatalf("%v: %d fills on the unanswered store", op, n)
+		}
+		if len(b.TakeRests()) != 0 {
+			t.Fatalf("%v: rests on the unanswered store", op)
+		}
+		if n := answerKVs(resps[1]); n != 0 {
+			t.Fatalf("%v: the unanswered store answered with %d key-values: %v", op, n, resps[1])
+		}
+		if answerKVs(resps[0]) == 0 {
+			t.Fatalf("%v: the answered store answered with no key-values: %v", op, resps[0])
+		}
+		if a.Rev() != b.Rev() || a.Hash() != b.Hash() || a.Counts() != b.Counts() {
+			t.Fatalf("%v: answered rev %d hash %x counts %+v, unanswered rev %d hash %x counts %+v",
+				op, a.Rev(), a.Hash(), a.Counts(), b.Rev(), b.Hash(), b.Counts())
+		}
+	}
+}
+
+// answerKVs counts the key-values an answer of a put, a delete or a Txn
+// carries.
+func answerKVs(m proto.Message) int {
+	switch r := m.(type) {
+	case *pb.PutResponse:
+		if r.PrevKv != nil {
+			return 1
+		}
+	case *pb.DeleteRangeResponse:
+		return len(r.PrevKvs)
+	case *pb.TxnResponse:
+		n := 0
+		for _, op := range r.Responses {
+			if p := op.GetResponsePut(); p != nil {
+				n += answerKVs(p)
+			}
+			n += len(op.GetResponseRange().GetKvs())
+		}
+		return n
+	}
+	return 0
+}
+
+// TestColdTxnCountsOnce runs a Txn that compares, checks a put's previous
+// value and sorts a range by value on two stores with their values on
+// disk: one answered, which reads the values and runs the Txn again, and
+// one Unanswered, which reads none (#561). Both count the Txn once.
+func TestColdTxnCountsOnce(t *testing.T) {
+	version1 := &pb.Compare{Key: []byte("a"), Target: pb.Compare_VERSION, Result: pb.Compare_EQUAL, TargetUnion: &pb.Compare_Version{Version: 1}}
+	txn := &pb.TxnRequest{
+		Compare: []*pb.Compare{version1, version1},
+		Success: []*pb.RequestOp{
+			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("b"), Value: []byte("2"), PrevKv: true}}},
+			{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("a"), SortTarget: pb.RangeRequest_VALUE}}},
+		},
+	}
+	var stores [2]*Store
+	for i := range stores {
+		h := &coldHeap{}
+		s := New(h)
+		stores[i] = s
+		put(t, s, "a", "1")
+		h.evict()
+		s.Unanswered = i == 1
+		_, err := s.Txn(txn)
+		cold, ok := errors.AsType[*ColdError](err)
+		if ok != (i == 0) {
+			t.Fatalf("unanswered %v: waits for values %v", s.Unanswered, ok)
+		}
+		if ok {
+			h.disk = 0
+			s.Resume(cold.Compares)
+			_, err = s.Txn(txn)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if a, b := stores[0].Counts(), stores[1].Counts(); a != b || a.Txns != 1 {
+		t.Fatalf("answered after a read counts %+v, unanswered %+v; want the same, with one Txn", a, b)
+	}
+}
