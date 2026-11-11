@@ -378,10 +378,9 @@ func (t *TCP) ActiveSince(id uint64) time.Time {
 
 // HeldEntries reports whether the connection to peer id that carries the
 // messages of held entries, the data lane's, speaks a version that takes
-// them. The peer's version is the first lane's, which a peer started again
-// at an older version can leave stale while the other lane's old
-// connection still counts as up (#626). A connection made later to an
-// older binary drops those still queued (sender.write).
+// them: the peer's version is the last lane's to come up, which may be the
+// control lane's (#626). A connection made later to an older binary drops
+// those still queued (sender.write).
 func (t *TCP) HeldEntries(id uint64) bool {
 	s, ok := t.peer(id)
 	return ok && s.data.version.Load() >= heldVersion
