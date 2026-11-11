@@ -1,0 +1,7 @@
+=== RUN   TestFenceCorruptLeader
+=== RUN   TestFenceCorruptLeader/1
+    corruptleader_test.go:31: seed 1: fenced after serve 1, failed serves 1, cold restarts 1
+--- PASS: TestFenceCorruptLeader (15.31s)
+    --- PASS: TestFenceCorruptLeader/1 (15.31s)
+PASS
+ok  	github.com/djosh34/tigerstore/internal/sim	16.352s

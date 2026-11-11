@@ -1,0 +1,695 @@
+=== RUN   TestFenceCorruptLeader
+=== RUN   TestFenceCorruptLeader/1
+    gosimtool.go:277: Using pre-built gosim test binary "/home/joshazimullah.linux/.t3/worktrees/tigerstore/t3-6399e2e3/.gosim/metatest/linux_arm64/translated-github.com-djosh34-tigerstore-internal_-sim.test"
+    native.go:332: the gosim run of seed 1 took 2s
+    native.go:332: TestFenceCorruptLeader failed in gosim with seed 1: test failed
+        === RUN   TestFenceCorruptLeader (seed 1)
+        === RUN   TestFenceCorruptLeader/1 (seed 1)
+        corruptleader_test.go:26: seed 1: fenced after serve = 0, want 1
+        sim_test.go:214: trace of seed 1:
+            0.000 ms links 111111
+           86.060 ms node 1: starting
+           86.060 ms node 1: recovering the log
+           86.060 ms node 1: crashed during recovery
+          112.386 ms node 2: starting
+          112.386 ms node 2: recovering the log
+          112.386 ms node 2: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+          112.386 ms node 2: cluster version 4
+          112.386 ms node 2: leader is 0 at term 2
+          144.508 ms node 3: starting
+          144.508 ms node 3: recovering the log
+          144.508 ms node 3: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+          144.508 ms the cluster formed at cluster version 4 in 2.190 s with no faults, in a run of its own; the nodes start from its disks
+          144.508 ms node 3: cluster version 4
+          144.508 ms node 3: leader is 0 at term 2
+          184.612 ms link 1->3 half-open until 4013 ms
+          202.980 ms watch 3: stream on node 3 from 1
+          203.133 ms watch 3: created on node 3 from 1
+          432.077 ms node 2: crashed
+          432.077 ms node 2: peer: accept: use of closed network connection
+          432.077 ms node 2: peer: receive from node3: sim: connection reset
+          432.077 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+          432.077 ms node 3: peer: receive from node2: sim: connection reset
+          432.077 ms node 2: peer: receive from node3: sim: connection reset
+          432.077 ms node 3: peer: send control to 2: sim: connection reset
+          432.077 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+          432.077 ms node 2: peer: send data to 3: sim: connection reset
+          432.077 ms node 3: peer: receive from node2: sim: connection reset
+          432.077 ms node 2: peer: send control to 3: sim: connection reset
+          432.077 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+          432.077 ms node 3: peer: send data to 2: sim: connection reset
+          432.077 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+          463.522 ms watch 0: stream on node 3 from 0
+          463.670 ms watch 0: created on node 3 from 2
+          488.436 ms node 3: disk full at 898 bytes
+          867.907 ms watch 1: stream on node 3 from 0
+          868.187 ms watch 1: created on node 3 from 2
+          909.066 ms node 1: starting
+          909.066 ms node 1: recovering the log
+          909.066 ms node 1: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+          909.066 ms node 1: cluster version 4
+          909.066 ms node 1: leader is 0 at term 2
+          909.657 ms node 1: killed
+          909.657 ms node 1: peer: accept: use of closed network connection
+         1082.285 ms node 2: starting
+         1082.285 ms node 2: recovering the log
+         1082.285 ms node 2: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+         1082.285 ms node 2: leader is 0 at term 2
+         1290.613 ms node 3: leader is 0 at term 3
+         1290.613 ms node 2: peer: receive from node3: EOF
+         1290.613 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1290.613 ms node 2: peer: receive from node3: EOF
+         1290.613 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1290.613 ms node 3: stopped: core: the disk failed: simfs: no space left on device
+         1290.613 ms node 3: crashed
+         1290.613 ms node 2: peer: send data to 3: sim: connection reset
+         1290.613 ms node 2: peer: send control to 3: sim: connection reset
+         1290.709 ms watch 3: stream on node 2 from 1
+         1290.914 ms watch 1: stream on node 2 from 2
+         1387.411 ms link 2->1: slow link until 4865 ms
+         1480.180 ms watch 2: stream on node 2 from 1
+         1480.471 ms watch 2: created on node 2 from 1
+         1499.735 ms node 3: starting
+         1499.735 ms node 3: recovering the log
+         1499.735 ms node 3: failed to boot: simfs: no space left on device
+         1763.607 ms watch 0: stream on node 2 from 2
+         1812.021 ms node 3: starting
+         1812.021 ms node 3: recovering the log
+         1812.021 ms node 3: failed to boot: simfs: no space left on device
+         2176.836 ms links 001011
+         2176.836 ms client link 3 (1) down
+         2426.074 ms node 2: paused until 2738 ms
+         2523.038 ms node 2: gray until 6025 ms, slow fsyncs true
+         2526.717 ms links 111111
+         2637.661 ms node 2: crashed
+         2637.661 ms node 2: peer: accept: use of closed network connection
+         2693.122 ms node 3: disk no longer full
+         2717.461 ms node 3: starting
+         2717.461 ms node 3: recovering the log
+         2717.461 ms node 3: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+         2717.461 ms node 3: leader is 0 at term 2
+         2804.453 ms watch 0: stream on node 3 from 2
+         2940.392 ms node 1: starting
+         2940.392 ms node 1: recovering the log
+         2940.392 ms node 1: crashed during recovery
+         2986.002 ms node 3: disk fault armed: the next write is short
+         3037.396 ms watch 1: stream on node 3 from 2
+         3118.020 ms watch 3: stream on node 3 from 1
+         3324.237 ms node 1: starting
+         3324.237 ms node 1: recovering the log
+         3324.237 ms node 1: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+         3324.237 ms node 1: leader is 0 at term 2
+         3375.507 ms link 2->3 half-open until 5499 ms
+         3487.885 ms node 2: starting
+         3487.885 ms node 2: recovering the log
+         3487.885 ms node 2: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+         3542.804 ms node 3: disk stalled until 5543 ms
+         3643.357 ms node 2: leader is 0 at term 2
+         3758.299 ms watch 2: stream on node 3 from 1
+         3906.863 ms links 110000
+         3906.863 ms client link 1 (1) down
+         3906.863 ms node 2: peer: receive from node1: sim: connection reset
+         3906.863 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         3906.863 ms node 1: peer: send control to 2: sim: connection reset
+         3906.863 ms node 2: peer: receive from node1: sim: connection reset
+         3906.863 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         3906.863 ms node 1: peer: receive from node2: sim: connection reset
+         3906.863 ms node 2: peer: send control to 1: sim: connection reset
+         3906.863 ms node 1: peer: send data to 2: sim: connection reset
+         3906.863 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         3906.863 ms node 1: peer: receive from node2: sim: connection reset
+         3906.863 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         3906.863 ms node 2: peer: send data to 1: sim: connection reset
+         4215.398 ms node 3: disk stalled until 5823 ms
+         4307.181 ms node 3: request stats: /etcdserverpb.KV/Compact from client took 1.481601452s, more than 300ms
+         4777.536 ms node 1: disk fault armed: EIO on the next write
+         4823.494 ms link client-2: connections reset
+         4890.654 ms link 1->2 half-open until 7259 ms
+         4892.744 ms watch 1: stream on node 1 from 2
+         4991.515 ms node 2: disk stalled until 7113 ms
+         5014.621 ms watch 2: stream on node 1 from 1
+         5448.409 ms node 2: paused until 7132 ms
+         5521.443 ms watch 0: slow until 8836 ms
+         5658.339 ms link 1->3: delayed link until 8592 ms
+         5991.372 ms node 3: disk fault armed: the next sync fails
+         6317.999 ms watch 1: stream on node 3 from 2
+         6883.076 ms watch 2: stream on node 3 from 1
+         7307.666 ms node 3: request stats: /etcdserverpb.KV/Txn from client took 3s, more than 300ms
+         7404.029 ms links 100100
+         7404.029 ms client link 3 (0) down
+         7514.158 ms watch 3: stream on node 2 from 2
+         7830.935 ms node 2: request stats: /etcdserverpb.KV/DeleteRange from client took 3s, more than 300ms
+         8264.192 ms links 101011
+         8264.192 ms client link 2 (1) down
+         8457.022 ms links 000101
+         8457.022 ms client link 3 (1) down
+         8457.022 ms node 2: peer: receive from node3: sim: connection reset
+         8457.022 ms node 2: peer: receive from node3: sim: connection reset
+         8457.022 ms node 3: peer: send data to 2: sim: connection reset
+         8457.022 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         8457.022 ms node 3: peer: send control to 2: sim: connection reset
+         8457.022 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         8469.880 ms links 100011
+         8469.880 ms client link 1 (0) down
+         8469.880 ms client link 2 (1) down
+         8469.880 ms client link 3 (0) down
+         8660.366 ms watch 1: stream on node 1 from 2
+         8829.607 ms node 3: disk full at 898 bytes
+         8843.697 ms link 3->1: dropped byte until 11840 ms
+         8975.731 ms link 1->3 stalled until 10075 ms
+         9220.224 ms watch 2: stream on node 3 from 1
+         9638.105 ms node 1: killed
+         9638.105 ms node 1: peer: accept: use of closed network connection
+         9638.144 ms watch 1: stream on node 3 from 2
+         9702.215 ms link 3->2 stalled until 10413 ms
+        10615.066 ms node 3: disk fault armed: the next sync fails
+        10637.965 ms link 2->1: corrupting link until 12245 ms
+        10716.482 ms erase-one-disk copy
+        10822.528 ms watch 3: stream on node 2 from 2
+        10937.354 ms node 2: disk fault armed: EIO on the next write
+        11419.315 ms link 3->client stalled until 12256 ms
+        11452.313 ms links 011010
+        11452.313 ms client link 2 (0) down
+        11588.307 ms node 1: starting
+        11588.307 ms node 1: recovering the log
+        11588.307 ms node 1: failed to boot: simfs: input/output error
+        11774.960 ms node 3: crashed
+        11774.960 ms node 3: peer: accept: use of closed network connection
+        11841.168 ms node 2: disk full at 865 bytes
+        11923.277 ms node 3: disk no longer full
+        12092.981 ms node 1: starting
+        12092.981 ms node 1: recovering the log
+        12092.981 ms node 1: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+        12092.981 ms node 1: crash at a step, after remove of next-0000000000000002
+        12092.981 ms node 1: crashed
+        12092.981 ms node 1: peer: accept: use of closed network connection
+        12372.579 ms node 2: paused until 13843 ms
+        12475.518 ms watch 2: stream on node 2 from 1
+        12649.317 ms watch 3: stream on node 2 from 2
+        12741.365 ms link 3->2: corrupting link until 15500 ms
+        12763.759 ms watch 1: stream on node 2 from 2
+        12917.668 ms watch 0: stream on node 2 from 2
+        13141.803 ms node 3: starting
+        13141.803 ms node 3: recovering the log
+        13141.803 ms node 3: failed to boot: simfs: input/output error
+        13206.934 ms node 1: starting
+        13206.934 ms node 1: recovering the log
+        13206.934 ms node 1: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+        13206.934 ms node 1: leader is 0 at term 2
+        13507.275 ms link 2->1 half-open until 15585 ms
+        13947.153 ms node 3: starting
+        13947.153 ms node 3: recovering the log
+        13947.153 ms node 3: crashed during recovery
+        14054.213 ms node 2: disk no longer full
+        14182.173 ms node 3: starting
+        14182.173 ms node 3: recovering the log
+        14182.173 ms node 3: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+        14182.173 ms node 3: leader is 0 at term 2
+        14283.399 ms links 101000
+        14283.399 ms client link 2 (0) down
+        14283.399 ms client link 2 (1) down
+        14283.399 ms node 1: peer: receive from node3: sim: connection reset
+        14283.399 ms node 3: peer: send control to 1: sim: connection reset
+        14283.399 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        14283.399 ms node 1: peer: receive from node3: sim: connection reset
+        14283.399 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        14283.399 ms node 3: peer: send data to 1: sim: connection reset
+        14502.624 ms node 1: request stats: /etcdserverpb.KV/Txn from client took 865.397178ms, more than 300ms
+        14692.823 ms links 101111
+        14692.823 ms client link 1 (0) down
+        14948.272 ms watch 2: stream on node 3 from 1
+        15053.778 ms node 2: peer: 1 control messages to 3 waited over 100ms in their queue, the longest 299.792578ms; the last a MsgPreVote
+        15055.789 ms node 2: leader is 0 at term 3
+        15055.789 ms node 3: peer: receive from node2: EOF
+        15055.789 ms node 3: peer: receive from node2: EOF
+        15055.789 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        15055.789 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        15055.789 ms node 2: stopped: core: the disk failed: simfs: input/output error
+        15055.789 ms node 2: crashed
+        15055.789 ms node 3: peer: send control to 2: sim: connection reset
+        15055.789 ms node 3: peer: send data to 2: sim: connection reset
+        15055.811 ms watch 0: stream on node 1 from 2
+        15171.233 ms links 001111
+        15410.237 ms watch 2: slow until 19984 ms
+        15434.924 ms watch 3: stream on node 1 from 2
+        15510.566 ms node 1: gray until 6025 ms, slow fsyncs true
+        15771.332 ms node 2: starting
+        15771.332 ms node 2: recovering the log
+        15771.332 ms node 2: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+        15771.332 ms node 2: leader is 0 at term 2
+        16029.957 ms node 1: disk full at 898 bytes
+        16341.132 ms node 3: request stats: /etcdserverpb.KV/DeleteRange from client took 1.136816656s, more than 300ms
+        16407.155 ms links 111110
+        16407.155 ms node 1: peer: receive from node2: sim: connection reset
+        16407.155 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        16407.155 ms node 1: peer: receive from node2: sim: connection reset
+        16407.155 ms node 2: peer: send data to 1: sim: connection reset
+        16407.155 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        16407.155 ms node 2: peer: send control to 1: sim: connection reset
+        16410.353 ms links 111111
+        16665.413 ms links 100001
+        16665.413 ms client link 2 (1) down
+        16665.413 ms client link 3 (0) down
+        16665.413 ms node 1: peer: receive from node2: sim: connection reset
+        16665.413 ms node 2: peer: receive from node1: sim: connection reset
+        16665.413 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        16665.413 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        16665.413 ms node 2: peer: send data to 1: sim: connection reset
+        16665.413 ms node 1: peer: receive from node2: sim: connection reset
+        16665.413 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        16665.413 ms node 2: peer: receive from node1: sim: connection reset
+        16665.413 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        16665.413 ms node 1: peer: send control to 2: sim: connection reset
+        16665.413 ms node 3: peer: receive from node2: sim: connection reset
+        16665.413 ms node 2: peer: send control to 1: sim: connection reset
+        16665.413 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        16665.413 ms node 3: peer: receive from node2: sim: connection reset
+        16665.413 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        16665.413 ms node 3: peer: send control to 2: sim: connection reset
+        16665.413 ms node 2: peer: send data to 3: sim: connection reset
+        16665.413 ms node 2: peer: receive from node3: sim: connection reset
+        16665.413 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        16665.413 ms node 2: peer: receive from node3: sim: connection reset
+        16665.413 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        16665.413 ms node 1: peer: send data to 2: sim: connection reset
+        16665.413 ms node 3: peer: send data to 2: sim: connection reset
+        16665.413 ms node 2: peer: send control to 3: sim: connection reset
+        16772.972 ms watch 1: stream on node 3 from 2
+        17044.389 ms node 2: disk fault armed: EIO on the next create
+        17706.698 ms node 1: request stats: /etcdserverpb.KV/Txn from client took 2.222901s, more than 300ms
+        18211.977 ms node 1: disk no longer full
+        18237.154 ms watch 1: stream on node 2 from 2
+        18252.142 ms link client->2 stalled until 19519 ms
+        18390.306 ms watch 3: stream on node 2 from 2
+        18764.651 ms links 100010
+        18764.651 ms client link 1 (0) down
+        18764.651 ms client link 2 (1) down
+        18764.651 ms client link 3 (0) down
+        18832.459 ms links 111111
+        18833.865 ms watch 1: stream on node 2 from 2
+        18913.371 ms watch 0: stream on node 1 from 2
+        18927.314 ms node 2: killed
+        18927.314 ms node 2: peer: accept: use of closed network connection
+        18927.351 ms watch 1: stream on node 3 from 2
+        18927.612 ms watch 3: stream on node 3 from 2
+        18959.408 ms node 1: disk fault armed: EIO on the next rename
+        19199.029 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        19345.304 ms node 2: starting
+        19345.304 ms node 2: recovering the log
+        19345.304 ms node 2: failed to boot: simfs: input/output error
+        19684.959 ms node 3: request stats: /etcdserverpb.KV/Txn from client took 431.583062ms, more than 300ms
+        19771.529 ms node 1: peer: 1 control messages to 3 waited over 100ms in their queue, the longest 950.094414ms; the last a MsgPreVote
+        19774.105 ms node 3: leader is 0 at term 3
+        19777.293 ms node 1: leader is 0 at term 3
+        19786.763 ms node 2: starting
+        19786.763 ms node 2: recovering the log
+        19786.763 ms node 2: crashed during recovery
+        19905.707 ms links 110100
+        19905.707 ms client link 2 (0) down
+        19905.707 ms client link 2 (1) down
+        19905.707 ms node 3: peer: send data to 1: sim: connection reset
+        19905.707 ms node 3: peer: receive from node1: sim: connection reset
+        19905.707 ms node 3: peer: receive from node1: sim: connection reset
+        19905.707 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        19905.707 ms node 1: peer: send data to 3: sim: connection reset
+        19905.707 ms node 1: peer: receive from node3: sim: connection reset
+        19905.707 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        19905.707 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        19905.707 ms node 1: peer: receive from node3: sim: connection reset
+        19905.707 ms node 1: peer: 1 control messages to 3 waited over 100ms in their queue, the longest 922.457933ms; the last a MsgPreVoteResp
+        19905.707 ms node 1: peer: send control to 3: sim: connection reset
+        19905.707 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        19905.707 ms node 3: peer: send control to 1: sim: connection reset
+        20000.000 ms healing
+        20000.000 ms links 111111
+        20066.308 ms node 2: starting
+        20066.308 ms node 2: recovering the log
+        20066.308 ms node 2: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+        20138.876 ms watch 2: stream on node 1 from 1
+        20218.077 ms node 3: peer: 1 control messages to 2 waited over 100ms in their queue, the longest 443.446702ms; the last a MsgVote
+        20218.267 ms node 2: leader is 0 at term 3
+        20218.552 ms node 3: leader is 3 at term 3
+        20218.651 ms node 2: leader is 3 at term 3
+        20219.579 ms node 1: leader is 3 at term 3
+        20219.876 ms node 3: request stats: /etcdserverpb.Lease/LeaseGrant from client took 528.651645ms, more than 300ms
+        20224.996 ms erase-one-disk copy
+        20700.924 ms watch 3: stream on node 3 from 2
+        20972.639 ms node 1: slow log sync: 1.195345786s
+        20972.639 ms node 1: slow write to the log: 0 entries, 0 bytes in 1.195345786s
+        20972.639 ms node 1: persist timing: entries=0..0 queued=2020-01-15T14:10:24.967507728Z end=2020-01-15T14:10:26.162853514Z total=1.195345786s queue=0s append=0s flush=0s sync_queue=0s sync=1.195345786s report=0s
+        20972.977 ms node 1: fetching the snapshot at 56 from 3
+        20974.926 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        20974.926 ms node 1: installed the snapshot at 56 from 3, checkpoint 0
+        20975.064 ms node 1: request stats: /etcdserverpb.KV/DeleteRange from client took 2.095980344s, more than 300ms
+        20975.064 ms watch 0: stream ended: rpc error: code = Unavailable desc = tigerstore: the node installed a snapshot; watch again
+        20975.064 ms node 1: core: installed a snapshot at 56 from 3, checkpoint 0; starting again from the log
+        20975.064 ms node 1: recovering the log
+        20975.064 ms node 1: recovered the log up to entry 56: last entry 56 at term 3; term 3, vote 3, commit 56; voters [1 2 3]
+        20975.064 ms node 1: started again from its log
+        20975.064 ms node 1: leader is 0 at term 3
+        20975.249 ms watch 0: stream on node 3 from 2
+        20975.456 ms node 1: leader is 3 at term 3
+        20975.653 ms watch 0: compacted at 2, starting again
+        20975.671 ms node 1: fetching the snapshot at 62 from 3
+        20976.080 ms watch 0: stream on node 2 from 0
+        20976.361 ms watch 0: created on node 2 from 36
+        20977.550 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        20977.550 ms node 1: installed the snapshot at 62 from 3, checkpoint 0
+        20977.916 ms node 1: core: installed a snapshot at 62 from 3, checkpoint 0; starting again from the log
+        20977.916 ms node 1: recovering the log
+        20977.916 ms node 1: recovered the log up to entry 62: last entry 62 at term 3; term 3, vote 3, commit 62; voters [1 2 3]
+        20977.916 ms node 1: started again from its log
+        20977.916 ms node 1: leader is 0 at term 3
+        20979.335 ms node 1: leader is 3 at term 3
+        21041.838 ms watch 2: stream on node 3 from 1
+        21042.116 ms watch 2: compacted at 2, starting again
+        21042.362 ms watch 2: stream on node 2 from 0
+        21042.533 ms watch 2: created on node 2 from 58
+        21222.783 ms erase-one-disk copy
+        21278.848 ms node 1: cleaning below checkpoint 171: 1 files into a pack of 0 bytes
+        21403.281 ms node 2: cleaning below checkpoint 258: 1 files into a pack of 874 bytes
+        21403.902 ms node 3: cleaning below checkpoint 258: 1 files into a pack of 822 bytes
+        21424.143 ms node 2: cleaning below checkpoint 272: 1 files into a pack of 0 bytes
+        21425.155 ms node 3: cleaning below checkpoint 272: 1 files into a pack of 0 bytes
+        21460.233 ms node 1: cleaning below checkpoint 272: 1 files into a pack of 0 bytes
+        21585.336 ms node 2: cleaning below checkpoint 337: 1 files into a pack of 0 bytes
+        21586.977 ms node 3: cleaning below checkpoint 337: 1 files into a pack of 0 bytes
+        21607.585 ms watch 0: stream on node 3 from 230
+        21621.488 ms node 1: cleaning below checkpoint 365: 1 files into a pack of 63 bytes
+        21786.277 ms node 2: cleaning below checkpoint 412: 1 files into a pack of 882 bytes
+        21788.534 ms node 3: cleaning below checkpoint 412: 1 files into a pack of 802 bytes
+        21822.819 ms node 1: cleaning below checkpoint 412: 1 files into a pack of 1064 bytes
+        21843.776 ms node 1: cleaning below checkpoint 455: 1 files into a pack of 0 bytes
+        21849.362 ms node 3: cleaning below checkpoint 455: 1 files into a pack of 405 bytes
+        21891.765 ms watch 1: stream on node 2 from 258
+        21949.861 ms node 3: cleaning below checkpoint 455: 1 files into a pack of 1275 bytes
+        21966.455 ms node 2: cleaning below checkpoint 455: 1 files into a pack of 1249 bytes
+        22045.161 ms node 1: cleaning below checkpoint 548: 1 files into a pack of 1202 bytes
+        22127.176 ms node 2: cleaning below checkpoint 548: 1 files into a pack of 1383 bytes
+        22130.758 ms node 3: cleaning below checkpoint 548: 1 files into a pack of 1356 bytes
+        22152.294 ms node 3: cleaning below checkpoint 626: 3 files into a pack of 0 bytes
+        22166.280 ms node 1: cleaning below checkpoint 626: 2 files into a pack of 0 bytes
+        22168.128 ms node 2: cleaning below checkpoint 626: 3 files into a pack of 0 bytes
+        22333.746 ms node 3: cleaning below checkpoint 626: 1 files into a pack of 823 bytes
+        22354.449 ms node 3: cleaning below checkpoint 717: 1 files into a pack of 0 bytes
+        22515.399 ms node 3: cleaning below checkpoint 784: 1 files into a pack of 173 bytes
+        22528.935 ms node 2: cleaning below checkpoint 784: 1 files into a pack of 227 bytes
+        22557.089 ms node 3: cleaning below checkpoint 811: 1 files into a pack of 0 bytes
+        22570.417 ms node 2: cleaning below checkpoint 811: 1 files into a pack of 0 bytes
+        22609.575 ms watch 3: stream on node 3 from 219
+        22610.008 ms watch 3: compacted at 489, starting again
+        22610.406 ms watch 3: stream on node 1 from 0
+        22610.694 ms watch 3: created on node 1 from 530
+        22712.059 ms node 2: cleaning below checkpoint 868: 1 files into a pack of 0 bytes
+        22747.274 ms node 1: cleaning below checkpoint 883: 1 files into a pack of 0 bytes
+        22898.103 ms node 3: cleaning below checkpoint 943: 1 files into a pack of 64 bytes
+        22913.080 ms node 2: cleaning below checkpoint 943: 1 files into a pack of 174 bytes
+        22929.012 ms node 1: cleaning below checkpoint 943: 1 files into a pack of 340 bytes
+        23038.660 ms node 3: cleaning below checkpoint 1001: 1 files into a pack of 1023 bytes
+        23054.149 ms node 2: cleaning below checkpoint 1001: 1 files into a pack of 940 bytes
+        23090.189 ms node 1: cleaning below checkpoint 1001: 1 files into a pack of 992 bytes
+        23171.450 ms node 1: cleaning below checkpoint 1110: 2 files into a pack of 0 bytes
+        23175.006 ms node 2: cleaning below checkpoint 1110: 2 files into a pack of 0 bytes
+        23179.438 ms node 3: cleaning below checkpoint 1110: 2 files into a pack of 0 bytes
+        23208.761 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        23209.050 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        23220.195 ms node 3: cleaning below checkpoint 1110: 1 files into a pack of 0 bytes
+        23235.749 ms node 2: cleaning below checkpoint 1110: 1 files into a pack of 0 bytes
+        23272.847 ms node 1: cleaning below checkpoint 1110: 1 files into a pack of 0 bytes
+        23497.042 ms node 2: cleaning below checkpoint 1238: 1 files into a pack of 884 bytes
+        23500.816 ms node 3: cleaning below checkpoint 1238: 1 files into a pack of 830 bytes
+        23514.105 ms node 1: cleaning below checkpoint 1238: 1 files into a pack of 1129 bytes
+        23575.491 ms node 1: cleaning below checkpoint 1301: 1 files into a pack of 0 bytes
+        23577.940 ms node 2: cleaning below checkpoint 1301: 1 files into a pack of 0 bytes
+        23581.609 ms node 3: cleaning below checkpoint 1301: 1 files into a pack of 0 bytes
+        23602.573 ms node 3: cleaning below checkpoint 1301: 1 files into a pack of 0 bytes
+        23618.938 ms node 2: cleaning below checkpoint 1301: 1 files into a pack of 0 bytes
+        23637.247 ms node 1: cleaning below checkpoint 1301: 1 files into a pack of 0 bytes
+        23763.303 ms node 3: cleaning below checkpoint 1379: 1 files into a pack of 0 bytes
+        23780.071 ms node 2: cleaning below checkpoint 1379: 1 files into a pack of 0 bytes
+        23819.089 ms node 1: cleaning below checkpoint 1379: 1 files into a pack of 91 bytes
+        23964.533 ms node 3: cleaning below checkpoint 1419: 1 files into a pack of 798 bytes
+        23980.775 ms node 2: cleaning below checkpoint 1471: 1 files into a pack of 881 bytes
+        24020.179 ms node 1: cleaning below checkpoint 1471: 1 files into a pack of 1072 bytes
+        24045.987 ms node 3: cleaning below checkpoint 1527: 1 files into a pack of 0 bytes
+        24061.195 ms node 1: cleaning below checkpoint 1527: 2 files into a pack of 0 bytes
+        24062.046 ms node 2: cleaning below checkpoint 1527: 1 files into a pack of 0 bytes
+        24166.607 ms node 3: cleaning below checkpoint 1527: 1 files into a pack of 0 bytes
+        24183.122 ms node 2: cleaning below checkpoint 1527: 1 files into a pack of 64 bytes
+        24184.991 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        24222.260 ms node 1: cleaning below checkpoint 1527: 1 files into a pack of 394 bytes
+        24279.227 ms watch 3: stream on node 3 from 850
+        24279.578 ms watch 3: compacted at 895, starting again
+        24280.136 ms watch 3: stream on node 2 from 0
+        24280.427 ms watch 3: created on node 2 from 972
+        24326.814 ms node 3: cleaning below checkpoint 1635: 1 files into a pack of 1071 bytes
+        24344.249 ms node 2: cleaning below checkpoint 1635: 1 files into a pack of 1071 bytes
+        24383.462 ms node 1: cleaning below checkpoint 1679: 1 files into a pack of 1069 bytes
+        24404.727 ms node 1: cleaning below checkpoint 1693: 2 files into a pack of 0 bytes
+        24405.571 ms node 2: cleaning below checkpoint 1693: 2 files into a pack of 0 bytes
+        24408.006 ms node 3: cleaning below checkpoint 1693: 1 files into a pack of 0 bytes
+        24490.207 ms node 3: cleaning below checkpoint 1693: 1 files into a pack of 608 bytes
+        24511.762 ms node 3: cleaning below checkpoint 1746: 1 files into a pack of 0 bytes
+        24545.965 ms node 1: cleaning below checkpoint 1746: 1 files into a pack of 0 bytes
+        24666.031 ms node 2: cleaning below checkpoint 1811: 1 files into a pack of 1050 bytes
+        24672.834 ms node 3: cleaning below checkpoint 1811: 1 files into a pack of 940 bytes
+        24687.401 ms node 2: cleaning below checkpoint 1847: 1 files into a pack of 0 bytes
+        24694.175 ms node 3: cleaning below checkpoint 1847: 1 files into a pack of 0 bytes
+        24707.480 ms node 1: cleaning below checkpoint 1847: 1 files into a pack of 0 bytes
+        24835.713 ms node 3: cleaning below checkpoint 1911: 1 files into a pack of 0 bytes
+        24848.897 ms node 2: cleaning below checkpoint 1911: 1 files into a pack of 0 bytes
+        24888.475 ms node 1: cleaning below checkpoint 1931: 1 files into a pack of 0 bytes
+        25049.453 ms node 1: cleaning below checkpoint 2011: 1 files into a pack of 0 bytes
+        25068.470 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        25069.054 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        25177.819 ms node 3: cleaning below checkpoint 2063: 1 files into a pack of 204 bytes
+        25189.711 ms node 2: cleaning below checkpoint 2063: 1 files into a pack of 285 bytes
+        25194.846 ms watch 1: stream on node 2 from 895
+        25194.993 ms watch 1: compacted at 1185, starting again
+        25195.197 ms watch 1: stream on node 2 from 0
+        25195.235 ms watch 1: created on node 2 from 1253
+        25211.226 ms node 1: cleaning below checkpoint 2063: 1 files into a pack of 613 bytes
+        25340.047 ms node 3: cleaning below checkpoint 2117: 1 files into a pack of 1320 bytes
+        25351.002 ms node 2: cleaning below checkpoint 2117: 1 files into a pack of 1347 bytes
+        25392.815 ms node 1: cleaning below checkpoint 2193: 1 files into a pack of 1154 bytes
+        25436.717 ms watch 0: stream on node 1 from 752
+        25437.299 ms watch 0: compacted at 1185, starting again
+        25437.699 ms watch 0: stream on node 1 from 0
+        25437.722 ms watch 0: created on node 1 from 1320
+        25501.793 ms node 3: cleaning below checkpoint 2193: 1 files into a pack of 963 bytes
+        25572.328 ms node 2: cleaning below checkpoint 2296: 1 files into a pack of 965 bytes
+        25574.356 ms node 1: cleaning below checkpoint 2296: 1 files into a pack of 1048 bytes
+        25593.135 ms node 2: cleaning below checkpoint 2318: 3 files into a pack of 0 bytes
+        25595.365 ms node 1: cleaning below checkpoint 2318: 3 files into a pack of 0 bytes
+        25602.718 ms node 3: cleaning below checkpoint 2318: 3 files into a pack of 0 bytes
+        25663.572 ms node 3: cleaning below checkpoint 2318: 1 files into a pack of 0 bytes
+        25673.855 ms node 2: cleaning below checkpoint 2318: 1 files into a pack of 0 bytes
+        25855.168 ms node 2: cleaning below checkpoint 2433: 1 files into a pack of 0 bytes
+        25896.448 ms node 1: cleaning below checkpoint 2433: 1 files into a pack of 64 bytes
+        25998.530 ms node 1: cleaning below checkpoint 2512: 1 files into a pack of 0 bytes
+        26004.940 ms node 3: cleaning below checkpoint 2512: 1 files into a pack of 64 bytes
+        26036.845 ms node 2: cleaning below checkpoint 2512: 1 files into a pack of 119 bytes
+        26060.392 ms node 1: cleaning below checkpoint 2512: 1 files into a pack of 229 bytes
+        26106.576 ms node 3: cleaning below checkpoint 2573: 1 files into a pack of 0 bytes
+        26118.691 ms node 2: cleaning below checkpoint 2573: 1 files into a pack of 0 bytes
+        26121.490 ms node 1: cleaning below checkpoint 2573: 1 files into a pack of 0 bytes
+        26187.837 ms node 3: cleaning below checkpoint 2573: 1 files into a pack of 0 bytes
+        26200.125 ms node 2: cleaning below checkpoint 2573: 1 files into a pack of 92 bytes
+        26242.301 ms node 1: cleaning below checkpoint 2645: 1 files into a pack of 254 bytes
+        26261.397 ms node 2: cleaning below checkpoint 2655: 1 files into a pack of 0 bytes
+        26263.411 ms node 1: cleaning below checkpoint 2655: 1 files into a pack of 0 bytes
+        26348.746 ms node 3: cleaning below checkpoint 2658: 1 files into a pack of 64 bytes
+        26362.747 ms node 2: cleaning below checkpoint 2658: 1 files into a pack of 119 bytes
+        26389.740 ms node 3: cleaning below checkpoint 2730: 1 files into a pack of 0 bytes
+        26404.169 ms node 2: cleaning below checkpoint 2734: 1 files into a pack of 0 bytes
+        26518.487 ms watch 2: stream on node 2 from 1613
+        26564.289 ms node 1: cleaning below checkpoint 2786: 1 files into a pack of 172 bytes
+        26685.267 ms node 1: cleaning below checkpoint 2866: 1 files into a pack of 0 bytes
+        26710.882 ms node 3: cleaning below checkpoint 2866: 1 files into a pack of 64 bytes
+        26725.994 ms node 2: cleaning below checkpoint 2866: 1 files into a pack of 64 bytes
+        26767.401 ms node 1: cleaning below checkpoint 2866: 1 files into a pack of 91 bytes
+        26891.679 ms node 3: cleaning below checkpoint 2962: 1 files into a pack of 969 bytes
+        26907.544 ms node 2: cleaning below checkpoint 2962: 1 files into a pack of 969 bytes
+        26928.808 ms node 2: cleaning below checkpoint 2984: 2 files into a pack of 0 bytes
+        26929.730 ms node 1: cleaning below checkpoint 2984: 1 files into a pack of 0 bytes
+        26931.136 ms node 1: cleaning below checkpoint 2984: 1 files into a pack of 64 bytes
+        26931.960 ms node 3: cleaning below checkpoint 2984: 2 files into a pack of 0 bytes
+        27072.604 ms node 3: cleaning below checkpoint 2984: 1 files into a pack of 802 bytes
+        27090.411 ms node 2: cleaning below checkpoint 2984: 1 files into a pack of 829 bytes
+        27192.828 ms node 1: cleaning below checkpoint 3099: 1 files into a pack of 1049 bytes
+        27213.802 ms node 3: cleaning below checkpoint 3099: 1 files into a pack of 1376 bytes
+        27232.456 ms node 2: cleaning below checkpoint 3099: 1 files into a pack of 1459 bytes
+        27253.807 ms node 2: cleaning below checkpoint 3158: 2 files into a pack of 0 bytes
+        27254.327 ms node 1: cleaning below checkpoint 3158: 2 files into a pack of 0 bytes
+        27255.459 ms node 3: cleaning below checkpoint 3158: 2 files into a pack of 0 bytes
+        27396.934 ms node 3: cleaning below checkpoint 3158: 1 files into a pack of 363 bytes
+        27414.677 ms node 2: cleaning below checkpoint 3158: 1 files into a pack of 446 bytes
+        27635.431 ms node 1: cleaning below checkpoint 3314: 2 files into a pack of 2078 bytes
+        27636.141 ms node 2: cleaning below checkpoint 3314: 1 files into a pack of 1424 bytes
+        27637.881 ms node 3: cleaning below checkpoint 3314: 1 files into a pack of 1399 bytes
+        27716.953 ms node 1: cleaning below checkpoint 3379: 1 files into a pack of 716 bytes
+        27717.144 ms node 2: cleaning below checkpoint 3379: 2 files into a pack of 471 bytes
+        27718.437 ms node 3: cleaning below checkpoint 3379: 2 files into a pack of 363 bytes
+        27737.807 ms node 2: cleaning below checkpoint 3392: 1 files into a pack of 0 bytes
+        27738.376 ms node 1: cleaning below checkpoint 3392: 1 files into a pack of 0 bytes
+        27738.854 ms node 3: cleaning below checkpoint 3392: 1 files into a pack of 0 bytes
+        27758.839 ms node 2: cleaning below checkpoint 3392: 1 files into a pack of 0 bytes
+        27787.003 ms watch 1: stream on node 1 from 1911
+        27787.306 ms watch 1: compacted at 1997, starting again
+        27787.415 ms watch 1: stream on node 3 from 0
+        27787.640 ms watch 1: created on node 3 from 2037
+        27799.774 ms node 1: cleaning below checkpoint 3392: 1 files into a pack of 0 bytes
+        28119.503 ms node 3: cleaning below checkpoint 3555: 1 files into a pack of 0 bytes
+        28139.990 ms node 2: cleaning below checkpoint 3555: 1 files into a pack of 0 bytes
+        28161.253 ms node 1: cleaning below checkpoint 3555: 1 files into a pack of 64 bytes
+        28300.120 ms node 3: cleaning below checkpoint 3612: 1 files into a pack of 994 bytes
+        28321.232 ms node 2: cleaning below checkpoint 3662: 1 files into a pack of 1048 bytes
+        28342.723 ms node 1: cleaning below checkpoint 3662: 1 files into a pack of 1349 bytes
+        28343.451 ms node 1: cleaning below checkpoint 3681: 2 files into a pack of 0 bytes
+        28360.875 ms node 3: cleaning below checkpoint 3681: 1 files into a pack of 0 bytes
+        28362.433 ms node 2: cleaning below checkpoint 3681: 1 files into a pack of 0 bytes
+        28481.545 ms node 3: cleaning below checkpoint 3734: 1 files into a pack of 0 bytes
+        28483.595 ms node 2: cleaning below checkpoint 3734: 1 files into a pack of 0 bytes
+        28524.508 ms node 1: cleaning below checkpoint 3734: 1 files into a pack of 118 bytes
+        28586.128 ms node 1: cleaning below checkpoint 3802: 1 files into a pack of 0 bytes
+        28642.220 ms node 3: cleaning below checkpoint 3802: 1 files into a pack of 118 bytes
+        28663.215 ms node 3: cleaning below checkpoint 3833: 1 files into a pack of 0 bytes
+        28664.777 ms node 2: cleaning below checkpoint 3833: 1 files into a pack of 64 bytes
+        28687.302 ms node 1: cleaning below checkpoint 3833: 1 files into a pack of 226 bytes
+        28824.492 ms node 3: cleaning below checkpoint 3909: 1 files into a pack of 1181 bytes
+        28825.997 ms node 2: cleaning below checkpoint 3909: 1 files into a pack of 1318 bytes
+        28848.059 ms node 1: cleaning below checkpoint 3909: 1 files into a pack of 1372 bytes
+        28866.100 ms node 3: cleaning below checkpoint 3948: 1 files into a pack of 0 bytes
+        28867.615 ms node 2: cleaning below checkpoint 3948: 2 files into a pack of 0 bytes
+        28868.905 ms node 1: cleaning below checkpoint 3948: 2 files into a pack of 0 bytes
+        28988.211 ms node 3: cleaning below checkpoint 3974: 1 files into a pack of 0 bytes
+        28988.720 ms node 2: cleaning below checkpoint 3974: 1 files into a pack of 64 bytes
+        29029.983 ms node 1: cleaning below checkpoint 3974: 1 files into a pack of 174 bytes
+        29149.415 ms node 2: cleaning below checkpoint 4079: 1 files into a pack of 0 bytes
+        29151.236 ms node 1: cleaning below checkpoint 4079: 1 files into a pack of 0 bytes
+        29169.830 ms node 3: cleaning below checkpoint 4079: 1 files into a pack of 0 bytes
+        29190.149 ms node 2: cleaning below checkpoint 4079: 1 files into a pack of 91 bytes
+        29213.168 ms node 1: cleaning below checkpoint 4079: 1 files into a pack of 336 bytes
+        29275.230 ms node 1: cleaning below checkpoint 4145: 1 files into a pack of 0 bytes
+        29290.384 ms node 2: cleaning below checkpoint 4145: 1 files into a pack of 0 bytes
+        29350.997 ms node 3: cleaning below checkpoint 4145: 1 files into a pack of 0 bytes
+        29370.909 ms node 2: cleaning below checkpoint 4145: 1 files into a pack of 64 bytes
+        29396.798 ms node 1: cleaning below checkpoint 4145: 1 files into a pack of 284 bytes
+        29432.165 ms node 2: cleaning below checkpoint 4220: 1 files into a pack of 0 bytes
+        29437.646 ms node 1: cleaning below checkpoint 4220: 1 files into a pack of 0 bytes
+        29532.721 ms node 3: cleaning below checkpoint 4220: 1 files into a pack of 471 bytes
+        29553.629 ms node 2: cleaning below checkpoint 4220: 1 files into a pack of 608 bytes
+        29578.669 ms node 1: cleaning below checkpoint 4271: 1 files into a pack of 853 bytes
+        29733.849 ms node 3: cleaning below checkpoint 4346: 1 files into a pack of 1594 bytes
+        29735.180 ms node 2: cleaning below checkpoint 4346: 1 files into a pack of 1511 bytes
+        29740.386 ms node 1: cleaning below checkpoint 4346: 1 files into a pack of 1511 bytes
+        29875.413 ms node 3: cleaning below checkpoint 4439: 3 files into a pack of 64 bytes
+        29876.402 ms node 2: cleaning below checkpoint 4439: 2 files into a pack of 0 bytes
+        29881.408 ms node 1: cleaning below checkpoint 4439: 2 files into a pack of 0 bytes
+        29897.494 ms node 2: cleaning below checkpoint 4439: 1 files into a pack of 64 bytes
+        29937.724 ms node 3: cleaning below checkpoint 4466: 1 files into a pack of 0 bytes
+        29938.536 ms node 2: cleaning below checkpoint 4466: 1 files into a pack of 0 bytes
+        30129.232 ms watch 1: stream on node 1 from 2481
+        30129.445 ms watch 1: compacted at 2662, starting again
+        30129.591 ms watch 1: stream on node 3 from 0
+        30129.836 ms watch 1: created on node 3 from 2728
+        31083.289 ms watch 3: stream on node 1 from 2728
+        31122.772 ms watch 0: stream on node 1 from 2728
+        32319.213 ms watch 1: stream on node 3 from 2728
+        34109.721 ms watch 2: stream on node 1 from 2721
+        34321.295 ms watch 0: stream on node 2 from 2729
+        35642.820 ms watch 3: stream on node 1 from 2729
+        36198.271 ms watch 0: stream on node 1 from 2729
+        36607.319 ms watch 2: stream on node 2 from 2721
+        37992.383 ms watch 2: stream on node 3 from 2721
+        49201.153 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        53210.640 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        53210.911 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        54187.800 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        55070.214 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        55072.109 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        62628.014 ms node 3: peer: accept: use of closed network connection
+        62628.014 ms node 1: peer: accept: use of closed network connection
+        62628.014 ms node 1: peer: receive from node3: sim: connection reset
+        62628.014 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        62628.014 ms node 2: peer: receive from node1: sim: connection reset
+        62628.014 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        62628.014 ms node 3: peer: receive from node1: sim: connection reset
+        62628.014 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        62628.014 ms node 1: peer: send data to 3: sim: connection reset
+        62628.014 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        62628.014 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        62628.014 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        62628.014 ms node 2: peer: send data to 1: sim: connection reset
+        62628.014 ms node 3: peer: send control to 1: sim: connection reset
+        62628.014 ms node 2: peer: accept: use of closed network connection
+        62628.014 ms node 3: peer: receive from node1: sim: connection reset
+        62628.014 ms node 3: peer: receive from node2: sim: connection reset
+        62628.014 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        62628.014 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        62628.014 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        62628.014 ms node 3: peer: receive from node2: sim: connection reset
+        62628.014 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        62628.014 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        62628.014 ms node 3: peer: send control to 2: sim: connection reset
+        62628.014 ms node 3: peer: send data to 2: sim: connection reset
+        62628.014 ms node 3: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 1, heartbeat interval 102.6ms, exceeded 22.488040898s
+        62628.014 ms node 2: peer: receive from node1: sim: connection reset
+        62628.014 ms node 3: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 2, heartbeat interval 102.6ms, exceeded 22.488040898s
+        62628.014 ms node 3: peer: send data to 1: sim: connection reset
+        62628.014 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        sim_test.go:215: the nodes at the end of seed 1:
+        node 1: running since 13.207 s
+          at its last turn, 40.678 s: StateFollower, term 3, leader 3, commit 4537, applied 4537, cluster version 4; members 1 "" [https://node1:2380], 2 "" [https://node2:2380], 3 "" [https://node3:2380]
+          28868.905 ms node 1: cleaning below checkpoint 3948: 2 files into a pack of 0 bytes
+          29029.983 ms node 1: cleaning below checkpoint 3974: 1 files into a pack of 174 bytes
+          29151.236 ms node 1: cleaning below checkpoint 4079: 1 files into a pack of 0 bytes
+          29213.168 ms node 1: cleaning below checkpoint 4079: 1 files into a pack of 336 bytes
+          29275.230 ms node 1: cleaning below checkpoint 4145: 1 files into a pack of 0 bytes
+          29396.798 ms node 1: cleaning below checkpoint 4145: 1 files into a pack of 284 bytes
+          29437.646 ms node 1: cleaning below checkpoint 4220: 1 files into a pack of 0 bytes
+          29578.669 ms node 1: cleaning below checkpoint 4271: 1 files into a pack of 853 bytes
+          29740.386 ms node 1: cleaning below checkpoint 4346: 1 files into a pack of 1511 bytes
+          29881.408 ms node 1: cleaning below checkpoint 4439: 2 files into a pack of 0 bytes
+          53210.640 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+          53210.911 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        node 2: running since 20.066 s
+          at its last turn, 40.866 s: StateFollower, term 3, leader 3, commit 4537, applied 4537, cluster version 4; members 1 "" [https://node1:2380], 2 "" [https://node2:2380], 3 "" [https://node3:2380]
+          29149.415 ms node 2: cleaning below checkpoint 4079: 1 files into a pack of 0 bytes
+          29190.149 ms node 2: cleaning below checkpoint 4079: 1 files into a pack of 91 bytes
+          29290.384 ms node 2: cleaning below checkpoint 4145: 1 files into a pack of 0 bytes
+          29370.909 ms node 2: cleaning below checkpoint 4145: 1 files into a pack of 64 bytes
+          29432.165 ms node 2: cleaning below checkpoint 4220: 1 files into a pack of 0 bytes
+          29553.629 ms node 2: cleaning below checkpoint 4220: 1 files into a pack of 608 bytes
+          29735.180 ms node 2: cleaning below checkpoint 4346: 1 files into a pack of 1511 bytes
+          29876.402 ms node 2: cleaning below checkpoint 4439: 2 files into a pack of 0 bytes
+          29897.494 ms node 2: cleaning below checkpoint 4439: 1 files into a pack of 64 bytes
+          29938.536 ms node 2: cleaning below checkpoint 4466: 1 files into a pack of 0 bytes
+          55070.214 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+          55072.109 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        node 3: running since 14.182 s
+          at its last turn, 40.037 s: StateLeader, term 3, leader 3, commit 4537, applied 4537, cluster version 4; members 1 "" [https://node1:2380], 2 "" [https://node2:2380], 3 "" [https://node3:2380]
+          28663.215 ms node 3: cleaning below checkpoint 3833: 1 files into a pack of 0 bytes
+          28824.492 ms node 3: cleaning below checkpoint 3909: 1 files into a pack of 1181 bytes
+          28866.100 ms node 3: cleaning below checkpoint 3948: 1 files into a pack of 0 bytes
+          28988.211 ms node 3: cleaning below checkpoint 3974: 1 files into a pack of 0 bytes
+          29169.830 ms node 3: cleaning below checkpoint 4079: 1 files into a pack of 0 bytes
+          29350.997 ms node 3: cleaning below checkpoint 4145: 1 files into a pack of 0 bytes
+          29532.721 ms node 3: cleaning below checkpoint 4220: 1 files into a pack of 471 bytes
+          29733.849 ms node 3: cleaning below checkpoint 4346: 1 files into a pack of 1594 bytes
+          29875.413 ms node 3: cleaning below checkpoint 4439: 3 files into a pack of 64 bytes
+          29937.724 ms node 3: cleaning below checkpoint 4466: 1 files into a pack of 0 bytes
+          49201.153 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+          54187.800 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        
+        sim_test.go:216: hashes of seed 1: trace 05aebe594217479e history b926d4b0b45b5a1f node1 3c61d3199bb9465e node2 46955f1d634e1533 node3 a0cf8f03b8e3540a
+        sim_test.go:218: replay: SIM_SEED=1 SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestFenceCorruptLeader$/^1$'
+        --- FAIL: TestFenceCorruptLeader/1 (64.82s simulated)
+        --- FAIL: TestFenceCorruptLeader (64.82s simulated)
+    native.go:332: hashes:
+        seed 1: trace 05aebe594217479e history b926d4b0b45b5a1f node1 3c61d3199bb9465e node2 46955f1d634e1533 node3 a0cf8f03b8e3540a
+    native.go:332: replay: SIM_SEED=1 SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestFenceCorruptLeader$/^1$'
+    native.go:333: set SIM_OUT to save the files of [TestFenceCorruptLeader_1]
+--- FAIL: TestFenceCorruptLeader (1.62s)
+    --- FAIL: TestFenceCorruptLeader/1 (1.62s)
+FAIL

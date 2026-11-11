@@ -1,0 +1,291 @@
+=== RUN   TestFenceCorruptLeader
+=== RUN   TestFenceCorruptLeader/1
+    gosimtool.go:277: Using pre-built gosim test binary "/home/joshazimullah.linux/.t3/worktrees/tigerstore/t3-6399e2e3/.gosim/metatest/linux_arm64/translated-github.com-djosh34-tigerstore-internal_-sim.test"
+    native.go:332: the gosim run of seed 1 took 2s
+    native.go:332: TestFenceCorruptLeader failed in gosim with seed 1: test failed
+        === RUN   TestFenceCorruptLeader (seed 1)
+        === RUN   TestFenceCorruptLeader/1 (seed 1)
+        corruptleader_test.go:28: durability: client 0 calls at 1472167812 before its previous call returned at 1472167812
+        revisions: client 0 calls at 1472167812 before its previous call returned at 1472167812
+        watches: client 0 calls at 1472167812 before its previous call returned at 1472167812
+        witness: client 0 calls at 1472167812 before its previous call returned at 1472167812
+        witness: client 0 calls at 1472167812 before its previous call returned at 1472167812
+        sim_test.go:214: trace of seed 1:
+            0.000 ms links 111111
+           86.060 ms node 1: starting
+           86.060 ms node 1: recovering the log
+           86.060 ms node 1: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+           86.060 ms node 1: cluster version 4
+           86.060 ms node 1: leader is 0 at term 2
+          132.668 ms node 2: starting
+          132.668 ms node 2: recovering the log
+          132.668 ms node 2: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+          132.668 ms node 2: cluster version 4
+          132.668 ms node 2: leader is 0 at term 2
+          158.425 ms node 3: starting
+          158.425 ms node 3: recovering the log
+          158.425 ms node 3: recovered the log up to entry 10: last entry 10 at term 2; term 2, vote 1, commit 10; voters [1 2 3]
+          158.425 ms the cluster formed at cluster version 4 in 2.115 s with no faults, in a run of its own; the nodes start from its disks
+         1158.425 ms node 3: cluster version 4
+         1158.425 ms node 3: leader is 0 at term 2
+         1460.660 ms node 3: leader is 0 at term 3
+         1461.745 ms node 2: leader is 0 at term 3
+         1462.773 ms node 1: leader is 0 at term 3
+         1462.854 ms node 3: leader is 3 at term 3
+         1464.125 ms node 1: leader is 3 at term 3
+         1464.201 ms node 2: leader is 3 at term 3
+         1468.425 ms scenario: held node 1 down; leader is node 3
+         1468.425 ms node 1: peer: receive from node2: sim: connection reset
+         1468.425 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1468.425 ms node 1: peer: accept: use of closed network connection
+         1468.425 ms node 2: peer: send control to 1: sim: connection reset
+         1468.425 ms node 1: peer: receive from node2: sim: connection reset
+         1468.425 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1468.425 ms node 1: peer: receive from node3: sim: connection reset
+         1468.425 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1468.425 ms node 3: peer: send data to 1: sim: connection reset
+         1468.425 ms node 1: peer: send data to 2: sim: connection reset
+         1468.425 ms node 2: peer: receive from node1: sim: connection reset
+         1468.425 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1468.425 ms node 3: peer: receive from node1: sim: connection reset
+         1468.425 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1468.425 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1468.425 ms node 2: peer: receive from node1: sim: connection reset
+         1468.425 ms node 3: peer: send control to 1: sim: connection reset
+         1468.425 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1468.425 ms node 3: peer: receive from node1: sim: connection reset
+         1468.425 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1468.425 ms node 2: peer: send data to 1: sim: connection reset
+         1651.686 ms scenario: damaged entry 12 in 0000000000000002.wal on leader 3; follower 1 resumes
+         1695.310 ms node 1: starting
+         1695.310 ms node 1: recovering the log
+         1695.310 ms node 1: recovered the log up to entry 11: last entry 11 at term 3; term 3, vote 3, commit 11; voters [1 2 3]
+         1823.939 ms node 3: peer: 1 control messages to 1 waited over 100ms in their queue, the longest 165.513842ms; the last a MsgHeartbeat
+         1826.133 ms node 1: leader is 3 at term 3
+         1828.108 ms node 1: fetching the snapshot at 52 from 3
+         1832.795 ms node 3: peer: receive from node1: snapshot for 1: wal: corrupt log: the record of entry 12 in segment 2 does not verify
+         1832.795 ms node 1: peer: receive from node3: EOF
+         1832.795 ms node 1: peer: receive from node3: EOF
+         1832.795 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1832.795 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1832.795 ms node 2: peer: receive from node3: EOF
+         1832.795 ms node 2: peer: receive from node3: EOF
+         1832.795 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1832.795 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1832.795 ms node 3: stopped: wal: corrupt log: the record of entry 12 in segment 2 does not verify
+         1832.795 ms node 3: crashed
+         1832.795 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         1832.795 ms node 1: peer: send control to 3: sim: connection reset
+         1832.795 ms node 2: peer: send data to 3: sim: connection reset
+         1832.795 ms node 2: peer: send control to 3: sim: connection reset
+         1832.795 ms node 1: peer: send data to 3: sim: connection reset
+         1832.795 ms node 1: install the snapshot at 52 from 3: core: the snapshot fetch failed: sim: connection reset; starting again from the log
+         1832.795 ms node 1: recovering the log
+         1832.795 ms node 1: recovered the log up to entry 11: last entry 11 at term 3; term 3, vote 3, commit 11; voters [1 2 3]
+         1832.795 ms node 1: started again from its log
+         1832.795 ms node 1: leader is 0 at term 3
+         1872.817 ms node 3: starting
+         1872.817 ms node 3: recovering the log
+         1872.817 ms node 3: fenced: wal: corrupt log: damaged record in 0000000000000002.wal at byte 466
+         2092.358 ms watch 2: stream on node 2 from 0
+         2092.582 ms watch 2: created on node 2 from 42
+         2298.097 ms watch 0: stream on node 2 from 0
+         2298.290 ms watch 0: created on node 2 from 42
+         2778.178 ms watch 3: stream on node 1 from 0
+         2778.346 ms watch 3: created on node 1 from 2
+         2807.010 ms watch 1: stream on node 1 from 0
+         2807.048 ms watch 1: created on node 1 from 2
+         3532.668 ms node 2: leader is 0 at term 3
+         3535.636 ms node 2: leader is 0 at term 4
+         3536.583 ms node 1: leader is 0 at term 4
+         3539.502 ms node 2: leader is 2 at term 4
+         3539.502 ms node 2: request stats: /etcdserverpb.KV/Range from client took 1.659805533s, more than 300ms
+         3540.288 ms node 1: leader is 2 at term 4
+         3542.928 ms node 1: fetching the snapshot at 53 from 2
+         3559.870 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         3559.870 ms node 1: installed the snapshot at 53 from 2, checkpoint 0
+         3560.041 ms node 1: request stats: /etcdserverpb.KV/Put from client took 1.624171558s, more than 300ms
+         3560.041 ms watch 1: stream ended: rpc error: code = Unavailable desc = tigerstore: the node installed a snapshot; watch again
+         3560.041 ms watch 3: stream ended: rpc error: code = Unavailable desc = tigerstore: the node installed a snapshot; watch again
+         3560.041 ms node 1: core: installed a snapshot at 53 from 2, checkpoint 0; starting again from the log
+         3560.041 ms node 1: recovering the log
+         3560.041 ms node 1: recovered the log up to entry 53: last entry 53 at term 3; term 4, vote 2, commit 53; voters [1 2 3]
+         3560.288 ms watch 1: stream on node 1 from 2
+         3560.288 ms node 1: started again from its log
+         3560.288 ms node 1: leader is 0 at term 4
+         3604.856 ms watch 0: stream on node 2 from 42
+         3633.531 ms node 1: leader is 2 at term 4
+         3719.323 ms watch 3: stream on node 2 from 2
+         5143.710 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         5270.014 ms watch 1: stream on node 1 from 115
+         5270.356 ms watch 1: compacted at 191, starting again
+         5270.827 ms watch 1: stream on node 1 from 0
+         5270.987 ms watch 1: created on node 1 from 228
+         5506.559 ms watch 0: stream on node 2 from 146
+         5507.113 ms watch 0: compacted at 225, starting again
+         5507.352 ms watch 0: stream on node 2 from 0
+         5507.381 ms watch 0: created on node 2 from 260
+         6707.016 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+         7075.964 ms watch 3: stream on node 2 from 265
+         7076.169 ms watch 3: compacted at 410, starting again
+         7076.389 ms watch 3: stream on node 1 from 0
+         7076.508 ms watch 3: created on node 1 from 490
+         8611.650 ms watch 1: stream on node 1 from 475
+         8611.977 ms watch 1: compacted at 687, starting again
+         8612.212 ms watch 1: stream on node 1 from 0
+         8612.455 ms watch 1: created on node 1 from 733
+         9687.761 ms watch 3: stream on node 1 from 718
+         9687.973 ms watch 3: compacted at 858, starting again
+         9688.218 ms watch 3: stream on node 2 from 0
+         9688.404 ms watch 3: created on node 2 from 888
+         9947.404 ms watch 1: stream on node 1 from 879
+         9947.763 ms watch 1: compacted at 896, starting again
+         9947.983 ms watch 1: stream on node 1 from 0
+         9948.288 ms watch 1: created on node 1 from 920
+        11090.126 ms watch 0: stream on node 2 from 861
+        11090.462 ms watch 0: compacted at 934, starting again
+        11090.837 ms watch 0: stream on node 2 from 0
+        11090.895 ms watch 0: created on node 2 from 1082
+        11485.766 ms watch 2: stream on node 1 from 858
+        11486.012 ms watch 2: compacted at 1123, starting again
+        11653.316 ms watch 2: stream on node 1 from 0
+        11653.541 ms watch 2: created on node 1 from 1156
+        11944.510 ms watch 1: stream on node 1 from 1101
+        11944.871 ms watch 1: compacted at 1123, starting again
+        11945.041 ms watch 1: stream on node 2 from 0
+        11945.299 ms watch 1: created on node 2 from 1204
+        13270.029 ms watch 3: stream on node 2 from 1132
+        13270.320 ms watch 3: compacted at 1356, starting again
+        13753.646 ms watch 3: stream on node 2 from 0
+        13753.858 ms watch 3: created on node 2 from 1451
+        15000.935 ms watch 2: stream on node 2 from 1544
+        15001.411 ms watch 2: compacted at 1605, starting again
+        15297.904 ms watch 2: stream on node 2 from 0
+        15298.088 ms watch 2: created on node 2 from 1674
+        15699.302 ms watch 1: stream on node 1 from 1605
+        15699.721 ms watch 1: compacted at 1721, starting again
+        16015.731 ms watch 2: stream on node 1 from 1674
+        16016.173 ms watch 2: compacted at 1721, starting again
+        16016.622 ms watch 2: stream on node 1 from 0
+        16016.752 ms watch 2: created on node 1 from 1789
+        16162.710 ms watch 1: stream on node 1 from 0
+        16163.019 ms watch 1: created on node 1 from 1803
+        20000.000 ms healing
+        20000.000 ms links 111111
+        20316.025 ms watch 3: stream on node 1 from 2380
+        20551.279 ms watch 2: stream on node 1 from 2245
+        20551.686 ms watch 2: compacted at 2406, starting again
+        20552.120 ms watch 2: stream on node 1 from 0
+        20552.246 ms watch 2: created on node 1 from 2460
+        21519.269 ms watch 3: stream on node 2 from 2480
+        21519.684 ms watch 3: compacted at 2643, starting again
+        21519.952 ms watch 3: stream on node 2 from 0
+        21520.058 ms watch 3: created on node 2 from 2653
+        22000.196 ms watch 2: stream on node 2 from 2563
+        22000.501 ms watch 2: compacted at 2684, starting again
+        22000.972 ms watch 2: stream on node 1 from 0
+        22001.109 ms watch 2: created on node 1 from 2738
+        23325.506 ms watch 3: stream on node 2 from 2806
+        23326.084 ms watch 3: compacted at 2938, starting again
+        23326.346 ms watch 3: stream on node 2 from 0
+        23326.591 ms watch 3: created on node 2 from 2985
+        24349.332 ms watch 2: stream on node 1 from 2828
+        24349.470 ms watch 2: compacted at 3047, starting again
+        24563.437 ms watch 2: stream on node 2 from 0
+        24563.473 ms watch 2: created on node 2 from 3232
+        24842.434 ms watch 3: stream on node 2 from 3047
+        24842.927 ms watch 3: compacted at 3252, starting again
+        24843.264 ms watch 3: stream on node 1 from 0
+        24843.563 ms watch 3: created on node 1 from 3281
+        26245.524 ms watch 0: stream on node 2 from 3497
+        26245.969 ms watch 0: compacted at 3519, starting again
+        26246.368 ms watch 0: stream on node 2 from 0
+        26246.533 ms watch 0: created on node 2 from 3547
+        26930.723 ms watch 0: stream on node 2 from 3568
+        26931.114 ms watch 0: compacted at 3638, starting again
+        26931.468 ms watch 0: stream on node 1 from 0
+        26931.524 ms watch 0: created on node 1 from 3686
+        28068.658 ms watch 0: stream on node 2 from 3844
+        28068.936 ms watch 0: compacted at 3844, starting again
+        28069.216 ms watch 0: stream on node 2 from 0
+        28069.483 ms watch 0: created on node 2 from 3906
+        28494.812 ms watch 0: stream on node 2 from 3906
+        29165.971 ms watch 2: stream on node 1 from 3902
+        29830.930 ms watch 0: stream on node 2 from 3906
+        30322.424 ms watch 2: stream on node 1 from 3902
+        31554.277 ms watch 3: stream on node 1 from 3906
+        31787.440 ms watch 1: stream on node 2 from 3906
+        32699.611 ms watch 0: stream on node 1 from 3906
+        34510.568 ms watch 3: stream on node 1 from 3907
+        34607.508 ms watch 2: stream on node 1 from 3902
+        34954.251 ms watch 1: stream on node 1 from 3907
+        35145.872 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        35396.970 ms watch 2: stream on node 1 from 3902
+        36709.298 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        39994.643 ms node 2: peer: accept: use of closed network connection
+        39994.643 ms node 1: peer: accept: use of closed network connection
+        39994.643 ms node 2: peer: receive from node1: sim: connection reset
+        39994.643 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        39994.643 ms node 2: peer: send control to 1: sim: connection reset
+        39994.643 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        39994.643 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        39994.643 ms node 2: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 1, heartbeat interval 100ms, exceeded 1.861974587s
+        39994.643 ms node 2: warning: leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk: to 3, heartbeat interval 100ms, exceeded 1.861974587s
+        39994.643 ms node 2: peer: receive from node1: sim: connection reset
+        39994.643 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        39994.643 ms node 2: peer: send data to 1: sim: connection reset
+        sim_test.go:215: the nodes at the end of seed 1:
+        node 1: running since 1.695 s
+          at its last turn, 38.383 s: StateFollower, term 4, leader 2, commit 6812, applied 6812, cluster version 4; members 1 "" [https://node1:2380], 2 "" [https://node2:2380], 3 "" [https://node3:2380]
+           3542.928 ms node 1: fetching the snapshot at 53 from 2
+           3559.870 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+           3559.870 ms node 1: installed the snapshot at 53 from 2, checkpoint 0
+           3560.041 ms node 1: request stats: /etcdserverpb.KV/Put from client took 1.624171558s, more than 300ms
+           3560.041 ms node 1: core: installed a snapshot at 53 from 2, checkpoint 0; starting again from the log
+           3560.041 ms node 1: recovering the log
+           3560.041 ms node 1: recovered the log up to entry 53: last entry 53 at term 3; term 4, vote 2, commit 53; voters [1 2 3]
+           3560.288 ms node 1: started again from its log
+           3560.288 ms node 1: leader is 0 at term 4
+           3633.531 ms node 1: leader is 2 at term 4
+           6707.016 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+          36709.298 ms node 1: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        node 2: running since 0.133 s
+          at its last turn, 38.033 s: StateLeader, term 4, leader 2, commit 6812, applied 6812, cluster version 4; members 1 "" [https://node1:2380], 2 "" [https://node2:2380], 3 "" [https://node3:2380]
+           1832.795 ms node 2: peer: receive from node3: EOF
+           1832.795 ms node 2: peer: receive from node3: EOF
+           1832.795 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+           1832.795 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+           1832.795 ms node 2: peer: send data to 3: sim: connection reset
+           1832.795 ms node 2: peer: send control to 3: sim: connection reset
+           3532.668 ms node 2: leader is 0 at term 3
+           3535.636 ms node 2: leader is 0 at term 4
+           3539.502 ms node 2: leader is 2 at term 4
+           3539.502 ms node 2: request stats: /etcdserverpb.KV/Range from client took 1.659805533s, more than 300ms
+           5143.710 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+          35145.872 ms node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+        node 3: down since 1.873 s: refused to start on its damaged disk: wal: corrupt log: damaged record in 0000000000000002.wal at byte 466; fenced for good
+          at its last turn, 1.833 s: StateLeader, term 3, leader 3, commit 53, applied 53, cluster version 4; members 1 "" [https://node1:2380], 2 "" [https://node2:2380], 3 "" [https://node3:2380]
+           1468.425 ms node 3: peer: receive from node1: sim: connection reset
+           1468.425 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+           1468.425 ms node 3: peer: send control to 1: sim: connection reset
+           1468.425 ms node 3: peer: receive from node1: sim: connection reset
+           1468.425 ms node 3: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): sim: connection reset
+           1823.939 ms node 3: peer: 1 control messages to 1 waited over 100ms in their queue, the longest 165.513842ms; the last a MsgHeartbeat
+           1832.795 ms node 3: peer: receive from node1: snapshot for 1: wal: corrupt log: the record of entry 12 in segment 2 does not verify
+           1832.795 ms node 3: stopped: wal: corrupt log: the record of entry 12 in segment 2 does not verify
+           1832.795 ms node 3: crashed
+           1872.817 ms node 3: starting
+           1872.817 ms node 3: recovering the log
+           1872.817 ms node 3: fenced: wal: corrupt log: damaged record in 0000000000000002.wal at byte 466
+        
+        sim_test.go:216: hashes of seed 1: trace bf00e3b3a9b7d401 history e653986ce20a2982 node1 1504e7cea7ec0cf8 node2 583a60de324f248e node3 97f2f1d556657f79
+        sim_test.go:218: replay: SIM_SEED=1 SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestFenceCorruptLeader$/^1$'
+        --- FAIL: TestFenceCorruptLeader/1 (42.11s simulated)
+        --- FAIL: TestFenceCorruptLeader (42.11s simulated)
+    native.go:332: hashes:
+        seed 1: trace bf00e3b3a9b7d401 history e653986ce20a2982 node1 1504e7cea7ec0cf8 node2 583a60de324f248e node3 97f2f1d556657f79
+    native.go:332: replay: SIM_SEED=1 SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestFenceCorruptLeader$/^1$'
+    native.go:333: set SIM_OUT to save the files of [TestFenceCorruptLeader_1]
+--- FAIL: TestFenceCorruptLeader (2.30s)
+    --- FAIL: TestFenceCorruptLeader/1 (2.30s)
+FAIL

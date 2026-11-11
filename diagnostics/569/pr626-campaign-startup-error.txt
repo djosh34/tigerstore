@@ -1,0 +1,12 @@
+Error
+An unexpected error has occurred and we've been automatically notified. Errors are sometimes temporary, so please try again.
+
+If the problem persists, please check whether the Actions service is operating normally at
+https://githubstatus.com
+. If not, please try again once the outage has been resolved.
+
+Should you need to contact Support, please visit
+https://support.github.com/contact
+and include request ID: efc0ac3a-de10-11f1-824b-56afbee962db
+Show more
+Show less

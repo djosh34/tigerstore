@@ -1,0 +1,13 @@
+=== RUN   TestFenceCorruptLeader
+=== RUN   TestFenceCorruptLeader/1
+    gosimtool.go:277: Using pre-built gosim test binary "/home/joshazimullah.linux/.t3/worktrees/tigerstore/t3-6399e2e3/.gosim/metatest/linux_arm64/translated-github.com-djosh34-tigerstore-internal_-sim.test"
+    native.go:332: the gosim run of seed 1 took 2s
+    native.go:332: === RUN   TestFenceCorruptLeader (seed 1)
+        === RUN   TestFenceCorruptLeader/1 (seed 1)
+        corruptleader_test.go:32: seed 1: fenced after serve 1, failed serves 1, cold restarts 1
+        --- PASS: TestFenceCorruptLeader/1 (42.53s simulated)
+        --- PASS: TestFenceCorruptLeader (42.53s simulated)
+    native.go:338: hashes: seed 1: trace 5fd135c7a7326231 history c53932661ff23e7b node1 1713df0f6df924d3 node2 f1299ba5a2ca9dba node3 a8588405b39ffb31
+--- PASS: TestFenceCorruptLeader (2.27s)
+    --- PASS: TestFenceCorruptLeader/1 (2.27s)
+PASS
