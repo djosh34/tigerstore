@@ -161,7 +161,10 @@ stability)
 				python3 -I "$here/echo.py" rtt "$lp" 1 64 >/dev/null 2>&1 || true
 				sleep 0.5
 			done
-			(
+			# Off by default: a probe is a second client process with the same
+			# client-default key against the same server, which disturbed the
+			# long-lived tunnel in runs 2 and 3.
+			[ "${STAB_PROBE:-0}" = 1 ] && (
 				end=$((SECONDS + ${STAB_SECS:-300}))
 				while [ $SECONDS -lt $end ]; do
 					echo "$(date -u +%T) $(timeout 20 "$TC" ping --until-direct --timeout=10s "$A" 2>&1 | tail -1)"
@@ -170,7 +173,7 @@ stability)
 			) >"$d/stab-paths.txt" &
 			ppid=$!
 			python3 -I "$here/echo.py" stab "$lp" "${STAB_SECS:-300}" >"$d/stab-echo.json" || true
-			wait $ppid || true
+			wait $ppid 2>/dev/null || true
 			kill $fpid 2>/dev/null || true
 			sleep 1
 			# Keep only path-related magicsock lines; redact anything address-shaped.
