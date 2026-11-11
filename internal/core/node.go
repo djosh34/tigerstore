@@ -98,8 +98,10 @@ type Config struct {
 	Boot, Run uint64
 	// HeldEntries reports whether the link to a peer carries the messages
 	// of held entries (held.go): the peer speaks peer protocol 4 or later.
-	// nil means no link does.
+	// nil means no link does. Kept, if set, is what the core before this
+	// one held (Node.Kept).
 	HeldEntries func(peer uint64) bool
+	Kept        *Kept
 
 	// ElectionTicks and HeartbeatTicks are the Raft timeouts in ticks.
 	ElectionTicks, HeartbeatTicks int
@@ -753,6 +755,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	if len(n.state.members) > 0 {
 		n.out.Members = n.state.cloneMembers()
 	}
+	n.adopt(cfg.Kept)
 	return n, nil
 }
 

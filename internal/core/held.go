@@ -5,7 +5,9 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 
+	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"go.etcd.io/raft/v3/tracker"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -196,6 +198,26 @@ func (n *Node) Held() HeldCounts {
 	return HeldCounts{n.counters.HeldNamed, n.counters.HeldParked, n.counters.HeldAsked}
 }
 
+// Kept is the entries a core holds for appends to come. A core started
+// again from the log after a snapshot install takes over those of the core
+// before it (Config.Kept): without them, the appends that name entries
+// side-copied before the install would wait, and on a short log window
+// the wait makes the follower fall behind into another install.
+type Kept struct{ data map[heldKey][]byte }
+
+// Kept returns the entries the node holds, for the core that follows it.
+func (n *Node) Kept() *Kept { return &Kept{data: n.kept.data} }
+
+// adopt holds the entries of an earlier core of this node.
+func (n *Node) adopt(k *Kept) {
+	if k == nil {
+		return
+	}
+	for key, data := range k.data {
+		n.keep(key, data)
+	}
+}
+
 // heldOn reports whether the link to peer carries the forms of this file.
 func (n *Node) heldOn(peer uint64) bool {
 	return n.cfg.HeldEntries != nil && n.cfg.HeldEntries(peer)
@@ -273,7 +295,7 @@ func (n *Node) forwarded(m *raftpb.Message) {
 // later sends side copies. It names nothing to a follower that asked for
 // everything in full in the last heldFullTicks (heldAskFull).
 func (n *Node) nameHeld(m *raftpb.Message) *raftpb.Message {
-	if !n.heldOn(m.GetTo()) || n.now < n.kept.fullUntil[m.GetTo()] {
+	if !n.heldOn(m.GetTo()) || n.now < n.kept.fullUntil[m.GetTo()] || !n.replicating(m.GetTo()) {
 		return m
 	}
 	var named []byte
@@ -299,6 +321,21 @@ func (n *Node) nameHeld(m *raftpb.Message) *raftpb.Message {
 		return m
 	}
 	return withEntries(m, entries, named)
+}
+
+// replicating reports whether Raft streams appends to peer id, as it does
+// once the follower's log has caught up. A follower that installed a
+// snapshot, or that Raft probes, gets entries in full: it lost what it
+// held, and on a short log window a wait for a side copy would put it
+// behind into another install.
+func (n *Node) replicating(id uint64) bool {
+	ok := false
+	n.rn.WithProgress(func(p uint64, _ raft.ProgressType, pr tracker.Progress) {
+		if p == id {
+			ok = pr.State == tracker.StateReplicate
+		}
+	})
+	return ok
 }
 
 // holds reports whether node to holds the entries origin proposed, unless

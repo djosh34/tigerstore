@@ -858,6 +858,10 @@ func (n *Node) open() error {
 	// Only a reload finds a core of an earlier run. It goes before the
 	// new one loads, so that the two are never in memory at once.
 	reload := n.core != nil
+	var kept *core.Kept
+	if reload {
+		kept = n.core.Kept()
+	}
 	n.core = nil
 	if reload && n.cfg.reloading != nil {
 		n.cfg.reloading(n)
@@ -868,7 +872,7 @@ func (n *Node) open() error {
 	}
 	cfg := n.cfg.Core
 	cfg.Boot, cfg.Run = rand.Uint64(), run
-	cfg.ConnectedTicks, cfg.HeldEntries = n.connectedTicks, n.heldEntries
+	cfg.ConnectedTicks, cfg.HeldEntries, cfg.Kept = n.connectedTicks, n.heldEntries, kept
 	cfg.Timer = newTimer(n.cfg.Metrics, cmp.Or(n.cfg.WarningApplyDuration, warningApply), n.logf)
 	c, err := core.New(cfg, rec, n.log)
 	if err != nil {

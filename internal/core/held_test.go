@@ -7,6 +7,8 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3/raftpb"
+
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 // heldCluster starts three nodes in memory whose links all carry the
@@ -72,7 +74,8 @@ func TestHeldEntriesNameForwardedWrites(t *testing.T) {
 				}
 			}
 			for i, e := range m.Entries {
-				if k, ok := entryKey(e.GetData()); ok && !byName[uint64(i)] && k.origin != 1 && e.GetTerm() == c.nodes[0].term {
+				// A follower that Raft still probes gets entries in full.
+				if k, ok := entryKey(e.GetData()); ok && !byName[uint64(i)] && k.origin != 1 && e.GetTerm() == c.nodes[0].term && c.nodes[0].replicating(m.GetTo()) {
 					full++
 				}
 			}
@@ -258,6 +261,8 @@ func TestOldForwarderIsNotNamed(t *testing.T) {
 // proposed to no learner, which gets no side copies.
 func TestLearnerIsNotNamed(t *testing.T) {
 	c := heldCluster(t)
+	// Writes bring the followers to Raft's replicating state.
+	writeThroughFollowers(t, c, 5)
 	leader := c.nodes[0]
 	leader.state.members[4] = &pb.Member{ID: 4, IsLearner: true}
 	data, err := encodeBatch(MaxVersion, 2, 1, []*pending{{req: Request{ID: 9, Op: &pb.PutRequest{Key: []byte("k")}}}}, 64)
@@ -295,43 +300,35 @@ func TestHeartbeatContextIsNotHeld(t *testing.T) {
 	}
 }
 
-// TestForwarderForgets drops what node 2 held, as a restart does, while
-// the leader's appends that name its entries are on their way: node 2
-// waits, asks for them in full, and applies what the others do.
+// TestForwarderForgets drops what node 2 held, as a restart does, just
+// as the first append that names its entries reaches it: node 2 waits,
+// asks for them in full, and applies what the others do.
 func TestForwarderForgets(t *testing.T) {
 	c := heldCluster(t)
-	var held []*raftpb.Message
+	writeThroughFollowers(t, c, 5)
+	forgot := false
 	c.drop = func(m *raftpb.Message) bool {
-		if m.GetTo() == 2 && HeldForm(m) && m.GetType() == raftpb.MsgApp {
-			held = append(held, m)
-			return true
+		if !forgot && m.GetTo() == 2 && HeldForm(m) && m.GetType() == raftpb.MsgApp {
+			c.nodes[1].kept = keptEntries{}
+			forgot = true
 		}
 		return false
 	}
+	answered := c.replies
 	for k := range 10 {
-		c.nodes[1].Submit(Request{ID: uint64(k + 1), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", k), Value: []byte("v")}})
+		c.nodes[1].Submit(Request{ID: uint64(1000 + k), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "f%d", k), Value: []byte("v")}})
 	}
-	for range 10 {
-		c.step()
-	}
-	if len(held) == 0 {
-		t.Fatal("the leader named no entry to node 2")
-	}
-	c.nodes[1].kept = keptEntries{}
-	c.drop = nil
-	for _, m := range held {
-		if err := c.nodes[1].Step(m); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for step := 0; c.replies < 10; step++ {
+	for step := 0; c.replies < answered+10; step++ {
 		if step > 500 {
-			t.Fatalf("%d of 10 writes answered: %s", c.replies, c.describe())
+			t.Fatalf("%d of 10 writes answered: %s", c.replies-answered, c.describe())
 		}
 		for _, n := range c.nodes {
 			n.Tick()
 		}
 		c.step()
+	}
+	if !forgot {
+		t.Fatal("the leader named no entry to node 2")
 	}
 	if c.nodes[1].Metrics().HeldAsked == 0 {
 		t.Fatal("node 2 never asked for the entries it forgot")
@@ -381,12 +378,15 @@ func TestLeaderChangeWithNamedAppends(t *testing.T) {
 	}
 	c.down[0] = true
 	c.drop = nil
+	// Node 3 ticks slower, so that node 2's election timeout comes first.
 	for step := 0; !c.nodes[1].isLeader; step++ {
 		if step > 1000 {
 			t.Fatalf("node 2 did not take over: %s", c.describe())
 		}
 		c.nodes[1].Tick()
-		c.nodes[2].Tick()
+		if step%3 == 0 {
+			c.nodes[2].Tick()
+		}
 		c.step()
 	}
 	for _, m := range stale {
@@ -429,5 +429,63 @@ func TestCutOffFollowerKeepsUp(t *testing.T) {
 	t.Logf("after 400 writes, the leader applied %d, node 3 %d, and node 3 asked %d times", lead, behind, c.nodes[2].Metrics().HeldAsked)
 	if behind+lead/10 < lead {
 		t.Fatalf("node 3 applied %d while the leader applied %d: it falls behind while writes go on", behind, lead)
+	}
+}
+
+// TestRejoiningFollowerGetsFull stops node 3 while node 2 forwards writes,
+// so it gets none of their side copies, and brings it back holding
+// nothing, as a snapshot install leaves it. While Raft probes it, the
+// leader sends it entries in full: it parks no append. Naming them made it
+// wait, and on a short log window fall behind into another install, again
+// and again (#626, seed 290's 242 snapshots).
+func TestRejoiningFollowerGetsFull(t *testing.T) {
+	c := heldCluster(t)
+	writeThroughFollowers(t, c, 5)
+	c.down[2] = true
+	answered := c.replies
+	for k := range 20 {
+		c.nodes[1].Submit(Request{ID: uint64(1000 + k), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "r%d", k), Value: []byte("v")}})
+	}
+	for step := 0; c.replies < answered+20; step++ {
+		if step > 500 {
+			t.Fatalf("%d of 20 writes answered with node 3 down: %s", c.replies-answered, c.describe())
+		}
+		c.nodes[0].Tick()
+		c.nodes[1].Tick()
+		c.step()
+	}
+	c.down[2] = false
+	c.nodes[2].kept = keptEntries{}
+	for range 100 {
+		for _, n := range c.nodes {
+			n.Tick()
+		}
+		c.step()
+	}
+	if c.nodes[2].Applied() != c.nodes[0].Applied() || c.nodes[2].Hash() != c.nodes[0].Hash() {
+		t.Fatalf("node 3 applied %d, the leader %d", c.nodes[2].Applied(), c.nodes[0].Applied())
+	}
+	if p := c.nodes[2].Held().Parked; p != 0 {
+		t.Fatalf("node 3 parked %d appends while it caught up", p)
+	}
+}
+
+// TestKeptSurvivesReload checks that a core started again after a
+// snapshot install holds what the core before it held.
+func TestKeptSurvivesReload(t *testing.T) {
+	cfg := DefaultConfig(1, []uint64{1})
+	old, err := New(cfg, &wal.Recovered{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := heldKey{origin: 2, boot: 1, id: 7, size: 3}
+	old.keep(k, []byte("abc"))
+	cfg.Kept = old.Kept()
+	next, err := New(cfg, &wal.Recovered{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(next.kept.data[k]) != "abc" {
+		t.Fatal("the new core does not hold what the old one held")
 	}
 }
