@@ -44,8 +44,10 @@ func TestSnapshotFromCorruptLeader(t *testing.T) {
 // (tinyLimits) and the other follower has them all, rots that first entry
 // in its sealed segment on the leader's disk, and starts the follower
 // again. Its catch-up is a snapshot from the leader, which streams that
-// record. The run has no checkpoints, so that nothing else reads the
-// damage first.
+// record. No checkpoint is written before the fence, so that nothing else
+// reads the damage first: the growing log writes none (noCheckpoints),
+// and the compactions that write one come from the clients, after the
+// scenario.
 func serveDamage(s *Sim) error {
 	wait := func(what string, ready func() bool) error {
 		until := s.now() + 10*Second
