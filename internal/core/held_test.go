@@ -258,27 +258,31 @@ func TestOldForwarderIsNotNamed(t *testing.T) {
 }
 
 // TestLearnerIsNotNamed checks that the leader names an entry another node
-// proposed to no learner, which gets no side copies.
+// proposed to no learner, which gets no side copies, and to a voter that
+// Raft streams appends to.
 func TestLearnerIsNotNamed(t *testing.T) {
 	c := heldCluster(t)
 	// Writes bring the followers to Raft's replicating state.
 	writeThroughFollowers(t, c, 5)
 	leader := c.nodes[0]
 	leader.state.members[4] = &pb.Member{ID: 4, IsLearner: true}
+	// The learner is in no Raft progress here, so nameHeld would refuse it
+	// for that alone: holds is what must refuse it.
+	if leader.holds(4, 2) {
+		t.Fatal("a learner counts as holding another node's entries")
+	}
+	if !leader.holds(3, 2) {
+		t.Fatal("voter 3 does not count as holding node 2's entries")
+	}
 	data, err := encodeBatch(MaxVersion, 2, 1, []*pending{{req: Request{ID: 9, Op: &pb.PutRequest{Key: []byte("k")}}}}, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := func(to uint64) *raftpb.Message {
-		return &raftpb.Message{
-			Type: raftpb.MsgApp.Enum(), From: new(uint64(1)), To: new(to),
-			Entries: []*raftpb.Entry{{Term: new(leader.term), Index: new(uint64(100)), Type: raftpb.EntryNormal.Enum(), Data: data}},
-		}
+	app := &raftpb.Message{
+		Type: raftpb.MsgApp.Enum(), From: new(uint64(1)), To: new(uint64(3)),
+		Entries: []*raftpb.Entry{{Term: new(leader.term), Index: new(uint64(100)), Type: raftpb.EntryNormal.Enum(), Data: data}},
 	}
-	if m := leader.nameHeld(app(4)); HeldForm(m) {
-		t.Fatal("the leader named node 2's entry to a learner")
-	}
-	if m := leader.nameHeld(app(3)); !HeldForm(m) {
+	if m := leader.nameHeld(app); !HeldForm(m) {
 		t.Fatal("the leader did not name node 2's entry to voter 3")
 	}
 }
@@ -487,5 +491,8 @@ func TestKeptSurvivesReload(t *testing.T) {
 	}
 	if string(next.kept.data[k]) != "abc" {
 		t.Fatal("the new core does not hold what the old one held")
+	}
+	if next.cfg.Kept != nil {
+		t.Fatal("the new core keeps the handed-over map in its config, where expiry cannot free it")
 	}
 }

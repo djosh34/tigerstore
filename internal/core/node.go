@@ -755,7 +755,10 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	if len(n.state.members) > 0 {
 		n.out.Members = n.state.cloneMembers()
 	}
+	// The handed-over map stays out of the stored config, so that
+	// expiring an entry frees it.
 	n.adopt(cfg.Kept)
+	n.cfg.Kept = nil
 	return n, nil
 }
 
