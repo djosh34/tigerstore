@@ -1744,7 +1744,14 @@ func (r *revisionOrder) finish(rev int64) bool {
 	for first > 0 && w.states[first-1].rev == rev {
 		first--
 	}
+	bounds := w.eventBounds()
 	for _, i := range byRev(r.seen, rev) {
+		// An op that saw rev returned before the state of rev's writer
+		// can be placed, so no order of the later gaps answers it: the
+		// writer is wrong now, not once every later gap was tried (#627).
+		if _, hi := bounds(&w.h.Ops[i]); hi < first {
+			return r.dead(rev, w.unanswered(i, first, len(w.states)-1, first, hi))
+		}
 		j, ok := w.find(i, first, len(w.states)-1)
 		if !ok {
 			return r.dead(rev, w.unanswered(i, first, len(w.states)-1, first, len(w.states)-1))
