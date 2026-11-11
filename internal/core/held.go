@@ -36,8 +36,9 @@ import (
 // it everything in full for heldFullTicks. Raft then sends the dropped
 // appends again, as it does after any lost append; a follower that gets no
 // side copies at all, such as one cut off from the forwarders, keeps
-// asking and so keeps getting entries in full. A side copy may be lost, late or reordered, and a
-// forwarder may crash and forget what it held: each only costs that wait.
+// asking and so keeps getting entries in full. A side copy may be lost,
+// late or reordered, and a forwarder may crash and forget what it held:
+// each only costs that wait.
 //
 // The forms travel only on links of peer protocol 4 and later
 // (Config.HeldEntries), so a node of an older version never sees them.
