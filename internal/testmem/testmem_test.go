@@ -1,7 +1,7 @@
 package testmem
 
 import (
-	"runtime"
+	"runtime/debug"
 	"testing"
 	"time"
 )
@@ -9,36 +9,36 @@ import (
 // sink keeps what the test holds live.
 var sink [][]byte
 
-// TestGarbageDoesNotCount makes 16 MiB of garbage, 64 KiB a millisecond,
-// beside a live heap of 384 MiB, as a cluster's traffic does around the
-// answer a test bounds, and then holds 8 MiB: the peak is about the 8 MiB
-// held, not the garbage. At GOGC 1 the collector leaves up to 1% of the
-// live heap as garbage, 3.8 MiB here, which counted when the peak was the
-// heap sampled (#561).
+// TestGarbageDoesNotCount makes 8 MiB of garbage, 64 KiB a millisecond,
+// while the collector falls behind, as it did on a loaded runner, where
+// a long mark of three nodes' heaps let the cluster's garbage pile up
+// beside the answer a test bounds (#561): the peak counts none of it.
+// Then the test holds 8 MiB for a while and frees it before the stop: the
+// peak is the 8 MiB held, within step.
 func TestGarbageDoesNotCount(t *testing.T) {
 	t.Cleanup(func() { sink = nil })
-	base := make([][]byte, 384)
-	for i := range base {
-		base[i] = make([]byte, 1<<20)
-	}
 	peak := Peak()
-	for range 256 {
+	// No collection runs but the ones Peak starts.
+	gc := debug.SetGCPercent(-1)
+	for range 128 {
 		sink = append(sink[:0], make([]byte, 64<<10))
 		time.Sleep(time.Millisecond)
 	}
-	sink = sink[:0]
+	sink = nil
+	debug.SetGCPercent(gc)
 	garbage, _ := peak()
-	if garbage > 2<<20 {
-		t.Fatalf("16 MiB of garbage peaks at %d KiB", garbage>>10)
+	if garbage > 1<<20 {
+		t.Fatalf("8 MiB of garbage peaks at %d KiB", garbage>>10)
 	}
 	peak = Peak()
 	for range 8 {
 		sink = append(sink, make([]byte, 1<<20))
 		time.Sleep(10 * time.Millisecond)
 	}
+	// Freed before the stop, the 8 MiB counts only through the samples.
+	sink = nil
 	held, kept := peak()
-	if held < 7<<20 || kept < 7<<20 {
-		t.Fatalf("8 MiB held peaks at %d KiB, %d KiB kept", held>>10, kept>>10)
+	if held < 8<<20-step || kept > 1<<20 {
+		t.Fatalf("8 MiB held and freed peaks at %d KiB, %d KiB kept", held>>10, kept>>10)
 	}
-	runtime.KeepAlive(base)
 }

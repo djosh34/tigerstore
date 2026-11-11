@@ -23,14 +23,16 @@ const step = 1 << 20
 // and the heap live at the stop above it: what the code built and kept,
 // such as new state.
 //
-// Garbage never counts. Peak samples the heap every millisecond, and
-// whenever it is more than step past the most found live so far, it runs
-// a collection and takes the heap left as live. Counting garbage made the
+// Garbage that a collection can free does not count. Peak samples the
+// heap every millisecond, and whenever it is more than step past the most
+// found live so far, it runs a collection and takes the heap left as live. Counting garbage made the
 // peak depend on the collector's timing: with three nodes' 186 MiB live,
 // the garbage of a second's cluster traffic counted for up to 7 MiB on a
-// loaded runner, where an answer held 1.5 MiB (#561). A live heap that
-// rises and falls back within step, between two samples, or within one
-// collection can go unseen. The collector runs at GOGC 1 meanwhile, so
+// loaded runner, where an answer held 1.5 MiB (#561). What it misses: a
+// live heap that rises and falls back within step, between two samples,
+// or within one collection; and objects allocated during its own
+// collection count as live until the next. Both results are net: what was
+// live at the call and is freed meanwhile lowers them. The collector runs at GOGC 1 meanwhile, so
 // that collections come often anyway.
 func Peak() (stop func() (peak, kept int64)) {
 	old := debug.SetGCPercent(1)
