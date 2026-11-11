@@ -260,6 +260,48 @@ type TCP struct {
 	// connection to a peer starts or ends (ActiveChange).
 	activeMu    sync.Mutex
 	activeMoved chan struct{}
+
+	// Prototype 602-4: the socket system calls of the peer connections and
+	// the messages by type, logged every countEvery.
+	io               bufconn.Counts
+	sentMsgs, gotMsg [32]atomic.Int64
+}
+
+// countEvery is how often the transport logs its message counts.
+const countEvery = 5 * time.Second
+
+// countMsg counts a message of type ty in c.
+func countMsg(c *[32]atomic.Int64, ty raftpb.MessageType) {
+	c[min(int(ty), len(c)-1)].Add(1)
+}
+
+// logCounts logs the cumulative message and system call counts every
+// countEvery until the transport closes.
+func (t *TCP) logCounts() {
+	tick := time.NewTicker(countEvery)
+	defer tick.Stop()
+	for {
+		select {
+		case <-tick.C:
+		case <-t.ctx.Done():
+			return
+		}
+		f := func(c *[32]atomic.Int64) string {
+			var other int64
+			for i := range c {
+				switch raftpb.MessageType(i) {
+				case raftpb.MsgApp, raftpb.MsgAppResp, raftpb.MsgProp, raftpb.MsgHeartbeat, raftpb.MsgHeartbeatResp:
+				default:
+					other += c[i].Load()
+				}
+			}
+			return fmt.Sprintf("app=%d appresp=%d prop=%d hb=%d hbresp=%d other=%d",
+				c[raftpb.MsgApp].Load(), c[raftpb.MsgAppResp].Load(), c[raftpb.MsgProp].Load(),
+				c[raftpb.MsgHeartbeat].Load(), c[raftpb.MsgHeartbeatResp].Load(), other)
+		}
+		t.logf("peercount id=%d unixms=%d sent %s writes=%d recv %s reads=%d", t.cfg.ID, time.Now().UnixMilli(),
+			f(&t.sentMsgs), t.io.Writes.Load(), f(&t.gotMsg), t.io.Reads.Load())
+	}
 }
 
 // Start listens for peers and starts one writer per peer.
@@ -319,6 +361,7 @@ func Start(cfg Config) (*TCP, error) {
 	for _, ln := range lns {
 		t.wg.Go(func() { t.accept(ln) })
 	}
+	t.wg.Go(t.logCounts)
 	return t, nil
 }
 
@@ -616,6 +659,9 @@ func (t *TCP) accept(ln net.Listener) {
 // returns the error that ended it, nil after a snapshot was served or
 // after a failed handshake, which it logs itself.
 func (t *TCP) receive(c net.Conn) error {
+	if b := bufconn.Under(c); b != nil {
+		b.SetCounts(&t.io)
+	}
 	if err := c.SetReadDeadline(time.Now().Add(t.readTimeout())); err != nil {
 		return err
 	}
@@ -682,6 +728,7 @@ func (t *TCP) frames(r io.Reader, from uint64, cs *counters) error {
 			return fmt.Errorf("peer %d sent a message from %d", from, m.GetFrom())
 		}
 		cs.received.Add(float64(len(hdr) + len(buf)))
+		countMsg(&t.gotMsg, m.GetType())
 		if m.GetType() == raftpb.MsgHeartbeat {
 			cs.heartbeatReceived.SetToCurrentTime()
 		}
@@ -1155,7 +1202,9 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	c := tls.Client(bufconn.New(raw, ioBuffer), &tls.Config{
+	under := bufconn.New(raw, ioBuffer)
+	under.SetCounts(&s.t.io)
+	c := tls.Client(under, &tls.Config{
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return s.t.clientCert() },
 		RootCAs:              s.t.cfg.CA,
 		InsecureSkipVerify:   s.t.cfg.InsecureSkipVerify, //nolint:gosec // etcd's --peer-auto-tls
@@ -1312,6 +1361,7 @@ func (s *sender) write(ctx context.Context, c net.Conn, l *lane) error {
 			return err
 		}
 		s.counters.sent.Add(float64(len(buf)))
+		countMsg(&s.t.sentMsgs, m.GetType())
 		if m.GetType() == raftpb.MsgHeartbeat {
 			s.counters.heartbeatSent.SetToCurrentTime()
 		}
