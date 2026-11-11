@@ -325,7 +325,8 @@ func (n *Node) nameHeld(m *raftpb.Message) *raftpb.Message {
 
 // replicating reports whether Raft streams appends to peer id, as it does
 // once the follower's log has caught up. A follower that installed a
-// snapshot, or that Raft probes, gets entries in full: it lost what it
+// snapshot, or that Raft probes, gets entries in full until its first
+// acknowledgment puts it back in that state: it may have lost what it
 // held, and on a short log window a wait for a side copy would put it
 // behind into another install.
 func (n *Node) replicating(id uint64) bool {

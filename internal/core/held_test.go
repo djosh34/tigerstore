@@ -346,8 +346,8 @@ func TestForwarderForgets(t *testing.T) {
 }
 
 // TestLeaderChangeWithNamedAppends holds node 3's side copies and the
-// leader's named appends to it, then stops the leader so node 2 takes
-// over. The old appends come to node 3 late and wait for entries it never
+// leader's named appends to it, then has the leader hand over to node 2
+// and stop. The old appends come to node 3 late and wait for entries it never
 // gets; it drops them, and the new leader sends what it misses in full.
 // Every write a client got an answer for is applied on both survivors.
 func TestLeaderChangeWithNamedAppends(t *testing.T) {
@@ -380,19 +380,20 @@ func TestLeaderChangeWithNamedAppends(t *testing.T) {
 	if c.replies == 0 {
 		t.Fatal("no write was answered before the leader stopped")
 	}
-	c.down[0] = true
+	// Node 1 hands its leadership to node 2 and stops: node 3, as up to
+	// date as node 2, could win an election of its own.
 	c.drop = nil
-	// Node 3 ticks slower, so that node 2's election timeout comes first.
+	c.nodes[0].rn.TransferLeader(2)
 	for step := 0; !c.nodes[1].isLeader; step++ {
 		if step > 1000 {
 			t.Fatalf("node 2 did not take over: %s", c.describe())
 		}
-		c.nodes[1].Tick()
-		if step%3 == 0 {
-			c.nodes[2].Tick()
+		for _, n := range c.nodes {
+			n.Tick()
 		}
 		c.step()
 	}
+	c.down[0] = true
 	for _, m := range stale {
 		if err := c.nodes[2].Step(m); err != nil {
 			t.Fatal(err)
