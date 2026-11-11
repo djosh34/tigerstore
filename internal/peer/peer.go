@@ -671,16 +671,18 @@ func (t *TCP) receive(c net.Conn) error {
 	}
 	cs := t.countersOf(from)
 	// frames ends only with an error.
-	err = t.frames(r, from, cs)
+	err = t.frames(r, from, v, cs)
 	if !errors.Is(err, io.EOF) && t.ctx.Err() == nil {
 		cs.receiveFailures.Inc()
 	}
 	return err
 }
 
-// frames reads and delivers the messages of an inbound connection until
-// it fails.
-func (t *TCP) frames(r io.Reader, from uint64, cs *counters) error {
+// frames reads and delivers the messages of an inbound connection of
+// version v until it fails. A message of held entries on a connection of
+// a version that does not carry them is refused and counted: a sender
+// never sends one there (sender.write).
+func (t *TCP) frames(r io.Reader, from uint64, v byte, cs *counters) error {
 	var hdr [4]byte
 	var buf []byte
 	for {
@@ -711,6 +713,11 @@ func (t *TCP) frames(r io.Reader, from uint64, cs *counters) error {
 		cs.received.Add(float64(len(hdr) + len(buf)))
 		if m.GetType() == raftpb.MsgHeartbeat {
 			cs.heartbeatReceived.SetToCurrentTime()
+		}
+		if v < heldVersion && core.HeldForm(m) {
+			t.cfg.Metrics.PeerHeldRefused.Inc()
+			t.logf("peer: refused a %s of held entries from %d on a connection of version %d", m.GetType(), from, v)
+			continue
 		}
 		t.cfg.Deliver(m)
 	}

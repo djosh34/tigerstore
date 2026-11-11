@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -14,9 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/testcert"
 )
 
@@ -378,5 +383,39 @@ func TestHeldFormsDroppedAfterDowngrade(t *testing.T) {
 			t.Fatal("node 2 got nothing in 10 s after it started again")
 		case <-time.After(50 * time.Millisecond):
 		}
+	}
+}
+
+// TestOldConnectionRefusesHeldForms reads, on a connection of version 3,
+// a named append and then a heartbeat whose own context starts like one:
+// the named append is refused and counted, and the heartbeat delivered.
+func TestOldConnectionRefusesHeldForms(t *testing.T) {
+	set, err := metrics.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []*raftpb.Message
+	tr := &TCP{cfg: Config{Metrics: set, Logf: t.Logf, Deliver: func(m *raftpb.Message) { got = append(got, m) }}}
+	var frames []byte
+	for _, m := range []*raftpb.Message{
+		{Type: raftpb.MsgApp.Enum(), From: new(uint64(2)), To: new(uint64(1)), Context: []byte("TSH\x02\x00"), Entries: []*raftpb.Entry{{Data: []byte("a key")}}},
+		{Type: raftpb.MsgHeartbeat.Enum(), From: new(uint64(2)), To: new(uint64(1)), Context: []byte{'T', 'S', 'H', 2, 0, 0, 0, 0}},
+	} {
+		b, err := proto.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		frames = binary.BigEndian.AppendUint32(frames, uint32(len(b)))
+		frames = append(frames, b...)
+	}
+	cs := &counters{received: prometheus.NewCounter(prometheus.CounterOpts{Name: "received"}), heartbeatReceived: prometheus.NewGauge(prometheus.GaugeOpts{Name: "heartbeat"})}
+	if err := tr.frames(bytes.NewReader(frames), 2, 3, cs); !errors.Is(err, io.EOF) {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].GetType() != raftpb.MsgHeartbeat {
+		t.Fatalf("delivered %v, want only the heartbeat", got)
+	}
+	if n := testutil.ToFloat64(set.PeerHeldRefused); n != 1 {
+		t.Fatalf("%g messages refused, want 1", n)
 	}
 }

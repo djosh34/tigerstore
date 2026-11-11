@@ -37,7 +37,7 @@ func FuzzFrames(f *testing.F) {
 			}
 		}}}
 		cs := &counters{received: prometheus.NewCounter(prometheus.CounterOpts{Name: "received"}), heartbeatReceived: prometheus.NewGauge(prometheus.GaugeOpts{Name: "heartbeat"})}
-		if err := tr.frames(bytes.NewReader(b), 2, cs); err == nil {
+		if err := tr.frames(bytes.NewReader(b), 2, maxVersion, cs); err == nil {
 			t.Fatal("frames returned without an error")
 		}
 	})
