@@ -4,9 +4,12 @@
 package testmem
 
 import (
+	"fmt"
+	"os"
 	"runtime"
 	"runtime/debug"
 	"runtime/metrics"
+	"runtime/pprof"
 	"time"
 )
 
@@ -41,6 +44,7 @@ func Peak() (stop func() (peak, kept int64)) {
 	old := debug.SetGCPercent(1)
 	base := liveHeap()
 	held := int64(0)
+	captured := false
 	done := make(chan struct{})
 	ended := make(chan struct{})
 	go func() {
@@ -53,7 +57,19 @@ func Peak() (stop func() (peak, kept int64)) {
 				return
 			case <-t.C:
 				if heap()-base > held+step {
-					held = max(held, liveHeap()-base)
+					before := heap()
+					start := time.Now()
+					n := liveHeap() - base
+					if dir := os.Getenv("TS_PEAK_DIR"); dir != "" && n > held {
+						fmt.Fprintf(os.Stderr, "PEAK base=%d before=%d new=%d gc=%s\n", base, before-base, n, time.Since(start))
+						if n > 8<<20 && !captured {
+							// Collect again before the profiler itself can allocate.
+							fmt.Fprintf(os.Stderr, "PEAK secondGC=%d thirdGC=%d\n", liveHeap()-base, liveHeap()-base)
+							dumpHeap(dir, fmt.Sprintf("peak-%d", n))
+							captured = true
+						}
+					}
+					held = max(held, n)
 				}
 			}
 		}
@@ -64,6 +80,20 @@ func Peak() (stop func() (peak, kept int64)) {
 		kept := liveHeap() - base
 		debug.SetGCPercent(old)
 		return max(held, kept, 0), kept
+	}
+}
+
+func dumpHeap(dir, name string) {
+	f, err := os.Create(dir + "/" + name + ".pb.gz")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	if err := f.Close(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 	}
 }
 

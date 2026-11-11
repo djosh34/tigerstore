@@ -7,7 +7,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"net"
+	"os"
+	"runtime"
 	"runtime/pprof"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +21,7 @@ import (
 	"golang.org/x/net/http2/hpack"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/testmem"
 )
 
@@ -61,6 +66,16 @@ func rawCall(t *testing.T, c *cluster, cert tls.Certificate, path string, req pr
 	must(err)
 	must(fr.WriteData(1, true, append(binary.BigEndian.AppendUint32([]byte{0}, uint32(len(b))), b...)))
 	return fr, func() { _ = tc.Close() }
+}
+
+type heldProbe struct {
+	net.Conn
+	release <-chan struct{}
+}
+
+func (c *heldProbe) Read(b []byte) (int, error) {
+	<-c.release
+	return c.Conn.Read(b)
 }
 
 // readAnswer reads stream 1 to its end, crediting every byte back, and
@@ -109,7 +124,35 @@ func readAnswer(t *testing.T, fr *http2.Framer) []byte {
 // Then the client reads the rest, which must be the whole answer in one
 // message (#505).
 func TestAnswersHeldBackBySlowClient(t *testing.T) {
-	c := newCluster(t)
+	if os.Getenv("TS_PEAK_DIR") != "" {
+		runtime.MemProfileRate = 64 << 10
+	}
+	probeGate := make(chan struct{})
+	probeRelease := make(chan struct{})
+	started := time.Now()
+	c := newClusterWith(t, func(c *cluster) {
+		if os.Getenv("TS_PROBES") == "" {
+			return
+		}
+		c.peerConfig = func(pc *peer.Config) {
+			var dials atomic.Int32
+			pc.Dial = func(ctx context.Context, addr string) (net.Conn, error) {
+				probe := dials.Add(1) > 4
+				if probe {
+					select {
+					case <-probeGate:
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+				}
+				conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+				if err == nil && probe {
+					conn = &heldProbe{Conn: conn, release: probeRelease}
+				}
+				return conn, err
+			}
+		}
+	})
 	cert, _, _, err := c.ca.Issue("client", 96)
 	if err != nil {
 		t.Fatal(err)
@@ -133,8 +176,17 @@ func TestAnswersHeldBackBySlowClient(t *testing.T) {
 	// process then holds at most limit bytes more, and reads the answer.
 	heldBack := func(path string, req, resp proto.Message, limit int64) {
 		t.Helper()
+		if path == "/etcdserverpb.KV/Txn" && os.Getenv("TS_PROBES") != "" {
+			if d := time.Until(started.Add(5200 * time.Millisecond)); d > 0 {
+				time.Sleep(d)
+			}
+		}
 		peak := testmem.Peak()
 		fr, closeConn := rawCall(t, c, cert, path, req)
+		if path == "/etcdserverpb.KV/Txn" && os.Getenv("TS_PROBES") != "" {
+			close(probeGate)
+			time.AfterFunc(400*time.Millisecond, func() { close(probeRelease) })
+		}
 		defer closeConn()
 		// Let the node and the writer go as far as they would.
 		time.Sleep(time.Second)
