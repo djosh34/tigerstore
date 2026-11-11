@@ -348,6 +348,7 @@ func (n *Node) stepHeld(m *raftpb.Message) (bool, error) {
 	case heldNamed:
 		if len(n.kept.parked) == 0 {
 			if full, ok := n.fill(m); ok {
+				n.counters.HeldFilled++
 				return true, n.stepRaft(full)
 			}
 		}
@@ -376,6 +377,7 @@ func (n *Node) unpark() error {
 			if m, ok = n.fill(m); !ok {
 				return nil
 			}
+			n.counters.HeldFilled++
 		}
 		h.parked[0] = nil
 		h.parked = h.parked[1:]

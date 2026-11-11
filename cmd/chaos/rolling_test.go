@@ -359,8 +359,8 @@ func (r *rollingRun) stage(name string, version int) {
 // heldMixed runs a stage in a cluster of old and new nodes, led by a new
 // one: a leader that leads now is stopped and started again, which hands
 // its leadership to a peer. The new leader must name to the new follower
-// the entries it forwarded, while stage checks that the old node gets
-// none of them.
+// the entries it forwarded, and the follower must fill in appends from
+// the entries it held, while stage checks that the old node gets none.
 func (r *rollingRun) heldMixed(name string) {
 	r.t.Helper()
 	lead, err := r.c.leader(context.Background(), 10*time.Second)
@@ -376,17 +376,28 @@ func (r *rollingRun) heldMixed(name string) {
 	if r.ranges[lead] == peerMin {
 		r.t.Fatalf("%s: node%d, an old node, still leads", name, lead+1)
 	}
-	before := r.counter(lead, "tigerstore_server_held_named_total")
-	r.stage(name+", held entries between the new nodes", 1)
-	named := r.counter(lead, "tigerstore_server_held_named_total") - before
-	if named == 0 {
-		r.t.Fatalf("%s: node%d, a new leader, named no entry of the new follower", name, lead+1)
+	follower := -1
+	for i := range 3 {
+		if i != lead && r.ranges[i] > peerMin {
+			follower = i
+		}
 	}
-	r.t.Logf("%s: node%d named %d entries to the new follower", name, lead+1, named)
+	if follower < 0 {
+		r.t.Fatalf("%s: no new follower beside node%d", name, lead+1)
+	}
+	named := r.counter(lead, "tigerstore_server_held_named_total")
+	filled := r.counter(follower, "tigerstore_server_held_filled_total")
+	r.stage(name+", held entries between the new nodes", 1)
+	named = r.counter(lead, "tigerstore_server_held_named_total") - named
+	filled = r.counter(follower, "tigerstore_server_held_filled_total") - filled
+	if named == 0 || filled == 0 {
+		r.t.Fatalf("%s: node%d, a new leader, named %d entries, and node%d, a new follower, filled in %d appends from held entries", name, lead+1, named, follower+1, filled)
+	}
+	r.t.Logf("%s: node%d named %d entries, node%d filled in %d appends from them", name, lead+1, named, follower+1, filled)
 }
 
-// counter is the value of a counter of node i, 0 when its binary has
-// none, as a release before held entries.
+// counter is the value of a counter of node i. Both builds of this source
+// have every counter it reads, so a missing one fails the test.
 func (r *rollingRun) counter(i int, name string) int {
 	r.t.Helper()
 	_, body, err := r.metric(i)
@@ -394,11 +405,8 @@ func (r *rollingRun) counter(i int, name string) int {
 		r.t.Fatal(err)
 	}
 	v, err := metricValue(body, name)
-	if errors.Is(err, errNoMetric) {
-		return 0
-	}
 	if err != nil {
-		r.t.Fatal(err)
+		r.t.Fatalf("node%d: %v", i+1, err)
 	}
 	return v
 }

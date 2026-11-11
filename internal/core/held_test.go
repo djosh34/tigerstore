@@ -87,6 +87,9 @@ func TestHeldEntriesNameForwardedWrites(t *testing.T) {
 	if full != 0 {
 		t.Fatalf("the leader sent %d forwarded entries in full", full)
 	}
+	if c.nodes[1].Metrics().HeldFilled+c.nodes[2].Metrics().HeldFilled == 0 {
+		t.Fatal("no follower filled in an append from the entries it held")
+	}
 	for _, n := range c.nodes[1:] {
 		if m := n.Metrics(); m.HeldParked != 0 || m.HeldAsked != 0 {
 			t.Fatalf("node %d parked %d appends and asked %d times with every side copy delivered", n.cfg.ID, m.HeldParked, m.HeldAsked)

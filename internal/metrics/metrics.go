@@ -343,6 +343,10 @@ var nodeMetrics = []nodeMetric{
 		value: func(m *core.Metrics) float64 { return float64(m.HeldNamed) },
 	},
 	{
+		desc: desc("tigerstore_server_held_filled_total", "The total number of appends this follower filled in from the entries it held."), typ: prometheus.CounterValue,
+		value: func(m *core.Metrics) float64 { return float64(m.HeldFilled) },
+	},
+	{
 		desc: desc("tigerstore_server_held_parked_total", "The total number of appends that waited for an entry they named."), typ: prometheus.CounterValue,
 		value: func(m *core.Metrics) float64 { return float64(m.HeldParked) },
 	},
