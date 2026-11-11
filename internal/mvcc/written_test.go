@@ -69,8 +69,8 @@ func TestBytes(t *testing.T) {
 			room += int64(cap(k.many))
 			return true
 		})
-		if s.keys.Len() != keys || s.byKey.n != keys {
-			t.Fatalf("%d keys and %d in the table, want %d", s.keys.Len(), s.byKey.n, keys)
+		if (s.keys.Len()+s.delta.Len()) != keys || s.byKey.n != keys {
+			t.Fatalf("%d keys and %d in the table, want %d", (s.keys.Len() + s.delta.Len()), s.byKey.n, keys)
 		}
 		allocated := 4*int64(cap(s.free)) + 8*int64(cap(s.byKey.entries)) + room*64 + 4*int64(cap(s.hist.keys)) + 8*int64(cap(s.hist.starts))
 		for _, c := range s.recs {
