@@ -1,0 +1,91 @@
+# THROWAWAY PROTOTYPE (#630), branch proto/tailcat-gha only. Never merge.
+# Question: can two GitHub Actions runners reach each other over tailcat,
+# and at what throughput/latency, direct or DERP?
+#
+# Three concurrent jobs of one run join one tailcat mesh (every node
+# serves; every pair i<j is tested from i). They meet through this run's
+# artifacts. No Tailscale account and no repository secret: each node's
+# address is only usable by the peers' client keys (serve --allow).
+name: proto-tailcat-gha
+on:
+  push:
+    branches: [proto/tailcat-gha]
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  # tailscale/tailcat main, 2026-11-05: has `tailcat perf` (v0.7.0 does not).
+  TAILCAT_REF: e00cdde6ff787f801361ff85ed085775c775d4c5
+  NODES: "3"
+
+jobs:
+  node:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [1, 2, 3]
+        label: [ubuntu-24.04-arm]
+    runs-on: ${{ matrix.label }}
+    timeout-minutes: 50
+    env:
+      N: ${{ matrix.node }}
+      LABEL: ${{ matrix.label }}
+      RUN: ${{ github.run_id }}
+      R: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      X: ${{ github.workspace }}/xchg
+      O: ${{ github.workspace }}/out
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/proto
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+          cache: false
+      - name: Install tailcat and iperf3
+        run: |
+          start=$SECONDS
+          go install "github.com/tailscale/tailcat/cmd/tailcat@$TAILCAT_REF"
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq iperf3 bc >/dev/null
+          echo "install took $((SECONDS - start))s"
+          ~/go/bin/tailcat --help 2>&1 | head -3 || true
+      - name: Runner info
+        run: bash .github/proto/tailcat-node.sh info
+      - name: Make client key
+        run: bash .github/proto/tailcat-node.sh keys
+      - uses: actions/upload-artifact@v6
+        with: { name: "pub-${{ matrix.node }}", path: xchg/pub, retention-days: 1 }
+      - name: Serve (perf, iperf3 port, echo port) to peers only
+        run: bash .github/proto/tailcat-node.sh serve
+      - uses: actions/upload-artifact@v6
+        with: { name: "addr-${{ matrix.node }}", path: xchg/addr, retention-days: 1 }
+      - name: Microbench to higher-numbered peers (one node at a time)
+        run: bash .github/proto/tailcat-node.sh clients
+      - run: date -u > marker
+      - uses: actions/upload-artifact@v6
+        with: { name: "done-${{ matrix.node }}", path: marker, retention-days: 1 }
+      - name: Stability, all pairs at once
+        run: bash .github/proto/tailcat-node.sh stability
+      - uses: actions/upload-artifact@v6
+        with: { name: "fin-${{ matrix.node }}", path: marker, retention-days: 1, overwrite: true }
+      - name: Keep serving until every node is done
+        if: always()
+        run: bash .github/proto/tailcat-node.sh linger
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with: { name: "res-${{ matrix.node }}", path: out, retention-days: 14 }
+
+  summary:
+    needs: node
+    if: always()
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/proto
+      - uses: actions/download-artifact@v7
+        with: { pattern: "res-*", path: res }
+      - run: python3 -I .github/proto/summary.py res | tee -a "$GITHUB_STEP_SUMMARY"
