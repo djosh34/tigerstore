@@ -1393,7 +1393,7 @@ func TestRotInAnEntryRecord(t *testing.T) {
 func TestSnapshotFromCorruptLeader(t *testing.T) {
 	fenced := false
 	seeds := searchSeeds(135, 20)
-	if !simrun.Each(t, seeds, func(t *testing.T, seed uint64) Stats {
+	if !simrun.Seeds(t, 135, 20, func(t *testing.T, seed uint64) Stats {
 		res := run(t, DefaultConfig(seed))
 		checkers(t, res)
 		return res.Stats
