@@ -37,6 +37,8 @@ for d in sorted(glob.glob(f"{root}/res-*")):
         print(f"\n### node{n} → node{j}\n")
         pud = open(f"{t}/ping-until-direct.txt").read() if os.path.exists(f"{t}/ping-until-direct.txt") else "-"
         print("```\n" + pud.strip() + "\n```")
+        if os.path.exists(f"{t}/forward-direct.txt"):
+            print(open(f"{t}/forward-direct.txt").read().strip() + "\n")
         print("| test | Mbit/s | rtt under load min/avg/max ms | extra |")
         print("|---|---|---|---|")
         for name in ["tcp1", "tcp4", "tcp1rev", "tcp4rev", "udp"]:
@@ -73,5 +75,9 @@ for d in sorted(glob.glob(f"{root}/res-*")):
         if s:
             print(f'\n**Stability ({s.get("secs")} s, 20 Hz 64 B echo, all pairs at once):** n={s.get("n")} p50 {s.get("p50")} p99 {s.get("p99")} p99.9 {s.get("p999")} max {s.get("max")} ms; >10 ms: {s.get("over_10ms")}, >100 ms: {s.get("over_100ms")}, errors: {s.get("errors")}')
             print(f'max per 10 s window: {s.get("max_per_10s")}')
+        if os.path.exists(f"{t}/stab-forward-paths.log"):
+            lines = [l for l in open(f"{t}/stab-forward-paths.log") if "now using" in l]
+            print(f"\nLong-lived stability tunnel: {len(lines)} 'now using' (direct path chosen/changed) events:")
+            print("```\n" + "".join(l[:20] + l[l.find("now using"):][:60] + "\n" for l in lines).strip() + "\n```")
         if os.path.exists(f"{t}/stab-paths.txt"):
-            print("\nPath probes every 15 s (fresh client each):\n```\n" + open(f"{t}/stab-paths.txt").read().strip() + "\n```")
+            print("\nPath probes every 15 s (fresh client each, ping --until-direct, last pong):\n```\n" + open(f"{t}/stab-paths.txt").read().strip() + "\n```")

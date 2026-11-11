@@ -115,9 +115,17 @@ clients)
 		else
 			log "→ node$j: no direct path; skipping throughput tests (tailcat refuses them on Tailscale's shared DERP)"
 		fi
-		"$TC" forward "$A" 15202:5202 17000:7000 >"$d/forward.out" 2>"$d/forward.log" &
+		t0=$SECONDS
+		"$TC" --verbose forward "$A" 15202:5202 17000:7000 >"$d/forward.out" 2>"$d/forward.raw" &
 		fpid=$!
-		for _ in $(seq 60); do grep -q 17000 "$d/forward.log" 2>/dev/null && break; sleep 0.5; done
+		for _ in $(seq 60); do grep -q 17000 "$d/forward.raw" 2>/dev/null && break; sleep 0.5; done
+		# The forward's tunnel starts on DERP; nudge it and wait for the direct path before measuring.
+		for _ in $(seq 60); do
+			grep -q 'now using' "$d/forward.raw" && break
+			python3 -I "$here/echo.py" rtt 17000 1 64 >/dev/null 2>&1 || true
+			sleep 0.5
+		done
+		echo "forward direct after $((SECONDS - t0))s: $(grep -c 'now using' "$d/forward.raw") 'now using' lines" | tee "$d/forward-direct.txt"
 		if [ $direct = yes ]; then
 			for t in "iperf1:-P 1" "iperf4:-P 4" "iperf1rev:-P 1 -R" "iperf8:-P 8"; do
 				name=${t%%:*}; args=${t#*:}
@@ -131,6 +139,9 @@ clients)
 		python3 -I "$here/echo.py" rtt 17000 1000 4096 >"$d/echo-4k.json" || true
 		cat "$d/echo-64.json"
 		kill $fpid 2>/dev/null || true
+		sleep 1
+		grep -E 'now using|home is now|netcheck.*report' "$d/forward.raw" | sed -E 's/tc[A-Za-z0-9_-]{40,}/<addr>/g' | tail -50 >"$d/forward-paths.log" || true
+		rm -f "$d/forward.raw"
 	done
 	;;
 stability)
@@ -145,10 +156,15 @@ stability)
 			"$TC" --verbose forward "$A" "$lp:7000" >"$d/stab-forward.out" 2>"$d/stab-forward.raw" &
 			fpid=$!
 			for _ in $(seq 60); do grep -q "$lp" "$d/stab-forward.raw" 2>/dev/null && break; sleep 0.5; done
+			for _ in $(seq 60); do
+				grep -q 'now using' "$d/stab-forward.raw" && break
+				python3 -I "$here/echo.py" rtt "$lp" 1 64 >/dev/null 2>&1 || true
+				sleep 0.5
+			done
 			(
 				end=$((SECONDS + ${STAB_SECS:-300}))
 				while [ $SECONDS -lt $end ]; do
-					echo "$(date -u +%T) $(timeout 20 "$TC" ping "$A" 2>&1 | tail -1)"
+					echo "$(date -u +%T) $(timeout 20 "$TC" ping --until-direct --timeout=10s "$A" 2>&1 | tail -1)"
 					sleep 15
 				done
 			) >"$d/stab-paths.txt" &
