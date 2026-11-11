@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"runtime"
 	"testing"
 
 	"google.golang.org/grpc/codes"
@@ -61,5 +62,57 @@ func TestCall(t *testing.T) {
 	got, err = Ask(context.Background(), Config{Certificate: certs[1], CA: ca.Pool}, addrs[2], []byte("join"))
 	if err != nil || string(got) != "\x00join" {
 		t.Fatalf("ask: %q, %v", got, err)
+	}
+}
+
+// TestProbeHoldsSmallBuffers checks what one probe allocates on both
+// ends. Each probe took five ioBuffers of 256 KiB, below and above TLS,
+// although it carries no stream of messages; the first six of a
+// three-node cluster held 7.5 MiB at once, past a test's bound on what an
+// answer holds (#561).
+func TestProbeHoldsSmallBuffers(t *testing.T) {
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	certs := map[uint64]tls.Certificate{}
+	for id := uint64(1); id <= 2; id++ {
+		if certs[id], _, _, err = ca.Issue("node", int64(id+1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	addrs, lns := listeners(t, 1, 2)
+	a := start(t, 1, lns[1], addrs, certs[1], ca.Pool)
+	b := start(t, 2, lns[2], addrs, certs[2], ca.Pool)
+	defer func() {
+		if err := errors.Join(a.t.Close(), b.t.Close()); err != nil {
+			t.Error(err)
+		}
+	}()
+	s, ok := a.t.peer(2)
+	if !ok {
+		t.Fatal("node 1 has no sender to node 2")
+	}
+	// The two message lanes each way connect in the background and take
+	// their big buffers then: the smallest of a few rounds of probes is
+	// what the probes alone allocate.
+	const probes = 4
+	per := uint64(1 << 62)
+	for range 3 {
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		for range probes {
+			if _, err := s.roundTrip(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		runtime.ReadMemStats(&after)
+		per = min(per, (after.TotalAlloc-before.TotalAlloc)/probes)
+	}
+	// A TLS handshake with certificates takes about 150 KiB on its two
+	// ends; one ioBuffer alone is 256 KiB.
+	t.Logf("a probe allocates %d KiB on its two ends", per>>10)
+	if per > ioBuffer {
+		t.Fatalf("a probe allocates %d KiB on its two ends, more than one %d KiB buffer", per>>10, ioBuffer>>10)
 	}
 }
