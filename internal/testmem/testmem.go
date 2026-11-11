@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/metrics"
-	"sync/atomic"
 	"time"
 )
 
@@ -15,28 +14,32 @@ import (
 // objects not yet swept.
 const heapObjects = "/memory/classes/heap/objects:bytes"
 
-// Peak samples the heap every millisecond from its call until the
-// returned stop, which returns the highest heap seen above the heap live
-// at the call, and the heap live at the stop above it: what the code
-// built and kept, such as new state. The collector runs at GOGC 1
-// meanwhile, so that garbage, up to 1% of the live heap, does not pass
-// for what the code holds.
+// step is how far the heap may grow past the most found live before Peak
+// collects the garbage to tell what is held.
+const step = 1 << 20
+
+// Peak watches the heap from its call until the returned stop, which
+// returns the most the heap held live above the heap live at the call,
+// and the heap live at the stop above it: what the code built and kept,
+// such as new state.
+//
+// Garbage never counts. Peak samples the heap every millisecond, and
+// whenever it is more than step past the most found live so far, it runs
+// a collection and takes the heap left as live. Counting garbage made the
+// peak depend on the collector's timing: with three nodes' 186 MiB live,
+// the garbage of a second's cluster traffic counted for up to 7 MiB on a
+// loaded runner, where an answer held 1.5 MiB (#561). A live heap that
+// rises and falls back within step, between two samples, or within one
+// collection can go unseen. The collector runs at GOGC 1 meanwhile, so
+// that collections come often anyway.
 func Peak() (stop func() (peak, kept int64)) {
 	old := debug.SetGCPercent(1)
-	runtime.GC()
-	sample := []metrics.Sample{{Name: heapObjects}}
-	read := func() int64 {
-		metrics.Read(sample)
-		return int64(sample[0].Value.Uint64())
-	}
-	base := read()
-	var peak atomic.Int64
+	base := liveHeap()
+	held := int64(0)
 	done := make(chan struct{})
 	ended := make(chan struct{})
 	go func() {
 		defer close(ended)
-		local := make([]metrics.Sample, 1)
-		local[0].Name = heapObjects
 		t := time.NewTicker(time.Millisecond)
 		defer t.Stop()
 		for {
@@ -44,9 +47,8 @@ func Peak() (stop func() (peak, kept int64)) {
 			case <-done:
 				return
 			case <-t.C:
-				metrics.Read(local)
-				if v := int64(local[0].Value.Uint64()); v > peak.Load() {
-					peak.Store(v)
+				if heap()-base > held+step {
+					held = max(held, liveHeap()-base)
 				}
 			}
 		}
@@ -54,9 +56,21 @@ func Peak() (stop func() (peak, kept int64)) {
 	return func() (int64, int64) {
 		close(done)
 		<-ended
-		runtime.GC()
-		kept := read() - base
+		kept := liveHeap() - base
 		debug.SetGCPercent(old)
-		return max(peak.Load()-base, 0), kept
+		return max(held, kept, 0), kept
 	}
+}
+
+// heap returns the bytes of live and dead heap objects not yet swept.
+func heap() int64 {
+	sample := []metrics.Sample{{Name: heapObjects}}
+	metrics.Read(sample)
+	return int64(sample[0].Value.Uint64())
+}
+
+// liveHeap collects the garbage and returns the heap left.
+func liveHeap() int64 {
+	runtime.GC()
+	return heap()
 }
