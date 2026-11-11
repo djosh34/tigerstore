@@ -1,6 +1,7 @@
 package check
 
 import (
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"slices"
@@ -929,5 +930,18 @@ func TestEarlyWriterAfterAnswer(t *testing.T) {
 	}
 	for _, mode := range bothModes {
 		mustPass(t, mode.String(), Witnessed(h, mode, time.Minute, MaxSteps(10_000)))
+	}
+	// The bad twin lacks the ambiguous delete of a: only the revoke, called
+	// after revision 3 was returned, can have written it. No order exists,
+	// and the search must say so, not run out of steps.
+	bad := *h
+	bad.Ops = slices.Delete(slices.Clone(h.Ops), deleted, deleted+1)
+	for _, mode := range bothModes {
+		err := Witnessed(&bad, mode, time.Minute, MaxSteps(10_000))
+		t.Logf("%s on the bad twin: %v", mode, err)
+		if errors.Is(err, ErrWitnessTimeout) {
+			t.Fatalf("%s ran out of steps on the bad twin instead of convicting it: %v", mode, err)
+		}
+		mustFail(t, mode.String(), err, "witness check")
 	}
 }
