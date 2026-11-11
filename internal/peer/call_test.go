@@ -109,7 +109,7 @@ func TestProbeHoldsSmallBuffers(t *testing.T) {
 		runtime.ReadMemStats(&after)
 		per = min(per, (after.TotalAlloc-before.TotalAlloc)/probes)
 	}
-	// A TLS handshake with certificates takes about 100 KiB on its two
+	// A TLS handshake with certificates takes about 150 KiB on its two
 	// ends; one ioBuffer alone is 256 KiB.
 	t.Logf("a probe allocates %d KiB on its two ends", per>>10)
 	if per > ioBuffer {
