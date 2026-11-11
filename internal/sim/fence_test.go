@@ -2,6 +2,7 @@ package sim
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -76,7 +77,6 @@ func serveDamage(s *Sim) error {
 
 	// The puts go through the history, so the checkers check them too.
 	c := &client{id: 0, sim: s, node: -1}
-	var first uint64
 	for i := range 40 {
 		// Consecutive calls get distinct times.
 		time.Sleep(time.Nanosecond)
@@ -87,15 +87,18 @@ func serveDamage(s *Sim) error {
 		resp, err := s.call(leader, req, s.cfg.ClientTimeout)
 		s.mu.Lock()
 		c.done(r, resp, err)
-		if i == 0 && err == nil {
-			// What the leader's committer recorded at its last turn: the
-			// scenario never reads a running core.
-			first = leader.last.applied
-		}
 		s.mu.Unlock()
 		if err != nil {
 			return fmt.Errorf("scenario: put %d: %w", i, err)
 		}
+	}
+	// The entry of the first put, from the leader's log on disk: what the
+	// scenario damages must be that put, whatever else the log holds.
+	s.mu.Lock()
+	first, err := entryOf(leader, []byte("scenario/0"))
+	s.mu.Unlock()
+	if err != nil {
+		return err
 	}
 	if err := wait("first put out of the leader's window with the healthy follower caught up", func() bool {
 		return leader.proc != nil && leader.last.first > first+2 &&
@@ -135,4 +138,24 @@ func serveDamage(s *Sim) error {
 	return wait("fence of the leader after a failed serve", func() bool {
 		return leader.fenced && leader.servedDamage && s.stats.FencedAfterServe == 1
 	})
+}
+
+// entryOf returns the index of the first entry in n's log on disk that
+// holds key. The lock is held.
+func entryOf(n *node, key []byte) (index uint64, err error) {
+	w, rec, err := wal.Open(n.disk.Durable())
+	if err != nil {
+		return 0, fmt.Errorf("scenario: opening node %d's log: %w", n.id, err)
+	}
+	defer func() { err = errors.Join(err, w.Close()) }()
+	for i := rec.Root.Index + 1; i <= rec.Last; i++ {
+		e, err := w.Entry(i)
+		if err != nil {
+			return 0, fmt.Errorf("scenario: entry %d of node %d: %w", i, n.id, err)
+		}
+		if bytes.Contains(e.GetData(), key) {
+			return i, nil
+		}
+	}
+	return 0, fmt.Errorf("scenario: no entry of node %d holds %q", n.id, key)
 }

@@ -130,10 +130,12 @@ type Config struct {
 	// sync and of link faults that the run picks from, for the tests.
 	damageKinds []damageKind
 	netemKinds  []netemKind
-	// scenario, if set, drives the cluster once it formed and before the
-	// clients start, and noCheckpoints keeps the nodes from writing
-	// checkpoints, so that no checkpoint or cleaner reads a record the
-	// scenario damaged before a snapshot serve does. For the tests.
+	// scenario, if set, drives the cluster once its nodes started and
+	// before the clients start, and noCheckpoints keeps the nodes from
+	// writing checkpoints as their log grows, so that no checkpoint or
+	// cleaner reads a record the scenario damaged before a snapshot serve
+	// does; a compaction still writes one, and the scenario sends none.
+	// For the tests.
 	scenario      func(*Sim) error
 	noCheckpoints bool
 	// ckptCreateFaults makes every disk fault EIO on the next creation of
