@@ -10,12 +10,13 @@ import (
 // reordered messages, partitions, crashes and restarts. The leader's
 // appends name the entries its followers forwarded (core/held.go), so
 // the faults hit side copies and named appends too. The checkers must
-// pass, and across the seeds the leader must have named entries, a
-// follower must have parked an append for a late side copy, and one must
-// have asked for entries in full after a lost one.
+// pass on every seed, and across the set the leader must have named
+// entries, a follower must have parked an append for a late side copy,
+// and one must have asked for entries in full after a lost one. A
+// campaign runs it on $SIM_SEEDS seeds.
 func TestHeldEntries(t *testing.T) {
 	var named, parked, asked int
-	if !simrun.Each(t, searchSeeds(6020, 40), func(t *testing.T, seed uint64) Stats {
+	if !simrun.Seeds(t, 6020, 4, func(t *testing.T, seed uint64) Stats {
 		res := run(t, DefaultConfig(seed))
 		checkers(t, res)
 		return res.Stats
@@ -23,7 +24,7 @@ func TestHeldEntries(t *testing.T) {
 		named += st.HeldNamed
 		parked += st.HeldParked
 		asked += st.HeldAsked
-		return named > 0 && parked > 0 && asked > 0
+		return false
 	}) {
 		return
 	}
