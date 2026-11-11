@@ -1155,7 +1155,13 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	c := tls.Client(bufconn.New(raw, ioBuffer), &tls.Config{
+	buffer := ioBuffer
+	if id&callBit != 0 {
+		// Calls, including probes, do not batch Raft frames. Six probes
+		// in a three-node cluster must not need 3 MiB of dialer buffers.
+		buffer = 4 << 10
+	}
+	c := tls.Client(bufconn.New(raw, buffer), &tls.Config{
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return s.t.clientCert() },
 		RootCAs:              s.t.cfg.CA,
 		InsecureSkipVerify:   s.t.cfg.InsecureSkipVerify, //nolint:gosec // etcd's --peer-auto-tls
