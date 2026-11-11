@@ -15,12 +15,16 @@ import (
 // checkers compare every value a client read with the history. A cache
 // hit that was not copied out of its slot passes here, as the answer goes
 // out before the slot is taken again; TestAnswerKeepsCachedValue in
-// internal/core catches that.
+// internal/core catches that. It runs with no random faults, so every run
+// commits enough to compact: under the race detector a seed does not
+// follow gosim's schedule, and one drew faults that let the cluster commit
+// almost nothing, and no compaction (#618).
 func TestKubeCacheSlots(t *testing.T) {
 	simrun.Seeds(t, 1, 2, func(t *testing.T, seed uint64) Stats {
 		cfg := kubeConfig(seed, false)
+		cfg.Faults = Faults{DiskBudget: cfg.Faults.DiskBudget, DiskCapacity: cfg.Faults.DiskCapacity}
 		cfg.Duration = 40 * Second
-		cfg.CompactEvery = 10 * Second
+		cfg.CompactEvery = 5 * Second
 		cfg.MemoryBytes = 256 << 10
 		var hits, misses int64
 		res, err := runWith(t, cfg, func(s *Sim) error {
