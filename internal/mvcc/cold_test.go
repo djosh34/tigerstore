@@ -490,12 +490,14 @@ func TestColdTxnCountsOnce(t *testing.T) {
 		h.evict()
 		s.Unanswered = i == 1
 		_, err := s.Txn(txn)
-		if cold, ok := errors.AsType[*ColdError](err); ok && i == 0 {
+		cold, ok := errors.AsType[*ColdError](err)
+		if ok != (i == 0) {
+			t.Fatalf("unanswered %v: waits for values %v", s.Unanswered, ok)
+		}
+		if ok {
 			h.disk = 0
 			s.Resume(cold.Compares)
 			_, err = s.Txn(txn)
-		} else if ok {
-			t.Fatal("the unanswered store waits for values")
 		}
 		if err != nil {
 			t.Fatal(err)
