@@ -215,6 +215,11 @@ const (
 	slowQueue   = 100 * time.Millisecond
 	dialTimeout = 3 * time.Second
 	ioBuffer    = 256 << 10
+	// callBuffer is the buffer of a connection that carries no stream of
+	// Raft messages: a call, such as a probe, and an inbound connection
+	// until its preface says what it carries. Six probes in a three-node
+	// cluster held 7.5 MiB of ioBuffers at once (#561).
+	callBuffer = 4 << 10
 	// handshakeLogEvery is how often a failed handshake with one peer is
 	// logged. A dialer retries every second.
 	handshakeLogEvery = time.Minute
@@ -297,7 +302,7 @@ func Start(cfg Config) (*TCP, error) {
 	}
 	var lns []net.Listener
 	for _, raw := range cfg.Listeners {
-		lns = append(lns, tls.NewListener(bufconn.Listener{Listener: raw, Size: ioBuffer}, scfg))
+		lns = append(lns, tls.NewListener(bufconn.Listener{Listener: raw, Size: callBuffer}, scfg))
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &TCP{
@@ -619,7 +624,7 @@ func (t *TCP) receive(c net.Conn) error {
 	if err := c.SetReadDeadline(time.Now().Add(t.readTimeout())); err != nil {
 		return err
 	}
-	r := bufio.NewReaderSize(c, ioBuffer)
+	r := bufio.NewReaderSize(c, callBuffer)
 	from, mode, v, err := t.handshake(c, r)
 	if err != nil {
 		if t.ctx.Err() == nil {
@@ -636,6 +641,12 @@ func (t *TCP) receive(c net.Conn) error {
 	default:
 		return fmt.Errorf("peer %d asks for a fetch and a call at once", from)
 	}
+	// A stream of Raft messages reads through big buffers, above TLS and
+	// below it.
+	if u := bufconn.Under(c); u != nil {
+		u.GrowReads(ioBuffer)
+	}
+	r = bufio.NewReaderSize(r, ioBuffer)
 	t.mu.Lock()
 	t.inbound[c] = inbound{id: from, version: v}
 	t.mu.Unlock()
@@ -1155,7 +1166,11 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	c := tls.Client(bufconn.New(raw, ioBuffer), &tls.Config{
+	size := ioBuffer
+	if id&callBit != 0 {
+		size = callBuffer
+	}
+	c := tls.Client(bufconn.New(raw, size), &tls.Config{
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return s.t.clientCert() },
 		RootCAs:              s.t.cfg.CA,
 		InsecureSkipVerify:   s.t.cfg.InsecureSkipVerify, //nolint:gosec // etcd's --peer-auto-tls

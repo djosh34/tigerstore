@@ -104,3 +104,36 @@ func TestWriteBehindFlushIsDurable(t *testing.T) {
 		}
 	})
 }
+
+// TestGrowReadsKeepsBufferedBytes checks that bytes the small read buffer
+// already took come first after GrowReads, in order, and that a
+// connection that never buffered its writes flushes nothing.
+func TestGrowReadsKeepsBufferedBytes(t *testing.T) {
+	a, b := net.Pipe()
+	defer func() { _ = a.Close() }()
+	want := make([]byte, 64<<10)
+	for i := range want {
+		want[i] = byte(i * 7)
+	}
+	go func() {
+		_, _ = b.Write(want)
+		_ = b.Close()
+	}()
+	c := New(a, 16)
+	got := make([]byte, 4)
+	if _, err := io.ReadFull(c, got); err != nil {
+		t.Fatal(err)
+	}
+	c.GrowReads(32 << 10)
+	rest, err := io.ReadAll(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = append(got, rest...)
+	if string(got) != string(want) {
+		t.Fatalf("read %d bytes, not the %d written in order", len(got), len(want))
+	}
+	if err := c.Flush(); err != nil {
+		t.Fatalf("flush of a connection that never buffered: %v", err)
+	}
+}
