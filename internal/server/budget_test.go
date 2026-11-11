@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
-	"runtime"
 	"runtime/pprof"
 	"sync/atomic"
 	"testing"
@@ -124,19 +122,29 @@ func readAnswer(t *testing.T, fr *http2.Framer) []byte {
 // Then the client reads the rest, which must be the whole answer in one
 // message (#505).
 func TestAnswersHeldBackBySlowClient(t *testing.T) {
-	if os.Getenv("TS_PEAK_DIR") != "" {
-		runtime.MemProfileRate = 64 << 10
-	}
+	answersHeldBack(t, false)
+}
+
+// The six directed peer links first probe after five seconds. On a slow
+// runner that falls inside the Txn's measurement. Hold the probes' reads
+// for 400 ms so that all their connection buffers stay live together.
+func TestAnswersHeldBackDuringPeerProbes(t *testing.T) {
+	answersHeldBack(t, true)
+}
+
+func answersHeldBack(t *testing.T, probes bool) {
+	t.Helper()
 	probeGate := make(chan struct{})
 	probeRelease := make(chan struct{})
 	started := time.Now()
 	c := newClusterWith(t, func(c *cluster) {
-		if os.Getenv("TS_PROBES") == "" {
+		if !probes {
 			return
 		}
 		c.peerConfig = func(pc *peer.Config) {
 			var dials atomic.Int32
 			pc.Dial = func(ctx context.Context, addr string) (net.Conn, error) {
+				// Each node first opens two lanes to each of its two peers.
 				probe := dials.Add(1) > 4
 				if probe {
 					select {
@@ -176,14 +184,14 @@ func TestAnswersHeldBackBySlowClient(t *testing.T) {
 	// process then holds at most limit bytes more, and reads the answer.
 	heldBack := func(path string, req, resp proto.Message, limit int64) {
 		t.Helper()
-		if path == "/etcdserverpb.KV/Txn" && os.Getenv("TS_PROBES") != "" {
+		if path == "/etcdserverpb.KV/Txn" && probes {
 			if d := time.Until(started.Add(5200 * time.Millisecond)); d > 0 {
 				time.Sleep(d)
 			}
 		}
 		peak := testmem.Peak()
 		fr, closeConn := rawCall(t, c, cert, path, req)
-		if path == "/etcdserverpb.KV/Txn" && os.Getenv("TS_PROBES") != "" {
+		if path == "/etcdserverpb.KV/Txn" && probes {
 			close(probeGate)
 			time.AfterFunc(400*time.Millisecond, func() { close(probeRelease) })
 		}
