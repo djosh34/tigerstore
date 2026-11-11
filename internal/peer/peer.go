@@ -265,6 +265,7 @@ type TCP struct {
 	// traffic's counts (count.go).
 	io bufconn.Counts
 	pc pcounts
+	dd *dedup
 }
 
 // Start listens for peers and starts one writer per peer.
@@ -317,6 +318,7 @@ func Start(cfg Config) (*TCP, error) {
 		inbound:     map[net.Conn]inbound{},
 		logged:      map[string]time.Time{},
 		remotes:     map[uint64]*sender{},
+		dd:          newDedup(),
 	}
 	t.self.Store(&cfg.Addr)
 	t.senders.Store(&map[uint64]*sender{})
@@ -539,6 +541,9 @@ func (t *TCP) to(id uint64) (*sender, bool) {
 // know yet that sent it messages (addRemote).
 func (t *TCP) Send(m *raftpb.Message) {
 	if s, ok := t.to(m.GetTo()); ok {
+		if m.GetType() == raftpb.MsgProp {
+			t.forward(m)
+		}
 		s.send(m)
 	}
 }
@@ -694,6 +699,9 @@ func (t *TCP) frames(r io.Reader, from uint64, cs *counters) error {
 		t.pc.framesRecv.Add(int64(len(hdr) + len(buf)))
 		if m.GetType() == raftpb.MsgHeartbeat {
 			cs.heartbeatReceived.SetToCurrentTime()
+		}
+		if !t.received(m, from) {
+			continue
 		}
 		t.cfg.Deliver(m)
 	}
@@ -1301,6 +1309,9 @@ func (s *sender) write(ctx context.Context, c net.Conn, l *lane) error {
 		m, ok := s.next(ctx, l)
 		if !ok {
 			return nil
+		}
+		if m.GetType() == raftpb.MsgApp {
+			m = s.t.dedupApp(m)
 		}
 		n := proto.Size(m)
 		if n > maxFrame {
