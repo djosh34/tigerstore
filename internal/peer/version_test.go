@@ -424,9 +424,10 @@ func TestOldConnectionRefusesHeldForms(t *testing.T) {
 // hand, its peer never answering: both lanes come up at version 4, then
 // the data lane comes up again at version 3, as after the peer started
 // again at an older version, while the control lane's old connection still
-// counts. The peer's version stays 4, the first lane's; HeldEntries must
-// follow the data lane, which carries the messages of held entries, or the
-// leader would name entries that the writer then drops, again and again.
+// counts. HeldEntries must follow the data lane, which carries the messages
+// of held entries, or the leader would name entries that the writer then
+// drops, again and again; and the peer's version, which the metrics show,
+// must be 3.
 func TestHeldEntriesFollowsTheDataLane(t *testing.T) {
 	ca, err := testcert.NewCA()
 	if err != nil {
@@ -458,10 +459,12 @@ func TestHeldEntriesFollowsTheDataLane(t *testing.T) {
 	}
 	s.laneDown(&s.data, true)
 	s.laneUp(&s.data, 3)
-	if v := s.version.Load(); v != 4 {
-		t.Fatalf("the peer's version is %d; the case needs it stale at 4", v)
-	}
 	if a.t.HeldEntries(2) {
 		t.Fatal("HeldEntries reports a data lane of version 3 as carrying held entries")
+	}
+	// The out version of tigerstore_peer_protocol_version: a downgrade
+	// shows on the link once a lane connects again.
+	if v := a.t.Versions().Out[2]; v != 3 {
+		t.Fatalf("the peer's version is %d after a lane connected at version 3", v)
 	}
 }

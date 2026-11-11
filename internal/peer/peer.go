@@ -936,8 +936,9 @@ type sender struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	ctrl, data lane
-	// version is the protocol version of the connection to the peer, 0
-	// while there is none, and since when it is up in Unix nanoseconds.
+	// version is the protocol version of the connection to the peer that
+	// came up last, 0 while there is none, and since when the peer is
+	// connected in Unix nanoseconds.
 	// up counts the lanes whose connection is up: the peer counts as
 	// connected, once, while one is.
 	version  atomic.Uint32
@@ -1109,17 +1110,17 @@ func (s *sender) runLane(l *lane) {
 	}
 }
 
-// laneUp counts lane l's connection of version v as up. The first one
-// makes the peer connected, with its version: both lanes offer the same
-// range, so they agree on it, unless the peer started again with another
-// range while the other lane's old connection still counts.
+// laneUp counts lane l's connection of version v as up, and v as the
+// peer's version: a peer started again with another range may still have
+// the other lane's old connection counted. The first one makes the peer
+// connected.
 func (s *sender) laneUp(l *lane, v byte) {
 	l.version.Store(uint32(v))
 	s.upMu.Lock()
 	s.up++
+	s.version.Store(uint32(v))
 	first := s.up == 1
 	if first {
-		s.version.Store(uint32(v))
 		s.since.Store(time.Now().UnixNano())
 		s.counters.active.Inc()
 	}
