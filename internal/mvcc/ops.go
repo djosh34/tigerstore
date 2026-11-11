@@ -317,6 +317,7 @@ func (d *Deletion) Finish() {
 // transaction; reads inside it see its own earlier writes. An error after
 // checkTxn passed is a bug, and the caller must stop using the store.
 func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
+	counted := s.counts
 	w := s.start()
 	if c := s.resume; c != nil && c.Rev == w.cur() {
 		w.resume = c
@@ -337,6 +338,9 @@ func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 			cold.Compares = &Compares{Done: w.done}
 		}
 		cold.Compares.Rev = w.cur()
+		// The run after the read counts the transaction, once, as a
+		// node that needed no read does (#561).
+		s.counts = counted
 		return nil, cold
 	}
 	if err != nil {

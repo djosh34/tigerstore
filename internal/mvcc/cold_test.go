@@ -444,3 +444,41 @@ func TestUnansweredWritesReadNothing(t *testing.T) {
 		}
 	}
 }
+
+// TestColdTxnCountsOnce runs a Txn that compares, checks a put's previous
+// value and sorts a range by value on two stores with their values on
+// disk: one answered, which reads the values and runs the Txn again, and
+// one Unanswered, which reads none (#561). Both count the Txn once.
+func TestColdTxnCountsOnce(t *testing.T) {
+	version1 := &pb.Compare{Key: []byte("a"), Target: pb.Compare_VERSION, Result: pb.Compare_EQUAL, TargetUnion: &pb.Compare_Version{Version: 1}}
+	txn := &pb.TxnRequest{
+		Compare: []*pb.Compare{version1, version1},
+		Success: []*pb.RequestOp{
+			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("b"), Value: []byte("2"), PrevKv: true}}},
+			{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("a"), SortTarget: pb.RangeRequest_VALUE}}},
+		},
+	}
+	var stores [2]*Store
+	for i := range stores {
+		h := &coldHeap{}
+		s := New(h)
+		stores[i] = s
+		put(t, s, "a", "1")
+		h.evict()
+		s.Unanswered = i == 1
+		_, err := s.Txn(txn)
+		if cold, ok := errors.AsType[*ColdError](err); ok && i == 0 {
+			h.disk = 0
+			s.Resume(cold.Compares)
+			_, err = s.Txn(txn)
+		} else if ok {
+			t.Fatal("the unanswered store waits for values")
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if a, b := stores[0].Counts(), stores[1].Counts(); a != b || a.Txns != 1 {
+		t.Fatalf("answered after a read counts %+v, unanswered %+v; want the same, with one Txn", a, b)
+	}
+}
