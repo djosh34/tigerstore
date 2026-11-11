@@ -2354,6 +2354,9 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 	if origin == n.cfg.ID && boot == n.cfg.Boot {
 		p = n.waiting[id]
 	}
+	// Only the node a client waits on builds the write's answer.
+	n.kv.Unanswered = p == nil
+	defer func() { n.kv.Unanswered = false }()
 	n.values.reset()
 	kind, b, at, who, err := unwrapAuth(kind, b, at)
 	if err != nil {

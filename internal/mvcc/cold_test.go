@@ -378,3 +378,69 @@ func TestCompareInBatches(t *testing.T) {
 		t.Errorf("k05 changed after the first batch: succeeded %v after %d batches, want false after 1", ok, n)
 	}
 }
+
+// TestUnansweredWritesReadNothing applies each write that reads besides
+// writing to two stores: one answered with its values in memory, and one
+// Unanswered, as a node where no client waits is, with its values on
+// disk (#561). The unanswered one asks for no value, not even those a
+// range sorts by, its answer holds none, and both end with the same keys,
+// revision and counts.
+func TestUnansweredWritesReadNothing(t *testing.T) {
+	rng := func(r *pb.RangeRequest) *pb.RequestOp {
+		return &pb.RequestOp{Request: &pb.RequestOp_RequestRange{RequestRange: r}}
+	}
+	ops := []proto.Message{
+		&pb.PutRequest{Key: []byte("a"), Value: []byte("new"), PrevKv: true},
+		&pb.DeleteRangeRequest{Key: []byte("b"), RangeEnd: []byte("d"), PrevKv: true},
+		&pb.TxnRequest{Success: []*pb.RequestOp{
+			rng(&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("z")}),
+			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("b"), Value: []byte("new"), PrevKv: true}}},
+			rng(&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("z"), SortTarget: pb.RangeRequest_VALUE, SortOrder: pb.RangeRequest_DESCEND}),
+		}},
+	}
+	for _, op := range ops {
+		var stores [2]*Store
+		var resps [2]proto.Message
+		for i := range stores {
+			h := &coldHeap{}
+			s := New(h)
+			stores[i] = s
+			for _, kv := range [][2]string{{"a", "1"}, {"b", "2"}, {"c", "3"}} {
+				put(t, s, kv[0], kv[1])
+			}
+			if i == 1 {
+				h.evict()
+				s.Unanswered = true
+			}
+			var err error
+			switch op := op.(type) {
+			case *pb.PutRequest:
+				resps[i], err = s.Put(op)
+			case *pb.DeleteRangeRequest:
+				resps[i], err = s.DeleteRange(op)
+			case *pb.TxnRequest:
+				resps[i], err = s.Txn(op)
+			}
+			if err != nil {
+				t.Fatalf("%v, unanswered %v: %v", op, s.Unanswered, err)
+			}
+		}
+		a, b := stores[0], stores[1]
+		if n := len(b.TakeFills()); n != 0 {
+			t.Fatalf("%v: %d fills on the unanswered store", op, n)
+		}
+		if len(b.TakeRests()) != 0 {
+			t.Fatalf("%v: rests on the unanswered store", op)
+		}
+		if s := resps[1].(interface{ String() string }).String(); strings.Contains(s, "kvs") || strings.Contains(s, "prev_kv") {
+			t.Fatalf("%v: the unanswered store answered with key-values: %s", op, s)
+		}
+		if s := resps[0].(interface{ String() string }).String(); !strings.Contains(s, "kvs") && !strings.Contains(s, "prev_kv") {
+			t.Fatalf("%v: the answered store answered with no key-values: %s", op, s)
+		}
+		if a.Rev() != b.Rev() || a.Hash() != b.Hash() || a.Counts() != b.Counts() {
+			t.Fatalf("%v: answered rev %d hash %x counts %+v, unanswered rev %d hash %x counts %+v",
+				op, a.Rev(), a.Hash(), a.Counts(), b.Rev(), b.Hash(), b.Counts())
+		}
+	}
+}

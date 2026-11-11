@@ -183,7 +183,7 @@ func (w *writer) put(p *PutOp) (*mvccpb.KeyValue, error) {
 		v.value = ref
 	}
 	if prev != nil {
-		if p.PrevKv {
+		if p.PrevKv && !w.s.Unanswered {
 			var err error
 			if prevKV, err = w.s.kv(k, prev); err != nil {
 				return nil, err
@@ -247,7 +247,7 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 		w.s.counts.Ranges++
 	}
 	resp := &pb.DeleteRangeResponse{}
-	if d.PrevKv {
+	if d.PrevKv && !w.s.Unanswered {
 		// The previous values are a range just before the delete, read
 		// through a cursor as any range's, so a large one comes in pieces.
 		res, c, err := w.rangeAt(&pb.RangeRequest{Key: d.Key, RangeEnd: d.RangeEnd}, true, w.room, false)
@@ -523,7 +523,7 @@ func (w *writer) checkTxn(r *pb.TxnRequest, path []bool) (int, error) {
 		var err error
 		switch t := op.Request.(type) {
 		case *pb.RequestOp_RequestRange:
-			if err = w.checkRange(t.RequestRange); err == nil {
+			if err = w.checkRange(t.RequestRange); err == nil && !w.s.Unanswered {
 				err = w.checkSortValues(t.RequestRange)
 			}
 		case *pb.RequestOp_RequestPut:
@@ -600,9 +600,12 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 		switch t := op.Request.(type) {
 		case *pb.RequestOp_RequestRange:
 			w.s.counts.Ranges++
-			rr, err := w.rangeMessage(t.RequestRange, true)
-			if err != nil {
-				return nil, 0, err
+			rr := &pb.RangeResponse{}
+			if !w.s.Unanswered {
+				var err error
+				if rr, err = w.rangeMessage(t.RequestRange, true); err != nil {
+					return nil, 0, err
+				}
 			}
 			p.rng.ResponseRange = rr
 			out.Response = &p.rng

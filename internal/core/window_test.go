@@ -670,3 +670,35 @@ func TestWindowCountsWhatEntriesHold(t *testing.T) {
 	}
 	runtime.KeepAlive(st)
 }
+
+// TestOnlyTheAskedNodeReadsForAWrite sends a Txn that writes and sorts a
+// range by value to a follower, with every value out of memory. The follower, whose
+// client waits, reads the values; the leader and the other follower answer
+// nobody, so they apply it without reading any (#561).
+func TestOnlyTheAskedNodeReadsForAWrite(t *testing.T) {
+	c := newMemCluster(t, func(cfg *Config) { cfg.WindowBytes, cfg.WindowMaxBytes = 512, 1024 })
+	for i := range 10 {
+		c.nodes[0].Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", i), Value: bytes.Repeat([]byte{'v'}, 200)}})
+	}
+	for range 50 {
+		c.step()
+	}
+	if c.replies != 10 {
+		t.Fatalf("%d of 10 puts answered: %s", c.replies, c.describe())
+	}
+	c.nodes[1].Submit(Request{ID: 100, Op: &pb.TxnRequest{Success: []*pb.RequestOp{
+		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("after"), Value: []byte("1")}}},
+		{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{
+			Key: []byte("k"), RangeEnd: []byte("l"), SortTarget: pb.RangeRequest_VALUE, SortOrder: pb.RangeRequest_DESCEND,
+		}}},
+	}}})
+	for range 50 {
+		c.step()
+	}
+	commit := c.nodes[0].RaftStatus().GetCommit()
+	for i, n := range c.nodes {
+		if asked := i == 1; n.applyWaits() != asked || (!asked && n.Applied() != commit) {
+			t.Fatalf("node %d waits for values %v, applied %d of %d: %s", i+1, n.applyWaits(), n.Applied(), commit, c.describe())
+		}
+	}
+}
