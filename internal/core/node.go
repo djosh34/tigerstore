@@ -1813,6 +1813,13 @@ func (n *Node) requestReads() {
 	if len(n.reads) == 0 {
 		return
 	}
+	// Prototype 602-4: one read index in flight, as etcd's read loop
+	// keeps; the reads that come meanwhile share the next.
+	for _, b := range n.readBatches {
+		if b.index == 0 && !allDone(b.reads) {
+			return
+		}
+	}
 	n.nextReadCtx++
 	b := &readBatch{ctx: n.nextReadCtx, sent: n.now, reads: n.reads}
 	n.reads = nil
@@ -1921,6 +1928,11 @@ func (n *Node) Process() (Effects, error) {
 		n.runApply()
 		n.requestReads()
 		n.drainReady()
+		if len(n.reads) > 0 {
+			// A read index that came in this turn lets the next go.
+			n.requestReads()
+			n.drainReady()
+		}
 		n.cutWaiting()
 		// A write that a read queued, such as a Downgrade ENABLE once its
 		// read index applied, goes out in the same turn.
