@@ -432,17 +432,40 @@ func TestUnansweredWritesReadNothing(t *testing.T) {
 		if len(b.TakeRests()) != 0 {
 			t.Fatalf("%v: rests on the unanswered store", op)
 		}
-		if s := resps[1].(interface{ String() string }).String(); strings.Contains(s, "kvs") || strings.Contains(s, "prev_kv") {
-			t.Fatalf("%v: the unanswered store answered with key-values: %s", op, s)
+		if n := answerKVs(resps[1]); n != 0 {
+			t.Fatalf("%v: the unanswered store answered with %d key-values: %v", op, n, resps[1])
 		}
-		if s := resps[0].(interface{ String() string }).String(); !strings.Contains(s, "kvs") && !strings.Contains(s, "prev_kv") {
-			t.Fatalf("%v: the answered store answered with no key-values: %s", op, s)
+		if answerKVs(resps[0]) == 0 {
+			t.Fatalf("%v: the answered store answered with no key-values: %v", op, resps[0])
 		}
 		if a.Rev() != b.Rev() || a.Hash() != b.Hash() || a.Counts() != b.Counts() {
 			t.Fatalf("%v: answered rev %d hash %x counts %+v, unanswered rev %d hash %x counts %+v",
 				op, a.Rev(), a.Hash(), a.Counts(), b.Rev(), b.Hash(), b.Counts())
 		}
 	}
+}
+
+// answerKVs counts the key-values an answer of a put, a delete or a Txn
+// carries.
+func answerKVs(m proto.Message) int {
+	switch r := m.(type) {
+	case *pb.PutResponse:
+		if r.PrevKv != nil {
+			return 1
+		}
+	case *pb.DeleteRangeResponse:
+		return len(r.PrevKvs)
+	case *pb.TxnResponse:
+		n := 0
+		for _, op := range r.Responses {
+			if p := op.GetResponsePut(); p != nil {
+				n += answerKVs(p)
+			}
+			n += len(op.GetResponseRange().GetKvs())
+		}
+		return n
+	}
+	return 0
 }
 
 // TestColdTxnCountsOnce runs a Txn that compares, checks a put's previous

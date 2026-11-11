@@ -604,14 +604,15 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 		switch t := op.Request.(type) {
 		case *pb.RequestOp_RequestRange:
 			w.s.counts.Ranges++
-			rr := &pb.RangeResponse{}
-			if !w.s.Unanswered {
-				var err error
-				if rr, err = w.rangeMessage(t.RequestRange, true); err != nil {
+			if w.s.Unanswered {
+				p.rng.ResponseRange = &pb.RangeResponse{}
+			} else {
+				rr, err := w.rangeMessage(t.RequestRange, true)
+				if err != nil {
 					return nil, 0, err
 				}
+				p.rng.ResponseRange = rr
 			}
-			p.rng.ResponseRange = rr
 			out.Response = &p.rng
 		case *pb.RequestOp_RequestPut:
 			op := putOp(t.RequestPut)
