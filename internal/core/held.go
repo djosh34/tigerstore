@@ -6,6 +6,8 @@ import (
 	"hash/crc32"
 
 	"go.etcd.io/raft/v3/raftpb"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // Held entries (#602). A follower forwards the writes its clients send it
@@ -362,6 +364,10 @@ func (n *Node) fill(m *raftpb.Message) (*raftpb.Message, bool) {
 			return nil, false
 		}
 		data, ok := n.kept.data[k]
+		if !ok && planted.On("B33") {
+			// The key goes to Raft in place of the entry.
+			continue
+		}
 		if !ok {
 			return nil, false
 		}
