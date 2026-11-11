@@ -179,6 +179,13 @@ func answersHeldBack(t *testing.T, probes bool) {
 			return kv.Txn(ctx, &pb.TxnRequest{Success: ops})
 		})
 	}
+	if probes {
+		// Replace the preload's last large receive buffer before taking a
+		// baseline. Freeing it later must not hide the probes' buffers.
+		retry(t, func(ctx context.Context) (*pb.RangeResponse, error) {
+			return kv.Range(ctx, &pb.RangeRequest{Key: []byte("absent"), Serializable: true})
+		})
+	}
 	all := &pb.RangeRequest{Key: []byte("big/"), RangeEnd: []byte("big0"), Serializable: true}
 	// heldBack sends req on a client that takes nothing, checks that the
 	// process then holds at most limit bytes more, and reads the answer.
