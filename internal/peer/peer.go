@@ -376,12 +376,15 @@ func (t *TCP) ActiveSince(id uint64) time.Time {
 	return time.Time{}
 }
 
-// HeldEntries reports whether the connection to peer id speaks a version
-// that carries the messages of held entries. A connection made later to an
+// HeldEntries reports whether the connection to peer id that carries the
+// messages of held entries, the data lane's, speaks a version that takes
+// them. The peer's version is the first lane's, which a peer started again
+// at an older version can leave stale while the other lane's old
+// connection still counts as up (#626). A connection made later to an
 // older binary drops those still queued (sender.write).
 func (t *TCP) HeldEntries(id uint64) bool {
 	s, ok := t.peer(id)
-	return ok && s.version.Load() >= heldVersion
+	return ok && s.data.version.Load() >= heldVersion
 }
 
 // peer returns the sender of peer id.
@@ -948,6 +951,9 @@ type sender struct {
 type lane struct {
 	name string
 	q    chan queued
+	// version is the protocol version of the lane's connection, 0 while
+	// it has none.
+	version atomic.Uint32
 	// bytes are the estimated bytes in q.
 	bytes atomic.Int64
 	// Writer only: messages that waited longer than slowQueue since the
@@ -1091,10 +1097,10 @@ func (s *sender) runLane(l *lane) {
 			continue
 		}
 		backoff = 50 * time.Millisecond
-		s.laneUp(v)
+		s.laneUp(l, v)
 		err = s.connected(ctx, c, l, v)
 		failed := err != nil && ctx.Err() == nil
-		s.laneDown(failed)
+		s.laneDown(l, failed)
 		s.reportWaits(l)
 		if failed {
 			s.t.logf("peer: send %s to %d: %v", l.name, s.id, err)
@@ -1103,10 +1109,12 @@ func (s *sender) runLane(l *lane) {
 	}
 }
 
-// laneUp counts a lane's connection of version v as up. The first one
+// laneUp counts lane l's connection of version v as up. The first one
 // makes the peer connected, with its version: both lanes offer the same
-// range, so they agree on it.
-func (s *sender) laneUp(v byte) {
+// range, so they agree on it, unless the peer started again with another
+// range while the other lane's old connection still counts.
+func (s *sender) laneUp(l *lane, v byte) {
+	l.version.Store(uint32(v))
 	s.upMu.Lock()
 	s.up++
 	first := s.up == 1
@@ -1124,7 +1132,8 @@ func (s *sender) laneUp(v byte) {
 // laneDown counts a lane's connection as down, failed if it ended on an
 // error. The last one makes the peer disconnected, and counts the peer as
 // lost once, as etcd counts a peer going inactive, if it failed.
-func (s *sender) laneDown(failed bool) {
+func (s *sender) laneDown(l *lane, failed bool) {
+	l.version.Store(0)
 	s.upMu.Lock()
 	s.up--
 	last := s.up == 0

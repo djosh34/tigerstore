@@ -419,3 +419,49 @@ func TestOldConnectionRefusesHeldForms(t *testing.T) {
 		t.Fatalf("%g messages refused, want 1", n)
 	}
 }
+
+// TestHeldEntriesFollowsTheDataLane drives a sender's lane bookkeeping by
+// hand, its peer never answering: both lanes come up at version 4, then
+// the data lane comes up again at version 3, as after the peer started
+// again at an older version, while the control lane's old connection still
+// counts. The peer's version stays 4, the first lane's; HeldEntries must
+// follow the data lane, which carries the messages of held entries, or the
+// leader would name entries that the writer then drops, again and again.
+func TestHeldEntriesFollowsTheDataLane(t *testing.T) {
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, _, _, err := ca.Issue("node", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addrs, lns := listeners(t, 1, 2)
+	// Nothing listens for node 2: its lanes never connect by themselves.
+	if err := lns[2].Close(); err != nil {
+		t.Fatal(err)
+	}
+	a := start(t, 1, lns[1], addrs, cert, ca.Pool)
+	t.Cleanup(func() {
+		if err := a.t.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	s, ok := a.t.peer(2)
+	if !ok {
+		t.Fatal("node 1 has no sender to node 2")
+	}
+	s.laneUp(&s.ctrl, 4)
+	s.laneUp(&s.data, 4)
+	if !a.t.HeldEntries(2) {
+		t.Fatal("lanes of version 4 do not carry held entries")
+	}
+	s.laneDown(&s.data, true)
+	s.laneUp(&s.data, 3)
+	if v := s.version.Load(); v != 4 {
+		t.Fatalf("the peer's version is %d; the case needs it stale at 4", v)
+	}
+	if a.t.HeldEntries(2) {
+		t.Fatal("HeldEntries reports a data lane of version 3 as carrying held entries")
+	}
+}
