@@ -144,14 +144,52 @@ type version struct {
 	value  Ref
 }
 
-// keyIndex holds every version of one key, oldest first. id is its slot
-// in the store's records (Store.rec), and chunk, off and n place its bytes
-// in the store's arena (Store.key): a record holds no pointer but to its
-// versions.
+// keyIndex holds every version of one key, oldest first (vers). id is its
+// slot in the store's records (Store.rec), and chunk, off and n place its
+// bytes in the store's arena (Store.key). A key with one version, as most
+// are between compactions, keeps it in one, and its record holds no
+// pointer: with a million keys, the garbage collector then marks no
+// object per key (#602). A key with more keeps them in many.
 type keyIndex struct {
-	vers          []version
+	many          []version
+	one           [1]version
 	id            uint32
 	chunk, off, n uint32
+	single        bool
+}
+
+// vers returns k's versions, oldest first. For a key with one version it
+// is a slice of the record itself, so appending to it copies.
+func (k *keyIndex) vers() []version {
+	if k.single {
+		return k.one[:]
+	}
+	return k.many
+}
+
+// setVers makes vs k's versions and returns the change in the versions'
+// room on the heap, the store's versions.
+func (k *keyIndex) setVers(vs []version) int64 {
+	before := cap(k.many)
+	switch len(vs) {
+	case 0:
+		k.many, k.single = nil, false
+	case 1:
+		k.one[0], k.many, k.single = vs[0], nil, true
+	default:
+		k.many, k.single = vs, false
+	}
+	return int64(cap(k.many) - before)
+}
+
+// push adds v as k's newest version and returns the change in the
+// versions' room on the heap. A key's first version goes in its record.
+func (k *keyIndex) push(v version) int64 {
+	if !k.single && k.many == nil {
+		k.one[0], k.single = v, true
+		return 0
+	}
+	return k.setVers(append(k.vers(), v))
 }
 
 // loaded is a key as a checkpoint holds it (readKey).
@@ -165,13 +203,13 @@ type loaded struct {
 func (k *keyIndex) at(r int64) int {
 	// Most reads and writes look at the newest version, so it goes first,
 	// before a search through a long history.
-	if n := len(k.vers); n > 0 && k.vers[n-1].mod.main <= r {
+	if n := len(k.vers()); n > 0 && k.vers()[n-1].mod.main <= r {
 		return n - 1
 	}
-	lo, hi := 0, len(k.vers)
+	lo, hi := 0, len(k.vers())
 	for lo < hi {
 		m := int(uint(lo+hi) >> 1)
-		if k.vers[m].mod.main <= r {
+		if k.vers()[m].mod.main <= r {
 			lo = m + 1
 		} else {
 			hi = m
@@ -183,10 +221,10 @@ func (k *keyIndex) at(r int64) int {
 // live returns the version visible at revision r, if the key exists then.
 func (k *keyIndex) live(r int64) (*version, bool) {
 	i := k.at(r)
-	if i < 0 || k.vers[i].ver == 0 {
+	if i < 0 || k.vers()[i].ver == 0 {
 		return nil, false
 	}
-	return &k.vers[i], true
+	return &k.vers()[i], true
 }
 
 // kvValue returns a version of k without its value, which fill adds.
@@ -355,7 +393,7 @@ func (s *Store) Bytes() int64 {
 // recBytes is the size of a record, and keySlot estimates a key's room in
 // the B-tree: its slot number, in nodes about two thirds full.
 const (
-	recBytes = 40
+	recBytes = 112
 	keySlot  = 6
 )
 
@@ -436,7 +474,8 @@ func (s *Store) insert(key []byte, vers []version) *keyIndex {
 		s.used++
 	}
 	r := s.rec(id)
-	*r = keyIndex{vers: vers, id: id}
+	*r = keyIndex{id: id}
+	s.versions += r.setVers(vers)
 	s.addKey(r, key)
 	s.keys.ReplaceOrInsert(id)
 	s.byKey.add(s, id)
@@ -477,10 +516,10 @@ func (s *Store) Current(key []byte, r Ref) bool {
 // current reports whether r names the value of k's newest version. A
 // key that a compaction removed has no versions left.
 func (k *keyIndex) current(r Ref) bool {
-	if len(k.vers) == 0 {
+	if len(k.vers()) == 0 {
 		return false
 	}
-	v := &k.vers[len(k.vers)-1]
+	v := &k.vers()[len(k.vers())-1]
 	return v.ver != 0 && v.value == r
 }
 
@@ -616,17 +655,17 @@ func (c Change) ModRev() int64 {
 	if c.i < 0 {
 		return c.main
 	}
-	return c.k.vers[c.i].mod.main
+	return c.k.vers()[c.i].mod.main
 }
 
 // Lease is the lease of the key after the change, 0 for a delete.
-func (c Change) Lease() int64 { return c.k.vers[c.i].lease }
+func (c Change) Lease() int64 { return c.k.vers()[c.i].lease }
 
 // PrevLease is the lease of the key before the change, 0 if it did not
 // exist or had none.
 func (c Change) PrevLease() int64 {
-	if c.i > 0 && c.k.vers[c.i-1].ver != 0 {
-		return c.k.vers[c.i-1].lease
+	if c.i > 0 && c.k.vers()[c.i-1].ver != 0 {
+		return c.k.vers()[c.i-1].lease
 	}
 	return 0
 }
@@ -641,7 +680,7 @@ func (c Change) PrevLease() int64 {
 // holds their positions, so a later compaction does not change it.
 func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 	s := c.s
-	v := &c.k.vers[c.i]
+	v := &c.k.vers()[c.i]
 	ev := &mvccpb.Event{Type: mvccpb.Event_DELETE, Kv: &mvccpb.KeyValue{Key: c.s.key(c.k), ModRevision: v.mod.main}}
 	if v.ver != 0 {
 		kv, err := s.kv(c.k, v)
@@ -663,16 +702,16 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 // prev is the version an event of the change carries as its previous
 // one, if withPrev is set and it has one (Event).
 func (c Change) prev(withPrev bool) *version {
-	v := &c.k.vers[c.i]
+	v := &c.k.vers()[c.i]
 	j := c.i - 1
-	for j >= 0 && c.k.vers[j].mod.main == v.mod.main {
+	for j >= 0 && c.k.vers()[j].mod.main == v.mod.main {
 		j--
 	}
 	create := v.ver != 0 && v.create == v.mod.main
-	if !withPrev || create || j < 0 || c.k.vers[j].ver == 0 {
+	if !withPrev || create || j < 0 || c.k.vers()[j].ver == 0 {
 		return nil
 	}
-	return &c.k.vers[j]
+	return &c.k.vers()[j]
 }
 
 // Changes returns the changes of the last applied write request. The slice
@@ -703,7 +742,7 @@ func (s *Store) Refs(key []byte) []Ref {
 		return nil
 	}
 	var out []Ref
-	for _, v := range k.vers {
+	for _, v := range k.vers() {
 		if v.value.Len > 0 {
 			out = append(out, v.value)
 		}
@@ -732,8 +771,8 @@ func (s *Store) versionSum() uint64 {
 	}
 	var sum uint64
 	s.each(func(k *keyIndex) bool {
-		for i := k.dropped(pending); i < len(k.vers); i++ {
-			sum ^= versionHash(s.key(k), &k.vers[i])
+		for i := k.dropped(pending); i < len(k.vers()); i++ {
+			sum ^= versionHash(s.key(k), &k.vers()[i])
 		}
 		return true
 	})
@@ -787,13 +826,13 @@ func (s *Store) History(key, end []byte, from int64) []Change {
 	var out []Change
 	s.ascend(key, end, func(k *keyIndex) bool {
 		i := k.at(from - 1)
-		for i++; i < len(k.vers); i++ {
+		for i++; i < len(k.vers()); i++ {
 			out = append(out, Change{s: s, k: k, i: i})
 		}
 		return true
 	})
 	slices.SortFunc(out, func(a, b Change) int {
-		x, y := a.k.vers[a.i].mod, b.k.vers[b.i].mod
+		x, y := a.k.vers()[a.i].mod, b.k.vers()[b.i].mod
 		if x.main != y.main {
 			return cmp.Compare(x.main, y.main)
 		}
@@ -842,9 +881,9 @@ func (s *Store) Compact(rev int64) error {
 		h.key(s.key(k), k, from)
 		s.counts.Compacted += int64(to - from)
 		for i := from; i < to; i++ {
-			s.size -= rowBytes(s.key(k), &k.vers[i])
+			s.size -= rowBytes(s.key(k), &k.vers()[i])
 			if s.track {
-				s.sum ^= versionHash(s.key(k), &k.vers[i])
+				s.sum ^= versionHash(s.key(k), &k.vers()[i])
 			}
 		}
 		return s.frozen == nil && s.dropFirst(k, to)
@@ -859,7 +898,7 @@ func (s *Store) Compact(rev int64) error {
 // a tombstone from before rev.
 func (k *keyIndex) dropped(rev int64) int {
 	i := k.at(rev)
-	if i >= 0 && k.vers[i].ver == 0 && (k.vers[i].mod.main < rev || planted.On("B08")) {
+	if i >= 0 && k.vers()[i].ver == 0 && (k.vers()[i].mod.main < rev || planted.On("B08")) {
 		i++
 	}
 	return max(i, 0)
@@ -914,16 +953,16 @@ func (s *Store) sweep(fn func(*keyIndex) bool) {
 // left.
 func (s *Store) dropFirst(k *keyIndex, i int) bool {
 	if i > 0 {
-		c := cap(k.vers)
-		k.vers = slices.Delete(k.vers, 0, i)
+		vs := slices.Delete(k.vers(), 0, i)
 		// The array stays; a key that lost most of its versions gets a
-		// smaller one, so that the memory goes.
-		if len(k.vers) <= c/4 {
-			k.vers = slices.Clone(k.vers)
+		// smaller one, so that the memory goes, and a key left with one
+		// keeps it in its record (setVers).
+		if len(vs) > 1 && len(vs) <= cap(vs)/4 {
+			vs = slices.Clone(vs)
 		}
-		s.versions -= int64(c - cap(k.vers))
+		s.versions += k.setVers(vs)
 	}
-	return len(k.vers) == 0
+	return len(k.vers()) == 0
 }
 
 // remove takes keys without versions out of the index and frees their

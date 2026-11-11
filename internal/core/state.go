@@ -278,10 +278,14 @@ func (st *State) sortedLeases() []*lease {
 
 // track records the changes of the write just applied to the index and
 // moves its keys between leases: a key leaves the lease of its old version
-// and joins the lease of its new one.
+// and joins the lease of its new one. A key that keeps its lease, or has
+// none, stays where it is, and its key is not copied (#602).
 func (st *State) track() {
 	st.changes = st.kv.Changes()
 	for _, c := range st.changes {
+		if c.PrevLease() == c.Lease() {
+			continue
+		}
 		k := string(c.Key())
 		if id := c.PrevLease(); id != 0 {
 			if l, ok := st.leases[id]; ok {

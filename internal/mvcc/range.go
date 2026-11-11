@@ -127,13 +127,13 @@ func at(r int64) rev { return rev{main: r + 1} }
 // exists there.
 func (k *keyIndex) visible(p rev) (*version, bool) {
 	i := k.at(p.main)
-	for i >= 0 && k.vers[i].mod.main == p.main && k.vers[i].mod.sub >= p.sub {
+	for i >= 0 && k.vers()[i].mod.main == p.main && k.vers()[i].mod.sub >= p.sub {
 		i--
 	}
-	if i < 0 || k.vers[i].ver == 0 {
+	if i < 0 || k.vers()[i].ver == 0 {
 		return nil, false
 	}
-	return &k.vers[i], true
+	return &k.vers()[i], true
 }
 
 // position is where a range of the request being applied reads: at
@@ -481,8 +481,8 @@ func (c *Cursor) Next(room int) ([]KV, bool, error) {
 
 // fillValues sets the value of each KV that is in memory, or of its
 // message in msgs if that is not nil, and keeps a Fill for each that only
-// the log has. The values copied out of Raft entries share one allocation
-// of their exact size; a value from the cache stays its own (#430).
+// the log has. The values copied out of Raft entries or out of the cache
+// share one allocation of their exact size (#430, #602).
 func (s *Store) fillValues(kvs []KV, msgs []*mvccpb.KeyValue) error {
 	copied := 0
 	for i := range kvs {

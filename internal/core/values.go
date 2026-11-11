@@ -74,37 +74,41 @@ func (v *values) Place(value []byte) (mvcc.Ref, error) {
 	return mvcc.Ref{}, errNotPlaced
 }
 
-// Copies reports whether Read copies the value r names out of a Raft
-// entry in memory.
+// Copies reports whether Read copies the value r names, out of a Raft
+// entry in memory or out of the cache.
 func (v *values) Copies(r mvcc.Ref) bool {
 	if v.entry != nil && r.Index == v.index {
 		return true
 	}
-	_, ok := v.storage.entryData(r.Index)
-	return ok
+	if _, ok := v.storage.entryData(r.Index); ok {
+		return true
+	}
+	return v.cache.has(r)
 }
 
-// Read returns a copy of a value from its entry in memory, or one from
-// the cache or fetched, and false if only the log has it. Responses and
+// Read returns a copy of a value from its entry in memory or from the
+// cache, or one fetched, and false if only the log has it. Responses and
 // watch events keep what it returns, maybe for long behind a slow client,
-// and must not keep the entry with it. A copy goes to the end of *arena if
-// arena is not nil.
+// and must not keep the entry with it, nor a slot of the cache, which the
+// next value takes. A copy goes to the end of *arena if arena is not nil.
 func (v *values) Read(r mvcc.Ref, arena *[]byte) ([]byte, bool, error) {
 	data, ok := v.entry, v.entry != nil && r.Index == v.index
 	if !ok {
 		data, ok = v.storage.entryData(r.Index)
 	}
-	if !ok {
-		if b, ok := v.cache.get(r); ok {
-			return b, true, nil
+	var b []byte
+	switch {
+	case ok:
+		if uint64(r.Off)+uint64(r.Len) > uint64(len(data)) {
+			return nil, false, fmt.Errorf("core: value at %d+%d is past the end of entry %d", r.Off, r.Len, r.Index)
 		}
-		b, ok := v.fetched[r]
-		return b, ok, nil
+		b = data[r.Off : r.Off+r.Len]
+	default:
+		if b, ok = v.cache.get(r); !ok {
+			b, ok := v.fetched[r]
+			return b, ok, nil
+		}
 	}
-	if uint64(r.Off)+uint64(r.Len) > uint64(len(data)) {
-		return nil, false, fmt.Errorf("core: value at %d+%d is past the end of entry %d", r.Off, r.Len, r.Index)
-	}
-	b := data[r.Off : r.Off+r.Len]
 	if arena == nil {
 		return bytes.Clone(b), true, nil
 	}

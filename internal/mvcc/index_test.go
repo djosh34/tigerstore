@@ -177,3 +177,29 @@ func TestRecordSize(t *testing.T) {
 		t.Fatalf("a record takes %d bytes, recBytes says %d", got, recBytes)
 	}
 }
+
+// TestOneVersionInRecord checks that a key with one version keeps it in
+// its record, with no array on the heap for the garbage collector to mark,
+// that a second version moves both to an array, and that a compaction that
+// leaves one moves it back and frees the array (#602).
+func TestOneVersionInRecord(t *testing.T) {
+	s := New(&Heap{})
+	put(t, s, "a", "1")
+	k, ok := s.get([]byte("a"))
+	if !ok || !k.single || k.many != nil || s.versions != 0 {
+		t.Fatalf("after one put: single %v, many %v, versions %d", k.single, k.many, s.versions)
+	}
+	put(t, s, "a", "2")
+	if k.single || len(k.many) != 2 || s.versions != int64(cap(k.many)) {
+		t.Fatalf("after two puts: single %v, many %d, versions %d", k.single, len(k.many), s.versions)
+	}
+	if err := s.Compact(s.Rev()); err != nil {
+		t.Fatal(err)
+	}
+	if !k.single || k.many != nil || s.versions != 0 {
+		t.Fatalf("after the compaction: single %v, many %v, versions %d", k.single, k.many, s.versions)
+	}
+	if got := get(t, s, &pb.RangeRequest{Key: []byte("a")}); len(got.Kvs) != 1 || string(got.Kvs[0].Value) != "2" || got.Kvs[0].Version != 2 {
+		t.Fatalf("after the compaction: %v", got.Kvs)
+	}
+}

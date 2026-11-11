@@ -138,7 +138,7 @@ func TestCheckpointChunkOfAHotKey(t *testing.T) {
 	if _, err := loaded.Load(bufio.NewReader(bytes.NewReader(all)), s.Rev(), s.CompactRev()); err != nil {
 		t.Fatal(err)
 	}
-	if k, ok := loaded.get([]byte("hot")); !ok || len(k.vers) != 20_000 {
+	if k, ok := loaded.get([]byte("hot")); !ok || len(k.vers()) != 20_000 {
 		t.Fatalf("the loaded checkpoint lost versions of the hot key")
 	}
 	runtime.GC()

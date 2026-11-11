@@ -12,7 +12,8 @@ import (
 // the cache is past its limit, and that a value it drops or that does
 // not fit is gone.
 func TestCacheLRU(t *testing.T) {
-	const size = 1000
+	// A slot of the slabs holds exactly this.
+	const size = 1024
 	c := newCache()
 	ref := func(i uint64) mvcc.Ref { return mvcc.Ref{Index: i, Len: size} }
 	c.add(ref(1), make([]byte, size))
@@ -60,7 +61,8 @@ func TestCacheMapSlots(t *testing.T) {
 	ref := func(i uint64) mvcc.Ref { return mvcc.Ref{Index: i, Len: 10} }
 	want := func(values, slots int) {
 		t.Helper()
-		if len(c.items) != values || c.peak != slots || c.bytes != int64(values*(10+cachedOverhead)+slots*slotOverhead) {
+		// A 10-byte value takes a slot of 16 bytes.
+		if len(c.items) != values || c.peak != slots || c.bytes != int64(values*(16+cachedOverhead)+slots*slotOverhead) {
 			t.Fatalf("%d values, peak %d, %d bytes; want %d values and %d slots", len(c.items), c.peak, c.bytes, values, slots)
 		}
 	}
@@ -219,7 +221,7 @@ func TestCacheRebuildKeepsOrder(t *testing.T) {
 	c.setLimit(1 << 20)
 	ref := func(i uint64) mvcc.Ref { return mvcc.Ref{Index: i, Len: 10} }
 	for i := uint64(1); i <= 10; i++ {
-		c.add(ref(i), []byte{byte(i)})
+		c.add(ref(i), []byte{byte(i), 1, 2, 3, 4, 5, 6, 7, 8, 9})
 	}
 	// Used last: 2, then 4.
 	c.get(ref(2))
@@ -230,11 +232,11 @@ func TestCacheRebuildKeepsOrder(t *testing.T) {
 	if c.peak != 5 || len(c.entries) != 6 {
 		t.Fatalf("after the rebuild: peak %d, %d entries", c.peak, len(c.entries))
 	}
-	// Room for two values: 4 and 2 were used last.
-	c.setLimit(2*(10+cachedOverhead) + 5*slotOverhead)
+	// Room for two values in slots of 16 bytes: 4 and 2 were used last.
+	c.setLimit(2*(16+cachedOverhead) + 5*slotOverhead)
 	for i := uint64(1); i <= 10; i++ {
 		v, ok := c.get(ref(i))
-		if ok != (i == 2 || i == 4) || ok && v[0] != byte(i) {
+		if ok != (i == 2 || i == 4) || ok && (len(v) != 10 || v[0] != byte(i) || v[9] != 9) {
 			t.Fatalf("value %d: cached %v, %v", i, ok, v)
 		}
 	}
