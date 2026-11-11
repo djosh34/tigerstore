@@ -1744,7 +1744,15 @@ func (r *revisionOrder) finish(rev int64) bool {
 	for first > 0 && w.states[first-1].rev == rev {
 		first--
 	}
+	bounds := w.eventBounds()
 	for _, i := range byRev(r.seen, rev) {
+		// A later event cannot repair a revision whose writer was called
+		// after this answer returned. Reject that gap before exploring
+		// every combination of the gaps after it (seed 290 on PR #626).
+		_, hi := bounds(&w.h.Ops[i])
+		if hi < first {
+			return r.dead(rev, w.unanswered(i, first, len(w.states)-1, first, hi))
+		}
 		j, ok := w.find(i, first, len(w.states)-1)
 		if !ok {
 			return r.dead(rev, w.unanswered(i, first, len(w.states)-1, first, len(w.states)-1))
