@@ -9,6 +9,7 @@ package mvcc
 import (
 	"bytes"
 	"cmp"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -309,8 +310,13 @@ type Store struct {
 	// own, a collection of a million keys took 115 ms, and 17 ms with
 	// slots and the keys' bytes in an arena; the index took 331 MB and
 	// then 221 MB (#506).
-	keys  *btree.BTreeG[uint32]
+	keys  *leaves
 	byKey keyTable
+	// delta holds the slots of new keys, sorted by key, that are not in
+	// keys yet: a small sorted array stays in the cache, where a walk of
+	// the big B-tree misses it once or twice per compare. It goes into
+	// keys in one sorted batch (mergeDelta). Prototype of #602.
+	delta *btree.BTreeG[uint64]
 	// recs are the records of the keys in chunks of recChunk that never
 	// move, so a *keyIndex stays valid. The first two slots are the keys
 	// a walk of keys starts and stops at (probes). The slots of removed
@@ -387,7 +393,7 @@ type Store struct {
 // place in the B-tree, 64 bytes per version its array has room for, and
 // the history's 4 bytes a change and 8 a revision (#560).
 func (s *Store) Bytes() int64 {
-	return int64(len(s.recs))*recChunk*recBytes + 4*int64(cap(s.free)) + int64(s.keys.Len())*keySlot + 8*int64(len(s.byKey.entries)) + s.arenaBytes + s.versions*64 + 4*int64(cap(s.hist.keys)) + 8*int64(cap(s.hist.starts))
+	return int64(len(s.recs))*recChunk*recBytes + 4*int64(cap(s.free)) + int64(s.keys.Len()+s.delta.Len())*keySlot + 8*int64(len(s.byKey.entries)) + s.arenaBytes + s.versions*64 + 4*int64(cap(s.hist.keys)) + 8*int64(cap(s.hist.starts))
 }
 
 // recBytes is the size of a record, and keySlot estimates a key's room in
@@ -425,23 +431,61 @@ func (s *Store) key(k *keyIndex) []byte {
 // quarter of it gets one of its own.
 const keyChunk = 1 << 20
 
-// addKey copies key into the arena and places k's bytes there.
+// addKey copies key into the arena, after its length as a uvarint, and
+// places k's bytes there. The B-tree's items place the length, so that a
+// compare reads the arena alone, not the record too (#602).
 func (s *Store) addKey(k *keyIndex, key []byte) {
-	k.off, k.n = 0, uint32(len(key))
+	var pre [binary.MaxVarintLen64]byte
+	w := binary.PutUvarint(pre[:], uint64(len(key)))
+	k.n = uint32(len(key))
 	if len(key) > keyChunk/4 {
-		k.chunk = uint32(len(s.arena))
-		s.arena = append(s.arena, bytes.Clone(key))
+		k.chunk, k.off = uint32(len(s.arena)), uint32(w)
+		b := make([]byte, 0, w+len(key))
+		s.arena = append(s.arena, append(append(b, pre[:w]...), key...))
 		s.arenaBytes += int64(cap(s.arena[k.chunk]))
 		return
 	}
-	if s.filling < 0 || len(s.arena[s.filling])+len(key) > cap(s.arena[s.filling]) {
+	if s.filling < 0 || len(s.arena[s.filling])+w+len(key) > cap(s.arena[s.filling]) {
 		s.filling = len(s.arena)
 		s.arena = append(s.arena, make([]byte, 0, keyChunk))
 		s.arenaBytes += keyChunk
 	}
 	c := &s.arena[s.filling]
-	k.chunk, k.off = uint32(s.filling), uint32(len(*c))
-	*c = append(*c, key...)
+	k.chunk, k.off = uint32(s.filling), uint32(len(*c)+w)
+	*c = append(append(*c, pre[:w]...), key...)
+}
+
+// item is k's item in keys: its slot, and where its length starts in the
+// arena, chunk in the top 12 bits and offset in the low 20.
+func (s *Store) item(k *keyIndex) uint64 {
+	if k.chunk >= 1<<12 {
+		panic("mvcc: prototype arena past 4096 chunks")
+	}
+	at := k.chunk<<20 | (k.off - uint32(uvarintLen(uint64(k.n))))
+	return uint64(k.id) | uint64(at)<<32
+}
+
+// uvarintLen is the length of x as a uvarint.
+func uvarintLen(x uint64) int {
+	n := 1
+	for x >= 0x80 {
+		x >>= 7
+		n++
+	}
+	return n
+}
+
+// itemKey is the key of item it, from the arena alone, or a probe's.
+func (s *Store) itemKey(it uint64) []byte {
+	if id := uint32(it); id < uint32(len(s.probes)) {
+		return s.probes[id]
+	}
+	at := uint32(it >> 32)
+	c := s.arena[at>>20]
+	o := at & (1<<20 - 1)
+	n, w := binary.Uvarint(c[o:])
+	start := uint64(o) + uint64(w)
+	return c[start : start+n : start+n]
 }
 
 // pack copies the keys into a new arena once the removed keys' bytes are
@@ -453,11 +497,28 @@ func (s *Store) pack() {
 	}
 	old := s.arena
 	s.arena, s.filling, s.arenaBytes, s.deadKeys = nil, -1, 0, 0
+	var ids []uint32
 	s.each(func(k *keyIndex) bool {
 		end := k.off + k.n
 		s.addKey(k, old[k.chunk][k.off:end])
+		ids = append(ids, k.id)
 		return true
 	})
+	// The items place the keys in the old arena: the tree starts again,
+	// in order.
+	items := make([]uint64, len(ids))
+	for i, id := range ids {
+		items[i] = s.item(s.rec(id))
+	}
+	s.keys.build(items)
+}
+
+// itemLess orders items by their keys.
+func (s *Store) itemLess(a, b uint64) bool { return bytes.Compare(s.itemKey(a), s.itemKey(b)) < 0 }
+
+// newTree returns an empty B-tree of items.
+func (s *Store) newTree() *btree.BTreeG[uint64] {
+	return btree.NewG(32, func(a, b uint64) bool { return bytes.Compare(s.itemKey(a), s.itemKey(b)) < 0 })
 }
 
 // insert adds key to the index with its versions, in a record of its
@@ -477,10 +538,55 @@ func (s *Store) insert(key []byte, vers []version) *keyIndex {
 	*r = keyIndex{id: id}
 	s.versions += r.setVers(vers)
 	s.addKey(r, key)
-	s.keys.ReplaceOrInsert(id)
+	s.deltaInsert(id, key)
 	s.byKey.add(s, id)
 	s.keyBytes += int64(len(key))
 	return r
+}
+
+// deltaMax is how many new keys delta holds before they go into keys.
+var deltaMax = 32768
+
+// deltaInsert adds the new key in slot id to delta.
+func (s *Store) deltaInsert(id uint32, key []byte) {
+	s.delta.ReplaceOrInsert(s.item(s.rec(id)))
+	if s.delta.Len() >= deltaMax {
+		s.mergeDelta()
+	}
+}
+
+// mergeDelta moves the keys of delta into keys, in order, so that each
+// insert walks much the same path as the one before.
+func (s *Store) mergeDelta() {
+	if s.delta.Len() == 0 {
+		return
+	}
+	items := make([]uint64, 0, s.delta.Len())
+	s.delta.Ascend(func(it uint64) bool {
+		items = append(items, it)
+		return true
+	})
+	s.keys.InsertSorted(items)
+	s.delta.Clear(true)
+}
+
+// deltaRange returns the slots of the keys of delta from start on, and
+// before end if end is not nil, in order.
+func (s *Store) deltaRange(start, end []byte) []uint32 {
+	if s.delta.Len() == 0 {
+		return nil
+	}
+	var ids []uint32
+	old := s.probes
+	s.probes = [2][]byte{start, end}
+	visit := func(it uint64) bool { ids = append(ids, uint32(it)); return true }
+	if end == nil {
+		s.delta.AscendGreaterOrEqual(0, visit)
+	} else {
+		s.delta.AscendRange(0, 1, visit)
+	}
+	s.probes = old
+	return ids
 }
 
 // written is a value a put wrote to the key in slot id.
@@ -551,7 +657,8 @@ func New(v Values) *Store {
 		// -1 inside a transaction is not "compacted".
 		compactRev: -1,
 	}
-	s.keys = btree.NewG(32, func(a, b uint32) bool { return bytes.Compare(s.keyOf(a), s.keyOf(b)) < 0 })
+	s.delta = s.newTree()
+	s.keys = &leaves{less: s.itemLess}
 	return s
 }
 
@@ -613,9 +720,42 @@ func (s *Store) ascendFrom(key []byte, fn func(*keyIndex) bool) { s.walk(key, ni
 // with the probes, slots 0 and 1, through the whole walk; a walk inside
 // fn sets them too, and gives them back before it returns.
 func (s *Store) walk(start, end []byte, fn func(*keyIndex) bool) {
+	if d := s.deltaRange(start, end); len(d) > 0 {
+		s.walkMerged(start, end, d, fn)
+		return
+	}
+	s.walkTree(start, end, fn)
+}
+
+// walkMerged is walk with d, the keys of delta in its range, merged in.
+func (s *Store) walkMerged(start, end []byte, d []uint32, fn func(*keyIndex) bool) {
+	i, stopped := 0, false
+	s.walkTree(start, end, func(k *keyIndex) bool {
+		key := s.key(k)
+		for ; i < len(d) && bytes.Compare(s.key(s.rec(d[i])), key) < 0; i++ {
+			if !fn(s.rec(d[i])) {
+				stopped = true
+				return false
+			}
+		}
+		if !fn(k) {
+			stopped = true
+			return false
+		}
+		return true
+	})
+	for ; !stopped && i < len(d); i++ {
+		if !fn(s.rec(d[i])) {
+			return
+		}
+	}
+}
+
+// walkTree is walk over keys alone.
+func (s *Store) walkTree(start, end []byte, fn func(*keyIndex) bool) {
 	old := s.probes
 	s.probes = [2][]byte{start, end}
-	visit := func(id uint32) bool { return fn(s.rec(id)) }
+	visit := func(it uint64) bool { return fn(s.rec(uint32(it))) }
 	if end == nil {
 		s.keys.AscendGreaterOrEqual(0, visit)
 	} else {
@@ -626,7 +766,8 @@ func (s *Store) walk(start, end []byte, fn func(*keyIndex) bool) {
 
 // each calls fn for every key in order until fn returns false.
 func (s *Store) each(fn func(*keyIndex) bool) {
-	s.keys.Ascend(func(id uint32) bool { return fn(s.rec(id)) })
+	s.mergeDelta()
+	s.keys.Ascend(func(it uint64) bool { return fn(s.rec(uint32(it))) })
 }
 
 // get returns the index entry of key.
@@ -968,8 +1109,9 @@ func (s *Store) dropFirst(k *keyIndex, i int) bool {
 // remove takes keys without versions out of the index and frees their
 // slots.
 func (s *Store) remove(gone []*keyIndex) {
+	s.mergeDelta()
 	for _, k := range gone {
-		s.keys.Delete(k.id)
+		s.keys.Delete(s.item(k))
 		s.byKey.remove(s, s.key(k))
 		s.keyBytes -= int64(k.n)
 		s.deadKeys += int64(k.n)

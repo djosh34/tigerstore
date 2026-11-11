@@ -499,7 +499,7 @@ func TestCompactLeavesNoDeletedKeys(t *testing.T) {
 	if err := s.Compact(s.Rev()); err != nil {
 		t.Fatal(err)
 	}
-	if n := s.keys.Len(); n != 1 {
+	if n := (s.keys.Len() + s.delta.Len()); n != 1 {
 		t.Fatalf("after the compaction the index has %d keys, want 1", n)
 	}
 	held := 0

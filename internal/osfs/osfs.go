@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/sys/unix"
 
@@ -87,20 +88,27 @@ func (d Dir) Usage() (int64, error) {
 // Create makes a new empty file. Files are not opened with O_APPEND, so
 // that WriteAt writes where it says.
 func (d Dir) Create(name string) (wal.File, error) {
-	f, err := os.OpenFile(filepath.Join(d.path, name), os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+	path := filepath.Join(d.path, name)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return nil, err
 	}
-	return file{f, d.noSync}, nil
+	if directIO && !d.noSync && strings.HasPrefix(name, "next-") {
+		if err := preallocate(int(f.Fd())); err != nil {
+			return nil, errors.Join(err, f.Close())
+		}
+	}
+	return d.file(f, path, name), nil
 }
 
 // Open opens an existing file for reading and writing.
 func (d Dir) Open(name string) (wal.File, error) {
-	f, err := os.OpenFile(filepath.Join(d.path, name), os.O_RDWR, 0)
+	path := filepath.Join(d.path, name)
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
 		return nil, err
 	}
-	return file{f, d.noSync}, nil
+	return d.file(f, path, name), nil
 }
 
 // Rename renames a file. The rename only survives a crash after SyncDir.
@@ -130,6 +138,58 @@ func syncPath(path string) error {
 type file struct {
 	*os.File
 	noSync bool
+	// path is set for a segment, which writes go to through d, opened
+	// with the first write (#602 prototype).
+	path string
+	d    *direct
+}
+
+func (d Dir) file(f *os.File, path, name string) *file {
+	fl := &file{File: f, noSync: d.noSync}
+	if directIO && !d.noSync && segmentFile(name) {
+		fl.path = path
+	}
+	return fl
+}
+
+// WriteAt writes p at off: in a segment, with O_DIRECT where the file
+// system takes it.
+func (f *file) WriteAt(p []byte, off int64) (int, error) {
+	if f.path != "" && f.d == nil {
+		d, err := openDirect(f.path)
+		if err != nil {
+			// tmpfs and others refuse O_DIRECT.
+			f.path = ""
+		} else {
+			f.d = d
+		}
+	}
+	if f.d == nil {
+		return f.File.WriteAt(p, off)
+	}
+	if err := f.d.writeAt(p, off, f.File.ReadAt); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+// Truncate cuts the file, and forgets the last block written.
+func (f *file) Truncate(size int64) error {
+	if f.d != nil {
+		f.d.close()
+		f.d = nil
+	}
+	return f.File.Truncate(size)
+}
+
+// Close closes both descriptors.
+func (f *file) Close() error {
+	var err error
+	if f.d != nil {
+		err = f.d.close()
+		f.d = nil
+	}
+	return errors.Join(err, f.File.Close())
 }
 
 // Sync makes the content durable with fdatasync, which also persists a
