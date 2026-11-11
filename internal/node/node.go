@@ -937,8 +937,6 @@ func (n *Node) setMembers(ms []*pb.Member) {
 	n.members.Store(&ids)
 }
 
-// connectedTicks is how many ticks the transport has had a connection
-// to peer id, -1 while it has none or Run has not started.
 // heldEntries is core.Config.HeldEntries: whether the transport's
 // connection to peer id carries the messages of held entries.
 func (n *Node) heldEntries(id uint64) bool {
@@ -946,6 +944,8 @@ func (n *Node) heldEntries(id uint64) bool {
 	return ok && t.HeldEntries(id)
 }
 
+// connectedTicks is how many ticks the transport has had a connection
+// to peer id, -1 while it has none or Run has not started.
 func (n *Node) connectedTicks(id uint64) int64 {
 	t, ok := n.transport.Load().(peer.Transport)
 	if !ok {

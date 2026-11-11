@@ -14,6 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"go.etcd.io/raft/v3/raftpb"
+
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/testcert"
 )
 
@@ -289,5 +292,30 @@ func TestFetchAfterHandshake(t *testing.T) {
 	}
 	if string(got) != "for 1: 5-9" {
 		t.Fatalf("fetched %q", got)
+	}
+}
+
+// TestHeldFormsNeverReachAnOlderPeer runs a node of versions 3 to 4 against
+// one of version 3: the writer drops a message of held entries, such as a
+// named append queued while a connection of version 4 was up, and still
+// sends the rest, a heartbeat whose own context starts like one included.
+func TestHeldFormsNeverReachAnOlderPeer(t *testing.T) {
+	a, b, _, _ := startPair(t, 3, 4, 3, 3)
+	named := msg(1, "a key, not the entry")
+	named.Context = []byte("TSH\x02\x00")
+	beat := &raftpb.Message{
+		Type: raftpb.MsgHeartbeat.Enum(), From: new(uint64(1)), To: new(uint64(2)),
+		Context: []byte{'T', 'S', 'H', 0, 0, 0, 0, 0},
+	}
+	a.t.Send(named)
+	a.t.Send(beat)
+	a.t.Send(msg(2, "x"))
+	for _, m := range receive(t, b, 2) {
+		if core.HeldForm(m) || m.GetType() == raftpb.MsgApp && m.GetIndex() != 2 {
+			t.Fatalf("node 2, of version 3, got %v", m)
+		}
+	}
+	if a.t.HeldEntries(2) {
+		t.Fatal("HeldEntries reports a connection of version 3 as carrying held entries")
 	}
 }

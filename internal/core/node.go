@@ -1076,6 +1076,9 @@ func (n *Node) Step(m *raftpb.Message) error {
 			n.confMessages = append(n.confMessages, m)
 			return nil
 		}
+		if !n.isLeader {
+			n.keepForwarded(m)
+		}
 		if n.rn.BasicStatus().Lead == raft.None {
 			n.holdProposal(m)
 			return nil

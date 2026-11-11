@@ -23,16 +23,20 @@ import (
 // by its key instead of carrying its bytes: the header every entry
 // starts with, which names the node and run that proposed it and its
 // first write's request ID (codec.go), with the entry's size and CRC-32C.
-// A request ID is never reused within a run, and the leader names only
-// entries whose first write has one, so a key names one entry.
+// Within a run a request ID names one write, except that a NOSPACE alarm
+// takes the ID of the write it answers (proposeNoSpace); the size and
+// checksum tell such entries apart. The leader names only entries whose
+// first write has an ID.
 //
 // A follower hands Raft an append only once it holds every entry the
 // append names, so it never acknowledges, persists or applies an entry
 // it does not have. An append that names an entry the follower does not
 // hold waits, with every later append, for the side copy; after
 // heldWaitTicks it is dropped, and the follower asks the leader to send
-// those entries in full. Raft then sends them again, as it does after any
-// lost append. A side copy may be lost, late or reordered, and a
+// it everything in full for heldFullTicks. Raft then sends the dropped
+// appends again, as it does after any lost append; a follower that gets no
+// side copies at all, such as one cut off from the forwarders, keeps
+// asking and so keeps getting entries in full. A side copy may be lost, late or reordered, and a
 // forwarder may crash and forget what it held: each only costs that wait.
 //
 // The forms travel only on links of peer protocol 4 and later
@@ -41,6 +45,9 @@ import (
 const (
 	// heldWaitTicks is how long appends wait for entries they name.
 	heldWaitTicks = 2
+	// heldFullTicks is how long the leader sends a follower that asked
+	// for it everything in full.
+	heldFullTicks = 20
 	// heldKeepTicks is how long a node holds an entry for appends to come,
 	// and heldMaxBytes bounds the bytes it holds.
 	heldKeepTicks = 10
@@ -58,14 +65,30 @@ const (
 	// heldNamed is a MsgApp in which the entries at the positions the
 	// Context lists carry their key instead of their bytes.
 	heldNamed byte = 2
-	// heldAskFull is a MsgProp to the leader that asks it to send the
-	// entries up to the index in the Context in full to this follower.
+	// heldAskFull is a MsgProp to the leader that asks it to send this
+	// follower everything in full for heldFullTicks.
 	heldAskFull byte = 3
 )
 
 // HeldForm reports whether m is a message of this file, which only a peer
-// of protocol 4 or later may get.
-func HeldForm(m *raftpb.Message) bool { return bytes.HasPrefix(m.GetContext(), heldTag) }
+// of protocol 4 or later may get. Raft puts contexts of its own on other
+// messages, such as a heartbeat's read position, which can start with
+// heldTag too: the message type tells them apart.
+func HeldForm(m *raftpb.Message) bool { return heldForm(m) != 0 }
+
+// heldForm returns the form of a message of this file, or 0.
+func heldForm(m *raftpb.Message) byte {
+	ctx := m.GetContext()
+	if len(ctx) <= len(heldTag) || !bytes.HasPrefix(ctx, heldTag) {
+		return 0
+	}
+	switch f := ctx[len(heldTag)]; {
+	case f == heldNamed && m.GetType() == raftpb.MsgApp,
+		(f == heldSideCopy || f == heldAskFull) && m.GetType() == raftpb.MsgProp:
+		return f
+	}
+	return 0
+}
 
 // heldKey names an entry.
 type heldKey struct {
@@ -76,6 +99,16 @@ type heldKey struct {
 // entryKey returns the key of an entry's data, false for data whose
 // first write has no request ID, which a key could not tell apart.
 func entryKey(data []byte) (heldKey, bool) {
+	k, ok := entryOrigin(data)
+	if ok {
+		k.seal(data)
+	}
+	return k, ok
+}
+
+// entryOrigin reads the node, boot and first request ID of a key from an
+// entry's data, which every format writes first, without the checksum.
+func entryOrigin(data []byte) (heldKey, bool) {
 	_, rest, err := skipFormat(data)
 	if err != nil {
 		return heldKey{}, false
@@ -91,14 +124,16 @@ func entryKey(data []byte) (heldKey, bool) {
 	if k.boot, rest, ok = uvarint(rest); !ok {
 		return heldKey{}, false
 	}
-	// Every format writes the first write's origin and boot, then its
-	// request ID.
 	if k.id, _, ok = uvarint(rest); !ok || k.id == 0 {
 		return heldKey{}, false
 	}
+	return k, true
+}
+
+// seal adds an entry's size and checksum to its key.
+func (k *heldKey) seal(data []byte) {
 	k.size = uint32(len(data))
 	k.sum = crc32.Checksum(data, castagnoli)
-	return k, true
 }
 
 func (k heldKey) append(b []byte) []byte {
@@ -136,10 +171,9 @@ type keptEntries struct {
 	// came, since the tick parkedAt.
 	parked   []*raftpb.Message
 	parkedAt int64
-	// full is, on the leader, the last index of the entries it sends each
-	// follower in full, in term fullTerm.
-	full     map[uint64]uint64
-	fullTerm uint64
+	// fullUntil is, on the leader, the tick until which it sends each
+	// follower that asked for it everything in full.
+	fullUntil map[uint64]int64
 }
 
 type keptAt struct {
@@ -204,7 +238,8 @@ func (n *Node) forwarded(m *raftpb.Message) {
 		if e.GetType() != raftpb.EntryNormal {
 			continue
 		}
-		if k, ok := entryKey(e.GetData()); ok && k.origin == n.cfg.ID {
+		if k, ok := entryOrigin(e.GetData()); ok && k.origin == n.cfg.ID {
+			k.seal(e.GetData())
 			n.keep(k, e.GetData())
 			kept = true
 		}
@@ -225,26 +260,26 @@ func (n *Node) forwarded(m *raftpb.Message) {
 }
 
 // nameHeld returns the append m with each entry that a follower proposed
-// in this term named by its key, or m itself if it names none. The leader
-// sends in full what the follower asked for (heldAskFull).
+// in this term named by its key, or m itself if it names none. It names an
+// entry only to a node that holds it unless a message was lost: the node
+// that proposed it, or a voter, to which a forwarder of protocol 4 or
+// later sends side copies. It names nothing to a follower that asked for
+// everything in full in the last heldFullTicks (heldAskFull).
 func (n *Node) nameHeld(m *raftpb.Message) *raftpb.Message {
-	if !n.heldOn(m.GetTo()) {
+	if !n.heldOn(m.GetTo()) || n.now < n.kept.fullUntil[m.GetTo()] {
 		return m
 	}
-	if n.kept.fullTerm != n.term {
-		n.kept.full, n.kept.fullTerm = nil, n.term
-	}
-	full := n.kept.full[m.GetTo()]
 	var named []byte
 	var entries []*raftpb.Entry
 	for i, e := range m.Entries {
-		if e.GetTerm() != n.term || e.GetType() != raftpb.EntryNormal || e.GetIndex() <= full {
+		if e.GetTerm() != n.term || e.GetType() != raftpb.EntryNormal {
 			continue
 		}
-		k, ok := entryKey(e.GetData())
-		if !ok || k.origin == n.cfg.ID {
+		k, ok := entryOrigin(e.GetData())
+		if !ok || k.origin == n.cfg.ID || k.origin != m.GetTo() && (!n.state.isVoter(m.GetTo()) || !n.heldOn(k.origin)) {
 			continue
 		}
+		k.seal(e.GetData())
 		if entries == nil {
 			entries = append([]*raftpb.Entry(nil), m.Entries...)
 			named = append(append([]byte(nil), heldTag...), heldNamed)
@@ -272,18 +307,15 @@ func withEntries(m *raftpb.Message, entries []*raftpb.Entry, ctx []byte) *raftpb
 // stepHeld handles a message of this file, or an append while earlier
 // ones wait for entries. It reports whether it took m.
 func (n *Node) stepHeld(m *raftpb.Message) (bool, error) {
-	if !HeldForm(m) {
+	form := heldForm(m)
+	if form == 0 {
 		if m.GetType() == raftpb.MsgApp && len(n.kept.parked) > 0 {
 			n.park(m)
 			return true, nil
 		}
 		return false, nil
 	}
-	ctx := m.GetContext()[len(heldTag):]
-	if len(ctx) == 0 {
-		return true, nil
-	}
-	switch ctx[0] {
+	switch form {
 	case heldSideCopy:
 		for _, e := range m.Entries {
 			if k, ok := entryKey(e.GetData()); ok {
@@ -292,20 +324,14 @@ func (n *Node) stepHeld(m *raftpb.Message) (bool, error) {
 		}
 		return true, n.unpark()
 	case heldAskFull:
-		if last, _, ok := uvarint(ctx[1:]); ok && n.isLeader {
-			if n.kept.fullTerm != n.term {
-				n.kept.full, n.kept.fullTerm = nil, n.term
+		if n.isLeader {
+			if n.kept.fullUntil == nil {
+				n.kept.fullUntil = map[uint64]int64{}
 			}
-			if n.kept.full == nil {
-				n.kept.full = map[uint64]uint64{}
-			}
-			n.kept.full[m.GetFrom()] = max(n.kept.full[m.GetFrom()], last)
+			n.kept.fullUntil[m.GetFrom()] = n.now + heldFullTicks
 		}
 		return true, nil
 	case heldNamed:
-		if m.GetType() != raftpb.MsgApp {
-			return true, nil
-		}
 		if len(n.kept.parked) == 0 {
 			if full, ok := n.fill(m); ok {
 				return true, n.stepRaft(full)
@@ -377,9 +403,10 @@ func (n *Node) fill(m *raftpb.Message) (*raftpb.Message, bool) {
 	return withEntries(m, entries, nil), true
 }
 
-// heldTick stops holding entries held for heldKeepTicks, and asks the
-// leader to send in full what parked appends have waited for for
-// heldWaitTicks, and drops them: Raft sends them again.
+// heldTick stops holding entries held for heldKeepTicks. Once parked
+// appends have waited heldWaitTicks, it drops them, as Raft sends them
+// again, and asks the leader it knows now to send everything in full for a
+// while.
 func (n *Node) heldTick() {
 	h := &n.kept
 	for len(h.order) > 0 && n.now-h.order[0].at > heldKeepTicks {
@@ -388,18 +415,38 @@ func (n *Node) heldTick() {
 	if len(h.parked) == 0 || n.now-h.parkedAt < heldWaitTicks {
 		return
 	}
-	var last uint64
-	for _, m := range h.parked {
-		for _, e := range m.Entries {
-			last = max(last, e.GetIndex())
-		}
-	}
-	to := h.parked[0].GetFrom()
 	clear(h.parked)
 	h.parked = nil
 	n.counters.HeldAsked++
-	n.send(&raftpb.Message{
-		Type: raftpb.MsgProp.Enum(), From: new(n.cfg.ID), To: new(to),
-		Context: binary.AppendUvarint(append(append([]byte(nil), heldTag...), heldAskFull), last),
-	})
+	if lead := n.rn.BasicStatus().Lead; lead != 0 && lead != n.cfg.ID {
+		n.send(&raftpb.Message{
+			Type: raftpb.MsgProp.Enum(), From: new(n.cfg.ID), To: new(lead),
+			Context: append(append([]byte(nil), heldTag...), heldAskFull),
+		})
+	}
+}
+
+// heldDue is the tick at which parked appends stop waiting, or 0.
+func (n *Node) heldDue() int64 {
+	if len(n.kept.parked) == 0 {
+		return 0
+	}
+	return n.kept.parkedAt + heldWaitTicks
+}
+
+// keepForwarded holds the entries of a proposal a peer forwarded to this
+// follower, which passes it on to the leader: the forwarder sent its side
+// copies to the other voters, not to this one.
+func (n *Node) keepForwarded(m *raftpb.Message) {
+	if !n.heldOn(m.GetFrom()) {
+		return
+	}
+	for _, e := range m.Entries {
+		if e.GetType() != raftpb.EntryNormal {
+			continue
+		}
+		if k, ok := entryKey(e.GetData()); ok {
+			n.keep(k, e.GetData())
+		}
+	}
 }
