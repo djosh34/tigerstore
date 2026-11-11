@@ -204,6 +204,21 @@ func TestEntryKey(t *testing.T) {
 	}
 }
 
+// TestAlarmHasNoKey checks that a NOSPACE alarm, which takes the request ID
+// of the write it answers, has no key: a put of the same node, run and ID
+// can match its size and checksum, as with the key "\x85f\x8fZ" against
+// a 14-byte alarm, and a follower would apply the put in its place.
+func TestAlarmHasNoKey(t *testing.T) {
+	alarm := &pending{req: Request{ID: 42, Op: &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: 7}}}
+	data, err := encodeBatch(MaxVersion, 7, 99, []*pending{alarm}, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k, ok := entryKey(data); ok {
+		t.Fatalf("a NOSPACE alarm has key %+v, which a write with its request ID shares", k)
+	}
+}
+
 // TestKeptBytesBounded checks that a node holds at most heldMaxBytes, and
 // nothing past heldKeepTicks.
 func TestKeptBytesBounded(t *testing.T) {
@@ -261,12 +276,12 @@ func TestLearnerIsNotNamed(t *testing.T) {
 }
 
 // TestHeartbeatContextIsNotHeld checks that a heartbeat whose own context
-// starts like a held form, as Raft's read position 0x485354 encodes, is
-// no message of held entries and steps Raft.
+// starts like a held form, as Raft's read positions such as 0x02485354
+// encode, is no message of held entries and steps Raft.
 func TestHeartbeatContextIsNotHeld(t *testing.T) {
 	beat := &raftpb.Message{
 		Type: raftpb.MsgHeartbeat.Enum(), From: new(uint64(1)), To: new(uint64(2)),
-		Context: []byte{'T', 'S', 'H', 0, 0, 0, 0, 0},
+		Context: []byte{'T', 'S', 'H', heldNamed, 0, 0, 0, 0},
 	}
 	if HeldForm(beat) {
 		t.Fatal("a heartbeat counts as a message of held entries")

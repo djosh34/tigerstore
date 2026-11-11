@@ -24,9 +24,9 @@ import (
 // starts with, which names the node and run that proposed it and its
 // first write's request ID (codec.go), with the entry's size and CRC-32C.
 // Within a run a request ID names one write, except that a NOSPACE alarm
-// takes the ID of the write it answers (proposeNoSpace); the size and
-// checksum tell such entries apart. The leader names only entries whose
-// first write has an ID.
+// takes the ID of the write it answers (proposeNoSpace). The leader names
+// only entries whose first write has an ID and is no alarm, so a key names
+// one entry; the size and checksum only check it.
 //
 // A follower hands Raft an append only once it holds every entry the
 // append names, so it never acknowledges, persists or applies an entry
@@ -97,7 +97,7 @@ type heldKey struct {
 }
 
 // entryKey returns the key of an entry's data, false for data whose
-// first write has no request ID, which a key could not tell apart.
+// first write has no request ID or one another write may have (entryOrigin).
 func entryKey(data []byte) (heldKey, bool) {
 	k, ok := entryOrigin(data)
 	if ok {
@@ -107,7 +107,10 @@ func entryKey(data []byte) (heldKey, bool) {
 }
 
 // entryOrigin reads the node, boot and first request ID of a key from an
-// entry's data, which every format writes first, without the checksum.
+// entry's data, which every format writes first, without the checksum. It
+// returns false if the first write has no request ID, or is an alarm or a
+// refused write, which take the ID of another write: a key would not name
+// one entry then.
 func entryOrigin(data []byte) (heldKey, bool) {
 	_, rest, err := skipFormat(data)
 	if err != nil {
@@ -124,7 +127,10 @@ func entryOrigin(data []byte) (heldKey, bool) {
 	if k.boot, rest, ok = uvarint(rest); !ok {
 		return heldKey{}, false
 	}
-	if k.id, _, ok = uvarint(rest); !ok || k.id == 0 {
+	if k.id, rest, ok = uvarint(rest); !ok || k.id == 0 || len(rest) == 0 {
+		return heldKey{}, false
+	}
+	if kind := rest[0]; kind == kindAlarm || kind == kindNoSpace {
 		return heldKey{}, false
 	}
 	return k, true
@@ -276,7 +282,7 @@ func (n *Node) nameHeld(m *raftpb.Message) *raftpb.Message {
 			continue
 		}
 		k, ok := entryOrigin(e.GetData())
-		if !ok || k.origin == n.cfg.ID || k.origin != m.GetTo() && (!n.state.isVoter(m.GetTo()) || !n.heldOn(k.origin)) {
+		if !ok || k.origin == n.cfg.ID || !n.holds(m.GetTo(), k.origin) {
 			continue
 		}
 		k.seal(e.GetData())
@@ -292,6 +298,13 @@ func (n *Node) nameHeld(m *raftpb.Message) *raftpb.Message {
 		return m
 	}
 	return withEntries(m, entries, named)
+}
+
+// holds reports whether node to holds the entries origin proposed, unless
+// a message was lost: to proposed them, or it is a voter, to which a
+// forwarder of protocol 4 or later sends side copies.
+func (n *Node) holds(to, origin uint64) bool {
+	return to == origin || n.state.isVoter(to) && n.heldOn(origin)
 }
 
 // withEntries returns a copy of m with other entries and Context. The
