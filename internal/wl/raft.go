@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"os"
 	"runtime"
 	"sync/atomic"
 	"time"
@@ -231,8 +232,8 @@ func raftConfig(id uint64, st raft.Storage) *raft.Config {
 		HeartbeatTick:             1,
 		Storage:                   st,
 		AsyncStorageWrites:        true,
-		MaxSizePerMsg:             8 << 20,
-		MaxInflightMsgs:           1024,
+		MaxSizePerMsg:             1 << 20,
+		MaxInflightMsgs:           256,
 		MaxUncommittedEntriesSize: 1 << 30,
 		CheckQuorum:               true,
 		PreVote:                   true,
@@ -380,16 +381,24 @@ func (n *node) sendPeer(m *pb.Message) {
 	if p == nil || p.dead {
 		return
 	}
+	if m.GetType() == pb.MsgApp && len(p.out)-p.ow > peerBacklog {
+		// The peer takes less than it is sent, as one that catches up:
+		// Raft probes it again instead of piling up appends here.
+		n.rn.ReportUnreachable(m.GetTo())
+		return
+	}
 	if m.GetType() == pb.MsgSnap {
 		n.rn.ReportSnapshot(m.GetTo(), raft.SnapshotFailure)
 		return
 	}
 	ents := m.GetEntries()
 	app := m.GetType() == pb.MsgApp
+	to := m.GetTo()
+	carry := time.Now().Before(n.carryUntil[to])
 	size := msgHdr + 4 + len(m.GetContext())
 	for _, e := range ents {
 		size += 8 + 8 + 1 + 4
-		if o, _, ok := batchOrigin(e.GetData()); app && ok && o != n.id {
+		if o, _, ok := batchOrigin(e.GetData()); app && ok && o != n.id && (o == to || !carry) {
 			size += 4
 		} else {
 			size += len(e.GetData())
@@ -418,7 +427,7 @@ func (n *node) sendPeer(m *pb.Message) {
 		binary.LittleEndian.PutUint64(eh[0:], e.GetTerm())
 		binary.LittleEndian.PutUint64(eh[8:], e.GetIndex())
 		eh[16] = byte(e.GetType())
-		if o, seq, ok := batchOrigin(d); app && ok && o != n.id {
+		if o, seq, ok := batchOrigin(d); app && ok && o != n.id && (o == to || !carry) {
 			// A follower proposed this batch and sent it to every peer
 			// itself: name it.
 			dbgNamed++
@@ -483,6 +492,11 @@ func (n *node) peerFrames(p *peerIn) error {
 			p.held = append(p.held, append([]byte(nil), f...))
 			continue
 		}
+		if len(f) == 1 && f[0] == frameCarry {
+			// A follower lacks a batch the leader named: carry them to it.
+			n.carryUntil[p.from] = time.Now().Add(time.Second)
+			continue
+		}
 		if len(f) >= 9 && f[0] == frameBatch {
 			// A batch a follower proposed, sent ahead of the leader's
 			// append that names it.
@@ -497,6 +511,9 @@ func (n *node) peerFrames(p *peerIn) error {
 			// The batch it names comes on another connection, likely in
 			// this same turn: try again after the turn's input.
 			dbgHeld++
+			if len(p.held) == 0 {
+				p.heldSince = time.Now()
+			}
 			p.held = append(p.held, append([]byte(nil), f...))
 			n.holding = true
 			continue
@@ -580,13 +597,31 @@ func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
 
 const namedEntry = 0x80
 
-// frameBatch marks a peer frame that carries a follower's batch.
-const frameBatch = 0xff
+// peerBacklog is the most a peer's send buffer holds before appends to it
+// wait for Raft's next probe.
+const peerBacklog = 64 << 20
+
+// frameBatch marks a peer frame that carries a follower's batch;
+// frameCarry asks the leader to carry batches instead of naming them.
+const (
+	frameBatch = 0xff
+	frameCarry = 0xfe
+)
+
+func (n *node) askCarry(leader uint64) {
+	if p := n.peersOut[leader]; p != nil && !p.dead {
+		p.put([]byte{1, 0, 0, 0, frameCarry})
+		n.markDirty(&p.sock)
+	}
+}
 
 // sendBatch sends a batch this follower proposes to every peer but the
 // leader, which gets it in the proposal.
 func (n *node) sendBatch(data []byte) {
 	seq := binary.LittleEndian.Uint32(data[4:])
+	if dropBatches && seq%50 == 0 {
+		return // a test of the leader's fallback to carrying batches
+	}
 	for id, p := range n.peersOut {
 		if id == n.lead || p.dead {
 			continue
@@ -629,6 +664,14 @@ func (n *node) retryHeld() {
 		k := 0
 		for ; k < len(p.held); k++ {
 			m, err := n.decodeMsg(p.held[k])
+			if err == errUnnamed && k == 0 && time.Since(p.heldSince) > 100*time.Millisecond {
+				// The batch never came, as when its proposer had no
+				// connection to this node yet: drop the append and ask
+				// the leader to carry batches for a while. Raft resends
+				// what this node then lacks.
+				n.askCarry(p.from)
+				continue
+			}
 			if err == errUnnamed {
 				break
 			}
@@ -639,6 +682,9 @@ func (n *node) retryHeld() {
 		}
 		clear(p.held[:k])
 		p.held = append(p.held[:0], p.held[k:]...)
+		if k > 0 {
+			p.heldSince = time.Now()
+		}
 		if len(p.held) > 0 {
 			n.holding = true
 		}
@@ -659,3 +705,7 @@ func (n *node) rxCopy(p []byte) []byte {
 var dbgNamed int
 var dbgCarried, dbgCarriedB [32]int
 var dbgHeld int
+
+// dropBatches, from WL_DROP_BATCHES, loses some follower batches on the way
+// to the other peers, to test that the leader then carries them.
+var dropBatches = os.Getenv("WL_DROP_BATCHES") != ""

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"math"
+	"time"
 
 	"go.etcd.io/raft/v3"
 )
@@ -58,10 +59,13 @@ type node struct {
 
 	// The batches this node proposed, by sequence: the leader names them
 	// in its appends to this node instead of sending them back (#626).
-	holding  bool // some peer's messages wait behind a held append
-	fwd      []fwdBatch
-	fwdPeers map[uint64][]fwdBatch
-	fwdSeq   uint32
+	holding bool // some peer's messages wait behind a held append
+	// carryUntil: until when the leader carries the batches it would name
+	// for a follower that lacked one.
+	carryUntil map[uint64]time.Time
+	fwd        []fwdBatch
+	fwdPeers   map[uint64][]fwdBatch
+	fwdSeq     uint32
 }
 
 type fwdBatch struct {

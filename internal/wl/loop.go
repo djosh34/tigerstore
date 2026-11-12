@@ -34,6 +34,8 @@ type peerIn struct {
 	hello bool
 	from  uint64
 	held  [][]byte // messages that wait behind an append naming a batch not here yet
+	// heldSince is when the first of held came.
+	heldSince time.Time
 }
 
 // loop owns the epoll instance and the node.
@@ -185,6 +187,7 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	n.st = newStore()
 	n.fwd = make([]fwdBatch, fwdSlots)
 	n.fwdPeers = map[uint64][]fwdBatch{}
+	n.carryUntil = map[uint64]time.Time{}
 	n.ring = mmapBytes(ringSize)
 	n.rx = mmapBytes(ringSize)
 	n.side = mmapBytes(64 << 20)
