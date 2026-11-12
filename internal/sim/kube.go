@@ -19,7 +19,10 @@ import (
 // on a Kubernetes cluster (internal/k8ssize), and makes the calls the
 // apiserver makes on them. It first creates its objects, a few in each
 // Txn, then picks from the soak's mix: 25% gets, 10% paginated lists of
-// one of its groups, 40% updates, 15% creates and 10% deletes; a create
+// one of its groups, 40% updates, 15% creates and 10% deletes; until a
+// later page of one of its lists has been read, it lists its largest group,
+// which in kubeConfig's profiles holds more than two pages, so that every
+// run pages on purpose. A create
 // of an object it saw present is an update, and an update or delete of
 // one it saw absent is a create. Creates, updates and deletes are Txns
 // that compare the create or mod revision the client last saw, with a
@@ -101,6 +104,10 @@ type kubeClient struct {
 	leaseUses int
 	// list is the list it pages through, if any.
 	list *kubeList
+	// largest is its group with the most objects, which it lists until
+	// it has read a later page of a list (paged).
+	largest int
+	paged   bool
 }
 
 // kubeList is a paginated list: the next page starts at from, and every
@@ -134,6 +141,11 @@ func (s *Sim) newKubeLoad() []*kubeClient {
 			kc.groups[g] = append(kc.groups[g], o)
 			kc.all = append(kc.all, o)
 			s.kube.byKey[string(o.key)] = o
+		}
+		for g := range kc.groups {
+			if len(kc.groups[g]) > len(kc.groups[kc.largest]) {
+				kc.largest = g
+			}
 		}
 		out = append(out, kc)
 	}
@@ -177,6 +189,9 @@ func (c *client) kubeRequest() proto.Message {
 	g := s.rng.IntN(len(k.groups))
 	p := s.rng.IntN(100)
 	if p >= kubeGets && p < kubeLists {
+		if !k.paged {
+			g = k.largest
+		}
 		end := prefixEnd(k.prefixes[g])
 		k.list = &kubeList{from: k.prefixes[g], end: end}
 		return &pb.RangeRequest{Key: k.prefixes[g], RangeEnd: end, Limit: s.listPage()}
@@ -296,6 +311,9 @@ func (c *client) kubeDone(r *Record) {
 		c.kubeSaw(r.req.(*pb.RangeRequest), resp)
 		if k.list == nil {
 			return
+		}
+		if k.list.rev != 0 {
+			k.paged = true
 		}
 		if !resp.More || len(resp.Kvs) == 0 {
 			k.list = nil
