@@ -7,6 +7,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/loop"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/node"
@@ -15,7 +16,7 @@ import (
 // testConn is a connection with no socket, for the accounting of calls.
 func testConn(t testing.TB) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &conn{s: bareServer(t), ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1), streams: map[uint32]*stream{}, atNode: map[*stream]struct{}{}, maxFrame: 16384, sendWin: 1 << 30, metrics: newConnMetrics()}
+	return &conn{s: bareServer(t), ctx: ctx, cancel: cancel, streams: map[uint32]*stream{}, atNode: map[*stream]struct{}{}, maxFrame: 16384, sendWin: 1 << 30, metrics: newConnMetrics()}
 }
 
 // bareServer is a server without a node, for tests of connections.
@@ -26,7 +27,8 @@ func bareServer(t testing.TB) *Server {
 		t.Fatal(err)
 	}
 	m, _ := buildServerMetrics(set, false)
-	s := &Server{metrics: m}
+	// The loop never runs: what goes to it waits there.
+	s := &Server{metrics: m, loop: loop.New(loop.NewChanPoller())}
 	s.setLimits()
 	return s
 }

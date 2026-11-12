@@ -52,6 +52,7 @@ func (n *Node) advance(ctx context.Context, ticks int) error {
 	}
 	select {
 	case n.inbox <- input{advance: ticks}:
+		n.wake()
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djosh34/tigerstore/internal/loop"
+
 	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -55,6 +57,7 @@ func startPersist(t *testing.T, wrap func(wal.FS) wal.FS, setup func(*wal.WAL, *
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	setup(w, &cfg)
 	p := &persister{t: t, n: &Node{
+		loop:      loop.New(loop.NewChanPoller()),
 		cfg:       cfg,
 		log:       &diskLog{w: w, fs: fs},
 		persistQ:  make(chan persistBatch, 1),

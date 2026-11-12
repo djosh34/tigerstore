@@ -5,8 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
-	"errors"
-	"io"
 	"net"
 	"strings"
 	"sync"
@@ -23,6 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/loop"
 )
 
 // HTTP/2 limits of one client connection.
@@ -43,10 +42,10 @@ const (
 	frameHeaderLen = 9
 )
 
-// conn is one HTTP/2 client connection. The reader goroutine owns the
-// Framer's read side and the stream table's creation; the writer goroutine
-// owns the Framer's write side. mu guards everything they share with each
-// other and with the handlers.
+// conn is one HTTP/2 client connection. The node's event loop owns its
+// socket, the Framer and the stream table's creation (loopconn.go). mu
+// guards everything the loop shares with the handlers, which run on
+// goroutines of their own.
 type conn struct {
 	s *Server
 	// metrics count this connection's calls for /metrics.
@@ -55,13 +54,16 @@ type conn struct {
 	// apiCounters its client_requests_total counters; guarded by mu.
 	apiVersion  string
 	apiCounters [2]prometheus.Counter
-	nc          net.Conn
-	raw         net.Conn // nc without TLS, closed to abort a stuck write
+	// nc is what the connection reads and writes: TLS over the bridge, or
+	// the bridge itself without TLS. raw is the socket under them, which
+	// any goroutine may close.
+	nc     net.Conn
+	bridge *loop.Bridge
+	raw    net.Conn
 	// traffic is what the connection serves: gRPC alone answers HTTP
 	// requests as grpc-go does, HTTP alone takes gRPC calls as HTTP.
 	traffic Traffic
 	fr      *http2.Framer
-	br      *bufio.Reader
 	bw      *bufio.Writer
 	// caller sizes this client's writes as etcd would.
 	caller core.Caller
@@ -71,9 +73,29 @@ type conn struct {
 	ctx    context.Context // ends when the connection closes
 	cancel context.CancelFunc
 	once   sync.Once
-	wake   chan struct{} // the writer has work; capacity 1
 
-	// Reader only.
+	// Loop only: the socket's token; the decrypted input from inR to inW,
+	// and its phase; ending once the input ended with a GOAWAY, which
+	// closes the connection by endBy; the preface's deadline; since when
+	// output waits for the socket; and gone once the connection left the
+	// loop. ctrlOut, framesOut and hdrOut are the writer's scratch.
+	token     uint64
+	in        []byte
+	inR, inW  int
+	phase     int
+	ending    bool
+	endBy     time.Time
+	prefaceBy time.Time
+	waitSince time.Time
+	gone      bool
+	ctrlOut   []ctrlFrame
+	framesOut []wframe
+	hdrOut    []byte
+	// reading is set while the loop reads the connection, which then
+	// writes it anyway, and signaled while a signal waits for the loop.
+	reading, signaled atomic.Bool
+
+	// Loop only.
 	maxID uint32 // highest client stream ID seen
 	batch opBatch
 	// hdec decodes header blocks into hdr, the headers of the block being
@@ -159,14 +181,15 @@ func caller(cfg *tls.Config, nc net.Conn) core.Caller {
 	return core.NewCaller(chains[0][0].Subject.CommonName)
 }
 
-func newConn(s *Server, nc, raw net.Conn) *conn {
+// newConn makes a connection that reads and writes nc, over the bridge
+// to its socket.
+func newConn(s *Server, nc net.Conn, bridge *loop.Bridge) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &conn{
-		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel, metrics: newConnMetrics(),
+		s: s, nc: nc, bridge: bridge, raw: bridge.Conn, ctx: ctx, cancel: cancel, metrics: newConnMetrics(),
 		cluster: s.cluster, member: s.member,
 		bw:       bufio.NewWriterSize(nc, ioBuffer),
-		wake:     make(chan struct{}, 1),
-		br:       bufio.NewReaderSize(nc, ioBuffer),
+		in:       make([]byte, ioBuffer),
 		streams:  map[uint32]*stream{},
 		atNode:   map[*stream]struct{}{},
 		sendWin:  65535,
@@ -174,43 +197,13 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		maxFrame: 16384,
 	}
 	c.caller = caller(s.cfg.TLS, nc)
-	c.fr = http2.NewFramer(c.bw, c.br)
+	c.fr = http2.NewFramer(c.bw, frameSrc{c})
 	c.hdec = hpack.NewDecoder(4096, c.onField)
 	c.hdec.SetMaxStringLength(maxHeaderList)
 	c.ctrl = append(c.ctrl,
 		ctrlFrame{kind: ctrlSettings},
 		ctrlFrame{kind: ctrlWindowUpdate, val: connWindow - 65535})
 	return c
-}
-
-// serve runs the connection until it ends.
-func (c *conn) serve() {
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		defer c.close()
-		_ = c.writeLoop()
-	})
-	if c.traffic == TrafficGRPC {
-		wg.Go(c.keepalive)
-	}
-	err := c.readLoop()
-	ga, ok := errors.AsType[goAwayError](err)
-	if ce, isCE := errors.AsType[http2.ConnectionError](err); isCE {
-		ga, ok = goAwayError{code: http2.ErrCode(ce)}, true
-	}
-	if ok {
-		c.queueCtrl(ctrlFrame{kind: ctrlGoAway, id: c.lastID(), val: uint32(ga.code), debug: ga.debug})
-		c.mu.Lock()
-		c.goingAway = true
-		c.mu.Unlock()
-		// Let the writer send the GOAWAY, but not wait for long.
-		select {
-		case <-c.ctx.Done():
-		case <-time.After(time.Second):
-		}
-	}
-	c.close()
-	wg.Wait()
 }
 
 // close ends the connection and every stream on it. It never writes, so
@@ -232,7 +225,16 @@ func (c *conn) close() {
 		c.mu.Unlock()
 		c.cancel()
 		_ = c.raw.Close()
+		// The loop lets go of the connection at its next turn.
+		c.signal()
 	})
+}
+
+// isClosed reports whether the connection was closed.
+func (c *conn) isClosed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed
 }
 
 // goAway tells the client to open no more streams. The writer closes the
@@ -253,13 +255,6 @@ func (c *conn) lastID() uint32 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.maxID
-}
-
-func (c *conn) signal() {
-	select {
-	case c.wake <- struct{}{}:
-	default:
-	}
 }
 
 // maxCtrl bounds the control frames waiting for the writer, as x/net's
@@ -284,63 +279,6 @@ func (c *conn) addCtrl(f ctrlFrame) {
 		return
 	}
 	c.ctrl = append(c.ctrl, f)
-}
-
-func (c *conn) readLoop() error {
-	if err := c.nc.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
-		return err
-	}
-	preface := make([]byte, len(http2.ClientPreface))
-	if _, err := io.ReadFull(c.br, preface); err != nil {
-		return err
-	}
-	if string(preface) != http2.ClientPreface {
-		return http2.ConnectionError(http2.ErrCodeProtocol)
-	}
-	f, err := c.fr.ReadFrame()
-	if err != nil {
-		return err
-	}
-	sf, ok := f.(*http2.SettingsFrame)
-	if !ok || sf.IsAck() {
-		return http2.ConnectionError(http2.ErrCodeProtocol)
-	}
-	if err := c.onSettings(sf); err != nil {
-		return err
-	}
-	if err := c.nc.SetReadDeadline(time.Time{}); err != nil {
-		return err
-	}
-	for {
-		// Every path back here, stream errors included, hands over a due
-		// batch before a read that may wait.
-		if c.batchDue() {
-			if err := c.flush(); err != nil {
-				return err
-			}
-		}
-		fh, err := c.fr.ReadFrameHeader()
-		if err != nil {
-			return err
-		}
-		c.frames.Add(1)
-		f, err := c.fr.ReadFrameForHeader(fh)
-		if err != nil {
-			if _, ok := errors.AsType[http2.StreamError](err); ok && fh.Type == http2.FrameHeaders {
-				// A header block that cannot be decoded leaves the HPACK
-				// state behind the client's (RFC 9113 6.2).
-				return http2.ConnectionError(http2.ErrCodeProtocol)
-			}
-			if se, ok := errors.AsType[http2.StreamError](err); ok {
-				c.resetStream(se.StreamID, se.Code)
-				continue
-			}
-			return err
-		}
-		if err := c.onFrame(f); err != nil {
-			return err
-		}
-	}
 }
 
 func (c *conn) onFrame(f http2.Frame) error {

@@ -57,10 +57,9 @@ func (s *Server) newGateway() (http.Handler, *grpc.ClientConn, error) {
 			}
 			s.wg.Add(1)
 			s.mu.Unlock()
-			go func() {
-				defer s.wg.Done()
-				s.servePlain(server)
-			}()
+			if !s.servePlain(server) {
+				s.wg.Done()
+			}
 			return client, nil
 		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),

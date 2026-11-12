@@ -13,6 +13,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/djosh34/tigerstore/internal/loop"
 	"github.com/djosh34/tigerstore/internal/testcert"
 )
 
@@ -282,12 +283,20 @@ type pipe struct {
 	last int64
 	eof  bool
 	err  error
-	// readWake, once the reader waits on it, is closed when bytes arrive,
-	// the writer closes, the connection breaks or the read deadline
-	// moves; roomWake, once a writer waits on it, when the reader makes
-	// room, the connection breaks or the write deadline moves. Apart, a
-	// write deadline set before each write wakes no reader.
-	readWake, roomWake chan struct{}
+	// readWake wakes the reader that waits when bytes arrive, the writer
+	// closes, the connection breaks or the read deadline moves; roomWake
+	// wakes a writer that waits when the reader makes room, the connection
+	// breaks or the write deadline moves. Apart, a write deadline set
+	// before each write wakes no reader.
+	readWake, roomWake wake
+}
+
+// wake is who waits on one side of a pipe: goroutines on ch, made by the
+// first of them, or a node's event loop through fn, which the connection
+// set when a read or write would block (conn.Notify) and calls once.
+type wake struct {
+	ch chan struct{}
+	fn func()
 }
 
 type chunk struct {
@@ -299,37 +308,46 @@ type chunk struct {
 
 func newPipe() *pipe { return &pipe{} }
 
-// waiter returns the channel that the next signal of *wake closes. The
+// waiter returns the channel that the next signal of *w closes. The
 // lock is held.
-func waiter(wake *chan struct{}) chan struct{} {
-	if *wake == nil {
-		*wake = make(chan struct{})
+func waiter(w *wake) chan struct{} {
+	if w.ch == nil {
+		w.ch = make(chan struct{})
 	}
-	return *wake
+	return w.ch
 }
 
-// signal wakes whoever waits on *wake. The lock is held.
-func signal(wake *chan struct{}) {
-	if *wake != nil {
-		close(*wake)
-		*wake = nil
+// signal wakes whoever waits on *w. The lock is held, so a loop waiting
+// on it is woken from a goroutine of its own: under gosim a call that
+// yields with the lock held makes every goroutine that runs meanwhile wait
+// for the lock.
+func signal(w *wake) {
+	if w.ch != nil {
+		close(w.ch)
 	}
+	if w.fn != nil {
+		go w.fn()
+	}
+	*w = wake{}
 }
 
-// take returns the channel that would wake whoever waits on *wake, nil
-// if none, for the caller to close once it let go of the lock: under
-// gosim a close yields, and a close with the lock held makes every
-// goroutine that runs meanwhile wait for the lock. The lock is held.
-func take(wake *chan struct{}) chan struct{} {
-	c := *wake
-	*wake = nil
-	return c
+// take returns what would wake whoever waits on *w, for the caller to
+// wake once it let go of the lock: under gosim a close yields, and a
+// close with the lock held makes every goroutine that runs meanwhile wait
+// for the lock. The lock is held.
+func take(w *wake) wake {
+	t := *w
+	*w = wake{}
+	return t
 }
 
-// wakeUp closes c, if it is a channel take gave. The lock is not held.
-func wakeUp(c chan struct{}) {
-	if c != nil {
-		close(c)
+// wakeUp wakes what take gave. The lock is not held.
+func wakeUp(t wake) {
+	if t.ch != nil {
+		close(t.ch)
+	}
+	if t.fn != nil {
+		t.fn()
 	}
 }
 
@@ -404,6 +422,32 @@ type conn struct {
 	// as net.Conn allows calls at once.
 	readTimer, writeTimer *time.Timer
 	reading, writing      bool
+	// notify, once set (Notify), makes the connection a node's event
+	// loop's: a read or write that would wait returns loop.ErrWouldBlock
+	// instead, and notify runs when it may go on, by a wake or on
+	// pollTimer, for bytes that arrive later.
+	notify    func()
+	pollTimer *time.Timer
+}
+
+// Notify hands the connection to a node's event loop (loop.Pollable).
+func (c *conn) Notify(fn func()) {
+	c.s.mu.Lock()
+	c.notify = fn
+	c.s.mu.Unlock()
+}
+
+// pollAfter makes notify run once wait nanoseconds passed, unless wait is
+// math.MaxInt64. The lock is held.
+func (c *conn) pollAfter(wait int64) {
+	if wait == math.MaxInt64 {
+		return
+	}
+	if c.pollTimer == nil {
+		c.pollTimer = time.AfterFunc(time.Duration(wait), c.notify)
+		return
+	}
+	c.pollTimer.Reset(time.Duration(wait))
 }
 
 func (c *conn) Read(b []byte) (int, error) {
@@ -457,6 +501,12 @@ func (c *conn) Read(b []byte) (int, error) {
 		case in.eof:
 			s.mu.Unlock()
 			return 0, io.EOF
+		}
+		if c.notify != nil {
+			in.readWake.fn = c.notify
+			c.pollAfter(wait)
+			s.mu.Unlock()
+			return 0, loop.ErrWouldBlock
 		}
 		if !c.deadline.IsZero() {
 			left := int64(time.Until(c.deadline))
@@ -532,6 +582,11 @@ func (c *conn) Write(b []byte) (int, error) {
 			blocked = true
 			s.stats.BlockedWrites++
 		}
+		if c.notify != nil {
+			c.out.roomWake.fn = c.notify
+			s.mu.Unlock()
+			return n, loop.ErrWouldBlock
+		}
 		wait := int64(math.MaxInt64)
 		if !c.writeDeadline.IsZero() {
 			wait = max(int64(time.Until(c.writeDeadline)), 1)
@@ -548,8 +603,8 @@ func (c *conn) Write(b []byte) (int, error) {
 
 // send puts b on its way: it arrives after the link's delay and the
 // fault on the link, if any, in order. It returns the reader's wake, for
-// the caller to close after the lock (take). The lock is held.
-func (c *conn) send(b []byte) chan struct{} {
+// the caller to wake after the lock (take). The lock is held.
+func (c *conn) send(b []byte) wake {
 	s := c.s
 	l := s.link(c.from, c.to)
 	b = slices.Clone(b)

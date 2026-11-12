@@ -1,8 +1,6 @@
 package server
 
 import (
-	"time"
-
 	"golang.org/x/net/http2"
 )
 
@@ -24,69 +22,6 @@ func (c *conn) list(st *stream) {
 	if !st.listed && len(st.out) > 0 {
 		st.listed = true
 		c.ready = append(c.ready, st)
-	}
-}
-
-// writeLoop sends what the reader and the handlers queued, within the
-// client's flow-control windows. It is the only goroutine that writes to
-// the connection.
-func (c *conn) writeLoop() error {
-	var frames []wframe
-	var ctrl []ctrlFrame
-	var hdr []byte
-	nodeDone := c.s.n.Done()
-	for {
-		c.completeWaiting()
-		c.mu.Lock()
-		ctrl = append(ctrl[:0], c.ctrl...)
-		clear(c.ctrl)
-		c.ctrl = c.ctrl[:0]
-		frames = c.take(frames[:0])
-		drained := c.goingAway && len(c.streams) == 0
-		c.mu.Unlock()
-		if len(ctrl) == 0 && len(frames) == 0 {
-			if drained {
-				return nil
-			}
-			select {
-			case <-c.wake:
-				continue
-			case <-nodeDone:
-				nodeDone = nil
-				c.nodeStopped()
-				continue
-			case <-c.ctx.Done():
-				return nil
-			}
-		}
-		if err := c.nc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
-			return err
-		}
-		for i := range ctrl {
-			if err := c.writeCtrl(&ctrl[i]); err != nil {
-				return err
-			}
-		}
-		for i, f := range frames {
-			if f.ctrl != nil {
-				if err := c.writeCtrl(f.ctrl); err != nil {
-					return err
-				}
-			} else {
-				c.wrote.Store(true)
-				hdr = frameHeader(hdr[:0], len(f.b), f.typ, f.flags, f.id)
-				_, _ = c.bw.Write(hdr)
-				_, _ = c.bw.Write(f.b)
-			}
-			frames[i] = wframe{}
-		}
-		// bufio.Writer keeps the first write error and returns it here.
-		if err := c.bw.Flush(); err != nil {
-			return err
-		}
-		if drained {
-			return nil
-		}
 	}
 }
 

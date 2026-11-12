@@ -6,6 +6,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/djosh34/tigerstore/internal/loop"
 )
 
 // TestSwitchingDelaySwitches checks that a switching delay goes back and
@@ -151,5 +153,55 @@ func TestReadsAtOnceMeetTheirDeadline(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("a read waited past its deadline")
 		}
+	}
+}
+
+// TestLoopConnWaitsForNotice drives both ends of a connection as a node's
+// event loop does (conn.Notify): a read with nothing there and a write
+// past the buffer return loop.ErrWouldBlock at once, and the notice comes
+// when the link's delay brings the bytes, and when the reader makes room.
+func TestLoopConnWaitsForNotice(t *testing.T) {
+	a := writer()
+	b := a.other
+	a.s.links[0][1].base = 5 * Millisecond
+	notices := make(chan string, 16)
+	a.Notify(func() { notices <- "writer" })
+	b.Notify(func() { notices <- "reader" })
+	buf := make([]byte, 2*sendBuffer)
+	if n, err := b.Read(buf); n != 0 || !errors.Is(err, loop.ErrWouldBlock) {
+		t.Fatalf("read of nothing = %d, %v", n, err)
+	}
+	if n, err := a.Write(buf); n != sendBuffer || !errors.Is(err, loop.ErrWouldBlock) {
+		t.Fatalf("write past the buffer = %d, %v; want %d and a block", n, err, sendBuffer)
+	}
+	wait := func(who string) {
+		t.Helper()
+		select {
+		case got := <-notices:
+			if got != who {
+				t.Fatalf("notice for the %s, want the %s", got, who)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("no notice for the %s", who)
+		}
+	}
+	wait("reader")
+	// The bytes are on their way: the read before their delay passed
+	// armed a timer, which brings the reader back once they arrived.
+	got := 0
+	for got < sendBuffer {
+		n, err := b.Read(buf)
+		got += n
+		if errors.Is(err, loop.ErrWouldBlock) {
+			wait("reader")
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	wait("writer")
+	if n, err := a.Write(buf[:10]); n != 10 || err != nil {
+		t.Fatalf("write after the reader made room = %d, %v", n, err)
 	}
 }

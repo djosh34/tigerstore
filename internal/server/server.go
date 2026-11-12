@@ -7,7 +7,6 @@
 package server
 
 import (
-	"bufio"
 	"cmp"
 	"context"
 	"crypto/tls"
@@ -23,8 +22,8 @@ import (
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
 
-	"github.com/djosh34/tigerstore/internal/bufconn"
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/loop"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
 )
@@ -90,6 +89,8 @@ const stopGrace = time.Second
 type Server struct {
 	n   *node.Node
 	cfg Config
+	// loop is the node's event loop, which runs the HTTP/2 connections.
+	loop *loop.Loop
 	// gone sums the metrics of closed connections; guarded by mu.
 	gone *connMetrics
 	// metrics are what the server observes (metrics.go).
@@ -153,7 +154,7 @@ func New(n *node.Node, cfg Config) (*Server, error) {
 		cfg.BcryptCost = 0
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Server{n: n, cfg: cfg, grpcTLS: grpcTLS(cfg.TLS), gone: newConnMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
+	s := &Server{n: n, loop: n.Loop(), cfg: cfg, grpcTLS: grpcTLS(cfg.TLS), gone: newConnMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
 	if err := s.newServerMetrics(); err != nil {
 		cancel()
 		return nil, err
@@ -237,8 +238,10 @@ func (s *Server) ServeListener(l Listener) error {
 		s.wg.Add(1)
 		s.mu.Unlock()
 		go func() {
-			defer s.wg.Done()
-			s.serveConn(nc, l)
+			// The loop ends a connection handed to it.
+			if !s.serveConn(nc, l) {
+				s.wg.Done()
+			}
 		}()
 	}
 }
@@ -247,70 +250,78 @@ func (s *Server) ServeListener(l Listener) error {
 // a client that did not offer h2 or, without TLS, did not start with
 // HTTP/2's preface. As in etcd, a listener without TLS hands HTTP/2 to
 // gRPC alone, and one that serves only HTTP drops HTTP/2 without TLS and
-// one that serves only gRPC HTTP/1.1.
-func (s *Server) serveConn(nc net.Conn, l Listener) {
+// one that serves only gRPC HTTP/1.1. An HTTP/2 connection goes to the
+// node's loop, and serveConn reports that it handed it over.
+func (s *Server) serveConn(nc net.Conn, l Listener) bool {
 	raw := nc
 	traffic := l.Traffic
+	// TLS reads its records through the bridge's buffer, so one read
+	// takes in as many as the kernel holds.
+	bridge := loop.NewBridge(nc, ioBuffer)
 	var h2 bool
 	if l.TLS {
 		cfg := s.cfg.TLS
 		if traffic == TrafficGRPC {
 			cfg = s.grpcTLS
 		}
-		// TLS reads its records through a buffer, so one read takes in
-		// as many as the kernel holds (bufconn).
-		tc := tls.Server(bufconn.New(nc, ioBuffer), cfg)
+		tc := tls.Server(bridge, cfg)
 		ctx, cancel := context.WithTimeout(s.ctx, handshakeTimeout)
 		err := tc.HandshakeContext(ctx)
 		cancel()
 		if err != nil {
 			_ = raw.Close()
-			return
+			return false
 		}
 		h2 = tc.ConnectionState().NegotiatedProtocol == "h2"
 		nc = tc
 	} else {
-		pc, err := peekPreface(nc)
-		if err != nil {
+		var err error
+		if h2, err = peekPreface(bridge); err != nil {
 			_ = raw.Close()
-			return
+			return false
 		}
-		h2, nc = pc.h2, pc
 		if h2 {
 			traffic = TrafficGRPC
 		}
+		nc = bridge
 	}
 	if (h2 && l.Traffic == TrafficHTTP && !l.TLS) || (!h2 && l.Traffic == TrafficGRPC) {
 		_ = raw.Close()
-		return
+		return false
 	}
 	if !h2 {
 		h := &http1Conn{s: s, nc: nc, raw: raw}
 		if !s.track(h) {
-			return
+			return false
 		}
 		defer s.untrack(h)
 		h.serve()
-		return
+		return false
 	}
-	c := newConn(s, nc, raw)
+	c := newConn(s, nc, bridge)
 	c.traffic = traffic
-	if !s.track(c) {
-		return
-	}
-	defer s.untrack(c)
-	c.serve()
+	return s.hand(c)
 }
 
 // servePlain serves HTTP/2 with prior knowledge on a connection of the
-// gateway's.
-func (s *Server) servePlain(nc net.Conn) {
-	c := newConn(s, nc, nc)
+// gateway's, and reports whether it handed it to the loop.
+func (s *Server) servePlain(nc net.Conn) bool {
+	bridge := loop.NewBridge(nc, ioBuffer)
+	return s.hand(newConn(s, bridge, bridge))
+}
+
+// hand gives an HTTP/2 connection to the loop, which serves it and ends
+// it, and reports whether it did.
+func (s *Server) hand(c *conn) bool {
 	if !s.track(c) {
-		return
+		return false
 	}
-	defer s.untrack(c)
-	c.serve()
+	// The handshake's deadline goes; the loop keeps time itself.
+	if err := c.raw.SetDeadline(time.Time{}); err != nil || !s.loop.Post(c.attach) {
+		s.untrack(c)
+		return false
+	}
+	return true
 }
 
 func (s *Server) track(c closer) bool {
@@ -384,32 +395,23 @@ func grpcTLS(cfg *tls.Config) *tls.Config {
 	return cfg
 }
 
-// prefaceConn is a connection without TLS whose first bytes were read to
-// tell HTTP/2 from HTTP/1.1; reads take them first.
-type prefaceConn struct {
-	net.Conn
-	br *bufio.Reader
-	h2 bool
-}
-
-func (c *prefaceConn) Read(p []byte) (int, error) { return c.br.Read(p) }
-
 // peekPreface reads as much of a connection's first bytes as it takes to
 // tell whether it starts with HTTP/2's client preface, as cmux does in
-// etcd, within handshakeTimeout.
-func peekPreface(nc net.Conn) (*prefaceConn, error) {
-	if err := nc.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
-		return nil, err
+// etcd, within handshakeTimeout. The bytes stay in the bridge.
+func peekPreface(b *loop.Bridge) (bool, error) {
+	if err := b.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
+		return false, err
 	}
-	pc := &prefaceConn{Conn: nc, br: bufio.NewReaderSize(nc, len(http2.ClientPreface)), h2: true}
-	for i := 1; i <= len(http2.ClientPreface) && pc.h2; i++ {
-		b, err := pc.br.Peek(i)
+	for i := 1; i <= len(http2.ClientPreface); i++ {
+		p, err := b.Peek(i)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
-		pc.h2 = b[i-1] == http2.ClientPreface[i-1]
+		if p[i-1] != http2.ClientPreface[i-1] {
+			return false, b.SetReadDeadline(time.Time{})
+		}
 	}
-	return pc, nc.SetReadDeadline(time.Time{})
+	return true, b.SetReadDeadline(time.Time{})
 }
 
 // setLimits sets the limits of Config, etcd's defaults for those not set.

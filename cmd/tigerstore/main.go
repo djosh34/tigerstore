@@ -28,6 +28,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/epoll"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
@@ -210,6 +211,10 @@ func start(c *config, lg *zap.Logger) error {
 	if ncfg.Metrics, err = metrics.New(featureMetrics(gate)); err != nil {
 		return err
 	}
+	// The node's event loop waits in epoll on a thread of its own.
+	if ncfg.Poller, err = epoll.New(); err != nil {
+		return err
+	}
 	pcfg.Metrics = ncfg.Metrics
 	jwt, err := server.ParseAuthToken(ec.AuthToken)
 	if err != nil {
@@ -236,7 +241,7 @@ func start(c *config, lg *zap.Logger) error {
 	if len(ec.AdvertisePeerUrls) > 0 {
 		pcfg.Addr = ec.AdvertisePeerUrls[0].Host
 	}
-	pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer, pcfg.Removed = n.Deliver, n.Unreachable, n.Serve, n.Answer, n.Removed
+	pcfg.Loop, pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer, pcfg.Removed = n.Loop(), n.Receive, n.Unreachable, n.Serve, n.Answer, n.Removed
 	t, err := peer.Start(pcfg)
 	if err != nil {
 		return err
