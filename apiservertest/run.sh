@@ -25,12 +25,26 @@ mkdir -p "$work"
 work=$(cd "$work" && pwd)
 
 phase() { echo "run.sh $(date -u +%H:%M:%S): $*" >&2; }
+# descendants prints every process below pid $1.
+descendants() {
+	local p
+	for p in $(pgrep -P "$1"); do
+		echo "$p"
+		descendants "$p"
+	done
+}
 # The watchdog waits in the background and is killed when the script ends.
 (
 	sleep "${DEADLINE:-1320}"
 	phase "still running after ${DEADLINE:-1320} s; every process, then SIGQUIT to the test binaries"
 	ps -eo pid,ppid,etime,stat,wchan:32,args --forest >&2
-	pkill -QUIT -f '/[^ ]*\.test( |$)' || phase "no test binary was running"
+	quit=0
+	for p in $(descendants $$); do
+		if ps -o args= -p "$p" | grep -Eq '^[^ ]*\.test( |$)'; then
+			kill -QUIT "$p" 2>/dev/null && quit=$((quit + 1))
+		fi
+	done
+	phase "sent SIGQUIT to $quit test binaries"
 ) &
 watchdog=$!
 trap 'pkill -P "$watchdog" 2>/dev/null; kill "$watchdog" 2>/dev/null || true' EXIT
@@ -62,7 +76,7 @@ fi
 # Compile every test binary first, so that linking does not compete with
 # the first tests for the disk and the CPU.
 phase "compiling the tests"
-go test -count=1 -run '^$' ./pkg/storage/etcd3/... ./pkg/storage/testing >/dev/null
+go test -count=1 -run '^$' ./pkg/storage/etcd3/... ./pkg/storage/testing
 phase "running the tests"
 go test -count=1 -timeout=20m -v "$@" ./pkg/storage/etcd3/... ./pkg/storage/testing | tee "$work/test-$version.log"
 phase "the tests ended"
