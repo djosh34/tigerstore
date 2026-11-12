@@ -205,6 +205,16 @@ once() {
 			"$@"; then
 			step "$run" "leader check" "$here/cluster.sh" check "$dir" || true
 		fi
+		# Each node's counters at the end of the run, in node order: its
+		# peer bytes and held entries, which loadgen does not report (#602).
+		# The leader's endpoint goes beside them.
+		cp "$dir/leader" "$run.leader"
+		local ep node=0
+		for ep in $(tr ',' ' ' <"$dir/endpoints"); do
+			node=$((node + 1))
+			curl -fsS --max-time 10 --cacert "$certs/ca.pem" --cert "$certs/client.pem" --key "$certs/client-key.pem" \
+				"https://$ep/metrics" -o "$run-n$node.metrics" || true
+		done
 	fi
 	# Keep logs and a post-run memory/disk sample outside the CPU window.
 	# After a failure some nodes may be gone.
