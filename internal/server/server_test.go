@@ -212,7 +212,7 @@ func (c *cluster) start(id uint64) {
 		// A restart: the stopped transport closed its listener.
 		pln = listenPeer(t, c.peerAddrs[id])
 	}
-	pcfg := peer.Config{ID: id, Listeners: []net.Listener{pln}, Peers: peers, Addr: c.peerAddrs[id], Certificate: cert, CA: c.ca.Pool, Loop: n.Loop(), Deliver: n.Receive, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Removed: n.Removed, Logf: logf}
+	pcfg := peer.Config{ID: id, Listeners: []net.Listener{pln}, Peers: peers, Addr: c.peerAddrs[id], Certificate: cert, CA: c.ca.Pool, Loop: n.Loop(), Deliver: n.Receive, Busy: n.Busy, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Removed: n.Removed, Logf: logf}
 	if c.peerConfig != nil {
 		c.peerConfig(&pcfg)
 	}

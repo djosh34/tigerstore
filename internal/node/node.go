@@ -483,6 +483,9 @@ type Node struct {
 	// the inputs its sockets gave since the last turn.
 	loop  *loop.Loop
 	local []input
+	// full is set while persist batches wait for the disk past maxBacklog,
+	// when the committer takes no new input (Busy). Loop only.
+	full bool
 	// roomFreed wakes the committer when a watch stream short of room got
 	// some back (WatchStream.took), and memFull says that the process is
 	// at its memory budget, so watch streams get none (measureMemory).
@@ -1087,6 +1090,11 @@ func (n *Node) Receive(m *raftpb.Message) {
 	n.local = append(n.local, input{msg: m, at: time.Now()})
 }
 
+// Busy reports, on the loop, whether the node takes no new input now
+// because its disk is behind. The peer transport then holds the data
+// messages it reads (peer.Config.Busy) and steps the others.
+func (n *Node) Busy() bool { return n.full }
+
 // SubmitLocal is SubmitBatch for a connection on the loop: it runs on the
 // loop, never waits, and fails only once the node stopped.
 func (n *Node) SubmitLocal(reqs []core.Request, tags []any, to Completer) error {
@@ -1432,6 +1440,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		// its inbox or its sockets, but keeps ticking and taking finished
 		// writes.
 		full := len(backlog) >= maxBacklog
+		n.full = full
 		due := n.core.Due()
 		clock.due = clock.at + due
 		timeout := time.Until(started.Add(time.Duration(clock.due) * n.cfg.Tick))

@@ -241,6 +241,7 @@ func start(c *config, lg *zap.Logger) error {
 	if len(ec.AdvertisePeerUrls) > 0 {
 		pcfg.Addr = ec.AdvertisePeerUrls[0].Host
 	}
+	pcfg.Busy = n.Busy
 	pcfg.Loop, pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer, pcfg.Removed = n.Loop(), n.Receive, n.Unreachable, n.Serve, n.Answer, n.Removed
 	t, err := peer.Start(pcfg)
 	if err != nil {

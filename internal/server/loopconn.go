@@ -32,6 +32,16 @@ const maxReadFrame = 16384
 // pass.
 const connBuffer = 32 << 10
 
+// passBuffer is the size of the buffers that hold a write pass sealed for
+// the socket, maxTake and room for the control frames and TLS's record
+// overhead; keepBuffers and keepPassBuffers are how many of each the
+// server keeps for the next connection that needs one.
+const (
+	passBuffer      = maxTake + 64<<10
+	keepBuffers     = 64
+	keepPassBuffers = 4
+)
+
 // connBytes bounds what one HTTP/2 connection holds besides what its
 // calls hold (maxHeld) and its output that waits for the socket, which
 // counts in the server's waiting output (Server.maxOut): an idle connection
@@ -87,7 +97,7 @@ func (c *conn) attach() {
 		c.release()
 		return
 	}
-	c.bridge.Attach(sock, c.s.bufs)
+	c.bridge.Attach(sock, c.s.bufs, c.s.bigBufs)
 	c.token = token
 	if c.traffic == TrafficGRPC {
 		go c.keepalive()
@@ -313,12 +323,16 @@ func (c *conn) Flush() {
 	}
 	if pending == 0 {
 		c.waitSince = time.Time{}
+		c.bridge.SendBy(time.Time{})
 		return
 	}
 	if c.waitSince.IsZero() {
 		c.waitSince = now
 	}
-	if at := c.waitSince.Add(writeTimeout); now.Before(at) {
+	// The socket's own deadline fails the send the loop tries then.
+	at := c.waitSince.Add(writeTimeout)
+	c.bridge.SendBy(at)
+	if now.Before(at) {
 		c.s.loop.After(c, at)
 		return
 	}

@@ -158,7 +158,7 @@ func (f *floor) start(ctx context.Context, i int, urls []string, leaseCheckpoint
 	t, err := peer.Start(peer.Config{
 		ID: id, Listeners: []net.Listener{f.lns[peerAddr(i)]}, Peers: peers, Addr: peerAddr(i),
 		Certificate: cert, CA: f.ca.Pool,
-		Loop: tn.Loop(), Deliver: tn.Receive, Unreachable: tn.Unreachable, Serve: tn.Serve, Removed: tn.Removed, Answer: tn.Answer,
+		Loop: tn.Loop(), Deliver: tn.Receive, Busy: tn.Busy, Unreachable: tn.Unreachable, Serve: tn.Serve, Removed: tn.Removed, Answer: tn.Answer,
 		Dial: f.dial,
 	})
 	if err != nil {

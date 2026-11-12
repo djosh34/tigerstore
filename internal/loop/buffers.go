@@ -4,15 +4,13 @@ package loop
 // connection holds one only while it has bytes in it: an idle connection
 // holds none. The loop alone uses it, so it takes no lock.
 type Buffers struct {
-	size int
-	free [][]byte
+	size, keep int
+	free       [][]byte
 }
 
-// maxFree is how many returned buffers Buffers keeps for the next Get.
-const maxFree = 64
-
-// NewBuffers returns buffers of size bytes.
-func NewBuffers(size int) *Buffers { return &Buffers{size: size} }
+// NewBuffers returns buffers of size bytes, of which it keeps keep that
+// were returned for the next Get.
+func NewBuffers(size, keep int) *Buffers { return &Buffers{size: size, keep: keep} }
 
 // Size is the size of the buffers.
 func (p *Buffers) Size() int { return p.size }
@@ -31,7 +29,7 @@ func (p *Buffers) Get() []byte {
 // Put returns b, which then must not be used; one of another size goes to
 // the garbage collector.
 func (p *Buffers) Put(b []byte) {
-	if cap(b) == p.size && len(p.free) < maxFree {
+	if cap(b) == p.size && len(p.free) < p.keep {
 		p.free = append(p.free, b[:p.size])
 	}
 }

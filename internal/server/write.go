@@ -18,7 +18,7 @@ type wframe struct {
 // flow-controlled streams take turns and what one pass leaves waiting for
 // a socket stays bounded (Server.maxOut).
 const (
-	maxTake       = 256 << 10
+	maxTake       = 1 << 20
 	maxPassFrames = 1024
 )
 

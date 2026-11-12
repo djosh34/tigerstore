@@ -135,8 +135,11 @@ type Config struct {
 	// and tools that run no node; Send may then be called from anywhere.
 	Loop *loop.Loop
 	// Deliver gets every message received from a peer. It runs on the
-	// loop and must not block.
+	// loop and must not block. Busy, if set, reports on the loop whether
+	// the node takes no data messages (appends, snapshots and forwarded
+	// proposals) now; a connection then keeps the next one until it does.
 	Deliver func(*raftpb.Message)
+	Busy    func() bool
 	// Unreachable is called when a message to a peer was dropped.
 	Unreachable func(id uint64)
 	// Serve writes to w the snapshot stream that peer id asked for, the

@@ -2,13 +2,18 @@ package peer
 
 import (
 	"crypto/tls"
+	"encoding/binary"
 	"net"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/djosh34/tigerstore/internal/loop"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/testcert"
+	"github.com/prometheus/client_golang/prometheus"
+	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 )
 
 // stuck is a socket that takes nothing, as a peer's that stalled.
@@ -42,7 +47,7 @@ func TestStalledLaneKeepsItsMessages(t *testing.T) {
 	if err := tc.Handshake(); err != nil {
 		t.Fatal(err)
 	}
-	br.Attach(stuck{}, nil)
+	br.Attach(stuck{}, nil, nil)
 	set, err := metrics.New(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -105,5 +110,46 @@ func TestCloseRacesHandOver(t *testing.T) {
 	l.Dispatch(false)
 	if !stopped {
 		t.Fatal("the loop did not hear of the close of a connection it took meanwhile")
+	}
+}
+
+// TestBusyNodeHoldsData reads a heartbeat, an append and a heartbeat from
+// one connection while the node takes no data messages: the first
+// heartbeat steps, the append waits with the second heartbeat behind it,
+// so the order holds, and both go once the node takes data again.
+func TestBusyNodeHoldsData(t *testing.T) {
+	var got []raftpb.MessageType
+	busy := true
+	tr := &TCP{cfg: Config{
+		Deliver: func(m *raftpb.Message) { got = append(got, m.GetType()) },
+		Busy:    func() bool { return busy },
+	}, loop: loop.New(loop.NewChanPoller())}
+	var frames []byte
+	for _, typ := range []raftpb.MessageType{raftpb.MsgHeartbeat, raftpb.MsgApp, raftpb.MsgHeartbeat} {
+		b, err := proto.Marshal(&raftpb.Message{Type: typ.Enum(), From: new(uint64(2)), To: new(uint64(1))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		frames = binary.BigEndian.AppendUint32(frames, uint32(len(b)))
+		frames = append(frames, b...)
+	}
+	cs := &counters{received: prometheus.NewCounter(prometheus.CounterOpts{Name: "received"}), heartbeatReceived: prometheus.NewGauge(prometheus.GaugeOpts{Name: "heartbeat"})}
+	ic := &inConn{t: tr, from: 2, v: maxVersion, cs: cs, buf: frames, w: len(frames)}
+	if err := ic.frames(); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != raftpb.MsgHeartbeat || ic.held == nil {
+		t.Fatalf("while busy: delivered %v, holding %v", got, ic.held != nil)
+	}
+	busy = false
+	m := ic.held
+	ic.held = nil
+	tr.cfg.Deliver(m)
+	if err := ic.frames(); err != nil {
+		t.Fatal(err)
+	}
+	want := []raftpb.MessageType{raftpb.MsgHeartbeat, raftpb.MsgApp, raftpb.MsgHeartbeat}
+	if !slices.Equal(got, want) {
+		t.Fatalf("delivered %v, want %v", got, want)
 	}
 }

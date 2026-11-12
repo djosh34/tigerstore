@@ -110,9 +110,11 @@ type inConn struct {
 	from  uint64
 	v     byte
 	cs    *counters
-	// buf holds the bytes read and not yet framed, from r to w.
+	// buf holds the bytes read and not yet framed, from r to w, and held
+	// a data message that waits for the node to take one (Ready).
 	buf    []byte
 	r, w   int
+	held   *raftpb.Message
 	closed bool
 }
 
@@ -127,14 +129,25 @@ func (t *TCP) attachIn(c *tls.Conn, o *owned, from uint64, v byte) {
 		t.release(o)
 		return
 	}
-	br.Attach(sock, nil)
+	br.Attach(sock, nil, nil)
 	ic.token = token
 	o.stop = ic.close
 }
 
-// Ready reads what arrived and delivers every whole frame.
+// Ready reads what arrived and delivers every whole frame. While the node
+// takes no data messages (Config.Busy), the connection stops at the next
+// one, which it keeps, and reads nothing more until the node takes it:
+// the peer's control lane goes on, and its data lane waits in TCP.
 func (c *inConn) Ready() {
-	for !c.closed {
+	if c.held != nil {
+		if c.busy() {
+			return
+		}
+		m := c.held
+		c.held = nil
+		c.t.cfg.Deliver(m)
+	}
+	for !c.closed && c.held == nil {
 		if c.w == len(c.buf) {
 			c.compact(len(c.buf))
 		}
@@ -188,6 +201,10 @@ func (c *inConn) frames() error {
 			t.logf("peer: refused a %s of held entries from %d on a connection of version %d", m.GetType(), c.from, c.v)
 			continue
 		}
+		if isData(m) && c.busy() {
+			c.held = m
+			return nil
+		}
 		t.cfg.Deliver(m)
 	}
 	if c.r == c.w {
@@ -215,6 +232,22 @@ func (c *inConn) compact(need int) {
 		c.r = 0
 	}
 }
+
+// busy reports whether the node takes no data messages now, and if so,
+// lists the connection to be read again at the loop's next turn that
+// takes sockets.
+func (c *inConn) busy() bool {
+	if c.t.cfg.Busy == nil || !c.t.cfg.Busy() {
+		return false
+	}
+	c.t.loop.Again(c.token)
+	return true
+}
+
+// Urgent marks an inbound peer connection as one the loop reads even while
+// its owner holds its other sockets (loop.Urgent): heartbeats, votes and
+// their answers keep coming while the node's disk is behind.
+func (c *inConn) Urgent() {}
 
 func (c *inConn) fail(err error) {
 	c.close()
@@ -272,7 +305,7 @@ func (s *sender) attach(l *lane, c *tls.Conn, o *owned, v byte, down chan<- erro
 		down <- err
 		return
 	}
-	br.Attach(sock, nil)
+	br.Attach(sock, nil, nil)
 	o.stop = func() { oc.fail(net.ErrClosed) }
 	oc.token = token
 	l.out = oc
@@ -319,6 +352,7 @@ func (c *outConn) Flush() {
 			}
 		}
 		c.since = time.Time{}
+		c.br.SendBy(time.Time{})
 		l.bytes -= c.sending
 		c.sending = 0
 		if l.head == len(l.q) {
@@ -364,7 +398,10 @@ func (c *outConn) wait(before, pending int) {
 	if !ok {
 		return
 	}
-	if at := c.since.Add(limit); now.Before(at) {
+	// The socket's own deadline fails the send the loop tries then.
+	at := c.since.Add(limit)
+	c.br.SendBy(at)
+	if now.Before(at) {
 		c.s.t.loop.After(c, at)
 		return
 	}

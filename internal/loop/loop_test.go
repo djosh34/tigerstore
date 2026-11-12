@@ -99,7 +99,7 @@ func TestBridgeCarriesTLS(t *testing.T) {
 		e.l.Post(func() {
 			sock, _, err := e.l.Attach(e.raw, h)
 			if err == nil {
-				e.br.Attach(sock, nil)
+				e.br.Attach(sock, nil, nil)
 				// Both ends write the message once attached.
 				_, err = e.tc.Write(msg)
 				e.l.Dirty(h)
@@ -234,3 +234,51 @@ type counter struct{ ready, flushed int }
 
 func (c *counter) Ready() { c.ready++ }
 func (c *counter) Flush() { c.flushed++ }
+
+// TestBridgeMovesToBigBuffer writes more than a small buffer holds to a
+// bridge whose socket takes nothing: its output moves once into a big
+// buffer, and both go back to their pools once everything is sent.
+func TestBridgeMovesToBigBuffer(t *testing.T) {
+	a, b := net.Pipe()
+	defer a.Close() //nolint:errcheck // closing a test pipe
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	small, big := loop.NewBuffers(1<<10, 4), loop.NewBuffers(64<<10, 4)
+	br := loop.NewBridge(a, 1<<10)
+	s := &takeAll{shut: true}
+	br.Attach(s, small, big)
+	if _, err := br.Write(make([]byte, 100)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := br.Write(make([]byte, 10<<10)); err != nil {
+		t.Fatal(err)
+	}
+	if err := br.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if br.Retained() != 64<<10 || br.Pending() != 10<<10+100 {
+		t.Fatalf("waiting output %d bytes in a buffer of %d, want %d in one of %d", br.Pending(), br.Retained(), 10<<10+100, 64<<10)
+	}
+	s.shut = false
+	if err := br.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if br.Retained() != 0 || s.took != 10<<10+100 {
+		t.Fatalf("after the socket took it: %d bytes retained, %d sent", br.Retained(), s.took)
+	}
+}
+
+// takeAll is a socket that takes every write unless shut.
+type takeAll struct {
+	shut bool
+	took int
+}
+
+func (s *takeAll) Read([]byte) (int, error) { return 0, loop.ErrWouldBlock }
+func (s *takeAll) Write(b []byte) (int, error) {
+	if s.shut {
+		return 0, loop.ErrWouldBlock
+	}
+	s.took += len(b)
+	return len(b), nil
+}
+func (s *takeAll) Close() error { return nil }

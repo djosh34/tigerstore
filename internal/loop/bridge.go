@@ -21,14 +21,16 @@ import (
 // hold bytes, so an idle connection holds none.
 type Bridge struct {
 	net.Conn
-	sock Socket
-	pool *Buffers
+	sock      Socket
+	pool, big *Buffers
 	// in holds bytes read and not yet taken, from r to w.
 	in   []byte
 	r, w int
-	// out holds the bytes written that are not sent, from outR on.
-	out  []byte
-	outR int
+	// out holds the bytes written that are not sent, from outR on, and
+	// sendBy is the write deadline set for them (SendBy).
+	out    []byte
+	outR   int
+	sendBy time.Time
 }
 
 // NewBridge returns a bridge over raw that reads through a buffer of size
@@ -39,9 +41,10 @@ func NewBridge(raw net.Conn, size int) *Bridge {
 
 // Attach hands the connection to the loop through sock, which the poller
 // made from the raw connection. With pool, the bridge's buffers come from
-// it while they hold bytes; without, the bridge keeps its own.
-func (b *Bridge) Attach(sock Socket, pool *Buffers) {
-	b.sock, b.pool = sock, pool
+// it while they hold bytes, and from big once what waits to be sent
+// outgrows one of pool's; without, the bridge keeps its own.
+func (b *Bridge) Attach(sock Socket, pool, big *Buffers) {
+	b.sock, b.pool, b.big = sock, pool, big
 	if pool != nil && b.r == b.w {
 		// The handshake's buffer goes: the next read borrows one.
 		b.in, b.r, b.w = nil, 0, 0
@@ -125,6 +128,14 @@ func (b *Bridge) Write(p []byte) (int, error) {
 	if b.out == nil && b.pool != nil {
 		b.out = b.pool.Get()[:0]
 	}
+	if b.big != nil && len(b.out)+len(p) > cap(b.out) && cap(b.out) < b.big.Size() {
+		// One move into a large buffer, instead of a regrowth by append
+		// at each size on the way.
+		out := b.big.Get()
+		n := copy(out, b.out[b.outR:])
+		b.pool.Put(b.out)
+		b.out, b.outR = out[:n], 0
+	}
 	b.out = append(b.out, p...)
 	return len(p), nil
 }
@@ -136,6 +147,17 @@ func (b *Bridge) Retained() int {
 		return 0
 	}
 	return cap(b.out)
+}
+
+// SendBy sets when the bytes that wait to be sent must have gone, zero for
+// no limit, as the raw connection's write deadline: a send the loop tries
+// after it fails, as the kernel's and the simulator's connections fail it,
+// so a client or peer that stops reading cannot hold the loop's output.
+func (b *Bridge) SendBy(t time.Time) {
+	if !t.Equal(b.sendBy) {
+		b.sendBy = t
+		_ = b.Conn.SetWriteDeadline(t)
+	}
 }
 
 // Pending is how many written bytes wait to be sent.
@@ -158,6 +180,9 @@ func (b *Bridge) Flush() error {
 	switch {
 	case b.pool != nil:
 		b.pool.Put(b.out)
+		if b.big != nil {
+			b.big.Put(b.out)
+		}
 		b.out = nil
 	case cap(b.out) > maxIdleOut:
 		b.out = nil

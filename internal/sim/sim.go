@@ -1679,7 +1679,7 @@ func (s *Sim) start(n *node) error {
 	t, err := peer.Start(peer.Config{
 		ID: n.id, Listeners: []net.Listener{ln}, Peers: s.peerAddrs(n), Addr: n.addrs[0],
 		Certificate: s.net.cert, CA: s.net.ca,
-		Loop: tn.Loop(), Deliver: s.deliverer(p, tn), Unreachable: tn.Unreachable, Serve: s.server(p, tn),
+		Loop: tn.Loop(), Deliver: s.deliverer(p, tn), Busy: tn.Busy, Unreachable: tn.Unreachable, Serve: s.server(p, tn),
 		Removed: tn.Removed, Answer: tn.Answer,
 		Dial: func(ctx context.Context, addr string) (net.Conn, error) { return s.net.dial(ctx, s, p, addr) },
 		Logf: func(format string, args ...any) { s.logf(n, format, args...) },

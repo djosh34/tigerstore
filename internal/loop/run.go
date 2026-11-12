@@ -22,6 +22,14 @@ type Flusher interface {
 	Flush()
 }
 
+// Urgent is a handler that the loop runs even while its owner takes no
+// input from sockets (Dispatch), such as a peer connection whose control
+// messages must not wait for a slow disk. It holds back itself what the
+// owner cannot take.
+type Urgent interface {
+	Urgent()
+}
+
 // Stopper is a handler that learns when the loop's owner stopped for
 // good (Drain), so that it fails what it waits for.
 type Stopper interface {
@@ -37,14 +45,15 @@ type Loop struct {
 	p        Poller
 	next     uint64
 	handlers map[uint64]Handler
-	// due are the tokens the last Wait returned, and held those that came
-	// while the owner took no input from sockets (Dispatch).
-	due, held []uint64
-	mu        sync.Mutex
-	posted    []func()
-	running   []func()
-	dirty     []Flusher
-	isDirty   map[Flusher]bool
+	// due are the tokens the last Wait returned, held those that came
+	// while the owner took no input from sockets (Dispatch), and again
+	// those whose handlers asked to run at the next turn (Again).
+	due, held, again []uint64
+	mu               sync.Mutex
+	posted           []func()
+	running          []func()
+	dirty            []Flusher
+	isDirty          map[Flusher]bool
 	// stopped is set once the loop ended for good (Drain), under mu.
 	stopped bool
 	// timers are flushers to flush again at a time (After), at most one
@@ -125,13 +134,19 @@ func (l *Loop) Dispatch(sockets bool) {
 		f()
 		l.running[i] = nil
 	}
+	l.due = append(l.due, l.again...)
+	l.again = l.again[:0]
 	if !sockets {
 		for _, token := range l.due {
-			if f, ok := l.handlers[token].(Flusher); ok {
-				l.Dirty(f)
+			switch h := l.handlers[token].(type) {
+			case Urgent:
+				h.(Handler).Ready()
+				continue
+			case Flusher:
+				l.Dirty(h)
 			}
+			l.held = append(l.held, token)
 		}
-		l.held = append(l.held, l.due...)
 		l.due = l.due[:0]
 		return
 	}
@@ -148,9 +163,15 @@ func (l *Loop) Dispatch(sockets bool) {
 	l.due = l.due[:0]
 }
 
+// Again runs the handler of token at the loop's next turn, as a socket
+// that stopped reading while its owner was busy asks.
+func (l *Loop) Again(token uint64) {
+	l.again = append(l.again, token)
+}
+
 // Holding reports whether due tokens wait for a Dispatch that takes
 // sockets, which then needs no wait first.
-func (l *Loop) Holding() bool { return len(l.held) > 0 }
+func (l *Loop) Holding() bool { return len(l.held) > 0 || len(l.again) > 0 }
 
 // Dirty lists f to flush at the end of the turn.
 func (l *Loop) Dirty(f Flusher) {

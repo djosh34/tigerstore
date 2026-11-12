@@ -51,7 +51,7 @@ func TestWriteRetriesHeldOutput(t *testing.T) {
 	defer b.Close() //nolint:errcheck // closing a test pipe
 	br := loop.NewBridge(a, ioBuffer)
 	g := &gate{shut: true}
-	br.Attach(g, nil)
+	br.Attach(g, nil, nil)
 	c := newConn(bareServer(t), br, br)
 	if _, err := c.write(); err != nil {
 		t.Fatal(err)
@@ -198,7 +198,7 @@ func TestOutputWaitsForRoom(t *testing.T) {
 		})
 		br := loop.NewBridge(a, ioBuffer)
 		g := &gate{shut: true}
-		br.Attach(g, nil)
+		br.Attach(g, nil, nil)
 		c := newConn(s, br, br)
 		// As attach sets it: the client's preface may still come.
 		c.prefaceBy = time.Now().Add(time.Hour)
@@ -338,7 +338,7 @@ func TestWritePassIsBounded(t *testing.T) {
 			b.Close() //nolint:errcheck // closing a test pipe
 		})
 		br := loop.NewBridge(a, ioBuffer)
-		br.Attach(&gate{shut: true}, nil)
+		br.Attach(&gate{shut: true}, nil, nil)
 		c := newConn(s, br, br)
 		c.prefaceBy = time.Now().Add(time.Hour)
 		c.mu.Lock()
@@ -392,7 +392,7 @@ func TestRetainedOutputCounts(t *testing.T) {
 	defer a.Close() //nolint:errcheck // closing a test pipe
 	defer b.Close() //nolint:errcheck // closing a test pipe
 	br := loop.NewBridge(a, ioBuffer)
-	br.Attach(&gate{keep: 1}, s.bufs)
+	br.Attach(&gate{keep: 1}, s.bufs, s.bigBufs)
 	c := newConn(s, br, br)
 	c.prefaceBy = time.Now().Add(time.Hour)
 	c.Flush()
