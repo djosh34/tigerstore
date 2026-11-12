@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -171,4 +173,76 @@ func TestGoAwayBeforeHandOver(t *testing.T) {
 		t.Fatal("the loop did not end the connection closed before its hand-over")
 	}
 	s.wg.Wait()
+}
+
+// TestHeldAcrossConnections holds more than the server's share of the
+// memory budget on one connection's call: another connection's window
+// credit waits, and goes out once that call lets go.
+func TestHeldAcrossConnections(t *testing.T) {
+	s := bareServer(t)
+	s.maxHeldAll = 1 << 20
+	a, b := testConn(t), testConn(t)
+	a.s, b.s = s, s
+	st := testCall(a, 1)
+	a.mu.Lock()
+	a.chargeLocked(&st.reqHeld, 2<<20)
+	a.mu.Unlock()
+	b.mu.Lock()
+	b.recvCredit = connWindow
+	b.creditLocked()
+	waiting := len(b.ctrl)
+	b.mu.Unlock()
+	if waiting != 0 {
+		t.Fatal("a connection got credit while the calls of all held more than their share")
+	}
+	a.mu.Lock()
+	a.releaseLocked(&st.reqHeld)
+	a.mu.Unlock()
+	s.loop.Dispatch(false)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.ctrl) != 1 || b.ctrl[0].kind != ctrlWindowUpdate || b.recvCredit != 0 {
+		t.Fatalf("after the release: control frames %v, %d bytes still to credit", b.ctrl, b.recvCredit)
+	}
+}
+
+// TestConnectionLimit refuses a connection past the most the memory
+// budget holds, and takes one again after another ended.
+func TestConnectionLimit(t *testing.T) {
+	s := bareServer(t)
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+	s.conns, s.gone = map[closer]struct{}{}, newConnMetrics()
+	s.maxConns = 1
+	go func() { _ = s.loop.Run(t.Context()) }()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = s.ServeListener(Listener{Listener: ln, Traffic: TrafficAll}) }()
+	defer s.Stop() //nolint:errcheck // stopping a test server
+	first, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close() //nolint:errcheck // closing a test connection
+	for {
+		s.mu.Lock()
+		open := s.open
+		s.mu.Unlock()
+		if open == 1 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	second, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close() //nolint:errcheck // closing a test connection
+	if err := second.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := second.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Fatalf("the connection past the limit read %v, want it closed", err)
+	}
 }

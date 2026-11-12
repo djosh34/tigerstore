@@ -260,9 +260,11 @@ func (c *conn) lastID() uint32 {
 	return c.maxID
 }
 
-// maxCtrl bounds the control frames waiting for the writer, as x/net's
-// server does; a client that floods pings and does not read is dropped.
-const maxCtrl = 10000
+// maxCtrl bounds the control frames waiting for the loop to write them,
+// as x/net's server does with 10,000; a client that floods pings and does
+// not read is dropped. A thousand keeps the queue inside a connection's
+// share of the memory budget (connBytes).
+const maxCtrl = 1000
 
 func (c *conn) queueCtrl(f ctrlFrame) {
 	c.mu.Lock()

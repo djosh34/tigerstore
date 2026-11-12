@@ -14,8 +14,9 @@ type wframe struct {
 }
 
 // maxTake bounds the data bytes of one write, so flow-controlled streams
-// take turns and one flush stays bounded.
-const maxTake = 1 << 20
+// take turns and the output that waits for one connection's socket stays
+// inside its share of the memory budget (connBytes).
+const maxTake = 256 << 10
 
 // list puts a stream with output on the ready list. c.mu is held.
 func (c *conn) list(st *stream) {

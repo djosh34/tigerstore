@@ -1,7 +1,9 @@
 package server
 
 import (
+	"cmp"
 	"encoding/binary"
+	"maps"
 	"slices"
 	"time"
 
@@ -193,12 +195,17 @@ func (c *conn) flush() error {
 func (c *conn) chargeLocked(charge *int, n int) {
 	*charge += n
 	c.held += n
+	c.s.heldAll.Add(int64(n))
 }
 
 // releaseLocked frees one of a call's charges and credits back the
 // connection's receive window if that waited for it. c.mu is held.
 func (c *conn) releaseLocked(charge *int) {
 	c.held -= *charge
+	all := c.s.heldAll.Add(-int64(*charge))
+	if m := c.s.maxHeldAll; m > 0 && all <= m && all+int64(*charge) > m {
+		c.s.feedStarved()
+	}
 	*charge = 0
 	c.creditLocked()
 }
@@ -223,10 +230,51 @@ func (c *conn) releaseReqLocked(st *stream) {
 // and the connection's calls, and the replies waiting for the writer,
 // hold less than maxHeld. c.mu is held.
 func (c *conn) creditLocked() {
-	if c.recvCredit >= connWindow/4 && c.held+int(c.waitingReplies.Load()) <= maxHeld {
-		c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, val: uint32(c.recvCredit)})
-		c.recvCredit = 0
+	if c.recvCredit < connWindow/4 || c.held+int(c.waitingReplies.Load()) > maxHeld {
+		return
 	}
+	if m := c.s.maxHeldAll; m > 0 && c.s.heldAll.Load() > m {
+		// The calls of all connections together hold their share of the
+		// memory budget: this one waits until they hold less.
+		c.s.starve(c)
+		return
+	}
+	c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, val: uint32(c.recvCredit)})
+	c.recvCredit = 0
+}
+
+// starve lists c to credit once the connections' calls hold less than
+// their share of the memory budget.
+func (s *Server) starve(c *conn) {
+	s.starvedMu.Lock()
+	if s.starved == nil {
+		s.starved = map[*conn]struct{}{}
+	}
+	s.starved[c] = struct{}{}
+	s.starvedMu.Unlock()
+}
+
+// feedStarved credits, on the loop, the connections that waited for the
+// calls of all connections to hold less.
+func (s *Server) feedStarved() {
+	s.starvedMu.Lock()
+	cs := slices.SortedFunc(maps.Keys(s.starved), func(a, b *conn) int { return cmp.Compare(a.token, b.token) })
+	// gosim's clear fails on a nil map.
+	if s.starved != nil {
+		clear(s.starved)
+	}
+	s.starvedMu.Unlock()
+	if len(cs) == 0 {
+		return
+	}
+	s.loop.Post(func() {
+		for _, c := range cs {
+			c.mu.Lock()
+			c.creditLocked()
+			c.mu.Unlock()
+			c.s.loop.Dirty(c)
+		}
+	})
 }
 
 // completed is one Complete call's replies in a list the committer pushes

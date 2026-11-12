@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -129,6 +130,19 @@ type Server struct {
 	conns   map[closer]struct{}
 	stopped bool
 	wg      sync.WaitGroup
+	// open counts the client connections from their accept until they end,
+	// under mu, and maxConns bounds them, 0 for no bound (setLimits);
+	// refusedLog is when a refused one was last logged.
+	open       int
+	maxConns   int
+	refusedLog time.Time
+	// heldAll is what the calls of every connection hold (conn.held), and
+	// maxHeldAll its bound, 0 for none. A connection whose window credit
+	// waits for heldAll to fall is in starved, under starvedMu.
+	heldAll    atomic.Int64
+	maxHeldAll int64
+	starvedMu  sync.Mutex
+	starved    map[*conn]struct{}
 }
 
 // closer is a live client connection that Stop must end.
@@ -234,13 +248,27 @@ func (s *Server) ServeListener(l Listener) error {
 			_ = nc.Close()
 			return nil
 		}
+		if s.maxConns > 0 && s.open >= s.maxConns {
+			// Past the connections the memory budget holds.
+			log := time.Since(s.refusedLog) >= time.Minute
+			if log {
+				s.refusedLog = time.Now()
+			}
+			s.mu.Unlock()
+			_ = nc.Close()
+			if log && s.cfg.Logf != nil {
+				s.cfg.Logf("refused a client connection: %d are open, the most the memory budget holds", s.maxConns)
+			}
+			continue
+		}
 		// Added under mu, so never after Stop started waiting.
 		s.wg.Add(1)
+		s.open++
 		s.mu.Unlock()
 		go func() {
 			// The loop ends a connection handed to it.
 			if !s.serveConn(nc, l) {
-				s.wg.Done()
+				s.ended()
 			}
 		}()
 	}
@@ -327,6 +355,15 @@ func (s *Server) hand(c *conn) bool {
 		return false
 	}
 	return true
+}
+
+// ended counts the end of a connection that ServeListener or the gateway
+// counted.
+func (s *Server) ended() {
+	s.mu.Lock()
+	s.open--
+	s.mu.Unlock()
+	s.wg.Done()
 }
 
 func (s *Server) track(c closer) bool {
@@ -431,4 +468,26 @@ func (s *Server) setLimits() {
 	s.keepaliveMin = cmp.Or(s.cfg.KeepaliveMinTime, 5*time.Minute)
 	s.keepaliveTime = cmp.Or(s.cfg.KeepaliveTime, 2*time.Hour)
 	s.keepaliveTimeout = cmp.Or(s.cfg.KeepaliveTimeout, 20*time.Second)
+	if s.n == nil {
+		return
+	}
+	if b := s.n.MemoryBudget(); b > 0 {
+		// An eighth of the node's memory budget goes to the loop's
+		// buffers of the client connections, and an eighth to what their
+		// calls hold; the rest to the store and its value cache, which
+		// takes what the process leaves (core.Node.SetOtherMemory).
+		// The floors are for the tiny budgets of tests; a node's budget
+		// of 512 MiB or more is above both.
+		s.maxConns = max(minConns, int(b/budgetShare/connBytes))
+		s.maxHeldAll = max(minHeldAll, b/budgetShare)
+	}
 }
+
+// budgetShare is the part of the node's memory budget that the client
+// connections' buffers take, and the part their calls hold: an eighth each.
+// minConns and minHeldAll are the least of each.
+const (
+	budgetShare = 8
+	minConns    = 64
+	minHeldAll  = maxHeld
+)

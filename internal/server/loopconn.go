@@ -19,6 +19,20 @@ import (
 // HTTP requests still run on goroutines of their own: they queue their
 // output under c.mu and signal the loop.
 
+// maxReadFrame is the largest frame payload a client may send: HTTP/2's
+// default SETTINGS_MAX_FRAME_SIZE, which the server does not raise. So a
+// whole frame always fits the input buffer.
+const maxReadFrame = 16384
+
+// connBytes bounds what the loop holds for one HTTP/2 connection, besides
+// what its calls hold (maxHeld): the bridge's read buffer and the decrypted
+// input (ioBuffer each), the write buffer above TLS (ioBuffer), crypto/tls's
+// record buffers (two records), one write pass that waits for the socket
+// (maxTake of data, its frame headers and the control frames, sealed), and
+// the control frames queued (maxCtrl). Server.setLimits sizes the number of
+// connections from it.
+const connBytes = 640 << 10
+
 // Phases of a connection's input.
 const (
 	phasePreface = iota
@@ -128,6 +142,11 @@ func (c *conn) process() error {
 		}
 		h := c.in[c.inR:]
 		n := frameHeaderLen + (int(h[0])<<16 | int(h[1])<<8 | int(h[2]))
+		if n > frameHeaderLen+maxReadFrame {
+			// The server never raises SETTINGS_MAX_FRAME_SIZE above its
+			// default, which a client must not exceed (RFC 9113 4.2).
+			return http2.ConnectionError(http2.ErrCodeFrameSize)
+		}
 		if have < n {
 			c.compactIn(n)
 			return nil
@@ -353,7 +372,7 @@ func (c *conn) release() {
 		_ = c.bridge.Close()
 	}
 	c.s.untrack(c)
-	c.s.wg.Done()
+	c.s.ended()
 }
 
 // Stopped fails the calls the node still held once it stopped; the calls

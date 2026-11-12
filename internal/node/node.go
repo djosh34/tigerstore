@@ -1147,6 +1147,9 @@ func (n *Node) Cancel(id uint64) {
 // inbox.
 func (n *Node) Next(id uint64) { n.tell(input{next: id}) }
 
+// MemoryBudget is the memory the node may use, 0 for none.
+func (n *Node) MemoryBudget() int64 { return n.cfg.Core.MemoryBytes }
+
 // PieceBytes is about the most one piece of a large answer holds.
 func (n *Node) PieceBytes() int { return cmp.Or(n.cfg.Core.PieceBytes, core.PieceBytes) }
 

@@ -56,9 +56,10 @@ func (s *Server) newGateway() (http.Handler, *grpc.ClientConn, error) {
 				return client, nil
 			}
 			s.wg.Add(1)
+			s.open++
 			s.mu.Unlock()
 			if !s.servePlain(server) {
-				s.wg.Done()
+				s.ended()
 			}
 			return client, nil
 		}),
