@@ -404,6 +404,10 @@ func ctrlBytes(f *ctrlFrame) int {
 		return frameHeaderLen + 8
 	case ctrlGoAway:
 		return frameHeaderLen + 8 + len(f.debug)
+	case ctrlSettingsAck:
+		return frameHeaderLen
+	case ctrlWindowUpdate, ctrlRST:
+		return frameHeaderLen + 4
 	}
 	return frameHeaderLen + 4
 }
