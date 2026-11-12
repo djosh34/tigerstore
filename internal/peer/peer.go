@@ -239,8 +239,8 @@ const (
 	// batch of frames (ioBuffer), sealed, with append's room to spare. At
 	// put's 1 KiB values, an append to a follower passes the bridge's
 	// default 1 MiB, which then dropped the buffer and grew a new one by
-	// append each time: 0.46 µs of the leader's CPU per op. Four lanes
-	// per node, two to each peer, hold 32 MiB at most.
+	// append each time: 0.46 µs of the leader's CPU per op. A peer's two
+	// lanes hold 16 MiB at most, 32 MiB in a three-node cluster.
 	keepOut = 8 << 20
 	// handshakeLogEvery is how often a failed handshake with one peer is
 	// logged. A dialer retries every second.

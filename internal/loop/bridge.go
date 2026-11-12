@@ -45,8 +45,8 @@ func NewBridge(raw net.Conn, size int) *Bridge {
 // KeepOut sets the most write buffer a bridge without Buffers keeps once
 // it sent everything, maxIdleOut unless set: a buffer larger goes, and the
 // next write grows a new one by append. A connection whose writes often
-// pass maxIdleOut, as a peer's appends do, keeps one the size of its largest write
-// instead of growing one for each.
+// pass maxIdleOut, as a peer's appends do, sets it above its largest
+// write, so that it grows its buffer once instead of for each write.
 func (b *Bridge) KeepOut(n int) { b.keepOut = n }
 
 // Attach hands the connection to the loop through sock, which the poller
