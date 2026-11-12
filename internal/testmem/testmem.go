@@ -47,7 +47,9 @@ const step = 1 << 20
 // the GC percent meanwhile may find Peak's setting instead of its own.
 func Peak() (stop func() (peak, kept int64)) {
 	old := debug.SetGCPercent(1)
-	base := liveHeap()
+	// A measurement can only be too high (liveHeap), and a base too high
+	// would lower every result: the base is the least of three.
+	base := min(liveHeap(), liveHeap(), liveHeap())
 	held := int64(0)
 	done := make(chan struct{})
 	ended := make(chan struct{})
@@ -69,7 +71,7 @@ func Peak() (stop func() (peak, kept int64)) {
 	return func() (int64, int64) {
 		close(done)
 		<-ended
-		kept := liveHeap() - base
+		kept := min(liveHeap(), liveHeap()) - base
 		debug.SetGCPercent(old)
 		return max(held, kept, 0), kept
 	}
