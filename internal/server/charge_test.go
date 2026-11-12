@@ -43,7 +43,8 @@ func testCall(c *conn, id uint32) *stream {
 // drain runs the writer's side: it takes all queued output.
 func drain(c *conn) {
 	c.mu.Lock()
-	c.take(nil)
+	for len(c.ready) > 0 && len(c.take(nil, maxTake)) > 0 {
+	}
 	c.mu.Unlock()
 }
 

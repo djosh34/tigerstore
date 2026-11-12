@@ -129,6 +129,15 @@ func (b *Bridge) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Retained is the write buffer's whole allocation while it holds bytes
+// that wait to be sent, which a partial send does not shrink.
+func (b *Bridge) Retained() int {
+	if b.outR == len(b.out) {
+		return 0
+	}
+	return cap(b.out)
+}
+
 // Pending is how many written bytes wait to be sent.
 func (b *Bridge) Pending() int { return len(b.out) - b.outR }
 

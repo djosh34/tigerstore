@@ -286,7 +286,7 @@ func (c *conn) Flush() {
 	}
 	defer func() {
 		if !c.gone {
-			c.chargeOut(c.bridge.Pending())
+			c.chargeOut(c.bridge.Retained())
 		}
 	}()
 	if c.isClosed() {
@@ -356,7 +356,12 @@ func (c *conn) write() (bool, error) {
 		c.s.ctrlOut = append(c.s.ctrlOut[:0], c.ctrl...)
 		clear(c.ctrl)
 		c.ctrl = c.ctrl[:0]
-		c.s.framesOut = c.take(c.s.framesOut[:0])
+		// The control frames spend the pass's budget first.
+		budget := maxTake
+		for i := range c.s.ctrlOut {
+			budget -= ctrlBytes(&c.s.ctrlOut[i])
+		}
+		c.s.framesOut = c.take(c.s.framesOut[:0], budget)
 		drained := c.goingAway && len(c.streams) == 0
 		c.mu.Unlock()
 		if len(c.s.ctrlOut) == 0 && len(c.s.framesOut) == 0 {
@@ -390,6 +395,19 @@ func (c *conn) write() (bool, error) {
 	}
 }
 
+// ctrlBytes is what a control frame takes on the wire.
+func ctrlBytes(f *ctrlFrame) int {
+	switch f.kind {
+	case ctrlSettings:
+		return frameHeaderLen + 12
+	case ctrlPingAck, ctrlPing:
+		return frameHeaderLen + 8
+	case ctrlGoAway:
+		return frameHeaderLen + 8 + len(f.debug)
+	}
+	return frameHeaderLen + 4
+}
+
 // release drops a closed connection from the loop and the server. It runs
 // on the loop, once.
 func (c *conn) release() {
@@ -407,9 +425,9 @@ func (c *conn) release() {
 	c.s.ended()
 }
 
-// chargeOut counts pending, the connection's output that waits for its
-// socket, in the server's waiting output (Server.outAll), in place of what
-// it counted before. Once that falls below its bound, the connections that
+// chargeOut counts pending, the memory of the connection's output that
+// waits for its socket (Bridge.Retained), in the server's waiting output
+// (Server.outAll), in place of what it counted before. Once that falls below its bound, the connections that
 // waited for room write again. Loop only.
 func (c *conn) chargeOut(pending int) {
 	s := c.s

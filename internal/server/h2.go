@@ -463,7 +463,7 @@ func (c *conn) headerFragment(b []byte, first, last bool) error {
 		return http2.ConnectionError(http2.ErrCodeCompression)
 	}
 	if whole && onlyIndexed(b) {
-		if !h.bad && h.traceMD == nil && h.fields == nil && len(c.blocks) < maxBlocks {
+		if c.cacheable(h, b) {
 			if c.blocks == nil {
 				c.blocks = make(map[string]reqHeaders)
 			}
@@ -497,6 +497,12 @@ func (c *conn) headerFragment(b []byte, first, last bool) error {
 	c.mu.Unlock()
 	c.resetStream(h.id, http2.ErrCodeProtocol)
 	return nil
+}
+
+// cacheable reports whether the connection keeps the decoded headers h of
+// block b, a block of indexed fields only, for the next time it comes.
+func (c *conn) cacheable(h *reqHeaders, b []byte) bool {
+	return !h.bad && h.traceMD == nil && h.fields == nil && len(b) <= maxBlockKey && len(c.blocks) < maxBlocks
 }
 
 // maxBlocks bounds the header blocks a connection keeps decoded, and

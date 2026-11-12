@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/loop"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 // gate is a socket whose writes block while shut, as a client's that
@@ -19,6 +21,8 @@ type gate struct {
 	shut  bool
 	took  int
 	calls int
+	// keep, when set, is how many bytes of each write the socket leaves.
+	keep int
 }
 
 func (g *gate) Read([]byte) (int, error) { return 0, loop.ErrWouldBlock }
@@ -27,6 +31,10 @@ func (g *gate) Write(b []byte) (int, error) {
 	g.calls++
 	if g.shut {
 		return 0, loop.ErrWouldBlock
+	}
+	if g.keep > 0 && len(b) > g.keep {
+		g.took += len(b) - g.keep
+		return len(b) - g.keep, loop.ErrWouldBlock
 	}
 	g.took += len(b)
 	return len(b), nil
@@ -293,41 +301,114 @@ func TestConnectionLimit(t *testing.T) {
 	if _, err := third.Write([]byte(http2.ClientPreface)); err != nil {
 		t.Fatal(err)
 	}
-	f, err := http2.NewFramer(third, third).ReadFrame()
-	if err != nil {
-		t.Fatalf("the connection after the first one ended got no frame: %v", err)
+	tf := http2.NewFramer(third, third)
+	if err := tf.WriteSettings(); err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := f.(*http2.SettingsFrame); !ok {
-		t.Fatalf("the connection after the first one ended got a %T, want the server's SETTINGS", f)
+	if err := tf.WritePing(false, [8]byte{7}); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		f, err := tf.ReadFrame()
+		if err != nil {
+			t.Fatalf("the connection after the first one ended was not served: %v", err)
+		}
+		if _, ok := f.(*http2.GoAwayFrame); ok {
+			t.Fatal("the connection after the first one ended was refused")
+		}
+		if p, ok := f.(*http2.PingFrame); ok && p.IsAck() {
+			break
+		}
+	}
+	if n := testutil.ToFloat64(s.metrics.set.ClientConnsRefused); n != 1 {
+		t.Fatalf("%g refused connections counted, want 1", n)
 	}
 }
 
-// TestWritePassIsBounded queues trailers on 30,000 streams, as as many
-// calls that end with an error at once, for a client that reads nothing:
-// one write pass takes at most maxTake bytes of frames, headers included,
-// and at most maxPassFrames frames.
+// TestWritePassIsBounded checks the bounds of one write pass for a client
+// that reads nothing: 30,000 streams with trailers hit maxPassFrames, 64
+// streams with 4 KiB trailers hit maxTake's bytes, and one stream's data
+// in tiny frames hits maxPassFrames too.
 func TestWritePassIsBounded(t *testing.T) {
+	pass := func(fill func(c *conn)) (*Server, *loop.Bridge) {
+		s := bareServer(t)
+		a, b := net.Pipe()
+		t.Cleanup(func() {
+			a.Close() //nolint:errcheck // closing a test pipe
+			b.Close() //nolint:errcheck // closing a test pipe
+		})
+		br := loop.NewBridge(a, ioBuffer)
+		br.Attach(&gate{shut: true}, nil)
+		c := newConn(s, br, br)
+		c.prefaceBy = time.Now().Add(time.Hour)
+		c.mu.Lock()
+		fill(c)
+		c.mu.Unlock()
+		c.Flush()
+		return s, br
+	}
+	trailers := func(c *conn, streams int, size int) {
+		block := statusBlock(status.New(codes.Unavailable, strings.Repeat("x", size)), true)
+		for i := range streams {
+			id := uint32(2*i + 1)
+			st := &stream{c: c, id: id, sendWin: 1 << 30, inEOF: true}
+			c.streams[id] = st
+			st.out = []outItem{{kind: outTrailers, b: block}}
+			c.list(st)
+		}
+	}
+	// The connection's own SETTINGS and WINDOW_UPDATE go in the pass too.
+	const slack = 64
+	s, br := pass(func(c *conn) { trailers(c, 30000, 1) })
+	if n := len(s.framesOut); n > maxPassFrames {
+		t.Fatalf("one pass took %d frames; maxPassFrames is %d", n, maxPassFrames)
+	}
+	if p := br.Pending(); p > maxTake+slack {
+		t.Fatalf("one pass of small trailers left %d bytes; maxTake is %d", p, maxTake)
+	}
+	_, br = pass(func(c *conn) { trailers(c, 1000, 4<<10) })
+	if p := br.Pending(); p > maxTake+slack {
+		t.Fatalf("one pass of 4 KiB trailers left %d bytes; maxTake is %d", p, maxTake)
+	}
+	s, _ = pass(func(c *conn) {
+		c.maxFrame = 16
+		st := &stream{c: c, id: 1, sendWin: 1 << 30, inEOF: true}
+		c.streams[1] = st
+		st.out = []outItem{{kind: outData, b: make([]byte, 64<<10)}}
+		c.list(st)
+	})
+	if n := len(s.framesOut); n > maxPassFrames {
+		t.Fatalf("one stream's data took %d frames in one pass; maxPassFrames is %d", n, maxPassFrames)
+	}
+}
+
+// TestRetainedOutputCounts sends a connection's first frames to a socket
+// that takes all but one byte: the whole buffer that keeps that byte counts
+// in the server's waiting output, not the byte.
+func TestRetainedOutputCounts(t *testing.T) {
 	s := bareServer(t)
 	a, b := net.Pipe()
 	defer a.Close() //nolint:errcheck // closing a test pipe
 	defer b.Close() //nolint:errcheck // closing a test pipe
 	br := loop.NewBridge(a, ioBuffer)
-	br.Attach(&gate{shut: true}, nil)
+	br.Attach(&gate{keep: 1}, s.bufs)
 	c := newConn(s, br, br)
 	c.prefaceBy = time.Now().Add(time.Hour)
-	c.mu.Lock()
-	for id := uint32(1); id < 60000; id += 2 {
-		st := &stream{c: c, id: id, sendWin: 1 << 30, inEOF: true}
-		c.streams[id] = st
-		st.out = []outItem{{kind: outTrailers, b: statusBlock(status.New(codes.Unavailable, "gone"), true)}}
-		c.list(st)
-	}
-	c.mu.Unlock()
 	c.Flush()
-	if p := br.Pending(); p > maxTake+4<<10 {
-		t.Fatalf("one write pass left %d bytes for the socket; maxTake is %d", p, maxTake)
+	if br.Pending() != 1 || s.outAll < connBuffer || s.outAll != br.Retained() {
+		t.Fatalf("one byte waits, and the server counts %d bytes; the buffer holding it is %d", s.outAll, br.Retained())
 	}
-	if n := cap(s.framesOut); n > 2*maxPassFrames {
-		t.Fatalf("the pass's frame list grew to %d; maxPassFrames is %d", n, maxPassFrames)
+}
+
+// TestHeaderCacheKeepsSmallBlocks checks that a connection keeps the
+// headers of a block of indexed fields only while the block is small.
+func TestHeaderCacheKeepsSmallBlocks(t *testing.T) {
+	c := testConn(t)
+	h := &reqHeaders{}
+	if !c.cacheable(h, make([]byte, maxBlockKey)) {
+		t.Fatal("a block of maxBlockKey bytes is not kept")
+	}
+	if c.cacheable(h, make([]byte, maxBlockKey+1)) {
+		t.Fatal("a block over maxBlockKey bytes is kept")
 	}
 }

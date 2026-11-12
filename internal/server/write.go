@@ -30,11 +30,11 @@ func (c *conn) list(st *stream) {
 	}
 }
 
-// take moves the output that the windows allow into frames. Each pass
-// gives every ready stream at most one frame of data, so one large reply
-// does not hold up the others. c.mu is held.
-func (c *conn) take(frames []wframe) []wframe {
-	budget := maxTake
+// take moves the output that the windows allow into frames, within
+// budget bytes and maxPassFrames frames, of which frames may hold some.
+// Each round gives every ready stream at most one frame of data, so one
+// large reply does not hold up the others. c.mu is held.
+func (c *conn) take(frames []wframe, budget int) []wframe {
 	for budget > 0 && len(frames) < maxPassFrames && len(c.ready) > 0 {
 		before := len(frames)
 		kept := c.ready[:0]
@@ -73,7 +73,10 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 	}()
 	for len(st.out) > 0 {
 		it := &st.out[0]
-		if *budget <= frameHeaderLen {
+		// A header block and the RST_STREAM that may follow it go whole,
+		// and only while they fit: two frames and their bytes. A block
+		// larger than a whole pass goes alone, first in its pass.
+		if len(frames)+2 > maxPassFrames || it.kind != outData && len(frames) > 0 && *budget < 2*frameHeaderLen+4+len(it.b) {
 			return frames
 		}
 		switch it.kind {
@@ -86,9 +89,12 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 			frames = c.endStream(st, frames, budget)
 		case outData:
 			for len(it.b) > 0 || it.end {
+				if len(frames)+2 > maxPassFrames || *budget < 2*frameHeaderLen+4 {
+					return frames
+				}
 				n := 0
 				if len(it.b) > 0 {
-					n = int(min(int64(len(it.b)), int64(c.maxFrame), c.sendWin, st.sendWin, int64(*budget-frameHeaderLen)))
+					n = int(min(int64(len(it.b)), int64(c.maxFrame), c.sendWin, st.sendWin, int64(*budget-2*frameHeaderLen-4)))
 					if n <= 0 {
 						return frames
 					}
