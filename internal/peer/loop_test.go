@@ -184,6 +184,11 @@ func TestBusyNodeHoldsData(t *testing.T) {
 	if !slices.Equal(got, []raftpb.MessageType{raftpb.MsgHeartbeat}) {
 		t.Fatalf("while busy: delivered %v, want the first heartbeat only", got)
 	}
+	// The held connection asks for the next turn, so the node, once it
+	// takes data again, does not wait for anything else to wake it.
+	if !l.Holding() {
+		t.Fatal("the loop holds nothing for the node's next turn")
+	}
 	busy = false
 	turn()
 	want := []raftpb.MessageType{raftpb.MsgHeartbeat, raftpb.MsgApp, raftpb.MsgHeartbeat}

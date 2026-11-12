@@ -1091,10 +1091,10 @@ func (n *Node) Receive(m *raftpb.Message) {
 	n.local = append(n.local, input{msg: m, at: time.Now()})
 }
 
-// Busy reports, on the loop, whether the node takes no new input but
-// peers' control messages now
-// because its disk is behind. The peer transport then holds the data
-// messages it reads (peer.Config.Busy) and steps the others.
+// Busy reports, on the loop, whether the node's disk is behind, so that it
+// takes no new input but peers' control messages. The peer transport then
+// holds the data messages it reads (peer.Config.Busy) and steps the
+// others.
 func (n *Node) Busy() bool { return n.full }
 
 // SubmitLocal is SubmitBatch for a connection on the loop: it runs on the
