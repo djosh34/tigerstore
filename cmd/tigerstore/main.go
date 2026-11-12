@@ -32,6 +32,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/server"
+	"github.com/djosh34/tigerstore/internal/wl"
 )
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
@@ -60,6 +61,12 @@ func main() {
 		debug.SetGCPercent(gcPercent)
 	}
 	args := os.Args[1:]
+	// Prototype 6 of #602: the node is one event loop with its own client
+	// stack, store and replication (internal/wl), unless TIGERSTORE_MAIN
+	// asks for main's node.
+	if os.Getenv("TIGERSTORE_MAIN") == "" && (len(args) == 0 || args[0] != "snapshot") {
+		os.Exit(wl.Main(args))
+	}
 	if len(args) > 0 && (args[0] == "grpc-proxy" || args[0] == "gateway") {
 		// etcd's own commands, with etcd's flags: a gRPC proxy in front
 		// of the cluster's client URLs (--namespace among them), and a
