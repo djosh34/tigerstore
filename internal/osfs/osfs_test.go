@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 
 	"go.etcd.io/raft/v3/raftpb"
 	"golang.org/x/sys/unix"
@@ -88,7 +91,8 @@ func TestReadAllMemory(t *testing.T) {
 // keeps the page in the page cache while the pipe holds it, and fadvise
 // still succeeds: DropCache must report it, or recovery could read a page
 // that a failed writeback left (#372). Once the pipe lets the page go, the
-// drop succeeds.
+// drop succeeds, and a page the pipe holds for only a moment is dropped
+// too.
 func TestDropCacheReportsHeldPage(t *testing.T) {
 	path := t.TempDir()
 	var st unix.Statfs_t
@@ -131,13 +135,34 @@ func TestDropCacheReportsHeldPage(t *testing.T) {
 	if _, err := unix.Splice(int(f.(interface{ Fd() uintptr }).Fd()), &off, p[1], nil, page, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.DropCache(); !errors.Is(err, osfs.ErrCached) {
+	err = f.DropCache()
+	if !errors.Is(err, osfs.ErrCached) {
 		t.Fatalf("drop of a page a pipe holds = %v, want ErrCached", err)
+	}
+	if want := filepath.Join(path, "seg") + ": "; !strings.HasPrefix(err.Error(), want) {
+		t.Fatalf("drop of a page a pipe holds = %q, want it to start with %q", err, want)
 	}
 	if _, err := unix.Read(p[0], make([]byte, page)); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.DropCache(); err != nil {
 		t.Fatalf("drop once the pipe let the page go = %v", err)
+	}
+	// A page held for a moment goes on a later try: here the pipe lets it
+	// go 20 ms into the drop (#631).
+	off = 0
+	if _, err := unix.Splice(int(f.(interface{ Fd() uintptr }).Fd()), &off, p[1], nil, page, 0); err != nil {
+		t.Fatal(err)
+	}
+	read := make(chan error, 1)
+	time.AfterFunc(20*time.Millisecond, func() {
+		_, err := unix.Read(p[0], make([]byte, page))
+		read <- err
+	})
+	if err := f.DropCache(); err != nil {
+		t.Fatalf("drop of a page a pipe held for 20 ms = %v", err)
+	}
+	if err := <-read; err != nil {
+		t.Fatal(err)
 	}
 }
