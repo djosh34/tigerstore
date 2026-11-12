@@ -2,6 +2,7 @@ package wl
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"log"
 	"runtime"
@@ -333,9 +334,14 @@ func (n *node) sendPeer(m *pb.Message) {
 		return
 	}
 	ents := m.GetEntries()
+	app := m.GetType() == pb.MsgApp
+	to := m.GetTo()
 	size := msgHdr + 4 + len(m.GetContext())
 	for _, e := range ents {
-		size += 8 + 8 + 1 + 4 + len(e.GetData())
+		size += 8 + 8 + 1 + 4
+		if o, _, ok := batchOrigin(e.GetData()); !app || !ok || o != to {
+			size += len(e.GetData())
+		}
 	}
 	var h [4 + msgHdr]byte
 	binary.LittleEndian.PutUint32(h[0:], uint32(size))
@@ -360,6 +366,13 @@ func (n *node) sendPeer(m *pb.Message) {
 		binary.LittleEndian.PutUint64(eh[0:], e.GetTerm())
 		binary.LittleEndian.PutUint64(eh[8:], e.GetIndex())
 		eh[16] = byte(e.GetType())
+		if o, seq, ok := batchOrigin(d); app && ok && o == to {
+			// The peer proposed this batch: name it.
+			eh[16] |= namedEntry
+			binary.LittleEndian.PutUint32(eh[17:], seq)
+			s.put(eh[:])
+			continue
+		}
 		binary.LittleEndian.PutUint32(eh[17:], uint32(len(d)))
 		s.put(eh[:])
 		s.put(d)
@@ -407,6 +420,9 @@ func (n *node) peerFrames(p *peerIn) error {
 		f := s.pt[s.pr+4 : s.pr+4+l]
 		s.pr += 4 + l
 		m, err := n.decodeMsg(f)
+		if err == errUnnamed {
+			continue
+		}
 		if err != nil {
 			return err
 		}
@@ -441,12 +457,23 @@ func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
 				return nil, errRecord
 			}
 			l := int(binary.LittleEndian.Uint32(f[at+17:]))
+			typ := f[at+16]
 			e := &pb.Entry{
 				Term:  new(binary.LittleEndian.Uint64(f[at:])),
 				Index: new(binary.LittleEndian.Uint64(f[at+8:])),
-				Type:  pb.EntryType(f[at+16]).Enum(),
+				Type:  pb.EntryType(typ &^ namedEntry).Enum(),
 			}
 			at += 21
+			if typ&namedEntry != 0 {
+				seq := uint32(l)
+				b := n.fwd[seq&(fwdSlots-1)]
+				if b.seq != seq || b.data == nil {
+					return nil, errUnnamed
+				}
+				e.Data = b.data
+				m.Entries[i] = e
+				continue
+			}
 			if len(f) < at+l {
 				return nil, errRecord
 			}
@@ -467,6 +494,10 @@ func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
 	}
 	return m, nil
 }
+
+const namedEntry = 0x80
+
+var errUnnamed = errors.New("a named entry this node does not have")
 
 // rxCopy copies received entry data into the receive ring.
 func (n *node) rxCopy(p []byte) []byte {

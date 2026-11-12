@@ -178,6 +178,7 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 		return fmt.Errorf("--name %q is not in --initial-cluster", name)
 	}
 	n.st = newStore()
+	n.fwd = make([]fwdBatch, fwdSlots)
 	n.ring = mmapBytes(ringSize)
 	n.rx = mmapBytes(ringSize)
 	n.wal, err = openWAL(filepath.Join(dataDir, "wal"))

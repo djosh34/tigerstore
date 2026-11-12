@@ -54,8 +54,25 @@ type node struct {
 	txnRes  []opRes
 	scratch []byte
 
-	peerSent  uint64
-	sentStats func(uint64)
+	// The batches this node proposed, by sequence: the leader names them
+	// in its appends to this node instead of sending them back (#626).
+	fwd    []fwdBatch
+	fwdSeq uint32
+}
+
+type fwdBatch struct {
+	seq  uint32
+	data []byte
+}
+
+const fwdSlots = 1 << 14
+
+// batchOrigin returns the node and sequence of a batch, if data is one.
+func batchOrigin(data []byte) (uint64, uint32, bool) {
+	if len(data) < batchHdr || binary.LittleEndian.Uint32(data[12:]) != magic {
+		return 0, 0, false
+	}
+	return uint64(binary.LittleEndian.Uint32(data)), binary.LittleEndian.Uint32(data[4:]), true
 }
 
 type member struct {
@@ -91,7 +108,7 @@ type opRes struct {
 	prevKVs bool
 }
 
-// Batch layout: [8 origin][4 ops][4 magic], then each op [1 kind][3 pad]
+// Batch layout: [4 origin][4 sequence][4 ops][4 magic], then each op [1 kind][3 pad]
 // [8 handle][4 length] and the request's protobuf as the client sent it.
 const (
 	batchHdr = 16
@@ -500,7 +517,9 @@ func (n *node) addOp(h handle, kind uint8, msg []byte) {
 	if n.batchStart < 0 {
 		n.batchStart = n.ringPos
 		b := n.ring[n.ringPos : n.ringPos+batchHdr]
-		binary.LittleEndian.PutUint64(b, n.id)
+		n.fwdSeq++
+		binary.LittleEndian.PutUint32(b, uint32(n.id))
+		binary.LittleEndian.PutUint32(b[4:], n.fwdSeq)
 		binary.LittleEndian.PutUint32(b[12:], magic)
 		n.ringPos += batchHdr
 		n.batchOps = 0
@@ -524,6 +543,9 @@ func (n *node) proposeBatch() {
 	data := n.ring[n.batchStart:n.ringPos:n.ringPos]
 	binary.LittleEndian.PutUint32(data[8:], uint32(n.batchOps))
 	n.batchStart = -1
+	// A follower's batch comes back from the leader by name.
+	seq := binary.LittleEndian.Uint32(data[4:])
+	n.fwd[seq&(fwdSlots-1)] = fwdBatch{seq: seq, data: data}
 	if err := n.rn.Propose(data); err != nil {
 		for _, h := range n.batchOwn {
 			n.replyErrorH(h, codeUnavailable, "etcdserver: leader changed")
@@ -556,7 +578,7 @@ func (n *node) applyBatch(data []byte, walOff int64) {
 	if len(data) < batchHdr || binary.LittleEndian.Uint32(data[12:]) != magic {
 		return
 	}
-	origin := le64(data)
+	origin := uint64(binary.LittleEndian.Uint32(data))
 	nops := int(binary.LittleEndian.Uint32(data[8:]))
 	p := batchHdr
 	mine := origin == n.id
