@@ -33,6 +33,8 @@ type node struct {
 	// and the WAL, the peers and the apply read them from here.
 	ring       []byte
 	ringPos    int
+	side       []byte // failure branches kept for their streams
+	sidePos    int
 	rx         []byte // received entries
 	rxPos      int
 	batchStart int
@@ -156,7 +158,9 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 			return nil
 		}
 		n.queueRead(mkHandle(c, s.id), s.kind, msg)
-	case kPut, kDel, kTxn, kCompact, kLeaseGrant, kLeaseRevoke:
+	case kTxn:
+		n.addTxn(mkHandle(c, s.id), s, msg)
+	case kPut, kDel, kCompact, kLeaseGrant, kLeaseRevoke:
 		n.addOp(mkHandle(c, s.id), s.kind, msg)
 	case kLeaseKeepAlive:
 		id := int64(0)
@@ -537,6 +541,50 @@ func (n *node) addOp(h handle, kind uint8, msg []byte) {
 	n.batchOwn = append(n.batchOwn, h)
 }
 
+// addTxn adds a Txn. A failure branch of reads only changes nothing,
+// so only this node, which answers the client, needs it: it stays with
+// the stream, and the batch carries the compares and the success branch.
+func (n *node) addTxn(h handle, s *stream, msg []byte) {
+	failBytes, readsOnly := 0, true
+	for m := msg; len(m) > 0; {
+		num, _, _, p, rest, err := field(m)
+		if err != nil {
+			readsOnly = false
+			break
+		}
+		if num == 3 {
+			failBytes += len(m) - len(rest)
+			if onum, _, _, _, _, err := field(p); err != nil || onum != 1 {
+				readsOnly = false
+			}
+		}
+		m = rest
+	}
+	if !readsOnly || failBytes == 0 {
+		n.addOp(h, kTxn, msg)
+		return
+	}
+	// Keep the failure branch in the side ring.
+	if n.sidePos+failBytes > len(n.side) {
+		n.sidePos = 0
+	}
+	off := n.sidePos
+	kept := n.scratch[:0]
+	for m := msg; len(m) > 0; {
+		_, _, _, _, rest, _ := field(m)
+		f := m[:len(m)-len(rest)]
+		if f[0] == 3<<3|2 {
+			n.sidePos += copy(n.side[n.sidePos:], f)
+		} else {
+			kept = append(kept, f...)
+		}
+		m = rest
+	}
+	s.fail = n.side[off:n.sidePos:n.sidePos]
+	n.addOp(h, kTxn, kept)
+	n.scratch = kept[:0]
+}
+
 // proposeBatch hands this turn's batch to Raft.
 func (n *node) proposeBatch() {
 	if n.batchStart < 0 {
@@ -877,7 +925,11 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) {
 	changed := false
 	res := n.txnRes[:0]
 	kvs := n.kvs[:0]
-	for m := req; len(m) > 0; {
+	ops := req
+	if !ok && s != nil && s.fail != nil {
+		ops = s.fail
+	}
+	for m := ops; len(m) > 0; {
 		num, _, _, p, rest, err := field(m)
 		if err != nil {
 			return

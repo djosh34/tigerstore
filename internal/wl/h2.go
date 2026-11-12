@@ -55,6 +55,7 @@ type stream struct {
 	buf   []byte // a gRPC message across DATA frames
 	watch bool
 	wids  []int32 // the watchers of a watch stream
+	fail  []byte  // a Txn's failure branch, kept here and not replicated
 }
 
 const streamSlots = 1 << 13
@@ -106,7 +107,7 @@ func (c *client) newStream(id uint32, kind uint8) *stream {
 		s = &stream{}
 		c.over[id] = s
 	}
-	*s = stream{id: id, kind: kind, open: true, buf: s.buf[:0], wids: s.wids[:0]}
+	*s = stream{id: id, kind: kind, open: true, buf: s.buf[:0], wids: s.wids[:0], fail: nil}
 	return s
 }
 

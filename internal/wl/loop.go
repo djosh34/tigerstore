@@ -185,6 +185,7 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	n.fwd = make([]fwdBatch, fwdSlots)
 	n.ring = mmapBytes(ringSize)
 	n.rx = mmapBytes(ringSize)
+	n.side = mmapBytes(64 << 20)
 	n.wal, err = openWAL(filepath.Join(dataDir, "wal"))
 	if err != nil {
 		return err
@@ -444,9 +445,10 @@ func (l *loop) run() {
 		_ = n.rn.Campaign()
 	}
 	for {
-		timeout := int(time.Until(l.next) / time.Millisecond)
-		if timeout < 0 {
-			timeout = 0
+		// Round up: a wait of less than a millisecond must not spin.
+		timeout := 0
+		if d := time.Until(l.next); d > 0 {
+			timeout = int((d + time.Millisecond - 1) / time.Millisecond)
 		}
 		k, err := unix.EpollWait(l.epfd, events, timeout)
 		if err != nil && !errors.Is(err, unix.EINTR) {
