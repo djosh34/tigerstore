@@ -60,6 +60,8 @@ type Loop struct {
 	// per flusher, which timed indexes.
 	timers []timer
 	timed  map[Flusher]int
+	// drained is closed once Drain returned.
+	drained chan struct{}
 }
 
 // timer is a flusher to flush at or after a time.
@@ -70,7 +72,7 @@ type timer struct {
 
 // New returns a loop over p.
 func New(p Poller) *Loop {
-	return &Loop{p: p, handlers: map[uint64]Handler{}, isDirty: map[Flusher]bool{}, timed: map[Flusher]int{}}
+	return &Loop{p: p, handlers: map[uint64]Handler{}, isDirty: map[Flusher]bool{}, timed: map[Flusher]int{}, drained: make(chan struct{})}
 }
 
 // Attach hands c to the loop with h as its handler, whose Ready runs once
@@ -251,10 +253,12 @@ func (l *Loop) Flush() {
 // Drain serves the loop's sockets on their own once the owner stopped for
 // good, until no handler is left, and then closes the poller: every
 // handler that is a Stopper learns that the owner stopped, and the sockets
-// go on until their owners close them, as a server answers calls that the node stopped and closes its
-// connections when it stops itself. Post drops what comes after the last
-// handler went. The owner calls it on the loop, as its last act there.
+// go on until their owners close them, as a server answers calls that the
+// node stopped and closes its connections when it stops itself. Post
+// drops what comes after the last handler went. The owner calls it on the
+// loop, as its last act there; Drained says when it returned.
 func (l *Loop) Drain() {
+	defer close(l.drained)
 	l.Dispatch(false)
 	// In the order of their tokens, so a simulated run replays.
 	for _, token := range slices.Sorted(maps.Keys(l.handlers)) {
@@ -279,6 +283,12 @@ func (l *Loop) Drain() {
 		l.Flush()
 	}
 }
+
+// Drained is closed once Drain returned: no handler of the loop runs
+// after it, so whoever stops the loop's owner and closes its sockets
+// waits for it before it counts the owner as stopped, as a log the
+// handlers write may be read then.
+func (l *Loop) Drained() <-chan struct{} { return l.drained }
 
 // Run runs the loop on its own until ctx ends, for an owner that has no
 // turns of its own, such as a test of the peer transport without a node.

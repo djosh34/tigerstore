@@ -219,6 +219,7 @@ func (f *floor) shutdown(cancel context.CancelFunc) error {
 			errs = append(errs, fmt.Errorf("node %d: %w", i+1, err))
 		}
 		errs = append(errs, n.srv.Stop(), n.t.Close())
+		<-n.node.Drained()
 	}
 	f.serving.Wait()
 	return errors.Join(errs...)
