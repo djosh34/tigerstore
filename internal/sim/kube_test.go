@@ -177,6 +177,64 @@ func TestKubeValuesUnique(t *testing.T) {
 	}
 }
 
+// TestKubeListsPageOnPurpose makes the calls of the Kubernetes-shaped
+// load, every one answered as a success and every first page of a list
+// with more to come, and requires each client's first list to be of its
+// largest group, which holds more than a page, and to go on to a later
+// page. A run that pages no list fails TestKubernetesLoad (#620).
+func TestKubeListsPageOnPurpose(t *testing.T) {
+	records, err := newRecordLog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Sim{cfg: kubeConfig(1, false), rng: rand.New(rand.NewPCG(1, 2)), t0: time.Now(), records: records}
+	for i, k := range s.newKubeLoad() {
+		s.clients = append(s.clients, &client{id: i, sim: s, node: -1, kube: k})
+	}
+	first := map[int]string{}
+	var rev int64
+	for range 500 {
+		for _, c := range s.clients {
+			r := &Record{Client: c.id, req: c.request()}
+			rev++
+			h := &pb.ResponseHeader{Revision: rev}
+			var resp proto.Message
+			switch req := r.req.(type) {
+			case *pb.LeaseGrantRequest:
+				resp = &pb.LeaseGrantResponse{Header: h, ID: rev, TTL: req.TTL}
+			case *pb.TxnRequest:
+				resp = &pb.TxnResponse{Header: h, Succeeded: true}
+			case *pb.RangeRequest:
+				if req.Limit > 0 && req.Revision == 0 {
+					if _, ok := first[c.id]; !ok {
+						first[c.id] = string(req.Key)
+					}
+					resp = &pb.RangeResponse{Header: h, More: true, Kvs: []*mvccpb.KeyValue{{Key: append(slices.Clone(req.Key), 'a')}}}
+				} else {
+					resp = &pb.RangeResponse{Header: h}
+				}
+			case *pb.CompactionRequest:
+				resp = &pb.CompactionResponse{Header: h}
+			default:
+				t.Fatalf("unexpected request %T", r.req)
+			}
+			c.done(r, resp, nil)
+		}
+	}
+	for _, c := range s.clients {
+		k := c.kube
+		if want := string(k.prefixes[k.largest]); first[c.id] != want {
+			t.Errorf("client %d first listed %q, not its largest group %q", c.id, first[c.id], want)
+		}
+		if n := len(k.groups[k.largest]); int64(n) <= 2*s.listPage() {
+			t.Errorf("client %d: its largest group has %d objects, not more than two pages of %d", c.id, n, s.listPage())
+		}
+		if !k.paged {
+			t.Errorf("client %d read no later page", c.id)
+		}
+	}
+}
+
 // TestLeasesExpireByTTL checks leasesExpire against each lease's own TTL:
 // a lease of 120 s granted 30 s before the end may still live then, but
 // not one of 4 s granted then, nor one of 120 s granted 300 s before; and
