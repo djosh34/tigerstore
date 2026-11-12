@@ -548,7 +548,9 @@ func (s *session) measure(streams int) (*result, error) {
 	// read apart from the CPU samples, which a slow node must not delay.
 	var nodes [2][]nodeMetrics
 	if len(cfg.metrics) > 0 {
-		sampler.Go(func() { nodes, metricsErr = windowMetrics(cfg.metrics, t1, t2) })
+		// A read that takes 2% of the window misplaces its bytes per
+		// operation by about as much.
+		sampler.Go(func() { nodes, metricsErr = windowMetrics(cfg.metrics, t1, t2, time.Duration(t2-t1)/50) })
 	}
 	phaseErr := runPhase(s.workers, s.loads, phase{rate: cfg.rate / float64(cfg.conns), start: t0, stop: t2, drain: drainTimeout, limit: streams})
 	sampler.Wait()

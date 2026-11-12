@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,10 +14,10 @@ import (
 )
 
 // errNoMetric is a /metrics page without the leader gauge, and
-// errLateMetrics a read of the window's start that ended after the window.
+// errLateMetrics a read that ended too long after the moment it stands for.
 var (
 	errNoMetric    = errors.New("metric missing")
-	errLateMetrics = errors.New("the start of the window was read after its end")
+	errLateMetrics = errors.New("/metrics read too late")
 )
 
 // nodeMetrics is what one node's /metrics says at one moment: the bytes it
@@ -29,19 +28,15 @@ type nodeMetrics struct {
 }
 
 // windowMetrics reads every endpoint's /metrics at the start and at the
-// stop of the window, both given as now() times.
-func windowMetrics(endpoints []string, start, stop int64) ([2][]nodeMetrics, error) {
+// stop of the window, both given as now() times. Each read must end within
+// slack of the moment it stands for, or its counters would count load from
+// outside the window.
+func windowMetrics(endpoints []string, start, stop int64, slack time.Duration) ([2][]nodeMetrics, error) {
 	var out [2][]nodeMetrics
 	for i, at := range []int64{start, stop} {
 		time.Sleep(time.Duration(at - now()))
 		var err error
-		// Only the start's read can end too late: the stop's is the
-		// last of the window.
-		deadline := stop
-		if i == 1 {
-			deadline = math.MaxInt64
-		}
-		if out[i], err = sampleMetrics(endpoints, deadline); err != nil {
+		if out[i], err = sampleMetrics(endpoints, at+int64(slack)); err != nil {
 			return out, err
 		}
 	}
@@ -50,8 +45,8 @@ func windowMetrics(endpoints []string, start, stop int64) ([2][]nodeMetrics, err
 
 // sampleMetrics reads every endpoint's /metrics at once, in the order given,
 // over HTTP/1.1 connections of its own, apart from the load's. Reads that
-// end after stop (a now() time) are no sample of the window's start.
-func sampleMetrics(endpoints []string, stop int64) ([]nodeMetrics, error) {
+// end after deadline, a now() time, are too late.
+func sampleMetrics(endpoints []string, deadline int64) ([]nodeMetrics, error) {
 	transport := &http.Transport{DisableKeepAlives: true}
 	scheme := "http"
 	if clientTLS != nil {
@@ -70,7 +65,7 @@ func sampleMetrics(endpoints []string, stop int64) ([]nodeMetrics, error) {
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}
-	if now() >= stop {
+	if now() > deadline {
 		return nil, errLateMetrics
 	}
 	return out, nil

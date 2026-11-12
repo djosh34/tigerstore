@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -51,21 +52,28 @@ func TestPeerBytesPerOpPutsTheLeaderFirst(t *testing.T) {
 	}
 }
 
-// TestWindowMetricsRefusesALateStart drops a window whose start was read
-// only after its end: those counters would describe no window.
-func TestWindowMetricsRefusesALateStart(t *testing.T) {
+// TestWindowMetricsRefusesALateRead drops a window whose start or end was
+// read too long after that moment: those counters would count load from
+// outside the window.
+func TestWindowMetricsRefusesALateRead(t *testing.T) {
+	var delay atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(time.Duration(delay.Load()))
 		_, _ = io.WriteString(w, "etcd_server_is_leader 1\n")
 	}))
 	defer srv.Close()
 	ep := strings.TrimPrefix(srv.URL, "http://")
+	window := int64(200 * time.Millisecond)
+
+	// Late, though still inside the window.
+	delay.Store(int64(100 * time.Millisecond))
 	start := now()
-	if _, err := windowMetrics([]string{ep, ep}, start, start+int64(50*time.Millisecond)); !errors.Is(err, errLateMetrics) {
+	if _, err := windowMetrics([]string{ep, ep}, start, start+window, 50*time.Millisecond); !errors.Is(err, errLateMetrics) {
 		t.Fatalf("got %v, want %v", err, errLateMetrics)
 	}
+	delay.Store(0)
 	start = now()
-	got, err := windowMetrics([]string{ep, ep}, start, start+int64(300*time.Millisecond))
+	got, err := windowMetrics([]string{ep, ep}, start, start+window, 50*time.Millisecond)
 	if err != nil || len(got[0]) != 2 || len(got[1]) != 2 || !got[1][0].leader {
 		t.Fatalf("got %+v, %v; want both reads of both nodes", got, err)
 	}
