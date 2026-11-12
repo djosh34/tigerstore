@@ -49,8 +49,8 @@ deadline=${DEADLINE:-1320}
 ) &
 watchdog=$!
 trap 'pkill -P "$watchdog" 2>/dev/null; kill "$watchdog" 2>/dev/null || true' EXIT
-phase "building tigerstore and the factory"
 
+phase "building tigerstore and the factory"
 go build ${RACE:+-race} -o "$work/tigerstore" "$repo/cmd/tigerstore"
 [ -n "${RACE:-}" ] && export GORACE=halt_on_error=1
 go build -o "$work/factory" "$repo/apiservertest/factory"
