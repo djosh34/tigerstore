@@ -147,8 +147,10 @@ type Server struct {
 	open       int
 	maxConns   int
 	refusedLog time.Time
-	// refusing counts the refused connections that hear why (refuse).
-	refusing int
+	// refusing counts the refused connections that hear why (refuse), and
+	// toldRefused holds when each client host last heard why.
+	refusing    int
+	toldRefused map[string]time.Time
 	// outAll is the output that waits for the client connections'
 	// sockets, and maxOut its bound, 0 for none: a connection whose next
 	// write pass would go past it waits in outWaiting until sockets took
@@ -365,25 +367,57 @@ func (s *Server) hand(c *conn) bool {
 
 // maxRefusing bounds the refused connections that wait for their
 // handshake to hear why at once; past it, a refused one is closed.
-const maxRefusing = 16
+// refuseEvery is how often one client host hears why, and maxToldRefused
+// how many hosts the server remembers that for.
+const (
+	maxRefusing    = 16
+	refuseEvery    = time.Second
+	maxToldRefused = 1024
+)
+
+// remoteHost is the host of c's remote address.
+func remoteHost(c net.Conn) string {
+	if a, ok := c.RemoteAddr().(*net.TCPAddr); ok {
+		return a.IP.String()
+	}
+	return c.RemoteAddr().String()
+}
 
 // refuseLocked refuses a client connection past the limit, counts it in
 // tigerstore_server_client_connections_refused_total, and logs it at most
 // once a minute. The client hears why on a goroutine of its own (refuse),
 // unless maxRefusing others wait already. s.mu is held.
 func (s *Server) refuseLocked(nc net.Conn, l Listener) {
-	if s.n != nil {
-		s.n.MetricSet().ClientConnsRefused.Inc()
-	}
+	s.metrics.set.ClientConnsRefused.Inc()
 	if time.Since(s.refusedLog) >= time.Minute {
 		s.refusedLog = time.Now()
 		if s.cfg.Logf != nil {
 			s.cfg.Logf("refused a client connection: %d are open, the most the memory budget holds", s.maxConns)
 		}
 	}
-	if s.refusing >= maxRefusing {
+	// gRPC resets its reconnect backoff after any connection that got the
+	// server's SETTINGS, so a client refused that way would come back at
+	// once, in a loop. One that is closed before them backs off (a second,
+	// then 1.6 times longer each time). So a client host hears why at most
+	// once a second, and is closed at once in between.
+	host := remoteHost(nc)
+	now := time.Now()
+	if last, ok := s.toldRefused[host]; s.refusing >= maxRefusing || ok && now.Sub(last) < refuseEvery {
 		_ = nc.Close()
 		return
+	}
+	if len(s.toldRefused) >= maxToldRefused {
+		for h, at := range s.toldRefused {
+			if now.Sub(at) >= refuseEvery {
+				delete(s.toldRefused, h)
+			}
+		}
+	}
+	if len(s.toldRefused) < maxToldRefused {
+		if s.toldRefused == nil {
+			s.toldRefused = map[string]time.Time{}
+		}
+		s.toldRefused[host] = now
 	}
 	s.refusing++
 	s.wg.Go(func() {
