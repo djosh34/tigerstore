@@ -6,14 +6,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
-// errNoMetric is a /metrics page without the leader gauge.
-var errNoMetric = errors.New("metric missing")
+// errNoMetric is a /metrics page without the leader gauge, and
+// errLateMetrics a read of the window's start that ended after the window.
+var (
+	errNoMetric    = errors.New("metric missing")
+	errLateMetrics = errors.New("the start of the window was read after its end")
+)
 
 // nodeMetrics is what one node's /metrics says at one moment: the bytes it
 // has sent to its peers so far, and whether it leads.
@@ -22,9 +28,30 @@ type nodeMetrics struct {
 	leader   bool
 }
 
-// sampleMetrics reads every endpoint's /metrics, in the order given, over
-// HTTP/1.1 connections of its own, apart from the load's.
-func sampleMetrics(endpoints []string) ([]nodeMetrics, error) {
+// windowMetrics reads every endpoint's /metrics at the start and at the
+// stop of the window, both given as now() times.
+func windowMetrics(endpoints []string, start, stop int64) ([2][]nodeMetrics, error) {
+	var out [2][]nodeMetrics
+	for i, at := range []int64{start, stop} {
+		time.Sleep(time.Duration(at - now()))
+		var err error
+		// Only the start's read can end too late: the stop's is the
+		// last of the window.
+		deadline := stop
+		if i == 1 {
+			deadline = math.MaxInt64
+		}
+		if out[i], err = sampleMetrics(endpoints, deadline); err != nil {
+			return out, err
+		}
+	}
+	return out, nil
+}
+
+// sampleMetrics reads every endpoint's /metrics at once, in the order given,
+// over HTTP/1.1 connections of its own, apart from the load's. Reads that
+// end after stop (a now() time) are no sample of the window's start.
+func sampleMetrics(endpoints []string, stop int64) ([]nodeMetrics, error) {
 	transport := &http.Transport{DisableKeepAlives: true}
 	scheme := "http"
 	if clientTLS != nil {
@@ -34,12 +61,17 @@ func sampleMetrics(endpoints []string) ([]nodeMetrics, error) {
 	}
 	client := &http.Client{Timeout: 5 * time.Second, Transport: transport}
 	out := make([]nodeMetrics, len(endpoints))
+	errs := make([]error, len(endpoints))
+	var wg sync.WaitGroup
 	for i, ep := range endpoints {
-		m, err := fetchMetrics(client, scheme+"://"+ep+"/metrics")
-		if err != nil {
-			return nil, err
-		}
-		out[i] = m
+		wg.Go(func() { out[i], errs[i] = fetchMetrics(client, scheme+"://"+ep+"/metrics") })
+	}
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
+	}
+	if now() >= stop {
+		return nil, errLateMetrics
 	}
 	return out, nil
 }

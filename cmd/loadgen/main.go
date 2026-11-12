@@ -534,14 +534,6 @@ func (s *session) measure(streams int) (*result, error) {
 				sampleErr = err
 				return
 			}
-			// Peer bytes only describe the run, so a node whose
-			// /metrics cannot be read costs the run its peer bytes,
-			// not its result.
-			if len(cfg.metrics) > 0 && metricsErr == nil {
-				if s.nodes, err = sampleMetrics(cfg.metrics); err != nil {
-					metricsErr = err
-				}
-			}
 			samples[i] = s
 			if cfg.cpuprofile != "" {
 				if err := profileCPU(cfg.cpuprofile, i == 0); err != nil {
@@ -551,8 +543,18 @@ func (s *session) measure(streams int) (*result, error) {
 			}
 		}
 	})
+	// Peer bytes only describe the run, so a node whose /metrics cannot be
+	// read in time costs the run its peer bytes, not its result. They are
+	// read apart from the CPU samples, which a slow node must not delay.
+	var nodes [2][]nodeMetrics
+	if len(cfg.metrics) > 0 {
+		sampler.Go(func() { nodes, metricsErr = windowMetrics(cfg.metrics, t1, t2) })
+	}
 	phaseErr := runPhase(s.workers, s.loads, phase{rate: cfg.rate / float64(cfg.conns), start: t0, stop: t2, drain: drainTimeout, limit: streams})
 	sampler.Wait()
+	if metricsErr == nil {
+		samples[0].nodes, samples[1].nodes = nodes[0], nodes[1]
+	}
 
 	var errs []error
 	if phaseErr != nil {

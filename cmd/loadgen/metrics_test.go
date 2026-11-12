@@ -2,9 +2,13 @@ package main
 
 import (
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseMetricsSumsPeersAndReadsLeader(t *testing.T) {
@@ -44,5 +48,25 @@ func TestPeerBytesPerOpPutsTheLeaderFirst(t *testing.T) {
 	}
 	if got := peerBytesPerOp(from, to[:2], 100); got != nil {
 		t.Fatalf("a missing sample: got %v, want nothing", got)
+	}
+}
+
+// TestWindowMetricsRefusesALateStart drops a window whose start was read
+// only after its end: those counters would describe no window.
+func TestWindowMetricsRefusesALateStart(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		_, _ = io.WriteString(w, "etcd_server_is_leader 1\n")
+	}))
+	defer srv.Close()
+	ep := strings.TrimPrefix(srv.URL, "http://")
+	start := now()
+	if _, err := windowMetrics([]string{ep, ep}, start, start+int64(50*time.Millisecond)); !errors.Is(err, errLateMetrics) {
+		t.Fatalf("got %v, want %v", err, errLateMetrics)
+	}
+	start = now()
+	got, err := windowMetrics([]string{ep, ep}, start, start+int64(300*time.Millisecond))
+	if err != nil || len(got[0]) != 2 || len(got[1]) != 2 || !got[1][0].leader {
+		t.Fatalf("got %+v, %v; want both reads of both nodes", got, err)
 	}
 }
