@@ -371,14 +371,15 @@ func TestWritePassIsBounded(t *testing.T) {
 		t.Fatalf("one pass of 4 KiB trailers left %d bytes; maxTake is %d", p, maxTake)
 	}
 	s, _ = pass(func(c *conn) {
-		c.maxFrame = 16
 		st := &stream{c: c, id: 1, sendWin: 1 << 30, inEOF: true}
 		c.streams[1] = st
-		st.out = []outItem{{kind: outData, b: make([]byte, 64<<10)}}
+		for range 5000 {
+			st.out = append(st.out, outItem{kind: outData, b: []byte{1}})
+		}
 		c.list(st)
 	})
-	if n := len(s.framesOut); n > maxPassFrames {
-		t.Fatalf("one stream's data took %d frames in one pass; maxPassFrames is %d", n, maxPassFrames)
+	if n := len(s.framesOut); n == 0 || n > maxPassFrames {
+		t.Fatalf("one stream's 5,000 messages of a byte took %d frames in one pass; maxPassFrames is %d", n, maxPassFrames)
 	}
 }
 

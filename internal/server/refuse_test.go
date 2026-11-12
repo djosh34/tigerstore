@@ -69,23 +69,121 @@ func TestClientAtTheLimit(t *testing.T) {
 	if status.Code(err) != codes.Unavailable || status.Convert(err).Message() != refusal || time.Since(start) > 5*time.Second {
 		t.Fatalf("a call that does not wait for a ready connection failed after %v with %v, want Unavailable with the reason at once", time.Since(start), err)
 	}
-	const timeout = 3 * time.Second
-	ctx, cancel = context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	// For a fixed while, the client keeps calling, and gRPC keeps
+	// reconnecting as its backoff allows.
+	const watch = 3 * time.Second
 	start = time.Now()
-	_, err = cli.Put(ctx, "k", "v")
-	took := time.Since(start)
-	if status.Code(err) != codes.Unavailable && !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("a put at the limit failed with %v, want Unavailable or its deadline", err)
+	before := testutil.ToFloat64(s.metrics.set.ClientConnsRefused)
+	for time.Since(start) < watch {
+		ctx, cancel := context.WithTimeout(context.Background(), watch-time.Since(start))
+		_, err = cli.Put(ctx, "k", "v")
+		cancel()
+		if status.Code(err) != codes.Unavailable && !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("a put at the limit failed with %v, want Unavailable or its deadline", err)
+		}
 	}
-	if took > timeout+time.Second {
-		t.Fatalf("a put at the limit took %v, over its %v timeout", took, timeout)
+	refused := testutil.ToFloat64(s.metrics.set.ClientConnsRefused) - before
+	t.Logf("in %v of puts: %g connections refused", time.Since(start), refused)
+	if time.Since(start) > watch+time.Second {
+		t.Fatalf("a put at the limit ended %v after its deadline", time.Since(start)-watch)
 	}
-	refused := testutil.ToFloat64(s.metrics.set.ClientConnsRefused)
-	t.Logf("put failed after %v with %v; %g connections refused", took, err, refused)
-	// gRPC's reconnect backoff starts at a second: a client that tried
-	// again in a tight loop would have been refused hundreds of times.
-	if refused == 0 || refused > 12 {
-		t.Fatalf("%g connections refused in %v: want a few, as gRPC backs off", refused, time.Since(start))
+	// gRPC's reconnect backoff starts at a second and grows 1.6 times:
+	// a client that tried again in a tight loop would have been refused
+	// hundreds of times.
+	if refused > 12 {
+		t.Fatalf("%g connections refused in %v of puts: the client reconnects in a tight loop", refused, watch)
+	}
+}
+
+// TestRefusalReadsOneFrame refuses a connection that sends a frame header
+// claiming a megabyte: the refusal reads no further than HTTP/2's 16 KiB
+// frame limit, so it answers at once instead of waiting for the bytes.
+func TestRefusalReadsOneFrame(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	go func() {
+		_, _ = b.Write([]byte(http2.ClientPreface))
+		hdr := frameHeader(nil, 1<<20, http2.FrameHeaders, http2.FlagHeadersEndHeaders, 1)
+		_, _ = b.Write(hdr)
+	}()
+	done := make(chan bool, 1)
+	start := time.Now()
+	go func() { done <- refuseCall(a, a) }()
+	fr := http2.NewFramer(b, b)
+	for {
+		f, err := fr.ReadFrame()
+		if err != nil {
+			t.Fatalf("no GOAWAY: %v", err)
+		}
+		if _, ok := f.(*http2.GoAwayFrame); ok {
+			break
+		}
+	}
+	if took := time.Since(start); took > 500*time.Millisecond {
+		t.Fatalf("the refusal answered after %v: it waited for the frame's megabyte", took)
+	}
+	<-done
+}
+
+// TestStopEndsRefusals stops a server while a refused client that sends
+// nothing waits for its handshake: Stop returns at once, not after the
+// handshake timeout.
+func TestStopEndsRefusals(t *testing.T) {
+	s := bareServer(t)
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+	s.conns, s.gone = map[closer]struct{}{}, newConnMetrics()
+	s.maxConns = 1
+	go func() { _ = s.loop.Run(t.Context()) }()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = s.ServeListener(Listener{Listener: ln, Traffic: TrafficAll}) }()
+	var conns []net.Conn
+	defer func() {
+		for _, c := range conns {
+			c.Close() //nolint:errcheck // closing a test connection
+		}
+	}()
+	// The first connection speaks HTTP/2 and holds the one place; the
+	// second, refused, sends nothing.
+	for i := range 2 {
+		c, err := net.Dial("tcp", ln.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		conns = append(conns, c)
+		if i > 0 {
+			break
+		}
+		if _, err := c.Write([]byte(http2.ClientPreface)); err != nil {
+			t.Fatal(err)
+		}
+		if err := http2.NewFramer(c, c).WriteSettings(); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			s.mu.Lock()
+			open := s.open
+			s.mu.Unlock()
+			if open == 1 {
+				break
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	for testutil.ToFloat64(s.metrics.set.ClientConnsRefused) == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	start := time.Now()
+	stopped := make(chan error, 1)
+	go func() { stopped <- s.Stop() }()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop waited for a refused connection's handshake")
+	}
+	if took := time.Since(start); took > 3*time.Second {
+		t.Fatalf("Stop took %v", took)
 	}
 }

@@ -489,6 +489,9 @@ func refuseCall(conn, nc net.Conn) bool {
 		return false
 	}
 	fr := http2.NewFramer(conn, conn)
+	// HTTP/2's own limit, which the server never raises: a frame header
+	// cannot make a refusal allocate more.
+	fr.SetMaxReadFrameSize(maxReadFrame)
 	if fr.WriteSettings() != nil || nc.SetReadDeadline(time.Now().Add(time.Second)) != nil {
 		return false
 	}

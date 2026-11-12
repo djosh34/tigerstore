@@ -89,7 +89,9 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 			frames = c.endStream(st, frames, budget)
 		case outData:
 			for len(it.b) > 0 || it.end {
-				if len(frames)+2 > maxPassFrames || *budget < 2*frameHeaderLen+4 {
+				// A round gives the stream at most one data frame (take's
+				// quantum), so the check above bounds the frames too.
+				if *budget < 2*frameHeaderLen+4 {
 					return frames
 				}
 				n := 0
