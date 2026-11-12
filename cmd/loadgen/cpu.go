@@ -76,13 +76,15 @@ func parseDiskstats(b []byte, dev string) (int64, error) {
 	return 0, fmt.Errorf("no device %q in /proc/diskstats", dev)
 }
 
-// cpuSample is the CPU time of the servers and of this process, and the
-// bytes written to the disk under test, at one moment.
+// cpuSample is the CPU time of the servers and of this process, the bytes
+// written to the disk under test, and the nodes' counters, at one moment.
 type cpuSample struct {
 	at        int64
 	servers   []time.Duration
 	self      time.Duration
 	diskBytes int64
+	// nodes is each -metrics node's /metrics, if there are any.
+	nodes []nodeMetrics
 }
 
 func sampleCPU(pids []int, disk string) (cpuSample, error) {

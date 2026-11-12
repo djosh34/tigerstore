@@ -339,3 +339,21 @@ func TestReportGeneratorLimitFailsRun(t *testing.T) {
 		}
 	}
 }
+
+// TestReportNodeCosts reports the leader's and the followers' peer bytes
+// per operation seed by seed, and leaves out a run that has none.
+func TestReportNodeCosts(t *testing.T) {
+	dir := t.TempDir()
+	for rep, peers := range []string{`[3000,2000,2200]`, `[3300,2100,2300]`, `[]`} {
+		writeAt(t, dir, "2", "k8s", fmt.Sprintf("candidate-max-7.%d.json", rep+1),
+			fmt.Sprintf(`{"valid":true,"throughput":1000,"leader_cpu_us_per_op":%d,"server_cores_by_node":[0.8,0.6,0.6],"peer_sent_bytes_per_op_by_node":%s}`, 10+rep, peers))
+	}
+	var b strings.Builder
+	if err := report(&b, dir, ""); err != nil {
+		t.Fatal(err)
+	}
+	want := "| k8s | 7 | 2 | candidate | 10.00 / 11.00 / 12.00 | 3000 / 3150 / 3300 | 2100 / 2150 / 2200 | 0.80 / 0.80 / 0.80; 0.60 / 0.60 / 0.60; 0.60 / 0.60 / 0.60 |"
+	if !strings.Contains(b.String(), want) {
+		t.Fatalf("no row %q in report:\n%s", want, b.String())
+	}
+}

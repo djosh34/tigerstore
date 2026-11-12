@@ -48,6 +48,7 @@ type config struct {
 	page        int
 	ramp        bool
 	pids        []int
+	metrics     []string
 	disk        string
 	label       string
 	seed        uint64
@@ -78,6 +79,7 @@ func parseFlags(args []string) (config, error) {
 	fs.IntVar(&cfg.page, "page", 500, "list workload: the limit of each LIST page; keys spread over 100 namespaces")
 	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step until throughput climbs less than 5%, at most 5 times; the best step is the result")
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
+	metrics := fs.String("metrics", "", "comma-separated host:port of every node's client endpoint, whose /metrics give each node's peer bytes per operation")
 	fs.StringVar(&cfg.disk, "disk", "", "device or partition in /proc/diskstats, such as sda1, whose bytes written in the window are reported per operation")
 	fs.StringVar(&cfg.label, "label", "", "name of the store under test, copied into the result")
 	fs.Uint64Var(&cfg.seed, "seed", 1, "random seed")
@@ -92,6 +94,9 @@ func parseFlags(args []string) (config, error) {
 		return cfg, err
 	}
 	cfg.endpoints = strings.Split(*endpoints, ",")
+	if *metrics != "" {
+		cfg.metrics = strings.Split(*metrics, ",")
+	}
 	if *pids != "" {
 		for p := range strings.SplitSeq(*pids, ",") {
 			n, err := strconv.Atoi(p)
@@ -167,6 +172,10 @@ type result struct {
 	ServerCPUUsPerOp   float64   `json:"server_cpu_us_per_op"`
 	ServerCPUUsPerNode []float64 `json:"server_cpu_us_per_op_by_node"`
 	ServerCores        []float64 `json:"server_cores_by_node"`
+	// PeerSentBytesPerOp is each node's bytes sent to its peers in the
+	// window per operation, from -metrics: the node that led at the end
+	// first, then the others.
+	PeerSentBytesPerOp []float64 `json:"peer_sent_bytes_per_op_by_node,omitempty"`
 	ClientCPUUsPerOp   float64   `json:"client_cpu_us_per_op"`
 	ClientCores        float64   `json:"client_cores"`
 	// DiskBytesPerOp counts every byte -disk wrote in the window, from
@@ -524,6 +533,12 @@ func (s *session) measure(streams int) (*result, error) {
 				sampleErr = err
 				return
 			}
+			if len(cfg.metrics) > 0 {
+				if s.nodes, err = sampleMetrics(cfg.metrics); err != nil {
+					sampleErr = err
+					return
+				}
+			}
 			samples[i] = s
 			if cfg.cpuprofile != "" {
 				if err := profileCPU(cfg.cpuprofile, i == 0); err != nil {
@@ -829,6 +844,7 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 		res.ServerCPUUsPerNode = append(res.ServerCPUUsPerNode, perOp(d, res.Ops))
 		res.ServerCores = append(res.ServerCores, d.Seconds()/elapsed.Seconds())
 	}
+	res.PeerSentBytesPerOp = peerBytesPerOp(samples[0].nodes, samples[1].nodes, res.Ops)
 	if len(res.ServerCPUUsPerNode) > 0 {
 		res.LeaderCPUUsPerOp = res.ServerCPUUsPerNode[0]
 	}

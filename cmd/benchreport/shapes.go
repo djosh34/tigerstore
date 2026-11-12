@@ -104,6 +104,60 @@ func shapes(w io.Writer, rtts, benches, targets []string, all maxRuns) {
 	p("\nEach seed draws its workload, for k8s a recorded cluster shape and where each copy of it begins (bench/recordings), and runs it on every store. Spread is (max - min) / median over the repeats of that seed on one store, never across seeds or shapes. Against baseline is the candidate's median over the baseline's for the seed; a change no larger than the spread of either is noise.\n")
 }
 
+// nodeCosts prints what each seed's max runs cost the nodes, store by
+// store: the leader's CPU and the bytes the leader and each follower sent
+// to their peers, per operation of the window.
+func nodeCosts(w io.Writer, rtts, benches, targets []string, all maxRuns) {
+	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
+	p("\n| Benchmark | Seed | RTT ms | Store | Leader CPU us/op | Leader peer B/op | Follower peer B/op | Server cores per node |\n|---|---|---|---|---|---|---|---|\n")
+	for _, bench := range benches {
+		var everything runs
+		for _, rtt := range rtts {
+			for _, target := range targets {
+				everything = append(everything, all(rtt, bench, target)...)
+			}
+		}
+		for _, seed := range seedsOf(everything) {
+			for _, rtt := range rtts {
+				for _, target := range targets {
+					rs := seedRuns(all(rtt, bench, target), seed)
+					if len(rs) == 0 {
+						continue
+					}
+					p("| %s | %s | %s | %s | %s | %s | %s | %s |\n", bench, seed, rtt, target,
+						num(rs, func(r result) float64 { return r.LeaderCPUUsPerOp }, "%.2f"),
+						peerBytes(rs, leaderPeerBytes), peerBytes(rs, followerPeerBytes), cores(rs))
+				}
+			}
+		}
+	}
+	p("\nValues are min / median / max over the seed's repeats. Follower peer B/op is the mean of the followers in each run. The leader is the node that led at the end of the window; a run without peer bytes (an older loadgen, or a leader change) shows -.\n")
+}
+
+// peerBytes is num over the runs that measured their peer bytes.
+func peerBytes(rs runs, f func(result) float64) string {
+	var measured runs
+	for _, r := range rs {
+		if len(r.PeerSentBytesPerOp) > 1 {
+			measured = append(measured, r)
+		}
+	}
+	if len(measured) == 0 {
+		return "-"
+	}
+	return num(measured, f, "%.0f")
+}
+
+func leaderPeerBytes(r result) float64 { return r.PeerSentBytesPerOp[0] }
+
+func followerPeerBytes(r result) float64 {
+	var sum float64
+	for _, b := range r.PeerSentBytesPerOp[1:] {
+		sum += b
+	}
+	return sum / float64(len(r.PeerSentBytesPerOp)-1)
+}
+
 func throughput(r result) float64 { return r.Throughput }
 
 func abs(x float64) float64 { return max(x, -x) }
