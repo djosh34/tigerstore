@@ -34,9 +34,10 @@ descendants() {
 	done
 }
 # The watchdog waits in the background and is killed when the script ends.
+deadline=${DEADLINE:-1320}
 (
-	sleep "${DEADLINE:-1320}"
-	phase "still running after ${DEADLINE:-1320} s; every process, then SIGQUIT to the test binaries"
+	sleep "$deadline"
+	phase "still running after $deadline s; every process, then SIGQUIT to the test binaries"
 	ps -eo pid,ppid,etime,stat,wchan:32,args --forest >&2
 	quit=0
 	for p in $(descendants $$); do
@@ -48,7 +49,6 @@ descendants() {
 ) &
 watchdog=$!
 trap 'pkill -P "$watchdog" 2>/dev/null; kill "$watchdog" 2>/dev/null || true' EXIT
-
 phase "building tigerstore and the factory"
 
 go build ${RACE:+-race} -o "$work/tigerstore" "$repo/cmd/tigerstore"
@@ -79,7 +79,7 @@ phase "compiling the tests"
 go test -count=1 -run '^$' ./pkg/storage/etcd3/... ./pkg/storage/testing
 phase "running the tests"
 go test -count=1 -timeout=20m -v "$@" ./pkg/storage/etcd3/... ./pkg/storage/testing | tee "$work/test-$version.log"
-phase "the tests ended"
+phase "the tests passed"
 # #48 allows no skipped test.
 if grep -q -- '--- SKIP' "$work/test-$version.log"; then
 	echo "a test was skipped:" >&2
