@@ -707,8 +707,9 @@ func (t *TCP) receive(c net.Conn) (bool, error) {
 	t.inbound[c] = inbound{id: from, version: v}
 	t.mu.Unlock()
 	tc := c.(*tls.Conn)
-	if !t.loop.Post(func() { t.attachIn(tc, from, v) }) {
-		return false, nil
+	o := t.handOver(c)
+	if !t.loop.Post(func() { t.attachIn(tc, o, from, v) }) {
+		t.release(o)
 	}
 	return true, nil
 }
@@ -1078,8 +1079,9 @@ func (s *sender) runLane(l *lane) {
 		s.laneUp(l, v)
 		down := make(chan error, 1)
 		tc := c.(*tls.Conn)
-		if !s.t.loop.Post(func() { s.attach(l, tc, v, down) }) {
-			s.t.untrack(c)
+		o := s.t.handOver(c)
+		if !s.t.loop.Post(func() { s.attach(l, tc, o, v, down) }) {
+			s.t.release(o)
 			s.laneDown(l, false)
 			return
 		}
@@ -1089,14 +1091,8 @@ func (s *sender) runLane(l *lane) {
 			// The loop ends the lane's connection: a socket closed here
 			// would send epoll no event. Once the loop drained, the close
 			// here is all there is.
-			if !s.t.loop.Post(func() {
-				if l.out != nil {
-					l.out.fail(net.ErrClosed)
-				}
-			}) {
-				if cerr := bridgeOf(c).Conn.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) {
-					s.t.logf("peer: close: %v", cerr)
-				}
+			if cerr := o.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) {
+				s.t.logf("peer: close: %v", cerr)
 			}
 			err = nil
 		}

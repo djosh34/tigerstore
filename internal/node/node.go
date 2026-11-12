@@ -1445,9 +1445,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			timeout = min(timeout, time.Until(pace))
 		}
 		// A watcher that catches up with room for its next piece, or a
-		// revoke's next step, gets a turn at once, and so do inputs that
-		// waited for the disk.
-		if n.core.Working() || !full && len(n.inbox) > 0 {
+		// revoke's next step, gets a turn at once, and so do inputs and
+		// sockets that waited for the disk.
+		if n.core.Working() || !full && (len(n.inbox) > 0 || n.loop.Holding()) {
 			timeout = 0
 		}
 		entered := wallTick(time.Now())

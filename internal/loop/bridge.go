@@ -23,8 +23,9 @@ type Bridge struct {
 	// in holds bytes read and not yet taken, from r to w.
 	in   []byte
 	r, w int
-	// out holds the bytes written since the last Flush that are not sent.
-	out []byte
+	// out holds the bytes written that are not sent, from outR on.
+	out  []byte
+	outR int
 }
 
 // NewBridge returns a bridge over raw that reads through a buffer of size
@@ -101,14 +102,14 @@ func (b *Bridge) Write(p []byte) (int, error) {
 }
 
 // Pending is how many written bytes wait to be sent.
-func (b *Bridge) Pending() int { return len(b.out) }
+func (b *Bridge) Pending() int { return len(b.out) - b.outR }
 
 // Flush sends what was written, as far as the socket takes it now. It
 // returns nil when the rest has to wait for the socket.
 func (b *Bridge) Flush() error {
-	for len(b.out) > 0 {
-		n, err := b.sock.Write(b.out)
-		b.out = b.out[:copy(b.out, b.out[n:])]
+	for b.outR < len(b.out) {
+		n, err := b.sock.Write(b.out[b.outR:])
+		b.outR += n
 		if err != nil {
 			if errors.Is(err, ErrWouldBlock) {
 				return nil
@@ -116,6 +117,7 @@ func (b *Bridge) Flush() error {
 			return err
 		}
 	}
+	b.out, b.outR = b.out[:0], 0
 	if cap(b.out) > maxIdleOut {
 		b.out = nil
 	}

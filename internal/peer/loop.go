@@ -51,18 +51,29 @@ func bridgeOf(c net.Conn) *loop.Bridge {
 // there: an epoll socket that another goroutine closes sends no event.
 type owned struct {
 	net.Conn
-	t   *TCP
-	end func()
+	t *TCP
+	// stop ends the connection's handler; loop only, nil until it has one.
+	stop func()
 }
 
 func (o *owned) Close() error {
 	err := o.Conn.Close()
-	o.t.loop.Post(o.end)
+	o.t.loop.Post(o.ended)
 	return err
 }
 
-// handOver moves a tracked connection to the loop's ownership, as o.
-func (t *TCP) handOver(c net.Conn, o *owned) {
+// ended runs on the loop for a close from another goroutine.
+func (o *owned) ended() {
+	if o.stop != nil {
+		o.stop()
+	}
+}
+
+// handOver moves a tracked TLS connection to the loop's ownership, before
+// its hand-over is posted, so that from then on nothing but the loop
+// writes it, nor closes it but by its raw connection.
+func (t *TCP) handOver(c net.Conn) *owned {
+	o := &owned{Conn: bridgeOf(c).Conn, t: t}
 	t.mu.Lock()
 	delete(t.conns, c)
 	t.conns[o] = struct{}{}
@@ -71,6 +82,7 @@ func (t *TCP) handOver(c net.Conn, o *owned) {
 		t.inbound[o] = in
 	}
 	t.mu.Unlock()
+	return o
 }
 
 // release stops tracking a connection the loop owned, and closes it. It
@@ -101,21 +113,20 @@ type inConn struct {
 	closed bool
 }
 
-// attachIn hands an inbound message connection to the loop. It runs on
-// the loop.
-func (t *TCP) attachIn(c *tls.Conn, from uint64, v byte) {
+// attachIn hands an inbound message connection, which handOver gave the
+// loop as o, to the loop. It runs on the loop.
+func (t *TCP) attachIn(c *tls.Conn, o *owned, from uint64, v byte) {
 	br := bridgeOf(c)
-	ic := &inConn{t: t, tc: c, br: br, from: from, v: v, cs: t.countersOf(from), buf: make([]byte, ioBuffer)}
+	ic := &inConn{t: t, tc: c, br: br, own: o, from: from, v: v, cs: t.countersOf(from), buf: make([]byte, ioBuffer)}
 	sock, token, err := t.loop.Attach(br.Conn, ic)
 	if err != nil {
 		t.logf("peer: receive from %d: %v", from, err)
-		t.untrack(c)
+		t.release(o)
 		return
 	}
 	br.Attach(sock)
-	ic.own = &owned{Conn: br.Conn, t: t, end: ic.close}
-	t.handOver(c, ic.own)
 	ic.token = token
+	o.stop = ic.close
 }
 
 // Ready reads what arrived and delivers every whole frame.
@@ -243,20 +254,20 @@ type outConn struct {
 	closed bool
 }
 
-// attach hands a lane's new connection to the loop, which writes the
-// lane from now on, and reports on down how it ended. It runs on the loop.
-func (s *sender) attach(l *lane, c *tls.Conn, v byte, down chan<- error) {
+// attach hands a lane's new connection, which handOver gave the loop as
+// o, to the loop, which writes the lane from now on and reports on down
+// how it ended. It runs on the loop.
+func (s *sender) attach(l *lane, c *tls.Conn, o *owned, v byte, down chan<- error) {
 	br := bridgeOf(c)
-	oc := &outConn{s: s, l: l, tc: c, br: br, v: v, down: down}
+	oc := &outConn{s: s, l: l, tc: c, br: br, own: o, v: v, down: down}
 	sock, token, err := s.t.loop.Attach(br.Conn, oc)
 	if err != nil {
-		s.t.untrack(c)
+		s.t.release(o)
 		down <- err
 		return
 	}
 	br.Attach(sock)
-	oc.own = &owned{Conn: br.Conn, t: s.t, end: func() { oc.fail(net.ErrClosed) }}
-	s.t.handOver(c, oc.own)
+	o.stop = func() { oc.fail(net.ErrClosed) }
 	oc.token = token
 	l.out = oc
 	s.t.loop.Dirty(oc)

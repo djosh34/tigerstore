@@ -630,6 +630,12 @@ func (c *conn) Close() error {
 	}
 	c.closed = true
 	c.out.eof = true
+	if c.notify != nil {
+		// A loop's socket that its own process closes hears nothing of
+		// it, as epoll reports no close of a descriptor: whoever closed
+		// it tells the loop.
+		c.in.readWake.fn, c.out.roomWake.fn = nil, nil
+	}
 	c.out.signalBoth()
 	c.in.signalBoth()
 	delete(s.net.conns, c)

@@ -21,6 +21,8 @@ import (
 	"time"
 	"unsafe"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/djosh34/tigerstore/internal/loop"
 )
 
@@ -56,7 +58,7 @@ func New() (*Poller, error) {
 		return nil, errors.Join(fmt.Errorf("epoll: eventfd: %w", errno), syscall.Close(epfd))
 	}
 	p := &Poller{epfd: epfd, efd: int(efd), events: make([]syscall.EpollEvent, maxEvents)}
-	if err := p.add(p.efd, wakeToken, syscall.EPOLLIN); err != nil {
+	if err := p.add(p.efd, wakeToken, unix.EPOLLIN); err != nil {
 		return nil, errors.Join(err, p.Close())
 	}
 	return p, nil
@@ -97,7 +99,7 @@ func (p *Poller) Attach(c net.Conn, token uint64) (loop.Socket, error) {
 	}
 	var aerr error
 	if err := rc.Control(func(fd uintptr) {
-		aerr = p.add(int(fd), token, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLET)
+		aerr = p.add(int(fd), token, unix.EPOLLIN|unix.EPOLLOUT|unix.EPOLLRDHUP|unix.EPOLLET)
 	}); err != nil {
 		return nil, err
 	}
