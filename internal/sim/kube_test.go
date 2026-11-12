@@ -180,7 +180,7 @@ func TestKubeValuesUnique(t *testing.T) {
 // TestKubeListsPageOnPurpose makes the calls of the Kubernetes-shaped
 // load, every one answered as a success and every first page of a list
 // with more to come, and requires each client's first list to be of its
-// largest group, which holds more than a page, and to go on to a later
+// largest group, which holds more than two pages, and to go on to a later
 // page. A run that pages no list fails TestKubernetesLoad (#620).
 func TestKubeListsPageOnPurpose(t *testing.T) {
 	records, err := newRecordLog()

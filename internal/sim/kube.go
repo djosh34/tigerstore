@@ -21,7 +21,8 @@ import (
 // Txn, then picks from the soak's mix: 25% gets, 10% paginated lists of
 // one of its groups, 40% updates, 15% creates and 10% deletes; until a
 // later page of one of its lists has been read, it lists its largest group,
-// which holds more than a page, so that every run pages on purpose. A create
+// which in kubeConfig's profiles holds more than two pages, so that every
+// run pages on purpose. A create
 // of an object it saw present is an update, and an update or delete of
 // one it saw absent is a create. Creates, updates and deletes are Txns
 // that compare the create or mod revision the client last saw, with a
