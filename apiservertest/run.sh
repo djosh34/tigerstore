@@ -11,7 +11,10 @@
 # skipped. WORK keeps the copy and the test output (default: a temporary
 # directory). With RACE set, tigerstore is built with -race and stops at
 # its first race report; the adapter fails a test whose server log has
-# one.
+# one. Each phase prints a timestamped line. A set still running after
+# DEADLINE seconds (default 22 minutes, inside ci's 25-minute step) prints
+# every process with its state and sends SIGQUIT to the test binaries,
+# which print every goroutine's stack and fail (#636).
 set -euo pipefail
 
 version=${1:?usage: apiservertest/run.sh <version> [go test flags...]}
@@ -21,11 +24,25 @@ work=${WORK:-$(mktemp -d)}
 mkdir -p "$work"
 work=$(cd "$work" && pwd)
 
+phase() { echo "run.sh $(date -u +%H:%M:%S): $*" >&2; }
+# The watchdog waits in the background and is killed when the script ends.
+(
+	sleep "${DEADLINE:-1320}"
+	phase "still running after ${DEADLINE:-1320} s; every process, then SIGQUIT to the test binaries"
+	ps -eo pid,ppid,etime,stat,wchan:32,args --forest >&2
+	pkill -QUIT -f '/[^ ]*\.test( |$)' || phase "no test binary was running"
+) &
+watchdog=$!
+trap 'pkill -P "$watchdog" 2>/dev/null; kill "$watchdog" 2>/dev/null || true' EXIT
+
+phase "building tigerstore and the factory"
+
 go build ${RACE:+-race} -o "$work/tigerstore" "$repo/cmd/tigerstore"
 [ -n "${RACE:-}" ] && export GORACE=halt_on_error=1
 go build -o "$work/factory" "$repo/apiservertest/factory"
 "$repo/scripts/dev-certs.sh" "$work/certs" >/dev/null
 
+phase "copying k8s.io/apiserver@$version"
 dir=$(cd "$repo" && go mod download -json "k8s.io/apiserver@$version" | jq -r .Dir)
 module="$work/apiserver-$version"
 rm -rf "$module"
@@ -44,8 +61,11 @@ if go list -deps -test ./pkg/storage/etcd3/... ./pkg/storage/testing | grep -q '
 fi
 # Compile every test binary first, so that linking does not compete with
 # the first tests for the disk and the CPU.
+phase "compiling the tests"
 go test -count=1 -run '^$' ./pkg/storage/etcd3/... ./pkg/storage/testing >/dev/null
+phase "running the tests"
 go test -count=1 -timeout=20m -v "$@" ./pkg/storage/etcd3/... ./pkg/storage/testing | tee "$work/test-$version.log"
+phase "the tests ended"
 # #48 allows no skipped test.
 if grep -q -- '--- SKIP' "$work/test-$version.log"; then
 	echo "a test was skipped:" >&2

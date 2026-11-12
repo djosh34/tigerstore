@@ -344,7 +344,11 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      # A step that runs out of time fails, so the steps below keep its
+      # logs; the job's own limit would cancel them too (#636). run.sh
+      # dumps its state 3 minutes before this one.
       - run: apiservertest/run.sh ${{ matrix.version }}
+        timeout-minutes: 25
         env:
           RACE: ${{ matrix.race }}
           WORK: ${{ runner.temp }}/apiserver
