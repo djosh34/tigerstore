@@ -10,6 +10,31 @@ import (
 // sink keeps what the test holds live.
 var sink [][]byte
 
+// TestHeldSmallObjectsCount holds 32 small buffers, 1 to 32 KiB, made
+// right after Peak's call, in a fresh process: Peak finds all of them
+// kept. A P counts its small allocations only when its cache flushes,
+// which the collection does, so bytes allocated read before the mark
+// missed them, and they were taken off as allocated during it; and the
+// first measurement in a process reads some KiB of its own setup that
+// later ones do not, which as Peak's base would take them off again
+// (#640's review). It comes first in the file, so that it runs first.
+func TestHeldSmallObjectsCount(t *testing.T) {
+	procs := runtime.GOMAXPROCS(2)
+	defer runtime.GOMAXPROCS(procs)
+	peak := Peak()
+	held := make([][]byte, 32)
+	want := 0
+	for i := range held {
+		held[i] = make([]byte, (i+1)<<10)
+		want += len(held[i])
+	}
+	_, kept := peak()
+	runtime.KeepAlive(held)
+	if kept < int64(want) {
+		t.Fatalf("%d bytes of small buffers held, %d found kept", want, kept)
+	}
+}
+
 // TestGarbageDoesNotCount makes 8 MiB of garbage, 64 KiB a millisecond,
 // while the collector falls behind, as it did on a loaded runner, where
 // a long mark of three nodes' heaps let the cluster's garbage pile up

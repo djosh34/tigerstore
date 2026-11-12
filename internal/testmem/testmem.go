@@ -11,13 +11,10 @@ import (
 )
 
 // heapObjects is the runtime metric of the bytes in live and dead heap
-// objects not yet swept, heapAllocs that of the bytes ever allocated,
-// gcCycles that of the collections ended, and gcStops that of the times
-// a collection stopped the world, which the start of its mark is one of.
+// objects not yet swept, and gcStops that of the times a collection
+// stopped the world, which the start of its mark is one of.
 const (
 	heapObjects = "/memory/classes/heap/objects:bytes"
-	heapAllocs  = "/gc/heap/allocs:bytes"
-	gcCycles    = "/gc/cycles/total:gc-cycles"
 	gcStops     = "/sched/pauses/stopping/gc:seconds"
 )
 
@@ -62,7 +59,7 @@ func Peak() (stop func() (peak, kept int64)) {
 			case <-done:
 				return
 			case <-t.C:
-				if objects, _, _ := heap(); objects-base > held+step {
+				if heap()-base > held+step {
 					held = max(held, liveHeap()-base)
 				}
 			}
@@ -77,12 +74,12 @@ func Peak() (stop func() (peak, kept int64)) {
 	}
 }
 
-// heap returns the bytes of live and dead heap objects not yet swept, the
-// bytes ever allocated, and the collections ended.
-func heap() (objects, allocs int64, cycles uint64) {
-	sample := []metrics.Sample{{Name: heapObjects}, {Name: heapAllocs}, {Name: gcCycles}}
+// heap returns the bytes of live and dead heap objects not yet swept, as
+// far as the Ps' caches counted them; it does not stop the world.
+func heap() int64 {
+	sample := []metrics.Sample{{Name: heapObjects}}
 	metrics.Read(sample)
-	return int64(sample[0].Value.Uint64()), int64(sample[1].Value.Uint64()), sample[2].Value.Uint64()
+	return int64(sample[0].Value.Uint64())
 }
 
 // liveHeap runs a collection and returns the heap that was live when its
@@ -94,20 +91,23 @@ func heap() (objects, allocs int64, cycles uint64) {
 // Bytes allocated before the mark began must count, or what of them the
 // collection frees would be taken off twice, and what is held would read
 // as less (#640's review). So a goroutine waits for the collection to
-// stop the world to start its mark, and reads the bytes allocated as the
-// world goes on. What is allocated before that read still counts: the
-// error is that much too high, never too low, and at most what the heap
-// left reads, which Peak took before #623.
+// stop the world to start its mark, and counts the bytes allocated as the
+// world goes on (counted). What is allocated before that count still
+// counts: the error is that much too high, never too low, and at most
+// what the heap left reads, which Peak took before #623.
 //
 // No automatic collection starts meanwhile, and one that runs ends its
 // mark first (debug.SetGCPercent). A measurement is taken again if its
-// goroutine read only after the mark ended, or another collection crossed
-// it, as one a test started; after a few tries, the heap left counts.
+// goroutine counted only after the mark ended, or another collection
+// crossed it, as one a test started; after a few tries, the heap left
+// counts.
 func liveHeap() int64 {
 	old := debug.SetGCPercent(-1)
 	defer debug.SetGCPercent(old)
+	// Allocated before the mark, so that neither counts as held.
+	ms := new([2]runtime.MemStats)
 	for try := 0; ; try++ {
-		_, _, cycles := heap()
+		_, _, cycles := counted(&ms[0])
 		stops := gcStopped()
 		polling := make(chan struct{})
 		type read struct {
@@ -121,14 +121,14 @@ func liveHeap() int64 {
 			for n == stops {
 				n = gcStopped()
 			}
-			_, allocs, _ := heap()
+			_, allocs, _ := counted(&ms[0])
 			// The mark ends with the world stopped once more.
 			marking <- read{allocs, n > stops+1}
 		}()
 		<-polling
 		runtime.GC()
 		r := <-marking
-		objects, after, ended := heap()
+		objects, after, ended := counted(&ms[1])
 		if ended == cycles+1 && !r.late {
 			return objects - (after - r.allocs)
 		}
@@ -136,6 +136,16 @@ func liveHeap() int64 {
 			return objects
 		}
 	}
+}
+
+// counted returns the bytes in heap objects not yet swept, the bytes ever
+// allocated, and the collections ended, through m. It stops the world,
+// which flushes the count of small allocations that each P keeps until
+// its cache flushes: the runtime's metrics read without it, and missed
+// what was allocated just before (#640's review).
+func counted(m *runtime.MemStats) (objects, allocs int64, cycles uint32) {
+	runtime.ReadMemStats(m)
+	return int64(m.HeapAlloc), int64(m.TotalAlloc), m.NumGC
 }
 
 // gcStopped returns how often a collection stopped the world.
