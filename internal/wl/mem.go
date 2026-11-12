@@ -16,6 +16,9 @@ func mmapBytes(n int) []byte {
 	if err != nil {
 		panic(fmt.Sprintf("mmap %d bytes: %v", n, err))
 	}
+	// Huge pages where the kernel gives them: the index and the slab are
+	// read at random, and each miss would also miss the TLB.
+	_ = unix.Madvise(b, unix.MADV_HUGEPAGE)
 	return b
 }
 

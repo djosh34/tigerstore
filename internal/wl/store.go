@@ -67,7 +67,7 @@ type store struct {
 
 const (
 	maxKeys    = 1 << 24
-	hashSlots  = 1 << 25
+	hashSlots  = 1 << 23
 	maxHist    = 1 << 26
 	keyArena   = 4 << 30
 	slabBytes  = 48 << 30
