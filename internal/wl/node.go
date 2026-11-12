@@ -58,8 +58,10 @@ type node struct {
 
 	// The batches this node proposed, by sequence: the leader names them
 	// in its appends to this node instead of sending them back (#626).
-	fwd    []fwdBatch
-	fwdSeq uint32
+	holding  bool // some peer's messages wait behind a held append
+	fwd      []fwdBatch
+	fwdPeers map[uint64][]fwdBatch
+	fwdSeq   uint32
 }
 
 type fwdBatch struct {
@@ -599,6 +601,9 @@ func (n *node) proposeBatch() {
 	f.seq, f.data = seq, data
 	f.handles = append(f.handles[:0], n.batchOwn...)
 	stats.proposals++
+	if n.lead != n.id && n.lead != 0 {
+		n.sendBatch(data)
+	}
 	if err := n.rn.Propose(data); err != nil {
 		for _, h := range n.batchOwn {
 			n.replyErrorH(h, codeUnavailable, "etcdserver: leader changed")

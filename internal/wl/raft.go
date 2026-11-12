@@ -369,11 +369,12 @@ func (n *node) sendPeer(m *pb.Message) {
 	}
 	ents := m.GetEntries()
 	app := m.GetType() == pb.MsgApp
-	to := m.GetTo()
 	size := msgHdr + 4 + len(m.GetContext())
 	for _, e := range ents {
 		size += 8 + 8 + 1 + 4
-		if o, _, ok := batchOrigin(e.GetData()); !app || !ok || o != to {
+		if o, _, ok := batchOrigin(e.GetData()); app && ok && o != n.id {
+			size += 4
+		} else {
 			size += len(e.GetData())
 		}
 	}
@@ -400,14 +401,21 @@ func (n *node) sendPeer(m *pb.Message) {
 		binary.LittleEndian.PutUint64(eh[0:], e.GetTerm())
 		binary.LittleEndian.PutUint64(eh[8:], e.GetIndex())
 		eh[16] = byte(e.GetType())
-		if o, seq, ok := batchOrigin(d); app && ok && o == to {
-			// The peer proposed this batch: name it.
+		if o, seq, ok := batchOrigin(d); app && ok && o != n.id {
+			// A follower proposed this batch and sent it to every peer
+			// itself: name it.
+			dbgNamed++
 			eh[16] |= namedEntry
 			binary.LittleEndian.PutUint32(eh[17:], seq)
 			s.put(eh[:])
+			var ob [4]byte
+			binary.LittleEndian.PutUint32(ob[:], uint32(o))
+			s.put(ob[:])
 			continue
 		}
 		binary.LittleEndian.PutUint32(eh[17:], uint32(len(d)))
+		dbgCarried[m.GetType()]++
+		dbgCarriedB[m.GetType()] += len(d)
 		s.put(eh[:])
 		s.put(d)
 	}
@@ -453,8 +461,27 @@ func (n *node) peerFrames(p *peerIn) error {
 		}
 		f := s.pt[s.pr+4 : s.pr+4+l]
 		s.pr += 4 + l
+		if len(p.held) > 0 && !(len(f) >= 9 && f[0] == frameBatch) {
+			// Messages from a peer keep their order behind one held.
+			p.held = append(p.held, append([]byte(nil), f...))
+			continue
+		}
+		if len(f) >= 9 && f[0] == frameBatch {
+			// A batch a follower proposed, sent ahead of the leader's
+			// append that names it.
+			origin := uint64(binary.LittleEndian.Uint32(f[1:]))
+			seq := binary.LittleEndian.Uint32(f[5:])
+			b := &n.fwdOf(origin)[seq&(fwdSlots-1)]
+			b.seq, b.data = seq, n.rxCopy(f[9:])
+			continue
+		}
 		m, err := n.decodeMsg(f)
 		if err == errUnnamed {
+			// The batch it names comes on another connection, likely in
+			// this same turn: try again after the turn's input.
+			dbgHeld++
+			p.held = append(p.held, append([]byte(nil), f...))
+			n.holding = true
 			continue
 		}
 		if err != nil {
@@ -500,7 +527,12 @@ func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
 			at += 21
 			if typ&namedEntry != 0 {
 				seq := uint32(l)
-				b := n.fwd[seq&(fwdSlots-1)]
+				if len(f) < at+4 {
+					return nil, errRecord
+				}
+				origin := uint64(binary.LittleEndian.Uint32(f[at:]))
+				at += 4
+				b := n.fwdOf(origin)[seq&(fwdSlots-1)]
 				if b.seq != seq || b.data == nil {
 					return nil, errUnnamed
 				}
@@ -531,7 +563,70 @@ func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
 
 const namedEntry = 0x80
 
+// frameBatch marks a peer frame that carries a follower's batch.
+const frameBatch = 0xff
+
+// sendBatch sends a batch this follower proposes to every peer but the
+// leader, which gets it in the proposal.
+func (n *node) sendBatch(data []byte) {
+	seq := binary.LittleEndian.Uint32(data[4:])
+	for id, p := range n.peersOut {
+		if id == n.lead || p.dead {
+			continue
+		}
+		var h [13]byte
+		binary.LittleEndian.PutUint32(h[0:], uint32(9+len(data)))
+		h[4] = frameBatch
+		binary.LittleEndian.PutUint32(h[5:], uint32(n.id))
+		binary.LittleEndian.PutUint32(h[9:], seq)
+		p.put(h[:])
+		p.put(data)
+		n.markDirty(&p.sock)
+	}
+}
+
+// fwdOf returns the table of batches that node origin proposed.
+func (n *node) fwdOf(origin uint64) []fwdBatch {
+	if origin == n.id {
+		return n.fwd
+	}
+	t, ok := n.fwdPeers[origin]
+	if !ok {
+		t = make([]fwdBatch, fwdSlots)
+		n.fwdPeers[origin] = t
+	}
+	return t
+}
+
 var errUnnamed = errors.New("a named entry this node does not have")
+
+// retryHeld decodes again, in order, the messages held behind an append
+// that named a batch not here yet.
+func (n *node) retryHeld() {
+	n.holding = false
+	for _, x := range n.socks {
+		p, ok := x.(*peerIn)
+		if !ok || len(p.held) == 0 {
+			continue
+		}
+		k := 0
+		for ; k < len(p.held); k++ {
+			m, err := n.decodeMsg(p.held[k])
+			if err == errUnnamed {
+				break
+			}
+			if err == nil {
+				m.To = new(n.id)
+				_ = n.rn.Step(m)
+			}
+		}
+		clear(p.held[:k])
+		p.held = append(p.held[:0], p.held[k:]...)
+		if len(p.held) > 0 {
+			n.holding = true
+		}
+	}
+}
 
 // rxCopy copies received entry data into the receive ring.
 func (n *node) rxCopy(p []byte) []byte {
@@ -543,3 +638,7 @@ func (n *node) rxCopy(p []byte) []byte {
 	n.rxPos += len(p)
 	return d
 }
+
+var dbgNamed int
+var dbgCarried, dbgCarriedB [32]int
+var dbgHeld int

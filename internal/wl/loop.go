@@ -33,6 +33,7 @@ type peerIn struct {
 	sock
 	hello bool
 	from  uint64
+	held  [][]byte // messages that wait behind an append naming a batch not here yet
 }
 
 // loop owns the epoll instance and the node.
@@ -183,6 +184,7 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	}
 	n.st = newStore()
 	n.fwd = make([]fwdBatch, fwdSlots)
+	n.fwdPeers = map[uint64][]fwdBatch{}
 	n.ring = mmapBytes(ringSize)
 	n.rx = mmapBytes(ringSize)
 	n.side = mmapBytes(64 << 20)
@@ -480,6 +482,9 @@ func (l *loop) run() {
 			n.rn.Tick()
 			n.retryReads(l.tick)
 		}
+		if n.holding {
+			n.retryHeld()
+		}
 		n.proposeBatch()
 		n.askReads(l.tick)
 		n.ready()
@@ -597,5 +602,5 @@ func (l *loop) logStats() {
 		float64(d.walWrites-p.walWrites)/r, float64(d.fsyncs-p.fsyncs)/r, float64(d.proposals-p.proposals)/r, float64(d.readIndex-p.readIndex)/r, float64(d.peerMsgs-p.peerMsgs)/r, float64(d.walBytes-p.walBytes)/r,
 		l.n.st.nkeys, l.n.st.rev, l.n.st.slab.top>>20)
 	l.last, l.lastAt = d, now
-	l.logger.Printf("ops by kind %v bytes %v", dbgOps, dbgBytes)
+	l.logger.Printf("ops by kind %v bytes %v named %d carried %v bytes %v held %d", dbgOps, dbgBytes, dbgNamed, dbgCarried, dbgCarriedB, dbgHeld)
 }
