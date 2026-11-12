@@ -160,6 +160,7 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) {
 			panic(err)
 		}
 		w.off += int64(n)
+		stats.walBytes += uint64(n)
 		// A short write leaves the rest of the vectors.
 		for n > 0 {
 			if n >= len(w.iov[0]) {

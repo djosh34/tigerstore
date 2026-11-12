@@ -576,7 +576,7 @@ var profMu sync.Mutex
 // counters are the loop's own, for its log: per 5 s, how many turns,
 // socket reads and writes, WAL writes and fsyncs, replies and Raft work.
 type counters struct {
-	turns, reads, writes, walWrites, fsyncs, replies, proposals, readIndex, peerMsgs uint64
+	turns, reads, writes, walWrites, fsyncs, replies, proposals, readIndex, peerMsgs, walBytes uint64
 }
 
 var stats counters
@@ -589,9 +589,9 @@ func (l *loop) logStats() {
 	if r == 0 {
 		r = 1
 	}
-	l.logger.Printf("stats %.1fs: replies/s %.0f turns/s %.0f | per reply: turns %.3f reads %.3f writes %.3f walWrites %.3f fsyncs %.4f proposals %.3f readIndex %.3f peerMsgs %.3f | keys %d rev %d slab %d MB",
+	l.logger.Printf("stats %.1fs: replies/s %.0f turns/s %.0f | per reply: turns %.3f reads %.3f writes %.3f walWrites %.3f fsyncs %.4f proposals %.3f readIndex %.3f peerMsgs %.3f walBytes %.1f | keys %d rev %d slab %d MB",
 		secs, r/secs, float64(d.turns-p.turns)/secs, float64(d.turns-p.turns)/r, float64(d.reads-p.reads)/r, float64(d.writes-p.writes)/r,
-		float64(d.walWrites-p.walWrites)/r, float64(d.fsyncs-p.fsyncs)/r, float64(d.proposals-p.proposals)/r, float64(d.readIndex-p.readIndex)/r, float64(d.peerMsgs-p.peerMsgs)/r,
+		float64(d.walWrites-p.walWrites)/r, float64(d.fsyncs-p.fsyncs)/r, float64(d.proposals-p.proposals)/r, float64(d.readIndex-p.readIndex)/r, float64(d.peerMsgs-p.peerMsgs)/r, float64(d.walBytes-p.walBytes)/r,
 		l.n.st.nkeys, l.n.st.rev, l.n.st.slab.top>>20)
 	l.last, l.lastAt = d, now
 }
