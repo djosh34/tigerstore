@@ -63,6 +63,7 @@ func (s *sock) readSock() (bool, error) {
 		// full of whole records not yet opened.
 		return false, nil
 	}
+	stats.reads++
 	n, err := unix.Read(s.fd, s.in[s.iw:])
 	if n > 0 {
 		s.iw += n
@@ -213,6 +214,7 @@ func (s *sock) frame(n int) []byte {
 func (s *sock) flush() (bool, error) {
 	s.seal()
 	for s.ow < len(s.out) {
+		stats.writes++
 		n, err := unix.Write(s.fd, s.out[s.ow:])
 		if n > 0 {
 			s.ow += n

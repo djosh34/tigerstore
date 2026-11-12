@@ -45,9 +45,13 @@ type loop struct {
 	handoffs []*handoff
 	redials  map[uint64]chan struct{}
 
-	free []int
-	tick int64
-	next time.Time
+	free   []int
+	tick   int64
+	logged int64
+	last   counters
+	lastAt time.Time
+	logger *log.Logger
+	next   time.Time
 }
 
 const (
@@ -197,7 +201,7 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 		return err
 	}
 
-	l := &loop{n: n, redials: map[uint64]chan struct{}{}}
+	l := &loop{n: n, redials: map[uint64]chan struct{}{}, logger: logger, lastAt: time.Now()}
 	if l.epfd, err = unix.EpollCreate1(unix.EPOLL_CLOEXEC); err != nil {
 		return err
 	}
@@ -477,6 +481,11 @@ func (l *loop) run() {
 		n.askReads(l.tick)
 		n.ready()
 		l.flush()
+		stats.turns++
+		if l.tick%50 == 0 && l.tick != l.logged {
+			l.logged = l.tick
+			l.logStats()
+		}
 	}
 }
 
@@ -563,3 +572,26 @@ func serveHTTP1(h *handoff) {
 }
 
 var profMu sync.Mutex
+
+// counters are the loop's own, for its log: per 5 s, how many turns,
+// socket reads and writes, WAL writes and fsyncs, replies and Raft work.
+type counters struct {
+	turns, reads, writes, walWrites, fsyncs, replies, proposals, readIndex, peerMsgs uint64
+}
+
+var stats counters
+
+func (l *loop) logStats() {
+	d, now := stats, time.Now()
+	p := l.last
+	secs := now.Sub(l.lastAt).Seconds()
+	r := float64(d.replies - p.replies)
+	if r == 0 {
+		r = 1
+	}
+	l.logger.Printf("stats %.1fs: replies/s %.0f turns/s %.0f | per reply: turns %.3f reads %.3f writes %.3f walWrites %.3f fsyncs %.4f proposals %.3f readIndex %.3f peerMsgs %.3f | keys %d rev %d slab %d MB",
+		secs, r/secs, float64(d.turns-p.turns)/secs, float64(d.turns-p.turns)/r, float64(d.reads-p.reads)/r, float64(d.writes-p.writes)/r,
+		float64(d.walWrites-p.walWrites)/r, float64(d.fsyncs-p.fsyncs)/r, float64(d.proposals-p.proposals)/r, float64(d.readIndex-p.readIndex)/r, float64(d.peerMsgs-p.peerMsgs)/r,
+		l.n.st.nkeys, l.n.st.rev, l.n.st.slab.top>>20)
+	l.last, l.lastAt = d, now
+}

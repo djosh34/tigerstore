@@ -96,6 +96,7 @@ func (w *wal) kick() {
 	if w.inflight || len(w.pending) == 0 {
 		return
 	}
+	stats.fsyncs++
 	w.want.Store(w.off)
 	w.inflight = true
 	var b [8]byte
@@ -150,6 +151,7 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) {
 	}
 	for len(w.iov) > 0 {
 		k := min(len(w.iov), 1024)
+		stats.walWrites++
 		n, err := unix.Pwritev(w.fd, w.iov[:k], w.off)
 		if err != nil {
 			if err == unix.EINTR {
@@ -325,6 +327,7 @@ const msgHdr = 1 + 1 + 8*7 + 4
 
 // sendPeer writes m into the send buffer of its peer.
 func (n *node) sendPeer(m *pb.Message) {
+	stats.peerMsgs++
 	p := n.peersOut[m.GetTo()]
 	if p == nil || p.dead {
 		return

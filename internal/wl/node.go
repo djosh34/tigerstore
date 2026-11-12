@@ -260,6 +260,7 @@ func (n *node) beginReply(c *client, s *stream, w *msgW, size int) {
 
 // endReply ends the message and the stream with grpc-status 0.
 func (n *node) endReply(c *client, s *stream, w *msgW) {
+	stats.replies++
 	w.end()
 	b := c.frame(9 + len(respTrailers))
 	putFrameHeader(b, len(respTrailers), frHeaders, flEndHeaders|flEndStream, s.id)
@@ -344,6 +345,7 @@ func (n *node) askReads(now int64) {
 	b.reads, n.reads = n.reads, b.reads[:0]
 	b.buf, n.readBuf = n.readBuf, b.buf[:0]
 	n.readBatches = append(n.readBatches, b)
+	stats.readIndex++
 	n.rn.ReadIndex(ctx[:])
 }
 
@@ -546,6 +548,7 @@ func (n *node) proposeBatch() {
 	// A follower's batch comes back from the leader by name.
 	seq := binary.LittleEndian.Uint32(data[4:])
 	n.fwd[seq&(fwdSlots-1)] = fwdBatch{seq: seq, data: data}
+	stats.proposals++
 	if err := n.rn.Propose(data); err != nil {
 		for _, h := range n.batchOwn {
 			n.replyErrorH(h, codeUnavailable, "etcdserver: leader changed")
