@@ -283,7 +283,10 @@ type k8sLoad struct {
 	buf     []byte
 	// compacted counts reads at a revision that another copy's
 	// compaction removed first; kube-apiserver lists again then.
-	compacted int64
+	// compactsBehind counts compactions to a revision another copy's
+	// compaction had passed, which kube-apiserver's compactor logs and
+	// tries again at its next interval.
+	compacted, compactsBehind int64
 	// skipped counts lease calls whose lease the start no longer has.
 	skipped int64
 	// cacheReads counts the watch cache's calls, reads of a whole watched
@@ -444,16 +447,42 @@ func (w *k8sLoad) message(st *stream, m []byte) error {
 
 func (w *k8sLoad) done(st *stream, at int64, err error) {
 	call := &st.k8s
-	var status *grpcStatus
-	if (call.kind == k8strace.CallRange || call.kind == k8strace.CallRangeStream) && call.atRev && err != nil &&
-		errors.As(err, &status) && status.code == codeOutOfRange {
+	switch behindCompaction(call.kind, call.atRev, err) {
+	case k8strace.CallRange:
 		w.compacted++
 		err, st.msgs, st.rev = nil, 1, 1
+	case k8strace.CallCompact:
+		w.compactsBehind++
+		err, st.msgs, st.rev = nil, 1, 1
 	}
-	if err == nil {
+	if err != nil {
+		// The result's errors name the kind of call that failed.
+		err = fmt.Errorf("%s: %w", k8strace.KindNames[call.kind], err)
+	} else {
 		call.cp.reply(call.i, st.rev)
 	}
 	w.wk.stats.complete(st, at, err)
+}
+
+// behindCompaction reports, for a call of kind that failed with err,
+// whether the copies' compactions passed it, as kube-apiserver meets that:
+// CallRange for a read at a revision another copy's compaction removed,
+// which it lists again; CallCompact for a compaction to a revision another
+// copy's compaction passed, which its compactor tries again later. The 64
+// copies compact one store, so under load their compactions land out of
+// order. Anything else gives CallKinds.
+func behindCompaction(kind uint8, atRev bool, err error) uint8 {
+	var status *grpcStatus
+	if err == nil || !errors.As(err, &status) || status.code != codeOutOfRange {
+		return k8strace.CallKinds
+	}
+	switch {
+	case (kind == k8strace.CallRange || kind == k8strace.CallRangeStream) && atRev:
+		return k8strace.CallRange
+	case kind == k8strace.CallCompact:
+		return k8strace.CallCompact
+	}
+	return k8strace.CallKinds
 }
 
 // rangeReply takes in a RangeResponse in one pass: the key-values it

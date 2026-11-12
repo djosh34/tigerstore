@@ -319,3 +319,31 @@ func TestK8sFlags(t *testing.T) {
 		}
 	}
 }
+
+// TestBehindCompaction checks which calls the copies' compactions may
+// pass, as kube-apiserver meets them, and that every other failure stays
+// one: the replay failed on a compaction behind another copy's when the
+// store was overloaded (#625).
+func TestBehindCompaction(t *testing.T) {
+	compacted := grpcError("11", "etcdserver: mvcc: required revision has been compacted")
+	other := grpcError("14", "etcdserver: leader changed")
+	for _, c := range []struct {
+		name  string
+		kind  uint8
+		atRev bool
+		err   error
+		want  uint8
+	}{
+		{"read at a compacted revision", k8strace.CallRange, true, compacted, k8strace.CallRange},
+		{"range stream at a compacted revision", k8strace.CallRangeStream, true, compacted, k8strace.CallRange},
+		{"compaction behind another", k8strace.CallCompact, false, compacted, k8strace.CallCompact},
+		{"read of the newest revision", k8strace.CallRange, false, compacted, k8strace.CallKinds},
+		{"txn", k8strace.CallTxn, false, compacted, k8strace.CallKinds},
+		{"compaction that failed otherwise", k8strace.CallCompact, false, other, k8strace.CallKinds},
+		{"compaction that succeeded", k8strace.CallCompact, false, nil, k8strace.CallKinds},
+	} {
+		if got := behindCompaction(c.kind, c.atRev, c.err); got != c.want {
+			t.Errorf("%s: %d, want %d", c.name, got, c.want)
+		}
+	}
+}
