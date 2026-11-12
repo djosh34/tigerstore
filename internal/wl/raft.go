@@ -7,6 +7,7 @@ import (
 	"log"
 	"runtime"
 	"sync/atomic"
+	"time"
 
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
@@ -39,7 +40,13 @@ type wal struct {
 	// copies the log into its page cache nor writes it back.
 	stage   []byte
 	flushed int64 // the helper's: the log is durable up to here
+	// lastKick is when the last sync started; deferred, that appends wait
+	// for the next one at lastKick + syncGap.
+	lastKick time.Time
+	deferred bool
 }
+
+const syncGap = 800 * time.Microsecond
 
 const (
 	stageSize = 64 << 20
@@ -132,11 +139,20 @@ func (w *wal) helper() {
 	}
 }
 
-// kick starts an fsync if none runs and appends wait.
+// kick starts an fsync if none runs and appends wait, at most one every
+// syncGap: under load each sync takes more appends, and the loop wakes
+// for fewer completions, so its turns and the acks they send grow.
 func (w *wal) kick() {
 	if w.inflight || len(w.pending) == 0 {
 		return
 	}
+	now := time.Now()
+	if d := now.Sub(w.lastKick); d < syncGap {
+		w.deferred = true
+		return
+	}
+	w.deferred = false
+	w.lastKick = now
 	stats.fsyncs++
 	w.want.Store(w.off)
 	w.inflight = true

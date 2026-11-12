@@ -450,7 +450,13 @@ func (l *loop) run() {
 	for {
 		// Round up: a wait of less than a millisecond must not spin.
 		timeout := 0
-		if d := time.Until(l.next); d > 0 {
+		wake := l.next
+		if n.wal.deferred {
+			if t := n.wal.lastKick.Add(syncGap); t.Before(wake) {
+				wake = t
+			}
+		}
+		if d := time.Until(wake); d > 0 {
 			timeout = int((d + time.Millisecond - 1) / time.Millisecond)
 		}
 		k, err := unix.EpollWait(l.epfd, events, timeout)
@@ -484,6 +490,9 @@ func (l *loop) run() {
 		}
 		if n.holding {
 			n.retryHeld()
+		}
+		if n.wal.deferred {
+			n.wal.kick()
 		}
 		n.proposeBatch()
 		n.askReads(l.tick)
