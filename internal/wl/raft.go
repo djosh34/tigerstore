@@ -61,9 +61,26 @@ func openWAL(path string) (*wal, error) {
 		return nil, err
 	}
 	w := &wal{fd: fd, kickFD: kick, wakeFD: wake, idx: make([]idxOff, idxSlots)}
+	// The log is a ring in a file written once with zeros: a sync into
+	// blocks that are already allocated and written changes no metadata,
+	// so ext4 commits no journal for it. Main's log gets the same from
+	// the spare segments it recycles.
+	zero := make([]byte, 4<<20)
+	for off := int64(0); off < walRing; off += int64(len(zero)) {
+		if _, err := unix.Pwrite(fd, zero, off); err != nil {
+			return nil, err
+		}
+	}
+	if err := unix.Fdatasync(fd); err != nil {
+		return nil, err
+	}
 	go w.helper()
 	return w, nil
 }
+
+// walRing is the size of the log file; offsets in the log grow without
+// end and wrap around in the file.
+const walRing = 768 << 20
 
 func (w *wal) helper() {
 	runtime.LockOSThread()
@@ -150,9 +167,22 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) {
 		off += int64(len(b))
 	}
 	for len(w.iov) > 0 {
-		k := min(len(w.iov), 1024)
+		// Up to the end of the file, then on from its start.
+		pos := w.off % walRing
+		room := walRing - pos
+		k, total := 0, int64(0)
+		for k < len(w.iov) && k < 1024 && total+int64(len(w.iov[k])) <= room {
+			total += int64(len(w.iov[k]))
+			k++
+		}
 		stats.walWrites++
-		n, err := unix.Pwritev(w.fd, w.iov[:k], w.off)
+		var n int
+		var err error
+		if k == 0 {
+			n, err = unix.Pwrite(w.fd, w.iov[0][:room], pos)
+		} else {
+			n, err = unix.Pwritev(w.fd, w.iov[:k], pos)
+		}
 		if err != nil {
 			if err == unix.EINTR {
 				continue

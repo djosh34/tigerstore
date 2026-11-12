@@ -58,6 +58,7 @@ type store struct {
 
 	leases  map[int64]int64
 	walFD   int
+	walEnd  *int64
 	scratch []byte
 
 	// Records replaced or deleted during an apply, freed once its
@@ -76,6 +77,7 @@ const (
 
 func newStore() *store {
 	st := &store{
+		rev:    1, // etcd's empty store is at revision 1
 		keys:   mmapSlice[keyEnt](maxKeys),
 		hash:   mmapSlice[uint64](hashSlots),
 		mask:   hashSlots - 1,
@@ -265,8 +267,16 @@ func (st *store) at(id uint32, rev int64) []byte {
 		}
 		val := make([]byte, e.vlen)
 		if e.vlen > 0 && st.walFD >= 0 {
-			if _, err := unix.Pread(st.walFD, val, e.voff); err != nil {
-				panic(err)
+			// A value the ring has overwritten since reads as zeros.
+			if st.walEnd != nil && e.voff >= *st.walEnd-walRing {
+				for got := 0; got < len(val); {
+					pos := (e.voff + int64(got)) % walRing
+					k := min(len(val)-got, int(walRing-pos))
+					if _, err := unix.Pread(st.walFD, val[got:got+k], pos); err != nil {
+						panic(err)
+					}
+					got += k
+				}
 			}
 		}
 		return appendKV(nil, st.key(id), val, e.create, e.mod, e.ver, e.lease)

@@ -192,6 +192,7 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	}
 	if fd, err := unix.Open(filepath.Join(dataDir, "wal"), unix.O_RDONLY|unix.O_CLOEXEC, 0); err == nil {
 		n.st.walFD = fd
+		n.st.walEnd = &n.wal.off
 	}
 	n.storage = raft.NewMemoryStorage()
 	n.rn, err = raft.NewRawNode(raftConfig(n.id, n.storage))
@@ -596,4 +597,5 @@ func (l *loop) logStats() {
 		float64(d.walWrites-p.walWrites)/r, float64(d.fsyncs-p.fsyncs)/r, float64(d.proposals-p.proposals)/r, float64(d.readIndex-p.readIndex)/r, float64(d.peerMsgs-p.peerMsgs)/r, float64(d.walBytes-p.walBytes)/r,
 		l.n.st.nkeys, l.n.st.rev, l.n.st.slab.top>>20)
 	l.last, l.lastAt = d, now
+	l.logger.Printf("ops by kind %v bytes %v", dbgOps, dbgBytes)
 }

@@ -63,8 +63,9 @@ type node struct {
 }
 
 type fwdBatch struct {
-	seq  uint32
-	data []byte
+	seq     uint32
+	data    []byte
+	handles []handle
 }
 
 const fwdSlots = 1 << 14
@@ -110,11 +111,11 @@ type opRes struct {
 	prevKVs bool
 }
 
-// Batch layout: [4 origin][4 sequence][4 ops][4 magic], then each op [1 kind][3 pad]
-// [8 handle][4 length] and the request's protobuf as the client sent it.
+// Batch layout: [4 origin][4 sequence][4 ops][4 magic], then each op [1 kind]
+// [4 length] and the request's protobuf as the client sent it.
 const (
 	batchHdr = 16
-	opHdr    = 16
+	opHdr    = 5
 	magic    = 0x77697265
 	ringSize = 256 << 20
 )
@@ -532,9 +533,8 @@ func (n *node) addOp(h handle, kind uint8, msg []byte) {
 		n.batchOwn = n.batchOwn[:0]
 	}
 	b := n.ring[n.ringPos : n.ringPos+opHdr]
-	b[0], b[1], b[2], b[3] = kind, 0, 0, 0
-	binary.LittleEndian.PutUint64(b[4:], uint64(h))
-	binary.LittleEndian.PutUint32(b[12:], uint32(len(msg)))
+	b[0] = kind
+	binary.LittleEndian.PutUint32(b[1:], uint32(len(msg)))
 	copy(n.ring[n.ringPos+opHdr:], msg)
 	n.ringPos += opHdr + len(msg)
 	n.batchOps++
@@ -595,7 +595,9 @@ func (n *node) proposeBatch() {
 	n.batchStart = -1
 	// A follower's batch comes back from the leader by name.
 	seq := binary.LittleEndian.Uint32(data[4:])
-	n.fwd[seq&(fwdSlots-1)] = fwdBatch{seq: seq, data: data}
+	f := &n.fwd[seq&(fwdSlots-1)]
+	f.seq, f.data = seq, data
+	f.handles = append(f.handles[:0], n.batchOwn...)
 	stats.proposals++
 	if err := n.rn.Propose(data); err != nil {
 		for _, h := range n.batchOwn {
@@ -633,17 +635,29 @@ func (n *node) applyBatch(data []byte, walOff int64) {
 	nops := int(binary.LittleEndian.Uint32(data[8:]))
 	p := batchHdr
 	mine := origin == n.id
-	for range nops {
+	// The node that proposed the batch knows its clients' handles; they
+	// are not in the batch.
+	var handles []handle
+	if mine {
+		seq := binary.LittleEndian.Uint32(data[4:])
+		if f := &n.fwd[seq&(fwdSlots-1)]; f.seq == seq && len(f.handles) == nops {
+			handles = f.handles
+		} else {
+			mine = false
+		}
+	}
+	for i := range nops {
 		kind := data[p]
-		h := handle(le64(data[p+4:]))
-		l := int(binary.LittleEndian.Uint32(data[p+12:]))
+		l := int(binary.LittleEndian.Uint32(data[p+1:]))
 		req := data[p+opHdr : p+opHdr+l : p+opHdr+l]
 		voff := walOff + int64(p+opHdr)
 		p += opHdr + l
+		dbgOps[kind]++
+		dbgBytes[kind] += l
 		var c *client
 		var s *stream
 		if mine {
-			c, s = n.clientOf(h)
+			c, s = n.clientOf(handles[i])
 		}
 		switch kind {
 		case kPut:
@@ -1330,3 +1344,5 @@ func (n *node) replyMembers(c *client, s *stream) {
 	w.write(body)
 	n.endReply(c, s, &w)
 }
+
+var dbgOps, dbgBytes [16]int
