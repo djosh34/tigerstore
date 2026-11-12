@@ -1,6 +1,8 @@
 package sim
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -17,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
@@ -884,6 +887,102 @@ func TestSwitchingLinks(t *testing.T) {
 	took.check(t)
 }
 
+// stallToDeadline stalls the link from the leader to a follower for 8 s,
+// past the peer write timeout (5 s), and puts through the leader until a
+// write on that link reached its deadline: the other follower makes the
+// quorum, so the puts commit, and their appends to the stalled one fill
+// the connection's buffer (sendBuffer), so its writer waits for room
+// until the deadline. The stall comes once the follower applied what the
+// leader applied, so that the leader's connection to it is up: a stall
+// during its handshake only times the handshake out. Then the stall ends
+// on its own.
+func stallToDeadline(s *Sim) error {
+	wait := func(what string, ready func() bool) error {
+		until := s.now() + 10*Second
+		for {
+			s.mu.Lock()
+			err := s.err
+			s.mu.Unlock()
+			if err != nil {
+				return err
+			}
+			if ready() {
+				return nil
+			}
+			if s.now() >= until {
+				return fmt.Errorf("scenario: no %s by %d ms", what, s.now()/Millisecond)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	// The puts go through the history, so the checkers check them too.
+	c := &client{id: 0, sim: s, node: -1}
+	put := func(leader *node, i int) {
+		// The checkers want every value written once.
+		req := &pb.PutRequest{Key: fmt.Appendf(nil, "scenario/%d", i), Value: append(fmt.Appendf(nil, "value %d/", i), bytes.Repeat([]byte("v"), 256)...)}
+		s.mu.Lock()
+		r := &Record{Client: c.id, Node: leader.idx, Call: s.now(), req: req}
+		s.mu.Unlock()
+		resp, err := s.call(leader, req, s.cfg.ClientTimeout)
+		s.mu.Lock()
+		c.done(r, resp, err)
+		s.mu.Unlock()
+	}
+	applied := func(n *node) uint64 {
+		s.mu.Lock()
+		p := n.proc
+		s.mu.Unlock()
+		if p == nil {
+			return 0
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(Second))
+		defer cancel()
+		st, err := p.node.Status(ctx)
+		if err != nil {
+			return 0
+		}
+		return st.RaftAppliedIndex
+	}
+	if err := wait("leader", func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.leaderIdx() >= 0
+	}); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	leader := s.nodes[s.leaderIdx()]
+	stalled := s.nodes[(leader.idx+1)%3]
+	s.mu.Unlock()
+	put(leader, 0)
+	if err := wait("follower that applied the leader's entries", func() bool {
+		a := applied(leader)
+		return a > 0 && applied(stalled) >= a
+	}); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	l := s.link(leader.idx, stalled.idx)
+	l.stallUntil = max(l.stallUntil, s.now()+8*Second)
+	end := l.stallUntil
+	s.stats.LinkStalls++
+	s.tracef("scenario: link %s->%s stalled until %d ms", s.host(leader.idx), s.host(stalled.idx), end/Millisecond)
+	s.mu.Unlock()
+	for i := 1; ; i++ {
+		s.mu.Lock()
+		err, timeouts := s.err, s.stats.WriteTimeouts
+		s.mu.Unlock()
+		if err != nil || timeouts > 0 {
+			return err
+		}
+		if s.now() >= end {
+			return fmt.Errorf("scenario: no write reached its deadline on the stalled link by %d ms", s.now()/Millisecond)
+		}
+		time.Sleep(50 * time.Millisecond)
+		put(leader, i)
+	}
+}
+
 // faultCase is a fault alone, with the count that shows it took effect.
 type faultCase struct {
 	name   string
@@ -943,12 +1042,11 @@ func faultCases() []faultCase {
 		damage(misread, func(st Stats) int { return min(st.Damage[misread], st.MisreadRefusals) }),
 		{"connection reset", Faults{ResetEvery: Second}, nil, func(st Stats) int { return st.Resets }},
 		{"full send buffer", Faults{LinkStallEvery: 500 * Millisecond}, nil, func(st Stats) int { return st.BlockedWrites }},
-		// A stall past the write timeout, one in four, on a link that
-		// carries something. Over 200 seeds, a stall every 300 ms hit it
-		// in about 90% of seeds, every 200 ms in about 80%, and every
-		// 400 ms in 93% (#568). Why closer stalls hit it less often was
-		// not measured.
-		{"write deadline", Faults{LinkStallEvery: 400 * Millisecond}, longer, func(st Stats) int { return st.WriteTimeouts }},
+		// The leader's link to a follower stalls past the write timeout
+		// while puts queue appends on it (stallToDeadline). Random stalls
+		// reached a write deadline in a share of seeds that every change
+		// to the schedule moved (#568, #638, #642).
+		{"write deadline", Faults{}, func(c *Config) { c.scenario = stallToDeadline; longer(c) }, func(st Stats) int { return st.WriteTimeouts }},
 		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.WatchersBehind }},
 	}
 	for i := range numNetem {
