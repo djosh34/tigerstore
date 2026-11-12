@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,31 +31,41 @@ type nodeMetrics struct {
 // windowMetrics reads every endpoint's /metrics at the start and at the
 // stop of the window, both given as now() times. Each read must end within
 // slack of the moment it stands for, or its counters would count load from
-// outside the window.
+// outside the window. One read before the start opens the connections the
+// two reads in the window use, so those pay no TLS handshake.
 func windowMetrics(endpoints []string, start, stop int64, slack time.Duration) ([2][]nodeMetrics, error) {
 	var out [2][]nodeMetrics
+	client, scheme := metricsClient()
+	defer client.CloseIdleConnections()
+	if _, err := sampleMetrics(client, scheme, endpoints, math.MaxInt64); err != nil {
+		return out, err
+	}
 	for i, at := range []int64{start, stop} {
 		time.Sleep(time.Duration(at - now()))
 		var err error
-		if out[i], err = sampleMetrics(endpoints, at+int64(slack)); err != nil {
+		if out[i], err = sampleMetrics(client, scheme, endpoints, at+int64(slack)); err != nil {
 			return out, err
 		}
 	}
 	return out, nil
 }
 
-// sampleMetrics reads every endpoint's /metrics at once, in the order given,
-// over HTTP/1.1 connections of its own, apart from the load's. Reads that
-// end after deadline, a now() time, are too late.
-func sampleMetrics(endpoints []string, deadline int64) ([]nodeMetrics, error) {
-	transport := &http.Transport{DisableKeepAlives: true}
+// metricsClient is an HTTP/1.1 client of its own, apart from the load's
+// connections, with one connection kept per endpoint.
+func metricsClient() (*http.Client, string) {
+	transport := &http.Transport{}
 	scheme := "http"
 	if clientTLS != nil {
 		transport.TLSClientConfig = clientTLS.Clone()
 		transport.TLSClientConfig.NextProtos = []string{"http/1.1"}
 		scheme = "https"
 	}
-	client := &http.Client{Timeout: 5 * time.Second, Transport: transport}
+	return &http.Client{Timeout: 5 * time.Second, Transport: transport}, scheme
+}
+
+// sampleMetrics reads every endpoint's /metrics at once, in the order
+// given. Reads that end after deadline, a now() time, are too late.
+func sampleMetrics(client *http.Client, scheme string, endpoints []string, deadline int64) ([]nodeMetrics, error) {
 	out := make([]nodeMetrics, len(endpoints))
 	errs := make([]error, len(endpoints))
 	var wg sync.WaitGroup
