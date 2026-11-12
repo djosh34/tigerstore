@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -157,6 +158,9 @@ func (f file) Sync() error {
 // cache: Linux keeps a page that something holds, such as a pipe that
 // another process spliced it into.
 var ErrCached = errors.New("osfs: pages stay in the page cache")
+
+// dropWait waits between DropCache's tries; a test lets a page go in it.
+var dropWait = time.Sleep
 
 func (f file) ReadAll() ([]byte, error) {
 	st, err := f.Stat()

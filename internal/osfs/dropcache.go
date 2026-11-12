@@ -22,8 +22,8 @@ import (
 // DropCache tries again for about a second, waiting twice as long each
 // time, before it fails with ErrCached, which names the file (#631). A
 // file system in memory has no disk to read back, and neither has a
-// directory whose syncs are no-ops. The check holds on XFS and on ext4 in its default
-// data=ordered mode; docs/design.md names where it does not.
+// directory whose syncs are no-ops. The check holds on XFS and on ext4 in
+// its default data=ordered mode; docs/design.md names where it does not.
 func (f file) DropCache() error {
 	if f.noSync {
 		return nil
@@ -48,7 +48,7 @@ func (f file) DropCache() error {
 			if err = cached(int(fd), st.Size()); !errors.Is(err, ErrCached) || wait > time.Second {
 				return
 			}
-			time.Sleep(wait)
+			dropWait(wait)
 		}
 	})
 	if errors.Is(err, ErrCached) {
