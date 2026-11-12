@@ -51,7 +51,8 @@ func bridgeOf(c net.Conn) *loop.Bridge {
 // there: an epoll socket that another goroutine closes sends no event.
 type owned struct {
 	net.Conn
-	t *TCP
+	t  *TCP
+	tc net.Conn
 	// stop ends the connection's handler; loop only, nil until it has one.
 	stop func()
 }
@@ -73,8 +74,9 @@ func (o *owned) ended() {
 // its hand-over is posted, so that from then on nothing but the loop
 // writes it, nor closes it but by its raw connection.
 func (t *TCP) handOver(c net.Conn) *owned {
-	o := &owned{Conn: bridgeOf(c).Conn, t: t}
+	o := &owned{Conn: bridgeOf(c).Conn, t: t, tc: c}
 	t.mu.Lock()
+	t.handed[c] = o
 	delete(t.conns, c)
 	t.conns[o] = struct{}{}
 	if in, ok := t.inbound[c]; ok {
@@ -91,6 +93,7 @@ func (t *TCP) release(o *owned) {
 	t.mu.Lock()
 	delete(t.conns, o)
 	delete(t.inbound, o)
+	delete(t.handed, o.tc)
 	t.mu.Unlock()
 	if err := o.Conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 		t.logf("peer: close: %v", err)

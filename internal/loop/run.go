@@ -226,9 +226,9 @@ func (l *Loop) Flush() {
 }
 
 // Drain serves the loop's sockets on their own once the owner stopped for
-// good, until no handler is left, and then closes the poller: every handler that is a Stopper learns
-// that the owner stopped, and the sockets go on until their owners close
-// them, as a server answers calls that the node stopped and closes its
+// good, until no handler is left, and then closes the poller: every
+// handler that is a Stopper learns that the owner stopped, and the sockets
+// go on until their owners close them, as a server answers calls that the node stopped and closes its
 // connections when it stops itself. Post drops what comes after the last
 // handler went. The owner calls it on the loop, as its last act there.
 func (l *Loop) Drain() {

@@ -271,6 +271,9 @@ type TCP struct {
 	// inbound are the message connections from peers, with the peer's ID
 	// and the connection's protocol version.
 	inbound map[net.Conn]inbound
+	// handed are the TLS connections that went to the loop, by the TLS
+	// connection, for a close that took them from conns before (closeAll).
+	handed map[net.Conn]*owned
 
 	// logged holds when a failed handshake was last logged, by peer.
 	logMu  sync.Mutex
@@ -334,6 +337,7 @@ func Start(cfg Config) (*TCP, error) {
 		ctx:         ctx,
 		cancel:      cancel,
 		conns:       map[net.Conn]struct{}{},
+		handed:      map[net.Conn]*owned{},
 		activeMoved: make(chan struct{}),
 		inbound:     map[net.Conn]inbound{},
 		logged:      map[string]time.Time{},
@@ -612,9 +616,26 @@ func (t *TCP) Close() error {
 // (untrack). The other end may have reset a connection already, or its
 // goroutine closed it; neither is a failure of the caller, so the first
 // is only logged.
+//
+// A TLS connection in the list may have gone to the loop since the list
+// was taken (handOver): it closes as the loop's then, which tells the
+// loop, and never through TLS, whose close would write into the bridge
+// the loop writes.
 func (t *TCP) closeAll(conns []net.Conn) {
 	for _, c := range conns {
-		if err := c.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		t.mu.Lock()
+		o := t.handed[c]
+		t.mu.Unlock()
+		var err error
+		switch tc, ok := c.(*tls.Conn); {
+		case o != nil:
+			err = o.Close()
+		case ok:
+			err = bridgeOf(tc).Conn.Close()
+		default:
+			err = c.Close()
+		}
+		if err != nil && !errors.Is(err, net.ErrClosed) {
 			t.logf("peer: close: %v", err)
 		}
 	}

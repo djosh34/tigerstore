@@ -203,3 +203,34 @@ func (c *closer) Ready() {
 }
 
 func (c *closer) Stopped() { close(c.stopped) }
+
+// TestHeldSocketsStillFlush dispatches a due socket while the owner takes
+// no input, as the committer does while the disk is behind: its output is
+// flushed, its reading waits, Holding says so, and the next Dispatch that
+// takes sockets reads it.
+func TestHeldSocketsStillFlush(t *testing.T) {
+	l := loop.New(loop.NewChanPoller())
+	a, b := net.Pipe()
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	h := &counter{}
+	sock, _, err := l.Attach(a, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sock.Close() //nolint:errcheck // closing a test pipe
+	l.Dispatch(false)
+	l.Flush()
+	if h.ready != 0 || h.flushed != 1 || !l.Holding() {
+		t.Fatalf("held: %d reads, %d flushes, holding %v; want 0, 1, true", h.ready, h.flushed, l.Holding())
+	}
+	l.Dispatch(true)
+	if h.ready != 1 || l.Holding() {
+		t.Fatalf("taken: %d reads, holding %v; want 1, false", h.ready, l.Holding())
+	}
+}
+
+// counter counts its handler's reads and flushes.
+type counter struct{ ready, flushed int }
+
+func (c *counter) Ready() { c.ready++ }
+func (c *counter) Flush() { c.flushed++ }
