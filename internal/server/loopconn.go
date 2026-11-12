@@ -43,6 +43,11 @@ func (s frameSrc) Read(p []byte) (int, error) {
 
 // attach hands the connection to the loop. It runs on the loop.
 func (c *conn) attach() {
+	c.attached.Store(true)
+	if c.isClosed() {
+		c.release()
+		return
+	}
 	sock, token, err := c.s.loop.Attach(c.bridge.Conn, c)
 	if err != nil {
 		c.close()
@@ -82,11 +87,9 @@ func (c *conn) Ready() {
 func (c *conn) readFrames() error {
 	for !c.ending && !c.isClosed() {
 		if c.inW == len(c.in) {
+			// process made room for a partial frame of any size, so a full
+			// buffer only needs its read bytes moved out.
 			c.compactIn(0)
-		}
-		if c.inW == len(c.in) {
-			// A partial frame fills the buffer.
-			c.compactIn(2 * len(c.in))
 		}
 		n, rerr := c.nc.Read(c.in[c.inW:])
 		c.inW += n
@@ -152,16 +155,17 @@ func (c *conn) readFrame() error {
 	c.frames.Add(1)
 	f, err := c.fr.ReadFrameForHeader(fh)
 	if err != nil {
-		if _, ok := errors.AsType[http2.StreamError](err); ok && fh.Type == http2.FrameHeaders {
+		se, ok := errors.AsType[http2.StreamError](err)
+		switch {
+		case !ok:
+			return err
+		case fh.Type == http2.FrameHeaders:
 			// A header block that cannot be decoded leaves the HPACK
 			// state behind the client's (RFC 9113 6.2).
 			return http2.ConnectionError(http2.ErrCodeProtocol)
 		}
-		if se, ok := errors.AsType[http2.StreamError](err); ok {
-			c.resetStream(se.StreamID, se.Code)
-			return nil
-		}
-		return err
+		c.resetStream(se.StreamID, se.Code)
+		return nil
 	}
 	if c.phase == phaseSettings {
 		sf, ok := f.(*http2.SettingsFrame)

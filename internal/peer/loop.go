@@ -44,18 +44,45 @@ func bridgeOf(c net.Conn) *loop.Bridge {
 	return c.(*tls.Conn).NetConn().(*loop.Bridge)
 }
 
-// handOver moves a tracked connection to the loop's ownership: from now
-// on, goroutines other than the loop close it by its raw connection,
-// since the TLS connection's close would write into the bridge.
-func (t *TCP) handOver(c net.Conn, raw net.Conn) {
+// owned is a message connection that the loop owns, as the transport
+// tracks it once the handshake is done. A close from another goroutine
+// closes the raw connection, since the TLS connection's close would write
+// into the bridge, and tells the loop, which ends the connection's handler
+// there: an epoll socket that another goroutine closes sends no event.
+type owned struct {
+	net.Conn
+	t   *TCP
+	end func()
+}
+
+func (o *owned) Close() error {
+	err := o.Conn.Close()
+	o.t.loop.Post(o.end)
+	return err
+}
+
+// handOver moves a tracked connection to the loop's ownership, as o.
+func (t *TCP) handOver(c net.Conn, o *owned) {
 	t.mu.Lock()
 	delete(t.conns, c)
-	t.conns[raw] = struct{}{}
+	t.conns[o] = struct{}{}
 	if in, ok := t.inbound[c]; ok {
 		delete(t.inbound, c)
-		t.inbound[raw] = in
+		t.inbound[o] = in
 	}
 	t.mu.Unlock()
+}
+
+// release stops tracking a connection the loop owned, and closes it. It
+// runs on the loop.
+func (t *TCP) release(o *owned) {
+	t.mu.Lock()
+	delete(t.conns, o)
+	delete(t.inbound, o)
+	t.mu.Unlock()
+	if err := o.Conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		t.logf("peer: close: %v", err)
+	}
 }
 
 // inConn is an inbound message connection on the loop.
@@ -63,6 +90,7 @@ type inConn struct {
 	t     *TCP
 	tc    *tls.Conn
 	br    *loop.Bridge
+	own   *owned
 	token uint64
 	from  uint64
 	v     byte
@@ -85,7 +113,8 @@ func (t *TCP) attachIn(c *tls.Conn, from uint64, v byte) {
 		return
 	}
 	br.Attach(sock)
-	t.handOver(c, br.Conn)
+	ic.own = &owned{Conn: br.Conn, t: t, end: ic.close}
+	t.handOver(c, ic.own)
 	ic.token = token
 }
 
@@ -187,7 +216,7 @@ func (c *inConn) close() {
 	}
 	c.closed = true
 	c.t.loop.Forget(c.token)
-	c.t.untrack(c.br.Conn)
+	c.t.release(c.own)
 	// The socket closes too: a pump's goroutines end with it.
 	_ = c.br.Close()
 }
@@ -203,6 +232,7 @@ type outConn struct {
 	l     *lane
 	tc    *tls.Conn
 	br    *loop.Bridge
+	own   *owned
 	token uint64
 	v     byte
 	buf   []byte
@@ -225,7 +255,8 @@ func (s *sender) attach(l *lane, c *tls.Conn, v byte, down chan<- error) {
 		return
 	}
 	br.Attach(sock)
-	s.t.handOver(c, br.Conn)
+	oc.own = &owned{Conn: br.Conn, t: s.t, end: func() { oc.fail(net.ErrClosed) }}
+	s.t.handOver(c, oc.own)
 	oc.token = token
 	l.out = oc
 	s.t.loop.Dirty(oc)
@@ -362,7 +393,7 @@ func (c *outConn) fail(err error) {
 		c.l.out = nil
 	}
 	c.s.t.loop.Forget(c.token)
-	c.s.t.untrack(c.br.Conn)
+	c.s.t.release(c.own)
 	_ = c.br.Close()
 	c.s.reportWaits(c.l)
 	c.s.drop(c.l)

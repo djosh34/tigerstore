@@ -91,9 +91,11 @@ type conn struct {
 	ctrlOut   []ctrlFrame
 	framesOut []wframe
 	hdrOut    []byte
-	// reading is set while the loop reads the connection, which then
-	// writes it anyway, and signaled while a signal waits for the loop.
-	reading, signaled atomic.Bool
+	// attached is set once the loop has the connection, from when a close
+	// tells it; reading is set while the loop reads the connection, which
+	// then writes it anyway; and signaled while a signal waits for the
+	// loop.
+	attached, reading, signaled atomic.Bool
 
 	// Loop only.
 	maxID uint32 // highest client stream ID seen
@@ -131,11 +133,11 @@ type conn struct {
 	// atNode is the calls the node has and has not answered.
 	atNode map[*stream]struct{}
 
-	// frames counts the frames the reader got, and wrote is set when the
-	// writer sends HEADERS or DATA, which forgives the client's pings
+	// frames counts the frames the loop read, and wrote is set when the
+	// loop sends HEADERS or DATA, which forgives the client's pings
 	// (keepalive.go). A count, not a time: a clock read per frame took
 	// 2% of a leader's core (#506). lastPing and pingStrikes are the
-	// reader's.
+	// loop's.
 	frames      atomic.Uint64
 	wrote       atomic.Bool
 	lastPing    time.Time
@@ -225,8 +227,11 @@ func (c *conn) close() {
 		c.mu.Unlock()
 		c.cancel()
 		_ = c.raw.Close()
-		// The loop lets go of the connection at its next turn.
-		c.signal()
+		// The loop lets go of the connection at its next turn; before it
+		// has it, attach sees the close.
+		if c.attached.Load() {
+			c.signal()
+		}
 	})
 }
 
@@ -237,7 +242,7 @@ func (c *conn) isClosed() bool {
 	return c.closed
 }
 
-// goAway tells the client to open no more streams. The writer closes the
+// goAway tells the client to open no more streams. The loop closes the
 // connection once the streams in flight have ended.
 func (c *conn) goAway() {
 	c.mu.Lock()

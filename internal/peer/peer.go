@@ -1086,9 +1086,17 @@ func (s *sender) runLane(l *lane) {
 		select {
 		case err = <-down:
 		case <-ctx.Done():
-			// The loop sees the connection end, and fails it.
-			if cerr := bridgeOf(c).Conn.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) {
-				s.t.logf("peer: close: %v", cerr)
+			// The loop ends the lane's connection: a socket closed here
+			// would send epoll no event. Once the loop drained, the close
+			// here is all there is.
+			if !s.t.loop.Post(func() {
+				if l.out != nil {
+					l.out.fail(net.ErrClosed)
+				}
+			}) {
+				if cerr := bridgeOf(c).Conn.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) {
+					s.t.logf("peer: close: %v", cerr)
+				}
 			}
 			err = nil
 		}

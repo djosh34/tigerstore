@@ -311,13 +311,18 @@ func (s *Server) servePlain(nc net.Conn) bool {
 }
 
 // hand gives an HTTP/2 connection to the loop, which serves it and ends
-// it, and reports whether it did.
+// it, and reports whether it did. Only then does the loop end the
+// connection and its count in s.wg.
 func (s *Server) hand(c *conn) bool {
+	// The handshake's deadline goes; the loop keeps time itself.
+	if err := c.raw.SetDeadline(time.Time{}); err != nil {
+		_ = c.raw.Close()
+		return false
+	}
 	if !s.track(c) {
 		return false
 	}
-	// The handshake's deadline goes; the loop keeps time itself.
-	if err := c.raw.SetDeadline(time.Time{}); err != nil || !s.loop.Post(c.attach) {
+	if !s.loop.Post(c.attach) {
 		s.untrack(c)
 		return false
 	}
