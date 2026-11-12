@@ -2372,14 +2372,6 @@ func (n *Node) staged(stage string) error {
 // checkpoint: with 32 KiB parts, about 32 MB/s.
 const checkpointPace = time.Millisecond
 
-// copyNow is always ready: the committer copies the next part of a
-// checkpoint at once.
-var copyNow = func() <-chan time.Time {
-	c := make(chan time.Time)
-	close(c)
-	return c
-}()
-
 // checkpointSyncBytes is how much of a checkpoint the writer writes
 // between syncs.
 const checkpointSyncBytes = 1 << 20

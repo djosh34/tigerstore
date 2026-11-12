@@ -2,7 +2,6 @@ package loop_test
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"errors"
 	"io"
@@ -83,8 +82,7 @@ func TestBridgeCarriesTLS(t *testing.T) {
 	if err := <-errc; err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	type end struct {
 		l   *loop.Loop
 		tc  *tls.Conn

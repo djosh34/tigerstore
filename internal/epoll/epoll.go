@@ -117,7 +117,7 @@ func (p *Poller) notify(token uint64) {
 func (p *Poller) Wake() {
 	p.woken.Store(true)
 	if p.sleeping.Load() {
-		var one = [8]byte{1}
+		one := [8]byte{1}
 		// EAGAIN means the counter is full, so the loop wakes anyway.
 		_, _ = syscall.Write(p.efd, one[:])
 	}
