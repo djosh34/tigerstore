@@ -279,11 +279,26 @@ func (c *conn) Flush() {
 }
 
 // write moves queued output into the socket until nothing more is
-// allowed or the socket is full. It reports whether the connection is
-// going away and has no stream left.
+// allowed or the socket is full. Bytes already encoded go first, and
+// nothing new is taken while the socket holds some back, so what waits
+// below the streams' queues is at most one pass of take. It reports
+// whether the connection is going away, has no stream left and sent
+// everything.
 func (c *conn) write() (bool, error) {
+	c.completeWaiting()
 	for {
-		c.completeWaiting()
+		if before := c.bridge.Pending(); before > 0 {
+			if err := c.bridge.Flush(); err != nil {
+				return false, err
+			}
+			if pending := c.bridge.Pending(); pending > 0 {
+				if pending < before {
+					c.waitSince = time.Now()
+				}
+				return false, nil
+			}
+			c.waitSince = time.Time{}
+		}
 		c.mu.Lock()
 		c.ctrlOut = append(c.ctrlOut[:0], c.ctrl...)
 		clear(c.ctrl)
@@ -315,20 +330,6 @@ func (c *conn) write() (bool, error) {
 		// bufio.Writer keeps the first write error and returns it here.
 		if err := c.bw.Flush(); err != nil {
 			return false, err
-		}
-		before := c.bridge.Pending()
-		if err := c.bridge.Flush(); err != nil {
-			return false, err
-		}
-		if pending := c.bridge.Pending(); pending > 0 {
-			if pending < before {
-				c.waitSince = time.Now()
-			}
-			return drained, nil
-		}
-		c.waitSince = time.Time{}
-		if drained {
-			return true, nil
 		}
 	}
 }

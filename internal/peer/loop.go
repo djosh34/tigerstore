@@ -251,12 +251,31 @@ func (c *outConn) Ready() {
 
 // Flush writes the lane's queued messages, as far as the socket takes
 // them. Frames gather into one TLS write, whose records the bridge sends
-// with one system call. Output that waits for the socket longer than the
-// write deadline fails the connection, so a stalled peer is dropped and
-// reported.
+// with one system call. Bytes already encoded go first, and no message
+// leaves the lane while the socket holds some back, so the lane's limits
+// bound what waits and at most one batch of frames waits below them.
+// Output that waits for the socket longer than the write deadline fails
+// the connection, so a stalled peer is dropped and reported.
 func (c *outConn) Flush() {
 	s, l := c.s, c.l
 	for !c.closed {
+		if before := c.br.Pending(); before > 0 {
+			if err := c.br.Flush(); err != nil {
+				c.fail(err)
+				return
+			}
+			if pending := c.br.Pending(); pending > 0 {
+				c.wait(before, pending)
+				return
+			}
+		}
+		c.since = time.Time{}
+		if l.head == len(l.q) {
+			if cap(c.buf) > ioBuffer {
+				c.buf = nil
+			}
+			return
+		}
 		c.buf = c.buf[:0]
 		for l.head < len(l.q) && len(c.buf) < ioBuffer {
 			q := l.q[l.head]
@@ -279,23 +298,6 @@ func (c *outConn) Flush() {
 				c.fail(err)
 				return
 			}
-		}
-		before := c.br.Pending()
-		if err := c.br.Flush(); err != nil {
-			c.fail(err)
-			return
-		}
-		pending := c.br.Pending()
-		if pending > 0 {
-			c.wait(before, pending)
-			return
-		}
-		c.since = time.Time{}
-		if l.head == len(l.q) {
-			if cap(c.buf) > ioBuffer {
-				c.buf = nil
-			}
-			return
 		}
 	}
 }
