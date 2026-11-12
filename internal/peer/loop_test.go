@@ -18,10 +18,11 @@ func (stuck) Read([]byte) (int, error)  { return 0, loop.ErrWouldBlock }
 func (stuck) Write([]byte) (int, error) { return 0, loop.ErrWouldBlock }
 func (stuck) Close() error              { return nil }
 
-// TestStalledLaneKeepsItsMessages flushes a lane twice into a socket that
-// takes nothing: the second flush must leave its message on the lane,
-// where the lane's limits count it, instead of encoding it behind the
-// first, which would grow what waits below the lane without a bound.
+// TestStalledLaneKeepsItsMessages flushes a lane into a socket that takes
+// nothing. A flush must leave later messages on the lane instead of
+// encoding them behind the first batch, and the lane must count that
+// batch until the socket took it: so its limit bounds everything it holds,
+// queued or encoded, and a full lane drops what comes.
 func TestStalledLaneKeepsItsMessages(t *testing.T) {
 	ca, err := testcert.NewCA()
 	if err != nil {
@@ -46,21 +47,27 @@ func TestStalledLaneKeepsItsMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr := &TCP{cfg: Config{Unreachable: func(uint64) {}, Metrics: set}, loop: loop.New(loop.NewChanPoller())}
+	var dropped int
+	tr := &TCP{cfg: Config{Unreachable: func(uint64) { dropped++ }, Metrics: set}, loop: loop.New(loop.NewChanPoller())}
 	s := &sender{t: tr, id: 2, counters: tr.countersOf(2)}
 	s.ctrl.max, s.data.max = controlQueue, dataQueue
 	oc := &outConn{s: s, l: &s.data, tc: tc, br: br, v: maxVersion, down: make(chan error, 1)}
 	s.data.out = oc
-	big := strings.Repeat("x", 1<<20)
-	s.send(msg(1, big))
+	s.send(msg(1, strings.Repeat("x", 8<<20)))
 	oc.Flush()
 	held := br.Pending()
-	if held < 1<<20 || s.data.bytes != 0 {
-		t.Fatalf("after the first flush %d bytes wait below the lane and it charges %d", held, s.data.bytes)
+	if held < 8<<20 || s.data.bytes < 8<<20 {
+		t.Fatalf("after the first flush %d bytes wait below the lane, which counts %d", held, s.data.bytes)
 	}
-	s.send(msg(2, big))
-	oc.Flush()
-	if br.Pending() != held || s.data.bytes < 1<<20 {
-		t.Fatalf("after the second flush %d bytes wait below the lane (%d before) and it charges %d", br.Pending(), held, s.data.bytes)
+	big := strings.Repeat("x", 1<<20)
+	for i := range uint64(63) {
+		s.send(msg(2+i, big))
+		oc.Flush()
+	}
+	if br.Pending() != held {
+		t.Fatalf("%d bytes wait below the lane, %d before: later messages left it", br.Pending(), held)
+	}
+	if dropped == 0 || s.data.bytes > maxQueued {
+		t.Fatalf("the lane counts %d bytes with %d drops; its limit is %d", s.data.bytes, dropped, maxQueued)
 	}
 }

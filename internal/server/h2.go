@@ -229,9 +229,7 @@ func (c *conn) close() {
 		_ = c.raw.Close()
 		// The loop lets go of the connection at its next turn; before it
 		// has it, attach sees the close.
-		if c.attached.Load() {
-			c.signal()
-		}
+		c.signal()
 	})
 }
 

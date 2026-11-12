@@ -222,9 +222,11 @@ func (c *conn) readFailed(err error) {
 }
 
 // signal makes the loop write the connection's output at its next turn.
-// While the loop reads the connection, it writes it afterwards anyway.
+// While the loop reads the connection, it writes it afterwards anyway, and
+// before the loop has it, attach makes the loop read and write it first,
+// so only the acceptor's hand-over can end it until then.
 func (c *conn) signal() {
-	if c.reading.Load() {
+	if c.reading.Load() || !c.attached.Load() {
 		return
 	}
 	if c.signaled.CompareAndSwap(false, true) && !c.s.loop.Post(c.flushLater) {

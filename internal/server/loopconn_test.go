@@ -116,4 +116,52 @@ func TestStopDuringPreface(t *testing.T) {
 	if err := <-served; err != nil {
 		t.Fatal(err)
 	}
+	// What the loop had queued for the connection runs before the test
+	// ends: a second end panics there.
+	syncLoop(t, s)
+}
+
+// syncLoop waits until the loop ran everything posted before.
+func syncLoop(t *testing.T, s *Server) {
+	t.Helper()
+	ran := make(chan struct{})
+	if !s.loop.Post(func() { close(ran) }) {
+		return
+	}
+	select {
+	case <-ran:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the loop did not run")
+	}
+}
+
+// TestGoAwayBeforeHandOver sends a tracked connection a GOAWAY, as Stop
+// does, before the loop has it: only the hand-over may end it then, so the
+// loop must not release it and its count in the server's WaitGroup.
+func TestGoAwayBeforeHandOver(t *testing.T) {
+	s := bareServer(t)
+	s.conns, s.gone = map[closer]struct{}{}, newConnMetrics()
+	go func() { _ = s.loop.Run(t.Context()) }()
+	a, b := net.Pipe()
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	br := loop.NewBridge(a, ioBuffer)
+	c := newConn(s, br, br)
+	s.wg.Add(1)
+	if !s.track(c) {
+		t.Fatal("track refused the connection")
+	}
+	c.goAway()
+	syncLoop(t, s)
+	if c.gone {
+		t.Fatal("the loop ended a connection it did not have")
+	}
+	c.close()
+	if !s.loop.Post(c.attach) {
+		t.Fatal("the loop refused the hand-over")
+	}
+	syncLoop(t, s)
+	if !c.gone {
+		t.Fatal("the loop did not end the connection closed before its hand-over")
+	}
+	s.wg.Wait()
 }

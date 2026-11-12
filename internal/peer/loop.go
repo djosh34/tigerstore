@@ -250,6 +250,9 @@ type outConn struct {
 	token uint64
 	v     byte
 	buf   []byte
+	// sending is the lane charge of the messages encoded and not yet all
+	// sent: the lane keeps counting them until the socket took them.
+	sending int64
 	// since is when the output that waits for the socket last moved; zero
 	// while none waits.
 	since  time.Time
@@ -296,9 +299,10 @@ func (c *outConn) Ready() {
 
 // Flush writes the lane's queued messages, as far as the socket takes
 // them. Frames gather into one TLS write, whose records the bridge sends
-// with one system call. Bytes already encoded go first, and no message
-// leaves the lane while the socket holds some back, so the lane's limits
-// bound what waits and at most one batch of frames waits below them.
+// with one system call. Bytes already encoded go first, no message leaves
+// the lane while the socket holds some back, and the lane counts a batch
+// until the socket took all of it, so the lane's limits bound the whole
+// path to the socket.
 // Output that waits for the socket longer than the write deadline fails
 // the connection, so a stalled peer is dropped and reported.
 func (c *outConn) Flush() {
@@ -315,6 +319,8 @@ func (c *outConn) Flush() {
 			}
 		}
 		c.since = time.Time{}
+		l.bytes -= c.sending
+		c.sending = 0
 		if l.head == len(l.q) {
 			if cap(c.buf) > ioBuffer {
 				c.buf = nil
@@ -326,7 +332,7 @@ func (c *outConn) Flush() {
 			q := l.q[l.head]
 			l.q[l.head] = queued{}
 			l.head++
-			l.bytes -= size(q.m)
+			c.sending += size(q.m)
 			s.waited(l, q)
 			var err error
 			if c.buf, err = s.frame(c.buf, q.m, c.v); err != nil {
