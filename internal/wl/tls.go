@@ -191,6 +191,17 @@ func handshake(nc net.Conn, cfg *tls.Config, server bool) (*handoff, error) {
 	cfg.KeyLogWriter = keys
 	cfg.SessionTicketsDisabled = true
 	cfg.MinVersion = tls.VersionTLS13
+	if get := cfg.GetConfigForClient; get != nil {
+		cfg.GetConfigForClient = func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
+			c, err := get(hi)
+			if c == nil || err != nil {
+				return c, err
+			}
+			c = c.Clone()
+			c.KeyLogWriter, c.SessionTicketsDisabled, c.MinVersion = keys, true, tls.VersionTLS13
+			return c, nil
+		}
+	}
 	hr := &hsReader{Conn: nc, buf: make([]byte, 64<<10)}
 	var tc *tls.Conn
 	if server {
@@ -270,4 +281,3 @@ func takeFD(nc net.Conn) (int, error) {
 	_ = unix.SetsockoptInt(nfd, unix.IPPROTO_TCP, unix.TCP_NODELAY, 1)
 	return nfd, nil
 }
-

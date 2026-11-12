@@ -59,10 +59,10 @@ type node struct {
 }
 
 type member struct {
-	id               uint64
-	name             string
-	peerURL, cliURL  string
-	peerAddr         string
+	id              uint64
+	name            string
+	peerURL, cliURL string
+	peerAddr        string
 }
 
 type pendingRead struct {
@@ -72,23 +72,23 @@ type pendingRead struct {
 }
 
 type readBatch struct {
-	seq      uint64
-	index    uint64
-	known    bool
-	asked    int64 // tick when asked
-	reads    []pendingRead
-	buf      []byte
+	seq   uint64
+	index uint64
+	known bool
+	asked int64 // tick when asked
+	reads []pendingRead
+	buf   []byte
 }
 
 type opRes struct {
-	kind     uint8 // kRange, kPut, kDel, kTxn
-	kvs0     int
-	kvs1     int
-	count    int64
-	more     bool
-	prev     []byte
-	deleted  int64
-	prevKVs  bool
+	kind    uint8 // kRange, kPut, kDel, kTxn
+	kvs0    int
+	kvs1    int
+	count   int64
+	more    bool
+	prev    []byte
+	deleted int64
+	prevKVs bool
 }
 
 // Batch layout: [8 origin][4 ops][4 magic], then each op [1 kind][3 pad]
@@ -97,7 +97,7 @@ const (
 	batchHdr = 16
 	opHdr    = 16
 	magic    = 0x77697265
-	ringSize = 1 << 30
+	ringSize = 256 << 20
 )
 
 func (n *node) markDirty(s *sock) {

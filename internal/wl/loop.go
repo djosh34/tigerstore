@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"time"
@@ -77,6 +79,7 @@ func Main(args []string) int {
 	fs.Int64("quota-backend-bytes", 0, "")
 	fs.Int64("memory-budget-bytes", 0, "")
 	fs.String("log-level", "", "")
+	fs.Bool("enable-pprof", false, "")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -128,6 +131,18 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 		return err
 	}
 	cliTLS.NextProtos = []string{"h2", "http/1.1"}
+	// A client that offers HTTP/1.1, such as curl or the bench's metrics
+	// scraper, gets it; gRPC clients offer only h2.
+	h1 := cliTLS.Clone()
+	h1.NextProtos = []string{"http/1.1"}
+	cliTLS.GetConfigForClient = func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
+		for _, p := range hi.SupportedProtos {
+			if p == "http/1.1" {
+				return h1, nil
+			}
+		}
+		return nil, nil
+	}
 	peerSrvTLS, err := loadTLS(peerCert, peerKey, peerTrusted, true)
 	if err != nil {
 		return err
@@ -487,28 +502,57 @@ func (l *loop) flush() {
 	n.dirty = n.dirty[:0]
 }
 
-// serveHTTP1 answers /metrics over HTTP/1.1 on the record layer, in the
-// handshake's goroutine.
+// serveHTTP1 answers /metrics and /debug/pprof/profile over HTTP/1.1 on
+// the record layer, in the handshake's goroutine.
 func serveHTTP1(h *handoff) {
 	defer unix.Close(h.fd)
 	_ = unix.SetNonblock(h.fd, false)
 	s := newSock(h)
 	var req []byte
-	for !strings.Contains(string(req), "\r\n\r\n") {
-		if _, err := s.readSock(); err != nil {
-			return
-		}
+	for {
 		if err := s.open(); err != nil {
 			return
 		}
 		req = append(req, s.pt[s.pr:s.pw]...)
 		s.pr = s.pw
+		if bytes.Contains(req, []byte("\r\n\r\n")) {
+			break
+		}
+		if _, err := s.readSock(); err != nil {
+			return
+		}
 	}
-	leader := isLeader.Load()
-	body := fmt.Sprintf("# TYPE etcd_server_is_leader gauge\netcd_server_is_leader %d\n# TYPE etcd_network_peer_sent_bytes_total counter\netcd_network_peer_sent_bytes_total{To=\"all\"} %d\n",
-		leader, peerSentBytes.Load())
-	resp := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(body), body)
-	s.put([]byte(resp))
+	line, _, _ := strings.Cut(string(req), "\r\n")
+	f := strings.Fields(line)
+	path := ""
+	if len(f) >= 2 {
+		path = f[1]
+	}
+	var body []byte
+	ctype := "text/plain; version=0.0.4"
+	switch {
+	case strings.HasPrefix(path, "/debug/pprof/profile"):
+		secs := 10
+		if u, err := url.Parse(path); err == nil {
+			if v := u.Query().Get("seconds"); v != "" {
+				fmt.Sscan(v, &secs)
+			}
+		}
+		var buf bytes.Buffer
+		profMu.Lock()
+		if err := pprof.StartCPUProfile(&buf); err == nil {
+			time.Sleep(time.Duration(secs) * time.Second)
+			pprof.StopCPUProfile()
+		}
+		profMu.Unlock()
+		body = buf.Bytes()
+		ctype = "application/octet-stream"
+	default:
+		body = fmt.Appendf(nil, "# TYPE etcd_server_is_leader gauge\netcd_server_is_leader %d\n# TYPE etcd_network_peer_sent_bytes_total counter\netcd_network_peer_sent_bytes_total{To=\"all\"} %d\n",
+			isLeader.Load(), peerSentBytes.Load())
+	}
+	resp := fmt.Appendf(nil, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", ctype, len(body))
+	s.put(append(resp, body...))
 	for {
 		ok, err := s.flush()
 		if err != nil || ok {
@@ -516,3 +560,5 @@ func serveHTTP1(h *handoff) {
 		}
 	}
 }
+
+var profMu sync.Mutex
