@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -16,10 +17,13 @@ import (
 // disk holds: after a sync every page is clean, a page that a failed
 // writeback marked clean among them (#372). Linux skips a page that is
 // held, and fadvise still succeeds, so DropCache then maps the file and
-// asks mincore whether any page stayed, which is ErrCached. A file system
-// in memory has no disk to read back, and neither has a directory whose
-// syncs are no-ops. The check holds on XFS and on ext4 in its default
-// data=ordered mode; docs/design.md names where it does not.
+// asks mincore whether any page stayed. A page can be held for a moment,
+// by the kernel's reclaim or by another process that reads the file, so
+// DropCache tries again for about a second, waiting twice as long each
+// time, before it fails with ErrCached, which names the file (#631). A
+// file system in memory has no disk to read back, and neither has a
+// directory whose syncs are no-ops. The check holds on XFS and on ext4 in
+// its default data=ordered mode; docs/design.md names where it does not.
 func (f file) DropCache() error {
 	if f.noSync {
 		return nil
@@ -37,11 +41,19 @@ func (f file) DropCache() error {
 		if err = unix.Fstatfs(int(fd), &sfs); err != nil || sfs.Type == unix.TMPFS_MAGIC || sfs.Type == unix.RAMFS_MAGIC {
 			return
 		}
-		if err = unix.Fadvise(int(fd), 0, 0, unix.FADV_DONTNEED); err != nil || st.Size() == 0 {
-			return
+		for wait := time.Millisecond; ; wait *= 2 {
+			if err = unix.Fadvise(int(fd), 0, 0, unix.FADV_DONTNEED); err != nil || st.Size() == 0 {
+				return
+			}
+			if err = cached(int(fd), st.Size()); !errors.Is(err, ErrCached) || wait > time.Second {
+				return
+			}
+			dropWait(wait)
 		}
-		err = cached(int(fd), st.Size())
 	})
+	if errors.Is(err, ErrCached) {
+		err = fmt.Errorf("%s: %w", f.Name(), err)
+	}
 	return errors.Join(cerr, err)
 }
 
