@@ -620,18 +620,20 @@ func (t *TCP) Close() error {
 // A TLS connection in the list may have gone to the loop since the list
 // was taken (handOver): it closes as the loop's then, which tells the
 // loop, and never through TLS, whose close would write into the bridge
-// the loop writes.
+// the loop writes. One that goes to the loop while it closes is told to
+// the loop after the close.
 func (t *TCP) closeAll(conns []net.Conn) {
 	for _, c := range conns {
-		t.mu.Lock()
-		o := t.handed[c]
-		t.mu.Unlock()
 		var err error
+		o := t.handedOf(c)
 		switch tc, ok := c.(*tls.Conn); {
 		case o != nil:
 			err = o.Close()
 		case ok:
 			err = bridgeOf(tc).Conn.Close()
+			if o := t.handedOf(c); o != nil {
+				t.loop.Post(o.ended)
+			}
 		default:
 			err = c.Close()
 		}
@@ -639,6 +641,13 @@ func (t *TCP) closeAll(conns []net.Conn) {
 			t.logf("peer: close: %v", err)
 		}
 	}
+}
+
+// handedOf is the loop's handle of a TLS connection it took, or nil.
+func (t *TCP) handedOf(c net.Conn) *owned {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.handed[c]
 }
 
 func (t *TCP) track(c net.Conn) bool {

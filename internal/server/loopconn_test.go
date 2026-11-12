@@ -121,19 +121,26 @@ func TestStopDuringPreface(t *testing.T) {
 	syncLoop(t, s)
 }
 
-// syncLoop waits until the loop ran everything posted before.
+// syncLoop waits until the loop ran everything posted before and the
+// flushes that work listed, a connection's teardown included: the barrier
+// is a flusher listed after them, whose flush comes after theirs.
 func syncLoop(t *testing.T, s *Server) {
 	t.Helper()
-	ran := make(chan struct{})
-	if !s.loop.Post(func() { close(ran) }) {
+	b := barrier(make(chan struct{}))
+	if !s.loop.Post(func() { s.loop.Dirty(b) }) {
 		return
 	}
 	select {
-	case <-ran:
+	case <-b:
 	case <-time.After(10 * time.Second):
 		t.Fatal("the loop did not run")
 	}
 }
+
+// barrier is closed when the loop flushes it.
+type barrier chan struct{}
+
+func (b barrier) Flush() { close(b) }
 
 // TestGoAwayBeforeHandOver sends a tracked connection a GOAWAY, as Stop
 // does, before the loop has it: only the hand-over may end it then, so the

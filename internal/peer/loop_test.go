@@ -71,3 +71,39 @@ func TestStalledLaneKeepsItsMessages(t *testing.T) {
 		t.Fatalf("the lane counts %d bytes with %d drops; its limit is %d", s.data.bytes, dropped, maxQueued)
 	}
 }
+
+// handingRaw is a raw connection whose close first runs during, as a
+// hand-over that wins the race with a close of an old list does.
+type handingRaw struct {
+	net.Conn
+	during func()
+}
+
+func (h *handingRaw) Close() error {
+	h.during()
+	return h.Conn.Close()
+}
+
+// TestCloseRacesHandOver closes a TLS connection from an old list while
+// it goes to the loop: the close found no loop handle, and the hand-over
+// came before the raw close ended. The loop must still hear of the close,
+// since a socket closed off the loop sends epoll no event.
+func TestCloseRacesHandOver(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	l := loop.New(loop.NewChanPoller())
+	tr := &TCP{loop: l, conns: map[net.Conn]struct{}{}, inbound: map[net.Conn]inbound{}, handed: map[net.Conn]*owned{}}
+	raw := &handingRaw{Conn: a}
+	tc := tls.Client(loop.NewBridge(raw, callBuffer), &tls.Config{MinVersion: tls.VersionTLS13})
+	tr.conns[tc] = struct{}{}
+	stopped := false
+	raw.during = func() {
+		o := tr.handOver(tc)
+		o.stop = func() { stopped = true }
+	}
+	tr.closeAll([]net.Conn{tc})
+	l.Dispatch(false)
+	if !stopped {
+		t.Fatal("the loop did not hear of the close of a connection it took meanwhile")
+	}
+}
