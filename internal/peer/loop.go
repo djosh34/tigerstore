@@ -306,6 +306,7 @@ func (s *sender) attach(l *lane, c *tls.Conn, o *owned, v byte, down chan<- erro
 		return
 	}
 	br.Attach(sock, nil, nil)
+	br.KeepOut(keepOut)
 	o.stop = func() { oc.fail(net.ErrClosed) }
 	oc.token = token
 	l.out = oc
