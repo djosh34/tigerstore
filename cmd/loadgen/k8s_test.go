@@ -369,9 +369,12 @@ func TestCompactionBehindRepliesItsRevision(t *testing.T) {
 	if got := cp.compactRev(1); got != 500 {
 		t.Fatalf("call 1 compacts to %d, want call 0's revision 500", got)
 	}
-	// What done replies for call 1 when its compaction was behind.
-	call := &k8sCall{cp: cp, i: 1, kind: k8strace.CallCompact}
-	cp.reply(1, call.behindRev(behindCompaction(call.kind, false, grpcError("11", compactedMessage))))
+	// Call 1's compaction was behind another copy's.
+	w := &k8sLoad{wk: &worker{stats: stats{errs: map[string]int64{}}}}
+	w.done(&stream{k8s: k8sCall{cp: cp, i: 1, kind: k8strace.CallCompact}}, 0, grpcError("11", compactedMessage))
+	if w.compactsBehind != 1 || len(w.wk.stats.errs) != 0 {
+		t.Fatalf("%d compactions behind, errors %v; want 1 and none", w.compactsBehind, w.wk.stats.errs)
+	}
 	if got := cp.compactRev(2); got != 500 {
 		t.Fatalf("call 2, which names call 1's reply, compacts to %d, want 500", got)
 	}
