@@ -11,8 +11,11 @@ import (
 )
 
 // heapObjects is the runtime metric of the bytes in live and dead heap
-// objects not yet swept.
-const heapObjects = "/memory/classes/heap/objects:bytes"
+// objects not yet swept, and heapAllocs that of the bytes ever allocated.
+const (
+	heapObjects = "/memory/classes/heap/objects:bytes"
+	heapAllocs  = "/gc/heap/allocs:bytes"
+)
 
 // step is how far the heap may grow past the most found live before Peak
 // collects the garbage to tell what is held.
@@ -32,8 +35,8 @@ const step = 1 << 20
 // held 1.5 MiB (#561).
 //
 // What it misses: a live heap that rises and falls back within step,
-// between two samples, or within one collection; and objects allocated
-// during its own collection count as live until the next. Both results
+// between two samples, or within one collection, and objects allocated
+// and held while its own collection runs, until the next. Both results
 // are net: what was live at the call and is freed meanwhile lowers them.
 // The collector runs at GOGC 1 meanwhile, so that collections come often
 // anyway.
@@ -52,7 +55,7 @@ func Peak() (stop func() (peak, kept int64)) {
 			case <-done:
 				return
 			case <-t.C:
-				if heap()-base > held+step {
+				if objects, _ := heap(); objects-base > held+step {
 					held = max(held, liveHeap()-base)
 				}
 			}
@@ -67,15 +70,22 @@ func Peak() (stop func() (peak, kept int64)) {
 	}
 }
 
-// heap returns the bytes of live and dead heap objects not yet swept.
-func heap() int64 {
-	sample := []metrics.Sample{{Name: heapObjects}}
+// heap returns the bytes of live and dead heap objects not yet swept, and
+// the bytes ever allocated.
+func heap() (objects, allocs int64) {
+	sample := []metrics.Sample{{Name: heapObjects}, {Name: heapAllocs}}
 	metrics.Read(sample)
-	return int64(sample[0].Value.Uint64())
+	return int64(sample[0].Value.Uint64()), int64(sample[1].Value.Uint64())
 }
 
-// liveHeap collects the garbage and returns the heap left.
+// liveHeap collects the garbage and returns the heap that was live when
+// the collection began. A collection keeps every object allocated while
+// it runs, garbage or not, so the bytes allocated from before it until
+// the heap is read do not count: with the cluster's traffic going on, they
+// counted for megabytes (#623).
 func liveHeap() int64 {
+	_, before := heap()
 	runtime.GC()
-	return heap()
+	objects, after := heap()
+	return objects - (after - before)
 }
