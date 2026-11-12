@@ -54,10 +54,8 @@ import (
 	"time"
 
 	"go.etcd.io/raft/v3/raftpb"
-	"google.golang.org/protobuf/proto"
 
-	"github.com/djosh34/tigerstore/internal/bufconn"
-	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/loop"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -131,9 +129,17 @@ type Config struct {
 	// for one of these hostnames. At most one of them may be set.
 	AllowedCNs       []string
 	AllowedHostnames []string
-	// Deliver gets every message received from a peer. It may block,
-	// which slows down that peer's connection.
+	// Loop is the node's event loop, which owns every message connection
+	// once its handshake is done. Send must be called on it. nil gives the
+	// transport a loop of its own, on a goroutine of its own, for tests
+	// and tools that run no node; Send may then be called from anywhere.
+	Loop *loop.Loop
+	// Deliver gets every message received from a peer. It runs on the
+	// loop and must not block. Busy, if set, reports on the loop whether
+	// the node takes no data messages (appends, snapshots and forwarded
+	// proposals) now; a connection then keeps the next one until it does.
 	Deliver func(*raftpb.Message)
+	Busy    func() bool
 	// Unreachable is called when a message to a peer was dropped.
 	Unreachable func(id uint64)
 	// Serve writes to w the snapshot stream that peer id asked for, the
@@ -240,7 +246,11 @@ const (
 
 // TCP is the transport over TLS on TCP.
 type TCP struct {
-	cfg        Config
+	cfg Config
+	// loop owns the message connections; ownLoop is set when the
+	// transport runs it itself (Config.Loop).
+	loop       *loop.Loop
+	ownLoop    bool
 	clientCert func() (*tls.Certificate, error)
 	verify     func([][]byte, [][]*x509.Certificate) error
 	lns        []net.Listener
@@ -264,6 +274,9 @@ type TCP struct {
 	// inbound are the message connections from peers, with the peer's ID
 	// and the connection's protocol version.
 	inbound map[net.Conn]inbound
+	// handed are the TLS connections that went to the loop, by the TLS
+	// connection, for a close that took them from conns before (closeAll).
+	handed map[net.Conn]*owned
 
 	// logged holds when a failed handshake was last logged, by peer.
 	logMu  sync.Mutex
@@ -310,10 +323,16 @@ func Start(cfg Config) (*TCP, error) {
 	}
 	var lns []net.Listener
 	for _, raw := range cfg.Listeners {
-		lns = append(lns, tls.NewListener(bufconn.Listener{Listener: raw, Size: callBuffer}, scfg))
+		lns = append(lns, listener{Listener: raw, cfg: scfg})
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	own := cfg.Loop == nil
+	if own {
+		cfg.Loop = loop.New(loop.NewChanPoller())
+	}
 	t := &TCP{
+		loop:        cfg.Loop,
+		ownLoop:     own,
 		cfg:         cfg,
 		clientCert:  clientCert,
 		verify:      verify,
@@ -321,6 +340,7 @@ func Start(cfg Config) (*TCP, error) {
 		ctx:         ctx,
 		cancel:      cancel,
 		conns:       map[net.Conn]struct{}{},
+		handed:      map[net.Conn]*owned{},
 		activeMoved: make(chan struct{}),
 		inbound:     map[net.Conn]inbound{},
 		logged:      map[string]time.Time{},
@@ -328,6 +348,13 @@ func Start(cfg Config) (*TCP, error) {
 	}
 	t.self.Store(&cfg.Addr)
 	t.senders.Store(&map[uint64]*sender{})
+	if own {
+		t.wg.Go(func() {
+			if err := t.loop.Run(ctx); err != nil {
+				t.logf("peer: loop: %v", err)
+			}
+		})
+	}
 	t.SetPeers(cfg.Peers, nil)
 	for _, ln := range lns {
 		t.wg.Go(func() { t.accept(ln) })
@@ -457,8 +484,8 @@ func (t *TCP) newSender(id uint64, addr string) *sender {
 		cancel:   cancel,
 		counters: t.countersOf(id),
 	}
-	s.ctrl.name, s.ctrl.q = "control", make(chan queued, controlQueue)
-	s.data.name, s.data.q = "data", make(chan queued, dataQueue)
+	s.ctrl.name, s.ctrl.max = "control", controlQueue
+	s.data.name, s.data.max = "data", dataQueue
 	t.wg.Go(s.run)
 	return s
 }
@@ -553,8 +580,17 @@ func (t *TCP) to(id uint64) (*sender, bool) {
 }
 
 // Send queues a message for its peer, or for a member this node does not
-// know yet that sent it messages (addRemote).
+// know yet that sent it messages (addRemote). It runs on the loop, and the
+// loop writes it at the end of the turn.
 func (t *TCP) Send(m *raftpb.Message) {
+	if t.ownLoop {
+		t.loop.Post(func() { t.send(m) })
+		return
+	}
+	t.send(m)
+}
+
+func (t *TCP) send(m *raftpb.Message) {
 	if s, ok := t.to(m.GetTo()); ok {
 		s.send(m)
 	}
@@ -583,12 +619,38 @@ func (t *TCP) Close() error {
 // (untrack). The other end may have reset a connection already, or its
 // goroutine closed it; neither is a failure of the caller, so the first
 // is only logged.
+//
+// A TLS connection in the list may have gone to the loop since the list
+// was taken (handOver): it closes as the loop's then, which tells the
+// loop, and never through TLS, whose close would write into the bridge
+// the loop writes. One that goes to the loop while it closes is told to
+// the loop after the close.
 func (t *TCP) closeAll(conns []net.Conn) {
 	for _, c := range conns {
-		if err := c.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		var err error
+		o := t.handedOf(c)
+		switch tc, ok := c.(*tls.Conn); {
+		case o != nil:
+			err = o.Close()
+		case ok:
+			err = bridgeOf(tc).Conn.Close()
+			if o := t.handedOf(c); o != nil {
+				t.loop.Post(o.ended)
+			}
+		default:
+			err = c.Close()
+		}
+		if err != nil && !errors.Is(err, net.ErrClosed) {
 			t.logf("peer: close: %v", err)
 		}
 	}
+}
+
+// handedOf is the loop's handle of a TLS connection it took, or nil.
+func (t *TCP) handedOf(c net.Conn) *owned {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.handed[c]
 }
 
 func (t *TCP) track(c net.Conn) bool {
@@ -627,20 +689,25 @@ func (t *TCP) accept(ln net.Listener) {
 			return
 		}
 		t.wg.Go(func() {
-			defer t.untrack(c)
-			if err := t.receive(c); err != nil && t.ctx.Err() == nil {
+			handed, err := t.receive(c)
+			if !handed {
+				t.untrack(c)
+			}
+			if err != nil && t.ctx.Err() == nil {
 				t.logf("peer: receive from %s: %v", c.RemoteAddr(), err)
 			}
 		})
 	}
 }
 
-// receive reads frames from one inbound connection until it fails. It
+// receive runs the handshake of one inbound connection. A message
+// connection then goes to the loop, which reads its frames (inConn), and
+// receive reports it handed over; a fetch or a call it serves itself. It
 // returns the error that ended it, nil after a snapshot was served or
 // after a failed handshake, which it logs itself.
-func (t *TCP) receive(c net.Conn) error {
+func (t *TCP) receive(c net.Conn) (bool, error) {
 	if err := c.SetReadDeadline(time.Now().Add(t.readTimeout())); err != nil {
-		return err
+		return false, err
 	}
 	r := bufio.NewReaderSize(c, callBuffer)
 	from, mode, v, err := t.handshake(c, r)
@@ -648,81 +715,36 @@ func (t *TCP) receive(c net.Conn) error {
 		if t.ctx.Err() == nil {
 			t.logHandshake("from "+remoteHost(c), err)
 		}
-		return nil
+		return false, nil
 	}
 	switch mode {
 	case fetchBit:
-		return t.serve(c, r, from)
+		return false, t.serve(c, r, from)
 	case callBit:
-		return t.answer(c, r, from)
+		return false, t.answer(c, r, from)
 	case 0:
 	default:
-		return fmt.Errorf("peer %d asks for a fetch and a call at once", from)
+		return false, fmt.Errorf("peer %d asks for a fetch and a call at once", from)
 	}
-	// A stream of Raft messages reads through big buffers, above TLS and
-	// below it.
-	if u := bufconn.Under(c); u != nil {
-		u.GrowReads(ioBuffer)
+	if r.Buffered() > 0 {
+		// The dialer writes nothing after its preface until the reply,
+		// which it waits for.
+		return false, fmt.Errorf("peer %d sent frames before the reply to its preface", from)
 	}
-	r = bufio.NewReaderSize(r, ioBuffer)
+	if err := c.SetReadDeadline(time.Time{}); err != nil {
+		return false, err
+	}
+	// A stream of Raft messages reads through a big buffer under TLS.
+	bridgeOf(c).Grow(ioBuffer)
 	t.mu.Lock()
 	t.inbound[c] = inbound{id: from, version: v}
 	t.mu.Unlock()
-	if err := c.SetReadDeadline(time.Time{}); err != nil {
-		return err
+	tc := c.(*tls.Conn)
+	o := t.handOver(c)
+	if !t.loop.Post(func() { t.attachIn(tc, o, from, v) }) {
+		t.release(o)
 	}
-	cs := t.countersOf(from)
-	// frames ends only with an error.
-	err = t.frames(r, from, v, cs)
-	if !errors.Is(err, io.EOF) && t.ctx.Err() == nil {
-		cs.receiveFailures.Inc()
-	}
-	return err
-}
-
-// frames reads and delivers the messages of an inbound connection of
-// version v until it fails. A message of held entries on a connection of
-// a version that does not carry them is refused and counted: a sender
-// never sends one there (sender.write).
-func (t *TCP) frames(r io.Reader, from uint64, v byte, cs *counters) error {
-	var hdr [4]byte
-	var buf []byte
-	for {
-		if _, err := io.ReadFull(r, hdr[:]); err != nil {
-			return err
-		}
-		n := binary.BigEndian.Uint32(hdr[:])
-		if n > maxFrame {
-			return fmt.Errorf("frame of %d bytes from peer %d is over the limit", n, from)
-		}
-		if cap(buf) < int(n) {
-			buf = make([]byte, n)
-		}
-		buf = buf[:n]
-		if _, err := io.ReadFull(r, buf); err != nil {
-			return err
-		}
-		// buf is reused for the next frame. That is safe because
-		// Unmarshal copies bytes fields: the entries' data, which the
-		// index keeps slices of once they apply, is the message's own.
-		m := &raftpb.Message{}
-		if err := proto.Unmarshal(buf, m); err != nil {
-			return err
-		}
-		if m.GetFrom() != from {
-			return fmt.Errorf("peer %d sent a message from %d", from, m.GetFrom())
-		}
-		cs.received.Add(float64(len(hdr) + len(buf)))
-		if m.GetType() == raftpb.MsgHeartbeat {
-			cs.heartbeatReceived.SetToCurrentTime()
-		}
-		if v < heldVersion && core.HeldForm(m) {
-			t.cfg.Metrics.PeerHeldRefused.Inc()
-			t.logf("peer: refused a %s of held entries from %d on a connection of version %d", m.GetType(), from, v)
-			continue
-		}
-		t.cfg.Deliver(m)
-	}
+	return true, nil
 }
 
 // handshake checks the ALPN version and the preface of an inbound
@@ -950,13 +972,18 @@ type sender struct {
 // lane is one of a sender's queues, with the connection that writes it.
 type lane struct {
 	name string
-	q    chan queued
 	// version is the protocol version of the lane's connection, 0 while
 	// it has none.
 	version atomic.Uint32
-	// bytes are the estimated bytes in q.
-	bytes atomic.Int64
-	// Writer only: messages that waited longer than slowQueue since the
+	// Loop only: q holds the queued messages from head on, at most max of
+	// them and about bytes of their estimated size, and out is the lane's
+	// connection while the loop has one.
+	q     []queued
+	head  int
+	max   int
+	bytes int64
+	out   *outConn
+	// Loop only: messages that waited longer than slowQueue since the
 	// last report, the longest wait among them, the last one's type, and
 	// the report's time.
 	slow       int
@@ -995,38 +1022,25 @@ func isData(m *raftpb.Message) bool {
 	return t == raftpb.MsgApp || t == raftpb.MsgSnap || t == raftpb.MsgProp
 }
 
+// send queues m on its lane, on the loop, and lists the lane's
+// connection to write at the end of the turn. A full lane drops it and
+// reports the peer unreachable.
 func (s *sender) send(m *raftpb.Message) {
 	l := &s.ctrl
 	if isData(m) {
 		l = &s.data
 	}
 	n := size(m)
-	if l.bytes.Add(n) > maxQueued {
-		l.bytes.Add(-n)
+	if l.bytes+n > maxQueued || len(l.q)-l.head >= l.max {
 		s.counters.sendFailures.Inc()
 		s.t.cfg.Unreachable(s.id)
 		return
 	}
-	select {
-	case l.q <- queued{m, time.Now()}:
-	default:
-		l.bytes.Add(-n)
-		s.counters.sendFailures.Inc()
-		s.t.cfg.Unreachable(s.id)
+	l.q = append(l.q, queued{m, time.Now()})
+	l.bytes += n
+	if l.out != nil {
+		s.t.loop.Dirty(l.out)
 	}
-}
-
-// next returns the next message of lane l.
-func (s *sender) next(ctx context.Context, l *lane) (*raftpb.Message, bool) {
-	var q queued
-	select {
-	case q = <-l.q:
-		l.bytes.Add(-size(q.m))
-	case <-ctx.Done():
-		return nil, false
-	}
-	s.waited(l, q)
-	return q.m, true
 }
 
 // waited logs messages that waited long in their lane, at most once a
@@ -1059,18 +1073,14 @@ func (s *sender) reportWaits(l *lane) {
 	l.slow, l.slowest, l.slowReport = 0, 0, time.Now()
 }
 
-// drop empties lane l after a failed connection.
+// drop empties lane l after a failed connection or dial, on the loop.
 func (s *sender) drop(l *lane) {
-	for {
-		select {
-		case q := <-l.q:
-			l.bytes.Add(-size(q.m))
-			s.counters.sendFailures.Inc()
-		default:
-			s.t.cfg.Unreachable(s.id)
-			return
-		}
+	for i := l.head; i < len(l.q); i++ {
+		s.counters.sendFailures.Inc()
 	}
+	clear(l.q)
+	l.q, l.head, l.bytes = l.q[:0], 0, 0
+	s.t.cfg.Unreachable(s.id)
 }
 
 // run writes the data lane on a connection of its own and the control
@@ -1080,15 +1090,17 @@ func (s *sender) run() {
 	s.runLane(&s.ctrl)
 }
 
-// runLane dials the peer for lane l and writes it, again after each
-// failure.
+// runLane dials the peer for lane l and hands each connection to the
+// loop, which writes the lane, again after each failure.
 func (s *sender) runLane(l *lane) {
 	ctx := s.ctx
 	backoff := 50 * time.Millisecond
 	for ctx.Err() == nil {
 		c, v, err := s.dial(ctx, s.t.cfg.ID)
 		if err != nil {
-			s.drop(l)
+			if !s.t.loop.Post(func() { s.drop(l) }) {
+				return
+			}
 			select {
 			case <-time.After(backoff):
 			case <-ctx.Done():
@@ -1098,13 +1110,29 @@ func (s *sender) runLane(l *lane) {
 		}
 		backoff = 50 * time.Millisecond
 		s.laneUp(l, v)
-		err = s.connected(ctx, c, l, v)
+		down := make(chan error, 1)
+		tc := c.(*tls.Conn)
+		o := s.t.handOver(c)
+		if !s.t.loop.Post(func() { s.attach(l, tc, o, v, down) }) {
+			s.t.release(o)
+			s.laneDown(l, false)
+			return
+		}
+		select {
+		case err = <-down:
+		case <-ctx.Done():
+			// The loop ends the lane's connection: a socket closed here
+			// would send epoll no event. Once the loop drained, the close
+			// here is all there is.
+			if cerr := o.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) {
+				s.t.logf("peer: close: %v", cerr)
+			}
+			err = nil
+		}
 		failed := err != nil && ctx.Err() == nil
 		s.laneDown(l, failed)
-		s.reportWaits(l)
 		if failed {
 			s.t.logf("peer: send %s to %d: %v", l.name, s.id, err)
-			s.drop(l)
 		}
 	}
 }
@@ -1151,35 +1179,6 @@ func (s *sender) laneDown(l *lane, failed bool) {
 	}
 }
 
-// connected writes to c until it fails, the transport closes or the peer
-// closes it, then closes it. The peer writes nothing after the handshake,
-// so a read ends only when the connection does: a node with nothing to
-// send still sees the peer close it, as when the cluster removed this
-// node, and dials again to hear why (#263).
-func (s *sender) connected(ctx context.Context, c net.Conn, l *lane, v byte) error {
-	ctx, stop := context.WithCancel(ctx)
-	var rerr error
-	read := make(chan struct{})
-	go func() {
-		defer close(read)
-		defer stop()
-		var b [1]byte
-		if _, err := c.Read(b[:]); err == nil {
-			rerr = fmt.Errorf("peer %d wrote on a message connection", s.id)
-		} else {
-			rerr = err
-		}
-	}()
-	err := s.write(ctx, c, l, v)
-	stop()
-	s.t.untrack(c)
-	<-read
-	if err == nil && s.ctx.Err() == nil {
-		err = rerr
-	}
-	return err
-}
-
 // dial connects to the peer and runs the handshake, with id in the
 // preface, and returns the connection and its protocol version. A failed
 // TCP dial is not logged, since that is how a peer that is down looks. A
@@ -1202,7 +1201,7 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 	if id&callBit != 0 {
 		size = callBuffer
 	}
-	c := tls.Client(bufconn.New(raw, size), &tls.Config{
+	c := tls.Client(loop.NewBridge(raw, size), &tls.Config{
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return s.t.clientCert() },
 		RootCAs:              s.t.cfg.CA,
 		InsecureSkipVerify:   s.t.cfg.InsecureSkipVerify, //nolint:gosec // etcd's --peer-auto-tls
@@ -1310,68 +1309,6 @@ func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) (byte, e
 	return v, c.SetDeadline(time.Time{})
 }
 
-// write sends the frames of lane l, on a connection of version v, until
-// the connection fails or the transport closes. Frames gather above TLS,
-// so that small ones share a record, and the records under it, so that
-// they share a system call.
-func (s *sender) write(ctx context.Context, c net.Conn, l *lane, v byte) error {
-	w := bufio.NewWriterSize(c, ioBuffer)
-	under := bufconn.Under(c)
-	if under != nil {
-		under.Buffer()
-	}
-	var buf []byte
-	for {
-		if len(l.q) == 0 {
-			if err := w.Flush(); err != nil {
-				return err
-			}
-			if under != nil {
-				if err := under.Flush(); err != nil {
-					return err
-				}
-			}
-		}
-		m, ok := s.next(ctx, l)
-		if !ok {
-			return nil
-		}
-		if v < heldVersion && core.HeldForm(m) {
-			// Queued while the link spoke a newer version: an older peer
-			// would take a named entry for its data. Raft sends again
-			// what the follower misses, in full now (HeldEntries).
-			continue
-		}
-		n := proto.Size(m)
-		if n > maxFrame {
-			// The receiver would refuse it; Raft sends again in smaller
-			// pieces after the unreachable report.
-			s.t.logf("peer: dropping a %s of %d bytes to %d, over the frame limit", m.GetType(), n, s.id)
-			s.t.cfg.Unreachable(s.id)
-			continue
-		}
-		// The length and the message go out in one write, so a frame
-		// larger than the buffer skips the copy into it; the size is
-		// known from Size.
-		buf = binary.BigEndian.AppendUint32(buf[:0], uint32(n))
-		var err error
-		buf, err = proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(buf, m)
-		if err != nil {
-			return err
-		}
-		if err := c.SetWriteDeadline(s.t.writeDeadline(len(buf))); err != nil {
-			return err
-		}
-		if _, err := w.Write(buf); err != nil {
-			return err
-		}
-		s.counters.sent.Add(float64(len(buf)))
-		if m.GetType() == raftpb.MsgHeartbeat {
-			s.counters.heartbeatSent.SetToCurrentTime()
-		}
-	}
-}
-
 // writeDeadline is when a write of a frame of n bytes that has not
 // finished fails the connection, so that a stalled peer is dropped and
 // reported. A frame also gets the time it takes at slowLink: with heartbeats
@@ -1379,11 +1316,21 @@ func (s *sender) write(ctx context.Context, c net.Conn, l *lane, v byte) error {
 // it in the write timeout would fail its connection and be sent again for
 // good while the leader stays in office.
 func (t *TCP) writeDeadline(n int) time.Time {
-	if planted.On("B14") {
-		// Planted: no deadline; a stalled peer holds the writer.
+	limit, ok := t.writeLimit(n)
+	if !ok {
 		return time.Time{}
 	}
-	return time.Now().Add(cmp.Or(t.cfg.WriteTimeout, defaultTimeout) + time.Duration(n)*time.Second/slowLink)
+	return time.Now().Add(limit)
+}
+
+// writeLimit is how long a write of n bytes may take before it fails the
+// connection, and false if there is no limit.
+func (t *TCP) writeLimit(n int) (time.Duration, bool) {
+	if planted.On("B14") {
+		// Planted: no deadline; a stalled peer holds the writer.
+		return 0, false
+	}
+	return cmp.Or(t.cfg.WriteTimeout, defaultTimeout) + time.Duration(n)*time.Second/slowLink, true
 }
 
 // slowLink is the slowest link, in bytes a second, that a frame's write

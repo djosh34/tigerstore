@@ -1,8 +1,6 @@
 package server
 
 import (
-	"time"
-
 	"golang.org/x/net/http2"
 )
 
@@ -15,9 +13,14 @@ type wframe struct {
 	ctrl  *ctrlFrame // set for frames other than HEADERS and DATA
 }
 
-// maxTake bounds the data bytes of one write, so flow-controlled streams
-// take turns and one flush stays bounded.
-const maxTake = 1 << 20
+// maxTake bounds the bytes of the frames one write pass takes, headers,
+// trailers and frame headers included, and maxPassFrames their number, so
+// flow-controlled streams take turns and what one pass leaves waiting for
+// a socket stays bounded (Server.maxOut).
+const (
+	maxTake       = 1 << 20
+	maxPassFrames = 1024
+)
 
 // list puts a stream with output on the ready list. c.mu is held.
 func (c *conn) list(st *stream) {
@@ -27,79 +30,16 @@ func (c *conn) list(st *stream) {
 	}
 }
 
-// writeLoop sends what the reader and the handlers queued, within the
-// client's flow-control windows. It is the only goroutine that writes to
-// the connection.
-func (c *conn) writeLoop() error {
-	var frames []wframe
-	var ctrl []ctrlFrame
-	var hdr []byte
-	nodeDone := c.s.n.Done()
-	for {
-		c.completeWaiting()
-		c.mu.Lock()
-		ctrl = append(ctrl[:0], c.ctrl...)
-		clear(c.ctrl)
-		c.ctrl = c.ctrl[:0]
-		frames = c.take(frames[:0])
-		drained := c.goingAway && len(c.streams) == 0
-		c.mu.Unlock()
-		if len(ctrl) == 0 && len(frames) == 0 {
-			if drained {
-				return nil
-			}
-			select {
-			case <-c.wake:
-				continue
-			case <-nodeDone:
-				nodeDone = nil
-				c.nodeStopped()
-				continue
-			case <-c.ctx.Done():
-				return nil
-			}
-		}
-		if err := c.nc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
-			return err
-		}
-		for i := range ctrl {
-			if err := c.writeCtrl(&ctrl[i]); err != nil {
-				return err
-			}
-		}
-		for i, f := range frames {
-			if f.ctrl != nil {
-				if err := c.writeCtrl(f.ctrl); err != nil {
-					return err
-				}
-			} else {
-				c.wrote.Store(true)
-				hdr = frameHeader(hdr[:0], len(f.b), f.typ, f.flags, f.id)
-				_, _ = c.bw.Write(hdr)
-				_, _ = c.bw.Write(f.b)
-			}
-			frames[i] = wframe{}
-		}
-		// bufio.Writer keeps the first write error and returns it here.
-		if err := c.bw.Flush(); err != nil {
-			return err
-		}
-		if drained {
-			return nil
-		}
-	}
-}
-
-// take moves the output that the windows allow into frames. Each pass
-// gives every ready stream at most one frame of data, so one large reply
-// does not hold up the others. c.mu is held.
-func (c *conn) take(frames []wframe) []wframe {
-	budget := maxTake
-	for budget > 0 && len(c.ready) > 0 {
+// take moves the output that the windows allow into frames, within
+// budget bytes and maxPassFrames frames, of which frames may hold some.
+// Each round gives every ready stream at most one frame of data, so one
+// large reply does not hold up the others. c.mu is held.
+func (c *conn) take(frames []wframe, budget int) []wframe {
+	for budget > 0 && len(frames) < maxPassFrames && len(c.ready) > 0 {
 		before := len(frames)
 		kept := c.ready[:0]
 		for _, st := range c.ready {
-			if !st.reset {
+			if !st.reset && budget > 0 && len(frames) < maxPassFrames {
 				quantum := min(budget, c.maxFrame)
 				left := quantum
 				frames = c.takeStream(st, frames, &left)
@@ -121,8 +61,9 @@ func (c *conn) take(frames []wframe) []wframe {
 	return frames
 }
 
-// takeStream moves one stream's output, in order, until it is empty or
-// blocked by a window.
+// takeStream moves one stream's output, in order, until it is empty, or
+// blocked by a window or by budget, which each frame's bytes and header
+// spend.
 func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 	queued := st.queued
 	defer func() {
@@ -132,17 +73,30 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 	}()
 	for len(st.out) > 0 {
 		it := &st.out[0]
+		// A header block and the RST_STREAM that may follow it go whole,
+		// and only while they fit: two frames and their bytes. A block
+		// larger than a whole pass goes alone, first in its pass.
+		if len(frames)+2 > maxPassFrames || it.kind != outData && len(frames) > 0 && *budget < 2*frameHeaderLen+4+len(it.b) {
+			return frames
+		}
 		switch it.kind {
 		case outHeaders:
 			frames = append(frames, wframe{typ: http2.FrameHeaders, flags: http2.FlagHeadersEndHeaders, id: st.id, b: it.b})
+			*budget -= frameHeaderLen + len(it.b)
 		case outTrailers:
 			frames = append(frames, wframe{typ: http2.FrameHeaders, flags: http2.FlagHeadersEndHeaders | http2.FlagHeadersEndStream, id: st.id, b: it.b})
-			frames = c.endStream(st, frames)
+			*budget -= frameHeaderLen + len(it.b)
+			frames = c.endStream(st, frames, budget)
 		case outData:
 			for len(it.b) > 0 || it.end {
+				// A round gives the stream at most one data frame (take's
+				// quantum), so the check above bounds the frames too.
+				if *budget < 2*frameHeaderLen+4 {
+					return frames
+				}
 				n := 0
 				if len(it.b) > 0 {
-					n = int(min(int64(len(it.b)), int64(c.maxFrame), c.sendWin, st.sendWin, int64(*budget)))
+					n = int(min(int64(len(it.b)), int64(c.maxFrame), c.sendWin, st.sendWin, int64(*budget-2*frameHeaderLen-4)))
 					if n <= 0 {
 						return frames
 					}
@@ -158,10 +112,10 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 				c.sendWin -= int64(n)
 				st.sendWin -= int64(n)
 				st.queued -= n
-				*budget -= n
+				*budget -= frameHeaderLen + n
 				if last {
 					if it.end {
-						frames = c.endStream(st, frames)
+						frames = c.endStream(st, frames, budget)
 					}
 					break
 				}
@@ -175,8 +129,9 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 }
 
 // endStream closes the server's side of a stream. If the client has not
-// ended its side, a RST_STREAM tells it to stop sending, as grpc-go does.
-func (c *conn) endStream(st *stream, frames []wframe) []wframe {
+// ended its side, a RST_STREAM tells it to stop sending, as grpc-go does,
+// which spends budget.
+func (c *conn) endStream(st *stream, frames []wframe, budget *int) []wframe {
 	st.ended = true
 	delete(c.streams, st.id)
 	if st.cancel != nil {
@@ -190,6 +145,7 @@ func (c *conn) endStream(st *stream, frames []wframe) []wframe {
 	c.releaseLocked(&st.replyHeld)
 	if !st.inEOF {
 		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: st.id, val: uint32(http2.ErrCodeNo)}})
+		*budget -= frameHeaderLen + 4
 	}
 	return frames
 }

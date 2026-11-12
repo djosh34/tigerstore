@@ -272,13 +272,13 @@ func TestControlQueueIsCapped(t *testing.T) {
 	}
 	tr := &TCP{cfg: Config{Unreachable: func(uint64) { dropped.Add(1) }, Metrics: set}}
 	s := &sender{t: tr, id: 2, counters: tr.countersOf(2)}
-	s.ctrl.q, s.data.q = make(chan queued, controlQueue), make(chan queued, dataQueue)
+	s.ctrl.max, s.data.max = controlQueue, dataQueue
 	big := make([]byte, 1<<20)
 	for range 100 {
 		s.send(&raftpb.Message{Type: raftpb.MsgHeartbeat.Enum(), Context: big})
 	}
-	if dropped.Load() == 0 || s.ctrl.bytes.Load() > maxQueued {
-		t.Fatalf("queued %d bytes of heartbeats with %d drops; the cap is %d", s.ctrl.bytes.Load(), dropped.Load(), maxQueued)
+	if dropped.Load() == 0 || s.ctrl.bytes > maxQueued {
+		t.Fatalf("queued %d bytes of heartbeats with %d drops; the cap is %d", s.ctrl.bytes, dropped.Load(), maxQueued)
 	}
 	// Each drop is a send failure to the peer, as etcd counts them.
 	if got := testutil.ToFloat64(set.PeerSentFailures.WithLabelValues("2")); got != float64(dropped.Load()) {

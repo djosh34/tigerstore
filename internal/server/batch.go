@@ -133,28 +133,6 @@ func (c *conn) callerOf(st *stream) core.Caller {
 	return caller
 }
 
-// batchDue reports whether the reader should hand its batch to the node
-// before it reads the next frame: the batch is full, or reading the next
-// frame could wait for the client, because it is not buffered whole or
-// starts a header block that continues in later frames. There is no
-// timer.
-func (c *conn) batchDue() bool {
-	b := &c.batch
-	if len(b.reqs) == 0 {
-		return false
-	}
-	if len(b.reqs) >= maxBatchOps || b.bytes >= maxBatchBytes || c.br.Buffered() < frameHeaderLen {
-		return true
-	}
-	// Peek cannot fail: the header is buffered.
-	h, _ := c.br.Peek(frameHeaderLen)
-	n := int(h[0])<<16 | int(h[1])<<8 | int(h[2])
-	if http2.FrameType(h[3]) == http2.FrameHeaders && http2.Flags(h[4])&http2.FlagHeadersEndHeaders == 0 {
-		return true
-	}
-	return c.br.Buffered() < frameHeaderLen+n
-}
-
 // flush hands the batch to the node. It never waits for the node's
 // replies; the held bytes bound a connection through flow control.
 func (c *conn) flush() error {
@@ -180,7 +158,7 @@ func (c *conn) flush() error {
 	if keep == 0 {
 		return nil
 	}
-	err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)
+	err := c.s.n.SubmitLocal(b.reqs, b.tags, c)
 	if err == nil {
 		c.mu.Lock()
 		for i, tag := range b.tags {
@@ -193,9 +171,6 @@ func (c *conn) flush() error {
 		}
 		c.mu.Unlock()
 		return nil
-	}
-	if c.ctx.Err() != nil {
-		return err
 	}
 	// The node stopped; it takes no more requests.
 	c.mu.Lock()
@@ -281,9 +256,10 @@ func estimate(cp *node.Completion) int64 {
 	return 5 + headerBound + fieldsOf(cp.Range.KVs) + 2 + 1 + binary.MaxVarintLen64
 }
 
-// Complete takes replies from the node's committer. It pushes them onto a
-// lock-free list, so the committer never waits, counts their size against
-// the connection's budget, and wakes the writer, which encodes them.
+// Complete takes replies from the node's committer, on the loop. It
+// pushes them onto a list, counts their size against the connection's
+// budget, and lists the connection to flush at the end of the turn, which
+// encodes and writes them.
 func (c *conn) Complete(cs []node.Completion) {
 	n := &completed{cs: cs}
 	for i := range cs {
@@ -296,7 +272,7 @@ func (c *conn) Complete(cs []node.Completion) {
 			break
 		}
 	}
-	c.signal()
+	c.s.loop.Dirty(c)
 }
 
 // takeCompletions returns the replies the node queued, oldest first,

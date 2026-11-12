@@ -137,9 +137,9 @@ func hashBytes(b []byte) uint64 {
 	return h
 }
 
-// deliverer is the Deliver of p's transport: it hands the node the peer
-// frames that arrive, except the appends to and from a gray node, which
-// it drops.
+// deliverer is the Deliver of p's transport, which runs on the node's
+// loop: it hands the node the peer frames that arrive, except the appends
+// to and from a gray node, which it drops.
 func (s *Sim) deliverer(p *proc, tn *tnode.Node) func(*raftpb.Message) {
 	return func(m *raftpb.Message) {
 		s.mu.Lock()
@@ -165,7 +165,7 @@ func (s *Sim) deliverer(p *proc, tn *tnode.Node) func(*raftpb.Message) {
 		}
 		s.mu.Unlock()
 		if !drop {
-			tn.Deliver(m)
+			tn.Receive(m)
 		}
 	}
 }

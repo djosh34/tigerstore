@@ -12,6 +12,8 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -22,9 +24,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
-	"github.com/djosh34/tigerstore/internal/bufconn"
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/loop"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
 )
@@ -90,6 +94,19 @@ const stopGrace = time.Second
 type Server struct {
 	n   *node.Node
 	cfg Config
+	// loop is the node's event loop, which runs the HTTP/2 connections;
+	// bufs are the buffers its connections borrow while they hold bytes,
+	// bigBufs those that hold a whole write pass that waits for a socket,
+	// and bw the write buffer every connection writes through. Loop only.
+	loop    *loop.Loop
+	bufs    *loop.Buffers
+	bigBufs *loop.Buffers
+	bw      *bufio.Writer
+	// ctrlOut, framesOut and hdrOut are the write pass's scratch, which
+	// every connection uses in turn. Loop only.
+	ctrlOut   []ctrlFrame
+	framesOut []wframe
+	hdrOut    []byte
 	// gone sums the metrics of closed connections; guarded by mu.
 	gone *connMetrics
 	// metrics are what the server observes (metrics.go).
@@ -128,6 +145,23 @@ type Server struct {
 	conns   map[closer]struct{}
 	stopped bool
 	wg      sync.WaitGroup
+	// open counts the client connections from their accept until they end,
+	// under mu, and maxConns bounds them, 0 for no bound (setLimits);
+	// refusedLog is when a refused one was last logged.
+	open       int
+	maxConns   int
+	refusedLog time.Time
+	// refusing counts the refused connections that hear why (refuse), and
+	// toldRefused holds when each client host last heard why.
+	refusing    int
+	toldRefused map[string]time.Time
+	// outAll is the output that waits for the client connections'
+	// sockets, and maxOut its bound, 0 for none: a connection whose next
+	// write pass would go past it waits in outWaiting until sockets took
+	// some. Loop only.
+	outAll     int
+	maxOut     int
+	outWaiting []*conn
 }
 
 // closer is a live client connection that Stop must end.
@@ -153,7 +187,7 @@ func New(n *node.Node, cfg Config) (*Server, error) {
 		cfg.BcryptCost = 0
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Server{n: n, cfg: cfg, grpcTLS: grpcTLS(cfg.TLS), gone: newConnMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
+	s := &Server{n: n, loop: n.Loop(), bufs: loop.NewBuffers(connBuffer, keepBuffers), bigBufs: loop.NewBuffers(passBuffer, keepPassBuffers), bw: bufio.NewWriterSize(nil, ioBuffer), cfg: cfg, grpcTLS: grpcTLS(cfg.TLS), gone: newConnMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
 	if err := s.newServerMetrics(); err != nil {
 		cancel()
 		return nil, err
@@ -233,12 +267,21 @@ func (s *Server) ServeListener(l Listener) error {
 			_ = nc.Close()
 			return nil
 		}
+		if s.maxConns > 0 && s.open >= s.maxConns {
+			// Past the connections the memory budget holds.
+			s.refuseLocked(nc, l)
+			s.mu.Unlock()
+			continue
+		}
 		// Added under mu, so never after Stop started waiting.
 		s.wg.Add(1)
+		s.open++
 		s.mu.Unlock()
 		go func() {
-			defer s.wg.Done()
-			s.serveConn(nc, l)
+			// The loop ends a connection handed to it.
+			if !s.serveConn(nc, l) {
+				s.ended()
+			}
 		}()
 	}
 }
@@ -247,70 +290,240 @@ func (s *Server) ServeListener(l Listener) error {
 // a client that did not offer h2 or, without TLS, did not start with
 // HTTP/2's preface. As in etcd, a listener without TLS hands HTTP/2 to
 // gRPC alone, and one that serves only HTTP drops HTTP/2 without TLS and
-// one that serves only gRPC HTTP/1.1.
-func (s *Server) serveConn(nc net.Conn, l Listener) {
+// one that serves only gRPC HTTP/1.1. An HTTP/2 connection goes to the
+// node's loop, and serveConn reports that it handed it over.
+func (s *Server) serveConn(nc net.Conn, l Listener) bool {
 	raw := nc
 	traffic := l.Traffic
+	// TLS reads its records through the bridge's buffer, so one read
+	// takes in as many as the kernel holds.
+	bridge := loop.NewBridge(nc, ioBuffer)
 	var h2 bool
 	if l.TLS {
 		cfg := s.cfg.TLS
 		if traffic == TrafficGRPC {
 			cfg = s.grpcTLS
 		}
-		// TLS reads its records through a buffer, so one read takes in
-		// as many as the kernel holds (bufconn).
-		tc := tls.Server(bufconn.New(nc, ioBuffer), cfg)
+		tc := tls.Server(bridge, cfg)
 		ctx, cancel := context.WithTimeout(s.ctx, handshakeTimeout)
 		err := tc.HandshakeContext(ctx)
 		cancel()
 		if err != nil {
 			_ = raw.Close()
-			return
+			return false
 		}
 		h2 = tc.ConnectionState().NegotiatedProtocol == "h2"
 		nc = tc
 	} else {
-		pc, err := peekPreface(nc)
-		if err != nil {
+		var err error
+		if h2, err = peekPreface(bridge); err != nil {
 			_ = raw.Close()
-			return
+			return false
 		}
-		h2, nc = pc.h2, pc
 		if h2 {
 			traffic = TrafficGRPC
 		}
+		nc = bridge
 	}
 	if (h2 && l.Traffic == TrafficHTTP && !l.TLS) || (!h2 && l.Traffic == TrafficGRPC) {
 		_ = raw.Close()
-		return
+		return false
 	}
 	if !h2 {
 		h := &http1Conn{s: s, nc: nc, raw: raw}
 		if !s.track(h) {
-			return
+			return false
 		}
 		defer s.untrack(h)
 		h.serve()
-		return
+		return false
 	}
-	c := newConn(s, nc, raw)
+	c := newConn(s, nc, bridge)
 	c.traffic = traffic
-	if !s.track(c) {
-		return
-	}
-	defer s.untrack(c)
-	c.serve()
+	return s.hand(c)
 }
 
 // servePlain serves HTTP/2 with prior knowledge on a connection of the
-// gateway's.
-func (s *Server) servePlain(nc net.Conn) {
-	c := newConn(s, nc, nc)
+// gateway's, and reports whether it handed it to the loop.
+func (s *Server) servePlain(nc net.Conn) bool {
+	bridge := loop.NewBridge(nc, ioBuffer)
+	return s.hand(newConn(s, bridge, bridge))
+}
+
+// hand gives an HTTP/2 connection to the loop, which serves it and ends
+// it, and reports whether it did. Only then does the loop end the
+// connection and its count in s.wg.
+func (s *Server) hand(c *conn) bool {
+	// The handshake's deadline goes; the loop keeps time itself.
+	if err := c.raw.SetDeadline(time.Time{}); err != nil {
+		_ = c.raw.Close()
+		return false
+	}
 	if !s.track(c) {
+		return false
+	}
+	if !s.loop.Post(c.attach) {
+		s.untrack(c)
+		return false
+	}
+	return true
+}
+
+// maxRefusing bounds the refused connections that wait for their
+// handshake to hear why at once; past it, a refused one is closed.
+// refuseEvery is how often one client host hears why, and maxToldRefused
+// how many hosts the server remembers that for.
+const (
+	maxRefusing    = 16
+	refuseEvery    = time.Second
+	maxToldRefused = 1024
+)
+
+// remoteHost is the host of c's remote address.
+func remoteHost(c net.Conn) string {
+	if a, ok := c.RemoteAddr().(*net.TCPAddr); ok {
+		return a.IP.String()
+	}
+	return c.RemoteAddr().String()
+}
+
+// refuseLocked refuses a client connection past the limit, counts it in
+// tigerstore_server_client_connections_refused_total, and logs it at most
+// once a minute. The client hears why on a goroutine of its own (refuse),
+// unless maxRefusing others wait already. s.mu is held.
+func (s *Server) refuseLocked(nc net.Conn, l Listener) {
+	s.metrics.set.ClientConnsRefused.Inc()
+	if time.Since(s.refusedLog) >= time.Minute {
+		s.refusedLog = time.Now()
+		if s.cfg.Logf != nil {
+			s.cfg.Logf("refused a client connection: %d are open, the most the memory budget holds", s.maxConns)
+		}
+	}
+	// gRPC resets its reconnect backoff after any connection that got the
+	// server's SETTINGS, so a client refused that way would come back at
+	// once, in a loop. One that is closed before them backs off (a second,
+	// then 1.6 times longer each time). So a client host hears why at most
+	// once a second, and is closed at once in between.
+	host := remoteHost(nc)
+	now := time.Now()
+	if last, ok := s.toldRefused[host]; s.refusing >= maxRefusing || ok && now.Sub(last) < refuseEvery {
+		_ = nc.Close()
 		return
 	}
-	defer s.untrack(c)
-	c.serve()
+	if len(s.toldRefused) >= maxToldRefused {
+		for h, at := range s.toldRefused {
+			if now.Sub(at) >= refuseEvery {
+				delete(s.toldRefused, h)
+			}
+		}
+	}
+	if len(s.toldRefused) < maxToldRefused {
+		if s.toldRefused == nil {
+			s.toldRefused = map[string]time.Time{}
+		}
+		s.toldRefused[host] = now
+	}
+	s.refusing++
+	s.wg.Go(func() {
+		s.refuse(nc, l)
+		s.mu.Lock()
+		s.refusing--
+		s.mu.Unlock()
+	})
+}
+
+// refusal is the debug data of the GOAWAY, and the body of the HTTP 503,
+// that a refused client gets.
+const refusal = "tigerstore: too many client connections; the server holds as many as its memory budget allows"
+
+// refuse tells a refused client why, as its protocol allows, and closes
+// the connection. An HTTP/2 client gets the server's SETTINGS; its first
+// call, if one comes within a second, gets Unavailable with the reason,
+// since grpc-go drops a GOAWAY's debug data; then a GOAWAY with
+// ENHANCE_YOUR_CALM and the reason. An HTTP/1.1 client gets a 503. The
+// client has up to a second to read it, and Stop ends it at once.
+func (s *Server) refuse(nc net.Conn, l Listener) {
+	defer nc.Close() //nolint:errcheck // the refused connection ends here
+	stop := context.AfterFunc(s.ctx, func() { _ = nc.Close() })
+	defer stop()
+	if err := nc.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
+		return
+	}
+	var h2 bool
+	var conn net.Conn
+	if l.TLS {
+		cfg := s.cfg.TLS
+		if l.Traffic == TrafficGRPC {
+			cfg = s.grpcTLS
+		}
+		tc := tls.Server(nc, cfg)
+		if err := tc.HandshakeContext(s.ctx); err != nil {
+			return
+		}
+		h2, conn = tc.ConnectionState().NegotiatedProtocol == "h2", tc
+	} else {
+		b := loop.NewBridge(nc, len(http2.ClientPreface))
+		var err error
+		if h2, err = peekPreface(b); err != nil {
+			return
+		}
+		conn = b
+	}
+	if !h2 {
+		_, _ = fmt.Fprintf(conn, "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(refusal), refusal)
+	} else if !refuseCall(conn, nc) {
+		return
+	}
+	// Reading what the client sends until it closes keeps a reset from
+	// taking the answer with it.
+	if err := nc.SetDeadline(time.Now().Add(time.Second)); err != nil {
+		return
+	}
+	_, _ = io.Copy(io.Discard, conn)
+}
+
+// refuseCall answers a refused HTTP/2 client: the server's SETTINGS, its
+// first call's HEADERS within a second with trailers-only Unavailable and
+// the reason, and a GOAWAY. It reports whether the client may still read.
+func refuseCall(conn, nc net.Conn) bool {
+	preface := make([]byte, len(http2.ClientPreface))
+	if _, err := io.ReadFull(conn, preface); err != nil {
+		return false
+	}
+	fr := http2.NewFramer(conn, conn)
+	// HTTP/2's own limit, which the server never raises: a frame header
+	// cannot make a refusal allocate more.
+	fr.SetMaxReadFrameSize(maxReadFrame)
+	if fr.WriteSettings() != nil || nc.SetReadDeadline(time.Now().Add(time.Second)) != nil {
+		return false
+	}
+	var last uint32
+	for {
+		f, err := fr.ReadFrame()
+		if err != nil {
+			break
+		}
+		if h, ok := f.(*http2.HeadersFrame); ok {
+			last = h.StreamID
+			if fr.WriteHeaders(http2.HeadersFrameParam{
+				StreamID: last, EndStream: true, EndHeaders: true,
+				BlockFragment: statusBlock(status.New(codes.Unavailable, refusal), true),
+			}) != nil {
+				return false
+			}
+			break
+		}
+	}
+	return fr.WriteGoAway(last, http2.ErrCodeEnhanceYourCalm, []byte(refusal)) == nil
+}
+
+// ended counts the end of a connection that ServeListener or the gateway
+// counted.
+func (s *Server) ended() {
+	s.mu.Lock()
+	s.open--
+	s.mu.Unlock()
+	s.wg.Done()
 }
 
 func (s *Server) track(c closer) bool {
@@ -384,32 +597,23 @@ func grpcTLS(cfg *tls.Config) *tls.Config {
 	return cfg
 }
 
-// prefaceConn is a connection without TLS whose first bytes were read to
-// tell HTTP/2 from HTTP/1.1; reads take them first.
-type prefaceConn struct {
-	net.Conn
-	br *bufio.Reader
-	h2 bool
-}
-
-func (c *prefaceConn) Read(p []byte) (int, error) { return c.br.Read(p) }
-
 // peekPreface reads as much of a connection's first bytes as it takes to
 // tell whether it starts with HTTP/2's client preface, as cmux does in
-// etcd, within handshakeTimeout.
-func peekPreface(nc net.Conn) (*prefaceConn, error) {
-	if err := nc.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
-		return nil, err
+// etcd, within handshakeTimeout. The bytes stay in the bridge.
+func peekPreface(b *loop.Bridge) (bool, error) {
+	if err := b.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
+		return false, err
 	}
-	pc := &prefaceConn{Conn: nc, br: bufio.NewReaderSize(nc, len(http2.ClientPreface)), h2: true}
-	for i := 1; i <= len(http2.ClientPreface) && pc.h2; i++ {
-		b, err := pc.br.Peek(i)
+	for i := 1; i <= len(http2.ClientPreface); i++ {
+		p, err := b.Peek(i)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
-		pc.h2 = b[i-1] == http2.ClientPreface[i-1]
+		if p[i-1] != http2.ClientPreface[i-1] {
+			return false, b.SetReadDeadline(time.Time{})
+		}
 	}
-	return pc, nc.SetReadDeadline(time.Time{})
+	return true, b.SetReadDeadline(time.Time{})
 }
 
 // setLimits sets the limits of Config, etcd's defaults for those not set.
@@ -424,4 +628,27 @@ func (s *Server) setLimits() {
 	s.keepaliveMin = cmp.Or(s.cfg.KeepaliveMinTime, 5*time.Minute)
 	s.keepaliveTime = cmp.Or(s.cfg.KeepaliveTime, 2*time.Hour)
 	s.keepaliveTimeout = cmp.Or(s.cfg.KeepaliveTimeout, 20*time.Second)
+	if s.n == nil {
+		return
+	}
+	if b := s.n.MemoryBudget(); b > 0 {
+		// A quarter of the node's memory budget goes to the client
+		// connections (connBytes each), and a sixteenth to their output
+		// that waits for sockets; the rest to the peers, the store and its
+		// value cache, which takes what the process leaves
+		// (core.Node.SetOtherMemory). The floors are for the tiny budgets
+		// of tests; a node's budget of 128 MiB or more is above both.
+		s.maxConns = max(minConns, int(b/connShare/connBytes))
+		s.maxOut = max(minOut, int(b/outShare))
+	}
 }
+
+// connShare and outShare are the parts of the node's memory budget that
+// the client connections and their waiting output take; minConns and
+// minOut the least of each.
+const (
+	connShare = 4
+	outShare  = 16
+	minConns  = 64
+	minOut    = 8 << 20
+)

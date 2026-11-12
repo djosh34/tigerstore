@@ -106,6 +106,9 @@ type Set struct {
 	// PeerHeldRefused counts the messages of held entries received on a
 	// connection of a peer protocol version that does not carry them.
 	PeerHeldRefused prometheus.Counter
+	// ClientConnsRefused counts the client connections the server refused
+	// because as many were open as the memory budget holds.
+	ClientConnsRefused prometheus.Counter
 
 	// FeatureEnabled holds the feature gates.
 	FeatureEnabled *prometheus.GaugeVec
@@ -210,6 +213,7 @@ func New(features []Feature) (*Set, error) {
 		HeartbeatSent:            prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "tigerstore_network_heartbeat_sent_time_seconds", Help: "The Unix time of the last Raft heartbeat written to each peer."}, []string{"To"}),
 		HeartbeatReceived:        prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "tigerstore_network_heartbeat_received_time_seconds", Help: "The Unix time of the last Raft heartbeat read from each peer."}, []string{"From"}),
 		PeerHeldRefused:          prometheus.NewCounter(prometheus.CounterOpts{Name: "tigerstore_network_peer_held_refused_total", Help: "The total number of messages of held entries received on a connection of a peer protocol version that does not carry them."}),
+		ClientConnsRefused:       prometheus.NewCounter(prometheus.CounterOpts{Name: "tigerstore_server_client_connections_refused_total", Help: "The total number of client connections refused because as many were open as the memory budget holds."}),
 
 		FeatureEnabled: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "etcd_server_feature_enabled", Help: "Whether or not a feature is enabled. 1 is enabled, 0 is not."}, []string{"name", "stage"}),
 	}
@@ -233,7 +237,7 @@ func New(features []Feature) (*Set, error) {
 		s.ActivePeers, s.DisconnectedPeers, s.PeerSent, s.PeerReceived, s.PeerSentFailures, s.PeerReceivedFailures,
 		s.SnapshotSend, s.SnapshotSendInflights, s.SnapshotSendFailures, s.SnapshotSendSeconds,
 		s.SnapshotReceive, s.SnapshotReceiveInflights, s.SnapshotReceiveFailures, s.SnapshotReceiveSeconds, s.PeerRoundTripTimes,
-		s.HeartbeatSent, s.HeartbeatReceived, s.PeerHeldRefused,
+		s.HeartbeatSent, s.HeartbeatReceived, s.PeerHeldRefused, s.ClientConnsRefused,
 		s.FeatureEnabled,
 		&nodeCollector{s: s},
 	}

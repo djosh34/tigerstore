@@ -35,11 +35,11 @@ type stream struct {
 	authority  string
 	httpFields []hpack.HeaderField
 
-	// Reader only: the gRPC message being received.
+	// Loop only: the gRPC message being received.
 	hdr  [5]byte
 	hdrN int
 	msg  []byte
-	// Reader only, until the unary handler starts: the request messages.
+	// Loop only, until the unary handler starts: the request messages.
 	body []byte
 	msgs int
 	// reqSize is the size of a request the reader handed to the node,

@@ -56,11 +56,11 @@ func (s *Server) newGateway() (http.Handler, *grpc.ClientConn, error) {
 				return client, nil
 			}
 			s.wg.Add(1)
+			s.open++
 			s.mu.Unlock()
-			go func() {
-				defer s.wg.Done()
-				s.servePlain(server)
-			}()
+			if !s.servePlain(server) {
+				s.ended()
+			}
 			return client, nil
 		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),

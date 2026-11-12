@@ -1,12 +1,9 @@
 package server
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
-	"errors"
-	"io"
 	"net"
 	"strings"
 	"sync"
@@ -23,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/loop"
 )
 
 // HTTP/2 limits of one client connection.
@@ -43,10 +41,10 @@ const (
 	frameHeaderLen = 9
 )
 
-// conn is one HTTP/2 client connection. The reader goroutine owns the
-// Framer's read side and the stream table's creation; the writer goroutine
-// owns the Framer's write side. mu guards everything they share with each
-// other and with the handlers.
+// conn is one HTTP/2 client connection. The node's event loop owns its
+// socket, the Framer and the stream table's creation (loopconn.go). mu
+// guards everything the loop shares with the handlers, which run on
+// goroutines of their own.
 type conn struct {
 	s *Server
 	// metrics count this connection's calls for /metrics.
@@ -55,14 +53,16 @@ type conn struct {
 	// apiCounters its client_requests_total counters; guarded by mu.
 	apiVersion  string
 	apiCounters [2]prometheus.Counter
-	nc          net.Conn
-	raw         net.Conn // nc without TLS, closed to abort a stuck write
+	// nc is what the connection reads and writes: TLS over the bridge, or
+	// the bridge itself without TLS. raw is the socket under them, which
+	// any goroutine may close.
+	nc     net.Conn
+	bridge *loop.Bridge
+	raw    net.Conn
 	// traffic is what the connection serves: gRPC alone answers HTTP
 	// requests as grpc-go does, HTTP alone takes gRPC calls as HTTP.
 	traffic Traffic
 	fr      *http2.Framer
-	br      *bufio.Reader
-	bw      *bufio.Writer
 	// caller sizes this client's writes as etcd would.
 	caller core.Caller
 	// cluster and member go in every response header.
@@ -71,9 +71,31 @@ type conn struct {
 	ctx    context.Context // ends when the connection closes
 	cancel context.CancelFunc
 	once   sync.Once
-	wake   chan struct{} // the writer has work; capacity 1
 
-	// Reader only.
+	// Loop only: the socket's token; the decrypted input from inR to inW,
+	// and its phase; ending once the input ended with a GOAWAY, which
+	// closes the connection by endBy; the preface's deadline; since when
+	// output waits for the socket; and gone once the connection left the
+	// loop.
+	token     uint64
+	in        []byte
+	inR, inW  int
+	phase     int
+	ending    bool
+	endBy     time.Time
+	prefaceBy time.Time
+	waitSince time.Time
+	gone      bool
+	// outCharged is the output waiting for the socket that counts in
+	// Server.outAll (chargeOut).
+	outCharged int
+	// attached is set once the loop has the connection, from when a close
+	// tells it; reading is set while the loop reads the connection, which
+	// then writes it anyway; and signaled while a signal waits for the
+	// loop.
+	attached, reading, signaled atomic.Bool
+
+	// Loop only.
 	maxID uint32 // highest client stream ID seen
 	batch opBatch
 	// hdec decodes header blocks into hdr, the headers of the block being
@@ -109,11 +131,11 @@ type conn struct {
 	// atNode is the calls the node has and has not answered.
 	atNode map[*stream]struct{}
 
-	// frames counts the frames the reader got, and wrote is set when the
-	// writer sends HEADERS or DATA, which forgives the client's pings
+	// frames counts the frames the loop read, and wrote is set when the
+	// loop sends HEADERS or DATA, which forgives the client's pings
 	// (keepalive.go). A count, not a time: a clock read per frame took
 	// 2% of a leader's core (#506). lastPing and pingStrikes are the
-	// reader's.
+	// loop's.
 	frames      atomic.Uint64
 	wrote       atomic.Bool
 	lastPing    time.Time
@@ -159,14 +181,13 @@ func caller(cfg *tls.Config, nc net.Conn) core.Caller {
 	return core.NewCaller(chains[0][0].Subject.CommonName)
 }
 
-func newConn(s *Server, nc, raw net.Conn) *conn {
+// newConn makes a connection that reads and writes nc, over the bridge
+// to its socket.
+func newConn(s *Server, nc net.Conn, bridge *loop.Bridge) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &conn{
-		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel, metrics: newConnMetrics(),
+		s: s, nc: nc, bridge: bridge, raw: bridge.Conn, ctx: ctx, cancel: cancel, metrics: newConnMetrics(),
 		cluster: s.cluster, member: s.member,
-		bw:       bufio.NewWriterSize(nc, ioBuffer),
-		wake:     make(chan struct{}, 1),
-		br:       bufio.NewReaderSize(nc, ioBuffer),
 		streams:  map[uint32]*stream{},
 		atNode:   map[*stream]struct{}{},
 		sendWin:  65535,
@@ -174,43 +195,13 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		maxFrame: 16384,
 	}
 	c.caller = caller(s.cfg.TLS, nc)
-	c.fr = http2.NewFramer(c.bw, c.br)
+	c.fr = http2.NewFramer(frameDst{c}, frameSrc{c})
 	c.hdec = hpack.NewDecoder(4096, c.onField)
 	c.hdec.SetMaxStringLength(maxHeaderList)
 	c.ctrl = append(c.ctrl,
 		ctrlFrame{kind: ctrlSettings},
 		ctrlFrame{kind: ctrlWindowUpdate, val: connWindow - 65535})
 	return c
-}
-
-// serve runs the connection until it ends.
-func (c *conn) serve() {
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		defer c.close()
-		_ = c.writeLoop()
-	})
-	if c.traffic == TrafficGRPC {
-		wg.Go(c.keepalive)
-	}
-	err := c.readLoop()
-	ga, ok := errors.AsType[goAwayError](err)
-	if ce, isCE := errors.AsType[http2.ConnectionError](err); isCE {
-		ga, ok = goAwayError{code: http2.ErrCode(ce)}, true
-	}
-	if ok {
-		c.queueCtrl(ctrlFrame{kind: ctrlGoAway, id: c.lastID(), val: uint32(ga.code), debug: ga.debug})
-		c.mu.Lock()
-		c.goingAway = true
-		c.mu.Unlock()
-		// Let the writer send the GOAWAY, but not wait for long.
-		select {
-		case <-c.ctx.Done():
-		case <-time.After(time.Second):
-		}
-	}
-	c.close()
-	wg.Wait()
 }
 
 // close ends the connection and every stream on it. It never writes, so
@@ -232,10 +223,20 @@ func (c *conn) close() {
 		c.mu.Unlock()
 		c.cancel()
 		_ = c.raw.Close()
+		// The loop lets go of the connection at its next turn; before it
+		// has it, attach sees the close.
+		c.signal()
 	})
 }
 
-// goAway tells the client to open no more streams. The writer closes the
+// isClosed reports whether the connection was closed.
+func (c *conn) isClosed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed
+}
+
+// goAway tells the client to open no more streams. The loop closes the
 // connection once the streams in flight have ended.
 func (c *conn) goAway() {
 	c.mu.Lock()
@@ -255,16 +256,11 @@ func (c *conn) lastID() uint32 {
 	return c.maxID
 }
 
-func (c *conn) signal() {
-	select {
-	case c.wake <- struct{}{}:
-	default:
-	}
-}
-
-// maxCtrl bounds the control frames waiting for the writer, as x/net's
-// server does; a client that floods pings and does not read is dropped.
-const maxCtrl = 10000
+// maxCtrl bounds the control frames waiting for the loop to write them,
+// as x/net's server does with 10,000; a client that floods pings and does
+// not read is dropped. 512 keep the queue, about 24 KiB, inside a
+// connection's share of the memory budget (connBytes).
+const maxCtrl = 512
 
 func (c *conn) queueCtrl(f ctrlFrame) {
 	c.mu.Lock()
@@ -284,63 +280,6 @@ func (c *conn) addCtrl(f ctrlFrame) {
 		return
 	}
 	c.ctrl = append(c.ctrl, f)
-}
-
-func (c *conn) readLoop() error {
-	if err := c.nc.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
-		return err
-	}
-	preface := make([]byte, len(http2.ClientPreface))
-	if _, err := io.ReadFull(c.br, preface); err != nil {
-		return err
-	}
-	if string(preface) != http2.ClientPreface {
-		return http2.ConnectionError(http2.ErrCodeProtocol)
-	}
-	f, err := c.fr.ReadFrame()
-	if err != nil {
-		return err
-	}
-	sf, ok := f.(*http2.SettingsFrame)
-	if !ok || sf.IsAck() {
-		return http2.ConnectionError(http2.ErrCodeProtocol)
-	}
-	if err := c.onSettings(sf); err != nil {
-		return err
-	}
-	if err := c.nc.SetReadDeadline(time.Time{}); err != nil {
-		return err
-	}
-	for {
-		// Every path back here, stream errors included, hands over a due
-		// batch before a read that may wait.
-		if c.batchDue() {
-			if err := c.flush(); err != nil {
-				return err
-			}
-		}
-		fh, err := c.fr.ReadFrameHeader()
-		if err != nil {
-			return err
-		}
-		c.frames.Add(1)
-		f, err := c.fr.ReadFrameForHeader(fh)
-		if err != nil {
-			if _, ok := errors.AsType[http2.StreamError](err); ok && fh.Type == http2.FrameHeaders {
-				// A header block that cannot be decoded leaves the HPACK
-				// state behind the client's (RFC 9113 6.2).
-				return http2.ConnectionError(http2.ErrCodeProtocol)
-			}
-			if se, ok := errors.AsType[http2.StreamError](err); ok {
-				c.resetStream(se.StreamID, se.Code)
-				continue
-			}
-			return err
-		}
-		if err := c.onFrame(f); err != nil {
-			return err
-		}
-	}
 }
 
 func (c *conn) onFrame(f http2.Frame) error {
@@ -489,8 +428,10 @@ type reqHeaders struct {
 }
 
 // maxHeaderList bounds the decoded size of one header block, as
-// SETTINGS_MAX_HEADER_LIST_SIZE would.
-const maxHeaderList = 1 << 20
+// SETTINGS_MAX_HEADER_LIST_SIZE would. 32 KiB holds gRPC's headers, an
+// auth token and tracing with room to spare, and keeps a header block that
+// waits for its CONTINUATION inside a connection's bound (connBytes).
+const maxHeaderList = 32 << 10
 
 // headerFragment decodes part of a header block. The Framer checks that
 // CONTINUATION frames follow their HEADERS frame.
@@ -522,7 +463,7 @@ func (c *conn) headerFragment(b []byte, first, last bool) error {
 		return http2.ConnectionError(http2.ErrCodeCompression)
 	}
 	if whole && onlyIndexed(b) {
-		if !h.bad && h.traceMD == nil && h.fields == nil && len(c.blocks) < maxBlocks {
+		if c.cacheable(h, b) {
 			if c.blocks == nil {
 				c.blocks = make(map[string]reqHeaders)
 			}
@@ -558,8 +499,20 @@ func (c *conn) headerFragment(b []byte, first, last bool) error {
 	return nil
 }
 
-// maxBlocks bounds the header blocks a connection keeps decoded.
-const maxBlocks = 64
+// cacheable reports whether the connection keeps the decoded headers h of
+// block b, a block of indexed fields only, for the next time it comes.
+func (c *conn) cacheable(h *reqHeaders, b []byte) bool {
+	return !h.bad && h.traceMD == nil && h.fields == nil && len(b) <= maxBlockKey && len(c.blocks) < maxBlocks
+}
+
+// maxBlocks bounds the header blocks a connection keeps decoded, and
+// maxBlockKey the size of each block it keeps. A block of indexed fields
+// decodes to strings from the HPACK table, at most 4 KiB, so the blocks
+// kept stay under 40 KiB. A client sends one block per method it calls.
+const (
+	maxBlocks   = 8
+	maxBlockKey = 256
+)
 
 // onlyIndexed reports whether a header block holds only indexed fields
 // (RFC 7541, 6.1): a set top bit, then an integer with a 7-bit prefix.
