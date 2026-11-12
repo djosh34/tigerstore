@@ -20,7 +20,7 @@ import (
 
 // TestClientAtTheLimit runs etcd's Go client against a server whose one
 // connection the memory budget holds is taken. A call that does not wait
-// for a ready connection fails with Unavailable at once. clientv3's own
+// for a ready connection fails with Unavailable and the reason at once. clientv3's own
 // calls wait for one (WaitForReady), so a put ends at its deadline, as
 // against a node that is down, never later. Its reconnects keep gRPC's
 // backoff instead of a tight loop.
@@ -66,8 +66,8 @@ func TestClientAtTheLimit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_, err = pb.NewKVClient(cli.ActiveConnection()).Range(ctx, &pb.RangeRequest{Key: []byte("k")}, grpc.WaitForReady(false))
-	if status.Code(err) != codes.Unavailable || time.Since(start) > 5*time.Second {
-		t.Fatalf("a call that does not wait for a ready connection failed after %v with %v, want Unavailable at once", time.Since(start), err)
+	if status.Code(err) != codes.Unavailable || status.Convert(err).Message() != refusal || time.Since(start) > 5*time.Second {
+		t.Fatalf("a call that does not wait for a ready connection failed after %v with %v, want Unavailable with the reason at once", time.Since(start), err)
 	}
 	const timeout = 3 * time.Second
 	ctx, cancel = context.WithTimeout(context.Background(), timeout)

@@ -10,13 +10,17 @@ import (
 
 	"golang.org/x/net/http2"
 
+	"github.com/djosh34/tigerstore/internal/epoll"
+	"github.com/djosh34/tigerstore/internal/loop"
 	"github.com/djosh34/tigerstore/internal/testcert"
 )
 
-// TestIdleConnectionMemory opens 400 idle HTTP/2 connections over TLS and
-// measures the heap and stacks they take, client and server together:
-// that must stay under idleBytes, which the server's connection limit is
-// sized from.
+// TestIdleConnectionMemory opens 400 idle HTTP/2 connections over TLS to
+// a server whose loop waits in epoll, as the tigerstore command's does,
+// and measures the heap and stacks they take, client and server together:
+// fresh ones, and ones that first sent 96 KB of frames, which leaves
+// crypto/tls's and the Framer's buffers at their largest. Both must stay
+// under idleBytes, which the server's connection limit is sized from.
 func TestIdleConnectionMemory(t *testing.T) {
 	ca, err := testcert.NewCA()
 	if err != nil {
@@ -27,6 +31,11 @@ func TestIdleConnectionMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := bareServer(t)
+	p, err := epoll.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.loop = loop.New(p)
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.conns, s.gone = map[closer]struct{}{}, newConnMetrics()
 	s.cfg.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, NextProtos: []string{"h2"}}
@@ -40,7 +49,13 @@ func TestIdleConnectionMemory(t *testing.T) {
 	defer s.Stop() //nolint:errcheck // stopping a test server
 	// dial opens a connection and waits for the answer to a ping, after
 	// which both ends are idle.
-	dial := func() net.Conn {
+	// busy is 96 KB of SETTINGS frames of 12 KB, each of which the server
+	// acknowledges.
+	busy := make([]http2.Setting, 2000)
+	for i := range busy {
+		busy[i] = http2.Setting{ID: http2.SettingMaxHeaderListSize, Val: 1 << 20}
+	}
+	dial := func(work bool) net.Conn {
 		c, err := tls.Dial("tcp", ln.Addr().String(), &tls.Config{RootCAs: ca.Pool, NextProtos: []string{"h2"}, ServerName: "127.0.0.1"})
 		if err != nil {
 			t.Fatal(err)
@@ -51,6 +66,13 @@ func TestIdleConnectionMemory(t *testing.T) {
 		fr := http2.NewFramer(c, c)
 		if err := fr.WriteSettings(); err != nil {
 			t.Fatal(err)
+		}
+		for range 8 {
+			if work {
+				if err := fr.WriteSettings(busy...); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
 		if err := fr.WritePing(false, [8]byte{1}); err != nil {
 			t.Fatal(err)
@@ -75,16 +97,21 @@ func TestIdleConnectionMemory(t *testing.T) {
 		runtime.ReadMemStats(&m)
 		return m.HeapInuse + m.StackInuse
 	}
-	conns := []net.Conn{dial()}
-	before := inUse()
-	const n = 400
-	for range n {
-		conns = append(conns, dial())
-	}
-	per := (inUse() - before) / n
-	runtime.KeepAlive(conns)
-	t.Logf("an idle connection takes %d bytes, client and server together", per)
-	if per > idleBytes {
-		t.Fatalf("an idle connection takes %d bytes, client and server together, over idleBytes, %d", per, idleBytes)
+	for _, work := range []bool{false, true} {
+		conns := []net.Conn{dial(work)}
+		before := inUse()
+		const n = 400
+		for range n {
+			conns = append(conns, dial(work))
+		}
+		per := (inUse() - before) / n
+		runtime.KeepAlive(conns)
+		t.Logf("an idle connection that sent work %v takes %d bytes, client and server together", work, per)
+		if per > idleBytes {
+			t.Fatalf("an idle connection that sent work %v takes %d bytes, client and server together, over idleBytes, %d", work, per, idleBytes)
+		}
+		for _, c := range conns {
+			c.Close() //nolint:errcheck // closing a test connection
+		}
 	}
 }

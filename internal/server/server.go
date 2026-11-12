@@ -24,6 +24,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/loop"
@@ -433,12 +435,15 @@ func (s *Server) refuseLocked(nc net.Conn, l Listener) {
 const refusal = "tigerstore: too many client connections; the server holds as many as its memory budget allows"
 
 // refuse tells a refused client why, as its protocol allows, and closes
-// the connection: an HTTP/2 client gets the server's SETTINGS and a GOAWAY
-// with ENHANCE_YOUR_CALM and the reason, which gRPC fails its calls with
-// as Unavailable, and an HTTP/1.1 client a 503. It gives the client up to
-// a second to read it.
+// the connection. An HTTP/2 client gets the server's SETTINGS; its first
+// call, if one comes within a second, gets Unavailable with the reason,
+// since grpc-go drops a GOAWAY's debug data; then a GOAWAY with
+// ENHANCE_YOUR_CALM and the reason. An HTTP/1.1 client gets a 503. The
+// client has up to a second to read it, and Stop ends it at once.
 func (s *Server) refuse(nc net.Conn, l Listener) {
 	defer nc.Close() //nolint:errcheck // the refused connection ends here
+	stop := context.AfterFunc(s.ctx, func() { _ = nc.Close() })
+	defer stop()
 	if err := nc.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
 		return
 	}
@@ -464,11 +469,8 @@ func (s *Server) refuse(nc net.Conn, l Listener) {
 	}
 	if !h2 {
 		_, _ = fmt.Fprintf(conn, "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(refusal), refusal)
-	} else {
-		fr := http2.NewFramer(conn, nil)
-		if fr.WriteSettings() != nil || fr.WriteGoAway(0, http2.ErrCodeEnhanceYourCalm, []byte(refusal)) != nil {
-			return
-		}
+	} else if !refuseCall(conn, nc) {
+		return
 	}
 	// Reading what the client sends until it closes keeps a reset from
 	// taking the answer with it.
@@ -476,6 +478,38 @@ func (s *Server) refuse(nc net.Conn, l Listener) {
 		return
 	}
 	_, _ = io.Copy(io.Discard, conn)
+}
+
+// refuseCall answers a refused HTTP/2 client: the server's SETTINGS, its
+// first call's HEADERS within a second with trailers-only Unavailable and
+// the reason, and a GOAWAY. It reports whether the client may still read.
+func refuseCall(conn, nc net.Conn) bool {
+	preface := make([]byte, len(http2.ClientPreface))
+	if _, err := io.ReadFull(conn, preface); err != nil {
+		return false
+	}
+	fr := http2.NewFramer(conn, conn)
+	if fr.WriteSettings() != nil || nc.SetReadDeadline(time.Now().Add(time.Second)) != nil {
+		return false
+	}
+	var last uint32
+	for {
+		f, err := fr.ReadFrame()
+		if err != nil {
+			break
+		}
+		if h, ok := f.(*http2.HeadersFrame); ok {
+			last = h.StreamID
+			if fr.WriteHeaders(http2.HeadersFrameParam{
+				StreamID: last, EndStream: true, EndHeaders: true,
+				BlockFragment: statusBlock(status.New(codes.Unavailable, refusal), true),
+			}) != nil {
+				return false
+			}
+			break
+		}
+	}
+	return fr.WriteGoAway(last, http2.ErrCodeEnhanceYourCalm, []byte(refusal)) == nil
 }
 
 // ended counts the end of a connection that ServeListener or the gateway
