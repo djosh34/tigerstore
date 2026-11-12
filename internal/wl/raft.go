@@ -33,7 +33,18 @@ type wal struct {
 	kickFD   int // the helper waits on it
 	wakeFD   int // the loop waits on it
 	idx      []idxOff
+	// stage mirrors the newest part of the log in page-aligned memory:
+	// the loop copies each append there, and the helper writes its
+	// blocks to the file with O_DIRECT and O_DSYNC, so the kernel neither
+	// copies the log into its page cache nor writes it back.
+	stage   []byte
+	flushed int64 // the helper's: the log is durable up to here
 }
+
+const (
+	stageSize = 64 << 20
+	block     = 4096
+)
 
 type walJob struct {
 	end   int64
@@ -74,6 +85,11 @@ func openWAL(path string) (*wal, error) {
 	if err := unix.Fdatasync(fd); err != nil {
 		return nil, err
 	}
+	_ = unix.Close(fd)
+	if w.fd, err = unix.Open(path, unix.O_WRONLY|unix.O_DIRECT|unix.O_DSYNC|unix.O_CLOEXEC, 0); err != nil {
+		return nil, err
+	}
+	w.stage = mmapBytes(stageSize)
 	go w.helper()
 	return w, nil
 }
@@ -93,15 +109,23 @@ func (w *wal) helper() {
 			panic(err)
 		}
 		target := w.want.Load()
-		for {
-			err := unix.Fdatasync(w.fd)
-			if err == nil {
-				break
+		// The blocks from the one that holds the durable end to the one
+		// that holds target; the last is written again next time.
+		from := w.flushed &^ (block - 1)
+		to := (target + block - 1) &^ (block - 1)
+		for from < to {
+			pos := from % stageSize
+			n := min(to-from, stageSize-pos)
+			k, err := unix.Pwrite(w.fd, w.stage[pos:pos+n], from%walRing)
+			if err == unix.EINTR {
+				continue
 			}
-			if err != unix.EINTR {
+			if err != nil {
 				panic(err)
 			}
+			from += int64(k)
 		}
+		w.flushed = target
 		w.done.Store(target)
 		binary.LittleEndian.PutUint64(b[:], 1)
 		_, _ = unix.Write(w.wakeFD, b[:])
@@ -166,42 +190,19 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) {
 		w.iov = append(w.iov, b)
 		off += int64(len(b))
 	}
-	for len(w.iov) > 0 {
-		// Up to the end of the file, then on from its start.
-		pos := w.off % walRing
-		room := walRing - pos
-		k, total := 0, int64(0)
-		for k < len(w.iov) && k < 1024 && total+int64(len(w.iov[k])) <= room {
-			total += int64(len(w.iov[k]))
-			k++
-		}
-		stats.walWrites++
-		var n int
-		var err error
-		if k == 0 {
-			n, err = unix.Pwrite(w.fd, w.iov[0][:room], pos)
-		} else {
-			n, err = unix.Pwritev(w.fd, w.iov[:k], pos)
-		}
-		if err != nil {
-			if err == unix.EINTR {
-				continue
-			}
-			panic(err)
-		}
-		w.off += int64(n)
-		stats.walBytes += uint64(n)
-		// A short write leaves the rest of the vectors.
-		for n > 0 {
-			if n >= len(w.iov[0]) {
-				n -= len(w.iov[0])
-				w.iov = w.iov[1:]
-			} else {
-				w.iov[0] = w.iov[0][n:]
-				n = 0
-			}
+	if w.off+int64(stageSize/2) < 0 || off-w.done.Load() > stageSize-block {
+		panic("the log ran a whole stage ahead of the disk")
+	}
+	for _, v := range w.iov {
+		for len(v) > 0 {
+			pos := w.off % stageSize
+			k := copy(w.stage[pos:], v)
+			v = v[k:]
+			w.off += int64(k)
+			stats.walBytes += uint64(k)
 		}
 	}
+	stats.walWrites++
 	if w.off != off {
 		panic("wal offset")
 	}
