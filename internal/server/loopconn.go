@@ -360,7 +360,10 @@ func (c *conn) write() (bool, error) {
 				}
 				return false, nil
 			}
+			// The output that waited went: its deadline does not bind the
+			// next pass.
 			c.waitSince = time.Time{}
+			c.bridge.SendBy(time.Time{})
 		}
 		if !c.outRoom() {
 			// Other connections' output fills the server's room for it.

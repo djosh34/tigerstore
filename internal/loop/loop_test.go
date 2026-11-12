@@ -235,50 +235,71 @@ type counter struct{ ready, flushed int }
 func (c *counter) Ready() { c.ready++ }
 func (c *counter) Flush() { c.flushed++ }
 
-// TestBridgeMovesToBigBuffer writes more than a small buffer holds to a
-// bridge whose socket takes nothing: its output moves once into a big
-// buffer, and both go back to their pools once everything is sent.
+// TestBridgeMovesToBigBuffer writes a bridge more than a small buffer
+// holds, while its socket took part of the first write and then takes
+// nothing: what waits moves once into a big buffer, the small one goes
+// back to its pool, and once the socket takes the rest, the big one goes
+// back to its own. The socket gets every byte, in order.
 func TestBridgeMovesToBigBuffer(t *testing.T) {
 	a, b := net.Pipe()
 	defer a.Close() //nolint:errcheck // closing a test pipe
 	defer b.Close() //nolint:errcheck // closing a test pipe
 	small, big := loop.NewBuffers(1<<10, 4), loop.NewBuffers(64<<10, 4)
 	br := loop.NewBridge(a, 1<<10)
-	s := &takeAll{shut: true}
+	s := &takeAll{limit: 50}
 	br.Attach(s, small, big)
-	if _, err := br.Write(make([]byte, 100)); err != nil {
-		t.Fatal(err)
+	var sent []byte
+	write := func(n int) {
+		p := make([]byte, n)
+		for i := range p {
+			p[i] = byte(len(sent) + i)
+		}
+		sent = append(sent, p...)
+		if _, err := br.Write(p); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if _, err := br.Write(make([]byte, 10<<10)); err != nil {
-		t.Fatal(err)
-	}
+	write(100)
 	if err := br.Flush(); err != nil {
 		t.Fatal(err)
 	}
-	if br.Retained() != 64<<10 || br.Pending() != 10<<10+100 {
-		t.Fatalf("waiting output %d bytes in a buffer of %d, want %d in one of %d", br.Pending(), br.Retained(), 10<<10+100, 64<<10)
+	s.shut = true
+	write(10 << 10)
+	if br.Retained() != 64<<10 || br.Pending() != 10<<10+50 || small.Kept() != 1 {
+		t.Fatalf("%d bytes wait in a buffer of %d, %d small buffers back; want %d in one of %d, 1 back", br.Pending(), br.Retained(), small.Kept(), 10<<10+50, 64<<10)
 	}
-	s.shut = false
+	s.shut, s.limit = false, 0
 	if err := br.Flush(); err != nil {
 		t.Fatal(err)
 	}
-	if br.Retained() != 0 || s.took != 10<<10+100 {
-		t.Fatalf("after the socket took it: %d bytes retained, %d sent", br.Retained(), s.took)
+	if br.Retained() != 0 || big.Kept() != 1 {
+		t.Fatalf("after the socket took it: %d bytes retained, %d big buffers back", br.Retained(), big.Kept())
+	}
+	if !bytes.Equal(s.got, sent) {
+		t.Fatalf("the socket got %d bytes that differ from the %d written", len(s.got), len(sent))
 	}
 }
 
-// takeAll is a socket that takes every write unless shut.
+// takeAll is a socket that takes every write unless shut, at most limit
+// bytes of each if limit is set, and keeps what it took.
 type takeAll struct {
-	shut bool
-	took int
+	shut  bool
+	limit int
+	got   []byte
 }
 
 func (s *takeAll) Read([]byte) (int, error) { return 0, loop.ErrWouldBlock }
+
 func (s *takeAll) Write(b []byte) (int, error) {
 	if s.shut {
 		return 0, loop.ErrWouldBlock
 	}
-	s.took += len(b)
+	if s.limit > 0 && len(b) > s.limit {
+		s.got = append(s.got, b[:s.limit]...)
+		return s.limit, loop.ErrWouldBlock
+	}
+	s.got = append(s.got, b...)
 	return len(b), nil
 }
+
 func (s *takeAll) Close() error { return nil }

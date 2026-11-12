@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -411,5 +412,73 @@ func TestHeaderCacheKeepsSmallBlocks(t *testing.T) {
 	}
 	if c.cacheable(h, make([]byte, maxBlockKey+1)) {
 		t.Fatal("a block over maxBlockKey bytes is kept")
+	}
+}
+
+// deadlineRaw is a raw connection whose write deadline a deadlineGate
+// sees, as the kernel's socket honours the netFD's deadline.
+type deadlineRaw struct {
+	net.Conn
+	deadline *time.Time
+}
+
+func (d deadlineRaw) SetWriteDeadline(t time.Time) error {
+	*d.deadline = t
+	return nil
+}
+
+// deadlineGate takes every write while its deadline has not passed, and
+// after its first write lets the deadline pass, as if the output that
+// waited went just before it and the next pass came just after.
+type deadlineGate struct {
+	deadline *time.Time
+	writes   int
+}
+
+func (g *deadlineGate) Read([]byte) (int, error) { return 0, loop.ErrWouldBlock }
+
+func (g *deadlineGate) Write(b []byte) (int, error) {
+	if !g.deadline.IsZero() && time.Now().After(*g.deadline) {
+		return 0, os.ErrDeadlineExceeded
+	}
+	g.writes++
+	if g.writes == 1 && !g.deadline.IsZero() {
+		*g.deadline = time.Now().Add(-time.Second)
+	}
+	return len(b), nil
+}
+
+func (g *deadlineGate) Close() error { return nil }
+
+// TestDrainedOutputClearsItsDeadline lets a connection's waiting output go
+// just before its write deadline, and the next pass come after it: the
+// next pass goes, since the deadline bound only the output that waited.
+func TestDrainedOutputClearsItsDeadline(t *testing.T) {
+	s := bareServer(t)
+	s.conns, s.gone = map[closer]struct{}{}, newConnMetrics()
+	a, b := net.Pipe()
+	defer a.Close() //nolint:errcheck // closing a test pipe
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	var deadline time.Time
+	br := loop.NewBridge(deadlineRaw{Conn: a, deadline: &deadline}, ioBuffer)
+	shut := &gate{shut: true}
+	br.Attach(shut, nil, nil)
+	c := newConn(s, br, br)
+	c.prefaceBy = time.Now().Add(time.Hour)
+	s.wg.Add(1)
+	if !s.track(c) {
+		t.Fatal("track refused the connection")
+	}
+	c.Flush()
+	if br.Pending() == 0 || deadline.IsZero() {
+		t.Fatalf("output waiting: %d bytes, deadline %v", br.Pending(), deadline)
+	}
+	// The socket takes the waiting output, and the connection has more.
+	g := &deadlineGate{deadline: &deadline}
+	br.Attach(g, nil, nil)
+	c.queueCtrl(ctrlFrame{kind: ctrlPing})
+	c.Flush()
+	if c.isClosed() || br.Pending() != 0 || g.writes < 2 {
+		t.Fatalf("after the waiting output went: closed %v, %d bytes wait, %d writes", c.isClosed(), br.Pending(), g.writes)
 	}
 }

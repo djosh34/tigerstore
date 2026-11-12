@@ -12,6 +12,9 @@ type Buffers struct {
 // were returned for the next Get.
 func NewBuffers(size, keep int) *Buffers { return &Buffers{size: size, keep: keep} }
 
+// Kept is how many returned buffers wait for the next Get.
+func (p *Buffers) Kept() int { return len(p.free) }
+
 // Size is the size of the buffers.
 func (p *Buffers) Size() int { return p.size }
 

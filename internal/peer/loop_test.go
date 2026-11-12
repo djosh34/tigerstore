@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/djosh34/tigerstore/internal/loop"
 	"github.com/djosh34/tigerstore/internal/metrics"
@@ -113,43 +114,80 @@ func TestCloseRacesHandOver(t *testing.T) {
 	}
 }
 
-// TestBusyNodeHoldsData reads a heartbeat, an append and a heartbeat from
-// one connection while the node takes no data messages: the first
-// heartbeat steps, the append waits with the second heartbeat behind it,
-// so the order holds, and both go once the node takes data again.
+// TestBusyNodeHoldsData runs an inbound connection on a loop while the
+// node takes no data messages: of a heartbeat, an append and a heartbeat,
+// the first heartbeat steps at once, and the append waits, with the second
+// heartbeat behind it, through turns that hold the node's other sockets.
+// Once the node takes data again, both go at the loop's next turn that
+// takes sockets, in order, with no new bytes from the peer to wake it.
 func TestBusyNodeHoldsData(t *testing.T) {
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, _, _, err := ca.IssueFor("node", 2, nil, []string{"peer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := net.Pipe()
+	defer a.Close() //nolint:errcheck // closing a test pipe
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	br := loop.NewBridge(a, ioBuffer)
+	srv := tls.Server(br, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13})
+	cli := tls.Client(b, &tls.Config{RootCAs: ca.Pool, ServerName: "peer", MinVersion: tls.VersionTLS13})
+	go func() { _ = cli.Handshake() }()
+	if err := srv.Handshake(); err != nil {
+		t.Fatal(err)
+	}
 	var got []raftpb.MessageType
 	busy := true
+	l := loop.New(loop.NewChanPoller())
 	tr := &TCP{cfg: Config{
 		Deliver: func(m *raftpb.Message) { got = append(got, m.GetType()) },
 		Busy:    func() bool { return busy },
-	}, loop: loop.New(loop.NewChanPoller())}
+	}, loop: l}
+	cs := &counters{received: prometheus.NewCounter(prometheus.CounterOpts{Name: "received"}), heartbeatReceived: prometheus.NewGauge(prometheus.GaugeOpts{Name: "heartbeat"})}
+	ic := &inConn{t: tr, tc: srv, br: br, from: 2, v: maxVersion, cs: cs, buf: make([]byte, ioBuffer)}
+	sock, token, err := l.Attach(a, ic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	br.Attach(sock, nil, nil)
+	ic.token = token
 	var frames []byte
 	for _, typ := range []raftpb.MessageType{raftpb.MsgHeartbeat, raftpb.MsgApp, raftpb.MsgHeartbeat} {
-		b, err := proto.Marshal(&raftpb.Message{Type: typ.Enum(), From: new(uint64(2)), To: new(uint64(1))})
+		m, err := proto.Marshal(&raftpb.Message{Type: typ.Enum(), From: new(uint64(2)), To: new(uint64(1))})
 		if err != nil {
 			t.Fatal(err)
 		}
-		frames = binary.BigEndian.AppendUint32(frames, uint32(len(b)))
-		frames = append(frames, b...)
+		frames = binary.BigEndian.AppendUint32(frames, uint32(len(m)))
+		frames = append(frames, m...)
 	}
-	cs := &counters{received: prometheus.NewCounter(prometheus.CounterOpts{Name: "received"}), heartbeatReceived: prometheus.NewGauge(prometheus.GaugeOpts{Name: "heartbeat"})}
-	ic := &inConn{t: tr, from: 2, v: maxVersion, cs: cs, buf: frames, w: len(frames)}
-	if err := ic.frames(); err != nil {
-		t.Fatal(err)
+	go func() { _, _ = cli.Write(frames) }()
+	// turn takes one turn of the loop as a node's committer does, with the
+	// node's sockets held while it is busy.
+	turn := func() {
+		if err := l.Wait(50 * time.Millisecond); err != nil {
+			t.Fatal(err)
+		}
+		l.Dispatch(!busy)
+		l.Flush()
 	}
-	if len(got) != 1 || got[0] != raftpb.MsgHeartbeat || ic.held == nil {
-		t.Fatalf("while busy: delivered %v, holding %v", got, ic.held != nil)
+	for deadline := time.Now().Add(10 * time.Second); ic.held == nil; turn() {
+		if time.Now().After(deadline) {
+			t.Fatalf("the append never came; delivered %v", got)
+		}
+	}
+	for range 5 {
+		turn()
+	}
+	if !slices.Equal(got, []raftpb.MessageType{raftpb.MsgHeartbeat}) {
+		t.Fatalf("while busy: delivered %v, want the first heartbeat only", got)
 	}
 	busy = false
-	m := ic.held
-	ic.held = nil
-	tr.cfg.Deliver(m)
-	if err := ic.frames(); err != nil {
-		t.Fatal(err)
-	}
+	turn()
 	want := []raftpb.MessageType{raftpb.MsgHeartbeat, raftpb.MsgApp, raftpb.MsgHeartbeat}
 	if !slices.Equal(got, want) {
-		t.Fatalf("delivered %v, want %v", got, want)
+		t.Fatalf("after the node took data again: delivered %v, want %v", got, want)
 	}
 }
