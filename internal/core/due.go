@@ -30,6 +30,9 @@ func (n *Node) Due() int64 {
 	if n.removeAt != 0 {
 		due = min(due, n.removeAt)
 	}
+	if d := n.heldDue(); d != 0 {
+		due = min(due, d)
+	}
 	for _, p := range n.timeouts {
 		if !p.done && !p.held {
 			due = min(due, n.now+p.deadline-n.clock)

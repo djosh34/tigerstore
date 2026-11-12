@@ -57,6 +57,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/bufconn"
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -78,6 +79,9 @@ type Transport interface {
 	// ActiveSince is since when this node has had a connection to peer
 	// id, the zero time while it has none.
 	ActiveSince(id uint64) time.Time
+	// HeldEntries reports whether the connection to peer id carries the
+	// messages of held entries (core.HeldForm).
+	HeldEntries(id uint64) bool
 	Close() error
 }
 
@@ -160,13 +164,17 @@ const (
 	// minVersion and maxVersion are the protocol versions this binary
 	// speaks. Version 0 stands for the unversioned protocol from before
 	// version 1. Version 2 added the dialer's address to the preface
-	// (#250), and version 3 the cluster ID (#283). No release spoke
+	// (#250), version 3 the cluster ID (#283), and version 4 the messages
+	// of held entries (core.HeldForm, #602). No release spoke
 	// version 1, and only v0.1.0 spoke version 2, which no cluster runs,
 	// so this binary speaks neither (owner, round 14 of #498). A release
 	// that raises maxVersion keeps minVersion at or below the previous
 	// release's maxVersion, so that nodes can be upgraded one at a time.
 	minVersion = 3
-	maxVersion = 3
+	maxVersion = 4
+	// heldVersion is the first version that carries the messages of held
+	// entries.
+	heldVersion = 4
 )
 
 // magic starts the preface.
@@ -366,6 +374,16 @@ func (t *TCP) ActiveSince(id uint64) time.Time {
 		return time.Unix(0, ns)
 	}
 	return time.Time{}
+}
+
+// HeldEntries reports whether the connection to peer id that carries the
+// messages of held entries, the data lane's, speaks a version that takes
+// them: the peer's version is the last lane's to come up, which may be the
+// control lane's (#626). A connection made later to an older binary drops
+// those still queued (sender.write).
+func (t *TCP) HeldEntries(id uint64) bool {
+	s, ok := t.peer(id)
+	return ok && s.data.version.Load() >= heldVersion
 }
 
 // peer returns the sender of peer id.
@@ -655,16 +673,18 @@ func (t *TCP) receive(c net.Conn) error {
 	}
 	cs := t.countersOf(from)
 	// frames ends only with an error.
-	err = t.frames(r, from, cs)
+	err = t.frames(r, from, v, cs)
 	if !errors.Is(err, io.EOF) && t.ctx.Err() == nil {
 		cs.receiveFailures.Inc()
 	}
 	return err
 }
 
-// frames reads and delivers the messages of an inbound connection until
-// it fails.
-func (t *TCP) frames(r io.Reader, from uint64, cs *counters) error {
+// frames reads and delivers the messages of an inbound connection of
+// version v until it fails. A message of held entries on a connection of
+// a version that does not carry them is refused and counted: a sender
+// never sends one there (sender.write).
+func (t *TCP) frames(r io.Reader, from uint64, v byte, cs *counters) error {
 	var hdr [4]byte
 	var buf []byte
 	for {
@@ -695,6 +715,11 @@ func (t *TCP) frames(r io.Reader, from uint64, cs *counters) error {
 		cs.received.Add(float64(len(hdr) + len(buf)))
 		if m.GetType() == raftpb.MsgHeartbeat {
 			cs.heartbeatReceived.SetToCurrentTime()
+		}
+		if v < heldVersion && core.HeldForm(m) {
+			t.cfg.Metrics.PeerHeldRefused.Inc()
+			t.logf("peer: refused a %s of held entries from %d on a connection of version %d", m.GetType(), from, v)
+			continue
 		}
 		t.cfg.Deliver(m)
 	}
@@ -910,8 +935,9 @@ type sender struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	ctrl, data lane
-	// version is the protocol version of the connection to the peer, 0
-	// while there is none, and since when it is up in Unix nanoseconds.
+	// version is the protocol version of the connection to the peer that
+	// came up last, 0 while there is none, and since when the peer is
+	// connected in Unix nanoseconds.
 	// up counts the lanes whose connection is up: the peer counts as
 	// connected, once, while one is.
 	version  atomic.Uint32
@@ -925,6 +951,9 @@ type sender struct {
 type lane struct {
 	name string
 	q    chan queued
+	// version is the protocol version of the lane's connection, 0 while
+	// it has none.
+	version atomic.Uint32
 	// bytes are the estimated bytes in q.
 	bytes atomic.Int64
 	// Writer only: messages that waited longer than slowQueue since the
@@ -1068,10 +1097,10 @@ func (s *sender) runLane(l *lane) {
 			continue
 		}
 		backoff = 50 * time.Millisecond
-		s.laneUp(v)
-		err = s.connected(ctx, c, l)
+		s.laneUp(l, v)
+		err = s.connected(ctx, c, l, v)
 		failed := err != nil && ctx.Err() == nil
-		s.laneDown(failed)
+		s.laneDown(l, failed)
 		s.reportWaits(l)
 		if failed {
 			s.t.logf("peer: send %s to %d: %v", l.name, s.id, err)
@@ -1080,15 +1109,17 @@ func (s *sender) runLane(l *lane) {
 	}
 }
 
-// laneUp counts a lane's connection of version v as up. The first one
-// makes the peer connected, with its version: both lanes offer the same
-// range, so they agree on it.
-func (s *sender) laneUp(v byte) {
+// laneUp counts lane l's connection of version v as up, and v as the
+// peer's version: a peer started again with another range may still have
+// the other lane's old connection counted. The first one makes the peer
+// connected.
+func (s *sender) laneUp(l *lane, v byte) {
+	l.version.Store(uint32(v))
 	s.upMu.Lock()
 	s.up++
+	s.version.Store(uint32(v))
 	first := s.up == 1
 	if first {
-		s.version.Store(uint32(v))
 		s.since.Store(time.Now().UnixNano())
 		s.counters.active.Inc()
 	}
@@ -1101,7 +1132,8 @@ func (s *sender) laneUp(v byte) {
 // laneDown counts a lane's connection as down, failed if it ended on an
 // error. The last one makes the peer disconnected, and counts the peer as
 // lost once, as etcd counts a peer going inactive, if it failed.
-func (s *sender) laneDown(failed bool) {
+func (s *sender) laneDown(l *lane, failed bool) {
+	l.version.Store(0)
 	s.upMu.Lock()
 	s.up--
 	last := s.up == 0
@@ -1124,7 +1156,7 @@ func (s *sender) laneDown(failed bool) {
 // so a read ends only when the connection does: a node with nothing to
 // send still sees the peer close it, as when the cluster removed this
 // node, and dials again to hear why (#263).
-func (s *sender) connected(ctx context.Context, c net.Conn, l *lane) error {
+func (s *sender) connected(ctx context.Context, c net.Conn, l *lane, v byte) error {
 	ctx, stop := context.WithCancel(ctx)
 	var rerr error
 	read := make(chan struct{})
@@ -1138,7 +1170,7 @@ func (s *sender) connected(ctx context.Context, c net.Conn, l *lane) error {
 			rerr = err
 		}
 	}()
-	err := s.write(ctx, c, l)
+	err := s.write(ctx, c, l, v)
 	stop()
 	s.t.untrack(c)
 	<-read
@@ -1278,10 +1310,11 @@ func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) (byte, e
 	return v, c.SetDeadline(time.Time{})
 }
 
-// write sends the frames of lane l until the connection fails or the
-// transport closes. Frames gather above TLS, so that small ones share a
-// record, and the records under it, so that they share a system call.
-func (s *sender) write(ctx context.Context, c net.Conn, l *lane) error {
+// write sends the frames of lane l, on a connection of version v, until
+// the connection fails or the transport closes. Frames gather above TLS,
+// so that small ones share a record, and the records under it, so that
+// they share a system call.
+func (s *sender) write(ctx context.Context, c net.Conn, l *lane, v byte) error {
 	w := bufio.NewWriterSize(c, ioBuffer)
 	under := bufconn.Under(c)
 	if under != nil {
@@ -1302,6 +1335,12 @@ func (s *sender) write(ctx context.Context, c net.Conn, l *lane) error {
 		m, ok := s.next(ctx, l)
 		if !ok {
 			return nil
+		}
+		if v < heldVersion && core.HeldForm(m) {
+			// Queued while the link spoke a newer version: an older peer
+			// would take a named entry for its data. Raft sends again
+			// what the follower misses, in full now (HeldEntries).
+			continue
 		}
 		n := proto.Size(m)
 		if n > maxFrame {

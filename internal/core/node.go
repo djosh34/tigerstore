@@ -96,6 +96,12 @@ type Config struct {
 	// higher than that of every earlier run of the node, and the driver
 	// keeps it on disk (version.go).
 	Boot, Run uint64
+	// HeldEntries reports whether the link to a peer carries the messages
+	// of held entries (held.go): the peer speaks peer protocol 4 or later.
+	// nil means no link does. Kept, if set, is what the core before this
+	// one held (Node.Kept).
+	HeldEntries func(peer uint64) bool
+	Kept        *Kept
 
 	// ElectionTicks and HeartbeatTicks are the Raft timeouts in ticks.
 	ElectionTicks, HeartbeatTicks int
@@ -526,6 +532,9 @@ type Node struct {
 	// not committed yet.
 	confsAppended []uint64
 	held          []*raftpb.Message
+	// kept are the entries a follower holds for appends that name them
+	// (held.go).
+	kept keptEntries
 	// props are proposals forwarded by peers while this node knew no
 	// leader, propBytesHeld their entry bytes.
 	props         []*raftpb.Message
@@ -746,6 +755,10 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	if len(n.state.members) > 0 {
 		n.out.Members = n.state.cloneMembers()
 	}
+	// The handed-over map stays out of the stored config, so that
+	// expiring an entry frees it.
+	n.adopt(cfg.Kept)
+	n.cfg.Kept = nil
 	return n, nil
 }
 
@@ -983,6 +996,7 @@ func (n *Node) Tick() {
 		return
 	}
 	n.expire()
+	n.heldTick()
 	slow, silent := n.slowCommits(), n.stalled()
 	if slow && !n.slowCommit {
 		n.out.SlowCommit = true
@@ -1057,6 +1071,9 @@ func (n *Node) Step(m *raftpb.Message) error {
 	if m.GetTo() != n.cfg.ID {
 		return fmt.Errorf("%w %d", errNotForUs, m.GetTo())
 	}
+	if took, err := n.stepHeld(m); took {
+		return err
+	}
 	if m.GetType() == raftpb.MsgProp {
 		if n.removeAt != 0 {
 			return ErrRemoved
@@ -1064,6 +1081,9 @@ func (n *Node) Step(m *raftpb.Message) error {
 		if len(m.Entries) == 1 && m.Entries[0].GetType() == raftpb.EntryConfChange {
 			n.confMessages = append(n.confMessages, m)
 			return nil
+		}
+		if !n.isLeader {
+			n.keepForwarded(m)
 		}
 		if n.rn.BasicStatus().Lead == raft.None {
 			n.holdProposal(m)
@@ -1073,6 +1093,11 @@ func (n *Node) Step(m *raftpb.Message) error {
 	if m.GetType() == raftpb.MsgHeartbeatResp {
 		n.snapshotDropped(m.GetFrom())
 	}
+	return n.stepRaft(m)
+}
+
+// stepRaft hands Raft a message from a peer.
+func (n *Node) stepRaft(m *raftpb.Message) error {
 	if err := n.checkCommit(m); err != nil {
 		n.fail(err)
 		return err
@@ -2652,6 +2677,12 @@ const maxHeld = 1024
 func (n *Node) send(m *raftpb.Message) {
 	if n.state.removed[m.GetTo()] {
 		return
+	}
+	switch {
+	case m.GetType() == raftpb.MsgApp && n.isLeader:
+		m = n.nameHeld(m)
+	case m.GetType() == raftpb.MsgProp && !HeldForm(m):
+		n.forwarded(m)
 	}
 	if n.stalled() {
 		if m.GetType() == raftpb.MsgHeartbeat {

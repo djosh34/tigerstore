@@ -1,6 +1,7 @@
 package check
 
 import (
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"slices"
@@ -902,5 +903,45 @@ func TestLateCompactionKeepsLeases(t *testing.T) {
 				mustPass(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Second))
 			}
 		})
+	}
+}
+
+// TestEarlyWriterAfterAnswer is the search trap of PR #626's seed 290 in
+// fourteen operations (#627). The revoke could write revision 3 in the
+// model, but it was called after a delete had already returned revision 3,
+// whose ambiguous delete of a wrote it. The search must drop the revoke as
+// that writer at once; trying every order of the eight ambiguous puts
+// after it ran out of steps.
+func TestEarlyWriterAfterAnswer(t *testing.T) {
+	b := newBuilder(t, "a", "b", "c")
+	b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 10}})
+	b.do(0, history.Request{Put: &history.PutRequest{Key: "a", Value: "x", Lease: 42}})
+	deleted := b.del(1, "a")
+	b.del(0, "b")
+	b.do(0, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 42}})
+	var ambiguous []int
+	for i := range 8 {
+		ambiguous = append(ambiguous, b.put(1, "b", strconv.Itoa(i)))
+	}
+	b.put(0, "c", "last")
+	h := b.done()
+	for _, i := range append(ambiguous, deleted) {
+		h.Ops[i].Resp, h.Ops[i].Err = nil, errUnavailable
+	}
+	for _, mode := range bothModes {
+		mustPass(t, mode.String(), Witnessed(h, mode, time.Minute, MaxSteps(10_000)))
+	}
+	// The bad twin lacks the ambiguous delete of a: only the revoke, called
+	// after revision 3 was returned, can have written it. No order exists,
+	// and the search must say so, not run out of steps.
+	bad := *h
+	bad.Ops = slices.Delete(slices.Clone(h.Ops), deleted, deleted+1)
+	for _, mode := range bothModes {
+		err := Witnessed(&bad, mode, time.Minute, MaxSteps(10_000))
+		t.Logf("%s on the bad twin: %v", mode, err)
+		if errors.Is(err, ErrWitnessTimeout) {
+			t.Fatalf("%s ran out of steps on the bad twin instead of convicting it: %v", mode, err)
+		}
+		mustFail(t, mode.String(), err, "witness check")
 	}
 }

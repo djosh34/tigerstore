@@ -449,7 +449,9 @@ type proc struct {
 	// fellBehind is its count of watchers that fell behind.
 	core       *core.Node
 	fellBehind int64
-	parked     chan struct{}
+	// held are the core's counters of held entries so far.
+	held   core.HeldCounts
+	parked chan struct{}
 	// srv is the gRPC server of a voting node of the first three.
 	srv *server.Server
 }
@@ -653,6 +655,11 @@ type Stats struct {
 	// (#182), and FencedAfterServe nodes fenced after a serve failed on
 	// their own damage (#201).
 	OlderCheckpoints, CheckpointsDuringInstall, FencedAfterServe int
+	// HeldNamed counts the entries leaders' appends named instead of
+	// carrying them, HeldParked the appends that waited for a side copy,
+	// and HeldAsked the times a follower asked for entries in full
+	// (core/held.go).
+	HeldNamed, HeldParked, HeldAsked int
 	// ErasedAtRoot and ErasedAtRemoval count the erase-one-disk copies
 	// taken right after the first root synced and right after the first
 	// segment removal.
@@ -1832,11 +1839,17 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 			// Raft never moves back a term, or a vote within one.
 			s.fail("node %d started at term %d with vote %d, but held term %d and vote %d durable", n.id, hs.GetTerm(), hs.GetVote(), n.mustHS.term, n.mustHS.vote)
 		}
-		p.core, p.fellBehind, n.pending, n.duringInstall = c, 0, nil, nil
+		p.core, p.fellBehind, p.held, n.pending, n.duringInstall = c, 0, core.HeldCounts{}, nil, nil
 	}
 	if f := c.FellBehind(); f > p.fellBehind {
 		s.stats.WatchersBehind += int(f - p.fellBehind)
 		p.fellBehind = f
+	}
+	if h := c.Held(); h != p.held {
+		s.stats.HeldNamed += int(h.Named - p.held.Named)
+		s.stats.HeldParked += int(h.Parked - p.held.Parked)
+		s.stats.HeldAsked += int(h.Asked - p.held.Asked)
+		p.held = h
 	}
 	before := n.last.version
 	if n == s.stalledLeader && s.steppedDownAt == 0 && c.Leader() != n.id {

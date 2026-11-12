@@ -28,9 +28,10 @@ import (
 
 // These tests use two builds of this source; only TestReleaseUpgrade
 // also runs with two releases. The old build supports entry format 1 and
-// peer range 2-2; the new one supports entry formats 1-2 and peer range
-// 2-3. The workflow changes only those constants. No test hook runs
-// inside the server.
+// peer protocol 3; the new one supports entry formats 1-2 and peer
+// protocols 3-4, so that new nodes send each other held entries
+// (core/held.go) and an old node must never get one. The workflow changes
+// only those constants. No test hook runs inside the server.
 func TestRollingUpgrade(t *testing.T) {
 	for _, seed := range []uint64{148, 174} {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
@@ -40,6 +41,7 @@ func TestRollingUpgrade(t *testing.T) {
 			r.stage("first upgrade", 1)
 			r.restart(1, r.newBin)
 			r.stage("second upgrade", 1)
+			r.heldMixed("second upgrade")
 
 			// Keep the exact announcement bytes of node 2's upgraded run.
 			// Reproposing it later models a delayed MsgProp without TLS
@@ -346,7 +348,67 @@ func (r *rollingRun) stage(name string, version int) {
 	if writes == 0 {
 		r.t.Fatalf("%s: no successful writes during stage", name)
 	}
+	for i := range 3 {
+		if n := r.counter(i, "tigerstore_network_peer_held_refused_total"); n != 0 {
+			r.t.Fatalf("%s: node%d, of peer range %d-%d, got %d messages of held entries on connections that do not carry them", name, i+1, peerMin, r.ranges[i], n)
+		}
+	}
 	r.t.Logf("%s: active version %d, peer ranges %v negotiated, %d successful writes", name, version, r.ranges, writes)
+}
+
+// heldMixed runs a stage in a cluster of old and new nodes, led by a new
+// one: a leader that leads now is stopped and started again, which hands
+// its leadership to a peer. The new leader must name to the new follower
+// the entries it forwarded, and the follower must fill in appends from
+// the entries it held, while stage checks that the old node gets none.
+func (r *rollingRun) heldMixed(name string) {
+	r.t.Helper()
+	lead, err := r.c.leader(context.Background(), 10*time.Second)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if r.ranges[lead] == peerMin {
+		r.restart(lead, r.oldBin)
+		if lead, err = r.c.leader(context.Background(), 10*time.Second); err != nil {
+			r.t.Fatal(err)
+		}
+	}
+	if r.ranges[lead] == peerMin {
+		r.t.Fatalf("%s: node%d, an old node, still leads", name, lead+1)
+	}
+	follower := -1
+	for i := range 3 {
+		if i != lead && r.ranges[i] > peerMin {
+			follower = i
+		}
+	}
+	if follower < 0 {
+		r.t.Fatalf("%s: no new follower beside node%d", name, lead+1)
+	}
+	named := r.counter(lead, "tigerstore_server_held_named_total")
+	filled := r.counter(follower, "tigerstore_server_held_filled_total")
+	r.stage(name+", held entries between the new nodes", 1)
+	named = r.counter(lead, "tigerstore_server_held_named_total") - named
+	filled = r.counter(follower, "tigerstore_server_held_filled_total") - filled
+	if named == 0 || filled == 0 {
+		r.t.Fatalf("%s: node%d, a new leader, named %d entries, and node%d, a new follower, filled in %d appends from held entries", name, lead+1, named, follower+1, filled)
+	}
+	r.t.Logf("%s: node%d named %d entries, node%d filled in %d appends from them", name, lead+1, named, follower+1, filled)
+}
+
+// counter is the value of a counter of node i. Both builds of this source
+// have every counter it reads, so a missing one fails the test.
+func (r *rollingRun) counter(i int, name string) int {
+	r.t.Helper()
+	_, body, err := r.metric(i)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	v, err := metricValue(body, name)
+	if err != nil {
+		r.t.Fatalf("node%d: %v", i+1, err)
+	}
+	return v
 }
 
 // settle waits until every node has active version want, and fails

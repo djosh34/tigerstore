@@ -103,6 +103,12 @@ func (st *State) confState() *raftpb.ConfState {
 	return cs
 }
 
+// isVoter reports whether id is a voting member.
+func (st *State) isVoter(id uint64) bool {
+	m, ok := st.members[id]
+	return ok && !m.IsLearner
+}
+
 // voters are the voting members' IDs in order.
 func (st *State) voters() []uint64 { return st.confState().Voters }
 

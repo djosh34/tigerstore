@@ -50,6 +50,12 @@ type Counters struct {
 	// membershipSnapshotEntries entries it applies, for its
 	// etcd_debugging_store_reads_total and writes_total.
 	StoreGets, StoreCreates, StoreSets int64
+	// HeldNamed counts the entries the leader's appends named by their key
+	// instead of carrying them, HeldFilled the appends a follower filled in
+	// from the entries it held, HeldParked the appends that waited for an
+	// entry they named, and HeldAsked the times a follower asked the
+	// leader to send entries in full after a wait (held.go).
+	HeldNamed, HeldFilled, HeldParked, HeldAsked int64
 }
 
 // AlarmGauge is the value of an alarm's etcd_debugging_server_alarms.

@@ -70,11 +70,11 @@ func TestVersionMetrics(t *testing.T) {
 		"tigerstore_cluster_version_max":       core.MaxVersion,
 		"tigerstore_cluster_version":           core.MaxVersion,
 		"tigerstore_peer_protocol_min_version": 3,
-		"tigerstore_peer_protocol_max_version": 3,
+		"tigerstore_peer_protocol_max_version": 4,
 	}
 	for _, peer := range []string{"2", "3"} {
 		for _, dir := range []string{"in", "out"} {
-			want[`tigerstore_peer_protocol_version{direction="`+dir+`",peer="`+peer+`"}`] = 3
+			want[`tigerstore_peer_protocol_version{direction="`+dir+`",peer="`+peer+`"}`] = 4
 		}
 	}
 	// The connections and the version announcements need a moment.

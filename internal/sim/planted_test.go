@@ -140,6 +140,9 @@ var plantedCases = map[string]plantedCase{
 	"B28": {seeds: 16, cfg: membershipConfig, want: `membership: stage 1 acknowledged`},
 	"B31": {seeds: 16, cfg: cacheConfig, want: badValue + `|` + badState},
 	"B32": {seeds: 128, cfg: loneHeaderConfig, want: refused},
+	// A follower that persists a key as an entry holds another log than
+	// its leader: it applies other entries or cannot apply the key.
+	"B33": {seeds: 32, cfg: DefaultConfig, want: inventedState + `|malformed batch|` + stuck},
 }
 
 // openBugs are the failures of open bugs #357 and #361, which the default

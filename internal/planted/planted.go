@@ -45,4 +45,5 @@ var Bugs = map[string]string{
 	"B30":  "the cleaner omits a value still named by the durable checkpoint",
 	"B31":  "a cache lookup ignores the Raft index and returns an overwritten value",
 	"B32":  "the WAL writes a new segment's header alone, before its first records (#295)",
+	"B33":  "a follower hands Raft an append that names an entry it does not hold, with the entry's key as its data",
 }

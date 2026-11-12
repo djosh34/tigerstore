@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -14,6 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/testcert"
 )
 
@@ -289,5 +297,174 @@ func TestFetchAfterHandshake(t *testing.T) {
 	}
 	if string(got) != "for 1: 5-9" {
 		t.Fatalf("fetched %q", got)
+	}
+}
+
+// TestHeldFormsNeverReachAnOlderPeer runs a node of versions 3 to 4 against
+// one of version 3: the writer drops a message of held entries, such as a
+// named append queued while a connection of version 4 was up, and still
+// sends the rest, a heartbeat whose own context starts like one included.
+func TestHeldFormsNeverReachAnOlderPeer(t *testing.T) {
+	a, b, _, _ := startPair(t, 3, 4, 3, 3)
+	named := msg(1, "a key, not the entry")
+	named.Context = []byte("TSH\x02\x00")
+	beat := &raftpb.Message{
+		Type: raftpb.MsgHeartbeat.Enum(), From: new(uint64(1)), To: new(uint64(2)),
+		Context: []byte{'T', 'S', 'H', 0, 0, 0, 0, 0},
+	}
+	a.t.Send(named)
+	a.t.Send(beat)
+	a.t.Send(msg(2, "x"))
+	for _, m := range receive(t, b, 2) {
+		if core.HeldForm(m) || m.GetType() == raftpb.MsgApp && m.GetIndex() != 2 {
+			t.Fatalf("node 2, of version 3, got %v", m)
+		}
+	}
+	if a.t.HeldEntries(2) {
+		t.Fatal("HeldEntries reports a connection of version 3 as carrying held entries")
+	}
+}
+
+// TestHeldFormsDroppedAfterDowngrade connects nodes 1 and 2 at version 4,
+// then starts node 2 again speaking only version 3, as a rolling
+// downgrade does. Node 1 keeps sending named appends, as a core that still
+// believes the old connection does, and plain ones: once it has dialed
+// again at version 3, its writer drops every named append and delivers
+// the rest.
+func TestHeldFormsDroppedAfterDowngrade(t *testing.T) {
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	certs := map[uint64]tls.Certificate{}
+	for id := uint64(1); id <= 2; id++ {
+		if certs[id], _, _, err = ca.Issue("node", int64(id+1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	addrs, lns := listeners(t, 1, 2)
+	a := start(t, 1, lns[1], addrs, certs[1], ca.Pool)
+	t.Cleanup(func() {
+		if err := a.t.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	b := start(t, 2, lns[2], addrs, certs[2], ca.Pool)
+	a.t.Send(msg(1, "x"))
+	receive(t, b, 1)
+	if !a.t.HeldEntries(2) {
+		t.Fatal("a connection of version 4 does not carry held entries")
+	}
+	if err := b.t.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b = startWith(t, 2, nil, addrs, certs[2], ca.Pool, func(c *Config) { c.minVersion, c.maxVersion = 3, 3 })
+	t.Cleanup(func() {
+		if err := b.t.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	deadline := time.After(10 * time.Second)
+	for i := uint64(2); ; i += 2 {
+		named := msg(i, "a key, not the entry")
+		named.Context = []byte("TSH\x02\x00")
+		a.t.Send(named)
+		a.t.Send(msg(i+1, "x"))
+		select {
+		case m := <-b.got:
+			if core.HeldForm(m) || m.GetIndex()%2 == 0 {
+				t.Fatalf("node 2, started again at version 3, got %v", m)
+			}
+			if a.t.HeldEntries(2) {
+				t.Fatal("HeldEntries reports the connection of version 3 as carrying held entries")
+			}
+			return
+		case <-deadline:
+			t.Fatal("node 2 got nothing in 10 s after it started again")
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+}
+
+// TestOldConnectionRefusesHeldForms reads, on a connection of version 3,
+// a named append and then a heartbeat whose own context starts like one:
+// the named append is refused and counted, and the heartbeat delivered.
+func TestOldConnectionRefusesHeldForms(t *testing.T) {
+	set, err := metrics.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []*raftpb.Message
+	tr := &TCP{cfg: Config{Metrics: set, Logf: t.Logf, Deliver: func(m *raftpb.Message) { got = append(got, m) }}}
+	var frames []byte
+	for _, m := range []*raftpb.Message{
+		{Type: raftpb.MsgApp.Enum(), From: new(uint64(2)), To: new(uint64(1)), Context: []byte("TSH\x02\x00"), Entries: []*raftpb.Entry{{Data: []byte("a key")}}},
+		{Type: raftpb.MsgHeartbeat.Enum(), From: new(uint64(2)), To: new(uint64(1)), Context: []byte{'T', 'S', 'H', 2, 0, 0, 0, 0}},
+	} {
+		b, err := proto.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		frames = binary.BigEndian.AppendUint32(frames, uint32(len(b)))
+		frames = append(frames, b...)
+	}
+	cs := &counters{received: prometheus.NewCounter(prometheus.CounterOpts{Name: "received"}), heartbeatReceived: prometheus.NewGauge(prometheus.GaugeOpts{Name: "heartbeat"})}
+	if err := tr.frames(bytes.NewReader(frames), 2, 3, cs); !errors.Is(err, io.EOF) {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].GetType() != raftpb.MsgHeartbeat {
+		t.Fatalf("delivered %v, want only the heartbeat", got)
+	}
+	if n := testutil.ToFloat64(set.PeerHeldRefused); n != 1 {
+		t.Fatalf("%g messages refused, want 1", n)
+	}
+}
+
+// TestHeldEntriesFollowsTheDataLane drives a sender's lane bookkeeping by
+// hand, its peer never answering: both lanes come up at version 4, then
+// the data lane comes up again at version 3, as after the peer started
+// again at an older version, while the control lane's old connection still
+// counts. HeldEntries must follow the data lane, which carries the messages
+// of held entries, or the leader would name entries that the writer then
+// drops, again and again; and the peer's version, which the metrics show,
+// must be 3.
+func TestHeldEntriesFollowsTheDataLane(t *testing.T) {
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, _, _, err := ca.Issue("node", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addrs, lns := listeners(t, 1, 2)
+	// Nothing listens for node 2: its lanes never connect by themselves.
+	if err := lns[2].Close(); err != nil {
+		t.Fatal(err)
+	}
+	a := start(t, 1, lns[1], addrs, cert, ca.Pool)
+	t.Cleanup(func() {
+		if err := a.t.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	s, ok := a.t.peer(2)
+	if !ok {
+		t.Fatal("node 1 has no sender to node 2")
+	}
+	s.laneUp(&s.ctrl, 4)
+	s.laneUp(&s.data, 4)
+	if !a.t.HeldEntries(2) {
+		t.Fatal("lanes of version 4 do not carry held entries")
+	}
+	s.laneDown(&s.data, true)
+	s.laneUp(&s.data, 3)
+	if a.t.HeldEntries(2) {
+		t.Fatal("HeldEntries reports a data lane of version 3 as carrying held entries")
+	}
+	// The out version of tigerstore_peer_protocol_version: a downgrade
+	// shows on the link once a lane connects again.
+	if v := a.t.Versions().Out[2]; v != 3 {
+		t.Fatalf("the peer's version is %d after a lane connected at version 3", v)
 	}
 }
