@@ -484,7 +484,8 @@ type Node struct {
 	loop  *loop.Loop
 	local []input
 	// full is set while persist batches wait for the disk past maxBacklog,
-	// when the committer takes no new input (Busy). Loop only.
+	// when the committer takes no new input but peers' control messages
+	// (Busy). Loop only.
 	full bool
 	// roomFreed wakes the committer when a watch stream short of room got
 	// some back (WatchStream.took), and memFull says that the process is
@@ -1090,7 +1091,8 @@ func (n *Node) Receive(m *raftpb.Message) {
 	n.local = append(n.local, input{msg: m, at: time.Now()})
 }
 
-// Busy reports, on the loop, whether the node takes no new input now
+// Busy reports, on the loop, whether the node takes no new input but
+// peers' control messages now
 // because its disk is behind. The peer transport then holds the data
 // messages it reads (peer.Config.Busy) and steps the others.
 func (n *Node) Busy() bool { return n.full }
@@ -1272,8 +1274,9 @@ type readDone struct {
 }
 
 // maxBacklog is the number of persist batches that may wait for the disk.
-// Beyond it the committer stops taking new inputs, but it keeps ticking
-// and taking finished disk writes.
+// Beyond it the committer stops taking new inputs, but it keeps ticking,
+// taking finished disk writes and stepping peers' control messages
+// (heartbeats, votes, read index and answers; Busy).
 const maxBacklog = 64
 
 // Run drives the node until ctx ends or the node fails. Messages for peers
@@ -1437,8 +1440,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		chunks = offer(n.ckptQ, chunks)
 		reads = offer(n.readQ, reads)
 		// With the disk behind, the committer takes no new inputs, from
-		// its inbox or its sockets, but keeps ticking and taking finished
-		// writes.
+		// its inbox or its clients' sockets, but keeps ticking, taking
+		// finished writes and stepping its peers' control messages, whose
+		// connections hold their data messages meanwhile (Busy).
 		full := len(backlog) >= maxBacklog
 		n.full = full
 		due := n.core.Due()

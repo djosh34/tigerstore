@@ -122,9 +122,11 @@ func (l *Loop) Wait(timeout time.Duration) error {
 
 // Dispatch runs the posted work, then the handlers of the due sockets if
 // sockets is set. If it is not, as while the owner can take no more input,
-// the due tokens wait for a later Dispatch that takes them (Holding), and
-// their handlers that are Flushers are flushed, so output that waited for
-// a socket still goes out while its input waits.
+// the handlers that are Urgent run anyway and hold back themselves what
+// the owner cannot take; the other due tokens wait for a later Dispatch
+// that takes them (Holding), and their handlers that are Flushers are
+// flushed, so output that waited for a socket still goes out while its
+// input waits.
 func (l *Loop) Dispatch(sockets bool) {
 	l.expire()
 	l.mu.Lock()
