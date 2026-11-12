@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"golang.org/x/net/http2"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/loop"
 )
@@ -173,34 +175,43 @@ func TestGoAwayBeforeHandOver(t *testing.T) {
 	s.wg.Wait()
 }
 
-// TestHeldAcrossConnections holds more than the server's share of the
-// memory budget on one connection's call: another connection's window
-// credit waits, and goes out once that call lets go.
-func TestHeldAcrossConnections(t *testing.T) {
+// TestOutputWaitsForRoom fills the server's room for output that waits
+// for sockets with one connection's, whose client reads nothing: another
+// connection takes no new write pass meanwhile, and writes once the first
+// client read its bytes.
+func TestOutputWaitsForRoom(t *testing.T) {
 	s := bareServer(t)
-	s.maxHeldAll = 1 << 20
-	a, b := testConn(t), testConn(t)
-	a.s, b.s = s, s
-	st := testCall(a, 1)
-	a.mu.Lock()
-	a.chargeLocked(&st.reqHeld, 2<<20)
-	a.mu.Unlock()
-	b.mu.Lock()
-	b.recvCredit = connWindow
-	b.creditLocked()
-	waiting := len(b.ctrl)
-	b.mu.Unlock()
-	if waiting != 0 {
-		t.Fatal("a connection got credit while the calls of all held more than their share")
+	s.maxOut = 10
+	open := func() (*conn, *gate) {
+		a, b := net.Pipe()
+		t.Cleanup(func() {
+			a.Close() //nolint:errcheck // closing a test pipe
+			b.Close() //nolint:errcheck // closing a test pipe
+		})
+		br := loop.NewBridge(a, ioBuffer)
+		g := &gate{shut: true}
+		br.Attach(g, nil)
+		c := newConn(s, br, br)
+		// As attach sets it: the client's preface may still come.
+		c.prefaceBy = time.Now().Add(time.Hour)
+		return c, g
 	}
-	a.mu.Lock()
-	a.releaseLocked(&st.reqHeld)
-	a.mu.Unlock()
-	s.loop.Dispatch(false)
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if len(b.ctrl) != 1 || b.ctrl[0].kind != ctrlWindowUpdate || b.recvCredit != 0 {
-		t.Fatalf("after the release: control frames %v, %d bytes still to credit", b.ctrl, b.recvCredit)
+	first, firstGate := open()
+	second, secondGate := open()
+	first.Flush()
+	if s.outAll <= s.maxOut {
+		t.Fatalf("the first connection's settings, %d bytes, should fill the room of %d", s.outAll, s.maxOut)
+	}
+	secondGate.shut = false
+	second.Flush()
+	if secondGate.calls != 0 {
+		t.Fatal("the second connection wrote while the first one's output filled the room")
+	}
+	firstGate.shut = false
+	first.Flush()
+	s.loop.Flush()
+	if secondGate.took == 0 || s.outAll != 0 {
+		t.Fatalf("after the first client read: the second wrote %d bytes, %d wait", secondGate.took, s.outAll)
 	}
 }
 
@@ -238,7 +249,8 @@ func TestConnectionLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer second.Close() //nolint:errcheck // closing a test connection
-	if err := second.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	// Well before the handshake timeout, which would close it too.
+	if err := second.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := second.Write([]byte(http2.ClientPreface)); err != nil {
@@ -254,7 +266,68 @@ func TestConnectionLimit(t *testing.T) {
 			if ga.ErrCode != http2.ErrCodeEnhanceYourCalm || string(ga.DebugData()) != refusal {
 				t.Fatalf("GOAWAY %v %q, want ENHANCE_YOUR_CALM %q", ga.ErrCode, ga.DebugData(), refusal)
 			}
-			return
+			break
 		}
+	}
+	// Once the first connection ended, a new one is served.
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		s.mu.Lock()
+		open := s.open
+		s.mu.Unlock()
+		if open == 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	third, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer third.Close() //nolint:errcheck // closing a test connection
+	if err := third.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := third.Write([]byte(http2.ClientPreface)); err != nil {
+		t.Fatal(err)
+	}
+	f, err := http2.NewFramer(third, third).ReadFrame()
+	if err != nil {
+		t.Fatalf("the connection after the first one ended got no frame: %v", err)
+	}
+	if _, ok := f.(*http2.SettingsFrame); !ok {
+		t.Fatalf("the connection after the first one ended got a %T, want the server's SETTINGS", f)
+	}
+}
+
+// TestWritePassIsBounded queues trailers on 30,000 streams, as as many
+// calls that end with an error at once, for a client that reads nothing:
+// one write pass takes at most maxTake bytes of frames, headers included,
+// and at most maxPassFrames frames.
+func TestWritePassIsBounded(t *testing.T) {
+	s := bareServer(t)
+	a, b := net.Pipe()
+	defer a.Close() //nolint:errcheck // closing a test pipe
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	br := loop.NewBridge(a, ioBuffer)
+	br.Attach(&gate{shut: true}, nil)
+	c := newConn(s, br, br)
+	c.prefaceBy = time.Now().Add(time.Hour)
+	c.mu.Lock()
+	for id := uint32(1); id < 60000; id += 2 {
+		st := &stream{c: c, id: id, sendWin: 1 << 30, inEOF: true}
+		c.streams[id] = st
+		st.out = []outItem{{kind: outTrailers, b: statusBlock(status.New(codes.Unavailable, "gone"), true)}}
+		c.list(st)
+	}
+	c.mu.Unlock()
+	c.Flush()
+	if p := br.Pending(); p > maxTake+4<<10 {
+		t.Fatalf("one write pass left %d bytes for the socket; maxTake is %d", p, maxTake)
+	}
+	if n := cap(s.framesOut); n > 2*maxPassFrames {
+		t.Fatalf("the pass's frame list grew to %d; maxPassFrames is %d", n, maxPassFrames)
 	}
 }

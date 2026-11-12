@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"io"
+	"slices"
 	"time"
 
 	"golang.org/x/net/http2"
@@ -32,14 +33,14 @@ const maxReadFrame = 16384
 const connBuffer = 32 << 10
 
 // connBytes bounds what one HTTP/2 connection holds besides what its
-// calls hold and its output that waits for the socket, which both count
-// against the server's share for calls (Server.maxHeldAll): an idle
-// connection, with crypto/tls's record buffers, the Framer's, HPACK's
-// table, its keepalive timer and its own state (idleBytes); while it has
-// bytes in them, a read buffer under TLS and an input buffer (connBuffer
-// each); and the control frames queued (maxCtrl, about 24 KiB).
-// Server.setLimits sizes the number of connections from it.
-const connBytes = idleBytes + 2*connBuffer + 32<<10
+// calls hold (maxHeld) and its output that waits for the socket, which
+// counts in the server's waiting output (Server.maxOut): an idle connection
+// (idleBytes); while it has bytes in them, a read buffer under TLS and an
+// input buffer (connBuffer each); the control frames queued (maxCtrl of
+// 48 bytes, 24 KiB); a header block that waits for its CONTINUATION
+// (maxHeaderList); and the header blocks it keeps decoded (maxBlocks,
+// under 40 KiB). Server.setLimits sizes the number of connections from it.
+const connBytes = idleBytes + 2*connBuffer + 24<<10 + maxHeaderList + 40<<10
 
 // idleBytes bounds what an idle HTTP/2 connection holds.
 // TestIdleConnectionMemory measures it, with its client, at about 112 KB.
@@ -347,36 +348,40 @@ func (c *conn) write() (bool, error) {
 			}
 			c.waitSince = time.Time{}
 		}
+		if !c.outRoom() {
+			// Other connections' output fills the server's room for it.
+			return false, nil
+		}
 		c.mu.Lock()
-		c.ctrlOut = append(c.ctrlOut[:0], c.ctrl...)
+		c.s.ctrlOut = append(c.s.ctrlOut[:0], c.ctrl...)
 		clear(c.ctrl)
 		c.ctrl = c.ctrl[:0]
-		c.framesOut = c.take(c.framesOut[:0])
+		c.s.framesOut = c.take(c.s.framesOut[:0])
 		drained := c.goingAway && len(c.streams) == 0
 		c.mu.Unlock()
-		if len(c.ctrlOut) == 0 && len(c.framesOut) == 0 {
+		if len(c.s.ctrlOut) == 0 && len(c.s.framesOut) == 0 {
 			return drained, nil
 		}
 		// Every connection writes through the server's one write buffer,
 		// which each pass flushes.
 		c.s.bw.Reset(c.nc)
-		for i := range c.ctrlOut {
-			if err := c.writeCtrl(&c.ctrlOut[i]); err != nil {
+		for i := range c.s.ctrlOut {
+			if err := c.writeCtrl(&c.s.ctrlOut[i]); err != nil {
 				return false, err
 			}
 		}
-		for i, f := range c.framesOut {
+		for i, f := range c.s.framesOut {
 			if f.ctrl != nil {
 				if err := c.writeCtrl(f.ctrl); err != nil {
 					return false, err
 				}
 			} else {
 				c.wrote.Store(true)
-				c.hdrOut = frameHeader(c.hdrOut[:0], len(f.b), f.typ, f.flags, f.id)
-				_, _ = c.s.bw.Write(c.hdrOut)
+				c.s.hdrOut = frameHeader(c.s.hdrOut[:0], len(f.b), f.typ, f.flags, f.id)
+				_, _ = c.s.bw.Write(c.s.hdrOut)
 				_, _ = c.s.bw.Write(f.b)
 			}
-			c.framesOut[i] = wframe{}
+			c.s.framesOut[i] = wframe{}
 		}
 		// bufio.Writer keeps the first write error and returns it here.
 		if err := c.s.bw.Flush(); err != nil {
@@ -403,18 +408,38 @@ func (c *conn) release() {
 }
 
 // chargeOut counts pending, the connection's output that waits for its
-// socket, against the share of the memory budget that calls hold
-// (Server.maxHeldAll), in place of what it counted before. Loop only.
+// socket, in the server's waiting output (Server.outAll), in place of what
+// it counted before. Once that falls below its bound, the connections that
+// waited for room write again. Loop only.
 func (c *conn) chargeOut(pending int) {
-	d := int64(pending) - c.outCharged
+	s := c.s
+	d := pending - c.outCharged
 	if d == 0 {
 		return
 	}
-	c.outCharged = int64(pending)
-	all := c.s.heldAll.Add(d)
-	if m := c.s.maxHeldAll; m > 0 && d < 0 && all <= m && all-d > m {
-		c.s.feedStarved()
+	c.outCharged = pending
+	s.outAll += d
+	if d < 0 && len(s.outWaiting) > 0 && s.outAll < s.maxOut {
+		for i, w := range s.outWaiting {
+			s.loop.Dirty(w)
+			s.outWaiting[i] = nil
+		}
+		s.outWaiting = s.outWaiting[:0]
 	}
+}
+
+// outRoom reports whether the server's waiting output has room for
+// another write pass of the connection, and lists it to write again once
+// it has. Loop only.
+func (c *conn) outRoom() bool {
+	s := c.s
+	if s.maxOut == 0 || s.outAll < s.maxOut {
+		return true
+	}
+	if !slices.Contains(s.outWaiting, c) {
+		s.outWaiting = append(s.outWaiting, c)
+	}
+	return false
 }
 
 // Stopped fails the calls the node still held once it stopped; the calls

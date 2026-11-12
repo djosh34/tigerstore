@@ -76,7 +76,7 @@ type conn struct {
 	// and its phase; ending once the input ended with a GOAWAY, which
 	// closes the connection by endBy; the preface's deadline; since when
 	// output waits for the socket; and gone once the connection left the
-	// loop. ctrlOut, framesOut and hdrOut are the writer's scratch.
+	// loop.
 	token     uint64
 	in        []byte
 	inR, inW  int
@@ -86,12 +86,9 @@ type conn struct {
 	prefaceBy time.Time
 	waitSince time.Time
 	gone      bool
-	// outCharged is the output waiting for the socket that counts against
-	// Server.heldAll (chargeOut).
-	outCharged int64
-	ctrlOut    []ctrlFrame
-	framesOut  []wframe
-	hdrOut     []byte
+	// outCharged is the output waiting for the socket that counts in
+	// Server.outAll (chargeOut).
+	outCharged int
 	// attached is set once the loop has the connection, from when a close
 	// tells it; reading is set while the loop reads the connection, which
 	// then writes it anyway; and signaled while a signal waits for the
@@ -431,8 +428,10 @@ type reqHeaders struct {
 }
 
 // maxHeaderList bounds the decoded size of one header block, as
-// SETTINGS_MAX_HEADER_LIST_SIZE would.
-const maxHeaderList = 1 << 20
+// SETTINGS_MAX_HEADER_LIST_SIZE would. 32 KiB holds gRPC's headers, an
+// auth token and tracing with room to spare, and keeps a header block that
+// waits for its CONTINUATION inside a connection's bound (connBytes).
+const maxHeaderList = 32 << 10
 
 // headerFragment decodes part of a header block. The Framer checks that
 // CONTINUATION frames follow their HEADERS frame.
@@ -500,8 +499,14 @@ func (c *conn) headerFragment(b []byte, first, last bool) error {
 	return nil
 }
 
-// maxBlocks bounds the header blocks a connection keeps decoded.
-const maxBlocks = 64
+// maxBlocks bounds the header blocks a connection keeps decoded, and
+// maxBlockKey the size of each block it keeps. A block of indexed fields
+// decodes to strings from the HPACK table, at most 4 KiB, so the blocks
+// kept stay under 40 KiB. A client sends one block per method it calls.
+const (
+	maxBlocks   = 8
+	maxBlockKey = 256
+)
 
 // onlyIndexed reports whether a header block holds only indexed fields
 // (RFC 7541, 6.1): a set top bit, then an integer with a 7-bit prefix.

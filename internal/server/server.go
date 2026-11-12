@@ -18,7 +18,6 @@ import (
 	"net"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -99,6 +98,11 @@ type Server struct {
 	loop *loop.Loop
 	bufs *loop.Buffers
 	bw   *bufio.Writer
+	// ctrlOut, framesOut and hdrOut are the write pass's scratch, which
+	// every connection uses in turn. Loop only.
+	ctrlOut   []ctrlFrame
+	framesOut []wframe
+	hdrOut    []byte
 	// gone sums the metrics of closed connections; guarded by mu.
 	gone *connMetrics
 	// metrics are what the server observes (metrics.go).
@@ -145,13 +149,13 @@ type Server struct {
 	refusedLog time.Time
 	// refusing counts the refused connections that hear why (refuse).
 	refusing int
-	// heldAll is what the calls of every connection hold (conn.held), and
-	// maxHeldAll its bound, 0 for none. A connection whose window credit
-	// waits for heldAll to fall is in starved, under starvedMu.
-	heldAll    atomic.Int64
-	maxHeldAll int64
-	starvedMu  sync.Mutex
-	starved    map[*conn]struct{}
+	// outAll is the output that waits for the client connections'
+	// sockets, and maxOut its bound, 0 for none: a connection whose next
+	// write pass would go past it waits in outWaiting until sockets took
+	// some. Loop only.
+	outAll     int
+	maxOut     int
+	outWaiting []*conn
 }
 
 // closer is a live client connection that Stop must end.
@@ -555,22 +559,23 @@ func (s *Server) setLimits() {
 		return
 	}
 	if b := s.n.MemoryBudget(); b > 0 {
-		// An eighth of the node's memory budget goes to the loop's
-		// buffers of the client connections, and an eighth to what their
-		// calls hold; the rest to the store and its value cache, which
-		// takes what the process leaves (core.Node.SetOtherMemory).
-		// The floors are for the tiny budgets of tests; a node's budget
-		// of 512 MiB or more is above both.
-		s.maxConns = max(minConns, int(b/budgetShare/connBytes))
-		s.maxHeldAll = max(minHeldAll, b/budgetShare)
+		// A quarter of the node's memory budget goes to the client
+		// connections (connBytes each), and a sixteenth to their output
+		// that waits for sockets; the rest to the peers, the store and its
+		// value cache, which takes what the process leaves
+		// (core.Node.SetOtherMemory). The floors are for the tiny budgets
+		// of tests; a node's budget of 128 MiB or more is above both.
+		s.maxConns = max(minConns, int(b/connShare/connBytes))
+		s.maxOut = max(minOut, int(b/outShare))
 	}
 }
 
-// budgetShare is the part of the node's memory budget that the client
-// connections' buffers take, and the part their calls hold: an eighth each.
-// minConns and minHeldAll are the least of each.
+// connShare and outShare are the parts of the node's memory budget that
+// the client connections and their waiting output take; minConns and
+// minOut the least of each.
 const (
-	budgetShare = 8
-	minConns    = 64
-	minHeldAll  = maxHeld
+	connShare = 4
+	outShare  = 16
+	minConns  = 64
+	minOut    = 8 << 20
 )
