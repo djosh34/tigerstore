@@ -37,7 +37,10 @@ func (d *Due) Take(ready []uint64) []uint64 {
 	defer d.mu.Unlock()
 	ready = append(ready, d.tokens...)
 	d.tokens = d.tokens[:0]
-	clear(d.listed)
+	// gosim's clear fails on a nil map.
+	if d.listed != nil {
+		clear(d.listed)
+	}
 	return ready
 }
 
