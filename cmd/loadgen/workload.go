@@ -42,11 +42,20 @@ type stats struct {
 	errs    map[string]int64
 }
 
+// messages is the error of a call that ended without error but with too
+// few or too many response messages: none, or several to a unary call.
+func messages(st *stream) error {
+	if st.msgs == 0 || st.msgs > 1 && !st.many {
+		return fmt.Errorf("%d response messages to a unary call", st.msgs)
+	}
+	return nil
+}
+
 // complete counts the end of a call. A success needs exactly one response
-// message, or at least one on a stream that may send many.
+// message, or at least one on a stream that may send many (messages).
 func (s *stats) complete(st *stream, at int64, err error) {
-	if err == nil && (st.msgs == 0 || st.msgs > 1 && !st.many) {
-		err = fmt.Errorf("%d response messages to a unary call", st.msgs)
+	if err == nil {
+		err = messages(st)
 	}
 	inCohort := st.intended >= s.winStart && st.intended < s.winStop
 	if inCohort {

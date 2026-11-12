@@ -8,6 +8,7 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/k8strace"
@@ -317,5 +318,79 @@ func TestK8sFlags(t *testing.T) {
 		if (err == nil) != c.ok {
 			t.Errorf("%s: error %v", c.name, err)
 		}
+	}
+}
+
+// TestBehindCompaction checks which calls the copies' compactions may
+// pass, as kube-apiserver meets them, and that every other failure stays
+// one: the replay failed on a compaction behind another copy's when the
+// store was overloaded (#625).
+func TestBehindCompaction(t *testing.T) {
+	compacted := grpcError("11", compactedMessage)
+	future := grpcError("11", rpctypes.ErrorDesc(rpctypes.ErrGRPCFutureRev))
+	other := grpcError("14", "etcdserver: leader changed")
+	for _, c := range []struct {
+		name  string
+		kind  uint8
+		atRev bool
+		err   error
+		want  uint8
+	}{
+		{"read at a compacted revision", k8strace.CallRange, true, compacted, k8strace.CallRange},
+		{"range stream at a compacted revision", k8strace.CallRangeStream, true, compacted, k8strace.CallRange},
+		{"compaction behind another", k8strace.CallCompact, false, compacted, k8strace.CallCompact},
+		{"read of the newest revision", k8strace.CallRange, false, compacted, k8strace.CallKinds},
+		{"txn", k8strace.CallTxn, false, compacted, k8strace.CallKinds},
+		{"compaction that failed otherwise", k8strace.CallCompact, false, other, k8strace.CallKinds},
+		{"compaction to a future revision", k8strace.CallCompact, false, future, k8strace.CallKinds},
+		{"read at a future revision", k8strace.CallRange, true, future, k8strace.CallKinds},
+		{"compaction that succeeded", k8strace.CallCompact, false, nil, k8strace.CallKinds},
+	} {
+		if got := behindCompaction(c.kind, c.atRev, c.err); got != c.want {
+			t.Errorf("%s: %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+// TestCompactionBehindRepliesItsRevision forgives a compaction behind
+// another copy's and checks what a later call that names its reply gets:
+// the revision it compacted to, call 0's, not a made-up one.
+func TestCompactionBehindRepliesItsRevision(t *testing.T) {
+	tr := &k8strace.Trace{
+		Keys: []string{"/registry/pods/ns/p"},
+		Calls: []k8strace.Call{
+			{Kind: k8strace.CallTxn, Op: k8strace.Op{Kind: k8strace.OpTxn, Success: []k8strace.Op{{Kind: k8strace.OpPut, Key: 0, End: -1, Size: 5}}}},
+			{Kind: k8strace.CallCompact, Waits: []int32{0}, Rev: 1},
+			{Kind: k8strace.CallCompact, Waits: []int32{1}, Rev: 2},
+		},
+	}
+	cp := newCopy(tr, newK8sKeys(tr), tr.From(0), 1)
+	cp.reply(0, 500)
+	if got := cp.compactRev(1); got != 500 {
+		t.Fatalf("call 1 compacts to %d, want call 0's revision 500", got)
+	}
+	// Call 1's compaction was behind another copy's.
+	w := &k8sLoad{wk: &worker{stats: stats{errs: map[string]int64{}}}}
+	w.done(&stream{k8s: k8sCall{cp: cp, i: 1, kind: k8strace.CallCompact}}, 0, grpcError("11", compactedMessage))
+	if w.compactsBehind != 1 || len(w.wk.stats.errs) != 0 {
+		t.Fatalf("%d compactions behind, errors %v; want 1 and none", w.compactsBehind, w.wk.stats.errs)
+	}
+	if got := cp.compactRev(2); got != 500 {
+		t.Fatalf("call 2, which names call 1's reply, compacts to %d, want 500", got)
+	}
+}
+
+// TestK8sFailureNamesItsCall checks that a k8s call's failure names its
+// kind, also when it ended without error but with no response message.
+func TestK8sFailureNamesItsCall(t *testing.T) {
+	tr := &k8strace.Trace{
+		Keys:  []string{"/registry/pods/ns/p"},
+		Calls: []k8strace.Call{{Kind: k8strace.CallRange, Op: k8strace.Op{Kind: k8strace.OpRange, Key: 0, End: -1}}},
+	}
+	cp := newCopy(tr, newK8sKeys(tr), tr.From(0), 1)
+	w := &k8sLoad{wk: &worker{stats: stats{errs: map[string]int64{}}}}
+	w.done(&stream{k8s: k8sCall{cp: cp, i: 0, kind: k8strace.CallRange}}, 0, nil)
+	if n := w.wk.stats.errs["range: 0 response messages to a unary call"]; n != 1 {
+		t.Fatalf("errors %v; want the range named", w.wk.stats.errs)
 	}
 }
