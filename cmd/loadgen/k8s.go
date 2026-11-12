@@ -475,6 +475,9 @@ func (w *k8sLoad) done(st *stream, at int64, err error) {
 		}
 		err, st.msgs, st.rev = nil, 1, call.behindRev(behind)
 	}
+	if err == nil {
+		err = messages(st)
+	}
 	if err != nil {
 		// The result's errors name the kind of call that failed.
 		err = fmt.Errorf("%s: %w", k8strace.KindNames[call.kind], err)

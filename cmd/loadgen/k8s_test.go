@@ -379,3 +379,18 @@ func TestCompactionBehindRepliesItsRevision(t *testing.T) {
 		t.Fatalf("call 2, which names call 1's reply, compacts to %d, want 500", got)
 	}
 }
+
+// TestK8sFailureNamesItsCall checks that a k8s call's failure names its
+// kind, also when it ended without error but with no response message.
+func TestK8sFailureNamesItsCall(t *testing.T) {
+	tr := &k8strace.Trace{
+		Keys:  []string{"/registry/pods/ns/p"},
+		Calls: []k8strace.Call{{Kind: k8strace.CallRange, Op: k8strace.Op{Kind: k8strace.OpRange, Key: 0, End: -1}}},
+	}
+	cp := newCopy(tr, newK8sKeys(tr), tr.From(0), 1)
+	w := &k8sLoad{wk: &worker{stats: stats{errs: map[string]int64{}}}}
+	w.done(&stream{k8s: k8sCall{cp: cp, i: 0, kind: k8strace.CallRange}}, 0, nil)
+	if n := w.wk.stats.errs["range: 0 response messages to a unary call"]; n != 1 {
+		t.Fatalf("errors %v; want the range named", w.wk.stats.errs)
+	}
+}
