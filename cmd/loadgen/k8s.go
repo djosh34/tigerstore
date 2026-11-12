@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/djosh34/tigerstore/internal/k8strace"
@@ -259,6 +260,25 @@ func (cp *k8sCopy) rev(r k8strace.Rev, key int32) int64 {
 	return 1
 }
 
+// behindRev is the revision a call that the copies' compactions passed
+// (behindCompaction) replies to the calls that name it: 1 for a read, as
+// for any revision the store no longer has, and for a compaction the
+// revision it compacted to, which the store had then, as kube-apiserver
+// keeps its own revision.
+func (c *k8sCall) behindRev(behind uint8) int64 {
+	if behind == k8strace.CallCompact {
+		return c.cp.compactRev(c.i)
+	}
+	return 1
+}
+
+// compactRev is the replay's revision that compaction call i compacts to.
+func (cp *k8sCopy) compactRev(i int32) int64 { return cp.rev(cp.t.Calls[i].Rev, -1) }
+
+// compactedMessage is the status message of etcd's answer to a read or a
+// compaction at a compacted revision.
+var compactedMessage = rpctypes.ErrorDesc(rpctypes.ErrGRPCCompacted)
+
 // lease is the replay's ID of a lease, 0 if it is gone.
 func (cp *k8sCopy) lease(l k8strace.LeaseRef) int64 {
 	switch {
@@ -283,7 +303,10 @@ type k8sLoad struct {
 	buf     []byte
 	// compacted counts reads at a revision that another copy's
 	// compaction removed first; kube-apiserver lists again then.
-	compacted int64
+	// compactsBehind counts compactions to a revision another copy's
+	// compaction had passed, which kube-apiserver's compactor logs and
+	// tries again at its next interval.
+	compacted, compactsBehind int64
 	// skipped counts lease calls whose lease the start no longer has.
 	skipped int64
 	// cacheReads counts the watch cache's calls, reads of a whole watched
@@ -444,16 +467,46 @@ func (w *k8sLoad) message(st *stream, m []byte) error {
 
 func (w *k8sLoad) done(st *stream, at int64, err error) {
 	call := &st.k8s
-	var status *grpcStatus
-	if (call.kind == k8strace.CallRange || call.kind == k8strace.CallRangeStream) && call.atRev && err != nil &&
-		errors.As(err, &status) && status.code == codeOutOfRange {
-		w.compacted++
-		err, st.msgs, st.rev = nil, 1, 1
+	if behind := behindCompaction(call.kind, call.atRev, err); behind != k8strace.CallKinds {
+		if behind == k8strace.CallCompact {
+			w.compactsBehind++
+		} else {
+			w.compacted++
+		}
+		err, st.msgs, st.rev = nil, 1, call.behindRev(behind)
 	}
 	if err == nil {
+		err = messages(st)
+	}
+	if err != nil {
+		// The result's errors name the kind of call that failed.
+		err = fmt.Errorf("%s: %w", k8strace.KindNames[call.kind], err)
+	} else {
 		call.cp.reply(call.i, st.rev)
 	}
 	w.wk.stats.complete(st, at, err)
+}
+
+// behindCompaction reports, for a call of kind that failed with err,
+// whether the copies' compactions passed it, as kube-apiserver meets that:
+// CallRange for a read at a revision another copy's compaction removed,
+// which it lists again; CallCompact for a compaction to a revision another
+// copy's compaction passed, which its compactor tries again later. The 64
+// copies compact one store, so under load their compactions land out of
+// order. Only etcd's "compacted" answer counts: a future revision has
+// the same code and is a store's bug. Anything else gives CallKinds.
+func behindCompaction(kind uint8, atRev bool, err error) uint8 {
+	var status *grpcStatus
+	if err == nil || !errors.As(err, &status) || status.code != codeOutOfRange || status.message != compactedMessage {
+		return k8strace.CallKinds
+	}
+	switch {
+	case (kind == k8strace.CallRange || kind == k8strace.CallRangeStream) && atRev:
+		return k8strace.CallRange
+	case kind == k8strace.CallCompact:
+		return k8strace.CallCompact
+	}
+	return k8strace.CallKinds
 }
 
 // rangeReply takes in a RangeResponse in one pass: the key-values it

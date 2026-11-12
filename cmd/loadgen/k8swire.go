@@ -175,7 +175,7 @@ func (e *encoder) request(b []byte, c *k8strace.Call) []byte {
 		return e.txn(b, &c.Op, &e.ok, &e.failed)
 	case k8strace.CallCompact:
 		e.ok = tally{bytes: idBytes, entries: 1}
-		return appendVarintNZ(b, compactRevision, e.cp.rev(c.Rev, -1))
+		return appendVarintNZ(b, compactRevision, e.cp.compactRev(e.call))
 	case k8strace.CallLeaseGrant:
 		e.ok = tally{bytes: 2 * idBytes, entries: 1, leases: 1}
 		return appendVarintNZ(b, leaseTTL, c.TTL)

@@ -242,10 +242,13 @@ type k8sResult struct {
 	// had still to send at the end.
 	Calls int `json:"calls"`
 	Left  int `json:"left"`
-	// Compacted counts reads at a revision another copy compacted away;
-	// Skipped lease calls whose lease the copy's start no longer had.
-	Compacted int64 `json:"compacted"`
-	Skipped   int64 `json:"skipped"`
+	// Compacted counts reads at a revision another copy compacted away,
+	// CompactsBehind compactions to a revision another copy's compaction
+	// passed, and Skipped lease calls whose lease the copy's start no
+	// longer had.
+	Compacted      int64 `json:"compacted"`
+	CompactsBehind int64 `json:"compacts_behind"`
+	Skipped        int64 `json:"skipped"`
 	// CacheReads counts the watch cache's calls, reads of whole watched
 	// resources and progress requests, that copies other than 0 left out
 	// (leftToCopy0).
@@ -286,6 +289,7 @@ func (s *session) summarizeK8s(res *result) {
 			}
 		}
 		r.Compacted += w.compacted
+		r.CompactsBehind += w.compactsBehind
 		r.Skipped += w.skipped
 		r.CacheReads += w.cacheReads
 		for _, cp := range w.copies {
