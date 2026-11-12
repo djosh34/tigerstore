@@ -36,10 +36,12 @@ func TestGarbageDoesNotCount(t *testing.T) {
 		sink = append(sink, make([]byte, 1<<20))
 		time.Sleep(10 * time.Millisecond)
 	}
-	// Freed before the stop, the 8 MiB counts only through the samples.
+	// Freed before the stop, the 8 MiB counts only through the samples:
+	// the last MiB may come and go within step, and the result is net of
+	// what of the heap at the call was freed meanwhile, some KiB.
 	sink = nil
 	held, kept := peak()
-	if held < 8<<20-step || kept > 1<<20 {
+	if held < 8<<20-step-128<<10 || kept > 1<<20 {
 		t.Fatalf("8 MiB held and freed peaks at %d KiB, %d KiB kept", held>>10, kept>>10)
 	}
 }
@@ -50,10 +52,12 @@ type link struct {
 	_    [7]uintptr
 }
 
-// TestGarbageDuringPeakGCDoesNotCount makes garbage, 64 KiB at a time,
-// while Peak's own collections mark a 64 MiB pointer chain: at most two
-// buffers are reachable at once, and the garbage allocated during a
-// collection, which that collection keeps, does not count (#623).
+// TestGarbageDuringPeakGCDoesNotCount makes garbage, 64 KiB about every
+// tenth of a millisecond, while Peak's own collections mark a 64 MiB
+// pointer chain: at most two buffers are reachable at once, and the
+// garbage allocated during a collection, which that collection keeps,
+// does not count (#623). What is allocated before Peak's goroutine reads
+// at the mark's start still counts, a few buffers unless it runs late.
 func TestGarbageDuringPeakGCDoesNotCount(t *testing.T) {
 	t.Cleanup(func() { sink = nil })
 	procs := runtime.GOMAXPROCS(2)
@@ -68,7 +72,7 @@ func TestGarbageDuringPeakGCDoesNotCount(t *testing.T) {
 	until := time.Now().Add(200 * time.Millisecond)
 	for time.Now().Before(until) {
 		sink = append(sink[:0], make([]byte, 64<<10))
-		runtime.Gosched()
+		time.Sleep(100 * time.Microsecond)
 	}
 	sink = nil
 	debug.SetGCPercent(gc)
@@ -77,4 +81,61 @@ func TestGarbageDuringPeakGCDoesNotCount(t *testing.T) {
 	if held > 1<<20 {
 		t.Fatalf("garbage made during Peak's collections peaks at %d KiB", held>>10)
 	}
+}
+
+// TestHeldUnderChurnCounts holds 16 MiB while another goroutine makes
+// garbage, 64 KiB at a time, with automatic collections on, and a 64 MiB
+// pointer chain slows each mark: no measurement finds less than the
+// 16 MiB. The garbage that a collection frees must not be taken off as
+// allocated during it, which read 1-2.5 MiB less here (#640's review). A
+// measurement may count some garbage, more on a loaded host, as
+// TestGarbageDuringPeakGCDoesNotCount bounds.
+func TestHeldUnderChurnCounts(t *testing.T) {
+	procs := runtime.GOMAXPROCS(2)
+	defer runtime.GOMAXPROCS(procs)
+	gc := debug.SetGCPercent(1)
+	defer debug.SetGCPercent(gc)
+	var head *link
+	for range 1 << 20 {
+		head = &link{next: head}
+	}
+	base := liveHeap()
+	held := make([]byte, 16<<20)
+	stop, ended := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(ended)
+		var b []byte
+		for {
+			select {
+			case <-stop:
+				runtime.KeepAlive(b)
+				return
+			default:
+			}
+			b = make([]byte, 64<<10)
+			runtime.Gosched()
+		}
+	}()
+	measured := make([]int64, 20)
+	for i := range measured {
+		measured[i] = liveHeap() - base
+	}
+	close(stop)
+	<-ended
+	runtime.KeepAlive(head)
+	runtime.KeepAlive(held)
+	for _, live := range measured {
+		if live < 16<<20-256<<10 {
+			t.Fatalf("16 MiB held beside garbage: measured %v KiB", kib(measured))
+		}
+	}
+}
+
+// kib converts byte counts to KiB.
+func kib(b []int64) []int64 {
+	k := make([]int64, len(b))
+	for i, v := range b {
+		k[i] = v >> 10
+	}
+	return k
 }
