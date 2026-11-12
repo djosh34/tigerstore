@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
-	"io"
 	"net"
 	"testing"
 	"time"
@@ -43,7 +41,7 @@ func TestWriteRetriesHeldOutput(t *testing.T) {
 	defer b.Close() //nolint:errcheck // closing a test pipe
 	br := loop.NewBridge(a, ioBuffer)
 	g := &gate{shut: true}
-	br.Attach(g)
+	br.Attach(g, nil)
 	c := newConn(bareServer(t), br, br)
 	if _, err := c.write(); err != nil {
 		t.Fatal(err)
@@ -206,8 +204,9 @@ func TestHeldAcrossConnections(t *testing.T) {
 	}
 }
 
-// TestConnectionLimit refuses a connection past the most the memory
-// budget holds, and takes one again after another ended.
+// TestConnectionLimit refuses an HTTP/2 connection past the most the
+// memory budget holds: the client gets the server's SETTINGS and a GOAWAY
+// that says why, never a silent hang.
 func TestConnectionLimit(t *testing.T) {
 	s := bareServer(t)
 	s.ctx, s.cancel = context.WithCancel(context.Background())
@@ -239,10 +238,23 @@ func TestConnectionLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer second.Close() //nolint:errcheck // closing a test connection
-	if err := second.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	if err := second.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := second.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
-		t.Fatalf("the connection past the limit read %v, want it closed", err)
+	if _, err := second.Write([]byte(http2.ClientPreface)); err != nil {
+		t.Fatal(err)
+	}
+	fr := http2.NewFramer(second, second)
+	for {
+		f, err := fr.ReadFrame()
+		if err != nil {
+			t.Fatalf("the refused connection ended without a GOAWAY: %v", err)
+		}
+		if ga, ok := f.(*http2.GoAwayFrame); ok {
+			if ga.ErrCode != http2.ErrCodeEnhanceYourCalm || string(ga.DebugData()) != refusal {
+				t.Fatalf("GOAWAY %v %q, want ENHANCE_YOUR_CALM %q", ga.ErrCode, ga.DebugData(), refusal)
+			}
+			return
+		}
 	}
 }

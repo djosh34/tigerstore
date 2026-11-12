@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -64,7 +63,6 @@ type conn struct {
 	// requests as grpc-go does, HTTP alone takes gRPC calls as HTTP.
 	traffic Traffic
 	fr      *http2.Framer
-	bw      *bufio.Writer
 	// caller sizes this client's writes as etcd would.
 	caller core.Caller
 	// cluster and member go in every response header.
@@ -88,9 +86,12 @@ type conn struct {
 	prefaceBy time.Time
 	waitSince time.Time
 	gone      bool
-	ctrlOut   []ctrlFrame
-	framesOut []wframe
-	hdrOut    []byte
+	// outCharged is the output waiting for the socket that counts against
+	// Server.heldAll (chargeOut).
+	outCharged int64
+	ctrlOut    []ctrlFrame
+	framesOut  []wframe
+	hdrOut     []byte
 	// attached is set once the loop has the connection, from when a close
 	// tells it; reading is set while the loop reads the connection, which
 	// then writes it anyway; and signaled while a signal waits for the
@@ -190,8 +191,6 @@ func newConn(s *Server, nc net.Conn, bridge *loop.Bridge) *conn {
 	c := &conn{
 		s: s, nc: nc, bridge: bridge, raw: bridge.Conn, ctx: ctx, cancel: cancel, metrics: newConnMetrics(),
 		cluster: s.cluster, member: s.member,
-		bw:       bufio.NewWriterSize(nc, ioBuffer),
-		in:       make([]byte, ioBuffer),
 		streams:  map[uint32]*stream{},
 		atNode:   map[*stream]struct{}{},
 		sendWin:  65535,
@@ -199,7 +198,7 @@ func newConn(s *Server, nc net.Conn, bridge *loop.Bridge) *conn {
 		maxFrame: 16384,
 	}
 	c.caller = caller(s.cfg.TLS, nc)
-	c.fr = http2.NewFramer(c.bw, frameSrc{c})
+	c.fr = http2.NewFramer(frameDst{c}, frameSrc{c})
 	c.hdec = hpack.NewDecoder(4096, c.onField)
 	c.hdec.SetMaxStringLength(maxHeaderList)
 	c.ctrl = append(c.ctrl,
@@ -262,9 +261,9 @@ func (c *conn) lastID() uint32 {
 
 // maxCtrl bounds the control frames waiting for the loop to write them,
 // as x/net's server does with 10,000; a client that floods pings and does
-// not read is dropped. A thousand keeps the queue inside a connection's
-// share of the memory budget (connBytes).
-const maxCtrl = 1000
+// not read is dropped. 512 keep the queue, about 24 KiB, inside a
+// connection's share of the memory budget (connBytes).
+const maxCtrl = 512
 
 func (c *conn) queueCtrl(f ctrlFrame) {
 	c.mu.Lock()

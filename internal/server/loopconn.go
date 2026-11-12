@@ -24,14 +24,26 @@ import (
 // whole frame always fits the input buffer.
 const maxReadFrame = 16384
 
-// connBytes bounds what the loop holds for one HTTP/2 connection, besides
-// what its calls hold (maxHeld): the bridge's read buffer and the decrypted
-// input (ioBuffer each), the write buffer above TLS (ioBuffer), crypto/tls's
-// record buffers (two records), one write pass that waits for the socket
-// (maxTake of data, its frame headers and the control frames, sealed), and
-// the control frames queued (maxCtrl). Server.setLimits sizes the number of
-// connections from it.
-const connBytes = 640 << 10
+// connBuffer is the size of the buffers a connection borrows from the
+// server (Server.bufs) while it holds bytes: the bridge's read buffer under
+// TLS, the decrypted input, which a whole frame always fits, and the
+// sealed output that waits for the socket, which grows past it for a long
+// pass.
+const connBuffer = 32 << 10
+
+// connBytes bounds what one HTTP/2 connection holds besides what its
+// calls hold and its output that waits for the socket, which both count
+// against the server's share for calls (Server.maxHeldAll): an idle
+// connection, with crypto/tls's record buffers, the Framer's, HPACK's
+// table, its keepalive timer and its own state (idleBytes); while it has
+// bytes in them, a read buffer under TLS and an input buffer (connBuffer
+// each); and the control frames queued (maxCtrl, about 24 KiB).
+// Server.setLimits sizes the number of connections from it.
+const connBytes = idleBytes + 2*connBuffer + 32<<10
+
+// idleBytes bounds what an idle HTTP/2 connection holds.
+// TestIdleConnectionMemory measures it, with its client, at about 112 KB.
+const idleBytes = 128 << 10
 
 // Phases of a connection's input.
 const (
@@ -39,6 +51,12 @@ const (
 	phaseSettings
 	phaseFrames
 )
+
+// frameDst is what the Framer writes: the server's write buffer, which
+// write points at the connection for the pass.
+type frameDst struct{ c *conn }
+
+func (d frameDst) Write(p []byte) (int, error) { return d.c.s.bw.Write(p) }
 
 // frameSrc is what the Framer reads: the decrypted bytes of the
 // connection that the loop read, of which the reader only asks for whole
@@ -68,7 +86,7 @@ func (c *conn) attach() {
 		c.release()
 		return
 	}
-	c.bridge.Attach(sock)
+	c.bridge.Attach(sock, c.s.bufs)
 	c.token = token
 	if c.traffic == TrafficGRPC {
 		go c.keepalive()
@@ -98,12 +116,17 @@ func (c *conn) Ready() {
 	}
 }
 
+// readFrames reads into an input buffer that the connection borrows from
+// the server's buffers while it holds bytes: a whole frame always fits it
+// (maxReadFrame), and an idle connection holds none.
 func (c *conn) readFrames() error {
+	defer c.releaseIn()
 	for !c.ending && !c.isClosed() {
+		if c.in == nil {
+			c.in = c.s.bufs.Get()
+		}
 		if c.inW == len(c.in) {
-			// process made room for a partial frame of any size, so a full
-			// buffer only needs its read bytes moved out.
-			c.compactIn(0)
+			c.compactIn()
 		}
 		n, rerr := c.nc.Read(c.in[c.inW:])
 		c.inW += n
@@ -137,7 +160,6 @@ func (c *conn) process() error {
 			c.phase = phaseSettings
 			continue
 		case have < frameHeaderLen:
-			c.compactIn(frameHeaderLen)
 			return nil
 		}
 		h := c.in[c.inR:]
@@ -148,7 +170,9 @@ func (c *conn) process() error {
 			return http2.ConnectionError(http2.ErrCodeFrameSize)
 		}
 		if have < n {
-			c.compactIn(n)
+			if n > len(c.in)-c.inR {
+				c.compactIn()
+			}
 			return nil
 		}
 		if err := c.readFrame(); err != nil {
@@ -197,23 +221,17 @@ func (c *conn) readFrame() error {
 	return c.onFrame(f)
 }
 
-// compactIn moves the unread bytes to the front of the input buffer, and
-// makes it hold at least need bytes, for a frame larger than it. A buffer
-// grown for a large frame shrinks back once it is empty.
-func (c *conn) compactIn(need int) {
-	if c.inR == c.inW && len(c.in) > ioBuffer && need <= ioBuffer {
-		c.in, c.inR, c.inW = make([]byte, ioBuffer), 0, 0
-		return
-	}
-	if need > len(c.in) {
-		in := make([]byte, need)
-		c.inW = copy(in, c.in[c.inR:c.inW])
-		c.in, c.inR = in, 0
-		return
-	}
-	if c.inR > 0 && (c.inW == len(c.in) || need > len(c.in)-c.inR) {
-		c.inW = copy(c.in, c.in[c.inR:c.inW])
-		c.inR = 0
+// compactIn moves the unread bytes to the front of the input buffer.
+func (c *conn) compactIn() {
+	c.inW = copy(c.in, c.in[c.inR:c.inW])
+	c.inR = 0
+}
+
+// releaseIn returns the input buffer once it holds no bytes.
+func (c *conn) releaseIn() {
+	if c.in != nil && c.inR == c.inW {
+		c.s.bufs.Put(c.in)
+		c.in, c.inR, c.inW = nil, 0, 0
 	}
 }
 
@@ -265,6 +283,11 @@ func (c *conn) Flush() {
 	if c.gone {
 		return
 	}
+	defer func() {
+		if !c.gone {
+			c.chargeOut(c.bridge.Pending())
+		}
+	}()
 	if c.isClosed() {
 		c.release()
 		return
@@ -334,6 +357,9 @@ func (c *conn) write() (bool, error) {
 		if len(c.ctrlOut) == 0 && len(c.framesOut) == 0 {
 			return drained, nil
 		}
+		// Every connection writes through the server's one write buffer,
+		// which each pass flushes.
+		c.s.bw.Reset(c.nc)
 		for i := range c.ctrlOut {
 			if err := c.writeCtrl(&c.ctrlOut[i]); err != nil {
 				return false, err
@@ -347,13 +373,13 @@ func (c *conn) write() (bool, error) {
 			} else {
 				c.wrote.Store(true)
 				c.hdrOut = frameHeader(c.hdrOut[:0], len(f.b), f.typ, f.flags, f.id)
-				_, _ = c.bw.Write(c.hdrOut)
-				_, _ = c.bw.Write(f.b)
+				_, _ = c.s.bw.Write(c.hdrOut)
+				_, _ = c.s.bw.Write(f.b)
 			}
 			c.framesOut[i] = wframe{}
 		}
 		// bufio.Writer keeps the first write error and returns it here.
-		if err := c.bw.Flush(); err != nil {
+		if err := c.s.bw.Flush(); err != nil {
 			return false, err
 		}
 	}
@@ -371,8 +397,24 @@ func (c *conn) release() {
 		// The socket closes too: a pump's goroutines end with it.
 		_ = c.bridge.Close()
 	}
+	c.chargeOut(0)
 	c.s.untrack(c)
 	c.s.ended()
+}
+
+// chargeOut counts pending, the connection's output that waits for its
+// socket, against the share of the memory budget that calls hold
+// (Server.maxHeldAll), in place of what it counted before. Loop only.
+func (c *conn) chargeOut(pending int) {
+	d := int64(pending) - c.outCharged
+	if d == 0 {
+		return
+	}
+	c.outCharged = int64(pending)
+	all := c.s.heldAll.Add(d)
+	if m := c.s.maxHeldAll; m > 0 && d < 0 && all <= m && all-d > m {
+		c.s.feedStarved()
+	}
 }
 
 // Stopped fails the calls the node still held once it stopped; the calls

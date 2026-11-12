@@ -42,7 +42,7 @@ func TestStalledLaneKeepsItsMessages(t *testing.T) {
 	if err := tc.Handshake(); err != nil {
 		t.Fatal(err)
 	}
-	br.Attach(stuck{})
+	br.Attach(stuck{}, nil)
 	set, err := metrics.New(nil)
 	if err != nil {
 		t.Fatal(err)

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"testing"
 
@@ -28,7 +29,7 @@ func bareServer(t testing.TB) *Server {
 	}
 	m, _ := buildServerMetrics(set, false)
 	// The loop never runs: what goes to it waits there.
-	s := &Server{metrics: m, loop: loop.New(loop.NewChanPoller())}
+	s := &Server{metrics: m, loop: loop.New(loop.NewChanPoller()), bufs: loop.NewBuffers(connBuffer), bw: bufio.NewWriterSize(nil, ioBuffer)}
 	s.setLimits()
 	return s
 }

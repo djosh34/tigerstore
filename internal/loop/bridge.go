@@ -16,10 +16,13 @@ import (
 // takes in as many records as have arrived.
 //
 // The buffer also keeps the bytes that came in during the handshake behind
-// its last message, such as the client's first records.
+// its last message, such as the client's first records. A bridge attached
+// with Buffers takes its read and write buffers from them only while they
+// hold bytes, so an idle connection holds none.
 type Bridge struct {
 	net.Conn
 	sock Socket
+	pool *Buffers
 	// in holds bytes read and not yet taken, from r to w.
 	in   []byte
 	r, w int
@@ -35,8 +38,15 @@ func NewBridge(raw net.Conn, size int) *Bridge {
 }
 
 // Attach hands the connection to the loop through sock, which the poller
-// made from the raw connection.
-func (b *Bridge) Attach(sock Socket) { b.sock = sock }
+// made from the raw connection. With pool, the bridge's buffers come from
+// it while they hold bytes; without, the bridge keeps its own.
+func (b *Bridge) Attach(sock Socket, pool *Buffers) {
+	b.sock, b.pool = sock, pool
+	if pool != nil && b.r == b.w {
+		// The handshake's buffer goes: the next read borrows one.
+		b.in, b.r, b.w = nil, 0, 0
+	}
+}
 
 // Attached reports whether the loop has the connection.
 func (b *Bridge) Attached() bool { return b.sock != nil }
@@ -44,6 +54,9 @@ func (b *Bridge) Attached() bool { return b.sock != nil }
 func (b *Bridge) Read(p []byte) (int, error) {
 	if b.r == b.w {
 		b.r, b.w = 0, 0
+		if b.in == nil {
+			b.in = b.pool.Get()
+		}
 		var n int
 		var err error
 		if b.sock == nil {
@@ -53,12 +66,24 @@ func (b *Bridge) Read(p []byte) (int, error) {
 		}
 		b.w = n
 		if n == 0 {
+			b.release()
 			return 0, err
 		}
 	}
 	n := copy(p, b.in[b.r:b.w])
 	b.r += n
+	if b.r == b.w {
+		b.release()
+	}
 	return n, nil
+}
+
+// release returns an empty read buffer to the pool.
+func (b *Bridge) release() {
+	if b.pool != nil {
+		b.pool.Put(b.in)
+		b.in, b.r, b.w = nil, 0, 0
+	}
 }
 
 // Grow makes the read buffer size bytes, keeping what it holds, as for a
@@ -97,6 +122,9 @@ func (b *Bridge) Write(p []byte) (int, error) {
 	if b.sock == nil {
 		return b.Conn.Write(p)
 	}
+	if b.out == nil && b.pool != nil {
+		b.out = b.pool.Get()[:0]
+	}
 	b.out = append(b.out, p...)
 	return len(p), nil
 }
@@ -118,7 +146,11 @@ func (b *Bridge) Flush() error {
 		}
 	}
 	b.out, b.outR = b.out[:0], 0
-	if cap(b.out) > maxIdleOut {
+	switch {
+	case b.pool != nil:
+		b.pool.Put(b.out)
+		b.out = nil
+	case cap(b.out) > maxIdleOut:
 		b.out = nil
 	}
 	return nil

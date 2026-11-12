@@ -127,7 +127,7 @@ func (t *TCP) attachIn(c *tls.Conn, o *owned, from uint64, v byte) {
 		t.release(o)
 		return
 	}
-	br.Attach(sock)
+	br.Attach(sock, nil)
 	ic.token = token
 	o.stop = ic.close
 }
@@ -272,7 +272,7 @@ func (s *sender) attach(l *lane, c *tls.Conn, o *owned, v byte, down chan<- erro
 		down <- err
 		return
 	}
-	br.Attach(sock)
+	br.Attach(sock, nil)
 	o.stop = func() { oc.fail(net.ErrClosed) }
 	oc.token = token
 	l.out = oc

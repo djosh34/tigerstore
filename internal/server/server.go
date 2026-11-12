@@ -7,10 +7,13 @@
 package server
 
 import (
+	"bufio"
 	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -90,8 +93,12 @@ const stopGrace = time.Second
 type Server struct {
 	n   *node.Node
 	cfg Config
-	// loop is the node's event loop, which runs the HTTP/2 connections.
+	// loop is the node's event loop, which runs the HTTP/2 connections;
+	// bufs are the buffers its connections borrow while they hold bytes,
+	// and bw the write buffer every connection writes through. Loop only.
 	loop *loop.Loop
+	bufs *loop.Buffers
+	bw   *bufio.Writer
 	// gone sums the metrics of closed connections; guarded by mu.
 	gone *connMetrics
 	// metrics are what the server observes (metrics.go).
@@ -136,6 +143,8 @@ type Server struct {
 	open       int
 	maxConns   int
 	refusedLog time.Time
+	// refusing counts the refused connections that hear why (refuse).
+	refusing int
 	// heldAll is what the calls of every connection hold (conn.held), and
 	// maxHeldAll its bound, 0 for none. A connection whose window credit
 	// waits for heldAll to fall is in starved, under starvedMu.
@@ -168,7 +177,7 @@ func New(n *node.Node, cfg Config) (*Server, error) {
 		cfg.BcryptCost = 0
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Server{n: n, loop: n.Loop(), cfg: cfg, grpcTLS: grpcTLS(cfg.TLS), gone: newConnMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
+	s := &Server{n: n, loop: n.Loop(), bufs: loop.NewBuffers(connBuffer), bw: bufio.NewWriterSize(nil, ioBuffer), cfg: cfg, grpcTLS: grpcTLS(cfg.TLS), gone: newConnMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
 	if err := s.newServerMetrics(); err != nil {
 		cancel()
 		return nil, err
@@ -250,15 +259,8 @@ func (s *Server) ServeListener(l Listener) error {
 		}
 		if s.maxConns > 0 && s.open >= s.maxConns {
 			// Past the connections the memory budget holds.
-			log := time.Since(s.refusedLog) >= time.Minute
-			if log {
-				s.refusedLog = time.Now()
-			}
+			s.refuseLocked(nc, l)
 			s.mu.Unlock()
-			_ = nc.Close()
-			if log && s.cfg.Logf != nil {
-				s.cfg.Logf("refused a client connection: %d are open, the most the memory budget holds", s.maxConns)
-			}
 			continue
 		}
 		// Added under mu, so never after Stop started waiting.
@@ -355,6 +357,87 @@ func (s *Server) hand(c *conn) bool {
 		return false
 	}
 	return true
+}
+
+// maxRefusing bounds the refused connections that wait for their
+// handshake to hear why at once; past it, a refused one is closed.
+const maxRefusing = 16
+
+// refuseLocked refuses a client connection past the limit, counts it in
+// tigerstore_server_client_connections_refused_total, and logs it at most
+// once a minute. The client hears why on a goroutine of its own (refuse),
+// unless maxRefusing others wait already. s.mu is held.
+func (s *Server) refuseLocked(nc net.Conn, l Listener) {
+	if s.n != nil {
+		s.n.MetricSet().ClientConnsRefused.Inc()
+	}
+	if time.Since(s.refusedLog) >= time.Minute {
+		s.refusedLog = time.Now()
+		if s.cfg.Logf != nil {
+			s.cfg.Logf("refused a client connection: %d are open, the most the memory budget holds", s.maxConns)
+		}
+	}
+	if s.refusing >= maxRefusing {
+		_ = nc.Close()
+		return
+	}
+	s.refusing++
+	s.wg.Go(func() {
+		s.refuse(nc, l)
+		s.mu.Lock()
+		s.refusing--
+		s.mu.Unlock()
+	})
+}
+
+// refusal is the debug data of the GOAWAY, and the body of the HTTP 503,
+// that a refused client gets.
+const refusal = "tigerstore: too many client connections; the server holds as many as its memory budget allows"
+
+// refuse tells a refused client why, as its protocol allows, and closes
+// the connection: an HTTP/2 client gets the server's SETTINGS and a GOAWAY
+// with ENHANCE_YOUR_CALM and the reason, which gRPC fails its calls with
+// as Unavailable, and an HTTP/1.1 client a 503. It gives the client up to
+// a second to read it.
+func (s *Server) refuse(nc net.Conn, l Listener) {
+	defer nc.Close() //nolint:errcheck // the refused connection ends here
+	if err := nc.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
+		return
+	}
+	var h2 bool
+	var conn net.Conn
+	if l.TLS {
+		cfg := s.cfg.TLS
+		if l.Traffic == TrafficGRPC {
+			cfg = s.grpcTLS
+		}
+		tc := tls.Server(nc, cfg)
+		if err := tc.HandshakeContext(s.ctx); err != nil {
+			return
+		}
+		h2, conn = tc.ConnectionState().NegotiatedProtocol == "h2", tc
+	} else {
+		b := loop.NewBridge(nc, len(http2.ClientPreface))
+		var err error
+		if h2, err = peekPreface(b); err != nil {
+			return
+		}
+		conn = b
+	}
+	if !h2 {
+		_, _ = fmt.Fprintf(conn, "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(refusal), refusal)
+	} else {
+		fr := http2.NewFramer(conn, nil)
+		if fr.WriteSettings() != nil || fr.WriteGoAway(0, http2.ErrCodeEnhanceYourCalm, []byte(refusal)) != nil {
+			return
+		}
+	}
+	// Reading what the client sends until it closes keeps a reset from
+	// taking the answer with it.
+	if err := nc.SetDeadline(time.Now().Add(time.Second)); err != nil {
+		return
+	}
+	_, _ = io.Copy(io.Discard, conn)
 }
 
 // ended counts the end of a connection that ServeListener or the gateway

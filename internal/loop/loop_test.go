@@ -99,7 +99,7 @@ func TestBridgeCarriesTLS(t *testing.T) {
 		e.l.Post(func() {
 			sock, _, err := e.l.Attach(e.raw, h)
 			if err == nil {
-				e.br.Attach(sock)
+				e.br.Attach(sock, nil)
 				// Both ends write the message once attached.
 				_, err = e.tc.Write(msg)
 				e.l.Dirty(h)
