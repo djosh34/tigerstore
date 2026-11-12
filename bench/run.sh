@@ -192,6 +192,7 @@ once() {
 			-endpoints "$(cat "$dir/$endpoint_file")" \
 			-cacert "$certs/ca.pem" -cert "$certs/client.pem" -key "$certs/client-key.pem" \
 			-pids "$(cat "$dir/pids")" \
+			-metrics "$(cat "$dir/endpoints")" \
 			-label "$target" \
 			-workload "$workload" \
 			-value-size "$size" \

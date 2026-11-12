@@ -70,6 +70,7 @@ type result struct {
 	StreamsPerConn       int       `json:"streams_per_conn"`
 	LeaderCPUUsPerOp     float64   `json:"leader_cpu_us_per_op"`
 	ServerCores          []float64 `json:"server_cores_by_node"`
+	PeerSentBytesPerOp   []float64 `json:"peer_sent_bytes_per_op_by_node"`
 	ClientCPUUsPerOp     float64   `json:"client_cpu_us_per_op"`
 	ClientCores          float64   `json:"client_cores"`
 	DiskBytesPerOp       float64   `json:"disk_bytes_per_op"`
@@ -390,7 +391,9 @@ func report(w io.Writer, dir, traces string) error {
 	if len(climbing) > 0 {
 		p("\nMax runs whose throughput still climbed at the last step of the ramp, so the requests in flight may have limited them:\n\n%s", strings.Join(climbing, ""))
 	}
-	shapes(w, rtts, benches, targets, func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] })
+	maxOf := func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] }
+	shapes(w, rtts, benches, targets, maxOf)
+	nodeCosts(w, rtts, benches, targets, maxOf)
 	if err := ceilings(w, dir, traces, rtts, benches, targets, func(rtt, bench, target string) runs {
 		return all[key{rtt, bench, target, "max"}]
 	}); err != nil {

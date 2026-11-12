@@ -48,6 +48,7 @@ type config struct {
 	page        int
 	ramp        bool
 	pids        []int
+	metrics     []string
 	disk        string
 	label       string
 	seed        uint64
@@ -78,6 +79,7 @@ func parseFlags(args []string) (config, error) {
 	fs.IntVar(&cfg.page, "page", 500, "list workload: the limit of each LIST page; keys spread over 100 namespaces")
 	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step until throughput climbs less than 5%, at most 5 times; the best step is the result")
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
+	metrics := fs.String("metrics", "", "comma-separated host:port of every node's client endpoint, whose /metrics give each node's peer bytes per operation")
 	fs.StringVar(&cfg.disk, "disk", "", "device or partition in /proc/diskstats, such as sda1, whose bytes written in the window are reported per operation")
 	fs.StringVar(&cfg.label, "label", "", "name of the store under test, copied into the result")
 	fs.Uint64Var(&cfg.seed, "seed", 1, "random seed")
@@ -92,6 +94,9 @@ func parseFlags(args []string) (config, error) {
 		return cfg, err
 	}
 	cfg.endpoints = strings.Split(*endpoints, ",")
+	if *metrics != "" {
+		cfg.metrics = strings.Split(*metrics, ",")
+	}
 	if *pids != "" {
 		for p := range strings.SplitSeq(*pids, ",") {
 			n, err := strconv.Atoi(p)
@@ -167,6 +172,11 @@ type result struct {
 	ServerCPUUsPerOp   float64   `json:"server_cpu_us_per_op"`
 	ServerCPUUsPerNode []float64 `json:"server_cpu_us_per_op_by_node"`
 	ServerCores        []float64 `json:"server_cores_by_node"`
+	// PeerSentBytesPerOp is each node's bytes sent to its peers in the
+	// window per operation, from -metrics: the node that led at the end
+	// first, then the others. It is left out when a node's /metrics could
+	// not be read, which loadgen reports on stderr.
+	PeerSentBytesPerOp []float64 `json:"peer_sent_bytes_per_op_by_node,omitempty"`
 	ClientCPUUsPerOp   float64   `json:"client_cpu_us_per_op"`
 	ClientCores        float64   `json:"client_cores"`
 	// DiskBytesPerOp counts every byte -disk wrote in the window, from
@@ -514,7 +524,7 @@ func (s *session) measure(streams int) (*result, error) {
 	}
 
 	var samples [2]cpuSample
-	var sampleErr error
+	var sampleErr, metricsErr error
 	var sampler sync.WaitGroup
 	sampler.Go(func() {
 		for i, at := range []int64{t1, t2} {
@@ -533,8 +543,21 @@ func (s *session) measure(streams int) (*result, error) {
 			}
 		}
 	})
+	// Peer bytes only describe the run, so a node whose /metrics cannot be
+	// read in time costs the run its peer bytes, not its result. They are
+	// read apart from the CPU samples, which a slow node must not delay.
+	var nodes [2][]nodeMetrics
+	if len(cfg.metrics) > 0 {
+		// A read may end 10% of the window late, which bounds how far it
+		// misplaces the bytes per operation; on warm connections it is
+		// usually far less.
+		sampler.Go(func() { nodes, metricsErr = windowMetrics(cfg.metrics, t1, t2, time.Duration(t2-t1)/10) })
+	}
 	phaseErr := runPhase(s.workers, s.loads, phase{rate: cfg.rate / float64(cfg.conns), start: t0, stop: t2, drain: drainTimeout, limit: streams})
 	sampler.Wait()
+	if metricsErr == nil {
+		samples[0].nodes, samples[1].nodes = nodes[0], nodes[1]
+	}
 
 	var errs []error
 	if phaseErr != nil {
@@ -542,6 +565,9 @@ func (s *session) measure(streams int) (*result, error) {
 	}
 	if sampleErr != nil {
 		errs = append(errs, fmt.Errorf("server CPU: %w", sampleErr))
+	}
+	if metricsErr != nil {
+		fmt.Fprintf(os.Stderr, "loadgen: no peer bytes: %v\n", metricsErr)
 	}
 	if cfg.workload == "delete" {
 		for _, l := range s.loads {
@@ -829,6 +855,7 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 		res.ServerCPUUsPerNode = append(res.ServerCPUUsPerNode, perOp(d, res.Ops))
 		res.ServerCores = append(res.ServerCores, d.Seconds()/elapsed.Seconds())
 	}
+	res.PeerSentBytesPerOp = peerBytesPerOp(samples[0].nodes, samples[1].nodes, res.Ops)
 	if len(res.ServerCPUUsPerNode) > 0 {
 		res.LeaderCPUUsPerOp = res.ServerCPUUsPerNode[0]
 	}
