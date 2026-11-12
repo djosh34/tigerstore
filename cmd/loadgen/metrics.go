@@ -12,8 +12,7 @@ import (
 	"time"
 )
 
-// errNoMetric is a /metrics page without the peer byte counter or the
-// leader gauge.
+// errNoMetric is a /metrics page without the leader gauge.
 var errNoMetric = errors.New("metric missing")
 
 // nodeMetrics is what one node's /metrics says at one moment: the bytes it
@@ -26,14 +25,14 @@ type nodeMetrics struct {
 // sampleMetrics reads every endpoint's /metrics, in the order given, over
 // HTTP/1.1 connections of its own, apart from the load's.
 func sampleMetrics(endpoints []string) ([]nodeMetrics, error) {
-	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
+	transport := &http.Transport{DisableKeepAlives: true}
 	scheme := "http"
 	if clientTLS != nil {
-		c := clientTLS.Clone()
-		c.NextProtos = []string{"http/1.1"}
-		client.Transport = &http.Transport{DisableKeepAlives: true, TLSClientConfig: c}
+		transport.TLSClientConfig = clientTLS.Clone()
+		transport.TLSClientConfig.NextProtos = []string{"http/1.1"}
 		scheme = "https"
 	}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: transport}
 	out := make([]nodeMetrics, len(endpoints))
 	for i, ep := range endpoints {
 		m, err := fetchMetrics(client, scheme+"://"+ep+"/metrics")

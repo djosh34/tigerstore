@@ -174,7 +174,8 @@ type result struct {
 	ServerCores        []float64 `json:"server_cores_by_node"`
 	// PeerSentBytesPerOp is each node's bytes sent to its peers in the
 	// window per operation, from -metrics: the node that led at the end
-	// first, then the others.
+	// first, then the others. It is left out when a node's /metrics could
+	// not be read, which loadgen reports on stderr.
 	PeerSentBytesPerOp []float64 `json:"peer_sent_bytes_per_op_by_node,omitempty"`
 	ClientCPUUsPerOp   float64   `json:"client_cpu_us_per_op"`
 	ClientCores        float64   `json:"client_cores"`
@@ -523,7 +524,7 @@ func (s *session) measure(streams int) (*result, error) {
 	}
 
 	var samples [2]cpuSample
-	var sampleErr error
+	var sampleErr, metricsErr error
 	var sampler sync.WaitGroup
 	sampler.Go(func() {
 		for i, at := range []int64{t1, t2} {
@@ -533,10 +534,12 @@ func (s *session) measure(streams int) (*result, error) {
 				sampleErr = err
 				return
 			}
-			if len(cfg.metrics) > 0 {
+			// Peer bytes only describe the run, so a node whose
+			// /metrics cannot be read costs the run its peer bytes,
+			// not its result.
+			if len(cfg.metrics) > 0 && metricsErr == nil {
 				if s.nodes, err = sampleMetrics(cfg.metrics); err != nil {
-					sampleErr = err
-					return
+					metricsErr = err
 				}
 			}
 			samples[i] = s
@@ -557,6 +560,9 @@ func (s *session) measure(streams int) (*result, error) {
 	}
 	if sampleErr != nil {
 		errs = append(errs, fmt.Errorf("server CPU: %w", sampleErr))
+	}
+	if metricsErr != nil {
+		fmt.Fprintf(os.Stderr, "loadgen: no peer bytes: %v\n", metricsErr)
 	}
 	if cfg.workload == "delete" {
 		for _, l := range s.loads {

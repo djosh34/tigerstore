@@ -105,11 +105,11 @@ func shapes(w io.Writer, rtts, benches, targets []string, all maxRuns) {
 }
 
 // nodeCosts prints what each seed's max runs cost the nodes, store by
-// store: the leader's CPU and the bytes the leader and each follower sent
+// store: the leader's CPU, and the bytes the leader and each follower sent
 // to their peers, per operation of the window.
 func nodeCosts(w io.Writer, rtts, benches, targets []string, all maxRuns) {
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
-	p("\n| Benchmark | Seed | RTT ms | Store | Leader CPU us/op | Leader peer B/op | Follower peer B/op | Server cores per node |\n|---|---|---|---|---|---|---|---|\n")
+	p("\n| Benchmark | Seed | RTT ms | Store | Leader CPU us/op | Peer B/op per node | Server cores per node |\n|---|---|---|---|---|---|---|\n")
 	for _, bench := range benches {
 		var everything runs
 		for _, rtt := range rtts {
@@ -124,38 +124,41 @@ func nodeCosts(w io.Writer, rtts, benches, targets []string, all maxRuns) {
 					if len(rs) == 0 {
 						continue
 					}
-					p("| %s | %s | %s | %s | %s | %s | %s | %s |\n", bench, seed, rtt, target,
-						num(rs, func(r result) float64 { return r.LeaderCPUUsPerOp }, "%.2f"),
-						peerBytes(rs, leaderPeerBytes), peerBytes(rs, followerPeerBytes), cores(rs))
+					p("| %s | %s | %s | %s | %s | %s | %s |\n", bench, seed, rtt, target,
+						num(rs, func(r result) float64 { return r.LeaderCPUUsPerOp }, "%.2f"), peerBytes(rs), cores(rs))
 				}
 			}
 		}
 	}
-	p("\nValues are min / median / max over the seed's repeats. Follower peer B/op is the mean of the followers in each run. The leader is the node that led at the end of the window; a run without peer bytes (an older loadgen, or a leader change) shows -.\n")
+	p("\nValues are min / median / max over the seed's repeats. Peer B/op per node is the leader at the end of the window first, then the followers in the order of their endpoints, over the runs that measured them: their count follows in brackets when some did not (an older loadgen, a /metrics that could not be read, or no single leader at the end). Server cores per node are leader first, then the followers, over every run.\n")
 }
 
-// peerBytes is num over the runs that measured their peer bytes.
-func peerBytes(rs runs, f func(result) float64) string {
+// peerBytes is each node's peer bytes per operation, leader first, over
+// the runs that measured them.
+func peerBytes(rs runs) string {
 	var measured runs
 	for _, r := range rs {
-		if len(r.PeerSentBytesPerOp) > 1 {
+		if len(r.PeerSentBytesPerOp) > 0 {
 			measured = append(measured, r)
 		}
 	}
 	if len(measured) == 0 {
 		return "-"
 	}
-	return num(measured, f, "%.0f")
-}
-
-func leaderPeerBytes(r result) float64 { return r.PeerSentBytesPerOp[0] }
-
-func followerPeerBytes(r result) float64 {
-	var sum float64
-	for _, b := range r.PeerSentBytesPerOp[1:] {
-		sum += b
+	var s []string
+	for i := range measured[0].PeerSentBytesPerOp {
+		s = append(s, num(measured, func(r result) float64 {
+			if i < len(r.PeerSentBytesPerOp) {
+				return r.PeerSentBytesPerOp[i]
+			}
+			return 0
+		}, "%.0f"))
 	}
-	return sum / float64(len(r.PeerSentBytesPerOp)-1)
+	out := strings.Join(s, "; ")
+	if len(measured) < len(rs) {
+		out += fmt.Sprintf(" (%d of %d runs)", len(measured), len(rs))
+	}
+	return out
 }
 
 func throughput(r result) float64 { return r.Throughput }
