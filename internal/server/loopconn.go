@@ -351,7 +351,7 @@ func (c *conn) write() (bool, error) {
 	c.completeWaiting()
 	for {
 		if before := c.bridge.Pending(); before > 0 {
-			if err := c.bridge.Flush(); err != nil {
+			if err := c.flushBridge(); err != nil {
 				return false, err
 			}
 			if pending := c.bridge.Pending(); pending > 0 {
@@ -410,6 +410,15 @@ func (c *conn) write() (bool, error) {
 			return false, err
 		}
 	}
+}
+
+// flushBridge sends what the bridge holds, as far as the socket takes it,
+// after sealing the TLS record being written.
+func (c *conn) flushBridge() error {
+	if c.records != nil {
+		return c.records.Flush()
+	}
+	return c.bridge.Flush()
 }
 
 // ctrlBytes is what a control frame takes on the wire.

@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"net"
@@ -44,8 +45,8 @@ func TestStalledLaneKeepsItsMessages(t *testing.T) {
 	srv := tls.Server(b, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13})
 	go func() { _ = srv.Handshake() }()
 	br := loop.NewBridge(a, ioBuffer)
-	tc := tls.Client(br, &tls.Config{RootCAs: ca.Pool, ServerName: "peer", MinVersion: tls.VersionTLS13})
-	if err := tc.Handshake(); err != nil {
+	tc, _, err := loop.Handshake(context.Background(), br, &tls.Config{RootCAs: ca.Pool, ServerName: "peer", MinVersion: tls.VersionTLS13}, false)
+	if err != nil {
 		t.Fatal(err)
 	}
 	br.Attach(stuck{}, nil, nil)
@@ -100,7 +101,7 @@ func TestCloseRacesHandOver(t *testing.T) {
 	l := loop.New(loop.NewChanPoller())
 	tr := &TCP{loop: l, conns: map[net.Conn]struct{}{}, inbound: map[net.Conn]inbound{}, handed: map[net.Conn]*owned{}}
 	raw := &handingRaw{Conn: a}
-	tc := tls.Client(loop.NewBridge(raw, callBuffer), &tls.Config{MinVersion: tls.VersionTLS13})
+	tc := newTConn(loop.NewBridge(raw, callBuffer), &tls.Config{MinVersion: tls.VersionTLS13}, false)
 	tr.conns[tc] = struct{}{}
 	stopped := false
 	raw.during = func() {
@@ -133,10 +134,10 @@ func TestBusyNodeHoldsData(t *testing.T) {
 	defer a.Close() //nolint:errcheck // closing a test pipe
 	defer b.Close() //nolint:errcheck // closing a test pipe
 	br := loop.NewBridge(a, ioBuffer)
-	srv := tls.Server(br, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13})
 	cli := tls.Client(b, &tls.Config{RootCAs: ca.Pool, ServerName: "peer", MinVersion: tls.VersionTLS13})
 	go func() { _ = cli.Handshake() }()
-	if err := srv.Handshake(); err != nil {
+	srv, _, err := loop.Handshake(context.Background(), br, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}, true)
+	if err != nil {
 		t.Fatal(err)
 	}
 	var got []raftpb.MessageType

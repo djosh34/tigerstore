@@ -1,7 +1,6 @@
 package server
 
 import (
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -65,7 +64,7 @@ func (c *conn) runHTTP(st *stream) {
 	if n, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64); err == nil {
 		r.ContentLength = n
 	}
-	if tc, ok := c.nc.(*tls.Conn); ok {
+	if tc, ok := c.nc.(tlsState); ok {
 		cs := tc.ConnectionState()
 		r.TLS = &cs
 	}
