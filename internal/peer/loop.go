@@ -36,12 +36,12 @@ func (l listener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return tls.Server(loop.NewBridge(c, callBuffer), l.cfg), nil
+	return newTConn(loop.NewBridge(c, callBuffer), l.cfg, true), nil
 }
 
 // bridgeOf is the bridge under a connection that dial or listener made.
 func bridgeOf(c net.Conn) *loop.Bridge {
-	return c.(*tls.Conn).NetConn().(*loop.Bridge)
+	return c.(*tconn).br
 }
 
 // owned is a message connection that the loop owns, as the transport
@@ -103,7 +103,7 @@ func (t *TCP) release(o *owned) {
 // inConn is an inbound message connection on the loop.
 type inConn struct {
 	t     *TCP
-	tc    *tls.Conn
+	tc    *loop.Records
 	br    *loop.Bridge
 	own   *owned
 	token uint64
@@ -120,8 +120,8 @@ type inConn struct {
 
 // attachIn hands an inbound message connection, which handOver gave the
 // loop as o, to the loop. It runs on the loop.
-func (t *TCP) attachIn(c *tls.Conn, o *owned, from uint64, v byte) {
-	br := bridgeOf(c)
+func (t *TCP) attachIn(c *loop.Records, o *owned, from uint64, v byte) {
+	br := c.NetConn()
 	ic := &inConn{t: t, tc: c, br: br, own: o, from: from, v: v, cs: t.countersOf(from), buf: make([]byte, ioBuffer)}
 	sock, token, err := t.loop.Attach(br.Conn, ic)
 	if err != nil {
@@ -139,6 +139,9 @@ func (t *TCP) attachIn(c *tls.Conn, o *owned, from uint64, v byte) {
 // one, which it keeps, and reads nothing more until the node takes it:
 // the peer's control lane goes on, and its data lane waits in TCP.
 func (c *inConn) Ready() {
+	// The records may answer a KeyUpdate as they read: the answer goes
+	// out with the turn, though the connection writes nothing else.
+	defer c.sendAnswers()
 	if c.held != nil {
 		if c.busy() {
 			return
@@ -268,6 +271,17 @@ func (c *inConn) close() {
 	_ = c.br.Close()
 }
 
+// sendAnswers sends what the records wrote while they read, such as the
+// answer to a KeyUpdate that asked for one.
+func (c *inConn) sendAnswers() {
+	if c.closed || c.br.Pending() == 0 {
+		return
+	}
+	if err := c.tc.Flush(); err != nil {
+		c.fail(err)
+	}
+}
+
 // Stopped closes the connection once the node stopped.
 func (c *inConn) Stopped() { c.close() }
 
@@ -277,7 +291,7 @@ func (c *inConn) Stopped() { c.close() }
 type outConn struct {
 	s     *sender
 	l     *lane
-	tc    *tls.Conn
+	tc    *loop.Records
 	br    *loop.Bridge
 	own   *owned
 	token uint64
@@ -296,8 +310,8 @@ type outConn struct {
 // attach hands a lane's new connection, which handOver gave the loop as
 // o, to the loop, which writes the lane from now on and reports on down
 // how it ended. It runs on the loop.
-func (s *sender) attach(l *lane, c *tls.Conn, o *owned, v byte, down chan<- error) {
-	br := bridgeOf(c)
+func (s *sender) attach(l *lane, c *loop.Records, o *owned, v byte, down chan<- error) {
+	br := c.NetConn()
 	oc := &outConn{s: s, l: l, tc: c, br: br, own: o, v: v, down: down}
 	sock, token, err := s.t.loop.Attach(br.Conn, oc)
 	if err != nil {
@@ -343,7 +357,8 @@ func (c *outConn) Flush() {
 	s, l := c.s, c.l
 	for !c.closed {
 		if before := c.br.Pending(); before > 0 {
-			if err := c.br.Flush(); err != nil {
+			// Seals the record being written first.
+			if err := c.tc.Flush(); err != nil {
 				c.fail(err)
 				return
 			}

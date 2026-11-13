@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"net"
@@ -44,8 +45,8 @@ func TestStalledLaneKeepsItsMessages(t *testing.T) {
 	srv := tls.Server(b, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13})
 	go func() { _ = srv.Handshake() }()
 	br := loop.NewBridge(a, ioBuffer)
-	tc := tls.Client(br, &tls.Config{RootCAs: ca.Pool, ServerName: "peer", MinVersion: tls.VersionTLS13})
-	if err := tc.Handshake(); err != nil {
+	tc, _, err := loop.Handshake(context.Background(), br, &tls.Config{RootCAs: ca.Pool, ServerName: "peer", MinVersion: tls.VersionTLS13}, false)
+	if err != nil {
 		t.Fatal(err)
 	}
 	br.Attach(stuck{}, nil, nil)
@@ -100,7 +101,7 @@ func TestCloseRacesHandOver(t *testing.T) {
 	l := loop.New(loop.NewChanPoller())
 	tr := &TCP{loop: l, conns: map[net.Conn]struct{}{}, inbound: map[net.Conn]inbound{}, handed: map[net.Conn]*owned{}}
 	raw := &handingRaw{Conn: a}
-	tc := tls.Client(loop.NewBridge(raw, callBuffer), &tls.Config{MinVersion: tls.VersionTLS13})
+	tc := newTConn(loop.NewBridge(raw, callBuffer), &tls.Config{MinVersion: tls.VersionTLS13}, false)
 	tr.conns[tc] = struct{}{}
 	stopped := false
 	raw.during = func() {
@@ -133,10 +134,10 @@ func TestBusyNodeHoldsData(t *testing.T) {
 	defer a.Close() //nolint:errcheck // closing a test pipe
 	defer b.Close() //nolint:errcheck // closing a test pipe
 	br := loop.NewBridge(a, ioBuffer)
-	srv := tls.Server(br, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13})
 	cli := tls.Client(b, &tls.Config{RootCAs: ca.Pool, ServerName: "peer", MinVersion: tls.VersionTLS13})
 	go func() { _ = cli.Handshake() }()
-	if err := srv.Handshake(); err != nil {
+	srv, _, err := loop.Handshake(context.Background(), br, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}, true)
+	if err != nil {
 		t.Fatal(err)
 	}
 	var got []raftpb.MessageType
@@ -194,5 +195,95 @@ func TestBusyNodeHoldsData(t *testing.T) {
 	want := []raftpb.MessageType{raftpb.MsgHeartbeat, raftpb.MsgApp, raftpb.MsgHeartbeat}
 	if !slices.Equal(got, want) {
 		t.Fatalf("after the node took data again: delivered %v, want %v", got, want)
+	}
+}
+
+// TestInboundAnswersKeyUpdate asks an inbound connection on the loop for a
+// key update, then sends a heartbeat: the connection, which writes nothing
+// else, sends the answer with the turn that read it.
+func TestInboundAnswersKeyUpdate(t *testing.T) {
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, _, _, err := ca.IssueFor("node", 2, nil, []string{"peer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close() //nolint:errcheck // closing a test listener
+	b, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close() //nolint:errcheck // closing a test connection
+	a, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close() //nolint:errcheck // closing a test connection
+	type res struct {
+		r   *loop.Records
+		err error
+	}
+	cc := make(chan res, 1)
+	go func() {
+		r, _, err := loop.Handshake(context.Background(), loop.NewBridge(b, ioBuffer), &tls.Config{RootCAs: ca.Pool, ServerName: "peer", MinVersion: tls.VersionTLS13}, false)
+		cc <- res{r, err}
+	}()
+	br := loop.NewBridge(a, ioBuffer)
+	srv, _, err := loop.Handshake(context.Background(), br, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := <-cc
+	if c.err != nil {
+		t.Fatal(c.err)
+	}
+	cli := c.r
+	var got []raftpb.MessageType
+	l := loop.New(loop.NewChanPoller())
+	tr := &TCP{cfg: Config{
+		Deliver: func(m *raftpb.Message) { got = append(got, m.GetType()) },
+		Busy:    func() bool { return false },
+	}, loop: l}
+	cs := &counters{received: prometheus.NewCounter(prometheus.CounterOpts{Name: "received"}), heartbeatReceived: prometheus.NewGauge(prometheus.GaugeOpts{Name: "heartbeat"})}
+	ic := &inConn{t: tr, tc: srv, br: br, from: 2, v: maxVersion, cs: cs, buf: make([]byte, ioBuffer)}
+	sock, token, err := l.Attach(a, ic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	br.Attach(sock, nil, nil)
+	ic.token = token
+	if err := cli.UpdateKey(true); err != nil {
+		t.Fatal(err)
+	}
+	m, err := proto.Marshal(&raftpb.Message{Type: raftpb.MsgHeartbeat.Enum(), From: new(uint64(2)), To: new(uint64(1))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cli.Write(append(binary.BigEndian.AppendUint32(nil, uint32(len(m))), m...)); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); len(got) == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("the heartbeat never came")
+		}
+		if err := l.Wait(50 * time.Millisecond); err != nil {
+			t.Fatal(err)
+		}
+		l.Dispatch(true)
+		l.Flush()
+	}
+	// The answer is a record without data: the read takes it, then waits.
+	if err := cli.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = cli.Read(make([]byte, 16))
+	if cli.KeyUpdatesRead() != 1 {
+		t.Fatalf("the dialer took %d key updates from the inbound connection, want its answer", cli.KeyUpdatesRead())
 	}
 }
