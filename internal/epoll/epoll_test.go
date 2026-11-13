@@ -129,17 +129,15 @@ func TestWakeFromAnotherGoroutine(t *testing.T) {
 		close(woke)
 	}()
 	start = time.Now()
-	// A Wait may also end early, as on EINTR when the runtime preempts
-	// the thread; it waits again until the Wake came.
-	for done := false; !done; {
-		if _, err := p.Wait(nil, time.Minute); err != nil || time.Since(start) > 10*time.Second {
-			t.Fatalf("Wait woken from another goroutine took %v: %v", time.Since(start), err)
-		}
-		select {
-		case <-woke:
-			done = true
-		default:
-		}
+	if _, err := p.Wait(nil, time.Minute); err != nil || time.Since(start) > 10*time.Second {
+		t.Fatalf("Wait woken from another goroutine took %v: %v", time.Since(start), err)
+	}
+	// The Wait may also have ended early, as on EINTR when the runtime
+	// preempts the thread, and the Wake come after it.
+	select {
+	case <-woke:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the goroutine's Wake did not come")
 	}
 	// A Wake that came after a Wait ended is kept for the next one,
 	// which this takes.
