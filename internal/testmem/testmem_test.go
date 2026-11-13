@@ -3,6 +3,7 @@ package testmem
 import (
 	"runtime"
 	"runtime/debug"
+	"sync"
 	"testing"
 	"time"
 )
@@ -56,16 +57,41 @@ func TestGarbageDoesNotCount(t *testing.T) {
 	if garbage > 1<<20 {
 		t.Fatalf("8 MiB of garbage peaks at %d KiB", garbage>>10)
 	}
+	// The 8 MiB stays held until a sample found it, within step: a
+	// collection of Peak's on a loaded runner outlasted the time each MiB
+	// was held before, and the peak missed 2 MiB.
+	found := make(chan struct{})
+	var once sync.Once
+	measured = func(held int64) {
+		if held >= 8<<20-step-128<<10 {
+			once.Do(func() { close(found) })
+		}
+	}
 	peak = Peak()
+	stopped := false
+	// On every exit the sampler stops before the hook goes, so it never
+	// reads it meanwhile or outlives the test.
+	t.Cleanup(func() {
+		if !stopped {
+			peak()
+		}
+		measured = nil
+	})
 	for range 8 {
 		sink = append(sink, make([]byte, 1<<20))
 		time.Sleep(10 * time.Millisecond)
 	}
-	// Freed before the stop, the 8 MiB counts only through the samples:
-	// the last MiB may come and go within step, and the result is net of
-	// what of the heap at the call was freed meanwhile, some KiB.
+	select {
+	case <-found:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no sample found the 8 MiB held within 10 s")
+	}
+	// Freed before the stop, the 8 MiB counts only through the samples,
+	// and the result is net of what of the heap at the call was freed
+	// meanwhile, some KiB.
 	sink = nil
 	held, kept := peak()
+	stopped = true
 	if held < 8<<20-step-128<<10 || kept > 1<<20 {
 		t.Fatalf("8 MiB held and freed peaks at %d KiB, %d KiB kept", held>>10, kept>>10)
 	}
