@@ -13,9 +13,11 @@
 # same workload. Three kinds of run:
 #
 #   max        every stream busy, from 6 connections x 256 streams, which
-#              double while throughput climbs by 5% or more (loadgen
-#              -ramp), but for delete and watch, which would run out of
-#              keys or only follow the puts: throughput
+#              double three times (loadgen -ramp -ramp-steps; k8s from 64,
+#              five times; list from 2 x 16, three times), every step
+#              measured and the best taken (#644), but for delete and
+#              watch, which would run out of keys or only follow the
+#              puts: throughput
 #   rate       open-loop Poisson arrivals at half of etcd's median max
 #              throughput: latency at the same load for every target
 #   generator  one max run against cmd/nullstore, which answers every
@@ -138,6 +140,10 @@ if [ "$workload" = watch ] || [ "$workload" = delete ]; then ramp=(); fi
 if [ "$workload" = list ]; then
 	if [ "$size" = 1024 ]; then keys=100000; else keys=10000; fi
 	concurrency=(-conns 2 -streams 16)
+	# Its ramp measures 16 to 128 streams a connection, 256 in flight at
+	# most: below the 512 a connection the old stop rule allowed, and far
+	# below the 1,536 at which etcd lost its leader. No list bench has
+	# shown where its max lies yet.
 fi
 if [ "$workload" = delete ]; then
 	if [ "$size" = 1024 ]; then
