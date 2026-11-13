@@ -16,9 +16,11 @@ import (
 // TestTurnTakesBoundedCalls keeps 1,500 puts in flight on one connection
 // to the leader for a second: no turn of a node's loop takes more calls
 // than fit in it (node.MaxTurnTime, Node.TurnRoom), however many whole
-// frames one read of the socket brought (#647).
+// frames one read of the socket brought, and every turn has a limit
+// that bounds it: the calls that fit in node.MaxTurnTime, or a fixed few
+// before the node measured what a call costs (#647).
 func TestTurnTakesBoundedCalls(t *testing.T) {
-	var over, turns atomic.Int64
+	var over, unbounded, turns, cut atomic.Int64
 	var peak atomic.Int64
 	c := newClusterWith(t, func(c *cluster) {
 		c.nodeConfig = func(nc *node.Config) {
@@ -26,6 +28,12 @@ func TestTurnTakesBoundedCalls(t *testing.T) {
 				turns.Add(1)
 				if calls > limit {
 					over.Add(1)
+				}
+				if calls == limit && limit < 1500 {
+					cut.Add(1)
+				}
+				if limit > 1<<20 {
+					unbounded.Add(1)
 				}
 				for {
 					p := peak.Load()
@@ -65,9 +73,12 @@ func TestTurnTakesBoundedCalls(t *testing.T) {
 	if failed.Load() > 0 {
 		t.Fatalf("%d puts failed", failed.Load())
 	}
-	t.Logf("%d turns took calls, the most %d", turns.Load(), peak.Load())
+	t.Logf("%d turns took calls, the most %d; %d were cut at their limit", turns.Load(), peak.Load(), cut.Load())
 	if n := over.Load(); n > 0 {
 		t.Fatalf("%d turns took more calls than fit in them", n)
+	}
+	if n := unbounded.Load(); n > 0 {
+		t.Fatalf("%d turns had no limit to their calls", n)
 	}
 	if turns.Load() == 0 {
 		t.Fatal("no turn took a call")

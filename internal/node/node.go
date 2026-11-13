@@ -1135,10 +1135,14 @@ const MaxTurnTime = 15 * time.Millisecond
 
 // minTurnCalls is the fewest calls a turn takes, so that a turn slowed by
 // other work still takes clients' calls; measuredTurnCalls the fewest
-// that measure what a call costs.
+// that measure what a call costs; and firstTurnCalls the most a turn
+// takes before any measure, as on a node that just started or became
+// leader with few calls served, which a failover's retried calls would
+// otherwise all reach in one turn.
 const (
 	minTurnCalls      = 64
 	measuredTurnCalls = 32
+	firstTurnCalls    = 256
 )
 
 // TurnRoom is how many more calls the node takes from clients in this turn
@@ -1157,10 +1161,11 @@ func (n *Node) TurnRoom() int {
 }
 
 // turnFit is how many calls fit in a turn at what a call cost turns
-// lately: any number before the first measure.
+// lately: firstTurnCalls before the first measure, and while turns take
+// no time, as in the simulator, whose clock stands still in a turn.
 func (n *Node) turnFit() int {
 	if n.perCall <= 0 {
-		return math.MaxInt32
+		return firstTurnCalls
 	}
 	return max(int(MaxTurnTime/n.perCall), minTurnCalls)
 }

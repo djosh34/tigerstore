@@ -21,14 +21,15 @@ func TestStoppedNodeHasTurnRoom(t *testing.T) {
 	}
 }
 
-// TestTurnFitsCallsInTime checks how many calls a turn takes: any number
-// before a turn measured what a call costs, then those that fit in
-// MaxTurnTime at the moving average of that cost, and never fewer than
-// minTurnCalls. A turn that took too few calls measures nothing.
+// TestTurnFitsCallsInTime checks how many calls a turn takes:
+// firstTurnCalls before a turn measured what a call costs, then those
+// that fit in MaxTurnTime at the moving average of that cost, and never
+// fewer than minTurnCalls. A turn that took too few calls measures
+// nothing.
 func TestTurnFitsCallsInTime(t *testing.T) {
 	n := &Node{}
-	if fit := n.turnFit(); fit < 1<<20 {
-		t.Fatalf("before any measure a turn fits %d calls", fit)
+	if fit := n.turnFit(); fit != firstTurnCalls {
+		t.Fatalf("before any measure a turn fits %d calls, want %d", fit, firstTurnCalls)
 	}
 	took := func(calls int, d time.Duration) {
 		n.turnCalls, n.turnStart = calls, time.Now().Add(-d)
