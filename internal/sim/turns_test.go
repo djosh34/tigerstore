@@ -31,8 +31,8 @@ func burstConfig(seed uint64) Config {
 // TestCutTurnsStayLinearizable runs bursts of calls that turns of the
 // nodes' loops cut, under faults: the checkers judge the history with the
 // calls that waited for a later turn in it, the witness checker for
-// linearizability, and every seed must have frames that waited for a
-// later turn (Stats.DeferredFrames). Porcupine is left out: with 54
+// linearizability, and every seed must have a call's frame that waited
+// for a later turn (Stats.DeferredFrames). Porcupine is left out: with 54
 // clients at once its search ran past its bound on most seeds, as #244's
 // long histories did.
 func TestCutTurnsStayLinearizable(t *testing.T) {
@@ -40,9 +40,9 @@ func TestCutTurnsStayLinearizable(t *testing.T) {
 	simrun.Seeds(t, 6491, 8, func(t *testing.T, seed uint64) struct{} {
 		res := run(t, burstConfig(seed))
 		checkers(t, res)
-		t.Logf("seed %d: %d turns full with a connection to read again, %d frames waited for a later turn; %d calls succeeded, %d by clientv3", seed, res.Stats.CutTurns, res.Stats.DeferredFrames, res.Stats.OK, res.Stats.V3OK)
+		t.Logf("seed %d: %d turns full with a connection to read again, %d times a call's frame waited for a later turn; %d calls succeeded, %d by clientv3", seed, res.Stats.CutTurns, res.Stats.DeferredFrames, res.Stats.OK, res.Stats.V3OK)
 		if res.Stats.DeferredFrames == 0 {
-			t.Fatalf("seed %d: no frame waited for a later turn", seed)
+			t.Fatalf("seed %d: no call's frame waited for a later turn", seed)
 		}
 		return struct{}{}
 	}, nil)

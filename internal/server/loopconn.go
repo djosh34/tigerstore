@@ -157,7 +157,7 @@ func (c *conn) readFrames() error {
 			// The node took a turn's worth of calls: the rest waits for
 			// the next turn, ahead of the connections that took some of
 			// this one if this one took none.
-			if c.s.cfg.Deferred != nil && c.holdsFrame() {
+			if c.s.cfg.Deferred != nil && c.holdsCallFrame() {
 				c.s.cfg.Deferred()
 			}
 			if room < start {
@@ -249,15 +249,17 @@ func (c *conn) process() error {
 	}
 }
 
-// holdsFrame reports whether the connection's input holds a whole frame
-// it has not run.
-func (c *conn) holdsFrame() bool {
+// holdsCallFrame reports whether the connection's input holds a whole
+// frame it has not run, of a call: HEADERS or DATA.
+func (c *conn) holdsCallFrame() bool {
 	have := c.inW - c.inR
 	if c.phase == phasePreface || have < frameHeaderLen {
 		return false
 	}
 	h := c.in[c.inR:]
-	return have >= frameHeaderLen+(int(h[0])<<16|int(h[1])<<8|int(h[2]))
+	t := http2.FrameType(h[3])
+	whole := have >= frameHeaderLen+(int(h[0])<<16|int(h[1])<<8|int(h[2]))
+	return whole && (t == http2.FrameHeaders || t == http2.FrameData)
 }
 
 // turnRoom is how many more calls the node takes in this turn besides

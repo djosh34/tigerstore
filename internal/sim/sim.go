@@ -632,10 +632,10 @@ type Stats struct {
 	// CutTurns counts the turns of the nodes' loops that took as many
 	// clients' calls as fit in them and left a connection to be read
 	// again in the next turn (node.Config.Took), which it may find with
-	// nothing more; DeferredFrames the times a connection held a whole
-	// frame it had read when its turn ran out of room, which then waited
-	// for a later turn (server.Config.Deferred). Only a run that sets
-	// Config.TurnCalls counts them.
+	// nothing more; DeferredFrames the turns of a connection that ran out
+	// of room while it held a whole HEADERS or DATA frame of a call it had
+	// read, which then waited for a later turn (server.Config.Deferred).
+	// Only a run that sets Config.TurnCalls counts them.
 	CutTurns, DeferredFrames int
 	// Compactions counts successful compactions and WatchCompacted the
 	// watches that a compaction canceled.
