@@ -344,7 +344,7 @@ func report(w io.Writer, dir, traces string) error {
 			num(rs, func(r result) float64 { return r.LeaderCPUUsPerOp }, "%.1f"),
 			num(rs, func(r result) float64 { return r.ClientCPUUsPerOp }, "%.1f"), len(rs))
 	})
-	p("\nStatistics are min / median / max over the repetitions that did not fail, not pooled percentiles. Runs is that count. At max every stream is busy, and the requests in flight doubled a fixed number of times, or until a step fell 5%% below the best, and the best step is the result; In flight is the limit on requests in flight at the step with the most throughput. txn-1k never has more in flight than its 10,000 keys. Open loop uses the shared rate. Latency starts at the scheduled arrival time. Leader CPU is the leader's process alone; the followers' cores are in the next table.\n")
+	p("\nStatistics are min / median / max over the repetitions that did not fail, not pooled percentiles. Runs is that count. At max every stream is busy, and the requests in flight doubled at most a fixed number of times, until a step fell more than 5%% below the best, and the best step is the result; In flight is the limit on requests in flight at the step with the most throughput. txn-1k never has more in flight than its 10,000 keys. Open loop uses the shared rate. Latency starts at the scheduled arrival time. Leader CPU is the leader's process alone; the followers' cores are in the next table.\n")
 
 	hasWatches := false
 	each(func(_, _, _, _ string, rs runs) { hasWatches = hasWatches || rs[0].Watch != nil })

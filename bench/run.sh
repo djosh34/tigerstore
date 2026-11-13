@@ -13,10 +13,11 @@
 # same workload. Three kinds of run:
 #
 #   max        every stream busy, from 6 connections x 256 streams, which
-#              double three times (loadgen -ramp -ramp-steps; k8s from 64,
-#              five times; list from 2 x 16, three times), every step
-#              measured and the best taken (#644) until one falls 5% below
-#              the best, past the peak (#647), but for delete and
+#              double at most three times (loadgen -ramp -ramp-steps; k8s
+#              from 64, at most five times; list from 2 x 16, at most three
+#              times), the best step taken whatever each climbed (#644),
+#              stopping at a step more than 5% below the best, an overload
+#              guard (#647), but for delete and
 #              watch, which would run out of keys or only follow the
 #              puts: throughput
 #   rate       open-loop Poisson arrivals at half of etcd's median max
@@ -124,8 +125,8 @@ if [ "$workload" = k8s ]; then
 	# One connection per node, as each of kube-apiserver's etcd clients
 	# has; the watches share them.
 	concurrency=(-conns 3 -streams 64 -copies 64 -traces "$traces")
-	# Its max runs measure 64 to 2,048 streams a connection (#644); put,
-	# txn and range measure 256 to 2,048, and list 16 to 128 (below).
+	# Its max runs measure 64 up to 2,048 streams a connection (#644); put,
+	# txn and range 256 up to 2,048, and list 16 up to 128 (below).
 	ramp=(-ramp -ramp-steps 5)
 	if [[ " ${modes[*]} " != *" generator "* ]]; then modes=(max); fi
 	# Up to about 1 GB of values per replica, as many as the 64 copies'

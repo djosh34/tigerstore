@@ -78,7 +78,7 @@ func parseFlags(args []string) (config, error) {
 	fs.DurationVar(&cfg.duration, "duration", 10*time.Second, "measurement window")
 	fs.IntVar(&cfg.watchers, "watchers", 4, "watch workload: watch streams on the key prefix")
 	fs.IntVar(&cfg.page, "page", 500, "list workload: the limit of each LIST page; keys spread over 100 namespaces")
-	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step, -ramp-steps times or until a step falls 5% below the best; the best step is the result")
+	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step, at most -ramp-steps times, until a step falls more than 5% below the best; the best step is the result")
 	fs.IntVar(&cfg.rampSteps, "ramp-steps", 3, "-ramp: how many times it doubles -streams")
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
 	metrics := fs.String("metrics", "", "comma-separated host:port of every node's client endpoint, whose /metrics give each node's peer bytes per operation")
@@ -315,12 +315,15 @@ const (
 // happened to clear the gain, and two stores level at every step they
 // shared reported maxes a doubling apart (#644).
 //
-// It stops at a step that fell rampDrop below the best, which is past the
-// peak: the steps after it only overload the store further, and a
-// cluster overloaded far enough lost its leader (#647), which fails the
-// run. Which side of the edge such a step falls changes no max on a curve
-// that does not climb again past a step 5% below its best, as none of the
-// benches did.
+// It does stop at a step that fell more than 5% below the best (rampDrop),
+// as an overload guard: such a step is most likely past the peak, and the
+// steps after it overload the store further, where a cluster overloaded
+// far enough lost its leader and failed the run (#647). That stop has an
+// edge of its own: a curve that climbs back past its best after such a
+// drop loses the later step. Of the 162 max ramps of #645's A/A benches,
+// one did (k8s at RTT 2: 81,143, then -6.1%, then 81,684), which the stop
+// reports 0.7% low; #644's gap was a doubling's worth. The steps of
+// -ramp-steps are thus a cap, not a set every run measures.
 const (
 	rampGain = 1.05
 	rampDrop = 0.95
@@ -347,8 +350,8 @@ func run(cfg config) (*result, error) {
 }
 
 // ramped measures at cfg.streams and, with -ramp, at each of -ramp-steps
-// doublings after it, until one falls rampDrop below the best, and returns
-// the best step.
+// doublings after it, until one falls more than 5% below the best
+// (rampDrop), and returns the best step.
 func ramped(cfg config, measure func(streams int) (*result, error)) (*result, error) {
 	var best *result
 	var bestErr error
