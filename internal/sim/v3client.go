@@ -40,6 +40,7 @@ func (s *Sim) serve(p *proc) error {
 		TLS:       &tls.Config{Certificates: []tls.Certificate{s.net.cert}},
 		NoGateway: true,
 		Logf:      func(format string, args ...any) { s.logf(n, format, args...) },
+		Deferred:  s.deferredHook(),
 	})
 	if err != nil {
 		return err

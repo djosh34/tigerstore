@@ -76,6 +76,11 @@ type Config struct {
 	WarningUnaryRequestDuration time.Duration
 	// Logf, if set, logs the slow unary calls.
 	Logf func(format string, args ...any)
+	// Deferred, if set, runs on the loop each time a connection's turn
+	// ran out of room while it held a whole frame it had read, which then
+	// waits for a later turn of the node's loop (node.Node.TurnRoom). For
+	// tests.
+	Deferred func()
 	// KeepaliveMinTime, KeepaliveTime and KeepaliveTimeout are etcd's
 	// --grpc-keepalive-min-time, --grpc-keepalive-interval and
 	// --grpc-keepalive-timeout as etcd hands them to grpc-go

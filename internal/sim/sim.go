@@ -630,10 +630,13 @@ type Stats struct {
 	// succeeded, among OK.
 	V3OK int
 	// CutTurns counts the turns of the nodes' loops that took as many
-	// clients' calls as fit in them while a connection had more, which
-	// waited for the next turn (node.Config.Took), in a run that sets
-	// Config.TurnCalls.
-	CutTurns int
+	// clients' calls as fit in them and left a connection to be read
+	// again in the next turn (node.Config.Took), which it may find with
+	// nothing more; DeferredFrames the times a connection held a whole
+	// frame it had read when its turn ran out of room, which then waited
+	// for a later turn (server.Config.Deferred). Only a run that sets
+	// Config.TurnCalls counts them.
+	CutTurns, DeferredFrames int
 	// Compactions counts successful compactions and WatchCompacted the
 	// watches that a compaction canceled.
 	Compactions, WatchCompacted int
@@ -2227,6 +2230,20 @@ func (s *Sim) restartAfterExit(n *node) {
 	s.lateStop()
 	s.kill(n)
 	s.restartLater(n, s.restartDelay())
+}
+
+// deferredHook is the gRPC servers' Deferred hook of a run that sets
+// Config.TurnCalls, which counts the frames that waited for a later turn,
+// and nil otherwise, so that other runs stay as they were.
+func (s *Sim) deferredHook() func() {
+	if s.cfg.TurnCalls <= 0 {
+		return nil
+	}
+	return func() {
+		s.mu.Lock()
+		s.stats.DeferredFrames++
+		s.mu.Unlock()
+	}
 }
 
 // lateStop notes a node that stops after healing. The lock is held.
