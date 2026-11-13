@@ -138,8 +138,12 @@ func (l *Loop) Dispatch(sockets bool) {
 		f()
 		l.running[i] = nil
 	}
-	l.due = append(l.due, l.again...)
-	l.again = l.again[:0]
+	if len(l.again) > 0 {
+		// What waited from the last turn goes first, so that a socket cut
+		// off by a turn's limit is not cut off again and again. The two
+		// lists swap their arrays, so neither shares the other's.
+		l.due, l.again = append(l.again, l.due...), l.due[:0]
+	}
 	if !sockets {
 		for _, token := range l.due {
 			switch h := l.handlers[token].(type) {

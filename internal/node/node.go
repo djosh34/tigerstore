@@ -487,6 +487,9 @@ type Node struct {
 	// when the committer takes no new input but peers' control messages
 	// (Busy). Loop only.
 	full bool
+	// turnCalls counts the calls clients gave the node in this turn
+	// (SubmitLocal), which the committer resets at each turn. Loop only.
+	turnCalls int
 	// roomFreed wakes the committer when a watch stream short of room got
 	// some back (WatchStream.took), and memFull says that the process is
 	// at its memory budget, so watch streams get none (measureMemory).
@@ -1104,6 +1107,17 @@ func (n *Node) Receive(m *raftpb.Message) {
 // others.
 func (n *Node) Busy() bool { return n.full }
 
+// maxTurnCalls bounds the calls clients give the node in one turn of its
+// loop. A turn ends with the core's work and its replies, and only then do
+// Raft's ticks and heartbeats go on: a turn that took every call that had
+// arrived grew with the load (#647).
+const maxTurnCalls = 1024
+
+// TurnRoom is how many more calls the node takes from clients in this turn
+// of its loop; a client connection that has more reads them in the next
+// one (loop.Loop.Again). Loop only.
+func (n *Node) TurnRoom() int { return max(maxTurnCalls-n.turnCalls, 0) }
+
 // SubmitLocal is SubmitBatch for a connection on the loop: it runs on the
 // loop, never waits, and fails only once the node stopped.
 func (n *Node) SubmitLocal(reqs []core.Request, tags []any, to Completer) error {
@@ -1118,6 +1132,7 @@ func (n *Node) SubmitLocal(reqs []core.Request, tags []any, to Completer) error 
 		reqs[i].ID = first + uint64(i)
 	}
 	n.local = append(n.local, input{batch: &batch{reqs: reqs, tags: tags, to: to}})
+	n.turnCalls += len(reqs)
 	return nil
 }
 
@@ -1485,6 +1500,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if ctx.Err() != nil {
 			return nil
 		}
+		n.turnCalls = 0
 		n.loop.Dispatch(!full)
 		dones = takeAll(n.persisted, dones[:0])
 		for _, done := range dones {

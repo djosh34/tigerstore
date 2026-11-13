@@ -129,10 +129,18 @@ func (c *conn) Ready() {
 
 // readFrames reads into an input buffer that the connection borrows from
 // the server's buffers while it holds bytes: a whole frame always fits it
-// (maxReadFrame), and an idle connection holds none.
+// (maxReadFrame), and an idle connection holds none. It stops once the
+// node took a turn's worth of calls (Node.TurnRoom), and goes on at the
+// next turn.
 func (c *conn) readFrames() error {
 	defer c.releaseIn()
 	for !c.ending && !c.isClosed() {
+		if c.s.n.TurnRoom() <= len(c.batch.reqs) {
+			// The node took a turn's worth of calls: the rest waits for
+			// the next turn, which the loop runs this connection in.
+			c.s.loop.Again(c.token)
+			return nil
+		}
 		if c.in == nil {
 			c.in = c.s.bufs.Get()
 		}
