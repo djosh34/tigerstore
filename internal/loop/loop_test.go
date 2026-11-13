@@ -434,3 +434,58 @@ func TestAgainRunsOnceATurn(t *testing.T) {
 		}
 	}
 }
+
+// TestDrainRunsWhatWaits drains a loop whose socket asked for the next
+// turn, as a connection cut off by a turn's limit does with frames it
+// holds, and gets no event from its socket: the drain runs it without
+// waiting for one, so the frames it holds get their answer.
+func TestDrainRunsWhatWaits(t *testing.T) {
+	l := loop.New(loop.NewChanPoller())
+	var order []string
+	h := &turnTaker{name: "waiting", order: &order}
+	a, b := net.Pipe()
+	defer a.Close() //nolint:errcheck // closing a test pipe
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	sock, token, err := l.Attach(a, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sock.Close() //nolint:errcheck // closing a test pipe
+	h.token = token
+	l.Dispatch(true) // the run Attach asked for
+	l.Again(token)
+	// Once it ran in the drain, the socket goes.
+	h.next = func(token uint64) { l.Forget(token) }
+	order = order[:0]
+	go l.Drain()
+	select {
+	case <-l.Drained():
+	case <-time.After(10 * time.Second):
+		t.Fatal("the drain waited for an event while a socket waited to run")
+	}
+	if len(order) != 1 {
+		t.Fatalf("the drain ran the socket %d times", len(order))
+	}
+}
+
+// TestDueAndAgainRunOnce runs a socket that asked for the next turn and
+// is due from its poller too: it runs once.
+func TestDueAndAgainRunOnce(t *testing.T) {
+	l := loop.New(loop.NewChanPoller())
+	var order []string
+	h := &turnTaker{name: "both", order: &order}
+	a, b := net.Pipe()
+	defer a.Close() //nolint:errcheck // closing a test pipe
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	sock, token, err := l.Attach(a, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sock.Close() //nolint:errcheck // closing a test pipe
+	// Attach made it due; it asks again as well.
+	l.Again(token)
+	l.Dispatch(true)
+	if len(order) != 1 {
+		t.Fatalf("a socket due and asking again ran %d times", len(order))
+	}
+}

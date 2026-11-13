@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -480,5 +481,31 @@ func TestDrainedOutputClearsItsDeadline(t *testing.T) {
 	c.Flush()
 	if c.isClosed() || br.Pending() != 0 || g.writes < 2 {
 		t.Fatalf("after the waiting output went: closed %v, %d bytes wait, %d writes", c.isClosed(), br.Pending(), g.writes)
+	}
+}
+
+// TestEndingConnectionRunsNoFrames gives a connection whose input ended,
+// as a protocol error ends it, a frame it holds from a turn that had no
+// room for it: it runs no frame, so it sends no second GOAWAY and does not
+// move its deadline to close, and gives its input buffer back.
+func TestEndingConnectionRunsNoFrames(t *testing.T) {
+	a, b := net.Pipe()
+	defer a.Close() //nolint:errcheck // closing a test pipe
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	br := loop.NewBridge(a, ioBuffer)
+	br.Attach(&gate{}, nil, nil)
+	s := bareServer(t)
+	c := newConn(s, br, br)
+	c.phase = phaseSettings
+	c.ending = true
+	c.in = s.bufs.Get()
+	// A frame header of a frame larger than the server allows.
+	c.inW = copy(c.in, []byte{0, 0x40, 0x01, 0, 0, 0, 0, 0, 1})
+	c.readErr = io.EOF
+	if err := c.readFrames(); err != nil {
+		t.Fatalf("an ending connection's read: %v", err)
+	}
+	if n := c.frames.Load(); n != 0 || c.in != nil || c.readErr != nil {
+		t.Fatalf("an ending connection ran %d frames, kept its buffer %v, kept its read error %v", n, c.in != nil, c.readErr)
 	}
 }

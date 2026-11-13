@@ -145,9 +145,15 @@ func (l *Loop) Dispatch(sockets bool) {
 		// What waited from the last turn goes first, those that got no
 		// turn at all before those that used one up, so that a socket
 		// cut off by a turn's limit is not cut off again and again.
-		due := append(append(l.first, l.again...), l.due...)
-		// due has first's array, and the old due's becomes first's.
-		l.first, l.again, l.due = l.due[:0], l.again[:0], due
+		l.first = append(l.first, l.again...)
+		for _, token := range l.due {
+			// A socket that asked again and is due too runs once.
+			if !l.queued[token] {
+				l.first = append(l.first, token)
+			}
+		}
+		// first's array becomes due's, and the old due's first's.
+		l.first, l.again, l.due = l.due[:0], l.again[:0], l.first
 		clear(l.queued)
 	}
 	if !sockets {
@@ -310,12 +316,22 @@ func (l *Loop) Drain() {
 			return
 		}
 		l.mu.Unlock()
-		if err := l.Wait(l.Timeout(-1)); err != nil {
+		if err := l.Wait(l.idle()); err != nil {
 			return
 		}
 		l.Dispatch(true)
 		l.Flush()
 	}
+}
+
+// idle is how long Drain and Run wait for their sockets: until the next
+// timer, or not at all while sockets wait to run (Holding), which no
+// socket event may come for.
+func (l *Loop) idle() time.Duration {
+	if l.Holding() {
+		return 0
+	}
+	return l.Timeout(-1)
 }
 
 // Drained is closed once Drain returned: no handler of the loop runs
@@ -330,7 +346,7 @@ func (l *Loop) Run(ctx context.Context) error {
 	stop := context.AfterFunc(ctx, l.Wake)
 	defer stop()
 	for {
-		if err := l.Wait(l.Timeout(-1)); err != nil {
+		if err := l.Wait(l.idle()); err != nil {
 			return err
 		}
 		if ctx.Err() != nil {

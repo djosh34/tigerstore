@@ -17,3 +17,18 @@ func TestStoppedNodeHasTurnRoom(t *testing.T) {
 		t.Fatalf("a stopped node after a full turn has room for %d calls, want %d", r, MaxTurnCalls)
 	}
 }
+
+// TestStoppedNodeIsNotBusy checks that a node that stopped with its disk
+// behind is not busy: its peers' connections deliver the messages they
+// held, which it drops, and read on while its loop drains, instead of
+// holding them and asking the drain for a turn again and again.
+func TestStoppedNodeIsNotBusy(t *testing.T) {
+	n := &Node{done: make(chan struct{}), full: true}
+	if !n.Busy() {
+		t.Fatal("a running node with its disk behind is not busy")
+	}
+	close(n.done)
+	if n.Busy() {
+		t.Fatal("a stopped node is busy")
+	}
+}

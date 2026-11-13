@@ -1107,8 +1107,16 @@ func (n *Node) Receive(m *raftpb.Message) {
 // Busy reports, on the loop, whether the node's disk is behind, so that it
 // takes no new input but peers' control messages. The peer transport then
 // holds the data messages it reads (peer.Config.Busy) and steps the
-// others.
-func (n *Node) Busy() bool { return n.full }
+// others. A node that stopped is never busy: it drops what it receives,
+// and its peers' connections read on while the loop drains.
+func (n *Node) Busy() bool {
+	select {
+	case <-n.done:
+		return false
+	default:
+	}
+	return n.full
+}
 
 // MaxTurnCalls bounds the calls clients give the node in one turn of its
 // loop. A turn ends with the core's work and its replies, and only then do

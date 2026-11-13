@@ -135,6 +135,11 @@ func (c *conn) Ready() {
 // and goes on at the next turn with the frames it holds.
 func (c *conn) readFrames() error {
 	defer c.releaseIn()
+	if c.ending || c.isClosed() {
+		// The input ended: what is left of it goes, with how it ended.
+		c.inR, c.inW, c.readErr = 0, 0, nil
+		return nil
+	}
 	start := c.turnRoom()
 	if c.inR < c.inW {
 		if err := c.process(); err != nil {
