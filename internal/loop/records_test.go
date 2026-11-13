@@ -305,3 +305,54 @@ func TestRecordsOnTheLoop(t *testing.T) {
 		t.Fatalf("an idle connection holds a read buffer of %d bytes, or a slice into one", len(r.br.in))
 	}
 }
+
+// TestRecordsUpdateTheirKey lowers keyUpdateAfter to 3 records: past it
+// our side sends a KeyUpdate of its own and writes on under the next key,
+// whose sequence starts again at 0, and crypto/tls reads every byte across
+// the updates, before Attach and on the loop.
+func TestRecordsUpdateTheirKey(t *testing.T) {
+	defer func(n uint64) { keyUpdateAfter = n }(keyUpdateAfter)
+	keyUpdateAfter = 3
+	p := newPKI(t)
+	r, tc := pair(t, true, p.server(), p.client())
+	first := r.wr.secret
+	exchange(t, r, tc, nil)
+	exchange(t, r, tc, nil)
+	if bytes.Equal(r.wr.secret, first) || r.wr.seq >= keyUpdateAfter+1 {
+		t.Fatalf("after 6 records the write key is the first one, or its sequence is at %d", r.wr.seq)
+	}
+	// On the loop, where records are sealed in place.
+	poller := NewChanPoller()
+	sock, err := poller.Attach(r.br.Conn, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.br.Attach(sock, NewBuffers(32<<10, 4), NewBuffers(1<<20, 2))
+	second := r.wr.secret
+	msg := bytes.Repeat([]byte("rotate "), 10<<10)
+	got := make(chan []byte, 1)
+	go func() {
+		b := make([]byte, len(msg))
+		_, _ = io.ReadFull(tc, b)
+		got <- b
+	}()
+	if _, err := r.Write(msg); err != nil {
+		t.Fatal(err)
+	}
+	for r.br.Pending() > 0 || r.open > 0 {
+		if err := r.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		if r.br.Pending() > 0 {
+			if _, err := poller.Wait(nil, time.Second); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if b := <-got; !bytes.Equal(b, msg) {
+		t.Fatal("crypto/tls read other bytes than the loop wrote across key updates")
+	}
+	if bytes.Equal(r.wr.secret, second) {
+		t.Fatal("the loop's writes did not update the key")
+	}
+}

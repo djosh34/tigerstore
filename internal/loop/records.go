@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -57,6 +58,15 @@ const (
 	// before Attach, as crypto/tls's close_notify does.
 	alertWait = 5 * time.Second
 )
+
+// keyUpdateAfter is how many records a write key seals before Records
+// sends a KeyUpdate and goes on under the next one: RFC 8446 (5.5) puts the
+// safe use of an AES-GCM key at about 2^24.5 full records, which a busy
+// peer connection reaches in a few hundred GB; crypto/tls never updates
+// on its own. So a write sequence number stays far from wrapping, and a
+// KeyUpdate starts the next key at 0 with a new key and IV, so no nonce
+// repeats under a key. A test lowers it.
+var keyUpdateAfter uint64 = 1 << 24
 
 // appHeader starts a record whose length seal sets, and sealRoom is the
 // room a record needs past its content: the content type and the tag.
@@ -291,9 +301,13 @@ type Records struct {
 	// scratch holds a record that is sealed and written at once, before
 	// Attach.
 	scratch []byte
-	// err is the error that ended reading: io.EOF after close_notify.
+	// err is the error that ended reading: io.EOF after close_notify, and
+	// werr the one that ended writing.
 	err       error
+	werr      error
 	closeSent bool
+	// rotating is set while a KeyUpdate of keyUpdateAfter goes out.
+	rotating bool
 }
 
 var _ net.Conn = (*Records)(nil)
@@ -342,6 +356,11 @@ func (r *Records) openNext() error {
 		return err
 	}
 	rec := r.br.buffered()[:recordHeader+n]
+	if r.rd.seq == math.MaxUint64 {
+		// The peer must have updated its key long before: the next nonce
+		// would repeat the first.
+		return r.fail(alertUnexpected, errors.New("loop: a TLS read key used for 2^64 records"))
+	}
 	pt, err := r.rd.aead.Open(rec[recordHeader:recordHeader], r.rd.next(), rec[recordHeader:], rec[:recordHeader])
 	if err != nil {
 		return r.fail(alertBadRecordMAC, fmt.Errorf("loop: a TLS record does not open: %w", err))
@@ -462,6 +481,9 @@ func (r *Records) Write(p []byte) (int, error) {
 	if r.closeSent {
 		return 0, net.ErrClosed
 	}
+	if r.werr != nil {
+		return 0, r.werr
+	}
 	if !r.br.Attached() {
 		for done := 0; done < len(p); {
 			k := min(len(p)-done, maxPlaintext)
@@ -503,6 +525,20 @@ func (r *Records) seal(typ byte) {
 	binary.BigEndian.PutUint16(rec[3:recordHeader], uint16(len(body)+tagSize))
 	r.wr.aead.Seal(body[:0], r.wr.next(), body, rec[:recordHeader])
 	r.open = 0
+	r.rotate()
+}
+
+// rotate sends a KeyUpdate once the write key sealed keyUpdateAfter
+// records.
+func (r *Records) rotate() {
+	if r.wr.seq < keyUpdateAfter || r.rotating || r.werr != nil {
+		return
+	}
+	r.rotating = true
+	if err := r.updateWrite(); err != nil {
+		r.werr = err
+	}
+	r.rotating = false
 }
 
 // record writes content as one record of inner type typ: sealed and sent
@@ -521,8 +557,11 @@ func (r *Records) record(typ byte, content []byte) error {
 		copy(body, content)
 		body[len(content)] = typ
 		r.wr.aead.Seal(body[:0], r.wr.next(), body, rec[:recordHeader])
-		_, err := r.br.Conn.Write(rec)
-		return err
+		if _, err := r.br.Conn.Write(rec); err != nil {
+			return err
+		}
+		r.rotate()
+		return r.werr
 	}
 	if r.open > 0 {
 		r.seal(typeAppData)
