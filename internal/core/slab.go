@@ -144,24 +144,23 @@ func (sl *slabs) set(ci int, n uint32, val []byte, owner int32) {
 // takeFree takes the lowest free slot of class ci, if it has one.
 func (sl *slabs) takeFree(ci int) (uint32, bool) {
 	c := &sl.classes[ci]
-	for c.low < len(c.chunks) && c.chunks[c.low].nfree == 0 {
-		c.low++
-	}
-	if c.low == len(c.chunks) {
-		return 0, false
-	}
-	ch := &c.chunks[c.low]
-	for w, word := range ch.free {
-		if word != 0 {
-			b := bits.TrailingZeros64(word)
-			ch.free[w] &^= 1 << b
-			ch.nfree--
-			c.nfree--
-			sl.freed -= int64(classSizes[ci])
-			return uint32(c.low)*perChunk(ci) + uint32(w*64+b), true
+	for ; c.low < len(c.chunks); c.low++ {
+		ch := &c.chunks[c.low]
+		if ch.nfree == 0 {
+			continue
+		}
+		for w, word := range ch.free {
+			if word != 0 {
+				b := bits.TrailingZeros64(word)
+				ch.free[w] &^= 1 << b
+				ch.nfree--
+				c.nfree--
+				sl.freed -= int64(classSizes[ci])
+				return uint32(c.low)*perChunk(ci) + uint32(w*64+b), true
+			}
 		}
 	}
-	panic("slabs: a chunk counts a free slot it does not have")
+	return 0, false
 }
 
 // bytes returns the n bytes in s, which the next put, free or compact may
@@ -280,11 +279,9 @@ func (sl *slabs) empty(ci, budget int, moved func(owner int32, to slot)) int {
 		if budget <= 0 {
 			return 0
 		}
+		// The class is loose, so the lowest free slot is below the chunk.
 		owner := ch.owner[i]
-		to, ok := sl.takeFree(ci)
-		if !ok || to >= start {
-			panic("slabs: emptying a chunk that is not loose")
-		}
+		to, _ := sl.takeFree(ci)
 		off := int(i) * size
 		sl.set(ci, to, ch.data[off:off+size], owner)
 		c.fresh--

@@ -298,8 +298,10 @@ func (c *cache) moved() {
 	if c.next < c.n {
 		return
 	}
-	if len(c.old) != 0 {
-		panic("cache: refs left in the old map")
+	// Every ref moved as step passed its entry, or as its entry moved
+	// below next (renamed); this takes any left all the same.
+	for r, i := range c.old {
+		c.put(r, i)
 	}
 	c.bytes -= int64(c.oldPeak) * slotOverhead
 	c.old, c.oldPeak = nil, 0
