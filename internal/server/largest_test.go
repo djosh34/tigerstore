@@ -18,6 +18,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/server"
+	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
 // TestLargestRequest writes the largest request --max-request-bytes may
@@ -44,6 +45,14 @@ func TestLargestRequest(t *testing.T) {
 			// 64 MiB takes seconds at each step, longer than the peers'
 			// 5 s write timeout for one frame.
 			cfg.RequestTicks = int(time.Minute / c.tick)
+			if simrun.Race {
+				// The loop encodes and decodes the 64 MiB message on its own
+				// thread, which under the race detector holds it 0.8 to 1.4 s
+				// (20 ms without): longer than the 1 s election timeout, so
+				// a follower campaigned, and the proposal was lost with the
+				// leader change. 5 s outlasts it.
+				cfg.ElectionTicks = 50
+			}
 		}
 		c.serverConfig = func(cfg *server.Config) { cfg.MaxRequestBytes = limit }
 		c.peerConfig = func(cfg *peer.Config) { cfg.WriteTimeout, cfg.ReadTimeout = time.Minute, time.Minute }
