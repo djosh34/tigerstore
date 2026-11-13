@@ -151,8 +151,8 @@ func authentic(s suite, stream []byte) ([]byte, error) {
 		if stream[0] != typeAppData || n < 1+tagSize || n > maxCiphertext || len(stream) < recordHeader+n {
 			break
 		}
-		pt, err := d.aead.Open(nil, d.next(), stream[recordHeader:recordHeader+n], stream[:recordHeader])
-		if err != nil || len(pt) > maxPlaintext+1 {
+		pt, ok := opens(&d, stream[:recordHeader+n])
+		if !ok || len(pt) > maxPlaintext+1 {
 			break
 		}
 		i := len(pt) - 1
@@ -166,4 +166,11 @@ func authentic(s suite, stream []byte) ([]byte, error) {
 		stream = stream[recordHeader+n:]
 	}
 	return out, nil
+}
+
+// opens opens rec under d, and reports whether it did: one that does not
+// ends the application data authentic returns.
+func opens(d *direction, rec []byte) ([]byte, bool) {
+	pt, err := d.aead.Open(nil, d.next(), rec[recordHeader:], rec[:recordHeader])
+	return pt, err == nil
 }
