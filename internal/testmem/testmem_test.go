@@ -67,8 +67,16 @@ func TestGarbageDoesNotCount(t *testing.T) {
 			once.Do(func() { close(found) })
 		}
 	}
-	t.Cleanup(func() { measured = nil })
 	peak = Peak()
+	stopped := false
+	// On every exit the sampler stops before the hook goes, so it never
+	// reads it meanwhile or outlives the test.
+	t.Cleanup(func() {
+		if !stopped {
+			peak()
+		}
+		measured = nil
+	})
 	for range 8 {
 		sink = append(sink, make([]byte, 1<<20))
 		time.Sleep(10 * time.Millisecond)
@@ -83,6 +91,7 @@ func TestGarbageDoesNotCount(t *testing.T) {
 	// meanwhile, some KiB.
 	sink = nil
 	held, kept := peak()
+	stopped = true
 	if held < 8<<20-step-128<<10 || kept > 1<<20 {
 		t.Fatalf("8 MiB held and freed peaks at %d KiB, %d KiB kept", held>>10, kept>>10)
 	}
