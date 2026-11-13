@@ -148,10 +148,11 @@ func (c *cache) has(r mvcc.Ref) bool {
 }
 
 // add copies val, the bytes r names, into the cache. A cache still past
-// its limit, which may drop no more values before its next step, takes
-// none.
+// its limit, as while its steps drop what a limit that fell far leaves,
+// takes none: the steps give it back their evictions each turn, which
+// would let it grow past its limit by a value each turn.
 func (c *cache) add(r mvcc.Ref, val []byte) {
-	if _, ok := c.lookup(r); ok || c.limit <= 0 || c.evictions <= 0 && c.bytes > c.limit {
+	if _, ok := c.lookup(r); ok || c.limit <= 0 || c.bytes > c.limit {
 		return
 	}
 	i := c.n
@@ -244,7 +245,7 @@ func (c *cache) remove(i int32) {
 		c.old, c.oldPeak = c.items, c.peak
 		c.items, c.peak, c.next = map[mvcc.Ref]int32{}, 0, 1
 	}
-	if c.slabs.slack() > max(c.slabs.used/2, minRebuildSlack) {
+	if !c.compacting && c.slabs.slack() > max(c.slabs.used/2, minRebuildSlack) && c.slabs.anyLoose() {
 		c.compacting = true
 	}
 	c.low = min(c.low, c.bytes)

@@ -233,6 +233,16 @@ func (sl *slabs) loose(ci int) bool {
 	return c.nfree-ch.nfree >= live
 }
 
+// anyLoose reports whether any class is loose, so that compact has work.
+func (sl *slabs) anyLoose() bool {
+	for ci := range numClasses {
+		if sl.loose(ci) {
+			return true
+		}
+	}
+	return false
+}
+
 // compact moves the values of loose classes' last chunks into the free
 // slots below them, the class with the most free room first, and drops
 // each chunk it empties. It copies at most budget bytes, and calls moved
@@ -257,10 +267,15 @@ func (sl *slabs) compact(budget int, moved func(owner int32, to slot)) bool {
 	}
 }
 
+// freeSlotCost is what passing a free slot takes of compact's budget, in
+// bytes: about the time a copy of that many bytes takes.
+const freeSlotCost = 16
+
 // empty moves the values of class ci's last chunk, from its highest slot
 // down, into the lowest free slots below it, and drops the chunk once it
-// holds none. The class is loose. It copies at most budget bytes, at least
-// one value, and returns what is left of budget.
+// holds none. The class is loose. It spends at most budget, a value by
+// its slot's size and a free slot it passes by freeSlotCost, at least
+// one of either, and returns what is left of budget.
 func (sl *slabs) empty(ci, budget int, moved func(owner int32, to slot)) int {
 	c := &sl.classes[ci]
 	size := classSizes[ci]
@@ -271,16 +286,19 @@ func (sl *slabs) empty(ci, budget int, moved func(owner int32, to slot)) int {
 	for c.fresh > start {
 		top := c.fresh - 1
 		i := top - start
+		if budget <= 0 {
+			return 0
+		}
 		if ch.free[i/64]&(1<<(i%64)) != 0 {
+			// A free slot costs a little of the budget too, so that a
+			// call does not walk many chunks of free slots for nothing.
 			ch.free[i/64] &^= 1 << (i % 64)
 			ch.nfree--
 			c.nfree--
 			sl.freed -= int64(size)
 			c.fresh--
+			budget -= freeSlotCost
 			continue
-		}
-		if budget <= 0 {
-			return 0
 		}
 		// The class is loose, so the lowest free slot is below the chunk.
 		owner := ch.owner[i]

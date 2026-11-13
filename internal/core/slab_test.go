@@ -276,9 +276,14 @@ func TestShrinkingCacheTakesShortSteps(t *testing.T) {
 			}
 			for i := range count {
 				v, ok := c.get(ref(i))
-				if ok != kept(i) && shrink == "drops" || ok && !bytes.Equal(v, val(i)) {
+				// Shrunk by its limit, the cache keeps the newest values
+				// it can; dropped, it keeps every value not dropped.
+				if ok != kept(i) && shrink == "drops" || ok && !kept(i) || ok && !bytes.Equal(v, val(i)) {
 					t.Fatalf("value %d: cached %v, intact %v", i, ok, ok && bytes.Equal(v, val(i)))
 				}
+			}
+			if shrink == "limit" && !c.has(ref(count-1)) {
+				t.Fatal("the newest value is gone")
 			}
 			t.Logf("%d steps, the longest call %v", steps, longest)
 			// The race detector makes every copy many times slower; the

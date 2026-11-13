@@ -327,3 +327,40 @@ func TestCacheLowAfterMapMoves(t *testing.T) {
 		t.Fatalf("low mark %d after the map was made again, with %d bytes", c.low, c.bytes)
 	}
 }
+
+// TestCacheStaysWithinItsLimit fills a cache with small values, then adds
+// a value of 1 MiB at each step: one such value is worth more small ones
+// than a step may drop, so the cache stays past its limit for a few
+// steps. It takes no value meanwhile, which a step's new evictions let it
+// do before, so that it grew by a value each turn (#649's review), and its
+// steps bring it back within its limit.
+func TestCacheStaysWithinItsLimit(t *testing.T) {
+	c := newCache()
+	const limit = 64 << 20
+	c.setLimit(limit)
+	for i := range limit / (16 + cachedOverhead + slotOverhead) {
+		c.add(mvcc.Ref{Index: uint64(i + 1), Len: 16}, make([]byte, 16))
+	}
+	big := make([]byte, 1<<20)
+	refused := 0
+	for i := range 64 {
+		over := c.bytes > c.limit
+		r := mvcc.Ref{Index: uint64(1<<40 + i), Len: uint32(len(big))}
+		c.add(r, big)
+		if over && c.has(r) {
+			t.Fatalf("step %d: a cache %d bytes past its limit took a value", i, c.bytes-c.limit)
+		}
+		if over {
+			refused++
+		}
+		c.step()
+	}
+	settle(t, c)
+	if c.bytes > limit {
+		t.Fatalf("after its steps the cache holds %d bytes, past its limit of %d", c.bytes, limit)
+	}
+	if refused == 0 {
+		t.Fatal("the cache was never past its limit when a value came")
+	}
+	t.Logf("%d of 64 values came while the cache was past its limit", refused)
+}

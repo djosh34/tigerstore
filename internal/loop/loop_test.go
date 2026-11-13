@@ -405,3 +405,32 @@ func (h *turnTaker) Ready() {
 		h.next(h.token)
 	}
 }
+
+// TestAgainRunsOnceATurn runs a socket that asks for the next turn twice
+// in each turn, as one that stays cut off does turn after turn: it runs
+// once a turn, not once for each time it asked.
+func TestAgainRunsOnceATurn(t *testing.T) {
+	l := loop.New(loop.NewChanPoller())
+	var order []string
+	h := &turnTaker{name: "cut off", order: &order}
+	a, b := net.Pipe()
+	defer a.Close() //nolint:errcheck // closing a test pipe
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	sock, token, err := l.Attach(a, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sock.Close() //nolint:errcheck // closing a test pipe
+	h.token = token
+	h.next = func(token uint64) {
+		l.Again(token)
+		l.AgainFirst(token)
+	}
+	for turn := range 10 {
+		order = order[:0]
+		l.Dispatch(true)
+		if len(order) != 1 {
+			t.Fatalf("turn %d ran the socket %d times", turn, len(order))
+		}
+	}
+}
