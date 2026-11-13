@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -258,4 +259,46 @@ func TestCacheRebuildKeepsOrder(t *testing.T) {
 			t.Fatalf("value %d: cached %v, %v", i, ok, v)
 		}
 	}
+}
+
+// TestCacheStepsAreTurns checks that the core asks for its next turn at
+// once while its value cache has steps left (Working), and that its turns
+// take them: a cache whose limit fell from 64 MiB to 1 MiB fits it a
+// step a turn, with every value it keeps intact (#647).
+func TestCacheStepsAreTurns(t *testing.T) {
+	const memory = 64 << 20
+	s, _ := coldSingle(t, func(cfg *Config) { cfg.MemoryBytes = memory })
+	c := s.n.cache
+	const size = 1000
+	val := func(i int) []byte { return bytes.Repeat([]byte{byte(i), byte(i >> 8)}, size/2) }
+	ref := func(i int) mvcc.Ref { return mvcc.Ref{Index: 1<<40 + uint64(i), Len: size} }
+	for i := range memory / 2 / size {
+		c.add(ref(i), val(i))
+	}
+	settle(t, c)
+	if s.n.Working() {
+		t.Fatal("the core works with no steps of its cache left")
+	}
+	s.n.SetOtherMemory(memory - 1<<20)
+	if !s.n.Working() || c.bytes <= c.limit {
+		t.Fatalf("after the limit fell: working %v, %d bytes for a limit of %d", s.n.Working(), c.bytes, c.limit)
+	}
+	turns := 0
+	for s.n.Working() {
+		if _, err := s.n.Process(); err != nil {
+			t.Fatal(err)
+		}
+		if turns++; turns > 1000 {
+			t.Fatal("the core's turns do not end its cache's steps")
+		}
+	}
+	if c.busy() || c.bytes > c.limit || c.count() == 0 {
+		t.Fatalf("after %d turns: busy %v, %d bytes for a limit of %d, %d values", turns, c.busy(), c.bytes, c.limit, c.count())
+	}
+	for i := range memory / 2 / size {
+		if v, ok := c.get(ref(i)); ok && !bytes.Equal(v, val(i)) {
+			t.Fatalf("value %d changed", i)
+		}
+	}
+	t.Logf("%d turns", turns)
 }
