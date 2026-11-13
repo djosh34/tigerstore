@@ -43,9 +43,10 @@ func (s *fuzzSocket) Close() error                { return nil }
 // send: raw bytes, a close_notify, a record sealed under the reader's own
 // keys with any inner content type, padding and length, one bit of it
 // flipped, and any bytes after. It must only ever fail, never panic or
-// read out of bounds, and every plaintext it hands out must be the start
-// of a record that opened under the keys: none after raw bytes, after a
-// close_notify, or of a record with a flipped bit.
+// read out of bounds; every plaintext it hands out must be the start of
+// the application data that a reader of the test's own opens under the
+// keys (authentic); and a record whose body or tag changed, with nothing
+// before it, must be refused for its tag.
 func FuzzRecords(f *testing.F) {
 	f.Add([]byte{}, []byte("hello"), byte(typeAppData), uint8(0), uint16(0), []byte{}, false)
 	f.Add([]byte{}, []byte("hello"), byte(typeAppData), uint8(200), uint16(0), []byte{23, 3, 3, 0xff, 0xff}, false)
@@ -59,6 +60,13 @@ func FuzzRecords(f *testing.F) {
 	f.Add([]byte{}, []byte("flipped"), byte(typeAppData), uint8(0), uint16(0x0105), []byte{}, false)
 	f.Add([]byte{}, []byte("flipped"), byte(typeAppData), uint8(0), uint16(0x011c), []byte{}, false)
 	f.Add([]byte{}, bytes.Repeat([]byte("x"), maxPlaintext+1), byte(typeAppData), uint8(0), uint16(0), []byte{}, false)
+	// Raw bytes that are a record which opens under the keys: its data may
+	// come out.
+	if s, err := suiteOf(tls.TLS_AES_128_GCM_SHA256); err == nil {
+		if w, err := s.keyed(fuzzSecret); err == nil {
+			f.Add(sealFor(&w, typeAppData, []byte("in raw"), 0), []byte("x"), byte(typeAppData), uint8(0), uint16(0), []byte{}, false)
+		}
+	}
 	f.Fuzz(func(t *testing.T, raw, plain []byte, typ byte, pad uint8, flip uint16, tail []byte, closeFirst bool) {
 		if len(plain) > 1<<17 {
 			return
@@ -118,14 +126,44 @@ func FuzzRecords(f *testing.F) {
 				t.Fatalf("a record with byte %d of %d changed was not refused for its tag: %v", flipAt, len(rec), lastErr)
 			}
 		}
-		if len(got) == 0 {
-			return
+		want, err := authentic(s, stream)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if len(raw) > 0 || closeFirst || flip != 0 {
-			t.Fatalf("%d bytes of plaintext came out of a stream whose record should not open (raw %d bytes, close first %v, flip %#x)", len(got), len(raw), closeFirst, flip)
-		}
-		if !bytes.HasPrefix(plain, got) {
-			t.Fatalf("plaintext %q came out, which is not the start of the record sealed, %q", got, plain)
+		if !bytes.HasPrefix(want, got) {
+			t.Fatalf("plaintext %q came out, which is not the start of the application data that opens under the keys, %q", got, want)
 		}
 	})
+}
+
+// authentic opens stream's records in order with a reader of its own and
+// returns their application data, up to the first record that does not
+// open, is not application data, or is too long: all that Records may
+// hand out of it.
+func authentic(s suite, stream []byte) ([]byte, error) {
+	d, err := s.keyed(fuzzSecret)
+	if err != nil {
+		return nil, err
+	}
+	var out []byte
+	for len(stream) >= recordHeader {
+		n := int(binary.BigEndian.Uint16(stream[3:]))
+		if stream[0] != typeAppData || n < 1+tagSize || n > maxCiphertext || len(stream) < recordHeader+n {
+			break
+		}
+		pt, err := d.aead.Open(nil, d.next(), stream[recordHeader:recordHeader+n], stream[:recordHeader])
+		if err != nil || len(pt) > maxPlaintext+1 {
+			break
+		}
+		i := len(pt) - 1
+		for i >= 0 && pt[i] == 0 {
+			i--
+		}
+		if i < 0 || pt[i] != typeAppData {
+			break
+		}
+		out = append(out, pt[:i]...)
+		stream = stream[recordHeader+n:]
+	}
+	return out, nil
 }

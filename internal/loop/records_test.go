@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -761,5 +763,203 @@ func TestRecordsAnswerOnTheLoop(t *testing.T) {
 	}
 	if bytes.Equal(cli.rd.secret, firstRead) {
 		t.Fatal("the loop did not answer the KeyUpdate")
+	}
+}
+
+// TestRecordsCloseBreaksWrite closes records while a write waits on a
+// peer that reads nothing: the close returns at once and the write fails,
+// as crypto/tls's close breaks a write.
+func TestRecordsCloseBreaksWrite(t *testing.T) {
+	srv, _ := ours(t)
+	writing := make(chan error, 1)
+	go func() {
+		_, err := srv.Write(make([]byte, 64<<20))
+		writing <- err
+	}()
+	time.Sleep(50 * time.Millisecond)
+	closed := make(chan error, 1)
+	go func() { closed <- srv.Close() }()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the close waited for a write that waits on the peer")
+	}
+	select {
+	case err := <-writing:
+		if err == nil {
+			t.Fatal("a write the close broke succeeded")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the close did not break the write")
+	}
+}
+
+// TestRecordsTicketExtensions takes a ticket's extensions as crypto/tls
+// parses them: early_data with its 4-byte size, and none cut short.
+func TestRecordsTicketExtensions(t *testing.T) {
+	ticketWith := func(ext []byte) []byte {
+		body := []byte{0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 1, 7}
+		body = binary.BigEndian.AppendUint16(body, uint16(len(ext)))
+		body = append(body, ext...)
+		return append([]byte{msgNewSessionTicket, 0, byte(len(body) >> 8), byte(len(body))}, body...)
+	}
+	for _, c := range []struct {
+		name string
+		ext  []byte
+		ok   bool
+	}{
+		{"early_data of 4 bytes", []byte{0, extEarlyData, 0, 4, 0, 0, 1, 0}, true},
+		{"an unknown extension", []byte{0x12, 0x34, 0, 2, 9, 9}, true},
+		{"early_data of 1 byte", []byte{0, extEarlyData, 0, 1, 0}, false},
+		{"an extension header cut short", []byte{0}, false},
+		{"an extension longer than its list", []byte{0x12, 0x34, 0, 9, 1}, false},
+	} {
+		srv, cli := ours(t)
+		go func() {
+			_ = post(srv, typeHandshake, ticketWith(c.ext))
+			_, _ = srv.Write([]byte("data"))
+		}()
+		got := make([]byte, 4)
+		_, err := io.ReadFull(cli, got)
+		if c.ok && (err != nil || string(got) != "data") {
+			t.Errorf("%s: read %q, %v", c.name, got, err)
+		}
+		if !c.ok && (err == nil || !strings.Contains(err.Error(), "malformed")) {
+			t.Errorf("%s: read %v, want the ticket refused", c.name, err)
+		}
+	}
+}
+
+// TestRecordsUselessCountsMessages counts post-handshake messages as
+// crypto/tls does: a ticket in 18 records of one byte is one message, and
+// 17 whole tickets in one record are 17.
+func TestRecordsUselessCountsMessages(t *testing.T) {
+	ticket := []byte{msgNewSessionTicket, 0, 0, 14, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 1, 7, 0, 0}
+	srv, cli := ours(t)
+	go func() {
+		for _, b := range ticket {
+			_ = post(srv, typeHandshake, []byte{b})
+		}
+		_, _ = srv.Write([]byte("data"))
+	}()
+	got := make([]byte, 4)
+	if _, err := io.ReadFull(cli, got); err != nil || string(got) != "data" {
+		t.Fatalf("a ticket in %d records gave %q, %v", len(ticket), got, err)
+	}
+	srv, cli = ours(t)
+	go func() { _ = post(srv, typeHandshake, bytes.Repeat(ticket, maxUseless+1)) }()
+	if _, err := cli.Read(make([]byte, 4)); err == nil || !strings.Contains(err.Error(), "too many") {
+		t.Fatalf("17 tickets in one record gave %v", err)
+	}
+}
+
+// recording counts the writes on a raw connection.
+type recording struct {
+	net.Conn
+	writes atomic.Int32
+}
+
+func (r *recording) Write(p []byte) (int, error) {
+	r.writes.Add(1)
+	return r.Conn.Write(p)
+}
+
+// TestRecordsNoUpdateAfterClose closes after two records of a 3-record
+// key: close_notify is the last record, with no KeyUpdate after it.
+func TestRecordsNoUpdateAfterClose(t *testing.T) {
+	srv, cli := ours(t)
+	rec := &recording{Conn: cli.br.Conn}
+	cli.br.Conn = rec
+	cli.updateAfter = 3
+	go func() { _, _ = io.Copy(io.Discard, srv) }()
+	for _, b := range []string{"a", "b"} {
+		if _, err := cli.Write([]byte(b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = cli.Close()
+	if n := rec.writes.Load(); n != 3 {
+		t.Fatalf("two records and close_notify took %d writes, want 3: a KeyUpdate followed the close", n)
+	}
+}
+
+// failing fails its first read or write with a lasting kind of error.
+type failing struct {
+	net.Conn
+	reads, writes atomic.Int32
+}
+
+var errBroken = errors.New("broken")
+
+func (f *failing) Read(p []byte) (int, error) {
+	if f.reads.Add(1) == 1 {
+		return 0, errBroken
+	}
+	return f.Conn.Read(p)
+}
+
+func (f *failing) Write(p []byte) (int, error) {
+	if f.writes.Add(1) == 1 {
+		return 0, errBroken
+	}
+	return f.Conn.Write(p)
+}
+
+// TestRecordsKeepTheirErrors fails a read and a write of the raw
+// connection once: the records keep each error, as crypto/tls does, and
+// neither read nor write the connection again.
+func TestRecordsKeepTheirErrors(t *testing.T) {
+	srv, cli := ours(t)
+	f := &failing{Conn: srv.br.Conn}
+	srv.br.Conn = f
+	go func() { _, _ = cli.Write([]byte("later")) }()
+	for range 2 {
+		if _, err := srv.Read(make([]byte, 8)); !errors.Is(err, errBroken) {
+			t.Fatalf("a read after the raw connection broke gave %v", err)
+		}
+	}
+	for range 2 {
+		if _, err := srv.Write([]byte("x")); !errors.Is(err, errBroken) {
+			t.Fatalf("a write after the raw connection broke gave %v", err)
+		}
+	}
+	if f.reads.Load() != 1 || f.writes.Load() != 1 {
+		t.Fatalf("the records read %d and wrote %d times after an error, want 1 and 1", f.reads.Load(), f.writes.Load())
+	}
+}
+
+// TestRecordsRefusePaddedOverflow sends a record of 10 bytes and 16,380
+// of padding: its TLSInnerPlaintext passes 2^14+1, which is refused
+// whatever its content (RFC 8446, 5.4).
+func TestRecordsRefusePaddedOverflow(t *testing.T) {
+	srv, cli := ours(t)
+	go func() {
+		cli.wmu.Lock()
+		_, _ = cli.br.Conn.Write(sealFor(&cli.wr, typeAppData, make([]byte, 10), 16380))
+		cli.wmu.Unlock()
+	}()
+	if _, err := srv.Read(make([]byte, 64)); err == nil || !strings.Contains(err.Error(), "over 2^14+1") {
+		t.Fatalf("a record padded past 2^14+1 gave %v", err)
+	}
+}
+
+// TestRecordsClientAnswers has our server ask our client for a key update:
+// the client answers while it reads, as the server does.
+func TestRecordsClientAnswers(t *testing.T) {
+	srv, cli := ours(t)
+	if err := srv.UpdateKey(true); err != nil {
+		t.Fatal(err)
+	}
+	go func() { _, _ = srv.Write([]byte("ping")) }()
+	got := make([]byte, 4)
+	if _, err := io.ReadFull(cli, got); err != nil || string(got) != "ping" {
+		t.Fatalf("the client read %q, %v", got, err)
+	}
+	go func() { _, _ = cli.Write([]byte("pong")) }()
+	if _, err := io.ReadFull(srv, got); err != nil || string(got) != "pong" {
+		t.Fatalf("the server read %q, %v", got, err)
+	}
+	if srv.KeyUpdatesRead() != 1 || cli.KeyUpdatesRead() != 1 {
+		t.Fatalf("key updates read: server %d, client %d; want 1 and 1", srv.KeyUpdatesRead(), cli.KeyUpdatesRead())
 	}
 }

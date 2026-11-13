@@ -56,6 +56,7 @@ const (
 
 	msgNewSessionTicket = 4
 	msgKeyUpdate        = 24
+	extEarlyData        = 42
 	// maxPostHandshake bounds the handshake messages a peer may send after
 	// the handshake that Records holds while they arrive in pieces.
 	maxPostHandshake = 1 << 16
@@ -318,8 +319,9 @@ type Records struct {
 	// useless counts the records in a row that brought no data: empty
 	// ones, KeyUpdates and NewSessionTickets; tickets counts the
 	// NewSessionTickets a client ignored.
-	useless int
-	tickets int
+	useless     int
+	tickets     int
+	readUpdates int
 	// err is the error that ended reading: io.EOF after close_notify.
 	err error
 
@@ -428,12 +430,16 @@ func (r *Records) openNext() error {
 	if len(content) == 0 && typ != typeAppData {
 		return r.fail(alertUnexpected, fmt.Errorf("loop: an empty TLS record of inner type %d", typ))
 	}
-	if typ != typeAppData || len(content) == 0 {
-		if r.useless++; r.useless > maxUseless {
-			return r.fail(alertUnexpected, errors.New("loop: too many TLS records in a row without data"))
-		}
-	} else {
+	// As crypto/tls counts them: an empty record and a dropped alert each,
+	// and a post-handshake message once it is whole (postHandshake), not
+	// the records it came in.
+	switch {
+	case typ == typeAppData && len(content) > 0:
 		r.useless = 0
+	case typ == typeAppData || typ == typeAlert:
+		if err := r.uselessOne(); err != nil {
+			return err
+		}
 	}
 	switch typ {
 	case typeAppData:
@@ -445,6 +451,15 @@ func (r *Records) openNext() error {
 		return r.postHandshake(content)
 	}
 	return r.fail(alertUnexpected, fmt.Errorf("loop: a TLS record of inner type %d", typ))
+}
+
+// uselessOne counts a record or message that brought no data, and fails
+// the connection past maxUseless in a row.
+func (r *Records) uselessOne() error {
+	if r.useless++; r.useless > maxUseless {
+		return r.fail(alertUnexpected, errors.New("loop: too many TLS records in a row without data"))
+	}
+	return nil
 }
 
 // readFailed returns what a failed read of the socket means, as crypto/tls
@@ -497,6 +512,9 @@ func (r *Records) postHandshake(b []byte) error {
 		}
 		typ, body := r.post[0], r.post[4:4+n]
 		r.post = r.post[4+n:]
+		if err := r.uselessOne(); err != nil {
+			return err
+		}
 		switch typ {
 		case msgNewSessionTicket:
 			// Only a server sends one; a client that keeps no sessions
@@ -520,9 +538,10 @@ func (r *Records) postHandshake(b []byte) error {
 				return r.fail(alertInternal, err)
 			}
 			r.rd = rd
+			r.readUpdates++
 			if body[0] == 1 {
 				r.wmu.Lock()
-				err := r.updateWrite()
+				err := r.updateWrite(false)
 				r.wmu.Unlock()
 				if err != nil {
 					return err
@@ -539,8 +558,9 @@ func (r *Records) postHandshake(b []byte) error {
 }
 
 // validTicket reports whether b is a NewSessionTicket's body (RFC 8446,
-// 4.6.1): its lifetime, age add, a nonce of up to 255 bytes, a ticket of
-// 1 to 2^16-1 and extensions, and nothing after.
+// 4.6.1), parsed as crypto/tls parses it: its lifetime, age add, a nonce
+// of up to 255 bytes, a ticket of 1 to 2^16-1 bytes, and extensions, each
+// whole, early_data's carrying its 4-byte size, and nothing after.
 func validTicket(b []byte) bool {
 	if len(b) < 9 {
 		return false
@@ -556,18 +576,49 @@ func validTicket(b []byte) bool {
 		return false
 	}
 	b = b[2+ticket:]
-	ext := int(binary.BigEndian.Uint16(b))
-	return len(b) == 2+ext
+	if int(binary.BigEndian.Uint16(b)) != len(b)-2 {
+		return false
+	}
+	for exts := b[2:]; len(exts) > 0; {
+		if len(exts) < 4 {
+			return false
+		}
+		typ, n := binary.BigEndian.Uint16(exts), int(binary.BigEndian.Uint16(exts[2:]))
+		if len(exts) < 4+n || typ == extEarlyData && n != 4 {
+			return false
+		}
+		exts = exts[4+n:]
+	}
+	return true
 }
 
-// updateWrite sends a KeyUpdate that asks for none back, and writes on
+// UpdateKey sends a KeyUpdate and writes on under the next key; with ask,
+// it asks the peer to update its own too.
+func (r *Records) UpdateKey(ask bool) error {
+	r.wmu.Lock()
+	defer r.wmu.Unlock()
+	if r.closeSent {
+		return net.ErrClosed
+	}
+	return r.updateWrite(ask)
+}
+
+// KeyUpdatesRead is how many KeyUpdates the peer sent that the records
+// took. Only the reading goroutine calls it.
+func (r *Records) KeyUpdatesRead() int { return r.readUpdates }
+
+// updateWrite sends a KeyUpdate, asking for one back if ask, and writes on
 // under the next keys. The KeyUpdate itself starts no further one
 // (rotate): that would go out under the old key, after the peer moved on.
 // wmu is held.
-func (r *Records) updateWrite() error {
+func (r *Records) updateWrite(ask bool) error {
+	request := byte(0)
+	if ask {
+		request = 1
+	}
 	was := r.rotating
 	r.rotating = true
-	err := r.record(typeHandshake, []byte{msgKeyUpdate, 0, 0, 1, 0})
+	err := r.record(typeHandshake, []byte{msgKeyUpdate, 0, 0, 1, request})
 	r.rotating = was
 	if err != nil {
 		return err
@@ -654,12 +705,13 @@ func (r *Records) seal(typ byte) {
 }
 
 // rotate sends a KeyUpdate once the write key sealed keyUpdateAfter
-// records. wmu is held.
+// records, but none after an alert that ends the connection (RFC 8446,
+// 6.1 and 6.2). wmu is held.
 func (r *Records) rotate() {
-	if r.wr.seq < r.updateAfter || r.rotating || r.werr != nil {
+	if r.wr.seq < r.updateAfter || r.rotating || r.werr != nil || r.closeSent {
 		return
 	}
-	_ = r.updateWrite()
+	_ = r.updateWrite(false)
 }
 
 // record writes content as one record of inner type typ: sealed and sent
@@ -716,9 +768,15 @@ func (r *Records) Flush() error {
 
 // Close sends close_notify, as crypto/tls does, and closes the connection.
 // Before Attach the alert waits at most for the write deadline set; after
-// it, it goes only as far as the socket takes it at once.
+// it, it goes only as far as the socket takes it at once. A close while a
+// write is under way closes the connection at once instead.
 func (r *Records) Close() error {
-	r.wmu.Lock()
+	if !r.wmu.TryLock() {
+		// A write is under way, before Attach perhaps blocked on a peer
+		// that does not read: the close breaks it, without close_notify,
+		// which would wait behind it, as crypto/tls's close does.
+		return r.br.Close()
+	}
 	if !r.closeSent {
 		r.closeSent = true
 		if !r.br.Attached() {
