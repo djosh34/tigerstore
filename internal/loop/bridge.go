@@ -27,17 +27,27 @@ type Bridge struct {
 	in   []byte
 	r, w int
 	// out holds the bytes written that are not sent, from outR on, and
-	// sendBy is the write deadline set for them (SendBy).
-	out    []byte
-	outR   int
-	sendBy time.Time
+	// sendBy is the write deadline set for them (SendBy). keepOut is the
+	// most write buffer a bridge without Buffers keeps once it sent
+	// everything (KeepOut).
+	out     []byte
+	outR    int
+	sendBy  time.Time
+	keepOut int
 }
 
 // NewBridge returns a bridge over raw that reads through a buffer of size
 // bytes.
 func NewBridge(raw net.Conn, size int) *Bridge {
-	return &Bridge{Conn: raw, in: make([]byte, size)}
+	return &Bridge{Conn: raw, in: make([]byte, size), keepOut: maxIdleOut}
 }
+
+// KeepOut sets the most write buffer a bridge without Buffers keeps once
+// it sent everything, maxIdleOut unless set: a buffer larger goes, and the
+// next write grows a new one by append. A connection whose writes often
+// pass maxIdleOut, as a peer's appends do, sets it above its largest
+// write, so that it grows its buffer once instead of for each write.
+func (b *Bridge) KeepOut(n int) { b.keepOut = n }
 
 // Attach hands the connection to the loop through sock, which the poller
 // made from the raw connection. With pool, the bridge's buffers come from
@@ -184,15 +194,15 @@ func (b *Bridge) Flush() error {
 			b.big.Put(b.out)
 		}
 		b.out = nil
-	case cap(b.out) > maxIdleOut:
+	case cap(b.out) > b.keepOut:
 		b.out = nil
 	}
 	return nil
 }
 
-// maxIdleOut is the most write buffer a bridge keeps once it sent
-// everything: a large answer's buffer goes, and the next write grows a new
-// one.
+// maxIdleOut is the most write buffer a bridge keeps by default once it
+// sent everything: a large answer's buffer goes, and the next write grows
+// a new one.
 const maxIdleOut = 1 << 20
 
 // Close closes the connection, through the socket once the loop has it.

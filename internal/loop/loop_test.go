@@ -308,3 +308,47 @@ func (s *takeAll) Write(b []byte) (int, error) {
 }
 
 func (s *takeAll) Close() error { return nil }
+
+// TestBridgeKeepsOutput writes 3 MiB in TLS-record pieces through bridges
+// without Buffers and flushes them, again and again, as a peer's appends
+// go: the bridge that keeps 8 MiB grows its buffer once and allocates
+// nothing after, and one that keeps the default 1 MiB grows a new buffer
+// for every write.
+func TestBridgeKeepsOutput(t *testing.T) {
+	record := make([]byte, 16<<10)
+	send := func(br *loop.Bridge) {
+		for range 3 << 20 / len(record) {
+			if _, err := br.Write(record); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := br.Flush(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	allocs := func(keep int) float64 {
+		a, b := net.Pipe()
+		defer a.Close() //nolint:errcheck // closing a test pipe
+		defer b.Close() //nolint:errcheck // closing a test pipe
+		br := loop.NewBridge(a, 1<<10)
+		br.Attach(discard{}, nil, nil)
+		if keep > 0 {
+			br.KeepOut(keep)
+		}
+		send(br)
+		return testing.AllocsPerRun(10, func() { send(br) })
+	}
+	if n := allocs(8 << 20); n != 0 {
+		t.Fatalf("a bridge that keeps 8 MiB allocates %v times a 3 MiB write", n)
+	}
+	if n := allocs(0); n == 0 {
+		t.Fatal("a bridge that keeps 1 MiB allocates nothing for a 3 MiB write: the test measures nothing")
+	}
+}
+
+// discard is a socket that takes every write.
+type discard struct{}
+
+func (discard) Read([]byte) (int, error)    { return 0, loop.ErrWouldBlock }
+func (discard) Write(b []byte) (int, error) { return len(b), nil }
+func (discard) Close() error                { return nil }
