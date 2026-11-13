@@ -58,7 +58,10 @@ type conn struct {
 	// any goroutine may close.
 	nc     net.Conn
 	bridge *loop.Bridge
-	raw    net.Conn
+	// records is nc when the connection speaks TLS 1.3, whose records it
+	// seals and opens itself; its Flush seals the record being written.
+	records *loop.Records
+	raw     net.Conn
 	// traffic is what the connection serves: gRPC alone answers HTTP
 	// requests as grpc-go does, HTTP alone takes gRPC calls as HTTP.
 	traffic Traffic
@@ -173,7 +176,7 @@ type ctrlFrame struct {
 // the common name of the leaf of the first verified chain, as etcd's
 // AuthInfoFromTLS takes it.
 func caller(cfg *tls.Config, nc net.Conn) core.Caller {
-	tc, ok := nc.(*tls.Conn)
+	tc, ok := nc.(tlsState)
 	if !ok || cfg.ClientAuth != tls.RequireAndVerifyClientCert {
 		return core.Caller{}
 	}
@@ -182,6 +185,12 @@ func caller(cfg *tls.Config, nc net.Conn) core.Caller {
 		return core.Caller{}
 	}
 	return core.NewCaller(chains[0][0].Subject.CommonName)
+}
+
+// tlsState is a TLS connection: crypto/tls's, or our own records after
+// its handshake.
+type tlsState interface {
+	ConnectionState() tls.ConnectionState
 }
 
 // newConn makes a connection that reads and writes nc, over the bridge
@@ -197,6 +206,7 @@ func newConn(s *Server, nc net.Conn, bridge *loop.Bridge) *conn {
 		initWin:  65535,
 		maxFrame: 16384,
 	}
+	c.records, _ = nc.(*loop.Records)
 	c.caller = caller(s.cfg.TLS, nc)
 	c.fr = http2.NewFramer(frameDst{c}, frameSrc{c})
 	c.hdec = hpack.NewDecoder(4096, c.onField)

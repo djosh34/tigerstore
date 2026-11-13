@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"encoding/binary"
 	"errors"
 	"net"
 	"time"
@@ -34,6 +35,12 @@ type Bridge struct {
 	outR    int
 	sendBy  time.Time
 	keepOut int
+	// byRecord is set while crypto/tls runs its handshake on the bridge
+	// (Handshake): a read then ends at the end of a TLS record, so that
+	// the records after the handshake stay in the buffer, and recLeft is
+	// what is left of the record a read is in.
+	byRecord bool
+	recLeft  int
 }
 
 // NewBridge returns a bridge over raw that reads through a buffer of size
@@ -65,6 +72,9 @@ func (b *Bridge) Attach(sock Socket, pool, big *Buffers) {
 func (b *Bridge) Attached() bool { return b.sock != nil }
 
 func (b *Bridge) Read(p []byte) (int, error) {
+	if b.byRecord {
+		return b.readRecord(p)
+	}
 	if b.r == b.w {
 		b.r, b.w = 0, 0
 		if b.in == nil {
@@ -90,6 +100,81 @@ func (b *Bridge) Read(p []byte) (int, error) {
 	}
 	return n, nil
 }
+
+// readRecord reads as Read does, but never past the end of the TLS record
+// it is in, before Attach.
+func (b *Bridge) readRecord(p []byte) (int, error) {
+	if b.recLeft == 0 {
+		if err := b.fill(recordHeader); err != nil {
+			return 0, err
+		}
+		b.recLeft = recordHeader + int(binary.BigEndian.Uint16(b.in[b.r+3:]))
+	}
+	if err := b.fill(1); err != nil {
+		return 0, err
+	}
+	n := copy(p[:min(len(p), b.recLeft)], b.in[b.r:b.w])
+	b.r += n
+	b.recLeft -= n
+	return n, nil
+}
+
+// fill makes the read buffer hold n bytes from r on, reading the raw
+// connection before Attach and the socket after it, where it fails with
+// ErrWouldBlock while they have not all arrived. The buffer grows to n if
+// it is smaller, and what it holds moves to its start when n does not fit
+// after r.
+func (b *Bridge) fill(n int) error {
+	if b.in == nil {
+		b.in = b.pool.Get()
+	}
+	if n > len(b.in) {
+		in := make([]byte, n)
+		b.w = copy(in, b.in[b.r:b.w])
+		b.r = 0
+		b.in = in
+	} else if b.r+n > len(b.in) {
+		b.w = copy(b.in, b.in[b.r:b.w])
+		b.r = 0
+	}
+	for b.w-b.r < n {
+		var k int
+		var err error
+		if b.sock == nil {
+			k, err = b.Conn.Read(b.in[b.w:])
+		} else {
+			k, err = b.sock.Read(b.in[b.w:])
+		}
+		b.w += k
+		if err == nil && k == 0 && b.sock != nil {
+			err = ErrWouldBlock
+		}
+		if err != nil && b.w-b.r < n {
+			if b.r == b.w {
+				// An idle connection holds no buffer.
+				b.release()
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+// buffered is what the read buffer holds from r on.
+func (b *Bridge) buffered() []byte { return b.in[b.r:b.w] }
+
+// consume takes n bytes of the read buffer; an empty one goes back to the
+// pool.
+func (b *Bridge) consume(n int) {
+	b.r += n
+	if b.r == b.w {
+		b.release()
+	}
+}
+
+// tail is the last n bytes written and not sent, which a record layer
+// seals in place.
+func (b *Bridge) tail(n int) []byte { return b.out[len(b.out)-n:] }
 
 // release returns an empty read buffer to the pool.
 func (b *Bridge) release() {

@@ -112,6 +112,8 @@ func TestEtcdWorkloads(t *testing.T) {
 			pids:      []int{serverPID},
 			seed:      1,
 			ramp:      tc.ramp,
+			// One doubling, 32 then 64 streams: a ramp of two steps.
+			rampSteps: 1,
 		}
 		if tc.workload == "k8s" {
 			cfg.preloadRate, cfg.copies, cfg.traces = 300, 4, testTraceDir()

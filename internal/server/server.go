@@ -304,16 +304,22 @@ func (s *Server) serveConn(nc net.Conn, l Listener) bool {
 		if traffic == TrafficGRPC {
 			cfg = s.grpcTLS
 		}
-		tc := tls.Server(bridge, cfg)
+		// A TLS 1.3 connection's records go through our own record layer
+		// after crypto/tls's handshake; one of TLS 1.2 stays crypto/tls's.
 		ctx, cancel := context.WithTimeout(s.ctx, handshakeTimeout)
-		err := tc.HandshakeContext(ctx)
+		records, tc, err := loop.Handshake(ctx, bridge, cfg, true)
 		cancel()
-		if err != nil {
+		switch {
+		case records != nil:
+			nc = records
+			h2 = records.ConnectionState().NegotiatedProtocol == "h2"
+		case errors.Is(err, loop.ErrNotTLS13):
+			nc = tc
+			h2 = tc.ConnectionState().NegotiatedProtocol == "h2"
+		default:
 			_ = raw.Close()
 			return false
 		}
-		h2 = tc.ConnectionState().NegotiatedProtocol == "h2"
-		nc = tc
 	} else {
 		var err error
 		if h2, err = peekPreface(bridge); err != nil {

@@ -10,8 +10,8 @@
 // it never checks an answer (the simulator checks correctness), it reads
 // only what the next request needs, a write's revision and outcome, and the
 // sizes of the key-values a read returned, from their lengths. With -ramp,
-// the requests in flight double after each measured step until throughput
-// stops climbing, and the best step is the result.
+// the requests in flight double after each measured step, a fixed number
+// of times (-ramp-steps), and the best step is the result.
 package main
 
 import (
@@ -47,6 +47,7 @@ type config struct {
 	watchers    int
 	page        int
 	ramp        bool
+	rampSteps   int
 	pids        []int
 	metrics     []string
 	disk        string
@@ -77,7 +78,8 @@ func parseFlags(args []string) (config, error) {
 	fs.DurationVar(&cfg.duration, "duration", 10*time.Second, "measurement window")
 	fs.IntVar(&cfg.watchers, "watchers", 4, "watch workload: watch streams on the key prefix")
 	fs.IntVar(&cfg.page, "page", 500, "list workload: the limit of each LIST page; keys spread over 100 namespaces")
-	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step until throughput climbs less than 5%, at most 5 times; the best step is the result")
+	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step, at most -ramp-steps times, until a step falls more than 5% below the best; the best step is the result")
+	fs.IntVar(&cfg.rampSteps, "ramp-steps", 3, "-ramp: how many times it doubles -streams")
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
 	metrics := fs.String("metrics", "", "comma-separated host:port of every node's client endpoint, whose /metrics give each node's peer bytes per operation")
 	fs.StringVar(&cfg.disk, "disk", "", "device or partition in /proc/diskstats, such as sda1, whose bytes written in the window are reported per operation")
@@ -117,6 +119,8 @@ func parseFlags(args []string) (config, error) {
 		return cfg, errors.New("k8s needs -copies >= -conns")
 	case cfg.workload == "watch" && cfg.watchers < 1:
 		return cfg, errors.New("watch needs -watchers >= 1")
+	case cfg.rampSteps < 0:
+		return cfg, errors.New("-ramp-steps must not be negative")
 	case cfg.ramp && (cfg.rate > 0 || cfg.workload == "delete" || cfg.workload == "watch"):
 		return cfg, errors.New("-ramp needs max load (-rate 0) and a workload that does not run out of keys or watch")
 	case cfg.rate < 0 || cfg.preloadRate < 0 || math.IsNaN(cfg.rate) || math.IsInf(cfg.rate, 0) || math.IsNaN(cfg.preloadRate) || math.IsInf(cfg.preloadRate, 0) || cfg.duration <= 0 || cfg.warmup < 0:
@@ -304,12 +308,25 @@ const (
 	drainTimeout   = 10 * time.Second
 )
 
-// rampGain is the least gain in throughput from doubling the requests in
-// flight that -ramp takes for still climbing, and maxRampSteps the most
-// doublings it tries.
+// rampGain is the gain in throughput over the best step before it at
+// which -ramp's last step counts as still climbing: the steps measured may
+// have been too few (RampClimbing). The ramp never stops for a step that
+// climbed less: that made a store's max depend on whether one step
+// happened to clear the gain, and two stores level at every step they
+// shared reported maxes a doubling apart (#644).
+//
+// It does stop at a step that fell more than 5% below the best (rampDrop),
+// as an overload guard: such a step is most likely past the peak, and the
+// steps after it overload the store further, where a cluster overloaded
+// far enough lost its leader and failed the run (#647). That stop has an
+// edge of its own: a curve that climbs back past its best after such a
+// drop loses the later step. Of the 162 max ramps of #645's A/A benches,
+// one did (k8s at RTT 2: 81,143, then -6.1%, then 81,684), which the stop
+// reports 0.7% low; #644's gap was a doubling's worth. The steps of
+// -ramp-steps are thus a cap, not a set every run measures.
 const (
-	rampGain     = 1.05
-	maxRampSteps = 5
+	rampGain = 1.05
+	rampDrop = 0.95
 )
 
 func run(cfg config) (*result, error) {
@@ -329,11 +346,18 @@ func run(cfg config) (*result, error) {
 	if err := setup(); err != nil {
 		return nil, err
 	}
+	return ramped(cfg, s.measure)
+}
+
+// ramped measures at cfg.streams and, with -ramp, at each of -ramp-steps
+// doublings after it, until one falls more than 5% below the best
+// (rampDrop), and returns the best step.
+func ramped(cfg config, measure func(streams int) (*result, error)) (*result, error) {
 	var best *result
 	var bestErr error
 	var ramp []rampStep
 	for step, streams := 0, cfg.streams; ; step, streams = step+1, streams*2 {
-		res, err := s.measure(streams)
+		res, err := measure(streams)
 		leader := 0.0
 		if len(res.ServerCores) > 0 {
 			leader = res.ServerCores[0]
@@ -343,7 +367,8 @@ func run(cfg config) (*result, error) {
 		if best == nil || err != nil || res.Throughput > best.Throughput {
 			best, bestErr = res, err
 		}
-		if err != nil || !cfg.ramp || !climbing || step == maxRampSteps {
+		past := res.Throughput < best.Throughput*rampDrop
+		if err != nil || !cfg.ramp || step == cfg.rampSteps || past {
 			if cfg.ramp {
 				best.Ramp = ramp
 				best.RampClimbing = err == nil && climbing

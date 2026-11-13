@@ -637,7 +637,7 @@ func (t *TCP) closeAll(conns []net.Conn) {
 	for _, c := range conns {
 		var err error
 		o := t.handedOf(c)
-		switch tc, ok := c.(*tls.Conn); {
+		switch tc, ok := c.(*tconn); {
 		case o != nil:
 			err = o.Close()
 		case ok:
@@ -747,9 +747,12 @@ func (t *TCP) receive(c net.Conn) (bool, error) {
 	t.mu.Lock()
 	t.inbound[c] = inbound{id: from, version: v}
 	t.mu.Unlock()
-	tc := c.(*tls.Conn)
+	rec, err := c.(*tconn).records()
+	if err != nil {
+		return false, err
+	}
 	o := t.handOver(c)
-	if !t.loop.Post(func() { t.attachIn(tc, o, from, v) }) {
+	if !t.loop.Post(func() { t.attachIn(rec, o, from, v) }) {
 		t.release(o)
 	}
 	return true, nil
@@ -760,11 +763,11 @@ func (t *TCP) receive(c net.Conn) (bool, error) {
 // the connection's mode (fetchBit, callBit or 0 for messages), and the
 // protocol version.
 func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err error) {
-	tc, ok := c.(*tls.Conn)
+	tc, ok := c.(*tconn)
 	if !ok {
 		return 0, 0, 0, fmt.Errorf("a %T is not a TLS connection", c)
 	}
-	if err := tc.Handshake(); err != nil {
+	if err := tc.HandshakeContext(t.ctx); err != nil {
 		return 0, 0, 0, err
 	}
 	if certs := tc.ConnectionState().PeerCertificates; t.cfg.CheckClientSAN && len(certs) > 0 {
@@ -1119,9 +1122,14 @@ func (s *sender) runLane(l *lane) {
 		backoff = 50 * time.Millisecond
 		s.laneUp(l, v)
 		down := make(chan error, 1)
-		tc := c.(*tls.Conn)
+		rec, rerr := c.(*tconn).records()
+		if rerr != nil {
+			s.t.untrack(c)
+			s.laneDown(l, false)
+			return
+		}
 		o := s.t.handOver(c)
-		if !s.t.loop.Post(func() { s.attach(l, tc, o, v, down) }) {
+		if !s.t.loop.Post(func() { s.attach(l, rec, o, v, down) }) {
 			s.t.release(o)
 			s.laneDown(l, false)
 			return
@@ -1209,7 +1217,7 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 	if id&callBit != 0 {
 		size = callBuffer
 	}
-	c := tls.Client(loop.NewBridge(raw, size), &tls.Config{
+	c := newTConn(loop.NewBridge(raw, size), &tls.Config{
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return s.t.clientCert() },
 		RootCAs:              s.t.cfg.CA,
 		InsecureSkipVerify:   s.t.cfg.InsecureSkipVerify, //nolint:gosec // etcd's --peer-auto-tls
@@ -1219,7 +1227,7 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 		NextProtos: alpns(s.t.cfg.minVersion, s.t.cfg.maxVersion),
 		// As in etcd, a dialing node checks the allowed names too.
 		VerifyPeerCertificate: s.t.verify,
-	})
+	}, false)
 	if !s.t.track(c) {
 		return nil, 0, errors.Join(net.ErrClosed, c.Close())
 	}
@@ -1285,7 +1293,7 @@ func (s *sender) roundTrip() (time.Duration, error) {
 
 // handshake runs the TLS handshake, writes the preface with id and checks
 // the reply against the version ALPN chose. It returns that version.
-func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) (byte, error) {
+func (s *sender) handshake(ctx context.Context, c *tconn, id uint64) (byte, error) {
 	if err := c.SetDeadline(time.Now().Add(dialTimeout)); err != nil {
 		return 0, err
 	}
