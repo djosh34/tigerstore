@@ -19,6 +19,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 // TLS 1.3's record layer (RFC 8446, section 5), after crypto/tls's
@@ -68,8 +70,9 @@ const (
 // peer connection reaches in a few hundred GB; crypto/tls never updates
 // on its own. So a write sequence number stays far from wrapping, and a
 // KeyUpdate starts the next key at 0 with a new key and IV, so no nonce
-// repeats under a key. A test lowers it.
-var keyUpdateAfter uint64 = 1 << 24
+// repeats under a key. Each Records takes it at its handshake (updateAfter),
+// which a test lowers.
+const keyUpdateAfter uint64 = 1 << 24
 
 // appHeader starts a record whose length seal sets, and sealRoom is the
 // room a record needs past its content: the content type and the tag.
@@ -102,18 +105,32 @@ func (d *direction) next() []byte {
 	return d.nonce[:]
 }
 
-// suite is a TLS 1.3 cipher suite's hash and AES key size.
+// suite is a TLS 1.3 cipher suite's hash, key size and AEAD.
 type suite struct {
 	hash   func() hash.Hash
 	keyLen int
+	aead   func(key []byte) (cipher.AEAD, error)
 }
 
+func aesGCM(key []byte) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCM(block)
+}
+
+// suiteOf is the suite of id: every one crypto/tls negotiates in TLS 1.3.
+// ChaCha20-Poly1305 comes where AES has no hardware, or a client prefers
+// it.
 func suiteOf(id uint16) (suite, error) {
 	switch id {
 	case tls.TLS_AES_128_GCM_SHA256:
-		return suite{sha256.New, 16}, nil
+		return suite{sha256.New, 16, aesGCM}, nil
 	case tls.TLS_AES_256_GCM_SHA384:
-		return suite{sha512.New384, 32}, nil
+		return suite{sha512.New384, 32, aesGCM}, nil
+	case tls.TLS_CHACHA20_POLY1305_SHA256:
+		return suite{sha256.New, chacha20poly1305.KeySize, chacha20poly1305.New}, nil
 	}
 	return suite{}, fmt.Errorf("loop: cipher suite %s is not supported", tls.CipherSuiteName(id))
 }
@@ -128,11 +145,7 @@ func (s suite) keyed(secret []byte) (direction, error) {
 	if err != nil {
 		return direction{}, err
 	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return direction{}, err
-	}
-	aead, err := cipher.NewGCM(block)
+	aead, err := s.aead(key)
 	if err != nil {
 		return direction{}, err
 	}
@@ -264,7 +277,7 @@ func Handshake(ctx context.Context, br *Bridge, cfg *tls.Config, server bool) (*
 	if !server {
 		rdSecret, wrSecret = server13, client
 	}
-	r := &Records{br: br, state: state, suite: s}
+	r := &Records{br: br, state: state, suite: s, server: server, updateAfter: keyUpdateAfter}
 	if r.rd, err = s.keyed(rdSecret); err != nil {
 		return nil, nil, err
 	}
@@ -287,9 +300,10 @@ func Handshake(ctx context.Context, br *Bridge, cfg *tls.Config, server bool) (*
 // (a KeyUpdate's answer, an alert), so no two records take one sequence
 // number, which would repeat an AES-GCM nonce, and none mix on the wire.
 type Records struct {
-	br    *Bridge
-	state tls.ConnectionState
-	suite suite
+	br     *Bridge
+	state  tls.ConnectionState
+	suite  suite
+	server bool
 
 	// The read side, of the one goroutine that reads.
 	rd direction
@@ -302,8 +316,10 @@ type Records struct {
 	// in pieces.
 	post []byte
 	// useless counts the records in a row that brought no data: empty
-	// ones, KeyUpdates and NewSessionTickets.
+	// ones, KeyUpdates and NewSessionTickets; tickets counts the
+	// NewSessionTickets a client ignored.
 	useless int
+	tickets int
 	// err is the error that ended reading: io.EOF after close_notify.
 	err error
 
@@ -320,8 +336,10 @@ type Records struct {
 	// alert went that ends the connection.
 	werr      error
 	closeSent bool
-	// rotating is set while a KeyUpdate of keyUpdateAfter goes out.
-	rotating bool
+	// rotating is set while a KeyUpdate goes out, and updateAfter is how
+	// many records a write key seals before one (keyUpdateAfter).
+	rotating    bool
+	updateAfter uint64
 }
 
 // maxUseless is how many records in a row that bring no data a connection
@@ -363,7 +381,7 @@ func (r *Records) Read(p []byte) (int, error) {
 // openNext opens the next record in place and takes its content.
 func (r *Records) openNext() error {
 	if err := r.br.fill(recordHeader); err != nil {
-		return err
+		return r.readFailed(err)
 	}
 	hdr := r.br.buffered()[:recordHeader]
 	n := int(binary.BigEndian.Uint16(hdr[3:]))
@@ -377,7 +395,7 @@ func (r *Records) openNext() error {
 		return r.fail(alertDecodeError, fmt.Errorf("loop: a TLS record of %d bytes, too short for its tag", n))
 	}
 	if err := r.br.fill(recordHeader + n); err != nil {
-		return err
+		return r.readFailed(err)
 	}
 	rec := r.br.buffered()[:recordHeader+n]
 	if r.rd.seq == math.MaxUint64 {
@@ -429,6 +447,22 @@ func (r *Records) openNext() error {
 	return r.fail(alertUnexpected, fmt.Errorf("loop: a TLS record of inner type %d", typ))
 }
 
+// readFailed returns what a failed read of the socket means, as crypto/tls
+// takes it: an end within a record is io.ErrUnexpectedEOF, not an orderly
+// io.EOF, and an error that is not temporary, such as ErrWouldBlock or a
+// deadline, ends reading for good.
+func (r *Records) readFailed(err error) error {
+	if errors.Is(err, io.EOF) && len(r.br.buffered()) > 0 {
+		err = io.ErrUnexpectedEOF
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() || errors.Is(err, ErrWouldBlock) {
+		return err
+	}
+	r.err = err
+	return err
+}
+
 // alert takes an alert as crypto/tls does in TLS 1.3: close_notify ends
 // the stream, user_canceled is dropped, and every other one ends the
 // connection with an error.
@@ -465,6 +499,15 @@ func (r *Records) postHandshake(b []byte) error {
 		r.post = r.post[4+n:]
 		switch typ {
 		case msgNewSessionTicket:
+			// Only a server sends one; a client that keeps no sessions
+			// ignores it once it parses.
+			if r.server {
+				return r.fail(alertUnexpected, errors.New("loop: a NewSessionTicket from a TLS client"))
+			}
+			if !validTicket(body) {
+				return r.fail(alertDecodeError, errors.New("loop: a malformed TLS NewSessionTicket"))
+			}
+			r.tickets++
 		case msgKeyUpdate:
 			if len(body) != 1 || body[0] > 1 {
 				return r.fail(alertDecodeError, errors.New("loop: a malformed TLS KeyUpdate"))
@@ -495,10 +538,38 @@ func (r *Records) postHandshake(b []byte) error {
 	return nil
 }
 
+// validTicket reports whether b is a NewSessionTicket's body (RFC 8446,
+// 4.6.1): its lifetime, age add, a nonce of up to 255 bytes, a ticket of
+// 1 to 2^16-1 and extensions, and nothing after.
+func validTicket(b []byte) bool {
+	if len(b) < 9 {
+		return false
+	}
+	b = b[8:]
+	nonce := int(b[0])
+	if len(b) < 1+nonce+2 {
+		return false
+	}
+	b = b[1+nonce:]
+	ticket := int(binary.BigEndian.Uint16(b))
+	if ticket == 0 || len(b) < 2+ticket+2 {
+		return false
+	}
+	b = b[2+ticket:]
+	ext := int(binary.BigEndian.Uint16(b))
+	return len(b) == 2+ext
+}
+
 // updateWrite sends a KeyUpdate that asks for none back, and writes on
-// under the next keys. wmu is held.
+// under the next keys. The KeyUpdate itself starts no further one
+// (rotate): that would go out under the old key, after the peer moved on.
+// wmu is held.
 func (r *Records) updateWrite() error {
-	if err := r.record(typeHandshake, []byte{msgKeyUpdate, 0, 0, 1, 0}); err != nil {
+	was := r.rotating
+	r.rotating = true
+	err := r.record(typeHandshake, []byte{msgKeyUpdate, 0, 0, 1, 0})
+	r.rotating = was
+	if err != nil {
 		return err
 	}
 	wr, err := r.suite.updated(&r.wr)
@@ -585,12 +656,10 @@ func (r *Records) seal(typ byte) {
 // rotate sends a KeyUpdate once the write key sealed keyUpdateAfter
 // records. wmu is held.
 func (r *Records) rotate() {
-	if r.wr.seq < keyUpdateAfter || r.rotating || r.werr != nil {
+	if r.wr.seq < r.updateAfter || r.rotating || r.werr != nil {
 		return
 	}
-	r.rotating = true
 	_ = r.updateWrite()
-	r.rotating = false
 }
 
 // record writes content as one record of inner type typ: sealed and sent
