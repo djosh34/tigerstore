@@ -33,11 +33,8 @@ func burstConfig(seed uint64) Config {
 // out: with 54 clients at once its search ran past its bound on most
 // seeds, as #244's long histories did.
 func TestCutTurnsStayLinearizable(t *testing.T) {
-	seeds := make([]uint64, 8)
-	for i := range seeds {
-		seeds[i] = 6491 + uint64(i)
-	}
-	simrun.Each(t, seeds, func(t *testing.T, seed uint64) struct{} {
+	// 8 seeds from 6491 by default; a sim-campaign sets others.
+	simrun.Seeds(t, 6491, 8, func(t *testing.T, seed uint64) struct{} {
 		res := run(t, burstConfig(seed))
 		checkers(t, res)
 		t.Logf("seed %d: %d turns cut, %d calls succeeded, %d by clientv3", seed, res.Stats.CutTurns, res.Stats.OK, res.Stats.V3OK)
