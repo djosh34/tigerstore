@@ -11,7 +11,7 @@ import (
 // every 100 ms, with the default faults, while a node's turn takes at
 // most 8 calls: its loop takes more calls at once than fit in a turn and
 // defers the rest to its next turns, as a node at 256 calls a turn does
-// under load (node.MaxTurnTime, #649). With 400 clients on each node at
+// under load (node.Node.TurnRoom, #649). With 400 clients on each node at
 // 256 calls a turn, a seed's 95,000 operations, of which hundreds were
 // ambiguous at each crash, took the witness checker past its search's
 // bound.

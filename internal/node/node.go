@@ -1130,15 +1130,15 @@ func (n *Node) Busy() bool {
 	return n.full
 }
 
-// MaxTurnTime bounds a turn of the node's loop that clients keep busy. A
-// turn ends with the core's work and its replies, and only then do Raft's
-// ticks and heartbeats go on: a turn that took every call that had
-// arrived grew with the load (#647). A turn takes the calls that fit in
-// MaxTurnTime at what a call cost turns lately (turnFit), and at least
-// minTurnCalls; the rest come in the next turn, after the ticks. A bound
-// on the calls alone cut every turn's batch at any load, and cost put 5
-// to 8% of its throughput (#649).
-const MaxTurnTime = 15 * time.Millisecond
+// A turn of the node's loop ends with the core's work and its replies,
+// and only then do Raft's ticks and heartbeats go on: a turn that took
+// every call that had arrived grew with the load (#647). So a turn takes
+// the calls that fit in the time left before the node's next tick is due,
+// at what a call cost turns lately (turnFit), and at least minTurnCalls;
+// the rest come in the next turn, which takes the tick. A bound on the
+// calls alone cut every turn's batch at any load, and cost put 5 to 8% of
+// its throughput; a fixed 15 ms cut k8s's dearer calls and cost it up to
+// 6% at RTT 0 (#649).
 
 // minTurnCalls is the fewest calls a turn takes, so that a turn slowed by
 // other work still takes clients' calls; measuredTurnCalls the fewest
@@ -1167,17 +1167,18 @@ func (n *Node) TurnRoom() int {
 	return max(n.turnLimit-n.turnCalls, 0)
 }
 
-// turnFit is how many calls fit in a turn at what a call cost turns
-// lately: firstTurnCalls before the first measure, and while turns take
-// no time, as in the simulator, whose clock stands still in a turn.
-func (n *Node) turnFit() int {
+// turnFit is how many calls fit in a turn that has until the node's next
+// tick is due, at most a tick, at what a call cost turns lately:
+// firstTurnCalls before the first measure, and while turns take no time,
+// as in the simulator, whose clock stands still in a turn.
+func (n *Node) turnFit(until time.Duration) int {
 	if n.perCall <= 0 {
 		if n.cfg.TurnCalls > 0 {
 			return n.cfg.TurnCalls
 		}
 		return firstTurnCalls
 	}
-	return max(int(MaxTurnTime/n.perCall), minTurnCalls)
+	return max(int(min(max(until, 0), n.cfg.Tick)/n.perCall), minTurnCalls)
 }
 
 // turnTook measures what a call cost the turn that ends, which took calls
@@ -1579,7 +1580,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if n.cfg.Took != nil && n.turnCalls > 0 {
 			n.cfg.Took(n.turnCalls, n.turnLimit, n.loop.Holding())
 		}
-		n.turnCalls, n.turnLimit, n.turnStart = 0, n.turnFit(), time.Now()
+		now := time.Now()
+		tick := started.Add(time.Duration(clock.due) * n.cfg.Tick)
+		n.turnCalls, n.turnLimit, n.turnStart = 0, n.turnFit(tick.Sub(now)), now
 		n.loop.Dispatch(!full)
 		dones = takeAll(n.persisted, dones[:0])
 		for _, done := range dones {
