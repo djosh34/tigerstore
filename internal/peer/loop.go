@@ -139,6 +139,9 @@ func (t *TCP) attachIn(c *loop.Records, o *owned, from uint64, v byte) {
 // one, which it keeps, and reads nothing more until the node takes it:
 // the peer's control lane goes on, and its data lane waits in TCP.
 func (c *inConn) Ready() {
+	// The records may answer a KeyUpdate as they read: the answer goes
+	// out with the turn, though the connection writes nothing else.
+	defer c.sendAnswers()
 	if c.held != nil {
 		if c.busy() {
 			return
@@ -266,6 +269,17 @@ func (c *inConn) close() {
 	c.t.release(c.own)
 	// The socket closes too: a pump's goroutines end with it.
 	_ = c.br.Close()
+}
+
+// sendAnswers sends what the records wrote while they read, such as the
+// answer to a KeyUpdate that asked for one.
+func (c *inConn) sendAnswers() {
+	if c.closed || c.br.Pending() == 0 {
+		return
+	}
+	if err := c.tc.Flush(); err != nil {
+		c.fail(err)
+	}
 }
 
 // Stopped closes the connection once the node stopped.

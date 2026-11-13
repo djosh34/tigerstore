@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -354,5 +356,197 @@ func TestRecordsUpdateTheirKey(t *testing.T) {
 	}
 	if bytes.Equal(r.wr.secret, second) {
 		t.Fatal("the loop's writes did not update the key")
+	}
+}
+
+// ours runs our handshake on both ends of a connection.
+func ours(t *testing.T) (server, client *Records) {
+	t.Helper()
+	p := newPKI(t)
+	a, b := tcpPair(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	type res struct {
+		r   *Records
+		err error
+	}
+	cc := make(chan res, 1)
+	go func() {
+		r, _, err := Handshake(ctx, NewBridge(b, 4<<10), p.client(), false)
+		cc <- res{r, err}
+	}()
+	srv, _, err := Handshake(ctx, NewBridge(a, 4<<10), p.server(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := <-cc
+	if c.err != nil {
+		t.Fatal(c.err)
+	}
+	return srv, c.r
+}
+
+// send has w send one record of inner type typ with content, under its
+// lock.
+func send(t *testing.T, w *Records, typ byte, content []byte) {
+	t.Helper()
+	w.wmu.Lock()
+	err := w.record(typ, content)
+	w.wmu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRecordsAnswerKeyUpdate has our client ask our server for a key
+// update: the server answers while it reads, the client's read key moves
+// on, and data still goes both ways.
+func TestRecordsAnswerKeyUpdate(t *testing.T) {
+	srv, cli := ours(t)
+	firstRead := cli.rd.secret
+	send(t, cli, typeHandshake, []byte{msgKeyUpdate, 0, 0, 1, 1})
+	cli.wmu.Lock()
+	wr, err := cli.suite.updated(&cli.wr)
+	cli.wr = wr
+	cli.wmu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _, _ = cli.Write([]byte("ping")) }()
+	got := make([]byte, 4)
+	if _, err := io.ReadFull(srv, got); err != nil || string(got) != "ping" {
+		t.Fatalf("the server read %q, %v", got, err)
+	}
+	go func() { _, _ = srv.Write([]byte("pong")) }()
+	if _, err := io.ReadFull(cli, got); err != nil || string(got) != "pong" {
+		t.Fatalf("the client read %q, %v", got, err)
+	}
+	if bytes.Equal(cli.rd.secret, firstRead) {
+		t.Fatal("the server did not answer the KeyUpdate: the client reads under its first key")
+	}
+}
+
+// TestRecordsFatalAlert sends crypto/tls a damaged record: it answers with
+// bad_record_mac, which our read returns as the peer's error.
+func TestRecordsFatalAlert(t *testing.T) {
+	p := newPKI(t)
+	r, tc := pair(t, true, p.server(), p.client())
+	go func() { _, _ = tc.Read(make([]byte, 16)) }()
+	r.wmu.Lock()
+	r.wr.seq++ // the next record goes under a nonce crypto/tls does not expect
+	err := r.record(typeAppData, []byte("hello"))
+	r.wmu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.Read(make([]byte, 16))
+	var alert tls.AlertError
+	if !errors.As(err, &alert) || alert != alertBadRecordMAC {
+		t.Fatalf("our read after crypto/tls refused our record gave %v, want its bad_record_mac", err)
+	}
+}
+
+// TestRecordsWriteWhileAnswering writes from one goroutine while another
+// reads and answers the peer's KeyUpdates, as net/http and the peer
+// transport do before Attach: every record takes a sequence number of its
+// own, so the peer opens every one, and the race detector finds nothing.
+func TestRecordsWriteWhileAnswering(t *testing.T) {
+	srv, cli := ours(t)
+	const updates, writes = 50, 200
+	done := make(chan error, 2)
+	// The server writes, and reads, answering the client's KeyUpdates.
+	go func() {
+		for i := range writes {
+			if _, err := srv.Write(fmt.Appendf(nil, "%04d", i)); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- nil
+	}()
+	go func() {
+		// A data record after each KeyUpdate, as a connection that is
+		// not idle sends: more than 16 KeyUpdates in a row are refused.
+		got := make([]byte, updates+4)
+		_, err := io.ReadFull(srv, got)
+		done <- err
+	}()
+	for range updates {
+		send(t, cli, typeHandshake, []byte{msgKeyUpdate, 0, 0, 1, 1})
+		cli.wmu.Lock()
+		wr, err := cli.suite.updated(&cli.wr)
+		cli.wr = wr
+		cli.wmu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := cli.Write([]byte("x")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := cli.Write([]byte("done")); err != nil {
+		t.Fatal(err)
+	}
+	got := make([]byte, 4*writes)
+	if _, err := io.ReadFull(cli, got); err != nil {
+		t.Fatalf("the client read %d records' worth, then %v", len(got), err)
+	}
+	for i := range writes {
+		if want := fmt.Sprintf("%04d", i); string(got[4*i:4*i+4]) != want {
+			t.Fatalf("record %d read %q, want %q", i, got[4*i:4*i+4], want)
+		}
+	}
+	for range 2 {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestRecordsRefuseWhatTLS13Forbids sends records that RFC 8446 (5.1)
+// and crypto/tls refuse, each on a fresh connection, and one alert that
+// both drop.
+func TestRecordsRefuseWhatTLS13Forbids(t *testing.T) {
+	cases := []struct {
+		name string
+		send func(t *testing.T, w *Records)
+		want string
+	}{
+		{"two KeyUpdates in one record", func(t *testing.T, w *Records) {
+			send(t, w, typeHandshake, []byte{msgKeyUpdate, 0, 0, 1, 0, msgKeyUpdate, 0, 0, 1, 0})
+		}, "after a KeyUpdate"},
+		{"data within a handshake message", func(t *testing.T, w *Records) {
+			send(t, w, typeHandshake, []byte{msgNewSessionTicket, 0, 0, 8})
+			send(t, w, typeAppData, []byte("data"))
+		}, "within a handshake message"},
+		{"an empty handshake record", func(t *testing.T, w *Records) {
+			send(t, w, typeHandshake, nil)
+		}, "empty TLS record"},
+		{"17 empty records", func(t *testing.T, w *Records) {
+			for range maxUseless + 1 {
+				send(t, w, typeAppData, nil)
+			}
+		}, "too many"},
+		{"plaintext over 2^14+1", func(t *testing.T, w *Records) {
+			send(t, w, typeAppData, make([]byte, maxPlaintext+1))
+		}, "over 2^14+1"},
+	}
+	for _, c := range cases {
+		srv, cli := ours(t)
+		go c.send(t, cli)
+		_, err := srv.Read(make([]byte, 64<<10))
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: read %v, want an error about %q", c.name, err, c.want)
+		}
+	}
+	// user_canceled is dropped, and data after it reads.
+	srv, cli := ours(t)
+	go func() {
+		send(t, cli, typeAlert, []byte{1, alertUserCanceled})
+		_, _ = cli.Write([]byte("after"))
+	}()
+	got := make([]byte, 5)
+	if _, err := io.ReadFull(srv, got); err != nil || string(got) != "after" {
+		t.Fatalf("after user_canceled the server read %q, %v", got, err)
 	}
 }

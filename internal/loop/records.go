@@ -44,10 +44,13 @@ const (
 	typeHandshake = 22
 	typeAppData   = 23
 
-	alertCloseNotify  = 0
-	alertUnexpected   = 10
-	alertBadRecordMAC = 20
-	alertDecodeError  = 50
+	alertCloseNotify    = 0
+	alertUnexpected     = 10
+	alertBadRecordMAC   = 20
+	alertRecordOverflow = 22
+	alertDecodeError    = 50
+	alertInternal       = 80
+	alertUserCanceled   = 90
 
 	msgNewSessionTicket = 4
 	msgKeyUpdate        = 24
@@ -159,9 +162,8 @@ func expandLabel(h func() hash.Hash, secret []byte, label string, n int) ([]byte
 }
 
 // secrets keeps the application traffic secrets crypto/tls logs during a
-// handshake.
+// handshake, which runs on the goroutine that reads them after it.
 type secrets struct {
-	mu             sync.Mutex
 	client, server []byte
 }
 
@@ -183,9 +185,7 @@ func (k *secrets) Write(p []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	k.mu.Lock()
 	*to = s
-	k.mu.Unlock()
 	return len(p), nil
 }
 
@@ -251,9 +251,8 @@ func Handshake(ctx context.Context, br *Bridge, cfg *tls.Config, server bool) (*
 	if br.recLeft != 0 {
 		return nil, nil, errors.New("loop: crypto/tls's handshake ended within a record")
 	}
-	k.mu.Lock()
+	// crypto/tls logged them on this goroutine, during the handshake.
 	client, server13 := k.client, k.server
-	k.mu.Unlock()
 	if client == nil || server13 == nil {
 		return nil, nil, errors.New("loop: crypto/tls logged no traffic secrets")
 	}
@@ -281,34 +280,53 @@ func Handshake(ctx context.Context, br *Bridge, cfg *tls.Config, server bool) (*
 // the loop, a read fails with ErrWouldBlock until a whole record has
 // arrived, and a write only goes into the bridge's write buffer, which
 // Flush seals and sends.
+//
+// One goroutine reads at a time, and writes may come from another, as
+// net/http's HTTP/1.1 server and the peer transport's calls do before
+// Attach: every record goes out under wmu, those that a read sends too
+// (a KeyUpdate's answer, an alert), so no two records take one sequence
+// number, which would repeat an AES-GCM nonce, and none mix on the wire.
 type Records struct {
 	br    *Bridge
 	state tls.ConnectionState
 	suite suite
-	rd    direction
-	wr    direction
+
+	// The read side, of the one goroutine that reads.
+	rd direction
 	// plain is the plaintext of the record that was opened last and that
 	// Read has not taken; it lies in the bridge's read buffer, whose held
 	// bytes the record took up, and which stay until plain is taken.
 	plain []byte
 	held  int
-	// post holds handshake messages after the handshake while they arrive
+	// post holds a handshake message after the handshake while it arrives
 	// in pieces.
 	post []byte
+	// useless counts the records in a row that brought no data: empty
+	// ones, KeyUpdates and NewSessionTickets.
+	useless int
+	// err is the error that ended reading: io.EOF after close_notify.
+	err error
+
+	// The write side, under wmu.
+	wmu sync.Mutex
+	wr  direction
 	// open is how many bytes the record being written takes at the end of
 	// the bridge's write buffer, its header included; 0 for none.
 	open int
 	// scratch holds a record that is sealed and written at once, before
 	// Attach.
 	scratch []byte
-	// err is the error that ended reading: io.EOF after close_notify, and
-	// werr the one that ended writing.
-	err       error
+	// werr is the error that ended writing, and closeSent is set once an
+	// alert went that ends the connection.
 	werr      error
 	closeSent bool
 	// rotating is set while a KeyUpdate of keyUpdateAfter goes out.
 	rotating bool
 }
+
+// maxUseless is how many records in a row that bring no data a connection
+// takes, as crypto/tls's maxUselessRecords.
+const maxUseless = 16
 
 var _ net.Conn = (*Records)(nil)
 
@@ -349,8 +367,14 @@ func (r *Records) openNext() error {
 	}
 	hdr := r.br.buffered()[:recordHeader]
 	n := int(binary.BigEndian.Uint16(hdr[3:]))
-	if hdr[0] != typeAppData || n < 1+tagSize || n > maxCiphertext {
-		return r.fail(alertUnexpected, fmt.Errorf("loop: a TLS record of type %d and %d bytes after the handshake", hdr[0], n))
+	if hdr[0] != typeAppData {
+		return r.fail(alertUnexpected, fmt.Errorf("loop: a TLS record of type %d after the handshake", hdr[0]))
+	}
+	if n > maxCiphertext {
+		return r.fail(alertRecordOverflow, fmt.Errorf("loop: a TLS record of %d bytes, over 2^14+256", n))
+	}
+	if n < 1+tagSize {
+		return r.fail(alertDecodeError, fmt.Errorf("loop: a TLS record of %d bytes, too short for its tag", n))
 	}
 	if err := r.br.fill(recordHeader + n); err != nil {
 		return err
@@ -366,6 +390,9 @@ func (r *Records) openNext() error {
 		return r.fail(alertBadRecordMAC, fmt.Errorf("loop: a TLS record does not open: %w", err))
 	}
 	r.held = recordHeader + n
+	if len(pt) > maxPlaintext+1 {
+		return r.fail(alertRecordOverflow, errors.New("loop: a TLS record over 2^14+1 bytes of plaintext"))
+	}
 	// The content type is the last byte that is not padding.
 	i := len(pt) - 1
 	for i >= 0 && pt[i] == 0 {
@@ -374,11 +401,23 @@ func (r *Records) openNext() error {
 	if i < 0 {
 		return r.fail(alertUnexpected, errors.New("loop: a TLS record without a content type"))
 	}
-	content := pt[:i]
-	if len(content) > maxPlaintext {
-		return r.fail(alertUnexpected, errors.New("loop: a TLS record over 16 KiB of plaintext"))
+	typ, content := pt[i], pt[:i]
+	// A handshake message must not be split by another record type (RFC
+	// 8446, 5.1), and only application data may be empty.
+	if typ != typeHandshake && len(r.post) > 0 {
+		return r.fail(alertUnexpected, fmt.Errorf("loop: a TLS record of inner type %d within a handshake message", typ))
 	}
-	switch pt[i] {
+	if len(content) == 0 && typ != typeAppData {
+		return r.fail(alertUnexpected, fmt.Errorf("loop: an empty TLS record of inner type %d", typ))
+	}
+	if typ != typeAppData || len(content) == 0 {
+		if r.useless++; r.useless > maxUseless {
+			return r.fail(alertUnexpected, errors.New("loop: too many TLS records in a row without data"))
+		}
+	} else {
+		r.useless = 0
+	}
+	switch typ {
 	case typeAppData:
 		r.plain = content
 		return nil
@@ -387,26 +426,31 @@ func (r *Records) openNext() error {
 	case typeHandshake:
 		return r.postHandshake(content)
 	}
-	return r.fail(alertUnexpected, fmt.Errorf("loop: a TLS record of inner type %d", pt[i]))
+	return r.fail(alertUnexpected, fmt.Errorf("loop: a TLS record of inner type %d", typ))
 }
 
-// alert takes an alert: close_notify ends the stream, and every other one
-// ends the connection with an error, as crypto/tls does in TLS 1.3.
+// alert takes an alert as crypto/tls does in TLS 1.3: close_notify ends
+// the stream, user_canceled is dropped, and every other one ends the
+// connection with an error.
 func (r *Records) alert(b []byte) error {
 	if len(b) != 2 {
 		return r.fail(alertDecodeError, errors.New("loop: a malformed TLS alert"))
 	}
-	if b[1] == alertCloseNotify {
+	switch b[1] {
+	case alertCloseNotify:
 		r.err = io.EOF
-		return nil
+	case alertUserCanceled:
+	default:
+		r.err = &net.OpError{Op: "remote error", Err: tls.AlertError(b[1])}
 	}
-	r.err = &net.OpError{Op: "remote error", Err: tls.AlertError(b[1])}
 	return nil
 }
 
 // postHandshake takes the handshake messages after the handshake: a
 // KeyUpdate, which it answers if asked, and a NewSessionTicket, which it
-// ignores, as a client that keeps no sessions.
+// ignores, as a client that keeps no sessions. A message may come in
+// pieces, but none may follow a KeyUpdate in its record: the record after
+// a key change is under the new key (RFC 8446, 5.1).
 func (r *Records) postHandshake(b []byte) error {
 	r.post = append(r.post, b...)
 	for len(r.post) >= 4 {
@@ -418,26 +462,32 @@ func (r *Records) postHandshake(b []byte) error {
 			break
 		}
 		typ, body := r.post[0], r.post[4:4+n]
+		r.post = r.post[4+n:]
 		switch typ {
 		case msgNewSessionTicket:
 		case msgKeyUpdate:
 			if len(body) != 1 || body[0] > 1 {
 				return r.fail(alertDecodeError, errors.New("loop: a malformed TLS KeyUpdate"))
 			}
+			if len(r.post) > 0 {
+				return r.fail(alertUnexpected, errors.New("loop: TLS handshake bytes after a KeyUpdate in its record"))
+			}
 			rd, err := r.suite.updated(&r.rd)
 			if err != nil {
-				return err
+				return r.fail(alertInternal, err)
 			}
 			r.rd = rd
 			if body[0] == 1 {
-				if err := r.updateWrite(); err != nil {
+				r.wmu.Lock()
+				err := r.updateWrite()
+				r.wmu.Unlock()
+				if err != nil {
 					return err
 				}
 			}
 		default:
 			return r.fail(alertUnexpected, fmt.Errorf("loop: a TLS handshake message of type %d after the handshake", typ))
 		}
-		r.post = r.post[4+n:]
 	}
 	if len(r.post) == 0 {
 		r.post = nil
@@ -446,13 +496,14 @@ func (r *Records) postHandshake(b []byte) error {
 }
 
 // updateWrite sends a KeyUpdate that asks for none back, and writes on
-// under the next keys.
+// under the next keys. wmu is held.
 func (r *Records) updateWrite() error {
 	if err := r.record(typeHandshake, []byte{msgKeyUpdate, 0, 0, 1, 0}); err != nil {
 		return err
 	}
 	wr, err := r.suite.updated(&r.wr)
 	if err != nil {
+		r.werr = err
 		return err
 	}
 	r.wr = wr
@@ -461,16 +512,17 @@ func (r *Records) updateWrite() error {
 
 // fail sends the peer alert desc, best effort, and ends reading with err.
 func (r *Records) fail(desc byte, err error) error {
-	if !r.closeSent {
+	r.wmu.Lock()
+	if !r.closeSent && r.werr == nil {
 		r.closeSent = true
 		if !r.br.Attached() {
 			_ = r.br.Conn.SetWriteDeadline(time.Now().Add(alertWait))
 		}
-		_ = r.record(typeAlert, []byte{2, desc})
-		if r.br.Attached() {
+		if r.record(typeAlert, []byte{2, desc}) == nil && r.br.Attached() {
 			_ = r.br.Flush()
 		}
 	}
+	r.wmu.Unlock()
 	r.err = err
 	return err
 }
@@ -478,6 +530,8 @@ func (r *Records) fail(desc byte, err error) error {
 // Write writes plaintext: before Attach it seals and sends it at once,
 // after it into the open record at the end of the bridge's write buffer.
 func (r *Records) Write(p []byte) (int, error) {
+	r.wmu.Lock()
+	defer r.wmu.Unlock()
 	if r.closeSent {
 		return 0, net.ErrClosed
 	}
@@ -515,7 +569,7 @@ func (r *Records) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// seal seals the open record in place, as inner type typ.
+// seal seals the open record in place, as inner type typ. wmu is held.
 func (r *Records) seal(typ byte) {
 	// Room for the content type and the tag, then the record again.
 	_, _ = r.br.Write(sealRoom[:])
@@ -529,22 +583,24 @@ func (r *Records) seal(typ byte) {
 }
 
 // rotate sends a KeyUpdate once the write key sealed keyUpdateAfter
-// records.
+// records. wmu is held.
 func (r *Records) rotate() {
 	if r.wr.seq < keyUpdateAfter || r.rotating || r.werr != nil {
 		return
 	}
 	r.rotating = true
-	if err := r.updateWrite(); err != nil {
-		r.werr = err
-	}
+	_ = r.updateWrite()
 	r.rotating = false
 }
 
 // record writes content as one record of inner type typ: sealed and sent
 // at once before Attach, and after the open record at the end of the
-// bridge's write buffer after it.
+// bridge's write buffer after it. A record that failed to go out before
+// Attach ends writing: nothing may follow it. wmu is held.
 func (r *Records) record(typ byte, content []byte) error {
+	if r.werr != nil {
+		return r.werr
+	}
 	if !r.br.Attached() {
 		n := recordHeader + len(content) + 1 + tagSize
 		if cap(r.scratch) < n {
@@ -558,6 +614,7 @@ func (r *Records) record(typ byte, content []byte) error {
 		body[len(content)] = typ
 		r.wr.aead.Seal(body[:0], r.wr.next(), body, rec[:recordHeader])
 		if _, err := r.br.Conn.Write(rec); err != nil {
+			r.werr = err
 			return err
 		}
 		r.rotate()
@@ -574,12 +631,14 @@ func (r *Records) record(typ byte, content []byte) error {
 	}
 	r.open = recordHeader + len(content)
 	r.seal(typ)
-	return nil
+	return r.werr
 }
 
 // Flush seals the open record and sends what the bridge holds, as far as
 // the socket takes it now (Bridge.Flush).
 func (r *Records) Flush() error {
+	r.wmu.Lock()
+	defer r.wmu.Unlock()
 	if r.open > 0 {
 		r.seal(typeAppData)
 	}
@@ -590,6 +649,7 @@ func (r *Records) Flush() error {
 // Before Attach the alert waits at most for the write deadline set; after
 // it, it goes only as far as the socket takes it at once.
 func (r *Records) Close() error {
+	r.wmu.Lock()
 	if !r.closeSent {
 		r.closeSent = true
 		if !r.br.Attached() {
@@ -599,6 +659,7 @@ func (r *Records) Close() error {
 			_ = r.br.Flush()
 		}
 	}
+	r.wmu.Unlock()
 	return r.br.Close()
 }
 

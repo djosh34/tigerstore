@@ -15,15 +15,14 @@ import (
 // and after it the loop's own records (loop.Handshake), which a message
 // connection keeps when the loop takes it. It is what the transport
 // tracks from the dial or the accept on, so that a close before the
-// handshake is done closes the raw connection. Its write side is locked,
-// as crypto/tls's is: a call or a fetch may be closed from another
-// goroutine while it writes.
+// handshake is done closes the raw connection. The records lock their own
+// write side, as crypto/tls does: a call or a fetch may be closed from
+// another goroutine while it writes.
 type tconn struct {
 	br     *loop.Bridge
 	cfg    *tls.Config
 	server bool
-	// mu guards rec, which the handshake sets, and the record layer's
-	// write side.
+	// mu guards rec, which the handshake sets.
 	mu  sync.Mutex
 	rec *loop.Records
 }
@@ -59,16 +58,16 @@ func (c *tconn) HandshakeContext(ctx context.Context) error {
 	return nil
 }
 
+// errNoHandshake is the error of a read or write before the handshake,
+// which the transport always runs first.
+var errNoHandshake = errors.New("peer: a TLS connection used before its handshake")
+
 // records is the record layer, once the handshake is done.
 func (c *tconn) records() (*loop.Records, error) {
 	c.mu.Lock()
-	r := c.rec
-	c.mu.Unlock()
-	if r != nil {
-		return r, nil
-	}
-	if err := c.HandshakeContext(context.Background()); err != nil {
-		return nil, err
+	defer c.mu.Unlock()
+	if c.rec == nil {
+		return nil, errNoHandshake
 	}
 	return c.rec, nil
 }
@@ -97,20 +96,17 @@ func (c *tconn) Write(p []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	return r.Write(p)
 }
 
 // Close sends close_notify once the handshake is done, as crypto/tls's
 // close does, and closes the connection.
 func (c *tconn) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.rec == nil {
+	r, err := c.records()
+	if err != nil {
 		return c.br.Close()
 	}
-	return c.rec.Close()
+	return r.Close()
 }
 
 func (c *tconn) LocalAddr() net.Addr                { return c.br.LocalAddr() }
