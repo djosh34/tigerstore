@@ -1111,7 +1111,7 @@ func (n *Node) Busy() bool { return n.full }
 // loop. A turn ends with the core's work and its replies, and only then do
 // Raft's ticks and heartbeats go on: a turn that took every call that had
 // arrived grew with the load (#647).
-const maxTurnCalls = 1024
+const maxTurnCalls = 256
 
 // TurnRoom is how many more calls the node takes from clients in this turn
 // of its loop; a client connection that has more reads them in the next
