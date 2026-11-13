@@ -387,6 +387,13 @@ func ours(t *testing.T) (server, client *Records) {
 	if c.err != nil {
 		t.Fatal(c.err)
 	}
+	// A refusal a test waits for fails it at the deadline, not at the
+	// test binary's timeout, if the code under test lets the record pass.
+	for _, r := range []*Records{srv, c.r} {
+		if err := r.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return srv, c.r
 }
 
@@ -940,6 +947,11 @@ func TestRecordsRefusePaddedOverflow(t *testing.T) {
 	}()
 	if _, err := srv.Read(make([]byte, 64)); err == nil || !strings.Contains(err.Error(), "over 2^14+1") {
 		t.Fatalf("a record padded past 2^14+1 gave %v", err)
+	}
+	// The sender hears record_overflow.
+	var alert tls.AlertError
+	if _, err := cli.Read(make([]byte, 16)); !errors.As(err, &alert) || alert != alertRecordOverflow {
+		t.Fatalf("the sender of a record past 2^14+1 read %v, want record_overflow", err)
 	}
 }
 
