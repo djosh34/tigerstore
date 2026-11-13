@@ -42,12 +42,14 @@ type slabClass struct {
 
 // slabChunk is one chunk of a class: its bytes, the cache entry that owns
 // each slot, and a bitmap of the free slots below the class's fresh, of
-// which there are nfree. Neither holds a pointer.
+// which there are nfree, none in the words before word. Neither holds a
+// pointer.
 type slabChunk struct {
 	data  []byte
 	owner []int32
 	free  []uint64
 	nfree int
+	word  int
 }
 
 // slot names where a value is: slot n of its class, or place n of big if
@@ -149,14 +151,14 @@ func (sl *slabs) takeFree(ci int) (uint32, bool) {
 		if ch.nfree == 0 {
 			continue
 		}
-		for w, word := range ch.free {
-			if word != 0 {
+		for ; ch.word < len(ch.free); ch.word++ {
+			if word := ch.free[ch.word]; word != 0 {
 				b := bits.TrailingZeros64(word)
-				ch.free[w] &^= 1 << b
+				ch.free[ch.word] &^= 1 << b
 				ch.nfree--
 				c.nfree--
 				sl.freed -= int64(classSizes[ci])
-				return uint32(c.low)*perChunk(ci) + uint32(w*64+b), true
+				return uint32(c.low)*perChunk(ci) + uint32(ch.word*64+b), true
 			}
 		}
 	}
@@ -197,6 +199,7 @@ func (sl *slabs) free(s slot) {
 	ch := &c.chunks[k]
 	i := s.n % per
 	ch.free[i/64] |= 1 << (i % 64)
+	ch.word = min(ch.word, int(i/64))
 	ch.nfree++
 	c.nfree++
 	c.low = min(c.low, k)

@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 	"time"
 
@@ -213,17 +214,24 @@ func TestCacheRebuildsForNewSizes(t *testing.T) {
 // whole cache at once took 1.8 s with 900 MB cached, past the election
 // timeout, and the leader lost its leadership.
 func TestShrinkingCacheTakesShortSteps(t *testing.T) {
-	const (
-		size  = 1000
-		total = 256 << 20
-		count = total / size
-	)
-	val := func(i int) []byte { return bytes.Repeat([]byte{byte(i), byte(i >> 8), byte(i >> 16), 7}, size/4) }
-	ref := func(i int) mvcc.Ref { return mvcc.Ref{Index: uint64(i + 1), Len: size} }
-	for _, shrink := range []string{"limit", "drops"} {
-		t.Run(shrink, func(t *testing.T) {
+	// Values of 16 bytes fill a chunk's slots 65,536 to the chunk, so a
+	// step that moves many of them must not search the chunk's free
+	// slots from its start for each.
+	for _, tc := range []struct {
+		shrink      string
+		size, total int
+	}{{"limit", 1000, 256 << 20}, {"drops", 1000, 256 << 20}, {"drops", 16, 8 << 20}} {
+		size, total := tc.size, tc.total
+		count := total / size
+		shrink := tc.shrink
+		val := func(i int) []byte {
+			return bytes.Repeat([]byte{byte(i), byte(i >> 8), byte(i >> 16), 7}, size/4)
+		}
+		ref := func(i int) mvcc.Ref { return mvcc.Ref{Index: uint64(i + 1), Len: uint32(size)} }
+		t.Run(fmt.Sprintf("%s/%dB", shrink, size), func(t *testing.T) {
 			c := newCache()
-			c.setLimit(2 * total)
+			// Room for every value with what each costs besides its bytes.
+			c.setLimit(int64(count) * (int64(size) + cachedOverhead + 2*slotOverhead))
 			for i := range count {
 				c.add(ref(i), val(i))
 			}

@@ -305,6 +305,7 @@ func (c *cache) moved() {
 	}
 	c.bytes -= int64(c.oldPeak) * slotOverhead
 	c.old, c.oldPeak = nil, 0
+	c.low = min(c.low, c.bytes)
 }
 
 // push puts entry i at the front of the ring.

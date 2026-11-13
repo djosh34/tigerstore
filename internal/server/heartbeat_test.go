@@ -21,7 +21,7 @@ import (
 // where the test's 6,144 client goroutines share the nodes' process and
 // CPUs, and the leader's loop waits behind them for a CPU: on a 4-core
 // runner its heartbeats came up to 27 ms past their tick, with the turns
-// of its loop bounded (node.maxTurnCalls). Either bound is a tenth of
+// of its loop bounded (node.MaxTurnCalls). Either bound is a tenth of
 // the election timeout or less; the leader of #647 held them 1.5 s.
 const (
 	heartbeatLate = 50 * time.Millisecond
@@ -32,7 +32,7 @@ const (
 // turn of its loop takes in a tick: 3 connections with 2,048 calls in
 // flight each, for 3 s. Its heartbeats still go out every tick, at most
 // putsLate past it, so its followers keep it as leader. A turn takes at
-// most node.maxTurnCalls calls; one that took every call that had arrived
+// most node.MaxTurnCalls calls; one that took every call that had arrived
 // grew with the load (#647).
 func TestHeartbeatsUnderOverload(t *testing.T) {
 	skipUnlessStress(t)

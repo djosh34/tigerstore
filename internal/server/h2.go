@@ -77,9 +77,12 @@ type conn struct {
 	// closes the connection by endBy; the preface's deadline; since when
 	// output waits for the socket; and gone once the connection left the
 	// loop.
-	token     uint64
-	in        []byte
-	inR, inW  int
+	token    uint64
+	in       []byte
+	inR, inW int
+	// readErr is how the last read ended, kept while frames read before
+	// it wait for a turn with room (readFrames).
+	readErr   error
 	phase     int
 	ending    bool
 	endBy     time.Time

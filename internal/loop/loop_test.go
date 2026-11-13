@@ -352,3 +352,56 @@ type discard struct{}
 func (discard) Read([]byte) (int, error)    { return 0, loop.ErrWouldBlock }
 func (discard) Write(b []byte) (int, error) { return len(b), nil }
 func (discard) Close() error                { return nil }
+
+// TestAgainFirstGoesFirst runs two sockets that each ask for the next
+// turn: one that took its share of a turn (Again) and one that got none
+// (AgainFirst). At the next turn the one that got none runs first, so a
+// socket that always uses a turn up cannot keep another from ever
+// running (#647).
+func TestAgainFirstGoesFirst(t *testing.T) {
+	l := loop.New(loop.NewChanPoller())
+	var order []string
+	served := &turnTaker{name: "served", order: &order}
+	starved := &turnTaker{name: "starved", order: &order}
+	for _, h := range []*turnTaker{served, starved} {
+		a, b := net.Pipe()
+		defer a.Close() //nolint:errcheck // closing a test pipe
+		defer b.Close() //nolint:errcheck // closing a test pipe
+		sock, token, err := l.Attach(a, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sock.Close() //nolint:errcheck // closing a test pipe
+		// Attach runs the handler at the next turn.
+		h.l, h.token = l, token
+	}
+	served.next, starved.next = l.Again, l.AgainFirst
+	for turn := range 3 {
+		order = order[:0]
+		l.Dispatch(true)
+		want := []string{"starved", "served"}
+		if turn == 0 {
+			want = []string{"served", "starved"}
+		}
+		if len(order) != 2 || order[0] != want[0] || order[1] != want[1] {
+			t.Fatalf("turn %d ran %v, want %v", turn, order, want)
+		}
+	}
+}
+
+// turnTaker notes when its handler runs, and asks for the next turn with
+// next.
+type turnTaker struct {
+	name  string
+	order *[]string
+	l     *loop.Loop
+	token uint64
+	next  func(uint64)
+}
+
+func (h *turnTaker) Ready() {
+	*h.order = append(*h.order, h.name)
+	if h.next != nil {
+		h.next(h.token)
+	}
+}

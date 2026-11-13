@@ -302,3 +302,28 @@ func TestCacheStepsAreTurns(t *testing.T) {
 	}
 	t.Logf("%d turns", turns)
 }
+
+// TestCacheLowAfterMapMoves checks the low mark once the map was made
+// again: the old map's slots leave the cache's bytes, and the next
+// CacheLow says so, or the memory gauge would take memory the cache no
+// longer holds for its own.
+func TestCacheLowAfterMapMoves(t *testing.T) {
+	c := newCache()
+	c.setLimit(1 << 20)
+	ref := func(i uint64) mvcc.Ref { return mvcc.Ref{Index: i, Len: 10} }
+	for i := uint64(1); i <= 100; i++ {
+		c.add(ref(i), make([]byte, 10))
+	}
+	for i := uint64(1); i <= 50; i++ {
+		c.drop(ref(i))
+	}
+	c.low = c.bytes
+	before := c.bytes
+	settle(t, c)
+	if c.bytes >= before {
+		t.Fatalf("making the map again left %d bytes of %d", c.bytes, before)
+	}
+	if c.low != c.bytes {
+		t.Fatalf("low mark %d after the map was made again, with %d bytes", c.low, c.bytes)
+	}
+}

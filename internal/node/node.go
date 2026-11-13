@@ -111,6 +111,9 @@ type Config struct {
 	// node in Turn.
 	Turn      func(*core.Node, core.Effects, error)
 	Persisted func(core.PersistJob)
+	// Took, if set, runs on the committer as each turn begins, with the
+	// calls clients gave the node in the turn before, if any. For tests.
+	Took func(calls int)
 	// Memory, if set, measures what the process uses besides the value
 	// cache, and whether that is a new measure, instead of the Go
 	// runtime's metrics: the simulator runs several nodes in one process.
@@ -1107,16 +1110,26 @@ func (n *Node) Receive(m *raftpb.Message) {
 // others.
 func (n *Node) Busy() bool { return n.full }
 
-// maxTurnCalls bounds the calls clients give the node in one turn of its
+// MaxTurnCalls bounds the calls clients give the node in one turn of its
 // loop. A turn ends with the core's work and its replies, and only then do
 // Raft's ticks and heartbeats go on: a turn that took every call that had
 // arrived grew with the load (#647).
-const maxTurnCalls = 256
+const MaxTurnCalls = 256
 
 // TurnRoom is how many more calls the node takes from clients in this turn
 // of its loop; a client connection that has more reads them in the next
-// one (loop.Loop.Again). Loop only.
-func (n *Node) TurnRoom() int { return max(maxTurnCalls-n.turnCalls, 0) }
+// one (loop.Loop.Again). A node that stopped refuses calls uncounted
+// (SubmitLocal), so its connections read on while the loop drains,
+// whatever its last turn took, and their clients hear that it stopped.
+// Loop only.
+func (n *Node) TurnRoom() int {
+	select {
+	case <-n.done:
+		return MaxTurnCalls
+	default:
+	}
+	return max(MaxTurnCalls-n.turnCalls, 0)
+}
 
 // SubmitLocal is SubmitBatch for a connection on the loop: it runs on the
 // loop, never waits, and fails only once the node stopped.
@@ -1499,6 +1512,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		// (#296).
 		if ctx.Err() != nil {
 			return nil
+		}
+		if n.cfg.Took != nil && n.turnCalls > 0 {
+			n.cfg.Took(n.turnCalls)
 		}
 		n.turnCalls = 0
 		n.loop.Dispatch(!full)

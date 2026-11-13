@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"io"
+	"math"
 	"slices"
 	"time"
 
@@ -130,15 +131,32 @@ func (c *conn) Ready() {
 // readFrames reads into an input buffer that the connection borrows from
 // the server's buffers while it holds bytes: a whole frame always fits it
 // (maxReadFrame), and an idle connection holds none. It stops once the
-// node took a turn's worth of calls (Node.TurnRoom), and goes on at the
-// next turn.
+// node took a turn's worth of calls (Node.TurnRoom), between two frames,
+// and goes on at the next turn with the frames it holds.
 func (c *conn) readFrames() error {
 	defer c.releaseIn()
+	start := c.turnRoom()
+	if c.inR < c.inW {
+		if err := c.process(); err != nil {
+			return err
+		}
+	}
+	if err := c.readErr; err != nil && (c.inR == c.inW || c.turnRoom() > 0) {
+		// The frames read before the read failed are done, or the rest
+		// is not a whole frame.
+		c.readErr = nil
+		return err
+	}
 	for !c.ending && !c.isClosed() {
-		if c.s.n != nil && c.s.n.TurnRoom() <= len(c.batch.reqs) {
+		if room := c.turnRoom(); room <= 0 {
 			// The node took a turn's worth of calls: the rest waits for
-			// the next turn, which the loop runs this connection in.
-			c.s.loop.Again(c.token)
+			// the next turn, ahead of the connections that took some of
+			// this one if this one took none.
+			if room < start {
+				c.s.loop.Again(c.token)
+			} else {
+				c.s.loop.AgainFirst(c.token)
+			}
 			return nil
 		}
 		if c.in == nil {
@@ -151,6 +169,14 @@ func (c *conn) readFrames() error {
 		c.inW += n
 		if err := c.process(); err != nil {
 			return err
+		}
+		if c.inR < c.inW && c.turnRoom() <= 0 {
+			// Frames this turn had no room for wait for the next, and so
+			// does how the read ended.
+			if rerr != nil && !errors.Is(rerr, loop.ErrWouldBlock) {
+				c.readErr = rerr
+			}
+			continue
 		}
 		if rerr != nil {
 			if errors.Is(rerr, loop.ErrWouldBlock) {
@@ -166,6 +192,11 @@ func (c *conn) readFrames() error {
 // and its SETTINGS, then any frame.
 func (c *conn) process() error {
 	for {
+		if c.turnRoom() <= 0 {
+			// The node took a turn's worth of calls: the rest of the
+			// frames wait for the next turn (readFrames).
+			return nil
+		}
 		have := c.inW - c.inR
 		switch {
 		case c.phase == phasePreface:
@@ -206,6 +237,16 @@ func (c *conn) process() error {
 			}
 		}
 	}
+}
+
+// turnRoom is how many more calls the node takes in this turn besides
+// those in the connection's batch: unbounded for a server with no node,
+// as in tests.
+func (c *conn) turnRoom() int {
+	if c.s.n == nil {
+		return math.MaxInt
+	}
+	return c.s.n.TurnRoom() - len(c.batch.reqs)
 }
 
 // readFrame reads and runs one frame, which is buffered whole.
