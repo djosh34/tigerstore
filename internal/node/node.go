@@ -1078,6 +1078,13 @@ func (n *Node) Recovered() (last uint64, hs wal.HardState) {
 // connections to it.
 func (n *Node) Loop() *loop.Loop { return n.loop }
 
+// Drained is closed once the loop stopped for good: after Run returned,
+// the loop serves its connections on its own until the server and the
+// transport closed them all (loop.Loop.Drain). A caller that stops the
+// node waits for it after closing both, before it counts the node as
+// stopped: until then the connections' handlers may still run and log.
+func (n *Node) Drained() <-chan struct{} { return n.loop.Drained() }
+
 // Receive hands the node a message that a peer connection on the loop
 // read. It runs on the loop and never blocks; the committer's next turn
 // steps it.
@@ -1280,7 +1287,7 @@ type readDone struct {
 const maxBacklog = 64
 
 // Run drives the node until ctx ends or the node fails. Messages for peers
-// go to t.
+// go to t. The loop goes on after it returns, until Drained.
 func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 	n.transport.Store(t)
 	if n.cfg.CorruptCheckTime > 0 || n.cfg.CompactHashCheckTime > 0 {
