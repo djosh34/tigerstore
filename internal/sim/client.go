@@ -48,6 +48,9 @@ type client struct {
 	v3    *clientv3.Client
 	lease clientv3.Lease
 	node  int
+	// shared, if set, is the clientv3 client this client shares with the
+	// others of its node (Config.V3Shared).
+	shared *sharedV3
 	// kube is the client's part of the Kubernetes-shaped load, if the run
 	// has one (kube.go).
 	kube *kubeClient
@@ -82,6 +85,9 @@ func (c *client) run() {
 	}
 	s.mu.Lock()
 	wait := s.rng.Int64N(100 * Millisecond)
+	if b := s.cfg.Burst; b > 0 {
+		wait = b - s.now()%b
+	}
 	s.mu.Unlock()
 	for s.sleep(wait) {
 		s.mu.Lock()
@@ -142,6 +148,9 @@ func (c *client) run() {
 func (c *client) think(err error) int64 {
 	s := c.sim
 	switch {
+	case s.cfg.Burst > 0:
+		// The next beat, at least 1 ns away.
+		return s.cfg.Burst - s.now()%s.cfg.Burst
 	case c.kube == nil:
 		// At least 1 ns, so the next call starts after this one returned.
 		return 1 + s.rng.Int64N(20*Millisecond)

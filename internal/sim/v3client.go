@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -55,8 +56,37 @@ func (s *Sim) serve(p *proc) error {
 	return nil
 }
 
-// newV3 makes client c's clientv3 client, for the node it calls.
+// sharedV3 is a clientv3 client that the clients of one node share
+// (Config.V3Shared): the first to start dials it, and the last to stop
+// closes it.
+type sharedV3 struct {
+	mu    sync.Mutex
+	v3    *clientv3.Client
+	lease clientv3.Lease
+	users int
+}
+
+// newV3 makes client c's clientv3 client, for the node it calls, or
+// takes the one it shares.
 func (c *client) newV3() error {
+	if sh := c.shared; sh != nil {
+		sh.mu.Lock()
+		defer sh.mu.Unlock()
+		if sh.v3 == nil {
+			if err := c.dialNewV3(); err != nil {
+				return err
+			}
+			sh.v3, sh.lease = c.v3, c.lease
+		}
+		c.v3, c.lease = sh.v3, sh.lease
+		return nil
+	}
+	return c.dialNewV3()
+}
+
+// dialNewV3 dials client c's own clientv3 client over the simulator's
+// network.
+func (c *client) dialNewV3() error {
 	s := c.sim
 	return c.dialV3(clientAddr(c.node), s.net.ca, func(ctx context.Context, addr string) (net.Conn, error) {
 		return s.net.dial(ctx, s, nil, addr)
@@ -119,8 +149,16 @@ func (retryPause) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Con
 
 func (retryPause) HandleConn(context.Context, stats.ConnStats) {}
 
-// closeV3 closes client c's clientv3 client.
+// closeV3 closes client c's clientv3 client, or the one it shares once
+// the last of its users stopped.
 func (c *client) closeV3() error {
+	if sh := c.shared; sh != nil {
+		sh.mu.Lock()
+		defer sh.mu.Unlock()
+		if sh.users--; sh.users > 0 {
+			return nil
+		}
+	}
 	err := errors.Join(c.lease.Close(), c.v3.Close())
 	if errors.Is(err, context.Canceled) {
 		// What Close says when it ended the client's context.

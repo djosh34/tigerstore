@@ -115,6 +115,11 @@ type Config struct {
 	// calls clients gave the node in the turn before, if any, and how many
 	// fit in that turn (TurnRoom). For tests.
 	Took func(calls, limit int)
+	// TurnCalls, if set, is the most calls a turn takes before the node
+	// measured what a call costs, instead of 256. The simulator, whose
+	// clock stands still within a turn, never measures, and sets it low
+	// so that a few clients' bursts cut turns.
+	TurnCalls int
 	// Memory, if set, measures what the process uses besides the value
 	// cache, and whether that is a new measure, instead of the Go
 	// runtime's metrics: the simulator runs several nodes in one process.
@@ -1165,7 +1170,7 @@ func (n *Node) TurnRoom() int {
 // no time, as in the simulator, whose clock stands still in a turn.
 func (n *Node) turnFit() int {
 	if n.perCall <= 0 {
-		return firstTurnCalls
+		return cmp.Or(n.cfg.TurnCalls, firstTurnCalls)
 	}
 	return max(int(MaxTurnTime/n.perCall), minTurnCalls)
 }
