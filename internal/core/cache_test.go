@@ -17,7 +17,7 @@ func TestCacheLRU(t *testing.T) {
 	c := newCache()
 	ref := func(i uint64) mvcc.Ref { return mvcc.Ref{Index: i, Len: size} }
 	c.add(ref(1), make([]byte, size))
-	if len(c.items) != 0 {
+	if c.count() != 0 {
 		t.Fatal("a cache without a limit kept a value")
 	}
 	// Room for two values and four map slots.
@@ -40,12 +40,13 @@ func TestCacheLRU(t *testing.T) {
 		t.Fatal("value 4 is gone")
 	}
 	c.drop(ref(2))
+	settle(t, c)
 	if _, ok := c.get(ref(2)); ok || c.bytes != size+cachedOverhead+slotOverhead {
 		t.Fatalf("after a drop: value 2 there %v, %d bytes", ok, c.bytes)
 	}
 	c.setLimit(0)
-	if len(c.items) != 0 || c.bytes != 0 || c.entries[0].next != 0 {
-		t.Fatalf("a limit of 0 left %d values, %d bytes", len(c.items), c.bytes)
+	if c.count() != 0 || c.bytes != 0 || c.at(0).next != 0 {
+		t.Fatalf("a limit of 0 left %d values, %d bytes", c.count(), c.bytes)
 	}
 	if c.hits != 2 {
 		t.Fatalf("%d hits, want 2", c.hits)
@@ -54,7 +55,7 @@ func TestCacheLRU(t *testing.T) {
 
 // TestCacheMapSlots checks that the slots of the map count up to the
 // most values it held, until it holds half of that and is made again,
-// so that the memory of the values that went is freed.
+// a step at a time, so that the memory of the values that went is freed.
 func TestCacheMapSlots(t *testing.T) {
 	c := newCache()
 	c.setLimit(1 << 20)
@@ -62,8 +63,8 @@ func TestCacheMapSlots(t *testing.T) {
 	want := func(values, slots int) {
 		t.Helper()
 		// A 10-byte value takes a slot of 16 bytes.
-		if len(c.items) != values || c.peak != slots || c.bytes != int64(values*(16+cachedOverhead)+slots*slotOverhead) {
-			t.Fatalf("%d values, peak %d, %d bytes; want %d values and %d slots", len(c.items), c.peak, c.bytes, values, slots)
+		if c.count() != values || c.peak+c.oldPeak != slots || c.bytes != int64(values*(16+cachedOverhead)+slots*slotOverhead) {
+			t.Fatalf("%d values, peaks %d and %d, %d bytes; want %d values and %d slots", c.count(), c.peak, c.oldPeak, c.bytes, values, slots)
 		}
 	}
 	for i := uint64(1); i <= 100; i++ {
@@ -74,10 +75,25 @@ func TestCacheMapSlots(t *testing.T) {
 		c.drop(ref(i))
 	}
 	want(60, 100)
+	if c.busy() {
+		t.Fatal("the cache has steps to take with the map 60% full")
+	}
 	for i := uint64(41); i <= 50; i++ {
 		c.drop(ref(i))
 	}
+	// The old map holds its 100 slots until every ref moved.
+	if !c.busy() || c.old == nil {
+		t.Fatal("the map is not made again at half its peak")
+	}
+	for c.busy() {
+		c.step()
+	}
 	want(50, 50)
+	for i := uint64(51); i <= 100; i++ {
+		if !c.has(ref(i)) {
+			t.Fatalf("value %d is gone after the map was made again", i)
+		}
+	}
 	c.clear()
 	want(0, 0)
 }
@@ -88,8 +104,7 @@ func (s *single) cached(key string) bool {
 	if len(refs) == 0 {
 		return false
 	}
-	_, ok := s.n.cache.items[refs[len(refs)-1]]
-	return ok
+	return s.n.cache.has(refs[len(refs)-1])
 }
 
 // get reads key with request id, at revision rev if not 0, and returns
@@ -139,10 +154,10 @@ func TestCacheFillsAsEntriesLeave(t *testing.T) {
 	s.ok(601, &pb.DeleteRangeRequest{Key: []byte("b")})
 	// A put that keeps the value keeps it cached.
 	s.ok(602, &pb.PutRequest{Key: []byte("c"), IgnoreValue: true})
-	if _, ok := s.n.cache.items[old]; ok {
+	if s.n.cache.has(old) {
 		t.Fatal("the overwritten value of a is still cached")
 	}
-	if _, ok := s.n.cache.items[deleted]; ok {
+	if s.n.cache.has(deleted) {
 		t.Fatal("the deleted value of b is still cached")
 	}
 	if !s.cached("c") {
@@ -152,7 +167,7 @@ func TestCacheFillsAsEntriesLeave(t *testing.T) {
 	if v, waited := s.get(603, "a", rev); v != "va" || !waited {
 		t.Fatalf("read of the old a = %q, waited %v", v, waited)
 	}
-	if _, ok := s.n.cache.items[old]; ok {
+	if s.n.cache.has(old) {
 		t.Fatal("a read cached a value that is not the newest")
 	}
 }
@@ -179,8 +194,8 @@ func TestCacheFillsOnReadMiss(t *testing.T) {
 func TestCacheShrinksAsOtherMemoryGrows(t *testing.T) {
 	const memory = 8 << 10
 	s, _ := coldSingle(t, func(cfg *Config) { cfg.MemoryBytes = memory })
-	if s.n.cache.limit != memory || len(s.n.cache.items) == 0 {
-		t.Fatalf("limit %d, %d values cached", s.n.cache.limit, len(s.n.cache.items))
+	if s.n.cache.limit != memory || s.n.cache.count() == 0 {
+		t.Fatalf("limit %d, %d values cached", s.n.cache.limit, s.n.cache.count())
 	}
 	for other := int64(0); other <= memory; other += 1 << 10 {
 		s.n.SetOtherMemory(other)
@@ -188,8 +203,8 @@ func TestCacheShrinksAsOtherMemoryGrows(t *testing.T) {
 			t.Fatalf("with %d bytes besides the cache: limit %d, %d bytes cached", other, c.limit, c.bytes)
 		}
 	}
-	if len(s.n.cache.items) > 0 {
-		t.Fatalf("the rest of the process takes all the memory, yet %d values are cached", len(s.n.cache.items))
+	if s.n.cache.count() > 0 {
+		t.Fatalf("the rest of the process takes all the memory, yet %d values are cached", s.n.cache.count())
 	}
 }
 
@@ -214,8 +229,8 @@ func TestCacheLow(t *testing.T) {
 	}
 }
 
-// TestCacheRebuildKeepsOrder checks that making the map and the entries
-// again keeps the values and their order of use.
+// TestCacheRebuildKeepsOrder checks that dense entries and making the map
+// again keep the values and their order of use.
 func TestCacheRebuildKeepsOrder(t *testing.T) {
 	c := newCache()
 	c.setLimit(1 << 20)
@@ -229,8 +244,11 @@ func TestCacheRebuildKeepsOrder(t *testing.T) {
 	for i := uint64(5); i <= 9; i++ {
 		c.drop(ref(i))
 	}
-	if c.peak != 5 || len(c.entries) != 6 {
-		t.Fatalf("after the rebuild: peak %d, %d entries", c.peak, len(c.entries))
+	for c.busy() {
+		c.step()
+	}
+	if c.peak != 5 || c.n != 6 {
+		t.Fatalf("after the map was made again: peak %d, %d entries", c.peak, c.n)
 	}
 	// Room for two values in slots of 16 bytes: 4 and 2 were used last.
 	c.setLimit(2*(16+cachedOverhead) + 5*slotOverhead)
