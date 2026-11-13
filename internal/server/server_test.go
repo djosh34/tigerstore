@@ -272,6 +272,9 @@ func (c *cluster) start(id uint64) {
 		if err := errors.Join(stopErr, <-served, tr.Close()); err != nil {
 			t.Errorf("node %d: %v", id, err)
 		}
+		// The loop's connections log through t.Logf until it is done
+		// with them, which may be after the test otherwise ended.
+		<-n.Drained()
 	}}
 }
 

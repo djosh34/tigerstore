@@ -185,6 +185,11 @@ func TestDrainEndsWithItsHandlers(t *testing.T) {
 	if l.Post(func() {}) {
 		t.Fatal("a drained loop took work")
 	}
+	select {
+	case <-l.Drained():
+	default:
+		t.Fatal("Drain returned and Drained is not closed")
+	}
 }
 
 // closer forgets its socket once it fails.

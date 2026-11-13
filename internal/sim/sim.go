@@ -1702,6 +1702,9 @@ func (s *Sim) start(n *node) error {
 		if p.srv != nil {
 			err = errors.Join(err, p.srv.Stop())
 		}
+		// The loop's connections may log until the loop is done with
+		// them, and the trace is read once the process exited.
+		<-tn.Drained()
 		s.exited(p, err)
 	})
 	return nil

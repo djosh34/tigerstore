@@ -293,6 +293,13 @@ func start(c *config, lg *zap.Logger) error {
 		ran <- n.Run(ctx, t)
 		cancel()
 	}()
+	// closeAll stops the server and the transport once the node stopped,
+	// and waits until the node's loop is done with their connections.
+	closeAll := func() error {
+		err := errors.Join(g.Stop(), t.Close())
+		<-n.Drained()
+		return err
+	}
 	go func() {
 		if err := n.AdjustTicks(ctx, t.ActiveChange, ec.InitialElectionTickAdvance, rafthttp.ConnReadTimeout); err != nil && ctx.Err() == nil {
 			lg.Warn("adjust election ticks", zap.Error(err))
@@ -303,14 +310,14 @@ func start(c *config, lg *zap.Logger) error {
 		if err := n.InitialCheck(ctx, t); err != nil {
 			cancel()
 			closeListeners(clientLns, nil, lg)
-			return errors.Join(err, <-ran, g.Stop(), t.Close())
+			return errors.Join(err, <-ran, closeAll())
 		}
 		logf("initial corruption check passed")
 	}
 	if err := bootstrapDefrag(ctx, n, ec.BootstrapDefragThresholdMegabytes, lg); err != nil {
 		cancel()
 		closeListeners(clientLns, nil, lg)
-		return errors.Join(err, <-ran, g.Stop(), t.Close())
+		return errors.Join(err, <-ran, closeAll())
 	}
 	served := make(chan error, len(clientLns))
 	// closing is set once the clients are stopped on purpose.
@@ -354,7 +361,9 @@ func start(c *config, lg *zap.Logger) error {
 	for range clientLns {
 		stopErr = errors.Join(stopErr, <-served)
 	}
-	return errors.Join(runErr, stopErr, t.Close())
+	closeErr := t.Close()
+	<-n.Drained()
+	return errors.Join(runErr, stopErr, closeErr)
 }
 
 // featureMetrics are the feature gates for etcd_server_feature_enabled,
