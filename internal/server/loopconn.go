@@ -135,7 +135,7 @@ func (c *conn) Ready() {
 func (c *conn) readFrames() error {
 	defer c.releaseIn()
 	for !c.ending && !c.isClosed() {
-		if c.s.n.TurnRoom() <= len(c.batch.reqs) {
+		if c.s.n != nil && c.s.n.TurnRoom() <= len(c.batch.reqs) {
 			// The node took a turn's worth of calls: the rest waits for
 			// the next turn, which the loop runs this connection in.
 			c.s.loop.Again(c.token)
