@@ -10,8 +10,8 @@
 // it never checks an answer (the simulator checks correctness), it reads
 // only what the next request needs, a write's revision and outcome, and the
 // sizes of the key-values a read returned, from their lengths. With -ramp,
-// the requests in flight double after each measured step until throughput
-// stops climbing at two steps in a row, and the best step is the result.
+// the requests in flight double after each measured step, a fixed number
+// of times (-ramp-steps), and the best step is the result.
 package main
 
 import (
@@ -47,6 +47,7 @@ type config struct {
 	watchers    int
 	page        int
 	ramp        bool
+	rampSteps   int
 	pids        []int
 	metrics     []string
 	disk        string
@@ -77,7 +78,8 @@ func parseFlags(args []string) (config, error) {
 	fs.DurationVar(&cfg.duration, "duration", 10*time.Second, "measurement window")
 	fs.IntVar(&cfg.watchers, "watchers", 4, "watch workload: watch streams on the key prefix")
 	fs.IntVar(&cfg.page, "page", 500, "list workload: the limit of each LIST page; keys spread over 100 namespaces")
-	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step until throughput climbs less than 5% at two steps in a row, at most 5 times; the best step is the result")
+	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step, -ramp-steps times; the best step is the result")
+	fs.IntVar(&cfg.rampSteps, "ramp-steps", 3, "-ramp: how many times it doubles -streams")
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
 	metrics := fs.String("metrics", "", "comma-separated host:port of every node's client endpoint, whose /metrics give each node's peer bytes per operation")
 	fs.StringVar(&cfg.disk, "disk", "", "device or partition in /proc/diskstats, such as sda1, whose bytes written in the window are reported per operation")
@@ -117,6 +119,8 @@ func parseFlags(args []string) (config, error) {
 		return cfg, errors.New("k8s needs -copies >= -conns")
 	case cfg.workload == "watch" && cfg.watchers < 1:
 		return cfg, errors.New("watch needs -watchers >= 1")
+	case cfg.rampSteps < 0:
+		return cfg, errors.New("-ramp-steps must not be negative")
 	case cfg.ramp && (cfg.rate > 0 || cfg.workload == "delete" || cfg.workload == "watch"):
 		return cfg, errors.New("-ramp needs max load (-rate 0) and a workload that does not run out of keys or watch")
 	case cfg.rate < 0 || cfg.preloadRate < 0 || math.IsNaN(cfg.rate) || math.IsInf(cfg.rate, 0) || math.IsNaN(cfg.preloadRate) || math.IsInf(cfg.preloadRate, 0) || cfg.duration <= 0 || cfg.warmup < 0:
@@ -304,38 +308,14 @@ const (
 	drainTimeout   = 10 * time.Second
 )
 
-// rampGain is the least gain in throughput from doubling the requests in
-// flight that -ramp takes for still climbing, rampFlat how many steps in
-// a row that do not climb end it, and maxRampSteps the most doublings it
-// tries.
-const (
-	rampGain     = 1.05
-	rampFlat     = 2
-	maxRampSteps = 5
-)
-
-// rampRule decides after each step of -ramp whether it goes on. A step
-// climbs if it beats the best so far by rampGain. One step that does not
-// leaves the ramp going: a store that climbed 4.9% at one step would
-// otherwise stop there, while one that climbed 5.1% went on to the next,
-// and their maxes would differ by about a doubling's worth (#644).
-type rampRule struct {
-	best float64
-	flat int
-}
-
-// step takes a step's throughput, and reports whether it climbed and
-// whether the ramp stops after it.
-func (r *rampRule) step(throughput float64) (climbed, stop bool) {
-	climbed = r.best == 0 || throughput >= r.best*rampGain
-	r.best = max(r.best, throughput)
-	if climbed {
-		r.flat = 0
-	} else {
-		r.flat++
-	}
-	return climbed, r.flat >= rampFlat
-}
+// rampGain is the gain in throughput over the best step before it at
+// which -ramp's last step counts as still climbing: the steps measured may
+// have been too few (RampClimbing). The ramp itself measures every step
+// and never stops early: a stop at the first step that climbed less, as
+// it had, made a store's max depend on whether one step happened to clear
+// the gain, and two stores level at every step they shared reported maxes
+// a doubling apart (#644).
+const rampGain = 1.05
 
 func run(cfg config) (*result, error) {
 	if cfg.cacert != "" {
@@ -354,22 +334,27 @@ func run(cfg config) (*result, error) {
 	if err := setup(); err != nil {
 		return nil, err
 	}
+	return ramped(cfg, s.measure)
+}
+
+// ramped measures at cfg.streams and, with -ramp, at each of -ramp-steps
+// doublings after it, and returns the best step.
+func ramped(cfg config, measure func(streams int) (*result, error)) (*result, error) {
 	var best *result
 	var bestErr error
 	var ramp []rampStep
-	var rule rampRule
 	for step, streams := 0, cfg.streams; ; step, streams = step+1, streams*2 {
-		res, err := s.measure(streams)
+		res, err := measure(streams)
 		leader := 0.0
 		if len(res.ServerCores) > 0 {
 			leader = res.ServerCores[0]
 		}
 		ramp = append(ramp, rampStep{StreamsPerConn: streams, Throughput: res.Throughput, ClientCores: res.ClientCores, LeaderCores: leader})
-		climbing, flat := rule.step(res.Throughput)
+		climbing := best == nil || res.Throughput >= best.Throughput*rampGain
 		if best == nil || err != nil || res.Throughput > best.Throughput {
 			best, bestErr = res, err
 		}
-		if err != nil || !cfg.ramp || flat || step == maxRampSteps {
+		if err != nil || !cfg.ramp || step == cfg.rampSteps {
 			if cfg.ramp {
 				best.Ramp = ramp
 				best.RampClimbing = err == nil && climbing

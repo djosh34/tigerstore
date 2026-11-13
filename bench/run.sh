@@ -121,6 +121,9 @@ if [ "$workload" = k8s ]; then
 	# One connection per node, as each of kube-apiserver's etcd clients
 	# has; the watches share them.
 	concurrency=(-conns 3 -streams 64 -copies 64 -traces "$traces")
+	# Its max runs measure 64 to 2,048 streams a connection, which holds
+	# every max seen so far; the others measure 256 to 2,048 (#644).
+	ramp=(-ramp -ramp-steps 5)
 	if [[ " ${modes[*]} " != *" generator "* ]]; then modes=(max); fi
 	# Up to about 1 GB of values per replica, as many as the 64 copies'
 	# starts hold, on the 16 GB runner.

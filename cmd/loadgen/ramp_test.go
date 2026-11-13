@@ -1,36 +1,47 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
-// TestRampTriesAStepPastAFlatOne runs the ramp's rule over the steps of
-// #642's bench, put-1k, seed 223812443, 10 ms (#644). Two repeats on each
-// side were level at 256 and 512 streams, but main's climbed 5.2% to 512
-// and went on to 1,024, and the candidate's climbed 4.7% and stopped, so
-// their maxes were 5.4% apart. A step that climbs less than 5% now leaves
-// the ramp going, and it stops at the second such step in a row.
-func TestRampTriesAStepPastAFlatOne(t *testing.T) {
-	cases := []struct {
-		name  string
-		steps []float64
-		// want is how many steps the ramp takes.
-		want int
-	}{
-		{"climbs 5.2% to 512, flat after 1,024", []float64{97024, 102092, 107827, 103357, 104000}, 5},
-		{"climbs 4.7% to 512, then 5.7% to 1,024", []float64{97356, 101939, 107700, 104000, 103000}, 5},
-		{"flat twice from the start", []float64{97280, 97587, 98000}, 3},
-		{"climbs every step", []float64{10, 20, 40, 80, 160, 320}, 6},
-	}
-	for _, c := range cases {
-		var r rampRule
-		took := 0
-		for _, tput := range c.steps {
-			took++
-			if _, stop := r.step(tput); stop {
-				break
+// TestRampMeasuresEveryStep runs -ramp over fake measurements. It measures
+// every one of -ramp-steps doublings and returns the best, so two stores
+// level at every step report the same max. Before, it stopped at the first
+// step that climbed less than 5%, and the pair below, which differs by
+// 0.2% at one step, reported maxes a doubling apart (#644, #645's review).
+func TestRampMeasuresEveryStep(t *testing.T) {
+	run := func(steps int, tputs []float64, fail int) (*result, []int, error) {
+		var asked []int
+		cfg := config{streams: 256, ramp: true, rampSteps: steps}
+		res, err := ramped(cfg, func(streams int) (*result, error) {
+			i := len(asked)
+			asked = append(asked, streams)
+			if i == fail {
+				return &result{Throughput: tputs[i]}, errors.New("failed")
 			}
-		}
-		if took != c.want {
-			t.Errorf("%s: the ramp took %d steps, want %d", c.name, took, c.want)
-		}
+			return &result{Throughput: tputs[i]}, nil
+		})
+		return res, asked, err
+	}
+	a, askedA, _ := run(4, []float64{100, 105.1, 110.2, 115.5, 122}, -1)
+	b, _, _ := run(4, []float64{100, 104.9, 110.2, 115.5, 122}, -1)
+	if a.Throughput != b.Throughput {
+		t.Errorf("two stores level at every step but one report %v and %v", a.Throughput, b.Throughput)
+	}
+	if len(askedA) != 5 || askedA[0] != 256 || askedA[4] != 4096 {
+		t.Errorf("4 doublings from 256 measured %v, want 256 to 4096", askedA)
+	}
+	if !a.RampClimbing {
+		t.Error("a ramp whose last step climbed 5% is not marked as still climbing")
+	}
+	// The #642 cell: flat after 512, so the best is 512's and not climbing.
+	c, _, _ := run(3, []float64{97356, 101939, 101500, 100800}, -1)
+	if c.Throughput != 101939 || c.RampClimbing || len(c.Ramp) != 4 {
+		t.Errorf("a flat ramp gave %v over %d steps, climbing %v; want 101939 over 4, not climbing", c.Throughput, len(c.Ramp), c.RampClimbing)
+	}
+	// A failed step ends the ramp and is its result.
+	if _, asked, err := run(3, []float64{100, 110, 120, 130}, 1); err == nil || len(asked) != 2 {
+		t.Errorf("a failure at the second step gave %v after %d steps", err, len(asked))
 	}
 }
