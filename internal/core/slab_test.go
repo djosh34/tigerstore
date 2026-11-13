@@ -275,7 +275,7 @@ func TestShrinkingCacheTakesShortSteps(t *testing.T) {
 			t.Logf("%d steps, the longest call %v", steps, longest)
 			// The race detector makes every copy many times slower; the
 			// bound holds in the normal build.
-			if !raceOn && longest > 50*time.Millisecond {
+			if !raceOn && longest > 20*time.Millisecond {
 				t.Fatalf("a call took %v while the cache shrank", longest)
 			}
 		})

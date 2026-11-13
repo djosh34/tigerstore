@@ -104,6 +104,10 @@ jobs:
         env:
           TIGERSTORE_STRESS: 10s
           GOMEMLIMIT: 8GiB
+      # The bounds on how long a step of the core takes hold in the normal
+      # build only, which test, under -race, leaves out (#647).
+      - shell: bash
+        run: go test -count=5 -v -run 'TestShrinkingCacheTakesShortSteps$' ./internal/core 2>&1 | tee -a "$RUNNER_TEMP/stress.log"
       - if: failure()
         run: |
           scripts/replay.sh "$RUNNER_TEMP/stress.log"

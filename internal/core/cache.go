@@ -86,10 +86,10 @@ const (
 	entryPage = 1 << entryBits
 	// stepBytes is the most a step copies in the slabs, and stepRefs
 	// the most refs it moves from old: a few milliseconds of work.
-	stepBytes = 4 << 20
-	stepRefs  = 1 << 14
+	stepBytes = 2 << 20
+	stepRefs  = 1 << 13
 	// stepEvictions is the most values fit drops between two steps.
-	stepEvictions = 1 << 14
+	stepEvictions = 1 << 13
 	// minRebuildSlack is the least room of free slots that makes the
 	// slabs compact, however few values the cache holds, so that they
 	// do not compact for little.
