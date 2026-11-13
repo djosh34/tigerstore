@@ -61,6 +61,9 @@ func Peak() (stop func() (peak, kept int64)) {
 			case <-t.C:
 				if heap()-base > held+step {
 					held = max(held, liveHeap()-base)
+					if measured != nil {
+						measured(held)
+					}
 				}
 			}
 		}
@@ -73,6 +76,11 @@ func Peak() (stop func() (peak, kept int64)) {
 		return max(held, kept, 0), kept
 	}
 }
+
+// measured, if set, runs on Peak's sampler after each of its collections,
+// with the most found held so far. Set before Peak's call, for this
+// package's tests.
+var measured func(held int64)
 
 // heap returns the bytes of live and dead heap objects not yet swept, as
 // far as the Ps' caches counted them; it does not stop the world.
