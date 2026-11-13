@@ -10,14 +10,16 @@
 # runs 43384098979 and 43384101963 (#602). A test not listed counts 10 s, about
 # what one took on average. A new long test should join the list.
 set -euo pipefail
-shard=$1
-shards=$2
+shard=${1:-}
+shards=${2:-}
 if ! [[ $shard =~ ^[0-9]+$ && $shards =~ ^[1-9][0-9]*$ ]] || [ "$shard" -ge "$shards" ]; then
 	echo "usage: $0 <shard> <shards>, with 0 <= shard < shards" >&2
 	exit 2
 fi
 here=$(cd "$(dirname "$0")/.." && pwd)
-tests=$(cd "$here" && go test -list '.*' ./internal/sim | grep '^Test' | sort)
+listed=$(cd "$here" && go test -list '.*' ./internal/sim)
+# go test -run matches tests, fuzz targets and examples alike.
+tests=$(grep -E '^(Test|Fuzz|Example)' <<<"$listed" | sort || true)
 if [ -z "$tests" ]; then
 	echo "$0: no tests listed in ./internal/sim" >&2
 	exit 1
