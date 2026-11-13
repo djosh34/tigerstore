@@ -11,7 +11,7 @@
 // only what the next request needs, a write's revision and outcome, and the
 // sizes of the key-values a read returned, from their lengths. With -ramp,
 // the requests in flight double after each measured step until throughput
-// stops climbing, and the best step is the result.
+// stops climbing at two steps in a row, and the best step is the result.
 package main
 
 import (
@@ -77,7 +77,7 @@ func parseFlags(args []string) (config, error) {
 	fs.DurationVar(&cfg.duration, "duration", 10*time.Second, "measurement window")
 	fs.IntVar(&cfg.watchers, "watchers", 4, "watch workload: watch streams on the key prefix")
 	fs.IntVar(&cfg.page, "page", 500, "list workload: the limit of each LIST page; keys spread over 100 namespaces")
-	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step until throughput climbs less than 5%, at most 5 times; the best step is the result")
+	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step until throughput climbs less than 5% at two steps in a row, at most 5 times; the best step is the result")
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
 	metrics := fs.String("metrics", "", "comma-separated host:port of every node's client endpoint, whose /metrics give each node's peer bytes per operation")
 	fs.StringVar(&cfg.disk, "disk", "", "device or partition in /proc/diskstats, such as sda1, whose bytes written in the window are reported per operation")
@@ -305,12 +305,37 @@ const (
 )
 
 // rampGain is the least gain in throughput from doubling the requests in
-// flight that -ramp takes for still climbing, and maxRampSteps the most
-// doublings it tries.
+// flight that -ramp takes for still climbing, rampFlat how many steps in
+// a row that do not climb end it, and maxRampSteps the most doublings it
+// tries.
 const (
 	rampGain     = 1.05
+	rampFlat     = 2
 	maxRampSteps = 5
 )
+
+// rampRule decides after each step of -ramp whether it goes on. A step
+// climbs if it beats the best so far by rampGain. One step that does not
+// leaves the ramp going: a store that climbed 4.9% at one step would
+// otherwise stop there, while one that climbed 5.1% went on to the next,
+// and their maxes would differ by about a doubling's worth (#644).
+type rampRule struct {
+	best float64
+	flat int
+}
+
+// step takes a step's throughput, and reports whether it climbed and
+// whether the ramp stops after it.
+func (r *rampRule) step(throughput float64) (climbed, stop bool) {
+	climbed = r.best == 0 || throughput >= r.best*rampGain
+	r.best = max(r.best, throughput)
+	if climbed {
+		r.flat = 0
+	} else {
+		r.flat++
+	}
+	return climbed, r.flat >= rampFlat
+}
 
 func run(cfg config) (*result, error) {
 	if cfg.cacert != "" {
@@ -332,6 +357,7 @@ func run(cfg config) (*result, error) {
 	var best *result
 	var bestErr error
 	var ramp []rampStep
+	var rule rampRule
 	for step, streams := 0, cfg.streams; ; step, streams = step+1, streams*2 {
 		res, err := s.measure(streams)
 		leader := 0.0
@@ -339,11 +365,11 @@ func run(cfg config) (*result, error) {
 			leader = res.ServerCores[0]
 		}
 		ramp = append(ramp, rampStep{StreamsPerConn: streams, Throughput: res.Throughput, ClientCores: res.ClientCores, LeaderCores: leader})
-		climbing := best == nil || res.Throughput >= best.Throughput*rampGain
+		climbing, flat := rule.step(res.Throughput)
 		if best == nil || err != nil || res.Throughput > best.Throughput {
 			best, bestErr = res, err
 		}
-		if err != nil || !cfg.ramp || !climbing || step == maxRampSteps {
+		if err != nil || !cfg.ramp || flat || step == maxRampSteps {
 			if cfg.ramp {
 				best.Ramp = ramp
 				best.RampClimbing = err == nil && climbing
