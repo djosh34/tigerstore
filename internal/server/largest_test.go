@@ -18,7 +18,6 @@ import (
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/server"
-	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
 // TestLargestRequest writes the largest request --max-request-bytes may
@@ -45,9 +44,10 @@ func TestLargestRequest(t *testing.T) {
 			// 64 MiB takes seconds at each step, longer than the peers'
 			// 5 s write timeout for one frame.
 			cfg.RequestTicks = int(time.Minute / c.tick)
-			if simrun.Race {
+			if raceOn {
 				// The loop encodes and decodes the 64 MiB message on its own
-				// thread, which under the race detector held it 0.8 to 1.4 s,
+				// thread since #638 (large encodes go off it in #602's PR 3),
+				// which under the race detector held it 0.8 to 1.4 s,
 				// and 4.1 s on a loaded host (up to about 140 ms without):
 				// longer than the 1 s election timeout, so a follower
 				// campaigned, and the proposal was lost with the leader
@@ -106,9 +106,18 @@ func TestLargestRequest(t *testing.T) {
 	check := func(when string) {
 		t.Helper()
 		for id := uint64(1); id <= 3; id++ {
-			r := retry(t, func(ctx context.Context) (*pb.RangeResponse, error) {
+			read := func(ctx context.Context) (*pb.RangeResponse, error) {
 				return kv(id).Range(ctx, &pb.RangeRequest{Key: key})
-			})
+			}
+			var r *pb.RangeResponse
+			if raceOn {
+				// Reading 64 MiB back under the race detector on a busy
+				// host took longer than retry's 2 s an attempt (#643's
+				// Opus review).
+				r = retryFor(t, 30*time.Second, 2*time.Minute, read)
+			} else {
+				r = retry(t, read)
+			}
 			if len(r.Kvs) != 1 || !bytes.Equal(r.Kvs[0].Value, value) {
 				t.Fatalf("%s, node %d reads %d keys", when, id, len(r.Kvs))
 			}
@@ -124,6 +133,25 @@ func TestLargestRequest(t *testing.T) {
 	}
 	leaderBy(t, c, time.Minute)
 	check("after the restart")
+}
+
+// retryFor calls fn until it succeeds, each call within each, for at most
+// total.
+func retryFor[T any](t *testing.T, each, total time.Duration, fn func(ctx context.Context) (T, error)) T {
+	t.Helper()
+	deadline := time.Now().Add(total)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), each)
+		v, err := fn(ctx)
+		cancel()
+		if err == nil {
+			return v
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("still failing after %v: %v", total, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // leaderBy waits until the running nodes agree on a leader, for at most
