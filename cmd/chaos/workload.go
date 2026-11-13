@@ -22,6 +22,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/status"
 )
 
@@ -37,11 +38,18 @@ type workloadConfig struct {
 }
 
 // dialClients makes one stock clientv3 client per endpoint, each pinned to
-// its endpoint, without retries.
+// its endpoint, without retries. A client tries to connect again within a
+// second of losing its node: with gRPC's default backoff, which grows to
+// 120 s, a node down for 22 s was tried again up to 20 s after it was back,
+// past the terminal barrier, which then failed on it.
 func dialClients(c *cluster, timeout time.Duration) ([]*clientv3.Client, error) {
 	var out []*clientv3.Client
+	reconnect := grpc.WithConnectParams(grpc.ConnectParams{
+		Backoff:           backoff.Config{BaseDelay: 100 * time.Millisecond, Multiplier: 1.6, Jitter: 0.2, MaxDelay: time.Second},
+		MinConnectTimeout: timeout,
+	})
 	for _, l := range c.clients {
-		cl, err := clientv3.New(clientv3.Config{Endpoints: []string{l.Proxy.Addr()}, TLS: c.tls, DialTimeout: timeout, MaxUnaryRetries: 1, Logger: zap.NewNop(), DialOptions: []grpc.DialOption{grpc.WithDisableRetry()}})
+		cl, err := clientv3.New(clientv3.Config{Endpoints: []string{l.Proxy.Addr()}, TLS: c.tls, DialTimeout: timeout, MaxUnaryRetries: 1, Logger: zap.NewNop(), DialOptions: []grpc.DialOption{grpc.WithDisableRetry(), reconnect}})
 		if err != nil {
 			return nil, errors.Join(err, closeClients(out))
 		}
