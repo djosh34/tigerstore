@@ -40,6 +40,17 @@ func TestRampMeasuresEveryStep(t *testing.T) {
 	if c.Throughput != 101939 || c.RampClimbing || len(c.Ramp) != 4 {
 		t.Errorf("a flat ramp gave %v over %d steps, climbing %v; want 101939 over 4, not climbing", c.Throughput, len(c.Ramp), c.RampClimbing)
 	}
+	// A step 5% below the best is past the peak: the ramp stops there,
+	// before the steps that overload the store further (#647). The k8s
+	// curve of #645's A/A bench at RTT 0.
+	k, asked, _ := run(5, []float64{45731, 69036, 81118, 75200, 72494, 59229}, -1)
+	if k.Throughput != 81118 || len(asked) != 4 {
+		t.Errorf("a curve past its peak gave %v after %d steps, want 81118 after 4", k.Throughput, len(asked))
+	}
+	// A step less than 5% below goes on.
+	if _, asked, _ := run(3, []float64{100, 110, 105, 108}, -1); len(asked) != 4 {
+		t.Errorf("a step 4.5%% below the best stopped the ramp after %d steps", len(asked))
+	}
 	// A failed step ends the ramp and is its result.
 	if _, asked, err := run(3, []float64{100, 110, 120, 130}, 1); err == nil || len(asked) != 2 {
 		t.Errorf("a failure at the second step gave %v after %d steps", err, len(asked))

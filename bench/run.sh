@@ -15,7 +15,8 @@
 #   max        every stream busy, from 6 connections x 256 streams, which
 #              double three times (loadgen -ramp -ramp-steps; k8s from 64,
 #              five times; list from 2 x 16, three times), every step
-#              measured and the best taken (#644), but for delete and
+#              measured and the best taken (#644) until one falls 5% below
+#              the best, past the peak (#647), but for delete and
 #              watch, which would run out of keys or only follow the
 #              puts: throughput
 #   rate       open-loop Poisson arrivals at half of etcd's median max

@@ -78,7 +78,7 @@ func parseFlags(args []string) (config, error) {
 	fs.DurationVar(&cfg.duration, "duration", 10*time.Second, "measurement window")
 	fs.IntVar(&cfg.watchers, "watchers", 4, "watch workload: watch streams on the key prefix")
 	fs.IntVar(&cfg.page, "page", 500, "list workload: the limit of each LIST page; keys spread over 100 namespaces")
-	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step, -ramp-steps times; the best step is the result")
+	fs.BoolVar(&cfg.ramp, "ramp", false, "double -streams after each step, -ramp-steps times or until a step falls 5% below the best; the best step is the result")
 	fs.IntVar(&cfg.rampSteps, "ramp-steps", 3, "-ramp: how many times it doubles -streams")
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
 	metrics := fs.String("metrics", "", "comma-separated host:port of every node's client endpoint, whose /metrics give each node's peer bytes per operation")
@@ -310,12 +310,21 @@ const (
 
 // rampGain is the gain in throughput over the best step before it at
 // which -ramp's last step counts as still climbing: the steps measured may
-// have been too few (RampClimbing). The ramp itself measures every step
-// and never stops early: a stop at the first step that climbed less, as
-// it had, made a store's max depend on whether one step happened to clear
-// the gain, and two stores level at every step they shared reported maxes
-// a doubling apart (#644).
-const rampGain = 1.05
+// have been too few (RampClimbing). The ramp never stops for a step that
+// climbed less: that made a store's max depend on whether one step
+// happened to clear the gain, and two stores level at every step they
+// shared reported maxes a doubling apart (#644).
+//
+// It stops at a step that fell rampDrop below the best, which is past the
+// peak: the steps after it only overload the store further, and a
+// cluster overloaded far enough lost its leader (#647), which fails the
+// run. Which side of the edge such a step falls changes no max on a curve
+// that does not climb again past a step 5% below its best, as none of the
+// benches did.
+const (
+	rampGain = 1.05
+	rampDrop = 0.95
+)
 
 func run(cfg config) (*result, error) {
 	if cfg.cacert != "" {
@@ -338,7 +347,8 @@ func run(cfg config) (*result, error) {
 }
 
 // ramped measures at cfg.streams and, with -ramp, at each of -ramp-steps
-// doublings after it, and returns the best step.
+// doublings after it, until one falls rampDrop below the best, and returns
+// the best step.
 func ramped(cfg config, measure func(streams int) (*result, error)) (*result, error) {
 	var best *result
 	var bestErr error
@@ -354,7 +364,8 @@ func ramped(cfg config, measure func(streams int) (*result, error)) (*result, er
 		if best == nil || err != nil || res.Throughput > best.Throughput {
 			best, bestErr = res, err
 		}
-		if err != nil || !cfg.ramp || step == cfg.rampSteps {
+		past := res.Throughput < best.Throughput*rampDrop
+		if err != nil || !cfg.ramp || step == cfg.rampSteps || past {
 			if cfg.ramp {
 				best.Ramp = ramp
 				best.RampClimbing = err == nil && climbing
