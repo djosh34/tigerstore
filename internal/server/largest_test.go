@@ -48,9 +48,9 @@ func TestLargestRequest(t *testing.T) {
 			if simrun.Race {
 				// The loop encodes and decodes the 64 MiB message on its own
 				// thread, which under the race detector holds it 0.8 to 1.4 s
-				// (20 ms without): longer than the 1 s election timeout, so
-				// a follower campaigned, and the proposal was lost with the
-				// leader change. 5 s outlasts it.
+				// (up to about 140 ms without): longer than the 1 s election
+				// timeout, so a follower campaigned, and the proposal was lost
+				// with the leader change. 5 s outlasts it.
 				cfg.ElectionTicks = 50
 			}
 		}
