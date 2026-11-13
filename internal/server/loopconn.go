@@ -249,8 +249,8 @@ func (c *conn) process() error {
 	}
 }
 
-// holdsCallFrame reports whether the connection's input holds a whole
-// frame it has not run, of a call: HEADERS or DATA.
+// holdsCallFrame reports whether the next frame the connection's input
+// holds, one it has not run, is whole and a call's: HEADERS or DATA.
 func (c *conn) holdsCallFrame() bool {
 	have := c.inW - c.inR
 	if c.phase == phasePreface || have < frameHeaderLen {
