@@ -510,27 +510,37 @@ jobs:
   # The simulator under the race detector too, which test leaves out to
   # keep its time: it runs every node's goroutines. Under -race the
   # simulator's tests run natively, in testing/synctest bubbles, not under
-  # gosim. It took 28 minutes on main before TestEachFaultTakesEffect ran
-  # three seeds per fault.
+  # gosim. Its tests took 107 minutes in one job after #638 against a
+  # timeout of 110, up from 90 before, as every seed got about a fifth
+  # slower. Four shards each run about 27 minutes of them, dealt out by
+  # scripts/race-sim-shard.sh.
   race-sim:
     if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 120
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - shell: bash
-        run: go test -race -timeout 110m ./internal/sim 2>&1 | tee "$RUNNER_TEMP/race-sim.log"
+        run: |
+          tests=$(scripts/race-sim-shard.sh "$SHARD" 4)
+          echo "shard $SHARD of 4: $tests"
+          go test -race -timeout 65m -run "$tests" ./internal/sim 2>&1 | tee "$RUNNER_TEMP/race-sim.log"
         env:
+          SHARD: ${{ matrix.shard }}
           SIM_OUT: ${{ runner.temp }}/sim-out
       - if: failure()
         run: scripts/replay.sh "$RUNNER_TEMP/race-sim.log" -race
       - if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: race-sim
+          name: race-sim-${{ matrix.shard }}
           path: |
             ${{ runner.temp }}/race-sim.log
             ${{ runner.temp }}/sim-out
