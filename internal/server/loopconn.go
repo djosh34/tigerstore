@@ -199,7 +199,9 @@ func (c *conn) process() error {
 	for {
 		if c.turnRoom() <= 0 {
 			// The node took a turn's worth of calls: the rest of the
-			// frames wait for the next turn (readFrames).
+			// frames wait for the next turn (readFrames), which comes at
+			// once. Frames that carry no call, such as PING and
+			// WINDOW_UPDATE, wait with them, in their order.
 			return nil
 		}
 		have := c.inW - c.inR
