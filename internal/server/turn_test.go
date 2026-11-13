@@ -24,7 +24,7 @@ func TestTurnTakesBoundedCalls(t *testing.T) {
 	var peak atomic.Int64
 	c := newClusterWith(t, func(c *cluster) {
 		c.nodeConfig = func(nc *node.Config) {
-			nc.Took = func(calls, limit int) {
+			nc.Took = func(calls, limit int, _ bool) {
 				turns.Add(1)
 				if calls > limit {
 					over.Add(1)

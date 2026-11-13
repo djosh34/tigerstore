@@ -630,8 +630,9 @@ type Stats struct {
 	// succeeded, among OK.
 	V3OK int
 	// CutTurns counts the turns of the nodes' loops that took as many
-	// clients' calls as fit in them and left the rest for the next
-	// (node.Config.Took).
+	// clients' calls as fit in them while a connection had more, which
+	// waited for the next turn (node.Config.Took), in a run that sets
+	// Config.TurnCalls.
 	CutTurns int
 	// Compactions counts successful compactions and WatchCompacted the
 	// watches that a compaction canceled.
@@ -1532,12 +1533,16 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 	cfg.DiskBudget = s.cfg.Faults.DiskBudget
 	cfg.BeforeSync = func() { s.beforeSync(p) }
 	cfg.Turn = func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) }
-	cfg.TurnCalls = s.cfg.TurnCalls
-	cfg.Took = func(calls, limit int) {
-		if calls >= limit {
-			s.mu.Lock()
-			s.stats.CutTurns++
-			s.mu.Unlock()
+	// Only a run that sets TurnCalls counts its cut turns, so that the
+	// others' runs stay as they were, lock for lock.
+	if s.cfg.TurnCalls > 0 {
+		cfg.TurnCalls = s.cfg.TurnCalls
+		cfg.Took = func(calls, limit int, waiting bool) {
+			if calls >= limit && waiting {
+				s.mu.Lock()
+				s.stats.CutTurns++
+				s.mu.Unlock()
+			}
 		}
 	}
 	cfg.Persisted = func(j core.PersistJob) { s.persisted(p, j) }

@@ -16,9 +16,11 @@ import (
 // ambiguous at each crash, took the witness checker past its search's
 // bound.
 func burstConfig(seed uint64) Config {
+	// The default 10 s of healing: the liveness rule starts as late as
+	// healing, LiveAfter and 2 s more with a node fenced, which a 6 s
+	// heal left no calls after (seed 100911).
 	cfg := DefaultConfig(seed)
 	cfg.Duration = 4 * Second
-	cfg.Heal = 6 * Second
 	cfg.V3Clients = 3 * 16
 	cfg.V3Shared = true
 	cfg.Burst = 100 * Millisecond

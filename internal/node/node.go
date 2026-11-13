@@ -112,13 +112,15 @@ type Config struct {
 	Turn      func(*core.Node, core.Effects, error)
 	Persisted func(core.PersistJob)
 	// Took, if set, runs on the committer as each turn begins, with the
-	// calls clients gave the node in the turn before, if any, and how many
-	// fit in that turn (TurnRoom). For tests.
-	Took func(calls, limit int)
-	// TurnCalls, if set, is the most calls a turn takes before the node
-	// measured what a call costs, instead of 256. The simulator, whose
-	// clock stands still within a turn, never measures, and sets it low
-	// so that a few clients' bursts cut turns.
+	// calls clients gave the node in the turn before, if any, how many fit
+	// in that turn (TurnRoom), and whether sockets wait to run now, as a
+	// connection that had calls left when the turn ran out of room does
+	// (loop.Loop.Holding). For tests.
+	Took func(calls, limit int, waiting bool)
+	// TurnCalls, if above 0, is the most calls a turn takes before the
+	// node measured what a call costs, instead of 256. The simulator sets
+	// it low so that a few clients' bursts cut turns: below 32 a turn
+	// never takes enough calls to measure, so the bound stays.
 	TurnCalls int
 	// Memory, if set, measures what the process uses besides the value
 	// cache, and whether that is a new measure, instead of the Go
@@ -1170,7 +1172,10 @@ func (n *Node) TurnRoom() int {
 // no time, as in the simulator, whose clock stands still in a turn.
 func (n *Node) turnFit() int {
 	if n.perCall <= 0 {
-		return cmp.Or(n.cfg.TurnCalls, firstTurnCalls)
+		if n.cfg.TurnCalls > 0 {
+			return n.cfg.TurnCalls
+		}
+		return firstTurnCalls
 	}
 	return max(int(MaxTurnTime/n.perCall), minTurnCalls)
 }
@@ -1572,7 +1577,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			return nil
 		}
 		if n.cfg.Took != nil && n.turnCalls > 0 {
-			n.cfg.Took(n.turnCalls, n.turnLimit)
+			n.cfg.Took(n.turnCalls, n.turnLimit, n.loop.Holding())
 		}
 		n.turnCalls, n.turnLimit, n.turnStart = 0, n.turnFit(), time.Now()
 		n.loop.Dispatch(!full)
