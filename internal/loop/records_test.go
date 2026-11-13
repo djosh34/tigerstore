@@ -783,6 +783,14 @@ func TestRecordsCloseBreaksWrite(t *testing.T) {
 		_, err := srv.Write(make([]byte, 64<<20))
 		writing <- err
 	}()
+	// Until the write holds the lock, blocked on the peer.
+	for deadline := time.Now().Add(5 * time.Second); srv.wmu.TryLock(); {
+		srv.wmu.Unlock()
+		if time.Now().After(deadline) {
+			t.Fatal("the write never took the lock")
+		}
+		time.Sleep(time.Millisecond)
+	}
 	time.Sleep(50 * time.Millisecond)
 	closed := make(chan error, 1)
 	go func() { closed <- srv.Close() }()

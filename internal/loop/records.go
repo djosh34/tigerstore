@@ -774,7 +774,10 @@ func (r *Records) Close() error {
 	if !r.wmu.TryLock() {
 		// A write is under way, before Attach perhaps blocked on a peer
 		// that does not read: the close breaks it, without close_notify,
-		// which would wait behind it, as crypto/tls's close does.
+		// which would wait behind it, as crypto/tls's close does. So does
+		// a read that sends an answer or an alert at that moment, where
+		// crypto/tls would wait for it and then send close_notify; a Go
+		// peer reads io.EOF either way.
 		return r.br.Close()
 	}
 	if !r.closeSent {

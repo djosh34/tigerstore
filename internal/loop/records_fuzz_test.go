@@ -67,6 +67,28 @@ func FuzzRecords(f *testing.F) {
 			f.Add(sealFor(&w, typeAppData, []byte("in raw"), 0), []byte("x"), byte(typeAppData), uint8(0), uint16(0), []byte{}, false)
 		}
 	}
+	// Raw bytes with a dropped alert, a ticket or a KeyUpdate before a data
+	// record: the data may come out (#646's Astra fix check).
+	if s, err := suiteOf(tls.TLS_AES_128_GCM_SHA256); err == nil {
+		ticket := []byte{msgNewSessionTicket, 0, 0, 14, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 1, 7, 0, 0}
+		for _, first := range []struct {
+			typ     byte
+			content []byte
+		}{{typeAlert, []byte{1, alertUserCanceled}}, {typeHandshake, ticket}, {typeHandshake, []byte{msgKeyUpdate, 0, 0, 1, 0}}} {
+			w, err := s.keyed(fuzzSecret)
+			if err != nil {
+				break
+			}
+			raw := sealFor(&w, first.typ, first.content, 0)
+			if first.content[0] == msgKeyUpdate {
+				if w, err = s.updated(&w); err != nil {
+					break
+				}
+			}
+			raw = append(raw, sealFor(&w, typeAppData, []byte("after control"), 0)...)
+			f.Add(raw, []byte("x"), byte(typeAppData), uint8(0), uint16(0), []byte{}, false)
+		}
+	}
 	f.Fuzz(func(t *testing.T, raw, plain []byte, typ byte, pad uint8, flip uint16, tail []byte, closeFirst bool) {
 		if len(plain) > 1<<17 {
 			return
@@ -137,15 +159,19 @@ func FuzzRecords(f *testing.F) {
 }
 
 // authentic opens stream's records in order with a reader of its own and
-// returns their application data, up to the first record that does not
-// open, is not application data, or is too long: all that Records may
-// hand out of it.
+// returns their application data: all that Records may hand out of it. It
+// follows KeyUpdates to the next key and reads on past dropped alerts and
+// other handshake messages, and stops at the first record that does not
+// open, a close_notify or fatal alert, or a record too long. It is looser
+// than Records, which may stop sooner (a malformed ticket, too many
+// records without data), so Records' data must be its start; but every
+// byte it returns opened under the keys.
 func authentic(s suite, stream []byte) ([]byte, error) {
 	d, err := s.keyed(fuzzSecret)
 	if err != nil {
 		return nil, err
 	}
-	var out []byte
+	var out, post []byte
 	for len(stream) >= recordHeader {
 		n := int(binary.BigEndian.Uint16(stream[3:]))
 		if stream[0] != typeAppData || n < 1+tagSize || n > maxCiphertext || len(stream) < recordHeader+n {
@@ -155,15 +181,40 @@ func authentic(s suite, stream []byte) ([]byte, error) {
 		if !ok || len(pt) > maxPlaintext+1 {
 			break
 		}
+		stream = stream[recordHeader+n:]
 		i := len(pt) - 1
 		for i >= 0 && pt[i] == 0 {
 			i--
 		}
-		if i < 0 || pt[i] != typeAppData {
+		if i < 0 {
 			break
 		}
-		out = append(out, pt[:i]...)
-		stream = stream[recordHeader+n:]
+		switch content := pt[:i]; pt[i] {
+		case typeAppData:
+			out = append(out, content...)
+		case typeAlert:
+			if len(content) != 2 || content[1] != alertUserCanceled {
+				return out, nil
+			}
+		case typeHandshake:
+			post = append(post, content...)
+			update := false
+			for len(post) >= 4 {
+				m := int(post[1])<<16 | int(post[2])<<8 | int(post[3])
+				if len(post) < 4+m {
+					break
+				}
+				update = update || post[0] == msgKeyUpdate
+				post = post[4+m:]
+			}
+			if update {
+				if d, err = s.updated(&d); err != nil {
+					return nil, err
+				}
+			}
+		default:
+			return out, nil
+		}
 	}
 	return out, nil
 }
