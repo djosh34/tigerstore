@@ -6,11 +6,13 @@ import (
 	"crypto/tls"
 	"errors"
 	"runtime/debug"
+	"sync"
 	"testing"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/proto"
@@ -34,7 +36,11 @@ func TestLargestRequest(t *testing.T) {
 	// the garbage collector keeps them from adding up, which under the
 	// race detector would take several GiB.
 	defer debug.SetMemoryLimit(debug.SetMemoryLimit(512 << 20))
+	beats := &heartbeatTimes{at: map[[2]uint64][]time.Time{}}
 	c := newClusterWith(t, func(c *cluster) {
+		c.wrap = func(id uint64, t peer.Transport) peer.Transport {
+			return beatClock{Transport: t, from: id, times: beats}
+		}
 		// A real node's ticks: under the race detector the leader takes
 		// half a second to append the entry, five election timeouts at
 		// the tests' 10 ms ticks.
@@ -97,8 +103,24 @@ func TestLargestRequest(t *testing.T) {
 	if _, err := kv(follower).Put(ctx, &pb.PutRequest{Key: key, Value: append(value, 'x')}); !errors.Is(err, rpctypes.ErrGRPCRequestTooLarge) {
 		t.Fatalf("a put of %d bytes: %v", limit+1, err)
 	}
+	leader, start := c.nodes[1].Leader(), time.Now()
 	if _, err := kv(follower).Put(ctx, &pb.PutRequest{Key: key, Value: value}); err != nil {
 		t.Fatalf("a put of %d bytes through node %d: %v", limit, follower, err)
+	}
+	if !simrun.Race {
+		// The leader's loop encodes and decodes the 64 MiB messages, and
+		// sends heartbeats between its turns: a turn that holds it delays
+		// them, and a run of large writes would add those holds up. Under
+		// the race detector the hold is 0.8 to 1.4 s, so only the normal
+		// build bounds it.
+		gaps, worst := beats.gaps(leader, start, time.Now())
+		t.Logf("%d heartbeats of leader %d during the put, the longest gap %v", gaps, leader, worst)
+		if gaps < 3 {
+			t.Fatalf("leader %d sent %d heartbeats during the put", leader, gaps)
+		}
+		if late := worst - c.tick; late > 50*time.Millisecond {
+			t.Fatalf("the put held leader %d's heartbeats %v past their tick", leader, late)
+		}
 	}
 	check := func(when string) {
 		t.Helper()
@@ -120,4 +142,51 @@ func TestLargestRequest(t *testing.T) {
 		c.start(id)
 	}
 	check("after the restart")
+}
+
+// heartbeatTimes are when each node sent each peer a heartbeat.
+type heartbeatTimes struct {
+	mu sync.Mutex
+	at map[[2]uint64][]time.Time
+}
+
+// gaps returns how many heartbeats node from sent between start and end,
+// and the longest time between two to the same peer.
+func (h *heartbeatTimes) gaps(from uint64, start, end time.Time) (int, time.Duration) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	n, worst := 0, time.Duration(0)
+	for k, times := range h.at {
+		if k[0] != from {
+			continue
+		}
+		var last time.Time
+		for _, at := range times {
+			if at.Before(start) || at.After(end) {
+				continue
+			}
+			if n++; !last.IsZero() {
+				worst = max(worst, at.Sub(last))
+			}
+			last = at
+		}
+	}
+	return n, worst
+}
+
+// beatClock notes when its node sends a heartbeat, on the node's loop.
+type beatClock struct {
+	peer.Transport
+	from  uint64
+	times *heartbeatTimes
+}
+
+func (b beatClock) Send(m *raftpb.Message) {
+	if m.GetType() == raftpb.MsgHeartbeat {
+		b.times.mu.Lock()
+		k := [2]uint64{b.from, m.GetTo()}
+		b.times.at[k] = append(b.times.at[k], time.Now())
+		b.times.mu.Unlock()
+	}
+	b.Transport.Send(m)
 }
