@@ -19,11 +19,12 @@ import (
 )
 
 // TestClientAtTheLimit runs etcd's Go client against a server whose one
-// connection the memory budget holds is taken. A call that does not wait
-// for a ready connection fails with Unavailable and the reason at once. clientv3's own
-// calls wait for one (WaitForReady), so a put ends at its deadline, as
-// against a node that is down, never later. Its reconnects keep gRPC's
-// backoff instead of a tight loop.
+// connection the memory budget holds is taken. The refusal answers the
+// first call on a connection with Unavailable and its reason, so a call
+// that does not wait for a ready connection fails with them at once.
+// clientv3's own calls wait for one (WaitForReady): a put fails with
+// Unavailable or ends at its deadline, as against a node that is down,
+// never later. Its reconnects keep gRPC's backoff instead of a tight loop.
 func TestClientAtTheLimit(t *testing.T) {
 	s := bareServer(t)
 	s.ctx, s.cancel = context.WithCancel(context.Background())
