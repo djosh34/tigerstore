@@ -42,7 +42,7 @@ const (
 )
 
 // conn is one HTTP/2 client connection. The node's event loop owns its
-// socket, the Framer and the stream table's creation (loopconn.go). mu
+// socket, its input and the stream table's creation (loopconn.go). mu
 // guards everything the loop shares with the handlers, which run on
 // goroutines of their own.
 type conn struct {
@@ -65,7 +65,9 @@ type conn struct {
 	// traffic is what the connection serves: gRPC alone answers HTTP
 	// requests as grpc-go does, HTTP alone takes gRPC calls as HTTP.
 	traffic Traffic
-	fr      *http2.Framer
+	// fr writes the control frames; the loop reads frames itself
+	// (parseFrame).
+	fr *http2.Framer
 	// caller sizes this client's writes as etcd would.
 	caller core.Caller
 	// cluster and member go in every response header.
@@ -103,7 +105,10 @@ type conn struct {
 
 	// Loop only.
 	maxID uint32 // highest client stream ID seen
-	batch opBatch
+	// contID is the stream whose header block waits for a CONTINUATION
+	// frame, or 0.
+	contID uint32
+	batch  opBatch
 	// hdec decodes header blocks into hdr, the headers of the block being
 	// read, with no allocation for fields from the HPACK tables.
 	hdec *hpack.Decoder
@@ -208,7 +213,7 @@ func newConn(s *Server, nc net.Conn, bridge *loop.Bridge) *conn {
 	}
 	c.records, _ = nc.(*loop.Records)
 	c.caller = caller(s.cfg.TLS, nc)
-	c.fr = http2.NewFramer(frameDst{c}, frameSrc{c})
+	c.fr = http2.NewFramer(frameDst{c}, nil)
 	c.hdec = hpack.NewDecoder(4096, c.onField)
 	c.hdec.SetMaxStringLength(maxHeaderList)
 	c.ctrl = append(c.ctrl,
@@ -295,56 +300,55 @@ func (c *conn) addCtrl(f ctrlFrame) {
 	c.ctrl = append(c.ctrl, f)
 }
 
-func (c *conn) onFrame(f http2.Frame) error {
-	switch f := f.(type) {
-	case *http2.HeadersFrame:
-		c.hdr = reqHeaders{id: f.StreamID, ended: f.StreamEnded()}
-		return c.headerFragment(f.HeaderBlockFragment(), true, f.HeadersEnded())
-	case *http2.ContinuationFrame:
-		return c.headerFragment(f.HeaderBlockFragment(), false, f.HeadersEnded())
-	case *http2.DataFrame:
+func (c *conn) onFrame(f *frame) error {
+	switch f.typ {
+	case http2.FrameHeaders:
+		c.hdr = reqHeaders{id: f.id, ended: f.has(http2.FlagHeadersEndStream)}
+		return c.headerFragment(f.data, true, f.has(http2.FlagHeadersEndHeaders))
+	case http2.FrameContinuation:
+		return c.headerFragment(f.data, false, f.has(http2.FlagContinuationEndHeaders))
+	case http2.FrameData:
 		return c.onData(f)
-	case *http2.WindowUpdateFrame:
+	case http2.FrameWindowUpdate:
 		return c.onWindowUpdate(f)
-	case *http2.SettingsFrame:
-		if f.IsAck() {
+	case http2.FrameSettings:
+		if f.has(http2.FlagSettingsAck) {
 			return nil
 		}
 		return c.onSettings(f)
-	case *http2.PingFrame:
-		if !f.IsAck() {
-			c.queueCtrl(ctrlFrame{kind: ctrlPingAck, ping: f.Data})
+	case http2.FramePing:
+		if !f.has(http2.FlagPingAck) {
+			c.queueCtrl(ctrlFrame{kind: ctrlPingAck, ping: f.ping()})
 			return c.checkPing()
 		}
-	case *http2.RSTStreamFrame:
-		c.resetStream(f.StreamID, 0)
-	case *http2.PushPromiseFrame:
-		return http2.ConnectionError(http2.ErrCodeProtocol)
+	case http2.FrameRSTStream:
+		c.resetStream(f.id, 0)
 	}
 	// GOAWAY from the client, PRIORITY and unknown frames need nothing.
 	return nil
 }
 
-func (c *conn) onSettings(f *http2.SettingsFrame) error {
+func (c *conn) onSettings(f *frame) error {
+	var err error
 	c.mu.Lock()
-	err := f.ForeachSetting(func(s http2.Setting) error {
-		if err := s.Valid(); err != nil {
-			return err
+	for i := range f.length / 6 {
+		s := f.setting(i)
+		if err = s.Valid(); err != nil {
+			break
 		}
 		// The encoder never indexes, so the header table size does not
 		// matter, and no other setting changes what the server sends.
-		if s.ID == http2.SettingInitialWindowSize {
+		switch s.ID {
+		case http2.SettingInitialWindowSize:
 			delta := int64(s.Val) - c.initWin
 			c.initWin = int64(s.Val)
 			for _, st := range c.streams {
 				st.sendWin += delta
 			}
-		}
-		if s.ID == http2.SettingMaxFrameSize {
+		case http2.SettingMaxFrameSize:
 			c.maxFrame = int(s.Val)
 		}
-		return nil
-	})
+	}
 	if err == nil {
 		c.addCtrl(ctrlFrame{kind: ctrlSettingsAck})
 	}
@@ -353,16 +357,16 @@ func (c *conn) onSettings(f *http2.SettingsFrame) error {
 	return err
 }
 
-func (c *conn) onWindowUpdate(f *http2.WindowUpdateFrame) error {
+func (c *conn) onWindowUpdate(f *frame) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if f.StreamID == 0 {
-		c.sendWin += int64(f.Increment)
+	if f.id == 0 {
+		c.sendWin += int64(f.increment())
 		if c.sendWin > 1<<31-1 {
 			return http2.ConnectionError(http2.ErrCodeFlowControl)
 		}
-	} else if st := c.streams[f.StreamID]; st != nil {
-		st.sendWin += int64(f.Increment)
+	} else if st := c.streams[f.id]; st != nil {
+		st.sendWin += int64(f.increment())
 	}
 	c.signal()
 	return nil
@@ -446,7 +450,7 @@ type reqHeaders struct {
 // waits for its CONTINUATION inside a connection's bound (connBytes).
 const maxHeaderList = 32 << 10
 
-// headerFragment decodes part of a header block. The Framer checks that
+// headerFragment decodes part of a header block. parseFrame checks that
 // CONTINUATION frames follow their HEADERS frame.
 func (c *conn) headerFragment(b []byte, first, last bool) error {
 	h := &c.hdr
@@ -747,19 +751,19 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 	return st
 }
 
-func (c *conn) onData(f *http2.DataFrame) error {
-	c.credit(int(f.Length))
+func (c *conn) onData(f *frame) error {
+	c.credit(f.length)
 	c.mu.Lock()
-	st := c.streams[f.StreamID]
+	st := c.streams[f.id]
 	var halfClosed, overflow bool
 	if st != nil {
 		halfClosed = st.inEOF
 		// The stream's window is credited back only as Recv takes
 		// messages; a client that sends past it breaks flow control.
 		// Padding is never stored, so it is credited back at once.
-		st.recvUsed += len(f.Data())
+		st.recvUsed += len(f.data)
 		overflow = st.recvUsed > c.s.streamWindow
-		if pad := int(f.Length) - len(f.Data()); pad > 0 && !overflow && !halfClosed {
+		if pad := f.length - len(f.data); pad > 0 && !overflow && !halfClosed {
 			c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(pad)})
 		}
 	}
@@ -769,23 +773,23 @@ func (c *conn) onData(f *http2.DataFrame) error {
 		// A stream that is gone or reset; the data is dropped.
 		return nil
 	case halfClosed:
-		c.resetStream(f.StreamID, http2.ErrCodeStreamClosed)
+		c.resetStream(f.id, http2.ErrCodeStreamClosed)
 		return nil
 	case overflow:
-		c.resetStream(f.StreamID, http2.ErrCodeFlowControl)
+		c.resetStream(f.id, http2.ErrCodeFlowControl)
 		return nil
 	}
 	switch {
 	case st.httpPath != "":
-		if d := f.Data(); len(d) > 0 {
+		if d := f.data; len(d) > 0 {
 			st.deliver(append([]byte(nil), d...), len(d))
 		}
 	case st.rpc != nil && !st.done.Load():
-		if err := st.receive(f.Data()); err != nil {
+		if err := st.receive(f.data); err != nil {
 			st.finish(err)
 		}
 	}
-	if f.StreamEnded() {
+	if f.has(http2.FlagDataEndStream) {
 		return c.onEnd(st)
 	}
 	return nil

@@ -126,7 +126,7 @@ var (
 // so between two and three timeouts after the leader went.
 const maxNoLeader = 3
 
-// receive takes the payload of a DATA frame. Framer storage is reused by
+// receive takes the payload of a DATA frame. The input buffer is reused by
 // the next frame, so each message is copied once, into a buffer of its
 // own size.
 func (st *stream) receive(d []byte) error {

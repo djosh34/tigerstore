@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"io"
 	"math"
 	"slices"
 	"time"
@@ -69,21 +68,6 @@ const (
 type frameDst struct{ c *conn }
 
 func (d frameDst) Write(p []byte) (int, error) { return d.c.s.bw.Write(p) }
-
-// frameSrc is what the Framer reads: the decrypted bytes of the
-// connection that the loop read, of which the reader only asks for whole
-// frames.
-type frameSrc struct{ c *conn }
-
-func (s frameSrc) Read(p []byte) (int, error) {
-	c := s.c
-	n := copy(p, c.in[c.inR:c.inW])
-	c.inR += n
-	if n == 0 && len(p) > 0 {
-		return 0, io.ErrUnexpectedEOF
-	}
-	return n, nil
-}
 
 // attach hands the connection to the loop. It runs on the loop.
 func (c *conn) attach() {
@@ -235,7 +219,9 @@ func (c *conn) process() error {
 			}
 			return nil
 		}
-		if err := c.readFrame(); err != nil {
+		b := c.in[c.inR : c.inR+n]
+		c.inR += n
+		if err := c.readFrame(b); err != nil {
 			return err
 		}
 		if c.inR == c.inW {
@@ -272,36 +258,33 @@ func (c *conn) turnRoom() int {
 	return c.s.n.TurnRoom() - len(c.batch.reqs)
 }
 
-// readFrame reads and runs one frame, which is buffered whole.
-func (c *conn) readFrame() error {
-	fh, err := c.fr.ReadFrameHeader()
-	if err != nil {
-		return err
-	}
+// readFrame runs one frame, which b holds whole: its payload stays in
+// the input buffer while it runs.
+func (c *conn) readFrame(b []byte) error {
 	c.frames.Add(1)
-	f, err := c.fr.ReadFrameForHeader(fh)
+	f, err := parseFrame(b, c.contID)
 	if err != nil {
 		se, ok := errors.AsType[http2.StreamError](err)
-		switch {
-		case !ok:
+		if !ok {
 			return err
-		case fh.Type == http2.FrameHeaders:
-			// A header block that cannot be decoded leaves the HPACK
-			// state behind the client's (RFC 9113 6.2).
-			return http2.ConnectionError(http2.ErrCodeProtocol)
 		}
 		c.resetStream(se.StreamID, se.Code)
 		return nil
 	}
+	if f.typ == http2.FrameHeaders || f.typ == http2.FrameContinuation {
+		c.contID = f.id
+		if f.has(http2.FlagHeadersEndHeaders) {
+			c.contID = 0
+		}
+	}
 	if c.phase == phaseSettings {
-		sf, ok := f.(*http2.SettingsFrame)
-		if !ok || sf.IsAck() {
+		if f.typ != http2.FrameSettings || f.has(http2.FlagSettingsAck) {
 			return http2.ConnectionError(http2.ErrCodeProtocol)
 		}
 		c.phase = phaseFrames
-		return c.onSettings(sf)
+		return c.onSettings(&f)
 	}
-	return c.onFrame(f)
+	return c.onFrame(&f)
 }
 
 // compactIn moves the unread bytes to the front of the input buffer.
