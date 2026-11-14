@@ -71,17 +71,25 @@ func (c *conn) admit(st *stream) {
 		// The body goes into the Raft entry as it is if the request is a
 		// write; apply decodes the entry again without copies. Here the
 		// request is decoded to check it, by the fastest decoder for its
-		// type, into messages from the connection's slabs where it decodes
-		// many. The decoded request aliases the body, which the call holds
-		// until the node answers it (arena.go).
+		// type. The decoded request aliases the body, which the call holds
+		// until the node answers it (arena.go). A request in the arena is
+		// decoded into messages from the connection's slabs: a slab keeps
+		// the messages it handed out, and with them what they alias, as
+		// long as it has messages left, so only a request no larger than
+		// the arena takes is: a slab then keeps at most a chunk per
+		// message, never a large request.
 		req.Wire = st.body
+		slabs := &c.slabs
+		if len(st.body) > bodyChunk/4 {
+			slabs = nil
+		}
 		var err error
 		switch {
 		case st.rpc == txnMethod:
-			req.Op = c.slabs.Txn()
-			err = core.DecodeTxn(&req, &c.slabs)
+			req.Op = slabs.Txn()
+			err = core.DecodeTxn(&req, slabs)
 		case st.rpc == rangeMethod:
-			req.Op = c.slabs.Range()
+			req.Op = slabs.Range()
 			err = core.DecodeAlias(st.body, req.Op)
 		case st.rpc.alias:
 			req.Op = st.rpc.op()

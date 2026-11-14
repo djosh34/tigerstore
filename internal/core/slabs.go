@@ -3,8 +3,9 @@ package core
 import pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 // slabSize is how many messages of one type a slab allocates at once.
-// A message that lives on keeps its slab alive, so a slab stays small:
-// a call that waits long holds at most a few KiB of slabs with it.
+// A message that lives on keeps its slab alive, and a slab with messages
+// left keeps those it handed out, and what they alias, so a slab stays
+// small: a few KiB of messages.
 const slabSize = 16
 
 // slab hands out pointers to the elements of an array that it allocates

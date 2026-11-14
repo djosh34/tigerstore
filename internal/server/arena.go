@@ -1,7 +1,5 @@
 package server
 
-import "testing"
-
 // The requests of the unary calls that the node runs go into a
 // per-connection arena of chunks, which the server lends out, instead of a
 // fresh slice per call. A chunk counts the calls whose requests it holds,
@@ -19,9 +17,10 @@ const (
 )
 
 // poisonBodies makes a chunk that goes back to the server's chunks be
-// overwritten first, in tests, so that a request read after its call
-// released it reads garbage, which the tests' checks then see.
-var poisonBodies = testing.Testing()
+// overwritten first, so that a request read after its call released it
+// reads garbage, which the tests' checks then see. This package's tests
+// set it (arena_test.go).
+var poisonBodies = false
 
 // chunk is one chunk of a connection's arena, and the number of calls
 // whose requests it holds.

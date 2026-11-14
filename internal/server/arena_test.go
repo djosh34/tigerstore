@@ -5,6 +5,11 @@ import (
 	"testing"
 )
 
+// The tests overwrite every chunk before it is lent again, so a request
+// read after its release shows up as wrong data: without the abandon for
+// answers in pieces, TestAnswersHeldBackBySlowClient fails.
+func init() { poisonBodies = true }
+
 // TestArenaLendsChunks puts three requests into one chunk, which the
 // connection holds until the last is released and which counts against
 // its calls' bound meanwhile; then it goes back to the server, poisoned.

@@ -46,11 +46,13 @@ func TestStreamsAreReused(t *testing.T) {
 	c := framesConn(t)
 	done, atNode := testCall(c, 3), testCall(c, 5)
 	c.atNode[atNode] = struct{}{}
+	// A request that never decoded is not kept with the stream.
+	done.msg, done.body = make([]byte, 1<<20), make([]byte, 1<<20)
 	done.finish(nil)
 	atNode.finish(nil)
 	drain(c)
-	if len(c.free) != 1 || c.free[0] != done {
-		t.Fatalf("%d streams kept for the next calls, want the ended call's", len(c.free))
+	if len(c.free) != 1 || c.free[0] != done || done.msg != nil || done.body != nil {
+		t.Fatalf("%d streams kept for the next calls, want the ended call's without its request", len(c.free))
 	}
 	st := c.newStream(&reqHeaders{id: 7, method: "POST", path: "/etcdserverpb.KV/Range", contentType: "application/grpc"})
 	if st != done || st.id != 7 || st.done.Load() || st.ended || st.out != nil || c.streams[7] != st || len(c.free) != 0 {
@@ -58,5 +60,24 @@ func TestStreamsAreReused(t *testing.T) {
 	}
 	if http := c.newStream(&reqHeaders{id: 9, method: "GET", path: "/health"}); http == atNode {
 		t.Fatal("a stream at the node was reused")
+	}
+}
+
+// TestReleaseDropsDeadlines closes a connection with a call whose deadline
+// is an hour away: once the loop lets go of the connection, neither its
+// timer nor the deadline heap refers to the connection or the call.
+func TestReleaseDropsDeadlines(t *testing.T) {
+	c := framesConn(t)
+	c.s.conns, c.s.gone = map[closer]struct{}{}, newConnMetrics()
+	c.s.wg.Add(1)
+	if !c.s.track(c) {
+		t.Fatal("track refused the connection")
+	}
+	st := testCall(c, 3)
+	c.armDeadline(st, time.Now().Add(time.Hour))
+	c.close()
+	c.release()
+	if c.s.loop.Timeout(-1) >= 0 || len(c.deadlines) != 0 || st.due != 0 {
+		t.Fatalf("after release: loop timeout %v, %d deadlines, call's place %d", c.s.loop.Timeout(-1), len(c.deadlines), st.due)
 	}
 }

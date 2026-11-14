@@ -801,6 +801,9 @@ func (c *conn) reuseStream(st *stream) {
 	if _, at := c.atNode[st]; at {
 		return
 	}
+	// A request that never reached the node, or did not decode, is no
+	// longer needed.
+	st.msg, st.body, st.hdrN = nil, nil, 0
 	c.free = append(c.free, st)
 }
 

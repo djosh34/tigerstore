@@ -239,6 +239,23 @@ func (l *Loop) After(f Flusher, at time.Time) {
 	l.timers = append(l.timers, timer{at: at, f: f})
 }
 
+// Cancel drops f's time from After, if it has one, so that the loop no
+// longer refers to a flusher that is gone.
+func (l *Loop) Cancel(f Flusher) {
+	i, ok := l.timed[f]
+	if !ok {
+		return
+	}
+	delete(l.timed, f)
+	last := len(l.timers) - 1
+	if i != last {
+		l.timers[i] = l.timers[last]
+		l.timed[l.timers[i].f] = i
+	}
+	l.timers[last] = timer{}
+	l.timers = l.timers[:last]
+}
+
 // Timeout bounds timeout, the owner's own, by the earliest After; a
 // negative timeout means none.
 func (l *Loop) Timeout(timeout time.Duration) time.Duration {

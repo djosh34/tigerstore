@@ -502,6 +502,13 @@ func (c *conn) release() {
 		return
 	}
 	c.gone = true
+	// A call's deadline may lie hours ahead: neither the loop's timer nor
+	// the deadline heap may keep the connection or its streams until then.
+	c.s.loop.Cancel(c)
+	for _, st := range c.deadlines {
+		st.due = 0
+	}
+	c.deadlines, c.free = nil, nil
 	if c.token != 0 {
 		c.s.loop.Forget(c.token)
 		// The socket closes too: a pump's goroutines end with it.

@@ -456,7 +456,7 @@ jobs:
         run: |
           set -uo pipefail
           status=0
-          for t in core:FuzzDecodeAlias core:FuzzParsePut core:FuzzReceiveSnapshot wal:FuzzOpen mvcc:FuzzLoad peer:FuzzFrames server:FuzzHTTP2 loop:FuzzRecords; do
+          for t in core:FuzzDecodeAlias core:FuzzParsePut core:FuzzReceiveSnapshot wal:FuzzOpen mvcc:FuzzLoad peer:FuzzFrames server:FuzzHTTP2 server:FuzzFrames loop:FuzzRecords; do
             pkg=./internal/${t%:*} target=${t#*:}
             echo "::group::$pkg $target"
             go test -run '^$' -fuzz "^$target\$" -fuzztime 20s "$pkg" || { status=1; echo "::error::$target failed"; }
