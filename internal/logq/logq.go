@@ -5,17 +5,17 @@
 // that disk stalls, a write to the log can take seconds, and a loop that
 // waits for it sends no heartbeats and loses its term (#680).
 //
-// Infof formats the line and stamps it with the time and place of the
-// call, then queues it; one goroutine writes the queue out, in order.
-// When the queue is full the line is dropped and counted, and the next
-// line queued carries the count, so the report of the drops is written
-// where they were.
+// A Log is a zap core in front of another: Logger's lines are checked,
+// stamped and given their caller at the call, as zap does, then queued;
+// one goroutine writes the queue to the other core, in order. When the
+// queue is full a line is dropped and counted, and the next line queued
+// carries the count, so the report of the drops is written where they
+// were.
 package logq
 
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,57 +25,98 @@ import (
 )
 
 // Size is how many lines a Log holds by default while its output is
-// slow.
+// slow: about 3 MiB of queue.
 const Size = 1 << 14
 
 // stopWait bounds how long Stop waits for the lines still queued to be
 // written.
 const stopWait = 5 * time.Second
 
-// line is one queued line: when and where it was logged, its message, and
-// how many lines were dropped just before it.
+// line is one queued line: the core it goes to, with its fields, and how
+// many lines were dropped just before it.
 type line struct {
-	at      time.Time
-	pc      uintptr
-	msg     string
+	core    zapcore.Core
+	entry   zapcore.Entry
+	fields  []zapcore.Field
 	dropped uint64
 }
 
-// Log queues lines for a zap logger's output.
+// Log queues the lines of a zap logger for its output.
 type Log struct {
-	core    zapcore.Core
+	base    zapcore.Core
 	lines   chan line
 	dropped atomic.Uint64
-	// quit tells the writer to write what is queued and end, and done
-	// closes when it has.
-	stop sync.Once
-	quit chan struct{}
-	done chan struct{}
+	// mu orders the lines queued with Stop: stopped is set under its
+	// write lock, and a line is queued under its read lock, so that none
+	// is queued once the writer may have ended.
+	mu      sync.RWMutex
+	stopped bool
+	stop    sync.Once
+	quit    chan struct{}
+	done    chan struct{}
 }
 
-// New returns a Log that writes to lg's output through a queue of size
-// lines, and starts its writer.
+// New returns a Log in front of lg's core with a queue of size lines, and
+// starts its writer.
 func New(lg *zap.Logger, size int) *Log {
-	l := &Log{core: lg.Core(), lines: make(chan line, size), quit: make(chan struct{}), done: make(chan struct{})}
+	l := &Log{base: lg.Core(), lines: make(chan line, size), quit: make(chan struct{}), done: make(chan struct{})}
 	go l.write()
 	return l
 }
 
-// Infof logs a line at the info level without waiting for the output. A
-// line that does not fit the queue is dropped and counted. After Stop no
-// line is written.
-func (l *Log) Infof(format string, args ...any) {
-	if !l.core.Enabled(zapcore.InfoLevel) {
-		return
+// Logger returns lg with its lines going through the queue.
+func (l *Log) Logger(lg *zap.Logger) *zap.Logger {
+	return lg.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core { return queued{l: l, next: c} }))
+}
+
+// queued is the core of Logger: it queues what next would write.
+type queued struct {
+	l    *Log
+	next zapcore.Core
+}
+
+func (q queued) Enabled(lvl zapcore.Level) bool { return q.next.Enabled(lvl) }
+
+func (q queued) With(fields []zapcore.Field) zapcore.Core {
+	return queued{l: q.l, next: q.next.With(fields)}
+}
+
+func (q queued) Check(e zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	if q.Enabled(e.Level) {
+		return ce.AddCore(e, q)
 	}
-	var pc [1]uintptr
-	runtime.Callers(2, pc[:])
-	ln := line{at: time.Now(), pc: pc[0], msg: fmt.Sprintf(format, args...), dropped: l.dropped.Swap(0)}
-	select {
-	case l.lines <- ln:
-	default:
-		l.dropped.Add(ln.dropped + 1)
+	return ce
+}
+
+// Write queues e without waiting for the output. A line that does not fit
+// the queue, or comes after Stop, is dropped and counted. A line that
+// ends the process, at DPanic or above, is written at once, since nothing
+// would write it after.
+func (q queued) Write(e zapcore.Entry, fields []zapcore.Field) error {
+	if e.Level > zapcore.ErrorLevel {
+		return q.next.Write(e, fields)
 	}
+	q.l.add(line{core: q.next, entry: e, fields: fields})
+	return nil
+}
+
+// Sync syncs the output. The lines still queued are written by the
+// writer, or by Stop.
+func (q queued) Sync() error { return q.next.Sync() }
+
+// add queues ln, with the count of the lines dropped before it.
+func (l *Log) add(ln line) {
+	ln.dropped = l.dropped.Swap(0)
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	if !l.stopped {
+		select {
+		case l.lines <- ln:
+			return
+		default:
+		}
+	}
+	l.dropped.Add(ln.dropped + 1)
 }
 
 // write writes the queued lines in order until Stop, then what is left in
@@ -102,27 +143,22 @@ func (l *Log) write() {
 
 // entry writes ln, after the report of the lines dropped before it.
 func (l *Log) entry(ln line) {
-	l.reportDropped(ln.at, ln.dropped)
-	e := zapcore.Entry{Level: zapcore.InfoLevel, Time: ln.at, Message: ln.msg}
-	if f, _ := runtime.CallersFrames([]uintptr{ln.pc}).Next(); f.PC != 0 {
-		e.Caller = zapcore.NewEntryCaller(f.PC, f.File, f.Line, true)
-	}
-	l.check(e)
+	l.reportDropped(ln.entry.Time, ln.dropped)
+	report(ln.core.Write(ln.entry, ln.fields))
 }
 
 // reportDropped writes that n lines were dropped, if any were.
 func (l *Log) reportDropped(at time.Time, n uint64) {
 	if n > 0 {
-		l.check(zapcore.Entry{Level: zapcore.WarnLevel, Time: at, Message: fmt.Sprintf("dropped %d log lines while the log's output was slow", n)})
+		e := zapcore.Entry{Level: zapcore.WarnLevel, Time: at, Message: fmt.Sprintf("dropped %d log lines while the log's output was slow", n)}
+		report(l.base.Write(e, nil))
 	}
 }
 
-// check writes e, and reports a failed write on stderr, as zap's logger
-// does.
-func (l *Log) check(e zapcore.Entry) {
-	if ce := l.core.Check(e, nil); ce != nil {
-		ce.ErrorOutput = zapcore.Lock(os.Stderr)
-		ce.Write()
+// report reports a failed write on stderr, as zap's logger does.
+func report(err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v write error: %v\n", time.Now(), err)
 	}
 }
 
@@ -130,7 +166,12 @@ func (l *Log) check(e zapcore.Entry) {
 // at most a few seconds. A writer still stuck after them keeps waiting on
 // the output, and so does any other write to it.
 func (l *Log) Stop() {
-	l.stop.Do(func() { close(l.quit) })
+	l.stop.Do(func() {
+		l.mu.Lock()
+		l.stopped = true
+		l.mu.Unlock()
+		close(l.quit)
+	})
 	select {
 	case <-l.done:
 	case <-time.After(stopWait):

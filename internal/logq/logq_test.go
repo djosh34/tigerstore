@@ -44,45 +44,58 @@ func (s *stuck) release() { close(s.open) }
 // waiting closes once a write waits.
 func (s *stuck) waiting() <-chan struct{} { return s.entered }
 
-// lines are the messages written, and the time of each.
-func (s *stuck) lines(t *testing.T) ([]string, []time.Time) {
+// written is a line as the output got it.
+type written struct {
+	Msg    string    `json:"msg"`
+	TS     time.Time `json:"ts"`
+	Caller string    `json:"caller"`
+}
+
+// lines are the lines written.
+func (s *stuck) lines(t *testing.T) []written {
 	t.Helper()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var msgs []string
-	var times []time.Time
+	var out []written
 	for line := range strings.SplitSeq(strings.TrimSpace(s.b.String()), "\n") {
 		if line == "" {
 			continue
 		}
-		var e struct {
-			Msg string    `json:"msg"`
-			TS  time.Time `json:"ts"`
-		}
-		if err := json.Unmarshal([]byte(line), &e); err != nil {
+		var w written
+		if err := json.Unmarshal([]byte(line), &w); err != nil {
 			t.Fatalf("a log line %q: %v", line, err)
 		}
-		msgs = append(msgs, e.Msg)
-		times = append(times, e.TS)
+		out = append(out, w)
 	}
-	return msgs, times
+	return out
 }
 
-func logger(w zapcore.WriteSyncer) *zap.Logger {
+func msgs(ws []written) []string {
+	var out []string
+	for _, w := range ws {
+		out = append(out, w.Msg)
+	}
+	return out
+}
+
+// base is a logger to w, with the caller, as etcd's is.
+func base(w zapcore.WriteSyncer) *zap.Logger {
 	cfg := zap.NewProductionEncoderConfig()
 	cfg.EncodeTime = zapcore.RFC3339NanoTimeEncoder
-	return zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(cfg), zapcore.Lock(w), zapcore.InfoLevel))
+	return zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(cfg), zapcore.Lock(w), zapcore.InfoLevel), zap.AddCaller())
 }
 
-// TestInfofDoesNotWait logs while the output is stuck: no line waits for
-// it, and once it opens every line is written in order, stamped with the
-// time it was logged.
-func TestInfofDoesNotWait(t *testing.T) {
+// TestLinesDoNotWait logs while the output is stuck: no line waits for
+// it, and once it opens every line is written in order, with the time and
+// the caller of its call.
+func TestLinesDoNotWait(t *testing.T) {
 	out := newStuck()
-	l := New(logger(out), 64)
+	b := base(out)
+	q := New(b, 64)
+	lg := q.Logger(b).Sugar()
 	start := time.Now()
 	for i := range 50 {
-		l.Infof("line %d", i)
+		lg.Infof("line %d", i)
 	}
 	<-out.waiting()
 	if d := time.Since(start); d > time.Second {
@@ -91,14 +104,14 @@ func TestInfofDoesNotWait(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	opened := time.Now()
 	out.release()
-	l.Stop()
-	msgs, times := out.lines(t)
-	if len(msgs) != 50 {
-		t.Fatalf("%d lines written, want 50: %q", len(msgs), msgs)
+	q.Stop()
+	ws := out.lines(t)
+	if len(ws) != 50 {
+		t.Fatalf("%d lines written, want 50: %q", len(ws), msgs(ws))
 	}
-	for i, m := range msgs {
-		if m != fmt.Sprintf("line %d", i) || times[i].After(opened) {
-			t.Fatalf("line %d is %q at %v, logged before %v", i, m, times[i], opened)
+	for i, w := range ws {
+		if w.Msg != fmt.Sprintf("line %d", i) || w.TS.After(opened) || !strings.HasPrefix(w.Caller, "logq/logq_test.go:") {
+			t.Fatalf("line %d is %+v, logged here before %v", i, w, opened)
 		}
 	}
 }
@@ -108,56 +121,70 @@ func TestInfofDoesNotWait(t *testing.T) {
 // where they were, before the next line queued, or at Stop.
 func TestDroppedLinesAreReported(t *testing.T) {
 	out := newStuck()
-	l := New(logger(out), 4)
-	l.Infof("line 0")
+	b := base(out)
+	q := New(b, 4)
+	lg := q.Logger(b).Sugar()
+	lg.Infof("line 0")
 	// The writer holds line 0 in a write that waits; the queue takes 4
 	// more, and drops the 5 after them.
 	<-out.waiting()
 	for i := 1; i < 10; i++ {
-		l.Infof("line %d", i)
+		lg.Infof("line %d", i)
 	}
 	out.release()
-	for deadline := time.Now().Add(5 * time.Second); ; {
-		if msgs, _ := out.lines(t); len(msgs) == 5 {
-			break
-		}
+	for deadline := time.Now().Add(5 * time.Second); len(out.lines(t)) < 5; {
 		if time.Now().After(deadline) {
 			t.Fatal("the queued lines were not written")
 		}
 		time.Sleep(time.Millisecond)
 	}
-	l.Infof("line 10")
+	lg.Infof("line 10")
 	// Dropped while the writer is stopped, reported at Stop.
-	l.dropped.Add(2)
-	l.Stop()
-	msgs, _ := out.lines(t)
+	q.dropped.Add(2)
+	q.Stop()
 	drop := "dropped %d log lines while the log's output was slow"
 	want := []string{"line 0", "line 1", "line 2", "line 3", "line 4", fmt.Sprintf(drop, 5), "line 10", fmt.Sprintf(drop, 2)}
-	if strings.Join(msgs, "|") != strings.Join(want, "|") {
-		t.Fatalf("written %q, want %q", msgs, want)
+	if got := msgs(out.lines(t)); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("written %q, want %q", got, want)
 	}
 	// After Stop, no line is written.
-	l.Infof("late")
-	if msgs, _ := out.lines(t); len(msgs) != len(want) {
-		t.Fatalf("a line after Stop was written: %q", msgs)
+	lg.Infof("late")
+	if got := out.lines(t); len(got) != len(want) {
+		t.Fatalf("a line after Stop was written: %q", msgs(got))
 	}
 }
 
-// TestLinesNameTheirCaller checks that a line names where it was logged,
-// not this package.
-func TestLinesNameTheirCaller(t *testing.T) {
-	var b bytes.Buffer
-	l := New(logger(zapcore.AddSync(&b)), 4)
-	l.Infof("here")
-	l.Stop()
-	var e struct {
-		Caller string `json:"caller"`
-	}
-	if err := json.Unmarshal(b.Bytes(), &e); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(e.Caller, "logq/logq_test.go:") {
-		t.Fatalf("the line names %q as its caller", e.Caller)
+// blockedString waits in String until released, as a slow argument
+// being formatted.
+type blockedString struct {
+	in, release chan struct{}
+}
+
+func (b blockedString) String() string {
+	close(b.in)
+	<-b.release
+	return "late"
+}
+
+// TestStopDuringFormatting stops a Log while a line is being formatted:
+// the line, which reaches the queue after Stop, is dropped and counted,
+// never left in the queue (Astra's review of #681).
+func TestStopDuringFormatting(t *testing.T) {
+	var buf bytes.Buffer
+	lg := base(zapcore.AddSync(&buf))
+	q := New(lg, 4)
+	arg := blockedString{in: make(chan struct{}), release: make(chan struct{})}
+	logged := make(chan struct{})
+	go func() {
+		defer close(logged)
+		q.Logger(lg).Sugar().Infof("%v", arg)
+	}()
+	<-arg.in
+	q.Stop()
+	close(arg.release)
+	<-logged
+	if len(q.lines) != 0 || q.dropped.Load() != 1 {
+		t.Fatalf("a line logged across Stop: %d queued, %d dropped, want 0 and 1", len(q.lines), q.dropped.Load())
 	}
 }
 
@@ -167,11 +194,12 @@ func TestStopDoesNotWaitForever(t *testing.T) {
 		t.Skip("waits for stopWait")
 	}
 	out := newStuck()
-	l := New(logger(out), 4)
-	l.Infof("line 0")
+	b := base(out)
+	q := New(b, 4)
+	q.Logger(b).Info("line 0")
 	<-out.waiting()
 	start := time.Now()
-	l.Stop()
+	q.Stop()
 	if d := time.Since(start); d < stopWait || d > stopWait+time.Second {
 		t.Fatalf("Stop took %v with a stuck output, want about %v", d, stopWait)
 	}

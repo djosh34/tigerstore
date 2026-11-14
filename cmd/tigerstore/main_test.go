@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -402,26 +403,29 @@ func (b blockedOutput) Write(p []byte) (int, error) {
 
 func (b blockedOutput) Sync() error { return nil }
 
-// TestNodeLogDoesNotWait logs through what the node logs with while the
-// log's output is stuck: no line waits for it. Before #680's fix the node
-// logged through the logger itself, and each line waited.
-func TestNodeLogDoesNotWait(t *testing.T) {
+// TestLogDoesNotWait logs through the process's logger while the log's
+// output is stuck: the node's lines, an error that ends the process, and
+// the standard log package's lines, as x/net's HTTP/2 debug output, all
+// return at once, and stopping the log ends within its bound. Before
+// #680's fix each of them waited for the output.
+func TestLogDoesNotWait(t *testing.T) {
 	out := blockedOutput{release: make(chan struct{})}
-	lg := zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.Lock(out), zapcore.InfoLevel))
-	logf, stop := nodeLog(lg)
+	defer close(out.release)
+	lg, stop := queuedLog(zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.Lock(out), zapcore.InfoLevel)))
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		logf := lg.Sugar().Infof
 		for i := range 10 {
 			logf("leader is 0 at term %d", i)
 		}
+		log.Printf("http2: Framer %p: wrote PING len=8", lg)
+		lg.Error("tigerstore stopped")
+		stop()
 	}()
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
-		close(out.release)
-		t.Fatal("logging waited for a stuck output")
+	case <-time.After(15 * time.Second):
+		t.Fatal("logging, or stopping the log, waited for a stuck output")
 	}
-	close(out.release)
-	stop()
 }
