@@ -153,7 +153,9 @@ func stallGroups(nodes [][]logLine) []stallGroup {
 var writeBytes = regexp.MustCompile(`^slow (?:log flush: |write to the log: \d+ entries, )(\d+) bytes`)
 
 // smallWrites reports whether every node logged, from from to to, at
-// least one slow flush or log write, and none of more than stallWrite.
+// least one slow flush or log write, and none of more than stallWrite. A
+// write's size is logged just after the sync it waited on, so the window
+// reaches stallSkew past the stall.
 func smallWrites(nodes [][]logLine, from, to time.Time) bool {
 	for _, lines := range nodes {
 		seen := false
@@ -246,7 +248,7 @@ func diskStall(prefix string) (time.Time, error) {
 			end = next.end
 		}
 		if slices.ContainsFunc(leaders, func(l time.Time) bool { return !l.Before(end) && l.Sub(end) <= stallElected }) &&
-			smallWrites(nodes, g.start.Add(-stallSkew), end) {
+			smallWrites(nodes, g.start.Add(-stallSkew), end.Add(stallSkew)) {
 			return end, nil
 		}
 	}
