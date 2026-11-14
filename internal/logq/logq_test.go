@@ -52,6 +52,9 @@ func (s *stuck) lines(t *testing.T) ([]string, []time.Time) {
 	var msgs []string
 	var times []time.Time
 	for line := range strings.SplitSeq(strings.TrimSpace(s.b.String()), "\n") {
+		if line == "" {
+			continue
+		}
 		var e struct {
 			Msg string    `json:"msg"`
 			TS  time.Time `json:"ts"`
@@ -101,7 +104,8 @@ func TestInfofDoesNotWait(t *testing.T) {
 }
 
 // TestDroppedLinesAreReported fills the queue while the output is stuck:
-// the lines past it are dropped, and the next line written says how many.
+// the lines past it are dropped, and the report of how many is written
+// where they were, before the next line queued, or at Stop.
 func TestDroppedLinesAreReported(t *testing.T) {
 	out := newStuck()
 	l := New(logger(out), 4)
@@ -113,16 +117,47 @@ func TestDroppedLinesAreReported(t *testing.T) {
 		l.Infof("line %d", i)
 	}
 	out.release()
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		if msgs, _ := out.lines(t); len(msgs) == 5 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the queued lines were not written")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	l.Infof("line 10")
+	// Dropped while the writer is stopped, reported at Stop.
+	l.dropped.Add(2)
 	l.Stop()
 	msgs, _ := out.lines(t)
-	want := []string{"line 0", "dropped 5 log lines while the log's output was slow", "line 1", "line 2", "line 3", "line 4"}
+	drop := "dropped %d log lines while the log's output was slow"
+	want := []string{"line 0", "line 1", "line 2", "line 3", "line 4", fmt.Sprintf(drop, 5), "line 10", fmt.Sprintf(drop, 2)}
 	if strings.Join(msgs, "|") != strings.Join(want, "|") {
 		t.Fatalf("written %q, want %q", msgs, want)
 	}
-	// After Stop, lines are dropped, never written.
+	// After Stop, no line is written.
 	l.Infof("late")
 	if msgs, _ := out.lines(t); len(msgs) != len(want) {
 		t.Fatalf("a line after Stop was written: %q", msgs)
+	}
+}
+
+// TestLinesNameTheirCaller checks that a line names where it was logged,
+// not this package.
+func TestLinesNameTheirCaller(t *testing.T) {
+	var b bytes.Buffer
+	l := New(logger(zapcore.AddSync(&b)), 4)
+	l.Infof("here")
+	l.Stop()
+	var e struct {
+		Caller string `json:"caller"`
+	}
+	if err := json.Unmarshal(b.Bytes(), &e); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(e.Caller, "logq/logq_test.go:") {
+		t.Fatalf("the line names %q as its caller", e.Caller)
 	}
 }
 
