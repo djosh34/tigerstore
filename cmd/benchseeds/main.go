@@ -16,6 +16,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/djosh34/tigerstore/internal/k8strace"
@@ -35,7 +36,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	fmt.Println(strings.Join(seeds, " "))
+	if _, err := fmt.Fprintln(os.Stdout, strings.Join(seeds, " ")); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
 
 // draw draws n seeds from next, least of which draw shape from the
@@ -61,7 +65,7 @@ func draw(dir, shape string, n, least int, next func() uint64) ([]string, error)
 		if is {
 			matched++
 		}
-		seeds = append(seeds, fmt.Sprint(seed))
+		seeds = append(seeds, strconv.FormatUint(seed, 10))
 	}
 	return seeds, nil
 }
