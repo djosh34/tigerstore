@@ -30,6 +30,11 @@ const (
 	// shared disk.
 	stallSync = time.Second
 	stallSkew = 250 * time.Millisecond
+	// stallElected is how soon after the stall the new leader must come:
+	// the election the stall held back ends as soon as the votes are
+	// durable (3 ms in A/A run 43625723837). A leader change later than
+	// that is the store's, not the disk's.
+	stallElected = 2 * time.Second
 	// silentRule is what a leader logs when #233's failover rule silences
 	// it (internal/node).
 	silentRule = "sending nothing to peers until it is durable"
@@ -146,7 +151,7 @@ var leaderTerm = regexp.MustCompile(`now \S+ term (\d+)`)
 // disk, as one episode: its cause is a leader change to a new term; the
 // shared disk stalled (stallGroups); the leader went silent by #233's
 // failover rule while it stalled; and a node logged the new leader, at the
-// term the check found, after that stall ended. It returns the stall's
+// term the check found, within stallElected after that stall ended. It returns the stall's
 // end, or errNotDiskStall with why not.
 func diskStall(prefix string) (time.Time, error) {
 	cause, err := os.ReadFile(prefix + ".failed")
@@ -203,7 +208,7 @@ func diskStall(prefix string) (time.Time, error) {
 			}
 			end = next.end
 		}
-		if slices.ContainsFunc(leaders, func(l time.Time) bool { return !l.Before(end) }) {
+		if slices.ContainsFunc(leaders, func(l time.Time) bool { return !l.Before(end) && l.Sub(end) <= stallElected }) {
 			return end, nil
 		}
 	}

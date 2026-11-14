@@ -32,7 +32,8 @@ func nodeLog(t *testing.T, path string, base time.Time, lines map[time.Duration]
 // plain failure: a stall on one node only; a leader change alone; slow
 // syncs without the silent rule; ends spread 480 ms; the silence after the
 // election; the election before the stall ended; a new leader at another
-// term; no new leader; and another cause.
+// term; a new leader 85 s after the stall; slow syncs on every node a
+// second apart; no new leader; and another cause.
 func TestDiskStall(t *testing.T) {
 	base := time.Date(2026, 11, 14, 18, 42, 53, 0, time.UTC)
 	const changed = "leader check exited 1: the leader changed during the run: 127.0.0.1:20030 term 2, now 127.0.0.1:20010 term 3"
@@ -78,6 +79,8 @@ func TestDiskStall(t *testing.T) {
 		{"silence after the election", changed, three(with(stall(0), 50*time.Second, rule), stall(0), stall(0)), false},
 		{"the election before the stall ended", changed, three(with(without(stall(0), 8*time.Second+3e6), in, rule), without(with(stall(0), 8*time.Second-2e8, "leader is 1 at term 3"), 8*time.Second+3e6), without(stall(0), 8*time.Second+3e6)), false},
 		{"a new leader at another term", "leader check exited 1: the leader changed during the run: 127.0.0.1:20030 term 2, now 127.0.0.1:20010 term 4", three(with(stall(0), in, rule), stall(0), stall(0)), false},
+		{"a new leader 85 s after the stall", changed, three(with(without(stall(0), 8*time.Second+3e6), in, rule), with(without(stall(0), 8*time.Second+3e6), 93*time.Second, "leader is 1 at term 3"), without(stall(0), 8*time.Second+3e6)), false},
+		{"no shared stall, silence and slow syncs apart", changed, three(with(stall(0), in, rule), stall(time.Second), stall(-time.Second)), false},
 		{"no new leader", changed, three(with(without(stall(0), 8*time.Second+3e6), in, rule), without(stall(0), 8*time.Second+3e6), without(stall(0), 8*time.Second+3e6)), false},
 		{"another cause", "loadgen exited 1: request timed out", three(with(stall(0), in, rule), stall(0), stall(0)), false},
 	} {
