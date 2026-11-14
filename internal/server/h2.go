@@ -109,6 +109,8 @@ type conn struct {
 	// frame, or 0.
 	contID uint32
 	batch  opBatch
+	// arena holds the requests of the calls the node runs (arena.go).
+	arena arena
 	// hdec decodes header blocks into hdr, the headers of the block being
 	// read, with no allocation for fields from the HPACK tables.
 	hdec *hpack.Decoder
@@ -384,9 +386,12 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 		if st.deadline != nil {
 			st.deadline.Stop()
 		}
-		// A call the node still runs keeps its request charge until its
-		// reply comes and is dropped.
+		// A call the node still runs keeps its request charge and its
+		// request until its reply comes and is dropped.
 		c.releaseLocked(&st.replyHeld)
+		if _, at := c.atNode[st]; !at {
+			c.releaseBody(st)
+		}
 		c.cancelLocked(st)
 		st.out = nil
 		st.queued = 0

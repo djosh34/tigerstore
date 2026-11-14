@@ -212,11 +212,12 @@ func (c *conn) cancelLocked(st *stream) {
 	}
 }
 
-// releaseReqLocked frees a call's request charge once the node answered
-// or stopped. c.mu is held.
+// releaseReqLocked frees a call's request charge, and its request, once
+// the node answered or stopped. c.mu is held.
 func (c *conn) releaseReqLocked(st *stream) {
 	delete(c.atNode, st)
 	c.releaseLocked(&st.reqHeld)
+	c.releaseBody(st)
 }
 
 // creditLocked sends a connection window update once enough was received
@@ -304,6 +305,8 @@ type finished struct {
 	msg        []byte
 	err        error
 	more, cont bool
+	// pieces is set for the first piece of an answer in pieces.
+	pieces bool
 	// granted is the ID of a lease the node granted, for its span.
 	granted int64
 }
@@ -323,6 +326,7 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 		for _, cp := range cs {
 			st := cp.Tag.(*stream)
 			f := finished{st: st, err: cp.Err, more: cp.MorePieces, cont: st.holes != nil}
+			f.pieces = f.more && !f.cont
 			if !f.cont {
 				c.logSlow(st, now.Sub(st.admitted))
 			}
@@ -375,6 +379,10 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 	for _, f := range out {
 		st := f.st
 		if !f.cont {
+			if f.pieces {
+				// The node reads the request for the pieces to come.
+				c.abandonBody(st)
+			}
 			c.releaseReqLocked(st)
 		}
 		end := !f.more && f.err == nil
