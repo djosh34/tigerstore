@@ -23,9 +23,9 @@ func TestStoppedNodeHasTurnRoom(t *testing.T) {
 
 // TestTurnFitsCallsInTime checks how many calls a turn takes:
 // firstTurnCalls before a turn measured what a call costs, then those
-// that fit in the time left before the node's next tick, at most a tick,
-// at the moving average of that cost, and never fewer than minTurnCalls,
-// as when the tick is due already. A turn that took too few calls
+// that fit in the time left before the node's next tick, but in no less
+// than minTurnTime and at most a tick, at the moving average of that cost,
+// and never fewer than minTurnCalls. A turn that took too few calls
 // measures nothing.
 func TestTurnFitsCallsInTime(t *testing.T) {
 	n := &Node{cfg: Config{Tick: 100 * time.Millisecond}}
@@ -49,8 +49,9 @@ func TestTurnFitsCallsInTime(t *testing.T) {
 		{15 * time.Millisecond, 1400, 1500},
 		// At most a tick, 100 ms.
 		{time.Second, 9500, 10000},
-		// The tick is due: the fewest.
-		{-time.Millisecond, minTurnCalls, minTurnCalls},
+		// Close to the tick, or past it: at least minTurnTime, 15 ms.
+		{time.Millisecond, 1400, 1500},
+		{-time.Millisecond, 1400, 1500},
 	} {
 		if fit := n.turnFit(c.until); fit < c.low || fit > c.top {
 			t.Fatalf("with %v to the tick at 10 µs a call, a turn fits %d calls, want %d to %d", c.until, fit, c.low, c.top)

@@ -1134,11 +1134,14 @@ func (n *Node) Busy() bool {
 // and only then do Raft's ticks and heartbeats go on: a turn that took
 // every call that had arrived grew with the load (#647). So a turn takes
 // the calls that fit in the time left before the node's next tick is due,
-// at what a call cost turns lately (turnFit), and at least minTurnCalls;
-// the rest come in the next turn, which takes the tick. A bound on the
-// calls alone cut every turn's batch at any load, and cost put 5 to 8% of
-// its throughput; a fixed 15 ms cut k8s's dearer calls and cost it up to
-// 6% at RTT 0 (#649).
+// but in no less than minTurnTime, at what a call cost turns lately
+// (turnFit), and at least minTurnCalls; the rest come in the next turn,
+// which takes the tick. A bound on the calls alone cut every turn's batch
+// at any load, and cost put 5 to 8% of its throughput; a fixed 15 ms cut
+// k8s's dearer calls and cost it up to 6% at RTT 0; and the time to the
+// tick alone, which leaves the turns just before a tick few calls, cost
+// txn 1 to 5% (#649).
+const minTurnTime = 15 * time.Millisecond
 
 // minTurnCalls is the fewest calls a turn takes, so that a turn slowed by
 // other work still takes clients' calls; measuredTurnCalls the fewest
@@ -1168,7 +1171,8 @@ func (n *Node) TurnRoom() int {
 }
 
 // turnFit is how many calls fit in a turn that has until the node's next
-// tick is due, at most a tick, at what a call cost turns lately:
+// tick is due, at least minTurnTime and at most a tick, at what a call
+// cost turns lately:
 // firstTurnCalls before the first measure, and while turns take no time,
 // as in the simulator, whose clock stands still in a turn.
 func (n *Node) turnFit(until time.Duration) int {
@@ -1178,7 +1182,7 @@ func (n *Node) turnFit(until time.Duration) int {
 		}
 		return firstTurnCalls
 	}
-	return max(int(min(max(until, 0), n.cfg.Tick)/n.perCall), minTurnCalls)
+	return max(int(min(max(until, minTurnTime), n.cfg.Tick)/n.perCall), minTurnCalls)
 }
 
 // turnTook measures what a call cost the turn that ends, which took calls
