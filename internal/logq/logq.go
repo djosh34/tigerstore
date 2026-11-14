@@ -2,7 +2,7 @@
 // for the log's output. The node's event loop logs as it works: slow
 // writes to the log, slow calls, a leader change, and with
 // GODEBUG=http2debug=2 x/net's control frames through the standard log
-// package. A process's log goes to a file or a pipe, which may sit on the
+// package, whose lines it queues at the warn level. A process's log goes to a file or a pipe, which may sit on the
 // disk the node writes its data to. While that disk stalls, a write to the
 // log can take seconds, and a loop that waits for it sends no heartbeats
 // and loses its term (#680).
@@ -34,11 +34,12 @@ const Size = 1 << 14
 // written.
 const stopWait = 5 * time.Second
 
-// line is one queued line: when and where it was logged, its message, and
-// how many lines were dropped just before it.
+// line is one queued line: when and where it was logged, its level and
+// message, and how many lines were dropped just before it.
 type line struct {
 	at      time.Time
 	pc      uintptr
+	level   zapcore.Level
 	msg     string
 	dropped uint64
 }
@@ -78,14 +79,16 @@ func (l *Log) Infof(format string, args ...any) {
 	}
 	var pc [1]uintptr
 	runtime.Callers(2, pc[:])
-	l.add(line{at: time.Now(), pc: pc[0], msg: fmt.Sprintf(format, args...)})
+	l.add(line{at: time.Now(), pc: pc[0], level: zapcore.InfoLevel, msg: fmt.Sprintf(format, args...)})
 }
 
-// Write logs p, a line of the standard log package, at the info level
-// without waiting for the output.
+// Write logs p, a line of the standard log package, at the warn level
+// without waiting for the output. Such lines are warnings, such as
+// net/http's report of a handler that panicked, and went to stderr at any
+// log level before.
 func (l *Log) Write(p []byte) (int, error) {
-	if l.core.Enabled(zapcore.InfoLevel) {
-		l.add(line{at: time.Now(), msg: string(bytes.TrimSuffix(p, []byte("\n")))})
+	if l.core.Enabled(zapcore.WarnLevel) {
+		l.add(line{at: time.Now(), level: zapcore.WarnLevel, msg: string(bytes.TrimSuffix(p, []byte("\n")))})
 	}
 	return len(p), nil
 }
@@ -136,7 +139,7 @@ func (l *Log) write() {
 // entry writes ln, after the report of the lines dropped before it.
 func (l *Log) entry(ln line) {
 	l.reportDropped(ln.at, ln.dropped)
-	e := zapcore.Entry{Level: zapcore.InfoLevel, Time: ln.at, Message: ln.msg}
+	e := zapcore.Entry{Level: ln.level, Time: ln.at, Message: ln.msg}
 	if ln.pc != 0 {
 		if f, _ := runtime.CallersFrames([]uintptr{ln.pc}).Next(); f.PC != 0 {
 			e.Caller = zapcore.NewEntryCaller(f.PC, f.File, f.Line, true)
