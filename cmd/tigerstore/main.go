@@ -29,6 +29,7 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/epoll"
+	"github.com/djosh34/tigerstore/internal/logq"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
@@ -115,7 +116,8 @@ func run(args []string) int {
 // start runs the node until a signal or an error stops it.
 func start(c *config, lg *zap.Logger) error {
 	ec := &c.ec
-	logf := lg.Sugar().Infof
+	logf, stopLog := nodeLog(lg)
+	defer stopLog()
 	if host, err := ec.UpdateDefaultClusterFromName(c.defaultCluster); host != "" || err != nil {
 		lg.Info("detected default host for advertise", zap.String("host", host), zap.Error(err))
 	}
@@ -364,6 +366,24 @@ func start(c *config, lg *zap.Logger) error {
 	closeErr := t.Close()
 	<-n.Drained()
 	return errors.Join(runErr, stopErr, closeErr)
+}
+
+// nodeLog returns what the node, its peers and its server log with, and
+// how to stop it; until then the standard log package's lines, as x/net's
+// HTTP/2 debug output, go the same way. Neither waits for the log's
+// output, which may sit on the disk the node writes to: the node's event
+// loop logs as it works, and a loop that waits through a disk stall sends
+// no heartbeats (#680).
+func nodeLog(lg *zap.Logger) (func(format string, args ...any), func()) {
+	q := logq.New(lg, logq.Size)
+	flags, out := log.Flags(), log.Writer()
+	log.SetFlags(0)
+	log.SetOutput(q)
+	return q.Infof, func() {
+		log.SetOutput(out)
+		log.SetFlags(flags)
+		q.Stop()
+	}
 }
 
 // featureMetrics are the feature gates for etcd_server_feature_enabled,
