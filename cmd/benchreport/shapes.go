@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -165,22 +166,25 @@ func throughput(r result) float64 { return r.Throughput }
 
 func abs(x float64) float64 { return max(x, -x) }
 
-// byShape sets the candidate against the baseline shape by shape, over
-// all the max runs of every seed that drew the shape: a bench of one run
-// per seed (bench.yml's quick grid) has no repeats to take a spread from,
-// so it takes the spread across the shape's seeds. Each store's spread is
-// (max - min) / median of its runs of the shape; a change no larger than
-// the spread of either is noise. A shape drawn by one seed has no spread.
-func byShape(w io.Writer, rtts, benches []string, all maxRuns) {
-	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
-	header := false
+// pairCell is one shape of a benchmark at one RTT.
+type pairCell struct{ bench, shape, rtt string }
+
+func (c pairCell) String() string { return c.bench + "/" + c.shape + "/" + c.rtt }
+
+// pairs returns, per shape of each benchmark and RTT, the paired ratio of
+// every seed that ran on both stores: the candidate's median max
+// throughput over the baseline's. In bench.yml's quick grid a seed's two
+// stores ran back to back on one runner, so the ratio leaves out how the
+// seeds and the runners differ. The cells come in order.
+func pairs(rtts, benches []string, all maxRuns) ([]pairCell, map[pairCell][]float64) {
+	var cells []pairCell
+	ratios := map[pairCell][]float64{}
 	for _, bench := range benches {
 		var everything runs
 		for _, rtt := range rtts {
 			everything = append(everything, all(rtt, bench, "baseline")...)
 			everything = append(everything, all(rtt, bench, "candidate")...)
 		}
-		// The shapes in the order their first seed comes.
 		var shapeList []string
 		seedsOfShape := map[string][]string{}
 		for _, seed := range seedsOf(everything) {
@@ -192,34 +196,81 @@ func byShape(w io.Writer, rtts, benches []string, all maxRuns) {
 		}
 		for _, shape := range shapeList {
 			for _, rtt := range rtts {
-				var base, cand runs
+				c := pairCell{bench, shape, rtt}
 				for _, seed := range seedsOfShape[shape] {
-					base = append(base, seedRuns(all(rtt, bench, "baseline"), seed)...)
-					cand = append(cand, seedRuns(all(rtt, bench, "candidate"), seed)...)
+					base, cand := seedRuns(all(rtt, bench, "baseline"), seed), seedRuns(all(rtt, bench, "candidate"), seed)
+					if len(base) == 0 || len(cand) == 0 {
+						continue
+					}
+					ratios[c] = append(ratios[c], medianOf(cand, throughput)/medianOf(base, throughput))
 				}
-				if len(base) == 0 || len(cand) == 0 {
-					continue
+				if len(ratios[c]) > 0 {
+					cells = append(cells, c)
 				}
-				if !header {
-					p("\n| Benchmark | Shape | RTT ms | Seeds | Runs per store | Baseline median ops/s | Candidate median ops/s | Spread | Against baseline |\n|---|---|---|---|---|---|---|---|---|\n")
-					header = true
-				}
-				was, got := medianOf(base, throughput), medianOf(cand, throughput)
-				change := got/was - 1
-				noise := max(spreadOf(base), spreadOf(cand))
-				against := fmt.Sprintf("%+.1f%%", 100*change)
-				switch {
-				case len(base) < 2 || len(cand) < 2:
-					against += ", one run: no spread"
-				case abs(change) <= noise:
-					against += ", within the spread"
-				}
-				p("| %s | %s | %s | %d | %d | %s | %s | %.1f%% | %s |\n", bench, shape, rtt, len(seedsOfShape[shape]), len(cand),
-					thousands(was), thousands(got), 100*noise, against)
 			}
 		}
 	}
-	if header {
-		p("\nShape by shape: every max run of every seed that drew the shape, on one runner per seed and RTT in bench.yml's quick grid. Spread is the larger of the two stores' (max - min) / median over those runs, so it holds the seeds' and the runners' differences as well as the run-to-run noise; a change no larger than it is noise.\n")
+	return cells, ratios
+}
+
+// noise is the A/A noise of the paired ratio, per shape and RTT (pairCell's
+// String): the largest |ratio - 1| one pair showed in a run of a ref
+// against itself (bench/noise.json).
+type noise map[string]float64
+
+// pairedNoise is what a run's paired ratios show, written to
+// paired.json: per cell its seeds and largest |ratio - 1|. Of an A/A run,
+// that is its noise.
+type pairedNoise struct {
+	Seeds int     `json:"seeds"`
+	Noise float64 `json:"noise"`
+}
+
+// byShape sets the candidate against the baseline shape by shape: the
+// median of the seeds' paired ratios, judged against the A/A noise of
+// that shape and RTT. It returns each cell's paired noise, for
+// paired.json.
+func byShape(w io.Writer, rtts, benches []string, all maxRuns, nz noise) map[string]pairedNoise {
+	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
+	cells, ratios := pairs(rtts, benches, all)
+	out := map[string]pairedNoise{}
+	if len(cells) == 0 {
+		return out
 	}
+	p("\n| Benchmark | Shape | RTT ms | Seeds | Paired ratios, min / median / max | A/A noise | Against baseline |\n|---|---|---|---|---|---|---|\n")
+	for _, c := range cells {
+		rs := ratios[c]
+		lo, med, hi := slices.Min(rs), medianFloat(rs), slices.Max(rs)
+		spread := 0.0
+		for _, r := range rs {
+			spread = max(spread, abs(r-1))
+		}
+		out[c.String()] = pairedNoise{Seeds: len(rs), Noise: math.Round(spread*1e4) / 1e4}
+		change := med - 1
+		against := fmt.Sprintf("%+.1f%%", 100*change)
+		aa := "-"
+		if n, ok := nz[c.String()]; ok {
+			aa = fmt.Sprintf("±%.1f%%", 100*n)
+			if abs(change) <= n {
+				against += ", within the A/A noise"
+			} else {
+				against += ", beyond the A/A noise"
+			}
+		} else {
+			against += ", no A/A noise for this shape and RTT"
+		}
+		p("| %s | %s | %s | %d | %.3f / %.3f / %.3f | %s | %s |\n", c.bench, c.shape, c.rtt, len(rs), lo, med, hi, aa, against)
+	}
+	p("\nShape by shape: each seed's paired ratio is the candidate's median max throughput over the baseline's, on the one runner where the two ran back to back in bench.yml's quick grid. Against baseline is the median ratio over the seeds that drew the shape. The A/A noise is the largest |ratio - 1| one pair showed for that shape and RTT in a run of one ref against itself (bench/noise.json); a median beyond it is a change. This run's own pairs are in paired.json.\n")
+	return out
+}
+
+// medianFloat is the median of xs, which is not empty.
+func medianFloat(xs []float64) float64 {
+	s := slices.Clone(xs)
+	slices.Sort(s)
+	if n := len(s); n%2 == 1 {
+		return s[n/2]
+	}
+	return (s[len(s)/2-1] + s[len(s)/2]) / 2
 }

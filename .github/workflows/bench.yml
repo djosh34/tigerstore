@@ -12,11 +12,13 @@
 # Two grids (input grid):
 # - quick, the default and the bench of every PR, in about 15 minutes:
 #   each benchmark x seed x RTT is its own job on its own runner, which
-#   runs the baseline and the candidate once each, max only, and no etcd
-#   unless asked. More seeds take the place of repeats: a last job merges
-#   every job's results into one report, which sets the candidate against
-#   the baseline seed by seed and shape by shape, the spread taken across
-#   the seeds that drew each shape.
+#   runs the baseline and the candidate once each, back to back, max only,
+#   and no etcd unless asked. More seeds take the place of repeats, all of
+#   them fresh and drawing crd-heavy for k8s (cmd/benchseeds), the shape
+#   PRs are judged by; put and txn run on the same seeds. A last job merges
+#   every job's results into one report, which judges each seed's paired
+#   ratio, candidate over baseline on one runner, against the noise of
+#   main against itself (bench/noise.json).
 # - full: each benchmark is one job that runs every seed at every RTT in
 #   turn, so the RTTs share a runner, with repeats, rate runs and etcd at
 #   the first RTT; for #602's done claim.
@@ -48,7 +50,7 @@ on:
         description: round-trip times between nodes in ms, run in this order; etcd runs at the first only, and its rate stands in at the others
         default: 0 2 10
       seeds:
-        description: space-separated seeds to replay a run; empty draws 6 fresh ones in the quick grid, 3 in the full one
+        description: space-separated seeds to replay a run; empty draws 6 fresh ones that all draw crd-heavy for k8s in the quick grid, 3 of any shape in the full one
         default: ""
       targets:
         description: stores to run, etcd, baseline and candidate; empty is baseline candidate in the quick grid, etcd baseline candidate in the full one
@@ -75,6 +77,12 @@ jobs:
       seeds: ${{ steps.plan.outputs.seeds }}
       at: ${{ steps.plan.outputs.at }}
     steps:
+      - uses: actions/checkout@v7
+        if: (inputs.grid || 'quick') == 'quick' && inputs.seeds == ''
+      - uses: actions/setup-go@v7
+        if: (inputs.grid || 'quick') == 'quick' && inputs.seeds == ''
+        with:
+          go-version-file: go.mod
       # The jobs: in the quick grid one per benchmark, seed and RTT, in the
       # full grid one per benchmark. The tools that are not loadgen runs
       # (profiles, the disk probe, etcd's own tool) are one job each in
@@ -87,9 +95,14 @@ jobs:
           RTTS: ${{ inputs.rtts || '0 2 10' }}
         run: |
           echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"
-          n=3
-          if [ "$GRID" = quick ]; then n=6; fi
-          if [ -z "$SEEDS" ]; then SEEDS=$(shuf -i 1-999999999 -n "$n" | tr '\n' ' ' | sed 's/ $//'); fi
+          # The quick grid judges PRs by crd-heavy: its fresh seeds all draw
+          # it, and put and txn run on the same seeds. The full grid draws
+          # every shape.
+          if [ -z "$SEEDS" ] && [ "$GRID" = quick ]; then
+            SEEDS=$(go run ./cmd/benchseeds -n 6 -shape crd-heavy -min 6)
+          elif [ -z "$SEEDS" ]; then
+            SEEDS=$(shuf -i 1-999999999 -n 3 | tr '\n' ' ' | sed 's/ $//')
+          fi
           echo "seeds=$SEEDS" >> "$GITHUB_OUTPUT"
           jobs=$(jq -cn --arg grid "$GRID" --arg b "$BENCHMARKS" --arg s "$SEEDS" --arg r "$RTTS" '
             def words: split(" ") | map(select(. != ""));
@@ -353,7 +366,7 @@ jobs:
                 [ -f "$p" ] && echo "$(basename "$(dirname "$(dirname "$p")")"): $(tr '\n' ' ' <"$p")"
               done
               echo '```'
-              bin/benchreport "$dir" || status=1
+              bin/benchreport -noise bench/noise.json "$dir" || status=1
             } >> "$GITHUB_STEP_SUMMARY"
           done
           exit "$status"

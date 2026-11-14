@@ -36,7 +36,7 @@ func TestReport(t *testing.T) {
 		write(t, dir, n, valid)
 	}
 	var b strings.Builder
-	if err := report(&b, dir, ""); err != nil {
+	if err := report(&b, dir, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), "| put-1k | 0 | main | max | 0 / 0 / 0 | 1,000") {
@@ -52,7 +52,7 @@ func TestReportSpreads(t *testing.T) {
 		}
 	}
 	var b strings.Builder
-	if err := report(&b, dir, ""); err != nil {
+	if err := report(&b, dir, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"10 / 20 / 30", "10.0 / 20.0 / 30.0", "10.00 / 20.00 / 30.00", "| rate |", "| 3 |"} {
@@ -71,7 +71,7 @@ func TestReportWatchSpreads(t *testing.T) {
 		write(t, dir, fmt.Sprintf("etcd-rate-%d.json", i+1), fmt.Sprintf(`{"valid":true,"watch":{"events_per_s":%d,"server_cpu_us_per_event":%d,"latency_us":{"p99":%d,"p999":%d}}}`, n, n, n*1000, n*1000))
 	}
 	var b strings.Builder
-	if err := report(&b, dir, ""); err != nil {
+	if err := report(&b, dir, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"| Watch benchmark |", "10 / 20 / 30", "10.00 / 20.00 / 30.00", "10.0 / 20.0 / 30.0"} {
@@ -85,7 +85,7 @@ func TestMixedWatchCPUUnset(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "etcd-rate-1.json", `{"valid":true,"watch":{"events_per_s":100}}`)
 	var b strings.Builder
-	if err := report(&b, dir, ""); err != nil {
+	if err := report(&b, dir, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), "| - | 1 |") {
@@ -97,7 +97,7 @@ func TestReportRefusesInvalidResults(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "etcd-max-1.json", valid)
 	write(t, dir, "main-max-1.json", `{"valid": false, "throughput": 1000}`)
-	if err := report(io.Discard, dir, ""); !errors.Is(err, errInvalidResult) {
+	if err := report(io.Discard, dir, "", nil); !errors.Is(err, errInvalidResult) {
 		t.Fatalf("an invalid result was reported: %v", err)
 	}
 }
@@ -107,7 +107,7 @@ func TestReportRefusesUnequalRuns(t *testing.T) {
 	write(t, dir, "etcd-max-1.json", valid)
 	write(t, dir, "etcd-max-2.json", valid)
 	write(t, dir, "main-max-1.json", valid)
-	if err := report(io.Discard, dir, ""); !errors.Is(err, errUnequalRuns) {
+	if err := report(io.Discard, dir, "", nil); !errors.Is(err, errUnequalRuns) {
 		t.Fatalf("unequal runs were reported: %v", err)
 	}
 }
@@ -129,7 +129,7 @@ func TestReportCeilings(t *testing.T) {
 	run := `{"valid":true,"throughput":40000,"min_written_bytes_per_op":1048.576,"client_cores":%.2f,"conns":6,"endpoints":["a"],"per_op":{"out_bytes":1100,"in_bytes":30,"writes":1,"entries":1}}`
 	writeAt(t, dir, "0", "put-1k", "main-max-1.1.json", fmt.Sprintf(run, 0.8))
 	var b strings.Builder
-	if err := report(&b, dir, ""); err != nil {
+	if err := report(&b, dir, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
@@ -142,7 +142,7 @@ func TestReportCeilings(t *testing.T) {
 		}
 	}
 	writeAt(t, dir, "0", "put-1k", "main-max-1.1.json", fmt.Sprintf(run, 0.81))
-	if err := report(io.Discard, dir, ""); !errors.Is(err, errGeneratorLimit) || !strings.Contains(err.Error(), "0.81 of its core") {
+	if err := report(io.Discard, dir, "", nil); !errors.Is(err, errGeneratorLimit) || !strings.Contains(err.Error(), "0.81 of its core") {
 		t.Errorf("a generator at 0.81 cores gave %v", err)
 	}
 }
@@ -152,7 +152,7 @@ func TestReportRampClimbing(t *testing.T) {
 	write(t, dir, "main-max-1.json", `{"valid":true,"throughput":100,"ramp_climbing":true}`)
 	write(t, dir, "main-max-2.json", `{"valid":true,"throughput":100}`)
 	var b strings.Builder
-	if err := report(&b, dir, ""); err != nil {
+	if err := report(&b, dir, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if want := "- RTT 0 ms, put-1k, main max: 1 of 2 runs"; !strings.Contains(b.String(), want) {
@@ -166,7 +166,7 @@ func TestReportRefusesInvalidGenerator(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "generator-put-1k.json"), []byte(`{"valid":false}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := report(io.Discard, dir, ""); !errors.Is(err, errInvalidResult) {
+	if err := report(io.Discard, dir, "", nil); !errors.Is(err, errInvalidResult) {
 		t.Fatalf("an invalid generator run was reported: %v", err)
 	}
 }
@@ -187,7 +187,7 @@ func TestReportAcrossRTTs(t *testing.T) {
 		writeAt(t, dir, rtt, "put-1k", "main-rate-1.json", `{"valid":true,"offered_rate":2000,"latency_us":{"p50":3300,"p99":4500}}`)
 	}
 	var b strings.Builder
-	if err := report(&b, dir, ""); err != nil {
+	if err := report(&b, dir, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	want := "| put-1k | etcd | 0 | 4,000 | - | 2,000 | 6.00 | 17.00 | 0 of 2 |\n" +
@@ -207,7 +207,7 @@ func TestReportFailedEtcdRunStandsAlone(t *testing.T) {
 	writeAt(t, dir, "10", "mixed-k8s", "etcd-max-1.failed", "loadgen exited 1: loadgen: mixed preload: too many requests\n")
 	writeAt(t, dir, "10", "mixed-k8s", "main-max-1.json", `{"valid":true,"throughput":7000}`)
 	var b strings.Builder
-	if err := report(&b, dir, ""); err != nil {
+	if err := report(&b, dir, "", nil); err != nil {
 		t.Fatalf("a failed etcd run failed the report: %v", err)
 	}
 	for _, want := range []string{
@@ -227,7 +227,7 @@ func TestReportFailedTigerstoreRun(t *testing.T) {
 	writeAt(t, dir, "0", "put-1k", "etcd-max-2.json", `{"valid":true,"throughput":4000}`)
 	writeAt(t, dir, "0", "put-1k", "main-max-2.failed", "check exited 1: the leader changed during the run\n")
 	var b strings.Builder
-	if err := report(&b, dir, ""); !errors.Is(err, errRunFailed) {
+	if err := report(&b, dir, "", nil); !errors.Is(err, errRunFailed) {
 		t.Fatalf("a failed tigerstore run passed: %v", err)
 	}
 	if !strings.Contains(b.String(), "| put-1k | main | 0 | 80,000 | 20.0x | - | - | - | 1 of 2 |") {
@@ -241,7 +241,7 @@ func TestReportNoRate(t *testing.T) {
 	writeAt(t, dir, "0", "put-1k", "main-max-1.json", `{"valid":true,"throughput":80000}`)
 	writeAt(t, dir, "0", "put-1k", "norate", "etcd has no max result here or at the first RTT\n")
 	var b strings.Builder
-	if err := report(&b, dir, ""); err != nil {
+	if err := report(&b, dir, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), "- RTT 0 ms, put-1k: no rate runs, no shared rate: etcd has no max result here or at the first RTT") {
@@ -267,7 +267,7 @@ func TestReportShapes(t *testing.T) {
 		run("candidate", "42", rep+1, 120000*jitter, "large", 20010)
 	}
 	var b strings.Builder
-	if err := report(&b, dir, ""); err != nil {
+	if err := report(&b, dir, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
@@ -325,7 +325,7 @@ func TestReportGeneratorLimitFailsRun(t *testing.T) {
 	writeAt(t, dir, "0", "put-1k", "main-max-1.1.json", `{"valid":true,"throughput":100000,"client_cores":0.9}`)
 	writeAt(t, dir, "0", "put-1k", "main-max-1.2.json", `{"valid":true,"throughput":50000,"client_cores":0.5}`)
 	var b strings.Builder
-	err := report(&b, dir, "")
+	err := report(&b, dir, "", nil)
 	if !errors.Is(err, errGeneratorLimit) || !errors.Is(err, errRunFailed) {
 		t.Fatalf("a run at 0.9 cores gave %v", err)
 	}
@@ -349,7 +349,7 @@ func TestReportNodeCosts(t *testing.T) {
 			fmt.Sprintf(`{"valid":true,"throughput":1000,"leader_cpu_us_per_op":%d,"server_cores_by_node":[0.8,0.6,0.6],"peer_sent_bytes_per_op_by_node":%s}`, 10+rep, peers))
 	}
 	var b strings.Builder
-	if err := report(&b, dir, ""); err != nil {
+	if err := report(&b, dir, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	want := "| k8s | 7 | 2 | candidate | 10.00 / 11.00 / 12.00 | 3000 / 3150 / 3300; 2000 / 2050 / 2100; 2200 / 2250 / 2300 (2 of 3 runs) | 0.80 / 0.80 / 0.80; 0.60 / 0.60 / 0.60; 0.60 / 0.60 / 0.60 |"
@@ -359,30 +359,47 @@ func TestReportNodeCosts(t *testing.T) {
 }
 
 // TestReportByShape checks the shape-by-shape table of a bench with one
-// run per seed: the spread is taken across the seeds that drew a shape, and
-// a change within it is noise, one beyond it is not.
+// run per seed: each seed's paired ratio, their median against the A/A
+// noise of the shape and RTT, and paired.json, an A/A run's noise.
 func TestReportByShape(t *testing.T) {
 	dir := t.TempDir()
-	// Four seeds draw put-1k's one shape: baseline 1000, 1100, 1050, 950;
-	// the candidate 3 % faster on each, within a spread of about 15 %.
+	// Four seeds draw put-1k's one shape, on runners of other speeds: the
+	// candidate is 3 % faster on each. txn-1k: twice as fast.
 	for i, n := range []float64{1000, 1100, 1050, 950} {
 		seed := 11 + i
 		writeAt(t, dir, "0", "put-1k", fmt.Sprintf("baseline-max-%d.1.json", seed), fmt.Sprintf(`{"valid":true,"throughput":%v,"server_cpu_us_per_op":10}`, n))
-		writeAt(t, dir, "0", "put-1k", fmt.Sprintf("candidate-max-%d.1.json", seed), fmt.Sprintf(`{"valid":true,"throughput":%v,"server_cpu_us_per_op":10}`, n*1.03))
-		// txn-1k: the candidate twice as fast, far beyond the spread.
+		writeAt(t, dir, "0", "put-1k", fmt.Sprintf("candidate-max-%d.1.json", seed), fmt.Sprintf(`{"valid":true,"throughput":%v,"server_cpu_us_per_op":10}`, n*(1.03+0.001*float64(i))))
 		writeAt(t, dir, "0", "txn-1k", fmt.Sprintf("baseline-max-%d.1.json", seed), fmt.Sprintf(`{"valid":true,"throughput":%v,"server_cpu_us_per_op":10}`, n))
 		writeAt(t, dir, "0", "txn-1k", fmt.Sprintf("candidate-max-%d.1.json", seed), fmt.Sprintf(`{"valid":true,"throughput":%v,"server_cpu_us_per_op":10}`, 2*n))
 	}
 	var b strings.Builder
-	if err := report(&b, dir, ""); err != nil {
+	nz := noise{"put-1k/-/0": 0.05, "txn-1k/-/0": 0.05}
+	if err := report(&b, dir, "", nz); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"| put-1k | - | 0 | 4 | 4 | 1,025 | 1,056 | 14.6% | +3.0%, within the spread |",
-		"| txn-1k | - | 0 | 4 | 4 | 1,025 | 2,050 | 14.6% | +100.0% |",
+		"| put-1k | - | 0 | 4 | 1.030 / 1.031 / 1.033 | ±5.0% | +3.1%, within the A/A noise |",
+		"| txn-1k | - | 0 | 4 | 2.000 / 2.000 / 2.000 | ±5.0% | +100.0%, beyond the A/A noise |",
 	} {
 		if !strings.Contains(b.String(), want) {
 			t.Fatalf("missing %q in report:\n%s", want, b.String())
 		}
+	}
+	// Without noise for a shape, the table says so.
+	b.Reset()
+	if err := report(&b, dir, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "+3.1%, no A/A noise for this shape and RTT") {
+		t.Fatalf("report without noise:\n%s", b.String())
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "paired.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), `"put-1k/-/0": {
+    "seeds": 4,
+    "noise": 0.033`) {
+		t.Fatalf("paired.json:\n%s", got)
 	}
 }

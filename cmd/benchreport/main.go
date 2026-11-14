@@ -32,6 +32,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"maps"
@@ -126,21 +127,43 @@ type key struct{ rtt, bench, target, mode string }
 type failure struct{ rep, cause string }
 
 func main() {
-	if len(os.Args) < 2 || len(os.Args) > 3 {
-		fmt.Fprintln(os.Stderr, "usage: benchreport <dir> [<recordings>]")
+	noisePath := flag.String("noise", "bench/noise.json", "the A/A noise of the paired ratios, per shape and RTT; a missing file is no noise")
+	flag.Parse()
+	if flag.NArg() < 1 || flag.NArg() > 2 {
+		fmt.Fprintln(os.Stderr, "usage: benchreport [-noise bench/noise.json] <dir> [<recordings>]")
 		os.Exit(2)
 	}
 	traces := "bench/recordings"
-	if len(os.Args) == 3 {
-		traces = os.Args[2]
+	if flag.NArg() == 2 {
+		traces = flag.Arg(1)
 	}
-	if err := report(os.Stdout, os.Args[1], traces); err != nil {
+	nz, err := loadNoise(*noisePath)
+	if err == nil {
+		err = report(os.Stdout, flag.Arg(0), traces, nz)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "benchreport:", err)
 		os.Exit(1)
 	}
 }
 
-func report(w io.Writer, dir, traces string) error {
+// loadNoise reads the A/A noise at path; a missing file is no noise.
+func loadNoise(path string) (noise, error) {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var nz noise
+	if err := json.Unmarshal(b, &nz); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return nz, nil
+}
+
+func report(w io.Writer, dir, traces string, nz noise) error {
 	files, err := filepath.Glob(filepath.Join(dir, "rtt-*", "*", "*.json"))
 	if err != nil {
 		return err
@@ -393,7 +416,13 @@ func report(w io.Writer, dir, traces string) error {
 	}
 	maxOf := func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] }
 	shapes(w, rtts, benches, targets, maxOf)
-	byShape(w, rtts, benches, maxOf)
+	paired, err := json.MarshalIndent(byShape(w, rtts, benches, maxOf, nz), "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "paired.json"), append(paired, '\n'), 0o644); err != nil {
+		return err
+	}
 	nodeCosts(w, rtts, benches, targets, maxOf)
 	if err := ceilings(w, dir, traces, rtts, benches, targets, func(rtt, bench, target string) runs {
 		return all[key{rtt, bench, target, "max"}]

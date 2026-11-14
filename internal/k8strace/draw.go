@@ -22,16 +22,11 @@ type Draw struct {
 // DrawSeed draws for seed and copies from the *.trace.gz of dir, the
 // same way every time.
 func DrawSeed(dir string, seed uint64, copies int) (*Draw, error) {
-	names, err := filepath.Glob(filepath.Join(dir, "*.trace.gz"))
+	name, rng, err := pick(dir, seed)
 	if err != nil {
 		return nil, err
 	}
-	if len(names) == 0 {
-		return nil, fmt.Errorf("no recordings (*.trace.gz) in %s", dir)
-	}
-	slices.Sort(names)
-	rng := rand.New(rand.NewPCG(seed, 0x6b387374726163))
-	t, err := Read(names[rng.IntN(len(names))])
+	t, err := Read(name)
 	if err != nil {
 		return nil, err
 	}
@@ -41,6 +36,28 @@ func DrawSeed(dir string, seed uint64, copies int) (*Draw, error) {
 		d.Starts = append(d.Starts, rng.IntN(quarter))
 	}
 	return d, nil
+}
+
+// Picks returns the recording of dir that seed draws, without reading it:
+// a path ending in <shape>.trace.gz.
+func Picks(dir string, seed uint64) (string, error) {
+	name, _, err := pick(dir, seed)
+	return name, err
+}
+
+// pick draws the recording of dir for seed, and the generator that goes
+// on from it.
+func pick(dir string, seed uint64) (string, *rand.Rand, error) {
+	names, err := filepath.Glob(filepath.Join(dir, "*.trace.gz"))
+	if err != nil {
+		return "", nil, err
+	}
+	if len(names) == 0 {
+		return "", nil, fmt.Errorf("no recordings (*.trace.gz) in %s", dir)
+	}
+	slices.Sort(names)
+	rng := rand.New(rand.NewPCG(seed, 0x6b387374726163))
+	return names[rng.IntN(len(names))], rng, nil
 }
 
 // Least is the least time a call can take. A write needs a quorum to
