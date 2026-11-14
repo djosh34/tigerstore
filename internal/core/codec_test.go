@@ -299,7 +299,7 @@ func TestTakenTxnAppliesAsItsEntry(t *testing.T) {
 			req := Request{ID: uint64(10 + j), Op: &pb.TxnRequest{}, Wire: wire}
 			var err error
 			if taken {
-				err = DecodeTxn(&req)
+				err = DecodeTxn(&req, nil)
 			} else {
 				err = DecodeAlias(wire, req.Op)
 			}

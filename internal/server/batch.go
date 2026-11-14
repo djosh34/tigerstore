@@ -71,32 +71,37 @@ func (c *conn) admit(st *stream) {
 		// The body goes into the Raft entry as it is if the request is a
 		// write; apply decodes the entry again without copies. Here the
 		// request is decoded to check it, by the fastest decoder for its
-		// type.
-		req.Op, req.Wire = st.rpc.op(), st.body
-		switch req.Op.(type) {
-		case *pb.TxnRequest, *pb.RangeRequest:
-			var err error
-			if _, ok := req.Op.(*pb.TxnRequest); ok {
-				err = core.DecodeTxn(&req)
-			} else {
-				err = core.DecodeAlias(st.body, req.Op)
-			}
-			if err != nil {
-				st.finish(unmarshalError(err))
-				return
-			}
-			if r, ok := req.Op.(*pb.RangeRequest); ok && st.rpc.learner == learnerSerializable && !r.Serializable && c.s.learner() {
+		// type, into messages from the connection's slabs where it decodes
+		// many. The decoded request aliases the body, which the call holds
+		// until the node answers it (arena.go).
+		req.Wire = st.body
+		var err error
+		switch {
+		case st.rpc == txnMethod:
+			req.Op = c.slabs.Txn()
+			err = core.DecodeTxn(&req, &c.slabs)
+		case st.rpc == rangeMethod:
+			req.Op = c.slabs.Range()
+			err = core.DecodeAlias(st.body, req.Op)
+		case st.rpc.alias:
+			req.Op = st.rpc.op()
+			err = core.DecodeAlias(st.body, req.Op)
+		default:
+			req.Op = st.rpc.op()
+			err = proto.Unmarshal(st.body, req.Op)
+		}
+		if err != nil {
+			st.finish(unmarshalError(err))
+			return
+		}
+		switch r := req.Op.(type) {
+		case *pb.RangeRequest:
+			if st.rpc.learner == learnerSerializable && !r.Serializable && c.s.learner() {
 				st.finish(rpctypes.ErrGRPCNotSupportedForLearner)
 				return
 			}
-			if t, ok := req.Op.(*pb.TxnRequest); ok {
-				st.readonlyTxn = readonlyTxn(t)
-			}
-		default:
-			if err := unmarshal(st.body, req.Op); err != nil {
-				st.finish(err)
-				return
-			}
+		case *pb.TxnRequest:
+			st.readonlyTxn = readonlyTxn(r)
 		}
 	}
 	c.startOpSpan(st, &req)

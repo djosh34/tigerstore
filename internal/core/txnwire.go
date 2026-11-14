@@ -93,14 +93,15 @@ var errNotTxn = errors.New("core: DecodeTxn needs a TxnRequest")
 
 // DecodeTxn decodes r.Wire into r.Op, a TxnRequest, as DecodeAlias does,
 // and notes where the values of its puts start in r.Wire, so that the
-// node applies the request without decoding its entry again.
-func DecodeTxn(r *Request) error {
+// node applies the request without decoding its entry again. The
+// messages it makes come from s, which may be nil.
+func DecodeTxn(r *Request, s *Slabs) error {
 	t, ok := r.Op.(*pb.TxnRequest)
 	if !ok {
 		return fmt.Errorf("%w: %T", errNotTxn, r.Op)
 	}
 	var pl placer
-	if err := decodeTxnPlaced(r.Wire, t, 0, &pl); err != nil {
+	if err := decodeTxn(r.Wire, t, protowire.DefaultRecursionLimit-1, 0, &pl, s); err != nil {
 		return err
 	}
 	r.places, r.placed = pl.places, true
@@ -116,7 +117,7 @@ func decodeTxnAlias(b []byte, m *pb.TxnRequest) error {
 // entry, and records in pl where the values of its puts start.
 func decodeTxnPlaced(b []byte, m *pb.TxnRequest, at int, pl *placer) error {
 	// The top message counts as one level, as in protobuf.
-	return decodeTxn(b, m, protowire.DefaultRecursionLimit-1, at, pl)
+	return decodeTxn(b, m, protowire.DefaultRecursionLimit-1, at, pl, nil)
 }
 
 // offsetIn returns where sub, the bytes of the field just read, starts in
@@ -125,7 +126,8 @@ func offsetIn(whole, rest, sub []byte) int { return len(whole) - len(rest) - len
 
 // decodeTxn decodes a TxnRequest; depth is how many more levels of nested
 // messages may follow. at and pl are as in decodeTxnPlaced; pl may be nil.
-func decodeTxn(b []byte, m *pb.TxnRequest, depth, at int, pl *placer) error {
+// The messages it makes come from s, which may be nil.
+func decodeTxn(b []byte, m *pb.TxnRequest, depth, at int, pl *placer, s *Slabs) error {
 	whole := b
 	for len(b) > 0 {
 		f, rest, err := nextField(b)
@@ -138,20 +140,20 @@ func decodeTxn(b []byte, m *pb.TxnRequest, depth, at int, pl *placer) error {
 			if depth <= 0 {
 				return errTooDeep
 			}
-			c := &pb.Compare{}
+			c := s.compare()
 			m.Compare = append(m.Compare, c)
 			err = decodeCompare(f.b, c)
 		case f.bytesField(2), f.bytesField(3):
 			if depth <= 0 {
 				return errTooDeep
 			}
-			op := &pb.RequestOp{}
+			op := s.op()
 			if f.num == 2 {
 				m.Success = append(m.Success, op)
 			} else {
 				m.Failure = append(m.Failure, op)
 			}
-			err = decodeOp(f.b, op, depth-1, at+offsetIn(whole, b, f.b), pl)
+			err = decodeOp(f.b, op, depth-1, at+offsetIn(whole, b, f.b), pl, s)
 		default:
 			keepUnknown(m, &f)
 		}
@@ -198,7 +200,7 @@ func decodeCompare(b []byte, m *pb.Compare) error {
 // decodeOp decodes a RequestOp. A request that comes again merges into
 // the first if it is of the same kind, and replaces it if not, as in
 // protobuf.
-func decodeOp(b []byte, m *pb.RequestOp, depth, at int, pl *placer) error {
+func decodeOp(b []byte, m *pb.RequestOp, depth, at int, pl *placer, s *Slabs) error {
 	whole := b
 	for len(b) > 0 {
 		f, rest, err := nextField(b)
@@ -217,21 +219,21 @@ func decodeOp(b []byte, m *pb.RequestOp, depth, at int, pl *placer) error {
 		case 1:
 			r, ok := m.Request.(*pb.RequestOp_RequestRange)
 			if !ok {
-				r = &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{}}
+				r = s.rangeOp()
 				m.Request = r
 			}
 			err = decodeRange(f.b, r.RequestRange)
 		case 2:
 			r, ok := m.Request.(*pb.RequestOp_RequestPut)
 			if !ok {
-				r = &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{}}
+				r = s.putOp()
 				m.Request = r
 			}
 			err = decodePutRequest(f.b, r.RequestPut, at+offsetIn(whole, b, f.b), pl)
 		case 3:
 			r, ok := m.Request.(*pb.RequestOp_RequestDeleteRange)
 			if !ok {
-				r = &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{}}
+				r = s.deleteOp()
 				m.Request = r
 			}
 			err = decodeDelete(f.b, r.RequestDeleteRange)
@@ -241,7 +243,7 @@ func decodeOp(b []byte, m *pb.RequestOp, depth, at int, pl *placer) error {
 				r = &pb.RequestOp_RequestTxn{RequestTxn: &pb.TxnRequest{}}
 				m.Request = r
 			}
-			err = decodeTxn(f.b, r.RequestTxn, depth-1, at+offsetIn(whole, b, f.b), pl)
+			err = decodeTxn(f.b, r.RequestTxn, depth-1, at+offsetIn(whole, b, f.b), pl, s)
 		}
 		if err != nil {
 			return err

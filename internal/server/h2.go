@@ -115,6 +115,8 @@ type conn struct {
 	deadlines deadlines
 	// free are streams of ended calls for the next calls (freeStream).
 	free []*stream
+	// slabs are the messages requests are decoded into (admit).
+	slabs core.Slabs
 	// hdec decodes header blocks into hdr, the headers of the block being
 	// read, with no allocation for fields from the HPACK tables.
 	hdec *hpack.Decoder
@@ -326,8 +328,11 @@ func (c *conn) onFrame(f *frame) error {
 		}
 	case http2.FrameRSTStream:
 		c.resetStream(f.id, 0)
+	case http2.FrameGoAway, http2.FramePriority, http2.FramePriorityUpdate, http2.FramePushPromise:
+		// A client's GOAWAY and priority signals need nothing, and
+		// parseFrame refused PUSH_PROMISE. Unknown frames need nothing
+		// either.
 	}
-	// GOAWAY from the client, PRIORITY and unknown frames need nothing.
 	return nil
 }
 
@@ -339,8 +344,6 @@ func (c *conn) onSettings(f *frame) error {
 		if err = s.Valid(); err != nil {
 			break
 		}
-		// The encoder never indexes, so the header table size does not
-		// matter, and no other setting changes what the server sends.
 		switch s.ID {
 		case http2.SettingInitialWindowSize:
 			delta := int64(s.Val) - c.initWin
@@ -350,6 +353,10 @@ func (c *conn) onSettings(f *frame) error {
 			}
 		case http2.SettingMaxFrameSize:
 			c.maxFrame = int(s.Val)
+		case http2.SettingHeaderTableSize, http2.SettingEnablePush, http2.SettingMaxConcurrentStreams,
+			http2.SettingMaxHeaderListSize, http2.SettingEnableConnectProtocol, http2.SettingNoRFC7540Priorities:
+			// The encoder never indexes, so the header table size does not
+			// matter, and no other setting changes what the server sends.
 		}
 	}
 	if err == nil {

@@ -127,6 +127,9 @@ func parseFrame(b []byte, contID uint32) (frame, error) {
 	case http2.FramePushPromise:
 		// Only a server pushes (RFC 9113 8.4).
 		return f, http2.ConnectionError(http2.ErrCodeProtocol)
+	case http2.FramePriorityUpdate:
+		// RFC 9218's priority signal, which the server ignores as a frame
+		// of an unknown type.
 	}
 	// Frames of an unknown type are ignored (RFC 9113 5.5).
 	return f, nil

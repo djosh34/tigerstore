@@ -24,8 +24,11 @@ type method struct {
 	// compact: op is a range whose answer the writer encodes from the
 	// index's values, without building a RangeResponse.
 	compact bool
-	unary   func(ctx context.Context, s *Server, caller core.Caller, req []byte) (proto.Message, error)
-	stream  func(s *Server, st *stream) error
+	// alias: op is decoded with its bytes fields as slices of the request
+	// (core.DecodeAlias), as Range and Txn are.
+	alias  bool
+	unary  func(ctx context.Context, s *Server, caller core.Caller, req []byte) (proto.Message, error)
+	stream func(s *Server, st *stream) error
 	// serverStream: stream is a server-streaming call, whose client sends
 	// one request.
 	serverStream bool
@@ -102,7 +105,7 @@ var methods = withAuth(map[string]*method{
 	"/etcdserverpb.KV/Range":               {op: newOp[pb.RangeRequest], compact: true, learner: learnerSerializable},
 	"/etcdserverpb.KV/RangeStream":         {stream: (*Server).rangeStream, serverStream: true},
 	"/etcdserverpb.KV/Put":                 {op: newOp[pb.PutRequest], wirePut: true},
-	"/etcdserverpb.KV/DeleteRange":         {op: newOp[pb.DeleteRangeRequest]},
+	"/etcdserverpb.KV/DeleteRange":         {op: newOp[pb.DeleteRangeRequest], alias: true},
 	"/etcdserverpb.KV/Txn":                 {op: newOp[pb.TxnRequest]},
 	"/etcdserverpb.KV/Compact":             {op: newOp[pb.CompactionRequest]},
 	"/etcdserverpb.Lease/LeaseGrant":       {op: newOp[pb.LeaseGrantRequest]},
@@ -240,3 +243,10 @@ func toStatus(err error) error {
 	}
 	return status.Error(codes.Unknown, err.Error())
 }
+
+// rangeMethod and txnMethod are the methods whose requests admit decodes
+// into the connection's slabs.
+var (
+	rangeMethod = methods["/etcdserverpb.KV/Range"]
+	txnMethod   = methods["/etcdserverpb.KV/Txn"]
+)

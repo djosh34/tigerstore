@@ -13,9 +13,9 @@ func TestDeadlinesEndCallsInOrder(t *testing.T) {
 	c := framesConn(t)
 	now := time.Now()
 	var sts []*stream
-	for i, d := range []time.Duration{3, 1, 2, 4} {
+	for i, d := range []int{3, 1, 2, 4} {
 		st := testCall(c, uint32(2*i+3))
-		c.armDeadline(st, now.Add(d*time.Second))
+		c.armDeadline(st, now.Add(time.Duration(d)*time.Second))
 		sts = append(sts, st)
 	}
 	c.disarmDeadline(sts[2])
