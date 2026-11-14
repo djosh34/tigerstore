@@ -432,15 +432,7 @@ func (c *conn) write() (bool, error) {
 			return false, nil
 		}
 		c.mu.Lock()
-		c.s.ctrlOut = append(c.s.ctrlOut[:0], c.ctrl...)
-		clear(c.ctrl)
-		c.ctrl = c.ctrl[:0]
-		// The control frames spend the pass's budget first.
-		budget := maxTake
-		for i := range c.s.ctrlOut {
-			budget -= ctrlBytes(&c.s.ctrlOut[i])
-		}
-		c.s.framesOut, budget = c.take(c.s.framesOut[:0], budget)
+		budget := c.collect(maxTake)
 		drained := c.goingAway && len(c.streams) == 0
 		c.mu.Unlock()
 		cs, waiting := c.takeCompletions()
@@ -453,20 +445,35 @@ func (c *conn) write() (bool, error) {
 		if cs == nil {
 			continue
 		}
-		queued, err := c.complete(cs, waiting, budget)
+		budget, err := c.complete(cs, waiting, budget)
 		if err != nil {
 			return false, err
 		}
-		if queued {
-			// What complete queued goes in this pass, within its budget.
-			c.mu.Lock()
-			c.s.framesOut, _ = c.take(c.s.framesOut[:0], budget)
-			c.mu.Unlock()
-			if err := c.writeFrames(nil, c.s.framesOut); err != nil {
-				return false, err
-			}
+		// The replies complete queued, and the control frames it freed,
+		// such as a window update, go in this pass, within what is left
+		// of its budget.
+		c.mu.Lock()
+		c.collect(budget)
+		c.mu.Unlock()
+		if err := c.writeFrames(c.s.ctrlOut, c.s.framesOut); err != nil {
+			return false, err
 		}
 	}
+}
+
+// collect takes the connection's control frames and the output of its
+// streams that the windows allow, within budget bytes, into the pass's
+// scratch, and returns what is left of budget. The control frames spend
+// it first. c.mu is held.
+func (c *conn) collect(budget int) int {
+	c.s.ctrlOut = append(c.s.ctrlOut[:0], c.ctrl...)
+	clear(c.ctrl)
+	c.ctrl = c.ctrl[:0]
+	for i := range c.s.ctrlOut {
+		budget -= ctrlBytes(&c.s.ctrlOut[i])
+	}
+	c.s.framesOut, budget = c.take(c.s.framesOut[:0], budget)
+	return budget
 }
 
 // writeFrames writes control frames and frames of the streams' output

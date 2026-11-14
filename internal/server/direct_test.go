@@ -155,9 +155,8 @@ func TestRepliesWrittenInPlace(t *testing.T) {
 		}
 		c.Complete([]node.Completion{cp})
 		cs, waiting := c.takeCompletions()
-		queued, err := c.complete(cs, waiting, maxTake)
-		if err != nil || queued {
-			t.Fatalf("reply %d (%s): queued %v, %v", i, r.method, queued, err)
+		if _, err := c.complete(cs, waiting, maxTake); err != nil || len(st.out) > 0 {
+			t.Fatalf("reply %d (%s): queued %v, %v", i, r.method, len(st.out) > 0, err)
 		}
 		if err := c.flushBridge(); err != nil {
 			t.Fatal(err)
@@ -206,9 +205,8 @@ func TestRepliesQueuedInstead(t *testing.T) {
 		cp.Tag = st
 		c.Complete([]node.Completion{cp})
 		cs, waiting := c.takeCompletions()
-		queued, err := c.complete(cs, waiting, tc.budget)
-		if err != nil || !queued || len(st.out) == 0 {
-			t.Fatalf("%s: queued %v with %d items, %v", tc.name, queued, len(st.out), err)
+		if _, err := c.complete(cs, waiting, tc.budget); err != nil || len(st.out) == 0 {
+			t.Fatalf("%s: queued %d items, %v", tc.name, len(st.out), err)
 		}
 		if sock.Len() != 0 || c.bridge.Pending() != 0 {
 			t.Fatalf("%s: %d bytes written straight out", tc.name, c.bridge.Pending())
@@ -384,5 +382,48 @@ func TestReplySizesMatch(t *testing.T) {
 	}
 	if size, ok := c.directSize(&stream{rpc: methods["/etcdserverpb.Lease/LeaseGrant"]}, &node.Completion{Resp: &pb.LeaseGrantResponse{Error: "\xff"}}); ok {
 		t.Fatalf("a LeaseGrant reply, whose encoding can fail, goes in place at %d bytes", size)
+	}
+}
+
+// TestRepliesInPlaceKeepThePassBudget fills a pass with replies of which
+// some go in place and the rest are queued, against a socket that takes
+// nothing: what waits for the socket is still at most one pass (Astra's
+// review of #679).
+func TestRepliesInPlaceKeepThePassBudget(t *testing.T) {
+	c, _ := directConn(t)
+	c.bridge.Attach(&gate{shut: true}, nil, nil)
+	var cs []node.Completion
+	for i := range 80 {
+		st := directCall(c, uint32(2*i+1), "/etcdserverpb.KV/Range")
+		cs = append(cs, node.Completion{Tag: st, Term: 2, Range: rangeOf(3, false, 1, mvcc.KV{Key: []byte("k"), Value: make([]byte, 16000)})})
+	}
+	c.Complete(cs)
+	if _, err := c.write(); err != nil {
+		t.Fatal(err)
+	}
+	if n := c.bridge.Pending(); n > maxTake {
+		t.Fatalf("%d bytes wait for the socket after one pass of %d", n, maxTake)
+	}
+}
+
+// TestReplyAndItsCreditInOneWrite checks that the window update a reply
+// frees, as its call lets go of its request, goes out in the same socket
+// write as the reply (Astra's review of #679).
+func TestReplyAndItsCreditInOneWrite(t *testing.T) {
+	c, _ := directConn(t)
+	g := &gate{}
+	c.bridge.Attach(g, nil, nil)
+	st := directCall(c, 1, "/etcdserverpb.KV/Put")
+	// The call holds back the client's credit until it lets go.
+	c.mu.Lock()
+	c.chargeLocked(&st.reqHeld, maxHeld)
+	c.recvCredit = connWindow / 4
+	c.mu.Unlock()
+	c.Complete([]node.Completion{{Tag: st, Rev: 5, Term: 2}})
+	if _, err := c.write(); err != nil {
+		t.Fatal(err)
+	}
+	if g.calls != 1 || c.recvCredit != 0 {
+		t.Fatalf("the reply and its credit took %d socket writes, %d credit left", g.calls, c.recvCredit)
 	}
 }

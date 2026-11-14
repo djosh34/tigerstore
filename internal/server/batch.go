@@ -350,10 +350,11 @@ type finished struct {
 
 // complete encodes the replies the node handed over. Those that may go
 // straight into the connection's output (direct.go), within budget bytes
-// of this write pass, go there; the others are queued on their streams,
-// which it reports. waiting is their estimated size, released once each
-// reply is charged to its call or sent. An error means the output broke.
-func (c *conn) complete(batches [][]node.Completion, waiting int64, budget int) (bool, error) {
+// of this write pass, go there, and it returns what is left of budget;
+// the others are queued on their streams. waiting is their estimated
+// size, released once each reply is charged to its call or sent. An error
+// means the output broke.
+func (c *conn) complete(batches [][]node.Completion, waiting int64, budget int) (int, error) {
 	out := c.finished[:0]
 	now := time.Now()
 	for _, cs := range batches {
@@ -377,7 +378,7 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64, budget int) 
 		}
 	}
 	var broken, next []*stream
-	direct, queued := 0, false
+	direct := 0
 	c.mu.Lock()
 	for i := range out {
 		f := &out[i]
@@ -412,7 +413,6 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64, budget int) 
 			broken = append(broken, st)
 			continue
 		}
-		queued = true
 		c.releaseLocked(&st.replyHeld)
 		c.chargeLocked(&st.replyHeld, len(f.msg))
 		if st.span != nil && f.granted != 0 {
@@ -469,7 +469,7 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64, budget int) 
 	for _, st := range next {
 		go c.nextPiece(st)
 	}
-	return queued, err
+	return budget, err
 }
 
 // encode encodes the reply of cp for its stream's queue.
