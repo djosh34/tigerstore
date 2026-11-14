@@ -100,8 +100,6 @@ func run(args []string) int {
 			return 1
 		}
 	}
-	lg, stopLog := queuedLog(lg)
-	defer stopLog()
 	lg.Info("Running: ", zap.Strings("args", os.Args))
 	if err != nil {
 		lg.Warn("failed to verify flags", zap.Error(err))
@@ -118,7 +116,8 @@ func run(args []string) int {
 // start runs the node until a signal or an error stops it.
 func start(c *config, lg *zap.Logger) error {
 	ec := &c.ec
-	logf := lg.Sugar().Infof
+	logf, stopLog := nodeLog(lg)
+	defer stopLog()
 	if host, err := ec.UpdateDefaultClusterFromName(c.defaultCluster); host != "" || err != nil {
 		lg.Info("detected default host for advertise", zap.String("host", host), zap.Error(err))
 	}
@@ -369,19 +368,20 @@ func start(c *config, lg *zap.Logger) error {
 	return errors.Join(runErr, stopErr, closeErr)
 }
 
-// queuedLog returns lg with its lines going through a queue (logq), and
-// the standard log package's lines with them, and how to stop it. The
-// process then never waits for the log's output, which may sit on the
-// disk the node writes to: the node's event loop logs as it works, and a
-// loop that waits through a disk stall sends no heartbeats (#680). Stop
-// waits for the queued lines a few seconds at most, so a stuck output
-// does not hold the process's end either.
-func queuedLog(lg *zap.Logger) (*zap.Logger, func()) {
+// nodeLog returns what the node, its peers and its server log with, and
+// how to stop it; until then the standard log package's lines, as x/net's
+// HTTP/2 debug output, go the same way. Neither waits for the log's
+// output, which may sit on the disk the node writes to: the node's event
+// loop logs as it works, and a loop that waits through a disk stall sends
+// no heartbeats (#680).
+func nodeLog(lg *zap.Logger) (func(format string, args ...any), func()) {
 	q := logq.New(lg, logq.Size)
-	qlg := q.Logger(lg)
-	undo := zap.RedirectStdLog(qlg)
-	return qlg, func() {
-		undo()
+	flags, out := log.Flags(), log.Writer()
+	log.SetFlags(0)
+	log.SetOutput(q)
+	return q.Infof, func() {
+		log.SetOutput(out)
+		log.SetFlags(flags)
 		q.Stop()
 	}
 }

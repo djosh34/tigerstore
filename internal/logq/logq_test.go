@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"testing"
@@ -87,31 +88,40 @@ func base(w zapcore.WriteSyncer) *zap.Logger {
 
 // TestLinesDoNotWait logs while the output is stuck: no line waits for
 // it, and once it opens every line is written in order, with the time and
-// the caller of its call.
+// the caller of its call, and the standard log package's lines among them.
 func TestLinesDoNotWait(t *testing.T) {
 	out := newStuck()
-	b := base(out)
-	q := New(b, 64)
-	lg := q.Logger(b).Sugar()
+	q := New(base(out), 64)
+	std := log.New(q, "", 0)
 	start := time.Now()
 	for i := range 50 {
-		lg.Infof("line %d", i)
+		q.Infof("line %d", i)
+		if i == 25 {
+			std.Print("from the log package")
+		}
 	}
 	<-out.waiting()
 	if d := time.Since(start); d > time.Second {
-		t.Fatalf("50 lines to a stuck output took %v", d)
+		t.Fatalf("51 lines to a stuck output took %v", d)
 	}
 	time.Sleep(50 * time.Millisecond)
 	opened := time.Now()
 	out.release()
 	q.Stop()
 	ws := out.lines(t)
-	if len(ws) != 50 {
-		t.Fatalf("%d lines written, want 50: %q", len(ws), msgs(ws))
+	if len(ws) != 51 {
+		t.Fatalf("%d lines written, want 51: %q", len(ws), msgs(ws))
 	}
 	for i, w := range ws {
-		if w.Msg != fmt.Sprintf("line %d", i) || w.TS.After(opened) || !strings.HasPrefix(w.Caller, "logq/logq_test.go:") {
-			t.Fatalf("line %d is %+v, logged here before %v", i, w, opened)
+		want, caller := fmt.Sprintf("line %d", i), "logq/logq_test.go:"
+		switch {
+		case i == 26:
+			want, caller = "from the log package", ""
+		case i > 26:
+			want = fmt.Sprintf("line %d", i-1)
+		}
+		if w.Msg != want || w.TS.After(opened) || !strings.HasPrefix(w.Caller, caller) {
+			t.Fatalf("line %d is %+v, want %q logged at %q before %v", i, w, want, caller, opened)
 		}
 	}
 }
@@ -121,15 +131,13 @@ func TestLinesDoNotWait(t *testing.T) {
 // where they were, before the next line queued, or at Stop.
 func TestDroppedLinesAreReported(t *testing.T) {
 	out := newStuck()
-	b := base(out)
-	q := New(b, 4)
-	lg := q.Logger(b).Sugar()
-	lg.Infof("line 0")
+	q := New(base(out), 4)
+	q.Infof("line 0")
 	// The writer holds line 0 in a write that waits; the queue takes 4
 	// more, and drops the 5 after them.
 	<-out.waiting()
 	for i := 1; i < 10; i++ {
-		lg.Infof("line %d", i)
+		q.Infof("line %d", i)
 	}
 	out.release()
 	for deadline := time.Now().Add(5 * time.Second); len(out.lines(t)) < 5; {
@@ -138,9 +146,11 @@ func TestDroppedLinesAreReported(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	lg.Infof("line 10")
-	// Dropped while the writer is stopped, reported at Stop.
-	q.dropped.Add(2)
+	q.Infof("line 10")
+	// Dropped after the last line, reported at Stop.
+	q.mu.Lock()
+	q.dropped += 2
+	q.mu.Unlock()
 	q.Stop()
 	drop := "dropped %d log lines while the log's output was slow"
 	want := []string{"line 0", "line 1", "line 2", "line 3", "line 4", fmt.Sprintf(drop, 5), "line 10", fmt.Sprintf(drop, 2)}
@@ -148,7 +158,7 @@ func TestDroppedLinesAreReported(t *testing.T) {
 		t.Fatalf("written %q, want %q", got, want)
 	}
 	// After Stop, no line is written.
-	lg.Infof("late")
+	q.Infof("late")
 	if got := out.lines(t); len(got) != len(want) {
 		t.Fatalf("a line after Stop was written: %q", msgs(got))
 	}
@@ -171,20 +181,43 @@ func (b blockedString) String() string {
 // never left in the queue (Astra's review of #681).
 func TestStopDuringFormatting(t *testing.T) {
 	var buf bytes.Buffer
-	lg := base(zapcore.AddSync(&buf))
-	q := New(lg, 4)
+	q := New(base(zapcore.AddSync(&buf)), 4)
 	arg := blockedString{in: make(chan struct{}), release: make(chan struct{})}
 	logged := make(chan struct{})
 	go func() {
 		defer close(logged)
-		q.Logger(lg).Sugar().Infof("%v", arg)
+		q.Infof("%v", arg)
 	}()
 	<-arg.in
 	q.Stop()
 	close(arg.release)
 	<-logged
-	if len(q.lines) != 0 || q.dropped.Load() != 1 {
-		t.Fatalf("a line logged across Stop: %d queued, %d dropped, want 0 and 1", len(q.lines), q.dropped.Load())
+	if len(q.lines) != 0 || q.dropped != 1 {
+		t.Fatalf("a line logged across Stop: %d queued, %d dropped, want 0 and 1", len(q.lines), q.dropped)
+	}
+}
+
+// TestCoreChecksTheLines logs through a core that samples and a tee whose
+// second output takes only errors: the core's Check decides, as for a
+// line logged without the queue (Astra's and Opus's re-checks of #681).
+func TestCoreChecksTheLines(t *testing.T) {
+	var sampled, all, errs bytes.Buffer
+	enc := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
+	sampler := zapcore.NewSamplerWithOptions(zapcore.NewCore(enc, zapcore.AddSync(&sampled), zapcore.InfoLevel), time.Hour, 100, 100)
+	tee := zapcore.NewTee(zapcore.NewCore(enc, zapcore.AddSync(&all), zapcore.InfoLevel), zapcore.NewCore(enc, zapcore.AddSync(&errs), zapcore.ErrorLevel))
+	q := New(zap.New(zapcore.NewTee(sampler, tee)), 2000)
+	for range 1000 {
+		q.Infof("the same line")
+	}
+	q.Stop()
+	if n := strings.Count(sampled.String(), "\n"); n != 109 {
+		t.Fatalf("%d of 1000 sampled lines written, want 109: the first 100 and every 100th after", n)
+	}
+	if n := strings.Count(all.String(), "\n"); n != 1000 {
+		t.Fatalf("%d of 1000 lines written to the unsampled output", n)
+	}
+	if errs.Len() != 0 {
+		t.Fatalf("an info line went to the output of errors: %q", errs.String()[:min(errs.Len(), 200)])
 	}
 }
 
@@ -194,9 +227,8 @@ func TestStopDoesNotWaitForever(t *testing.T) {
 		t.Skip("waits for stopWait")
 	}
 	out := newStuck()
-	b := base(out)
-	q := New(b, 4)
-	q.Logger(b).Info("line 0")
+	q := New(base(out), 4)
+	q.Infof("line 0")
 	<-out.waiting()
 	start := time.Now()
 	q.Stop()
@@ -204,24 +236,4 @@ func TestStopDoesNotWaitForever(t *testing.T) {
 		t.Fatalf("Stop took %v with a stuck output, want about %v", d, stopWait)
 	}
 	out.release()
-}
-
-// TestSamplingStays logs the same line 1000 times through a logger that
-// samples, as etcd's does: the queue writes what the sampler lets
-// through, not every line (Opus's re-check of #681).
-func TestSamplingStays(t *testing.T) {
-	var buf bytes.Buffer
-	b := base(zapcore.AddSync(&buf))
-	b = b.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-		return zapcore.NewSamplerWithOptions(c, time.Hour, 100, 100)
-	}))
-	q := New(b, 2000)
-	lg := q.Logger(b)
-	for range 1000 {
-		lg.Info("the same line")
-	}
-	q.Stop()
-	if n := strings.Count(buf.String(), "\n"); n != 109 {
-		t.Fatalf("%d of 1000 sampled lines written, want 109: the first 100 and every 100th after", n)
-	}
 }

@@ -403,41 +403,43 @@ func (b blockedOutput) Write(p []byte) (int, error) {
 
 func (b blockedOutput) Sync() error { return nil }
 
-// TestLogDoesNotWait logs through the process's logger while the log's
-// output is stuck: the node's lines, an error that ends the process, and
-// the standard log package's lines, as x/net's HTTP/2 debug output, all
-// return at once, and stopping the log ends within its bound. Before
-// #680's fix each of them waited for the output.
-func TestLogDoesNotWait(t *testing.T) {
+// TestNodeLogDoesNotWait logs through what the node logs with while the
+// log's output is stuck: the node's lines and the standard log package's,
+// as x/net's HTTP/2 debug output, return at once. Before #680's fix the
+// node logged through the logger itself, and each line waited.
+func TestNodeLogDoesNotWait(t *testing.T) {
 	out := blockedOutput{release: make(chan struct{})}
-	defer close(out.release)
-	lg, stop := queuedLog(zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.Lock(out), zapcore.InfoLevel)))
+	logf, stop := nodeLog(zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.Lock(out), zapcore.InfoLevel)))
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		logf := lg.Sugar().Infof
 		for i := range 10 {
 			logf("leader is 0 at term %d", i)
 		}
-		log.Printf("http2: Framer %p: wrote PING len=8", lg)
-		lg.Error("tigerstore stopped")
-		stop()
+		log.Printf("http2: Framer: wrote PING len=8")
 	}()
 	select {
 	case <-done:
-	case <-time.After(15 * time.Second):
-		t.Fatal("logging, or stopping the log, waited for a stuck output")
+	case <-time.After(5 * time.Second):
+		close(out.release)
+		t.Fatal("logging waited for a stuck output")
 	}
+	close(out.release)
+	stop()
 }
 
-// TestStdLogGoesToLog checks that the standard log package's lines, as
-// x/net's HTTP/2 debug output, go to the process's log through its queue.
+// TestStdLogGoesToLog checks that the standard log package's lines go to
+// the node's log while it runs, and back to where they went after.
 func TestStdLogGoesToLog(t *testing.T) {
 	var b bytes.Buffer
-	_, stop := queuedLog(zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&b), zapcore.InfoLevel)))
+	before := log.Writer()
+	_, stop := nodeLog(zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&b), zapcore.InfoLevel)))
 	log.Printf("http2: Framer: wrote PING len=8")
 	stop()
-	if !strings.Contains(b.String(), "wrote PING len=8") {
+	if !strings.Contains(b.String(), `"msg":"http2: Framer: wrote PING len=8"`) {
 		t.Fatalf("the standard log's line is not in the log: %q", b.String())
+	}
+	if log.Writer() != before {
+		t.Fatal("the standard log's output is not restored")
 	}
 }
