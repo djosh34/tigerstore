@@ -10,7 +10,9 @@
 # by hand.
 #
 # Two grids (input grid):
-# - quick, the default and the bench of every PR, in about 15 minutes:
+# - quick, the default and the bench of every PR, in about 15 minutes on
+#   the 18 or so runners a run gets at once: 4 seeds x 3 RTTs x 3
+#   benchmarks is 36 jobs of 3 (put, txn) to 6.5 (k8s) minutes:
 #   each benchmark x seed x RTT is its own job on its own runner, which
 #   runs the baseline and the candidate once each, back to back, max only,
 #   and no etcd unless asked. More seeds take the place of repeats, all of
@@ -27,8 +29,8 @@
 # is re-measured whenever this workflow, cmd/loadgen, the report's measure
 # or the runners' type change: run the quick grid of main against itself,
 # then jq -s 'add | map_values(.noise)' report/*/paired.json on its report
-# artifact. Each value is the largest |ratio - 1| of the run's pairs, 6 per
-# shape and RTT with the default seeds.
+# artifact. Each value is the largest |ratio - 1| of the runs' pairs per
+# shape and RTT.
 #
 # Each run draws fresh random seeds, unless -f seeds gives them, and every
 # job and target runs on the same ones; the summary prints them and the
@@ -57,7 +59,7 @@ on:
         description: round-trip times between nodes in ms; etcd runs at the first only. In the full grid they run in this order and the first one's rate stands in at the others; in the quick grid rate runs only at the first
         default: 0 2 10
       seeds:
-        description: space-separated seeds to replay a run; empty draws 6 fresh ones that all draw crd-heavy for k8s in the quick grid, 3 of any shape in the full one
+        description: space-separated seeds to replay a run; empty draws 4 fresh ones that all draw crd-heavy for k8s in the quick grid, 3 of any shape in the full one
         default: ""
       targets:
         description: stores to run, etcd, baseline and candidate; empty is baseline candidate in the quick grid, etcd baseline candidate in the full one
@@ -106,14 +108,16 @@ jobs:
           # it, and put and txn run on the same seeds. The full grid draws
           # every shape.
           if [ -z "$SEEDS" ] && [ "$GRID" = quick ]; then
-            SEEDS=$(go run ./cmd/benchseeds -n 6 -shape crd-heavy -min 6)
+            SEEDS=$(go run ./cmd/benchseeds -n 4 -shape crd-heavy -min 4)
           elif [ -z "$SEEDS" ]; then
             SEEDS=$(shuf -i 1-999999999 -n 3 | tr '\n' ' ' | sed 's/ $//')
           fi
           echo "seeds=$SEEDS" >> "$GITHUB_OUTPUT"
+          # k8s jobs, the longest, come first, so they start in the first
+          # wave of runners.
           jobs=$(jq -cn --arg grid "$GRID" --arg b "$BENCHMARKS" --arg s "$SEEDS" --arg r "$RTTS" '
             def words: split(" ") | map(select(. != ""));
-            [($b | words)[] as $bench |
+            [($b | words | sort_by(. != "k8s"))[] as $bench |
               if $grid == "full" or ($bench | IN("profile", "profile-disk", "disk-probe", "etcd-tool"))
               then {bench: $bench, seed: "all", rtt: "all", name: $bench}
               else ($s | words)[] as $seed | ($r | words)[] as $rtt |
