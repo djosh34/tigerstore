@@ -35,10 +35,16 @@ type stream struct {
 	authority  string
 	httpFields []hpack.HeaderField
 
-	// Loop only: the gRPC message being received.
-	hdr  [5]byte
-	hdrN int
-	msg  []byte
+	// Loop only: the gRPC message being received, and the arena's chunk
+	// that holds the request of a call the node runs (arena.go), which
+	// changes under c.mu once the call is admitted.
+	hdr   [5]byte
+	hdrN  int
+	msg   []byte
+	chunk *chunk
+	// keepBody is set once the node reads the request past its first
+	// reply (abandonBody); the stream then lets go of it as it ends.
+	keepBody bool
 	// Loop only, until the unary handler starts: the request messages.
 	body []byte
 	msgs int
@@ -57,8 +63,11 @@ type stream struct {
 	space    chan struct{}
 	// abort, if set by the handler, ends a Send that waits for space.
 	abort <-chan struct{}
-	// deadline ends the call at its grpc-timeout; guarded by c.mu.
-	deadline *time.Timer
+	// deadline is when the call ends, from its grpc-timeout, and due its
+	// place in the connection's deadlines, from 1, while it waits for it
+	// (deadline.go). Loop only.
+	deadline time.Time
+	due      int
 
 	// Guarded by c.mu.
 	in            []inMsg // streaming calls and HTTP bodies: input not yet taken
@@ -126,9 +135,10 @@ var (
 // so between two and three timeouts after the leader went.
 const maxNoLeader = 3
 
-// receive takes the payload of a DATA frame. Framer storage is reused by
-// the next frame, so each message is copied once, into a buffer of its
-// own size.
+// receive takes the payload of a DATA frame. The input buffer is reused by
+// the next frame, so each message is copied once: the request of a call
+// the node runs into the connection's arena, any other into a buffer of
+// its own size.
 func (st *stream) receive(d []byte) error {
 	for {
 		if st.hdrN < len(st.hdr) {
@@ -148,7 +158,11 @@ func (st *stream) receive(d []byte) error {
 			if limit := st.c.s.maxRecvMsg; int64(size) > int64(limit) {
 				return status.Errorf(codes.ResourceExhausted, "grpc: received message larger than max (%d vs. %d)", size, limit)
 			}
-			st.msg = make([]byte, 0, size)
+			if st.rpc != nil && st.rpc.op != nil && st.msgs == 0 {
+				st.msg, st.chunk = st.c.body(int(size))
+			} else {
+				st.msg = make([]byte, 0, size)
+			}
 		}
 		n := min(len(d), cap(st.msg)-len(st.msg))
 		st.msg = append(st.msg, d[:n]...)
@@ -477,7 +491,7 @@ func (c *conn) monitorLeader(st *stream) {
 }
 
 // expire ends a call whose grpc-timeout passed, whether or not its
-// request is complete or its handler started.
+// request is complete or its handler started. It runs on the loop.
 func (st *stream) expire() {
 	// The end goes first: a batch that the node takes meanwhile sees it
 	// (conn.flush), and otherwise this sees the request's ID there.

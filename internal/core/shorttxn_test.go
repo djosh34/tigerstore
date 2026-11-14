@@ -128,7 +128,7 @@ func TestShortTxnInBatch(t *testing.T) {
 	}
 	wire := mustMarshal(t, update)
 	req := Request{ID: 3, Op: &pb.TxnRequest{}, Wire: wire}
-	if err := DecodeTxn(&req); err != nil {
+	if err := DecodeTxn(&req, nil); err != nil {
 		t.Fatal(err)
 	}
 	for format := uint32(originVersion - 1); format <= MaxVersion; format++ {

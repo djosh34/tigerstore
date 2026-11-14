@@ -1,9 +1,10 @@
 // Package server serves the etcd v3 gRPC API and the gRPC health service
 // of one node, and etcd's /health, /readyz, /livez, /version and /metrics,
-// on the client port. It speaks HTTP/2 and gRPC itself, on x/net's Framer
-// and HPACK: a reader goroutine per connection decodes frames, a writer
-// goroutine per connection encodes them, and handlers hand requests to the
-// node's committer. Nothing here touches the store.
+// on the client port. It speaks HTTP/2 and gRPC itself: the node's event
+// loop reads each connection's frames in place, hands the unary calls to
+// the node in batches and writes the replies, with x/net's HPACK and its
+// Framer for control frames. Streaming calls and HTTP requests run on
+// goroutines of their own. Nothing here touches the store.
 package server
 
 import (
@@ -103,11 +104,13 @@ type Server struct {
 	// loop is the node's event loop, which runs the HTTP/2 connections;
 	// bufs are the buffers its connections borrow while they hold bytes,
 	// bigBufs those that hold a whole write pass that waits for a socket,
-	// and bw the write buffer every connection writes through. Loop only.
-	loop    *loop.Loop
-	bufs    *loop.Buffers
-	bigBufs *loop.Buffers
-	bw      *bufio.Writer
+	// bodyBufs the chunks of their requests (arena.go), and bw the write
+	// buffer every connection writes through. Loop only.
+	loop     *loop.Loop
+	bufs     *loop.Buffers
+	bigBufs  *loop.Buffers
+	bodyBufs *loop.Buffers
+	bw       *bufio.Writer
 	// ctrlOut, framesOut and hdrOut are the write pass's scratch, which
 	// every connection uses in turn. Loop only.
 	ctrlOut   []ctrlFrame
@@ -193,7 +196,7 @@ func New(n *node.Node, cfg Config) (*Server, error) {
 		cfg.BcryptCost = 0
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Server{n: n, loop: n.Loop(), bufs: loop.NewBuffers(connBuffer, keepBuffers), bigBufs: loop.NewBuffers(passBuffer, keepPassBuffers), bw: bufio.NewWriterSize(nil, ioBuffer), cfg: cfg, grpcTLS: grpcTLS(cfg.TLS), gone: newConnMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
+	s := &Server{n: n, loop: n.Loop(), bufs: loop.NewBuffers(connBuffer, keepBuffers), bigBufs: loop.NewBuffers(passBuffer, keepPassBuffers), bodyBufs: loop.NewBuffers(bodyChunk, keepBodyChunks), bw: bufio.NewWriterSize(nil, ioBuffer), cfg: cfg, grpcTLS: grpcTLS(cfg.TLS), gone: newConnMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
 	if err := s.newServerMetrics(); err != nil {
 		cancel()
 		return nil, err

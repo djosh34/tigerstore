@@ -240,3 +240,11 @@ func toStatus(err error) error {
 	}
 	return status.Error(codes.Unknown, err.Error())
 }
+
+// rangeMethod, txnMethod and deleteMethod are the methods whose requests
+// admit decodes with the written-out aliasing decoders.
+var (
+	rangeMethod  = methods["/etcdserverpb.KV/Range"]
+	txnMethod    = methods["/etcdserverpb.KV/Txn"]
+	deleteMethod = methods["/etcdserverpb.KV/DeleteRange"]
+)

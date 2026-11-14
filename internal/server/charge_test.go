@@ -29,7 +29,7 @@ func bareServer(t testing.TB) *Server {
 	}
 	m, _ := buildServerMetrics(set, false)
 	// The loop never runs: what goes to it waits there.
-	s := &Server{metrics: m, loop: loop.New(loop.NewChanPoller()), bufs: loop.NewBuffers(connBuffer, keepBuffers), bigBufs: loop.NewBuffers(passBuffer, keepPassBuffers), bw: bufio.NewWriterSize(nil, ioBuffer)}
+	s := &Server{metrics: m, loop: loop.New(loop.NewChanPoller()), bufs: loop.NewBuffers(connBuffer, keepBuffers), bigBufs: loop.NewBuffers(passBuffer, keepPassBuffers), bodyBufs: loop.NewBuffers(bodyChunk, keepBodyChunks), bw: bufio.NewWriterSize(nil, ioBuffer)}
 	s.setLimits()
 	return s
 }

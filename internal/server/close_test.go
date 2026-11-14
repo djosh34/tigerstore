@@ -20,7 +20,7 @@ func TestStreamAfterClose(t *testing.T) {
 		id: 1, method: "POST", path: "/etcdserverpb.KV/Put", contentType: "application/grpc",
 		timeout: time.Hour, hasTimeout: true,
 	})
-	if !st.reset || st.deadline != nil || len(c.streams) != 0 {
-		t.Fatalf("stream after close: reset %v, timer %v, %d streams", st.reset, st.deadline != nil, len(c.streams))
+	if !st.reset || st.due != 0 || len(c.deadlines) != 0 || len(c.streams) != 0 {
+		t.Fatalf("stream after close: reset %v, deadline armed %v, %d streams", st.reset, st.due != 0, len(c.streams))
 	}
 }
