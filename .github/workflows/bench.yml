@@ -212,14 +212,17 @@ jobs:
             echo '```'
           } | tee results/runner.md
       # Nothing else runs yet: the disk and the CPU are the runner's alone.
+      # In the quick grid only the job of the first seed and RTT measures:
+      # the report takes one runner's measure for all, the runners being
+      # of one type.
       - name: Measure the runner
-        if: matrix.job.bench != 'profile' && matrix.job.bench != 'profile-disk' && matrix.job.bench != 'disk-probe' && matrix.job.bench != 'etcd-tool'
+        if: matrix.job.bench != 'profile' && matrix.job.bench != 'profile-disk' && matrix.job.bench != 'disk-probe' && matrix.job.bench != 'etcd-tool' && (matrix.job.seed == 'all' || startsWith(format('{0} ', needs.plan.outputs.seeds), format('{0} ', matrix.job.seed)) && startsWith(format('{0} ', inputs.rtts || '0 2 10'), format('{0} ', matrix.job.rtt)))
         run: |
           taskset -c 3 bin/ceiling -dir "$RUNNER_TEMP" \
             -disk "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)" \
             -cpu "$(lscpu | sed -n 's/^Model name: *//p' | head -n 1)" | tee results/ceiling.json
       - name: Measure the generator against nullstore
-        if: matrix.job.bench != 'profile' && matrix.job.bench != 'profile-disk' && matrix.job.bench != 'disk-probe' && matrix.job.bench != 'etcd-tool'
+        if: matrix.job.bench != 'profile' && matrix.job.bench != 'profile-disk' && matrix.job.bench != 'disk-probe' && matrix.job.bench != 'etcd-tool' && (matrix.job.seed == 'all' || startsWith(format('{0} ', needs.plan.outputs.seeds), format('{0} ', matrix.job.seed)) && startsWith(format('{0} ', inputs.rtts || '0 2 10'), format('{0} ', matrix.job.rtt)))
         env:
           BINS: bin
           CERTS: certs
@@ -333,7 +336,7 @@ jobs:
   # the ceilings and the generator's measure are the first job's.
   report:
     needs: [plan, bench]
-    if: always() && (inputs.grid || 'quick') == 'quick' && needs.plan.result == 'success'
+    if: ${{ !cancelled() && (inputs.grid || 'quick') == 'quick' && needs.plan.result == 'success' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
@@ -379,6 +382,7 @@ jobs:
             done
             {
               echo "## $bench"
+              echo "The ceilings and the generator's measure below are those of the job of the first seed and RTT; every job ran on a runner of the same type."
               if [ -f "$dir/runner.md" ]; then cat "$dir/runner.md"; fi
               echo '```'
               for p in jobs/bench-"$bench"-*/rtt-*/probe.txt; do

@@ -378,6 +378,8 @@ func TestReportByShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
+		// The seed-by-seed table has no spread of one run, and says so.
+		"| put-1k | 11 | - | 0 | candidate | 1,030 (?) | 1,030 | 0.0% | +3.0%, one run each: judged by shape below |",
 		"| put-1k | - | 0 | 4 | 1.030 / 1.031 / 1.033 | ±5.0% | +3.1%, within the A/A noise |",
 		"| txn-1k | - | 0 | 4 | 2.000 / 2.000 / 2.000 | ±5.0% | +100.0%, beyond the A/A noise |",
 	} {

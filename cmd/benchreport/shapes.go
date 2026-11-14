@@ -92,7 +92,11 @@ func shapes(w io.Writer, rtts, benches, targets []string, all maxRuns) {
 						change := got/was - 1
 						noise := max(spreadOf(rs), spreadOf(base))
 						against = fmt.Sprintf("%+.1f%%", 100*change)
-						if abs(change) <= noise {
+						switch {
+						case len(rs) == 1 && len(base) == 1:
+							// No repeats, no spread: the paired table judges.
+							against += ", one run each: judged by shape below"
+						case abs(change) <= noise:
 							against += ", within the spread"
 						}
 					}
@@ -261,7 +265,7 @@ func byShape(w io.Writer, rtts, benches []string, all maxRuns, nz noise) map[str
 		}
 		p("| %s | %s | %s | %d | %.3f / %.3f / %.3f | %s | %s |\n", c.bench, c.shape, c.rtt, len(rs), lo, med, hi, aa, against)
 	}
-	p("\nShape by shape: each seed's paired ratio is the candidate's median max throughput over the baseline's, on the one runner where the two ran back to back in bench.yml's quick grid. Against baseline is the median ratio over the seeds that drew the shape. The A/A noise is the largest |ratio - 1| one pair showed for that shape and RTT in a run of one ref against itself (bench/noise.json); a median beyond it is a change. This run's own pairs are in paired.json.\n")
+	p("\nShape by shape: each seed's paired ratio is the candidate's median max throughput over the baseline's, on the runner where the two ran back to back. Against baseline is the median ratio over the seeds that drew the shape. The A/A noise is the largest |ratio - 1| one pair showed for that shape and RTT in a run of one ref against itself (bench/noise.json); a median beyond it is a change. This run's own pairs are in paired.json.\n")
 	return out
 }
 
