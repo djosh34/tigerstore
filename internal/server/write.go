@@ -140,9 +140,7 @@ func (c *conn) endStream(st *stream, frames []wframe, budget *int) []wframe {
 		// release their context here.
 		st.cancel()
 	}
-	if st.deadline != nil {
-		st.deadline.Stop()
-	}
+	c.disarmDeadline(st)
 	c.releaseLocked(&st.replyHeld)
 	if _, at := c.atNode[st]; !at {
 		c.releaseBody(st)
@@ -151,6 +149,7 @@ func (c *conn) endStream(st *stream, frames []wframe, budget *int) []wframe {
 		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: st.id, val: uint32(http2.ErrCodeNo)}})
 		*budget -= frameHeaderLen + 4
 	}
+	c.reuseStream(st)
 	return frames
 }
 

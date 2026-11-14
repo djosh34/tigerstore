@@ -111,6 +111,10 @@ type conn struct {
 	batch  opBatch
 	// arena holds the requests of the calls the node runs (arena.go).
 	arena arena
+	// deadlines are the calls that end at a deadline (deadline.go).
+	deadlines deadlines
+	// free are streams of ended calls for the next calls (freeStream).
+	free []*stream
 	// hdec decodes header blocks into hdr, the headers of the block being
 	// read, with no allocation for fields from the HPACK tables.
 	hdec *hpack.Decoder
@@ -235,9 +239,6 @@ func (c *conn) close() {
 			st.reset = true
 			c.cancelLocked(st)
 			st.out = nil
-			if st.deadline != nil {
-				st.deadline.Stop()
-			}
 		}
 		c.ready = nil
 		c.mu.Unlock()
@@ -383,9 +384,7 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 		delete(c.streams, id)
 		st.countEnd(canceled)
 		st.reset = true
-		if st.deadline != nil {
-			st.deadline.Stop()
-		}
+		c.disarmDeadline(st)
 		// A call the node still runs keeps its request charge and its
 		// request until its reply comes and is dropped.
 		c.releaseLocked(&st.replyHeld)
@@ -693,11 +692,14 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 
 func (c *conn) newStream(h *reqHeaders) *stream {
 	id := h.id
-	st := &stream{c: c, id: id, needLeader: h.needLeader, gateway: h.gateway, token: h.token, encoding: h.encoding}
 	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc") && c.traffic != TrafficHTTP
+	var rpc *method
 	if grpc {
-		st.rpc = methods[h.path]
-	} else {
+		rpc = methods[h.path]
+	}
+	st := c.freeStream(rpc)
+	*st = stream{c: c, id: id, rpc: rpc, needLeader: h.needLeader, gateway: h.gateway, token: h.token, encoding: h.encoding}
+	if !grpc {
 		st.httpMethod, st.httpPath = h.method, h.path
 		if st.httpPath == "" {
 			st.httpPath = "/"
@@ -706,54 +708,93 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
 	}
 	// A call that the node runs needs no context of its own: the node
-	// answers it within its request timeout, the deadline timer below ends
-	// it early, and a reset drops the reply.
-	if !grpc || (st.rpc != nil && st.rpc.op == nil) {
+	// answers it within its request timeout, its deadline ends it early,
+	// and a reset drops the reply.
+	if !grpc || (rpc != nil && rpc.op == nil) {
 		st.ctx, st.cancel = context.WithCancel(c.ctx)
 	}
-	if st.rpc != nil && st.rpc.stream != nil {
+	if rpc != nil && rpc.stream != nil {
 		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
+	}
+	// The answer to a call that runs no further, if any.
+	var early error
+	switch {
+	case grpc && rpc == nil:
+		early = unknownMethod(h.path)
+	case grpc && h.encoding != "" && h.encoding != identity && h.encoding != gzipName:
+		// grpc-go's answer before it runs a handler.
+		early = status.Errorf(codes.Unimplemented, "grpc: Decompressor is not installed for grpc-encoding %q", h.encoding)
+	case rpc != nil && rpc.learner == learnerNever && c.s.learner():
+		// As etcd's interceptors, a learner serves only Status,
+		// serializable ranges and snapshots.
+		early = rpctypes.ErrGRPCNotSupportedForLearner
+	case rpc != nil:
+		early = validAPIVersion(h.apiVersion)
 	}
 	c.mu.Lock()
 	st.sendWin = c.initWin
 	if c.closed {
 		// The connection closed while the reader decoded these headers:
-		// the stream is dead from the start and arms no timer.
+		// the stream is dead from the start and arms no deadline.
 		st.reset = true
 		c.mu.Unlock()
 		return st
 	}
 	c.streams[id] = st
-	if st.rpc != nil {
-		st.calls = &c.metrics.calls[st.rpc.idx]
+	if rpc != nil {
+		st.calls = &c.metrics.calls[rpc.idx]
 		st.countStart()
 		st.beginTrace(h)
+		if early == nil {
+			// etcd's interceptor counts a call it lets through.
+			c.clientRequests(rpc.stream != nil, h.apiVersion).Inc()
+		}
 	}
+	c.mu.Unlock()
 	if grpc && h.hasTimeout {
 		// The deadline ends the call whether or not its request is
 		// complete or its handler started.
-		st.deadline = time.AfterFunc(h.timeout, st.expire)
+		c.armDeadline(st, time.Now().Add(h.timeout))
 	}
-	c.mu.Unlock()
-	switch {
-	case grpc && st.rpc == nil:
-		st.finish(unknownMethod(h.path))
-	case grpc && h.encoding != "" && h.encoding != identity && h.encoding != gzipName:
-		// grpc-go's answer before it runs a handler.
-		st.finish(status.Errorf(codes.Unimplemented, "grpc: Decompressor is not installed for grpc-encoding %q", h.encoding))
-	case st.rpc != nil && st.rpc.learner == learnerNever && c.s.learner():
-		// As etcd's interceptors, a learner serves only Status,
-		// serializable ranges and snapshots.
-		st.finish(rpctypes.ErrGRPCNotSupportedForLearner)
-	case st.rpc != nil && validAPIVersion(h.apiVersion) != nil:
-		st.finish(validAPIVersion(h.apiVersion))
-	case st.rpc != nil:
-		// etcd's interceptor counts a call it lets through.
-		c.mu.Lock()
-		c.clientRequests(st.rpc.stream != nil, h.apiVersion).Inc()
-		c.mu.Unlock()
+	if early != nil {
+		st.finish(early)
 	}
 	return st
+}
+
+// maxFreeStreams bounds the streams a connection keeps for its next
+// calls, and streamBytes the size of one (TestStreamSize).
+const (
+	maxFreeStreams = 128
+	streamBytes    = 640
+)
+
+// freeStream returns a stream for a call of rpc: for a unary call the
+// node runs, one that an earlier such call left (reuseStream). Loop only.
+func (c *conn) freeStream(rpc *method) *stream {
+	if n := len(c.free); n > 0 && rpc != nil && rpc.op != nil {
+		st := c.free[n-1]
+		c.free[n-1] = nil
+		c.free = c.free[:n-1]
+		return st
+	}
+	return &stream{}
+}
+
+// reuseStream keeps an ended stream for the connection's next call, if
+// nothing refers to it any more: a unary call that the node ran and
+// answered whole, with no context, trace or request of its own left.
+// Every other kind of call may still be referred to by a goroutine or the
+// node. Its deadline, if it had one, is disarmed. c.mu is held, on the
+// loop.
+func (c *conn) reuseStream(st *stream) {
+	if st.rpc == nil || st.rpc.op == nil || st.cancel != nil || st.trace != nil || st.space != nil || st.chunk != nil || st.due != 0 || len(c.free) >= maxFreeStreams {
+		return
+	}
+	if _, at := c.atNode[st]; at {
+		return
+	}
+	c.free = append(c.free, st)
 }
 
 func (c *conn) onData(f *frame) error {

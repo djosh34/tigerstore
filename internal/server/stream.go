@@ -60,8 +60,11 @@ type stream struct {
 	space    chan struct{}
 	// abort, if set by the handler, ends a Send that waits for space.
 	abort <-chan struct{}
-	// deadline ends the call at its grpc-timeout; guarded by c.mu.
-	deadline *time.Timer
+	// deadline is when the call ends, from its grpc-timeout, and due its
+	// place in the connection's deadlines, from 1, while it waits for it
+	// (deadline.go). Loop only.
+	deadline time.Time
+	due      int
 
 	// Guarded by c.mu.
 	in            []inMsg // streaming calls and HTTP bodies: input not yet taken
@@ -485,7 +488,7 @@ func (c *conn) monitorLeader(st *stream) {
 }
 
 // expire ends a call whose grpc-timeout passed, whether or not its
-// request is complete or its handler started.
+// request is complete or its handler started. It runs on the loop.
 func (st *stream) expire() {
 	// The end goes first: a batch that the node takes meanwhile sees it
 	// (conn.flush), and otherwise this sees the request's ID there.

@@ -48,9 +48,10 @@ const (
 // (idleBytes); while it has bytes in them, a read buffer under TLS and an
 // input buffer (connBuffer each); the control frames queued (maxCtrl of
 // 48 bytes, 24 KiB); a header block that waits for its CONTINUATION
-// (maxHeaderList); and the header blocks it keeps decoded (maxBlocks,
-// under 40 KiB). Server.setLimits sizes the number of connections from it.
-const connBytes = idleBytes + 2*connBuffer + 24<<10 + maxHeaderList + 40<<10
+// (maxHeaderList); the header blocks it keeps decoded (maxBlocks, under
+// 40 KiB); and the streams it keeps for its next calls (maxFreeStreams).
+// Server.setLimits sizes the number of connections from it.
+const connBytes = idleBytes + 2*connBuffer + 24<<10 + maxHeaderList + 40<<10 + maxFreeStreams*streamBytes
 
 // idleBytes bounds what an idle HTTP/2 connection holds.
 // TestIdleConnectionMemory measures it, with its client, at about 112 KB.
@@ -364,6 +365,7 @@ func (c *conn) Flush() {
 		c.release()
 		return
 	}
+	c.expireDue(now)
 	drained, err := c.write()
 	if err != nil {
 		c.close()
