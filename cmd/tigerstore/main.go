@@ -28,6 +28,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/diaglog"
 	"github.com/djosh34/tigerstore/internal/epoll"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/node"
@@ -116,6 +117,13 @@ func run(args []string) int {
 func start(c *config, lg *zap.Logger) error {
 	ec := &c.ec
 	logf := lg.Sugar().Infof
+	// Diagnosis-only opt-in: never let the loop wait for a diagnostic file.
+	// Bounded and lossy; timestamps are delivery times in this prototype.
+	if os.Getenv("TIGERSTORE_DIAG_ASYNC_LOG") == "1" {
+		q := diaglog.New(func(line string) { lg.Info(line) }, 1024)
+		defer q.Close()
+		logf = q.Logf
+	}
 	if host, err := ec.UpdateDefaultClusterFromName(c.defaultCluster); host != "" || err != nil {
 		lg.Info("detected default host for advertise", zap.String("host", host), zap.Error(err))
 	}
