@@ -238,18 +238,29 @@ func TestStopDoesNotWaitForever(t *testing.T) {
 	out.release()
 }
 
-// TestStdLogLinesAreWarnings logs to an output that takes warnings and
-// above: the standard log package's lines still reach it, as they reached
-// stderr at any level before, and Infof's lines do not (Opus's round-3
-// re-check of #681).
+// TestStdLogLinesAreWarnings logs to outputs that take warnings, errors,
+// or only fatal lines and above: the standard log package's lines reach
+// each of them, as they reached stderr at any level before, at warn or
+// the least level above it the output takes; Infof's lines do not
+// (Opus's round-3 and round-4 re-checks of #681).
 func TestStdLogLinesAreWarnings(t *testing.T) {
-	var buf bytes.Buffer
-	enc := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
-	q := New(zap.New(zapcore.NewCore(enc, zapcore.AddSync(&buf), zapcore.WarnLevel)), 4)
-	q.Infof("an info line")
-	log.New(q, "", 0).Print("http: panic serving 127.0.0.1:1: boom")
-	q.Stop()
-	if got := buf.String(); strings.Contains(got, "an info line") || !strings.Contains(got, `"level":"warn"`) || !strings.Contains(got, "http: panic serving") {
-		t.Fatalf("written %q, want only the standard log's line, as a warning", got)
+	for _, tc := range []struct {
+		at   zapcore.Level
+		want string
+	}{
+		{zapcore.WarnLevel, "warn"},
+		{zapcore.ErrorLevel, "error"},
+		{zapcore.FatalLevel, "fatal"},
+	} {
+		var buf bytes.Buffer
+		enc := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
+		q := New(zap.New(zapcore.NewCore(enc, zapcore.AddSync(&buf), tc.at)), 4)
+		q.Infof("an info line")
+		log.New(q, "", 0).Print("http: panic serving 127.0.0.1:1: boom")
+		q.Stop()
+		got := buf.String()
+		if strings.Contains(got, "an info line") || !strings.Contains(got, `"level":"`+tc.want+`"`) || !strings.Contains(got, "http: panic serving") {
+			t.Fatalf("at %v: written %q, want only the standard log's line, at %s", tc.at, got, tc.want)
+		}
 	}
 }

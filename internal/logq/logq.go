@@ -1,17 +1,18 @@
 // Package logq logs lines through a queue, so that a caller never waits
 // for the log's output. The node's event loop logs as it works: slow
 // writes to the log, slow calls, a leader change, and with
-// GODEBUG=http2debug=2 x/net's control frames through the standard log
-// package, whose lines it queues at the warn level. A process's log goes to a file or a pipe, which may sit on the
+// GODEBUG=http2debug=2 x/net's control frames, through the standard log
+// package. A process's log goes to a file or a pipe, which may sit on the
 // disk the node writes its data to. While that disk stalls, a write to the
 // log can take seconds, and a loop that waits for it sends no heartbeats
 // and loses its term (#680).
 //
 // A line is formatted and stamped with the time of the call, then queued;
 // one goroutine writes the queue to a zap core, in order, through the
-// core's own Check, so its levels and sampling hold. When the queue is
-// full a line is dropped and counted, and the next line queued carries the
-// count, so the report of the drops is written where they were.
+// core's own Check, so its levels and sampling hold. The standard log's
+// lines are warnings. When the queue is full a line is dropped and
+// counted, and the next line queued carries the count, so the report of
+// the drops is written where they were.
 package logq
 
 import (
@@ -82,14 +83,17 @@ func (l *Log) Infof(format string, args ...any) {
 	l.add(line{at: time.Now(), pc: pc[0], level: zapcore.InfoLevel, msg: fmt.Sprintf(format, args...)})
 }
 
-// Write logs p, a line of the standard log package, at the warn level
-// without waiting for the output. Such lines are warnings, such as
-// net/http's report of a handler that panicked, and went to stderr at any
-// log level before.
+// Write logs p, a line of the standard log package, without waiting for
+// the output. Such lines are warnings, such as net/http's report of a
+// handler that panicked, and went to stderr at any log level before. So
+// one goes at the warn level, or at the least level above it that the
+// core takes.
 func (l *Log) Write(p []byte) (int, error) {
-	if l.core.Enabled(zapcore.WarnLevel) {
-		l.add(line{at: time.Now(), level: zapcore.WarnLevel, msg: string(bytes.TrimSuffix(p, []byte("\n")))})
+	level := zapcore.WarnLevel
+	for level < zapcore.FatalLevel && !l.core.Enabled(level) {
+		level++
 	}
+	l.add(line{at: time.Now(), level: level, msg: string(bytes.TrimSuffix(p, []byte("\n")))})
 	return len(p), nil
 }
 
