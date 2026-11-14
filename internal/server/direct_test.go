@@ -372,7 +372,7 @@ func TestReplySizesMatch(t *testing.T) {
 			continue
 		}
 		inPlace++
-		b, err := c.appendReply(make([]byte, 0, size), st, &cp)
+		b, err := c.appendReply(make([]byte, 0, size), st, &cp, size-5)
 		if err != nil || size != len(queuedForm.msg) || !bytes.Equal(b, queuedForm.msg) {
 			t.Fatalf("reply %d (%s): sized %d, encoded in place to %x (%v), queued to %x", i, method, size, b, err, queuedForm.msg)
 		}

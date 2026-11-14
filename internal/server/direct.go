@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/net/http2"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
@@ -16,8 +15,9 @@ import (
 )
 
 // A reply of the node to a put, a range, a Txn or a DeleteRange usually
-// goes straight into the connection's output: its HEADERS, its one DATA frame and its trailers are encoded in
-// place at the end of the TLS record being written (loop.Records.Reserve),
+// goes straight into the connection's output: its HEADERS, its one DATA
+// frame and its trailers are encoded in place at the end of the TLS
+// record being written (loop.Records.Reserve),
 // or of the bridge's write buffer without TLS. It needs no queue of its
 // own on the stream, and is not copied through the server's write buffer
 // and again into the record. A reply goes there when it is whole and
@@ -106,9 +106,6 @@ func (c *conn) takeDirect(f *finished, budget *int) bool {
 	if st.calls != nil {
 		st.calls.sent.add(1)
 	}
-	if st.span != nil && f.granted != 0 {
-		st.span.SetAttributes(attribute.Int64("id", f.granted))
-	}
 	st.countEnd(nil)
 	return true
 }
@@ -124,12 +121,13 @@ func (c *conn) writeDirect(f *finished) error {
 	b = frameHeader(b, len(grpcHeaders), http2.FrameHeaders, http2.FlagHeadersEndHeaders, st.id)
 	b = append(b, grpcHeaders...)
 	b = frameHeader(b, f.size, http2.FrameData, 0, st.id)
-	at, room := len(b), cap(b)
-	b, err := c.appendReply(b, st, f.cp)
+	at := len(b)
+	b, err := c.appendReply(b, st, f.cp, f.size-5)
 	if err != nil {
 		return err
 	}
-	if len(b)-at != f.size || cap(b) != room {
+	// An encoding longer than its room went to a buffer of its own.
+	if len(b)-at != f.size {
 		return errReplySize
 	}
 	b = frameHeader(b, len(okTrailers), http2.FrameHeaders, http2.FlagHeadersEndHeaders|http2.FlagHeadersEndStream, st.id)
@@ -142,17 +140,17 @@ func (c *conn) writeDirect(f *finished) error {
 	return nil
 }
 
-// appendReply appends the gRPC message of a reply that directSize sized.
-func (c *conn) appendReply(b []byte, st *stream, cp *node.Completion) ([]byte, error) {
+// appendReply appends the gRPC message of a reply that directSize sized
+// at size bytes without its prefix.
+func (c *conn) appendReply(b []byte, st *stream, cp *node.Completion, size int) ([]byte, error) {
 	switch r := cp.Resp.(type) {
 	case *pb.TxnResponse:
-		e := txnEnc{b: appendPrefix(b, txnRespSize(r))}
+		e := txnEnc{b: appendPrefix(b, size)}
 		e.appendTxnResp(r)
 		return e.b, nil
 	case *pb.DeleteRangeResponse:
-		// directSize sized the message, which protobuf keeps.
-		b = appendPrefix(b, proto.Size(r))
-		return proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(b, r)
+		// proto.Size in directSize cached the sizes MarshalAppend uses.
+		return proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(appendPrefix(b, size), r)
 	}
 	if st.rpc.wirePut {
 		return c.appendPutReply(b, &cp.Reply)

@@ -225,12 +225,8 @@ func newConn(s *Server, nc net.Conn, bridge *loop.Bridge) *conn {
 		maxFrame: 16384,
 	}
 	c.records, _ = nc.(*loop.Records)
-	switch out := nc.(type) {
-	case *loop.Records:
-		c.direct = out
-	case *loop.Bridge:
-		c.direct = out
-	}
+	// Under TLS 1.2, crypto/tls's connection has no room to write in.
+	c.direct, _ = nc.(directOut)
 	c.caller = caller(s.cfg.TLS, nc)
 	c.fr = http2.NewFramer(frameDst{c}, nil)
 	c.hdec = hpack.NewDecoder(4096, c.onField)
