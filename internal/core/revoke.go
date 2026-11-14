@@ -65,5 +65,5 @@ func (n *Node) applyWaits() bool { return n.paused != nil || n.revoke != nil }
 // of a revoke, or the value cache's next step (cache.step). The driver
 // then gives it that turn at once.
 func (n *Node) Working() bool {
-	return n.revoke != nil || n.CatchingUp() || n.err == nil && n.cache.busy()
+	return n.revoke != nil || n.CatchingUp()
 }
