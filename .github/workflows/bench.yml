@@ -270,12 +270,12 @@ jobs:
           # grid; the other RTTs have no shared rate, so their rate runs
           # are left out, and say so (norate).
           read -r -a asked <<<"$ALL_RTTS"
+          norate=""
           if [ "${rtts[0]}" != "${asked[0]}" ]; then
             first=none
             TARGETS=$(echo "$TARGETS" | tr ' ' '\n' | grep -vx etcd | tr '\n' ' ')
             if [[ " $MODES " == *" rate "* ]]; then
-              mkdir -p "results/rtt-${rtts[0]}/$BENCH"
-              echo "the quick grid shares no rate across its jobs: rate runs only at the first RTT, ${asked[0]} ms" >"results/rtt-${rtts[0]}/$BENCH/norate"
+              norate="rate runs only at the first RTT, ${asked[0]} ms, in the quick grid"
             fi
             MODES=$(echo "$MODES" | tr ' ' '\n' | grep -vx rate | tr '\n' ' ')
             export TARGETS MODES LAYOUTS=""
@@ -285,7 +285,11 @@ jobs:
             mkdir -p "$out"
             bench/netem.sh on "$rtt"
             bench/netem.sh probe | tee "$out/probe.txt"
-            if [ "$out" = "$first" ]; then
+            if [ -z "${MODES// /}" ]; then
+              # Only rate was asked, which this RTT leaves out; run.sh
+              # would take no modes for both.
+              mkdir -p "$out/$BENCH"
+            elif [ "$out" = "$first" ]; then
               bench/run.sh "$BENCH" "$out"
             else
               # Layouts measure disk and CPU, not the network: once is
@@ -293,6 +297,9 @@ jobs:
               TARGETS=$(echo "$TARGETS" | tr ' ' '\n' | grep -vx etcd | tr '\n' ' ') \
                 LAYOUTS="" RATE_FALLBACK=$(cat "$first/$BENCH/rate" 2>/dev/null || true) bench/run.sh "$BENCH" "$out"
             fi
+            # run.sh refuses a directory that holds results already, so the
+            # note goes in after it.
+            if [ -n "$norate" ]; then echo "$norate" >"$out/$BENCH/norate"; fi
             bench/netem.sh show >"$out/netem.txt"
             bench/netem.sh off
           done
