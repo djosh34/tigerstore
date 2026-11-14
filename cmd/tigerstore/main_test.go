@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,6 +19,7 @@ import (
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -387,5 +389,57 @@ func TestRequestTimeout(t *testing.T) {
 		if got := time.Duration(cfg.RequestTicks) * time.Duration(cfg.TickMillis) * time.Millisecond; got != tc.want {
 			t.Errorf("heartbeat %s ms, election %s ms: the request timeout is %v, want %v", tc.heartbeat, tc.election, got, tc.want)
 		}
+	}
+}
+
+// blockedOutput is a log output whose writes wait until released, as a
+// log file on a disk that stalls.
+type blockedOutput struct{ release chan struct{} }
+
+func (b blockedOutput) Write(p []byte) (int, error) {
+	<-b.release
+	return len(p), nil
+}
+
+func (b blockedOutput) Sync() error { return nil }
+
+// TestNodeLogDoesNotWait logs through what the node logs with while the
+// log's output is stuck: the node's lines and the standard log package's,
+// as x/net's HTTP/2 debug output, return at once. Before #680's fix the
+// node logged through the logger itself, and each line waited.
+func TestNodeLogDoesNotWait(t *testing.T) {
+	out := blockedOutput{release: make(chan struct{})}
+	logf, stop := nodeLog(zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.Lock(out), zapcore.InfoLevel)))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 10 {
+			logf("leader is 0 at term %d", i)
+		}
+		log.Printf("http2: Framer: wrote PING len=8")
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		close(out.release)
+		t.Fatal("logging waited for a stuck output")
+	}
+	close(out.release)
+	stop()
+}
+
+// TestStdLogGoesToLog checks that the standard log package's lines go to
+// the node's log while it runs, and back to where they went after.
+func TestStdLogGoesToLog(t *testing.T) {
+	var b bytes.Buffer
+	before := log.Writer()
+	_, stop := nodeLog(zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&b), zapcore.InfoLevel)))
+	log.Printf("http2: Framer: wrote PING len=8")
+	stop()
+	if !strings.Contains(b.String(), `"msg":"http2: Framer: wrote PING len=8"`) {
+		t.Fatalf("the standard log's line is not in the log: %q", b.String())
+	}
+	if log.Writer() != before {
+		t.Fatal("the standard log's output is not restored")
 	}
 }
