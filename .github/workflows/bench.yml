@@ -120,8 +120,9 @@ jobs:
             [($b | words | sort_by(. != "k8s"))[] as $bench |
               if $grid == "full" or ($bench | IN("profile", "profile-disk", "disk-probe", "etcd-tool"))
               then {bench: $bench, seed: "all", rtt: "all", name: $bench}
-              else ($s | words)[] as $seed | ($r | words)[] as $rtt |
-                {bench: $bench, seed: $seed, rtt: $rtt, name: "\($bench)-\($seed)-rtt\($rtt)"}
+              else ($s | words | to_entries)[] as $seed | ($r | words)[] as $rtt |
+                {bench: $bench, seed: $seed.value, rtt: $rtt, name: "\($bench)-\($seed.value)-rtt\($rtt)",
+                 flip: ($seed.key % 2 == 1)}
               end]')
           echo "jobs=$jobs" >> "$GITHUB_OUTPUT"
           echo "Grid $GRID, seeds: $SEEDS, $(jq length <<<"$jobs") jobs" >> "$GITHUB_STEP_SUMMARY"
@@ -274,6 +275,14 @@ jobs:
           # grid; the other RTTs have no shared rate, so their rate runs
           # are left out, and say so (norate).
           read -r -a asked <<<"$ALL_RTTS"
+          # A quick-grid job runs each store once, so the store that runs
+          # second on a runner would always be the candidate: an A/A run
+          # measured the second store faster by about 3 % in nearly every
+          # cell. Every other seed runs its stores in the other order.
+          if [ "${{ matrix.job.flip }}" = true ]; then
+            TARGETS=$(echo "$TARGETS" | tr ' ' '\n' | grep -v '^$' | tac | tr '\n' ' ')
+            export TARGETS
+          fi
           norate=""
           if [ "${rtts[0]}" != "${asked[0]}" ]; then
             first=none
