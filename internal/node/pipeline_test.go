@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/djosh34/tigerstore/internal/loop"
-
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/simfs"
@@ -54,7 +52,7 @@ func syncNode(t *testing.T, failAt int) (*Node, *syncFile) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Node{cfg: Config{Metrics: m}, log: &diskLog{w: w}, loop: loop.New(loop.NewChanPoller())}, d.seg
+	return &Node{cfg: Config{Metrics: m}, log: &diskLog{w: w}}, d.seg
 }
 
 var errSync = errors.New("sync failed")

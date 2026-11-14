@@ -104,13 +104,12 @@ jobs:
         env:
           TIGERSTORE_STRESS: 10s
           GOMEMLIMIT: 8GiB
-      # The bounds on how long a step of the core takes, and on how late a
-      # leader's heartbeats come under overload, hold in the normal build
-      # only, which test, under -race, leaves out (#647).
+      # The bound on how long a step of the core takes holds in the normal
+      # build only, which test, under -race, leaves out (#647).
       - shell: bash
         run: |
+          set -o pipefail
           go test -count=5 -v -run 'TestShrinkingCacheTakesShortSteps$' ./internal/core 2>&1 | tee -a "$RUNNER_TEMP/stress.log"
-          go test -count=3 -v -run 'TestHeartbeatsUnder(Read)?Overload$' ./internal/server 2>&1 | tee -a "$RUNNER_TEMP/stress.log"
         env:
           TIGERSTORE_STRESS: 10s
       - if: failure()
@@ -456,7 +455,7 @@ jobs:
         run: |
           set -uo pipefail
           status=0
-          for t in core:FuzzDecodeAlias core:FuzzParsePut core:FuzzReceiveSnapshot wal:FuzzOpen mvcc:FuzzLoad peer:FuzzFrames server:FuzzHTTP2 server:FuzzFrames loop:FuzzRecords; do
+          for t in core:FuzzDecodeAlias core:FuzzParsePut core:FuzzReceiveSnapshot wal:FuzzOpen mvcc:FuzzLoad peer:FuzzFrames server:FuzzHTTP2; do
             pkg=./internal/${t%:*} target=${t#*:}
             echo "::group::$pkg $target"
             go test -run '^$' -fuzz "^$target\$" -fuzztime 20s "$pkg" || { status=1; echo "::error::$target failed"; }

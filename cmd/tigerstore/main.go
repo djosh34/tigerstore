@@ -28,7 +28,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/djosh34/tigerstore/internal/core"
-	"github.com/djosh34/tigerstore/internal/epoll"
 	"github.com/djosh34/tigerstore/internal/logq"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/node"
@@ -213,10 +212,6 @@ func start(c *config, lg *zap.Logger) error {
 	if ncfg.Metrics, err = metrics.New(featureMetrics(gate)); err != nil {
 		return err
 	}
-	// The node's event loop waits in epoll on a thread of its own.
-	if ncfg.Poller, err = epoll.New(); err != nil {
-		return err
-	}
 	pcfg.Metrics = ncfg.Metrics
 	jwt, err := server.ParseAuthToken(ec.AuthToken)
 	if err != nil {
@@ -243,8 +238,7 @@ func start(c *config, lg *zap.Logger) error {
 	if len(ec.AdvertisePeerUrls) > 0 {
 		pcfg.Addr = ec.AdvertisePeerUrls[0].Host
 	}
-	pcfg.Busy = n.Busy
-	pcfg.Loop, pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer, pcfg.Removed = n.Loop(), n.Receive, n.Unreachable, n.Serve, n.Answer, n.Removed
+	pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer, pcfg.Removed = n.Deliver, n.Unreachable, n.Serve, n.Answer, n.Removed
 	t, err := peer.Start(pcfg)
 	if err != nil {
 		return err
@@ -295,13 +289,6 @@ func start(c *config, lg *zap.Logger) error {
 		ran <- n.Run(ctx, t)
 		cancel()
 	}()
-	// closeAll stops the server and the transport once the node stopped,
-	// and waits until the node's loop is done with their connections.
-	closeAll := func() error {
-		err := errors.Join(g.Stop(), t.Close())
-		<-n.Drained()
-		return err
-	}
 	go func() {
 		if err := n.AdjustTicks(ctx, t.ActiveChange, ec.InitialElectionTickAdvance, rafthttp.ConnReadTimeout); err != nil && ctx.Err() == nil {
 			lg.Warn("adjust election ticks", zap.Error(err))
@@ -312,14 +299,14 @@ func start(c *config, lg *zap.Logger) error {
 		if err := n.InitialCheck(ctx, t); err != nil {
 			cancel()
 			closeListeners(clientLns, nil, lg)
-			return errors.Join(err, <-ran, closeAll())
+			return errors.Join(err, <-ran, g.Stop(), t.Close())
 		}
 		logf("initial corruption check passed")
 	}
 	if err := bootstrapDefrag(ctx, n, ec.BootstrapDefragThresholdMegabytes, lg); err != nil {
 		cancel()
 		closeListeners(clientLns, nil, lg)
-		return errors.Join(err, <-ran, closeAll())
+		return errors.Join(err, <-ran, g.Stop(), t.Close())
 	}
 	served := make(chan error, len(clientLns))
 	// closing is set once the clients are stopped on purpose.
@@ -363,17 +350,15 @@ func start(c *config, lg *zap.Logger) error {
 	for range clientLns {
 		stopErr = errors.Join(stopErr, <-served)
 	}
-	closeErr := t.Close()
-	<-n.Drained()
-	return errors.Join(runErr, stopErr, closeErr)
+	return errors.Join(runErr, stopErr, t.Close())
 }
 
 // nodeLog returns what the node, its peers and its server log with, and
 // how to stop it; until then the standard log package's lines, as x/net's
 // HTTP/2 debug output, go the same way. Neither waits for the log's
-// output, which may sit on the disk the node writes to: the node's event
-// loop logs as it works, and a loop that waits through a disk stall sends
-// no heartbeats (#680).
+// output, which may sit on the disk the node writes to: the node's
+// committer logs as it works, and a committer that waits through a disk
+// stall sends no heartbeats (#680).
 func nodeLog(lg *zap.Logger) (func(format string, args ...any), func()) {
 	q := logq.New(lg, logq.Size)
 	flags, out := log.Flags(), log.Writer()

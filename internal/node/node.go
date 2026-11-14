@@ -31,7 +31,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
-	"github.com/djosh34/tigerstore/internal/loop"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/osfs"
@@ -111,17 +110,6 @@ type Config struct {
 	// node in Turn.
 	Turn      func(*core.Node, core.Effects, error)
 	Persisted func(core.PersistJob)
-	// Took, if set, runs on the committer as each turn begins, with the
-	// calls clients gave the node in the turn before, if any, how many fit
-	// in that turn (TurnRoom), and whether sockets wait to run now, as a
-	// connection that had calls left when the turn ran out of room does
-	// (loop.Loop.Holding). For tests.
-	Took func(calls, limit int, waiting bool)
-	// TurnCalls, if above 0, is the most calls a turn takes before the
-	// node measured what a call costs, instead of 256. The simulator sets
-	// it low so that a few clients' bursts cut turns: below 32 a turn
-	// never takes enough calls to measure, so the bound stays.
-	TurnCalls int
 	// Memory, if set, measures what the process uses besides the value
 	// cache, and whether that is a new measure, instead of the Go
 	// runtime's metrics: the simulator runs several nodes in one process.
@@ -130,10 +118,6 @@ type Config struct {
 	// Metrics are the metrics the node observes into; nil gives the node
 	// a set of its own.
 	Metrics *metrics.Set
-	// Poller is what the node's event loop waits in (Loop). nil gives it a
-	// loop.ChanPoller, as the simulator and tests in a synctest bubble
-	// need; the tigerstore command passes epoll's.
-	Poller loop.Poller
 }
 
 // input is one event for the committer from a client, a peer or a helper
@@ -235,7 +219,6 @@ func (ws *WatchStream) took(n int64) {
 	if ws.queued.Add(-n) <= ws.n.watchBytes()/2 && ws.full.CompareAndSwap(true, false) {
 		select {
 		case ws.n.roomFreed <- struct{}{}:
-			ws.n.wake()
 		default:
 		}
 	}
@@ -282,7 +265,6 @@ func (ws *WatchStream) Send(ctx context.Context, r *pb.WatchRequest) error {
 func (ws *WatchStream) Close() {
 	select {
 	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:
-		ws.n.wake()
 	case <-ws.n.done:
 	}
 }
@@ -409,7 +391,6 @@ func (n *Node) put(ctx context.Context, in input) error {
 	in.at = time.Now()
 	select {
 	case n.inbox <- in:
-		n.wake()
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -490,21 +471,6 @@ type Node struct {
 	// last recovery of its log found (Recovered).
 	recovered wal.Recovered
 	inbox     chan input
-	// loop is the node's event loop, which the committer runs, and local
-	// the inputs its sockets gave since the last turn.
-	loop  *loop.Loop
-	local []input
-	// full is set while persist batches wait for the disk past maxBacklog,
-	// when the committer takes no new input but peers' control messages
-	// (Busy). Loop only.
-	full bool
-	// turnCalls counts the calls clients gave the node in this turn
-	// (SubmitLocal), which the committer resets at each turn; turnLimit
-	// is how many fit in the turn (TurnRoom), turnStart when it began,
-	// and perCall what a call cost a turn lately. Loop only.
-	turnCalls, turnLimit int
-	turnStart            time.Time
-	perCall              time.Duration
 	// roomFreed wakes the committer when a watch stream short of room got
 	// some back (WatchStream.took), and memFull says that the process is
 	// at its memory budget, so watch streams get none (measureMemory).
@@ -811,11 +777,7 @@ func newOnDisk(cfg Config, path string, dir FS) (*Node, error) {
 	if cfg.Memory == nil {
 		cfg.Memory = newMemoryGauge().read
 	}
-	if cfg.Poller == nil {
-		cfg.Poller = loop.NewChanPoller()
-	}
 	n := &Node{
-		loop:        loop.New(cfg.Poller),
 		cfg:         cfg,
 		log:         &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead, kick: make(chan struct{}, 1)},
 		inbox:       make(chan input, 8192),
@@ -928,7 +890,7 @@ func (n *Node) open() error {
 	n.cleanQ = make(chan packRoot)
 	n.wantQ = make(chan uint64, 1)
 	n.nextQ = make(chan struct{})
-	n.readQ = make(chan *core.ValueRead, readers)
+	n.readQ = make(chan *core.ValueRead)
 	n.readDone = make(chan readDone, readers)
 	n.setLeader(0)
 	v := c.EtcdVersion()
@@ -1091,139 +1053,11 @@ func (n *Node) Recovered() (last uint64, hs wal.HardState) {
 	return n.recovered.Last, n.recovered.HardState
 }
 
-// Loop is the node's event loop. The committer runs it, from the start of
-// Run until Run returns; the server and the peer transport attach their
-// connections to it.
-func (n *Node) Loop() *loop.Loop { return n.loop }
-
-// Drained is closed once the loop stopped for good: after Run returned,
-// the loop serves its connections on its own until the server and the
-// transport closed them all (loop.Loop.Drain). A caller that stops the
-// node waits for it after closing both, before it counts the node as
-// stopped: until then the connections' handlers may still run and log.
-func (n *Node) Drained() <-chan struct{} { return n.loop.Drained() }
-
-// Receive hands the node a message that a peer connection on the loop
-// read. It runs on the loop and never blocks; the committer's next turn
-// steps it.
-func (n *Node) Receive(m *raftpb.Message) {
-	select {
-	case <-n.done:
-		// The loop drains without the node.
-		return
-	default:
-	}
-	n.local = append(n.local, input{msg: m, at: time.Now()})
-}
-
-// Busy reports, on the loop, whether the node's disk is behind, so that it
-// takes no new input but peers' control messages. The peer transport then
-// holds the data messages it reads (peer.Config.Busy) and steps the
-// others. A node that stopped is never busy: it drops what it receives,
-// and its peers' connections read on while the loop drains.
-func (n *Node) Busy() bool {
-	select {
-	case <-n.done:
-		return false
-	default:
-	}
-	return n.full
-}
-
-// A turn of the node's loop ends with the core's work and its replies,
-// and only then do Raft's ticks and heartbeats go on: a turn that took
-// every call that had arrived grew with the load (#647). So a turn takes
-// the calls that fit in the time left before the node's next tick is due,
-// but in no less than minTurnTime and no more than a tick, at what a call
-// cost turns lately (turnFit), and at least minTurnCalls; the rest come
-// in the next turn, which takes the tick. A bound on the calls alone cut
-// every turn's batch at any load, and cost put 5 to 8% of its throughput;
-// a fixed 15 ms cut k8s's dearer calls and cost it up to 6% at RTT 0; and
-// the time to the tick alone cost txn 1 to 5% (#649). The floor gives the
-// turns just before a tick, which that left minTurnCalls, what the fixed
-// 15 ms gave them.
-const minTurnTime = 15 * time.Millisecond
-
-// minTurnCalls is the fewest calls a turn takes, so that a turn slowed by
-// other work still takes clients' calls; measuredTurnCalls the fewest
-// that measure what a call costs; and firstTurnCalls the most a turn
-// takes before any measure, as on a node that just started or became
-// leader with few calls served, which a failover's retried calls would
-// otherwise all reach in one turn.
-const (
-	minTurnCalls      = 64
-	measuredTurnCalls = 32
-	firstTurnCalls    = 256
-)
-
-// TurnRoom is how many more calls the node takes from clients in this turn
-// of its loop; a client connection that has more reads them in the next
-// one (loop.Loop.Again). A node that stopped refuses calls uncounted
-// (SubmitLocal), so its connections read on while the loop drains,
-// whatever its last turn took, and their clients hear that it stopped.
-// Loop only.
-func (n *Node) TurnRoom() int {
-	select {
-	case <-n.done:
-		return math.MaxInt32
-	default:
-	}
-	return max(n.turnLimit-n.turnCalls, 0)
-}
-
-// turnFit is how many calls fit in a turn that has until the node's next
-// tick is due, at least minTurnTime and then at most a tick, which wins
-// if it is shorter, at what a call cost turns lately: firstTurnCalls
-// before the first measure, and while turns take no time, as in the
-// simulator, whose clock stands still in a turn.
-func (n *Node) turnFit(until time.Duration) int {
-	if n.perCall <= 0 {
-		if n.cfg.TurnCalls > 0 {
-			return n.cfg.TurnCalls
-		}
-		return firstTurnCalls
-	}
-	return max(int(min(max(until, minTurnTime), n.cfg.Tick)/n.perCall), minTurnCalls)
-}
-
-// turnTook measures what a call cost the turn that ends, which took calls
-// clients gave it, as a moving average over turns that took enough.
-func (n *Node) turnTook() {
-	if n.turnCalls < measuredTurnCalls {
-		return
-	}
-	cost := time.Since(n.turnStart) / time.Duration(n.turnCalls)
-	if n.perCall == 0 {
-		n.perCall = cost
-		return
-	}
-	n.perCall += (cost - n.perCall) / 4
-}
-
-// SubmitLocal is SubmitBatch for a connection on the loop: it runs on the
-// loop, never waits, and fails only once the node stopped.
-func (n *Node) SubmitLocal(reqs []core.Request, tags []any, to Completer) error {
-	select {
-	case <-n.done:
-		return rpctypes.ErrGRPCStopped
-	default:
-	}
-	k := uint64(len(reqs))
-	first := n.nextID.Add(k) - k + 1
-	for i := range reqs {
-		reqs[i].ID = first + uint64(i)
-	}
-	n.local = append(n.local, input{batch: &batch{reqs: reqs, tags: tags, to: to}})
-	n.turnCalls += len(reqs)
-	return nil
-}
-
-// Deliver hands the node a message from a peer, from a goroutine other
-// than the loop. It blocks while the committer is behind.
+// Deliver hands the node a message from a peer. It blocks while the
+// committer is behind, which slows down that peer's connection.
 func (n *Node) Deliver(m *raftpb.Message) {
 	select {
 	case n.inbox <- input{msg: m, at: time.Now()}:
-		n.wake()
 	case <-n.done:
 	}
 }
@@ -1232,7 +1066,6 @@ func (n *Node) Deliver(m *raftpb.Message) {
 func (n *Node) Unreachable(id uint64) {
 	select {
 	case n.inbox <- input{unreachable: id}:
-		n.wake()
 	default:
 	}
 }
@@ -1242,7 +1075,6 @@ func (n *Node) Unreachable(id uint64) {
 func (n *Node) Removed() {
 	select {
 	case n.inbox <- input{removed: true}:
-		n.wake()
 	case <-n.done:
 	}
 }
@@ -1260,9 +1092,6 @@ func (n *Node) Cancel(id uint64) {
 // The piece comes as a reply like the first. It waits for room in the
 // inbox.
 func (n *Node) Next(id uint64) { n.tell(input{next: id}) }
-
-// MemoryBudget is the memory the node may use, 0 for none.
-func (n *Node) MemoryBudget() int64 { return n.cfg.Core.MemoryBytes }
 
 // PieceBytes is about the most one piece of a large answer holds.
 func (n *Node) PieceBytes() int { return cmp.Or(n.cfg.Core.PieceBytes, core.PieceBytes) }
@@ -1378,13 +1207,12 @@ type readDone struct {
 }
 
 // maxBacklog is the number of persist batches that may wait for the disk.
-// Beyond it the committer stops taking new inputs, but it keeps ticking,
-// taking finished disk writes and stepping peers' control messages
-// (heartbeats, votes, read index and answers; Busy).
+// Beyond it the committer stops taking new inputs, but it keeps ticking
+// and taking finished disk writes.
 const maxBacklog = 64
 
 // Run drives the node until ctx ends or the node fails. Messages for peers
-// go to t. The loop goes on after it returns, until Drained.
+// go to t.
 func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 	n.transport.Store(t)
 	if n.cfg.CorruptCheckTime > 0 || n.cfg.CompactHashCheckTime > 0 {
@@ -1426,9 +1254,6 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 			n.log.mu.Unlock()
 		}
 		close(n.done)
-		// The loop's connections go on without the node until their owners
-		// close them: clients hear that it stopped.
-		go n.loop.Drain()
 		return errors.Join(err, n.log.close())
 	}
 }
@@ -1459,10 +1284,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	var groups []completions
 	groupOf := map[Completer]int{}
 	var backlog []persistBatch
-	// chunks are checkpoint parts for the writer. The committer copies the
-	// next one once the writer took them all, and then waits for its pace,
-	// so a slow disk slows the copy instead of piling parts up in memory.
+	// chunks are checkpoint parts for the writer; pace wakes the committer
+	// to copy the next one once the writer took them all, so a slow disk
+	// slows the copy instead of piling parts up in memory.
 	var chunks []core.CheckpointChunk
+	var pace *time.Timer
 	// reads wait for a free reader.
 	var reads []*core.ValueRead
 	streams := map[uint64]*WatchStream{}
@@ -1474,12 +1300,14 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	// memory.
 	started, measured := time.Now(), int64(0)
 	clock := tickClock{due: 1}
+	wake := time.NewTimer(n.cfg.Tick)
+	defer wake.Stop()
 	wallTick := func(t time.Time) int64 { return int64(t.Sub(started) / n.cfg.Tick) }
 	// ins are the inputs of a turn.
 	var ins []input
-	// turn begins a turn: it takes the inputs the loop's sockets gave
-	// (local) and those queued in inbox, if it is not nil, and gives the
-	// core the ticks that passed and the inputs. waited is the tick at which the
+	// turn begins a turn: it takes first, the input the select took if
+	// any, and the inputs queued after it, and gives the core the ticks
+	// that passed and the inputs. waited is the tick at which the
 	// committer began to wait, and dueIn how many Ticks away the core's
 	// next work was then. The committer could have run again from when
 	// the earliest input was queued, or from the due tick. Raft's election
@@ -1490,10 +1318,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	// measured at most once a tick, on a turn: only a turn makes it grow.
 	// turn reports whether the core got a tick or an input, after which it
 	// runs.
-	turn := func(waited int64, inbox <-chan input, dueIn int64) bool {
-		ins = append(ins[:0], n.local...)
-		clear(n.local)
-		n.local = n.local[:0]
+	turn := func(waited int64, first *input, inbox <-chan input, dueIn int64) bool {
+		ins = ins[:0]
+		if first != nil {
+			ins = append(ins, *first)
+		}
 		if inbox != nil {
 			ins = n.takeInputs(ins)
 		}
@@ -1528,69 +1357,54 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	// term beatTerm.
 	beats := map[uint64]time.Time{}
 	var beatTerm uint64
-	// The committer runs the node's event loop (internal/loop). It waits in
-	// the poller for its sockets, for what clients and helpers queue, and
-	// for its next deadline, and then takes one turn for all of it. pace is
-	// when the next part of a checkpoint is copied, zero while none waits
-	// for its time.
-	stop := context.AfterFunc(ctx, n.wake)
-	defer stop()
-	var pace time.Time
-	var dones []persistDone
 	for {
-		// The helpers take what they have room for. Each wakes the
-		// committer when it takes something, which hands them the rest.
-		backlog = offer(n.persistQ, backlog)
-		chunks = offer(n.ckptQ, chunks)
-		reads = offer(n.readQ, reads)
-		// With the disk behind, the committer takes no new inputs, from
-		// its inbox or its clients' sockets, but keeps ticking, taking
-		// finished writes and stepping its peers' control messages, whose
-		// connections hold their data messages meanwhile (Busy).
-		full := len(backlog) >= maxBacklog
-		n.full = full
-		due := n.core.Due()
-		clock.due = clock.at + due
-		timeout := time.Until(started.Add(time.Duration(clock.due) * n.cfg.Tick))
-		copyPart := false
+		inbox := n.inbox
+		if len(backlog) >= maxBacklog {
+			inbox = nil
+		}
+		var toDisk chan<- persistBatch
+		var next persistBatch
+		if len(backlog) > 0 {
+			toDisk, next = n.persistQ, backlog[0]
+		}
+		var toWriter chan<- core.CheckpointChunk
+		var chunk core.CheckpointChunk
+		if len(chunks) > 0 {
+			toWriter, chunk = n.ckptQ, chunks[0]
+		}
+		var toReader chan<- *core.ValueRead
+		var read *core.ValueRead
+		if len(reads) > 0 {
+			toReader, read = n.readQ, reads[0]
+		}
+		var paced <-chan time.Time
 		switch {
 		case n.core.CutWaits() && len(chunks) == 0:
 			// The next cut waits for this copy: its next part goes as
 			// soon as the writer took the last.
-			copyPart, timeout = true, 0
+			paced = copyNow
 		case n.core.Copying() && len(chunks) == 0:
-			if pace.IsZero() {
-				pace = time.Now().Add(checkpointPace)
+			if pace == nil {
+				pace = time.NewTimer(checkpointPace)
 			}
-			timeout = min(timeout, time.Until(pace))
+			paced = pace.C
 		}
 		// A watcher that catches up with room for its next piece, or a
-		// revoke's next step, gets a turn at once, and so do inputs and
-		// sockets that waited for the disk.
-		if n.core.Working() || !full && (len(n.inbox) > 0 || n.loop.Holding()) {
-			timeout = 0
+		// revoke's next step, gets a turn at once.
+		var produce <-chan time.Time
+		if n.core.Working() {
+			produce = copyNow
+		}
+		due := n.core.Due()
+		if at := clock.at + due; at != clock.due {
+			clock.due = at
+			wake.Reset(time.Until(started.Add(time.Duration(at) * n.cfg.Tick)))
 		}
 		entered := wallTick(time.Now())
-		// Sockets whose output waits wake the loop at their write
-		// deadlines too (loop.After).
-		if err := n.loop.Wait(n.loop.Timeout(max(timeout, 0))); err != nil {
-			return err
-		}
-		// The core takes no turn after the stop: the simulator's Turn holds
-		// a failed core until the stop, and must not see it run again
-		// (#296).
-		if ctx.Err() != nil {
-			return nil
-		}
-		if n.cfg.Took != nil && n.turnCalls > 0 {
-			n.cfg.Took(n.turnCalls, n.turnLimit, n.loop.Holding())
-		}
-		now := time.Now()
-		tick := started.Add(time.Duration(clock.due) * n.cfg.Tick)
-		n.turnCalls, n.turnLimit, n.turnStart = 0, n.turnFit(tick.Sub(now)), now
-		n.loop.Dispatch(!full)
-		dones = takeAll(n.persisted, dones[:0])
-		for _, done := range dones {
+		select {
+		case in := <-inbox:
+			turn(entered, &in, inbox, due)
+		case done := <-n.persisted:
 			// A failed write ends the run before the turn takes the queued
 			// inputs: the next run serves them.
 			if done.err != nil {
@@ -1599,14 +1413,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				}
 				return done.err
 			}
-		}
-		var inbox <-chan input
-		if !full {
-			inbox = n.inbox
-		}
-		active := turn(entered, inbox, due)
-		for i, done := range dones {
-			active = true
+			turn(entered, nil, inbox, due)
 			for _, j := range done.jobs {
 				n.core.Persisted(j)
 				if n.cfg.Persisted != nil {
@@ -1614,33 +1421,45 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				}
 			}
 			n.logPersistTiming(done)
-			dones[i] = persistDone{}
-		}
-		for {
-			var d readDone
-			select {
-			case d = <-n.readDone:
-			default:
+		case toDisk <- next:
+			backlog[0] = persistBatch{}
+			backlog = backlog[1:]
+			if !turn(entered, nil, inbox, due) {
+				continue
 			}
-			if d.read == nil {
-				break
+		case toWriter <- chunk:
+			chunks[0] = core.CheckpointChunk{}
+			chunks = chunks[1:]
+			if !turn(entered, nil, inbox, due) {
+				continue
 			}
+		case toReader <- read:
+			reads[0] = nil
+			reads = reads[1:]
+			if !turn(entered, nil, inbox, due) {
+				continue
+			}
+		case d := <-n.readDone:
+			turn(entered, nil, inbox, due)
 			n.core.ValuesRead(d.read, d.err)
-			active = true
-		}
-		if copyPart || !pace.IsZero() && !time.Now().Before(pace) {
-			pace = time.Time{}
+		case <-paced:
+			turn(entered, nil, inbox, due)
+			pace = nil
 			n.core.CopyCheckpoint()
-			active = true
-		}
-		select {
+		case <-wake.C:
+			turn(entered, nil, inbox, due)
 		case <-n.roomFreed:
-			active = true
-		default:
+			turn(entered, nil, inbox, due)
+		case <-produce:
+			turn(entered, nil, inbox, due)
+		case <-ctx.Done():
+			return nil
 		}
-		if !active && !n.core.Working() {
-			n.loop.Flush()
-			continue
+		// select can pick another ready case when ctx is done as well. The
+		// core takes no turn after the stop: the simulator's Turn holds a
+		// failed core until the stop, and must not see it run again (#296).
+		if ctx.Err() != nil {
+			return nil
 		}
 		if b := n.cfg.DiskBudget; b > 0 {
 			n.core.SetDisk(n.log.used.Load(), b)
@@ -1707,10 +1526,6 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		n.authEnabled.Store(n.core.AuthEnabled())
 		n.loadAlarms()
-		// What the turn queued on the loop's sockets goes out: replies,
-		// watch events and messages to peers.
-		n.loop.Flush()
-		n.turnTook()
 		if err != nil {
 			if errors.Is(err, core.ErrInstalled) {
 				n.dropAll(waiters, streams, ErrSnapshotInstalled)
@@ -1719,39 +1534,6 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 	}
 }
-
-// offer hands a helper's queue the first of items that fit in it, and
-// returns the rest.
-func offer[T any](q chan<- T, items []T) []T {
-	sent := 0
-	for _, it := range items {
-		select {
-		case q <- it:
-			sent++
-			continue
-		default:
-		}
-		break
-	}
-	clear(items[:sent])
-	return items[sent:]
-}
-
-// takeAll appends to got what c holds now, without waiting.
-func takeAll[T any](c <-chan T, got []T) []T {
-	for {
-		select {
-		case v := <-c:
-			got = append(got, v)
-		default:
-			return got
-		}
-	}
-}
-
-// wake makes the committer take a turn soon: something was queued for it
-// or a helper took what it queued.
-func (n *Node) wake() { n.loop.Wake() }
 
 // takeInputs adds to ins the inputs already queued, up to 4096, and
 // returns it.
@@ -1996,7 +1778,6 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		n.broken.Store(true)
 		select {
 		case n.persisted <- persistDone{err: err}:
-			n.wake()
 		case <-ctx.Done():
 		}
 	}
@@ -2049,7 +1830,6 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		}
 		select {
 		case pending = <-queue:
-			n.wake()
 		more:
 			for {
 				select {
@@ -2059,8 +1839,6 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 					break more
 				}
 			}
-			// The committer may have more batches for the room these left.
-			n.wake()
 			if g.times.start.IsZero() {
 				g.times = persistTimes{queued: pending.queued, start: time.Now()}
 			}
@@ -2308,7 +2086,6 @@ func (n *Node) report(ctx context.Context, g written, err error) error {
 	}
 	select {
 	case n.persisted <- persistDone{jobs: g.jobs, err: err, times: g.times}:
-		n.wake()
 	case <-ctx.Done():
 		return errors.Join(err, ctx.Err())
 	}
@@ -2408,7 +2185,6 @@ func (n *Node) prepareSegments(ctx context.Context) {
 		if err := wal.PrepareSegment(n.log.fs, seq); err != nil {
 			select {
 			case n.persisted <- persistDone{err: fmt.Errorf("%w: prepare segment %d: %w", core.ErrDisk, seq, err)}:
-				n.wake()
 			case <-ctx.Done():
 			}
 			return
@@ -2499,6 +2275,14 @@ func (n *Node) staged(stage string) error {
 // checkpoint: with 32 KiB parts, about 32 MB/s.
 const checkpointPace = time.Millisecond
 
+// copyNow is always ready: the committer copies the next part of a
+// checkpoint at once.
+var copyNow = func() <-chan time.Time {
+	c := make(chan time.Time)
+	close(c)
+	return c
+}()
+
 // checkpointSyncBytes is how much of a checkpoint the writer writes
 // between syncs.
 const checkpointSyncBytes = 1 << 20
@@ -2512,7 +2296,6 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 		var c core.CheckpointChunk
 		select {
 		case c = <-n.ckptQ:
-			n.wake()
 		case <-ctx.Done():
 			return
 		}
@@ -2537,7 +2320,6 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 			}
 			select {
 			case next := <-n.ckptQ:
-				n.wake()
 				if next.Index != c.Index {
 					err = fmt.Errorf("the checkpoint at %d started before the one at %d was done", next.Index, c.Index)
 				}
@@ -2563,7 +2345,6 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 		}
 		select {
 		case n.inbox <- input{written: c.Index, writeErr: err}:
-			n.wake()
 		case <-ctx.Done():
 			return
 		}
@@ -2605,14 +2386,12 @@ func (n *Node) readValues(ctx context.Context) {
 		var d readDone
 		select {
 		case d.read = <-n.readQ:
-			n.wake()
 		case <-ctx.Done():
 			return
 		}
 		d.err = d.read.Run()
 		select {
 		case n.readDone <- d:
-			n.wake()
 		case <-ctx.Done():
 			return
 		}
@@ -2624,7 +2403,6 @@ func (n *Node) tell(in input) {
 	in.at = time.Now()
 	select {
 	case n.inbox <- in:
-		n.wake()
 	case <-n.done:
 	}
 }
