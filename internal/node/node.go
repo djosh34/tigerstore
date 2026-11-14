@@ -1389,8 +1389,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			}
 			paced = pace.C
 		}
-		// A watcher that catches up with room for its next piece, or a
-		// revoke's next step, gets a turn at once.
+		// A watcher that catches up with room for its next piece, a
+		// revoke's next step, or the value cache's next step gets a turn
+		// at once.
 		var produce <-chan time.Time
 		if n.core.Working() {
 			produce = copyNow

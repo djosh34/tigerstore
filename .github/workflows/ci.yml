@@ -518,10 +518,9 @@ jobs:
   # The simulator under the race detector too, which test leaves out to
   # keep its time: it runs every node's goroutines. Under -race the
   # simulator's tests run natively, in testing/synctest bubbles, not under
-  # gosim. Its tests took 107 minutes in one job after #638 against a
-  # timeout of 110, up from 90 before, as every seed got about a fifth
-  # slower. Four shards each run about 27 minutes of them, dealt out by
-  # scripts/race-sim-shard.sh.
+  # gosim. They run in four shards, dealt out by scripts/race-sim-shard.sh,
+  # so that each job stays well inside its timeout as the tests grow
+  # (#648).
   race-sim:
     if: github.event_name != 'pull_request'
     strategy:
