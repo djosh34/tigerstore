@@ -159,6 +159,26 @@ func TestSendInOrderAndReconnect(t *testing.T) {
 		t.Fatalf("etcd_network_active_peers is %g", active)
 	}
 
+	// Both lanes count as up before node 2 goes away. A lane whose
+	// connection came up but was not counted yet when the other failed
+	// would count up after, then down: a second loss of the peer, which
+	// the counter rightly counts.
+	s, ok := a.t.peer(2)
+	if !ok {
+		t.Fatal("node 1 has no sender to node 2")
+	}
+	for wait := time.Now().Add(10 * time.Second); ; time.Sleep(time.Millisecond) {
+		s.upMu.Lock()
+		up := s.up
+		s.upMu.Unlock()
+		if up == 2 {
+			break
+		}
+		if time.Now().After(wait) {
+			t.Fatalf("%d of node 1's 2 lanes to node 2 came up", up)
+		}
+	}
+
 	// Node 2 goes away: sends are dropped and reported, never blocking.
 	if err := b.t.Close(); err != nil {
 		t.Fatal(err)
