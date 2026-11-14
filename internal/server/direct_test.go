@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"math/rand/v2"
 	"net"
 	"slices"
 	"testing"
@@ -126,7 +127,6 @@ var replies = []struct {
 		},
 	}}},
 	{"/etcdserverpb.KV/DeleteRange", node.Completion{Resp: &pb.DeleteRangeResponse{Header: &pb.ResponseHeader{Revision: 3}, Deleted: 1, PrevKvs: []*mvccpb.KeyValue{{Key: []byte("k"), Value: []byte("v")}}}}},
-	{"/etcdserverpb.Lease/LeaseGrant", node.Completion{Resp: &pb.LeaseGrantResponse{Header: &pb.ResponseHeader{Revision: 3}, ID: 77, TTL: 60}}},
 }
 
 func rangeOf(rev int64, more bool, count int64, kvs ...mvcc.KV) mvcc.RangeResult {
@@ -287,5 +287,102 @@ func TestRepliesInPlaceAllocate(t *testing.T) {
 	in, queued := allocs(true), allocs(false)
 	if in > queued-2 {
 		t.Fatalf("a reply written in place allocates %v times, a queued one %v", in, queued)
+	}
+}
+
+// TestReplySizesMatch encodes random replies of each kind in place and
+// queued: directSize is the size of the queued message, and the bytes are
+// the same, or the reply does not go in place.
+func TestReplySizesMatch(t *testing.T) {
+	r := rand.New(rand.NewPCG(1, 2))
+	num := func() int64 {
+		if r.IntN(4) == 0 {
+			return 0
+		}
+		return r.Int64N(1 << (1 + r.IntN(62)))
+	}
+	bytesOf := func() []byte {
+		b := make([]byte, r.IntN(1+r.IntN(3000)))
+		for i := range b {
+			b[i] = byte(r.IntN(256))
+		}
+		return b
+	}
+	kv := func() *mvccpb.KeyValue {
+		return &mvccpb.KeyValue{Key: bytesOf(), Value: bytesOf(), CreateRevision: num(), ModRevision: num(), Version: num(), Lease: num()}
+	}
+	header := func() *pb.ResponseHeader {
+		return &pb.ResponseHeader{ClusterId: uint64(num()), MemberId: uint64(num()), Revision: num(), RaftTerm: uint64(num())}
+	}
+	c, _ := directConn(t)
+	c.cluster, c.member = uint64(num()), uint64(num())
+	inPlace := 0
+	for i := range 3000 {
+		var method string
+		var cp node.Completion
+		switch i % 5 {
+		case 0:
+			method = "/etcdserverpb.KV/Put"
+			cp = node.Completion{Rev: num(), Term: uint64(num())}
+			if r.IntN(2) == 0 {
+				cp.PrevKv = kv()
+			}
+		case 1:
+			method = "/etcdserverpb.KV/Range"
+			var kvs []mvcc.KV
+			for range r.IntN(5) {
+				m := kv()
+				kvs = append(kvs, mvcc.KV{Key: m.Key, Value: m.Value, CreateRevision: m.CreateRevision, ModRevision: m.ModRevision, Version: m.Version, Lease: m.Lease})
+			}
+			cp = node.Completion{Term: uint64(num()), Range: rangeOf(num(), r.IntN(2) == 0, num(), kvs...)}
+		case 2:
+			method = "/etcdserverpb.KV/Txn"
+			tr := &pb.TxnResponse{Header: header(), Succeeded: r.IntN(2) == 0}
+			for range r.IntN(4) {
+				switch r.IntN(4) {
+				case 0:
+					tr.Responses = append(tr.Responses, &pb.ResponseOp{Response: &pb.ResponseOp_ResponseRange{ResponseRange: &pb.RangeResponse{Header: header(), Kvs: []*mvccpb.KeyValue{kv()}, Count: num(), More: r.IntN(2) == 0}}})
+				case 1:
+					tr.Responses = append(tr.Responses, &pb.ResponseOp{Response: &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{Header: header(), PrevKv: kv()}}})
+				case 2:
+					tr.Responses = append(tr.Responses, &pb.ResponseOp{Response: &pb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &pb.DeleteRangeResponse{Header: header(), Deleted: num()}}})
+				default:
+					tr.Responses = append(tr.Responses, &pb.ResponseOp{Response: &pb.ResponseOp_ResponseTxn{ResponseTxn: &pb.TxnResponse{Succeeded: true}}})
+				}
+			}
+			cp = node.Completion{Resp: tr}
+		case 3:
+			method = "/etcdserverpb.KV/DeleteRange"
+			cp = node.Completion{Resp: &pb.DeleteRangeResponse{Header: header(), Deleted: num(), PrevKvs: []*mvccpb.KeyValue{kv()}}}
+		default:
+			// Other replies are encoded by protobuf, which can fail: they
+			// are queued.
+			method = "/etcdserverpb.Lease/LeaseGrant"
+			cp = node.Completion{Resp: &pb.LeaseGrantResponse{Header: header(), ID: num(), TTL: num()}}
+		}
+		st := &stream{c: c, id: 1, rpc: methods[method]}
+		queuedForm := finished{st: st}
+		c.encode(&queuedForm, &cp)
+		if queuedForm.err != nil {
+			t.Fatal(queuedForm.err)
+		}
+		size, ok := c.directSize(st, &cp)
+		if !ok {
+			if method != "/etcdserverpb.Lease/LeaseGrant" && directFrames(int64(len(queuedForm.msg)), true) <= loop.MaxReserve {
+				t.Fatalf("reply %d (%s) of %d bytes does not go in place", i, method, len(queuedForm.msg))
+			}
+			continue
+		}
+		inPlace++
+		b, err := c.appendReply(make([]byte, 0, size), st, &cp)
+		if err != nil || size != len(queuedForm.msg) || !bytes.Equal(b, queuedForm.msg) {
+			t.Fatalf("reply %d (%s): sized %d, encoded in place to %x (%v), queued to %x", i, method, size, b, err, queuedForm.msg)
+		}
+	}
+	if inPlace < 1000 {
+		t.Fatalf("only %d of 3000 replies went in place", inPlace)
+	}
+	if size, ok := c.directSize(&stream{rpc: methods["/etcdserverpb.Lease/LeaseGrant"]}, &node.Completion{Resp: &pb.LeaseGrantResponse{Error: "\xff"}}); ok {
+		t.Fatalf("a LeaseGrant reply, whose encoding can fail, goes in place at %d bytes", size)
 	}
 }

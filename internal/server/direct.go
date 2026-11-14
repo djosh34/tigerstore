@@ -15,8 +15,8 @@ import (
 	"github.com/djosh34/tigerstore/internal/node"
 )
 
-// A unary reply of the node usually goes straight into the connection's
-// output: its HEADERS, its one DATA frame and its trailers are encoded in
+// A reply of the node to a put, a range, a Txn or a DeleteRange usually
+// goes straight into the connection's output: its HEADERS, its one DATA frame and its trailers are encoded in
 // place at the end of the TLS record being written (loop.Records.Reserve),
 // or of the bridge's write buffer without TLS. It needs no queue of its
 // own on the stream, and is not copied through the server's write buffer
@@ -44,23 +44,31 @@ var errOutputClosed = errors.New("server: the connection's output is closed")
 
 // directSize is the size of the gRPC message of cp, prefix included, and
 // whether it may go straight into the connection's output: a whole,
-// uncompressed reply that fits one record with its frames.
+// uncompressed reply that fits one record with its frames, of a put, a
+// range, a Txn or a DeleteRange. Their encoding cannot fail, which
+// protobuf's can for a message with a string field: once its frames are
+// begun, a reply can only end its connection.
 func (c *conn) directSize(st *stream, cp *node.Completion) (int, bool) {
 	if c.direct == nil || cp.Err != nil || cp.MorePieces || len(cp.Rests) > 0 || st.holes != nil || st.encoding == gzipName {
 		return 0, false
 	}
 	var size int64
-	switch {
-	case st.rpc.wirePut:
-		size = int64(putReplySize(c.cluster, c.member, &cp.Reply))
-	case st.rpc.compact && cp.Resp == nil:
-		size = rangeSize(c.cluster, c.member, cp.Term, &cp.Range)
-	default:
-		if t, ok := cp.Resp.(*pb.TxnResponse); ok {
-			size = int64(txnRespSize(t))
-		} else {
-			size = int64(proto.Size(cp.Resp))
+	switch r := cp.Resp.(type) {
+	case nil:
+		switch {
+		case st.rpc.wirePut:
+			size = int64(putReplySize(c.cluster, c.member, &cp.Reply))
+		case st.rpc.compact:
+			size = rangeSize(c.cluster, c.member, cp.Term, &cp.Range)
+		default:
+			return 0, false
 		}
+	case *pb.TxnResponse:
+		size = int64(txnRespSize(r))
+	case *pb.DeleteRangeResponse:
+		size = int64(proto.Size(r))
+	default:
+		return 0, false
 	}
 	size += 5
 	if directFrames(size, true) > loop.MaxReserve {
@@ -136,24 +144,24 @@ func (c *conn) writeDirect(f *finished) error {
 
 // appendReply appends the gRPC message of a reply that directSize sized.
 func (c *conn) appendReply(b []byte, st *stream, cp *node.Completion) ([]byte, error) {
-	switch {
-	case st.rpc.wirePut:
-		return c.appendPutReply(b, &cp.Reply)
-	case st.rpc.compact && cp.Resp == nil:
-		b, err := appendRangeStart(b, c.cluster, c.member, cp.Term, &cp.Range)
-		if err != nil {
-			return b, err
-		}
-		return appendRangeEnd(appendKVs(b, 2, cp.Range.KVs), &cp.Range), nil
-	}
-	if t, ok := cp.Resp.(*pb.TxnResponse); ok {
-		e := txnEnc{b: appendPrefix(b, txnRespSize(t))}
-		e.appendTxnResp(t)
+	switch r := cp.Resp.(type) {
+	case *pb.TxnResponse:
+		e := txnEnc{b: appendPrefix(b, txnRespSize(r))}
+		e.appendTxnResp(r)
 		return e.b, nil
+	case *pb.DeleteRangeResponse:
+		// directSize sized the message, which protobuf keeps.
+		b = appendPrefix(b, proto.Size(r))
+		return proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(b, r)
 	}
-	// directSize sized the message, which proto keeps.
-	b = appendPrefix(b, proto.Size(cp.Resp))
-	return proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(b, cp.Resp)
+	if st.rpc.wirePut {
+		return c.appendPutReply(b, &cp.Reply)
+	}
+	b, err := appendRangeStart(b, c.cluster, c.member, cp.Term, &cp.Range)
+	if err != nil {
+		return b, err
+	}
+	return appendRangeEnd(appendKVs(b, 2, cp.Range.KVs), &cp.Range), nil
 }
 
 // appendPrefix appends the prefix of an uncompressed gRPC message of size
