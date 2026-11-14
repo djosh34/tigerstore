@@ -93,9 +93,10 @@ func shapes(w io.Writer, rtts, benches, targets []string, all maxRuns) {
 						noise := max(spreadOf(rs), spreadOf(base))
 						against = fmt.Sprintf("%+.1f%%", 100*change)
 						switch {
-						case len(rs) == 1 && len(base) == 1:
-							// No repeats, no spread: the paired table judges.
-							against += ", one run each: judged by shape below"
+						case len(rs) == 1 || len(base) == 1:
+							// A store without repeats has no spread: the
+							// paired table judges.
+							against += ", one run on a store: judged by shape below"
 						case abs(change) <= noise:
 							against += ", within the spread"
 						}

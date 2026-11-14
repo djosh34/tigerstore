@@ -54,7 +54,7 @@ on:
         description: space-separated benchmarks, put/txn/delete/range/list/watch with 1k or 10k, k8s (recorded Kubernetes control planes, max only), etcd-tool (etcd's own benchmark tool), or profile (the candidate leader's CPU per step, bench/profile.sh)
         default: put-1k txn-1k k8s
       rtts:
-        description: round-trip times between nodes in ms, run in this order; etcd runs at the first only, and its rate stands in at the others
+        description: round-trip times between nodes in ms; etcd runs at the first only. In the full grid they run in this order and the first one's rate stands in at the others; in the quick grid rate runs only at the first
         default: 0 2 10
       seeds:
         description: space-separated seeds to replay a run; empty draws 6 fresh ones that all draw crd-heavy for k8s in the quick grid, 3 of any shape in the full one
@@ -268,12 +268,17 @@ jobs:
           # In the quick grid a job runs one RTT. etcd and the layouts run
           # only in the jobs of the first RTT asked for, as in the full
           # grid; the other RTTs have no shared rate, so their rate runs
-          # are left out (norate).
+          # are left out, and say so (norate).
           read -r -a asked <<<"$ALL_RTTS"
           if [ "${rtts[0]}" != "${asked[0]}" ]; then
             first=none
             TARGETS=$(echo "$TARGETS" | tr ' ' '\n' | grep -vx etcd | tr '\n' ' ')
-            export TARGETS LAYOUTS=""
+            if [[ " $MODES " == *" rate "* ]]; then
+              mkdir -p "results/rtt-${rtts[0]}/$BENCH"
+              echo "the quick grid shares no rate across its jobs: rate runs only at the first RTT, ${asked[0]} ms" >"results/rtt-${rtts[0]}/$BENCH/norate"
+            fi
+            MODES=$(echo "$MODES" | tr ' ' '\n' | grep -vx rate | tr '\n' ' ')
+            export TARGETS MODES LAYOUTS=""
           fi
           for rtt in "${rtts[@]}"; do
             out=results/rtt-$rtt
@@ -376,9 +381,15 @@ jobs:
             for job in jobs/bench-"$bench"-*; do
               [ -d "$job" ] || continue
               cp -rn "$job"/rtt-* "$dir"/
-              for f in ceiling.json "generator-$bench.json" runner.md; do
-                if [ -f "$job/$f" ] && [ ! -f "$dir/$f" ]; then cp "$job/$f" "$dir/"; fi
-              done
+              # The runner block goes with the measure: both from the job
+              # that measured.
+              if [ -f "$job/ceiling.json" ]; then
+                for f in ceiling.json "generator-$bench.json" runner.md; do
+                  if [ -f "$job/$f" ]; then cp "$job/$f" "$dir/"; fi
+                done
+              elif [ ! -f "$dir/runner.md" ] && [ -f "$job/runner.md" ]; then
+                cp "$job/runner.md" "$dir/"
+              fi
             done
             {
               echo "## $bench"

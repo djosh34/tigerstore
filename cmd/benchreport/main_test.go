@@ -379,7 +379,7 @@ func TestReportByShape(t *testing.T) {
 	}
 	for _, want := range []string{
 		// The seed-by-seed table has no spread of one run, and says so.
-		"| put-1k | 11 | - | 0 | candidate | 1,030 (?) | 1,030 | 0.0% | +3.0%, one run each: judged by shape below |",
+		"| put-1k | 11 | - | 0 | candidate | 1,030 (?) | 1,030 | 0.0% | +3.0%, one run on a store: judged by shape below |",
 		"| put-1k | - | 0 | 4 | 1.030 / 1.031 / 1.033 | ±5.0% | +3.1%, within the A/A noise |",
 		"| txn-1k | - | 0 | 4 | 2.000 / 2.000 / 2.000 | ±5.0% | +100.0%, beyond the A/A noise |",
 	} {
@@ -437,5 +437,23 @@ func TestPairsCountSeeds(t *testing.T) {
 		if !strings.Contains(b.String(), want) {
 			t.Fatalf("missing %q in report:\n%s", want, b.String())
 		}
+	}
+}
+
+// TestSeedTableOneRunOneSide checks that a seed whose candidate has one
+// run, beside three of the baseline, is left to the paired table (Astra's
+// re-check of #683).
+func TestSeedTableOneRunOneSide(t *testing.T) {
+	dir := t.TempDir()
+	for rep := 1; rep <= 3; rep++ {
+		writeAt(t, dir, "0", "put-1k", fmt.Sprintf("baseline-max-1.%d.json", rep), `{"valid":true,"throughput":1000,"server_cpu_us_per_op":10}`)
+	}
+	writeAt(t, dir, "0", "put-1k", "candidate-max-1.1.json", `{"valid":true,"throughput":1100,"server_cpu_us_per_op":10}`)
+	writeAt(t, dir, "0", "put-1k", "candidate-max-1.2.failed", "the leader changed")
+	writeAt(t, dir, "0", "put-1k", "candidate-max-1.3.failed", "the leader changed")
+	var b strings.Builder
+	_ = report(&b, dir, "", nil)
+	if !strings.Contains(b.String(), "| put-1k | 1 | - | 0 | candidate | 1,100 (?) | 1,100 | 0.0% | +10.0%, one run on a store: judged by shape below |") {
+		t.Fatalf("report:\n%s", b.String())
 	}
 }
