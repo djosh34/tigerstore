@@ -245,7 +245,7 @@ func (c *cache) remove(i int32) {
 		c.old, c.oldPeak = c.items, c.peak
 		c.items, c.peak, c.next = map[mvcc.Ref]int32{}, 0, 1
 	}
-	if !c.compacting && c.slabs.slack() > max(c.slabs.used/2, minRebuildSlack) && c.slabs.anyLoose() {
+	if false && !c.compacting && c.slabs.slack() > max(c.slabs.used/2, minRebuildSlack) && c.slabs.anyLoose() {
 		c.compacting = true
 	}
 	c.low = min(c.low, c.bytes)
