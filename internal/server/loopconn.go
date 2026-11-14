@@ -401,11 +401,13 @@ func (c *conn) Flush() {
 // write moves queued output into the socket until nothing more is
 // allowed or the socket is full. Bytes already encoded go first, and
 // nothing new is taken while the socket holds some back, so what waits
-// below the streams' queues is at most one pass of take. It reports
+// below the streams' queues is at most one pass of take. In a pass, the
+// control frames go first, then the streams' queued output, then the
+// node's replies: straight into the output where they may (direct.go),
+// and those queued instead within what is left of the pass. It reports
 // whether the connection is going away, has no stream left and sent
 // everything.
 func (c *conn) write() (bool, error) {
-	c.completeWaiting()
 	for {
 		if before := c.bridge.Pending(); before > 0 {
 			if err := c.flushBridge(); err != nil {
@@ -415,6 +417,8 @@ func (c *conn) write() (bool, error) {
 				if pending < before {
 					c.waitSince = time.Now()
 				}
+				// The replies wait on their streams, charged to their calls.
+				c.completeWaiting()
 				return false, nil
 			}
 			// The output that waited went: its deadline does not bind the
@@ -424,6 +428,7 @@ func (c *conn) write() (bool, error) {
 		}
 		if !c.outRoom() {
 			// Other connections' output fills the server's room for it.
+			c.completeWaiting()
 			return false, nil
 		}
 		c.mu.Lock()
@@ -435,38 +440,64 @@ func (c *conn) write() (bool, error) {
 		for i := range c.s.ctrlOut {
 			budget -= ctrlBytes(&c.s.ctrlOut[i])
 		}
-		c.s.framesOut = c.take(c.s.framesOut[:0], budget)
+		c.s.framesOut, budget = c.take(c.s.framesOut[:0], budget)
 		drained := c.goingAway && len(c.streams) == 0
 		c.mu.Unlock()
-		if len(c.s.ctrlOut) == 0 && len(c.s.framesOut) == 0 {
+		cs, waiting := c.takeCompletions()
+		if len(c.s.ctrlOut) == 0 && len(c.s.framesOut) == 0 && cs == nil {
 			return drained, nil
 		}
-		// Every connection writes through the server's one write buffer,
-		// which each pass flushes.
-		c.s.bw.Reset(c.nc)
-		for i := range c.s.ctrlOut {
-			if err := c.writeCtrl(&c.s.ctrlOut[i]); err != nil {
+		if err := c.writeFrames(c.s.ctrlOut, c.s.framesOut); err != nil {
+			return false, err
+		}
+		if cs == nil {
+			continue
+		}
+		queued, err := c.complete(cs, waiting, budget)
+		if err != nil {
+			return false, err
+		}
+		if queued {
+			// What complete queued goes in this pass, within its budget.
+			c.mu.Lock()
+			c.s.framesOut, _ = c.take(c.s.framesOut[:0], budget)
+			c.mu.Unlock()
+			if err := c.writeFrames(nil, c.s.framesOut); err != nil {
 				return false, err
 			}
 		}
-		for i, f := range c.s.framesOut {
-			if f.ctrl != nil {
-				if err := c.writeCtrl(f.ctrl); err != nil {
-					return false, err
-				}
-			} else {
-				c.wrote.Store(true)
-				c.s.hdrOut = frameHeader(c.s.hdrOut[:0], len(f.b), f.typ, f.flags, f.id)
-				_, _ = c.s.bw.Write(c.s.hdrOut)
-				_, _ = c.s.bw.Write(f.b)
-			}
-			c.s.framesOut[i] = wframe{}
-		}
-		// bufio.Writer keeps the first write error and returns it here.
-		if err := c.s.bw.Flush(); err != nil {
-			return false, err
+	}
+}
+
+// writeFrames writes control frames and frames of the streams' output
+// through the server's write buffer, which it flushes.
+func (c *conn) writeFrames(ctrl []ctrlFrame, frames []wframe) error {
+	if len(ctrl) == 0 && len(frames) == 0 {
+		return nil
+	}
+	// Every connection writes through the server's one write buffer, which
+	// each pass flushes.
+	c.s.bw.Reset(c.nc)
+	for i := range ctrl {
+		if err := c.writeCtrl(&ctrl[i]); err != nil {
+			return err
 		}
 	}
+	for i, f := range frames {
+		if f.ctrl != nil {
+			if err := c.writeCtrl(f.ctrl); err != nil {
+				return err
+			}
+		} else {
+			c.wrote.Store(true)
+			c.s.hdrOut = frameHeader(c.s.hdrOut[:0], len(f.b), f.typ, f.flags, f.id)
+			_, _ = c.s.bw.Write(c.s.hdrOut)
+			_, _ = c.s.bw.Write(f.b)
+		}
+		frames[i] = wframe{}
+	}
+	// bufio.Writer keeps the first write error and returns it here.
+	return c.s.bw.Flush()
 }
 
 // flushBridge sends what the bridge holds, as far as the socket takes it,

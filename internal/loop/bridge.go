@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"net"
+	"slices"
 	"time"
 )
 
@@ -220,20 +221,46 @@ func (b *Bridge) Write(p []byte) (int, error) {
 	if b.sock == nil {
 		return b.Conn.Write(p)
 	}
-	if b.out == nil && b.pool != nil {
-		b.out = b.pool.Get()[:0]
-	}
-	if b.big != nil && len(b.out)+len(p) > cap(b.out) && cap(b.out) < b.big.Size() {
-		// One move into a large buffer, instead of a regrowth by append
-		// at each size on the way.
-		out := b.big.Get()
-		n := copy(out, b.out[b.outR:])
-		b.pool.Put(b.out)
-		b.out, b.outR = out[:n], 0
-	}
+	b.room(len(p))
 	b.out = append(b.out, p...)
 	return len(p), nil
 }
+
+// room makes the write buffer ready to take n more bytes: borrowed from
+// the pool if the bridge has none, and moved into a large buffer once it
+// outgrows one of the pool's. Beyond that, append grows it.
+func (b *Bridge) room(n int) {
+	if b.out == nil && b.pool != nil {
+		b.out = b.pool.Get()[:0]
+	}
+	if b.big != nil && len(b.out)+n > cap(b.out) && cap(b.out) < b.big.Size() {
+		// One move into a large buffer, instead of a regrowth by append
+		// at each size on the way.
+		out := b.big.Get()
+		k := copy(out, b.out[b.outR:])
+		b.pool.Put(b.out)
+		b.out, b.outR = out[:k], 0
+	}
+}
+
+// Reserve returns room for n bytes at the end of the write buffer, of
+// length 0 and capacity n, for the caller to write in place; Commit then
+// adds what it wrote to the bytes to send. Nothing else may write between
+// the two. It returns nil before Attach, when writes go straight to the
+// connection.
+func (b *Bridge) Reserve(n int) []byte {
+	if b.sock == nil {
+		return nil
+	}
+	b.room(n)
+	b.out = slices.Grow(b.out, n)
+	end := len(b.out)
+	return b.out[end : end : end+n]
+}
+
+// Commit adds the first n bytes of the room Reserve returned to the bytes
+// to send.
+func (b *Bridge) Commit(n int) { b.out = b.out[:len(b.out)+n] }
 
 // Retained is the write buffer's whole allocation while it holds bytes
 // that wait to be sent, which a partial send does not shrink.

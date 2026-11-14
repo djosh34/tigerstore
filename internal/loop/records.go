@@ -691,6 +691,49 @@ func (r *Records) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// MaxReserve is the most plaintext Reserve gives room for at once: what
+// one record carries.
+const MaxReserve = maxPlaintext
+
+// Reserve returns room for n bytes of plaintext, of length 0 and capacity
+// n, at the end of the record being written, for the caller to write in
+// place; Commit then adds what it wrote to the record. A record with less
+// room left is sealed first, so the n bytes go into one record. Nothing
+// else may write between the two, so only the loop calls them, after
+// Attach. It returns nil when the records take no more writes, before
+// Attach, or for n over MaxReserve.
+func (r *Records) Reserve(n int) []byte {
+	r.wmu.Lock()
+	defer r.wmu.Unlock()
+	if r.closeSent || r.werr != nil || !r.br.Attached() || n > MaxReserve {
+		return nil
+	}
+	if r.open > 0 && r.open+n > recordHeader+maxPlaintext {
+		r.seal(typeAppData)
+		if r.werr != nil {
+			return nil
+		}
+	}
+	if r.open == 0 {
+		// The length is set when the record is sealed.
+		_, _ = r.br.Write(appHeader[:])
+		r.open = recordHeader
+	}
+	return r.br.Reserve(n)
+}
+
+// Commit adds the first n bytes of the room Reserve returned to the
+// record being written.
+func (r *Records) Commit(n int) {
+	r.wmu.Lock()
+	defer r.wmu.Unlock()
+	r.br.Commit(n)
+	r.open += n
+	if r.open == recordHeader+maxPlaintext {
+		r.seal(typeAppData)
+	}
+}
+
 // seal seals the open record in place, as inner type typ. wmu is held.
 func (r *Records) seal(typ byte) {
 	// Room for the content type and the tag, then the record again.

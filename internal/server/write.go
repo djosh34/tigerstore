@@ -31,10 +31,11 @@ func (c *conn) list(st *stream) {
 }
 
 // take moves the output that the windows allow into frames, within
-// budget bytes and maxPassFrames frames, of which frames may hold some.
-// Each round gives every ready stream at most one frame of data, so one
-// large reply does not hold up the others. c.mu is held.
-func (c *conn) take(frames []wframe, budget int) []wframe {
+// budget bytes and maxPassFrames frames, of which frames may hold some,
+// and returns what is left of budget. Each round gives every ready stream
+// at most one frame of data, so one large reply does not hold up the
+// others. c.mu is held.
+func (c *conn) take(frames []wframe, budget int) ([]wframe, int) {
 	for budget > 0 && len(frames) < maxPassFrames && len(c.ready) > 0 {
 		before := len(frames)
 		kept := c.ready[:0]
@@ -58,7 +59,7 @@ func (c *conn) take(frames []wframe, budget int) []wframe {
 			break
 		}
 	}
-	return frames
+	return frames, budget
 }
 
 // takeStream moves one stream's output, in order, until it is empty, or
@@ -133,6 +134,19 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 // ended its side, a RST_STREAM tells it to stop sending, as grpc-go does,
 // which spends budget.
 func (c *conn) endStream(st *stream, frames []wframe, budget *int) []wframe {
+	id, rst := st.id, !st.inEOF
+	c.endLocked(st)
+	if rst {
+		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: id, val: uint32(http2.ErrCodeNo)}})
+		*budget -= frameHeaderLen + 4
+	}
+	return frames
+}
+
+// endLocked ends a stream once its end is written: it lets go of what the
+// call held, and keeps the stream for the next call if nothing refers to
+// it any more. c.mu is held.
+func (c *conn) endLocked(st *stream) {
 	st.ended = true
 	delete(c.streams, st.id)
 	if st.cancel != nil {
@@ -145,12 +159,7 @@ func (c *conn) endStream(st *stream, frames []wframe, budget *int) []wframe {
 	if _, at := c.atNode[st]; !at {
 		c.releaseBody(st)
 	}
-	if !st.inEOF {
-		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: st.id, val: uint32(http2.ErrCodeNo)}})
-		*budget -= frameHeaderLen + 4
-	}
 	c.reuseStream(st)
-	return frames
 }
 
 func (c *conn) writeCtrl(f *ctrlFrame) error {
