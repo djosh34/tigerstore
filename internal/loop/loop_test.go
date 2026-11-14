@@ -352,3 +352,140 @@ type discard struct{}
 func (discard) Read([]byte) (int, error)    { return 0, loop.ErrWouldBlock }
 func (discard) Write(b []byte) (int, error) { return len(b), nil }
 func (discard) Close() error                { return nil }
+
+// TestAgainFirstGoesFirst runs two sockets that each ask for the next
+// turn: one that took its share of a turn (Again) and one that got none
+// (AgainFirst). At the next turn the one that got none runs first, so a
+// socket that always uses a turn up cannot keep another from ever
+// running (#647).
+func TestAgainFirstGoesFirst(t *testing.T) {
+	l := loop.New(loop.NewChanPoller())
+	var order []string
+	served := &turnTaker{name: "served", order: &order}
+	starved := &turnTaker{name: "starved", order: &order}
+	for _, h := range []*turnTaker{served, starved} {
+		a, b := net.Pipe()
+		defer a.Close() //nolint:errcheck // closing a test pipe
+		defer b.Close() //nolint:errcheck // closing a test pipe
+		sock, token, err := l.Attach(a, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sock.Close() //nolint:errcheck // closing a test pipe
+		// Attach runs the handler at the next turn.
+		h.l, h.token = l, token
+	}
+	served.next, starved.next = l.Again, l.AgainFirst
+	for turn := range 3 {
+		order = order[:0]
+		l.Dispatch(true)
+		want := []string{"starved", "served"}
+		if turn == 0 {
+			want = []string{"served", "starved"}
+		}
+		if len(order) != 2 || order[0] != want[0] || order[1] != want[1] {
+			t.Fatalf("turn %d ran %v, want %v", turn, order, want)
+		}
+	}
+}
+
+// turnTaker notes when its handler runs, and asks for the next turn with
+// next.
+type turnTaker struct {
+	name  string
+	order *[]string
+	l     *loop.Loop
+	token uint64
+	next  func(uint64)
+}
+
+func (h *turnTaker) Ready() {
+	*h.order = append(*h.order, h.name)
+	if h.next != nil {
+		h.next(h.token)
+	}
+}
+
+// TestAgainRunsOnceATurn runs a socket that asks for the next turn twice
+// in each turn, as one that stays cut off does turn after turn: it runs
+// once a turn, not once for each time it asked.
+func TestAgainRunsOnceATurn(t *testing.T) {
+	l := loop.New(loop.NewChanPoller())
+	var order []string
+	h := &turnTaker{name: "cut off", order: &order}
+	a, b := net.Pipe()
+	defer a.Close() //nolint:errcheck // closing a test pipe
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	sock, token, err := l.Attach(a, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sock.Close() //nolint:errcheck // closing a test pipe
+	h.token = token
+	h.next = func(token uint64) {
+		l.Again(token)
+		l.AgainFirst(token)
+	}
+	for turn := range 10 {
+		order = order[:0]
+		l.Dispatch(true)
+		if len(order) != 1 {
+			t.Fatalf("turn %d ran the socket %d times", turn, len(order))
+		}
+	}
+}
+
+// TestDrainRunsWhatWaits drains a loop whose socket asked for the next
+// turn, as a connection cut off by a turn's limit does with frames it
+// holds, and gets no event from its socket: the drain runs it without
+// waiting for one, so the frames it holds get their answer.
+func TestDrainRunsWhatWaits(t *testing.T) {
+	l := loop.New(loop.NewChanPoller())
+	var order []string
+	h := &turnTaker{name: "waiting", order: &order}
+	a, b := net.Pipe()
+	defer a.Close() //nolint:errcheck // closing a test pipe
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	sock, token, err := l.Attach(a, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sock.Close() //nolint:errcheck // closing a test pipe
+	h.token = token
+	l.Dispatch(true) // the run Attach asked for
+	l.Again(token)
+	// Once it ran in the drain, the socket goes.
+	h.next = func(token uint64) { l.Forget(token) }
+	order = order[:0]
+	go l.Drain()
+	select {
+	case <-l.Drained():
+	case <-time.After(10 * time.Second):
+		t.Fatal("the drain waited for an event while a socket waited to run")
+	}
+	if len(order) != 1 {
+		t.Fatalf("the drain ran the socket %d times", len(order))
+	}
+}
+
+// TestDueAndAgainRunOnce runs a socket that asked for the next turn and
+// is due from its poller too: it runs once.
+func TestDueAndAgainRunOnce(t *testing.T) {
+	l := loop.New(loop.NewChanPoller())
+	var order []string
+	h := &turnTaker{name: "both", order: &order}
+	a, b := net.Pipe()
+	defer a.Close() //nolint:errcheck // closing a test pipe
+	defer b.Close() //nolint:errcheck // closing a test pipe
+	sock, token, err := l.Attach(a, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sock.Close() //nolint:errcheck // closing a test pipe
+	// Attach made it due; it asks again as well.
+	l.Again(token)
+	l.Dispatch(true)
+	if len(order) != 1 {
+		t.Fatalf("a socket due and asking again ran %d times", len(order))
+	}
+}

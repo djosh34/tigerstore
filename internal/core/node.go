@@ -1931,6 +1931,7 @@ func (n *Node) Process() (Effects, error) {
 		if n.err == nil {
 			n.trimWindow()
 			n.fitCache()
+			n.cache.step()
 		}
 	}
 	if n.err != nil || n.removeAt != 0 {

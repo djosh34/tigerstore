@@ -74,6 +74,18 @@ type Config struct {
 	// V3Clients of those that use etcd's Go client (v3client.go). Each has
 	// one call in flight.
 	Clients, V3Clients int
+	// V3Shared makes the clients of etcd's Go client that call one node
+	// share one clientv3 client, and so one connection, so that their
+	// calls are in flight on it at once. Burst, if set, makes every client
+	// start its calls on the same beat, every Burst, instead of after a
+	// think time of its own, so that they reach the nodes together.
+	// TurnCalls, if set, is the most calls a node's turn takes
+	// (node.Config.TurnCalls): with more clients on a node than that, its
+	// loop takes more calls at once than fit in a turn, and defers the
+	// rest to its next turns (Stats.CutTurns) (#649).
+	V3Shared  bool
+	Burst     int64
+	TurnCalls int
 	// PinClients makes client i call voting node i%3 only, so that the
 	// clients waiting on a node that cannot answer leave the other nodes
 	// theirs (#279). Otherwise each call picks a voting node at random.
@@ -521,7 +533,10 @@ type Sim struct {
 	// downFor is how long HoldDown keeps its follower down.
 	downFor int64
 
-	clients  []*client
+	clients []*client
+	// shared are the clientv3 clients the V3Shared clients share, by
+	// node index.
+	shared   [3]*sharedV3
 	watchers []*watchClient
 	// kube is the Kubernetes-shaped load, if Config.Objects is set, and
 	// values the one copy of each of its values.
@@ -614,6 +629,14 @@ type Stats struct {
 	// V3OK counts the calls of the clients of etcd's Go client that
 	// succeeded, among OK.
 	V3OK int
+	// CutTurns counts the turns of the nodes' loops that took as many
+	// clients' calls as fit in them and left a connection to be read
+	// again in the next turn (node.Config.Took), which it may find with
+	// nothing more; DeferredFrames the turns of a connection that ran out
+	// of room while it held a whole HEADERS or DATA frame of a call it had
+	// read, which then waited for a later turn (server.Config.Deferred).
+	// Only a run that sets Config.TurnCalls counts them.
+	CutTurns, DeferredFrames int
 	// Compactions counts successful compactions and WatchCompacted the
 	// watches that a compaction canceled.
 	Compactions, WatchCompacted int
@@ -1217,6 +1240,13 @@ func (s *Sim) schedule() {
 		c := &client{id: i, sim: s, node: -1}
 		if i >= s.cfg.Clients {
 			c.node = i % 3
+			if s.cfg.V3Shared {
+				if s.shared[c.node] == nil {
+					s.shared[c.node] = &sharedV3{}
+				}
+				c.shared = s.shared[c.node]
+				c.shared.users++
+			}
 		}
 		if kube != nil {
 			c.kube = kube[i]
@@ -1506,6 +1536,18 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 	cfg.DiskBudget = s.cfg.Faults.DiskBudget
 	cfg.BeforeSync = func() { s.beforeSync(p) }
 	cfg.Turn = func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) }
+	// Only a run that sets TurnCalls counts its cut turns, so that the
+	// others' runs stay as they were, lock for lock.
+	if s.cfg.TurnCalls > 0 {
+		cfg.TurnCalls = s.cfg.TurnCalls
+		cfg.Took = func(calls, limit int, waiting bool) {
+			if calls >= limit && waiting {
+				s.mu.Lock()
+				s.stats.CutTurns++
+				s.mu.Unlock()
+			}
+		}
+	}
 	cfg.Persisted = func(j core.PersistJob) { s.persisted(p, j) }
 	cfg.Logf = func(format string, args ...any) { s.logf(n, format, args...) }
 	return cfg
@@ -2188,6 +2230,20 @@ func (s *Sim) restartAfterExit(n *node) {
 	s.lateStop()
 	s.kill(n)
 	s.restartLater(n, s.restartDelay())
+}
+
+// deferredHook is the gRPC servers' Deferred hook of a run that sets
+// Config.TurnCalls, which counts the frames that waited for a later turn,
+// and nil otherwise, so that other runs stay as they were.
+func (s *Sim) deferredHook() func() {
+	if s.cfg.TurnCalls <= 0 {
+		return nil
+	}
+	return func() {
+		s.mu.Lock()
+		s.stats.DeferredFrames++
+		s.mu.Unlock()
+	}
 }
 
 // lateStop notes a node that stops after healing. The lock is held.

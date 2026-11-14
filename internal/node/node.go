@@ -111,6 +111,17 @@ type Config struct {
 	// node in Turn.
 	Turn      func(*core.Node, core.Effects, error)
 	Persisted func(core.PersistJob)
+	// Took, if set, runs on the committer as each turn begins, with the
+	// calls clients gave the node in the turn before, if any, how many fit
+	// in that turn (TurnRoom), and whether sockets wait to run now, as a
+	// connection that had calls left when the turn ran out of room does
+	// (loop.Loop.Holding). For tests.
+	Took func(calls, limit int, waiting bool)
+	// TurnCalls, if above 0, is the most calls a turn takes before the
+	// node measured what a call costs, instead of 256. The simulator sets
+	// it low so that a few clients' bursts cut turns: below 32 a turn
+	// never takes enough calls to measure, so the bound stays.
+	TurnCalls int
 	// Memory, if set, measures what the process uses besides the value
 	// cache, and whether that is a new measure, instead of the Go
 	// runtime's metrics: the simulator runs several nodes in one process.
@@ -487,6 +498,13 @@ type Node struct {
 	// when the committer takes no new input but peers' control messages
 	// (Busy). Loop only.
 	full bool
+	// turnCalls counts the calls clients gave the node in this turn
+	// (SubmitLocal), which the committer resets at each turn; turnLimit
+	// is how many fit in the turn (TurnRoom), turnStart when it began,
+	// and perCall what a call cost a turn lately. Loop only.
+	turnCalls, turnLimit int
+	turnStart            time.Time
+	perCall              time.Duration
 	// roomFreed wakes the committer when a watch stream short of room got
 	// some back (WatchStream.took), and memFull says that the process is
 	// at its memory budget, so watch streams get none (measureMemory).
@@ -1101,8 +1119,86 @@ func (n *Node) Receive(m *raftpb.Message) {
 // Busy reports, on the loop, whether the node's disk is behind, so that it
 // takes no new input but peers' control messages. The peer transport then
 // holds the data messages it reads (peer.Config.Busy) and steps the
-// others.
-func (n *Node) Busy() bool { return n.full }
+// others. A node that stopped is never busy: it drops what it receives,
+// and its peers' connections read on while the loop drains.
+func (n *Node) Busy() bool {
+	select {
+	case <-n.done:
+		return false
+	default:
+	}
+	return n.full
+}
+
+// A turn of the node's loop ends with the core's work and its replies,
+// and only then do Raft's ticks and heartbeats go on: a turn that took
+// every call that had arrived grew with the load (#647). So a turn takes
+// the calls that fit in the time left before the node's next tick is due,
+// but in no less than minTurnTime and no more than a tick, at what a call
+// cost turns lately (turnFit), and at least minTurnCalls; the rest come
+// in the next turn, which takes the tick. A bound on the calls alone cut
+// every turn's batch at any load, and cost put 5 to 8% of its throughput;
+// a fixed 15 ms cut k8s's dearer calls and cost it up to 6% at RTT 0; and
+// the time to the tick alone cost txn 1 to 5% (#649). The floor gives the
+// turns just before a tick, which that left minTurnCalls, what the fixed
+// 15 ms gave them.
+const minTurnTime = 15 * time.Millisecond
+
+// minTurnCalls is the fewest calls a turn takes, so that a turn slowed by
+// other work still takes clients' calls; measuredTurnCalls the fewest
+// that measure what a call costs; and firstTurnCalls the most a turn
+// takes before any measure, as on a node that just started or became
+// leader with few calls served, which a failover's retried calls would
+// otherwise all reach in one turn.
+const (
+	minTurnCalls      = 64
+	measuredTurnCalls = 32
+	firstTurnCalls    = 256
+)
+
+// TurnRoom is how many more calls the node takes from clients in this turn
+// of its loop; a client connection that has more reads them in the next
+// one (loop.Loop.Again). A node that stopped refuses calls uncounted
+// (SubmitLocal), so its connections read on while the loop drains,
+// whatever its last turn took, and their clients hear that it stopped.
+// Loop only.
+func (n *Node) TurnRoom() int {
+	select {
+	case <-n.done:
+		return math.MaxInt32
+	default:
+	}
+	return max(n.turnLimit-n.turnCalls, 0)
+}
+
+// turnFit is how many calls fit in a turn that has until the node's next
+// tick is due, at least minTurnTime and then at most a tick, which wins
+// if it is shorter, at what a call cost turns lately: firstTurnCalls
+// before the first measure, and while turns take no time, as in the
+// simulator, whose clock stands still in a turn.
+func (n *Node) turnFit(until time.Duration) int {
+	if n.perCall <= 0 {
+		if n.cfg.TurnCalls > 0 {
+			return n.cfg.TurnCalls
+		}
+		return firstTurnCalls
+	}
+	return max(int(min(max(until, minTurnTime), n.cfg.Tick)/n.perCall), minTurnCalls)
+}
+
+// turnTook measures what a call cost the turn that ends, which took calls
+// clients gave it, as a moving average over turns that took enough.
+func (n *Node) turnTook() {
+	if n.turnCalls < measuredTurnCalls {
+		return
+	}
+	cost := time.Since(n.turnStart) / time.Duration(n.turnCalls)
+	if n.perCall == 0 {
+		n.perCall = cost
+		return
+	}
+	n.perCall += (cost - n.perCall) / 4
+}
 
 // SubmitLocal is SubmitBatch for a connection on the loop: it runs on the
 // loop, never waits, and fails only once the node stopped.
@@ -1118,6 +1214,7 @@ func (n *Node) SubmitLocal(reqs []core.Request, tags []any, to Completer) error 
 		reqs[i].ID = first + uint64(i)
 	}
 	n.local = append(n.local, input{batch: &batch{reqs: reqs, tags: tags, to: to}})
+	n.turnCalls += len(reqs)
 	return nil
 }
 
@@ -1485,6 +1582,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if ctx.Err() != nil {
 			return nil
 		}
+		if n.cfg.Took != nil && n.turnCalls > 0 {
+			n.cfg.Took(n.turnCalls, n.turnLimit, n.loop.Holding())
+		}
+		now := time.Now()
+		tick := started.Add(time.Duration(clock.due) * n.cfg.Tick)
+		n.turnCalls, n.turnLimit, n.turnStart = 0, n.turnFit(tick.Sub(now)), now
 		n.loop.Dispatch(!full)
 		dones = takeAll(n.persisted, dones[:0])
 		for _, done := range dones {
@@ -1607,6 +1710,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		// What the turn queued on the loop's sockets goes out: replies,
 		// watch events and messages to peers.
 		n.loop.Flush()
+		n.turnTook()
 		if err != nil {
 			if errors.Is(err, core.ErrInstalled) {
 				n.dropAll(waiters, streams, ErrSnapshotInstalled)

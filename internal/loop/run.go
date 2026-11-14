@@ -46,14 +46,17 @@ type Loop struct {
 	next     uint64
 	handlers map[uint64]Handler
 	// due are the tokens the last Wait returned, held those that came
-	// while the owner took no input from sockets (Dispatch), and again
-	// those whose handlers asked to run at the next turn (Again).
-	due, held, again []uint64
-	mu               sync.Mutex
-	posted           []func()
-	running          []func()
-	dirty            []Flusher
-	isDirty          map[Flusher]bool
+	// while the owner took no input from sockets (Dispatch), and first
+	// and again those whose handlers asked to run at the next turn
+	// (AgainFirst, Again).
+	due, held, first, again []uint64
+	// queued are the tokens in first or again, each listed once.
+	queued  map[uint64]bool
+	mu      sync.Mutex
+	posted  []func()
+	running []func()
+	dirty   []Flusher
+	isDirty map[Flusher]bool
 	// stopped is set once the loop ended for good (Drain), under mu.
 	stopped bool
 	// timers are flushers to flush again at a time (After), at most one
@@ -138,8 +141,21 @@ func (l *Loop) Dispatch(sockets bool) {
 		f()
 		l.running[i] = nil
 	}
-	l.due = append(l.due, l.again...)
-	l.again = l.again[:0]
+	if len(l.first)+len(l.again) > 0 {
+		// What waited from the last turn goes first, those that got no
+		// turn at all before those that used one up, so that a socket
+		// cut off by a turn's limit is not cut off again and again.
+		l.first = append(l.first, l.again...)
+		for _, token := range l.due {
+			// A socket that asked again and is due too runs once.
+			if !l.queued[token] {
+				l.first = append(l.first, token)
+			}
+		}
+		// first's array becomes due's, and the old due's first's.
+		l.first, l.again, l.due = l.due[:0], l.again[:0], l.first
+		clear(l.queued)
+	}
 	if !sockets {
 		for _, token := range l.due {
 			switch h := l.handlers[token].(type) {
@@ -170,12 +186,36 @@ func (l *Loop) Dispatch(sockets bool) {
 // Again runs the handler of token at the loop's next turn, as a socket
 // that stopped reading while its owner was busy asks.
 func (l *Loop) Again(token uint64) {
-	l.again = append(l.again, token)
+	if l.queue(token) {
+		l.again = append(l.again, token)
+	}
+}
+
+// AgainFirst is Again for a socket that got nothing of this turn: at the
+// next turn its handler runs before those of Again.
+func (l *Loop) AgainFirst(token uint64) {
+	if l.queue(token) {
+		l.first = append(l.first, token)
+	}
+}
+
+// queue reports whether token is not in first or again yet, and notes
+// that it is: a socket that asks again and again in one turn, or turn
+// after turn while it is cut off, runs once a turn.
+func (l *Loop) queue(token uint64) bool {
+	if l.queued[token] {
+		return false
+	}
+	if l.queued == nil {
+		l.queued = map[uint64]bool{}
+	}
+	l.queued[token] = true
+	return true
 }
 
 // Holding reports whether due tokens wait for a Dispatch that takes
 // sockets, which then needs no wait first.
-func (l *Loop) Holding() bool { return len(l.held) > 0 || len(l.again) > 0 }
+func (l *Loop) Holding() bool { return len(l.held) > 0 || len(l.first) > 0 || len(l.again) > 0 }
 
 // Dirty lists f to flush at the end of the turn.
 func (l *Loop) Dirty(f Flusher) {
@@ -276,12 +316,22 @@ func (l *Loop) Drain() {
 			return
 		}
 		l.mu.Unlock()
-		if err := l.Wait(l.Timeout(-1)); err != nil {
+		if err := l.Wait(l.idle()); err != nil {
 			return
 		}
 		l.Dispatch(true)
 		l.Flush()
 	}
+}
+
+// idle is how long Drain and Run wait for their sockets: until the next
+// timer, or not at all while sockets wait to run (Holding), which no
+// socket event may come for.
+func (l *Loop) idle() time.Duration {
+	if l.Holding() {
+		return 0
+	}
+	return l.Timeout(-1)
 }
 
 // Drained is closed once Drain returned: no handler of the loop runs
@@ -296,7 +346,7 @@ func (l *Loop) Run(ctx context.Context) error {
 	stop := context.AfterFunc(ctx, l.Wake)
 	defer stop()
 	for {
-		if err := l.Wait(l.Timeout(-1)); err != nil {
+		if err := l.Wait(l.idle()); err != nil {
 			return err
 		}
 		if ctx.Err() != nil {

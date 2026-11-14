@@ -17,29 +17,48 @@ import (
 // grows. A value is named by its Raft position, which no later write
 // changes, so the cache never hands out a stale value; dropping
 // overwritten ones frees memory. The values are in slabs, whose slots are
-// taken again, so a reader copies what get returns before the cache
-// changes.
+// taken again and whose values move, so a reader copies what get returns
+// before the cache changes.
+//
+// What gives memory back takes bounded steps, one a turn of the core
+// (step), so that no turn holds the node's heartbeats: dropping the values
+// past a limit that fell far, compacting the slabs, and making the map
+// again. Copying the whole cache at once took
+// 1.8 s with 900 MB cached, and held two copies of it meanwhile (#647).
 type cache struct {
 	// bytes counts every value by its room in the slabs with
-	// cachedOverhead and every slot of items up to peak with
-	// slotOverhead, and low is the smallest it was since the last
+	// cachedOverhead and every slot of items and old up to their peaks
+	// with slotOverhead, and low is the smallest it was since the last
 	// CacheLow.
 	limit, bytes, low int64
-	// items names the entry of each cached value. Neither items nor
-	// entries holds a pointer, so the garbage collector does not walk
+	// items names the entry of each cached value. Neither the maps nor
+	// the entries hold a pointer, so the garbage collector does not walk
 	// them: with a million values cached, walking records that pointed
 	// at each other and at their values took a fifth of a node's core
 	// (#506). slabs holds the values (#602).
-	items map[mvcc.Ref]int32
-	// peak is the most values items held since it was made. A Go map
-	// keeps its memory as it empties, so items is made again once it
-	// holds half of that.
-	peak int
-	// entries[0] is the start and end of the ring of cached values, the
-	// most recently used after it; free lists the entries not in use.
-	entries []cached
-	slabs   slabs
-	free    []int32
+	//
+	// A Go map keeps its memory as it empties, so once items holds half
+	// the values it held at most (peak), it is made again: it becomes
+	// old, and each step moves the refs of the next stepRefs entries
+	// from old into a new items, from entry next on. Meanwhile a value is
+	// in one of the two maps.
+	items, old    map[mvcc.Ref]int32
+	peak, oldPeak int
+	next          int32
+	// The entries are in pages of entryPage, n of them in use: entry 0
+	// is the start and end of the ring of cached values, the most
+	// recently used after it. They stay dense: removing an entry moves
+	// the last one into its place, and pages past the last in use go.
+	pages [][]cached
+	n     int32
+	slabs slabs
+	// compacting is set while the slabs' free slots take more room than
+	// the cache allows, and each step moves values out of chunks it can
+	// empty (slabs.compact).
+	compacting bool
+	// evictions is how many more values fit may drop before the next
+	// step: a limit that falls far is met over a few turns.
+	evictions int
 	// hits are the values the cache returned, and misses those read from
 	// the log.
 	hits, misses int64
@@ -62,20 +81,52 @@ const (
 	slotOverhead   = 96
 )
 
+const (
+	entryBits = 12
+	entryPage = 1 << entryBits
+	// stepBytes is the most a step copies in the slabs, and stepRefs
+	// the most refs it moves from old: a few milliseconds of work.
+	stepBytes = 2 << 20
+	stepRefs  = 1 << 13
+	// stepEvictions is the most values fit drops between two steps.
+	stepEvictions = 1 << 13
+	// minRebuildSlack is the least room of free slots that makes the
+	// slabs compact, however few values the cache holds, so that they
+	// do not compact for little.
+	minRebuildSlack = 4 << 20
+)
+
 func newCache() *cache {
 	c := &cache{}
 	c.clear()
 	return c
 }
 
+// at returns entry i.
+func (c *cache) at(i int32) *cached { return &c.pages[i>>entryBits][i&(entryPage-1)] }
+
+// lookup returns the entry of the value r names, if the cache has it.
+func (c *cache) lookup(r mvcc.Ref) (int32, bool) {
+	if i, ok := c.items[r]; ok {
+		return i, true
+	}
+	i, ok := c.old[r]
+	return i, ok
+}
+
+// count is the number of values cached.
+func (c *cache) count() int { return len(c.items) + len(c.old) }
+
 // get returns the value r names if the cache has it, and marks it used.
 func (c *cache) get(r mvcc.Ref) ([]byte, bool) {
-	i, ok := c.items[r]
+	i, ok := c.lookup(r)
 	if !ok && planted.On("B31") {
-		for ref, item := range c.items {
-			if ref.Off == r.Off && ref.Len == r.Len {
-				i, ok = item, true
-				break
+		for _, m := range []map[mvcc.Ref]int32{c.items, c.old} {
+			for ref, item := range m {
+				if ref.Off == r.Off && ref.Len == r.Len {
+					i, ok = item, true
+					break
+				}
 			}
 		}
 	}
@@ -85,44 +136,50 @@ func (c *cache) get(r mvcc.Ref) ([]byte, bool) {
 	c.hits++
 	c.unlink(i)
 	c.push(i)
-	e := &c.entries[i]
+	e := c.at(i)
 	return c.slabs.bytes(e.slot, int(e.ref.Len)), true
 }
 
 // has reports whether the cache holds the value r names, and does not
 // mark it used.
 func (c *cache) has(r mvcc.Ref) bool {
-	_, ok := c.items[r]
+	_, ok := c.lookup(r)
 	return ok
 }
 
-// add copies val, the bytes r names, into the cache.
+// add copies val, the bytes r names, into the cache. A cache still past
+// its limit, as while its steps drop what a limit that fell far leaves,
+// takes none: the steps give it back their evictions each turn, which
+// would let it grow past its limit by a value each turn.
 func (c *cache) add(r mvcc.Ref, val []byte) {
-	if _, ok := c.items[r]; ok || c.limit <= 0 {
+	if _, ok := c.lookup(r); ok || c.limit <= 0 || c.bytes > c.limit {
 		return
 	}
-	e := cached{ref: r, slot: c.slabs.put(val)}
-	var i int32
-	if n := len(c.free); n > 0 {
-		i, c.free = c.free[n-1], c.free[:n-1]
-		c.entries[i] = e
-	} else {
-		i = int32(len(c.entries))
-		c.entries = append(c.entries, e)
+	i := c.n
+	if int(i>>entryBits) == len(c.pages) {
+		c.pages = append(c.pages, make([]cached, entryPage))
 	}
-	c.items[r] = i
-	if len(c.items) > c.peak {
-		c.peak++
-		c.bytes += slotOverhead
-	}
+	c.n++
+	e := c.at(i)
+	*e = cached{ref: r, slot: c.slabs.put(val, i)}
+	c.put(r, i)
 	c.push(i)
 	c.bytes += c.slabs.room(e.slot, len(val)) + cachedOverhead
 	c.fit()
 }
 
+// put names entry i for r in items.
+func (c *cache) put(r mvcc.Ref, i int32) {
+	c.items[r] = i
+	if len(c.items) > c.peak {
+		c.peak++
+		c.bytes += slotOverhead
+	}
+}
+
 // drop forgets the value r names.
 func (c *cache) drop(r mvcc.Ref) {
-	if i, ok := c.items[r]; ok {
+	if i, ok := c.lookup(r); ok {
 		c.remove(i)
 	}
 }
@@ -136,71 +193,133 @@ func (c *cache) setLimit(limit int64) {
 
 // clear forgets every value.
 func (c *cache) clear() {
-	c.items, c.peak = map[mvcc.Ref]int32{}, 0
-	c.entries, c.free, c.slabs = []cached{{}}, nil, slabs{}
-	c.bytes, c.low = 0, 0
+	c.items, c.old, c.peak, c.oldPeak, c.next = map[mvcc.Ref]int32{}, nil, 0, 0, 0
+	c.pages, c.n = [][]cached{make([]cached, entryPage)}, 1
+	c.slabs, c.compacting = slabs{}, false
+	c.bytes, c.low, c.evictions = 0, 0, stepEvictions
 }
 
 // fit drops the least recently used values until the cache is within
-// its limit.
+// its limit, or until it dropped stepEvictions since the last step; the
+// steps drop the rest.
 func (c *cache) fit() {
-	for c.bytes > max(c.limit, 0) {
-		c.remove(c.entries[0].prev)
+	for c.bytes > max(c.limit, 0) && c.n > 1 && c.evictions > 0 {
+		c.evictions--
+		c.remove(c.at(0).prev)
 	}
 }
 
+// remove forgets entry i and moves the last entry into its place.
 func (c *cache) remove(i int32) {
 	c.unlink(i)
-	e := &c.entries[i]
+	e := *c.at(i)
 	delete(c.items, e.ref)
+	delete(c.old, e.ref)
 	c.bytes -= c.slabs.room(e.slot, int(e.ref.Len)) + cachedOverhead
 	c.slabs.free(e.slot)
-	c.free = append(c.free, i)
-	if len(c.items) <= c.peak/2 || c.slabs.slack() > max(c.slabs.used/2, minRebuildSlack) {
-		c.rebuild()
+	last := c.n - 1
+	if i != last {
+		m := *c.at(last)
+		*c.at(i) = m
+		c.at(m.prev).next, c.at(m.next).prev = i, i
+		c.renamed(m.ref, i)
+		c.slabs.setOwner(m.slot, i)
+	}
+	*c.at(last) = cached{}
+	c.n--
+	// One empty page stays, so that a cache that grows and shrinks by a
+	// few values does not make a page each time.
+	for len(c.pages) > int(c.n>>entryBits)+2 {
+		c.pages[len(c.pages)-1] = nil
+		c.pages = c.pages[:len(c.pages)-1]
+	}
+	switch {
+	case c.n == 1:
+		// An empty cache needs neither map nor slabs.
+		c.bytes -= int64(c.peak+c.oldPeak) * slotOverhead
+		c.items, c.old, c.peak, c.oldPeak = map[mvcc.Ref]int32{}, nil, 0, 0
+		c.slabs, c.compacting = slabs{}, false
+	case c.old != nil:
+		c.moved()
+	case len(c.items) <= c.peak/2:
+		c.old, c.oldPeak = c.items, c.peak
+		c.items, c.peak, c.next = map[mvcc.Ref]int32{}, 0, 1
+	}
+	if !c.compacting && c.slabs.slack() > max(c.slabs.used/2, minRebuildSlack) && c.slabs.anyLoose() {
+		c.compacting = true
 	}
 	c.low = min(c.low, c.bytes)
 }
 
-// minRebuildSlack is the least room of freed slots that makes the cache
-// rebuild, however few values it holds, so that it does not rebuild for
-// little.
-const minRebuildSlack = 4 << 20
-
-// rebuild makes the map, the entries and the slabs again with room for
-// only the values cached, in the same order, so the memory of those that
-// went is freed. The cache does so when its map holds half the values it
-// held at most, or when the slabs' freed slots take more than half the
-// room of those in use: values of a new size fill new chunks, and the old
-// size's chunks stay as its values go (#602).
-func (c *cache) rebuild() {
-	c.bytes -= int64(c.peak-len(c.items)) * slotOverhead
-	items := make(map[mvcc.Ref]int32, len(c.items))
-	entries := make([]cached, 1, len(c.items)+1)
-	var sl slabs
-	for i := c.entries[0].next; i != 0; i = c.entries[i].next {
-		e := &c.entries[i]
-		n := int32(len(entries))
-		items[e.ref] = n
-		entries = append(entries, cached{ref: e.ref, prev: n - 1, next: n + 1, slot: sl.put(c.slabs.bytes(e.slot, int(e.ref.Len)))})
+// renamed records that the value r names is in entry i now. One that is
+// still in old moves to items if step has passed i.
+func (c *cache) renamed(r mvcc.Ref, i int32) {
+	if _, ok := c.old[r]; ok {
+		if i >= c.next {
+			c.old[r] = i
+			return
+		}
+		delete(c.old, r)
 	}
-	last := int32(len(entries) - 1)
-	entries[0].next, entries[0].prev = min(1, last), last
-	entries[last].next = 0
-	c.items, c.peak, c.entries, c.slabs, c.free = items, len(items), entries, sl, nil
+	c.put(r, i)
+}
+
+// busy reports whether the cache has steps to take.
+func (c *cache) busy() bool {
+	return c.old != nil || c.compacting || c.bytes > max(c.limit, 0) && c.n > 1
+}
+
+// step takes the cache's next bounded step: it drops values past its
+// limit, up to stepEvictions since the last step, moves the refs of the
+// next stepRefs entries from old to items, and compacts the slabs by up
+// to stepBytes.
+func (c *cache) step() {
+	c.fit()
+	c.evictions = stepEvictions
+	if c.old != nil {
+		for k := 0; k < stepRefs && c.next < c.n; k++ {
+			r := c.at(c.next).ref
+			if _, ok := c.old[r]; ok {
+				delete(c.old, r)
+				c.put(r, c.next)
+			}
+			c.next++
+		}
+		c.moved()
+	}
+	if c.compacting {
+		more := c.slabs.compact(stepBytes, func(owner int32, to slot) { c.at(owner).slot = to })
+		c.compacting = more && c.slabs.slack() > max(c.slabs.used/4, minRebuildSlack/2)
+	}
+}
+
+// moved ends making the map again once every entry's ref is in items:
+// old's memory goes.
+func (c *cache) moved() {
+	if c.next < c.n {
+		return
+	}
+	// Every ref moved as step passed its entry, or as its entry moved
+	// below next (renamed); this takes any left all the same.
+	for r, i := range c.old {
+		c.put(r, i)
+	}
+	c.bytes -= int64(c.oldPeak) * slotOverhead
+	c.old, c.oldPeak = nil, 0
+	c.low = min(c.low, c.bytes)
 }
 
 // push puts entry i at the front of the ring.
 func (c *cache) push(i int32) {
-	next := c.entries[0].next
-	c.entries[i].prev, c.entries[i].next = 0, next
-	c.entries[0].next, c.entries[next].prev = i, i
+	next := c.at(0).next
+	c.at(i).prev, c.at(i).next = 0, next
+	c.at(0).next, c.at(next).prev = i, i
 }
 
 // unlink takes entry i out of the ring.
 func (c *cache) unlink(i int32) {
-	e := &c.entries[i]
-	c.entries[e.prev].next, c.entries[e.next].prev = e.next, e.prev
+	e := c.at(i)
+	c.at(e.prev).next, c.at(e.next).prev = e.next, e.prev
 	e.prev, e.next = 0, 0
 }
 
