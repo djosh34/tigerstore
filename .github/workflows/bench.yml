@@ -284,11 +284,7 @@ jobs:
             MODES=$(echo "$MODES" | tr ' ' '\n' | grep -vx rate | tr '\n' ' ')
             export TARGETS MODES LAYOUTS=""
           fi
-          for rtt in "${rtts[@]}"; do
-            out=results/rtt-$rtt
-            mkdir -p "$out"
-            bench/netem.sh on "$rtt"
-            bench/netem.sh probe | tee "$out/probe.txt"
+          measure() {
             if [ -z "${MODES// /}" ]; then
               # Only rate was asked, which this RTT leaves out; run.sh
               # would take no modes for both.
@@ -300,6 +296,27 @@ jobs:
               # enough. etcd is there for comparison: once is enough too.
               TARGETS=$(echo "$TARGETS" | tr ' ' '\n' | grep -vx etcd | tr '\n' ' ') \
                 LAYOUTS="" RATE_FALLBACK=$(cat "$first/$BENCH/rate" 2>/dev/null || true) bench/run.sh "$BENCH" "$out"
+            fi
+          }
+          for rtt in "${rtts[@]}"; do
+            out=results/rtt-$rtt
+            mkdir -p "$out"
+            bench/netem.sh on "$rtt"
+            bench/netem.sh probe | tee "$out/probe.txt"
+            measure
+            # A quick-grid job whose failed runs all failed by a stall of
+            # the runner's disk (benchreport -disk-stall: every node's
+            # syncs stalled together, the leader went silent by #233's
+            # failover rule, a new leader came after) measures its pair
+            # once more, both stores back to back; the first measure stays
+            # in the artifact under retried/. A second failure stays.
+            if [ "${{ matrix.job.seed }}" != all ] && compgen -G "$out/$BENCH/*.failed" >/dev/null &&
+              bin/benchreport -disk-stall results >"$RUNNER_TEMP/stall.txt"; then
+              cat "$RUNNER_TEMP/stall.txt"
+              mkdir -p "results/retried/rtt-$rtt"
+              mv "$out/$BENCH" "results/retried/rtt-$rtt/$BENCH"
+              measure
+              cp "$RUNNER_TEMP/stall.txt" "$out/$BENCH/retried"
             fi
             # run.sh refuses a directory that holds results already, so the
             # note goes in after it.
