@@ -18,6 +18,7 @@ import (
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -388,4 +389,39 @@ func TestRequestTimeout(t *testing.T) {
 			t.Errorf("heartbeat %s ms, election %s ms: the request timeout is %v, want %v", tc.heartbeat, tc.election, got, tc.want)
 		}
 	}
+}
+
+// blockedOutput is a log output whose writes wait until released, as a
+// log file on a disk that stalls.
+type blockedOutput struct{ release chan struct{} }
+
+func (b blockedOutput) Write(p []byte) (int, error) {
+	<-b.release
+	return len(p), nil
+}
+
+func (b blockedOutput) Sync() error { return nil }
+
+// TestNodeLogDoesNotWait logs through what the node logs with while the
+// log's output is stuck: no line waits for it. Before #680's fix the node
+// logged through the logger itself, and each line waited.
+func TestNodeLogDoesNotWait(t *testing.T) {
+	out := blockedOutput{release: make(chan struct{})}
+	lg := zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.Lock(out), zapcore.InfoLevel))
+	logf, stop := nodeLog(lg)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 10 {
+			logf("leader is 0 at term %d", i)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		close(out.release)
+		t.Fatal("logging waited for a stuck output")
+	}
+	close(out.release)
+	stop()
 }
