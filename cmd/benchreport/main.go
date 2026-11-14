@@ -32,6 +32,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"maps"
@@ -44,12 +45,18 @@ import (
 
 // errInvalidResult is a result that loadgen marked invalid in a run that
 // did not fail, errUnequalRuns targets that ran a bench a different number
-// of times, and errRunFailed a tigerstore run that failed.
+// of times, errRunFailed a tigerstore run that failed, and errTooManyRetries
+// a bench whose jobs measured their pair again more than maxRetries times.
 var (
-	errInvalidResult = errors.New("invalid result")
-	errUnequalRuns   = errors.New("unequal runs")
-	errRunFailed     = errors.New("tigerstore run failed")
+	errInvalidResult  = errors.New("invalid result")
+	errUnequalRuns    = errors.New("unequal runs")
+	errRunFailed      = errors.New("tigerstore run failed")
+	errTooManyRetries = errors.New("too many pairs measured again after the runner's disk stalled")
 )
+
+// maxRetries is how many of a bench's pairs may be measured again after a
+// stall of the runner's disk (diskstall.go) before the bench fails.
+const maxRetries = 3
 
 // result is the part of a loadgen result the tables use.
 type result struct {
@@ -126,21 +133,51 @@ type key struct{ rtt, bench, target, mode string }
 type failure struct{ rep, cause string }
 
 func main() {
-	if len(os.Args) < 2 || len(os.Args) > 3 {
-		fmt.Fprintln(os.Stderr, "usage: benchreport <dir> [<recordings>]")
+	noisePath := flag.String("noise", "bench/noise.json", "the A/A noise of the paired ratios, per shape and RTT; a missing file is no noise")
+	stall := flag.Bool("disk-stall", false, "check instead that every failed run in <dir> failed by a stall of the runner's disk (diskstall.go): exit 0 if so")
+	flag.Parse()
+	if flag.NArg() < 1 || flag.NArg() > 2 {
+		fmt.Fprintln(os.Stderr, "usage: benchreport [-noise bench/noise.json] [-disk-stall] <dir> [<recordings>]")
 		os.Exit(2)
 	}
-	traces := "bench/recordings"
-	if len(os.Args) == 3 {
-		traces = os.Args[2]
+	if *stall {
+		if err := diskStalls(os.Stdout, flag.Arg(0)); err != nil {
+			fmt.Fprintln(os.Stderr, "benchreport:", err)
+			os.Exit(1)
+		}
+		return
 	}
-	if err := report(os.Stdout, os.Args[1], traces); err != nil {
+	traces := "bench/recordings"
+	if flag.NArg() == 2 {
+		traces = flag.Arg(1)
+	}
+	nz, err := loadNoise(*noisePath)
+	if err == nil {
+		err = report(os.Stdout, flag.Arg(0), traces, nz)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "benchreport:", err)
 		os.Exit(1)
 	}
 }
 
-func report(w io.Writer, dir, traces string) error {
+// loadNoise reads the A/A noise at path; a missing file is no noise.
+func loadNoise(path string) (noise, error) {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var nz noise
+	if err := json.Unmarshal(b, &nz); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return nz, nil
+}
+
+func report(w io.Writer, dir, traces string, nz noise) error {
 	files, err := filepath.Glob(filepath.Join(dir, "rtt-*", "*", "*.json"))
 	if err != nil {
 		return err
@@ -393,6 +430,13 @@ func report(w io.Writer, dir, traces string) error {
 	}
 	maxOf := func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] }
 	shapes(w, rtts, benches, targets, maxOf)
+	paired, err := json.MarshalIndent(byShape(w, rtts, benches, maxOf, nz), "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "paired.json"), append(paired, '\n'), 0o644); err != nil {
+		return err
+	}
 	nodeCosts(w, rtts, benches, targets, maxOf)
 	if err := ceilings(w, dir, traces, rtts, benches, targets, func(rtt, bench, target string) runs {
 		return all[key{rtt, bench, target, "max"}]
@@ -403,6 +447,23 @@ func report(w io.Writer, dir, traces string) error {
 		return all[key{rtt, bench, target, "max"}]
 	}, rtts); err != nil {
 		return err
+	}
+	retried, err := filepath.Glob(filepath.Join(dir, "rtt-*", "*", "retried-*"))
+	if err != nil {
+		return err
+	}
+	if len(retried) > 0 {
+		p("\nPairs measured again after a stall of the runner's disk, %d of at most %d (the first measure is in the job's artifact, under retried/):\n\n", len(retried), maxRetries)
+		for _, f := range retried {
+			b, err := os.ReadFile(f)
+			if err != nil {
+				return err
+			}
+			p("- %s, seed %s: %s\n", filepath.Dir(f), strings.TrimPrefix(filepath.Base(f), "retried-"), strings.TrimSpace(string(b)))
+		}
+		if len(retried) > maxRetries {
+			problems = append(problems, fmt.Errorf("%w: %d, more than %d", errTooManyRetries, len(retried), maxRetries))
+		}
 	}
 	return errors.Join(problems...)
 }
