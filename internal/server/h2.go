@@ -62,6 +62,9 @@ type conn struct {
 	// seals and opens itself; its Flush seals the record being written.
 	records *loop.Records
 	raw     net.Conn
+	// direct is where replies are encoded in place (direct.go): the
+	// records, or the bridge without TLS; nil under TLS 1.2.
+	direct directOut
 	// traffic is what the connection serves: gRPC alone answers HTTP
 	// requests as grpc-go does, HTTP alone takes gRPC calls as HTTP.
 	traffic Traffic
@@ -117,6 +120,8 @@ type conn struct {
 	free []*stream
 	// slabs are the messages requests are decoded into (admit).
 	slabs core.Slabs
+	// finished is complete's scratch.
+	finished []finished
 	// hdec decodes header blocks into hdr, the headers of the block being
 	// read, with no allocation for fields from the HPACK tables.
 	hdec *hpack.Decoder
@@ -220,6 +225,8 @@ func newConn(s *Server, nc net.Conn, bridge *loop.Bridge) *conn {
 		maxFrame: 16384,
 	}
 	c.records, _ = nc.(*loop.Records)
+	// Under TLS 1.2, crypto/tls's connection has no room to write in.
+	c.direct, _ = nc.(directOut)
 	c.caller = caller(s.cfg.TLS, nc)
 	c.fr = http2.NewFramer(frameDst{c}, nil)
 	c.hdec = hpack.NewDecoder(4096, c.onField)

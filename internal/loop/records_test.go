@@ -983,3 +983,127 @@ func TestRecordsClientAnswers(t *testing.T) {
 		t.Fatalf("key updates read: server %d, client %d; want 1 and 1", srv.KeyUpdatesRead(), cli.KeyUpdatesRead())
 	}
 }
+
+// TestRecordsReserve writes plaintext in place on the loop, between
+// ordinary writes: room that does not fit the record being written goes
+// into the next, a record that Commit fills is sealed, and crypto/tls
+// reads every byte in order.
+func TestRecordsReserve(t *testing.T) {
+	p := newPKI(t)
+	r, tc := pair(t, true, p.server(), p.client())
+	poller := NewChanPoller()
+	sock, err := poller.Attach(r.br.Conn, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.br.Attach(sock, NewBuffers(32<<10, 4), NewBuffers(1<<20, 2))
+	if b := r.Reserve(MaxReserve + 1); b != nil {
+		t.Fatal("Reserve gave room past one record")
+	}
+	var want []byte
+	write := func(b []byte) {
+		if _, err := r.Write(b); err != nil {
+			t.Fatal(err)
+		}
+		want = append(want, b...)
+	}
+	// reserve writes n bytes of ch in place, of room for n+extra.
+	reserve := func(n, extra int, ch byte) {
+		b := r.Reserve(n + extra)
+		if len(b) != 0 || cap(b) != n+extra {
+			t.Fatalf("Reserve(%d) gave length %d and capacity %d", n+extra, len(b), cap(b))
+		}
+		b = append(b, bytes.Repeat([]byte{ch}, n)...)
+		// Commit seals a record it fills in place.
+		want = append(want, b...)
+		r.Commit(len(b))
+	}
+	write([]byte("first "))
+	reserve(100, 20, 'a')
+	// 16 300 bytes do not fit after the 106 bytes in the open record: it
+	// is sealed, and a second one starts.
+	reserve(16300, 0, 'b')
+	if r.open != recordHeader+16300 {
+		t.Fatalf("the open record holds %d bytes after its header, want 16300", r.open-recordHeader)
+	}
+	write(bytes.Repeat([]byte("c"), 1000))
+	r.seal(typeAppData)
+	// A whole record's room, filled, is sealed at once.
+	reserve(MaxReserve, 0, 'd')
+	if r.open != 0 {
+		t.Fatalf("a full record is not sealed: %d bytes open", r.open)
+	}
+	write([]byte(" last"))
+	got := make(chan []byte, 1)
+	go func() {
+		b := make([]byte, len(want))
+		_, _ = io.ReadFull(tc, b)
+		got <- b
+	}()
+	if err := r.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	for r.br.Pending() > 0 {
+		if _, err := poller.Wait(nil, time.Second); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.Flush(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if b := <-got; !bytes.Equal(b, want) {
+		i := 0
+		for i < len(b) && b[i] == want[i] {
+			i++
+		}
+		t.Fatalf("crypto/tls read other bytes than were written in place, from byte %d of %d: %q, want %q", i, len(want), b[i:min(i+20, len(b))], want[i:min(i+20, len(want))])
+	}
+}
+
+// TestBridgeReserve writes in place into a bridge's write buffer, which
+// grows into a large buffer once a pool's buffer is full.
+func TestBridgeReserve(t *testing.T) {
+	a, b := tcpPair(t)
+	br := NewBridge(a, 4<<10)
+	if br.Reserve(10) != nil {
+		t.Fatal("Reserve gave room before Attach")
+	}
+	poller := NewChanPoller()
+	sock, err := poller.Attach(a, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	br.Attach(sock, NewBuffers(1<<10, 4), NewBuffers(64<<10, 2))
+	var want []byte
+	for i := range 40 {
+		room := br.Reserve(100 + i)
+		if len(room) != 0 || cap(room) != 100+i {
+			t.Fatalf("Reserve(%d) gave length %d and capacity %d", 100+i, len(room), cap(room))
+		}
+		room = append(room, bytes.Repeat([]byte{byte('a' + i%26)}, 90+i)...)
+		br.Commit(len(room))
+		want = append(want, room...)
+	}
+	if br.Pending() != len(want) {
+		t.Fatalf("%d bytes pending, want %d", br.Pending(), len(want))
+	}
+	got := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, len(want))
+		_, _ = io.ReadFull(b, buf)
+		got <- buf
+	}()
+	for br.Pending() > 0 {
+		if err := br.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		if br.Pending() > 0 {
+			if _, err := poller.Wait(nil, time.Second); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if buf := <-got; !bytes.Equal(buf, want) {
+		t.Fatal("the socket read other bytes than were written in place")
+	}
+}

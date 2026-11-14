@@ -43,7 +43,10 @@ func testCall(c *conn, id uint32) *stream {
 // drain runs the writer's side: it takes all queued output.
 func drain(c *conn) {
 	c.mu.Lock()
-	for len(c.ready) > 0 && len(c.take(nil, maxTake)) > 0 {
+	for len(c.ready) > 0 {
+		if frames, _ := c.take(nil, maxTake); len(frames) == 0 {
+			break
+		}
 	}
 	c.mu.Unlock()
 }
@@ -111,7 +114,9 @@ func TestCallCharges(t *testing.T) {
 			if c.waitingReplies.Load() == 0 {
 				t.Error("a reply the writer is encoding counts nothing")
 			}
-			c.complete(cs, bytes)
+			if _, err := c.complete(cs, bytes, 0); err != nil {
+				t.Fatal(err)
+			}
 			drain(c)
 		},
 		"range answer waiting for the writer": func(c *conn, st *stream) {
