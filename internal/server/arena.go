@@ -91,11 +91,11 @@ func (c *conn) releaseBody(st *stream) {
 	c.creditLocked()
 }
 
-// abandonBody keeps st's request, and its chunk out of the arena, until
-// the stream ends: the node reads the request past its first reply. c.mu
-// is held.
-func (c *conn) abandonBody(st *stream) {
-	st.keepBody = true
+// abandonBody keeps st's chunk out of the arena for good: the node reads
+// the request past its first reply. With keep, the stream also keeps the
+// request until it ends. c.mu is held.
+func (c *conn) abandonBody(st *stream, keep bool) {
+	st.keepBody = keep
 	if ch := st.chunk; ch != nil {
 		ch.abandoned = true
 		if ch == c.arena.cur {

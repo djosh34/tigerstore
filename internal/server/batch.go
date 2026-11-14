@@ -225,6 +225,18 @@ func (c *conn) cancelLocked(st *stream) {
 	}
 }
 
+// firstReply frees a call's request charge as its first reply comes. The
+// first piece of an answer in pieces keeps the request out of the arena,
+// since the node reads it for the pieces to come: a stream that goes on
+// lets go of it as it ends, and one that was reset or ended at its
+// deadline, which drops the answer, lets go of it now. c.mu is held.
+func (c *conn) firstReply(st *stream, pieces bool) {
+	if pieces {
+		c.abandonBody(st, !st.reset && !st.done.Load())
+	}
+	c.releaseReqLocked(st)
+}
+
 // releaseReqLocked frees a call's request charge, and its request, once
 // the node answered or stopped. c.mu is held.
 func (c *conn) releaseReqLocked(st *stream) {
@@ -394,12 +406,7 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 	for _, f := range out {
 		st := f.st
 		if !f.cont {
-			if f.pieces {
-				// The node reads the request for the pieces to come: the
-				// stream lets go of it as it ends.
-				c.abandonBody(st)
-			}
-			c.releaseReqLocked(st)
+			c.firstReply(st, f.pieces)
 		}
 		end := !f.more && f.err == nil
 		if st.reset || (end && st.done.Swap(true)) || (!end && st.done.Load()) {

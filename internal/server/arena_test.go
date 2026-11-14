@@ -55,8 +55,7 @@ func TestArenaAbandonsChunks(t *testing.T) {
 	a.msg, a.chunk = c.body(10)
 	b.msg, b.chunk = c.body(10)
 	ch := a.chunk
-	c.abandonBody(a)
-	c.releaseReqLocked(a)
+	c.firstReply(a, true)
 	c.releaseReqLocked(b)
 	if a.chunk != ch || c.arena.cur != nil || c.held != bodyChunk {
 		t.Fatalf("abandoned: request kept %v, chunk still current %v, %d bytes held", a.chunk == ch, c.arena.cur != nil, c.held)
@@ -86,5 +85,33 @@ func TestArenaLeavesLargeRequests(t *testing.T) {
 	}
 	if _, ch := c.body(1); ch == first || c.held != 2*bodyChunk {
 		t.Fatalf("a request past a full chunk: same chunk %v, %d bytes held", ch == first, c.held)
+	}
+}
+
+// TestArenaLateFirstPiece gives a call whose stream was reset, or ended at
+// its deadline, while the node ran it the first piece of an answer in
+// pieces: the answer is dropped, and its chunk no longer counts, though it
+// never goes back to the server.
+func TestArenaLateFirstPiece(t *testing.T) {
+	for _, end := range []string{"reset", "deadline"} {
+		t.Run(end, func(t *testing.T) {
+			c := framesConn(t)
+			st := testCall(c, 3)
+			st.msg, st.chunk = c.body(10)
+			c.atNode[st] = struct{}{}
+			if end == "reset" {
+				c.resetStream(st.id, 0)
+			} else {
+				st.finish(nil)
+				drain(c)
+			}
+			if c.held != bodyChunk {
+				t.Fatalf("while the node runs the call: %d bytes held, want the chunk", c.held)
+			}
+			c.firstReply(st, true)
+			if c.held != 0 || st.chunk != nil || c.s.bodyBufs.Kept() != 0 {
+				t.Fatalf("after the late first piece: %d bytes held, request kept %v, %d chunks back", c.held, st.chunk != nil, c.s.bodyBufs.Kept())
+			}
+		})
 	}
 }
