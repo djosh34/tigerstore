@@ -15,10 +15,11 @@ import (
 
 // TestTurnTakesBoundedCalls keeps 1,500 puts in flight on one connection
 // to the leader for a second: no turn of a node's loop takes more calls
-// than fit in it (Node.TurnRoom), however many whole
-// frames one read of the socket brought, and every turn has a limit
-// that bounds it: the calls that fit before the node's next tick, or a fixed few
-// before the node measured what a call costs (#647).
+// than fit in it (Node.TurnRoom), however many whole frames one read of
+// the socket brought, and every turn has a limit that bounds it: the
+// calls that fit before the node's next tick, or in 15 ms if the tick is
+// sooner, or a fixed few before the node measured what a call costs
+// (#647).
 func TestTurnTakesBoundedCalls(t *testing.T) {
 	var over, unbounded, turns, cut atomic.Int64
 	var peak atomic.Int64

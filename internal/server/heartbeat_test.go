@@ -20,9 +20,11 @@ import (
 // timeout is 10 ticks. putsLate is the bound under the overload of puts,
 // where the test's 6,144 client goroutines share the nodes' process and
 // CPUs, and the leader's loop waits behind them for a CPU: on a 4-core
-// runner its heartbeats came up to 27 ms past their tick, with the turns
-// of its loop bounded by the time left before the next tick. Either bound is a tenth of
-// the election timeout or less; the leader of #647 held them 1.5 s.
+// runner its heartbeats came up to 27 ms past their tick (#649). The
+// turns of its loop may hold a tick about two turns of minTurnTime, 15
+// ms, past it: the turn just before the tick, and the one that takes it.
+// Either bound is a tenth of the election timeout or less; the leader of
+// #647 held them 1.5 s.
 const (
 	heartbeatLate = 50 * time.Millisecond
 	putsLate      = 100 * time.Millisecond
@@ -31,9 +33,9 @@ const (
 // TestHeartbeatsUnderOverload offers the leader far more puts than one
 // turn of its loop takes in a tick: 3 connections with 2,048 calls in
 // flight each, for 3 s. Its heartbeats still go out every tick, at most
-// putsLate past it, so its followers keep it as leader. A turn takes at
-// most the calls that fit before the next tick; one that took every call that had arrived
-// grew with the load (#647).
+// putsLate past it, so its followers keep it as leader. A turn takes the
+// calls that fit before the next tick, or in 15 ms if the tick is sooner; one
+// that took every call that had arrived grew with the load (#647).
 func TestHeartbeatsUnderOverload(t *testing.T) {
 	skipUnlessStress(t)
 	beats := &heartbeatTimes{at: map[[2]uint64][]time.Time{}}
