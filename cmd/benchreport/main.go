@@ -448,7 +448,7 @@ func report(w io.Writer, dir, traces string, nz noise) error {
 	}, rtts); err != nil {
 		return err
 	}
-	retried, err := filepath.Glob(filepath.Join(dir, "rtt-*", "*", "retried"))
+	retried, err := filepath.Glob(filepath.Join(dir, "rtt-*", "*", "retried-*"))
 	if err != nil {
 		return err
 	}
@@ -459,7 +459,7 @@ func report(w io.Writer, dir, traces string, nz noise) error {
 			if err != nil {
 				return err
 			}
-			p("- %s: %s\n", filepath.Dir(f), strings.TrimSpace(string(b)))
+			p("- %s, seed %s: %s\n", filepath.Dir(f), strings.TrimPrefix(filepath.Base(f), "retried-"), strings.TrimSpace(string(b)))
 		}
 		if len(retried) > maxRetries {
 			problems = append(problems, fmt.Errorf("%w: %d, more than %d", errTooManyRetries, len(retried), maxRetries))

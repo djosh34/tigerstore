@@ -316,7 +316,7 @@ jobs:
               mkdir -p "results/retried/rtt-$rtt"
               mv "$out/$BENCH" "results/retried/rtt-$rtt/$BENCH"
               measure
-              cp "$RUNNER_TEMP/stall.txt" "$out/$BENCH/retried"
+              cp "$RUNNER_TEMP/stall.txt" "$out/$BENCH/retried-${{ matrix.job.seed }}"
             fi
             # run.sh refuses a directory that holds results already, so the
             # note goes in after it.
@@ -403,6 +403,15 @@ jobs:
               status=1
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+          # The retries of the whole bench, every workload's together.
+          retries=$(find jobs -path '*/rtt-*/*/retried-*' | wc -l)
+          if [ "$retries" -gt 0 ]; then
+            {
+              echo "Pairs measured again after a stall of the runner's disk, in the whole bench: $retries of at most 3."
+              if [ "$retries" -gt 3 ]; then echo "More than 3: the bench fails."; fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "$retries" -gt 3 ]; then status=1; fi
+          fi
           for bench in $(jq -r '[.[] | select(.seed != "all") | .bench] | unique | .[]' <<<"$JOBS"); do
             dir=merged/$bench
             mkdir -p "$dir"

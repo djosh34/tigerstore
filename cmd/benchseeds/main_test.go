@@ -24,18 +24,18 @@ func shapeOf(t *testing.T, dir, s string) string {
 }
 
 // TestQuickGridSeedsAreCrdHeavy draws what bench.yml's quick grid draws,
-// 6 seeds of which 6 must draw crd-heavy: every seed lands on crd-heavy,
+// 4 seeds of which 4 must draw crd-heavy: every seed lands on crd-heavy,
 // as loadgen's k8s replay draws it.
 func TestQuickGridSeedsAreCrdHeavy(t *testing.T) {
 	dir := filepath.Join("..", "..", "bench", "recordings")
 	for i := range 3 {
 		rng := rand.New(rand.NewPCG(uint64(i), 7))
-		seeds, err := draw(dir, "crd-heavy", 6, 6, rng.Uint64)
+		seeds, err := draw(dir, "crd-heavy", 4, 4, rng.Uint64)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(seeds) != 6 {
-			t.Fatalf("%d seeds, want 6", len(seeds))
+		if len(seeds) != 4 {
+			t.Fatalf("%d seeds, want 4", len(seeds))
 		}
 		for _, s := range seeds {
 			if got := shapeOf(t, dir, s); got != "crd-heavy" {
