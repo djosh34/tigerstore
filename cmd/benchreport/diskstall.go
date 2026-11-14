@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -35,6 +36,12 @@ const (
 	// durable (3 ms in A/A run 43625723837). A leader change later than
 	// that is the store's, not the disk's.
 	stallElected = 2 * time.Second
+	// stallWrite bounds what a node may write in one flush or log write
+	// during a stall of the runner's disk: a disk that takes seconds for
+	// a few KiB stalled; one that takes seconds for many MiB may just be
+	// slow, or the store wrote too much (A/A run 43625723837 wrote 20 B
+	// to 3 KiB a write while it stalled).
+	stallWrite = 1 << 20
 	// silentRule is what a leader logs when #233's failover rule silences
 	// it (internal/node).
 	silentRule = "sending nothing to peers until it is durable"
@@ -142,6 +149,35 @@ func stallGroups(nodes [][]logLine) []stallGroup {
 	return groups
 }
 
+// writeBytes is the size a node logs for a slow flush or log write.
+var writeBytes = regexp.MustCompile(`^slow (?:log flush: |write to the log: \d+ entries, )(\d+) bytes`)
+
+// smallWrites reports whether every node logged, from from to to, at
+// least one slow flush or log write, and none of more than stallWrite.
+func smallWrites(nodes [][]logLine, from, to time.Time) bool {
+	for _, lines := range nodes {
+		seen := false
+		for _, l := range lines {
+			if l.at.Before(from) || l.at.After(to) {
+				continue
+			}
+			m := writeBytes.FindStringSubmatch(l.msg)
+			if m == nil {
+				continue
+			}
+			n, err := strconv.ParseInt(m[1], 10, 64)
+			if err != nil || n > stallWrite {
+				return false
+			}
+			seen = true
+		}
+		if !seen {
+			return false
+		}
+	}
+	return true
+}
+
 // leaderTerm is the term of the leader a failed leader check found last
 // (bench/cluster.sh check: "... now <endpoint> term <n>"), or "".
 var leaderTerm = regexp.MustCompile(`now \S+ term (\d+)`)
@@ -150,8 +186,9 @@ var leaderTerm = regexp.MustCompile(`now \S+ term (\d+)`)
 // (<dir>/<target>-<mode>-<seed>.<rep>) failed by a stall of the runner's
 // disk, as one episode: its cause is a leader change to a new term; the
 // shared disk stalled (stallGroups); the leader went silent by #233's
-// failover rule while it stalled; and a node logged the new leader, at the
-// term the check found, within stallElected after that stall ended. It returns the stall's
+// failover rule while it stalled; every node's flushes and log writes in
+// the stall were small (smallWrites); and a node logged the new leader, at
+// the term the check found, within stallElected after that stall ended. It returns the stall's
 // end, or errNotDiskStall with why not.
 func diskStall(prefix string) (time.Time, error) {
 	cause, err := os.ReadFile(prefix + ".failed")
@@ -208,7 +245,8 @@ func diskStall(prefix string) (time.Time, error) {
 			}
 			end = next.end
 		}
-		if slices.ContainsFunc(leaders, func(l time.Time) bool { return !l.Before(end) && l.Sub(end) <= stallElected }) {
+		if slices.ContainsFunc(leaders, func(l time.Time) bool { return !l.Before(end) && l.Sub(end) <= stallElected }) &&
+			smallWrites(nodes, g.start.Add(-stallSkew), end) {
 			return end, nil
 		}
 	}
