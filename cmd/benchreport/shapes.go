@@ -164,3 +164,62 @@ func peerBytes(rs runs) string {
 func throughput(r result) float64 { return r.Throughput }
 
 func abs(x float64) float64 { return max(x, -x) }
+
+// byShape sets the candidate against the baseline shape by shape, over
+// all the max runs of every seed that drew the shape: a bench of one run
+// per seed (bench.yml's quick grid) has no repeats to take a spread from,
+// so it takes the spread across the shape's seeds. Each store's spread is
+// (max - min) / median of its runs of the shape; a change no larger than
+// the spread of either is noise. A shape drawn by one seed has no spread.
+func byShape(w io.Writer, rtts, benches []string, all maxRuns) {
+	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
+	header := false
+	for _, bench := range benches {
+		var everything runs
+		for _, rtt := range rtts {
+			everything = append(everything, all(rtt, bench, "baseline")...)
+			everything = append(everything, all(rtt, bench, "candidate")...)
+		}
+		// The shapes in the order their first seed comes.
+		var shapeList []string
+		seedsOfShape := map[string][]string{}
+		for _, seed := range seedsOf(everything) {
+			shape := shapeOf(seedRuns(everything, seed))
+			if _, ok := seedsOfShape[shape]; !ok {
+				shapeList = append(shapeList, shape)
+			}
+			seedsOfShape[shape] = append(seedsOfShape[shape], seed)
+		}
+		for _, shape := range shapeList {
+			for _, rtt := range rtts {
+				var base, cand runs
+				for _, seed := range seedsOfShape[shape] {
+					base = append(base, seedRuns(all(rtt, bench, "baseline"), seed)...)
+					cand = append(cand, seedRuns(all(rtt, bench, "candidate"), seed)...)
+				}
+				if len(base) == 0 || len(cand) == 0 {
+					continue
+				}
+				if !header {
+					p("\n| Benchmark | Shape | RTT ms | Seeds | Runs per store | Baseline median ops/s | Candidate median ops/s | Spread | Against baseline |\n|---|---|---|---|---|---|---|---|---|\n")
+					header = true
+				}
+				was, got := medianOf(base, throughput), medianOf(cand, throughput)
+				change := got/was - 1
+				noise := max(spreadOf(base), spreadOf(cand))
+				against := fmt.Sprintf("%+.1f%%", 100*change)
+				switch {
+				case len(base) < 2 || len(cand) < 2:
+					against += ", one run: no spread"
+				case abs(change) <= noise:
+					against += ", within the spread"
+				}
+				p("| %s | %s | %s | %d | %d | %s | %s | %.1f%% | %s |\n", bench, shape, rtt, len(seedsOfShape[shape]), len(cand),
+					thousands(was), thousands(got), 100*noise, against)
+			}
+		}
+	}
+	if header {
+		p("\nShape by shape: every max run of every seed that drew the shape, on one runner per seed and RTT in bench.yml's quick grid. Spread is the larger of the two stores' (max - min) / median over those runs, so it holds the seeds' and the runners' differences as well as the run-to-run noise; a change no larger than it is noise.\n")
+	}
+}

@@ -393,6 +393,7 @@ func report(w io.Writer, dir, traces string) error {
 	}
 	maxOf := func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] }
 	shapes(w, rtts, benches, targets, maxOf)
+	byShape(w, rtts, benches, maxOf)
 	nodeCosts(w, rtts, benches, targets, maxOf)
 	if err := ceilings(w, dir, traces, rtts, benches, targets, func(rtt, bench, target string) runs {
 		return all[key{rtt, bench, target, "max"}]

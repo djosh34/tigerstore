@@ -357,3 +357,32 @@ func TestReportNodeCosts(t *testing.T) {
 		t.Fatalf("no row %q in report:\n%s", want, b.String())
 	}
 }
+
+// TestReportByShape checks the shape-by-shape table of a bench with one
+// run per seed: the spread is taken across the seeds that drew a shape, and
+// a change within it is noise, one beyond it is not.
+func TestReportByShape(t *testing.T) {
+	dir := t.TempDir()
+	// Four seeds draw put-1k's one shape: baseline 1000, 1100, 1050, 950;
+	// the candidate 3 % faster on each, within a spread of about 15 %.
+	for i, n := range []float64{1000, 1100, 1050, 950} {
+		seed := 11 + i
+		writeAt(t, dir, "0", "put-1k", fmt.Sprintf("baseline-max-%d.1.json", seed), fmt.Sprintf(`{"valid":true,"throughput":%v,"server_cpu_us_per_op":10}`, n))
+		writeAt(t, dir, "0", "put-1k", fmt.Sprintf("candidate-max-%d.1.json", seed), fmt.Sprintf(`{"valid":true,"throughput":%v,"server_cpu_us_per_op":10}`, n*1.03))
+		// txn-1k: the candidate twice as fast, far beyond the spread.
+		writeAt(t, dir, "0", "txn-1k", fmt.Sprintf("baseline-max-%d.1.json", seed), fmt.Sprintf(`{"valid":true,"throughput":%v,"server_cpu_us_per_op":10}`, n))
+		writeAt(t, dir, "0", "txn-1k", fmt.Sprintf("candidate-max-%d.1.json", seed), fmt.Sprintf(`{"valid":true,"throughput":%v,"server_cpu_us_per_op":10}`, 2*n))
+	}
+	var b strings.Builder
+	if err := report(&b, dir, ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"| put-1k | - | 0 | 4 | 4 | 1,025 | 1,056 | 14.6% | +3.0%, within the spread |",
+		"| txn-1k | - | 0 | 4 | 4 | 1,025 | 2,050 | 14.6% | +100.0% |",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Fatalf("missing %q in report:\n%s", want, b.String())
+		}
+	}
+}

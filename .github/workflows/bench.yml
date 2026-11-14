@@ -1,26 +1,40 @@
-# Benchmarks a tigerstore ref against a baseline ref and etcd v3.7.2, back
-# to back on one runner, with disk write barriers on and pinned cores:
-# generator on CPU 3, leader on CPU 0, followers on CPUs 1 and 2. Each job
-# first measures its runner (cmd/ceiling: the shared disk's durable
-# bandwidth, a core's encode, encrypt and send rates, the kernel and CPU)
-# and the generator's own ceiling against cmd/nullstore, then runs its
-# benchmark at every RTT between nodes in turn (bench/netem.sh), so the
-# RTTs share a runner and the first RTT's rate is there when etcd has none.
-# The report puts every store against the benchmark's ceiling on this
-# runner. A failed etcd run is reported and leaves the job green; a failed
+# Benchmarks a tigerstore ref against a baseline ref, and etcd v3.7.2 if
+# asked, back to back on one runner, with disk write barriers on and pinned
+# cores: generator on CPU 3, leader on CPU 0, followers on CPUs 1 and 2.
+# Each job first measures its runner (cmd/ceiling: the shared disk's
+# durable bandwidth, a core's encode, encrypt and send rates, the kernel
+# and CPU) and the generator's own ceiling against cmd/nullstore. The
+# report puts every store against the benchmark's ceiling on the runner.
+# A failed etcd run is reported and leaves the job green; a failed
 # tigerstore run or a harness failure fails it (cmd/benchreport). Started
 # by hand.
+#
+# Two grids (input grid):
+# - quick, the default and the bench of every PR, in about 15 minutes:
+#   each benchmark x seed x RTT is its own job on its own runner, which
+#   runs the baseline and the candidate once each, max only, and no etcd
+#   unless asked. More seeds take the place of repeats: a last job merges
+#   every job's results into one report, which sets the candidate against
+#   the baseline seed by seed and shape by shape, the spread taken across
+#   the seeds that drew each shape.
+# - full: each benchmark is one job that runs every seed at every RTT in
+#   turn, so the RTTs share a runner, with repeats, rate runs and etcd at
+#   the first RTT; for #602's done claim.
 #
 # Each run draws fresh random seeds, unless -f seeds gives them, and every
 # job and target runs on the same ones; the summary prints them and the
 # command that replays the run. For k8s a seed draws a recorded cluster
-# shape and its workload (bench/recordings). etcd runs at the first RTT
-# only, for comparison.
+# shape and its workload (bench/recordings).
 name: bench
 
 on:
   workflow_dispatch:
     inputs:
+      grid:
+        description: quick (one job per benchmark, seed and RTT, about 15 minutes) or full (one job per benchmark, with repeats, rate runs and etcd)
+        type: choice
+        options: [quick, full]
+        default: quick
       candidate:
         description: tigerstore ref to measure
         default: main
@@ -34,17 +48,17 @@ on:
         description: round-trip times between nodes in ms, run in this order; etcd runs at the first only, and its rate stands in at the others
         default: 0 2 10
       seeds:
-        description: space-separated seeds to replay a run; empty draws 3 fresh ones
+        description: space-separated seeds to replay a run; empty draws 6 fresh ones in the quick grid, 3 in the full one
         default: ""
       targets:
-        description: stores to run, etcd, baseline and candidate
-        default: etcd baseline candidate
+        description: stores to run, etcd, baseline and candidate; empty is baseline candidate in the quick grid, etcd baseline candidate in the full one
+        default: ""
       modes:
-        description: max, rate (half etcd max), or both
-        default: max rate
+        description: max, rate (half etcd max), or both; empty is max in the quick grid, max rate in the full one
+        default: ""
       reps:
-        description: repetitions of each seed
-        default: "3"
+        description: repetitions of each seed; empty is 1 in the quick grid, 3 in the full one
+        default: ""
       profile_generator:
         description: write loadgen's CPU profile of every run into the artifact
         type: boolean
@@ -57,30 +71,57 @@ jobs:
   plan:
     runs-on: ubuntu-24.04-arm
     outputs:
-      benchmarks: ${{ steps.plan.outputs.benchmarks }}
+      jobs: ${{ steps.plan.outputs.jobs }}
       seeds: ${{ steps.plan.outputs.seeds }}
+      at: ${{ steps.plan.outputs.at }}
     steps:
+      # The jobs: in the quick grid one per benchmark, seed and RTT, in the
+      # full grid one per benchmark. The tools that are not loadgen runs
+      # (profiles, the disk probe, etcd's own tool) are one job each in
+      # both.
       - id: plan
         env:
+          GRID: ${{ inputs.grid || 'quick' }}
           BENCHMARKS: ${{ inputs.benchmarks || 'put-1k txn-1k k8s' }}
           SEEDS: ${{ inputs.seeds }}
+          RTTS: ${{ inputs.rtts || '0 2 10' }}
         run: |
-          echo "benchmarks=$(jq -cn --arg b "$BENCHMARKS" '$b | split(" ") | map(select(. != ""))')" >> "$GITHUB_OUTPUT"
-          if [ -z "$SEEDS" ]; then SEEDS=$(shuf -i 1-999999999 -n 3 | tr '\n' ' ' | sed 's/ $//'); fi
+          echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"
+          n=3
+          if [ "$GRID" = quick ]; then n=6; fi
+          if [ -z "$SEEDS" ]; then SEEDS=$(shuf -i 1-999999999 -n "$n" | tr '\n' ' ' | sed 's/ $//'); fi
           echo "seeds=$SEEDS" >> "$GITHUB_OUTPUT"
-          echo "Seeds: $SEEDS" >> "$GITHUB_STEP_SUMMARY"
+          jobs=$(jq -cn --arg grid "$GRID" --arg b "$BENCHMARKS" --arg s "$SEEDS" --arg r "$RTTS" '
+            def words: split(" ") | map(select(. != ""));
+            [($b | words)[] as $bench |
+              if $grid == "full" or ($bench | IN("profile", "profile-disk", "disk-probe", "etcd-tool"))
+              then {bench: $bench, seed: "all", rtt: "all", name: $bench}
+              else ($s | words)[] as $seed | ($r | words)[] as $rtt |
+                {bench: $bench, seed: $seed, rtt: $rtt, name: "\($bench)-\($seed)-rtt\($rtt)"}
+              end]')
+          echo "jobs=$jobs" >> "$GITHUB_OUTPUT"
+          echo "Grid $GRID, seeds: $SEEDS, $(jq length <<<"$jobs") jobs" >> "$GITHUB_STEP_SUMMARY"
 
   bench:
     needs: plan
+    name: ${{ matrix.job.name }}
     strategy:
       fail-fast: false
       matrix:
-        bench: ${{ fromJSON(needs.plan.outputs.benchmarks) }}
+        job: ${{ fromJSON(needs.plan.outputs.jobs) }}
     runs-on: ubuntu-24.04-arm
-    # A k8s max run takes about 2.5 minutes with its preload and ramp: 3
-    # seeds x 3 repetitions x (2 targets x 3 RTTs + etcd at the first) is
-    # 63 runs. GitHub ends a job after 6 hours.
-    timeout-minutes: ${{ matrix.bench == 'k8s' && 330 || 150 }}
+    # A k8s max run takes about 2.5 minutes with its preload and ramp. In
+    # the full grid, 3 seeds x 3 repetitions x (2 targets x 3 RTTs + etcd
+    # at the first) is 63 runs; GitHub ends a job after 6 hours. In the
+    # quick grid a job runs 2.
+    timeout-minutes: ${{ matrix.job.seed != 'all' && 60 || matrix.job.bench == 'k8s' && 330 || 150 }}
+    env:
+      BENCH: ${{ matrix.job.bench }}
+      SEEDS: ${{ matrix.job.seed == 'all' && needs.plan.outputs.seeds || matrix.job.seed }}
+      RTTS: ${{ matrix.job.rtt == 'all' && (inputs.rtts || '0 2 10') || matrix.job.rtt }}
+      TARGETS: ${{ inputs.targets || (inputs.grid == 'full' && 'etcd baseline candidate' || 'baseline candidate') }}
+      MODES: ${{ inputs.modes || (inputs.grid == 'full' && 'max rate' || 'max') }}
+      REPS: ${{ inputs.reps || (inputs.grid == 'full' && '3' || '1') }}
     steps:
       - id: start
         run: echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"
@@ -91,6 +132,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Install etcd v3.7.2
+        if: contains(env.TARGETS, 'etcd') || matrix.job.bench == 'etcd-tool'
         run: |
           curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
           echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
@@ -119,9 +161,6 @@ jobs:
       - name: Turn disk write barriers on and record the runner
         env:
           LAYOUT: 3 0 1 2
-          BENCHMARK: ${{ matrix.bench }}
-          RTTS: ${{ inputs.rtts || '0 2 10' }}
-          SEEDS: ${{ needs.plan.outputs.seeds }}
         run: |
           sudo mount -o remount,barrier=1 /
           findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS
@@ -136,49 +175,43 @@ jobs:
             findmnt -T "$RUNNER_TEMP" -n -o SOURCE,FSTYPE,OPTIONS
             uname -r
             go version
-            bin/etcd --version | head -1
+            if [ -x bin/etcd ]; then bin/etcd --version | head -1; fi
             cat commits.txt
             echo "generator, scripts and report: $GITHUB_SHA"
             echo "layout (generator, leader, followers): $LAYOUT"
             echo "both stores: 3 nodes on 127.0.0.1, client and peer TLS with client certificates, fresh data directory per run"
             echo "RTT between nodes (ms): $RTTS, netem on the peer ports of lo, half the RTT per packet, the same qdiscs at 0; client to node without delay (bench/netem.sh)"
-            if [ "$BENCHMARK" = k8s ]; then
+            if [ "$BENCH" = k8s ]; then
               echo "k8s: a recorded Kubernetes 1.37 control plane per seed (bench/recordings), 64 copies of it on all endpoints, 3 connections x 64 streams, which the recorded watches share; both stores GOMEMLIMIT=3GiB"
             fi
             echo "seeds: $SEEDS"
+            echo "grid: ${{ inputs.grid || 'quick' }}, targets: $TARGETS, modes: $MODES, repeats: $REPS"
             echo "both stores: --quota-backend-bytes 8 GiB; etcd only: --log-level warn, --peer-client-cert-auth, default safe persistence"
             echo "tigerstore: at least two Go processors on its one CPU (its own rule), peer certificates always verified"
             echo '```'
           } | tee results/runner.md
       # Nothing else runs yet: the disk and the CPU are the runner's alone.
       - name: Measure the runner
-        if: matrix.bench != 'profile' && matrix.bench != 'profile-disk' && matrix.bench != 'disk-probe' && matrix.bench != 'etcd-tool'
+        if: matrix.job.bench != 'profile' && matrix.job.bench != 'profile-disk' && matrix.job.bench != 'disk-probe' && matrix.job.bench != 'etcd-tool'
         run: |
           taskset -c 3 bin/ceiling -dir "$RUNNER_TEMP" \
             -disk "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)" \
             -cpu "$(lscpu | sed -n 's/^Model name: *//p' | head -n 1)" | tee results/ceiling.json
       - name: Measure the generator against nullstore
-        if: matrix.bench != 'profile' && matrix.bench != 'profile-disk' && matrix.bench != 'disk-probe' && matrix.bench != 'etcd-tool'
+        if: matrix.job.bench != 'profile' && matrix.job.bench != 'profile-disk' && matrix.job.bench != 'disk-probe' && matrix.job.bench != 'etcd-tool'
         env:
           BINS: bin
           CERTS: certs
           LAYOUT: 3 0 1 2
           MODES: generator
-          SEEDS: ${{ needs.plan.outputs.seeds }}
-        run: bench/run.sh "${{ matrix.bench }}" results
-      - name: Run ${{ matrix.bench }}
+        run: bench/run.sh "${{ matrix.job.bench }}" results
+      - name: Run ${{ matrix.job.bench }}
         env:
-          TARGETS: ${{ inputs.targets || 'etcd baseline candidate' }}
-          RTTS: ${{ inputs.rtts || '0 2 10' }}
           BINS: bin
           CERTS: certs
           LAYOUT: 3 0 1 2
-          MODES: ${{ inputs.modes || 'max rate' }}
-          REPS: ${{ inputs.reps || '3' }}
           PROFILE_GENERATOR: ${{ inputs.profile_generator && 'yes' || '' }}
-          SEEDS: ${{ needs.plan.outputs.seeds }}
-          LAYOUTS: ${{ (matrix.bench == 'put-1k' || matrix.bench == 'txn-1k') && inputs.layouts || '' }}
-          BENCH: ${{ matrix.bench }}
+          LAYOUTS: ${{ (matrix.job.bench == 'put-1k' || matrix.job.bench == 'txn-1k') && inputs.layouts || '' }}
         run: |
           if [ "$BENCH" = disk-probe ]; then
             bench/disk-probe.sh "$RUNNER_TEMP" "$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")" | tee results/disk-probe.txt
@@ -224,22 +257,18 @@ jobs:
             bench/netem.sh off
           done
       # A harness failure leaves no comparison. The raw results are
-      # uploaded either way.
+      # uploaded either way. In the quick grid the report job reports a
+      # benchmark's jobs together.
       - name: Report
+        if: matrix.job.seed == 'all'
         env:
-          BENCH: ${{ matrix.bench }}
-          RTTS: ${{ inputs.rtts || '0 2 10' }}
-          SEEDS: ${{ needs.plan.outputs.seeds }}
-          TARGETS: ${{ inputs.targets || 'etcd baseline candidate' }}
-          MODES: ${{ inputs.modes || 'max rate' }}
-          REPS: ${{ inputs.reps || '3' }}
           LAYOUTS: ${{ inputs.layouts }}
           JOB_START: ${{ steps.start.outputs.at }}
         run: |
           {
             cat results/runner.md
             sha() { awk -v t="$1" '$1 == t { print $3 }' commits.txt; }
-            echo "Replay: \`gh workflow run bench.yml --repo ${{ github.repository }} --ref ${{ github.ref_name }} -f candidate=$(sha candidate) -f baseline=$(sha baseline) -f benchmarks=$BENCH -f seeds=\"$SEEDS\" -f rtts=\"$RTTS\" -f targets=\"$TARGETS\" -f modes=\"$MODES\" -f reps=$REPS -f layouts=\"$LAYOUTS\"\`, with ${{ github.ref_name }} at $GITHUB_SHA, which ran the generator, the scripts and the report. The job took $(( ($(date +%s) - JOB_START) / 60 )) minutes up to the report."
+            echo "Replay: \`gh workflow run bench.yml --repo ${{ github.repository }} --ref ${{ github.ref_name }} -f candidate=$(sha candidate) -f baseline=$(sha baseline) -f grid=${{ inputs.grid || 'quick' }} -f benchmarks=$BENCH -f seeds=\"$SEEDS\" -f rtts=\"$RTTS\" -f targets=\"$TARGETS\" -f modes=\"$MODES\" -f reps=$REPS -f layouts=\"$LAYOUTS\"\`, with ${{ github.ref_name }} at $GITHUB_SHA, which ran the generator, the scripts and the report. The job took $(( ($(date +%s) - JOB_START) / 60 )) minutes up to the report."
             if [ "$BENCH" = disk-probe ]; then
               echo '```'; cat results/disk-probe.txt; echo '```'
             elif [ "$BENCH" = profile-disk ]; then
@@ -263,6 +292,74 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: bench-${{ matrix.bench }}
+          name: bench-${{ matrix.job.name }}
           path: results
+          retention-days: 30
+
+  # The quick grid's report: every job's runs of a benchmark in one report,
+  # seed by seed and shape by shape. The jobs ran on runners of one type;
+  # the ceilings and the generator's measure are the first job's.
+  report:
+    needs: [plan, bench]
+    if: always() && (inputs.grid || 'quick') == 'quick' && needs.plan.result == 'success'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go build -o bin/benchreport ./cmd/benchreport
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: bench-*
+          path: jobs
+      - name: Report
+        env:
+          JOBS: ${{ needs.plan.outputs.jobs }}
+          SEEDS: ${{ needs.plan.outputs.seeds }}
+          RTTS: ${{ inputs.rtts || '0 2 10' }}
+          TARGETS: ${{ inputs.targets || 'baseline candidate' }}
+          MODES: ${{ inputs.modes || 'max' }}
+          REPS: ${{ inputs.reps || '1' }}
+          START: ${{ needs.plan.outputs.at }}
+          BENCH_RESULT: ${{ needs.bench.result }}
+        run: |
+          status=0
+          {
+            echo "## Quick grid"
+            echo "Seeds: $SEEDS; RTTs: $RTTS; targets: $TARGETS; modes: $MODES; repeats: $REPS. The run took $(( ($(date +%s) - START) / 60 )) minutes up to this report, plan to report."
+            echo "Replay: \`gh workflow run bench.yml --repo ${{ github.repository }} --ref ${{ github.ref_name }} -f grid=quick -f candidate=${{ inputs.candidate || 'main' }} -f baseline=${{ inputs.baseline || 'main' }} -f benchmarks=\"${{ inputs.benchmarks || 'put-1k txn-1k k8s' }}\" -f seeds=\"$SEEDS\" -f rtts=\"$RTTS\" -f targets=\"$TARGETS\" -f modes=\"$MODES\" -f reps=$REPS\`"
+            if [ "$BENCH_RESULT" != success ]; then
+              echo "Some jobs did not succeed ($BENCH_RESULT): their runs are missing below, or their failures listed."
+              status=1
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          for bench in $(jq -r '[.[] | select(.seed != "all") | .bench] | unique | .[]' <<<"$JOBS"); do
+            dir=merged/$bench
+            mkdir -p "$dir"
+            for job in jobs/bench-"$bench"-*; do
+              [ -d "$job" ] || continue
+              cp -rn "$job"/rtt-* "$dir"/
+              for f in ceiling.json "generator-$bench.json" runner.md; do
+                if [ -f "$job/$f" ] && [ ! -f "$dir/$f" ]; then cp "$job/$f" "$dir/"; fi
+              done
+            done
+            {
+              echo "## $bench"
+              if [ -f "$dir/runner.md" ]; then cat "$dir/runner.md"; fi
+              echo '```'
+              for p in jobs/bench-"$bench"-*/rtt-*/probe.txt; do
+                [ -f "$p" ] && echo "$(basename "$(dirname "$(dirname "$p")")"): $(tr '\n' ' ' <"$p")"
+              done
+              echo '```'
+              bin/benchreport "$dir" || status=1
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+          exit "$status"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: report
+          path: merged
           retention-days: 30
