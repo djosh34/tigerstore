@@ -81,14 +81,18 @@ func (q queued) With(fields []zapcore.Field) zapcore.Core {
 	return queued{l: q.l, next: q.next.With(fields)}
 }
 
+// Check asks next whether it takes e, as its sampling of repeated lines
+// decides, and queues e for it if so.
 func (q queued) Check(e zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
-	if q.Enabled(e.Level) {
+	if q.next.Check(e, nil) != nil {
 		return ce.AddCore(e, q)
 	}
 	return ce
 }
 
-// Write queues e without waiting for the output. A line that does not fit
+// Write queues e without waiting for the output. Its fields are encoded
+// when the writer writes it, so a caller must not pass values it changes
+// after the call. A line that does not fit
 // the queue, or comes after Stop, is dropped and counted. A line that
 // ends the process, at DPanic or above, is written at once, since nothing
 // would write it after.
@@ -104,12 +108,15 @@ func (q queued) Write(e zapcore.Entry, fields []zapcore.Field) error {
 // writer, or by Stop.
 func (q queued) Sync() error { return q.next.Sync() }
 
-// add queues ln, with the count of the lines dropped before it.
+// add queues ln, with the count of the lines dropped before it. The
+// count is taken under the read lock, once the line may be queued: a
+// count taken across Stop would be neither queued nor left for Stop's
+// report.
 func (l *Log) add(ln line) {
-	ln.dropped = l.dropped.Swap(0)
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	if !l.stopped {
+		ln.dropped = l.dropped.Swap(0)
 		select {
 		case l.lines <- ln:
 			return

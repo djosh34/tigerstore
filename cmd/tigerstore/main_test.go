@@ -429,3 +429,15 @@ func TestLogDoesNotWait(t *testing.T) {
 		t.Fatal("logging, or stopping the log, waited for a stuck output")
 	}
 }
+
+// TestStdLogGoesToLog checks that the standard log package's lines, as
+// x/net's HTTP/2 debug output, go to the process's log through its queue.
+func TestStdLogGoesToLog(t *testing.T) {
+	var b bytes.Buffer
+	_, stop := queuedLog(zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&b), zapcore.InfoLevel)))
+	log.Printf("http2: Framer: wrote PING len=8")
+	stop()
+	if !strings.Contains(b.String(), "wrote PING len=8") {
+		t.Fatalf("the standard log's line is not in the log: %q", b.String())
+	}
+}

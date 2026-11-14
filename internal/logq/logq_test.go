@@ -205,3 +205,23 @@ func TestStopDoesNotWaitForever(t *testing.T) {
 	}
 	out.release()
 }
+
+// TestSamplingStays logs the same line 1000 times through a logger that
+// samples, as etcd's does: the queue writes what the sampler lets
+// through, not every line (Opus's re-check of #681).
+func TestSamplingStays(t *testing.T) {
+	var buf bytes.Buffer
+	b := base(zapcore.AddSync(&buf))
+	b = b.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+		return zapcore.NewSamplerWithOptions(c, time.Hour, 100, 100)
+	}))
+	q := New(b, 2000)
+	lg := q.Logger(b)
+	for range 1000 {
+		lg.Info("the same line")
+	}
+	q.Stop()
+	if n := strings.Count(buf.String(), "\n"); n != 109 {
+		t.Fatalf("%d of 1000 sampled lines written, want 109: the first 100 and every 100th after", n)
+	}
+}
