@@ -40,3 +40,33 @@ jobs:
           path: ${{ runner.temp }}/k8stest/results
           if-no-files-found: error
           retention-days: 30
+
+  # h2spec's HTTP/2 conformance cases against one node's client port, over
+  # TLS and h2c. Cases the server fails today are listed in
+  # scripts/h2spec-known.txt (#672); any other failure fails the job.
+  h2spec:
+    if: ${{ (inputs.store || 'tigerstore') == 'tigerstore' }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build tigerstore and h2spec
+        run: |
+          go build -o "$RUNNER_TEMP/bin/tigerstore" ./cmd/tigerstore
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/summerwind/h2spec/cmd/h2spec@af83a65f0b62
+      - name: h2spec
+        run: |
+          echo "replay: TIGERSTORE=<binary> H2SPEC=<h2spec at af83a65f0b62> scripts/h2spec.sh <work dir>"
+          TIGERSTORE="$RUNNER_TEMP/bin/tigerstore" H2SPEC="$RUNNER_TEMP/bin/h2spec" scripts/h2spec.sh "$RUNNER_TEMP/h2spec"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: h2spec-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/h2spec/*.txt
+            ${{ runner.temp }}/h2spec/*.log
+          if-no-files-found: error
+          retention-days: 30

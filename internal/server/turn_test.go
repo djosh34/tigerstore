@@ -56,6 +56,7 @@ func TestTurnTakesBoundedCalls(t *testing.T) {
 	stop := time.Now().Add(time.Second)
 	var wg sync.WaitGroup
 	var failed atomic.Int64
+	var firstErr atomic.Pointer[error]
 	for i := range 1500 {
 		key := fmt.Appendf(nil, "turn/%d", i)
 		wg.Go(func() {
@@ -65,6 +66,7 @@ func TestTurnTakesBoundedCalls(t *testing.T) {
 				cancel()
 				if err != nil {
 					failed.Add(1)
+					firstErr.CompareAndSwap(nil, &err)
 					return
 				}
 			}
@@ -72,7 +74,7 @@ func TestTurnTakesBoundedCalls(t *testing.T) {
 	}
 	wg.Wait()
 	if failed.Load() > 0 {
-		t.Fatalf("%d puts failed", failed.Load())
+		t.Fatalf("%d puts failed, the first with: %v", failed.Load(), *firstErr.Load())
 	}
 	t.Logf("%d turns took calls, the most %d; %d were cut at their limit", turns.Load(), peak.Load(), cut.Load())
 	if n := over.Load(); n > 0 {

@@ -84,14 +84,14 @@ func (c *conn) admit(st *stream) {
 			slabs = nil
 		}
 		var err error
-		switch {
-		case st.rpc == txnMethod:
+		switch st.rpc {
+		case txnMethod:
 			req.Op = slabs.Txn()
 			err = core.DecodeTxn(&req, slabs)
-		case st.rpc == rangeMethod:
+		case rangeMethod:
 			req.Op = slabs.Range()
 			err = core.DecodeAlias(st.body, req.Op)
-		case st.rpc.alias:
+		case deleteMethod:
 			req.Op = st.rpc.op()
 			err = core.DecodeAlias(st.body, req.Op)
 		default:
@@ -230,7 +230,9 @@ func (c *conn) cancelLocked(st *stream) {
 func (c *conn) releaseReqLocked(st *stream) {
 	delete(c.atNode, st)
 	c.releaseLocked(&st.reqHeld)
-	c.releaseBody(st)
+	if !st.keepBody {
+		c.releaseBody(st)
+	}
 }
 
 // creditLocked sends a connection window update once enough was received
@@ -393,7 +395,8 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 		st := f.st
 		if !f.cont {
 			if f.pieces {
-				// The node reads the request for the pieces to come.
+				// The node reads the request for the pieces to come: the
+				// stream lets go of it as it ends.
 				c.abandonBody(st)
 			}
 			c.releaseReqLocked(st)

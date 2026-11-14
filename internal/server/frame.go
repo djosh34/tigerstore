@@ -128,8 +128,17 @@ func parseFrame(b []byte, contID uint32) (frame, error) {
 		// Only a server pushes (RFC 9113 8.4).
 		return f, http2.ConnectionError(http2.ErrCodeProtocol)
 	case http2.FramePriorityUpdate:
-		// RFC 9218's priority signal, which the server ignores as a frame
-		// of an unknown type.
+		// RFC 9218's priority signal, which the server ignores once it
+		// passed x/net's checks.
+		if f.id != 0 {
+			return f, http2.ConnectionError(http2.ErrCodeProtocol)
+		}
+		if f.length < 4 {
+			return f, http2.ConnectionError(http2.ErrCodeFrameSize)
+		}
+		if binary.BigEndian.Uint32(f.data)&(1<<31-1) == 0 {
+			return f, http2.ConnectionError(http2.ErrCodeProtocol)
+		}
 	}
 	// Frames of an unknown type are ignored (RFC 9113 5.5).
 	return f, nil

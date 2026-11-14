@@ -42,6 +42,9 @@ type stream struct {
 	hdrN  int
 	msg   []byte
 	chunk *chunk
+	// keepBody is set once the node reads the request past its first
+	// reply (abandonBody); the stream then lets go of it as it ends.
+	keepBody bool
 	// Loop only, until the unary handler starts: the request messages.
 	body []byte
 	msgs int

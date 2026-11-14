@@ -44,10 +44,11 @@ func TestArenaLendsChunks(t *testing.T) {
 	}
 }
 
-// TestArenaAbandonsChunks leaves a chunk to the garbage collector once a
-// call keeps its request past its reply, as an answer in pieces does: it
-// no longer counts against the calls' bound and never goes back to the
-// server, and the next request goes into a new chunk.
+// TestArenaAbandonsChunks keeps a chunk out of the arena once a call
+// keeps its request past its reply, as an answer in pieces does: the node
+// answering the call does not let go of the request, the chunk counts
+// against the calls' bound until that call's stream lets go of it, never
+// goes back to the server, and the next request goes into a new chunk.
 func TestArenaAbandonsChunks(t *testing.T) {
 	c := framesConn(t)
 	a, b := &stream{c: c}, &stream{c: c}
@@ -55,17 +56,19 @@ func TestArenaAbandonsChunks(t *testing.T) {
 	b.msg, b.chunk = c.body(10)
 	ch := a.chunk
 	c.abandonBody(a)
-	if c.held != 0 || c.arena.cur != nil || a.chunk != nil {
-		t.Fatalf("abandoned: %d bytes held, chunk still current %v", c.held, c.arena.cur != nil)
-	}
-	c.releaseBody(b)
-	if c.held != 0 || c.s.bodyBufs.Kept() != 0 {
-		t.Fatalf("an abandoned chunk went back: %d bytes held, %d chunks back", c.held, c.s.bodyBufs.Kept())
+	c.releaseReqLocked(a)
+	c.releaseReqLocked(b)
+	if a.chunk != ch || c.arena.cur != nil || c.held != bodyChunk {
+		t.Fatalf("abandoned: request kept %v, chunk still current %v, %d bytes held", a.chunk == ch, c.arena.cur != nil, c.held)
 	}
 	n := &stream{c: c}
 	n.msg, n.chunk = c.body(10)
-	if n.chunk == ch || c.held != bodyChunk {
+	if n.chunk == ch || c.held != 2*bodyChunk {
 		t.Fatal("a request went into an abandoned chunk")
+	}
+	c.releaseBody(a)
+	if c.held != bodyChunk || c.s.bodyBufs.Kept() != 0 {
+		t.Fatalf("the abandoned chunk's last call ended: %d bytes held, %d chunks back", c.held, c.s.bodyBufs.Kept())
 	}
 }
 

@@ -29,8 +29,10 @@ type chunk struct {
 	refs int
 	// abandoned is set once a call that keeps its request past its first
 	// reply holds the chunk: an answer in pieces, whose cursors at the node
-	// read the request's keys for each piece. Such a chunk is left to the
-	// garbage collector, which frees it once nothing points into it.
+	// read the request's keys for each piece. Such a chunk never goes back
+	// to the server: it still counts against the calls' bound until its
+	// last call let go of it, the answer in pieces at its end, and is then
+	// left to the garbage collector.
 	abandoned bool
 }
 
@@ -75,33 +77,30 @@ func (c *conn) releaseBody(st *stream) {
 		return
 	}
 	st.chunk = nil
-	if ch.refs--; ch.refs > 0 || ch.abandoned {
+	if ch.refs--; ch.refs > 0 {
 		return
 	}
 	if ch == c.arena.cur {
 		c.arena.cur = nil
 	}
-	recycle(ch.b)
-	c.s.bodyBufs.Put(ch.b[:cap(ch.b)])
+	if !ch.abandoned {
+		recycle(ch.b)
+		c.s.bodyBufs.Put(ch.b[:cap(ch.b)])
+	}
 	c.held -= bodyChunk
 	c.creditLocked()
 }
 
-// abandonBody leaves the chunk of st's request to the garbage collector:
-// the node keeps the request past its first reply. c.mu is held.
+// abandonBody keeps st's request, and its chunk out of the arena, until
+// the stream ends: the node reads the request past its first reply. c.mu
+// is held.
 func (c *conn) abandonBody(st *stream) {
-	ch := st.chunk
-	if ch == nil {
-		return
-	}
-	st.chunk = nil
-	if !ch.abandoned {
+	st.keepBody = true
+	if ch := st.chunk; ch != nil {
 		ch.abandoned = true
-		c.held -= bodyChunk
-		c.creditLocked()
-	}
-	if ch == c.arena.cur {
-		c.arena.cur = nil
+		if ch == c.arena.cur {
+			c.arena.cur = nil
+		}
 	}
 }
 
