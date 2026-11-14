@@ -9,34 +9,60 @@ import (
 	"github.com/djosh34/tigerstore/internal/k8strace"
 )
 
-// TestDrawsTheShape draws 8 seeds of which at least 4 draw crd-heavy, as
-// loadgen's k8s replay draws them, and refuses a shape with no recording.
-func TestDrawsTheShape(t *testing.T) {
+// shapeOf is the shape loadgen's k8s replay draws for seed.
+func shapeOf(t *testing.T, dir, s string) string {
+	t.Helper()
+	seed, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := k8strace.DrawSeed(dir, seed, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d.Trace.Shape
+}
+
+// TestQuickGridSeedsAreCrdHeavy draws what bench.yml's quick grid draws,
+// 6 seeds of which 6 must draw crd-heavy: every seed lands on crd-heavy,
+// as loadgen's k8s replay draws it.
+func TestQuickGridSeedsAreCrdHeavy(t *testing.T) {
+	dir := filepath.Join("..", "..", "bench", "recordings")
+	for i := range 3 {
+		rng := rand.New(rand.NewPCG(uint64(i), 7))
+		seeds, err := draw(dir, "crd-heavy", 6, 6, rng.Uint64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(seeds) != 6 {
+			t.Fatalf("%d seeds, want 6", len(seeds))
+		}
+		for _, s := range seeds {
+			if got := shapeOf(t, dir, s); got != "crd-heavy" {
+				t.Fatalf("seed %s of %v draws %s, not crd-heavy", s, seeds, got)
+			}
+		}
+	}
+}
+
+// TestDrawsAtLeastMin draws 8 seeds with -min 4, as benchseeds' defaults
+// do for a run that mixes shapes: at least 4 land on crd-heavy, the rest
+// on anything; and a shape with no recording is refused.
+func TestDrawsAtLeastMin(t *testing.T) {
 	dir := filepath.Join("..", "..", "bench", "recordings")
 	rng := rand.New(rand.NewPCG(1, 2))
 	seeds, err := draw(dir, "crd-heavy", 8, 4, rng.Uint64)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(seeds) != 8 {
-		t.Fatalf("%d seeds, want 8", len(seeds))
-	}
 	matched := 0
 	for _, s := range seeds {
-		seed, err := strconv.ParseUint(s, 10, 64)
-		if err != nil {
-			t.Fatal(err)
-		}
-		d, err := k8strace.DrawSeed(dir, seed, 1)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if d.Trace.Shape == "crd-heavy" {
+		if shapeOf(t, dir, s) == "crd-heavy" {
 			matched++
 		}
 	}
-	if matched < 4 {
-		t.Fatalf("%d of %v draw crd-heavy, want at least 4", matched, seeds)
+	if len(seeds) != 8 || matched < 4 {
+		t.Fatalf("%d seeds, %d draw crd-heavy, want 8 and at least 4", len(seeds), matched)
 	}
 	if _, err := draw(dir, "no-such-shape", 8, 4, rng.Uint64); err == nil {
 		t.Fatal("a shape with no recording was drawn")

@@ -23,6 +23,13 @@
 #   turn, so the RTTs share a runner, with repeats, rate runs and etcd at
 #   the first RTT; for #602's done claim.
 #
+# bench/noise.json, the quick grid's A/A noise per benchmark, shape and RTT,
+# is re-measured whenever this workflow, cmd/loadgen, the report's measure
+# or the runners' type change: run the quick grid of main against itself,
+# then jq -s 'add | map_values(.noise)' report/*/paired.json on its report
+# artifact. Each value is the largest |ratio - 1| of the run's pairs, 6 per
+# shape and RTT with the default seeds.
+#
 # Each run draws fresh random seeds, unless -f seeds gives them, and every
 # job and target runs on the same ones; the summary prints them and the
 # command that replays the run. For k8s a seed draws a recorded cluster
@@ -144,8 +151,9 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      # etcdctl drives every store's cluster (bench/cluster.sh), so the
+      # release is installed even when etcd itself does not run.
       - name: Install etcd v3.7.2
-        if: contains(env.TARGETS, 'etcd') || matrix.job.bench == 'etcd-tool'
         run: |
           curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
           echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
@@ -188,7 +196,7 @@ jobs:
             findmnt -T "$RUNNER_TEMP" -n -o SOURCE,FSTYPE,OPTIONS
             uname -r
             go version
-            if [ -x bin/etcd ]; then bin/etcd --version | head -1; fi
+            bin/etcd --version | head -1
             cat commits.txt
             echo "generator, scripts and report: $GITHUB_SHA"
             echo "layout (generator, leader, followers): $LAYOUT"
@@ -225,6 +233,7 @@ jobs:
           LAYOUT: 3 0 1 2
           PROFILE_GENERATOR: ${{ inputs.profile_generator && 'yes' || '' }}
           LAYOUTS: ${{ (matrix.job.bench == 'put-1k' || matrix.job.bench == 'txn-1k') && inputs.layouts || '' }}
+          ALL_RTTS: ${{ inputs.rtts || '0 2 10' }}
         run: |
           if [ "$BENCH" = disk-probe ]; then
             bench/disk-probe.sh "$RUNNER_TEMP" "$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")" | tee results/disk-probe.txt
@@ -253,6 +262,16 @@ jobs:
           export DISK DATA="$RUNNER_TEMP/bench-data"
           read -r -a rtts <<<"$RTTS"
           first=results/rtt-${rtts[0]}
+          # In the quick grid a job runs one RTT. etcd and the layouts run
+          # only in the jobs of the first RTT asked for, as in the full
+          # grid; the other RTTs have no shared rate, so their rate runs
+          # are left out (norate).
+          read -r -a asked <<<"$ALL_RTTS"
+          if [ "${rtts[0]}" != "${asked[0]}" ]; then
+            first=none
+            TARGETS=$(echo "$TARGETS" | tr ' ' '\n' | grep -vx etcd | tr '\n' ' ')
+            export TARGETS LAYOUTS=""
+          fi
           for rtt in "${rtts[@]}"; do
             out=results/rtt-$rtt
             mkdir -p "$out"

@@ -403,3 +403,37 @@ func TestReportByShape(t *testing.T) {
 		t.Fatalf("paired.json:\n%s", got)
 	}
 }
+
+// TestPairsCountSeeds checks the counts of the paired table: a seed's
+// repeats make one pair, not several; a seed that ran on one store only
+// at an RTT is no pair there (Astra's review of #683).
+func TestPairsCountSeeds(t *testing.T) {
+	dir := t.TempDir()
+	put := func(rtt, name string, n float64) {
+		writeAt(t, dir, rtt, "put-1k", name, fmt.Sprintf(`{"valid":true,"throughput":%v,"server_cpu_us_per_op":10}`, n))
+	}
+	// Seed 1 with three repeats on each store, at RTT 0 and 2.
+	for _, rtt := range []string{"0", "2"} {
+		for rep := 1; rep <= 3; rep++ {
+			put(rtt, fmt.Sprintf("baseline-max-1.%d.json", rep), 1000)
+			put(rtt, fmt.Sprintf("candidate-max-1.%d.json", rep), 1100)
+		}
+	}
+	// Seed 2 at RTT 0 on both stores; at RTT 2 the candidate's run failed.
+	put("0", "baseline-max-2.1.json", 1000)
+	put("0", "candidate-max-2.1.json", 1100)
+	put("2", "baseline-max-2.1.json", 1000)
+	writeAt(t, dir, "2", "put-1k", "candidate-max-2.1.failed", "the leader changed")
+	var b strings.Builder
+	if err := report(&b, dir, "", nil); err == nil {
+		t.Fatal("a failed tigerstore run did not fail the report")
+	}
+	for _, want := range []string{
+		"| put-1k | - | 0 | 2 | 1.100 / 1.100 / 1.100 |",
+		"| put-1k | - | 2 | 1 | 1.100 / 1.100 / 1.100 |",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Fatalf("missing %q in report:\n%s", want, b.String())
+		}
+	}
+}
