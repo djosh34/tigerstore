@@ -1072,6 +1072,9 @@ func (n *Node) Step(m *raftpb.Message) error {
 	if m.GetTo() != n.cfg.ID {
 		return fmt.Errorf("%w %d", errNotForUs, m.GetTo())
 	}
+	if !n.lends(m) {
+		Own(m)
+	}
 	if took, err := n.stepHeld(m); took {
 		return err
 	}
@@ -1095,6 +1098,49 @@ func (n *Node) Step(m *raftpb.Message) error {
 		n.snapshotDropped(m.GetFrom())
 	}
 	return n.stepRaft(m)
+}
+
+// lends reports whether Step keeps nothing of m's bytes past the step, so
+// that the peer transport may lend them (peer.Config.ReceiveBytes): a
+// plain proposal forwarded to the leader, whose Raft appends a copy of its
+// entries or drops it. Raft keeps every other message's bytes, or the
+// node does: appends in the log, a forwarded proposal on its way, a read
+// index's context, held entries and parked appends.
+func (n *Node) lends(m *raftpb.Message) bool {
+	if m.GetType() != raftpb.MsgProp || heldForm(m) != 0 {
+		return false
+	}
+	if len(m.Entries) == 1 && m.Entries[0].GetType() == raftpb.EntryConfChange {
+		return false
+	}
+	st := n.rn.BasicStatus()
+	return st.RaftState == raft.StateLeader && st.Lead != raft.None
+}
+
+// Own gives m's entries' data and context memory of their own, in one
+// allocation, for a message whose bytes a peer connection lent
+// (peer.Config.ReceiveBytes) and that is kept past the step.
+func Own(m *raftpb.Message) {
+	size := len(m.Context)
+	for _, e := range m.Entries {
+		size += len(e.Data)
+	}
+	if size == 0 {
+		return
+	}
+	buf := make([]byte, 0, size)
+	own := func(b []byte) []byte {
+		if len(b) == 0 {
+			return b
+		}
+		start := len(buf)
+		buf = append(buf, b...)
+		return buf[start:len(buf):len(buf)]
+	}
+	for _, e := range m.Entries {
+		e.Data = own(e.Data)
+	}
+	m.Context = own(m.Context)
 }
 
 // stepRaft hands Raft a message from a peer.

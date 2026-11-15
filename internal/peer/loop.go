@@ -183,10 +183,9 @@ func (c *inConn) frames() error {
 			c.compact(4 + n)
 			return nil
 		}
-		// The decoder copies bytes fields, so the buffer is reused: the
-		// entries' data, which the index keeps slices of once they apply,
-		// is the message's own.
-		m, err := decodeMessage(c.buf[c.r+4 : c.r+4+n])
+		// The decoder copies bytes fields, into the receive ring, so the
+		// buffer is reused (Config.ReceiveBytes).
+		m, err := decodeMessage(c.buf[c.r+4:c.r+4+n], &t.rx)
 		if err != nil {
 			return err
 		}
@@ -204,6 +203,8 @@ func (c *inConn) frames() error {
 			continue
 		}
 		if isData(m) && c.busy() {
+			// Kept past this turn, so out of the ring.
+			core.Own(m)
 			c.held = m
 			return nil
 		}

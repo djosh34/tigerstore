@@ -138,8 +138,14 @@ type Config struct {
 	// loop and must not block. Busy, if set, reports on the loop whether
 	// the node takes no data messages (appends, snapshots and forwarded
 	// proposals) now; a connection then keeps the next one until it does.
-	Deliver func(*raftpb.Message)
-	Busy    func() bool
+	// With ReceiveBytes set, the entries' data and the context of a
+	// message Deliver gets stay valid only until the loop's next Dispatch
+	// (loop.Loop.Turns), and Deliver copies what it keeps longer
+	// (core.Own): they are read into a ring of ReceiveBytes made at
+	// startup. Without it, each message has memory of its own.
+	Deliver      func(*raftpb.Message)
+	ReceiveBytes int
+	Busy         func() bool
 	// Unreachable is called when a message to a peer was dropped.
 	Unreachable func(id uint64)
 	// Serve writes to w the snapshot stream that peer id asked for, the
@@ -294,6 +300,9 @@ type TCP struct {
 	// connection to a peer starts or ends (ActiveChange).
 	activeMu    sync.Mutex
 	activeMoved chan struct{}
+
+	// rx holds received messages' bytes (Config.ReceiveBytes); loop only.
+	rx ring
 }
 
 // Start listens for peers and starts one writer per peer.
@@ -353,6 +362,9 @@ func Start(cfg Config) (*TCP, error) {
 		inbound:     map[net.Conn]inbound{},
 		logged:      map[string]time.Time{},
 		remotes:     map[uint64]*sender{},
+	}
+	if cfg.ReceiveBytes > 0 {
+		t.rx = ring{buf: make([]byte, cfg.ReceiveBytes), loop: cfg.Loop}
 	}
 	t.self.Store(&cfg.Addr)
 	t.senders.Store(&map[uint64]*sender{})

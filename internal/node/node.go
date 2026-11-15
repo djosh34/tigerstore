@@ -1348,6 +1348,19 @@ func (n *Node) Next(id uint64) { n.tell(input{next: id}) }
 // MemoryBudget is the memory the node may use, 0 for none.
 func (n *Node) MemoryBudget() int64 { return n.cfg.Core.MemoryBytes }
 
+// ReceiveBytes is the size of the ring that the peer transport reads
+// messages' bytes into (peer.Config.ReceiveBytes): a 128th of the memory
+// budget, from 1 to 16 MiB, and 4 MiB without a budget. It holds one
+// turn's messages; a turn that receives more gives the rest memory of
+// their own.
+func (n *Node) ReceiveBytes() int {
+	b := n.cfg.Core.MemoryBytes
+	if b <= 0 {
+		return 4 << 20
+	}
+	return int(min(max(b/128, 1<<20), 16<<20))
+}
+
 // PieceBytes is about the most one piece of a large answer holds.
 func (n *Node) PieceBytes() int { return cmp.Or(n.cfg.Core.PieceBytes, core.PieceBytes) }
 

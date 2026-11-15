@@ -7,6 +7,8 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/loop"
 )
 
 // wireMessages are messages of every shape the codec writes itself, and
@@ -55,7 +57,7 @@ func TestWireIsProtobuf(t *testing.T) {
 	odd := protowire.AppendVarint(protowire.AppendTag(nil, fType, protowire.VarintType), 1000)
 	odd = protowire.AppendVarint(protowire.AppendTag(odd, 99, protowire.VarintType), 1)
 	checkDecode(t, odd)
-	m, err := decodeMessage(odd)
+	m, err := decodeMessage(odd, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +71,7 @@ func checkDecode(t *testing.T, b []byte) {
 	t.Helper()
 	want := &raftpb.Message{}
 	werr := proto.Unmarshal(b, want)
-	got, err := decodeMessage(b)
+	got, err := decodeMessage(b, nil)
 	if (err != nil) != (werr != nil) {
 		t.Fatalf("decode %x: error %v, protobuf's %v", b, err, werr)
 	}
@@ -90,7 +92,7 @@ func FuzzDecodeMessage(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, b []byte) {
 		checkDecode(t, b)
-		m, err := decodeMessage(b)
+		m, err := decodeMessage(b, nil)
 		if err != nil {
 			return
 		}
@@ -103,4 +105,37 @@ func FuzzDecodeMessage(f *testing.F) {
 			t.Fatalf("written again: %x %v, want %x", got, err, want)
 		}
 	})
+}
+
+// TestRingLendsPerTurn checks that the receive ring hands out its memory
+// again from the loop's next turn on, and gives what does not fit in a
+// turn memory of its own.
+func TestRingLendsPerTurn(t *testing.T) {
+	l := loop.New(loop.NewChanPoller())
+	r := &ring{buf: make([]byte, 100), loop: l}
+	l.Dispatch(true)
+	a := r.take(60)
+	b := r.take(60)
+	if !inRing(r, a) || inRing(r, b) {
+		t.Fatalf("in one turn: the first take in the ring %v, the second %v; want true, false", inRing(r, a), inRing(r, b))
+	}
+	l.Dispatch(true)
+	if c := r.take(60); !inRing(r, c) || &c[:1][0] != &a[:1][0] {
+		t.Fatal("the next turn's take is not the ring's start")
+	}
+	var none *ring
+	if d := none.take(10); cap(d) != 10 || len(d) != 0 {
+		t.Fatalf("no ring: take gave length %d, room %d", len(d), cap(d))
+	}
+}
+
+// inRing reports whether b's room lies in r's memory.
+func inRing(r *ring, b []byte) bool {
+	b = b[:1]
+	for i := range r.buf {
+		if &r.buf[i] == &b[0] {
+			return true
+		}
+	}
+	return false
 }

@@ -65,6 +65,8 @@ type Loop struct {
 	timed  map[Flusher]int
 	// drained is closed once Drain returned.
 	drained chan struct{}
+	// turns counts the calls of Dispatch (Turns).
+	turns uint64
 }
 
 // timer is a flusher to flush at or after a time.
@@ -136,6 +138,7 @@ func (l *Loop) Wait(timeout time.Duration) error {
 // flushed, so output that waited for a socket still goes out while its
 // input waits.
 func (l *Loop) Dispatch(sockets bool) {
+	l.turns++
 	l.expire()
 	l.mu.Lock()
 	l.running, l.posted = l.posted, l.running[:0]
@@ -185,6 +188,11 @@ func (l *Loop) Dispatch(sockets bool) {
 	}
 	l.due = l.due[:0]
 }
+
+// Turns counts the calls of Dispatch. What a handler hands the owner in
+// one Dispatch, the owner takes before the next, so memory that holds it
+// is free again once Turns moved on (peer.Config.ReceiveBytes).
+func (l *Loop) Turns() uint64 { return l.turns }
 
 // Again runs the handler of token at the loop's next turn, as a socket
 // that stopped reading while its owner was busy asks.

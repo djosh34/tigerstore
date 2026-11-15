@@ -12,6 +12,7 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
@@ -141,8 +142,14 @@ func (c *memCluster) step() {
 		}
 		// Raft drops a proposal forwarded to a leader that is handing over
 		// its leadership, as it would on a real node.
-		if err := c.nodes[m.GetTo()-1].Step(m); err != nil && !errors.Is(err, errFromRemoved) && !errors.Is(err, raft.ErrProposalDropped) {
+		lent, buf := lend(m)
+		if err := c.nodes[m.GetTo()-1].Step(lent); err != nil && !errors.Is(err, errFromRemoved) && !errors.Is(err, raft.ErrProposalDropped) {
 			c.t.Fatalf("step %s: %v", m.GetType(), err)
+		}
+		// The transport reads the next turn's messages into the same
+		// memory: whatever the node kept of these without a copy breaks.
+		for i := range buf {
+			buf[i] = 0xee
 		}
 	}
 	for i, n := range c.nodes {
@@ -154,6 +161,31 @@ func (c *memCluster) step() {
 		}
 		c.jobs[i] = nil
 	}
+}
+
+// lend returns a copy of m as the peer transport delivers it with a
+// receive ring (peer.Config.ReceiveBytes): its entries' data and context
+// in memory the node may use only during the step, which is buf.
+func lend(m *raftpb.Message) (*raftpb.Message, []byte) {
+	m = proto.Clone(m).(*raftpb.Message)
+	size := len(m.Context)
+	for _, e := range m.Entries {
+		size += len(e.Data)
+	}
+	buf := make([]byte, 0, size)
+	put := func(b []byte) []byte {
+		if len(b) == 0 {
+			return b
+		}
+		start := len(buf)
+		buf = append(buf, b...)
+		return buf[start:len(buf):len(buf)]
+	}
+	for _, e := range m.Entries {
+		e.Data = put(e.Data)
+	}
+	m.Context = put(m.Context)
+	return m, buf
 }
 
 // TestWindowBound writes 1 GiB of log through three nodes and checks

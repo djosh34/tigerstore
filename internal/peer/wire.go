@@ -2,6 +2,8 @@ package peer
 
 import (
 	"go.etcd.io/raft/v3/raftpb"
+
+	"github.com/djosh34/tigerstore/internal/loop"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
@@ -53,9 +55,11 @@ type entry struct {
 	term, index uint64
 }
 
-// decodeMessage reads a message from b, which it does not keep.
-func decodeMessage(b []byte) (*raftpb.Message, error) {
-	if m, ok := decodeFast(b); ok {
+// decodeMessage reads a message from b, which it does not keep. The
+// entries' data and the context of a message decodeFast reads go into rx;
+// nil gives them memory of their own.
+func decodeMessage(b []byte, rx *ring) (*raftpb.Message, error) {
+	if m, ok := decodeFast(b, rx); ok {
 		return m, nil
 	}
 	m := &raftpb.Message{}
@@ -68,7 +72,7 @@ func decodeMessage(b []byte) (*raftpb.Message, error) {
 // decodeFast reads b as decodeMessage does, and reports false for a
 // message it leaves to protobuf: one with a field it does not read, an
 // enum value raftpb does not name, or bytes that do not parse.
-func decodeFast(b []byte) (*raftpb.Message, bool) {
+func decodeFast(b []byte, rx *ring) (*raftpb.Message, bool) {
 	ents, data, ok := measure(b)
 	if !ok {
 		return nil, false
@@ -77,7 +81,7 @@ func decodeFast(b []byte) (*raftpb.Message, bool) {
 	m := &x.m
 	var buf []byte
 	if data > 0 {
-		buf = make([]byte, 0, data)
+		buf = rx.take(data)
 	}
 	var boxes []entry
 	if ents > 0 {
@@ -222,6 +226,34 @@ func decodeEntry(b []byte, e *entry, buf []byte) ([]byte, bool) {
 		}
 	}
 	return buf, true
+}
+
+// ring hands out room for received messages' bytes from memory made at
+// startup (Config.ReceiveBytes). What it handed out in one of the loop's
+// turns it hands out again from the next turn on: the node steps a
+// message in the turn that read it, and copies what it keeps (core.Own).
+type ring struct {
+	buf  []byte
+	pos  int
+	turn uint64
+	loop *loop.Loop
+}
+
+// take returns room for n bytes, of length 0: from the ring while this
+// turn left it room, or else of its own.
+func (r *ring) take(n int) []byte {
+	if r == nil || r.loop == nil {
+		return make([]byte, 0, n)
+	}
+	if t := r.loop.Turns(); t != r.turn {
+		r.turn, r.pos = t, 0
+	}
+	if r.pos+n > len(r.buf) {
+		return make([]byte, 0, n)
+	}
+	b := r.buf[r.pos : r.pos : r.pos+n]
+	r.pos += n
+	return b
 }
 
 // keep copies v to the end of buf and returns buf and the copy, which is
