@@ -119,6 +119,15 @@ func (s *sock) open() error {
 			}
 		}
 		body := s.in[s.ir+recHdr : s.ir+recHdr+n]
+		if s.rd.tls12 {
+			plain, err := s.rd.open12(s.pt[s.pw:s.pw], body, hdr)
+			if err != nil {
+				return err
+			}
+			s.ir += recHdr + n
+			s.pw += len(plain)
+			continue
+		}
 		plain, err := s.rd.aead.Open(s.pt[s.pw:s.pw], s.rd.next(), body, hdr)
 		if err != nil {
 			return err
@@ -169,17 +178,20 @@ func (s *sock) room() int {
 	if s.rec < 0 {
 		return 0
 	}
-	return maxPlain - (len(s.out) - s.rec - recHdr)
+	return maxPlain - (len(s.out) - s.rec - recHdr - s.wr.extra())
 }
 
 func (s *sock) openRec() {
-	if cap(s.out)-len(s.out) < maxPlain+recOverhead {
-		n := make([]byte, len(s.out), 2*cap(s.out)+maxPlain+recOverhead)
+	if cap(s.out)-len(s.out) < maxPlain+recOverhead+8 {
+		n := make([]byte, len(s.out), 2*cap(s.out)+maxPlain+recOverhead+8)
 		copy(n, s.out)
 		s.out = n
 	}
 	s.rec = len(s.out)
 	s.out = append(s.out, typeAppData, 3, 3, 0, 0)
+	if s.wr.explicit {
+		s.out = s.out[:len(s.out)+8] // TLS 1.2 AES-GCM's explicit nonce, written at the seal
+	}
 }
 
 // seal closes the open record and seals it in place.
@@ -189,10 +201,14 @@ func (s *sock) seal() {
 	}
 	start := s.rec + recHdr
 	end := len(s.out)
-	if end == start {
+	if end == start+s.wr.extra() {
 		// An empty record: take it back.
 		s.out = s.out[:s.rec]
 		s.rec = -1
+		return
+	}
+	if s.wr.tls12 {
+		s.seal12(start, end)
 		return
 	}
 	s.out = append(s.out, typeAppData)
@@ -201,6 +217,23 @@ func (s *sock) seal() {
 	hdr[3], hdr[4] = byte(l>>8), byte(l)
 	sealed := s.wr.aead.Seal(s.out[start:start], s.wr.next(), s.out[start:end+1], hdr)
 	s.out = s.out[:start+len(sealed)]
+	s.rec = -1
+}
+
+// seal12 seals the open record of a TLS 1.2 connection, whose
+// plaintext is out[start+extra:end].
+func (s *sock) seal12(start, end int) {
+	pt := start + s.wr.extra()
+	seq := s.wr.seq
+	nonce := s.wr.next()
+	if s.wr.explicit {
+		copy(s.out[start:pt], nonce[4:])
+	}
+	hdr := s.out[s.rec:start]
+	sealed := s.wr.aead.Seal(s.out[pt:pt], nonce, s.out[pt:end], s.wr.aad12(seq, hdr, end-pt))
+	l := pt - start + len(sealed)
+	hdr[3], hdr[4] = byte(l>>8), byte(l)
+	s.out = s.out[:pt+len(sealed)]
 	s.rec = -1
 }
 

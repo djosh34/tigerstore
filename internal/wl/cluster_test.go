@@ -173,8 +173,11 @@ func loadTLS(cert, key, ca string, server bool) (*tls.Config, error) {
 	pool.AppendCertsFromPEM(pem)
 	cfg := &tls.Config{Certificates: []tls.Certificate{c}, MinVersion: tls.VersionTLS13}
 	if server {
+		// Clients may take TLS 1.2, as etcd's do by default; the node
+		// keeps its peers to 1.3.
 		cfg.ClientCAs = pool
 		cfg.ClientAuth = tls.RequireAndVerifyClientCert
+		cfg.MinVersion = tls.VersionTLS12
 	} else {
 		cfg.RootCAs = pool
 	}
@@ -522,6 +525,34 @@ func TestClusterServesTheEtcdAPI(t *testing.T) {
 		hc, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{})
 		if err != nil || hc.Status != healthpb.HealthCheckResponse_SERVING {
 			t.Errorf("health: %v %v", hc, err)
+		}
+	})
+
+	t.Run("TLS 1.2 clients", func(t *testing.T) {
+		for name, suite := range map[string]uint16{
+			"AES-GCM":  tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			"ChaCha20": tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+		} {
+			c12, err := clientv3.New(clientv3.Config{
+				Endpoints: tc.endpoints[:1], DialTimeout: 5 * time.Second,
+				TLS: &tls.Config{
+					Certificates: []tls.Certificate{tc.cert}, RootCAs: tc.ca.Pool,
+					MinVersion: tls.VersionTLS12, MaxVersion: tls.VersionTLS12, CipherSuites: []uint16{suite},
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Values over a record's 16 KiB, both ways.
+			big := strings.Repeat(name, 10_000)
+			if _, err := c12.Put(ctx, "tls12-"+name, big); err != nil {
+				t.Fatalf("%s: put: %v", name, err)
+			}
+			r, err := c12.Get(ctx, "tls12-"+name)
+			_ = c12.Close()
+			if err != nil || len(r.Kvs) != 1 || string(r.Kvs[0].Value) != big {
+				t.Fatalf("%s: get: %v", name, err)
+			}
 		}
 	})
 
