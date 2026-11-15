@@ -475,7 +475,6 @@ type Node struct {
 	rn      *raft.RawNode
 	storage *storage
 	values  *values
-	cache   *cache
 	state   *State
 	kv      *mvcc.Store
 
@@ -561,9 +560,11 @@ type Node struct {
 	// Appends of forwarded proposals do not hold anything.
 	own      []uint64
 	awaitOwn bool
-	// otherMemory is what the process uses besides the value cache, as
-	// the driver measured it last.
+	// otherMemory is what the process uses besides the values the store
+	// holds, as the driver measured it last.
 	otherMemory int64
+	// valueMisses counts the values read from the log on disk.
+	valueMisses int64
 	waiting     map[uint64]*pending // writes by request ID
 	timeouts    []*pending          // every waiting request in deadline order
 
@@ -662,8 +663,7 @@ type Node struct {
 // the rest. It reads every entry from disk, one at a time.
 func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	st := newStorage()
-	c := newCache()
-	vals := &values{storage: st, log: disk, cache: c}
+	vals := &values{storage: st, log: disk}
 	cfg.MaxRequestBytes = cmp.Or(cfg.MaxRequestBytes, MaxRequestBytes)
 	cfg.PieceBytes = cmp.Or(cfg.PieceBytes, PieceBytes)
 	cfg.MaxTxnOps = cmp.Or(cfg.MaxTxnOps, mvcc.MaxTxnOps)
@@ -671,7 +671,6 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		cfg:         cfg,
 		storage:     st,
 		values:      vals,
-		cache:       c,
 		log:         disk,
 		term:        rec.HardState.Term,
 		voteTerm:    rec.HardState.Term,
@@ -712,13 +711,6 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	n.readInline = false
 	if err != nil {
 		return nil, err
-	}
-	// Only now does the store keep the values that puts write, for the
-	// cache: the replay's entries never enter memory, so none of their
-	// values go into it, and a record of each would only take memory
-	// (#433).
-	if n.cfg.MemoryBytes > 0 {
-		n.kv.TrackWritten()
 	}
 	if hs.Commit > 0 {
 		snap := &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(hs.Commit), Term: new(term), ConfState: st.confAt(hs.Commit)}}
@@ -910,9 +902,6 @@ func (n *Node) setState(st *State) {
 		st.alarmsGen = n.state.alarmsGen + 1
 	}
 	n.state, n.kv = st, st.Store()
-	if n.cfg.MemoryBytes > 0 {
-		n.kv.Replaced = n.cache.drop
-	}
 	n.kv.SortBytes = n.cfg.MemoryBytes
 	n.kv.PieceBytes = n.cfg.PieceBytes
 }
@@ -1939,9 +1928,12 @@ func (n *Node) Process() (Effects, error) {
 		n.flushWatches()
 		n.catchUp()
 		if n.err == nil {
+			// Every answer and event of the turn is built: the values its
+			// writes replaced go.
+			n.kv.Release()
 			n.trimWindow()
 			n.fitCache()
-			n.cache.step()
+			n.kv.Step()
 		}
 	}
 	if n.err != nil || n.removeAt != 0 {

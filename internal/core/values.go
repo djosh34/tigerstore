@@ -40,12 +40,12 @@ func (pl *placer) add(value []byte, off int) {
 }
 
 // values names every value by its Raft position and reads the bytes back
-// from the entries in memory. Once its entry left memory, a value comes
-// from the log on disk, read by a helper (ValueRead).
+// from the entries in memory. Once its entry left memory, a value the
+// store does not hold comes from the log on disk, read by a helper
+// (ValueRead).
 type values struct {
 	storage *storage
 	log     Log
-	cache   *cache
 	// index is the entry being applied, and entry its data, which a
 	// replayed entry has only here; placer knows where the values of its
 	// current write start.
@@ -74,45 +74,62 @@ func (v *values) Place(value []byte) (mvcc.Ref, error) {
 	return mvcc.Ref{}, errNotPlaced
 }
 
-// Copies reports whether Read copies the value r names, out of a Raft
-// entry in memory or out of the cache.
+// Copies reports whether Read copies the value r names out of a Raft
+// entry in memory.
 func (v *values) Copies(r mvcc.Ref) bool {
 	if v.entry != nil && r.Index == v.index {
 		return true
 	}
-	if _, ok := v.storage.entryData(r.Index); ok {
-		return true
-	}
-	return v.cache.has(r)
+	_, ok := v.storage.entryData(r.Index)
+	return ok
 }
 
-// Read returns a copy of a value from its entry in memory or from the
-// cache, or one fetched, and false if only the log has it. Responses and
-// watch events keep what it returns, maybe for long behind a slow client,
-// and must not keep the entry with it, nor a slot of the cache, which the
-// next value takes. A copy goes to the end of *arena if arena is not nil.
+// Read returns a copy of a value from its entry in memory, or one
+// fetched, and false if only the log has it. Responses and watch events
+// keep what it returns, maybe for long behind a slow client, and must not
+// keep the entry with it. A copy goes to the end of *arena if arena is
+// not nil.
 func (v *values) Read(r mvcc.Ref, arena *[]byte) ([]byte, bool, error) {
 	data, ok := v.entry, v.entry != nil && r.Index == v.index
 	if !ok {
 		data, ok = v.storage.entryData(r.Index)
 	}
-	var b []byte
-	switch {
-	case ok:
-		if uint64(r.Off)+uint64(r.Len) > uint64(len(data)) {
-			return nil, false, fmt.Errorf("core: value at %d+%d is past the end of entry %d", r.Off, r.Len, r.Index)
-		}
-		b = data[r.Off : r.Off+r.Len]
-	default:
-		if b, ok = v.cache.get(r); !ok {
-			b, ok := v.fetched[r]
-			return b, ok, nil
-		}
+	if !ok {
+		b, ok := v.fetched[r]
+		return b, ok, nil
 	}
+	if uint64(r.Off)+uint64(r.Len) > uint64(len(data)) {
+		return nil, false, fmt.Errorf("core: value at %d+%d is past the end of entry %d", r.Off, r.Len, r.Index)
+	}
+	b := data[r.Off : r.Off+r.Len]
 	if arena == nil {
 		return bytes.Clone(b), true, nil
 	}
 	start := len(*arena)
 	*arena = append(*arena, b...)
 	return (*arena)[start:len(*arena):len(*arena)], true, nil
+}
+
+// SetOtherMemory tells the core how much memory the process uses besides
+// the values the store holds, as the driver measured it. The store may
+// hold what that leaves of Config.MemoryBytes, and gives back the rest
+// over its next steps.
+func (n *Node) SetOtherMemory(bytes int64) {
+	n.otherMemory = bytes
+	n.fitCache()
+}
+
+// CacheLow is the smallest the values the store holds took since the
+// last call, and the next span starts from what they take now. A
+// collection of the garbage collector in between found at least that
+// much of them live.
+func (n *Node) CacheLow() int64 { return n.kv.ValueLow() }
+
+// fitCache sets the limit of the values the store holds to the memory
+// the rest of the process leaves. Without a memory budget the store holds
+// none.
+func (n *Node) fitCache() {
+	if n.cfg.MemoryBytes > 0 {
+		n.kv.SetValueLimit(n.cfg.MemoryBytes - n.otherMemory)
+	}
 }

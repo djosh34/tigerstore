@@ -148,13 +148,18 @@ type version struct {
 // bytes in the store's arena (Store.key). A key with one version, as most
 // are between compactions, keeps it in one, and its record holds no
 // pointer: with a million keys, the garbage collector then marks no
-// object per key (#602). A key with more keeps them in many.
+// object per key (#602). A key with more keeps them in many. If held is
+// set, the store's slabs hold the value of the newest version in slot
+// {valN, valClass} (held.go).
 type keyIndex struct {
 	many          []version
 	one           [1]version
 	id            uint32
 	chunk, off, n uint32
+	valN          uint32
 	single        bool
+	valClass      uint8
+	held          bool
 }
 
 // vers returns k's versions, oldest first. For a key with one version it
@@ -228,7 +233,7 @@ func (k *keyIndex) live(r int64) (*version, bool) {
 
 // kvValue returns a version of k without its value, which fill adds.
 func (s *Store) kvValue(k *keyIndex, v *version) KV {
-	return KV{Key: s.key(k), CreateRevision: v.create, ModRevision: v.mod.main, Version: v.ver, Lease: v.lease, ref: v.value}
+	return KV{Key: s.key(k), CreateRevision: v.create, ModRevision: v.mod.main, Version: v.ver, Lease: v.lease, ref: v.value, id: k.id}
 }
 
 // kv returns a version with its value, or with a Fill for it.
@@ -240,7 +245,7 @@ func (s *Store) kv(k *keyIndex, v *version) (*mvccpb.KeyValue, error) {
 		Version:        v.ver,
 		Lease:          v.lease,
 	}
-	if err := s.fill(kv.Key, v.value, &kv.Value, nil); err != nil {
+	if err := s.fill(k.id, kv.Key, v.value, &kv.Value, nil); err != nil {
 		return nil, err
 	}
 	return kv, nil
@@ -248,8 +253,8 @@ func (s *Store) kv(k *keyIndex, v *version) (*mvccpb.KeyValue, error) {
 
 // fill stores the value r names in *dst if it is in memory. Otherwise the
 // store keeps a Fill for it, which TakeFills hands out.
-func (s *Store) fill(key []byte, r Ref, dst *[]byte, arena *[]byte) error {
-	b, ok, err := s.value(key, r, arena)
+func (s *Store) fill(id uint32, key []byte, r Ref, dst *[]byte, arena *[]byte) error {
+	b, ok, err := s.value(id, key, r, arena)
 	if err != nil {
 		return err
 	}
@@ -269,12 +274,21 @@ func (s *Store) TakeFills() []Fill {
 	return f
 }
 
-// value returns the bytes of a value of key k, checked against the
-// checksum, if they are in memory, and false if only the disk has them.
-// arena is as in Values.Read.
-func (s *Store) value(key []byte, r Ref, arena *[]byte) ([]byte, bool, error) {
+// value returns the bytes of a value of key, in slot id, if they are in
+// memory, and false if only the disk has them. Those from a Raft entry or
+// the log are checked against the checksum; arena is as in Values.Read.
+func (s *Store) value(id uint32, key []byte, r Ref, arena *[]byte) ([]byte, bool, error) {
 	if r.Len == 0 {
 		return nil, true, nil
+	}
+	if b, ok := s.heldValue(id, r); ok {
+		s.vals.hits++
+		if arena == nil {
+			return bytes.Clone(b), true, nil
+		}
+		start := len(*arena)
+		*arena = append(*arena, b...)
+		return (*arena)[start:len(*arena):len(*arena)], true, nil
 	}
 	b, ok, err := s.values.Read(r, arena)
 	if err != nil {
@@ -287,6 +301,15 @@ func (s *Store) value(key []byte, r Ref, arena *[]byte) ([]byte, bool, error) {
 		return nil, false, err
 	}
 	return b, true, nil
+}
+
+// copies reports whether value reads the value r of the key in slot id
+// out of memory, which it copies.
+func (s *Store) copies(id uint32, r Ref) bool {
+	if _, ok := s.heldValue(id, r); ok {
+		return true
+	}
+	return s.values.Copies(r)
 }
 
 // check checks the bytes read for a value of key against its Ref.
@@ -314,8 +337,8 @@ type Store struct {
 	// move, so a *keyIndex stays valid. Slot 0 is no key's, so that 0
 	// marks an empty entry of byKey. The slots of removed
 	// keys are taken again (free): the history drops a key's changes
-	// before a compaction removes it, and the written list checks a
-	// value's Ref, which no other key's version has.
+	// before a compaction removes it, and a held value is found by its
+	// Ref, which no other key's version has (heldValue).
 	recs [][]keyIndex
 	used uint32
 	free []uint32
@@ -351,10 +374,8 @@ type Store struct {
 	// answer with no KeyValues, and the previous values of a put or a
 	// delete (#561). Their counts and checks stay as they are.
 	Unanswered bool
-	// Replaced, if set, gets the value of a key's newest version when a
-	// put or a delete replaces that version and the new one does not keep
-	// the value. Older revisions may still read it.
-	Replaced func(Ref)
+	// vals are the values the store holds in memory (held.go).
+	vals heldValues
 
 	// changes collects the changes of the request being applied, and
 	// hist every change since the compaction revision.
@@ -379,11 +400,6 @@ type Store struct {
 	// versions and keyBytes count the room for versions that the keys'
 	// arrays have and the key bytes in the index, for Bytes.
 	versions, keyBytes int64
-
-	// written holds the values that puts wrote since the last Leaving,
-	// oldest first, with TrackWritten.
-	written      []written
-	trackWritten bool
 }
 
 // Bytes estimates what the index takes in memory: the room allocated for
@@ -473,30 +489,6 @@ func (s *Store) insert(key []byte, vers []version) *keyIndex {
 	s.byKey.add(s, id)
 	s.keyBytes += int64(len(key))
 	return r
-}
-
-// written is a value a put wrote to the key in slot id.
-type written struct {
-	id  uint32
-	ref Ref
-}
-
-// TrackWritten makes the store keep the value of every put until
-// Leaving hands it out.
-func (s *Store) TrackWritten() { s.trackWritten = true }
-
-// Leaving calls fn, oldest first, with each value written in an entry up
-// to index that is still its key's newest value, and forgets every value
-// written up to index.
-func (s *Store) Leaving(index uint64, fn func(Ref)) {
-	n := 0
-	for ; n < len(s.written) && s.written[n].ref.Index <= index; n++ {
-		if w := s.written[n]; s.rec(w.id).current(w.ref) {
-			fn(w.ref)
-		}
-	}
-	clear(s.written[:n])
-	s.written = s.written[n:]
 }
 
 // Current reports whether r names the value of key's newest version.

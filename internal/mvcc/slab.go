@@ -1,11 +1,12 @@
-package core
+package mvcc
 
 import "math/bits"
 
-// slabs holds the value cache's bytes. Values up to maxSlot bytes go in
+// slabs holds the bytes of the values the store holds in memory (held.go).
+// Values up to maxSlot bytes go in
 // chunks of chunkBytes, each cut into slots of one size class, four
 // classes to each doubling of size, so a slot wastes at most a fifth of
-// itself. A million cached values are then a few thousand chunks with no
+// itself. A million held values are then a few thousand chunks with no
 // pointers in them, which the garbage collector neither scans nor marks
 // one by one; a value each, it marked a million objects every cycle
 // (#602). A larger value gets an allocation of its own.
@@ -17,7 +18,7 @@ import "math/bits"
 // after free or compact: a reader that keeps them copies them first.
 // compact moves a bounded number of bytes a call, and drops each chunk
 // it empties, so the slabs give back the room of the values that went a
-// step at a time, never holding two copies of the cache (#647).
+// step at a time, never holding two copies of the values (#647).
 type slabs struct {
 	classes [numClasses]slabClass
 	// used is the room of the slots that hold a value, and freed that of
@@ -40,7 +41,7 @@ type slabClass struct {
 	low    int
 }
 
-// slabChunk is one chunk of a class: its bytes, the cache entry that owns
+// slabChunk is one chunk of a class: its bytes, the key slot that owns
 // each slot, and a bitmap of the free slots below the class's fresh, of
 // which there are nfree, none in the words before word. Neither holds a
 // pointer.
@@ -98,8 +99,8 @@ func classOf(n int) int {
 // perChunk is the number of slots a chunk of class ci holds.
 func perChunk(ci int) uint32 { return uint32(chunkBytes / classSizes[ci]) }
 
-// put copies val into the lowest free slot of its class, which owner, an
-// entry of the cache, owns, and returns the slot.
+// put copies val into the lowest free slot of its class, which owner, a
+// key's slot in the store, owns, and returns the slot.
 func (sl *slabs) put(val []byte, owner int32) slot {
 	ci := classOf(len(val))
 	if ci == bigClass {
@@ -175,15 +176,6 @@ func (sl *slabs) bytes(s slot, n int) []byte {
 	per := perChunk(int(s.class))
 	off := int(s.n%per) * size
 	return sl.classes[s.class].chunks[s.n/per].data[off : off+n : off+n]
-}
-
-// setOwner records that owner, an entry of the cache, now owns s.
-func (sl *slabs) setOwner(s slot, owner int32) {
-	if s.class == bigClass {
-		return
-	}
-	per := perChunk(int(s.class))
-	sl.classes[s.class].chunks[s.n/per].owner[s.n%per] = owner
 }
 
 // free gives s back.

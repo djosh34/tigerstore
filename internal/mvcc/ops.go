@@ -151,9 +151,9 @@ func (w *writer) add(k *keyIndex, v version) {
 		v.mod = rev{main: w.begin + 1 + w.subs}
 	}
 	w.subs++
-	if n := len(k.vers()); n > 0 && w.s.Replaced != nil {
+	if n := len(k.vers()); n > 0 {
 		if old := k.vers()[n-1]; old.ver != 0 && old.value.Len > 0 && old.value != v.value {
-			w.s.Replaced(old.value)
+			w.s.retire(k, old.value)
 		}
 	}
 	w.s.versions += k.push(v)
@@ -210,8 +210,8 @@ func (w *writer) put(p *PutOp) (*mvccpb.KeyValue, error) {
 	}
 	w.add(k, v)
 	w.s.counts.PutBytes += int64(len(p.Key)) + int64(v.value.Len)
-	if w.s.trackWritten && v.value.Len > 0 && (!p.IgnoreValue || prev == nil) {
-		w.s.written = append(w.s.written, written{id: k.id, ref: v.value})
+	if !p.IgnoreValue || prev == nil {
+		w.s.hold(k, p.Value)
 	}
 	return prevKV, nil
 }
@@ -437,7 +437,7 @@ func (w *writer) compare(c *pb.Compare) (bool, error) {
 		if c.Target == pb.Compare_VALUE {
 			// Only a compare on the value reads it.
 			var in bool
-			if kv.Value, in, err = w.s.value(kv.Key, v.value, nil); err != nil {
+			if kv.Value, in, err = w.s.value(k.id, kv.Key, v.value, nil); err != nil {
 				return false
 			}
 			if !in {

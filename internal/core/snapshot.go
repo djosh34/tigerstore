@@ -92,7 +92,6 @@ func (n *Node) trimWindow() {
 		}
 		index = max(index, min(n.applied+1, last))
 	}
-	n.fillCache(index)
 	if err := n.storage.trim(index); err != nil {
 		n.fail(err)
 	}

@@ -66,5 +66,5 @@ func (n *Node) applyWaits() bool { return n.paused != nil || n.revoke != nil }
 // and reads it kept when its turn was over (yield). The driver
 // then gives it that turn at once.
 func (n *Node) Working() bool {
-	return n.revoke != nil || n.CatchingUp() || n.err == nil && (n.cache.busy() || n.yielded)
+	return n.revoke != nil || n.CatchingUp() || n.err == nil && (n.kv.ValuesBusy() || n.yielded)
 }

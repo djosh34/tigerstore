@@ -75,7 +75,7 @@ var errPaused = errors.New("core: a write waits for values from the log")
 // readValues starts a read of fills.
 func (n *Node) readValues(fills []mvcc.Fill) *ValueRead {
 	r := &ValueRead{log: n.log, fills: fills}
-	n.cache.misses += int64(len(fills))
+	n.valueMisses += int64(len(fills))
 	n.cold[r] = struct{}{}
 	n.out.Reads = append(n.out.Reads, r)
 	return r
@@ -188,9 +188,7 @@ func (n *Node) ValuesRead(r *ValueRead, err error) {
 		return
 	}
 	for _, f := range r.fills {
-		if n.kv.Current(f.Key, f.Ref) {
-			n.cache.add(f.Ref, *f.Dst)
-		}
+		n.kv.Keep(f.Key, f.Ref, *f.Dst)
 	}
 	n.out.Replies = append(n.out.Replies, r.replies...)
 	for _, s := range r.streams {

@@ -24,11 +24,12 @@ import (
 
 // KV is one key's version as a range returns it: the fields of an
 // mvccpb.KeyValue, as a value. Key is the index's slice, Value the one
-// Values returned; neither may change.
+// Values returned; neither may change. id is the key's slot.
 type KV struct {
 	Key, Value                                  []byte
 	CreateRevision, ModRevision, Version, Lease int64
 	ref                                         Ref
+	id                                          uint32
 }
 
 // Size is the size of the KeyValue message of kv as protobuf encodes it,
@@ -99,7 +100,7 @@ func KeyValues(kvs []KV) []*mvccpb.KeyValue {
 
 // kvBytes is what a KV takes in a sorted list, as measured on a 64-bit
 // platform (TestKVBytes).
-const kvBytes = 104
+const kvBytes = 112
 
 // ErrTooLarge refuses a sorted Range whose list, which the sort needs at
 // once, passes Store.SortBytes: a KV for each key, and each value for a
@@ -481,12 +482,12 @@ func (c *Cursor) Next(room int) ([]KV, bool, error) {
 
 // fillValues sets the value of each KV that is in memory, or of its
 // message in msgs if that is not nil, and keeps a Fill for each that only
-// the log has. The values copied out of Raft entries or out of the cache
+// the log has. The values copied out of memory or out of Raft entries
 // share one allocation of their exact size (#430, #602).
 func (s *Store) fillValues(kvs []KV, msgs []*mvccpb.KeyValue) error {
 	copied := 0
 	for i := range kvs {
-		if r := kvs[i].ref; r.Len > 0 && s.values.Copies(r) {
+		if r := kvs[i].ref; r.Len > 0 && s.copies(kvs[i].id, r) {
 			copied += int(r.Len)
 		}
 	}
@@ -500,7 +501,7 @@ func (s *Store) fillValues(kvs []KV, msgs []*mvccpb.KeyValue) error {
 		if msgs != nil {
 			dst = &msgs[i].Value
 		}
-		if err := s.fill(kvs[i].Key, kvs[i].ref, dst, arena); err != nil {
+		if err := s.fill(kvs[i].id, kvs[i].Key, kvs[i].ref, dst, arena); err != nil {
 			return err
 		}
 	}
@@ -513,7 +514,7 @@ func (s *Store) readNow(kvs []KV) error {
 	var cold []Fill
 	for i := range kvs {
 		kv := &kvs[i]
-		b, ok, err := s.value(kv.Key, kv.ref, nil)
+		b, ok, err := s.value(kv.id, kv.Key, kv.ref, nil)
 		if err != nil {
 			return err
 		}

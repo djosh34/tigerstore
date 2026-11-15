@@ -8,32 +8,17 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
-	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simfs"
 )
-
-// Cache references must include the Raft index. The same offset and
-// length in a later overwrite must not find the earlier value.
-func TestCacheReferenceIdentity(t *testing.T) {
-	c := newCache()
-	c.setLimit(4096)
-	old := mvcc.Ref{Index: 10, Off: 20, Len: 3}
-	current := mvcc.Ref{Index: 11, Off: 20, Len: 3}
-	c.add(old, []byte("old"))
-	if value, ok := c.get(current); ok {
-		t.Fatalf("stale cache entry after overwrite: %q", value)
-	}
-	c.add(current, []byte("new"))
-	if value, ok := c.get(current); !ok || string(value) != "new" {
-		t.Fatalf("current value: %q, found %v", value, ok)
-	}
-}
 
 // A delayed read must not cache its old value as the current value after
 // an overwrite. Complete helpers in the opposite order from submission.
 func TestColdReadsCompleteInReverse(t *testing.T) {
 	s, _ := coldSingle(t, func(c *Config) { c.MemoryBytes = 1 << 20 })
-	s.n.cache.clear()
+	// The store lets go of every value it holds, so both reads go to the
+	// log.
+	s.n.kv.SetValueLimit(0)
+	s.n.kv.Step()
 	s.hold = true
 	for id, key := range []string{"a", "b"} {
 		s.n.Submit(Request{ID: uint64(700 + id), Op: &pb.RangeRequest{Key: []byte(key)}})
