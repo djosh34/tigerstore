@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"go.etcd.io/raft/v3/raftpb"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/loop"
@@ -184,11 +183,11 @@ func (c *inConn) frames() error {
 			c.compact(4 + n)
 			return nil
 		}
-		// Unmarshal copies bytes fields, so the buffer is reused: the
+		// The decoder copies bytes fields, so the buffer is reused: the
 		// entries' data, which the index keeps slices of once they apply,
 		// is the message's own.
-		m := &raftpb.Message{}
-		if err := proto.Unmarshal(c.buf[c.r+4:c.r+4+n], m); err != nil {
+		m, err := decodeMessage(c.buf[c.r+4 : c.r+4+n])
+		if err != nil {
 			return err
 		}
 		c.r += 4 + n
@@ -434,20 +433,20 @@ func (s *sender) frame(b []byte, m *raftpb.Message, v byte) ([]byte, error) {
 		// the follower misses, in full now (HeldEntries).
 		return b, nil
 	}
-	n := proto.Size(m)
+	start := len(b)
+	b, err := appendMessage(append(b, 0, 0, 0, 0), m)
+	if err != nil {
+		return b[:start], err
+	}
+	n := len(b) - start - 4
 	if n > maxFrame {
 		// The receiver would refuse it; Raft sends again in smaller pieces
 		// after the unreachable report.
 		s.t.logf("peer: dropping a %s of %d bytes to %d, over the frame limit", m.GetType(), n, s.id)
 		s.t.cfg.Unreachable(s.id)
-		return b, nil
+		return b[:start], nil
 	}
-	start := len(b)
-	b = binary.BigEndian.AppendUint32(b, uint32(n))
-	b, err := proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(b, m)
-	if err != nil {
-		return b[:start], err
-	}
+	binary.BigEndian.PutUint32(b[start:], uint32(n))
 	s.counters.sent.Add(float64(len(b) - start))
 	if m.GetType() == raftpb.MsgHeartbeat {
 		s.counters.heartbeatSent.SetToCurrentTime()
