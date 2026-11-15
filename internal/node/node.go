@@ -972,6 +972,7 @@ func (n *Node) open() error {
 	cfg.Boot, cfg.Run = rand.Uint64(), run
 	cfg.ConnectedTicks, cfg.HeldEntries, cfg.Kept = n.connectedTicks, n.heldEntries, kept
 	cfg.Timer = newTimer(n.cfg.Metrics, cmp.Or(n.cfg.WarningApplyDuration, warningApply), n.logf)
+	cfg.BeforeApply = func() { n.loop.Flush() }
 	c, err := core.New(cfg, rec, n.log)
 	if err != nil {
 		return err
@@ -1708,6 +1709,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			}
 			n.logPersistTiming(done)
 			dones[i] = persistDone{}
+		}
+		if len(dones) > 0 {
+			n.loop.Flush()
 		}
 		for {
 			var d readDone

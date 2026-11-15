@@ -80,6 +80,9 @@ const (
 
 // Config sets up one node.
 type Config struct {
+	// BeforeApply, if set, runs before a Ready's applies, after its
+	// messages to peers are queued. Diagnosis.
+	BeforeApply func()
 	// ID is this node's Raft ID, not 0.
 	ID uint64
 	// MaxRequestBytes and MaxTxnOps are etcd's --max-request-bytes and
@@ -2073,6 +2076,9 @@ func (n *Node) handleReady(rd raft.Ready) {
 				n.awaitOwn = false
 			}
 		case raft.LocalApplyThread:
+			if n.cfg.BeforeApply != nil {
+				n.cfg.BeforeApply()
+			}
 			n.applyQ = append(n.applyQ, m)
 			n.runApply()
 			if n.err != nil {
