@@ -234,11 +234,11 @@ func (n *node) afterApply() error {
 		s.compact(n.applied - storageWindow)
 	}
 	if s.snap != nil {
-		if err := n.wal.cut(min(n.ckptFrom, s.firstRecord(n.wal.off))); err != nil {
+		if err := n.wal.cut(min(n.ckptCut, s.firstRecord(n.wal.off))); err != nil {
 			return err
 		}
 	}
-	if n.ckpt != nil || n.ckptDir == "" || n.wal.off-n.ckptFrom < max(ckptMin, 2*(n.st.liveBytes+n.st.histBytes)) {
+	if n.ckpt != nil || n.ckptDir == "" || n.wal.off-n.ckptFrom < ckptMin {
 		return nil
 	}
 	off := s.offOf(n.applied)

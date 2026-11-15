@@ -207,9 +207,11 @@ func (tc *testCluster) clientOf(t *testing.T, endpoints ...string) *clientv3.Cli
 }
 
 // smallCheckpoints makes the nodes the test starts take a checkpoint
-// every few writes and keep few entries for followers that lag.
+// every few writes, take in the values of the log before the checkpoint
+// before, and keep few entries for followers that lag.
 func smallCheckpoints(t *testing.T) {
 	t.Helper()
+	takeEveryValue(t)
 	minWas, windowWas := ckptMin, storageWindow
 	ckptMin, storageWindow = 4<<10, 10
 	t.Cleanup(func() { ckptMin, storageWindow = minWas, windowWas })

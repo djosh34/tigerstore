@@ -739,9 +739,6 @@ func (st *store) ckptStates(id uint32, rev int64, out []ckptState) []ckptState {
 		return true
 	}
 	cur := ckptState{deleted: k.create == 0, create: k.create, mod: k.mod, ver: k.ver, lease: k.lease, voff: k.voff, vlen: k.vlen}
-	if !cur.deleted && k.rec != 0 {
-		cur.rec = st.slab.bytes(k.rec, int(k.rlen))
-	}
 	if k.mod == 0 || !add(cur, true) {
 		return out
 	}
@@ -787,16 +784,14 @@ func (st *store) restoreKey(key []byte, states []ckptState) (uint32, error) {
 }
 
 // repoint names the values a checkpoint now holds by their place in it.
-func (st *store) repoint(moves []ckptMove) {
-	for _, m := range moves {
-		k := &st.keys[m.id]
-		if k.voff == m.from {
-			k.voff = m.to
-		}
-		for h := k.hist; h != 0; h = st.hist[h].prev {
-			if e := &st.hist[h]; e.voff == m.from {
-				e.voff = m.to
-			}
+func (st *store) repoint(id uint32, from, to int64) {
+	k := &st.keys[id]
+	if k.voff == from {
+		k.voff = to
+	}
+	for h := k.hist; h != 0; h = st.hist[h].prev {
+		if e := &st.hist[h]; e.voff == from {
+			e.voff = to
 		}
 	}
 }

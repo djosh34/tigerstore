@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 
 	pb "go.etcd.io/raft/v3/raftpb"
@@ -93,8 +95,28 @@ func ckptNode(t *testing.T) (*node, *memLog) {
 	return &node{st: st, ckptDir: t.TempDir(), confState: &pb.ConfState{Voters: []uint64{1, 2, 3}}, storage: newLogStorage(l)}, l
 }
 
-// writeCkpt writes a whole checkpoint, as the loop does turn by turn.
+// writeCkpt writes a whole checkpoint, as the loop does turn by turn,
+// that takes in every value the store names in its memLog.
 func writeCkpt(t *testing.T, n *node, index uint64) {
+	t.Helper()
+	takeEveryValue(t)
+	if l, ok := n.st.log.(*memLog); ok {
+		n.ckptFrom = int64(len(l.b))
+	}
+	writeCkptAt(t, n, index)
+}
+
+// takeEveryValue makes checkpoints cut the log anywhere and take in every
+// value before the cut.
+func takeEveryValue(t *testing.T) {
+	t.Helper()
+	share, unit := ckptCutShare, ckptCutUnit
+	ckptCutShare, ckptCutUnit = 1, 1
+	t.Cleanup(func() { ckptCutShare, ckptCutUnit = share, unit })
+}
+
+// writeCkptAt writes a whole checkpoint, as the loop does turn by turn.
+func writeCkptAt(t *testing.T, n *node, index uint64) {
 	t.Helper()
 	if err := n.startCkpt(index, 1, 0); err != nil {
 		t.Fatal(err)
@@ -262,5 +284,89 @@ func TestThePointerReadsBackWhatWasWritten(t *testing.T) {
 	}
 	if p.gen != 1 || p.name != "x.ckpt" || p.logFrom != 12345 || p.hs.GetTerm() != 4 || p.hs.GetVote() != 2 || p.hs.GetCommit() != 99 {
 		t.Fatalf("read back %+v", p)
+	}
+}
+
+// A checkpoint leaves the values of the log it does not cut where they
+// are: it names them there, and a store loaded from it reads them from
+// the log. The copy a follower gets holds every value, and loads with no
+// log at all.
+func TestACheckpointLeavesValuesInTheLogItKeeps(t *testing.T) {
+	n, l := ckptNode(t)
+	st := n.st
+	putValue(t, st, l, "/a", "a1") // 2
+	putValue(t, st, l, "/b", "b1") // 3
+	putValue(t, st, l, "/a", "a2") // 4
+	writeCkptAt(t, n, 7)
+	if n.ckptCut != 0 {
+		t.Fatalf("the log is cut at %d", n.ckptCut)
+	}
+	reads := map[string]string{"/a@2": "a1", "/a@4": "a2", "/b@4": "b1"}
+	check := func(st *store, what string) {
+		t.Helper()
+		for at, want := range reads {
+			key, rev, _ := strings.Cut(at, "@")
+			r, _ := strconv.ParseInt(rev, 10, 64)
+			if got, live := valueAt(t, st, key, r); got != want || !live {
+				t.Errorf("%s: %s reads %q live %v, want %q", what, at, got, live, want)
+			}
+		}
+	}
+	check(st, "the store")
+	f, err := os.Open(filepath.Join(n.ckptDir, ckptName(7)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	loaded, err := newStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded.log = l
+	if _, err := loadCkpt(f, 1, loaded); err != nil {
+		t.Fatal(err)
+	}
+	check(loaded, "the loaded store")
+
+	sent, err := os.Create(filepath.Join(t.TempDir(), "sent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sent.Close() }()
+	if err := selfContained(f, l, sent); err != nil {
+		t.Fatal(err)
+	}
+	follower, err := newStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.b = nil
+	if _, err := loadCkpt(sent, 0, follower); err != nil {
+		t.Fatal(err)
+	}
+	check(follower, "the follower's store")
+}
+
+func TestCutPoint(t *testing.T) {
+	cases := []struct {
+		live           map[int64]int64
+		from, prevFrom int64
+		want           int64
+	}{
+		{nil, 0, 0, 0},
+		{nil, 0, 10, 10},
+		{map[int64]int64{3: 1}, 0, 10, 10},         // 1 of 10 named
+		{map[int64]int64{3: 4}, 0, 10, 3},          // 4 of 10 is more than a quarter; 0 of 3 before it
+		{map[int64]int64{0: 1, 5: 9}, 0, 10, 5},    // 1 of 5 before segment 5
+		{map[int64]int64{0: 9}, 0, 10, 0},          // nothing to cut
+		{map[int64]int64{6: 1}, 4, 10, 10},         // 1 of 6 past the cut before
+		{map[int64]int64{6: 1, 12: 50}, 4, 10, 10}, // what lies past prevFrom is not cut
+		{map[int64]int64{4: 2, 6: 2}, 4, 10, 4},    // 4 of 6 is too much, 2 of 2 too: no cut
+		{map[int64]int64{4: 1, 9: 9}, 4, 10, 9},    // 1 of 5 before segment 9
+	}
+	for _, c := range cases {
+		if got := cutPoint(c.live, c.from, c.prevFrom, 1); got != c.want {
+			t.Errorf("cutPoint(%v, %d, %d) = %d, want %d", c.live, c.from, c.prevFrom, got, c.want)
+		}
 	}
 }

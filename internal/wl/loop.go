@@ -145,7 +145,7 @@ func run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	if n.wal, err = openWAL(filepath.Join(cfg.DataDir, "wal"), from, n.storage.restore); err != nil {
+	if n.wal, err = openWAL(filepath.Join(cfg.DataDir, "wal"), n.ckptCut, from, n.storage.restore); err != nil {
 		return err
 	}
 	n.storage.log = n.wal
@@ -792,8 +792,8 @@ func (l *loop) logStats() {
 		ms(c.process-pc.process), ms(c.loop-pc.loop), ms(c.process-pc.process-(c.loop-pc.loop)),
 		ms(c.walWrite-pc.walWrite), ws.syncs-pw.syncs, c.dirty>>20, c.writeback>>20)
 	if r := n.ckpt; r != nil {
-		l.logger.Printf("checkpoint at index %d running %v: key ids %d of %d, %d MB encoded; values %d MB from memory, %d MB from disk; loop encoding %d ms; writer read %d MB in %d ms, wrote %d MB in %d ms",
-			r.meta.index, time.Since(r.started).Round(time.Second), r.next, r.end, r.at>>20, r.fromMem>>20, r.fromLog>>20,
+		l.logger.Printf("checkpoint at index %d running %v: phase %d, key ids %d of %d, %d MB encoded; values %d MB taken in, %d MB left in the log; loop encoding %d ms; writer read %d MB in %d ms, wrote %d MB in %d ms",
+			r.meta.index, time.Since(r.started).Round(time.Second), r.phase, r.next, r.end, r.at>>20, r.taken>>20, r.leftInLog>>20,
 			ms(c.ckptEncode-pc.ckptEncode), r.w.readBytes.Load()>>20, ms(c.ckptRead-pc.ckptRead), r.w.writeBytes.Load()>>20, ms(c.ckptWrite-pc.ckptWrite))
 	}
 }

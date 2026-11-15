@@ -123,8 +123,9 @@ func segPath(dir string, k int64) string { return filepath.Join(dir, fmt.Sprintf
 // openWAL opens the log in dir, or starts an empty one. It calls fn with
 // each record the log holds from offset from on, in order, up to the
 // first that does not check; the log goes on after that one, and what lay
-// from it on is cut. from is where a checkpoint left the log, 0 for none.
-func openWAL(dir string, from int64, fn func(r *walRecord) error) (*wal, error) {
+// from it on is cut. from is where a checkpoint left the log, 0 for none;
+// the log before keep is removed, and from keep on it is kept to read.
+func openWAL(dir string, keep, from int64, fn func(r *walRecord) error) (*wal, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
@@ -147,7 +148,7 @@ func openWAL(dir string, from int64, fn func(r *walRecord) error) (*wal, error) 
 	if w.stage, err = mmapBytes(stageSize); err != nil {
 		return nil, err
 	}
-	next, err := w.reopen(from, end)
+	next, err := w.reopen(keep, end)
 	if err != nil {
 		return nil, err
 	}

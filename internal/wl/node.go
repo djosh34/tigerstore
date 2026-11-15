@@ -83,6 +83,9 @@ type node struct {
 	ckpt     *ckptRun
 	ckptGen  int
 	ckptFrom int64
+	// ckptCut: the log before it is the newest checkpoint's, which holds
+	// what the store names there.
+	ckptCut  int64
 	ckptName string
 	ckptDir  string
 	// recvSnap is a snapshot received and not installed yet.

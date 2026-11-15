@@ -30,9 +30,9 @@ import (
 type shell interface {
 	// wakeLoop wakes the loop; any goroutine may call it.
 	wakeLoop()
-	// sendSnapshot streams the checkpoint f of size bytes to the follower
-	// m is for, and reports to Raft how it went.
-	sendSnapshot(m *pb.Message, f *os.File, size int64)
+	// sendSnapshot sends the checkpoint f to the follower m is for, with
+	// every value in it, and reports to Raft how it went.
+	sendSnapshot(m *pb.Message, f *os.File)
 	// logf logs what the node does seldom, such as a checkpoint.
 	logf(format string, args ...any)
 }
@@ -64,15 +64,9 @@ func (n *node) sendSnapshot(m *pb.Message) {
 		fail()
 		return
 	}
-	fi, err := f.Stat()
-	if err != nil {
-		_ = f.Close()
-		fail()
-		return
-	}
 	n.stats.snapsSent++
-	n.logf("sending the snapshot at index %d (%d bytes) to %d", m.GetSnapshot().GetMetadata().GetIndex(), fi.Size(), m.GetTo())
-	n.shell.sendSnapshot(m, f, fi.Size())
+	n.logf("sending the snapshot at index %d to %d", m.GetSnapshot().GetMetadata().GetIndex(), m.GetTo())
+	n.shell.sendSnapshot(m, f)
 }
 
 // takeSnapshot steps a snapshot received into the file at path.
@@ -140,8 +134,8 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	n.storage.applySnapshot(meta, name)
 	n.applied = meta.GetIndex()
 	n.confState = meta.GetConfState()
-	n.ckptFrom = n.wal.off
-	if err := writePointer(n.ckptDir, &ckptPointer{gen: gen, name: name, logFrom: n.wal.off, hs: n.wal.durableHS}); err != nil {
+	n.ckptFrom, n.ckptCut = n.wal.off, n.wal.off
+	if err := writePointer(n.ckptDir, &ckptPointer{gen: gen, name: name, logFrom: n.wal.off, cut: n.wal.off, hs: n.wal.durableHS}); err != nil {
 		return err
 	}
 	if err := n.wal.cut(n.wal.off); err != nil {
@@ -178,7 +172,7 @@ func snapHeader(m *pb.Message, size int64) ([]byte, error) {
 
 // sendSnapshot streams f to the follower m is for, in a goroutine, and
 // then reports to Raft how it went.
-func (l *loop) sendSnapshot(m *pb.Message, f *os.File, size int64) {
+func (l *loop) sendSnapshot(m *pb.Message, f *os.File) {
 	to := m.GetTo()
 	var mem member
 	for _, x := range l.n.members {
@@ -187,7 +181,7 @@ func (l *loop) sendSnapshot(m *pb.Message, f *os.File, size int64) {
 		}
 	}
 	go func() {
-		err := l.streamSnapshot(mem, m, f, size)
+		err := l.sendSelfContained(mem, m, f)
 		_ = f.Close()
 		status := raft.SnapshotFinish
 		if err != nil {
@@ -199,6 +193,30 @@ func (l *loop) sendSnapshot(m *pb.Message, f *os.File, size int64) {
 			return nil
 		})
 	}()
+}
+
+// sendSelfContained sends the follower the checkpoint in f with every
+// value in it, written to a file of its own first.
+func (l *loop) sendSelfContained(mem member, m *pb.Message, f *os.File) error {
+	tmp, err := os.CreateTemp(l.n.ckptDir, "send-*.tmp")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+	}()
+	if err := selfContained(f, l.n.wal, tmp); err != nil {
+		return err
+	}
+	size, err := tmp.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	return l.streamSnapshot(mem, m, tmp, size)
 }
 
 func (l *loop) streamSnapshot(mem member, m *pb.Message, f *os.File, size int64) error {

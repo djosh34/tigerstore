@@ -24,6 +24,11 @@ func (l *memLog) read(p []byte, off int64) error {
 	return nil
 }
 
+// A memLog is durable as soon as it is written: a checkpoint's writer
+// reads it as it reads the log.
+func (l *memLog) durableEnd() int64                     { return int64(len(l.b)) }
+func (l *memLog) readDurable(p []byte, off int64) error { return l.read(p, off) }
+
 func newTestStore(t *testing.T) (*store, *memLog) {
 	t.Helper()
 	st, err := newStore()
