@@ -589,7 +589,15 @@ func (w *writer) checkSortValues(r *pb.RangeRequest) error {
 // header, as in etcd.
 func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int, error) {
 	ops := branch(r, path[0])
-	t := new(txnParts)
+	var t *txnParts
+	if w.s.Unanswered && len(ops) == 1 && ops[0].GetRequestTxn() == nil {
+		// Nobody reads the response, and no nested transaction builds
+		// one inside it: the store's own parts do.
+		t = &w.s.unanswered
+		*t = txnParts{}
+	} else {
+		t = new(txnParts)
+	}
 	resp := &t.resp
 	resp.Header, resp.Succeeded = &t.header, path[0]
 	parts, outs := t.one[:], t.outs[:]

@@ -370,6 +370,9 @@ type Store struct {
 	// SortBytes, if above 0, bounds the values a Range sorted by value
 	// reads at once (ErrTooLarge).
 	SortBytes int64
+	// unanswered is the response of a transaction that nobody reads
+	// (executeTxn).
+	unanswered txnParts
 	// Unanswered says that nobody reads the answer of the writes applied
 	// now, as on a node where no client waits for them. They then skip
 	// the reads that only their answer needs: a Txn's ranges, which

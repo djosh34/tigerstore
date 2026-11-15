@@ -510,6 +510,15 @@ type Node struct {
 	expiries, checkpoints leaseQueue
 	// announcedAt is the tick this node last proposed its version.
 	announcedAt int64
+	// spare holds the arrays of the effects' Send and Replies that the
+	// driver has until the next Process.
+	spare Effects
+	// short holds a short transaction of another node's while it applies
+	// (decodeWrite).
+	short struct {
+		txn   pb.TxnRequest
+		parts shortParts
+	}
 	// confMessages wait for Raft to apply the preceding configuration
 	// change. confGate is its index, or MaxUint64 until it reaches apply.
 	confMessages []*raftpb.Message
@@ -1927,7 +1936,9 @@ func (n *Node) deliver(msgs []*raftpb.Message) {
 
 // Process runs Raft until it has nothing more to do and returns the
 // effects gathered since the last call. A non-nil error means the node
-// stopped; the effects are still valid and carry its last replies.
+// stopped; the effects are still valid and carry its last replies. The
+// arrays of Send and Replies are the caller's until it calls Process
+// again, which then gathers into them the turn after.
 func (n *Node) Process() (Effects, error) {
 	n.yielded = false
 	if n.err == nil {
@@ -1991,7 +2002,10 @@ func (n *Node) Process() (Effects, error) {
 		n.stop()
 	}
 	out := n.out
-	n.out = Effects{}
+	clear(n.spare.Send)
+	clear(n.spare.Replies)
+	n.out = Effects{Send: n.spare.Send[:0], Replies: n.spare.Replies[:0]}
+	n.spare.Send, n.spare.Replies = out.Send, out.Replies
 	n.watchRead = nil
 	return out, n.err
 }
@@ -2392,6 +2406,9 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 	if r := n.resume; r != nil && r.index == e.GetIndex() {
 		skip = r.write
 	}
+	// One clock read per write: the end of one write's apply is the start
+	// of the next one's in the same entry.
+	var start int64
 	err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte, at int) error {
 		if k++; k < skip {
 			return nil
@@ -2400,11 +2417,15 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 		if t == nil {
 			return n.applyWrite(e, k, origin, boot, id, kind, b, at)
 		}
-		start := t.Now()
+		if start == 0 {
+			start = t.Now()
+		}
 		n.timed = timedApply{}
 		err := n.applyWrite(e, k, origin, boot, id, kind, b, at)
 		if err == nil && !n.applyWaits() {
-			t.Applied(n.timed.op, n.timed.err == nil || errors.Is(n.timed.err, rpctypes.ErrGRPCCompacted), t.Now()-start)
+			end := t.Now()
+			t.Applied(n.timed.op, n.timed.err == nil || errors.Is(n.timed.err, rpctypes.ErrGRPCCompacted), end-start)
+			start = end
 		}
 		return err
 	})
@@ -2438,13 +2459,22 @@ func (n *Node) decodeWrite(p *pending, kind byte, b []byte, at int) (proto.Messa
 		}
 		return t, nil
 	}
+	if kind == kindShortTxn {
+		// No request of this node waits for the write, so nothing keeps
+		// it past its apply: each one is decoded into the same memory.
+		s := &n.short
+		s.txn.Reset()
+		s.parts = shortParts{}
+		if err := decodeShortInto(b, &s.txn, &s.parts, at, &n.values.placer); err != nil {
+			return nil, fmt.Errorf("%w: %w", errBadBatch, err)
+		}
+		return &s.txn, nil
+	}
 	op, err := newOp(kind)
 	if err != nil {
 		return nil, err
 	}
-	if kind == kindShortTxn {
-		err = decodeShort(b, op.(*pb.TxnRequest), at, &n.values.placer)
-	} else if txn, ok := op.(*pb.TxnRequest); ok {
+	if txn, ok := op.(*pb.TxnRequest); ok {
 		err = decodeTxnPlaced(b, txn, at, &n.values.placer)
 	} else {
 		err = DecodeAlias(b, op)

@@ -293,9 +293,12 @@ func (l *Loop) expire() {
 	}
 	now := time.Now()
 	keep := l.timers[:0]
-	for _, t := range l.timers {
+	for i, t := range l.timers {
 		if now.Before(t.at) {
-			l.timed[t.f] = len(keep)
+			// timed holds i: only a timer that moves is written again.
+			if len(keep) != i {
+				l.timed[t.f] = len(keep)
+			}
 			keep = append(keep, t)
 			continue
 		}

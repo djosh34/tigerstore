@@ -184,6 +184,11 @@ type shortParts struct {
 // entry into m, and records in pl where the value of its put starts. The
 // bytes fields are slices of b.
 func decodeShort(b []byte, m *pb.TxnRequest, at int, pl *placer) error {
+	return decodeShortInto(b, m, new(shortParts), at, pl)
+}
+
+// decodeShortInto is decodeShort with the parts of m in p.
+func decodeShortInto(b []byte, m *pb.TxnRequest, p *shortParts, at int, pl *placer) error {
 	if len(b) == 0 {
 		return errBadBatch
 	}
@@ -201,7 +206,6 @@ func decodeShort(b []byte, m *pb.TxnRequest, at int, pl *placer) error {
 	if !ok || len(rest) == 0 || result > 1<<32-1 || target > 1<<32-1 {
 		return errBadBatch
 	}
-	p := new(shortParts)
 	c := &p.compare
 	c.Result, c.Target = pb.Compare_CompareResult(int32(uint32(result))), pb.Compare_CompareTarget(int32(uint32(target)))
 	field := rest[0]

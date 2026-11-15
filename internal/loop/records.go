@@ -467,11 +467,15 @@ func (r *Records) uselessOne() error {
 // io.EOF, and an error that is not temporary, such as ErrWouldBlock or a
 // deadline, ends reading for good.
 func (r *Records) readFailed(err error) error {
+	// The usual end of a read, checked first: errors.As below is costly.
+	if errors.Is(err, ErrWouldBlock) {
+		return err
+	}
 	if errors.Is(err, io.EOF) && len(r.br.buffered()) > 0 {
 		err = io.ErrUnexpectedEOF
 	}
 	var ne net.Error
-	if errors.As(err, &ne) && ne.Timeout() || errors.Is(err, ErrWouldBlock) {
+	if errors.As(err, &ne) && ne.Timeout() {
 		return err
 	}
 	r.err = err
