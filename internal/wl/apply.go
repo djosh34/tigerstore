@@ -53,7 +53,7 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 		case kTxn:
 			err = n.applyTxn(req, voff, c, s)
 		case kCompact:
-			n.applyCompact(req, c, s)
+			err = n.applyCompact(req, c, s)
 		case kLeaseGrant:
 			err = n.applyLeaseGrant(req, c, s)
 		case kLeaseRevoke:
@@ -99,25 +99,29 @@ func (n *node) replyHeader(c *client, s *stream) {
 	n.endReply(c, s, &w)
 }
 
-func (n *node) applyCompact(req []byte, c *client, s *stream) {
+func (n *node) applyCompact(req []byte, c *client, s *stream) error {
+	rev := int64(0)
 	for m := req; len(m) > 0; {
 		num, _, v, _, rest, err := field(m)
 		if err != nil {
-			break
+			return badRequest(err)
 		}
 		if num == 1 {
-			if int64(v) > n.st.compactRev && int64(v) <= n.st.rev {
-				n.st.compactRev = int64(v)
-			} else if c != nil && int64(v) <= n.st.compactRev {
-				n.replyError(c, s.id, codeOutOfRange, msgCompacted)
-				c = nil
-			}
+			rev = int64(v)
 		}
 		m = rest
 	}
+	switch {
+	case rev <= n.st.compactRev:
+		return requestErr(codeOutOfRange, msgCompacted)
+	case rev > n.st.rev:
+		return requestErr(codeOutOfRange, msgFuture)
+	}
+	n.st.compact(rev)
 	if c != nil {
 		n.replyHeader(c, s)
 	}
+	return nil
 }
 
 func voffOf(req, sub []byte, base int64) int64 {

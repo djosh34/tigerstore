@@ -238,7 +238,7 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 		// A start revision in the past: the events since, then the live
 		// ones. Nothing applies in between, so none is lost or doubled.
 		if startRev > 0 && startRev <= n.st.rev {
-			if startRev <= n.st.compactRev {
+			if startRev < n.st.compactRev {
 				n.writeCompacted(c, s, &x)
 				n.w.remove(i)
 			} else if err := n.sendHistory(c, s, &n.w.ws[i], startRev); err != nil {

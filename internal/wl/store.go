@@ -2,9 +2,11 @@ package wl
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"hash/maphash"
+	"slices"
 	"unsafe"
 )
 
@@ -64,11 +66,16 @@ type store struct {
 	mask  uint64
 	seed  maphash.Seed
 
-	karena arena
-	slab   *slab
-	hist   []histEnt
-	nhist  uint32
-	tree   tree
+	karena   arena
+	slab     *slab
+	hist     []histEnt
+	nhist    uint32
+	histFree uint32 // a list of free history slots, through prev
+	// trimKey is the next key whose history compaction trims, while
+	// trimming.
+	trimKey  uint32
+	trimming bool
+	tree     tree
 
 	leases  map[int64]*lease
 	log     logReader
@@ -322,11 +329,16 @@ func (st *store) pushHist(k *keyEnt) error {
 	if k.mod == 0 {
 		return nil
 	}
-	h := st.nhist
-	if h+1 >= maxHist {
-		return errHistoryFull
+	h := st.histFree
+	if h != 0 {
+		st.histFree = st.hist[h].prev
+	} else {
+		h = st.nhist
+		if h+1 >= maxHist {
+			return errHistoryFull
+		}
+		st.nhist++
 	}
-	st.nhist++
 	st.hist[h] = histEnt{
 		create: k.create, mod: k.mod, ver: k.ver, lease: k.lease,
 		voff: k.voff, vlen: k.vlen, prev: k.hist, deleted: k.create == 0,
@@ -399,14 +411,77 @@ func (st *store) del(id uint32, rev int64) ([]byte, error) {
 	return prev, nil
 }
 
-// endApply frees the records an apply replaced, and keeps the rest
-// within the budget.
+// endApply frees the records an apply replaced, keeps the rest within
+// the budget, and goes on with a compaction's trim.
 func (st *store) endApply() {
 	for i := 0; i < len(st.freeLater); i += 2 {
 		st.slab.free(st.freeLater[i], int(st.freeLater[i+1]))
 	}
 	st.freeLater = st.freeLater[:0]
 	st.fit()
+	st.trimSteps(trimStep)
+}
+
+// trimStep is the most keys one apply trims the history of.
+const trimStep = 4096
+
+// compact drops what no read at rev or later needs: the change index
+// before it at once, and the key histories a few keys at a time after
+// each apply.
+func (st *store) compact(rev int64) {
+	st.compactRev = rev
+	i, _ := slices.BinarySearchFunc(st.changes, rev, func(ch change, r int64) int { return cmp.Compare(ch.rev, r) })
+	if i > len(st.changes)/2 {
+		st.changes = append([]change(nil), st.changes[i:]...)
+	} else {
+		st.changes = st.changes[i:]
+	}
+	st.trimKey, st.trimming = 0, true
+}
+
+// trimSteps trims the histories of up to k keys.
+func (st *store) trimSteps(k int) {
+	for ; k > 0 && st.trimming; k-- {
+		if st.trimKey >= st.nkeys {
+			st.trimming = false
+			return
+		}
+		st.trimHistory(st.trimKey)
+		st.trimKey++
+	}
+}
+
+// trimHistory frees key id's states before the newest one at or before
+// the compacted revision, and that one too if it is a deletion: a read at
+// the compacted revision or later needs neither.
+func (st *store) trimHistory(id uint32) {
+	k := &st.keys[id]
+	c := st.compactRev
+	var cut uint32
+	if k.mod <= c {
+		cut, k.hist = k.hist, 0
+	} else {
+		link := &k.hist
+		for h := k.hist; h != 0; h = st.hist[h].prev {
+			e := &st.hist[h]
+			if e.mod > c {
+				link = &e.prev
+				continue
+			}
+			if e.deleted {
+				cut, *link = h, 0
+			} else {
+				cut, e.prev = e.prev, 0
+			}
+			break
+		}
+	}
+	for cut != 0 {
+		next := st.hist[cut].prev
+		st.hist[cut] = histEnt{prev: st.histFree}
+		st.histFree = cut
+		cut = next
+	}
 }
 
 // at returns key id's record as it was at revision rev, built from the

@@ -90,7 +90,7 @@ func (n *node) retryReads(now int64) {
 // serveRange answers a Range or RangeStream from the store as it is.
 func (n *node) serveRange(c *client, s *stream, r *rangeReq) {
 	st := n.st
-	if r.rev > 0 && r.rev <= st.compactRev && r.rev < st.rev {
+	if r.rev > 0 && r.rev < st.compactRev {
 		n.replyError(c, s.id, codeOutOfRange, msgCompacted)
 		return
 	}

@@ -126,3 +126,57 @@ func TestStoreWithoutABudgetKeepsEveryRecord(t *testing.T) {
 		t.Fatalf("%d evictions without a budget", st.evictions)
 	}
 }
+
+func TestCompactionKeepsWhatReadsAtItAndAfterNeed(t *testing.T) {
+	st, l := newTestStore(t)
+	putValue(t, st, l, "/a", "one")   // 2
+	putValue(t, st, l, "/a", "two")   // 3
+	putValue(t, st, l, "/b", "b")     // 4
+	putValue(t, st, l, "/a", "three") // 5
+	id, _ := st.find([]byte("/b"))
+	st.rev++
+	if _, err := st.del(id, st.rev); err != nil { // 6
+		t.Fatal(err)
+	}
+	st.endApply()
+	putValue(t, st, l, "/a", "four") // 7
+
+	st.compact(5)
+	st.trimSteps(1 << 20)
+	if st.trimming {
+		t.Fatal("the trim did not finish")
+	}
+	for _, c := range []struct {
+		key  string
+		rev  int64
+		want string
+		live bool
+	}{{"/a", 5, "three", true}, {"/a", 6, "three", true}, {"/a", 7, "four", true}, {"/b", 5, "b", true}, {"/b", 6, "", false}} {
+		got, live := valueAt(t, st, c.key, c.rev)
+		if got != c.want || live != c.live {
+			t.Errorf("%s at %d: %q live %v, want %q live %v", c.key, c.rev, got, live, c.want, c.live)
+		}
+	}
+	if len(st.changes) != 3 || st.changes[0].rev != 5 {
+		t.Fatalf("the change index after compaction at 5: %+v", st.changes)
+	}
+	// The freed slots take the next history.
+	high := st.nhist
+	putValue(t, st, l, "/a", "five")
+	putValue(t, st, l, "/a", "six")
+	if st.nhist != high {
+		t.Fatalf("history grew from %d to %d slots with freed ones to take", high, st.nhist)
+	}
+}
+
+func TestCompactionTrimsAFewKeysAtATime(t *testing.T) {
+	st, l := newTestStore(t)
+	for i := range 2 * trimStep {
+		putValue(t, st, l, fmt.Sprintf("/k/%05d", i), "v")
+	}
+	st.compact(st.rev)
+	putValue(t, st, l, "/x", "v") // one apply
+	if !st.trimming || st.trimKey != trimStep {
+		t.Fatalf("after one apply the trim is at key %d (trimming %v), want %d", st.trimKey, st.trimming, trimStep)
+	}
+}
