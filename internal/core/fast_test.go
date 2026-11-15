@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/simfs"
@@ -48,10 +50,19 @@ func (f *fuzzed) intn(n int) int {
 	return v % n
 }
 
-// fastAnswers collects the fast path's replies, encoded as they come.
-type fastAnswers struct{ got map[uint64]string }
+// fastAnswers collects the fast path's replies, encoded as they come,
+// and counts those that are pieces.
+type fastAnswers struct {
+	got    map[uint64]string
+	pieces int
+}
 
-func (a *fastAnswers) Answer(r *Reply) { a.got[r.ID] = canonReply(r) }
+func (a *fastAnswers) Answer(r *Reply) {
+	if r.MorePieces {
+		a.pieces++
+	}
+	a.got[r.ID] = canonReply(r)
+}
 
 // canonReply encodes a reply for comparison, while the values it points
 // to are still the ones the turn handed out.
@@ -82,13 +93,40 @@ type diffNode struct {
 	replies map[uint64]string
 	applied [][]byte
 	taken   int
+	// reads counts the value reads of turns with a fast answer waiting.
+	reads int
 }
 
-func newDiffNode(t testing.TB, fast bool) *diffNode {
+// diffCase is the setting of a differential run: the node's
+// configuration, and how many keys and how large the values the requests
+// write.
+type diffCase struct {
+	name     string
+	change   func(*Config)
+	keys     int
+	maxValue int
+}
+
+var diffCases = []diffCase{
+	{name: "plain", keys: 6, maxValue: 40},
+	// Values past the memory budget and entries past the window, so that
+	// answers carry values only the log has (cold reads), and ranges come
+	// in pieces.
+	{name: "cold", keys: 64, maxValue: 24 << 10, change: func(c *Config) {
+		c.MemoryBytes = 256 << 10
+		c.WindowBytes, c.WindowMaxBytes = 512, 1024
+		c.PieceBytes = 4 << 10
+	}},
+}
+
+func newDiffNode(t testing.TB, fast bool, dc diffCase) *diffNode {
 	d := &diffNode{fast: fast, answers: fastAnswers{got: map[uint64]string{}}, replies: map[uint64]string{}}
 	d.s = startSingleWith(t, simfs.New(), 7, func(c *Config) {
 		c.Record = true
 		c.Slow = !fast
+		if dc.change != nil {
+			dc.change(c)
+		}
 	})
 	d.s.afterTurn = func(eff Effects) {
 		for i := range eff.Replies {
@@ -96,6 +134,13 @@ func newDiffNode(t testing.TB, fast bool) *diffNode {
 		}
 		for _, a := range eff.Applied {
 			d.applied = append(d.applied, bytes.Clone(a.Data))
+		}
+		for _, r := range eff.Reads {
+			for _, rp := range r.replies {
+				if d.s.n.fast.live(rp.ID) != nil {
+					d.reads++
+				}
+			}
 		}
 	}
 	// Short transactions and the fast path need originVersion, which the
@@ -156,10 +201,10 @@ func (g genReq) request(t testing.TB, id uint64) Request {
 	return r
 }
 
-func genKey(c choices) []byte { return []byte(fmt.Sprintf("/k/%d", c.intn(6))) }
+func genKey(c choices, dc diffCase) []byte { return []byte(fmt.Sprintf("/k/%d", c.intn(dc.keys))) }
 
-func genValue(c choices) []byte {
-	v := make([]byte, c.intn(40))
+func genValue(c choices, dc diffCase) []byte {
+	v := make([]byte, c.intn(dc.maxValue))
 	for i := range v {
 		v[i] = byte('a' + c.intn(26))
 	}
@@ -167,7 +212,7 @@ func genValue(c choices) []byte {
 }
 
 // genWrite makes a request; with fastOnly, one of a fast shape.
-func genWrite(t testing.TB, c choices, fastOnly bool) genReq {
+func genWrite(t testing.TB, c choices, dc diffCase, fastOnly bool) genReq {
 	t.Helper()
 	k := 4
 	if !fastOnly {
@@ -175,7 +220,7 @@ func genWrite(t testing.TB, c choices, fastOnly bool) genReq {
 	}
 	switch c.intn(k) {
 	case 0, 1:
-		p := &pb.PutRequest{Key: genKey(c), Value: genValue(c), PrevKv: c.intn(2) == 0}
+		p := &pb.PutRequest{Key: genKey(c, dc), Value: genValue(c, dc), PrevKv: c.intn(2) == 0}
 		if !fastOnly && c.intn(4) == 0 {
 			// A put the checks refuse, or one with a lease no node granted.
 			switch c.intn(3) {
@@ -190,21 +235,22 @@ func genWrite(t testing.TB, c choices, fastOnly bool) genReq {
 		w, _ := proto.Marshal(p)
 		return genReq{wire: w, fastShape: p.Lease == 0 && len(p.Key) > 0 && !p.IgnoreValue}
 	case 2, 3:
-		key := genKey(c)
+		key := genKey(c, dc)
 		cmp := &pb.Compare{Key: key, Result: pb.Compare_CompareResult(c.intn(4)), Target: pb.Compare_CompareTarget(c.intn(3))}
 		switch cmp.Target {
 		case pb.Compare_VERSION:
 			cmp.TargetUnion = &pb.Compare_Version{Version: int64(c.intn(4))}
 		case pb.Compare_CREATE:
 			cmp.TargetUnion = &pb.Compare_CreateRevision{CreateRevision: int64(c.intn(30))}
-		default:
+		case pb.Compare_MOD, pb.Compare_VALUE, pb.Compare_LEASE:
+			cmp.Target = pb.Compare_MOD
 			cmp.TargetUnion = &pb.Compare_ModRevision{ModRevision: int64(c.intn(30))}
 		}
 		txn := &pb.TxnRequest{Compare: []*pb.Compare{cmp}}
 		if c.intn(4) == 0 {
 			txn.Success = []*pb.RequestOp{{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: key, PrevKv: c.intn(2) == 0}}}}
 		} else {
-			txn.Success = []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: genValue(c), PrevKv: c.intn(2) == 0}}}}
+			txn.Success = []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: genValue(c, dc), PrevKv: c.intn(2) == 0}}}}
 		}
 		if c.intn(2) == 0 {
 			txn.Failure = []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: key}}}}
@@ -214,13 +260,13 @@ func genWrite(t testing.TB, c choices, fastOnly bool) genReq {
 	case 4:
 		// A transaction of another shape: two puts.
 		txn := &pb.TxnRequest{Success: []*pb.RequestOp{
-			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: genKey(c), Value: genValue(c)}}},
-			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("/other"), Value: genValue(c)}}},
+			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: genKey(c, dc), Value: genValue(c, dc)}}},
+			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("/other"), Value: genValue(c, dc)}}},
 		}}
 		w, _ := proto.Marshal(txn)
 		return genReq{op: txn, wire: w}
 	case 5:
-		return genReq{op: &pb.DeleteRangeRequest{Key: genKey(c), PrevKv: c.intn(2) == 0}}
+		return genReq{op: &pb.DeleteRangeRequest{Key: genKey(c, dc), PrevKv: c.intn(2) == 0}}
 	case 6:
 		return genReq{op: &pb.RangeRequest{Key: []byte("/k/"), RangeEnd: []byte("/k0")}}
 	case 7:
@@ -232,9 +278,9 @@ func genWrite(t testing.TB, c choices, fastOnly bool) genReq {
 
 // diffRun runs turns of generated requests on both sides and compares
 // them after each turn.
-func diffRun(t testing.TB, c choices, turns int) (taken int) {
+func diffRun(t testing.TB, c choices, dc diffCase, turns int) diffCount {
 	t.Helper()
-	fast, slow := newDiffNode(t, true), newDiffNode(t, false)
+	fast, slow := newDiffNode(t, true, dc), newDiffNode(t, false, dc)
 	id := uint64(1000)
 	var ids []uint64
 	for turn := range turns {
@@ -243,7 +289,7 @@ func diffRun(t testing.TB, c choices, turns int) (taken int) {
 			k += c.intn(6)
 		}
 		for i := range k {
-			g := genWrite(t, c, k > 1)
+			g := genWrite(t, c, dc, k > 1)
 			id++
 			ids = append(ids, id)
 			fast.submit(g.request(t, id))
@@ -273,18 +319,32 @@ func diffRun(t testing.TB, c choices, turns int) (taken int) {
 			t.Fatalf("turn %d: the entries applied differ:\n  fast %x\n  slow %x", turn, fast.applied, slow.applied)
 		}
 	}
-	return fast.taken
+	return diffCount{taken: fast.taken, reads: fast.reads, pieces: fast.answers.pieces}
 }
+
+// diffCount is what the fast side of a run did.
+type diffCount struct{ taken, reads, pieces int }
 
 // TestFastPathMatchesSlowPath runs seeds of generated requests through
 // both paths.
 func TestFastPathMatchesSlowPath(t *testing.T) {
-	taken := 0
-	for seed := range uint64(20) {
-		taken += diffRun(t, seeded{rand.New(rand.NewPCG(seed, 0x66617374))}, 60)
-	}
-	if taken < 200 {
-		t.Fatalf("the fast path took only %d requests", taken)
+	for _, dc := range diffCases {
+		t.Run(dc.name, func(t *testing.T) {
+			var sum diffCount
+			for seed := range uint64(20) {
+				c := diffRun(t, seeded{rand.New(rand.NewPCG(seed, 0x66617374))}, dc, 60)
+				sum.taken, sum.reads, sum.pieces = sum.taken+c.taken, sum.reads+c.reads, sum.pieces+c.pieces
+			}
+			t.Logf("the fast path took %d requests; %d of its answers waited for values from the log, %d were pieces", sum.taken, sum.reads, sum.pieces)
+			if sum.taken < 200 {
+				t.Fatalf("the fast path took only %d requests", sum.taken)
+			}
+			// A short transaction reads one key, so its answer never comes
+			// in pieces; the slow path's answers in the same runs do.
+			if dc.name == "cold" && sum.reads == 0 {
+				t.Fatal("no fast answer waited for values from the log")
+			}
+		})
 	}
 }
 
@@ -299,6 +359,180 @@ func FuzzFastPath(f *testing.F) {
 		f.Add(b)
 	}
 	f.Fuzz(func(t *testing.T, b []byte) {
-		diffRun(t, &fuzzed{b: b}, 1+len(b)/16)
+		c := &fuzzed{b: b}
+		dc := diffCases[c.intn(len(diffCases))]
+		diffRun(t, c, dc, 1+len(b)/16)
+	})
+}
+
+// The rare ways out of the fast path. Each scenario runs on a node that
+// takes its write on the fast path and on one that takes it through
+// Submit; both must give the write the same answer.
+
+// rareRun is one side of a scenario.
+type rareRun struct {
+	t       *testing.T
+	n       *Node
+	fast    bool
+	answers fastAnswers
+	replies map[uint64]string
+	jobs    []PersistJob
+}
+
+// submit hands the node the scenario's put, ID 77, on the fast path on
+// that side, where it must take it.
+func (r *rareRun) submit() {
+	r.t.Helper()
+	w, _ := proto.Marshal(&pb.PutRequest{Key: []byte("k"), Value: []byte("v"), PrevKv: true})
+	put, err := ParsePut(w)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	req := Request{ID: 77, Put: put}
+	if r.fast {
+		if !r.n.SubmitFast(&req, &r.answers) {
+			r.t.Fatal("the fast path did not take the write")
+		}
+		return
+	}
+	r.n.Submit(req)
+}
+
+// process runs a turn and keeps its replies and disk writes, which it
+// does not write.
+func (r *rareRun) process() {
+	eff, _ := r.n.Process()
+	for i := range eff.Replies {
+		r.replies[eff.Replies[i].ID] = canonReply(&eff.Replies[i])
+	}
+	r.jobs = append(r.jobs, eff.Persist...)
+}
+
+// persist reports the disk writes so far durable.
+func (r *rareRun) persist() {
+	jobs := r.jobs
+	r.jobs = nil
+	for _, j := range jobs {
+		r.n.Persisted(j)
+	}
+}
+
+// answer is the answer to request id.
+func (r *rareRun) answer(id uint64) string {
+	if a, ok := r.answers.got[id]; ok {
+		return a
+	}
+	return r.replies[id]
+}
+
+// rareScenario runs scenario on both sides, from a one-node cluster at
+// originVersion, and requires the same answer to request 77 on both, which
+// must have err.
+func rareScenario(t *testing.T, err error, scenario func(r *rareRun)) {
+	t.Helper()
+	var got [2]string
+	for i, fast := range []bool{true, false} {
+		d := newDiffNode(t, fast, diffCases[0])
+		r := &rareRun{t: t, n: d.s.n, fast: fast, answers: fastAnswers{got: map[uint64]string{}}, replies: map[uint64]string{}}
+		scenario(r)
+		got[i] = r.answer(77)
+	}
+	if got[0] != got[1] {
+		t.Fatalf("the write is answered\n  on the fast path: %q\n  on the slow path: %q", got[0], got[1])
+	}
+	if want := fmt.Sprintf("err %v ", err); !strings.Contains(got[0], want) {
+		t.Fatalf("the write is answered %q, want %q", got[0], want)
+	}
+}
+
+// fillOwn leaves ownDepth of the leader's own appends on their way to
+// disk, so that new writes wait to be proposed.
+func fillOwn(r *rareRun) {
+	for i := range ownDepth {
+		r.n.Submit(Request{ID: uint64(10 + i), Op: &pb.PutRequest{Key: []byte("own"), Value: []byte("v")}})
+		r.process()
+	}
+	if len(r.n.own) != ownDepth {
+		r.t.Fatalf("%d own appends on their way, want %d", len(r.n.own), ownDepth)
+	}
+}
+
+// TestFastWriteExpiresUnproposed: a write that waits in the open batch
+// past its deadline leaves it as one never proposed.
+func TestFastWriteExpiresUnproposed(t *testing.T) {
+	rareScenario(t, errNotProposed, func(r *rareRun) {
+		fillOwn(r)
+		r.submit()
+		r.process()
+		if r.fast && !r.n.fast.slot(77).open {
+			t.Fatal("the write left the open batch while the own appends were on their way")
+		}
+		r.n.Elapse(int64(r.n.cfg.RequestTicks) + 1)
+		r.process()
+	})
+}
+
+// TestFastWriteMeetsNoSpace: the NOSPACE alarm comes between the write's
+// admission and its proposal.
+func TestFastWriteMeetsNoSpace(t *testing.T) {
+	rareScenario(t, rpctypes.ErrGRPCNoSpace, func(r *rareRun) {
+		fillOwn(r)
+		r.submit()
+		r.process()
+		r.n.state.noSpace = true
+		r.persist()
+		r.process()
+	})
+}
+
+// TestFastWriteTimesOut: a proposed write whose append never becomes
+// durable times out as one that may still commit.
+func TestFastWriteTimesOut(t *testing.T) {
+	rareScenario(t, rpctypes.ErrGRPCTimeout, func(r *rareRun) {
+		r.submit()
+		r.process()
+		if r.fast && r.n.fast.slot(77).open {
+			t.Fatal("the write was not proposed")
+		}
+		r.n.Elapse(int64(r.n.cfg.RequestTicks) + 1)
+		r.process()
+	})
+}
+
+// TestFastWriteStopsWithTheNode: a node that stops answers its waiting
+// writes.
+func TestFastWriteStopsWithTheNode(t *testing.T) {
+	rareScenario(t, rpctypes.ErrGRPCStopped, func(r *rareRun) {
+		r.submit()
+		r.process()
+		r.n.fail(errors.New("a failure"))
+		r.process()
+	})
+}
+
+// TestFastWriteInOpenBatchStops: a node that stops with writes in the
+// open batch answers them too.
+func TestFastWriteInOpenBatchStops(t *testing.T) {
+	rareScenario(t, rpctypes.ErrGRPCStopped, func(r *rareRun) {
+		fillOwn(r)
+		r.submit()
+		r.process()
+		r.n.fail(errors.New("a failure"))
+		r.process()
+	})
+}
+
+// TestFastWriteAfterVersionChange: the cluster's version changes between
+// admission and proposal, so the batch's format would be wrong.
+func TestFastWriteAfterVersionChange(t *testing.T) {
+	rareScenario(t, nil, func(r *rareRun) {
+		fillOwn(r)
+		r.submit()
+		r.process()
+		r.n.state.version--
+		r.persist()
+		r.process()
+		r.persist()
+		r.process()
 	})
 }
