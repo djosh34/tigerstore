@@ -504,7 +504,11 @@ type Node struct {
 	// and perCall what a call cost a turn lately. Loop only.
 	turnCalls, turnLimit int
 	turnStart            time.Time
-	perCall              time.Duration
+	// turnEnd is when the core's work in this turn stops (core.Node.
+	// SetTurnOver): the next tick, and at least minTurnTime after the
+	// turn's inputs are in. Loop only.
+	turnEnd time.Time
+	perCall time.Duration
 	// roomFreed wakes the committer when a watch stream short of room got
 	// some back (WatchStream.took), and memFull says that the process is
 	// at its memory budget, so watch streams get none (measureMemory).
@@ -922,6 +926,7 @@ func (n *Node) open() error {
 		n.log.mu.Unlock()
 	}
 	n.core = c
+	c.SetTurnOver(func() bool { return time.Now().After(n.turnEnd) })
 	n.persistQ = make(chan persistBatch, maxBacklog)
 	n.persisted = make(chan persistDone, 1)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
@@ -1169,6 +1174,14 @@ func (n *Node) TurnRoom() int {
 	default:
 	}
 	return max(n.turnLimit-n.turnCalls, 0)
+}
+
+// later returns the later of a and b.
+func later(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
 
 // turnFit is how many calls fit in a turn that has until the node's next
@@ -1605,6 +1618,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			inbox = n.inbox
 		}
 		active := turn(entered, inbox, due)
+		// The core's work in this turn, the finished writes and reads
+		// below included, stops at the next tick (core.Node.SetTurnOver).
+		next := started.Add(time.Duration(clock.at+1) * n.cfg.Tick)
+		n.turnEnd = later(next, time.Now().Add(minTurnTime))
 		for i, done := range dones {
 			active = true
 			for _, j := range done.jobs {

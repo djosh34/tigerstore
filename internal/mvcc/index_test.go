@@ -128,8 +128,9 @@ func TestNestedWalks(t *testing.T) {
 // the index outgrew the node's memory (#558); with slots, 1.05 and 184.
 // The order of keys by directory (order.go) takes 0.4 objects and 250
 // bytes here, where each directory holds 6 keys: its names are 24 bytes
-// to the B-tree's 4, and each directory has its path and map entry. It
-// saves each node about 1.2 µs of CPU per crd-heavy op (#602).
+// to the B-tree's 4, and each directory has its path and map entry. The
+// B-tree's inserts took about 10% of each node's CPU on crd-heavy (#602,
+// profile run 43661031646).
 func TestIndexMemoryPerKey(t *testing.T) {
 	const n = 200000
 	keys := make([][]byte, n)

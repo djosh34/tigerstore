@@ -62,8 +62,9 @@ func (n *Node) applyWaits() bool { return n.paused != nil || n.revoke != nil }
 
 // Working reports whether the node has work for its next turn already: a
 // watcher that catches up with room for its next piece, the next step
-// of a revoke, or the value cache's next step (cache.step). The driver
+// of a revoke, the value cache's next step (cache.step), or the applies
+// and reads it kept when its turn was over (yield). The driver
 // then gives it that turn at once.
 func (n *Node) Working() bool {
-	return n.revoke != nil || n.CatchingUp() || n.err == nil && n.cache.busy()
+	return n.revoke != nil || n.CatchingUp() || n.err == nil && (n.cache.busy() || n.yielded)
 }

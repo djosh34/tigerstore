@@ -628,6 +628,11 @@ type Node struct {
 	paused, resume *pausedWrite
 	revoke         *revokeWrite
 	readInline     bool
+	// turnOver, if set, tells whether the driver's turn is over (SetTurnOver),
+	// and yielded that it said so in this Process: the core then starts no
+	// more applies or reads, and keeps the rest for the next turn.
+	turnOver func() bool
+	yielded  bool
 
 	// hashes are the hashes the last compactions took, oldest first.
 	hashes []mvcc.KVHash
@@ -1884,6 +1889,7 @@ func (n *Node) deliver(msgs []*raftpb.Message) {
 // effects gathered since the last call. A non-nil error means the node
 // stopped; the effects are still valid and carry its last replies.
 func (n *Node) Process() (Effects, error) {
+	n.yielded = false
 	if n.err == nil {
 		// Self-clocked batching: while ownDepth of the leader's own
 		// appends are on their way to disk, writes wait and join one
@@ -1912,6 +1918,8 @@ func (n *Node) Process() (Effects, error) {
 		n.runApply()
 		n.requestReads()
 		n.drainReady()
+		// Reads that a turn which was over kept.
+		n.serveReads()
 		n.cutWaiting()
 		// A write that a read queued, such as a Downgrade ENABLE once its
 		// read index applied, goes out in the same turn.
@@ -2119,11 +2127,19 @@ func (n *Node) readIndexKnown(rs raft.ReadState) {
 func (n *Node) serveReads() {
 	left := n.readBatches[:0]
 	for _, b := range n.readBatches {
-		if b.index != 0 && (b.index <= n.applied || planted.On("B01b")) {
+		if b.index != 0 && (b.index <= n.applied || planted.On("B01b")) && !n.yielded {
 			for _, p := range b.reads {
+				if p.done {
+					continue
+				}
+				if n.yield() {
+					break
+				}
 				n.serveRead(p)
 			}
-			continue
+			if !n.yielded || allDone(b.reads) {
+				continue
+			}
 		}
 		if !allDone(b.reads) {
 			left = append(left, b)
@@ -2262,6 +2278,10 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 		if e.GetIndex() <= n.applied {
 			continue
 		}
+		if n.yield() {
+			// The rest apply in the next turn, which skips those applied.
+			return nil
+		}
 		if e.GetIndex() != n.applied+1 {
 			// As etcd, which stops on it: the driver or the log skipped
 			// committed entries.
@@ -2285,6 +2305,22 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 		n.maybeCheckpoint(e.GetIndex(), e.GetTerm())
 	}
 	return nil
+}
+
+// SetTurnOver sets what tells the core, while it processes, that the
+// driver's turn is over: the node's tick is due, with its heartbeats.
+// The core then starts no more applies of committed entries or reads,
+// keeps them for the next turn, and reports Working, so that a turn ends
+// near its tick however much work came in it (#660). The driver of the
+// simulator, whose clock stands still in a turn, never yields.
+func (n *Node) SetTurnOver(over func() bool) { n.turnOver = over }
+
+// yield reports whether the turn is over, once it said so in this Process.
+func (n *Node) yield() bool {
+	if !n.yielded && n.turnOver != nil && n.turnOver() {
+		n.yielded = true
+	}
+	return n.yielded
 }
 
 // applyEntry runs the writes of one entry.

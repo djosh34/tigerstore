@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 
+	"go.etcd.io/raft/v3/raftpb"
+
 	"github.com/djosh34/tigerstore/internal/mvcc"
 )
 
@@ -152,15 +154,15 @@ func (n *Node) pause(index uint64, write int, cold *mvcc.ColdError) {
 func batch(c *mvcc.Compares) bool { return c != nil && c.Batch }
 
 // runApply applies Raft's apply messages in order, until a write waits
-// for values.
+// for values or the turn is over (yield).
 func (n *Node) runApply() {
-	for len(n.applyQ) > 0 && !n.applyWaits() && n.err == nil {
+	for len(n.applyQ) > 0 && !n.applyWaits() && !n.yielded && n.err == nil {
 		m := n.applyQ[0]
 		if err := n.apply(m.Entries); err != nil {
 			n.fail(err)
 			return
 		}
-		if n.applyWaits() {
+		if n.applyWaits() || n.yielded && n.applied < lastIndex(m.Entries) {
 			return
 		}
 		n.applyQ[0] = nil
@@ -228,4 +230,12 @@ func (n *Node) readMark(mark uint64) uint64 {
 		}
 	}
 	return mark
+}
+
+// lastIndex is the index of the last of ents, or 0.
+func lastIndex(ents []*raftpb.Entry) uint64 {
+	if len(ents) == 0 {
+		return 0
+	}
+	return ents[len(ents)-1].GetIndex()
 }
