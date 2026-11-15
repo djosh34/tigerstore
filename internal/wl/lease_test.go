@@ -227,3 +227,23 @@ func TestTheFirstCompactionMayNameRevisionZero(t *testing.T) {
 		t.Fatalf("a second compaction at revision 0 got %q, want %q", got, msgCompacted)
 	}
 }
+
+// A Txn's read at revision -1 passes etcd's check while nothing was
+// compacted, its first revision being -1, and fails as compacted once
+// anything was, a compaction at 0 too (difffuzz seed-774452638500002).
+func TestATxnReadAtMinusOneIsCompactedOnceAnythingWas(t *testing.T) {
+	n := leaseNode(t)
+	minusOne := uint64(1<<64 - 1) // -1 as a varint
+	get := appendVarintField(appendBytesField(nil, 1, []byte("/k")), 4, minusOne)
+	ops := txn(reqOp(1, get))
+	var path []bool
+	if err := n.checkTxnOps(ops, true, &path); err != nil {
+		t.Fatalf("before any compaction: %v", err)
+	}
+	if err := n.applyCompact(appendVarintField(nil, 1, 0), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := rejected(n.checkTxnOps(ops, true, &path)); got != msgCompacted {
+		t.Fatalf("after a compaction at 0, a read at -1 got %q, want %q", got, msgCompacted)
+	}
+}

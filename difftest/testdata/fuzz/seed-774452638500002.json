@@ -1,0 +1,42 @@
+{
+	"name": "seed-774452638500002",
+	"ops": [
+		{
+			"kind": "txn",
+			"compare": [
+				{
+					"key": 4,
+					"target": "CREATE",
+					"result": "NOT_EQUAL",
+					"number": 6
+				}
+			],
+			"success": [
+				{
+					"kind": "del",
+					"key": 5,
+					"end": 4,
+					"prevKV": true
+				},
+				{
+					"kind": "get",
+					"end": -1,
+					"rev": -1,
+					"limit": 2
+				},
+				{
+					"kind": "put",
+					"key": 5,
+					"prevKV": true
+				}
+			],
+			"failure": [
+				{
+					"kind": "del",
+					"key": 4,
+					"end": 4
+				}
+			]
+		}
+	]
+}

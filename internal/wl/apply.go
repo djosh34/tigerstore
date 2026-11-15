@@ -650,9 +650,10 @@ func (n *node) checkTxnOps(ops []byte, ok bool, path *[]bool) error {
 				return badRequest(err)
 			}
 			// etcd's checkRange; a store never compacted has etcd's
-			// first revision -1, which a read at -1 passes.
+			// first revision -1, which a read at -1 passes, and one
+			// compacted at 0 has 0.
 			first := n.st.compactRev
-			if first == 0 {
+			if !n.st.compacted {
 				first = -1
 			}
 			switch {
