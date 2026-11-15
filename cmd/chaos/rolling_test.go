@@ -20,18 +20,14 @@ import (
 	"time"
 
 	"github.com/djosh34/tigerstore/internal/committed"
+	"github.com/djosh34/tigerstore/internal/wl"
 	"go.etcd.io/raft/v3/raftpb"
-	"google.golang.org/protobuf/encoding/protowire"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // These tests use two builds of this source; only TestReleaseUpgrade
-// also runs with two releases. The old build supports entry format 1 and
-// peer protocol 3; the new one supports entry formats 1-2 and peer
-// protocols 3-4, so that new nodes send each other held entries
-// (core/held.go) and an old node must never get one. The workflow changes
-// only those constants. No test hook runs inside the server.
+// also runs with two releases. The old build reads and writes batch
+// format 1, the new one formats 1-2 (internal/wl/format.go); the workflow
+// changes only maxFormat. No test hook runs inside the server.
 func TestRollingUpgrade(t *testing.T) {
 	for _, seed := range []uint64{148, 174} {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
@@ -41,11 +37,10 @@ func TestRollingUpgrade(t *testing.T) {
 			r.stage("first upgrade", 1)
 			r.restart(1, r.newBin)
 			r.stage("second upgrade", 1)
-			r.heldMixed("second upgrade")
 
-			// Keep the exact announcement bytes of node 2's upgraded run.
-			// Reproposing it later models a delayed MsgProp without TLS
-			// byte corruption or a new announcement from the rollback run.
+			// Keep the exact announcement of node 2's upgraded run.
+			// Proposing it again later models a delayed proposal, without
+			// a new announcement from the rollback run.
 			r.stop(1)
 			stale := r.announcement(1, 2)
 			r.start(1, r.oldBin)
@@ -58,41 +53,32 @@ func TestRollingUpgrade(t *testing.T) {
 			r.start(1, r.oldBin)
 			r.stage("rollback restart", 1)
 			r.restart(2, r.newBin)
-			r.stage("third node upgraded, rollback holds gate", 1)
-			r.replay(stale)
+			r.stage("third node upgraded, rollback holds the format", 1)
+			batch := r.replay(stale)
 			r.stage("delayed announcement after rollback", 1)
 
 			// A successful send alone is not coverage: require the stale
-			// bytes in the committed WAL after the rollback announcement.
+			// announcement in the committed log after the rollback's.
 			r.stop(1)
 			n := r.wal(1)
 			seen := false
-			for _, a := range announcements(t, n) {
-				if a.Index > rolled.Index && bytes.Equal(a.Batch, stale.Batch) {
+			for _, e := range committedEntries(n) {
+				if e.GetIndex() > rolled.Index && bytes.Equal(e.Data, batch) {
 					seen = true
-					t.Logf("delayed announcement committed at %d, rollback at %d", a.Index, rolled.Index)
+					t.Logf("delayed announcement committed at %d, rollback at %d", e.GetIndex(), rolled.Index)
 				}
 			}
 			if !seen {
 				t.Fatal("delayed announcement was not committed after rollback")
 			}
-			for _, e := range n.Entries {
-				if e.GetIndex() <= n.Commit && e.GetType() == raftpb.EntryNormal && len(e.Data) > 0 && e.Data[0] == 0 {
-					t.Fatalf("entry %d has versioned data %x before the last node supports it", e.GetIndex(), e.Data)
-				}
+			if f, index := newestFormat(t, n); f != 1 {
+				t.Fatalf("entry %d is a batch of format %d before the last node supports it", index, f)
 			}
 			r.start(1, r.newBin)
 			r.stage("last node upgraded", 2)
 			r.stop(1)
-			n = r.wal(1)
-			format2 := false
-			for _, e := range n.Entries {
-				if e.GetIndex() <= n.Commit && e.GetType() == raftpb.EntryNormal && len(e.Data) > 1 && e.Data[0] == 0 && e.Data[1] == 2 {
-					format2 = true
-				}
-			}
-			if !format2 {
-				t.Fatal("no committed format-2 entry after activation")
+			if f, _ := newestFormat(t, r.wal(1)); f != 2 {
+				t.Fatal("no committed batch of format 2 after the cluster took it")
 			}
 			r.refuseOld(1)
 			r.start(1, r.newBin)
@@ -116,7 +102,7 @@ func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 	// announcement remains in replicated state when node 3 upgrades.
 	r.restart(2, r.newBin)
 	// A leader election can outlast a short sleep. Keep the rollback
-	// down for twenty election timeouts, or until activation is seen.
+	// down for twenty seconds, or until activation is seen.
 	v := 1
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
@@ -131,7 +117,7 @@ func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if v != 1 {
-		t.Errorf("version %d activated while the rollback node was down; want 1 (#174)", v)
+		t.Errorf("format %d activated while the rollback node was down; want 1 (#174)", v)
 		r.refuseOld(1)
 		r.start(1, r.newBin)
 		r.stage("restore the new binary after unsafe activation", 2)
@@ -145,9 +131,9 @@ func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 // (ROLLING_OLD) to the release candidate (ROLLING_NEW) one node at a time
 // under load, then downgrades one node; the release workflow runs it. Any
 // two releases can do this, so it asks only that the nodes agree on the
-// newest version all of them support. The downgraded node runs the old
+// newest format all of them support. The downgraded node runs the old
 // binary again, unless the cluster went past the old binary's newest
-// version: then the old binary must refuse to start, and the node comes
+// format: then the old binary must refuse to start, and the node comes
 // back on the candidate. The checkers run on the whole history.
 func TestReleaseUpgrade(t *testing.T) {
 	r := startRolling(t, 355)
@@ -170,16 +156,14 @@ func TestReleaseUpgrade(t *testing.T) {
 	r.settle("node1 downgraded", newMax)
 }
 
-// peerMin is the oldest peer protocol version both builds speak.
-const peerMin = 3
-
 type rollingRun struct {
 	t                   *testing.T
 	c                   *cluster
 	traffic             *traffic
 	dir, oldBin, newBin string
 	stopped             bool
-	ranges              [3]int
+	// formats is the newest format each node's binary reads.
+	formats [3]int
 	// nodes is how the nodes stood before finish stopped them.
 	nodes string
 }
@@ -270,9 +254,9 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 func (r *rollingRun) start(i int, bin string) {
 	r.t.Helper()
 	r.c.bin = bin
-	r.ranges[i] = peerMin
+	r.formats[i] = 1
 	if bin == r.newBin {
-		r.ranges[i] = peerMin + 1
+		r.formats[i] = 2
 	}
 	if err := r.c.start(r.c.nodes[i]); err != nil {
 		r.t.Fatal(err)
@@ -320,95 +304,23 @@ func (r *rollingRun) restart(i int, bin string) {
 	r.start(i, bin)
 }
 
-func (r *rollingRun) stage(name string, version int) {
+// stage waits until every node uses format, with its binary's newest,
+// and fails unless they still do 3 s later and writes succeed meanwhile.
+func (r *rollingRun) stage(name string, format int) {
 	r.t.Helper()
 	begin := r.traffic.r.now()
 	for i := range 3 {
-		r.version(i, version)
-	}
-	// Idle Raft senders need not notice a restarted peer until they next
-	// write. Probe fresh connections rather than requiring six live
-	// Raft links between every pair of followers.
-	for from := range 3 {
-		for to := range 3 {
-			if from == to {
-				continue
-			}
-			conn := r.connect(from, to, r.ranges[from])
-			if err := conn.Close(); err != nil {
-				r.t.Fatal(err)
-			}
-		}
+		r.format(i, format)
 	}
 	time.Sleep(3 * time.Second)
 	for i := range 3 {
-		r.version(i, version)
+		r.format(i, format)
 	}
 	writes := r.writesSince(begin)
 	if writes == 0 {
 		r.t.Fatalf("%s: no successful writes during stage", name)
 	}
-	for i := range 3 {
-		if n := r.counter(i, "tigerstore_network_peer_held_refused_total"); n != 0 {
-			r.t.Fatalf("%s: node%d, of peer range %d-%d, got %d messages of held entries on connections that do not carry them", name, i+1, peerMin, r.ranges[i], n)
-		}
-	}
-	r.t.Logf("%s: active version %d, peer ranges %v negotiated, %d successful writes", name, version, r.ranges, writes)
-}
-
-// heldMixed runs a stage in a cluster of old and new nodes, led by a new
-// one: a leader that leads now is stopped and started again, which hands
-// its leadership to a peer. The new leader must name to the new follower
-// the entries it forwarded, and the follower must fill in appends from
-// the entries it held, while stage checks that the old node gets none.
-func (r *rollingRun) heldMixed(name string) {
-	r.t.Helper()
-	lead, err := r.c.leader(context.Background(), 10*time.Second)
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	if r.ranges[lead] == peerMin {
-		r.restart(lead, r.oldBin)
-		if lead, err = r.c.leader(context.Background(), 10*time.Second); err != nil {
-			r.t.Fatal(err)
-		}
-	}
-	if r.ranges[lead] == peerMin {
-		r.t.Fatalf("%s: node%d, an old node, still leads", name, lead+1)
-	}
-	follower := -1
-	for i := range 3 {
-		if i != lead && r.ranges[i] > peerMin {
-			follower = i
-		}
-	}
-	if follower < 0 {
-		r.t.Fatalf("%s: no new follower beside node%d", name, lead+1)
-	}
-	named := r.counter(lead, "tigerstore_server_held_named_total")
-	filled := r.counter(follower, "tigerstore_server_held_filled_total")
-	r.stage(name+", held entries between the new nodes", 1)
-	named = r.counter(lead, "tigerstore_server_held_named_total") - named
-	filled = r.counter(follower, "tigerstore_server_held_filled_total") - filled
-	if named == 0 || filled == 0 {
-		r.t.Fatalf("%s: node%d, a new leader, named %d entries, and node%d, a new follower, filled in %d appends from held entries", name, lead+1, named, follower+1, filled)
-	}
-	r.t.Logf("%s: node%d named %d entries, node%d filled in %d appends from them", name, lead+1, named, follower+1, filled)
-}
-
-// counter is the value of a counter of node i. Both builds of this source
-// have every counter it reads, so a missing one fails the test.
-func (r *rollingRun) counter(i int, name string) int {
-	r.t.Helper()
-	_, body, err := r.metric(i)
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	v, err := metricValue(body, name)
-	if err != nil {
-		r.t.Fatalf("node%d: %v", i+1, err)
-	}
-	return v
+	r.t.Logf("%s: format %d, binaries' newest %v, %d successful writes", name, format, r.formats, writes)
 }
 
 // settle waits until every node has active version want, and fails
@@ -478,7 +390,9 @@ func (r *rollingRun) writesSince(begin int64) int {
 	return writes
 }
 
-func (r *rollingRun) version(i, want int) {
+// format waits until node i uses format want and its metrics name its
+// binary's newest.
+func (r *rollingRun) format(i, want int) {
 	r.t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
 	var last string
@@ -487,7 +401,7 @@ func (r *rollingRun) version(i, want int) {
 		if err == nil {
 			last = fmt.Sprintf("tigerstore_cluster_version %d", v)
 			if v == want {
-				if err := r.binaryRange(i, body); err != nil {
+				if err := r.binaryFormat(i, body); err != nil {
 					last = err.Error()
 				} else {
 					if err := os.WriteFile(filepath.Join(r.dir, fmt.Sprintf("metrics-node%d.txt", i+1)), []byte(body), 0o644); err != nil {
@@ -501,19 +415,13 @@ func (r *rollingRun) version(i, want int) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	r.t.Fatalf("node%d: want active version %d: %s", i+1, want, last)
+	r.t.Fatalf("node%d: want format %d: %s", i+1, want, last)
 }
 
-func (r *rollingRun) binaryRange(i int, body string) error {
-	want := []string{
-		fmt.Sprintf("tigerstore_peer_protocol_min_version %d", peerMin),
-		fmt.Sprintf("tigerstore_peer_protocol_max_version %d", r.ranges[i]),
-		fmt.Sprintf("tigerstore_cluster_version_max %d", r.ranges[i]-peerMin+1),
-	}
-	for _, line := range want {
-		if !strings.Contains(body, "\n"+line+"\n") {
-			return fmt.Errorf("node%d metrics lack %s", i+1, line)
-		}
+func (r *rollingRun) binaryFormat(i int, body string) error {
+	line := fmt.Sprintf("tigerstore_cluster_version_max %d", r.formats[i])
+	if !strings.Contains(body, "\n"+line+"\n") {
+		return fmt.Errorf("node%d metrics lack %s", i+1, line)
 	}
 	return nil
 }
@@ -561,97 +469,78 @@ func (r *rollingRun) wal(i int) committed.Node {
 	return n
 }
 
-// announced keeps a single record, including its original origin, boot,
-// request ID and run field, encoded as a one-record format-1 batch.
+// committedEntries are the entries n committed.
+func committedEntries(n committed.Node) []*raftpb.Entry {
+	if n.Commit < n.First {
+		return nil
+	}
+	return n.Entries[:min(n.Commit-n.First+1, uint64(len(n.Entries)))]
+}
+
+// newestFormat is the newest format of the batches n committed, and the
+// index of the first batch of it.
+func newestFormat(t *testing.T, n committed.Node) (int, uint64) {
+	t.Helper()
+	format, at := 0, uint64(0)
+	for _, e := range committedEntries(n) {
+		if e.GetType() != raftpb.EntryNormal || len(e.Data) == 0 {
+			continue
+		}
+		b, err := wl.ParseBatch(e.Data)
+		if err != nil {
+			t.Fatalf("entry %d: %v", e.GetIndex(), err)
+		}
+		if int(b.Format) > format {
+			format, at = int(b.Format), e.GetIndex()
+		}
+	}
+	return format, at
+}
+
+// announced is an announcement a node committed, with its op as the log
+// holds it.
 type announced struct {
-	Index, Origin, Run uint64
-	Version            uint32
-	Batch              []byte
+	Index uint64
+	wl.Announcement
+	Op wl.Op
 }
 
 func announcements(t *testing.T, n committed.Node) []announced {
 	t.Helper()
 	var out []announced
-	for _, e := range n.Entries {
-		if e.GetIndex() > n.Commit || e.GetType() != raftpb.EntryNormal || len(e.Data) == 0 {
+	for _, e := range committedEntries(n) {
+		if e.GetType() != raftpb.EntryNormal || len(e.Data) == 0 {
 			continue
 		}
-		data := e.Data
-		if data[0] == 0 {
-			if len(data) < 2 {
-				t.Fatal("truncated entry format header")
-			}
-			data = data[2:]
+		b, err := wl.ParseBatch(e.Data)
+		if err != nil {
+			t.Fatalf("entry %d: %v", e.GetIndex(), err)
 		}
-		uv := func() uint64 {
-			x, k := binary.Uvarint(data)
-			if k <= 0 {
-				t.Fatal("malformed batch varint")
+		for _, o := range b.Ops {
+			m, err := o.Message()
+			if err != nil {
+				t.Fatalf("entry %d: %v", e.GetIndex(), err)
 			}
-			data = data[k:]
-			return x
-		}
-		count := uv()
-		for range count {
-			start := data
-			origin := uv()
-			uv() // boot
-			uv() // request ID
-			if len(data) == 0 {
-				t.Fatal("missing batch kind")
+			if a, ok := m.(*wl.Announcement); ok {
+				out = append(out, announced{Index: e.GetIndex(), Announcement: *a, Op: o})
 			}
-			kind := data[0]
-			data = data[1:]
-			size := uv()
-			if size > uint64(len(data)) {
-				t.Fatal("truncated batch body")
-			}
-			body := data[:size]
-			data = data[size:]
-			if kind != 10 { // core.kindVersion
-				continue
-			}
-			var m wrapperspb.UInt32Value
-			if err := proto.Unmarshal(body, &m); err != nil {
-				t.Fatal(err)
-			}
-			a := announced{Index: e.GetIndex(), Origin: origin, Version: m.Value, Batch: append([]byte{1}, start[:len(start)-len(data)]...)}
-			u := m.ProtoReflect().GetUnknown()
-			for len(u) > 0 {
-				num, typ, k := protowire.ConsumeTag(u)
-				if k < 0 {
-					t.Fatal(protowire.ParseError(k))
-				}
-				u = u[k:]
-				if num == 2 && typ == protowire.VarintType {
-					x, k := protowire.ConsumeVarint(u)
-					if k < 0 {
-						t.Fatal(protowire.ParseError(k))
-					}
-					a.Run = x
-				}
-				k = protowire.ConsumeFieldValue(num, typ, u)
-				if k < 0 {
-					t.Fatal(protowire.ParseError(k))
-				}
-				u = u[k:]
-			}
-			out = append(out, a)
 		}
 	}
 	return out
 }
 
-func (r *rollingRun) announcement(i int, version uint32) announced {
+// announcement is node i's last committed announcement, which must be of
+// format.
+func (r *rollingRun) announcement(i int, format uint8) announced {
 	r.t.Helper()
 	var found announced
 	for _, a := range announcements(r.t, r.wal(i)) {
-		if a.Origin == r.c.ids[i] {
+		if a.ID == r.c.ids[i] {
 			found = a
 		}
 	}
-	if found.Version != version || found.Run == 0 {
-		r.t.Fatalf("node%d announcement %+v, want version %d and a run", i+1, found, version)
+	if found.Format != format || found.Run == 0 {
+		r.t.Fatalf("node%d announcement %+v, want format %d and a run", i+1, found, format)
 	}
 	if err := save(filepath.Join(r.dir, fmt.Sprintf("announcement-node%d-run%d.json", i+1, found.Run)), found); err != nil {
 		r.t.Fatal(err)
@@ -659,7 +548,38 @@ func (r *rollingRun) announcement(i int, version uint32) announced {
 	return found
 }
 
-func (r *rollingRun) connect(from, to, high int) *tls.Conn {
+// replay proposes a again to the leader, in a batch of its own, through a
+// peer connection of another member, and returns the batch. The batch
+// has a's origin and a sequence of a's run that no batch of the run has,
+// so no node takes another batch for it.
+func (r *rollingRun) replay(a announced) []byte {
+	r.t.Helper()
+	lead, err := r.c.leader(context.Background(), 10*time.Second)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	batch := wl.AppendBatch(nil, wl.Batch{Origin: a.ID, Seq: a.Run << 32, Format: 1, Ops: []wl.Op{a.Op}})
+	// Use a different member's inbound path even if the original sender
+	// is now leader.
+	from := (lead + 1) % 3
+	conn := r.peerConn(from, lead)
+	defer func() {
+		if err := conn.Close(); err != nil {
+			r.t.Error(err)
+		}
+	}()
+	if _, err := conn.Write(proposalFrame(r.c.ids[from], batch)); err != nil {
+		r.t.Fatal(err)
+	}
+	// The leader reads the frame before the connection closes.
+	time.Sleep(time.Second)
+	r.t.Logf("replayed node %d run %d format %d to node%d", a.ID, a.Run, a.Format, lead+1)
+	return batch
+}
+
+// peerConn dials node to's peer port as node from, and says the peer
+// hello: from's ID and the cluster's.
+func (r *rollingRun) peerConn(from, to int) *tls.Conn {
 	r.t.Helper()
 	cert, err := tls.LoadX509KeyPair(filepath.Join(r.dir, "certs", fmt.Sprintf("node%d.pem", from+1)), filepath.Join(r.dir, "certs", fmt.Sprintf("node%d-key.pem", from+1)))
 	if err != nil {
@@ -669,72 +589,38 @@ func (r *rollingRun) connect(from, to, high int) *tls.Conn {
 	cfg.Certificates = []tls.Certificate{cert}
 	cfg.MinVersion = tls.VersionTLS13
 	cfg.NextProtos = nil
-	for v := high; v >= peerMin; v-- {
-		cfg.NextProtos = append(cfg.NextProtos, fmt.Sprintf("tigerstore-peer/%d", v))
+	st, err := r.c.status(context.Background(), to)
+	if err != nil {
+		r.t.Fatal(err)
 	}
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", r.c.routers[to].Addr(), cfg)
 	if err != nil {
 		r.t.Fatal(err)
 	}
-	ok := false
-	defer func() {
-		if !ok {
-			if err := conn.Close(); err != nil {
-				r.t.Error(err)
-			}
-		}
-	}()
-	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		r.t.Fatal(err)
+	hello := binary.LittleEndian.AppendUint64(nil, r.c.ids[from])
+	hello = binary.LittleEndian.AppendUint64(hello, st.Header.ClusterId)
+	if _, err := conn.Write(hello); err != nil {
+		r.t.Fatal(errors.Join(err, conn.Close()))
 	}
-	st, err := r.c.status(context.Background(), to)
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	// The probe is a known member of the cluster, so it advertises no
-	// address.
-	preface := binary.BigEndian.AppendUint64([]byte{'T', 'S', peerMin, byte(high)}, r.c.ids[from])
-	preface = append(binary.BigEndian.AppendUint64(preface, st.Header.ClusterId), 0)
-	if _, err := conn.Write(preface); err != nil {
-		r.t.Fatal(err)
-	}
-	var reply [1]byte
-	want := min(high, r.ranges[to])
-	if _, err := io.ReadFull(conn, reply[:]); err != nil || int(reply[0]) != want {
-		r.t.Fatalf("peer node%d to node%d: %v, reply %v, want %d", from+1, to+1, err, reply, want)
-	}
-	if got := conn.ConnectionState().NegotiatedProtocol; got != fmt.Sprintf("tigerstore-peer/%d", want) {
-		r.t.Fatalf("ALPN %q disagrees with preface reply %d", got, want)
-	}
-	ok = true
 	return conn
 }
 
-func (r *rollingRun) replay(a announced) {
-	r.t.Helper()
-	lead, err := r.c.leader(context.Background(), 10*time.Second)
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	// Use a different member's inbound path even if the original sender
-	// is now leader. The entry's origin and boot remain unchanged.
-	from := (lead + 1) % 3
-	conn := r.connect(from, lead, peerMin)
-	defer func() {
-		if err := conn.Close(); err != nil {
-			r.t.Error(err)
-		}
-	}()
-	m := &raftpb.Message{Type: raftpb.MsgProp.Enum(), From: new(r.c.ids[from]), To: new(r.c.ids[lead]), Entries: []*raftpb.Entry{{Type: raftpb.EntryNormal.Enum(), Data: a.Batch}}}
-	b, err := proto.Marshal(m)
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	frame := binary.BigEndian.AppendUint32(nil, uint32(len(b)))
-	if _, err := conn.Write(append(frame, b...)); err != nil {
-		r.t.Fatal(err)
-	}
-	r.t.Logf("replayed node %d run %d version %d to node%d", a.Origin, a.Run, a.Version, lead+1)
+// proposalFrame is a peer frame of a MsgProp from node from with one
+// entry of data, as internal/wl's sendPeer writes it: the length, the
+// message's header (type, flags, from, term, log term, index, commit,
+// reject hint, vote, entry count), each entry's term, index, type and
+// length with its data, and the context's length.
+func proposalFrame(from uint64, data []byte) []byte {
+	m := []byte{byte(raftpb.MsgProp), 0}
+	m = binary.LittleEndian.AppendUint64(m, from)
+	m = append(m, make([]byte, 6*8)...)
+	m = binary.LittleEndian.AppendUint32(m, 1)
+	m = append(m, make([]byte, 16)...)
+	m = append(m, byte(raftpb.EntryNormal))
+	m = binary.LittleEndian.AppendUint32(m, uint32(len(data)))
+	m = append(m, data...)
+	m = binary.LittleEndian.AppendUint32(m, 0)
+	return append(binary.LittleEndian.AppendUint32(nil, uint32(len(m))), m...)
 }
 
 func (r *rollingRun) refuseOld(i int) {

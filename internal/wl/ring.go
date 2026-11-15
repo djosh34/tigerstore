@@ -62,7 +62,7 @@ type span struct {
 	// table lets go of with the span.
 	fwd    bool
 	origin uint64
-	seq    uint32
+	seq    uint64
 }
 
 // unnamedFor is how long a span no append holds is kept: a proposal that

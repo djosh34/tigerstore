@@ -101,7 +101,8 @@ func TestSerializableReadsOnALaggingNode(t *testing.T) {
 	b.do(0, history.Request{Compact: &history.CompactRequest{Revision: 3}})
 	h := b.done()
 	end := h.Ops[len(h.Ops)-1].Return
-	h.Ops = append(h.Ops,
+	h.Ops = append(
+		h.Ops,
 		// The node has not applied revision 3 yet.
 		history.Op{Client: 1, Call: end + 1, Return: end + 2, Req: history.Request{Range: &history.RangeRequest{Key: "a", Revision: 3, Serializable: true}}, Err: errFutureRev},
 		// Nor the compaction.

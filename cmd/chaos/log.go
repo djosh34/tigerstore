@@ -10,8 +10,7 @@ import (
 	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/history/frometcd"
 	"github.com/djosh34/tigerstore/internal/committed"
-	"github.com/djosh34/tigerstore/internal/core"
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"github.com/djosh34/tigerstore/internal/wl"
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -26,14 +25,20 @@ type nodeEvidence struct {
 	TailSHA256       string `json:"tail_sha256,omitempty"`
 }
 
-// committedLog reads the WALs of the stopped nodes in dirs, checks that
+// committedLog reads the logs of the stopped nodes in dirs, checks that
 // their committed prefixes agree, and decodes the longest into requests.
-// It reads private copies, so recovery repairs never touch the files.
 func committedLog(dirs []string) ([]history.Request, []nodeEvidence, error) {
+	return readCommitted(dirs, committed.Read, 1, decodeBatch)
+}
+
+// readCommitted reads the logs of the stopped nodes in dirs with read,
+// checks that their committed entries from index first agree, and decodes
+// the longest with decode.
+func readCommitted(dirs []string, read func(string) (committed.Node, error), first uint64, decode func([]byte) ([]history.Request, error)) ([]history.Request, []nodeEvidence, error) {
 	var nodes []committed.Node
 	var evidence []nodeEvidence
 	for _, dir := range dirs {
-		n, err := committed.Read(dir)
+		n, err := read(dir)
 		if err != nil {
 			return nil, evidence, fmt.Errorf("node %s: %w", dir, err)
 		}
@@ -49,7 +54,7 @@ func committedLog(dirs []string) ([]history.Request, []nodeEvidence, error) {
 		evidence = append(evidence, item)
 		nodes = append(nodes, n)
 	}
-	canonical, err := committed.Prefix(nodes)
+	canonical, err := committed.Prefix(nodes, first)
 	if err != nil {
 		return nil, evidence, err
 	}
@@ -58,7 +63,7 @@ func committedLog(dirs []string) ([]history.Request, []nodeEvidence, error) {
 		if entry.GetType() != raftpb.EntryNormal || len(entry.Data) == 0 {
 			continue
 		}
-		reqs, err := decodeBatch(entry.Data)
+		reqs, err := decode(entry.Data)
 		if err != nil {
 			return nil, evidence, fmt.Errorf("committed index %d: %w", entry.GetIndex(), err)
 		}
@@ -70,30 +75,44 @@ func committedLog(dirs []string) ([]history.Request, []nodeEvidence, error) {
 	return log, evidence, nil
 }
 
-// decodeBatch decodes the writes of one committed entry. Member
-// announcements and lease checkpoints change no key and are left out;
-// any other request the campaign does not send fails.
+// decodeBatch decodes the writes of one committed entry of internal/wl.
+// Member announcements change no key and are left out; any other request
+// the campaign does not send fails.
 func decodeBatch(data []byte) ([]history.Request, error) {
+	b, err := wl.ParseBatch(data)
+	if err != nil {
+		return nil, err
+	}
 	var out []history.Request
-	err := core.DecodeBatch(data, func(_, _, _ uint64, m proto.Message) error {
-		switch m.(type) {
-		case *pb.Member, *pb.LeaseCheckpointRequest:
-			return nil
-		}
-		if err := rejectUnknown(m); err != nil {
-			return err
-		}
-		q, err := frometcd.Request(m)
+	for _, o := range b.Ops {
+		m, err := o.Message()
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if err = campaignRequest(q); err != nil {
-			return err
+		pm, ok := m.(proto.Message)
+		if !ok {
+			continue // a member's announcement changes no key
+		}
+		q, err := campaignMessage(pm)
+		if err != nil {
+			return nil, err
 		}
 		out = append(out, q)
-		return nil
-	})
-	return out, err
+	}
+	return out, nil
+}
+
+// campaignMessage is a committed request the campaign sends, as history
+// keeps it.
+func campaignMessage(m proto.Message) (history.Request, error) {
+	if err := rejectUnknown(m); err != nil {
+		return history.Request{}, err
+	}
+	q, err := frometcd.Request(m)
+	if err != nil {
+		return history.Request{}, err
+	}
+	return q, campaignRequest(q)
 }
 
 func rejectUnknown(m proto.Message) error {

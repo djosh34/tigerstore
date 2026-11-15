@@ -40,8 +40,9 @@ func (n *node) addOp(h handle, kind uint8, msg []byte) {
 		var hdr [batchHdr]byte
 		n.fwdSeq++
 		binary.LittleEndian.PutUint32(hdr[0:], uint32(n.id))
-		binary.LittleEndian.PutUint32(hdr[4:], n.fwdSeq)
-		binary.LittleEndian.PutUint32(hdr[12:], magic)
+		binary.LittleEndian.PutUint64(hdr[4:], n.fwdSeq)
+		hdr[16] = n.format
+		copy(hdr[17:], magic)
 		n.batch = append(n.batch, hdr[:]...)
 		n.batchOps = 0
 		n.batchOwn = n.batchOwn[:0]
@@ -111,9 +112,9 @@ func (n *node) proposeBatch(now time.Time) {
 	}
 	data := slices.Clip(n.batch)
 	n.batch = nil
-	binary.LittleEndian.PutUint32(data[8:], uint32(n.batchOps))
+	binary.LittleEndian.PutUint32(data[12:], uint32(n.batchOps))
 	// A follower's batch comes back from the leader by name.
-	seq := binary.LittleEndian.Uint32(data[4:])
+	seq := binary.LittleEndian.Uint64(data[4:])
 	f := &n.fwd[seq&(fwdSlots-1)]
 	f.seq, f.data = seq, data
 	f.handles = append(f.handles[:0], n.batchOwn...)
@@ -147,7 +148,7 @@ const requestTimeout = 7 * time.Second
 
 // proposal is a batch this node proposed and when.
 type proposal struct {
-	seq uint32
+	seq uint64
 	at  time.Time
 }
 

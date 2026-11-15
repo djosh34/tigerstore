@@ -45,7 +45,8 @@ func TestWatchesGood(t *testing.T) {
 	})
 	t.Run("start revision and compaction cancel", func(t *testing.T) {
 		h := workload(t).done()
-		h.Watches = append(h.Watches,
+		h.Watches = append(
+			h.Watches,
 			history.Watch{Client: 3, Req: history.WatchRequest{Key: "/r/a", StartRevision: 4, PrevKV: true}},
 			history.Watch{Client: 4, Req: history.WatchRequest{Key: "/r/a", StartRevision: 2}, Responses: []history.WatchResponse{
 				{Revision: h.Target, Canceled: true, CompactRevision: 4},

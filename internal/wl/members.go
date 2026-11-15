@@ -32,6 +32,11 @@ type member struct {
 	peerURLs   []string
 	clientURLs []string
 	learner    bool
+	// The version gate's (format.go): the newest format the member
+	// announced it supports, in which run, and the epoch it confirmed.
+	format    uint8
+	run       uint64
+	confirmed uint64
 }
 
 // peerAddr is where the node dials m: the host and port of its first
@@ -66,13 +71,49 @@ func appendMember(b []byte, m *member) []byte {
 	return b
 }
 
-// parseMember reads etcd's Member message.
+// A member's state for the version gate follows etcd's Member message
+// in the node's own records, never in what a client gets: in an
+// announcement, its format, run and the epoch it confirms; in a
+// checkpoint, its format, run and the epoch it confirmed.
+const (
+	fieldFormat    = 50
+	fieldRun       = 51
+	fieldConfirmed = 52
+	fieldEpoch     = 53
+)
+
+// appendMemberState appends m as a checkpoint keeps it.
+func appendMemberState(b []byte, m *member) []byte {
+	b = appendMember(b, m)
+	b = appendVarintField(b, fieldFormat, uint64(m.format))
+	b = appendVarintField(b, fieldRun, m.run)
+	return appendVarintField(b, fieldConfirmed, m.confirmed)
+}
+
+// appendAnnouncement appends m's announcement of its name, client URLs,
+// format and run, confirming epoch.
+func appendAnnouncement(b []byte, m *member, epoch uint64) []byte {
+	b = appendMember(b, m)
+	b = appendVarintField(b, fieldFormat, uint64(m.format))
+	b = appendVarintField(b, fieldRun, m.run)
+	return appendVarintField(b, fieldEpoch, epoch)
+}
+
+// parseMember reads etcd's Member message, with the gate's state.
 func parseMember(b []byte) (member, error) {
+	m, _, err := parseAnnouncement(b)
+	return m, err
+}
+
+// parseAnnouncement reads an announcement: the member and the epoch it
+// confirms.
+func parseAnnouncement(b []byte) (member, uint64, error) {
 	var m member
+	var epoch uint64
 	for len(b) > 0 {
 		num, _, v, p, rest, err := field(b)
 		if err != nil {
-			return m, err
+			return m, 0, err
 		}
 		switch num {
 		case 1:
@@ -85,10 +126,18 @@ func parseMember(b []byte) (member, error) {
 			m.clientURLs = append(m.clientURLs, string(p))
 		case 5:
 			m.learner = v != 0
+		case fieldFormat:
+			m.format = uint8(min(v, 255))
+		case fieldRun:
+			m.run = v
+		case fieldConfirmed:
+			m.confirmed = v
+		case fieldEpoch:
+			epoch = v
 		}
 		b = rest
 	}
-	return m, nil
+	return m, epoch, nil
 }
 
 // A ConfChange's context: the node that proposed it and the request's
@@ -225,6 +274,8 @@ func (n *node) applyConfChange(cc *pb.ConfChange, index uint64) error {
 		case pb.ConfChangeUpdateNode:
 			n.members[i].peerURLs = m.peerURLs
 		}
+		// Every member confirms the new membership's support again.
+		n.formatEpoch = index
 	}
 	n.confState = n.rn.ApplyConfChange(cc)
 	n.storage.confIndex = index
@@ -250,35 +301,29 @@ func compareIDs(a, b uint64) int {
 	return 0
 }
 
-// applyMemberAttrs applies a member's published name and client URLs.
-func (n *node) applyMemberAttrs(req []byte) error {
-	m, err := parseMember(req)
+// applyMemberAttrs applies a member's announcement, committed at index.
+func (n *node) applyMemberAttrs(req []byte, index uint64) error {
+	m, epoch, err := parseAnnouncement(req)
 	if err != nil {
 		return badRequest(err)
 	}
-	if i := n.memberAt(m.id); i >= 0 {
-		n.members[i].name, n.members[i].clientURLs = m.name, m.clientURLs
-	}
-	return nil
+	return n.applyAnnouncement(&m, epoch, index)
 }
 
-// publishEvery is how often a node proposes its name and client URLs
-// again while the member list does not have them.
+// publishEvery is how often a node proposes its announcement again while
+// the member list does not have it.
 const publishEvery = time.Second
 
-// publish proposes the node's name and client URLs once the member list
-// holds the node without them.
+// publish proposes the node's announcement: its name, client URLs, newest
+// format and run, and the epoch it confirms, while it has one to make.
 func (n *node) publish() {
 	i := n.memberAt(n.id)
-	if i < 0 || n.now.Before(n.publishAt) {
-		return
-	}
-	m := &n.members[i]
-	if m.name == n.self.name && slices.Equal(m.clientURLs, n.self.clientURLs) {
+	if i < 0 || n.now.Before(n.publishAt) || !n.announces(&n.members[i]) {
 		return
 	}
 	n.publishAt = n.now.Add(publishEvery)
-	n.addOp(noHandle, kMemberAttrs, appendMember(nil, &member{id: n.id, name: n.self.name, clientURLs: n.self.clientURLs}))
+	self := member{id: n.id, name: n.self.name, clientURLs: n.self.clientURLs, format: maxFormat, run: n.run}
+	n.addOp(noHandle, kMemberAttrs, appendAnnouncement(nil, &self, n.formatEpoch))
 }
 
 // encodeMembers appends the member list: a count, then each member's
@@ -286,7 +331,7 @@ func (n *node) publish() {
 func (n *node) encodeMembers(b []byte) []byte {
 	b = binary.AppendUvarint(b, uint64(len(n.members)))
 	for i := range n.members {
-		m := appendMember(nil, &n.members[i])
+		m := appendMemberState(nil, &n.members[i])
 		b = binary.AppendUvarint(b, uint64(len(m)))
 		b = append(b, m...)
 	}
@@ -304,17 +349,34 @@ func (n *node) encodeMembers(b []byte) []byte {
 		b = binary.AppendUvarint(b, a.member)
 		b = binary.AppendUvarint(b, a.typ)
 	}
-	return binary.AppendUvarint(b, uint64(n.downgrade))
+	b = binary.AppendUvarint(b, uint64(n.downgrade))
+	b = binary.AppendUvarint(b, uint64(n.format))
+	return binary.AppendUvarint(b, n.formatEpoch)
 }
 
 // ckptMembers is the member list a checkpoint holds, with the raised
-// alarms.
+// alarms and the version gate's state.
 type ckptMembers struct {
 	members []member
 	removed map[uint64]bool
 	alarms  []alarm
 	// downgrade is the minor version a downgrade is on to, 0 for none.
-	downgrade int64
+	downgrade   int64
+	format      uint8
+	formatEpoch uint64
+}
+
+// takeMembers takes the member list a checkpoint holds.
+func (n *node) takeMembers(cm *ckptMembers) error {
+	n.members, n.removed = cm.members, cm.removed
+	n.alarms = cm.alarms
+	n.downgrade = cm.downgrade
+	n.format, n.formatEpoch = cm.format, cm.formatEpoch
+	n.alarmsChanged()
+	if n.format > maxFormat {
+		return tooOld(n.format)
+	}
+	return nil
 }
 
 // readMembers reads what encodeMembers wrote.
@@ -364,7 +426,16 @@ func (cr *ckptReader) readMembers() (ckptMembers, error) {
 		cm.alarms = append(cm.alarms, a)
 	}
 	d, err := cr.uvarint()
+	if err != nil {
+		return cm, err
+	}
 	cm.downgrade = int64(d)
+	f, err := cr.uvarint()
+	if err != nil {
+		return cm, err
+	}
+	cm.format = uint8(min(f, 255))
+	cm.formatEpoch, err = cr.uvarint()
 	return cm, err
 }
 

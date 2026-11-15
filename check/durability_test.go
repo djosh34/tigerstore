@@ -42,6 +42,21 @@ func TestDurableGood(t *testing.T) {
 		scan(h)
 		mustPass(t, "Durable", Durable(h))
 	})
+	t.Run("a Txn logged without its failure branch of reads", func(t *testing.T) {
+		b := newBuilder(t, "/a")
+		txn := &history.TxnRequest{
+			Compare: []history.Compare{{Key: "/a", Target: history.TargetVersion, Result: history.Equal, Number: 0}},
+			Success: []history.TxnOp{{Put: &history.PutRequest{Key: "/a", Value: "x"}}},
+			Failure: []history.TxnOp{{Range: &history.RangeRequest{Key: "/a"}}},
+		}
+		b.do(0, history.Request{Txn: txn})
+		h := b.done()
+		logged := *txn
+		logged.Failure = nil
+		h.Log[len(h.Log)-1] = history.Request{Txn: &logged}
+		scan(h)
+		mustPass(t, "Durable", Durable(h))
+	})
 	t.Run("grant whose ID the client never learned", func(t *testing.T) {
 		h := &history.History{
 			Ops: []history.Op{{Client: 0, Call: 1, Return: 2, Req: history.Request{LeaseGrant: &history.LeaseGrantRequest{TTL: 30}}, Err: errUnavailable}},

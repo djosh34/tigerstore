@@ -194,3 +194,29 @@ func (tc *testCluster) leaderEndpoint(t *testing.T, c *clientv3.Client) string {
 	t.Fatal("no leader")
 	return ""
 }
+
+// As etcd's, a leader that stops hands its leadership to a peer first:
+// once it has stopped, a peer leads, without an election timeout.
+func TestALeaderThatStopsHandsItsLeadershipOver(t *testing.T) {
+	tc := newTestCluster(t)
+	c := tc.client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	st, err := c.Status(ctx, tc.endpoints[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	lead := slices.Index(tc.ids, st.Leader)
+	if lead < 0 {
+		t.Fatalf("leader %x is no node of the cluster", st.Leader)
+	}
+	tc.stopNode(t, lead)
+	peer := (lead + 1) % 3
+	st, err = tc.rawClient(t, tc.endpoints[peer]).Status(ctx, tc.endpoints[peer])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Leader == 0 || st.Leader == tc.ids[lead] {
+		t.Fatalf("once node %d, the leader, stopped, node %d names leader %x", lead+1, peer+1, st.Leader)
+	}
+}

@@ -93,7 +93,7 @@ type node struct {
 	carryUntil map[uint64]time.Time
 	fwd        []fwdBatch
 	fwdPeers   map[uint64][]fwdBatch
-	fwdSeq     uint32
+	fwdSeq     uint64
 	// proposed are the batches proposed and not yet timed out, in order.
 	proposed []proposal
 
@@ -134,6 +134,11 @@ type node struct {
 	compactor    compactor
 	// downgrade is the minor version a downgrade is on to, 0 for none.
 	downgrade int64
+	// The version gate (format.go): the cluster's format, the epoch its
+	// members confirm, and this start's run.
+	format      uint8
+	formatEpoch uint64
+	run         uint64
 	// gs is what the loop counts for the metrics; extensive is --metrics
 	// extensive. quotaBytes is --quota-backend-bytes.
 	gs           loopStats
@@ -153,19 +158,25 @@ type node struct {
 }
 
 type fwdBatch struct {
-	seq     uint32
+	seq     uint64
 	data    []byte
 	handles []handle
 }
 
 const fwdSlots = 1 << 14
 
-// batchOrigin returns the node and sequence of a batch, if data is one.
-func batchOrigin(data []byte) (uint64, uint32, bool) {
-	if len(data) < batchHdr || binary.LittleEndian.Uint32(data[12:]) != magic {
+// isBatch reports whether an entry's data is a batch.
+func isBatch(data []byte) bool {
+	return len(data) >= batchHdr && string(data[17:batchHdr]) == magic
+}
+
+// batchOrigin returns the node that proposed a batch and its sequence
+// there, if data is one.
+func batchOrigin(data []byte) (uint64, uint64, bool) {
+	if !isBatch(data) {
 		return 0, 0, false
 	}
-	return uint64(binary.LittleEndian.Uint32(data)), binary.LittleEndian.Uint32(data[4:]), true
+	return uint64(binary.LittleEndian.Uint32(data)), binary.LittleEndian.Uint64(data[4:]), true
 }
 
 type pendingRead struct {
@@ -201,12 +212,17 @@ type opRes struct {
 	sub0, sub1 int
 }
 
-// Batch layout: [4 origin][4 sequence][4 ops][4 magic], then each op [1 kind]
-// [4 length] and the request's protobuf as the client sent it.
+// Batch layout: [4 origin][8 sequence][4 ops][1 format][3 magic], then
+// each op [1 kind][4 length] and the request's protobuf as the client
+// sent it. A batch's sequence is its origin's run in the high 32 bits and
+// a count of the run's batches in the low: an origin never names two
+// batches alike, across its restarts too, so a named append never finds
+// a batch of another run. The format is the cluster's (format.go) when
+// the batch was opened.
 const (
-	batchHdr = 16
+	batchHdr = 20
 	opHdr    = 5
-	magic    = 0x77697265
+	magic    = "wl\x06"
 	ringSize = 64 << 20
 )
 

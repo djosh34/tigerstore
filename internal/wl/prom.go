@@ -250,13 +250,14 @@ func kindOf(path string) uint8 {
 // promSnap is a scrape's copy of what the loop counted, and the node's
 // state as main's metric set reads it.
 type promSnap struct {
-	stats loopStats
-	node  core.Metrics
+	stats  loopStats
+	node   core.Metrics
+	format uint8
 }
 
 // scrape copies the loop's counts for a scrape.
 func (n *node) scrape() *promSnap {
-	p := &promSnap{stats: n.gs}
+	p := &promSnap{stats: n.gs, format: n.format}
 	g := &p.stats
 	for i := range g.request {
 		for j := range g.request[i] {
@@ -308,10 +309,12 @@ var (
 	requestDuration = prometheus.NewDesc("etcd_server_request_duration_seconds", "Response latency distribution in seconds for each type.", []string{"type", "success"}, nil)
 	applyDuration   = prometheus.NewDesc("etcd_server_apply_duration_seconds", "The latency distributions of v2 apply called by backend.", []string{"version", "op", "success"}, nil)
 	rangeDuration   = prometheus.NewDesc("etcd_server_range_duration_seconds", "The latency distributions of txn.Range", []string{"success"}, nil)
+	clusterFormat   = prometheus.NewDesc("tigerstore_cluster_version", "The batch format the cluster uses.", nil, nil)
+	formatMax       = prometheus.NewDesc("tigerstore_cluster_version_max", "The newest batch format this binary reads and writes.", nil, nil)
 )
 
 func (c *promCollector) Describe(ch chan<- *prometheus.Desc) {
-	for _, d := range []*prometheus.Desc{grpcStarted, grpcHandled, grpcMsgReceived, grpcMsgSent, clientReceived, clientSent, clientRequests, requestDuration, applyDuration, rangeDuration} {
+	for _, d := range []*prometheus.Desc{grpcStarted, grpcHandled, grpcMsgReceived, grpcMsgSent, clientReceived, clientSent, clientRequests, requestDuration, applyDuration, rangeDuration, clusterFormat, formatMax} {
 		ch <- d
 	}
 	if c.extensive {
@@ -323,6 +326,15 @@ func (c *promCollector) Describe(ch chan<- *prometheus.Desc) {
 // made.
 func constCounter(ch chan<- prometheus.Metric, d *prometheus.Desc, v float64, labels ...string) {
 	m, err := prometheus.NewConstMetric(d, prometheus.CounterValue, v, labels...)
+	if err != nil {
+		m = prometheus.NewInvalidMetric(d, err)
+	}
+	ch <- m
+}
+
+// constGauge sends a gauge, or an invalid metric if it cannot be made.
+func constGauge(ch chan<- prometheus.Metric, d *prometheus.Desc, v float64) {
+	m, err := prometheus.NewConstMetric(d, prometheus.GaugeValue, v)
 	if err != nil {
 		m = prometheus.NewInvalidMetric(d, err)
 	}
@@ -358,6 +370,8 @@ func (c *promCollector) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 	g := &p.stats
+	constGauge(ch, clusterFormat, float64(p.format))
+	constGauge(ch, formatMax, maxFormat)
 	constCounter(ch, clientReceived, float64(g.recvBytes))
 	constCounter(ch, clientSent, float64(g.sentBytes))
 	constCounter(ch, clientRequests, float64(g.unary), "unary", "unknown")

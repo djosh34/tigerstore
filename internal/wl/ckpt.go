@@ -1104,10 +1104,9 @@ func (n *node) loadNewest() (int64, error) {
 	n.storage.hs = p.hs
 	n.applied = m.index
 	n.confState = m.cs
-	n.members, n.removed = m.members.members, m.members.removed
-	n.alarms = m.members.alarms
-	n.downgrade = m.members.downgrade
-	n.alarmsChanged()
+	if err := n.takeMembers(&m.members); err != nil {
+		return 0, err
+	}
 	n.ckptGen, n.ckptFrom, n.ckptCut, n.ckptName = p.gen, p.logFrom, p.cut, p.name
 	return p.logFrom, nil
 }
@@ -1189,7 +1188,7 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		if err != nil {
 			return err
 		}
-		n := &node{members: cm.members, removed: cm.removed, alarms: cm.alarms, downgrade: cm.downgrade}
+		n := &node{members: cm.members, removed: cm.removed, alarms: cm.alarms, downgrade: cm.downgrade, format: cm.format, formatEpoch: cm.formatEpoch}
 		out(n.encodeMembers(nil))
 	} else {
 		csLen, err := cr.uvarint()
@@ -1208,7 +1207,8 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		}
 		out(binary.AppendUvarint(nil, uint64(len(cs))))
 		out(cs)
-		n := &node{members: hdr.members.members, removed: hdr.members.removed}
+		// A new cluster: its members announce afresh.
+		n := &node{members: hdr.members.members, removed: hdr.members.removed, format: baseFormat}
 		out(n.encodeMembers(nil))
 	}
 	nl, err := uv()

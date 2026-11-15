@@ -60,8 +60,11 @@ type loop struct {
 	metricsSrvs []*http.Server
 	side        *sideServers
 
-	free    []int
-	tick    int64
+	free []int
+	tick int64
+	// leaveBy is when a leader that stops gives up handing its
+	// leadership to a peer; zero while the node runs.
+	leaveBy time.Time
 	logged  int64
 	last    counters
 	lastWAL walStats
@@ -104,6 +107,10 @@ func run(ctx context.Context, cfg Config) error {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return err
 	}
+	run, err := nextRun(cfg.DataDir)
+	if err != nil {
+		return err
+	}
 	cliTLS := cfg.ClientTLS.Clone()
 	cliTLS.NextProtos = []string{"h2", "http/1.1"}
 	// A client that offers HTTP/1.1, such as curl or the bench's metrics
@@ -119,8 +126,10 @@ func run(ctx context.Context, cfg Config) error {
 	n := &node{
 		id: cfg.ID, clusterID: cfg.ClusterID, peersOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{},
 		ckptDir: filepath.Join(cfg.DataDir, "ckpt"), confState: &pb.ConfState{},
-		self: member{id: cfg.ID, name: cfg.Name, clientURLs: cfg.ClientURLs},
+		self:   member{id: cfg.ID, name: cfg.Name, clientURLs: cfg.ClientURLs},
+		format: baseFormat,
 	}
+	n.startRun(run)
 	// A new cluster's log starts with a ConfChange for each member, which
 	// the apply makes the member list; a node that joins dials the members
 	// it was told of until it has the list.
@@ -135,7 +144,6 @@ func run(ctx context.Context, cfg Config) error {
 			n.seed = append(n.seed, mem)
 		}
 	}
-	var err error
 	if n.st, err = newStore(); err != nil {
 		return err
 	}
@@ -494,6 +502,33 @@ func (l *loop) wakeLoop() {
 	l.wake()
 }
 
+// leave starts handing the leadership of a node that stops to the voter
+// furthest along that it has a connection to, as etcd's leader does when it stops, so a peer
+// leads once the process is gone. It reports whether the loop waits for
+// that.
+func (l *loop) leave() bool {
+	n := l.n
+	if !n.leading() {
+		return false
+	}
+	to, match := uint64(0), uint64(0)
+	for id, pr := range n.rn.Status().Progress {
+		if p := n.peersOut[id]; p == nil || p.dead || id == n.id || pr.IsLearner {
+			continue
+		}
+		if to == 0 || pr.Match > match {
+			to, match = id, pr.Match
+		}
+	}
+	if to == 0 {
+		return false
+	}
+	l.logger.Printf("stopping: handing the leadership to %x", to)
+	n.rn.TransferLeader(to)
+	l.leaveBy = n.now.Add(moveTimeout)
+	return true
+}
+
 // runPosts runs what other goroutines posted.
 func (l *loop) runPosts() error {
 	l.mu.Lock()
@@ -736,11 +771,14 @@ func (l *loop) run() error {
 		if n.stopErr != nil {
 			return n.stopErr
 		}
+		if !l.leaveBy.IsZero() && (n.lead != 0 && n.lead != n.id || n.now.After(l.leaveBy)) {
+			return errStopped
+		}
 		for i := range k {
 			ev := events[i]
 			switch ev.Fd {
 			case evHandoff:
-				if l.ctx.Err() != nil {
+				if l.ctx.Err() != nil && l.leaveBy.IsZero() && !l.leave() {
 					return errStopped
 				}
 				l.takeHandoffs()

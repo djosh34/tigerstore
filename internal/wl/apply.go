@@ -13,19 +13,22 @@ import (
 
 // applyBatch applies one entry's batch; walOff is where its data lies in
 // the WAL.
-func (n *node) applyBatch(data []byte, walOff int64) error {
-	if len(data) < batchHdr || binary.LittleEndian.Uint32(data[12:]) != magic {
+func (n *node) applyBatch(data []byte, index uint64, walOff int64) error {
+	if !isBatch(data) {
 		return nil
 	}
+	if err := n.checkFormat(data[16]); err != nil {
+		return err
+	}
 	origin := uint64(binary.LittleEndian.Uint32(data))
-	nops := int(binary.LittleEndian.Uint32(data[8:]))
+	nops := int(binary.LittleEndian.Uint32(data[12:]))
 	p := batchHdr
 	mine := origin == n.id
 	// The node that proposed the batch knows its clients' handles; they
 	// are not in the batch.
 	var handles []handle
 	if mine {
-		seq := binary.LittleEndian.Uint32(data[4:])
+		seq := binary.LittleEndian.Uint64(data[4:])
 		if f := &n.fwd[seq&(fwdSlots-1)]; f.seq == seq && len(f.handles) == nops {
 			handles = f.handles
 			// Answered here, the batch's clients are not timed out.
@@ -82,7 +85,7 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 		case kind == kLeaseKeepAlive:
 			err = n.applyLeaseKeepAlive(req, c, s)
 		case kind == kMemberAttrs:
-			err = n.applyMemberAttrs(req)
+			err = n.applyMemberAttrs(req, index)
 		case kind == kAlarm:
 			err = n.applyAlarm(req, c, s)
 		case kind == kDowngrade:

@@ -213,7 +213,7 @@ func (n *node) storageApply(m *pb.Message) error {
 			return fmt.Errorf("apply entry %d: a ConfChangeV2", idx)
 		case pb.EntryNormal:
 			if d := e.GetData(); len(d) > 0 {
-				if err := n.applyBatch(d, n.storage.offOf(idx)); err != nil {
+				if err := n.applyBatch(d, idx, n.storage.offOf(idx)); err != nil {
 					return err
 				}
 			}
@@ -299,8 +299,8 @@ func (n *node) sendPeer(m *pb.Message) {
 	size := msgHdr + 4 + len(m.GetContext())
 	for _, e := range ents {
 		size += 8 + 8 + 1 + 4
-		if o, _, ok := batchOrigin(e.GetData()); app && ok && o != n.id && (o == to || !carry) {
-			size += 4
+		if app && n.names(e.GetData(), carry) {
+			size += 8
 		} else {
 			size += len(e.GetData())
 		}
@@ -328,15 +328,15 @@ func (n *node) sendPeer(m *pb.Message) {
 		binary.LittleEndian.PutUint64(eh[0:], e.GetTerm())
 		binary.LittleEndian.PutUint64(eh[8:], e.GetIndex())
 		eh[16] = byte(e.GetType())
-		if o, seq, ok := batchOrigin(d); app && ok && o != n.id && (o == to || !carry) {
-			// A follower proposed this batch and sent it to every peer
-			// itself: name it.
+		if app && n.names(d, carry) {
+			o, seq, _ := batchOrigin(d)
 			n.stats.named++
 			eh[16] |= namedEntry
-			binary.LittleEndian.PutUint32(eh[17:], seq)
+			binary.LittleEndian.PutUint32(eh[17:], uint32(seq))
 			s.put(eh[:])
-			var ob [4]byte
+			var ob [8]byte
 			binary.LittleEndian.PutUint32(ob[:], uint32(o))
+			binary.LittleEndian.PutUint32(ob[4:], uint32(seq>>32))
 			s.put(ob[:])
 			continue
 		}
@@ -351,6 +351,15 @@ func (n *node) sendPeer(m *pb.Message) {
 	s.put(cl[:])
 	s.put(m.GetContext())
 	n.markDirty(s)
+}
+
+// names reports whether an append names an entry's batch instead of
+// carrying it: a batch a follower proposed and sent every peer itself,
+// unless the peer asked for batches to be carried. The proposer itself
+// asks too when it lacks the batch, as after a restart.
+func (n *node) names(data []byte, carry bool) bool {
+	o, _, ok := batchOrigin(data)
+	return ok && o != n.id && !carry
 }
 
 // put appends p to the record stream.
@@ -380,7 +389,7 @@ func (n *node) peerFrames(p *peerIn) error {
 		}
 		f := s.pt[s.pr+4 : s.pr+4+l]
 		s.pr += 4 + l
-		if len(p.held) > 0 && (len(f) < 9 || f[0] != frameBatch) {
+		if len(p.held) > 0 && (len(f) < batchFrameHdr || f[0] != frameBatch) {
 			// Messages from a peer keep their order behind one held.
 			p.held = append(p.held, append([]byte(nil), f...))
 			continue
@@ -390,13 +399,13 @@ func (n *node) peerFrames(p *peerIn) error {
 			n.carryUntil[p.from] = time.Now().Add(time.Second)
 			continue
 		}
-		if len(f) >= 9 && f[0] == frameBatch {
+		if len(f) >= batchFrameHdr && f[0] == frameBatch {
 			// A batch a follower proposed, sent ahead of the leader's
 			// append that names it.
 			origin := uint64(binary.LittleEndian.Uint32(f[1:]))
-			seq := binary.LittleEndian.Uint32(f[5:])
+			seq := binary.LittleEndian.Uint64(f[5:])
 			b := &n.fwdOf(origin)[seq&(fwdSlots-1)]
-			b.seq, b.data = seq, n.rxCopy(f[9:], span{kind: spanUnnamed, at: n.now, fwd: true, origin: origin, seq: seq})
+			b.seq, b.data = seq, n.rxCopy(f[batchFrameHdr:], span{kind: spanUnnamed, at: n.now, fwd: true, origin: origin, seq: seq})
 			continue
 		}
 		m, err := n.decodeMsg(f)
@@ -453,12 +462,14 @@ func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
 			}
 			at += 21
 			if typ&namedEntry != 0 {
-				seq := uint32(l)
-				if len(f) < at+4 {
+				// The entry names a batch by its origin and sequence:
+				// the length's place holds the sequence's low half.
+				if len(f) < at+8 {
 					return nil, errRecord
 				}
 				origin := uint64(binary.LittleEndian.Uint32(f[at:]))
-				at += 4
+				seq := uint64(binary.LittleEndian.Uint32(f[at+4:]))<<32 | uint64(uint32(l))
+				at += 8
 				b := n.fwdOf(origin)[seq&(fwdSlots-1)]
 				if b.seq != seq || b.data == nil {
 					return nil, errUnnamed
@@ -494,11 +505,13 @@ const namedEntry = 0x80
 // wait for Raft's next probe.
 const peerBacklog = 64 << 20
 
-// frameBatch marks a peer frame that carries a follower's batch;
-// frameCarry asks the leader to carry batches instead of naming them.
+// frameBatch marks a peer frame that carries a follower's batch, after
+// [4 origin][8 sequence]; frameCarry asks the leader to carry batches
+// instead of naming them.
 const (
-	frameBatch = 0xff
-	frameCarry = 0xfe
+	batchFrameHdr = 1 + 4 + 8
+	frameBatch    = 0xff
+	frameCarry    = 0xfe
 )
 
 func (n *node) askCarry(leader uint64) {
@@ -511,7 +524,7 @@ func (n *node) askCarry(leader uint64) {
 // sendBatch sends a batch this follower proposes to every peer but the
 // leader, which gets it in the proposal.
 func (n *node) sendBatch(data []byte) {
-	seq := binary.LittleEndian.Uint32(data[4:])
+	seq := binary.LittleEndian.Uint64(data[4:])
 	if dropBatches && seq%50 == 0 {
 		return // a test of the leader's fallback to carrying batches
 	}
@@ -519,11 +532,11 @@ func (n *node) sendBatch(data []byte) {
 		if id == n.lead || p.dead {
 			continue
 		}
-		var h [13]byte
-		binary.LittleEndian.PutUint32(h[0:], uint32(9+len(data)))
+		var h [4 + batchFrameHdr]byte
+		binary.LittleEndian.PutUint32(h[0:], uint32(batchFrameHdr+len(data)))
 		h[4] = frameBatch
 		binary.LittleEndian.PutUint32(h[5:], uint32(n.id))
-		binary.LittleEndian.PutUint32(h[9:], seq)
+		binary.LittleEndian.PutUint64(h[9:], seq)
 		p.put(h[:])
 		p.put(data)
 		n.markDirty(&p.sock)

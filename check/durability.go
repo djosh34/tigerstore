@@ -193,13 +193,30 @@ func checkNoOp(r *replay, op *history.Op) []string {
 	return errs
 }
 
-// fingerprint identifies a request by its content.
+// fingerprint identifies a request by what it can change: its content,
+// without a Txn's failure branch that only reads. That branch changes
+// nothing, and internal/wl's log leaves it out.
 func fingerprint(r history.Request) (string, error) {
+	if t := r.Txn; t != nil && len(t.Failure) > 0 && readsOnly(t.Failure) {
+		kept := *t
+		kept.Failure = nil
+		r.Txn = &kept
+	}
 	b, err := json.Marshal(r)
 	if err != nil {
 		return "", fmt.Errorf("fingerprint of %s: %w", describeRequest(r), err)
 	}
 	return string(b), nil
+}
+
+// readsOnly reports whether ops are ranges only.
+func readsOnly(ops []history.TxnOp) bool {
+	for _, o := range ops {
+		if o.Range == nil {
+			return false
+		}
+	}
+	return true
 }
 
 // anyGrant stands for a grant of any ID with the given TTL.

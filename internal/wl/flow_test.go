@@ -105,7 +105,7 @@ func TestAWriteThatNeverAppliesTimesOut(t *testing.T) {
 	c.idx, c.gen = 0, 1
 	n.socks, n.gens = []any{c}, []uint16{1}
 	n.now = time.Now()
-	for _, seq := range []uint32{1, 2} {
+	for _, seq := range []uint64{1, 2} {
 		n.fwd[seq] = fwdBatch{seq: seq, handles: []handle{mkHandle(c, s.id)}}
 		n.proposed = append(n.proposed, proposal{seq: seq, at: n.now})
 	}
