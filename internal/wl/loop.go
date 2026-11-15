@@ -617,16 +617,23 @@ func (l *loop) run() error {
 		}
 		n.proposeBatch(n.now)
 		n.askReads(l.tick)
+		t1, ops := time.Now(), n.stats.opsByKind
 		if err := n.ready(); err != nil {
 			return err
 		}
+		t2 := time.Now()
 		if err := n.syncWatchers(); err != nil {
 			return err
 		}
+		t3 := time.Now()
 		l.flush()
+		t4 := time.Now()
 		if !n.rn.HasReady() {
 			// Raft holds no message now that could point into a ring.
 			n.sweepRings(n.now)
+		}
+		if t5 := time.Now(); t5.Sub(n.now) > slowTurn {
+			l.logSlowTurn(n.now, t1, t2, t3, t4, t5, ops)
 		}
 		n.stats.turns++
 		if l.tick%50 == 0 && l.tick != l.logged {
@@ -730,6 +737,33 @@ type counters struct {
 	opsByKind, bytesByKind [16]int
 	named, held            int
 	carried, carriedBytes  [32]int
+}
+
+// slowTurn is a turn long enough to log, so that a stall shows where
+// its time went.
+const slowTurn = 200 * time.Millisecond
+
+// logSlowTurn logs a slow turn's phases and the ops it applied, by kind;
+// ops are the counts before the turn's Ready.
+func (l *loop) logSlowTurn(start, input, ready, sync, flush, end time.Time, ops [16]int) {
+	var applied [16]int
+	for k := range applied {
+		applied[k] = l.n.stats.opsByKind[k] - ops[k]
+	}
+	l.logger.Printf("slow turn %v: input and proposals %v, ready and apply %v, watch catch-up %v, flush %v, sweep %v; applied by kind %v; keys %d, watchers %d, catching up %d, held flows %d",
+		end.Sub(start), input.Sub(start), ready.Sub(input), sync.Sub(ready), flush.Sub(sync), end.Sub(flush), applied,
+		l.n.st.nkeys, len(l.n.w.ws), len(l.n.w.unsynced), l.heldFlows())
+}
+
+// heldFlows counts the messages the clients hold for want of window.
+func (l *loop) heldFlows() int {
+	k := 0
+	for _, x := range l.n.socks {
+		if c, ok := x.(*client); ok {
+			k += len(c.flow.held)
+		}
+	}
+	return k
 }
 
 func (l *loop) logStats() {

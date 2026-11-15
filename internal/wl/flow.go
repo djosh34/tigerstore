@@ -24,6 +24,7 @@ type flow struct {
 	conn    int64            // the connection's window
 	initial int64            // the client's SETTINGS_INITIAL_WINDOW_SIZE
 	streams map[uint32]int64 // the windows of streams that hold something
+	counts  map[uint32]int   // how many held entries each such stream has
 	held    []held
 }
 
@@ -48,12 +49,17 @@ func (c *client) hold(s *stream, data, trailer []byte) {
 	if !s.holds {
 		s.holds = true
 		if f.streams == nil {
-			f.streams = map[uint32]int64{}
+			f.streams, f.counts = map[uint32]int64{}, map[uint32]int{}
 		}
 		f.streams[s.id] = s.win
 	}
 	f.held = append(f.held, held{sid: s.id, data: data, trailer: trailer})
-	c.drain()
+	f.counts[s.id]++
+	// Behind another of its stream's entries, or with the connection's
+	// window shut, it cannot go out yet.
+	if f.counts[s.id] == 1 && f.conn > 0 {
+		c.drain()
+	}
 }
 
 // windowUpdate adds inc to stream sid's window, or the connection's for
@@ -132,12 +138,13 @@ func (c *client) drain() {
 			copy(b[9:], h.trailer)
 			n.markDirty(&c.sock)
 		}
-		if !c.holdsMore(i, h.sid) {
+		if f.counts[h.sid]--; f.counts[h.sid] == 0 {
 			// The stream holds nothing more: its window goes back to it.
 			if s := c.get(h.sid); s != nil {
 				s.win, s.holds = f.streams[h.sid], false
 			}
 			delete(f.streams, h.sid)
+			delete(f.counts, h.sid)
 		}
 	}
 	clear(f.held[k:])
@@ -160,19 +167,10 @@ func (c *client) dropHeld(sid uint32) {
 	clear(f.held[k:])
 	f.held = f.held[:k]
 	delete(f.streams, sid)
+	delete(f.counts, sid)
 	if s := c.get(sid); s != nil {
 		s.holds = false
 	}
-}
-
-// holdsMore reports whether a held entry after i belongs to stream sid.
-func (c *client) holdsMore(i int, sid uint32) bool {
-	for _, h := range c.flow.held[i+1:] {
-		if h.sid == sid {
-			return true
-		}
-	}
-	return false
 }
 
 // settings reads a SETTINGS frame's payload.
