@@ -206,7 +206,7 @@ func start(c *config, lg *zap.Logger) error {
 	ncfg := node.Config{
 		Core: ccfg, DataDir: ec.Dir, WalDir: ec.WalDir, Tick: time.Duration(ec.TickMs) * time.Millisecond,
 		DiskBudget: c.own.DiskBudget, SegmentBytes: c.own.UnsafeSegment, CorruptCheckTime: ec.CorruptCheckTime, Logf: logf, AutoCompaction: compaction,
-		UnsafeNoFsync: ec.UnsafeNoFsync, WarningApplyDuration: ec.WarningApplyDuration, ForceNewCluster: ec.ForceNewCluster,
+		UnsafeNoFsync: true, WarningApplyDuration: ec.WarningApplyDuration, ForceNewCluster: ec.ForceNewCluster,
 		TurnGap: node.DefaultTurnGap,
 	}
 	if gate.Enabled(features.CompactHashCheck) {
