@@ -816,6 +816,14 @@ func serveHTTP1(h *handoff, m *nodeMetrics) {
 		profMu.Unlock()
 		body = buf.Bytes()
 		ctype = "application/octet-stream"
+	case path == "/version":
+		body, ctype = []byte(`{"etcdserver":"3.7.2","etcdcluster":"3.7.0","storage":"3.7.0"}`), "application/json"
+	case path == "/health" || strings.HasPrefix(path, "/health?"):
+		// etcd's health: true while the node has a leader.
+		body, ctype = []byte(`{"health":"false","reason":"RAFT NO LEADER"}`), "application/json"
+		if m.hasLeader.Load() == 1 {
+			body = []byte(`{"health":"true","reason":""}`)
+		}
 	default:
 		body = m.text()
 	}

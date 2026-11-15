@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -290,7 +291,8 @@ func TestClusterComesBackAfterARestart(t *testing.T) {
 }
 
 func TestClusterServesTheEtcdAPI(t *testing.T) {
-	c := newTestCluster(t).client(t)
+	tc := newTestCluster(t)
+	c := tc.client(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
@@ -407,6 +409,26 @@ func TestClusterServesTheEtcdAPI(t *testing.T) {
 		}
 		if _, err := c.Get(ctx, "/c/k", clientv3.WithRev(p.Header.Revision)); err == nil {
 			t.Fatal("a read before the compacted revision was answered")
+		}
+	})
+
+	t.Run("version and health over HTTP/1.1", func(t *testing.T) {
+		hc := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
+			Certificates: []tls.Certificate{tc.cert}, RootCAs: tc.ca.Pool, MinVersion: tls.VersionTLS13,
+		}}}
+		for path, want := range map[string]string{
+			"/version": `{"etcdserver":"3.7.2","etcdcluster":"3.7.0","storage":"3.7.0"}`,
+			"/health":  `{"health":"true","reason":""}`,
+		} {
+			resp, err := hc.Get("https://" + tc.endpoints[0] + path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if err != nil || string(b) != want {
+				t.Errorf("%s: %q %v, want %q", path, b, err, want)
+			}
 		}
 	})
 
