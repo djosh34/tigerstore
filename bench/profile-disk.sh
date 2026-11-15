@@ -24,13 +24,14 @@ flags=(-keys 10000 -conns 6 -streams 512 -value-size 1024 -warmup 3s -duration 3
 endpoint_file=leader
 if [ "$bench" = k8s ]; then
 	wl=k8s
-	flags=(-conns 3 -streams 128 -copies 64 -traces "$(realpath "${TRACES:-$here/recordings}")" -seed "${SEED:-1}" -warmup 3s -duration 40s)
+	flags=(-conns 3 -streams "${STREAMS:-128}" -copies 64 -traces "$(realpath "${TRACES:-$here/recordings}")" -seed "${SEED:-1}" -warmup 3s -duration 40s)
 	endpoint_file=endpoints
 	export BENCH_GOMEMLIMIT=3GiB
 fi
-trap 'cp "$dir"/n*.log "$out/" 2>/dev/null; "$here/cluster.sh" stop "$dir"' EXIT
+trap 'cp "$dir"/n*.log "$out/" 2>/dev/null; "$here/cluster.sh" stop "$dir"; if [ -n "${RTT:-}" ]; then "$here/netem.sh" off; fi' EXIT
 "$here/cluster.sh" stop "$dir"
 "$here/cluster.sh" start tigerstore "$bin" "$dir" "${layout[@]:1}"
+if [ -n "${RTT:-}" ]; then "$here/netem.sh" on "$RTT"; fi
 read -r -a eps <<<"$(tr ',' ' ' <"$dir/endpoints")"
 leader=$(cat "$dir/leader")
 taskset -c "${layout[0]}" "$bins/loadgen" -endpoints "$(cat "$dir/$endpoint_file")" \
