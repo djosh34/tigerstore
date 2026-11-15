@@ -210,6 +210,8 @@ type WatchStream struct {
 	// several parts (core.WatchResponse), which TakenPart reports.
 	C chan *pb.WatchResponse
 	P chan core.WatchResponse
+	// sink takes the responses instead, on the loop (OpenWatchSink).
+	sink WatchSink
 	// merging is the response a stream that takes whole responses builds
 	// from parts.
 	merging *pb.WatchResponse
@@ -241,6 +243,34 @@ func (ws *WatchStream) took(n int64) {
 	}
 }
 
+// WatchSink takes a watch stream's responses on the node's loop, in
+// place of C or P: a server whose connections run on the loop encodes
+// each into the stream's output there, with no goroutine or channel
+// between them. Watches were about 6.5% of a leader's CPU on crd-heavy,
+// a third of it the goroutines and channels (#602).
+type WatchSink interface {
+	// Watch takes a response or a part of one, as P carries them. It
+	// reports false once the stream cannot take it; the node then drops
+	// the stream.
+	Watch(r core.WatchResponse) bool
+	// Queued is the bytes of responses the sink holds that its client
+	// has not taken yet.
+	Queued() int64
+}
+
+// Drained tells a stream with a sink that its client took output, so the
+// sink holds queued bytes now. It wakes the committer if the stream was
+// short of room and has half of it again. Loop only.
+func (ws *WatchStream) Drained(queued int64) {
+	if queued <= ws.n.watchBytes()/2 && ws.full.CompareAndSwap(true, false) {
+		select {
+		case ws.n.roomFreed <- struct{}{}:
+			ws.n.wake()
+		default:
+		}
+	}
+}
+
 // watchBytes is the room of a watch stream.
 func (n *Node) watchBytes() int64 { return cmp.Or(n.cfg.WatchBytes, watchBytes) }
 
@@ -248,14 +278,17 @@ func (n *Node) watchBytes() int64 { return cmp.Or(n.cfg.WatchBytes, watchBytes) 
 // take. A quarter of its queue is kept for responses without events,
 // which go out whatever the room: created, cancelled, progress.
 func (ws *WatchStream) room(n *Node, memFull bool) (bytes, responses int64) {
-	q, used := cap(ws.C), len(ws.C)
-	if ws.P != nil {
+	q, used, queued := cap(ws.C), len(ws.C), ws.queued.Load()
+	switch {
+	case ws.sink != nil:
+		q, used, queued = n.watchQueue(), 0, ws.sink.Queued()
+	case ws.P != nil:
 		q, used = cap(ws.P), len(ws.P)
 	}
 	if planted.On("B13") {
 		return n.watchBytes(), int64(q)
 	}
-	bytes, responses = n.watchBytes()-ws.queued.Load(), int64(q-q/4-used)
+	bytes, responses = n.watchBytes()-queued, int64(q-q/4-used)
 	if memFull {
 		// The process is at its memory budget: nothing more goes out
 		// until the clients take what their streams hold.
@@ -353,17 +386,30 @@ func (n *Node) Metrics(ctx context.Context) (core.Metrics, error) {
 
 // OpenWatch starts a watch stream of a client.
 func (n *Node) OpenWatch(ctx context.Context, c core.Caller) (*WatchStream, error) {
-	ws := &WatchStream{n: n, id: n.nextID.Add(1), caller: c, C: make(chan *pb.WatchResponse, cmp.Or(n.cfg.WatchQueue, watchQueue)), done: make(chan struct{})}
+	ws := &WatchStream{n: n, id: n.nextID.Add(1), caller: c, C: make(chan *pb.WatchResponse, n.watchQueue()), done: make(chan struct{})}
 	if err := n.put(ctx, input{watchOpen: ws}); err != nil {
 		return nil, err
 	}
 	return ws, nil
 }
 
+// OpenWatchSink starts a watch stream whose responses, in parts, go to
+// sink on the loop.
+func (n *Node) OpenWatchSink(ctx context.Context, c core.Caller, sink WatchSink) (*WatchStream, error) {
+	ws := &WatchStream{n: n, id: n.nextID.Add(1), caller: c, sink: sink, done: make(chan struct{})}
+	if err := n.put(ctx, input{watchOpen: ws}); err != nil {
+		return nil, err
+	}
+	return ws, nil
+}
+
+// watchQueue is how many responses a watch stream holds at most.
+func (n *Node) watchQueue() int { return cmp.Or(n.cfg.WatchQueue, watchQueue) }
+
 // OpenWatchParts starts a watch stream whose responses come in parts on
 // P, for a server that sends a large response as it comes.
 func (n *Node) OpenWatchParts(ctx context.Context, c core.Caller) (*WatchStream, error) {
-	ws := &WatchStream{n: n, id: n.nextID.Add(1), caller: c, P: make(chan core.WatchResponse, cmp.Or(n.cfg.WatchQueue, watchQueue)), done: make(chan struct{})}
+	ws := &WatchStream{n: n, id: n.nextID.Add(1), caller: c, P: make(chan core.WatchResponse, n.watchQueue()), done: make(chan struct{})}
 	if err := n.put(ctx, input{watchOpen: ws}); err != nil {
 		return nil, err
 	}
@@ -374,6 +420,9 @@ func (n *Node) OpenWatchParts(ctx context.Context, c core.Caller) (*WatchStream,
 // if the stream's queue is full, which the room the core keeps to should
 // prevent.
 func (ws *WatchStream) deliver(r core.WatchResponse) bool {
+	if ws.sink != nil {
+		return ws.sink.Watch(r)
+	}
 	if ws.P != nil {
 		ws.queued.Add(int64(proto.Size(r.Resp)))
 		select {
@@ -1705,7 +1754,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			switch {
 			case w.Broken:
 				n.closeStream(streams, w.Stream, ErrWatchBroken)
-			case planted.On("B13") && ws.P == nil && !w.More && !w.Cont:
+			case planted.On("B13") && ws.C != nil && !w.More && !w.Cont:
 				// Planted: the stream got room whatever it held (room),
 				// and the committer waits for its client.
 				ws.queued.Add(int64(proto.Size(w.Resp)))

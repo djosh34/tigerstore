@@ -18,14 +18,20 @@ import (
 )
 
 // watch serves one Watch stream. A goroutine reads client requests into
-// the node; this one sends the node's responses.
+// the node, and the node's loop encodes its responses into the stream's
+// output (watchSink); this one waits for the stream's end.
 func (s *Server) watch(st *stream) error {
 	ctx := st.ctx
-	ws, err := s.n.OpenWatchParts(ctx, st.c.callerOf(st))
+	sink := &watchSink{s: s, st: st}
+	st.noWait = true
+	ws, err := s.n.OpenWatchSink(ctx, st.c.callerOf(st), sink)
 	if err != nil {
 		return toStatus(err)
 	}
 	defer ws.Close()
+	st.c.mu.Lock()
+	st.drained = ws.Drained
+	st.c.mu.Unlock()
 
 	recvErr := make(chan error, 1)
 	go func() {
@@ -49,34 +55,15 @@ func (s *Server) watch(st *stream) error {
 		}
 	}()
 
-	// The node can drop a stream; that must also end a Send that waits
-	// for the client.
-	st.abort = ws.Done()
-	var parts watchParts
 	for {
 		select {
-		case r := <-ws.P:
-			ws.TakenPart(r)
-			start := time.Now()
-			var err error
-			switch {
-			case r.More || r.Cont:
-				err = parts.send(st, r)
-			case r.Fragmented:
-				// One of etcd's fragments, cut by the node.
-				err = st.Send(r.Resp)
-			default:
-				err = sendFragments(st, r.Resp)
-			}
-			if err != nil {
-				if errors.Is(err, errAborted) {
-					return ws.Err()
-				}
-				s.streamFailed(st, "send", "watch", err)
-				return err
-			}
-			s.watchSent(r.Resp, time.Since(start))
 		case <-ws.Done():
+			// A send the sink could not make ended the stream; its error
+			// is the stream's status. The node closed Done after the sink
+			// set it.
+			if sink.err != nil {
+				return sink.err
+			}
 			return ws.Err()
 		case <-s.n.Done():
 			return rpctypes.ErrGRPCStopped
@@ -90,6 +77,45 @@ func (s *Server) watch(st *stream) error {
 			return toStatus(err)
 		}
 	}
+}
+
+// watchSink encodes a watch stream's responses into its output on the
+// node's loop (node.WatchSink). The node keeps the stream within its room,
+// so a send never waits (stream.noWait).
+type watchSink struct {
+	s     *Server
+	st    *stream
+	parts watchParts
+	// err is the first send that failed, which ends the stream with it.
+	err error
+}
+
+func (w *watchSink) Watch(r core.WatchResponse) bool {
+	start := time.Now()
+	var err error
+	switch {
+	case r.More || r.Cont:
+		err = w.parts.send(w.st, r)
+	case r.Fragmented:
+		// One of etcd's fragments, cut by the node.
+		err = w.st.Send(r.Resp)
+	default:
+		err = sendFragments(w.st, r.Resp)
+	}
+	if err != nil {
+		w.s.streamFailed(w.st, "send", "watch", err)
+		w.err = err
+		return false
+	}
+	w.s.watchSent(r.Resp, time.Since(start))
+	return true
+}
+
+func (w *watchSink) Queued() int64 {
+	c := w.st.c
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return int64(w.st.queued)
 }
 
 // sendFragments is etcd's: a response the node marked for a watcher that

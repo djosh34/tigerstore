@@ -70,6 +70,9 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 	defer func() {
 		if st.queued < queued {
 			st.wake()
+			if st.drained != nil {
+				st.drained(int64(st.queued))
+			}
 		}
 	}()
 	for len(st.out) > 0 {

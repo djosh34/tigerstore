@@ -63,6 +63,12 @@ type stream struct {
 	space    chan struct{}
 	// abort, if set by the handler, ends a Send that waits for space.
 	abort <-chan struct{}
+	// noWait is set on a stream whose sends never wait for space, as the
+	// node's loop makes them within the room it keeps (watchSink); set
+	// before the first send. drained, if set, hears the bytes still
+	// queued each time the writer took some, under c.mu.
+	noWait  bool
+	drained func(queued int64)
 	// deadline is when the call ends, from its grpc-timeout, and due its
 	// place in the connection's deadlines, from 1, while it waits for it
 	// (deadline.go). Loop only.
@@ -347,7 +353,7 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error 
 			c.mu.Unlock()
 			return errStreamGone
 		}
-		if wait && st.queued > 0 && st.queued+len(msg) > sendQueue {
+		if wait && !st.noWait && st.queued > 0 && st.queued+len(msg) > sendQueue {
 			c.mu.Unlock()
 			select {
 			case <-st.space:
