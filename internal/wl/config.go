@@ -32,6 +32,10 @@ type Config struct {
 	// MemoryBudget is the memory the node may use, 0 for no limit.
 	MemoryBudget int64
 	Logger       *log.Logger
+	// CORS and HostWhitelist are etcd's --cors and --host-whitelist; Pprof
+	// serves /debug/pprof/, as --enable-pprof.
+	CORS, HostWhitelist map[string]struct{}
+	Pprof               bool
 }
 
 // Member is one member of the cluster.

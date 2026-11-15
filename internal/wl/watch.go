@@ -3,6 +3,7 @@ package wl
 import (
 	"bytes"
 	"cmp"
+	"errors"
 	"math"
 	"slices"
 )
@@ -384,6 +385,11 @@ func (n *node) syncWatchers() error {
 		}
 		if budget.left() {
 			done, err := n.catchUp(x, &budget, func(evs []event) { n.writeEvents(c, s, x, evs) })
+			if errors.Is(err, errPrevCompacted) {
+				n.writeCompacted(c, s, x)
+				w.remove(i)
+				continue
+			}
 			if err != nil {
 				return err
 			}
@@ -402,6 +408,10 @@ func (n *node) syncWatchers() error {
 type syncBudget struct{ changes, events int }
 
 func (b *syncBudget) left() bool { return b.changes > 0 && b.events > 0 }
+
+// errPrevCompacted is a catch-up that met an event whose previous value,
+// which its watcher asks for, is compacted.
+var errPrevCompacted = errors.New("the value before an event is compacted")
 
 // catchUp hands emit watcher x's events from x.syncRev on, until the
 // head or until the budget is spent, and then only at a revision's end.
@@ -440,6 +450,12 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 			if ev.prev, err = st.at(ch.key, ch.rev-1); err != nil {
 				return false, err
 			}
+			// At the compacted revision, the value before may be gone:
+			// etcd would send the event without it, which kube-apiserver
+			// rejects, so the watch is canceled as compacted instead.
+			if ev.prev == nil && ch.rev <= st.compactRev && (ch.del || recVersion(ev.kv) > 1) {
+				return false, errPrevCompacted
+			}
 		}
 		evs = append(evs, ev)
 		b.events--
@@ -468,11 +484,12 @@ func (n *node) writeEvents(c *client, s *stream, x *watcher, evs []event) {
 }
 
 // writeCompacted cancels watcher x, whose start revision is compacted.
+// As etcd's, the header names revision 0.
 func (n *node) writeCompacted(c *client, s *stream, x *watcher) {
-	size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id)) + 2 + sizeVarintField(5, uint64(n.st.compactRev))
+	size := sizeBytesField(1, n.hdrSizeAt(0)) + sizeVarintField(2, uint64(x.id)) + 2 + sizeVarintField(5, uint64(n.st.compactRev))
 	var mw msgW
 	mw.begin(c, s, size)
-	n.writeHdr(&mw)
+	n.writeHdrAt(&mw, 0)
 	writeVarintNZ(&mw, 2, uint64(x.id))
 	mw.varintField(4, 1)
 	writeVarintNZ(&mw, 5, uint64(n.st.compactRev))

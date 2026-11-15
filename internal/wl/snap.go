@@ -145,6 +145,8 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	n.applied = meta.GetIndex()
 	n.confState = meta.GetConfState()
 	n.members, n.removed = m.members.members, m.members.removed
+	n.alarms = m.members.alarms
+	n.alarmsChanged()
 	if n.shell != nil {
 		n.shell.membersChanged()
 	}

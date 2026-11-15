@@ -1105,6 +1105,8 @@ func (n *node) loadNewest() (int64, error) {
 	n.applied = m.index
 	n.confState = m.cs
 	n.members, n.removed = m.members.members, m.members.removed
+	n.alarms = m.members.alarms
+	n.alarmsChanged()
 	n.ckptGen, n.ckptFrom, n.ckptCut, n.ckptName = p.gen, p.logFrom, p.cut, p.name
 	return p.logFrom, nil
 }
@@ -1182,28 +1184,12 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		if err := copyBytes(csLen); err != nil {
 			return err
 		}
-		nm, err := uv()
+		cm, err := cr.readMembers()
 		if err != nil {
 			return err
 		}
-		for range nm {
-			ml, err := uv()
-			if err != nil {
-				return err
-			}
-			if err := copyBytes(ml); err != nil {
-				return err
-			}
-		}
-		nr, err := uv()
-		if err != nil {
-			return err
-		}
-		for range nr {
-			if _, err := uv(); err != nil {
-				return err
-			}
-		}
+		n := &node{members: cm.members, removed: cm.removed, alarms: cm.alarms}
+		out(n.encodeMembers(nil))
 	} else {
 		csLen, err := cr.uvarint()
 		if err != nil {

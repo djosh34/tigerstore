@@ -6,8 +6,6 @@ import (
 	"math"
 	"net"
 	"net/http"
-	"net/http/pprof"
-	"strings"
 	"sync"
 	"time"
 
@@ -22,8 +20,8 @@ import (
 // The client port's HTTP/1.1 side. A client that offers HTTP/1.1, such
 // as curl, a probe or the bench's metrics scraper, keeps crypto/tls's
 // connection and is served by net/http in goroutines of its own; the
-// loop never sees it. It serves etcd's gRPC gateway under /v3/, and
-// /version, /health, /metrics and /debug/pprof/.
+// loop never sees it. It serves etcd's HTTP endpoints (httpapi.go) and
+// its gRPC gateway under /v3/.
 //
 // The gateway is etcd's (embed/serve.go): grpc-gateway's mux with etcd's
 // marshaler options and the handlers generated for etcd's services. As
@@ -50,9 +48,9 @@ var gatewayHandlers = []func(context.Context, *gw.ServeMux, *grpc.ClientConn) er
 	v3electiongw.RegisterElectionHandler,
 }
 
-// startHTTP1 starts the HTTP/1.1 server. Its gateway is a client of the
-// node through conn.
-func startHTTP1(ctx context.Context, conn *grpc.ClientConn, m *nodeMetrics) (*http1, error) {
+// startHTTP1 starts the HTTP/1.1 server with api. Its gateway is a client
+// of the node through conn.
+func startHTTP1(ctx context.Context, conn *grpc.ClientConn, api *httpAPI) (*http1, error) {
 	// etcd's: proto field names, no unpopulated fields, unknown fields
 	// ignored.
 	jm := &gw.JSONPb{}
@@ -71,41 +69,9 @@ func startHTTP1(ctx context.Context, conn *grpc.ClientConn, m *nodeMetrics) (*ht
 		}),
 		wsproxy.WithMaxRespBodyBufferSize(math.MaxInt32),
 	)
-	mux := http.NewServeMux()
-	mux.Handle("/v3/", gateway)
-	mux.HandleFunc("/version", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"etcdserver":"3.7.2","etcdcluster":"3.7.0","storage":"3.7.0"}`))
-	})
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		// etcd's health: true while the node has a leader.
-		w.Header().Set("Content-Type", "application/json")
-		if m.hasLeader.Load() != 1 {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"health":"false","reason":"RAFT NO LEADER"}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"health":"true","reason":""}`))
-	})
-	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		_, _ = w.Write(m.text())
-	})
-	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	api.gateway = gateway
 	h := &http1{
-		srv: &http.Server{
-			// etcd moves /v3beta/ to /v3/.
-			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if rest, ok := strings.CutPrefix(r.URL.Path, "/v3beta/"); ok {
-					r.URL.Path = "/v3/" + rest
-				}
-				mux.ServeHTTP(w, r)
-			}),
-			ReadHeaderTimeout: time.Minute,
-		},
+		srv:  &http.Server{Handler: api, ReadHeaderTimeout: time.Minute},
 		ln:   &connListener{conns: make(chan net.Conn), closed: make(chan struct{})},
 		done: make(chan struct{}),
 	}

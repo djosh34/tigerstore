@@ -31,6 +31,7 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 	cfg := wl.Config{
 		Name: ec.Name, ID: ident.id, ClusterID: ident.cluster, DataDir: ec.Dir,
 		ClientTLS: ctls, PeerListeners: pcfg.Listeners, MemoryBudget: budget,
+		CORS: ec.CORS, HostWhitelist: ec.HostWhitelist, Pprof: ec.EnablePprof,
 		Logger: log.New(os.Stderr, "tigerstore-wl ", log.LstdFlags|log.Lmicroseconds),
 	}
 	for _, l := range clientLns {

@@ -299,13 +299,20 @@ func (n *node) encodeMembers(b []byte) []byte {
 	for _, id := range ids {
 		b = binary.AppendUvarint(b, id)
 	}
+	b = binary.AppendUvarint(b, uint64(len(n.alarms)))
+	for _, a := range n.alarms {
+		b = binary.AppendUvarint(b, a.member)
+		b = binary.AppendUvarint(b, a.typ)
+	}
 	return b
 }
 
-// ckptMembers is the member list a checkpoint holds.
+// ckptMembers is the member list a checkpoint holds, with the raised
+// alarms.
 type ckptMembers struct {
 	members []member
 	removed map[uint64]bool
+	alarms  []alarm
 }
 
 // readMembers reads what encodeMembers wrote.
@@ -340,6 +347,19 @@ func (cr *ckptReader) readMembers() (ckptMembers, error) {
 			return cm, err
 		}
 		cm.removed[id] = true
+	}
+	if k, err = cr.uvarint(); err != nil {
+		return cm, err
+	}
+	for range k {
+		var a alarm
+		if a.member, err = cr.uvarint(); err != nil {
+			return cm, err
+		}
+		if a.typ, err = cr.uvarint(); err != nil {
+			return cm, err
+		}
+		cm.alarms = append(cm.alarms, a)
 	}
 	return cm, nil
 }

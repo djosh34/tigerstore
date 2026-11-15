@@ -121,6 +121,10 @@ type node struct {
 	goLimit int64
 	// bufs are buffers that ended streams gave back (takeBuf).
 	bufs [][]byte
+	// alarms are the raised alarms, by type and member; noSpace and
+	// corrupt say whether one of those types is raised.
+	alarms           []alarm
+	noSpace, corrupt bool
 	// sideCalls end the contexts of the side calls under way.
 	sideCalls map[handle]context.CancelFunc
 }
@@ -264,9 +268,7 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 	case kLeaseLeases:
 		n.leaseLeases(c, s)
 	case kAlarm:
-		// No alarm is ever raised: the answer lists none, whatever it
-		// asks.
-		n.replyHeader(c, s)
+		return n.alarmRequest(c, s, msg)
 	case kWatch:
 		return n.watchRequest(c, s, msg)
 	case kStatus:
@@ -315,15 +317,20 @@ func writeVarintNZ(w *msgW, num int, v uint64) {
 
 // ---- replies
 
-func (n *node) hdrSize() int {
-	return sizeVarintField(1, n.clusterID) + sizeVarintField(2, n.id) + sizeVarintField(3, uint64(n.st.rev)) + sizeVarintField(4, n.term)
+func (n *node) hdrSize() int { return n.hdrSizeAt(n.st.rev) }
+
+func (n *node) writeHdr(w *msgW) { n.writeHdrAt(w, n.st.rev) }
+
+// hdrSizeAt is the size of a ResponseHeader that names revision rev.
+func (n *node) hdrSizeAt(rev int64) int {
+	return sizeVarintField(1, n.clusterID) + sizeVarintField(2, n.id) + sizeVarintField(3, uint64(rev)) + sizeVarintField(4, n.term)
 }
 
-func (n *node) writeHdr(w *msgW) {
-	w.lenField(1, n.hdrSize())
+func (n *node) writeHdrAt(w *msgW, rev int64) {
+	w.lenField(1, n.hdrSizeAt(rev))
 	writeVarintNZ(w, 1, n.clusterID)
 	writeVarintNZ(w, 2, n.id)
-	writeVarintNZ(w, 3, uint64(n.st.rev))
+	writeVarintNZ(w, 3, uint64(rev))
 	writeVarintNZ(w, 4, n.term)
 }
 
@@ -411,6 +418,9 @@ func (n *node) replyStatus(c *client, s *stream) {
 	ver := []byte("3.7.2")
 	size := sizeBytesField(1, n.hdrSize()) + sizeBytesField(2, len(ver)) + sizeVarintField(3, 1<<20) +
 		sizeVarintField(4, n.lead) + sizeVarintField(5, n.commit) + sizeVarintField(6, n.term) + sizeVarintField(7, n.applied)
+	for _, a := range n.alarms {
+		size += sizeBytesField(8, len(a.String()))
+	}
 	var w msgW
 	n.beginReply(c, s, &w, size)
 	n.writeHdr(&w)
@@ -420,6 +430,9 @@ func (n *node) replyStatus(c *client, s *stream) {
 	writeVarintNZ(&w, 5, n.commit)
 	writeVarintNZ(&w, 6, n.term)
 	writeVarintNZ(&w, 7, n.applied)
+	for _, a := range n.alarms {
+		w.bytesField(8, []byte(a.String()))
+	}
 	n.endReply(c, s, &w)
 }
 

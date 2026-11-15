@@ -47,23 +47,29 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 			c, s = n.clientOf(handles[i])
 		}
 		var err error
-		switch kind {
-		case kPut:
+		if n.noSpace || n.corrupt {
+			err = n.alarmGate(kind, req)
+		}
+		switch {
+		case err != nil:
+		case kind == kPut:
 			err = n.applyPut(req, voff, c, s)
-		case kDel:
+		case kind == kDel:
 			err = n.applyDel(req, c, s)
-		case kTxn:
+		case kind == kTxn:
 			err = n.applyTxn(req, voff, c, s)
-		case kCompact:
+		case kind == kCompact:
 			err = n.applyCompact(req, c, s)
-		case kLeaseGrant:
+		case kind == kLeaseGrant:
 			err = n.applyLeaseGrant(req, c, s)
-		case kLeaseRevoke:
+		case kind == kLeaseRevoke:
 			err = n.applyLeaseRevoke(req, c, s)
-		case kLeaseKeepAlive:
+		case kind == kLeaseKeepAlive:
 			err = n.applyLeaseKeepAlive(req, c, s)
-		case kMemberAttrs:
+		case kind == kMemberAttrs:
 			err = n.applyMemberAttrs(req)
+		case kind == kAlarm:
+			err = n.applyAlarm(req, c, s)
 		}
 		if re, ok := errors.AsType[*requestError](err); ok {
 			// Every node applies the same bytes and rejects them alike.

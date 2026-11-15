@@ -195,7 +195,8 @@ func run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	l.side = newSideServers(l.self)
-	if l.http1, err = startHTTP1(ctx, l.self.ActiveConnection(), n.metrics); err != nil {
+	api := &httpAPI{m: n.metrics, self: l.self, cors: cfg.CORS, hosts: cfg.HostWhitelist, pprof: cfg.Pprof, raftStatus: l.raftStatus}
+	if l.http1, err = startHTTP1(ctx, l.self.ActiveConnection(), api); err != nil {
 		return errors.Join(err, l.self.Close())
 	}
 	defer l.shut(slices.Concat(cfg.ClientListeners, cfg.PeerListeners)...)
@@ -211,6 +212,7 @@ func run(ctx context.Context, cfg Config) error {
 	for _, ln := range cfg.PeerListeners {
 		go l.accept(ln, cfg.PeerServerTLS, kindPeerIn, logger)
 	}
+	n.metrics.learner.Store(n.isLearner())
 	l.syncDials()
 	logger.Printf("node %s (id %d) up: clients %v, peers %v", cfg.Name, n.id, addrs(cfg.ClientListeners), addrs(cfg.PeerListeners))
 	return l.run()
@@ -318,6 +320,7 @@ func (l *loop) dialRedial(id uint64) chan struct{} {
 // connections of those it no longer holds: one that dials again is told
 // it was removed.
 func (l *loop) membersChanged() {
+	l.n.metrics.learner.Store(l.n.isLearner())
 	l.syncDials()
 	for _, x := range l.n.socks {
 		if p, ok := x.(*peerIn); ok && !p.dead && !l.n.mayPeer(p.from) {
@@ -407,6 +410,26 @@ func (l *loop) post(fn func() error) {
 }
 
 func (l *loop) logf(format string, args ...any) { l.logger.Printf(format, args...) }
+
+// raftStatus is the node's Raft status in JSON, read on the loop, or nil
+// if the loop does not answer in time.
+func (l *loop) raftStatus() []byte {
+	got := make(chan []byte, 1)
+	l.post(func() error {
+		b, err := l.n.rn.Status().MarshalJSON()
+		if err != nil {
+			b = nil
+		}
+		got <- b
+		return nil
+	})
+	select {
+	case b := <-got:
+		return b
+	case <-time.After(healthTimeout):
+		return nil
+	}
+}
 
 // wakeLoop wakes the loop from another goroutine.
 func (l *loop) wakeLoop() {

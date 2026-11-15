@@ -14,6 +14,10 @@ type nodeMetrics struct {
 	isLeader  atomic.Int64
 	hasLeader atomic.Int64
 	peerSent  atomic.Uint64
+	// alarms are the raised alarms' texts, as the apply last left them;
+	// learner is whether the node is one.
+	alarms  atomic.Pointer[[]string]
+	learner atomic.Bool
 	// handled counts finished calls by kind and gRPC status code.
 	handled [kinds][17]atomic.Uint64
 }

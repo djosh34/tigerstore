@@ -692,6 +692,21 @@ func (st *store) state(id uint32) (mod, create, ver, lease int64) {
 }
 
 // recValue returns the value bytes of an encoded KeyValue record.
+// recVersion is a record's version.
+func recVersion(rec []byte) int64 {
+	for m := rec; len(m) > 0; {
+		num, _, v, _, rest, err := field(m)
+		if err != nil {
+			return 0
+		}
+		if num == 4 {
+			return int64(v)
+		}
+		m = rest
+	}
+	return 0
+}
+
 func recValue(rec []byte) []byte {
 	for m := rec; len(m) > 0; {
 		num, _, _, p, rest, err := field(m)
