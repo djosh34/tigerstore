@@ -33,6 +33,13 @@ type keyEnt struct {
 	_      uint32
 }
 
+// change is one key's change at a revision.
+type change struct {
+	rev int64
+	key uint32
+	del bool
+}
+
 // histEnt is a state a key had before its current one.
 type histEnt struct {
 	create, mod, ver, lease int64
@@ -76,6 +83,10 @@ type store struct {
 	hand      uint32
 	evictions uint64
 	loads     uint64
+
+	// changes is every change by revision, the index of watches from a
+	// past revision.
+	changes []change
 
 	// Records replaced or deleted during an apply, freed once its
 	// replies and watch events are written.
@@ -250,7 +261,7 @@ func (st *store) setBudget(budget, fixed int64) {
 // tables as they grow.
 func (st *store) relimit() {
 	tables := int64(st.nkeys)*int64(unsafe.Sizeof(keyEnt{})) + int64(st.nhist)*int64(unsafe.Sizeof(histEnt{})) +
-		int64(len(st.hash))*8 + int64(st.karena.top) + st.tree.bytes()
+		int64(len(st.hash))*8 + int64(st.karena.top) + st.tree.bytes() + int64(cap(st.changes))*int64(unsafe.Sizeof(change{}))
 	st.limit = st.budget - st.budget/8 - st.fixed - tables
 }
 
@@ -363,6 +374,7 @@ func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64
 	k.rec, k.rlen = off, uint32(n)
 	k.create, k.mod, k.ver, k.lease = create, rev, ver, lease
 	k.voff, k.vlen = voff, uint32(len(value))
+	st.changes = append(st.changes, change{rev: rev, key: id})
 	return prev, nil
 }
 
@@ -383,6 +395,7 @@ func (st *store) del(id uint32, rev int64) ([]byte, error) {
 	k.rec, k.rlen = 0, 0
 	k.create, k.mod, k.ver, k.lease = 0, rev, 0, 0
 	k.voff, k.vlen = 0, 0
+	st.changes = append(st.changes, change{rev: rev, key: id, del: true})
 	return prev, nil
 }
 

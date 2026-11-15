@@ -2,7 +2,9 @@ package wl
 
 import (
 	"bytes"
+	"cmp"
 	"math"
+	"slices"
 )
 
 // Watches. A watcher is matched to a write through the directory of its
@@ -188,6 +190,7 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 	case 1:
 		x := watcher{sock: c.idx, gen: c.gen, sid: s.id, id: int64(len(s.wids))}
 		var filters []byte
+		startRev := int64(0)
 		for m := p; len(m) > 0; {
 			fn, typ, v, fp, rest, err := field(m)
 			if err != nil {
@@ -204,6 +207,8 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 				} else {
 					filters = append(filters, byte(v))
 				}
+			case 3:
+				startRev = int64(v)
 			case 6:
 				x.prevKV = v != 0
 			case 7:
@@ -230,6 +235,16 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 		writeVarintNZ(&w, 2, uint64(x.id))
 		w.varintField(3, 1)
 		w.end()
+		// A start revision in the past: the events since, then the live
+		// ones. Nothing applies in between, so none is lost or doubled.
+		if startRev > 0 && startRev <= n.st.rev {
+			if startRev <= n.st.compactRev {
+				n.writeCompacted(c, s, &x)
+				n.w.remove(i)
+			} else if err := n.sendHistory(c, s, &n.w.ws[i], startRev); err != nil {
+				return err
+			}
+		}
 	case 2:
 		var wid int64
 		for m := p; len(m) > 0; {
@@ -279,7 +294,6 @@ func (n *node) closeWatchStream(c *client, s *stream) {
 // WatchResponse.
 func (n *node) flushEvents() {
 	w := &n.w
-	st := n.st
 	for _, i := range w.touched {
 		x := &w.ws[i]
 		x.queued = false
@@ -301,20 +315,7 @@ func (n *node) flushEvents() {
 		n.writeHdr(&mw)
 		writeVarintNZ(&mw, 2, uint64(x.id))
 		for e := first; e >= 0; e = w.events[e].next {
-			ev := &w.events[e]
-			mw.lenField(11, n.eventSize(x, ev))
-			if ev.del {
-				mw.varintField(1, 1)
-				key := st.key(ev.key)
-				mw.lenField(2, sizeBytesField(1, len(key))+sizeVarintField(3, uint64(ev.rev)))
-				mw.bytesField(1, key)
-				mw.varintField(3, uint64(ev.rev))
-			} else {
-				mw.bytesField(2, ev.kv)
-			}
-			if x.prevKV && ev.prev != nil {
-				mw.bytesField(3, ev.prev)
-			}
+			n.writeEvent(&mw, x, &w.events[e])
 		}
 		mw.end()
 		n.markDirty(&c.sock)
@@ -322,6 +323,96 @@ func (n *node) flushEvents() {
 	clear(w.events)
 	w.events = w.events[:0]
 	w.touched = w.touched[:0]
+}
+
+// writeEvent writes ev as an Event, field 11 of a WatchResponse.
+func (n *node) writeEvent(mw *msgW, x *watcher, ev *event) {
+	mw.lenField(11, n.eventSize(x, ev))
+	if ev.del {
+		mw.varintField(1, 1)
+		key := n.st.key(ev.key)
+		mw.lenField(2, sizeBytesField(1, len(key))+sizeVarintField(3, uint64(ev.rev)))
+		mw.bytesField(1, key)
+		mw.varintField(3, uint64(ev.rev))
+	} else {
+		mw.bytesField(2, ev.kv)
+	}
+	if x.prevKV && ev.prev != nil {
+		mw.bytesField(3, ev.prev)
+	}
+}
+
+// historyChunk is the most events one WatchResponse of history carries.
+const historyChunk = 1000
+
+// sendHistory sends watcher x the events from revision from on.
+func (n *node) sendHistory(c *client, s *stream, x *watcher, from int64) error {
+	return n.history(x, from, func(evs []event) { n.writeEvents(c, s, x, evs) })
+}
+
+// history hands fn watcher x's events from revision from on, at most
+// historyChunk at a time, built from the store's change index, the key
+// histories and the log.
+func (n *node) history(x *watcher, from int64, fn func([]event)) error {
+	st := n.st
+	i, _ := slices.BinarySearchFunc(st.changes, from, func(ch change, rev int64) int { return cmp.Compare(ch.rev, rev) })
+	var evs []event
+	for _, ch := range st.changes[i:] {
+		if (ch.del && x.noDel) || (!ch.del && x.noPut) || !x.covers(st.key(ch.key)) {
+			continue
+		}
+		ev := event{del: ch.del, key: ch.key, rev: ch.rev}
+		var err error
+		if !ch.del {
+			if ev.kv, err = st.at(ch.key, ch.rev); err != nil {
+				return err
+			}
+		}
+		if x.prevKV {
+			if ev.prev, err = st.at(ch.key, ch.rev-1); err != nil {
+				return err
+			}
+		}
+		evs = append(evs, ev)
+		if len(evs) == historyChunk {
+			fn(evs)
+			evs = evs[:0]
+		}
+	}
+	if len(evs) > 0 {
+		fn(evs)
+	}
+	return nil
+}
+
+// writeEvents writes one WatchResponse of x with evs.
+func (n *node) writeEvents(c *client, s *stream, x *watcher, evs []event) {
+	size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id))
+	for i := range evs {
+		size += sizeBytesField(11, n.eventSize(x, &evs[i]))
+	}
+	var mw msgW
+	mw.begin(&c.sock, s.id, size)
+	n.writeHdr(&mw)
+	writeVarintNZ(&mw, 2, uint64(x.id))
+	for i := range evs {
+		n.writeEvent(&mw, x, &evs[i])
+	}
+	mw.end()
+	n.markDirty(&c.sock)
+}
+
+// writeCompacted cancels watcher x, whose start revision is compacted.
+func (n *node) writeCompacted(c *client, s *stream, x *watcher) {
+	size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id)) + 2 + sizeVarintField(5, uint64(n.st.compactRev))
+	var mw msgW
+	mw.begin(&c.sock, s.id, size)
+	n.writeHdr(&mw)
+	writeVarintNZ(&mw, 2, uint64(x.id))
+	mw.varintField(4, 1)
+	writeVarintNZ(&mw, 5, uint64(n.st.compactRev))
+	mw.end()
+	n.markDirty(&c.sock)
 }
 
 func (n *node) eventSize(x *watcher, ev *event) int {
