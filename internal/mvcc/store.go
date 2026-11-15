@@ -333,6 +333,8 @@ type Store struct {
 	// then 221 MB (#506).
 	keys  *order
 	byKey keyTable
+	// lastKey is the slot of the key get found last (get).
+	lastKey uint32
 	// recs are the records of the keys in chunks of recChunk that never
 	// move, so a *keyIndex stays valid. Slot 0 is no key's, so that 0
 	// marks an empty entry of byKey. The slots of removed
@@ -605,10 +607,19 @@ func (s *Store) each(fn func(*keyIndex) bool) {
 
 // get returns the index entry of key.
 func (s *Store) get(key []byte) (*keyIndex, bool) {
+	// A write looks its key up for each compare, its put or delete and
+	// its read, one after the other: the key found last is checked first.
+	// A removed key's record holds no key, and a slot taken again another.
+	if id := s.lastKey; id != 0 && id < s.used {
+		if k := s.rec(id); bytes.Equal(s.key(k), key) && k.n > 0 {
+			return k, true
+		}
+	}
 	id, ok := s.byKey.get(s, key)
 	if !ok {
 		return nil, false
 	}
+	s.lastKey = id
 	return s.rec(id), true
 }
 
