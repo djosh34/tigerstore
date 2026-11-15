@@ -84,9 +84,6 @@ const (
 	tickEvery = 100 * time.Millisecond
 )
 
-// sideSize is the side ring's: the failure branches of Txns.
-const sideSize = 16 << 20
-
 // errStopped is Run's error once its context is done.
 var errStopped = errors.New("the node was stopped")
 
@@ -159,30 +156,33 @@ func run(ctx context.Context, cfg Config) error {
 	n.sideCalls = map[handle]context.CancelFunc{}
 	n.sideReqs = map[handle][]byte{}
 	n.carryUntil = map[uint64]time.Time{}
-	if n.ring, err = newRing(ringSize); err != nil {
+	n.sizes = sizeFor(cfg.MemoryBudget)
+	if n.ring, err = newRing(n.sizes.ring); err != nil {
 		return err
 	}
-	if n.rx, err = newRing(ringSize); err != nil {
+	if n.rx, err = newRing(n.sizes.ring); err != nil {
 		return err
 	}
-	if n.side, err = newRing(sideSize); err != nil {
+	// The side ring holds the failure branches of Txns.
+	if n.side, err = newRing(n.sizes.side); err != nil {
 		return err
 	}
 	// The store starts from the newest checkpoint, and Raft's storage
 	// takes what the log holds after it; Raft then hands out the committed
 	// entries again, and the apply builds the rest of the store from them.
 	n.storage = newLogStorage(nil)
+	n.storage.heldMax = n.sizes.held
 	from, err := n.loadNewest()
 	if err != nil {
 		return err
 	}
-	if n.wal, err = openWAL(filepath.Join(cfg.DataDir, "wal"), n.ckptCut, from, n.storage.restore); err != nil {
+	if n.wal, err = openWAL(filepath.Join(cfg.DataDir, "wal"), n.sizes.stage, n.ckptCut, from, n.storage.restore); err != nil {
 		return err
 	}
 	n.storage.log = n.wal
 	n.st.log = n.wal
 	n.wal.durableHS = n.storage.hs
-	n.st.setBudget(cfg.MemoryBudget, 2*ringSize+sideSize+stageSize)
+	n.st.setBudget(cfg.MemoryBudget, n.sizes.mapped())
 	n.limitGo()
 	// The hard state the checkpoint's pointer kept may be older than the
 	// checkpoint: what it holds is committed.
@@ -190,7 +190,7 @@ func run(ctx context.Context, cfg Config) error {
 		hs.Commit = new(n.storage.snapIndex)
 	}
 	n.term, n.commit = n.storage.hs.GetTerm(), n.storage.hs.GetCommit()
-	n.rn, err = raft.NewRawNode(raftConfig(n.id, n.storage))
+	n.rn, err = raft.NewRawNode(raftConfig(n.id, n.storage, n.sizes, len(cfg.Members)))
 	if err != nil {
 		return err
 	}

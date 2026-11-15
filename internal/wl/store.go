@@ -385,7 +385,7 @@ func (st *store) relimit() {
 
 // goShare is the least of the budget kept for Go's heap and runtime: an
 // eighth, and the entries Raft's storage holds.
-func goShare(budget int64) int64 { return budget/8 + storageHeld }
+func goShare(budget int64) int64 { return budget/8 + heldFor(budget) }
 
 // goNeed is what Go's heap and runtime need: the live heap the collector
 // last found and a quarter more for it to collect in, and at least Go's

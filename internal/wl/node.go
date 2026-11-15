@@ -16,6 +16,8 @@ import (
 // node is one replica: everything below runs on the loop's one thread.
 type node struct {
 	id, clusterID uint64
+	// sizes are the node's buffers outside the store, from its budget.
+	sizes sizes
 	// members is the member list as of the applied index, and removed the
 	// IDs it no longer holds. self is this node's name and client URLs,
 	// which it publishes at publishAt; seed are the members a node that
@@ -242,7 +244,6 @@ const (
 	batchHdr = 20
 	opHdr    = 5
 	magic    = "wl\x06"
-	ringSize = 64 << 20
 )
 
 func (n *node) markDirty(s *sock) {

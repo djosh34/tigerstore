@@ -23,8 +23,8 @@ type logStorage struct {
 	snap *pb.Snapshot
 	ents []storedEnt // from snapIndex+1 on
 	// held is the data bytes of the entries the storage holds itself;
-	// trim keeps it within storageHeld.
-	held int64
+	// trim keeps it within heldMax (sizes.held).
+	held, heldMax int64
 	// trimmed: every entry before this index holds no data.
 	trimmed uint64
 
@@ -44,11 +44,6 @@ type logStorage struct {
 // for followers that lag; one further behind gets a checkpoint.
 var storageWindow uint64 = 100000
 
-// storageHeld is the most entry data the storage holds in memory. A
-// leader's Raft copies each proposal to the heap, so its entries are held
-// there and not in a ring.
-const storageHeld = 64 << 20
-
 type storedEnt struct {
 	ent  *pb.Entry // nil once its data was let go
 	term uint64
@@ -64,7 +59,9 @@ type storageStats struct {
 var _ raft.Storage = (*logStorage)(nil)
 
 func newLogStorage(log logReader) *logStorage {
-	return &logStorage{hs: &pb.HardState{}, cs: &pb.ConfState{}, log: log}
+	// A leader's Raft copies each proposal to the heap, so its entries are
+	// held there and not in a ring.
+	return &logStorage{hs: &pb.HardState{}, cs: &pb.ConfState{}, log: log, heldMax: sizeFor(0).held}
 }
 
 func (s *logStorage) InitialState() (*pb.HardState, *pb.ConfState, error) {
@@ -251,11 +248,11 @@ func (s *logStorage) letGo(ent *pb.Entry) {
 }
 
 // trim lets go of the oldest entries while the storage holds more than
-// storageHeld of their data, as long as they are applied and their
+// heldMax of their data, as long as they are applied and their
 // appends' responses are stepped: up to applied, and with their data
 // before stable in the log.
 func (s *logStorage) trim(applied uint64, stable int64) {
-	for i := max(s.trimmed, s.snapIndex+1); i <= s.lastIndex() && s.held > storageHeld; i++ {
+	for i := max(s.trimmed, s.snapIndex+1); i <= s.lastIndex() && s.held > s.heldMax; i++ {
 		e := &s.ents[i-s.snapIndex-1]
 		if i > applied || e.off+int64(e.n) > stable {
 			return

@@ -148,7 +148,7 @@ func newTestRawNode(t *testing.T) *raft.RawNode {
 	if err := ms.ApplySnapshot(snap); err != nil {
 		t.Fatal(err)
 	}
-	rn, err := raft.NewRawNode(raftConfig(1, ms))
+	rn, err := raft.NewRawNode(raftConfig(1, ms, sizeFor(0), 3))
 	if err != nil {
 		t.Fatal(err)
 	}

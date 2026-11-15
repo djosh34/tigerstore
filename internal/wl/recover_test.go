@@ -16,7 +16,7 @@ import (
 func reopen(t *testing.T, dir string) (*wal, *logStorage) {
 	t.Helper()
 	s := newLogStorage(nil)
-	w, err := openWAL(dir, 0, 0, s.restore)
+	w, err := openWAL(dir, sizeFor(0).stage, 0, 0, s.restore)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func reopenFrom(t *testing.T, dir string, index uint64, from int64) (*wal, *logS
 	t.Helper()
 	s := newLogStorage(nil)
 	s.applySnapshot(&pb.SnapshotMetadata{Index: new(index), Term: new(uint64(1))}, "c")
-	w, err := openWAL(dir, from, from, s.restore)
+	w, err := openWAL(dir, sizeFor(0).stage, from, from, s.restore)
 	if err != nil {
 		t.Fatal(err)
 	}

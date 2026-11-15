@@ -37,10 +37,9 @@ import (
 // crash, or it is the zeros past the end.
 
 const (
-	segSize   = 64 << 20
-	stageSize = 32 << 20
-	block     = 4096
-	syncGap   = 800 * time.Microsecond
+	segSize = 64 << 20
+	block   = 4096
+	syncGap = 800 * time.Microsecond
 
 	recHead       = 4 + 4 + 1
 	entHead       = 8 + 8 + 1
@@ -73,6 +72,7 @@ type wal struct {
 	// to the segments, so the kernel neither copies the log into its page
 	// cache nor writes it back.
 	stage    []byte
+	stageLen int64 // len(stage), a power of two
 	inflight bool
 	want     atomic.Int64 // the loop's: the helper writes up to here
 	done     atomic.Int64 // the helper's: the log is durable up to here
@@ -130,7 +130,8 @@ func segPath(dir string, k int64) string { return filepath.Join(dir, fmt.Sprintf
 // first that does not check; the log goes on after that one, and what lay
 // from it on is cut. from is where a checkpoint left the log, 0 for none;
 // the log before keep is removed, and from keep on it is kept to read.
-func openWAL(dir string, keep, from int64, fn func(r *walRecord) error) (*wal, error) {
+// stage is the size of the stage, a power of two (sizes.stage).
+func openWAL(dir string, stage int, keep, from int64, fn func(r *walRecord) error) (*wal, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
@@ -150,9 +151,10 @@ func openWAL(dir string, keep, from int64, fn func(r *walRecord) error) (*wal, e
 		dir: dir, kickFD: kick, wakeFD: wake, made: make(chan segment, 1),
 		stop: make(chan struct{}), madeDone: make(chan struct{}), helperDone: make(chan struct{}),
 	}
-	if w.stage, err = mmapBytes(stageSize); err != nil {
+	if w.stage, err = mmapBytes(stage); err != nil {
 		return nil, err
 	}
+	w.stageLen = int64(stage)
 	next, err := w.reopen(keep, end)
 	if err != nil {
 		return nil, err
@@ -207,7 +209,7 @@ func (w *wal) reopen(from, end int64) (int64, error) {
 	}
 	w.wfds = append(w.wfds, wfd)
 	blk := end &^ (block - 1)
-	pos := blk % stageSize
+	pos := blk & (w.stageLen - 1)
 	if n, err := unix.Pread(w.rfds[last-w.rbase], w.stage[pos:pos+end-blk], blk%segSize); err != nil || int64(n) != end-blk {
 		return 0, fmt.Errorf("read the log's last block back: %d bytes, %w", n, err)
 	}
@@ -395,8 +397,8 @@ func (w *wal) writeLoop(flushed int64) error {
 		from := flushed &^ (block - 1)
 		to := (target + block - 1) &^ (block - 1)
 		for from < to {
-			pos := from % stageSize
-			n := min(to-from, stageSize-pos, segSize-from%segSize)
+			pos := from & (w.stageLen - 1)
+			n := min(to-from, w.stageLen-pos, segSize-from%segSize)
 			fd, err := w.segFD(from / segSize)
 			if err != nil {
 				return err
@@ -454,7 +456,7 @@ func (w *wal) fits(ents []*pb.Entry) bool {
 	for _, e := range ents {
 		need += walEntHdr + int64(len(e.GetData()))
 	}
-	return w.off+need-w.done.Load() <= stageSize-block
+	return w.off+need-w.done.Load() <= w.stageLen-block
 }
 
 var errStageFull = errors.New("the log ran a whole stage ahead of the disk")
@@ -497,12 +499,12 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) error {
 		w.iov = append(w.iov, b)
 		off += int64(len(b))
 	}
-	if off-w.done.Load() > stageSize-block {
+	if off-w.done.Load() > w.stageLen-block {
 		return errStageFull
 	}
 	for _, v := range w.iov {
 		for len(v) > 0 {
-			pos := w.off % stageSize
+			pos := w.off & (w.stageLen - 1)
 			k := copy(w.stage[pos:], v)
 			v = v[k:]
 			w.off += int64(k)
@@ -513,7 +515,7 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) error {
 	// never what the stage held a lap ago, which a scan would take for
 	// records.
 	if tail := w.off % block; tail != 0 {
-		pos := w.off % stageSize
+		pos := w.off & (w.stageLen - 1)
 		clear(w.stage[pos : pos+block-tail])
 	}
 	w.stats.writes++
@@ -531,7 +533,7 @@ func (w *wal) read(p []byte, off int64) error {
 	}
 	if off >= w.durableEnd() {
 		for got := 0; got < len(p); {
-			pos := (off + int64(got)) % stageSize
+			pos := (off + int64(got)) & (w.stageLen - 1)
 			got += copy(p[got:], w.stage[pos:])
 		}
 		return nil

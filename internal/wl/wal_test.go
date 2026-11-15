@@ -36,7 +36,7 @@ func syncWAL(t *testing.T, w *wal) {
 
 func TestWALScanReadsWhatWasWritten(t *testing.T) {
 	dir := t.TempDir()
-	w, err := openWAL(dir, 0, 0, nil)
+	w, err := openWAL(dir, sizeFor(0).stage, 0, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestWALScanReadsWhatWasWritten(t *testing.T) {
 
 func TestWALScanStopsAtATornRecord(t *testing.T) {
 	dir := t.TempDir()
-	w, err := openWAL(dir, 0, 0, nil)
+	w, err := openWAL(dir, sizeFor(0).stage, 0, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestWALScanStopsAtATornRecord(t *testing.T) {
 }
 
 func TestWALStageTailIsZeros(t *testing.T) {
-	w, err := openWAL(t.TempDir(), 0, 0, nil)
+	w, err := openWAL(t.TempDir(), sizeFor(0).stage, 0, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestWALStageTailIsZeros(t *testing.T) {
 }
 
 func TestWALReadPastTheEndFails(t *testing.T) {
-	w, err := openWAL(t.TempDir(), 0, 0, nil)
+	w, err := openWAL(t.TempDir(), sizeFor(0).stage, 0, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

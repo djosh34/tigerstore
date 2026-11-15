@@ -22,7 +22,9 @@ import (
 // through an eventfd; the append's responses are stepped once it is
 // durable.
 
-func raftConfig(id uint64, st raft.Storage) *raft.Config {
+// raftConfig is Raft's configuration of node id, with the buffers of z
+// in a cluster that starts with members.
+func raftConfig(id uint64, st raft.Storage, z sizes, members int) *raft.Config {
 	return &raft.Config{
 		ID:                        id,
 		ElectionTick:              10,
@@ -31,7 +33,8 @@ func raftConfig(id uint64, st raft.Storage) *raft.Config {
 		AsyncStorageWrites:        true,
 		MaxSizePerMsg:             1 << 20,
 		MaxInflightMsgs:           256,
-		MaxUncommittedEntriesSize: 1 << 30,
+		MaxInflightBytes:          z.inflight(members),
+		MaxUncommittedEntriesSize: z.uncommitted,
 		CheckQuorum:               true,
 		PreVote:                   true,
 		ReadOnlyOption:            raft.ReadOnlySafe,
@@ -282,7 +285,7 @@ func (n *node) sendPeer(m *pb.Message) {
 	if p == nil || p.dead {
 		return
 	}
-	if m.GetType() == pb.MsgApp && len(p.out)-p.ow > peerBacklog {
+	if m.GetType() == pb.MsgApp && int64(len(p.out)-p.ow) > n.sizes.peerBacklog(len(n.peersOut)) {
 		// The peer takes less than it is sent, as one that catches up:
 		// Raft probes it again instead of piling up appends here.
 		n.rn.ReportUnreachable(m.GetTo())
@@ -500,10 +503,6 @@ func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
 }
 
 const namedEntry = 0x80
-
-// peerBacklog is the most a peer's send buffer holds before appends to it
-// wait for Raft's next probe.
-const peerBacklog = 64 << 20
 
 // frameBatch marks a peer frame that carries a follower's batch, after
 // [4 origin][8 sequence]; frameCarry asks the leader to carry batches

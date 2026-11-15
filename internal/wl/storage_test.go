@@ -132,7 +132,7 @@ func TestStorageEntriesKeepToTheirSize(t *testing.T) {
 func TestStorageTrimsWhatItHoldsToItsLimit(t *testing.T) {
 	l := &memLog{}
 	s := newLogStorage(l)
-	big := string(make([]byte, storageHeld/4))
+	big := string(make([]byte, s.heldMax/4))
 	for i := range uint64(6) {
 		storeEntries(t, s, l, testEntry(i+1, 1, big))
 	}
@@ -143,8 +143,8 @@ func TestStorageTrimsWhatItHoldsToItsLimit(t *testing.T) {
 		t.Fatalf("let go of %d entries not applied or not stable", s.stats.letGo)
 	}
 	s.trim(6, int64(len(l.b)))
-	if s.held > storageHeld || s.stats.letGo != 2 {
-		t.Fatalf("holds %d bytes after letting go of %d entries, want at most %d after 2", s.held, s.stats.letGo, storageHeld)
+	if s.held > s.heldMax || s.stats.letGo != 2 {
+		t.Fatalf("holds %d bytes after letting go of %d entries, want at most %d after 2", s.held, s.stats.letGo, s.heldMax)
 	}
 	if got := entryData(t, s, 1, 2); got[0] != big {
 		t.Fatal("an entry let go reads back wrong")
