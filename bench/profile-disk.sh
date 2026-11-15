@@ -50,8 +50,8 @@ snap() {
 }
 i=0
 while kill -0 "$gen" 2>/dev/null; do
-	if [ "$i" = 2 ]; then snap start; fi
-	if [ "$i" = 4 ]; then
+	if [ "$i" = "${SNAP_AT:-2}" ]; then snap start; fi
+	if [ "$i" = "${TRACE_AT:-4}" ]; then
 		# An execution trace of every node: what each goroutine waits on.
 		for ep in "${eps[@]}"; do
 			get "$ep" "trace?seconds=2" "$out/$bench-trace-${ep##*:}.out" &

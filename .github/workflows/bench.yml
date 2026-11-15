@@ -251,7 +251,7 @@ jobs:
             DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")
             # k8s replays the recording that the run's first seed draws.
             for b in k8s; do
-              RTT=10 STREAMS=2048 SEED=${SEEDS%% *} DISK=$DISK DATA="$RUNNER_TEMP/bench-data" bench/profile-disk.sh bin/candidate "$b" results/profile-disk
+              RTT=10 STREAMS=2048 TRACE_AT=19 SNAP_AT=17 SEED=${SEEDS%% *} DISK=$DISK DATA="$RUNNER_TEMP/bench-data" bench/profile-disk.sh bin/candidate "$b" results/profile-disk
             done
             exit 0
           fi
