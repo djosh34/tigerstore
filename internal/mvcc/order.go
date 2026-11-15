@@ -3,7 +3,6 @@ package mvcc
 import (
 	"bytes"
 	"encoding/binary"
-	"unsafe"
 
 	"github.com/google/btree"
 )
@@ -43,10 +42,10 @@ type order struct {
 	probe []byte
 }
 
-// orderDir is a directory: its path, which is also its key in byPath,
-// the directory that holds it, and how many names it holds.
+// orderDir is a directory: its path, the directory that holds it, and
+// how many names it holds.
 type orderDir struct {
-	path   string
+	path   []byte
 	parent uint32
 	n      uint32
 }
@@ -74,7 +73,7 @@ const (
 func newOrder(s *Store) *order {
 	o := &order{s: s, byPath: map[string]uint32{}}
 	o.kids = btree.NewG(kidDegree, o.less)
-	o.newDir("", 0)
+	o.newDir(nil, 0)
 	return o
 }
 
@@ -86,18 +85,18 @@ func (o *order) Len() int { return o.keys }
 // byPath.
 func (o *order) bytes() int64 {
 	dirs := len(o.dirs) - len(o.free)
-	return int64(o.keys+dirs)*kidSlot + int64(o.paths) + int64(dirs)*dirSlot
+	return int64(o.keys+dirs)*kidSlot + 2*int64(o.paths) + int64(dirs)*dirSlot
 }
 
 // kidSlot estimates a name's room in the B-tree, in nodes about two thirds
 // full, and dirSlot a directory's room in dirs and byPath besides its
-// path's bytes.
+// path's two copies, its own and byPath's key.
 const (
 	kidSlot = 36
 	dirSlot = 80
 )
 
-func (o *order) newDir(path string, parent uint32) uint32 {
+func (o *order) newDir(path []byte, parent uint32) uint32 {
 	var d uint32
 	if n := len(o.free); n > 0 {
 		d, o.free = o.free[n-1], o.free[:n-1]
@@ -106,16 +105,10 @@ func (o *order) newDir(path string, parent uint32) uint32 {
 		o.dirs = append(o.dirs, orderDir{})
 	}
 	o.dirs[d] = orderDir{path: path, parent: parent}
-	o.byPath[path] = d
+	o.byPath[string(path)] = d
 	o.paths += len(path)
 	o.longest = max(o.longest, len(path))
 	return d
-}
-
-// pathBytes returns directory d's path as bytes, which nobody changes.
-func (o *order) pathBytes(d uint32) []byte {
-	p := o.dirs[d].path
-	return unsafe.Slice(unsafe.StringData(p), len(p))
 }
 
 // dirOf returns the directory part of a key or path: up to and including
@@ -129,7 +122,7 @@ func (o *order) name(k kid) []byte {
 	case k.id == probeKid:
 		return o.probe
 	case k.id&dirKid != 0:
-		return o.pathBytes(k.id &^ dirKid)[skip:]
+		return o.dirs[k.id&^dirKid].path[skip:]
 	default:
 		return o.s.key(o.s.rec(k.id))[skip:]
 	}
@@ -167,7 +160,7 @@ func (o *order) dir(path []byte) uint32 {
 		return d
 	}
 	parent := o.dir(dirOf(path[:len(path)-1]))
-	d := o.newDir(string(path), parent)
+	d := o.newDir(bytes.Clone(path), parent)
 	o.add(kidOf(parent, path[len(o.dirs[parent].path):], d|dirKid))
 	return d
 }
@@ -202,9 +195,9 @@ func (o *order) Delete(id uint32) {
 	o.dirs[d].n--
 	for d != 0 && o.dirs[d].n == 0 {
 		dir := o.dirs[d]
-		o.kids.Delete(kidOf(dir.parent, o.pathBytes(d)[len(o.dirs[dir.parent].path):], d|dirKid))
+		o.kids.Delete(kidOf(dir.parent, dir.path[len(o.dirs[dir.parent].path):], d|dirKid))
 		o.dirs[dir.parent].n--
-		delete(o.byPath, dir.path)
+		delete(o.byPath, string(dir.path))
 		o.paths -= len(dir.path)
 		o.dirs[d] = orderDir{}
 		o.free = append(o.free, d)
@@ -241,7 +234,7 @@ func (o *order) walk(start, end []byte, fn func(id uint32) bool) {
 	// Then what follows each directory in the ones above it.
 	for more && d != 0 {
 		dir := o.dirs[d]
-		more = o.ascend(kidOf(dir.parent, o.pathBytes(d)[len(o.dirs[dir.parent].path):], d|dirKid), true, end, fn)
+		more = o.ascend(kidOf(dir.parent, dir.path[len(o.dirs[dir.parent].path):], d|dirKid), true, end, fn)
 		d = dir.parent
 	}
 }
