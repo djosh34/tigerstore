@@ -20,12 +20,16 @@ import (
 
 type child struct {
 	pfx [12]byte
-	id  uint32 // key id, or dir id | dirBit
+	id  uint32 // key id, key id | tombBit once removed, or dir id | dirBit
 }
 
 const (
 	dirBit = 1 << 31
-	noDir  = ^uint32(0)
+	// tombBit marks a key removed from its directory but still in its
+	// array: a delete costs no shift of the array, and the directory is
+	// compacted once most of it is removed.
+	tombBit = 1 << 30
+	noDir   = ^uint32(0)
 )
 
 type dirEnt struct {
@@ -33,6 +37,7 @@ type dirEnt struct {
 	plen     uint32
 	parent   uint32
 	children []child
+	tombs    int // children marked removed
 	// The watchers whose range covers every key of the directory, and
 	// whether some watcher covers part of it, as of watch generation wgen.
 	wgen  uint32
@@ -144,7 +149,7 @@ func (t *tree) name(d uint32, c child) []byte {
 	if c.id&dirBit != 0 {
 		return t.path(c.id &^ dirBit)[pl:]
 	}
-	return t.st.key(c.id)[pl:]
+	return t.st.key(c.id &^ tombBit)[pl:]
 }
 
 // search returns the first child of d whose name is not before name, and
@@ -172,8 +177,14 @@ func (t *tree) search(d uint32, name []byte) (int, bool) {
 }
 
 func (t *tree) insertChild(d uint32, name []byte, id uint32) {
-	i, _ := t.search(d, name)
+	i, found := t.search(d, name)
 	e := &t.dirs[d]
+	if found && e.children[i].id&tombBit != 0 {
+		// The key comes back where it was removed.
+		e.children[i].id = id
+		e.tombs--
+		return
+	}
 	e.children = slices.Insert(e.children, i, child{pfx: pfxOf(name), id: id})
 }
 
@@ -195,12 +206,20 @@ func (t *tree) remove(id uint32) {
 	k := &t.st.keys[id]
 	d := k.dir
 	i, ok := t.search(d, t.st.key(id)[t.dirs[d].plen:])
-	if !ok {
+	e := &t.dirs[d]
+	if !ok || e.children[i].id&tombBit != 0 {
 		return
 	}
-	e := &t.dirs[d]
-	e.children = slices.Delete(e.children, i, i+1)
+	e.children[i].id |= tombBit
+	e.tombs++
+	if e.tombs > minCompact && 2*e.tombs > len(e.children) {
+		e.children = slices.DeleteFunc(e.children, func(c child) bool { return c.id&dirBit == 0 && c.id&tombBit != 0 })
+		e.tombs = 0
+	}
 }
+
+// minCompact is the fewest removed children a directory compacts.
+const minCompact = 32
 
 // bytes estimates the tree's memory: its directories, their table, and a
 // child per key.
@@ -248,6 +267,9 @@ func (t *tree) visit(d uint32, start, end []byte, fn func(id uint32) bool) bool 
 			if !t.visit(sub, s, end, fn) {
 				return false
 			}
+			continue
+		}
+		if c.id&tombBit != 0 {
 			continue
 		}
 		if end != nil && bytes.Compare(t.st.key(c.id), end) >= 0 {
