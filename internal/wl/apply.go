@@ -628,11 +628,17 @@ func (n *node) checkTxnOps(ops []byte, ok bool, path *[]bool) error {
 			if err := parseRange(op, &r); err != nil {
 				return badRequest(err)
 			}
+			// etcd's checkRange; a store never compacted has etcd's
+			// first revision -1, which a read at -1 passes.
+			first := n.st.compactRev
+			if first == 0 {
+				first = -1
+			}
 			switch {
 			case r.rev == 0:
 			case r.rev > n.st.rev:
 				return requestErr(codeOutOfRange, msgFuture)
-			case r.rev < n.st.compactRev:
+			case r.rev < first:
 				return requestErr(codeOutOfRange, msgCompacted)
 			}
 		case 2:

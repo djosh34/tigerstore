@@ -488,6 +488,17 @@ type syncBudget struct{ changes, events int }
 
 func (b *syncBudget) left() bool { return b.changes > 0 && b.events > 0 }
 
+// deletedIn reports whether change j's key was deleted earlier in the
+// same revision.
+func deletedIn(changes []change, j int) bool {
+	for k := j - 1; k >= 0 && changes[k].rev == changes[j].rev; k-- {
+		if changes[k].key == changes[j].key && changes[k].del {
+			return true
+		}
+	}
+	return false
+}
+
 // errPrevCompacted is a catch-up that met an event whose previous value,
 // which its watcher asks for, is compacted.
 var errPrevCompacted = errors.New("the value before an event is compacted")
@@ -525,7 +536,10 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 				return false, err
 			}
 		}
-		if x.prevKV {
+		if x.prevKV && deletedIn(st.changes, j) {
+			// A put after a delete of its key in the same Txn: as etcd's
+			// sub-revisions have it, the value before is the tombstone.
+		} else if x.prevKV {
 			if ev.prev, err = st.at(ch.key, ch.rev-1); err != nil {
 				return false, err
 			}
