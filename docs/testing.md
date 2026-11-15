@@ -40,6 +40,7 @@ Each planted bug switches on a deliberate defect behind the `planted` build tag 
 | B16 | Replaces the segment-cleaning bug, as there is no cleaning: WAL rotation moves to a new segment without the old one's last sync | Same as B05 | 128 | planted; its CI job must catch it |
 | B32 | The WAL writes a new segment's header alone, before its first records (#295) | Recovery refuses the log after a crash during a snapshot install kept the records and lost the header (`TestLoneSegmentHeader`'s configuration) | 128 | planted; its CI job must catch it |
 | B33 | A follower hands Raft an append that names an entry it does not hold, with the entry's key as its data (`core/held.go`, #602) | The follower cannot apply the key as an entry and stops, or applies other entries than its leader, or falls behind | 32 | planted; its CI job must catch it |
+| B34 | The fast path answers a put with the revision before its own (`core/fast.go`, #602) | A put of a node on the fast path returns a revision that the model or the linearizability check refuses | 32 | planted; its CI job must catch it |
 
 ## Deviations from the pre-work
 

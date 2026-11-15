@@ -41,6 +41,7 @@ var Bugs = map[string]string{
 	"B26":  "a follower stops when it cannot fetch its snapshot, instead of starting again from its log",
 	"B27":  "the core goes on after a snapshot install instead of starting again from the log",
 	"B28":  "MemberUpdate acknowledges a change without updating the peer URLs",
+	"B34":  "the fast path answers a put with the revision before its own",
 	"B29":  "the cleaner removes segments before syncing their replacement root",
 	"B30":  "the cleaner omits a value still named by the durable checkpoint",
 	"B31":  "a held value's lookup ignores the Raft index and returns the newest value for an overwritten one",

@@ -33,10 +33,6 @@ import (
 // format change, its deadline, a cancel while no leader is known) moves
 // to the slow path's queue (demote) and goes on there.
 
-// FastBit marks the ID of a request on the fast path. The driver sets it
-// on an ID it never used, as for any request.
-const FastBit = 1 << 63
-
 // FastCall is a call on the fast path. Answer gets its reply, as
 // Effects.Replies would carry it: a whole reply, or a piece of one
 // (MorePieces), whose next piece comes after Next. It runs on the
@@ -92,7 +88,7 @@ func (f *fastPath) slot(id uint64) *fastSlot {
 // live returns the slot of request id if it waits on the fast path's
 // table, or nil.
 func (f *fastPath) live(id uint64) *fastSlot {
-	if id&FastBit == 0 || f.slots == nil {
+	if f.slots == nil {
 		return nil
 	}
 	if s := f.slot(id); s.id == id && s.live {
@@ -101,13 +97,13 @@ func (f *fastPath) live(id uint64) *fastSlot {
 	return nil
 }
 
-// SubmitFast takes r, a put in wire form or a short transaction whose ID
-// has FastBit set, on the fast path, and reports whether it did. A
-// request it does not take, the driver hands to Submit. call gets the
-// answer.
+// SubmitFast takes r, a put in wire form or a short transaction, on the
+// fast path, and reports whether it did. Its ID is one the driver never
+// used, as for Submit, so the entry is the same on either path. A request
+// it does not take, the driver hands to Submit. call gets the answer.
 func (n *Node) SubmitFast(r *Request, call FastCall) bool {
 	f := &n.fast
-	if n.cfg.Slow || n.err != nil || n.removeAt != 0 || n.leader == 0 || r.ID&FastBit == 0 {
+	if n.cfg.Slow || n.err != nil || n.removeAt != 0 || n.leader == 0 || r.ID == 0 {
 		return false
 	}
 	if st := n.state; st.noSpace || st.corrupt || st.auth.enabled || st.version < originVersion {
@@ -192,8 +188,8 @@ func (n *Node) fastWaiter(id uint64) *pending {
 
 // waiter returns the request with ID id that waits on this node, or nil.
 func (n *Node) waiter(id uint64) *pending {
-	if id&FastBit != 0 {
-		return n.fastWaiter(id)
+	if p := n.fastWaiter(id); p != nil {
+		return p
 	}
 	return n.waiting[id]
 }
@@ -201,19 +197,16 @@ func (n *Node) waiter(id uint64) *pending {
 // emit hands out a reply: a fast call's to the call, any other to the
 // driver.
 func (n *Node) emit(r Reply) {
-	if r.ID&FastBit == 0 {
-		n.out.Replies = append(n.out.Replies, r)
-		return
-	}
 	s := n.fast.live(r.ID)
 	if s == nil {
+		n.out.Replies = append(n.out.Replies, r)
 		return
 	}
 	call := s.call
 	if !r.MorePieces {
 		*s = fastSlot{}
 	}
-	if planted.On("F01") && r.Err == nil && r.Rev > 0 {
+	if planted.On("B34") && r.Err == nil && r.Rev > 0 {
 		// Planted: the fast path answers a put with the revision before
 		// its own.
 		r.Rev--

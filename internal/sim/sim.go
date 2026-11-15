@@ -1029,6 +1029,10 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 // logs are written direct (addNode).
 const directStream = 0x646972656374
 
+// slowStream is the stream of the seed that picks the nodes that take
+// every request on the slow path (nodeConfig).
+const slowStream = 0x736c6f77
+
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
 	n := &node{idx: i, id: uint64(i + 1), disk: disk, addrs: []string{peerAddr(i)}, wake: make(chan struct{})}
 	disk.Capacity = s.cfg.Faults.DiskCapacity
@@ -1534,6 +1538,11 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 		cfg.Core.WindowBytes, cfg.Core.WindowMaxBytes = def.WindowBytes, def.WindowMaxBytes
 	}
 	cfg.Core.MemoryBytes = s.cfg.MemoryBytes
+	// Half the nodes, drawn from the seed apart from s.rng, take their
+	// clients' puts and short transactions on the fast path (core's
+	// fast.go), the others on the slow path only, so that the checks see
+	// both, and nodes of both kinds in one cluster.
+	cfg.Core.Slow = rand.New(rand.NewPCG(s.cfg.Seed, slowStream+n.id)).IntN(2) == 0
 	if s.cfg.noCheckpoints {
 		cfg.Core.CheckpointBytes = 1 << 40
 	}

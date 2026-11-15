@@ -143,6 +143,9 @@ var plantedCases = map[string]plantedCase{
 	// A follower that persists a key as an entry holds another log than
 	// its leader: it applies other entries or cannot apply the key.
 	"B33": {seeds: 32, cfg: DefaultConfig, want: inventedState + `|malformed batch|` + stuck},
+	// Only a put that a client of a node on the fast path sent through
+	// its gRPC server (V3Clients) gets the wrong revision.
+	"B34": {seeds: 32, cfg: DefaultConfig, want: badState + `|linearizab|revision`},
 }
 
 // openBugs are the failures of open bugs #357 and #361, which the default

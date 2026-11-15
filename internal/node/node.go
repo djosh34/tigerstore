@@ -1307,7 +1307,7 @@ func (n *Node) SubmitLocal(reqs []core.Request, tags []any, to Completer) error 
 }
 
 // SubmitFast hands a call of a connection on the loop to the core's fast
-// path (core.Node.SubmitFast), with an ID of its own, and reports whether
+// path (core.Node.SubmitFast), with an ID, and reports whether
 // it took it. A call it did not take goes to SubmitLocal; call gets the
 // answer to one it took. It runs on the loop, never waits, and takes
 // nothing once the node stopped.
@@ -1317,7 +1317,7 @@ func (n *Node) SubmitFast(r *core.Request, call core.FastCall) bool {
 		return false
 	default:
 	}
-	r.ID = n.nextID.Add(1) | core.FastBit
+	r.ID = n.nextID.Add(1)
 	if !n.core.SubmitFast(r, call) {
 		r.ID = 0
 		return false
