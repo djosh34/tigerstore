@@ -14,7 +14,6 @@ import (
 	"hash/crc32"
 	"slices"
 
-	"github.com/google/btree"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -309,18 +308,17 @@ type Store struct {
 	// own, a collection of a million keys took 115 ms, and 17 ms with
 	// slots and the keys' bytes in an arena; the index took 331 MB and
 	// then 221 MB (#506).
-	keys  *btree.BTreeG[uint32]
+	keys  *order
 	byKey keyTable
 	// recs are the records of the keys in chunks of recChunk that never
-	// move, so a *keyIndex stays valid. The first two slots are the keys
-	// a walk of keys starts and stops at (probes). The slots of removed
+	// move, so a *keyIndex stays valid. Slot 0 is no key's, so that 0
+	// marks an empty entry of byKey. The slots of removed
 	// keys are taken again (free): the history drops a key's changes
 	// before a compaction removes it, and the written list checks a
 	// value's Ref, which no other key's version has.
-	recs   [][]keyIndex
-	used   uint32
-	free   []uint32
-	probes [2][]byte
+	recs [][]keyIndex
+	used uint32
+	free []uint32
 	// arena holds the bytes of the keys, many to a chunk, so they are not
 	// objects of their own (addKey); arenaBytes is the room of its chunks.
 	// deadKeys are the bytes of the keys
@@ -389,33 +387,21 @@ type Store struct {
 }
 
 // Bytes estimates what the index takes in memory: the room allocated for
-// records, free slots, byKey's entries and the arena's chunks, per key its
-// place in the B-tree, 64 bytes per version its array has room for, and
+// records, free slots, byKey's entries and the arena's chunks, the order
+// of the keys, 64 bytes per version its array has room for, and
 // the history's 4 bytes a change and 8 a revision (#560).
 func (s *Store) Bytes() int64 {
-	return int64(len(s.recs))*recChunk*recBytes + 4*int64(cap(s.free)) + int64(s.keys.Len())*keySlot + 8*int64(len(s.byKey.entries)) + s.arenaBytes + s.versions*64 + 4*int64(cap(s.hist.keys)) + 8*int64(cap(s.hist.starts))
+	return int64(len(s.recs))*recChunk*recBytes + 4*int64(cap(s.free)) + s.keys.bytes() + 8*int64(len(s.byKey.entries)) + s.arenaBytes + s.versions*64 + 4*int64(cap(s.hist.keys)) + 8*int64(cap(s.hist.starts))
 }
 
-// recBytes is the size of a record, and keySlot estimates a key's room in
-// the B-tree: its slot number, in nodes about two thirds full.
-const (
-	recBytes = 112
-	keySlot  = 6
-)
+// recBytes is the size of a record.
+const recBytes = 112
 
 // recChunk is how many records a chunk of Store.recs holds.
 const recChunk = 4096
 
 // rec returns the record in slot id.
 func (s *Store) rec(id uint32) *keyIndex { return &s.recs[id/recChunk][id%recChunk] }
-
-// keyOf is the key of slot id, or of a probe.
-func (s *Store) keyOf(id uint32) []byte {
-	if id < uint32(len(s.probes)) {
-		return s.probes[id]
-	}
-	return s.key(s.rec(id))
-}
 
 // key returns k's bytes, which nobody may change; nil for the record of
 // a removed key.
@@ -483,7 +469,7 @@ func (s *Store) insert(key []byte, vers []version) *keyIndex {
 	*r = keyIndex{id: id}
 	s.versions += r.setVers(vers)
 	s.addKey(r, key)
-	s.keys.ReplaceOrInsert(id)
+	s.keys.Insert(id)
 	s.byKey.add(s, id)
 	s.keyBytes += int64(len(key))
 	return r
@@ -549,7 +535,7 @@ func New(v Values) *Store {
 	s := &Store{
 		byKey:   newKeyTable(),
 		filling: -1,
-		used:    uint32(len(Store{}.probes)),
+		used:    1,
 		recs:    [][]keyIndex{make([]keyIndex, recChunk)},
 		values:  v,
 		rev:     1,
@@ -557,7 +543,7 @@ func New(v Values) *Store {
 		// -1 inside a transaction is not "compacted".
 		compactRev: -1,
 	}
-	s.keys = btree.NewG(32, func(a, b uint32) bool { return bytes.Compare(s.keyOf(a), s.keyOf(b)) < 0 })
+	s.keys = newOrder(s)
 	return s
 }
 
@@ -615,24 +601,14 @@ func (s *Store) ascend(key, end []byte, fn func(*keyIndex) bool) {
 func (s *Store) ascendFrom(key []byte, fn func(*keyIndex) bool) { s.walk(key, nil, fn) }
 
 // walk calls fn for every key from start on, and before end if end is
-// not nil, in order, until fn returns false. The B-tree compares its keys
-// with the probes, slots 0 and 1, through the whole walk; a walk inside
-// fn sets them too, and gives them back before it returns.
+// not nil, in order, until fn returns false. fn may walk too.
 func (s *Store) walk(start, end []byte, fn func(*keyIndex) bool) {
-	old := s.probes
-	s.probes = [2][]byte{start, end}
-	visit := func(id uint32) bool { return fn(s.rec(id)) }
-	if end == nil {
-		s.keys.AscendGreaterOrEqual(0, visit)
-	} else {
-		s.keys.AscendRange(0, 1, visit)
-	}
-	s.probes = old
+	s.keys.walk(start, end, func(id uint32) bool { return fn(s.rec(id)) })
 }
 
 // each calls fn for every key in order until fn returns false.
 func (s *Store) each(fn func(*keyIndex) bool) {
-	s.keys.Ascend(func(id uint32) bool { return fn(s.rec(id)) })
+	s.walk(nil, nil, fn)
 }
 
 // get returns the index entry of key.

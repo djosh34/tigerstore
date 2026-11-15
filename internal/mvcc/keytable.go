@@ -7,8 +7,8 @@ import (
 
 // keyTable finds the slot of a key by its bytes (Store.rec): open
 // addressing with linear probing over 8-byte entries, the upper 32 bits
-// of the key's hash and the slot, 0 for an empty entry (slots 0 and 1 are
-// the probes, never in the table). It holds no pointer, so the garbage
+// of the key's hash and the slot, 0 for an empty entry (slot 0 is no
+// key's). It holds no pointer, so the garbage
 // collector does not walk it, and takes about 10 bytes a key where a Go
 // map of the key's string took about 40 (#506). A removal shifts the
 // entries after it back, so the table keeps no tombstones.

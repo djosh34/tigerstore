@@ -126,6 +126,10 @@ func TestNestedWalks(t *testing.T) {
 // for a key with one version. With #552's map beside the B-tree it took
 // 4.05 objects and 276 bytes a key, and past-ram's watches stopped once
 // the index outgrew the node's memory (#558); with slots, 1.05 and 184.
+// The order of keys by directory (order.go) takes 0.23 objects and 243
+// bytes here, where each directory holds 6 keys: its names are 24 bytes
+// to the B-tree's 4, and each directory has its path and map entry. It
+// saves each node about 1.2 µs of CPU per crd-heavy op (#602).
 func TestIndexMemoryPerKey(t *testing.T) {
 	const n = 200000
 	keys := make([][]byte, n)
@@ -152,8 +156,8 @@ func TestIndexMemoryPerKey(t *testing.T) {
 	objects := float64(after.HeapObjects-before.HeapObjects) / n
 	bytes := float64(after.HeapAlloc-before.HeapAlloc) / n
 	t.Logf("%.2f objects and %.0f bytes a key; Bytes says %d", objects, bytes, s.Bytes()/n)
-	if objects > 1.5 || bytes > 220 {
-		t.Fatalf("the index takes %.2f heap objects and %.0f bytes a key, want at most 1.5 and 220", objects, bytes)
+	if objects > 1.5 || bytes > 260 {
+		t.Fatalf("the index takes %.2f heap objects and %.0f bytes a key, want at most 1.5 and 260", objects, bytes)
 	}
 	runtime.KeepAlive(s)
 }

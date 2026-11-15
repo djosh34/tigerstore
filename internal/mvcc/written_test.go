@@ -79,7 +79,7 @@ func TestBytes(t *testing.T) {
 		for _, c := range s.arena {
 			allocated += int64(cap(c))
 		}
-		if got, want := s.Bytes(), allocated+int64(keys)*keySlot; got != want {
+		if got, want := s.Bytes(), allocated+s.keys.bytes(); got != want {
 			t.Fatalf("Bytes = %d, want %d: %d allocated and %d keys", got, want, allocated, keys)
 		}
 		return s.Bytes()
