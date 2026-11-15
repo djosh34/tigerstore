@@ -27,6 +27,10 @@ type node struct {
 	memberSeq  uint64
 	// stopErr stops the loop at its next turn: the node was removed.
 	stopErr error
+	// snapWaiters wait for the checkpoint a client's Snapshot asked for;
+	// clientSnaps are being sent.
+	snapWaiters []handle
+	clientSnaps []*clientSnap
 
 	st     *store
 	w      watches
@@ -257,6 +261,8 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		n.replyMembers(c, s)
 	case kMemberAdd, kMemberRemove, kMemberUpdate, kMemberPromote:
 		return n.memberRequest(c, s, msg)
+	case kSnapshot:
+		n.snapshotRequest(c, s)
 	case kMoveLeader:
 		target := uint64(0)
 		for m := msg; len(m) > 0; {

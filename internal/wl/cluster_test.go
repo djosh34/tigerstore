@@ -62,6 +62,13 @@ type testCluster struct {
 // stops it.
 func newTestCluster(t *testing.T) *testCluster {
 	t.Helper()
+	return newTestClusterWith(t, nil)
+}
+
+// newTestClusterWith starts a 3-node cluster as newTestCluster does, after
+// before, if any, prepares it.
+func newTestClusterWith(t *testing.T, before func(tc *testCluster)) *testCluster {
+	t.Helper()
 	tc := &testCluster{dir: t.TempDir()}
 	var err error
 	if tc.ca, err = testcert.NewCA(); err != nil {
@@ -81,6 +88,9 @@ func newTestCluster(t *testing.T) *testCluster {
 	tc.certFile, tc.keyFile, tc.caFile = filepath.Join(tc.dir, "cert.pem"), filepath.Join(tc.dir, "key.pem"), filepath.Join(tc.dir, "ca.pem")
 	for i := range 3 {
 		tc.addPorts(t, uint64(i+1), false)
+	}
+	if before != nil {
+		before(tc)
 	}
 	tc.start(t)
 	t.Cleanup(func() { tc.stop(t) })

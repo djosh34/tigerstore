@@ -705,6 +705,9 @@ func (l *loop) run() error {
 		if err := n.ckptStep(false); err != nil {
 			return err
 		}
+		if len(n.clientSnaps) > 0 {
+			n.sendClientSnaps()
+		}
 		t3 := time.Now()
 		l.flush()
 		t4 := time.Now()

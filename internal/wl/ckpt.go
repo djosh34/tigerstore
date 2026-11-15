@@ -283,10 +283,12 @@ type ckptRun struct {
 	// counted by segment; the log before cut is removed once it is done.
 	prevFrom int64
 	prevCut  int64
-	cut      int64
-	rels     []ckptRel
-	segLive  map[int64]int64
-	relAt    int // the next value to hand the writer
+	// snapWaiters are the clients' Snapshots that asked before it started.
+	snapWaiters []handle
+	cut         int64
+	rels        []ckptRel
+	segLive     map[int64]int64
+	relAt       int // the next value to hand the writer
 
 	// For the stats line: when it started, the loop's time encoding, and
 	// the bytes of values it takes in and of those it leaves in the log.
@@ -326,6 +328,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 	}
 	r.leases = st.encodeLeases(nil)
 	r.members = n.encodeMembers(nil)
+	r.snapWaiters, n.snapWaiters = n.snapWaiters, nil
 	dl, _ := st.log.(durableLog)
 	r.w = &ckptWriter{
 		dir: n.ckptDir, tmp: tmp, name: name, f: f, prev: st.ckpts[1-gen], log: dl,
@@ -495,6 +498,7 @@ func (n *node) ckptDone() error {
 		Metadata: &pb.SnapshotMetadata{Index: new(r.meta.index), Term: new(r.meta.term), ConfState: r.meta.cs},
 	}
 	n.st.release()
+	n.startClientSnaps(r.snapWaiters, r.w.name, r.meta)
 	n.logf("checkpoint at index %d, revision %d: %d bytes, the log from %d and cut at %d, in %v; %d MB of values taken in, %d MB left in the log; the loop encoded for %v, the writer read for %v and wrote for %v",
 		r.meta.index, r.meta.rev, r.at+4, r.logFrom, r.cut, time.Since(r.started).Round(time.Millisecond), r.taken>>20, r.leftInLog>>20,
 		time.Duration(r.encodeNs).Round(time.Millisecond), time.Duration(r.w.readNs.Load()).Round(time.Millisecond), time.Duration(r.w.writeNs.Load()).Round(time.Millisecond))
@@ -1107,14 +1111,43 @@ func (n *node) loadNewest() (int64, error) {
 
 // ---- a checkpoint a follower takes
 
+// ckptHeader is what rewriteCkpt puts in place of a checkpoint's
+// membership: a restored node's new cluster.
+type ckptHeader struct {
+	cs      *pb.ConfState
+	members ckptMembers
+}
+
 // selfContained writes to dst the checkpoint in src with every value in
 // it: a follower has neither this node's log nor its checkpoint before.
-// Values the file names in the log are read from log.
-func selfContained(src *os.File, log durableLog, dst io.Writer) error {
+// Values the file names in the log are read from log. With hdr, the
+// membership is hdr's.
+func selfContained(src *os.File, log durableLog, dst io.Writer, hdr *ckptHeader) error {
 	if _, err := src.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	cr := &ckptReader{r: bufio.NewReaderSize(src, 1<<20)}
+	return copyCkpt(src, func(p []byte, inFile bool, at int64) error {
+		if inFile {
+			_, err := src.ReadAt(p, at)
+			return err
+		}
+		return log.readDurable(p, at)
+	}, dst, hdr)
+}
+
+// rewriteCkpt copies the checkpoint r holds, every value in it, to dst
+// with hdr's membership.
+func rewriteCkpt(r io.Reader, dst io.Writer, hdr *ckptHeader) error {
+	return copyCkpt(r, func([]byte, bool, int64) error {
+		return fmt.Errorf("%w: a value it does not hold", errCkptCorrupt)
+	}, dst, hdr)
+}
+
+// copyCkpt copies the checkpoint r holds to dst with every value in it:
+// read reads a value it names in itself or in the log. With hdr, the
+// ConfState and the members are hdr's.
+func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst io.Writer, hdr *ckptHeader) error {
+	cr := &ckptReader{r: bufio.NewReaderSize(r, 1<<20)}
 	bw := bufio.NewWriterSize(dst, 1<<20)
 	crc := uint32(0)
 	out := func(b []byte) {
@@ -1141,34 +1174,55 @@ func selfContained(src *os.File, log durableLog, dst io.Writer) error {
 			return err
 		}
 	}
-	csLen, err := uv()
-	if err != nil {
-		return err
-	}
-	if err := copyBytes(csLen); err != nil {
-		return err
-	}
-	nm, err := uv()
-	if err != nil {
-		return err
-	}
-	for range nm {
-		ml, err := uv()
+	if hdr == nil {
+		csLen, err := uv()
 		if err != nil {
 			return err
 		}
-		if err := copyBytes(ml); err != nil {
+		if err := copyBytes(csLen); err != nil {
 			return err
 		}
-	}
-	nr, err := uv()
-	if err != nil {
-		return err
-	}
-	for range nr {
-		if _, err := uv(); err != nil {
+		nm, err := uv()
+		if err != nil {
 			return err
 		}
+		for range nm {
+			ml, err := uv()
+			if err != nil {
+				return err
+			}
+			if err := copyBytes(ml); err != nil {
+				return err
+			}
+		}
+		nr, err := uv()
+		if err != nil {
+			return err
+		}
+		for range nr {
+			if _, err := uv(); err != nil {
+				return err
+			}
+		}
+	} else {
+		csLen, err := cr.uvarint()
+		if err != nil {
+			return err
+		}
+		if _, err := cr.bytes(csLen); err != nil {
+			return err
+		}
+		if _, err := cr.readMembers(); err != nil {
+			return err
+		}
+		cs, err := proto.Marshal(hdr.cs)
+		if err != nil {
+			return err
+		}
+		out(binary.AppendUvarint(nil, uint64(len(cs))))
+		out(cs)
+		n := &node{members: hdr.members.members, removed: hdr.members.removed}
+		out(n.encodeMembers(nil))
 	}
 	nl, err := uv()
 	if err != nil {
@@ -1200,7 +1254,7 @@ func selfContained(src *os.File, log durableLog, dst io.Writer) error {
 				return err
 			}
 			if binary.LittleEndian.Uint32(sum) != want {
-				return fmt.Errorf("%s: %w: its CRC", src.Name(), errCkptCorrupt)
+				return fmt.Errorf("%w: its CRC", errCkptCorrupt)
 			}
 			out([]byte{ckptEnd})
 			_, _ = bw.Write(binary.LittleEndian.AppendUint32(nil, crc))
@@ -1255,12 +1309,7 @@ func selfContained(src *os.File, log durableLog, dst io.Writer) error {
 					val = make([]byte, f[5])
 				}
 				v := val[:f[5]]
-				if inFile {
-					_, err = src.ReadAt(v, int64(at))
-				} else {
-					err = log.readDurable(v, int64(at))
-				}
-				if err != nil {
+				if err := read(v, inFile, int64(at)); err != nil {
 					return fmt.Errorf("read a value for a follower's checkpoint: %w", err)
 				}
 				out(v)
@@ -1282,7 +1331,7 @@ func selfContained(src *os.File, log durableLog, dst io.Writer) error {
 				return err
 			}
 		default:
-			return fmt.Errorf("%s: %w: a record of kind %d", src.Name(), errCkptCorrupt, kind)
+			return fmt.Errorf("%w: a record of kind %d", errCkptCorrupt, kind)
 		}
 	}
 }

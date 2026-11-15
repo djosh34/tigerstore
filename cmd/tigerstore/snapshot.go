@@ -8,7 +8,10 @@ import (
 	"slices"
 	"strings"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+
 	"github.com/djosh34/tigerstore/internal/node"
+	"github.com/djosh34/tigerstore/internal/wl"
 )
 
 // snapshotCommand runs `tigerstore snapshot restore <file>`, which writes
@@ -54,7 +57,7 @@ func snapshotCommand(args []string, logger *log.Logger) error {
 	if *dataDir == "" {
 		*dataDir = *name + ".etcd"
 	}
-	info, err := node.Restore(path, *dataDir, initialMembers(members), *skipHash)
+	info, err := restore(path, *dataDir, initialMembers(members), *skipHash)
 	if err != nil {
 		return err
 	}
@@ -64,4 +67,17 @@ func snapshotCommand(args []string, logger *log.Logger) error {
 	}
 	logger.Printf("restored the snapshot of revision %d (index %d, term %d) into %s", info.Revision, info.Index, info.Term, *dataDir)
 	return nil
+}
+
+// restore makes dataDir from the snapshot at path for the node that runs.
+func restore(path, dataDir string, members []*pb.Member, skipHash bool) (node.SnapshotInfo, error) {
+	if !useWL() {
+		return node.Restore(path, dataDir, members, skipHash)
+	}
+	var ms []wl.Member
+	for _, m := range members {
+		ms = append(ms, wl.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs})
+	}
+	index, term, rev, err := wl.Restore(path, dataDir, ms, skipHash)
+	return node.SnapshotInfo{Index: index, Term: term, Revision: rev}, err
 }

@@ -32,6 +32,9 @@ type shell interface {
 	wakeLoop()
 	// membersChanged dials the members the list now holds.
 	membersChanged()
+	// prepareClientSnap writes a client's snapshot of the checkpoint src
+	// with head before it, and has the loop send it to h.
+	prepareClientSnap(h handle, src *os.File, head []byte)
 	// sendSnapshot sends the checkpoint f to the follower m is for, with
 	// every value in it, and reports to Raft how it went.
 	sendSnapshot(m *pb.Message, f *os.File)
@@ -213,7 +216,7 @@ func (l *loop) sendSelfContained(mem member, m *pb.Message, f *os.File) error {
 		_ = tmp.Close()
 		_ = os.Remove(tmp.Name())
 	}()
-	if err := selfContained(f, l.n.wal, tmp); err != nil {
+	if err := selfContained(f, l.n.wal, tmp, nil); err != nil {
 		return err
 	}
 	size, err := tmp.Seek(0, io.SeekCurrent)

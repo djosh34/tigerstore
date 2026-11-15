@@ -33,6 +33,7 @@ const (
 	kMemberRemove
 	kMemberUpdate
 	kMemberPromote
+	kSnapshot
 	// kMemberAttrs is a member's name and client URLs, which it publishes
 	// in a batch; no client sends it.
 	kMemberAttrs
@@ -60,6 +61,7 @@ var paths = map[string]uint8{
 	"/etcdserverpb.Cluster/MemberRemove":   kMemberRemove,
 	"/etcdserverpb.Cluster/MemberUpdate":   kMemberUpdate,
 	"/etcdserverpb.Cluster/MemberPromote":  kMemberPromote,
+	"/etcdserverpb.Maintenance/Snapshot":   kSnapshot,
 }
 
 // stream is one HTTP/2 stream of a client.

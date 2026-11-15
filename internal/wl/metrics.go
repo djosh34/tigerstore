@@ -29,7 +29,7 @@ var rpcs = func() [kinds]rpc {
 		switch k {
 		case kWatch, kLeaseKeepAlive:
 			typ = "bidi_stream"
-		case kRangeStream:
+		case kRangeStream, kSnapshot:
 			typ = "server_stream"
 		}
 		r[k] = rpc{svc, method, typ}
