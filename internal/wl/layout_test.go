@@ -191,3 +191,31 @@ func TestNodesWithOtherKeyIDsAnswerAlike(t *testing.T) {
 	same("the loaded checkpoints' ranges", a.rng("/x/", "/x0", 0, 0), b.rng("/x/", "/x0", 0, 0))
 	same("the loaded checkpoints' changes", fmt.Sprint(a.changes(from)), fmt.Sprint(b.changes(from)))
 }
+
+// TestTheStoreCountsItsLiveKeys: the metrics read the count of live keys
+// the store keeps as keys come and go, and a checkpoint brings it back.
+func TestTheStoreCountsItsLiveKeys(t *testing.T) {
+	na, la := ckptNode(t)
+	a := applier{t, na, la}
+	for i := range 10 {
+		a.put(fmt.Sprintf("/c/k%d", i), "v", 0)
+	}
+	a.put("/c/k0", "again", 0)
+	a.del("/c/k1", "/c/k4")
+	if got := na.st.liveKeys; got != 7 {
+		t.Fatalf("%d live keys, want 7", got)
+	}
+	writeCkpt(t, na, 1)
+	nb, _ := ckptNode(t)
+	f, err := os.Open(filepath.Join(na.ckptDir, ckptName(1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	if _, err := loadCkpt(f, 1, nb.st); err != nil {
+		t.Fatal(err)
+	}
+	if got := nb.st.liveKeys; got != 7 {
+		t.Fatalf("%d live keys after the checkpoint, want 7", got)
+	}
+}

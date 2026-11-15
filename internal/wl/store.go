@@ -113,6 +113,8 @@ type store struct {
 	// liveBytes and histBytes are the size of the live values and of the
 	// earlier ones the history keeps: what a checkpoint holds.
 	liveBytes, histBytes int64
+	// liveKeys is how many keys are live, which the metrics read.
+	liveKeys int64
 
 	// changes is every change by revision, the index of watches from a
 	// past revision.
@@ -299,18 +301,6 @@ func (st *store) exists(id uint32) bool { return st.keys[id].create != 0 }
 // live returns key id's record, or nil if it is not live. A record the
 // budget let go is built again from the log and held again. The record
 // stays valid until the end of the apply after the call.
-// liveKeys counts the keys that are live now: a scrape's, which walks
-// every key's state but reads no value.
-func (st *store) liveKeys() int {
-	n := 0
-	for i := range st.keys {
-		if st.keys[i].create != 0 {
-			n++
-		}
-	}
-	return n
-}
-
 func (st *store) live(id uint32) ([]byte, error) {
 	k := &st.keys[id]
 	if k.create == 0 {
@@ -528,6 +518,8 @@ func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64
 	st.setLease(id, old, lease)
 	if prev != nil {
 		st.liveBytes -= int64(k.vlen)
+	} else {
+		st.liveKeys++
 	}
 	st.liveBytes += int64(len(value))
 	k.rec, k.rlen = off, uint32(n)
@@ -551,6 +543,7 @@ func (st *store) del(id uint32, rev int64) ([]byte, error) {
 	st.freeLater = append(st.freeLater, k.rec, uint64(k.rlen))
 	st.setLease(id, k.lease, 0)
 	st.liveBytes -= int64(k.vlen)
+	st.liveKeys--
 	k.rec, k.rlen = 0, 0
 	k.create, k.mod, k.ver, k.lease = 0, rev, 0, 0
 	k.voff, k.vlen = 0, 0
@@ -809,6 +802,7 @@ func (st *store) restoreKey(key []byte, states []ckptState) (uint32, error) {
 	if k.create != 0 {
 		st.setLease(id, 0, k.lease)
 		st.liveBytes += int64(k.vlen)
+		st.liveKeys++
 	}
 	return id, nil
 }

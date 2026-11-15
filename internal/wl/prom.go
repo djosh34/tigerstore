@@ -278,7 +278,7 @@ func (n *node) scrape() *promSnap {
 	m.Committed, m.Applied = n.commit, n.applied
 	m.Counters = g.Counters
 	m.Puts, m.Deletes, m.Ranges, m.Txns, m.PutBytes = g.puts, g.deletes, g.rangesN, g.txns, g.putBytes
-	m.Keys = int64(n.st.liveKeys())
+	m.Keys = n.st.liveKeys
 	m.ID, m.EtcdVersion = n.id, n.storageVersion()
 	for i := range n.members {
 		m.Members = append(m.Members, n.members[i].id)
