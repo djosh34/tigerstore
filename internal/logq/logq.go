@@ -1,11 +1,11 @@
 // Package logq logs lines through a queue, so that a caller never waits
-// for the log's output. The node's committer logs as it works: slow
-// writes to the log, late heartbeats, a leader change; and with
-// GODEBUG=http2debug=2 x/net logs its control frames through the standard
-// log package. A process's log goes to a file or a pipe, which may sit on
-// the disk the node writes its data to. While that disk stalls, a write to
-// the log can take seconds, and a committer that waits for it ticks no
-// Raft, sends no heartbeats and loses its term (#680).
+// for the log's output. The node's event loop logs as it works: slow
+// writes to the log, slow calls, a leader change, and with
+// GODEBUG=http2debug=2 x/net's control frames, through the standard log
+// package. A process's log goes to a file or a pipe, which may sit on the
+// disk the node writes its data to. While that disk stalls, a write to the
+// log can take seconds, and a loop that waits for it sends no heartbeats
+// and loses its term (#680).
 //
 // A line is formatted and stamped with the time of the call, then queued;
 // one goroutine writes the queue to a zap core, in order, through the

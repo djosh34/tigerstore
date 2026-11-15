@@ -44,6 +44,16 @@ func TestLargestRequest(t *testing.T) {
 			// 64 MiB takes seconds at each step, longer than the peers'
 			// 5 s write timeout for one frame.
 			cfg.RequestTicks = int(time.Minute / c.tick)
+			if raceOn {
+				// The loop encodes and decodes the 64 MiB message on its own
+				// thread since #638 (large encodes go off it in #602's PR 3),
+				// which under the race detector held it 0.8 to 1.4 s,
+				// and 4.1 s on a loaded host (up to about 140 ms without):
+				// longer than the 1 s election timeout, so a follower
+				// campaigned, and the proposal was lost with the leader
+				// change. 10 s outlasts it with room.
+				cfg.ElectionTicks = 100
+			}
 		}
 		c.serverConfig = func(cfg *server.Config) { cfg.MaxRequestBytes = limit }
 		c.peerConfig = func(cfg *peer.Config) { cfg.WriteTimeout, cfg.ReadTimeout = time.Minute, time.Minute }
@@ -62,6 +72,8 @@ func TestLargestRequest(t *testing.T) {
 		t.Cleanup(func() { conn.Close() }) //nolint:errcheck // closing a test client
 		return pb.NewKVClient(conn)
 	}
+	// An election takes 10 to 20 s at the election timeout of -race.
+	leaderBy(t, c, time.Minute)
 	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
 		return c.client(1, cert).Put(ctx, &pb.PutRequest{Key: []byte("start"), Value: []byte("v")})
 	})
@@ -94,9 +106,18 @@ func TestLargestRequest(t *testing.T) {
 	check := func(when string) {
 		t.Helper()
 		for id := uint64(1); id <= 3; id++ {
-			r := retry(t, func(ctx context.Context) (*pb.RangeResponse, error) {
+			read := func(ctx context.Context) (*pb.RangeResponse, error) {
 				return kv(id).Range(ctx, &pb.RangeRequest{Key: key})
-			})
+			}
+			var r *pb.RangeResponse
+			if raceOn {
+				// Reading 64 MiB back under the race detector on a busy
+				// host took longer than retry's 2 s an attempt (#643's
+				// Opus review).
+				r = retryFor(t, 30*time.Second, 2*time.Minute, read)
+			} else {
+				r = retry(t, read)
+			}
 			if len(r.Kvs) != 1 || !bytes.Equal(r.Kvs[0].Value, value) {
 				t.Fatalf("%s, node %d reads %d keys", when, id, len(r.Kvs))
 			}
@@ -110,5 +131,49 @@ func TestLargestRequest(t *testing.T) {
 	for id := uint64(1); id <= 3; id++ {
 		c.start(id)
 	}
+	leaderBy(t, c, time.Minute)
 	check("after the restart")
+}
+
+// retryFor calls fn until it succeeds, each call within each, for at most
+// total.
+func retryFor[T any](t *testing.T, each, total time.Duration, fn func(ctx context.Context) (T, error)) T {
+	t.Helper()
+	deadline := time.Now().Add(total)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), each)
+		v, err := fn(ctx)
+		cancel()
+		if err == nil {
+			return v
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("still failing after %v: %v", total, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// leaderBy waits until the running nodes agree on a leader, for at most
+// d.
+func leaderBy(t *testing.T, c *cluster, d time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for {
+		leader, agree := uint64(0), true
+		for id := range c.running {
+			l := c.nodes[id].Leader()
+			if l == 0 || leader != 0 && l != leader {
+				agree = false
+			}
+			leader = l
+		}
+		if agree && leader != 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no leader the nodes agree on after %v", d)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }

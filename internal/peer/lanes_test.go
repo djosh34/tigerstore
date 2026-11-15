@@ -180,9 +180,10 @@ func TestLostLanesCountThePeerOnce(t *testing.T) {
 		}
 	}
 	for i, c := range conns {
-		if err := c.Close(); err != nil {
-			t.Fatal(err)
-		}
+		// As TCP.Close does: a connection the loop may be taking is never
+		// closed through TLS, which reads and writes the bridge the loop
+		// attaches.
+		b.t.closeAll([]net.Conn{c})
 		lanesUp(1 - i)
 		// The lane counts itself down before it dials again.
 		for deadline := time.Now().Add(5 * time.Second); dials.Load() < int64(3+i) && time.Now().Before(deadline); {

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djosh34/tigerstore/internal/loop"
+
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/simfs"
 )
@@ -52,7 +54,7 @@ func TestNoTurnAfterStop(t *testing.T) {
 func TestNoReportAfterStop(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	n := &Node{log: &diskLog{}, persisted: make(chan persistDone, 1)}
+	n := &Node{log: &diskLog{}, persisted: make(chan persistDone, 1), loop: loop.New(loop.NewChanPoller())}
 	for i := range 32 {
 		if err := n.report(ctx, written{}, ctx.Err()); !errors.Is(err, context.Canceled) {
 			t.Fatalf("run %d: report returned %v", i, err)

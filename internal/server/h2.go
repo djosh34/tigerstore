@@ -1,12 +1,9 @@
 package server
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
-	"errors"
-	"io"
 	"net"
 	"strings"
 	"sync"
@@ -23,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/loop"
 )
 
 // HTTP/2 limits of one client connection.
@@ -43,10 +41,10 @@ const (
 	frameHeaderLen = 9
 )
 
-// conn is one HTTP/2 client connection. The reader goroutine owns the
-// Framer's read side and the stream table's creation; the writer goroutine
-// owns the Framer's write side. mu guards everything they share with each
-// other and with the handlers.
+// conn is one HTTP/2 client connection. The node's event loop owns its
+// socket, its input and the stream table's creation (loopconn.go). mu
+// guards everything the loop shares with the handlers, which run on
+// goroutines of their own.
 type conn struct {
 	s *Server
 	// metrics count this connection's calls for /metrics.
@@ -55,14 +53,24 @@ type conn struct {
 	// apiCounters its client_requests_total counters; guarded by mu.
 	apiVersion  string
 	apiCounters [2]prometheus.Counter
-	nc          net.Conn
-	raw         net.Conn // nc without TLS, closed to abort a stuck write
+	// nc is what the connection reads and writes: TLS over the bridge, or
+	// the bridge itself without TLS. raw is the socket under them, which
+	// any goroutine may close.
+	nc     net.Conn
+	bridge *loop.Bridge
+	// records is nc when the connection speaks TLS 1.3, whose records it
+	// seals and opens itself; its Flush seals the record being written.
+	records *loop.Records
+	raw     net.Conn
+	// direct is where replies are encoded in place (direct.go): the
+	// records, or the bridge without TLS; nil under TLS 1.2.
+	direct directOut
 	// traffic is what the connection serves: gRPC alone answers HTTP
 	// requests as grpc-go does, HTTP alone takes gRPC calls as HTTP.
 	traffic Traffic
-	fr      *http2.Framer
-	br      *bufio.Reader
-	bw      *bufio.Writer
+	// fr writes the control frames; the loop reads frames itself
+	// (parseFrame).
+	fr *http2.Framer
 	// caller sizes this client's writes as etcd would.
 	caller core.Caller
 	// cluster and member go in every response header.
@@ -71,11 +79,49 @@ type conn struct {
 	ctx    context.Context // ends when the connection closes
 	cancel context.CancelFunc
 	once   sync.Once
-	wake   chan struct{} // the writer has work; capacity 1
 
-	// Reader only.
+	// Loop only: the socket's token; the decrypted input from inR to inW,
+	// and its phase; ending once the input ended with a GOAWAY, which
+	// closes the connection by endBy; the preface's deadline; since when
+	// output waits for the socket; and gone once the connection left the
+	// loop.
+	token    uint64
+	in       []byte
+	inR, inW int
+	// readErr is how the last read ended, kept while frames read before
+	// it wait for a turn with room (readFrames).
+	readErr   error
+	phase     int
+	ending    bool
+	endBy     time.Time
+	prefaceBy time.Time
+	waitSince time.Time
+	gone      bool
+	// outCharged is the output waiting for the socket that counts in
+	// Server.outAll (chargeOut).
+	outCharged int
+	// attached is set once the loop has the connection, from when a close
+	// tells it; reading is set while the loop reads the connection, which
+	// then writes it anyway; and signaled while a signal waits for the
+	// loop.
+	attached, reading, signaled atomic.Bool
+
+	// Loop only.
 	maxID uint32 // highest client stream ID seen
-	batch opBatch
+	// contID is the stream whose header block waits for a CONTINUATION
+	// frame, or 0.
+	contID uint32
+	batch  opBatch
+	// arena holds the requests of the calls the node runs (arena.go).
+	arena arena
+	// deadlines are the calls that end at a deadline (deadline.go).
+	deadlines deadlines
+	// free are streams of ended calls for the next calls (freeStream).
+	free []*stream
+	// slabs are the messages requests are decoded into (admit).
+	slabs core.Slabs
+	// finished is complete's scratch.
+	finished []finished
 	// hdec decodes header blocks into hdr, the headers of the block being
 	// read, with no allocation for fields from the HPACK tables.
 	hdec *hpack.Decoder
@@ -109,11 +155,11 @@ type conn struct {
 	// atNode is the calls the node has and has not answered.
 	atNode map[*stream]struct{}
 
-	// frames counts the frames the reader got, and wrote is set when the
-	// writer sends HEADERS or DATA, which forgives the client's pings
+	// frames counts the frames the loop read, and wrote is set when the
+	// loop sends HEADERS or DATA, which forgives the client's pings
 	// (keepalive.go). A count, not a time: a clock read per frame took
 	// 2% of a leader's core (#506). lastPing and pingStrikes are the
-	// reader's.
+	// loop's.
 	frames      atomic.Uint64
 	wrote       atomic.Bool
 	lastPing    time.Time
@@ -148,7 +194,7 @@ type ctrlFrame struct {
 // the common name of the leaf of the first verified chain, as etcd's
 // AuthInfoFromTLS takes it.
 func caller(cfg *tls.Config, nc net.Conn) core.Caller {
-	tc, ok := nc.(*tls.Conn)
+	tc, ok := nc.(tlsState)
 	if !ok || cfg.ClientAuth != tls.RequireAndVerifyClientCert {
 		return core.Caller{}
 	}
@@ -159,58 +205,36 @@ func caller(cfg *tls.Config, nc net.Conn) core.Caller {
 	return core.NewCaller(chains[0][0].Subject.CommonName)
 }
 
-func newConn(s *Server, nc, raw net.Conn) *conn {
+// tlsState is a TLS connection: crypto/tls's, or our own records after
+// its handshake.
+type tlsState interface {
+	ConnectionState() tls.ConnectionState
+}
+
+// newConn makes a connection that reads and writes nc, over the bridge
+// to its socket.
+func newConn(s *Server, nc net.Conn, bridge *loop.Bridge) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &conn{
-		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel, metrics: newConnMetrics(),
+		s: s, nc: nc, bridge: bridge, raw: bridge.Conn, ctx: ctx, cancel: cancel, metrics: newConnMetrics(),
 		cluster: s.cluster, member: s.member,
-		bw:       bufio.NewWriterSize(nc, ioBuffer),
-		wake:     make(chan struct{}, 1),
-		br:       bufio.NewReaderSize(nc, ioBuffer),
 		streams:  map[uint32]*stream{},
 		atNode:   map[*stream]struct{}{},
 		sendWin:  65535,
 		initWin:  65535,
 		maxFrame: 16384,
 	}
+	c.records, _ = nc.(*loop.Records)
+	// Under TLS 1.2, crypto/tls's connection has no room to write in.
+	c.direct, _ = nc.(directOut)
 	c.caller = caller(s.cfg.TLS, nc)
-	c.fr = http2.NewFramer(c.bw, c.br)
+	c.fr = http2.NewFramer(frameDst{c}, nil)
 	c.hdec = hpack.NewDecoder(4096, c.onField)
 	c.hdec.SetMaxStringLength(maxHeaderList)
 	c.ctrl = append(c.ctrl,
 		ctrlFrame{kind: ctrlSettings},
 		ctrlFrame{kind: ctrlWindowUpdate, val: connWindow - 65535})
 	return c
-}
-
-// serve runs the connection until it ends.
-func (c *conn) serve() {
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		defer c.close()
-		_ = c.writeLoop()
-	})
-	if c.traffic == TrafficGRPC {
-		wg.Go(c.keepalive)
-	}
-	err := c.readLoop()
-	ga, ok := errors.AsType[goAwayError](err)
-	if ce, isCE := errors.AsType[http2.ConnectionError](err); isCE {
-		ga, ok = goAwayError{code: http2.ErrCode(ce)}, true
-	}
-	if ok {
-		c.queueCtrl(ctrlFrame{kind: ctrlGoAway, id: c.lastID(), val: uint32(ga.code), debug: ga.debug})
-		c.mu.Lock()
-		c.goingAway = true
-		c.mu.Unlock()
-		// Let the writer send the GOAWAY, but not wait for long.
-		select {
-		case <-c.ctx.Done():
-		case <-time.After(time.Second):
-		}
-	}
-	c.close()
-	wg.Wait()
 }
 
 // close ends the connection and every stream on it. It never writes, so
@@ -224,18 +248,25 @@ func (c *conn) close() {
 			st.reset = true
 			c.cancelLocked(st)
 			st.out = nil
-			if st.deadline != nil {
-				st.deadline.Stop()
-			}
 		}
 		c.ready = nil
 		c.mu.Unlock()
 		c.cancel()
 		_ = c.raw.Close()
+		// The loop lets go of the connection at its next turn; before it
+		// has it, attach sees the close.
+		c.signal()
 	})
 }
 
-// goAway tells the client to open no more streams. The writer closes the
+// isClosed reports whether the connection was closed.
+func (c *conn) isClosed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed
+}
+
+// goAway tells the client to open no more streams. The loop closes the
 // connection once the streams in flight have ended.
 func (c *conn) goAway() {
 	c.mu.Lock()
@@ -255,16 +286,11 @@ func (c *conn) lastID() uint32 {
 	return c.maxID
 }
 
-func (c *conn) signal() {
-	select {
-	case c.wake <- struct{}{}:
-	default:
-	}
-}
-
-// maxCtrl bounds the control frames waiting for the writer, as x/net's
-// server does; a client that floods pings and does not read is dropped.
-const maxCtrl = 10000
+// maxCtrl bounds the control frames waiting for the loop to write them,
+// as x/net's server does with 10,000; a client that floods pings and does
+// not read is dropped. 512 keep the queue, about 24 KiB, inside a
+// connection's share of the memory budget (connBytes).
+const maxCtrl = 512
 
 func (c *conn) queueCtrl(f ctrlFrame) {
 	c.mu.Lock()
@@ -286,113 +312,60 @@ func (c *conn) addCtrl(f ctrlFrame) {
 	c.ctrl = append(c.ctrl, f)
 }
 
-func (c *conn) readLoop() error {
-	if err := c.nc.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
-		return err
-	}
-	preface := make([]byte, len(http2.ClientPreface))
-	if _, err := io.ReadFull(c.br, preface); err != nil {
-		return err
-	}
-	if string(preface) != http2.ClientPreface {
-		return http2.ConnectionError(http2.ErrCodeProtocol)
-	}
-	f, err := c.fr.ReadFrame()
-	if err != nil {
-		return err
-	}
-	sf, ok := f.(*http2.SettingsFrame)
-	if !ok || sf.IsAck() {
-		return http2.ConnectionError(http2.ErrCodeProtocol)
-	}
-	if err := c.onSettings(sf); err != nil {
-		return err
-	}
-	if err := c.nc.SetReadDeadline(time.Time{}); err != nil {
-		return err
-	}
-	for {
-		// Every path back here, stream errors included, hands over a due
-		// batch before a read that may wait.
-		if c.batchDue() {
-			if err := c.flush(); err != nil {
-				return err
-			}
-		}
-		fh, err := c.fr.ReadFrameHeader()
-		if err != nil {
-			return err
-		}
-		c.frames.Add(1)
-		f, err := c.fr.ReadFrameForHeader(fh)
-		if err != nil {
-			if _, ok := errors.AsType[http2.StreamError](err); ok && fh.Type == http2.FrameHeaders {
-				// A header block that cannot be decoded leaves the HPACK
-				// state behind the client's (RFC 9113 6.2).
-				return http2.ConnectionError(http2.ErrCodeProtocol)
-			}
-			if se, ok := errors.AsType[http2.StreamError](err); ok {
-				c.resetStream(se.StreamID, se.Code)
-				continue
-			}
-			return err
-		}
-		if err := c.onFrame(f); err != nil {
-			return err
-		}
-	}
-}
-
-func (c *conn) onFrame(f http2.Frame) error {
-	switch f := f.(type) {
-	case *http2.HeadersFrame:
-		c.hdr = reqHeaders{id: f.StreamID, ended: f.StreamEnded()}
-		return c.headerFragment(f.HeaderBlockFragment(), true, f.HeadersEnded())
-	case *http2.ContinuationFrame:
-		return c.headerFragment(f.HeaderBlockFragment(), false, f.HeadersEnded())
-	case *http2.DataFrame:
+func (c *conn) onFrame(f *frame) error {
+	switch f.typ {
+	case http2.FrameHeaders:
+		c.hdr = reqHeaders{id: f.id, ended: f.has(http2.FlagHeadersEndStream)}
+		return c.headerFragment(f.data, true, f.has(http2.FlagHeadersEndHeaders))
+	case http2.FrameContinuation:
+		return c.headerFragment(f.data, false, f.has(http2.FlagContinuationEndHeaders))
+	case http2.FrameData:
 		return c.onData(f)
-	case *http2.WindowUpdateFrame:
+	case http2.FrameWindowUpdate:
 		return c.onWindowUpdate(f)
-	case *http2.SettingsFrame:
-		if f.IsAck() {
+	case http2.FrameSettings:
+		if f.has(http2.FlagSettingsAck) {
 			return nil
 		}
 		return c.onSettings(f)
-	case *http2.PingFrame:
-		if !f.IsAck() {
-			c.queueCtrl(ctrlFrame{kind: ctrlPingAck, ping: f.Data})
+	case http2.FramePing:
+		if !f.has(http2.FlagPingAck) {
+			c.queueCtrl(ctrlFrame{kind: ctrlPingAck, ping: f.ping()})
 			return c.checkPing()
 		}
-	case *http2.RSTStreamFrame:
-		c.resetStream(f.StreamID, 0)
-	case *http2.PushPromiseFrame:
-		return http2.ConnectionError(http2.ErrCodeProtocol)
+	case http2.FrameRSTStream:
+		c.resetStream(f.id, 0)
+	case http2.FrameGoAway, http2.FramePriority, http2.FramePriorityUpdate, http2.FramePushPromise:
+		// A client's GOAWAY and priority signals need nothing, and
+		// parseFrame refused PUSH_PROMISE. Unknown frames need nothing
+		// either.
 	}
-	// GOAWAY from the client, PRIORITY and unknown frames need nothing.
 	return nil
 }
 
-func (c *conn) onSettings(f *http2.SettingsFrame) error {
+func (c *conn) onSettings(f *frame) error {
+	var err error
 	c.mu.Lock()
-	err := f.ForeachSetting(func(s http2.Setting) error {
-		if err := s.Valid(); err != nil {
-			return err
+	for i := range f.length / 6 {
+		s := f.setting(i)
+		if err = s.Valid(); err != nil {
+			break
 		}
-		// The encoder never indexes, so the header table size does not
-		// matter, and no other setting changes what the server sends.
-		if s.ID == http2.SettingInitialWindowSize {
+		switch s.ID {
+		case http2.SettingInitialWindowSize:
 			delta := int64(s.Val) - c.initWin
 			c.initWin = int64(s.Val)
 			for _, st := range c.streams {
 				st.sendWin += delta
 			}
-		}
-		if s.ID == http2.SettingMaxFrameSize {
+		case http2.SettingMaxFrameSize:
 			c.maxFrame = int(s.Val)
+		case http2.SettingHeaderTableSize, http2.SettingEnablePush, http2.SettingMaxConcurrentStreams,
+			http2.SettingMaxHeaderListSize, http2.SettingEnableConnectProtocol, http2.SettingNoRFC7540Priorities:
+			// The encoder never indexes, so the header table size does not
+			// matter, and no other setting changes what the server sends.
 		}
-		return nil
-	})
+	}
 	if err == nil {
 		c.addCtrl(ctrlFrame{kind: ctrlSettingsAck})
 	}
@@ -401,16 +374,16 @@ func (c *conn) onSettings(f *http2.SettingsFrame) error {
 	return err
 }
 
-func (c *conn) onWindowUpdate(f *http2.WindowUpdateFrame) error {
+func (c *conn) onWindowUpdate(f *frame) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if f.StreamID == 0 {
-		c.sendWin += int64(f.Increment)
+	if f.id == 0 {
+		c.sendWin += int64(f.increment())
 		if c.sendWin > 1<<31-1 {
 			return http2.ConnectionError(http2.ErrCodeFlowControl)
 		}
-	} else if st := c.streams[f.StreamID]; st != nil {
-		st.sendWin += int64(f.Increment)
+	} else if st := c.streams[f.id]; st != nil {
+		st.sendWin += int64(f.increment())
 	}
 	c.signal()
 	return nil
@@ -425,12 +398,13 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 		delete(c.streams, id)
 		st.countEnd(canceled)
 		st.reset = true
-		if st.deadline != nil {
-			st.deadline.Stop()
-		}
-		// A call the node still runs keeps its request charge until its
-		// reply comes and is dropped.
+		c.disarmDeadline(st)
+		// A call the node still runs keeps its request charge and its
+		// request until its reply comes and is dropped.
 		c.releaseLocked(&st.replyHeld)
+		if _, at := c.atNode[st]; !at {
+			c.releaseBody(st)
+		}
 		c.cancelLocked(st)
 		st.out = nil
 		st.queued = 0
@@ -489,10 +463,12 @@ type reqHeaders struct {
 }
 
 // maxHeaderList bounds the decoded size of one header block, as
-// SETTINGS_MAX_HEADER_LIST_SIZE would.
-const maxHeaderList = 1 << 20
+// SETTINGS_MAX_HEADER_LIST_SIZE would. 32 KiB holds gRPC's headers, an
+// auth token and tracing with room to spare, and keeps a header block that
+// waits for its CONTINUATION inside a connection's bound (connBytes).
+const maxHeaderList = 32 << 10
 
-// headerFragment decodes part of a header block. The Framer checks that
+// headerFragment decodes part of a header block. parseFrame checks that
 // CONTINUATION frames follow their HEADERS frame.
 func (c *conn) headerFragment(b []byte, first, last bool) error {
 	h := &c.hdr
@@ -522,7 +498,7 @@ func (c *conn) headerFragment(b []byte, first, last bool) error {
 		return http2.ConnectionError(http2.ErrCodeCompression)
 	}
 	if whole && onlyIndexed(b) {
-		if !h.bad && h.traceMD == nil && h.fields == nil && len(c.blocks) < maxBlocks {
+		if c.cacheable(h, b) {
 			if c.blocks == nil {
 				c.blocks = make(map[string]reqHeaders)
 			}
@@ -558,8 +534,20 @@ func (c *conn) headerFragment(b []byte, first, last bool) error {
 	return nil
 }
 
-// maxBlocks bounds the header blocks a connection keeps decoded.
-const maxBlocks = 64
+// cacheable reports whether the connection keeps the decoded headers h of
+// block b, a block of indexed fields only, for the next time it comes.
+func (c *conn) cacheable(h *reqHeaders, b []byte) bool {
+	return !h.bad && h.traceMD == nil && h.fields == nil && len(b) <= maxBlockKey && len(c.blocks) < maxBlocks
+}
+
+// maxBlocks bounds the header blocks a connection keeps decoded, and
+// maxBlockKey the size of each block it keeps. A block of indexed fields
+// decodes to strings from the HPACK table, at most 4 KiB, so the blocks
+// kept stay under 40 KiB. A client sends one block per method it calls.
+const (
+	maxBlocks   = 8
+	maxBlockKey = 256
+)
 
 // onlyIndexed reports whether a header block holds only indexed fields
 // (RFC 7541, 6.1): a set top bit, then an integer with a 7-bit prefix.
@@ -718,11 +706,14 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 
 func (c *conn) newStream(h *reqHeaders) *stream {
 	id := h.id
-	st := &stream{c: c, id: id, needLeader: h.needLeader, gateway: h.gateway, token: h.token, encoding: h.encoding}
 	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc") && c.traffic != TrafficHTTP
+	var rpc *method
 	if grpc {
-		st.rpc = methods[h.path]
-	} else {
+		rpc = methods[h.path]
+	}
+	st := c.freeStream(rpc)
+	*st = stream{c: c, id: id, rpc: rpc, needLeader: h.needLeader, gateway: h.gateway, token: h.token, encoding: h.encoding}
+	if !grpc {
 		st.httpMethod, st.httpPath = h.method, h.path
 		if st.httpPath == "" {
 			st.httpPath = "/"
@@ -731,69 +722,111 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
 	}
 	// A call that the node runs needs no context of its own: the node
-	// answers it within its request timeout, the deadline timer below ends
-	// it early, and a reset drops the reply.
-	if !grpc || (st.rpc != nil && st.rpc.op == nil) {
+	// answers it within its request timeout, its deadline ends it early,
+	// and a reset drops the reply.
+	if !grpc || (rpc != nil && rpc.op == nil) {
 		st.ctx, st.cancel = context.WithCancel(c.ctx)
 	}
-	if st.rpc != nil && st.rpc.stream != nil {
+	if rpc != nil && rpc.stream != nil {
 		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
+	}
+	// The answer to a call that runs no further, if any.
+	var early error
+	switch {
+	case grpc && rpc == nil:
+		early = unknownMethod(h.path)
+	case grpc && h.encoding != "" && h.encoding != identity && h.encoding != gzipName:
+		// grpc-go's answer before it runs a handler.
+		early = status.Errorf(codes.Unimplemented, "grpc: Decompressor is not installed for grpc-encoding %q", h.encoding)
+	case rpc != nil && rpc.learner == learnerNever && c.s.learner():
+		// As etcd's interceptors, a learner serves only Status,
+		// serializable ranges and snapshots.
+		early = rpctypes.ErrGRPCNotSupportedForLearner
+	case rpc != nil:
+		early = validAPIVersion(h.apiVersion)
 	}
 	c.mu.Lock()
 	st.sendWin = c.initWin
 	if c.closed {
 		// The connection closed while the reader decoded these headers:
-		// the stream is dead from the start and arms no timer.
+		// the stream is dead from the start and arms no deadline.
 		st.reset = true
 		c.mu.Unlock()
 		return st
 	}
 	c.streams[id] = st
-	if st.rpc != nil {
-		st.calls = &c.metrics.calls[st.rpc.idx]
+	if rpc != nil {
+		st.calls = &c.metrics.calls[rpc.idx]
 		st.countStart()
 		st.beginTrace(h)
+		if early == nil {
+			// etcd's interceptor counts a call it lets through.
+			c.clientRequests(rpc.stream != nil, h.apiVersion).Inc()
+		}
 	}
+	c.mu.Unlock()
 	if grpc && h.hasTimeout {
 		// The deadline ends the call whether or not its request is
 		// complete or its handler started.
-		st.deadline = time.AfterFunc(h.timeout, st.expire)
+		c.armDeadline(st, time.Now().Add(h.timeout))
 	}
-	c.mu.Unlock()
-	switch {
-	case grpc && st.rpc == nil:
-		st.finish(unknownMethod(h.path))
-	case grpc && h.encoding != "" && h.encoding != identity && h.encoding != gzipName:
-		// grpc-go's answer before it runs a handler.
-		st.finish(status.Errorf(codes.Unimplemented, "grpc: Decompressor is not installed for grpc-encoding %q", h.encoding))
-	case st.rpc != nil && st.rpc.learner == learnerNever && c.s.learner():
-		// As etcd's interceptors, a learner serves only Status,
-		// serializable ranges and snapshots.
-		st.finish(rpctypes.ErrGRPCNotSupportedForLearner)
-	case st.rpc != nil && validAPIVersion(h.apiVersion) != nil:
-		st.finish(validAPIVersion(h.apiVersion))
-	case st.rpc != nil:
-		// etcd's interceptor counts a call it lets through.
-		c.mu.Lock()
-		c.clientRequests(st.rpc.stream != nil, h.apiVersion).Inc()
-		c.mu.Unlock()
+	if early != nil {
+		st.finish(early)
 	}
 	return st
 }
 
-func (c *conn) onData(f *http2.DataFrame) error {
-	c.credit(int(f.Length))
+// maxFreeStreams bounds the streams a connection keeps for its next
+// calls, and streamBytes the size of one (TestStreamSize).
+const (
+	maxFreeStreams = 128
+	streamBytes    = 640
+)
+
+// freeStream returns a stream for a call of rpc: for a unary call the
+// node runs, one that an earlier such call left (reuseStream). Loop only.
+func (c *conn) freeStream(rpc *method) *stream {
+	if n := len(c.free); n > 0 && rpc != nil && rpc.op != nil {
+		st := c.free[n-1]
+		c.free[n-1] = nil
+		c.free = c.free[:n-1]
+		return st
+	}
+	return &stream{}
+}
+
+// reuseStream keeps an ended stream for the connection's next call, if
+// nothing refers to it any more: a unary call that the node ran and
+// answered whole, with no context, trace or request of its own left.
+// Every other kind of call may still be referred to by a goroutine or the
+// node. Its deadline, if it had one, is disarmed. c.mu is held, on the
+// loop.
+func (c *conn) reuseStream(st *stream) {
+	if st.rpc == nil || st.rpc.op == nil || st.cancel != nil || st.trace != nil || st.space != nil || st.chunk != nil || st.due != 0 || len(c.free) >= maxFreeStreams {
+		return
+	}
+	if _, at := c.atNode[st]; at {
+		return
+	}
+	// A request that never reached the node, or did not decode, is no
+	// longer needed.
+	st.msg, st.body, st.hdrN = nil, nil, 0
+	c.free = append(c.free, st)
+}
+
+func (c *conn) onData(f *frame) error {
+	c.credit(f.length)
 	c.mu.Lock()
-	st := c.streams[f.StreamID]
+	st := c.streams[f.id]
 	var halfClosed, overflow bool
 	if st != nil {
 		halfClosed = st.inEOF
 		// The stream's window is credited back only as Recv takes
 		// messages; a client that sends past it breaks flow control.
 		// Padding is never stored, so it is credited back at once.
-		st.recvUsed += len(f.Data())
+		st.recvUsed += len(f.data)
 		overflow = st.recvUsed > c.s.streamWindow
-		if pad := int(f.Length) - len(f.Data()); pad > 0 && !overflow && !halfClosed {
+		if pad := f.length - len(f.data); pad > 0 && !overflow && !halfClosed {
 			c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(pad)})
 		}
 	}
@@ -803,23 +836,23 @@ func (c *conn) onData(f *http2.DataFrame) error {
 		// A stream that is gone or reset; the data is dropped.
 		return nil
 	case halfClosed:
-		c.resetStream(f.StreamID, http2.ErrCodeStreamClosed)
+		c.resetStream(f.id, http2.ErrCodeStreamClosed)
 		return nil
 	case overflow:
-		c.resetStream(f.StreamID, http2.ErrCodeFlowControl)
+		c.resetStream(f.id, http2.ErrCodeFlowControl)
 		return nil
 	}
 	switch {
 	case st.httpPath != "":
-		if d := f.Data(); len(d) > 0 {
+		if d := f.data; len(d) > 0 {
 			st.deliver(append([]byte(nil), d...), len(d))
 		}
 	case st.rpc != nil && !st.done.Load():
-		if err := st.receive(f.Data()); err != nil {
+		if err := st.receive(f.data); err != nil {
 			st.finish(err)
 		}
 	}
-	if f.StreamEnded() {
+	if f.has(http2.FlagDataEndStream) {
 		return c.onEnd(st)
 	}
 	return nil

@@ -71,32 +71,45 @@ func (c *conn) admit(st *stream) {
 		// The body goes into the Raft entry as it is if the request is a
 		// write; apply decodes the entry again without copies. Here the
 		// request is decoded to check it, by the fastest decoder for its
-		// type.
-		req.Op, req.Wire = st.rpc.op(), st.body
-		switch req.Op.(type) {
-		case *pb.TxnRequest, *pb.RangeRequest:
-			var err error
-			if _, ok := req.Op.(*pb.TxnRequest); ok {
-				err = core.DecodeTxn(&req)
-			} else {
-				err = core.DecodeAlias(st.body, req.Op)
-			}
-			if err != nil {
-				st.finish(unmarshalError(err))
-				return
-			}
-			if r, ok := req.Op.(*pb.RangeRequest); ok && st.rpc.learner == learnerSerializable && !r.Serializable && c.s.learner() {
+		// type. The decoded request aliases the body, which the call holds
+		// until the node answers it (arena.go). A request in the arena is
+		// decoded into messages from the connection's slabs: a slab keeps
+		// the messages it handed out, and with them what they alias, as
+		// long as it has messages left, so only a request no larger than
+		// the arena takes is: a slab then keeps at most a chunk per
+		// message, never a large request.
+		req.Wire = st.body
+		slabs := &c.slabs
+		if len(st.body) > bodyChunk/4 {
+			slabs = nil
+		}
+		var err error
+		switch st.rpc {
+		case txnMethod:
+			req.Op = slabs.Txn()
+			err = core.DecodeTxn(&req, slabs)
+		case rangeMethod:
+			req.Op = slabs.Range()
+			err = core.DecodeAlias(st.body, req.Op)
+		case deleteMethod:
+			req.Op = st.rpc.op()
+			err = core.DecodeAlias(st.body, req.Op)
+		default:
+			req.Op = st.rpc.op()
+			err = proto.Unmarshal(st.body, req.Op)
+		}
+		if err != nil {
+			st.finish(unmarshalError(err))
+			return
+		}
+		switch r := req.Op.(type) {
+		case *pb.RangeRequest:
+			if st.rpc.learner == learnerSerializable && !r.Serializable && c.s.learner() {
 				st.finish(rpctypes.ErrGRPCNotSupportedForLearner)
 				return
 			}
-			if t, ok := req.Op.(*pb.TxnRequest); ok {
-				st.readonlyTxn = readonlyTxn(t)
-			}
-		default:
-			if err := unmarshal(st.body, req.Op); err != nil {
-				st.finish(err)
-				return
-			}
+		case *pb.TxnRequest:
+			st.readonlyTxn = readonlyTxn(r)
 		}
 	}
 	c.startOpSpan(st, &req)
@@ -133,28 +146,6 @@ func (c *conn) callerOf(st *stream) core.Caller {
 	return caller
 }
 
-// batchDue reports whether the reader should hand its batch to the node
-// before it reads the next frame: the batch is full, or reading the next
-// frame could wait for the client, because it is not buffered whole or
-// starts a header block that continues in later frames. There is no
-// timer.
-func (c *conn) batchDue() bool {
-	b := &c.batch
-	if len(b.reqs) == 0 {
-		return false
-	}
-	if len(b.reqs) >= maxBatchOps || b.bytes >= maxBatchBytes || c.br.Buffered() < frameHeaderLen {
-		return true
-	}
-	// Peek cannot fail: the header is buffered.
-	h, _ := c.br.Peek(frameHeaderLen)
-	n := int(h[0])<<16 | int(h[1])<<8 | int(h[2])
-	if http2.FrameType(h[3]) == http2.FrameHeaders && http2.Flags(h[4])&http2.FlagHeadersEndHeaders == 0 {
-		return true
-	}
-	return c.br.Buffered() < frameHeaderLen+n
-}
-
 // flush hands the batch to the node. It never waits for the node's
 // replies; the held bytes bound a connection through flow control.
 func (c *conn) flush() error {
@@ -180,7 +171,7 @@ func (c *conn) flush() error {
 	if keep == 0 {
 		return nil
 	}
-	err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)
+	err := c.s.n.SubmitLocal(b.reqs, b.tags, c)
 	if err == nil {
 		c.mu.Lock()
 		for i, tag := range b.tags {
@@ -193,9 +184,6 @@ func (c *conn) flush() error {
 		}
 		c.mu.Unlock()
 		return nil
-	}
-	if c.ctx.Err() != nil {
-		return err
 	}
 	// The node stopped; it takes no more requests.
 	c.mu.Lock()
@@ -237,11 +225,26 @@ func (c *conn) cancelLocked(st *stream) {
 	}
 }
 
-// releaseReqLocked frees a call's request charge once the node answered
-// or stopped. c.mu is held.
+// firstReply frees a call's request charge as its first reply comes. The
+// first piece of an answer in pieces keeps the request out of the arena,
+// since the node reads it for the pieces to come: a stream that goes on
+// lets go of it as it ends, and one that was reset or ended at its
+// deadline, which drops the answer, lets go of it now. c.mu is held.
+func (c *conn) firstReply(st *stream, pieces bool) {
+	if pieces {
+		c.abandonBody(st, !st.reset && !st.done.Load())
+	}
+	c.releaseReqLocked(st)
+}
+
+// releaseReqLocked frees a call's request charge, and its request, once
+// the node answered or stopped. c.mu is held.
 func (c *conn) releaseReqLocked(st *stream) {
 	delete(c.atNode, st)
 	c.releaseLocked(&st.reqHeld)
+	if !st.keepBody {
+		c.releaseBody(st)
+	}
 }
 
 // creditLocked sends a connection window update once enough was received
@@ -281,9 +284,10 @@ func estimate(cp *node.Completion) int64 {
 	return 5 + headerBound + fieldsOf(cp.Range.KVs) + 2 + 1 + binary.MaxVarintLen64
 }
 
-// Complete takes replies from the node's committer. It pushes them onto a
-// lock-free list, so the committer never waits, counts their size against
-// the connection's budget, and wakes the writer, which encodes them.
+// Complete takes replies from the node's committer, on the loop. It
+// pushes them onto a list, counts their size against the connection's
+// budget, and lists the connection to flush at the end of the turn, which
+// encodes and writes them.
 func (c *conn) Complete(cs []node.Completion) {
 	n := &completed{cs: cs}
 	for i := range cs {
@@ -296,7 +300,7 @@ func (c *conn) Complete(cs []node.Completion) {
 			break
 		}
 	}
-	c.signal()
+	c.s.loop.Dirty(c)
 }
 
 // takeCompletions returns the replies the node queued, oldest first,
@@ -313,10 +317,13 @@ func (c *conn) takeCompletions() ([][]node.Completion, int64) {
 	return out, bytes
 }
 
-// completeWaiting encodes and queues the replies the node handed over.
+// completeWaiting encodes and queues the replies the node handed over,
+// none of them straight into the output.
 func (c *conn) completeWaiting() {
 	if cs, bytes := c.takeCompletions(); cs != nil {
-		c.complete(cs, bytes)
+		// With no budget, no reply goes straight into the output, which
+		// is all that can fail.
+		_, _ = c.complete(cs, bytes, 0)
 	}
 }
 
@@ -328,87 +335,78 @@ type finished struct {
 	msg        []byte
 	err        error
 	more, cont bool
+	// pieces is set for the first piece of an answer in pieces.
+	pieces bool
 	// granted is the ID of a lease the node granted, for its span.
 	granted int64
+	// direct is set for a reply that may go straight into the output
+	// (direct.go), not yet encoded: cp is its completion, size its
+	// message's size, and rst says a RST_STREAM follows it.
+	direct bool
+	cp     *node.Completion
+	size   int
+	rst    bool
 }
 
-// complete encodes the replies the node handed over and queues them on
-// their streams, taking the lock once.
-// waiting is their estimated size, released once each reply is charged
-// to its call.
-func (c *conn) complete(batches [][]node.Completion, waiting int64) {
-	n := 0
-	for _, cs := range batches {
-		n += len(cs)
-	}
-	out := make([]finished, 0, n)
+// complete encodes the replies the node handed over. Those that may go
+// straight into the connection's output (direct.go), within budget bytes
+// of this write pass, go there, and it returns what is left of budget;
+// the others are queued on their streams. waiting is their estimated
+// size, released once each reply is charged to its call or sent. An error
+// means the output broke.
+func (c *conn) complete(batches [][]node.Completion, waiting int64, budget int) (int, error) {
+	out := c.finished[:0]
 	now := time.Now()
 	for _, cs := range batches {
-		for _, cp := range cs {
+		for i := range cs {
+			cp := &cs[i]
 			st := cp.Tag.(*stream)
 			f := finished{st: st, err: cp.Err, more: cp.MorePieces, cont: st.holes != nil}
+			f.pieces = f.more && !f.cont
 			if !f.cont {
 				c.logSlow(st, now.Sub(st.admitted))
 			}
 			if g, ok := cp.Resp.(*pb.LeaseGrantResponse); ok {
 				f.granted = g.ID
 			}
-			switch {
-			case f.err != nil:
-			case f.cont:
-				f.msg = fillHole(st, cp.Range.KVs)
-			case st.rpc.wirePut:
-				// One buffer per reply: a slow stream keeps only its own
-				// reply alive, which its reply charge counts.
-				msg, err := c.appendPutReply(make([]byte, 0, 5+putResponseSize), &cp.Reply)
-				if f.err = err; err == nil {
-					f.msg = msg
-				}
-			case st.rpc.compact && cp.Resp == nil:
-				f.msg, f.err = c.rangeReply(st, &cp.Reply)
-			default:
-				switch r := cp.Resp.(type) {
-				case *pb.TxnResponse:
-					f.msg, st.holes, f.err = appendTxnPieces(r, cp.Rests)
-				case *pb.DeleteRangeResponse:
-					if len(cp.Rests) > 0 {
-						f.msg, st.holes, f.err = appendDeletePieces(r, cp.Rests)
-						break
-					}
-					f.msg, f.err = marshal(r)
-				default:
-					f.msg, f.err = marshal(cp.Resp)
-				}
-			}
-			if f.err == nil && !f.more && !f.cont {
-				// A message in pieces goes out uncompressed, as gRPC
-				// allows any message to.
-				f.msg, f.err = st.compress(f.msg)
-			}
-			if f.err != nil && f.more {
-				// The node keeps the rest, which nobody takes now.
-				c.s.n.Cancel(st.nodeID)
-				f.more = false
+			if f.size, f.direct = c.directSize(st, cp); f.direct {
+				f.cp = cp
+			} else {
+				c.encode(&f, cp)
 			}
 			out = append(out, f)
 		}
-		clear(cs)
 	}
 	var broken, next []*stream
+	direct := 0
 	c.mu.Lock()
-	for _, f := range out {
+	for i := range out {
+		f := &out[i]
 		st := f.st
-		if !f.cont {
-			c.releaseReqLocked(st)
-		}
 		end := !f.more && f.err == nil
 		if st.reset || (end && st.done.Swap(true)) || (!end && st.done.Load()) {
 			// Reset by the client or ended at its deadline: the reply is
 			// dropped, and the rest of an answer in pieces with it.
+			if !f.cont {
+				c.firstReply(st, f.pieces)
+			}
 			if f.more {
 				c.s.n.Cancel(st.nodeID)
 			}
+			f.direct = false
 			continue
+		}
+		if f.direct {
+			if c.takeDirect(f, &budget) {
+				// It is written below, and the call ends after it.
+				direct++
+				continue
+			}
+			f.direct = false
+			c.encode(f, f.cp)
+		}
+		if !f.cont {
+			c.firstReply(st, f.pieces)
 		}
 		if f.cont && f.err != nil {
 			// Part of the message went out: the stream can only break.
@@ -434,14 +432,85 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 		}
 		st.pushLocked(f.msg, true, s)
 	}
-	c.waitingReplies.Add(-waiting)
-	c.creditLocked()
+	if direct == 0 {
+		c.waitingReplies.Add(-waiting)
+		c.creditLocked()
+	}
 	c.mu.Unlock()
+	var err error
+	if direct > 0 {
+		c.wrote.Store(true)
+		// The replies are encoded outside the lock, and their calls end
+		// after it: the request stays until then.
+		for i := range out {
+			if f := &out[i]; f.direct && err == nil {
+				err = c.writeDirect(f)
+			}
+		}
+		c.mu.Lock()
+		for i := range out {
+			if f := &out[i]; f.direct {
+				c.firstReply(f.st, false)
+				c.endLocked(f.st)
+			}
+		}
+		c.waitingReplies.Add(-waiting)
+		c.creditLocked()
+		c.mu.Unlock()
+	}
+	clear(out)
+	c.finished = out[:0]
+	for _, cs := range batches {
+		clear(cs)
+	}
 	for _, st := range broken {
 		c.resetStream(st.id, http2.ErrCodeInternal)
 	}
 	for _, st := range next {
 		go c.nextPiece(st)
+	}
+	return budget, err
+}
+
+// encode encodes the reply of cp for its stream's queue.
+func (c *conn) encode(f *finished, cp *node.Completion) {
+	st := f.st
+	switch {
+	case f.err != nil:
+	case f.cont:
+		f.msg = fillHole(st, cp.Range.KVs)
+	case st.rpc.wirePut:
+		// One buffer per reply: a slow stream keeps only its own reply
+		// alive, which its reply charge counts.
+		msg, err := c.appendPutReply(make([]byte, 0, 5+putResponseSize), &cp.Reply)
+		if f.err = err; err == nil {
+			f.msg = msg
+		}
+	case st.rpc.compact && cp.Resp == nil:
+		f.msg, f.err = c.rangeReply(st, &cp.Reply)
+	default:
+		switch r := cp.Resp.(type) {
+		case *pb.TxnResponse:
+			f.msg, st.holes, f.err = appendTxnPieces(r, cp.Rests)
+		case *pb.DeleteRangeResponse:
+			if len(cp.Rests) > 0 {
+				f.msg, st.holes, f.err = appendDeletePieces(r, cp.Rests)
+				break
+			}
+			f.msg, f.err = marshal(r)
+		default:
+			f.msg, f.err = marshal(cp.Resp)
+		}
+	}
+	if f.err == nil && !f.more && !f.cont {
+		// A message in pieces goes out uncompressed, as gRPC allows any
+		// message to.
+		f.msg, f.err = st.compress(f.msg)
+	}
+	if f.err != nil && f.more {
+		// The node keeps the rest, which nobody takes now.
+		c.s.n.Cancel(st.nodeID)
+		f.more = false
 	}
 }
 

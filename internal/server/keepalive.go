@@ -41,7 +41,7 @@ var errTooManyPings = goAwayError{code: http2.ErrCodeEnhanceYourCalm, debug: "to
 // checkPing counts a client's ping against it when it comes sooner than
 // the minimum time after the last one, or, with no call open, sooner than
 // two hours after it; a HEADERS or DATA frame sent since forgives every
-// count. Only a connection that serves gRPC alone counts. Reader only.
+// count. Only a connection that serves gRPC alone counts. Loop only.
 func (c *conn) checkPing() error {
 	if c.traffic != TrafficGRPC {
 		return nil

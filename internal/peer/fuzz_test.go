@@ -11,8 +11,8 @@ import (
 )
 
 // FuzzFrames reads any bytes as the frames of an inbound connection from
-// peer 2. The reader must stop with an error at bad input, never crash,
-// and deliver only messages from peer 2.
+// peer 2. The reader must never crash, and deliver only messages from
+// peer 2.
 func FuzzFrames(f *testing.F) {
 	var seed []byte
 	for _, m := range []*raftpb.Message{
@@ -37,8 +37,9 @@ func FuzzFrames(f *testing.F) {
 			}
 		}}}
 		cs := &counters{received: prometheus.NewCounter(prometheus.CounterOpts{Name: "received"}), heartbeatReceived: prometheus.NewGauge(prometheus.GaugeOpts{Name: "heartbeat"})}
-		if err := tr.frames(bytes.NewReader(b), 2, maxVersion, cs); err == nil {
-			t.Fatal("frames returned without an error")
-		}
+		ic := &inConn{t: tr, from: 2, v: maxVersion, cs: cs, buf: bytes.Clone(b), w: len(b)}
+		// Bad input ends with an error, and a frame cut short waits for
+		// the rest.
+		_ = ic.frames()
 	})
 }
