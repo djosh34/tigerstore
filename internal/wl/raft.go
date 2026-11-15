@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"log"
 	"os"
@@ -242,12 +243,17 @@ func (w *wal) offOf(index uint64) int64 {
 	return e.off
 }
 
-const walEntHdr = 4 + 8 + 8 + 1
+// An entry's record: [4 length][8 index][8 term][1 type][4 crc32c of
+// the 21 bytes before it and the data], then the data. A hard state's:
+// [4 length][4 0xffffffff][4 crc32c of the state], then the state.
+const walEntHdr = 4 + 8 + 8 + 1 + 4
+
+var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
 // write appends entries and a hard state to the file, without sync.
 func (w *wal) write(ents []*pb.Entry, hs []byte) {
 	w.iov = w.iov[:0]
-	need := len(ents)*walEntHdr + len(hs) + 8
+	need := len(ents)*walEntHdr + len(hs) + 12
 	if cap(w.hdrs) < need {
 		w.hdrs = make([]byte, 0, 2*need)
 	}
@@ -261,6 +267,7 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) {
 		binary.LittleEndian.PutUint64(b[4:], e.GetIndex())
 		binary.LittleEndian.PutUint64(b[12:], e.GetTerm())
 		b[20] = byte(e.GetType())
+		binary.LittleEndian.PutUint32(b[21:], crc32.Update(crc32.Update(0, castagnoli, b[:21]), castagnoli, d))
 		at += walEntHdr
 		w.iov = append(w.iov, b)
 		off += walEntHdr
@@ -271,10 +278,11 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) {
 		}
 	}
 	if len(hs) > 0 {
-		b := h[at : at+8+len(hs)]
+		b := h[at : at+12+len(hs)]
 		binary.LittleEndian.PutUint32(b, uint32(len(hs)))
 		binary.LittleEndian.PutUint32(b[4:], 0xffffffff)
-		copy(b[8:], hs)
+		binary.LittleEndian.PutUint32(b[8:], crc32.Checksum(hs, castagnoli))
+		copy(b[12:], hs)
 		w.iov = append(w.iov, b)
 		off += int64(len(b))
 	}
