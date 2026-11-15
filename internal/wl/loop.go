@@ -52,8 +52,8 @@ type loop struct {
 	handoffs []*handoff
 	// posts are what other goroutines hand the loop to run.
 	posts   []func() error
-	redials map[uint64]chan struct{}
-	peerTLS *tls.Config // to dial peers
+	dials   map[uint64]*dialer // by member, while it is one
+	peerTLS *tls.Config        // to dial peers
 
 	free    []int
 	tick    int64
@@ -111,15 +111,21 @@ func run(ctx context.Context, cfg Config) error {
 	n := &node{
 		id: cfg.ID, clusterID: cfg.ClusterID, peersOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{},
 		ckptDir: filepath.Join(cfg.DataDir, "ckpt"), confState: &pb.ConfState{},
+		self: member{id: cfg.ID, name: cfg.Name, clientURLs: cfg.ClientURLs},
 	}
+	// A new cluster's log starts with a ConfChange for each member, which
+	// the apply makes the member list; a node that joins dials the members
+	// it was told of until it has the list.
 	var peers []raft.Peer
 	for _, m := range cfg.Members {
-		mem, err := m.member(cfg.ID == m.ID)
+		mem, err := m.member()
 		if err != nil {
 			return err
 		}
-		n.members = append(n.members, mem)
-		peers = append(peers, raft.Peer{ID: m.ID})
+		peers = append(peers, raft.Peer{ID: m.ID, Context: ccContext(0, 0, &mem)})
+		if cfg.Join {
+			n.seed = append(n.seed, mem)
+		}
 	}
 	var err error
 	if n.st, err = newStore(); err != nil {
@@ -163,7 +169,7 @@ func run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	if n.storage.lastIndex() == 0 && n.storage.snap == nil {
+	if n.storage.lastIndex() == 0 && n.storage.snap == nil && !cfg.Join {
 		if err := n.rn.Bootstrap(peers); err != nil {
 			return err
 		}
@@ -171,7 +177,7 @@ func run(ctx context.Context, cfg Config) error {
 		logger.Printf("recovered the log: entries to %d, hard state term %d commit %d", n.storage.lastIndex(), n.term, n.commit)
 	}
 
-	l := &loop{n: n, redials: map[uint64]chan struct{}{}, logger: logger, lastAt: time.Now(), peerTLS: cfg.PeerClientTLS}
+	l := &loop{n: n, dials: map[uint64]*dialer{}, logger: logger, lastAt: time.Now(), peerTLS: cfg.PeerClientTLS}
 	n.shell = l
 	if l.epfd, err = unix.EpollCreate1(unix.EPOLL_CLOEXEC); err != nil {
 		return err
@@ -199,14 +205,7 @@ func run(ctx context.Context, cfg Config) error {
 	for _, ln := range cfg.PeerListeners {
 		go l.accept(ln, cfg.PeerServerTLS, kindPeerIn, logger)
 	}
-	for _, m := range n.members {
-		if m.id == n.id {
-			continue
-		}
-		ch := make(chan struct{}, 1)
-		l.redials[m.id] = ch
-		go l.dial(m, cfg.PeerClientTLS, ch)
-	}
+	l.syncDials()
 	logger.Printf("node %s (id %d) up: clients %v, peers %v", cfg.Name, n.id, addrs(cfg.ClientListeners), addrs(cfg.PeerListeners))
 	return l.run()
 }
@@ -249,20 +248,108 @@ func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.
 	}
 }
 
-func (l *loop) dial(m member, cfg *tls.Config, redial chan struct{}) {
-	c := cfg.Clone()
-	host, _, _ := net.SplitHostPort(m.peerAddr)
+// dialer keeps a connection to one member: it dials addr again each
+// time redial says the connection closed, until stop.
+type dialer struct {
+	addr         string
+	redial, stop chan struct{}
+}
+
+// syncDials dials the members the list holds, or the seed while it is
+// empty, and stops dialing the others: a member that moved its peer URL
+// is dialed at the new one.
+func (l *loop) syncDials() {
+	n := l.n
+	want := n.members
+	if len(want) == 0 {
+		want = n.seed
+	}
+	keep := map[uint64]bool{}
+	for i := range want {
+		m := &want[i]
+		if m.id == n.id {
+			continue
+		}
+		keep[m.id] = true
+		addr := m.peerAddr()
+		if d := l.dials[m.id]; d != nil && d.addr == addr {
+			continue
+		}
+		l.stopDial(m.id)
+		d := &dialer{addr: addr, redial: make(chan struct{}, 1), stop: make(chan struct{})}
+		l.dials[m.id] = d
+		go l.dial(m.id, d)
+	}
+	for id := range l.dials {
+		if !keep[id] {
+			l.stopDial(id)
+		}
+	}
+}
+
+// stopDial stops dialing member id and closes the connection to it.
+func (l *loop) stopDial(id uint64) {
+	d := l.dials[id]
+	if d == nil {
+		return
+	}
+	close(d.stop)
+	delete(l.dials, id)
+	if p := l.n.peersOut[id]; p != nil && !p.dead {
+		l.closeSock(p.idx)
+	}
+}
+
+// dialRedial is the channel that tells member id's dialer to dial again,
+// nil if the node no longer dials it.
+func (l *loop) dialRedial(id uint64) chan struct{} {
+	if d := l.dials[id]; d != nil {
+		return d.redial
+	}
+	return nil
+}
+
+// membersChanged dials the members the list holds, and closes the
+// connections of those it no longer holds: one that dials again is told
+// it was removed.
+func (l *loop) membersChanged() {
+	l.syncDials()
+	for _, x := range l.n.socks {
+		if p, ok := x.(*peerIn); ok && !p.dead && !l.n.mayPeer(p.from) {
+			l.closeSock(p.idx)
+		}
+	}
+}
+
+// mayPeer reports whether a peer may connect as id: a member, or anyone
+// while the node does not know the list yet.
+func (n *node) mayPeer(id uint64) bool {
+	return len(n.members) == 0 || n.memberAt(id) >= 0
+}
+
+// peerHelloBytes is what a node says first on a connection to a peer:
+// its ID, with snapMark for a snapshot's, and its cluster's.
+func peerHelloBytes(id, cluster uint64) []byte {
+	b := binary.LittleEndian.AppendUint64(nil, id)
+	return binary.LittleEndian.AppendUint64(b, cluster)
+}
+
+func (l *loop) dial(id uint64, d *dialer) {
+	c := l.peerTLS.Clone()
+	host, _, _ := net.SplitHostPort(d.addr)
 	c.ServerName = host
 	pause := func() bool {
 		select {
 		case <-l.ctx.Done():
+			return false
+		case <-d.stop:
 			return false
 		case <-time.After(100 * time.Millisecond):
 			return true
 		}
 	}
 	for {
-		nc, err := net.DialTimeout("tcp", m.peerAddr, time.Second)
+		nc, err := net.DialTimeout("tcp", d.addr, time.Second)
 		if err != nil {
 			if !pause() {
 				return
@@ -276,10 +363,12 @@ func (l *loop) dial(m member, cfg *tls.Config, redial chan struct{}) {
 			}
 			continue
 		}
-		h.kind, h.peer = kindPeerOut, m.id
+		h.kind, h.peer = kindPeerOut, id
 		l.handOver(h)
 		select {
-		case <-redial:
+		case <-d.redial:
+		case <-d.stop:
+			return
 		case <-l.ctx.Done():
 			return
 		}
@@ -389,11 +478,24 @@ func (l *loop) takeHandoffs() {
 			n.socks[idx] = c
 			s = &c.sock
 		case kindPeerIn:
+			if !n.mayPeer(h.peer) {
+				if n.removed[h.peer] {
+					// As etcd does, it tells a removed member so.
+					h.pre.put(binary.LittleEndian.AppendUint64(nil, removedNotice))
+					_, _ = h.pre.flush()
+				}
+				_ = unix.Close(h.fd)
+				continue
+			}
 			p := &peerIn{sock: *h.pre, from: h.peer}
 			p.stats = &n.stats
 			n.socks[idx] = p
 			s = &p.sock
 		case kindPeerOut:
+			if l.dials[h.peer] == nil {
+				_ = unix.Close(h.fd)
+				continue
+			}
 			p := &peerOut{sock: *newSock(h, &n.stats), peer: h.peer}
 			p.sent = &n.metrics.peerSent
 			n.socks[idx] = p
@@ -402,9 +504,7 @@ func (l *loop) takeHandoffs() {
 				l.closeSock(old.idx)
 			}
 			n.peersOut[h.peer] = p
-			var hello [8]byte
-			binary.LittleEndian.PutUint64(hello[:], n.id)
-			s.put(hello[:])
+			s.put(peerHelloBytes(n.id, n.clusterID))
 			n.markDirty(s)
 		}
 		s.idx, s.gen = idx, n.gens[idx]
@@ -472,7 +572,7 @@ func (l *loop) closeSock(idx int) {
 			delete(n.peersOut, v.peer)
 			n.rn.ReportUnreachable(v.peer)
 			select {
-			case l.redials[v.peer] <- struct{}{}:
+			case l.dialRedial(v.peer) <- struct{}{}:
 			default:
 			}
 		}
@@ -501,7 +601,11 @@ func (l *loop) input(idx int) {
 		case *peerIn:
 			err = n.peerFrames(v)
 		case *peerOut:
-			// Nothing comes back on an outgoing peer connection.
+			// Nothing comes back on an outgoing peer connection but the
+			// notice that this node was removed.
+			if s.pw-s.pr >= 8 && binary.LittleEndian.Uint64(s.pt[s.pr:]) == removedNotice {
+				n.stopErr = errRemoved
+			}
 			s.pr = s.pw
 		}
 	}
@@ -536,6 +640,9 @@ func (l *loop) run() error {
 			return err
 		}
 		n.now = time.Now()
+		if n.stopErr != nil {
+			return n.stopErr
+		}
 		for i := range k {
 			ev := events[i]
 			switch ev.Fd {
@@ -569,6 +676,11 @@ func (l *loop) run() error {
 			n.rn.Tick()
 			n.retryReads(l.tick)
 			n.expireProposals()
+			n.expireMemberRequests()
+			n.publish()
+			if err := n.maybeCkpt(); err != nil {
+				return err
+			}
 			n.limitGo()
 			if n.leading() {
 				n.expireLeases()
@@ -723,7 +835,7 @@ type counters struct {
 	ckpts, snapsSent, snapsInstalled                              uint64
 
 	// What the batches carried, and how the peers named or carried them.
-	opsByKind, bytesByKind [16]int
+	opsByKind, bytesByKind [kinds]int
 	named, held            int
 	carried, carriedBytes  [32]int
 }
@@ -734,8 +846,8 @@ const slowTurn = 200 * time.Millisecond
 
 // logSlowTurn logs a slow turn's phases and the ops it applied, by kind;
 // ops are the counts before the turn's Ready.
-func (l *loop) logSlowTurn(start, input, ready, sync, flush, end time.Time, ops [16]int) {
-	var applied [16]int
+func (l *loop) logSlowTurn(start, input, ready, sync, flush, end time.Time, ops [kinds]int) {
+	var applied [kinds]int
 	for k := range applied {
 		applied[k] = l.n.stats.opsByKind[k] - ops[k]
 	}

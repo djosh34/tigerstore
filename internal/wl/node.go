@@ -12,7 +12,21 @@ import (
 // node is one replica: everything below runs on the loop's one thread.
 type node struct {
 	id, clusterID uint64
-	members       []member
+	// members is the member list as of the applied index, and removed the
+	// IDs it no longer holds. self is this node's name and client URLs,
+	// which it publishes at publishAt; seed are the members a node that
+	// joins dials until it has a list.
+	members   []member
+	removed   map[uint64]bool
+	self      member
+	publishAt time.Time
+	seed      []member
+	// memberReqs are the membership changes clients wait on, by the
+	// sequence their ConfChange carries.
+	memberReqs map[uint64]memberReq
+	memberSeq  uint64
+	// stopErr stops the loop at its next turn: the node was removed.
+	stopErr error
 
 	st     *store
 	w      watches
@@ -116,13 +130,6 @@ func batchOrigin(data []byte) (uint64, uint32, bool) {
 	return uint64(binary.LittleEndian.Uint32(data)), binary.LittleEndian.Uint32(data[4:]), true
 }
 
-type member struct {
-	id              uint64
-	name            string
-	peerURL, cliURL string
-	peerAddr        string
-}
-
 type pendingRead struct {
 	h        handle
 	kind     uint8
@@ -171,6 +178,9 @@ func (n *node) markDirty(s *sock) {
 // client returns the client of a handle and its stream, if both are
 // still there.
 func (n *node) clientOf(h handle) (*client, *stream) {
+	if h == noHandle {
+		return nil, nil
+	}
 	idx, gen, sid := h.parts()
 	if idx >= len(n.socks) || n.gens[idx] != gen {
 		return nil, nil
@@ -189,6 +199,11 @@ func (n *node) clientOf(h handle) (*client, *stream) {
 // request takes one gRPC request message of stream s; msg is only valid
 // during the call.
 func (n *node) request(c *client, s *stream, msg []byte) error {
+	learner := n.isLearner()
+	if learner && !learnerServes(s.kind) {
+		n.reject(c, s, errLearner)
+		return nil
+	}
 	switch s.kind {
 	case kRange, kRangeStream:
 		var r rangeReq
@@ -197,6 +212,10 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		}
 		if err := checkRange(&r, msg); err != nil {
 			n.reject(c, s, err)
+			return nil
+		}
+		if learner && !r.serializable {
+			n.reject(c, s, errLearner)
 			return nil
 		}
 		if r.serializable {
@@ -232,6 +251,8 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		n.replyStatus(c, s)
 	case kMemberList:
 		n.replyMembers(c, s)
+	case kMemberAdd, kMemberRemove, kMemberUpdate, kMemberPromote:
+		return n.memberRequest(c, s, msg)
 	case kMoveLeader:
 		target := uint64(0)
 		for m := msg; len(m) > 0; {
@@ -350,12 +371,13 @@ func (n *node) replyErrorH(h handle, code int, msg string) {
 }
 
 const (
-	codeInvalidArgument = 3
-	codeOutOfRange      = 11
-	codeInternal        = 13
-	codeUnavailable     = 14
-	msgCompacted        = "etcdserver: mvcc: required revision has been compacted"
-	msgFuture           = "etcdserver: mvcc: required revision is a future revision"
+	codeInvalidArgument    = 3
+	codeFailedPrecondition = 9
+	codeOutOfRange         = 11
+	codeInternal           = 13
+	codeUnavailable        = 14
+	msgCompacted           = "etcdserver: mvcc: required revision has been compacted"
+	msgFuture              = "etcdserver: mvcc: required revision is a future revision"
 )
 
 // ---- status
@@ -378,13 +400,8 @@ func (n *node) replyStatus(c *client, s *stream) {
 
 func (n *node) replyMembers(c *client, s *stream) {
 	var body []byte
-	for _, m := range n.members {
-		var mb []byte
-		mb = appendVarintField(mb, 1, m.id)
-		mb = appendBytesField(mb, 2, []byte(m.name))
-		mb = appendBytesField(mb, 3, []byte(m.peerURL))
-		mb = appendBytesField(mb, 4, []byte(m.cliURL))
-		body = appendBytesField(body, 2, mb)
+	for i := range n.members {
+		body = appendBytesField(body, 2, appendMember(nil, &n.members[i]))
 	}
 	var w msgW
 	n.beginReply(c, s, &w, sizeBytesField(1, n.hdrSize())+len(body))

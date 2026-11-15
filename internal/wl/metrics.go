@@ -15,14 +15,14 @@ type nodeMetrics struct {
 	hasLeader atomic.Int64
 	peerSent  atomic.Uint64
 	// handled counts finished calls by kind and gRPC status code.
-	handled [kAlarm + 1][17]atomic.Uint64
+	handled [kinds][17]atomic.Uint64
 }
 
 // rpc names a call kind as gRPC's metrics do.
 type rpc struct{ service, method, typ string }
 
-var rpcs = func() [kAlarm + 1]rpc {
-	var r [kAlarm + 1]rpc
+var rpcs = func() [kinds]rpc {
+	var r [kinds]rpc
 	for path, k := range paths {
 		svc, method, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
 		typ := "unary"

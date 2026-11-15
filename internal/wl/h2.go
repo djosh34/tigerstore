@@ -29,6 +29,14 @@ const (
 	kMoveLeader
 	kLeaseLeases
 	kAlarm
+	kMemberAdd
+	kMemberRemove
+	kMemberUpdate
+	kMemberPromote
+	// kMemberAttrs is a member's name and client URLs, which it publishes
+	// in a batch; no client sends it.
+	kMemberAttrs
+	kinds // how many kinds there are
 )
 
 var paths = map[string]uint8{
@@ -48,6 +56,10 @@ var paths = map[string]uint8{
 	"/etcdserverpb.Maintenance/MoveLeader": kMoveLeader,
 	"/etcdserverpb.Lease/LeaseLeases":      kLeaseLeases,
 	"/etcdserverpb.Maintenance/Alarm":      kAlarm,
+	"/etcdserverpb.Cluster/MemberAdd":      kMemberAdd,
+	"/etcdserverpb.Cluster/MemberRemove":   kMemberRemove,
+	"/etcdserverpb.Cluster/MemberUpdate":   kMemberUpdate,
+	"/etcdserverpb.Cluster/MemberPromote":  kMemberPromote,
 }
 
 // stream is one HTTP/2 stream of a client.
@@ -468,6 +480,9 @@ var (
 // handle packs a client stream into a number that names it in batches and
 // queues: socket index, socket generation and stream id.
 type handle uint64
+
+// noHandle is an op's handle that no client waits on.
+const noHandle = ^handle(0)
 
 func mkHandle(c *client, sid uint32) handle {
 	return handle(uint64(c.idx)<<48 | uint64(c.gen)<<32 | uint64(sid))

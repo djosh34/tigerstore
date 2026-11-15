@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"net/url"
-	"strconv"
 )
 
 // Config is what a node runs with: its identity and its cluster's, as
@@ -16,10 +15,14 @@ import (
 type Config struct {
 	Name          string
 	ID, ClusterID uint64
-	// Members are the cluster's members as the node starts; a new cluster
-	// starts its log with them.
+	// Members are the cluster's members as the node starts: a new cluster
+	// starts its log with them, and a node that joins a running cluster
+	// (Join) dials them until it learns the list from the leader.
 	Members []Member
-	DataDir string
+	Join    bool
+	// ClientURLs are the client URLs the node publishes.
+	ClientURLs []string
+	DataDir    string
 	// The listeners of the client and peer URLs. Both serve TLS only.
 	ClientListeners, PeerListeners []net.Listener
 	ClientTLS                      *tls.Config
@@ -60,33 +63,15 @@ func (c *Config) check() error {
 	return fmt.Errorf("%w: member %d is not among the members", errConfig, c.ID)
 }
 
-// member is m as the node keeps it: where it dials m, and the client URL
-// it lists for m. A member whose client URLs the node does not know has
-// its peer port less one listed.
-func (m Member) member(self bool) (member, error) {
+// member is m as the node keeps it.
+func (m Member) member() (member, error) {
 	if len(m.PeerURLs) == 0 {
 		return member{}, fmt.Errorf("%w: member %d has no peer URL", errConfig, m.ID)
 	}
-	u, err := url.Parse(m.PeerURLs[0])
-	if err != nil {
-		return member{}, fmt.Errorf("%w: member %d's peer URL: %w", errConfig, m.ID, err)
+	for _, raw := range m.PeerURLs {
+		if _, err := url.Parse(raw); err != nil {
+			return member{}, fmt.Errorf("%w: member %d's peer URL: %w", errConfig, m.ID, err)
+		}
 	}
-	mem := member{id: m.ID, name: m.Name, peerURL: m.PeerURLs[0], peerAddr: u.Host}
-	if len(m.ClientURLs) > 0 {
-		mem.cliURL = m.ClientURLs[0]
-		return mem, nil
-	}
-	if self {
-		return member{}, fmt.Errorf("%w: this member has no client URL", errConfig)
-	}
-	host, port, err := net.SplitHostPort(u.Host)
-	if err != nil {
-		return member{}, fmt.Errorf("%w: member %d's peer URL: %w", errConfig, m.ID, err)
-	}
-	pn, err := strconv.Atoi(port)
-	if err != nil {
-		return member{}, fmt.Errorf("%w: member %d's peer URL: %w", errConfig, m.ID, err)
-	}
-	mem.cliURL = "https://" + net.JoinHostPort(host, strconv.Itoa(pn-1))
-	return mem, nil
+	return member{id: m.ID, name: m.Name, peerURLs: m.PeerURLs, clientURLs: m.ClientURLs}, nil
 }

@@ -30,6 +30,8 @@ import (
 type shell interface {
 	// wakeLoop wakes the loop; any goroutine may call it.
 	wakeLoop()
+	// membersChanged dials the members the list now holds.
+	membersChanged()
 	// sendSnapshot sends the checkpoint f to the follower m is for, with
 	// every value in it, and reports to Raft how it went.
 	sendSnapshot(m *pb.Message, f *os.File)
@@ -118,7 +120,8 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	st.goLive = old.goLive
 	st.setBudget(old.budget, old.mapped)
 	gen := 1 - n.ckptGen
-	if _, err := loadCkpt(f, gen, st); err != nil {
+	m, err := loadCkpt(f, gen, st)
+	if err != nil {
 		_ = st.close()
 		return fmt.Errorf("install a snapshot: %w", err)
 	}
@@ -134,6 +137,10 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	n.storage.applySnapshot(meta, name)
 	n.applied = meta.GetIndex()
 	n.confState = meta.GetConfState()
+	n.members, n.removed = m.members.members, m.members.removed
+	if n.shell != nil {
+		n.shell.membersChanged()
+	}
 	n.ckptFrom, n.ckptCut = n.wal.off, n.wal.off
 	if err := writePointer(n.ckptDir, &ckptPointer{gen: gen, name: name, logFrom: n.wal.off, cut: n.wal.off, hs: n.wal.durableHS}); err != nil {
 		return err
@@ -220,19 +227,20 @@ func (l *loop) sendSelfContained(mem member, m *pb.Message, f *os.File) error {
 }
 
 func (l *loop) streamSnapshot(mem member, m *pb.Message, f *os.File, size int64) error {
-	if mem.peerAddr == "" {
+	addr := mem.peerAddr()
+	if addr == "" {
 		return fmt.Errorf("no member %d", m.GetTo())
 	}
 	hdr, err := snapHeader(m, size)
 	if err != nil {
 		return err
 	}
-	nc, err := net.DialTimeout("tcp", mem.peerAddr, 5*time.Second)
+	nc, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	if err != nil {
 		return err
 	}
 	cfg := l.peerTLS.Clone()
-	cfg.ServerName, _, _ = net.SplitHostPort(mem.peerAddr)
+	cfg.ServerName, _, _ = net.SplitHostPort(addr)
 	h, err := handshake(nc, cfg, false)
 	if err != nil {
 		return err
@@ -242,9 +250,7 @@ func (l *loop) streamSnapshot(mem member, m *pb.Message, f *os.File, size int64)
 		return err
 	}
 	s := newSock(h, &counters{})
-	var b [8]byte
-	binary.LittleEndian.PutUint64(b[:], l.n.id|snapMark)
-	s.put(b[:])
+	s.put(peerHelloBytes(l.n.id|snapMark, l.n.clusterID))
 	putFrame(s, hdr)
 	buf := make([]byte, snapFrame)
 	for {
@@ -348,12 +354,12 @@ func (l *loop) peerHello(h *handoff) {
 		return
 	}
 	s := newSock(h, &counters{})
-	for s.pw-s.pr < 8 {
+	for s.pw-s.pr < 16 {
 		if err := s.open(); err != nil {
 			_ = unix.Close(h.fd)
 			return
 		}
-		if s.pw-s.pr >= 8 {
+		if s.pw-s.pr >= 16 {
 			break
 		}
 		if got, err := s.readSock(); err != nil || !got {
@@ -361,8 +367,13 @@ func (l *loop) peerHello(h *handoff) {
 			return
 		}
 	}
-	hello := binary.LittleEndian.Uint64(s.pt[s.pr:])
-	s.pr += 8
+	hello, cluster := binary.LittleEndian.Uint64(s.pt[s.pr:]), binary.LittleEndian.Uint64(s.pt[s.pr+8:])
+	s.pr += 16
+	if cluster != l.n.clusterID {
+		l.logger.Printf("refused a peer of cluster %x as %d: this is cluster %x", cluster, hello&^snapMark, l.n.clusterID)
+		_ = unix.Close(h.fd)
+		return
+	}
 	if hello&snapMark != 0 {
 		if err := l.receiveSnapshot(s, hello&^snapMark); err != nil {
 			l.logger.Printf("receive a snapshot from %d: %v", hello&^snapMark, err)

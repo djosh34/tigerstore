@@ -3,6 +3,7 @@ package wl
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -198,14 +199,15 @@ func (n *node) storageApply(m *pb.Message) error {
 		switch e.GetType() {
 		case pb.EntryConfChange:
 			var cc pb.ConfChange
-			if err := proto.Unmarshal(e.GetData(), &cc); err == nil {
-				n.confState = n.rn.ApplyConfChange(&cc)
+			if err := proto.Unmarshal(e.GetData(), &cc); err != nil {
+				return fmt.Errorf("apply a membership change: %w", err)
+			}
+			if err := n.applyConfChange(&cc, idx); err != nil {
+				return err
 			}
 		case pb.EntryConfChangeV2:
-			var cc pb.ConfChangeV2
-			if err := proto.Unmarshal(e.GetData(), &cc); err == nil {
-				n.confState = n.rn.ApplyConfChange(&cc)
-			}
+			// Nothing proposes one: the members change one at a time.
+			return fmt.Errorf("apply entry %d: a ConfChangeV2", idx)
 		case pb.EntryNormal:
 			if d := e.GetData(); len(d) > 0 {
 				if err := n.applyBatch(d, n.storage.offOf(idx)); err != nil {
@@ -238,7 +240,14 @@ func (n *node) afterApply() error {
 			return err
 		}
 	}
-	if n.ckpt != nil || n.ckptDir == "" || n.wal.off-n.ckptFrom < ckptMin {
+	return n.maybeCkpt()
+}
+
+// maybeCkpt starts a checkpoint once the log has grown enough since the
+// last, or when Raft's storage wants one for a follower.
+func (n *node) maybeCkpt() error {
+	s := n.storage
+	if n.ckpt != nil || n.ckptDir == "" || n.wal.off-n.ckptFrom < ckptMin && !s.wantCkpt {
 		return nil
 	}
 	off := s.offOf(n.applied)
@@ -249,6 +258,7 @@ func (n *node) afterApply() error {
 	if err != nil {
 		return err
 	}
+	s.wantCkpt = false
 	return n.startCkpt(n.applied, term, off-walEntHdr)
 }
 

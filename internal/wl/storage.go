@@ -30,6 +30,13 @@ type logStorage struct {
 
 	log logReader
 
+	// confIndex is the newest membership change applied. A checkpoint
+	// before it lacks a member that change added, whose Raft drops the
+	// snapshot: the storage asks for a new checkpoint (wantCkpt) and has
+	// none to give until then.
+	confIndex uint64
+	wantCkpt  bool
+
 	stats storageStats
 }
 
@@ -128,7 +135,8 @@ func (s *logStorage) entry(i uint64, e *storedEnt) (*pb.Entry, error) {
 // Snapshot returns the newest checkpoint; its data is the checkpoint's
 // file name.
 func (s *logStorage) Snapshot() (*pb.Snapshot, error) {
-	if s.snap == nil {
+	if s.snap == nil || s.snap.GetMetadata().GetIndex() < s.confIndex {
+		s.wantCkpt = true
 		return nil, raft.ErrSnapshotTemporarilyUnavailable
 	}
 	return s.snap, nil

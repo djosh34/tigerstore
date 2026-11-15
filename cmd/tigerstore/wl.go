@@ -40,15 +40,14 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 		}
 		cfg.ClientListeners = append(cfg.ClientListeners, l.Listener.Listener)
 	}
+	// A node that did not bootstrap the cluster joined it: it learns the
+	// member list from the leader.
+	cfg.Join = !ident.first
 	for _, m := range ident.members {
-		mem := wl.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs, ClientURLs: m.ClientURLs}
-		if m.ID == ident.id {
-			mem.ClientURLs = nil
-			for _, u := range ec.AdvertiseClientUrls {
-				mem.ClientURLs = append(mem.ClientURLs, u.String())
-			}
-		}
-		cfg.Members = append(cfg.Members, mem)
+		cfg.Members = append(cfg.Members, wl.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs, ClientURLs: m.ClientURLs})
+	}
+	for _, u := range ec.AdvertiseClientUrls {
+		cfg.ClientURLs = append(cfg.ClientURLs, u.String())
 	}
 	var err error
 	if cfg.PeerServerTLS, cfg.PeerClientTLS, err = wlPeerTLS(pcfg); err != nil {

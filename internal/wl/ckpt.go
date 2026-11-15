@@ -90,6 +90,7 @@ var ckptMin int64 = 1 << 30
 type ckptMeta struct {
 	index, term     uint64
 	cs              *pb.ConfState
+	members         ckptMembers
 	rev, compactRev int64
 }
 
@@ -257,6 +258,7 @@ type ckptRun struct {
 	meta    ckptMeta
 	gen     int
 	logFrom int64 // where the log after I starts
+	members []byte
 	leases  []byte
 	w       *ckptWriter
 	phase   int
@@ -317,6 +319,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 		started:  time.Now(),
 	}
 	r.leases = st.encodeLeases(nil)
+	r.members = n.encodeMembers(nil)
 	dl, _ := st.log.(durableLog)
 	r.w = &ckptWriter{
 		dir: n.ckptDir, tmp: tmp, name: name, f: f, prev: st.ckpts[1-gen], log: dl,
@@ -565,8 +568,8 @@ func (n *node) encodeChunk(r *ckptRun) (*ckptChunk, error) {
 }
 
 // header is the file's start: the magic, index, term, revision,
-// compacted revision, the ConfState, the leases, and the length of the
-// values that follow.
+// compacted revision, the ConfState, the members, the leases, and the
+// length of the values that follow.
 func (r *ckptRun) header() ([]byte, error) {
 	b := append([]byte(nil), ckptMagic...)
 	b = binary.AppendUvarint(b, r.meta.index)
@@ -579,6 +582,7 @@ func (r *ckptRun) header() ([]byte, error) {
 	}
 	b = binary.AppendUvarint(b, uint64(len(cs)))
 	b = append(b, cs...)
+	b = append(b, r.members...)
 	b = append(b, r.leases...)
 	vals := int64(0)
 	for _, v := range r.rels {
@@ -780,6 +784,9 @@ func loadCkpt(f *os.File, gen int, st *store) (ckptMeta, error) {
 	}
 	m.cs = &pb.ConfState{}
 	if err := proto.Unmarshal(csb, m.cs); err != nil {
+		return m, err
+	}
+	if m.members, err = cr.readMembers(); err != nil {
 		return m, err
 	}
 	nl, err := cr.uvarint()
@@ -1086,6 +1093,7 @@ func (n *node) loadNewest() (int64, error) {
 	n.storage.hs = p.hs
 	n.applied = m.index
 	n.confState = m.cs
+	n.members, n.removed = m.members.members, m.members.removed
 	n.ckptGen, n.ckptFrom, n.ckptCut, n.ckptName = p.gen, p.logFrom, p.cut, p.name
 	return p.logFrom, nil
 }
@@ -1132,6 +1140,28 @@ func selfContained(src *os.File, log durableLog, dst io.Writer) error {
 	}
 	if err := copyBytes(csLen); err != nil {
 		return err
+	}
+	nm, err := uv()
+	if err != nil {
+		return err
+	}
+	for range nm {
+		ml, err := uv()
+		if err != nil {
+			return err
+		}
+		if err := copyBytes(ml); err != nil {
+			return err
+		}
+	}
+	nr, err := uv()
+	if err != nil {
+		return err
+	}
+	for range nr {
+		if _, err := uv(); err != nil {
+			return err
+		}
 	}
 	nl, err := uv()
 	if err != nil {

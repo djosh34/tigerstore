@@ -62,6 +62,8 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 			err = n.applyLeaseRevoke(req, c, s)
 		case kLeaseKeepAlive:
 			err = n.applyLeaseKeepAlive(req, c, s)
+		case kMemberAttrs:
+			err = n.applyMemberAttrs(req)
 		}
 		if re, ok := errors.AsType[*requestError](err); ok {
 			// Every node applies the same bytes and rejects them alike.

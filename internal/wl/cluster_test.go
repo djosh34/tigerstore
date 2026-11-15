@@ -41,15 +41,21 @@ func portPair(t *testing.T) int {
 	return 0
 }
 
-// testCluster is three nodes running in this process.
+// testCluster is three nodes running in this process, and any that join
+// them.
 type testCluster struct {
 	dir                       string
 	certFile, keyFile, caFile string
 	peers, endpoints          []string
 	cert                      tls.Certificate
 	ca                        *testcert.CA
-	cancels                   [3]context.CancelFunc
-	stopped                   [3]chan error
+	cancels                   []context.CancelFunc
+	stopped                   []chan error
+	// members are the members each node starts with; ids and joins are
+	// each node's ID and whether it joins a running cluster.
+	members []Member
+	ids     []uint64
+	joins   []bool
 }
 
 // newTestCluster starts a 3-node cluster in this process; the test's end
@@ -73,20 +79,32 @@ func newTestCluster(t *testing.T) *testCluster {
 		}
 	}
 	tc.certFile, tc.keyFile, tc.caFile = filepath.Join(tc.dir, "cert.pem"), filepath.Join(tc.dir, "key.pem"), filepath.Join(tc.dir, "ca.pem")
-	for range 3 {
-		p := portPair(t)
-		tc.peers = append(tc.peers, fmt.Sprintf("https://127.0.0.1:%d", p))
-		tc.endpoints = append(tc.endpoints, fmt.Sprintf("127.0.0.1:%d", p-1))
+	for i := range 3 {
+		tc.addPorts(t, uint64(i+1), false)
 	}
 	tc.start(t)
 	t.Cleanup(func() { tc.stop(t) })
 	return tc
 }
 
+// addPorts gives the next node ports, its ID and its place among the
+// members.
+func (tc *testCluster) addPorts(t *testing.T, id uint64, join bool) int {
+	t.Helper()
+	p := portPair(t)
+	tc.peers = append(tc.peers, fmt.Sprintf("https://127.0.0.1:%d", p))
+	tc.endpoints = append(tc.endpoints, fmt.Sprintf("127.0.0.1:%d", p-1))
+	tc.cancels, tc.stopped = append(tc.cancels, nil), append(tc.stopped, nil)
+	tc.ids, tc.joins = append(tc.ids, id), append(tc.joins, join)
+	i := len(tc.ids) - 1
+	tc.members = append(tc.members, Member{ID: id, Name: fmt.Sprintf("n%d", i+1), PeerURLs: []string{tc.peers[i]}})
+	return i
+}
+
 // start runs the three nodes on their data dirs.
 func (tc *testCluster) start(t *testing.T) {
 	t.Helper()
-	for i := range 3 {
+	for i := range tc.ids {
 		tc.startNode(t, i)
 	}
 }
@@ -101,14 +119,11 @@ func (tc *testCluster) startNode(t *testing.T, i int) {
 		out = os.Stderr
 	}
 	cfg := Config{
-		Name: fmt.Sprintf("n%d", i+1), ID: uint64(i + 1), ClusterID: 0x7769726531, DataDir: tc.dataDir(i),
-		Logger: log.New(out, fmt.Sprintf("n%d ", i+1), log.Lmicroseconds),
+		Name: fmt.Sprintf("n%d", i+1), ID: tc.ids[i], ClusterID: 0x7769726531, DataDir: tc.dataDir(i), Join: tc.joins[i],
+		Logger:     log.New(out, fmt.Sprintf("n%d ", i+1), log.Lmicroseconds),
+		ClientURLs: []string{"https://" + tc.endpoints[i]},
 	}
-	for j := range 3 {
-		cfg.Members = append(cfg.Members, Member{
-			ID: uint64(j + 1), Name: fmt.Sprintf("n%d", j+1), PeerURLs: []string{tc.peers[j]}, ClientURLs: []string{"https://" + tc.endpoints[j]},
-		})
-	}
+	cfg.Members = tc.members
 	var err error
 	if cfg.ClientTLS, err = loadTLS(tc.certFile, tc.keyFile, tc.caFile, true); err != nil {
 		t.Fatal(err)
@@ -156,7 +171,7 @@ func (tc *testCluster) dataDir(i int) string { return filepath.Join(tc.dir, fmt.
 // fails the test.
 func (tc *testCluster) stop(t *testing.T) {
 	t.Helper()
-	for i := range 3 {
+	for i := range tc.cancels {
 		tc.stopNode(t, i)
 	}
 }
@@ -180,9 +195,8 @@ func (tc *testCluster) client(t *testing.T) *clientv3.Client {
 	return tc.clientOf(t, tc.endpoints...)
 }
 
-// clientOf returns a client of the given endpoints once the cluster takes
-// a write through them.
-func (tc *testCluster) clientOf(t *testing.T, endpoints ...string) *clientv3.Client {
+// rawClient returns a client of the given endpoints.
+func (tc *testCluster) rawClient(t *testing.T, endpoints ...string) *clientv3.Client {
 	t.Helper()
 	c, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
@@ -193,6 +207,14 @@ func (tc *testCluster) clientOf(t *testing.T, endpoints ...string) *clientv3.Cli
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
+	return c
+}
+
+// clientOf returns a client of the given endpoints once the cluster takes
+// a write through them.
+func (tc *testCluster) clientOf(t *testing.T, endpoints ...string) *clientv3.Client {
+	t.Helper()
+	c := tc.rawClient(t, endpoints...)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	for {
