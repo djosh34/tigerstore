@@ -3,6 +3,7 @@ package wl
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -44,7 +45,7 @@ func portPair(t *testing.T) int {
 type testCluster struct {
 	dir                       string
 	certFile, keyFile, caFile string
-	peers, initial, endpoints []string
+	peers, endpoints          []string
 	cert                      tls.Certificate
 	ca                        *testcert.CA
 	cancels                   [3]context.CancelFunc
@@ -72,10 +73,9 @@ func newTestCluster(t *testing.T) *testCluster {
 		}
 	}
 	tc.certFile, tc.keyFile, tc.caFile = filepath.Join(tc.dir, "cert.pem"), filepath.Join(tc.dir, "key.pem"), filepath.Join(tc.dir, "ca.pem")
-	for i := range 3 {
+	for range 3 {
 		p := portPair(t)
 		tc.peers = append(tc.peers, fmt.Sprintf("https://127.0.0.1:%d", p))
-		tc.initial = append(tc.initial, fmt.Sprintf("n%d=%s", i+1, tc.peers[i]))
 		tc.endpoints = append(tc.endpoints, fmt.Sprintf("127.0.0.1:%d", p-1))
 	}
 	tc.start(t)
@@ -100,12 +100,54 @@ func (tc *testCluster) startNode(t *testing.T, i int) {
 	if os.Getenv("WL_TEST_LOG") != "" {
 		out = os.Stderr
 	}
-	logger := log.New(out, fmt.Sprintf("n%d ", i+1), log.Lmicroseconds)
-	client := "https://" + tc.endpoints[i]
-	go func() {
-		tc.stopped[i] <- run(ctx, logger, fmt.Sprintf("n%d", i+1), tc.dataDir(i), client, client, tc.peers[i],
-			strings.Join(tc.initial, ","), tc.certFile, tc.keyFile, tc.caFile, tc.certFile, tc.keyFile, tc.caFile)
-	}()
+	cfg := Config{
+		Name: fmt.Sprintf("n%d", i+1), ID: uint64(i + 1), ClusterID: 0x7769726531, DataDir: tc.dataDir(i),
+		Logger: log.New(out, fmt.Sprintf("n%d ", i+1), log.Lmicroseconds),
+	}
+	for j := range 3 {
+		cfg.Members = append(cfg.Members, Member{
+			ID: uint64(j + 1), Name: fmt.Sprintf("n%d", j+1), PeerURLs: []string{tc.peers[j]}, ClientURLs: []string{"https://" + tc.endpoints[j]},
+		})
+	}
+	var err error
+	if cfg.ClientTLS, err = loadTLS(tc.certFile, tc.keyFile, tc.caFile, true); err != nil {
+		t.Fatal(err)
+	}
+	cfg.PeerServerTLS = cfg.ClientTLS
+	if cfg.PeerClientTLS, err = loadTLS(tc.certFile, tc.keyFile, tc.caFile, false); err != nil {
+		t.Fatal(err)
+	}
+	cl, err := net.Listen("tcp", tc.endpoints[i])
+	if err != nil {
+		t.Fatal(err)
+	}
+	pl, err := net.Listen("tcp", strings.TrimPrefix(tc.peers[i], "https://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.ClientListeners, cfg.PeerListeners = []net.Listener{cl}, []net.Listener{pl}
+	go func() { tc.stopped[i] <- run(ctx, cfg) }()
+}
+
+func loadTLS(cert, key, ca string, server bool) (*tls.Config, error) {
+	c, err := tls.LoadX509KeyPair(cert, key)
+	if err != nil {
+		return nil, err
+	}
+	pem, err := os.ReadFile(ca)
+	if err != nil {
+		return nil, err
+	}
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(pem)
+	cfg := &tls.Config{Certificates: []tls.Certificate{c}, MinVersion: tls.VersionTLS13}
+	if server {
+		cfg.ClientCAs = pool
+		cfg.ClientAuth = tls.RequireAndVerifyClientCert
+	} else {
+		cfg.RootCAs = pool
+	}
+	return cfg, nil
 }
 
 func (tc *testCluster) dataDir(i int) string { return filepath.Join(tc.dir, fmt.Sprintf("n%d", i+1)) }

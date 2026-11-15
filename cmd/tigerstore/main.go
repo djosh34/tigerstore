@@ -33,7 +33,6 @@ import (
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/server"
-	"github.com/djosh34/tigerstore/internal/wl"
 )
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
@@ -62,12 +61,6 @@ func main() {
 		debug.SetGCPercent(gcPercent)
 	}
 	args := os.Args[1:]
-	// Prototype 6 of #602: the node is one event loop with its own client
-	// stack, store and replication (internal/wl), unless TIGERSTORE_MAIN
-	// asks for main's node.
-	if os.Getenv("TIGERSTORE_MAIN") == "" && (len(args) == 0 || args[0] != "snapshot") {
-		os.Exit(wl.Main(args))
-	}
 	if len(args) > 0 && (args[0] == "grpc-proxy" || args[0] == "gateway") {
 		// etcd's own commands, with etcd's flags: a gRPC proxy in front
 		// of the cluster's client URLs (--namespace among them), and a
@@ -195,6 +188,12 @@ func start(c *config, lg *zap.Logger) error {
 	budget, from, err := node.MemoryBudget(os.DirFS("/"), c.own.MemoryBudget)
 	if err != nil {
 		return err
+	}
+	if useWL() {
+		// The loop owns the listeners from here on.
+		ok = true
+		logf("memory budget %d bytes (from %s)", budget, from)
+		return runWL(ec, ident, pcfg, ctls, clientLns, budget, lg)
 	}
 	// The garbage collector works harder as the heap nears the Go limit;
 	// the value cache takes what the rest of the process leaves.

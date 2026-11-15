@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/binary"
 	"errors"
-	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -24,7 +22,6 @@ import (
 	"sync"
 	"time"
 
-	mainnode "github.com/djosh34/tigerstore/internal/node"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"golang.org/x/sys/unix"
@@ -74,97 +71,31 @@ const (
 	tickEvery = 100 * time.Millisecond
 )
 
-// Main runs a node with etcd's command line.
-func Main(args []string) int {
-	fs := flag.NewFlagSet("tigerstore", flag.ContinueOnError)
-	name := fs.String("name", "default", "")
-	dataDir := fs.String("data-dir", "", "")
-	listenClient := fs.String("listen-client-urls", "", "")
-	advClient := fs.String("advertise-client-urls", "", "")
-	listenPeer := fs.String("listen-peer-urls", "", "")
-	fs.String("initial-advertise-peer-urls", "", "")
-	initial := fs.String("initial-cluster", "", "")
-	fs.String("initial-cluster-token", "", "")
-	fs.String("initial-cluster-state", "", "")
-	certFile := fs.String("cert-file", "", "")
-	keyFile := fs.String("key-file", "", "")
-	trusted := fs.String("trusted-ca-file", "", "")
-	fs.Bool("client-cert-auth", false, "")
-	peerCert := fs.String("peer-cert-file", "", "")
-	peerKey := fs.String("peer-key-file", "", "")
-	peerTrusted := fs.String("peer-trusted-ca-file", "", "")
-	fs.Bool("peer-client-cert-auth", false, "")
-	fs.Int64("quota-backend-bytes", 0, "")
-	budgetFlag := fs.Int64("memory-budget-bytes", 0, "")
-	fs.String("log-level", "", "")
-	fs.Bool("enable-pprof", false, "")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	logger := log.New(os.Stderr, "tigerstore-wl ", log.LstdFlags|log.Lmicroseconds)
-	budget, from, err := mainnode.MemoryBudget(os.DirFS("/"), *budgetFlag)
-	if err != nil {
-		logger.Printf("error: %v", err)
-		return 2
-	}
-	logger.Printf("memory budget %d MiB, from %s", budget>>20, from)
-	memBudget = budget
-	// The node runs until it fails.
-	err = run(context.Background(), logger, *name, *dataDir, *listenClient, *advClient, *listenPeer, *initial,
-		*certFile, *keyFile, *trusted, *peerCert, *peerKey, *peerTrusted)
-	logger.Printf("error: %v", err)
-	return 1
-}
-
-func loadTLS(cert, key, ca string, server bool) (*tls.Config, error) {
-	c, err := tls.LoadX509KeyPair(cert, key)
-	if err != nil {
-		return nil, err
-	}
-	pem, err := os.ReadFile(ca)
-	if err != nil {
-		return nil, err
-	}
-	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(pem)
-	cfg := &tls.Config{Certificates: []tls.Certificate{c}, MinVersion: tls.VersionTLS13}
-	if server {
-		cfg.ClientCAs = pool
-		cfg.ClientAuth = tls.RequireAndVerifyClientCert
-	} else {
-		cfg.RootCAs = pool
-	}
-	return cfg, nil
-}
-
-func hostOf(u string) (string, error) {
-	p, err := url.Parse(strings.Split(u, ",")[0])
-	if err != nil {
-		return "", err
-	}
-	return p.Host, nil
-}
-
-// memBudget is the memory the node may use.
-var memBudget int64
-
 // sideSize is the side ring's: the failure branches of Txns.
 const sideSize = 16 << 20
 
-// errStopped is run's error once its context is done.
+// errStopped is Run's error once its context is done.
 var errStopped = errors.New("the node was stopped")
 
+// Run runs a node until it fails, or until ctx is done, when it returns
+// nil.
+func Run(ctx context.Context, cfg Config) error {
+	if err := run(ctx, cfg); !errors.Is(err, errStopped) {
+		return err
+	}
+	return nil
+}
+
 // run runs a node until it fails or ctx is done.
-func run(ctx context.Context, logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer, initial,
-	certFile, keyFile, trusted, peerCert, peerKey, peerTrusted string,
-) error {
-	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+func run(ctx context.Context, cfg Config) error {
+	if err := cfg.check(); err != nil {
 		return err
 	}
-	cliTLS, err := loadTLS(certFile, keyFile, trusted, true)
-	if err != nil {
+	logger := cfg.Logger
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return err
 	}
+	cliTLS := cfg.ClientTLS.Clone()
 	cliTLS.NextProtos = []string{"h2", "http/1.1"}
 	// A client that offers HTTP/1.1, such as curl or the bench's metrics
 	// scraper, gets it; gRPC clients offer only h2.
@@ -176,45 +107,20 @@ func run(ctx context.Context, logger *log.Logger, name, dataDir, listenClient, a
 		}
 		return nil, nil
 	}
-	peerSrvTLS, err := loadTLS(peerCert, peerKey, peerTrusted, true)
-	if err != nil {
-		return err
+	n := &node{
+		id: cfg.ID, clusterID: cfg.ClusterID, peersOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{},
+		ckptDir: filepath.Join(cfg.DataDir, "ckpt"), confState: &pb.ConfState{},
 	}
-	peerCliTLS, err := loadTLS(peerCert, peerKey, peerTrusted, false)
-	if err != nil {
-		return err
-	}
-	n := &node{clusterID: 0x7769726531, peersOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{}, ckptDir: filepath.Join(dataDir, "ckpt"), confState: &pb.ConfState{}}
 	var peers []raft.Peer
-	for i, part := range strings.Split(initial, ",") {
-		nm, u, ok := strings.Cut(part, "=")
-		if !ok {
-			return fmt.Errorf("bad --initial-cluster %q", initial)
-		}
-		addr, err := hostOf(u)
+	for _, m := range cfg.Members {
+		mem, err := m.member(cfg.ID == m.ID)
 		if err != nil {
 			return err
 		}
-		m := member{id: uint64(i + 1), name: nm, peerURL: u, peerAddr: addr}
-		host, port, err := net.SplitHostPort(addr)
-		if err != nil {
-			return fmt.Errorf("bad peer URL %q: %w", u, err)
-		}
-		pn, err := strconv.Atoi(port)
-		if err != nil {
-			return fmt.Errorf("bad peer URL %q: %w", u, err)
-		}
-		m.cliURL = fmt.Sprintf("https://%s:%d", host, pn-1)
-		if nm == name {
-			n.id = m.id
-			m.cliURL = advClient
-		}
-		n.members = append(n.members, m)
-		peers = append(peers, raft.Peer{ID: m.id})
+		n.members = append(n.members, mem)
+		peers = append(peers, raft.Peer{ID: m.ID})
 	}
-	if n.id == 0 {
-		return fmt.Errorf("--name %q is not in --initial-cluster", name)
-	}
+	var err error
 	if n.st, err = newStore(); err != nil {
 		return err
 	}
@@ -238,13 +144,13 @@ func run(ctx context.Context, logger *log.Logger, name, dataDir, listenClient, a
 	if err != nil {
 		return err
 	}
-	if n.wal, err = openWAL(filepath.Join(dataDir, "wal"), from, n.storage.restore); err != nil {
+	if n.wal, err = openWAL(filepath.Join(cfg.DataDir, "wal"), from, n.storage.restore); err != nil {
 		return err
 	}
 	n.storage.log = n.wal
 	n.st.log = n.wal
 	n.wal.durableHS = n.storage.hs
-	n.st.setBudget(memBudget, 2*ringSize+sideSize+stageSize)
+	n.st.setBudget(cfg.MemoryBudget, 2*ringSize+sideSize+stageSize)
 	n.limitGo()
 	// The hard state the checkpoint's pointer kept may be older than the
 	// checkpoint: what it holds is committed.
@@ -256,7 +162,7 @@ func run(ctx context.Context, logger *log.Logger, name, dataDir, listenClient, a
 	if err != nil {
 		return err
 	}
-	if n.storage.lastIndex() == 0 {
+	if n.storage.lastIndex() == 0 && n.storage.snap == nil {
 		if err := n.rn.Bootstrap(peers); err != nil {
 			return err
 		}
@@ -264,7 +170,7 @@ func run(ctx context.Context, logger *log.Logger, name, dataDir, listenClient, a
 		logger.Printf("recovered the log: entries to %d, hard state term %d commit %d", n.storage.lastIndex(), n.term, n.commit)
 	}
 
-	l := &loop{n: n, redials: map[uint64]chan struct{}{}, logger: logger, lastAt: time.Now(), peerTLS: peerCliTLS}
+	l := &loop{n: n, redials: map[uint64]chan struct{}{}, logger: logger, lastAt: time.Now(), peerTLS: cfg.PeerClientTLS}
 	n.shell = l
 	if l.epfd, err = unix.EpollCreate1(unix.EPOLL_CLOEXEC); err != nil {
 		return err
@@ -278,43 +184,38 @@ func run(ctx context.Context, logger *log.Logger, name, dataDir, listenClient, a
 	if err := unix.EpollCtl(l.epfd, unix.EPOLL_CTL_ADD, n.wal.wakeFD, &unix.EpollEvent{Events: unix.EPOLLIN, Fd: evFsync}); err != nil {
 		return err
 	}
-
-	cliAddr, err := hostOf(listenClient)
-	if err != nil {
-		return err
-	}
-	peerAddr, err := hostOf(listenPeer)
-	if err != nil {
-		return err
-	}
-	cl, err := net.Listen("tcp", cliAddr)
-	if err != nil {
-		return err
-	}
-	pl, err := net.Listen("tcp", peerAddr)
-	if err != nil {
-		return err
-	}
 	l.ctx = ctx
-	defer l.shut(cl, pl)
+	defer l.shut(slices.Concat(cfg.ClientListeners, cfg.PeerListeners)...)
 	go func() {
 		<-ctx.Done()
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		l.wake()
 	}()
-	go l.accept(cl, cliTLS, kindClient, logger)
-	go l.accept(pl, peerSrvTLS, kindPeerIn, logger)
+	for _, ln := range cfg.ClientListeners {
+		go l.accept(ln, cliTLS, kindClient, logger)
+	}
+	for _, ln := range cfg.PeerListeners {
+		go l.accept(ln, cfg.PeerServerTLS, kindPeerIn, logger)
+	}
 	for _, m := range n.members {
 		if m.id == n.id {
 			continue
 		}
 		ch := make(chan struct{}, 1)
 		l.redials[m.id] = ch
-		go l.dial(m, peerCliTLS, ch)
+		go l.dial(m, cfg.PeerClientTLS, ch)
 	}
-	logger.Printf("node %s (id %d) up: clients %s, peers %s", name, n.id, cliAddr, peerAddr)
+	logger.Printf("node %s (id %d) up: clients %v, peers %v", cfg.Name, n.id, addrs(cfg.ClientListeners), addrs(cfg.PeerListeners))
 	return l.run()
+}
+
+func addrs(lns []net.Listener) []string {
+	var out []string
+	for _, ln := range lns {
+		out = append(out, ln.Addr().String())
+	}
+	return out
 }
 
 func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.Logger) {
