@@ -1,0 +1,64 @@
+package wl
+
+import (
+	"bytes"
+	"os"
+	"runtime/metrics"
+	"strconv"
+	"unsafe"
+)
+
+// memStats is where the node's memory goes, for the loop's log: what the
+// kernel holds for it, Go's share, and the store's tables outside Go's
+// heap.
+type memStats struct {
+	rss                         int64 // resident, as /proc/self/statm says
+	goTotal, goLive, goGoal     int64 // Go's mapped memory, its live heap after the last collection, and the next collection's goal
+	keys, hash, hist, arena     int64
+	slabTop, slabUsed, tree, ch int64
+}
+
+var memSamples = []metrics.Sample{
+	{Name: "/memory/classes/total:bytes"},
+	{Name: "/memory/classes/heap/released:bytes"},
+	{Name: "/gc/heap/live:bytes"},
+	{Name: "/gc/heap/goal:bytes"},
+}
+
+func (n *node) memStats() memStats {
+	metrics.Read(memSamples)
+	st := n.st
+	m := memStats{
+		rss:      residentBytes(),
+		goTotal:  int64(memSamples[0].Value.Uint64() - memSamples[1].Value.Uint64()),
+		goLive:   int64(memSamples[2].Value.Uint64()),
+		goGoal:   int64(memSamples[3].Value.Uint64()),
+		keys:     int64(st.nkeys) * int64(unsafe.Sizeof(keyEnt{})),
+		hash:     int64(len(st.hash)) * 8,
+		hist:     int64(st.nhist) * int64(unsafe.Sizeof(histEnt{})),
+		arena:    int64(st.karena.top),
+		slabTop:  int64(st.slab.top),
+		slabUsed: st.slab.used,
+		tree:     st.tree.bytes(),
+		ch:       int64(cap(st.changes)) * int64(unsafe.Sizeof(change{})),
+	}
+	return m
+}
+
+// residentBytes reads the process's resident memory, or -1 where /proc
+// does not tell.
+func residentBytes() int64 {
+	b, err := os.ReadFile("/proc/self/statm")
+	if err != nil {
+		return -1
+	}
+	f := bytes.Fields(b)
+	if len(f) < 2 {
+		return -1
+	}
+	pages, err := strconv.ParseInt(string(f[1]), 10, 64)
+	if err != nil {
+		return -1
+	}
+	return pages * int64(os.Getpagesize())
+}
