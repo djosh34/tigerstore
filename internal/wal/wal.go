@@ -64,6 +64,11 @@ type FS interface {
 	Create(name string) (File, error)
 	// Open opens an existing file for reading and appending.
 	Open(name string) (File, error)
+	// OpenLog opens an existing segment for the log's appends. Where the
+	// file system allows, each WriteAt is durable once it returns, and
+	// Sync only makes a truncation durable (osfs, O_DIRECT and O_DSYNC);
+	// elsewhere it is Open.
+	OpenLog(name string) (File, error)
 	// Remove deletes a file. The removal only survives a crash after SyncDir.
 	Remove(name string) error
 	// Rename gives file oldName the name newName, replacing any file of
@@ -412,7 +417,13 @@ func open(fs FS, drop bool) (*WAL, *Recovered, error) {
 			w.sizes[seq] = good
 			continue
 		}
-		w.seg, w.size, w.copied = f, good, true
+		// The log appends to the newest segment through a file of its
+		// own (FS.OpenLog).
+		lf, err := fs.OpenLog(name)
+		if err = errors.Join(err, f.Close()); err != nil {
+			return nil, nil, err
+		}
+		w.seg, w.size, w.copied = lf, good, true
 	}
 	if err := w.check(first); err != nil {
 		return nil, nil, errors.Join(err, w.Close())
@@ -1137,7 +1148,7 @@ func (w *WAL) Place() error {
 	if err := w.fs.Rename(nextName(w.seq), segmentName(w.seq)); err != nil {
 		return err
 	}
-	f, err := w.fs.Open(segmentName(w.seq))
+	f, err := w.fs.OpenLog(segmentName(w.seq))
 	if err != nil {
 		return err
 	}

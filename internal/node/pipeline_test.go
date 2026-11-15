@@ -42,6 +42,8 @@ func (d *segmentFS) Open(name string) (wal.File, error) {
 	return d.seg, nil
 }
 
+func (d *segmentFS) OpenLog(name string) (wal.File, error) { return d.Open(name) }
+
 // syncNode is a node whose log is on a segmentFS, and the log's segment.
 func syncNode(t *testing.T, failAt int) (*Node, *syncFile) {
 	t.Helper()

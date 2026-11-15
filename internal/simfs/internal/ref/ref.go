@@ -588,6 +588,9 @@ func (d *Disk) Create(name string) (wal.File, error) {
 }
 
 // Open opens an existing file.
+// OpenLog is Open: the reference has no Direct.
+func (d *Disk) OpenLog(name string) (wal.File, error) { return d.Open(name) }
+
 func (d *Disk) Open(name string) (wal.File, error) {
 	if err := d.fault(OpOpen, name); err != nil {
 		return nil, err

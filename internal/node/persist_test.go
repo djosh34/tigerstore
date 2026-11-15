@@ -210,6 +210,14 @@ func (fs *heldFS) Open(name string) (wal.File, error) {
 	return &heldFile{File: f, fs: fs, number: segment(name)}, nil
 }
 
+func (fs *heldFS) OpenLog(name string) (wal.File, error) {
+	f, err := fs.FS.OpenLog(name)
+	if err != nil {
+		return nil, err
+	}
+	return &heldFile{File: f, fs: fs, number: segment(name)}, nil
+}
+
 func (fs *heldFS) SyncDir() error {
 	if err := fs.at("syncdir", int(fs.newest.Load()), 0); err != nil {
 		return err

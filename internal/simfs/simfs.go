@@ -174,6 +174,12 @@ type Disk struct {
 	// write past it stores what fits and fails with ErrNoSpace.
 	Capacity int
 
+	// Direct makes the writes of files opened with OpenLog durable as
+	// they return, as osfs's O_DIRECT and O_DSYNC make them: each is a
+	// write and a sync of the file. Without it OpenLog is Open, a disk
+	// that may keep less, which the simulator runs the log on.
+	Direct bool
+
 	// short, when set, makes the next write a short one, and failSync the
 	// next sync fail after part of the writes reached the medium.
 	short, failSync *rand.Rand
@@ -714,6 +720,18 @@ func (d *Disk) Open(name string) (wal.File, error) {
 	return &Handle{d: d, f: f, name: name}, nil
 }
 
+// OpenLog opens an existing segment for the log's appends: with Direct,
+// each write is durable as it returns.
+func (d *Disk) OpenLog(name string) (wal.File, error) {
+	f, err := d.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	h := f.(*Handle)
+	h.direct = d.Direct
+	return h, nil
+}
+
 // Rename gives file oldName the name newName, replacing any file of that
 // name. Like a creation, it only survives a crash after SyncDir.
 func (d *Disk) Rename(oldName, newName string) error {
@@ -767,6 +785,8 @@ type Handle struct {
 	f      *file
 	name   string
 	closed bool
+	// direct syncs each write (Disk.Direct).
+	direct bool
 }
 
 var errClosed = errors.New("simfs: file is closed")
@@ -887,6 +907,9 @@ func (h *Handle) WriteAt(p []byte, off int64) (int, error) {
 	}
 	if h.d.Trace != nil {
 		h.d.tracef("write %s (file %d) at %d: %d of %d bytes, crc %08x, %v", h.name, h.f.id, off, n, len(p), crc32.ChecksumIEEE(p[:n]), err)
+	}
+	if h.direct && err == nil {
+		err = h.Sync()
 	}
 	return n, err
 }

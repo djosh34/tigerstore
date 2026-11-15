@@ -67,8 +67,9 @@ func (d *concurrentDisk) file(name string, open func(string) (wal.File, error)) 
 	})
 }
 
-func (d *concurrentDisk) Create(name string) (wal.File, error) { return d.file(name, d.d.Create) }
-func (d *concurrentDisk) Open(name string) (wal.File, error)   { return d.file(name, d.d.Open) }
+func (d *concurrentDisk) Create(name string) (wal.File, error)  { return d.file(name, d.d.Create) }
+func (d *concurrentDisk) Open(name string) (wal.File, error)    { return d.file(name, d.d.Open) }
+func (d *concurrentDisk) OpenLog(name string) (wal.File, error) { return d.file(name, d.d.OpenLog) }
 
 func (d *concurrentDisk) Remove(name string) error {
 	return serialErr(d, func() error {

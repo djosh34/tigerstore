@@ -410,8 +410,9 @@ func (d *memDisk) open(name string, open func(string) (wal.File, error)) (wal.Fi
 	return &memFile{d: d, f: f}, nil
 }
 
-func (d *memDisk) Create(name string) (wal.File, error) { return d.open(name, d.d.Create) }
-func (d *memDisk) Open(name string) (wal.File, error)   { return d.open(name, d.d.Open) }
+func (d *memDisk) Create(name string) (wal.File, error)  { return d.open(name, d.d.Create) }
+func (d *memDisk) Open(name string) (wal.File, error)    { return d.open(name, d.d.Open) }
+func (d *memDisk) OpenLog(name string) (wal.File, error) { return d.open(name, d.d.OpenLog) }
 
 func (d *memDisk) Remove(name string) error {
 	d.mu.Lock()

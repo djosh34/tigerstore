@@ -160,6 +160,10 @@ func (d *disk) Open(name string) (wal.File, error) {
 	return d.open(simfs.OpOpen, name, d.p.n.disk.Open)
 }
 
+func (d *disk) OpenLog(name string) (wal.File, error) {
+	return d.open(simfs.OpOpen, name, d.p.n.disk.OpenLog)
+}
+
 func (d *disk) Remove(name string) error {
 	return d.call(simfs.OpRemove, name, func() error { return d.p.n.disk.Remove(name) })
 }

@@ -718,3 +718,36 @@ func TestShortValueReadNamesTheFile(t *testing.T) {
 		t.Fatalf("short read: %v, want %s", err, want)
 	}
 }
+
+// TestDirectFlushSurvivesCrash runs the log on a disk whose segments the
+// log opens with writes durable as they return (simfs.Disk.Direct, as
+// osfs's O_DIRECT and O_DSYNC): every entry a Flush wrote survives a crash
+// without a Sync, across segments, and an Append not yet flushed does not.
+func TestDirectFlushSurvivesCrash(t *testing.T) {
+	for seed := range uint64(20) {
+		d := simfs.New()
+		d.Direct = true
+		w, _ := open(t, d)
+		w.SetSegmentBytes(256)
+		var want strings.Builder
+		for i := range uint64(30) {
+			e := entry(1, i+1, fmt.Sprintf("v%02d", i))
+			w.Append(nil, []*raftpb.Entry{e})
+			fmt.Fprintf(&want, "%d/1:v%02d ", i+1, i)
+			if err := w.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			if w.Full() {
+				if err := w.Sync(); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		w.Append(nil, []*raftpb.Entry{entry(1, 31, "lost")})
+		d.Crash(rand.New(rand.NewPCG(seed, 5)))
+		w, rec := open(t, d)
+		if got := describe(read(t, w, rec)); got != want.String() {
+			t.Fatalf("seed %d: entries = %s, want %s", seed, got, want.String())
+		}
+	}
+}
