@@ -93,7 +93,9 @@ func WriteSnapshot(w io.Writer, s *SnapStore) error {
 	}
 	out(clientSnapHead(s.Cluster, ckptMeta{index: s.Index, term: s.Term, rev: s.Rev}), false)
 	b := append([]byte(nil), ckptMagic...)
-	for _, v := range []uint64{s.Index, s.Term, uint64(s.Rev), uint64(s.CompactRev)} {
+	// Main's store names no compaction at revision 0, so a compacted
+	// revision above 0 says whether it compacted.
+	for _, v := range []uint64{s.Index, s.Term, uint64(s.Rev), uint64(s.CompactRev), boolUvarint(s.CompactRev > 0)} {
 		b = binary.AppendUvarint(b, v)
 	}
 	cs, err := proto.Marshal(&pb.ConfState{})

@@ -370,3 +370,38 @@ func TestCutPoint(t *testing.T) {
 		}
 	}
 }
+
+// A checkpoint keeps whether its store compacted, which tells one at
+// revision 0 from none: a store started from it refuses a second
+// Compact at 0, as etcd's does, and one never compacted takes a first.
+func TestACheckpointKeepsACompactionAtZero(t *testing.T) {
+	for _, compacted := range []bool{true, false} {
+		n, l := ckptNode(t)
+		putValue(t, n.st, l, "/a", "a")
+		if compacted {
+			n.st.compact(0)
+		}
+		writeCkpt(t, n, 7)
+		f, err := os.Open(filepath.Join(n.ckptDir, ckptName(7)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := newStore()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := loadCkpt(f, 1, loaded); err != nil {
+			t.Fatal(err)
+		}
+		_ = f.Close()
+		n.st = loaded
+		got := rejected(n.applyCompact(appendVarintField(nil, 1, 0), nil, nil))
+		want := ""
+		if compacted {
+			want = msgCompacted
+		}
+		if got != want {
+			t.Fatalf("compacted at 0 before the checkpoint %v: a Compact at 0 after it got %q, want %q", compacted, got, want)
+		}
+	}
+}

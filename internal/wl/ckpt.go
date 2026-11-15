@@ -55,7 +55,7 @@ func ckptGenOf(off int64) int { return int(off>>61) & 1 }
 func ckptOff(gen int, at int64) int64 { return ckptBit | int64(gen)<<61 | at }
 
 var (
-	ckptMagic = []byte("tsckpt\x00\x02")
+	ckptMagic = []byte("tsckpt\x00\x03")
 	ptrMagic  = []byte("tsptr\x00\x00\x02")
 )
 
@@ -98,6 +98,9 @@ type ckptMeta struct {
 	cs              *pb.ConfState
 	members         ckptMembers
 	rev, compactRev int64
+	// compacted says whether a compaction applied, which tells one at
+	// revision 0 from none (store.compacted).
+	compacted bool
 }
 
 func ckptName(index uint64) string { return fmt.Sprintf("%016x.ckpt", index) }
@@ -316,7 +319,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 	st.ckpts[gen] = f
 	st.hold()
 	r := &ckptRun{
-		meta:     ckptMeta{index: index, term: term, cs: proto.Clone(n.confState).(*pb.ConfState), rev: st.rev, compactRev: st.compactRev},
+		meta:     ckptMeta{index: index, term: term, cs: proto.Clone(n.confState).(*pb.ConfState), rev: st.rev, compactRev: st.compactRev, compacted: st.compacted},
 		gen:      gen,
 		logFrom:  logFrom,
 		end:      st.nkeys,
@@ -579,7 +582,7 @@ func (n *node) encodeChunk(r *ckptRun) (*ckptChunk, error) {
 }
 
 // header is the file's start: the magic, index, term, revision,
-// compacted revision, the ConfState, the members, the leases, and the
+// compacted revision, whether a compaction applied, the ConfState, the members, the leases, and the
 // length of the values that follow.
 func (r *ckptRun) header() ([]byte, error) {
 	b := append([]byte(nil), ckptMagic...)
@@ -587,6 +590,7 @@ func (r *ckptRun) header() ([]byte, error) {
 	b = binary.AppendUvarint(b, r.meta.term)
 	b = binary.AppendUvarint(b, uint64(r.meta.rev))
 	b = binary.AppendUvarint(b, uint64(r.meta.compactRev))
+	b = binary.AppendUvarint(b, boolUvarint(r.meta.compacted))
 	cs, err := proto.Marshal(r.meta.cs)
 	if err != nil {
 		return nil, err
@@ -778,13 +782,13 @@ func loadCkpt(f *os.File, gen int, st *store) (ckptMeta, error) {
 	if err != nil || string(magic) != string(ckptMagic) {
 		return m, fmt.Errorf("%s: %w: no magic", f.Name(), errCkptCorrupt)
 	}
-	var v [4]uint64
+	var v [5]uint64
 	for i := range v {
 		if v[i], err = cr.uvarint(); err != nil {
 			return m, err
 		}
 	}
-	m.index, m.term, m.rev, m.compactRev = v[0], v[1], int64(v[2]), int64(v[3])
+	m.index, m.term, m.rev, m.compactRev, m.compacted = v[0], v[1], int64(v[2]), int64(v[3]), v[4] != 0
 	csLen, err := cr.uvarint()
 	if err != nil {
 		return m, err
@@ -840,7 +844,7 @@ func loadCkpt(f *os.File, gen int, st *store) (ckptMeta, error) {
 			if binary.LittleEndian.Uint32(sum) != want {
 				return m, fmt.Errorf("%s: %w: its CRC", f.Name(), errCkptCorrupt)
 			}
-			st.rev, st.compactRev, st.compacted = m.rev, m.compactRev, m.compactRev > 0
+			st.rev, st.compactRev, st.compacted = m.rev, m.compactRev, m.compacted
 			return m, nil
 		case ckptKey:
 			fid, err := cr.uvarint()
@@ -1171,7 +1175,7 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 	if err := copyBytes(uint64(len(ckptMagic))); err != nil {
 		return err
 	}
-	for range 4 {
+	for range 5 { // index, term, revision, compacted revision, whether compacted
 		if _, err := uv(); err != nil {
 			return err
 		}

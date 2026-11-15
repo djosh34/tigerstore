@@ -64,11 +64,10 @@ type logReader interface {
 type store struct {
 	rev        int64
 	compactRev int64
-	// compacted is set once a compaction applied. etcd's compacted
-	// revision starts at -1, so its first Compact may name revision 0;
-	// this store's starts at 0 and tells the two apart by it. A
-	// checkpoint keeps only the revision: a store compacted at 0 alone
-	// forgets that it was when it starts from one.
+	// compacted is set once a compaction applied, and kept in
+	// checkpoints. etcd's compacted revision starts at -1, so its first
+	// Compact may name revision 0; this store's starts at 0 and tells the
+	// two apart by it.
 	compacted bool
 	// prevCompactRev is the compacted revision before the last
 	// compaction, which HashKV at the compacted one names.

@@ -255,3 +255,11 @@ func parseCompare(m []byte, c *compare) error {
 	}
 	return nil
 }
+
+// boolUvarint is b as a uvarint field's value: 1 or 0.
+func boolUvarint(b bool) uint64 {
+	if b {
+		return 1
+	}
+	return 0
+}
