@@ -45,6 +45,7 @@ const (
 	kDefragment
 	kHash
 	kHashKV
+	kDowngrade
 	// kSide is the first of the side methods' kinds (side.go).
 	kSide
 	kinds = kSide + maxSideMethods // how many kinds there are
@@ -75,6 +76,7 @@ var paths = map[string]uint8{
 	"/etcdserverpb.Maintenance/Defragment": kDefragment,
 	"/etcdserverpb.Maintenance/Hash":       kHash,
 	"/etcdserverpb.Maintenance/HashKV":     kHashKV,
+	"/etcdserverpb.Maintenance/Downgrade":  kDowngrade,
 }
 
 // stream is one HTTP/2 stream of a client.

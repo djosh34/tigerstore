@@ -132,6 +132,8 @@ type node struct {
 	quota        int64
 	noSpaceAsked uint64
 	compactor    compactor
+	// downgrade is the minor version a downgrade is on to, 0 for none.
+	downgrade int64
 	// gs is what the loop counts for the metrics; extensive is --metrics
 	// extensive. quotaBytes is --quota-backend-bytes.
 	gs           loopStats
@@ -318,6 +320,8 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		n.snapshotRequest(c, s)
 	case kMoveLeader:
 		return n.moveLeader(c, s, msg)
+	case kDowngrade:
+		return n.downgradeRequest(c, s, msg)
 	case kHash, kHashKV:
 		return n.hashRequest(c, s, msg)
 	case kDefragment:
@@ -439,6 +443,7 @@ func (n *node) replyErrorH(h handle, code int, msg string) {
 const (
 	codeInvalidArgument    = 3
 	codeFailedPrecondition = 9
+	codeUnknown            = 2
 	codeOutOfRange         = 11
 	codeUnimplemented      = 12
 	codeInternal           = 13
@@ -456,7 +461,10 @@ func (n *node) replyStatus(c *client, s *stream) {
 	for _, a := range n.alarms {
 		size += sizeBytesField(8, len(a.String()))
 	}
-	size += sizeVarintField(12, uint64(max(n.quota, 0)))
+	size += sizeBytesField(11, len(n.storageVersion())) + sizeVarintField(12, uint64(max(n.quota, 0)))
+	if info := n.downgradeInfo(); len(info) > 0 {
+		size += sizeBytesField(13, len(info))
+	}
 	var w msgW
 	n.beginReply(c, s, &w, size)
 	n.writeHdr(&w)
@@ -469,7 +477,11 @@ func (n *node) replyStatus(c *client, s *stream) {
 	for _, a := range n.alarms {
 		w.bytesField(8, []byte(a.String()))
 	}
+	w.bytesField(11, []byte(n.storageVersion()))
 	writeVarintNZ(&w, 12, uint64(max(n.quota, 0)))
+	if info := n.downgradeInfo(); len(info) > 0 {
+		w.bytesField(13, info)
+	}
 	n.endReply(c, s, &w)
 }
 

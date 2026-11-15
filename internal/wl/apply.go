@@ -85,6 +85,8 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 			err = n.applyMemberAttrs(req)
 		case kind == kAlarm:
 			err = n.applyAlarm(req, c, s)
+		case kind == kDowngrade:
+			err = n.applyDowngrade(req, c, s)
 		}
 		// A read-only Txn is etcd's to serve without an apply.
 		if op := applyOp(kind); op >= 0 && (kind != kTxn || n.txnWrote) {

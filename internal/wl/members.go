@@ -304,7 +304,7 @@ func (n *node) encodeMembers(b []byte) []byte {
 		b = binary.AppendUvarint(b, a.member)
 		b = binary.AppendUvarint(b, a.typ)
 	}
-	return b
+	return binary.AppendUvarint(b, uint64(n.downgrade))
 }
 
 // ckptMembers is the member list a checkpoint holds, with the raised
@@ -313,6 +313,8 @@ type ckptMembers struct {
 	members []member
 	removed map[uint64]bool
 	alarms  []alarm
+	// downgrade is the minor version a downgrade is on to, 0 for none.
+	downgrade int64
 }
 
 // readMembers reads what encodeMembers wrote.
@@ -361,7 +363,9 @@ func (cr *ckptReader) readMembers() (ckptMembers, error) {
 		}
 		cm.alarms = append(cm.alarms, a)
 	}
-	return cm, nil
+	d, err := cr.uvarint()
+	cm.downgrade = int64(d)
+	return cm, err
 }
 
 // A node that joins a running cluster asks a member for the list first:
