@@ -247,6 +247,18 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 		if len(x.key) == 0 {
 			x.key = []byte{0}
 		}
+		if n.auth.enabled {
+			// etcd checks a watch from a key as the key alone.
+			end := x.end
+			if len(end) == 1 && end[0] == 0 {
+				end = nil
+			}
+			if reason := n.watchAllowed(c, s, x.key, end); reason != "" {
+				n.writeRefused(c, s, reason)
+				n.markDirty(&c.sock)
+				return nil
+			}
+		}
 		if startRev < 0 {
 			n.writeRefused(c, s, msgCompacted)
 			n.markDirty(&c.sock)

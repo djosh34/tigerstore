@@ -887,11 +887,13 @@ func parseTimeout(v string) (time.Duration, bool) {
 var (
 	grpcHeaders = headerBlock(
 		hpack.HeaderField{Name: ":status", Value: "200"},
-		hpack.HeaderField{Name: "content-type", Value: "application/grpc"})
+		hpack.HeaderField{Name: "content-type", Value: "application/grpc"},
+	)
 	gzipHeaders = headerBlock(
 		hpack.HeaderField{Name: ":status", Value: "200"},
 		hpack.HeaderField{Name: "content-type", Value: "application/grpc"},
-		hpack.HeaderField{Name: "grpc-encoding", Value: gzipName})
+		hpack.HeaderField{Name: "grpc-encoding", Value: gzipName},
+	)
 	okTrailers = headerBlock(hpack.HeaderField{Name: "grpc-status", Value: "0"})
 )
 

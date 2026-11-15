@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -13,6 +14,7 @@ import (
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
 
+	"github.com/djosh34/tigerstore/internal/authtoken"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
@@ -58,6 +60,11 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 		return err
 	}
 	cfg.ExtensiveMetrics = ec.Metrics == "extensive"
+	if cfg.JWT, err = authtoken.ParseAuthToken(ec.AuthToken); err != nil {
+		closeListeners(clientLns, pcfg.Listeners, lg)
+		return fmt.Errorf("--auth-token %q: %w", ec.AuthToken, err)
+	}
+	cfg.TokenTTL, cfg.BcryptCost = time.Duration(ec.AuthTokenTTL)*time.Second, int(ec.BcryptCost)
 	cfg.QuotaBackendBytes = ec.QuotaBackendBytes
 	if ec.AutoCompactionMode != "" {
 		compaction, err := node.ParseCompaction(ec.AutoCompactionMode, ec.AutoCompactionRetention)

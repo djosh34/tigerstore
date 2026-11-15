@@ -23,6 +23,7 @@ import (
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
 
+	"github.com/djosh34/tigerstore/internal/authtoken"
 	"github.com/djosh34/tigerstore/internal/bufconn"
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/node"
@@ -39,7 +40,7 @@ type Config struct {
 	BcryptCost int
 	// JWT, if set, makes and checks the auth tokens instead of the
 	// node's simple tokens (--auth-token, ParseAuthToken).
-	JWT *JWT
+	JWT *authtoken.JWT
 	// StopServiceOnDefrag is etcd's StopGRPCServiceOnDefrag feature.
 	StopServiceOnDefrag bool
 	// PeerVersions, if set, reports the peer transport's protocol

@@ -9,6 +9,7 @@ import (
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 
+	"github.com/djosh34/tigerstore/internal/authtoken"
 	etcdmetrics "github.com/djosh34/tigerstore/internal/metrics"
 )
 
@@ -134,6 +135,17 @@ type node struct {
 	compactor    compactor
 	// downgrade is the minor version a downgrade is on to, 0 for none.
 	downgrade int64
+	// sideSecret marks the side calls' own client, which names the
+	// client each call is for (side.go).
+	sideSecret string
+	// auth is the auth store (auth.go); tokens the simple tokens, logins
+	// the Authenticates under way here, jwt what signs and checks JWTs.
+	auth       *authStore
+	tokens     map[string]*simpleToken
+	logins     map[handle]authLogin
+	jwt        *authtoken.JWT
+	tokenTTL   time.Duration
+	bcryptCost int
 	// The version gate (format.go): the cluster's format, the epoch its
 	// members confirm, and this start's run.
 	format      uint8
@@ -267,6 +279,12 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		n.sideRequest(c, s, msg)
 		return nil
 	}
+	if authKind(s.kind) {
+		return n.authRequest(c, s, msg)
+	}
+	if n.auth.enabled && s.kind != kWatch && !n.authAllows(c, s, msg) {
+		return nil
+	}
 	switch s.kind {
 	case kRange, kRangeStream:
 		var r rangeReq
@@ -293,7 +311,7 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		}
 		n.queueRead(mkHandle(c, s.id), s.kind, msg)
 	case kTxn:
-		if err := checkRequest(kTxn, msg, c.identity); err != nil {
+		if err := checkRequest(kTxn, msg, c.identityOf(s)); err != nil {
 			n.reject(c, s, err)
 			return nil
 		}
@@ -301,9 +319,10 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 			n.refuseNoSpace(c, s)
 			return nil
 		}
+		n.addCaller(c, s)
 		n.addTxn(mkHandle(c, s.id), s, msg)
 	case kPut, kDel, kCompact, kLeaseGrant, kLeaseRevoke:
-		if err := checkRequest(s.kind, msg, c.identity); err != nil {
+		if err := checkRequest(s.kind, msg, c.identityOf(s)); err != nil {
 			n.reject(c, s, err)
 			return nil
 		}
@@ -311,6 +330,7 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 			n.refuseNoSpace(c, s)
 			return nil
 		}
+		n.addCaller(c, s)
 		n.addOp(mkHandle(c, s.id), s.kind, msg)
 	case kLeaseKeepAlive:
 		n.leaseKeepAlive(c, s, msg)

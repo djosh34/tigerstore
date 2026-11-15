@@ -1,4 +1,4 @@
-package server
+package authtoken
 
 import (
 	"crypto"
@@ -106,7 +106,7 @@ func TestAuthTokenOptions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%q: %v", c.opts, err)
 		}
-		tok, err := j.sign("alice", 7)
+		tok, err := j.Sign("alice", 7)
 		if c.verifyOnly {
 			if !errors.Is(err, errVerifyOnly) {
 				t.Fatalf("%q signs: %v", c.opts, err)
@@ -116,10 +116,10 @@ func TestAuthTokenOptions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%q: %v", c.opts, err)
 		}
-		if user, rev, err := j.info(tok); err != nil || user != "alice" || rev != 7 {
+		if user, rev, err := j.Info(tok); err != nil || user != "alice" || rev != 7 {
 			t.Fatalf("%q: info %q %d %v", c.opts, user, rev, err)
 		}
-		if _, _, err := j.info(breakSignature(tok)); !errors.Is(err, errInvalidToken) {
+		if _, _, err := j.Info(breakSignature(tok)); !errors.Is(err, errInvalidToken) {
 			t.Fatalf("%q takes a token with a broken signature", c.opts)
 		}
 	}
@@ -133,11 +133,11 @@ func TestAuthTokenOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, err := signer.sign("bob", 3)
+	tok, err := signer.Sign("bob", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user, rev, err := checker.info(tok); err != nil || user != "bob" || rev != 3 {
+	if user, rev, err := checker.Info(tok); err != nil || user != "bob" || rev != 3 {
 		t.Fatalf("verify-only: %q %d %v", user, rev, err)
 	}
 	// Another sign method's token does not pass.
@@ -145,7 +145,7 @@ func TestAuthTokenOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := hs.info(tok); !errors.Is(err, errInvalidToken) {
+	if _, _, err := hs.Info(tok); !errors.Is(err, errInvalidToken) {
 		t.Fatal("an HS256 provider takes an ES256 token")
 	}
 	// An expired token does not pass.
@@ -153,11 +153,11 @@ func TestAuthTokenOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old, err := short.sign("bob", 3)
+	old, err := short.Sign("bob", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := hs.info(old); !errors.Is(err, errInvalidToken) {
+	if _, _, err := hs.Info(old); !errors.Is(err, errInvalidToken) {
 		t.Fatal("an expired token passes")
 	}
 	if strings.Count(old, ".") != 2 {
@@ -169,10 +169,10 @@ func TestAuthTokenOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := nop.sign("bob", 1); !errors.Is(err, rpctypes.ErrGRPCAuthFailed) {
+	if _, err := nop.Sign("bob", 1); !errors.Is(err, rpctypes.ErrGRPCAuthFailed) {
 		t.Fatalf("no tokens: %v", err)
 	}
-	if _, _, err := nop.info(tok); !errors.Is(err, errInvalidToken) {
+	if _, _, err := nop.Info(tok); !errors.Is(err, errInvalidToken) {
 		t.Fatal("no tokens takes one")
 	}
 }

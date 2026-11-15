@@ -351,7 +351,12 @@ func (n *node) encodeMembers(b []byte) []byte {
 	}
 	b = binary.AppendUvarint(b, uint64(n.downgrade))
 	b = binary.AppendUvarint(b, uint64(n.format))
-	return binary.AppendUvarint(b, n.formatEpoch)
+	b = binary.AppendUvarint(b, n.formatEpoch)
+	auth := n.auth
+	if auth == nil {
+		auth = newAuthStore()
+	}
+	return auth.encode(b)
 }
 
 // ckptMembers is the member list a checkpoint holds, with the raised
@@ -364,6 +369,7 @@ type ckptMembers struct {
 	downgrade   int64
 	format      uint8
 	formatEpoch uint64
+	auth        *authStore
 }
 
 // takeMembers takes the member list a checkpoint holds.
@@ -372,6 +378,8 @@ func (n *node) takeMembers(cm *ckptMembers) error {
 	n.alarms = cm.alarms
 	n.downgrade = cm.downgrade
 	n.format, n.formatEpoch = cm.format, cm.formatEpoch
+	n.auth = cm.auth
+	clear(n.tokens)
 	n.alarmsChanged()
 	if n.format > maxFormat {
 		return tooOld(n.format)
@@ -435,7 +443,10 @@ func (cr *ckptReader) readMembers() (ckptMembers, error) {
 		return cm, err
 	}
 	cm.format = uint8(min(f, 255))
-	cm.formatEpoch, err = cr.uvarint()
+	if cm.formatEpoch, err = cr.uvarint(); err != nil {
+		return cm, err
+	}
+	cm.auth, err = cr.readAuth()
 	return cm, err
 }
 

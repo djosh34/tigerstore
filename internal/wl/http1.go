@@ -44,6 +44,7 @@ var gatewayHandlers = []func(context.Context, *gw.ServeMux, *grpc.ClientConn) er
 	etcdservergw.RegisterLeaseHandler,
 	etcdservergw.RegisterClusterHandler,
 	etcdservergw.RegisterMaintenanceHandler,
+	etcdservergw.RegisterAuthHandler,
 	v3lockgw.RegisterLockHandler,
 	v3electiongw.RegisterElectionHandler,
 }

@@ -50,6 +50,9 @@ func (n *node) applyBatch(data []byte, index uint64, walOff int64) error {
 		}
 		n.appliedOps = applied[:0]
 	}()
+	// The identity a kCaller op names for the write after it.
+	var caller authInfo
+	named := false
 	for i := range nops {
 		kind := data[p]
 		l := int(binary.LittleEndian.Uint32(data[p+1:]))
@@ -63,10 +66,23 @@ func (n *node) applyBatch(data []byte, index uint64, walOff int64) error {
 		if mine {
 			c, s = n.clientOf(handles[i])
 		}
+		if kind == kCaller {
+			var err error
+			if caller, err = parseCaller(req); err != nil {
+				return err
+			}
+			named = true
+			continue
+		}
+		who, whoNamed := caller, named
+		caller, named = authInfo{}, false
 		var err error
 		n.txnWrote = false
 		if n.noSpace || n.corrupt {
 			err = n.alarmGate(kind, req)
+		}
+		if err == nil && n.auth.enabled {
+			err = n.writeAllowed(kind, req, who, whoNamed)
 		}
 		switch {
 		case err != nil:
@@ -90,6 +106,8 @@ func (n *node) applyBatch(data []byte, index uint64, walOff int64) error {
 			err = n.applyAlarm(req, c, s)
 		case kind == kDowngrade:
 			err = n.applyDowngrade(req, c, s)
+		case kind == kAuthOp:
+			err = n.applyAuthOp(req, index, c, s)
 		}
 		// A read-only Txn is etcd's to serve without an apply.
 		if op := applyOp(kind); op >= 0 && (kind != kTxn || n.txnWrote) {

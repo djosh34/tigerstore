@@ -27,6 +27,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
+	"github.com/djosh34/tigerstore/internal/authtoken"
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/logq"
 	"github.com/djosh34/tigerstore/internal/metrics"
@@ -219,7 +220,7 @@ func start(c *config, lg *zap.Logger) error {
 		return err
 	}
 	pcfg.Metrics = ncfg.Metrics
-	jwt, err := server.ParseAuthToken(ec.AuthToken)
+	jwt, err := authtoken.ParseAuthToken(ec.AuthToken)
 	if err != nil {
 		return fmt.Errorf("--auth-token %q: %w", ec.AuthToken, err)
 	}

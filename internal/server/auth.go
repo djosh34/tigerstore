@@ -164,7 +164,7 @@ func authenticate(ctx context.Context, s *Server, caller core.Caller, b []byte) 
 		if !ok {
 			return nil, status.Errorf(codes.Internal, "Authenticate answered %T", applied.Resp)
 		}
-		if resp.Token, err = s.cfg.JWT.sign(r.Name, uint64(applied.Rev)); err != nil {
+		if resp.Token, err = s.cfg.JWT.Sign(r.Name, uint64(applied.Rev)); err != nil {
 			return nil, toStatus(err)
 		}
 		return resp, nil

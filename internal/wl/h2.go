@@ -46,6 +46,29 @@ const (
 	kHash
 	kHashKV
 	kDowngrade
+	// The Auth service's methods (authapi.go), in authMethods' order.
+	kAuthEnable
+	kAuthDisable
+	kAuthStatus
+	kAuthenticate
+	kUserAdd
+	kUserGet
+	kUserList
+	kUserDelete
+	kUserChangePassword
+	kUserGrantRole
+	kUserRevokeRole
+	kRoleAdd
+	kRoleGet
+	kRoleList
+	kRoleDelete
+	kRoleGrantPermission
+	kRoleRevokePermission
+	// kAuthOp is an auth request in a batch: an InternalRaftRequest.
+	// kCaller, while auth is on, names the user and auth revision of the
+	// write that follows it in its batch.
+	kAuthOp
+	kCaller
 	// kSide is the first of the side methods' kinds (side.go).
 	kSide
 	kinds = kSide + maxSideMethods // how many kinds there are
@@ -79,6 +102,12 @@ var paths = map[string]uint8{
 	"/etcdserverpb.Maintenance/Downgrade":  kDowngrade,
 }
 
+func init() {
+	for kind, m := range authMethods {
+		paths[m.path] = kind
+	}
+}
+
 // stream is one HTTP/2 stream of a client.
 type stream struct {
 	id   uint32
@@ -104,6 +133,11 @@ type stream struct {
 	// failAt is fail's absolute position in the side ring, -1 if it is on
 	// the heap.
 	failAt int64
+	// token is the call's auth token, from its token header. A side
+	// call's (byCaller) is for the client of caller's certificate name.
+	token    string
+	caller   string
+	byCaller bool
 }
 
 const streamSlots = 1 << 13
@@ -118,26 +152,34 @@ type client struct {
 	hdrCache map[string]hdrInfo
 	hdrEnc   string // the grpc-encoding of the block being decoded
 	hdrPath  string
-	inBlock  bool
-	blockSid uint32
-	blockEnd bool
-	block    []byte
-	unacked  int
-	node     *node
-	flow     flow
+	hdrToken string // the auth token of the block being decoded
+	// hdrCaller is the side caller header of the block (side.go).
+	hdrCaller string
+	inBlock   bool
+	blockSid  uint32
+	blockEnd  bool
+	block     []byte
+	unacked   int
+	node      *node
+	flow      flow
 	// identity is what the name of the client's certificate adds to the
-	// size of its writes as etcd counts it.
+	// size of its writes as etcd counts it; cn is that name.
 	identity int
+	cn       string
 }
 
 func newClient(h *handoff, stats *counters) *client {
-	c := &client{sock: *newSock(h, stats), slots: make([]stream, streamSlots), hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn)}
+	c := &client{sock: *newSock(h, stats), slots: make([]stream, streamSlots), hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn), cn: h.cn}
 	c.dec = hpack.NewDecoder(4096, func(f hpack.HeaderField) {
 		switch f.Name {
 		case ":path":
 			c.hdrPath = f.Value
 		case "grpc-encoding":
 			c.hdrEnc = f.Value
+		case "token", "authorization":
+			c.hdrToken = f.Value
+		case sideCallerHeader:
+			c.hdrCaller = f.Value
 		}
 	})
 	return c
@@ -353,14 +395,17 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 		info, ok = c.hdrCache[string(block)]
 	}
 	if !ok {
-		c.hdrPath, c.hdrEnc = "", ""
+		c.hdrPath, c.hdrEnc, c.hdrToken, c.hdrCaller = "", "", "", ""
 		if _, err := c.dec.Write(block); err != nil {
 			return err
 		}
 		if err := c.dec.Close(); err != nil {
 			return err
 		}
-		info.kind = paths[c.hdrPath]
+		info.kind, info.token = paths[c.hdrPath], c.hdrToken
+		if name, ok := strings.CutPrefix(c.hdrCaller, n.sideSecret+":"); ok && c.hdrCaller != "" {
+			info.caller, info.byCaller = name, true
+		}
 		switch c.hdrEnc {
 		case "", "identity":
 		case "gzip":
@@ -378,7 +423,8 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 	}
 	kind := info.kind
 	s := c.newStream(sid, kind)
-	s.gzip = info.gzip
+	s.gzip, s.token = info.gzip, info.token
+	s.caller, s.byCaller = info.caller, info.byCaller
 	if kind != kUnknown {
 		n.callStarted(s)
 	}
@@ -407,6 +453,11 @@ type hdrInfo struct {
 	kind   uint8
 	gzip   bool // gzip, else identity
 	badEnc bool // an encoding this server does not know
+	token  string
+	// caller is the certificate name of the client a side call is for,
+	// when byCaller.
+	caller   string
+	byCaller bool
 }
 
 // unknownMethod is grpc-go's answer to a path no service serves.

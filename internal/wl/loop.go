@@ -23,6 +23,7 @@ import (
 	etcdmetrics "github.com/djosh34/tigerstore/internal/metrics"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/sys/unix"
 )
 
@@ -130,9 +131,12 @@ func run(ctx context.Context, cfg Config) error {
 		id: cfg.ID, clusterID: cfg.ClusterID, peersOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{},
 		ckptDir: filepath.Join(cfg.DataDir, "ckpt"), confState: &pb.ConfState{},
 		self:   member{id: cfg.ID, name: cfg.Name, clientURLs: cfg.ClientURLs},
-		format: baseFormat,
+		format: baseFormat, auth: newAuthStore(), tokens: map[string]*simpleToken{}, logins: map[handle]authLogin{},
 	}
 	n.startRun(run)
+	if n.sideSecret, err = newSideSecret(); err != nil {
+		return err
+	}
 	// A new cluster's log starts with a ConfChange for each member, which
 	// the apply makes the member list; a node that joins dials the members
 	// it was told of until it has the list.
@@ -226,6 +230,7 @@ func run(ctx context.Context, cfg Config) error {
 	}
 	n.extensive = cfg.ExtensiveMetrics
 	n.quota = cmp.Or(cfg.QuotaBackendBytes, defaultQuota)
+	n.jwt, n.tokenTTL, n.bcryptCost = cfg.JWT, cmp.Or(cfg.TokenTTL, defaultTokenTTL), cmp.Or(cfg.BcryptCost, bcrypt.DefaultCost)
 	n.compactor = newCompactor(cfg.AutoCompactPeriod, cfg.AutoCompactRevisions, time.Now())
 	n.wal.prom.Store(set)
 	n.prom = set
@@ -453,6 +458,18 @@ func (l *loop) post(fn func() error) {
 }
 
 func (l *loop) logf(format string, args ...any) { l.logger.Printf(format, args...) }
+
+// offLoop runs work in a goroutine of its own, and what it returns on the
+// loop.
+func (l *loop) offLoop(work func() func()) {
+	go func() {
+		done := work()
+		l.post(func() error {
+			done()
+			return nil
+		})
+	}()
+}
 
 // healthRead is the read of etcd's health checks, made on the loop as
 // etcd makes it in its server: a serializable one reads the store as it
@@ -815,6 +832,7 @@ func (l *loop) run() error {
 			n.checkMoves()
 			n.autoCompact()
 			n.publish()
+			n.expireTokens()
 			if err := n.maybeCkpt(); err != nil {
 				return err
 			}

@@ -126,7 +126,7 @@ func (c *conn) callerOf(st *stream) core.Caller {
 		// A token that does not verify leaves the caller without a user,
 		// which the node answers as an invalid token.
 		caller.Verified = true
-		if user, rev, err := t.info(caller.Token); err == nil {
+		if user, rev, err := t.Info(caller.Token); err == nil {
 			caller.User, caller.Revision = user, rev
 		}
 	}

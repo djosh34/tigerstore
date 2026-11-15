@@ -105,7 +105,7 @@ func pushBehind(t *testing.T, r *ring) {
 func testNode(t *testing.T) (*node, *memLog) {
 	t.Helper()
 	l := &memLog{}
-	n := &node{id: 1, storage: newLogStorage(l), wal: &wal{}, fwd: make([]fwdBatch, fwdSlots), fwdPeers: map[uint64][]fwdBatch{}, metrics: &nodeMetrics{}}
+	n := &node{id: 1, storage: newLogStorage(l), wal: &wal{}, fwd: make([]fwdBatch, fwdSlots), fwdPeers: map[uint64][]fwdBatch{}, metrics: &nodeMetrics{}, auth: newAuthStore()}
 	n.ring, n.rx, n.side = newTestRing(t), newTestRing(t), newTestRing(t)
 	return n, l
 }

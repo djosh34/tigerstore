@@ -41,6 +41,9 @@ type shell interface {
 	sendSnapshot(m *pb.Message, f *os.File)
 	// logf logs what the node does seldom, such as a checkpoint.
 	logf(format string, args ...any)
+	// offLoop runs work off the loop, such as bcrypt's, and what it
+	// returns on the loop.
+	offLoop(work func() func())
 	// sideCall starts the side call of h with its request, and returns
 	// what ends it.
 	sideCall(h handle, m *sideMethod, req []byte) context.CancelFunc

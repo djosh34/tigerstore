@@ -3,7 +3,9 @@ package wl
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"io"
 	"math"
@@ -96,6 +98,19 @@ func selfTLS(tlsCfg *tls.Config) *tls.Config {
 	dial.InsecureSkipVerify = true //nolint:gosec // etcd's gateway trusts the node it runs in, which it dials over loopback
 	dial.GetConfigForClient = nil
 	return dial
+}
+
+// sideCallerHeader names the client a call of the side calls' own client
+// is for: the node's secret, a colon and the client's certificate name.
+const sideCallerHeader = "tigerstore-side-caller"
+
+// newSideSecret is a node's secret for sideCallerHeader.
+func newSideSecret() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // selfClient is the node's client of itself: it dials addr, a client
@@ -212,6 +227,16 @@ func (n *node) sideEnd(h handle, unary bool, reply []byte, err error) {
 // context, which the node's stop ends too.
 func (l *loop) sideCall(h handle, m *sideMethod, req []byte) context.CancelFunc {
 	ctx, cancel := context.WithCancel(l.ctx)
+	// The server's calls of the node are for the client of h: they carry
+	// its certificate name, with the secret that marks the node's own
+	// client, and its token, as etcd's in-process client carries its
+	// context.
+	if c, s := l.n.clientOf(h); c != nil {
+		ctx = metadata.AppendToOutgoingContext(ctx, sideCallerHeader, l.n.sideSecret+":"+c.nameOf(s))
+		if s.token != "" {
+			ctx = metadata.AppendToOutgoingContext(ctx, "token", s.token)
+		}
+	}
 	impl := m.impl(l.side)
 	go func() {
 		var reply []byte

@@ -46,7 +46,8 @@ var gatewayHandlers = []func(context.Context, *gw.ServeMux, *grpc.ClientConn) er
 
 // newGateway builds the gateway on a client connection to s itself.
 func (s *Server) newGateway() (http.Handler, *grpc.ClientConn, error) {
-	conn, err := grpc.NewClient("passthrough:///tigerstore",
+	conn, err := grpc.NewClient(
+		"passthrough:///tigerstore",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			client, server := net.Pipe()
 			s.mu.Lock()
@@ -80,7 +81,8 @@ func (s *Server) newGateway() (http.Handler, *grpc.ClientConn, error) {
 		}
 	}
 	// etcd's streams take websockets too, as POST.
-	ws := wsproxy.WebsocketProxy(mux,
+	ws := wsproxy.WebsocketProxy(
+		mux,
 		wsproxy.WithRequestMutator(func(_ *http.Request, out *http.Request) *http.Request {
 			out.Method = http.MethodPost
 			return out

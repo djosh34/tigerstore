@@ -31,7 +31,8 @@ func (s *Server) rangeStream(st *stream) error {
 	if err := mvcc.CheckRangeStream(r); err != nil {
 		return err
 	}
-	span := st.startSpan("range_streaming",
+	span := st.startSpan(
+		"range_streaming",
 		attribute.String("range_begin", string(r.GetKey())),
 		attribute.String("range_end", string(r.GetRangeEnd())),
 		attribute.Int64("rev", r.GetRevision()),

@@ -1,4 +1,4 @@
-package server
+package authtoken
 
 import (
 	"crypto"
@@ -192,7 +192,7 @@ func parseEdPublic(b []byte) (crypto.PublicKey, error) {
 }
 
 // sign is etcd's tokenJWT.assign.
-func (t *JWT) sign(user string, revision uint64) (string, error) {
+func (t *JWT) Sign(user string, revision uint64) (string, error) {
 	if t.nop {
 		return "", rpctypes.ErrGRPCAuthFailed
 	}
@@ -211,7 +211,7 @@ func (t *JWT) sign(user string, revision uint64) (string, error) {
 var errInvalidToken = errors.New("auth: invalid token")
 
 // info is etcd's tokenJWT.info: the user and revision of a valid token.
-func (t *JWT) info(token string) (user string, revision uint64, err error) {
+func (t *JWT) Info(token string) (user string, revision uint64, err error) {
 	if t.nop {
 		return "", 0, fmt.Errorf("%w: the token provider takes no tokens", errInvalidToken)
 	}

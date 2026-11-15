@@ -19,7 +19,7 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/djosh34/tigerstore/internal/server"
+	"github.com/djosh34/tigerstore/internal/authtoken"
 )
 
 // TestAuthOverGRPC sets auth up as etcdctl does and checks what the server
@@ -147,7 +147,7 @@ func TestJWTOverGRPC(t *testing.T) {
 	if err := os.WriteFile(file, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	jwt, err := server.ParseAuthToken("jwt,sign-method=ES256,priv-key=" + file)
+	jwt, err := authtoken.ParseAuthToken("jwt,sign-method=ES256,priv-key=" + file)
 	if err != nil {
 		t.Fatal(err)
 	}

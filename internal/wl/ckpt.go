@@ -1188,7 +1188,7 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		if err != nil {
 			return err
 		}
-		n := &node{members: cm.members, removed: cm.removed, alarms: cm.alarms, downgrade: cm.downgrade, format: cm.format, formatEpoch: cm.formatEpoch}
+		n := &node{members: cm.members, removed: cm.removed, alarms: cm.alarms, downgrade: cm.downgrade, format: cm.format, formatEpoch: cm.formatEpoch, auth: cm.auth}
 		out(n.encodeMembers(nil))
 	} else {
 		csLen, err := cr.uvarint()
@@ -1198,7 +1198,8 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		if _, err := cr.bytes(csLen); err != nil {
 			return err
 		}
-		if _, err := cr.readMembers(); err != nil {
+		cm, err := cr.readMembers()
+		if err != nil {
 			return err
 		}
 		cs, err := proto.Marshal(hdr.cs)
@@ -1207,8 +1208,9 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		}
 		out(binary.AppendUvarint(nil, uint64(len(cs))))
 		out(cs)
-		// A new cluster: its members announce afresh.
-		n := &node{members: hdr.members.members, removed: hdr.members.removed, format: baseFormat}
+		// A new cluster: its members announce afresh. As etcd's restore,
+		// it keeps the users and roles.
+		n := &node{members: hdr.members.members, removed: hdr.members.removed, format: baseFormat, auth: cm.auth}
 		out(n.encodeMembers(nil))
 	}
 	nl, err := uv()

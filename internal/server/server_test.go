@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/djosh34/tigerstore/internal/authtoken"
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
@@ -56,7 +57,7 @@ type cluster struct {
 	peerConfig func(*peer.Config)
 	// jwt, if set, makes the auth tokens, and serverConfig, if set,
 	// changes the servers' configuration.
-	jwt          *server.JWT
+	jwt          *authtoken.JWT
 	serverConfig func(*server.Config)
 	// nodes and transports are the running nodes and their transports by
 	// ID.

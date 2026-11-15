@@ -75,7 +75,8 @@ func (n *node) addTxn(h handle, s *stream, msg []byte) {
 		}
 		m = rest
 	}
-	if !readsOnly || failBytes == 0 {
+	// While auth is on, the apply checks the whole Txn.
+	if !readsOnly || failBytes == 0 || n.auth.enabled {
 		n.addOp(h, kTxn, msg)
 		return
 	}

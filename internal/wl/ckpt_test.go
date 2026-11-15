@@ -92,7 +92,7 @@ func TestRemoveEntryKeepsRunsFindable(t *testing.T) {
 func ckptNode(t *testing.T) (*node, *memLog) {
 	t.Helper()
 	st, l := newTestStore(t)
-	return &node{st: st, ckptDir: t.TempDir(), confState: &pb.ConfState{Voters: []uint64{1, 2, 3}}, storage: newLogStorage(l)}, l
+	return &node{st: st, ckptDir: t.TempDir(), confState: &pb.ConfState{Voters: []uint64{1, 2, 3}}, storage: newLogStorage(l), auth: newAuthStore()}, l
 }
 
 // writeCkpt writes a whole checkpoint, as the loop does turn by turn,
