@@ -629,7 +629,7 @@ func (l *loop) logStats() {
 		l.n.st.nkeys, l.n.st.rev, l.n.st.slab.top>>20)
 	l.last, l.lastAt = d, now
 	st := l.n.st
-	l.logger.Printf("stage waits %d", stageWaits)
+	l.logger.Printf("stage waits %d cleaned segs %d moved %d MB", stageWaits, cleanedSegs, l.n.st.moved>>20)
 	l.logger.Printf("guard: spans %d waits %d compactions %d overruns %d", guardStats.spans, guardStats.waits, guardStats.compactions, guardStats.overruns)
 	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d", st.slab.used>>20, st.limit>>20, st.evictions, st.loads)
 	l.logger.Printf("ops by kind %v bytes %v named %d carried %v bytes %v held %d", dbgOps, dbgBytes, dbgNamed, dbgCarried, dbgCarriedB, dbgHeld)

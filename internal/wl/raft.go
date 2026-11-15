@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -28,12 +28,13 @@ import (
 
 // wal is the log file and its fsync helper.
 type wal struct {
-	waiting  []*pb.Message // appends kept while the stage is full
-	dir      string
-	ready    chan segment
-	wfds     []int // the helper's
-	mu       sync.Mutex
-	rfds     []int
+	waiting []*pb.Message // appends kept while the stage is full
+	dir     string
+	wfds    []int
+	rfds    []int
+	// cleaned counts the logical segments whose named values were all
+	// copied forward: slot reuse may go up to segment cleaned+poolSegs-1.
+	cleaned  int64
 	off      int64
 	iov      [][]byte
 	hdrs     []byte
@@ -84,76 +85,80 @@ func openWAL(dir string) (*wal, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &wal{kickFD: kick, wakeFD: wake, idx: make([]idxOff, idxSlots), dir: dir,
-		ready: make(chan segment, 2)}
+	w := &wal{kickFD: kick, wakeFD: wake, idx: make([]idxOff, idxSlots), dir: dir}
 	w.stage = mmapBytes(stageSize)
-	go w.makeSegments()
+	if err := w.makePool(); err != nil {
+		return nil, err
+	}
 	go w.helper()
 	return w, nil
 }
 
-// The log is a series of segments of segSize bytes; offsets in the log
-// grow without end, and offset o lies in segment o/segSize. Nothing in
-// it is ever overwritten. Each segment is a file written once with
-// zeros before the writer reaches it: a write into blocks that are
-// already allocated and written changes no metadata, so ext4 commits no
-// journal for it, as the prototype's ring did.
+// The log is a ring of poolSegs segments of segSize bytes, made and
+// written once with zeros at startup: a write into blocks already
+// allocated and written changes no metadata, so ext4 commits no journal
+// for it, as the prototype's ring did. Offsets grow without end; logical
+// segment L lies in slot L % poolSegs. A slot is used again only once
+// every value its last segment holds that the store still names was
+// copied to the head of the log (clean); until then appends wait.
 const segSize = 64 << 20
+
+// poolSegs is 24, or WL_POOL_SEGS for a test that wraps the ring soon.
+var poolSegs = func() int64 {
+	if v, err := strconv.Atoi(os.Getenv("WL_POOL_SEGS")); err == nil && v >= 4 {
+		return int64(v)
+	}
+	return 24
+}()
 
 type segment struct{ wfd, rfd int }
 
-// makeSegments makes the segments ahead of the writer, at most two
-// ahead.
-func (w *wal) makeSegments() {
-	zero := make([]byte, 4<<20)
+// makePool makes the ring's segments.
+func (w *wal) makePool() error {
+	zero := mmapBytes(1 << 20)
 	dfd, err := unix.Open(w.dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	for i := 0; ; i++ {
-		path := filepath.Join(w.dir, fmt.Sprintf("wal-%08d", i))
-		fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC|unix.O_CLOEXEC, 0o600)
+	defer unix.Close(dfd)
+	for i := range int(poolSegs) {
+		path := filepath.Join(w.dir, fmt.Sprintf("wal-%02d", i))
+		fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC|unix.O_DIRECT|unix.O_CLOEXEC, 0o600)
 		if err != nil {
-			panic(err)
+			return err
 		}
 		for off := int64(0); off < segSize; off += int64(len(zero)) {
 			if _, err := unix.Pwrite(fd, zero, off); err != nil {
-				panic(err)
+				return err
 			}
 		}
 		if err := unix.Fdatasync(fd); err != nil {
-			panic(err)
+			return err
 		}
 		_ = unix.Close(fd)
-		if err := unix.Fsync(dfd); err != nil {
-			panic(err)
-		}
 		var sg segment
 		if sg.wfd, err = unix.Open(path, unix.O_WRONLY|unix.O_DIRECT|unix.O_DSYNC|unix.O_CLOEXEC, 0); err != nil {
-			panic(err)
+			return err
 		}
 		if sg.rfd, err = unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC, 0); err != nil {
-			panic(err)
+			return err
 		}
-		w.mu.Lock()
+		w.wfds = append(w.wfds, sg.wfd)
 		w.rfds = append(w.rfds, sg.rfd)
-		w.mu.Unlock()
-		w.ready <- sg
 	}
+	return unix.Fsync(dfd)
 }
 
-// segFD returns the write file of segment k, waiting for it if it is
-// not made yet. Only the helper calls it.
-func (w *wal) segFD(k int64) int {
-	for int64(len(w.wfds)) <= k {
-		sg := <-w.ready
-		w.wfds = append(w.wfds, sg.wfd)
-	}
-	return w.wfds[k]
+func (w *wal) segFD(k int64) int { return w.wfds[k%poolSegs] }
+
+// covered reports whether the log may write up to end: every slot it
+// reaches is free of named values.
+func (w *wal) covered(end int64) bool {
+	return (end-1)/segSize-poolSegs < w.cleaned
 }
 
 // read copies the log's bytes at off into p: from the stage where they
-// may not be on disk yet, else from the segments.
+// may not be on disk yet, else from the ring.
 func (w *wal) read(p []byte, off int64) {
 	if len(p) == 0 {
 		return
@@ -168,13 +173,33 @@ func (w *wal) read(p []byte, off int64) {
 	for got := 0; got < len(p); {
 		o := off + int64(got)
 		k := min(len(p)-got, int(segSize-o%segSize))
-		w.mu.Lock()
-		fd := w.rfds[o/segSize]
-		w.mu.Unlock()
-		if _, err := unix.Pread(fd, p[got:got+k], o%segSize); err != nil {
+		if _, err := unix.Pread(w.rfds[(o/segSize)%poolSegs], p[got:got+k], o%segSize); err != nil {
 			panic(err)
 		}
 		got += k
+	}
+}
+
+// appendRaw writes p to the log as a record of its own, with no entry,
+// and returns where p lies in it. The caller checked the room.
+func (w *wal) appendRaw(p []byte) int64 {
+	var h [12]byte
+	binary.LittleEndian.PutUint32(h[:], uint32(len(p)))
+	binary.LittleEndian.PutUint32(h[4:], 0xfffffffe)
+	binary.LittleEndian.PutUint32(h[8:], crc32.Checksum(p, castagnoli))
+	w.copyIn(h[:])
+	at := w.off
+	w.copyIn(p)
+	return at
+}
+
+func (w *wal) copyIn(v []byte) {
+	for len(v) > 0 {
+		pos := w.off % stageSize
+		k := copy(w.stage[pos:], v)
+		v = v[k:]
+		w.off += int64(k)
+		stats.walBytes += uint64(k)
 	}
 }
 
@@ -374,8 +399,40 @@ func (w *wal) fits(m *pb.Message) bool {
 	for _, e := range m.GetEntries() {
 		need += walEntHdr + int64(len(e.GetData()))
 	}
-	return w.off+need-w.done.Load() <= stageSize-block
+	return w.off+need-w.done.Load() <= stageSize-block && w.covered(w.off+need)
 }
+
+// clean copies forward the values the oldest segments still hold, ahead
+// of the writer: from two segments before the ring's slots run out, a
+// few MiB a turn, and as much as it takes while appends wait for it.
+func (n *node) clean() {
+	w := n.wal
+	start := w.off
+	defer func() {
+		// What the cleaner copied goes to disk with the next write.
+		if w.off != start {
+			w.pending = append(w.pending, walJob{end: w.off})
+		}
+		if len(w.waiting) > 0 {
+			n.unwait()
+		}
+		w.kick()
+	}()
+	for i := 0; i < 64 && (w.off/segSize >= w.cleaned+poolSegs-3); i++ {
+		room := int(stageSize-block-(w.off-w.done.Load())) - 8<<20
+		budget := 4 << 20
+		if len(w.waiting) > 0 {
+			budget = room
+		}
+		if room <= 0 || !n.st.cleanStep(w.cleaned, budget, room) {
+			break
+		}
+		w.cleaned++
+		cleanedSegs++
+	}
+}
+
+var cleanedSegs uint64
 
 // unwait writes the kept appends that fit now.
 func (n *node) unwait() {
@@ -455,7 +512,7 @@ func (n *node) fsyncDone() {
 	_, _ = unix.Read(n.wal.wakeFD, b[:])
 	n.wal.inflight = false
 	n.synced()
-	n.unwait()
+	n.clean()
 }
 
 func (n *node) storageApply(m *pb.Message) {
@@ -481,6 +538,7 @@ func (n *node) storageApply(m *pb.Message) {
 	}
 	n.flushEvents()
 	n.st.endApply()
+	n.clean()
 	n.serveReads()
 	for _, r := range m.Responses {
 		_ = n.rn.Step(r)

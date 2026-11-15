@@ -64,8 +64,14 @@ type store struct {
 	evictions uint64
 	loads     uint64
 
-	leases  map[int64]int64
-	wal     *wal
+	leases map[int64]int64
+	wal    *wal
+	// segRefs lists, by logical log segment, the keys (keyRef set) and
+	// history entries whose values lay there when they were recorded; the
+	// cleaner checks each still does before it copies the value forward.
+	segRefs map[int64][]uint32
+	cleanAt int // the cleaner's place in segRefs[wal.cleaned]
+	moved   uint64
 	scratch []byte
 
 	// Records replaced or deleted during an apply, freed once its
@@ -84,16 +90,17 @@ const (
 
 func newStore() *store {
 	st := &store{
-		rev:    1, // etcd's empty store is at revision 1
-		keys:   mmapSlice[keyEnt](maxKeys),
-		hash:   mmapSlice[uint64](hashSlots),
-		mask:   hashSlots - 1,
-		seed:   maphash.MakeSeed(),
-		karena: arena{mem: mmapBytes(keyArena), top: 1},
-		slab:   newSlab(slabBytes),
-		hist:   mmapSlice[histEnt](maxHist),
-		nhist:  1,
-		leases: map[int64]int64{},
+		rev:     1, // etcd's empty store is at revision 1
+		keys:    mmapSlice[keyEnt](maxKeys),
+		hash:    mmapSlice[uint64](hashSlots),
+		mask:    hashSlots - 1,
+		seed:    maphash.MakeSeed(),
+		karena:  arena{mem: mmapBytes(keyArena), top: 1},
+		slab:    newSlab(slabBytes),
+		hist:    mmapSlice[histEnt](maxHist),
+		nhist:   1,
+		leases:  map[int64]int64{},
+		segRefs: map[int64][]uint32{},
 	}
 	st.tree.init(st)
 	return st
@@ -274,6 +281,9 @@ func (st *store) pushHist(k *keyEnt) {
 	st.hist[h] = histEnt{create: k.create, mod: k.mod, ver: k.ver, lease: k.lease,
 		voff: k.voff, vlen: k.vlen, prev: k.hist, deleted: k.create == 0}
 	k.hist = h
+	if k.vlen > 0 && k.create != 0 {
+		st.ref(k.voff, h)
+	}
 }
 
 // put writes value under key id at revision rev; voff is where the value
@@ -300,6 +310,9 @@ func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64
 	k.rec, k.rlen = off, uint32(n)
 	k.create, k.mod, k.ver, k.lease = create, rev, ver, lease
 	k.voff, k.vlen = voff, uint32(len(value))
+	if len(value) > 0 {
+		st.ref(voff, id|keyRef)
+	}
 	return prev
 }
 
@@ -376,3 +389,54 @@ func recValue(rec []byte) []byte {
 }
 
 var _ = unsafe.Sizeof(keyEnt{})
+
+const keyRef = 1 << 31
+
+func (st *store) ref(voff int64, r uint32) {
+	g := voff / segSize
+	st.segRefs[g] = append(st.segRefs[g], r)
+}
+
+// cleanStep copies forward, up to budget bytes, the values that still lie
+// in logical segment seg, and reports whether the segment is clean. room
+// is what the log's stage may take.
+func (st *store) cleanStep(seg int64, budget, room int) bool {
+	refs := st.segRefs[seg]
+	w := st.wal
+	for ; st.cleanAt < len(refs); st.cleanAt++ {
+		r := refs[st.cleanAt]
+		var voff *int64
+		var vlen int
+		var val []byte
+		if r&keyRef != 0 {
+			k := &st.keys[r&^keyRef]
+			if k.create == 0 || k.vlen == 0 || k.voff/segSize != seg {
+				continue
+			}
+			voff, vlen = &k.voff, int(k.vlen)
+			if k.rec != 0 {
+				val = recValue(st.slab.bytes(k.rec, int(k.rlen)))
+			}
+		} else {
+			e := &st.hist[r]
+			if e.deleted || e.vlen == 0 || e.voff/segSize != seg {
+				continue
+			}
+			voff, vlen = &e.voff, int(e.vlen)
+		}
+		if vlen+12 > budget || vlen+12 > room || !w.covered(w.off+int64(vlen)+12) {
+			return false
+		}
+		if val == nil {
+			val = st.readLog(*voff, vlen)
+		}
+		*voff = w.appendRaw(val)
+		st.ref(*voff, r)
+		st.moved += uint64(vlen)
+		budget -= vlen + 12
+		room -= vlen + 12
+	}
+	delete(st.segRefs, seg)
+	st.cleanAt = 0
+	return true
+}
