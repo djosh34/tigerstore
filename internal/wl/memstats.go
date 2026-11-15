@@ -6,6 +6,8 @@ import (
 	"runtime/metrics"
 	"strconv"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // memStats is where the node's memory goes, for the loop's log: what the
@@ -76,4 +78,62 @@ func residentBytes() int64 {
 		return -1
 	}
 	return pages * int64(os.Getpagesize())
+}
+
+// cpuStats is where the node's time goes, for the loop's log: the CPU of
+// the process and of the loop's thread, the log's helper in its writes,
+// a checkpoint's encoding on the loop and its writer's reads and writes,
+// and the kernel's dirty pages waiting to be written back. Times are
+// totals in nanoseconds; a checkpoint's are its own.
+type cpuStats struct {
+	process, loop, walWrite         int64
+	ckptEncode, ckptRead, ckptWrite int64
+	dirty, writeback                int64
+}
+
+// cpuStats reads the totals; it runs on the loop's thread.
+func (n *node) cpuStats() cpuStats {
+	var c cpuStats
+	var ru unix.Rusage
+	if unix.Getrusage(unix.RUSAGE_SELF, &ru) == nil {
+		c.process = ru.Utime.Nano() + ru.Stime.Nano()
+	}
+	if unix.Getrusage(unix.RUSAGE_THREAD, &ru) == nil {
+		c.loop = ru.Utime.Nano() + ru.Stime.Nano()
+	}
+	if n.wal != nil {
+		c.walWrite = n.wal.writeNs.Load()
+	}
+	if r := n.ckpt; r != nil {
+		c.ckptEncode, c.ckptRead, c.ckptWrite = r.encodeNs, r.w.readNs.Load(), r.w.writeNs.Load()
+	}
+	c.dirty, c.writeback = dirtyPages()
+	return c
+}
+
+// dirtyPages reads /proc/meminfo's dirty and writeback bytes, or -1 where
+// /proc does not tell.
+func dirtyPages() (dirty, writeback int64) {
+	dirty, writeback = -1, -1
+	b, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return dirty, writeback
+	}
+	for line := range bytes.Lines(b) {
+		f := bytes.Fields(line)
+		if len(f) < 2 {
+			continue
+		}
+		kb, err := strconv.ParseInt(string(f[1]), 10, 64)
+		if err != nil {
+			continue
+		}
+		switch string(f[0]) {
+		case "Dirty:":
+			dirty = kb << 10
+		case "Writeback:":
+			writeback = kb << 10
+		}
+	}
+	return dirty, writeback
 }

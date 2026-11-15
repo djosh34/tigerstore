@@ -61,6 +61,7 @@ type loop struct {
 	last    counters
 	lastWAL walStats
 	lastAt  time.Time
+	lastCPU cpuStats
 	logger  *log.Logger
 	next    time.Time
 }
@@ -783,4 +784,16 @@ func (l *loop) logStats() {
 	l.logger.Printf("rings: sweeps %d; oldest held: %s / %s / %s", n.ring.stats.sweeps, n.ring.held(), n.rx.held(), n.side.held())
 	l.last, l.lastAt = d, now
 	l.logger.Printf("ops by kind %v bytes %v named %d carried %v bytes %v held %d", d.opsByKind, d.bytesByKind, d.named, d.carried, d.carriedBytes, d.held)
+	c := l.n.cpuStats()
+	pc := l.lastCPU
+	l.lastCPU = c
+	ms := func(ns int64) int64 { return ns / 1e6 }
+	l.logger.Printf("cpu ms: process %d, loop %d, others %d; log writes %d ms for %d syncs; kernel dirty %d MB, writeback %d MB",
+		ms(c.process-pc.process), ms(c.loop-pc.loop), ms(c.process-pc.process-(c.loop-pc.loop)),
+		ms(c.walWrite-pc.walWrite), ws.syncs-pw.syncs, c.dirty>>20, c.writeback>>20)
+	if r := n.ckpt; r != nil {
+		l.logger.Printf("checkpoint at index %d running %v: key ids %d of %d, %d MB encoded; values %d MB from memory, %d MB from disk; loop encoding %d ms; writer read %d MB in %d ms, wrote %d MB in %d ms",
+			r.meta.index, time.Since(r.started).Round(time.Second), r.next, r.end, r.at>>20, r.fromMem>>20, r.fromLog>>20,
+			ms(c.ckptEncode-pc.ckptEncode), r.w.readBytes.Load()>>20, ms(c.ckptRead-pc.ckptRead), r.w.writeBytes.Load()>>20, ms(c.ckptWrite-pc.ckptWrite))
+	}
 }

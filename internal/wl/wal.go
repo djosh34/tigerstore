@@ -95,6 +95,9 @@ type wal struct {
 	rbase      int64
 
 	stats walStats
+	// The helper's time in its writes, for the stats line: how long the
+	// disk takes the log's blocks.
+	writeNs atomic.Int64
 }
 
 type walStats struct {
@@ -382,6 +385,7 @@ func (w *wal) writeLoop(flushed int64) error {
 			return errWALClosed
 		}
 		target := w.want.Load()
+		t := time.Now()
 		from := flushed &^ (block - 1)
 		to := (target + block - 1) &^ (block - 1)
 		for from < to {
@@ -400,6 +404,7 @@ func (w *wal) writeLoop(flushed int64) error {
 			}
 			from += int64(k)
 		}
+		w.writeNs.Add(int64(time.Since(t)))
 		flushed = target
 		w.done.Store(target)
 		binary.LittleEndian.PutUint64(b[:], 1)

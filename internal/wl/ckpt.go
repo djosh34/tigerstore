@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -138,6 +140,10 @@ type ckptWriter struct {
 	in, out        chan *ckptChunk
 	quit           chan struct{}
 	wake           func()
+
+	// For the stats line: time spent reading values from disk and
+	// writing the file, and their bytes.
+	readNs, readBytes, writeNs, writeBytes atomic.Int64
 }
 
 func (cw *ckptWriter) run() {
@@ -164,6 +170,8 @@ func (cw *ckptWriter) run() {
 }
 
 func (cw *ckptWriter) write(c *ckptChunk) error {
+	t0 := time.Now()
+	read := int64(0)
 	for _, r := range c.refs {
 		p := c.buf[r.at : r.at+r.n]
 		if r.f != nil {
@@ -173,7 +181,11 @@ func (cw *ckptWriter) write(c *ckptChunk) error {
 		} else if err := cw.log.readDurable(p, r.off); err != nil {
 			return err
 		}
+		read += int64(r.n)
 	}
+	t1 := time.Now()
+	cw.readNs.Add(int64(t1.Sub(t0)))
+	cw.readBytes.Add(read)
 	cw.crc = crc32.Update(cw.crc, castagnoli, c.buf)
 	if c.last {
 		c.buf = binary.LittleEndian.AppendUint32(c.buf, cw.crc)
@@ -181,6 +193,8 @@ func (cw *ckptWriter) write(c *ckptChunk) error {
 	if _, err := cw.f.Write(c.buf); err != nil {
 		return fmt.Errorf("write a checkpoint: %w", err)
 	}
+	cw.writeNs.Add(int64(time.Since(t1)))
+	cw.writeBytes.Add(int64(len(c.buf)))
 	if !c.last {
 		return nil
 	}
@@ -209,6 +223,12 @@ type ckptRun struct {
 	sent    int // chunks handed to the writer and not back yet
 	lastOut bool
 	states  []ckptState
+
+	// For the stats line: when it started, the loop's time encoding, and
+	// the value bytes it copied from memory and left to the writer.
+	started          time.Time
+	encodeNs         int64
+	fromMem, fromLog int64
 }
 
 // startCkpt starts a checkpoint of the store as it is now, after applied
@@ -235,6 +255,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 		logFrom: logFrom,
 		end:     st.nkeys,
 		chRev:   st.compactRev,
+		started: time.Now(),
 	}
 	r.leases = st.encodeLeases(nil)
 	dl, _ := st.log.(durableLog)
@@ -249,6 +270,8 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 	go r.w.run()
 	n.ckpt = r
 	n.stats.ckpts++
+	n.logf("checkpoint started at index %d, revision %d: %d key ids, values %d MB live and %d MB history, the log %d MB past the last checkpoint",
+		index, st.rev, st.nkeys, st.liveBytes>>20, st.histBytes>>20, (n.wal.off-n.ckptFrom)>>20)
 	return nil
 }
 
@@ -284,7 +307,9 @@ func (n *node) ckptStep(block bool) error {
 		}
 	}
 	for r.sent < ckptInflight && !r.lastOut {
+		t := time.Now()
 		c, err := n.encodeChunk(r)
+		r.encodeNs += int64(time.Since(t))
 		if err != nil {
 			return err
 		}
@@ -308,7 +333,9 @@ func (n *node) ckptDone() error {
 		Metadata: &pb.SnapshotMetadata{Index: new(r.meta.index), Term: new(r.meta.term), ConfState: r.meta.cs},
 	}
 	n.st.release()
-	n.logf("checkpoint at index %d, revision %d: %d bytes, the log from %d", r.meta.index, r.meta.rev, r.at+4, r.logFrom)
+	n.logf("checkpoint at index %d, revision %d: %d bytes, the log from %d, in %v; the loop encoded for %v, the writer read %d MB in %v and wrote in %v",
+		r.meta.index, r.meta.rev, r.at+4, r.logFrom, time.Since(r.started).Round(time.Millisecond), time.Duration(r.encodeNs).Round(time.Millisecond),
+		r.w.readBytes.Load()>>20, time.Duration(r.w.readNs.Load()).Round(time.Millisecond), time.Duration(r.w.writeNs.Load()).Round(time.Millisecond))
 	if f := n.st.ckpts[old]; f != nil {
 		_ = f.Close()
 		n.st.ckpts[old] = nil
@@ -445,7 +472,7 @@ func (n *node) encodeKey(r *ckptRun, c *ckptChunk, id uint32) error {
 		}
 		at := len(c.buf)
 		c.moves = append(c.moves, ckptMove{id: id, from: s.voff, to: ckptOff(r.gen, r.at+int64(at))})
-		if err := n.placeValue(c, s); err != nil {
+		if err := n.placeValue(r, c, s); err != nil {
 			return err
 		}
 	}
@@ -455,11 +482,12 @@ func (n *node) encodeKey(r *ckptRun, c *ckptChunk, id uint32) error {
 // placeValue puts a state's value into the chunk: copied from its live
 // record, or from the log's stage, or as a hole the writer fills from
 // disk.
-func (n *node) placeValue(c *ckptChunk, s *ckptState) error {
+func (n *node) placeValue(r *ckptRun, c *ckptChunk, s *ckptState) error {
 	st := n.st
 	at, l := len(c.buf), int(s.vlen)
 	if s.rec != nil {
 		c.buf = append(c.buf, recValue(s.rec)...)
+		r.fromMem += int64(l)
 		return nil
 	}
 	if inCkpt(s.voff) {
@@ -469,11 +497,13 @@ func (n *node) placeValue(c *ckptChunk, s *ckptState) error {
 		}
 		c.buf = append(c.buf, make([]byte, l)...)
 		c.refs = append(c.refs, ckptRef{at: at, n: l, off: s.voff & ckptOffMask, f: f})
+		r.fromLog += int64(l)
 		return nil
 	}
 	if dl, ok := st.log.(durableLog); ok && s.voff+int64(l) <= dl.durableEnd() {
 		c.buf = append(c.buf, make([]byte, l)...)
 		c.refs = append(c.refs, ckptRef{at: at, n: l, off: s.voff})
+		r.fromLog += int64(l)
 		return nil
 	}
 	val, err := st.readLog(s.voff, l)
@@ -481,6 +511,7 @@ func (n *node) placeValue(c *ckptChunk, s *ckptState) error {
 		return err
 	}
 	c.buf = append(c.buf, val...)
+	r.fromMem += int64(l)
 	return nil
 }
 
