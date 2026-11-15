@@ -532,7 +532,7 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 		ev := event{del: ch.del, key: ch.key, rev: ch.rev}
 		var err error
 		if !ch.del {
-			if ev.kv, err = st.at(ch.key, ch.rev); err != nil {
+			if ev.kv, err = st.putAt(ch.key, ch.rev); err != nil {
 				return false, err
 			}
 		}

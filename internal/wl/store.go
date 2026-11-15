@@ -689,6 +689,31 @@ func (st *store) at(id uint32, rev int64) ([]byte, error) {
 	return nil, nil
 }
 
+// putAt returns the record key id was put as at revision rev: the newest
+// live state written at rev. A Txn can delete the key later in the same
+// revision, which leaves its newest state at rev a tombstone.
+func (st *store) putAt(id uint32, rev int64) ([]byte, error) {
+	k := &st.keys[id]
+	if k.mod == rev && k.create != 0 {
+		return st.live(id)
+	}
+	for h := k.hist; h != 0; h = st.hist[h].prev {
+		e := &st.hist[h]
+		if e.mod > rev || e.deleted {
+			continue
+		}
+		if e.mod < rev {
+			break
+		}
+		val, err := st.readLog(e.voff, int(e.vlen))
+		if err != nil {
+			return nil, err
+		}
+		return appendKV(nil, st.key(id), val, e.create, e.mod, e.ver, e.lease), nil
+	}
+	return nil, nil
+}
+
 // state returns the mod revision, create revision, version and lease of
 // key id now, all 0 if it is not live.
 func (st *store) state(id uint32) (mod, create, ver, lease int64) {

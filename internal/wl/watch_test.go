@@ -67,6 +67,42 @@ func TestWatchHistoryReplaysChangesInRevisionOrder(t *testing.T) {
 	}
 }
 
+// A Txn that puts a key and then deletes it: a watch that catches up
+// gets the put with the value it wrote, as etcd's sub-revisions have it,
+// then the delete (difffuzz).
+func TestWatchHistoryHasAPutThatTheSameTxnDeleted(t *testing.T) {
+	n := leaseNode(t)
+	l := n.st.log.(*memLog)
+	putValue(t, n.st, l, "/a/1", "one") // 2
+	id, _ := n.st.find([]byte("/a/1"))
+	fresh, err := n.st.intern([]byte("/a/2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.st.rev++ // 3: put both, delete both
+	for _, k := range []uint32{id, fresh} {
+		if _, err := n.st.put(k, []byte("uno"), 0, n.st.rev, l.add("uno")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, k := range []uint32{id, fresh} {
+		if _, err := n.st.del(k, n.st.rev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n.st.endApply()
+	got := historyOf(t, n, watcher{key: []byte("/a/"), end: prefixEnd([]byte("/a/")), prevKV: true}, 3)
+	want := []seen{
+		{key: "/a/1", rev: 3, value: "uno", prev: "one"},
+		{key: "/a/2", rev: 3, value: "uno"},
+		{key: "/a/1", rev: 3, del: true, prev: "one"},
+		{key: "/a/2", rev: 3, del: true},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("history from 3:\n got %+v\nwant %+v", got, want)
+	}
+}
+
 func TestWatchCatchUpKeepsToItsBudgetAndEndsAtARevision(t *testing.T) {
 	n := leaseNode(t)
 	l := n.st.log.(*memLog)
