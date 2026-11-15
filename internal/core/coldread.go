@@ -129,7 +129,7 @@ func (n *Node) answer(p *pending, r Reply, fills []mvcc.Fill) {
 	}
 	n.startPieces(&r)
 	if len(fills) == 0 {
-		n.out.Replies = append(n.out.Replies, r)
+		n.emit(r)
 		return
 	}
 	v := n.readValues(fills)
@@ -190,7 +190,9 @@ func (n *Node) ValuesRead(r *ValueRead, err error) {
 	for _, f := range r.fills {
 		n.kv.Keep(f.Key, f.Ref, *f.Dst)
 	}
-	n.out.Replies = append(n.out.Replies, r.replies...)
+	for _, rp := range r.replies {
+		n.emit(rp)
+	}
 	for _, s := range r.streams {
 		n.releaseWatches(s)
 	}

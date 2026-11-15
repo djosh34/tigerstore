@@ -21,6 +21,7 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/loop"
+	"github.com/djosh34/tigerstore/internal/node"
 )
 
 // HTTP/2 limits of one client connection.
@@ -157,6 +158,11 @@ type conn struct {
 	// and waitingReplies their estimated size.
 	completions    atomic.Pointer[completed]
 	waitingReplies atomic.Int64
+	// Loop only: fast are the replies of the node's fast path
+	// (stream.Answer), fastBytes their estimated size, and fastSpare
+	// the array they go to while complete encodes the last ones.
+	fast, fastSpare []node.Completion
+	fastBytes       int64
 	// atNode is the calls the node has and has not answered.
 	atNode map[*stream]struct{}
 

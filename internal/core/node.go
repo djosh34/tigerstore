@@ -202,6 +202,10 @@ type Config struct {
 	PriorityRequest bool
 	// Timer, if set, times applies and ranges for the metrics.
 	Timer Timer
+	// Slow turns the fast path off (fast.go): SubmitFast takes nothing,
+	// and every request goes through Submit. The simulator picks it per
+	// node by seed.
+	Slow bool
 }
 
 // DefaultConfig returns the timeouts of etcd with 100 ms ticks.
@@ -454,6 +458,9 @@ type pending struct {
 	// held marks a physical compaction that applied and waits for its
 	// checkpoint (heldCompact), without a deadline.
 	held bool
+	// fast marks a request in its fast path's slot (fast.go), which the
+	// waiting map does not hold.
+	fast bool
 }
 
 // readBatch is the set of reads that share one ReadIndex request.
@@ -667,6 +674,9 @@ type Node struct {
 	// removeAt is the shutdown tick after applying our own removal. Raft
 	// keeps running until then so the leader can send the commit update.
 	removeAt int64
+
+	// fast is the fast path (fast.go).
+	fast fastPath
 
 	out Effects
 	err error
@@ -1236,6 +1246,11 @@ func (n *Node) Cancel(id uint64) {
 		n.finish(p, ErrTimeoutLeaderTransfer)
 		return
 	}
+	if s := n.fast.live(id); s != nil && s.open && n.rn.BasicStatus().Lead == raft.None {
+		// A fast write in the open batch, which waits for a leader: the
+		// slow path drops it.
+		n.demote()
+	}
 	p := n.waiting[id]
 	if p == nil || p.done || p.refuse != nil || n.rn.BasicStatus().Lead != raft.None {
 		return
@@ -1640,6 +1655,7 @@ var errNotProposed = status.Error(codes.DeadlineExceeded, context.DeadlineExceed
 // they were proposed leave the queue at once, so a node without a leader
 // holds only writes that may still go out.
 func (n *Node) expire() {
+	n.expireFast()
 	i, dropped, early := 0, false, false
 	for ; i < len(n.timeouts); i++ {
 		p := n.timeouts[i]
@@ -1743,13 +1759,15 @@ func (n *Node) settle(p *pending) bool {
 		// An internal write, such as a lease expiry; no client waits.
 		return false
 	}
-	delete(n.waiting, p.req.ID)
+	if !p.fast {
+		delete(n.waiting, p.req.ID)
+	}
 	return true
 }
 
 // reply fails request id with err.
 func (n *Node) reply(id uint64, err error) {
-	n.out.Replies = append(n.out.Replies, Reply{ID: id, Err: err})
+	n.emit(Reply{ID: id, Err: err})
 }
 
 // writeSize is the bytes a queued write adds to a Raft entry.
@@ -1776,6 +1794,9 @@ func writeBytes(p *pending) int {
 // whose raft.Node takes no proposal while there is no leader, the writes
 // wait for one, up to their deadline, instead of failing at once (#105).
 func (n *Node) propose() {
+	if len(n.fast.ids) > 0 && !n.openFits() {
+		n.demote()
+	}
 	if n.state.noSpace {
 		// Writes taken before the alarm get NOSPACE too, unless they were
 		// proposed: only those still add to the files, and UnappliedBytes
@@ -1794,6 +1815,7 @@ func (n *Node) propose() {
 	if n.rn.BasicStatus().Lead == raft.None {
 		return
 	}
+	n.sealOpen()
 	// A write that timed out while it waited already left the queue
 	// (expire), so it never goes out.
 	props := n.proposals
@@ -1839,18 +1861,26 @@ func (n *Node) proposeEntry(props []*pending, size int) {
 		n.fail(err)
 		return
 	}
-	n.unready += int64(len(data))
-	if err := n.rn.Propose(data); err != nil {
+	if !n.proposeData(data) {
 		// Raft dropped the proposal, so none of these requests will apply.
 		for _, p := range props {
 			n.finish(p, errDropped)
 		}
-		return
+	}
+}
+
+// proposeData proposes one Raft entry of writes, and reports whether
+// Raft took it.
+func (n *Node) proposeData(data []byte) bool {
+	n.unready += int64(len(data))
+	if err := n.rn.Propose(data); err != nil {
+		return false
 	}
 	// On the leader, the next local append with entries carries this
 	// batch; writes wait while ownDepth such appends are on their way
 	// (own). A follower only forwards, so nothing waits.
 	n.awaitOwn = n.isLeader
+	return true
 }
 
 // requestReads asks Raft for one read index for all queued reads.
@@ -2012,6 +2042,7 @@ func (n *Node) Process() (Effects, error) {
 
 // stop fails every waiting request once the node stopped.
 func (n *Node) stop() {
+	n.stopFast()
 	for _, p := range slices.Concat(n.timeouts, n.transfers) {
 		n.finish(p, rpctypes.ErrGRPCStopped)
 	}
@@ -2489,7 +2520,7 @@ func (n *Node) decodeWrite(p *pending, kind byte, b []byte, at int) (proto.Messa
 func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind byte, b []byte, at int) error {
 	var p *pending
 	if origin == n.cfg.ID && boot == n.cfg.Boot {
-		p = n.waiting[id]
+		p = n.waiter(id)
 	}
 	// Only the node a client waits on builds the write's answer.
 	n.kv.Unanswered = p == nil

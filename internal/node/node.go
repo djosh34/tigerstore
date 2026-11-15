@@ -556,6 +556,9 @@ type Node struct {
 	// the inputs its sockets gave since the last turn.
 	loop  *loop.Loop
 	local []input
+	// fastTaken says that the fast path took a call in this turn's
+	// dispatch, so the core runs.
+	fastTaken bool
 	// full is set while persist batches wait for the disk past maxBacklog,
 	// when the committer takes no new input but peers' control messages
 	// (Busy). Loop only.
@@ -1303,6 +1306,27 @@ func (n *Node) SubmitLocal(reqs []core.Request, tags []any, to Completer) error 
 	return nil
 }
 
+// SubmitFast hands a call of a connection on the loop to the core's fast
+// path (core.Node.SubmitFast), with an ID of its own, and reports whether
+// it took it. A call it did not take goes to SubmitLocal; call gets the
+// answer to one it took. It runs on the loop, never waits, and takes
+// nothing once the node stopped.
+func (n *Node) SubmitFast(r *core.Request, call core.FastCall) bool {
+	select {
+	case <-n.done:
+		return false
+	default:
+	}
+	r.ID = n.nextID.Add(1) | core.FastBit
+	if !n.core.SubmitFast(r, call) {
+		r.ID = 0
+		return false
+	}
+	n.turnCalls++
+	n.fastTaken = true
+	return true
+}
+
 // Deliver hands the node a message from a peer, from a goroutine other
 // than the loop. It blocks while the committer is behind.
 func (n *Node) Deliver(m *raftpb.Message) {
@@ -1705,7 +1729,8 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if !full {
 			inbox = n.inbox
 		}
-		active := turn(entered, inbox, due)
+		active := turn(entered, inbox, due) || n.fastTaken
+		n.fastTaken = false
 		// The core's work in this turn, the finished writes and reads
 		// below included, stops at the next tick (core.Node.SetTurnOver).
 		next := started.Add(time.Duration(clock.at+1) * n.cfg.Tick)

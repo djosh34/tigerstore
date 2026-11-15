@@ -51,7 +51,7 @@ func (n *Node) Next(id uint64) {
 // read the values in fills.
 func (n *Node) sendPiece(r Reply, fills []mvcc.Fill) {
 	if len(fills) == 0 {
-		n.out.Replies = append(n.out.Replies, r)
+		n.emit(r)
 		return
 	}
 	v := n.readValues(fills)

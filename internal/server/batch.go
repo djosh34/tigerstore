@@ -123,6 +123,16 @@ func (c *conn) admit(st *stream) {
 	}
 	st.reqSize = len(st.body)
 	st.body = nil
+	if (st.rpc.wirePut || st.rpc == txnMethod) && c.s.n.SubmitFast(&req, st) {
+		// The node's fast path took it (core.FastCall): it answers
+		// through Answer, not Complete.
+		c.mu.Lock()
+		c.chargeLocked(&st.reqHeld, st.reqSize+callCost)
+		c.atNode[st] = struct{}{}
+		st.nodeID = req.ID
+		c.mu.Unlock()
+		return
+	}
 	if c.batch.reqs == nil {
 		// The node keeps the batch's slices; the next starts with room
 		// for a turn's calls, not growing from one.
@@ -321,7 +331,26 @@ func (c *conn) takeCompletions() ([][]node.Completion, int64) {
 		bytes += n.bytes
 	}
 	slices.Reverse(out)
+	if len(c.fast) > 0 {
+		// complete clears them; the next ones go to the other array.
+		out = append(out, c.fast)
+		bytes += c.fastBytes
+		c.fast, c.fastSpare, c.fastBytes = c.fastSpare[:0], c.fast, 0
+	}
 	return out, bytes
+}
+
+// Answer takes the reply of the node's fast path to the call
+// (core.FastCall), on the loop inside a call into the node. The write
+// pass encodes it with the replies of Complete, straight into the
+// connection's output where it may go.
+func (st *stream) Answer(r *core.Reply) {
+	c := st.c
+	c.fast = append(c.fast, node.Completion{Tag: st, Reply: *r})
+	b := estimate(&c.fast[len(c.fast)-1])
+	c.fastBytes += b
+	c.waitingReplies.Add(b)
+	c.s.loop.Dirty(c)
 }
 
 // completeWaiting encodes and queues the replies the node handed over,

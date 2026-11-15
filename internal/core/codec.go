@@ -84,81 +84,97 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 		buf = binary.AppendUvarint(buf, boot)
 	}
 	for _, p := range ps {
-		var kind byte
-		switch op := p.req.Op.(type) {
-		case nil:
-			kind = kindPut
-		case *pb.PutRequest:
-			kind = kindPut
-		case *pb.DeleteRangeRequest:
-			kind = kindDelete
-		case *pb.TxnRequest:
-			kind = kindTxn
-			if once && isShort(op) {
-				kind = kindShortTxn
-			}
-		case *pb.CompactionRequest:
-			kind = kindCompact
-		case *pb.LeaseGrantRequest:
-			kind = kindGrant
-		case *pb.LeaseRevokeRequest:
-			kind = kindRevoke
-		case *pb.LeaseKeepAliveRequest:
-			kind = kindRenew
-		case *pb.LeaseCheckpoint:
-			kind = kindExpiry
-		case *wrapperspb.UInt32Value:
-			kind = kindVersion
-		case *pb.AlarmRequest:
-			kind = kindAlarm
-		case *pb.Member:
-			kind = kindMember
-		case *pb.InternalRaftRequest:
-			kind = kindAuth
-		case *pb.LeaseCheckpointRequest:
-			kind = kindLeaseCheckpoint
-		default:
-			return nil, fmt.Errorf("core: cannot propose %T", p.req.Op)
+		var err error
+		if buf, err = appendWrite(buf, p, once, origin, boot); err != nil {
+			return nil, err
 		}
-		if !once {
-			buf = binary.AppendUvarint(buf, origin)
-			buf = binary.AppendUvarint(buf, boot)
+	}
+	return buf, nil
+}
+
+// appendWrite appends one write of a batch: with once, of format 4 and
+// later, without its origin. Both paths encode a write with it, so an
+// entry is the same whichever path took its writes (fast.go).
+func appendWrite(buf []byte, p *pending, once bool, origin, boot uint64) ([]byte, error) {
+	var kind byte
+	switch op := p.req.Op.(type) {
+	case nil:
+		kind = kindPut
+	case *pb.PutRequest:
+		kind = kindPut
+	case *pb.DeleteRangeRequest:
+		kind = kindDelete
+	case *pb.TxnRequest:
+		kind = kindTxn
+		if once && isShort(op) {
+			kind = kindShortTxn
 		}
-		buf = binary.AppendUvarint(buf, p.req.ID)
-		var body []byte
-		switch {
-		case p.req.Op == nil:
-			body = p.req.Put.Wire
-		case kind == kindShortTxn:
-			// Written straight into the entry below.
-		case p.req.Wire != nil:
-			body = p.req.Wire
-		default:
-			var err error
-			if body, err = (proto.MarshalOptions{Deterministic: true}).Marshal(p.req.Op); err != nil {
-				return nil, err
-			}
+	case *pb.CompactionRequest:
+		kind = kindCompact
+	case *pb.LeaseGrantRequest:
+		kind = kindGrant
+	case *pb.LeaseRevokeRequest:
+		kind = kindRevoke
+	case *pb.LeaseKeepAliveRequest:
+		kind = kindRenew
+	case *pb.LeaseCheckpoint:
+		kind = kindExpiry
+	case *wrapperspb.UInt32Value:
+		kind = kindVersion
+	case *pb.AlarmRequest:
+		kind = kindAlarm
+	case *pb.Member:
+		kind = kindMember
+	case *pb.InternalRaftRequest:
+		kind = kindAuth
+	case *pb.LeaseCheckpointRequest:
+		kind = kindLeaseCheckpoint
+	default:
+		return nil, fmt.Errorf("core: cannot propose %T", p.req.Op)
+	}
+	return appendKind(buf, p, kind, once, origin, boot)
+}
+
+// appendKind is appendWrite for a write whose kind is known.
+func appendKind(buf []byte, p *pending, kind byte, once bool, origin, boot uint64) ([]byte, error) {
+	if !once {
+		buf = binary.AppendUvarint(buf, origin)
+		buf = binary.AppendUvarint(buf, boot)
+	}
+	buf = binary.AppendUvarint(buf, p.req.ID)
+	var body []byte
+	switch {
+	case p.req.Op == nil:
+		body = p.req.Put.Wire
+	case kind == kindShortTxn:
+		// Written straight into the entry below.
+	case p.req.Wire != nil:
+		body = p.req.Wire
+	default:
+		var err error
+		if body, err = (proto.MarshalOptions{Deterministic: true}).Marshal(p.req.Op); err != nil {
+			return nil, err
 		}
-		size := len(body)
-		if kind == kindShortTxn {
-			size = shortSize(p.req.Op.(*pb.TxnRequest))
-		}
-		if w := p.who; w != nil {
-			head := binary.AppendUvarint(nil, w.revision)
-			head = binary.AppendUvarint(head, uint64(len(w.user)))
-			head = append(append(head, w.user...), kind)
-			buf = append(buf, kindAuthed)
-			buf = binary.AppendUvarint(buf, uint64(len(head)+size))
-			buf = append(buf, head...)
-		} else {
-			buf = append(buf, kind)
-			buf = binary.AppendUvarint(buf, uint64(size))
-		}
-		if kind == kindShortTxn {
-			buf = appendShort(buf, p.req.Op.(*pb.TxnRequest))
-		} else {
-			buf = append(buf, body...)
-		}
+	}
+	size := len(body)
+	if kind == kindShortTxn {
+		size = shortSize(p.req.Op.(*pb.TxnRequest))
+	}
+	if w := p.who; w != nil {
+		head := binary.AppendUvarint(nil, w.revision)
+		head = binary.AppendUvarint(head, uint64(len(w.user)))
+		head = append(append(head, w.user...), kind)
+		buf = append(buf, kindAuthed)
+		buf = binary.AppendUvarint(buf, uint64(len(head)+size))
+		buf = append(buf, head...)
+	} else {
+		buf = append(buf, kind)
+		buf = binary.AppendUvarint(buf, uint64(size))
+	}
+	if kind == kindShortTxn {
+		buf = appendShort(buf, p.req.Op.(*pb.TxnRequest))
+	} else {
+		buf = append(buf, body...)
 	}
 	return buf, nil
 }
