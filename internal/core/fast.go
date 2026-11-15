@@ -105,41 +105,97 @@ func (f *fastPath) live(id uint64) *fastSlot {
 // used, as for Submit, so the entry is the same on either path. A request
 // it does not take, the driver hands to Submit. call gets the answer.
 func (n *Node) SubmitFast(r *Request, call FastCall) bool {
+	why := n.submitFast(r, call)
+	n.counters.FastPath[why]++
+	return why == FastTaken
+}
+
+// The outcomes of SubmitFast, which Counters.FastPath counts: the request
+// was taken, or the first reason it went to Submit instead.
+const (
+	FastTaken = iota
+	FastNoLeader
+	FastStopping
+	FastAuth
+	FastAlarm
+	FastFormat
+	FastSlotTaken
+	FastLease
+	FastQuota
+	FastInvalid
+	FastBehind
+	FastTooLarge
+	FastNotShort
+	FastReadOnly
+	FastOutcomes
+)
+
+// FastOutcomeNames name the outcomes of SubmitFast, as the metric labels
+// them.
+var FastOutcomeNames = [FastOutcomes]string{
+	"taken", "no_leader", "stopping", "auth", "alarm", "format", "slot_taken",
+	"lease", "quota", "invalid", "behind", "too_large", "not_short", "read_only",
+}
+
+// submitFast is SubmitFast, which it returns the outcome of.
+func (n *Node) submitFast(r *Request, call FastCall) int {
 	f := &n.fast
-	if n.cfg.Slow || n.err != nil || n.removeAt != 0 || n.leader == 0 || r.ID == 0 {
-		return false
+	switch {
+	case n.cfg.Slow || n.err != nil || n.removeAt != 0 || r.ID == 0:
+		return FastStopping
+	case n.leader == 0:
+		return FastNoLeader
 	}
-	if st := n.state; st.noSpace || st.corrupt || st.auth.enabled || st.version < originVersion {
-		return false
+	switch st := n.state; {
+	case st.noSpace || st.corrupt:
+		return FastAlarm
+	case st.auth.enabled:
+		return FastAuth
+	case st.version < originVersion:
+		return FastFormat
 	}
 	if f.slots == nil {
 		f.slots = make([]fastSlot, fastSlots)
 	}
 	s := f.slot(r.ID)
 	if s.live {
-		return false
+		return FastSlotTaken
 	}
 	ai, hasAI, err := n.identify(r.Caller)
 	if err != nil {
-		return false
+		return FastAuth
 	}
 	extra := identityExtra(r.Caller, ai, hasAI)
 	var kind byte
 	if r.Op == nil {
 		put := &r.Put.PutOp
-		if put.Lease != 0 || !n.quotaLeft(putCost(put)) || mvcc.CheckPutOp(put) != nil ||
-			n.tooManyRequests(false) || checkPutSize(&r.Put, extra, n.cfg.MaxRequestBytes) != nil {
-			return false
+		switch {
+		case put.Lease != 0:
+			return FastLease
+		case !n.quotaLeft(putCost(put)):
+			return FastQuota
+		case mvcc.CheckPutOp(put) != nil || checkPutSize(&r.Put, extra, n.cfg.MaxRequestBytes) != nil:
+			return FastInvalid
+		case n.tooManyRequests(false):
+			return FastBehind
 		}
 		kind = kindPut
 	} else {
 		t, ok := r.Op.(*pb.TxnRequest)
-		if !ok || !isShort(t) || shortLease(t) || mvcc.IsTxnReadOnly(t) {
-			return false
-		}
-		if !n.quotaLeft(txnCost(t)) || mvcc.CheckTxn(t, n.cfg.MaxTxnOps) != nil || n.tooManyRequests(false) ||
-			txnRequestBytes+protowire.SizeBytes(txnSize(t))+extra > n.cfg.MaxRequestBytes {
-			return false
+		switch {
+		case !ok || !isShort(t):
+			return FastNotShort
+		case shortLease(t):
+			return FastLease
+		case mvcc.IsTxnReadOnly(t):
+			return FastReadOnly
+		case !n.quotaLeft(txnCost(t)):
+			return FastQuota
+		case mvcc.CheckTxn(t, n.cfg.MaxTxnOps) != nil ||
+			txnRequestBytes+protowire.SizeBytes(txnSize(t))+extra > n.cfg.MaxRequestBytes:
+			return FastInvalid
+		case n.tooManyRequests(false):
+			return FastBehind
 		}
 		kind = kindShortTxn
 	}
@@ -147,7 +203,7 @@ func (n *Node) SubmitFast(r *Request, call FastCall) bool {
 	size := writeSize(&s.p)
 	if size > maxWriteBytes {
 		*s = fastSlot{}
-		return false
+		return FastTooLarge
 	}
 	if len(f.ids) > 0 && len(f.open)-openHead+size > n.cfg.MaxBatchBytes {
 		// As queueWrite: a write that would take the entry past its cap
@@ -162,12 +218,12 @@ func (n *Node) SubmitFast(r *Request, call FastCall) bool {
 	if err != nil {
 		// appendKind fails only to marshal, which these writes never do.
 		*s = fastSlot{}
-		return false
+		return FastInvalid
 	}
 	f.open = open
 	f.ids = append(f.ids, r.ID)
 	f.order = append(f.order, r.ID)
-	return true
+	return FastTaken
 }
 
 // shortLease reports whether a short transaction puts with a lease.
@@ -273,6 +329,7 @@ func (n *Node) demote() {
 			continue
 		}
 		s.open, s.slow = false, true
+		n.counters.FastDemoted++
 		p := new(pending)
 		*p = s.p
 		p.fast, p.queued = false, true

@@ -56,6 +56,11 @@ type Counters struct {
 	// entry they named, and HeldAsked the times a follower asked the
 	// leader to send entries in full after a wait (held.go).
 	HeldNamed, HeldFilled, HeldParked, HeldAsked int64
+	// FastPath counts the writes offered to the fast path by outcome
+	// (FastOutcomeNames): taken, or why they went to Submit. FastDemoted
+	// counts the writes taken that moved to the slow path's queue.
+	FastPath    [FastOutcomes]int64
+	FastDemoted int64
 }
 
 // AlarmGauge is the value of an alarm's etcd_debugging_server_alarms.

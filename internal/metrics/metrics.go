@@ -359,6 +359,18 @@ var nodeMetrics = []nodeMetric{
 		value: func(m *core.Metrics) float64 { return float64(m.HeldAsked) },
 	},
 	{
+		desc: desc("tigerstore_server_fast_path_total", "The total number of writes offered to the fast path, by outcome: taken, or why they went the slow way.", "outcome"), typ: prometheus.CounterValue,
+		each: func(m *core.Metrics, emit func(float64, ...string)) {
+			for i, name := range core.FastOutcomeNames {
+				emit(float64(m.FastPath[i]), name)
+			}
+		},
+	},
+	{
+		desc: desc("tigerstore_server_fast_demoted_total", "The total number of writes the fast path took that moved to the slow path's queue."), typ: prometheus.CounterValue,
+		value: func(m *core.Metrics) float64 { return float64(m.FastDemoted) },
+	},
+	{
 		desc: desc("tigerstore_server_slow_commits_total", "The total number of times the leader's oldest entry waited three election timeouts to commit."), typ: prometheus.CounterValue,
 		value: func(m *core.Metrics) float64 { return float64(m.SlowCommits) },
 	},
