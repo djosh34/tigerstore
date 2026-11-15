@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go.etcd.io/raft/v3"
+	pb "go.etcd.io/raft/v3/raftpb"
 )
 
 // node is one replica: everything below runs on the loop's one thread.
@@ -74,6 +75,21 @@ type node struct {
 	fwdSeq     uint32
 	// proposed are the batches proposed and not yet timed out, in order.
 	proposed []proposal
+
+	// confState is the membership as of the applied index.
+	confState *pb.ConfState
+	// Checkpoints: the one being written, if any; the generation and log
+	// position of the newest; and their directory.
+	ckpt     *ckptRun
+	ckptGen  int
+	ckptFrom int64
+	ckptName string
+	ckptDir  string
+	// recvSnap is a snapshot received and not installed yet.
+	recvSnap string
+	// shell does what takes other goroutines: waking the loop, and
+	// sending a snapshot to a follower.
+	shell shell
 
 	// goLimit is the memory limit last given Go's runtime.
 	goLimit int64

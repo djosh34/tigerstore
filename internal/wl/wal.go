@@ -25,7 +25,8 @@ import (
 // o/segSize, a file of its own that each write grows: nothing in the log
 // is ever overwritten. The store names values by their log offset, and
 // reads an old or let-go value back from the stage while it may not be
-// on disk, else from its segment.
+// on disk, else from its segment. Once a checkpoint holds what the
+// segments before it held, they are removed (cut).
 //
 // A record is [4 crc32c][4 body length][1 kind], then the body; the crc
 // covers everything after it. An entry's body is [8 index][8 term]
@@ -55,10 +56,12 @@ type wal struct {
 
 	iov     [][]byte
 	hdrs    []byte
-	pending []walJob      // appends written to the stage, by end offset
-	stable  int64         // the end of the appends whose responses are stepped
-	waiting []*pb.Message // appends kept while the stage is full
-	offs    []int64       // where the last write's entries have their data
+	pending []walJob // appends written to the stage, by end offset
+	stable  int64    // the end of the appends whose responses are stepped
+	// durableHS is the newest hard state the log holds durably.
+	durableHS *pb.HardState
+	waiting   []*pb.Message // appends kept while the stage is full
+	offs      []int64       // where the last write's entries have their data
 
 	// stage mirrors the newest part of the log in page-aligned memory:
 	// the loop copies each append there, and the helper writes its blocks
@@ -88,7 +91,8 @@ type wal struct {
 	wfds       []int // from segment wbase on
 	wbase      int64
 	mu         sync.Mutex
-	rfds       []int
+	rfds       []int // from segment rbase on
+	rbase      int64
 
 	stats walStats
 }
@@ -103,6 +107,7 @@ type walStats struct {
 type walJob struct {
 	end   int64
 	resps []*pb.Message
+	hs    *pb.HardState // the hard state the append wrote, if any
 }
 
 type segment struct {
@@ -113,13 +118,14 @@ type segment struct {
 func segPath(dir string, k int64) string { return filepath.Join(dir, fmt.Sprintf("%016x.seg", k)) }
 
 // openWAL opens the log in dir, or starts an empty one. It calls fn with
-// each record the log holds, in order, up to the first that does not
-// check; the log goes on after that one, and what lay from it on is cut.
-func openWAL(dir string, fn func(r *walRecord) error) (*wal, error) {
+// each record the log holds from offset from on, in order, up to the
+// first that does not check; the log goes on after that one, and what lay
+// from it on is cut. from is where a checkpoint left the log, 0 for none.
+func openWAL(dir string, from int64, fn func(r *walRecord) error) (*wal, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	end, err := scanWAL(dir, fn)
+	end, err := scanWAL(dir, from, fn)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +144,7 @@ func openWAL(dir string, fn func(r *walRecord) error) (*wal, error) {
 	if w.stage, err = mmapBytes(stageSize); err != nil {
 		return nil, err
 	}
-	next, err := w.reopen(end)
+	next, err := w.reopen(from, end)
 	if err != nil {
 		return nil, err
 	}
@@ -148,13 +154,17 @@ func openWAL(dir string, fn func(r *walRecord) error) (*wal, error) {
 }
 
 // reopen readies the log to go on at end: it opens the segments that hold
-// it to read, and the last one to write from end on, cut there; it removes
-// any segment after it, and puts the last block's bytes before end into
-// the stage, which the helper writes again. It returns the first segment
-// still to make.
-func (w *wal) reopen(end int64) (int64, error) {
-	last := end / segSize
-	for k := int64(0); k <= last; k++ {
+// it from offset from to read, and the last one to write from end on, cut
+// there; it removes any segment before from's or after end's, and puts the
+// last block's bytes before end into the stage, which the helper writes
+// again. It returns the first segment still to make.
+func (w *wal) reopen(from, end int64) (int64, error) {
+	first, last := from/segSize, end/segSize
+	if err := removeSegments(w.dir, 0, first); err != nil {
+		return 0, err
+	}
+	w.rbase = first
+	for k := first; k <= last; k++ {
 		fd, err := unix.Open(segPath(w.dir, k), unix.O_RDONLY|unix.O_CLOEXEC, 0)
 		if errors.Is(err, unix.ENOENT) && k == last {
 			// The log ends where a segment would start.
@@ -175,7 +185,7 @@ func (w *wal) reopen(end int64) (int64, error) {
 	w.off, w.stable, w.wbase = end, end, last
 	w.done.Store(end)
 	w.want.Store(end)
-	if int64(len(w.rfds)) == last {
+	if w.rbase+int64(len(w.rfds)) == last {
 		return last, nil
 	}
 	path := segPath(w.dir, last)
@@ -187,12 +197,52 @@ func (w *wal) reopen(end int64) (int64, error) {
 		return 0, err
 	}
 	w.wfds = append(w.wfds, wfd)
-	from := end &^ (block - 1)
-	pos := from % stageSize
-	if n, err := unix.Pread(w.rfds[last], w.stage[pos:pos+end-from], from%segSize); err != nil || int64(n) != end-from {
+	blk := end &^ (block - 1)
+	pos := blk % stageSize
+	if n, err := unix.Pread(w.rfds[last-w.rbase], w.stage[pos:pos+end-blk], blk%segSize); err != nil || int64(n) != end-blk {
 		return 0, fmt.Errorf("read the log's last block back: %d bytes, %w", n, err)
 	}
 	return last + 1, nil
+}
+
+// removeSegments removes dir's segments from k to before to, those that
+// exist.
+func removeSegments(dir string, k, to int64) error {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range ents {
+		var i int64
+		if _, err := fmt.Sscanf(e.Name(), "%016x.seg", &i); err != nil || i < k || i >= to {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// cut removes the segments wholly before off, which nothing reads any
+// more: the store's values and Raft's entries before it lie in a
+// checkpoint. Only the loop calls it.
+func (w *wal) cut(off int64) error {
+	k := min(off, w.stable) / segSize
+	if k <= w.rbase {
+		return nil
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for w.rbase < k && len(w.rfds) > 0 {
+		_ = unix.Close(w.rfds[0])
+		if err := os.Remove(segPath(w.dir, w.rbase)); err != nil {
+			return err
+		}
+		w.rfds = w.rfds[1:]
+		w.rbase++
+	}
+	return nil
 }
 
 // makeSegments makes the segments from k on, one ahead of the helper.
@@ -283,8 +333,9 @@ func openDirect(path string) (int, error) {
 	return fd, err
 }
 
-// segFD returns the write file of segment k, waiting until it is made.
-// Only the helper calls it.
+// segFD returns the write file of segment k, waiting until it is made,
+// and closes those before it, which the helper writes no more. Only the
+// helper calls it.
 func (w *wal) segFD(k int64) (int, error) {
 	for w.wbase+int64(len(w.wfds)) <= k {
 		sg := <-w.made
@@ -292,6 +343,11 @@ func (w *wal) segFD(k int64) (int, error) {
 			return -1, sg.err
 		}
 		w.wfds = append(w.wfds, sg.wfd)
+	}
+	for w.wbase < k {
+		_ = unix.Close(w.wfds[0])
+		w.wfds = w.wfds[1:]
+		w.wbase++
 	}
 	return w.wfds[k-w.wbase], nil
 }
@@ -455,18 +511,33 @@ func (w *wal) read(p []byte, off int64) error {
 	if off+int64(len(p)) > w.off || off < 0 {
 		return fmt.Errorf("read %d bytes of the log at %d, past its end %d", len(p), off, w.off)
 	}
-	if off >= w.done.Load()&^(block-1) {
+	if off >= w.durableEnd() {
 		for got := 0; got < len(p); {
 			pos := (off + int64(got)) % stageSize
 			got += copy(p[got:], w.stage[pos:])
 		}
 		return nil
 	}
+	return w.readDurable(p, off)
+}
+
+// durableEnd is where the log's bytes on disk end, those the helper writes
+// again aside: other goroutines may read the log before it.
+func (w *wal) durableEnd() int64 { return w.done.Load() &^ (block - 1) }
+
+// readDurable copies the log's bytes at off, before durableEnd, from its
+// segments into p. Any goroutine may call it.
+func (w *wal) readDurable(p []byte, off int64) error {
 	for got := 0; got < len(p); {
 		o := off + int64(got)
 		k := min(len(p)-got, int(segSize-o%segSize))
 		w.mu.Lock()
-		fd := w.rfds[o/segSize]
+		i := o/segSize - w.rbase
+		if i < 0 || i >= int64(len(w.rfds)) {
+			w.mu.Unlock()
+			return fmt.Errorf("read the log at %d, in segment %d, which it does not hold", o, o/segSize)
+		}
+		fd := w.rfds[i]
 		w.mu.Unlock()
 		n, err := unix.Pread(fd, p[got:got+k], o%segSize)
 		if err != nil {
@@ -490,14 +561,14 @@ type walRecord struct {
 	data  []byte // an entry's data or a hard state, valid until the next record
 }
 
-// scanWAL reads dir's records in order and calls fn, if any, with each, until the
-// first that does not check. It returns the log's end: the offset after
-// the last good record.
-func scanWAL(dir string, fn func(r *walRecord) error) (int64, error) {
+// scanWAL reads dir's records in order from offset from, where a record
+// starts, and calls fn, if any, with each, until the first that does not
+// check. It returns the log's end: the offset after the last good record.
+func scanWAL(dir string, from int64, fn func(r *walRecord) error) (int64, error) {
 	var buf []byte
 	var r walRecord
-	off := int64(0)
-	for k := int64(0); ; k++ {
+	off := from
+	for k := from / segSize; ; k++ {
 		b, err := os.ReadFile(segPath(dir, k))
 		if errors.Is(err, os.ErrNotExist) {
 			break
@@ -507,6 +578,16 @@ func scanWAL(dir string, fn func(r *walRecord) error) (int64, error) {
 		}
 		if int64(len(b)) > segSize {
 			return 0, fmt.Errorf("segment %d is longer than a segment", k)
+		}
+		short := int64(len(b)) < segSize
+		if k == from/segSize {
+			if int64(len(b)) < from%segSize {
+				// The log ends before where its checkpoint left it: what
+				// lay between was older than the checkpoint and not yet
+				// durable.
+				return from, nil
+			}
+			b = b[from%segSize:]
 		}
 		buf = append(buf, b...)
 		for len(buf) >= recHead {
@@ -540,7 +621,7 @@ func scanWAL(dir string, fn func(r *walRecord) error) (int64, error) {
 			off += recHead + l
 			buf = buf[recHead+l:]
 		}
-		if int64(len(b)) < segSize {
+		if short {
 			// A segment that ends short is the last: the log ends in it.
 			break
 		}

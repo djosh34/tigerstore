@@ -44,6 +44,9 @@ func (n *node) ready() error {
 		rd := n.rn.Ready()
 		if rd.SoftState != nil {
 			was := n.leading()
+			if rd.Lead != n.lead {
+				n.logf("the leader is %d", rd.Lead)
+			}
 			n.lead = rd.Lead
 			hasLeader := int64(0)
 			if n.lead != 0 {
@@ -113,8 +116,14 @@ func (n *node) unwait() error {
 }
 
 // appendNow writes an append into the stage, and hands its entries to
-// Raft's storage with where the log holds their data.
+// Raft's storage with where the log holds their data. A snapshot it
+// carries is installed first.
 func (n *node) appendNow(m *pb.Message) error {
+	if sn := m.GetSnapshot(); sn != nil && sn.GetMetadata().GetIndex() > 0 {
+		if err := n.installSnapshot(sn); err != nil {
+			return err
+		}
+	}
 	ents := m.GetEntries()
 	var hs []byte
 	var st *pb.HardState
@@ -139,7 +148,7 @@ func (n *node) appendNow(m *pb.Message) error {
 		n.commit = st.GetCommit()
 		n.storage.setHardState(st)
 	}
-	n.wal.pending = append(n.wal.pending, walJob{end: n.wal.off, resps: m.Responses})
+	n.wal.pending = append(n.wal.pending, walJob{end: n.wal.off, resps: m.Responses, hs: st})
 	if !n.wal.inflight && n.wal.done.Load() >= n.wal.off {
 		n.synced()
 		return nil
@@ -162,6 +171,9 @@ func (n *node) synced() {
 			}
 		}
 		w.stable = w.pending[k].end
+		if hs := w.pending[k].hs; hs != nil {
+			w.durableHS = hs
+		}
 		w.pending[k] = walJob{}
 	}
 	w.pending = append(w.pending[:0], w.pending[k:]...)
@@ -187,12 +199,12 @@ func (n *node) storageApply(m *pb.Message) error {
 		case pb.EntryConfChange:
 			var cc pb.ConfChange
 			if err := proto.Unmarshal(e.GetData(), &cc); err == nil {
-				n.rn.ApplyConfChange(&cc)
+				n.confState = n.rn.ApplyConfChange(&cc)
 			}
 		case pb.EntryConfChangeV2:
 			var cc pb.ConfChangeV2
 			if err := proto.Unmarshal(e.GetData(), &cc); err == nil {
-				n.rn.ApplyConfChange(&cc)
+				n.confState = n.rn.ApplyConfChange(&cc)
 			}
 		case pb.EntryNormal:
 			if d := e.GetData(); len(d) > 0 {
@@ -209,11 +221,35 @@ func (n *node) storageApply(m *pb.Message) error {
 	for _, r := range m.Responses {
 		_ = n.rn.Step(r)
 	}
-	// Keep a window of entries for followers that lag, drop the rest.
-	if first, _ := n.storage.FirstIndex(); n.applied > first+2*storageWindow {
-		n.storage.compact(n.applied - storageWindow)
+	return n.afterApply()
+}
+
+// afterApply keeps a window of entries for followers that lag and drops
+// the rest up to the newest checkpoint, removes the log's segments before
+// what the node still reads, and starts a checkpoint once the log has
+// grown enough since the last.
+func (n *node) afterApply() error {
+	s := n.storage
+	if first, _ := s.FirstIndex(); n.applied > first+2*storageWindow {
+		s.compact(n.applied - storageWindow)
 	}
-	return nil
+	if s.snap != nil {
+		if err := n.wal.cut(min(n.ckptFrom, s.firstRecord(n.wal.off))); err != nil {
+			return err
+		}
+	}
+	if n.ckpt != nil || n.ckptDir == "" || n.wal.off-n.ckptFrom < max(ckptMin, 2*(n.st.liveBytes+n.st.histBytes)) {
+		return nil
+	}
+	off := s.offOf(n.applied)
+	if off < 0 {
+		return nil
+	}
+	term, err := s.Term(n.applied)
+	if err != nil {
+		return err
+	}
+	return n.startCkpt(n.applied, term, off-walEntHdr)
 }
 
 // ---- peer messages
@@ -236,7 +272,7 @@ func (n *node) sendPeer(m *pb.Message) {
 		return
 	}
 	if m.GetType() == pb.MsgSnap {
-		n.rn.ReportSnapshot(m.GetTo(), raft.SnapshotFailure)
+		n.sendSnapshot(m)
 		return
 	}
 	ents := m.GetEntries()
@@ -316,14 +352,6 @@ func (s *sock) put(p []byte) {
 // peerFrames reads the messages in pt and steps them.
 func (n *node) peerFrames(p *peerIn) error {
 	s := &p.sock
-	if !p.hello {
-		if s.pw-s.pr < 8 {
-			return nil
-		}
-		p.from = binary.LittleEndian.Uint64(s.pt[s.pr:])
-		s.pr += 8
-		p.hello = true
-	}
 	for {
 		avail := s.pw - s.pr
 		if avail < 4 {

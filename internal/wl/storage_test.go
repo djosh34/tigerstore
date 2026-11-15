@@ -81,7 +81,18 @@ func TestStorageCompacts(t *testing.T) {
 	l := &memLog{}
 	s := newLogStorage(l)
 	storeEntries(t, s, l, testEntry(1, 1, "one"), testEntry(2, 1, "two"), testEntry(3, 2, "three"), testEntry(4, 2, "four"))
+	// Without a checkpoint, a follower that lags could not catch up: the
+	// storage keeps everything.
 	s.compact(2)
+	if first, _ := s.FirstIndex(); first != 1 {
+		t.Fatalf("first index %d without a checkpoint, want 1", first)
+	}
+	if _, err := s.Snapshot(); !errors.Is(err, raft.ErrSnapshotTemporarilyUnavailable) {
+		t.Fatalf("a snapshot without a checkpoint: %v", err)
+	}
+	// Never past the newest checkpoint.
+	s.snap = &pb.Snapshot{Data: []byte("c"), Metadata: &pb.SnapshotMetadata{Index: new(uint64(2)), Term: new(uint64(1))}}
+	s.compact(3)
 	if first, _ := s.FirstIndex(); first != 3 {
 		t.Fatalf("first index %d, want 3", first)
 	}

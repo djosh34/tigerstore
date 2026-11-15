@@ -252,7 +252,9 @@ func (n *node) applyLeaseRevoke(req []byte, c *client, s *stream) error {
 	for k := range l.keys {
 		keys = append(keys, k)
 	}
-	slices.Sort(keys) // every node deletes them in one order
+	// Every node deletes them in one order, by name as etcd does: ids
+	// differ between nodes once freed ids are reused.
+	slices.SortFunc(keys, func(a, b uint32) int { return bytes.Compare(st.key(a), st.key(b)) })
 	rev := st.rev + 1
 	deleted := false
 	for _, k := range keys {

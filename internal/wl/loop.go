@@ -26,6 +26,7 @@ import (
 
 	mainnode "github.com/djosh34/tigerstore/internal/node"
 	"go.etcd.io/raft/v3"
+	pb "go.etcd.io/raft/v3/raftpb"
 	"golang.org/x/sys/unix"
 )
 
@@ -36,9 +37,8 @@ type peerOut struct {
 
 type peerIn struct {
 	sock
-	hello bool
-	from  uint64
-	held  [][]byte // messages that wait behind an append naming a batch not here yet
+	from uint64
+	held [][]byte // messages that wait behind an append naming a batch not here yet
 	// heldSince is when the first of held came.
 	heldSince time.Time
 }
@@ -53,7 +53,10 @@ type loop struct {
 	mu       sync.Mutex
 	stopped  bool
 	handoffs []*handoff
-	redials  map[uint64]chan struct{}
+	// posts are what other goroutines hand the loop to run.
+	posts   []func() error
+	redials map[uint64]chan struct{}
+	peerTLS *tls.Config // to dial peers
 
 	free    []int
 	tick    int64
@@ -181,7 +184,7 @@ func run(ctx context.Context, logger *log.Logger, name, dataDir, listenClient, a
 	if err != nil {
 		return err
 	}
-	n := &node{clusterID: 0x7769726531, peersOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{}}
+	n := &node{clusterID: 0x7769726531, peersOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{}, ckptDir: filepath.Join(dataDir, "ckpt"), confState: &pb.ConfState{}}
 	var peers []raft.Peer
 	for i, part := range strings.Split(initial, ",") {
 		nm, u, ok := strings.Cut(part, "=")
@@ -227,16 +230,27 @@ func run(ctx context.Context, logger *log.Logger, name, dataDir, listenClient, a
 	if n.side, err = newRing(sideSize); err != nil {
 		return err
 	}
-	// Raft's storage takes what the log holds; Raft then hands out the
-	// committed entries again, and the apply builds the store from them.
+	// The store starts from the newest checkpoint, and Raft's storage
+	// takes what the log holds after it; Raft then hands out the committed
+	// entries again, and the apply builds the rest of the store from them.
 	n.storage = newLogStorage(nil)
-	if n.wal, err = openWAL(filepath.Join(dataDir, "wal"), n.storage.restore); err != nil {
+	from, err := n.loadNewest()
+	if err != nil {
+		return err
+	}
+	if n.wal, err = openWAL(filepath.Join(dataDir, "wal"), from, n.storage.restore); err != nil {
 		return err
 	}
 	n.storage.log = n.wal
 	n.st.log = n.wal
+	n.wal.durableHS = n.storage.hs
 	n.st.setBudget(memBudget, 2*ringSize+sideSize+stageSize)
 	n.limitGo()
+	// The hard state the checkpoint's pointer kept may be older than the
+	// checkpoint: what it holds is committed.
+	if hs := n.storage.hs; hs.GetCommit() < n.storage.snapIndex {
+		hs.Commit = new(n.storage.snapIndex)
+	}
 	n.term, n.commit = n.storage.hs.GetTerm(), n.storage.hs.GetCommit()
 	n.rn, err = raft.NewRawNode(raftConfig(n.id, n.storage))
 	if err != nil {
@@ -250,7 +264,8 @@ func run(ctx context.Context, logger *log.Logger, name, dataDir, listenClient, a
 		logger.Printf("recovered the log: entries to %d, hard state term %d commit %d", n.storage.lastIndex(), n.term, n.commit)
 	}
 
-	l := &loop{n: n, redials: map[uint64]chan struct{}{}, logger: logger, lastAt: time.Now()}
+	l := &loop{n: n, redials: map[uint64]chan struct{}{}, logger: logger, lastAt: time.Now(), peerTLS: peerCliTLS}
+	n.shell = l
 	if l.epfd, err = unix.EpollCreate1(unix.EPOLL_CLOEXEC); err != nil {
 		return err
 	}
@@ -323,6 +338,10 @@ func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.
 				serveHTTP1(h, l.n.metrics)
 				return
 			}
+			if kind == kindPeerIn {
+				l.peerHello(h)
+				return
+			}
 			l.handOver(h)
 		}()
 	}
@@ -380,6 +399,40 @@ func (l *loop) handOver(h *handoff) {
 	l.mu.Unlock()
 }
 
+// post hands the loop fn to run in its next turn.
+func (l *loop) post(fn func() error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.stopped {
+		return
+	}
+	l.posts = append(l.posts, fn)
+	l.wake()
+}
+
+func (l *loop) logf(format string, args ...any) { l.logger.Printf(format, args...) }
+
+// wakeLoop wakes the loop from another goroutine.
+func (l *loop) wakeLoop() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.wake()
+}
+
+// runPosts runs what other goroutines posted.
+func (l *loop) runPosts() error {
+	l.mu.Lock()
+	ps := l.posts
+	l.posts = nil
+	l.mu.Unlock()
+	for _, fn := range ps {
+		if err := fn(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // wake wakes the loop through its handoff eventfd, unless it stopped and
 // closed it. The caller holds l.mu.
 func (l *loop) wake() {
@@ -410,6 +463,7 @@ func (l *loop) shut(listeners ...net.Listener) {
 			l.closeSock(idx)
 		}
 	}
+	l.n.abortCkpt()
 	l.n.wal.close()
 	_ = unix.Close(l.epfd)
 	_ = unix.Close(l.hoFD)
@@ -433,7 +487,8 @@ func (l *loop) takeHandoffs() {
 			n.socks[idx] = c
 			s = &c.sock
 		case kindPeerIn:
-			p := &peerIn{sock: *newSock(h, &n.stats)}
+			p := &peerIn{sock: *h.pre, from: h.peer}
+			p.stats = &n.stats
 			n.socks[idx] = p
 			s = &p.sock
 		case kindPeerOut:
@@ -455,8 +510,8 @@ func (l *loop) takeHandoffs() {
 			l.closeSock(idx)
 			continue
 		}
-		// Bytes read with the handshake wait in in already.
-		if s.iw > 0 {
+		// Bytes read with the handshake or the hello wait already.
+		if s.iw > s.ir || s.pw > s.pr {
 			l.input(idx)
 		}
 	}
@@ -587,6 +642,9 @@ func (l *loop) run() error {
 					return errStopped
 				}
 				l.takeHandoffs()
+				if err := l.runPosts(); err != nil {
+					return err
+				}
 			case evFsync:
 				if err := n.fsyncDone(); err != nil {
 					return err
@@ -628,6 +686,9 @@ func (l *loop) run() error {
 		}
 		t2 := time.Now()
 		if err := n.syncWatchers(); err != nil {
+			return err
+		}
+		if err := n.ckptStep(false); err != nil {
 			return err
 		}
 		t3 := time.Now()
@@ -757,6 +818,7 @@ var profMu sync.Mutex
 // socket reads and writes, WAL writes and fsyncs, replies and Raft work.
 type counters struct {
 	turns, reads, writes, replies, proposals, readIndex, peerMsgs uint64
+	ckpts, snapsSent, snapsInstalled                              uint64
 
 	// What the batches carried, and how the peers named or carried them.
 	opsByKind, bytesByKind [16]int

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/maphash"
+	"os"
 	"slices"
 	"unsafe"
 )
@@ -18,9 +19,10 @@ import (
 // when it is read. A hash index finds keys; a tree of directories orders
 // them for ranges.
 
-// keyEnt is one key, live or not. It holds no pointers.
+// keyEnt is one key, live or not. It holds no pointers. A free id has
+// klen 0: no key is empty.
 type keyEnt struct {
-	koff   uint64 // key bytes in the key arena
+	koff   uint64 // key bytes in the key slab
 	klen   uint32
 	dir    uint32
 	rec    uint64 // live record in the slab; 0 if the key is not live or the budget let it go
@@ -30,7 +32,7 @@ type keyEnt struct {
 	mod    int64  // the revision of the state; of the deletion if not live
 	ver    int64
 	lease  int64
-	voff   int64 // the log offset of the live value
+	voff   int64 // where the live value lies: in the log, or in a checkpoint (ckptOff)
 	vlen   uint32
 	_      uint32
 }
@@ -62,11 +64,15 @@ type store struct {
 
 	keys  []keyEnt
 	nkeys uint32
-	hash  []uint64 // a hash index (hashEntry) of the keys
-	mask  uint64
-	seed  maphash.Seed
+	// keyFree are ids freed for reuse: keys deleted before the compacted
+	// revision, which no read or watch can name any more.
+	keyFree []uint32
+	hash    []uint64 // a hash index (hashEntry) of the keys
+	mask    uint64
+	seed    maphash.Seed
 
-	karena   arena
+	kmem     *slab // key bytes
+	karena   arena // directory paths
 	slab     *slab
 	hist     []histEnt
 	nhist    uint32
@@ -75,10 +81,17 @@ type store struct {
 	// trimming.
 	trimKey  uint32
 	trimming bool
-	tree     tree
+	// While a checkpoint is written, trimming and the change index keep
+	// everything from the revision it was compacted to, holdRev.
+	holding bool
+	holdRev int64
+	tree    tree
 
-	leases  map[int64]*lease
-	log     logReader
+	leases map[int64]*lease
+	log    logReader
+	// ckpts are the checkpoint files values may lie in, by the generation
+	// bit of their offsets: the newest one, and the one being written.
+	ckpts   [2]*os.File
 	scratch []byte // a value read from the log
 
 	// The budget: the slab's records may take limit bytes; past it, the
@@ -91,6 +104,9 @@ type store struct {
 	hand      uint32
 	evictions uint64
 	loads     uint64
+	// liveBytes and histBytes are the size of the live values and of the
+	// earlier ones the history keeps: what a checkpoint holds.
+	liveBytes, histBytes int64
 
 	// changes is every change by revision, the index of watches from a
 	// past revision.
@@ -106,6 +122,7 @@ const (
 	maxKeys   = 1 << 27
 	maxHist   = 1 << 26
 	keyArena  = 4 << 30
+	dirArena  = 1 << 30
 	slabBytes = 48 << 30
 	dirStart  = 1 << 14 // the directory index's first size, which doubles
 )
@@ -126,7 +143,10 @@ func newStore() (*store, error) {
 	if st.hash, err = mmapSlice[uint64](hashStart); err != nil {
 		return nil, err
 	}
-	if st.karena.mem, err = mmapBytes(keyArena); err != nil {
+	if st.kmem, err = newSlab(keyArena); err != nil {
+		return nil, err
+	}
+	if st.karena.mem, err = mmapBytes(dirArena); err != nil {
 		return nil, err
 	}
 	if st.slab, err = newSlab(slabBytes); err != nil {
@@ -146,7 +166,7 @@ var (
 
 func (st *store) key(id uint32) []byte {
 	k := &st.keys[id]
-	return st.karena.get(k.koff, k.klen)
+	return st.kmem.bytes(k.koff, int(k.klen))
 }
 
 // find returns the id of key, if the store has ever had it.
@@ -160,7 +180,7 @@ func (st *store) find(key []byte) (uint32, bool) {
 		if entryHash(e) == uint32(h) {
 			id := uint32(e) - 1
 			k := &st.keys[id]
-			if int(k.klen) == len(key) && bytes.Equal(st.karena.get(k.koff, k.klen), key) {
+			if int(k.klen) == len(key) && bytes.Equal(st.kmem.bytes(k.koff, int(k.klen)), key) {
 				return id, true
 			}
 		}
@@ -172,11 +192,8 @@ func (st *store) intern(key []byte) (uint32, error) {
 	if id, ok := st.find(key); ok {
 		return id, nil
 	}
-	id := st.nkeys
-	if id+1 >= maxKeys {
-		return 0, errTooManyKeys
-	}
-	if 2*uint64(id+1) > uint64(len(st.hash)) {
+	used := st.nkeys - uint32(len(st.keyFree))
+	if 2*uint64(used+1) > uint64(len(st.hash)) {
 		hash, err := mmapSlice[uint64](2 * len(st.hash))
 		if err != nil {
 			return 0, err
@@ -187,14 +204,41 @@ func (st *store) intern(key []byte) (uint32, error) {
 		}
 		st.hash, st.mask = hash, uint64(len(hash)-1)
 	}
-	koff, err := st.karena.add(key)
+	id := st.nkeys
+	if k := len(st.keyFree); k > 0 {
+		id = st.keyFree[k-1]
+	} else if id+1 >= maxKeys {
+		return 0, errTooManyKeys
+	}
+	koff, err := st.kmem.alloc(len(key))
 	if err != nil {
 		return 0, err
 	}
-	st.nkeys++
+	if id == st.nkeys {
+		st.nkeys++
+	} else {
+		st.keyFree = st.keyFree[:len(st.keyFree)-1]
+	}
+	copy(st.kmem.mem[koff:], key)
 	st.keys[id] = keyEnt{koff: koff, klen: uint32(len(key)), dir: noDir}
 	putEntry(st.hash, maphash.Bytes(st.seed, key), id)
 	return id, nil
+}
+
+// freeKey gives back key id, which is not live and has no history: its
+// index entry, its bytes and its id.
+func (st *store) freeKey(id uint32) {
+	k := &st.keys[id]
+	h := maphash.Bytes(st.seed, st.key(id))
+	for i := h & st.mask; st.hash[i] != 0; i = (i + 1) & st.mask {
+		if uint32(st.hash[i])-1 == id {
+			removeEntry(st.hash, i)
+			break
+		}
+	}
+	st.kmem.free(k.koff, int(k.klen))
+	*k = keyEnt{dir: noDir}
+	st.keyFree = append(st.keyFree, id)
 }
 
 // A hash index is open addressing over a power of two of slots, each 0 or
@@ -215,6 +259,23 @@ func putEntry(idx []uint64, h uint64, id uint32) {
 			return
 		}
 	}
+}
+
+// removeEntry empties slot i of idx and moves the entries after it in
+// its run back, so that each stays where a probe from its home slot finds
+// it.
+func removeEntry(idx []uint64, i uint64) {
+	mask := uint64(len(idx) - 1)
+	for j := (i + 1) & mask; idx[j] != 0; j = (j + 1) & mask {
+		home := uint64(entryHash(idx[j])) & mask
+		// The entry at j may move to i unless its home lies after i, up
+		// to j.
+		if (j-home)&mask >= (j-i)&mask {
+			idx[i] = idx[j]
+			i = j
+		}
+	}
+	idx[i] = 0
 }
 
 // rehash puts the entries of old into to, a larger index.
@@ -252,7 +313,7 @@ func (st *store) load(id uint32) error {
 	if err != nil {
 		return err
 	}
-	key := st.karena.get(k.koff, k.klen)
+	key := st.key(id)
 	n := kvSize(len(key), len(val), k.create, k.mod, k.ver, k.lease)
 	off, err := st.slab.alloc(n)
 	if err != nil {
@@ -264,14 +325,24 @@ func (st *store) load(id uint32) error {
 	return nil
 }
 
-// readLog reads n bytes of the log at off into the store's scratch,
-// which the next read overwrites.
+// readLog reads the n bytes of a value at off, in the log or a
+// checkpoint, into the store's scratch, which the next read overwrites.
 func (st *store) readLog(off int64, n int) ([]byte, error) {
 	if cap(st.scratch) < n {
 		st.scratch = make([]byte, n)
 	}
 	val := st.scratch[:n]
 	if n == 0 {
+		return val, nil
+	}
+	if inCkpt(off) {
+		f := st.ckpts[ckptGenOf(off)]
+		if f == nil {
+			return nil, fmt.Errorf("a value at %#x names a checkpoint the store does not have", off)
+		}
+		if _, err := f.ReadAt(val, off&ckptOffMask); err != nil {
+			return nil, fmt.Errorf("read a value from the checkpoint: %w", err)
+		}
 		return val, nil
 	}
 	if st.log == nil {
@@ -313,7 +384,7 @@ func (st *store) goNeed() int64 { return max(goShare(st.budget), st.goLive+st.go
 // slab up to the highest slot handed out.
 func (st *store) outside() int64 {
 	return st.mapped + int64(st.nkeys)*int64(unsafe.Sizeof(keyEnt{})) + int64(st.nhist)*int64(unsafe.Sizeof(histEnt{})) +
-		int64(len(st.hash))*8 + int64(st.karena.top) + int64(st.slab.top)
+		int64(len(st.hash))*8 + int64(st.kmem.top) + int64(st.karena.top) + int64(st.slab.top)
 }
 
 // goLimit is the memory limit Go's runtime gets: what the budget leaves
@@ -395,6 +466,7 @@ func (st *store) pushHist(k *keyEnt) error {
 		create: k.create, mod: k.mod, ver: k.ver, lease: k.lease,
 		voff: k.voff, vlen: k.vlen, prev: k.hist, deleted: k.create == 0,
 	}
+	st.histBytes += int64(k.vlen)
 	k.hist = h
 	return nil
 }
@@ -407,7 +479,7 @@ func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64
 	if prev, err = st.live(id); err != nil {
 		return nil, err
 	}
-	key := st.karena.get(k.koff, k.klen)
+	key := st.key(id)
 	create, ver := rev, int64(1)
 	if prev != nil {
 		create, ver = k.create, k.ver+1
@@ -435,6 +507,10 @@ func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64
 		old = k.lease
 	}
 	st.setLease(id, old, lease)
+	if prev != nil {
+		st.liveBytes -= int64(k.vlen)
+	}
+	st.liveBytes += int64(len(value))
 	k.rec, k.rlen = off, uint32(n)
 	k.create, k.mod, k.ver, k.lease = create, rev, ver, lease
 	k.voff, k.vlen = voff, uint32(len(value))
@@ -456,6 +532,7 @@ func (st *store) del(id uint32, rev int64) ([]byte, error) {
 	st.freeLater = append(st.freeLater, k.rec, uint64(k.rlen))
 	st.tree.remove(id)
 	st.setLease(id, k.lease, 0)
+	st.liveBytes -= int64(k.vlen)
 	k.rec, k.rlen = 0, 0
 	k.create, k.mod, k.ver, k.lease = 0, rev, 0, 0
 	k.voff, k.vlen = 0, 0
@@ -482,13 +559,39 @@ const trimStep = 4096
 // each apply.
 func (st *store) compact(rev int64) {
 	st.compactRev = rev
-	i, _ := slices.BinarySearchFunc(st.changes, rev, func(ch change, r int64) int { return cmp.Compare(ch.rev, r) })
+	st.retrim()
+}
+
+// trimRev is the revision whose reads trimming keeps what they need: the
+// compacted one, or the one a checkpoint being written holds.
+func (st *store) trimRev() int64 {
+	if st.holding {
+		return min(st.compactRev, st.holdRev)
+	}
+	return st.compactRev
+}
+
+// retrim drops the change index before trimRev and starts trimming the
+// histories to it.
+func (st *store) retrim() {
+	i, _ := slices.BinarySearchFunc(st.changes, st.trimRev(), func(ch change, r int64) int { return cmp.Compare(ch.rev, r) })
 	if i > len(st.changes)/2 {
 		st.changes = append([]change(nil), st.changes[i:]...)
 	} else {
 		st.changes = st.changes[i:]
 	}
 	st.trimKey, st.trimming = 0, true
+}
+
+// hold keeps everything a read at the compacted revision needs, while a
+// checkpoint taken now is written; release lets trimming go on.
+func (st *store) hold() { st.holding, st.holdRev = true, st.compactRev }
+
+func (st *store) release() {
+	st.holding = false
+	if st.compactRev > st.holdRev {
+		st.retrim()
+	}
 }
 
 // trimSteps trims the histories of up to k keys.
@@ -505,10 +608,14 @@ func (st *store) trimSteps(k int) {
 
 // trimHistory frees key id's states before the newest one at or before
 // the compacted revision, and that one too if it is a deletion: a read at
-// the compacted revision or later needs neither.
+// the compacted revision or later needs neither. A key deleted before the
+// compacted revision is freed: no read, watch or change names it.
 func (st *store) trimHistory(id uint32) {
 	k := &st.keys[id]
-	c := st.compactRev
+	if k.klen == 0 {
+		return
+	}
+	c := st.trimRev()
 	var cut uint32
 	if k.mod <= c {
 		cut, k.hist = k.hist, 0
@@ -530,9 +637,13 @@ func (st *store) trimHistory(id uint32) {
 	}
 	for cut != 0 {
 		next := st.hist[cut].prev
+		st.histBytes -= int64(st.hist[cut].vlen)
 		st.hist[cut] = histEnt{prev: st.histFree}
 		st.histFree = cut
 		cut = next
+	}
+	if k.create == 0 && k.hist == 0 && k.mod < c {
+		st.freeKey(id)
 	}
 }
 
@@ -583,4 +694,113 @@ func recValue(rec []byte) []byte {
 		m = rest
 	}
 	return nil
+}
+
+// searchChanges returns the index of the first change at revision rev or
+// later.
+func searchChanges(chs []change, rev int64) int {
+	i, _ := slices.BinarySearchFunc(chs, rev, func(ch change, r int64) int { return cmp.Compare(ch.rev, r) })
+	return i
+}
+
+// ckptStates appends to out key id's states a checkpoint at revision rev
+// holds, newest first: those up to rev that a read at the revision
+// trimming keeps (trimRev) or later can see. A key such a read cannot see
+// has none.
+func (st *store) ckptStates(id uint32, rev int64, out []ckptState) []ckptState {
+	k := &st.keys[id]
+	if k.klen == 0 {
+		return out
+	}
+	c := st.trimRev()
+	add := func(s ckptState, cur bool) bool {
+		if s.mod > rev {
+			return true
+		}
+		// As trimming leaves it: the newest state at or before c, unless a
+		// deletion; a key deleted at c keeps that deletion.
+		if s.mod <= c {
+			if !s.deleted || (cur && s.mod == c) {
+				out = append(out, s)
+			}
+			return false
+		}
+		out = append(out, s)
+		return true
+	}
+	cur := ckptState{deleted: k.create == 0, create: k.create, mod: k.mod, ver: k.ver, lease: k.lease, voff: k.voff, vlen: k.vlen}
+	if !cur.deleted && k.rec != 0 {
+		cur.rec = st.slab.bytes(k.rec, int(k.rlen))
+	}
+	if k.mod == 0 || !add(cur, true) {
+		return out
+	}
+	for h := k.hist; h != 0; h = st.hist[h].prev {
+		e := &st.hist[h]
+		if !add(ckptState{deleted: e.deleted, create: e.create, mod: e.mod, ver: e.ver, lease: e.lease, voff: e.voff, vlen: e.vlen}, false) {
+			break
+		}
+	}
+	return out
+}
+
+// restoreKey adds key with its states, newest first, as a checkpoint holds
+// them, to a store being loaded.
+func (st *store) restoreKey(key []byte, states []ckptState) (uint32, error) {
+	id, err := st.intern(key)
+	if err != nil {
+		return 0, err
+	}
+	k := &st.keys[id]
+	for i := len(states) - 1; i >= 0; i-- {
+		s := &states[i]
+		if err := st.pushHist(k); err != nil {
+			return 0, err
+		}
+		k.create, k.mod, k.ver, k.lease = s.create, s.mod, s.ver, s.lease
+		if s.deleted {
+			k.create, k.ver, k.lease = 0, 0, 0
+		}
+		k.voff, k.vlen = s.voff, s.vlen
+	}
+	if k.create != 0 {
+		if err := st.tree.insert(id); err != nil {
+			return 0, err
+		}
+		st.setLease(id, 0, k.lease)
+		st.liveBytes += int64(k.vlen)
+	}
+	return id, nil
+}
+
+// repoint names the values a checkpoint now holds by their place in it.
+func (st *store) repoint(moves []ckptMove) {
+	for _, m := range moves {
+		k := &st.keys[m.id]
+		if k.voff == m.from {
+			k.voff = m.to
+		}
+		for h := k.hist; h != 0; h = st.hist[h].prev {
+			if e := &st.hist[h]; e.voff == m.from {
+				e.voff = m.to
+			}
+		}
+	}
+}
+
+// close gives back the store's memory outside Go's heap and closes its
+// checkpoint files.
+func (st *store) close() error {
+	for i, f := range st.ckpts {
+		if f != nil {
+			_ = f.Close()
+			st.ckpts[i] = nil
+		}
+	}
+	var errs []error
+	for _, b := range [][]byte{st.kmem.mem, st.karena.mem, st.slab.mem} {
+		errs = append(errs, unixMunmap(b))
+	}
+	errs = append(errs, munmapSlice(st.keys), munmapSlice(st.hash), munmapSlice(st.hist))
+	return errors.Join(errs...)
 }

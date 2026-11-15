@@ -18,7 +18,10 @@ type logStorage struct {
 
 	// The entry before the first one held, as a snapshot names it.
 	snapIndex, snapTerm uint64
-	ents                []storedEnt // from snapIndex+1 on
+	// snap is the newest checkpoint, which a follower that lags gets; the
+	// storage never drops an entry after it.
+	snap *pb.Snapshot
+	ents []storedEnt // from snapIndex+1 on
 	// held is the data bytes of the entries the storage holds itself;
 	// trim keeps it within storageHeld.
 	held int64
@@ -31,8 +34,8 @@ type logStorage struct {
 }
 
 // storageWindow is how many applied entries the storage keeps at least,
-// for followers that lag.
-const storageWindow = 100000
+// for followers that lag; one further behind gets a checkpoint.
+var storageWindow uint64 = 100000
 
 // storageHeld is the most entry data the storage holds in memory. A
 // leader's Raft copies each proposal to the heap, so its entries are held
@@ -122,10 +125,33 @@ func (s *logStorage) entry(i uint64, e *storedEnt) (*pb.Entry, error) {
 	return ent, nil
 }
 
-// Snapshot is not taken yet: a follower that needs one is reported as
-// failed by sendPeer.
+// Snapshot returns the newest checkpoint; its data is the checkpoint's
+// file name.
 func (s *logStorage) Snapshot() (*pb.Snapshot, error) {
-	return &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(s.snapIndex), Term: new(s.snapTerm), ConfState: s.cs}}, nil
+	if s.snap == nil {
+		return nil, raft.ErrSnapshotTemporarilyUnavailable
+	}
+	return s.snap, nil
+}
+
+// applySnapshot makes the storage start after a checkpoint the node now
+// holds, named name: the entries it held are dropped.
+func (s *logStorage) applySnapshot(meta *pb.SnapshotMetadata, name string) {
+	s.snap = &pb.Snapshot{Data: []byte(name), Metadata: meta}
+	s.snapIndex, s.snapTerm = meta.GetIndex(), meta.GetTerm()
+	s.cs = meta.GetConfState()
+	s.ents = s.ents[:0]
+	s.held = 0
+	s.trimmed = 0
+}
+
+// firstRecord is where the log record of the first entry the storage
+// holds starts, or end if it holds none.
+func (s *logStorage) firstRecord(end int64) int64 {
+	if len(s.ents) == 0 {
+		return end
+	}
+	return s.ents[0].off - walEntHdr
 }
 
 // append adds entries the log has just written, offs[i] the offset of
@@ -233,8 +259,13 @@ func (s *logStorage) trim(applied uint64, stable int64) {
 	}
 }
 
-// compact drops the entries up to and including i.
+// compact drops the entries up to and including i, never one after the
+// newest checkpoint.
 func (s *logStorage) compact(i uint64) {
+	if s.snap == nil {
+		return
+	}
+	i = min(i, s.snap.GetMetadata().GetIndex())
 	if i <= s.snapIndex || i > s.lastIndex() {
 		return
 	}

@@ -47,8 +47,8 @@ type testCluster struct {
 	peers, initial, endpoints []string
 	cert                      tls.Certificate
 	ca                        *testcert.CA
-	cancel                    context.CancelFunc
-	stopped                   chan error
+	cancels                   [3]context.CancelFunc
+	stopped                   [3]chan error
 }
 
 // newTestCluster starts a 3-node cluster in this process; the test's end
@@ -86,39 +86,64 @@ func newTestCluster(t *testing.T) *testCluster {
 // start runs the three nodes on their data dirs.
 func (tc *testCluster) start(t *testing.T) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
-	tc.cancel, tc.stopped = cancel, make(chan error, 3)
-	logger := log.New(io.Discard, "", 0)
 	for i := range 3 {
-		client := "https://" + tc.endpoints[i]
-		go func() {
-			tc.stopped <- run(ctx, logger, fmt.Sprintf("n%d", i+1), filepath.Join(tc.dir, fmt.Sprintf("n%d", i+1)), client, client, tc.peers[i],
-				strings.Join(tc.initial, ","), tc.certFile, tc.keyFile, tc.caFile, tc.certFile, tc.keyFile, tc.caFile)
-		}()
+		tc.startNode(t, i)
 	}
 }
+
+// startNode runs node i on its data dir.
+func (tc *testCluster) startNode(t *testing.T, i int) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	tc.cancels[i], tc.stopped[i] = cancel, make(chan error, 1)
+	out := io.Discard
+	if os.Getenv("WL_TEST_LOG") != "" {
+		out = os.Stderr
+	}
+	logger := log.New(out, fmt.Sprintf("n%d ", i+1), log.Lmicroseconds)
+	client := "https://" + tc.endpoints[i]
+	go func() {
+		tc.stopped[i] <- run(ctx, logger, fmt.Sprintf("n%d", i+1), tc.dataDir(i), client, client, tc.peers[i],
+			strings.Join(tc.initial, ","), tc.certFile, tc.keyFile, tc.caFile, tc.certFile, tc.keyFile, tc.caFile)
+	}()
+}
+
+func (tc *testCluster) dataDir(i int) string { return filepath.Join(tc.dir, fmt.Sprintf("n%d", i+1)) }
 
 // stop stops the nodes and waits for them; a node that failed on its own
 // fails the test.
 func (tc *testCluster) stop(t *testing.T) {
 	t.Helper()
-	if tc.cancel == nil {
+	for i := range 3 {
+		tc.stopNode(t, i)
+	}
+}
+
+// stopNode stops node i and waits for it.
+func (tc *testCluster) stopNode(t *testing.T, i int) {
+	t.Helper()
+	if tc.cancels[i] == nil {
 		return
 	}
-	tc.cancel()
-	tc.cancel = nil
-	for range 3 {
-		if err := <-tc.stopped; !errors.Is(err, errStopped) {
-			t.Errorf("a node failed: %v", err)
-		}
+	tc.cancels[i]()
+	tc.cancels[i] = nil
+	if err := <-tc.stopped[i]; !errors.Is(err, errStopped) {
+		t.Errorf("node %d failed: %v", i+1, err)
 	}
 }
 
 // client returns a client of the cluster once it takes a write.
 func (tc *testCluster) client(t *testing.T) *clientv3.Client {
 	t.Helper()
+	return tc.clientOf(t, tc.endpoints...)
+}
+
+// clientOf returns a client of the given endpoints once the cluster takes
+// a write through them.
+func (tc *testCluster) clientOf(t *testing.T, endpoints ...string) *clientv3.Client {
+	t.Helper()
 	c, err := clientv3.New(clientv3.Config{
-		Endpoints:   tc.endpoints,
+		Endpoints:   endpoints,
 		DialTimeout: 5 * time.Second,
 		TLS:         &tls.Config{Certificates: []tls.Certificate{tc.cert}, RootCAs: tc.ca.Pool, MinVersion: tls.VersionTLS13},
 	})
@@ -139,7 +164,17 @@ func (tc *testCluster) client(t *testing.T) *clientv3.Client {
 	}
 }
 
+// smallCheckpoints makes the nodes the test starts take a checkpoint
+// every few writes and keep few entries for followers that lag.
+func smallCheckpoints(t *testing.T) {
+	t.Helper()
+	minWas, windowWas := ckptMin, storageWindow
+	ckptMin, storageWindow = 4<<10, 10
+	t.Cleanup(func() { ckptMin, storageWindow = minWas, windowWas })
+}
+
 func TestClusterComesBackAfterARestart(t *testing.T) {
+	smallCheckpoints(t)
 	tc := newTestCluster(t)
 	c := tc.client(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -158,6 +193,11 @@ func TestClusterComesBackAfterARestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	tc.stop(t)
+	for i := range 3 {
+		if p, err := readPointer(filepath.Join(tc.dataDir(i), "ckpt")); p == nil || err != nil {
+			t.Fatalf("node %d took no checkpoint: %v", i+1, err)
+		}
+	}
 	tc.start(t)
 	c2 := tc.client(t)
 	after, err := c2.Get(ctx, "/r/", clientv3.WithPrefix())
@@ -304,4 +344,66 @@ func TestClusterServesTheEtcdAPI(t *testing.T) {
 			t.Fatalf("status: %v %v", s, err)
 		}
 	})
+}
+
+// A follower further behind than the leader keeps entries for gets the
+// leader's checkpoint as a Raft snapshot, and goes on from it (#602).
+func TestAFollowerThatLagsCatchesUpByASnapshot(t *testing.T) {
+	smallCheckpoints(t)
+	tc := newTestCluster(t)
+	c := tc.client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	// A follower lags: a write a follower forwarded to a leader that
+	// stopped is lost and times out, in etcd too.
+	st, err := c.Status(ctx, tc.endpoints[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	lag := 2
+	if st.Leader == 3 {
+		lag = 1
+	}
+	tc.stopNode(t, lag)
+	// Twenty keys written again and again, and the history compacted: the
+	// log grows past twice the values a checkpoint holds, and the nodes
+	// take checkpoints.
+	value := strings.Repeat("v", 1000)
+	for i := range 300 {
+		r, err := c.Put(ctx, fmt.Sprintf("/lag/%03d", i%20), value+strconv.Itoa(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 200 {
+			if _, err := c.Compact(ctx, r.Header.Revision); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	tc.startNode(t, lag)
+	c3 := tc.clientOf(t, tc.endpoints[lag])
+	for {
+		r, err := c3.Get(ctx, "/lag/", clientv3.WithPrefix(), clientv3.WithSerializable())
+		if err == nil && len(r.Kvs) == 20 && string(r.Kvs[19].Value) == value+"299" {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("the follower did not catch up: %v %v", r, err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	// And it goes on with the writes after.
+	if _, err := c.Put(ctx, "/lag/after", "a"); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		r, err := c3.Get(ctx, "/lag/after", clientv3.WithSerializable())
+		if err == nil && len(r.Kvs) == 1 {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("the follower took no write after the snapshot: %v %v", r, err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }

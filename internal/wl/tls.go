@@ -133,6 +133,7 @@ type handoff struct {
 	kind   uint8
 	peer   uint64 // the node an incoming or outgoing peer connection is with
 	cn     string
+	pre    *sock // an incoming peer connection's socket, its hello read
 }
 
 const (

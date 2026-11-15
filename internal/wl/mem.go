@@ -33,6 +33,9 @@ func mmapSlice[T any](n int) ([]T, error) {
 	return unsafe.Slice((*T)(unsafe.Pointer(&b[0])), n), nil
 }
 
+// unixMunmap gives back what mmapBytes reserved.
+func unixMunmap(b []byte) error { return unix.Munmap(b) }
+
 // munmapSlice gives back what mmapSlice reserved.
 func munmapSlice[T any](s []T) error {
 	var z T
