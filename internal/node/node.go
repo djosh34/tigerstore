@@ -1259,7 +1259,7 @@ func (n *Node) turnFit(until time.Duration) int {
 		}
 		return firstTurnCalls
 	}
-	return max(int(min(max(until, minTurnTime), n.cfg.Tick)/n.perCall), minTurnCalls)
+	return min(max(int(min(max(until, minTurnTime), n.cfg.Tick)/n.perCall), minTurnCalls), 128)
 }
 
 // turnTook measures what a call cost the turn that ends, which took calls
