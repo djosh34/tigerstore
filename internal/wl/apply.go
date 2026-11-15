@@ -55,14 +55,16 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 		case kCompact:
 			n.applyCompact(req, c, s)
 		case kLeaseGrant:
-			n.applyLeaseGrant(req, c, s)
+			err = n.applyLeaseGrant(req, c, s)
 		case kLeaseRevoke:
-			n.applyLeaseRevoke(req, c, s)
+			err = n.applyLeaseRevoke(req, c, s)
+		case kLeaseKeepAlive:
+			err = n.applyLeaseKeepAlive(req, c, s)
 		}
-		if bad, ok := errors.AsType[*badRequestError](err); ok {
-			// Every node reads the same bytes and rejects them alike.
+		if re, ok := errors.AsType[*requestError](err); ok {
+			// Every node applies the same bytes and rejects them alike.
 			if c != nil {
-				n.replyError(c, s.id, codeInvalidArgument, bad.Error())
+				n.replyError(c, s.id, re.code, re.msg)
 			}
 			continue
 		}
@@ -73,15 +75,21 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 	return nil
 }
 
-// badRequestError is a request the apply cannot read: its client gets
-// an error, and the node goes on.
-type badRequestError struct{ err error }
+// requestError is a request the apply rejects before it changes anything:
+// its client gets the error, and the node goes on.
+type requestError struct {
+	code int
+	msg  string
+}
 
-func (e *badRequestError) Error() string { return "etcdserver: bad request: " + e.err.Error() }
+func (e *requestError) Error() string { return e.msg }
 
-func (e *badRequestError) Unwrap() error { return e.err }
+func requestErr(code int, msg string) error { return &requestError{code: code, msg: msg} }
 
-func badRequest(err error) error { return &badRequestError{err: err} }
+// badRequest is a request the apply cannot read.
+func badRequest(err error) error {
+	return requestErr(codeInvalidArgument, "etcdserver: bad request: "+err.Error())
+}
 
 // replyHeader answers a request whose response is only the header.
 func (n *node) replyHeader(c *client, s *stream) {
@@ -112,55 +120,6 @@ func (n *node) applyCompact(req []byte, c *client, s *stream) {
 	}
 }
 
-func (n *node) applyLeaseGrant(req []byte, c *client, s *stream) {
-	ttl, id := int64(0), int64(0)
-	for m := req; len(m) > 0; {
-		num, _, v, _, rest, err := field(m)
-		if err != nil {
-			break
-		}
-		switch num {
-		case 1:
-			ttl = int64(v)
-		case 2:
-			id = int64(v)
-		}
-		m = rest
-	}
-	if id == 0 {
-		id = int64(n.applied+1)<<20 | int64(len(n.st.leases)&0xfffff)
-		for n.st.leases[id] != 0 {
-			id++
-		}
-	}
-	n.st.leases[id] = ttl
-	if c != nil {
-		var w msgW
-		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(id)) + sizeVarintField(3, uint64(ttl))
-		n.beginReply(c, s, &w, size)
-		n.writeHdr(&w)
-		writeVarintNZ(&w, 2, uint64(id))
-		writeVarintNZ(&w, 3, uint64(ttl))
-		n.endReply(c, s, &w)
-	}
-}
-
-func (n *node) applyLeaseRevoke(req []byte, c *client, s *stream) {
-	for m := req; len(m) > 0; {
-		num, _, v, _, rest, err := field(m)
-		if err != nil {
-			break
-		}
-		if num == 1 {
-			delete(n.st.leases, int64(v))
-		}
-		m = rest
-	}
-	if c != nil {
-		n.replyHeader(c, s)
-	}
-}
-
 func voffOf(req, sub []byte, base int64) int64 {
 	return base + int64(cap(req)-cap(sub))
 }
@@ -170,6 +129,11 @@ func voffOf(req, sub []byte, base int64) int64 {
 // key had, if it was live.
 func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 	st := n.st
+	if !r.ignoreLease {
+		if err := n.checkLease(r.lease); err != nil {
+			return nil, err
+		}
+	}
 	id, err := st.intern(r.key)
 	if err != nil {
 		return nil, err
@@ -399,6 +363,9 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 	if !ok {
 		branch = 3
 	}
+	if err := n.checkTxnLeases(req, s, ok); err != nil {
+		return err
+	}
 	rev := st.rev + 1
 	changed := false
 	res := n.txnRes[:0]
@@ -475,6 +442,45 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 	clear(kvs)
 	n.kvs = kvs[:0]
 	n.txnRes = res[:0]
+	return nil
+}
+
+// checkTxnLeases fails a Txn whose branch puts to a lease that does not
+// exist, before it changes anything.
+func (n *node) checkTxnLeases(req []byte, s *stream, ok bool) error {
+	branch, ops := 2, req
+	if !ok {
+		branch = 3
+		if s != nil && s.fail != nil {
+			ops = s.fail
+		}
+	}
+	for m := ops; len(m) > 0; {
+		num, _, _, p, rest, err := field(m)
+		if err != nil {
+			return badRequest(err)
+		}
+		m = rest
+		if num != branch {
+			continue
+		}
+		onum, _, _, op, _, err := field(p)
+		if err != nil {
+			return badRequest(err)
+		}
+		if onum != 2 {
+			continue
+		}
+		var r putReq
+		if err := parsePut(op, &r); err != nil {
+			return badRequest(err)
+		}
+		if !r.ignoreLease {
+			if err := n.checkLease(r.lease); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 

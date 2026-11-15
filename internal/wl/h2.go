@@ -27,6 +27,8 @@ const (
 	kStatus
 	kMemberList
 	kMoveLeader
+	kLeaseLeases
+	kAlarm
 )
 
 var paths = map[string]uint8{
@@ -44,6 +46,8 @@ var paths = map[string]uint8{
 	"/etcdserverpb.Maintenance/Status":     kStatus,
 	"/etcdserverpb.Cluster/MemberList":     kMemberList,
 	"/etcdserverpb.Maintenance/MoveLeader": kMoveLeader,
+	"/etcdserverpb.Lease/LeaseLeases":      kLeaseLeases,
+	"/etcdserverpb.Maintenance/Alarm":      kAlarm,
 }
 
 // stream is one HTTP/2 stream of a client.
@@ -56,6 +60,9 @@ type stream struct {
 	watch bool
 	wids  []int32 // the watchers of a watch stream
 	fail  []byte  // a Txn's failure branch, kept here and not replicated
+	// streaming: the stream's response headers are out, and it answers
+	// each request with a message until the client ends its side.
+	streaming bool
 	// failAt is fail's absolute position in the side ring, -1 if it is on
 	// the heap.
 	failAt int64
@@ -205,6 +212,8 @@ func (c *client) frames(n *node) error {
 					// The client closed its side of a watch stream.
 					n.closeWatchStream(c, s)
 					c.endStream(s)
+				} else if s.streaming {
+					n.endStreaming(c, s)
 				}
 			}
 		case frHeaders:

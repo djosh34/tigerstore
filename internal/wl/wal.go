@@ -79,11 +79,16 @@ type wal struct {
 
 	// Segments: the helper writes through wfds, which it alone uses; rfds
 	// read them, and grows as segments are made.
-	made  chan segment
-	wfds  []int // from segment wbase on
-	wbase int64
-	mu    sync.Mutex
-	rfds  []int
+	made       chan segment
+	stop       chan struct{} // closed by close
+	madeDone   chan struct{}
+	helperDone chan struct{}
+	closing    atomic.Bool
+	closeOnce  sync.Once
+	wfds       []int // from segment wbase on
+	wbase      int64
+	mu         sync.Mutex
+	rfds       []int
 
 	stats walStats
 }
@@ -123,7 +128,10 @@ func openWAL(dir string, fn func(r *walRecord) error) (*wal, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &wal{dir: dir, kickFD: kick, wakeFD: wake, made: make(chan segment, 1)}
+	w := &wal{
+		dir: dir, kickFD: kick, wakeFD: wake, made: make(chan segment, 1),
+		stop: make(chan struct{}), madeDone: make(chan struct{}), helperDone: make(chan struct{}),
+	}
 	if w.stage, err = mmapBytes(stageSize); err != nil {
 		return nil, err
 	}
@@ -186,23 +194,60 @@ func (w *wal) reopen(end int64) (int64, error) {
 
 // makeSegments makes the segments from k on, one ahead of the helper.
 func (w *wal) makeSegments(k int64) {
+	defer close(w.madeDone)
 	dfd, err := unix.Open(w.dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
-		w.made <- segment{err: err}
+		w.hand(segment{err: err})
 		return
 	}
 	defer func() { _ = unix.Close(dfd) }()
 	for ; ; k++ {
 		sg, err := makeSegment(dfd, segPath(w.dir, k))
 		if err != nil {
-			w.made <- segment{err: err}
+			w.hand(segment{err: err})
 			return
 		}
 		w.mu.Lock()
 		w.rfds = append(w.rfds, sg.rfd)
 		w.mu.Unlock()
-		w.made <- sg
+		if !w.hand(sg) {
+			_ = unix.Close(sg.wfd)
+			return
+		}
 	}
+}
+
+// hand gives the helper a segment, unless the log closes first.
+func (w *wal) hand(sg segment) bool {
+	select {
+	case w.made <- sg:
+		return true
+	case <-w.stop:
+		return false
+	}
+}
+
+var errWALClosed = errors.New("the log is closed")
+
+// close stops the log's goroutines and closes its files. Nothing writes
+// to it after.
+func (w *wal) close() { w.closeOnce.Do(w.shut) }
+
+func (w *wal) shut() {
+	close(w.stop)
+	<-w.madeDone
+	w.closing.Store(true)
+	var b [8]byte
+	binary.LittleEndian.PutUint64(b[:], 1)
+	_, _ = unix.Write(w.kickFD, b[:])
+	<-w.helperDone
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, fd := range append(w.rfds, w.wfds...) {
+		_ = unix.Close(fd)
+	}
+	_ = unix.Close(w.kickFD)
+	_ = unix.Close(w.wakeFD)
 }
 
 func makeSegment(dfd int, path string) (segment, error) {
@@ -250,11 +295,15 @@ func (w *wal) segFD(k int64) (int, error) {
 
 func (w *wal) helper(flushed int64) {
 	runtime.LockOSThread()
+	defer close(w.helperDone)
+	err := w.writeLoop(flushed)
+	if errors.Is(err, errWALClosed) {
+		return
+	}
+	err = fmt.Errorf("write the log: %w", err)
+	w.failed.Store(&err)
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], 1)
-	// writeLoop returns only when it fails.
-	err := fmt.Errorf("write the log: %w", w.writeLoop(flushed))
-	w.failed.Store(&err)
 	_, _ = unix.Write(w.wakeFD, b[:])
 }
 
@@ -269,6 +318,9 @@ func (w *wal) writeLoop(flushed int64) error {
 				continue
 			}
 			return err
+		}
+		if w.closing.Load() {
+			return errWALClosed
 		}
 		target := w.want.Load()
 		from := flushed &^ (block - 1)

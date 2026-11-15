@@ -12,8 +12,9 @@ type node struct {
 	id, clusterID uint64
 	members       []member
 
-	st *store
-	w  watches
+	st     *store
+	w      watches
+	leases leaseClock
 
 	socks    []any // *client, *peerIn or *peerOut, by index
 	gens     []uint16
@@ -167,49 +168,15 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 	case kPut, kDel, kCompact, kLeaseGrant, kLeaseRevoke:
 		n.addOp(mkHandle(c, s.id), s.kind, msg)
 	case kLeaseKeepAlive:
-		id := int64(0)
-		for m := msg; len(m) > 0; {
-			num, _, v, _, rest, err := field(m)
-			if err != nil {
-				return err
-			}
-			if num == 1 {
-				id = int64(v)
-			}
-			m = rest
-		}
-		ttl := n.st.leases[id]
-		var w msgW
-		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(id)) + sizeVarintField(3, uint64(ttl))
-		n.beginReply(c, s, &w, size)
-		n.writeHdr(&w)
-		writeVarintNZ(&w, 2, uint64(id))
-		writeVarintNZ(&w, 3, uint64(ttl))
-		n.endReply(c, s, &w)
+		n.leaseKeepAlive(c, s, msg)
 	case kLeaseTTL:
-		id := int64(0)
-		for m := msg; len(m) > 0; {
-			num, _, v, _, rest, err := field(m)
-			if err != nil {
-				return err
-			}
-			if num == 1 {
-				id = int64(v)
-			}
-			m = rest
-		}
-		ttl, ok := n.st.leases[id]
-		if !ok {
-			ttl = -1
-		}
-		var w msgW
-		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(id)) + sizeVarintField(3, uint64(ttl)) + sizeVarintField(4, uint64(ttl))
-		n.beginReply(c, s, &w, size)
-		n.writeHdr(&w)
-		writeVarintNZ(&w, 2, uint64(id))
-		writeVarintNZ(&w, 3, uint64(ttl))
-		writeVarintNZ(&w, 4, uint64(ttl))
-		n.endReply(c, s, &w)
+		return n.leaseTimeToLive(c, s, msg)
+	case kLeaseLeases:
+		n.leaseLeases(c, s)
+	case kAlarm:
+		// No alarm is ever raised: the answer lists none, whatever it
+		// asks.
+		n.replyHeader(c, s)
 	case kWatch:
 		return n.watchRequest(c, s, msg)
 	case kStatus:
@@ -364,3 +331,25 @@ func (n *node) replyMembers(c *client, s *stream) {
 }
 
 var dbgOps, dbgBytes [16]int
+
+// openStream sends a streaming call's response headers, once.
+func (n *node) openStream(c *client, s *stream) {
+	if s.streaming {
+		return
+	}
+	s.streaming = true
+	b := c.frame(9 + len(respHeaders))
+	putFrameHeader(b, len(respHeaders), frHeaders, flEndHeaders, s.id)
+	copy(b[9:], respHeaders)
+	n.markDirty(&c.sock)
+}
+
+// endStreaming ends a streaming call whose client ended its side, with
+// grpc-status 0.
+func (n *node) endStreaming(c *client, s *stream) {
+	b := c.frame(9 + len(respTrailers))
+	putFrameHeader(b, len(respTrailers), frHeaders, flEndHeaders|flEndStream, s.id)
+	copy(b[9:], respTrailers)
+	c.endStream(s)
+	n.markDirty(&c.sock)
+}

@@ -20,6 +20,7 @@ func reopen(t *testing.T, dir string) (*wal, *logStorage) {
 		t.Fatal(err)
 	}
 	s.log = w
+	t.Cleanup(w.close)
 	return w, s
 }
 
@@ -63,6 +64,7 @@ func TestRecoveryRestoresTheLogAndGoesOn(t *testing.T) {
 	// A new leader's append replaces entry 3.
 	writeSynced(t, w, s, &pb.HardState{Term: new(uint64(2)), Vote: new(uint64(2)), Commit: new(uint64(3))}, testEntry(3, 2, "new three"))
 
+	w.close()
 	w2, s2 := reopen(t, dir)
 	if got := allData(t, s2); !slices.Equal(got, []string{"one", "two", "new three"}) {
 		t.Fatalf("recovered entries %q", got)
@@ -78,6 +80,7 @@ func TestRecoveryRestoresTheLogAndGoesOn(t *testing.T) {
 	}
 	// It goes on where it ended, and a third start sees both.
 	writeSynced(t, w2, s2, nil, testEntry(4, 2, "four"))
+	w2.close()
 	_, s3 := reopen(t, dir)
 	if got := allData(t, s3); !slices.Equal(got, []string{"one", "two", "new three", "four"}) {
 		t.Fatalf("entries after a second start %q", got)
@@ -88,6 +91,7 @@ func TestRecoveryCutsATornTail(t *testing.T) {
 	dir := t.TempDir()
 	w, s := reopen(t, dir)
 	writeSynced(t, w, s, nil, testEntry(1, 1, "one"), testEntry(2, 1, "two"), testEntry(3, 1, "torn"))
+	w.close()
 	path := segPath(dir, 0)
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -103,6 +107,7 @@ func TestRecoveryCutsATornTail(t *testing.T) {
 		t.Fatalf("recovered entries %q, want the two before the torn one", got)
 	}
 	writeSynced(t, w2, s2, nil, testEntry(3, 1, "three"))
+	w2.close()
 	_, s3 := reopen(t, dir)
 	if got := allData(t, s3); !slices.Equal(got, []string{"one", "two", "three"}) {
 		t.Fatalf("entries after the torn tail was written over %q", got)

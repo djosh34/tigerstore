@@ -39,6 +39,7 @@ func TestWALScanReadsWhatWasWritten(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(w.close)
 	ents := []*pb.Entry{testEntry(1, 1, "one"), testEntry(2, 1, ""), testEntry(3, 2, "three")}
 	if err := w.write(ents, []byte("hard state")); err != nil {
 		t.Fatal(err)
@@ -104,6 +105,7 @@ func TestWALScanStopsAtATornRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(w.close)
 	if err := w.write([]*pb.Entry{testEntry(1, 1, "kept"), testEntry(2, 1, "torn"), testEntry(3, 1, "after")}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -139,6 +141,7 @@ func TestWALStageTailIsZeros(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(w.close)
 	// A lap of the stage ago, the bytes after the end held a record.
 	for i := range w.stage[:2*block] {
 		w.stage[i] = 0xa5
@@ -156,6 +159,7 @@ func TestWALReadPastTheEndFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(w.close)
 	if err := w.read(make([]byte, 1), 0); err == nil {
 		t.Fatal("a read of an empty log succeeded")
 	}

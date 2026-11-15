@@ -63,7 +63,7 @@ type store struct {
 	nhist  uint32
 	tree   tree
 
-	leases  map[int64]int64
+	leases  map[int64]*lease
 	log     logReader
 	scratch []byte // a value read from the log
 
@@ -98,7 +98,7 @@ func newStore() (*store, error) {
 		seed:   maphash.MakeSeed(),
 		karena: arena{top: 1},
 		nhist:  1,
-		leases: map[int64]int64{},
+		leases: map[int64]*lease{},
 	}
 	var err error
 	if st.keys, err = mmapSlice[keyEnt](maxKeys); err != nil {
@@ -355,6 +355,11 @@ func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64
 		st.freeLater = append(st.freeLater, k.rec, uint64(k.rlen))
 	}
 	appendKV(st.slab.mem[off:off:int(off)+n], key, value, create, rev, ver, lease)
+	old := int64(0)
+	if prev != nil {
+		old = k.lease
+	}
+	st.setLease(id, old, lease)
 	k.rec, k.rlen = off, uint32(n)
 	k.create, k.mod, k.ver, k.lease = create, rev, ver, lease
 	k.voff, k.vlen = voff, uint32(len(value))
@@ -374,6 +379,7 @@ func (st *store) del(id uint32, rev int64) ([]byte, error) {
 	}
 	st.freeLater = append(st.freeLater, k.rec, uint64(k.rlen))
 	st.tree.remove(id)
+	st.setLease(id, k.lease, 0)
 	k.rec, k.rlen = 0, 0
 	k.create, k.mod, k.ver, k.lease = 0, rev, 0, 0
 	k.voff, k.vlen = 0, 0

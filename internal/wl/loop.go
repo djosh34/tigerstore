@@ -526,6 +526,9 @@ func (l *loop) run() error {
 			l.tick++
 			n.rn.Tick()
 			n.retryReads(l.tick)
+			if n.leading() {
+				n.expireLeases()
+			}
 		}
 		if n.holding {
 			n.retryHeld()

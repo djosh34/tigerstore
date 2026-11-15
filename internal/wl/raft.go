@@ -44,7 +44,11 @@ func (n *node) ready() error {
 	for i := 0; i < 64 && n.rn.HasReady(); i++ {
 		rd := n.rn.Ready()
 		if rd.SoftState != nil {
+			was := n.leading()
 			n.lead = rd.Lead
+			if n.leading() != was {
+				n.leaderChanged()
+			}
 			if rd.RaftState == raft.StateLeader {
 				isLeader.Store(1)
 			} else {
