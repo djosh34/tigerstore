@@ -18,6 +18,11 @@ type logStorage struct {
 	// The entry before the first one held, as a snapshot names it.
 	snapIndex, snapTerm uint64
 	ents                []storedEnt // from snapIndex+1 on
+	// held is the data bytes of the entries the storage holds itself;
+	// trim keeps it within storageHeld.
+	held int64
+	// trimmed: every entry before this index holds no data.
+	trimmed uint64
 
 	log logReader
 
@@ -27,6 +32,11 @@ type logStorage struct {
 // storageWindow is how many applied entries the storage keeps at least,
 // for followers that lag.
 const storageWindow = 100000
+
+// storageHeld is the most entry data the storage holds in memory. A
+// leader's Raft copies each proposal to the heap, so its entries are held
+// there and not in a ring.
+const storageHeld = 64 << 20
 
 type storedEnt struct {
 	ent  *pb.Entry // nil once its data was let go
@@ -136,9 +146,17 @@ func (s *logStorage) append(ents []*pb.Entry, offs []int64) error {
 	if first > s.lastIndex()+1 {
 		return fmt.Errorf("an append at %d to a log that ends at %d", first, s.lastIndex())
 	}
-	s.ents = s.ents[:first-s.snapIndex-1]
+	k := first - s.snapIndex - 1
+	for _, e := range s.ents[k:] {
+		if e.ent != nil {
+			s.held -= int64(e.n)
+		}
+	}
+	s.ents = s.ents[:k]
+	s.trimmed = min(s.trimmed, first)
 	for i, e := range ents {
 		s.ents = append(s.ents, storedEnt{ent: e, term: e.GetTerm(), typ: e.GetType(), off: offs[i], n: uint32(len(e.GetData()))})
+		s.held += int64(len(e.GetData()))
 	}
 	return nil
 }
@@ -164,8 +182,27 @@ func (s *logStorage) holds(ent *pb.Entry) bool {
 // the log from now on.
 func (s *logStorage) letGo(ent *pb.Entry) {
 	if s.holds(ent) {
-		s.ents[ent.GetIndex()-s.snapIndex-1].ent = nil
+		e := &s.ents[ent.GetIndex()-s.snapIndex-1]
+		e.ent = nil
+		s.held -= int64(e.n)
 		s.stats.letGo++
+	}
+}
+
+// trim lets go of the oldest entries while the storage holds more than
+// storageHeld of their data, as long as they are applied and their
+// appends' responses are stepped: up to applied, and with their data
+// before stable in the log.
+func (s *logStorage) trim(applied uint64, stable int64) {
+	for i := max(s.trimmed, s.snapIndex+1); i <= s.lastIndex() && s.held > storageHeld; i++ {
+		e := &s.ents[i-s.snapIndex-1]
+		if i > applied || e.off+int64(e.n) > stable {
+			return
+		}
+		if e.ent != nil {
+			s.letGo(e.ent)
+		}
+		s.trimmed = i + 1
 	}
 }
 
@@ -175,6 +212,11 @@ func (s *logStorage) compact(i uint64) {
 		return
 	}
 	k := i - s.snapIndex
+	for _, e := range s.ents[:k] {
+		if e.ent != nil {
+			s.held -= int64(e.n)
+		}
+	}
 	s.snapTerm = s.ents[k-1].term
 	s.snapIndex = i
 	s.ents = append(s.ents[:0], s.ents[k:]...)

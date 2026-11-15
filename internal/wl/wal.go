@@ -56,6 +56,7 @@ type wal struct {
 	iov     [][]byte
 	hdrs    []byte
 	pending []walJob      // appends written to the stage, by end offset
+	stable  int64         // the end of the appends whose responses are stepped
 	waiting []*pb.Message // appends kept while the stage is full
 	offs    []int64       // where the last write's entries have their data
 

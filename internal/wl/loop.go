@@ -140,7 +140,7 @@ func hostOf(u string) (string, error) {
 var memBudget int64
 
 // sideSize is the side ring's: the failure branches of Txns.
-const sideSize = 64 << 20
+const sideSize = 16 << 20
 
 func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer, initial,
 	certFile, keyFile, trusted, peerCert, peerKey, peerTrusted string,
@@ -171,7 +171,7 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	if err != nil {
 		return err
 	}
-	n := &node{clusterID: 0x7769726531, batchStart: -1, peersOut: map[uint64]*peerOut{}}
+	n := &node{clusterID: 0x7769726531, peersOut: map[uint64]*peerOut{}}
 	var peers []raft.Peer
 	for i, part := range strings.Split(initial, ",") {
 		nm, u, ok := strings.Cut(part, "=")
@@ -208,13 +208,13 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	n.fwd = make([]fwdBatch, fwdSlots)
 	n.fwdPeers = map[uint64][]fwdBatch{}
 	n.carryUntil = map[uint64]time.Time{}
-	if n.ring, err = mmapBytes(ringSize); err != nil {
+	if n.ring, err = newRing(ringSize); err != nil {
 		return err
 	}
-	if n.rx, err = mmapBytes(ringSize); err != nil {
+	if n.rx, err = newRing(ringSize); err != nil {
 		return err
 	}
-	if n.side, err = mmapBytes(sideSize); err != nil {
+	if n.side, err = newRing(sideSize); err != nil {
 		return err
 	}
 	n.wal, err = openWAL(filepath.Join(dataDir, "wal"))
@@ -416,11 +416,13 @@ func (l *loop) closeSock(idx int) {
 			if st.open && st.watch {
 				n.closeWatchStream(v, st)
 			}
+			st.fail = nil
 		}
 		for _, st := range v.over {
 			if st.watch {
 				n.closeWatchStream(v, st)
 			}
+			st.fail = nil
 		}
 	case *peerOut:
 		if n.peersOut[v.peer] == v {
@@ -490,6 +492,7 @@ func (l *loop) run() error {
 		if err != nil && !errors.Is(err, unix.EINTR) {
 			return err
 		}
+		n.now = time.Now()
 		for i := range k {
 			ev := events[i]
 			switch ev.Fd {
@@ -523,12 +526,16 @@ func (l *loop) run() error {
 		if n.wal.deferred {
 			n.wal.kick()
 		}
-		n.proposeBatch()
+		n.proposeBatch(n.now)
 		n.askReads(l.tick)
 		if err := n.ready(); err != nil {
 			return err
 		}
 		l.flush()
+		if !n.rn.HasReady() {
+			// Raft holds no message now that could point into a ring.
+			n.sweepRings(n.now)
+		}
 		stats.turns++
 		if l.tick%50 == 0 && l.tick != l.logged {
 			l.logged = l.tick
@@ -646,6 +653,11 @@ func (l *loop) logStats() {
 	st := l.n.st
 	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d; stage waits %d",
 		st.slab.used>>20, st.limit>>20, st.evictions, st.loads, l.n.wal.stats.waits)
+	n := l.n
+	l.logger.Printf("rings: spans %d/%d/%d, on the heap %d/%d/%d; storage let go %d, read back %d",
+		n.ring.stats.spans, n.rx.stats.spans, n.side.stats.spans, n.ring.stats.heap, n.rx.stats.heap, n.side.stats.heap,
+		n.storage.stats.letGo, n.storage.stats.reads)
+	l.logger.Printf("rings: sweeps %d; oldest held: %s / %s / %s", n.ring.stats.sweeps, n.ring.held(), n.rx.held(), n.side.held())
 	l.last, l.lastAt = d, now
 	l.logger.Printf("ops by kind %v bytes %v named %d carried %v bytes %v held %d", dbgOps, dbgBytes, dbgNamed, dbgCarried, dbgCarriedB, dbgHeld)
 }

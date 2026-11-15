@@ -56,6 +56,9 @@ type stream struct {
 	watch bool
 	wids  []int32 // the watchers of a watch stream
 	fail  []byte  // a Txn's failure branch, kept here and not replicated
+	// failAt is fail's absolute position in the side ring, -1 if it is on
+	// the heap.
+	failAt int64
 }
 
 const streamSlots = 1 << 13
@@ -111,6 +114,7 @@ func (c *client) newStream(id uint32, kind uint8) *stream {
 }
 
 func (c *client) endStream(s *stream) {
+	s.fail = nil // the side ring may take its bytes again
 	if c.over != nil {
 		if o, ok := c.over[s.id]; ok && o == s {
 			delete(c.over, s.id)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -78,6 +79,7 @@ func (n *node) ready() error {
 // no room for it, keeps it and those after it in order until the disk
 // catches up.
 func (n *node) storageAppend(m *pb.Message) error {
+	n.nameEntries(m.GetEntries(), spanAppend)
 	w := n.wal
 	if len(w.waiting) > 0 || !w.fits(m.GetEntries()) {
 		w.stats.waits++
@@ -123,6 +125,7 @@ func (n *node) appendNow(m *pb.Message) error {
 	if err := n.storage.append(ents, n.wal.offs); err != nil {
 		return err
 	}
+	n.nameEntries(ents, spanStored)
 	if st != nil {
 		n.term = st.GetTerm()
 		n.commit = st.GetCommit()
@@ -150,6 +153,7 @@ func (n *node) synced() {
 				n.sendPeer(r)
 			}
 		}
+		w.stable = w.pending[k].end
 		w.pending[k] = walJob{}
 	}
 	w.pending = append(w.pending[:0], w.pending[k:]...)
@@ -344,7 +348,7 @@ func (n *node) peerFrames(p *peerIn) error {
 			origin := uint64(binary.LittleEndian.Uint32(f[1:]))
 			seq := binary.LittleEndian.Uint32(f[5:])
 			b := &n.fwdOf(origin)[seq&(fwdSlots-1)]
-			b.seq, b.data = seq, n.rxCopy(f[9:])
+			b.seq, b.data = seq, n.rxCopy(f[9:], span{kind: spanUnnamed, at: n.now, fwd: true, origin: origin, seq: seq})
 			continue
 		}
 		m, err := n.decodeMsg(f)
@@ -419,7 +423,7 @@ func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
 				return nil, errRecord
 			}
 			if l > 0 {
-				e.Data = n.rxCopy(f[at : at+l])
+				e.Data = n.rxCopy(f[at:at+l], entrySpan(m.GetType(), n.now))
 			}
 			at += l
 			m.Entries[i] = e
@@ -491,6 +495,17 @@ func (n *node) fwdOf(origin uint64) []fwdBatch {
 	return t
 }
 
+// entrySpan is the span of an entry's data received in a message of type
+// typ. A leader's Raft copies a proposal's entries as it steps them, and a
+// follower's sends them on in this turn's Ready: no append ever holds the
+// received bytes of a MsgProp.
+func entrySpan(typ pb.MessageType, now time.Time) span {
+	if typ == pb.MsgProp {
+		return span{kind: spanFree}
+	}
+	return span{kind: spanUnnamed, at: now}
+}
+
 var errUnnamed = errors.New("a named entry this node does not have")
 
 // retryHeld decodes again, in order, the messages held behind an append
@@ -532,15 +547,20 @@ func (n *node) retryHeld() {
 	}
 }
 
-// rxCopy copies received entry data into the receive ring.
-func (n *node) rxCopy(p []byte) []byte {
-	if n.rxPos+len(p) > len(n.rx) {
-		n.rxPos = 0
+// rxCopy copies received entry data into the receive ring as span s, or
+// to the heap when the ring has no room.
+func (n *node) rxCopy(p []byte, s span) []byte {
+	if len(p) == 0 {
+		return nil
 	}
-	d := n.rx[n.rxPos : n.rxPos+len(p) : n.rxPos+len(p)]
-	copy(d, p)
-	n.rxPos += len(p)
-	return d
+	room := n.rx.reserve(len(p))
+	if room == nil {
+		n.rx.stats.heap++
+		return append([]byte(nil), p...)
+	}
+	room = slices.Clip(append(room, p...))
+	n.rx.commit(room, s)
+	return room
 }
 
 var (

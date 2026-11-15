@@ -27,17 +27,18 @@ type node struct {
 	applied uint64
 	commit  uint64
 
-	// The log ring: proposals and received entries are written here once,
-	// and the WAL, the peers and the apply read them from here.
-	ring       []byte
-	ringPos    int
-	side       []byte // failure branches kept for their streams
-	sidePos    int
-	rx         []byte // received entries
-	rxPos      int
-	batchStart int
-	batchOps   int
-	batchOwn   []handle
+	// The rings: proposals and received entries are written once, into
+	// ring and rx, and the log, the peers and the apply read them there.
+	// side keeps Txns' failure branches for their streams.
+	ring, rx, side *ring
+	now            time.Time // when the turn began
+
+	// The open batch: its bytes, whether they lie in the ring, its op
+	// count and its ops' clients.
+	batch       []byte
+	batchInRing bool
+	batchOps    int
+	batchOwn    []handle
 
 	// Linearizable reads wait for a ReadIndex: reads not yet asked about,
 	// and the batches that wait for their index or the apply.
@@ -119,7 +120,7 @@ const (
 	batchHdr = 16
 	opHdr    = 5
 	magic    = 0x77697265
-	ringSize = 256 << 20
+	ringSize = 64 << 20
 )
 
 func (n *node) markDirty(s *sock) {

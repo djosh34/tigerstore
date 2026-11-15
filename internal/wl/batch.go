@@ -1,38 +1,56 @@
 package wl
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"slices"
+	"time"
+)
 
-// addOp appends a write to this turn's batch, in the log ring.
-func (n *node) addOp(h handle, kind uint8, msg []byte) {
-	need := opHdr + len(msg)
-	if n.batchStart < 0 {
-		need += batchHdr
+// The turn's writes go into one batch, which Raft replicates as one
+// entry. The batch is built in the proposal ring, where the log, the
+// peers and the apply read it; when the ring has no room, on the heap.
+
+// growBatch makes room in the open batch for n more bytes.
+func (n *node) growBatch(k int) {
+	b := n.batch
+	if cap(b)-len(b) >= k {
+		return
 	}
-	if n.ringPos+need > len(n.ring) {
-		// Wrap: the batch so far moves to the start of the ring.
-		if n.batchStart >= 0 {
-			k := copy(n.ring, n.ring[n.batchStart:n.ringPos])
-			n.batchStart, n.ringPos = 0, k
-		} else {
-			n.ringPos = 0
+	if n.batchInRing {
+		if room := n.ring.reserve(len(b) + k); room != nil {
+			// The same start, or the ring's start when its end had too
+			// little: then the batch so far moves there.
+			room = append(room, b...)
+			n.batch = room
+			return
 		}
+		n.ring.stats.heap++
+		n.batchInRing = false
 	}
-	if n.batchStart < 0 {
-		n.batchStart = n.ringPos
-		b := n.ring[n.ringPos : n.ringPos+batchHdr]
+	nb := make([]byte, len(b), 2*(len(b)+k))
+	copy(nb, b)
+	n.batch = nb
+}
+
+// addOp appends a write to this turn's batch.
+func (n *node) addOp(h handle, kind uint8, msg []byte) {
+	if n.batch == nil {
+		n.batchInRing = true
+		n.growBatch(batchHdr + opHdr + len(msg))
+		var hdr [batchHdr]byte
 		n.fwdSeq++
-		binary.LittleEndian.PutUint32(b, uint32(n.id))
-		binary.LittleEndian.PutUint32(b[4:], n.fwdSeq)
-		binary.LittleEndian.PutUint32(b[12:], magic)
-		n.ringPos += batchHdr
+		binary.LittleEndian.PutUint32(hdr[0:], uint32(n.id))
+		binary.LittleEndian.PutUint32(hdr[4:], n.fwdSeq)
+		binary.LittleEndian.PutUint32(hdr[12:], magic)
+		n.batch = append(n.batch, hdr[:]...)
 		n.batchOps = 0
 		n.batchOwn = n.batchOwn[:0]
 	}
-	b := n.ring[n.ringPos : n.ringPos+opHdr]
-	b[0] = kind
-	binary.LittleEndian.PutUint32(b[1:], uint32(len(msg)))
-	copy(n.ring[n.ringPos+opHdr:], msg)
-	n.ringPos += opHdr + len(msg)
+	n.growBatch(opHdr + len(msg))
+	var oh [opHdr]byte
+	oh[0] = kind
+	binary.LittleEndian.PutUint32(oh[1:], uint32(len(msg)))
+	n.batch = append(append(n.batch, oh[:]...), msg...)
 	n.batchOps++
 	n.batchOwn = append(n.batchOwn, h)
 }
@@ -61,39 +79,54 @@ func (n *node) addTxn(h handle, s *stream, msg []byte) {
 		return
 	}
 	// Keep the failure branch in the side ring.
-	if n.sidePos+failBytes > len(n.side) {
-		n.sidePos = 0
+	fail := n.side.reserve(failBytes)
+	if fail == nil {
+		n.side.stats.heap++
+		fail = make([]byte, 0, failBytes)
 	}
-	off := n.sidePos
 	kept := n.scratch[:0]
 	for m := msg; len(m) > 0; {
 		_, _, _, _, rest, _ := field(m)
 		f := m[:len(m)-len(rest)]
 		if f[0] == 3<<3|2 {
-			n.sidePos += copy(n.side[n.sidePos:], f)
+			fail = append(fail, f...)
 		} else {
 			kept = append(kept, f...)
 		}
 		m = rest
 	}
-	s.fail = n.side[off:n.sidePos:n.sidePos]
+	s.fail = slices.Clip(fail)
+	s.failAt = -1
+	if n.side.offset(fail) >= 0 {
+		s.failAt = n.side.commit(s.fail, span{kind: spanFail, st: s}).start
+	}
 	n.addOp(h, kTxn, kept)
 	n.scratch = kept[:0]
 }
 
 // proposeBatch hands this turn's batch to Raft.
-func (n *node) proposeBatch() {
-	if n.batchStart < 0 {
+func (n *node) proposeBatch(now time.Time) {
+	if n.batch == nil {
 		return
 	}
-	data := n.ring[n.batchStart:n.ringPos:n.ringPos]
+	data := slices.Clip(n.batch)
+	n.batch = nil
 	binary.LittleEndian.PutUint32(data[8:], uint32(n.batchOps))
-	n.batchStart = -1
 	// A follower's batch comes back from the leader by name.
 	seq := binary.LittleEndian.Uint32(data[4:])
 	f := &n.fwd[seq&(fwdSlots-1)]
 	f.seq, f.data = seq, data
 	f.handles = append(f.handles[:0], n.batchOwn...)
+	if n.batchInRing {
+		// A leader's Raft copies the proposal as it takes it, so only the
+		// forward table holds the leader's batch. A follower's waits for
+		// the leader's append that names it.
+		kind := spanUnnamed
+		if n.lead == n.id {
+			kind = spanFree
+		}
+		n.ring.commit(data, span{kind: kind, at: now, fwd: true, origin: n.id, seq: seq})
+	}
 	stats.proposals++
 	if n.lead != n.id && n.lead != 0 {
 		n.sendBatch(data)
