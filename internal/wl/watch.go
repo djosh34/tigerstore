@@ -230,7 +230,7 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 		s.wids = append(s.wids, i)
 		var w msgW
 		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id)) + 2
-		w.begin(&c.sock, s.id, size)
+		w.begin(c, s, size)
 		n.writeHdr(&w)
 		writeVarintNZ(&w, 2, uint64(x.id))
 		w.varintField(3, 1)
@@ -264,7 +264,7 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 		}
 		var w msgW
 		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(wid)) + 2
-		w.begin(&c.sock, s.id, size)
+		w.begin(c, s, size)
 		n.writeHdr(&w)
 		writeVarintNZ(&w, 2, uint64(wid))
 		w.varintField(4, 1)
@@ -272,7 +272,7 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 	case 3:
 		var w msgW
 		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, math.MaxUint64)
-		w.begin(&c.sock, s.id, size)
+		w.begin(c, s, size)
 		n.writeHdr(&w)
 		w.varintField(2, math.MaxUint64)
 		w.end()
@@ -311,7 +311,7 @@ func (n *node) flushEvents() {
 			size += sizeBytesField(11, n.eventSize(x, &w.events[e]))
 		}
 		var mw msgW
-		mw.begin(&c.sock, s.id, size)
+		mw.begin(c, s, size)
 		n.writeHdr(&mw)
 		writeVarintNZ(&mw, 2, uint64(x.id))
 		for e := first; e >= 0; e = w.events[e].next {
@@ -392,7 +392,7 @@ func (n *node) writeEvents(c *client, s *stream, x *watcher, evs []event) {
 		size += sizeBytesField(11, n.eventSize(x, &evs[i]))
 	}
 	var mw msgW
-	mw.begin(&c.sock, s.id, size)
+	mw.begin(c, s, size)
 	n.writeHdr(&mw)
 	writeVarintNZ(&mw, 2, uint64(x.id))
 	for i := range evs {
@@ -406,7 +406,7 @@ func (n *node) writeEvents(c *client, s *stream, x *watcher, evs []event) {
 func (n *node) writeCompacted(c *client, s *stream, x *watcher) {
 	size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id)) + 2 + sizeVarintField(5, uint64(n.st.compactRev))
 	var mw msgW
-	mw.begin(&c.sock, s.id, size)
+	mw.begin(c, s, size)
 	n.writeHdr(&mw)
 	writeVarintNZ(&mw, 2, uint64(x.id))
 	mw.varintField(4, 1)

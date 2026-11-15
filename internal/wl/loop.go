@@ -351,6 +351,7 @@ func (l *loop) takeHandoffs() {
 		switch h.kind {
 		case kindClient:
 			c := newClient(h)
+			c.node = n
 			n.socks[idx] = c
 			s = &c.sock
 		case kindPeerIn:

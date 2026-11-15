@@ -60,6 +60,8 @@ type stream struct {
 	watch bool
 	wids  []int32 // the watchers of a watch stream
 	fail  []byte  // a Txn's failure branch, kept here and not replicated
+	win   int64   // the stream's send window
+	holds bool    // held messages wait for window: the stream's window is in its client's flow
 	// streaming: the stream's response headers are out, and it answers
 	// each request with a message until the client ends its side.
 	streaming bool
@@ -84,10 +86,12 @@ type client struct {
 	blockEnd bool
 	block    []byte
 	unacked  int
+	node     *node
+	flow     flow
 }
 
 func newClient(h *handoff) *client {
-	c := &client{sock: *newSock(h), slots: make([]stream, streamSlots), hdrCache: map[string]uint8{}}
+	c := &client{sock: *newSock(h), slots: make([]stream, streamSlots), hdrCache: map[string]uint8{}, flow: newFlow()}
 	c.dec = hpack.NewDecoder(4096, func(f hpack.HeaderField) {
 		if f.Name == ":path" {
 			c.hdrPath = f.Value
@@ -116,7 +120,7 @@ func (c *client) newStream(id uint32, kind uint8) *stream {
 		s = &stream{}
 		c.over[id] = s
 	}
-	*s = stream{id: id, kind: kind, open: true, buf: s.buf[:0], wids: s.wids[:0], fail: nil}
+	*s = stream{id: id, kind: kind, open: true, buf: s.buf[:0], wids: s.wids[:0], fail: nil, win: c.flow.initial}
 	return s
 }
 
@@ -250,6 +254,7 @@ func (c *client) frames(n *node) error {
 				}
 			}
 		case frRST:
+			c.dropHeld(sid)
 			if s := c.get(sid); s != nil {
 				if s.watch {
 					n.closeWatchStream(c, s)
@@ -258,9 +263,17 @@ func (c *client) frames(n *node) error {
 			}
 		case frSettings:
 			if flags&flAck == 0 {
+				if err := c.settings(p); err != nil {
+					return err
+				}
 				c.writeFrame(frSettings, flAck, nil)
 				n.markDirty(&c.sock)
 			}
+		case frWindowUpdate:
+			if len(p) != 4 {
+				return errProtocol
+			}
+			c.windowUpdate(sid, int64(binary.BigEndian.Uint32(p)&(1<<31-1)))
 		case frPing:
 			if flags&flAck == 0 && len(p) == 8 {
 				c.writeFrame(frPing, flAck, p)

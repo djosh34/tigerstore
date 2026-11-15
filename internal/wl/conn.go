@@ -286,11 +286,19 @@ type msgW struct {
 	sid       uint32
 	left      int // message bytes still to write, the 5-byte prefix included
 	frameLeft int
+	// A message the windows do not take is held: its client and stream,
+	// and its bytes.
+	c    *client
+	st   *stream
+	held []byte
 }
 
-// begin starts a gRPC message of n bytes on stream sid.
-func (w *msgW) begin(s *sock, sid uint32, n int) {
-	w.s, w.sid, w.left, w.frameLeft = s, sid, 5+n, 0
+// begin starts a gRPC message of n bytes on stream s of client c.
+func (w *msgW) begin(c *client, s *stream, n int) {
+	*w = msgW{s: &c.sock, sid: s.id, left: 5 + n}
+	if !c.take(s, 5+n) {
+		w.c, w.st, w.held = c, s, make([]byte, 0, 5+n)
+	}
 	var p [5]byte
 	binary.BigEndian.PutUint32(p[1:], uint32(n))
 	w.write(p[:])
@@ -309,6 +317,11 @@ func (w *msgW) newFrame() {
 }
 
 func (w *msgW) write(p []byte) {
+	if w.c != nil {
+		w.held = append(w.held, p...)
+		w.left -= len(p)
+		return
+	}
 	for len(p) > 0 {
 		if w.frameLeft == 0 {
 			w.newFrame()
@@ -349,5 +362,8 @@ var errMsgSize = errors.New("a gRPC message's length does not match what was wri
 func (w *msgW) end() {
 	if w.left != 0 {
 		w.s.broken = true
+	}
+	if w.c != nil {
+		w.c.hold(w.st, w.held, nil)
 	}
 }

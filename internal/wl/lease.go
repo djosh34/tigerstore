@@ -291,7 +291,7 @@ func (n *node) applyLeaseKeepAlive(req []byte, c *client, s *stream) error {
 	}
 	if c != nil {
 		var w msgW
-		w.begin(&c.sock, s.id, sizeBytesField(1, n.hdrSize())+sizeVarintField(2, uint64(id))+sizeVarintField(3, uint64(ttl)))
+		w.begin(c, s, sizeBytesField(1, n.hdrSize())+sizeVarintField(2, uint64(id))+sizeVarintField(3, uint64(ttl)))
 		n.writeHdr(&w)
 		writeVarintNZ(&w, 2, uint64(id))
 		writeVarintNZ(&w, 3, uint64(ttl))

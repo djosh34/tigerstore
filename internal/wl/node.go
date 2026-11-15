@@ -230,18 +230,14 @@ func (n *node) beginReply(c *client, s *stream, w *msgW, size int) {
 	b := c.frame(9 + len(respHeaders))
 	putFrameHeader(b, len(respHeaders), frHeaders, flEndHeaders, s.id)
 	copy(b[9:], respHeaders)
-	w.begin(&c.sock, s.id, size)
+	w.begin(c, s, size)
 }
 
 // endReply ends the message and the stream with grpc-status 0.
 func (n *node) endReply(c *client, s *stream, w *msgW) {
 	stats.replies++
 	w.end()
-	b := c.frame(9 + len(respTrailers))
-	putFrameHeader(b, len(respTrailers), frHeaders, flEndHeaders|flEndStream, s.id)
-	copy(b[9:], respTrailers)
-	c.endStream(s)
-	n.markDirty(&c.sock)
+	n.endStreamOK(c, s)
 }
 
 // replyError ends stream sid with a gRPC error, headers and trailers in
@@ -257,10 +253,15 @@ func (n *node) replyError(c *client, sid uint32, code int, msg string) {
 	blk = append(blk, "grpc-message"...)
 	blk = append(blk, byte(len(msg)))
 	blk = append(blk, msg...)
-	b := c.frame(9 + len(blk))
-	putFrameHeader(b, len(blk), frHeaders, flEndHeaders|flEndStream, sid)
-	copy(b[9:], blk)
-	if s := c.get(sid); s != nil {
+	s := c.get(sid)
+	if s != nil && s.holds {
+		c.hold(s, nil, blk)
+	} else {
+		b := c.frame(9 + len(blk))
+		putFrameHeader(b, len(blk), frHeaders, flEndHeaders|flEndStream, sid)
+		copy(b[9:], blk)
+	}
+	if s != nil {
 		c.endStream(s)
 	}
 	n.markDirty(&c.sock)
@@ -346,10 +347,17 @@ func (n *node) openStream(c *client, s *stream) {
 
 // endStreaming ends a streaming call whose client ended its side, with
 // grpc-status 0.
-func (n *node) endStreaming(c *client, s *stream) {
-	b := c.frame(9 + len(respTrailers))
-	putFrameHeader(b, len(respTrailers), frHeaders, flEndHeaders|flEndStream, s.id)
-	copy(b[9:], respTrailers)
+func (n *node) endStreaming(c *client, s *stream) { n.endStreamOK(c, s) }
+
+// endStreamOK ends stream s with grpc-status 0, after anything it holds.
+func (n *node) endStreamOK(c *client, s *stream) {
+	if s.holds {
+		c.hold(s, nil, respTrailers)
+	} else {
+		b := c.frame(9 + len(respTrailers))
+		putFrameHeader(b, len(respTrailers), frHeaders, flEndHeaders|flEndStream, s.id)
+		copy(b[9:], respTrailers)
+	}
 	c.endStream(s)
 	n.markDirty(&c.sock)
 }
