@@ -16,6 +16,10 @@ type memStats struct {
 	goTotal, goLive, goGoal     int64 // Go's mapped memory, its live heap after the last collection, and the next collection's goal
 	keys, hash, hist, arena     int64
 	slabTop, slabUsed, tree, ch int64
+	// The sockets' buffers: sealed and open records out, and the bytes
+	// read and opened in; and the peer messages held behind a missing
+	// batch.
+	sockOut, sockIn, held int64
 }
 
 var memSamples = []metrics.Sample{
@@ -41,6 +45,17 @@ func (n *node) memStats() memStats {
 		slabUsed: st.slab.used,
 		tree:     st.tree.bytes(),
 		ch:       int64(cap(st.changes)) * int64(unsafe.Sizeof(change{})),
+	}
+	for _, x := range n.socks {
+		if s := sockOf(x); s != nil {
+			m.sockOut += int64(cap(s.out))
+			m.sockIn += int64(cap(s.in) + cap(s.pt))
+		}
+		if p, ok := x.(*peerIn); ok {
+			for _, f := range p.held {
+				m.held += int64(cap(f))
+			}
+		}
 	}
 	return m
 }

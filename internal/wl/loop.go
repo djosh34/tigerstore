@@ -63,6 +63,8 @@ type loop struct {
 	lastAt  time.Time
 	logger  *log.Logger
 	next    time.Time
+
+	heapStep int64
 }
 
 const (
@@ -810,8 +812,10 @@ func (l *loop) logStats() {
 	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d; stage waits %d",
 		st.slab.used>>20, st.limit>>20, st.evictions, st.loads, l.n.wal.stats.waits)
 	m := l.n.memStats()
-	l.logger.Printf("memory MB: rss %d, go %d (live heap %d, goal %d); tables: keys %d hash %d history %d key arena %d slab %d (used %d) tree %d changes %d",
-		m.rss>>20, m.goTotal>>20, m.goLive>>20, m.goGoal>>20, m.keys>>20, m.hash>>20, m.hist>>20, m.arena>>20, m.slabTop>>20, m.slabUsed>>20, m.tree>>20, m.ch>>20)
+	l.logger.Printf("memory MB: rss %d, go %d (live heap %d, goal %d); tables: keys %d hash %d history %d key arena %d slab %d (used %d) tree %d changes %d; sockets out %d in %d, held %d",
+		m.rss>>20, m.goTotal>>20, m.goLive>>20, m.goGoal>>20, m.keys>>20, m.hash>>20, m.hist>>20, m.arena>>20, m.slabTop>>20, m.slabUsed>>20, m.tree>>20, m.ch>>20,
+		m.sockOut>>20, m.sockIn>>20, m.held>>20)
+	l.dumpHeap(m)
 	n := l.n
 	l.logger.Printf("rings: spans %d/%d/%d, on the heap %d/%d/%d; storage let go %d, read back %d",
 		n.ring.stats.spans, n.rx.stats.spans, n.side.stats.spans, n.ring.stats.heap, n.rx.stats.heap, n.side.stats.heap,
