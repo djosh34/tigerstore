@@ -343,7 +343,7 @@ func UpToInstall(jobs []PersistJob) ([]PersistJob, bool) {
 
 // ownDepth is how many appends of the leader's own writes may be on their
 // way to disk at once.
-const ownDepth = 2
+const ownDepth = 8
 
 // PersistJob is one disk write: entries and a hard state to append and
 // sync. The driver runs jobs in order and calls Persisted for each, in the
