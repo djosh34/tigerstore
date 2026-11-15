@@ -249,8 +249,9 @@ jobs:
           fi
           if [ "$BENCH" = profile-disk ]; then
             DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")
+            # k8s replays the recording that the run's first seed draws.
             for b in put-1k txn-1k k8s; do
-              DISK=$DISK DATA="$RUNNER_TEMP/bench-data" bench/profile-disk.sh bin/candidate "$b" results/profile-disk
+              SEED=${SEEDS%% *} DISK=$DISK DATA="$RUNNER_TEMP/bench-data" bench/profile-disk.sh bin/candidate "$b" results/profile-disk
             done
             exit 0
           fi
