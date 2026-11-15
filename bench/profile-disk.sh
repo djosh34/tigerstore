@@ -49,6 +49,7 @@ snap() {
 	if [ -n "${DISK:-}" ]; then { date +%s.%N; grep " $DISK " /proc/diskstats; } >"$out/$bench-diskstats-$1.txt"; fi
 	{ date +%s.%N; ss -tinmo state established; } >"$out/$bench-ss-$1.txt" 2>&1 || true
 	{ tc -s qdisc show dev lo; } >"$out/$bench-tc-$1.txt" 2>&1 || true
+	{ date +%s.%N; nstat -az; } >"$out/$bench-nstat-$1.txt" 2>&1 || true
 }
 i=0
 while kill -0 "$gen" 2>/dev/null; do
