@@ -2,6 +2,7 @@ package wl
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
@@ -47,7 +48,9 @@ type loop struct {
 	epfd int
 	hoFD int // handoffs wake the loop through it
 
+	ctx      context.Context
 	mu       sync.Mutex
+	stopped  bool
 	handoffs []*handoff
 	redials  map[uint64]chan struct{}
 
@@ -103,7 +106,7 @@ func Main(args []string) int {
 	logger.Printf("memory budget %d MiB, from %s", budget>>20, from)
 	memBudget = budget
 	// The node runs until it fails.
-	err = run(logger, *name, *dataDir, *listenClient, *advClient, *listenPeer, *initial,
+	err = run(context.Background(), logger, *name, *dataDir, *listenClient, *advClient, *listenPeer, *initial,
 		*certFile, *keyFile, *trusted, *peerCert, *peerKey, *peerTrusted)
 	logger.Printf("error: %v", err)
 	return 1
@@ -144,7 +147,11 @@ var memBudget int64
 // sideSize is the side ring's: the failure branches of Txns.
 const sideSize = 16 << 20
 
-func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer, initial,
+// errStopped is run's error once its context is done.
+var errStopped = errors.New("the node was stopped")
+
+// run runs a node until it fails or ctx is done.
+func run(ctx context.Context, logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer, initial,
 	certFile, keyFile, trusted, peerCert, peerKey, peerTrusted string,
 ) error {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
@@ -271,6 +278,14 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	if err != nil {
 		return err
 	}
+	l.ctx = ctx
+	defer l.shut(cl, pl)
+	go func() {
+		<-ctx.Done()
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		l.wake()
+	}()
 	go l.accept(cl, cliTLS, kindClient, logger)
 	go l.accept(pl, peerSrvTLS, kindPeerIn, logger)
 	for _, m := range n.members {
@@ -288,6 +303,9 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.Logger) {
 	for {
 		nc, err := ln.Accept()
+		if errors.Is(err, net.ErrClosed) {
+			return
+		}
 		if err != nil {
 			logger.Printf("accept: %v", err)
 			time.Sleep(10 * time.Millisecond)
@@ -312,31 +330,87 @@ func (l *loop) dial(m member, cfg *tls.Config, redial chan struct{}) {
 	c := cfg.Clone()
 	host, _, _ := net.SplitHostPort(m.peerAddr)
 	c.ServerName = host
+	pause := func() bool {
+		select {
+		case <-l.ctx.Done():
+			return false
+		case <-time.After(100 * time.Millisecond):
+			return true
+		}
+	}
 	for {
 		nc, err := net.DialTimeout("tcp", m.peerAddr, time.Second)
 		if err != nil {
-			time.Sleep(100 * time.Millisecond)
+			if !pause() {
+				return
+			}
 			continue
 		}
 		h, err := handshake(nc, c, false)
 		if err != nil {
-			time.Sleep(100 * time.Millisecond)
+			if !pause() {
+				return
+			}
 			continue
 		}
 		h.kind, h.peer = kindPeerOut, m.id
 		l.handOver(h)
-		<-redial
-		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-redial:
+		case <-l.ctx.Done():
+			return
+		}
+		if !pause() {
+			return
+		}
 	}
 }
 
 func (l *loop) handOver(h *handoff) {
 	l.mu.Lock()
+	if l.stopped {
+		l.mu.Unlock()
+		_ = unix.Close(h.fd)
+		return
+	}
 	l.handoffs = append(l.handoffs, h)
+	l.wake()
 	l.mu.Unlock()
+}
+
+// wake wakes the loop through its handoff eventfd, unless it stopped and
+// closed it. The caller holds l.mu.
+func (l *loop) wake() {
+	if l.stopped {
+		return
+	}
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], 1)
 	_, _ = unix.Write(l.hoFD, b[:])
+}
+
+// shut closes what a stopped loop had open: its listeners, sockets, log
+// and file descriptors.
+func (l *loop) shut(listeners ...net.Listener) {
+	for _, ln := range listeners {
+		_ = ln.Close()
+	}
+	l.mu.Lock()
+	l.stopped = true
+	hs := l.handoffs
+	l.handoffs = nil
+	l.mu.Unlock()
+	for _, h := range hs {
+		_ = unix.Close(h.fd)
+	}
+	for idx, x := range l.n.socks {
+		if x != nil {
+			l.closeSock(idx)
+		}
+	}
+	l.n.wal.close()
+	_ = unix.Close(l.epfd)
+	_ = unix.Close(l.hoFD)
 }
 
 func (l *loop) takeHandoffs() {
@@ -507,6 +581,9 @@ func (l *loop) run() error {
 			ev := events[i]
 			switch ev.Fd {
 			case evHandoff:
+				if l.ctx.Err() != nil {
+					return errStopped
+				}
 				l.takeHandoffs()
 			case evFsync:
 				if err := n.fsyncDone(); err != nil {

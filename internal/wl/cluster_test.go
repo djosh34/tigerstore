@@ -3,12 +3,14 @@ package wl
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -38,54 +40,87 @@ func portPair(t *testing.T) int {
 	return 0
 }
 
-// startCluster runs a 3-node cluster in this process and returns a
-// client of it. The nodes run until the test binary ends.
-func startCluster(t *testing.T) *clientv3.Client {
+// testCluster is three nodes running in this process.
+type testCluster struct {
+	dir                       string
+	certFile, keyFile, caFile string
+	peers, initial, endpoints []string
+	cert                      tls.Certificate
+	ca                        *testcert.CA
+	cancel                    context.CancelFunc
+	stopped                   chan error
+}
+
+// newTestCluster starts a 3-node cluster in this process; the test's end
+// stops it.
+func newTestCluster(t *testing.T) *testCluster {
 	t.Helper()
-	dir := t.TempDir()
-	ca, err := testcert.NewCA()
+	tc := &testCluster{dir: t.TempDir()}
+	var err error
+	if tc.ca, err = testcert.NewCA(); err != nil {
+		t.Fatal(err)
+	}
+	cert, certPEM, keyPEM, err := tc.ca.Issue("node", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cert, certPEM, keyPEM, err := ca.Issue("node", 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	files := map[string][]byte{"ca.pem": ca.PEM, "cert.pem": certPEM, "key.pem": keyPEM}
+	tc.cert = cert
+	files := map[string][]byte{"ca.pem": tc.ca.PEM, "cert.pem": certPEM, "key.pem": keyPEM}
 	for name, b := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), b, 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(tc.dir, name), b, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	certFile, keyFile, caFile := filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem"), filepath.Join(dir, "ca.pem")
-	var peers, initial, endpoints []string
+	tc.certFile, tc.keyFile, tc.caFile = filepath.Join(tc.dir, "cert.pem"), filepath.Join(tc.dir, "key.pem"), filepath.Join(tc.dir, "ca.pem")
 	for i := range 3 {
 		p := portPair(t)
-		peers = append(peers, fmt.Sprintf("https://127.0.0.1:%d", p))
-		initial = append(initial, fmt.Sprintf("n%d=%s", i+1, peers[i]))
-		endpoints = append(endpoints, fmt.Sprintf("127.0.0.1:%d", p-1))
+		tc.peers = append(tc.peers, fmt.Sprintf("https://127.0.0.1:%d", p))
+		tc.initial = append(tc.initial, fmt.Sprintf("n%d=%s", i+1, tc.peers[i]))
+		tc.endpoints = append(tc.endpoints, fmt.Sprintf("127.0.0.1:%d", p-1))
 	}
+	tc.start(t)
+	t.Cleanup(func() { tc.stop(t) })
+	return tc
+}
+
+// start runs the three nodes on their data dirs.
+func (tc *testCluster) start(t *testing.T) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	tc.cancel, tc.stopped = cancel, make(chan error, 3)
 	logger := log.New(io.Discard, "", 0)
-	stopped := make(chan error, 3)
 	for i := range 3 {
-		client := "https://" + endpoints[i]
+		client := "https://" + tc.endpoints[i]
 		go func() {
-			err := run(logger, fmt.Sprintf("n%d", i+1), filepath.Join(dir, fmt.Sprintf("n%d", i+1)), client, client, peers[i],
-				strings.Join(initial, ","), certFile, keyFile, caFile, certFile, keyFile, caFile)
-			stopped <- fmt.Errorf("node %d stopped: %w", i+1, err)
+			tc.stopped <- run(ctx, logger, fmt.Sprintf("n%d", i+1), filepath.Join(tc.dir, fmt.Sprintf("n%d", i+1)), client, client, tc.peers[i],
+				strings.Join(tc.initial, ","), tc.certFile, tc.keyFile, tc.caFile, tc.certFile, tc.keyFile, tc.caFile)
 		}()
 	}
-	t.Cleanup(func() {
-		select {
-		case err := <-stopped:
-			t.Error(err)
-		default:
+}
+
+// stop stops the nodes and waits for them; a node that failed on its own
+// fails the test.
+func (tc *testCluster) stop(t *testing.T) {
+	t.Helper()
+	if tc.cancel == nil {
+		return
+	}
+	tc.cancel()
+	tc.cancel = nil
+	for range 3 {
+		if err := <-tc.stopped; !errors.Is(err, errStopped) {
+			t.Errorf("a node failed: %v", err)
 		}
-	})
+	}
+}
+
+// client returns a client of the cluster once it takes a write.
+func (tc *testCluster) client(t *testing.T) *clientv3.Client {
+	t.Helper()
 	c, err := clientv3.New(clientv3.Config{
-		Endpoints:   endpoints,
+		Endpoints:   tc.endpoints,
 		DialTimeout: 5 * time.Second,
-		TLS:         &tls.Config{Certificates: []tls.Certificate{cert}, RootCAs: ca.Pool, MinVersion: tls.VersionTLS13},
+		TLS:         &tls.Config{Certificates: []tls.Certificate{tc.cert}, RootCAs: tc.ca.Pool, MinVersion: tls.VersionTLS13},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -104,8 +139,42 @@ func startCluster(t *testing.T) *clientv3.Client {
 	}
 }
 
+func TestClusterComesBackAfterARestart(t *testing.T) {
+	tc := newTestCluster(t)
+	c := tc.client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	g, err := c.Grant(ctx, 600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 100 {
+		if _, err := c.Put(ctx, fmt.Sprintf("/r/%03d", i), strconv.Itoa(i), clientv3.WithLease(g.ID)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before, err := c.Get(ctx, "/r/", clientv3.WithPrefix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tc.stop(t)
+	tc.start(t)
+	c2 := tc.client(t)
+	after, err := c2.Get(ctx, "/r/", clientv3.WithPrefix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Kvs) != 100 || after.Kvs[99].ModRevision != before.Kvs[99].ModRevision || string(after.Kvs[42].Value) != "42" {
+		t.Fatalf("after the restart %d keys, last at %d, want 100 at %d", len(after.Kvs), after.Kvs[len(after.Kvs)-1].ModRevision, before.Kvs[99].ModRevision)
+	}
+	ttl, err := c2.TimeToLive(ctx, g.ID, clientv3.WithAttachedKeys())
+	if err != nil || len(ttl.Keys) != 100 {
+		t.Fatalf("the lease after the restart: %v %v", ttl, err)
+	}
+}
+
 func TestClusterServesTheEtcdAPI(t *testing.T) {
-	c := startCluster(t)
+	c := newTestCluster(t).client(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
