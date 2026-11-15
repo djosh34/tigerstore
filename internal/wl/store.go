@@ -85,7 +85,7 @@ type store struct {
 	// end of an apply lets go of records by a clock hand, and a read of a
 	// key whose record was let go builds it again from the log.
 	budget    int64 // the node's memory, 0 for no limit
-	fixed     int64 // the rings and stages mapped at startup
+	mapped    int64 // the rings and stages mapped outside Go's heap at startup
 	limit     int64
 	hand      uint32
 	evictions uint64
@@ -257,19 +257,38 @@ func (st *store) readLog(off int64, n int) ([]byte, error) {
 }
 
 // setBudget sizes the slab's limit from the node's memory budget, of
-// which fixed bytes are the mapped rings and stages.
-func (st *store) setBudget(budget, fixed int64) {
-	st.budget, st.fixed = budget, fixed
+// which mapped bytes are the rings and stages mapped outside Go's heap.
+func (st *store) setBudget(budget, mapped int64) {
+	st.budget, st.mapped = budget, mapped
 	st.relimit()
 }
 
-// relimit leaves the slab what the budget does not take otherwise: an
-// eighth for Go's heap and the runtime, the rings and stages, and the
-// tables as they grow.
+// relimit leaves the slab what the budget does not take otherwise: Go's
+// share, the mapped rings and stages, and the tables as they grow.
 func (st *store) relimit() {
-	tables := int64(st.nkeys)*int64(unsafe.Sizeof(keyEnt{})) + int64(st.nhist)*int64(unsafe.Sizeof(histEnt{})) +
-		int64(len(st.hash))*8 + int64(st.karena.top) + st.tree.bytes() + int64(cap(st.changes))*int64(unsafe.Sizeof(change{}))
-	st.limit = st.budget - st.budget/8 - st.fixed - tables
+	goTables := st.tree.bytes() + int64(cap(st.changes))*int64(unsafe.Sizeof(change{}))
+	st.limit = st.budget - goShare(st.budget) - goTables - st.outside() + int64(st.slab.top)
+}
+
+// goShare is the part of the budget kept for Go's heap and runtime,
+// besides the tables the store keeps there: an eighth, and the entries
+// Raft's storage holds.
+func goShare(budget int64) int64 { return budget/8 + storageHeld }
+
+// outside is the memory the node maps outside Go's heap, which Go's memory
+// limit does not count: the rings and stages, the store's tables and its
+// slab up to the highest slot handed out.
+func (st *store) outside() int64 {
+	return st.mapped + int64(st.nkeys)*int64(unsafe.Sizeof(keyEnt{})) + int64(st.nhist)*int64(unsafe.Sizeof(histEnt{})) +
+		int64(len(st.hash))*8 + int64(st.karena.top) + int64(st.slab.top)
+}
+
+// goLimit is the memory limit Go's runtime gets: what the budget leaves
+// once the memory outside Go's heap is counted, and never less than Go's
+// share. Go's limit counts only its own memory; at the whole budget, Go's
+// heap grew on top of the store's tables, and the nodes swapped (#602).
+func (st *store) goLimit() int64 {
+	return max(st.budget-st.outside(), goShare(st.budget))
 }
 
 // fitSteps is the most records one apply lets go of.

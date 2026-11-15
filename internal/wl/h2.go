@@ -126,6 +126,8 @@ func (c *client) newStream(id uint32, kind uint8) *stream {
 
 func (c *client) endStream(s *stream) {
 	s.fail = nil // the side ring may take its bytes again
+	c.node.putBuf(s.buf)
+	s.buf = nil
 	if c.over != nil {
 		if o, ok := c.over[s.id]; ok && o == s {
 			delete(c.over, s.id)
@@ -391,6 +393,36 @@ func hpackStr(b []byte) ([]byte, bool) {
 }
 
 // data takes the bytes of a DATA frame of stream s.
+// A message that spans DATA frames waits in its stream's buffer. Streams
+// that end give their buffers back to the node, which keeps a few of them
+// for the next: a stream slot that kept its own grew to the largest
+// message it ever had, in each of a client's 8,192 slots, and the k8s
+// bench's nodes held hundreds of megabytes of them (#602).
+const (
+	keptBufs   = 64
+	keptBufMax = 256 << 10
+)
+
+// takeBuf returns an empty buffer that a stream gave back, or nil.
+func (n *node) takeBuf() []byte {
+	k := len(n.bufs)
+	if k == 0 {
+		return nil
+	}
+	b := n.bufs[k-1]
+	n.bufs[k-1] = nil
+	n.bufs = n.bufs[:k-1]
+	return b[:0]
+}
+
+// putBuf keeps b for another stream, unless the node keeps enough or b
+// is large.
+func (n *node) putBuf(b []byte) {
+	if cap(b) > 0 && cap(b) <= keptBufMax && len(n.bufs) < keptBufs {
+		n.bufs = append(n.bufs, b)
+	}
+}
+
 func (c *client) data(n *node, s *stream, p []byte) error {
 	if len(s.buf) > 0 {
 		s.buf = append(s.buf, p...)
@@ -418,7 +450,7 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 		if len(s.buf) > 0 {
 			s.buf = append(s.buf[:0], p...) // overlapping copy of the tail is fine
 		} else {
-			s.buf = append(s.buf, p...)
+			s.buf = append(n.takeBuf(), p...)
 		}
 	} else {
 		s.buf = s.buf[:0]

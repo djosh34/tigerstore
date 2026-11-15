@@ -74,6 +74,11 @@ type node struct {
 	fwdSeq     uint32
 	// proposed are the batches proposed and not yet timed out, in order.
 	proposed []proposal
+
+	// goLimit is the memory limit last given Go's runtime.
+	goLimit int64
+	// bufs are buffers that ended streams gave back (takeBuf).
+	bufs [][]byte
 }
 
 type fwdBatch struct {

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"slices"
 	"strconv"
@@ -61,8 +62,6 @@ type loop struct {
 	lastAt  time.Time
 	logger  *log.Logger
 	next    time.Time
-
-	heapStep int64
 }
 
 const (
@@ -235,7 +234,8 @@ func run(ctx context.Context, logger *log.Logger, name, dataDir, listenClient, a
 	}
 	n.storage.log = n.wal
 	n.st.log = n.wal
-	n.st.setBudget(memBudget, 2*ringSize+sideSize+stageSize+storageHeld)
+	n.st.setBudget(memBudget, 2*ringSize+sideSize+stageSize)
+	n.limitGo()
 	n.term, n.commit = n.storage.hs.GetTerm(), n.storage.hs.GetCommit()
 	n.rn, err = raft.NewRawNode(raftConfig(n.id, n.storage))
 	if err != nil {
@@ -608,6 +608,7 @@ func (l *loop) run() error {
 			n.rn.Tick()
 			n.retryReads(l.tick)
 			n.expireProposals()
+			n.limitGo()
 			if n.leading() {
 				n.expireLeases()
 			}
@@ -644,6 +645,21 @@ func (l *loop) run() error {
 			l.logStats()
 		}
 	}
+}
+
+// limitGo sets Go's memory limit to what the budget leaves Go's heap, when
+// that moved by more than a 64th of the budget since it was last set.
+func (n *node) limitGo() {
+	st := n.st
+	if st.budget == 0 {
+		return
+	}
+	limit := st.goLimit()
+	if d := limit - n.goLimit; d > -st.budget/64 && d < st.budget/64 {
+		return
+	}
+	n.goLimit = limit
+	debug.SetMemoryLimit(limit)
 }
 
 func (l *loop) flush() {
@@ -790,7 +806,6 @@ func (l *loop) logStats() {
 	m := l.n.memStats()
 	l.logger.Printf("memory MB: rss %d, go %d (live heap %d, goal %d); tables: keys %d hash %d history %d key arena %d slab %d (used %d) tree %d changes %d",
 		m.rss>>20, m.goTotal>>20, m.goLive>>20, m.goGoal>>20, m.keys>>20, m.hash>>20, m.hist>>20, m.arena>>20, m.slabTop>>20, m.slabUsed>>20, m.tree>>20, m.ch>>20)
-	l.dumpHeap(m)
 	n := l.n
 	l.logger.Printf("rings: spans %d/%d/%d, on the heap %d/%d/%d; storage let go %d, read back %d",
 		n.ring.stats.spans, n.rx.stats.spans, n.side.stats.spans, n.ring.stats.heap, n.rx.stats.heap, n.side.stats.heap,
