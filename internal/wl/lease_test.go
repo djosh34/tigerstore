@@ -126,3 +126,37 @@ func TestShortLeasesGetTheMinimumTTL(t *testing.T) {
 		t.Fatalf("lease granted with a TTL of 1: %+v", l)
 	}
 }
+
+func TestANestedTxnRunsTheBranchItsComparesPick(t *testing.T) {
+	n := leaseNode(t)
+	if err := putLeased(n, "/flag", 0); err != nil { // rev 2
+		t.Fatal(err)
+	}
+	// Compare: /flag's create revision equals 2 (target CREATE 1, result EQUAL 0).
+	cmpFlag := appendBytesField(appendVarintField(appendVarintField(nil, 2, 1), 5, 2), 3, []byte("/flag"))
+	nested := appendBytesField(nil, 1, cmpFlag)
+	nested = appendBytesField(nested, 2, reqOp(2, putOp("/yes", "1")))
+	nested = appendBytesField(nested, 3, reqOp(2, putOp("/no", "1")))
+	outer := txn(reqOp(2, putOp("/outer", "1")), reqOp(4, nested))
+	if err := checkRequest(kTxn, outer); err != nil {
+		t.Fatal(err)
+	}
+	rev := n.st.rev
+	if err := n.applyTxn(outer, 0, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	n.st.endApply()
+	if !live(n, "/outer") || !live(n, "/yes") || live(n, "/no") {
+		t.Fatalf("/outer %v /yes %v /no %v, want the outer put and the nested success branch", live(n, "/outer"), live(n, "/yes"), live(n, "/no"))
+	}
+	if n.st.rev != rev+1 {
+		t.Fatalf("the Txn moved the revision from %d to %d, want one step", rev, n.st.rev)
+	}
+	ids := []string{"/outer", "/yes"}
+	for _, k := range ids {
+		id, _ := n.st.find([]byte(k))
+		if mod, _, _, _ := n.st.state(id); mod != rev+1 {
+			t.Fatalf("%s has mod revision %d, want %d", k, mod, rev+1)
+		}
+	}
+}

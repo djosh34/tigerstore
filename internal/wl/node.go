@@ -53,9 +53,12 @@ type node struct {
 	wal *wal
 
 	// scratch for replies
-	kvs     [][]byte
-	txnRes  []opRes
-	scratch []byte // a Txn's fields that are replicated
+	kvs    [][]byte
+	txnRes []opRes
+	// txnScratch holds a Txn branch's results while it runs, one per
+	// nesting depth.
+	txnScratch [][]opRes
+	scratch    []byte // a Txn's fields that are replicated
 
 	// The batches this node proposed, by sequence: the leader names them
 	// in its appends to this node instead of sending them back (#626).
@@ -114,6 +117,10 @@ type opRes struct {
 	more    bool
 	prev    []byte
 	deleted int64
+	// A nested Txn: whether its compares held, and where its operations'
+	// results lie.
+	ok         bool
+	sub0, sub1 int
 }
 
 // Batch layout: [4 origin][4 sequence][4 ops][4 magic], then each op [1 kind]

@@ -344,44 +344,87 @@ func result(want int, r int) bool {
 	return false
 }
 
-func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
-	st := n.st
-	ok := true
+// txnCompares evaluates a Txn's compares against the store as it is.
+func (n *node) txnCompares(req []byte) (bool, error) {
 	var cmp compare
 	for m := req; len(m) > 0; {
 		num, _, _, p, rest, err := field(m)
 		if err != nil {
-			return badRequest(err)
-		}
-		if num == 1 && ok {
-			if err := parseCompare(p, &cmp); err != nil {
-				return badRequest(err)
-			}
-			if ok, err = n.cmpHolds(&cmp); err != nil {
-				return err
-			}
+			return false, badRequest(err)
 		}
 		m = rest
+		if num != 1 {
+			continue
+		}
+		if err := parseCompare(p, &cmp); err != nil {
+			return false, badRequest(err)
+		}
+		ok, err := n.cmpHolds(&cmp)
+		if err != nil || !ok {
+			return false, err
+		}
 	}
-	branch := 2
-	if !ok {
-		branch = 3
-	}
-	if err := n.checkTxnLeases(req, s, ok); err != nil {
+	return true, nil
+}
+
+// txnRun is the state of one Txn's apply: its revision, whether it
+// changed the store, and the results and records of its operations.
+type txnRun struct {
+	req     []byte // the Txn as replicated, where the put values lie
+	voff    int64  // where req lies in the log
+	rev     int64
+	changed bool
+	res     []opRes
+	kvs     [][]byte
+}
+
+func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
+	ok, err := n.txnCompares(req)
+	if err != nil {
 		return err
 	}
-	rev := st.rev + 1
-	changed := false
-	res := n.txnRes[:0]
-	kvs := n.kvs[:0]
+	// A failure branch kept by this node's stream is not in req.
 	ops := req
 	if !ok && s != nil && s.fail != nil {
 		ops = s.fail
 	}
+	if err := n.checkTxnLeases(ops, ok); err != nil {
+		return err
+	}
+	t := txnRun{req: req, voff: voff, rev: n.st.rev + 1, res: n.txnRes[:0], kvs: n.kvs[:0]}
+	r0, r1, err := n.runBranch(&t, ops, ok, 0)
+	if err != nil {
+		return err
+	}
+	if t.changed {
+		n.st.rev = t.rev
+	}
+	if c != nil {
+		n.replyTxn(c, s, ok, t.res, r0, r1, t.kvs)
+	}
+	clear(t.kvs)
+	n.kvs = t.kvs[:0]
+	clear(t.res)
+	n.txnRes = t.res[:0]
+	return nil
+}
+
+// runBranch applies the branch of ops that ok picks, and returns where
+// its results lie in t.res: a nested Txn's results lie before its own.
+// depth is how deep the Txn is nested, for its scratch.
+func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, error) {
+	branch := 2
+	if !ok {
+		branch = 3
+	}
+	for len(n.txnScratch) <= depth {
+		n.txnScratch = append(n.txnScratch, nil)
+	}
+	local := n.txnScratch[depth][:0]
 	for m := ops; len(m) > 0; {
 		num, _, _, p, rest, err := field(m)
 		if err != nil {
-			return badRequest(err)
+			return 0, 0, badRequest(err)
 		}
 		m = rest
 		if num != branch {
@@ -390,74 +433,73 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 		// p is a RequestOp: one field.
 		onum, _, _, op, _, err := field(p)
 		if err != nil {
-			return badRequest(err)
+			return 0, 0, badRequest(err)
 		}
 		switch onum {
 		case 1:
 			var r rangeReq
 			if err := parseRange(op, &r); err != nil {
-				return badRequest(err)
+				return 0, 0, badRequest(err)
 			}
-			k0 := len(kvs)
+			k0 := len(t.kvs)
 			var count int64
-			if kvs, count, err = n.rangeKVs(&r, kvs); err != nil {
-				return err
+			if t.kvs, count, err = n.rangeKVs(&r, t.kvs); err != nil {
+				return 0, 0, err
 			}
-			res = append(res, opRes{kind: kRange, kvs0: k0, kvs1: len(kvs), count: count, more: int64(len(kvs)-k0) < count && !r.countOnly})
+			local = append(local, opRes{kind: kRange, kvs0: k0, kvs1: len(t.kvs), count: count, more: int64(len(t.kvs)-k0) < count && !r.countOnly})
 		case 2:
 			var r putReq
 			if err := parsePut(op, &r); err != nil {
-				return badRequest(err)
+				return 0, 0, badRequest(err)
 			}
-			prev, err := n.putKey(&r, req, voff, rev)
+			prev, err := n.putKey(&r, t.req, t.voff, t.rev)
 			if err != nil {
-				return err
+				return 0, 0, err
 			}
-			changed = true
+			t.changed = true
 			x := opRes{kind: kPut}
 			if r.prevKV {
 				x.prev = prev
 			}
-			res = append(res, x)
+			local = append(local, x)
 		case 3:
 			var r delReq
 			if err := parseDel(op, &r); err != nil {
-				return badRequest(err)
+				return 0, 0, badRequest(err)
 			}
-			k0 := len(kvs)
+			k0 := len(t.kvs)
 			var deleted int64
-			if kvs, deleted, err = n.deleteRange(&r, rev, kvs); err != nil {
-				return err
+			if t.kvs, deleted, err = n.deleteRange(&r, t.rev, t.kvs); err != nil {
+				return 0, 0, err
 			}
-			if deleted > 0 {
-				changed = true
+			t.changed = t.changed || deleted > 0
+			local = append(local, opRes{kind: kDel, kvs0: k0, kvs1: len(t.kvs), deleted: deleted})
+		case 4:
+			sub, err := n.txnCompares(op)
+			if err != nil {
+				return 0, 0, err
 			}
-			res = append(res, opRes{kind: kDel, kvs0: k0, kvs1: len(kvs), deleted: deleted})
-		default:
-			res = append(res, opRes{kind: kTxn})
+			c0, c1, err := n.runBranch(t, op, sub, depth+1)
+			if err != nil {
+				return 0, 0, err
+			}
+			local = append(local, opRes{kind: kTxn, ok: sub, sub0: c0, sub1: c1})
 		}
 	}
-	if changed {
-		st.rev = rev
-	}
-	if c != nil {
-		n.replyTxn(c, s, ok, res, kvs)
-	}
-	clear(kvs)
-	n.kvs = kvs[:0]
-	n.txnRes = res[:0]
-	return nil
+	r0 := len(t.res)
+	t.res = append(t.res, local...)
+	clear(local)
+	n.txnScratch[depth] = local[:0]
+	return r0, len(t.res), nil
 }
 
 // checkTxnLeases fails a Txn whose branch puts to a lease that does not
-// exist, before it changes anything.
-func (n *node) checkTxnLeases(req []byte, s *stream, ok bool) error {
-	branch, ops := 2, req
+// exist, before it changes anything. A nested Txn's branch is the one
+// its compares pick on the store before the Txn, as in etcd.
+func (n *node) checkTxnLeases(ops []byte, ok bool) error {
+	branch := 2
 	if !ok {
 		branch = 3
-		if s != nil && s.fail != nil {
-			ops = s.fail
-		}
 	}
 	for m := ops; len(m) > 0; {
 		num, _, _, p, rest, err := field(m)
@@ -472,15 +514,23 @@ func (n *node) checkTxnLeases(req []byte, s *stream, ok bool) error {
 		if err != nil {
 			return badRequest(err)
 		}
-		if onum != 2 {
-			continue
-		}
-		var r putReq
-		if err := parsePut(op, &r); err != nil {
-			return badRequest(err)
-		}
-		if !r.ignoreLease {
-			if err := n.checkLease(r.lease); err != nil {
+		switch onum {
+		case 2:
+			var r putReq
+			if err := parsePut(op, &r); err != nil {
+				return badRequest(err)
+			}
+			if !r.ignoreLease {
+				if err := n.checkLease(r.lease); err != nil {
+					return err
+				}
+			}
+		case 4:
+			sub, err := n.txnCompares(op)
+			if err != nil {
+				return err
+			}
+			if err := n.checkTxnLeases(op, sub); err != nil {
 				return err
 			}
 		}
@@ -488,7 +538,8 @@ func (n *node) checkTxnLeases(req []byte, s *stream, ok bool) error {
 	return nil
 }
 
-func (n *node) opSize(x *opRes, kvs [][]byte) int {
+// opSize is the size of an operation's Response message.
+func (n *node) opSize(x *opRes, res []opRes, kvs [][]byte) int {
 	switch x.kind {
 	case kRange:
 		b := sizeVarintField(4, uint64(x.count))
@@ -510,30 +561,42 @@ func (n *node) opSize(x *opRes, kvs [][]byte) int {
 			b += sizeBytesField(3, len(kv))
 		}
 		return b
+	case kTxn:
+		return n.responsesSize(x.ok, res, x.sub0, x.sub1, kvs)
 	}
 	return 0
 }
 
-var opField = map[uint8]int{kRange: 1, kPut: 2, kDel: 3, kTxn: 4}
-
-func (n *node) replyTxn(c *client, s *stream, ok bool, res []opRes, kvs [][]byte) {
-	size := sizeBytesField(1, n.hdrSize())
+// responsesSize is the size of a TxnResponse's succeeded and responses.
+func (n *node) responsesSize(ok bool, res []opRes, r0, r1 int, kvs [][]byte) int {
+	size := 0
 	if ok {
 		size += 2
 	}
-	for i := range res {
-		inner := n.opSize(&res[i], kvs)
-		size += sizeBytesField(3, sizeBytesField(opField[res[i].kind], inner))
+	for i := r0; i < r1; i++ {
+		size += sizeBytesField(3, sizeBytesField(opField[res[i].kind], n.opSize(&res[i], res, kvs)))
 	}
+	return size
+}
+
+var opField = map[uint8]int{kRange: 1, kPut: 2, kDel: 3, kTxn: 4}
+
+func (n *node) replyTxn(c *client, s *stream, ok bool, res []opRes, r0, r1 int, kvs [][]byte) {
 	var w msgW
-	n.beginReply(c, s, &w, size)
+	n.beginReply(c, s, &w, sizeBytesField(1, n.hdrSize())+n.responsesSize(ok, res, r0, r1, kvs))
 	n.writeHdr(&w)
+	n.writeResponses(&w, ok, res, r0, r1, kvs)
+	n.endReply(c, s, &w)
+}
+
+// writeResponses writes a TxnResponse's succeeded and responses.
+func (n *node) writeResponses(w *msgW, ok bool, res []opRes, r0, r1 int, kvs [][]byte) {
 	if ok {
 		w.varintField(2, 1)
 	}
-	for i := range res {
+	for i := r0; i < r1; i++ {
 		x := &res[i]
-		inner := n.opSize(x, kvs)
+		inner := n.opSize(x, res, kvs)
 		w.lenField(3, sizeBytesField(opField[x.kind], inner))
 		w.lenField(opField[x.kind], inner)
 		switch x.kind {
@@ -544,17 +607,18 @@ func (n *node) replyTxn(c *client, s *stream, ok bool, res []opRes, kvs [][]byte
 			if x.more {
 				w.varintField(3, 1)
 			}
-			writeVarintNZ(&w, 4, uint64(x.count))
+			writeVarintNZ(w, 4, uint64(x.count))
 		case kPut:
 			if x.prev != nil {
 				w.bytesField(2, x.prev)
 			}
 		case kDel:
-			writeVarintNZ(&w, 2, uint64(x.deleted))
+			writeVarintNZ(w, 2, uint64(x.deleted))
 			for _, kv := range kvs[x.kvs0:x.kvs1] {
 				w.bytesField(3, kv)
 			}
+		case kTxn:
+			n.writeResponses(w, x.ok, res, x.sub0, x.sub1, kvs)
 		}
 	}
-	n.endReply(c, s, &w)
 }
