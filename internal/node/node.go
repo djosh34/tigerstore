@@ -1175,7 +1175,8 @@ func (n *Node) Drained() <-chan struct{} { return n.loop.Drained() }
 
 // Receive hands the node a message that a peer connection on the loop
 // read. It runs on the loop and never blocks; the committer's next turn
-// steps it.
+// steps it. The message counts as queued when the loop woke for the turn
+// that read it (turnStart): one clock read per turn, not per message.
 func (n *Node) Receive(m *raftpb.Message) {
 	select {
 	case <-n.done:
@@ -1183,7 +1184,7 @@ func (n *Node) Receive(m *raftpb.Message) {
 		return
 	default:
 	}
-	n.local = append(n.local, input{msg: m, at: time.Now()})
+	n.local = append(n.local, input{msg: m, at: n.turnStart})
 }
 
 // Busy reports, on the loop, whether the node's disk is behind, so that it
