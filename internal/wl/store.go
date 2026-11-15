@@ -56,6 +56,16 @@ type store struct {
 	nhist  uint32
 	tree   tree
 
+	// The budget: the slab's records may take limit bytes; past it, the
+	// end of an apply lets go of records by a clock hand, and a read of a
+	// key whose record was let go builds it again from the log.
+	limit     int64
+	fixed     int64 // rings and stages, mapped at startup
+	budget    int64
+	hand      uint32
+	evictions uint64
+	loads     uint64
+
 	leases  map[int64]int64
 	walFD   int
 	walEnd  *int64
@@ -145,13 +155,91 @@ func (st *store) intern(key []byte) uint32 {
 	return id
 }
 
-// live returns key id's record, or nil.
+// exists reports whether key id is live.
+func (st *store) exists(id uint32) bool { return st.keys[id].create != 0 }
+
+// live returns key id's record, or nil. A record the budget let go is
+// built again from the log and held again.
 func (st *store) live(id uint32) []byte {
 	k := &st.keys[id]
-	if k.rec == 0 {
+	if k.create == 0 {
 		return nil
 	}
+	if k.rec == 0 {
+		st.load(id)
+	}
 	return st.slab.bytes(k.rec, int(k.rlen))
+}
+
+// load builds key id's record from its value in the log.
+func (st *store) load(id uint32) {
+	k := &st.keys[id]
+	st.loads++
+	val := st.readLog(k.voff, int(k.vlen))
+	key := st.karena.get(k.koff, k.klen)
+	n := kvSize(len(key), len(val), k.create, k.mod, k.ver, k.lease)
+	off := st.slab.alloc(n)
+	rec := appendKV(st.slab.mem[off:off:int(off)+n], key, val, k.create, k.mod, k.ver, k.lease)
+	if len(rec) != n {
+		panic("record size")
+	}
+	k.rec, k.rlen = off, uint32(n)
+}
+
+// readLog reads n bytes of the log at off.
+func (st *store) readLog(off int64, n int) []byte {
+	val := st.scratch[:0]
+	if cap(val) < n {
+		val = make([]byte, 0, n)
+		st.scratch = val
+	}
+	val = val[:n]
+	clear(val)
+	if n > 0 && st.walFD >= 0 && st.walEnd != nil && off >= *st.walEnd-walRing {
+		for got := 0; got < n; {
+			pos := (off + int64(got)) % walRing
+			k := min(n-got, int(walRing-pos))
+			if _, err := unix.Pread(st.walFD, val[got:got+k], pos); err != nil {
+				panic(err)
+			}
+			got += k
+		}
+	}
+	return val
+}
+
+// setBudget sizes the slab's limit from the node's memory budget: an
+// eighth for Go's heap and the runtime, the mapped rings, and the
+// tables as they grow.
+func (st *store) setBudget(budget, fixed int64) {
+	st.budget, st.fixed = budget, fixed
+	st.relimit()
+}
+
+func (st *store) relimit() {
+	tables := int64(st.nkeys)*int64(unsafe.Sizeof(keyEnt{})) + int64(st.nhist)*int64(unsafe.Sizeof(histEnt{})) +
+		int64(len(st.hash))*8 + int64(st.karena.top) + int64(st.tree.bytes())
+	st.limit = st.budget - st.budget/8 - st.fixed - tables
+}
+
+// fit lets go of records past the limit, at most a step's worth.
+func (st *store) fit() {
+	if st.budget == 0 {
+		return
+	}
+	st.relimit()
+	for i := 0; i < 1<<13 && st.slab.used > st.limit && st.nkeys > 0; i++ {
+		if st.hand >= st.nkeys {
+			st.hand = 0
+		}
+		k := &st.keys[st.hand]
+		st.hand++
+		if k.rec != 0 {
+			st.slab.free(k.rec, int(k.rlen))
+			k.rec, k.rlen = 0, 0
+			st.evictions++
+		}
+	}
 }
 
 func kvSize(klen, vlen int, create, mod, ver, lease int64) int {
@@ -194,7 +282,7 @@ func (st *store) pushHist(k *keyEnt) {
 		panic("history is full")
 	}
 	st.hist[h] = histEnt{create: k.create, mod: k.mod, ver: k.ver, lease: k.lease,
-		voff: k.voff, vlen: k.vlen, prev: k.hist, deleted: k.rec == 0}
+		voff: k.voff, vlen: k.vlen, prev: k.hist, deleted: k.create == 0}
 	k.hist = h
 }
 
@@ -204,8 +292,8 @@ func (st *store) pushHist(k *keyEnt) {
 func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64) (prev []byte) {
 	k := &st.keys[id]
 	create, ver := rev, int64(1)
-	if k.rec != 0 {
-		prev = st.slab.bytes(k.rec, int(k.rlen))
+	if k.create != 0 {
+		prev = st.live(id)
 		st.freeLater = append(st.freeLater, k.rec, uint64(k.rlen))
 		create, ver = k.create, k.ver+1
 	} else {
@@ -229,10 +317,10 @@ func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64
 // valid until the apply ends, or nil if it was not live.
 func (st *store) del(id uint32, rev int64) []byte {
 	k := &st.keys[id]
-	if k.rec == 0 {
+	if k.create == 0 {
 		return nil
 	}
-	prev := st.slab.bytes(k.rec, int(k.rlen))
+	prev := st.live(id)
 	st.freeLater = append(st.freeLater, k.rec, uint64(k.rlen))
 	st.pushHist(k)
 	st.tree.remove(id)
@@ -248,6 +336,7 @@ func (st *store) endApply() {
 		st.slab.free(st.freeLater[i], int(st.freeLater[i+1]))
 	}
 	st.freeLater = st.freeLater[:0]
+	st.fit()
 }
 
 // at returns key id's record as it was at revision rev, built from the
@@ -265,20 +354,7 @@ func (st *store) at(id uint32, rev int64) []byte {
 		if e.deleted {
 			return nil
 		}
-		val := make([]byte, e.vlen)
-		if e.vlen > 0 && st.walFD >= 0 {
-			// A value the ring has overwritten since reads as zeros.
-			if st.walEnd != nil && e.voff >= *st.walEnd-walRing {
-				for got := 0; got < len(val); {
-					pos := (e.voff + int64(got)) % walRing
-					k := min(len(val)-got, int(walRing-pos))
-					if _, err := unix.Pread(st.walFD, val[got:got+k], pos); err != nil {
-						panic(err)
-					}
-					got += k
-				}
-			}
-		}
+		val := st.readLog(e.voff, int(e.vlen))
 		return appendKV(nil, st.key(id), val, e.create, e.mod, e.ver, e.lease)
 	}
 	return nil
@@ -288,7 +364,7 @@ func (st *store) at(id uint32, rev int64) []byte {
 // id now, all 0 if it is not live.
 func (st *store) state(id uint32) (mod, create, ver, lease int64) {
 	k := &st.keys[id]
-	if k.rec == 0 {
+	if k.create == 0 {
 		return 0, 0, 0, 0
 	}
 	return k.mod, k.create, k.ver, k.lease

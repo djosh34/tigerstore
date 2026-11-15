@@ -242,3 +242,9 @@ func (t *tree) visit(d uint32, start, end []byte, fn func(id uint32) bool) bool 
 	}
 	return true
 }
+
+// bytes estimates the tree's memory: its directories, their table, and a
+// child per key.
+func (t *tree) bytes() int {
+	return len(t.dirs)*96 + len(t.table)*8 + int(t.st.nkeys)*16
+}

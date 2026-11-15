@@ -123,7 +123,7 @@ const (
 	batchHdr = 16
 	opHdr    = 5
 	magic    = 0x77697265
-	ringSize = 256 << 20
+	ringSize = 64 << 20
 )
 
 func (n *node) markDirty(s *sock) {
@@ -895,7 +895,7 @@ func (n *node) cmpHolds(c *compare) bool {
 			}
 			return result(c.result, r)
 		}
-		return check(id, st.live(id) != nil)
+		return check(id, st.exists(id))
 	}
 	end := c.end
 	if len(end) == 1 && end[0] == 0 {

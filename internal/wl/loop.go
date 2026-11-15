@@ -9,11 +9,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 	"sync"
@@ -84,11 +86,19 @@ func Main(args []string) int {
 	peerTrusted := fs.String("peer-trusted-ca-file", "", "")
 	fs.Bool("peer-client-cert-auth", false, "")
 	fs.Int64("quota-backend-bytes", 0, "")
-	fs.Int64("memory-budget-bytes", 0, "")
+	budget := fs.Int64("memory-budget-bytes", 0, "")
 	fs.String("log-level", "", "")
 	fs.Bool("enable-pprof", false, "")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	memBudget = *budget
+	if memBudget == 0 {
+		// As tigerstore's node: GOMEMLIMIT gives the budget when the flag
+		// does not.
+		if l := debug.SetMemoryLimit(-1); l < math.MaxInt64 {
+			memBudget = l
+		}
 	}
 	logger := log.New(os.Stderr, "tigerstore-wl ", log.LstdFlags|log.Lmicroseconds)
 	if err := run(logger, *name, *dataDir, *listenClient, *advClient, *listenPeer, *initial,
@@ -127,6 +137,11 @@ func hostOf(u string) (string, error) {
 	}
 	return p.Host, nil
 }
+
+// memBudget is the memory the node may use, from --memory-budget-bytes.
+var memBudget int64
+
+const sideSize = 16 << 20
 
 func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer, initial,
 	certFile, keyFile, trusted, peerCert, peerKey, peerTrusted string) error {
@@ -190,11 +205,12 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	n.carryUntil = map[uint64]time.Time{}
 	n.ring = mmapBytes(ringSize)
 	n.rx = mmapBytes(ringSize)
-	n.side = mmapBytes(64 << 20)
+	n.side = mmapBytes(sideSize)
 	n.wal, err = openWAL(filepath.Join(dataDir, "wal"))
 	if err != nil {
 		return err
 	}
+	n.st.setBudget(memBudget, 2*ringSize+sideSize+stageSize)
 	if fd, err := unix.Open(filepath.Join(dataDir, "wal"), unix.O_RDONLY|unix.O_CLOEXEC, 0); err == nil {
 		n.st.walFD = fd
 		n.st.walEnd = &n.wal.off
@@ -614,5 +630,7 @@ func (l *loop) logStats() {
 		float64(d.walWrites-p.walWrites)/r, float64(d.fsyncs-p.fsyncs)/r, float64(d.proposals-p.proposals)/r, float64(d.readIndex-p.readIndex)/r, float64(d.peerMsgs-p.peerMsgs)/r, float64(d.walBytes-p.walBytes)/r,
 		l.n.st.nkeys, l.n.st.rev, l.n.st.slab.top>>20)
 	l.last, l.lastAt = d, now
+	st := l.n.st
+	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d", st.slab.used>>20, st.limit>>20, st.evictions, st.loads)
 	l.logger.Printf("ops by kind %v bytes %v named %d carried %v bytes %v held %d", dbgOps, dbgBytes, dbgNamed, dbgCarried, dbgCarriedB, dbgHeld)
 }

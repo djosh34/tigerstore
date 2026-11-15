@@ -50,7 +50,7 @@ type wal struct {
 const syncGap = 800 * time.Microsecond
 
 const (
-	stageSize = 64 << 20
+	stageSize = 32 << 20
 	block     = 4096
 )
 
