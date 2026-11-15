@@ -842,6 +842,17 @@ func PrepareSegment(fs FS, seq uint64) error {
 			if err != nil {
 				return err
 			}
+			// Diagnosis: the file's blocks are written once, so that the
+			// log's writes into it change no metadata.
+			zeros := make([]byte, 1<<20)
+			for off := int64(0); off < SegmentBytes+(1<<20); off += 1 << 20 {
+				if _, err := f.WriteAt(zeros, off); err != nil {
+					return errors.Join(err, f.Close())
+				}
+			}
+			if err := f.Sync(); err != nil {
+				return errors.Join(err, f.Close())
+			}
 			return errors.Join(f.Close(), fs.SyncDir())
 		}
 		// The removal that made a spare must be durable before the file
