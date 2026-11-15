@@ -1634,6 +1634,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		due := n.core.Due()
 		clock.due = clock.at + due
 		timeout := time.Until(started.Add(time.Duration(clock.due) * n.cfg.Tick))
+		pauseFor := timeout
 		copyPart := false
 		switch {
 		case n.core.CutWaits() && len(chunks) == 0:
@@ -1651,6 +1652,13 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		// sockets that waited for the disk.
 		if n.core.Working() || !full && (len(n.inbox) > 0 || n.loop.Holding()) {
 			timeout = 0
+		}
+		// Variant: the 500 µs turn pause back.
+		if n.turnCalls > 0 || messages {
+			if d := min(500*time.Microsecond-time.Since(n.turnStart), pauseFor); d > 0 {
+				n.loop.Pause(d)
+				timeout = max(timeout-d, 0)
+			}
 		}
 		entered := wallTick(time.Now())
 		// Sockets whose output waits wake the loop at their write
