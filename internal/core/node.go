@@ -1091,9 +1091,10 @@ func (n *Node) Step(m *raftpb.Message) error {
 	if m.GetTo() != n.cfg.ID {
 		return fmt.Errorf("%w %d", errNotForUs, m.GetTo())
 	}
-	if !n.lends(m) {
-		Own(m)
-	}
+	// The forked Raft shares a proposal's data instead of cloning it
+	// (third_party/raft), so every message kept past the step gets memory
+	// of its own, a forwarded proposal included.
+	Own(m)
 	if took, err := n.stepHeld(m); took {
 		return err
 	}
@@ -1117,23 +1118,6 @@ func (n *Node) Step(m *raftpb.Message) error {
 		n.snapshotDropped(m.GetFrom())
 	}
 	return n.stepRaft(m)
-}
-
-// lends reports whether Step keeps nothing of m's bytes past the step, so
-// that the peer transport may lend them (peer.Config.ReceiveBytes): a
-// plain proposal forwarded to the leader, whose Raft appends a copy of its
-// entries or drops it. Raft keeps every other message's bytes, or the
-// node does: appends in the log, a forwarded proposal on its way, a read
-// index's context, held entries and parked appends.
-func (n *Node) lends(m *raftpb.Message) bool {
-	if m.GetType() != raftpb.MsgProp || heldForm(m) != 0 {
-		return false
-	}
-	if len(m.Entries) == 1 && m.Entries[0].GetType() == raftpb.EntryConfChange {
-		return false
-	}
-	st := n.rn.BasicStatus()
-	return st.RaftState == raft.StateLeader && st.Lead != raft.None
 }
 
 // Own gives m's entries' data and context memory of their own, in one

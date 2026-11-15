@@ -75,3 +75,5 @@ require (
 )
 
 replace github.com/jellevandenhooff/gosim => github.com/djosh34/gosim v0.0.0-20261107231308-a910673bfbf0
+
+replace go.etcd.io/raft/v3 => ./third_party/raft
