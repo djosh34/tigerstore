@@ -142,10 +142,26 @@ type Announcement struct {
 // ErrUnknownOp is an op of a kind no request message stands for.
 var ErrUnknownOp = errors.New("an op of an unknown kind")
 
-// Message returns op as etcd's request message, or as an *Announcement.
+// Caller is the user and auth revision of the write after it in its
+// batch, while auth is on.
+type Caller struct {
+	User     string
+	Revision uint64
+}
+
+// Message returns op as etcd's request message, an InternalRaftRequest
+// for an auth request, or as an *Announcement or a *Caller.
 func (o Op) Message() (any, error) {
 	var m proto.Message
 	switch o.Kind {
+	case kCaller:
+		ai, err := parseCaller(o.Req)
+		if err != nil {
+			return nil, err
+		}
+		return &Caller{User: ai.user, Revision: ai.revision}, nil
+	case kAuthOp:
+		m = &etcdpb.InternalRaftRequest{}
 	case kMemberAttrs:
 		mem, epoch, err := parseAnnouncement(o.Req)
 		if err != nil {

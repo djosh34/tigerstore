@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 
+	"go.etcd.io/etcd/api/v3/authpb"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 )
@@ -22,20 +23,63 @@ import (
 // The step from main's engine to this one is offline: a mixed cluster
 // cannot run. `etcdctl snapshot save` on the old cluster writes main's
 // snapshot (format 1), and `tigerstore snapshot restore` with this binary
-// reads it with main's code, which hands each live key to WriteSnapshot;
-// Restore then makes the new data dir of that. A node never starts on a
-// data dir of main's engine.
+// reads it with main's code, which hands its store to WriteSnapshot:
+// every key as a read at the compacted revision or later sees it, the
+// changes from the compacted revision on, the leases, the alarms and the
+// auth store. Restore then makes the new data dir of that. As after an
+// etcd compaction, what came before the compacted revision is gone. A
+// node never starts on a data dir of main's engine.
 
-// SnapKey is a live key of a store at a snapshot's revision.
+// SnapStore is a store a snapshot is written of, at revision Rev,
+// compacted at CompactRev.
+type SnapStore struct {
+	Cluster, Index, Term uint64
+	Rev, CompactRev      int64
+	// Leases are the leases' TTLs by their IDs.
+	Leases map[int64]int64
+	// Alarms are the raised alarms: a member and an alarm type each.
+	Alarms [][2]uint64
+	Auth   SnapAuth
+	// Keys come in name order.
+	Keys iter.Seq2[SnapKey, error]
+	// Changes are the changes from the compacted revision on, in the
+	// order they were made.
+	Changes []SnapChange
+}
+
+// SnapAuth is an auth store: whether auth is on, its revision, and the
+// users and roles, each etcd's message, a user's password its bcrypt hash.
+type SnapAuth struct {
+	Enabled  bool
+	Revision uint64
+	Users    []*authpb.User
+	Roles    []*authpb.Role
+}
+
+// SnapKey is a key with the states a read at the compacted revision or
+// later can see, oldest first: the newest at or before the compacted
+// revision, unless a deletion before it, and every one after.
 type SnapKey struct {
-	Key, Value                  []byte
+	Key    []byte
+	States []SnapState
+}
+
+// SnapState is one state of a key: a deletion at Mod, or a value.
+type SnapState struct {
+	Deleted                     bool
+	Value                       []byte
 	Create, Mod, Version, Lease int64
 }
 
-// WriteSnapshot writes to w a client's snapshot of a store at revision
-// rev: leases, by ID with their TTLs, and keys, in name order. The store
-// keeps no history: the snapshot's revision is its compacted one.
-func WriteSnapshot(w io.Writer, cluster, index, term uint64, rev int64, leases map[int64]int64, keys iter.Seq2[SnapKey, error]) error {
+// SnapChange is a change of Key at Rev, a deletion or a put.
+type SnapChange struct {
+	Rev     int64
+	Key     []byte
+	Deleted bool
+}
+
+// WriteSnapshot writes to w a client's snapshot of s.
+func WriteSnapshot(w io.Writer, s *SnapStore) error {
 	sum := sha256.New()
 	bw := bufio.NewWriterSize(io.MultiWriter(w, sum), 1<<20)
 	written := int64(0)
@@ -47,9 +91,9 @@ func WriteSnapshot(w io.Writer, cluster, index, term uint64, rev int64, leases m
 		written += int64(len(b))
 		_, _ = bw.Write(b)
 	}
-	out(clientSnapHead(cluster, ckptMeta{index: index, term: term, rev: rev}), false)
+	out(clientSnapHead(s.Cluster, ckptMeta{index: s.Index, term: s.Term, rev: s.Rev}), false)
 	b := append([]byte(nil), ckptMagic...)
-	for _, v := range []uint64{index, term, uint64(rev), uint64(rev)} {
+	for _, v := range []uint64{s.Index, s.Term, uint64(s.Rev), uint64(s.CompactRev)} {
 		b = binary.AppendUvarint(b, v)
 	}
 	cs, err := proto.Marshal(&pb.ConfState{})
@@ -58,23 +102,29 @@ func WriteSnapshot(w io.Writer, cluster, index, term uint64, rev int64, leases m
 	}
 	b = binary.AppendUvarint(b, uint64(len(cs)))
 	b = append(b, cs...)
-	b = (&node{format: baseFormat}).encodeMembers(b)
-	b = binary.AppendUvarint(b, uint64(len(leases)))
-	for _, id := range slices.Sorted(maps.Keys(leases)) {
+	auth := newAuthStore()
+	auth.enabled, auth.revision = s.Auth.Enabled, max(s.Auth.Revision, 1)
+	for _, u := range s.Auth.Users {
+		auth.users[string(u.Name)] = u
+	}
+	for _, r := range s.Auth.Roles {
+		auth.roles[string(r.Name)] = r
+	}
+	n := &node{format: baseFormat, auth: auth}
+	for _, a := range s.Alarms {
+		n.alarms = append(n.alarms, alarm{member: a[0], typ: a[1]})
+	}
+	b = n.encodeMembers(b)
+	b = binary.AppendUvarint(b, uint64(len(s.Leases)))
+	for _, id := range slices.Sorted(maps.Keys(s.Leases)) {
 		b = binary.AppendUvarint(b, uint64(id))
-		b = binary.AppendUvarint(b, uint64(leases[id]))
+		b = binary.AppendUvarint(b, uint64(s.Leases[id]))
 	}
 	b = binary.AppendUvarint(b, 0) // no values ahead of the keys
 	out(b, true)
-	// The keys written at the revision itself: a watch from it gets them.
-	type atRev struct {
-		id  uint64
-		key []byte
-	}
-	var last []atRev
+	ids := map[string]uint64{}
 	var prev []byte
-	id := uint64(0)
-	for k, err := range keys {
+	for k, err := range s.Keys {
 		if err != nil {
 			return err
 		}
@@ -82,27 +132,44 @@ func WriteSnapshot(w io.Writer, cluster, index, term uint64, rev int64, leases m
 			return fmt.Errorf("the snapshot's keys are out of order: %q after %q", k.Key, prev)
 		}
 		prev = append(prev[:0], k.Key...)
+		id := uint64(len(ids))
+		ids[string(k.Key)] = id
 		b = append(b[:0], ckptKey)
 		b = binary.AppendUvarint(b, id)
 		b = binary.AppendUvarint(b, uint64(len(k.Key)))
 		b = append(b, k.Key...)
-		b = binary.AppendUvarint(b, 1)
-		for _, v := range []uint64{0, uint64(k.Create), uint64(k.Mod), uint64(k.Version), uint64(k.Lease), uint64(len(k.Value))} {
-			b = binary.AppendUvarint(b, v)
+		b = binary.AppendUvarint(b, uint64(len(k.States)))
+		out(b, true)
+		for i := len(k.States) - 1; i >= 0; i-- {
+			st := &k.States[i]
+			flags := uint64(0)
+			if st.Deleted {
+				flags = ckptDeleted
+			}
+			b = b[:0]
+			for _, v := range []uint64{flags, uint64(st.Create), uint64(st.Mod), uint64(st.Version), uint64(st.Lease), uint64(len(st.Value))} {
+				b = binary.AppendUvarint(b, v)
+			}
+			out(append(b, st.Value...), true)
 		}
-		out(append(b, k.Value...), true)
-		if k.Mod == rev {
-			last = append(last, atRev{id, slices.Clone(k.Key)})
-		}
-		id++
 	}
-	for _, c := range last {
+	for _, c := range s.Changes {
+		id, held := ids[string(c.Key)]
+		if !held {
+			// A key no read sees: the change names it.
+			id = uint64(len(ids))
+			ids[string(c.Key)] = id
+		}
 		b = append(b[:0], ckptChange)
-		b = binary.AppendUvarint(b, uint64(rev))
-		b = binary.AppendUvarint(b, c.id)
-		b = append(b, 0)
-		b = binary.AppendUvarint(b, uint64(len(c.key)))
-		out(append(b, c.key...), true)
+		b = binary.AppendUvarint(b, uint64(c.Rev))
+		b = binary.AppendUvarint(b, id)
+		del := byte(0)
+		if c.Deleted {
+			del = 1
+		}
+		b = append(b, del)
+		b = binary.AppendUvarint(b, uint64(len(c.Key)))
+		out(append(b, c.Key...), true)
 	}
 	out([]byte{ckptEnd}, true)
 	out(binary.LittleEndian.AppendUint32(nil, crc), false)

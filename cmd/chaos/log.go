@@ -92,8 +92,8 @@ func decodeBatch(data []byte) ([]history.Request, error) {
 			return nil, err
 		}
 		pm, ok := m.(proto.Message)
-		if !ok {
-			continue // a member's announcement changes no key
+		if _, auth := m.(*pb.InternalRaftRequest); !ok || auth {
+			continue // an announcement, a caller or an auth request changes no key
 		}
 		q, err := campaignMessage(pm)
 		if err != nil {
@@ -112,7 +112,7 @@ func decodeMainBatch(data []byte) ([]history.Request, error) {
 	var out []history.Request
 	err := core.DecodeBatch(data, func(_, _, _ uint64, m proto.Message) error {
 		switch m.(type) {
-		case *pb.Member, *pb.LeaseCheckpointRequest:
+		case *pb.Member, *pb.LeaseCheckpointRequest, *pb.InternalRaftRequest, *pb.CompactionRequest:
 			return nil
 		}
 		q, err := campaignMessage(m)

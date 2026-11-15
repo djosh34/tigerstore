@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/internal/committed"
 	"github.com/djosh34/tigerstore/internal/wl"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/raft/v3/raftpb"
 )
@@ -138,16 +140,22 @@ func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 // pause and their last calls settle, `etcdctl snapshot save` saves the
 // old cluster, and every node stops. The candidate refuses an old data
 // dir and names the way. Each node restores the snapshot with the
-// candidate, and the new cluster takes the writers on. Once a release of
-// internal/wl is out, this upgrade is rolling again.
+// candidate, and the new cluster takes the writers on. Auth is on in the
+// old cluster: the new one must keep its users, roles and revision. Once
+// a release of internal/wl is out, this upgrade is rolling again.
 func TestReleaseUpgrade(t *testing.T) {
 	r := startRolling(t, 355)
+	authRev := r.enableAuth()
 	r.writes("previous release")
 	r.traffic.pause()
 	rev := r.revision()
 	if err := r.traffic.watchThrough(rev); err != nil {
 		t.Fatal(err)
 	}
+	// A compacted store: the new one keeps the history from there.
+	compacted := rev - 10
+	r.compact(compacted)
+	before := r.history(compacted, rev)
 	snap := r.saveSnapshot()
 	r.stopAll()
 	r.refuseMainDir(0)
@@ -161,8 +169,86 @@ func TestReleaseUpgrade(t *testing.T) {
 	if got := r.revision(); got != rev {
 		t.Fatalf("the restored cluster is at revision %d, the old one was at %d", got, rev)
 	}
+	if after := r.history(compacted, rev); !reflect.DeepEqual(after, before) {
+		t.Fatalf("reads from the compacted revision %d to %d differ after the restore:\nbefore %v\nafter  %v", compacted, rev, before, after)
+	}
+	r.checkCompacted(compacted)
+	r.checkAuth(authRev)
 	r.traffic.resume()
 	r.writes("candidate")
+}
+
+// enableAuth turns auth on, with root, the user of the clients'
+// certificate with the root role, so the writers go on, and alice, who
+// may only read /auth/. It returns the auth revision.
+func (r *rollingRun) enableAuth() uint64 {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cl := r.c.nodes[0].control
+	steps := []func() error{
+		func() error { _, err := cl.UserAdd(ctx, "root", "rootpw"); return err },
+		func() error { _, err := cl.RoleAdd(ctx, "root"); return err },
+		func() error { _, err := cl.UserGrantRole(ctx, "root", "root"); return err },
+		func() error {
+			_, err := cl.UserAddWithOptions(ctx, "client", "", &clientv3.UserAddOptions{NoPassword: true})
+			return err
+		},
+		func() error { _, err := cl.UserGrantRole(ctx, "client", "root"); return err },
+		func() error { _, err := cl.RoleAdd(ctx, "reader"); return err },
+		func() error {
+			_, err := cl.RoleGrantPermission(ctx, "reader", "/auth/", clientv3.GetPrefixRangeEnd("/auth/"), clientv3.PermissionType(clientv3.PermRead))
+			return err
+		},
+		func() error { _, err := cl.UserAdd(ctx, "alice", "alicepw"); return err },
+		func() error { _, err := cl.UserGrantRole(ctx, "alice", "reader"); return err },
+		func() error { _, err := cl.AuthEnable(ctx); return err },
+	}
+	for i, step := range steps {
+		if err := step(); err != nil {
+			r.t.Fatalf("auth step %d: %v", i+1, err)
+		}
+	}
+	st, err := cl.AuthStatus(ctx)
+	if err != nil || !st.Enabled {
+		r.t.Fatalf("auth status after enabling: %v, %v", st, err)
+	}
+	r.t.Logf("auth on at revision %d", st.AuthRevision)
+	return st.AuthRevision
+}
+
+// checkAuth checks that the cluster kept the old one's auth: on, at
+// revision rev, its users, alice's password and her permission.
+func (r *rollingRun) checkAuth(rev uint64) {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cl := r.c.nodes[0].control
+	st, err := cl.AuthStatus(ctx)
+	if err != nil || !st.Enabled || st.AuthRevision != rev {
+		r.t.Fatalf("the restored auth status is %v (%v), want on at revision %d", st, err, rev)
+	}
+	users, err := cl.UserList(ctx)
+	if err != nil || !slices.Equal(users.Users, []string{"alice", "client", "root"}) {
+		r.t.Fatalf("the restored users are %v (%v)", users, err)
+	}
+	cfg := clientv3.Config{Endpoints: r.c.nodes[0].control.Endpoints(), TLS: r.c.tls.Clone(), Username: "alice", Password: "alicepw", DialTimeout: 5 * time.Second}
+	alice, err := clientv3.New(cfg)
+	if err != nil {
+		r.t.Fatalf("alice's old password after the restore: %v", err)
+	}
+	defer func() {
+		if err := alice.Close(); err != nil {
+			r.t.Error(err)
+		}
+	}()
+	if _, err := alice.Get(ctx, "/auth/x"); err != nil {
+		r.t.Fatalf("alice's read of /auth/ after the restore: %v", err)
+	}
+	if _, err := alice.Put(ctx, "/auth/x", "1"); !errors.Is(err, rpctypes.ErrPermissionDenied) {
+		r.t.Fatalf("alice's write of /auth/ after the restore gave %v, want permission denied", err)
+	}
+	r.t.Logf("auth kept: on at revision %d, users %v, alice reads and may not write", rev, users.Users)
 }
 
 type rollingRun struct {
@@ -358,6 +444,50 @@ func (r *rollingRun) revision() int64 {
 		r.t.Fatal(err)
 	}
 	return g.Header.Revision
+}
+
+// compact compacts the cluster at rev.
+func (r *rollingRun) compact(rev int64) {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := r.c.nodes[0].control.Compact(ctx, rev, clientv3.WithCompactPhysical()); err != nil {
+		r.t.Fatal(err)
+	}
+	r.t.Logf("compacted at %d", rev)
+}
+
+// history reads the workload's keys at each revision from..to, as
+// "key=value@create/mod/version" per key.
+func (r *rollingRun) history(from, to int64) [][]string {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var out [][]string
+	for rev := from; rev <= to; rev++ {
+		g, err := r.c.nodes[0].control.Get(ctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(rev))
+		if err != nil {
+			r.t.Fatalf("a read at %d: %v", rev, err)
+		}
+		var kvs []string
+		for _, kv := range g.Kvs {
+			kvs = append(kvs, fmt.Sprintf("%s=%s@%d/%d/%d", kv.Key, kv.Value, kv.CreateRevision, kv.ModRevision, kv.Version))
+		}
+		out = append(out, kvs)
+	}
+	return out
+}
+
+// checkCompacted checks that a read before the compacted revision is
+// compacted.
+func (r *rollingRun) checkCompacted(compacted int64) {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := r.c.nodes[0].control.Get(ctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(compacted-1)); !errors.Is(err, rpctypes.ErrCompacted) {
+		r.t.Fatalf("a read before the compacted revision after the restore gave %v, want compacted", err)
+	}
+	r.t.Logf("the history from revision %d kept, and none before", compacted)
 }
 
 // saveSnapshot saves a snapshot of the cluster as `etcdctl snapshot save`

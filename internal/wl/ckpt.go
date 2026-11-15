@@ -1209,8 +1209,8 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		out(binary.AppendUvarint(nil, uint64(len(cs))))
 		out(cs)
 		// A new cluster: its members announce afresh. As etcd's restore,
-		// it keeps the users and roles.
-		n := &node{members: hdr.members.members, removed: hdr.members.removed, format: baseFormat, auth: cm.auth}
+		// it keeps the alarms, users and roles.
+		n := &node{members: hdr.members.members, removed: hdr.members.removed, format: baseFormat, alarms: cm.alarms, auth: cm.auth}
 		out(n.encodeMembers(nil))
 	}
 	nl, err := uv()

@@ -4,37 +4,56 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"iter"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
+	"go.etcd.io/etcd/api/v3/authpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // A store of another engine, written with WriteSnapshot, restores into a
-// cluster that serves its keys, revisions and leases, and goes on from
-// its revision.
+// cluster that serves its keys, its history from the compacted revision
+// on, its leases and its auth store, and goes on from its revision.
 func TestASnapshotOfAnotherEngineRestores(t *testing.T) {
-	const rev = 40
-	keys := func(yield func(SnapKey, error) bool) {
-		for i := range 20 {
-			k := SnapKey{Key: fmt.Appendf(nil, "/m/%02d", i), Value: fmt.Appendf(nil, "v%d", i), Create: int64(2 + i), Mod: int64(20 + i), Version: 3}
-			if i == 19 {
-				k.Lease = 7
+	const compacted, rev = 5, 8
+	keys := []SnapKey{
+		// Put at 3, so a read at 5 sees it; put again at 7, deleted at 8.
+		{Key: []byte("/m/a"), States: []SnapState{
+			{Value: []byte("v3"), Create: 3, Mod: 3, Version: 1},
+			{Value: []byte("v7"), Create: 3, Mod: 7, Version: 2},
+			{Deleted: true, Mod: 8},
+		}},
+		{Key: []byte("/m/b"), States: []SnapState{{Value: []byte("v6"), Create: 6, Mod: 6, Version: 1, Lease: 7}}},
+	}
+	changes := []SnapChange{{Rev: 6, Key: []byte("/m/b")}, {Rev: 7, Key: []byte("/m/a")}, {Rev: 8, Key: []byte("/m/a"), Deleted: true}}
+	hash, err := bcrypt.GenerateFromPassword([]byte("rootpw"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &SnapStore{
+		Cluster: 99, Index: 500, Term: 4, Rev: rev, CompactRev: compacted,
+		Leases: map[int64]int64{7: 600},
+		Auth:   SnapAuth{Enabled: true, Revision: 9, Users: []*authpb.User{{Name: []byte("root"), Password: hash, Roles: []string{"root"}}}, Roles: []*authpb.Role{{Name: []byte("root")}}},
+		Keys: func(yield func(SnapKey, error) bool) {
+			for _, k := range keys {
+				if !yield(k, nil) {
+					return
+				}
 			}
-			if !yield(k, nil) {
-				return
-			}
-		}
+		},
+		Changes: changes,
 	}
 	path := filepath.Join(t.TempDir(), "converted.db")
 	f, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteSnapshot(f, 99, 500, 4, rev, map[int64]int64{7: 600}, keys); err != nil {
+	if err := WriteSnapshot(f, s); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.Close(); err != nil {
@@ -50,35 +69,76 @@ func TestASnapshotOfAnotherEngineRestores(t *testing.T) {
 			}
 		}
 	})
-	c := restored.client(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	got, err := c.Get(ctx, "/m/", clientv3.WithPrefix())
+	// Auth is on: the client goes as root.
+	c := restored.rawClient(t, restored.endpoints...)
+	// The new cluster elects its leader first.
+	st, err := c.AuthStatus(ctx)
+	for err != nil && ctx.Err() == nil {
+		time.Sleep(100 * time.Millisecond)
+		st, err = c.AuthStatus(ctx)
+	}
+	if err != nil || !st.Enabled || st.AuthRevision != 9 {
+		t.Fatalf("the auth status restored as %v (%v)", st, err)
+	}
+	if _, err := c.Authenticate(ctx, "root", "rootpw"); err != nil {
+		t.Fatalf("root's password did not restore: %v", err)
+	}
+	root, err := clientv3.New(clientv3.Config{Endpoints: restored.endpoints, Username: "root", Password: "rootpw", DialTimeout: 5 * time.Second, TLS: restored.clientTLS()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Kvs) != 20 {
-		t.Fatalf("%d keys restored, want 20", len(got.Kvs))
+	defer func() { _ = root.Close() }()
+	for _, at := range []struct {
+		rev  int64
+		want []string
+	}{{5, []string{"v3"}}, {6, []string{"v3", "v6"}}, {7, []string{"v7", "v6"}}, {8, []string{"v6"}}} {
+		got, err := root.Get(ctx, "/m/", clientv3.WithPrefix(), clientv3.WithRev(at.rev))
+		if err != nil {
+			t.Fatalf("a read at %d: %v", at.rev, err)
+		}
+		var vals []string
+		for _, kv := range got.Kvs {
+			vals = append(vals, string(kv.Value))
+		}
+		if !slices.Equal(vals, at.want) {
+			t.Fatalf("a read at %d has %v, want %v", at.rev, vals, at.want)
+		}
 	}
-	kv := got.Kvs[19]
-	if string(kv.Value) != "v19" || kv.CreateRevision != 21 || kv.ModRevision != 39 || kv.Version != 3 || kv.Lease != 7 {
-		t.Fatalf("the last key restored as %v", kv)
+	if _, err := root.Get(ctx, "/m/", clientv3.WithPrefix(), clientv3.WithRev(compacted-1)); !errors.Is(err, rpctypes.ErrCompacted) {
+		t.Fatalf("a read before the compacted revision gave %v", err)
 	}
-	ttl, err := c.TimeToLive(ctx, 7, clientv3.WithAttachedKeys())
+	wc := root.Watch(ctx, "/m/", clientv3.WithPrefix(), clientv3.WithRev(6))
+	var seen []string
+	for len(seen) < 3 {
+		wr := <-wc
+		if err := wr.Err(); err != nil {
+			t.Fatal(err)
+		}
+		for _, ev := range wr.Events {
+			seen = append(seen, fmt.Sprintf("%s %s@%d", ev.Type, ev.Kv.Key, ev.Kv.ModRevision))
+		}
+	}
+	if want := []string{"PUT /m/b@6", "PUT /m/a@7", "DELETE /m/a@8"}; !slices.Equal(seen, want) {
+		t.Fatalf("a watch from 6 saw %v, want %v", seen, want)
+	}
+	ttl, err := root.TimeToLive(ctx, 7, clientv3.WithAttachedKeys())
 	if err != nil || ttl.GrantedTTL != 600 || len(ttl.Keys) != 1 {
 		t.Fatalf("lease 7 restored as %v (%v)", ttl, err)
 	}
-	if got.Header.Revision <= rev {
-		t.Fatalf("the restored cluster is at revision %d, before the snapshot's %d", got.Header.Revision, rev)
+	put, err := root.Put(ctx, "/m/after", "x")
+	if err != nil || put.Header.Revision != rev+1 {
+		t.Fatalf("a put after the restore: %v (%v)", put, err)
 	}
 }
 
 func TestWriteSnapshotRefusesKeysOutOfOrder(t *testing.T) {
-	keys := func(yield func(SnapKey, error) bool) {
-		_ = yield(SnapKey{Key: []byte("/b"), Value: []byte("1"), Create: 2, Mod: 2, Version: 1}, nil) &&
-			yield(SnapKey{Key: []byte("/a"), Value: []byte("1"), Create: 3, Mod: 3, Version: 1}, nil)
-	}
-	if err := WriteSnapshot(discard{}, 1, 1, 1, 3, nil, iter.Seq2[SnapKey, error](keys)); err == nil {
+	s := &SnapStore{Rev: 3, Keys: func(yield func(SnapKey, error) bool) {
+		_ = yield(SnapKey{Key: []byte("/b"), States: []SnapState{{Value: []byte("1"), Create: 2, Mod: 2, Version: 1}}}, nil) &&
+			yield(SnapKey{Key: []byte("/a"), States: []SnapState{{Value: []byte("1"), Create: 3, Mod: 3, Version: 1}}}, nil)
+	}}
+	if err := WriteSnapshot(discard{}, s); err == nil {
 		t.Fatal("keys out of order were written")
 	}
 }

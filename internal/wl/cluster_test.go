@@ -214,13 +214,18 @@ func (tc *testCluster) client(t *testing.T) *clientv3.Client {
 	return tc.clientOf(t, tc.endpoints...)
 }
 
+// clientTLS is the TLS configuration of the test's clients.
+func (tc *testCluster) clientTLS() *tls.Config {
+	return &tls.Config{Certificates: []tls.Certificate{tc.cert}, RootCAs: tc.ca.Pool, MinVersion: tls.VersionTLS13}
+}
+
 // rawClient returns a client of the given endpoints.
 func (tc *testCluster) rawClient(t *testing.T, endpoints ...string) *clientv3.Client {
 	t.Helper()
 	c, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
 		DialTimeout: 5 * time.Second,
-		TLS:         &tls.Config{Certificates: []tls.Certificate{tc.cert}, RootCAs: tc.ca.Pool, MinVersion: tls.VersionTLS13},
+		TLS:         tc.clientTLS(),
 	})
 	if err != nil {
 		t.Fatal(err)

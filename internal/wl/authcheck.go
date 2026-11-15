@@ -54,8 +54,16 @@ func (n *node) authorize(kind uint8, msg []byte, ai authInfo, ok bool) error {
 			return a.admin(who)
 		}
 		return needIdentity(ok)
-	case kStatus, kLeaseGrant, kLeaseRevoke, kMemberList, kPut, kDel, kTxn:
+	case kStatus, kLeaseGrant, kMemberList:
 		return needIdentity(ok)
+	case kPut, kDel, kTxn, kLeaseRevoke:
+		// etcd checks a write only as it applies, and so does this node,
+		// with the identity it carries; a write already refused here
+		// never goes into the log.
+		if err := needIdentity(ok); err != nil {
+			return err
+		}
+		return n.writeAllowed(kind, msg, ai, true)
 	case kLeaseKeepAlive:
 		var r etcdpb.LeaseKeepAliveRequest
 		if err := proto.Unmarshal(msg, &r); err != nil {

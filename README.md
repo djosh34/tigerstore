@@ -189,6 +189,17 @@ etcdctl --endpoints=https://127.0.0.1:2379 --cacert certs/ca.pem --cert certs/cl
 
 The restored cluster has the keys, revisions, leases, alarms, users and compaction of the snapshot, and the members of `--initial-cluster`.
 
+## Upgrade from v0.1.0
+
+v0.1.0 runs tigerstore's previous storage engine, and this release runs a new one with its own peer protocol and data directory, so the two cannot be in one cluster: the upgrade is offline, with a stop of the whole cluster.
+
+1. Save a snapshot of the running cluster, as above. Stop writes to it first: a write after the snapshot is lost.
+2. Stop every node.
+3. On each node, restore the snapshot with this release's binary into a new, empty data directory, with the node's `--name` and the cluster's `--initial-cluster`.
+4. Start every node on its new data directory with this release's binary.
+
+The restore keeps the keys, revisions, leases, alarms, users, roles, whether auth is on and the auth revision. It keeps the history from the revision v0.1.0 compacted the store at: as after an etcd compaction, reads and watches of older revisions answer that the revision is compacted, and the restore says from which revision it kept the history. Tokens from `Authenticate` are not kept: clients log in again. This release does not start on a data directory of v0.1.0: it stops and names these steps.
+
 ## Differences from etcd v3.7.2
 
 tigerstore answers as etcd v3.7.2 does except for these points, from [Research: what tigerstore lacks against etcd v3.7.2](https://github.com/djosh34/tigerstore/issues/399):

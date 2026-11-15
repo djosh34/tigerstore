@@ -875,6 +875,20 @@ func (n *Node) applyAuthEntry(b []byte, index uint64, p *pending) error {
 	return nil
 }
 
+// AuthState returns the auth store: whether auth is on, its revision,
+// and the users and roles, for the offline upgrade to internal/wl, which
+// takes a snapshot of this engine.
+func (n *Node) AuthState() (enabled bool, revision uint64, users []*authpb.User, roles []*authpb.Role) {
+	a := n.state.auth
+	for _, name := range sortedKeys(a.users) {
+		users = append(users, proto.CloneOf(a.users[name]))
+	}
+	for _, name := range sortedKeys(a.roles) {
+		roles = append(roles, proto.CloneOf(a.roles[name]))
+	}
+	return a.enabled, a.revision, users, roles
+}
+
 // AuthEnabled reports whether auth is on.
 func (n *Node) AuthEnabled() bool { return n.state.auth.enabled }
 
