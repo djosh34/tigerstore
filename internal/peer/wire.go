@@ -77,7 +77,7 @@ func decodeFast(b []byte, rx *ring) (*raftpb.Message, bool) {
 	if !ok {
 		return nil, false
 	}
-	x := &message{}
+	x := rx.message()
 	m := &x.m
 	var buf []byte
 	if data > 0 {
@@ -85,7 +85,7 @@ func decodeFast(b []byte, rx *ring) (*raftpb.Message, bool) {
 	}
 	var boxes []entry
 	if ents > 0 {
-		boxes = make([]entry, ents)
+		boxes = rx.entries(ents)
 		m.Entries = make([]*raftpb.Entry, 0, ents)
 	}
 	for len(b) > 0 {
@@ -237,6 +237,43 @@ type ring struct {
 	pos  int
 	turn uint64
 	loop *loop.Loop
+	// msgs and ents are what is left of the last chunks of messages and
+	// entries that decodeFast takes its own from: one allocation for
+	// boxChunk of them instead of one each. A box is never handed out
+	// twice, so a message or entry that Raft or the node keeps only keeps
+	// its chunk alive.
+	msgs []message
+	ents []entry
+}
+
+// boxChunk is how many messages, or entries, the ring allocates at once.
+const boxChunk = 64
+
+// message returns a new message for decodeFast.
+func (r *ring) message() *message {
+	if r == nil {
+		return &message{}
+	}
+	if len(r.msgs) == 0 {
+		r.msgs = make([]message, boxChunk)
+	}
+	x := &r.msgs[0]
+	r.msgs = r.msgs[1:]
+	return x
+}
+
+// entries returns n new entries for decodeFast, from a chunk if there are
+// few enough.
+func (r *ring) entries(n int) []entry {
+	if r == nil || n > boxChunk/4 {
+		return make([]entry, n)
+	}
+	if len(r.ents) < n {
+		r.ents = make([]entry, boxChunk)
+	}
+	e := r.ents[:n:n]
+	r.ents = r.ents[n:]
+	return e
 }
 
 // take returns room for n bytes, of length 0: from the ring while this
