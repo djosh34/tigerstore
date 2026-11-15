@@ -205,6 +205,7 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	n.ring = mmapBytes(ringSize)
 	n.rx = mmapBytes(ringSize)
 	n.side = mmapBytes(sideSize)
+	n.ringG, n.rxG, n.sideG = newGuard(n.ring), newGuard(n.rx), newGuard(n.side)
 	n.wal, err = openWAL(dataDir)
 	if err != nil {
 		return err
@@ -478,6 +479,7 @@ func (l *loop) run() {
 		if err != nil && !errors.Is(err, unix.EINTR) {
 			panic(err)
 		}
+		n.now = time.Now()
 		for i := 0; i < k; i++ {
 			ev := events[i]
 			switch ev.Fd {
@@ -628,6 +630,7 @@ func (l *loop) logStats() {
 	l.last, l.lastAt = d, now
 	st := l.n.st
 	l.logger.Printf("stage waits %d", stageWaits)
+	l.logger.Printf("guard: spans %d waits %d compactions %d overruns %d", guardStats.spans, guardStats.waits, guardStats.compactions, guardStats.overruns)
 	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d", st.slab.used>>20, st.limit>>20, st.evictions, st.loads)
 	l.logger.Printf("ops by kind %v bytes %v named %d carried %v bytes %v held %d", dbgOps, dbgBytes, dbgNamed, dbgCarried, dbgCarriedB, dbgHeld)
 }

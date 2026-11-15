@@ -382,6 +382,16 @@ func (n *node) unwait() {
 
 func (n *node) appendNow(m *pb.Message) {
 	ents := m.GetEntries()
+	for _, e := range ents {
+		// The entry's data is named by the storage from now on.
+		if d := e.GetData(); len(d) > 0 {
+			if sp := n.ringG.find(d); sp != nil {
+				sp.index = e.GetIndex()
+			} else if sp := n.rxG.find(d); sp != nil {
+				sp.index = e.GetIndex()
+			}
+		}
+	}
 	if len(ents) > 0 {
 		if err := n.storage.Append(ents); err != nil {
 			panic(err)
@@ -803,7 +813,11 @@ func (n *node) retryHeld() {
 func (n *node) rxCopy(p []byte) []byte {
 	if n.rxPos+len(p) > len(n.rx) {
 		n.rxPos = 0
+		n.rxG.wrapped()
 	}
+	now := time.Now()
+	n.rxG.take(n, n.rxPos, len(p), now)
+	n.rxG.add(n.rxPos, len(p), now)
 	d := n.rx[n.rxPos : n.rxPos+len(p) : n.rxPos+len(p)]
 	copy(d, p)
 	n.rxPos += len(p)

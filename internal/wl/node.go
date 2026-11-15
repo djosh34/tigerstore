@@ -33,6 +33,10 @@ type node struct {
 	// The log ring: proposals and received entries are written here once,
 	// and the WAL, the peers and the apply read them from here.
 	ring       []byte
+	ringG      *guard
+	now        time.Time // the turn's start
+	rxG        *guard
+	sideG      *guard
 	ringPos    int
 	side       []byte // failure branches kept for their streams
 	sidePos    int
@@ -518,15 +522,20 @@ func (n *node) addOp(h handle, kind uint8, msg []byte) {
 	if n.batchStart < 0 {
 		need += batchHdr
 	}
+	now := n.now
 	if n.ringPos+need > len(n.ring) {
 		// Wrap: the batch so far moves to the start of the ring.
+		n.ringG.wrapped()
 		if n.batchStart >= 0 {
-			k := copy(n.ring, n.ring[n.batchStart:n.ringPos])
+			k := n.ringPos - n.batchStart
+			n.ringG.take(n, 0, k, now)
+			copy(n.ring, n.ring[n.batchStart:n.ringPos])
 			n.batchStart, n.ringPos = 0, k
 		} else {
 			n.ringPos = 0
 		}
 	}
+	n.ringG.take(n, n.ringPos, need, now)
 	if n.batchStart < 0 {
 		n.batchStart = n.ringPos
 		b := n.ring[n.ringPos : n.ringPos+batchHdr]
@@ -573,8 +582,12 @@ func (n *node) addTxn(h handle, s *stream, msg []byte) {
 	// Keep the failure branch in the side ring.
 	if n.sidePos+failBytes > len(n.side) {
 		n.sidePos = 0
+		n.sideG.wrapped()
 	}
 	off := n.sidePos
+	n.sideG.take(n, off, failBytes, n.now)
+	n.sideG.add(off, failBytes, n.now).st = s
+	s.failAt = n.sideG.abs(off)
 	kept := n.scratch[:0]
 	for m := msg; len(m) > 0; {
 		_, _, _, _, rest, _ := field(m)
@@ -597,6 +610,7 @@ func (n *node) proposeBatch() {
 		return
 	}
 	data := n.ring[n.batchStart:n.ringPos:n.ringPos]
+	n.ringG.add(n.batchStart, len(data), n.now)
 	binary.LittleEndian.PutUint32(data[8:], uint32(n.batchOps))
 	n.batchStart = -1
 	// A follower's batch comes back from the leader by name.

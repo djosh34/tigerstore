@@ -56,6 +56,8 @@ type stream struct {
 	watch bool
 	wids  []int32 // the watchers of a watch stream
 	fail  []byte  // a Txn's failure branch, kept here and not replicated
+	// failAt is the failure branch's absolute position in the side ring.
+	failAt int64
 }
 
 const streamSlots = 1 << 13
