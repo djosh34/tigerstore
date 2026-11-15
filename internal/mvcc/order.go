@@ -40,6 +40,9 @@ type order struct {
 	// probe is the name that the kid probeKid stands for while a walk
 	// looks for where to start.
 	probe []byte
+	// last is the directory found last, which the next write's key is
+	// often in: its lookup skips the map (find).
+	last uint32
 }
 
 // orderDir is a directory: its path, the directory that holds it, and
@@ -153,10 +156,22 @@ func kidOf(dir uint32, name []byte, id uint32) kid {
 	return k
 }
 
+// find returns the number of the directory of path, if there is one.
+func (o *order) find(path []byte) (uint32, bool) {
+	if d := o.last; d < uint32(len(o.dirs)) && bytes.Equal(o.dirs[d].path, path) && (d == 0 || o.dirs[d].path != nil) {
+		return d, true
+	}
+	d, ok := o.byPath[string(path)]
+	if ok {
+		o.last = d
+	}
+	return d, ok
+}
+
 // dir returns the number of the directory of path, making it and the
 // directories above it if they are not there.
 func (o *order) dir(path []byte) uint32 {
-	if d, ok := o.byPath[string(path)]; ok {
+	if d, ok := o.find(path); ok {
 		return d
 	}
 	parent := o.dir(dirOf(path[:len(path)-1]))
@@ -184,7 +199,7 @@ func (o *order) Insert(id uint32) {
 func (o *order) Delete(id uint32) {
 	key := o.s.key(o.s.rec(id))
 	path := dirOf(key)
-	d, ok := o.byPath[string(path)]
+	d, ok := o.find(path)
 	if !ok {
 		return
 	}
