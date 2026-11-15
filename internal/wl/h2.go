@@ -2,8 +2,11 @@ package wl
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"io"
 	"strings"
 
 	"golang.org/x/net/http2/hpack"
@@ -78,6 +81,7 @@ type stream struct {
 	id    uint32
 	kind  uint8
 	open  bool
+	gzip  bool   // the client's messages are gzip'd
 	ended bool   // the client ended its side
 	buf   []byte // a gRPC message across DATA frames
 	watch bool
@@ -102,7 +106,8 @@ type client struct {
 	slots    []stream
 	over     map[uint32]*stream
 	dec      *hpack.Decoder
-	hdrCache map[string]uint8
+	hdrCache map[string]hdrInfo
+	hdrEnc   string // the grpc-encoding of the block being decoded
 	hdrPath  string
 	inBlock  bool
 	blockSid uint32
@@ -117,10 +122,13 @@ type client struct {
 }
 
 func newClient(h *handoff, stats *counters) *client {
-	c := &client{sock: *newSock(h, stats), slots: make([]stream, streamSlots), hdrCache: map[string]uint8{}, flow: newFlow(), identity: identityBytes(h.cn)}
+	c := &client{sock: *newSock(h, stats), slots: make([]stream, streamSlots), hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn)}
 	c.dec = hpack.NewDecoder(4096, func(f hpack.HeaderField) {
-		if f.Name == ":path" {
+		switch f.Name {
+		case ":path":
 			c.hdrPath = f.Value
+		case "grpc-encoding":
+			c.hdrEnc = f.Value
 		}
 	})
 	return c
@@ -331,30 +339,44 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 		}
 		return nil
 	}
-	kind, ok := uint8(0), false
+	info, ok := hdrInfo{}, false
 	if !continued {
-		kind, ok = c.hdrCache[string(block)]
+		info, ok = c.hdrCache[string(block)]
 	}
 	if !ok {
-		c.hdrPath = ""
+		c.hdrPath, c.hdrEnc = "", ""
 		if _, err := c.dec.Write(block); err != nil {
 			return err
 		}
 		if err := c.dec.Close(); err != nil {
 			return err
 		}
-		kind = paths[c.hdrPath]
-		if kind != kUnknown && keepsTable(block) {
+		info.kind = paths[c.hdrPath]
+		switch c.hdrEnc {
+		case "", "identity":
+		case "gzip":
+			info.gzip = true
+		default:
+			info.badEnc = true
+		}
+		if info.kind != kUnknown && !info.badEnc && keepsTable(block) {
 			if len(c.hdrCache) < 256 {
-				c.hdrCache[string(block)] = kind
+				c.hdrCache[string(block)] = info
 			}
 		} else if !keepsTable(block) {
 			clear(c.hdrCache)
 		}
 	}
+	kind := info.kind
 	s := c.newStream(sid, kind)
-	if kind == kUnknown {
+	s.gzip = info.gzip
+	switch {
+	case kind == kUnknown:
 		n.replyError(c, sid, codeUnimplemented, unknownMethod(c.hdrPath))
+		c.endStream(s)
+		return nil
+	case info.badEnc:
+		n.replyError(c, sid, codeUnimplemented, fmt.Sprintf("grpc: Decompressor is not installed for grpc-encoding %q", c.hdrEnc))
 		c.endStream(s)
 		return nil
 	}
@@ -367,6 +389,14 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 	return nil
 }
 
+// hdrInfo is what a header block that opens a stream says: the method's
+// kind and the messages' encoding.
+type hdrInfo struct {
+	kind   uint8
+	gzip   bool // gzip, else identity
+	badEnc bool // an encoding this server does not know
+}
+
 // unknownMethod is grpc-go's answer to a path no service serves.
 func unknownMethod(path string) string {
 	svc, method, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
@@ -377,6 +407,39 @@ func unknownMethod(path string) string {
 	}
 	return "unknown service " + svc
 }
+
+// inflate is a compressed message of s inflated, or grpc-go's error for
+// one it cannot inflate.
+func inflate(s *stream, msg []byte) ([]byte, string) {
+	if !s.gzip {
+		return nil, "grpc: compressed flag set with identity or empty encoding"
+	}
+	out, err := gunzip(msg)
+	if err != nil {
+		return nil, "grpc: failed to decompress the received message: " + err.Error()
+	}
+	return out, ""
+}
+
+// gunzip inflates a gzip message, at most a request's size and the
+// gRPC overhead etcd allows.
+func gunzip(b []byte) ([]byte, error) {
+	zr, err := gzip.NewReader(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	out, err := io.ReadAll(io.LimitReader(zr, maxRequestBytes+grpcOverhead+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(out) > maxRequestBytes+grpcOverhead {
+		return nil, errors.New("the message is larger than the server takes")
+	}
+	return out, nil
+}
+
+// grpcOverhead is what etcd's gRPC server takes over --max-request-bytes.
+const grpcOverhead = 512 << 10
 
 // keepsTable reports whether an HPACK block leaves the dynamic table as
 // it is: only indexed fields and literals without indexing.
@@ -481,10 +544,14 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 		if len(p)-5 < l {
 			break
 		}
-		if p[0] != 0 {
-			return errors.New("compressed gRPC message")
-		}
 		msg := p[5 : 5+l]
+		if p[0] != 0 {
+			var bad string
+			if msg, bad = inflate(s, msg); bad != "" {
+				n.replyError(c, s.id, codeInternal, bad)
+				return nil
+			}
+		}
 		p = p[5+l:]
 		if err := n.request(c, s, msg); err != nil {
 			return err
