@@ -244,7 +244,7 @@ func (l *loop) streamSnapshot(mem member, m *pb.Message, f *os.File, size int64)
 	}
 	cfg := l.peerTLS.Clone()
 	cfg.ServerName, _, _ = net.SplitHostPort(addr)
-	h, err := handshake(nc, cfg, false)
+	h, err := handshake(nc, cfg, kindPeerOut)
 	if err != nil {
 		return err
 	}

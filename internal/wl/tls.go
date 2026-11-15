@@ -134,6 +134,7 @@ type handoff struct {
 	peer   uint64 // the node an incoming or outgoing peer connection is with
 	cn     string
 	pre    *sock // an incoming peer connection's socket, its hello read
+	h1     *tls.Conn
 }
 
 const (
@@ -183,10 +184,13 @@ func (h *hsReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// handshake runs crypto/tls's handshake on nc, as the server or as the
-// client, and hands the socket over: the returned fd is a non-blocking
-// duplicate, and nc is closed.
-func handshake(nc net.Conn, cfg *tls.Config, server bool) (*handoff, error) {
+// handshake runs crypto/tls's handshake on nc, which is of kind: as the
+// client for kindPeerOut, else as the server. It hands the socket over:
+// the returned fd is a non-blocking duplicate, and nc is closed. A
+// client of the client port that did not choose HTTP/2 keeps crypto/tls's
+// connection instead, in h1.
+func handshake(nc net.Conn, cfg *tls.Config, kind uint8) (*handoff, error) {
+	server := kind != kindPeerOut
 	cfg = cfg.Clone()
 	keys := &keyLog{}
 	cfg.KeyLogWriter = keys
@@ -217,6 +221,9 @@ func handshake(nc net.Conn, cfg *tls.Config, server bool) (*handoff, error) {
 		return nil, err
 	}
 	st := tc.ConnectionState()
+	if kind == kindClient && st.NegotiatedProtocol != "h2" {
+		return &handoff{alpn: st.NegotiatedProtocol, kind: kind, h1: tc}, nil
+	}
 	if keys.client == nil || keys.server == nil {
 		_ = nc.Close()
 		return nil, errNoSecrets
@@ -225,7 +232,7 @@ func handshake(nc net.Conn, cfg *tls.Config, server bool) (*handoff, error) {
 		_ = nc.Close()
 		return nil, errRecord
 	}
-	h := &handoff{alpn: st.NegotiatedProtocol}
+	h := &handoff{alpn: st.NegotiatedProtocol, kind: kind}
 	if len(st.PeerCertificates) > 0 {
 		h.cn = st.PeerCertificates[0].Subject.CommonName
 	}

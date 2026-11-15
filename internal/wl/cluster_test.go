@@ -432,6 +432,37 @@ func TestClusterServesTheEtcdAPI(t *testing.T) {
 		}
 	})
 
+	t.Run("the gRPC gateway over HTTP/1.1", func(t *testing.T) {
+		hc := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
+			Certificates: []tls.Certificate{tc.cert}, RootCAs: tc.ca.Pool, MinVersion: tls.VersionTLS13,
+		}}}
+		post := func(path, body string) string {
+			t.Helper()
+			resp, err := hc.Post("https://"+tc.endpoints[1]+path, "application/json", strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if err != nil || resp.StatusCode != http.StatusOK {
+				t.Fatalf("%s: %d %q %v", path, resp.StatusCode, b, err)
+			}
+			return string(b)
+		}
+		// "gw" set to "1", base64 encoded as etcd's gateway takes them.
+		post("/v3/kv/put", `{"key":"Z3c=","value":"MQ=="}`)
+		if got := post("/v3/kv/range", `{"key":"Z3c="}`); !strings.Contains(got, `"value":"MQ=="`) {
+			t.Errorf("/v3/kv/range: %s", got)
+		}
+		if got := post("/v3beta/kv/range", `{"key":"Z3c="}`); !strings.Contains(got, `"value":"MQ=="`) {
+			t.Errorf("/v3beta/kv/range: %s", got)
+		}
+		r, err := c.Get(ctx, "gw")
+		if err != nil || len(r.Kvs) != 1 || string(r.Kvs[0].Value) != "1" {
+			t.Errorf("get gw through gRPC: %v %v", r, err)
+		}
+	})
+
 	t.Run("status and members", func(t *testing.T) {
 		m, err := c.MemberList(ctx)
 		if err != nil || len(m.Members) != 3 {

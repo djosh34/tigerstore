@@ -1,24 +1,18 @@
 package wl
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"log"
 	"net"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"runtime/metrics"
-	"runtime/pprof"
 	"slices"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -54,6 +48,7 @@ type loop struct {
 	posts   []func() error
 	dials   map[uint64]*dialer // by member, while it is one
 	peerTLS *tls.Config        // to dial peers
+	http1   *http1             // serves the clients that chose HTTP/1.1
 
 	free    []int
 	tick    int64
@@ -192,6 +187,9 @@ func run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	l.ctx = ctx
+	if l.http1, err = startHTTP1(ctx, cfg.ClientListeners[0].Addr().String(), cfg.ClientTLS, n.metrics); err != nil {
+		return err
+	}
 	defer l.shut(slices.Concat(cfg.ClientListeners, cfg.PeerListeners)...)
 	go func() {
 		<-ctx.Done()
@@ -230,13 +228,12 @@ func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.
 			continue
 		}
 		go func() {
-			h, err := handshake(nc, cfg, true)
+			h, err := handshake(nc, cfg, kind)
 			if err != nil {
 				return
 			}
-			h.kind = kind
-			if kind == kindClient && h.alpn != "h2" {
-				serveHTTP1(h, l.n.metrics)
+			if h.h1 != nil {
+				l.http1.serve(h.h1)
 				return
 			}
 			if kind == kindPeerIn {
@@ -356,14 +353,14 @@ func (l *loop) dial(id uint64, d *dialer) {
 			}
 			continue
 		}
-		h, err := handshake(nc, c, false)
+		h, err := handshake(nc, c, kindPeerOut)
 		if err != nil {
 			if !pause() {
 				return
 			}
 			continue
 		}
-		h.kind, h.peer = kindPeerOut, id
+		h.peer = id
 		l.handOver(h)
 		select {
 		case <-d.redial:
@@ -440,6 +437,9 @@ func (l *loop) wake() {
 func (l *loop) shut(listeners ...net.Listener) {
 	for _, ln := range listeners {
 		_ = ln.Close()
+	}
+	if err := l.http1.stop(); err != nil {
+		l.logger.Printf("stop the HTTP/1.1 server: %v", err)
 	}
 	l.mu.Lock()
 	l.stopped = true
@@ -768,76 +768,6 @@ func (l *loop) flush() {
 	}
 	n.dirty = n.dirty[:0]
 }
-
-// serveHTTP1 answers /metrics and /debug/pprof/profile over HTTP/1.1 on
-// the record layer, in the handshake's goroutine.
-func serveHTTP1(h *handoff, m *nodeMetrics) {
-	defer func() { _ = unix.Close(h.fd) }()
-	_ = unix.SetNonblock(h.fd, false)
-	s := newSock(h, &counters{})
-	var req []byte
-	for {
-		if err := s.open(); err != nil {
-			return
-		}
-		req = append(req, s.pt[s.pr:s.pw]...)
-		s.pr = s.pw
-		if bytes.Contains(req, []byte("\r\n\r\n")) {
-			break
-		}
-		if _, err := s.readSock(); err != nil {
-			return
-		}
-	}
-	line, _, _ := strings.Cut(string(req), "\r\n")
-	f := strings.Fields(line)
-	path := ""
-	if len(f) >= 2 {
-		path = f[1]
-	}
-	var body []byte
-	ctype := "text/plain; version=0.0.4"
-	switch {
-	case strings.HasPrefix(path, "/debug/pprof/profile"):
-		secs := 10
-		if u, err := url.Parse(path); err == nil {
-			if v := u.Query().Get("seconds"); v != "" {
-				if s, err := strconv.Atoi(v); err == nil && s > 0 {
-					secs = s
-				}
-			}
-		}
-		var buf bytes.Buffer
-		profMu.Lock()
-		if err := pprof.StartCPUProfile(&buf); err == nil {
-			time.Sleep(time.Duration(secs) * time.Second)
-			pprof.StopCPUProfile()
-		}
-		profMu.Unlock()
-		body = buf.Bytes()
-		ctype = "application/octet-stream"
-	case path == "/version":
-		body, ctype = []byte(`{"etcdserver":"3.7.2","etcdcluster":"3.7.0","storage":"3.7.0"}`), "application/json"
-	case path == "/health" || strings.HasPrefix(path, "/health?"):
-		// etcd's health: true while the node has a leader.
-		body, ctype = []byte(`{"health":"false","reason":"RAFT NO LEADER"}`), "application/json"
-		if m.hasLeader.Load() == 1 {
-			body = []byte(`{"health":"true","reason":""}`)
-		}
-	default:
-		body = m.text()
-	}
-	resp := fmt.Appendf(nil, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", ctype, len(body))
-	s.put(append(resp, body...))
-	for {
-		ok, err := s.flush()
-		if err != nil || ok {
-			return
-		}
-	}
-}
-
-var profMu sync.Mutex
 
 // counters are the loop's own, for its log: per 5 s, how many turns,
 // socket reads and writes, WAL writes and fsyncs, replies and Raft work.
