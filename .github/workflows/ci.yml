@@ -86,6 +86,26 @@ jobs:
           path: ${{ runner.temp }}/test.log
           retention-days: 30
 
+  # The Raft fork (third_party/raft) is a module of its own, which the
+  # root's go test ./... does not reach: its own tests run here.
+  raft-fork:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - shell: bash
+        working-directory: third_party/raft
+        run: set -o pipefail; go test -race ./... 2>&1 | tee "$RUNNER_TEMP/raft-fork.log"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: raft-fork-log
+          path: ${{ runner.temp }}/raft-fork.log
+          retention-days: 30
+
   # Values near the request limit from clients on every node at a real
   # node's 100 ms ticks, failing if a leader entry waits one election
   # timeout to commit (#88). Its own job: every value stays in memory.
@@ -614,7 +634,7 @@ jobs:
   # condition; no job here needs another, so nothing else skips them.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, replay, replay-compare, gosim-hooks, membership, smoke, apiserver, configmaps, difftest, difffuzz, fuzz, coverage, race-sim, rolling-upgrade, past-ram]
+    needs: [lint, build, test, raft-fork, stress, determinism-lint, sim, replay, replay-compare, gosim-hooks, membership, smoke, apiserver, configmaps, difftest, difffuzz, fuzz, coverage, race-sim, rolling-upgrade, past-ram]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
