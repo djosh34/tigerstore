@@ -230,6 +230,7 @@ func run(ctx context.Context, cfg Config) error {
 	}
 	n.extensive = cfg.ExtensiveMetrics
 	n.quota = cmp.Or(cfg.QuotaBackendBytes, defaultQuota)
+	n.progressEvery = cmp.Or(cfg.ProgressNotify, defaultProgressNotify)
 	n.jwt, n.tokenTTL, n.bcryptCost = cfg.JWT, cmp.Or(cfg.TokenTTL, defaultTokenTTL), cmp.Or(cfg.BcryptCost, bcrypt.DefaultCost)
 	n.compactor = newCompactor(cfg.AutoCompactPeriod, cfg.AutoCompactRevisions, time.Now())
 	n.wal.prom.Store(set)
@@ -833,6 +834,7 @@ func (l *loop) run() error {
 			n.autoCompact()
 			n.publish()
 			n.expireTokens()
+			n.notifyProgress()
 			if err := n.maybeCkpt(); err != nil {
 				return err
 			}

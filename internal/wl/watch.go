@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 	"slices"
+	"time"
 )
 
 // Watches. A watcher is matched to a write through the directory of its
@@ -34,6 +35,10 @@ type watcher struct {
 	// syncRev, while not 0, is the revision a watch from the past catches
 	// up from: it gets no live events until it reaches the head.
 	syncRev int64
+	// progressNotify asks for etcd's progress notifications; sent says
+	// the watch got events since the last.
+	progressNotify bool
+	sent           bool
 }
 
 type event struct {
@@ -223,6 +228,8 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 				}
 			case 3:
 				startRev = int64(v)
+			case 4:
+				x.progressNotify = v != 0
 			case 6:
 				x.prevKV = v != 0
 			case 8:
@@ -337,12 +344,10 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 		w.varintField(4, 1)
 		w.end()
 	case 3:
-		var w msgW
-		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, math.MaxUint64)
-		w.begin(c, s, size)
-		n.writeHdr(&w)
-		w.varintField(2, math.MaxUint64)
-		w.end()
+		// As etcd's, the progress waits until every watch of the stream
+		// caught up: no event it then sends is older.
+		s.progressDue = true
+		n.progressIfSynced(c, s)
 	}
 	n.markDirty(&c.sock)
 	return nil
@@ -447,6 +452,10 @@ func (n *node) writeEvent(mw *msgW, x *watcher, ev *event) {
 // a long history never holds the loop up. It gets no live events until it
 // reaches the head; that happens between applies, so none is lost or sent
 // twice.
+// defaultProgressNotify is etcd's default
+// --experimental-watch-progress-notify-interval.
+const defaultProgressNotify = 10 * time.Minute
+
 const (
 	syncChanges = 1 << 14 // changes the catch-up looks at in a turn, all watchers together
 	syncEvents  = 256     // events it sends in a turn, all watchers together
@@ -486,6 +495,7 @@ func (n *node) syncWatchers() error {
 			}
 			if done {
 				x.syncRev = 0
+				n.progressIfSynced(c, s)
 				continue
 			}
 		}
@@ -575,7 +585,56 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 // fragments and the response would reach --max-request-bytes, as etcd's
 // sendFragments splits it: as many events a fragment as keep it under
 // the limit, at least one, each but the last marked as a fragment.
+// progressIfSynced answers the progress request of watch stream s, if one
+// waits, once none of its watches catches up.
+func (n *node) progressIfSynced(c *client, s *stream) {
+	if !s.progressDue {
+		return
+	}
+	for _, i := range s.wids {
+		if x := &n.w.ws[i]; x.active && x.syncRev != 0 {
+			return
+		}
+	}
+	s.progressDue = false
+	n.writeProgress(c, s, -1)
+}
+
+// writeProgress writes a progress notification of watch id, -1 for the
+// stream's, at the current revision.
+func (n *node) writeProgress(c *client, s *stream, id int64) {
+	var w msgW
+	w.begin(c, s, sizeBytesField(1, n.hdrSize())+sizeVarintField(2, uint64(id)))
+	n.writeHdr(&w)
+	w.varintField(2, uint64(id))
+	w.end()
+	n.markDirty(&c.sock)
+}
+
+// notifyProgress sends etcd's periodic progress notification to each
+// caught-up watch that asked for them and got no event since the last.
+func (n *node) notifyProgress() {
+	if n.progressEvery <= 0 || n.now.Before(n.progressAt) {
+		return
+	}
+	n.progressAt = n.now.Add(n.progressEvery)
+	for i := range n.w.ws {
+		x := &n.w.ws[i]
+		if !x.active || !x.progressNotify || x.syncRev != 0 {
+			continue
+		}
+		if x.sent {
+			x.sent = false
+			continue
+		}
+		if c, s := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid)); c != nil {
+			n.writeProgress(c, s, x.id)
+		}
+	}
+}
+
 func (n *node) writeEvents(c *client, s *stream, x *watcher, evs []event) {
+	x.sent = true
 	hdr := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id))
 	size := hdr
 	for i := range evs {

@@ -53,9 +53,11 @@ type Config struct {
 	// JWT signs and checks auth tokens (--auth-token jwt,...); nil for
 	// etcd's simple tokens. TokenTTL is --auth-token-ttl, BcryptCost
 	// --bcrypt-cost; 0 for etcd's defaults.
-	JWT        *authtoken.JWT
-	TokenTTL   time.Duration
-	BcryptCost int
+	JWT *authtoken.JWT
+	// ProgressNotify is etcd's --experimental-watch-progress-notify-interval.
+	ProgressNotify time.Duration
+	TokenTTL       time.Duration
+	BcryptCost     int
 	// AutoCompactPeriod and AutoCompactRevisions are etcd's
 	// --auto-compaction-mode periodic and revision with their retention;
 	// both 0 for none.

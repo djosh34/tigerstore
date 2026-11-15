@@ -64,6 +64,7 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 		closeListeners(clientLns, pcfg.Listeners, lg)
 		return fmt.Errorf("--auth-token %q: %w", ec.AuthToken, err)
 	}
+	cfg.ProgressNotify = ec.WatchProgressNotifyInterval
 	cfg.TokenTTL, cfg.BcryptCost = time.Duration(ec.AuthTokenTTL)*time.Second, int(ec.BcryptCost)
 	cfg.QuotaBackendBytes = ec.QuotaBackendBytes
 	if ec.AutoCompactionMode != "" {

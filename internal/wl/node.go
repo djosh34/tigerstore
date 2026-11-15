@@ -135,6 +135,10 @@ type node struct {
 	compactor    compactor
 	// downgrade is the minor version a downgrade is on to, 0 for none.
 	downgrade int64
+	// progressEvery is --experimental-watch-progress-notify-interval,
+	// and progressAt when the next notifications go.
+	progressEvery time.Duration
+	progressAt    time.Time
 	// sideSecret marks the side calls' own client, which names the
 	// client each call is for (side.go).
 	sideSecret string

@@ -155,3 +155,28 @@ func TestAWatchCatchingUpGetsNoLiveEvents(t *testing.T) {
 		t.Fatal("a watcher catching up got a live event")
 	}
 }
+
+// As etcd's, a progress request waits until every watch of its stream
+// caught up: a progress at the head before older events would tell a
+// client, as kube-apiserver's watch cache, it has seen them all.
+func TestAProgressWaitsForTheStreamsWatchesToCatchUp(t *testing.T) {
+	c, s := flowClient(t)
+	st, err := newStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := c.node
+	n.st = st
+	n.w.ws = []watcher{{active: true, syncRev: 5}}
+	s.wids = []int32{0}
+	s.progressDue = true
+	n.progressIfSynced(c, s)
+	if !s.progressDue {
+		t.Fatal("a progress was answered while a watch caught up")
+	}
+	n.w.ws[0].syncRev = 0
+	n.progressIfSynced(c, s)
+	if s.progressDue {
+		t.Fatal("a progress still waits after the watch caught up")
+	}
+}
