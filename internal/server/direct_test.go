@@ -236,7 +236,7 @@ func TestRepliesInPlaceAfterControl(t *testing.T) {
 	c, sock := directConn(t)
 	watch := directCall(c, 1, "/etcdserverpb.KV/Range")
 	c.mu.Lock()
-	watch.pushLocked([]byte{0, 0, 0, 0, 1, 7}, false, nil)
+	watch.pushLocked([]byte{0, 0, 0, 0, 1, 7}, nil, false, nil)
 	c.addCtrl(ctrlFrame{kind: ctrlPingAck})
 	c.mu.Unlock()
 	st := directCall(c, 3, "/etcdserverpb.KV/Put")

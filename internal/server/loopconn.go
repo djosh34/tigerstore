@@ -442,6 +442,7 @@ func (c *conn) write() (bool, error) {
 		if err := c.writeFrames(c.s.ctrlOut, c.s.framesOut); err != nil {
 			return false, err
 		}
+		c.releaseTaken()
 		if cs == nil {
 			continue
 		}
@@ -458,6 +459,7 @@ func (c *conn) write() (bool, error) {
 		if err := c.writeFrames(c.s.ctrlOut, c.s.framesOut); err != nil {
 			return false, err
 		}
+		c.releaseTaken()
 	}
 }
 

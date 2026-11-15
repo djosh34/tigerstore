@@ -126,6 +126,9 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 				}
 			}
 		}
+		if it.ch != nil {
+			c.taken = append(c.taken, it.ch)
+		}
 		st.out[0] = outItem{}
 		st.out = st.out[1:]
 	}

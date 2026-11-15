@@ -127,14 +127,19 @@ func (st *stream) sendWatch(r *pb.WatchResponse, evs []*core.Event) error {
 	if size > 1<<31-1 {
 		return status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
 	}
-	b := make([]byte, 5, 5+size)
-	binary.BigEndian.PutUint32(b[1:], uint32(size))
-	b = appendEvents(append(b, head...), evs)
-	b, err := st.compress(b)
-	if err != nil {
-		return err
+	if st.encoding == gzipName {
+		b := make([]byte, 5, 5+size)
+		binary.BigEndian.PutUint32(b[1:], uint32(size))
+		b, err := st.compress(appendEvents(append(b, head...), evs))
+		if err != nil {
+			return err
+		}
+		return st.push(b, false, nil, true)
 	}
-	return st.push(b, false, nil, true)
+	b, ch := st.c.watchRoom(5 + size)
+	b = binary.BigEndian.AppendUint32(append(b, 0), uint32(size))
+	b = appendEvents(append(b, head...), evs)
+	return st.pushIn(b, ch, false, nil, true)
 }
 
 // watchHeadRoom is room on the stack for the fields of most watch

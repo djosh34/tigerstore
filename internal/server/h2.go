@@ -114,6 +114,11 @@ type conn struct {
 	batch  opBatch
 	// arena holds the requests of the calls the node runs (arena.go).
 	arena arena
+	// outCur is the chunk watch responses go into, and taken the chunks
+	// of the responses the write pass took whole (watchout.go). Loop
+	// only.
+	outCur *outChunk
+	taken  []*outChunk
 	// deadlines are the calls that end at a deadline (deadline.go).
 	deadlines deadlines
 	// free are streams of ended calls for the next calls (freeStream).

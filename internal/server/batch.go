@@ -429,7 +429,7 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64, budget int) 
 			if st.space == nil {
 				st.space = make(chan struct{}, 1)
 			}
-			st.pushLocked(f.msg, false, nil)
+			st.pushLocked(f.msg, nil, false, nil)
 			next = append(next, st)
 			continue
 		}
@@ -437,7 +437,7 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64, budget int) 
 		if f.err != nil {
 			s = status.Convert(toStatus(f.err))
 		}
-		st.pushLocked(f.msg, true, s)
+		st.pushLocked(f.msg, nil, true, s)
 	}
 	if direct == 0 {
 		c.waitingReplies.Add(-waiting)

@@ -125,7 +125,9 @@ const (
 type outItem struct {
 	kind outKind
 	b    []byte
-	end  bool // for data: END_STREAM
+	// ch is the chunk b is in, for a watch response (watchout.go).
+	ch  *outChunk
+	end bool // for data: END_STREAM
 	// started: the writer sent part of it, so it must be sent whole.
 	started bool
 }
@@ -343,6 +345,11 @@ func (st *stream) finish(err error) {
 // the stream (if end) with status s (nil for OK). With wait, it waits
 // while the stream has more than sendQueue bytes queued.
 func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error {
+	return st.pushIn(msg, nil, end, s, wait)
+}
+
+// pushIn is push for a message in chunk ch, if not nil (watchout.go).
+func (st *stream) pushIn(msg []byte, ch *outChunk, end bool, s *status.Status, wait bool) error {
 	c := st.c
 	for {
 		c.mu.Lock()
@@ -364,16 +371,16 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error 
 				return st.ctx.Err()
 			}
 		}
-		st.pushLocked(msg, end, s)
+		st.pushLocked(msg, ch, end, s)
 		c.mu.Unlock()
 		c.signal()
 		return nil
 	}
 }
 
-// pushLocked queues output as push does. c.mu is held and the caller
+// pushLocked queues output as pushIn does. c.mu is held and the caller
 // signals the writer.
-func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
+func (st *stream) pushLocked(msg []byte, ch *outChunk, end bool, s *status.Status) {
 	if end {
 		st.countEnd(s)
 	}
@@ -397,7 +404,7 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 			st.out = append(st.out, outItem{kind: outHeaders, b: hdrs})
 			st.headersQueued = true
 		}
-		st.out = append(st.out, outItem{kind: outData, b: msg})
+		st.out = append(st.out, outItem{kind: outData, b: msg, ch: ch})
 		st.queued += len(msg)
 	}
 	if end && s != nil && st.rpc != nil && st.rpc.stream != nil && !st.rpc.serverStream {
