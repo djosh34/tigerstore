@@ -32,6 +32,9 @@ type sock struct {
 	dirty   bool   // in the loop's list of sockets to flush
 	// countSent adds what is written to the peer byte counter.
 	countSent bool
+	// broken is set when a reply came out another length than it said:
+	// the stream is corrupt, and the connection is closed at its flush.
+	broken bool
 }
 
 const (
@@ -41,8 +44,10 @@ const (
 )
 
 func newSock(h *handoff) *sock {
-	s := &sock{fd: h.fd, rd: h.rd, wr: h.wr, rec: -1,
-		in: make([]byte, inBuf), pt: make([]byte, ptBuf), out: make([]byte, 0, outBuf)}
+	s := &sock{
+		fd: h.fd, rd: h.rd, wr: h.wr, rec: -1,
+		in: make([]byte, inBuf), pt: make([]byte, ptBuf), out: make([]byte, 0, outBuf),
+	}
 	s.iw = copy(s.in, h.left)
 	return s
 }
@@ -212,6 +217,9 @@ func (s *sock) frame(n int) []byte {
 // flush seals the open record and writes what is not written yet. It
 // reports whether everything went out.
 func (s *sock) flush() (bool, error) {
+	if s.broken {
+		return false, errMsgSize
+	}
 	s.seal()
 	for s.ow < len(s.out) {
 		stats.writes++
@@ -263,10 +271,11 @@ func putFrameHeader(b []byte, n int, typ, flags byte, sid uint32) {
 	binary.BigEndian.PutUint32(b[5:], sid)
 }
 
-// writeFrame writes a whole frame with payload p.
-func (s *sock) writeFrame(typ, flags byte, sid uint32, p []byte) {
+// writeFrame writes a whole frame of the connection, stream 0, with
+// payload p.
+func (s *sock) writeFrame(typ, flags byte, p []byte) {
 	b := s.frame(9 + len(p))
-	putFrameHeader(b, len(p), typ, flags, sid)
+	putFrameHeader(b, len(p), typ, flags, 0)
 	copy(b[9:], p)
 }
 
@@ -312,14 +321,6 @@ func (w *msgW) write(p []byte) {
 	}
 }
 
-func (w *msgW) varint(v uint64) {
-	var b [10]byte
-	n := putUvarint(b[:], v)
-	w.write(b[:n])
-}
-
-func (w *msgW) tag(num int, typ int) { w.varint(uint64(num)<<3 | uint64(typ)) }
-
 func (w *msgW) varintField(num int, v uint64) {
 	var b [20]byte
 	n := putUvarint(b[:], uint64(num)<<3)
@@ -343,8 +344,10 @@ func (w *msgW) lenField(num int, n int) {
 	w.write(b[:k])
 }
 
+var errMsgSize = errors.New("a gRPC message's length does not match what was written")
+
 func (w *msgW) end() {
 	if w.left != 0 {
-		panic("gRPC message length does not match what was written")
+		w.s.broken = true
 	}
 }

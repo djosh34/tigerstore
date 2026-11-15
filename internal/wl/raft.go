@@ -3,6 +3,7 @@ package wl
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -45,6 +46,8 @@ type wal struct {
 	// for the next one at lastKick + syncGap.
 	lastKick time.Time
 	deferred bool
+	// failed is the helper's write error; it stops writing then.
+	failed atomic.Pointer[error]
 }
 
 const syncGap = 800 * time.Microsecond
@@ -97,7 +100,9 @@ func openWAL(path string) (*wal, error) {
 	if w.fd, err = unix.Open(path, unix.O_WRONLY|unix.O_DIRECT|unix.O_DSYNC|unix.O_CLOEXEC, 0); err != nil {
 		return nil, err
 	}
-	w.stage = mmapBytes(stageSize)
+	if w.stage, err = mmapBytes(stageSize); err != nil {
+		return nil, err
+	}
 	go w.helper()
 	return w, nil
 }
@@ -109,12 +114,19 @@ const walRing = 768 << 20
 func (w *wal) helper() {
 	runtime.LockOSThread()
 	var b [8]byte
+	binary.LittleEndian.PutUint64(b[:], 1)
+	fail := func(err error) {
+		err = fmt.Errorf("write the log: %w", err)
+		w.failed.Store(&err)
+		_, _ = unix.Write(w.wakeFD, b[:])
+	}
 	for {
 		if _, err := unix.Read(w.kickFD, b[:]); err != nil {
-			if err == unix.EINTR {
+			if errors.Is(err, unix.EINTR) {
 				continue
 			}
-			panic(err)
+			fail(err)
+			return
 		}
 		target := w.want.Load()
 		// The blocks from the one that holds the durable end to the one
@@ -125,11 +137,12 @@ func (w *wal) helper() {
 			pos := from % stageSize
 			n := min(to-from, stageSize-pos)
 			k, err := unix.Pwrite(w.fd, w.stage[pos:pos+n], from%walRing)
-			if err == unix.EINTR {
+			if errors.Is(err, unix.EINTR) {
 				continue
 			}
 			if err != nil {
-				panic(err)
+				fail(err)
+				return
 			}
 			from += int64(k)
 		}
@@ -173,8 +186,10 @@ func (w *wal) offOf(index uint64) int64 {
 
 const walEntHdr = 4 + 8 + 8 + 1
 
+var errStageFull = errors.New("the log ran a whole stage ahead of the disk")
+
 // write appends entries and a hard state to the file, without sync.
-func (w *wal) write(ents []*pb.Entry, hs []byte) {
+func (w *wal) write(ents []*pb.Entry, hs []byte) error {
 	w.iov = w.iov[:0]
 	need := len(ents)*walEntHdr + len(hs) + 8
 	if cap(w.hdrs) < need {
@@ -207,8 +222,8 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) {
 		w.iov = append(w.iov, b)
 		off += int64(len(b))
 	}
-	if w.off+int64(stageSize/2) < 0 || off-w.done.Load() > stageSize-block {
-		panic("the log ran a whole stage ahead of the disk")
+	if off-w.done.Load() > stageSize-block {
+		return errStageFull
 	}
 	for _, v := range w.iov {
 		for len(v) > 0 {
@@ -220,9 +235,7 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) {
 		}
 	}
 	stats.walWrites++
-	if w.off != off {
-		panic("wal offset")
-	}
+	return nil
 }
 
 func raftConfig(id uint64, st raft.Storage) *raft.Config {
@@ -243,12 +256,12 @@ func raftConfig(id uint64, st raft.Storage) *raft.Config {
 }
 
 // ready handles everything Raft has to do now.
-func (n *node) ready() {
+func (n *node) ready() error {
 	for i := 0; i < 64 && n.rn.HasReady(); i++ {
 		rd := n.rn.Ready()
 		if rd.SoftState != nil {
-			n.lead = rd.SoftState.Lead
-			if rd.SoftState.RaftState == raft.StateLeader {
+			n.lead = rd.Lead
+			if rd.RaftState == raft.StateLeader {
 				isLeader.Store(1)
 			} else {
 				isLeader.Store(0)
@@ -258,26 +271,31 @@ func (n *node) ready() {
 			n.readState(rs.RequestCtx, rs.Index)
 		}
 		for _, m := range rd.Messages {
+			var err error
 			switch m.GetTo() {
 			case raft.LocalAppendThread:
-				n.storageAppend(m)
+				err = n.storageAppend(m)
 			case raft.LocalApplyThread:
-				n.storageApply(m)
+				err = n.storageApply(m)
 			default:
 				n.sendPeer(m)
+			}
+			if err != nil {
+				return err
 			}
 		}
 		if len(rd.ReadStates) > 0 {
 			n.serveReads()
 		}
 	}
+	return nil
 }
 
-func (n *node) storageAppend(m *pb.Message) {
+func (n *node) storageAppend(m *pb.Message) error {
 	ents := m.GetEntries()
 	if len(ents) > 0 {
 		if err := n.storage.Append(ents); err != nil {
-			panic(err)
+			return err
 		}
 	}
 	var hs []byte
@@ -285,24 +303,26 @@ func (n *node) storageAppend(m *pb.Message) {
 		n.term = m.GetTerm()
 		st := &pb.HardState{Term: m.Term, Vote: m.Vote, Commit: m.Commit}
 		if err := n.storage.SetHardState(st); err != nil {
-			panic(err)
+			return err
 		}
 		n.commit = m.GetCommit()
 		var err error
-		hs, err = proto.Marshal(st)
-		if err != nil {
-			panic(err)
+		if hs, err = proto.Marshal(st); err != nil {
+			return err
 		}
 	}
 	if len(ents) > 0 || len(hs) > 0 {
-		n.wal.write(ents, hs)
+		if err := n.wal.write(ents, hs); err != nil {
+			return err
+		}
 	}
 	n.wal.pending = append(n.wal.pending, walJob{end: n.wal.off, resps: m.Responses})
 	if !n.wal.inflight && n.wal.done.Load() >= n.wal.off {
 		n.synced()
-		return
+		return nil
 	}
 	n.wal.kick()
+	return nil
 }
 
 // synced delivers the responses of the appends that are durable now.
@@ -325,14 +345,18 @@ func (n *node) synced() {
 }
 
 // fsyncDone is the helper's wake-up.
-func (n *node) fsyncDone() {
+func (n *node) fsyncDone() error {
 	var b [8]byte
 	_, _ = unix.Read(n.wal.wakeFD, b[:])
+	if err := n.wal.failed.Load(); err != nil {
+		return *err
+	}
 	n.wal.inflight = false
 	n.synced()
+	return nil
 }
 
-func (n *node) storageApply(m *pb.Message) {
+func (n *node) storageApply(m *pb.Message) error {
 	for _, e := range m.GetEntries() {
 		idx := e.GetIndex()
 		switch e.GetType() {
@@ -348,7 +372,9 @@ func (n *node) storageApply(m *pb.Message) {
 			}
 		case pb.EntryNormal:
 			if d := e.GetData(); len(d) > 0 {
-				n.applyBatch(d, n.wal.offOf(idx))
+				if err := n.applyBatch(d, n.wal.offOf(idx)); err != nil {
+					return err
+				}
 			}
 		}
 		n.applied = idx
@@ -363,10 +389,13 @@ func (n *node) storageApply(m *pb.Message) {
 	if first, _ := n.storage.FirstIndex(); n.applied > first+20000 {
 		_ = n.storage.Compact(n.applied - 10000)
 	}
+	return nil
 }
 
-var isLeader atomic.Int64
-var peerSentBytes atomic.Uint64
+var (
+	isLeader      atomic.Int64
+	peerSentBytes atomic.Uint64
+)
 
 // ---- peer messages
 
@@ -487,7 +516,7 @@ func (n *node) peerFrames(p *peerIn) error {
 		}
 		f := s.pt[s.pr+4 : s.pr+4+l]
 		s.pr += 4 + l
-		if len(p.held) > 0 && !(len(f) >= 9 && f[0] == frameBatch) {
+		if len(p.held) > 0 && (len(f) < 9 || f[0] != frameBatch) {
 			// Messages from a peer keep their order behind one held.
 			p.held = append(p.held, append([]byte(nil), f...))
 			continue
@@ -507,7 +536,7 @@ func (n *node) peerFrames(p *peerIn) error {
 			continue
 		}
 		m, err := n.decodeMsg(f)
-		if err == errUnnamed {
+		if errors.Is(err, errUnnamed) {
 			// The batch it names comes on another connection, likely in
 			// this same turn: try again after the turn's input.
 			dbgHeld++
@@ -664,7 +693,7 @@ func (n *node) retryHeld() {
 		k := 0
 		for ; k < len(p.held); k++ {
 			m, err := n.decodeMsg(p.held[k])
-			if err == errUnnamed && k == 0 && time.Since(p.heldSince) > 100*time.Millisecond {
+			if errors.Is(err, errUnnamed) && k == 0 && time.Since(p.heldSince) > 100*time.Millisecond {
 				// The batch never came, as when its proposer had no
 				// connection to this node yet: drop the append and ask
 				// the leader to carry batches for a while. Raft resends
@@ -672,7 +701,7 @@ func (n *node) retryHeld() {
 				n.askCarry(p.from)
 				continue
 			}
-			if err == errUnnamed {
+			if errors.Is(err, errUnnamed) {
 				break
 			}
 			if err == nil {
@@ -702,9 +731,11 @@ func (n *node) rxCopy(p []byte) []byte {
 	return d
 }
 
-var dbgNamed int
-var dbgCarried, dbgCarriedB [32]int
-var dbgHeld int
+var (
+	dbgNamed                int
+	dbgCarried, dbgCarriedB [32]int
+	dbgHeld                 int
+)
 
 // dropBatches, from WL_DROP_BATCHES, loses some follower batches on the way
 // to the other peers, to test that the leader then carries them.

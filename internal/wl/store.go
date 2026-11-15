@@ -2,8 +2,9 @@ package wl
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"hash/maphash"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -56,10 +57,9 @@ type store struct {
 	nhist  uint32
 	tree   tree
 
-	leases  map[int64]int64
-	walFD   int
-	walEnd  *int64
-	scratch []byte
+	leases map[int64]int64
+	walFD  int
+	walEnd *int64
 
 	// Records replaced or deleted during an apply, freed once its
 	// replies and watch events are written.
@@ -75,23 +75,40 @@ const (
 	dirSlotLog = 20
 )
 
-func newStore() *store {
+func newStore() (*store, error) {
 	st := &store{
 		rev:    1, // etcd's empty store is at revision 1
-		keys:   mmapSlice[keyEnt](maxKeys),
-		hash:   mmapSlice[uint64](hashSlots),
 		mask:   hashSlots - 1,
 		seed:   maphash.MakeSeed(),
-		karena: arena{mem: mmapBytes(keyArena), top: 1},
-		slab:   newSlab(slabBytes),
-		hist:   mmapSlice[histEnt](maxHist),
+		karena: arena{top: 1},
 		nhist:  1,
 		leases: map[int64]int64{},
 		walFD:  -1,
 	}
+	var err error
+	if st.keys, err = mmapSlice[keyEnt](maxKeys); err != nil {
+		return nil, err
+	}
+	if st.hash, err = mmapSlice[uint64](hashSlots); err != nil {
+		return nil, err
+	}
+	if st.karena.mem, err = mmapBytes(keyArena); err != nil {
+		return nil, err
+	}
+	if st.slab, err = newSlab(slabBytes); err != nil {
+		return nil, err
+	}
+	if st.hist, err = mmapSlice[histEnt](maxHist); err != nil {
+		return nil, err
+	}
 	st.tree.init(st)
-	return st
+	return st, nil
 }
+
+var (
+	errTooManyKeys = errors.New("the store holds as many keys as it can")
+	errHistoryFull = errors.New("the store's history is full")
+)
 
 func (st *store) key(id uint32) []byte {
 	k := &st.keys[id]
@@ -118,7 +135,7 @@ func (st *store) find(key []byte) (uint32, bool) {
 }
 
 // intern returns the id of key, adding it if it is new.
-func (st *store) intern(key []byte) uint32 {
+func (st *store) intern(key []byte) (uint32, error) {
 	h := maphash.Bytes(st.seed, key)
 	tag := h >> 32
 	i := h & st.mask
@@ -131,18 +148,22 @@ func (st *store) intern(key []byte) uint32 {
 			id := uint32(e) - 1
 			k := &st.keys[id]
 			if int(k.klen) == len(key) && bytes.Equal(st.karena.get(k.koff, k.klen), key) {
-				return id
+				return id, nil
 			}
 		}
 	}
 	id := st.nkeys
-	st.nkeys++
-	if st.nkeys >= maxKeys {
-		panic("too many keys")
+	if id+1 >= maxKeys {
+		return 0, errTooManyKeys
 	}
-	st.keys[id] = keyEnt{koff: st.karena.add(key), klen: uint32(len(key)), dir: noDir}
+	koff, err := st.karena.add(key)
+	if err != nil {
+		return 0, err
+	}
+	st.nkeys++
+	st.keys[id] = keyEnt{koff: koff, klen: uint32(len(key)), dir: noDir}
 	st.hash[i] = tag<<32 | uint64(id+1)
-	return id
+	return id, nil
 }
 
 // live returns key id's record, or nil.
@@ -184,62 +205,75 @@ func appendKV(b []byte, key, value []byte, create, mod, ver, lease int64) []byte
 }
 
 // pushHist keeps key id's current state as history.
-func (st *store) pushHist(k *keyEnt) {
+func (st *store) pushHist(k *keyEnt) error {
 	if k.mod == 0 {
-		return
+		return nil
 	}
 	h := st.nhist
-	st.nhist++
-	if st.nhist >= maxHist {
-		panic("history is full")
+	if h+1 >= maxHist {
+		return errHistoryFull
 	}
-	st.hist[h] = histEnt{create: k.create, mod: k.mod, ver: k.ver, lease: k.lease,
-		voff: k.voff, vlen: k.vlen, prev: k.hist, deleted: k.rec == 0}
+	st.nhist++
+	st.hist[h] = histEnt{
+		create: k.create, mod: k.mod, ver: k.ver, lease: k.lease,
+		voff: k.voff, vlen: k.vlen, prev: k.hist, deleted: k.rec == 0,
+	}
 	k.hist = h
+	return nil
 }
 
 // put writes value under key id at revision rev; voff is where the value
 // lies in the WAL. It returns the old record, if the key was live, which
 // stays valid until the apply ends.
-func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64) (prev []byte) {
+func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64) (prev []byte, err error) {
 	k := &st.keys[id]
+	key := st.karena.get(k.koff, k.klen)
 	create, ver := rev, int64(1)
+	if k.rec != 0 {
+		create, ver = k.create, k.ver+1
+	}
+	n := kvSize(len(key), len(value), create, rev, ver, lease)
+	off, err := st.slab.alloc(n)
+	if err != nil {
+		return nil, err
+	}
+	if k.rec == 0 {
+		if err := st.tree.insert(id); err != nil {
+			st.slab.free(off, n)
+			return nil, err
+		}
+	}
+	if err := st.pushHist(k); err != nil {
+		return nil, err
+	}
 	if k.rec != 0 {
 		prev = st.slab.bytes(k.rec, int(k.rlen))
 		st.freeLater = append(st.freeLater, k.rec, uint64(k.rlen))
-		create, ver = k.create, k.ver+1
-	} else {
-		st.tree.insert(id)
 	}
-	st.pushHist(k)
-	key := st.karena.get(k.koff, k.klen)
-	n := kvSize(len(key), len(value), create, rev, ver, lease)
-	off := st.slab.alloc(n)
-	rec := appendKV(st.slab.mem[off:off:int(off)+n], key, value, create, rev, ver, lease)
-	if len(rec) != n {
-		panic("record size")
-	}
+	appendKV(st.slab.mem[off:off:int(off)+n], key, value, create, rev, ver, lease)
 	k.rec, k.rlen = off, uint32(n)
 	k.create, k.mod, k.ver, k.lease = create, rev, ver, lease
 	k.voff, k.vlen = voff, uint32(len(value))
-	return prev
+	return prev, nil
 }
 
 // del deletes key id at revision rev and returns its record, which stays
 // valid until the apply ends, or nil if it was not live.
-func (st *store) del(id uint32, rev int64) []byte {
+func (st *store) del(id uint32, rev int64) ([]byte, error) {
 	k := &st.keys[id]
 	if k.rec == 0 {
-		return nil
+		return nil, nil
+	}
+	if err := st.pushHist(k); err != nil {
+		return nil, err
 	}
 	prev := st.slab.bytes(k.rec, int(k.rlen))
 	st.freeLater = append(st.freeLater, k.rec, uint64(k.rlen))
-	st.pushHist(k)
 	st.tree.remove(id)
 	k.rec, k.rlen = 0, 0
 	k.create, k.mod, k.ver, k.lease = 0, rev, 0, 0
 	k.voff, k.vlen = 0, 0
-	return prev
+	return prev, nil
 }
 
 // endApply frees the records an apply replaced.
@@ -252,10 +286,10 @@ func (st *store) endApply() {
 
 // at returns key id's record as it was at revision rev, built from the
 // history and the WAL if it changed since, or nil if it was not live.
-func (st *store) at(id uint32, rev int64) []byte {
+func (st *store) at(id uint32, rev int64) ([]byte, error) {
 	k := &st.keys[id]
 	if rev == 0 || k.mod <= rev {
-		return st.live(id)
+		return st.live(id), nil
 	}
 	for h := k.hist; h != 0; h = st.hist[h].prev {
 		e := &st.hist[h]
@@ -263,7 +297,7 @@ func (st *store) at(id uint32, rev int64) []byte {
 			continue
 		}
 		if e.deleted {
-			return nil
+			return nil, nil
 		}
 		val := make([]byte, e.vlen)
 		if e.vlen > 0 && st.walFD >= 0 {
@@ -273,15 +307,15 @@ func (st *store) at(id uint32, rev int64) []byte {
 					pos := (e.voff + int64(got)) % walRing
 					k := min(len(val)-got, int(walRing-pos))
 					if _, err := unix.Pread(st.walFD, val[got:got+k], pos); err != nil {
-						panic(err)
+						return nil, fmt.Errorf("read an old value from the log: %w", err)
 					}
 					got += k
 				}
 			}
 		}
-		return appendKV(nil, st.key(id), val, e.create, e.mod, e.ver, e.lease)
+		return appendKV(nil, st.key(id), val, e.create, e.mod, e.ver, e.lease), nil
 	}
-	return nil
+	return nil, nil
 }
 
 // modAt returns the mod revision, create revision, version and lease of key
@@ -308,5 +342,3 @@ func recValue(rec []byte) []byte {
 	}
 	return nil
 }
-
-var _ = unsafe.Sizeof(keyEnt{})

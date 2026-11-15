@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,8 +27,7 @@ import (
 
 type peerOut struct {
 	sock
-	peer   uint64
-	redial chan struct{}
+	peer uint64
 }
 
 type peerIn struct {
@@ -91,12 +92,11 @@ func Main(args []string) int {
 		return 2
 	}
 	logger := log.New(os.Stderr, "tigerstore-wl ", log.LstdFlags|log.Lmicroseconds)
-	if err := run(logger, *name, *dataDir, *listenClient, *advClient, *listenPeer, *initial,
-		*certFile, *keyFile, *trusted, *peerCert, *peerKey, *peerTrusted); err != nil {
-		logger.Printf("error: %v", err)
-		return 1
-	}
-	return 0
+	// The node runs until it fails.
+	err := run(logger, *name, *dataDir, *listenClient, *advClient, *listenPeer, *initial,
+		*certFile, *keyFile, *trusted, *peerCert, *peerKey, *peerTrusted)
+	logger.Printf("error: %v", err)
+	return 1
 }
 
 func loadTLS(cert, key, ca string, server bool) (*tls.Config, error) {
@@ -129,7 +129,8 @@ func hostOf(u string) (string, error) {
 }
 
 func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer, initial,
-	certFile, keyFile, trusted, peerCert, peerKey, peerTrusted string) error {
+	certFile, keyFile, trusted, peerCert, peerKey, peerTrusted string,
+) error {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return err
 	}
@@ -143,10 +144,8 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	h1 := cliTLS.Clone()
 	h1.NextProtos = []string{"http/1.1"}
 	cliTLS.GetConfigForClient = func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
-		for _, p := range hi.SupportedProtos {
-			if p == "http/1.1" {
-				return h1, nil
-			}
+		if slices.Contains(hi.SupportedProtos, "http/1.1") {
+			return h1, nil
 		}
 		return nil, nil
 	}
@@ -170,9 +169,14 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 			return err
 		}
 		m := member{id: uint64(i + 1), name: nm, peerURL: u, peerAddr: addr}
-		host, port, _ := net.SplitHostPort(addr)
-		var pn int
-		fmt.Sscan(port, &pn)
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return fmt.Errorf("bad peer URL %q: %w", u, err)
+		}
+		pn, err := strconv.Atoi(port)
+		if err != nil {
+			return fmt.Errorf("bad peer URL %q: %w", u, err)
+		}
 		m.cliURL = fmt.Sprintf("https://%s:%d", host, pn-1)
 		if nm == name {
 			n.id = m.id
@@ -184,13 +188,21 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	if n.id == 0 {
 		return fmt.Errorf("--name %q is not in --initial-cluster", name)
 	}
-	n.st = newStore()
+	if n.st, err = newStore(); err != nil {
+		return err
+	}
 	n.fwd = make([]fwdBatch, fwdSlots)
 	n.fwdPeers = map[uint64][]fwdBatch{}
 	n.carryUntil = map[uint64]time.Time{}
-	n.ring = mmapBytes(ringSize)
-	n.rx = mmapBytes(ringSize)
-	n.side = mmapBytes(64 << 20)
+	if n.ring, err = mmapBytes(ringSize); err != nil {
+		return err
+	}
+	if n.rx, err = mmapBytes(ringSize); err != nil {
+		return err
+	}
+	if n.side, err = mmapBytes(64 << 20); err != nil {
+		return err
+	}
 	n.wal, err = openWAL(filepath.Join(dataDir, "wal"))
 	if err != nil {
 		return err
@@ -249,8 +261,7 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 		go l.dial(m, peerCliTLS, ch)
 	}
 	logger.Printf("node %s (id %d) up: clients %s, peers %s", name, n.id, cliAddr, peerAddr)
-	l.run()
-	return nil
+	return l.run()
 }
 
 func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.Logger) {
@@ -442,7 +453,8 @@ func (l *loop) input(idx int) {
 	}
 }
 
-func (l *loop) run() {
+// run turns the loop until the node fails.
+func (l *loop) run() error {
 	runtime.LockOSThread()
 	n := l.n
 	events := make([]unix.EpollEvent, 256)
@@ -464,15 +476,17 @@ func (l *loop) run() {
 		}
 		k, err := unix.EpollWait(l.epfd, events, timeout)
 		if err != nil && !errors.Is(err, unix.EINTR) {
-			panic(err)
+			return err
 		}
-		for i := 0; i < k; i++ {
+		for i := range k {
 			ev := events[i]
 			switch ev.Fd {
 			case evHandoff:
 				l.takeHandoffs()
 			case evFsync:
-				n.fsyncDone()
+				if err := n.fsyncDone(); err != nil {
+					return err
+				}
 			default:
 				idx := int(ev.Fd)
 				if ev.Events&(unix.EPOLLIN|unix.EPOLLRDHUP|unix.EPOLLHUP|unix.EPOLLERR) != 0 {
@@ -499,7 +513,9 @@ func (l *loop) run() {
 		}
 		n.proposeBatch()
 		n.askReads(l.tick)
-		n.ready()
+		if err := n.ready(); err != nil {
+			return err
+		}
 		l.flush()
 		stats.turns++
 		if l.tick%50 == 0 && l.tick != l.logged {
@@ -535,7 +551,7 @@ func (l *loop) flush() {
 // serveHTTP1 answers /metrics and /debug/pprof/profile over HTTP/1.1 on
 // the record layer, in the handshake's goroutine.
 func serveHTTP1(h *handoff) {
-	defer unix.Close(h.fd)
+	defer func() { _ = unix.Close(h.fd) }()
 	_ = unix.SetNonblock(h.fd, false)
 	s := newSock(h)
 	var req []byte
@@ -565,7 +581,9 @@ func serveHTTP1(h *handoff) {
 		secs := 10
 		if u, err := url.Parse(path); err == nil {
 			if v := u.Query().Get("seconds"); v != "" {
-				fmt.Sscan(v, &secs)
+				if s, err := strconv.Atoi(v); err == nil && s > 0 {
+					secs = s
+				}
 			}
 		}
 		var buf bytes.Buffer

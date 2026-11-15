@@ -74,7 +74,6 @@ type client struct {
 	blockEnd bool
 	block    []byte
 	unacked  int
-	settings bool
 }
 
 func newClient(h *handoff) *client {
@@ -131,10 +130,10 @@ func (c *client) start() {
 	binary.BigEndian.PutUint32(p[2:], 1<<30)
 	binary.BigEndian.PutUint16(p[6:], 0x3) // MAX_CONCURRENT_STREAMS
 	binary.BigEndian.PutUint32(p[8:], 1<<20)
-	c.writeFrame(frSettings, 0, 0, p[:])
+	c.writeFrame(frSettings, 0, p[:])
 	var w [4]byte
 	binary.BigEndian.PutUint32(w[:], 1<<30)
-	c.writeFrame(frWindowUpdate, 0, 0, w[:])
+	c.writeFrame(frWindowUpdate, 0, w[:])
 }
 
 var errProtocol = errors.New("HTTP/2 protocol error")
@@ -179,7 +178,7 @@ func (c *client) frames(n *node) error {
 			if c.unacked >= 1<<29 {
 				var w [4]byte
 				binary.BigEndian.PutUint32(w[:], uint32(c.unacked))
-				c.writeFrame(frWindowUpdate, 0, 0, w[:])
+				c.writeFrame(frWindowUpdate, 0, w[:])
 				c.unacked = 0
 				n.markDirty(&c.sock)
 			}
@@ -246,12 +245,12 @@ func (c *client) frames(n *node) error {
 			}
 		case frSettings:
 			if flags&flAck == 0 {
-				c.writeFrame(frSettings, flAck, 0, nil)
+				c.writeFrame(frSettings, flAck, nil)
 				n.markDirty(&c.sock)
 			}
 		case frPing:
 			if flags&flAck == 0 && len(p) == 8 {
-				c.writeFrame(frPing, flAck, 0, p)
+				c.writeFrame(frPing, flAck, p)
 				n.markDirty(&c.sock)
 			}
 		case frGoAway:

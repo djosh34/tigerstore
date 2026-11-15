@@ -1,6 +1,9 @@
 package wl
 
-import "bytes"
+import (
+	"bytes"
+	"math"
+)
 
 // Watches. A watcher is matched to a write through the directory of its
 // key: each directory caches the watchers whose prefix covers it, so an
@@ -168,4 +171,173 @@ func (w *watches) push(i int32, id uint32, del bool, rev int64, kv, prev []byte)
 		x.queued = true
 		w.touched = append(w.touched, i)
 	}
+}
+
+func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
+	if !s.watch {
+		s.watch = true
+		b := c.frame(9 + len(respHeaders))
+		putFrameHeader(b, len(respHeaders), frHeaders, flEndHeaders, s.id)
+		copy(b[9:], respHeaders)
+	}
+	num, _, _, p, _, err := field(msg)
+	if err != nil {
+		return err
+	}
+	switch num {
+	case 1:
+		x := watcher{sock: c.idx, gen: c.gen, sid: s.id, id: int64(len(s.wids))}
+		var filters []byte
+		for m := p; len(m) > 0; {
+			fn, typ, v, fp, rest, err := field(m)
+			if err != nil {
+				return err
+			}
+			switch fn {
+			case 1:
+				x.key = bytes.Clone(fp)
+			case 2:
+				x.end = bytes.Clone(fp)
+			case 5:
+				if typ == 2 {
+					filters = append(filters, fp...)
+				} else {
+					filters = append(filters, byte(v))
+				}
+			case 6:
+				x.prevKV = v != 0
+			case 7:
+				if v != 0 {
+					x.id = int64(v)
+				}
+			}
+			m = rest
+		}
+		for _, f := range filters {
+			switch f {
+			case 0:
+				x.noPut = true
+			case 1:
+				x.noDel = true
+			}
+		}
+		i := n.w.add(x)
+		s.wids = append(s.wids, i)
+		var w msgW
+		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id)) + 2
+		w.begin(&c.sock, s.id, size)
+		n.writeHdr(&w)
+		writeVarintNZ(&w, 2, uint64(x.id))
+		w.varintField(3, 1)
+		w.end()
+	case 2:
+		var wid int64
+		for m := p; len(m) > 0; {
+			fn, _, v, _, rest, err := field(m)
+			if err != nil {
+				return err
+			}
+			if fn == 1 {
+				wid = int64(v)
+			}
+			m = rest
+		}
+		for _, i := range s.wids {
+			if n.w.ws[i].active && n.w.ws[i].id == wid {
+				n.w.remove(i)
+			}
+		}
+		var w msgW
+		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(wid)) + 2
+		w.begin(&c.sock, s.id, size)
+		n.writeHdr(&w)
+		writeVarintNZ(&w, 2, uint64(wid))
+		w.varintField(4, 1)
+		w.end()
+	case 3:
+		var w msgW
+		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, math.MaxUint64)
+		w.begin(&c.sock, s.id, size)
+		n.writeHdr(&w)
+		w.varintField(2, math.MaxUint64)
+		w.end()
+	}
+	n.markDirty(&c.sock)
+	return nil
+}
+
+func (n *node) closeWatchStream(c *client, s *stream) {
+	for _, i := range s.wids {
+		if n.w.ws[i].active && n.w.ws[i].sock == c.idx && n.w.ws[i].sid == s.id {
+			n.w.remove(i)
+		}
+	}
+	s.wids = s.wids[:0]
+}
+
+// flushEvents writes each watcher's events of the apply as one
+// WatchResponse.
+func (n *node) flushEvents() {
+	w := &n.w
+	st := n.st
+	for _, i := range w.touched {
+		x := &w.ws[i]
+		x.queued = false
+		first := x.first
+		x.first, x.last = -1, -1
+		if !x.active {
+			continue
+		}
+		c, s := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid))
+		if c == nil {
+			continue
+		}
+		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id))
+		for e := first; e >= 0; e = w.events[e].next {
+			size += sizeBytesField(11, n.eventSize(x, &w.events[e]))
+		}
+		var mw msgW
+		mw.begin(&c.sock, s.id, size)
+		n.writeHdr(&mw)
+		writeVarintNZ(&mw, 2, uint64(x.id))
+		for e := first; e >= 0; e = w.events[e].next {
+			ev := &w.events[e]
+			mw.lenField(11, n.eventSize(x, ev))
+			if ev.del {
+				mw.varintField(1, 1)
+				key := st.key(ev.key)
+				mw.lenField(2, sizeBytesField(1, len(key))+sizeVarintField(3, uint64(ev.rev)))
+				mw.bytesField(1, key)
+				mw.varintField(3, uint64(ev.rev))
+			} else {
+				mw.bytesField(2, ev.kv)
+			}
+			if x.prevKV && ev.prev != nil {
+				mw.bytesField(3, ev.prev)
+			}
+		}
+		mw.end()
+		n.markDirty(&c.sock)
+	}
+	clear(w.events)
+	w.events = w.events[:0]
+	w.touched = w.touched[:0]
+}
+
+func (n *node) eventSize(x *watcher, ev *event) int {
+	b := 0
+	if ev.del {
+		key := n.st.key(ev.key)
+		b += 2 + sizeBytesField(2, sizeBytesField(1, len(key))+sizeVarintField(3, uint64(ev.rev)))
+	} else {
+		b += sizeBytesField(2, len(ev.kv))
+	}
+	if x.prevKV && ev.prev != nil {
+		b += sizeBytesField(3, len(ev.prev))
+	}
+	return b
+}
+
+func mkHandleRaw(idx int, gen uint16, sid uint32) handle {
+	return handle(uint64(idx)<<48 | uint64(gen)<<32 | uint64(sid))
 }

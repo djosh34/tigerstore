@@ -94,17 +94,24 @@ func dirOf(key []byte) []byte {
 }
 
 // ensure returns the directory of path, making it and its parents.
-func (t *tree) ensure(path []byte) uint32 {
+func (t *tree) ensure(path []byte) (uint32, error) {
 	if d, ok := t.lookup(path); ok {
-		return d
+		return d, nil
 	}
-	parent := t.ensure(dirOf(path[:len(path)-1]))
+	parent, err := t.ensure(dirOf(path[:len(path)-1]))
+	if err != nil {
+		return 0, err
+	}
+	poff, err := t.st.karena.add(path)
+	if err != nil {
+		return 0, err
+	}
 	d := uint32(len(t.dirs))
-	t.dirs = append(t.dirs, dirEnt{poff: t.st.karena.add(path), plen: uint32(len(path)), parent: parent})
+	t.dirs = append(t.dirs, dirEnt{poff: poff, plen: uint32(len(path)), parent: parent})
 	t.put(path, d)
 	pl := t.dirs[parent].plen
 	t.insertChild(parent, path[pl:], d|dirBit)
-	return d
+	return d, nil
 }
 
 func pfxOf(name []byte) (p [12]byte) {
@@ -170,12 +177,17 @@ func (t *tree) insertChild(d uint32, name []byte, id uint32) {
 }
 
 // insert adds key id, which is not in the tree.
-func (t *tree) insert(id uint32) {
+func (t *tree) insert(id uint32) error {
 	k := &t.st.keys[id]
 	if k.dir == noDir {
-		k.dir = t.ensure(dirOf(t.st.key(id)))
+		d, err := t.ensure(dirOf(t.st.key(id)))
+		if err != nil {
+			return err
+		}
+		k.dir = d
 	}
 	t.insertChild(k.dir, t.st.key(id)[t.dirs[k.dir].plen:], id)
+	return nil
 }
 
 func (t *tree) remove(id uint32) {

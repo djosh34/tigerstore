@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"errors"
 	"fmt"
 	"math/bits"
 	"unsafe"
@@ -11,22 +12,25 @@ import (
 // mmapBytes reserves n bytes of anonymous memory outside Go's heap, which
 // the collector never scans and the memory limit never counts. Pages are
 // backed on first touch.
-func mmapBytes(n int) []byte {
+func mmapBytes(n int) ([]byte, error) {
 	b, err := unix.Mmap(-1, 0, n, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_ANONYMOUS|unix.MAP_NORESERVE)
 	if err != nil {
-		panic(fmt.Sprintf("mmap %d bytes: %v", n, err))
+		return nil, fmt.Errorf("mmap %d bytes: %w", n, err)
 	}
 	// Huge pages where the kernel gives them: the index and the slab are
 	// read at random, and each miss would also miss the TLB.
 	_ = unix.Madvise(b, unix.MADV_HUGEPAGE)
-	return b
+	return b, nil
 }
 
 // mmapSlice reserves room for n values of a pointer-free type T.
-func mmapSlice[T any](n int) []T {
+func mmapSlice[T any](n int) ([]T, error) {
 	var z T
-	b := mmapBytes(n * int(unsafe.Sizeof(z)))
-	return unsafe.Slice((*T)(unsafe.Pointer(&b[0])), n)
+	b, err := mmapBytes(n * int(unsafe.Sizeof(z)))
+	if err != nil {
+		return nil, err
+	}
+	return unsafe.Slice((*T)(unsafe.Pointer(&b[0])), n), nil
 }
 
 // slab hands out byte ranges of a big mapping in size classes, eight per
@@ -43,8 +47,12 @@ const (
 	classes  = 8 * 20
 )
 
-func newSlab(n int) *slab {
-	return &slab{mem: mmapBytes(n), top: minClass}
+func newSlab(n int) (*slab, error) {
+	mem, err := mmapBytes(n)
+	if err != nil {
+		return nil, err
+	}
+	return &slab{mem: mem, top: minClass}, nil
 }
 
 // classOf returns the class of n bytes and its slot size.
@@ -59,18 +67,23 @@ func classOf(n int) (int, int) {
 	return (k-6)*8 + j + 1, base + (j+1)*step
 }
 
-func (s *slab) alloc(n int) uint64 {
+var (
+	errSlabFull  = errors.New("the store's slab is full")
+	errArenaFull = errors.New("the store's key arena is full")
+)
+
+func (s *slab) alloc(n int) (uint64, error) {
 	c, size := classOf(n)
 	if h := s.heads[c]; h != 0 {
 		s.heads[c] = *(*uint64)(unsafe.Pointer(&s.mem[h]))
-		return h
+		return h, nil
 	}
 	off := s.top
 	if off+size > len(s.mem) {
-		panic("slab is full")
+		return 0, errSlabFull
 	}
 	s.top += size
-	return uint64(off)
+	return uint64(off), nil
 }
 
 func (s *slab) free(off uint64, n int) {
@@ -91,13 +104,13 @@ type arena struct {
 	top int
 }
 
-func (a *arena) add(p []byte) uint64 {
+func (a *arena) add(p []byte) (uint64, error) {
 	if a.top+len(p) > len(a.mem) {
-		panic("arena is full")
+		return 0, errArenaFull
 	}
 	off := a.top
 	a.top += copy(a.mem[off:], p)
-	return uint64(off)
+	return uint64(off), nil
 }
 
 func (a *arena) get(off uint64, n uint32) []byte { return a.mem[off : off+uint64(n) : off+uint64(n)] }
