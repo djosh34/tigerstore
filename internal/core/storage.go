@@ -28,6 +28,17 @@ type storage struct {
 	// ckpt is the newest durable checkpoint, which a snapshot names when
 	// it is past the window.
 	ckpt wal.Root
+	// terms holds the term of every entry from the newest durable
+	// checkpoint on, those that left memory included, as runs: each run's
+	// term holds from its index up to the next run's. A checkpoint's root
+	// and a snapshot point need the term of an entry that may be out of
+	// memory, and the core never reads the log for it (#682).
+	terms []termRun
+}
+
+// termRun is a run of entries of one term, from index on.
+type termRun struct {
+	index, term uint64
 }
 
 // EntryOverhead is what an entry in memory holds besides its data: the
@@ -121,6 +132,9 @@ func (s *storage) add(ents []*raftpb.Entry) error {
 		return err
 	}
 	from := ents[0].GetIndex()
+	for _, e := range ents {
+		s.noteTerm(e.GetIndex(), e.GetTerm())
+	}
 	if from < s.first {
 		ents = ents[s.first-from:]
 		from = s.first
@@ -136,6 +150,64 @@ func (s *storage) add(ents []*raftpb.Entry) error {
 		s.data = append(s.data, e.GetData())
 	}
 	return nil
+}
+
+// noteTerm records that entry index has term, and drops what the log
+// held at and after index before: an entry replaces those.
+func (s *storage) noteTerm(index, term uint64) {
+	k := len(s.terms)
+	for k > 0 && s.terms[k-1].index >= index {
+		k--
+	}
+	s.terms = s.terms[:k]
+	if k > 0 && s.terms[k-1].term == term {
+		return
+	}
+	s.terms = append(s.terms, termRun{index, term})
+}
+
+// termOf returns the term of entry index, from memory, the newest
+// checkpoint or the runs of terms, never from the log.
+func (s *storage) termOf(index uint64) (uint64, bool) {
+	if t, err := s.Term(index); err == nil {
+		return t, true
+	}
+	if index == s.ckpt.Index {
+		return s.ckpt.Term, true
+	}
+	i := sort.Search(len(s.terms), func(i int) bool { return s.terms[i].index > index })
+	if i == 0 || index > s.lastNoted() {
+		return 0, false
+	}
+	return s.terms[i-1].term, true
+}
+
+// lastNoted is the index of the last entry noteTerm saw, or 0.
+func (s *storage) lastNoted() uint64 {
+	last, err := s.LastIndex()
+	if err != nil {
+		return 0
+	}
+	return last
+}
+
+// setCheckpoint records the newest durable checkpoint, and forgets the
+// runs of terms before it, which nothing asks for any more.
+func (s *storage) setCheckpoint(root wal.Root) {
+	s.ckpt = root
+	s.noteBase(root.Index, root.Term)
+	i := sort.Search(len(s.terms), func(i int) bool { return s.terms[i].index > root.Index })
+	if i > 1 {
+		s.terms = slices.Delete(s.terms, 0, i-1)
+	}
+}
+
+// noteBase records the term of entry index when no run covers it yet, as
+// a checkpoint's or a snapshot's, below every entry after it.
+func (s *storage) noteBase(index, term uint64) {
+	if len(s.terms) == 0 || s.terms[0].index > index {
+		s.terms = slices.Insert(s.terms, 0, termRun{index, term})
+	}
 }
 
 // entryData returns the data of entry index if it is in memory.
@@ -192,7 +264,9 @@ func (s *storage) reset(snap *raftpb.Snapshot) error {
 	if err := s.ApplySnapshot(snap); err != nil {
 		return err
 	}
-	s.first, s.cum, s.data, s.base = snap.GetMetadata().GetIndex()+1, nil, nil, 0
+	md := snap.GetMetadata()
+	s.first, s.cum, s.data, s.base = md.GetIndex()+1, nil, nil, 0
+	s.noteTerm(md.GetIndex(), md.GetTerm())
 	return nil
 }
 

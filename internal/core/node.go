@@ -688,7 +688,8 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 			return nil, fmt.Errorf("%w at %d: %w", errLoadCheckpoint, root.Index, err)
 		}
 		n.setState(state)
-		n.applied, n.last, n.base, st.ckpt = root.Index, last, last.base, root
+		n.applied, n.last, n.base = root.Index, last, last.base
+		st.setCheckpoint(root)
 		n.membershipAt = root.Index
 		n.record(root.Index, root.Term)
 		st.setConf(root.Index, state.confState())
@@ -845,6 +846,7 @@ func (n *Node) replay(commit uint64) (uint64, error) {
 			return 0, fmt.Errorf("core: read entry %d: %w", i, err)
 		}
 		term = e.GetTerm()
+		n.storage.noteTerm(i, term)
 		if i == commit && planted.On("B23") {
 			// Planted: the replay stops one entry short; the state lacks
 			// the last committed entry's writes.
@@ -1829,7 +1831,7 @@ func (n *Node) Persisted(job PersistJob) {
 		n.applied = in.Index
 	}
 	if job.Root != nil {
-		n.storage.ckpt = *job.Root
+		n.storage.setCheckpoint(*job.Root)
 		n.releaseCompacts()
 	}
 	if err := n.storage.add(job.Entries); err != nil {

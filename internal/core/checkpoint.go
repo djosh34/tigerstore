@@ -499,20 +499,19 @@ func (n *Node) CheckpointWritten(index uint64, err error) {
 	n.out.Persist = append(n.out.Persist, PersistJob{Root: &wal.Root{Index: index, Term: term}, RemoveBelow: mark})
 }
 
-// termAt is the term of an entry, from memory or from the log.
+// termAt is the term of an entry at or after the newest durable
+// checkpoint. It never reads the log, which would hold the loop through
+// a slow disk (#682).
 func (n *Node) termAt(index uint64) (uint64, error) {
-	if t, err := n.storage.Term(index); err == nil {
+	if t, ok := n.storage.termOf(index); ok {
 		return t, nil
 	}
-	if index == n.storage.ckpt.Index {
-		return n.storage.ckpt.Term, nil
-	}
-	e, err := n.log.Entry(index)
-	if err != nil {
-		return 0, err
-	}
-	return e.GetTerm(), nil
+	return 0, fmt.Errorf("%w: %d", errNoTerm, index)
 }
+
+// errNoTerm is the term of an entry that the node does not know: one
+// before its newest durable checkpoint, or after its last entry.
+var errNoTerm = errors.New("core: no term known for entry")
 
 // loadCheckpoint reads the checkpoint at root into a new state and
 // checks it against its checksum and the root.
