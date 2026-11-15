@@ -496,9 +496,18 @@ func TestClusterServesTheEtcdAPI(t *testing.T) {
 		if _, err := lk.Unlock(ctx, &v3lockpb.UnlockRequest{Key: got.Key}); err != nil {
 			t.Fatal(err)
 		}
-		// The second lock gave up its key: the name holds none.
-		if r, err := c.Get(ctx, "side-lock/", clientv3.WithPrefix()); err != nil || len(r.Kvs) != 0 {
-			t.Errorf("keys of the lock after both went: %v %v", r, err)
+		// The second lock gives up its key once its context ends, after
+		// its client has given up, as etcd's lock server does: the name
+		// soon holds none.
+		for deadline := time.Now().Add(5 * time.Second); ; {
+			r, err := c.Get(ctx, "side-lock/", clientv3.WithPrefix())
+			if err == nil && len(r.Kvs) == 0 {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("keys of the lock after both went: %v %v", r, err)
+			}
+			time.Sleep(20 * time.Millisecond)
 		}
 
 		el := v3electionpb.NewElectionClient(conn)
