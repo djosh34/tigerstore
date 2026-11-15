@@ -573,6 +573,7 @@ type Node struct {
 	memFull   bool
 	persistQ  chan persistBatch
 	persisted chan persistDone
+	diag      diagStages
 	ckptQ     chan core.CheckpointChunk
 	cleanQ    chan packRoot
 	// wantQ asks prepareSegments for the file of a segment, and nextQ
@@ -1695,6 +1696,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			active = true
 			for _, j := range done.jobs {
 				n.core.Persisted(j)
+				if len(j.Entries) > 0 {
+					n.diag.persisted(j.Entries[len(j.Entries)-1].GetIndex(), time.Now())
+				}
 				if n.cfg.Persisted != nil {
 					n.cfg.Persisted(j)
 				}
@@ -1741,6 +1745,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		if len(eff.Persist) > 0 {
 			backlog = append(backlog, persistBatch{jobs: eff.Persist, queued: time.Now()})
+			for _, j := range eff.Persist {
+				if len(j.Entries) > 0 {
+					n.diag.queued(j.Entries[len(j.Entries)-1].GetIndex(), time.Now())
+				}
+			}
 		}
 		chunks = append(chunks, eff.Checkpoint...)
 		reads = append(reads, eff.Reads...)
@@ -1796,6 +1805,8 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		// What the turn queued on the loop's sockets goes out: replies,
 		// watch events and messages to peers.
 		n.loop.Flush()
+		n.diag.progress(n.core.RaftStatus().GetCommit(), n.core.Applied(), time.Now())
+		n.diag.turn(n.turnStart, time.Now(), n.turnCalls, n.logf)
 		n.turnTook()
 		if err != nil {
 			if errors.Is(err, core.ErrInstalled) {
