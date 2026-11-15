@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/djosh34/tigerstore/internal/metrics"
+	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/wl"
 )
@@ -58,6 +59,14 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 	}
 	cfg.ExtensiveMetrics = ec.Metrics == "extensive"
 	cfg.QuotaBackendBytes = ec.QuotaBackendBytes
+	if ec.AutoCompactionMode != "" {
+		compaction, err := node.ParseCompaction(ec.AutoCompactionMode, ec.AutoCompactionRetention)
+		if err != nil {
+			closeListeners(clientLns, pcfg.Listeners, lg)
+			return err
+		}
+		cfg.AutoCompactPeriod, cfg.AutoCompactRevisions = compaction.Period, compaction.Revisions
+	}
 	if cfg.Metrics, err = metrics.New(featureMetrics(ec.ServerFeatureGate)); err != nil {
 		closeListeners(clientLns, pcfg.Listeners, lg)
 		return err

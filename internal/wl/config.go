@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/url"
+	"time"
 
 	"github.com/djosh34/tigerstore/internal/metrics"
 )
@@ -48,6 +49,11 @@ type Config struct {
 	// QuotaBackendBytes is etcd's --quota-backend-bytes: 0 for etcd's
 	// default, below 0 for none.
 	QuotaBackendBytes int64
+	// AutoCompactPeriod and AutoCompactRevisions are etcd's
+	// --auto-compaction-mode periodic and revision with their retention;
+	// both 0 for none.
+	AutoCompactPeriod    time.Duration
+	AutoCompactRevisions int64
 }
 
 // Member is one member of the cluster.

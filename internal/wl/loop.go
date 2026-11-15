@@ -212,6 +212,7 @@ func run(ctx context.Context, cfg Config) error {
 	}
 	n.extensive = cfg.ExtensiveMetrics
 	n.quota = cmp.Or(cfg.QuotaBackendBytes, defaultQuota)
+	n.compactor = newCompactor(cfg.AutoCompactPeriod, cfg.AutoCompactRevisions, time.Now())
 	n.wal.prom.Store(set)
 	n.prom = set
 	prom, err := newPromHandler(set, cfg.ExtensiveMetrics, l.scrape, &n.metrics.peerSent)
@@ -765,6 +766,7 @@ func (l *loop) run() error {
 			n.expireProposals()
 			n.expireMemberRequests()
 			n.checkMoves()
+			n.autoCompact()
 			n.publish()
 			if err := n.maybeCkpt(); err != nil {
 				return err

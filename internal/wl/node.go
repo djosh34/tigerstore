@@ -131,6 +131,7 @@ type node struct {
 	// applied index when the node last proposed its NOSPACE alarm.
 	quota        int64
 	noSpaceAsked uint64
+	compactor    compactor
 	// gs is what the loop counts for the metrics; extensive is --metrics
 	// extensive. quotaBytes is --quota-backend-bytes.
 	gs           loopStats
