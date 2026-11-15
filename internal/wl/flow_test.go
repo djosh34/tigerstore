@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"testing"
+	"time"
 )
 
 // flowClient is a client whose records seal with a fixed key, for tests
@@ -94,5 +95,32 @@ func TestAResetStreamDropsWhatItHolds(t *testing.T) {
 	c.dropHeld(1)
 	if s.holds || len(c.flow.held) != 0 || len(c.flow.streams) != 0 {
 		t.Fatal("a reset stream still holds data")
+	}
+}
+
+func TestAWriteThatNeverAppliesTimesOut(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	s.kind = kPut
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	n.now = time.Now()
+	for _, seq := range []uint32{1, 2} {
+		n.fwd[seq] = fwdBatch{seq: seq, handles: []handle{mkHandle(c, s.id)}}
+		n.proposed = append(n.proposed, proposal{seq: seq, at: n.now})
+	}
+	n.fwd[2].handles = n.fwd[2].handles[:0] // batch 2 applied and answered
+	n.now = n.now.Add(requestTimeout - time.Millisecond)
+	n.expireProposals()
+	if len(n.proposed) != 2 {
+		t.Fatal("a write timed out early")
+	}
+	n.now = n.now.Add(time.Millisecond)
+	n.expireProposals()
+	if len(n.proposed) != 0 || len(n.fwd[1].handles) != 0 {
+		t.Fatal("a write past its timeout still waits")
+	}
+	if got := n.metrics.handled[kPut][codeUnavailable].Load(); got != 1 {
+		t.Fatalf("%d timed-out answers, want 1", got)
 	}
 }

@@ -20,24 +20,21 @@ import (
 
 type child struct {
 	pfx [12]byte
-	id  uint32 // key id, key id | tombBit once removed, or dir id | dirBit
+	id  uint32 // key id, or dir id | dirBit
 }
 
 const (
 	dirBit = 1 << 31
-	// tombBit marks a key removed from its directory but still in its
-	// array: a delete costs no shift of the array, and the directory is
-	// compacted once most of it is removed.
-	tombBit = 1 << 30
-	noDir   = ^uint32(0)
+	noDir  = ^uint32(0)
 )
 
 type dirEnt struct {
-	poff     uint64
-	plen     uint32
-	parent   uint32
-	children []child
-	tombs    int // children marked removed
+	poff   uint64
+	plen   uint32
+	parent uint32
+	// The children in order, in chunks of at most chunkMax: an insert or
+	// a delete shifts one chunk, however large the directory.
+	chunks [][]child
 	// The watchers whose range covers every key of the directory, and
 	// whether some watcher covers part of it, as of watch generation wgen.
 	wgen  uint32
@@ -149,21 +146,21 @@ func (t *tree) name(d uint32, c child) []byte {
 	if c.id&dirBit != 0 {
 		return t.path(c.id &^ dirBit)[pl:]
 	}
-	return t.st.key(c.id &^ tombBit)[pl:]
+	return t.st.key(c.id)[pl:]
 }
 
-// search returns the first child of d whose name is not before name, and
-// whether it equals it.
-func (t *tree) search(d uint32, name []byte) (int, bool) {
-	cs := t.dirs[d].children
+// chunkMax is the most children a chunk holds before it splits.
+const chunkMax = 2048
+
+// searchIn returns the first child in cs whose name in directory d is not
+// before name, and whether it equals it.
+func (t *tree) searchIn(d uint32, cs []child, name []byte) (int, bool) {
 	p := pfxOf(name)
 	lo, hi := 0, len(cs)
 	for lo < hi {
 		m := int(uint(lo+hi) >> 1)
 		c := cmpPfx(&cs[m].pfx, &p)
-		if c == 0 && (len(name) > 12 || len(t.name(d, cs[m])) > 12) {
-			c = bytes.Compare(t.name(d, cs[m]), name)
-		} else if c == 0 {
+		if c == 0 {
 			c = bytes.Compare(t.name(d, cs[m]), name)
 		}
 		if c < 0 {
@@ -172,20 +169,48 @@ func (t *tree) search(d uint32, name []byte) (int, bool) {
 			hi = m
 		}
 	}
-	found := lo < len(cs) && bytes.Equal(t.name(d, cs[lo]), name)
-	return lo, found
+	return lo, lo < len(cs) && bytes.Equal(t.name(d, cs[lo]), name)
+}
+
+// search returns the position, chunk and index, of the first child of d
+// whose name is not before name, and whether it equals it. The index may
+// be its chunk's length: the position after the chunk's last child.
+func (t *tree) search(d uint32, name []byte) (int, int, bool) {
+	chunks := t.dirs[d].chunks
+	if len(chunks) == 0 {
+		return 0, 0, false
+	}
+	// The last chunk whose first child is not after name.
+	lo, hi := 1, len(chunks)
+	for lo < hi {
+		m := int(uint(lo+hi) >> 1)
+		if bytes.Compare(t.name(d, chunks[m][0]), name) <= 0 {
+			lo = m + 1
+		} else {
+			hi = m
+		}
+	}
+	ci := lo - 1
+	i, found := t.searchIn(d, chunks[ci], name)
+	return ci, i, found
 }
 
 func (t *tree) insertChild(d uint32, name []byte, id uint32) {
-	i, found := t.search(d, name)
 	e := &t.dirs[d]
-	if found && e.children[i].id&tombBit != 0 {
-		// The key comes back where it was removed.
-		e.children[i].id = id
-		e.tombs--
+	if len(e.chunks) == 0 {
+		e.chunks = [][]child{{{pfx: pfxOf(name), id: id}}}
 		return
 	}
-	e.children = slices.Insert(e.children, i, child{pfx: pfxOf(name), id: id})
+	ci, i, _ := t.search(d, name)
+	c := slices.Insert(e.chunks[ci], i, child{pfx: pfxOf(name), id: id})
+	if len(c) <= chunkMax {
+		e.chunks[ci] = c
+		return
+	}
+	half := len(c) / 2
+	right := append(make([]child, 0, chunkMax), c[half:]...)
+	e.chunks[ci] = c[:half:chunkMax]
+	e.chunks = slices.Insert(e.chunks, ci+1, right)
 }
 
 // insert adds key id, which is not in the tree.
@@ -205,21 +230,16 @@ func (t *tree) insert(id uint32) error {
 func (t *tree) remove(id uint32) {
 	k := &t.st.keys[id]
 	d := k.dir
-	i, ok := t.search(d, t.st.key(id)[t.dirs[d].plen:])
-	e := &t.dirs[d]
-	if !ok || e.children[i].id&tombBit != 0 {
+	ci, i, ok := t.search(d, t.st.key(id)[t.dirs[d].plen:])
+	if !ok {
 		return
 	}
-	e.children[i].id |= tombBit
-	e.tombs++
-	if e.tombs > minCompact && 2*e.tombs > len(e.children) {
-		e.children = slices.DeleteFunc(e.children, func(c child) bool { return c.id&dirBit == 0 && c.id&tombBit != 0 })
-		e.tombs = 0
+	e := &t.dirs[d]
+	e.chunks[ci] = slices.Delete(e.chunks[ci], i, i+1)
+	if len(e.chunks[ci]) == 0 && len(e.chunks) > 1 {
+		e.chunks = slices.Delete(e.chunks, ci, ci+1)
 	}
 }
-
-// minCompact is the fewest removed children a directory compacts.
-const minCompact = 32
 
 // bytes estimates the tree's memory: its directories, their table, and a
 // child per key.
@@ -236,50 +256,59 @@ func (t *tree) scan(start, end []byte, fn func(id uint32) bool) {
 func (t *tree) visit(d uint32, start, end []byte, fn func(id uint32) bool) bool {
 	e := &t.dirs[d]
 	pl := int(e.plen)
-	cs := e.children
-	i := 0
-	seek := -1 // the child that holds start
-	if start != nil && len(start) > pl {
+	chunks := e.chunks
+	ci, i := 0, 0
+	seekC, seekI := -1, -1 // the child that holds start
+	if start != nil && len(start) > pl && len(chunks) > 0 {
 		rem := start[pl:]
-		i, _ = t.search(d, rem)
-		if i > 0 {
-			c := cs[i-1]
-			if c.id&dirBit != 0 && bytes.HasPrefix(rem, t.name(d, c)) {
-				i--
-				seek = i
+		ci, i, _ = t.search(d, rem)
+		// The child before the position: a directory there may hold start.
+		pc, pi := ci, i-1
+		if pi < 0 && pc > 0 {
+			pc, pi = pc-1, len(chunks[pc-1])-1
+		}
+		if pi >= 0 {
+			if c := chunks[pc][pi]; c.id&dirBit != 0 && bytes.HasPrefix(rem, t.name(d, c)) {
+				ci, i, seekC, seekI = pc, pi, pc, pi
 			}
 		}
-		if seek < 0 && i < len(cs) && cs[i].id&dirBit != 0 && bytes.HasPrefix(rem, t.name(d, cs[i])) {
-			seek = i
+		if seekC < 0 {
+			if i == len(chunks[ci]) && ci+1 < len(chunks) {
+				ci, i = ci+1, 0
+			}
+			if i < len(chunks[ci]) {
+				if c := chunks[ci][i]; c.id&dirBit != 0 && bytes.HasPrefix(rem, t.name(d, c)) {
+					seekC, seekI = ci, i
+				}
+			}
 		}
 	}
-	for ; i < len(cs); i++ {
-		c := cs[i]
-		if c.id&dirBit != 0 {
-			sub := c.id &^ dirBit
-			if end != nil && bytes.Compare(t.path(sub), end) >= 0 {
+	for ; ci < len(chunks); ci, i = ci+1, 0 {
+		for ; i < len(chunks[ci]); i++ {
+			c := chunks[ci][i]
+			if c.id&dirBit != 0 {
+				sub := c.id &^ dirBit
+				if end != nil && bytes.Compare(t.path(sub), end) >= 0 {
+					return false
+				}
+				var s []byte
+				if ci == seekC && i == seekI {
+					s = start
+				}
+				if !t.visit(sub, s, end, fn) {
+					return false
+				}
+				continue
+			}
+			if end != nil && bytes.Compare(t.st.key(c.id), end) >= 0 {
 				return false
 			}
-			var s []byte
-			if i == seek {
-				s = start
-			}
-			if !t.visit(sub, s, end, fn) {
+			// The chunks may change under fn only if fn writes, which no
+			// reader does.
+			if !fn(c.id) {
 				return false
 			}
-			continue
 		}
-		if c.id&tombBit != 0 {
-			continue
-		}
-		if end != nil && bytes.Compare(t.st.key(c.id), end) >= 0 {
-			return false
-		}
-		if !fn(c.id) {
-			return false
-		}
-		// The array may have changed under fn only if fn writes, which
-		// no reader does.
 	}
 	return true
 }

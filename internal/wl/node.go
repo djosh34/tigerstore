@@ -72,6 +72,8 @@ type node struct {
 	fwd        []fwdBatch
 	fwdPeers   map[uint64][]fwdBatch
 	fwdSeq     uint32
+	// proposed are the batches proposed and not yet timed out, in order.
+	proposed []proposal
 }
 
 type fwdBatch struct {

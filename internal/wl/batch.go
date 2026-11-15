@@ -117,6 +117,7 @@ func (n *node) proposeBatch(now time.Time) {
 	f := &n.fwd[seq&(fwdSlots-1)]
 	f.seq, f.data = seq, data
 	f.handles = append(f.handles[:0], n.batchOwn...)
+	n.proposed = append(n.proposed, proposal{seq: seq, at: now})
 	if n.batchInRing {
 		// A leader's Raft copies the proposal as it takes it, so only the
 		// forward table holds the leader's batch. A follower's waits for
@@ -135,5 +136,39 @@ func (n *node) proposeBatch(now time.Time) {
 		for _, h := range n.batchOwn {
 			n.replyErrorH(h, codeUnavailable, "etcdserver: leader changed")
 		}
+		f.handles = f.handles[:0]
 	}
 }
+
+// requestTimeout is how long a client waits for its write to apply before
+// it is told the request timed out, as etcd's 5 s and two election
+// timeouts: a proposal lost in a leader change never applies.
+const requestTimeout = 7 * time.Second
+
+// proposal is a batch this node proposed and when.
+type proposal struct {
+	seq uint32
+	at  time.Time
+}
+
+// expireProposals answers the clients of batches that have not applied in
+// requestTimeout with etcd's timeout error.
+func (n *node) expireProposals() {
+	k := 0
+	for ; k < len(n.proposed) && n.now.Sub(n.proposed[k].at) >= requestTimeout; k++ {
+		p := n.proposed[k]
+		f := &n.fwd[p.seq&(fwdSlots-1)]
+		if f.seq != p.seq {
+			continue
+		}
+		for _, h := range f.handles {
+			n.replyErrorH(h, codeUnavailable, msgTimeout)
+		}
+		f.handles = f.handles[:0]
+	}
+	if k > 0 {
+		n.proposed = append(n.proposed[:0], n.proposed[k:]...)
+	}
+}
+
+const msgTimeout = "etcdserver: request timed out"

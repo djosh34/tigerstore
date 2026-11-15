@@ -605,6 +605,7 @@ func (l *loop) run() error {
 			l.tick++
 			n.rn.Tick()
 			n.retryReads(l.tick)
+			n.expireProposals()
 			if n.leading() {
 				n.expireLeases()
 			}

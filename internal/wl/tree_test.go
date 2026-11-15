@@ -49,9 +49,50 @@ func TestTreeKeepsOrderThroughRemovesAndReturns(t *testing.T) {
 	if got := scanKeys(st, "/d/011", "/d/015"); !slices.Equal(got, []string{"/d/011", "/d/013"}) {
 		t.Fatalf("a range from a key: %q", got)
 	}
-	d, _ := st.tree.lookup([]byte("/d/"))
-	if e := &st.tree.dirs[d]; e.tombs > minCompact && 2*e.tombs > len(e.children) {
-		t.Fatalf("a directory holds %d removed of %d children uncompacted", e.tombs, len(e.children))
+}
+
+func TestTreeKeepsOrderAcrossChunks(t *testing.T) {
+	st, l := newTestStore(t)
+	const n = 5 * chunkMax
+	// Inserted out of order, so that chunks split in the middle.
+	for i := range n {
+		putValue(t, st, l, fmt.Sprintf("/c/%06d", (i*7919)%n), "")
+	}
+	putValue(t, st, l, "/c/sub/x", "") // a subdirectory among the keys
+	got := scanKeys(st, "/c/", "/c0")
+	if len(got) != n+1 || !slices.IsSorted(got) {
+		t.Fatalf("%d keys, sorted %v", len(got), slices.IsSorted(got))
+	}
+	d, _ := st.tree.lookup([]byte("/c/"))
+	for _, c := range st.tree.dirs[d].chunks {
+		if len(c) > chunkMax {
+			t.Fatalf("a chunk of %d children", len(c))
+		}
+	}
+	// A range that starts in the middle of a chunk, and one at a chunk's
+	// first key.
+	from := scanKeys(st, "/c/004096", "/c/004100")
+	if !slices.Equal(from, []string{"/c/004096", "/c/004097", "/c/004098", "/c/004099"}) {
+		t.Fatalf("a range in the middle: %q", from)
+	}
+	first := string(st.key(st.tree.dirs[d].chunks[1][0].id))
+	if got := scanKeys(st, first, ""); got[0] != first {
+		t.Fatalf("a range from a chunk's first key starts at %q", got[0])
+	}
+	if got := scanKeys(st, "/c/s", "/c/t"); !slices.Equal(got, []string{"/c/sub/x"}) {
+		t.Fatalf("a range into the subdirectory: %q", got)
+	}
+}
+
+func TestInsertsIntoALargeDirectoryStayCheap(t *testing.T) {
+	st, l := newTestStore(t)
+	const n = 200000
+	start := time.Now()
+	for i := range n {
+		putValue(t, st, l, fmt.Sprintf("/big/%07d", (i*104729)%n), "")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("%d inserts into one directory took %v", n, d)
 	}
 }
 

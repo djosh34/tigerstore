@@ -27,6 +27,8 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 		seq := binary.LittleEndian.Uint32(data[4:])
 		if f := &n.fwd[seq&(fwdSlots-1)]; f.seq == seq && len(f.handles) == nops {
 			handles = f.handles
+			// Answered here, the batch's clients are not timed out.
+			defer func() { f.handles = f.handles[:0] }()
 		} else {
 			mine = false
 		}
