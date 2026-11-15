@@ -198,7 +198,7 @@ func run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	l.side = newSideServers(l.self)
-	api := &httpAPI{m: n.metrics, self: l.self, cors: cfg.CORS, hosts: cfg.HostWhitelist, pprof: cfg.Pprof, raftStatus: l.raftStatus}
+	api := &httpAPI{m: n.metrics, cors: cfg.CORS, hosts: cfg.HostWhitelist, pprof: cfg.Pprof, raftStatus: l.raftStatus, read: l.healthRead}
 	if l.http1, err = startHTTP1(ctx, l.self.ActiveConnection(), api); err != nil {
 		return errors.Join(err, l.self.Close())
 	}
@@ -413,6 +413,30 @@ func (l *loop) post(fn func() error) {
 }
 
 func (l *loop) logf(format string, args ...any) { l.logger.Printf(format, args...) }
+
+// healthRead is the read of etcd's health checks, made on the loop as
+// etcd makes it in its server: a serializable one reads the store as it
+// is, a linearizable one waits for a ReadIndex as a range does. It fails
+// if the loop does not answer within etcd's request timeout.
+func (l *loop) healthRead(serializable bool) error {
+	got := make(chan struct{})
+	l.post(func() error {
+		if serializable {
+			close(got)
+			return nil
+		}
+		l.n.reads = append(l.n.reads, pendingRead{h: noHandle, done: func() { close(got) }})
+		return nil
+	})
+	select {
+	case <-got:
+		return nil
+	case <-time.After(healthTimeout):
+		return errHealthTimeout
+	}
+}
+
+var errHealthTimeout = errors.New("etcdserver: request timed out")
 
 // raftStatus is the node's Raft status in JSON, read on the loop, or nil
 // if the loop does not answer in time.

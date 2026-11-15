@@ -15,9 +15,7 @@ import (
 	"strings"
 	"time"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"golang.org/x/sys/unix"
-	"google.golang.org/grpc/status"
 )
 
 // The client port's HTTP endpoints, as etcd v3.7.2 serves them
@@ -29,14 +27,14 @@ import (
 // httpAPI serves the client port's HTTP requests.
 type httpAPI struct {
 	m       *nodeMetrics
-	self    *clientv3.Client
 	gateway http.Handler
 	cors    map[string]struct{}
 	hosts   map[string]struct{}
 	pprof   bool
 	// raftStatus is the node's Raft status in JSON, as etcd's
-	// /debug/vars shows it.
+	// /debug/vars shows it; read makes a health check's read.
 	raftStatus func() []byte
+	read       func(serializable bool) error
 }
 
 const (
@@ -152,20 +150,9 @@ func (a *httpAPI) alarms() []string {
 	return nil
 }
 
-// healthRead is the one-key keys-only read of etcd's health checks. Its
-// error is the text etcd reports, without gRPC's wrapper.
-func (a *httpAPI) healthRead(ctx context.Context, serializable bool) error {
-	ctx, cancel := context.WithTimeout(ctx, healthTimeout)
-	defer cancel()
-	opts := []clientv3.OpOption{clientv3.WithKeysOnly(), clientv3.WithLimit(1)}
-	if serializable {
-		opts = append(opts, clientv3.WithSerializable())
-	}
-	_, err := a.self.Get(ctx, "health", opts...)
-	if st, ok := status.FromError(err); ok && err != nil {
-		return errors.New(st.Message())
-	}
-	return err
+// healthRead is the read of etcd's health checks, made on the loop.
+func (a *httpAPI) healthRead(_ context.Context, serializable bool) error {
+	return a.read(serializable)
 }
 
 // namedCheck is one check of /readyz or /livez; a nil error passes.

@@ -153,6 +153,9 @@ type pendingRead struct {
 	h        handle
 	kind     uint8
 	off, len int
+	// done, if set, is called instead of answering a client: a read of
+	// the node's own, such as a health check's.
+	done func()
 }
 
 type readBatch struct {

@@ -55,6 +55,10 @@ func (n *node) serveReads() {
 	for i, b := range n.readBatches {
 		if b.known && b.index <= n.applied {
 			for _, r := range b.reads {
+				if r.done != nil {
+					r.done()
+					continue
+				}
 				c, s := n.clientOf(r.h)
 				if c == nil {
 					continue
