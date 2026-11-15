@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -408,8 +409,7 @@ func TestOldConnectionRefusesHeldForms(t *testing.T) {
 		frames = append(frames, b...)
 	}
 	cs := &counters{received: prometheus.NewCounter(prometheus.CounterOpts{Name: "received"}), heartbeatReceived: prometheus.NewGauge(prometheus.GaugeOpts{Name: "heartbeat"})}
-	ic := &inConn{t: tr, from: 2, v: 3, cs: cs, buf: frames, w: len(frames)}
-	if err := ic.frames(); err != nil {
+	if err := tr.frames(bytes.NewReader(frames), 2, 3, cs); !errors.Is(err, io.EOF) {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].GetType() != raftpb.MsgHeartbeat {

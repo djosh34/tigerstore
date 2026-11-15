@@ -71,45 +71,32 @@ func (c *conn) admit(st *stream) {
 		// The body goes into the Raft entry as it is if the request is a
 		// write; apply decodes the entry again without copies. Here the
 		// request is decoded to check it, by the fastest decoder for its
-		// type. The decoded request aliases the body, which the call holds
-		// until the node answers it (arena.go). A request in the arena is
-		// decoded into messages from the connection's slabs: a slab keeps
-		// the messages it handed out, and with them what they alias, as
-		// long as it has messages left, so only a request no larger than
-		// the arena takes is: a slab then keeps at most a chunk per
-		// message, never a large request.
-		req.Wire = st.body
-		slabs := &c.slabs
-		if len(st.body) > bodyChunk/4 {
-			slabs = nil
-		}
-		var err error
-		switch st.rpc {
-		case txnMethod:
-			req.Op = slabs.Txn()
-			err = core.DecodeTxn(&req, slabs)
-		case rangeMethod:
-			req.Op = slabs.Range()
-			err = core.DecodeAlias(st.body, req.Op)
-		case deleteMethod:
-			req.Op = st.rpc.op()
-			err = core.DecodeAlias(st.body, req.Op)
-		default:
-			req.Op = st.rpc.op()
-			err = proto.Unmarshal(st.body, req.Op)
-		}
-		if err != nil {
-			st.finish(unmarshalError(err))
-			return
-		}
-		switch r := req.Op.(type) {
-		case *pb.RangeRequest:
-			if st.rpc.learner == learnerSerializable && !r.Serializable && c.s.learner() {
+		// type.
+		req.Op, req.Wire = st.rpc.op(), st.body
+		switch req.Op.(type) {
+		case *pb.TxnRequest, *pb.RangeRequest:
+			var err error
+			if _, ok := req.Op.(*pb.TxnRequest); ok {
+				err = core.DecodeTxn(&req)
+			} else {
+				err = core.DecodeAlias(st.body, req.Op)
+			}
+			if err != nil {
+				st.finish(unmarshalError(err))
+				return
+			}
+			if r, ok := req.Op.(*pb.RangeRequest); ok && st.rpc.learner == learnerSerializable && !r.Serializable && c.s.learner() {
 				st.finish(rpctypes.ErrGRPCNotSupportedForLearner)
 				return
 			}
-		case *pb.TxnRequest:
-			st.readonlyTxn = readonlyTxn(r)
+			if t, ok := req.Op.(*pb.TxnRequest); ok {
+				st.readonlyTxn = readonlyTxn(t)
+			}
+		default:
+			if err := unmarshal(st.body, req.Op); err != nil {
+				st.finish(err)
+				return
+			}
 		}
 	}
 	c.startOpSpan(st, &req)
@@ -146,6 +133,28 @@ func (c *conn) callerOf(st *stream) core.Caller {
 	return caller
 }
 
+// batchDue reports whether the reader should hand its batch to the node
+// before it reads the next frame: the batch is full, or reading the next
+// frame could wait for the client, because it is not buffered whole or
+// starts a header block that continues in later frames. There is no
+// timer.
+func (c *conn) batchDue() bool {
+	b := &c.batch
+	if len(b.reqs) == 0 {
+		return false
+	}
+	if len(b.reqs) >= maxBatchOps || b.bytes >= maxBatchBytes || c.br.Buffered() < frameHeaderLen {
+		return true
+	}
+	// Peek cannot fail: the header is buffered.
+	h, _ := c.br.Peek(frameHeaderLen)
+	n := int(h[0])<<16 | int(h[1])<<8 | int(h[2])
+	if http2.FrameType(h[3]) == http2.FrameHeaders && http2.Flags(h[4])&http2.FlagHeadersEndHeaders == 0 {
+		return true
+	}
+	return c.br.Buffered() < frameHeaderLen+n
+}
+
 // flush hands the batch to the node. It never waits for the node's
 // replies; the held bytes bound a connection through flow control.
 func (c *conn) flush() error {
@@ -171,7 +180,7 @@ func (c *conn) flush() error {
 	if keep == 0 {
 		return nil
 	}
-	err := c.s.n.SubmitLocal(b.reqs, b.tags, c)
+	err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)
 	if err == nil {
 		c.mu.Lock()
 		for i, tag := range b.tags {
@@ -184,6 +193,9 @@ func (c *conn) flush() error {
 		}
 		c.mu.Unlock()
 		return nil
+	}
+	if c.ctx.Err() != nil {
+		return err
 	}
 	// The node stopped; it takes no more requests.
 	c.mu.Lock()
@@ -225,26 +237,11 @@ func (c *conn) cancelLocked(st *stream) {
 	}
 }
 
-// firstReply frees a call's request charge as its first reply comes. The
-// first piece of an answer in pieces keeps the request out of the arena,
-// since the node reads it for the pieces to come: a stream that goes on
-// lets go of it as it ends, and one that was reset or ended at its
-// deadline, which drops the answer, lets go of it now. c.mu is held.
-func (c *conn) firstReply(st *stream, pieces bool) {
-	if pieces {
-		c.abandonBody(st, !st.reset && !st.done.Load())
-	}
-	c.releaseReqLocked(st)
-}
-
-// releaseReqLocked frees a call's request charge, and its request, once
-// the node answered or stopped. c.mu is held.
+// releaseReqLocked frees a call's request charge once the node answered
+// or stopped. c.mu is held.
 func (c *conn) releaseReqLocked(st *stream) {
 	delete(c.atNode, st)
 	c.releaseLocked(&st.reqHeld)
-	if !st.keepBody {
-		c.releaseBody(st)
-	}
 }
 
 // creditLocked sends a connection window update once enough was received
@@ -284,10 +281,9 @@ func estimate(cp *node.Completion) int64 {
 	return 5 + headerBound + fieldsOf(cp.Range.KVs) + 2 + 1 + binary.MaxVarintLen64
 }
 
-// Complete takes replies from the node's committer, on the loop. It
-// pushes them onto a list, counts their size against the connection's
-// budget, and lists the connection to flush at the end of the turn, which
-// encodes and writes them.
+// Complete takes replies from the node's committer. It pushes them onto a
+// lock-free list, so the committer never waits, counts their size against
+// the connection's budget, and wakes the writer, which encodes them.
 func (c *conn) Complete(cs []node.Completion) {
 	n := &completed{cs: cs}
 	for i := range cs {
@@ -300,7 +296,7 @@ func (c *conn) Complete(cs []node.Completion) {
 			break
 		}
 	}
-	c.s.loop.Dirty(c)
+	c.signal()
 }
 
 // takeCompletions returns the replies the node queued, oldest first,
@@ -332,8 +328,6 @@ type finished struct {
 	msg        []byte
 	err        error
 	more, cont bool
-	// pieces is set for the first piece of an answer in pieces.
-	pieces bool
 	// granted is the ID of a lease the node granted, for its span.
 	granted int64
 }
@@ -353,7 +347,6 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 		for _, cp := range cs {
 			st := cp.Tag.(*stream)
 			f := finished{st: st, err: cp.Err, more: cp.MorePieces, cont: st.holes != nil}
-			f.pieces = f.more && !f.cont
 			if !f.cont {
 				c.logSlow(st, now.Sub(st.admitted))
 			}
@@ -406,7 +399,7 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 	for _, f := range out {
 		st := f.st
 		if !f.cont {
-			c.firstReply(st, f.pieces)
+			c.releaseReqLocked(st)
 		}
 		end := !f.more && f.err == nil
 		if st.reset || (end && st.done.Swap(true)) || (!end && st.done.Load()) {

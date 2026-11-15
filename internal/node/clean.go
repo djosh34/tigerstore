@@ -126,7 +126,6 @@ func (n *Node) clean(ctx context.Context) {
 	if err := c.run(ctx); err != nil && ctx.Err() == nil {
 		select {
 		case n.persisted <- persistDone{err: fmt.Errorf("clean: %w", err)}:
-			n.wake()
 		case <-ctx.Done():
 		}
 	}

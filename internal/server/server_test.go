@@ -23,7 +23,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/core"
-	"github.com/djosh34/tigerstore/internal/epoll"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/server"
@@ -189,10 +188,6 @@ func (c *cluster) start(id uint64) {
 	if c.nodeConfig != nil {
 		c.nodeConfig(&ncfg)
 	}
-	// The loop waits in epoll, as the tigerstore command's does.
-	if ncfg.Poller, err = epoll.New(); err != nil {
-		t.Fatal(err)
-	}
 	n, err := node.New(ncfg)
 	if err != nil {
 		t.Fatal(err)
@@ -212,7 +207,7 @@ func (c *cluster) start(id uint64) {
 		// A restart: the stopped transport closed its listener.
 		pln = listenPeer(t, c.peerAddrs[id])
 	}
-	pcfg := peer.Config{ID: id, Listeners: []net.Listener{pln}, Peers: peers, Addr: c.peerAddrs[id], Certificate: cert, CA: c.ca.Pool, Loop: n.Loop(), Deliver: n.Receive, Busy: n.Busy, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Removed: n.Removed, Logf: logf}
+	pcfg := peer.Config{ID: id, Listeners: []net.Listener{pln}, Peers: peers, Addr: c.peerAddrs[id], Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Removed: n.Removed, Logf: logf}
 	if c.peerConfig != nil {
 		c.peerConfig(&pcfg)
 	}
@@ -272,9 +267,6 @@ func (c *cluster) start(id uint64) {
 		if err := errors.Join(stopErr, <-served, tr.Close()); err != nil {
 			t.Errorf("node %d: %v", id, err)
 		}
-		// The loop's connections log through t.Logf until it is done
-		// with them, which may be after the test otherwise ended.
-		<-n.Drained()
 	}}
 }
 
