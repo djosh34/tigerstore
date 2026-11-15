@@ -276,7 +276,7 @@ func intervals(msg []byte, branch int) error {
 				if err := parseDel(op2, &d); err != nil {
 					return badRequest(err)
 				}
-				if inRange(r.key, d.key, d.end) {
+				if overlaps(r.key, d.key, d.end) {
 					return invalid(msgDuplicateKey)
 				}
 			}
@@ -312,7 +312,7 @@ func nestedIntervals(msg []byte, branch int) (map[string]bool, [][2][]byte, erro
 	var dels [][2][]byte
 	deleted := func(k string) bool {
 		for _, d := range dels {
-			if inRange([]byte(k), d[0], d[1]) {
+			if overlaps([]byte(k), d[0], d[1]) {
 				return true
 			}
 		}
@@ -371,14 +371,13 @@ func nestedIntervals(msg []byte, branch int) (map[string]bool, [][2][]byte, erro
 	return puts, dels, nil
 }
 
-// inRange reports whether key lies in [start, end), etcd's range of one
-// key when end is empty and of every key from start when end is "\x00".
-func inRange(key, start, end []byte) bool {
-	switch {
-	case len(end) == 0:
+// overlaps is etcd's checkIntervals' test of a put's key against a
+// delete's range: its interval tree takes the end as it is, so "\x00",
+// which deletes every key from start, is an empty interval there and
+// meets no put, as in etcd.
+func overlaps(key, start, end []byte) bool {
+	if len(end) == 0 {
 		return bytes.Equal(key, start)
-	case len(end) == 1 && end[0] == 0:
-		return bytes.Compare(key, start) >= 0
 	}
 	return bytes.Compare(key, start) >= 0 && bytes.Compare(key, end) < 0
 }

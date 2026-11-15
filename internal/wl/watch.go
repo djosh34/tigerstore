@@ -242,6 +242,16 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 				x.noDel = true
 			}
 		}
+		// etcd's: an empty key is "\x00", the smallest; a start revision
+		// below 0 is refused as compacted.
+		if len(x.key) == 0 {
+			x.key = []byte{0}
+		}
+		if startRev < 0 {
+			n.writeRefused(c, s, msgCompacted)
+			n.markDirty(&c.sock)
+			return nil
+		}
 		// etcd's watch stream: an empty range or an ID the stream has is
 		// refused; ID 0 asks for the next one free.
 		toEnd := len(x.end) == 1 && x.end[0] == 0
