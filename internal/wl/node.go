@@ -2,6 +2,7 @@ package wl
 
 import (
 	"encoding/binary"
+	"errors"
 	"time"
 
 	"go.etcd.io/raft/v3"
@@ -158,14 +159,26 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		if err := parseRange(msg, &r); err != nil {
 			return err
 		}
+		if err := checkRange(&r, msg); err != nil {
+			n.reject(c, s, err)
+			return nil
+		}
 		if r.serializable {
 			n.serveRange(c, s, &r)
 			return nil
 		}
 		n.queueRead(mkHandle(c, s.id), s.kind, msg)
 	case kTxn:
+		if err := checkRequest(kTxn, msg); err != nil {
+			n.reject(c, s, err)
+			return nil
+		}
 		n.addTxn(mkHandle(c, s.id), s, msg)
 	case kPut, kDel, kCompact, kLeaseGrant, kLeaseRevoke:
+		if err := checkRequest(s.kind, msg); err != nil {
+			n.reject(c, s, err)
+			return nil
+		}
 		n.addOp(mkHandle(c, s.id), s.kind, msg)
 	case kLeaseKeepAlive:
 		n.leaseKeepAlive(c, s, msg)
@@ -202,6 +215,15 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		n.endReply(c, s, &w)
 	}
 	return nil
+}
+
+// reject answers a request that its check rejected.
+func (n *node) reject(c *client, s *stream, err error) {
+	if re, ok := errors.AsType[*requestError](err); ok {
+		n.replyError(c, s.id, re.code, re.msg)
+		return
+	}
+	n.replyError(c, s.id, codeInvalidArgument, err.Error())
 }
 
 func writeVarintNZ(w *msgW, num int, v uint64) {
