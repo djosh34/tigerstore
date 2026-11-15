@@ -1,12 +1,19 @@
 package wl
 
 import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"slices"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	pb "go.etcd.io/raft/v3/raftpb"
 )
@@ -335,4 +342,83 @@ func (cr *ckptReader) readMembers() (ckptMembers, error) {
 		cm.removed[id] = true
 	}
 	return cm, nil
+}
+
+// A node that joins a running cluster asks a member for the list first:
+// its hello is membersAsk, of no cluster, and the member answers with its
+// cluster's ID and the list, as a checkpoint holds it.
+const membersAsk = ^uint64(0)
+
+// answerMembers answers a node that asks for the member list, in the
+// accept goroutine, with the list the loop has.
+func (l *loop) answerMembers(s *sock) error {
+	got := make(chan []byte, 1)
+	l.post(func() error {
+		got <- l.n.encodeMembers(binary.LittleEndian.AppendUint64(nil, l.n.clusterID))
+		return nil
+	})
+	select {
+	case b := <-got:
+		putFrame(s, b)
+		return flushAll(s)
+	case <-time.After(snapTimeout):
+		return errors.New("the loop did not answer")
+	case <-l.ctx.Done():
+		return l.ctx.Err()
+	}
+}
+
+// RemoteMembers asks the members at addrs, one after another, for their
+// cluster's ID and member list, through the peer TLS cfg: a node that
+// joins a running cluster learns its ID there.
+func RemoteMembers(ctx context.Context, cfg *tls.Config, addrs []string) ([]Member, uint64, error) {
+	var errs []error
+	for _, addr := range addrs {
+		ms, cluster, err := askMembers(ctx, cfg, addr)
+		if err == nil {
+			return ms, cluster, nil
+		}
+		errs = append(errs, fmt.Errorf("%s: %w", addr, err))
+	}
+	return nil, 0, fmt.Errorf("no member answered with the member list: %w", errors.Join(errs...))
+}
+
+func askMembers(ctx context.Context, cfg *tls.Config, addr string) ([]Member, uint64, error) {
+	var d net.Dialer
+	nc, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, 0, err
+	}
+	c := cfg.Clone()
+	c.ServerName, _, _ = net.SplitHostPort(addr)
+	h, err := handshake(nc, c, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = unix.Close(h.fd) }()
+	if err := blockingFD(h.fd, snapTimeout); err != nil {
+		return nil, 0, err
+	}
+	s := newSock(h, &counters{})
+	s.put(peerHelloBytes(membersAsk, 0))
+	if err := flushAll(s); err != nil {
+		return nil, 0, err
+	}
+	b, err := readFrame(s)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(b) < 8 {
+		return nil, 0, errors.New("a short answer")
+	}
+	cr := &ckptReader{r: bufio.NewReader(bytes.NewReader(b[8:]))}
+	cm, err := cr.readMembers()
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]Member, 0, len(cm.members))
+	for _, m := range cm.members {
+		out = append(out, Member{ID: m.id, Name: m.name, PeerURLs: m.peerURLs, ClientURLs: m.clientURLs})
+	}
+	return out, binary.LittleEndian.Uint64(b), nil
 }

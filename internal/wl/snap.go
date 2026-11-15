@@ -369,6 +369,13 @@ func (l *loop) peerHello(h *handoff) {
 	}
 	hello, cluster := binary.LittleEndian.Uint64(s.pt[s.pr:]), binary.LittleEndian.Uint64(s.pt[s.pr+8:])
 	s.pr += 16
+	if hello == membersAsk {
+		if err := l.answerMembers(s); err != nil {
+			l.logger.Printf("answer a node that asks for the members: %v", err)
+		}
+		_ = unix.Close(h.fd)
+		return
+	}
 	if cluster != l.n.clusterID {
 		l.logger.Printf("refused a peer of cluster %x as %d: this is cluster %x", cluster, hello&^snapMark, l.n.clusterID)
 		_ = unix.Close(h.fd)

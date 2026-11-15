@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,7 +78,18 @@ func TestMembersChangeThroughRaft(t *testing.T) {
 	if _, err := c.MemberAddAsLearner(ctx, []string{"https://127.0.0.1:1"}); !errors.Is(err, rpctypes.ErrTooManyLearners) {
 		t.Fatalf("a second learner added: %v", err)
 	}
-	tc.ids[i], tc.members[i].ID = added.Member.ID, added.Member.ID
+	// It learns the members and the cluster from a member, as
+	// cmd/tigerstore does for a node that joins.
+	ptls, err := loadTLS(tc.certFile, tc.keyFile, tc.caFile, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms, cluster, err := RemoteMembers(ctx, ptls, []string{"127.0.0.1:1", strings.TrimPrefix(tc.peers[1], "https://")})
+	if err != nil || cluster != 0x7769726531 || len(ms) != 4 {
+		t.Fatalf("RemoteMembers: %v, cluster %x, %v", ms, cluster, err)
+	}
+	tc.members = ms
+	tc.ids[i] = added.Member.ID
 	tc.startNode(t, i)
 	lc := tc.rawClient(t, tc.endpoints[i])
 	want, err := c.Get(ctx, "/before-join")

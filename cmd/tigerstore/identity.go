@@ -18,6 +18,7 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
+	"github.com/djosh34/tigerstore/internal/wl"
 )
 
 // identity is a node's Raft ID, its cluster's ID and the members it
@@ -107,7 +108,7 @@ func newIdentity(ec *embed.Config, cluster clusterSpec, pcfg peer.Config) (ident
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), joinTimeout)
 	defer cancel()
-	ms, clusterID, err := node.RemoteMembers(ctx, pcfg, addrs)
+	ms, clusterID, err := remoteMembers(ctx, pcfg, addrs)
 	if err != nil {
 		return identity{}, err
 	}
@@ -173,4 +174,25 @@ func initialMembers(members []member) []*pb.Member {
 		out = append(out, &pb.Member{ID: m.id, Name: m.name, PeerURLs: m.urls})
 	}
 	return out
+}
+
+// remoteMembers asks the running cluster's members at addrs for its ID
+// and members, over the peer protocol of the node that runs.
+func remoteMembers(ctx context.Context, pcfg peer.Config, addrs []string) ([]*pb.Member, uint64, error) {
+	if !useWL() {
+		return node.RemoteMembers(ctx, pcfg, addrs)
+	}
+	_, client, err := wlPeerTLS(pcfg)
+	if err != nil {
+		return nil, 0, err
+	}
+	ms, clusterID, err := wl.RemoteMembers(ctx, client, addrs)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]*pb.Member, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, &pb.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs, ClientURLs: m.ClientURLs})
+	}
+	return out, clusterID, nil
 }
