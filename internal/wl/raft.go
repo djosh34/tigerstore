@@ -238,7 +238,7 @@ func (n *node) afterApply() error {
 			return err
 		}
 	}
-	if n.ckpt != nil || n.ckptDir == "" || n.wal.off-n.ckptFrom < max(ckptMin, 2*(n.st.liveBytes+n.st.histBytes)) {
+	if n.ckpt != nil || n.ckptDir == "" || n.wal.off-n.ckptFrom < 2<<30 {
 		return nil
 	}
 	off := s.offOf(n.applied)
