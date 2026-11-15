@@ -463,7 +463,7 @@ func cutPoint(segLive map[int64]int64, from, prevFrom, unit int64) int64 {
 // The log before the cut that the store still names is at most
 // 1/ckptCutShare of it, counted in units of ckptCutUnit.
 var (
-	ckptCutShare int64 = 4
+	ckptCutShare int64 = 1
 	ckptCutUnit  int64 = segSize
 )
 
