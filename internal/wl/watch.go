@@ -24,7 +24,8 @@ type watcher struct {
 	key, end []byte
 	prefix   bool // the range is every key with key as prefix
 	prevKV   bool
-	fragment bool // split a response over --max-request-bytes, as etcd's
+	fragment bool  // split a response over --max-request-bytes, as etcd's
+	minRev   int64 // a watch from a revision still to come gets no event before it
 	noPut    bool
 	noDel    bool
 	first    int32 // events of this apply, a list through event.next
@@ -167,7 +168,7 @@ func (w *watches) record(st *store, id uint32, del bool, rev int64, kv, prev []b
 
 func (w *watches) push(i int32, id uint32, del bool, rev int64, kv, prev []byte) {
 	x := &w.ws[i]
-	if (del && x.noDel) || (!del && x.noPut) || x.syncRev != 0 {
+	if (del && x.noDel) || (!del && x.noPut) || x.syncRev != 0 || rev < x.minRev {
 		return
 	}
 	ev := int32(len(w.events))
@@ -191,13 +192,17 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 		putFrameHeader(b, len(respHeaders), frHeaders, flEndHeaders, s.id)
 		copy(b[9:], respHeaders)
 	}
+	if len(msg) == 0 {
+		// A request of no kind: etcd ignores it.
+		return nil
+	}
 	num, _, _, p, _, err := field(msg)
 	if err != nil {
 		return err
 	}
 	switch num {
 	case 1:
-		x := watcher{sock: c.idx, gen: c.gen, sid: s.id, id: int64(len(s.wids))}
+		x := watcher{sock: c.idx, gen: c.gen, sid: s.id}
 		var filters []byte
 		startRev := int64(0)
 		for m := p; len(m) > 0; {
@@ -237,6 +242,25 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 				x.noDel = true
 			}
 		}
+		// etcd's watch stream: an empty range or an ID the stream has is
+		// refused; ID 0 asks for the next one free.
+		toEnd := len(x.end) == 1 && x.end[0] == 0
+		switch {
+		case len(x.end) != 0 && !toEnd && bytes.Compare(x.key, x.end) >= 0:
+			n.writeRefused(c, s, "mvcc: watcher range is empty")
+			n.markDirty(&c.sock)
+			return nil
+		case x.id == 0:
+			for n.hasWatch(s, s.nextWatch) {
+				s.nextWatch++
+			}
+			x.id = s.nextWatch
+			s.nextWatch++
+		case n.hasWatch(s, x.id):
+			n.writeRefused(c, s, "mvcc: duplicate watch ID provided on the WatchStream")
+			n.markDirty(&c.sock)
+			return nil
+		}
 		i := n.w.add(x)
 		s.wids = append(s.wids, i)
 		var w msgW
@@ -248,6 +272,9 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 		w.end()
 		// A start revision in the past: the events since, then the live
 		// ones. Nothing applies in between, so none is lost or doubled.
+		if startRev > n.st.rev {
+			n.w.ws[i].minRev = startRev
+		}
 		if startRev > 0 && startRev <= n.st.rev {
 			if startRev < n.st.compactRev {
 				n.writeCompacted(c, s, &x)
@@ -269,10 +296,16 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 			}
 			m = rest
 		}
+		found := false
 		for _, i := range s.wids {
 			if n.w.ws[i].active && n.w.ws[i].id == wid {
 				n.w.remove(i)
+				found = true
 			}
+		}
+		if !found {
+			// etcd answers no cancel of a watch the stream does not have.
+			return nil
 		}
 		var w msgW
 		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(wid)) + 2
@@ -291,6 +324,30 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 	}
 	n.markDirty(&c.sock)
 	return nil
+}
+
+// hasWatch reports whether watch stream s has a watch of ID id.
+func (n *node) hasWatch(s *stream, id int64) bool {
+	for _, i := range s.wids {
+		if x := &n.w.ws[i]; x.active && x.id == id {
+			return true
+		}
+	}
+	return false
+}
+
+// writeRefused answers a watch create that etcd refuses: created and
+// canceled at once, with watch ID -1 and the reason.
+func (n *node) writeRefused(c *client, s *stream, reason string) {
+	size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, math.MaxUint64) + 2 + 2 + sizeBytesField(6, len(reason))
+	var w msgW
+	w.begin(c, s, size)
+	n.writeHdr(&w)
+	w.varintField(2, math.MaxUint64)
+	w.varintField(3, 1)
+	w.varintField(4, 1)
+	w.bytesField(6, []byte(reason))
+	w.end()
 }
 
 func (n *node) closeWatchStream(c *client, s *stream) {

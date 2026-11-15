@@ -50,7 +50,15 @@ func checkRequest(kind uint8, msg []byte, identity int) error {
 	case kDel:
 		return checkDel(msg)
 	case kTxn:
-		return checkTxn(msg, maxTxnOps)
+		if err := checkTxn(msg, maxTxnOps); err != nil {
+			return err
+		}
+		for branch := 2; branch <= 3; branch++ {
+			if _, _, err := intervals(msg, branch); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	return nil
 }
@@ -147,11 +155,8 @@ func checkTxn(msg []byte, maxOps int) error {
 	return nil
 }
 
-// checkBranch checks each operation of a Txn branch, and that no two of
-// its writes touch the same key.
+// checkBranch checks each operation of a Txn branch.
 func checkBranch(msg []byte, branch, maxOps int) error {
-	var puts [][]byte
-	var dels [][2][]byte
 	for m := msg; len(m) > 0; {
 		num, _, _, p, rest, err := field(m)
 		if err != nil {
@@ -181,16 +186,10 @@ func checkBranch(msg []byte, branch, maxOps int) error {
 			if err := checkPut(op); err != nil {
 				return err
 			}
-			var r putReq
-			_ = parsePut(op, &r)
-			puts = append(puts, r.key)
 		case 3:
 			if err := checkDel(op); err != nil {
 				return err
 			}
-			var r delReq
-			_ = parseDel(op, &r)
-			dels = append(dels, [2][]byte{r.key, r.end})
 		case 4:
 			if err := checkTxn(op, maxOps); err != nil {
 				return err
@@ -199,19 +198,91 @@ func checkBranch(msg []byte, branch, maxOps int) error {
 			return invalid(msgKeyNotFound)
 		}
 	}
-	for i, k := range puts {
-		for _, q := range puts[:i] {
-			if bytes.Equal(q, k) {
-				return invalid(msgDuplicateKey)
+	return nil
+}
+
+// intervals is etcd's checkIntervals for a Txn's branch: no key is put
+// twice, nor put and deleted, in the branch and the Txns nested in it,
+// but for a key a nested Txn puts in both of its branches, of which only
+// one runs. It returns the keys the branch puts and the ranges it
+// deletes.
+func intervals(msg []byte, branch int) (map[string]bool, [][2][]byte, error) {
+	var ops [][2]any // each op's kind and body
+	for m := msg; len(m) > 0; {
+		num, _, _, p, rest, err := field(m)
+		if err != nil {
+			return nil, nil, badRequest(err)
+		}
+		m = rest
+		if num != branch {
+			continue
+		}
+		onum, _, _, op, _, err := field(p)
+		if err != nil {
+			return nil, nil, badRequest(err)
+		}
+		ops = append(ops, [2]any{onum, op})
+	}
+	var dels [][2][]byte
+	deleted := func(k string) bool {
+		for _, d := range dels {
+			if inRange([]byte(k), d[0], d[1]) {
+				return true
 			}
 		}
-		for _, d := range dels {
-			if inRange(k, d[0], d[1]) {
-				return invalid(msgDuplicateKey)
+		return false
+	}
+	for _, o := range ops {
+		if o[0].(int) == 3 {
+			var r delReq
+			if err := parseDel(o[1].([]byte), &r); err != nil {
+				return nil, nil, badRequest(err)
 			}
+			dels = append(dels, [2][]byte{r.key, r.end})
 		}
 	}
-	return nil
+	puts := map[string]bool{}
+	for _, o := range ops {
+		if o[0].(int) != 4 {
+			continue
+		}
+		putsThen, delsThen, err := intervals(o[1].([]byte), 2)
+		if err != nil {
+			return nil, nil, err
+		}
+		putsElse, delsElse, err := intervals(o[1].([]byte), 3)
+		if err != nil {
+			return nil, nil, err
+		}
+		for k := range putsThen {
+			if puts[k] || deleted(k) {
+				return nil, nil, invalid(msgDuplicateKey)
+			}
+			puts[k] = true
+		}
+		for k := range putsElse {
+			if (puts[k] && !putsThen[k]) || deleted(k) {
+				return nil, nil, invalid(msgDuplicateKey)
+			}
+			puts[k] = true
+		}
+		dels = append(append(dels, delsThen...), delsElse...)
+	}
+	for _, o := range ops {
+		if o[0].(int) != 2 {
+			continue
+		}
+		var r putReq
+		if err := parsePut(o[1].([]byte), &r); err != nil {
+			return nil, nil, badRequest(err)
+		}
+		k := string(r.key)
+		if puts[k] || deleted(k) {
+			return nil, nil, invalid(msgDuplicateKey)
+		}
+		puts[k] = true
+	}
+	return puts, dels, nil
 }
 
 // inRange reports whether key lies in [start, end), etcd's range of one

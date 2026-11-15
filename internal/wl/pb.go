@@ -94,15 +94,18 @@ func field(m []byte) (num int, typ int, v uint64, p []byte, rest []byte, err err
 		}
 		return num, typ, 0, m[n : n+int(l)], m[n+int(l):], nil
 	case 1:
+		// Fixed-size fields: no field of etcd's requests is one, so, as
+		// protobuf-go reads a field of the wrong wire type, it is unknown
+		// and its bytes are skipped.
 		if len(m) < 8 {
 			return 0, 0, 0, nil, nil, errProto
 		}
-		return num, typ, 0, m[:8], m[8:], nil
+		return num, typ, 0, nil, m[8:], nil
 	case 5:
 		if len(m) < 4 {
 			return 0, 0, 0, nil, nil, errProto
 		}
-		return num, typ, 0, m[:4], m[4:], nil
+		return num, typ, 0, nil, m[4:], nil
 	}
 	return 0, 0, 0, nil, nil, errProto
 }

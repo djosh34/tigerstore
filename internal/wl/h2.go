@@ -86,9 +86,11 @@ type stream struct {
 	buf   []byte // a gRPC message across DATA frames
 	watch bool
 	wids  []int32 // the watchers of a watch stream
-	fail  []byte  // a Txn's failure branch, kept here and not replicated
-	win   int64   // the stream's send window
-	holds bool    // held messages wait for window: the stream's window is in its client's flow
+	// nextWatch is the next watch ID a create that names none may take.
+	nextWatch int64
+	fail      []byte // a Txn's failure branch, kept here and not replicated
+	win       int64  // the stream's send window
+	holds     bool   // held messages wait for window: the stream's window is in its client's flow
 	// streaming: the stream's response headers are out, and it answers
 	// each request with a message until the client ends its side.
 	streaming bool
@@ -399,7 +401,10 @@ type hdrInfo struct {
 
 // unknownMethod is grpc-go's answer to a path no service serves.
 func unknownMethod(path string) string {
-	svc, method, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
+	svc, method, ok := strings.CutLast(strings.TrimPrefix(path, "/"), "/")
+	if !ok {
+		return fmt.Sprintf("malformed method name: %q", path)
+	}
 	for p := range paths {
 		if strings.HasPrefix(p, "/"+svc+"/") {
 			return "unknown method " + method + " for service " + svc
@@ -553,7 +558,15 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 			}
 		}
 		p = p[5+l:]
-		if err := n.request(c, s, msg); err != nil {
+		if err := n.request(c, s, msg); errors.Is(err, errProto) {
+			// A request it cannot read ends the call, not the
+			// connection, as grpc-go answers it.
+			if s.watch {
+				n.closeWatchStream(c, s)
+			}
+			n.replyError(c, s.id, codeInternal, "grpc: error unmarshalling request: proto: cannot parse invalid wire-format data")
+			return nil
+		} else if err != nil {
 			return err
 		}
 		if !s.open {

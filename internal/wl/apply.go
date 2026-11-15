@@ -376,7 +376,7 @@ func result(want int, r int) bool {
 	case 3:
 		return r != 0
 	}
-	return false
+	return true // etcd's compareKV holds for a result it does not know
 }
 
 // txnCompares evaluates a Txn's compares against the store as it is.
@@ -409,8 +409,13 @@ type txnRun struct {
 	voff    int64  // where req lies in the log
 	rev     int64
 	changed bool
-	res     []opRes
-	kvs     [][]byte
+	// path is which branch each nested Txn takes, in the order the
+	// branches meet them, picked on the store before the Txn as etcd's
+	// compareToPath picks them; next is the next one's.
+	path []bool
+	next int
+	res  []opRes
+	kvs  [][]byte
 }
 
 func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
@@ -427,6 +432,9 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 		return err
 	}
 	t := txnRun{req: req, voff: voff, rev: n.st.rev + 1, res: n.txnRes[:0], kvs: n.kvs[:0]}
+	if t.path, err = n.txnPath(ops, ok, nil); err != nil {
+		return err
+	}
 	r0, r1, err := n.runBranch(&t, ops, ok, 0)
 	if err != nil {
 		return err
@@ -525,10 +533,8 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 			t.changed = t.changed || deleted > 0
 			local = append(local, opRes{kind: kDel, rev: t.seen(), kvs0: k0, kvs1: len(t.kvs), deleted: deleted})
 		case 4:
-			sub, err := n.txnCompares(op)
-			if err != nil {
-				return 0, 0, err
-			}
+			sub := t.path[t.next]
+			t.next++
 			c0, c1, err := n.runBranch(t, op, sub, depth+1)
 			if err != nil {
 				return 0, 0, err
@@ -541,6 +547,40 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 	clear(local)
 	n.txnScratch[depth] = local[:0]
 	return r0, len(t.res), nil
+}
+
+// txnPath appends to path the branch each Txn nested in the branch of
+// ops that ok picks takes, depth first, on the store as it is.
+func (n *node) txnPath(ops []byte, ok bool, path []bool) ([]bool, error) {
+	branch := 2
+	if !ok {
+		branch = 3
+	}
+	for m := ops; len(m) > 0; {
+		num, _, _, p, rest, err := field(m)
+		if err != nil {
+			return nil, badRequest(err)
+		}
+		m = rest
+		if num != branch {
+			continue
+		}
+		onum, _, _, op, _, err := field(p)
+		if err != nil {
+			return nil, badRequest(err)
+		}
+		if onum != 4 {
+			continue
+		}
+		sub, err := n.txnCompares(op)
+		if err != nil {
+			return nil, err
+		}
+		if path, err = n.txnPath(op, sub, append(path, sub)); err != nil {
+			return nil, err
+		}
+	}
+	return path, nil
 }
 
 // checkTxnOps fails a Txn whose branch puts to a lease that does not
