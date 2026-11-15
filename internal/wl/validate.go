@@ -54,7 +54,7 @@ func checkRequest(kind uint8, msg []byte, identity int) error {
 			return err
 		}
 		for branch := 2; branch <= 3; branch++ {
-			if _, _, err := intervals(msg, branch); err != nil {
+			if err := intervals(msg, branch); err != nil {
 				return err
 			}
 		}
@@ -204,10 +204,96 @@ func checkBranch(msg []byte, branch, maxOps int) error {
 // intervals is etcd's checkIntervals for a Txn's branch: no key is put
 // twice, nor put and deleted, in the branch and the Txns nested in it,
 // but for a key a nested Txn puts in both of its branches, of which only
-// one runs. It returns the keys the branch puts and the ranges it
+// one runs. A branch with no nested Txn, a Kubernetes write's, is checked
+// pair by pair without allocating; one with nested Txns takes etcd's
+// steps (nestedIntervals).
+func intervals(msg []byte, branch int) error {
+	nested := false
+	for m := msg; len(m) > 0; {
+		num, _, _, p, rest, err := field(m)
+		if err != nil {
+			return badRequest(err)
+		}
+		m = rest
+		if num == branch {
+			if onum, _, _, _, _, err := field(p); err == nil && onum == 4 {
+				nested = true
+			}
+		}
+	}
+	if nested {
+		_, _, err := nestedIntervals(msg, branch)
+		return err
+	}
+	// Each put against the other puts and the deletes of the branch.
+	i := -1
+	for m := msg; len(m) > 0; {
+		num, _, _, p, rest, err := field(m)
+		if err != nil {
+			return badRequest(err)
+		}
+		m = rest
+		if num != branch {
+			continue
+		}
+		i++
+		onum, _, _, op, _, err := field(p)
+		if err != nil || onum != 2 {
+			continue
+		}
+		var r putReq
+		if err := parsePut(op, &r); err != nil {
+			return badRequest(err)
+		}
+		j := -1
+		for o := msg; len(o) > 0; {
+			num, _, _, q, rest, err := field(o)
+			if err != nil {
+				return badRequest(err)
+			}
+			o = rest
+			if num != branch {
+				continue
+			}
+			if j++; j == i {
+				continue
+			}
+			onum, _, _, op2, _, err := field(q)
+			if err != nil {
+				continue
+			}
+			switch onum {
+			case 2:
+				var r2 putReq
+				if err := parsePut(op2, &r2); err != nil {
+					return badRequest(err)
+				}
+				if bytes.Equal(r.key, r2.key) {
+					return invalid(msgDuplicateKey)
+				}
+			case 3:
+				var d delReq
+				if err := parseDel(op2, &d); err != nil {
+					return badRequest(err)
+				}
+				if inRange(r.key, d.key, d.end) {
+					return invalid(msgDuplicateKey)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// nestedIntervals is etcd's checkIntervals itself, for a branch with
+// nested Txns: it returns the keys the branch puts and the ranges it
 // deletes.
-func intervals(msg []byte, branch int) (map[string]bool, [][2][]byte, error) {
-	var ops [][2]any // each op's kind and body
+func nestedIntervals(msg []byte, branch int) (map[string]bool, [][2][]byte, error) {
+	type op struct {
+		kind int
+		body []byte
+	}
+	var ops []op
 	for m := msg; len(m) > 0; {
 		num, _, _, p, rest, err := field(m)
 		if err != nil {
@@ -217,11 +303,11 @@ func intervals(msg []byte, branch int) (map[string]bool, [][2][]byte, error) {
 		if num != branch {
 			continue
 		}
-		onum, _, _, op, _, err := field(p)
+		onum, _, _, body, _, err := field(p)
 		if err != nil {
 			return nil, nil, badRequest(err)
 		}
-		ops = append(ops, [2]any{onum, op})
+		ops = append(ops, op{onum, body})
 	}
 	var dels [][2][]byte
 	deleted := func(k string) bool {
@@ -233,9 +319,9 @@ func intervals(msg []byte, branch int) (map[string]bool, [][2][]byte, error) {
 		return false
 	}
 	for _, o := range ops {
-		if o[0].(int) == 3 {
+		if o.kind == 3 {
 			var r delReq
-			if err := parseDel(o[1].([]byte), &r); err != nil {
+			if err := parseDel(o.body, &r); err != nil {
 				return nil, nil, badRequest(err)
 			}
 			dels = append(dels, [2][]byte{r.key, r.end})
@@ -243,14 +329,14 @@ func intervals(msg []byte, branch int) (map[string]bool, [][2][]byte, error) {
 	}
 	puts := map[string]bool{}
 	for _, o := range ops {
-		if o[0].(int) != 4 {
+		if o.kind != 4 {
 			continue
 		}
-		putsThen, delsThen, err := intervals(o[1].([]byte), 2)
+		putsThen, delsThen, err := nestedIntervals(o.body, 2)
 		if err != nil {
 			return nil, nil, err
 		}
-		putsElse, delsElse, err := intervals(o[1].([]byte), 3)
+		putsElse, delsElse, err := nestedIntervals(o.body, 3)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -269,11 +355,11 @@ func intervals(msg []byte, branch int) (map[string]bool, [][2][]byte, error) {
 		dels = append(append(dels, delsThen...), delsElse...)
 	}
 	for _, o := range ops {
-		if o[0].(int) != 2 {
+		if o.kind != 2 {
 			continue
 		}
 		var r putReq
-		if err := parsePut(o[1].([]byte), &r); err != nil {
+		if err := parsePut(o.body, &r); err != nil {
 			return nil, nil, badRequest(err)
 		}
 		k := string(r.key)
