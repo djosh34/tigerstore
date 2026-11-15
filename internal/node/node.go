@@ -246,8 +246,9 @@ func (ws *WatchStream) took(n int64) {
 // WatchSink takes a watch stream's responses on the node's loop, in
 // place of C or P: a server whose connections run on the loop encodes
 // each into the stream's output there, with no goroutine or channel
-// between them. Watches were about 6.5% of a leader's CPU on crd-heavy,
-// a third of it the goroutines and channels (#602).
+// between them. On crd-heavy the server's watch goroutines took 2.3% of
+// the leader's CPU, 0.8% of it encoding, and the node's side of their
+// channels 1.6% (#602, profile run 43661031646).
 type WatchSink interface {
 	// Watch takes a response or a part of one, as P carries them. It
 	// reports false once the stream cannot take it; the node then drops
