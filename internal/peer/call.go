@@ -38,7 +38,7 @@ func Ask(ctx context.Context, cfg Config, addr string, req []byte) ([]byte, erro
 	if cfg.minVersion == 0 {
 		cfg.minVersion, cfg.maxVersion = minVersion, maxVersion
 	}
-	verify, err := verifyPeer(cfg.AllowedCNs, cfg.AllowedHostnames)
+	verify, err := VerifyPeer(cfg.AllowedCNs, cfg.AllowedHostnames)
 	if err != nil {
 		return nil, err
 	}

@@ -36,7 +36,7 @@ func TestVerifyPeer(t *testing.T) {
 		{"hostname not in SANs", nil, []string{"a.example"}, leaf("x", []string{"c.example"}, net.ParseIP("10.0.0.1")), false},
 	}
 	for _, c := range cases {
-		verify, err := verifyPeer(c.cns, c.hostnames)
+		verify, err := VerifyPeer(c.cns, c.hostnames)
 		if err != nil || verify == nil {
 			t.Fatalf("%s: verify set = %v, err = %v", c.name, verify != nil, err)
 		}
@@ -45,10 +45,10 @@ func TestVerifyPeer(t *testing.T) {
 		}
 	}
 
-	if verify, err := verifyPeer(nil, nil); verify != nil || err != nil {
+	if verify, err := VerifyPeer(nil, nil); verify != nil || err != nil {
 		t.Errorf("no lists: verify set = %v, err = %v; want no check", verify != nil, err)
 	}
-	if _, err := verifyPeer([]string{"node1"}, []string{"a.example"}); err == nil {
+	if _, err := VerifyPeer([]string{"node1"}, []string{"a.example"}); err == nil {
 		t.Error("both lists set: no error")
 	}
 	if _, err := Start(Config{AllowedCNs: []string{"node1"}, AllowedHostnames: []string{"a.example"}}); err == nil {

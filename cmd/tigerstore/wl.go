@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
@@ -49,7 +50,11 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 		}
 		cfg.Members = append(cfg.Members, mem)
 	}
-	cfg.PeerServerTLS, cfg.PeerClientTLS = wlPeerTLS(pcfg)
+	var err error
+	if cfg.PeerServerTLS, cfg.PeerClientTLS, err = wlPeerTLS(pcfg); err != nil {
+		closeListeners(clientLns, pcfg.Listeners, lg)
+		return err
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return wl.Run(ctx, cfg)
@@ -57,26 +62,65 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 
 // wlPeerTLS is the peer TLS of etcd's peer flags: both ends show their
 // certificate and check the other's against the peer CA, or take any with
-// --peer-auto-tls.
-func wlPeerTLS(pcfg peer.Config) (server, client *tls.Config) {
+// --peer-auto-tls. Both ends check --peer-cert-allowed-cn or
+// --peer-cert-allowed-hostname; the end that accepts also checks
+// --peer-crl-file and, unless --peer-skip-client-san-verification, that
+// the dialer's certificate is valid for its address.
+func wlPeerTLS(pcfg peer.Config) (server, client *tls.Config, err error) {
+	verify, err := peer.VerifyPeer(pcfg.AllowedCNs, pcfg.AllowedHostnames)
+	if err != nil {
+		return nil, nil, err
+	}
 	clientCert := pcfg.GetClientCertificate
 	if clientCert == nil {
 		clientCert = pcfg.GetCertificate
 	}
-	server = &tls.Config{
-		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return pcfg.GetCertificate() },
-		ClientCAs:      pcfg.CA,
-		ClientAuth:     tls.RequireAndVerifyClientCert,
-		MinVersion:     tls.VersionTLS13,
-	}
-	client = &tls.Config{
-		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return clientCert() },
-		RootCAs:              pcfg.CA,
-		InsecureSkipVerify:   pcfg.InsecureSkipVerify, //nolint:gosec // etcd's --peer-auto-tls
-		MinVersion:           tls.VersionTLS13,
+	base := &tls.Config{
+		GetCertificate:        func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return pcfg.GetCertificate() },
+		ClientCAs:             pcfg.CA,
+		ClientAuth:            tls.RequireAndVerifyClientCert,
+		MinVersion:            tls.VersionTLS13,
+		VerifyPeerCertificate: verify,
 	}
 	if pcfg.InsecureSkipVerify {
-		server.ClientAuth = tls.RequireAnyClientCert
+		base.ClientAuth = tls.RequireAnyClientCert
 	}
-	return server, client
+	server = &tls.Config{
+		MinVersion: tls.VersionTLS13,
+		// The dialer's address is known only per connection.
+		GetConfigForClient: func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
+			c := base.Clone()
+			c.VerifyConnection = func(cs tls.ConnectionState) error {
+				return checkPeerConn(pcfg, cs, hi.Conn.RemoteAddr().String())
+			}
+			return c, nil
+		},
+	}
+	client = &tls.Config{
+		GetClientCertificate:  func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return clientCert() },
+		RootCAs:               pcfg.CA,
+		InsecureSkipVerify:    pcfg.InsecureSkipVerify, //nolint:gosec // etcd's --peer-auto-tls
+		MinVersion:            tls.VersionTLS13,
+		VerifyPeerCertificate: verify,
+	}
+	return server, client, nil
 }
+
+// checkPeerConn checks a peer that dialed in from addr against
+// --peer-crl-file and its certificate's SANs.
+func checkPeerConn(pcfg peer.Config, cs tls.ConnectionState, addr string) error {
+	if pcfg.CRLFile != "" {
+		if err := peer.CheckCRL(pcfg.CRLFile, cs.PeerCertificates); err != nil {
+			return err
+		}
+	}
+	if !pcfg.CheckClientSAN || len(cs.PeerCertificates) == 0 {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), peerSANTimeout)
+	defer cancel()
+	return peer.CheckCertSAN(ctx, cs.PeerCertificates[0], addr)
+}
+
+// peerSANTimeout bounds the reverse lookup of a dialer's address.
+const peerSANTimeout = 5 * time.Second

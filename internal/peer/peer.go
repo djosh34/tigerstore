@@ -280,7 +280,7 @@ func Start(cfg Config) (*TCP, error) {
 	if cfg.minVersion == 0 {
 		cfg.minVersion, cfg.maxVersion = minVersion, maxVersion
 	}
-	verify, err := verifyPeer(cfg.AllowedCNs, cfg.AllowedHostnames)
+	verify, err := VerifyPeer(cfg.AllowedCNs, cfg.AllowedHostnames)
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +306,7 @@ func Start(cfg Config) (*TCP, error) {
 		scfg.ClientAuth = tls.RequireAnyClientCert
 	}
 	if cfg.CRLFile != "" {
-		scfg.VerifyConnection = func(cs tls.ConnectionState) error { return checkCRL(cfg.CRLFile, cs.PeerCertificates) }
+		scfg.VerifyConnection = func(cs tls.ConnectionState) error { return CheckCRL(cfg.CRLFile, cs.PeerCertificates) }
 	}
 	var lns []net.Listener
 	for _, raw := range cfg.Listeners {
