@@ -43,18 +43,20 @@ func TestWALScanReadsWhatWasWritten(t *testing.T) {
 	if err := w.write(ents, []byte("hard state")); err != nil {
 		t.Fatal(err)
 	}
+	offs := append([]int64{0}, w.offs...) // by index
 	// Read back from the stage, before the disk has it.
 	got := make([]byte, 5)
-	if err := w.read(got, w.offOf(3)); err != nil || string(got) != "three" {
+	if err := w.read(got, offs[3]); err != nil || string(got) != "three" {
 		t.Fatalf("read from the stage: %q, %v", got, err)
 	}
 	syncWAL(t, w)
 	if err := w.write([]*pb.Entry{testEntry(4, 2, "four")}, nil); err != nil {
 		t.Fatal(err)
 	}
+	offs = append(offs, w.offs...)
 	syncWAL(t, w)
 	// One from the disk: the stage's block is not where it reads.
-	if err := w.read(got[:3], w.offOf(1)); err != nil || string(got[:3]) != "one" {
+	if err := w.read(got[:3], offs[1]); err != nil || string(got[:3]) != "one" {
 		t.Fatalf("read from the segment: %q, %v", got[:3], err)
 	}
 
@@ -76,11 +78,11 @@ func TestWALScanReadsWhatWasWritten(t *testing.T) {
 		t.Fatalf("scan ends at %d, the log at %d", end, w.off)
 	}
 	want := []rec{
-		{recEntry, 1, 1, "one", w.offOf(1)},
-		{recEntry, 2, 1, "", w.offOf(2)},
-		{recEntry, 3, 2, "three", w.offOf(3)},
+		{recEntry, 1, 1, "one", offs[1]},
+		{recEntry, 2, 1, "", offs[2]},
+		{recEntry, 3, 2, "three", offs[3]},
 		{recHardState, 0, 0, "hard state", 0},
-		{recEntry, 4, 2, "four", w.offOf(4)},
+		{recEntry, 4, 2, "four", offs[4]},
 	}
 	if len(recs) != len(want) {
 		t.Fatalf("scan found %d records, want %d: %+v", len(recs), len(want), recs)
@@ -127,8 +129,8 @@ func TestWALScanStopsAtATornRecord(t *testing.T) {
 	if len(got) != 1 || got[0] != "kept" {
 		t.Fatalf("scan read %q, want only the record before the torn one", got)
 	}
-	if end != w.offOf(2)-walEntHdr {
-		t.Fatalf("scan ends at %d, want the torn record's start %d", end, w.offOf(2)-walEntHdr)
+	if torn := w.offs[1] - walEntHdr; end != torn {
+		t.Fatalf("scan ends at %d, want the torn record's start %d", end, torn)
 	}
 }
 

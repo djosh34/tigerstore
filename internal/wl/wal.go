@@ -38,7 +38,6 @@ const (
 	stageSize = 32 << 20
 	block     = 4096
 	syncGap   = 800 * time.Microsecond
-	idxSlots  = 1 << 16
 
 	recHead       = 4 + 4 + 1
 	entHead       = 8 + 8 + 1
@@ -58,7 +57,7 @@ type wal struct {
 	hdrs    []byte
 	pending []walJob      // appends written to the stage, by end offset
 	waiting []*pb.Message // appends kept while the stage is full
-	idx     []idxOff
+	offs    []int64       // where the last write's entries have their data
 
 	// stage mirrors the newest part of the log in page-aligned memory:
 	// the loop copies each append there, and the helper writes its blocks
@@ -96,11 +95,6 @@ type walJob struct {
 	resps []*pb.Message
 }
 
-type idxOff struct {
-	index uint64
-	off   int64
-}
-
 type segment struct {
 	wfd, rfd int
 	err      error
@@ -121,7 +115,7 @@ func openWAL(dir string) (*wal, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &wal{dir: dir, kickFD: kick, wakeFD: wake, idx: make([]idxOff, idxSlots), made: make(chan segment, 1)}
+	w := &wal{dir: dir, kickFD: kick, wakeFD: wake, made: make(chan segment, 1)}
 	if w.stage, err = mmapBytes(stageSize); err != nil {
 		return nil, err
 	}
@@ -265,15 +259,6 @@ func (w *wal) kick() {
 	_, _ = unix.Write(w.kickFD, b[:])
 }
 
-// offOf returns where entry index's data lies in the log.
-func (w *wal) offOf(index uint64) int64 {
-	e := w.idx[index&(idxSlots-1)]
-	if e.index != index {
-		return -1
-	}
-	return e.off
-}
-
 // fits reports whether the stage has room for the records of ents and a
 // hard state.
 func (w *wal) fits(ents []*pb.Entry) bool {
@@ -289,6 +274,7 @@ var errStageFull = errors.New("the log ran a whole stage ahead of the disk")
 // write appends entries and a hard state to the stage, without sync.
 func (w *wal) write(ents []*pb.Entry, hs []byte) error {
 	w.iov = w.iov[:0]
+	w.offs = w.offs[:0]
 	need := len(ents)*walEntHdr + recHead + len(hs)
 	if cap(w.hdrs) < need {
 		w.hdrs = make([]byte, 0, 2*need)
@@ -308,7 +294,7 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) error {
 		at += walEntHdr
 		w.iov = append(w.iov, b)
 		off += walEntHdr
-		w.idx[e.GetIndex()&(idxSlots-1)] = idxOff{index: e.GetIndex(), off: off}
+		w.offs = append(w.offs, off)
 		if len(d) > 0 {
 			w.iov = append(w.iov, d)
 			off += int64(len(d))

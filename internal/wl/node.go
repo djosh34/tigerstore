@@ -21,7 +21,7 @@ type node struct {
 	peersOut map[uint64]*peerOut
 
 	rn      *raft.RawNode
-	storage *raft.MemoryStorage
+	storage *logStorage
 	lead    uint64
 	term    uint64
 	applied uint64

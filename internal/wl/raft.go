@@ -102,21 +102,14 @@ func (n *node) unwait() error {
 	return nil
 }
 
+// appendNow writes an append into the stage, and hands its entries to
+// Raft's storage with where the log holds their data.
 func (n *node) appendNow(m *pb.Message) error {
 	ents := m.GetEntries()
-	if len(ents) > 0 {
-		if err := n.storage.Append(ents); err != nil {
-			return err
-		}
-	}
 	var hs []byte
+	var st *pb.HardState
 	if m.Term != nil {
-		n.term = m.GetTerm()
-		st := &pb.HardState{Term: m.Term, Vote: m.Vote, Commit: m.Commit}
-		if err := n.storage.SetHardState(st); err != nil {
-			return err
-		}
-		n.commit = m.GetCommit()
+		st = &pb.HardState{Term: m.Term, Vote: m.Vote, Commit: m.Commit}
 		var err error
 		if hs, err = proto.Marshal(st); err != nil {
 			return err
@@ -126,6 +119,14 @@ func (n *node) appendNow(m *pb.Message) error {
 		if err := n.wal.write(ents, hs); err != nil {
 			return err
 		}
+	}
+	if err := n.storage.append(ents, n.wal.offs); err != nil {
+		return err
+	}
+	if st != nil {
+		n.term = st.GetTerm()
+		n.commit = st.GetCommit()
+		n.storage.setHardState(st)
 	}
 	n.wal.pending = append(n.wal.pending, walJob{end: n.wal.off, resps: m.Responses})
 	if !n.wal.inflight && n.wal.done.Load() >= n.wal.off {
@@ -183,7 +184,7 @@ func (n *node) storageApply(m *pb.Message) error {
 			}
 		case pb.EntryNormal:
 			if d := e.GetData(); len(d) > 0 {
-				if err := n.applyBatch(d, n.wal.offOf(idx)); err != nil {
+				if err := n.applyBatch(d, n.storage.offOf(idx)); err != nil {
 					return err
 				}
 			}
@@ -197,8 +198,8 @@ func (n *node) storageApply(m *pb.Message) error {
 		_ = n.rn.Step(r)
 	}
 	// Keep a window of entries for followers that lag, drop the rest.
-	if first, _ := n.storage.FirstIndex(); n.applied > first+20000 {
-		_ = n.storage.Compact(n.applied - 10000)
+	if first, _ := n.storage.FirstIndex(); n.applied > first+2*storageWindow {
+		n.storage.compact(n.applied - storageWindow)
 	}
 	return nil
 }

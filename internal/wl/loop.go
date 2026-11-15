@@ -223,7 +223,7 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	}
 	n.st.log = n.wal
 	n.st.setBudget(memBudget, 2*ringSize+sideSize+stageSize)
-	n.storage = raft.NewMemoryStorage()
+	n.storage = newLogStorage(n.wal)
 	n.rn, err = raft.NewRawNode(raftConfig(n.id, n.storage))
 	if err != nil {
 		return err
