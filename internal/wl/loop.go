@@ -20,7 +20,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	mainnode "github.com/djosh34/tigerstore/internal/node"
@@ -708,8 +707,7 @@ func serveHTTP1(h *handoff, m *nodeMetrics) {
 		body = buf.Bytes()
 		ctype = "application/octet-stream"
 	default:
-		body = fmt.Appendf(nil, "# TYPE etcd_server_is_leader gauge\netcd_server_is_leader %d\n# TYPE etcd_network_peer_sent_bytes_total counter\netcd_network_peer_sent_bytes_total{To=\"all\"} %d\n",
-			m.isLeader.Load(), m.peerSent.Load())
+		body = m.text()
 	}
 	resp := fmt.Appendf(nil, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", ctype, len(body))
 	s.put(append(resp, body...))
@@ -732,12 +730,6 @@ type counters struct {
 	opsByKind, bytesByKind [16]int
 	named, held            int
 	carried, carriedBytes  [32]int
-}
-
-// nodeMetrics are what the HTTP/1.1 metrics, served off the loop, read.
-type nodeMetrics struct {
-	isLeader atomic.Int64
-	peerSent atomic.Uint64
 }
 
 func (l *loop) logStats() {

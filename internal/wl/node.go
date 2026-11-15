@@ -268,6 +268,7 @@ func (n *node) beginReply(c *client, s *stream, w *msgW, size int) {
 // endReply ends the message and the stream with grpc-status 0.
 func (n *node) endReply(c *client, s *stream, w *msgW) {
 	n.stats.replies++
+	n.metrics.count(s.kind, 0)
 	w.end()
 	n.endStreamOK(c, s)
 }
@@ -275,6 +276,9 @@ func (n *node) endReply(c *client, s *stream, w *msgW) {
 // replyError ends stream sid with a gRPC error, headers and trailers in
 // one block.
 func (n *node) replyError(c *client, sid uint32, code int, msg string) {
+	if s := c.get(sid); s != nil {
+		n.metrics.count(s.kind, code)
+	}
 	blk := append([]byte(nil), respHeaders...)
 	blk = append(blk, 0x00, 11)
 	blk = append(blk, "grpc-status"...)

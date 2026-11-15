@@ -45,6 +45,11 @@ func (n *node) ready() error {
 		if rd.SoftState != nil {
 			was := n.leading()
 			n.lead = rd.Lead
+			hasLeader := int64(0)
+			if n.lead != 0 {
+				hasLeader = 1
+			}
+			n.metrics.hasLeader.Store(hasLeader)
 			if n.leading() != was {
 				n.leaderChanged()
 			}
