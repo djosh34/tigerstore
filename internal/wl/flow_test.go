@@ -5,6 +5,8 @@ import (
 	"crypto/cipher"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // flowClient is a client whose records seal with a fixed key, for tests
@@ -135,5 +137,60 @@ func TestAMessageWrittenPastItsLengthBreaksTheConnection(t *testing.T) {
 	w.end()
 	if !c.broken {
 		t.Fatal("a message written past its length left the connection whole")
+	}
+}
+
+// A socket whose reader never quite catches up keeps its send buffer
+// bounded by what waits, not by everything sent since it last emptied.
+// The buffer was emptied only when a flush wrote all of it, so a leader's
+// buffer to a follower that always lagged a little grew by every byte it
+// sent: the leader of #696 reached 6.9 GB on a 3 GiB budget.
+func TestASendBufferStaysWithinWhatWaits(t *testing.T) {
+	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = unix.Close(fds[1]) }()
+	if err := unix.SetNonblock(fds[0], true); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := flowClient(t)
+	s := newSock(&handoff{fd: fds[0], wr: c.wr}, &counters{})
+	defer func() { _ = unix.Close(fds[0]) }()
+	read := func(n int) {
+		b := make([]byte, n)
+		for got := 0; got < n; {
+			k, err := unix.Read(fds[1], b[got:])
+			if err != nil {
+				t.Fatal(err)
+			}
+			got += k
+		}
+	}
+	const backlog, step, rounds = 1 << 20, 64 << 10, 256
+	chunk := make([]byte, 4<<10)
+	put := func(n int) {
+		for ; n > 0; n -= len(chunk) {
+			s.put(chunk)
+		}
+	}
+	put(backlog)
+	if _, err := s.flush(); err != nil {
+		t.Fatal(err)
+	}
+	for range rounds {
+		put(step)
+		ok, err := s.flush()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			t.Fatal("the reader caught up; the test needs it to lag")
+		}
+		read(step)
+	}
+	if limit := 8 * backlog; cap(s.out) > limit {
+		t.Fatalf("the send buffer grew to %d bytes after %d were sent with about %d waiting; want at most %d",
+			cap(s.out), backlog+rounds*step, backlog, limit)
 	}
 }

@@ -181,9 +181,19 @@ func (s *sock) room() int {
 	return maxPlain - (len(s.out) - s.rec - recHdr - s.wr.extra())
 }
 
+// openRec opens a record at the end of out. When out has no room for it,
+// the bytes already written go first, if they are at least half of out:
+// out is emptied only once a flush writes everything, and a peer that
+// never quite catches up would otherwise keep every byte ever sent to it
+// (#696). Else out doubles.
 func (s *sock) openRec() {
-	if cap(s.out)-len(s.out) < maxPlain+recOverhead+8 {
-		n := make([]byte, len(s.out), 2*cap(s.out)+maxPlain+recOverhead+8)
+	const need = maxPlain + recOverhead + 8
+	if cap(s.out)-len(s.out) < need && s.ow > 0 && 2*s.ow >= len(s.out) {
+		s.out = s.out[:copy(s.out, s.out[s.ow:])]
+		s.ow = 0
+	}
+	if cap(s.out)-len(s.out) < need {
+		n := make([]byte, len(s.out), 2*cap(s.out)+need)
 		copy(n, s.out)
 		s.out = n
 	}
