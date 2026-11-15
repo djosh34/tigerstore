@@ -24,6 +24,7 @@ type watcher struct {
 	key, end []byte
 	prefix   bool // the range is every key with key as prefix
 	prevKV   bool
+	fragment bool // split a response over --max-request-bytes, as etcd's
 	noPut    bool
 	noDel    bool
 	first    int32 // events of this apply, a list through event.next
@@ -219,6 +220,8 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 				startRev = int64(v)
 			case 6:
 				x.prevKV = v != 0
+			case 8:
+				x.fragment = v != 0
 			case 7:
 				if v != 0 {
 					x.id = int64(v)
@@ -313,6 +316,15 @@ func (n *node) flushEvents() {
 		}
 		c, s := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid))
 		if c == nil {
+			continue
+		}
+		if x.fragment {
+			// Rare: a watch that asked for fragments goes the long way.
+			var evs []event
+			for e := first; e >= 0; e = w.events[e].next {
+				evs = append(evs, w.events[e])
+			}
+			n.writeEvents(c, s, x, evs)
 			continue
 		}
 		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id))
@@ -466,16 +478,47 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 	return true, nil
 }
 
-// writeEvents writes one WatchResponse of x with evs.
+// writeEvents writes x's evs as one WatchResponse, or, if x asked for
+// fragments and the response would reach --max-request-bytes, as etcd's
+// sendFragments splits it: as many events a fragment as keep it under
+// the limit, at least one, each but the last marked as a fragment.
 func (n *node) writeEvents(c *client, s *stream, x *watcher, evs []event) {
-	size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id))
+	hdr := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id))
+	size := hdr
 	for i := range evs {
 		size += sizeBytesField(11, n.eventSize(x, &evs[i]))
 	}
+	if !x.fragment || size < maxRequestBytes || len(evs) < 2 {
+		n.writeResponse(c, s, x, evs, size, false)
+		return
+	}
+	for i := 0; i < len(evs); {
+		part, j := hdr+2, i // a fragment's flag takes 2 bytes
+		for ; j < len(evs); j++ {
+			add := sizeBytesField(11, n.eventSize(x, &evs[j]))
+			if j > i && part+add >= maxRequestBytes {
+				break
+			}
+			part += add
+		}
+		last := j == len(evs)
+		if last {
+			part -= 2
+		}
+		n.writeResponse(c, s, x, evs[i:j], part, !last)
+		i = j
+	}
+}
+
+// writeResponse writes one WatchResponse of x of size bytes with evs.
+func (n *node) writeResponse(c *client, s *stream, x *watcher, evs []event, size int, fragment bool) {
 	var mw msgW
 	mw.begin(c, s, size)
 	n.writeHdr(&mw)
 	writeVarintNZ(&mw, 2, uint64(x.id))
+	if fragment {
+		mw.varintField(7, 1)
+	}
 	for i := range evs {
 		n.writeEvent(&mw, x, &evs[i])
 	}

@@ -1,8 +1,10 @@
 package wl
 
 import (
+	"bytes"
 	"crypto/sha1" //nolint:gosec // etcd's member IDs are a SHA-1 of the peer URLs, not a secret
 	"encoding/binary"
+	"errors"
 	"net"
 	"net/url"
 	"slices"
@@ -84,6 +86,9 @@ func (n *node) memberRequest(c *client, s *stream, msg []byte) error {
 	case kMemberPromote:
 		cc.Type = pb.ConfChangeAddNode.Enum()
 		err = n.readyToPromote(id)
+		if errors.Is(err, errNotLeader) {
+			return n.forwardPromote(c, s, msg)
+		}
 	}
 	if err != nil {
 		n.reject(c, s, err)
@@ -168,6 +173,91 @@ func (n *node) readyForVoters(more int) error {
 	return nil
 }
 
+// moveReq is a MoveLeader that waits for the leader to move.
+type moveReq struct {
+	h      handle
+	target uint64
+	at     time.Time
+}
+
+var (
+	errBadTransferee   = requestErr(codeFailedPrecondition, "etcdserver: bad leader transferee")
+	errTransferTimeout = requestErr(codeUnavailable, "etcdserver: request timed out, leader transfer took too long")
+)
+
+// moveTimeout bounds how long a MoveLeader waits.
+const moveTimeout = 5 * time.Second
+
+// moveLeader is etcd's MoveLeader: only the leader moves, only to a
+// voter, and it answers once the leader is the target, with an empty
+// response.
+func (n *node) moveLeader(c *client, s *stream, msg []byte) error {
+	target := uint64(0)
+	for m := msg; len(m) > 0; {
+		num, _, v, _, rest, err := field(m)
+		if err != nil {
+			return err
+		}
+		if num == 1 {
+			target = v
+		}
+		m = rest
+	}
+	if !n.leading() {
+		n.reject(c, s, errNotLeader)
+		return nil
+	}
+	if i := n.memberAt(target); i < 0 || n.members[i].learner {
+		n.reject(c, s, errBadTransferee)
+		return nil
+	}
+	if target == n.id {
+		n.replyEmpty(c, s)
+		return nil
+	}
+	n.rn.TransferLeader(target)
+	n.moves = append(n.moves, moveReq{h: mkHandle(c, s.id), target: target, at: n.now})
+	return nil
+}
+
+// checkMoves answers the MoveLeaders whose target leads now, or that
+// waited too long.
+func (n *node) checkMoves() {
+	k := 0
+	for _, mv := range n.moves {
+		switch {
+		case n.lead == mv.target:
+			if c, s := n.clientOf(mv.h); c != nil {
+				n.replyEmpty(c, s)
+			}
+		case n.now.Sub(mv.at) > moveTimeout:
+			if c, s := n.clientOf(mv.h); c != nil {
+				n.reject(c, s, errTransferTimeout)
+			}
+		default:
+			n.moves[k] = mv
+			k++
+		}
+	}
+	clear(n.moves[k:])
+	n.moves = n.moves[:k]
+}
+
+// forwardPromote has the leader promote a learner, as etcd's follower
+// forwards a promotion: only the leader knows how far the learner is. It
+// calls MemberPromote on the leader's client URLs in a side call, and
+// answers with the leader's answer.
+func (n *node) forwardPromote(c *client, s *stream, msg []byte) error {
+	i := n.memberAt(n.lead)
+	if i < 0 || len(n.members[i].clientURLs) == 0 || n.shell == nil {
+		n.reject(c, s, errNotLeader)
+		return nil
+	}
+	h := mkHandle(c, s.id)
+	n.sideCalls[h] = n.shell.forwardPromote(h, slices.Clone(n.members[i].clientURLs), bytes.Clone(msg))
+	return nil
+}
+
 // readyToRemove is etcd's strict check before a voter is removed: the
 // other voters started must make a quorum of those left.
 func (n *node) readyToRemove(id uint64) error {
@@ -226,8 +316,9 @@ func (n *node) answerMemberRequest(seq uint64, err error) {
 		body = appendBytesField(body, list, appendMember(nil, &n.members[i]))
 	}
 	var w msgW
-	n.beginReply(c, s, &w, sizeBytesField(1, n.hdrSize())+len(body))
-	n.writeHdr(&w)
+	// etcd's cluster calls name no revision in their header.
+	n.beginReply(c, s, &w, sizeBytesField(1, n.hdrSizeAt(0))+len(body))
+	n.writeHdrAt(&w, 0)
 	w.write(body)
 	n.endReply(c, s, &w)
 }

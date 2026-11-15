@@ -51,6 +51,7 @@ type loop struct {
 	peerTLS *tls.Config        // to dial peers
 	http1   *http1             // serves the clients that chose HTTP/1.1
 	self    *clientv3.Client   // the node's client of itself, for the gateway and side calls
+	selfTLS *tls.Config        // its TLS configuration
 	side    *sideServers
 
 	free    []int
@@ -132,6 +133,7 @@ func run(ctx context.Context, cfg Config) error {
 	n.fwd = make([]fwdBatch, fwdSlots)
 	n.fwdPeers = map[uint64][]fwdBatch{}
 	n.sideCalls = map[handle]context.CancelFunc{}
+	n.sideReqs = map[handle][]byte{}
 	n.carryUntil = map[uint64]time.Time{}
 	if n.ring, err = newRing(ringSize); err != nil {
 		return err
@@ -191,7 +193,8 @@ func run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	l.ctx = ctx
-	if l.self, err = selfClient(cfg.ClientListeners[0].Addr().String(), cfg.ClientTLS); err != nil {
+	l.selfTLS = selfTLS(cfg.ClientTLS)
+	if l.self, err = selfClient(cfg.ClientListeners[0].Addr().String(), l.selfTLS); err != nil {
 		return err
 	}
 	l.side = newSideServers(l.self)
@@ -709,6 +712,7 @@ func (l *loop) run() error {
 			n.retryReads(l.tick)
 			n.expireProposals()
 			n.expireMemberRequests()
+			n.checkMoves()
 			n.publish()
 			if err := n.maybeCkpt(); err != nil {
 				return err

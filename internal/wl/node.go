@@ -125,8 +125,12 @@ type node struct {
 	// corrupt say whether one of those types is raised.
 	alarms           []alarm
 	noSpace, corrupt bool
-	// sideCalls end the contexts of the side calls under way.
+	// moves are the MoveLeaders that wait for the leader to move.
+	moves []moveReq
+	// sideCalls end the contexts of the side calls under way; sideReqs
+	// are the requests of those whose client has not ended its side.
 	sideCalls map[handle]context.CancelFunc
+	sideReqs  map[handle][]byte
 }
 
 type fwdBatch struct {
@@ -274,28 +278,23 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 	case kStatus:
 		n.replyStatus(c, s)
 	case kMemberList:
+		// A linearizable list waits for the ReadIndex, as a range does.
+		if num, _, v, _, _, err := field(msg); err == nil && num == 1 && v != 0 {
+			n.queueRead(mkHandle(c, s.id), s.kind, nil)
+			return nil
+		}
 		n.replyMembers(c, s)
 	case kMemberAdd, kMemberRemove, kMemberUpdate, kMemberPromote:
 		return n.memberRequest(c, s, msg)
 	case kSnapshot:
 		n.snapshotRequest(c, s)
 	case kMoveLeader:
-		target := uint64(0)
-		for m := msg; len(m) > 0; {
-			num, _, v, _, rest, err := field(m)
-			if err != nil {
-				return err
-			}
-			if num == 1 {
-				target = v
-			}
-			m = rest
-		}
-		n.rn.TransferLeader(target)
-		var w msgW
-		n.beginReply(c, s, &w, sizeBytesField(1, n.hdrSize()))
-		n.writeHdr(&w)
-		n.endReply(c, s, &w)
+		return n.moveLeader(c, s, msg)
+	case kHash, kHashKV:
+		return n.hashRequest(c, s, msg)
+	case kDefragment:
+		// Nothing to defragment: etcd's answer, an empty response.
+		n.replyEmpty(c, s)
 	}
 	return nil
 }
@@ -320,6 +319,14 @@ func writeVarintNZ(w *msgW, num int, v uint64) {
 func (n *node) hdrSize() int { return n.hdrSizeAt(n.st.rev) }
 
 func (n *node) writeHdr(w *msgW) { n.writeHdrAt(w, n.st.rev) }
+
+// replyEmpty answers with an empty message, as etcd answers a call whose
+// response has no header.
+func (n *node) replyEmpty(c *client, s *stream) {
+	var w msgW
+	n.beginReply(c, s, &w, 0)
+	n.endReply(c, s, &w)
+}
 
 // hdrSizeAt is the size of a ResponseHeader that names revision rev.
 func (n *node) hdrSizeAt(rev int64) int {
@@ -441,9 +448,10 @@ func (n *node) replyMembers(c *client, s *stream) {
 	for i := range n.members {
 		body = appendBytesField(body, 2, appendMember(nil, &n.members[i]))
 	}
+	// etcd's cluster calls name no revision in their header.
 	var w msgW
-	n.beginReply(c, s, &w, sizeBytesField(1, n.hdrSize())+len(body))
-	n.writeHdr(&w)
+	n.beginReply(c, s, &w, sizeBytesField(1, n.hdrSizeAt(0))+len(body))
+	n.writeHdrAt(&w, 0)
 	w.write(body)
 	n.endReply(c, s, &w)
 }

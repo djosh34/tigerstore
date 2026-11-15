@@ -44,6 +44,9 @@ type shell interface {
 	// sideCall starts the side call of h with its request, and returns
 	// what ends it.
 	sideCall(h handle, m *sideMethod, req []byte) context.CancelFunc
+	// forwardPromote calls the MemberPromote req on the leader, at urls,
+	// as a side call of h, and returns what ends it.
+	forwardPromote(h handle, urls []string, req []byte) context.CancelFunc
 }
 
 // logf logs through the shell, if the node has one.

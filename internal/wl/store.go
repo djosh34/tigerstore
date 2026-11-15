@@ -64,6 +64,9 @@ type logReader interface {
 type store struct {
 	rev        int64
 	compactRev int64
+	// prevCompactRev is the compacted revision before the last
+	// compaction, which HashKV at the compacted one names.
+	prevCompactRev int64
 
 	keys  []keyEnt
 	nkeys uint32
@@ -561,7 +564,7 @@ const trimStep = 4096
 // before it at once, and the key histories a few keys at a time after
 // each apply.
 func (st *store) compact(rev int64) {
-	st.compactRev = rev
+	st.prevCompactRev, st.compactRev = st.compactRev, rev
 	st.retrim()
 }
 

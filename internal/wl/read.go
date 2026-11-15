@@ -59,6 +59,10 @@ func (n *node) serveReads() {
 				if c == nil {
 					continue
 				}
+				if r.kind == kMemberList {
+					n.replyMembers(c, s)
+					continue
+				}
 				var req rangeReq
 				if err := parseRange(b.buf[r.off:r.off+r.len], &req); err != nil {
 					n.replyError(c, s.id, codeInvalidArgument, "bad request")

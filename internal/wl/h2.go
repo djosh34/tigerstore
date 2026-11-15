@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"strings"
 
 	"golang.org/x/net/http2/hpack"
 )
@@ -37,6 +38,9 @@ const (
 	// kMemberAttrs is a member's name and client URLs, which it publishes
 	// in a batch; no client sends it.
 	kMemberAttrs
+	kDefragment
+	kHash
+	kHashKV
 	// kSide is the first of the side methods' kinds (side.go).
 	kSide
 	kinds = kSide + maxSideMethods // how many kinds there are
@@ -64,6 +68,9 @@ var paths = map[string]uint8{
 	"/etcdserverpb.Cluster/MemberUpdate":   kMemberUpdate,
 	"/etcdserverpb.Cluster/MemberPromote":  kMemberPromote,
 	"/etcdserverpb.Maintenance/Snapshot":   kSnapshot,
+	"/etcdserverpb.Maintenance/Defragment": kDefragment,
+	"/etcdserverpb.Maintenance/Hash":       kHash,
+	"/etcdserverpb.Maintenance/HashKV":     kHashKV,
 }
 
 // stream is one HTTP/2 stream of a client.
@@ -233,11 +240,13 @@ func (c *client) frames(n *node) error {
 			}
 			if flags&flEndStream != 0 {
 				s.ended = true
-				if s.watch {
-					// The client closed its side of a watch stream.
-					n.closeWatchStream(c, s)
-					c.endStream(s)
-				} else if s.streaming {
+				// A watch stream whose client closed its side goes on,
+				// as etcd's does, until the client resets it or goes.
+				switch {
+				case s.watch:
+				case sideKind(s.kind):
+					n.sideEnded(c, s)
+				case s.streaming:
 					n.endStreaming(c, s)
 				}
 			}
@@ -314,8 +323,11 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 	sid := c.blockSid
 	if s := c.get(sid); s != nil {
 		// Trailers of the client: nothing to do but the end of its side.
-		if c.blockEnd {
+		if c.blockEnd && !s.ended {
 			s.ended = true
+			if sideKind(s.kind) {
+				n.sideEnded(c, s)
+			}
 		}
 		return nil
 	}
@@ -332,24 +344,38 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 			return err
 		}
 		kind = paths[c.hdrPath]
-		if keepsTable(block) {
+		if kind != kUnknown && keepsTable(block) {
 			if len(c.hdrCache) < 256 {
 				c.hdrCache[string(block)] = kind
 			}
-		} else {
+		} else if !keepsTable(block) {
 			clear(c.hdrCache)
 		}
 	}
 	s := c.newStream(sid, kind)
 	if kind == kUnknown {
-		n.replyError(c, sid, 12, "unknown method")
+		n.replyError(c, sid, codeUnimplemented, unknownMethod(c.hdrPath))
 		c.endStream(s)
 		return nil
 	}
 	if c.blockEnd {
 		s.ended = true
+		if sideKind(kind) {
+			n.sideEnded(c, s)
+		}
 	}
 	return nil
+}
+
+// unknownMethod is grpc-go's answer to a path no service serves.
+func unknownMethod(path string) string {
+	svc, method, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
+	for p := range paths {
+		if strings.HasPrefix(p, "/"+svc+"/") {
+			return "unknown method " + method + " for service " + svc
+		}
+	}
+	return "unknown service " + svc
 }
 
 // keepsTable reports whether an HPACK block leaves the dynamic table as

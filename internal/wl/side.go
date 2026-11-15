@@ -7,7 +7,9 @@ import (
 	"errors"
 	"io"
 	"math"
+	"time"
 
+	etcdpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/v3election"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/v3election/v3electionpb"
@@ -86,13 +88,19 @@ func init() {
 // sideKind reports whether kind is a side method's.
 func sideKind(kind uint8) bool { return kind >= kSide && int(kind-kSide) < len(sideMethods) }
 
-// selfClient is the node's client of itself: it dials addr, a client
-// listener of the node, with the client port's TLS configuration, as
-// etcd's gateway does, trusting the node it dials.
-func selfClient(addr string, tlsCfg *tls.Config) (*clientv3.Client, error) {
+// selfTLS is the TLS configuration of the node's own client: the client
+// port's, showing the node's certificate, and trusting the node it
+// dials, as etcd's gateway does.
+func selfTLS(tlsCfg *tls.Config) *tls.Config {
 	dial := tlsCfg.Clone()
 	dial.InsecureSkipVerify = true //nolint:gosec // etcd's gateway trusts the node it runs in, which it dials over loopback
 	dial.GetConfigForClient = nil
+	return dial
+}
+
+// selfClient is the node's client of itself: it dials addr, a client
+// listener of the node, with dial.
+func selfClient(addr string, dial *tls.Config) (*clientv3.Client, error) {
 	return clientv3.New(clientv3.Config{
 		Endpoints: []string{addr}, TLS: dial, Logger: zap.NewNop(),
 		MaxCallRecvMsgSize: math.MaxInt32,
@@ -106,18 +114,35 @@ func newSideServers(cli *clientv3.Client) *sideServers {
 	return &sideServers{lock: v3lock.NewLockServer(cli), election: v3election.NewElectionServer(cli), health: h}
 }
 
-// sideRequest starts the side call of stream s with its request, unless
-// it already has one: a call takes one request.
+// sideRequest keeps the request of side call s until its client ends
+// its side. As grpc-go's, a call takes exactly one request.
 func (n *node) sideRequest(c *client, s *stream, msg []byte) {
 	h := mkHandle(c, s.id)
-	if _, ok := n.sideCalls[h]; ok || n.shell == nil {
+	if _, ok := n.sideReqs[h]; ok {
+		delete(n.sideReqs, h)
+		n.replyError(c, s.id, codeInternal, "cardinality violation: received multiple request messages for non-client-streaming RPC")
 		return
 	}
-	n.sideCalls[h] = n.shell.sideCall(h, &sideMethods[s.kind-kSide], bytes.Clone(msg))
+	n.sideReqs[h] = bytes.Clone(msg)
+}
+
+// sideEnded starts side call s, whose client ended its side, with its
+// one request.
+func (n *node) sideEnded(c *client, s *stream) {
+	h := mkHandle(c, s.id)
+	req, ok := n.sideReqs[h]
+	delete(n.sideReqs, h)
+	switch {
+	case !ok:
+		n.replyError(c, s.id, codeInternal, "cardinality violation: received no request message from non-client-streaming RPC")
+	case n.shell != nil:
+		n.sideCalls[h] = n.shell.sideCall(h, &sideMethods[s.kind-kSide], req)
+	}
 }
 
 // cancelSide ends the context of the side call of h, if it has one.
 func (n *node) cancelSide(h handle) {
+	delete(n.sideReqs, h)
 	if cancel, ok := n.sideCalls[h]; ok {
 		cancel()
 		delete(n.sideCalls, h)
@@ -129,6 +154,11 @@ func (n *node) cancelSides(idx int) {
 	for h := range n.sideCalls {
 		if i, _, _ := h.parts(); i == idx {
 			n.cancelSide(h)
+		}
+	}
+	for h := range n.sideReqs {
+		if i, _, _ := h.parts(); i == idx {
+			delete(n.sideReqs, h)
 		}
 	}
 }
@@ -200,6 +230,31 @@ func (l *loop) sideCall(h handle, m *sideMethod, req []byte) context.CancelFunc 
 		l.post(func() error { l.n.sideEnd(h, m.unary != nil, reply, err); return nil })
 	}()
 	return cancel
+}
+
+// forwardPromote calls a MemberPromote on the leader's client URLs, with
+// the node's client TLS configuration, checking the leader's certificate
+// against the CA the client port trusts.
+func (l *loop) forwardPromote(h handle, urls []string, req []byte) context.CancelFunc {
+	m := &sideMethod{impl: func(*sideServers) any { return nil }, unary: &grpc.MethodDesc{
+		Handler: func(_ any, ctx context.Context, dec func(any) error, _ grpc.UnaryServerInterceptor) (any, error) {
+			r := &etcdpb.MemberPromoteRequest{}
+			if err := dec(r); err != nil {
+				return nil, err
+			}
+			dial := l.selfTLS.Clone()
+			if dial.RootCAs = l.selfTLS.ClientCAs; dial.RootCAs != nil {
+				dial.InsecureSkipVerify = false
+			}
+			cli, err := clientv3.New(clientv3.Config{Endpoints: urls, TLS: dial, Logger: zap.NewNop(), DialTimeout: 5 * time.Second})
+			if err != nil {
+				return nil, err
+			}
+			defer func() { _ = cli.Close() }()
+			return etcdpb.NewClusterClient(cli.ActiveConnection()).MemberPromote(ctx, r)
+		},
+	}}
+	return l.sideCall(h, m, req)
 }
 
 var errNotProto = errors.New("a side call's message is not a protobuf message")

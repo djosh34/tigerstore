@@ -163,19 +163,23 @@ func (n *node) sendClientSnap(cs *clientSnap) bool {
 			b = append(b, make([]byte, pad)...)
 		}
 	}
-	cs.sum.Write(b)
-	if cs.sent+int64(len(b)) == digestAt {
-		b = cs.sum.Sum(b)
+	if cs.sent == digestAt {
+		// As etcd's, the digest comes alone, last.
+		b = cs.sum.Sum(b[:0])
+	} else {
+		cs.sum.Write(b)
 	}
 	cs.buf = b
 	cs.sent += int64(len(b))
 	n.openStream(c, s)
-	ver := []byte("3.7.2")
-	size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(cs.size-cs.sent)) + sizeBytesField(3, len(b)) + sizeBytesField(4, len(ver))
+	// etcd's: no header, the bytes left before the digest, and the
+	// storage version.
+	left := uint64(max(digestAt-cs.sent, 0))
+	ver := []byte(storageVersion)
+	size := sizeVarintField(2, left) + sizeBytesField(3, len(b)) + sizeBytesField(4, len(ver))
 	var w msgW
 	w.begin(c, s, size)
-	n.writeHdr(&w)
-	writeVarintNZ(&w, 2, uint64(cs.size-cs.sent))
+	writeVarintNZ(&w, 2, left)
 	w.bytesField(3, b)
 	w.bytesField(4, ver)
 	w.end()
@@ -188,6 +192,9 @@ func (n *node) sendClientSnap(cs *clientSnap) bool {
 	n.endStreamOK(c, s)
 	return true
 }
+
+// storageVersion is the storage version etcd v3.7.2 names.
+const storageVersion = "3.7.0"
 
 // Restore makes dataDir the data dir of a node of a new cluster from a
 // client's snapshot at path: its checkpoint, with members and voters
