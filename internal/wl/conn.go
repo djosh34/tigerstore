@@ -343,8 +343,15 @@ func (w *msgW) begin(c *client, s *stream, n int) {
 	w.write(p[:])
 }
 
-func (w *msgW) newFrame() {
+// newFrame opens the next DATA frame of the message. It reports false,
+// and marks the connection broken, when the message has no bytes left
+// for it: a writer wrote more than the length it began with.
+func (w *msgW) newFrame() bool {
 	s := w.s
+	if w.left <= 0 {
+		s.broken = true
+		return false
+	}
 	if s.room() < 9+1 {
 		s.seal()
 		s.openRec()
@@ -353,6 +360,7 @@ func (w *msgW) newFrame() {
 	b := s.frame(9)
 	putFrameHeader(b, n, frData, 0, w.sid)
 	w.frameLeft = n
+	return true
 }
 
 func (w *msgW) write(p []byte) {
@@ -362,8 +370,8 @@ func (w *msgW) write(p []byte) {
 		return
 	}
 	for len(p) > 0 {
-		if w.frameLeft == 0 {
-			w.newFrame()
+		if w.frameLeft == 0 && !w.newFrame() {
+			return
 		}
 		n := min(len(p), w.frameLeft)
 		w.s.out = append(w.s.out, p[:n]...)

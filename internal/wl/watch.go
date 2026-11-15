@@ -581,10 +581,6 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 	return true, nil
 }
 
-// writeEvents writes x's evs as one WatchResponse, or, if x asked for
-// fragments and the response would reach --max-request-bytes, as etcd's
-// sendFragments splits it: as many events a fragment as keep it under
-// the limit, at least one, each but the last marked as a fragment.
 // progressIfSynced answers the progress request of watch stream s, if one
 // waits, once none of its watches catches up.
 func (n *node) progressIfSynced(c *client, s *stream) {
@@ -606,7 +602,7 @@ func (n *node) writeProgress(c *client, s *stream, id int64) {
 	var w msgW
 	w.begin(c, s, sizeBytesField(1, n.hdrSize())+sizeVarintField(2, uint64(id)))
 	n.writeHdr(&w)
-	w.varintField(2, uint64(id))
+	writeVarintNZ(&w, 2, uint64(id))
 	w.end()
 	n.markDirty(&c.sock)
 }
@@ -633,6 +629,10 @@ func (n *node) notifyProgress() {
 	}
 }
 
+// writeEvents writes x's evs as one WatchResponse, or, if x asked for
+// fragments and the response would reach --max-request-bytes, as etcd's
+// sendFragments splits it: as many events a fragment as keep it under
+// the limit, at least one, each but the last marked as a fragment.
 func (n *node) writeEvents(c *client, s *stream, x *watcher, evs []event) {
 	x.sent = true
 	hdr := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id))

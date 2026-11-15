@@ -180,3 +180,22 @@ func TestAProgressWaitsForTheStreamsWatchesToCatchUp(t *testing.T) {
 		t.Fatal("a progress still waits after the watch caught up")
 	}
 }
+
+// A progress notification of watch 0 leaves the ID out, as proto3 does
+// and as its size counts it. It wrote the ID anyway, one field past the
+// message's length, and the loop then spun for good opening empty frames
+// (CI on acd57bf6: a node restarted under watches with progress_notify).
+func TestAProgressOfWatchZeroIsAsLongAsItSays(t *testing.T) {
+	for _, id := range []int64{0, 7, -1} {
+		c, s := flowClient(t)
+		st, err := newStore()
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.node.st = st
+		c.node.writeProgress(c, s, id)
+		if c.broken {
+			t.Fatalf("watch %d: the progress came out another length than it said", id)
+		}
+	}
+}

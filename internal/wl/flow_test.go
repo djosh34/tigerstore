@@ -124,3 +124,16 @@ func TestAWriteThatNeverAppliesTimesOut(t *testing.T) {
 		t.Fatalf("%d timed-out answers, want 1", got)
 	}
 }
+
+// A writer that writes past the length it began with breaks the
+// connection and stops, instead of opening empty frames for good.
+func TestAMessageWrittenPastItsLengthBreaksTheConnection(t *testing.T) {
+	c, s := flowClient(t)
+	var w msgW
+	w.begin(c, s, 3)
+	w.write(make([]byte, 10))
+	w.end()
+	if !c.broken {
+		t.Fatal("a message written past its length left the connection whole")
+	}
+}
