@@ -94,6 +94,23 @@ From the prototype's log. Each item is off the steady state, so the speed stays.
   - The simulator runs the gap, and half its nodes, picked by the seed, write their logs direct (`simfs.Disk.Direct`), so the writer's own report runs there too.
   - A drained socket is not read again until epoll reports it.
 
+## The fast path, and the core as its guard
+
+The manager's decision on the hot path ([#602](https://github.com/djosh34/tigerstore/issues/602#issuecomment-6891695192)) took the prototype's shape for the hot path only, with the existing core as the slow path and its guard. It is `internal/core/fast.go`:
+
+- **In.** The server hands a put in wire form or a short transaction to `core.Node.SubmitFast` (through `node.Node.SubmitFast`) as it reads it. The core takes it only when every check of `submit` passes and nothing rare is involved: no auth, no lease on the write, no alarm, entry format 4 or newer, a known leader, a free slot. Anything else goes to `Submit`, which answers it as before, so every refusal is the slow path's.
+- **The batch.** A taken write is encoded by `appendWrite`, the slow path's own encoder, into the open batch, whose header is written when it is sealed. Its waiter is a slot of a table that embeds the slow path's `pending`, not the waiting map, the driver's waiters or their completions.
+- **Apply.** The entry applies through `applyEntry` like every other. The waiter is found in its slot (`waiter`), and every reply leaves through `emit`, which hands a fast call's reply to the call (`core.FastCall`, the server's stream) instead of `Effects.Replies`. The server encodes it in the same turn with the other replies, straight into the record where it fits (`direct.go`).
+- **Another node's write** applies without a request: a put is read in place, and a short transaction is decoded into the same memory each time.
+- **Leaving it.** A write in the open batch that cannot go out as it is moves to the slow path's queue (`demote`): no leader, the NOSPACE alarm, the unapplied budget, a format change, its deadline, or a cancel while no leader is known. A proposed write that expires, or a node that stops, is answered as the slow path answers it.
+
+The conditions of the decision, and where each is met:
+1. **One log, one store, one apply.** Both paths encode a write with `appendWrite` and apply it with `applyEntry`, and a fast request's ID is a plain request ID, so a follower or a restarted node cannot tell which path proposed an entry.
+2. **A differential test.** `TestFastPathMatchesSlowPath` and `FuzzFastPath` (in CI's fuzz list) send the same generated requests to a node on each path and compare the replies, revisions, state hashes and entries applied, byte for byte; a variant with a small memory budget makes fast answers wait for values from the log. The `TestFastWrite…` scenarios cover each way out of the fast path.
+3. **The simulator runs both.** The seed picks per node whether it takes the fast path (`core.Config.Slow`); the clientv3 clients reach it through the real server. The planted bug B34 answers a fast put with the revision before its own, which the simulator catches.
+4. **Safety and the API on the fast path.** The simulator's linearizability, durability and watch checks run over the histories of nodes on the fast path; the server's tests and the conformance job run with it on, as it is the default.
+5. **One PR,** this one.
+
 ## Status
 
 The PR body keeps a list of what is done on the branch, what is benched, and what is left.
