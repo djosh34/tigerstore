@@ -1210,7 +1210,7 @@ const minTurnTime = 15 * time.Millisecond
 // touched: the socket writes alone took 11% of the leader's CPU, and its
 // reads, waits and wake-ups 11% more (#602). Prototype 6 got its larger
 // turns from the 800 µs it left between syncs.
-const DefaultTurnGap = 250 * time.Microsecond
+const DefaultTurnGap = 500 * time.Microsecond
 
 // minTurnCalls is the fewest calls a turn takes, so that a turn slowed by
 // other work still takes clients' calls; measuredTurnCalls the fewest
