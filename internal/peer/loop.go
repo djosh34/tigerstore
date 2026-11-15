@@ -188,10 +188,13 @@ func (c *inConn) frames() error {
 		// entries' data, which the index keeps slices of once they apply,
 		// is the message's own.
 		m := &raftpb.Message{}
-		if err := proto.Unmarshal(c.buf[c.r+4:c.r+4+n], m); err != nil {
+		qAt := int64(binary.BigEndian.Uint64(c.buf[c.r+4:]))
+		fAt := int64(binary.BigEndian.Uint64(c.buf[c.r+12:]))
+		if err := proto.Unmarshal(c.buf[c.r+20:c.r+4+n], m); err != nil {
 			return err
 		}
 		c.r += 4 + n
+		diagMsg(t, m.GetType().String(), qAt, fAt)
 		if m.GetFrom() != c.from {
 			return fmt.Errorf("peer %d sent a message from %d", c.from, m.GetFrom())
 		}
@@ -385,7 +388,7 @@ func (c *outConn) Flush() {
 			c.sending += size(q.m)
 			s.waited(l, q)
 			var err error
-			if c.buf, err = s.frame(c.buf, q.m, c.v); err != nil {
+			if c.buf, err = s.frameAt(c.buf, q.m, c.v, q.at); err != nil {
 				c.fail(err)
 				return
 			}
@@ -428,6 +431,10 @@ func (c *outConn) wait(before, pending int) {
 // held entries for a peer of an older version, or one over the frame limit,
 // is left out.
 func (s *sender) frame(b []byte, m *raftpb.Message, v byte) ([]byte, error) {
+	return s.frameAt(b, m, v, time.Now())
+}
+
+func (s *sender) frameAt(b []byte, m *raftpb.Message, v byte, queuedAt time.Time) ([]byte, error) {
 	if v < heldVersion && core.HeldForm(m) {
 		// Queued while the link spoke a newer version: an older peer
 		// would take a named entry for its data. Raft sends again what
@@ -443,7 +450,9 @@ func (s *sender) frame(b []byte, m *raftpb.Message, v byte) ([]byte, error) {
 		return b, nil
 	}
 	start := len(b)
-	b = binary.BigEndian.AppendUint32(b, uint32(n))
+	b = binary.BigEndian.AppendUint32(b, uint32(n+16))
+	b = binary.BigEndian.AppendUint64(b, uint64(queuedAt.UnixNano()))
+	b = binary.BigEndian.AppendUint64(b, uint64(time.Now().UnixNano()))
 	b, err := proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(b, m)
 	if err != nil {
 		return b[:start], err
