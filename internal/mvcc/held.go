@@ -1,5 +1,7 @@
 package mvcc
 
+import "github.com/djosh34/tigerstore/internal/planted"
+
 // The store holds the value of each key's newest version in memory, in
 // its slabs, as far as its limit allows (part 4 of docs/wire-loop.md). A
 // put copies its value in once, as it is applied, and a read or a watch
@@ -158,7 +160,7 @@ func (s *Store) Release() {
 func (s *Store) heldValue(id uint32, r Ref) ([]byte, bool) {
 	v := &s.vals
 	if id != 0 && id < s.used {
-		if k := s.rec(id); k.held && k.current(r) {
+		if k := s.rec(id); k.held && (k.current(r) || planted.On("B31") && k.sameSpot(r)) {
 			return v.slabs.bytes(k.slotOf(), int(r.Len)), true
 		}
 	}
@@ -166,6 +168,16 @@ func (s *Store) heldValue(id uint32, r Ref) ([]byte, bool) {
 		return v.slabs.bytes(sl, int(r.Len)), true
 	}
 	return nil, false
+}
+
+// sameSpot reports whether k's newest value is at r's offset and of its
+// length, in any entry: planted bug B31 takes that for r.
+func (k *keyIndex) sameSpot(r Ref) bool {
+	if len(k.vers()) == 0 {
+		return false
+	}
+	v := k.vers()[len(k.vers())-1].value
+	return v.Off == r.Off && v.Len == r.Len
 }
 
 // Keep holds b, the value r that a helper read from the log for key, if r

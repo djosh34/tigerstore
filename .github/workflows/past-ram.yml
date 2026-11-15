@@ -118,11 +118,11 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('internal/core/cache.go')
+          path = Path('internal/core/values.go')
           text = path.read_text()
-          old = 'n.cache.setLimit(n.cfg.MemoryBytes - n.otherMemory)'
+          old = 'n.kv.SetValueLimit(n.cfg.MemoryBytes - n.otherMemory)'
           assert text.count(old) == 1
-          path.write_text(text.replace(old, 'n.cache.setLimit(0)'))
+          path.write_text(text.replace(old, 'n.kv.SetValueLimit(0)'))
           PY
           git diff > "$RUNNER_TEMP/cache-control.patch"
           go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore

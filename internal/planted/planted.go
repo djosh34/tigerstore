@@ -43,7 +43,7 @@ var Bugs = map[string]string{
 	"B28":  "MemberUpdate acknowledges a change without updating the peer URLs",
 	"B29":  "the cleaner removes segments before syncing their replacement root",
 	"B30":  "the cleaner omits a value still named by the durable checkpoint",
-	"B31":  "a cache lookup ignores the Raft index and returns an overwritten value",
+	"B31":  "a held value's lookup ignores the Raft index and returns the newest value for an overwritten one",
 	"B32":  "the WAL writes a new segment's header alone, before its first records (#295)",
 	"B33":  "a follower hands Raft an append that names an entry it does not hold, with the entry's key as its data",
 }
