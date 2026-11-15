@@ -36,6 +36,8 @@ const (
 	// callCost is what a call holds besides its request and reply bytes,
 	// so that empty requests count too.
 	callCost = 512
+	// batchRoom is the calls a new batch has room for.
+	batchRoom = 32
 )
 
 // opBatch is the requests the reader decoded since it last handed a batch
@@ -121,6 +123,11 @@ func (c *conn) admit(st *stream) {
 	}
 	st.reqSize = len(st.body)
 	st.body = nil
+	if c.batch.reqs == nil {
+		// The node keeps the batch's slices; the next starts with room
+		// for a turn's calls, not growing from one.
+		c.batch.reqs, c.batch.tags = make([]core.Request, 0, batchRoom), make([]any, 0, batchRoom)
+	}
 	c.batch.reqs = append(c.batch.reqs, req)
 	c.batch.tags = append(c.batch.tags, st)
 	c.batch.bytes += st.reqSize
