@@ -28,6 +28,9 @@ type watcher struct {
 	first    int32 // events of this apply, a list through event.next
 	last     int32
 	queued   bool
+	// syncRev, while not 0, is the revision a watch from the past catches
+	// up from: it gets no live events until it reaches the head.
+	syncRev int64
 }
 
 type event struct {
@@ -45,6 +48,10 @@ type watches struct {
 	other   []int32 // watchers whose range is not a prefix
 	events  []event
 	touched []int32
+	// unsynced are the watchers that catch up, and syncBuf the events of
+	// one's catch-up.
+	unsynced []int32
+	syncBuf  []event
 }
 
 func prefixEnd(p []byte) []byte {
@@ -158,7 +165,7 @@ func (w *watches) record(st *store, id uint32, del bool, rev int64, kv, prev []b
 
 func (w *watches) push(i int32, id uint32, del bool, rev int64, kv, prev []byte) {
 	x := &w.ws[i]
-	if (del && x.noDel) || (!del && x.noPut) {
+	if (del && x.noDel) || (!del && x.noPut) || x.syncRev != 0 {
 		return
 	}
 	ev := int32(len(w.events))
@@ -241,8 +248,9 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 			if startRev < n.st.compactRev {
 				n.writeCompacted(c, s, &x)
 				n.w.remove(i)
-			} else if err := n.sendHistory(c, s, &n.w.ws[i], startRev); err != nil {
-				return err
+			} else {
+				n.w.ws[i].syncRev = startRev
+				n.w.unsynced = append(n.w.unsynced, i)
 			}
 		}
 	case 2:
@@ -342,22 +350,82 @@ func (n *node) writeEvent(mw *msgW, x *watcher, ev *event) {
 	}
 }
 
-// historyChunk is the most events one WatchResponse of history carries.
-const historyChunk = 1000
+// A watch from a past revision catches up from the change index, a
+// bounded amount each turn, as etcd's unsynced watchers do: a watch of
+// a long history never holds the loop up. It gets no live events until it
+// reaches the head; that happens between applies, so none is lost or sent
+// twice.
+const (
+	syncChanges = 1 << 14 // changes the catch-up looks at in a turn, all watchers together
+	syncEvents  = 256     // events it sends in a turn, all watchers together
+)
 
-// sendHistory sends watcher x the events from revision from on.
-func (n *node) sendHistory(c *client, s *stream, x *watcher, from int64) error {
-	return n.history(x, from, func(evs []event) { n.writeEvents(c, s, x, evs) })
+// syncWatchers moves the watchers that catch up on, for one turn.
+func (n *node) syncWatchers() error {
+	w := &n.w
+	if len(w.unsynced) == 0 {
+		return nil
+	}
+	budget := syncBudget{changes: syncChanges, events: syncEvents}
+	k := 0
+	for _, i := range w.unsynced {
+		x := &w.ws[i]
+		if !x.active || x.syncRev == 0 {
+			continue
+		}
+		c, s := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid))
+		if c == nil {
+			continue
+		}
+		if x.syncRev < n.st.compactRev {
+			n.writeCompacted(c, s, x)
+			w.remove(i)
+			continue
+		}
+		if budget.left() {
+			done, err := n.catchUp(x, &budget, func(evs []event) { n.writeEvents(c, s, x, evs) })
+			if err != nil {
+				return err
+			}
+			if done {
+				x.syncRev = 0
+				continue
+			}
+		}
+		w.unsynced[k] = i
+		k++
+	}
+	w.unsynced = w.unsynced[:k]
+	return nil
 }
 
-// history hands fn watcher x's events from revision from on, at most
-// historyChunk at a time, built from the store's change index, the key
-// histories and the log.
-func (n *node) history(x *watcher, from int64, fn func([]event)) error {
+type syncBudget struct{ changes, events int }
+
+func (b *syncBudget) left() bool { return b.changes > 0 && b.events > 0 }
+
+// catchUp hands emit watcher x's events from x.syncRev on, until the
+// head or until the budget is spent, and then only at a revision's end.
+// It reports whether x reached the head.
+func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, error) {
 	st := n.st
-	i, _ := slices.BinarySearchFunc(st.changes, from, func(ch change, rev int64) int { return cmp.Compare(ch.rev, rev) })
-	var evs []event
-	for _, ch := range st.changes[i:] {
+	j, _ := slices.BinarySearchFunc(st.changes, x.syncRev, func(ch change, rev int64) int { return cmp.Compare(ch.rev, rev) })
+	evs := n.w.syncBuf[:0]
+	defer func() {
+		clear(evs)
+		n.w.syncBuf = evs[:0]
+	}()
+	last := int64(-1)
+	for ; j < len(st.changes); j++ {
+		ch := st.changes[j]
+		if !b.left() && ch.rev != last {
+			x.syncRev = ch.rev
+			if len(evs) > 0 {
+				emit(evs)
+			}
+			return false, nil
+		}
+		b.changes--
+		last = ch.rev
 		if (ch.del && x.noDel) || (!ch.del && x.noPut) || !x.covers(st.key(ch.key)) {
 			continue
 		}
@@ -365,24 +433,21 @@ func (n *node) history(x *watcher, from int64, fn func([]event)) error {
 		var err error
 		if !ch.del {
 			if ev.kv, err = st.at(ch.key, ch.rev); err != nil {
-				return err
+				return false, err
 			}
 		}
 		if x.prevKV {
 			if ev.prev, err = st.at(ch.key, ch.rev-1); err != nil {
-				return err
+				return false, err
 			}
 		}
 		evs = append(evs, ev)
-		if len(evs) == historyChunk {
-			fn(evs)
-			evs = evs[:0]
-		}
+		b.events--
 	}
 	if len(evs) > 0 {
-		fn(evs)
+		emit(evs)
 	}
-	return nil
+	return true, nil
 }
 
 // writeEvents writes one WatchResponse of x with evs.

@@ -544,6 +544,9 @@ func (l *loop) run() error {
 		if err := n.ready(); err != nil {
 			return err
 		}
+		if err := n.syncWatchers(); err != nil {
+			return err
+		}
 		l.flush()
 		if !n.rn.HasReady() {
 			// Raft holds no message now that could point into a ring.

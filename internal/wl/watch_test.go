@@ -18,7 +18,9 @@ func historyOf(t *testing.T, n *node, x watcher, from int64) []seen {
 	t.Helper()
 	x.prefix = len(x.end) > 0 && slices.Equal(x.end, prefixEnd(x.key))
 	var out []seen
-	err := n.history(&x, from, func(evs []event) {
+	x.syncRev = from
+	b := syncBudget{changes: 1 << 30, events: 1 << 30}
+	_, err := n.catchUp(&x, &b, func(evs []event) {
 		for _, ev := range evs {
 			s := seen{key: string(n.st.key(ev.key)), rev: ev.rev, del: ev.del}
 			if ev.kv != nil {
@@ -65,18 +67,55 @@ func TestWatchHistoryReplaysChangesInRevisionOrder(t *testing.T) {
 	}
 }
 
-func TestWatchHistoryComesInChunks(t *testing.T) {
+func TestWatchCatchUpKeepsToItsBudgetAndEndsAtARevision(t *testing.T) {
 	n := leaseNode(t)
 	l := n.st.log.(*memLog)
-	for i := range historyChunk + 1 {
-		putValue(t, n.st, l, fmt.Sprintf("/k/%05d", i), "v")
+	for i := range 10 {
+		putValue(t, n.st, l, fmt.Sprintf("/k/%02d", i), "v") // revs 2..11
 	}
-	var sizes []int
-	x := watcher{key: []byte("/k/"), end: prefixEnd([]byte("/k/"))}
-	if err := n.history(&x, 1, func(evs []event) { sizes = append(sizes, len(evs)) }); err != nil {
-		t.Fatal(err)
+	// One revision with three changes.
+	n.st.rev++
+	for _, k := range []string{"/k/a", "/k/b", "/k/c"} {
+		id, err := n.st.intern([]byte(k))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := n.st.put(id, nil, 0, n.st.rev, 0); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if !slices.Equal(sizes, []int{historyChunk, 1}) {
-		t.Fatalf("chunks of %v", sizes)
+	n.st.endApply()
+	x := watcher{key: []byte("/k/"), end: prefixEnd([]byte("/k/")), syncRev: 1}
+	var got []int64
+	emit := func(evs []event) {
+		for _, ev := range evs {
+			got = append(got, ev.rev)
+		}
+	}
+	// A budget of ten takes revisions 2 to 11 and stops before 12.
+	b := syncBudget{changes: 10, events: 1 << 10}
+	if done, err := n.catchUp(&x, &b, emit); err != nil || done {
+		t.Fatalf("a catch-up past its budget: done %v, %v", done, err)
+	}
+	if len(got) != 10 || x.syncRev != 12 {
+		t.Fatalf("the first turn sent revisions %v and goes on from %d, want 2 to 11 and 12", got, x.syncRev)
+	}
+	// A budget of one finishes revision 12's three changes.
+	b = syncBudget{changes: 1, events: 1 << 10}
+	if done, err := n.catchUp(&x, &b, emit); err != nil || !done {
+		t.Fatalf("the second turn: done %v, %v", done, err)
+	}
+	if len(got) != 13 || got[12] != 12 {
+		t.Fatalf("revisions %v, want each change once and all of 12", got)
+	}
+}
+
+func TestAWatchCatchingUpGetsNoLiveEvents(t *testing.T) {
+	var w watches
+	i := w.add(watcher{key: []byte("/a")})
+	w.ws[i].syncRev = 5
+	w.push(i, 0, false, 9, nil, nil)
+	if len(w.events) != 0 {
+		t.Fatal("a watcher catching up got a live event")
 	}
 }
