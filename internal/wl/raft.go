@@ -92,6 +92,8 @@ func openWAL(dir string) (*wal, error) {
 	return w, nil
 }
 
+// Variant: a segment is a new empty file that each write grows.
+//
 // The log is a series of segments of segSize bytes; offsets in the log
 // grow without end, and offset o lies in segment o/segSize. Nothing in
 // it is ever overwritten. Each segment is a file written once with
@@ -105,7 +107,6 @@ type segment struct{ wfd, rfd int }
 // makeSegments makes the segments ahead of the writer, at most two
 // ahead.
 func (w *wal) makeSegments() {
-	zero := make([]byte, 4<<20)
 	dfd, err := unix.Open(w.dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		panic(err)
@@ -114,14 +115,6 @@ func (w *wal) makeSegments() {
 		path := filepath.Join(w.dir, fmt.Sprintf("wal-%08d", i))
 		fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC|unix.O_CLOEXEC, 0o600)
 		if err != nil {
-			panic(err)
-		}
-		for off := int64(0); off < segSize; off += int64(len(zero)) {
-			if _, err := unix.Pwrite(fd, zero, off); err != nil {
-				panic(err)
-			}
-		}
-		if err := unix.Fdatasync(fd); err != nil {
 			panic(err)
 		}
 		_ = unix.Close(fd)
