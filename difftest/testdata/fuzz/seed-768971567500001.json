@@ -1,0 +1,50 @@
+{
+	"name": "seed-768971567500001",
+	"ops": [
+		{
+			"kind": "grant",
+			"ttl": 301
+		},
+		{
+			"kind": "grant",
+			"ttl": 313,
+			"id": 4
+		},
+		{
+			"kind": "put",
+			"key": 3,
+			"value": "djk3Nw==",
+			"lease": 2,
+			"prevKV": true
+		},
+		{
+			"kind": "grant",
+			"ttl": 549
+		},
+		{
+			"kind": "txn",
+			"compare": [
+				{
+					"key": 3,
+					"target": "LEASE",
+					"result": "LESS",
+					"lease": 3
+				},
+				{
+					"key": 3,
+					"target": "VERSION",
+					"result": "LESS",
+					"number": 2
+				}
+			],
+			"failure": [
+				{
+					"kind": "put",
+					"key": 1,
+					"value": "djEwOA==",
+					"prevKV": true
+				}
+			]
+		}
+	]
+}

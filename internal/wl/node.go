@@ -142,6 +142,9 @@ type node struct {
 	// sideSecret marks the side calls' own client, which names the
 	// client each call is for (side.go).
 	sideSecret string
+	// leaseIDs is the suffix of the lease IDs the node gives grants that
+	// ask for none (newLeaseID).
+	leaseIDs uint64
 	// auth is the auth store (auth.go); tokens the simple tokens, logins
 	// the Authenticates under way here, jwt what signs and checks JWTs.
 	auth       *authStore
@@ -326,6 +329,9 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		n.addCaller(c, s)
 		n.addTxn(mkHandle(c, s.id), s, msg)
 	case kPut, kDel, kCompact, kLeaseGrant, kLeaseRevoke:
+		if s.kind == kLeaseGrant {
+			msg = n.withLeaseID(msg)
+		}
 		if err := checkRequest(s.kind, msg, c.identityOf(s)); err != nil {
 			n.reject(c, s, err)
 			return nil

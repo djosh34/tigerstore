@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"testing"
@@ -158,5 +159,71 @@ func TestANestedTxnRunsTheBranchItsComparesPick(t *testing.T) {
 		if mod, _, _, _ := n.st.state(id); mod != rev+1 {
 			t.Fatalf("%s has mod revision %d, want %d", k, mod, rev+1)
 		}
+	}
+}
+
+// A grant that asks for no ID gets one the node chose before proposing,
+// in etcd's shape: above the IDs clients ask for, as etcd's are, so that
+// a Txn compares leases as etcd does (difffuzz seed-768971567500001: the
+// apply's IDs, from the applied index, compared below an asked one).
+func TestALeaseIDTheNodeChoosesIsEtcdShaped(t *testing.T) {
+	n := leaseNode(t)
+	n.id = 0x1234abcd
+	asked := appendVarintField(appendVarintField(nil, 1, 60), 2, 5977638232012)
+	if got := n.withLeaseID(asked); !bytes.Equal(got, asked) {
+		t.Fatal("a grant that asked for an ID got another")
+	}
+	plain := appendVarintField(nil, 1, 60)
+	var last int64
+	for range 3 {
+		req := n.withLeaseID(plain)
+		id, err := grantedID(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id>>48 != 0xabcd&0x7fff || id <= last || id <= 5977638232012 {
+			t.Fatalf("the node chose lease ID %#x after %#x; want the member's low 16 bits on top (its top bit clear), rising, above asked IDs", id, last)
+		}
+		last = id
+		if err := n.applyLeaseGrant(req, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		if n.st.leases[id] == nil {
+			t.Fatalf("lease %#x was not granted with the ID the node chose", id)
+		}
+	}
+	if !bytes.Equal(plain, appendVarintField(nil, 1, 60)) {
+		t.Fatal("choosing an ID changed the request it was given")
+	}
+}
+
+// grantedID reads the ID, field 2, of a LeaseGrant.
+func grantedID(req []byte) (int64, error) {
+	id := int64(0)
+	for m := req; len(m) > 0; {
+		num, _, v, _, rest, err := field(m)
+		if err != nil {
+			return 0, err
+		}
+		if num == 2 {
+			id = int64(v)
+		}
+		m = rest
+	}
+	return id, nil
+}
+
+// As etcd's, whose compacted revision starts at -1, a store's first
+// Compact may name revision 0, and a second may not (difffuzz
+// seed-761104251500003, which failed only where nothing in the run had
+// compacted before it).
+func TestTheFirstCompactionMayNameRevisionZero(t *testing.T) {
+	n := leaseNode(t)
+	req := appendVarintField(nil, 1, 0)
+	if err := n.applyCompact(req, nil, nil); err != nil {
+		t.Fatalf("the first compaction at revision 0: %v", err)
+	}
+	if got := rejected(n.applyCompact(req, nil, nil)); got != msgCompacted {
+		t.Fatalf("a second compaction at revision 0 got %q, want %q", got, msgCompacted)
 	}
 }

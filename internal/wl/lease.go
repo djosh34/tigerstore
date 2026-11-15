@@ -55,6 +55,40 @@ func (st *store) setLease(id uint32, from, to int64) {
 	}
 }
 
+// withLeaseID returns a LeaseGrant that asks for no ID with one the node
+// chose, as etcd's server chooses it before the grant goes through Raft.
+// The IDs are etcd's shape, so that they compare with IDs clients ask for
+// as etcd's do: the member's low 16 bits, then a count that starts at the
+// node's start time in milliseconds (etcd's idutil), the top bit clear.
+func (n *node) withLeaseID(msg []byte) []byte {
+	for m := msg; len(m) > 0; {
+		num, _, v, _, rest, err := field(m)
+		if err != nil {
+			return msg // the check refuses it
+		}
+		if num == 2 && v != 0 {
+			return msg
+		}
+		m = rest
+	}
+	return appendVarintField(slices.Clone(msg), 2, n.newLeaseID())
+}
+
+// newLeaseID is the next lease ID of the node's own (withLeaseID).
+func (n *node) newLeaseID() uint64 {
+	const suffixBits = 48
+	if n.leaseIDs == 0 {
+		n.leaseIDs = uint64(time.Now().UnixMilli()) & (1<<40 - 1) << 8
+	}
+	for {
+		n.leaseIDs++
+		id := (uint64(uint16(n.id))<<suffixBits | n.leaseIDs&(1<<suffixBits-1)) & (1<<63 - 1)
+		if id != 0 {
+			return id
+		}
+	}
+}
+
 // leaseID reads the ID, field 1, of a lease request.
 func leaseID(msg []byte) (int64, error) {
 	id := int64(0)

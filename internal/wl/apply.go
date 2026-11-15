@@ -170,7 +170,7 @@ func (n *node) applyCompact(req []byte, c *client, s *stream) error {
 		m = rest
 	}
 	switch {
-	case rev <= n.st.compactRev:
+	case rev < n.st.compactRev || rev == n.st.compactRev && n.st.compacted:
 		return requestErr(codeOutOfRange, msgCompacted)
 	case rev > n.st.rev:
 		return requestErr(codeOutOfRange, msgFuture)

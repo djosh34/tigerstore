@@ -840,7 +840,7 @@ func loadCkpt(f *os.File, gen int, st *store) (ckptMeta, error) {
 			if binary.LittleEndian.Uint32(sum) != want {
 				return m, fmt.Errorf("%s: %w: its CRC", f.Name(), errCkptCorrupt)
 			}
-			st.rev, st.compactRev = m.rev, m.compactRev
+			st.rev, st.compactRev, st.compacted = m.rev, m.compactRev, m.compactRev > 0
 			return m, nil
 		case ckptKey:
 			fid, err := cr.uvarint()
