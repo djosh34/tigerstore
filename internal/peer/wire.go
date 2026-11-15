@@ -40,10 +40,10 @@ const (
 // message is a raftpb.Message with room for the fields it points to, so
 // that it takes one allocation.
 type message struct {
-	m                                                   raftpb.Message
-	typ                                                 raftpb.MessageType
+	m                                                  raftpb.Message
+	typ                                                raftpb.MessageType
 	to, from, term, logTerm, index, commit, hint, vote uint64
-	reject                                              bool
+	reject                                             bool
 }
 
 // entry is a raftpb.Entry with room for the fields it points to.
@@ -90,6 +90,8 @@ func decodeFast(b []byte) (*raftpb.Message, bool) {
 		if typ == protowire.BytesType {
 			v, n := protowire.ConsumeBytes(b)
 			b = b[n:]
+			// raftpb's fields, not protowire's bounds.
+			//exhaustive:ignore
 			switch num {
 			case fEntries:
 				e := &boxes[len(m.Entries)]
@@ -104,6 +106,8 @@ func decodeFast(b []byte) (*raftpb.Message, bool) {
 		}
 		v, n := protowire.ConsumeVarint(b)
 		b = b[n:]
+		// raftpb's fields, not protowire's bounds.
+		//exhaustive:ignore
 		switch num {
 		case fType:
 			x.typ = raftpb.MessageType(int32(v))
@@ -202,6 +206,8 @@ func decodeEntry(b []byte, e *entry, buf []byte) ([]byte, bool) {
 			return buf, false
 		}
 		b = b[n:]
+		// raftpb's fields, not protowire's bounds.
+		//exhaustive:ignore
 		switch num {
 		case fEntryType:
 			e.typ = raftpb.EntryType(int32(v))
