@@ -67,13 +67,20 @@ func TestMembersChangeThroughRaft(t *testing.T) {
 	}
 
 	// A learner joins: it is added, started with the list, and catches up.
+	// It is added through the leader, and a follower's list, which is
+	// linearizable, has it at once.
+	leader := tc.rawClient(t, tc.leaderEndpoint(t, c))
+	follower := tc.rawClient(t, tc.followerEndpoint(t, c))
 	i := tc.addPorts(t, 0, true)
-	added, err := c.MemberAddAsLearner(ctx, []string{tc.peers[i]})
+	added, err := leader.MemberAddAsLearner(ctx, []string{tc.peers[i]})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !added.Member.IsLearner || len(added.Members) != 4 {
 		t.Fatalf("MemberAdd answered %v", added)
+	}
+	if fl, err := follower.MemberList(ctx); err != nil || len(fl.Members) != 4 {
+		t.Fatalf("a follower's list right after the add: %v, %v", fl, err)
 	}
 	if _, err := c.MemberAddAsLearner(ctx, []string{"https://127.0.0.1:1"}); !errors.Is(err, rpctypes.ErrTooManyLearners) {
 		t.Fatalf("a second learner added: %v", err)
@@ -110,9 +117,9 @@ func TestMembersChangeThroughRaft(t *testing.T) {
 		t.Fatalf("a learner took a write: %v", err)
 	}
 
-	// The leader promotes it; then it is a voter like the others.
-	leader := tc.rawClient(t, tc.leaderEndpoint(t, c))
-	if _, err := leader.MemberPromote(ctx, added.Member.ID); err != nil {
+	// A follower forwards the promotion to the leader, as etcd's does;
+	// then the learner is a voter like the others.
+	if _, err := follower.MemberPromote(ctx, added.Member.ID); err != nil {
 		t.Fatal(err)
 	}
 	r = waitMembers(t, c, 4)
@@ -192,6 +199,20 @@ func (tc *testCluster) leaderEndpoint(t *testing.T, c *clientv3.Client) string {
 		}
 	}
 	t.Fatal("no leader")
+	return ""
+}
+
+// followerEndpoint is the endpoint of a node of the first three that does
+// not lead.
+func (tc *testCluster) followerEndpoint(t *testing.T, c *clientv3.Client) string {
+	t.Helper()
+	for _, ep := range tc.endpoints[:3] {
+		s, err := c.Status(context.Background(), ep)
+		if err == nil && s.Leader != 0 && s.Leader != s.Header.MemberId {
+			return ep
+		}
+	}
+	t.Fatal("no follower")
 	return ""
 }
 
