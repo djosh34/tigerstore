@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -210,6 +211,7 @@ func run(ctx context.Context, cfg Config) error {
 		}
 	}
 	n.extensive = cfg.ExtensiveMetrics
+	n.quota = cmp.Or(cfg.QuotaBackendBytes, defaultQuota)
 	n.wal.prom.Store(set)
 	n.prom = set
 	prom, err := newPromHandler(set, cfg.ExtensiveMetrics, l.scrape, &n.metrics.peerSent)

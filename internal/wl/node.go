@@ -127,6 +127,10 @@ type node struct {
 	// corrupt say whether one of those types is raised.
 	alarms           []alarm
 	noSpace, corrupt bool
+	// quota is --quota-backend-bytes, -1 for none; noSpaceAsked is the
+	// applied index when the node last proposed its NOSPACE alarm.
+	quota        int64
+	noSpaceAsked uint64
 	// gs is what the loop counts for the metrics; extensive is --metrics
 	// extensive. quotaBytes is --quota-backend-bytes.
 	gs           loopStats
@@ -273,10 +277,18 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 			n.reject(c, s, err)
 			return nil
 		}
+		if !n.quotaLeft(kTxn, msg) {
+			n.refuseNoSpace(c, s)
+			return nil
+		}
 		n.addTxn(mkHandle(c, s.id), s, msg)
 	case kPut, kDel, kCompact, kLeaseGrant, kLeaseRevoke:
 		if err := checkRequest(s.kind, msg, c.identity); err != nil {
 			n.reject(c, s, err)
+			return nil
+		}
+		if !n.quotaLeft(s.kind, msg) {
+			n.refuseNoSpace(c, s)
 			return nil
 		}
 		n.addOp(mkHandle(c, s.id), s.kind, msg)
@@ -443,6 +455,7 @@ func (n *node) replyStatus(c *client, s *stream) {
 	for _, a := range n.alarms {
 		size += sizeBytesField(8, len(a.String()))
 	}
+	size += sizeVarintField(12, uint64(max(n.quota, 0)))
 	var w msgW
 	n.beginReply(c, s, &w, size)
 	n.writeHdr(&w)
@@ -455,6 +468,7 @@ func (n *node) replyStatus(c *client, s *stream) {
 	for _, a := range n.alarms {
 		w.bytesField(8, []byte(a.String()))
 	}
+	writeVarintNZ(&w, 12, uint64(max(n.quota, 0)))
 	n.endReply(c, s, &w)
 }
 

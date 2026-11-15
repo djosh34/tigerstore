@@ -150,6 +150,95 @@ func (n *node) replyAlarms(c *client, s *stream, list []alarm) {
 	n.endReply(c, s, &w)
 }
 
+// The space quota, as etcd's (storage/quota.go and v3rpc/quota.go): a
+// put, a Txn with a put or a lease grant whose cost would bring the store
+// to --quota-backend-bytes is refused before it is proposed, and the node
+// raises its own NOSPACE alarm. The store's size is what its values take,
+// live and history, the same on every node. etcd compares its database
+// file instead; the log on disk is not what the quota bounds.
+
+// defaultQuota is etcd's default --quota-backend-bytes.
+const defaultQuota = 2 << 30
+
+// etcd's cost estimates of a lease and of the metadata of a key.
+const (
+	leaseCost = 64
+	kvCost    = 256
+)
+
+// quotaLeft reports whether a request of kind fits the quota. A request
+// whose bytes and every op's metadata fit is let in without reading it.
+func (n *node) quotaLeft(kind uint8, msg []byte) bool {
+	if n.quota < 0 {
+		return true
+	}
+	size := n.st.liveBytes + n.st.histBytes
+	switch kind {
+	case kPut:
+	case kLeaseGrant:
+		return size+leaseCost < n.quota
+	case kTxn:
+		if size+int64(len(msg))+kvCost*(maxTxnOps+1) < n.quota {
+			return true
+		}
+		cost := txnCost(msg)
+		return cost == 0 || size+cost < n.quota
+	default:
+		return true
+	}
+	var r putReq
+	if err := parsePut(msg, &r); err != nil {
+		return true
+	}
+	return size+kvCost+int64(len(r.key)+len(r.value)) < n.quota
+}
+
+// txnCost is etcd's cost of a Txn: that of its costlier branch, nested
+// Txns too.
+func txnCost(msg []byte) int64 {
+	var costs [2]int64
+	for m := msg; len(m) > 0; {
+		num, _, _, p, rest, err := field(m)
+		if err != nil {
+			return 0
+		}
+		m = rest
+		if num != 2 && num != 3 {
+			continue
+		}
+		onum, _, _, op, _, err := field(p)
+		if err != nil {
+			continue
+		}
+		switch onum {
+		case 2:
+			var r putReq
+			if parsePut(op, &r) == nil {
+				costs[num-2] += kvCost + int64(len(r.key)+len(r.value))
+			}
+		case 4:
+			costs[num-2] += txnCost(op)
+		}
+	}
+	return max(costs[0], costs[1])
+}
+
+// refuseNoSpace refuses a write over the quota with etcd's error, and
+// raises the node's own NOSPACE alarm unless it is raised.
+func (n *node) refuseNoSpace(c *client, s *stream) {
+	n.reject(c, s, requestErr(codeResourceExhausted, msgNoSpace))
+	own := alarm{member: n.id, typ: alarmNoSpace}
+	if _, raised := slices.BinarySearchFunc(n.alarms, own, compareAlarms); raised || n.noSpaceAsked == n.applied {
+		return
+	}
+	n.noSpaceAsked = n.applied
+	var req []byte
+	req = appendVarintField(req, 1, alarmActivate)
+	req = appendVarintField(req, 2, n.id)
+	req = appendVarintField(req, 3, alarmNoSpace)
+	n.addOp(noHandle, kAlarm, req)
+}
+
 // alarmGate refuses a write of kind that a raised alarm forbids.
 func (n *node) alarmGate(kind uint8, req []byte) error {
 	if n.corrupt {

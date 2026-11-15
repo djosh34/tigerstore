@@ -57,6 +57,7 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 		return err
 	}
 	cfg.ExtensiveMetrics = ec.Metrics == "extensive"
+	cfg.QuotaBackendBytes = ec.QuotaBackendBytes
 	if cfg.Metrics, err = metrics.New(featureMetrics(ec.ServerFeatureGate)); err != nil {
 		closeListeners(clientLns, pcfg.Listeners, lg)
 		return err

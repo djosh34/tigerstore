@@ -45,6 +45,9 @@ type Config struct {
 	// MetricsListeners serve /metrics, /health, /livez and /readyz, as
 	// etcd's --listen-metrics-urls do.
 	MetricsListeners []net.Listener
+	// QuotaBackendBytes is etcd's --quota-backend-bytes: 0 for etcd's
+	// default, below 0 for none.
+	QuotaBackendBytes int64
 }
 
 // Member is one member of the cluster.
