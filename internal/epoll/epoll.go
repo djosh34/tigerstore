@@ -16,6 +16,7 @@ import (
 	"math"
 	"net"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -45,6 +46,19 @@ type Poller struct {
 	// writes the eventfd, or the loop sees the Wake and does not sleep.
 	sleeping, woken atomic.Bool
 	locked          bool
+	// socks are the sockets by token, so that Wait marks each that is
+	// due as maybe readable again. A socket may close on another
+	// goroutine, so they are under mu.
+	mu    sync.Mutex
+	socks map[uint64]*socket
+	// Counts are the poller's system calls, which any goroutine may read.
+	Counts Counts
+}
+
+// Counts are the system calls of a poller: waits, one a turn of the loop,
+// and the reads and writes of its sockets.
+type Counts struct {
+	Waits, Reads, Writes atomic.Uint64
 }
 
 // New returns a poller.
@@ -57,7 +71,7 @@ func New() (*Poller, error) {
 	if errno != 0 {
 		return nil, errors.Join(fmt.Errorf("epoll: eventfd: %w", errno), syscall.Close(epfd))
 	}
-	p := &Poller{epfd: epfd, efd: int(efd), events: make([]syscall.EpollEvent, maxEvents)}
+	p := &Poller{epfd: epfd, efd: int(efd), events: make([]syscall.EpollEvent, maxEvents), socks: map[uint64]*socket{}}
 	if err := p.add(p.efd, wakeToken, unix.EPOLLIN); err != nil {
 		return nil, errors.Join(err, p.Close())
 	}
@@ -106,7 +120,11 @@ func (p *Poller) Attach(c net.Conn, token uint64) (loop.Socket, error) {
 	if aerr != nil {
 		return nil, aerr
 	}
-	return &socket{c: c, rc: rc}, nil
+	s := &socket{c: c, rc: rc, p: p, token: token}
+	p.mu.Lock()
+	p.socks[token] = s
+	p.mu.Unlock()
+	return s, nil
 }
 
 func (p *Poller) notify(token uint64) {
@@ -143,15 +161,21 @@ func (p *Poller) Wait(ready []uint64, timeout time.Duration) ([]uint64, error) {
 	if p.woken.Load() || !p.due.Empty() {
 		ms = 0
 	}
+	p.Counts.Waits.Add(1)
 	n, err := syscall.EpollWait(p.epfd, p.events, ms)
 	p.sleeping.Store(false)
 	p.woken.Store(false)
 	if err != nil && !errors.Is(err, syscall.EINTR) {
 		return ready, fmt.Errorf("epoll: wait: %w", err)
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	for i := range max(n, 0) {
 		ev := &p.events[i]
 		if t := tokenOf(ev); t != wakeToken {
+			if s := p.socks[t]; s != nil {
+				s.drained = false
+			}
 			ready = append(ready, t)
 			continue
 		}
@@ -170,12 +194,26 @@ func (p *Poller) Close() error {
 // calls. They go through the connection's RawConn, which holds the
 // descriptor open for the call, so a Close from another goroutine cannot
 // let a new connection reuse the number in the middle of one.
+//
+// A read that comes back with less than it asked for emptied the socket's
+// receive queue: the next read fails with loop.ErrWouldBlock without a
+// system call, until Wait returns the socket's token again. The poller is
+// edge-triggered, so data that arrives after that read brings the token.
+// On crd-heavy, a read that only found the socket empty was about every
+// other read call of the loop (#602).
 type socket struct {
-	c  net.Conn
-	rc syscall.RawConn
+	c       net.Conn
+	rc      syscall.RawConn
+	p       *Poller
+	token   uint64
+	drained bool
 }
 
 func (s *socket) Read(b []byte) (int, error) {
+	if s.drained && len(b) > 0 {
+		return 0, loop.ErrWouldBlock
+	}
+	s.p.Counts.Reads.Add(1)
 	var n int
 	var err error
 	if rerr := s.rc.Read(func(fd uintptr) bool {
@@ -196,10 +234,12 @@ func (s *socket) Read(b []byte) (int, error) {
 	case n == 0 && len(b) > 0:
 		return 0, io.EOF
 	}
+	s.drained = n < len(b)
 	return n, nil
 }
 
 func (s *socket) Write(b []byte) (int, error) {
+	s.p.Counts.Writes.Add(1)
 	var n int
 	var err error
 	if werr := s.rc.Write(func(fd uintptr) bool {
@@ -225,4 +265,22 @@ func (s *socket) Write(b []byte) (int, error) {
 
 // Close closes the connection, which takes its descriptor out of the
 // epoll instance.
-func (s *socket) Close() error { return s.c.Close() }
+func (s *socket) Close() error {
+	s.p.mu.Lock()
+	delete(s.p.socks, s.token)
+	s.p.mu.Unlock()
+	return s.c.Close()
+}
+
+// Pause sleeps for d in nanosleep: the runtime's own sleep wakes no
+// sooner than a millisecond on an idle process.
+func (p *Poller) Pause(d time.Duration) {
+	ts := unix.NsecToTimespec(int64(d))
+	for {
+		var left unix.Timespec
+		if err := unix.Nanosleep(&ts, &left); !errors.Is(err, unix.EINTR) {
+			return
+		}
+		ts = left
+	}
+}

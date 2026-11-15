@@ -32,6 +32,9 @@ type Poller interface {
 	Wait(ready []uint64, timeout time.Duration) ([]uint64, error)
 	// Wake makes the current or next Wait return. It never blocks.
 	Wake()
+	// Pause sleeps for d without looking at the sockets, to the
+	// microsecond, as the loop does between two busy turns.
+	Pause(d time.Duration)
 	Close() error
 }
 

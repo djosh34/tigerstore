@@ -122,6 +122,12 @@ type Config struct {
 	// it low so that a few clients' bursts cut turns: below 32 a turn
 	// never takes enough calls to measure, so the bound stays.
 	TurnCalls int
+	// TurnGap, if above 0, is the least time from the start of a busy
+	// turn of the loop, one that took calls or peers' messages, to the
+	// next: the loop pauses for what is left of it before it looks at its
+	// sockets again, so the next turn takes what came meanwhile with
+	// fewer reads, writes and waits. tigerstore sets DefaultTurnGap.
+	TurnGap time.Duration
 	// Memory, if set, measures what the process uses besides the value
 	// cache, and whether that is a new measure, instead of the Go
 	// runtime's metrics: the simulator runs several nodes in one process.
@@ -1199,6 +1205,13 @@ func (n *Node) Busy() bool {
 // 15 ms gave them.
 const minTurnTime = 15 * time.Millisecond
 
+// DefaultTurnGap is the turn gap tigerstore runs with (Config.TurnGap).
+// On crd-heavy, a turn took a few calls and wrote to every connection it
+// touched: the socket writes alone took 11% of the leader's CPU, and its
+// reads, waits and wake-ups 11% more (#602). Prototype 6 got its larger
+// turns from the 800 µs it left between syncs.
+const DefaultTurnGap = 250 * time.Microsecond
+
 // minTurnCalls is the fewest calls a turn takes, so that a turn slowed by
 // other work still takes clients' calls; measuredTurnCalls the fewest
 // that measure what a call costs; and firstTurnCalls the most a turn
@@ -1538,8 +1551,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	started, measured := time.Now(), int64(0)
 	clock := tickClock{due: 1}
 	wallTick := func(t time.Time) int64 { return int64(t.Sub(started) / n.cfg.Tick) }
-	// ins are the inputs of a turn.
+	// ins are the inputs of a turn, and messages whether it had peers'
+	// messages.
 	var ins []input
+	messages := false
 	// turn begins a turn: it takes the inputs the loop's sockets gave
 	// (local) and those queued in inbox, if it is not nil, and gives the
 	// core the ticks that passed and the inputs. waited is the tick at which the
@@ -1566,7 +1581,8 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				ready = min(ready, max(wallTick(in.at), clock.at))
 			}
 		}
-		held := hasMessage(ins) && n.core.Leader() != n.cfg.Core.ID
+		messages = hasMessage(ins)
+		held := messages && n.core.Leader() != n.cfg.Core.ID
 		limit := int64(math.MaxInt64)
 		if held {
 			limit = dueIn - 1
@@ -1615,6 +1631,8 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		due := n.core.Due()
 		clock.due = clock.at + due
 		timeout := time.Until(started.Add(time.Duration(clock.due) * n.cfg.Tick))
+		// A pause between busy turns ends by the next tick with work.
+		pauseFor := timeout
 		copyPart := false
 		switch {
 		case n.core.CutWaits() && len(chunks) == 0:
@@ -1632,6 +1650,14 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		// sockets that waited for the disk.
 		if n.core.Working() || !full && (len(n.inbox) > 0 || n.loop.Holding()) {
 			timeout = 0
+		}
+		// After a busy turn, the next waits out the turn gap, also for
+		// work that is there already: it comes with what the gap brings.
+		if gap := n.cfg.TurnGap; gap > 0 && (n.turnCalls > 0 || messages) {
+			if d := min(gap-time.Since(n.turnStart), pauseFor); d > 0 {
+				n.loop.Pause(d)
+				timeout = max(timeout-d, 0)
+			}
 		}
 		entered := wallTick(time.Now())
 		// Sockets whose output waits wake the loop at their write

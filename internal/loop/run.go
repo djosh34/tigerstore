@@ -112,6 +112,9 @@ func (l *Loop) Post(f func()) bool {
 // Wake makes the loop take a turn soon.
 func (l *Loop) Wake() { l.p.Wake() }
 
+// Pause sleeps for d before the next Wait (Poller.Pause).
+func (l *Loop) Pause(d time.Duration) { l.p.Pause(d) }
+
 // Wait waits for due sockets, posted work, a Wake or the timeout; a
 // negative timeout waits without a limit.
 func (l *Loop) Wait(timeout time.Duration) error {

@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/etcd/pkg/v3/featuregate"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.etcd.io/etcd/server/v3/etcdmain"
@@ -206,6 +207,7 @@ func start(c *config, lg *zap.Logger) error {
 		Core: ccfg, DataDir: ec.Dir, WalDir: ec.WalDir, Tick: time.Duration(ec.TickMs) * time.Millisecond,
 		DiskBudget: c.own.DiskBudget, SegmentBytes: c.own.UnsafeSegment, CorruptCheckTime: ec.CorruptCheckTime, Logf: logf, AutoCompaction: compaction,
 		UnsafeNoFsync: ec.UnsafeNoFsync, WarningApplyDuration: ec.WarningApplyDuration, ForceNewCluster: ec.ForceNewCluster,
+		TurnGap: node.DefaultTurnGap,
 	}
 	if gate.Enabled(features.CompactHashCheck) {
 		ncfg.CompactHashCheckTime = ec.CompactHashCheckTime
@@ -214,7 +216,12 @@ func start(c *config, lg *zap.Logger) error {
 		return err
 	}
 	// The node's event loop waits in epoll on a thread of its own.
-	if ncfg.Poller, err = epoll.New(); err != nil {
+	poller, err := epoll.New()
+	if err != nil {
+		return err
+	}
+	ncfg.Poller = poller
+	if err := registerLoopCounts(ncfg.Metrics.Registry, &poller.Counts); err != nil {
 		return err
 	}
 	pcfg.Metrics = ncfg.Metrics
@@ -471,4 +478,22 @@ func closeListeners(client []clientListener, peers []net.Listener, lg *zap.Logge
 	if err := closeAll(lns); err != nil {
 		lg.Warn("close the listeners", zap.Error(err))
 	}
+}
+
+// registerLoopCounts makes the event loop's system calls metrics: its
+// waits, one a turn, and its sockets' reads and writes, so that a bench
+// shows how many each op costs.
+func registerLoopCounts(r prometheus.Registerer, c *epoll.Counts) error {
+	var errs []error
+	for _, m := range []struct {
+		name, help string
+		n          *atomic.Uint64
+	}{
+		{"tigerstore_loop_waits_total", "Waits of the node's event loop in epoll: one a turn.", &c.Waits},
+		{"tigerstore_loop_reads_total", "Reads of the event loop's sockets.", &c.Reads},
+		{"tigerstore_loop_writes_total", "Writes of the event loop's sockets.", &c.Writes},
+	} {
+		errs = append(errs, r.Register(prometheus.NewCounterFunc(prometheus.CounterOpts{Name: m.name, Help: m.help}, func() float64 { return float64(m.n.Load()) })))
+	}
+	return errors.Join(errs...)
 }

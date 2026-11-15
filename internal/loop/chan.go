@@ -146,3 +146,6 @@ func (p *ChanPoller) block(timeout time.Duration) {
 
 // Close does nothing: the sockets close on their own.
 func (p *ChanPoller) Close() error { return nil }
+
+// Pause sleeps for d on the clock, which the simulator's is.
+func (p *ChanPoller) Pause(d time.Duration) { time.Sleep(d) }

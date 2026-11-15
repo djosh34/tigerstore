@@ -149,3 +149,68 @@ func TestWakeFromAnotherGoroutine(t *testing.T) {
 		t.Fatalf("an idle Wait of 30 ms took %v: %v", time.Since(start), err)
 	}
 }
+
+// TestDrainedSocketSkipsReads reads a socket's few bytes with a larger
+// buffer: the short read emptied it, so the next read fails without a
+// system call, until Wait returns the socket's token for new bytes.
+func TestDrainedSocketSkipsReads(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close() //nolint:errcheck // closing a test listener
+	other, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close() //nolint:errcheck // closing a test connection
+	mine, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := epoll.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close() //nolint:errcheck // closing a test poller
+	sock, err := p.Attach(mine, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sock.Close() //nolint:errcheck // closing a test socket
+	buf := make([]byte, 1024)
+	// waitRead waits for the token and reads what came.
+	waitRead := func(want string) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, err := p.Wait(nil, 100*time.Millisecond); err != nil {
+				t.Fatal(err)
+			}
+			n, err := sock.Read(buf)
+			if errors.Is(err, loop.ErrWouldBlock) {
+				continue
+			}
+			if err != nil || string(buf[:n]) != want {
+				t.Fatalf("read %q, %v; want %q", buf[:n], err, want)
+			}
+			return
+		}
+		t.Fatalf("no %q in 10 s", want)
+	}
+	if _, err := other.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	waitRead("hello")
+	reads := p.Counts.Reads.Load()
+	if _, err := sock.Read(buf); !errors.Is(err, loop.ErrWouldBlock) {
+		t.Fatalf("a read of the drained socket: %v", err)
+	}
+	if n := p.Counts.Reads.Load(); n != reads {
+		t.Fatalf("a read of the drained socket made %d system calls", n-reads)
+	}
+	if _, err := other.Write([]byte("again")); err != nil {
+		t.Fatal(err)
+	}
+	waitRead("again")
+}
