@@ -720,29 +720,7 @@ func appendKVs(b []byte, num protowire.Number, kvs []mvcc.KV) []byte {
 		kv := &kvs[i]
 		b = protowire.AppendTag(b, num, protowire.BytesType)
 		b = protowire.AppendVarint(b, uint64(kv.Size(len(kv.Value))))
-		b = appendKV(b, kv)
-	}
-	return b
-}
-
-func appendKV(b []byte, kv *mvcc.KV) []byte {
-	if len(kv.Key) > 0 {
-		b = protowire.AppendTag(b, 1, protowire.BytesType)
-		b = protowire.AppendBytes(b, kv.Key)
-	}
-	for i, v := range [...]int64{kv.CreateRevision, kv.ModRevision, kv.Version} {
-		if v != 0 {
-			b = protowire.AppendTag(b, protowire.Number(i+2), protowire.VarintType)
-			b = protowire.AppendVarint(b, uint64(v))
-		}
-	}
-	if len(kv.Value) > 0 {
-		b = protowire.AppendTag(b, 5, protowire.BytesType)
-		b = protowire.AppendBytes(b, kv.Value)
-	}
-	if kv.Lease != 0 {
-		b = protowire.AppendTag(b, 6, protowire.VarintType)
-		b = protowire.AppendVarint(b, uint64(kv.Lease))
+		b = kv.Append(b)
 	}
 	return b
 }

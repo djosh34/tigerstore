@@ -621,6 +621,9 @@ type Node struct {
 	// turn's watch events.
 	cold      map[*ValueRead]struct{}
 	watchRead *ValueRead
+	// events is the room the turn's watch events are encoded into
+	// (event).
+	events []byte
 	// applyQ holds Raft's apply messages not applied yet: while paused
 	// waits for values from the log, or revoke takes its steps, ordered
 	// apply waits with it. resume is the write that runs again after its
@@ -1923,7 +1926,7 @@ func (n *Node) Process() (Effects, error) {
 			// goes out ahead of the events it covers.
 			for _, w := range n.watchers {
 				if !w.dead && w.progress && len(w.pending) > 0 {
-					n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id}, nil, 0)
+					n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id}, nil, nil, 0)
 				}
 			}
 		}

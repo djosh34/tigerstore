@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
 )
@@ -98,16 +97,16 @@ func (w *watchSink) Watch(r core.WatchResponse) bool {
 		err = w.parts.send(w.st, r)
 	case r.Fragmented:
 		// One of etcd's fragments, cut by the node.
-		err = w.st.Send(r.Resp)
+		err = w.st.sendWatch(r.Resp, r.Events)
 	default:
-		err = sendFragments(w.st, r.Resp)
+		err = sendFragments(w.st, r)
 	}
 	if err != nil {
 		w.s.streamFailed(w.st, "send", "watch", err)
 		w.err = err
 		return false
 	}
-	w.s.watchSent(r.Resp, time.Since(start))
+	w.s.watchSent(r, time.Since(start))
 	return true
 }
 
@@ -118,37 +117,117 @@ func (w *watchSink) Queued() int64 {
 	return int64(w.st.queued)
 }
 
+// sendWatch queues a WatchResponse with events evs, which the node
+// encoded once: the response is written around their bytes, with no
+// message built (part 4 of docs/wire-loop.md).
+func (st *stream) sendWatch(r *pb.WatchResponse, evs []*core.Event) error {
+	var hb [watchHeadRoom]byte
+	head := appendWatchHead(hb[:0], r)
+	size := len(head) + eventsSize(evs)
+	if size > 1<<31-1 {
+		return status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
+	}
+	b := make([]byte, 5, 5+size)
+	binary.BigEndian.PutUint32(b[1:], uint32(size))
+	b = appendEvents(append(b, head...), evs)
+	b, err := st.compress(b)
+	if err != nil {
+		return err
+	}
+	return st.push(b, false, nil, true)
+}
+
+// watchHeadRoom is room on the stack for the fields of most watch
+// responses before their events.
+const watchHeadRoom = 128
+
+// appendWatchHead appends the fields of r before its events, in the
+// order of their numbers, as protobuf's Marshal writes them.
+func appendWatchHead(b []byte, r *pb.WatchResponse) []byte {
+	if h := r.Header; h != nil {
+		b = appendHeader(b, h.ClusterId, h.MemberId, h.Revision, h.RaftTerm)
+	}
+	if r.WatchId != 0 {
+		b = protowire.AppendTag(b, 2, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(r.WatchId))
+	}
+	for _, f := range [...]struct {
+		num protowire.Number
+		on  bool
+	}{{3, r.Created}, {4, r.Canceled}} {
+		if f.on {
+			b = protowire.AppendTag(b, f.num, protowire.VarintType)
+			b = protowire.AppendVarint(b, 1)
+		}
+	}
+	if r.CompactRevision != 0 {
+		b = protowire.AppendTag(b, 5, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(r.CompactRevision))
+	}
+	if r.CancelReason != "" {
+		b = protowire.AppendTag(b, 6, protowire.BytesType)
+		b = protowire.AppendString(b, r.CancelReason)
+	}
+	if r.Fragment {
+		b = protowire.AppendTag(b, 7, protowire.VarintType)
+		b = protowire.AppendVarint(b, 1)
+	}
+	return b
+}
+
+// appendEvents appends evs as the events of a WatchResponse.
+func appendEvents(b []byte, evs []*core.Event) []byte {
+	for _, e := range evs {
+		b = protowire.AppendTag(b, 11, protowire.BytesType)
+		b = protowire.AppendBytes(b, e.Bytes())
+	}
+	return b
+}
+
+// eventsSize is the size of evs as the events of a WatchResponse.
+func eventsSize(evs []*core.Event) int {
+	n := 0
+	for _, e := range evs {
+		n += eventSize(e)
+	}
+	return n
+}
+
+func eventSize(e *core.Event) int { return 1 + protowire.SizeBytes(len(e.Bytes())) }
+
 // sendFragments is etcd's: a response the node marked for a watcher that
 // asked for fragments goes out in parts of fewer than etcd's
 // MaxRequestBytesWithOverhead (Server.maxRecvMsg) bytes, each
 // of at least one event and all but the last marked as fragments, if it
 // is that large and has more than one event.
-func sendFragments(st *stream, r *pb.WatchResponse) error {
-	if !r.Fragment {
-		return st.Send(r)
+func sendFragments(st *stream, r core.WatchResponse) error {
+	resp := r.Resp
+	if !resp.Fragment {
+		return st.sendWatch(resp, r.Events)
 	}
-	r.Fragment = false
+	resp.Fragment = false
 	maxWatchBytes := st.c.s.maxRecvMsg
-	if proto.Size(r) < maxWatchBytes {
-		return st.Send(r)
+	var hb [watchHeadRoom]byte
+	head := len(appendWatchHead(hb[:0], resp))
+	if head+eventsSize(r.Events) < maxWatchBytes {
+		return st.sendWatch(resp, r.Events)
 	}
+	// A fragment's head has the fragment field too.
+	head += 2
 	for evs := r.Events; len(evs) > 0; {
-		cur := &pb.WatchResponse{
-			Header: r.Header, WatchId: r.WatchId, Created: r.Created, Canceled: r.Canceled,
-			CompactRevision: r.CompactRevision, CancelReason: r.CancelReason, Fragment: true,
-		}
-		n := 0
+		n, size := 0, head
 		for n < len(evs) {
-			cur.Events = evs[:n+1]
-			if n > 0 && proto.Size(cur) >= maxWatchBytes {
+			f := eventSize(evs[n])
+			if n > 0 && size+f >= maxWatchBytes {
 				break
 			}
+			size += f
 			n++
 		}
-		cur.Events = evs[:n]
+		cur := evs[:n]
 		evs = evs[n:]
-		cur.Fragment = len(evs) > 0
-		if err := st.Send(cur); err != nil {
+		resp.Fragment = len(evs) > 0
+		if err := st.sendWatch(resp, cur); err != nil {
 			return err
 		}
 	}
@@ -168,20 +247,11 @@ var errPartsShort = status.Error(codes.Internal, "server: a watch response in pa
 func (p *watchParts) send(st *stream, r core.WatchResponse) error {
 	// The part waits in the stream's queue: it takes no more room than
 	// its bytes.
-	size := 0
-	for _, ev := range r.Resp.Events {
-		n := proto.Size(ev)
-		size += 1 + protowire.SizeVarint(uint64(n)) + n
-	}
+	size := eventsSize(r.Events)
 	var b []byte
 	if !r.Cont {
-		head, err := proto.Marshal(&pb.WatchResponse{
-			Header: r.Resp.Header, WatchId: r.Resp.WatchId, Created: r.Resp.Created, Canceled: r.Resp.Canceled,
-			CompactRevision: r.Resp.CompactRevision, CancelReason: r.Resp.CancelReason,
-		})
-		if err != nil {
-			return status.Errorf(codes.Internal, "grpc: error while marshaling: %v", err)
-		}
+		var hb [watchHeadRoom]byte
+		head := appendWatchHead(hb[:0], r.Resp)
 		if whole := int64(len(head)) + r.EventBytes; whole > 1<<31-1 {
 			return status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", whole)
 		}
@@ -194,14 +264,7 @@ func (p *watchParts) send(st *stream, r core.WatchResponse) error {
 		b = make([]byte, 0, size)
 	}
 	events := len(b)
-	for _, ev := range r.Resp.Events {
-		b = protowire.AppendTag(b, 11, protowire.BytesType)
-		b = protowire.AppendVarint(b, uint64(proto.Size(ev)))
-		var err error
-		if b, err = (proto.MarshalOptions{UseCachedSize: true}).MarshalAppend(b, ev); err != nil {
-			return status.Errorf(codes.Internal, "grpc: error while marshaling: %v", err)
-		}
-	}
+	b = appendEvents(b, r.Events)
 	p.left -= int64(len(b) - events)
 	if p.left < 0 || (!r.More && p.left != 0) {
 		return errPartsShort
@@ -212,13 +275,13 @@ func (p *watchParts) send(st *stream, r core.WatchResponse) error {
 // watchSent times a watch response as etcd's send loop does: one with
 // events per response and per event, a created or canceled one as a
 // control response, and an empty one as a progress notification.
-func (s *Server) watchSent(r *pb.WatchResponse, d time.Duration) {
+func (s *Server) watchSent(r core.WatchResponse, d time.Duration) {
 	m := s.metrics.set
 	switch {
 	case len(r.Events) > 0:
 		m.WatchStream.Observe(d.Seconds())
 		m.WatchStreamPerEvent.Observe(d.Seconds() / float64(len(r.Events)))
-	case r.Created || r.Canceled:
+	case r.Resp.Created || r.Resp.Canceled:
 		m.WatchControl.Observe(d.Seconds())
 	default:
 		m.WatchProgress.Observe(d.Seconds())

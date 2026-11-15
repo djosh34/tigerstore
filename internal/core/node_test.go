@@ -130,6 +130,14 @@ func (s *single) run() []Reply {
 			s.t.Fatalf("node stopped: %v", err)
 		}
 		s.checkHash()
+		for i, w := range eff.Watch {
+			// The tests read the events as messages.
+			m, err := w.Message()
+			if err != nil {
+				s.t.Fatal(err)
+			}
+			eff.Watch[i].Resp = m
+		}
 		if s.afterTurn != nil {
 			s.afterTurn(eff)
 		}

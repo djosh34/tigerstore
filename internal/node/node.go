@@ -236,7 +236,7 @@ type WatchStream struct {
 func (ws *WatchStream) Taken(r *pb.WatchResponse) { ws.took(int64(proto.Size(r))) }
 
 // TakenPart reports that a part from P was taken.
-func (ws *WatchStream) TakenPart(r core.WatchResponse) { ws.took(int64(proto.Size(r.Resp))) }
+func (ws *WatchStream) TakenPart(r core.WatchResponse) { ws.took(int64(r.Size())) }
 
 // took counts n bytes taken, and wakes the committer if the stream was
 // short of room and now has half of it again.
@@ -432,7 +432,7 @@ func (ws *WatchStream) deliver(r core.WatchResponse) bool {
 		return ws.sink.Watch(r)
 	}
 	if ws.P != nil {
-		ws.queued.Add(int64(proto.Size(r.Resp)))
+		ws.queued.Add(int64(r.Size()))
 		select {
 		case ws.P <- r:
 			return true
@@ -442,10 +442,15 @@ func (ws *WatchStream) deliver(r core.WatchResponse) bool {
 	}
 	// A stream of whole responses gets the parts or fragments of one
 	// merged.
+	m, err := r.Message()
+	if err != nil {
+		ws.n.logf("node: watch stream %d: %v", ws.id, err)
+		return false
+	}
 	if ws.merging != nil {
-		ws.merging.Events = append(ws.merging.Events, r.Resp.Events...)
+		ws.merging.Events = append(ws.merging.Events, m.Events...)
 	} else {
-		ws.merging = r.Resp
+		ws.merging = m
 	}
 	if r.More || (r.Fragmented && r.Resp.Fragment) {
 		return true

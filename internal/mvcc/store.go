@@ -389,6 +389,8 @@ type Store struct {
 	rests      []Rest
 	// fills are the values that responses and events wait for.
 	fills []Fill
+	// scratch takes the values peek copies out of Raft entries.
+	scratch []byte
 	// resume is how far the next transaction's compares got (Resume).
 	resume *Compares
 

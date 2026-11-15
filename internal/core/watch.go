@@ -5,7 +5,6 @@ import (
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
@@ -30,8 +29,10 @@ import (
 // on all but the last. Either way the stream sends nothing else between
 // them.
 type WatchResponse struct {
-	Stream     uint64
+	Stream uint64
+	// Resp is the response without its events, which are in Events.
 	Resp       *pb.WatchResponse
+	Events     []*Event
 	EventBytes int64
 	More, Cont bool
 	Fragmented bool
@@ -89,7 +90,7 @@ type watcher struct {
 	// pending are the events matched since the last response, the first
 	// at history position pendFrom, of pendRevs revisions and pendBytes
 	// bytes, the last at revision pendLast.
-	pending   []*mvccpb.Event
+	pending   []*Event
 	pendFrom  int64
 	pendBytes int
 	pendRevs  int
@@ -166,8 +167,8 @@ const replyBytes = 64
 // watchReply sends a response on a stream once the value reads in waits
 // are done and every response before it went out. events is the size of
 // its events, which with the rest of it counts against the stream's room.
-func (n *Node) watchReply(s *watchStream, r *pb.WatchResponse, waits []*ValueRead, events int) {
-	n.watchPart(s, WatchResponse{Stream: s.id, Resp: r}, waits, events, false)
+func (n *Node) watchReply(s *watchStream, r *pb.WatchResponse, evs []*Event, waits []*ValueRead, events int) {
+	n.watchPart(s, WatchResponse{Stream: s.id, Resp: r, Events: evs}, waits, events, false)
 }
 
 // watchPart sends a response, or a part of one, as watchReply does; more
@@ -178,7 +179,7 @@ func (n *Node) watchPart(s *watchStream, resp WatchResponse, waits []*ValueRead,
 	if !resp.Cont {
 		resp.Resp.Header = n.watchHeader()
 	}
-	n.counters.Events += int64(len(resp.Resp.Events))
+	n.counters.Events += int64(len(resp.Events))
 	s.room -= int64(events + replyBytes)
 	s.slots--
 	if s.big != nil && !resp.part {
@@ -201,7 +202,7 @@ func (n *Node) watchPart(s *watchStream, resp WatchResponse, waits []*ValueRead,
 func (n *Node) queueWatch(s *watchStream, resp WatchResponse, waits []*ValueRead) {
 	waits = slices.DeleteFunc(waits, func(v *ValueRead) bool { return v.done })
 	if len(s.held) == 0 && len(waits) == 0 {
-		n.out.Watch = append(n.out.Watch, resp)
+		n.sendWatch(resp)
 		return
 	}
 	s.held = append(s.held, heldWatch{resp: resp, waits: waits})
@@ -212,6 +213,18 @@ func (n *Node) queueWatch(s *watchStream, resp WatchResponse, waits []*ValueRead
 	}
 }
 
+// sendWatch hands a response, whose reads are done, to the driver. Its
+// events built as messages are encoded now; a failure stops the node.
+func (n *Node) sendWatch(resp WatchResponse) {
+	for _, e := range resp.Events {
+		if err := e.seal(); err != nil {
+			n.fail(err)
+			return
+		}
+	}
+	n.out.Watch = append(n.out.Watch, resp)
+}
+
 // releaseWatches sends a stream's held responses whose reads are done, in
 // order, up to the first that still waits.
 func (n *Node) releaseWatches(s *watchStream) {
@@ -220,7 +233,7 @@ func (n *Node) releaseWatches(s *watchStream) {
 	}
 	i := 0
 	for ; i < len(s.held) && allRead(s.held[i].waits); i++ {
-		n.out.Watch = append(n.out.Watch, s.held[i].resp)
+		n.sendWatch(s.held[i].resp)
 	}
 	clear(s.held[:i])
 	s.held = s.held[i:]
@@ -238,9 +251,12 @@ func allRead(rs []*ValueRead) bool {
 // watchEvent takes the value fills of an event just built and returns the
 // read that brings them, or nil if it has none. The events of one turn
 // share one read.
-func (n *Node) watchEvent(ev *mvccpb.Event) *ValueRead {
+func (n *Node) watchEvent(ev *Event) *ValueRead {
+	if ev.msg == nil {
+		return nil
+	}
 	fills := n.kv.TakeFills()
-	if ev == nil || len(fills) == 0 {
+	if len(fills) == 0 {
 		return nil
 	}
 	if n.watchRead == nil {
@@ -286,7 +302,7 @@ func (n *Node) Watch(stream uint64, c Caller, r *pb.WatchRequest) {
 		id := r.GetCancelRequest().WatchId
 		if w, ok := s.byID[id]; ok {
 			n.removeWatch(w)
-			n.watchReply(s, &pb.WatchResponse{WatchId: id, Canceled: true}, nil, 0)
+			n.watchReply(s, &pb.WatchResponse{WatchId: id, Canceled: true}, nil, nil, 0)
 		}
 	case r.GetProgressRequest() != nil:
 		// Like etcd, answer once for the stream, unless it has no
@@ -303,7 +319,7 @@ func (n *Node) Watch(stream uint64, c Caller, r *pb.WatchRequest) {
 				return
 			}
 		}
-		n.watchReply(s, &pb.WatchResponse{WatchId: invalidWatchID}, nil, 0)
+		n.watchReply(s, &pb.WatchResponse{WatchId: invalidWatchID}, nil, nil, 0)
 	}
 }
 
@@ -373,7 +389,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 	if c.StartRevision < 0 {
 		created.WatchId, created.Canceled = invalidWatchID, true
 		created.CancelReason = rpctypes.ErrCompacted.Error()
-		n.watchReply(s, created, nil, 0)
+		n.watchReply(s, created, nil, nil, 0)
 		return
 	}
 	key := c.Key
@@ -382,13 +398,13 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 	}
 	if err := n.watchAllowed(s.caller, key, c.RangeEnd); err != nil {
 		created.WatchId, created.Canceled, created.CancelReason = invalidWatchID, true, err.Error()
-		n.watchReply(s, created, nil, 0)
+		n.watchReply(s, created, nil, nil, 0)
 		return
 	}
 	fromKey := len(c.RangeEnd) == 1 && c.RangeEnd[0] == 0
 	if len(c.RangeEnd) != 0 && !fromKey && bytes.Compare(key, c.RangeEnd) >= 0 {
 		created.WatchId, created.Canceled, created.CancelReason = invalidWatchID, true, errEmptyWatchRange
-		n.watchReply(s, created, nil, 0)
+		n.watchReply(s, created, nil, nil, 0)
 		return
 	}
 	id := c.WatchId
@@ -400,7 +416,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 		s.nextID++
 	} else if s.byID[id] != nil {
 		created.WatchId, created.Canceled, created.CancelReason = invalidWatchID, true, errDuplicateWatchID
-		n.watchReply(s, created, nil, 0)
+		n.watchReply(s, created, nil, nil, 0)
 		return
 	}
 	w := &watcher{stream: s, id: id, key: key, end: c.RangeEnd, prevKV: c.PrevKv, progress: c.ProgressNotify, fragment: c.Fragment, start: c.StartRevision, asked: c.StartRevision}
@@ -423,7 +439,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 		w.start = rev + 1
 	}
 	created.WatchId = id
-	n.watchReply(s, created, nil, 0)
+	n.watchReply(s, created, nil, nil, 0)
 	if w.start <= rev || n.revoke != nil {
 		// Like etcd, a watch from below the compaction is canceled. A
 		// watch with prev_kv from the compaction revision itself is too:
@@ -446,7 +462,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 // compacted cancels a watcher whose start a compaction at rev passed.
 func (n *Node) compacted(w *watcher, rev int64) {
 	r := &pb.WatchResponse{WatchId: w.id, CompactRevision: rev, Canceled: true}
-	n.watchReply(w.stream, r, nil, 0)
+	n.watchReply(w.stream, r, nil, nil, 0)
 	// etcd's compaction cancel carries header revision 0.
 	r.Header.Revision = 0
 }
@@ -454,20 +470,20 @@ func (n *Node) compacted(w *watcher, rev int64) {
 // event returns the watch event of a change for this watcher, or nil if
 // the watcher filters it out. An error is a value that could not be read,
 // which stops the node. Values only the log has come as fills.
-func (w *watcher) event(c mvcc.Change) (*mvccpb.Event, error) {
-	ev, err := c.Event(w.withPrev())
-	if err != nil || w.filters(ev) {
-		return nil, err
+func (n *Node) watcherEvent(w *watcher, c mvcc.Change) (*Event, error) {
+	if w.filters(c.Deletes()) {
+		return nil, nil
 	}
-	return ev, nil
+	return n.event(c, w.withPrev())
 }
 
 // withPrev reports whether the watcher's events carry previous values.
 func (w *watcher) withPrev() bool { return w.prevKV && !planted.On("B06c") }
 
-// filters reports whether the watcher leaves out an event.
-func (w *watcher) filters(ev *mvccpb.Event) bool {
-	return (ev.Type == mvccpb.Event_PUT && w.noPut) || (ev.Type == mvccpb.Event_DELETE && w.noDelete)
+// filters reports whether the watcher leaves out an event, of a delete
+// if del is set and of a put if not.
+func (w *watcher) filters(del bool) bool {
+	return (!del && w.noPut) || (del && w.noDelete)
 }
 
 // takes reports whether the watcher delivers the change at revision rev
@@ -506,7 +522,7 @@ func (n *Node) matchWatches() {
 			continue
 		}
 		pos := from + int64(i)
-		var built [2]*mvccpb.Event
+		var built [2]*Event
 		var reads [2]*ValueRead
 		var sizes [2]int
 		// The lookup's slice stays the same through the loop: a flush in
@@ -530,16 +546,16 @@ func (n *Node) matchWatches() {
 			if w.withPrev() {
 				k = 1
 			}
+			if w.filters(c.Deletes()) {
+				continue
+			}
 			if built[k] == nil {
-				ev, err := c.Event(k == 1)
+				ev, err := n.event(c, k == 1)
 				if err != nil {
 					n.fail(err)
 					return
 				}
 				built[k], reads[k], sizes[k] = ev, n.watchEvent(ev), c.EventSize(k == 1)
-			}
-			if w.filters(built[k]) {
-				continue
 			}
 			if len(w.pending) == 0 {
 				w.pendFrom = pos
@@ -589,8 +605,8 @@ func (n *Node) flushWatcher(w *watcher) {
 		n.fallBehind(w)
 		return
 	}
-	r := &pb.WatchResponse{WatchId: w.id, Events: w.pending, Fragment: w.fragment && len(w.pending) > 1}
-	n.watchReply(w.stream, r, w.waits, w.pendBytes)
+	r := &pb.WatchResponse{WatchId: w.id, Fragment: w.fragment && len(w.pending) > 1}
+	n.watchReply(w.stream, r, w.pending, w.waits, w.pendBytes)
 	w.sent = true
 	w.clearPending()
 }
@@ -722,14 +738,14 @@ func (n *Node) catchUpOne(w *watcher) {
 		n.bigPart(w)
 		return
 	}
-	var evs []*mvccpb.Event
+	var evs []*Event
 	bytes := 0
 	for pos := w.next; pos < stop; pos++ {
 		c := n.kv.Changed(pos)
 		if !w.wants(c) {
 			continue
 		}
-		ev, err := w.event(c)
+		ev, err := n.watcherEvent(w, c)
 		if err != nil {
 			n.fail(err)
 			return
@@ -745,7 +761,7 @@ func (n *Node) catchUpOne(w *watcher) {
 		if fills := n.kv.TakeFills(); len(fills) > 0 {
 			waits = append(waits, n.readValues(fills))
 		}
-		n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id, Events: evs, Fragment: w.fragment && len(evs) > 1}, waits, bytes)
+		n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id, Fragment: w.fragment && len(evs) > 1}, evs, waits, bytes)
 		w.sent = true
 	}
 	if w.next == end && n.revoke == nil {
@@ -757,14 +773,14 @@ func (n *Node) catchUpOne(w *watcher) {
 // events of about PieceBytes.
 func (n *Node) bigPart(w *watcher) {
 	b := w.big
-	var evs []*mvccpb.Event
+	var evs []*Event
 	bytes := 0
 	for ; b.pos < b.end && bytes < n.cfg.PieceBytes; b.pos++ {
 		c := n.kv.Changed(b.pos)
 		if !w.wants(c) {
 			continue
 		}
-		ev, err := w.event(c)
+		ev, err := n.watcherEvent(w, c)
 		if err != nil {
 			n.fail(err)
 			return
@@ -779,7 +795,7 @@ func (n *Node) bigPart(w *watcher) {
 		waits = append(waits, n.readValues(fills))
 	}
 	more := b.pos < b.end
-	part := WatchResponse{Stream: w.stream.id, Resp: &pb.WatchResponse{WatchId: w.id, Events: evs}, More: more, Cont: b.started, part: true}
+	part := WatchResponse{Stream: w.stream.id, Resp: &pb.WatchResponse{WatchId: w.id}, Events: evs, More: more, Cont: b.started, part: true}
 	switch {
 	case w.fragment:
 		part.Resp.Fragment, part.Fragmented, part.More, part.Cont = more, true, false, false
@@ -811,7 +827,7 @@ func (n *Node) progressNotify() {
 	for _, w := range n.watchers {
 		if !w.dead && w.progress && !w.sent && !w.ahead(rev) && !w.behind {
 			r := &pb.WatchResponse{WatchId: w.id}
-			n.watchReply(w.stream, r, nil, 0)
+			n.watchReply(w.stream, r, nil, nil, 0)
 		}
 		w.sent = false
 	}

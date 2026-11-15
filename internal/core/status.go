@@ -165,7 +165,7 @@ func (n *Node) Metrics() Metrics {
 			}
 		}
 		for _, h := range s.held {
-			m.HeldEvents += int64(len(h.resp.Resp.Events))
+			m.HeldEvents += int64(len(h.resp.Events))
 		}
 	}
 	return m
