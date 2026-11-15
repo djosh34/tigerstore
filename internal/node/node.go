@@ -2494,6 +2494,7 @@ func (n *Node) syncLog(ctx context.Context, h prometheus.Observer) error {
 // the segment starts. A failure stops the node, as a failed write of the
 // log does.
 func (n *Node) prepareSegments(ctx context.Context) {
+	go n.diagFillSpares(ctx)
 	n.log.mu.Lock()
 	seq := n.log.w.Seq() + 1
 	n.log.mu.Unlock()
@@ -2720,4 +2721,40 @@ func (n *Node) tell(in input) {
 		n.wake()
 	case <-n.done:
 	}
+}
+
+// diagFillSpares writes zero-filled spare segment files ahead, so the log
+// writes into initialized blocks. Diagnosis only.
+func (n *Node) diagFillSpares(ctx context.Context) {
+	zeros := make([]byte, 1<<20)
+	for i := range 40 {
+		if ctx.Err() != nil {
+			return
+		}
+		tmp := fmt.Sprintf("fill-%d", i)
+		f, err := n.log.fs.Create(tmp)
+		if err != nil {
+			n.logf("diag fill: %v", err)
+			return
+		}
+		for off := int64(0); off < 66<<20; off += 1 << 20 {
+			if _, err := f.WriteAt(zeros, off); err != nil {
+				n.logf("diag fill: %v", err)
+				return
+			}
+		}
+		if err := errors.Join(f.Sync(), f.Close()); err != nil {
+			n.logf("diag fill: %v", err)
+			return
+		}
+		if err := n.log.fs.Rename(tmp, fmt.Sprintf("spare-%016x", uint64(0xf000000000000000)+uint64(i))); err != nil {
+			n.logf("diag fill: %v", err)
+			return
+		}
+		if err := n.log.fs.SyncDir(); err != nil {
+			n.logf("diag fill: %v", err)
+			return
+		}
+	}
+	n.logf("diag fill: 40 spares ready")
 }
