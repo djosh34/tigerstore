@@ -99,9 +99,13 @@ type node struct {
 	ckptFrom int64
 	// ckptCut: the log before it is the newest checkpoint's, which holds
 	// what the store names there.
-	ckptCut  int64
-	ckptName string
-	ckptDir  string
+	ckptCut int64
+	// ckptNotBefore: the next checkpoint waits, but for a follower, until
+	// the loop's time encoding the last is at most 1/ckptLoopShare of the
+	// time since it started.
+	ckptNotBefore time.Time
+	ckptName      string
+	ckptDir       string
 	// recvSnap is a snapshot received and not installed yet.
 	recvSnap string
 	// shell does what takes other goroutines: waking the loop, and

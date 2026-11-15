@@ -86,6 +86,12 @@ const (
 // the log it cuts, so it bounds what a start replays at a small cost.
 var ckptMin int64 = 1 << 30
 
+// ckptLoopShare bounds the loop's time on checkpoints: the next starts no
+// sooner than this many times the loop's time encoding the last after
+// it started. A checkpoint encodes every key and the history a read may
+// see, so its time grows with the store, not with the writes since.
+const ckptLoopShare = 40
+
 // ckptMeta is a checkpoint's header.
 type ckptMeta struct {
 	index, term     uint64
@@ -483,6 +489,7 @@ func (n *node) ckptDone() error {
 		n.st.repoint(v.id, v.src, ckptOff(r.gen, v.dst))
 	}
 	n.ckptGen, n.ckptFrom, n.ckptCut, n.ckptName = r.gen, r.logFrom, r.cut, r.w.name
+	n.ckptNotBefore = r.started.Add(ckptLoopShare * time.Duration(r.encodeNs))
 	n.storage.snap = &pb.Snapshot{
 		Data:     []byte(r.w.name),
 		Metadata: &pb.SnapshotMetadata{Index: new(r.meta.index), Term: new(r.meta.term), ConfState: r.meta.cs},

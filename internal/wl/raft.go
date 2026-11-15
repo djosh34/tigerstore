@@ -247,7 +247,7 @@ func (n *node) afterApply() error {
 // last, or when Raft's storage wants one for a follower.
 func (n *node) maybeCkpt() error {
 	s := n.storage
-	if n.ckpt != nil || n.ckptDir == "" || n.wal.off-n.ckptFrom < ckptMin && !s.wantCkpt {
+	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < ckptMin || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt {
 		return nil
 	}
 	off := s.offOf(n.applied)
