@@ -3,10 +3,13 @@ package wl
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -24,7 +27,12 @@ import (
 
 // wal is the log file and its fsync helper.
 type wal struct {
-	fd       int
+	waiting  []*pb.Message // appends kept while the stage is full
+	dir      string
+	ready    chan segment
+	wfds     []int // the helper's
+	mu       sync.Mutex
+	rfds     []int
 	off      int64
 	iov      [][]byte
 	hdrs     []byte
@@ -66,11 +74,7 @@ type idxOff struct {
 
 const idxSlots = 1 << 16
 
-func openWAL(path string) (*wal, error) {
-	fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC|unix.O_CLOEXEC, 0o600)
-	if err != nil {
-		return nil, err
-	}
+func openWAL(dir string) (*wal, error) {
 	kick, err := unix.Eventfd(0, unix.EFD_CLOEXEC)
 	if err != nil {
 		return nil, err
@@ -79,32 +83,99 @@ func openWAL(path string) (*wal, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &wal{fd: fd, kickFD: kick, wakeFD: wake, idx: make([]idxOff, idxSlots)}
-	// The log is a ring in a file written once with zeros: a sync into
-	// blocks that are already allocated and written changes no metadata,
-	// so ext4 commits no journal for it. Main's log gets the same from
-	// the spare segments it recycles.
-	zero := make([]byte, 4<<20)
-	for off := int64(0); off < walRing; off += int64(len(zero)) {
-		if _, err := unix.Pwrite(fd, zero, off); err != nil {
-			return nil, err
-		}
-	}
-	if err := unix.Fdatasync(fd); err != nil {
-		return nil, err
-	}
-	_ = unix.Close(fd)
-	if w.fd, err = unix.Open(path, unix.O_WRONLY|unix.O_DIRECT|unix.O_DSYNC|unix.O_CLOEXEC, 0); err != nil {
-		return nil, err
-	}
+	w := &wal{kickFD: kick, wakeFD: wake, idx: make([]idxOff, idxSlots), dir: dir,
+		ready: make(chan segment, 2)}
 	w.stage = mmapBytes(stageSize)
+	go w.makeSegments()
 	go w.helper()
 	return w, nil
 }
 
-// walRing is the size of the log file; offsets in the log grow without
-// end and wrap around in the file.
-const walRing = 768 << 20
+// The log is a series of segments of segSize bytes; offsets in the log
+// grow without end, and offset o lies in segment o/segSize. Nothing in
+// it is ever overwritten. Each segment is a file written once with
+// zeros before the writer reaches it: a write into blocks that are
+// already allocated and written changes no metadata, so ext4 commits no
+// journal for it, as the prototype's ring did.
+const segSize = 64 << 20
+
+type segment struct{ wfd, rfd int }
+
+// makeSegments makes the segments ahead of the writer, at most two
+// ahead.
+func (w *wal) makeSegments() {
+	zero := make([]byte, 4<<20)
+	dfd, err := unix.Open(w.dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		panic(err)
+	}
+	for i := 0; ; i++ {
+		path := filepath.Join(w.dir, fmt.Sprintf("wal-%08d", i))
+		fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC|unix.O_CLOEXEC, 0o600)
+		if err != nil {
+			panic(err)
+		}
+		for off := int64(0); off < segSize; off += int64(len(zero)) {
+			if _, err := unix.Pwrite(fd, zero, off); err != nil {
+				panic(err)
+			}
+		}
+		if err := unix.Fdatasync(fd); err != nil {
+			panic(err)
+		}
+		_ = unix.Close(fd)
+		if err := unix.Fsync(dfd); err != nil {
+			panic(err)
+		}
+		var sg segment
+		if sg.wfd, err = unix.Open(path, unix.O_WRONLY|unix.O_DIRECT|unix.O_DSYNC|unix.O_CLOEXEC, 0); err != nil {
+			panic(err)
+		}
+		if sg.rfd, err = unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC, 0); err != nil {
+			panic(err)
+		}
+		w.mu.Lock()
+		w.rfds = append(w.rfds, sg.rfd)
+		w.mu.Unlock()
+		w.ready <- sg
+	}
+}
+
+// segFD returns the write file of segment k, waiting for it if it is
+// not made yet. Only the helper calls it.
+func (w *wal) segFD(k int64) int {
+	for int64(len(w.wfds)) <= k {
+		sg := <-w.ready
+		w.wfds = append(w.wfds, sg.wfd)
+	}
+	return w.wfds[k]
+}
+
+// read copies the log's bytes at off into p: from the stage where they
+// may not be on disk yet, else from the segments.
+func (w *wal) read(p []byte, off int64) {
+	if len(p) == 0 {
+		return
+	}
+	if off >= w.done.Load()&^(block-1) {
+		for got := 0; got < len(p); {
+			pos := (off + int64(got)) % stageSize
+			got += copy(p[got:], w.stage[pos:])
+		}
+		return
+	}
+	for got := 0; got < len(p); {
+		o := off + int64(got)
+		k := min(len(p)-got, int(segSize-o%segSize))
+		w.mu.Lock()
+		fd := w.rfds[o/segSize]
+		w.mu.Unlock()
+		if _, err := unix.Pread(fd, p[got:got+k], o%segSize); err != nil {
+			panic(err)
+		}
+		got += k
+	}
+}
 
 func (w *wal) helper() {
 	runtime.LockOSThread()
@@ -123,8 +194,8 @@ func (w *wal) helper() {
 		to := (target + block - 1) &^ (block - 1)
 		for from < to {
 			pos := from % stageSize
-			n := min(to-from, stageSize-pos)
-			k, err := unix.Pwrite(w.fd, w.stage[pos:pos+n], from%walRing)
+			n := min(to-from, stageSize-pos, segSize-from%segSize)
+			k, err := unix.Pwrite(w.segFD(from/segSize), w.stage[pos:pos+n], from%segSize)
 			if err == unix.EINTR {
 				continue
 			}
@@ -273,7 +344,43 @@ func (n *node) ready() {
 	}
 }
 
+// storageAppend writes an append into the stage, or, while the stage has
+// no room for it, keeps it and those after it in order until the disk
+// catches up.
 func (n *node) storageAppend(m *pb.Message) {
+	w := n.wal
+	if len(w.waiting) > 0 || !w.fits(m) {
+		stageWaits++
+		w.waiting = append(w.waiting, m)
+		w.kick()
+		return
+	}
+	n.appendNow(m)
+}
+
+var stageWaits uint64
+
+// fits reports whether the stage has room for m's records.
+func (w *wal) fits(m *pb.Message) bool {
+	need := int64(64)
+	for _, e := range m.GetEntries() {
+		need += walEntHdr + int64(len(e.GetData()))
+	}
+	return w.off+need-w.done.Load() <= stageSize-block
+}
+
+// unwait writes the kept appends that fit now.
+func (n *node) unwait() {
+	w := n.wal
+	k := 0
+	for ; k < len(w.waiting) && w.fits(w.waiting[k]); k++ {
+		n.appendNow(w.waiting[k])
+		w.waiting[k] = nil
+	}
+	w.waiting = append(w.waiting[:0], w.waiting[k:]...)
+}
+
+func (n *node) appendNow(m *pb.Message) {
 	ents := m.GetEntries()
 	if len(ents) > 0 {
 		if err := n.storage.Append(ents); err != nil {
@@ -330,6 +437,7 @@ func (n *node) fsyncDone() {
 	_, _ = unix.Read(n.wal.wakeFD, b[:])
 	n.wal.inflight = false
 	n.synced()
+	n.unwait()
 }
 
 func (n *node) storageApply(m *pb.Message) {

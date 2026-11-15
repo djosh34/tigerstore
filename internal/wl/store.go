@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"hash/maphash"
 	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 // The store keeps every key's live revision as its encoded
@@ -67,8 +65,7 @@ type store struct {
 	loads     uint64
 
 	leases  map[int64]int64
-	walFD   int
-	walEnd  *int64
+	wal     *wal
 	scratch []byte
 
 	// Records replaced or deleted during an apply, freed once its
@@ -97,7 +94,6 @@ func newStore() *store {
 		hist:   mmapSlice[histEnt](maxHist),
 		nhist:  1,
 		leases: map[int64]int64{},
-		walFD:  -1,
 	}
 	st.tree.init(st)
 	return st
@@ -194,16 +190,10 @@ func (st *store) readLog(off int64, n int) []byte {
 		st.scratch = val
 	}
 	val = val[:n]
-	clear(val)
-	if n > 0 && st.walFD >= 0 && st.walEnd != nil && off >= *st.walEnd-walRing {
-		for got := 0; got < n; {
-			pos := (off + int64(got)) % walRing
-			k := min(n-got, int(walRing-pos))
-			if _, err := unix.Pread(st.walFD, val[got:got+k], pos); err != nil {
-				panic(err)
-			}
-			got += k
-		}
+	if st.wal != nil {
+		st.wal.read(val, off)
+	} else {
+		clear(val)
 	}
 	return val
 }

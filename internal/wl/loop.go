@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
@@ -206,15 +205,12 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	n.ring = mmapBytes(ringSize)
 	n.rx = mmapBytes(ringSize)
 	n.side = mmapBytes(sideSize)
-	n.wal, err = openWAL(filepath.Join(dataDir, "wal"))
+	n.wal, err = openWAL(dataDir)
 	if err != nil {
 		return err
 	}
 	n.st.setBudget(memBudget, 2*ringSize+sideSize+stageSize)
-	if fd, err := unix.Open(filepath.Join(dataDir, "wal"), unix.O_RDONLY|unix.O_CLOEXEC, 0); err == nil {
-		n.st.walFD = fd
-		n.st.walEnd = &n.wal.off
-	}
+	n.st.wal = n.wal
 	n.storage = raft.NewMemoryStorage()
 	n.rn, err = raft.NewRawNode(raftConfig(n.id, n.storage))
 	if err != nil {
@@ -631,6 +627,7 @@ func (l *loop) logStats() {
 		l.n.st.nkeys, l.n.st.rev, l.n.st.slab.top>>20)
 	l.last, l.lastAt = d, now
 	st := l.n.st
+	l.logger.Printf("stage waits %d", stageWaits)
 	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d", st.slab.used>>20, st.limit>>20, st.evictions, st.loads)
 	l.logger.Printf("ops by kind %v bytes %v named %d carried %v bytes %v held %d", dbgOps, dbgBytes, dbgNamed, dbgCarried, dbgCarriedB, dbgHeld)
 }
