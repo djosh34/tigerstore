@@ -1797,6 +1797,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		// watch events and messages to peers.
 		n.loop.Flush()
 		n.turnTook()
+		// Variant: after a busy turn the loop gives the CPU to the
+		// node's other threads, if any wait for it.
+		if n.turnCalls > 0 || messages {
+			n.loop.Pause(0)
+		}
 		if err != nil {
 			if errors.Is(err, core.ErrInstalled) {
 				n.dropAll(waiters, streams, ErrSnapshotInstalled)

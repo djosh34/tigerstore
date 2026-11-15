@@ -275,6 +275,10 @@ func (s *socket) Close() error {
 // Pause sleeps for d in nanosleep: the runtime's own sleep wakes no
 // sooner than a millisecond on an idle process.
 func (p *Poller) Pause(d time.Duration) {
+	if d <= 0 {
+		_, _, _ = unix.Syscall(unix.SYS_SCHED_YIELD, 0, 0, 0)
+		return
+	}
 	ts := unix.NsecToTimespec(int64(d))
 	for {
 		var left unix.Timespec
