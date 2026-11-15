@@ -142,6 +142,10 @@ func (s *Store) freeValue(sl slot, n uint32) {
 // Release frees the values that the writes since the last call replaced:
 // the caller has built every answer and event that reads them.
 func (s *Store) Release() {
+	if len(s.vals.retired) == 0 {
+		// gosim's clear fails on a nil map.
+		return
+	}
 	for r, sl := range s.vals.retired {
 		s.freeValue(sl, r.Len)
 	}
