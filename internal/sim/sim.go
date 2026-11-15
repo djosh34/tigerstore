@@ -1025,9 +1025,19 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 	return s, nil
 }
 
+// directStream is the stream of the seed that picks the nodes whose
+// logs are written direct (addNode).
+const directStream = 0x646972656374
+
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
 	n := &node{idx: i, id: uint64(i + 1), disk: disk, addrs: []string{peerAddr(i)}, wake: make(chan struct{})}
 	disk.Capacity = s.cfg.Faults.DiskCapacity
+	// Half the nodes, drawn from the seed apart from s.rng, write their
+	// logs as osfs's O_DIRECT and O_DSYNC do, each write durable as it
+	// returns (simfs.Disk.Direct), so that the log's writer reports what
+	// it wrote itself; the others on the buffered model, a disk that
+	// keeps less.
+	disk.Direct = rand.New(rand.NewPCG(s.cfg.Seed, directStream+uint64(i))).IntN(2) == 0
 	if s.pages != nil {
 		disk.KeepIn(s.pages, keepPages)
 	}
@@ -1575,6 +1585,9 @@ func baseNodeConfig(id uint64, peerURLs []string, leaseCheckpoints bool) tnode.C
 		// Small segments, so that most of the log is in sealed ones,
 		// where any damage is detectable.
 		SegmentBytes: 8 << 10,
+		// The log's writes start apart as in production, so the
+		// simulator runs the writer's batching.
+		WriteGap: tnode.DefaultWriteGap,
 		// A watch stream holds 8 responses, so that a slow watcher's
 		// fills and its watcher falls behind.
 		WatchQueue: 8,

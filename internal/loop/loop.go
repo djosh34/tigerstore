@@ -17,7 +17,7 @@ import (
 )
 
 // Poller waits for the loop's sockets. Only the loop calls Attach, Wait and
-// Close; any goroutine may call Wake.
+// Close; any goroutine may call Wake and Pause.
 type Poller interface {
 	// Attach hands c to the loop and returns the socket the loop reads and
 	// writes it through. Each time c may have become readable or writable,
@@ -32,8 +32,8 @@ type Poller interface {
 	Wait(ready []uint64, timeout time.Duration) ([]uint64, error)
 	// Wake makes the current or next Wait return. It never blocks.
 	Wake()
-	// Pause sleeps for d without looking at the sockets, to the
-	// microsecond, as the loop does between two busy turns.
+	// Pause sleeps for d, to the microsecond, as the log's writer does
+	// between two writes. The loop never pauses: it waits only in Wait.
 	Pause(d time.Duration)
 	Close() error
 }

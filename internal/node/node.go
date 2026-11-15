@@ -122,12 +122,13 @@ type Config struct {
 	// it low so that a few clients' bursts cut turns: below 32 a turn
 	// never takes enough calls to measure, so the bound stays.
 	TurnCalls int
-	// TurnGap, if above 0, is the least time from the start of a busy
-	// turn of the loop, one that took calls or peers' messages, to the
-	// next: the loop pauses for what is left of it before it looks at its
-	// sockets again, so the next turn takes what came meanwhile with
-	// fewer reads, writes and waits. tigerstore sets DefaultTurnGap.
-	TurnGap time.Duration
+	// WriteGap, if above 0, is the least time from the start of one
+	// write of the log to the next: the writer waits out the rest of it
+	// and takes what the loop queued meanwhile into the same write, so
+	// that under load each write, and each turn that steps what it made
+	// durable, takes more. The loop itself never waits for it.
+	// tigerstore sets DefaultWriteGap.
+	WriteGap time.Duration
 	// Memory, if set, measures what the process uses besides the value
 	// cache, and whether that is a new measure, instead of the Go
 	// runtime's metrics: the simulator runs several nodes in one process.
@@ -984,7 +985,10 @@ func (n *Node) open() error {
 	n.core = c
 	c.SetTurnOver(func() bool { return time.Now().After(n.turnEnd) })
 	n.persistQ = make(chan persistBatch, maxBacklog)
-	n.persisted = make(chan persistDone, 1)
+	// The disk goroutines report into room for a backlog's worth, so they
+	// seldom wait for the loop to take a report: a report that waited held
+	// the next write, and its acks, for the rest of the loop's turn.
+	n.persisted = make(chan persistDone, maxBacklog)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
 	n.cleanQ = make(chan packRoot)
 	n.wantQ = make(chan uint64, 1)
@@ -1205,12 +1209,11 @@ func (n *Node) Busy() bool {
 // 15 ms gave them.
 const minTurnTime = 15 * time.Millisecond
 
-// DefaultTurnGap is the turn gap tigerstore runs with (Config.TurnGap).
-// On crd-heavy, a turn took a few calls and wrote to every connection it
-// touched: the socket writes alone took 11% of the leader's CPU, and its
-// reads, waits and wake-ups 11% more (#602). Prototype 6 got its larger
-// turns from the 800 µs it left between syncs.
-const DefaultTurnGap = 500 * time.Microsecond
+// DefaultWriteGap is the write gap tigerstore runs with (Config.WriteGap),
+// as prototype 6 left between its syncs (#602). A gap between the loop's
+// turns instead held every ack and reply for it too: at RTT 10 a crd-heavy
+// call took over twice the prototype's time.
+const DefaultWriteGap = 800 * time.Microsecond
 
 // minTurnCalls is the fewest calls a turn takes, so that a turn slowed by
 // other work still takes clients' calls; measuredTurnCalls the fewest
@@ -1631,8 +1634,6 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		due := n.core.Due()
 		clock.due = clock.at + due
 		timeout := time.Until(started.Add(time.Duration(clock.due) * n.cfg.Tick))
-		// A pause between busy turns ends by the next tick with work.
-		pauseFor := timeout
 		copyPart := false
 		switch {
 		case n.core.CutWaits() && len(chunks) == 0:
@@ -1650,14 +1651,6 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		// sockets that waited for the disk.
 		if n.core.Working() || !full && (len(n.inbox) > 0 || n.loop.Holding()) {
 			timeout = 0
-		}
-		// After a busy turn, the next waits out the turn gap, also for
-		// work that is there already: it comes with what the gap brings.
-		if gap := n.cfg.TurnGap; gap > 0 && (n.turnCalls > 0 || messages) {
-			if d := min(gap-time.Since(n.turnStart), pauseFor); d > 0 {
-				n.loop.Pause(d)
-				timeout = max(timeout-d, 0)
-			}
 		}
 		entered := wallTick(time.Now())
 		// Sockets whose output waits wake the loop at their write
@@ -2134,6 +2127,69 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		return true
 	}
 	var g written
+	// took starts g's clock with the first batch it takes.
+	took := func(b persistBatch) {
+		if g.times.start.IsZero() {
+			g.times = persistTimes{queued: b.queued, start: time.Now()}
+		}
+	}
+	// takeQueued adds to pending the batches the committer queued, without
+	// waiting, and wakes it for the room they left.
+	takeQueued := func(pending *persistBatch) {
+		for {
+			select {
+			case js := <-n.persistQ:
+				if pending.queued.IsZero() {
+					pending.queued = js.queued
+				}
+				pending.jobs = append(pending.jobs, js.jobs...)
+			default:
+				n.wake()
+				return
+			}
+		}
+	}
+	// add appends jobs to the log's buffer and to g, up to the first
+	// snapshot install, which it runs first. It reports whether an
+	// install ends the run once g is durable, and whether the node goes
+	// on.
+	add := func(jobs []core.PersistJob) (installs, ok bool) {
+		jobs, installs = core.UpToInstall(jobs)
+		for _, j := range jobs {
+			if j.Install != nil {
+				if !drain() {
+					return installs, false
+				}
+				// The install checks the entries this group already
+				// holds, which must be readable.
+				buffered := w.Buffered()
+				err := w.Flush()
+				n.log.used.Add(buffered - w.Buffered())
+				if err != nil {
+					fail(err)
+					return installs, false
+				}
+				if err := n.install(ctx, t, j.Install); err != nil {
+					fail(fmt.Errorf("install the snapshot at %d from %d: %w", j.Install.Index, j.Install.From, err))
+					return installs, false
+				}
+			}
+			n.log.mu.Lock()
+			w.Append(j.HardState, j.Entries)
+			if j.Root != nil {
+				w.AppendRoot(*j.Root)
+			}
+			n.log.mu.Unlock()
+			g.jobs = append(g.jobs, j)
+			g.entries += len(j.Entries)
+			for _, e := range j.Entries {
+				g.bytes += len(e.Data)
+			}
+		}
+		return installs, true
+	}
+	// lastWrite is when the last write of the log started (Config.WriteGap).
+	var lastWrite time.Time
 	for {
 		var pending persistBatch
 		queue, cleanQ := n.persistQ, n.cleanQ
@@ -2143,20 +2199,8 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		select {
 		case pending = <-queue:
 			n.wake()
-		more:
-			for {
-				select {
-				case js := <-n.persistQ:
-					pending.jobs = append(pending.jobs, js.jobs...)
-				default:
-					break more
-				}
-			}
-			// The committer may have more batches for the room these left.
-			n.wake()
-			if g.times.start.IsZero() {
-				g.times = persistTimes{queued: pending.queued, start: time.Now()}
-			}
+			takeQueued(&pending)
+			took(pending)
 		case s := <-synced:
 			if !back(s) {
 				return
@@ -2173,41 +2217,29 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		case <-ctx.Done():
 			return
 		}
-		jobs, installs := core.UpToInstall(pending.jobs)
-		for _, j := range jobs {
-			if j.Install != nil {
-				if !drain() {
-					return
-				}
-				// The install checks the entries this group already
-				// holds, which must be readable.
-				buffered := w.Buffered()
-				err := w.Flush()
-				n.log.used.Add(buffered - w.Buffered())
-				if err != nil {
-					fail(err)
-					return
-				}
-				if err := n.install(ctx, t, j.Install); err != nil {
-					fail(fmt.Errorf("install the snapshot at %d from %d: %w", j.Install.Index, j.Install.From, err))
-					return
-				}
-			}
-			n.log.mu.Lock()
-			w.Append(j.HardState, j.Entries)
-			if j.Root != nil {
-				w.AppendRoot(*j.Root)
-			}
-			n.log.mu.Unlock()
-			g.jobs = append(g.jobs, j)
-			g.entries += len(j.Entries)
-			for _, e := range j.Entries {
-				g.bytes += len(e.Data)
-			}
+		installs, ok := add(pending.jobs)
+		if !ok {
+			return
 		}
 		if old != nil || len(g.jobs) == 0 && len(g.packs) == 0 {
 			continue
 		}
+		// Writes of the log start at least WriteGap apart: the writer
+		// waits out the rest of the gap and takes what the committer
+		// queued meanwhile into the same write. The loop never waits for
+		// it; its turns go on and step what comes.
+		if d := n.cfg.WriteGap - time.Since(lastWrite); d > 0 && !installs && inFlight < syncsInFlight {
+			n.loop.Pause(d)
+			var more persistBatch
+			takeQueued(&more)
+			if len(more.jobs) > 0 {
+				took(more)
+				if installs, ok = add(more.jobs); !ok {
+					return
+				}
+			}
+		}
+		lastWrite = time.Now()
 		buffered := w.Buffered()
 		n.log.used.Add(buffered)
 		m := n.cfg.Metrics
@@ -2239,8 +2271,24 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			// sync.
 			g.f = nil
 		}
-		toSync <- g
+		// A group whose writes are durable as they returned, with no
+		// rotation, directory or cleaning pass to sync and no group
+		// waiting for a sync before it, the writer reports itself: the
+		// loop steps its acks and sends them in the turn the report wakes,
+		// without a hop through syncGroups. The rest go there, so that the
+		// writer takes the next appends while a real sync runs.
+		durable := g.f == nil || wal.WritesDurable(g.f) && !full && !g.dir && len(g.packs) == 0
 		inFlight++
+		if inFlight == 1 && durable {
+			// A failure comes back with the group, and back stops the node.
+			ok := true
+			_ = n.syncBatch([]written{g}, nil, report, func(s syncedGroup) { ok = back(s) && ok })
+			if !ok {
+				return
+			}
+		} else {
+			toSync <- g
+		}
 		g = written{}
 		if installs {
 			// The run ends at the install and starts again from the log.
@@ -2276,73 +2324,80 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 				break more
 			}
 		}
-		err := failed
-		var f wal.File
-		dir := false
-		// upTo is where the batch's bytes end in f.
-		var upTo int64
-		for _, g := range batch {
-			if g.f != nil {
-				f = g.f
-			}
-			dir = dir || g.dir
-			upTo = max(upTo, g.end)
-		}
-		// The sync makes the batch durable from the write of its first group.
-		written := batch[0].times.flush
-		var early []syncedGroup
-		if err == nil && f != nil && (planted.On("B02") && n.Leader() == n.ID() || planted.On("B03") && n.Leader() != n.ID()) {
-			// Planted: report the appends durable before their sync, up to
-			// the first group with a root or a snapshot. The writer still
-			// waits for the sync.
-			for len(batch) > 0 && !slices.ContainsFunc(batch[0].jobs, func(j core.PersistJob) bool { return j.Root != nil || j.Install != nil }) {
-				err = report(batch[0], err)
-				early = append(early, syncedGroup{g: batch[0], err: err})
-				batch = batch[1:]
-			}
-		}
-		start := time.Now()
-		if err == nil && f != nil {
-			if n.cfg.BeforeSync != nil {
-				n.cfg.BeforeSync()
-			}
-			err = f.Sync()
-			if !planted.On("B11") {
-				err = n.syncedLog(f, upTo, err)
-			}
-			// Planted: B05 takes records into the new segment before its
-			// directory entry is durable.
-			if err == nil && dir && !planted.On("B05") {
-				err = n.log.fs.SyncDir()
-			}
-			if planted.On("B11") {
-				// Planted: carry on as if the sync worked.
-				err = nil
-			}
-			if err == nil {
-				err = n.saveVote(batch)
-			}
-			if err != nil {
-				n.broken.Store(true)
-			}
-			syncTime := time.Since(start)
-			n.cfg.Metrics.WALFsync.Observe(syncTime.Seconds())
-			n.cfg.Metrics.BackendCommit.Observe(time.Since(written).Seconds())
-			if syncTime > n.cfg.Tick {
-				n.logf("slow log sync: %v", syncTime)
-			}
-		}
-		end := time.Now()
-		for _, e := range early {
-			synced <- e
-		}
-		for _, g := range batch {
-			g.times.sync, g.times.synced = start, end
-			err = report(g, err)
-			synced <- syncedGroup{g: g, err: err}
-		}
-		failed = err
+		failed = n.syncBatch(batch, failed, report, func(s syncedGroup) { synced <- s })
 	}
+}
+
+// syncBatch syncs a batch of written groups, which failed, if set, already
+// failed, and reports each and hands it to done, in order. It returns the
+// error that the groups after it fail with.
+func (n *Node) syncBatch(batch []written, failed error, report func(written, error) error, done func(syncedGroup)) error {
+	err := failed
+	var f wal.File
+	dir := false
+	// upTo is where the batch's bytes end in f.
+	var upTo int64
+	for _, g := range batch {
+		if g.f != nil {
+			f = g.f
+		}
+		dir = dir || g.dir
+		upTo = max(upTo, g.end)
+	}
+	// The sync makes the batch durable from the write of its first group.
+	written := batch[0].times.flush
+	var early []syncedGroup
+	if err == nil && f != nil && (planted.On("B02") && n.Leader() == n.ID() || planted.On("B03") && n.Leader() != n.ID()) {
+		// Planted: report the appends durable before their sync, up to
+		// the first group with a root or a snapshot. The writer still
+		// waits for the sync.
+		for len(batch) > 0 && !slices.ContainsFunc(batch[0].jobs, func(j core.PersistJob) bool { return j.Root != nil || j.Install != nil }) {
+			err = report(batch[0], err)
+			early = append(early, syncedGroup{g: batch[0], err: err})
+			batch = batch[1:]
+		}
+	}
+	start := time.Now()
+	if err == nil && f != nil {
+		if n.cfg.BeforeSync != nil {
+			n.cfg.BeforeSync()
+		}
+		err = f.Sync()
+		if !planted.On("B11") {
+			err = n.syncedLog(f, upTo, err)
+		}
+		// Planted: B05 takes records into the new segment before its
+		// directory entry is durable.
+		if err == nil && dir && !planted.On("B05") {
+			err = n.log.fs.SyncDir()
+		}
+		if planted.On("B11") {
+			// Planted: carry on as if the sync worked.
+			err = nil
+		}
+		if err == nil {
+			err = n.saveVote(batch)
+		}
+		if err != nil {
+			n.broken.Store(true)
+		}
+		syncTime := time.Since(start)
+		n.cfg.Metrics.WALFsync.Observe(syncTime.Seconds())
+		n.cfg.Metrics.BackendCommit.Observe(time.Since(written).Seconds())
+		if syncTime > n.cfg.Tick {
+			n.logf("slow log sync: %v", syncTime)
+		}
+	}
+	end := time.Now()
+	for _, e := range early {
+		done(e)
+	}
+	for _, g := range batch {
+		g.times.sync, g.times.synced = start, end
+		err = report(g, err)
+		done(syncedGroup{g: g, err: err})
+	}
+	return err
 }
 
 // syncedLog tells the log how a sync of its segment f, which syncs its

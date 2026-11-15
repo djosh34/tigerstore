@@ -435,6 +435,7 @@ func (d *Disk) Durable() *Disk {
 	}
 	c.files = d.files
 	c.st = d.st
+	c.Direct = d.Direct
 	return c
 }
 
@@ -462,6 +463,7 @@ func (d *Disk) Copy() *Disk {
 	}
 	c.files = d.files
 	c.st = d.st
+	c.Direct = d.Direct
 	return c
 }
 
@@ -971,6 +973,10 @@ func (h *Handle) Truncate(size int64) error {
 	}
 	return nil
 }
+
+// WritesDurable reports whether each write is durable as it returns
+// (Disk.Direct).
+func (h *Handle) WritesDurable() bool { return h.direct }
 
 // Sync makes the content durable.
 func (h *Handle) Sync() error {

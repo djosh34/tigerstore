@@ -186,7 +186,7 @@ func (c *cluster) start(id uint64) {
 		c.coreConfig(&cfg)
 	}
 	// The loop pauses between busy turns, as the tigerstore command's does.
-	ncfg := node.Config{Core: cfg, DataDir: c.dirs[id], Tick: c.tick, Logf: logf, SegmentBytes: c.segmentBytes, BeforeRead: c.beforeRead, TurnGap: node.DefaultTurnGap}
+	ncfg := node.Config{Core: cfg, DataDir: c.dirs[id], Tick: c.tick, Logf: logf, SegmentBytes: c.segmentBytes, BeforeRead: c.beforeRead, WriteGap: node.DefaultWriteGap}
 	if c.nodeConfig != nil {
 		c.nodeConfig(&ncfg)
 	}

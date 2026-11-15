@@ -100,6 +100,23 @@ type File interface {
 	Close() error
 }
 
+// DurableFile is a File whose writes are durable as they return, as
+// FS.OpenLog opens a segment where the file system allows: its Sync only
+// makes a truncation durable, so the log's writer runs it itself instead
+// of on a goroutine of its own.
+type DurableFile interface {
+	File
+	// WritesDurable reports whether each write is durable as it returns.
+	WritesDurable() bool
+}
+
+// WritesDurable reports whether f's writes are durable as they return
+// (DurableFile).
+func WritesDurable(f File) bool {
+	d, ok := f.(DurableFile)
+	return ok && d.WritesDurable()
+}
+
 // ErrCorrupt means the log on disk is damaged in a way that a crash cannot
 // cause. The node must not take part in the cluster with it.
 var ErrCorrupt = errors.New("wal: corrupt log")

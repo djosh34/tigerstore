@@ -150,6 +150,9 @@ func (f *logFile) Truncate(size int64) error {
 	return nil
 }
 
+// WritesDurable reports that the writes are durable as they return.
+func (f *logFile) WritesDurable() bool { return true }
+
 // Sync makes a truncation durable. The writes are durable already.
 func (f *logFile) Sync() error {
 	f.syncMu.Lock()

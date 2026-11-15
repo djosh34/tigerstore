@@ -227,6 +227,10 @@ func (f *file) Truncate(size int64) error {
 	})
 }
 
+// WritesDurable reports whether the writes are durable as they return:
+// the log's writer then syncs the file itself (wal.DurableFile).
+func (f *file) WritesDurable() bool { return wal.WritesDurable(f.f) }
+
 func (f *file) Sync() error {
 	return f.d.call(simfs.OpSync, f.name, func() error {
 		if err := f.f.Sync(); err != nil {
