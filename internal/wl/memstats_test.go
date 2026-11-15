@@ -55,3 +55,30 @@ func TestGoNeverGetsLessThanItsLiveHeap(t *testing.T) {
 			before>>20, st.limit>>20, (750<<20-goShare(budget))>>20)
 	}
 }
+
+// Letting records go never unmaps the slab's slots. A limit that counted
+// the freed slots against the records could never be met once the slab
+// had grown past it, and the clock hand let every record go: the k8s
+// bench's leader dropped from 1,263 to 757 MB of records in seconds, and
+// its applies read them back from the disk (#602).
+func TestTheSlabStopsLettingGoWithinItsLimit(t *testing.T) {
+	st, l := newTestStore(t)
+	const budget = 1 << 30
+	st.setBudget(budget, 0)
+	value := strings.Repeat("v", 1000)
+	for i := range 20000 {
+		putValue(t, st, l, fmt.Sprintf("/k/%05d", i), value)
+	}
+	used := st.slab.used
+	// Go needs enough more that half the records must go.
+	st.goLive = (st.limit - used/2 + goShare(budget)) * 4 / 5
+	for i := range 100 {
+		putValue(t, st, l, fmt.Sprintf("/k/%05d", i), value)
+	}
+	if st.slab.used > st.limit {
+		t.Fatalf("the slab holds %d KiB of records past its limit of %d KiB", st.slab.used>>10, st.limit>>10)
+	}
+	if st.slab.used < st.limit-st.limit/8 {
+		t.Fatalf("the slab let go down to %d KiB of records, far below its limit of %d KiB", st.slab.used>>10, st.limit>>10)
+	}
+}

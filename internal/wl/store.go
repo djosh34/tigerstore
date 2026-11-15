@@ -290,13 +290,13 @@ func (st *store) setBudget(budget, mapped int64) {
 	st.relimit()
 }
 
-// relimit leaves the slab what the budget does not take otherwise: what
-// Go needs, the mapped rings and stages, and the tables outside Go's heap
-// as they grow. The slab's slots freed and not taken again stay mapped,
-// so they count against its limit too.
+// relimit leaves the slab's records what the budget does not take
+// otherwise: what Go needs, the mapped rings and stages, and the tables
+// outside Go's heap as they grow. Its freed slots stay mapped, but letting
+// records go never unmaps them: the limit is on the records alone, and
+// the freed slots are taken again before the slab grows.
 func (st *store) relimit() {
-	top := int64(st.slab.top)
-	st.limit = st.budget - st.goNeed() - (st.outside() - top) - (top - st.slab.used)
+	st.limit = st.budget - st.goNeed() - (st.outside() - int64(st.slab.top))
 }
 
 // goShare is the least of the budget kept for Go's heap and runtime: an
