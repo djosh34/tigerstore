@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"time"
 )
 
 // The apply: each committed batch changes the store in order, and the
@@ -33,6 +34,19 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 			mine = false
 		}
 	}
+	// etcd times each apply; the loop times the batch, once, and gives
+	// each op its share.
+	start := time.Now()
+	applied := n.appliedOps[:0]
+	defer func() {
+		if len(applied) > 0 {
+			d := time.Since(start).Seconds() / float64(len(applied))
+			for _, a := range applied {
+				n.gs.apply[a.op][b2i(a.ok)].observe(applyBuckets, d)
+			}
+		}
+		n.appliedOps = applied[:0]
+	}()
 	for i := range nops {
 		kind := data[p]
 		l := int(binary.LittleEndian.Uint32(data[p+1:]))
@@ -47,6 +61,7 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 			c, s = n.clientOf(handles[i])
 		}
 		var err error
+		n.txnWrote = false
 		if n.noSpace || n.corrupt {
 			err = n.alarmGate(kind, req)
 		}
@@ -71,6 +86,10 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 		case kind == kAlarm:
 			err = n.applyAlarm(req, c, s)
 		}
+		// A read-only Txn is etcd's to serve without an apply.
+		if op := applyOp(kind); op >= 0 && (kind != kTxn || n.txnWrote) {
+			applied = append(applied, appliedOp{op, err == nil})
+		}
 		if re, ok := errors.AsType[*requestError](err); ok {
 			// Every node applies the same bytes and rejects them alike.
 			if c != nil {
@@ -83,6 +102,12 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 		}
 	}
 	return nil
+}
+
+// appliedOp is an op a batch applied, for etcd_server_apply_duration_seconds.
+type appliedOp struct {
+	op int
+	ok bool
 }
 
 // requestError is a request the apply rejects before it changes anything:
@@ -143,6 +168,12 @@ func voffOf(req, sub []byte, base int64) int64 {
 // key had, if it was live.
 func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 	st := n.st
+	// etcd's mvcc counts the put, and the read of the value before it.
+	n.gs.puts++
+	n.gs.putBytes += int64(len(r.key) + len(r.value))
+	if r.prevKV || r.ignoreValue || r.ignoreLease {
+		n.gs.rangesN++
+	}
 	id, err := st.intern(r.key)
 	if err != nil {
 		return nil, err
@@ -203,6 +234,10 @@ func (n *node) checkPutKey(r *putReq) error {
 // their records to kvs if r asks for them.
 func (n *node) deleteRange(r *delReq, rev int64, kvs [][]byte) ([][]byte, int64, error) {
 	st := n.st
+	n.gs.deletes++
+	if r.prevKV {
+		n.gs.rangesN++ // etcd reads the values before with a range
+	}
 	var deleted int64
 	del := func(id uint32) error {
 		prev, err := st.del(id, rev)
@@ -412,10 +447,11 @@ type txnRun struct {
 	// path is which branch each nested Txn takes, in the order the
 	// branches meet them, picked on the store before the Txn as etcd's
 	// compareToPath picks them; next is the next one's.
-	path []bool
-	next int
-	res  []opRes
-	kvs  [][]byte
+	path  []bool
+	next  int
+	wrote bool // a put or delete ran: not a read-only Txn
+	res   []opRes
+	kvs   [][]byte
 }
 
 func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
@@ -432,6 +468,13 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 		return err
 	}
 	t := txnRun{req: req, voff: voff, rev: n.st.rev + 1, res: n.txnRes[:0], kvs: n.kvs[:0]}
+	// etcd's mvcc counts a Txn of more than one operation.
+	before := n.gs.puts + n.gs.deletes + n.gs.rangesN
+	defer func() {
+		if n.gs.puts+n.gs.deletes+n.gs.rangesN-before > 1 {
+			n.gs.txns++
+		}
+	}()
 	if t.path, err = n.txnPath(ops, ok, nil); err != nil {
 		return err
 	}
@@ -442,6 +485,7 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 	if t.changed {
 		n.st.rev = t.rev
 	}
+	n.txnWrote = t.wrote
 	if c != nil {
 		n.replyTxn(c, s, ok, t.res, r0, r1, t.kvs)
 	}
@@ -494,6 +538,7 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 				return 0, 0, badRequest(err)
 			}
 			k0 := len(t.kvs)
+			n.gs.rangesN++
 			var count int64
 			var more bool
 			if t.kvs, count, more, err = n.rangeKVs(&r, t.kvs); err != nil {
@@ -514,7 +559,7 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 			if err != nil {
 				return 0, 0, err
 			}
-			t.changed = true
+			t.changed, t.wrote = true, true
 			x := opRes{kind: kPut, rev: t.rev}
 			if r.prevKV {
 				x.prev = prev
@@ -531,6 +576,7 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 				return 0, 0, err
 			}
 			t.changed = t.changed || deleted > 0
+			t.wrote = true
 			local = append(local, opRes{kind: kDel, rev: t.seen(), kvs0: k0, kvs1: len(t.kvs), deleted: deleted})
 		case 4:
 			sub := t.path[t.next]

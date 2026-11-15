@@ -13,6 +13,7 @@ import (
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
 
+	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/wl"
 )
@@ -52,6 +53,15 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 	}
 	var err error
 	if cfg.PeerServerTLS, cfg.PeerClientTLS, err = wlPeerTLS(pcfg); err != nil {
+		closeListeners(clientLns, pcfg.Listeners, lg)
+		return err
+	}
+	cfg.ExtensiveMetrics = ec.Metrics == "extensive"
+	if cfg.Metrics, err = metrics.New(featureMetrics(ec.ServerFeatureGate)); err != nil {
+		closeListeners(clientLns, pcfg.Listeners, lg)
+		return err
+	}
+	if cfg.MetricsListeners, err = metricsListeners(ec, ctls); err != nil {
 		closeListeners(clientLns, pcfg.Listeners, lg)
 		return err
 	}

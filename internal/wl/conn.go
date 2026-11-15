@@ -298,6 +298,10 @@ type msgW struct {
 // begin starts a gRPC message of n bytes on stream s of client c.
 func (w *msgW) begin(c *client, s *stream, n int) {
 	*w = msgW{s: &c.sock, sid: s.id, left: 5 + n}
+	if g := c.node; g != nil {
+		g.gs.calls[s.kind].sent++
+		g.gs.sentBytes += int64(n)
+	}
 	if !c.take(s, 5+n) {
 		w.c, w.st, w.held = c, s, make([]byte, 0, 5+n)
 	}

@@ -302,28 +302,13 @@ func trafficName(t server.Traffic) string {
 // --listen-metrics-urls URL, as etcd does: over TLS with the client
 // certificate for https.
 func serveMetricsURLs(ec *embed.Config, ctls *tls.Config, h http.Handler, lg *zap.Logger) ([]*http.Server, error) {
-	var srvs []*http.Server
-	closeSrvs := func(err error) ([]*http.Server, error) {
-		for _, srv := range srvs {
-			err = errors.Join(err, srv.Close())
-		}
+	lns, err := metricsListeners(ec, ctls)
+	if err != nil {
 		return nil, err
 	}
-	for _, u := range ec.ListenMetricsUrls {
-		var cfg *tls.Config
-		if u.Scheme == "https" || u.Scheme == "unixs" {
-			if ctls == nil {
-				return closeSrvs(errors.New("client TLS key/cert (--cert-file, --key-file) must be provided for metrics secure url"))
-			}
-			cfg = metricsTLS(ctls)
-		}
-		ln, err := transport.NewListenerWithOpts(u.Host, u.Scheme, transport.WithSocketOpts(&ec.SocketOpts), transport.WithSkipTLSInfoCheck(true))
-		if err != nil {
-			return closeSrvs(err)
-		}
-		if cfg != nil {
-			ln = tls.NewListener(ln, cfg)
-		}
+	var srvs []*http.Server
+	for i, ln := range lns {
+		u := ec.ListenMetricsUrls[i]
 		srv := &http.Server{Addr: u.Host, Handler: h, ReadHeaderTimeout: time.Minute}
 		srvs = append(srvs, srv)
 		go func() {
@@ -334,6 +319,30 @@ func serveMetricsURLs(ec *embed.Config, ctls *tls.Config, h http.Handler, lg *za
 		lg.Info("serving metrics", zap.String("address", u.String()))
 	}
 	return srvs, nil
+}
+
+// metricsListeners are the listeners of --listen-metrics-urls, one per
+// URL, over TLS with the client certificate for https.
+func metricsListeners(ec *embed.Config, ctls *tls.Config) ([]net.Listener, error) {
+	var lns []net.Listener
+	for _, u := range ec.ListenMetricsUrls {
+		var cfg *tls.Config
+		if u.Scheme == "https" || u.Scheme == "unixs" {
+			if ctls == nil {
+				return nil, errors.Join(errors.New("client TLS key/cert (--cert-file, --key-file) must be provided for metrics secure url"), closeAll(lns))
+			}
+			cfg = metricsTLS(ctls)
+		}
+		ln, err := transport.NewListenerWithOpts(u.Host, u.Scheme, transport.WithSocketOpts(&ec.SocketOpts), transport.WithSkipTLSInfoCheck(true))
+		if err != nil {
+			return nil, errors.Join(err, closeAll(lns))
+		}
+		if cfg != nil {
+			ln = tls.NewListener(ln, cfg)
+		}
+		lns = append(lns, ln)
+	}
+	return lns, nil
 }
 
 // metricsTLS is the TLS configuration of an https metrics URL. etcd's

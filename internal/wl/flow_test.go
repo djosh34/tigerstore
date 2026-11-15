@@ -120,7 +120,7 @@ func TestAWriteThatNeverAppliesTimesOut(t *testing.T) {
 	if len(n.proposed) != 0 || len(n.fwd[1].handles) != 0 {
 		t.Fatal("a write past its timeout still waits")
 	}
-	if got := n.metrics.handled[kPut][codeUnavailable].Load(); got != 1 {
+	if got := n.gs.calls[kPut].handled[codeUnavailable]; got != 1 {
 		t.Fatalf("%d timed-out answers, want 1", got)
 	}
 }

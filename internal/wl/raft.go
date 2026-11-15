@@ -47,6 +47,9 @@ func (n *node) ready() error {
 			was := n.leading()
 			if rd.Lead != n.lead {
 				n.logf("the leader is %d", rd.Lead)
+				if rd.Lead != 0 {
+					n.gs.leaderChanges++
+				}
 			}
 			n.lead = rd.Lead
 			hasLeader := int64(0)
@@ -216,6 +219,10 @@ func (n *node) storageApply(m *pb.Message) error {
 			}
 		}
 		n.applied = idx
+		if n.applied > n.membershipAt+membershipSnapshotEntries {
+			n.membershipAt = n.applied
+			n.membershipSnapshot()
+		}
 	}
 	n.flushEvents()
 	n.st.endApply()

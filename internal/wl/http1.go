@@ -62,7 +62,8 @@ func startHTTP1(ctx context.Context, conn *grpc.ClientConn, api *httpAPI) (*http
 		}
 	}
 	// etcd's streams take websockets too, as POST.
-	gateway := wsproxy.WebsocketProxy(gmux,
+	gateway := wsproxy.WebsocketProxy(
+		gmux,
 		wsproxy.WithRequestMutator(func(_ *http.Request, out *http.Request) *http.Request {
 			out.Method = http.MethodPost
 			return out

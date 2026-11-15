@@ -188,7 +188,7 @@ func (n *node) sendClientSnap(cs *clientSnap) bool {
 		return false
 	}
 	n.stats.replies++
-	n.metrics.count(s.kind, 0)
+	n.callEnded(s, 0)
 	n.endStreamOK(c, s)
 	return true
 }

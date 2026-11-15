@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"golang.org/x/net/http2/hpack"
 )
@@ -78,14 +79,18 @@ var paths = map[string]uint8{
 
 // stream is one HTTP/2 stream of a client.
 type stream struct {
-	id    uint32
-	kind  uint8
-	open  bool
-	gzip  bool   // the client's messages are gzip'd
-	ended bool   // the client ended its side
-	buf   []byte // a gRPC message across DATA frames
-	watch bool
-	wids  []int32 // the watchers of a watch stream
+	id   uint32
+	kind uint8
+	open bool
+	gzip bool // the client's messages are gzip'd
+	// began is the turn of the call's request, for its time; readonly
+	// says a Txn has no write, etcd's ReadonlyTxn.
+	began    time.Time
+	readonly bool
+	ended    bool   // the client ended its side
+	buf      []byte // a gRPC message across DATA frames
+	watch    bool
+	wids     []int32 // the watchers of a watch stream
 	// nextWatch is the next watch ID a create that names none may take.
 	nextWatch int64
 	fail      []byte // a Txn's failure branch, kept here and not replicated
@@ -372,6 +377,9 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 	kind := info.kind
 	s := c.newStream(sid, kind)
 	s.gzip = info.gzip
+	if kind != kUnknown {
+		n.callStarted(s)
+	}
 	switch {
 	case kind == kUnknown:
 		n.replyError(c, sid, codeUnimplemented, unknownMethod(c.hdrPath))
@@ -550,6 +558,11 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 			break
 		}
 		msg := p[5 : 5+l]
+		n.gs.calls[s.kind].received++
+		n.gs.recvBytes += int64(l)
+		if s.began.IsZero() {
+			s.began = n.now
+		}
 		if p[0] != 0 {
 			var bad string
 			if msg, bad = inflate(s, msg); bad != "" {

@@ -299,6 +299,18 @@ func (st *store) exists(id uint32) bool { return st.keys[id].create != 0 }
 // live returns key id's record, or nil if it is not live. A record the
 // budget let go is built again from the log and held again. The record
 // stays valid until the end of the apply after the call.
+// liveKeys counts the keys that are live now: a scrape's, which walks
+// every key's state but reads no value.
+func (st *store) liveKeys() int {
+	n := 0
+	for i := range st.keys {
+		if st.keys[i].create != 0 {
+			n++
+		}
+	}
+	return n
+}
+
 func (st *store) live(id uint32) ([]byte, error) {
 	k := &st.keys[id]
 	if k.create == 0 {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -17,6 +18,8 @@ import (
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+
+	etcdmetrics "github.com/djosh34/tigerstore/internal/metrics"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"golang.org/x/sys/unix"
@@ -52,7 +55,9 @@ type loop struct {
 	http1   *http1             // serves the clients that chose HTTP/1.1
 	self    *clientv3.Client   // the node's client of itself, for the gateway and side calls
 	selfTLS *tls.Config        // its TLS configuration
-	side    *sideServers
+	// metricsSrvs serve --listen-metrics-urls.
+	metricsSrvs []*http.Server
+	side        *sideServers
 
 	free    []int
 	tick    int64
@@ -198,9 +203,27 @@ func run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	l.side = newSideServers(l.self)
-	api := &httpAPI{m: n.metrics, cors: cfg.CORS, hosts: cfg.HostWhitelist, pprof: cfg.Pprof, raftStatus: l.raftStatus, read: l.healthRead}
+	set := cfg.Metrics
+	if set == nil {
+		if set, err = etcdmetrics.New(nil); err != nil {
+			return err
+		}
+	}
+	n.extensive = cfg.ExtensiveMetrics
+	n.wal.prom.Store(set)
+	n.prom = set
+	prom, err := newPromHandler(set, cfg.ExtensiveMetrics, l.scrape, &n.metrics.peerSent)
+	if err != nil {
+		return err
+	}
+	api := &httpAPI{m: n.metrics, prom: prom, set: set, cors: cfg.CORS, hosts: cfg.HostWhitelist, pprof: cfg.Pprof, raftStatus: l.raftStatus, read: l.healthRead}
 	if l.http1, err = startHTTP1(ctx, l.self.ActiveConnection(), api); err != nil {
 		return errors.Join(err, l.self.Close())
+	}
+	for _, ln := range cfg.MetricsListeners {
+		srv := &http.Server{Handler: api.metricsHandler(), ReadHeaderTimeout: time.Minute}
+		l.metricsSrvs = append(l.metricsSrvs, srv)
+		go func() { _ = srv.Serve(ln) }()
 	}
 	defer l.shut(slices.Concat(cfg.ClientListeners, cfg.PeerListeners)...)
 	go func() {
@@ -495,6 +518,9 @@ func (l *loop) wake() {
 func (l *loop) shut(listeners ...net.Listener) {
 	for _, ln := range listeners {
 		_ = ln.Close()
+	}
+	for _, srv := range l.metricsSrvs {
+		_ = srv.Close()
 	}
 	if err := errors.Join(l.http1.stop(), l.self.Close()); err != nil {
 		l.logger.Printf("stop the HTTP/1.1 server and the node's own client: %v", err)

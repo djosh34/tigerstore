@@ -14,6 +14,8 @@ import (
 
 	pb "go.etcd.io/raft/v3/raftpb"
 	"golang.org/x/sys/unix"
+
+	"github.com/djosh34/tigerstore/internal/metrics"
 )
 
 // The log. Raft's appends are written as records into a page-aligned
@@ -51,8 +53,11 @@ const (
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
 type wal struct {
-	dir string
-	off int64 // the log's end, where the next record goes
+	// prom, once set, takes each sync's time: a write is durable when
+	// it returns, so it is etcd's WAL fsync and backend commit.
+	prom atomic.Pointer[metrics.Set]
+	dir  string
+	off  int64 // the log's end, where the next record goes
 
 	iov     [][]byte
 	hdrs    []byte
@@ -405,7 +410,14 @@ func (w *wal) writeLoop(flushed int64) error {
 			}
 			from += int64(k)
 		}
-		w.writeNs.Add(int64(time.Since(t)))
+		d := time.Since(t)
+		w.writeNs.Add(int64(d))
+		if m := w.prom.Load(); m != nil {
+			m.WALWrite.Observe(d.Seconds())
+			m.WALFsync.Observe(d.Seconds())
+			m.BackendCommit.Observe(d.Seconds())
+			m.WALWriteBytes.Add(float64(target - flushed))
+		}
 		flushed = target
 		w.done.Store(target)
 		binary.LittleEndian.PutUint64(b[:], 1)

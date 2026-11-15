@@ -77,10 +77,18 @@ func (n *node) memberRequest(c *client, s *stream, msg []byte) error {
 		}
 	case kMemberUpdate:
 		cc.Type = pb.ConfChangeUpdateNode.Enum()
-		err = checkURLs(urls)
+		if err = checkURLs(urls); err == nil && n.memberAt(id) < 0 {
+			err = errMemberMissing
+		}
 	case kMemberRemove:
+		// As etcd's, a member the list does not hold is refused before
+		// anything is proposed: Raft would drop the change while another
+		// is pending, and the client would wait for nothing.
 		cc.Type = pb.ConfChangeRemoveNode.Enum()
-		if i := n.memberAt(id); i >= 0 && !n.members[i].learner {
+		switch i := n.memberAt(id); {
+		case i < 0:
+			err = errMemberMissing
+		case !n.members[i].learner:
 			err = n.readyToRemove(id)
 		}
 	case kMemberPromote:
@@ -88,6 +96,9 @@ func (n *node) memberRequest(c *client, s *stream, msg []byte) error {
 		err = n.readyToPromote(id)
 		if errors.Is(err, errNotLeader) {
 			return n.forwardPromote(c, s, msg)
+		}
+		if re, ok := errors.AsType[*requestError](err); ok && n.prom != nil {
+			n.prom.LearnerPromoteFailures.WithLabelValues(re.msg).Inc()
 		}
 	}
 	if err != nil {
@@ -303,6 +314,9 @@ func (n *node) answerMemberRequest(seq uint64, err error) {
 	if err != nil {
 		n.reject(c, s, err)
 		return
+	}
+	if r.kind == kMemberPromote && n.prom != nil {
+		n.prom.LearnerPromotes.Inc()
 	}
 	var body []byte
 	list := 2

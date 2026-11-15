@@ -196,7 +196,7 @@ func (n *node) sideEnd(h handle, unary bool, reply []byte, err error) {
 	}
 	if !unary {
 		n.openStream(c, s)
-		n.metrics.count(s.kind, 0)
+		n.callEnded(s, 0)
 		n.stats.replies++
 		n.endStreamOK(c, s)
 		return

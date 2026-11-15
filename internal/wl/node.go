@@ -8,6 +8,8 @@ import (
 
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
+
+	etcdmetrics "github.com/djosh34/tigerstore/internal/metrics"
 )
 
 // node is one replica: everything below runs on the loop's one thread.
@@ -125,6 +127,15 @@ type node struct {
 	// corrupt say whether one of those types is raised.
 	alarms           []alarm
 	noSpace, corrupt bool
+	// gs is what the loop counts for the metrics; extensive is --metrics
+	// extensive. quotaBytes is --quota-backend-bytes.
+	gs           loopStats
+	membershipAt uint64 // the applied index of the last v2 store snapshot etcd would take
+	prom         *etcdmetrics.Set
+	appliedOps   []appliedOp
+	txnWrote     bool // the Txn applied last put or deleted
+	extensive    bool
+	quotaBytes   int64
 	// moves are the MoveLeaders that wait for the leader to move.
 	moves []moveReq
 	// sideCalls end the contexts of the side calls under way; sideReqs
@@ -257,6 +268,7 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		}
 		n.queueRead(mkHandle(c, s.id), s.kind, msg)
 	case kTxn:
+		s.readonly = !txnWrites(msg, false)
 		if err := checkRequest(kTxn, msg, c.identity); err != nil {
 			n.reject(c, s, err)
 			return nil
@@ -356,7 +368,7 @@ func (n *node) beginReply(c *client, s *stream, w *msgW, size int) {
 // endReply ends the message and the stream with grpc-status 0.
 func (n *node) endReply(c *client, s *stream, w *msgW) {
 	n.stats.replies++
-	n.metrics.count(s.kind, 0)
+	n.callEnded(s, 0)
 	w.end()
 	n.endStreamOK(c, s)
 }
@@ -365,7 +377,7 @@ func (n *node) endReply(c *client, s *stream, w *msgW) {
 // one block.
 func (n *node) replyError(c *client, sid uint32, code int, msg string) {
 	if s := c.get(sid); s != nil {
-		n.metrics.count(s.kind, code)
+		n.callEnded(s, code)
 	}
 	blk := append([]byte(nil), respHeaders...)
 	blk = append(blk, 0x00, 11)

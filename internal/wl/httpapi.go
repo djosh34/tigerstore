@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	etcdmetrics "github.com/djosh34/tigerstore/internal/metrics"
 )
 
 // The client port's HTTP endpoints, as etcd v3.7.2 serves them
@@ -28,6 +30,7 @@ import (
 type httpAPI struct {
 	m       *nodeMetrics
 	gateway http.Handler
+	prom    http.Handler
 	cors    map[string]struct{}
 	hosts   map[string]struct{}
 	pprof   bool
@@ -35,6 +38,8 @@ type httpAPI struct {
 	// /debug/vars shows it; read makes a health check's read.
 	raftStatus func() []byte
 	read       func(serializable bool) error
+	// set takes the health checks' counts.
+	set *etcdmetrics.Set
 }
 
 const (
@@ -71,8 +76,7 @@ func (a *httpAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(p, "/v3/"):
 		a.gateway.ServeHTTP(w, r)
 	case p == "/metrics":
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8; escaping=underscores")
-		_, _ = w.Write(a.m.text())
+		a.prom.ServeHTTP(w, r)
 	case p == "/debug/vars":
 		a.serveVars(w, r)
 	case a.pprof && strings.HasPrefix(p, "/debug/pprof"):
@@ -89,6 +93,26 @@ func (a *httpAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		a.get(w, r, func(ctx context.Context, q url.Values) (int, string, string) { return a.runChecks(ctx, cp, q) })
 	}
+}
+
+// metricsHandler serves what etcd serves on --listen-metrics-urls:
+// /metrics, /health, /livez and /readyz, without the access controller.
+func (a *httpAPI) metricsHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/metrics":
+			a.prom.ServeHTTP(w, r)
+		case "/health":
+			a.get(w, r, a.health)
+		default:
+			cp, ok := checkPaths[r.URL.Path]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			a.get(w, r, func(ctx context.Context, q url.Values) (int, string, string) { return a.runChecks(ctx, cp, q) })
+		}
+	})
 }
 
 // get serves an endpoint that takes only GET, as etcd's do: other methods
@@ -119,6 +143,16 @@ func (a *httpAPI) version(context.Context, url.Values) (int, string, string) {
 // ?serializable=true it needs a leader; then it reads one key,
 // linearizable unless serializable was asked for.
 func (a *httpAPI) health(ctx context.Context, q url.Values) (int, string, string) {
+	code, body := a.checkHealth(ctx, q)
+	if code == http.StatusOK {
+		a.set.HealthSuccess.Inc()
+	} else {
+		a.set.HealthFailures.Inc()
+	}
+	return code, textPlain, body
+}
+
+func (a *httpAPI) checkHealth(ctx context.Context, q url.Values) (int, string) {
 	for _, s := range a.alarms() {
 		name := s[strings.LastIndex(s, ":")+1:]
 		if slices.Contains(q["exclude"], name) {
@@ -131,16 +165,16 @@ func (a *httpAPI) health(ctx context.Context, q url.Values) (int, string, string
 		case "CORRUPT":
 			reason = "ALARM CORRUPT"
 		}
-		return http.StatusServiceUnavailable, textPlain, `{"health":"false","reason":"` + reason + `"}`
+		return http.StatusServiceUnavailable, `{"health":"false","reason":"` + reason + `"}`
 	}
 	serializable := q.Get("serializable") == "true"
 	if !serializable && a.m.hasLeader.Load() != 1 {
-		return http.StatusServiceUnavailable, textPlain, `{"health":"false","reason":"RAFT NO LEADER"}`
+		return http.StatusServiceUnavailable, `{"health":"false","reason":"RAFT NO LEADER"}`
 	}
 	if err := a.healthRead(ctx, serializable); err != nil {
-		return http.StatusServiceUnavailable, textPlain, `{"health":"false","reason":"RANGE ERROR:` + err.Error() + `"}`
+		return http.StatusServiceUnavailable, `{"health":"false","reason":"RANGE ERROR:` + err.Error() + `"}`
 	}
-	return http.StatusOK, textPlain, `{"health":"true","reason":""}`
+	return http.StatusOK, `{"health":"true","reason":""}`
 }
 
 func (a *httpAPI) alarms() []string {
@@ -174,16 +208,18 @@ var (
 // checkPath is what one path of /readyz or /livez runs.
 type checkPath struct {
 	checks []namedCheck
-	root   bool // only the root path takes ?exclude
+	root   bool   // only the root path takes ?exclude
+	kind   string // livez or readyz, for etcd_server_healthcheck
 }
 
 // checkPaths are the paths of /readyz and /livez.
 var checkPaths = func() map[string]checkPath {
 	paths := map[string]checkPath{}
 	for root, checks := range map[string][]namedCheck{"/livez": livezChecks, "/readyz": readyzChecks} {
-		paths[root] = checkPath{checks: checks, root: true}
+		kind := strings.TrimPrefix(root, "/")
+		paths[root] = checkPath{checks: checks, root: true, kind: kind}
 		for _, c := range checks {
-			paths[root+"/"+c.name] = checkPath{checks: []namedCheck{c}}
+			paths[root+"/"+c.name] = checkPath{checks: []namedCheck{c}, kind: kind}
 		}
 	}
 	return paths
@@ -199,12 +235,16 @@ func (a *httpAPI) runChecks(ctx context.Context, p checkPath, q url.Values) (int
 		if p.root && slices.Contains(q["exclude"], c.name) {
 			continue
 		}
+		status := "success"
 		if err := c.check(a, ctx); err != nil {
-			failed = true
+			failed, status = true, "error"
 			fmt.Fprintf(&lines, "[-]%s failed: %v\n", c.name, err)
+			a.set.HealthCheck.WithLabelValues(p.kind, c.name).Set(0)
 		} else {
 			fmt.Fprintf(&lines, "[+]%s ok\n", c.name)
+			a.set.HealthCheck.WithLabelValues(p.kind, c.name).Set(1)
 		}
+		a.set.HealthChecks.WithLabelValues(p.kind, c.name, status).Inc()
 	}
 	if failed {
 		return http.StatusServiceUnavailable, textPlain, lines.String()

@@ -7,6 +7,8 @@ import (
 	"log"
 	"net"
 	"net/url"
+
+	"github.com/djosh34/tigerstore/internal/metrics"
 )
 
 // Config is what a node runs with: its identity and its cluster's, as
@@ -36,6 +38,13 @@ type Config struct {
 	// serves /debug/pprof/, as --enable-pprof.
 	CORS, HostWhitelist map[string]struct{}
 	Pprof               bool
+	// Metrics is the node's set of etcd's metrics, a new one if nil;
+	// ExtensiveMetrics is --metrics extensive.
+	Metrics          *metrics.Set
+	ExtensiveMetrics bool
+	// MetricsListeners serve /metrics, /health, /livez and /readyz, as
+	// etcd's --listen-metrics-urls do.
+	MetricsListeners []net.Listener
 }
 
 // Member is one member of the cluster.

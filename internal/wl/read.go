@@ -100,6 +100,7 @@ func (n *node) retryReads(now int64) {
 // serveRange answers a Range or RangeStream from the store as it is.
 func (n *node) serveRange(c *client, s *stream, r *rangeReq) {
 	st := n.st
+	n.gs.rangesN++
 	if r.rev > 0 && r.rev < st.compactRev {
 		n.replyError(c, s.id, codeOutOfRange, msgCompacted)
 		return
@@ -133,6 +134,9 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq) {
 	for _, kv := range kvs {
 		body += sizeBytesField(2, len(kv))
 	}
+	if !s.began.IsZero() {
+		n.gs.ranges[1].observe(applyBuckets, n.now.Sub(s.began).Seconds())
+	}
 	var w msgW
 	n.beginReply(c, s, &w, body)
 	n.writeHdr(&w)
@@ -158,7 +162,7 @@ func (n *node) streamRange(c *client, s *stream, r *rangeReq, kvs [][]byte, coun
 	if r.countOnly {
 		n.rangeChunk(c, s, nil, true, false, count)
 		n.stats.replies++
-		n.metrics.count(s.kind, 0)
+		n.callEnded(s, 0)
 		n.endStreamOK(c, s)
 		return
 	}
@@ -196,7 +200,7 @@ func (n *node) streamRange(c *client, s *stream, r *rangeReq, kvs [][]byte, coun
 		limit = min(limit, total-sent)
 	}
 	n.stats.replies++
-	n.metrics.count(s.kind, 0)
+	n.callEnded(s, 0)
 	n.endStreamOK(c, s)
 }
 

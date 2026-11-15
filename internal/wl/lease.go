@@ -3,8 +3,11 @@ package wl
 import (
 	"bytes"
 	"math"
+	"math/bits"
 	"slices"
 	"time"
+
+	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // Leases. A grant, a revoke and a keepalive go through the batch and the
@@ -88,6 +91,7 @@ func (n *node) leaderChanged() {
 // renewed moves lease id's deadline on, on the leader.
 func (n *node) renewed(id int64) {
 	if l := n.st.leases[id]; l != nil && n.leases.deadline != nil {
+		n.gs.LeaseRenewed++
 		n.leases.deadline[id] = n.now.Add(time.Duration(l.ttl) * time.Second)
 		delete(n.leases.revoking, id)
 	}
@@ -222,6 +226,9 @@ func (n *node) applyLeaseGrant(req []byte, c *client, s *stream) error {
 		return requestErr(codeFailedPrecon, msgLeaseExists)
 	}
 	st.leases[id] = &lease{ttl: ttl, keys: map[uint32]struct{}{}}
+	n.gs.LeaseGranted++
+	n.gs.LeaseTTLs[min(bits.Len64(uint64(max(ttl-1, 0))), core.LeaseTTLBuckets)]++
+	n.gs.LeaseTTLSum += ttl
 	if n.leases.deadline != nil {
 		n.leases.deadline[id] = n.now.Add(time.Duration(ttl) * time.Second)
 	}
@@ -269,6 +276,11 @@ func (n *node) applyLeaseRevoke(req []byte, c *client, s *stream) error {
 	}
 	if deleted {
 		st.rev = rev
+	}
+	n.gs.LeaseRevoked++
+	n.gs.deletes += int64(len(keys))
+	if len(keys) > 1 {
+		n.gs.txns++
 	}
 	delete(st.leases, id)
 	delete(n.leases.deadline, id)

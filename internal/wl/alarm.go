@@ -106,9 +106,11 @@ func (n *node) applyAlarm(req []byte, c *client, s *stream) error {
 		if !found {
 			n.alarms = slices.Insert(n.alarms, i, a)
 		}
+		n.alarmGauge(a, 1)
 		out = []alarm{a}
 	case r.action == alarmDeactivate && found:
 		n.alarms = slices.Delete(n.alarms, i, i+1)
+		n.alarmGauge(a, -1)
 		out = []alarm{a}
 	}
 	n.alarmsChanged()
