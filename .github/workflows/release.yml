@@ -212,9 +212,9 @@ jobs:
           IMAGE: ${{ needs.check.outputs.image }}
         run: docker buildx imagetools inspect "$IMAGE"
 
-  # The rolling upgrade from the previous release's binary to this one,
-  # one node at a time under load with every checker, then a downgrade of
-  # one node (TestReleaseUpgrade).
+  # The upgrade from the previous release's binary to this one under load
+  # with every checker (TestReleaseUpgrade): offline while the previous
+  # release runs main's engine, a snapshot of it restored with this one.
   upgrade:
     needs: [check, binaries]
     runs-on: ubuntu-24.04-arm
@@ -244,13 +244,6 @@ jobs:
           echo "previous=$previous" >> "$GITHUB_OUTPUT"
           if [ -z "$previous" ]; then
             echo "There is no release before $VERSION, so no binary to upgrade from: the upgrade passes without a run."
-            exit 0
-          fi
-          if [ "$previous" = v0.1.0 ]; then
-            # v0.1.0 speaks peer protocol 2, without the cluster ID; this
-            # binary speaks only 3. No cluster runs v0.1.0, so there is no
-            # upgrade from it (#283; owner, round 14 of #498).
-            echo "No upgrade from v0.1.0: it speaks peer protocol 2, which $VERSION does not."
             exit 0
           fi
           echo "upgrading from $previous to $VERSION"

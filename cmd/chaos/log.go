@@ -10,7 +10,9 @@ import (
 	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/history/frometcd"
 	"github.com/djosh34/tigerstore/internal/committed"
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/wl"
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -100,6 +102,27 @@ func decodeBatch(data []byte) ([]history.Request, error) {
 		out = append(out, q)
 	}
 	return out, nil
+}
+
+// decodeMainBatch decodes the writes of one committed entry of main's
+// engine, which the previous release ran. Member announcements and lease
+// checkpoints change no key and are left out; any other request the
+// campaign does not send fails.
+func decodeMainBatch(data []byte) ([]history.Request, error) {
+	var out []history.Request
+	err := core.DecodeBatch(data, func(_, _, _ uint64, m proto.Message) error {
+		switch m.(type) {
+		case *pb.Member, *pb.LeaseCheckpointRequest:
+			return nil
+		}
+		q, err := campaignMessage(m)
+		if err != nil {
+			return err
+		}
+		out = append(out, q)
+		return nil
+	})
+	return out, err
 }
 
 // campaignMessage is a committed request the campaign sends, as history

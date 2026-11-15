@@ -168,6 +168,16 @@ func (n *Node) proposeInternal(op proto.Message) {
 	n.queueWrite(&pending{req: Request{ID: 0, Op: op}})
 }
 
+// LeaseTTLs returns the granted leases' TTLs by their IDs, for the
+// offline upgrade to internal/wl, which takes a snapshot of this engine.
+func (n *Node) LeaseTTLs() map[int64]int64 {
+	ttls := make(map[int64]int64, len(n.state.leases))
+	for _, l := range n.state.leases {
+		ttls[l.id] = l.ttl
+	}
+	return ttls
+}
+
 // Leases returns the IDs of the granted leases in order.
 func (n *Node) Leases() []int64 {
 	var ids []int64

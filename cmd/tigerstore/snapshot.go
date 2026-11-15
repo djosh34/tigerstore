@@ -78,6 +78,13 @@ func restore(path, dataDir string, members []*pb.Member, skipHash bool) (node.Sn
 	for _, m := range members {
 		ms = append(ms, wl.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs})
 	}
+	format, err := wl.SnapshotFormat(path)
+	if err != nil {
+		return node.SnapshotInfo{}, err
+	}
+	if format == mainSnapshotFormat {
+		return restoreMain(path, dataDir, members, ms, skipHash)
+	}
 	index, term, rev, err := wl.Restore(path, dataDir, ms, skipHash)
 	return node.SnapshotInfo{Index: index, Term: term, Revision: rev}, err
 }

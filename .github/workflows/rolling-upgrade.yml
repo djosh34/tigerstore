@@ -79,7 +79,7 @@ jobs:
           set -o pipefail
           flags=()
           if [ "$MODE" = race ]; then flags=(-race); fi
-          test='^Test(RollingUpgrade|ReleaseUpgrade)$'
+          test='^TestRollingUpgrade$'
           if [ "$MODE" = rollback-before-announcement ]; then test='^TestRollingRollbackBeforeAnnouncement$'; fi
           if [ "$MODE" = confirmation-removed ]; then
             if go test -count=1 -timeout 8m -v ./cmd/chaos -run '^TestRollingRollbackBeforeAnnouncement$' 2>&1 | tee "$RUNNER_TEMP/result.log"; then
@@ -91,6 +91,25 @@ jobs:
           else
             go test "${flags[@]}" -count=1 -timeout 8m -v ./cmd/chaos -run "$test" 2>&1 | tee "$RUNNER_TEMP/result.log"
           fi
+      # The previous release runs main's engine, so the step from it is
+      # offline (TestReleaseUpgrade): its snapshot restored with this
+      # source's binary.
+      - name: Offline upgrade from the previous release
+        if: matrix.mode == 'normal'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ROLLING_OUT: ${{ runner.temp }}/release
+        run: |
+          set -euo pipefail
+          previous=$(gh api "repos/$REPO/releases" -q '[.[] | select(.draft == false and .prerelease == false) | .tag_name][0]')
+          gh release download "$previous" --repo "$REPO" --pattern "tigerstore-$previous-linux-arm64" --dir "$RUNNER_TEMP/previous"
+          export ROLLING_OLD=$RUNNER_TEMP/previous/tigerstore-$previous-linux-arm64
+          export ROLLING_NEW=$RUNNER_TEMP/tigerstore-candidate
+          chmod +x "$ROLLING_OLD"
+          go build -o "$ROLLING_NEW" ./cmd/tigerstore
+          echo "upgrading from $previous"
+          go test -count=1 -timeout 8m -v ./cmd/chaos -run '^TestReleaseUpgrade$' 2>&1 | tee "$RUNNER_TEMP/release.log"
       - if: always()
         uses: actions/upload-artifact@v6
         with:
@@ -98,6 +117,8 @@ jobs:
           path: |
             ${{ runner.temp }}/rolling
             ${{ runner.temp }}/result.log
+            ${{ runner.temp }}/release
+            ${{ runner.temp }}/release.log
             ${{ runner.temp }}/formatting.patch
             ${{ runner.temp }}/old.json
             ${{ runner.temp }}/new.json

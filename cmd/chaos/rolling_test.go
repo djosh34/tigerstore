@@ -13,14 +13,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/internal/committed"
 	"github.com/djosh34/tigerstore/internal/wl"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/raft/v3/raftpb"
 )
 
@@ -128,32 +131,38 @@ func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 }
 
 // TestReleaseUpgrade upgrades a cluster from the previous release's binary
-// (ROLLING_OLD) to the release candidate (ROLLING_NEW) one node at a time
-// under load, then downgrades one node; the release workflow runs it. Any
-// two releases can do this, so it asks only that the nodes agree on the
-// newest format all of them support. The downgraded node runs the old
-// binary again, unless the cluster went past the old binary's newest
-// format: then the old binary must refuse to start, and the node comes
-// back on the candidate. The checkers run on the whole history.
+// (ROLLING_OLD) to the release candidate (ROLLING_NEW) under load, with
+// every checker on the whole history; the release workflow runs it. The
+// previous release runs main's engine and the candidate internal/wl,
+// which cannot run in one cluster: the upgrade is offline. The writers
+// pause and their last calls settle, `etcdctl snapshot save` saves the
+// old cluster, and every node stops. The candidate refuses an old data
+// dir and names the way. Each node restores the snapshot with the
+// candidate, and the new cluster takes the writers on. Once a release of
+// internal/wl is out, this upgrade is rolling again.
 func TestReleaseUpgrade(t *testing.T) {
 	r := startRolling(t, 355)
-	oldMax := r.maxVersion(0)
-	r.settle("previous release", oldMax)
-	r.restart(0, r.newBin)
-	r.settle("node1 upgraded", oldMax)
-	r.restart(1, r.newBin)
-	r.settle("node2 upgraded", oldMax)
-	r.restart(2, r.newBin)
-	newMax := r.maxVersion(2)
-	r.settle("node3 upgraded", newMax)
-	if newMax > oldMax {
-		r.stop(0)
-		r.refuseOld(0)
-		r.start(0, r.newBin)
-	} else {
-		r.restart(0, r.oldBin)
+	r.writes("previous release")
+	r.traffic.pause()
+	rev := r.revision()
+	if err := r.traffic.watchThrough(rev); err != nil {
+		t.Fatal(err)
 	}
-	r.settle("node1 downgraded", newMax)
+	snap := r.saveSnapshot()
+	r.stopAll()
+	r.refuseMainDir(0)
+	r.restoreAll(snap)
+	for i := range 3 {
+		r.start(i, r.newBin)
+	}
+	if err := r.c.ready(context.Background(), 30*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.revision(); got != rev {
+		t.Fatalf("the restored cluster is at revision %d, the old one was at %d", got, rev)
+	}
+	r.traffic.resume()
+	r.writes("candidate")
 }
 
 type rollingRun struct {
@@ -164,6 +173,10 @@ type rollingRun struct {
 	stopped             bool
 	// formats is the newest format each node's binary reads.
 	formats [3]int
+	// previous are the data dirs of the engine an offline upgrade left,
+	// and restored the index of the snapshot it restored.
+	previous []string
+	restored uint64
 	// nodes is how the nodes stood before finish stopped them.
 	nodes string
 }
@@ -323,58 +336,121 @@ func (r *rollingRun) stage(name string, format int) {
 	r.t.Logf("%s: format %d, binaries' newest %v, %d successful writes", name, format, r.formats, writes)
 }
 
-// settle waits until every node has active version want, and fails
-// unless they still have it 3 s later and writes succeed meanwhile.
-func (r *rollingRun) settle(name string, want int) {
+// writes fails unless writes succeed in the next 3 s.
+func (r *rollingRun) writes(name string) {
 	r.t.Helper()
 	begin := r.traffic.r.now()
-	for i := range 3 {
-		r.activeVersion(i, want)
-	}
 	time.Sleep(3 * time.Second)
-	for i := range 3 {
-		r.activeVersion(i, want)
-	}
 	writes := r.writesSince(begin)
 	if writes == 0 {
-		r.t.Fatalf("%s: no successful writes during stage", name)
+		r.t.Fatalf("%s: no successful writes", name)
 	}
-	r.t.Logf("%s: active version %d, %d successful writes", name, want, writes)
+	r.t.Logf("%s: %d successful writes", name, writes)
 }
 
-// activeVersion waits until node i has active version want.
-func (r *rollingRun) activeVersion(i, want int) {
+// revision is the cluster's revision, by a linearizable read.
+func (r *rollingRun) revision() int64 {
 	r.t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
-	var last string
-	for time.Now().Before(deadline) {
-		v, _, err := r.metric(i)
-		if err == nil && v == want {
-			return
-		}
-		last = fmt.Sprintf("version %d, error %v", v, err)
-		time.Sleep(100 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	g, err := r.c.nodes[0].control.Get(ctx, "\x00", clientv3.WithFromKey(), clientv3.WithCountOnly())
+	if err != nil {
+		r.t.Fatal(err)
 	}
-	r.t.Fatalf("node%d: want active version %d: %s", i+1, want, last)
+	return g.Header.Revision
 }
 
-// maxVersion is the newest version the binary of node i supports.
-func (r *rollingRun) maxVersion(i int) int {
+// saveSnapshot saves a snapshot of the cluster as `etcdctl snapshot save`
+// does, and returns its path.
+func (r *rollingRun) saveSnapshot() string {
 	r.t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
-	for {
-		_, body, err := r.metric(i)
-		if err == nil {
-			var v int
-			if v, err = metricValue(body, "tigerstore_cluster_version_max"); err == nil {
-				return v
-			}
-		}
-		if time.Now().After(deadline) {
-			r.t.Fatalf("node%d: newest supported version: %v", i+1, err)
-		}
-		time.Sleep(100 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	rc, err := r.c.nodes[0].control.Snapshot(ctx)
+	if err != nil {
+		r.t.Fatal(err)
 	}
+	path := filepath.Join(r.dir, "snapshot.db")
+	f, err := os.Create(path)
+	if err != nil {
+		r.t.Fatal(errors.Join(err, rc.Close()))
+	}
+	_, err = io.Copy(f, rc)
+	if err = errors.Join(err, rc.Close(), f.Close()); err != nil {
+		r.t.Fatal(err)
+	}
+	r.t.Logf("saved the snapshot at %s", path)
+	return path
+}
+
+// stopAll ends every node with SIGTERM.
+func (r *rollingRun) stopAll() {
+	r.t.Helper()
+	for i, n := range r.c.nodes {
+		ps, _, err := n.signal(syscall.SIGTERM)
+		if err != nil {
+			r.t.Fatal(err)
+		}
+		if !ps.Success() {
+			r.t.Fatalf("node%d stopped with %v", i+1, ps)
+		}
+	}
+}
+
+// refuseMainDir starts the candidate on node i's data dir, of the old
+// engine, which it must refuse, naming the offline upgrade.
+func (r *rollingRun) refuseMainDir(i int) {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	b, err := exec.CommandContext(ctx, r.newBin, r.c.nodes[i].args...).CombinedOutput()
+	if e := os.WriteFile(filepath.Join(r.dir, "main-data-dir-refused.log"), b, 0o644); e != nil {
+		r.t.Fatal(e)
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 || ctx.Err() != nil || !bytes.Contains(b, []byte(wl.ErrMainDataDir.Error())) || !bytes.Contains(b, []byte("snapshot restore")) {
+		r.t.Fatalf("the candidate on an old data dir: %v: %s", err, b)
+	}
+	r.t.Log("the candidate refused the old data dir")
+}
+
+// restoreAll moves each node's data dir aside, where finish reads its
+// log, and restores the snapshot at snap into a new one with the
+// candidate.
+func (r *rollingRun) restoreAll(snap string) {
+	r.t.Helper()
+	for i, n := range r.c.nodes {
+		old := filepath.Join(r.dir, "data-previous", fmt.Sprintf("node%d", i+1))
+		if err := os.MkdirAll(filepath.Dir(old), 0o755); err != nil {
+			r.t.Fatal(err)
+		}
+		if err := os.Rename(r.c.data[i], old); err != nil {
+			r.t.Fatal(err)
+		}
+		r.previous = append(r.previous, old)
+		args := []string{"snapshot", "restore", snap, "--name", fmt.Sprintf("node%d", i+1), "--data-dir", r.c.data[i]}
+		cluster := slices.Index(n.args, "--initial-cluster")
+		args = append(args, n.args[cluster:cluster+2]...)
+		b, err := exec.Command(r.newBin, args...).CombinedOutput()
+		if err != nil {
+			r.t.Fatalf("node%d: snapshot restore: %v: %s", i+1, err, b)
+		}
+		r.t.Logf("node%d: %s", i+1, bytes.TrimSpace(b))
+	}
+	r.restored = r.restoredIndex(snap)
+}
+
+// restoredIndex is the Raft index of the snapshot at path.
+func (r *rollingRun) restoredIndex(path string) uint64 {
+	r.t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if len(b) < 28 || string(b[:8]) != "tigersnp" {
+		r.t.Fatal("the snapshot has no tigerstore header")
+	}
+	return binary.BigEndian.Uint64(b[20:])
 }
 
 // writesSince counts the writes that succeeded from begin on.
@@ -665,6 +741,14 @@ func (r *rollingRun) finish() {
 		dirs = append(dirs, filepath.Join(r.dir, "data", fmt.Sprintf("node%d", i+1)))
 	}
 	log, evidence, err := committedLog(dirs)
+	if r.previous != nil {
+		// The old cluster's log, then the new one's, after the snapshot.
+		var before []history.Request
+		var oldEvidence []nodeEvidence
+		before, oldEvidence, err = readCommitted(r.previous, committed.ReadMain, 1, decodeMainBatch)
+		after, newEvidence, newErr := readCommitted(dirs, committed.Read, r.restored+1, decodeBatch)
+		log, evidence, err = slices.Concat(before, after), slices.Concat(oldEvidence, newEvidence), errors.Join(err, newErr)
+	}
 	if err != nil {
 		t.Error(err)
 	}

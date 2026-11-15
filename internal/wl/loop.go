@@ -107,6 +107,9 @@ func run(ctx context.Context, cfg Config) error {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return err
 	}
+	if err := checkNotMain(cfg.DataDir); err != nil {
+		return err
+	}
 	run, err := nextRun(cfg.DataDir)
 	if err != nil {
 		return err
