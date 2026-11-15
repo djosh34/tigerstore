@@ -17,6 +17,9 @@ type node struct {
 	w      watches
 	leases leaseClock
 
+	stats   counters
+	metrics *nodeMetrics
+
 	socks    []any // *client, *peerIn or *peerOut, by index
 	gens     []uint16
 	dirty    []*sock
@@ -264,7 +267,7 @@ func (n *node) beginReply(c *client, s *stream, w *msgW, size int) {
 
 // endReply ends the message and the stream with grpc-status 0.
 func (n *node) endReply(c *client, s *stream, w *msgW) {
-	stats.replies++
+	n.stats.replies++
 	w.end()
 	n.endStreamOK(c, s)
 }
@@ -359,8 +362,6 @@ func (n *node) replyMembers(c *client, s *stream) {
 	w.write(body)
 	n.endReply(c, s, &w)
 }
-
-var dbgOps, dbgBytes [16]int
 
 // openStream sends a streaming call's response headers, once.
 func (n *node) openStream(c *client, s *stream) {

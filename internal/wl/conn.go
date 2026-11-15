@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"sync/atomic"
 
 	"golang.org/x/sys/unix"
 )
@@ -30,8 +31,9 @@ type sock struct {
 	rec     int    // offset of the open record's header, -1 for none
 	wantOut bool   // registered for EPOLLOUT
 	dirty   bool   // in the loop's list of sockets to flush
-	// countSent adds what is written to the peer byte counter.
-	countSent bool
+	stats   *counters
+	// sent, if any, counts the bytes written: a peer connection's.
+	sent *atomic.Uint64
 	// broken is set when a reply came out another length than it said:
 	// the stream is corrupt, and the connection is closed at its flush.
 	broken bool
@@ -43,9 +45,9 @@ const (
 	outBuf = 1 << 20
 )
 
-func newSock(h *handoff) *sock {
+func newSock(h *handoff, stats *counters) *sock {
 	s := &sock{
-		fd: h.fd, rd: h.rd, wr: h.wr, rec: -1,
+		fd: h.fd, rd: h.rd, wr: h.wr, rec: -1, stats: stats,
 		in: make([]byte, inBuf), pt: make([]byte, ptBuf), out: make([]byte, 0, outBuf),
 	}
 	s.iw = copy(s.in, h.left)
@@ -68,7 +70,7 @@ func (s *sock) readSock() (bool, error) {
 		// full of whole records not yet opened.
 		return false, nil
 	}
-	stats.reads++
+	s.stats.reads++
 	n, err := unix.Read(s.fd, s.in[s.iw:])
 	if n > 0 {
 		s.iw += n
@@ -222,12 +224,12 @@ func (s *sock) flush() (bool, error) {
 	}
 	s.seal()
 	for s.ow < len(s.out) {
-		stats.writes++
+		s.stats.writes++
 		n, err := unix.Write(s.fd, s.out[s.ow:])
 		if n > 0 {
 			s.ow += n
-			if s.countSent {
-				peerSentBytes.Add(uint64(n))
+			if s.sent != nil {
+				s.sent.Add(uint64(n))
 			}
 			continue
 		}

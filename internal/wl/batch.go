@@ -127,7 +127,7 @@ func (n *node) proposeBatch(now time.Time) {
 		}
 		n.ring.commit(data, span{kind: kind, at: now, fwd: true, origin: n.id, seq: seq})
 	}
-	stats.proposals++
+	n.stats.proposals++
 	if n.lead != n.id && n.lead != 0 {
 		n.sendBatch(data)
 	}

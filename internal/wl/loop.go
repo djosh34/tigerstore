@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	mainnode "github.com/djosh34/tigerstore/internal/node"
@@ -50,13 +51,14 @@ type loop struct {
 	handoffs []*handoff
 	redials  map[uint64]chan struct{}
 
-	free   []int
-	tick   int64
-	logged int64
-	last   counters
-	lastAt time.Time
-	logger *log.Logger
-	next   time.Time
+	free    []int
+	tick    int64
+	logged  int64
+	last    counters
+	lastWAL walStats
+	lastAt  time.Time
+	logger  *log.Logger
+	next    time.Time
 }
 
 const (
@@ -171,7 +173,7 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	if err != nil {
 		return err
 	}
-	n := &node{clusterID: 0x7769726531, peersOut: map[uint64]*peerOut{}}
+	n := &node{clusterID: 0x7769726531, peersOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{}}
 	var peers []raft.Peer
 	for i, part := range strings.Split(initial, ",") {
 		nm, u, ok := strings.Cut(part, "=")
@@ -298,7 +300,7 @@ func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.
 			}
 			h.kind = kind
 			if kind == kindClient && h.alpn != "h2" {
-				serveHTTP1(h)
+				serveHTTP1(h, l.n.metrics)
 				return
 			}
 			l.handOver(h)
@@ -350,17 +352,17 @@ func (l *loop) takeHandoffs() {
 		var s *sock
 		switch h.kind {
 		case kindClient:
-			c := newClient(h)
+			c := newClient(h, &n.stats)
 			c.node = n
 			n.socks[idx] = c
 			s = &c.sock
 		case kindPeerIn:
-			p := &peerIn{sock: *newSock(h)}
+			p := &peerIn{sock: *newSock(h, &n.stats)}
 			n.socks[idx] = p
 			s = &p.sock
 		case kindPeerOut:
-			p := &peerOut{sock: *newSock(h), peer: h.peer}
-			p.countSent = true
+			p := &peerOut{sock: *newSock(h, &n.stats), peer: h.peer}
+			p.sent = &n.metrics.peerSent
 			n.socks[idx] = p
 			s = &p.sock
 			if old := n.peersOut[h.peer]; old != nil && !old.dead {
@@ -547,7 +549,7 @@ func (l *loop) run() error {
 			// Raft holds no message now that could point into a ring.
 			n.sweepRings(n.now)
 		}
-		stats.turns++
+		n.stats.turns++
 		if l.tick%50 == 0 && l.tick != l.logged {
 			l.logged = l.tick
 			l.logStats()
@@ -580,10 +582,10 @@ func (l *loop) flush() {
 
 // serveHTTP1 answers /metrics and /debug/pprof/profile over HTTP/1.1 on
 // the record layer, in the handshake's goroutine.
-func serveHTTP1(h *handoff) {
+func serveHTTP1(h *handoff, m *nodeMetrics) {
 	defer func() { _ = unix.Close(h.fd) }()
 	_ = unix.SetNonblock(h.fd, false)
-	s := newSock(h)
+	s := newSock(h, &counters{})
 	var req []byte
 	for {
 		if err := s.open(); err != nil {
@@ -627,7 +629,7 @@ func serveHTTP1(h *handoff) {
 		ctype = "application/octet-stream"
 	default:
 		body = fmt.Appendf(nil, "# TYPE etcd_server_is_leader gauge\netcd_server_is_leader %d\n# TYPE etcd_network_peer_sent_bytes_total counter\netcd_network_peer_sent_bytes_total{To=\"all\"} %d\n",
-			isLeader.Load(), peerSentBytes.Load())
+			m.isLeader.Load(), m.peerSent.Load())
 	}
 	resp := fmt.Appendf(nil, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", ctype, len(body))
 	s.put(append(resp, body...))
@@ -644,23 +646,35 @@ var profMu sync.Mutex
 // counters are the loop's own, for its log: per 5 s, how many turns,
 // socket reads and writes, WAL writes and fsyncs, replies and Raft work.
 type counters struct {
-	turns, reads, writes, walWrites, fsyncs, replies, proposals, readIndex, peerMsgs, walBytes uint64
+	turns, reads, writes, replies, proposals, readIndex, peerMsgs uint64
+
+	// What the batches carried, and how the peers named or carried them.
+	opsByKind, bytesByKind [16]int
+	named, held            int
+	carried, carriedBytes  [32]int
 }
 
-var stats counters
+// nodeMetrics are what the HTTP/1.1 metrics, served off the loop, read.
+type nodeMetrics struct {
+	isLeader atomic.Int64
+	peerSent atomic.Uint64
+}
 
 func (l *loop) logStats() {
-	d, now := stats, time.Now()
+	d, now := l.n.stats, time.Now()
+	ws := l.n.wal.stats
 	p := l.last
 	secs := now.Sub(l.lastAt).Seconds()
 	r := float64(d.replies - p.replies)
 	if r == 0 {
 		r = 1
 	}
+	pw := l.lastWAL
 	l.logger.Printf("stats %.1fs: replies/s %.0f turns/s %.0f | per reply: turns %.3f reads %.3f writes %.3f walWrites %.3f fsyncs %.4f proposals %.3f readIndex %.3f peerMsgs %.3f walBytes %.1f | keys %d rev %d slab %d MB",
 		secs, r/secs, float64(d.turns-p.turns)/secs, float64(d.turns-p.turns)/r, float64(d.reads-p.reads)/r, float64(d.writes-p.writes)/r,
-		float64(d.walWrites-p.walWrites)/r, float64(d.fsyncs-p.fsyncs)/r, float64(d.proposals-p.proposals)/r, float64(d.readIndex-p.readIndex)/r, float64(d.peerMsgs-p.peerMsgs)/r, float64(d.walBytes-p.walBytes)/r,
+		float64(ws.writes-pw.writes)/r, float64(ws.syncs-pw.syncs)/r, float64(d.proposals-p.proposals)/r, float64(d.readIndex-p.readIndex)/r, float64(d.peerMsgs-p.peerMsgs)/r, float64(ws.bytes-pw.bytes)/r,
 		l.n.st.nkeys, l.n.st.rev, l.n.st.slab.top>>20)
+	l.lastWAL = ws
 	st := l.n.st
 	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d; stage waits %d",
 		st.slab.used>>20, st.limit>>20, st.evictions, st.loads, l.n.wal.stats.waits)
@@ -670,5 +684,5 @@ func (l *loop) logStats() {
 		n.storage.stats.letGo, n.storage.stats.reads)
 	l.logger.Printf("rings: sweeps %d; oldest held: %s / %s / %s", n.ring.stats.sweeps, n.ring.held(), n.rx.held(), n.side.held())
 	l.last, l.lastAt = d, now
-	l.logger.Printf("ops by kind %v bytes %v named %d carried %v bytes %v held %d", dbgOps, dbgBytes, dbgNamed, dbgCarried, dbgCarriedB, dbgHeld)
+	l.logger.Printf("ops by kind %v bytes %v named %d carried %v bytes %v held %d", d.opsByKind, d.bytesByKind, d.named, d.carried, d.carriedBytes, d.held)
 }

@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"slices"
-	"sync/atomic"
 	"time"
 
 	"go.etcd.io/raft/v3"
@@ -50,9 +49,9 @@ func (n *node) ready() error {
 				n.leaderChanged()
 			}
 			if rd.RaftState == raft.StateLeader {
-				isLeader.Store(1)
+				n.metrics.isLeader.Store(1)
 			} else {
-				isLeader.Store(0)
+				n.metrics.isLeader.Store(0)
 			}
 		}
 		for _, rs := range rd.ReadStates {
@@ -212,11 +211,6 @@ func (n *node) storageApply(m *pb.Message) error {
 	return nil
 }
 
-var (
-	isLeader      atomic.Int64
-	peerSentBytes atomic.Uint64
-)
-
 // ---- peer messages
 
 // msgHdr: type, flags, from, term, logTerm, index, commit, rejectHint,
@@ -225,7 +219,7 @@ const msgHdr = 1 + 1 + 8*7 + 4
 
 // sendPeer writes m into the send buffer of its peer.
 func (n *node) sendPeer(m *pb.Message) {
-	stats.peerMsgs++
+	n.stats.peerMsgs++
 	p := n.peersOut[m.GetTo()]
 	if p == nil || p.dead {
 		return
@@ -279,7 +273,7 @@ func (n *node) sendPeer(m *pb.Message) {
 		if o, seq, ok := batchOrigin(d); app && ok && o != n.id && (o == to || !carry) {
 			// A follower proposed this batch and sent it to every peer
 			// itself: name it.
-			dbgNamed++
+			n.stats.named++
 			eh[16] |= namedEntry
 			binary.LittleEndian.PutUint32(eh[17:], seq)
 			s.put(eh[:])
@@ -289,8 +283,8 @@ func (n *node) sendPeer(m *pb.Message) {
 			continue
 		}
 		binary.LittleEndian.PutUint32(eh[17:], uint32(len(d)))
-		dbgCarried[m.GetType()]++
-		dbgCarriedB[m.GetType()] += len(d)
+		n.stats.carried[m.GetType()]++
+		n.stats.carriedBytes[m.GetType()] += len(d)
 		s.put(eh[:])
 		s.put(d)
 	}
@@ -359,7 +353,7 @@ func (n *node) peerFrames(p *peerIn) error {
 		if errors.Is(err, errUnnamed) {
 			// The batch it names comes on another connection, likely in
 			// this same turn: try again after the turn's input.
-			dbgHeld++
+			n.stats.held++
 			if len(p.held) == 0 {
 				p.heldSince = time.Now()
 			}
@@ -566,12 +560,6 @@ func (n *node) rxCopy(p []byte, s span) []byte {
 	n.rx.commit(room, s)
 	return room
 }
-
-var (
-	dbgNamed                int
-	dbgCarried, dbgCarriedB [32]int
-	dbgHeld                 int
-)
 
 // dropBatches, from WL_DROP_BATCHES, loses some follower batches on the way
 // to the other peers, to test that the leader then carries them.

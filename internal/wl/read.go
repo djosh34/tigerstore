@@ -30,7 +30,7 @@ func (n *node) askReads(now int64) {
 	b.reads, n.reads = n.reads, b.reads[:0]
 	b.buf, n.readBuf = n.readBuf, b.buf[:0]
 	n.readBatches = append(n.readBatches, b)
-	stats.readIndex++
+	n.stats.readIndex++
 	n.rn.ReadIndex(ctx[:])
 }
 

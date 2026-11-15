@@ -19,7 +19,7 @@ func flowClient(t *testing.T) (*client, *stream) {
 		t.Fatal(err)
 	}
 	n, _ := testNode(t)
-	c := newClient(&handoff{fd: -1, wr: aeadDir{aead: g}, rd: aeadDir{aead: g}})
+	c := newClient(&handoff{fd: -1, wr: aeadDir{aead: g}, rd: aeadDir{aead: g}}, &counters{})
 	c.node = n
 	return c, c.newStream(1, kRange)
 }

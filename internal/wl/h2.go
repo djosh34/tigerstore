@@ -90,8 +90,8 @@ type client struct {
 	flow     flow
 }
 
-func newClient(h *handoff) *client {
-	c := &client{sock: *newSock(h), slots: make([]stream, streamSlots), hdrCache: map[string]uint8{}, flow: newFlow()}
+func newClient(h *handoff, stats *counters) *client {
+	c := &client{sock: *newSock(h, stats), slots: make([]stream, streamSlots), hdrCache: map[string]uint8{}, flow: newFlow()}
 	c.dec = hpack.NewDecoder(4096, func(f hpack.HeaderField) {
 		if f.Name == ":path" {
 			c.hdrPath = f.Value

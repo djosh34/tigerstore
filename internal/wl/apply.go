@@ -37,8 +37,8 @@ func (n *node) applyBatch(data []byte, walOff int64) error {
 		req := data[p+opHdr : p+opHdr+l : p+opHdr+l]
 		voff := walOff + int64(p+opHdr)
 		p += opHdr + l
-		dbgOps[kind]++
-		dbgBytes[kind] += l
+		n.stats.opsByKind[kind]++
+		n.stats.bytesByKind[kind] += l
 		var c *client
 		var s *stream
 		if mine {

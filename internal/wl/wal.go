@@ -94,7 +94,10 @@ type wal struct {
 }
 
 type walStats struct {
-	waits uint64 // appends that waited for room in the stage
+	waits  uint64 // appends that waited for room in the stage
+	syncs  uint64
+	writes uint64
+	bytes  uint64
 }
 
 type walJob struct {
@@ -362,7 +365,7 @@ func (w *wal) kick() {
 	}
 	w.deferred = false
 	w.lastKick = now
-	stats.fsyncs++
+	w.stats.syncs++
 	w.want.Store(w.off)
 	w.inflight = true
 	var b [8]byte
@@ -429,7 +432,7 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) error {
 			k := copy(w.stage[pos:], v)
 			v = v[k:]
 			w.off += int64(k)
-			stats.walBytes += uint64(k)
+			w.stats.bytes += uint64(k)
 		}
 	}
 	// The helper writes whole blocks: the rest of the last one is zeros,
@@ -439,7 +442,7 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) error {
 		pos := w.off % stageSize
 		clear(w.stage[pos : pos+block-tail])
 	}
-	stats.walWrites++
+	w.stats.writes++
 	return nil
 }
 
