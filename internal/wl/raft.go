@@ -105,14 +105,16 @@ type segment struct{ wfd, rfd int }
 // makeSegments makes the segments ahead of the writer, at most two
 // ahead.
 func (w *wal) makeSegments() {
-	zero := make([]byte, 4<<20)
+	// Zeros written direct, a MiB at a time, so that they never queue
+	// ahead of the log's own writes as a flush of the page cache would.
+	zero := mmapBytes(1 << 20)
 	dfd, err := unix.Open(w.dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		panic(err)
 	}
 	for i := 0; ; i++ {
 		path := filepath.Join(w.dir, fmt.Sprintf("wal-%08d", i))
-		fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC|unix.O_CLOEXEC, 0o600)
+		fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC|unix.O_DIRECT|unix.O_CLOEXEC, 0o600)
 		if err != nil {
 			panic(err)
 		}
