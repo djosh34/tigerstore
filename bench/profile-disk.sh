@@ -47,6 +47,8 @@ snap() {
 		get "$ep" ../../metrics "$out/$bench-metrics-$1-${ep##*:}.txt"
 	done
 	if [ -n "${DISK:-}" ]; then { date +%s.%N; grep " $DISK " /proc/diskstats; } >"$out/$bench-diskstats-$1.txt"; fi
+	{ date +%s.%N; ss -tinmo state established; } >"$out/$bench-ss-$1.txt" 2>&1 || true
+	{ tc -s qdisc show dev lo; } >"$out/$bench-tc-$1.txt" 2>&1 || true
 }
 i=0
 while kill -0 "$gen" 2>/dev/null; do
@@ -69,6 +71,7 @@ while kill -0 "$gen" 2>/dev/null; do
 	done
 	wait "${curls[@]}"
 	snap last
+	if [ "$i" -ge "${SNAP_AT:-2}" ]; then { date +%s.%N; ss -tinmo state established; } >"$out/$bench-ss-$i.txt" 2>&1 || true; fi
 done
 for ep in "${eps[@]}"; do
 	get "$ep" heap "$out/$bench-heap-${ep##*:}.pprof"
