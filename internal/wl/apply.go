@@ -466,7 +466,8 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 	if !ok && s != nil && s.fail != nil {
 		ops = s.fail
 	}
-	if err := n.checkTxnOps(ops, ok); err != nil {
+	var path []bool
+	if err := n.checkTxnOps(ops, ok, &path); err != nil {
 		return err
 	}
 	t := txnRun{req: req, voff: voff, rev: n.st.rev + 1, res: n.txnRes[:0], kvs: n.kvs[:0]}
@@ -477,9 +478,7 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 			n.gs.txns++
 		}
 	}()
-	if t.path, err = n.txnPath(ops, ok, nil); err != nil {
-		return err
-	}
+	t.path = path
 	r0, r1, err := n.runBranch(&t, ops, ok, 0)
 	if err != nil {
 		return err
@@ -488,6 +487,9 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 		n.st.rev = t.rev
 	}
 	n.txnWrote = t.wrote
+	if s != nil {
+		s.readonly = !t.wrote // for its request type, etcd's ReadonlyTxn
+	}
 	if c != nil {
 		n.replyTxn(c, s, ok, t.res, r0, r1, t.kvs)
 	}
@@ -597,45 +599,12 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 	return r0, len(t.res), nil
 }
 
-// txnPath appends to path the branch each Txn nested in the branch of
-// ops that ok picks takes, depth first, on the store as it is.
-func (n *node) txnPath(ops []byte, ok bool, path []bool) ([]bool, error) {
-	branch := 2
-	if !ok {
-		branch = 3
-	}
-	for m := ops; len(m) > 0; {
-		num, _, _, p, rest, err := field(m)
-		if err != nil {
-			return nil, badRequest(err)
-		}
-		m = rest
-		if num != branch {
-			continue
-		}
-		onum, _, _, op, _, err := field(p)
-		if err != nil {
-			return nil, badRequest(err)
-		}
-		if onum != 4 {
-			continue
-		}
-		sub, err := n.txnCompares(op)
-		if err != nil {
-			return nil, err
-		}
-		if path, err = n.txnPath(op, sub, append(path, sub)); err != nil {
-			return nil, err
-		}
-	}
-	return path, nil
-}
-
 // checkTxnOps fails a Txn whose branch puts to a lease that does not
 // exist, or reads at a revision compacted or still to come, before it
 // changes anything. A nested Txn's branch is the one its compares pick
-// on the store before the Txn, as in etcd.
-func (n *node) checkTxnOps(ops []byte, ok bool) error {
+// on the store before the Txn, as etcd's compareToPath picks it: path
+// gets each, in the order the branches meet them.
+func (n *node) checkTxnOps(ops []byte, ok bool, path *[]bool) error {
 	branch := 2
 	if !ok {
 		branch = 3
@@ -679,7 +648,8 @@ func (n *node) checkTxnOps(ops []byte, ok bool) error {
 			if err != nil {
 				return err
 			}
-			if err := n.checkTxnOps(op, sub); err != nil {
+			*path = append(*path, sub)
+			if err := n.checkTxnOps(op, sub, path); err != nil {
 				return err
 			}
 		}

@@ -275,7 +275,6 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		}
 		n.queueRead(mkHandle(c, s.id), s.kind, msg)
 	case kTxn:
-		s.readonly = !txnWrites(msg, false)
 		if err := checkRequest(kTxn, msg, c.identity); err != nil {
 			n.reject(c, s, err)
 			return nil
