@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	pb "go.etcd.io/raft/v3/raftpb"
@@ -484,10 +486,11 @@ func (n *node) placeValue(c *ckptChunk, s *ckptState) error {
 
 // encodeLeases appends the leases: a count, then each one's ID and TTL.
 func (st *store) encodeLeases(b []byte) []byte {
-	b = binary.AppendUvarint(b, uint64(len(st.leases)))
-	for id, l := range st.leases {
+	ids := slices.Sorted(maps.Keys(st.leases))
+	b = binary.AppendUvarint(b, uint64(len(ids)))
+	for _, id := range ids {
 		b = binary.AppendUvarint(b, uint64(id))
-		b = binary.AppendUvarint(b, uint64(l.ttl))
+		b = binary.AppendUvarint(b, uint64(st.leases[id].ttl))
 	}
 	return b
 }

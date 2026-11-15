@@ -34,7 +34,10 @@ type keyEnt struct {
 	lease  int64
 	voff   int64 // where the live value lies: in the log, or in a checkpoint (ckptOff)
 	vlen   uint32
-	_      uint32
+	// inTree: the tree holds the key. It holds every key a read at the
+	// compacted revision or later may see, deleted ones too: a range at a
+	// past revision finds a key deleted since.
+	inTree bool
 }
 
 // change is one key's change at a revision.
@@ -489,11 +492,12 @@ func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64
 	if err != nil {
 		return nil, err
 	}
-	if prev == nil {
+	if !k.inTree {
 		if err := st.tree.insert(id); err != nil {
 			st.slab.free(off, n)
 			return nil, err
 		}
+		k.inTree = true
 	}
 	if err := st.pushHist(k); err != nil {
 		return nil, err
@@ -530,7 +534,6 @@ func (st *store) del(id uint32, rev int64) ([]byte, error) {
 		return nil, err
 	}
 	st.freeLater = append(st.freeLater, k.rec, uint64(k.rlen))
-	st.tree.remove(id)
 	st.setLease(id, k.lease, 0)
 	st.liveBytes -= int64(k.vlen)
 	k.rec, k.rlen = 0, 0
@@ -608,8 +611,9 @@ func (st *store) trimSteps(k int) {
 
 // trimHistory frees key id's states before the newest one at or before
 // the compacted revision, and that one too if it is a deletion: a read at
-// the compacted revision or later needs neither. A key deleted before the
-// compacted revision is freed: no read, watch or change names it.
+// the compacted revision or later needs neither. A key deleted at or
+// before the compacted revision leaves the tree, and one deleted before it
+// is freed: no read, watch or change names it.
 func (st *store) trimHistory(id uint32) {
 	k := &st.keys[id]
 	if k.klen == 0 {
@@ -642,8 +646,14 @@ func (st *store) trimHistory(id uint32) {
 		st.histFree = cut
 		cut = next
 	}
-	if k.create == 0 && k.hist == 0 && k.mod < c {
-		st.freeKey(id)
+	if k.create == 0 && k.hist == 0 && k.mod <= c {
+		if k.inTree {
+			st.tree.remove(id)
+			k.inTree = false
+		}
+		if k.mod < c {
+			st.freeKey(id)
+		}
 	}
 }
 
@@ -763,10 +773,13 @@ func (st *store) restoreKey(key []byte, states []ckptState) (uint32, error) {
 		}
 		k.voff, k.vlen = s.voff, s.vlen
 	}
-	if k.create != 0 {
+	if len(states) > 0 {
 		if err := st.tree.insert(id); err != nil {
 			return 0, err
 		}
+		k.inTree = true
+	}
+	if k.create != 0 {
 		st.setLease(id, 0, k.lease)
 		st.liveBytes += int64(k.vlen)
 	}

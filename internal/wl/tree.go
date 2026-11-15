@@ -8,7 +8,8 @@ import (
 	"unsafe"
 )
 
-// The tree orders the live keys for ranges. A directory is a key prefix
+// The tree orders the keys for ranges: the live ones, and the deleted
+// ones a read at the compacted revision or later may still see. A directory is a key prefix
 // up to and including a '/'; it holds its keys and its subdirectories in
 // one sorted array, each named by what follows the directory's path (a
 // subdirectory's name ends in '/'), so walking the tree depth first gives

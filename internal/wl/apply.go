@@ -326,6 +326,9 @@ func (n *node) cmpHolds(c *compare) (bool, error) {
 	ok := true
 	var err error
 	st.tree.scan(c.key, end, func(id uint32) bool {
+		if !st.exists(id) {
+			return true
+		}
 		ok, err = check(id)
 		return ok && err == nil
 	})

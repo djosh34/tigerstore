@@ -7,14 +7,27 @@ import (
 	"time"
 )
 
+// scanKeys returns the live keys in [start, end) as the tree orders them.
 func scanKeys(st *store, start, end string) []string {
 	var out []string
+	for _, id := range scanIDs(st, start, end) {
+		if st.exists(id) {
+			out = append(out, string(st.key(id)))
+		}
+	}
+	return out
+}
+
+// scanIDs returns every key the tree holds in [start, end), deleted ones
+// too.
+func scanIDs(st *store, start, end string) []uint32 {
+	var out []uint32
 	var e []byte
 	if end != "" {
 		e = []byte(end)
 	}
 	st.tree.scan([]byte(start), e, func(id uint32) bool {
-		out = append(out, string(st.key(id)))
+		out = append(out, id)
 		return true
 	})
 	return out
@@ -48,6 +61,16 @@ func TestTreeKeepsOrderThroughRemovesAndReturns(t *testing.T) {
 	}
 	if got := scanKeys(st, "/d/011", "/d/015"); !slices.Equal(got, []string{"/d/011", "/d/013"}) {
 		t.Fatalf("a range from a key: %q", got)
+	}
+	// The deleted keys stay for reads at past revisions until compaction
+	// trims them.
+	if k := len(scanIDs(st, "/d/", "/d0")); k != 100 {
+		t.Fatalf("the tree holds %d keys before compaction, want 100", k)
+	}
+	st.compact(st.rev)
+	st.trimSteps(1 << 20)
+	if k := len(scanIDs(st, "/d/", "/d0")); k != len(want) {
+		t.Fatalf("the tree holds %d keys after compaction, want the %d live", k, len(want))
 	}
 }
 

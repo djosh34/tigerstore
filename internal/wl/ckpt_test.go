@@ -214,9 +214,7 @@ func TestACheckpointHoldsTheStoreAndItsValues(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("changes %q, want %q", got, want)
 	}
-	var live []string
-	loaded.tree.scan([]byte("/"), nil, func(id uint32) bool { live = append(live, string(loaded.key(id))); return true })
-	if !slices.Equal(live, []string{"/a", "/c", "/leased"}) {
+	if live := scanKeys(loaded, "/", ""); !slices.Equal(live, []string{"/a", "/c", "/leased"}) {
 		t.Fatalf("live keys %q", live)
 	}
 }
