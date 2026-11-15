@@ -68,7 +68,10 @@ type loop struct {
 	lastAt  time.Time
 	lastCPU cpuStats
 	logger  *log.Logger
-	next    time.Time
+	// turnPosts and turnHandoffs count the posts run and connections
+	// taken this turn, for the slow-turn log.
+	turnPosts, turnHandoffs int
+	next                    time.Time
 }
 
 const (
@@ -497,6 +500,7 @@ func (l *loop) runPosts() error {
 	ps := l.posts
 	l.posts = nil
 	l.mu.Unlock()
+	l.turnPosts += len(ps)
 	for _, fn := range ps {
 		if err := fn(); err != nil {
 			return err
@@ -554,6 +558,7 @@ func (l *loop) takeHandoffs() {
 	hs := l.handoffs
 	l.handoffs = nil
 	l.mu.Unlock()
+	l.turnHandoffs += len(hs)
 	n := l.n
 	for _, h := range hs {
 		idx := l.slot()
@@ -758,7 +763,8 @@ func (l *loop) run() error {
 				}
 			}
 		}
-		if now := time.Now(); !now.Before(l.next) {
+		tickStart := time.Now()
+		if now := tickStart; !now.Before(l.next) {
 			l.next = now.Add(tickEvery)
 			l.tick++
 			n.rn.Tick()
@@ -782,6 +788,7 @@ func (l *loop) run() error {
 		if n.wal.deferred {
 			n.wal.kick()
 		}
+		tickEnd := time.Now()
 		n.proposeBatch(n.now)
 		n.askReads(l.tick)
 		t1, ops := time.Now(), n.stats.opsByKind
@@ -806,8 +813,10 @@ func (l *loop) run() error {
 			n.sweepRings(n.now)
 		}
 		if t5 := time.Now(); t5.Sub(n.now) > slowTurn {
-			l.logSlowTurn(n.now, t1, t2, t3, t4, t5, ops)
+			l.logSlowTurn(n.now, t1, t2, t3, t4, t5, ops, tickEnd.Sub(tickStart))
 		}
+		clear(n.turnReqs[:])
+		l.turnPosts, l.turnHandoffs = 0, 0
 		n.stats.turns++
 		if l.tick%50 == 0 && l.tick != l.logged {
 			l.logged = l.tick
@@ -877,13 +886,14 @@ const slowTurn = 200 * time.Millisecond
 
 // logSlowTurn logs a slow turn's phases and the ops it applied, by kind;
 // ops are the counts before the turn's Ready.
-func (l *loop) logSlowTurn(start, input, ready, sync, flush, end time.Time, ops [kinds]int) {
+func (l *loop) logSlowTurn(start, input, ready, sync, flush, end time.Time, ops [kinds]int, tick time.Duration) {
 	var applied [kinds]int
 	for k := range applied {
 		applied[k] = l.n.stats.opsByKind[k] - ops[k]
 	}
-	l.logger.Printf("slow turn %v: input and proposals %v, ready and apply %v, watch catch-up %v, flush %v, sweep %v; applied by kind %v; keys %d, watchers %d, catching up %d, held flows %d",
-		end.Sub(start), input.Sub(start), ready.Sub(input), sync.Sub(ready), flush.Sub(sync), end.Sub(flush), applied,
+	l.logger.Printf("slow turn %v: input and proposals %v (of it the tick %v), ready and apply %v, watch catch-up %v, flush %v, sweep %v; requests by kind %v, posts %d, connections taken %d; applied by kind %v; keys %d, watchers %d, catching up %d, held flows %d",
+		end.Sub(start), input.Sub(start), tick, ready.Sub(input), sync.Sub(ready), flush.Sub(sync), end.Sub(flush),
+		l.n.turnReqs, l.turnPosts, l.turnHandoffs, applied,
 		l.n.st.nkeys, len(l.n.w.ws), len(l.n.w.unsynced), l.heldFlows())
 }
 

@@ -140,7 +140,8 @@ type node struct {
 	membershipAt uint64 // the applied index of the last v2 store snapshot etcd would take
 	prom         *etcdmetrics.Set
 	appliedOps   []appliedOp
-	txnWrote     bool // the Txn applied last put or deleted
+	turnReqs     [kinds]int // requests this turn, by kind, for the slow-turn log
+	txnWrote     bool       // the Txn applied last put or deleted
 	extensive    bool
 	quotaBytes   int64
 	// moves are the MoveLeaders that wait for the leader to move.
@@ -240,6 +241,7 @@ func (n *node) clientOf(h handle) (*client, *stream) {
 // request takes one gRPC request message of stream s; msg is only valid
 // during the call.
 func (n *node) request(c *client, s *stream, msg []byte) error {
+	n.turnReqs[s.kind]++
 	learner := n.isLearner()
 	if learner && !learnerServes(s.kind) {
 		n.reject(c, s, errLearner)
