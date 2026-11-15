@@ -114,6 +114,10 @@ type rangeReq struct {
 	serializable bool
 	keysOnly     bool
 	countOnly    bool
+	// Sort order and target, and the revision filters: etcd's.
+	sortOrder, sortTarget uint64
+	minMod, maxMod        int64
+	minCreate, maxCreate  int64
 }
 
 func parseRange(m []byte, r *rangeReq) error {
@@ -139,6 +143,18 @@ func parseRange(m []byte, r *rangeReq) error {
 			r.keysOnly = v != 0
 		case 9:
 			r.countOnly = v != 0
+		case 5:
+			r.sortOrder = v
+		case 6:
+			r.sortTarget = v
+		case 10:
+			r.minMod = int64(v)
+		case 11:
+			r.maxMod = int64(v)
+		case 12:
+			r.minCreate = int64(v)
+		case 13:
+			r.maxCreate = int64(v)
 		}
 	}
 	return nil

@@ -34,6 +34,14 @@ var rpcs = func() [kinds]rpc {
 		}
 		r[k] = rpc{svc, method, typ}
 	}
+	for i, m := range sideMethods {
+		svc, method, _ := strings.Cut(strings.TrimPrefix(m.path, "/"), "/")
+		typ := "unary"
+		if m.stream != nil {
+			typ = "server_stream"
+		}
+		r[kSide+uint8(i)] = rpc{svc, method, typ}
+	}
 	return r
 }()
 

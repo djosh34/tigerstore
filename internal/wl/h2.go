@@ -37,7 +37,9 @@ const (
 	// kMemberAttrs is a member's name and client URLs, which it publishes
 	// in a batch; no client sends it.
 	kMemberAttrs
-	kinds // how many kinds there are
+	// kSide is the first of the side methods' kinds (side.go).
+	kSide
+	kinds = kSide + maxSideMethods // how many kinds there are
 )
 
 var paths = map[string]uint8{
@@ -102,10 +104,13 @@ type client struct {
 	unacked  int
 	node     *node
 	flow     flow
+	// identity is what the name of the client's certificate adds to the
+	// size of its writes as etcd counts it.
+	identity int
 }
 
 func newClient(h *handoff, stats *counters) *client {
-	c := &client{sock: *newSock(h, stats), slots: make([]stream, streamSlots), hdrCache: map[string]uint8{}, flow: newFlow()}
+	c := &client{sock: *newSock(h, stats), slots: make([]stream, streamSlots), hdrCache: map[string]uint8{}, flow: newFlow(), identity: identityBytes(h.cn)}
 	c.dec = hpack.NewDecoder(4096, func(f hpack.HeaderField) {
 		if f.Name == ":path" {
 			c.hdrPath = f.Value
@@ -274,6 +279,9 @@ func (c *client) frames(n *node) error {
 			if s := c.get(sid); s != nil {
 				if s.watch {
 					n.closeWatchStream(c, s)
+				}
+				if sideKind(s.kind) {
+					n.cancelSide(mkHandle(c, sid))
 				}
 				c.endStream(s)
 			}

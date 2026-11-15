@@ -83,7 +83,7 @@ func (a applier) compact() {
 // rng returns a range's records and count.
 func (a applier) rng(key, end string, limit, rev int64) string {
 	a.t.Helper()
-	kvs, count, err := a.n.rangeKVs(&rangeReq{key: []byte(key), end: []byte(end), limit: limit, rev: rev}, nil)
+	kvs, count, _, err := a.n.rangeKVs(&rangeReq{key: []byte(key), end: []byte(end), limit: limit, rev: rev}, nil)
 	if err != nil {
 		a.t.Fatal(err)
 	}

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"golang.org/x/sys/unix"
@@ -49,6 +50,8 @@ type loop struct {
 	dials   map[uint64]*dialer // by member, while it is one
 	peerTLS *tls.Config        // to dial peers
 	http1   *http1             // serves the clients that chose HTTP/1.1
+	self    *clientv3.Client   // the node's client of itself, for the gateway and side calls
+	side    *sideServers
 
 	free    []int
 	tick    int64
@@ -128,6 +131,7 @@ func run(ctx context.Context, cfg Config) error {
 	}
 	n.fwd = make([]fwdBatch, fwdSlots)
 	n.fwdPeers = map[uint64][]fwdBatch{}
+	n.sideCalls = map[handle]context.CancelFunc{}
 	n.carryUntil = map[uint64]time.Time{}
 	if n.ring, err = newRing(ringSize); err != nil {
 		return err
@@ -187,8 +191,12 @@ func run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	l.ctx = ctx
-	if l.http1, err = startHTTP1(ctx, cfg.ClientListeners[0].Addr().String(), cfg.ClientTLS, n.metrics); err != nil {
+	if l.self, err = selfClient(cfg.ClientListeners[0].Addr().String(), cfg.ClientTLS); err != nil {
 		return err
+	}
+	l.side = newSideServers(l.self)
+	if l.http1, err = startHTTP1(ctx, l.self.ActiveConnection(), n.metrics); err != nil {
+		return errors.Join(err, l.self.Close())
 	}
 	defer l.shut(slices.Concat(cfg.ClientListeners, cfg.PeerListeners)...)
 	go func() {
@@ -438,8 +446,8 @@ func (l *loop) shut(listeners ...net.Listener) {
 	for _, ln := range listeners {
 		_ = ln.Close()
 	}
-	if err := l.http1.stop(); err != nil {
-		l.logger.Printf("stop the HTTP/1.1 server: %v", err)
+	if err := errors.Join(l.http1.stop(), l.self.Close()); err != nil {
+		l.logger.Printf("stop the HTTP/1.1 server and the node's own client: %v", err)
 	}
 	l.mu.Lock()
 	l.stopped = true
@@ -554,6 +562,7 @@ func (l *loop) closeSock(idx int) {
 	_ = unix.Close(s.fd)
 	switch v := x.(type) {
 	case *client:
+		n.cancelSides(idx)
 		for i := range v.slots {
 			st := &v.slots[i]
 			if st.open && st.watch {

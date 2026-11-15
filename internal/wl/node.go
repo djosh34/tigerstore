@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"time"
@@ -120,6 +121,8 @@ type node struct {
 	goLimit int64
 	// bufs are buffers that ended streams gave back (takeBuf).
 	bufs [][]byte
+	// sideCalls end the contexts of the side calls under way.
+	sideCalls map[handle]context.CancelFunc
 }
 
 type fwdBatch struct {
@@ -155,6 +158,7 @@ type readBatch struct {
 
 type opRes struct {
 	kind    uint8 // kRange, kPut, kDel, kTxn
+	rev     int64 // the revision its header names, as etcd's; 0 for a Txn
 	kvs0    int
 	kvs1    int
 	count   int64
@@ -212,6 +216,10 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		n.reject(c, s, errLearner)
 		return nil
 	}
+	if sideKind(s.kind) {
+		n.sideRequest(c, s, msg)
+		return nil
+	}
 	switch s.kind {
 	case kRange, kRangeStream:
 		var r rangeReq
@@ -221,6 +229,12 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		if err := checkRange(&r, msg); err != nil {
 			n.reject(c, s, err)
 			return nil
+		}
+		if s.kind == kRangeStream {
+			if err := checkRangeStream(&r); err != nil {
+				n.reject(c, s, err)
+				return nil
+			}
 		}
 		if learner && !r.serializable {
 			n.reject(c, s, errLearner)
@@ -232,13 +246,13 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		}
 		n.queueRead(mkHandle(c, s.id), s.kind, msg)
 	case kTxn:
-		if err := checkRequest(kTxn, msg); err != nil {
+		if err := checkRequest(kTxn, msg, c.identity); err != nil {
 			n.reject(c, s, err)
 			return nil
 		}
 		n.addTxn(mkHandle(c, s.id), s, msg)
 	case kPut, kDel, kCompact, kLeaseGrant, kLeaseRevoke:
-		if err := checkRequest(s.kind, msg); err != nil {
+		if err := checkRequest(s.kind, msg, c.identity); err != nil {
 			n.reject(c, s, err)
 			return nil
 		}
@@ -384,6 +398,7 @@ const (
 	codeInvalidArgument    = 3
 	codeFailedPrecondition = 9
 	codeOutOfRange         = 11
+	codeUnimplemented      = 12
 	codeInternal           = 13
 	codeUnavailable        = 14
 	msgCompacted           = "etcdserver: mvcc: required revision has been compacted"

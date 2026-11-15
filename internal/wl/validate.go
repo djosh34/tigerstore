@@ -22,9 +22,26 @@ const (
 
 func invalid(msg string) error { return requestErr(codeInvalidArgument, msg) }
 
-// checkRequest checks a write or a Txn of kind before it is proposed.
-func checkRequest(kind uint8, msg []byte) error {
-	if len(msg) > maxRequestBytes {
+// raftRequestBytes is what etcd's InternalRaftRequest adds around a
+// write of n bytes: its header, field 100 with a request ID of 10 bytes,
+// etcd's longest, and the write's tag, one byte, and length.
+func raftRequestBytes(n int) int { return 2 + 1 + 1 + 10 + 1 + sizeVarint(uint64(n)) }
+
+// identityBytes is what a client's name adds to etcd's InternalRaftRequest:
+// with --client-cert-auth, etcd puts the name of the client's certificate
+// in every write's header as its user, with auth revision 1 (#99).
+func identityBytes(cn string) int {
+	if cn == "" {
+		return 0
+	}
+	return sizeBytesField(2, len(cn)) + sizeVarintField(3, 1)
+}
+
+// checkRequest checks a write or a Txn of kind before it is proposed. As
+// etcd's server, it limits the size of the request as etcd would
+// replicate it, with identity, what the client's name adds.
+func checkRequest(kind uint8, msg []byte, identity int) error {
+	if raftRequestBytes(len(msg))+len(msg)+identity > maxRequestBytes {
 		return invalid(msgTooLarge)
 	}
 	switch kind {
@@ -51,6 +68,18 @@ func checkRange(r *rangeReq, msg []byte) error {
 			return invalid(msgSortOption)
 		}
 		m = rest
+	}
+	return nil
+}
+
+// checkRangeStream is etcd's checkRangeStreamRequest: a RangeStream
+// neither sorts nor filters.
+func checkRangeStream(r *rangeReq) error {
+	if !r.defaultOrder() {
+		return requestErr(codeUnimplemented, "RangeStream does not support custom sort orders")
+	}
+	if r.filters() {
+		return requestErr(codeUnimplemented, "RangeStream does not support revision filters")
 	}
 	return nil
 }

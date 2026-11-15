@@ -137,11 +137,6 @@ func voffOf(req, sub []byte, base int64) int64 {
 // key had, if it was live.
 func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 	st := n.st
-	if !r.ignoreLease {
-		if err := n.checkLease(r.lease); err != nil {
-			return nil, err
-		}
-	}
 	id, err := st.intern(r.key)
 	if err != nil {
 		return nil, err
@@ -172,6 +167,30 @@ func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 	}
 	n.w.record(st, id, false, rev, rec, prev)
 	return prev, nil
+}
+
+// checkPutKey fails a put to a lease that does not exist, or one that
+// keeps the value or lease of a key that does not exist: etcd's checkPut.
+func (n *node) checkPutKey(r *putReq) error {
+	if !r.ignoreLease {
+		if err := n.checkLease(r.lease); err != nil {
+			return err
+		}
+	}
+	if r.ignoreValue || r.ignoreLease {
+		id, ok := n.st.find(r.key)
+		if !ok {
+			return invalid(msgKeyNotFound)
+		}
+		cur, err := n.st.live(id)
+		if err != nil {
+			return err
+		}
+		if cur == nil {
+			return invalid(msgKeyNotFound)
+		}
+	}
+	return nil
 }
 
 // deleteRange deletes the live keys of r at revision rev and appends
@@ -217,6 +236,9 @@ func (n *node) applyPut(req []byte, voff int64, c *client, s *stream) error {
 	var r putReq
 	if err := parsePut(req, &r); err != nil {
 		return badRequest(err)
+	}
+	if err := n.checkPutKey(&r); err != nil {
+		return err
 	}
 	rev := n.st.rev + 1
 	prev, err := n.putKey(&r, req, voff, rev)
@@ -395,7 +417,7 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 	if !ok && s != nil && s.fail != nil {
 		ops = s.fail
 	}
-	if err := n.checkTxnLeases(ops, ok); err != nil {
+	if err := n.checkTxnOps(ops, ok); err != nil {
 		return err
 	}
 	t := txnRun{req: req, voff: voff, rev: n.st.rev + 1, res: n.txnRes[:0], kvs: n.kvs[:0]}
@@ -414,6 +436,15 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 	clear(t.res)
 	n.txnRes = t.res[:0]
 	return nil
+}
+
+// seen is the revision a Txn's operation sees: the Txn's own once it
+// changed something, else the store's before it.
+func (t *txnRun) seen() int64 {
+	if t.changed {
+		return t.rev
+	}
+	return t.rev - 1
 }
 
 // runBranch applies the branch of ops that ok picks, and returns where
@@ -450,10 +481,16 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 			}
 			k0 := len(t.kvs)
 			var count int64
-			if t.kvs, count, err = n.rangeKVs(&r, t.kvs); err != nil {
+			var more bool
+			if t.kvs, count, more, err = n.rangeKVs(&r, t.kvs); err != nil {
 				return 0, 0, err
 			}
-			local = append(local, opRes{kind: kRange, kvs0: k0, kvs1: len(t.kvs), count: count, more: int64(len(t.kvs)-k0) < count && !r.countOnly})
+			if r.keysOnly {
+				for i := k0; i < len(t.kvs); i++ {
+					t.kvs[i] = keysOnly(t.kvs[i], &r)
+				}
+			}
+			local = append(local, opRes{kind: kRange, rev: t.seen(), kvs0: k0, kvs1: len(t.kvs), count: count, more: more})
 		case 2:
 			var r putReq
 			if err := parsePut(op, &r); err != nil {
@@ -464,7 +501,7 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 				return 0, 0, err
 			}
 			t.changed = true
-			x := opRes{kind: kPut}
+			x := opRes{kind: kPut, rev: t.rev}
 			if r.prevKV {
 				x.prev = prev
 			}
@@ -480,7 +517,7 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 				return 0, 0, err
 			}
 			t.changed = t.changed || deleted > 0
-			local = append(local, opRes{kind: kDel, kvs0: k0, kvs1: len(t.kvs), deleted: deleted})
+			local = append(local, opRes{kind: kDel, rev: t.seen(), kvs0: k0, kvs1: len(t.kvs), deleted: deleted})
 		case 4:
 			sub, err := n.txnCompares(op)
 			if err != nil {
@@ -500,10 +537,11 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 	return r0, len(t.res), nil
 }
 
-// checkTxnLeases fails a Txn whose branch puts to a lease that does not
-// exist, before it changes anything. A nested Txn's branch is the one
-// its compares pick on the store before the Txn, as in etcd.
-func (n *node) checkTxnLeases(ops []byte, ok bool) error {
+// checkTxnOps fails a Txn whose branch puts to a lease that does not
+// exist, or reads at a revision compacted or still to come, before it
+// changes anything. A nested Txn's branch is the one its compares pick
+// on the store before the Txn, as in etcd.
+func (n *node) checkTxnOps(ops []byte, ok bool) error {
 	branch := 2
 	if !ok {
 		branch = 3
@@ -522,22 +560,32 @@ func (n *node) checkTxnLeases(ops []byte, ok bool) error {
 			return badRequest(err)
 		}
 		switch onum {
+		case 1:
+			var r rangeReq
+			if err := parseRange(op, &r); err != nil {
+				return badRequest(err)
+			}
+			switch {
+			case r.rev == 0:
+			case r.rev > n.st.rev:
+				return requestErr(codeOutOfRange, msgFuture)
+			case r.rev < n.st.compactRev:
+				return requestErr(codeOutOfRange, msgCompacted)
+			}
 		case 2:
 			var r putReq
 			if err := parsePut(op, &r); err != nil {
 				return badRequest(err)
 			}
-			if !r.ignoreLease {
-				if err := n.checkLease(r.lease); err != nil {
-					return err
-				}
+			if err := n.checkPutKey(&r); err != nil {
+				return err
 			}
 		case 4:
 			sub, err := n.txnCompares(op)
 			if err != nil {
 				return err
 			}
-			if err := n.checkTxnLeases(op, sub); err != nil {
+			if err := n.checkTxnOps(op, sub); err != nil {
 				return err
 			}
 		}
@@ -547,6 +595,12 @@ func (n *node) checkTxnLeases(ops []byte, ok bool) error {
 
 // opSize is the size of an operation's Response message.
 func (n *node) opSize(x *opRes, res []opRes, kvs [][]byte) int {
+	// etcd gives each a header with only its revision; a nested Txn's is
+	// empty.
+	return sizeBytesField(1, sizeVarintField(3, uint64(x.rev))) + n.opBodySize(x, res, kvs)
+}
+
+func (n *node) opBodySize(x *opRes, res []opRes, kvs [][]byte) int {
 	switch x.kind {
 	case kRange:
 		b := sizeVarintField(4, uint64(x.count))
@@ -606,6 +660,8 @@ func (n *node) writeResponses(w *msgW, ok bool, res []opRes, r0, r1 int, kvs [][
 		inner := n.opSize(x, res, kvs)
 		w.lenField(3, sizeBytesField(opField[x.kind], inner))
 		w.lenField(opField[x.kind], inner)
+		w.lenField(1, sizeVarintField(3, uint64(x.rev)))
+		writeVarintNZ(w, 3, uint64(x.rev))
 		switch x.kind {
 		case kRange:
 			for _, kv := range kvs[x.kvs0:x.kvs1] {

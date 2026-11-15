@@ -20,6 +20,11 @@ import (
 	"github.com/djosh34/tigerstore/internal/testcert"
 	"github.com/djosh34/tigerstore/internal/testport"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/server/v3/etcdserver/api/v3election/v3electionpb"
+	"go.etcd.io/etcd/server/v3/etcdserver/api/v3lock/v3lockpb"
+	"google.golang.org/grpc/codes"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 )
 
 // portPair finds a free peer port whose port below is free too: the loop
@@ -460,6 +465,63 @@ func TestClusterServesTheEtcdAPI(t *testing.T) {
 		r, err := c.Get(ctx, "gw")
 		if err != nil || len(r.Kvs) != 1 || string(r.Kvs[0].Value) != "1" {
 			t.Errorf("get gw through gRPC: %v %v", r, err)
+		}
+	})
+
+	t.Run("lock, election and health as side calls", func(t *testing.T) {
+		conn := c.ActiveConnection()
+		lease, err := c.Grant(ctx, 60)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lk := v3lockpb.NewLockClient(conn)
+		got, err := lk.Lock(ctx, &v3lockpb.LockRequest{Name: []byte("side-lock"), Lease: int64(lease.ID)})
+		if err != nil || !strings.HasPrefix(string(got.Key), "side-lock/") {
+			t.Fatalf("lock: %v %v", got, err)
+		}
+		// A second lock on the name waits until its deadline.
+		short, cancelShort := context.WithTimeout(ctx, 300*time.Millisecond)
+		other, err := c.Grant(ctx, 60)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = lk.Lock(short, &v3lockpb.LockRequest{Name: []byte("side-lock"), Lease: int64(other.ID)})
+		cancelShort()
+		if status.Code(err) != codes.DeadlineExceeded {
+			t.Errorf("a second lock: %v, want DeadlineExceeded", err)
+		}
+		if _, err := lk.Unlock(ctx, &v3lockpb.UnlockRequest{Key: got.Key}); err != nil {
+			t.Fatal(err)
+		}
+		// The second lock gave up its key: the name holds none.
+		if r, err := c.Get(ctx, "side-lock/", clientv3.WithPrefix()); err != nil || len(r.Kvs) != 0 {
+			t.Errorf("keys of the lock after both went: %v %v", r, err)
+		}
+
+		el := v3electionpb.NewElectionClient(conn)
+		camp, err := el.Campaign(ctx, &v3electionpb.CampaignRequest{Name: []byte("side-el"), Lease: int64(lease.ID), Value: []byte("a")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		obs, err := el.Observe(ctx, &v3electionpb.LeaderRequest{Name: []byte("side-el")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, err := obs.Recv()
+		if err != nil || string(first.Kv.Value) != "a" {
+			t.Fatalf("observe: %v %v", first, err)
+		}
+		if _, err := el.Proclaim(ctx, &v3electionpb.ProclaimRequest{Leader: camp.Leader, Value: []byte("b")}); err != nil {
+			t.Fatal(err)
+		}
+		next, err := obs.Recv()
+		if err != nil || string(next.Kv.Value) != "b" {
+			t.Fatalf("observe after proclaim: %v %v", next, err)
+		}
+
+		hc, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{})
+		if err != nil || hc.Status != healthpb.HealthCheckResponse_SERVING {
+			t.Errorf("health: %v %v", hc, err)
 		}
 	})
 

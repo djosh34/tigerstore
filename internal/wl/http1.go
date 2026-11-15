@@ -3,7 +3,6 @@ package wl
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"math"
 	"net"
 	"net/http"
@@ -15,8 +14,9 @@ import (
 	gw "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/tmc/grpc-websocket-proxy/wsproxy"
 	etcdservergw "go.etcd.io/etcd/api/v3/etcdserverpb/gw"
+	v3electiongw "go.etcd.io/etcd/server/v3/etcdserver/api/v3election/v3electionpb/gw"
+	v3lockgw "go.etcd.io/etcd/server/v3/etcdserver/api/v3lock/v3lockpb/gw"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 // The client port's HTTP/1.1 side. A client that offers HTTP/1.1, such
@@ -28,14 +28,13 @@ import (
 // The gateway is etcd's (embed/serve.go): grpc-gateway's mux with etcd's
 // marshaler options and the handlers generated for etcd's services. As
 // etcd's does, it is a gRPC client of the node's own client port, over a
-// loopback connection with the node's TLS configuration, which trusts
-// the node it dials; so the loop serves it as any other client.
+// loopback connection (selfClient); so the loop serves it as any other
+// client.
 
 // http1 is a node's HTTP/1.1 server.
 type http1 struct {
 	srv  *http.Server
 	ln   *connListener
-	conn *grpc.ClientConn
 	done chan struct{}
 }
 
@@ -47,21 +46,13 @@ var gatewayHandlers = []func(context.Context, *gw.ServeMux, *grpc.ClientConn) er
 	etcdservergw.RegisterLeaseHandler,
 	etcdservergw.RegisterClusterHandler,
 	etcdservergw.RegisterMaintenanceHandler,
+	v3lockgw.RegisterLockHandler,
+	v3electiongw.RegisterElectionHandler,
 }
 
-// startHTTP1 starts the HTTP/1.1 server. Its gateway dials addr, a client
-// listener of the node, with tlsCfg, the client port's TLS configuration.
-func startHTTP1(ctx context.Context, addr string, tlsCfg *tls.Config, m *nodeMetrics) (*http1, error) {
-	dial := tlsCfg.Clone()
-	dial.InsecureSkipVerify = true //nolint:gosec // etcd's gateway trusts the node it runs in, which it dials over loopback
-	dial.GetConfigForClient = nil
-	conn, err := grpc.NewClient("passthrough:///"+addr,
-		grpc.WithTransportCredentials(credentials.NewTLS(dial)),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(math.MaxInt32)),
-	)
-	if err != nil {
-		return nil, err
-	}
+// startHTTP1 starts the HTTP/1.1 server. Its gateway is a client of the
+// node through conn.
+func startHTTP1(ctx context.Context, conn *grpc.ClientConn, m *nodeMetrics) (*http1, error) {
 	// etcd's: proto field names, no unpopulated fields, unknown fields
 	// ignored.
 	jm := &gw.JSONPb{}
@@ -69,7 +60,7 @@ func startHTTP1(ctx context.Context, addr string, tlsCfg *tls.Config, m *nodeMet
 	gmux := gw.NewServeMux(gw.WithMarshalerOption(gw.MIMEWildcard, &gw.HTTPBodyMarshaler{Marshaler: jm}))
 	for _, register := range gatewayHandlers {
 		if err := register(ctx, gmux, conn); err != nil {
-			return nil, errors.Join(err, conn.Close())
+			return nil, err
 		}
 	}
 	// etcd's streams take websockets too, as POST.
@@ -116,7 +107,6 @@ func startHTTP1(ctx context.Context, addr string, tlsCfg *tls.Config, m *nodeMet
 			ReadHeaderTimeout: time.Minute,
 		},
 		ln:   &connListener{conns: make(chan net.Conn), closed: make(chan struct{})},
-		conn: conn,
 		done: make(chan struct{}),
 	}
 	go func() {
@@ -136,11 +126,11 @@ func (h *http1) serve(c *tls.Conn) {
 	}
 }
 
-// stop closes the server, its connections and the gateway's client.
+// stop closes the server and its connections.
 func (h *http1) stop() error {
 	err := h.srv.Close()
 	<-h.done
-	return errors.Join(err, h.conn.Close())
+	return err
 }
 
 // connListener hands net/http the connections the node accepted and

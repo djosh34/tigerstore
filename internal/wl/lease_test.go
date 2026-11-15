@@ -138,7 +138,7 @@ func TestANestedTxnRunsTheBranchItsComparesPick(t *testing.T) {
 	nested = appendBytesField(nested, 2, reqOp(2, putOp("/yes", "1")))
 	nested = appendBytesField(nested, 3, reqOp(2, putOp("/no", "1")))
 	outer := txn(reqOp(2, putOp("/outer", "1")), reqOp(4, nested))
-	if err := checkRequest(kTxn, outer); err != nil {
+	if err := checkRequest(kTxn, outer, 0); err != nil {
 		t.Fatal(err)
 	}
 	rev := n.st.rev

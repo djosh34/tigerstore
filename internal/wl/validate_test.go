@@ -65,7 +65,7 @@ func TestRequestChecks(t *testing.T) {
 		{"nested txn putting without a key", kTxn, txn(reqOp(4, txn(reqOp(2, putOp("", "v"))))), msgEmptyKey},
 		{"request too large", kPut, putOp("/k", string(make([]byte, maxRequestBytes))), msgTooLarge},
 	} {
-		if got := rejected(checkRequest(c.kind, c.msg)); got != c.want {
+		if got := rejected(checkRequest(c.kind, c.msg, 0)); got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
 	}
