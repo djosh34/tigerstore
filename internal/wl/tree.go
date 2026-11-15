@@ -52,8 +52,8 @@ type tree struct {
 
 func (t *tree) init(st *store) {
 	t.st = st
-	t.table = make([]uint64, 1<<dirSlotLog)
-	t.mask = 1<<dirSlotLog - 1
+	t.table = make([]uint64, dirStart)
+	t.mask = dirStart - 1
 	t.seed = maphash.MakeSeed()
 	t.dirs = append(t.dirs, dirEnt{parent: noDir})
 	t.put(nil, 0)
@@ -65,24 +65,22 @@ func (t *tree) path(d uint32) []byte {
 }
 
 func (t *tree) put(path []byte, d uint32) {
-	h := maphash.Bytes(t.seed, path)
-	for i := h & t.mask; ; i = (i + 1) & t.mask {
-		if t.table[i] == 0 {
-			t.table[i] = h>>32<<32 | uint64(d+1)
-			return
-		}
+	if 2*len(t.dirs) > len(t.table) {
+		table := make([]uint64, 2*len(t.table))
+		rehash(t.table, table)
+		t.table, t.mask = table, uint64(len(table)-1)
 	}
+	putEntry(t.table, maphash.Bytes(t.seed, path), d)
 }
 
 func (t *tree) lookup(path []byte) (uint32, bool) {
 	h := maphash.Bytes(t.seed, path)
-	tag := h >> 32
 	for i := h & t.mask; ; i = (i + 1) & t.mask {
 		e := t.table[i]
 		if e == 0 {
 			return 0, false
 		}
-		if e>>32 == tag {
+		if entryHash(e) == uint32(h) {
 			d := uint32(e) - 1
 			if bytes.Equal(t.path(d), path) {
 				return d, true

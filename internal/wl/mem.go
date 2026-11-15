@@ -33,6 +33,12 @@ func mmapSlice[T any](n int) ([]T, error) {
 	return unsafe.Slice((*T)(unsafe.Pointer(&b[0])), n), nil
 }
 
+// munmapSlice gives back what mmapSlice reserved.
+func munmapSlice[T any](s []T) error {
+	var z T
+	return unix.Munmap(unsafe.Slice((*byte)(unsafe.Pointer(unsafe.SliceData(s))), len(s)*int(unsafe.Sizeof(z))))
+}
+
 // slab hands out byte ranges of a big mapping in size classes, eight per
 // doubling, with a free list per class threaded through the free slots.
 // Offset 0 is never handed out, so 0 means "none".

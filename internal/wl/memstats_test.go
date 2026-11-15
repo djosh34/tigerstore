@@ -34,3 +34,24 @@ func TestGoGetsWhatTheMemoryOutsideItsHeapLeaves(t *testing.T) {
 			got>>20, outside>>20, (got+outside)>>20, budget>>20)
 	}
 }
+
+// Go never gets less than its live heap and room to collect in: at the
+// k8s bench's 4 million keys, the leader's live heap of 523 MB met a Go
+// limit of 552 MB, and the collector ran without end. The slab gives way
+// instead.
+func TestGoNeverGetsLessThanItsLiveHeap(t *testing.T) {
+	st, l := newTestStore(t)
+	const budget = 1 << 30
+	st.setBudget(budget, 0)
+	putValue(t, st, l, "/k", "v")
+	before := st.limit
+	st.goLive = 600 << 20
+	st.relimit()
+	if got := st.goLimit(); got < 750<<20 {
+		t.Fatalf("Go gets %d MiB with a live heap of 600 MiB", got>>20)
+	}
+	if st.limit != before-(750<<20-goShare(budget)) {
+		t.Fatalf("the slab's limit went from %d to %d MiB, want it to give Go the %d MiB it needs past its share",
+			before>>20, st.limit>>20, (750<<20-goShare(budget))>>20)
+	}
+}

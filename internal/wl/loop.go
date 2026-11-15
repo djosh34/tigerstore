@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"runtime/metrics"
 	"runtime/pprof"
 	"slices"
 	"strconv"
@@ -647,13 +648,16 @@ func (l *loop) run() error {
 	}
 }
 
-// limitGo sets Go's memory limit to what the budget leaves Go's heap, when
-// that moved by more than a 64th of the budget since it was last set.
+// limitGo takes Go's live heap into the store's budget, and sets Go's
+// memory limit to what the budget leaves Go, when that moved by more than
+// a 64th of the budget since it was last set.
 func (n *node) limitGo() {
 	st := n.st
 	if st.budget == 0 {
 		return
 	}
+	metrics.Read(liveHeap)
+	st.goLive = int64(liveHeap[0].Value.Uint64())
 	limit := st.goLimit()
 	if d := limit - n.goLimit; d > -st.budget/64 && d < st.budget/64 {
 		return
@@ -661,6 +665,8 @@ func (n *node) limitGo() {
 	n.goLimit = limit
 	debug.SetMemoryLimit(limit)
 }
+
+var liveHeap = []metrics.Sample{{Name: "/gc/heap/live:bytes"}}
 
 func (l *loop) flush() {
 	n := l.n

@@ -180,3 +180,31 @@ func TestCompactionTrimsAFewKeysAtATime(t *testing.T) {
 		t.Fatalf("after one apply the trim is at key %d (trimming %v), want %d", st.trimKey, st.trimming, trimStep)
 	}
 }
+
+// The key index doubles as keys come: a k8s bench seed made more than the
+// 4,194,304 keys that its old fixed size held, and every node stopped on
+// errTooManyKeys (#602).
+func TestTheStoreTakesKeysPastItsFirstIndex(t *testing.T) {
+	st, _ := newTestStore(t)
+	const keys = 1<<22 + 1000
+	key := make([]byte, 0, 16)
+	for i := range keys {
+		key = fmt.Appendf(key[:0], "/k/%08d", i)
+		id, err := st.intern(key)
+		if err != nil {
+			t.Fatalf("key %d: %v", i, err)
+		}
+		if id != uint32(i) {
+			t.Fatalf("key %d got id %d", i, id)
+		}
+	}
+	for i := 0; i < keys; i += 997 {
+		key = fmt.Appendf(key[:0], "/k/%08d", i)
+		if id, ok := st.find(key); !ok || id != uint32(i) {
+			t.Fatalf("key %d found as %d, %v", i, id, ok)
+		}
+	}
+	if _, ok := st.find([]byte("/k/none")); ok {
+		t.Fatal("found a key never added")
+	}
+}

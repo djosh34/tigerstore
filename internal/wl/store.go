@@ -62,7 +62,7 @@ type store struct {
 
 	keys  []keyEnt
 	nkeys uint32
-	hash  []uint64 // tag << 32 | key id + 1
+	hash  []uint64 // a hash index (hashEntry) of the keys
 	mask  uint64
 	seed  maphash.Seed
 
@@ -86,6 +86,7 @@ type store struct {
 	// key whose record was let go builds it again from the log.
 	budget    int64 // the node's memory, 0 for no limit
 	mapped    int64 // the rings and stages mapped outside Go's heap at startup
+	goLive    int64 // Go's live heap, as the collector last found it
 	limit     int64
 	hand      uint32
 	evictions uint64
@@ -101,18 +102,18 @@ type store struct {
 }
 
 const (
-	hashSlots  = 1 << 23
-	maxKeys    = hashSlots / 2 // the hash index is half full at most
-	maxHist    = 1 << 26
-	keyArena   = 4 << 30
-	slabBytes  = 48 << 30
-	dirSlotLog = 20
+	hashStart = 1 << 20 // the hash index's first size, which doubles
+	maxKeys   = 1 << 27
+	maxHist   = 1 << 26
+	keyArena  = 4 << 30
+	slabBytes = 48 << 30
+	dirStart  = 1 << 14 // the directory index's first size, which doubles
 )
 
 func newStore() (*store, error) {
 	st := &store{
 		rev:    1, // etcd's empty store is at revision 1
-		mask:   hashSlots - 1,
+		mask:   hashStart - 1,
 		seed:   maphash.MakeSeed(),
 		karena: arena{top: 1},
 		nhist:  1,
@@ -122,7 +123,7 @@ func newStore() (*store, error) {
 	if st.keys, err = mmapSlice[keyEnt](maxKeys); err != nil {
 		return nil, err
 	}
-	if st.hash, err = mmapSlice[uint64](hashSlots); err != nil {
+	if st.hash, err = mmapSlice[uint64](hashStart); err != nil {
 		return nil, err
 	}
 	if st.karena.mem, err = mmapBytes(keyArena); err != nil {
@@ -151,13 +152,12 @@ func (st *store) key(id uint32) []byte {
 // find returns the id of key, if the store has ever had it.
 func (st *store) find(key []byte) (uint32, bool) {
 	h := maphash.Bytes(st.seed, key)
-	tag := h >> 32
 	for i := h & st.mask; ; i = (i + 1) & st.mask {
 		e := st.hash[i]
 		if e == 0 {
 			return 0, false
 		}
-		if e>>32 == tag {
+		if entryHash(e) == uint32(h) {
 			id := uint32(e) - 1
 			k := &st.keys[id]
 			if int(k.klen) == len(key) && bytes.Equal(st.karena.get(k.koff, k.klen), key) {
@@ -169,25 +169,23 @@ func (st *store) find(key []byte) (uint32, bool) {
 
 // intern returns the id of key, adding it if it is new.
 func (st *store) intern(key []byte) (uint32, error) {
-	h := maphash.Bytes(st.seed, key)
-	tag := h >> 32
-	i := h & st.mask
-	for ; ; i = (i + 1) & st.mask {
-		e := st.hash[i]
-		if e == 0 {
-			break
-		}
-		if e>>32 == tag {
-			id := uint32(e) - 1
-			k := &st.keys[id]
-			if int(k.klen) == len(key) && bytes.Equal(st.karena.get(k.koff, k.klen), key) {
-				return id, nil
-			}
-		}
+	if id, ok := st.find(key); ok {
+		return id, nil
 	}
 	id := st.nkeys
 	if id+1 >= maxKeys {
 		return 0, errTooManyKeys
+	}
+	if 2*uint64(id+1) > uint64(len(st.hash)) {
+		hash, err := mmapSlice[uint64](2 * len(st.hash))
+		if err != nil {
+			return 0, err
+		}
+		rehash(st.hash, hash)
+		if err := munmapSlice(st.hash); err != nil {
+			return 0, err
+		}
+		st.hash, st.mask = hash, uint64(len(hash)-1)
 	}
 	koff, err := st.karena.add(key)
 	if err != nil {
@@ -195,8 +193,37 @@ func (st *store) intern(key []byte) (uint32, error) {
 	}
 	st.nkeys++
 	st.keys[id] = keyEnt{koff: koff, klen: uint32(len(key)), dir: noDir}
-	st.hash[i] = tag<<32 | uint64(id+1)
+	putEntry(st.hash, maphash.Bytes(st.seed, key), id)
 	return id, nil
+}
+
+// A hash index is open addressing over a power of two of slots, each 0 or
+// a hashEntry: the low 32 bits of a name's hash, then its id + 1. It
+// doubles when half full; an entry's bits say its slot in the new size,
+// so growing it reads no name.
+
+func hashEntry(h uint64, id uint32) uint64 { return h<<32 | uint64(id+1) }
+
+func entryHash(e uint64) uint32 { return uint32(e >> 32) }
+
+// putEntry puts the entry of hash h and id into idx, which has room.
+func putEntry(idx []uint64, h uint64, id uint32) {
+	mask := uint64(len(idx) - 1)
+	for i := h & mask; ; i = (i + 1) & mask {
+		if idx[i] == 0 {
+			idx[i] = hashEntry(h, id)
+			return
+		}
+	}
+}
+
+// rehash puts the entries of old into to, a larger index.
+func rehash(old, to []uint64) {
+	for _, e := range old {
+		if e != 0 {
+			putEntry(to, uint64(entryHash(e)), uint32(e)-1)
+		}
+	}
 }
 
 // exists reports whether key id is live.
@@ -263,17 +290,23 @@ func (st *store) setBudget(budget, mapped int64) {
 	st.relimit()
 }
 
-// relimit leaves the slab what the budget does not take otherwise: Go's
-// share, the mapped rings and stages, and the tables as they grow.
+// relimit leaves the slab what the budget does not take otherwise: what
+// Go needs, the mapped rings and stages, and the tables outside Go's heap
+// as they grow. The slab's slots freed and not taken again stay mapped,
+// so they count against its limit too.
 func (st *store) relimit() {
-	goTables := st.tree.bytes() + int64(cap(st.changes))*int64(unsafe.Sizeof(change{}))
-	st.limit = st.budget - goShare(st.budget) - goTables - st.outside() + int64(st.slab.top)
+	top := int64(st.slab.top)
+	st.limit = st.budget - st.goNeed() - (st.outside() - top) - (top - st.slab.used)
 }
 
-// goShare is the part of the budget kept for Go's heap and runtime,
-// besides the tables the store keeps there: an eighth, and the entries
-// Raft's storage holds.
+// goShare is the least of the budget kept for Go's heap and runtime: an
+// eighth, and the entries Raft's storage holds.
 func goShare(budget int64) int64 { return budget/8 + storageHeld }
+
+// goNeed is what Go's heap and runtime need: the live heap the collector
+// last found and a quarter more for it to collect in, and at least Go's
+// share. Below its live heap, Go would collect without end.
+func (st *store) goNeed() int64 { return max(goShare(st.budget), st.goLive+st.goLive/4) }
 
 // outside is the memory the node maps outside Go's heap, which Go's memory
 // limit does not count: the rings and stages, the store's tables and its
@@ -284,11 +317,11 @@ func (st *store) outside() int64 {
 }
 
 // goLimit is the memory limit Go's runtime gets: what the budget leaves
-// once the memory outside Go's heap is counted, and never less than Go's
-// share. Go's limit counts only its own memory; at the whole budget, Go's
+// once the memory outside Go's heap is counted, and never less than Go
+// needs. Go's limit counts only its own memory; at the whole budget, Go's
 // heap grew on top of the store's tables, and the nodes swapped (#602).
 func (st *store) goLimit() int64 {
-	return max(st.budget-st.outside(), goShare(st.budget))
+	return max(st.budget-st.outside(), st.goNeed())
 }
 
 // fitSteps is the most records one apply lets go of.

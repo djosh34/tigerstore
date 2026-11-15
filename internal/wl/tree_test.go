@@ -118,3 +118,27 @@ func TestDeletesFromALargeDirectoryStayCheap(t *testing.T) {
 		t.Fatalf("%d keys left, want %d", got, n-n/4)
 	}
 }
+
+// The directory index doubles as directories come: at its old fixed size
+// of 1,048,576 slots, the next directory's insert looked for a free slot
+// forever.
+func TestTheTreeTakesDirectoriesPastItsFirstIndex(t *testing.T) {
+	st, err := newStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const dirs = 1<<20 + 1000
+	path := make([]byte, 0, 16)
+	for i := range dirs {
+		path = fmt.Appendf(path[:0], "/d%07d/", i)
+		if _, err := st.tree.ensure(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < dirs; i += 997 {
+		path = fmt.Appendf(path[:0], "/d%07d/", i)
+		if _, ok := st.tree.lookup(path); !ok {
+			t.Fatalf("directory %d is not found", i)
+		}
+	}
+}
