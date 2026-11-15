@@ -37,7 +37,7 @@ import (
 // Effects.Replies would carry it: a whole reply, or a piece of one
 // (MorePieces), whose next piece comes after Next. It runs on the
 // driver's thread inside a call into the node, so it must not call the
-// node.
+// node, and r is the node's until Answer returns.
 type FastCall interface {
 	Answer(r *Reply)
 }
@@ -78,6 +78,9 @@ type fastPath struct {
 	// last is the size of the last batch sealed, which the next one
 	// starts with room for.
 	last int
+	// reply is the reply Answer gets, kept here so that it does not
+	// escape to the heap each time.
+	reply Reply
 }
 
 // slot returns the slot of a fast request ID, once the table exists.
@@ -211,7 +214,10 @@ func (n *Node) emit(r Reply) {
 		// its own.
 		r.Rev--
 	}
-	call.Answer(&r)
+	f := &n.fast
+	f.reply = r
+	call.Answer(&f.reply)
+	f.reply = Reply{}
 }
 
 // sealOpen proposes the open batch as one entry.

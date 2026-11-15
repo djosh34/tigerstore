@@ -573,7 +573,7 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 	}
 	st.kv.EachLeased(func(key []byte, id int64) {
 		if l, ok := st.leases[id]; ok {
-			l.keys.ReplaceOrInsert(string(key))
+			l.keys.add(key)
 		}
 	})
 	st.leaseSum = st.sumLeases()

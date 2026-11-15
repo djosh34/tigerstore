@@ -15,8 +15,6 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/google/btree"
-
 	"github.com/djosh34/tigerstore/internal/mvcc"
 )
 
@@ -33,9 +31,8 @@ const maxLeaseTTL = 9_000_000_000
 // last proposed the lease's expiry.
 type lease struct {
 	id, ttl int64
-	// keys are the keys attached to the lease, in order, so that a revoke
-	// takes them a piece at a time.
-	keys  *btree.BTreeG[string]
+	// keys are the keys attached to the lease.
+	keys  *leaseKeys
 	stamp int64
 	// remaining is the remaining TTL in seconds the last checkpoint took,
 	// 0 for none (lease.go).
@@ -286,18 +283,17 @@ func (st *State) track() {
 		if c.PrevLease() == c.Lease() {
 			continue
 		}
-		k := string(c.Key())
 		if id := c.PrevLease(); id != 0 {
 			if l, ok := st.leases[id]; ok {
 				st.leaseSum -= l.hash()
-				l.keys.Delete(k)
+				l.keys.remove(c.Key())
 				st.leaseSum += l.hash()
 			}
 		}
 		if id := c.Lease(); id != 0 {
 			if l, ok := st.leases[id]; ok {
 				st.leaseSum -= l.hash()
-				l.keys.ReplaceOrInsert(k)
+				l.keys.add(c.Key())
 				st.leaseSum += l.hash()
 			}
 		}
@@ -426,8 +422,38 @@ func (st *State) grant(r *pb.LeaseGrantRequest) (proto.Message, error) {
 }
 
 // newLeaseKeys is the empty set of a lease's keys.
-func newLeaseKeys() *btree.BTreeG[string] {
-	return btree.NewG(32, func(a, b string) bool { return a < b })
+func newLeaseKeys() *leaseKeys { return &leaseKeys{m: map[string]struct{}{}} }
+
+// leaseKeys are the keys attached to a lease. Writes change them all the
+// time, as each write of a leased key moves it between leases, and only a
+// revoke, an auth check or TimeToLive walks them, in order: so they are a
+// map, sorted when a walk asks for them (#602; a B-tree of them cost
+// 0.15 µs per write on crd-heavy).
+type leaseKeys struct{ m map[string]struct{} }
+
+// Len returns the number of keys.
+func (k *leaseKeys) Len() int { return len(k.m) }
+
+func (k *leaseKeys) add(key []byte)    { k.m[string(key)] = struct{}{} }
+func (k *leaseKeys) remove(key []byte) { delete(k.m, string(key)) }
+
+// sorted returns the keys in byte order.
+func (k *leaseKeys) sorted() []string {
+	keys := make([]string, 0, len(k.m))
+	for key := range k.m {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// ascend calls fn with the keys in byte order until it returns false.
+func (k *leaseKeys) ascend(fn func(string) bool) {
+	for _, key := range k.sorted() {
+		if !fn(key) {
+			return
+		}
+	}
 }
 
 // revokeKeys is how many keys a revoke deletes in one step.
@@ -443,7 +469,10 @@ var errRevoking = errors.New("core: a revoke goes on")
 type revoking struct {
 	lease *lease
 	del   *mvcc.Deletion
-	next  string
+	// keys are the lease's keys in order, and next how many of them
+	// went: no write changes them while the revoke goes on.
+	keys []string
+	next int
 }
 
 // revoke deletes the lease and every key attached to it, at one revision.
@@ -460,7 +489,7 @@ func (st *State) revoke(id int64) (proto.Message, error) {
 		delete(st.leases, id)
 		return &pb.LeaseRevokeResponse{Header: header(st.kv.Rev())}, nil
 	}
-	st.revoking = &revoking{lease: l, del: st.kv.StartDeletes()}
+	st.revoking = &revoking{lease: l, del: st.kv.StartDeletes(), keys: l.keys.sorted()}
 	return st.RevokePiece()
 }
 
@@ -471,22 +500,14 @@ func (st *State) revoke(id int64) (proto.Message, error) {
 func (st *State) RevokePiece() (proto.Message, error) {
 	r := st.revoking
 	l := r.lease
-	keys := make([]string, 0, min(l.keys.Len(), revokeKeys))
-	more := false
-	l.keys.AscendGreaterOrEqual(r.next, func(k string) bool {
-		if len(keys) == revokeKeys {
-			more = true
-			return false
-		}
-		keys = append(keys, k)
-		return true
-	})
+	keys := r.keys[r.next:]
+	keys = keys[:min(len(keys), revokeKeys)]
+	r.next += len(keys)
 	r.del.Delete(keys)
 	// Every change is a delete of a key of this lease, which goes whole
 	// at the last step: no lease's keys change before.
 	st.changes = st.kv.Changes()
-	if more {
-		r.next = keys[len(keys)-1] + "\x00"
+	if r.next < len(r.keys) {
 		return nil, errRevoking
 	}
 	r.del.Finish()
@@ -510,7 +531,7 @@ func (st *State) timeToLive(r *pb.LeaseTimeToLiveRequest, remaining int64) *pb.L
 		resp.TTL = remaining
 	}
 	if r.Keys {
-		l.keys.Ascend(func(k string) bool {
+		l.keys.ascend(func(k string) bool {
 			resp.Keys = append(resp.Keys, []byte(k))
 			return true
 		})
