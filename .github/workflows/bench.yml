@@ -240,6 +240,7 @@ jobs:
           CERTS: certs
           LAYOUT: 3 0 1 2
           PROFILE_GENERATOR: ${{ inputs.profile_generator && 'yes' || '' }}
+          PROFILE_LEADER: yes
           LAYOUTS: ${{ (matrix.job.bench == 'put-1k' || matrix.job.bench == 'txn-1k') && inputs.layouts || '' }}
           ALL_RTTS: ${{ inputs.rtts || '0 2 10' }}
         run: |

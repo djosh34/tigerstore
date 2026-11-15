@@ -195,8 +195,13 @@ once() {
 	"$here/cluster.sh" stop "$dir"
 	local endpoint_file=leader
 	if [ "$workload" = k8s ]; then endpoint_file=endpoints; fi
-	if step "$run" "cluster start" env TMPFS_DIR="$tmpfs/$target" "${place[@]}" "$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"; then
+	if step "$run" "cluster start" env TMPFS_DIR="$tmpfs/$target" ${PROFILE_LEADER:+BENCH_FLAGS=--enable-pprof} "${place[@]}" "$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"; then
 		cp "$dir/placement.json" "$run.placement"
+		# Diagnosis (#684): a CPU profile of the leader while loadgen runs.
+		if [ -n "${PROFILE_LEADER:-}" ] && [ -f "$dir/leader" ]; then
+			(sleep 5; curl -fsS --cacert "$certs/ca.pem" --cert "$certs/client.pem" --key "$certs/client-key.pem" \
+				"https://$(cat "$dir/leader")/debug/pprof/profile?seconds=60" -o "$run.leader.pprof" || true) &
+		fi
 		# The generator drove the leader on its CPUs only if the leader
 		# did not change during the run.
 		if step "$run" loadgen taskset -c "${layout[0]}" "$loadgen" \
