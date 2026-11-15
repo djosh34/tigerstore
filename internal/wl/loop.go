@@ -217,19 +217,26 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	if n.side, err = newRing(sideSize); err != nil {
 		return err
 	}
-	n.wal, err = openWAL(filepath.Join(dataDir, "wal"))
-	if err != nil {
+	// Raft's storage takes what the log holds; Raft then hands out the
+	// committed entries again, and the apply builds the store from them.
+	n.storage = newLogStorage(nil)
+	if n.wal, err = openWAL(filepath.Join(dataDir, "wal"), n.storage.restore); err != nil {
 		return err
 	}
+	n.storage.log = n.wal
 	n.st.log = n.wal
-	n.st.setBudget(memBudget, 2*ringSize+sideSize+stageSize)
-	n.storage = newLogStorage(n.wal)
+	n.st.setBudget(memBudget, 2*ringSize+sideSize+stageSize+storageHeld)
+	n.term, n.commit = n.storage.hs.GetTerm(), n.storage.hs.GetCommit()
 	n.rn, err = raft.NewRawNode(raftConfig(n.id, n.storage))
 	if err != nil {
 		return err
 	}
-	if err := n.rn.Bootstrap(peers); err != nil {
-		return err
+	if n.storage.lastIndex() == 0 {
+		if err := n.rn.Bootstrap(peers); err != nil {
+			return err
+		}
+	} else {
+		logger.Printf("recovered the log: entries to %d, hard state term %d commit %d", n.storage.lastIndex(), n.term, n.commit)
 	}
 
 	l := &loop{n: n, redials: map[uint64]chan struct{}{}, logger: logger, lastAt: time.Now()}

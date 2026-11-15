@@ -5,6 +5,7 @@ import (
 
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 )
 
 // logStorage is Raft's storage. It keeps each entry's term, type and
@@ -162,6 +163,32 @@ func (s *logStorage) append(ents []*pb.Entry, offs []int64) error {
 }
 
 func (s *logStorage) setHardState(hs *pb.HardState) { s.hs = hs }
+
+// restore takes a record the log holds, as the node starts: the newest
+// hard state, and every entry with where its data lies. A later entry
+// replaces the ones from its index on, as the append that wrote it did.
+func (s *logStorage) restore(r *walRecord) error {
+	switch r.kind {
+	case recHardState:
+		hs := &pb.HardState{}
+		if err := proto.Unmarshal(r.data, hs); err != nil {
+			return fmt.Errorf("the log's hard state at %d: %w", r.off, err)
+		}
+		s.hs = hs
+	case recEntry:
+		if r.index <= s.snapIndex {
+			return nil
+		}
+		if r.index > s.lastIndex()+1 {
+			return fmt.Errorf("the log has entry %d after %d", r.index, s.lastIndex())
+		}
+		s.ents = s.ents[:r.index-s.snapIndex-1]
+		s.ents = append(s.ents, storedEnt{term: r.term, typ: r.typ, off: r.off, n: uint32(len(r.data))})
+	default:
+		return fmt.Errorf("a log record of kind %d at %d", r.kind, r.off)
+	}
+	return nil
+}
 
 // offOf returns where entry i's data lies in the log, or -1 if the
 // storage does not hold it.

@@ -79,10 +79,11 @@ type wal struct {
 
 	// Segments: the helper writes through wfds, which it alone uses; rfds
 	// read them, and grows as segments are made.
-	made chan segment
-	wfds []int
-	mu   sync.Mutex
-	rfds []int
+	made  chan segment
+	wfds  []int // from segment wbase on
+	wbase int64
+	mu    sync.Mutex
+	rfds  []int
 
 	stats walStats
 }
@@ -103,9 +104,15 @@ type segment struct {
 
 func segPath(dir string, k int64) string { return filepath.Join(dir, fmt.Sprintf("%016x.seg", k)) }
 
-// openWAL starts an empty log in dir.
-func openWAL(dir string) (*wal, error) {
+// openWAL opens the log in dir, or starts an empty one. It calls fn with
+// each record the log holds, in order, up to the first that does not
+// check; the log goes on after that one, and what lay from it on is cut.
+func openWAL(dir string, fn func(r *walRecord) error) (*wal, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	end, err := scanWAL(dir, fn)
+	if err != nil {
 		return nil, err
 	}
 	kick, err := unix.Eventfd(0, unix.EFD_CLOEXEC)
@@ -120,9 +127,61 @@ func openWAL(dir string) (*wal, error) {
 	if w.stage, err = mmapBytes(stageSize); err != nil {
 		return nil, err
 	}
-	go w.makeSegments(0)
-	go w.helper()
+	next, err := w.reopen(end)
+	if err != nil {
+		return nil, err
+	}
+	go w.makeSegments(next)
+	go w.helper(end)
 	return w, nil
+}
+
+// reopen readies the log to go on at end: it opens the segments that hold
+// it to read, and the last one to write from end on, cut there; it removes
+// any segment after it, and puts the last block's bytes before end into
+// the stage, which the helper writes again. It returns the first segment
+// still to make.
+func (w *wal) reopen(end int64) (int64, error) {
+	last := end / segSize
+	for k := int64(0); k <= last; k++ {
+		fd, err := unix.Open(segPath(w.dir, k), unix.O_RDONLY|unix.O_CLOEXEC, 0)
+		if errors.Is(err, unix.ENOENT) && k == last {
+			// The log ends where a segment would start.
+			break
+		}
+		if err != nil {
+			return 0, err
+		}
+		w.rfds = append(w.rfds, fd)
+	}
+	for k := last + 1; ; k++ {
+		if err := os.Remove(segPath(w.dir, k)); errors.Is(err, os.ErrNotExist) {
+			break
+		} else if err != nil {
+			return 0, err
+		}
+	}
+	w.off, w.stable, w.wbase = end, end, last
+	w.done.Store(end)
+	w.want.Store(end)
+	if int64(len(w.rfds)) == last {
+		return last, nil
+	}
+	path := segPath(w.dir, last)
+	if err := os.Truncate(path, end%segSize); err != nil {
+		return 0, err
+	}
+	wfd, err := openDirect(path)
+	if err != nil {
+		return 0, err
+	}
+	w.wfds = append(w.wfds, wfd)
+	from := end &^ (block - 1)
+	pos := from % stageSize
+	if n, err := unix.Pread(w.rfds[last], w.stage[pos:pos+end-from], from%segSize); err != nil || int64(n) != end-from {
+		return 0, fmt.Errorf("read the log's last block back: %d bytes, %w", n, err)
+	}
+	return last + 1, nil
 }
 
 // makeSegments makes the segments from k on, one ahead of the helper.
@@ -179,22 +238,22 @@ func openDirect(path string) (int, error) {
 // segFD returns the write file of segment k, waiting until it is made.
 // Only the helper calls it.
 func (w *wal) segFD(k int64) (int, error) {
-	for int64(len(w.wfds)) <= k {
+	for w.wbase+int64(len(w.wfds)) <= k {
 		sg := <-w.made
 		if sg.err != nil {
 			return -1, sg.err
 		}
 		w.wfds = append(w.wfds, sg.wfd)
 	}
-	return w.wfds[k], nil
+	return w.wfds[k-w.wbase], nil
 }
 
-func (w *wal) helper() {
+func (w *wal) helper(flushed int64) {
 	runtime.LockOSThread()
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], 1)
 	// writeLoop returns only when it fails.
-	err := fmt.Errorf("write the log: %w", w.writeLoop())
+	err := fmt.Errorf("write the log: %w", w.writeLoop(flushed))
 	w.failed.Store(&err)
 	_, _ = unix.Write(w.wakeFD, b[:])
 }
@@ -202,9 +261,8 @@ func (w *wal) helper() {
 // writeLoop writes what each kick asks for: the blocks from the one that
 // holds the durable end to the one that holds the target. The last block
 // is written again the next time.
-func (w *wal) writeLoop() error {
+func (w *wal) writeLoop(flushed int64) error {
 	var b [8]byte
-	flushed := int64(0)
 	for {
 		if _, err := unix.Read(w.kickFD, b[:]); err != nil {
 			if errors.Is(err, unix.EINTR) {
@@ -377,7 +435,7 @@ type walRecord struct {
 	data  []byte // an entry's data or a hard state, valid until the next record
 }
 
-// scanWAL reads dir's records in order and calls fn with each, until the
+// scanWAL reads dir's records in order and calls fn, if any, with each, until the
 // first that does not check. It returns the log's end: the offset after
 // the last good record.
 func scanWAL(dir string, fn func(r *walRecord) error) (int64, error) {
@@ -419,8 +477,10 @@ func scanWAL(dir string, fn func(r *walRecord) error) (int64, error) {
 				r.off += entHead
 				r.data = rec[walEntHdr:]
 			}
-			if err := fn(&r); err != nil {
-				return 0, err
+			if fn != nil {
+				if err := fn(&r); err != nil {
+					return 0, err
+				}
 			}
 			off += recHead + l
 			buf = buf[recHead+l:]
