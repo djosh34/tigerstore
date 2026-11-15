@@ -1,0 +1,160 @@
+package wl
+
+import (
+	"bytes"
+	"os"
+	"testing"
+	"time"
+
+	pb "go.etcd.io/raft/v3/raftpb"
+)
+
+func testEntry(index, term uint64, data string) *pb.Entry {
+	return &pb.Entry{Index: new(index), Term: new(term), Type: pb.EntryNormal.Enum(), Data: []byte(data)}
+}
+
+// syncWAL writes everything in w's stage to disk and waits for it.
+func syncWAL(t *testing.T, w *wal) {
+	t.Helper()
+	w.lastKick = time.Time{}
+	w.pending = append(w.pending, walJob{end: w.off})
+	w.kick()
+	deadline := time.Now().Add(10 * time.Second)
+	for w.done.Load() < w.off {
+		if err := w.failed.Load(); err != nil {
+			t.Fatal(*err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the log is durable to %d of %d after 10 s", w.done.Load(), w.off)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	w.inflight = false
+	w.pending = w.pending[:0]
+}
+
+func TestWALScanReadsWhatWasWritten(t *testing.T) {
+	dir := t.TempDir()
+	w, err := openWAL(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ents := []*pb.Entry{testEntry(1, 1, "one"), testEntry(2, 1, ""), testEntry(3, 2, "three")}
+	if err := w.write(ents, []byte("hard state")); err != nil {
+		t.Fatal(err)
+	}
+	// Read back from the stage, before the disk has it.
+	got := make([]byte, 5)
+	if err := w.read(got, w.offOf(3)); err != nil || string(got) != "three" {
+		t.Fatalf("read from the stage: %q, %v", got, err)
+	}
+	syncWAL(t, w)
+	if err := w.write([]*pb.Entry{testEntry(4, 2, "four")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	// One from the disk: the stage's block is not where it reads.
+	if err := w.read(got[:3], w.offOf(1)); err != nil || string(got[:3]) != "one" {
+		t.Fatalf("read from the segment: %q, %v", got[:3], err)
+	}
+
+	type rec struct {
+		kind        byte
+		index, term uint64
+		data        string
+		off         int64
+	}
+	var recs []rec
+	end, err := scanWAL(dir, func(r *walRecord) error {
+		recs = append(recs, rec{r.kind, r.index, r.term, string(r.data), r.off})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if end != w.off {
+		t.Fatalf("scan ends at %d, the log at %d", end, w.off)
+	}
+	want := []rec{
+		{recEntry, 1, 1, "one", w.offOf(1)},
+		{recEntry, 2, 1, "", w.offOf(2)},
+		{recEntry, 3, 2, "three", w.offOf(3)},
+		{recHardState, 0, 0, "hard state", 0},
+		{recEntry, 4, 2, "four", w.offOf(4)},
+	}
+	if len(recs) != len(want) {
+		t.Fatalf("scan found %d records, want %d: %+v", len(recs), len(want), recs)
+	}
+	for i := range want {
+		g := recs[i]
+		if g.kind == recHardState {
+			g.off = 0
+		}
+		if g != want[i] {
+			t.Errorf("record %d: %+v, want %+v", i, g, want[i])
+		}
+	}
+}
+
+func TestWALScanStopsAtATornRecord(t *testing.T) {
+	dir := t.TempDir()
+	w, err := openWAL(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.write([]*pb.Entry{testEntry(1, 1, "kept"), testEntry(2, 1, "torn"), testEntry(3, 1, "after")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	path := segPath(dir, 0)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := bytes.Index(b, []byte("torn"))
+	b[i] ^= 1
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	end, err := scanWAL(dir, func(r *walRecord) error {
+		got = append(got, string(r.data))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "kept" {
+		t.Fatalf("scan read %q, want only the record before the torn one", got)
+	}
+	if end != w.offOf(2)-walEntHdr {
+		t.Fatalf("scan ends at %d, want the torn record's start %d", end, w.offOf(2)-walEntHdr)
+	}
+}
+
+func TestWALStageTailIsZeros(t *testing.T) {
+	w, err := openWAL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A lap of the stage ago, the bytes after the end held a record.
+	for i := range w.stage[:2*block] {
+		w.stage[i] = 0xa5
+	}
+	if err := w.write([]*pb.Entry{testEntry(1, 1, "x")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if tail := w.stage[w.off:block]; bytes.ContainsFunc(tail, func(r rune) bool { return r != 0 }) {
+		t.Fatalf("the stage after the log's end holds %x, want zeros up to the block's end", tail[:16])
+	}
+}
+
+func TestWALReadPastTheEndFails(t *testing.T) {
+	w, err := openWAL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.read(make([]byte, 1), 0); err == nil {
+		t.Fatal("a read of an empty log succeeded")
+	}
+}

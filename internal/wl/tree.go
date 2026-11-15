@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"hash/maphash"
 	"slices"
+	"unsafe"
 )
 
 // The tree orders the live keys for ranges. A directory is a key prefix
@@ -199,6 +200,12 @@ func (t *tree) remove(id uint32) {
 	}
 	e := &t.dirs[d]
 	e.children = slices.Delete(e.children, i, i+1)
+}
+
+// bytes estimates the tree's memory: its directories, their table, and a
+// child per key.
+func (t *tree) bytes() int64 {
+	return int64(len(t.dirs))*int64(unsafe.Sizeof(dirEnt{})) + int64(len(t.table))*8 + int64(t.st.nkeys)*int64(unsafe.Sizeof(child{}))
 }
 
 // scan calls fn for each live key in [start, end) in order until fn

@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	mainnode "github.com/djosh34/tigerstore/internal/node"
 	"go.etcd.io/raft/v3"
 	"golang.org/x/sys/unix"
 )
@@ -85,15 +86,22 @@ func Main(args []string) int {
 	peerTrusted := fs.String("peer-trusted-ca-file", "", "")
 	fs.Bool("peer-client-cert-auth", false, "")
 	fs.Int64("quota-backend-bytes", 0, "")
-	fs.Int64("memory-budget-bytes", 0, "")
+	budgetFlag := fs.Int64("memory-budget-bytes", 0, "")
 	fs.String("log-level", "", "")
 	fs.Bool("enable-pprof", false, "")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	logger := log.New(os.Stderr, "tigerstore-wl ", log.LstdFlags|log.Lmicroseconds)
+	budget, from, err := mainnode.MemoryBudget(os.DirFS("/"), *budgetFlag)
+	if err != nil {
+		logger.Printf("error: %v", err)
+		return 2
+	}
+	logger.Printf("memory budget %d MiB, from %s", budget>>20, from)
+	memBudget = budget
 	// The node runs until it fails.
-	err := run(logger, *name, *dataDir, *listenClient, *advClient, *listenPeer, *initial,
+	err = run(logger, *name, *dataDir, *listenClient, *advClient, *listenPeer, *initial,
 		*certFile, *keyFile, *trusted, *peerCert, *peerKey, *peerTrusted)
 	logger.Printf("error: %v", err)
 	return 1
@@ -127,6 +135,12 @@ func hostOf(u string) (string, error) {
 	}
 	return p.Host, nil
 }
+
+// memBudget is the memory the node may use.
+var memBudget int64
+
+// sideSize is the side ring's: the failure branches of Txns.
+const sideSize = 64 << 20
 
 func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer, initial,
 	certFile, keyFile, trusted, peerCert, peerKey, peerTrusted string,
@@ -200,17 +214,15 @@ func run(logger *log.Logger, name, dataDir, listenClient, advClient, listenPeer,
 	if n.rx, err = mmapBytes(ringSize); err != nil {
 		return err
 	}
-	if n.side, err = mmapBytes(64 << 20); err != nil {
+	if n.side, err = mmapBytes(sideSize); err != nil {
 		return err
 	}
 	n.wal, err = openWAL(filepath.Join(dataDir, "wal"))
 	if err != nil {
 		return err
 	}
-	if fd, err := unix.Open(filepath.Join(dataDir, "wal"), unix.O_RDONLY|unix.O_CLOEXEC, 0); err == nil {
-		n.st.walFD = fd
-		n.st.walEnd = &n.wal.off
-	}
+	n.st.log = n.wal
+	n.st.setBudget(memBudget, 2*ringSize+sideSize+stageSize)
 	n.storage = raft.NewMemoryStorage()
 	n.rn, err = raft.NewRawNode(raftConfig(n.id, n.storage))
 	if err != nil {
@@ -631,6 +643,9 @@ func (l *loop) logStats() {
 		secs, r/secs, float64(d.turns-p.turns)/secs, float64(d.turns-p.turns)/r, float64(d.reads-p.reads)/r, float64(d.writes-p.writes)/r,
 		float64(d.walWrites-p.walWrites)/r, float64(d.fsyncs-p.fsyncs)/r, float64(d.proposals-p.proposals)/r, float64(d.readIndex-p.readIndex)/r, float64(d.peerMsgs-p.peerMsgs)/r, float64(d.walBytes-p.walBytes)/r,
 		l.n.st.nkeys, l.n.st.rev, l.n.st.slab.top>>20)
+	st := l.n.st
+	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d; stage waits %d",
+		st.slab.used>>20, st.limit>>20, st.evictions, st.loads, l.n.wal.stats.waits)
 	l.last, l.lastAt = d, now
 	l.logger.Printf("ops by kind %v bytes %v named %d carried %v bytes %v held %d", dbgOps, dbgBytes, dbgNamed, dbgCarried, dbgCarriedB, dbgHeld)
 }

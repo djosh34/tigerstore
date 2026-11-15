@@ -3,11 +3,9 @@ package wl
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"os"
-	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -22,221 +20,6 @@ import (
 // the log ring; one helper thread runs fdatasync and wakes the loop
 // through an eventfd; the append's responses are stepped once it is
 // durable.
-
-// wal is the log file and its fsync helper.
-type wal struct {
-	fd       int
-	off      int64
-	iov      [][]byte
-	hdrs     []byte
-	pending  []walJob
-	inflight bool
-	want     atomic.Int64
-	done     atomic.Int64
-	kickFD   int // the helper waits on it
-	wakeFD   int // the loop waits on it
-	idx      []idxOff
-	// stage mirrors the newest part of the log in page-aligned memory:
-	// the loop copies each append there, and the helper writes its
-	// blocks to the file with O_DIRECT and O_DSYNC, so the kernel neither
-	// copies the log into its page cache nor writes it back.
-	stage   []byte
-	flushed int64 // the helper's: the log is durable up to here
-	// lastKick is when the last sync started; deferred, that appends wait
-	// for the next one at lastKick + syncGap.
-	lastKick time.Time
-	deferred bool
-	// failed is the helper's write error; it stops writing then.
-	failed atomic.Pointer[error]
-}
-
-const syncGap = 800 * time.Microsecond
-
-const (
-	stageSize = 64 << 20
-	block     = 4096
-)
-
-type walJob struct {
-	end   int64
-	resps []*pb.Message
-}
-
-type idxOff struct {
-	index uint64
-	off   int64
-}
-
-const idxSlots = 1 << 16
-
-func openWAL(path string) (*wal, error) {
-	fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC|unix.O_CLOEXEC, 0o600)
-	if err != nil {
-		return nil, err
-	}
-	kick, err := unix.Eventfd(0, unix.EFD_CLOEXEC)
-	if err != nil {
-		return nil, err
-	}
-	wake, err := unix.Eventfd(0, unix.EFD_CLOEXEC|unix.EFD_NONBLOCK)
-	if err != nil {
-		return nil, err
-	}
-	w := &wal{fd: fd, kickFD: kick, wakeFD: wake, idx: make([]idxOff, idxSlots)}
-	// The log is a ring in a file written once with zeros: a sync into
-	// blocks that are already allocated and written changes no metadata,
-	// so ext4 commits no journal for it. Main's log gets the same from
-	// the spare segments it recycles.
-	zero := make([]byte, 4<<20)
-	for off := int64(0); off < walRing; off += int64(len(zero)) {
-		if _, err := unix.Pwrite(fd, zero, off); err != nil {
-			return nil, err
-		}
-	}
-	if err := unix.Fdatasync(fd); err != nil {
-		return nil, err
-	}
-	_ = unix.Close(fd)
-	if w.fd, err = unix.Open(path, unix.O_WRONLY|unix.O_DIRECT|unix.O_DSYNC|unix.O_CLOEXEC, 0); err != nil {
-		return nil, err
-	}
-	if w.stage, err = mmapBytes(stageSize); err != nil {
-		return nil, err
-	}
-	go w.helper()
-	return w, nil
-}
-
-// walRing is the size of the log file; offsets in the log grow without
-// end and wrap around in the file.
-const walRing = 768 << 20
-
-func (w *wal) helper() {
-	runtime.LockOSThread()
-	var b [8]byte
-	binary.LittleEndian.PutUint64(b[:], 1)
-	fail := func(err error) {
-		err = fmt.Errorf("write the log: %w", err)
-		w.failed.Store(&err)
-		_, _ = unix.Write(w.wakeFD, b[:])
-	}
-	for {
-		if _, err := unix.Read(w.kickFD, b[:]); err != nil {
-			if errors.Is(err, unix.EINTR) {
-				continue
-			}
-			fail(err)
-			return
-		}
-		target := w.want.Load()
-		// The blocks from the one that holds the durable end to the one
-		// that holds target; the last is written again next time.
-		from := w.flushed &^ (block - 1)
-		to := (target + block - 1) &^ (block - 1)
-		for from < to {
-			pos := from % stageSize
-			n := min(to-from, stageSize-pos)
-			k, err := unix.Pwrite(w.fd, w.stage[pos:pos+n], from%walRing)
-			if errors.Is(err, unix.EINTR) {
-				continue
-			}
-			if err != nil {
-				fail(err)
-				return
-			}
-			from += int64(k)
-		}
-		w.flushed = target
-		w.done.Store(target)
-		binary.LittleEndian.PutUint64(b[:], 1)
-		_, _ = unix.Write(w.wakeFD, b[:])
-	}
-}
-
-// kick starts an fsync if none runs and appends wait, at most one every
-// syncGap: under load each sync takes more appends, and the loop wakes
-// for fewer completions, so its turns and the acks they send grow.
-func (w *wal) kick() {
-	if w.inflight || len(w.pending) == 0 {
-		return
-	}
-	now := time.Now()
-	if d := now.Sub(w.lastKick); d < syncGap {
-		w.deferred = true
-		return
-	}
-	w.deferred = false
-	w.lastKick = now
-	stats.fsyncs++
-	w.want.Store(w.off)
-	w.inflight = true
-	var b [8]byte
-	binary.LittleEndian.PutUint64(b[:], 1)
-	_, _ = unix.Write(w.kickFD, b[:])
-}
-
-// offOf returns where entry index's data lies in the WAL.
-func (w *wal) offOf(index uint64) int64 {
-	e := w.idx[index&(idxSlots-1)]
-	if e.index != index {
-		return -1
-	}
-	return e.off
-}
-
-const walEntHdr = 4 + 8 + 8 + 1
-
-var errStageFull = errors.New("the log ran a whole stage ahead of the disk")
-
-// write appends entries and a hard state to the file, without sync.
-func (w *wal) write(ents []*pb.Entry, hs []byte) error {
-	w.iov = w.iov[:0]
-	need := len(ents)*walEntHdr + len(hs) + 8
-	if cap(w.hdrs) < need {
-		w.hdrs = make([]byte, 0, 2*need)
-	}
-	h := w.hdrs[:need]
-	at := 0
-	off := w.off
-	for _, e := range ents {
-		d := e.GetData()
-		b := h[at : at+walEntHdr]
-		binary.LittleEndian.PutUint32(b, uint32(len(d)))
-		binary.LittleEndian.PutUint64(b[4:], e.GetIndex())
-		binary.LittleEndian.PutUint64(b[12:], e.GetTerm())
-		b[20] = byte(e.GetType())
-		at += walEntHdr
-		w.iov = append(w.iov, b)
-		off += walEntHdr
-		w.idx[e.GetIndex()&(idxSlots-1)] = idxOff{index: e.GetIndex(), off: off}
-		if len(d) > 0 {
-			w.iov = append(w.iov, d)
-			off += int64(len(d))
-		}
-	}
-	if len(hs) > 0 {
-		b := h[at : at+8+len(hs)]
-		binary.LittleEndian.PutUint32(b, uint32(len(hs)))
-		binary.LittleEndian.PutUint32(b[4:], 0xffffffff)
-		copy(b[8:], hs)
-		w.iov = append(w.iov, b)
-		off += int64(len(b))
-	}
-	if off-w.done.Load() > stageSize-block {
-		return errStageFull
-	}
-	for _, v := range w.iov {
-		for len(v) > 0 {
-			pos := w.off % stageSize
-			k := copy(w.stage[pos:], v)
-			v = v[k:]
-			w.off += int64(k)
-			stats.walBytes += uint64(k)
-		}
-	}
-	stats.walWrites++
-	return nil
-}
 
 func raftConfig(id uint64, st raft.Storage) *raft.Config {
 	return &raft.Config{
@@ -291,7 +74,35 @@ func (n *node) ready() error {
 	return nil
 }
 
+// storageAppend writes an append into the stage, or, while the stage has
+// no room for it, keeps it and those after it in order until the disk
+// catches up.
 func (n *node) storageAppend(m *pb.Message) error {
+	w := n.wal
+	if len(w.waiting) > 0 || !w.fits(m.GetEntries()) {
+		w.stats.waits++
+		w.waiting = append(w.waiting, m)
+		w.kick()
+		return nil
+	}
+	return n.appendNow(m)
+}
+
+// unwait writes the kept appends that fit now.
+func (n *node) unwait() error {
+	w := n.wal
+	k := 0
+	for ; k < len(w.waiting) && w.fits(w.waiting[k].GetEntries()); k++ {
+		if err := n.appendNow(w.waiting[k]); err != nil {
+			return err
+		}
+		w.waiting[k] = nil
+	}
+	w.waiting = append(w.waiting[:0], w.waiting[k:]...)
+	return nil
+}
+
+func (n *node) appendNow(m *pb.Message) error {
 	ents := m.GetEntries()
 	if len(ents) > 0 {
 		if err := n.storage.Append(ents); err != nil {
@@ -353,7 +164,7 @@ func (n *node) fsyncDone() error {
 	}
 	n.wal.inflight = false
 	n.synced()
-	return nil
+	return n.unwait()
 }
 
 func (n *node) storageApply(m *pb.Message) error {

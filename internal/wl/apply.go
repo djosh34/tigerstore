@@ -176,7 +176,11 @@ func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 	}
 	value, vo := r.value, voffOf(req, r.value, voff)
 	if r.ignoreValue || r.ignoreLease {
-		if cur := st.live(id); cur != nil {
+		cur, err := st.live(id)
+		if err != nil {
+			return nil, err
+		}
+		if cur != nil {
 			if r.ignoreValue {
 				value = bytes.Clone(recValue(cur))
 				vo = st.keys[id].voff
@@ -190,7 +194,11 @@ func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	n.w.record(st, id, false, rev, st.live(id), prev)
+	rec, err := st.live(id)
+	if err != nil {
+		return nil, err
+	}
+	n.w.record(st, id, false, rev, rec, prev)
 	return prev, nil
 }
 
@@ -292,17 +300,12 @@ func (n *node) applyDel(req []byte, c *client, s *stream) error {
 	return nil
 }
 
-// cmpHolds evaluates one compare against key id's state.
-func (n *node) cmpHolds(c *compare) bool {
+// cmpHolds evaluates one Txn compare against the store as it is.
+func (n *node) cmpHolds(c *compare) (bool, error) {
 	st := n.st
-	check := func(id uint32, live bool) bool {
-		var have int64
-		if !live {
-			if c.target == 3 {
-				return false
-			}
-		}
+	check := func(id uint32) (bool, error) {
 		mod, create, ver, lease := st.state(id)
+		var have int64
 		switch c.target {
 		case 0:
 			have = ver
@@ -313,8 +316,14 @@ func (n *node) cmpHolds(c *compare) bool {
 		case 4:
 			have = lease
 		case 3:
-			r := bytes.Compare(recValue(st.live(id)), c.value)
-			return result(c.result, r)
+			if !st.exists(id) {
+				return false, nil
+			}
+			rec, err := st.live(id)
+			if err != nil {
+				return false, err
+			}
+			return result(c.result, bytes.Compare(recValue(rec), c.value)), nil
 		}
 		r := 0
 		if have < c.num {
@@ -322,13 +331,13 @@ func (n *node) cmpHolds(c *compare) bool {
 		} else if have > c.num {
 			r = 1
 		}
-		return result(c.result, r)
+		return result(c.result, r), nil
 	}
 	if len(c.end) == 0 {
 		id, ok := st.find(c.key)
 		if !ok {
 			if c.target == 3 {
-				return false
+				return false, nil
 			}
 			r := 0
 			if c.num > 0 {
@@ -336,20 +345,21 @@ func (n *node) cmpHolds(c *compare) bool {
 			} else if c.num < 0 {
 				r = 1
 			}
-			return result(c.result, r)
+			return result(c.result, r), nil
 		}
-		return check(id, st.live(id) != nil)
+		return check(id)
 	}
 	end := c.end
 	if len(end) == 1 && end[0] == 0 {
 		end = nil
 	}
 	ok := true
+	var err error
 	st.tree.scan(c.key, end, func(id uint32) bool {
-		ok = check(id, true)
-		return ok
+		ok, err = check(id)
+		return ok && err == nil
 	})
-	return ok
+	return ok, err
 }
 
 func result(want int, r int) bool {
@@ -379,7 +389,9 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 			if err := parseCompare(p, &cmp); err != nil {
 				return badRequest(err)
 			}
-			ok = n.cmpHolds(&cmp)
+			if ok, err = n.cmpHolds(&cmp); err != nil {
+				return err
+			}
 		}
 		m = rest
 	}

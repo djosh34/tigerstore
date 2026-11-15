@@ -40,6 +40,7 @@ type slab struct {
 	mem   []byte
 	top   int
 	heads [classes]uint64
+	used  int64 // bytes of the slots handed out
 }
 
 const (
@@ -76,6 +77,7 @@ func (s *slab) alloc(n int) (uint64, error) {
 	c, size := classOf(n)
 	if h := s.heads[c]; h != 0 {
 		s.heads[c] = *(*uint64)(unsafe.Pointer(&s.mem[h]))
+		s.used += int64(size)
 		return h, nil
 	}
 	off := s.top
@@ -83,6 +85,7 @@ func (s *slab) alloc(n int) (uint64, error) {
 		return 0, errSlabFull
 	}
 	s.top += size
+	s.used += int64(size)
 	return uint64(off), nil
 }
 
@@ -90,7 +93,8 @@ func (s *slab) free(off uint64, n int) {
 	if off == 0 {
 		return
 	}
-	c, _ := classOf(n)
+	c, size := classOf(n)
+	s.used -= int64(size)
 	*(*uint64)(unsafe.Pointer(&s.mem[off])) = s.heads[c]
 	s.heads[c] = off
 }
