@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -32,17 +34,24 @@ import (
 const blockBytes = 4096
 
 // logFile is a segment opened for appends with O_DIRECT and O_DSYNC. Reads,
-// truncation and the page cache's drops go through the plain file.
+// truncation and the page cache's drops go through the plain file. The
+// log syncs a segment on another goroutine than the one that writes it
+// (wal.WAL.Segment), and cuts it there after a failed sync.
 type logFile struct {
 	file
 	fd int
-	// buf is aligned memory; its first last bytes are the file's from
-	// lastAt on, the start of the last block written, or lastAt is -1.
+	// mu guards the writes and truncations. buf is aligned memory; its
+	// first last bytes are the file's from lastAt on, the start of the
+	// last block written, or lastAt is -1.
+	mu     sync.Mutex
 	buf    []byte
 	lastAt int64
 	last   int
-	// cut is set by a truncation, which only a Sync makes durable.
-	cut bool
+	// cut is set by a truncation, which only a Sync makes durable. syncMu
+	// makes a Sync wait for one under way, which may make the cut durable
+	// for both.
+	cut    atomic.Bool
+	syncMu sync.Mutex
 }
 
 // OpenLog opens segment name for appends, with O_DIRECT and O_DSYNC where
@@ -79,6 +88,8 @@ func aligned(n int) []byte {
 // with what the file holds before off in the first, and zeros after p in
 // the last.
 func (f *logFile) WriteAt(p []byte, off int64) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	base := off &^ (blockBytes - 1)
 	head := int(off - base)
 	need := (head + len(p) + blockBytes - 1) &^ (blockBytes - 1)
@@ -127,22 +138,25 @@ func (f *logFile) Write([]byte) (int, error) {
 
 // Truncate cuts the file; the next Sync makes the cut durable.
 func (f *logFile) Truncate(size int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if err := f.File.Truncate(size); err != nil {
 		return err
 	}
 	if f.lastAt+int64(f.last) > size {
 		f.lastAt = -1
 	}
-	f.cut = true
+	f.cut.Store(true)
 	return nil
 }
 
 // Sync makes a truncation durable. The writes are durable already.
 func (f *logFile) Sync() error {
-	if !f.cut {
+	f.syncMu.Lock()
+	defer f.syncMu.Unlock()
+	if !f.cut.Swap(false) {
 		return nil
 	}
-	f.cut = false
 	for {
 		if err := unix.Fdatasync(f.fd); !errors.Is(err, unix.EINTR) {
 			return err
