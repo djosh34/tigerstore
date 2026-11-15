@@ -984,7 +984,7 @@ func (n *Node) open() error {
 	n.core = c
 	c.SetTurnOver(func() bool { return time.Now().After(n.turnEnd) })
 	n.persistQ = make(chan persistBatch, maxBacklog)
-	n.persisted = make(chan persistDone, 1)
+	n.persisted = make(chan persistDone, 64)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
 	n.cleanQ = make(chan packRoot)
 	n.wantQ = make(chan uint64, 1)
@@ -2034,7 +2034,7 @@ type persistBatch struct {
 }
 
 // syncsInFlight is how many written groups may wait for their sync.
-const syncsInFlight = 4
+const syncsInFlight = 16
 
 // written is a group of jobs, and roots of cleaning passes, written to
 // the log: f is the segment to sync for it, nil when nothing in it must be
