@@ -365,6 +365,7 @@ func (n *Node) pruneWatchers() {
 	}
 	clear(n.watchers[len(live):])
 	n.watchers = live
+	n.watchIdx.invalidate()
 }
 
 func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
@@ -439,6 +440,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 	}
 	s.byID[id] = w
 	n.watchers = append(n.watchers, w)
+	n.watchIdx.invalidate()
 }
 
 // compacted cancels a watcher whose start a compaction at rev passed.
@@ -507,8 +509,10 @@ func (n *Node) matchWatches() {
 		var built [2]*mvccpb.Event
 		var reads [2]*ValueRead
 		var sizes [2]int
-		for _, w := range n.watchers {
-			if w.dead || w.behind || !w.takes(c.Key(), c.ModRev()) {
+		// The lookup's slice stays the same through the loop: a flush in
+		// it may drop watchers, which only invalidates the index.
+		for _, w := range n.watchIdx.lookup(n.watchers, c.Key()) {
+			if w.dead || w.behind || c.ModRev() < w.start {
 				continue
 			}
 			if n.revoke != nil {

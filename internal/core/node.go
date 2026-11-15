@@ -612,6 +612,8 @@ type Node struct {
 
 	streams  map[uint64]*watchStream
 	watchers []*watcher
+	// watchIdx finds the watchers of a key (matchWatches).
+	watchIdx watchIndex
 	// pieced are the answers that go out in pieces, by request ID.
 	pieced map[uint64]*pieced
 
