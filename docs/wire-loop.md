@@ -83,6 +83,12 @@ From the prototype's log. Each item is off the steady state, so the speed stays.
 - Before each push, run #498's checks: gofmt, vet, golangci-lint with `difftest,planted`, `go test -short ./...`, and `scripts/sim.sh` for the simulator tests touched.
 - Many-seed and long runs go to CI, never this host.
 
+## How the clean version keeps what the prototype broke
+
+- **Live values** (part 4). The store holds each key's newest value in its slabs, within the budget (`internal/mvcc/held.go`), in place of the core's value cache. A value that a write replaces stays readable until the core's turn ends (`Store.Release`), so the turn's watch events carry it as their previous value without the disk. The prototype kept every record and read old values back as zeros; here an old revision still comes from the log.
+- **The disk** (part 3). The log's newest segment is written with `O_DIRECT|O_DSYNC` (`osfs.OpenLog`): each write is durable as it returns and no `fdatasync` follows, as in the prototype. The log keeps its segments, checksums, roots and recovery; the prototype's ring overwrote values it still named. The last block is written again with the next append: its bytes up to the old end are the same, so a torn write keeps them. `simfs.Disk.Direct` models these writes. The simulator runs the log on the buffered model, a disk that keeps less than one with direct writes, and the node still syncs wherever that disk needs it.
+- **Bigger turns** (part 2). After a busy turn the loop pauses for what is left of `node.DefaultTurnGap` (250 µs) from its start, in `nanosleep`, so the next turn takes more with one read, write and wait per connection. The prototype's turns grew from the 800 µs it left between syncs. A drained socket is not read again until epoll reports it.
+
 ## Status
 
 The PR body keeps a list of what is done on the branch, what is benched, and what is left.
