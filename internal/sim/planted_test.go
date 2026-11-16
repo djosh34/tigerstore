@@ -257,8 +257,9 @@ func TestPlanted(t *testing.T) {
 // plantedWLCases are the planted bugs moved into wl, each caught on wl
 // nodes (Config.wl) as plantedCases catches it on main's.
 var plantedWLCases = map[string]plantedCase{
-	"B02": {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries`},
-	"B03": {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries`},
+	"B02":  {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries`},
+	"B03":  {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries`},
+	"B04a": {seeds: 64, cfg: wlDamageConfig, want: `without noticing|` + refused},
 }
 
 // TestPlantedWL is TestPlanted on wl nodes, for the bugs planted in wl.

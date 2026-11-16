@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/djosh34/tigerstore/internal/metrics"
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // The log. Raft's appends are written as records into a page-aligned
@@ -662,7 +663,7 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 			if l <= maxWALRecBody && int64(len(buf)) < recHead+l {
 				break
 			}
-			if l > maxWALRecBody || !checks(buf[:recHead+l]) {
+			if l > maxWALRecBody || !checks(buf[:recHead+l]) && !plantedAccepts(buf[:recHead+l], off) {
 				return off, damaged(sys, dir, k, short, off, buf)
 			}
 			rec := buf[:recHead+l]
@@ -688,6 +689,17 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 		}
 	}
 	return off, nil
+}
+
+// plantedAccepts reports whether planted bug B04a takes rec, a record at
+// log offset off whose CRC does not verify, as good: one whose kind and
+// length are a record's and that no crash tore.
+func plantedAccepts(rec []byte, off int64) bool {
+	if !planted.On("B04a") || torn(rec, off) {
+		return false
+	}
+	l := int64(len(rec) - recHead)
+	return rec[8] == recEntry && l >= entHead || rec[8] == recHardState
 }
 
 // checks reports whether b starts with a whole record that checks.
