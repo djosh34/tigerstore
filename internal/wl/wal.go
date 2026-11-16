@@ -378,6 +378,13 @@ func (w *wal) makeSegment(dfd int, path string) (segment, error) {
 	} else if err := sysFsync(dfd); err != nil {
 		return segment{}, err
 	}
+	// Measure only: the segment's blocks are allocated ahead, its size
+	// kept, so the helper's writes allocate nothing.
+	if zf, err := w.sys.open(path, unix.O_WRONLY, 0); err == nil {
+		_ = unix.Fallocate(zf, unix.FALLOC_FL_KEEP_SIZE, 0, segSize)
+		_ = unix.Fdatasync(zf)
+		_ = sysClose(zf)
+	}
 	var sg segment
 	if sg.wfd, err = w.sys.openDirect(path); err != nil {
 		return segment{}, err
