@@ -155,11 +155,17 @@ jobs:
   # failing seed's log carries its trace, how it left each node, its
   # hashes and the command that runs it again; its trace, nodes, history
   # and disks are uploaded.
+  # Each shard's 400 seeds: TestSeeds' in two halves of 200, each over the
+  # 64 seeds its rules over a set need, and TestLinearizable's in a job of
+  # their own. On wl, 400 seeds of TestSeeds took 21 minutes and
+  # TestLinearizable's 8, past the 26 of one job together.
   sim:
     strategy:
       fail-fast: false
       matrix:
         shard: ${{ fromJSON(github.event_name == 'pull_request' && '[0]' || '[0, 1, 2, 3]') }}
+        part: [seeds-1, seeds-2, linearizable]
+    name: sim (${{ matrix.shard }}, ${{ matrix.part }})
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
@@ -170,6 +176,7 @@ jobs:
       - name: Pick seeds
         env:
           SHARD: ${{ matrix.shard }}
+          PART: ${{ matrix.part }}
           RUN_ID: ${{ github.run_id }}
           FIXED: ${{ inputs.fixed }}
         # Fresh seeds only while known-failures.txt lists none: a fresh
@@ -180,21 +187,24 @@ jobs:
           else
             first=$((1000000 + (RUN_ID % 1000000000) * 2 + SHARD * 400))
           fi
-          echo "SIM_SEED=$first" >> "$GITHUB_ENV"
-          echo "seeds $first to $((first + 399))"
+          case "$PART" in
+            seeds-1) test=TestSeeds count=200 twice=10 ;;
+            seeds-2) test=TestSeeds count=200 twice=10 first=$((first + 200)) ;;
+            linearizable) test=TestLinearizable count=400 twice=20 ;;
+          esac
+          { echo "SIM_SEED=$first"; echo "SIM_SEEDS=$count"; echo "SIM_TWICE=$twice"; echo "SIM_TEST=$test"; } >> "$GITHUB_ENV"
+          echo "$test, seeds $first to $((first + count - 1))"
       - name: Run seeds with the checkers
         shell: bash
         env:
-          SIM_SEEDS: 400
-          SIM_TWICE: 20
           SIM_OUT: ${{ runner.temp }}/sim-out
-        run: scripts/sim.sh ./internal/sim '^(TestSeeds|TestLinearizable)$' -test.timeout 26m 2>&1 | tee "$RUNNER_TEMP/sim.log"
+        run: scripts/sim.sh ./internal/sim "^$SIM_TEST\$" -test.timeout 26m 2>&1 | tee "$RUNNER_TEMP/sim.log"
       - if: failure()
         run: PKG=./internal/sim scripts/replay.sh "$RUNNER_TEMP/sim.log" -gosim
       - if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: sim-${{ matrix.shard }}
+          name: sim-${{ matrix.shard }}-${{ matrix.part }}
           path: |
             ${{ runner.temp }}/sim.log
             ${{ runner.temp }}/sim-out

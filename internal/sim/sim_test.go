@@ -475,7 +475,7 @@ func TestSeeds(t *testing.T) {
 		ran, total.Disk.TornWrites, total.Disk.Reordered, total.TornRefusals)
 	// A stalled leader that goes silent is rarer: about 0.9% of seeds had
 	// one when it handed over instead (#218). Over 2000 seeds even 0.7%
-	// leaves less than one chance in a million of none. CI's shards of 400
+	// leaves less than one chance in a million of none. CI's sets of 200
 	// do not reach that, the seed campaign does.
 	if ran >= 2000 && !t.Failed() && total.Silences == 0 {
 		t.Fatalf("%d seeds: no stalled leader went silent; one must", ran)
