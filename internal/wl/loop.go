@@ -44,9 +44,10 @@ type heldMsg struct {
 
 // loop owns the epoll instance and the node.
 type loop struct {
-	n    *node
-	epfd int
-	hoFD int // handoffs wake the loop through it
+	watch *turnWatch
+	n     *node
+	epfd  int
+	hoFD  int // handoffs wake the loop through it
 	// resumed are the paused clients a flush resumes (flush).
 	resumed []*client
 
@@ -838,6 +839,7 @@ func (l *loop) input(idx int) {
 func (l *loop) run() error {
 	n := l.n
 	n.sys.lockOSThread()
+	l.watch = newTurnWatch()
 	events := make([]unix.EpollEvent, 256)
 	l.next = time.Now().Add(tickEvery)
 	if n.id == 1 {
@@ -860,6 +862,7 @@ func (l *loop) run() error {
 			return err
 		}
 		n.now = time.Now()
+		l.watch.begin(n.now)
 		if n.stopErr != nil {
 			return n.stopErr
 		}
@@ -982,8 +985,10 @@ func (l *loop) run() error {
 			// Raft holds no message now that could point into a ring.
 			n.sweepRings(n.now)
 		}
+		l.watch.end()
 		if t5 := time.Now(); t5.Sub(n.now) > slowTurn {
 			l.logSlowTurn(n.now, t1, t2, t3, t4, t5, ops, tickEnd.Sub(tickStart))
+			l.logger.Printf("slow turn samples: %s", l.watch.report(n.now))
 		}
 		clear(n.turnReqs[:])
 		l.turnPosts, l.turnHandoffs = 0, 0
