@@ -353,6 +353,14 @@ func (n *node) sendPeer(m *pb.Message) {
 		return
 	}
 	n.stats.peerMsgs++
+	if m.GetType() == pb.MsgSnap {
+		// A snapshot goes over a connection of its own, and is reported
+		// to Raft however it ends: one dropped with the peer connection
+		// below left Raft waiting for its report, and never sending the
+		// follower anything again (seed 24040 of TestSeeds).
+		n.sendSnapshot(m)
+		return
+	}
 	p := n.peersOut[m.GetTo()]
 	if p == nil || p.dead {
 		return
@@ -361,10 +369,6 @@ func (n *node) sendPeer(m *pb.Message) {
 		// The peer takes less than it is sent, as one that catches up:
 		// Raft probes it again instead of piling up appends here.
 		n.rn.ReportUnreachable(m.GetTo())
-		return
-	}
-	if m.GetType() == pb.MsgSnap {
-		n.sendSnapshot(m)
 		return
 	}
 	ents := m.GetEntries()

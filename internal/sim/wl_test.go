@@ -94,9 +94,12 @@ func TestWLRunsTheFaults(t *testing.T) {
 
 // TestWLFormsAndRunsTheFaults is TestWLRunsTheFaults on seeds that form
 // their cluster first, with no faults and no clients, and start the run
-// from its disks (formCluster), as 7 seeds in 8 of TestSeeds do.
+// from its disks (formCluster), as 7 seeds in 8 of TestSeeds do. On seed
+// 24040 the leader dropped a snapshot to a follower whose peer connection
+// was down without reporting it to Raft, which then waited for good, and
+// the follower ended 1,300 entries behind.
 func TestWLFormsAndRunsTheFaults(t *testing.T) {
-	simrun.Each(t, []uint64{1, 3}, func(t *testing.T, seed uint64) Stats {
+	simrun.Each(t, []uint64{1, 3, 24040}, func(t *testing.T, seed uint64) Stats {
 		st := runWLFaults(t, seed, false).Stats
 		if !st.Formed {
 			t.Fatal("the cluster did not form first")
