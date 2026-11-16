@@ -164,10 +164,12 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 		return err
 	}
 	// The watches go on from where they were: they catch up from the
-	// changes the checkpoint holds, or learn that those are compacted.
+	// changes the checkpoint holds, or learn that those are compacted. A
+	// watch from a revision still to come needs nothing before it, even
+	// where the old store was behind it (seed 10155 of TestWLFaultSeeds).
 	for i := range n.w.ws {
 		if x := &n.w.ws[i]; x.active && x.syncRev == 0 {
-			x.syncRev = old.rev + 1
+			x.syncRev = max(old.rev+1, x.minRev)
 			n.w.unsynced = append(n.w.unsynced, int32(i))
 		}
 	}

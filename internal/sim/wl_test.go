@@ -65,9 +65,12 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 // seed 1002 left a segment past the log's end after a crash (#702); on
 // seed 2 the run dropped an ambiguous Txn that took effect from the
 // history, and the durability check found its entry without a client
-// (#703).
+// (#703); on seed 10161 a node started again before the cluster committed
+// its first ConfChanges, knew no member, and never answered its leader; on
+// seed 10155 a node that installed a snapshot canceled a watch from a
+// revision still to come as compacted.
 func TestWLRunsTheFaults(t *testing.T) {
-	simrun.Each(t, []uint64{2, 7, 8, 1002}, func(t *testing.T, seed uint64) Stats {
+	simrun.Each(t, []uint64{2, 7, 8, 1002, 10155, 10161}, func(t *testing.T, seed uint64) Stats {
 		st := runWLFaults(t, seed)
 		if st.DiskFaults == 0 {
 			t.Fatal("no disk fault fired")
