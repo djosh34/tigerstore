@@ -65,7 +65,7 @@ type Sys interface {
 type Hooks interface {
 	// Recovered is what the node's start recovered: Raft's log to last,
 	// and the hard state. values are the values the store it started
-	// from names in the log (TurnState.LogValues).
+	// from names in the log (as Turn's).
 	Recovered(last uint64, hs *raftpb.HardState, values func() []LogValue)
 	// Append is an append handed to the log: its first entry, or that of
 	// the snapshot it installs, which may replace entries already
@@ -97,8 +97,10 @@ type Hooks interface {
 	// node's checkpoint directory, is durable and the newest.
 	CheckpointDone(index uint64, name string)
 	// Turn ends each turn of the loop with what Raft shows; it may hold
-	// the loop.
-	Turn(TurnState)
+	// the loop. values are the values the store names in the log's
+	// durable part, in the order of their place. A hook that keeps
+	// values keeps the whole node: the simulator keeps only the state.
+	Turn(st TurnState, values func() []LogValue)
 	// SnapshotChunk is chunk p of a snapshot stream to node to, the
 	// stream's first if first, before it is sent: the simulator may hold
 	// the stream back or damage p in place, as a network that TLS does
@@ -131,9 +133,6 @@ type TurnState struct {
 	// them as they are.
 	Members []TurnMember
 	Removed []uint64
-	// LogValues, in the simulator, are the values the store names in the
-	// log's durable part, in the order of their place.
-	LogValues func() []LogValue
 }
 
 // LogValue is a value the store names in the log: its Len bytes at Off.

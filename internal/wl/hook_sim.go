@@ -128,8 +128,7 @@ func (n *node) simTurn() {
 		Lead: n.lead, Term: n.term, Commit: n.commit, Applied: n.applied,
 		First: first, Format: n.format, Rev: n.st.rev, Watchers: watchers, Silent: n.silent,
 		Members: n.sys.sim.members, Removed: n.sys.sim.removed,
-		LogValues: n.simLogValues,
-	})
+	}, n.simLogValues)
 }
 
 // simLogValues are the values the store names in the log's durable part.

@@ -392,7 +392,7 @@ func (h *wlHooks) CheckpointDone(index uint64, name string) {
 
 // Turn keeps what the node shows, and holds its loop while the process
 // is paused, frozen, or the run failed.
-func (h *wlHooks) Turn(st wl.TurnState) {
+func (h *wlHooks) Turn(st wl.TurnState, values func() []wl.LogValue) {
 	s, p := h.s, h.p
 	s.mu.Lock()
 	n := p.n
@@ -403,7 +403,7 @@ func (h *wlHooks) Turn(st wl.TurnState) {
 	p.wl.turn = st
 	if s.rotDue == n {
 		s.rotDue = nil
-		s.rotWL(n, st.LogValues)
+		s.rotWL(n, values)
 	}
 	role := "follower"
 	if st.Lead == n.id {
