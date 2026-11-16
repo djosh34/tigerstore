@@ -45,6 +45,11 @@ func raftConfig(id uint64, st raft.Storage, z sizes, members int) *raft.Config {
 func (n *node) ready() error {
 	for i := 0; i < 64 && n.rn.HasReady(); i++ {
 		rd := n.rn.Ready()
+		if err := n.storage.failed; err != nil {
+			// What Raft read of the storage lacks an entry's data: nothing it
+			// made of it may be sent, persisted or applied.
+			return err
+		}
 		if rd.SoftState != nil {
 			was := n.leading()
 			if rd.Lead != n.lead {
@@ -244,8 +249,8 @@ func (n *node) storageApply(m *pb.Message) error {
 // grown enough since the last.
 func (n *node) afterApply() error {
 	s := n.storage
-	if first, _ := s.FirstIndex(); n.applied > first+2*storageWindow {
-		s.compact(n.applied - storageWindow)
+	if first, _ := s.FirstIndex(); n.applied > first+2*n.catchup {
+		s.compact(n.applied - n.catchup)
 	}
 	if s.snap != nil {
 		if err := n.wal.cut(min(n.ckptCut, s.firstRecord(n.wal.off))); err != nil {
@@ -259,7 +264,7 @@ func (n *node) afterApply() error {
 // last, or when Raft's storage wants one for a follower.
 func (n *node) maybeCkpt() error {
 	s := n.storage
-	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < ckptMin || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt {
+	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptLog || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt {
 		return nil
 	}
 	off := s.offOf(n.applied)

@@ -155,3 +155,33 @@ func TestStorageTrimsWhatItHoldsToItsLimit(t *testing.T) {
 		t.Fatalf("holds %d bytes after a replaced tail, want %d", s.held, want)
 	}
 }
+
+// failingLog fails every read, as a disk with an error does.
+type failingLog struct{ memLog }
+
+var errDiskRead = errors.New("the disk failed a read")
+
+func (*failingLog) read([]byte, int64) error { return errDiskRead }
+
+// Raft stops its process on any error of its storage (raft's
+// raftLog.slice panics). An entry that cannot be read back from the log
+// comes to Raft without its data, with its index, term and type, and the
+// storage keeps the error for the loop, which stops on it before it uses
+// what Raft made of the entry.
+func TestStorageKeepsAFailedReadForTheLoop(t *testing.T) {
+	l := &failingLog{}
+	s := newLogStorage(l)
+	e1, e2 := testEntry(1, 1, "one"), testEntry(2, 3, "two")
+	storeEntries(t, s, &l.memLog, e1, e2)
+	s.letGo(e2)
+	ents, err := s.Entries(1, 3, 1<<30)
+	if err != nil {
+		t.Fatalf("Entries returned %v to Raft", err)
+	}
+	if len(ents) != 2 || ents[1].GetIndex() != 2 || ents[1].GetTerm() != 3 || ents[1].GetData() != nil {
+		t.Fatalf("entries %v", ents)
+	}
+	if !errors.Is(s.failed, errDiskRead) {
+		t.Fatalf("the storage kept %v, want the read's error", s.failed)
+	}
+}

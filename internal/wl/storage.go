@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"cmp"
 	"fmt"
 
 	"go.etcd.io/raft/v3"
@@ -36,6 +37,12 @@ type logStorage struct {
 	// none to give until then.
 	confIndex uint64
 	wantCkpt  bool
+
+	// failed is why an entry could not be read back from the log. Raft
+	// stops its process on any error of its storage, so Entries gives it
+	// the entry without its data instead, and the loop stops on failed
+	// before it uses anything Raft made of it (node.ready).
+	failed error
 
 	stats storageStats
 }
@@ -105,7 +112,8 @@ func (s *logStorage) Entries(lo, hi, maxSize uint64) ([]*pb.Entry, error) {
 		}
 		ent, err := s.entry(i, e)
 		if err != nil {
-			return nil, err
+			s.failed = cmp.Or(s.failed, err)
+			ent = &pb.Entry{Index: new(i), Term: new(e.term), Type: e.typ.Enum()}
 		}
 		out = append(out, ent)
 	}
