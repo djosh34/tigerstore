@@ -125,6 +125,7 @@ func (n *node) unwait() error {
 // Raft's storage with where the log holds their data. A snapshot it
 // carries is installed first.
 func (n *node) appendNow(m *pb.Message) error {
+	n.simAppend(m)
 	if sn := m.GetSnapshot(); sn != nil && sn.GetMetadata().GetIndex() > 0 {
 		if err := n.installSnapshot(sn); err != nil {
 			return err
@@ -176,6 +177,7 @@ func (n *node) synced() {
 				n.sendPeer(r)
 			}
 		}
+		n.simDurable(&w.pending[k])
 		w.stable = w.pending[k].end
 		if hs := w.pending[k].hs; hs != nil {
 			w.durableHS = hs
@@ -221,6 +223,7 @@ func (n *node) storageApply(m *pb.Message) error {
 			}
 		}
 		n.applied = idx
+		n.simApplied(e)
 		if n.applied > n.membershipAt+membershipSnapshotEntries {
 			n.membershipAt = n.applied
 			n.membershipSnapshot()

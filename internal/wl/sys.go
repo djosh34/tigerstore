@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	raftpb "go.etcd.io/raft/v3/raftpb"
 	"golang.org/x/sys/unix"
 )
 
@@ -55,4 +56,41 @@ type Sys interface {
 	// timeout, or never for 0; Nonblocking makes them not block again.
 	Blocking(fd int, timeout time.Duration) error
 	Nonblocking(fd int) error
+}
+
+// Hooks, in a binary built for the simulator, let it see what a node
+// recovers, applies and makes durable, and hold its loop, as a paused
+// process (hook_sim.go). A real binary refuses them, and its calls of
+// them are empty functions (hook_os.go), so they cost nothing.
+type Hooks interface {
+	// Recovered is what the node's start recovered: Raft's log to last,
+	// and the hard state.
+	Recovered(last uint64, hs *raftpb.HardState)
+	// Append is an append handed to the log: its first entry, or that of
+	// the snapshot it installs, which may replace entries already
+	// durable, as Raft may replace entries that never committed.
+	Append(first uint64, install bool)
+	// Applied is entry e, applied, and a hash of the changes it made to
+	// the store: every key it put or deleted, by name, with its record at
+	// that revision. Every node that applies e from the same store gets
+	// the same hash, whatever its key ids.
+	Applied(e *raftpb.Entry, hash uint64)
+	// Durable is an append the log now holds durably: its entries to last
+	// if it had any, the snapshot it installed to last if install, and
+	// its hard state if any.
+	Durable(last uint64, install bool, hs *raftpb.HardState)
+	// Turn ends each turn of the loop with what Raft shows; it may hold
+	// the loop.
+	Turn(TurnState)
+}
+
+// TurnState is what a node shows at the end of a turn of its loop.
+type TurnState struct {
+	Lead, Term, Commit, Applied uint64
+	// First is the first entry Raft's storage holds.
+	First uint64
+	// Format is the cluster's format (format.go).
+	Format uint8
+	// Rev is the store's revision.
+	Rev int64
 }

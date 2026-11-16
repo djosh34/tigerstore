@@ -7,6 +7,9 @@ import (
 	"errors"
 	"net"
 	"os"
+	"runtime"
+	"runtime/debug"
+	"runtime/metrics"
 	"syscall"
 	"time"
 
@@ -23,15 +26,46 @@ import (
 // sysEnv is a node's handle on the system: nothing in the real binary.
 type sysEnv struct{}
 
-var errSimInRealBuild = errors.New("Config.Sys is set, but this binary was built without the simulator's seam (tags sim or simio)")
+var errSimInRealBuild = errors.New("Config.Sys or Config.Hooks is set, but this binary was built without the simulator's seam (tags sim or simio)")
 
 // newSysEnv returns the system cfg asks for: the real one.
 func newSysEnv(cfg *Config) (sysEnv, error) {
-	if cfg.Sys != nil {
+	if cfg.Sys != nil || cfg.Hooks != nil {
 		return sysEnv{}, errSimInRealBuild
 	}
 	return sysEnv{}, nil
 }
+
+// lockOSThread keeps the calling goroutine on its thread, as the loop
+// and the log's helper each run on one of their own.
+func (sysEnv) lockOSThread() { runtime.LockOSThread() }
+
+var (
+	liveHeap   = []metrics.Sample{{Name: "/gc/heap/live:bytes"}}
+	memSamples = []metrics.Sample{
+		{Name: "/memory/classes/total:bytes"},
+		{Name: "/memory/classes/heap/released:bytes"},
+		{Name: "/gc/heap/live:bytes"},
+		{Name: "/gc/heap/goal:bytes"},
+	}
+)
+
+// goLiveHeap is Go's live heap after its last collection.
+func (sysEnv) goLiveHeap() int64 {
+	metrics.Read(liveHeap)
+	return int64(liveHeap[0].Value.Uint64())
+}
+
+// goMemory is Go's mapped memory, its live heap after the last
+// collection, and the next collection's goal.
+func (sysEnv) goMemory() (total, live, goal int64) {
+	metrics.Read(memSamples)
+	return int64(memSamples[0].Value.Uint64() - memSamples[1].Value.Uint64()),
+		int64(memSamples[2].Value.Uint64()), int64(memSamples[3].Value.Uint64())
+}
+
+// setMemoryLimit sets Go's memory limit.
+func (sysEnv) setMemoryLimit(limit int64) { debug.SetMemoryLimit(limit) }
 
 func (sysEnv) epollCreate() (int, error) { return unix.EpollCreate1(unix.EPOLL_CLOEXEC) }
 

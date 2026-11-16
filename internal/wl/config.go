@@ -39,6 +39,9 @@ type Config struct {
 	// Sys, in a binary built for the simulator, stands in for the system
 	// calls it cannot run; nil otherwise (sys.go).
 	Sys Sys
+	// Hooks, in a binary built for the simulator, let it watch and hold
+	// the node; nil otherwise (sys.go).
+	Hooks Hooks
 	// CORS and HostWhitelist are etcd's --cors and --host-whitelist; Pprof
 	// serves /debug/pprof/, as --enable-pprof.
 	CORS, HostWhitelist map[string]struct{}

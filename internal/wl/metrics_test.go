@@ -48,3 +48,18 @@ func TestMetricsNameCallsAsGRPCDoes(t *testing.T) {
 		}
 	}
 }
+
+// Every request type and applied op has its name: the arrays' lengths
+// are constants, which an array literal may fall short of.
+func TestEveryRequestTypeAndApplyOpHasAName(t *testing.T) {
+	for i, s := range requestTypes {
+		if s == "" {
+			t.Errorf("request type %d has no name", i)
+		}
+	}
+	for i, s := range applyOps {
+		if s == "" {
+			t.Errorf("applied op %d has no name", i)
+		}
+	}
+}

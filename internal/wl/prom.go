@@ -33,9 +33,9 @@ type loopStats struct {
 	// request times calls by etcd's request type and success, handling
 	// every call by kind (grpc_server_handling_seconds, with --metrics
 	// extensive), apply the applied ops, ranges the served ranges.
-	request  [len(requestTypes)][2]hist
+	request  [nRequestTypes][2]hist
 	handling [kinds]hist
-	apply    [len(applyOps)][2]hist
+	apply    [nApplyOps][2]hist
 	ranges   [2]hist
 	// mvcc's counters, as etcd's store counts them.
 	core.Counters
@@ -78,7 +78,15 @@ var (
 )
 
 // requestTypes are etcd's request types of etcd_server_request_duration_seconds.
-var requestTypes = [...]string{"Range", "Put", "DeleteRange", "Txn", "ReadonlyTxn", "Compaction", "LeaseGrant", "LeaseRevoke", "Alarm"}
+// nRequestTypes and nApplyOps are the lengths of requestTypes and
+// applyOps, as constants: gosim moves package variables into a struct,
+// whose len is not one.
+const (
+	nRequestTypes = 9
+	nApplyOps     = 7
+)
+
+var requestTypes = [nRequestTypes]string{"Range", "Put", "DeleteRange", "Txn", "ReadonlyTxn", "Compaction", "LeaseGrant", "LeaseRevoke", "Alarm"}
 
 // requestType is the index in requestTypes of a call of kind, -1 for none.
 func requestType(kind uint8, readonly bool) int {
@@ -107,7 +115,7 @@ func requestType(kind uint8, readonly bool) int {
 }
 
 // applyOps are the ops of etcd_server_apply_duration_seconds.
-var applyOps = [...]string{"Put", "DeleteRange", "Txn", "Compaction", "LeaseGrant", "LeaseRevoke", "Alarm"}
+var applyOps = [nApplyOps]string{"Put", "DeleteRange", "Txn", "Compaction", "LeaseGrant", "LeaseRevoke", "Alarm"}
 
 func applyOp(kind uint8) int {
 	switch kind {

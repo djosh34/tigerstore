@@ -24,7 +24,13 @@ import (
 // first node started, whose descriptor table every node shares.
 
 // sysEnv is a node's handle on the simulator.
-type sysEnv struct{ s Sys }
+type sysEnv struct {
+	s Sys
+	// h, if set, watches and holds the node, and sim is its state of
+	// the node (hook_sim.go).
+	h   Hooks
+	sim *simState
+}
 
 var (
 	errNoSys = errors.New("a node built with the simulator's seam needs Config.Sys")
@@ -36,8 +42,19 @@ func newSysEnv(cfg *Config) (sysEnv, error) {
 		return sysEnv{}, errNoSys
 	}
 	fdSys.CompareAndSwap(nil, &cfg.Sys)
-	return sysEnv{s: cfg.Sys}, nil
+	return sysEnv{s: cfg.Sys, h: cfg.Hooks, sim: &simState{}}, nil
 }
+
+// lockOSThread does nothing: the simulator schedules the goroutines of
+// its nodes itself, and gosim's cannot be locked to a thread.
+func (sysEnv) lockOSThread() {}
+
+// goLiveHeap, goMemory and setMemoryLimit read and set nothing: the
+// process's Go memory is the simulator's, shared by every node of the
+// run, and what it holds depends on the host, not on the run's seed.
+func (sysEnv) goLiveHeap() int64                   { return 0 }
+func (sysEnv) goMemory() (total, live, goal int64) { return 0, 0, 0 }
+func (sysEnv) setMemoryLimit(int64)                {}
 
 func (e sysEnv) epollCreate() (int, error) { return e.s.EpollCreate() }
 

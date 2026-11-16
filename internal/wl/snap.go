@@ -138,6 +138,7 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 		return fmt.Errorf("install a snapshot: %w", err)
 	}
 	n.st = st
+	n.simInstalled()
 	if err := old.close(); err != nil {
 		return err
 	}

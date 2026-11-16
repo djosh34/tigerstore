@@ -3,7 +3,6 @@ package wl
 import (
 	"bytes"
 	"os"
-	"runtime/metrics"
 	"strconv"
 	"unsafe"
 )
@@ -22,21 +21,14 @@ type memStats struct {
 	sockOut, sockIn, held int64
 }
 
-var memSamples = []metrics.Sample{
-	{Name: "/memory/classes/total:bytes"},
-	{Name: "/memory/classes/heap/released:bytes"},
-	{Name: "/gc/heap/live:bytes"},
-	{Name: "/gc/heap/goal:bytes"},
-}
-
 func (n *node) memStats() memStats {
-	metrics.Read(memSamples)
 	st := n.st
+	goTotal, goLive, goGoal := n.sys.goMemory()
 	m := memStats{
 		rss:      residentBytes(),
-		goTotal:  int64(memSamples[0].Value.Uint64() - memSamples[1].Value.Uint64()),
-		goLive:   int64(memSamples[2].Value.Uint64()),
-		goGoal:   int64(memSamples[3].Value.Uint64()),
+		goTotal:  goTotal,
+		goLive:   goLive,
+		goGoal:   goGoal,
 		keys:     int64(st.nkeys) * int64(unsafe.Sizeof(keyEnt{})),
 		hash:     int64(len(st.hash)) * 8,
 		hist:     int64(st.nhist) * int64(unsafe.Sizeof(histEnt{})),

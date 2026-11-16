@@ -7,7 +7,6 @@ import (
 	"hash/crc32"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -355,7 +354,7 @@ func (w *wal) segFD(k int64) (int, error) {
 }
 
 func (w *wal) helper(flushed int64) {
-	runtime.LockOSThread()
+	w.sys.lockOSThread()
 	defer close(w.helperDone)
 	err := w.writeLoop(flushed)
 	if errors.Is(err, errWALClosed) {

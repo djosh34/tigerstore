@@ -10,9 +10,6 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
-	"runtime"
-	"runtime/debug"
-	"runtime/metrics"
 	"slices"
 	"sync"
 	"time"
@@ -193,6 +190,7 @@ func run(ctx context.Context, cfg Config) error {
 		hs.Commit = new(n.storage.snapIndex)
 	}
 	n.term, n.commit = n.storage.hs.GetTerm(), n.storage.hs.GetCommit()
+	n.simRecovered()
 	n.rn, err = raft.NewRawNode(raftConfig(n.id, n.storage, n.sizes, len(cfg.Members)))
 	if err != nil {
 		return err
@@ -768,8 +766,8 @@ func (l *loop) input(idx int) {
 
 // run turns the loop until the node fails.
 func (l *loop) run() error {
-	runtime.LockOSThread()
 	n := l.n
+	n.sys.lockOSThread()
 	events := make([]unix.EpollEvent, 256)
 	l.next = time.Now().Add(tickEvery)
 	if n.id == 1 {
@@ -883,6 +881,7 @@ func (l *loop) run() error {
 		clear(n.turnReqs[:])
 		l.turnPosts, l.turnHandoffs = 0, 0
 		n.stats.turns++
+		n.simTurn()
 		if l.tick%50 == 0 && l.tick != l.logged {
 			l.logged = l.tick
 			l.logStats()
@@ -898,17 +897,14 @@ func (n *node) limitGo() {
 	if st.budget == 0 {
 		return
 	}
-	metrics.Read(liveHeap)
-	st.goLive = int64(liveHeap[0].Value.Uint64())
+	st.goLive = n.sys.goLiveHeap()
 	limit := st.goLimit()
 	if d := limit - n.goLimit; d > -st.budget/64 && d < st.budget/64 {
 		return
 	}
 	n.goLimit = limit
-	debug.SetMemoryLimit(limit)
+	n.sys.setMemoryLimit(limit)
 }
-
-var liveHeap = []metrics.Sample{{Name: "/gc/heap/live:bytes"}}
 
 func (l *loop) flush() {
 	n := l.n
