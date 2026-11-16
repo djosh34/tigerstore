@@ -26,13 +26,13 @@ if [ -z "$tests" ]; then
 fi
 awk -v shard="$shard" -v shards="$shards" '
 BEGIN {
-	split("TestLoneSegmentHeader 1278 TestAllLinkMasks 984 TestMembershipFaults 572 " \
+	split("TestAllLinkMasks 984 TestMembershipFaults 572 " \
 		"TestPowerLossAfterKill 342 TestSeeds 295 TestEndWaitsForCatchUp 238 " \
-		"TestSnapshotFromCorruptLeader 187 TestKubeCacheSlots 179 TestHalfOpenLink 178 " \
-		"TestGrayFsyncOutlastsHealing 174 TestCleanerSettles 170 TestSlowFetch 161 " \
-		"TestFailedSyncThenRestart 158 TestFailedCutThenRestart 153 " \
-		"TestStalledLeaderIsReplaced 132 TestLinearizable 128 TestPastRAMRecovery 127 " \
-		"TestNewestVersion 116 TestMembershipColdRestart 105 TestFormedClusterAnswers 100", t, " ")
+		"TestHalfOpenLink 178 " \
+		"TestGrayFsyncOutlastsHealing 174 " \
+		"TestFailedSyncThenRestart 158 " \
+		"TestStalledLeaderIsReplaced 132 TestLinearizable 128 " \
+		"TestFormedClusterAnswers 100", t, " ")
 	for (i = 1; i in t; i += 2) secs[t[i]] = t[i + 1]
 }
 { name[NR] = $1; w[NR] = ($1 in secs) ? secs[$1] : 10 }
