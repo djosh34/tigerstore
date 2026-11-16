@@ -56,6 +56,9 @@ func (sysEnv) goLiveHeap() int64                   { return 0 }
 func (sysEnv) goMemory() (total, live, goal int64) { return 0, 0, 0 }
 func (sysEnv) setMemoryLimit(int64)                {}
 
+// goGC reads nothing: the simulator's collector is the host's.
+func (sysEnv) goGC(s *gcStats) { *s = gcStats{} }
+
 func (e sysEnv) epollCreate() (int, error) { return e.s.EpollCreate() }
 
 func (e sysEnv) epollCtl(ep, op, fd int, events uint32, tag int32) error {

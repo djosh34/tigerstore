@@ -5,6 +5,7 @@ package wl
 import (
 	"context"
 	"errors"
+	"math"
 	"net"
 	"os"
 	"runtime"
@@ -66,6 +67,44 @@ func (sysEnv) goMemory() (total, live, goal int64) {
 
 // setMemoryLimit sets Go's memory limit.
 func (sysEnv) setMemoryLimit(limit int64) { debug.SetMemoryLimit(limit) }
+
+var gcSamples = []metrics.Sample{
+	{Name: "/gc/cycles/total:gc-cycles"},
+	{Name: "/cpu/classes/gc/mark/assist:cpu-seconds"},
+	{Name: "/sync/mutex/wait/total:seconds"},
+	{Name: "/sched/pauses/total/gc:seconds"},
+	{Name: "/sched/pauses/stopping/gc:seconds"},
+}
+
+// goGC reads Go's collector's running totals into s: its cycles, the CPU
+// its mark assists took from the goroutines that allocate, the time
+// goroutines waited on a sync.Mutex, and the histograms of its
+// stop-the-world pauses and of the time each took to stop the world.
+func (sysEnv) goGC(s *gcStats) {
+	metrics.Read(gcSamples)
+	s.cycles = int64(gcSamples[0].Value.Uint64())
+	s.assist = int64(gcSamples[1].Value.Float64() * 1e9)
+	s.mutexWait = int64(gcSamples[2].Value.Float64() * 1e9)
+	s.pauses.read(gcSamples[3].Value.Float64Histogram())
+	s.stopping.read(gcSamples[4].Value.Float64Histogram())
+}
+
+// read sums histogram h.
+func (p *pauseTotal) read(h *metrics.Float64Histogram) {
+	*p = pauseTotal{}
+	for i, c := range h.Counts {
+		if c == 0 {
+			continue
+		}
+		lo, hi := max(h.Buckets[i], 0), h.Buckets[i+1]
+		mid := lo
+		if !math.IsInf(hi, 1) {
+			mid = (lo + hi) / 2
+		}
+		p.n += int64(c)
+		p.ns += int64(c) * int64(mid*1e9)
+	}
+}
 
 func (sysEnv) epollCreate() (int, error) { return unix.EpollCreate1(unix.EPOLL_CLOEXEC) }
 
