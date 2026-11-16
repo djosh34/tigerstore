@@ -54,9 +54,10 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 }
 
 // A wl cluster runs DefaultConfig's faults but those of main's engine
-// alone (recovery's and a snapshot fetch's steps, rot of a value in a
-// segment, cold restarts from checkpoints), which wl does not run yet:
-// damage to a disk at rest, disk errors, short writes, stalls, file
+// alone (a snapshot fetch's steps, rot of a value in a segment, cold
+// restarts from checkpoints), which wl does not run yet: crashes inside
+// recovery and at checkpoint steps, damage to a disk at rest, disk
+// errors, short writes, stalls, file
 // systems that shut down or go read-only, full disks, checkpoints that
 // cut the log, link stalls, half-open connections, netem, resets, gray
 // nodes and clients, slow watchers, clock drift and held-down nodes.
@@ -84,11 +85,11 @@ func runWLFaults(t *testing.T, seed uint64) Stats {
 	cfg := DefaultConfig(seed)
 	cfg.wl, cfg.FormUnderFaults = true, true
 	f := &cfg.Faults
-	f.Checkpoint, f.RecoveryCrash, f.StepCrash, f.FlipSnapshot, f.FetchCrash, f.SlowFetch, f.Rot = false, false, false, false, false, false, false
+	f.Checkpoint, f.FlipSnapshot, f.FetchCrash, f.SlowFetch, f.Rot = false, false, false, false, false
 	res := run(t, cfg)
 	st := res.Stats
-	t.Logf("calls: %d ok, %d failed, %d ambiguous; crashes %d, disk faults %d, damage %v (fenced %d, misreads refused %d), file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
-		st.OK, st.Failed, st.Ambiguous, st.Crashes, st.DiskFaults, st.Damage, st.Fenced, st.MisreadRefusals, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
+	t.Logf("calls: %d ok, %d failed, %d ambiguous; crashes %d (in recovery %d, at a step %d), disk faults %d, damage %v (fenced %d, misreads refused %d), file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
+		st.OK, st.Failed, st.Ambiguous, st.Crashes, st.RecoveryCrashes, st.StepCrashes, st.DiskFaults, st.Damage, st.Fenced, st.MisreadRefusals, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
 	return st
 }
 

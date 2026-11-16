@@ -1611,6 +1611,7 @@ func (s *Sim) start(n *node) error {
 		if s.ended {
 			return nil
 		}
+		armed := s.armRecoveryCrash(n)
 		ctx, cancel := context.WithCancel(context.Background())
 		p := &proc{n: n, ctx: ctx, cancel: cancel}
 		s.tracef("node %d: starting", n.id)
@@ -1618,6 +1619,7 @@ func (s *Sim) start(n *node) error {
 			cancel()
 			return err
 		}
+		p.wl.armed = armed
 		return nil
 	}
 	armed := s.armRecoveryCrash(n)

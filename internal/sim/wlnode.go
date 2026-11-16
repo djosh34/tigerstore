@@ -46,8 +46,9 @@ type wlProc struct {
 	conn *grpc.ClientConn
 	// turn is what the node showed at the end of its last turn.
 	turn wl.TurnState
-	// recovered is set once the node recovered its log (wlHooks.Recovered).
-	recovered bool
+	// recovered is set once the node recovered its log (wlHooks.Recovered);
+	// armed, while its start may crash at a disk call (armRecoveryCrash).
+	recovered, armed bool
 }
 
 // wlMembers are the first three members of a wl cluster.
@@ -161,6 +162,10 @@ func (h *wlHooks) Recovered(last uint64, hs *raftpb.HardState) {
 		return
 	}
 	p.wl.recovered = true
+	if p.wl.armed {
+		p.wl.armed = false
+		n.disk.Fault = nil
+	}
 	switch {
 	case n.corrupted:
 		// The run damaged the disk where the start reads it.
@@ -355,6 +360,20 @@ func (s *Sim) wlStageCrash(n *node) bool {
 // damaged disk is fenced and stays down. It reports whether it handled
 // err; exited handles the rest. The lock is held.
 func (s *Sim) wlRefused(n *node, err error) bool {
+	if p := n.proc; p.wl.armed {
+		p.wl.armed = false
+		n.disk.Fault = nil
+	}
+	if errors.Is(err, errRecoveryCrash) {
+		// Crashed again while recovering; it starts over from its disk.
+		s.stats.RecoveryCrashes++
+		n.why = "the run crashed it during recovery"
+		s.tracef("node %d: crashed during recovery", n.id)
+		s.down(n)
+		s.loseUnsynced(n)
+		s.restartLater(n, 1+s.rng.Int64N(Second))
+		return true
+	}
 	if n.misread && refusesDamage(err) {
 		// The disk holds the right data, so the next start recovers.
 		n.misread = false

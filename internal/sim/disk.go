@@ -66,6 +66,10 @@ func isSegment(name string) bool {
 
 func isCheckpoint(name string) bool { return strings.HasPrefix(name, "ckpt-") }
 
+// isWLCheckpoint reports whether name is a file of a wl node's checkpoints:
+// one, one being written, or the pointer.
+func isWLCheckpoint(name string) bool { return strings.HasPrefix(name, "ckpt/") }
+
 // afterCall notes what a disk call of p made durable, and crashes p there
 // once a crash is due. The lock is held.
 func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
@@ -114,7 +118,7 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 		s.stopNode(n)
 		return errDead
 	}
-	step := op == simfs.OpSyncDir || op == simfs.OpRemove || (op == simfs.OpWrite || op == simfs.OpSync) && isCheckpoint(name)
+	step := op == simfs.OpSyncDir || op == simfs.OpRemove || (op == simfs.OpWrite || op == simfs.OpSync) && (isCheckpoint(name) || isWLCheckpoint(name))
 	if step && s.stepCrashDue && !s.healed && s.rng.IntN(4) == 0 {
 		s.stepCrashDue = false
 		s.stats.StepCrashes++
