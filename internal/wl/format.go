@@ -33,6 +33,9 @@ const baseFormat = 1
 // by changing it.
 const maxFormat = 1
 
+// MaxFormat is maxFormat, for the simulator's formation of a cluster.
+const MaxFormat = maxFormat
+
 // ErrTooOld stops a node whose cluster uses a newer format than its
 // binary reads.
 var ErrTooOld = errors.New("this binary is too old for the cluster")

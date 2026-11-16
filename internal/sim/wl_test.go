@@ -80,9 +80,13 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 // entries that an append the process before had partly written replaced;
 // on seed 19159 a leader elected by its peers' votes alone lost its term,
 // which was not durable yet, and led the same term again with another log.
+//
+// Its seeds form their cluster under the faults, as the campaign that
+// found them did; TestWLFormsAndRunsTheFaults has seeds that form it
+// first.
 func TestWLRunsTheFaults(t *testing.T) {
 	simrun.Each(t, []uint64{2, 7, 8, 1002, 10155, 10161, 12024, 12731, 19159, 19458}, func(t *testing.T, seed uint64) Stats {
-		st := runWLFaults(t, seed)
+		st := runWLFaults(t, seed, true)
 		if st.DiskFaults == 0 {
 			t.Fatal("no disk fault fired")
 		}
@@ -90,16 +94,35 @@ func TestWLRunsTheFaults(t *testing.T) {
 	}, nil)
 }
 
+// TestWLFormsAndRunsTheFaults is TestWLRunsTheFaults on seeds that form
+// their cluster first, with no faults and no clients, and start the run
+// from its disks (formCluster), as 7 seeds in 8 of TestWLFaultSeeds do.
+func TestWLFormsAndRunsTheFaults(t *testing.T) {
+	simrun.Each(t, []uint64{1, 3}, func(t *testing.T, seed uint64) Stats {
+		st := runWLFaults(t, seed, false)
+		if !st.Formed {
+			t.Fatal("the cluster did not form first")
+		}
+		return st
+	}, nil)
+}
+
 // TestWLFaultSeeds is TestWLRunsTheFaults over a set of seeds, for a
-// campaign (sim-campaign.yml); alone it runs one.
+// campaign (sim-campaign.yml); alone it runs one. As TestSeeds, 7 seeds
+// in 8 form their cluster first (formsFirst). A seed it fails goes in
+// TestWLFormsAndRunsTheFaults, or in TestWLRunsTheFaults if it formed
+// under the faults.
 func TestWLFaultSeeds(t *testing.T) {
-	simrun.Seeds(t, 1000, 1, runWLFaults, nil)
+	simrun.Seeds(t, 1000, 1, func(t *testing.T, seed uint64) Stats { return runWLFaults(t, seed, false) }, nil)
 }
 
 // runWLFaults runs seed on wl nodes with the faults TestWLRunsTheFaults
-// names.
-func runWLFaults(t *testing.T, seed uint64) Stats {
-	res := run(t, wlFaultsConfig(seed))
+// names; underFaults forms the cluster under them, from the run's first
+// moment, and otherwise formsFirst draws how.
+func runWLFaults(t *testing.T, seed uint64, underFaults bool) Stats {
+	cfg := wlFaultsConfig(seed)
+	cfg.FormUnderFaults = underFaults
+	res := run(t, cfg)
 	checkers(t, res)
 	st := res.Stats
 	t.Logf("calls: %d ok, %d failed, %d ambiguous; cold restarts %d; crashes %d (in recovery %d, at a step %d), disk faults %d, damage %v (fenced %d, misreads refused %d), rots %d, file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",

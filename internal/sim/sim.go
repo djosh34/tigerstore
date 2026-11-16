@@ -1157,7 +1157,7 @@ func formCluster(cfg Config) (*Sim, error) {
 		s.mu.Lock()
 		formed := true
 		for _, n := range s.nodes[:3] {
-			formed = formed && n.proc != nil && n.last.version == core.MaxVersion
+			formed = formed && n.proc != nil && n.formed(cfg.wl)
 		}
 		at, err := s.now(), s.err
 		s.mu.Unlock()
@@ -1167,11 +1167,26 @@ func formCluster(cfg Config) (*Sim, error) {
 		case formed:
 			s.formed = at
 			return s, nil
+		case at > formLimit && cfg.wl:
+			return s, fmt.Errorf("seed %d: with no faults the cluster did not form, with all three members and format %d, in %s:\n%s", cfg.Seed, wl.MaxFormat, seconds(formLimit), s.report())
 		case at > formLimit:
 			return s, fmt.Errorf("seed %d: with no faults the cluster did not take on cluster version %d in %s:\n%s", cfg.Seed, core.MaxVersion, seconds(formLimit), s.report())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// formed reports whether n's process is formed (formCluster): main's took
+// on the newest cluster version. A wl node's format is the newest it
+// reads from the start while that is the base format, so it must also
+// know a leader, hold the three members and have applied all it knows
+// committed. The lock is held.
+func (n *node) formed(wlNode bool) bool {
+	if !wlNode {
+		return n.last.version == core.MaxVersion
+	}
+	st := n.proc.wl.turn
+	return st.Format == wl.MaxFormat && st.Lead != 0 && len(st.Members) == 3 && st.Applied >= st.Commit
 }
 
 var errWallLimit = errors.New("the run passed its limit of real time ($SIM_WALL)")
