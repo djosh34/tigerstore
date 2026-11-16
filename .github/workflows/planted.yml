@@ -17,12 +17,18 @@ on:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      bugs:
+        description: "The bugs to run, separated by spaces; all if empty"
+        required: false
+        default: ""
 
 permissions:
   contents: read
 
 concurrency:
-  group: planted-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
+  # A dispatch runs on its own: several can run a ref's bugs side by side.
+  group: planted-${{ github.event_name == 'schedule' && 'nightly' || github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -51,13 +57,14 @@ jobs:
         shell: bash
         env:
           SIM_OUT: ${{ runner.temp }}/sim-out
+          ONLY: ${{ inputs.bugs }}
         run: |
           set -uo pipefail
           export GOSIMTOOL="$GITHUB_WORKSPACE/.gosim/bin/gosim"
           status=0
           mkdir -p "$RUNNER_TEMP/logs"
           (cd internal/sim && "$GITHUB_WORKSPACE/.gosim/bin/sim-planted.test" -test.run 'TestPlantedInventory$') 2>&1 | tee "$RUNNER_TEMP/logs/inventory.log" || { status=1; echo "::error::TestPlantedInventory failed; replay: go test -tags planted -count=1 ./internal/sim/ -run '^TestPlantedInventory$'"; }
-          for bug in $BUGS; do
+          for bug in ${ONLY:-$BUGS}; do
             echo "::group::$bug"
             for pkg in sim node peer; do
               (cd "internal/$pkg" && SIM_PLANTED="$bug" SIM_OUT="$SIM_OUT/$bug" "$GITHUB_WORKSPACE/.gosim/bin/$pkg-planted.test" -test.run '^TestPlanted(WL)?$' -test.v -test.timeout 28m) 2>&1 | tee "$RUNNER_TEMP/logs/$bug-$pkg.log" || {

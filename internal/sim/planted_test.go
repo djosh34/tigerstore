@@ -260,7 +260,34 @@ var plantedWLCases = map[string]plantedCase{
 	"B02":  {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries`},
 	"B03":  {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries`},
 	"B04a": {seeds: 64, cfg: wlDamageConfig, want: `without noticing|` + refused},
-	"B11":  {seeds: 64, cfg: wlFaultsConfig, want: lostAppend + `|` + refused},
+	// B04b cuts the record before a torn tail, which can be a vote.
+	"B04b": {seeds: 256, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries|applied the same log to different states`},
+	// B04c: wl reads values back from its log, so the flipped byte is
+	// what a node serves or applies.
+	"B04c": {seeds: 256, cfg: wlFaultsConfig, want: inventedState + `|without noticing|` + refused + `|` + badValue},
+	"B05":  {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|` + refused},
+	"B06a": {seeds: 32, cfg: wlFaultsConfig, want: badWatch},
+	"B06b": {seeds: 32, cfg: wlFaultsConfig, want: badWatch},
+	"B06c": {seeds: 32, cfg: wlFaultsConfig, want: badWatch},
+	"B06d": {seeds: 32, cfg: wlFaultsConfig, want: `watch \d+ got an event at revision \d+ after one at`},
+	"B07":  {seeds: 64, cfg: wlFaultsConfig, want: badWatch},
+	// B08 frees the key of the tombstone at the compacted revision, so a
+	// watch from there misses its delete.
+	"B08":  {seeds: 128, cfg: wlFaultsConfig, want: badWatch},
+	"B09a": {seeds: 16, cfg: wlFaultsConfig, want: badState},
+	"B09b": {seeds: 16, cfg: wlFaultsConfig, want: badState + `|applied the same log to different states`},
+	// B10: a follower revokes the lease's keys itself, outside the log.
+	"B10": {seeds: 64, cfg: wlFaultsConfig, want: badState + `|applied the same log to different states|` + badWatch},
+	"B11": {seeds: 64, cfg: wlFaultsConfig, want: lostAppend + `|` + refused},
+	// wl writes at fixed offsets, so B12 is the log going on past a short
+	// write as if it were whole: what it left out is never written.
+	"B12": {seeds: 256, cfg: wlFaultsConfig, want: lostAppend + `|` + refused + `|` + badValue + `|` + lostEntries},
+	// wl's writes are durable when they return, so B16 is a segment's
+	// last write made through the page cache, with no sync, before the
+	// log moves on to the next.
+	"B16": {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|` + refused},
+	"B18": {seeds: 16, cfg: wlFaultsConfig, want: `holds \d+ watchers`},
+	"B19": {seeds: 64, cfg: wlFaultsConfig, want: refused + `|not on disk|` + stuck},
 }
 
 // wlDamageConfig runs wl nodes with crashes and, after them, damage at
