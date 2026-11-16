@@ -2,6 +2,7 @@ package wl
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"os"
 	"slices"
@@ -340,5 +341,66 @@ func TestWALRemovesSegmentsPastAGap(t *testing.T) {
 		if _, err := w.segFD(k); err != nil {
 			t.Fatalf("segment %d: %v", k, err)
 		}
+	}
+}
+
+// A record whose length is damaged to claim more than the log holds is
+// refused when records that check follow its start: a scan that took it
+// for a crash's torn tail cut every entry after it, entries the node had
+// reported durable (TestWLRefusesAMisreadLog, seed 1, where a misread
+// sector at a segment's start gave a record's length the bytes of another
+// sector).
+func TestWALRefusesARecordThatClaimsMoreThanTheLogHolds(t *testing.T) {
+	dir := t.TempDir()
+	w, err := openWAL(sysEnv{}, dir, sizeFor(0).stage, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	if err := w.write([]*pb.Entry{testEntry(1, 1, "kept"), testEntry(2, 1, "long"), testEntry(3, 1, "after"), testEntry(4, 1, "last")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	path := segPath(dir, 0)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := w.offs[1] - walEntHdr
+	binary.LittleEndian.PutUint32(b[head+4:], 1<<20)
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if end, err := scanWAL(sysEnv{}, dir, 0, nil); !errors.Is(err, ErrCorruptLog) {
+		t.Fatalf("scan returned end %d and %v, want ErrCorruptLog", end, err)
+	}
+}
+
+// A record a crash tore at the log's end, its rest zeros, is still the
+// log's end: nothing that checks follows its start.
+func TestWALCutsARecordTornAtTheEnd(t *testing.T) {
+	dir := t.TempDir()
+	w, err := openWAL(sysEnv{}, dir, sizeFor(0).stage, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	if err := w.write([]*pb.Entry{testEntry(1, 1, "kept"), testEntry(2, 1, strings.Repeat("torn", 300))}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	path := segPath(dir, 0)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := w.offs[1] - walEntHdr
+	clear(b[head+walEntHdr+100:])
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	end, err := scanWAL(sysEnv{}, dir, 0, nil)
+	if err != nil || end != head {
+		t.Fatalf("scan returned end %d and %v, want %d and none", end, err, head)
 	}
 }

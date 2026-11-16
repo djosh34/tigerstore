@@ -692,7 +692,30 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 			break
 		}
 	}
+	if chainAfter(buf) {
+		return off, fmt.Errorf("%w: the log ends in a record at offset %d that runs past its end, but records that check follow its start", ErrCorruptLog, off)
+	}
 	return off, nil
+}
+
+// chainAfter reports whether b, the log's bytes from a record that runs
+// past the log's end, holds two records in a row that check, or one that
+// ends the log, past its start. A crash leaves the rest of such a record
+// unwritten, zeros or bytes of its own; records that check after its
+// start mean its header was read wrong, as a damaged length that claims
+// more than the log holds, and the log is not to be cut there (#700).
+func chainAfter(b []byte) bool {
+	for i := 1; i+recHead <= len(b); i++ {
+		r := b[i:]
+		if (r[8] != recEntry && r[8] != recHardState) || !checks(r) {
+			continue
+		}
+		n := recHead + int(binary.LittleEndian.Uint32(r[4:]))
+		if n == len(r) || checks(r[n:]) {
+			return true
+		}
+	}
+	return false
 }
 
 // plantedAccepts reports whether planted bug B04a takes rec, a record at
