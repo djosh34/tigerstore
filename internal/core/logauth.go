@@ -11,7 +11,8 @@ import (
 // proposed before auth was turned on and applied after carries none, and
 // is refused with etcd's ErrUserEmpty (#698). It keeps no leases: a write
 // with a lease is checked as if its lease held no keys, which cmd/chaos,
-// whose campaign sends no lease, never meets.
+// whose campaign sends no lease, never meets. Nor does it keep alarms,
+// which refuse writes too, and which cmd/chaos's runs never raise.
 type LogAuth struct{ st State }
 
 // NewLogAuth follows a log from its first entry, with auth off.
