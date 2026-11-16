@@ -163,7 +163,7 @@ type ckptWriter struct {
 	// written since its last sync.
 	f        file
 	unsynced int64
-	prev     file // the checkpoint before, which values may lie in
+	prev     ckptFile // the checkpoint before, which values may lie in
 	crc      uint32
 	log      durableLog
 	in, out  chan *ckptChunk
@@ -571,6 +571,7 @@ func (n *node) ckptDone() error {
 	if oldName != "" && oldName != n.ckptName {
 		n.rm.remove(filepath.Join(n.ckptDir, oldName))
 	}
+	n.simCheckpointDone(r.meta.index, r.w.name)
 	return nil
 }
 
@@ -856,18 +857,28 @@ func (cr *ckptReader) valueAt(flags, n uint64, gen int) (int64, error) {
 	return int64(at), nil
 }
 
+// ckptFile is a checkpoint file as a store reads it: a node's own file,
+// or its bytes in the simulator (CheckpointStateHash).
+type ckptFile interface {
+	io.Reader
+	io.ReaderAt
+	io.Seeker
+	Close() error
+	Name() string
+}
+
 // ErrCorruptCheckpoint is a checkpoint, or the pointer to it, that does
 // not check: a node refuses to start on it.
 var ErrCorruptCheckpoint = errors.New("wl: corrupt checkpoint")
 
 // loadCkpt fills st, an empty store, from the checkpoint in f, whose
 // values the store then reads from f as generation gen.
-func loadCkpt(f file, gen int, st *store) (ckptMeta, error) {
+func loadCkpt(f ckptFile, gen int, st *store) (ckptMeta, error) {
 	return loadCkptChecked(f, gen, st, true)
 }
 
 // loadCkptChecked is loadCkpt, which checks the file's CRC if check.
-func loadCkptChecked(f file, gen int, st *store, check bool) (ckptMeta, error) {
+func loadCkptChecked(f ckptFile, gen int, st *store, check bool) (ckptMeta, error) {
 	var m ckptMeta
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return m, err

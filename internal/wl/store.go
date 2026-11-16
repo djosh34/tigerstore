@@ -105,7 +105,7 @@ type store struct {
 	log    logReader
 	// ckpts are the checkpoint files values may lie in, by the generation
 	// bit of their offsets: the newest one, and the one being written.
-	ckpts   [2]file
+	ckpts   [2]ckptFile
 	scratch []byte // a value read from the log
 	// bad is the first value read back that did not match its checksum:
 	// the loop stops on it, and no read serves it (#708).

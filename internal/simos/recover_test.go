@@ -115,12 +115,14 @@ func (r *recovered) Recovered(last uint64, hs *raftpb.HardState, _ func() []wl.L
 }
 
 func (*recovered) Append(uint64, uint64, bool)                  {}
-func (*recovered) Applied(*raftpb.Entry, uint64)                {}
+func (*recovered) Applied(*raftpb.Entry, uint64, func() uint64) {}
 func (*recovered) Durable(uint64, bool, *raftpb.HardState)      {}
 func (*recovered) Turn(wl.TurnState)                            {}
 func (*recovered) SnapshotChunk(_ uint64, _ bool, p []byte) int { return len(p) }
 func (*recovered) SnapshotCut(uint64)                           {}
-func (*recovered) Checkpoint(uint64)                            {}
+func (*recovered) Checkpoint(uint64, uint64)                    {}
+func (*recovered) CheckpointDone(uint64, string)                {}
+func (*recovered) Loaded(uint64, uint64)                        {}
 func (*recovered) Expired(int64)                                {}
 
 // A write of the log that fails leaves its bytes in the page cache, where

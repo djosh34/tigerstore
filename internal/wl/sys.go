@@ -75,8 +75,10 @@ type Hooks interface {
 	// Applied is entry e, applied, and a hash of the changes it made to
 	// the store: every key it put or deleted, by name, with its record at
 	// that revision. Every node that applies e from the same store gets
-	// the same hash, whatever its key ids.
-	Applied(e *raftpb.Entry, hash uint64)
+	// the same hash, whatever its key ids. state is the hash of the
+	// store after e, as a checkpoint at e would hold it, the same on
+	// every node with the same state; it costs a pass over the store.
+	Applied(e *raftpb.Entry, hash uint64, state func() uint64)
 	// Durable is an append the log now holds durably: its entries to last
 	// if it had any, the snapshot it installed to last if install, and
 	// its hard state if any.
@@ -85,9 +87,15 @@ type Hooks interface {
 	// lease's revoke.
 	Expired(id int64)
 	// Checkpoint is a checkpoint that starts, of the store after entry
-	// index: the node must have applied every entry to index and none
-	// past it.
-	Checkpoint(index uint64)
+	// index, whose state has hash state (Applied): the node must have
+	// applied every entry to index and none past it.
+	Checkpoint(index, state uint64)
+	// Loaded is a store loaded from the checkpoint at index, by a start or
+	// a snapshot's install, whose state has hash state (Applied).
+	Loaded(index, state uint64)
+	// CheckpointDone is that checkpoint, done: its file, name in the
+	// node's checkpoint directory, is durable and the newest.
+	CheckpointDone(index uint64, name string)
 	// Turn ends each turn of the loop with what Raft shows; it may hold
 	// the loop.
 	Turn(TurnState)

@@ -151,7 +151,7 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 		return err
 	}
 	n.st = st
-	n.simInstalled()
+	n.simInstalled(meta.GetIndex())
 	// A snapshot still being received stays.
 	if err := removeCkpts(n.sys, n.ckptDir, name, false); err != nil {
 		return err

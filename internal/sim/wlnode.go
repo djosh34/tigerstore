@@ -239,7 +239,7 @@ func (h *wlHooks) Append(first, last uint64, install bool) {
 
 // Applied checks an entry the node applied, and the changes it made,
 // against what the other nodes applied at its index.
-func (h *wlHooks) Applied(e *raftpb.Entry, hash uint64) {
+func (h *wlHooks) Applied(e *raftpb.Entry, hash uint64, state func() uint64) {
 	s, p := h.s, h.p
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -250,6 +250,28 @@ func (h *wlHooks) Applied(e *raftpb.Entry, hash uint64) {
 	p.wl.applied = e.GetIndex()
 	s.record(n, core.Applied{Index: e.GetIndex(), Term: e.GetTerm(), Type: e.GetType(), Data: e.GetData(), Hash: hash})
 	s.applied = max(s.applied, e.GetIndex())
+	if c, ok := s.ckpts[e.GetIndex()]; ok && c.node != n.id {
+		// Another node took a checkpoint here: this node's store must
+		// hold the same state.
+		s.sameState(n, e.GetIndex(), state(), "applied")
+	}
+}
+
+// sameState checks that n's store after index has the state, by hash,
+// that the first node to take a checkpoint at index had, and records it
+// if none did yet: wl's nodes take checkpoints at indexes of their own,
+// so each node's store is compared at every index another's checkpoint
+// was taken at, as main's compares the checkpoint files nodes write at an
+// index (ckptWritten). The lock is held.
+func (s *Sim) sameState(n *node, index, state uint64, what string) {
+	c, ok := s.ckpts[index]
+	if !ok {
+		s.ckpts[index] = ckptRec{sum: state, node: n.id}
+		return
+	}
+	if c.sum != state {
+		s.fail("node %d %s index %d with another state than node %d's checkpoint there", n.id, what, index, c.node)
+	}
 }
 
 // Durable notes how far the log the node holds durably reaches.
@@ -294,15 +316,77 @@ func (h *wlHooks) Expired(id int64) {
 // showed the run. On main the run compares the checkpoints nodes write
 // at an index; wl's nodes take theirs at indexes of their own, so the run
 // compares each with what the node applied (B21).
-func (h *wlHooks) Checkpoint(index uint64) {
+func (h *wlHooks) Checkpoint(index, state uint64) {
 	s, p := h.s, h.p
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if p.n.proc != p || p.wl.applied == 0 {
+	if p.n.proc != p {
 		return
 	}
-	if index != p.wl.applied {
+	if p.wl.applied != 0 && index != p.wl.applied {
 		s.fail("node %d started a checkpoint at index %d, but applied to %d", p.n.id, index, p.wl.applied)
+		return
+	}
+	s.sameState(p.n, index, state, "started a checkpoint at")
+}
+
+// Loaded checks that a store a start or an install loaded from the
+// checkpoint at index has the state the store it was taken of had.
+func (h *wlHooks) Loaded(index, state uint64) {
+	s, p := h.s, h.p
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p.n.proc != p {
+		return
+	}
+	s.sameState(p.n, index, state, "loaded a checkpoint at")
+}
+
+// CheckpointDone checks that the checkpoint a node finished holds, as its
+// next start would load it from the disk, the state its store had when
+// it started it, and every value it names as the apply took it
+// (wl.CheckpointStateHash). It reads the disk's durable bytes, not the
+// node's files, so that the check draws no disk fault.
+func (h *wlHooks) CheckpointDone(index uint64, name string) {
+	s, p := h.s, h.p
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := p.n
+	if n.proc != p {
+		return
+	}
+	b := n.disk.DurableBytes("ckpt/" + name)
+	if b == nil {
+		return
+	}
+	segs := map[int64][]byte{}
+	readLog := func(p []byte, off int64) error {
+		for got := 0; got < len(p); {
+			k, at := wl.SegmentPlace(off + int64(got))
+			seg, ok := segs[k]
+			if !ok {
+				seg = n.disk.DurableBytes(wlSegment(k))
+				segs[k] = seg
+			}
+			if int64(len(seg)) <= at {
+				return fmt.Errorf("the log holds no byte at %d durably", off+int64(got))
+			}
+			got += copy(p[got:], seg[at:])
+		}
+		return nil
+	}
+	state, err := wl.CheckpointStateHash(b, name, readLog)
+	if err != nil {
+		if re, ok := errors.AsType[*wl.ReadBackError](err); ok && n.rotted && !re.InCheckpoint() && re.Off <= n.rotOff && n.rotOff < re.Off+int64(re.Len) {
+			// The checkpoint names the value the run rotted in the log.
+			return
+		}
+		s.fail("node %d wrote checkpoint %d that does not load: %w", n.id, index, err)
+		return
+	}
+	s.stats.Checkpoints++
+	if c, ok := s.ckpts[index]; ok && c.sum != state {
+		s.fail("node %d wrote checkpoint %d with another state than node %d's store had at it", n.id, index, c.node)
 	}
 }
 

@@ -28,6 +28,9 @@ type simState struct {
 func (n *node) simRecovered() {
 	n.sys.sim.rev = n.st.rev
 	if h := n.sys.h; h != nil {
+		if n.storage.snap != nil {
+			h.Loaded(n.storage.snapIndex, n.st.stateHash())
+		}
 		h.Recovered(n.storage.lastIndex(), n.storage.hs, n.simLogValues)
 	}
 }
@@ -86,7 +89,7 @@ func (n *node) simApplied(e *pb.Entry) {
 			_, _ = sum.Write(rec)
 		}
 	}
-	h.Applied(e, sum.Sum64())
+	h.Applied(e, sum.Sum64(), st.stateHash)
 }
 
 func (n *node) simDurable(j *walJob) {
@@ -157,7 +160,12 @@ func (n *node) simMembers() {
 }
 
 // simInstalled starts the changes from the store a snapshot installed.
-func (n *node) simInstalled() { n.sys.sim.rev = n.st.rev }
+func (n *node) simInstalled(index uint64) {
+	n.sys.sim.rev = n.st.rev
+	if h := n.sys.h; h != nil {
+		h.Loaded(index, n.st.stateHash())
+	}
+}
 
 func (n *node) simExpired(id int64) {
 	if h := n.sys.h; h != nil {
@@ -167,7 +175,13 @@ func (n *node) simExpired(id int64) {
 
 func (n *node) simCheckpoint(index uint64) {
 	if h := n.sys.h; h != nil {
-		h.Checkpoint(index)
+		h.Checkpoint(index, n.st.stateHash())
+	}
+}
+
+func (n *node) simCheckpointDone(index uint64, name string) {
+	if h := n.sys.h; h != nil {
+		h.CheckpointDone(index, name)
 	}
 }
 
