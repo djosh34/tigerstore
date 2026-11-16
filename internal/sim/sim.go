@@ -2059,6 +2059,16 @@ func (n *node) floor() uint64 {
 	return f
 }
 
+// dropJobs forgets the jobs n's process handed its disk, as the process
+// goes down. What they wrote may be on the disk, so the floor they gave
+// stays what recovery must reach, until a start recovers: a start that
+// crashes before it recovers must not count on entries a lost job
+// replaced (TestWLFaultSeeds seed 19458). The lock is held.
+func (n *node) dropJobs() {
+	n.durableLast = n.floor()
+	n.pending = nil
+}
+
 // beforeSync is the BeforeSync hook of p: a sync of the log takes 50 us
 // to 1 ms, sometimes 20 to 100 ms, and 0.5 to 3 s on a gray node with
 // slow fsyncs, and waits out a stall or a pause first.
@@ -2215,7 +2225,8 @@ func (s *Sim) down(n *node) {
 	if p == nil {
 		return
 	}
-	n.proc, n.pending, n.duringInstall = nil, nil, nil
+	n.dropJobs()
+	n.proc, n.duringInstall = nil, nil
 	n.since = s.now()
 	if n.why == "" {
 		n.why = "the run took it down"
