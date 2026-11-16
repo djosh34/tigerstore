@@ -646,8 +646,7 @@ func (l *loop) takeHandoffs() {
 				continue
 			}
 			n.clients++
-			c := newClient(h, &n.stats)
-			c.node = n
+			c := newClient(h, n)
 			n.socks[idx] = c
 			s = &c.sock
 		case kindPeerIn:
@@ -735,6 +734,7 @@ func (l *loop) closeSock(idx int) {
 	_ = sysClose(s.fd)
 	switch v := x.(type) {
 	case *client:
+		defer v.dropAll()
 		n.clients--
 		n.cancelSides(idx)
 		for i := range v.slots {
@@ -772,6 +772,19 @@ func (l *loop) input(idx int) {
 	s := sockOf(x)
 	if s == nil || s.dead {
 		return
+	}
+	if c, ok := x.(*client); ok {
+		c.busy = l.tick
+		if c.in == nil {
+			if n.cpool+c.bufNeed() > n.sizes.clientInBufs() {
+				// The client buffers are full: it waits for some to
+				// come back (clientTick).
+				c.starved = true
+				n.markDirty(&c.sock)
+				return
+			}
+			c.takeBufs()
+		}
 	}
 	got, err := s.readSock()
 	if err == nil && (got || s.iw > s.ir) {
@@ -882,7 +895,7 @@ func (l *loop) run() error {
 				return err
 			}
 			n.limitGo()
-			l.shareClientOut()
+			l.clientTick()
 			l.tickStall = n.stallStats(now)
 			if n.leading() {
 				n.expireLeases()
@@ -970,12 +983,12 @@ func (l *loop) flush() {
 			continue
 		}
 		noIn := false
-		if c, isClient := n.socks[s.idx].(*client); isClient && c.paused {
-			if c.waiting() <= n.connOut/2 {
+		if c, isClient := n.socks[s.idx].(*client); isClient {
+			if c.paused && c.waiting() <= n.connOut/2 {
 				c.paused = false
 				resumed = append(resumed, c)
 			}
-			noIn = c.paused
+			noIn = c.paused || c.starved
 		}
 		if ok == !s.wantOut && noIn == s.noIn {
 			continue
@@ -1010,11 +1023,29 @@ func sockEvents(in, out bool) uint32 {
 	return ev
 }
 
-// shareClientOut gives each client connection its shares of the client
-// buffers, for the clients connected now.
-func (l *loop) shareClientOut() {
+// clientTick gives back the buffers of clients idle since the last tick,
+// lets the clients that wait for buffers read again while the client
+// buffers have room, and gives each active client its shares.
+func (l *loop) clientTick() {
 	n := l.n
-	n.connOut, n.connIn = n.sizes.connOut(n.clients), n.sizes.connIn(n.clients)
+	room := n.sizes.clientInBufs() - n.cpool
+	for _, x := range n.socks {
+		c, ok := x.(*client)
+		if !ok || c.dead {
+			continue
+		}
+		if c.busy+1 < l.tick && c.idle() && (c.in != nil || cap(c.out) > 0 || c.slots != nil && c.streams == 0) {
+			before := n.cpool
+			c.giveBufs()
+			room += before - n.cpool
+		}
+		if c.starved && room >= c.bufNeed() {
+			c.starved = false
+			room -= c.bufNeed()
+			n.markDirty(&c.sock)
+		}
+	}
+	n.connOut, n.connIn = n.sizes.connOut(n.active), n.sizes.connIn(n.active)
 }
 
 // counters are the loop's own, for its log: per 5 s, how many turns,

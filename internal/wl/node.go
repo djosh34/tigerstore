@@ -22,9 +22,13 @@ type node struct {
 	sizes   sizes
 	connOut int64
 	// connIn is a client connection's share of requests sent in part
-	// (sizes.connIn), and clients the client connections the node holds.
-	connIn  int64
-	clients int
+	// (sizes.connIn), and clients the client connections the node holds;
+	// cpool is what they hold of the client buffers (sizes.clientBufs) to
+	// read, and cout what waits to be sent to them; active is how many
+	// hold buffers to read.
+	connIn          int64
+	clients, active int
+	cpool, cout     int64
 	// sys is the node's handle on the system calls of sys_os.go.
 	sys sysEnv
 	// members is the member list as of the applied index, and removed the

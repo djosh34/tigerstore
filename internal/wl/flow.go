@@ -56,6 +56,7 @@ func (c *client) hold(s *stream, data, trailer []byte) {
 	}
 	f.held = append(f.held, held{sid: s.id, data: data, trailer: trailer})
 	f.bytes += int64(len(data) + len(trailer))
+	c.growOut(len(data) + len(trailer))
 	f.counts[s.id]++
 	// Behind another of its stream's entries, or with the connection's
 	// window shut, it cannot go out yet.
@@ -122,6 +123,7 @@ func (c *client) drain() {
 			w.write(h.data[:m])
 			h.data = h.data[m:]
 			f.bytes -= m
+			c.growOut(-int(m))
 			f.conn -= m
 			f.streams[h.sid] -= m
 			n.markDirty(&c.sock)
@@ -140,6 +142,7 @@ func (c *client) drain() {
 			putFrameHeader(b, len(h.trailer), frHeaders, flEndHeaders|flEndStream, h.sid)
 			copy(b[9:], h.trailer)
 			f.bytes -= int64(len(h.trailer))
+			c.growOut(-len(h.trailer))
 			n.markDirty(&c.sock)
 		}
 		f.counts[h.sid]--
@@ -170,6 +173,7 @@ func (c *client) dropHeld(sid uint32) {
 			continue
 		}
 		f.bytes -= int64(len(h.data) + len(h.trailer))
+		c.growOut(-len(h.data) - len(h.trailer))
 	}
 	clear(f.held[k:])
 	f.held = f.held[:k]

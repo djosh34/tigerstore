@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -54,11 +55,11 @@ func TestASlowWatcherStaysWithinItsShare(t *testing.T) {
 	z := sizeFor(budget)
 	// Every client within its share, one reply over it (a watch response
 	// of up to the request limit), and a send buffer's slack of a record.
-	limit := z.clientOut + int64(s.clients)*(maxRequestBytes+clientOutBuf)
+	limit := z.clientBufs() + int64(s.clients)*maxMsg + 4*outBuf
 	t.Logf("clients %d, share %d MiB; send buffers %d MiB, held for windows %d MiB; limit %d MiB",
 		s.clients, s.connOut>>20, s.m.sockOut>>20, s.m.clientHeld>>20, limit>>20)
 	if s.m.sockOut+s.m.clientHeld > limit {
-		t.Fatalf("the client buffers hold %d MiB for %d MiB of events to a client that reads nothing; the bound is %d MiB",
+		t.Fatalf("the send buffers hold %d MiB for %d MiB of events to a client that reads nothing; the bound is %d MiB",
 			(s.m.sockOut+s.m.clientHeld)>>20, puts*size>>20, limit>>20)
 	}
 
@@ -71,17 +72,79 @@ func TestASlowWatcherStaysWithinItsShare(t *testing.T) {
 	}
 }
 
-// Many idle client connections take no more than the client buffers:
-// the node takes at most maxClients of them, each with its fixed buffers,
-// and refuses the rest, which it closes at once.
-func TestManyIdleClientsStayWithinTheBudget(t *testing.T) {
+// Many idle client connections hold no buffers: 2,000 at the bench's
+// 3 GiB, each of which sent its preface and settings, give their buffers
+// back once idle, and the client pool holds next to nothing.
+func TestManyIdleClientsHoldNoBuffers(t *testing.T) {
+	const budget, clients = 3 << 30, 2000
+	loopOf := watchLoops(t)
+	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	for range clients {
+		h2Start(t, rawConn(t, tc.endpoints[0], tc.clientTLS()))
+	}
+	time.Sleep(time.Second) // a few ticks: every client idle since the last
+	s := seeNode(loopOf(1))
+	z := sizeFor(budget)
+	t.Logf("%d connections: the node holds %d clients, %d with buffers, %d KiB of the client pool's %d MiB; sockets in %d KiB out %d KiB",
+		clients, s.clients, s.active, s.cpool>>10, z.clientPool>>20, s.m.sockIn>>10, s.m.sockOut>>10)
+	if s.clients < clients {
+		t.Fatalf("the node holds %d of %d client connections", s.clients, clients)
+	}
+	// Each idle client holds idleConn at most outside the pool
+	// (TestAnIdleClientHoldsNoBuffers); in it, nothing.
+	if s.active != 0 || s.cpool != 0 || s.cout != 0 {
+		t.Fatalf("%d idle clients hold buffers, %d KiB of the client pool and %d KiB to send", s.active, s.cpool>>10, s.cout>>10)
+	}
+}
+
+// An idle client connection holds no buffer and at most idleConn: its
+// client, HPACK decoder with its table full, header cache full, and flow
+// state.
+func TestAnIdleClientHoldsNoBuffers(t *testing.T) {
+	n, _ := testNode(t)
+	const k = 1000
+	cs := make([]*client, k)
+	var m0, m1 runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&m0)
+	// Each at its fullest: an HPACK table of 4,096 bytes, and the
+	// header cache full of blocks as long as it takes.
+	var hb bytes.Buffer
+	enc := hpack.NewEncoder(&hb)
+	for i := range 64 {
+		if err := enc.WriteField(hpack.HeaderField{Name: fmt.Sprintf("x-%02d", i), Value: strings.Repeat("v", 64)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range cs {
+		c := newClient(&handoff{fd: -1}, n)
+		if _, err := c.dec.Write(hb.Bytes()); err != nil {
+			t.Fatal(err)
+		}
+		for j := range hdrCacheMax {
+			c.hdrCache[fmt.Sprintf("%0*d", hdrCacheBlock, j)] = hdrInfo{}
+		}
+		cs[i] = c
+	}
+	runtime.GC()
+	runtime.ReadMemStats(&m1)
+	per := int64(m1.HeapAlloc-m0.HeapAlloc) / k
+	t.Logf("an idle client holds %d bytes", per)
+	if per > idleConn || n.cpool != 0 {
+		t.Fatalf("an idle client holds %d bytes, past %d, and %d of the pool", per, idleConn, n.cpool)
+	}
+	runtime.KeepAlive(cs)
+}
+
+// Past maxClients the node closes a new client connection at once: a
+// backstop, which at 256 MiB takes 256.
+func TestTheNodeClosesClientsPastItsBackstop(t *testing.T) {
 	const budget = 256 << 20
 	loopOf := watchLoops(t)
 	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
-	z := sizeFor(budget)
-	most := z.maxClients()
+	most := sizeFor(budget).maxClients()
 	var conns []*tls.Conn
-	for range 3 * most {
+	for range most + 20 {
 		c := rawConn(t, tc.endpoints[0], tc.clientTLS())
 		h2Start(t, c)
 		conns = append(conns, c)
@@ -90,7 +153,7 @@ func TestManyIdleClientsStayWithinTheBudget(t *testing.T) {
 	s := seeNode(loopOf(1))
 	closed := 0
 	for _, c := range conns {
-		if err := c.SetReadDeadline(time.Now().Add(200 * time.Millisecond)); err != nil {
+		if err := c.SetReadDeadline(time.Now().Add(20 * time.Millisecond)); err != nil {
 			t.Fatal(err)
 		}
 		b := make([]byte, 64<<10)
@@ -103,15 +166,9 @@ func TestManyIdleClientsStayWithinTheBudget(t *testing.T) {
 			}
 		}
 	}
-	// The peers' sockets, two each way, are in the node's memory too.
-	limit := z.clientIn + z.clientOut + 4*(inBuf+2*ptBuf+outBuf)
-	t.Logf("%d connections: the node holds %d clients (at most %d), refused %d, closed %d; sockets in %d KiB out %d KiB, limit %d KiB",
-		len(conns), s.clients, most, s.refused, closed, s.m.sockIn>>10, s.m.sockOut>>10, limit>>10)
+	t.Logf("%d connections: the node holds %d clients (at most %d), refused %d, closed %d", len(conns), s.clients, most, s.refused, closed)
 	if s.clients > most || s.refused == 0 || closed < len(conns)-most {
 		t.Fatalf("%d connections: the node holds %d clients, at most %d, refused %d and closed %d", len(conns), s.clients, most, s.refused, closed)
-	}
-	if s.m.sockIn+s.m.sockOut > limit {
-		t.Fatalf("the sockets' buffers take %d KiB, past %d KiB", (s.m.sockIn+s.m.sockOut)>>10, limit>>10)
 	}
 }
 
@@ -213,15 +270,16 @@ func watchLoops(t *testing.T) func(id uint64) *loop {
 type nodeSeen struct {
 	m               memStats
 	connOut, connIn int64
-	clients         int
+	clients, active int
 	refused         uint64
+	cpool, cout     int64
 }
 
 // seeNode asks l's loop for its memory and its clients' shares.
 func seeNode(l *loop) nodeSeen {
 	got := make(chan nodeSeen, 1)
 	l.post(func() error {
-		got <- nodeSeen{l.n.memStats(), l.n.connOut, l.n.connIn, l.n.clients, l.n.stats.clientsRefused}
+		got <- nodeSeen{l.n.memStats(), l.n.connOut, l.n.connIn, l.n.clients, l.n.active, l.n.stats.clientsRefused, l.n.cpool, l.n.cout}
 		return nil
 	})
 	return <-got

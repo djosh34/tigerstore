@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unsafe"
 
 	"golang.org/x/net/http2/hpack"
 )
@@ -177,8 +178,14 @@ type client struct {
 	// the node reads nothing more of it until a flush brings the buffer
 	// under half the share.
 	paused bool
-	// partial is what its streams hold of requests sent in part.
+	// partial is what its streams hold of requests sent in part, and
+	// streams how many are open.
 	partial int64
+	streams int
+	// starved is set while it waits for the client buffers to read
+	// (loop.input); busy, the tick it last read.
+	starved bool
+	busy    int64
 }
 
 // The client buffers (sizes.clientOut) bound what waits unsent to each
@@ -209,8 +216,22 @@ func (c *client) slow() bool { return c.paused || c.backedUp() || c.holdsTooMuch
 // requests of.
 var errTooManyRequests = requestErr(codeResourceExhausted, "etcdserver: too many requests")
 
-func newClient(h *handoff, stats *counters) *client {
-	c := &client{sock: *newSockSized(h, stats, clientInBuf, clientOutBuf), slots: make([]stream, streamSlots), hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn), cn: h.cn}
+// newClient is a client connection of node n, whose buffers count in n's
+// client pool; it takes none until it reads (takeBufs), but what its TLS
+// handshake read past its end.
+func newClient(h *handoff, n *node) *client {
+	c := &client{
+		fd: h.fd, rd: h.rd, wr: h.wr, rec: -1, stats: &n.stats, pool: &n.cpool, outPool: &n.cout, outBase: clientOutBuf,
+		hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn), cn: h.cn, node: n,
+	}
+	if len(h.left) > 0 {
+		c.takeBufs()
+		if len(h.left) > len(c.in) {
+			c.grow(len(h.left) - len(c.in))
+			c.in = make([]byte, len(h.left))
+		}
+		c.iw = copy(c.in, h.left)
+	}
 	c.dec = hpack.NewDecoder(4096, func(f hpack.HeaderField) {
 		switch f.Name {
 		case ":path":
@@ -226,7 +247,101 @@ func newClient(h *handoff, stats *counters) *client {
 	return c
 }
 
+// A client caches what at most hdrCacheMax header blocks of up to
+// hdrCacheBlock bytes said, which an idle client keeps (idleConn).
+const (
+	hdrCacheMax   = 64
+	hdrCacheBlock = 128
+)
+
+// maxHeaderBlock is the most a header block sent in CONTINUATION frames
+// may take; past it the connection breaks, as Go's HTTP/2 server breaks
+// it past its header list limit.
+const maxHeaderBlock = 64 << 10
+
+var errHeaderBlock = errors.New("HTTP/2 header block past its limit")
+
+// addBlock adds p to the header block in CONTINUATION frames, starting it
+// if first, counted in the client buffers.
+func (c *client) addBlock(p []byte, first bool) error {
+	if first {
+		c.block = c.block[:0]
+	}
+	if len(c.block)+len(p) > maxHeaderBlock {
+		return errHeaderBlock
+	}
+	before := cap(c.block)
+	c.block = append(c.block, p...)
+	c.grow(cap(c.block) - before)
+	return nil
+}
+
+// slotBytes are a client's stream slots, taken with its other buffers.
+const slotBytes = streamSlots * int(unsafe.Sizeof(stream{}))
+
+// bufNeed is what a client takes from the client buffers to read: its
+// read and opened buffers, and its stream slots unless it holds them.
+func (c *client) bufNeed() int64 {
+	n := int64(clientInBuf + clientPtBuf)
+	if c.slots == nil {
+		n += int64(slotBytes)
+	}
+	return n
+}
+
+// takeBufs takes the client's read and opened buffers and its stream
+// slots.
+func (c *client) takeBufs() {
+	c.grow(int(c.bufNeed()))
+	c.node.active++
+	c.in, c.pt = make([]byte, clientInBuf), make([]byte, clientPtBuf)
+	if c.slots == nil {
+		c.slots = make([]stream, streamSlots)
+	}
+}
+
+// idle reports whether the client holds nothing it read, nothing to send
+// and no request in part, so that its buffers may go back.
+func (c *client) idle() bool {
+	return c.ir == c.iw && c.pr == c.pw && len(c.out) == c.ow && c.rec < 0 &&
+		len(c.flow.held) == 0 && c.partial == 0 && !c.paused
+}
+
+// giveBufs gives the buffers of an idle client back, and its stream slots
+// when no stream is open.
+func (c *client) giveBufs() {
+	if c.in != nil {
+		c.node.active--
+	}
+	c.grow(-cap(c.in) - cap(c.pt))
+	c.growOut(-cap(c.out))
+	c.in, c.pt, c.out = nil, nil, nil
+	c.ir, c.iw, c.pr, c.pw, c.ow = 0, 0, 0, 0, 0
+	if c.streams == 0 && c.over == nil {
+		c.grow(-slotBytes)
+		c.slots = nil
+	}
+}
+
+// dropAll takes what a closed client held out of the client pool.
+func (c *client) dropAll() {
+	if c.in != nil {
+		c.node.active--
+	}
+	c.grow(-cap(c.in) - cap(c.pt) - int(c.partial) - cap(c.block))
+	c.growOut(-cap(c.out) - int(c.flow.bytes))
+	c.block = nil
+	if c.slots != nil {
+		c.grow(-slotBytes)
+	}
+	c.in, c.pt, c.out, c.slots = nil, nil, nil, nil
+	c.partial, c.flow.bytes = 0, 0
+}
+
 func (c *client) get(id uint32) *stream {
+	if c.slots == nil {
+		return nil
+	}
 	s := &c.slots[id>>1&(streamSlots-1)]
 	if s.open && s.id == id {
 		return s
@@ -247,11 +362,17 @@ func (c *client) newStream(id uint32, kind uint8) *stream {
 		c.over[id] = s
 	}
 	*s = stream{id: id, kind: kind, open: true, buf: s.buf[:0], wids: s.wids[:0], fail: nil, win: c.flow.initial}
+	c.streams++
 	return s
 }
 
 func (c *client) endStream(s *stream) {
+	if !s.open {
+		return
+	}
 	c.partial -= s.counted
+	c.grow(-int(s.counted))
+	c.streams--
 	s.counted = 0
 	s.fail = nil // the side ring may take its bytes again
 	c.node.putBuf(s.buf)
@@ -259,7 +380,9 @@ func (c *client) endStream(s *stream) {
 	if c.over != nil {
 		if o, ok := c.over[s.id]; ok && o == s {
 			delete(c.over, s.id)
-			return
+			if len(c.over) == 0 {
+				c.over = nil
+			}
 		}
 	}
 	s.open = false
@@ -374,7 +497,9 @@ func (c *client) frames(n *node) error {
 			c.blockSid, c.blockEnd = sid, flags&flEndStream != 0
 			if flags&flEndHeaders == 0 {
 				c.inBlock = true
-				c.block = append(c.block[:0], p...)
+				if err := c.addBlock(p, true); err != nil {
+					return err
+				}
 				continue
 			}
 			if err := c.headers(n, p, false); err != nil {
@@ -384,10 +509,16 @@ func (c *client) frames(n *node) error {
 			if !c.inBlock || sid != c.blockSid {
 				return errProtocol
 			}
-			c.block = append(c.block, p...)
+			if err := c.addBlock(p, false); err != nil {
+				return err
+			}
 			if flags&flEndHeaders != 0 {
 				c.inBlock = false
-				if err := c.headers(n, c.block, true); err != nil {
+				err := c.headers(n, c.block, true)
+				// The block goes back with the client's other buffers.
+				c.grow(-cap(c.block))
+				c.block = nil
+				if err != nil {
 					return err
 				}
 			}
@@ -463,7 +594,7 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 			info.badEnc = true
 		}
 		if info.kind != kUnknown && !info.badEnc && keepsTable(block) {
-			if len(c.hdrCache) < 256 {
+			if len(c.hdrCache) < hdrCacheMax && len(block) <= hdrCacheBlock {
 				c.hdrCache[string(block)] = info
 			}
 		} else if !keepsTable(block) {
@@ -651,6 +782,7 @@ func (n *node) putBuf(b []byte) {
 
 func (c *client) data(n *node, s *stream, p []byte) error {
 	c.partial -= s.counted
+	c.grow(-int(s.counted))
 	s.counted = 0
 	if len(s.buf) > 0 {
 		s.buf = append(s.buf, p...)
@@ -696,10 +828,10 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 			break
 		}
 	}
-	if len(p) > 0 && c.partial+int64(len(p)) > n.connIn {
-		// The connection holds its share of requests sent in part:
-		// this one is refused, as etcd refuses too many requests, and
-		// the rest of it dropped.
+	if len(p) > 0 && (c.partial+int64(len(p)) > n.connIn || n.cpool+int64(len(p)) > n.sizes.clientInBufs()) {
+		// The connection holds its share of requests sent in part, or
+		// the client buffers are full: this one is refused, as etcd
+		// refuses too many requests, and the rest of it dropped.
 		n.reject(c, s, errTooManyRequests)
 		return nil
 	}
@@ -715,6 +847,7 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 	if c.get(s.id) == s {
 		s.counted = int64(len(s.buf))
 		c.partial += s.counted
+		c.grow(int(s.counted))
 	}
 	return nil
 }

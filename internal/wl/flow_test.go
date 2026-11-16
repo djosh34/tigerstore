@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"errors"
 	"testing"
 	"time"
 
@@ -23,8 +24,8 @@ func flowClient(t *testing.T) (*client, *stream) {
 		t.Fatal(err)
 	}
 	n, _ := testNode(t)
-	c := newClient(&handoff{fd: -1, wr: aeadDir{aead: g}, rd: aeadDir{aead: g}}, &counters{})
-	c.node = n
+	c := newClient(&handoff{fd: -1, wr: aeadDir{aead: g}, rd: aeadDir{aead: g}}, n)
+	c.takeBufs()
 	return c, c.newStream(1, kRange)
 }
 
@@ -228,5 +229,36 @@ func TestAClientThatHoldsTooMuchIsRefused(t *testing.T) {
 	c.windowUpdate(s.id, 1<<20)
 	if c.flow.bytes != 0 || len(c.flow.held) != 0 {
 		t.Fatalf("%d bytes still counted held, %d entries, after the drop and the windows", c.flow.bytes, len(c.flow.held))
+	}
+}
+
+// A header block sent in CONTINUATION frames past maxHeaderBlock breaks
+// the connection, and what it held is counted in the client buffers until
+// then: a client cannot hold the node's memory with a block it never ends.
+func TestAHeaderBlockPastItsLimitBreaksTheConnection(t *testing.T) {
+	c, _ := flowClient(t)
+	frame := func(typ, flags byte, sid uint32, n int) []byte {
+		b := make([]byte, 9+n)
+		putFrameHeader(b, n, typ, flags, sid)
+		return b
+	}
+	in := append([]byte(nil), clientPreface...)
+	in = append(in, frame(frSettings, 0, 0, 0)...)
+	in = append(in, frame(frHeaders, 0, 3, 16<<10)...)
+	for range 3 {
+		in = append(in, frame(frContinuation, 0, 3, 16<<10)...)
+	}
+	c.node.connOut = 1 << 20 // its replies, the settings' ack, do not pause it
+	before := c.node.cpool
+	c.pt, c.pr, c.pw = in, 0, len(in)
+	if err := c.frames(c.node); err != nil {
+		t.Fatalf("a block of 64 KiB: %v", err)
+	}
+	if held := c.node.cpool - before; held < 64<<10 {
+		t.Fatalf("a block of 64 KiB in part counts %d bytes in the client buffers", held)
+	}
+	c.pt, c.pr, c.pw = frame(frContinuation, 0, 3, 1), 0, 10
+	if err := c.frames(c.node); !errors.Is(err, errHeaderBlock) {
+		t.Fatalf("a block past %d bytes: %v", maxHeaderBlock, err)
 	}
 }

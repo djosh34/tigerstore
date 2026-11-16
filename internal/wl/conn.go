@@ -39,29 +39,46 @@ type sock struct {
 	// broken is set when a reply came out another length than it said:
 	// the stream is corrupt, and the connection is closed at its flush.
 	broken bool
+	// pool and outPool, a client's, count the bytes it holds in its
+	// node's client buffers (sizes.clientBufs): what it reads in pool, and
+	// what waits to be sent in outPool; nil for a peer's.
+	pool, outPool *int64
 }
 
-// A socket's buffers as it starts: the ciphertext read, the plaintext
-// opened and the send buffer. A peer's take more at once than a client's,
-// which the client buffers' budget counts (connFixed).
+// A socket's buffers: the ciphertext read, the plaintext opened and the
+// send buffer. A peer's are made with it. A client's are taken from the
+// client buffers only while it reads or writes, at the client sizes, and
+// given back once it is idle (client.takeBufs, client.idle).
 const (
 	inBuf        = 512 << 10
 	ptBuf        = 256 << 10
 	outBuf       = 1 << 20
-	clientInBuf  = 128 << 10
-	clientOutBuf = 256 << 10
+	clientInBuf  = 64 << 10
+	clientPtBuf  = 64 << 10
+	clientOutBuf = 64 << 10
 )
 
-func newSock(h *handoff, stats *counters) *sock { return newSockSized(h, stats, inBuf, outBuf) }
-
-// newSockSized is a socket whose buffers start at in and out bytes.
-func newSockSized(h *handoff, stats *counters, in, out int) *sock {
+func newSock(h *handoff, stats *counters) *sock {
 	s := &sock{
 		fd: h.fd, rd: h.rd, wr: h.wr, rec: -1, stats: stats,
-		in: make([]byte, max(in, len(h.left))), pt: make([]byte, ptBuf), out: make([]byte, 0, out), outBase: out,
+		in: make([]byte, max(inBuf, len(h.left))), pt: make([]byte, ptBuf), out: make([]byte, 0, outBuf), outBase: outBuf,
 	}
 	s.iw = copy(s.in, h.left)
 	return s
+}
+
+// grow counts n more bytes of what the socket reads in its pool, and
+// growOut of what waits to be sent.
+func (s *sock) grow(n int) {
+	if s.pool != nil {
+		*s.pool += int64(n)
+	}
+}
+
+func (s *sock) growOut(n int) {
+	if s.outPool != nil {
+		*s.outPool += int64(n)
+	}
 }
 
 var errClosed = errors.New("connection closed")
@@ -123,6 +140,7 @@ func (s *sock) open() error {
 			}
 			if len(s.pt)-s.pw < n {
 				np := make([]byte, 2*len(s.pt))
+				s.grow(len(np) - len(s.pt))
 				s.pw = copy(np, s.pt[s.pr:s.pw])
 				s.pr = 0
 				s.pt = np
@@ -204,6 +222,7 @@ func (s *sock) openRec() {
 	}
 	if cap(s.out)-len(s.out) < need {
 		n := make([]byte, len(s.out), 2*cap(s.out)+need)
+		s.growOut(cap(n) - cap(s.out))
 		copy(n, s.out)
 		s.out = n
 	}
@@ -301,6 +320,7 @@ func (s *sock) flush() (bool, error) {
 	s.ow = 0
 	if cap(s.out) > 4*s.outBase {
 		// A large reply grew it; it need not keep that much.
+		s.growOut(s.outBase - cap(s.out))
 		s.out = make([]byte, 0, s.outBase)
 	}
 	return true, nil
