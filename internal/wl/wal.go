@@ -33,15 +33,19 @@ import (
 // A record is [4 crc32c][4 body length][1 kind], then the body; the crc
 // covers everything after it. An entry's body is [8 index][8 term]
 // [1 entry type] and the entry's data; a hard state's is the state's
-// protobuf. A record that does not check ends the log when a crash can have
-// torn it, or it is the zeros past the end: some sector of it is all zeros,
-// as etcd's isTornEntry decides, since the log's bytes past its end are
-// zeros on disk (the stage clears them) and a torn write leaves sectors of
-// those. Any other record that does not check is damage, and the log is
-// refused (ErrCorruptLog).
+// protobuf. A record that does not check ends the log: a crash tore it,
+// or it is the zeros past the end. It is damage, and the log is refused
+// (ErrCorruptLog), where a crash cannot have torn it: before a later
+// segment that holds data, as each write's part in a segment is durable
+// before the next segment's part is written; or before a record that
+// checks, as a crash leaves none after the one it tore. But a write torn
+// at sectors keeps some sectors past one it lost, which hold zeros (the
+// stage clears the bytes past the log's end), so in the last segment a
+// record with a sector of zeros, as etcd's isTornEntry says, ends the log
+// whatever follows it. Damage in the last segment that no record after it
+// shows, such as a flipped bit of a length, is not found.
 
 const (
-	segSize = 64 << 20
 	block   = 4096
 	syncGap = 800 * time.Microsecond
 
@@ -55,7 +59,7 @@ const (
 )
 
 // ErrCorruptLog is a log with a record that does not check where no crash
-// can have torn it.
+// can have torn it (wal.go's head).
 var ErrCorruptLog = errors.New("wl: corrupt log")
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
@@ -626,20 +630,13 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 		buf = append(buf, b...)
 		for len(buf) >= recHead {
 			l := int64(binary.LittleEndian.Uint32(buf[4:]))
-			if l > maxWALRecBody {
-				// A length no record has: zeros never read so.
-				return off, corruptAt(k, off)
-			}
-			if int64(len(buf)) < recHead+l {
+			if l <= maxWALRecBody && int64(len(buf)) < recHead+l {
 				break
 			}
-			rec := buf[:recHead+l]
-			if crc32.Checksum(rec[4:], castagnoli) != binary.LittleEndian.Uint32(rec) || rec[8] == recEntry && l < entHead {
-				if !torn(rec, off) {
-					return off, corruptAt(k, off)
-				}
-				return off, nil
+			if l > maxWALRecBody || !checks(buf[:recHead+l]) {
+				return off, damaged(sys, dir, k, short, off, buf)
 			}
+			rec := buf[:recHead+l]
 			r = walRecord{off: off + recHead, kind: rec[8], data: rec[recHead:]}
 			if r.kind == recEntry {
 				r.index = binary.LittleEndian.Uint64(rec[9:])
@@ -664,9 +661,21 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 	return off, nil
 }
 
+// checks reports whether b starts with a whole record that checks.
+func checks(b []byte) bool {
+	if len(b) < recHead {
+		return false
+	}
+	l := int64(binary.LittleEndian.Uint32(b[4:]))
+	if l > maxWALRecBody || int64(len(b)) < recHead+l || b[8] == recEntry && l < entHead {
+		return false
+	}
+	return crc32.Checksum(b[4:recHead+l], castagnoli) == binary.LittleEndian.Uint32(b)
+}
+
 // torn reports whether rec, a record that does not check at log offset
-// off, can be one a crash tore, or the zeros past the log's end: some part
-// of it within one sector is all zeros.
+// off, has a part within one sector that is all zeros, as a write a crash
+// tore at sectors leaves.
 func torn(rec []byte, off int64) bool {
 	for len(rec) > 0 {
 		k := min(int64(len(rec)), sector-off%sector)
@@ -678,7 +687,72 @@ func torn(rec []byte, off int64) bool {
 	return false
 }
 
-// corruptAt is the error of damage in segment k, at log offset off.
-func corruptAt(k, off int64) error {
-	return fmt.Errorf("%w: a record that does not check in segment %d at log offset %d, which no crash tore", ErrCorruptLog, k, off)
+// damaged returns the error of b, the log's bytes at offset off on, in
+// segment k on, whose first record does not check: nil where a crash can
+// have torn it, ErrCorruptLog where it cannot (the head of this file).
+func damaged(sys sysEnv, dir string, k int64, short bool, off int64, b []byte) error {
+	later, err := laterData(sys, dir, k, short)
+	if err != nil {
+		return err
+	}
+	if later {
+		return fmt.Errorf("%w: the record in segment %d at log offset %d does not check, and a later segment holds data", ErrCorruptLog, k, off)
+	}
+	l := int64(binary.LittleEndian.Uint32(b[4:]))
+	if l > maxWALRecBody || torn(b[:recHead+l], off) {
+		return nil
+	}
+	next, err := nextChecks(sys, dir, k, short, b[recHead+l:])
+	if err != nil || !next {
+		return err
+	}
+	return fmt.Errorf("%w: the record in segment %d at log offset %d does not check, and the one after it does", ErrCorruptLog, k, off)
+}
+
+// laterData reports whether a segment after segment k holds data, unless
+// k ended short, as the last does. The helper writes a segment's part of
+// a write durably before the next segment's, so a crash tears only the
+// last segment that holds data.
+func laterData(sys sysEnv, dir string, k int64, short bool) (bool, error) {
+	if short {
+		return false, nil
+	}
+	b, err := sys.readFile(segPath(dir, k+1))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return len(b) > 0, err
+}
+
+// nextChecks reports whether the log's bytes after a record that does
+// not check, b and the segments after segment k unless k ended short,
+// start with a record that checks.
+func nextChecks(sys sysEnv, dir string, k int64, short bool, b []byte) (bool, error) {
+	b = slices.Clone(b)
+	read := func(need int64) error {
+		for int64(len(b)) < need && !short {
+			k++
+			seg, err := sys.readFile(segPath(dir, k))
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			short = int64(len(seg)) < segSize
+			b = append(b, seg...)
+		}
+		return nil
+	}
+	if err := read(recHead); err != nil || len(b) < recHead {
+		return false, err
+	}
+	l := int64(binary.LittleEndian.Uint32(b[4:]))
+	if l > maxWALRecBody {
+		return false, nil
+	}
+	if err := read(recHead + l); err != nil {
+		return false, err
+	}
+	return checks(b), nil
 }

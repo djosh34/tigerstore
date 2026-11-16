@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -146,10 +147,10 @@ func tear(b []byte, off int64) {
 	clear(b[off:min(int64(len(b)), (off/sector+1)*sector)])
 }
 
-// A record damaged where no crash can have torn it, a flipped bit with no
-// sector of zeros in it, is refused, not cut as a torn tail: the records
-// after it were durable, and cutting them would lose what the node
-// acknowledged.
+// A record damaged where no crash can have torn it, a flipped bit of its
+// value or checksum before a record that checks, is refused, not cut as a
+// torn tail: the records after it were durable, and cutting them would
+// lose what the node acknowledged.
 func TestWALRefusesADamagedRecord(t *testing.T) {
 	dir := t.TempDir()
 	w, err := openWAL(sysEnv{}, dir, sizeFor(0).stage, 0, 0, nil)
@@ -162,7 +163,7 @@ func TestWALRefusesADamagedRecord(t *testing.T) {
 	}
 	syncWAL(t, w)
 	path := segPath(dir, 0)
-	for _, at := range []string{"damaged", "length"} {
+	for _, at := range []string{"damaged", "checksum"} {
 		b, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -171,15 +172,105 @@ func TestWALRefusesADamagedRecord(t *testing.T) {
 		switch at {
 		case "damaged":
 			b[bytes.Index(b, []byte("damaged"))] ^= 0x10
-		case "length":
-			// A flipped bit of the length: past the longest record.
-			b[w.offs[1]-walEntHdr+7] ^= 0x80
+		case "checksum":
+			b[w.offs[1]-walEntHdr] ^= 0x10
 		}
 		if err := os.WriteFile(path, b, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := scanWAL(sysEnv{}, dir, 0, nil); !errors.Is(err, ErrCorruptLog) {
 			t.Errorf("%s: scan returned %v, want ErrCorruptLog", at, err)
+		}
+		if err := os.WriteFile(path, orig, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// A sector of a segment before the last that holds data, zeroed as a
+// write the drive reported done but never made, is refused: a crash tears
+// only the last segment, as the helper writes each segment's part of a
+// write durably before the next's.
+func TestWALRefusesALostWriteBeforeTheLastSegment(t *testing.T) {
+	dir := t.TempDir()
+	w, err := openWAL(sysEnv{}, dir, sizeFor(0).stage, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	if err := w.write([]*pb.Entry{testEntry(1, 1, "kept"), testEntry(2, 1, strings.Repeat("x", 2*sector)), testEntry(3, 1, "after")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	path := segPath(dir, 0)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The long record's second sector reads as zeros.
+	lost := ((w.offs[1]-walEntHdr)/sector + 1) * sector
+	clear(b[lost : lost+sector])
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if end, err := scanWAL(sysEnv{}, dir, 0, nil); err != nil || end != w.offs[1]-walEntHdr {
+		t.Fatalf("in the last segment the scan ended at %d with %v, want a torn tail at %d", end, err, w.offs[1]-walEntHdr)
+	}
+	// The segment is whole and the next holds data.
+	if err := os.Truncate(path, segSize); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(segPath(dir, 1), []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := scanWAL(sysEnv{}, dir, 0, nil); !errors.Is(err, ErrCorruptLog) {
+		t.Fatalf("before a later segment the scan returned %v, want ErrCorruptLog", err)
+	}
+}
+
+// What a crash leaves at the log's end is cut, whatever follows it there:
+// garbage in place of the last record's tail, as a torn write may leave,
+// and a record torn at a sector of zeros before a later sector of the same
+// write that reached the disk.
+func TestWALCutsWhatACrashLeft(t *testing.T) {
+	dir := t.TempDir()
+	w, err := openWAL(sysEnv{}, dir, sizeFor(0).stage, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	long := strings.Repeat("x", 2*sector)
+	if err := w.write([]*pb.Entry{testEntry(1, 1, "kept"), testEntry(2, 1, long), testEntry(3, 1, "after")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	path := segPath(dir, 0)
+	torn := w.offs[1] - walEntHdr
+	for _, at := range []string{"garbage", "sector"} {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		orig := slices.Clone(b)
+		switch at {
+		case "garbage":
+			end := w.offs[2] - walEntHdr
+			for i := end - 100; i < end; i++ {
+				b[i] = byte(i*7 + 3)
+			}
+			b = b[:end]
+		case "sector":
+			// The long record's second sector never reached the disk; the
+			// record after it did.
+			s := (torn/sector + 1) * sector
+			clear(b[s : s+sector])
+		}
+		if err := os.WriteFile(path, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		end, err := scanWAL(sysEnv{}, dir, 0, nil)
+		if err != nil || end != torn {
+			t.Errorf("%s: scan ended at %d with %v, want the torn record's start %d", at, end, err, torn)
 		}
 		if err := os.WriteFile(path, orig, 0o600); err != nil {
 			t.Fatal(err)
