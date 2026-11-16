@@ -286,30 +286,40 @@ func newOp(kind byte) (proto.Message, error) {
 // checks use it; the core applies writes in place.
 func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message) error) error {
 	return walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, at int) error {
-		kind, b, _, _, err := unwrapAuth(kind, b, at)
-		if err != nil {
+		op, _, err := decodeLogged(kind, b, at)
+		if err != nil || op == nil {
 			return err
-		}
-		if kind == kindNoSpace || kind == kindVersion {
-			// A refused write did not apply, and an announcement changes
-			// no key.
-			return nil
-		}
-		op, err := newOp(kind)
-		if err != nil {
-			return err
-		}
-		if kind == kindShortTxn {
-			if err := decodeShort(b, op.(*pb.TxnRequest), 0, nil); err != nil {
-				return err
-			}
-			// The checks keep what they decode: no slices of the entry.
-			op = proto.Clone(op)
-		} else if err := proto.Unmarshal(b, op); err != nil {
-			return fmt.Errorf("%w: %w", errBadBatch, err)
 		}
 		return fn(origin, boot, id, op)
 	})
+}
+
+// decodeLogged decodes one write of a committed entry, of kind and in
+// bytes b at at, with the identity it was taken with. It returns no op for
+// a write refused before it was proposed, which did not apply, and for an
+// announcement, which changes no key.
+func decodeLogged(kind byte, b []byte, at int) (proto.Message, authInfo, error) {
+	kind, b, _, who, err := unwrapAuth(kind, b, at)
+	if err != nil {
+		return nil, who, err
+	}
+	if kind == kindNoSpace || kind == kindVersion {
+		return nil, who, nil
+	}
+	op, err := newOp(kind)
+	if err != nil {
+		return nil, who, err
+	}
+	if kind == kindShortTxn {
+		if err := decodeShort(b, op.(*pb.TxnRequest), 0, nil); err != nil {
+			return nil, who, err
+		}
+		// The checks keep what they decode: no slices of the entry.
+		op = proto.Clone(op)
+	} else if err := proto.Unmarshal(b, op); err != nil {
+		return nil, who, fmt.Errorf("%w: %w", errBadBatch, err)
+	}
+	return op, who, nil
 }
 
 func uvarint(b []byte) (uint64, []byte, bool) {

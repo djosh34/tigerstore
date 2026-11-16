@@ -104,13 +104,20 @@ func decodeBatch(data []byte) ([]history.Request, error) {
 	return out, nil
 }
 
-// decodeMainBatch decodes the writes of one committed entry of main's
-// engine, which the previous release ran. Member announcements and lease
-// checkpoints change no key and are left out; any other request the
-// campaign does not send fails.
-func decodeMainBatch(data []byte) ([]history.Request, error) {
+// decodeMainBatches decodes the writes of main's engine's committed
+// entries, which the previous release ran, one entry at a time in the
+// log's order. A write the apply refused for the identity it carried
+// (core.LogAuth) did not apply, and is left out (#698); so are member
+// announcements, lease checkpoints and auth requests, which change no key.
+// Any other request the campaign does not send fails.
+func decodeMainBatches() func([]byte) ([]history.Request, error) {
+	la := core.NewLogAuth()
+	return func(data []byte) ([]history.Request, error) { return decodeMainBatch(la, data) }
+}
+
+func decodeMainBatch(la *core.LogAuth, data []byte) ([]history.Request, error) {
 	var out []history.Request
-	err := core.DecodeBatch(data, func(_, _, _ uint64, m proto.Message) error {
+	err := la.Writes(data, func(m proto.Message) error {
 		switch m.(type) {
 		case *pb.Member, *pb.LeaseCheckpointRequest, *pb.InternalRaftRequest, *pb.CompactionRequest:
 			return nil

@@ -875,7 +875,7 @@ func (r *rollingRun) finish() {
 		// The old cluster's log, then the new one's, after the snapshot.
 		var before []history.Request
 		var oldEvidence []nodeEvidence
-		before, oldEvidence, err = readCommitted(r.previous, committed.ReadMain, 1, decodeMainBatch)
+		before, oldEvidence, err = readCommitted(r.previous, committed.ReadMain, 1, decodeMainBatches())
 		after, newEvidence, newErr := readCommitted(dirs, committed.Read, r.restored+1, decodeBatch)
 		log, evidence, err = slices.Concat(before, after), slices.Concat(oldEvidence, newEvidence), errors.Join(err, newErr)
 	}

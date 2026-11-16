@@ -218,14 +218,19 @@ func isValidPermissionRange(key, end []byte) bool {
 // origin took it with, as etcd's authApplierV3 and the auth store do.
 // index is the entry's index, which a simple token ends with.
 func (n *Node) applyAuth(r *pb.InternalRaftRequest, index uint64) (proto.Message, error) {
-	a := n.state.auth
+	return n.state.auth.apply(r, n.authHeader(), n, index)
+}
+
+// apply runs an auth request from the log on the auth state. n is the
+// node that keeps the simple tokens, or nil for a reader of the log
+// (LogAuth), which keeps none and answers no Authenticate.
+func (a *authState) apply(r *pb.InternalRaftRequest, h *pb.ResponseHeader, n *Node, index uint64) (proto.Message, error) {
 	ai := authInfo{user: r.GetHeader().GetUsername(), revision: r.GetHeader().GetAuthRevision()}
 	if needsAdmin(r) {
 		if err := a.admin(&ai); err != nil {
 			return nil, err
 		}
 	}
-	h := n.authHeader()
 	switch {
 	case r.AuthEnable != nil:
 		if a.enabled {
@@ -245,12 +250,17 @@ func (n *Node) applyAuth(r *pb.InternalRaftRequest, index uint64) (proto.Message
 		if a.enabled {
 			a.enabled = false
 			a.changed()
-			n.tokens = map[string]*simpleToken{}
+			if n != nil {
+				n.tokens = map[string]*simpleToken{}
+			}
 		}
 		return &pb.AuthDisableResponse{Header: h}, nil
 	case r.AuthStatus != nil:
 		return &pb.AuthStatusResponse{Header: h, Enabled: a.enabled, AuthRevision: a.revision}, nil
 	case r.Authenticate != nil:
+		if n == nil {
+			return nil, nil
+		}
 		return n.authenticate(r.Authenticate, index, h)
 	case r.AuthUserAdd != nil:
 		return a.userAdd(r.AuthUserAdd, h)
@@ -519,6 +529,9 @@ func (n *Node) authenticate(r *pb.InternalAuthenticateRequest, index uint64, h *
 func (n *Node) tokenTicks() int { return cmp.Or(n.cfg.AuthTokenTicks, int(n.cfg.ticksOf(300))) }
 
 func (n *Node) invalidateTokens(user string) {
+	if n == nil {
+		return
+	}
 	for t, st := range n.tokens {
 		if st.user == user {
 			delete(n.tokens, t)
