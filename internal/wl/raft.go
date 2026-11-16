@@ -46,8 +46,11 @@ func raftConfig(id uint64, st raft.Storage, z sizes, members int) *raft.Config {
 
 // ready handles everything Raft has to do now.
 func (n *node) ready() error {
+	rt := &n.turnReady
 	for i := 0; i < 64 && n.rn.HasReady(); i++ {
+		t := time.Now()
 		rd := n.rn.Ready()
+		rt.raft += time.Since(t)
 		if err := n.storage.failed; err != nil {
 			// What Raft read of the storage lacks an entry's data: nothing it
 			// made of it may be sent, persisted or applied.
@@ -81,13 +84,19 @@ func (n *node) ready() error {
 		}
 		for _, m := range rd.Messages {
 			var err error
+			t := time.Now()
 			switch m.GetTo() {
 			case raft.LocalAppendThread:
 				err = n.storageAppend(m)
+				rt.appends++
+				rt.append += time.Since(t)
 			case raft.LocalApplyThread:
 				err = n.storageApply(m)
+				rt.applies++
+				rt.apply += time.Since(t)
 			default:
 				n.sendPeer(m)
+				rt.send += time.Since(t)
 			}
 			if err != nil {
 				return err
@@ -108,6 +117,7 @@ func (n *node) storageAppend(m *pb.Message) error {
 	w := n.wal
 	if len(w.waiting) > 0 || !w.fits(m.GetEntries()) {
 		w.stats.waits++
+		n.turnReady.waits++
 		w.waiting = append(w.waiting, m)
 		w.kick()
 		return nil
@@ -135,7 +145,10 @@ func (n *node) unwait() error {
 func (n *node) appendNow(m *pb.Message) error {
 	n.simAppend(m)
 	if sn := m.GetSnapshot(); sn != nil && sn.GetMetadata().GetIndex() > 0 {
-		if err := n.installSnapshot(sn); err != nil {
+		t := time.Now()
+		err := n.installSnapshot(sn)
+		n.turnReady.install += time.Since(t)
+		if err != nil {
 			return err
 		}
 	}
@@ -151,7 +164,10 @@ func (n *node) appendNow(m *pb.Message) error {
 		}
 	}
 	if len(ents) > 0 || len(hs) > 0 {
-		if err := n.wal.write(ents, hs); err != nil {
+		t := time.Now()
+		err := n.wal.write(ents, hs)
+		n.turnReady.write += time.Since(t)
+		if err != nil {
 			return err
 		}
 	}

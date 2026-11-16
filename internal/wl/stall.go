@@ -107,3 +107,18 @@ func (s stallStats) since(s0 stallStats) string {
 		g.cycles-g0.cycles, ms(g.assist-g0.assist), ms(g.mutexWait-g0.mutexWait),
 		g.pauses.n-g0.pauses.n, ms(g.pauses.ns-g0.pauses.ns), g.stopping.n-g0.stopping.n, ms(g.stopping.ns-g0.stopping.ns))
 }
+
+// readyTurn is where a turn's ready() spent its time, for the slow-turn
+// line (#704): Raft's Ready, the appends (of it the copies into the log's
+// stage and a snapshot's install), the applies and the sends to peers,
+// with the appends and applies counted and the appends that waited for
+// room in the stage.
+type readyTurn struct {
+	raft, append, write, install, apply, send time.Duration
+	appends, applies, waits                   int
+}
+
+func (r readyTurn) String() string {
+	return fmt.Sprintf("of it Raft %v, %d appends %v (copies into the stage %v, install %v, %d waited for room), %d applies %v, sends %v",
+		r.raft, r.appends, r.append, r.write, r.install, r.waits, r.applies, r.apply, r.send)
+}

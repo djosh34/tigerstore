@@ -259,3 +259,15 @@ func TestWLStalledLeaderIsReplaced(t *testing.T) {
 		return res.Stats
 	}, nil)
 }
+
+// wlStalledLeaderConfig is planted_test.go's stalledLeaderConfig on wl
+// nodes: no faults but the leader's disk, stalled at 5 s until healing.
+func wlStalledLeaderConfig(seed uint64) Config {
+	cfg := DefaultConfig(seed)
+	cfg.wl, cfg.FormUnderFaults = true, true
+	cfg.Faults = Faults{}
+	cfg.StallLeaderAt = 5 * Second
+	cfg.LiveFrom = cfg.StallLeaderAt + 10*Second
+	cfg.Duration = 25 * Second
+	return cfg
+}
