@@ -52,9 +52,6 @@ func (d *disk) call(op simfs.Op, name string, f func() error) error {
 	if err := f(); err != nil {
 		return err
 	}
-	if op == simfs.OpCreate && strings.HasPrefix(name, "pack-") {
-		s.stats.Packs++
-	}
 	return s.afterCall(d.p, op, name)
 }
 
@@ -81,6 +78,7 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 	switch {
 	case op == simfs.OpRemove && isSegment(name):
 		n.removedSegment = true
+		s.stats.LogCuts++
 	case op == simfs.OpSyncDir:
 		for _, f := range n.ckptDone {
 			s.ckptWritten(n, f)

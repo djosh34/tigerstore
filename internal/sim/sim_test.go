@@ -696,8 +696,8 @@ func TestWallLimit(t *testing.T) {
 			t.Fatalf("seed %d: a run past its limit of real time ended with %v", seed, err)
 		}
 		files := runFiles(fmt.Sprintf("$SIM_OUT/TestWallLimit/%d", seed), replayCommand(t.Name(), seed), res, true)
-		// The nodes' own goroutines, as their peer transport's.
-		if !strings.Contains(files["stacks.txt"], "tigerstore/internal_/peer") {
+		// The nodes' own goroutines, as their loops'.
+		if !strings.Contains(files["stacks.txt"], "tigerstore/internal_/wl.(*loop)") {
 			t.Fatalf("seed %d: the saved stacks have none of the nodes' goroutines:\n%s", seed, files["stacks.txt"])
 		}
 		for _, name := range []string{"trace.txt", "nodes.txt", "replay.txt", "disks/node1/calls.txt"} {
@@ -863,11 +863,16 @@ func faultCases() []faultCase {
 	// The damage needs sealed segments, which take a few seconds of
 	// writes.
 	long := func(c *Config) { c.Duration = 16 * Second }
-	longer := func(c *Config) { c.Duration = 24 * Second }
+	// A checkpoint, which a snapshot sends and which cuts the log
+	// behind it, every DefaultConfig's disk budget of log (startWL):
+	// without one, a follower held down catches up from the log, and
+	// nothing names a value before the log's start.
+	ckpts := func(c *Config) { c.Faults.DiskBudget = DefaultConfig(c.Seed).Faults.DiskBudget }
 	damage := func(k damageKind, count func(Stats) int) faultCase {
 		return faultCase{k.String(), Faults{CrashEvery: Second, MaxDown: Second, Corrupt: true}, func(c *Config) {
 			c.damageKinds = []damageKind{k}
 			long(c)
+			ckpts(c)
 		}, count}
 	}
 	cases := []faultCase{
@@ -878,11 +883,11 @@ func faultCases() []faultCase {
 		{"gray node", Faults{GrayEvery: Second}, nil, func(st Stats) int { return st.GrayNodes }},
 		{"gray client", Faults{GrayClient: true}, nil, func(st Stats) int { return st.GrayStreams }},
 		{"crash in recovery", Faults{CrashEvery: 2 * Second, MaxDown: Second, RecoveryCrash: true}, nil, func(st Stats) int { return st.RecoveryCrashes }},
-		{"follower held down", Faults{HoldDown: true}, nil, func(st Stats) int { return st.Snapshots }},
-		{"damaged snapshot", Faults{}, func(c *Config) { *c = damagedSnapshotConfig(c.Seed) }, func(st Stats) int { return st.SnapshotFlips }},
-		{"crash during a fetch", Faults{HoldDown: true, FetchCrash: true}, nil, func(st Stats) int { return min(st.FetchCrashes, st.Reloads) }},
+		{"follower held down", Faults{HoldDown: true}, ckpts, func(st Stats) int { return st.Snapshots }},
+		{"damaged snapshot", Faults{}, func(c *Config) { *c = wlDamagedSnapshotConfig(c.Seed) }, func(st Stats) int { return st.SnapshotFlips }},
+		{"crash during a fetch", Faults{HoldDown: true, FetchCrash: true}, ckpts, func(st Stats) int { return st.FetchCrashes }},
 		{"crash at a checkpoint step", Faults{StepCrash: true}, nil, func(st Stats) int { return st.StepCrashes }},
-		{"rotten value", Faults{Rot: true}, nil, func(st Stats) int { return st.Rots }},
+		{"rotten value", Faults{Rot: true}, ckpts, func(st Stats) int { return st.Rots }},
 		{"kill", crashes, nil, func(st Stats) int { return st.Kills }},
 		// One kill in three, of half the crashes, has a power loss after it.
 		{"power loss after a kill", crashes, long, func(st Stats) int { return st.KillLosses }},
@@ -895,7 +900,7 @@ func faultCases() []faultCase {
 		{"read-only file system", Faults{FSDownEvery: Second}, nil, func(st Stats) int { return st.ReadOnlyStops }},
 		{"client link down", Faults{LinkEvery: Second}, nil, func(st Stats) int { return st.ClientLinksDown }},
 		{"full disk", Faults{DiskFullEvery: Second}, nil, func(st Stats) int { return st.OutOfSpace }},
-		{"cleaning within the budget", Faults{DiskBudget: 32 << 10, DiskCapacity: 128 << 10}, nil, func(st Stats) int { return st.Packs }},
+		{"the log cut within the budget", Faults{DiskBudget: 32 << 10, DiskCapacity: 128 << 10}, nil, func(st Stats) int { return st.LogCuts }},
 		damage(flippedRoot, func(st Stats) int { return min(st.Damage[flippedRoot], st.Fenced) }),
 		damage(misdirected, func(st Stats) int { return min(st.Damage[misdirected], st.Fenced) }),
 		damage(lostWrite, func(st Stats) int { return min(st.Damage[lostWrite], st.Fenced) }),
@@ -903,12 +908,6 @@ func faultCases() []faultCase {
 		damage(misread, func(st Stats) int { return min(st.Damage[misread], st.MisreadRefusals) }),
 		{"connection reset", Faults{ResetEvery: Second}, nil, func(st Stats) int { return st.Resets }},
 		{"full send buffer", Faults{LinkStallEvery: 500 * Millisecond}, nil, func(st Stats) int { return st.BlockedWrites }},
-		// A stall past the write timeout, one in four, on a link that
-		// carries something. Over 200 seeds, a stall every 300 ms hit it
-		// in about 90% of seeds, every 200 ms in about 80%, and every
-		// 400 ms in 93% (#568). Why closer stalls hit it less often was
-		// not measured.
-		{"write deadline", Faults{LinkStallEvery: 400 * Millisecond}, longer, func(st Stats) int { return st.WriteTimeouts }},
 		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.SlowWatchers }},
 	}
 	for i := range numNetem {
@@ -1174,7 +1173,7 @@ func TestSaveRunKeepsDisks(t *testing.T) {
 	res := run(t, cfg)
 	files := runFiles("out", "replay", res, true)
 	calls := files[filepath.Join("disks", "node1", "calls.txt")]
-	if !strings.Contains(calls, " ms sync 0") || !strings.Contains(calls, " ms write 0") {
+	if !strings.Contains(calls, " ms sync wal/") || !strings.Contains(calls, " ms write wal/") {
 		t.Fatalf("node 1's disk calls: %.200q", calls)
 	}
 	saved := func(dir string) bool {

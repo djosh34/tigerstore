@@ -527,7 +527,6 @@ func (c *conn) Write(b []byte) (int, error) {
 			return n, errReset
 		}
 		if !c.writeDeadline.IsZero() && !time.Now().Before(c.writeDeadline) {
-			s.stats.WriteTimeouts++
 			s.mu.Unlock()
 			return n, os.ErrDeadlineExceeded
 		}

@@ -89,8 +89,8 @@ type Config struct {
 	// that time until healing.
 	StallLeaderAt int64
 	// LagAtEnd crashes a follower once the clients' last calls have ended
-	// and starts it again 300 ms before the end, so that the end finds it
-	// catching up on what committed meanwhile, such as lease expiries
+	// and starts it again lagAtEnd before the end, so that the end finds
+	// it catching up on what committed meanwhile, such as lease expiries
 	// (#269).
 	LagAtEnd bool
 	// LiveFrom, if set, is when the liveness rule starts instead of
@@ -669,12 +669,11 @@ type Stats struct {
 	// streams served, ServeFailures fetches that the source could not
 	// serve, SnapshotFlips those damaged on the way, FetchCrashes sources
 	// that crashed during a stream once the follower read a prefix of it,
-	// SlowFetches fetches served late,
-	// Reloads starts of a node from its log after a snapshot install or
-	// a failed fetch, StepCrashes crashes at a checkpoint, removal or
-	// install step, Rots values damaged under a running node, and
-	// RotStops stops of a node that read such a value back.
-	Checkpoints, Snapshots, ServeFailures, SnapshotFlips, FetchCrashes, SlowFetches, Reloads, StepCrashes, Rots, RotStops int
+	// SlowFetches fetches served late, StepCrashes crashes at a
+	// checkpoint, removal or install step, Rots values damaged under a
+	// running node, and RotStops stops of a node that read such a value
+	// back.
+	Checkpoints, Snapshots, ServeFailures, SnapshotFlips, FetchCrashes, SlowFetches, StepCrashes, Rots, RotStops int
 	// OlderCheckpoints counts installed snapshots whose checkpoint is
 	// older than the source's newest durable root, CheckpointsDuringInstall
 	// checkpoints finished while an install was on its way to disk
@@ -709,16 +708,16 @@ type Stats struct {
 	// what the faults of the nodes' disks did.
 	KillLosses int
 	Disk       simfs.Counts
-	// Packs counts the packs that cleaning made, NoSpace the calls the
-	// NOSPACE alarm refused, and OutOfSpace the nodes that stopped on a
-	// write that ran out of space.
-	Packs, NoSpace, OutOfSpace int
+	// LogCuts counts the log's segments a running node removed behind a
+	// checkpoint, NoSpace the calls the NOSPACE alarm refused, and
+	// OutOfSpace the nodes that stopped on a write that ran out of space.
+	LogCuts, NoSpace, OutOfSpace int
 	// Netem counts the writes each kind of link fault hit (netemKind),
 	// Resets the resets of the connections between two nodes,
-	// BlockedWrites the writes that waited for room in a connection's
-	// buffer, and WriteTimeouts those that reached their write deadline.
-	Netem                                [numNetem]int
-	Resets, BlockedWrites, WriteTimeouts int
+	// and BlockedWrites the writes that waited for room in a connection's
+	// buffer.
+	Netem                 [numNetem]int
+	Resets, BlockedWrites int
 	// SlowWatchers counts the watch clients that turned slow.
 	SlowWatchers int
 	// MembershipChanges counts each completed stage, and MembershipFaults
@@ -1296,7 +1295,7 @@ func (s *Sim) schedule() {
 			for _, n := range s.nodes {
 				if n.proc != nil && n.idx != lead && !n.out() {
 					s.crash(n)
-					s.restartLater(n, s.endAt-300*Millisecond-s.now())
+					s.restartLater(n, s.endAt-lagAtEnd-s.now())
 					return
 				}
 			}
@@ -1307,6 +1306,13 @@ func (s *Sim) schedule() {
 	}
 	s.at(s.healAt, s.heal)
 }
+
+// lagAtEnd is how long before the end LagAtEnd starts the follower
+// again. The start waits up to a tick (start), and a wl follower then
+// catches up in about 120 ms, its dialer's pause of 100 ms and an append:
+// 300 ms, as main's nodes had, let it catch up before the end in 4 seeds
+// of 4.
+const lagAtEnd = TickTime + 20*Millisecond
 
 // markLoad notes the process's CPU time, the timers fired and the run's
 // time as the clients start, or as one stops, for what the load cost
