@@ -104,6 +104,10 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		"passthrough:///"+clientAddr(n.idx),
 		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: s.net.ca, MinVersion: tls.VersionTLS12})),
 		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) { return s.net.dial(ctx, s, nil, addr) }),
+		// Seeds 12024, 12036, 12505 and 13996: refused dials while a
+		// client link was down left the connection in gRPC's backoff 4 s
+		// past healing.
+		grpc.WithConnectParams(simConnect),
 	)
 	if err != nil {
 		return err

@@ -88,15 +88,19 @@ func (c *client) dialV3(addr string, ca *x509.CertPool, dial func(context.Contex
 func v3Options(dial func(context.Context, string) (net.Conn, error)) []grpc.DialOption {
 	return []grpc.DialOption{
 		grpc.WithContextDialer(dial),
-		// gRPC's own backoff between dials grows to 2 minutes, which would
-		// hold a client of one node that was down a few times past the end
-		// of the run: calls wait for a connection.
-		grpc.WithConnectParams(grpc.ConnectParams{
-			Backoff:           backoff.Config{BaseDelay: 100 * time.Millisecond, Multiplier: 1.6, Jitter: 0.2, MaxDelay: time.Second},
-			MinConnectTimeout: time.Duration(dialTimeout),
-		}),
+		grpc.WithConnectParams(simConnect),
 		grpc.WithStatsHandler(retryPause{}),
 	}
+}
+
+// simConnect is how the run's gRPC clients dial again. gRPC's own backoff
+// between dials grows to 2 minutes, which would hold a client of one node
+// that was down a few times past the end of the run, or a connection whose
+// dials the faults refused past healing: calls fail with the last dial's
+// error until it dials again.
+var simConnect = grpc.ConnectParams{
+	Backoff:           backoff.Config{BaseDelay: 100 * time.Millisecond, Multiplier: 1.6, Jitter: 0.2, MaxDelay: time.Second},
+	MinConnectTimeout: time.Duration(dialTimeout),
 }
 
 // retryPause makes each transparent retry of a call wait a millisecond
