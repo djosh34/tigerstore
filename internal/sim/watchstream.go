@@ -5,8 +5,6 @@ import (
 	"sync"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-
-	tnode "github.com/djosh34/tigerstore/internal/node"
 )
 
 // watchStream is a client's watch stream on a node: main's in-process
@@ -25,11 +23,6 @@ type watchStream interface {
 	// Close ends the stream from the client's side.
 	Close()
 }
-
-// mainStream is main's in-process watch stream.
-type mainStream struct{ *tnode.WatchStream }
-
-func (m mainStream) Responses() <-chan *pb.WatchResponse { return m.C }
 
 // wlStream is a gRPC Watch call on a wl node. A goroutine receives its
 // responses and hands them on one at a time, so a client that does not

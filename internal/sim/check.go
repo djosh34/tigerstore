@@ -10,109 +10,11 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
-	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
-	"github.com/djosh34/tigerstore/internal/wal"
 )
-
-// check runs the simulator's own rules on a finished run. The checkers in
-// package check are the independent oracle; these rules use the
-// final state of the cluster and catch most bugs cheaply:
-//
-//   - every node is up and has applied the same log to the same state;
-//   - every successful read returns exactly what the final store holds at
-//     the read's revision;
-//   - every successful write is in the final store at its revision, and
-//     its previous values match the revision before;
-//   - revisions follow real time: a call never sees a revision older than
-//     one returned before it started, and a write gets a newer one;
-//   - every write is in the committed log at most once, an acknowledged
-//     write is in it, and a write that failed for certain is not, unless
-//     the state machine rejected it when it applied;
-//   - every watch delivered exactly the final history of its range;
-//   - every call that starts after the cluster healed succeeds.
-func (s *Sim) check(res *Result) error {
-	last, err := s.converged()
-	if err != nil {
-		return err
-	}
-	if s.cfg.Membership {
-		if err := s.checkMembership(); err != nil {
-			return err
-		}
-	}
-	final := last.proc.core.Store()
-	res.FinalRev = final.Rev()
-	ents, err := s.committed(s.live()[0].proc.core.Applied())
-	if err != nil {
-		return err
-	}
-	for _, e := range ents {
-		// Configuration changes, which start the log, change no key.
-		if len(e.GetData()) == 0 || e.GetType() != raftpb.EntryNormal {
-			continue
-		}
-		if err := core.DecodeBatch(e.GetData(), func(_, _, _ uint64, op proto.Message) error {
-			// Member attributes change no KV state. Membership has its
-			// own oracle; the KV history format does not represent them.
-			if _, ok := op.(*pb.Member); ok {
-				return nil
-			}
-			if s.values != nil {
-				s.values.shareMessage(op)
-			}
-			res.Log = append(res.Log, op)
-			return nil
-		}); err != nil {
-			return err
-		}
-	}
-	// The cluster compacts, so the checks read history from a model: the
-	// committed log replayed without compactions. It must end in the
-	// cluster's state.
-	model, log, revs, err := replay(res.Log)
-	if err != nil {
-		return err
-	}
-	res.Log, res.revs, res.logged = log, revs, true
-	if err := s.sameLatestOn(model, last); err != nil {
-		return err
-	}
-	for _, r := range res.History {
-		if r.Err != nil {
-			continue
-		}
-		if err := checkRecord(model, r); err != nil {
-			return fmt.Errorf("client %d call at %d ms on node %d: %w\nrequest: %v\nresponse: %v",
-				r.Client, r.Call/Millisecond, r.Node+1, err, r.req, r.Resp)
-		}
-	}
-	if err := checkRealTime(res.History); err != nil {
-		return err
-	}
-	if err := checkLog(res); err != nil {
-		return err
-	}
-	if err := s.checkWatches(model, res); err != nil {
-		return err
-	}
-	if err := s.checkLeasesExpire(res, s.live()[0].proc.core.Leases()); err != nil {
-		return err
-	}
-	if err := s.checkWatchersFreed(); err != nil {
-		return err
-	}
-	if err := s.checkColdRestarts(res); err != nil {
-		return err
-	}
-	if err := s.checkRecoverable(); err != nil {
-		return err
-	}
-	return s.checkLive(res)
-}
 
 // checkLive checks that every call that started after the cluster healed
 // succeeded, but those a node's own trouble explains.
@@ -158,39 +60,6 @@ func (s *Sim) live() []*node {
 		}
 	}
 	return out
-}
-
-// converged checks that all nodes applied the same log to the same state,
-// the one the record of committed entries has, and returns a node with
-// that state whose disk the run did not damage under it. The nodes are
-// frozen.
-func (s *Sim) converged() (*node, error) {
-	live := s.live()
-	for _, n := range live {
-		if n.proc == nil {
-			return nil, fmt.Errorf("node %d is down at the end", n.id)
-		}
-	}
-	first := live[0]
-	fc := first.proc.core
-	for _, n := range live[1:] {
-		c := n.proc.core
-		if c.Applied() != fc.Applied() {
-			return nil, fmt.Errorf("node %d applied %d entries, node %d applied %d", n.id, c.Applied(), first.id, fc.Applied())
-		}
-		if c.Hash() != fc.Hash() {
-			return nil, fmt.Errorf("node %d and node %d applied the same log to different states", n.id, first.id)
-		}
-	}
-	if r, _ := s.log.get(fc.Applied()); r.hash != fc.Hash() {
-		return nil, fmt.Errorf("node %d applied the same log to different states than node %d did", first.id, r.node)
-	}
-	for _, n := range live {
-		if !n.rotted {
-			return n, nil
-		}
-	}
-	return first, nil
 }
 
 func at(st *mvcc.Store, key []byte, rev int64) (*mvccpb.KeyValue, error) {
@@ -551,42 +420,6 @@ func replay(log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) 
 		}
 	}
 	return st.Store(), out, revs, nil
-}
-
-// sameLatestOn is sameLatest with the store of node n, which reads the
-// values that left memory from a copy of n's disk.
-func (s *Sim) sameLatestOn(a *mvcc.Store, n *node) (err error) {
-	s.mu.Lock()
-	d := n.disk.Copy()
-	s.mu.Unlock()
-	log, _, err := wal.Open(d)
-	if err != nil {
-		return fmt.Errorf("node %d cannot recover its log for the final reads: %w", n.id, err)
-	}
-	defer func() { err = errors.Join(err, log.Close()) }()
-	return sameLatest(a, n.proc.core.Store(), log)
-}
-
-// sameLatest checks that two stores are at the same revision with the same
-// keys and values. b reads the values that left memory from log.
-func sameLatest(a, b *mvcc.Store, log core.Log) error {
-	all := &pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}}
-	ra, err := a.Range(all)
-	if err != nil {
-		return err
-	}
-	rb, err := b.Range(all)
-	if err != nil {
-		return err
-	}
-	if err := core.ReadValues(log, b.TakeFills()); err != nil {
-		return err
-	}
-	if a.Rev() != b.Rev() || !proto.Equal(ra, rb) {
-		return fmt.Errorf("replaying the committed log gives revision %d and %d keys, the cluster has revision %d and %d keys",
-			a.Rev(), len(ra.Kvs), b.Rev(), len(rb.Kvs))
-	}
-	return nil
 }
 
 // revokesKeepPromises checks each lease revoke that took effect, at

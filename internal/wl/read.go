@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"math"
 	"sort"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 func (n *node) queueRead(h handle, kind uint8, msg []byte) {
@@ -56,7 +58,9 @@ func (n *node) readState(ctx []byte, index uint64) {
 func (n *node) serveReads() {
 	k := 0
 	for i, b := range n.readBatches {
-		if b.known && b.index <= n.applied {
+		// Planted B01b: served once its read index is known, before the
+		// node applied it.
+		if b.known && (b.index <= n.applied || planted.On("B01b")) {
 			for _, r := range b.reads {
 				if r.done != nil {
 					r.done()

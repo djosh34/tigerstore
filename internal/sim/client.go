@@ -174,11 +174,7 @@ func (s *Sim) call(n *node, req proto.Message, timeout int64) (proto.Message, er
 	}
 	var resp proto.Message
 	var err error
-	if p.wl != nil {
-		resp, err = s.callWL(p, req, ctx)
-	} else {
-		resp, err = p.node.Do(ctx, req)
-	}
+	resp, err = s.callWL(p, req, ctx)
 	cancel()
 	switch {
 	case p.dead():

@@ -18,7 +18,6 @@ import (
 	"google.golang.org/grpc/stats"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/djosh34/tigerstore/internal/server"
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
@@ -30,30 +29,6 @@ import (
 
 // clientAddr is the client address of node i of the first three.
 func clientAddr(i int) string { return hosts[i] + ":2379" }
-
-// serve starts p's gRPC server on its node's client address. The lock is
-// held.
-func (s *Sim) serve(p *proc) error {
-	n := p.n
-	srv, err := server.New(p.node, server.Config{
-		TLS:       &tls.Config{Certificates: []tls.Certificate{s.net.cert}},
-		NoGateway: true,
-		Logf:      func(format string, args ...any) { s.logf(n, format, args...) },
-	})
-	if err != nil {
-		return err
-	}
-	p.srv = srv
-	ln := s.net.listen(s, p, []string{clientAddr(n.idx)})
-	s.procs.Go(func() {
-		if err := srv.Serve(ln); err != nil && !errors.Is(err, net.ErrClosed) {
-			s.mu.Lock()
-			s.fail("node %d: serving clients: %w", n.id, err)
-			s.mu.Unlock()
-		}
-	})
-	return nil
-}
 
 // newV3 makes client c's clientv3 client, for the node it calls.
 func (c *client) newV3() error {

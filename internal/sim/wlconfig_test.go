@@ -5,7 +5,7 @@ package sim
 // through wl's hook (wlHooks.SnapshotChunk).
 func wlFaultsConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
-	cfg.wl, cfg.FormUnderFaults = true, true
+	cfg.FormUnderFaults = true
 	return cfg
 }
 
@@ -13,7 +13,6 @@ func wlFaultsConfig(seed uint64) Config {
 // cluster first in 7 seeds of 8 (formsFirst), as main's do.
 func wlMembershipConfig(seed uint64) Config {
 	cfg := membershipConfig(seed)
-	cfg.wl = true
 	return cfg
 }
 
@@ -21,7 +20,6 @@ func wlMembershipConfig(seed uint64) Config {
 // their cluster first in 7 seeds of 8 (formsFirst), as main's do.
 func wlLinearizableConfig(seed uint64) Config {
 	cfg := linearizableConfig(seed)
-	cfg.wl = true
 	return cfg
 }
 
@@ -29,7 +27,7 @@ func wlLinearizableConfig(seed uint64) Config {
 // nodes: no faults but the leader's disk, stalled at 5 s until healing.
 func wlStalledLeaderConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
-	cfg.wl, cfg.FormUnderFaults = true, true
+	cfg.FormUnderFaults = true
 	cfg.Faults = Faults{}
 	cfg.StallLeaderAt = 5 * Second
 	cfg.LiveFrom = cfg.StallLeaderAt + 10*Second
@@ -42,7 +40,7 @@ func wlStalledLeaderConfig(seed uint64) Config {
 // write, one every DefaultConfig's disk budget of log.
 func wlCheckpointCrashConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
-	cfg.wl, cfg.FormUnderFaults = true, true
+	cfg.FormUnderFaults = true
 	cfg.Faults = Faults{DiskBudget: cfg.Faults.DiskBudget}
 	cfg.ckptCrash, cfg.ckptChunkKeys = true, 1
 	return cfg
@@ -55,7 +53,7 @@ func wlCheckpointCrashConfig(seed uint64) Config {
 // log, so the follower catches up from the log and no snapshot is sent.
 func wlDamagedSnapshotConfig(seed uint64) Config {
 	cfg := damagedSnapshotConfig(seed)
-	cfg.wl, cfg.FormUnderFaults = true, true
+	cfg.FormUnderFaults = true
 	cfg.Faults.DiskBudget = DefaultConfig(seed).Faults.DiskBudget
 	return cfg
 }

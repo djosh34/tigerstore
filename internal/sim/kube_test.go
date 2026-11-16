@@ -30,7 +30,6 @@ import (
 // objects for 2 minutes, with a compaction every 20 s.
 func kubeConfig(seed uint64, long bool) Config {
 	cfg := DefaultConfig(seed)
-	cfg.wl = true
 	cfg.Clients, cfg.V3Clients = 13, 3
 	cfg.Objects, cfg.Duration, cfg.CompactEvery = 1000, 2*60*Second, 20*Second
 	if long {

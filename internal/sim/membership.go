@@ -205,13 +205,10 @@ func (s *Sim) checkMembership() error {
 // members are the members n's process knows, and the IDs it knows were
 // removed. The nodes are frozen.
 func (n *node) members() ([]*pb.Member, []uint64) {
-	if w := n.proc.wl; w != nil {
-		var ms []*pb.Member
-		for _, m := range w.turn.Members {
-			ms = append(ms, &pb.Member{ID: m.ID, PeerURLs: m.PeerURLs, IsLearner: m.Learner})
-		}
-		return ms, w.turn.Removed
+	w := n.proc.wl
+	var ms []*pb.Member
+	for _, m := range w.turn.Members {
+		ms = append(ms, &pb.Member{ID: m.ID, PeerURLs: m.PeerURLs, IsLearner: m.Learner})
 	}
-	c := n.proc.core
-	return c.Members(), c.RemovedMembers()
+	return ms, w.turn.Removed
 }

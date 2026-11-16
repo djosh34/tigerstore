@@ -79,14 +79,6 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 		return nil
 	}
 	switch {
-	case op == simfs.OpSync && isSegment(name) && n.rootDue > 0 && s.stats.ErasedAtRoot == 0:
-		// The first root is durable once recovery would start from it;
-		// the driver removes what it made obsolete only after this sync
-		// returns.
-		if root, err := recoveredRoot(n); err == nil && root >= n.rootDue {
-			s.stats.ErasedAtRoot++
-			s.takeCheckpoint()
-		}
 	case op == simfs.OpRemove && isSegment(name):
 		n.removedSegment = true
 	case op == simfs.OpSyncDir:
@@ -256,10 +248,10 @@ func (f *file) Allocate(size int64) error {
 }
 
 func (f *file) Sync() error {
-	if f.d.s.cfg.wl && isSegment(f.name) {
+	if isSegment(f.name) {
 		// wl's log writes are durable when they return: each is a write
 		// and a sync of its segment, which takes the time beforeSync
-		// gives, as main's node waits on BeforeSync.
+		// gives.
 		f.d.s.beforeSync(f.d.p)
 	}
 	return f.d.call(simfs.OpSync, f.name, func() error {

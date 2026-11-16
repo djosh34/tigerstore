@@ -36,7 +36,7 @@ func TestAWLNodeOfTheSimulatorIsSmall(t *testing.T) {
 func TestWLStoppedNodesAreLetGo(t *testing.T) {
 	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
 		cfg := DefaultConfig(seed)
-		cfg.wl, cfg.FormUnderFaults = true, true
+		cfg.FormUnderFaults = true
 		cfg.Faults = Faults{CrashEvery: Second, MaxDown: Second}
 		res := run(t, cfg)
 		runtime.GC()

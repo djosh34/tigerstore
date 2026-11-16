@@ -5,7 +5,6 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
-	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/simfs"
 )
 
@@ -196,19 +195,9 @@ func (s *Sim) openStream(n *node, starts []int64, req func(int64) *pb.WatchCreat
 	if p == nil || !s.sleep(lat) {
 		return nil, nil, errConnRefused
 	}
-	var ws watchStream
-	if p.wl != nil {
-		w, err := openWLStream(p)
-		if err != nil {
-			return nil, nil, err
-		}
-		ws = w
-	} else {
-		w, err := p.node.OpenWatch(p.ctx, core.Caller{})
-		if err != nil {
-			return nil, nil, err
-		}
-		ws = mainStream{w}
+	ws, err := openWLStream(p)
+	if err != nil {
+		return nil, nil, err
 	}
 	for _, start := range starts {
 		r := &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: req(start)}}

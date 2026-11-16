@@ -261,24 +261,6 @@ func seedRange(first uint64, n int) []uint64 {
 	return seeds
 }
 
-// raceRuns is how many runs a search for a rare event makes under the race
-// detector. There the runs are not the seeds' and the event can take a
-// long streak to come, at 10 s or more a run, which must not take race-sim
-// past its timeout (#500). A search that stops there without its event
-// says that it skipped race coverage of it; gosim's seeds still must
-// reach it.
-const raceRuns = 60
-
-// searchSeeds is seedRange(first, n) for a search that stops at its event,
-// cut to raceRuns under the race detector, except for a replay of one seed.
-func searchSeeds(first uint64, n int) []uint64 {
-	seeds := seedRange(first, n)
-	if simrun.Race && !simrun.One() {
-		seeds = seeds[:min(n, raceRuns)]
-	}
-	return seeds
-}
-
 // runFiles are a run's trace, node report, stats, hashes, history, with
 // history, disks and replay command, by path, for a directory dir of
 // their own.
@@ -654,42 +636,6 @@ func linearizableConfig(seed uint64) Config {
 	return cfg
 }
 
-// TestNewestVersion runs 8 seeds and requires each member of a seed that
-// formed its cluster with no faults, as most seeds do, to have applied
-// the newest cluster version at its last turn, and lease checkpoints in
-// the log of some seed (#481). Under the faults alone a cluster almost
-// never took on the newest version, so code that needs it, as lease
-// checkpoints and member attributes, never ran.
-func TestNewestVersion(t *testing.T) {
-	type result struct {
-		Formed      bool
-		Checkpoints int
-	}
-	var calm, checkpointed int
-	if !simrun.Each(t, seedRange(1, 8), func(t *testing.T, seed uint64) result {
-		res := run(t, DefaultConfig(seed))
-		st := res.Stats
-		for _, n := range res.nodes {
-			if st.Formed && n.last.core != nil && n.last.version != core.MaxVersion {
-				t.Errorf("seed %d formed its cluster with no faults, but node %d ran at cluster version %d at its last turn, not %d", seed, n.id, n.last.version, core.MaxVersion)
-			}
-		}
-		t.Logf("seed %d: formed with no faults %v, %d lease checkpoints", seed, st.Formed, st.LeaseCheckpoints)
-		return result{st.Formed, st.LeaseCheckpoints}
-	}, func(_ uint64, r result) bool {
-		if r.Formed {
-			calm++
-		}
-		checkpointed += min(r.Checkpoints, 1)
-		return false
-	}) {
-		return
-	}
-	if !simrun.One() && !t.Failed() && (calm < 4 || checkpointed == 0) {
-		t.Fatalf("of 8 seeds, %d formed their cluster with no faults and %d checkpointed a lease; at least 4 and 1 must", calm, checkpointed)
-	}
-}
-
 // TestFormedClusterAnswers runs seeds that form their cluster first, with
 // no faults after it, and requires every call to get a definite answer,
 // within 500 ms from 2 s on: the run starts on the formed disks with
@@ -1018,34 +964,6 @@ func TestEachFaultTakesEffect(t *testing.T) {
 	}
 }
 
-// TestDamagedLastRecord damages the last record of a node's newest
-// segment where that loses only a new term or vote (lastRecord): the node
-// must start again with the term and vote it held durable (#357).
-func TestDamagedLastRecord(t *testing.T) {
-	var took effects
-	if !simrun.Each(t, seedRange(3500, 3), func(t *testing.T, seed uint64) bool {
-		cfg := DefaultConfig(seed)
-		// A power loss comes right after a node synced a new term or
-		// vote alone, so that its newest record holds it.
-		cfg.Faults = Faults{Corrupt: true, VoteCrash: true, CrashEvery: Second, MaxDown: Second}
-		// The crash comes at the first new term or vote, of the first
-		// elections, when the log holds no entry yet.
-		cfg.FormUnderFaults = true
-		cfg.Duration = 8 * Second
-		cfg.Heal = 8 * Second
-		cfg.damageKinds = []damageKind{lastRecord}
-		res := run(t, cfg)
-		checkers(t, res)
-		return res.Stats.Damage[lastRecord] > 0
-	}, func(seed uint64, effect bool) bool {
-		took.add(seed, map[string]bool{lastRecord.String(): effect})
-		return false
-	}) {
-		return
-	}
-	took.check(t)
-}
-
 // TestPowerLossAfterKill makes every crash a kill, which keeps the page
 // cache, followed by a power loss 0.1 to 3 s later, while the node is
 // down or after it started again. What the restarted node read and held
@@ -1064,31 +982,6 @@ func TestPowerLossAfterKill(t *testing.T) {
 		return res.Stats.KillLosses
 	}, func(seed uint64, losses int) bool {
 		took.add(seed, map[string]bool{"power loss after a kill": losses > 0})
-		return false
-	}) {
-		return
-	}
-	took.check(t)
-}
-
-// TestCheckpointCreateFails makes every disk fault EIO on the creation of
-// a checkpoint file, which takes 50 ms, so that the later parts of the
-// checkpoint queue up meanwhile. The node stops, and must not write them
-// into a new file without the first part (#363), which the run's check
-// of every completed checkpoint finds.
-func TestCheckpointCreateFails(t *testing.T) {
-	var took effects
-	if !simrun.Each(t, seedRange(3700, 4), func(t *testing.T, seed uint64) int {
-		cfg := DefaultConfig(seed)
-		cfg.Faults = Faults{DiskErrorEvery: 500 * Millisecond}
-		cfg.ckptCreateFaults = true
-		cfg.Duration = 8 * Second
-		cfg.Heal = 8 * Second
-		res := run(t, cfg)
-		checkers(t, res)
-		return res.Stats.CheckpointCreateErrors
-	}, func(seed uint64, n int) bool {
-		took.add(seed, map[string]bool{"EIO on a checkpoint's creation": n > 0})
 		return false
 	}) {
 		return
@@ -1123,32 +1016,6 @@ func TestFailedSyncThenRestart(t *testing.T) {
 	took.check(t)
 }
 
-// TestFailedCutThenRestart is TestFailedSyncThenRestart with the cut after
-// each failed sync failing too, as when a fault left from earlier fails
-// the truncate. The node starts again on its page cache, which holds the
-// bytes the sync did not write: recovery must read the disk instead, or a
-// power loss later finds a hole where it appended after them (#372).
-func TestFailedCutThenRestart(t *testing.T) {
-	var took effects
-	if !simrun.Each(t, seedRange(3935, 8), func(t *testing.T, seed uint64) int {
-		cfg := DefaultConfig(seed)
-		cfg.Faults = Faults{DiskErrorEvery: 500 * Millisecond, CrashEvery: 2 * Second, MaxDown: Second}
-		cfg.syncFaultExits, cfg.cutFails = true, true
-		cfg.SegmentBytes = 256
-		cfg.Duration = 10 * Second
-		cfg.Heal = 8 * Second
-		res := run(t, cfg)
-		checkers(t, res)
-		return res.Stats.IOErrors
-	}, func(seed uint64, n int) bool {
-		took.add(seed, map[string]bool{"failed cut": n > 0})
-		return false
-	}) {
-		return
-	}
-	took.check(t)
-}
-
 // damagedSnapshotConfig holds a follower down until it fetches a snapshot,
 // and damages the first stream, for 8 virtual seconds and 8 of healing:
 // the case "damaged snapshot" of TestEachFaultTakesEffect, and B22's.
@@ -1158,99 +1025,6 @@ func damagedSnapshotConfig(seed uint64) Config {
 	cfg.Duration = 8 * Second
 	cfg.Heal = 8 * Second
 	return cfg
-}
-
-// loneHeaderConfig is #295's path: a follower held down past the leader's
-// window starts again on a fresh segment, whose header waits in the log's
-// buffer, and fetches a snapshot. A crash at a step of the install, before
-// its sync, can keep the records written after the header and lose the
-// write of the header.
-func loneHeaderConfig(seed uint64) Config {
-	cfg := DefaultConfig(seed)
-	cfg.Faults = Faults{HoldDown: true, InstallCrash: true}
-	cfg.Duration = 10 * Second
-	cfg.Heal = 8 * Second
-	// Segments of 64 bytes end after nearly every write, so the install
-	// often comes on a fresh segment.
-	cfg.SegmentBytes = 64
-	return cfg
-}
-
-// TestLoneSegmentHeader runs #295's scenario (loneHeaderConfig) on 32
-// seeds, which must all pass, and most of which crash during an install;
-// planted bug B32, which writes the header alone, must fail it.
-func TestLoneSegmentHeader(t *testing.T) {
-	var took effects
-	if !simrun.Each(t, seedRange(6001, 32), func(t *testing.T, seed uint64) Stats {
-		res := run(t, loneHeaderConfig(seed))
-		checkers(t, res)
-		return res.Stats
-	}, func(seed uint64, st Stats) bool {
-		took.add(seed, map[string]bool{"crash during an install": st.InstallCrashes > 0})
-		return false
-	}) {
-		return
-	}
-	took.check(t)
-}
-
-// TestCleanerSettles runs 8 default seeds, with their disk budget, and
-// requires each to make fewer than 1,000 packs: a run makes 30 to 130.
-// Before #362's fix, the cleaner copied a pack whose small values were all
-// live again on every pass, 10,000 to 47,000 times a run, and the roots
-// it wrote filled the disk once the clients stopped.
-func TestCleanerSettles(t *testing.T) {
-	simrun.Each(t, seedRange(7001, 8), func(t *testing.T, seed uint64) int {
-		res := run(t, DefaultConfig(seed))
-		if res.Stats.Packs >= 1000 {
-			t.Fatalf("seed %d: the cleaner made %d packs", seed, res.Stats.Packs)
-		}
-		return res.Stats.Packs
-	}, nil)
-}
-
-// slowFetchConfig holds a follower down until it needs a snapshot, and
-// starts half its fetches up to 2 s late.
-func slowFetchConfig(seed uint64) Config {
-	cfg := DefaultConfig(seed)
-	cfg.Faults = Faults{HoldDown: true, SlowFetch: true}
-	cfg.Duration = 10 * Second
-	cfg.Heal = 8 * Second
-	return cfg
-}
-
-// TestSlowFetch runs slowFetchConfig. Meanwhile the leader may make a
-// newer checkpoint durable while it still keeps the one the snapshot
-// named, which it must then serve, or give up on the snapshot and remove
-// that checkpoint, after which the follower starts again from its log and
-// gets another snapshot. And the follower, applying its log after the
-// restart, may finish a checkpoint while the install is on its way to
-// disk, whose root must not follow the install's (#182). Every run must
-// pass the checkers, which recover every node's disk at the end, and
-// across the seeds each of the three must happen.
-func TestSlowFetch(t *testing.T) {
-	var older, failed, during int
-	// Each of the three happens in about one seed in 20 to 50; the search
-	// stops once all did.
-	if !simrun.Each(t, searchSeeds(5001, 200), func(t *testing.T, seed uint64) Stats {
-		res := run(t, slowFetchConfig(seed))
-		checkers(t, res)
-		return res.Stats
-	}, func(_ uint64, st Stats) bool {
-		older += st.OlderCheckpoints
-		failed += st.ServeFailures
-		during += st.CheckpointsDuringInstall
-		return older > 0 && failed > 0 && during > 0
-	}) {
-		return
-	}
-	switch {
-	case simrun.One() || t.Failed() || older > 0 && failed > 0 && during > 0:
-	case simrun.Race:
-		t.Logf("race coverage of the paths that never happened was skipped this run: in %d runs under the race detector, %d snapshots installed from an older checkpoint, %d fetches the leader could not serve, %d checkpoints finished during an install; gosim's seeds must have each", raceRuns, older, failed, during)
-	default:
-		t.Fatalf("%d snapshots installed from an older checkpoint, %d fetches the leader could not serve, %d checkpoints finished during an install; each must happen", older, failed, during)
-	}
 }
 
 // TestHalfOpenLink makes the link from the leader to a follower half-open
@@ -1358,78 +1132,6 @@ func TestGrayClient(t *testing.T) {
 	if calls < 100 {
 		t.Fatalf("only %d calls beside the gray client", calls)
 	}
-}
-
-// TestColdRestartWaitsForLastCommit runs seed 736998125, whose cold
-// restart at 17,821 ms ended with a lease expiry committed on the leader
-// 1 ms before the end and not yet on the follower. The check must wait for
-// the two to agree instead of failing. A change to the simulator's random
-// draws can move this seed off that edge; the test then passes without
-// testing it.
-func TestColdRestartWaitsForLastCommit(t *testing.T) {
-	if simrun.Drive(t, 736998125) {
-		return
-	}
-	run(t, DefaultConfig(736998125))
-}
-
-// TestRotInAnEntryRecord runs seed 1320469980, whose rotten value on node
-// 3 is in entry 16. At 11,799 ms the node reads that entry's whole record
-// for the term of its checkpoint root, and stops on the record's crc
-// instead of the value's checksum. That is the stop the run expects. A
-// change to the simulator's random draws can move this seed off that edge;
-// the test then passes without testing it.
-func TestRotInAnEntryRecord(t *testing.T) {
-	if simrun.Drive(t, 1320469980) {
-		return
-	}
-	res := run(t, DefaultConfig(1320469980))
-	checkers(t, res)
-}
-
-// TestAmbiguousWritesInTheLog runs seed 1320469923, whose history has 8
-// ambiguous writes, all in the committed log, in its first 7.3 s. Each
-// one Porcupine had to fork into took effect or not, at any time after
-// its call, and it did not finish in a minute. With their revisions and
-// times from the log it takes milliseconds. A change to the simulator's
-// random draws can move this seed off that edge; the test then passes
-// without testing it.
-func TestAmbiguousWritesInTheLog(t *testing.T) {
-	if simrun.Drive(t, 1320469923) {
-		return
-	}
-	res := run(t, linearizableConfig(1320469923))
-	h, err := res.Checkable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := agree(h); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// TestWitnessGaps runs seeds 1789179577 and 1789179677, whose first
-// revisions no acked write holds: revisions 16 to 30 of the first all
-// came from ambiguous writes, and only later reads show which. The
-// log-free witness check searched for an order of them for longer than a
-// minute until it used what the reads show of each key's life: created
-// at one revision, last written at another, with a version (#197). A
-// change to the simulator's random draws can move these seeds off that
-// edge; the test then passes without testing it. Seed 1797098110 has a
-// lease expiry that the log-free check put in too early, before an
-// ambiguous put that used the lease.
-func TestWitnessGaps(t *testing.T) {
-	simrun.Each(t, []uint64{1789179577, 1789179677, 1797098110}, func(t *testing.T, seed uint64) struct{} {
-		res := run(t, DefaultConfig(seed))
-		h, err := res.Checkable()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := check.Witnessed(h, check.FromRevisions, time.Minute, witnessSteps, wallStop); err != nil {
-			t.Fatalf("seed %d: %v", seed, err)
-		}
-		return struct{}{}
-	}, nil)
 }
 
 // TestEndWaitsForCatchUp is #269's case: a follower starts again just

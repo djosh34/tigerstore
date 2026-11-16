@@ -18,7 +18,7 @@ import (
 func TestWLRunsACalmSeed(t *testing.T) {
 	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
 		cfg := CalmConfig(seed)
-		cfg.wl, cfg.FormUnderFaults = true, true
+		cfg.FormUnderFaults = true
 		cfg.Duration, cfg.Heal = 5*Second, 5*Second
 		res := run(t, cfg)
 		t.Logf("calls: %d ok, %d failed, %d ambiguous, %d by clientv3; log %d writes to revision %d; %s",
@@ -37,7 +37,7 @@ func TestWLRunsACalmSeed(t *testing.T) {
 func TestWLRunsASeedWithCrashes(t *testing.T) {
 	simrun.Each(t, []uint64{2}, func(t *testing.T, seed uint64) Stats {
 		cfg := DefaultConfig(seed)
-		cfg.wl, cfg.FormUnderFaults = true, true
+		cfg.FormUnderFaults = true
 		cfg.Faults = Faults{
 			CrashEvery: 3 * Second, MaxDown: 2 * Second,
 			LinkEvery: 2 * Second, MaxDelay: 5 * Millisecond,
@@ -167,7 +167,7 @@ func runWLDamage(t *testing.T, kind damageKind, ckpt bool, count func(Stats) int
 	t.Helper()
 	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
 		cfg := DefaultConfig(seed)
-		cfg.wl, cfg.FormUnderFaults = true, true
+		cfg.FormUnderFaults = true
 		budget := cfg.Faults.DiskBudget
 		cfg.Faults = Faults{CrashEvery: Second, MaxDown: Second, Corrupt: true}
 		if ckpt {
@@ -197,7 +197,7 @@ func runWLDamage(t *testing.T, kind damageKind, ckpt bool, count func(Stats) int
 func TestWLRecoversFromATornWriteOfTheStage(t *testing.T) {
 	simrun.Each(t, []uint64{3, 4, 5}, func(t *testing.T, seed uint64) Stats {
 		cfg := DefaultConfig(seed)
-		cfg.wl, cfg.FormUnderFaults, cfg.stageCrash = true, true, true
+		cfg.FormUnderFaults, cfg.stageCrash = true, true
 		cfg.Faults = Faults{MaxDelay: 5 * Millisecond, SlowDisk: 2}
 		res := run(t, cfg)
 		t.Logf("calls: %d ok; torn crashes %d, recovered %d; log %d writes to revision %d",
@@ -225,7 +225,7 @@ func TestWLRecoversFromATornWriteOfTheStage(t *testing.T) {
 func TestWLRecoversFromAZeroedTailOfItsLog(t *testing.T) {
 	simrun.Each(t, []uint64{3, 4, 5}, func(t *testing.T, seed uint64) Stats {
 		cfg := DefaultConfig(seed)
-		cfg.wl, cfg.FormUnderFaults, cfg.stageCrash, cfg.stageUnwritten = true, true, true, true
+		cfg.FormUnderFaults, cfg.stageCrash, cfg.stageUnwritten = true, true, true
 		cfg.Faults = Faults{MaxDelay: 5 * Millisecond, SlowDisk: 2}
 		res := run(t, cfg)
 		grew := 0
@@ -347,7 +347,7 @@ func TestWLRefusesADamagedSnapshot(t *testing.T) {
 func TestWLRefusesARottedValue(t *testing.T) {
 	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
 		cfg := DefaultConfig(seed)
-		cfg.wl, cfg.FormUnderFaults = true, true
+		cfg.FormUnderFaults = true
 		cfg.Faults = Faults{Rot: true, DiskBudget: cfg.Faults.DiskBudget}
 		cfg.restartRotted = true
 		res := run(t, cfg)
@@ -369,7 +369,7 @@ func TestWLRefusesARottedValue(t *testing.T) {
 func TestWLCrashesTheSourceOfASnapshot(t *testing.T) {
 	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
 		cfg := DefaultConfig(seed)
-		cfg.wl, cfg.FormUnderFaults = true, true
+		cfg.FormUnderFaults = true
 		cfg.Faults = Faults{HoldDown: true, FetchCrash: true, DiskBudget: cfg.Faults.DiskBudget}
 		res := run(t, cfg)
 		st := res.Stats

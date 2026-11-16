@@ -18,13 +18,11 @@
 package sim
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"math"
 	"math/rand/v2"
-	"net"
 	"slices"
 	"strings"
 	"sync"
@@ -36,8 +34,6 @@ import (
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	tnode "github.com/djosh34/tigerstore/internal/node"
-	"github.com/djosh34/tigerstore/internal/peer"
-	"github.com/djosh34/tigerstore/internal/server"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/simos"
 	"github.com/djosh34/tigerstore/internal/simrun"
@@ -141,8 +137,7 @@ type Config struct {
 	// cleaner reads a record the scenario damaged before a snapshot serve
 	// does; a compaction still writes one, and the scenario sends none.
 	// For the tests.
-	scenario      func(*Sim) error
-	noCheckpoints bool
+	scenario func(*Sim) error
 	// ckptCreateFaults makes every disk fault EIO on the next creation of
 	// a checkpoint file, and every such creation take 50 ms; killLosses
 	// makes every crash a kill followed by a power loss; syncFaultExits
@@ -150,11 +145,9 @@ type Config struct {
 	// again with its page cache kept, and cutFails fails the next truncate
 	// with it. For the tests.
 	ckptCreateFaults, killLosses, syncFaultExits, cutFails bool
-	// wl runs the nodes of internal/wl on simos instead of main's node
-	// driver (wlnode.go), and stageCrash crashes one of them once, after
-	// its log wrote and before that write's sync, keeping the write torn
-	// at sectors (wlStageCrash).
-	wl, stageCrash bool
+	// stageCrash crashes a node once, after its log wrote and before that
+	// write's sync, keeping the write torn at sectors (wlStageCrash).
+	stageCrash bool
 	// ckptCrash crashes wl nodes partway through a checkpoint until a
 	// crash kept a later write of it and lost an earlier one
 	// (wlCheckpointCrash), and ckptChunkKeys, if set, is the most keys a
@@ -436,14 +429,10 @@ type node struct {
 	// waits for the next sync of the directory.
 	ckptDone       []string
 	removedSegment bool
-	// root is the index of the node's newest durable root, rootDue that
-	// of the first root its core asked for, until the erase-one-disk copy
-	// at it, and servedDamage is set once a serve failed on its own
-	// damage. duringInstall are the checkpoint files the node finished
+	// servedDamage is set once a serve failed on its own damage.
+	// duringInstall are the checkpoint files the node finished
 	// while an install was on its way to disk, the install's own among
 	// them.
-	root, rootDue uint64
-	servedDamage  bool
 	duringInstall []string
 	// since is when the node's process last started or went down, why
 	// says why it went down, and last is what its core showed at its last
@@ -471,19 +460,15 @@ type pendingJob struct {
 type proc struct {
 	n      *node
 	node   *tnode.Node
-	t      *peer.TCP
 	ctx    context.Context
 	cancel context.CancelFunc
 	// core is the core the committer ran last, and parked, while set, is
 	// closed once the committer holds still for the checks at the end.
 	// fellBehind is its count of watchers that fell behind.
-	core       *core.Node
-	fellBehind int64
+	core *core.Node
 	// held are the core's counters of held entries so far.
-	held   core.HeldCounts
 	parked chan struct{}
 	// srv is the gRPC server of a voting node of the first three.
-	srv *server.Server
 	// wl is the process of a wl run (Config.wl), whose node and core are
 	// nil.
 	wl *wlProc
@@ -492,12 +477,7 @@ type proc struct {
 func (p *proc) dead() bool { return p.ctx.Err() != nil }
 
 // leader is the leader p's node knows, or 0. The lock is held.
-func (p *proc) leader() uint64 {
-	if p.wl != nil {
-		return p.wl.turn.Lead
-	}
-	return p.node.Leader()
-}
+func (p *proc) leader() uint64 { return p.wl.turn.Lead }
 
 // out reports whether n is out of the cluster for now: fenced, or not a
 // member.
@@ -910,11 +890,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.LoadCPU, res.LoadFired, res.LoadTime = s.loadCPU, s.loadFired, s.loadTime
 	s.mu.Unlock()
 	if err == nil {
-		check := s.check
-		if cfg.wl {
-			check = s.checkWL
-		}
-		if err = check(res); err != nil {
+		if err = s.checkWL(res); err != nil {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)
 		}
 	}
@@ -1179,7 +1155,7 @@ func formCluster(cfg Config) (*Sim, error) {
 		s.mu.Lock()
 		formed := true
 		for _, n := range s.nodes[:3] {
-			formed = formed && n.proc != nil && n.formed(cfg.wl)
+			formed = formed && n.proc != nil && n.formed()
 		}
 		at, err := s.now(), s.err
 		s.mu.Unlock()
@@ -1189,24 +1165,18 @@ func formCluster(cfg Config) (*Sim, error) {
 		case formed:
 			s.formed = at
 			return s, nil
-		case at > formLimit && cfg.wl:
-			return s, fmt.Errorf("seed %d: with no faults the cluster did not form, with all three members and format %d, in %s:\n%s", cfg.Seed, wl.MaxFormat, seconds(formLimit), s.report())
 		case at > formLimit:
-			return s, fmt.Errorf("seed %d: with no faults the cluster did not take on cluster version %d in %s:\n%s", cfg.Seed, core.MaxVersion, seconds(formLimit), s.report())
+			return s, fmt.Errorf("seed %d: with no faults the cluster did not form, with all three members and format %d, in %s:\n%s", cfg.Seed, wl.MaxFormat, seconds(formLimit), s.report())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }
 
-// formed reports whether n's process is formed (formCluster): main's took
-// on the newest cluster version. A wl node's format is the newest it
-// reads from the start while that is the base format, so it must also
-// know a leader, hold the three members and have applied all it knows
-// committed. The lock is held.
-func (n *node) formed(wlNode bool) bool {
-	if !wlNode {
-		return n.last.version == core.MaxVersion
-	}
+// formed reports whether n's process is formed (formCluster). A node's
+// format is the newest it reads from the start while that is the base
+// format, so it must also know a leader, hold the three members and have
+// applied all it knows committed. The lock is held.
+func (n *node) formed() bool {
 	st := n.proc.wl.turn
 	return st.Format == wl.MaxFormat && st.Lead != 0 && len(st.Members) == 3 && st.Applied >= st.Commit
 }
@@ -1559,34 +1529,6 @@ func (n *node) paused() int64 {
 	return n.pausedUntil
 }
 
-// nodeConfig is the configuration of a process of n.
-func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
-	cfg := baseNodeConfig(n.id, []string{peerURL(0), peerURL(1), peerURL(2)}, s.leaseCheckpoints)
-	if s.cfg.Membership {
-		cfg.Core.Name = fmt.Sprintf("node%d", n.id)
-	}
-	if s.cfg.Window {
-		def := core.DefaultConfig(n.id, nil)
-		cfg.Core.WindowBytes, cfg.Core.WindowMaxBytes = def.WindowBytes, def.WindowMaxBytes
-	}
-	cfg.Core.MemoryBytes = s.cfg.MemoryBytes
-	if s.cfg.noCheckpoints {
-		cfg.Core.CheckpointBytes = 1 << 40
-	}
-	tick := TickTime
-	if d := s.cfg.Faults.DriftPerMille; d > 0 && !s.healed {
-		tick += TickTime * (s.rng.Int64N(2*d+1) - d) / 1000
-	}
-	cfg.Tick = time.Duration(tick)
-	cfg.SegmentBytes = cmp.Or(s.cfg.SegmentBytes, cfg.SegmentBytes)
-	cfg.DiskBudget = s.cfg.Faults.DiskBudget
-	cfg.BeforeSync = func() { s.beforeSync(p) }
-	cfg.Turn = func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) }
-	cfg.Persisted = func(j core.PersistJob) { s.persisted(p, j) }
-	cfg.Logf = func(format string, args ...any) { s.logf(n, format, args...) }
-	return cfg
-}
-
 // baseNodeConfig is the configuration of node id of a cluster whose
 // first three members have peerURLs, as the runs and the floor (floor.go)
 // give it, before what a run adds.
@@ -1648,155 +1590,20 @@ func (s *Sim) start(n *node) error {
 		return nil
 	}
 	s.mu.Lock()
-	if s.cfg.wl {
-		defer s.mu.Unlock()
-		n.starting = false
-		if s.ended {
-			return nil
-		}
-		armed := s.armRecoveryCrash(n)
-		ctx, cancel := context.WithCancel(context.Background())
-		p := &proc{n: n, ctx: ctx, cancel: cancel}
-		s.tracef("node %d: starting", n.id)
-		if err := s.startWL(n, p); err != nil {
-			cancel()
-			return err
-		}
-		p.wl.armed = armed
+	defer s.mu.Unlock()
+	n.starting = false
+	if s.ended {
 		return nil
 	}
 	armed := s.armRecoveryCrash(n)
 	ctx, cancel := context.WithCancel(context.Background())
 	p := &proc{n: n, ctx: ctx, cancel: cancel}
-	cfg := s.nodeConfig(n, p)
 	s.tracef("node %d: starting", n.id)
-	s.mu.Unlock()
-	tn, err := tnode.NewOnFS(cfg, &disk{s: s, p: p})
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	n.starting = false
-	if armed {
-		n.disk.Fault = nil
-	}
-	if p.dead() || s.ended {
-		cancel()
-		return nil
-	}
-	if errors.Is(err, errRecoveryCrash) {
-		// Crashed again while recovering; it starts over from its disk.
-		s.stats.RecoveryCrashes++
-		cancel()
-		s.loseUnsynced(n)
-		n.since, n.why = s.now(), "the run crashed it during recovery"
-		s.tracef("node %d: crashed during recovery", n.id)
-		s.restartLater(n, 1+s.rng.Int64N(Second))
-		return nil
-	}
-	if n.misread && refusesDamage(err) {
-		// Recovery read wrong data and refused the log. The disk holds
-		// the right data, so the next start recovers.
-		n.misread = false
-		s.stats.MisreadRefusals++
-		cancel()
-		n.since, n.why = s.now(), fmt.Sprintf("refused a misread log: %v", err)
-		s.tracef("node %d: refused a misread log: %v", n.id, err)
-		s.restartLater(n, 1+s.rng.Int64N(Second))
-		return nil
-	}
-	if injected(err) && (!n.corrupted || !errors.Is(err, simfs.ErrBadSector)) {
-		// An injected fault hit recovery, which can write: a failed boot.
-		// The node tries again later from what its disk holds, after a
-		// power loss or, half the time, with its page cache kept, where a
-		// failed sync of recovery left bytes that never reach the disk
-		// (#372).
-		s.stats.DiskFaults++
-		cancel()
-		n.disk.ClearFaults()
-		if s.rng.IntN(2) == 0 {
-			s.loseUnsynced(n)
-		}
-		n.since, n.why = s.now(), fmt.Sprintf("failed to boot: %v", err)
-		s.tracef("node %d: failed to boot: %v", n.id, err)
-		s.restartLater(n, 1+s.rng.Int64N(Second))
-		return nil
-	}
-	if s.cfg.Membership && core.FailureOf(err) == core.Leave {
-		cancel()
-		n.inactive = true
-		n.since, n.why = s.now(), fmt.Sprintf("left the cluster at its start: %v", err)
-		return nil
-	}
-	if n.tornCrash && !n.corrupted && errors.Is(err, wal.ErrCorrupt) {
-		// A crash tore writes so that the log looks damaged; the node is
-		// right to refuse it, as one whose disk was damaged on purpose.
-		n.corrupted = true
-		s.stats.TornRefusals++
-		s.tracef("node %d: its torn crash image looks damaged: %v", n.id, err)
-	}
-	if n.corrupted {
-		cancel()
-		// The disk was damaged on purpose; the node must notice and stay
-		// down, as an operator would replace the disk.
-		if err == nil {
-			return fmt.Errorf("node %d started on a damaged disk without noticing", n.id)
-		}
-		if !refusesDamage(err) && !errors.Is(err, simfs.ErrBadSector) {
-			return fmt.Errorf("node %d started on a damaged disk: %w", n.id, err)
-		}
-		n.fenced = true
-		n.since, n.why = s.now(), fmt.Sprintf("refused to start on its damaged disk: %v", err)
-		s.stats.Fenced++
-		if n.servedDamage {
-			s.stats.FencedAfterServe++
-		}
-		s.tracef("node %d: fenced: %v", n.id, err)
-		return nil
-	}
-	if err != nil {
-		cancel()
-		return fmt.Errorf("node %d cannot recover its log: %w", n.id, err)
-	}
-	if n.misread {
-		cancel()
-		return fmt.Errorf("node %d recovered a log that it read wrong without noticing", n.id)
-	}
-	// Recovery must give at least what the node reported durable before
-	// it went down. This open of the disk is the only one after a crash.
-	last, hs := tn.Recovered()
-	if last < n.mustLast {
-		cancel()
-		return fmt.Errorf("node %d recovered entries to %d, but reported %d durable", n.id, last, n.mustLast)
-	}
-	n.durableLast, n.hs, n.tornCrash = last, hardState{term: hs.Term, vote: hs.Vote}, false
-	ln := s.net.listen(s, p, n.addrs)
-	t, err := peer.Start(peer.Config{
-		ID: n.id, Listeners: []net.Listener{ln}, Peers: s.peerAddrs(n), Addr: n.addrs[0],
-		Certificate: s.net.cert, CA: s.net.ca,
-		Deliver: s.deliverer(p, tn), Unreachable: tn.Unreachable, Serve: s.server(p, tn),
-		Removed: tn.Removed, Answer: tn.Answer,
-		Dial: func(ctx context.Context, addr string) (net.Conn, error) { return s.net.dial(ctx, s, p, addr) },
-		Logf: func(format string, args ...any) { s.logf(n, format, args...) },
-	})
-	if err != nil {
+	if err := s.startWL(n, p); err != nil {
 		cancel()
 		return err
 	}
-	p.node, p.t = tn, t
-	if n.idx < 3 {
-		if err := s.serve(p); err != nil {
-			cancel()
-			return errors.Join(err, t.Close())
-		}
-	}
-	n.proc, n.since, n.why = p, s.now(), ""
-	s.procs.Go(func() {
-		err := tn.Run(ctx, t)
-		err = errors.Join(err, t.Close())
-		if p.srv != nil {
-			err = errors.Join(err, p.srv.Stop())
-		}
-		s.exited(p, err)
-	})
+	p.wl.armed = armed
 	return nil
 }
 
@@ -1807,18 +1614,6 @@ func (s *Sim) start(n *node) error {
 func refusesDamage(err error) bool {
 	return errors.Is(err, wal.ErrCorrupt) || errors.Is(err, wal.ErrFormat) ||
 		errors.Is(err, wl.ErrCorruptLog) || errors.Is(err, wl.ErrCorruptCheckpoint)
-}
-
-// peerAddrs are the addresses of n's peers it starts with. The node hands
-// its transport the members once it runs.
-func (s *Sim) peerAddrs(n *node) map[uint64]string {
-	out := map[uint64]string{}
-	for _, m := range s.nodes {
-		if m != n && !m.inactive {
-			out[m.id] = m.addrs[0]
-		}
-	}
-	return out
 }
 
 // injected reports whether err is a disk fault the run injected.
@@ -1856,7 +1651,7 @@ func (s *Sim) exited(p *proc, err error) {
 	}
 	s.tracef("node %d: stopped: %v", n.id, err)
 	n.why = fmt.Sprintf("its process stopped: %v", err)
-	if p.wl != nil && !p.wl.recovered && s.wlRefused(n, err) {
+	if !p.wl.recovered && s.wlRefused(n, err) {
 		return
 	}
 	switch {
@@ -1920,179 +1715,6 @@ func rotStop(n *node, err error) bool {
 	}
 	re, ok := errors.AsType[*wal.RecordError](err)
 	return ok && re.Entry == n.rotEntry && re.Segment == n.rotSeg
-}
-
-// turn is the Turn hook of p's committer: it records what the core
-// applied and checks it, then holds the process while it is paused.
-func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
-	s.mu.Lock()
-	n := p.n
-	if n.proc != p {
-		s.mu.Unlock()
-		return
-	}
-	if p.core != c {
-		if p.core != nil {
-			// A snapshot install or a failed fetch started the core
-			// again from the log; what the old one queued is gone.
-			s.stats.Reloads++
-			n.fromLog = append(n.fromLog, s.now())
-			s.tracef("node %d: started again from its log", n.id)
-		} else if hs := c.RaftStatus().HardState; hs.GetTerm() < n.mustHS.term || hs.GetTerm() == n.mustHS.term && n.mustHS.vote != 0 && hs.GetVote() != n.mustHS.vote {
-			// Raft never moves back a term, or a vote within one.
-			s.fail("node %d started at term %d with vote %d, but held term %d and vote %d durable", n.id, hs.GetTerm(), hs.GetVote(), n.mustHS.term, n.mustHS.vote)
-		}
-		p.core, p.fellBehind, p.held, n.pending, n.duringInstall = c, 0, core.HeldCounts{}, nil, nil
-	}
-	if f := c.FellBehind(); f > p.fellBehind {
-		s.stats.WatchersBehind += int(f - p.fellBehind)
-		p.fellBehind = f
-	}
-	if h := c.Held(); h != p.held {
-		s.stats.HeldNamed += int(h.Named - p.held.Named)
-		s.stats.HeldParked += int(h.Parked - p.held.Parked)
-		s.stats.HeldAsked += int(h.Asked - p.held.Asked)
-		p.held = h
-	}
-	before := n.last.version
-	if n == s.stalledLeader && s.steppedDownAt == 0 && c.Leader() != n.id {
-		s.steppedDownAt = s.now()
-		s.tracef("node %d: the stalled leader stepped down", n.id)
-	}
-	n.remember(c, s.now(), eff)
-	if v := n.last.version; v != before {
-		s.tracef("node %d: cluster version %d", n.id, v)
-	}
-	for _, a := range eff.Applied {
-		s.record(n, a)
-	}
-	if err == nil && c.FirstIndex() > c.Applied()+1 {
-		s.fail("node %d holds entries from %d in memory, but applied only to %d", n.id, c.FirstIndex(), c.Applied())
-	}
-	for _, j := range eff.Persist {
-		pj := pendingJob{first: math.MaxUint64, at: s.now()}
-		if len(j.Entries) > 0 {
-			pj.first = j.Entries[0].GetIndex()
-			if n == s.stalledLeader && s.heldAppendAt == 0 {
-				s.heldAppendAt = pj.at
-			}
-		}
-		if j.Install != nil {
-			// The install may replace what the node holds after the
-			// index it applied.
-			pj.first, pj.install = j.Install.Applied+1, true
-		}
-		pj.replaces = pj.first <= n.durableLast
-		n.pending = append(n.pending, pj)
-		if j.Root != nil && n.rootDue == 0 && s.cfg.Faults.Checkpoint && s.stats.ErasedAtRoot == 0 {
-			n.rootDue = j.Root.Index
-		}
-	}
-	for _, id := range eff.Expired {
-		if _, seen := s.expiredAt[id]; !seen {
-			s.expiredAt[id] = s.now()
-			s.expiredOrder = append(s.expiredOrder, id)
-		}
-	}
-	s.applied = max(s.applied, c.Applied())
-	if eff.Silent {
-		s.stats.Silences++
-		s.silences = append(s.silences, s.now())
-	}
-	if s.rotDue == n {
-		s.rotDue = nil
-		s.rot(n, c)
-	}
-	s.mu.Unlock()
-	// Once the run failed, the committer holds still until the run ends
-	// its process, and tells freeze that it does: a core that broke a
-	// rule can go on to break Raft's own, which panics (planted B20).
-	for {
-		s.mu.Lock()
-		failed := s.err != nil
-		if failed && p.parked != nil {
-			close(p.parked)
-			p.parked = nil
-		}
-		wake := n.wake
-		s.mu.Unlock()
-		if !failed {
-			break
-		}
-		select {
-		case <-p.ctx.Done():
-			return
-		case <-wake:
-		}
-	}
-	// A paused process holds still here, and so does a frozen one, which
-	// tells the checks that it does.
-	for {
-		s.mu.Lock()
-		if n.frozen && p.parked != nil {
-			close(p.parked)
-			p.parked = nil
-		}
-		until, wake := n.paused(), n.wake
-		s.mu.Unlock()
-		d := until - s.now()
-		if d <= 0 || p.dead() {
-			return
-		}
-		t := time.NewTimer(time.Duration(min(d, math.MaxInt64/2)))
-		select {
-		case <-t.C:
-		case <-wake:
-		case <-p.ctx.Done():
-		}
-		t.Stop()
-	}
-}
-
-// persisted is the Persisted hook of p's committer: it remembers how far
-// the log the node reported durable reaches.
-func (s *Sim) persisted(p *proc, j core.PersistJob) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	n := p.n
-	if n.proc != p {
-		return
-	}
-	if len(n.pending) > 0 {
-		n.pending = n.pending[1:]
-	}
-	if j.Install != nil {
-		n.durableLast = j.Install.Index
-		c := j.Install.Checkpoint.Index
-		if c > 0 && c < s.servedRoot[n.id] {
-			s.stats.OlderCheckpoints++
-		}
-		for _, f := range n.duringInstall {
-			if f != wal.CheckpointName(c) {
-				s.stats.CheckpointsDuringInstall++
-			}
-		}
-		n.duringInstall = nil
-	}
-	if j.Root != nil {
-		n.root = j.Root.Index
-	}
-	if len(j.Entries) > 0 {
-		n.durableLast = j.Entries[len(j.Entries)-1].GetIndex()
-	}
-	if hs := j.HardState; hs != nil {
-		vote := n.hs != hardState{term: hs.Term, vote: hs.Vote}
-		n.hs = hardState{term: hs.Term, vote: hs.Vote}
-		if vote && len(j.Entries) == 0 && j.Install == nil && s.voteCrashDue && !s.healed {
-			// Its newest record holds the new term or vote alone.
-			s.voteCrashDue = false
-			n.why = "the run crashed it right after it synced a new term or vote"
-			s.tracef("node %d: crash right after it synced term %d and vote %d", n.id, hs.Term, hs.Vote)
-			s.crash(n)
-			s.maybeCorrupt(n)
-			s.restartLater(n, 1+s.rng.Int64N(Second))
-		}
-	}
 }
 
 // floor is how far recovery of n's disk must reach if it crashed now:
@@ -2513,9 +2135,4 @@ func (s *Sim) shutdown() {
 }
 
 // applied is the index p's node applied.
-func (p *proc) applied() uint64 {
-	if p.wl != nil {
-		return p.wl.turn.Applied
-	}
-	return p.core.Applied()
-}
+func (p *proc) applied() uint64 { return p.wl.turn.Applied }

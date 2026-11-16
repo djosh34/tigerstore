@@ -11,6 +11,7 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/authtoken"
 	etcdmetrics "github.com/djosh34/tigerstore/internal/metrics"
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // node is one replica: everything below runs on the loop's one thread.
@@ -365,7 +366,9 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 			n.reject(c, s, errLearner)
 			return nil
 		}
-		if r.serializable {
+		if r.serializable || planted.On("B01a") {
+			// Planted B01a: a linearizable read is served without
+			// ReadIndex, from whatever this node applied.
 			n.serveRange(c, s, &r)
 			return nil
 		}
