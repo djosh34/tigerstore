@@ -134,8 +134,9 @@ type stream struct {
 	// the heap.
 	failAt int64
 	// progressDue: a progress request of the watch stream waits for its
-	// watches to catch up.
-	progressDue bool
+	// watches to catch up; progressWaits, also for one from a revision
+	// still to come (watches.progressWait).
+	progressDue, progressWaits bool
 	// token is the call's auth token, from its token header. A side
 	// call's (byCaller) is for the client of caller's certificate name.
 	token    string

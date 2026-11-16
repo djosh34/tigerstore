@@ -838,6 +838,7 @@ func (l *loop) run() error {
 			n.publish()
 			n.expireTokens()
 			n.notifyProgress()
+			n.retryProgress()
 			if err := n.maybeCkpt(); err != nil {
 				return err
 			}

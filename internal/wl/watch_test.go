@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"time"
 )
 
 type seen struct {
@@ -197,5 +198,50 @@ func TestAProgressOfWatchZeroIsAsLongAsItSays(t *testing.T) {
 		if c.broken {
 			t.Fatalf("watch %d: the progress came out another length than it said", id)
 		}
+	}
+}
+
+// A watch from a revision the store has not reached gets no progress
+// notification before it, periodic or asked for, as etcd's: clientv3
+// resumes a watch on another node from the revision after its last
+// event, and a node still replaying its log sent it a progress at
+// revision 1 after events at 4486 (chaos-env seed 6241418673, CI on
+// cf2192c9). An asked-for progress waits until the store reaches the
+// start, and the tick asks again.
+func TestNoProgressComesBeforeAWatchsStartRevision(t *testing.T) {
+	c, s := flowClient(t)
+	st, err := newStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := c.node
+	n.st = st
+	c.idx = len(n.socks)
+	n.socks = append(n.socks, c)
+	n.gens = append(n.gens, 0)
+	n.w.ws = []watcher{{active: true, sock: c.idx, sid: s.id, minRev: 10, progressNotify: true}}
+	s.wids = []int32{0}
+	n.progressEvery, n.now = time.Second, time.Now()
+	st.rev = 1
+	win := s.win
+
+	n.notifyProgress()
+	s.progressDue = true
+	n.progressIfSynced(c, s)
+	n.retryProgress()
+	if s.win != win || !s.progressDue {
+		t.Fatal("a progress went out at revision 1 to a watch from revision 10")
+	}
+
+	st.rev = 10
+	n.retryProgress()
+	if s.progressDue || s.win == win {
+		t.Fatal("the asked-for progress still waits once the store reached the watch's start")
+	}
+	win = s.win
+	n.progressAt = time.Time{}
+	n.notifyProgress()
+	if s.win == win {
+		t.Fatal("no periodic progress once the store reached the watch's start")
 	}
 }

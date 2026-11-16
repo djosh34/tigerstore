@@ -60,6 +60,10 @@ type watches struct {
 	// one's catch-up.
 	unsynced []int32
 	syncBuf  []event
+	// progressWait are the streams whose progress request waits for a
+	// watch from a revision the store has not reached; the tick asks
+	// again.
+	progressWait []handle
 }
 
 func prefixEnd(p []byte) []byte {
@@ -582,18 +586,47 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 }
 
 // progressIfSynced answers the progress request of watch stream s, if one
-// waits, once none of its watches catches up.
+// waits, once none of its watches catches up and the store reached every
+// one's start revision, as etcd's: a progress at a revision before a
+// watch's start would tell a client that resumed the watch here, as
+// clientv3 does on another node, that it has seen less than it has.
 func (n *node) progressIfSynced(c *client, s *stream) {
 	if !s.progressDue {
 		return
 	}
 	for _, i := range s.wids {
-		if x := &n.w.ws[i]; x.active && x.syncRev != 0 {
+		x := &n.w.ws[i]
+		if !x.active {
+			continue
+		}
+		if x.syncRev != 0 {
+			return
+		}
+		if n.st.rev < x.minRev {
+			if !s.progressWaits {
+				s.progressWaits = true
+				n.w.progressWait = append(n.w.progressWait, mkHandle(c, s.id))
+			}
 			return
 		}
 	}
 	s.progressDue = false
 	n.writeProgress(c, s, -1)
+}
+
+// retryProgress asks again for the progress of the streams that waited
+// for a watch's start revision.
+func (n *node) retryProgress() {
+	waits := n.w.progressWait
+	n.w.progressWait = waits[:0]
+	// progressIfSynced appends at most one handle per handle read, so
+	// it overwrites only handles read already.
+	for _, h := range waits {
+		if c, s := n.clientOf(h); c != nil {
+			s.progressWaits = false
+			n.progressIfSynced(c, s)
+		}
+	}
 }
 
 // writeProgress writes a progress notification of watch id, -1 for the
@@ -616,7 +649,7 @@ func (n *node) notifyProgress() {
 	n.progressAt = n.now.Add(n.progressEvery)
 	for i := range n.w.ws {
 		x := &n.w.ws[i]
-		if !x.active || !x.progressNotify || x.syncRev != 0 {
+		if !x.active || !x.progressNotify || x.syncRev != 0 || n.st.rev < x.minRev {
 			continue
 		}
 		if x.sent {
