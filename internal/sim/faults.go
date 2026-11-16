@@ -11,6 +11,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
+	"github.com/djosh34/tigerstore/internal/wl"
 )
 
 // scheduleDiskFaults starts the disk faults of the run. The lock is held.
@@ -328,7 +329,7 @@ func (s *Sim) maybeCorrupt(n *node) {
 		s.tracef("node %d: damage after a sync: %v", n.id, kind)
 		return
 	}
-	if n.disk.Corrupt(s.rng) {
+	if !s.cfg.wl && n.disk.Corrupt(s.rng) {
 		n.corrupted = true
 		s.stats.Damage[misdirected]++
 		s.tracef("node %d: damage after a sync: %v", n.id, misdirected)
@@ -377,6 +378,9 @@ func (k damageKind) String() string {
 // and a damaged last record must keep its term and vote. It reports
 // whether n had what the kind needs. The lock is held.
 func (s *Sim) damage(n *node, kind damageKind) bool {
+	if s.cfg.wl {
+		return s.damageWL(n, kind)
+	}
 	d := n.disk
 	sealed := sealedSegments(d)
 	var seg string
@@ -407,6 +411,77 @@ func (s *Sim) damage(n *node, kind damageKind) bool {
 		return s.damageLastRecord(n)
 	}
 	return false
+}
+
+// damageWL is damage for a wl node (Config.wl), whose log is wal/*.seg
+// and whose checkpoint is the one ckpt/CURRENT names. A start reads the
+// log from the pointer's first segment on, and refuses a record that does
+// not check where a later segment holds data (internal/wl/wal.go's head),
+// so damage to the log goes only in a segment the start reads, after the
+// first, with data two segments on: no record it damages reaches the last
+// segment with data, where damage can look like a torn write. A damaged
+// last record is main's alone, whose term and vote have copies outside
+// the log. The lock is held.
+func (s *Sim) damageWL(n *node, kind damageKind) bool {
+	d := n.disk
+	var ptr wl.Pointer
+	if b := d.DurableBytes(wlPointerFile); b != nil {
+		var err error
+		if ptr, err = wl.ReadPointer(b); err != nil {
+			return false
+		}
+	}
+	ckpt := ""
+	if ptr.Checkpoint != "" {
+		ckpt = "ckpt/" + ptr.Checkpoint
+	}
+	sealed := wlSealed(d, ptr.FirstSegment)
+	seg := ""
+	if len(sealed) > 0 {
+		seg = sealed[s.rng.IntN(len(sealed))]
+	}
+	switch kind {
+	case flippedRoot:
+		n.corrupted = ckpt != "" && d.CorruptFile(s.rng, ckpt)
+	case misdirected:
+		n.corrupted = seg != "" && d.Misdirect(s.rng, seg)
+	case lostWrite:
+		if ckpt != "" && s.rng.IntN(2) == 0 {
+			seg = ckpt
+		}
+		n.corrupted = seg != "" && d.LoseWrite(s.rng, seg)
+	case badSector:
+		n.corrupted = seg != "" && d.BadSector(s.rng, seg)
+	case misread:
+		n.misread = seg != "" && d.Misread(s.rng, seg)
+		return n.misread
+	case lastRecord:
+		return false
+	}
+	return n.corrupted
+}
+
+// wlPointerFile is a wl node's checkpoint pointer on its disk.
+const wlPointerFile = "ckpt/CURRENT"
+
+// wlSealed are the segments of a wl node's log after segment first, the
+// first a start reads, with data two segments on.
+func wlSealed(d *simfs.Disk, first int64) []string {
+	data := map[int64]bool{}
+	for _, name := range d.DurableNames() {
+		var k int64
+		if _, err := fmt.Sscanf(name, "wal/%016x.seg", &k); err == nil && len(d.DurableBytes(name)) > 0 {
+			data[k] = true
+		}
+	}
+	var segs []string
+	for k := range data {
+		if k > first && data[k+2] {
+			segs = append(segs, fmt.Sprintf("wal/%016x.seg", k))
+		}
+	}
+	slices.Sort(segs)
+	return segs
 }
 
 // sealedSegments are the segments of a disk but the newest, with at least

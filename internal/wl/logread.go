@@ -68,7 +68,7 @@ func ckptIndex(path string) (uint64, error) {
 	cr := &ckptReader{r: bufio.NewReader(f)}
 	magic, err := cr.bytes(uint64(len(ckptMagic)))
 	if err != nil || string(magic) != string(ckptMagic) {
-		return 0, fmt.Errorf("%s: %w: no magic", path, errCkptCorrupt)
+		return 0, fmt.Errorf("%s: %w: no magic", path, ErrCorruptCheckpoint)
 	}
 	return cr.uvarint()
 }

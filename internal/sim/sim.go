@@ -42,6 +42,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/simos"
 	"github.com/djosh34/tigerstore/internal/simrun"
 	"github.com/djosh34/tigerstore/internal/wal"
+	"github.com/djosh34/tigerstore/internal/wl"
 )
 
 // Times are virtual nanoseconds since the start of a run.
@@ -1755,11 +1756,12 @@ func (s *Sim) start(n *node) error {
 }
 
 // refusesDamage reports whether err is recovery refusing a log it read
-// damaged. A segment's header has no checksum of its own, so damage to its
+// damaged, or a wl node's checkpoint. A segment's header has no checksum of its own, so damage to its
 // format version reads as a version this build does not know; refusing
 // the log is still the safe stop (#388).
 func refusesDamage(err error) bool {
-	return errors.Is(err, wal.ErrCorrupt) || errors.Is(err, wal.ErrFormat)
+	return errors.Is(err, wal.ErrCorrupt) || errors.Is(err, wal.ErrFormat) ||
+		errors.Is(err, wl.ErrCorruptLog) || errors.Is(err, wl.ErrCorruptCheckpoint)
 }
 
 // peerAddrs are the addresses of n's peers it starts with. The node hands
@@ -1809,6 +1811,9 @@ func (s *Sim) exited(p *proc, err error) {
 	}
 	s.tracef("node %d: stopped: %v", n.id, err)
 	n.why = fmt.Sprintf("its process stopped: %v", err)
+	if p.wl != nil && !p.wl.recovered && s.wlRefused(n, err) {
+		return
+	}
 	switch {
 	case n.rotted && rotStop(n, err):
 		// It read the value the run damaged and stopped instead of

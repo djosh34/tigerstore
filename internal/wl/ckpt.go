@@ -705,31 +705,61 @@ type ckptReader struct {
 	off int64
 	crc uint32
 	buf []byte
+	// src, if set, is the file r reads, which keeps its read errors: a
+	// read of the checkpoint that fails otherwise, as one past its end or
+	// of a field too long, is damage (ErrCorruptCheckpoint).
+	src *fileReader
+}
+
+// fileReader reads a file and keeps the first error of a read but the end.
+type fileReader struct {
+	r   io.Reader
+	err error
+}
+
+func (fr *fileReader) Read(p []byte) (int, error) {
+	n, err := fr.r.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) && fr.err == nil {
+		fr.err = err
+	}
+	return n, err
+}
+
+// damage is err, an error of a read, as damage to the checkpoint, unless
+// reading its file failed.
+func (cr *ckptReader) damage(err error) error {
+	if err == nil || cr.src == nil || cr.src.err != nil || errors.Is(err, ErrCorruptCheckpoint) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrCorruptCheckpoint, err)
 }
 
 func (cr *ckptReader) ReadByte() (byte, error) {
 	b, err := cr.r.ReadByte()
 	if err != nil {
-		return 0, err
+		return 0, cr.damage(err)
 	}
 	cr.off++
 	cr.crc = crc32.Update(cr.crc, castagnoli, []byte{b})
 	return b, nil
 }
 
-func (cr *ckptReader) uvarint() (uint64, error) { return binary.ReadUvarint(cr) }
+func (cr *ckptReader) uvarint() (uint64, error) {
+	v, err := binary.ReadUvarint(cr)
+	return v, cr.damage(err)
+}
 
 // bytes reads n bytes, valid until the next call.
 func (cr *ckptReader) bytes(n uint64) ([]byte, error) {
 	if n > 1<<31 {
-		return nil, fmt.Errorf("a checkpoint field of %d bytes", n)
+		return nil, cr.damage(fmt.Errorf("a checkpoint field of %d bytes", n))
 	}
 	if uint64(cap(cr.buf)) < n {
 		cr.buf = make([]byte, n)
 	}
 	b := cr.buf[:n]
 	if _, err := io.ReadFull(cr.r, b); err != nil {
-		return nil, err
+		return nil, cr.damage(err)
 	}
 	cr.off += int64(n)
 	cr.crc = crc32.Update(cr.crc, castagnoli, b)
@@ -770,7 +800,9 @@ func (cr *ckptReader) valueAt(flags, n uint64, gen int) (int64, error) {
 	return int64(at), nil
 }
 
-var errCkptCorrupt = errors.New("the checkpoint does not check")
+// ErrCorruptCheckpoint is a checkpoint, or the pointer to it, that does
+// not check: a node refuses to start on it.
+var ErrCorruptCheckpoint = errors.New("wl: corrupt checkpoint")
 
 // loadCkpt fills st, an empty store, from the checkpoint in f, whose
 // values the store then reads from f as generation gen.
@@ -779,10 +811,11 @@ func loadCkpt(f file, gen int, st *store) (ckptMeta, error) {
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return m, err
 	}
-	cr := &ckptReader{r: bufio.NewReaderSize(f, 1<<20)}
+	src := &fileReader{r: f}
+	cr := &ckptReader{r: bufio.NewReaderSize(src, 1<<20), src: src}
 	magic, err := cr.bytes(uint64(len(ckptMagic)))
 	if err != nil || string(magic) != string(ckptMagic) {
-		return m, fmt.Errorf("%s: %w: no magic", f.Name(), errCkptCorrupt)
+		return m, fmt.Errorf("%s: %w: no magic", f.Name(), ErrCorruptCheckpoint)
 	}
 	var v [5]uint64
 	for i := range v {
@@ -801,10 +834,10 @@ func loadCkpt(f file, gen int, st *store) (ckptMeta, error) {
 	}
 	m.cs = &pb.ConfState{}
 	if err := proto.Unmarshal(csb, m.cs); err != nil {
-		return m, err
+		return m, cr.damage(err)
 	}
 	if m.members, err = cr.readMembers(); err != nil {
-		return m, err
+		return m, cr.damage(err)
 	}
 	nl, err := cr.uvarint()
 	if err != nil {
@@ -844,7 +877,7 @@ func loadCkpt(f file, gen int, st *store) (ckptMeta, error) {
 				return m, err
 			}
 			if binary.LittleEndian.Uint32(sum) != want {
-				return m, fmt.Errorf("%s: %w: its CRC", f.Name(), errCkptCorrupt)
+				return m, fmt.Errorf("%s: %w: its CRC", f.Name(), ErrCorruptCheckpoint)
 			}
 			st.rev, st.compactRev, st.compacted = m.rev, m.compactRev, m.compacted
 			return m, nil
@@ -916,7 +949,7 @@ func loadCkpt(f file, gen int, st *store) (ckptMeta, error) {
 			}
 			if ids[fid] == noKey {
 				if kl == 0 {
-					return m, fmt.Errorf("%s: %w: a change of a key it does not hold", f.Name(), errCkptCorrupt)
+					return m, fmt.Errorf("%s: %w: a change of a key it does not hold", f.Name(), ErrCorruptCheckpoint)
 				}
 				if ids[fid], err = st.intern(kb); err != nil {
 					return m, err
@@ -924,7 +957,7 @@ func loadCkpt(f file, gen int, st *store) (ckptMeta, error) {
 			}
 			st.changes = append(st.changes, change{rev: int64(rev), key: ids[fid], del: del != 0})
 		default:
-			return m, fmt.Errorf("%s: %w: a record of kind %d", f.Name(), errCkptCorrupt, kind)
+			return m, fmt.Errorf("%s: %w: a record of kind %d", f.Name(), ErrCorruptCheckpoint, kind)
 		}
 	}
 }
@@ -1009,7 +1042,12 @@ func readPointer(sys sysEnv, dir string) (*ckptPointer, error) {
 	if err != nil {
 		return nil, err
 	}
-	bad := fmt.Errorf("%s: %w", filepath.Join(dir, ptrName), errCkptCorrupt)
+	return parsePointer(b, filepath.Join(dir, ptrName))
+}
+
+// parsePointer reads b, the pointer file at path.
+func parsePointer(b []byte, path string) (*ckptPointer, error) {
+	bad := fmt.Errorf("%s: %w", path, ErrCorruptCheckpoint)
 	if len(b) < len(ptrMagic)+4 || string(b[:len(ptrMagic)]) != string(ptrMagic) {
 		return nil, bad
 	}
@@ -1046,9 +1084,28 @@ func readPointer(sys sysEnv, dir string) (*ckptPointer, error) {
 		return nil, bad
 	}
 	if err := proto.Unmarshal(hb, p.hs); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", bad, err)
 	}
 	return p, nil
+}
+
+// Pointer is what the simulator reads of a node's checkpoint pointer, the
+// file ckpt/CURRENT under its data dir: the checkpoint it names, under
+// ckpt/, and the first segment of the log, wal/<FirstSegment>.seg in %016x,
+// that a start reads. A start reads no segment before it, though it keeps
+// them for the values they hold.
+type Pointer struct {
+	Checkpoint   string
+	FirstSegment int64
+}
+
+// ReadPointer reads b, a node's ckpt/CURRENT.
+func ReadPointer(b []byte) (Pointer, error) {
+	p, err := parsePointer(b, ptrName)
+	if err != nil {
+		return Pointer{}, err
+	}
+	return Pointer{Checkpoint: p.name, FirstSegment: p.logFrom / segSize}, nil
 }
 
 // cleanCkptDir removes what a node that stopped left half done in dir:
@@ -1146,7 +1203,7 @@ func selfContained(src file, log durableLog, dst io.Writer, hdr *ckptHeader) err
 // with hdr's membership.
 func rewriteCkpt(r io.Reader, dst io.Writer, hdr *ckptHeader) error {
 	return copyCkpt(r, func([]byte, bool, int64) error {
-		return fmt.Errorf("%w: a value it does not hold", errCkptCorrupt)
+		return fmt.Errorf("%w: a value it does not hold", ErrCorruptCheckpoint)
 	}, dst, hdr)
 }
 
@@ -1248,7 +1305,7 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 				return err
 			}
 			if binary.LittleEndian.Uint32(sum) != want {
-				return fmt.Errorf("%w: its CRC", errCkptCorrupt)
+				return fmt.Errorf("%w: its CRC", ErrCorruptCheckpoint)
 			}
 			out([]byte{ckptEnd})
 			_, _ = bw.Write(binary.LittleEndian.AppendUint32(nil, crc))
@@ -1325,7 +1382,7 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 				return err
 			}
 		default:
-			return fmt.Errorf("%w: a record of kind %d", errCkptCorrupt, kind)
+			return fmt.Errorf("%w: a record of kind %d", ErrCorruptCheckpoint, kind)
 		}
 	}
 }

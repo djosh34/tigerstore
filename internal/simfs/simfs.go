@@ -491,7 +491,27 @@ func (d *Disk) Corrupt(rng *rand.Rand) bool {
 	if len(targets) == 0 {
 		return false
 	}
-	f := d.durable[targets[rng.IntN(len(targets))]]
+	return d.misdirect(rng, d.durable[targets[rng.IntN(len(targets))]])
+}
+
+// Misdirect is Corrupt on the synced bytes of file name, which must hold
+// at least 64. It reports whether it changed anything.
+func (d *Disk) Misdirect(rng *rand.Rand, name string) bool {
+	f, ok := d.durable[name]
+	if !ok || f.durable.size < 64 {
+		return false
+	}
+	if !d.misdirect(rng, f) {
+		return false
+	}
+	d.tracef("misdirected a write over %s (file %d)", name, f.id)
+	return true
+}
+
+// misdirect copies 16 to 64 synced bytes from a random file and offset
+// over synced bytes of f.
+func (d *Disk) misdirect(rng *rand.Rand, f *file) bool {
+	names := sortedNames(d.durable)
 	n := 16 + rng.IntN(49)
 	src := &d.durable[names[rng.IntN(len(names))]].durable
 	if src.size < n || f.durable.size < n {

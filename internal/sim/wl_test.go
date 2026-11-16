@@ -55,14 +55,15 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 
 // A wl cluster runs DefaultConfig's faults but those of main's engine
 // alone (recovery's and a snapshot fetch's steps, rot of a value in a
-// segment, cold restarts from checkpoints) and damage to a disk at rest,
-// which wl does not run yet: disk errors, short writes, stalls, file
+// segment, cold restarts from checkpoints), which wl does not run yet:
+// damage to a disk at rest, disk errors, short writes, stalls, file
 // systems that shut down or go read-only, full disks, checkpoints that
 // cut the log, link stalls, half-open connections, netem, resets, gray
 // nodes and clients, slow watchers, clock drift and held-down nodes.
-// Seed 7 lost an entry its start had read from the page cache (#701).
+// Seed 7 lost an entry its start had read from the page cache (#701);
+// seed 1002 left a segment past the log's end after a crash (#702).
 func TestWLRunsTheFaults(t *testing.T) {
-	simrun.Each(t, []uint64{7, 8}, func(t *testing.T, seed uint64) Stats {
+	simrun.Each(t, []uint64{7, 8, 1002}, func(t *testing.T, seed uint64) Stats {
 		st := runWLFaults(t, seed)
 		if st.DiskFaults == 0 {
 			t.Fatal("no disk fault fired")
@@ -83,12 +84,63 @@ func runWLFaults(t *testing.T, seed uint64) Stats {
 	cfg := DefaultConfig(seed)
 	cfg.wl, cfg.FormUnderFaults = true, true
 	f := &cfg.Faults
-	f.Checkpoint, f.RecoveryCrash, f.StepCrash, f.FlipSnapshot, f.FetchCrash, f.SlowFetch, f.Rot, f.Corrupt = false, false, false, false, false, false, false, false
+	f.Checkpoint, f.RecoveryCrash, f.StepCrash, f.FlipSnapshot, f.FetchCrash, f.SlowFetch, f.Rot = false, false, false, false, false, false, false
 	res := run(t, cfg)
 	st := res.Stats
-	t.Logf("calls: %d ok, %d failed, %d ambiguous; crashes %d, disk faults %d, file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
-		st.OK, st.Failed, st.Ambiguous, st.Crashes, st.DiskFaults, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
+	t.Logf("calls: %d ok, %d failed, %d ambiguous; crashes %d, disk faults %d, damage %v (fenced %d, misreads refused %d), file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
+		st.OK, st.Failed, st.Ambiguous, st.Crashes, st.DiskFaults, st.Damage, st.Fenced, st.MisreadRefusals, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
 	return st
+}
+
+// A wl node refuses a disk the run damaged where its start reads it,
+// and is fenced; a start that misread its log refuses it and starts again
+// (Sim.damageWL). One test a kind of damage, on one seed each.
+func TestWLRefusesAFlippedCheckpoint(t *testing.T) {
+	runWLDamage(t, flippedRoot, true, func(st Stats) int { return min(st.Damage[flippedRoot], st.Fenced) })
+}
+
+func TestWLRefusesAMisdirectedWrite(t *testing.T) {
+	runWLDamage(t, misdirected, false, func(st Stats) int { return min(st.Damage[misdirected], st.Fenced) })
+}
+
+func TestWLRefusesALostWrite(t *testing.T) {
+	runWLDamage(t, lostWrite, false, func(st Stats) int { return min(st.Damage[lostWrite], st.Fenced) })
+}
+
+func TestWLRefusesABadSector(t *testing.T) {
+	runWLDamage(t, badSector, false, func(st Stats) int { return min(st.Damage[badSector], st.Fenced, st.Disk.BadReads) })
+}
+
+func TestWLRefusesAMisreadLog(t *testing.T) {
+	runWLDamage(t, misread, false, func(st Stats) int { return min(st.Damage[misread], st.MisreadRefusals) })
+}
+
+// runWLDamage runs seed 1 on wl nodes with crashes and damage of kind after
+// them, and fails unless count shows it took effect. With ckpt, nodes
+// take checkpoints, which cut the log behind them; without, the log grows
+// over the segments that damage to it needs.
+func runWLDamage(t *testing.T, kind damageKind, ckpt bool, count func(Stats) int) {
+	t.Helper()
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.wl, cfg.FormUnderFaults = true, true
+		budget := cfg.Faults.DiskBudget
+		cfg.Faults = Faults{CrashEvery: Second, MaxDown: Second, Corrupt: true}
+		if ckpt {
+			// A checkpoint every DiskBudget of log (startWL).
+			cfg.Faults.DiskBudget = budget
+		}
+		cfg.damageKinds = []damageKind{kind}
+		cfg.Duration = 16 * Second
+		res := run(t, cfg)
+		st := res.Stats
+		t.Logf("calls: %d ok; crashes %d; damage %d, fenced %d, misread refusals %d, bad reads %d; log %d writes to revision %d",
+			st.OK, st.Crashes, st.Damage[kind], st.Fenced, st.MisreadRefusals, st.Disk.BadReads, len(res.Log), res.FinalRev)
+		if count(st) == 0 {
+			t.Fatalf("no %v took effect", kind)
+		}
+		return st
+	}, nil)
 }
 
 // The log's stage race (internal/wl/wal.go, writeLoop): the helper writes

@@ -46,6 +46,8 @@ type wlProc struct {
 	conn *grpc.ClientConn
 	// turn is what the node showed at the end of its last turn.
 	turn wl.TurnState
+	// recovered is set once the node recovered its log (wlHooks.Recovered).
+	recovered bool
 }
 
 // wlMembers are the first three members of a wl cluster.
@@ -148,7 +150,8 @@ type wlHooks struct {
 }
 
 // Recovered checks that the start recovered at least what the node
-// reported durable before it went down, and a term and vote no older.
+// reported durable before it went down, and a term and vote no older, and
+// that it did not start on a disk the run damaged.
 func (h *wlHooks) Recovered(last uint64, hs *raftpb.HardState) {
 	s, p := h.s, h.p
 	s.mu.Lock()
@@ -157,7 +160,13 @@ func (h *wlHooks) Recovered(last uint64, hs *raftpb.HardState) {
 	if n.proc != p {
 		return
 	}
+	p.wl.recovered = true
 	switch {
+	case n.corrupted:
+		// The run damaged the disk where the start reads it.
+		s.fail("node %d started on a damaged disk without noticing", n.id)
+	case n.misread:
+		s.fail("node %d recovered a log that it read wrong without noticing", n.id)
 	case last < n.mustLast:
 		s.fail("node %d recovered entries to %d, but reported %d durable", n.id, last, n.mustLast)
 	case n.mustAtMost > 0 && last > n.mustAtMost:
@@ -337,5 +346,45 @@ func (s *Sim) wlStageCrash(n *node) bool {
 	}
 	n.crashImage = n.disk.Files()
 	s.restartLater(n, 1+s.rng.Int64N(Second))
+	return true
+}
+
+// wlRefused handles err, which stopped the wl process of n before it
+// recovered its log, as start does an error of a start of main's node: a
+// start that refused a misread log starts again, and one that refused a
+// damaged disk is fenced and stays down. It reports whether it handled
+// err; exited handles the rest. The lock is held.
+func (s *Sim) wlRefused(n *node, err error) bool {
+	if n.misread && refusesDamage(err) {
+		// The disk holds the right data, so the next start recovers.
+		n.misread = false
+		s.stats.MisreadRefusals++
+		n.why = fmt.Sprintf("refused a misread log: %v", err)
+		s.tracef("node %d: refused a misread log: %v", n.id, err)
+		s.down(n)
+		s.restartLater(n, 1+s.rng.Int64N(Second))
+		return true
+	}
+	if injected(err) && (!n.corrupted || !errors.Is(err, simfs.ErrBadSector)) {
+		return false
+	}
+	if n.tornCrash && !n.corrupted && refusesDamage(err) {
+		// A crash tore writes so that the log looks damaged.
+		n.corrupted = true
+		s.stats.TornRefusals++
+		s.tracef("node %d: its torn crash image looks damaged: %v", n.id, err)
+	}
+	if !n.corrupted {
+		return false
+	}
+	if !refusesDamage(err) && !errors.Is(err, simfs.ErrBadSector) {
+		s.fail("node %d started on a damaged disk: %w", n.id, err)
+		return true
+	}
+	n.fenced = true
+	n.why = fmt.Sprintf("refused to start on its damaged disk: %v", err)
+	s.stats.Fenced++
+	s.tracef("node %d: fenced: %v", n.id, err)
+	s.down(n)
 	return true
 }

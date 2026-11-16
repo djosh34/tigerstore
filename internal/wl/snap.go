@@ -480,7 +480,7 @@ func receiveFile(sys sysEnv, s *sock, path string, size int64) error {
 		got += int64(len(p))
 	}
 	if got != size || len(tail) != 4 || binary.LittleEndian.Uint32(tail) != crc {
-		return fmt.Errorf("%w: a snapshot received", errCkptCorrupt)
+		return fmt.Errorf("%w: a snapshot received", ErrCorruptCheckpoint)
 	}
 	return f.Sync()
 }
