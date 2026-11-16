@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -201,12 +202,10 @@ func (w *wal) reopen(from, end int64) (int64, error) {
 		}
 		w.rfds = append(w.rfds, fd)
 	}
-	for k := last + 1; ; k++ {
-		if err := w.sys.remove(segPath(w.dir, k)); errors.Is(err, os.ErrNotExist) {
-			break
-		} else if err != nil {
-			return 0, err
-		}
+	// A crash may have kept some removes of an earlier start and lost
+	// others, so the segments past the end may have gaps (#702).
+	if err := w.removeSegments(last+1, math.MaxInt64); err != nil {
+		return 0, err
 	}
 	w.off, w.stable, w.wbase = end, end, last
 	w.done.Store(end)

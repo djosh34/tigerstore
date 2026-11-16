@@ -306,3 +306,39 @@ func TestWALReadPastTheEndFails(t *testing.T) {
 		t.Fatal("a read of an empty log succeeded")
 	}
 }
+
+// A crash after a start removed the segments past the log's end may keep
+// some of the removes and lose others. The next start removes every
+// segment past the end, not only those up to the first gap, so that the
+// segments it makes do not exist yet.
+func TestWALRemovesSegmentsPastAGap(t *testing.T) {
+	dir := t.TempDir()
+	w, err := openWAL(sysEnv{}, dir, sizeFor(0).stage, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.write([]*pb.Entry{testEntry(1, 1, "one")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	w.close()
+	// Segment 1's remove was kept, segment 2's lost.
+	if err := os.Remove(segPath(dir, 1)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(segPath(dir, 2), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w, err = openWAL(sysEnv{}, dir, sizeFor(0).stage, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	// The helper, idle, would take segments 1 and 2 as the log reaches
+	// them.
+	for k := int64(1); k <= 2; k++ {
+		if _, err := w.segFD(k); err != nil {
+			t.Fatalf("segment %d: %v", k, err)
+		}
+	}
+}
