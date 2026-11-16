@@ -2,10 +2,13 @@ package wl
 
 import (
 	"bytes"
+	"encoding/binary"
 	"math"
 	"math/bits"
 	"slices"
 	"time"
+
+	pb "go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/planted"
@@ -130,6 +133,41 @@ func (n *node) renewed(id int64) {
 		n.gs.LeaseRenewed++
 		n.leases.deadline[id] = n.now.Add(time.Duration(l.ttl) * time.Second)
 		delete(n.leases.revoking, id)
+	}
+}
+
+// renewAppended moves on, on the leader, the deadline of each lease that
+// a keepalive in ents, which its log takes now, renews. A revoke it
+// proposes for a lease past its deadline then comes after every keepalive
+// it took before, in the log as in time, as etcd's leader renews a lease
+// when the keepalive reaches it. Waiting for the apply instead let a
+// leader whose disk stalled, which applies late, revoke a lease that its
+// followers had renewed and told the client so (seed 2 of
+// TestWLStalledLeaderIsReplaced). The apply renews it again.
+func (n *node) renewAppended(ents []*pb.Entry) {
+	for _, e := range ents {
+		data := e.GetData()
+		if e.GetType() != pb.EntryNormal || !isBatch(data) {
+			continue
+		}
+		p := batchHdr
+		for range binary.LittleEndian.Uint32(data[12:]) {
+			if len(data) < p+opHdr {
+				break
+			}
+			l := int(binary.LittleEndian.Uint32(data[p+1:]))
+			if len(data) < p+opHdr+l {
+				break
+			}
+			if data[p] == kLeaseKeepAlive {
+				if id, err := leaseID(data[p+opHdr : p+opHdr+l]); err == nil {
+					if _, revoking := n.leases.revoking[id]; !revoking {
+						n.renewed(id)
+					}
+				}
+			}
+			p += opHdr + l
+		}
 	}
 }
 

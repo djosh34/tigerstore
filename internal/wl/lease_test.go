@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"slices"
 	"testing"
 	"time"
+
+	pb "go.etcd.io/raft/v3/raftpb"
 )
 
 // leaseNode is a node with a store, for the apply of lease requests.
@@ -117,6 +120,39 @@ func TestTheLeaderRevokesExpiredLeases(t *testing.T) {
 	}
 	if d := n.leases.deadline[8].Sub(n.now); d != 60*time.Second {
 		t.Fatalf("lease 8's deadline is %v away after a keepalive, want 60s", d)
+	}
+}
+
+// A leader moves a lease's deadline on when its log takes a keepalive,
+// before it applies it: a leader whose disk stalled applies late, and must
+// not revoke a lease its followers renewed meanwhile and told the client
+// so (seed 2 of TestWLStalledLeaderIsReplaced).
+func TestTheLeaderRenewsALeaseWhenItsLogTakesTheKeepalive(t *testing.T) {
+	n := leaseNode(t)
+	grant(t, n, 7, 2)
+	n.lead = n.id
+	n.leaderChanged()
+	n.now = n.now.Add(1500 * time.Millisecond)
+	n.addOp(0, kLeaseKeepAlive, appendVarintField(nil, 1, 7))
+	data := slices.Clone(n.batch)
+	binary.LittleEndian.PutUint32(data[12:], uint32(n.batchOps))
+	n.batch = nil
+	// The stage has no room: the append waits for the disk, as on a
+	// stalled one, and nothing applies.
+	ent := &pb.Entry{Index: new(uint64(5)), Term: new(uint64(1)), Data: data}
+	if err := n.storageAppend(&pb.Message{Entries: []*pb.Entry{ent}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.wal.waiting) != 1 {
+		t.Fatal("the append did not wait for the disk")
+	}
+	n.now = n.now.Add(time.Second)
+	n.expireLeases()
+	if n.batch != nil {
+		t.Fatal("the leader revoked a lease its log took a keepalive of 1 s before")
+	}
+	if d := n.leases.deadline[7].Sub(n.now); d != time.Second {
+		t.Fatalf("lease 7's deadline is %v away, want 1s", d)
 	}
 }
 
