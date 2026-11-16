@@ -26,6 +26,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -262,6 +263,10 @@ type Faults struct {
 	// HoldDown keeps a follower down for 3 to 5 s once per run, so that
 	// it falls behind the leader's window and needs a snapshot.
 	HoldDown bool
+	// Uncached makes one in four of the wl nodes' reads that must not
+	// wait on the disk (wl.Sys.PreadNoWait) find their bytes out of the
+	// page cache: the read waits while its values are read off the loop.
+	Uncached bool
 	// SwitchEvery is the mean time between switches to a random link
 	// mask. It runs alongside LinkEvery; set only one for fast switching.
 	SwitchEvery int64
@@ -330,6 +335,7 @@ func DefaultConfig(seed uint64) Config {
 			SlowFetch:        true,
 			Rot:              true,
 			HoldDown:         true,
+			Uncached:         true,
 		},
 	}
 }
@@ -610,6 +616,7 @@ type Sim struct {
 	// chunks where the run's records keep their older bytes (arena).
 	pages, chunks *keptPages
 	stats         Stats
+	uncached      atomic.Int64 // the reads Faults.Uncached sent off the loop
 	membership    membershipWork
 	err           error
 	// loadFrom is the process's CPU time when the clients started, and
@@ -720,6 +727,9 @@ type Stats struct {
 	Resets, BlockedWrites int
 	// SlowWatchers counts the watch clients that turned slow.
 	SlowWatchers int
+	// Uncached counts the wl nodes' reads that found their bytes out of
+	// the page cache (Faults.Uncached).
+	Uncached int
 	// MembershipChanges counts each completed stage, and MembershipFaults
 	// those completed before healing. Attempts include failed calls.
 	MembershipChanges, MembershipFaults [4]int
@@ -871,6 +881,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		err = fmt.Errorf("decoding the history: %w", herr)
 	}
 	res.History, res.Stats, res.Silences = history, s.stats, s.silences
+	res.Stats.Uncached = int(s.uncached.Load())
 	res.HeldAppendAt, res.SteppedDownAt = s.heldAppendAt, s.steppedDownAt
 	res.grayNode, res.grayHealedAt, res.halfOpens = s.lastGray, s.grayHealedAt, s.halfOpens
 	res.nodes, res.values, res.stacks, res.records, res.chunks = s.nodes, s.values, s.wallStacks, s.records, s.chunks
@@ -978,6 +989,7 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 		stopAt:     cfg.Duration + cfg.Heal,
 		os:         wlOS,
 	}
+	s.setUncached()
 	var err error
 	if s.records, err = newRecordLog(); err != nil {
 		return nil, err
@@ -1313,6 +1325,28 @@ func (s *Sim) schedule() {
 // 300 ms, as main's nodes had, let it catch up before the end in 4 seeds
 // of 4.
 const lagAtEnd = TickTime + 20*Millisecond
+
+// setUncached has the descriptor table send one in four of the wl
+// nodes' reads that must not wait on the disk off the loop, under
+// Faults.Uncached, by a generator of the run's own: the run's other draws
+// stay as they were.
+func (s *Sim) setUncached() {
+	if !s.cfg.Faults.Uncached {
+		s.os.SetUncached(nil)
+		return
+	}
+	var mu sync.Mutex
+	rng := rand.New(rand.NewPCG(s.cfg.Seed, 0x6361636865))
+	s.os.SetUncached(func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		if rng.IntN(4) != 0 {
+			return false
+		}
+		s.uncached.Add(1)
+		return true
+	})
+}
 
 // markLoad notes the process's CPU time, the timers fired and the run's
 // time as the clients start, or as one stops, for what the load cost

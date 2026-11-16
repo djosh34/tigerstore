@@ -584,8 +584,20 @@ var errPrevCompacted = errors.New("the value before an event is compacted")
 // catchUp hands emit watcher x's events from x.syncRev on, until the
 // head or until the budget is spent, and then only at a revision's end.
 // It reports whether x reached the head.
+//
+// A value the loop would wait on the disk for is read off the loop: x
+// then sends nothing this turn, and catches up from where it was once the
+// values came (fetch.go).
 func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, error) {
 	st := n.st
+	st.noWait = true
+	away := false
+	defer func() {
+		st.noWait = false
+		if away {
+			n.fetchAway()
+		}
+	}()
 	j, _ := slices.BinarySearchFunc(st.changes, x.syncRev, func(ch change, rev int64) int { return cmp.Compare(ch.rev, rev) })
 	evs := n.w.syncBuf[:0]
 	defer func() {
@@ -596,6 +608,9 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 	for ; j < len(st.changes); j++ {
 		ch := st.changes[j]
 		if !b.left() && ch.rev != last {
+			if away {
+				return false, nil
+			}
 			x.syncRev = ch.rev
 			if len(evs) > 0 {
 				emit(evs)
@@ -610,7 +625,10 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 		ev := event{del: ch.del, key: ch.key, rev: ch.rev}
 		var err error
 		if !ch.del {
-			if ev.kv, err = st.putAt(ch.key, ch.rev); err != nil {
+			if ev.kv, err = st.putAt(ch.key, ch.rev); errors.Is(err, errAway) {
+				away = true
+				continue
+			} else if err != nil {
 				return false, err
 			}
 		}
@@ -618,7 +636,10 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 			// A put after a delete of its key in the same Txn: as etcd's
 			// sub-revisions have it, the value before is the tombstone.
 		} else if x.prevKV {
-			if ev.prev, err = st.at(ch.key, ch.rev-1); err != nil {
+			if ev.prev, err = st.at(ch.key, ch.rev-1); errors.Is(err, errAway) {
+				away = true
+				continue
+			} else if err != nil {
 				return false, err
 			}
 			// At the compacted revision, the value before may be gone:
@@ -630,6 +651,9 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 		}
 		evs = append(evs, ev)
 		b.events--
+	}
+	if away {
+		return false, nil
 	}
 	if len(evs) > 0 {
 		emit(evs)

@@ -17,6 +17,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -50,6 +51,19 @@ type OS struct {
 	mu   sync.Mutex
 	next int
 	fds  map[int]entry
+	// uncached, if set, says that a PreadNoWait finds its bytes out of
+	// the page cache, which the simulator does not have otherwise.
+	uncached atomic.Pointer[func() bool]
+}
+
+// SetUncached makes f say which PreadNoWait calls find their bytes out
+// of the page cache; nil, none.
+func (o *OS) SetUncached(f func() bool) {
+	if f == nil {
+		o.uncached.Store(nil)
+		return
+	}
+	o.uncached.Store(&f)
 }
 
 // New returns an empty table.
@@ -270,6 +284,15 @@ func (o *OS) Pread(fd int, p []byte, off int64) (int, error) {
 		err = nil
 	}
 	return k, err
+}
+
+// PreadNoWait is Pread, unless Uncached says the bytes are not in the
+// page cache: then it fails with EAGAIN, as preadv2 with RWF_NOWAIT does.
+func (o *OS) PreadNoWait(fd int, p []byte, off int64) (int, error) {
+	if f := o.uncached.Load(); f != nil && (*f)() {
+		return 0, unix.EAGAIN
+	}
+	return o.Pread(fd, p, off)
 }
 
 func (o *OS) Pwrite(fd int, p []byte, off int64) (int, error) {

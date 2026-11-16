@@ -916,6 +916,10 @@ func faultCases() []faultCase {
 		{"connection reset", Faults{ResetEvery: Second}, nil, func(st Stats) int { return st.Resets }},
 		{"full send buffer", Faults{LinkStallEvery: 500 * Millisecond}, nil, func(st Stats) int { return st.BlockedWrites }},
 		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.SlowWatchers }},
+		// A read that must not wait on the disk reads a value of the log or
+		// a checkpoint: a watch that catches up, or a range at a past
+		// revision.
+		{"value out of the page cache", Faults{Uncached: true, SlowWatcherEvery: Second}, ckpts, func(st Stats) int { return st.Uncached }},
 	}
 	for i := range numNetem {
 		k := netemKind(i)

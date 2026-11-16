@@ -10,6 +10,8 @@ import (
 	"slices"
 	"unsafe"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/djosh34/tigerstore/internal/planted"
 )
 
@@ -107,6 +109,13 @@ type store struct {
 	// bit of their offsets: the newest one, and the one being written.
 	ckpts   [2]ckptFile
 	scratch []byte // a value read from the log
+	// While noWait is set, as a read served on the loop sets it, a value
+	// the loop would wait on the disk for is not read: it goes to away,
+	// and the read fails with errAway, to be served again once the
+	// value was fetched off the loop into fetched (fetch.go).
+	noWait  bool
+	away    []logValue
+	fetched map[int64]fetchedValue
 	// bad is the first value read back that did not match its checksum:
 	// the loop stops on it, and no read serves it (#708).
 	bad error
@@ -379,7 +388,16 @@ func checkValue(v []byte, off int64, sum uint32) error {
 // them against sum. The first value that does not check stops the node
 // (st.bad).
 func (st *store) readValue(off int64, n, sum uint32) ([]byte, error) {
-	val, err := st.readLog(off, int(n))
+	var val []byte
+	var err error
+	if f, ok := st.fetched[off]; ok && len(f.val) == int(n) {
+		val, err = f.val, f.err
+	} else {
+		val, err = st.readLog(off, int(n))
+	}
+	if errors.Is(err, errAway) {
+		st.away = append(st.away, logValue{off: off, len: n, sum: sum})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -469,6 +487,9 @@ func (st *store) readLog(off int64, n int) ([]byte, error) {
 		if f == nil {
 			return nil, fmt.Errorf("a value at %#x names a checkpoint the store does not have", off)
 		}
+		if st.noWait {
+			return val, readFileNoWait(f, val, off&ckptOffMask)
+		}
 		if _, err := f.ReadAt(val, off&ckptOffMask); err != nil {
 			return nil, fmt.Errorf("read a value from the checkpoint: %w", err)
 		}
@@ -477,10 +498,37 @@ func (st *store) readLog(off int64, n int) ([]byte, error) {
 	if st.log == nil {
 		return nil, errors.New("the store has no log to read values from")
 	}
+	if r, ok := st.log.(noWaitReader); ok && st.noWait {
+		return val, r.readNoWait(val, off)
+	}
 	if err := st.log.read(val, off); err != nil {
 		return nil, fmt.Errorf("read a value from the log: %w", err)
 	}
 	return val, nil
+}
+
+// noWaitReader is a log that reads without waiting on the disk (the
+// node's log, wal.readNoWait).
+type noWaitReader interface {
+	readNoWait(p []byte, off int64) error
+}
+
+// readFileNoWait reads p at off of checkpoint f from the page cache, or
+// fails with errAway. A checkpoint in memory reads as ever.
+func readFileNoWait(f ckptFile, p []byte, off int64) error {
+	d, ok := f.(interface{ Fd() uintptr })
+	if !ok {
+		_, err := f.ReadAt(p, off)
+		return err
+	}
+	n, err := sysPreadNoWait(int(d.Fd()), p, off)
+	switch {
+	case errors.Is(err, unix.EAGAIN) || err == nil && n < len(p):
+		return errAway
+	case err != nil:
+		return fmt.Errorf("read a value from the checkpoint: %w", err)
+	}
+	return nil
 }
 
 // setBudget sizes the slab's limit from the node's memory budget, of

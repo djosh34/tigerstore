@@ -103,9 +103,13 @@ func (e sysEnv) grpcDial() []grpc.DialOption {
 
 func fds() Sys { return *fdSys.Load() }
 
-func sysRead(fd int, p []byte) (int, error)              { return fds().Read(fd, p) }
-func sysWrite(fd int, p []byte) (int, error)             { return fds().Write(fd, p) }
-func sysPread(fd int, p []byte, off int64) (int, error)  { return fds().Pread(fd, p, off) }
+func sysRead(fd int, p []byte) (int, error)             { return fds().Read(fd, p) }
+func sysWrite(fd int, p []byte) (int, error)            { return fds().Write(fd, p) }
+func sysPread(fd int, p []byte, off int64) (int, error) { return fds().Pread(fd, p, off) }
+
+func sysPreadNoWait(fd int, p []byte, off int64) (int, error) {
+	return fds().PreadNoWait(fd, p, off)
+}
 func sysPwrite(fd int, p []byte, off int64) (int, error) { return fds().Pwrite(fd, p, off) }
 func sysFsync(fd int) error                              { return fds().Fsync(fd) }
 func sysClose(fd int) error                              { return fds().Close(fd) }
@@ -174,6 +178,7 @@ func (e sysEnv) readFile(path string) ([]byte, error) {
 }
 
 func (f *simFile) Name() string { return f.name }
+func (f *simFile) Fd() uintptr  { return uintptr(f.fd) }
 
 func (f *simFile) Read(p []byte) (int, error) {
 	n, err := fds().Read(f.fd, p)

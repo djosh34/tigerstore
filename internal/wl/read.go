@@ -3,6 +3,7 @@ package wl
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"math"
 	"sort"
 
@@ -79,7 +80,7 @@ func (n *node) serveReads() {
 					n.replyError(c, s.id, codeInvalidArgument, "bad request")
 					continue
 				}
-				n.serveRange(c, s, &req)
+				n.serveRange(c, s, &req, b.buf[r.off:r.off+r.len])
 			}
 			n.freeBatches = append(n.freeBatches, b)
 			continue
@@ -104,19 +105,31 @@ func (n *node) retryReads(now int64) {
 	}
 }
 
-// serveRange answers a Range or RangeStream from the store as it is.
-func (n *node) serveRange(c *client, s *stream, r *rangeReq) {
+// serveRange answers a Range or RangeStream, msg, from the store as it
+// is. One that needs values the loop would wait on the disk for waits for
+// them to be read off the loop, and is served again then (fetch.go).
+func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 	st := n.st
-	n.gs.rangesN++
 	if r.rev > 0 && r.rev < st.compactRev {
+		n.gs.rangesN++
 		n.replyError(c, s.id, codeOutOfRange, msgCompacted)
 		return
 	}
 	if r.rev > st.rev {
+		n.gs.rangesN++
 		n.replyError(c, s.id, codeOutOfRange, msgFuture)
 		return
 	}
+	st.noWait = true
 	kvs, count, more, err := n.rangeKVs(r, n.kvs[:0])
+	st.noWait = false
+	if errors.Is(err, errAway) {
+		clear(kvs)
+		n.kvs = kvs[:0]
+		n.awaitValues(mkHandle(c, s.id), msg)
+		return
+	}
+	n.gs.rangesN++
 	if err != nil {
 		n.replyError(c, s.id, codeInternal, err.Error())
 		clear(kvs)
@@ -298,9 +311,15 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte) ([][]byte, int64, bool, error
 	}
 	var count int64
 	var err error
+	away := false
 	st.tree.scan(r.key, end, func(id uint32) bool {
 		var rec []byte
-		if rec, err = st.at(id, rev); err != nil {
+		if rec, err = st.at(id, rev); errors.Is(err, errAway) {
+			// The scan goes on, so that one fetch reads every value the
+			// range lacks.
+			away, err = true, nil
+			return true
+		} else if err != nil {
 			return false
 		}
 		if rec == nil {
@@ -312,6 +331,9 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte) ([][]byte, int64, bool, error
 		}
 		return true
 	})
+	if away {
+		return kvs, 0, false, errAway
+	}
 	if r.countOnly || err != nil {
 		return kvs, count, false, err
 	}

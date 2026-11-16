@@ -240,9 +240,13 @@ func (sysEnv) readDir(dir string) ([]string, error) {
 	return names, err
 }
 
-func sysRead(fd int, p []byte) (int, error)              { return unix.Read(fd, p) }
-func sysWrite(fd int, p []byte) (int, error)             { return unix.Write(fd, p) }
-func sysPread(fd int, p []byte, off int64) (int, error)  { return unix.Pread(fd, p, off) }
+func sysRead(fd int, p []byte) (int, error)             { return unix.Read(fd, p) }
+func sysWrite(fd int, p []byte) (int, error)            { return unix.Write(fd, p) }
+func sysPread(fd int, p []byte, off int64) (int, error) { return unix.Pread(fd, p, off) }
+
+func sysPreadNoWait(fd int, p []byte, off int64) (int, error) {
+	return unix.Preadv2(fd, [][]byte{p}, off, unix.RWF_NOWAIT)
+}
 func sysPwrite(fd int, p []byte, off int64) (int, error) { return unix.Pwrite(fd, p, off) }
 func sysFsync(fd int) error                              { return unix.Fsync(fd) }
 func sysClose(fd int) error                              { return unix.Close(fd) }

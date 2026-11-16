@@ -33,6 +33,10 @@ type Sys interface {
 	Read(fd int, p []byte) (int, error)
 	Write(fd int, p []byte) (int, error)
 	Pread(fd int, p []byte, off int64) (int, error)
+	// PreadNoWait is Pread of what the page cache holds, as preadv2
+	// with RWF_NOWAIT: it fails with EAGAIN, or reads short, where it
+	// would wait for the disk.
+	PreadNoWait(fd int, p []byte, off int64) (int, error)
 	Pwrite(fd int, p []byte, off int64) (int, error)
 	Fsync(fd int) error
 	// Allocate allocates fd's space up to size and keeps its size, as

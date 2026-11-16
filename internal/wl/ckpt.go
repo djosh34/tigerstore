@@ -363,7 +363,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 	gen := 1 - n.ckptGen
 	if st.ckpts[gen] != nil {
 		_ = st.ckpts[gen].Close()
-		st.ckpts[gen] = nil
+		st.setCkpt(gen, nil)
 	}
 	name := ckptName(index)
 	tmp := name + ".tmp"
@@ -549,7 +549,7 @@ func (n *node) ckptDone() error {
 	old := n.ckptGen
 	oldName := n.ckptName
 	// The writer is done with the file: the store reads values from it now.
-	n.st.ckpts[r.gen] = r.w.f
+	n.st.setCkpt(r.gen, r.w.f)
 	for _, v := range r.rels {
 		n.st.repoint(v.id, v.src, ckptOff(r.gen, v.dst))
 	}
@@ -566,7 +566,7 @@ func (n *node) ckptDone() error {
 		time.Duration(r.encodeNs).Round(time.Millisecond), time.Duration(r.w.readNs.Load()).Round(time.Millisecond), time.Duration(r.w.writeNs.Load()).Round(time.Millisecond))
 	if f := n.st.ckpts[old]; f != nil {
 		_ = f.Close()
-		n.st.ckpts[old] = nil
+		n.st.setCkpt(old, nil)
 	}
 	if oldName != "" && oldName != n.ckptName {
 		n.rm.remove(filepath.Join(n.ckptDir, oldName))

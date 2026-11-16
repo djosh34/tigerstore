@@ -116,6 +116,12 @@ type wal struct {
 	mu         sync.Mutex
 	rfds       []int // from segment rbase on
 	rbase      int64
+	// readers counts the reads of rfds under way off the loop; while
+	// any is, cut leaves the descriptors it lets go in unused, and the
+	// last reader closes them: a descriptor closed under a read could
+	// be taken by another file before the read.
+	readers int
+	unused  []int
 
 	stats walStats
 	// The helper's time in its writes, for the stats line: how long the
@@ -300,7 +306,11 @@ func (w *wal) cut(off int64) []string {
 	defer w.mu.Unlock()
 	var paths []string
 	for w.rbase < k && len(w.rfds) > 0 {
-		_ = sysClose(w.rfds[0])
+		if w.readers > 0 {
+			w.unused = append(w.unused, w.rfds[0])
+		} else {
+			_ = sysClose(w.rfds[0])
+		}
 		paths = append(paths, segPath(w.dir, w.rbase))
 		w.rfds = w.rfds[1:]
 		w.rbase++
@@ -359,7 +369,7 @@ func (w *wal) shut() {
 	<-w.helperDone
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	for _, fd := range append(w.rfds, w.wfds...) {
+	for _, fd := range slices.Concat(w.rfds, w.unused, w.wfds) {
 		_ = sysClose(fd)
 	}
 	_ = sysClose(w.kickFD)
@@ -648,13 +658,49 @@ func (w *wal) read(p []byte, off int64) error {
 	return w.readDurable(p, off)
 }
 
+// errAway is a value the loop would wait on the disk for: it is read off
+// the loop (fetch.go).
+var errAway = errors.New("the value is not in memory")
+
+// readNoWait is read of the bytes in the stage or the page cache: it
+// fails with errAway where it would wait for the disk.
+func (w *wal) readNoWait(p []byte, off int64) error {
+	if len(p) == 0 || off >= w.durableEnd() {
+		return w.read(p, off)
+	}
+	return w.readSegments(p, off, func(fd int, p []byte, off int64) (int, error) {
+		n, err := sysPreadNoWait(fd, p, off)
+		if errors.Is(err, unix.EAGAIN) || err == nil && n < len(p) {
+			return 0, errAway
+		}
+		return n, err
+	})
+}
+
 // durableEnd is where the log's bytes on disk end, those the helper writes
 // again aside: other goroutines may read the log before it.
 func (w *wal) durableEnd() int64 { return w.done.Load() &^ (block - 1) }
 
 // readDurable copies the log's bytes at off, before durableEnd, from its
 // segments into p. Any goroutine may call it.
-func (w *wal) readDurable(p []byte, off int64) error {
+func (w *wal) readDurable(p []byte, off int64) error { return w.readSegments(p, off, sysPread) }
+
+// readSegments is readDurable through pread.
+func (w *wal) readSegments(p []byte, off int64, pread func(fd int, p []byte, off int64) (int, error)) error {
+	w.mu.Lock()
+	w.readers++
+	w.mu.Unlock()
+	defer func() {
+		w.mu.Lock()
+		w.readers--
+		if w.readers == 0 {
+			for _, fd := range w.unused {
+				_ = sysClose(fd)
+			}
+			w.unused = w.unused[:0]
+		}
+		w.mu.Unlock()
+	}()
 	for got := 0; got < len(p); {
 		o := off + int64(got)
 		k := min(len(p)-got, int(segSize-o%segSize))
@@ -666,7 +712,7 @@ func (w *wal) readDurable(p []byte, off int64) error {
 		}
 		fd := w.rfds[i]
 		w.mu.Unlock()
-		n, err := sysPread(fd, p[got:got+k], o%segSize)
+		n, err := pread(fd, p[got:got+k], o%segSize)
 		if err != nil {
 			return err
 		}

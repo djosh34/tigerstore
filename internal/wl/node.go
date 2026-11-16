@@ -107,6 +107,10 @@ type node struct {
 	readBatches []*readBatch
 	freeBatches []*readBatch
 	readSeq     uint64
+	// Ranges that wait for values read off the loop, and the places of
+	// the values fetches read (fetch.go).
+	awayReads []awayRead
+	fetching  map[int64]bool
 
 	wal *wal
 
@@ -372,7 +376,7 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		if r.serializable || planted.On("B01a") {
 			// Planted B01a: a linearizable read is served without
 			// ReadIndex, from whatever this node applied.
-			n.serveRange(c, s, &r)
+			n.serveRange(c, s, &r, msg)
 			return nil
 		}
 		n.queueRead(mkHandle(c, s.id), s.kind, msg)

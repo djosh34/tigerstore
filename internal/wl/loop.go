@@ -144,7 +144,7 @@ func run(ctx context.Context, cfg Config) error {
 		return nil, nil
 	}
 	n := &node{
-		sys: sys, id: cfg.ID, clusterID: cfg.ClusterID, peersOut: map[uint64]*peerOut{}, beatsOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{},
+		sys: sys, id: cfg.ID, clusterID: cfg.ClusterID, peersOut: map[uint64]*peerOut{}, beatsOut: map[uint64]*peerOut{}, fetching: map[int64]bool{}, metrics: &nodeMetrics{},
 		ckptDir: filepath.Join(cfg.DataDir, "ckpt"), ckptLog: cmp.Or(cfg.CheckpointLog, ckptMin), ckptKeys: cfg.CheckpointChunkKeys, catchup: cmp.Or(cfg.CatchupEntries, storageWindow), confState: &pb.ConfState{},
 		self:   member{id: cfg.ID, name: cfg.Name, clientURLs: cfg.ClientURLs},
 		format: baseFormat, auth: newAuthStore(), tokens: map[string]*simpleToken{}, logins: map[handle]authLogin{},
@@ -941,6 +941,7 @@ func (l *loop) run() error {
 			n.rn.Tick()
 			n.checkStall()
 			n.retryReads(l.tick)
+			n.dropFetched()
 			n.expireProposals()
 			n.expireMemberRequests()
 			n.expireHeldConfChanges()
@@ -1158,6 +1159,9 @@ type counters struct {
 	// clientsWaited counts the times a client waited for the client
 	// buffers to read.
 	clientsWaited uint64
+	// fetches counts the reads of values off the loop, and fetched the
+	// values they read (fetch.go).
+	fetches, fetched int
 
 	// What the batches carried, and how the peers named or carried them.
 	opsByKind, bytesByKind [kinds]int
@@ -1222,8 +1226,8 @@ func (l *loop) logStats() {
 		l.n.st.nkeys, l.n.st.rev, l.n.st.slab.top>>20)
 	l.lastWAL = ws
 	st := l.n.st
-	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d; stage waits %d",
-		st.slab.used>>20, st.limit>>20, st.evictions, st.loads, l.n.wal.stats.waits)
+	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d; stage waits %d; values read off the loop %d in %d fetches",
+		st.slab.used>>20, st.limit>>20, st.evictions, st.loads, l.n.wal.stats.waits, l.n.stats.fetched, l.n.stats.fetches)
 	m := l.n.memStats()
 	l.logger.Printf("memory MB: rss %d, go %d (live heap %d, goal %d); tables: keys %d hash %d history %d key arena %d slab %d (used %d) tree %d changes %d; sockets out %d in %d, held %d, held for clients' windows %d; clients %d (refused %d in all), requests sent in part %d",
 		m.rss>>20, m.goTotal>>20, m.goLive>>20, m.goGoal>>20, m.keys>>20, m.hash>>20, m.hist>>20, m.arena>>20, m.slabTop>>20, m.slabUsed>>20, m.tree>>20, m.ch>>20,
