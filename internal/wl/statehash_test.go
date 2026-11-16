@@ -60,3 +60,27 @@ func TestACheckpointLoadsToTheStateItWasTakenOf(t *testing.T) {
 		}
 	}
 }
+
+// Two stores that applied the same writes and compaction hash alike,
+// although one holds its history back from trimming for a checkpoint it
+// began before the compaction: the hash takes what a read at the
+// compacted revision or later sees (seed 7 of TestWLRunsTheFaults).
+func TestAHeldCheckpointLeavesTheStateAsItIs(t *testing.T) {
+	var hashes [2]uint64
+	for i, holds := range []bool{false, true} {
+		n, l := ckptNode(t)
+		st := n.st
+		putValue(t, st, l, "/a", "a1") // 2
+		if holds {
+			st.hold()
+		}
+		putValue(t, st, l, "/a", "a2") // 3
+		putValue(t, st, l, "/a", "a3") // 4
+		st.compact(4)
+		st.trimSteps(1 << 20)
+		hashes[i] = st.stateHash()
+	}
+	if hashes[0] != hashes[1] {
+		t.Fatalf("a store that holds a checkpoint hashes %#x, one that does not %#x", hashes[1], hashes[0])
+	}
+}

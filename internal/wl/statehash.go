@@ -17,7 +17,10 @@ import (
 // stateHash is a hash of the store as a checkpoint of it at its revision
 // holds it: the revisions, the leases, each key a read at the compacted
 // revision or later can see with its states and their values, and the
-// changes after the compacted revision, all by key name. A node with the
+// changes after the compacted revision, all by key name. States older
+// than what such a read sees are left out: a checkpoint being written
+// holds them back from trimming on one node and not on another (seed 7
+// of TestWLRunsTheFaults). A node with the
 // same state has the same hash whatever its key ids, and so does a store
 // loaded from the checkpoint. A value stands in it by its checksum, which
 // the apply took of it: the hash reads nothing back, so that taking it
@@ -43,13 +46,13 @@ func (st *store) stateHash() uint64 {
 	var named []uint32
 	var states []ckptState
 	for id := range st.nkeys {
-		if len(st.ckptStates(id, st.rev, states[:0])) > 0 {
+		if len(st.ckptStates(id, st.rev, st.compactRev, states[:0])) > 0 {
 			named = append(named, id)
 		}
 	}
 	slices.SortFunc(named, func(a, b uint32) int { return bytes.Compare(st.key(a), st.key(b)) })
 	for _, id := range named {
-		states = st.ckptStates(id, st.rev, states[:0])
+		states = st.ckptStates(id, st.rev, st.compactRev, states[:0])
 		key := st.key(id)
 		put(uint64(len(key)))
 		_, _ = h.Write(key)
@@ -99,7 +102,7 @@ func CheckpointStateHash(b []byte, name string, readLog func(p []byte, off int64
 	}
 	var states []ckptState
 	for id := range st.nkeys {
-		states = st.ckptStates(id, st.rev, states[:0])
+		states = st.ckptStates(id, st.rev, st.compactRev, states[:0])
 		for _, s := range states {
 			if _, err := st.readValue(s.voff, s.vlen, s.vsum); err != nil {
 				return 0, err
