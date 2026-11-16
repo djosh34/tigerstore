@@ -148,7 +148,11 @@ func (sysEnv) allocate(fd int, size int64) error {
 }
 
 // freeSpace returns the room left on the file system of path.
-func (sysEnv) freeSpace(path string) (int64, error) {
+func (sysEnv) freeSpace(path string) (int64, error) { return freeSpaceOf(path) }
+
+// freeSpaceOf is statfs's room left on the file system of path; a test
+// puts another in its place.
+var freeSpaceOf = func(path string) (int64, error) {
 	var st unix.Statfs_t
 	if err := unix.Statfs(path, &st); err != nil {
 		return 0, err
