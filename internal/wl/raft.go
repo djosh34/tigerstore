@@ -125,9 +125,6 @@ func (n *node) ready() error {
 // catches up.
 func (n *node) storageAppend(m *pb.Message) error {
 	n.nameEntries(m.GetEntries(), spanAppend)
-	if len(n.leases.deadline) > 0 {
-		n.renewAppended(m.GetEntries())
-	}
 	w := n.wal
 	if len(w.waiting) > 0 || !w.fits(m.GetEntries()) {
 		w.stats.waits++
@@ -506,7 +503,7 @@ func (n *node) peerFrames(p *peerIn) error {
 		if !n.simDeliver(m) {
 			continue
 		}
-		_ = n.rn.Step(m)
+		n.step(m)
 	}
 }
 
@@ -691,7 +688,7 @@ func (n *node) retryHeld() {
 			}
 			if err == nil && n.simDeliver(m) {
 				m.To = new(n.id)
-				_ = n.rn.Step(m)
+				n.step(m)
 			}
 		}
 		clear(p.held[:k])

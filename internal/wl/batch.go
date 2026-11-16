@@ -131,6 +131,9 @@ func (n *node) proposeBatch(now time.Time) {
 		n.ring.commit(data, span{kind: kind, at: now, fwd: true, origin: n.id, seq: seq})
 	}
 	n.stats.proposals++
+	if len(n.leases.deadline) > 0 {
+		n.renewProposed(data)
+	}
 	if n.lead != n.id && n.lead != 0 {
 		n.sendBatch(data)
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 )
 
@@ -94,24 +95,90 @@ func TestPutToAMissingLeaseFails(t *testing.T) {
 	}
 }
 
-func TestTheLeaderRevokesExpiredLeases(t *testing.T) {
+// leaderNode is a leaseNode that leads a Raft group of itself alone.
+func leaderNode(t *testing.T) (*node, *raft.MemoryStorage) {
+	t.Helper()
 	n := leaseNode(t)
+	ms := raft.NewMemoryStorage()
+	snap := &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: &pb.ConfState{Voters: []uint64{n.id}}}}
+	if err := ms.ApplySnapshot(snap); err != nil {
+		t.Fatal(err)
+	}
+	rn, err := raft.NewRawNode(raftConfig(n.id, ms, sizeFor(0), 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.rn = rn
+	if err := rn.Campaign(); err != nil {
+		t.Fatal(err)
+	}
+	for range 10 {
+		logOps(t, n, ms)
+	}
+	if rn.Status().RaftState != raft.StateLeader {
+		t.Fatal("the node did not become the leader")
+	}
+	n.lead = n.id
+	return n, ms
+}
+
+// logOp is a lease op in the log: its kind and its lease.
+type logOp struct {
+	kind uint8
+	id   int64
+}
+
+// logOps hands n's Raft its storage's work and returns the lease ops its
+// log took since the last call, in the log's order.
+func logOps(t *testing.T, n *node, ms *raft.MemoryStorage) []logOp {
+	t.Helper()
+	var ops []logOp
+	for n.rn.HasReady() {
+		rd := n.rn.Ready()
+		for _, m := range rd.Messages {
+			if m.GetTo() == raft.LocalAppendThread {
+				if err := ms.Append(m.GetEntries()); err != nil {
+					t.Fatal(err)
+				}
+				for _, e := range m.GetEntries() {
+					ops = append(ops, batchLeaseOps(e.GetData())...)
+				}
+			}
+			for _, r := range m.GetResponses() {
+				_ = n.rn.Step(r)
+			}
+		}
+	}
+	return ops
+}
+
+func batchLeaseOps(data []byte) []logOp {
+	var ops []logOp
+	if !isBatch(data) {
+		return nil
+	}
+	p := batchHdr
+	for range binary.LittleEndian.Uint32(data[12:]) {
+		l := int(binary.LittleEndian.Uint32(data[p+1:]))
+		if k := data[p]; k == kLeaseKeepAlive || k == kLeaseRevoke {
+			id, _ := leaseID(data[p+opHdr : p+opHdr+l])
+			ops = append(ops, logOp{k, id})
+		}
+		p += opHdr + l
+	}
+	return ops
+}
+
+func TestTheLeaderRevokesExpiredLeases(t *testing.T) {
+	n, ms := leaderNode(t)
 	grant(t, n, 7, 2)
 	grant(t, n, 8, 60)
-	n.lead = n.id
 	n.leaderChanged()
 	n.now = n.now.Add(3 * time.Second)
 	n.expireLeases()
 	n.expireLeases() // not twice while the first is in flight
-	if n.batch == nil || n.batchOps != 1 {
-		t.Fatalf("the leader proposed %d ops, want one revoke", n.batchOps)
-	}
-	op := n.batch[batchHdr:]
-	if op[0] != kLeaseRevoke {
-		t.Fatalf("the op is of kind %d, want a revoke", op[0])
-	}
-	if id, _ := leaseID(op[opHdr : opHdr+int(binary.LittleEndian.Uint32(op[1:]))]); id != 7 {
-		t.Fatalf("the leader revokes lease %d, want 7", id)
+	if ops := logOps(t, n, ms); !slices.Equal(ops, []logOp{{kLeaseRevoke, 7}}) {
+		t.Fatalf("the leader's log took %v, want one revoke of lease 7", ops)
 	}
 	// A keepalive moves the deadline on.
 	n.now = n.now.Add(58 * time.Second)
@@ -128,31 +195,82 @@ func TestTheLeaderRevokesExpiredLeases(t *testing.T) {
 // not revoke a lease its followers renewed meanwhile and told the client
 // so (seed 2 of TestWLStalledLeaderIsReplaced).
 func TestTheLeaderRenewsALeaseWhenItsLogTakesTheKeepalive(t *testing.T) {
-	n := leaseNode(t)
+	n, ms := leaderNode(t)
 	grant(t, n, 7, 2)
-	n.lead = n.id
 	n.leaderChanged()
 	n.now = n.now.Add(1500 * time.Millisecond)
 	n.addOp(0, kLeaseKeepAlive, appendVarintField(nil, 1, 7))
-	data := slices.Clone(n.batch)
-	binary.LittleEndian.PutUint32(data[12:], uint32(n.batchOps))
-	n.batch = nil
-	// The stage has no room: the append waits for the disk, as on a
-	// stalled one, and nothing applies.
-	ent := &pb.Entry{Index: new(uint64(5)), Term: new(uint64(1)), Data: data}
-	if err := n.storageAppend(&pb.Message{Entries: []*pb.Entry{ent}}); err != nil {
-		t.Fatal(err)
-	}
-	if len(n.wal.waiting) != 1 {
-		t.Fatal("the append did not wait for the disk")
-	}
+	n.proposeBatch(n.now)
+	// Nothing applies, as on a stalled disk.
 	n.now = n.now.Add(time.Second)
 	n.expireLeases()
-	if n.batch != nil {
-		t.Fatal("the leader revoked a lease its log took a keepalive of 1 s before")
+	if ops := logOps(t, n, ms); !slices.Equal(ops, []logOp{{kLeaseKeepAlive, 7}}) {
+		t.Fatalf("the leader's log took %v, want the keepalive alone", ops)
 	}
 	if d := n.leases.deadline[7].Sub(n.now); d != time.Second {
 		t.Fatalf("lease 7's deadline is %v away, want 1s", d)
+	}
+}
+
+// A keepalive the leader's log takes before the leader decides to revoke
+// the lease renews it, and one it takes after comes after the revoke in
+// the log, so every node answers it "lease not found". Before, the leader
+// renewed in the Ready after the decision, so a keepalive its log took in
+// the same turn, or that waited in its batch, applied alive before the
+// revoke: a follower told the client "TTL 2", and the revoke took the
+// lease at once (#709; seed 4 of TestWLRecoversFromATornWriteOfTheStage,
+// seed 251 of TestSeeds).
+func TestAKeepaliveAndTheRevokeAgree(t *testing.T) {
+	keepAlive := func(n *node) *pb.Message {
+		f, _ := testNode(t)
+		f.id = 2
+		f.addOp(0, kLeaseKeepAlive, appendVarintField(nil, 1, 7))
+		data := slices.Clip(f.batch)
+		binary.LittleEndian.PutUint32(data[12:], uint32(f.batchOps))
+		return &pb.Message{Type: pb.MsgProp.Enum(), From: new(uint64(2)), To: new(n.id), Entries: []*pb.Entry{{Data: data}}}
+	}
+	for _, tc := range []struct {
+		name string
+		// before runs after the lease's TTL ran out, before the leader's
+		// tick decides; after runs after it.
+		before, after func(n *node)
+		want          []logOp
+	}{{
+		name:   "a follower's keepalive stepped before the tick",
+		before: func(n *node) { n.step(keepAlive(n)) },
+		want:   []logOp{{kLeaseKeepAlive, 7}},
+	}, {
+		name:   "the leader's own keepalive waiting in its batch",
+		before: func(n *node) { n.addOp(0, kLeaseKeepAlive, appendVarintField(nil, 1, 7)) },
+		want:   []logOp{{kLeaseKeepAlive, 7}},
+	}, {
+		name:  "a follower's keepalive stepped after the tick",
+		after: func(n *node) { n.step(keepAlive(n)) },
+		want:  []logOp{{kLeaseRevoke, 7}, {kLeaseKeepAlive, 7}},
+	}, {
+		name:  "the leader's own keepalive after the tick",
+		after: func(n *node) { n.addOp(0, kLeaseKeepAlive, appendVarintField(nil, 1, 7)) },
+		want:  []logOp{{kLeaseRevoke, 7}, {kLeaseKeepAlive, 7}},
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			n, ms := leaderNode(t)
+			grant(t, n, 7, 2)
+			n.leaderChanged()
+			logOps(t, n, ms)
+			n.now = n.now.Add(2030 * time.Millisecond)
+			if tc.before != nil {
+				tc.before(n)
+			}
+			// The loop's tick, then its turn's proposal.
+			n.expireLeases()
+			if tc.after != nil {
+				tc.after(n)
+			}
+			n.proposeBatch(n.now)
+			if ops := logOps(t, n, ms); !slices.Equal(ops, tc.want) {
+				t.Fatalf("the leader's log took %v, want %v", ops, tc.want)
+			}
+		})
 	}
 }
 

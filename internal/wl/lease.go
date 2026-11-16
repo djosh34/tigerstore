@@ -136,50 +136,84 @@ func (n *node) renewed(id int64) {
 	}
 }
 
-// renewAppended moves on, on the leader, the deadline of each lease that
-// a keepalive in ents, which its log takes now, renews. A revoke it
-// proposes for a lease past its deadline then comes after every keepalive
-// it took before, in the log as in time, as etcd's leader renews a lease
-// when the keepalive reaches it. Waiting for the apply instead let a
-// leader whose disk stalled, which applies late, revoke a lease that its
-// followers had renewed and told the client so (seed 2 of
-// TestWLStalledLeaderIsReplaced). The apply renews it again.
-func (n *node) renewAppended(ents []*pb.Entry) {
-	for _, e := range ents {
-		data := e.GetData()
-		if e.GetType() != pb.EntryNormal || !isBatch(data) {
-			continue
+// renewProposed moves on, on the leader, the deadline of each lease that
+// a keepalive in batch data renews, as its Raft log takes the batch: its
+// own (proposeBatch) or a follower's (step). So the deadlines
+// always count every keepalive in the log, and a revoke the leader puts
+// in the log at once when it decides (expireLeases) comes after each of
+// them: a keepalive the log takes later applies after the revoke, and
+// every node answers it "lease not found", as etcd's leader does.
+// Renewing at the apply instead let a leader whose disk stalled, which
+// applies late, revoke a lease its followers had renewed and told the
+// client so (seed 2 of TestWLStalledLeaderIsReplaced); renewing in the
+// Ready after the decision let a keepalive the log took before the revoke
+// apply alive on a follower, and the revoke then take the lease (#709).
+// The apply renews again.
+func (n *node) renewProposed(data []byte) {
+	if !isBatch(data) {
+		return
+	}
+	p := batchHdr
+	for range binary.LittleEndian.Uint32(data[12:]) {
+		if len(data) < p+opHdr {
+			break
 		}
-		p := batchHdr
-		for range binary.LittleEndian.Uint32(data[12:]) {
-			if len(data) < p+opHdr {
-				break
-			}
-			l := int(binary.LittleEndian.Uint32(data[p+1:]))
-			if len(data) < p+opHdr+l {
-				break
-			}
-			if data[p] == kLeaseKeepAlive {
-				if id, err := leaseID(data[p+opHdr : p+opHdr+l]); err == nil {
-					if _, revoking := n.leases.revoking[id]; !revoking {
-						n.renewed(id)
-					}
+		l := int(binary.LittleEndian.Uint32(data[p+1:]))
+		if len(data) < p+opHdr+l {
+			break
+		}
+		if data[p] == kLeaseKeepAlive {
+			if id, err := leaseID(data[p+opHdr : p+opHdr+l]); err == nil {
+				if _, revoking := n.leases.revoking[id]; !revoking {
+					n.renewed(id)
 				}
 			}
-			p += opHdr + l
 		}
+		p += opHdr + l
 	}
 }
 
-// expireLeases proposes a revoke of every lease past its deadline, on the
-// leader.
+// step steps a peer's message into Raft. A follower's proposal renews the
+// leases its keepalives name first, as the leader's log takes it
+// (renewProposed).
+func (n *node) step(m *pb.Message) {
+	if m.GetType() == pb.MsgProp && len(n.leases.deadline) > 0 {
+		for _, e := range m.GetEntries() {
+			if e.GetType() == pb.EntryNormal {
+				n.renewProposed(e.GetData())
+			}
+		}
+	}
+	_ = n.rn.Step(m)
+}
+
+// expireLeases revokes every lease past its deadline, on the leader. The
+// turn's batch goes to the log first, renewing what its keepalives renew,
+// and the revokes then go in a batch of their own at once: so each comes
+// after every keepalive the log took before the decision, and before
+// every one it takes after (renewProposed).
 func (n *node) expireLeases() {
 	lc := &n.leases
-	for id, d := range lc.deadline {
+	due := func(id int64, d time.Time) bool {
 		if n.now.Before(d) {
-			continue
+			return false
 		}
-		if at, ok := lc.revoking[id]; ok && n.now.Sub(at) < revokeRetry {
+		at, ok := lc.revoking[id]
+		return !ok || n.now.Sub(at) >= revokeRetry
+	}
+	expired := false
+	for id, d := range lc.deadline {
+		if due(id, d) {
+			expired = true
+			break
+		}
+	}
+	if !expired {
+		return
+	}
+	n.proposeBatch(n.now)
+	for id, d := range lc.deadline {
+		if !due(id, d) {
 			continue
 		}
 		lc.revoking[id] = n.now
@@ -192,6 +226,7 @@ func (n *node) expireLeases() {
 		}
 		n.addOp(0, kLeaseRevoke, appendVarintField(nil, 1, uint64(id)))
 	}
+	n.proposeBatch(n.now)
 }
 
 // remaining is lease id's TTL left, in seconds: the leader's deadline, or
