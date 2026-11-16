@@ -286,6 +286,14 @@ var plantedWLCases = map[string]plantedCase{
 	// last write made through the page cache, with no sync, before the
 	// log moves on to the next.
 	"B16": {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|` + refused},
+	// Followers forward their writes to the stalled leader, which stays
+	// leader, so the liveness check may find the timed-out calls first.
+	"B17": {seeds: 64, cfg: wlStalledLeaderConfig, want: `the stalled leader|liveness: client \d+ call`, extra: func(r *Result) error {
+		if len(r.Silences) == 0 {
+			return errors.New("the stalled leader never went silent")
+		}
+		return nil
+	}},
 	"B18": {seeds: 16, cfg: wlFaultsConfig, want: `holds \d+ watchers`},
 	// A wl start that misses the segment stops on it, as a cold restart
 	// of seed 1 did.

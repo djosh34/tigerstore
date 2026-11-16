@@ -81,7 +81,9 @@ type wal struct {
 	// durableHS is the newest hard state the log holds durably.
 	durableHS *pb.HardState
 	waiting   []*pb.Message // appends kept while the stage is full
-	offs      []int64       // where the last write's entries have their data
+	// progressAt is when the disk last made an append durable.
+	progressAt time.Time
+	offs       []int64 // where the last write's entries have their data
 
 	// stage mirrors the newest part of the log in page-aligned memory:
 	// the loop copies each append there, and the helper writes its blocks
@@ -132,6 +134,7 @@ type walJob struct {
 	end   int64
 	resps []*pb.Message
 	hs    *pb.HardState // the hard state the append wrote, if any
+	at    time.Time     // when the loop handed it the log
 }
 
 type segment struct {

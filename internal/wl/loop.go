@@ -886,6 +886,7 @@ func (l *loop) run() error {
 			l.next = now.Add(tickEvery)
 			l.tick++
 			n.rn.Tick()
+			n.checkStall()
 			n.retryReads(l.tick)
 			n.expireProposals()
 			n.expireMemberRequests()

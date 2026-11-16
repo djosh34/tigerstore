@@ -101,6 +101,9 @@ type TurnState struct {
 	Rev int64
 	// Watchers counts the node's watchers.
 	Watchers int
+	// Silent says the node leads on a stalled disk and sends its peers
+	// nothing (silent.go).
+	Silent bool
 	// Members are the members as of the applied index, in ID order, and
 	// Removed the IDs of those the cluster removed, in order. Both are
 	// the node's own and change only when the members do: a hook keeps

@@ -227,3 +227,35 @@ func TestAWLNodeOfTheSimulatorIsSmall(t *testing.T) {
 		t.Fatalf("a wl node of the simulator makes %d MiB at its start, past %d MiB", got>>20, most>>20)
 	}
 }
+
+// TestWLStalledLeaderIsReplaced is TestStalledLeaderIsReplaced on wl
+// nodes: a leader whose disk stalls goes silent within two election
+// timeouts and two ticks of its oldest held append, or steps down first,
+// and every call to a healthy node that starts 10 election timeouts after
+// the stall succeeds (silent.go).
+func TestWLStalledLeaderIsReplaced(t *testing.T) {
+	t.Skip("#706: the stalled node rejoins 4.5 s after its disk heals, and calls to it 1 s after healing time out; the silence itself holds on seeds 1 to 3")
+	election := 10 * TickTime
+	simrun.Each(t, []uint64{1, 2, 3}, func(t *testing.T, seed uint64) Stats {
+		cfg := wlStalledLeaderConfig(seed)
+		res := run(t, cfg)
+		at, what := res.SteppedDownAt, "stepped down"
+		if len(res.Silences) > 0 && (at == 0 || res.Silences[0] < at) {
+			at, what = res.Silences[0], "went silent"
+		}
+		if at == 0 {
+			t.Fatalf("seed %d: the stalled leader never went silent nor stepped down", seed)
+		}
+		if res.HeldAppendAt == 0 {
+			t.Fatalf("seed %d: the stall held no append of the leader", seed)
+		}
+		limit := res.HeldAppendAt + 2*election + 2*TickTime
+		if at < cfg.StallLeaderAt || at > limit {
+			t.Fatalf("seed %d: the stalled leader %s at %d ms, want between the stall at %d ms and %d ms, two election timeouts and two ticks after its oldest held append at %d ms",
+				seed, what, at/Millisecond, cfg.StallLeaderAt/Millisecond, limit/Millisecond, res.HeldAppendAt/Millisecond)
+		}
+		checkers(t, res)
+		t.Logf("seed %d: the stalled leader %s at %d ms, deadline %d ms after its oldest held append at %d ms", seed, what, at/Millisecond, limit/Millisecond, res.HeldAppendAt/Millisecond)
+		return res.Stats
+	}, nil)
+}

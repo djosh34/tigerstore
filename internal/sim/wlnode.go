@@ -50,6 +50,8 @@ type wlProc struct {
 	// recovered is set once the node recovered its log (wlHooks.Recovered);
 	// armed, while its start may crash at a disk call (armRecoveryCrash).
 	recovered, armed bool
+	// silent is whether the node's last turn showed it silent.
+	silent bool
 }
 
 // wlMembers are the first three members of a wl cluster.
@@ -214,6 +216,9 @@ func (h *wlHooks) Append(first, last uint64, install bool) {
 	}
 	n.appended = max(n.appended, last)
 	n.pending = append(n.pending, pendingJob{first: first, install: install, replaces: first <= n.durableLast, at: s.now()})
+	if n == s.stalledLeader && s.heldAppendAt == 0 && first != math.MaxUint64 && !install {
+		s.heldAppendAt = s.now()
+	}
 }
 
 // Applied checks an entry the node applied, and the changes it made,
@@ -267,6 +272,16 @@ func (h *wlHooks) Turn(st wl.TurnState) {
 		role = "leader"
 	}
 	n.last = coreState{at: s.now(), role: role, term: st.Term, lead: st.Lead, commit: st.Commit, applied: st.Applied, first: st.First, version: uint32(st.Format)}
+	if st.Silent && !p.wl.silent {
+		s.stats.Silences++
+		s.silences = append(s.silences, s.now())
+		s.tracef("node %d: silent on a stalled disk", n.id)
+	}
+	p.wl.silent = st.Silent
+	if n == s.stalledLeader && s.steppedDownAt == 0 && st.Lead != n.id {
+		s.steppedDownAt = s.now()
+		s.tracef("node %d: the stalled leader stepped down", n.id)
+	}
 	if st.First > st.Applied+1 {
 		// Raft would need the entries it let go to apply them.
 		s.fail("node %d holds entries from %d in memory, but applied only to %d", n.id, st.First, st.Applied)

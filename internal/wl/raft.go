@@ -29,7 +29,7 @@ import (
 func raftConfig(id uint64, st raft.Storage, z sizes, members int) *raft.Config {
 	return &raft.Config{
 		ID:                        id,
-		ElectionTick:              10,
+		ElectionTick:              electionTicks,
 		HeartbeatTick:             1,
 		Storage:                   st,
 		AsyncStorageWrites:        true,
@@ -164,7 +164,7 @@ func (n *node) appendNow(m *pb.Message) error {
 		n.commit = st.GetCommit()
 		n.storage.setHardState(st)
 	}
-	n.wal.pending = append(n.wal.pending, walJob{end: n.wal.off, resps: m.Responses, hs: st})
+	n.wal.pending = append(n.wal.pending, walJob{end: n.wal.off, resps: m.Responses, hs: st, at: n.now})
 	if !n.wal.inflight && n.wal.done.Load() >= n.wal.off || n.plantedEarlyDurable() {
 		n.synced()
 		return nil
@@ -195,6 +195,9 @@ func (n *node) synced() {
 			w.durableHS = hs
 		}
 		w.pending[k] = walJob{}
+	}
+	if k > 0 {
+		w.progressAt = n.now
 	}
 	w.pending = append(w.pending[:0], w.pending[k:]...)
 	w.kick()
@@ -314,6 +317,14 @@ const msgHdr = 1 + 1 + 8*7 + 4
 
 // sendPeer writes m into the send buffer of its peer.
 func (n *node) sendPeer(m *pb.Message) {
+	if n.silent {
+		// A leader on a stalled disk (silent.go). A snapshot it does
+		// not send failed, so that Raft sends it again later.
+		if m.GetType() == pb.MsgSnap {
+			n.rn.ReportSnapshot(m.GetTo(), raft.SnapshotFailure)
+		}
+		return
+	}
 	n.stats.peerMsgs++
 	p := n.peersOut[m.GetTo()]
 	if p == nil || p.dead {
