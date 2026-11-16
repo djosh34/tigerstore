@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -143,7 +144,7 @@ func (r *Result) committed() (map[string][]int, error) {
 		if !writeOp(m) {
 			continue
 		}
-		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
+		b, err := logKey(m)
 		if err != nil {
 			return nil, err
 		}
@@ -162,7 +163,7 @@ func (r *Result) uniqueInLog(committed map[string][]int) (map[int]int, error) {
 		if !writeOp(rec.req) {
 			continue
 		}
-		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(rec.req)
+		b, err := logKey(rec.req)
 		if err != nil {
 			return nil, err
 		}
@@ -208,8 +209,20 @@ func neverCommitted(m proto.Message, committed map[string][]int) bool {
 	if !writeOp(m) {
 		return false
 	}
-	b, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
+	b, err := logKey(m)
 	return err == nil && len(committed[string(b)]) == 0
+}
+
+// logKey is what matches a write to its log entry: its bytes, but those
+// of a Txn without a failure branch that only reads, which a wl node does
+// not log (#699, #703), as history.Request.Fingerprint does.
+func logKey(m proto.Message) ([]byte, error) {
+	if t, ok := m.(*pb.TxnRequest); ok && len(t.Failure) > 0 && !slices.ContainsFunc(t.Failure, func(o *pb.RequestOp) bool { return o.GetRequestRange() == nil }) {
+		kept := proto.CloneOf(t)
+		kept.Failure = nil
+		m = kept
+	}
+	return proto.MarshalOptions{Deterministic: true}.Marshal(m)
 }
 
 func historyError(err error, ambiguous bool) *history.Error {

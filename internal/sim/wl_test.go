@@ -62,9 +62,12 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 // cut the log, link stalls, half-open connections, netem, resets, gray
 // nodes and clients, slow watchers, clock drift and held-down nodes.
 // Seed 7 lost an entry its start had read from the page cache (#701);
-// seed 1002 left a segment past the log's end after a crash (#702).
+// seed 1002 left a segment past the log's end after a crash (#702); on
+// seed 2 the run dropped an ambiguous Txn that took effect from the
+// history, and the durability check found its entry without a client
+// (#703).
 func TestWLRunsTheFaults(t *testing.T) {
-	simrun.Each(t, []uint64{7, 8, 1002}, func(t *testing.T, seed uint64) Stats {
+	simrun.Each(t, []uint64{2, 7, 8, 1002}, func(t *testing.T, seed uint64) Stats {
 		st := runWLFaults(t, seed)
 		if st.DiskFaults == 0 {
 			t.Fatal("no disk fault fired")
@@ -83,6 +86,7 @@ func TestWLFaultSeeds(t *testing.T) {
 // names.
 func runWLFaults(t *testing.T, seed uint64) Stats {
 	res := run(t, wlFaultsConfig(seed))
+	checkers(t, res)
 	st := res.Stats
 	t.Logf("calls: %d ok, %d failed, %d ambiguous; crashes %d (in recovery %d, at a step %d), disk faults %d, damage %v (fenced %d, misreads refused %d), file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
 		st.OK, st.Failed, st.Ambiguous, st.Crashes, st.RecoveryCrashes, st.StepCrashes, st.DiskFaults, st.Damage, st.Fenced, st.MisreadRefusals, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))

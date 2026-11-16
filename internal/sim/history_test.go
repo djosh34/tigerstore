@@ -3,6 +3,7 @@ package sim
 import (
 	"errors"
 	"fmt"
+	"math"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/check"
 	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/history/frometcd"
 	"github.com/djosh34/tigerstore/internal/mvcc"
@@ -78,6 +80,34 @@ func TestAmbiguousWritesFromTheLog(t *testing.T) {
 		t.Fatalf("the committed ambiguous put has effect %+v, want by 4 at revision 2", e)
 	}
 	if err := h.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An ambiguous Txn whose failure branch only reads matches its log entry
+// without that branch, as a wl node logs it: it stays in the history with
+// its effect, and the durability check finds a client for the entry
+// (#703; seed 2 of TestWLFaultSeeds).
+func TestAnAmbiguousTxnMatchesItsEntryWithoutItsReads(t *testing.T) {
+	cmp := []*pb.Compare{{Key: []byte("a"), Target: pb.Compare_MOD, TargetUnion: &pb.Compare_ModRevision{ModRevision: 1}}}
+	put := []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("a"), Value: []byte("v")}}}}
+	read := []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("a")}}}}
+	reset := status.Error(codes.Unavailable, "error reading from server: connection reset")
+	res := &Result{
+		Clients:  1,
+		History:  []*Record{{Client: 0, Call: 1, Return: 2, req: &pb.TxnRequest{Compare: cmp, Success: put, Failure: read}, Err: reset, Ambiguous: true}},
+		Log:      []proto.Message{&pb.TxnRequest{Compare: cmp, Success: put}},
+		revs:     []int64{2},
+		FinalRev: 2,
+	}
+	h, err := res.Checkable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h.Ops) != 1 || h.Ops[0].Effect == nil || *h.Ops[0].Effect != (history.Effect{By: math.MaxInt64, Revision: 2}) {
+		t.Fatalf("got ops %+v, want the Txn with its effect at revision 2", h.Ops)
+	}
+	if err := check.Durable(h); err != nil {
 		t.Fatal(err)
 	}
 }
