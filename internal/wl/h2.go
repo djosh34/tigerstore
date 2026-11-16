@@ -120,6 +120,7 @@ type stream struct {
 	readonly bool
 	ended    bool   // the client ended its side
 	buf      []byte // a gRPC message across DATA frames
+	counted  int64  // what of buf its client counts in partial
 	watch    bool
 	wids     []int32 // the watchers of a watch stream
 	// nextWatch is the next watch ID a create that names none may take.
@@ -144,7 +145,9 @@ type stream struct {
 	byCaller bool
 }
 
-const streamSlots = 1 << 13
+// streamSlots are a client's streams kept in place; more at once go to a
+// map (client.over).
+const streamSlots = 1 << 10
 
 // client is one client connection.
 type client struct {
@@ -174,6 +177,8 @@ type client struct {
 	// the node reads nothing more of it until a flush brings the buffer
 	// under half the share.
 	paused bool
+	// partial is what its streams hold of requests sent in part.
+	partial int64
 }
 
 // The client buffers (sizes.clientOut) bound what waits unsent to each
@@ -205,7 +210,7 @@ func (c *client) slow() bool { return c.paused || c.backedUp() || c.holdsTooMuch
 var errTooManyRequests = requestErr(codeResourceExhausted, "etcdserver: too many requests")
 
 func newClient(h *handoff, stats *counters) *client {
-	c := &client{sock: *newSock(h, stats), slots: make([]stream, streamSlots), hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn), cn: h.cn}
+	c := &client{sock: *newSockSized(h, stats, clientInBuf, clientOutBuf), slots: make([]stream, streamSlots), hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn), cn: h.cn}
 	c.dec = hpack.NewDecoder(4096, func(f hpack.HeaderField) {
 		switch f.Name {
 		case ":path":
@@ -246,6 +251,8 @@ func (c *client) newStream(id uint32, kind uint8) *stream {
 }
 
 func (c *client) endStream(s *stream) {
+	c.partial -= s.counted
+	s.counted = 0
 	s.fail = nil // the side ring may take its bytes again
 	c.node.putBuf(s.buf)
 	s.buf = nil
@@ -643,12 +650,19 @@ func (n *node) putBuf(b []byte) {
 }
 
 func (c *client) data(n *node, s *stream, p []byte) error {
+	c.partial -= s.counted
+	s.counted = 0
 	if len(s.buf) > 0 {
 		s.buf = append(s.buf, p...)
 		p = s.buf
 	}
 	for len(p) >= 5 {
 		l := int(binary.BigEndian.Uint32(p[1:5]))
+		if l > maxMsg {
+			// As grpc-go's server refuses it, before taking it in.
+			n.replyError(c, s.id, codeResourceExhausted, "grpc: received message larger than max ("+itoa(l)+" vs. "+itoa(maxMsg)+")")
+			return nil
+		}
 		if len(p)-5 < l {
 			break
 		}
@@ -682,6 +696,13 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 			break
 		}
 	}
+	if len(p) > 0 && c.partial+int64(len(p)) > n.connIn {
+		// The connection holds its share of requests sent in part:
+		// this one is refused, as etcd refuses too many requests, and
+		// the rest of it dropped.
+		n.reject(c, s, errTooManyRequests)
+		return nil
+	}
 	if len(p) > 0 {
 		if len(s.buf) > 0 {
 			s.buf = append(s.buf[:0], p...) // overlapping copy of the tail is fine
@@ -690,6 +711,10 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 		}
 	} else {
 		s.buf = s.buf[:0]
+	}
+	if c.get(s.id) == s {
+		s.counted = int64(len(s.buf))
+		c.partial += s.counted
 	}
 	return nil
 }

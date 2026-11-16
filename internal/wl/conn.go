@@ -31,6 +31,7 @@ type sock struct {
 	rec     int    // offset of the open record's header, -1 for none
 	wantOut bool   // registered for EPOLLOUT
 	noIn    bool   // registered without EPOLLIN: a paused client
+	outBase int    // the send buffer's size as it started
 	dirty   bool   // in the loop's list of sockets to flush
 	stats   *counters
 	// sent, if any, counts the bytes written: a peer connection's.
@@ -40,16 +41,24 @@ type sock struct {
 	broken bool
 }
 
+// A socket's buffers as it starts: the ciphertext read, the plaintext
+// opened and the send buffer. A peer's take more at once than a client's,
+// which the client buffers' budget counts (connFixed).
 const (
-	inBuf  = 512 << 10
-	ptBuf  = 1 << 20
-	outBuf = 1 << 20
+	inBuf        = 512 << 10
+	ptBuf        = 256 << 10
+	outBuf       = 1 << 20
+	clientInBuf  = 128 << 10
+	clientOutBuf = 256 << 10
 )
 
-func newSock(h *handoff, stats *counters) *sock {
+func newSock(h *handoff, stats *counters) *sock { return newSockSized(h, stats, inBuf, outBuf) }
+
+// newSockSized is a socket whose buffers start at in and out bytes.
+func newSockSized(h *handoff, stats *counters, in, out int) *sock {
 	s := &sock{
 		fd: h.fd, rd: h.rd, wr: h.wr, rec: -1, stats: stats,
-		in: make([]byte, inBuf), pt: make([]byte, ptBuf), out: make([]byte, 0, outBuf),
+		in: make([]byte, max(in, len(h.left))), pt: make([]byte, ptBuf), out: make([]byte, 0, out), outBase: out,
 	}
 	s.iw = copy(s.in, h.left)
 	return s
@@ -290,9 +299,9 @@ func (s *sock) flush() (bool, error) {
 	}
 	s.out = s.out[:0]
 	s.ow = 0
-	if cap(s.out) > 4*outBuf {
+	if cap(s.out) > 4*s.outBase {
 		// A large reply grew it; it need not keep that much.
-		s.out = make([]byte, 0, outBuf)
+		s.out = make([]byte, 0, s.outBase)
 	}
 	return true, nil
 }

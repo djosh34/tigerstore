@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -27,35 +29,12 @@ import (
 // buffer to it took every event written.
 func TestASlowWatcherStaysWithinItsShare(t *testing.T) {
 	const budget = 256 << 20
-	var mu sync.Mutex
-	loops := map[uint64]*loop{}
-	testLoops = func(id uint64, l *loop) {
-		mu.Lock()
-		defer mu.Unlock()
-		loops[id] = l
-	}
-	t.Cleanup(func() { testLoops = nil })
+	loopOf := watchLoops(t)
 	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
 	cli := tc.client(t)
 
-	// The slow client: a watch of /slow/ on node 1, read by no one, with
-	// a small receive buffer so that the kernel holds little for it.
-	d := net.Dialer{Control: func(_, _ string, c syscall.RawConn) error {
-		var serr error
-		if err := c.Control(func(fd uintptr) {
-			serr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, 64<<10)
-		}); err != nil {
-			return err
-		}
-		return serr
-	}}
-	cfg := tc.clientTLS()
-	cfg.NextProtos = []string{"h2"}
-	conn, err := tls.DialWithDialer(&d, "tcp", tc.endpoints[0], cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = conn.Close() }()
+	// The slow client: a watch of /slow/ on node 1, read by no one.
+	conn := rawConn(t, tc.endpoints[0], tc.clientTLS())
 	startSlowWatch(t, conn, "/slow/")
 	time.Sleep(500 * time.Millisecond) // the watch is created
 
@@ -71,30 +50,11 @@ func TestASlowWatcherStaysWithinItsShare(t *testing.T) {
 	}
 	time.Sleep(time.Second) // node 1 applied them
 
-	mu.Lock()
-	l := loops[1]
-	mu.Unlock()
-	type seen struct {
-		m       memStats
-		connOut int64
-		clients int
-	}
-	got := make(chan seen, 1)
-	l.post(func() error {
-		k := 0
-		for _, x := range l.n.socks {
-			if _, ok := x.(*client); ok {
-				k++
-			}
-		}
-		got <- seen{l.n.memStats(), l.n.connOut, k}
-		return nil
-	})
-	s := <-got
+	s := seeNode(loopOf(1))
 	z := sizeFor(budget)
 	// Every client within its share, one reply over it (a watch response
 	// of up to the request limit), and a send buffer's slack of a record.
-	limit := z.clientOut + int64(s.clients)*(maxRequestBytes+outBuf)
+	limit := z.clientOut + int64(s.clients)*(maxRequestBytes+clientOutBuf)
 	t.Logf("clients %d, share %d MiB; send buffers %d MiB, held for windows %d MiB; limit %d MiB",
 		s.clients, s.connOut>>20, s.m.sockOut>>20, s.m.clientHeld>>20, limit>>20)
 	if s.m.sockOut+s.m.clientHeld > limit {
@@ -111,10 +71,187 @@ func TestASlowWatcherStaysWithinItsShare(t *testing.T) {
 	}
 }
 
-// startSlowWatch opens a gRPC Watch of prefix on conn, by hand: the
-// client's windows are as large as HTTP/2 allows, so that only its socket
-// holds the node back.
-func startSlowWatch(t *testing.T, conn net.Conn, prefix string) {
+// Many idle client connections take no more than the client buffers:
+// the node takes at most maxClients of them, each with its fixed buffers,
+// and refuses the rest, which it closes at once.
+func TestManyIdleClientsStayWithinTheBudget(t *testing.T) {
+	const budget = 256 << 20
+	loopOf := watchLoops(t)
+	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	z := sizeFor(budget)
+	most := z.maxClients()
+	var conns []*tls.Conn
+	for range 3 * most {
+		c := rawConn(t, tc.endpoints[0], tc.clientTLS())
+		h2Start(t, c)
+		conns = append(conns, c)
+	}
+	time.Sleep(500 * time.Millisecond)
+	s := seeNode(loopOf(1))
+	closed := 0
+	for _, c := range conns {
+		if err := c.SetReadDeadline(time.Now().Add(200 * time.Millisecond)); err != nil {
+			t.Fatal(err)
+		}
+		b := make([]byte, 64<<10)
+		for {
+			if _, err := c.Read(b); err != nil {
+				if ne, ok := errors.AsType[net.Error](err); !ok || !ne.Timeout() {
+					closed++
+				}
+				break
+			}
+		}
+	}
+	// The peers' sockets, two each way, are in the node's memory too.
+	limit := z.clientIn + z.clientOut + 4*(inBuf+2*ptBuf+outBuf)
+	t.Logf("%d connections: the node holds %d clients (at most %d), refused %d, closed %d; sockets in %d KiB out %d KiB, limit %d KiB",
+		len(conns), s.clients, most, s.refused, closed, s.m.sockIn>>10, s.m.sockOut>>10, limit>>10)
+	if s.clients > most || s.refused == 0 || closed < len(conns)-most {
+		t.Fatalf("%d connections: the node holds %d clients, at most %d, refused %d and closed %d", len(conns), s.clients, most, s.refused, closed)
+	}
+	if s.m.sockIn+s.m.sockOut > limit {
+		t.Fatalf("the sockets' buffers take %d KiB, past %d KiB", (s.m.sockIn+s.m.sockOut)>>10, limit>>10)
+	}
+}
+
+// Requests sent in part stay within the connection's share: a client
+// that starts many large Puts and sends half of each gets the ones past
+// its share refused with etcd's "too many requests", and one that says
+// it is larger than the request limit is refused before it comes in.
+func TestHalfSentRequestsStayWithinTheShare(t *testing.T) {
+	const budget = 256 << 20
+	loopOf := watchLoops(t)
+	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	conn := rawConn(t, tc.endpoints[0], tc.clientTLS())
+	fr := h2Start(t, conn)
+	const calls, half = 40, 512 << 10
+	part := make([]byte, half)
+	send := func(sid uint32, size int, p []byte) {
+		h2Call(t, fr, sid, "/etcdserverpb.KV/Put")
+		hdr := make([]byte, 5)
+		binary.BigEndian.PutUint32(hdr[1:], uint32(size))
+		if err := fr.WriteData(sid, false, hdr); err != nil {
+			t.Fatal(err)
+		}
+		for len(p) > 0 {
+			k := min(len(p), 16<<10)
+			if err := fr.WriteData(sid, false, p[:k]); err != nil {
+				t.Fatal(err)
+			}
+			p = p[k:]
+		}
+	}
+	send(1, maxMsg+1, nil)
+	for i := range calls {
+		send(uint32(3+2*i), 1<<20, part)
+	}
+	time.Sleep(time.Second)
+	s := seeNode(loopOf(1))
+
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	rd := http2.NewFramer(io.Discard, conn)
+	rd.ReadMetaHeaders = hpack.NewDecoder(4096, nil)
+	tooMany, tooLarge := 0, 0
+	for {
+		f, err := rd.ReadFrame()
+		if err != nil {
+			break
+		}
+		mh, ok := f.(*http2.MetaHeadersFrame)
+		if !ok {
+			continue
+		}
+		switch msg := grpcMessage(mh); {
+		case strings.Contains(msg, "too many requests"):
+			tooMany++
+		case strings.Contains(msg, "larger than max"):
+			tooLarge++
+		}
+	}
+	t.Logf("%d Puts half sent: %d refused as too many, %d as too large; %d KiB held in part, the share %d KiB",
+		calls, tooMany, tooLarge, s.m.clientPartial>>10, s.connIn>>10)
+	if s.m.clientPartial > s.connIn || s.m.clientPartial == 0 {
+		t.Fatalf("the node holds %d KiB of requests sent in part, its share is %d KiB", s.m.clientPartial>>10, s.connIn>>10)
+	}
+	if tooMany == 0 || tooLarge != 1 {
+		t.Fatalf("%d refused as too many requests, %d as larger than the limit; want some, and one", tooMany, tooLarge)
+	}
+}
+
+// grpcMessage is the grpc-message field of h, if any.
+func grpcMessage(h *http2.MetaHeadersFrame) string {
+	for _, f := range h.Fields {
+		if f.Name == "grpc-message" {
+			return f.Value
+		}
+	}
+	return ""
+}
+
+// watchLoops has the nodes the test starts tell it their loops, and
+// returns each by its node's ID.
+func watchLoops(t *testing.T) func(id uint64) *loop {
+	var mu sync.Mutex
+	loops := map[uint64]*loop{}
+	testLoops = func(id uint64, l *loop) {
+		mu.Lock()
+		defer mu.Unlock()
+		loops[id] = l
+	}
+	t.Cleanup(func() { testLoops = nil })
+	return func(id uint64) *loop {
+		mu.Lock()
+		defer mu.Unlock()
+		return loops[id]
+	}
+}
+
+// nodeSeen is what a node's loop showed of its client connections.
+type nodeSeen struct {
+	m               memStats
+	connOut, connIn int64
+	clients         int
+	refused         uint64
+}
+
+// seeNode asks l's loop for its memory and its clients' shares.
+func seeNode(l *loop) nodeSeen {
+	got := make(chan nodeSeen, 1)
+	l.post(func() error {
+		got <- nodeSeen{l.n.memStats(), l.n.connOut, l.n.connIn, l.n.clients, l.n.stats.clientsRefused}
+		return nil
+	})
+	return <-got
+}
+
+// rawConn dials a client connection to addr that speaks HTTP/2, with a
+// small receive buffer so that the kernel holds little for it.
+func rawConn(t *testing.T, addr string, cfg *tls.Config) *tls.Conn {
+	t.Helper()
+	d := net.Dialer{Control: func(_, _ string, c syscall.RawConn) error {
+		var serr error
+		if err := c.Control(func(fd uintptr) {
+			serr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, 64<<10)
+		}); err != nil {
+			return err
+		}
+		return serr
+	}}
+	cfg.NextProtos = []string{"h2"}
+	conn, err := tls.DialWithDialer(&d, "tcp", addr, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn
+}
+
+// h2Start opens HTTP/2 on conn with windows as large as it allows, so
+// that only its socket holds the node back.
+func h2Start(t *testing.T, conn net.Conn) *http2.Framer {
 	t.Helper()
 	if _, err := conn.Write([]byte(http2.ClientPreface)); err != nil {
 		t.Fatal(err)
@@ -126,12 +263,18 @@ func startSlowWatch(t *testing.T, conn net.Conn, prefix string) {
 	if err := fr.WriteWindowUpdate(0, 1<<31-1-65535); err != nil {
 		t.Fatal(err)
 	}
+	return fr
+}
+
+// h2Call starts a gRPC call of path on stream sid.
+func h2Call(t *testing.T, fr *http2.Framer, sid uint32, path string) {
+	t.Helper()
 	var hb bytes.Buffer
 	enc := hpack.NewEncoder(&hb)
 	for _, f := range [][2]string{
 		{":method", "POST"},
 		{":scheme", "https"},
-		{":path", "/etcdserverpb.Watch/Watch"},
+		{":path", path},
 		{":authority", "localhost"},
 		{"content-type", "application/grpc"},
 		{"te", "trailers"},
@@ -140,9 +283,16 @@ func startSlowWatch(t *testing.T, conn net.Conn, prefix string) {
 			t.Fatal(err)
 		}
 	}
-	if err := fr.WriteHeaders(http2.HeadersFrameParam{StreamID: 1, BlockFragment: hb.Bytes(), EndHeaders: true}); err != nil {
+	if err := fr.WriteHeaders(http2.HeadersFrameParam{StreamID: sid, BlockFragment: hb.Bytes(), EndHeaders: true}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// startSlowWatch opens a gRPC Watch of prefix on conn, by hand.
+func startSlowWatch(t *testing.T, conn net.Conn, prefix string) {
+	t.Helper()
+	fr := h2Start(t, conn)
+	h2Call(t, fr, 1, "/etcdserverpb.Watch/Watch")
 	req, err := proto.Marshal(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
 		Key: []byte(prefix), RangeEnd: prefixEnd([]byte(prefix)),
 	}}})

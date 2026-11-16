@@ -21,6 +21,10 @@ type node struct {
 	// clients connected at the last tick.
 	sizes   sizes
 	connOut int64
+	// connIn is a client connection's share of requests sent in part
+	// (sizes.connIn), and clients the client connections the node holds.
+	connIn  int64
+	clients int
 	// sys is the node's handle on the system calls of sys_os.go.
 	sys sysEnv
 	// members is the member list as of the applied index, and removed the

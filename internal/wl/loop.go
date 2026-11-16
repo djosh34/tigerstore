@@ -162,7 +162,7 @@ func run(ctx context.Context, cfg Config) error {
 	n.sideReqs = map[handle][]byte{}
 	n.carryUntil = map[uint64]time.Time{}
 	n.sizes = sizeFor(cfg.MemoryBudget)
-	n.connOut = n.sizes.connOut(1)
+	n.connOut, n.connIn = n.sizes.connOut(1), n.sizes.connIn(1)
 	if n.ring, err = newRing(n.sizes.ring); err != nil {
 		return err
 	}
@@ -638,6 +638,14 @@ func (l *loop) takeHandoffs() {
 		var s *sock
 		switch h.kind {
 		case kindClient:
+			if n.clients >= n.sizes.maxClients() {
+				// The client buffers hold no more connections.
+				n.stats.clientsRefused++
+				_ = sysClose(h.fd)
+				l.free = append(l.free, idx)
+				continue
+			}
+			n.clients++
 			c := newClient(h, &n.stats)
 			c.node = n
 			n.socks[idx] = c
@@ -650,6 +658,7 @@ func (l *loop) takeHandoffs() {
 					_, _ = h.pre.flush()
 				}
 				_ = sysClose(h.fd)
+				l.free = append(l.free, idx)
 				continue
 			}
 			p := &peerIn{sock: *h.pre, from: h.peer}
@@ -659,6 +668,7 @@ func (l *loop) takeHandoffs() {
 		case kindPeerOut:
 			if l.dials[h.peer] == nil {
 				_ = sysClose(h.fd)
+				l.free = append(l.free, idx)
 				continue
 			}
 			p := &peerOut{sock: *newSock(h, &n.stats), peer: h.peer}
@@ -725,6 +735,7 @@ func (l *loop) closeSock(idx int) {
 	_ = sysClose(s.fd)
 	switch v := x.(type) {
 	case *client:
+		n.clients--
 		n.cancelSides(idx)
 		for i := range v.slots {
 			st := &v.slots[i]
@@ -999,16 +1010,11 @@ func sockEvents(in, out bool) uint32 {
 	return ev
 }
 
-// shareClientOut gives each client connection its share of the client
+// shareClientOut gives each client connection its shares of the client
 // buffers, for the clients connected now.
 func (l *loop) shareClientOut() {
-	k := 0
-	for _, x := range l.n.socks {
-		if _, ok := x.(*client); ok {
-			k++
-		}
-	}
-	l.n.connOut = l.n.sizes.connOut(k)
+	n := l.n
+	n.connOut, n.connIn = n.sizes.connOut(n.clients), n.sizes.connIn(n.clients)
 }
 
 // counters are the loop's own, for its log: per 5 s, how many turns,
@@ -1016,6 +1022,9 @@ func (l *loop) shareClientOut() {
 type counters struct {
 	turns, reads, writes, replies, proposals, readIndex, peerMsgs uint64
 	ckpts, snapsSent, snapsInstalled                              uint64
+	// clientsRefused counts the client connections refused past
+	// sizes.maxClients.
+	clientsRefused uint64
 
 	// What the batches carried, and how the peers named or carried them.
 	opsByKind, bytesByKind [kinds]int
@@ -1070,9 +1079,9 @@ func (l *loop) logStats() {
 	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d; stage waits %d",
 		st.slab.used>>20, st.limit>>20, st.evictions, st.loads, l.n.wal.stats.waits)
 	m := l.n.memStats()
-	l.logger.Printf("memory MB: rss %d, go %d (live heap %d, goal %d); tables: keys %d hash %d history %d key arena %d slab %d (used %d) tree %d changes %d; sockets out %d in %d, held %d, held for clients' windows %d",
+	l.logger.Printf("memory MB: rss %d, go %d (live heap %d, goal %d); tables: keys %d hash %d history %d key arena %d slab %d (used %d) tree %d changes %d; sockets out %d in %d, held %d, held for clients' windows %d; clients %d (refused %d in all), requests sent in part %d",
 		m.rss>>20, m.goTotal>>20, m.goLive>>20, m.goGoal>>20, m.keys>>20, m.hash>>20, m.hist>>20, m.arena>>20, m.slabTop>>20, m.slabUsed>>20, m.tree>>20, m.ch>>20,
-		m.sockOut>>20, m.sockIn>>20, m.held>>20, m.clientHeld>>20)
+		m.sockOut>>20, m.sockIn>>20, m.held>>20, m.clientHeld>>20, l.n.clients, l.n.stats.clientsRefused, m.clientPartial>>20)
 	n := l.n
 	l.logger.Printf("rings: spans %d/%d/%d, on the heap %d/%d/%d; storage let go %d, read back %d",
 		n.ring.stats.spans, n.rx.stats.spans, n.side.stats.spans, n.ring.stats.heap, n.rx.stats.heap, n.side.stats.heap,

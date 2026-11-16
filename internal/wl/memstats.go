@@ -19,8 +19,9 @@ type memStats struct {
 	// read and opened in; and the peer messages held behind a missing
 	// batch.
 	sockOut, sockIn, held int64
-	// clientHeld is what client streams hold for want of window.
-	clientHeld int64
+	// clientHeld is what client streams hold for want of window, and
+	// clientPartial what they hold of requests sent in part.
+	clientHeld, clientPartial int64
 }
 
 func (n *node) memStats() memStats {
@@ -47,6 +48,7 @@ func (n *node) memStats() memStats {
 		}
 		if c, ok := x.(*client); ok {
 			m.clientHeld += c.flow.bytes
+			m.clientPartial += c.partial
 		}
 		if p, ok := x.(*peerIn); ok {
 			for _, f := range p.held {
