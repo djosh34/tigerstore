@@ -278,8 +278,11 @@ var plantedWLCases = map[string]plantedCase{
 	"B08":  {seeds: 128, cfg: wlFaultsConfig, want: badWatch},
 	"B09a": {seeds: 16, cfg: wlFaultsConfig, want: badState},
 	"B09b": {seeds: 16, cfg: wlFaultsConfig, want: badState + `|applied the same log to different states`},
-	// B10: a follower revokes the lease's keys itself, outside the log.
-	"B10": {seeds: 64, cfg: wlFaultsConfig, want: badState + `|applied the same log to different states|` + badWatch},
+	// B10: a follower revokes the lease's keys itself, outside the log,
+	// once it applied keepalives late: its store leaves the others' (the
+	// comparison at a checkpoint's index among them), or the lease check
+	// sees it expire the lease before the TTL of a renewal ran out.
+	"B10": {seeds: 64, cfg: wlFaultsConfig, want: badState + `|applied the same log to different states|with another state than node \d+'s|expired at \d+ ms, but it was granted or renewed at|` + badWatch},
 	"B11": {seeds: 64, cfg: wlFaultsConfig, want: lostAppend + `|` + refused},
 	// wl writes at fixed offsets, so B12 is the log going on past a short
 	// write as if it were whole: what it left out is never written.
