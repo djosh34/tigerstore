@@ -205,3 +205,40 @@ func (o Op) Message() (any, error) {
 	}
 	return m, proto.Unmarshal(o.Req, m)
 }
+
+// Record is where a record of the log lies: its offset in the log, its
+// length with its head, and its kind.
+type Record struct {
+	Off, Len int64
+	Kind     byte
+}
+
+// Records are the records of a log that starts at from, up to the first
+// that does not check, for the simulator, which damages them at rest.
+// seg returns segment k's bytes, nil past the last.
+func Records(seg func(k int64) []byte, from int64) []Record {
+	var b []byte
+	for k := from / segSize; ; k++ {
+		s := seg(k)
+		if s == nil {
+			break
+		}
+		if k == from/segSize {
+			if int64(len(s)) < from%segSize {
+				return nil
+			}
+			s = s[from%segSize:]
+		}
+		b = append(b, s...)
+		if int64(len(s)) < segSize {
+			break
+		}
+	}
+	var recs []Record
+	for off := from; checks(b); {
+		n := recHead + int64(binary.LittleEndian.Uint32(b[4:]))
+		recs = append(recs, Record{Off: off, Len: n, Kind: b[8]})
+		off, b = off+n, b[n:]
+	}
+	return recs
+}

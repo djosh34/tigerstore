@@ -322,7 +322,7 @@ func (s *Sim) maybeCorrupt(n *node) {
 			return
 		}
 	}
-	kind := damageKind(s.rng.IntN(numDamage))
+	kind := damageKind(s.rng.IntN(numDrawn))
 	if k := s.cfg.damageKinds; len(k) > 0 {
 		kind = k[s.rng.IntN(len(k))]
 	}
@@ -331,11 +331,52 @@ func (s *Sim) maybeCorrupt(n *node) {
 		s.tracef("node %d: damage after a sync: %v", n.id, kind)
 		return
 	}
-	if !s.cfg.wl && n.disk.Corrupt(s.rng) {
+	// The kind drawn found no place. A test that picks the kinds waits
+	// for one that does.
+	switch {
+	case len(s.cfg.damageKinds) > 0:
+	case s.cfg.wl && s.flipWLRecord(n):
+		n.corrupted = true
+		s.stats.Damage[flippedRecord]++
+		s.tracef("node %d: damage after a sync: %v", n.id, flippedRecord)
+	case !s.cfg.wl && n.disk.Corrupt(s.rng):
 		n.corrupted = true
 		s.stats.Damage[misdirected]++
 		s.tracef("node %d: damage after a sync: %v", n.id, misdirected)
 	}
+}
+
+// flipWLRecord flips a bit of a synced record of wl node n's log that a
+// record that checks follows, which a start refuses (internal/wl/wal.go's
+// head): the damage of a wl node where the kind drawn found no place, as
+// during the faults, when most logs are a few hundred bytes in one segment
+// and hold no checkpoint (seeds 22000 to 22003). The flip stays only if
+// reading the log as a start reads it refuses it. The lock is held.
+func (s *Sim) flipWLRecord(n *node) bool {
+	d := n.disk
+	ptr, err := wlPointer(d)
+	if err != nil {
+		return false
+	}
+	recs := wl.Records(func(k int64) []byte { return d.DurableBytes(wlSegment(k)) }, ptr.LogFrom)
+	if len(recs) < 2 {
+		return false
+	}
+	r := recs[s.rng.IntN(len(recs)-1)]
+	// Any byte but the length's, bytes 4 to 7, which says where the next
+	// record starts.
+	at := s.rng.Int64N(r.Len - 4)
+	if at >= 4 {
+		at += 4
+	}
+	k, off := wl.SegmentPlace(r.Off + at)
+	name := wlSegment(k)
+	d.FlipDurable(name, int(off))
+	if _, err := wl.ReadLog(s.os.NewNode(wlDataDir, d.Durable(), nil), wlDataDir); errors.Is(err, wl.ErrCorruptLog) {
+		return true
+	}
+	d.FlipDurable(name, int(off))
+	return false
 }
 
 // damageKind is a kind of damage to what a disk synced.
@@ -365,13 +406,22 @@ const (
 	// record that holds entries is a documented limit (docs/design.md),
 	// and the run does not do it.
 	lastRecord
+	// flippedRecord flips a bit of a synced record of a wl node's log
+	// that a record that checks follows (flipWLRecord). The run never
+	// draws it: it is a wl node's damage where the kind drawn found no
+	// place.
+	flippedRecord
 )
 
-// numDamage is the number of damage kinds.
-const numDamage = int(lastRecord) + 1
+// numDamage is the number of damage kinds, and numDrawn of those the run
+// draws.
+const (
+	numDamage = int(flippedRecord) + 1
+	numDrawn  = int(lastRecord) + 1
+)
 
 func (k damageKind) String() string {
-	return [...]string{"flipped root checkpoint", "misdirected write", "lost write", "bad sector", "misread", "damaged last record"}[k]
+	return [...]string{"flipped root checkpoint", "misdirected write", "lost write", "bad sector", "misread", "damaged last record", "flipped record"}[k]
 }
 
 // damage does damage of a kind to the synced bytes of n, which is down.
@@ -411,6 +461,8 @@ func (s *Sim) damage(n *node, kind damageKind) bool {
 		return n.misread
 	case lastRecord:
 		return s.damageLastRecord(n)
+	case flippedRecord:
+		// Never drawn: wl's alone (flipWLRecord).
 	}
 	return false
 }
@@ -454,7 +506,9 @@ func (s *Sim) damageWL(n *node, kind damageKind) bool {
 	case misread:
 		n.misread = seg != "" && d.Misread(s.rng, seg)
 		return n.misread
-	case lastRecord:
+	case lastRecord, flippedRecord:
+		// A damaged last record is main's alone; a flipped record is
+		// never drawn (flipWLRecord).
 		return false
 	}
 	return n.corrupted
