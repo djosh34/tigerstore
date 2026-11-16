@@ -18,10 +18,11 @@ import (
 // reads.
 func committedOps(t *testing.T, tc *testCluster, i int) ([]string, []*Announcement) {
 	t.Helper()
-	first, commit, ents, err := ReadLog(tc.dataDir(i))
+	l, err := ReadLog(nil, tc.dataDir(i))
 	if err != nil {
 		t.Fatal(err)
 	}
+	first, commit, ents := l.Base+1, l.Commit, l.Entries
 	if first != 1 || commit == 0 || commit > first+uint64(len(ents))-1 {
 		t.Fatalf("node %d: entries %d to %d, commit %d", i+1, first, first+uint64(len(ents))-1, commit)
 	}

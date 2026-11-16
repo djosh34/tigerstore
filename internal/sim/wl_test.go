@@ -54,8 +54,9 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 }
 
 // A wl cluster runs DefaultConfig's faults but those of main's engine
-// alone (a snapshot fetch's steps, rot of a value in a segment, cold
-// restarts from checkpoints), which wl does not run yet: crashes inside
+// alone (a snapshot fetch's steps, rot of a value in a segment), which
+// wl does not run yet: cold restarts from copies of the disks with one
+// erased, during the run and at its end, crashes inside
 // recovery and at checkpoint steps, damage to a disk at rest, disk
 // errors, short writes, stalls, file
 // systems that shut down or go read-only, full disks, checkpoints that
@@ -91,8 +92,8 @@ func runWLFaults(t *testing.T, seed uint64) Stats {
 	res := run(t, wlFaultsConfig(seed))
 	checkers(t, res)
 	st := res.Stats
-	t.Logf("calls: %d ok, %d failed, %d ambiguous; crashes %d (in recovery %d, at a step %d), disk faults %d, damage %v (fenced %d, misreads refused %d), file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
-		st.OK, st.Failed, st.Ambiguous, st.Crashes, st.RecoveryCrashes, st.StepCrashes, st.DiskFaults, st.Damage, st.Fenced, st.MisreadRefusals, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
+	t.Logf("calls: %d ok, %d failed, %d ambiguous; cold restarts %d; crashes %d (in recovery %d, at a step %d), disk faults %d, damage %v (fenced %d, misreads refused %d), file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
+		st.OK, st.Failed, st.Ambiguous, st.ColdRestarts, st.Crashes, st.RecoveryCrashes, st.StepCrashes, st.DiskFaults, st.Damage, st.Fenced, st.MisreadRefusals, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
 	return st
 }
 
@@ -202,8 +203,11 @@ func TestWLMembershipFaults(t *testing.T) {
 			}
 		}
 		checkers(t, res)
-		t.Logf("calls: %d ok, %d failed, %d ambiguous; membership attempts %d, during faults %v; crashes %d, disk faults %d, link changes %d; %s",
-			res.Stats.OK, res.Stats.Failed, res.Stats.Ambiguous, res.Stats.MembershipAttempts, res.Stats.MembershipFaults, res.Stats.Crashes, res.Stats.DiskFaults, res.Stats.LinkChanges, watched(res))
+		t.Logf("calls: %d ok, %d failed, %d ambiguous; membership attempts %d, during faults %v; cold restarts %d, crashes %d, disk faults %d, link changes %d; %s",
+			res.Stats.OK, res.Stats.Failed, res.Stats.Ambiguous, res.Stats.MembershipAttempts, res.Stats.MembershipFaults, res.Stats.ColdRestarts, res.Stats.Crashes, res.Stats.DiskFaults, res.Stats.LinkChanges, watched(res))
+		if res.Stats.ColdRestarts == 0 {
+			t.Fatal("no cold restart ran")
+		}
 		return res.Stats
 	}, nil)
 }
@@ -214,6 +218,6 @@ func wlMembershipConfig(seed uint64) Config {
 	cfg := membershipConfig(seed)
 	cfg.wl, cfg.FormUnderFaults = true, true
 	f := &cfg.Faults
-	f.Checkpoint, f.FlipSnapshot, f.FetchCrash, f.SlowFetch, f.Rot = false, false, false, false, false
+	f.FlipSnapshot, f.FetchCrash, f.SlowFetch, f.Rot = false, false, false, false
 	return cfg
 }

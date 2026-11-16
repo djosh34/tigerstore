@@ -2447,3 +2447,11 @@ func (s *Sim) shutdown() {
 	s.wg.Wait()
 	s.procs.Wait()
 }
+
+// applied is the index p's node applied.
+func (p *proc) applied() uint64 {
+	if p.wl != nil {
+		return p.wl.turn.Applied
+	}
+	return p.core.Applied()
+}

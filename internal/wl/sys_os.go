@@ -37,6 +37,9 @@ func newSysEnv(cfg *Config) (sysEnv, error) {
 	return sysEnv{}, nil
 }
 
+// envOf is the system for sys, which the real binary leaves nil.
+func envOf(Sys) sysEnv { return sysEnv{} }
+
 // lockOSThread keeps the calling goroutine on its thread, as the loop
 // and the log's helper each run on one of their own.
 func (sysEnv) lockOSThread() { runtime.LockOSThread() }

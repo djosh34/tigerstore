@@ -16,61 +16,75 @@ import (
 // A stopped node's log, as tools such as the chaos checks read it: its
 // entries, and the batches and announcements they hold.
 
-// ReadLog reads the log of the stopped node whose data dir is dir: the
-// entries after its newest checkpoint, the first of which is entry first,
-// and the newest commit index the node kept. It writes nothing.
-func ReadLog(dir string) (first, commit uint64, ents []*pb.Entry, err error) {
+// Log is a stopped node's log: the newest checkpoint's index and term (0
+// without one), the entries after it, and the newest commit index the
+// node kept.
+type Log struct {
+	Base, BaseTerm uint64
+	Commit         uint64
+	Entries        []*pb.Entry
+}
+
+// ReadLog reads the log of the stopped node whose data dir is dir, through
+// sys in a binary built for the simulator, or nil for the system's
+// files. It writes nothing.
+func ReadLog(sys Sys, dir string) (Log, error) {
+	env := envOf(sys)
+	var l Log
 	var from int64
-	first = 1
-	p, err := readPointer(sysEnv{}, filepath.Join(dir, "ckpt"))
+	p, err := readPointer(env, filepath.Join(dir, "ckpt"))
 	if err != nil {
-		return 0, 0, nil, err
+		return Log{}, err
 	}
 	if p != nil {
-		index, err := ckptIndex(filepath.Join(dir, "ckpt", p.name))
-		if err != nil {
-			return 0, 0, nil, err
+		if l.Base, l.BaseTerm, err = ckptIndex(env, filepath.Join(dir, "ckpt", p.name)); err != nil {
+			return Log{}, err
 		}
-		first, from, commit = index+1, p.logFrom, max(index, p.hs.GetCommit())
+		from, l.Commit = p.logFrom, max(l.Base, p.hs.GetCommit())
 	}
-	_, err = scanWAL(sysEnv{}, filepath.Join(dir, "wal"), from, func(r *walRecord) error {
+	first := l.Base + 1
+	_, err = scanWAL(env, filepath.Join(dir, "wal"), from, func(r *walRecord) error {
 		switch r.kind {
 		case recHardState:
 			hs := &pb.HardState{}
 			if err := proto.Unmarshal(r.data, hs); err != nil {
 				return fmt.Errorf("the log's hard state at %d: %w", r.off, err)
 			}
-			commit = max(commit, hs.GetCommit())
+			l.Commit = max(l.Commit, hs.GetCommit())
 		case recEntry:
 			if r.index < first {
 				return nil
 			}
-			last := first + uint64(len(ents))
+			last := first + uint64(len(l.Entries))
 			if r.index > last {
 				return fmt.Errorf("the log has entry %d after %d", r.index, last-1)
 			}
 			// A later entry replaces the ones from its index on, as the
 			// append that wrote it did.
-			ents = append(ents[:r.index-first], &pb.Entry{Index: new(r.index), Term: new(r.term), Type: r.typ.Enum(), Data: append([]byte(nil), r.data...)})
+			l.Entries = append(l.Entries[:r.index-first], &pb.Entry{Index: new(r.index), Term: new(r.term), Type: r.typ.Enum(), Data: append([]byte(nil), r.data...)})
 		}
 		return nil
 	})
-	return first, commit, ents, err
+	return l, err
 }
 
-// ckptIndex reads the index of the checkpoint in path.
-func ckptIndex(path string) (uint64, error) {
-	f, err := os.Open(path)
+// ckptIndex reads the index and term of the checkpoint in path.
+func ckptIndex(env sysEnv, path string) (index, term uint64, err error) {
+	f, err := env.openFile(path, os.O_RDONLY, 0)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer func() { _ = f.Close() }()
 	cr := &ckptReader{r: bufio.NewReader(f)}
 	magic, err := cr.bytes(uint64(len(ckptMagic)))
 	if err != nil || string(magic) != string(ckptMagic) {
-		return 0, fmt.Errorf("%s: %w: no magic", path, ErrCorruptCheckpoint)
+		return 0, 0, fmt.Errorf("%s: %w: no magic", path, ErrCorruptCheckpoint)
 	}
-	return cr.uvarint()
+	if index, err = cr.uvarint(); err != nil {
+		return 0, 0, err
+	}
+	term, err = cr.uvarint()
+	return index, term, err
 }
 
 // Batch is a batch as a log entry holds it: the node that proposed it,

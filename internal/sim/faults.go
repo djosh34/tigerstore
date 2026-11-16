@@ -8,6 +8,8 @@ import (
 	"slices"
 	"time"
 
+	raftpb "go.etcd.io/raft/v3/raftpb"
+
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
@@ -676,7 +678,8 @@ func (s *Sim) quorum() bool {
 			continue
 		}
 		voters := 0
-		for _, m := range n.proc.core.Members() {
+		ms, _ := n.members()
+		for _, m := range ms {
 			if !m.IsLearner {
 				voters++
 			}
@@ -691,7 +694,7 @@ func (s *Sim) quorum() bool {
 // hasLeader reports whether a running node knows a leader. The nodes are
 // frozen.
 func hasLeader(nodes []*node) bool {
-	return slices.ContainsFunc(nodes, func(n *node) bool { return n.proc != nil && !n.out() && n.proc.core.Leader() != 0 })
+	return slices.ContainsFunc(nodes, func(n *node) bool { return n.proc != nil && !n.out() && n.proc.leader() != 0 })
 }
 
 // canElect reports whether a running node can win an election: it is a
@@ -707,22 +710,14 @@ func (s *Sim) canElect() (bool, error) {
 		if n.out() || n.proc == nil {
 			continue
 		}
-		w, rec, err := wal.Open(n.disk.Durable())
+		ents, err := s.logOn(n)
 		if err != nil {
 			return false, err
 		}
-		l := last{rec.Root.Term, rec.Last}
-		if rec.Last > rec.Root.Index {
-			e, err := w.Entry(rec.Last)
-			if err != nil {
-				return false, errors.Join(err, w.Close())
-			}
-			l.term = e.GetTerm()
-		}
-		if err := w.Close(); err != nil {
+		if err := ents.close(); err != nil {
 			return false, err
 		}
-		logs[n.id] = l
+		logs[n.id] = last{ents.lastTerm, ents.last}
 	}
 	for _, n := range s.nodes {
 		own, ok := logs[n.id]
@@ -730,7 +725,8 @@ func (s *Sim) canElect() (bool, error) {
 			continue
 		}
 		voter, voters, votes := false, 0, 0
-		for _, m := range n.proc.core.Members() {
+		ms, _ := n.members()
+		for _, m := range ms {
 			if m.IsLearner {
 				continue
 			}
@@ -758,21 +754,21 @@ func (s *Sim) holdsApplied(applied uint64) (bool, error) {
 		if n.out() || n.proc == nil {
 			continue
 		}
-		w, rec, err := wal.Open(n.disk.Durable())
+		ents, err := s.logOn(n)
 		if err != nil {
 			return false, err
 		}
-		holds := rec.Last >= applied
-		for i := rec.Root.Index + 1; holds && i <= applied; i++ {
-			e, err := w.Entry(i)
+		holds := ents.last >= applied
+		for i := ents.root + 1; holds && i <= applied; i++ {
+			e, err := ents.entry(i)
 			if err != nil {
-				return false, errors.Join(err, w.Close())
+				return false, errors.Join(err, ents.close())
 			}
 			if b, ok := s.base.get(i); ok && (b.term != e.GetTerm() || b.known && (b.typ != e.GetType() || !bytes.Equal(s.base.bytes(b), e.GetData()))) {
 				holds = false
 			}
 		}
-		if err := w.Close(); err != nil {
+		if err := ents.close(); err != nil {
 			return false, err
 		}
 		if holds {
@@ -790,7 +786,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	s.mu.Lock()
 	seed := s.rng.Uint64()
 	s.mu.Unlock()
-	r, err := newSimFrom(Config{Seed: seed, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes}, s)
+	r, err := newSimFrom(Config{Seed: seed, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes, wl: s.cfg.wl}, s)
 	if err != nil {
 		return err
 	}
@@ -897,21 +893,23 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 		}
 	}
 	if a, b := disagree(r.nodes); a != nil {
-		ca, cb := a.proc.core, b.proc.core
+		ma, ra := a.members()
+		mb, rb := b.members()
 		return fmt.Errorf("cold restart did not converge: node %d applied %d, members %v, removed %v; node %d applied %d, members %v, removed %v; checkpoint applied %d, inactive %v",
-			a.id, ca.Applied(), ca.Members(), ca.RemovedMembers(), b.id, cb.Applied(), cb.Members(), cb.RemovedMembers(), c.applied, c.inactive)
+			a.id, a.proc.applied(), ma, ra, b.id, b.proc.applied(), mb, rb, c.applied, c.inactive)
 	}
 	for _, n := range r.nodes {
 		if n.out() || n.proc == nil {
 			continue
 		}
-		if cn := n.proc.core; cn.Applied() < c.applied {
+		if p := n.proc; p.applied() < c.applied {
 			var active []uint64
 			for _, live := range r.live() {
 				active = append(active, live.id)
 			}
+			ms, _ := n.members()
 			return fmt.Errorf("cold restart: node %d applied %d entries, but %d were applied before; leader %d, members %v, active %v, inactive at copy %v",
-				n.id, cn.Applied(), c.applied, cn.Leader(), cn.Members(), active, c.inactive)
+				n.id, p.applied(), c.applied, p.leader(), ms, active, c.inactive)
 		}
 	}
 	return nil
@@ -1006,4 +1004,43 @@ func (n *node) stalledAt(t int64) bool {
 		}
 	}
 	return false
+}
+
+// diskLog is the log a node's disk holds: the entries from root+1 to last,
+// the term of the last, and each entry until close.
+type diskLog struct {
+	root, last, lastTerm uint64
+	entry                func(i uint64) (*raftpb.Entry, error)
+	close                func() error
+}
+
+// logOn reads the log n's disk holds durably, as its next start would
+// find it. The nodes are frozen.
+func (s *Sim) logOn(n *node) (diskLog, error) {
+	if s.cfg.wl {
+		l, err := wl.ReadLog(s.os.NewNode(wlDataDir, n.disk.Durable(), nil), wlDataDir)
+		if err != nil {
+			return diskLog{}, err
+		}
+		d := diskLog{root: l.Base, last: l.Base + uint64(len(l.Entries)), lastTerm: l.BaseTerm}
+		if len(l.Entries) > 0 {
+			d.lastTerm = l.Entries[len(l.Entries)-1].GetTerm()
+		}
+		d.entry = func(i uint64) (*raftpb.Entry, error) { return l.Entries[i-l.Base-1], nil }
+		d.close = func() error { return nil }
+		return d, nil
+	}
+	w, rec, err := wal.Open(n.disk.Durable())
+	if err != nil {
+		return diskLog{}, err
+	}
+	d := diskLog{root: rec.Root.Index, last: rec.Last, lastTerm: rec.Root.Term, entry: w.Entry, close: w.Close}
+	if rec.Last > rec.Root.Index {
+		e, err := w.Entry(rec.Last)
+		if err != nil {
+			return diskLog{}, errors.Join(err, w.Close())
+		}
+		d.lastTerm = e.GetTerm()
+	}
+	return d, nil
 }

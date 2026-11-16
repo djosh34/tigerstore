@@ -66,8 +66,8 @@ func Prefix(ns []Node, first uint64) ([]*raftpb.Entry, error) {
 
 // Read reads the log of the stopped internal/wl node whose data dir is dir.
 func Read(dir string) (Node, error) {
-	first, commit, ents, err := wl.ReadLog(dir)
-	return Node{Dir: dir, Commit: commit, First: first, Entries: ents}, err
+	l, err := wl.ReadLog(nil, dir)
+	return Node{Dir: dir, Commit: l.Commit, First: l.Base + 1, Entries: l.Entries}, err
 }
 
 // ReadMain reads the log of the stopped node of main's engine in dir from

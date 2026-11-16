@@ -83,6 +83,9 @@ func (s *Sim) checkWL(res *Result) error {
 	if err := s.checkWatchersFreed(); err != nil {
 		return err
 	}
+	if err := s.checkColdRestarts(res); err != nil {
+		return err
+	}
 	return s.checkLive(res)
 }
 

@@ -45,6 +45,9 @@ func newSysEnv(cfg *Config) (sysEnv, error) {
 	return sysEnv{s: cfg.Sys, h: cfg.Hooks, sim: &simState{}}, nil
 }
 
+// envOf is the system for sys, a node's on the simulator's descriptors.
+func envOf(sys Sys) sysEnv { return sysEnv{s: sys} }
+
 // lockOSThread does nothing: the simulator schedules the goroutines of
 // its nodes itself, and gosim's cannot be locked to a thread.
 func (sysEnv) lockOSThread() {}
