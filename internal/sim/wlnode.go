@@ -108,6 +108,9 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		// client link was down left the connection in gRPC's backoff 4 s
 		// past healing.
 		grpc.WithConnectParams(simConnect),
+		// Seeds 12731, 12780, 12985, 13172, 13318 and 13699 spun for good
+		// in gRPC's transparent retries under gosim (#440).
+		grpc.WithStatsHandler(retryPause{}),
 	)
 	if err != nil {
 		return err
