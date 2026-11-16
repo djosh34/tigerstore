@@ -22,6 +22,8 @@ import (
 func TestKubeCacheSlots(t *testing.T) {
 	simrun.Seeds(t, 1, 2, func(t *testing.T, seed uint64) Stats {
 		cfg := kubeConfig(seed, false)
+		// Main's value cache, which wl has not: it goes with main's code.
+		cfg.wl = false
 		cfg.Faults = Faults{DiskBudget: cfg.Faults.DiskBudget, DiskCapacity: cfg.Faults.DiskCapacity}
 		cfg.Duration = 40 * Second
 		cfg.CompactEvery = 5 * Second

@@ -414,20 +414,21 @@ func replayCommand(name string, seed uint64) string {
 	return cmd + fmt.Sprintf(" -count=1 ./internal/sim/ -run '%s'", pattern)
 }
 
-// TestSeeds runs every seed with the checkers. A failing seed prints the
-// command that runs it again.
+// TestSeeds runs every seed on wl nodes (Config.wl) with the checkers,
+// and every fault main's runs (wlFaultsConfig); 7 seeds in 8 form their
+// cluster first (formsFirst). A failing seed prints the command that runs
+// it again; it goes in TestWLFormsAndRunsTheFaults, or in
+// TestWLRunsTheFaults if it formed under the faults.
 func TestSeeds(t *testing.T) {
 	var total Stats
 	var took effects
 	ran := 0
 	if !simrun.Seeds(t, 1, 16, func(t *testing.T, seed uint64) Stats {
-		a := run(t, DefaultConfig(seed))
+		a := runWLFaults(t, seed, false)
 		st := a.Stats
 		if st.Compactions == 0 || st.Revokes == 0 || st.OK < 200 || len(a.Log) < 50 {
 			t.Fatalf("seed %d did too little to test anything: %+v, %d committed writes", seed, st, len(a.Log))
 		}
-		checkers(t, a)
-		t.Logf("%+v, %d committed writes", st, len(a.Log))
 		return st
 	}, func(seed uint64, st Stats) bool {
 		took.add(seed, faultsTaken(st))
@@ -441,9 +442,7 @@ func TestSeeds(t *testing.T) {
 		total.Disk.TornWrites += st.Disk.TornWrites
 		total.Disk.Reordered += st.Disk.Reordered
 		total.TornRefusals += st.TornRefusals
-		total.Packs += st.Packs
 		total.OutOfSpace += st.OutOfSpace
-		total.LeaseCheckpoints += st.LeaseCheckpoints
 		return false
 	}) {
 		return
@@ -451,16 +450,20 @@ func TestSeeds(t *testing.T) {
 	// Random faults can end a disk stall before the leader goes silent
 	// (#218), so each shard also runs the deliberate scenario.
 	if ran >= 64 {
-		t.Run("TestStalledLeaderIsReplaced", TestStalledLeaderIsReplaced)
+		t.Run("TestWLStalledLeaderIsReplaced", TestWLStalledLeaderIsReplaced)
 	}
 	// Corruption, a link 10 times slower than its other direction and the
 	// other common events are rare in one run, but a set of seeds must see
-	// each.
+	// each. Main's set also needed packs of its cleaner and lease
+	// checkpoints in the log. wl has neither: it cuts its log behind a
+	// checkpoint instead of cleaning it, which the copy at a removal
+	// (ErasedAtRemoval) needs, and a new leader starts every lease's TTL
+	// over, as etcd does without lease checkpoints.
 	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0 ||
-		total.Disk.Reordered == 0 || total.Packs == 0 || total.OutOfSpace == 0 || total.LeaseCheckpoints == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal, %d crashes that kept a write and lost an earlier one, %d packs, %d nodes out of space, %d lease checkpoints; each must happen",
-			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval, total.Disk.Reordered, total.Packs, total.OutOfSpace, total.LeaseCheckpoints)
+		total.Disk.Reordered == 0 || total.OutOfSpace == 0) {
+		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a first checkpoint, %d after a removal, %d crashes that kept a write and lost an earlier one, %d nodes out of space; each must happen",
+			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval, total.Disk.Reordered, total.OutOfSpace)
 	}
 	// A crash tears a write in about 1 seed in 300, so 400 seeds have none
 	// about one time in four; a set of 2000, as in the seed campaign,
@@ -753,13 +756,13 @@ func TestWallLimit(t *testing.T) {
 	}, nil)
 }
 
-// TestLinearizable checks short runs with Porcupine and the witness
-// checker, which must agree. Not finishing in time is a failure. Nearly
+// TestLinearizable checks short runs of wl nodes with Porcupine and the
+// witness checker, which must agree. Not finishing in time is a failure. Nearly
 // every run must be short enough for Porcupine (check.ShortEnough).
 func TestLinearizable(t *testing.T) {
 	n, short := 0, 0
 	if !simrun.Seeds(t, 1, 16, func(t *testing.T, seed uint64) bool {
-		res := run(t, linearizableConfig(seed))
+		res := run(t, wlLinearizableConfig(seed))
 		h, err := res.Checkable()
 		if err != nil {
 			t.Fatal(err)

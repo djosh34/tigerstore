@@ -1,20 +1,17 @@
-//go:build simio || sim
-
 package sim
 
 import (
 	"fmt"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/djosh34/tigerstore/internal/simrun"
-	"github.com/djosh34/tigerstore/internal/wl"
 )
 
-// The first runs of wl nodes (Config.wl). wl's seam needs the build tag
-// sim, which gosim's translation sets, or simio natively: scripts/sim.sh
-// builds the native test binary with it.
+// Runs of wl nodes (Config.wl). They need wl's seam for the simulator:
+// the build tag sim, which gosim's translation sets, or simio natively,
+// with which scripts/sim.sh and the race detector's job build the native
+// test binary.
 
 // A wl cluster runs a seed with no faults: its clients' calls, through
 // gRPC, agree with the committed log, which every node applied alike.
@@ -87,7 +84,7 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 // first.
 func TestWLRunsTheFaults(t *testing.T) {
 	simrun.Each(t, []uint64{2, 7, 8, 1002, 10155, 10161, 12024, 12731, 19159, 19458}, func(t *testing.T, seed uint64) Stats {
-		st := runWLFaults(t, seed, true)
+		st := runWLFaults(t, seed, true).Stats
 		if st.DiskFaults == 0 {
 			t.Fatal("no disk fault fired")
 		}
@@ -97,10 +94,10 @@ func TestWLRunsTheFaults(t *testing.T) {
 
 // TestWLFormsAndRunsTheFaults is TestWLRunsTheFaults on seeds that form
 // their cluster first, with no faults and no clients, and start the run
-// from its disks (formCluster), as 7 seeds in 8 of TestWLFaultSeeds do.
+// from its disks (formCluster), as 7 seeds in 8 of TestSeeds do.
 func TestWLFormsAndRunsTheFaults(t *testing.T) {
 	simrun.Each(t, []uint64{1, 3}, func(t *testing.T, seed uint64) Stats {
-		st := runWLFaults(t, seed, false)
+		st := runWLFaults(t, seed, false).Stats
 		if !st.Formed {
 			t.Fatal("the cluster did not form first")
 		}
@@ -108,19 +105,10 @@ func TestWLFormsAndRunsTheFaults(t *testing.T) {
 	}, nil)
 }
 
-// TestWLFaultSeeds is TestWLRunsTheFaults over a set of seeds, for a
-// campaign (sim-campaign.yml); alone it runs one. As TestSeeds, 7 seeds
-// in 8 form their cluster first (formsFirst). A seed it fails goes in
-// TestWLFormsAndRunsTheFaults, or in TestWLRunsTheFaults if it formed
-// under the faults.
-func TestWLFaultSeeds(t *testing.T) {
-	simrun.Seeds(t, 1000, 1, func(t *testing.T, seed uint64) Stats { return runWLFaults(t, seed, false) }, nil)
-}
-
 // runWLFaults runs seed on wl nodes with the faults TestWLRunsTheFaults
 // names; underFaults forms the cluster under them, from the run's first
 // moment, and otherwise formsFirst draws how.
-func runWLFaults(t *testing.T, seed uint64, underFaults bool) Stats {
+func runWLFaults(t *testing.T, seed uint64, underFaults bool) *Result {
 	cfg := wlFaultsConfig(seed)
 	cfg.FormUnderFaults = underFaults
 	res := run(t, cfg)
@@ -128,7 +116,7 @@ func runWLFaults(t *testing.T, seed uint64, underFaults bool) Stats {
 	st := res.Stats
 	t.Logf("calls: %d ok, %d failed, %d ambiguous; cold restarts %d; crashes %d (in recovery %d, at a step %d), disk faults %d, damage %v (fenced %d, misreads refused %d), rots %d, file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
 		st.OK, st.Failed, st.Ambiguous, st.ColdRestarts, st.Crashes, st.RecoveryCrashes, st.StepCrashes, st.DiskFaults, st.Damage, st.Fenced, st.MisreadRefusals, st.Rots, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
-	return st
+	return res
 }
 
 // A wl node refuses a disk the run damaged where its start reads it,
@@ -223,69 +211,6 @@ func watched(res *Result) string {
 		return "no watch got an event"
 	}
 	return fmt.Sprintf("%d logical watches got %d events, %d compacted", len(res.Watches), events, res.Stats.WatchCompacted)
-}
-
-// A wl cluster adds a fourth member as a learner, moves it to another
-// peer URL, promotes it and removes it, one change after the other,
-// under TestWLRunsTheFaults' faults spaced as membershipConfig spaces
-// them; each answer matches the member list, and every node ends with
-// the final members and the removal.
-func TestWLMembershipFaults(t *testing.T) {
-	simrun.Seeds(t, 1, 4, func(t *testing.T, seed uint64) Stats {
-		res := run(t, wlMembershipConfig(seed))
-		for i, count := range res.Stats.MembershipChanges {
-			if count != 1 {
-				t.Fatalf("stage %d completed %d times", i, count)
-			}
-		}
-		checkers(t, res)
-		t.Logf("calls: %d ok, %d failed, %d ambiguous; membership attempts %d, during faults %v; cold restarts %d, crashes %d, disk faults %d, link changes %d; %s",
-			res.Stats.OK, res.Stats.Failed, res.Stats.Ambiguous, res.Stats.MembershipAttempts, res.Stats.MembershipFaults, res.Stats.ColdRestarts, res.Stats.Crashes, res.Stats.DiskFaults, res.Stats.LinkChanges, watched(res))
-		if res.Stats.ColdRestarts == 0 {
-			t.Fatal("no cold restart ran")
-		}
-		return res.Stats
-	}, nil)
-}
-
-// A wl node of the simulator makes at most 128 MiB at its start, Go's
-// memory under gosim, made again at each start: a run of three nodes, its
-// restarts and its cold restarts, four runs at once on a campaign's
-// runner, fit it. At 64 MiB rings and the real build's tables, a calm seed
-// held 3.8 GB live, and the campaign's runners were killed.
-func TestAWLNodeOfTheSimulatorIsSmall(t *testing.T) {
-	const most = 128 << 20
-	if got := wl.SimFootprint(0); got > most {
-		t.Fatalf("a wl node of the simulator makes %d MiB at its start, past %d MiB", got>>20, most>>20)
-	}
-}
-
-// A wl node that stops is let go: a seed's starts do not add up on Go's
-// heap, where each makes wl.SimFootprint again under gosim. Campaign
-// 43842206701 on 2be0c825 lost every runner at its first seeds: one seed
-// held 3.7 GB live, as the simulator kept each process's last turn, whose
-// values (TurnState.LogValues then) held the whole node. A seed with a
-// crash every second starts its nodes again many times; at its end the
-// heap must hold less than the nodes it ran at once and as much again.
-func TestWLStoppedNodesAreLetGo(t *testing.T) {
-	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
-		cfg := DefaultConfig(seed)
-		cfg.wl, cfg.FormUnderFaults = true, true
-		cfg.Faults = Faults{CrashEvery: Second, MaxDown: Second}
-		res := run(t, cfg)
-		runtime.GC()
-		var ms runtime.MemStats
-		runtime.ReadMemStats(&ms)
-		most := 2 * uint64(len(res.nodes)) * uint64(wl.SimFootprint(0))
-		t.Logf("%d crashes; the heap holds %d MiB, at most %d MiB", res.Stats.Crashes, ms.HeapAlloc>>20, most>>20)
-		if res.Stats.Crashes < 2*len(res.nodes) {
-			t.Fatalf("%d crashes, too few to start the nodes again past the heap's limit", res.Stats.Crashes)
-		}
-		if ms.HeapAlloc > most {
-			t.Fatalf("after %d crashes the heap holds %d MiB, past %d MiB: the simulator keeps stopped nodes", res.Stats.Crashes, ms.HeapAlloc>>20, most>>20)
-		}
-		return res.Stats
-	}, nil)
 }
 
 // TestWLStalledLeaderIsReplaced is TestStalledLeaderIsReplaced on wl

@@ -456,3 +456,11 @@ func TestB04cSnapshotRefusal(t *testing.T) {
 		t.Fatalf("B04c does not count %q as caught", err)
 	}
 }
+
+// wlInstallConfig is wlDamagedSnapshotConfig with no stream damaged: a
+// follower held down installs the snapshot it fetches.
+func wlInstallConfig(seed uint64) Config {
+	cfg := wlDamagedSnapshotConfig(seed)
+	cfg.Faults.FlipSnapshot = false
+	return cfg
+}

@@ -6,16 +6,17 @@ import (
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
-// TestMembershipFaults uses the real membership proposals with the same
-// disk, network, clock and process faults as the KV simulator, including
-// its erase-one-disk restarts. The KV checkers still run; membership
+// TestMembershipFaults runs wl nodes (wlMembershipConfig) through the
+// real membership proposals with the same disk, network, clock and
+// process faults as the KV simulator, including its erase-one-disk
+// restarts. The KV checkers still run; membership
 // replies have a separate request-based oracle.
 func TestMembershipFaults(t *testing.T) {
 	n := 0
 	var during [4]int
 	var took effects
 	if !simrun.Seeds(t, 1, 16, func(t *testing.T, seed uint64) Stats {
-		a := run(t, membershipConfig(seed))
+		a := run(t, wlMembershipConfig(seed))
 		for i, count := range a.Stats.MembershipChanges {
 			if count != 1 {
 				t.Fatalf("stage %d completed %d times", i, count)

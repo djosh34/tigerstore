@@ -1,5 +1,3 @@
-//go:build simio || sim || planted
-
 package sim
 
 // wlFaultsConfig is DefaultConfig on wl nodes (Config.wl), every fault
@@ -11,10 +9,19 @@ func wlFaultsConfig(seed uint64) Config {
 	return cfg
 }
 
-// wlMembershipConfig is membershipConfig on wl nodes.
+// wlMembershipConfig is membershipConfig on wl nodes, which form their
+// cluster first in 7 seeds of 8 (formsFirst), as main's do.
 func wlMembershipConfig(seed uint64) Config {
 	cfg := membershipConfig(seed)
-	cfg.wl, cfg.FormUnderFaults = true, true
+	cfg.wl = true
+	return cfg
+}
+
+// wlLinearizableConfig is linearizableConfig on wl nodes, which form
+// their cluster first in 7 seeds of 8 (formsFirst), as main's do.
+func wlLinearizableConfig(seed uint64) Config {
+	cfg := linearizableConfig(seed)
+	cfg.wl = true
 	return cfg
 }
 
@@ -27,14 +34,6 @@ func wlStalledLeaderConfig(seed uint64) Config {
 	cfg.StallLeaderAt = 5 * Second
 	cfg.LiveFrom = cfg.StallLeaderAt + 10*Second
 	cfg.Duration = 25 * Second
-	return cfg
-}
-
-// wlInstallConfig is wlDamagedSnapshotConfig with no stream damaged: a
-// follower held down installs the snapshot it fetches.
-func wlInstallConfig(seed uint64) Config {
-	cfg := wlDamagedSnapshotConfig(seed)
-	cfg.Faults.FlipSnapshot = false
 	return cfg
 }
 

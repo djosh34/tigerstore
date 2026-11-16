@@ -17,7 +17,8 @@ import (
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
-// kubeConfig is a run of the Kubernetes-shaped load (kube.go) under every
+// kubeConfig is a run of wl nodes (Config.wl) under the Kubernetes-shaped
+// load (kube.go) and every
 // fault of DefaultConfig, by 16 clients, 3 of them clients of etcd's Go
 // client, on segments of 4 MiB, with a disk budget of 8 KiB an object and
 // 16 MiB at least, and a disk of twice that. The long profile has 10,000
@@ -29,6 +30,7 @@ import (
 // objects for 2 minutes, with a compaction every 20 s.
 func kubeConfig(seed uint64, long bool) Config {
 	cfg := DefaultConfig(seed)
+	cfg.wl = true
 	cfg.Clients, cfg.V3Clients = 13, 3
 	cfg.Objects, cfg.Duration, cfg.CompactEvery = 1000, 2*60*Second, 20*Second
 	if long {
