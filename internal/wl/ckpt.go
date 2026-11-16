@@ -1056,7 +1056,14 @@ type ckptPointer struct {
 	hs      *pb.HardState
 }
 
+// writePointer makes p dir's CURRENT. It syncs dir first: a crash keeps
+// each directory operation since the last sync or not on its own, and
+// one that kept CURRENT's rename but lost the rename that gave the
+// checkpoint it names its name left a node unable to start (#711).
 func writePointer(sys sysEnv, dir string, p *ckptPointer) error {
+	if err := syncDir(sys, dir); err != nil {
+		return err
+	}
 	hs := p.hs
 	if hs == nil {
 		hs = &pb.HardState{}

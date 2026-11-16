@@ -15,24 +15,7 @@ func TestMembershipFaults(t *testing.T) {
 	n := 0
 	var during [4]int
 	var took effects
-	if !simrun.Seeds(t, 1, 16, func(t *testing.T, seed uint64) Stats {
-		a := run(t, wlMembershipConfig(seed))
-		for i, count := range a.Stats.MembershipChanges {
-			if count != 1 {
-				t.Fatalf("stage %d completed %d times", i, count)
-			}
-		}
-		checkers(t, a)
-		h, err := a.Checkable()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := agree(h); err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("%+v", a.Stats)
-		return a.Stats
-	}, func(seed uint64, st Stats) bool {
+	if !simrun.Seeds(t, 1, 16, runMembership, func(seed uint64, st Stats) bool {
 		n++
 		for i := range during {
 			during[i] += st.MembershipFaults[i]
@@ -57,4 +40,33 @@ func TestMembershipFaults(t *testing.T) {
 			}
 		}
 	}
+}
+
+// runMembership runs seed of TestMembershipFaults and checks it.
+func runMembership(t *testing.T, seed uint64) Stats {
+	a := run(t, wlMembershipConfig(seed))
+	for i, count := range a.Stats.MembershipChanges {
+		if count != 1 {
+			t.Fatalf("stage %d completed %d times", i, count)
+		}
+	}
+	checkers(t, a)
+	h, err := a.Checkable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agree(h); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%+v", a.Stats)
+	return a.Stats
+}
+
+// TestMembershipFaultSeeds runs seeds of TestMembershipFaults that
+// failed. On seed 881969382 a node's directory sync failed as it wrote a
+// checkpoint, and its crash after kept the pointer to the checkpoint but
+// lost the rename that gave the checkpoint its name: the node could not
+// start again (#711).
+func TestMembershipFaultSeeds(t *testing.T) {
+	simrun.Each(t, []uint64{881969382}, runMembership, nil)
 }
