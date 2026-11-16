@@ -249,6 +249,7 @@ type handoff struct {
 	alpn   string
 	kind   uint8
 	peer   uint64 // the node an incoming or outgoing peer connection is with
+	beat   bool   // an outgoing peer connection of heartbeats and votes
 	cn     string
 	pre    *sock // an incoming peer connection's socket, its hello read
 	h1     *tls.Conn

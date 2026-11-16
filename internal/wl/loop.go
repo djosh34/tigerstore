@@ -28,6 +28,7 @@ import (
 type peerOut struct {
 	sock
 	peer uint64
+	beat bool // the connection of heartbeats and votes (beatMark)
 }
 
 type peerIn struct {
@@ -143,7 +144,7 @@ func run(ctx context.Context, cfg Config) error {
 		return nil, nil
 	}
 	n := &node{
-		sys: sys, id: cfg.ID, clusterID: cfg.ClusterID, peersOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{},
+		sys: sys, id: cfg.ID, clusterID: cfg.ClusterID, peersOut: map[uint64]*peerOut{}, beatsOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{},
 		ckptDir: filepath.Join(cfg.DataDir, "ckpt"), ckptLog: cmp.Or(cfg.CheckpointLog, ckptMin), ckptKeys: cfg.CheckpointChunkKeys, catchup: cmp.Or(cfg.CatchupEntries, storageWindow), confState: &pb.ConfState{},
 		self:   member{id: cfg.ID, name: cfg.Name, clientURLs: cfg.ClientURLs},
 		format: baseFormat, auth: newAuthStore(), tokens: map[string]*simpleToken{}, logins: map[handle]authLogin{},
@@ -334,11 +335,12 @@ func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.
 	}
 }
 
-// dialer keeps a connection to one member: it dials addr again each
-// time redial says the connection closed, until stop.
+// dialer keeps the two connections to one member: the one of appends
+// and the rest, and the one of heartbeats and votes (beatMark). Each
+// dials addr again when its redial says it closed, until stop.
 type dialer struct {
-	addr         string
-	redial, stop chan struct{}
+	addr                 string
+	redial, rebeat, stop chan struct{}
 }
 
 // syncDials dials the members the list holds, or the seed while it is
@@ -362,9 +364,10 @@ func (l *loop) syncDials() {
 			continue
 		}
 		l.stopDial(m.id)
-		d := &dialer{addr: addr, redial: make(chan struct{}, 1), stop: make(chan struct{})}
+		d := &dialer{addr: addr, redial: make(chan struct{}, 1), rebeat: make(chan struct{}, 1), stop: make(chan struct{})}
 		l.dials[m.id] = d
-		go l.dial(m.id, d)
+		go l.dial(m.id, d, false)
+		go l.dial(m.id, d, true)
 	}
 	for id := range l.dials {
 		if !keep[id] {
@@ -373,7 +376,7 @@ func (l *loop) syncDials() {
 	}
 }
 
-// stopDial stops dialing member id and closes the connection to it.
+// stopDial stops dialing member id and closes the connections to it.
 func (l *loop) stopDial(id uint64) {
 	d := l.dials[id]
 	if d == nil {
@@ -381,18 +384,25 @@ func (l *loop) stopDial(id uint64) {
 	}
 	close(d.stop)
 	delete(l.dials, id)
-	if p := l.n.peersOut[id]; p != nil && !p.dead {
-		l.closeSock(p.idx)
+	for _, p := range []*peerOut{l.n.peersOut[id], l.n.beatsOut[id]} {
+		if p != nil && !p.dead {
+			l.closeSock(p.idx)
+		}
 	}
 }
 
-// dialRedial is the channel that tells member id's dialer to dial again,
-// nil if the node no longer dials it.
-func (l *loop) dialRedial(id uint64) chan struct{} {
-	if d := l.dials[id]; d != nil {
-		return d.redial
+// dialRedial is the channel that tells member id's dialer to dial its
+// connection of heartbeats (beat) or its other one again, nil if the
+// node no longer dials it.
+func (l *loop) dialRedial(id uint64, beat bool) chan struct{} {
+	d := l.dials[id]
+	switch {
+	case d == nil:
+		return nil
+	case beat:
+		return d.rebeat
 	}
-	return nil
+	return d.redial
 }
 
 // membersChanged dials the members the list holds, and closes the
@@ -415,13 +425,14 @@ func (n *node) mayPeer(id uint64) bool {
 }
 
 // peerHelloBytes is what a node says first on a connection to a peer:
-// its ID, with snapMark for a snapshot's, and its cluster's.
+// its ID, with snapMark for a snapshot's or beatMark for the heartbeats',
+// and its cluster's.
 func peerHelloBytes(id, cluster uint64) []byte {
 	b := binary.LittleEndian.AppendUint64(nil, id)
 	return binary.LittleEndian.AppendUint64(b, cluster)
 }
 
-func (l *loop) dial(id uint64, d *dialer) {
+func (l *loop) dial(id uint64, d *dialer, beat bool) {
 	c := l.peerTLS.Clone()
 	host, _, _ := net.SplitHostPort(d.addr)
 	c.ServerName = host
@@ -450,10 +461,14 @@ func (l *loop) dial(id uint64, d *dialer) {
 			}
 			continue
 		}
-		h.peer = id
+		h.peer, h.beat = id, beat
 		l.handOver(h)
+		redial := d.redial
+		if beat {
+			redial = d.rebeat
+		}
 		select {
-		case <-d.redial:
+		case <-redial:
 		case <-d.stop:
 			return
 		case <-l.ctx.Done():
@@ -689,7 +704,7 @@ func (l *loop) takeHandoffs() {
 				l.free = append(l.free, idx)
 				continue
 			}
-			p := &peerOut{sock: *newSock(h, &n.stats), peer: h.peer}
+			p := &peerOut{sock: *newSock(h, &n.stats), peer: h.peer, beat: h.beat}
 			p.sent = &n.metrics.peerSent
 			n.socks[idx] = p
 			s = &p.sock
@@ -698,12 +713,16 @@ func (l *loop) takeHandoffs() {
 			// again, and that dial's handoff closed this one in turn,
 			// every 100 ms for good, with what the peer held behind a
 			// named batch (TestWLRefusesAMisreadLog, seed 1).
-			old := n.peersOut[h.peer]
-			n.peersOut[h.peer] = p
+			outs, hello := n.peersOut, n.id
+			if h.beat {
+				outs, hello = n.beatsOut, n.id|beatMark
+			}
+			old := outs[h.peer]
+			outs[h.peer] = p
 			if old != nil && !old.dead {
 				l.closeSock(old.idx)
 			}
-			s.put(peerHelloBytes(n.id, n.clusterID))
+			s.put(peerHelloBytes(hello, n.clusterID))
 			n.markDirty(s)
 		}
 		s.idx, s.gen = idx, n.gens[idx]
@@ -770,11 +789,17 @@ func (l *loop) closeSock(idx int) {
 			st.fail = nil
 		}
 	case *peerOut:
-		if n.peersOut[v.peer] == v {
-			delete(n.peersOut, v.peer)
-			n.rn.ReportUnreachable(v.peer)
+		outs := n.peersOut
+		if v.beat {
+			outs = n.beatsOut
+		}
+		if outs[v.peer] == v {
+			delete(outs, v.peer)
+			if !v.beat {
+				n.rn.ReportUnreachable(v.peer)
+			}
 			select {
-			case l.dialRedial(v.peer) <- struct{}{}:
+			case l.dialRedial(v.peer, v.beat) <- struct{}{}:
 			default:
 			}
 		}

@@ -76,6 +76,9 @@ type node struct {
 	gens     []uint16
 	dirty    []*sock
 	peersOut map[uint64]*peerOut
+	// beatsOut are the peers' connections of heartbeats and votes, which
+	// an append crossing a slow link does not hold back (beatMark).
+	beatsOut map[uint64]*peerOut
 
 	rn      *raft.RawNode
 	storage *logStorage

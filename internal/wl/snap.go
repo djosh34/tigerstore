@@ -61,6 +61,7 @@ func (n *node) logf(format string, args ...any) {
 
 const (
 	snapMark    = uint64(1) << 63
+	beatMark    = uint64(1) << 62
 	snapFrame   = 1 << 20
 	snapTimeout = 30 * time.Second
 )
@@ -433,7 +434,7 @@ func (l *loop) peerHello(h *handoff) {
 		_ = sysClose(h.fd)
 		return
 	}
-	h.pre, h.peer = s, hello
+	h.pre, h.peer = s, hello&^beatMark
 	l.handOver(h)
 }
 

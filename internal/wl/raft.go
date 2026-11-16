@@ -362,6 +362,11 @@ func (n *node) sendPeer(m *pb.Message) {
 		return
 	}
 	p := n.peersOut[m.GetTo()]
+	if beats(m.GetType()) {
+		if b := n.beatsOut[m.GetTo()]; b != nil && !b.dead {
+			p = b
+		}
+	}
 	if p == nil || p.dead {
 		return
 	}
@@ -430,6 +435,18 @@ func (n *node) sendPeer(m *pb.Message) {
 	s.put(cl[:])
 	s.put(m.GetContext())
 	n.markDirty(s)
+}
+
+// beats reports whether a message of type t goes on the peer's connection
+// of heartbeats and votes, as etcd's message stream carries them apart
+// from its appends: an append of megabytes on a slow link would hold back
+// the heartbeats behind it past an election timeout, and the followers
+// would elect another leader (TestHeartbeatsPassASlowAppend). Raft takes
+// messages out of order, as a network may deliver them; the appends and
+// their answers keep their own connection, and a leadership handover's
+// MsgTimeoutNow stays behind the appends it waited for.
+func beats(t pb.MessageType) bool {
+	return t == pb.MsgHeartbeat || t == pb.MsgHeartbeatResp || t == pb.MsgPreVote || t == pb.MsgPreVoteResp || t == pb.MsgVote || t == pb.MsgVoteResp
 }
 
 // names reports whether an append names an entry's batch instead of
