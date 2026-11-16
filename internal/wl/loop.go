@@ -929,6 +929,7 @@ func (l *loop) run() error {
 		if err := n.syncWatchers(); err != nil {
 			return err
 		}
+		n.turnCkpt = ckptTurn{}
 		if err := n.ckptStep(false); err != nil {
 			return err
 		}
@@ -1110,8 +1111,9 @@ func (l *loop) logSlowTurn(start, input, ready, sync, flush, end time.Time, ops 
 	for k := range applied {
 		applied[k] = l.n.stats.opsByKind[k] - ops[k]
 	}
-	l.logger.Printf("slow turn %v: input and proposals %v (of it the tick %v), ready and apply %v, watch catch-up %v, flush %v, sweep %v; requests by kind %v, posts %d, connections taken %d; applied by kind %v; keys %d, watchers %d, catching up %d, held flows %d; %s",
-		end.Sub(start), input.Sub(start), tick, ready.Sub(input), sync.Sub(ready), flush.Sub(sync), end.Sub(flush),
+	c := l.n.turnCkpt
+	l.logger.Printf("slow turn %v: input and proposals %v (of it the tick %v), ready and apply %v, watch catch-up and the checkpoint's step %v (of it the step: key scan %v, of that the cut and placing %v of %d values; encoding %v), flush %v, sweep %v; requests by kind %v, posts %d, connections taken %d; applied by kind %v; keys %d, watchers %d, catching up %d, held flows %d; %s",
+		end.Sub(start), input.Sub(start), tick, ready.Sub(input), sync.Sub(ready), c.scan, c.place, c.rels, c.encode, flush.Sub(sync), end.Sub(flush),
 		l.n.turnReqs, l.turnPosts, l.turnHandoffs, applied,
 		l.n.st.nkeys, len(l.n.w.ws), len(l.n.w.unsynced), l.heldFlows(), l.n.stallStats(end).since(l.tickStall))
 }

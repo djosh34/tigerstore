@@ -29,6 +29,8 @@ type node struct {
 	connIn          int64
 	clients, active int
 	cpool, cout     int64
+	// turnCkpt is where the turn's checkpoint step spent its time.
+	turnCkpt ckptTurn
 	// waiting are the clients that wait for the client buffers to read,
 	// in the order they came (loop.serveWaiting).
 	waiting []*client

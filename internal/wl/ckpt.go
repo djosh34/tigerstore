@@ -299,6 +299,14 @@ const (
 )
 
 // ckptRun is a checkpoint being written, the loop's side.
+// ckptTurn is where a turn's checkpoint step spent its time, for the
+// slow-turn line: the key scan, the cut and placing of the values the
+// checkpoint takes in (with their count), and the encoding.
+type ckptTurn struct {
+	scan, place, encode time.Duration
+	rels                int
+}
+
 type ckptRun struct {
 	meta    ckptMeta
 	gen     int
@@ -415,10 +423,13 @@ func (n *node) ckptStep(block bool) error {
 	defer func() { r.encodeNs += int64(time.Since(t)) }()
 	if r.phase == ckptScanning {
 		n.scanKeys(r)
+		n.turnCkpt.scan = time.Since(t)
 		if r.phase == ckptScanning {
 			return nil
 		}
 	}
+	te := time.Now()
+	defer func() { n.turnCkpt.encode = time.Since(te) }()
 	for r.sent < ckptInflight && !r.lastOut {
 		c, err := n.encodeChunk(r)
 		if err != nil {
@@ -454,6 +465,8 @@ func (n *node) scanKeys(r *ckptRun) {
 	if r.next < r.end {
 		return
 	}
+	t := time.Now()
+	defer func() { n.turnCkpt.place, n.turnCkpt.rels = time.Since(t), len(r.rels) }()
 	r.cut = cutPoint(r.segLive, r.prevCut, r.prevFrom, ckptCutUnit)
 	k := 0
 	for _, v := range r.rels {
