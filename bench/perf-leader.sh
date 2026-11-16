@@ -35,5 +35,7 @@ wait "$gen"
 sudo chmod a+r "$out/$label.perf.data"
 sudo perf report -i "$out/$label.perf.data" --stdio --no-children --sort symbol --percent-limit 0.2 2>/dev/null | grep -v "^$" | grep -E "^ +[0-9]" >"$out/$label.flat.txt" || true
 sudo perf report -i "$out/$label.perf.data" --stdio --children --sort symbol -g none --percent-limit 0.5 2>/dev/null | grep -E "^ +[0-9]" >"$out/$label.cum.txt" || true
+sudo perf script -i "$out/$label.perf.data" 2>/dev/null | python3 "$here/perf-fold.py" | gzip >"$out/$label.folded.gz" || true
+sudo rm -f "$out/$label.perf.data"
 echo "leader pid $pid, endpoint $leader"
 head -40 "$out/$label.flat.txt"

@@ -252,9 +252,19 @@ jobs:
             p=$(ls /usr/lib/linux-tools/*/perf 2>/dev/null | tail -1); [ -x "$p" ] && sudo ln -sf "$p" /usr/local/bin/perf
             sudo sysctl -w kernel.perf_event_paranoid=-1 kernel.kptr_restrict=0
             perf --version
-            for rep in 1 2; do for t in baseline candidate; do
-              SEED=${SEEDS%% *} DATA="$RUNNER_TEMP/bench-data" bench/perf-leader.sh bin/$t $t-$rep results/perf-leader
-            done; done
+            # TARGETS names the refs to profile, each built here.
+            refs="$TARGETS"
+            for ref in $refs; do
+              git worktree add --detach "$RUNNER_TEMP/r-$ref" "$ref"
+              (cd "$RUNNER_TEMP/r-$ref" && go build -o "$GITHUB_WORKSPACE/bin/r-$ref" ./cmd/tigerstore)
+            done
+            for rep in 1 2; do
+              order=$refs
+              if [ "$rep" = 2 ]; then order=$(tr ' ' '\n' <<<"$refs" | tac | tr '\n' ' '); fi
+              for ref in $order; do
+                SEED=${SEEDS%% *} DATA="$RUNNER_TEMP/bench-data" bench/perf-leader.sh bin/r-$ref $ref-$rep results/perf-leader
+              done
+            done
             exit 0
           fi
           if [ "$BENCH" = profile-disk ]; then
