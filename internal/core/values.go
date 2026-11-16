@@ -44,8 +44,8 @@ func (pl *placer) add(value []byte, off int) {
 // from the log on disk, read by a helper (ValueRead).
 type values struct {
 	storage *storage
-	log     Log
-	cache   *cache
+
+	cache *cache
 	// index is the entry being applied, and entry its data, which a
 	// replayed entry has only here; placer knows where the values of its
 	// current write start.

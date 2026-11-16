@@ -11,7 +11,6 @@ package core
 
 import (
 	"cmp"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -20,13 +19,10 @@ import (
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
@@ -116,9 +112,7 @@ type Config struct {
 	// --heartbeat-interval; it converts lease TTLs and other times in
 	// seconds to ticks.
 	TickMillis int64
-	// ProgressTicks is the interval of progress notifications to watchers
-	// that ask for them; 0 turns them off.
-	ProgressTicks int
+
 	// SlowCommitElections is how many election timeouts a leader's entry
 	// may wait to commit before a warning; 0 means SlowCommitTicks.
 	// StallElections is how many its own append may take before it goes
@@ -156,9 +150,7 @@ type Config struct {
 	// PieceBytes is about the most one piece of a large answer holds
 	// (pieces.go); 0 means PieceBytes.
 	PieceBytes int
-	// SnapshotTicks is how long a leader waits for a follower to fetch a
-	// snapshot before it sends another.
-	SnapshotTicks int
+
 	// Record makes Effects.Applied carry every applied entry with the
 	// state's hash after it, for the simulator's checks.
 	Record bool
@@ -178,10 +170,7 @@ type Config struct {
 	// AuthTokenTicks is how long an unused simple token lives, etcd's
 	// --auth-token-ttl; 0 means 300 seconds.
 	AuthTokenTicks int
-	// StrictReconfigCheck is etcd's --strict-reconfig-check: member
-	// changes that would leave fewer started voters than a quorum, or
-	// fewer connected ones, are refused.
-	StrictReconfigCheck bool
+
 	// ConnectedTicks, if set, is how many ticks this node has been
 	// connected to peer id, -1 while it is not. Without it, every peer
 	// counts as connected since long ago.
@@ -214,10 +203,8 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 		HeartbeatTicks: 1,
 		RequestTicks:   70,
 		MaxBatchBytes:  4 << 20,
-		ProgressTicks:  6000, // etcd's 10 minutes
-		TickMillis:     100,
-
-		StrictReconfigCheck: true,
+		// etcd's 10 minutes
+		TickMillis: 100,
 
 		WindowBytes:     64 << 20,
 		WindowMaxBytes:  128 << 20,
@@ -225,7 +212,6 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 		CheckpointBytes: 256 << 20,
 		CheckpointRatio: 64,
 		CheckpointChunk: 32 << 10,
-		SnapshotTicks:   200,
 	}
 }
 
@@ -276,10 +262,6 @@ type Request struct {
 // the certificate's common name and the auth revision, which is 1 on a
 // store that never changed auth. The zero Caller has no identity.
 type Caller struct {
-	// name is the common name of the client's certificate, and extra the
-	// bytes it adds to the marshaled request with auth revision 1.
-	name  string
-	extra int
 	// Token is the token of the call (etcd's "token" metadata), if any.
 	// Verified says that the server checked it itself (JWT): User and
 	// Revision are its claims, and an empty User means it is not valid.
@@ -287,63 +269,25 @@ type Caller struct {
 	Verified bool
 	User     string
 	Revision uint64
-	// root makes the caller the root user, as etcd's WithRoot does for
-	// its own requests.
-	root bool
-}
-
-// RootCaller is the root user, for a node's own requests such as its
-// health check.
-func RootCaller() Caller { return Caller{root: true} }
-
-// NewCaller returns the caller whose certificate has this common name.
-func NewCaller(commonName string) Caller {
-	return Caller{name: commonName, extra: identityBytes(commonName, 1)}
-}
-
-// identityBytes is what a user and an auth revision add to the
-// marshaled request.
-func identityBytes(user string, revision uint64) int {
-	with := proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID, Username: user, AuthRevision: revision}})
-	return with - proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}})
 }
 
 // Reply answers one request. Resp is the response of the same kind as the
 // request, or nil with Err set. A put in wire form gets no Resp: its
 // answer is Rev, Term and PrevKv, which the driver encodes itself.
 type Reply struct {
-	ID     uint64
-	Resp   proto.Message
-	Err    error
-	Rev    int64
-	Term   uint64
-	PrevKv *mvccpb.KeyValue
+	ID   uint64
+	Resp proto.Message
+
+	Rev int64
+
 	// Range is the answer to a range, or the next piece of an answer
 	// (Next): only its KVs then.
 	Range mvcc.RangeResult
-	// MorePieces says that more pieces of the answer follow (pieces.go),
-	// and Rests are the messages of a Txn's or a DeleteRange's answer
-	// whose KeyValues they bring, in order.
-	MorePieces bool
-	Rests      []mvcc.Rest
+
+	Rests []mvcc.Rest
 	// cursors read the rest of the answer, for Next.
 	cursors []*mvcc.Cursor
 }
-
-// UpToInstall returns the jobs up to the first with an install, that one
-// included, and whether there is one. The core ends at an install
-// (ErrInstalled), so a driver writes nothing after it: a root that came
-// later names a checkpoint of the state the install replaced (#182).
-func UpToInstall(jobs []PersistJob) ([]PersistJob, bool) {
-	if i := slices.IndexFunc(jobs, func(j PersistJob) bool { return j.Install != nil }); i >= 0 {
-		return jobs[:i+1], true
-	}
-	return jobs, false
-}
-
-// ownDepth is how many appends of the leader's own writes may be on their
-// way to disk at once.
-const ownDepth = 2
 
 // PersistJob is one disk write: entries and a hard state to append and
 // sync. The driver runs jobs in order and calls Persisted for each, in the
@@ -362,20 +306,6 @@ type PersistJob struct {
 	// are all below RemoveBelow and the checkpoint files before this one.
 	Root        *wal.Root
 	RemoveBelow uint64
-	msg         *raftpb.Message
-	// newVote is set when the job changes the term or the vote.
-	newVote bool
-	// bytes is the entry data of the job.
-	bytes int64
-}
-
-// MustSync reports whether the job counts as durable only once synced: it
-// has entries, a new term or vote, a snapshot or a root. A job with only a
-// moved commit index need not be, as in etcd (raft.MustSync): after a
-// crash the node relearns its commit from the leader. Its responses still
-// wait for every job before it, which the driver syncs first.
-func (j PersistJob) MustSync() bool {
-	return len(j.Entries) > 0 || j.newVote || j.Install != nil || j.Root != nil
 }
 
 // Effects is what the core asks its driver to do.
@@ -408,11 +338,7 @@ type Effects struct {
 }
 
 // CheckpointChunk is part of the checkpoint at Index.
-type CheckpointChunk struct {
-	Index uint64
-	Data  []byte
-	Done  bool
-}
+type CheckpointChunk struct{}
 
 // Applied is an entry as the node applied it, and the hash of its state
 // after it. With Checkpoint set, the state at Index came from a
@@ -433,27 +359,16 @@ type pending struct {
 	done     bool
 	// queued marks a write in proposals that was not proposed yet.
 	queued bool
-	// fetched holds the values read from the log for a read that needed
-	// them at once, and compares how far its transaction's compares got.
-	fetched  map[mvcc.Ref][]byte
-	compares *mvcc.Compares
-	// early marks a write in Node.early.
-	early bool
-	// conf is the configuration change of a member change.
-	conf *raftpb.ConfChange
+
 	// who is the identity a write carries into the log while auth is
 	// enabled. ai is the identity of a read, checked when it is served;
 	// aiCurrent says that it takes the auth revision of that moment, as
 	// a simple token and a certificate do.
-	who       *authInfo
-	ai        authInfo
-	aiCurrent bool
+	who *authInfo
+
 	// refuse, if set, answers the request once its write applied: the
 	// NOSPACE alarm a refused write raised (quota.go).
 	refuse error
-	// held marks a physical compaction that applied and waits for its
-	// checkpoint (heldCompact), without a deadline.
-	held bool
 }
 
 // readBatch is the set of reads that share one ReadIndex request.
@@ -461,7 +376,6 @@ type readBatch struct {
 	ctx   uint64
 	index uint64 // 0 until the read index is known
 	sent  int64  // tick of the last ReadIndex request
-	reads []*pending
 }
 
 // readRetryTicks is how long a read batch waits for its read index before
@@ -480,42 +394,30 @@ type Node struct {
 	kv      *mvcc.Store
 
 	now int64
-	// electionFrom is the tick from which Raft's election clock counts,
-	// as far as the node knows, and raftState, raftTerm and raftLead are
-	// Raft's role, term and leader then (noteRaft).
-	electionFrom       int64
-	raftState          raft.StateType
-	raftTerm, raftLead uint64
+
 	// clock is the time requests wait by: the ticks of wall time, which
 	// Elapse moves on past the ticks a busy driver missed, as etcd's
 	// request timeouts run on the wall clock while its Raft loop is stuck.
-	// electedAt is the clock when this node last became leader.
-	clock, electedAt int64
-	applied          uint64
-	// commit is the last entry Raft handed to apply.
-	commit   uint64
-	term     uint64
-	leader   uint64
+	clock int64
+
+	applied uint64
+
+	term uint64
+
 	isLeader bool
-	// leaderChanges counts the leaders this node has seen, as etcd's
-	// etcd_server_leader_changes_seen_total does.
-	leaderChanges int64
-	counters      Counters
-	timed         timedApply
+
+	counters Counters
+	timed    timedApply
 	// membershipAt is where Counters.membershipSnapshot last counted.
 	membershipAt uint64
-	leaseSeq     uint64
+
 	// expiries holds the armed leases by the tick their expiry is next
 	// due, and checkpoints those with a checkpoint by its tick: on the
 	// leader only (lease.go).
 	expiries, checkpoints leaseQueue
-	// announcedAt is the tick this node last proposed its version.
-	announcedAt int64
-	// confMessages wait for Raft to apply the preceding configuration
-	// change. confGate is its index, or MaxUint64 until it reaches apply.
-	confMessages []*raftpb.Message
-	confGate     uint64
-	confTerm     uint64
+
+	confGate uint64
+
 	// voteTerm and vote are the newest term and vote sent to disk.
 	// unsyncedVotes counts appends that change them and are not yet
 	// durable; while any is, messages to peers wait in held. Raft with
@@ -528,17 +430,12 @@ type Node struct {
 	voteTerm, vote uint64
 	unsyncedVotes  int
 	confAt         uint64
-	// confsAppended are the indexes of configuration changes appended and
-	// not committed yet.
-	confsAppended []uint64
-	held          []*raftpb.Message
+
+	held []*raftpb.Message
 	// kept are the entries a follower holds for appends that name them
 	// (held.go).
 	kept keptEntries
-	// props are proposals forwarded by peers while this node knew no
-	// leader, propBytesHeld their entry bytes.
-	props         []*raftpb.Message
-	propBytesHeld int64
+
 	// appending holds the tick at which each local append with entries
 	// went to disk, oldest first; appends finish in order, and durableAt
 	// is the tick the last one did. If the disk makes no progress for too
@@ -546,42 +443,17 @@ type Node struct {
 	// its peers (stalled).
 	appending []int64
 	durableAt int64
-	// uncommitted holds the last index and the tick of each local append
-	// with entries since this node became leader, until they commit.
-	// maxCommitWait is the most ticks one of them waited to commit, those
-	// still waiting included. slowCommit and silent were the leader's
-	// state at the last tick, so that each episode is reported once.
-	uncommitted        []proposedAt
-	maxCommitWait      int64
-	slowCommit, silent bool
-	// own holds the last index of each append not yet durable that
-	// carries a batch of the leader's own writes, oldest first. While
-	// ownDepth of them are on their way, new writes wait. awaitOwn marks
-	// that the next append with entries carries a batch just proposed.
-	// Appends of forwarded proposals do not hold anything.
-	own      []uint64
-	awaitOwn bool
-	// otherMemory is what the process uses besides the value cache, as
-	// the driver measured it last.
-	otherMemory int64
-	waiting     map[uint64]*pending // writes by request ID
-	timeouts    []*pending          // every waiting request in deadline order
+
+	waiting  map[uint64]*pending // writes by request ID
+	timeouts []*pending          // every waiting request in deadline order
 
 	proposals []*pending
 	// early are writes that need featureVersion, which wait for it.
 	early []*pending
-	// confs are member changes that wait for a leader; lastMemberID is
-	// the last member ID this node handed out, and publishedAt the tick
-	// it last proposed its attributes.
-	confs []*pending
-	// transfers are the MoveLeader requests under way.
-	transfers    []*pending
-	lastMemberID uint64
-	publishedAt  int64
-	propBytes    int
-	reads        []*pending
-	readBatches  []*readBatch
-	nextReadCtx  uint64
+
+	propBytes int
+
+	readBatches []*readBatch
 
 	// cutDue makes the next applied entry cut a checkpoint, once no copy
 	// is under way: enough entries or a compaction applied since the last
@@ -605,11 +477,7 @@ type Node struct {
 	// unpersisted is the entry bytes on their way to the disk, and
 	// unready those proposed since the last Ready.
 	unpersisted, unready int64
-	// snapWait holds, on the leader, when each follower that needs a
-	// snapshot started to wait for it, or 0 while its fetch runs.
-	snapWait map[uint64]int64
 
-	streams  map[uint64]*watchStream
 	watchers []*watcher
 	// pieced are the answers that go out in pieces, by request ID.
 	pieced map[uint64]*pieced
@@ -634,15 +502,14 @@ type Node struct {
 	// tokens are the simple tokens this node assigned (auth.go), tokenDue
 	// the earliest tick one may expire at, and tokenWaits the requests
 	// whose token's entry is not applied yet.
-	tokens     map[string]*simpleToken
-	tokenDue   int64
-	tokenWaits []tokenWait
+	tokens   map[string]*simpleToken
+	tokenDue int64
+
 	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
 	// or -1 once an alarm change of it applied. diskAlarm says that this
 	// run raised its alarm for its disk budget, and the quota has not
 	// refused a write since: only such an alarm clears itself (SetDisk).
 	noSpaceAt int64
-	diskAlarm bool
 
 	// removeAt is the shutdown tick after applying our own removal. Raft
 	// keeps running until then so the leader can send the commit update.
@@ -658,23 +525,23 @@ type Node struct {
 func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	st := newStorage()
 	c := newCache()
-	vals := &values{storage: st, log: disk, cache: c}
+	vals := &values{storage: st, cache: c}
 	cfg.MaxRequestBytes = cmp.Or(cfg.MaxRequestBytes, MaxRequestBytes)
 	cfg.PieceBytes = cmp.Or(cfg.PieceBytes, PieceBytes)
 	cfg.MaxTxnOps = cmp.Or(cfg.MaxTxnOps, mvcc.MaxTxnOps)
 	n := &Node{
-		cfg:         cfg,
-		storage:     st,
-		values:      vals,
-		cache:       c,
-		log:         disk,
-		term:        rec.HardState.Term,
-		voteTerm:    rec.HardState.Term,
-		vote:        rec.HardState.Vote,
-		waiting:     map[uint64]*pending{},
-		streams:     map[uint64]*watchStream{},
-		pieced:      map[uint64]*pieced{},
-		snapWait:    map[uint64]int64{},
+		cfg:      cfg,
+		storage:  st,
+		values:   vals,
+		cache:    c,
+		log:      disk,
+		term:     rec.HardState.Term,
+		voteTerm: rec.HardState.Term,
+		vote:     rec.HardState.Vote,
+		waiting:  map[uint64]*pending{},
+
+		pieced: map[uint64]*pieced{},
+
 		cold:        map[*ValueRead]struct{}{},
 		noSpaceAt:   -1,
 		tokens:      map[string]*simpleToken{},
@@ -797,44 +664,6 @@ func bootstrapped(cfg Config, rec *wal.Recovered, disk Log) (uint64, error) {
 	return uint64(len(cfg.Peers)), nil
 }
 
-// TornBootstrap returns the end of the first members' configuration
-// entries, as Raft's Bootstrap writes them for cfg.Peers at term 1, when
-// a crash cut it off: the log holds only the first of them, equal to
-// those, and nothing else. Every first member writes the same entries
-// from the same persisted peers, so the driver appends the rest and syncs
-// them before it starts the core, which then applies them all
-// (bootstrapped). Without them, a cold restart in which every survivor
-// kept only part of them never elects: no node has voters to campaign
-// with (#280). A node started to join gets none, as its peers are not the
-// first members.
-func TornBootstrap(cfg Config, rec *wal.Recovered, disk Log) ([]*raftpb.Entry, error) {
-	if cfg.Join || rec.Root.Index > 0 || rec.Last == 0 || rec.Last >= uint64(len(cfg.Peers)) {
-		return nil, nil
-	}
-	peers, err := bootstrapPeers(cfg)
-	if err != nil {
-		return nil, err
-	}
-	ents := make([]*raftpb.Entry, len(peers))
-	for i, p := range peers {
-		data, err := proto.Marshal(&raftpb.ConfChange{Type: raftpb.ConfChangeAddNode.Enum(), NodeId: new(p.ID), Context: p.Context})
-		if err != nil {
-			return nil, err
-		}
-		ents[i] = &raftpb.Entry{Type: raftpb.EntryConfChange.Enum(), Term: new(uint64(1)), Index: new(uint64(i + 1)), Data: data}
-	}
-	for i := uint64(1); i <= rec.Last; i++ {
-		e, err := disk.Entry(i)
-		if err != nil {
-			return nil, fmt.Errorf("core: read entry %d: %w", i, err)
-		}
-		if !proto.Equal(e, ents[i-1]) {
-			return nil, nil
-		}
-	}
-	return ents[rec.Last:], nil
-}
-
 // replay applies the committed entries after the checkpoint, read from
 // the log, and returns the term of the entry at commit.
 func (n *Node) replay(commit uint64) (uint64, error) {
@@ -921,14 +750,7 @@ func (c *Config) ticksOf(s int64) int64 { return (s*1000 + c.TickMillis - 1) / c
 
 // ceilSeconds and floorSeconds are a number of ticks in seconds, rounded
 // up or down.
-func (c *Config) ceilSeconds(ticks int64) int64  { return (ticks*c.TickMillis + 999) / 1000 }
-func (c *Config) floorSeconds(ticks int64) int64 { return ticks * c.TickMillis / 1000 }
-
-// every reports whether tick now ends a period of s seconds: once per
-// period, at its last tick.
-func (c *Config) every(now, s int64) bool {
-	return now*c.TickMillis/(s*1000) != (now-1)*c.TickMillis/(s*1000)
-}
+func (c *Config) ceilSeconds(ticks int64) int64 { return (ticks*c.TickMillis + 999) / 1000 }
 
 // quietLogger drops raft's log lines. Its Panic methods still panic,
 // because raft relies on them for broken invariants.
@@ -936,107 +758,14 @@ func quietLogger() raft.Logger {
 	return &raft.DefaultLogger{Logger: log.New(io.Discard, "", 0)}
 }
 
-// Err is the error that stopped the node, if any. A stopped node does
-// nothing and must be restarted from its log.
-func (n *Node) Err() error { return n.err }
-
 // Store is the node's index. Only the simulator's checks read it directly.
 func (n *Node) Store() *mvcc.Store { return n.kv }
-
-// Applied is the index of the last applied entry.
-func (n *Node) Applied() uint64 { return n.applied }
-
-// Hash is the hash of the replicated state: the index and the leases.
-func (n *Node) Hash() uint64 { return n.state.Hash() }
-
-// EntryBytes is the bytes of the Raft entries the node holds in memory
-// (storage.total), and the data of those on their way to the disk.
-func (n *Node) EntryBytes() int64 { return n.storage.total() + n.unpersisted }
-
-// FirstIndex is the first entry the node holds in memory.
-func (n *Node) FirstIndex() uint64 { return n.storage.first }
-
-// Leader is the leader this node knows of, or 0.
-func (n *Node) Leader() uint64 { return n.leader }
-
-// Term is the node's current Raft term.
-func (n *Node) Term() uint64 { return n.term }
 
 func (n *Node) fail(err error) {
 	if n.err == nil {
 		n.err = err
 	}
 }
-
-// AdvanceElection moves Raft's election clock ticks ahead, and nothing
-// else, as etcd's advanceTicks does at start so that a first election
-// comes sooner.
-func (n *Node) AdvanceElection(ticks int) {
-	for range ticks {
-		n.rn.Tick()
-	}
-	n.electionFrom -= int64(ticks)
-	n.noteRaft(nil)
-}
-
-// Tick advances the node's clock by one tick.
-func (n *Node) Tick() {
-	if n.err != nil {
-		return
-	}
-	n.now++
-	n.clock++
-	if n.removeAt != 0 && n.now >= n.removeAt {
-		n.fail(ErrRemoved)
-		return
-	}
-	n.rn.Tick()
-	n.noteRaft(nil)
-	if n.removeAt != 0 {
-		return
-	}
-	n.expire()
-	n.heldTick()
-	slow, silent := n.slowCommits(), n.stalled()
-	if slow && !n.slowCommit {
-		n.out.SlowCommit = true
-		n.counters.SlowCommits++
-	}
-	if silent && !n.silent {
-		n.out.Silent = true
-	}
-	n.slowCommit, n.silent = slow, silent
-	n.retryReads(false)
-	n.publish()
-	if n.cfg.every(n.now, 1) {
-		n.expireTokens()
-	}
-	n.snapshotProgress()
-	n.expireLeases()
-	n.checkpointLeases()
-	n.announceVersion()
-	n.monitorVersion()
-	if n.cfg.ProgressTicks > 0 && n.now%int64(n.cfg.ProgressTicks) == 0 {
-		n.progressNotify()
-	}
-}
-
-// Elapse moves the clock that requests wait by ticks ahead, and nothing
-// else: the driver calls it for the ticks of wall time it missed while it
-// was busy, so that a stalled committer still times its requests out, as
-// etcd's wall-clock request timeouts do. Raft and leases go on by Tick.
-func (n *Node) Elapse(ticks int64) {
-	if n.err != nil || ticks <= 0 {
-		return
-	}
-	n.clock += ticks
-	n.expire()
-}
-
-// LateHeartbeat counts a heartbeat that the driver sent a peer more than
-// two heartbeat intervals after the one before, in
-// Counters.HeartbeatSendFailures, as etcd does.
-func (n *Node) LateHeartbeat() { n.counters.HeartbeatSendFailures++ }
 
 // retryReads asks again for the read index of batches that have none,
 // after readRetryTicks or at once.
@@ -1054,353 +783,7 @@ func (n *Node) retryReads(now bool) {
 
 // Errors of Step for a message the node does not take, as etcd's Process
 // refuses it.
-var (
-	errFromRemoved = errors.New("core: rejected a Raft message from a removed member")
-	errNotForUs    = errors.New("core: rejected a Raft message to another member")
-)
-
-// Step hands the node a message from a peer. Like etcd's Process, it
-// refuses one from a removed member or to another member.
-func (n *Node) Step(m *raftpb.Message) error {
-	if n.err != nil {
-		return n.err
-	}
-	if n.state.removed[m.GetFrom()] {
-		return fmt.Errorf("%w %d", errFromRemoved, m.GetFrom())
-	}
-	if m.GetTo() != n.cfg.ID {
-		return fmt.Errorf("%w %d", errNotForUs, m.GetTo())
-	}
-	if took, err := n.stepHeld(m); took {
-		return err
-	}
-	if m.GetType() == raftpb.MsgProp {
-		if n.removeAt != 0 {
-			return ErrRemoved
-		}
-		if len(m.Entries) == 1 && m.Entries[0].GetType() == raftpb.EntryConfChange {
-			n.confMessages = append(n.confMessages, m)
-			return nil
-		}
-		if !n.isLeader {
-			n.keepForwarded(m)
-		}
-		if n.rn.BasicStatus().Lead == raft.None {
-			n.holdProposal(m)
-			return nil
-		}
-	}
-	if m.GetType() == raftpb.MsgHeartbeatResp {
-		n.snapshotDropped(m.GetFrom())
-	}
-	return n.stepRaft(m)
-}
-
-// stepRaft hands Raft a message from a peer.
-func (n *Node) stepRaft(m *raftpb.Message) error {
-	if err := n.checkCommit(m); err != nil {
-		n.fail(err)
-		return err
-	}
-	err := n.rn.Step(m)
-	n.noteRaft(m)
-	return err
-}
-
-// checkCommit refuses a heartbeat that Raft would take and that commits
-// past the end of the node's log (ErrLostEntries).
-func (n *Node) checkCommit(m *raftpb.Message) error {
-	if m.GetType() != raftpb.MsgHeartbeat || m.GetTerm() < n.rn.BasicStatus().GetTerm() {
-		return nil
-	}
-	last, err := n.storage.LastIndex()
-	if err != nil {
-		return err
-	}
-	if m.GetCommit() > last {
-		return fmt.Errorf("%w: leader %d commits %d at term %d, the log ends at %d", ErrLostEntries, m.GetFrom(), m.GetCommit(), m.GetTerm(), last)
-	}
-	return nil
-}
-
-// holdProposal keeps a proposal that a peer forwarded while this node
-// knows no leader, as etcd's raft.Node takes a proposal only once it
-// knows one: Raft would drop it. stepProposals hands it to Raft once a
-// leader is known, which forwards it or appends it. Past UnappliedBytes of
-// them the node drops the next, as etcd drops a proposal once its queue
-// for the peer is full.
-func (n *Node) holdProposal(m *raftpb.Message) {
-	var size int64
-	for _, e := range m.Entries {
-		size += int64(len(e.GetData()))
-	}
-	if n.propBytesHeld+size > n.cfg.UnappliedBytes {
-		return
-	}
-	n.props = append(n.props, m)
-	n.propBytesHeld += size
-}
-
-// stepProposals steps the held proposals once Raft knows a leader. Raft
-// may still drop one, during a leadership transfer for one; like etcd's,
-// the node then tells no one, and the origin's request times out.
-func (n *Node) stepProposals() {
-	if len(n.props) == 0 || n.rn.BasicStatus().Lead == raft.None {
-		return
-	}
-	props := n.props
-	n.props, n.propBytesHeld = nil, 0
-	for _, m := range props {
-		if err := n.rn.Step(m); err != nil && !errors.Is(err, raft.ErrProposalDropped) {
-			n.fail(err)
-			return
-		}
-	}
-}
-
-// errCanceled answers a request that Cancel dropped.
-var errCanceled = status.Error(codes.Canceled, context.Canceled.Error())
-
-// Cancel drops request id, whose client went away, if it waits for a
-// leader to be proposed: as etcd's raft.Node drops a proposal whose
-// context ends while no leader is known. Its answer is errCanceled. A
-// MoveLeader that waits for its transferee to lead fails with
-// ErrTimeoutLeaderTransfer, as etcd's does when its context ends. A
-// request that waits for anything else goes on, as in etcd, where it was
-// proposed already.
-func (n *Node) Cancel(id uint64) {
-	if n.err != nil {
-		return
-	}
-	// An answer in pieces whose receiver went away.
-	delete(n.pieced, id)
-	if i := slices.IndexFunc(n.transfers, func(p *pending) bool { return p.req.ID == id }); i >= 0 {
-		p := n.transfers[i]
-		n.transfers = slices.Delete(n.transfers, i, i+1)
-		n.finish(p, ErrTimeoutLeaderTransfer)
-		return
-	}
-	p := n.waiting[id]
-	if p == nil || p.done || p.refuse != nil || n.rn.BasicStatus().Lead != raft.None {
-		return
-	}
-	switch {
-	case p.queued:
-		n.proposals = slices.DeleteFunc(n.proposals, func(q *pending) bool { return q == p })
-		n.propBytes -= writeSize(p)
-	case slices.Contains(n.confs, p):
-		n.confs = slices.DeleteFunc(n.confs, func(q *pending) bool { return q == p })
-	default:
-		return
-	}
-	n.counters.ProposalsFailed++
-	n.finish(p, errCanceled)
-}
-
-// Unreachable reports that a message to a peer was dropped, so Raft
-// probes it instead of streaming to it. A follower whose snapshot was not
-// fetched yet gets another one.
-func (n *Node) Unreachable(id uint64) {
-	if n.err != nil {
-		return
-	}
-	n.rn.ReportUnreachable(id)
-	if at, ok := n.snapWait[id]; ok && at != 0 {
-		delete(n.snapWait, id)
-		n.rn.ReportSnapshot(id, raft.SnapshotFailure)
-	}
-}
-
-// Submit hands the node a client request. The reply comes in a later
-// Effects.
-func (n *Node) Submit(r Request) {
-	n.submit(r, &pending{})
-}
-
-// SubmitAll hands the node several client requests, with one allocation
-// for their bookkeeping.
-func (n *Node) SubmitAll(rs []Request) {
-	ps := make([]pending, len(rs))
-	for i := range rs {
-		n.submit(rs[i], &ps[i])
-	}
-}
-
-// submit takes a request; p is its zero bookkeeping record.
-func (n *Node) submit(r Request, p *pending) {
-	if n.err != nil || n.removeAt != 0 {
-		n.reply(r.ID, rpctypes.ErrGRPCStopped)
-		return
-	}
-	if n.refusesSpace(r) {
-		n.reply(r.ID, rpctypes.ErrGRPCNoSpace)
-		return
-	}
-	ai, hasAI, aiErr := n.identify(r.Caller)
-	if errors.Is(aiErr, errTokenNotApplied) {
-		n.tokenWaits = append(n.tokenWaits, tokenWait{req: r, deadline: n.clock + int64(n.cfg.RequestTicks)})
-		return
-	}
-	extra := identityExtra(r.Caller, ai, hasAI)
-	// etcd checks the quota before it validates the request, and who the
-	// client is after it.
-	if r.Op == nil {
-		if !n.quotaLeft(putCost(&r.Put.PutOp)) {
-			n.refuseNoSpace(r.ID)
-			return
-		}
-		if err := mvcc.CheckPutOp(&r.Put.PutOp); err != nil {
-			n.reply(r.ID, err)
-			return
-		}
-		if aiErr != nil {
-			n.reply(r.ID, aiErr)
-			return
-		}
-		if n.tooManyRequests(false) {
-			n.reply(r.ID, rpctypes.ErrGRPCRequestTooManyRequests)
-			return
-		}
-		if err := checkPutSize(&r.Put, extra, n.cfg.MaxRequestBytes); err != nil {
-			n.reply(r.ID, err)
-			return
-		}
-		*p = pending{req: r, deadline: n.clock + int64(n.cfg.RequestTicks)}
-		n.tagWrite(p, ai, hasAI)
-		if writeSize(p) > maxWriteBytes {
-			n.reply(r.ID, rpctypes.ErrGRPCRequestTooLarge)
-			return
-		}
-		n.queueWrite(p)
-		n.timeouts = append(n.timeouts, p)
-		return
-	}
-	if !n.quotaLeft(quotaCost(r.Op)) {
-		n.refuseNoSpace(r.ID)
-		return
-	}
-	sized, err := validate(r.Op, n.cfg.MaxTxnOps)
-	if err == nil {
-		err = aiErr
-	}
-	if err == nil && sized != nil {
-		if n.tooManyRequests(sized.LeaseRevoke != nil) {
-			err = rpctypes.ErrGRPCRequestTooManyRequests
-		} else {
-			err = checkSize(sized, extra, n.cfg.MaxRequestBytes)
-		}
-	}
-	if err == nil {
-		err = n.authorize(r.Op, ai, hasAI)
-	}
-	if err != nil {
-		n.reply(r.ID, err)
-		return
-	}
-	*p = pending{req: r, deadline: n.clock + int64(n.cfg.RequestTicks), ai: ai, aiCurrent: hasAI && !r.Caller.Verified}
-	n.tagWrite(p, ai, hasAI)
-	if writeSize(p) > maxWriteBytes {
-		// The client's encoding repeats fields or carries unknown ones,
-		// also in a write that etcd does not size, such as a keepalive,
-		// or the user's name is long: the entry would not fit in a peer
-		// frame or a log record (#424). A read this large is refused too.
-		n.reply(r.ID, rpctypes.ErrGRPCRequestTooLarge)
-		return
-	}
-	switch op := r.Op.(type) {
-	case *pb.InternalRaftRequest:
-		// The identity comes from the caller only.
-		op.Header = nil
-		if hasAI {
-			op.Header = &pb.RequestHeader{Username: ai.user, AuthRevision: ai.revision}
-		}
-		p.who = nil
-		n.queueFeature(p)
-	case *pb.AuthenticateRequest:
-		n.reads = append(n.reads, p)
-	case *pb.RangeRequest:
-		if op.Serializable || planted.On("B01a") {
-			n.serveRead(p)
-			return
-		}
-		n.reads = append(n.reads, p)
-	case *pb.TxnRequest:
-		if mvcc.IsTxnReadOnly(op) {
-			if mvcc.IsTxnSerializable(op) {
-				n.serveRead(p)
-				return
-			}
-			n.reads = append(n.reads, p)
-			break
-		}
-		n.queueWrite(p)
-	case *pb.LeaseTimeToLiveRequest, *pb.LeaseLeasesRequest:
-		n.reads = append(n.reads, p)
-	case *pb.HashKVRequest, *pb.HashRequest:
-		// etcd answers both from its local store, without Raft.
-		n.serveRead(p)
-		return
-	case *pb.MemberListRequest:
-		if !op.Linearizable {
-			n.serveRead(p)
-			return
-		}
-		n.reads = append(n.reads, p)
-	case *pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest:
-		n.submitMember(p)
-	case *pb.MoveLeaderRequest:
-		n.moveLeader(p, op)
-		return
-	case *pb.DowngradeRequest:
-		n.submitDowngrade(p, op)
-		return
-	case *pb.AlarmRequest:
-		// etcd passes every alarm request through Raft; a list is a
-		// linearizable read here, which answers the same.
-		if !isAlarmChange(op) {
-			n.reads = append(n.reads, p)
-			break
-		}
-		n.queueFeature(p)
-	case *pb.LeaseGrantRequest:
-		if op.ID == 0 {
-			// The node that takes the request picks the ID, so every
-			// replica applies the same one, as in etcd.
-			g := proto.CloneOf(op)
-			g.ID = n.newLeaseID()
-			p.req.Op, p.req.Wire = g, nil
-		}
-		n.queueWrite(p)
-	default:
-		n.queueWrite(p)
-	}
-	n.timeouts = append(n.timeouts, p)
-}
-
-// SetDisk tells the node how many bytes its log's files use, and its disk
-// budget. At the budget, the node raises its NOSPACE alarm through the
-// log, as etcd does past its quota, so that every member refuses writes
-// that take space: a follower past its budget must not take the leader's
-// appends either (#170). Once cleaning brought the files below the
-// budget, it clears the alarm again, unless the quota refused a write
-// meanwhile or the store is past it: the quota's alarm stays until an
-// operator disarms it, as in etcd. Only an alarm this run raised past
-// the budget clears itself: one it finds up or on its way, the quota's or
-// one a restart found, stays until a disarm. The alarm changes at most
-// every leaseRetryTicks.
-func (n *Node) SetDisk(used, budget int64) {
-	switch {
-	case used >= budget:
-		if !n.ownNoSpace() && n.noSpaceAt < 0 {
-			n.diskAlarm = true
-		}
-		n.raiseNoSpace(0)
-	case !n.quotaLeft(kvOverhead):
-		n.diskAlarm = false
-	case n.diskAlarm:
-		n.clearNoSpace()
-	}
-}
+var ()
 
 // refusesSpace reports whether the node refuses write r before it
 // proposes it: one that an active NOSPACE alarm refuses when it applies
@@ -1418,141 +801,6 @@ func (n *Node) refusesSpace(r Request) bool {
 		return !n.state.corrupt
 	}
 	return errors.Is(n.state.refusedOp(r.Op), rpctypes.ErrGRPCNoSpace)
-}
-
-// TakesSpace reports whether etcd v3.7.2 refuses a request while its
-// NOSPACE alarm is active: a put, a lease grant and a transaction that is
-// not read-only. A delete range and a compaction go through.
-func TakesSpace(r Request) bool {
-	switch op := r.Op.(type) {
-	case nil, *pb.PutRequest, *pb.LeaseGrantRequest:
-		return true
-	case *pb.TxnRequest:
-		return !mvcc.IsTxnReadOnly(op)
-	}
-	return false
-}
-
-// sizeRequestID stands in for etcd's request ID when sizing a write. etcd
-// v3.7.2 limits the marshaled InternalRaftRequest, whose header holds an ID
-// made from the low 16 bits of the member ID. When bit 15 of the member ID
-// is set, the ID is a 10-byte varint, etcd's strictest case, which this
-// matches to the byte; for other members etcd accepts one or more bytes
-// more.
-const sizeRequestID = 1 << 63
-
-// maxGap is etcd's maxGapBetweenApplyAndCommitIndex: how far the commit
-// index may run ahead of the applied one before writes are refused.
-const maxGap = 5000
-
-// tooManyRequests is etcd's exceedsRequestLimit, which it checks for
-// every request it proposes: a write is refused with
-// ErrGRPCRequestTooManyRequests once more than maxGap committed entries
-// wait to apply, a lease revoke with PriorityRequest only past twice that.
-func (n *Node) tooManyRequests(revoke bool) bool {
-	gap := uint64(maxGap)
-	if revoke && n.cfg.PriorityRequest {
-		gap *= 2
-	}
-	return n.commit > n.applied+gap
-}
-
-// validate checks a request like etcd's gRPC layer, and returns the
-// InternalRaftRequest whose size etcd's server limits for a write, or nil
-// for a request that does not go through Raft.
-func validate(op proto.Message, maxTxnOps int) (*pb.InternalRaftRequest, error) {
-	if r, ok := op.(*pb.RangeRequest); ok {
-		// Reads are not sized; they make no request to size.
-		return nil, mvcc.CheckRange(r)
-	}
-	r := &pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}
-	switch op := op.(type) {
-	case *pb.PutRequest:
-		r.Put = op
-		return r, mvcc.CheckPut(op)
-	case *pb.DeleteRangeRequest:
-		r.DeleteRange = op
-		return r, mvcc.CheckDelete(op)
-	case *pb.TxnRequest:
-		if err := mvcc.CheckTxn(op, maxTxnOps); err != nil || mvcc.IsTxnReadOnly(op) {
-			return nil, err
-		}
-		r.Txn = op
-	case *pb.CompactionRequest:
-		r.Compaction = op
-	case *pb.LeaseGrantRequest:
-		r.LeaseGrant = op
-	case *pb.LeaseRevokeRequest:
-		r.LeaseRevoke = op
-	case *pb.AlarmRequest:
-		if !isAlarmChange(op) {
-			return nil, nil
-		}
-		r.Alarm = op
-	case *pb.InternalRaftRequest:
-		r = proto.CloneOf(op)
-		r.Header = &pb.RequestHeader{ID: sizeRequestID}
-	case *pb.LeaseKeepAliveRequest, *pb.LeaseTimeToLiveRequest, *pb.LeaseLeasesRequest, *pb.HashKVRequest, *pb.HashRequest,
-		*pb.MemberListRequest, *pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest,
-		*pb.AuthenticateRequest, *pb.StatusRequest, *pb.MoveLeaderRequest, *pb.DowngradeRequest:
-		return nil, nil
-	default:
-		return nil, fmt.Errorf("core: unknown request type %T", op)
-	}
-	return r, nil
-}
-
-// checkSize limits a write as etcd's server does: the marshaled
-// InternalRaftRequest with the client's identity (extra) to limit bytes.
-func checkSize(r *pb.InternalRaftRequest, extra, limit int) error {
-	var size int
-	if r.Txn != nil {
-		// validate sets the header and the transaction, nothing else.
-		size = txnRequestBytes + protowire.SizeBytes(txnSize(r.Txn))
-	} else {
-		size = proto.Size(r)
-	}
-	if size+extra > limit {
-		return rpctypes.ErrGRPCRequestTooLarge
-	}
-	return nil
-}
-
-// txnRequestBytes is the size of etcd's InternalRaftRequest around a
-// transaction without the transaction itself: the header and the tag.
-var txnRequestBytes = proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}) + protowire.SizeTag(6)
-
-// putRequestBytes is the size of etcd's InternalRaftRequest around a put
-// without the put itself: the header with sizeRequestID, and the put's tag.
-var putRequestBytes = proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}) + protowire.SizeTag(4)
-
-// checkPutSize limits a put in wire form as checkSize does a decoded one.
-// Like etcd, it limits the size of the request as protobuf marshals it
-// again, not of the client's encoding.
-func checkPutSize(p *Put, extra, limit int) error {
-	if putRequestBytes+extra+protowire.SizeBytes(p.size()) > limit {
-		return rpctypes.ErrGRPCRequestTooLarge
-	}
-	return nil
-}
-
-// tagWrite gives a write the identity it carries into the log while auth
-// is enabled; without one it applies as etcd's empty identity.
-func (n *Node) tagWrite(p *pending, ai authInfo, ok bool) {
-	if ok && n.state.auth.enabled {
-		p.who = &authInfo{user: ai.user, revision: ai.revision}
-	}
-}
-
-// newLeaseID returns a positive lease ID that differs from the IDs this
-// node picked before, in this run and, by the boot ID, in earlier ones.
-func (n *Node) newLeaseID() int64 {
-	n.leaseSeq++
-	id := int64((n.cfg.Boot<<32 ^ n.cfg.ID<<24 ^ n.leaseSeq) & (1<<63 - 1))
-	if id == 0 {
-		id = 1
-	}
-	return id
 }
 
 // batchFraming is the most a write adds to an entry besides its request:
@@ -1574,105 +822,10 @@ func (n *Node) queueWrite(p *pending) {
 	n.propBytes += size
 }
 
-// errNotProposed answers a write whose deadline passed before it was
-// proposed, as etcd v3.7.2 answers a write whose context ends while its
-// raft.Node waits for a leader. clientv3 retries this code for writes,
-// unlike the request timeout of a write that was proposed.
-var errNotProposed = status.Error(codes.DeadlineExceeded, context.DeadlineExceeded.Error())
-
-// expire fails requests whose deadline passed. Writes that expired before
-// they were proposed leave the queue at once, so a node without a leader
-// holds only writes that may still go out.
-func (n *Node) expire() {
-	i, dropped, early := 0, false, false
-	for ; i < len(n.timeouts); i++ {
-		p := n.timeouts[i]
-		if p.done || p.held {
-			continue
-		}
-		if p.deadline > n.clock {
-			break
-		}
-		_, write := n.waiting[p.req.ID]
-		if write {
-			n.counters.ProposalsFailed++
-		} else {
-			n.counters.ReadIndexFailed++
-		}
-		if p.early {
-			early = true
-			n.finish(p, errNotProposed)
-			continue
-		}
-		if p.queued {
-			dropped = true
-			n.propBytes -= writeSize(p)
-			n.finish(p, errNotProposed)
-			continue
-		}
-		if write {
-			n.finish(p, n.timeoutCause(p.deadline-int64(n.cfg.RequestTicks)))
-			continue
-		}
-		n.finish(p, rpctypes.ErrGRPCTimeout)
-	}
-	n.timeouts = n.timeouts[i:]
-	if dropped {
-		n.proposals = slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
-	}
-	if early {
-		n.early = slices.DeleteFunc(n.early, func(p *pending) bool { return p.done })
-	}
-}
-
-// timeoutCause is etcd's parseProposeCtxErr: the error for a proposed
-// write, taken at clock start, that timed out. It started within two
-// election timeouts before this node became leader, so the leader before
-// failed; or the leader has not been connected to its peer since start,
-// or this leader to a quorum of the members.
-func (n *Node) timeoutCause(start int64) error {
-	if lost := n.electedAt - 2*int64(n.cfg.ElectionTicks); start > lost && start < n.electedAt {
-		return rpctypes.ErrGRPCTimeoutDueToLeaderFail
-	}
-	switch n.leader {
-	case raft.None:
-	case n.cfg.ID:
-		connected := 0
-		for id := range n.state.members {
-			if id == n.cfg.ID || n.connectedSince(id, start) {
-				connected++
-			}
-		}
-		if connected < len(n.state.members)/2+1 {
-			return rpctypes.ErrGRPCTimeoutDueToConnectionLost
-		}
-	default:
-		if !n.connectedSince(n.leader, start) {
-			return rpctypes.ErrGRPCTimeoutDueToConnectionLost
-		}
-	}
-	return rpctypes.ErrGRPCTimeout
-}
-
-// connectedSince reports whether this node has been connected to peer id
-// since before clock start.
-func (n *Node) connectedSince(id uint64, start int64) bool {
-	if n.cfg.ConnectedTicks == nil {
-		return true
-	}
-	t := n.cfg.ConnectedTicks(id)
-	return t >= 0 && n.clock-t < start
-}
-
-// finish fails a request with err. A NOSPACE alarm that answers a
-// refused write answers ErrNoSpace whatever became of it, as etcd answers
-// once its alarm request returned.
-func (n *Node) finish(p *pending, err error) {
-	if p.refuse != nil {
-		err = p.refuse
-	}
+// finish ends a request that failed.
+func (n *Node) finish(p *pending) {
 	if n.settle(p) {
-		n.reply(p.req.ID, err)
+		n.reply(p.req.ID)
 	}
 }
 
@@ -1691,9 +844,9 @@ func (n *Node) settle(p *pending) bool {
 	return true
 }
 
-// reply fails request id with err.
-func (n *Node) reply(id uint64, err error) {
-	n.out.Replies = append(n.out.Replies, Reply{ID: id, Err: err})
+// reply answers request id.
+func (n *Node) reply(id uint64) {
+	n.out.Replies = append(n.out.Replies, Reply{ID: id})
 }
 
 // writeSize is the bytes a queued write adds to a Raft entry.
@@ -1729,7 +882,7 @@ func (n *Node) propose() {
 				return false
 			}
 			n.propBytes -= writeSize(p)
-			n.finish(p, rpctypes.ErrGRPCNoSpace)
+			n.finish(p)
 			return true
 		})
 	}
@@ -1771,11 +924,6 @@ func (n *Node) requeue(props []*pending) {
 	}
 }
 
-// errDropped answers the writes of a proposal that Raft dropped, as when
-// the leader transfers its leadership: etcd returns raft's error, which
-// its gRPC layer has no code for.
-var errDropped = status.Error(codes.Unknown, raft.ErrProposalDropped.Error())
-
 // proposeEntry proposes one Raft entry with props.
 func (n *Node) proposeEntry(props []*pending, size int) {
 	data, err := encodeBatch(n.state.version, n.cfg.ID, n.cfg.Boot, props, size)
@@ -1787,74 +935,13 @@ func (n *Node) proposeEntry(props []*pending, size int) {
 	if err := n.rn.Propose(data); err != nil {
 		// Raft dropped the proposal, so none of these requests will apply.
 		for _, p := range props {
-			n.finish(p, errDropped)
+			n.finish(p)
 		}
 		return
 	}
 	// On the leader, the next local append with entries carries this
 	// batch; writes wait while ownDepth such appends are on their way
 	// (own). A follower only forwards, so nothing waits.
-	n.awaitOwn = n.isLeader
-}
-
-// requestReads asks Raft for one read index for all queued reads.
-func (n *Node) requestReads() {
-	if len(n.reads) == 0 {
-		return
-	}
-	n.nextReadCtx++
-	b := &readBatch{ctx: n.nextReadCtx, sent: n.now, reads: n.reads}
-	n.reads = nil
-	n.readBatches = append(n.readBatches, b)
-	n.rn.ReadIndex(readCtx(n.cfg.Boot, b.ctx))
-}
-
-// Persisted reports that a persist job is durable. Jobs must be reported
-// in the order Process returned them.
-func (n *Node) Persisted(job PersistJob) {
-	if n.err != nil {
-		return
-	}
-	n.unpersisted -= job.bytes
-	if in := job.Install; in != nil {
-		if !planted.On("B27") {
-			n.fail(fmt.Errorf("%w at %d from %d, checkpoint %d", ErrInstalled, in.Index, in.From, in.Checkpoint.Index))
-			return
-		}
-		// Planted: the core goes on with the state the snapshot replaced.
-		if err := n.storage.reset(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(in.Index), Term: new(in.Term), ConfState: n.storage.confAt(in.Index)}}); err != nil {
-			n.fail(err)
-			return
-		}
-		n.applied = in.Index
-	}
-	if job.Root != nil {
-		n.storage.ckpt = *job.Root
-		n.releaseCompacts()
-	}
-	if err := n.storage.add(job.Entries); err != nil {
-		n.fail(err)
-		return
-	}
-	if job.HardState != nil {
-		if err := n.storage.setHardState(*job.HardState); err != nil {
-			n.fail(err)
-			return
-		}
-	}
-	if len(job.Entries) > 0 {
-		durable := job.Entries[len(job.Entries)-1].GetIndex()
-		for len(n.own) > 0 && n.own[0] <= durable {
-			n.own = n.own[1:]
-		}
-		n.appending = n.appending[1:]
-		n.durableAt = n.now
-	}
-	if job.newVote {
-		n.unsyncedVotes--
-		n.releaseHeld()
-	}
-	n.deliver(job.msg.GetResponses())
 }
 
 // deliver steps messages for this node and sends the rest.
@@ -1876,373 +963,6 @@ func (n *Node) deliver(msgs []*raftpb.Message) {
 			return
 		}
 	}
-}
-
-// Process runs Raft until it has nothing more to do and returns the
-// effects gathered since the last call. A non-nil error means the node
-// stopped; the effects are still valid and carry its last replies.
-func (n *Node) Process() (Effects, error) {
-	if n.err == nil {
-		// Self-clocked batching: while ownDepth of the leader's own
-		// appends are on their way to disk, writes wait and join one
-		// entry, which goes out when the oldest is durable. With two, the
-		// disk takes the next append as soon as it synced one, instead of
-		// standing idle until the leader proposes again. Nothing else
-		// waits, and with no append in flight a write goes out at once,
-		// so one client sees no delay. The byte cap still sends a full
-		// entry early (queueWrite).
-		n.releaseEarly()
-		if len(n.tokenWaits) > 0 {
-			n.retryTokenWaits()
-		}
-		n.stepProposals()
-		if !n.isLeader || len(n.own) < ownDepth {
-			n.propose()
-		}
-		n.proposeConfs()
-		n.proposeConfMessages()
-		// A revoke takes its next step, and ordered apply goes on behind
-		// it once it is done; then apply messages left behind by a
-		// snapshot install.
-		if n.revoke != nil {
-			n.revokeStep()
-		}
-		n.runApply()
-		n.requestReads()
-		n.drainReady()
-		n.cutWaiting()
-		// A write that a read queued, such as a Downgrade ENABLE once its
-		// read index applied, goes out in the same turn.
-		if len(n.proposals) > 0 && (!n.isLeader || len(n.own) < ownDepth) {
-			n.propose()
-			n.drainReady()
-		}
-		if planted.On("B06d") {
-			// Planted: a progress notification at the current revision
-			// goes out ahead of the events it covers.
-			for _, w := range n.watchers {
-				if !w.dead && w.progress && len(w.pending) > 0 {
-					n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id}, nil, 0)
-				}
-			}
-		}
-		n.flushWatches()
-		n.catchUp()
-		if n.err == nil {
-			n.trimWindow()
-			n.fitCache()
-			n.cache.step()
-		}
-	}
-	if n.err != nil || n.removeAt != 0 {
-		n.stop()
-	}
-	out := n.out
-	n.out = Effects{}
-	n.watchRead = nil
-	return out, n.err
-}
-
-// stop fails every waiting request once the node stopped.
-func (n *Node) stop() {
-	for _, p := range slices.Concat(n.timeouts, n.transfers) {
-		n.finish(p, rpctypes.ErrGRPCStopped)
-	}
-	for _, h := range n.physical {
-		n.finish(h.p, rpctypes.ErrGRPCStopped)
-	}
-	n.physical = nil
-	for _, w := range n.tokenWaits {
-		n.reply(w.req.ID, rpctypes.ErrGRPCStopped)
-	}
-	n.tokenWaits = nil
-	n.confMessages, n.props, n.propBytesHeld = nil, nil, 0
-	clear(n.pieced)
-	n.timeouts, n.proposals, n.reads, n.readBatches, n.early, n.confs, n.transfers = nil, nil, nil, nil, nil, nil, nil
-}
-
-// drainReady handles Raft's Readys until it has none.
-func (n *Node) drainReady() {
-	for n.err == nil && n.rn.HasReady() {
-		n.handleReady(n.rn.Ready())
-	}
-	n.noteRaft(nil)
-}
-
-func (n *Node) handleReady(rd raft.Ready) {
-	// What was proposed is in this Ready's append, or went to the leader.
-	n.unready = 0
-	if rd.SoftState != nil {
-		if leader := rd.RaftState == raft.StateLeader; leader != n.isLeader {
-			n.isLeader = leader
-			// A batch from an earlier leadership may have been replaced
-			// and never reach the disk; wait for nothing from it.
-			n.own, n.awaitOwn = nil, false
-			n.uncommitted = nil
-			if leader {
-				n.electedAt = n.clock
-			}
-			n.leadershipChanged()
-		}
-		if rd.Lead != n.leader && rd.Lead != raft.None {
-			n.failReads()
-			n.leaderChanges++
-		}
-		n.leader = rd.Lead
-		n.checkTransfers()
-	}
-	if rd.HardState != nil {
-		n.term = rd.GetTerm()
-	}
-	for _, rs := range rd.ReadStates {
-		n.readIndexKnown(rs)
-	}
-	// Appends and applies first, so that a term or vote change, or a
-	// committed configuration change, also holds back the messages of the
-	// same Ready.
-	var newVotes []*raftpb.Message
-	for _, m := range rd.Messages {
-		if m.GetTo() == raft.LocalAppendThread && m.Vote != nil && (m.GetTerm() != n.voteTerm || m.GetVote() != n.vote) {
-			n.voteTerm, n.vote = m.GetTerm(), m.GetVote()
-			n.unsyncedVotes++
-			newVotes = append(newVotes, m)
-		}
-		if m.GetTo() == raft.LocalApplyThread && len(m.Entries) > 0 {
-			// As etcd's committed index: the last entry handed to apply.
-			n.commit = max(n.commit, m.Entries[len(m.Entries)-1].GetIndex())
-		}
-		// A configuration change to apply, and those appended, which Raft
-		// hands to apply only once they are durable, also when they commit
-		// before.
-		if m.GetTo() == raft.LocalAppendThread && len(m.Entries) > 0 {
-			// The append replaces the log from its first entry on.
-			first := m.Entries[0].GetIndex()
-			n.confsAppended = slices.DeleteFunc(n.confsAppended, func(i uint64) bool { return i >= first })
-		}
-		if to := m.GetTo(); to == raft.LocalApplyThread || to == raft.LocalAppendThread {
-			for _, e := range m.Entries {
-				if t := e.GetType(); t != raftpb.EntryConfChange && t != raftpb.EntryConfChangeV2 {
-					continue
-				}
-				if to == raft.LocalApplyThread {
-					n.confAt = max(n.confAt, e.GetIndex())
-				} else {
-					n.confsAppended = append(n.confsAppended, e.GetIndex())
-				}
-			}
-		}
-	}
-	if rd.HardState != nil {
-		n.confsAppended = slices.DeleteFunc(n.confsAppended, func(i uint64) bool {
-			if i > rd.GetCommit() {
-				return false
-			}
-			n.confAt = max(n.confAt, i)
-			return true
-		})
-	}
-	for _, m := range rd.Messages {
-		switch m.GetTo() {
-		case raft.LocalAppendThread:
-			job := PersistJob{Entries: m.Entries, msg: m}
-			if m.Snapshot != nil {
-				meta := m.Snapshot.GetMetadata()
-				job.Install = &Install{From: n.rn.BasicStatus().Lead, Index: meta.GetIndex(), Term: meta.GetTerm(), Applied: n.applied}
-			}
-			if m.Vote != nil {
-				job.HardState = &wal.HardState{Term: m.GetTerm(), Vote: m.GetVote(), Commit: m.GetCommit()}
-				job.newVote = slices.Contains(newVotes, m)
-			}
-			for _, e := range job.Entries {
-				job.bytes += int64(len(e.GetData()))
-			}
-			n.unpersisted += job.bytes
-			n.out.Persist = append(n.out.Persist, job)
-			if len(job.Entries) > 0 {
-				n.appending = append(n.appending, n.now)
-				if n.isLeader {
-					n.uncommitted = append(n.uncommitted, proposedAt{job.Entries[len(job.Entries)-1].GetIndex(), n.now})
-				}
-			}
-			if len(job.Entries) > 0 && n.awaitOwn {
-				n.own = append(n.own, job.Entries[len(job.Entries)-1].GetIndex())
-				n.awaitOwn = false
-			}
-		case raft.LocalApplyThread:
-			n.applyQ = append(n.applyQ, m)
-			n.runApply()
-			if n.err != nil {
-				return
-			}
-		default:
-			n.send(m)
-		}
-	}
-	n.serveReads()
-	n.releaseHeld()
-}
-
-// failReads fails the reads whose read index has not come yet when a new
-// leader appears, with ErrGRPCLeaderChanged, which clients retry: as
-// etcd's read loop fails its attempt under way. Raft dropped their
-// requests with the term.
-func (n *Node) failReads() {
-	for _, b := range n.readBatches {
-		if b.index != 0 || allDone(b.reads) {
-			continue
-		}
-		n.counters.ReadIndexFailed++
-		for _, p := range b.reads {
-			n.finish(p, rpctypes.ErrGRPCLeaderChanged)
-		}
-	}
-}
-
-func (n *Node) readIndexKnown(rs raft.ReadState) {
-	ctx, ok := parseReadCtx(n.cfg.Boot, rs.RequestCtx)
-	if !ok {
-		return
-	}
-	for _, b := range n.readBatches {
-		if b.ctx == ctx && b.index == 0 {
-			b.index = rs.Index
-		}
-	}
-}
-
-// serveReads answers the read batches whose index is applied and drops
-// the batches whose reads all timed out. A read index is valid for every
-// read that arrived before it was requested, so batches need not finish in
-// order.
-func (n *Node) serveReads() {
-	left := n.readBatches[:0]
-	for _, b := range n.readBatches {
-		if b.index != 0 && (b.index <= n.applied || planted.On("B01b")) {
-			for _, p := range b.reads {
-				n.serveRead(p)
-			}
-			continue
-		}
-		if !allDone(b.reads) {
-			left = append(left, b)
-		}
-	}
-	clear(n.readBatches[len(left):])
-	n.readBatches = left
-}
-
-func allDone(ps []*pending) bool {
-	for _, p := range ps {
-		if !p.done {
-			return false
-		}
-	}
-	return true
-}
-
-// serveRead answers a read. One that needs values from the log at once,
-// to compare or sort by them, runs again once a helper read them.
-func (n *Node) serveRead(p *pending) {
-	if p.done {
-		return
-	}
-	var resp proto.Message
-	var err error
-	var cursors []*mvcc.Cursor
-	rep := Reply{ID: p.req.ID}
-	if p.aiCurrent {
-		p.ai.revision = n.state.auth.revision
-	}
-	if err := n.readAllowed(p); err != nil {
-		n.finish(p, err)
-		return
-	}
-	var start int64
-	if n.cfg.Timer != nil {
-		start = n.cfg.Timer.Now()
-	}
-	switch op := p.req.Op.(type) {
-	case *pb.AuthenticateRequest:
-		resp, err = n.credentials(op)
-		rep.Rev = int64(n.state.auth.revision)
-	case *pb.RangeRequest:
-		// Every Range answers as Reply.Range, in pieces if it is large;
-		// the driver builds the message.
-		var res mvcc.RangeResult
-		var c *mvcc.Cursor
-		if res, c, err = n.kv.RangeFirst(op, !p.req.Chunk, n.cfg.PieceBytes); err == nil {
-			rep.Term, rep.Range = n.term, res
-			if c != nil {
-				cursors = []*mvcc.Cursor{c}
-			}
-		}
-	case *pb.TxnRequest:
-		var r *pb.TxnResponse
-		r, err = n.kv.Txn(op)
-		if err == nil {
-			n.fillHeader(r.Header)
-			resp = r
-			rep.Rests = n.kv.TakeRests()
-		}
-	case *pb.LeaseTimeToLiveRequest:
-		// Only the leader counts the time a lease has left. etcd's
-		// followers ask it (node.TimeToLive).
-		if !n.isLeader {
-			err = rpctypes.ErrGRPCNotLeader
-			break
-		}
-		r := n.state.timeToLive(op, n.remaining(op.ID))
-		n.fillHeader(r.Header)
-		resp = r
-	case *pb.LeaseLeasesRequest:
-		r := n.state.leaseIDs()
-		n.fillHeader(r.Header)
-		resp = r
-	case *pb.HashKVRequest:
-		var h mvcc.KVHash
-		if h, err = n.hashKV(op.Revision); err == nil {
-			r := &pb.HashKVResponse{Header: header(n.kv.Rev()), Hash: h.Hash, CompactRevision: h.CompactRevision, HashRevision: h.Revision}
-			n.fillHeader(r.Header)
-			resp = r
-		}
-	case *pb.HashRequest:
-		r := &pb.HashResponse{Header: header(n.kv.Rev()), Hash: n.state.Hash32()}
-		n.fillHeader(r.Header)
-		resp = r
-	case *pb.AlarmRequest:
-		r := n.state.alarmList(op)
-		n.fillHeader(r.Header)
-		resp = r
-	case *pb.MemberListRequest:
-		resp = n.memberResponse(op, nil)
-	case *pb.DowngradeRequest:
-		if resp, err = n.validateDowngrade(p, op); resp == nil && err == nil {
-			return
-		}
-	}
-	if cold, ok := errors.AsType[*mvcc.ColdError](err); ok {
-		n.fetch(cold.Need).read = p
-		p.compares = cold.Compares
-		return
-	}
-	if t := n.cfg.Timer; t != nil {
-		switch p.req.Op.(type) {
-		case *pb.RangeRequest:
-			t.Read("Range", err == nil, t.Now()-start)
-		case *pb.HashRequest:
-			t.Read("Hash", err == nil, t.Now()-start)
-		case *pb.HashKVRequest:
-			t.Read("HashKV", err == nil, t.Now()-start)
-		}
-	}
-	if err != nil && !isAnswer(err) {
-		// A value that cannot be read, or does not match its checksum,
-		// never reaches a client: the node stops.
-		n.fail(err)
-		return
-	}
-	rep.Resp, rep.Err, rep.cursors = resp, err, cursors
-	n.answer(p, rep, n.kv.TakeFills())
 }
 
 func (n *Node) fillHeader(h *pb.ResponseHeader) {
@@ -2403,7 +1123,7 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 	case kindNoSpace:
 		n.timed = timedApply{op: "NoSpace", err: rpctypes.ErrGRPCNoSpace}
 		if p != nil {
-			n.finish(p, rpctypes.ErrGRPCNoSpace)
+			n.finish(p)
 		}
 		return nil
 	case kindVersion:
@@ -2457,11 +1177,11 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 	}
 	n.timed = timedApply{op: opName(op), err: err}
 	if c, ok := op.(*pb.CompactionRequest); ok && c.Physical && err == nil && p != nil {
-		n.holdCompact(p, Reply{ID: p.req.ID, Resp: resp}, e.GetIndex())
+		n.holdCompact()
 		return nil
 	}
 	if p != nil {
-		n.answer(p, Reply{ID: p.req.ID, Resp: resp, Err: err, Rests: rests}, fills)
+		n.answer(p, Reply{ID: p.req.ID, Resp: resp, Rests: rests}, fills)
 	}
 	return nil
 }
@@ -2493,17 +1213,17 @@ func (n *Node) applyPut(b []byte, at int, p *pending) error {
 	if p == nil || p.done {
 		return nil
 	}
-	if err != nil {
-		n.finish(p, err)
-		return nil
-	}
-	if p.req.Op != nil {
+	switch {
+	case err != nil:
+		// A request error is the request's answer, not the node's.
+		n.finish(p)
+	case p.req.Op != nil:
 		r := &pb.PutResponse{Header: &pb.ResponseHeader{Revision: n.kv.Rev()}, PrevKv: prev}
 		n.fillHeader(r.Header)
 		n.answer(p, Reply{ID: p.req.ID, Resp: r}, fills)
-		return nil
+	default:
+		n.answer(p, Reply{ID: p.req.ID, Rev: n.kv.Rev()}, fills)
 	}
-	n.answer(p, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev}, fills)
 	return nil
 }
 
@@ -2584,9 +1304,6 @@ func (n *Node) afterApply(op proto.Message, revoked *lease, resp proto.Message, 
 		// The proposal raiseNoSpace waits for has applied, or the alarm
 		// changed otherwise.
 		n.noSpaceAt = -1
-		if a.Action == pb.AlarmRequest_DEACTIVATE {
-			n.diskAlarm = false
-		}
 	}
 	if n.isLeader || planted.On("B10") {
 		switch op := op.(type) {
@@ -2617,34 +1334,6 @@ func (n *Node) afterApply(op proto.Message, revoked *lease, resp proto.Message, 
 func isAnswer(err error) bool {
 	_, ok := status.FromError(err)
 	return ok
-}
-
-// proposedAt is the last index of a leader's append and the tick it began.
-type proposedAt struct {
-	index uint64
-	at    int64
-}
-
-// slowCommits drops the leader's appends that have committed and reports
-// whether the oldest one left has waited SlowCommitElections election
-// timeouts.
-func (n *Node) slowCommits() bool {
-	if !n.isLeader {
-		return false
-	}
-	commit := n.rn.BasicStatus().GetCommit()
-	i := 0
-	for i < len(n.uncommitted) && n.uncommitted[i].index <= commit {
-		n.maxCommitWait = max(n.maxCommitWait, n.now-n.uncommitted[i].at)
-		i++
-	}
-	n.uncommitted = n.uncommitted[i:]
-	if len(n.uncommitted) == 0 {
-		return false
-	}
-	wait := n.now - n.uncommitted[0].at
-	n.maxCommitWait = max(n.maxCommitWait, wait)
-	return wait >= int64(cmp.Or(n.cfg.SlowCommitElections, SlowCommitTicks))*int64(n.cfg.ElectionTicks)
 }
 
 // stalled reports whether this node leads and its disk, with appends

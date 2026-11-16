@@ -82,16 +82,6 @@ func (n *Node) quotaLeft(cost int64) bool {
 	return n.kv.Size()+cost < quota
 }
 
-// refuseNoSpace refuses request id, which does not fit the quota, and
-// raises the node's NOSPACE alarm. Like etcd's gRPC layer, it answers
-// once the alarm applied, if it proposes it.
-func (n *Node) refuseNoSpace(id uint64) {
-	n.diskAlarm = false
-	if !n.raiseNoSpace(id) {
-		n.reply(id, rpctypes.ErrGRPCNoSpace)
-	}
-}
-
 // overQuota is the answer to a write that applied past the quota, and
 // raises this node's NOSPACE alarm. Like etcd's applyEntryNormal, which
 // proposes an alarm for every such write while no NOSPACE alarm is
@@ -99,7 +89,6 @@ func (n *Node) refuseNoSpace(id uint64) {
 // any, until an alarm proposed for it applied: p is then answered
 // already, and the answer comes with that alarm.
 func (n *Node) overQuota(p *pending) error {
-	n.diskAlarm = false
 	if p == nil || p.done || p.req.ID == 0 || n.ownNoSpace() || n.readInline {
 		n.raiseNoSpace(0)
 		return rpctypes.ErrGRPCNoSpace
@@ -141,18 +130,6 @@ func (n *Node) proposeNoSpace(id uint64) {
 	if id != 0 {
 		n.timeouts = append(n.timeouts, p)
 	}
-}
-
-// clearNoSpace proposes clearing this node's NOSPACE alarm, if it is
-// active and no proposal of a change to it is under way (SetDisk).
-func (n *Node) clearNoSpace() {
-	if !n.noSpaceDue(false) {
-		return
-	}
-	n.queueFeature(&pending{
-		req:      Request{Op: &pb.AlarmRequest{Action: pb.AlarmRequest_DEACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: n.cfg.ID}},
-		deadline: n.clock + int64(n.cfg.RequestTicks),
-	})
 }
 
 // noSpaceDue reports whether the node proposes setting its own NOSPACE

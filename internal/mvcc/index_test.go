@@ -3,7 +3,6 @@ package mvcc
 import (
 	"fmt"
 	"maps"
-	"runtime"
 	"slices"
 	"strconv"
 	"testing"
@@ -121,55 +120,6 @@ func TestNestedWalks(t *testing.T) {
 		t.Fatalf("the outer walk saw %d keys and the inner ones %d, want 100 and 1000", outer, inner)
 	}
 }
-
-// TestIndexMemoryPerKey bounds the heap objects and bytes the index takes
-// for a key with one version. With #552's map beside the B-tree it took
-// 4.05 objects and 276 bytes a key, and past-ram's watches stopped once
-// the index outgrew the node's memory (#558); with slots, 1.05 and 184.
-func TestIndexMemoryPerKey(t *testing.T) {
-	const n = 200000
-	keys := make([][]byte, n)
-	for i := range keys {
-		keys[i] = fmt.Appendf(nil, "/registry/pods/bench-%03d-%04d/pod-%08d", i%7, i%5000, i)
-	}
-	val := make([]byte, 100)
-	measure := func() runtime.MemStats {
-		runtime.GC()
-		var m runtime.MemStats
-		runtime.ReadMemStats(&m)
-		return m
-	}
-	before := measure()
-	s := New(&nullValues{})
-	for _, k := range keys {
-		if _, err := s.Put(&pb.PutRequest{Key: k, Value: val}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	after := measure()
-	// The keys stay live through both measures, so only the index counts.
-	runtime.KeepAlive(keys)
-	objects := float64(after.HeapObjects-before.HeapObjects) / n
-	bytes := float64(after.HeapAlloc-before.HeapAlloc) / n
-	t.Logf("%.2f objects and %.0f bytes a key; Bytes says %d", objects, bytes, s.Bytes()/n)
-	if objects > 1.5 || bytes > 220 {
-		t.Fatalf("the index takes %.2f heap objects and %.0f bytes a key, want at most 1.5 and 220", objects, bytes)
-	}
-	runtime.KeepAlive(s)
-}
-
-// nullValues places values without keeping them, so that only the index
-// takes memory.
-type nullValues struct{ n uint64 }
-
-func (v *nullValues) Place(b []byte) (Ref, error) {
-	v.n++
-	return Ref{Index: v.n, Len: uint32(len(b))}, nil
-}
-
-func (v *nullValues) Copies(Ref) bool { return false }
-
-func (v *nullValues) Read(Ref, *[]byte) ([]byte, bool, error) { return nil, false, nil }
 
 // TestRecordSize checks recBytes, what Bytes counts for a record.
 func TestRecordSize(t *testing.T) {

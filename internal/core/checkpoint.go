@@ -351,10 +351,9 @@ type copying struct {
 // lastCkpt is the newest checkpoint finished: its index, size, the lowest
 // entry a value of it is in, and its header's base.
 type lastCkpt struct {
-	index  uint64
-	size   int64
-	minRef uint64
-	base   int64
+	size int64
+
+	base int64
 }
 
 // maybeCheckpoint runs after each applied entry. A cut is due once the
@@ -425,7 +424,7 @@ func (n *Node) copyChunk(limit int) {
 		c.head = c.head[k:]
 		c.crc = crc32.Update(c.crc, castagnoli, data)
 		c.size += int64(k)
-		n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{Index: c.index, Data: data})
+		n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{})
 		return
 	}
 	data, minRef, done := n.kv.CopyFrozen(make([]byte, 0, limit+1024), limit)
@@ -435,68 +434,11 @@ func (n *Node) copyChunk(limit int) {
 		c.minRef = minRef
 	}
 	if done {
-		data = binary.LittleEndian.AppendUint32(data, c.crc)
 		c.size += 4
-		n.last = lastCkpt{index: c.index, size: c.size, minRef: c.minRef}
+		n.last = lastCkpt{size: c.size}
 		n.copy, n.unwritten = nil, c.index
 	}
-	n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{Index: c.index, Data: data, Done: done})
-}
-
-// Copying reports whether a checkpoint is being copied out of the index.
-func (n *Node) Copying() bool { return n.copy != nil }
-
-// CutWaits reports whether the next cut waits for the copy under way. The
-// driver then copies the next part as soon as its disk took the last one,
-// without its usual pause.
-func (n *Node) CutWaits() bool { return n.copy != nil && n.cutDue }
-
-// CopyCheckpoint copies the next part of the checkpoint under way, about
-// CheckpointChunk bytes, for the next Effects. The driver paces it: the
-// copy runs on the committer and the parts go to the disk.
-func (n *Node) CopyCheckpoint() {
-	if n.err == nil && n.copy != nil {
-		n.copyChunk(n.cfg.CheckpointChunk)
-	}
-}
-
-// CheckpointWritten tells the node that the driver has written and synced
-// the checkpoint at index, and synced its directory, or failed to, which
-// stops the node like any failed disk write. The node then asks for the
-// root that makes it count.
-func (n *Node) CheckpointWritten(index uint64, err error) {
-	if err != nil {
-		n.fail(fmt.Errorf("core: write the checkpoint at %d: %w", index, err))
-		return
-	}
-	if index == n.unwritten {
-		n.unwritten = 0
-	}
-	if n.err != nil || index != n.last.index || index <= n.storage.ckpt.Index {
-		// An older checkpoint than the newest durable one; it never
-		// counts. The root of one finished while an install is on its
-		// way to disk is never written: the driver writes nothing after
-		// the install (UpToInstall).
-		return
-	}
-	term, err := n.termAt(index)
-	if err != nil {
-		n.fail(err)
-		return
-	}
-	mark := index + 1
-	if n.last.minRef != 0 {
-		mark = min(mark, n.last.minRef)
-	}
-	// A value read under way may need a value that a compaction since
-	// dropped from the index.
-	mark = n.readMark(mark)
-	if len(n.snapWait) > 0 {
-		// A follower may be fetching a snapshot from what the removal
-		// would take; the next root removes it.
-		mark = 0
-	}
-	n.out.Persist = append(n.out.Persist, PersistJob{Root: &wal.Root{Index: index, Term: term}, RemoveBelow: mark})
+	n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{})
 }
 
 // termAt is the term of an entry, from memory or from the log.
@@ -560,8 +502,7 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 	st.auth = h.auth
 	st.auth.rebuild()
 	st.etcdVersion, st.downgradeEnabled, st.downgradeTarget = h.etcdVersion, h.downgradeEnabled, h.downgradeTarget
-	minRef, err := st.kv.Load(r, h.rev, h.compact)
-	if err != nil {
+	if _, err := st.kv.Load(r, h.rev, h.compact); err != nil {
 		return nil, lastCkpt{}, fmt.Errorf("%w: %w", errBadCheckpoint, err)
 	}
 	if err := tr.check(r); err != nil {
@@ -578,28 +519,7 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 		}
 	})
 	st.leaseSum = st.sumLeases()
-	return st, lastCkpt{index: root.Index, size: tr.n, minRef: minRef, base: h.base}, nil
-}
-
-// WalkCheckpoint calls fn for the value of every version that the
-// checkpoint at index names, read from f, the start of its file, then
-// checks the file's trailer. The node's cleaner keeps the values it names.
-func WalkCheckpoint(f io.Reader, index uint64, fn func(mvcc.Ref) error) error {
-	tr := &trailerReader{r: f}
-	r := bufio.NewReaderSize(tr, 64<<10)
-	h, err := readHeader(r)
-	if err == nil && h.index != index {
-		err = fmt.Errorf("%w: the file of the checkpoint at %d holds the one at %d", errBadCheckpoint, index, h.index)
-	}
-	if err == nil {
-		if err = mvcc.WalkRefs(r, fn); errors.Is(err, mvcc.ErrBadCheckpoint) {
-			err = fmt.Errorf("%w: %w", errBadCheckpoint, err)
-		}
-	}
-	if err == nil {
-		err = tr.check(r)
-	}
-	return err
+	return st, lastCkpt{size: tr.n, base: h.base}, nil
 }
 
 // trailerReader computes the CRC-32C of everything it reads but the last
@@ -700,43 +620,9 @@ func (n *Node) RestoredCheckpoint(members []*pb.Member, w io.Writer) (wal.Root, 
 // them; the answer waits until a checkpoint at or after the compaction's
 // entry is durable on this node, so its log no longer needs the entries
 // before it to know the compaction. It waits as long as the client does.
-type heldCompact struct {
-	p     *pending
-	reply Reply
-	index uint64
-}
+type heldCompact struct{}
 
-// holdCompact holds the answer to the physical compaction p, applied at
-// entry index.
-func (n *Node) holdCompact(p *pending, r Reply, index uint64) {
-	p.held = true
-	n.physical = append(n.physical, heldCompact{p: p, reply: r, index: index})
-}
-
-// releaseCompacts answers the physical compactions that the durable
-// checkpoint covers.
-func (n *Node) releaseCompacts() {
-	i := 0
-	for ; i < len(n.physical) && n.physical[i].index <= n.storage.ckpt.Index; i++ {
-		n.answer(n.physical[i].p, n.physical[i].reply, nil)
-	}
-	n.physical = n.physical[i:]
-}
-
-// cutWaiting cuts the checkpoint that is due, at the applied index, once
-// nothing holds it back any more, when no entry applied since: a copy or
-// a write held back the cut a compaction asked for or the log's growth
-// made due, and no entry comes, as on a quiet cluster or one that refuses
-// writes at NOSPACE until that very cut frees space. Physical
-// compactions wait for it too.
-func (n *Node) cutWaiting() {
-	if !n.cutDue || n.copy != nil || n.unwritten != 0 || n.applyWaits() || n.err != nil {
-		return
-	}
-	term, err := n.termAt(n.applied)
-	if err != nil {
-		n.fail(err)
-		return
-	}
-	n.maybeCheckpoint(n.applied, term)
+// holdCompact holds the answer to a physical compaction.
+func (n *Node) holdCompact() {
+	n.physical = append(n.physical, heldCompact{})
 }

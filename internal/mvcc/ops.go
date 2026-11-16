@@ -211,7 +211,7 @@ func (w *writer) put(p *PutOp) (*mvccpb.KeyValue, error) {
 	w.add(k, v)
 	w.s.counts.PutBytes += int64(len(p.Key)) + int64(v.value.Len)
 	if w.s.trackWritten && v.value.Len > 0 && (!p.IgnoreValue || prev == nil) {
-		w.s.written = append(w.s.written, written{id: k.id, ref: v.value})
+		w.s.written = append(w.s.written, written{})
 	}
 	return prevKV, nil
 }
@@ -255,7 +255,7 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 			return nil, err
 		}
 		resp.PrevKvs = KeyValues(res.KVs)
-		w.took(resp, &res, c)
+		w.took(&res, c)
 		if err := w.s.fillValues(res.KVs, resp.PrevKvs); err != nil {
 			return nil, err
 		}

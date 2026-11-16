@@ -388,14 +388,6 @@ type Store struct {
 	trackWritten bool
 }
 
-// Bytes estimates what the index takes in memory: the room allocated for
-// records, free slots, byKey's entries and the arena's chunks, per key its
-// place in the B-tree, 64 bytes per version its array has room for, and
-// the history's 4 bytes a change and 8 a revision (#560).
-func (s *Store) Bytes() int64 {
-	return int64(len(s.recs))*recChunk*recBytes + 4*int64(cap(s.free)) + int64(s.keys.Len())*keySlot + 8*int64(len(s.byKey.entries)) + s.arenaBytes + s.versions*64 + 4*int64(cap(s.hist.keys)) + 8*int64(cap(s.hist.starts))
-}
-
 // recBytes is the size of a record, and keySlot estimates a key's room in
 // the B-tree: its slot number, in nodes about two thirds full.
 const (
@@ -490,44 +482,11 @@ func (s *Store) insert(key []byte, vers []version) *keyIndex {
 }
 
 // written is a value a put wrote to the key in slot id.
-type written struct {
-	id  uint32
-	ref Ref
-}
+type written struct{}
 
 // TrackWritten makes the store keep the value of every put until
 // Leaving hands it out.
 func (s *Store) TrackWritten() { s.trackWritten = true }
-
-// Leaving calls fn, oldest first, with each value written in an entry up
-// to index that is still its key's newest value, and forgets every value
-// written up to index.
-func (s *Store) Leaving(index uint64, fn func(Ref)) {
-	n := 0
-	for ; n < len(s.written) && s.written[n].ref.Index <= index; n++ {
-		if w := s.written[n]; s.rec(w.id).current(w.ref) {
-			fn(w.ref)
-		}
-	}
-	clear(s.written[:n])
-	s.written = s.written[n:]
-}
-
-// Current reports whether r names the value of key's newest version.
-func (s *Store) Current(key []byte, r Ref) bool {
-	k, ok := s.get(key)
-	return ok && k.current(r)
-}
-
-// current reports whether r names the value of k's newest version. A
-// key that a compaction removed has no versions left.
-func (k *keyIndex) current(r Ref) bool {
-	if len(k.vers()) == 0 {
-		return false
-	}
-	v := &k.vers()[len(k.vers())-1]
-	return v.ver != 0 && v.value == r
-}
 
 // Counts are the operations a store has seen, for etcd's metrics
 // etcd_mvcc_put_total, etcd_mvcc_delete_total and etcd_mvcc_range_total:
@@ -738,22 +697,6 @@ func (s *Store) resetChanges() {
 	}
 	clear(s.changes)
 	s.changes = s.changes[:0]
-}
-
-// Refs returns the positions of the values of every version of a key.
-// The simulator uses them to damage a value on disk.
-func (s *Store) Refs(key []byte) []Ref {
-	k, ok := s.get(key)
-	if !ok {
-		return nil
-	}
-	var out []Ref
-	for _, v := range k.vers() {
-		if v.value.Len > 0 {
-			out = append(out, v.value)
-		}
-	}
-	return out
 }
 
 // Hash returns a hash of every version of every key, with the Ref of its

@@ -1,9 +1,6 @@
 package core
 
 import (
-	"slices"
-	"sort"
-
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 
@@ -71,16 +68,6 @@ func (s *storage) confAt(index uint64) *raftpb.ConfState {
 		cs = c.conf
 	}
 	return cs
-}
-
-// pruneConfs forgets the configurations that no snapshot can name any
-// more: those older than the one in effect at index.
-func (s *storage) pruneConfs(index uint64) {
-	i := 0
-	for i+1 < len(s.confs) && s.confs[i+1].index <= index {
-		i++
-	}
-	s.confs = slices.Clone(s.confs[i:])
 }
 
 // Snapshot is what a follower behind the window gets: the state at the
@@ -157,35 +144,6 @@ func (s *storage) bytes(index uint64) int64 {
 
 // total returns the bytes of every entry in memory.
 func (s *storage) total() int64 { return s.bytes(s.first + uint64(len(s.cum))) }
-
-// trim drops the entries up to index from memory.
-func (s *storage) trim(index uint64) error {
-	if index < s.first {
-		return nil
-	}
-	if err := s.Compact(index); err != nil {
-		return err
-	}
-	s.pruneConfs(index)
-	k := index - s.first + 1
-	s.base = s.cum[k-1]
-	s.cum, s.data = slices.Clone(s.cum[k:]), slices.Clone(s.data[k:])
-	s.first = index + 1
-	return nil
-}
-
-// keep returns the index up to which entries must leave memory so that
-// at most limit bytes of those up to applied stay, or 0 if they fit.
-func (s *storage) keep(applied uint64, limit int64) uint64 {
-	upto := s.bytes(applied)
-	if upto <= limit {
-		return 0
-	}
-	// The first entry such that the bytes after it, up to applied, fit.
-	n := int(applied - s.first + 1)
-	i := sort.Search(n, func(i int) bool { return upto-(s.cum[i]-s.base) <= limit })
-	return s.first + uint64(i)
-}
 
 // reset empties memory at a snapshot's index.
 func (s *storage) reset(snap *raftpb.Snapshot) error {

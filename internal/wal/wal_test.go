@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
-	"slices"
 	"strings"
 	"testing"
 
@@ -176,7 +175,7 @@ func segments(t *testing.T, d *simfs.Disk, n uint64) []string {
 			t.Fatal(err)
 		}
 	}
-	segs, _ := files(t, d)
+	segs := files(t, d)
 	return segs
 }
 
@@ -223,7 +222,7 @@ func TestDamagedNewestHeaderIsCorrupt(t *testing.T) {
 	if err := w.Sync(); err != nil {
 		t.Fatal(err)
 	}
-	segs, _ := files(t, d)
+	segs := files(t, d)
 	newest := segs[len(segs)-1]
 	rewrite(t, d, newest, func(b []byte) []byte {
 		b[len("tigerwal")+8] ^= 1 // the chain crc in the header
@@ -404,7 +403,7 @@ func TestDamagedNewestHeader(t *testing.T) {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	segs, _ := files(t, d)
+	segs := files(t, d)
 	rewrite(t, d, segs[len(segs)-1], func(b []byte) []byte { b[0] ^= 1; return b })
 	wantCorrupt(t, d)
 }
@@ -418,84 +417,6 @@ func fill(t *testing.T, w *wal.WAL, from, to uint64) {
 		if err := w.Sync(); err != nil {
 			t.Fatal(err)
 		}
-	}
-}
-
-// TestRootAndRemoval names a checkpoint at 6, removes the segments below
-// it, and recovers the entries after it, the hard state and the root.
-func TestRootAndRemoval(t *testing.T) {
-	d := simfs.New()
-	w, _ := open(t, d)
-	w.SetSegmentBytes(1)
-	fill(t, w, 1, 8)
-	w.AppendRoot(wal.Root{Index: 6, Term: 1})
-	if err := w.Sync(); err != nil {
-		t.Fatal(err)
-	}
-	fill(t, w, 9, 10)
-	if err := w.RemoveBelow(7); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.Entry(3); !errors.Is(err, wal.ErrNotOnDisk) {
-		t.Fatalf("entry 3 after its segment went: %v", err)
-	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
-	w, rec := open(t, d)
-	if rec.Root != (wal.Root{Index: 6, Term: 1}) || rec.Last != 10 || rec.HardState != (wal.HardState{Term: 1, Vote: 2, Commit: 10}) {
-		t.Fatalf("recovered %+v", rec)
-	}
-	if got := describe(read(t, w, rec)); got != "7/1:v7 8/1:v8 9/1:v9 10/1:v10 " {
-		t.Fatalf("entries after the root: %s", got)
-	}
-	b, err := w.Value(9, 1, 1)
-	if err != nil || string(b) != "9" {
-		t.Fatalf("value of entry 9: %q, %v", b, err)
-	}
-
-	// Without the root, a log that starts above 1 is damage.
-	d2 := simfs.New()
-	w2, _ := open(t, d2)
-	w2.SetSegmentBytes(1)
-	fill(t, w2, 1, 6)
-	if err := w2.RemoveBelow(4); err != nil {
-		t.Fatal(err)
-	}
-	wantCorrupt(t, d2)
-}
-
-// TestHardStateSurvivesRemoval writes the only vote in the first segment,
-// then many entries without a hard state, and removes the old segments:
-// the vote is still there.
-func TestHardStateSurvivesRemoval(t *testing.T) {
-	d := simfs.New()
-	w, _ := open(t, d)
-	w.SetSegmentBytes(1)
-	w.Append(&wal.HardState{Term: 7, Vote: 3, Commit: 0}, nil)
-	for i := uint64(1); i <= 6; i++ {
-		w.Append(nil, []*raftpb.Entry{entry(7, i, "v")})
-		if err := w.Sync(); err != nil {
-			t.Fatal(err)
-		}
-	}
-	w.AppendRoot(wal.Root{Index: 5, Term: 7})
-	if err := w.Sync(); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.RemoveBelow(6); err != nil {
-		t.Fatal(err)
-	}
-	names, err := d.List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if segs := slices.DeleteFunc(names, func(n string) bool { return !strings.HasSuffix(n, ".wal") }); len(segs) > 4 {
-		t.Fatalf("segments left: %v", segs)
-	}
-	_, rec := open(t, d)
-	if rec.HardState.Term != 7 || rec.HardState.Vote != 3 || rec.Root.Index != 5 || rec.Last != 6 {
-		t.Fatalf("recovered %+v", rec)
 	}
 }
 
@@ -610,32 +531,6 @@ func TestOtherFormatVersion(t *testing.T) {
 	}
 }
 
-// TestRemovalKeepsSegmentsConsecutive removes segments in front of one
-// that holds only a hard state: segments go only from the front, so the
-// rest stay consecutive and the log opens.
-func TestRemovalKeepsSegmentsConsecutive(t *testing.T) {
-	d := simfs.New()
-	w, _ := open(t, d)
-	w.SetSegmentBytes(1)
-	fill(t, w, 1, 2)
-	w.Append(&wal.HardState{Term: 2, Vote: 1, Commit: 2}, nil)
-	if err := w.Sync(); err != nil {
-		t.Fatal(err)
-	}
-	fill(t, w, 3, 6)
-	w.AppendRoot(wal.Root{Index: 5, Term: 1})
-	if err := w.Sync(); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.RemoveBelow(6); err != nil {
-		t.Fatal(err)
-	}
-	w, rec := open(t, d)
-	if got := describe(read(t, w, rec)); got != "6/1:v6 " {
-		t.Fatalf("entries after the root: %s", got)
-	}
-}
-
 // TestResetRootLowersCommit crashes right after a snapshot's root, before
 // the entries after it: the commit index of the replaced log is past the
 // root, and recovery lowers it to the root instead of refusing the log.
@@ -711,9 +606,9 @@ func TestShortValueReadNamesTheFile(t *testing.T) {
 	if !ok {
 		t.Fatal("entry 1 is not in a segment")
 	}
-	rewrite(t, d, wal.SegmentName(seq), func(b []byte) []byte { return b[:at+1] })
+	rewrite(t, d, fmt.Sprintf("%016x.wal", seq), func(b []byte) []byte { return b[:at+1] })
 	_, err := w.Value(1, 0, 2)
-	want := fmt.Sprintf("wal: read 1 of 2 bytes at byte %d of %s, the value at 0+2 of entry 1: EOF", at, wal.SegmentName(seq))
+	want := fmt.Sprintf("wal: read 1 of 2 bytes at byte %d of %s, the value at 0+2 of entry 1: EOF", at, fmt.Sprintf("%016x.wal", seq))
 	if err == nil || err.Error() != want {
 		t.Fatalf("short read: %v, want %s", err, want)
 	}

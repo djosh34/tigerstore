@@ -2,7 +2,6 @@ package core
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/wal"
@@ -24,21 +23,6 @@ var ErrFetch = errors.New("core: the snapshot fetch failed")
 // The driver starts a new core from the log, as a restart does, which
 // loads the snapshot's checkpoint and replays the entries after it.
 var ErrInstalled = errors.New("core: installed a snapshot")
-
-// FetchFailed is the error of a snapshot install that failed with err, in
-// both drivers. A failed write or sync of the node's own disk (ErrDisk)
-// stays as it is. Otherwise sync writes out what the stream wrote, as a
-// crash after a sync could keep it, and the install reloads (ErrFetch),
-// unless that sync failed too.
-func FetchFailed(err error, sync func() error) error {
-	if errors.Is(err, ErrDisk) {
-		return err
-	}
-	if serr := sync(); serr != nil {
-		return errors.Join(err, fmt.Errorf("%w: %w", ErrDisk, serr))
-	}
-	return fmt.Errorf("%w: %w", ErrFetch, err)
-}
 
 // ErrLostEntries stops a node that a heartbeat of its leader tells to
 // commit past the end of its log. The leader commits on a follower only

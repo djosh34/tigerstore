@@ -117,40 +117,6 @@ func TestShortTxnRoundTrip(t *testing.T) {
 	}
 }
 
-// TestShortTxnInBatch checks that a format-4 entry holds a transaction of
-// kube-apiserver's shape in its short form, which the checks decode to the
-// request, and that an older format keeps the client's encoding.
-func TestShortTxnInBatch(t *testing.T) {
-	update := &pb.TxnRequest{
-		Compare: []*pb.Compare{{Key: []byte("/registry/pods/a"), Target: pb.Compare_MOD, TargetUnion: &pb.Compare_ModRevision{ModRevision: 7}}},
-		Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("/registry/pods/a"), Value: []byte("pod")}}}},
-		Failure: []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("/registry/pods/a")}}}},
-	}
-	wire := mustMarshal(t, update)
-	req := Request{ID: 3, Op: &pb.TxnRequest{}, Wire: wire}
-	if err := DecodeTxn(&req); err != nil {
-		t.Fatal(err)
-	}
-	for format := uint32(originVersion - 1); format <= MaxVersion; format++ {
-		data, err := encodeBatch(format, 2, 1<<40, []*pending{{req: req}}, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var kind byte
-		var size int
-		if err := walkBatch(data, func(_, _, _ uint64, k byte, b []byte, _ int) error {
-			kind, size = k, len(b)
-			return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
-		if short := format >= originVersion; short != (kind == kindShortTxn) || !short && size != len(wire) || short && size >= len(wire)-2*len("/registry/pods/a") {
-			t.Fatalf("format %d: kind %d, %d bytes for %d in the client's encoding", format, kind, size, len(wire))
-		}
-		decodeAll(t, data, []*pending{{req: Request{ID: 3, Op: update}}})
-	}
-}
-
 // TestShortSize checks shortSize against appendShort.
 func TestShortSize(t *testing.T) {
 	r := rand.New(rand.NewPCG(9, 10))

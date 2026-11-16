@@ -11,7 +11,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
-	"google.golang.org/protobuf/proto"
 )
 
 // Every Range reads through a Cursor, a piece at a time (#505). A piece
@@ -52,10 +51,6 @@ func (kv *KV) Size(valueLen int) int {
 	}
 	return n
 }
-
-// FieldSize is the size kv takes as one element of a repeated KeyValue
-// field: its tag, its length and its message.
-func (kv *KV) FieldSize() int { return 1 + protowire.SizeBytes(kv.Size(len(kv.Value))) }
 
 // RangeResult is a range's answer without its header: the store's
 // revision, for the header, the keys of this piece, the count and
@@ -153,17 +148,6 @@ func (w *writer) position(r *pb.RangeRequest) (rev, error) {
 	return rev{main: w.begin + 1, sub: w.subs}, nil
 }
 
-// compacted reports whether a compaction removed versions a read at p may
-// need: one past its revision, or at the revision of a read that sees
-// only part of it.
-func (s *Store) compacted(p rev) bool {
-	read := p.main - 1
-	if p.sub > 0 {
-		read = p.main
-	}
-	return read < s.compactRev || (p.sub > 0 && read == s.compactRev)
-}
-
 // pushLimit is the limit etcd pushes into its index walk: limit+1 with
 // the default order and no revision filters, else 0. etcd decides the
 // default order before it turns a NONE order with a non-key target into
@@ -190,7 +174,6 @@ func (s *Store) Range(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 // size every KeyValue it has in the whole answer, and Cursor reads the
 // rest.
 type Rest struct {
-	Msg       proto.Message
 	N, Fields int64
 	Cursor    *Cursor
 }
@@ -214,32 +197,21 @@ func (w *writer) rangeMessage(r *pb.RangeRequest, total bool) (*pb.RangeResponse
 		return nil, err
 	}
 	resp := res.Response()
-	w.took(resp, &res, c)
+	w.took(&res, c)
 	return resp, w.s.fillValues(res.KVs, resp.Kvs)
 }
 
 // took charges the first piece of res to the room of the answer, and
-// keeps a Rest for msg if c reads more.
-func (w *writer) took(msg proto.Message, res *RangeResult, c *Cursor) {
+// keeps a Rest if c reads more.
+func (w *writer) took(res *RangeResult, c *Cursor) {
 	for i := range res.KVs {
 		// The values are not filled yet: they count by their length.
 		kv := &res.KVs[i]
 		w.room -= 1 + protowire.SizeBytes(kv.Size(int(kv.ref.Len)))
 	}
 	if c != nil {
-		w.s.rests = append(w.s.rests, Rest{Msg: msg, N: res.N, Fields: res.Fields, Cursor: c})
+		w.s.rests = append(w.s.rests, Rest{N: res.N, Fields: res.Fields, Cursor: c})
 	}
-}
-
-// RangeFirst reads the first piece of r, of at most room bytes of
-// KeyValue fields but at least one key, with the count and size of the
-// whole answer. The Cursor reads the rest, nil if the piece holds it all.
-// Without total, a walk with a pushed-down limit stops at it, and Count
-// holds only the keys it saw, as one chunk of etcd's RangeStream does.
-// Values only the log has come as fills (TakeFills).
-func (s *Store) RangeFirst(r *pb.RangeRequest, total bool, room int) (RangeResult, *Cursor, error) {
-	s.counts.Ranges++
-	return s.reader().rangeAt(r, total, room, true)
 }
 
 // rangeAt is RangeFirst for a range of the request being applied. Without
@@ -423,60 +395,6 @@ func (c *Cursor) take(room int, read bool) ([]KV, bool, error) {
 		}
 	}
 	return piece, len(c.list) == 0, nil
-}
-
-// Next reads the next piece of the answer, of at most room bytes of
-// KeyValue fields but at least one key, and reports whether it is the
-// last. A compaction that passed the cursor's position fails it with
-// ErrCompacted. Values only the log has come as fills (TakeFills).
-func (c *Cursor) Next(room int) ([]KV, bool, error) {
-	s, r := c.s, c.r
-	if s.compacted(c.pos) {
-		return nil, false, rpctypes.ErrGRPCCompacted
-	}
-	if c.list != nil {
-		return c.take(room, r.SortTarget == pb.RangeRequest_VALUE)
-	}
-	var kvs []KV
-	size := 0
-	end := r.RangeEnd
-	if len(end) == 0 {
-		// A single key is one piece; a cursor never reads one.
-		end = []byte{0}
-	}
-	stopped := false
-	s.ascend(c.next, end, func(k *keyIndex) bool {
-		if c.left == 0 {
-			stopped = true
-			return false
-		}
-		v, ok := k.visible(c.pos)
-		if !ok {
-			return true
-		}
-		kv := c.s.kvValue(k, v)
-		if !keeps(r, &kv) {
-			return true
-		}
-		if r.KeysOnly {
-			kv.ref, kv.Lease = Ref{}, 0
-		}
-		f := 1 + protowire.SizeBytes(kv.Size(int(kv.ref.Len)))
-		if len(kvs) > 0 && size+f > room {
-			c.next, stopped = c.s.key(k), true
-			return false
-		}
-		size += f
-		kvs = append(kvs, kv)
-		c.left--
-		return true
-	})
-	if err := s.fillValues(kvs, nil); err != nil {
-		return nil, false, err
-	}
-	// The walk sees what the first piece's walk saw, so it ends with the
-	// last key the answer holds.
-	return kvs, c.left == 0 || !stopped, nil
 }
 
 // fillValues sets the value of each KV that is in memory, or of its

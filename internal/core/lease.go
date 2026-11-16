@@ -1,12 +1,5 @@
 package core
 
-import (
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"google.golang.org/protobuf/proto"
-
-	"github.com/djosh34/tigerstore/internal/planted"
-)
-
 // Only the leader arms lease expiry, in ticks of its own clock, as etcd's
 // primary lessor does. When a lease expires, the leader proposes its
 // expiry like any write, so every replica deletes the keys at the same
@@ -26,10 +19,6 @@ import (
 // leaseRetryTicks is how long the leader waits for an expiry revoke to
 // apply before it proposes it again; Raft may drop a proposal.
 const leaseRetryTicks = 10
-
-// leaseRevokeRate is how many expired leases the leader revokes a second
-// at most, etcd's leaseRevokeRate.
-const leaseRevokeRate = 1000
 
 // arm starts or renews a lease's expiry on the leader. The current tick
 // may be nearly over, so the lease gets one tick more than its TTL and
@@ -73,101 +62,6 @@ func (n *Node) scheduleCheckpoint(id int64) {
 	n.checkpoints.set(l)
 }
 
-// checkpointLeases proposes the checkpoints that are due, on the leader,
-// with each lease's remaining TTL in whole seconds, rounded up, as etcd's
-// findDueScheduledCheckpoints does.
-func (n *Node) checkpointLeases() {
-	if n.cfg.LeaseCheckpointTicks == 0 || !n.isLeader || !n.capable() {
-		return
-	}
-	var cps []*pb.LeaseCheckpoint
-	for {
-		l := n.checkpoints.first()
-		if l == nil || l.checkpointAt > n.now {
-			break
-		}
-		n.checkpoints.remove(l)
-		l.checkpointAt = 0
-		left := n.cfg.ceilSeconds(l.expiry - n.now - 1)
-		if left >= l.ttl {
-			continue
-		}
-		cps = append(cps, &pb.LeaseCheckpoint{ID: l.id, Remaining_TTL: left})
-		if len(cps) == maxLeaseCheckpoints {
-			n.proposeInternal(&pb.LeaseCheckpointRequest{Checkpoints: cps})
-			cps = nil
-		}
-	}
-	if len(cps) > 0 {
-		n.proposeInternal(&pb.LeaseCheckpointRequest{Checkpoints: cps})
-	}
-}
-
-// maxLeaseCheckpoints is etcd's maxLeaseCheckpointBatchSize.
-const maxLeaseCheckpoints = 1000
-
-// leadershipChanged arms every lease when this node becomes leader and
-// disarms them when it stops being leader.
-func (n *Node) leadershipChanged() {
-	n.expiries.reset()
-	n.checkpoints.reset()
-	for _, l := range n.state.sortedLeases() {
-		l.expiry, l.revokeAt, l.checkpointAt = 0, 0, 0
-		if n.isLeader {
-			n.arm(l.id)
-			n.scheduleCheckpoint(l.id)
-		}
-	}
-}
-
-// remaining is the leader's count of whole seconds left on a lease,
-// rounded down as in etcd, or -1, to report the granted TTL, before the
-// leader armed it.
-func (n *Node) remaining(id int64) int64 {
-	l, ok := n.state.leases[id]
-	if !ok || !n.isLeader || l.expiry == 0 {
-		return -1
-	}
-	return max(0, n.cfg.floorSeconds(l.expiry-n.now-1))
-}
-
-// expireLeases proposes the revoke of the expired leases, on the leader,
-// in the order of their expiry and at most leaseRevokeRate a second, as
-// etcd's lessor does.
-func (n *Node) expireLeases() {
-	if !n.isLeader && planted.On("B10") {
-		for _, l := range n.state.sortedLeases() {
-			if l.expiry != 0 && l.expiry <= n.now {
-				if _, err := n.state.revoke(l.id); err != nil {
-					n.fail(err)
-				}
-			}
-		}
-		return
-	}
-	// etcd revokes an expired lease as a client's revoke, which the gap
-	// between commit and apply refuses too (tooManyRequests); it tries
-	// again later.
-	if !n.isLeader || n.tooManyRequests(true) {
-		return
-	}
-	for range max(1, leaseRevokeRate*n.cfg.TickMillis/1000) {
-		l := n.expiries.first()
-		if l == nil || l.due() > n.now {
-			return
-		}
-		l.revokeAt = n.now
-		n.expiries.set(l)
-		n.proposeInternal(newExpiry(l.id, l.stamp))
-	}
-}
-
-// proposeInternal queues a write that no client waits for. It carries
-// request ID 0, which no client request has.
-func (n *Node) proposeInternal(op proto.Message) {
-	n.queueWrite(&pending{req: Request{ID: 0, Op: op}})
-}
-
 // LeaseTTLs returns the granted leases' TTLs by their IDs, for the
 // offline upgrade to internal/wl, which takes a snapshot of this engine.
 func (n *Node) LeaseTTLs() map[int64]int64 {
@@ -176,13 +70,4 @@ func (n *Node) LeaseTTLs() map[int64]int64 {
 		ttls[l.id] = l.ttl
 	}
 	return ttls
-}
-
-// Leases returns the IDs of the granted leases in order.
-func (n *Node) Leases() []int64 {
-	var ids []int64
-	for _, l := range n.state.sortedLeases() {
-		ids = append(ids, l.id)
-	}
-	return ids
 }

@@ -51,16 +51,6 @@ type lease struct {
 	epos, cpos int
 }
 
-// newExpiry is the leader's decision that a lease expired. It goes in the
-// log as a LeaseCheckpoint, etcd's only message with a lease ID and a
-// number: Remaining_TTL carries the lease's stamp when the leader decided.
-// The expiry applies only if the stamp is still current, so a keepalive
-// that commits first keeps the lease, and a later grant of the same ID is
-// a new lease that the old expiry cannot touch, on every replica.
-func newExpiry(id, stamp int64) *pb.LeaseCheckpoint {
-	return &pb.LeaseCheckpoint{ID: id, Remaining_TTL: stamp}
-}
-
 // State is the replicated state machine: the key index, the leases and
 // the cluster version. Every replica applies the same log to it and ends
 // in the same state, apart from the leader's lease expiry times, which are
@@ -244,25 +234,6 @@ func (l *lease) hash() uint64 {
 		h ^= h >> 29
 	}
 	return h
-}
-
-// Hash32 answers Maintenance.Hash: a CRC-32C of every version in the
-// index (mvcc.Store.HashAll), the leases and the alarms. etcd hashes its whole
-// database file there, so the number differs from etcd's, but replicas
-// with the same state agree on it.
-func (st *State) Hash32() uint32 {
-	b := binary.BigEndian.AppendUint32(nil, st.kv.HashAll())
-	b = binary.AppendVarint(b, st.stamps)
-	for _, l := range st.sortedLeases() {
-		b = binary.AppendVarint(b, l.id)
-		b = binary.AppendVarint(b, l.ttl)
-		b = binary.AppendVarint(b, l.stamp)
-	}
-	for _, a := range st.alarms {
-		b = binary.AppendUvarint(b, a.MemberID)
-		b = binary.AppendVarint(b, int64(a.Alarm))
-	}
-	return crc32.Checksum(b, castagnoli)
 }
 
 // sortedLeases returns the leases in ID order, so that the core walks them
@@ -494,35 +465,4 @@ func (st *State) RevokePiece() (proto.Message, error) {
 	st.leaseSum -= l.hash()
 	delete(st.leases, l.id)
 	return &pb.LeaseRevokeResponse{Header: header(st.kv.Rev())}, nil
-}
-
-// timeToLive answers LeaseTimeToLive on the leader. remaining is its
-// count of seconds left, or -1 to report the granted TTL. A missing lease
-// has TTL -1, as in etcd.
-func (st *State) timeToLive(r *pb.LeaseTimeToLiveRequest, remaining int64) *pb.LeaseTimeToLiveResponse {
-	resp := &pb.LeaseTimeToLiveResponse{Header: header(st.kv.Rev()), ID: r.ID, TTL: -1}
-	l, ok := st.leases[r.ID]
-	if !ok {
-		return resp
-	}
-	resp.GrantedTTL, resp.TTL = l.ttl, l.ttl
-	if remaining >= 0 {
-		resp.TTL = remaining
-	}
-	if r.Keys {
-		l.keys.Ascend(func(k string) bool {
-			resp.Keys = append(resp.Keys, []byte(k))
-			return true
-		})
-	}
-	return resp
-}
-
-// leaseIDs answers LeaseLeases.
-func (st *State) leaseIDs() *pb.LeaseLeasesResponse {
-	resp := &pb.LeaseLeasesResponse{Header: header(st.kv.Rev())}
-	for _, l := range st.sortedLeases() {
-		resp.Leases = append(resp.Leases, &pb.LeaseStatus{ID: l.id})
-	}
-	return resp
 }

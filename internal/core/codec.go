@@ -335,10 +335,3 @@ func readCtx(boot, seq uint64) []byte {
 	b := binary.BigEndian.AppendUint64(nil, boot)
 	return binary.BigEndian.AppendUint64(b, seq)
 }
-
-func parseReadCtx(boot uint64, b []byte) (uint64, bool) {
-	if len(b) != 16 || binary.BigEndian.Uint64(b) != boot {
-		return 0, false
-	}
-	return binary.BigEndian.Uint64(b[8:]), true
-}

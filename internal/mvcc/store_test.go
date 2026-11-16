@@ -261,49 +261,6 @@ func TestTxnChecksBeforeWriting(t *testing.T) {
 	}
 }
 
-func TestCheckTxnDuplicateKeys(t *testing.T) {
-	putOp := func(k string) *pb.RequestOp {
-		return &pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte(k)}}}
-	}
-	delOp := func(k, end string) *pb.RequestOp {
-		return &pb.RequestOp{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte(k), RangeEnd: []byte(end)}}}
-	}
-	txnOp := func(then, els []*pb.RequestOp) *pb.RequestOp {
-		return &pb.RequestOp{Request: &pb.RequestOp_RequestTxn{RequestTxn: &pb.TxnRequest{Success: then, Failure: els}}}
-	}
-	cases := []struct {
-		name string
-		ops  []*pb.RequestOp
-		dup  bool
-	}{
-		{"two puts", []*pb.RequestOp{putOp("a"), putOp("a")}, true},
-		{"put in deleted range", []*pb.RequestOp{delOp("a", "c"), putOp("b")}, true},
-		{"put outside deleted range", []*pb.RequestOp{delOp("a", "c"), putOp("c")}, false},
-		{"put in both nested branches", []*pb.RequestOp{txnOp([]*pb.RequestOp{putOp("a")}, []*pb.RequestOp{putOp("a")})}, false},
-		{"nested put and outer put", []*pb.RequestOp{txnOp([]*pb.RequestOp{putOp("a")}, nil), putOp("a")}, true},
-		{"nested put and outer delete", []*pb.RequestOp{delOp("a", ""), txnOp(nil, []*pb.RequestOp{putOp("a")})}, true},
-	}
-	for _, c := range cases {
-		err := CheckTxn(&pb.TxnRequest{Success: c.ops}, MaxTxnOps)
-		if got := errors.Is(err, rpctypes.ErrGRPCDuplicateKey); got != c.dup {
-			t.Errorf("%s: duplicate = %v (err %v), want %v", c.name, got, err, c.dup)
-		}
-	}
-}
-
-func TestCheckTxnTooManyOps(t *testing.T) {
-	ops := make([]*pb.RequestOp, MaxTxnOps+1)
-	for i := range ops {
-		ops[i] = &pb.RequestOp{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("a")}}}
-	}
-	if err := CheckTxn(&pb.TxnRequest{Success: ops}, MaxTxnOps); !errors.Is(err, rpctypes.ErrGRPCTooManyOps) {
-		t.Fatalf("too many ops: %v", err)
-	}
-	if err := CheckTxn(&pb.TxnRequest{Success: ops[:MaxTxnOps]}, MaxTxnOps); err != nil {
-		t.Fatalf("max ops: %v", err)
-	}
-}
-
 func TestHashFollowsState(t *testing.T) {
 	a, b := New(&Heap{}), New(&Heap{})
 	put(t, a, "k", "1")

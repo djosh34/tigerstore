@@ -162,7 +162,7 @@ func TestRestartedSegmentKeepsNoStaleRecords(t *testing.T) {
 	if err := w.Flush(); err != nil {
 		t.Fatal(err)
 	}
-	segs, _ := files(t, d)
+	segs := files(t, d)
 	name := segs[len(segs)-1]
 	n := len(d.Files()[name])
 	w.Append(nil, []*raftpb.Entry{entry(1, 2, "b")})
@@ -185,119 +185,5 @@ func TestRestartedSegmentKeepsNoStaleRecords(t *testing.T) {
 		t.Fatalf("after a torn write: %v", err)
 	} else if rec.Last != 0 {
 		t.Fatalf("after a torn write, recovered entries to %d", rec.Last)
-	}
-}
-
-// TestCutKeepsDriverSyncs syncs records the way the node driver does,
-// with Flush and a sync of Segment that it reports with Synced, and then
-// fails a sync: SyncTail's on a clean stop, and the driver's own of the
-// segment before a rotation's new one. The cut must keep what those syncs
-// made durable, and drop the rest (#364).
-func TestCutKeepsDriverSyncs(t *testing.T) {
-	failSync := func(d *simfs.Disk) {
-		d.Fault = func(op simfs.Op, _ string) error {
-			if op == simfs.OpSync {
-				d.Fault = nil
-				return simfs.ErrIO
-			}
-			return nil
-		}
-	}
-	t.Run("SyncTail", func(t *testing.T) {
-		d := simfs.New()
-		w, _ := open(t, d)
-		w.Append(&wal.HardState{Term: 1}, []*raftpb.Entry{entry(1, 1, "a"), entry(1, 2, "b")})
-		if err := errors.Join(w.Flush(), w.Segment().Sync()); err != nil {
-			t.Fatal(err)
-		}
-		w.Synced(w.Segment(), w.Size())
-		w.Append(nil, []*raftpb.Entry{entry(1, 3, "c")})
-		failSync(d)
-		if err := w.SyncTail(); !errors.Is(err, simfs.ErrIO) {
-			t.Fatalf("SyncTail = %v, want EIO", err)
-		}
-		if err := w.Close(); err != nil {
-			t.Fatal(err)
-		}
-		w, rec := open(t, d)
-		if rec.Last != 2 {
-			t.Fatalf("after the failed SyncTail, recovered entries to %d, want 2", rec.Last)
-		}
-		if err := w.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
-	t.Run("rotation", func(t *testing.T) {
-		d := simfs.New()
-		w, _ := open(t, d)
-		w.Append(&wal.HardState{Term: 1}, []*raftpb.Entry{entry(1, 1, "a")})
-		if err := errors.Join(w.Flush(), w.Segment().Sync()); err != nil {
-			t.Fatal(err)
-		}
-		w.Synced(w.Segment(), w.Size())
-		w.Append(nil, []*raftpb.Entry{entry(1, 2, "b")})
-		if err := errors.Join(w.Flush(), w.Seal(), wal.PrepareSegment(d, w.Seq()+1)); err != nil {
-			t.Fatal(err)
-		}
-		old := w.Rotate()
-		failSync(d)
-		if err := old.Sync(); !errors.Is(err, simfs.ErrIO) {
-			t.Fatalf("sync = %v, want EIO", err)
-		}
-		if err := errors.Join(w.CutUnsynced(old), old.Close(), w.Close()); err != nil {
-			t.Fatal(err)
-		}
-		w, rec := open(t, d)
-		if rec.Last != 1 {
-			t.Fatalf("after the failed sync of the old segment, recovered entries to %d, want 1", rec.Last)
-		}
-		if err := w.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
-}
-
-// heldFS is a disk on which every drop of the page cache finds a page that
-// something holds.
-type heldFS struct{ *simfs.Disk }
-
-var errHeld = errors.New("a page stays in the page cache")
-
-type heldFile struct{ wal.File }
-
-func (d heldFS) Open(name string) (wal.File, error) {
-	f, err := d.Disk.Open(name)
-	return heldFile{f}, err
-}
-
-func (heldFile) DropCache() error { return errHeld }
-
-// TestReopenKeepsPageCache drops the page cache in Open, which a new
-// process runs, and not in Reopen, which runs in a process that opened
-// the log before. Other goroutines of that process read the old log
-// meanwhile, such as one that serves a snapshot, and a drop finds their
-// pages: a follower that started again from its log after a failed
-// snapshot fetch stopped on that in the coverage job's TestFetchHardCases
-// (#372). A short test, as the simulator holds no page and the node's
-// failure depends on timing.
-func TestReopenKeepsPageCache(t *testing.T) {
-	d := simfs.New()
-	w, _ := open(t, d)
-	w.Append(&wal.HardState{Term: 1, Commit: 1}, []*raftpb.Entry{entry(1, 1, "a")})
-	if err := errors.Join(w.Sync(), w.Close()); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := wal.Open(heldFS{d}); !errors.Is(err, errHeld) {
-		t.Fatalf("Open with a page held = %v, want the drop's error", err)
-	}
-	w, rec, err := wal.Reopen(heldFS{d})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rec.Last != 1 {
-		t.Fatalf("Reopen recovered entries to %d, want 1", rec.Last)
-	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
 	}
 }

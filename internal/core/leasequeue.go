@@ -38,23 +38,6 @@ func (q *leaseQueue) remove(l *lease) {
 	}
 }
 
-// first is the lease with the earliest tick, or nil.
-func (q *leaseQueue) first() *lease {
-	if len(q.ls) == 0 {
-		return nil
-	}
-	return q.ls[0]
-}
-
-// reset empties the queue.
-func (q *leaseQueue) reset() {
-	for _, l := range q.ls {
-		*q.pos(l) = 0
-	}
-	clear(q.ls)
-	q.ls = q.ls[:0]
-}
-
 func (q *leaseQueue) less(i, j int) bool {
 	a, b := q.at(q.ls[i]), q.at(q.ls[j])
 	return a < b || a == b && q.ls[i].id < q.ls[j].id
