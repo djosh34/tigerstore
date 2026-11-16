@@ -203,6 +203,37 @@ func TestWLRecoversFromATornWriteOfTheStage(t *testing.T) {
 	}, nil)
 }
 
+// A wl segment's space is allocated ahead (wal.go's makeSegment), and on
+// ext4 a crash may keep a direct write's growth of the file without the
+// conversion of its blocks from unwritten, so the write reads as zeros.
+// The crash of TestWLRecoversFromATornWriteOfTheStage, on its seeds,
+// keeps that image (simfs.Unwritten): the restarted node stops at the
+// zeros as at a torn tail, recovers every entry it reported durable and
+// none past the last it handed its log, and applies what the others do.
+func TestWLRecoversFromAZeroedTailOfItsLog(t *testing.T) {
+	simrun.Each(t, []uint64{3, 4, 5}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.wl, cfg.FormUnderFaults, cfg.stageCrash, cfg.stageUnwritten = true, true, true, true
+		cfg.Faults = Faults{MaxDelay: 5 * Millisecond, SlowDisk: 2}
+		res := run(t, cfg)
+		grew := 0
+		for _, l := range res.Trace {
+			var name string
+			var kept, synced int
+			if _, err := fmt.Sscanf(l[strings.Index(l, "crash: ")+len("crash: "):], "%s (file %d) keeps %d bytes: %d synced", &name, new(int), &kept, &synced); strings.Contains(l, "crash: ") && err == nil && isSegment(name) && strings.HasSuffix(l, "unwritten") && kept > synced {
+				t.Log(l)
+				grew++
+			}
+		}
+		t.Logf("calls: %d ok; crashes keeping zeros %d, recovered %d; log %d writes to revision %d", res.Stats.OK, res.Stats.StageCrashes, res.Stats.StageRecoveries, len(res.Log), res.FinalRev)
+		if res.Stats.StageCrashes != 1 || res.Stats.StageRecoveries != 1 || grew == 0 {
+			t.Fatalf("%d crashes, %d recoveries after one, %d segments grown with zeros; want one, one and some", res.Stats.StageCrashes, res.Stats.StageRecoveries, grew)
+		}
+		checkers(t, res)
+		return res.Stats
+	}, nil)
+}
+
 // watched says what the run's watches got, which checkWatches checked
 // against the replayed log.
 func watched(res *Result) string {

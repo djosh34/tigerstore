@@ -600,21 +600,31 @@ func (s *Sim) callWL(p *proc, req proto.Message, ctx context.Context) (proto.Mes
 // torn at sectors, keeps that block half new and half old. Its next start
 // must recover every entry it reported durable, and none past the last it
 // handed its log (wlHooks.Recovered), and each entry it applies is checked
-// against the other nodes' (wlHooks.Applied). It reports whether it
-// crashed n. The lock is held.
-func (s *Sim) wlStageCrash(n *node) bool {
+// against the other nodes' (wlHooks.Applied). With Config.stageUnwritten
+// the crash waits for a write that grows segment name, and the image keeps
+// that growth with zeros past what was synced (simfs.Unwritten), as ext4
+// may leave blocks allocated ahead (wal.go's makeSegment). It reports
+// whether it crashed n. The lock is held.
+func (s *Sim) wlStageCrash(n *node, name string) bool {
 	if s.stats.StageCrashes > 0 || s.healed || s.now() < 2*Second || n.proc == nil || n.appended <= n.floor() {
 		return false
+	}
+	if s.cfg.stageUnwritten && !n.disk.Grown(name) {
+		return false
+	}
+	img := simfs.Sectors
+	if s.cfg.stageUnwritten {
+		img = simfs.Unwritten
 	}
 	s.stats.StageCrashes++
 	s.stats.Crashes++
 	s.stats.PowerLosses++
-	n.why = "the run crashed it between a write of its log and the write's sync, torn at sectors"
-	s.tracef("node %d: crash between a write of its log and its sync, torn at sectors; reported %d durable, handed its log %d", n.id, n.floor(), n.appended)
+	n.why = fmt.Sprintf("the run crashed it between a write of its log and the write's sync, keeping %v", img)
+	s.tracef("node %d: crash between a write of its log and its sync, keeping %v; reported %d durable, handed its log %d", n.id, img, n.floor(), n.appended)
 	n.mustLast, n.mustHS, n.mustAtMost = n.floor(), n.hs, n.appended
 	s.down(n)
 	from := len(n.diskLog)
-	s.loseUnsyncedAs(n, simfs.Sectors)
+	s.loseUnsyncedAs(n, img)
 	for _, l := range n.diskLines()[min(from, len(n.diskLog)):] {
 		// What the image kept of the segment it tore.
 		if strings.Contains(l, ".seg") && strings.Contains(l, "unsynced") {

@@ -193,6 +193,8 @@ func TestCrashImages(t *testing.T) {
 				}
 			case simfs.Sectors, simfs.Pages:
 				// Any piece may be kept.
+			case simfs.Unwritten:
+				// Not among those drawn here (TestUnwrittenImage).
 			}
 			reordered = reordered || kept['a'] == 0 && kept['b'] > 0
 			torn = torn || kept['b'] > 0 && kept['b'] < 5000
@@ -433,5 +435,58 @@ func TestTruncateUnsynced(t *testing.T) {
 	ok(t, f.Sync())
 	if n := len(d.DurableBytes("f")); n != 100 {
 		t.Fatalf("%d bytes durable after a truncate to 100 and a sync", n)
+	}
+}
+
+// TestAllocate checks that space allocated past a file's size takes room
+// on the disk, keeps the size, lets writes into it through on a full disk,
+// fails whole where it does not fit, and goes with a truncate.
+func TestAllocate(t *testing.T) {
+	d := simfs.New()
+	d.Capacity = 100
+	a := create(t, d, "a")
+	write(t, a, make([]byte, 10))
+	al := a.(interface{ Allocate(int64) error })
+	ok(t, al.Allocate(60))
+	if d.Bytes() != 60 {
+		t.Fatalf("a file of 10 bytes allocated to 60 takes %d", d.Bytes())
+	}
+	if b, err := a.ReadAll(); err != nil || len(b) != 10 {
+		t.Fatalf("an allocation changed the size to %d, %v", len(b), err)
+	}
+	b := create(t, d, "b")
+	if n, err := b.Write(make([]byte, 50)); n != 40 || !errors.Is(err, simfs.ErrNoSpace) {
+		t.Fatalf("a write past the room left = %d, %v; want 40, ErrNoSpace", n, err)
+	}
+	if n, err := a.WriteAt(make([]byte, 50), 10); n != 50 || err != nil {
+		t.Fatalf("a write into allocated space on a full disk = %d, %v", n, err)
+	}
+	if err := b.(interface{ Allocate(int64) error }).Allocate(41); !errors.Is(err, simfs.ErrNoSpace) || d.Bytes() != 100 {
+		t.Fatalf("an allocation past the capacity = %v, %d bytes taken", err, d.Bytes())
+	}
+	ok(t, a.Truncate(20))
+	if d.Bytes() != 60 {
+		t.Fatalf("a truncate left %d bytes taken, want 60", d.Bytes())
+	}
+}
+
+// TestUnwrittenImage checks that the Unwritten crash image keeps the
+// synced bytes and the file's growth by the writes since, with zeros.
+func TestUnwrittenImage(t *testing.T) {
+	d := simfs.New()
+	f := create(t, d, "u")
+	write(t, f, bytes.Repeat([]byte{1}, 10))
+	ok(t, f.Sync())
+	ok(t, d.SyncDir())
+	if _, err := f.WriteAt(bytes.Repeat([]byte{2}, 15), 5); err != nil {
+		t.Fatal(err)
+	}
+	d.CrashImage(rand.New(rand.NewPCG(1, 2)), simfs.Unwritten)
+	g := open(t, d, "u")
+	got, err := g.ReadAll()
+	ok(t, err)
+	want := append(bytes.Repeat([]byte{1}, 10), make([]byte, 10)...)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("after the crash the file holds %v, want %v", got, want)
 	}
 }

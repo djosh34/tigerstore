@@ -142,6 +142,11 @@ func (sysEnv) openDirect(path string) (int, error) {
 	return fd, err
 }
 
+// allocate allocates fd's space up to size and keeps its size.
+func (sysEnv) allocate(fd int, size int64) error {
+	return unix.Fallocate(fd, unix.FALLOC_FL_KEEP_SIZE, 0, size)
+}
+
 func (sysEnv) dial(ctx context.Context, addr string, timeout time.Duration) (net.Conn, error) {
 	d := net.Dialer{Timeout: timeout}
 	return d.DialContext(ctx, "tcp", addr)

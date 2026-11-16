@@ -273,6 +273,20 @@ func (o *OS) Pwrite(fd int, p []byte, off int64) (int, error) {
 	return k, err
 }
 
+// Allocate allocates fd's space up to size, keeping its size, as
+// fallocate with FALLOC_FL_KEEP_SIZE does, on a file system that can.
+func (o *OS) Allocate(fd int, size int64) error {
+	f, err := o.file(fd)
+	if err != nil {
+		return err
+	}
+	a, ok := f.h.(interface{ Allocate(int64) error })
+	if !ok {
+		return unix.EOPNOTSUPP
+	}
+	return sysErr(a.Allocate(size))
+}
+
 func (o *OS) Seek(fd int, off int64, whence int) (int64, error) {
 	f, err := o.file(fd)
 	if err != nil {

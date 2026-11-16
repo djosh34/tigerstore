@@ -382,6 +382,19 @@ func (w *wal) makeSegment(dfd int, path string) (segment, error) {
 	if sg.wfd, err = w.sys.openDirect(path); err != nil {
 		return segment{}, err
 	}
+	// The segment's space is allocated ahead, its size kept, so that an
+	// append allocates no blocks: on ext4 an O_DSYNC write that grows a
+	// file into new blocks journals them, which doubled the helper's CPU
+	// per write against prototype 6's ring (0.51 to 0.99 us an op of the
+	// leader on crd-heavy, perf of 43860972055), and the allocated
+	// segments brought crd-heavy at 0 ms from x1.97 to x2.56 on the same
+	// seeds (43866870299, 43866865595). The size stays as each append
+	// leaves it, so recovery reads what it read before; blocks past it are
+	// never read. A file system without room or without fallocate leaves
+	// the segment to grow as before.
+	if err := w.sys.allocate(sg.wfd, segSize); err == nil {
+		_ = sysFsync(sg.wfd)
+	}
 	if sg.rfd, err = w.sys.open(path, unix.O_RDONLY, 0); err != nil {
 		_ = sysClose(sg.wfd)
 		return segment{}, err

@@ -43,6 +43,7 @@ const (
 	OpRemove
 	OpSyncDir
 	OpRename
+	OpAllocate
 )
 
 type file struct {
@@ -57,6 +58,10 @@ type file struct {
 	// size.
 	size  int
 	dirty map[int]*block
+	// alloc is how far the file's space is allocated past its size, as
+	// fallocate with FALLOC_FL_KEEP_SIZE leaves it (Handle.Allocate): it
+	// takes room on the disk, and reads past size still see nothing.
+	alloc int
 	// diverged is set when the page cache may hold bytes that neither the
 	// medium nor a pending write holds: a failed sync left them readable
 	// (#372), or a bit rotted under the running node.
@@ -278,10 +283,16 @@ const (
 	Sectors
 	// Pages is Sectors at page boundaries.
 	Pages
+	// Unwritten keeps the file's growth by the writes but none of their
+	// bytes past what was synced, which read as zeros: on ext4 a direct
+	// write into blocks allocated ahead converts them from unwritten when
+	// it completes, and a crash may keep the new size without that
+	// conversion. Crash never draws it.
+	Unwritten
 )
 
 func (img Image) String() string {
-	return [...]string{"prefix", "whole writes", "sectors", "pages"}[img]
+	return [...]string{"prefix", "whole writes", "sectors", "pages", "unwritten"}[img]
 }
 
 // Crash drops what was not made durable, as a power loss does, keeping a
@@ -344,6 +355,16 @@ func (f *file) survive(rng *rand.Rand, img Image, c *Counts) pages {
 	kept := f.durable
 	f.durable = pages{}
 	if f.cut || len(f.pending) == 0 {
+		return kept
+	}
+	if img == Unwritten {
+		end := 0
+		for _, w := range f.pending {
+			end = max(end, w.off+len(w.p))
+		}
+		if end > kept.size {
+			kept.write(kept.size, make([]byte, end-kept.size))
+		}
 		return kept
 	}
 	if img == Prefix {
@@ -447,7 +468,7 @@ func (d *Disk) Copy() *Disk {
 	c := New()
 	for _, name := range sortedNames(d.names) {
 		f := d.names[name]
-		g := &file{id: f.id, durable: f.durable.share(), size: f.size, diverged: f.diverged, cut: f.cut, cutAt: f.cutAt}
+		g := &file{id: f.id, durable: f.durable.share(), size: f.size, alloc: f.alloc, diverged: f.diverged, cut: f.cut, cutAt: f.cutAt}
 		for i, p := range f.dirty {
 			if g.dirty == nil {
 				g.dirty = map[int]*block{}
@@ -662,14 +683,18 @@ func (d *Disk) Erase() {
 	d.dirOps = nil
 }
 
-// Bytes returns the total size of the files.
+// Bytes returns the room the files take: each its size, or as far as
+// its space is allocated if further (Handle.Allocate).
 func (d *Disk) Bytes() int {
 	n := 0
 	for _, f := range d.names {
-		n += f.size
+		n += f.room()
 	}
 	return n
 }
+
+// room is the space f takes on the disk.
+func (f *file) room() int { return max(f.size, f.alloc) }
 
 func sortedNames(m map[string]*file) []string {
 	names := make([]string, 0, len(m))
@@ -698,7 +723,7 @@ func (d *Disk) fault(op Op, name string) error {
 func (op Op) changes() bool { return op != OpOpen && op != OpRead }
 
 func (op Op) String() string {
-	names := [...]string{"create", "open", "read", "write", "truncate", "sync", "remove", "sync-dir", "rename"}
+	names := [...]string{"create", "open", "read", "write", "truncate", "sync", "remove", "sync-dir", "rename", "allocate"}
 	if int(op) < len(names) {
 		return names[op]
 	}
@@ -901,8 +926,9 @@ func (h *Handle) WriteAt(p []byte, off int64) (int, error) {
 		n, err = rng.IntN(len(p)+1), ErrNoSpace
 	}
 	if c := h.d.Capacity; c > 0 {
-		// What fits: the file may grow by the free bytes.
-		if limit := h.f.size + c - h.d.Bytes(); int(off)+n > limit {
+		// What fits: the file may grow into its own room and by the
+		// free bytes.
+		if limit := h.f.room() + c - h.d.Bytes(); int(off)+n > limit {
 			n, err = max(0, min(n, limit-int(off))), ErrNoSpace
 		}
 	}
@@ -937,12 +963,34 @@ func (h *Handle) write(off int, p []byte) {
 	}
 }
 
-// Truncate cuts the file.
+// Allocate allocates the file's space up to size, keeping its size, as
+// fallocate with FALLOC_FL_KEEP_SIZE does: it fails with ErrNoSpace, and
+// allocates nothing, if the disk has not the room. Like the file's size,
+// the allocation stays through a crash once made.
+func (h *Handle) Allocate(size int64) error {
+	if err := h.check(OpAllocate); err != nil {
+		return err
+	}
+	f := h.f
+	if c := h.d.Capacity; c > 0 && h.d.Bytes()-f.room()+max(f.room(), int(size)) > c {
+		h.d.tracef("allocate %s (file %d) to %d: %v", h.name, f.id, size, ErrNoSpace)
+		return ErrNoSpace
+	}
+	f.alloc = max(f.alloc, int(size))
+	h.d.tracef("allocate %s (file %d) to %d", h.name, f.id, size)
+	return nil
+}
+
+// Truncate cuts the file, and frees its space allocated past the new
+// size, as truncate does.
 func (h *Handle) Truncate(size int64) error {
 	if err := h.check(OpTruncate); err != nil {
 		return err
 	}
 	f := h.f
+	if int(size) < f.room() {
+		f.alloc = 0
+	}
 	if n := int(size); n < f.size {
 		for i, d := range f.dirty {
 			switch lo := i * PageBytes; {
@@ -1103,6 +1151,21 @@ func (h *Handle) Close() error {
 func (d *Disk) Unsynced(name string) bool {
 	f, ok := d.names[name]
 	return ok && (len(f.pending) > 0 || f.cut)
+}
+
+// Grown reports whether a write to file name since its last sync
+// reaches past its synced size.
+func (d *Disk) Grown(name string) bool {
+	f, ok := d.names[name]
+	if !ok {
+		return false
+	}
+	for _, w := range f.pending {
+		if w.off+len(w.p) > f.durable.size {
+			return true
+		}
+	}
+	return false
 }
 
 // Pending is how many writes to file name its last sync left unsynced.

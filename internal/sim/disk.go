@@ -105,7 +105,7 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 			}
 		}
 	}
-	if s.cfg.stageCrash && op == simfs.OpWrite && isSegment(name) && s.wlStageCrash(n) {
+	if s.cfg.stageCrash && op == simfs.OpWrite && isSegment(name) && s.wlStageCrash(n, name) {
 		return errDead
 	}
 	if s.cfg.ckptCrash && op == simfs.OpWrite && isWLCheckpoint(name) && s.wlCheckpointCrash(n, name) {
@@ -236,6 +236,16 @@ func (f *file) Truncate(size int64) error {
 		f.dirty = true
 		return f.f.Truncate(size)
 	})
+}
+
+// Allocate allocates the file's space up to size, keeping its size
+// (simfs.Handle.Allocate).
+func (f *file) Allocate(size int64) error {
+	a, ok := f.f.(interface{ Allocate(int64) error })
+	if !ok {
+		return errors.ErrUnsupported
+	}
+	return f.d.call(simfs.OpAllocate, f.name, func() error { return a.Allocate(size) })
 }
 
 func (f *file) Sync() error {

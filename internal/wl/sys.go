@@ -35,6 +35,9 @@ type Sys interface {
 	Pread(fd int, p []byte, off int64) (int, error)
 	Pwrite(fd int, p []byte, off int64) (int, error)
 	Fsync(fd int) error
+	// Allocate allocates fd's space up to size and keeps its size, as
+	// fallocate with FALLOC_FL_KEEP_SIZE does.
+	Allocate(fd int, size int64) error
 	Close(fd int) error
 	// Seek moves fd's offset as lseek does.
 	Seek(fd int, off int64, whence int) (int64, error)

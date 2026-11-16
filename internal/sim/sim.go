@@ -161,6 +161,9 @@ type Config struct {
 	// wl checkpoint writes in one write (wl.Config.CheckpointChunkKeys).
 	ckptCrash     bool
 	ckptChunkKeys int
+	// stageUnwritten makes stageCrash's image keep the segment's growth by
+	// the write with zeros past what was synced (simfs.Unwritten).
+	stageUnwritten bool
 	// flipRecords lets a wl node's damage, where the kind drawn finds no
 	// place, flip a record of its log (flipWLRecord), once the cluster
 	// formed first: TestSeeds' runs, whose rule over a set needs fenced

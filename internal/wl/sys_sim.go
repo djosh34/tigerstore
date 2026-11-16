@@ -81,6 +81,8 @@ func (e sysEnv) open(path string, flags int, mode uint32) (int, error) {
 
 func (e sysEnv) openDirect(path string) (int, error) { return e.s.OpenDirect(path) }
 
+func (e sysEnv) allocate(fd int, size int64) error { return e.s.Allocate(fd, size) }
+
 func (e sysEnv) dial(ctx context.Context, addr string, timeout time.Duration) (net.Conn, error) {
 	return e.s.Dial(ctx, addr, timeout)
 }
