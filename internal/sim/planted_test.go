@@ -67,7 +67,9 @@ const (
 	// liveness failure, which names the call but not its node.
 	badState = `call at \d+ ms on node \d+:|replaying the committed log`
 	// A node applied a value that no client wrote.
-	inventedState = `applied different entries|applied the same log to different states|differs from the final log|` + badState
+	// On wl, a node's store differs from another's at a checkpoint's
+	// index (sameState), or a checkpoint from its store (CheckpointDone).
+	inventedState = `applied different entries|applied the same log to different states|differs from the final log|with another state than node \d+'s|` + badState
 	// Recovery refused a log it wrote itself.
 	refused = `cannot recover its log`
 	// A node read a value that is not the one it wrote, or that its log
@@ -309,8 +311,10 @@ var plantedWLCases = map[string]plantedCase{
 	"B23": {seeds: 64, cfg: wlFaultsConfig, want: inventedState + `|cold restart did not converge|` + stuck},
 	"B24": {seeds: 16, cfg: wlFaultsConfig, want: badValue + `|` + inventedState},
 	// wl installs a snapshot in place, so B27 keeps the store from before
-	// the install.
-	"B27": {seeds: 64, cfg: wlFaultsConfig, want: inventedState + `|cold restart did not converge|` + stuck},
+	// the install: the store it loaded differs from the checkpoint's
+	// (sameState). Under wlFaultsConfig a follower rarely installed one
+	// (1 seed in 64 caught it on 5795790d, none on d4344bc2).
+	"B27": {seeds: 16, cfg: wlInstallConfig, want: inventedState + `|cold restart did not converge|` + stuck},
 	"B28": {seeds: 16, cfg: wlMembershipConfig, want: `membership: stage 1 acknowledged`},
 	// wl has no value cache: B31 is a read at a revision that ignores
 	// the revision and gets the value that overwrote it.

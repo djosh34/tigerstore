@@ -30,6 +30,14 @@ func wlStalledLeaderConfig(seed uint64) Config {
 	return cfg
 }
 
+// wlInstallConfig is wlDamagedSnapshotConfig with no stream damaged: a
+// follower held down installs the snapshot it fetches.
+func wlInstallConfig(seed uint64) Config {
+	cfg := wlDamagedSnapshotConfig(seed)
+	cfg.Faults.FlipSnapshot = false
+	return cfg
+}
+
 // wlDamagedSnapshotConfig is damagedSnapshotConfig on wl nodes: a
 // follower held down past the leader's window fetches a snapshot, whose
 // first stream is damaged. The disk budget is DefaultConfig's: it is wl's
