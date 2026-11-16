@@ -140,7 +140,7 @@ func runWLDamage(t *testing.T, kind damageKind, ckpt bool, count func(Stats) int
 			cfg.Faults.DiskBudget = budget
 		}
 		cfg.damageKinds = []damageKind{kind}
-		cfg.Duration = 16 * Second
+		cfg.Duration = 24 * Second
 		res := run(t, cfg)
 		st := res.Stats
 		t.Logf("calls: %d ok; crashes %d; damage %d, fenced %d, misread refusals %d, bad reads %d; log %d writes to revision %d",
