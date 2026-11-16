@@ -251,6 +251,33 @@ func TestPlanted(t *testing.T) {
 	if !ok {
 		t.Fatalf("unknown planted bug %q", name)
 	}
+	runPlanted(t, name, c)
+}
+
+// plantedWLCases are the planted bugs moved into wl, each caught on wl
+// nodes (Config.wl) as plantedCases catches it on main's.
+var plantedWLCases = map[string]plantedCase{
+	"B02": {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries`},
+	"B03": {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries`},
+}
+
+// TestPlantedWL is TestPlanted on wl nodes, for the bugs planted in wl.
+func TestPlantedWL(t *testing.T) {
+	name := os.Getenv("SIM_PLANTED")
+	if name == "" {
+		t.Skip("no SIM_PLANTED bug selected")
+	}
+	c, ok := plantedWLCases[name]
+	if !ok {
+		t.Skipf("%s is not planted in wl yet", name)
+	}
+	runPlanted(t, name, c)
+}
+
+// runPlanted is TestPlanted's run of case c of planted bug name.
+func runPlanted(t *testing.T, name string, c plantedCase) {
+	t.Helper()
+	test := simrun.Top(strings.Split(t.Name(), "/"))[0]
 	want := regexp.MustCompile(c.want)
 	control := os.Getenv("SIM_CONTROL") != ""
 	planted.Active, activePlanted, activeControl = name, name, control
@@ -286,7 +313,7 @@ func TestPlanted(t *testing.T) {
 		return plantedRun{Finding: err.Error()}
 	}, func(seed uint64, r plantedRun) bool {
 		tried++
-		if r.Finding == "" || control || failsUnplanted(t, name, seed) {
+		if r.Finding == "" || control || failsUnplanted(t, test, name, seed) {
 			return false
 		}
 		caught = true
@@ -307,19 +334,19 @@ func TestPlanted(t *testing.T) {
 	}
 }
 
-// failsUnplanted runs seed of TestPlanted again without planted bug name,
-// as a gosim run of its own, the control of a catch, and reports whether
-// it fails there too. A seed that fails as open bugs #357 and #361 do
+// failsUnplanted runs seed of test, TestPlanted or TestPlantedWL, again
+// without planted bug name, as a gosim run of its own, the control of a
+// catch, and reports whether it fails there too. A seed that fails as open bugs #357 and #361 do
 // catches nothing; one that fails on anything else fails the test, as a
 // failure with no planted bug. Under the race detector, where a seed does
 // not replay, no catch counts.
-func failsUnplanted(t *testing.T, name string, seed uint64) bool {
+func failsUnplanted(t *testing.T, test, name string, seed uint64) bool {
 	t.Helper()
 	if simrun.Race {
 		return true
 	}
 	env := []string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1", "SIM_PLANTED=" + name, "SIM_CONTROL=1"}
-	res := simrun.Do(t, simrun.Run{Test: "TestPlanted", Seed: seed, Env: env})
+	res := simrun.Do(t, simrun.Run{Test: test, Seed: seed, Env: env})
 	var r plantedRun
 	if err := json.Unmarshal(res.Artifacts["seed.json"], &r); err != nil {
 		t.Errorf("the control of seed %d left no result: %v", seed, err)

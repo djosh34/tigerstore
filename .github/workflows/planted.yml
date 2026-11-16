@@ -60,9 +60,9 @@ jobs:
           for bug in $BUGS; do
             echo "::group::$bug"
             for pkg in sim node peer; do
-              (cd "internal/$pkg" && SIM_PLANTED="$bug" SIM_OUT="$SIM_OUT/$bug" "$GITHUB_WORKSPACE/.gosim/bin/$pkg-planted.test" -test.run '^TestPlanted$' -test.v -test.timeout 28m) 2>&1 | tee "$RUNNER_TEMP/logs/$bug-$pkg.log" || {
+              (cd "internal/$pkg" && SIM_PLANTED="$bug" SIM_OUT="$SIM_OUT/$bug" "$GITHUB_WORKSPACE/.gosim/bin/$pkg-planted.test" -test.run '^TestPlanted(WL)?$' -test.v -test.timeout 28m) 2>&1 | tee "$RUNNER_TEMP/logs/$bug-$pkg.log" || {
                 status=1
-                echo "::error::$bug was not caught in internal/$pkg; replay: SIM_PLANTED=$bug TAGS=planted scripts/sim.sh ./internal/$pkg '^TestPlanted$'"
+                echo "::error::$bug was not caught in internal/$pkg; replay: SIM_PLANTED=$bug TAGS=planted scripts/sim.sh ./internal/$pkg '^TestPlanted(WL)?$'"
               }
             done
             echo "::endgroup::"

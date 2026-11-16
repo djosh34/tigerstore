@@ -13,6 +13,8 @@ import (
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // Raft runs inline in the loop: etcd/raft's RawNode with asynchronous
@@ -161,7 +163,7 @@ func (n *node) appendNow(m *pb.Message) error {
 		n.storage.setHardState(st)
 	}
 	n.wal.pending = append(n.wal.pending, walJob{end: n.wal.off, resps: m.Responses, hs: st})
-	if !n.wal.inflight && n.wal.done.Load() >= n.wal.off {
+	if !n.wal.inflight && n.wal.done.Load() >= n.wal.off || n.plantedEarlyDurable() {
 		n.synced()
 		return nil
 	}
@@ -173,6 +175,9 @@ func (n *node) appendNow(m *pb.Message) error {
 func (n *node) synced() {
 	w := n.wal
 	done := w.done.Load()
+	if n.plantedEarlyDurable() {
+		done = w.off
+	}
 	k := 0
 	for ; k < len(w.pending) && w.pending[k].end <= done; k++ {
 		for _, r := range w.pending[k].resps {
@@ -191,6 +196,13 @@ func (n *node) synced() {
 	}
 	w.pending = append(w.pending[:0], w.pending[k:]...)
 	w.kick()
+}
+
+// plantedEarlyDurable reports whether planted bug B02 (on the leader) or
+// B03 (on a follower) takes the log's appends as durable once written,
+// before their sync.
+func (n *node) plantedEarlyDurable() bool {
+	return planted.On("B02") && n.lead == n.id || planted.On("B03") && n.lead != n.id
 }
 
 // fsyncDone is the helper's wake-up.

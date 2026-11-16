@@ -82,11 +82,7 @@ func TestWLFaultSeeds(t *testing.T) {
 // runWLFaults runs seed on wl nodes with the faults TestWLRunsTheFaults
 // names.
 func runWLFaults(t *testing.T, seed uint64) Stats {
-	cfg := DefaultConfig(seed)
-	cfg.wl, cfg.FormUnderFaults = true, true
-	f := &cfg.Faults
-	f.Checkpoint, f.FlipSnapshot, f.FetchCrash, f.SlowFetch, f.Rot = false, false, false, false, false
-	res := run(t, cfg)
+	res := run(t, wlFaultsConfig(seed))
 	st := res.Stats
 	t.Logf("calls: %d ok, %d failed, %d ambiguous; crashes %d (in recovery %d, at a step %d), disk faults %d, damage %v (fenced %d, misreads refused %d), file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
 		st.OK, st.Failed, st.Ambiguous, st.Crashes, st.RecoveryCrashes, st.StepCrashes, st.DiskFaults, st.Damage, st.Fenced, st.MisreadRefusals, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
