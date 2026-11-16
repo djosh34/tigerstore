@@ -118,7 +118,7 @@ jobs:
           jobs=$(jq -cn --arg grid "$GRID" --arg b "$BENCHMARKS" --arg s "$SEEDS" --arg r "$RTTS" '
             def words: split(" ") | map(select(. != ""));
             [($b | words | sort_by(. != "k8s"))[] as $bench |
-              if $grid == "full" or ($bench | IN("profile", "profile-disk", "disk-probe", "etcd-tool"))
+              if $grid == "full" or ($bench | IN("profile", "profile-disk", "perf-leader", "disk-probe", "etcd-tool"))
               then {bench: $bench, seed: "all", rtt: "all", name: $bench}
               else ($s | words | to_entries)[] as $seed | ($r | words)[] as $rtt |
                 {bench: $bench, seed: $seed.value, rtt: $rtt, name: "\($bench)-\($seed.value)-rtt\($rtt)",
@@ -221,13 +221,13 @@ jobs:
       # the report takes one runner's measure for all, the runners being
       # of one type.
       - name: Measure the runner
-        if: matrix.job.bench != 'profile' && matrix.job.bench != 'profile-disk' && matrix.job.bench != 'disk-probe' && matrix.job.bench != 'etcd-tool' && (matrix.job.seed == 'all' || startsWith(format('{0} ', needs.plan.outputs.seeds), format('{0} ', matrix.job.seed)) && startsWith(format('{0} ', inputs.rtts || '0 2 10'), format('{0} ', matrix.job.rtt)))
+        if: matrix.job.bench != 'profile' && matrix.job.bench != 'profile-disk' && matrix.job.bench != 'perf-leader' && matrix.job.bench != 'disk-probe' && matrix.job.bench != 'etcd-tool' && (matrix.job.seed == 'all' || startsWith(format('{0} ', needs.plan.outputs.seeds), format('{0} ', matrix.job.seed)) && startsWith(format('{0} ', inputs.rtts || '0 2 10'), format('{0} ', matrix.job.rtt)))
         run: |
           taskset -c 3 bin/ceiling -dir "$RUNNER_TEMP" \
             -disk "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)" \
             -cpu "$(lscpu | sed -n 's/^Model name: *//p' | head -n 1)" | tee results/ceiling.json
       - name: Measure the generator against nullstore
-        if: matrix.job.bench != 'profile' && matrix.job.bench != 'profile-disk' && matrix.job.bench != 'disk-probe' && matrix.job.bench != 'etcd-tool' && (matrix.job.seed == 'all' || startsWith(format('{0} ', needs.plan.outputs.seeds), format('{0} ', matrix.job.seed)) && startsWith(format('{0} ', inputs.rtts || '0 2 10'), format('{0} ', matrix.job.rtt)))
+        if: matrix.job.bench != 'profile' && matrix.job.bench != 'profile-disk' && matrix.job.bench != 'perf-leader' && matrix.job.bench != 'disk-probe' && matrix.job.bench != 'etcd-tool' && (matrix.job.seed == 'all' || startsWith(format('{0} ', needs.plan.outputs.seeds), format('{0} ', matrix.job.seed)) && startsWith(format('{0} ', inputs.rtts || '0 2 10'), format('{0} ', matrix.job.rtt)))
         env:
           BINS: bin
           CERTS: certs
@@ -245,6 +245,16 @@ jobs:
         run: |
           if [ "$BENCH" = disk-probe ]; then
             bench/disk-probe.sh "$RUNNER_TEMP" "$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")" | tee results/disk-probe.txt
+            exit 0
+          fi
+          if [ "$BENCH" = perf-leader ]; then
+            sudo apt-get install -y -q linux-tools-common "linux-tools-$(uname -r)" >/dev/null 2>&1 || sudo apt-get install -y -q linux-tools-generic linux-tools-azure >/dev/null 2>&1 || true
+            p=$(ls /usr/lib/linux-tools/*/perf 2>/dev/null | tail -1); [ -x "$p" ] && sudo ln -sf "$p" /usr/local/bin/perf
+            sudo sysctl -w kernel.perf_event_paranoid=-1 kernel.kptr_restrict=0
+            perf --version
+            for rep in 1 2; do for t in baseline candidate; do
+              SEED=${SEEDS%% *} DATA="$RUNNER_TEMP/bench-data" bench/perf-leader.sh bin/$t $t-$rep results/perf-leader
+            done; done
             exit 0
           fi
           if [ "$BENCH" = profile-disk ]; then
@@ -350,6 +360,9 @@ jobs:
               echo '```'; cat results/disk-probe.txt; echo '```'
             elif [ "$BENCH" = profile-disk ]; then
               echo "profiles in the artifact"
+            elif [ "$BENCH" = perf-leader ]; then
+              for f in results/perf-leader/*.json; do echo "$f: $(jq -c '{throughput, leader_cpu_us_per_op}' "$f")"; done
+              for f in results/perf-leader/*.flat.txt; do echo "### $f"; echo '```'; head -60 "$f"; echo '```'; done
             elif [ "$BENCH" = profile ]; then
               cat results/profile/*.steps.md
             elif [ "$BENCH" = etcd-tool ]; then
