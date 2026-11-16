@@ -84,13 +84,13 @@ const (
 // ckptMin is the log written after the newest checkpoint before the next
 // is taken. A checkpoint writes the keys and takes in only the values of
 // the log it cuts, so it bounds what a start replays at a small cost.
-var ckptMin int64 = 1 << 30
+var ckptMin int64 = 512 << 20
 
 // ckptLoopShare bounds the loop's time on checkpoints: the next starts no
 // sooner than this many times the loop's time encoding the last after
 // it started. A checkpoint encodes every key and the history a read may
 // see, so its time grows with the store, not with the writes since.
-const ckptLoopShare = 40
+const ckptLoopShare = 0
 
 // ckptMeta is a checkpoint's header.
 type ckptMeta struct {
