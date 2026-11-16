@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	raftpb "go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/wl"
@@ -164,7 +166,10 @@ func (s *Sim) finalReads(live []*node, rev int64, want []*mvccpb.KeyValue) error
 			return fmt.Errorf("node %d went down at the end", n.id)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		got, err := pb.NewKVClient(p.wl.conn).Range(ctx, &pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}, Revision: rev, Serializable: true})
+		// Every key in one answer, which in a long Kubernetes run is
+		// larger than gRPC's default 4 MiB a message (seeds 1 to 3 of
+		// TestKubernetesLoadLong: 8 MB); etcd's server sends it whole.
+		got, err := pb.NewKVClient(p.wl.conn).Range(ctx, &pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}, Revision: rev, Serializable: true}, grpc.MaxCallRecvMsgSize(math.MaxInt32))
 		var h *pb.HashKVResponse
 		if err == nil {
 			h, err = pb.NewMaintenanceClient(p.wl.conn).HashKV(ctx, &pb.HashKVRequest{Revision: rev})
