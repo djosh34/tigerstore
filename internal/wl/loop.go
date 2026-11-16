@@ -135,8 +135,10 @@ func run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	// A new cluster's log starts with a ConfChange for each member, which
-	// the apply makes the member list; a node that joins dials the members
-	// it was told of until it has the list.
+	// the apply makes the member list. Until it has the list, a node dials
+	// the members it was told of: a node that joins, and one that starts
+	// again before its cluster committed those ConfChanges, which would
+	// otherwise answer its leader never (seed 10161 of TestWLFaultSeeds).
 	var peers []raft.Peer
 	for _, m := range cfg.Members {
 		mem, err := m.member()
@@ -144,9 +146,7 @@ func run(ctx context.Context, cfg Config) error {
 			return err
 		}
 		peers = append(peers, raft.Peer{ID: m.ID, Context: ccContext(0, 0, &mem)})
-		if cfg.Join {
-			n.seed = append(n.seed, mem)
-		}
+		n.seed = append(n.seed, mem)
 	}
 	if n.st, err = newStore(); err != nil {
 		return err

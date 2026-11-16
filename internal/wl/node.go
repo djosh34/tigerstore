@@ -22,8 +22,8 @@ type node struct {
 	sys sysEnv
 	// members is the member list as of the applied index, and removed the
 	// IDs it no longer holds. self is this node's name and client URLs,
-	// which it publishes at publishAt; seed are the members a node that
-	// joins dials until it has a list.
+	// which it publishes at publishAt; seed are the members it was told
+	// of, which it dials until it has a list.
 	members   []member
 	removed   map[uint64]bool
 	self      member
