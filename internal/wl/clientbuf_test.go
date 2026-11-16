@@ -10,11 +10,14 @@ import (
 	"io"
 	"net"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	clientv3 "go.etcd.io/etcd/client/v3"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"golang.org/x/net/http2"
@@ -172,6 +175,109 @@ func TestTheNodeClosesClientsPastItsBackstop(t *testing.T) {
 	}
 }
 
+// When the read half of the client buffers is full, clients wait for it
+// in turn, and none is dropped or waits for good. At 128 MiB the buffers
+// hold 6 clients at once. 12 clients keep four Puts under way for the
+// whole test, and would hold the buffers for good if nothing took them
+// back; 48 more each make 20 Puts, four at a time. Every Put of the 48
+// succeeds while the 12 go on.
+func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
+	const budget, hogs, clients, puts = 128 << 20, 12, 48, 20
+	loopOf := watchLoops(t)
+	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	z := sizeFor(budget)
+	t.Logf("the read half of the client buffers holds %d clients at once", z.clientInBufs()/int64(clientInBuf+clientPtBuf+slotBytes))
+	clis := make([]*clientv3.Client, hogs+clients)
+	for i := range clis {
+		clis[i] = tc.rawClient(t, tc.endpoints[0])
+	}
+	// The cluster has a leader before the clients start.
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		_, err := clis[0].Put(ctx, "/wait/leader", "v")
+		cancel()
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	put := func(cli *clientv3.Client, key string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, err := cli.Put(ctx, key, "v")
+		return err
+	}
+	stop := make(chan struct{})
+	var hogsDone sync.WaitGroup
+	hogPuts := make([]int, hogs)
+	for i, cli := range clis[:hogs] {
+		hogsDone.Go(func() {
+			var inner sync.WaitGroup
+			var mu sync.Mutex
+			for k := range 4 {
+				inner.Go(func() {
+					for j := 0; ; j++ {
+						select {
+						case <-stop:
+							return
+						default:
+						}
+						if err := put(cli, fmt.Sprintf("/hog/%02d/%d/%d", i, k, j)); err != nil {
+							t.Errorf("hog %d: %v", i, err)
+							return
+						}
+						mu.Lock()
+						hogPuts[i]++
+						mu.Unlock()
+					}
+				})
+			}
+			inner.Wait()
+		})
+	}
+	time.Sleep(300 * time.Millisecond) // the hogs hold the buffers
+	start := time.Now()
+	var wg sync.WaitGroup
+	errs := make(chan error, 4*clients)
+	took := make([]time.Duration, clients)
+	for i, cli := range clis[hogs:] {
+		wg.Go(func() {
+			var inner sync.WaitGroup
+			for k := range 4 {
+				inner.Go(func() {
+					for j := range puts / 4 {
+						if err := put(cli, fmt.Sprintf("/wait/%02d/%d/%02d", i, k, j)); err != nil {
+							errs <- fmt.Errorf("client %d, Put %d.%d: %w", i, k, j, err)
+							return
+						}
+					}
+				})
+			}
+			inner.Wait()
+			took[i] = time.Since(start)
+		})
+	}
+	wg.Wait()
+	close(stop)
+	hogsDone.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+	s := seeNode(loopOf(1))
+	t.Logf("%d hogs made %v Puts; %d clients of %d Puts each, the slowest done in %v; the node held %d clients, refused %d, they waited %d times",
+		hogs, hogPuts, clients, puts, slices.Max(took), s.clients, s.refused, s.waited)
+	if s.refused != 0 {
+		t.Fatalf("%d clients refused", s.refused)
+	}
+	if s.waited == 0 {
+		t.Fatal("no client waited for the client buffers: the test did not fill them")
+	}
+}
+
 // Requests sent in part stay within the connection's share: a client
 // that starts many large Puts and sends half of each gets the ones past
 // its share refused with etcd's "too many requests", and one that says
@@ -271,7 +377,7 @@ type nodeSeen struct {
 	m               memStats
 	connOut, connIn int64
 	clients, active int
-	refused         uint64
+	refused, waited uint64
 	cpool, cout     int64
 }
 
@@ -279,7 +385,7 @@ type nodeSeen struct {
 func seeNode(l *loop) nodeSeen {
 	got := make(chan nodeSeen, 1)
 	l.post(func() error {
-		got <- nodeSeen{l.n.memStats(), l.n.connOut, l.n.connIn, l.n.clients, l.n.active, l.n.stats.clientsRefused, l.n.cpool, l.n.cout}
+		got <- nodeSeen{l.n.memStats(), l.n.connOut, l.n.connIn, l.n.clients, l.n.active, l.n.stats.clientsRefused, l.n.stats.clientsWaited, l.n.cpool, l.n.cout}
 		return nil
 	})
 	return <-got

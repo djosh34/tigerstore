@@ -29,6 +29,9 @@ type node struct {
 	connIn          int64
 	clients, active int
 	cpool, cout     int64
+	// waiting are the clients that wait for the client buffers to read,
+	// in the order they came (loop.serveWaiting).
+	waiting []*client
 	// sys is the node's handle on the system calls of sys_os.go.
 	sys sysEnv
 	// members is the member list as of the applied index, and removed the

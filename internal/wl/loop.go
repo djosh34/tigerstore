@@ -776,10 +776,14 @@ func (l *loop) input(idx int) {
 	if c, ok := x.(*client); ok {
 		c.busy = l.tick
 		if c.in == nil {
-			if n.cpool+c.bufNeed() > n.sizes.clientInBufs() {
-				// The client buffers are full: it waits for some to
-				// come back (clientTick).
-				c.starved = true
+			if len(n.waiting) > 0 || n.cpool+c.bufNeed() > n.sizes.clientInBufs() {
+				// The client buffers are full, or others wait for them
+				// first: it waits in turn (serveWaiting).
+				if !c.starved {
+					c.starved = true
+					n.waiting = append(n.waiting, c)
+					n.stats.clientsWaited++
+				}
 				n.markDirty(&c.sock)
 				return
 			}
@@ -933,6 +937,9 @@ func (l *loop) run() error {
 		}
 		t3 := time.Now()
 		l.flush()
+		if len(n.waiting) > 0 {
+			l.serveWaiting()
+		}
 		t4 := time.Now()
 		if !n.rn.HasReady() {
 			// Raft holds no message now that could point into a ring.
@@ -1028,24 +1035,50 @@ func sockEvents(in, out bool) uint32 {
 // buffers have room, and gives each active client its shares.
 func (l *loop) clientTick() {
 	n := l.n
-	room := n.sizes.clientInBufs() - n.cpool
 	for _, x := range n.socks {
 		c, ok := x.(*client)
 		if !ok || c.dead {
 			continue
 		}
 		if c.busy+1 < l.tick && c.idle() && (c.in != nil || cap(c.out) > 0 || c.slots != nil && c.streams == 0) {
-			before := n.cpool
 			c.giveBufs()
-			room += before - n.cpool
-		}
-		if c.starved && room >= c.bufNeed() {
-			c.starved = false
-			room -= c.bufNeed()
-			n.markDirty(&c.sock)
 		}
 	}
+	l.serveWaiting()
 	n.connOut, n.connIn = n.sizes.connOut(n.active), n.sizes.connIn(n.active)
+}
+
+// serveWaiting gives the clients that wait for the client buffers theirs,
+// in the order they came, while the buffers have room; it runs every turn
+// while any waits. Then a client that holds buffers, has nothing under way
+// and has not read since the last tick gives them back, and waits in turn
+// when it reads again: a fixed set of busy clients is served a tick each,
+// round by round, and none waits for good.
+func (l *loop) serveWaiting() {
+	n := l.n
+	if len(n.waiting) == 0 {
+		return
+	}
+	for _, x := range n.socks {
+		if c, ok := x.(*client); ok && !c.dead && c.in != nil && c.busy < l.tick && c.idle() {
+			c.giveBufs()
+		}
+	}
+	k := 0
+	for k < len(n.waiting) {
+		c := n.waiting[k]
+		if !c.dead && c.starved {
+			if n.cpool+c.bufNeed() > n.sizes.clientInBufs() {
+				break
+			}
+			c.takeBufs()
+			c.starved, c.busy = false, l.tick
+			n.markDirty(&c.sock)
+		}
+		k++
+	}
+	clear(n.waiting[:k])
+	n.waiting = n.waiting[k:]
 }
 
 // counters are the loop's own, for its log: per 5 s, how many turns,
@@ -1056,6 +1089,9 @@ type counters struct {
 	// clientsRefused counts the client connections refused past
 	// sizes.maxClients.
 	clientsRefused uint64
+	// clientsWaited counts the times a client waited for the client
+	// buffers to read.
+	clientsWaited uint64
 
 	// What the batches carried, and how the peers named or carried them.
 	opsByKind, bytesByKind [kinds]int
