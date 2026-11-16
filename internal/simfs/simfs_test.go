@@ -131,7 +131,7 @@ func write(t *testing.T, f wal.File, p []byte) {
 // TestCrashImages crashes a file with a synced part and four unsynced
 // writes, each of a byte value of its own, many times with each image.
 // Every image keeps the synced part. Prefix keeps a prefix of the bytes
-// written, in order, up to garbage at its end; Writes keeps each write
+// written, in order, up to garbage at its end past the synced part; Writes keeps each write
 // whole or not at all; Sectors and Pages keep pieces of a write at their
 // boundaries. Every image but Prefix sometimes keeps a later write and
 // loses an earlier one.
@@ -162,7 +162,8 @@ func TestCrashImages(t *testing.T) {
 				copy(want[w.off:], bytes.Repeat([]byte{w.b}, w.n))
 			}
 			for i := range min(1000, len(got)) {
-				if got[i] != 's' && (img != simfs.Prefix || i < 200 || i >= 800) && got[i] != 'd' {
+				// An overwrite keeps the old bytes or the new, never garbage.
+				if got[i] != 's' && got[i] != 'd' {
 					t.Fatalf("%v seed %d: synced byte %d is %q", img, seed, i, got[i])
 				}
 			}

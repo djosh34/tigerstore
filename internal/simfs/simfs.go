@@ -266,7 +266,9 @@ type Image int
 const (
 	// Prefix keeps a prefix of the bytes written, in the order written;
 	// with probability 1/4 the last kept bytes are garbage, like a torn
-	// sector.
+	// sector, but where they overwrite what the file held durably: a
+	// disk writes a sector whole or not at all (power-safe overwrite), so
+	// an overwrite keeps the old bytes or the new.
 	Prefix Image = iota
 	// Writes keeps any subset of the writes, each one whole.
 	Writes
@@ -351,19 +353,24 @@ func (f *file) survive(rng *rand.Rand, img Image, c *Counts) pages {
 		}
 		n := rng.IntN(len(stream) + 1)
 		stream = stream[:n]
+		garbage := n
 		if n > 0 && rng.IntN(4) == 0 {
-			g := rng.IntN(n) + 1
-			for i := n - g; i < n; i++ {
-				stream[i] = byte(rng.Uint32())
-			}
+			garbage = n - rng.IntN(n) - 1
 		}
+		at, synced := 0, kept.size
 		for _, w := range f.pending {
-			if len(stream) == 0 {
+			if at == n {
 				break
 			}
-			k := min(len(stream), len(w.p))
-			kept.write(w.off, stream[:k])
-			stream = stream[k:]
+			k := min(n-at, len(w.p))
+			p := stream[at : at+k]
+			for i := range p {
+				if at+i >= garbage && w.off+i >= synced {
+					p[i] = byte(rng.Uint32())
+				}
+			}
+			kept.write(w.off, p)
+			at += k
 		}
 		return kept
 	}

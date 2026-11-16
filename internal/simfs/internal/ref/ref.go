@@ -248,19 +248,26 @@ func (f *file) survive(rng *rand.Rand, img Image, c *Counts) []byte {
 		}
 		n := rng.IntN(len(stream) + 1)
 		stream = stream[:n]
+		garbage := n
 		if n > 0 && rng.IntN(4) == 0 {
-			g := rng.IntN(n) + 1
-			for i := n - g; i < n; i++ {
-				stream[i] = byte(rng.Uint32())
-			}
+			garbage = n - rng.IntN(n) - 1
 		}
+		// Garbage only past the synced part: an overwrite keeps the old
+		// bytes or the new.
+		at, synced := 0, len(kept)
 		for _, w := range f.pending {
-			if len(stream) == 0 {
+			if at == n {
 				break
 			}
-			k := min(len(stream), len(w.p))
-			kept = apply(kept, w.off, stream[:k])
-			stream = stream[k:]
+			k := min(n-at, len(w.p))
+			p := stream[at : at+k]
+			for i := range p {
+				if at+i >= garbage && w.off+i >= synced {
+					p[i] = byte(rng.Uint32())
+				}
+			}
+			kept = apply(kept, w.off, p)
+			at += k
 		}
 		return kept
 	}
