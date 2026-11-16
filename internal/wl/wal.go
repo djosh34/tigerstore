@@ -371,6 +371,20 @@ func (w *wal) helper(flushed int64) {
 // writeLoop writes what each kick asks for: the blocks from the one that
 // holds the durable end to the one that holds the target. The last block
 // is written again the next time.
+//
+// The loop goes on writing the stage while the helper writes it, and both
+// touch the last block: a data race, left on purpose, as a lock or a copy
+// would cost the loop's hot path. It is sound because of one invariant:
+// nothing before the target (want) is written while a write is under way.
+// The loop only appends at w.off, which is at or past the target, and
+// clears the rest of its own last block; the helper writes the stage up
+// to the target's block end. So every byte before the target reaches the
+// disk as the loop wrote it, and the bytes after it, which the helper may
+// catch half written, lie past the end it reports durable (done): the
+// next write puts that block down again whole, and after a crash a scan
+// stops at the first record whose CRC does not check (scanWAL). The race
+// detector does not see it in the real build or under simio, where the
+// stage is mapped memory (mem_mmap.go).
 func (w *wal) writeLoop(flushed int64) error {
 	var b [8]byte
 	for {
