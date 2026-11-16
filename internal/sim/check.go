@@ -589,25 +589,63 @@ func sameLatest(a, b *mvcc.Store, log core.Log) error {
 	return nil
 }
 
-// noKeepAliveAfterRevoke requires every keepalive that started after a
-// node applied its lease's revoke (revokedAt) to find no lease: its entry
-// comes after the revoke's in the log. A lease granted again after the
-// revoke, with the same ID, is left out.
-func noKeepAliveAfterRevoke(history []*Record, revokedAt map[int64]int64) error {
+// revokesKeepPromises checks each lease revoke that took effect, at
+// revokedAt (when a node first applied it), against what the clients
+// were told:
+//   - a keepalive called after it finds no lease: its entry comes after
+//     the revoke's in the log;
+//   - a grant or keepalive called before it and answered alive with a TTL
+//     had that TTL run out by the revoke, less the clock envelope of
+//     driftPerMille, unless a client asked for the revoke.
+//
+// leasesExpire checks when a node decided to expire a lease; this checks
+// what the cluster did, whichever node decided it and whenever, so that a
+// keepalive answered alive after the decision, whose revoke then commits,
+// fails here. A lease granted again after its revoke, with the same ID,
+// is left out of the first rule.
+func revokesKeepPromises(history []*Record, revokedAt map[int64]int64, driftPerMille int64) error {
 	granted := map[int64]int64{}
+	asked := map[int64]bool{}
 	for _, r := range history {
 		if g, ok := r.Resp.(*pb.LeaseGrantResponse); ok && g != nil {
 			granted[g.ID] = max(granted[g.ID], r.Call)
 		}
+		if req, ok := r.req.(*pb.LeaseRevokeRequest); ok {
+			asked[req.ID] = true
+		}
 	}
 	for _, r := range history {
-		k, ok := r.Resp.(*pb.LeaseKeepAliveResponse)
-		if !ok || k == nil || k.TTL <= 0 {
+		var id, ttl int64
+		keepAlive := false
+		switch resp := r.Resp.(type) {
+		case *pb.LeaseGrantResponse:
+			if resp == nil {
+				continue
+			}
+			id, ttl = resp.ID, resp.TTL
+		case *pb.LeaseKeepAliveResponse:
+			if resp == nil {
+				continue
+			}
+			id, ttl, keepAlive = resp.ID, resp.TTL, true
+		default:
 			continue
 		}
-		if at, ok := revokedAt[k.ID]; ok && r.Call > at && granted[k.ID] < at {
+		at, revoked := revokedAt[id]
+		if !revoked || ttl <= 0 {
+			continue
+		}
+		if keepAlive && r.Call > at && granted[id] < at {
 			return fmt.Errorf("lease %d answered a keepalive called at %d ms with TTL %d s, after a node applied its revoke at %d ms",
-				k.ID, r.Call/Millisecond, k.TTL, at/Millisecond)
+				id, r.Call/Millisecond, ttl, at/Millisecond)
+		}
+		early := ttl*Second*driftPerMille/1000 + TickTime
+		if driftPerMille == 0 {
+			early = 0
+		}
+		if r.Call < at && !asked[id] && at < r.Call+ttl*Second-early {
+			return fmt.Errorf("lease %d was revoked at %d ms, but a call at %d ms was answered with TTL %d s",
+				id, at/Millisecond, r.Call/Millisecond, ttl)
 		}
 	}
 	return nil
@@ -633,7 +671,7 @@ func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
 	if err := leasesExpire(res.History, s.expiredAt, s.expiredOrder, alive, s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
 		return err
 	}
-	if err := noKeepAliveAfterRevoke(res.History, s.revokedAt); err != nil {
+	if err := revokesKeepPromises(res.History, s.revokedAt, s.cfg.Faults.DriftPerMille); err != nil {
 		return err
 	}
 	for _, op := range res.Log {

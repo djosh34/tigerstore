@@ -259,7 +259,7 @@ func (h *wlHooks) Applied(e *raftpb.Entry, hash uint64, state func() uint64) {
 }
 
 // noteRevokes notes when the first node to apply entry e applied the
-// lease revokes in it (noKeepAliveAfterRevoke). The lock is held.
+// lease revokes in it (revokesKeepPromises). The lock is held.
 func (s *Sim) noteRevokes(e *raftpb.Entry) {
 	if e.GetIndex() <= s.revokesTo {
 		return

@@ -282,28 +282,33 @@ func TestLeasesExpireByTTL(t *testing.T) {
 	}
 }
 
-// TestNoKeepAliveAfterRevoke checks noKeepAliveAfterRevoke: a keepalive
-// called after a node applied its lease's revoke may not find the lease,
-// one called before may, and so may one of the lease granted again.
-func TestNoKeepAliveAfterRevoke(t *testing.T) {
+// TestRevokesKeepPromises checks revokesKeepPromises with a lease of 5 s
+// revoked at 10 s: a keepalive called after the revoke may not find the
+// lease, nor may one answered alive 2 s before it, unless a client asked
+// for the revoke; one 6 s before it may, and so may a keepalive of the
+// lease granted again after the revoke.
+func TestRevokesKeepPromises(t *testing.T) {
 	grant := func(id, at int64) *Record {
 		return &Record{Call: at, Return: at + Millisecond, req: &pb.LeaseGrantRequest{TTL: 5}, Resp: &pb.LeaseGrantResponse{ID: id, TTL: 5}}
 	}
 	keepAlive := func(id, ttl, at int64) *Record {
 		return &Record{Call: at, Return: at + Millisecond, req: &pb.LeaseKeepAliveRequest{ID: id}, Resp: &pb.LeaseKeepAliveResponse{ID: id, TTL: ttl}}
 	}
+	revoke := &Record{Call: 9 * Second, Return: 9 * Second, req: &pb.LeaseRevokeRequest{ID: 1}, Resp: &pb.LeaseRevokeResponse{}}
 	revoked := map[int64]int64{1: 10 * Second}
 	for _, c := range []struct {
 		name string
 		h    []*Record
 		ok   bool
 	}{
-		{"kept alive before the revoke", []*Record{grant(1, 0), keepAlive(1, 5, 9*Second)}, true},
+		{"kept alive 6 s before the revoke", []*Record{grant(1, 0), keepAlive(1, 5, 4*Second)}, true},
+		{"kept alive 2 s before the revoke", []*Record{grant(1, 0), keepAlive(1, 5, 8*Second)}, false},
+		{"kept alive 2 s before a revoke a client asked for", []*Record{grant(1, 0), keepAlive(1, 5, 8*Second), revoke}, true},
 		{"kept alive after the revoke", []*Record{grant(1, 0), keepAlive(1, 5, 11*Second)}, false},
 		{"not found after the revoke", []*Record{grant(1, 0), keepAlive(1, 0, 11*Second)}, true},
 		{"granted again after the revoke", []*Record{grant(1, 0), grant(1, 10500*Millisecond), keepAlive(1, 5, 11*Second)}, true},
 	} {
-		if err := noKeepAliveAfterRevoke(c.h, revoked); (err == nil) != c.ok {
+		if err := revokesKeepPromises(c.h, revoked, 0); (err == nil) != c.ok {
 			t.Errorf("%s: %v", c.name, err)
 		}
 	}
