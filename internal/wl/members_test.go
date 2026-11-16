@@ -241,3 +241,40 @@ func TestALeaderThatStopsHandsItsLeadershipOver(t *testing.T) {
 		t.Fatalf("once node %d, the leader, stopped, node %d names leader %x", lead+1, peer+1, st.Leader)
 	}
 }
+
+// A follower answers a membership change once it applied it, which may be
+// before the leader has. The client's next change, through the follower,
+// is then proposed while the leader's Raft still holds the first as not
+// applied: Raft dropped it, and the client waited for requestTimeout
+// (#705, difftest's Boundaries). The leader now holds such a change back
+// until its Raft takes it. Each round is answered at once, through a
+// follower and through the leader.
+func TestMembershipChangesInARowAreNeverDropped(t *testing.T) {
+	tc := newTestCluster(t)
+	c := tc.client(t)
+	waitMembers(t, c, 3)
+	for _, ep := range []string{tc.followerEndpoint(t, c), tc.leaderEndpoint(t, c)} {
+		cl := tc.rawClient(t, ep)
+		for i := range 150 {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			added, err := cl.MemberAddAsLearner(ctx, []string{"https://127.0.0.1:3", "https://127.0.0.2:1"})
+			if err != nil {
+				cancel()
+				t.Fatalf("%s, round %d: add a learner: %v", ep, i, err)
+			}
+			if _, err := cl.MemberAddAsLearner(ctx, []string{"https://127.0.0.1:4"}); !errors.Is(err, rpctypes.ErrTooManyLearners) {
+				cancel()
+				t.Fatalf("%s, round %d: add a second learner: %v", ep, i, err)
+			}
+			if _, err := cl.MemberAddAsLearner(ctx, []string{"https://127.0.0.2:1"}); !errors.Is(err, rpctypes.ErrPeerURLExist) {
+				cancel()
+				t.Fatalf("%s, round %d: add a learner with a taken peer URL: %v", ep, i, err)
+			}
+			if _, err := cl.MemberRemove(ctx, added.Member.ID); err != nil {
+				cancel()
+				t.Fatalf("%s, round %d: remove the learner: %v", ep, i, err)
+			}
+			cancel()
+		}
+	}
+}

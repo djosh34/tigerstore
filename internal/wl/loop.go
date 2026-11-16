@@ -834,6 +834,7 @@ func (l *loop) run() error {
 			n.retryReads(l.tick)
 			n.expireProposals()
 			n.expireMemberRequests()
+			n.expireHeldConfChanges()
 			n.checkMoves()
 			n.autoCompact()
 			n.publish()
@@ -861,6 +862,13 @@ func (l *loop) run() error {
 		t1, ops := time.Now(), n.stats.opsByKind
 		if err := n.ready(); err != nil {
 			return err
+		}
+		// The changes stepped are appended now; the next held one may go.
+		n.confHold.stepped = false
+		if n.confHold.waiting() {
+			if err := n.releaseConfChanges(); err != nil {
+				return err
+			}
 		}
 		t2 := time.Now()
 		if err := n.syncWatchers(); err != nil {

@@ -110,6 +110,7 @@ func (n *node) leading() bool { return n.lead == n.id && n.id != 0 }
 // leaderChanged starts every lease's TTL over on a new leader, and drops
 // the deadlines on a node that no longer leads.
 func (n *node) leaderChanged() {
+	n.confHold.leadFirst = 0
 	lc := &n.leases
 	lc.deadline, lc.revoking = nil, nil
 	if !n.leading() {

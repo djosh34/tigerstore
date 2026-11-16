@@ -33,6 +33,10 @@ type node struct {
 	// sequence their ConfChange carries.
 	memberReqs map[uint64]memberReq
 	memberSeq  uint64
+	// confHold is what the leader holds back of membership changes while
+	// its Raft would drop them (confBlocked): followers' proposals, and
+	// its own clients' requests.
+	confHold confHold
 	// stopErr stops the loop at its next turn: the node was removed.
 	stopErr error
 	// snapWaiters wait for the checkpoint a client's Snapshot asked for;

@@ -139,6 +139,7 @@ func (n *node) appendNow(m *pb.Message) error {
 		}
 	}
 	ents := m.GetEntries()
+	n.confAppended(ents)
 	var hs []byte
 	var st *pb.HardState
 	if m.Term != nil {
@@ -446,6 +447,10 @@ func (n *node) peerFrames(p *peerIn) error {
 			return err
 		}
 		m.To = new(n.id)
+		if m.GetType() == pb.MsgProp && proposesConfChange(m) {
+			n.proposeConfChange(m, n.now)
+			continue
+		}
 		_ = n.rn.Step(m)
 	}
 }

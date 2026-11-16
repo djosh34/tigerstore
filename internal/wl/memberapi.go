@@ -105,6 +105,11 @@ func (n *node) memberRequest(c *client, s *stream, msg []byte) error {
 		n.reject(c, s, err)
 		return nil
 	}
+	if n.confBlocked() {
+		n.confHold.reqs = append(n.confHold.reqs, heldMember{h: mkHandle(c, s.id), msg: bytes.Clone(msg), at: n.now})
+		return nil
+	}
+	n.confHold.stepped = n.leading()
 	n.memberSeq++
 	cc.NodeId = new(mem.id)
 	cc.Context = ccContext(n.id, n.memberSeq, &mem)
