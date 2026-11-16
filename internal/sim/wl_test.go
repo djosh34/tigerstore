@@ -28,6 +28,7 @@ func TestWLRunsACalmSeed(t *testing.T) {
 		if res.Stats.OK < 100 {
 			t.Fatalf("only %d calls succeeded", res.Stats.OK)
 		}
+		checkers(t, res)
 		return res.Stats
 	}, nil)
 }
@@ -50,6 +51,7 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 		if res.Stats.Crashes == 0 {
 			t.Fatal("no crash")
 		}
+		checkers(t, res)
 		return res.Stats
 	}, nil)
 }
@@ -152,6 +154,7 @@ func runWLDamage(t *testing.T, kind damageKind, ckpt bool, count func(Stats) int
 		if count(st) == 0 {
 			t.Fatalf("no %v took effect", kind)
 		}
+		checkers(t, res)
 		return st
 	}, nil)
 }
@@ -178,6 +181,7 @@ func TestWLRecoversFromATornWriteOfTheStage(t *testing.T) {
 		if res.Stats.StageCrashes != 1 || res.Stats.StageRecoveries != 1 {
 			t.Fatalf("%d torn crashes, %d recoveries after one; want one each", res.Stats.StageCrashes, res.Stats.StageRecoveries)
 		}
+		checkers(t, res)
 		return res.Stats
 	}, nil)
 }
