@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -92,7 +93,10 @@ func TestRemoveEntryKeepsRunsFindable(t *testing.T) {
 func ckptNode(t *testing.T) (*node, *memLog) {
 	t.Helper()
 	st, l := newTestStore(t)
-	return &node{st: st, ckptDir: t.TempDir(), confState: &pb.ConfState{Voters: []uint64{1, 2, 3}}, storage: newLogStorage(l), auth: newAuthStore()}, l
+	n := &node{st: st, ckptDir: t.TempDir(), confState: &pb.ConfState{Voters: []uint64{1, 2, 3}}, storage: newLogStorage(l), auth: newAuthStore()}
+	n.rm = newRemover(n.sys, func() {})
+	t.Cleanup(n.rm.close)
+	return n, l
 }
 
 // writeCkpt writes a whole checkpoint, as the loop does turn by turn,
@@ -403,5 +407,43 @@ func TestACheckpointKeepsACompactionAtZero(t *testing.T) {
 		if got != want {
 			t.Fatalf("compacted at 0 before the checkpoint %v: a Compact at 0 after it got %q, want %q", compacted, got, want)
 		}
+	}
+}
+
+// A checkpoint makes and removes files off the loop's thread: under the
+// writeback of other checkpoints, unlinking the one before held the loop
+// 215 to 555 ms (#704). Its writer makes its file, and the remover
+// removes the checkpoint before, so neither waits in the loop.
+func TestACheckpointLeavesItsFilesToOtherGoroutines(t *testing.T) {
+	n, l := ckptNode(t)
+	putValue(t, n.st, l, "/a", "a1")
+	writeCkpt(t, n, 1)
+	first := filepath.Join(n.ckptDir, n.ckptName)
+
+	// A remover that removes nothing until it runs.
+	idle := &remover{sys: n.sys, paths: make(chan string, removerQueue), done: make(chan struct{}), wake: func() {}}
+	n.rm = idle
+	putValue(t, n.st, l, "/a", "a2")
+	if err := n.startCkpt(2, 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(n.ckptDir, n.ckpt.w.tmp)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the loop made the checkpoint's file: %v", err)
+	}
+	for n.ckpt != nil {
+		if err := n.ckptStep(n.ckpt.sent > 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(first); err != nil {
+		t.Fatalf("the loop removed the checkpoint before: %v", err)
+	}
+	go idle.run()
+	idle.close()
+	if _, err := os.Stat(first); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the remover left the checkpoint before: %v", err)
+	}
+	if got, ok := valueAt(t, n.st, "/a", n.st.rev); !ok || got != "a2" {
+		t.Fatalf("/a reads %q from the new checkpoint", got)
 	}
 }

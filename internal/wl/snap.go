@@ -160,9 +160,7 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	if err := writePointer(n.sys, n.ckptDir, &ckptPointer{gen: gen, name: name, logFrom: n.wal.off, cut: n.wal.off, hs: n.wal.durableHS}); err != nil {
 		return err
 	}
-	if err := n.wal.cut(n.wal.off); err != nil {
-		return err
-	}
+	n.removeAll(n.wal.cut(n.wal.off))
 	// The watches go on from where they were: they catch up from the
 	// changes the checkpoint holds, or learn that those are compacted. A
 	// watch from a revision still to come needs nothing before it, even

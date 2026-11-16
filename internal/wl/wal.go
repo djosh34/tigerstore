@@ -279,25 +279,25 @@ func (w *wal) removeSegments(k, to int64) error {
 	return nil
 }
 
-// cut removes the segments wholly before off, which nothing reads any
+// cut lets go of the segments wholly before off, which nothing reads any
 // more: the store's values and Raft's entries before it lie in a
-// checkpoint. Only the loop calls it.
-func (w *wal) cut(off int64) error {
+// checkpoint. It returns their paths, for the caller to remove off the
+// loop (remover). Only the loop calls it.
+func (w *wal) cut(off int64) []string {
 	k := min(off, w.stable) / segSize
 	if k <= w.rbase {
 		return nil
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	var paths []string
 	for w.rbase < k && len(w.rfds) > 0 {
 		_ = sysClose(w.rfds[0])
-		if err := w.sys.remove(segPath(w.dir, w.rbase)); err != nil {
-			return err
-		}
+		paths = append(paths, segPath(w.dir, w.rbase))
 		w.rfds = w.rfds[1:]
 		w.rbase++
 	}
-	return nil
+	return paths
 }
 
 // makeSegments makes the segments from k on, one ahead of the helper.

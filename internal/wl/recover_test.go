@@ -148,7 +148,7 @@ func TestTheLogIsCutBehindACheckpoint(t *testing.T) {
 	if from/segSize != 1 {
 		t.Fatalf("entry 100 lies in segment %d", from/segSize)
 	}
-	if err := w.cut(from); err != nil {
+	if err := removePaths(w.cut(from)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(segPath(dir, 0)); !os.IsNotExist(err) {
@@ -204,4 +204,15 @@ func TestTheLogGoesOnFromACheckpointPastItsEnd(t *testing.T) {
 	if got := allData(t, s3); !slices.Equal(got, []string{"fifty-one"}) {
 		t.Fatalf("entries after the checkpoint %q", got)
 	}
+}
+
+// removePaths removes what a cut of the log let go, as the node's remover
+// does.
+func removePaths(paths []string) error {
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -266,9 +266,7 @@ func (n *node) afterApply() error {
 		s.compact(n.applied - n.catchup)
 	}
 	if s.snap != nil {
-		if err := n.wal.cut(min(n.ckptCut, s.firstRecord(n.wal.off))); err != nil {
-			return err
-		}
+		n.removeAll(n.wal.cut(min(n.ckptCut, s.firstRecord(n.wal.off))))
 	}
 	return n.maybeCkpt()
 }

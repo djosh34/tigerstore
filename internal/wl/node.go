@@ -37,6 +37,8 @@ type node struct {
 	// its Raft would drop them (confBlocked): followers' proposals, and
 	// its own clients' requests.
 	confHold confHold
+	// rm removes files off the loop's thread.
+	rm *remover
 	// stopErr stops the loop at its next turn: the node was removed.
 	stopErr error
 	// snapWaiters wait for the checkpoint a client's Snapshot asked for;

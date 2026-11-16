@@ -152,14 +152,18 @@ const (
 type ckptWriter struct {
 	sys            sysEnv
 	dir, tmp, name string
-	f              file
-	prev           file // the checkpoint before, which values may lie in
-	crc            uint32
-	log            durableLog
-	in, out        chan *ckptChunk
-	quit           chan struct{}
-	wake           func()
-	span           []byte
+	// f is the file it writes, which it makes, off the loop (#704); the
+	// store takes it once the last chunk is back. unsynced counts the bytes
+	// written since its last sync.
+	f        file
+	unsynced int64
+	prev     file // the checkpoint before, which values may lie in
+	crc      uint32
+	log      durableLog
+	in, out  chan *ckptChunk
+	quit     chan struct{}
+	wake     func()
+	span     []byte
 
 	// For the stats line: time spent reading values and writing the
 	// file, and their bytes.
@@ -172,24 +176,49 @@ func (cw *ckptWriter) run() {
 		select {
 		case c = <-cw.in:
 		case <-cw.quit:
+			cw.closeFile()
 			return
 		}
 		c.err = cw.write(c)
 		select {
 		case cw.out <- c:
 		case <-cw.quit:
+			cw.closeFile()
 			return
 		}
 		if cw.wake != nil {
 			cw.wake()
 		}
-		if c.err != nil || c.last {
+		if c.err != nil {
+			cw.closeFile()
+			return
+		}
+		if c.last {
 			return
 		}
 	}
 }
 
+// closeFile closes the file of a checkpoint that the store will not take.
+func (cw *ckptWriter) closeFile() {
+	if cw.f != nil {
+		_ = cw.f.Close()
+	}
+}
+
+// ckptSyncEvery is how much a checkpoint writes between syncs, so that it
+// never leaves the kernel hundreds of MB to write back at once, on a disk
+// the log's syncs share (#704).
+const ckptSyncEvery = 32 << 20
+
 func (cw *ckptWriter) write(c *ckptChunk) error {
+	if cw.f == nil {
+		f, err := cw.sys.openFile(filepath.Join(cw.dir, cw.tmp), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
+		if err != nil {
+			return err
+		}
+		cw.f = f
+	}
 	t0 := time.Now()
 	if err := cw.readValues(c); err != nil {
 		return err
@@ -202,6 +231,12 @@ func (cw *ckptWriter) write(c *ckptChunk) error {
 	}
 	if _, err := cw.f.Write(c.buf); err != nil {
 		return fmt.Errorf("write a checkpoint: %w", err)
+	}
+	if cw.unsynced += int64(len(c.buf)); cw.unsynced >= ckptSyncEvery && !c.last {
+		if err := cw.f.Sync(); err != nil {
+			return fmt.Errorf("sync a checkpoint: %w", err)
+		}
+		cw.unsynced = 0
 	}
 	cw.writeNs.Add(int64(time.Since(t1)))
 	cw.writeBytes.Add(int64(len(c.buf)))
@@ -313,11 +348,6 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 	}
 	name := ckptName(index)
 	tmp := name + ".tmp"
-	f, err := n.sys.openFile(filepath.Join(n.ckptDir, tmp), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	st.ckpts[gen] = f
 	st.hold()
 	r := &ckptRun{
 		meta:     ckptMeta{index: index, term: term, cs: proto.Clone(n.confState).(*pb.ConfState), rev: st.rev, compactRev: st.compactRev, compacted: st.compacted},
@@ -336,7 +366,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 	dl, _ := st.log.(durableLog)
 	r.w = &ckptWriter{
 		sys: n.sys,
-		dir: n.ckptDir, tmp: tmp, name: name, f: f, prev: st.ckpts[1-gen], log: dl,
+		dir: n.ckptDir, tmp: tmp, name: name, prev: st.ckpts[1-gen], log: dl,
 		in: make(chan *ckptChunk, ckptInflight), out: make(chan *ckptChunk, ckptInflight),
 		quit: make(chan struct{}),
 	}
@@ -493,6 +523,8 @@ func (n *node) ckptDone() error {
 	n.ckpt = nil
 	old := n.ckptGen
 	oldName := n.ckptName
+	// The writer is done with the file: the store reads values from it now.
+	n.st.ckpts[r.gen] = r.w.f
 	for _, v := range r.rels {
 		n.st.repoint(v.id, v.src, ckptOff(r.gen, v.dst))
 	}
@@ -512,9 +544,7 @@ func (n *node) ckptDone() error {
 		n.st.ckpts[old] = nil
 	}
 	if oldName != "" && oldName != n.ckptName {
-		if err := n.sys.remove(filepath.Join(n.ckptDir, oldName)); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
+		n.rm.remove(filepath.Join(n.ckptDir, oldName))
 	}
 	return nil
 }

@@ -208,6 +208,7 @@ func run(ctx context.Context, cfg Config) error {
 
 	l := &loop{n: n, dials: map[uint64]*dialer{}, logger: logger, lastAt: time.Now(), peerTLS: cfg.PeerClientTLS}
 	n.shell = l
+	n.rm = newRemover(n.sys, l.wakeLoop)
 	if l.epfd, err = n.sys.epollCreate(); err != nil {
 		return err
 	}
@@ -607,6 +608,9 @@ func (l *loop) shut(listeners ...net.Listener) {
 	}
 	l.n.abortCkpt()
 	l.n.wal.close()
+	if l.n.rm != nil {
+		l.n.rm.close()
+	}
 	_ = sysClose(l.epfd)
 	_ = sysClose(l.hoFD)
 }
@@ -841,6 +845,9 @@ func (l *loop) run() error {
 			n.expireTokens()
 			n.notifyProgress()
 			n.retryProgress()
+			if err := n.rm.failed.Load(); err != nil {
+				return *err
+			}
 			if err := n.maybeCkpt(); err != nil {
 				return err
 			}
