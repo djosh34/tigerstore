@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -54,6 +55,8 @@ type loop struct {
 	mu       sync.Mutex
 	stopped  bool
 	handoffs []*handoff
+	// recvSeq numbers the snapshots received, for their files' names.
+	recvSeq atomic.Uint64
 	// posts are what other goroutines hand the loop to run.
 	posts   []func() error
 	dials   map[uint64]*dialer // by member, while it is one

@@ -89,11 +89,17 @@ func (n *node) sendSnapshot(m *pb.Message) {
 
 // takeSnapshot steps a snapshot received into the file at path.
 func (n *node) takeSnapshot(path string, m *pb.Message) {
+	n.keepRecv(path)
+	_ = n.rn.Step(m)
+}
+
+// keepRecv makes path the snapshot received last, and removes the one
+// before unless an append that waits for room in the log carries it.
+func (n *node) keepRecv(path string) {
 	if prev := n.recvSnap; prev != "" && !n.snapWaits(prev) {
 		_ = n.sys.remove(prev)
 	}
 	n.recvSnap = path
-	_ = n.rn.Step(m)
 }
 
 // snapWaits reports whether an append that waits for room in the log
@@ -454,7 +460,7 @@ func (l *loop) receiveSnapshot(s *sock, from uint64) error {
 		return err
 	}
 	term, index, snapTerm, size := v[1], v[2], v[3], int64(v[4])
-	path := filepath.Join(l.n.ckptDir, fmt.Sprintf("recv-%d-%016x.tmp", from, index))
+	path := l.recvPath(from, index)
 	if err := receiveFile(l.n.sys, s, path, size); err != nil {
 		_ = l.n.sys.remove(path)
 		return err
@@ -476,6 +482,14 @@ func (l *loop) receiveSnapshot(s *sock, from uint64) error {
 		return nil
 	})
 	return nil
+}
+
+// recvPath is the file of a snapshot at index received from a peer. Each
+// reception has its own: a leader may send the same snapshot again, while
+// the file of the one before is still the node's to install or to remove
+// (takeSnapshot, #713).
+func (l *loop) recvPath(from, index uint64) string {
+	return filepath.Join(l.n.ckptDir, fmt.Sprintf("recv-%d-%016x-%d.tmp", from, index, l.recvSeq.Add(1)))
 }
 
 // receiveFile writes the stream's frames to path, up to an empty one, and

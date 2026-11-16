@@ -66,7 +66,9 @@ func runMembership(t *testing.T, seed uint64) Stats {
 // failed. On seed 881969382 a node's directory sync failed as it wrote a
 // checkpoint, and its crash after kept the pointer to the checkpoint but
 // lost the rename that gave the checkpoint its name: the node could not
-// start again (#711).
+// start again (#711). On seed 914212814 a leader sent a follower the same
+// snapshot again, and the follower removed the file it had just received
+// as the one before: its install found no file and stopped it (#713).
 func TestMembershipFaultSeeds(t *testing.T) {
-	simrun.Each(t, []uint64{881969382}, runMembership, nil)
+	simrun.Each(t, []uint64{881969382, 914212814}, runMembership, nil)
 }
