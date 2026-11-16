@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
@@ -212,12 +213,23 @@ func procFile(string) ([]byte, error) { return nil, os.ErrNotExist }
 // checkpoint's cut removes some.
 const segSize = 16 << 10
 
-// The room the store's tables reserve in the simulator, where it is Go's
-// memory: enough for its loads, a node a few hundred MiB at most.
+// The room the rings and the store's tables reserve in the simulator,
+// where it is Go's memory, made again at each start of a node: enough for
+// its loads. A run starts many nodes, cold restarts among them, and a
+// campaign runs four runs on a runner at once (TestAWLNodeOfTheSimulatorIsSmall).
 const (
-	maxKeys   = 1 << 20
-	maxHist   = 1 << 20
-	keyArena  = 64 << 20
-	dirArena  = 16 << 20
-	slabBytes = 256 << 20
+	ringMax   = 8 << 20
+	maxKeys   = 1 << 16
+	maxHist   = 1 << 18
+	keyArena  = 16 << 20
+	dirArena  = 4 << 20
+	slabBytes = 64 << 20
 )
+
+// SimFootprint is what a node of the simulator makes at its start with
+// budget bytes: its rings and stage, and the room its store's tables
+// reserve.
+func SimFootprint(budget int64) int64 {
+	return sizeFor(budget).mapped() + maxKeys*int64(unsafe.Sizeof(keyEnt{})) + maxHist*int64(unsafe.Sizeof(histEnt{})) +
+		keyArena + dirArena + slabBytes
+}

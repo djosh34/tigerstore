@@ -270,6 +270,7 @@ const segSize = 64 << 20
 // The room the store's tables reserve: address space mapped with
 // MAP_NORESERVE, backed only where a table reaches.
 const (
+	ringMax   = 64 << 20 // the largest ring (sizeFor)
 	maxKeys   = 1 << 27
 	maxHist   = 1 << 26
 	keyArena  = 4 << 30

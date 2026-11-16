@@ -40,7 +40,7 @@ func sizeFor(budget int64) sizes {
 	if budget <= 0 {
 		budget = unbudgeted
 	}
-	ring := int(min(max(budget/48, 8<<20), 64<<20)) &^ (block - 1)
+	ring := int(min(max(budget/48, 8<<20), ringMax)) &^ (block - 1)
 	stage := 4 << 20
 	for stage*2 <= ring/2 {
 		stage *= 2
