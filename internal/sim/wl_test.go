@@ -53,6 +53,30 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 	}, nil)
 }
 
+// A wl cluster runs DefaultConfig's faults but those of main's engine
+// alone (recovery's and a snapshot fetch's steps, rot of a value in a
+// segment, cold restarts from checkpoints) and damage to a disk at rest,
+// which wl does not run yet: disk errors, short writes, stalls, file
+// systems that shut down or go read-only, full disks, checkpoints that
+// cut the log, link stalls, half-open connections, netem, resets, gray
+// nodes and clients, slow watchers, clock drift and held-down nodes.
+func TestWLRunsTheFaults(t *testing.T) {
+	simrun.Each(t, []uint64{8}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.wl, cfg.FormUnderFaults = true, true
+		f := &cfg.Faults
+		f.Checkpoint, f.RecoveryCrash, f.StepCrash, f.FlipSnapshot, f.FetchCrash, f.SlowFetch, f.Rot, f.Corrupt = false, false, false, false, false, false, false, false
+		res := run(t, cfg)
+		st := res.Stats
+		t.Logf("calls: %d ok, %d failed, %d ambiguous; crashes %d, disk faults %d, file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
+			st.OK, st.Failed, st.Ambiguous, st.Crashes, st.DiskFaults, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
+		if st.DiskFaults == 0 {
+			t.Fatal("no disk fault fired")
+		}
+		return st
+	}, nil)
+}
+
 // The log's stage race (internal/wl/wal.go, writeLoop): the helper writes
 // the stage's last block whole while the loop appends past the durable
 // end in it. A crash right after such a write and before its sync keeps

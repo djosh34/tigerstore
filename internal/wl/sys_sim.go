@@ -198,6 +198,11 @@ func (f *simFile) Close() error                              { return fds().Clos
 // procFile has nothing in the simulator, which has no /proc.
 func procFile(string) ([]byte, error) { return nil, os.ErrNotExist }
 
+// segSize is the size of a segment of the log (wal.go). The simulator's
+// disks hold some hundred KiB, so its segments are small enough that a
+// checkpoint's cut removes some.
+const segSize = 16 << 10
+
 // The room the store's tables reserve in the simulator, where it is Go's
 // memory: enough for its loads, a node a few hundred MiB at most.
 const (

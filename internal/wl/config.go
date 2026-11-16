@@ -69,6 +69,14 @@ type Config struct {
 	// both 0 for none.
 	AutoCompactPeriod    time.Duration
 	AutoCompactRevisions int64
+	// CheckpointLog is the log written after the newest checkpoint before
+	// the next is taken, 0 for ckptMin, and CatchupEntries the applied
+	// entries Raft's storage keeps for followers that lag, as etcd's
+	// --experimental-snapshot-catchup-entries, 0 for storageWindow. The
+	// simulator, whose disks are small, sets both lower, so that the log
+	// behind a checkpoint is cut.
+	CheckpointLog  int64
+	CatchupEntries uint64
 }
 
 // Member is one member of the cluster.

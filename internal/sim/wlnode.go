@@ -81,9 +81,12 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		PeerListeners:   []net.Listener{s.net.listen(s, p, n.addrs)},
 		ClientTLS:       srvTLS, PeerServerTLS: peerTLS, PeerClientTLS: peerTLS,
 		MemoryBudget: s.cfg.MemoryBytes,
-		Logger:       log.New(&nodeLog{s: s, n: n}, "", 0),
-		Sys:          s.os.NewNode(wlDataDir, &disk{s: s, p: p}, wlNet{s: s, p: p}),
-		Hooks:        &wlHooks{s: s, p: p},
+		// A checkpoint, which cuts the log behind it, every DiskBudget of
+		// log, as main's node cleans within it.
+		CheckpointLog: s.cfg.Faults.DiskBudget, CatchupEntries: wlCatchup,
+		Logger: log.New(&nodeLog{s: s, n: n}, "", 0),
+		Sys:    s.os.NewNode(wlDataDir, &disk{s: s, p: p}, wlNet{s: s, p: p}),
+		Hooks:  &wlHooks{s: s, p: p},
 	}
 	conn, err := grpc.NewClient(
 		"passthrough:///"+clientAddr(n.idx),
@@ -104,6 +107,12 @@ func (s *Sim) startWL(n *node, p *proc) error {
 	})
 	return nil
 }
+
+// wlCatchup is the applied entries a wl node's Raft storage keeps for
+// followers that lag: few enough that the log behind a checkpoint is cut
+// on the run's small disks, and that a follower down for a while catches
+// up from a checkpoint.
+const wlCatchup = 64
 
 // wlDataDir is a wl node's data dir; its disk holds what is under it.
 const wlDataDir = "/data"

@@ -116,8 +116,14 @@ type node struct {
 	// the loop's time encoding the last is at most 1/ckptLoopShare of the
 	// time since it started.
 	ckptNotBefore time.Time
-	ckptName      string
-	ckptDir       string
+	// ckptLog is the log written after the newest checkpoint before the
+	// next is taken (Config.CheckpointLog).
+	ckptLog  int64
+	ckptName string
+	// catchup is the applied entries the storage keeps for followers
+	// that lag (Config.CatchupEntries).
+	catchup uint64
+	ckptDir string
 	// recvSnap is a snapshot received and not installed yet.
 	recvSnap string
 	// shell does what takes other goroutines: waking the loop, and

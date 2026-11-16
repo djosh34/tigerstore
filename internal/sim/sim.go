@@ -471,6 +471,14 @@ type proc struct {
 
 func (p *proc) dead() bool { return p.ctx.Err() != nil }
 
+// leader is the leader p's node knows, or 0. The lock is held.
+func (p *proc) leader() uint64 {
+	if p.wl != nil {
+		return p.wl.turn.Lead
+	}
+	return p.node.Leader()
+}
+
 // out reports whether n is out of the cluster for now: fenced, or not a
 // member.
 func (n *node) out() bool { return n.fenced || n.inactive }

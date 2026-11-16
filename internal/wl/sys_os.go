@@ -212,6 +212,9 @@ func fdLimit() uint64 {
 // procFile reads a file of /proc, for the stats line.
 func procFile(path string) ([]byte, error) { return os.ReadFile(path) }
 
+// segSize is the size of a segment of the log (wal.go).
+const segSize = 64 << 20
+
 // The room the store's tables reserve: address space mapped with
 // MAP_NORESERVE, backed only where a table reaches.
 const (

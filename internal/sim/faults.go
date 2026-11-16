@@ -276,7 +276,7 @@ func (s *Sim) downFollower() bool {
 		return true
 	}
 	for _, n := range s.nodes {
-		if p := n.proc; p != nil && p.node.Leader() != 0 && p.node.Leader() != n.id {
+		if p := n.proc; p != nil && p.leader() != 0 && p.leader() != n.id {
 			n.why = "the run holds it down"
 			s.crash(n)
 			s.restartLater(n, s.downFor)
