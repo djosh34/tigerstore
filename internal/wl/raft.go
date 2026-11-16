@@ -466,7 +466,7 @@ func (n *node) peerFrames(p *peerIn) error {
 		s.pr += 4 + l
 		if len(p.held) > 0 && (len(f) < batchFrameHdr || f[0] != frameBatch) {
 			// Messages from a peer keep their order behind one held.
-			p.held = append(p.held, append([]byte(nil), f...))
+			p.held = append(p.held, heldMsg{f: append([]byte(nil), f...), at: n.now})
 			continue
 		}
 		if len(f) == 1 && f[0] == frameCarry {
@@ -488,10 +488,7 @@ func (n *node) peerFrames(p *peerIn) error {
 			// The batch it names comes on another connection, likely in
 			// this same turn: try again after the turn's input.
 			n.stats.held++
-			if len(p.held) == 0 {
-				p.heldSince = time.Now()
-			}
-			p.held = append(p.held, append([]byte(nil), f...))
+			p.held = append(p.held, heldMsg{f: append([]byte(nil), f...), at: n.now})
 			n.holding = true
 			continue
 		}
@@ -652,7 +649,13 @@ func entrySpan(typ pb.MessageType, now time.Time) span {
 var errUnnamed = errors.New("a named entry this node does not have")
 
 // retryHeld decodes again, in order, the messages held behind an append
-// that named a batch not here yet.
+// that named a batch not here yet. An append whose batch has not come
+// within namedWait of the append itself is dropped, and the leader is
+// asked to carry batches for a while; Raft resends what this node then
+// lacks. Every such append in the queue goes at once: a follower that
+// let go of many batches, as one whose disk stalled while the leader
+// named them, would otherwise drop one append a turn while new
+// heartbeats queue behind the rest, and lose its leader (#706).
 func (n *node) retryHeld() {
 	n.holding = false
 	for _, x := range n.socks {
@@ -660,19 +663,25 @@ func (n *node) retryHeld() {
 		if !ok || len(p.held) == 0 {
 			continue
 		}
-		k := 0
+		k, asked := 0, false
 		for ; k < len(p.held); k++ {
-			m, err := n.decodeMsg(p.held[k])
-			if errors.Is(err, errUnnamed) && k == 0 && time.Since(p.heldSince) > 100*time.Millisecond {
-				// The batch never came, as when its proposer had no
-				// connection to this node yet: drop the append and ask
-				// the leader to carry batches for a while. Raft resends
-				// what this node then lacks.
-				n.askCarry(p.from)
+			h := &p.held[k]
+			if len(h.f) == 1 && h.f[0] == frameCarry {
+				n.carryUntil[p.from] = time.Now().Add(time.Second)
 				continue
 			}
+			m, err := n.decodeMsg(h.f)
 			if errors.Is(err, errUnnamed) {
-				break
+				if n.now.Sub(h.at) < namedWait {
+					break
+				}
+				// The batch never came, as when its proposer had no
+				// connection to this node yet, or this node let it go.
+				if !asked {
+					n.askCarry(p.from)
+					asked = true
+				}
+				continue
 			}
 			if err == nil {
 				m.To = new(n.id)
@@ -681,14 +690,16 @@ func (n *node) retryHeld() {
 		}
 		clear(p.held[:k])
 		p.held = append(p.held[:0], p.held[k:]...)
-		if k > 0 {
-			p.heldSince = time.Now()
-		}
 		if len(p.held) > 0 {
 			n.holding = true
 		}
 	}
 }
+
+// namedWait is how long an append that names a batch not here waits for
+// it: the batch comes on another peer's connection, usually in the same
+// turn.
+const namedWait = 100 * time.Millisecond
 
 // rxCopy copies received entry data into the receive ring as span s, or
 // to the heap when the ring has no room.

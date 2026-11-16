@@ -51,8 +51,8 @@ func (n *node) memStats() memStats {
 			m.clientPartial += c.partial
 		}
 		if p, ok := x.(*peerIn); ok {
-			for _, f := range p.held {
-				m.held += int64(cap(f))
+			for _, h := range p.held {
+				m.held += int64(cap(h.f))
 			}
 		}
 	}

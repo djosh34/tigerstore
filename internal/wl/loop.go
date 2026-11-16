@@ -32,9 +32,14 @@ type peerOut struct {
 type peerIn struct {
 	sock
 	from uint64
-	held [][]byte // messages that wait behind an append naming a batch not here yet
-	// heldSince is when the first of held came.
-	heldSince time.Time
+	held []heldMsg // messages that wait behind an append naming a batch not here yet
+}
+
+// heldMsg is a peer's message held in order behind an append that named a
+// batch not here yet, with when it came.
+type heldMsg struct {
+	f  []byte
+	at time.Time
 }
 
 // loop owns the epoll instance and the node.

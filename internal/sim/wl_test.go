@@ -238,7 +238,6 @@ func TestAWLNodeOfTheSimulatorIsSmall(t *testing.T) {
 // and every call to a healthy node that starts 10 election timeouts after
 // the stall succeeds (silent.go).
 func TestWLStalledLeaderIsReplaced(t *testing.T) {
-	t.Skip("#706: the stalled node rejoins 4.5 s after its disk heals, and calls to it 1 s after healing time out; the silence itself holds on seeds 1 to 3")
 	election := 10 * TickTime
 	simrun.Each(t, []uint64{1, 2, 3}, func(t *testing.T, seed uint64) Stats {
 		cfg := wlStalledLeaderConfig(seed)
@@ -262,16 +261,4 @@ func TestWLStalledLeaderIsReplaced(t *testing.T) {
 		t.Logf("seed %d: the stalled leader %s at %d ms, deadline %d ms after its oldest held append at %d ms", seed, what, at/Millisecond, limit/Millisecond, res.HeldAppendAt/Millisecond)
 		return res.Stats
 	}, nil)
-}
-
-// wlStalledLeaderConfig is planted_test.go's stalledLeaderConfig on wl
-// nodes: no faults but the leader's disk, stalled at 5 s until healing.
-func wlStalledLeaderConfig(seed uint64) Config {
-	cfg := DefaultConfig(seed)
-	cfg.wl, cfg.FormUnderFaults = true, true
-	cfg.Faults = Faults{}
-	cfg.StallLeaderAt = 5 * Second
-	cfg.LiveFrom = cfg.StallLeaderAt + 10*Second
-	cfg.Duration = 25 * Second
-	return cfg
 }
