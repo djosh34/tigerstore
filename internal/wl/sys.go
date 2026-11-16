@@ -96,4 +96,17 @@ type TurnState struct {
 	Rev int64
 	// Watchers counts the node's watchers.
 	Watchers int
+	// Members are the members as of the applied index, in ID order, and
+	// Removed the IDs of those the cluster removed, in order. Both are
+	// the node's own and change only when the members do: a hook keeps
+	// them as they are.
+	Members []TurnMember
+	Removed []uint64
+}
+
+// TurnMember is a member as TurnState shows it.
+type TurnMember struct {
+	ID       uint64
+	PeerURLs []string
+	Learner  bool
 }

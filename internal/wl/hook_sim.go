@@ -5,7 +5,9 @@ package wl
 import (
 	"encoding/binary"
 	"hash/fnv"
+	"maps"
 	"math"
+	"slices"
 
 	pb "go.etcd.io/raft/v3/raftpb"
 )
@@ -15,8 +17,13 @@ import (
 // durable, and the end of each turn of its loop.
 
 // simState is the simulator's state of a node: the store's revision
-// before the entry being applied, whose changes come after it.
-type simState struct{ rev int64 }
+// before the entry being applied, whose changes come after it, and the
+// members and removed IDs the last turn showed.
+type simState struct {
+	rev     int64
+	members []TurnMember
+	removed []uint64
+}
 
 func (n *node) simRecovered() {
 	n.sys.sim.rev = n.st.rev
@@ -113,10 +120,30 @@ func (n *node) simTurn() {
 			watchers++
 		}
 	}
+	n.simMembers()
 	h.Turn(TurnState{
 		Lead: n.lead, Term: n.term, Commit: n.commit, Applied: n.applied,
 		First: first, Format: n.format, Rev: n.st.rev, Watchers: watchers,
+		Members: n.sys.sim.members, Removed: n.sys.sim.removed,
 	})
+}
+
+// simMembers makes new lists of the members and the removed IDs for the
+// turn's hook when they changed since the last turn. Removals only grow.
+func (n *node) simMembers() {
+	sim := n.sys.sim
+	same := slices.EqualFunc(n.members, sim.members, func(m member, t TurnMember) bool {
+		return m.id == t.ID && m.learner == t.Learner && slices.Equal(m.peerURLs, t.PeerURLs)
+	})
+	if !same {
+		sim.members = make([]TurnMember, 0, len(n.members))
+		for _, m := range n.members {
+			sim.members = append(sim.members, TurnMember{ID: m.id, PeerURLs: slices.Clone(m.peerURLs), Learner: m.learner})
+		}
+	}
+	if len(n.removed) != len(sim.removed) {
+		sim.removed = slices.Sorted(maps.Keys(n.removed))
+	}
 }
 
 // simInstalled starts the changes from the store a snapshot installed.

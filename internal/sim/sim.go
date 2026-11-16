@@ -1834,7 +1834,7 @@ func (s *Sim) exited(p *proc, err error) {
 		// process, as a start on this disk refuses it. The restart
 		// fences it.
 		s.stopNode(n)
-	case s.cfg.Membership && core.FailureOf(err) == core.Leave:
+	case s.cfg.Membership && (core.FailureOf(err) == core.Leave || errors.Is(err, wl.ErrRemoved)):
 		n.inactive = true
 		s.down(n)
 	case injected(err):

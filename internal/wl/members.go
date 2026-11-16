@@ -169,8 +169,8 @@ var (
 	errTooManyLearn  = requestErr(codeFailedPrecondition, "etcdserver: too many learner members in cluster")
 )
 
-// errRemoved stops a node the cluster removed.
-var errRemoved = errors.New("the member was removed from the cluster")
+// ErrRemoved stops a node the cluster removed: wl.Run returns it.
+var ErrRemoved = errors.New("the member was removed from the cluster")
 
 // removedNotice is what a member says on a connection from a member the
 // cluster removed, before it closes it.
@@ -281,7 +281,7 @@ func (n *node) applyConfChange(cc *pb.ConfChange, index uint64) error {
 		n.answerMemberRequest(seq, rerr)
 	}
 	if rerr == nil && cc.GetType() == pb.ConfChangeRemoveNode && cc.GetNodeId() == n.id {
-		return errRemoved
+		return ErrRemoved
 	}
 	if n.shell != nil {
 		n.shell.membersChanged()

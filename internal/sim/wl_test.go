@@ -187,3 +187,33 @@ func watched(res *Result) string {
 	}
 	return fmt.Sprintf("%d logical watches got %d events, %d compacted", len(res.Watches), events, res.Stats.WatchCompacted)
 }
+
+// A wl cluster adds a fourth member as a learner, moves it to another
+// peer URL, promotes it and removes it, one change after the other,
+// under TestWLRunsTheFaults' faults spaced as membershipConfig spaces
+// them; each answer matches the member list, and every node ends with
+// the final members and the removal.
+func TestWLMembershipFaults(t *testing.T) {
+	simrun.Seeds(t, 1, 4, func(t *testing.T, seed uint64) Stats {
+		res := run(t, wlMembershipConfig(seed))
+		for i, count := range res.Stats.MembershipChanges {
+			if count != 1 {
+				t.Fatalf("stage %d completed %d times", i, count)
+			}
+		}
+		checkers(t, res)
+		t.Logf("calls: %d ok, %d failed, %d ambiguous; membership attempts %d, during faults %v; crashes %d, disk faults %d, link changes %d; %s",
+			res.Stats.OK, res.Stats.Failed, res.Stats.Ambiguous, res.Stats.MembershipAttempts, res.Stats.MembershipFaults, res.Stats.Crashes, res.Stats.DiskFaults, res.Stats.LinkChanges, watched(res))
+		return res.Stats
+	}, nil)
+}
+
+// wlMembershipConfig is membershipConfig on wl nodes, without the faults
+// wlFaultsConfig leaves out.
+func wlMembershipConfig(seed uint64) Config {
+	cfg := membershipConfig(seed)
+	cfg.wl, cfg.FormUnderFaults = true, true
+	f := &cfg.Faults
+	f.Checkpoint, f.FlipSnapshot, f.FetchCrash, f.SlowFetch, f.Rot = false, false, false, false, false
+	return cfg
+}

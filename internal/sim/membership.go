@@ -194,9 +194,24 @@ func (s *Sim) checkMembership() error {
 		return fmt.Errorf("membership: completed %d of 4 changes; the last answer that did not complete stage %d was %s", w.stage, w.stage, w.last)
 	}
 	for _, n := range s.live() {
-		if c := n.proc.core; !s.membership.matches(c.Members()) || !slices.Contains(c.RemovedMembers(), s.membership.id) {
-			return fmt.Errorf("membership: node %d lost the final members or removal tombstone", n.id)
+		ms, removed := n.members()
+		if !s.membership.matches(ms) || !slices.Contains(removed, s.membership.id) {
+			return fmt.Errorf("membership: node %d lost the final members or removal tombstone: members %s, removed %v", n.id, describeMembers(ms), removed)
 		}
 	}
 	return nil
+}
+
+// members are the members n's process knows, and the IDs it knows were
+// removed. The nodes are frozen.
+func (n *node) members() ([]*pb.Member, []uint64) {
+	if w := n.proc.wl; w != nil {
+		var ms []*pb.Member
+		for _, m := range w.turn.Members {
+			ms = append(ms, &pb.Member{ID: m.ID, PeerURLs: m.PeerURLs, IsLearner: m.Learner})
+		}
+		return ms, w.turn.Removed
+	}
+	c := n.proc.core
+	return c.Members(), c.RemovedMembers()
 }

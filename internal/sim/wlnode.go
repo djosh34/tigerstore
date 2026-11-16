@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -68,18 +69,26 @@ func wlMembers() []wl.Member {
 // (wlHooks.Recovered); a start that fails ends as the process does
 // (exited). The lock is held.
 func (s *Sim) startWL(n *node, p *proc) error {
-	if n.idx >= 3 {
-		return fmt.Errorf("node %d: a wl run has three members", n.id)
-	}
 	ms := wlMembers()
+	join := n.idx == 3
+	if join {
+		// The fourth member, which the membership work added (Config.Membership),
+		// joins the running cluster at the peer URL it has now.
+		url := memberURL
+		if s.membership.stage >= 2 {
+			url = updatedMemberURL
+		}
+		ms = append(ms, wl.Member{ID: n.id, Name: "node4", PeerURLs: []string{url}, ClientURLs: []string{"https://" + clientAddr(3)}})
+	}
+	self := slices.IndexFunc(ms, func(m wl.Member) bool { return m.ID == n.id })
 	srvTLS := &tls.Config{Certificates: []tls.Certificate{s.net.cert}, MinVersion: tls.VersionTLS12}
 	peerTLS := &tls.Config{
 		Certificates: []tls.Certificate{s.net.cert}, RootCAs: s.net.ca, ClientCAs: s.net.ca,
 		ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS12,
 	}
 	cfg := wl.Config{
-		Name: ms[n.idx].Name, ID: n.id, ClusterID: wlCluster, DataDir: wlDataDir, Members: ms,
-		ClientURLs:      ms[n.idx].ClientURLs,
+		Name: ms[self].Name, ID: n.id, ClusterID: wlCluster, DataDir: wlDataDir, Members: ms, Join: join,
+		ClientURLs:      ms[self].ClientURLs,
 		ClientListeners: []net.Listener{s.net.listen(s, p, []string{clientAddr(n.idx)})},
 		PeerListeners:   []net.Listener{s.net.listen(s, p, n.addrs)},
 		ClientTLS:       srvTLS, PeerServerTLS: peerTLS, PeerClientTLS: peerTLS,
@@ -305,6 +314,16 @@ func (s *Sim) callWL(p *proc, req proto.Message, ctx context.Context) (proto.Mes
 		return pb.NewLeaseClient(conn).LeaseGrant(ctx, r)
 	case *pb.LeaseRevokeRequest:
 		return pb.NewLeaseClient(conn).LeaseRevoke(ctx, r)
+	case *pb.MemberAddRequest:
+		return pb.NewClusterClient(conn).MemberAdd(ctx, r)
+	case *pb.MemberUpdateRequest:
+		return pb.NewClusterClient(conn).MemberUpdate(ctx, r)
+	case *pb.MemberPromoteRequest:
+		return pb.NewClusterClient(conn).MemberPromote(ctx, r)
+	case *pb.MemberRemoveRequest:
+		return pb.NewClusterClient(conn).MemberRemove(ctx, r)
+	case *pb.MemberListRequest:
+		return pb.NewClusterClient(conn).MemberList(ctx, r)
 	case *pb.LeaseKeepAliveRequest:
 		ka, err := pb.NewLeaseClient(conn).LeaseKeepAlive(ctx)
 		if err != nil {

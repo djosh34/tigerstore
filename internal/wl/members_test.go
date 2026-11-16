@@ -136,7 +136,7 @@ func TestMembersChangeThroughRaft(t *testing.T) {
 	}
 	select {
 	case err := <-tc.stopped[i]:
-		if !errors.Is(err, errRemoved) {
+		if !errors.Is(err, ErrRemoved) {
 			t.Fatalf("the removed node stopped with %v", err)
 		}
 		tc.cancels[i]()

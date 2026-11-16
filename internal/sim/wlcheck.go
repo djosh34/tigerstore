@@ -23,6 +23,11 @@ func (s *Sim) checkWL(res *Result) error {
 	if err != nil {
 		return err
 	}
+	if s.cfg.Membership {
+		if err := s.checkMembership(); err != nil {
+			return err
+		}
+	}
 	applied := live[0].proc.wl.turn.Applied
 	ents, err := s.committed(applied)
 	if err != nil {
