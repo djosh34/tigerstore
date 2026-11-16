@@ -24,6 +24,8 @@ go build -C "$root/tools/gosim" -o "$GOSIMTOOL" github.com/jellevandenhooff/gosi
 cd "$root"
 "$GOSIMTOOL" build-tests ${tags:+-tags "$tags"} -allow-unimplemented internal/sim/reachable.txt "$pkg"
 test=$bin/$(basename "$pkg")${tags:+-$tags}.test
-go test -c ${tags:+-tags "$tags"} -o "$test" "$pkg"
+# The native binary takes the tag simio, as gosim's translation takes
+# sim: wl's nodes run on the simulator's seam (internal/wl/sys.go).
+go test -c -tags "simio${tags:+,$tags}" -o "$test" "$pkg"
 cd "$pkg"
 exec "$test" -test.run "$pattern" "$@"

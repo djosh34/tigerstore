@@ -538,7 +538,7 @@ jobs:
         run: |
           tests=$(scripts/race-sim-shard.sh "$SHARD" 4)
           echo "shard $SHARD of 4: $tests"
-          go test -race -timeout 65m -run "$tests" ./internal/sim 2>&1 | tee "$RUNNER_TEMP/race-sim.log"
+          go test -race -tags simio -timeout 65m -run "$tests" ./internal/sim 2>&1 | tee "$RUNNER_TEMP/race-sim.log"
         env:
           SHARD: ${{ matrix.shard }}
           SIM_OUT: ${{ runner.temp }}/sim-out

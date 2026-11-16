@@ -111,6 +111,12 @@ func (s *Sim) check(res *Result) error {
 	if err := s.checkRecoverable(); err != nil {
 		return err
 	}
+	return s.checkLive(res)
+}
+
+// checkLive checks that every call that started after the cluster healed
+// succeeded, but those a node's own trouble explains.
+func (s *Sim) checkLive(res *Result) error {
 	live := 0
 	liveFrom := s.liveFrom()
 	for _, r := range res.History {

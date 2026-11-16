@@ -58,7 +58,12 @@ func (d *disk) call(op simfs.Op, name string, f func() error) error {
 	return s.afterCall(d.p, op, name)
 }
 
-func isSegment(name string) bool    { return strings.HasSuffix(name, ".wal") }
+// isSegment reports whether name is a segment of the log: main's, or
+// wl's (wal/<index>.seg).
+func isSegment(name string) bool {
+	return strings.HasSuffix(name, ".wal") || strings.HasSuffix(name, ".seg")
+}
+
 func isCheckpoint(name string) bool { return strings.HasPrefix(name, "ckpt-") }
 
 // afterCall notes what a disk call of p made durable, and crashes p there
@@ -224,6 +229,12 @@ func (f *file) Truncate(size int64) error {
 }
 
 func (f *file) Sync() error {
+	if f.d.s.cfg.wl && isSegment(f.name) {
+		// wl's log writes are durable when they return: each is a write
+		// and a sync of its segment, which takes the time beforeSync
+		// gives, as main's node waits on BeforeSync.
+		f.d.s.beforeSync(f.d.p)
+	}
 	return f.d.call(simfs.OpSync, f.name, func() error {
 		if err := f.f.Sync(); err != nil {
 			return err

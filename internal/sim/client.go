@@ -9,6 +9,8 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/simrun"
@@ -170,12 +172,18 @@ func (s *Sim) call(n *node, req proto.Message, timeout int64) (proto.Message, er
 		cancel()
 		ctx, cancel = context.WithTimeout(p.ctx, time.Duration(deadline-s.now()))
 	}
-	resp, err := p.node.Do(ctx, req)
+	var resp proto.Message
+	var err error
+	if p.wl != nil {
+		resp, err = s.callWL(p, req, ctx)
+	} else {
+		resp, err = p.node.Do(ctx, req)
+	}
 	cancel()
 	switch {
 	case p.dead():
 		resp, err = nil, errConnLost
-	case errors.Is(err, context.DeadlineExceeded):
+	case errors.Is(err, context.DeadlineExceeded) || status.Code(err) == codes.DeadlineExceeded:
 		return nil, errClientTimeout
 	case errors.Is(err, rpctypes.ErrGRPCStopped):
 		s.mu.Lock()

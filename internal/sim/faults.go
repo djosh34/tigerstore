@@ -571,9 +571,16 @@ func disagree(nodes []*node) (*node, *node) {
 		if n.out() || n.proc == nil {
 			continue
 		}
-		if first == nil {
+		switch {
+		case first == nil:
 			first = n
-		} else if c, f := n.proc.core, first.proc.core; c.Applied() != f.Applied() || c.Hash() != f.Hash() {
+		case n.proc.wl != nil:
+			// A wl node's entries are checked one by one as they apply
+			// (wlHooks.Applied): the applied index and revision tell.
+			if a, b := n.proc.wl.turn, first.proc.wl.turn; a.Applied != b.Applied || a.Rev != b.Rev {
+				return first, n
+			}
+		case n.proc.core.Applied() != first.proc.core.Applied() || n.proc.core.Hash() != first.proc.core.Hash():
 			return first, n
 		}
 	}

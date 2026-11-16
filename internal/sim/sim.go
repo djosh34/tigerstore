@@ -39,6 +39,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/server"
 	"github.com/djosh34/tigerstore/internal/simfs"
+	"github.com/djosh34/tigerstore/internal/simos"
 	"github.com/djosh34/tigerstore/internal/simrun"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
@@ -145,6 +146,9 @@ type Config struct {
 	// again with its page cache kept, and cutFails fails the next truncate
 	// with it. For the tests.
 	ckptCreateFaults, killLosses, syncFaultExits, cutFails bool
+	// wl runs the nodes of internal/wl on simos instead of main's node
+	// driver (wlnode.go).
+	wl bool
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -454,6 +458,9 @@ type proc struct {
 	parked chan struct{}
 	// srv is the gRPC server of a voting node of the first three.
 	srv *server.Server
+	// wl is the process of a wl run (Config.wl), whose node and core are
+	// nil.
+	wl *wlProc
 }
 
 func (p *proc) dead() bool { return p.ctx.Err() != nil }
@@ -523,6 +530,8 @@ type Sim struct {
 
 	clients  []*client
 	watchers []*watchClient
+	// os is the descriptor table of a wl run's nodes (Config.wl), wlOS.
+	os *simos.OS
 	// kube is the Kubernetes-shaped load, if Config.Objects is set, and
 	// values the one copy of each of its values.
 	kube   *kubeLoad
@@ -855,7 +864,11 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.LoadCPU, res.LoadFired, res.LoadTime = s.loadCPU, s.loadFired, s.loadTime
 	s.mu.Unlock()
 	if err == nil {
-		if err = s.check(res); err != nil {
+		check := s.check
+		if cfg.wl {
+			check = s.checkWL
+		}
+		if err = check(res); err != nil {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)
 		}
 	}
@@ -953,6 +966,7 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 		servedRoot: map[uint64]uint64{},
 		healAt:     cfg.Duration,
 		stopAt:     cfg.Duration + cfg.Heal,
+		os:         wlOS,
 	}
 	var err error
 	if s.records, err = newRecordLog(); err != nil {
@@ -1224,7 +1238,9 @@ func (s *Sim) schedule() {
 		s.clients = append(s.clients, c)
 		s.wg.Go(c.run)
 	}
-	s.startWatchers()
+	if !s.cfg.wl {
+		s.startWatchers()
+	}
 	f := s.cfg.Faults
 	if f.CrashEvery > 0 {
 		s.every(f.CrashEvery, s.crashRandom)
@@ -1572,6 +1588,21 @@ func (s *Sim) start(n *node) error {
 		return nil
 	}
 	s.mu.Lock()
+	if s.cfg.wl {
+		defer s.mu.Unlock()
+		n.starting = false
+		if s.ended {
+			return nil
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		p := &proc{n: n, ctx: ctx, cancel: cancel}
+		s.tracef("node %d: starting", n.id)
+		if err := s.startWL(n, p); err != nil {
+			cancel()
+			return err
+		}
+		return nil
+	}
 	armed := s.armRecoveryCrash(n)
 	ctx, cancel := context.WithCancel(context.Background())
 	p := &proc{n: n, ctx: ctx, cancel: cancel}
