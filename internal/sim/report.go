@@ -74,9 +74,10 @@ func (s *Sim) report() string {
 			b.WriteString("; not a member")
 		}
 		b.WriteString("\n")
-		if l := n.last; l.core != nil {
-			fmt.Fprintf(&b, "  at its last turn, %s: %s, term %d, leader %d, commit %d, applied %d, cluster version %d; members %s\n",
-				seconds(l.at), l.role, l.term, l.lead, l.commit, l.applied, l.version, describeMembers(l.members))
+		// main's nodes and wl's (wlHooks.Turn) both say what Raft showed.
+		if l := n.last; l.role != "" {
+			fmt.Fprintf(&b, "  at its last turn, %s: %s, term %d, leader %d, commit %d, applied %d, first entry held %d, cluster version %d; members %s\n",
+				seconds(l.at), l.role, l.term, l.lead, l.commit, l.applied, l.first, l.version, describeMembers(l.members))
 		}
 		var lines []string
 		mark := fmt.Sprintf(" node %d: ", n.id)
