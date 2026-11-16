@@ -2,7 +2,9 @@ package wl
 
 import (
 	"bytes"
+	"errors"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -116,8 +118,9 @@ func TestWALScanStopsAtATornRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	i := bytes.Index(b, []byte("torn"))
-	b[i] ^= 1
+	// A crash tore the write at sectors: the torn record's sector never
+	// reached the disk, which still holds the zeros past the log's end.
+	tear(b, w.offs[1]-walEntHdr)
 	if err := os.WriteFile(path, b, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +137,53 @@ func TestWALScanStopsAtATornRecord(t *testing.T) {
 	}
 	if torn := w.offs[1] - walEntHdr; end != torn {
 		t.Fatalf("scan ends at %d, want the torn record's start %d", end, torn)
+	}
+}
+
+// tear zeros b from off to the end of its sector, as a crash leaves a
+// sector of a write that never reached the disk.
+func tear(b []byte, off int64) {
+	clear(b[off:min(int64(len(b)), (off/sector+1)*sector)])
+}
+
+// A record damaged where no crash can have torn it, a flipped bit with no
+// sector of zeros in it, is refused, not cut as a torn tail: the records
+// after it were durable, and cutting them would lose what the node
+// acknowledged.
+func TestWALRefusesADamagedRecord(t *testing.T) {
+	dir := t.TempDir()
+	w, err := openWAL(sysEnv{}, dir, sizeFor(0).stage, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	if err := w.write([]*pb.Entry{testEntry(1, 1, "kept"), testEntry(2, 1, "damaged"), testEntry(3, 1, "after")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	path := segPath(dir, 0)
+	for _, at := range []string{"damaged", "length"} {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		orig := slices.Clone(b)
+		switch at {
+		case "damaged":
+			b[bytes.Index(b, []byte("damaged"))] ^= 0x10
+		case "length":
+			// A flipped bit of the length: past the longest record.
+			b[w.offs[1]-walEntHdr+7] ^= 0x80
+		}
+		if err := os.WriteFile(path, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := scanWAL(sysEnv{}, dir, 0, nil); !errors.Is(err, ErrCorruptLog) {
+			t.Errorf("%s: scan returned %v, want ErrCorruptLog", at, err)
+		}
+		if err := os.WriteFile(path, orig, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

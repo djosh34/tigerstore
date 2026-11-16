@@ -7,6 +7,7 @@ import (
 	"hash/crc32"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,8 +33,12 @@ import (
 // A record is [4 crc32c][4 body length][1 kind], then the body; the crc
 // covers everything after it. An entry's body is [8 index][8 term]
 // [1 entry type] and the entry's data; a hard state's is the state's
-// protobuf. A record that does not check ends the log: it was torn by a
-// crash, or it is the zeros past the end.
+// protobuf. A record that does not check ends the log when a crash can have
+// torn it, or it is the zeros past the end: some sector of it is all zeros,
+// as etcd's isTornEntry decides, since the log's bytes past its end are
+// zeros on disk (the stage clears them) and a torn write leaves sectors of
+// those. Any other record that does not check is damage, and the log is
+// refused (ErrCorruptLog).
 
 const (
 	segSize = 64 << 20
@@ -46,7 +51,12 @@ const (
 	recEntry      = 1
 	recHardState  = 2
 	maxWALRecBody = 1 << 30
+	sector        = 512
 )
+
+// ErrCorruptLog is a log with a record that does not check where no crash
+// can have torn it.
+var ErrCorruptLog = errors.New("wl: corrupt log")
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
@@ -617,20 +627,21 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 		for len(buf) >= recHead {
 			l := int64(binary.LittleEndian.Uint32(buf[4:]))
 			if l > maxWALRecBody {
-				return off, nil
+				// A length no record has: zeros never read so.
+				return off, corruptAt(k, off)
 			}
 			if int64(len(buf)) < recHead+l {
 				break
 			}
 			rec := buf[:recHead+l]
-			if crc32.Checksum(rec[4:], castagnoli) != binary.LittleEndian.Uint32(rec) {
+			if crc32.Checksum(rec[4:], castagnoli) != binary.LittleEndian.Uint32(rec) || rec[8] == recEntry && l < entHead {
+				if !torn(rec, off) {
+					return off, corruptAt(k, off)
+				}
 				return off, nil
 			}
 			r = walRecord{off: off + recHead, kind: rec[8], data: rec[recHead:]}
 			if r.kind == recEntry {
-				if l < entHead {
-					return off, nil
-				}
 				r.index = binary.LittleEndian.Uint64(rec[9:])
 				r.term = binary.LittleEndian.Uint64(rec[17:])
 				r.typ = pb.EntryType(rec[25])
@@ -651,4 +662,23 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 		}
 	}
 	return off, nil
+}
+
+// torn reports whether rec, a record that does not check at log offset
+// off, can be one a crash tore, or the zeros past the log's end: some part
+// of it within one sector is all zeros.
+func torn(rec []byte, off int64) bool {
+	for len(rec) > 0 {
+		k := min(int64(len(rec)), sector-off%sector)
+		if !slices.ContainsFunc(rec[:k], func(c byte) bool { return c != 0 }) {
+			return true
+		}
+		rec, off = rec[k:], off+k
+	}
+	return false
+}
+
+// corruptAt is the error of damage in segment k, at log offset off.
+func corruptAt(k, off int64) error {
+	return fmt.Errorf("%w: a record that does not check in segment %d at log offset %d, which no crash tore", ErrCorruptLog, k, off)
 }

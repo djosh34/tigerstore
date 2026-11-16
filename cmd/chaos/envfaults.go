@@ -518,11 +518,12 @@ func logSince(n *node, from int64) string {
 	return string(b[from:])
 }
 
-// segments are the log segments under data, oldest first.
+// segments are the log segments under data, oldest first: wl's (*.seg),
+// or main's engine's (*.wal) under TIGERSTORE_MAIN.
 func segments(data string) ([]string, error) {
 	var segs []string
 	err := filepath.WalkDir(data, func(path string, de os.DirEntry, err error) error {
-		if err == nil && !de.IsDir() && strings.HasSuffix(path, ".wal") {
+		if err == nil && !de.IsDir() && (strings.HasSuffix(path, ".seg") || strings.HasSuffix(path, ".wal")) {
 			segs = append(segs, path)
 		}
 		return err

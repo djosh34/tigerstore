@@ -98,7 +98,7 @@ func TestRecoveryCutsATornTail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b[bytes.Index(b, []byte("torn"))] ^= 1
+	tear(b, int64(bytes.Index(b, []byte("torn")))-walEntHdr)
 	if err := os.WriteFile(path, b, 0o600); err != nil {
 		t.Fatal(err)
 	}
