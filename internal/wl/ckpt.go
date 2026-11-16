@@ -354,6 +354,7 @@ type ckptRun struct {
 // index index of term term; logFrom is where that entry's record starts
 // in the log. The store keeps what it needs until it is done.
 func (n *node) startCkpt(index, term uint64, logFrom int64) error {
+	n.simCheckpoint(index)
 	st := n.st
 	gen := 1 - n.ckptGen
 	if st.ckpts[gen] != nil {

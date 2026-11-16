@@ -52,6 +52,9 @@ type wlProc struct {
 	recovered, armed bool
 	// silent is whether the node's last turn showed it silent.
 	silent bool
+	// applied is the last entry the node applied, from its Applied
+	// hooks, or the snapshot it installed; 0 until its start applies one.
+	applied uint64
 }
 
 // wlMembers are the first three members of a wl cluster.
@@ -215,6 +218,9 @@ func (h *wlHooks) Append(first, last uint64, install bool) {
 		return
 	}
 	n.appended = max(n.appended, last)
+	if install {
+		p.wl.applied = first - 1
+	}
 	n.pending = append(n.pending, pendingJob{first: first, install: install, replaces: first <= n.durableLast, at: s.now()})
 	if n == s.stalledLeader && s.heldAppendAt == 0 && first != math.MaxUint64 && !install {
 		s.heldAppendAt = s.now()
@@ -231,6 +237,7 @@ func (h *wlHooks) Applied(e *raftpb.Entry, hash uint64) {
 	if n.proc != p {
 		return
 	}
+	p.wl.applied = e.GetIndex()
 	s.record(n, core.Applied{Index: e.GetIndex(), Term: e.GetTerm(), Type: e.GetType(), Data: e.GetData(), Hash: hash})
 	s.applied = max(s.applied, e.GetIndex())
 }
@@ -254,6 +261,23 @@ func (h *wlHooks) Durable(last uint64, install bool, hs *raftpb.HardState) {
 		n.hs = hardState{term: hs.GetTerm(), vote: hs.GetVote()}
 	}
 	_ = install
+}
+
+// Checkpoint checks that a checkpoint names the index its store is at:
+// the last entry the node applied, as its Applied hooks and installs
+// showed the run. On main the run compares the checkpoints nodes write
+// at an index; wl's nodes take theirs at indexes of their own, so the run
+// compares each with what the node applied (B21).
+func (h *wlHooks) Checkpoint(index uint64) {
+	s, p := h.s, h.p
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p.n.proc != p || p.wl.applied == 0 {
+		return
+	}
+	if index != p.wl.applied {
+		s.fail("node %d started a checkpoint at index %d, but applied to %d", p.n.id, index, p.wl.applied)
+	}
 }
 
 // Turn keeps what the node shows, and holds its loop while the process

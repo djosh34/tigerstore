@@ -80,6 +80,10 @@ type Hooks interface {
 	// if it had any, the snapshot it installed to last if install, and
 	// its hard state if any.
 	Durable(last uint64, install bool, hs *raftpb.HardState)
+	// Checkpoint is a checkpoint that starts, of the store after entry
+	// index: the node must have applied every entry to index and none
+	// past it.
+	Checkpoint(index uint64)
 	// Turn ends each turn of the loop with what Raft shows; it may hold
 	// the loop.
 	Turn(TurnState)

@@ -299,9 +299,10 @@ var plantedWLCases = map[string]plantedCase{
 	// of seed 1 did.
 	"B19": {seeds: 64, cfg: wlFaultsConfig, want: refused + `|not on disk|no such file or directory|` + stuck},
 	"B20": {seeds: 64, cfg: wlFaultsConfig, want: `holds entries from \d+ in memory`},
-	// wl checks no checkpoint against another's yet: a start from the
-	// checkpoint misses the entries after the applied index.
-	"B21": {seeds: 64, cfg: wlFaultsConfig, want: inventedState + `|cold restart did not converge|` + stuck},
+	// wl's nodes take checkpoints at indexes of their own: the run checks
+	// each against what the node applied (wlHooks.Checkpoint), and a
+	// start from it misses the entries after the applied index.
+	"B21": {seeds: 64, cfg: wlFaultsConfig, want: `started a checkpoint at index \d+, but applied to|` + inventedState + `|cold restart did not converge|` + stuck},
 	// wl's checkpoint has a CRC of its own, which B22 skips at an
 	// install too.
 	"B22": {seeds: 256, cfg: wlDamagedSnapshotConfig, want: inventedState + `|malformed|corrupt checkpoint|` + badValue + `|` + refused},

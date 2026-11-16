@@ -13,5 +13,6 @@ func (*node) simApplied(*pb.Entry)  {}
 func (*node) simDurable(*walJob)    {}
 func (*node) simTurn()              {}
 func (*node) simInstalled()         {}
+func (*node) simCheckpoint(uint64)  {}
 
 func (*node) simSnapshotChunk(uint64, bool, []byte) {}
