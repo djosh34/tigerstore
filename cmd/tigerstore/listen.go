@@ -6,12 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"slices"
 	"strings"
-	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/client/pkg/v3/tlsutil"
@@ -283,42 +281,6 @@ func clientListeners(ec *embed.Config, haveTLS bool, lg *zap.Logger) (out []clie
 		out = append(out, clientListener{server.Listener{Listener: ln, TLS: secure, Traffic: sp.traffic}, &u})
 	}
 	return out, nil
-}
-
-// trafficName names what a client listener serves in the log.
-func trafficName(t server.Traffic) string {
-	switch t {
-	case server.TrafficAll:
-		return "grpc+http"
-	case server.TrafficGRPC:
-		return "grpc"
-	case server.TrafficHTTP:
-		return "http"
-	}
-	return "unknown"
-}
-
-// serveMetricsURLs serves the metrics and health endpoints on each
-// --listen-metrics-urls URL, as etcd does: over TLS with the client
-// certificate for https.
-func serveMetricsURLs(ec *embed.Config, ctls *tls.Config, h http.Handler, lg *zap.Logger) ([]*http.Server, error) {
-	lns, err := metricsListeners(ec, ctls)
-	if err != nil {
-		return nil, err
-	}
-	var srvs []*http.Server
-	for i, ln := range lns {
-		u := ec.ListenMetricsUrls[i]
-		srv := &http.Server{Addr: u.Host, Handler: h, ReadHeaderTimeout: time.Minute}
-		srvs = append(srvs, srv)
-		go func() {
-			if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				lg.Warn("serve metrics", zap.String("address", u.String()), zap.Error(err))
-			}
-		}()
-		lg.Info("serving metrics", zap.String("address", u.String()))
-	}
-	return srvs, nil
 }
 
 // metricsListeners are the listeners of --listen-metrics-urls, one per

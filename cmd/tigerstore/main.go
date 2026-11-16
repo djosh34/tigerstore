@@ -3,37 +3,25 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
 	"maps"
 	"net"
 	"os"
-	"os/signal"
 	"runtime"
 	"runtime/debug"
 	"slices"
-	"sync/atomic"
-	"syscall"
-	"time"
 
 	"go.etcd.io/etcd/pkg/v3/featuregate"
-	"go.etcd.io/etcd/server/v3/embed"
 	"go.etcd.io/etcd/server/v3/etcdmain"
-	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
 	"go.etcd.io/etcd/server/v3/features"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
-	"github.com/djosh34/tigerstore/internal/authtoken"
-	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/logq"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/node"
-	"github.com/djosh34/tigerstore/internal/peer"
-	"github.com/djosh34/tigerstore/internal/server"
 )
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
@@ -179,185 +167,14 @@ func start(c *config, lg *zap.Logger) error {
 			return err
 		}
 	}
-	ccfg := coreConfig(ec, ident)
-	if w := c.own.UnsafeWindow; w > 0 {
-		ccfg.WindowBytes, ccfg.WindowMaxBytes = w, 2*w
-	}
-	if b := c.own.UnsafeCheckpoint; b > 0 {
-		ccfg.CheckpointBytes = b
-	}
 	budget, from, err := node.MemoryBudget(os.DirFS("/"), c.own.MemoryBudget)
 	if err != nil {
 		return err
 	}
-	if useWL() {
-		// The loop owns the listeners from here on.
-		ok = true
-		logf("memory budget %d bytes (from %s)", budget, from)
-		return runWL(ec, ident, pcfg, ctls, clientLns, budget, lg)
-	}
-	// The garbage collector works harder as the heap nears the Go limit;
-	// the value cache takes what the rest of the process leaves.
-	limit := node.GoMemory(budget, from)
-	debug.SetMemoryLimit(limit)
-	ccfg.MemoryBytes = node.ProcessMemory(limit)
-	logf("memory budget %d bytes (from %s), Go memory limit %d, %d of them for the whole process with its value cache", budget, from, limit, ccfg.MemoryBytes)
-	compaction, err := node.ParseCompaction(ec.AutoCompactionMode, ec.AutoCompactionRetention)
-	if err != nil {
-		return err
-	}
-	gate := ec.ServerFeatureGate
-	ccfg.PriorityRequest = gate.Enabled(features.PriorityRequest)
-	ncfg := node.Config{
-		Core: ccfg, DataDir: ec.Dir, WalDir: ec.WalDir, Tick: time.Duration(ec.TickMs) * time.Millisecond,
-		DiskBudget: c.own.DiskBudget, SegmentBytes: c.own.UnsafeSegment, CorruptCheckTime: ec.CorruptCheckTime, Logf: logf, AutoCompaction: compaction,
-		UnsafeNoFsync: ec.UnsafeNoFsync, WarningApplyDuration: ec.WarningApplyDuration, ForceNewCluster: ec.ForceNewCluster,
-	}
-	if gate.Enabled(features.CompactHashCheck) {
-		ncfg.CompactHashCheckTime = ec.CompactHashCheckTime
-	}
-	if ncfg.Metrics, err = metrics.New(featureMetrics(gate)); err != nil {
-		return err
-	}
-	pcfg.Metrics = ncfg.Metrics
-	jwt, err := authtoken.ParseAuthToken(ec.AuthToken)
-	if err != nil {
-		return fmt.Errorf("--auth-token %q: %w", ec.AuthToken, err)
-	}
-	var tp *sdktrace.TracerProvider
-	if ec.EnableDistributedTracing {
-		if tp, err = newTracerProvider(context.Background(), ec); err != nil {
-			return err
-		}
-		defer func() {
-			if err := tp.Shutdown(context.Background()); err != nil {
-				lg.Warn("stop distributed tracing", zap.Error(err))
-			}
-		}()
-	}
-	n, err := node.New(ncfg)
-	if err != nil {
-		return err
-	}
-	// The node hands the transport the members once it runs; until then,
-	// those it started with.
-	pcfg.ID, pcfg.ClusterID, pcfg.Peers = ident.id, ident.cluster, node.PeerAddrs(ident.members)
-	if len(ec.AdvertisePeerUrls) > 0 {
-		pcfg.Addr = ec.AdvertisePeerUrls[0].Host
-	}
-	pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer, pcfg.Removed = n.Deliver, n.Unreachable, n.Serve, n.Answer, n.Removed
-	t, err := peer.Start(pcfg)
-	if err != nil {
-		return err
-	}
-	// etcd hands grpc-go each keepalive setting only when it is above 0.
-	var kaMin, kaTime, kaTimeout time.Duration
-	if ec.GRPCKeepAliveMinTime > 0 {
-		kaMin = ec.GRPCKeepAliveMinTime
-	}
-	if ec.GRPCKeepAliveInterval > 0 && ec.GRPCKeepAliveTimeout > 0 {
-		kaTime, kaTimeout = ec.GRPCKeepAliveInterval, ec.GRPCKeepAliveTimeout
-	}
-	g, err := server.New(n, server.Config{
-		ClusterID: ccfg.ClusterID, TLS: ctls, PeerVersions: t.Versions, BcryptCost: int(ec.BcryptCost), JWT: jwt,
-		StopServiceOnDefrag: gate.Enabled(features.StopGRPCServiceOnDefrag),
-		NoGateway:           !ec.EnableGRPCGateway, CORS: ec.CORS, HostWhitelist: ec.HostWhitelist,
-		ExtensiveMetrics: ec.Metrics == "extensive", Pprof: ec.EnablePprof,
-		TracerProvider:  tracerProvider(tp),
-		MaxRequestBytes: int(ec.MaxRequestBytes), MaxConcurrentStreams: ec.MaxConcurrentStreams,
-		WarningUnaryRequestDuration: ec.WarningUnaryRequestDuration, Logf: logf,
-		KeepaliveMinTime: kaMin, KeepaliveTime: kaTime, KeepaliveTimeout: kaTimeout,
-	})
-	if err != nil {
-		return errors.Join(err, t.Close())
-	}
+	// The loop owns the listeners from here on.
 	ok = true
-	msrvs, err := serveMetricsURLs(ec, ctls, g.MetricsHandler(), lg)
-	if err != nil {
-		closeListeners(clientLns, nil, lg)
-		return errors.Join(err, g.Stop(), t.Close())
-	}
-	defer func() {
-		for _, srv := range msrvs {
-			if err := srv.Close(); err != nil {
-				lg.Warn("close the metrics listener", zap.String("address", srv.Addr), zap.Error(err))
-			}
-		}
-	}()
-
-	sig, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	// A signal before the node serves clients stops it at once.
-	stopNow := context.AfterFunc(sig, cancel)
-	ran := make(chan error, 1)
-	go func() {
-		ran <- n.Run(ctx, t)
-		cancel()
-	}()
-	go func() {
-		if err := n.AdjustTicks(ctx, t.ActiveChange, ec.InitialElectionTickAdvance, rafthttp.ConnReadTimeout); err != nil && ctx.Err() == nil {
-			lg.Warn("adjust election ticks", zap.Error(err))
-		}
-	}()
-	if gate.Enabled(features.InitialCorruptCheck) {
-		// As in etcd, before it serves any client.
-		if err := n.InitialCheck(ctx, t); err != nil {
-			cancel()
-			closeListeners(clientLns, nil, lg)
-			return errors.Join(err, <-ran, g.Stop(), t.Close())
-		}
-		logf("initial corruption check passed")
-	}
-	if err := bootstrapDefrag(ctx, n, ec.BootstrapDefragThresholdMegabytes, lg); err != nil {
-		cancel()
-		closeListeners(clientLns, nil, lg)
-		return errors.Join(err, <-ran, g.Stop(), t.Close())
-	}
-	served := make(chan error, len(clientLns))
-	// closing is set once the clients are stopped on purpose.
-	var closing atomic.Bool
-	for _, l := range clientLns {
-		go func() {
-			// A node that cannot serve clients stops instead of staying
-			// a silent Raft member.
-			served <- g.ServeListener(l.Listener)
-			if !closing.Load() {
-				cancel()
-			}
-		}()
-		lg.Info("serving client traffic", zap.String("address", l.url.String()), zap.String("traffic", trafficName(l.Traffic)))
-	}
-	logf("node %s (raft ID %d) serving clients, peers on %v", ec.Name, ident.id, ec.ListenPeerUrls)
-	// From here on a signal stops the node as etcd's Close does: the
-	// clients go first, while the node still runs, so that their calls in
-	// flight can finish; then the node hands its leadership to a peer,
-	// and only then stops. A signal that came before stopped the node
-	// already.
-	graceful := stopNow()
-	var runErr, stopErr error
-	stopped := false
-	select {
-	case runErr = <-ran:
-	case <-sig.Done():
-		if graceful {
-			closing.Store(true)
-			stopErr, stopped = g.Stop(), true
-			if err := n.TransferLeadership(ctx); err != nil {
-				lg.Warn("leadership transfer failed", zap.Error(err))
-			}
-		}
-		cancel()
-		runErr = <-ran
-	}
-	if !stopped {
-		stopErr = g.Stop()
-	}
-	for range clientLns {
-		stopErr = errors.Join(stopErr, <-served)
-	}
-	return errors.Join(runErr, stopErr, t.Close())
+	logf("memory budget %d bytes (from %s)", budget, from)
+	return runWL(ec, ident, pcfg, ctls, clientLns, budget, lg)
 }
 
 // nodeLog returns what the node, its peers and its server log with, and
@@ -391,67 +208,6 @@ func featureMetrics(gate featuregate.FeatureGate) []metrics.Feature {
 		out = append(out, metrics.Feature{Name: string(name), Stage: string(spec.PreRelease), On: gate.Enabled(name)})
 	}
 	return out
-}
-
-// bootstrapDefrag is etcd's --bootstrap-defrag-threshold-megabytes: as it
-// starts, a node defragments when at least that many megabytes of its
-// files are free to reclaim.
-func bootstrapDefrag(ctx context.Context, n *node.Node, thresholdMB uint, lg *zap.Logger) error {
-	if thresholdMB == 0 {
-		return nil
-	}
-	m, err := n.Metrics(ctx)
-	if err != nil {
-		return err
-	}
-	threshold := int64(thresholdMB) * 1024 * 1024
-	if free := m.DbSize - m.DbSizeInUse; free < threshold {
-		lg.Info("skipping defragmentation", zap.Int64("current-db-size-bytes", m.DbSize), zap.Int64("current-db-size-in-use-bytes", m.DbSizeInUse), zap.Int64("defrag-threshold-bytes", threshold))
-		return nil
-	}
-	return n.Defragment(ctx)
-}
-
-// coreConfig is the core's configuration from etcd's.
-func coreConfig(ec *embed.Config, ident identity) core.Config {
-	ccfg := core.DefaultConfig(ident.id, nil)
-	ccfg.ClusterID = ident.cluster
-	// The identity's members go to the core on every start, as the
-	// persisted initial configuration a first member's log starts with
-	// (#247). Whether the node joined comes from the identity too, not from
-	// this start's --initial-cluster-state: it decides whether an empty log
-	// is bootstrapped and whether a torn bootstrap is repaired (#280).
-	ccfg.Members = ident.members
-	for _, m := range ccfg.Members {
-		ccfg.Peers = append(ccfg.Peers, m.ID)
-	}
-	ccfg.Join = !ident.first
-	ccfg.TickMillis = int64(ec.TickMs)
-	ccfg.ElectionTicks = ec.ElectionTicks()
-	ccfg.NoPreVote = !ec.PreVote
-	// etcd's request timeout: 5 s plus two election timeouts, rounded up
-	// to whole ticks.
-	ccfg.RequestTicks = int((5000 + 2*int64(ec.ElectionMs) + int64(ec.TickMs) - 1) / int64(ec.TickMs))
-	ccfg.Name = ec.Name
-	for _, u := range ec.AdvertiseClientUrls {
-		ccfg.ClientURLs = append(ccfg.ClientURLs, u.String())
-	}
-	ccfg.MaxLearners, ccfg.StrictReconfigCheck = ec.MaxLearners, ec.StrictReconfigCheck
-	ccfg.MaxRequestBytes, ccfg.MaxTxnOps = int(ec.MaxRequestBytes), int(ec.MaxTxnOps)
-	tick := time.Duration(ec.TickMs) * time.Millisecond
-	ccfg.AuthTokenTicks = int(time.Duration(ec.AuthTokenTTL) * time.Second / tick)
-	ccfg.QuotaBytes = ec.QuotaBackendBytes
-	if ec.ServerFeatureGate.Enabled(features.LeaseCheckpoint) {
-		// etcd v3.7.2 checkpoints every 5 minutes; no flag changes it.
-		ccfg.LeaseCheckpointTicks = int(5 * time.Minute / tick)
-	}
-	// As in etcd, an interval of 0 or less keeps the default.
-	if ec.WatchProgressNotifyInterval > 0 {
-		ccfg.ProgressTicks = max(1, int(ec.WatchProgressNotifyInterval/tick))
-	} else {
-		ccfg.ProgressTicks = int(10 * time.Minute / tick)
-	}
-	return ccfg
 }
 
 // closeListeners closes listeners that no server took.

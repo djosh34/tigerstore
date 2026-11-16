@@ -21,12 +21,6 @@ import (
 	"github.com/djosh34/tigerstore/internal/wl"
 )
 
-// useWL reports whether the node runs internal/wl, prototype 6 made safe
-// (#602): one event loop with its own client stack, store and
-// replication. TIGERSTORE_MAIN asks for main's node instead, until that
-// is deleted.
-func useWL() bool { return os.Getenv("TIGERSTORE_MAIN") == "" }
-
 var errWLPlainClients = errors.New("the client URLs must be https")
 
 // runWL runs internal/wl with the node's identity, listeners, TLS and

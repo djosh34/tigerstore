@@ -11,7 +11,6 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/server/v3/embed"
 
-	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/wl"
 )
@@ -127,9 +126,6 @@ func initialMembers(members []member) []*pb.Member {
 // remoteMembers asks the running cluster's members at addrs for its ID
 // and members, over the peer protocol of the node that runs.
 func remoteMembers(ctx context.Context, pcfg peer.Config, addrs []string) ([]*pb.Member, uint64, error) {
-	if !useWL() {
-		return node.RemoteMembers(ctx, pcfg, addrs)
-	}
 	_, client, err := wlPeerTLS(pcfg)
 	if err != nil {
 		return nil, 0, err

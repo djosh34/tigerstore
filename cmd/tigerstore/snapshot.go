@@ -79,10 +79,6 @@ func snapshotCommand(args []string, logger *log.Logger) error {
 // From a snapshot of main's engine, it also returns the revision the
 // store was compacted at, else -1.
 func restore(path, dataDir string, members []*pb.Member, skipHash bool) (node.SnapshotInfo, int64, error) {
-	if !useWL() {
-		info, err := node.Restore(path, dataDir, members, skipHash)
-		return info, -1, err
-	}
 	var ms []wl.Member
 	for _, m := range members {
 		ms = append(ms, wl.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs})
