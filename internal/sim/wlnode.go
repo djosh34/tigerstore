@@ -100,7 +100,7 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		MemoryBudget: s.cfg.MemoryBytes,
 		// A checkpoint, which cuts the log behind it, every DiskBudget of
 		// log, as main's node cleans within it.
-		CheckpointLog: s.cfg.Faults.DiskBudget, CatchupEntries: wlCatchup,
+		CheckpointLog: s.cfg.Faults.DiskBudget, CatchupEntries: wlCatchup, CheckpointChunkKeys: s.cfg.ckptChunkKeys,
 		Logger: log.New(&nodeLog{s: s, n: n}, "", 0),
 		Sys:    s.os.NewNode(wlDataDir, &disk{s: s, p: p}, wlNet{s: s, p: p}),
 		Hooks:  &wlHooks{s: s, p: p},
@@ -622,6 +622,31 @@ func (s *Sim) wlStageCrash(n *node) bool {
 		}
 	}
 	n.crashImage = n.disk.Files()
+	s.restartLater(n, 1+s.rng.Int64N(Second))
+	return true
+}
+
+// wlCheckpointCrash crashes n right after a write of a checkpoint it is
+// writing, while the file holds four writes or more since its last sync,
+// keeping whole writes at random, until a crash kept a later write and
+// lost an earlier one (Config.ckptCrash): each crash does in about one
+// in three, as the file's creation is kept in one in two. wl's log never has two writes
+// unsynced (wal.go), so a checkpoint being written is the one place a
+// crash can do that: the file is renamed only after its sync, and the
+// start must not take it. At most 16 crashes. The lock is held.
+func (s *Sim) wlCheckpointCrash(n *node, name string) bool {
+	if s.healed || n.proc == nil || s.stats.CkptCrashes >= 16 || !strings.HasSuffix(name, ".tmp") || n.disk.Pending(name) < 4 {
+		return false
+	}
+	for _, m := range s.nodes {
+		if m.disk.Counts.Reordered > 0 {
+			return false
+		}
+	}
+	s.stats.CkptCrashes++
+	n.why = "the run crashed it partway through a checkpoint"
+	s.tracef("node %d: crash after a write of %s, %d writes unsynced", n.id, name, n.disk.Pending(name))
+	s.crashWith(n, func(n *node) { s.loseUnsyncedAs(n, simfs.Writes) })
 	s.restartLater(n, 1+s.rng.Int64N(Second))
 	return true
 }

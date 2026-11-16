@@ -154,6 +154,9 @@ type node struct {
 	// next is taken (Config.CheckpointLog).
 	ckptLog  int64
 	ckptName string
+	// ckptKeys is the most keys a chunk of a checkpoint encodes
+	// (Config.CheckpointChunkKeys), 0 for ckptChunkKeys.
+	ckptKeys int
 	// catchup is the applied entries the storage keeps for followers
 	// that lag (Config.CatchupEntries).
 	catchup uint64

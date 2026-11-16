@@ -37,6 +37,17 @@ func wlStalledLeaderConfig(seed uint64) Config {
 	return cfg
 }
 
+// wlCheckpointCrashConfig runs wl nodes with no faults but crashes partway
+// through a checkpoint (Config.ckptCrash), each checkpoint written a key a
+// write, one every DefaultConfig's disk budget of log.
+func wlCheckpointCrashConfig(seed uint64) Config {
+	cfg := DefaultConfig(seed)
+	cfg.wl, cfg.FormUnderFaults = true, true
+	cfg.Faults = Faults{DiskBudget: cfg.Faults.DiskBudget}
+	cfg.ckptCrash, cfg.ckptChunkKeys = true, 1
+	return cfg
+}
+
 // wlDamagedSnapshotConfig is damagedSnapshotConfig on wl nodes: a
 // follower held down past the leader's window fetches a snapshot, whose
 // first stream is damaged. The disk budget is DefaultConfig's: it is wl's

@@ -451,6 +451,12 @@ func TestSeeds(t *testing.T) {
 	// (#218), so each shard also runs the deliberate scenario.
 	if ran >= 64 {
 		t.Run("TestWLStalledLeaderIsReplaced", TestWLStalledLeaderIsReplaced)
+		// wl's log has one write in flight, synced as it is written, and
+		// during the faults a node writes no checkpoint, so no crash of a
+		// random seed keeps a later write and loses an earlier one; the
+		// scenario crashes nodes partway through checkpoints of several
+		// writes until one does.
+		t.Run("TestWLCrashKeepsALaterCheckpointWrite", func(t *testing.T) { total.Disk.Reordered += runCheckpointCrash(t) })
 	}
 	// Corruption, a link 10 times slower than its other direction and the
 	// other common events are rare in one run, but a set of seeds must see
@@ -458,7 +464,12 @@ func TestSeeds(t *testing.T) {
 	// checkpoints in the log. wl has neither: it cuts its log behind a
 	// checkpoint instead of cleaning it, which the copy at a removal
 	// (ErasedAtRemoval) needs, and a new leader starts every lease's TTL
-	// over, as etcd does without lease checkpoints.
+	// over, as etcd does without lease checkpoints. During the faults a wl
+	// node's log is a few hundred bytes in one segment with no checkpoint,
+	// so the damage drawn mostly finds no place: it then flips a record of
+	// the log that a record that checks follows (flipWLRecord), which
+	// fences the node. The crashes that keep a later write come from the
+	// checkpoint scenario above.
 	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0 ||
 		total.Disk.Reordered == 0 || total.OutOfSpace == 0) {

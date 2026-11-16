@@ -155,6 +155,12 @@ type Config struct {
 	// its log wrote and before that write's sync, keeping the write torn
 	// at sectors (wlStageCrash).
 	wl, stageCrash bool
+	// ckptCrash crashes wl nodes partway through a checkpoint until a
+	// crash kept a later write of it and lost an earlier one
+	// (wlCheckpointCrash), and ckptChunkKeys, if set, is the most keys a
+	// wl checkpoint writes in one write (wl.Config.CheckpointChunkKeys).
+	ckptCrash     bool
+	ckptChunkKeys int
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -677,6 +683,9 @@ type Stats struct {
 	// their log (Config.stageCrash), and StageRecoveries the starts that
 	// recovered after one within its bounds.
 	StageCrashes, StageRecoveries int
+	// CkptCrashes counts the crashes of wl nodes partway through a
+	// checkpoint (Config.ckptCrash).
+	CkptCrashes int
 	// Checkpoints counts checkpoint files completed, Snapshots snapshot
 	// streams served, ServeFailures fetches that the source could not
 	// serve, SnapshotFlips those damaged on the way, FetchCrashes sources
@@ -2169,7 +2178,11 @@ func (s *Sim) crashRandom() {
 
 // crash takes n down as a power loss does: its disk drops what it did not
 // sync, apart from what a crash image keeps. The lock is held.
-func (s *Sim) crash(n *node) {
+func (s *Sim) crash(n *node) { s.crashWith(n, s.loseUnsynced) }
+
+// crashWith is crash with lose, which drops what n's disk did not sync.
+// The lock is held.
+func (s *Sim) crashWith(n *node, lose func(*node)) {
 	if n.proc == nil {
 		return
 	}
@@ -2177,7 +2190,7 @@ func (s *Sim) crash(n *node) {
 	s.stats.PowerLosses++
 	n.mustLast, n.mustHS = n.floor(), n.hs
 	s.down(n)
-	s.loseUnsynced(n)
+	lose(n)
 	n.crashImage = n.disk.Files()
 	s.tracef("node %d: crashed", n.id)
 }

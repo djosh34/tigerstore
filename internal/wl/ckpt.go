@@ -619,7 +619,7 @@ func (n *node) encodeChunk(r *ckptRun) (*ckptChunk, error) {
 		return c, nil
 	}
 	c.buf = make([]byte, 0, 1<<20)
-	for keys := 0; r.next < r.end && keys < ckptChunkKeys && len(c.buf) < ckptChunkBytes; keys++ {
+	for keys, most := 0, cmp.Or(n.ckptKeys, ckptChunkKeys); r.next < r.end && keys < most && len(c.buf) < ckptChunkBytes; keys++ {
 		n.encodeKey(r, c, r.next)
 		r.next++
 	}

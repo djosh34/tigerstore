@@ -244,6 +244,38 @@ func TestWLStalledLeaderIsReplaced(t *testing.T) {
 	}, nil)
 }
 
+// TestWLCrashKeepsALaterCheckpointWrite crashes nodes partway through a
+// checkpoint until a crash keeps a later write of it and loses an earlier
+// one (wlCheckpointCrashConfig). wl's log has one write in flight, synced
+// as it is written, so a crash during the faults, when a node's log holds
+// a few hundred bytes and no checkpoint, never does that; TestSeeds runs
+// this with each set of 64 seeds or more, for its rule that a set has
+// such a crash.
+func TestWLCrashKeepsALaterCheckpointWrite(t *testing.T) {
+	runCheckpointCrash(t)
+}
+
+// runCheckpointCrash runs wlCheckpointCrashConfig on its seed, which fails
+// unless a crash kept a later write and lost an earlier one, and returns
+// how many did: 0 under gosim, where the driver counts them.
+func runCheckpointCrash(t *testing.T) int {
+	reordered := 0
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		res := run(t, wlCheckpointCrashConfig(seed))
+		checkers(t, res)
+		st := res.Stats
+		if st.Disk.Reordered == 0 {
+			t.Fatalf("seed %d: %d crashes partway through %d checkpoints; none kept a later write and lost an earlier one", seed, st.CkptCrashes, st.Checkpoints)
+		}
+		t.Logf("seed %d: %d crashes partway through %d checkpoints, %d kept a later write and lost an earlier one", seed, st.CkptCrashes, st.Checkpoints, st.Disk.Reordered)
+		return st
+	}, func(_ uint64, st Stats) bool {
+		reordered += st.Disk.Reordered
+		return false
+	})
+	return reordered
+}
+
 // TestWLRefusesADamagedSnapshot runs wlDamagedSnapshotConfig, B22's: a
 // follower held down fetches a snapshot whose stream is damaged, and
 // refuses it by its CRC.

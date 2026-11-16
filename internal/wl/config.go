@@ -77,6 +77,11 @@ type Config struct {
 	// behind a checkpoint is cut.
 	CheckpointLog  int64
 	CatchupEntries uint64
+	// CheckpointChunkKeys is the most keys a checkpoint writes in one
+	// write, 0 for ckptChunkKeys. The simulator sets it lower, so that a
+	// checkpoint of its few keys is several writes, which a crash may
+	// keep only some of.
+	CheckpointChunkKeys int
 }
 
 // Member is one member of the cluster.

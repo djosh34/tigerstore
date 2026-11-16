@@ -1105,6 +1105,14 @@ func (d *Disk) Unsynced(name string) bool {
 	return ok && (len(f.pending) > 0 || f.cut)
 }
 
+// Pending is how many writes to file name its last sync left unsynced.
+func (d *Disk) Pending(name string) int {
+	if f, ok := d.names[name]; ok {
+		return len(f.pending)
+	}
+	return 0
+}
+
 // DurableNames returns the names of the files on the durable directory,
 // sorted.
 func (d *Disk) DurableNames() []string { return sortedNames(d.durable) }
