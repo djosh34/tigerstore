@@ -330,15 +330,6 @@ func wlDamageConfig(seed uint64) Config {
 	return cfg
 }
 
-// wlDamagedSnapshotConfig is damagedSnapshotConfig on wl nodes: a
-// follower held down past the leader's window fetches a snapshot, whose
-// first stream is damaged.
-func wlDamagedSnapshotConfig(seed uint64) Config {
-	cfg := damagedSnapshotConfig(seed)
-	cfg.wl, cfg.FormUnderFaults = true, true
-	return cfg
-}
-
 // TestPlantedWL is TestPlanted on wl nodes, for the bugs planted in wl.
 func TestPlantedWL(t *testing.T) {
 	name := os.Getenv("SIM_PLANTED")

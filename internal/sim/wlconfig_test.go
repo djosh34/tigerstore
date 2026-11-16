@@ -36,3 +36,15 @@ func wlStalledLeaderConfig(seed uint64) Config {
 	cfg.Duration = 25 * Second
 	return cfg
 }
+
+// wlDamagedSnapshotConfig is damagedSnapshotConfig on wl nodes: a
+// follower held down past the leader's window fetches a snapshot, whose
+// first stream is damaged. The disk budget is DefaultConfig's: it is wl's
+// checkpoint interval (wlnode.go), and without it no checkpoint cuts the
+// log, so the follower catches up from the log and no snapshot is sent.
+func wlDamagedSnapshotConfig(seed uint64) Config {
+	cfg := damagedSnapshotConfig(seed)
+	cfg.wl, cfg.FormUnderFaults = true, true
+	cfg.Faults.DiskBudget = DefaultConfig(seed).Faults.DiskBudget
+	return cfg
+}

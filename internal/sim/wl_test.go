@@ -262,3 +262,17 @@ func TestWLStalledLeaderIsReplaced(t *testing.T) {
 		return res.Stats
 	}, nil)
 }
+
+// TestWLRefusesADamagedSnapshot runs wlDamagedSnapshotConfig, B22's: a
+// follower held down fetches a snapshot whose stream is damaged, and
+// refuses it by its CRC.
+func TestWLRefusesADamagedSnapshot(t *testing.T) {
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		res := run(t, wlDamagedSnapshotConfig(seed))
+		if res.Stats.SnapshotFlips == 0 {
+			t.Fatalf("seed %d: no snapshot stream was damaged (%d sent)", seed, res.Stats.Snapshots)
+		}
+		checkers(t, res)
+		return res.Stats
+	}, nil)
+}
