@@ -183,6 +183,13 @@ func (d *disk) Rename(a, b string) error {
 	return d.call(simfs.OpRename, a, func() error { return d.p.n.disk.Rename(a, b) })
 }
 
+// Free returns the room left on the process's disk (simfs.Disk.Free).
+func (d *disk) Free() int64 {
+	d.s.mu.Lock()
+	defer d.s.mu.Unlock()
+	return d.p.n.disk.Free()
+}
+
 func (d *disk) SyncDir() error {
 	return d.call(simfs.OpSyncDir, "", d.p.n.disk.SyncDir)
 }

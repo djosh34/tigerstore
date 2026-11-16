@@ -77,13 +77,15 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 // start crashed before it recovered, and the run then required the
 // entries that an append the process before had partly written replaced;
 // on seed 19159 a leader elected by its peers' votes alone lost its term,
-// which was not durable yet, and led the same term again with another log.
+// which was not durable yet, and led the same term again with another log;
+// on seeds 28789, 29384 and 29489 nodes ran out of their disks' room
+// (TestWLFormsAndRunsTheFaults).
 //
 // Its seeds form their cluster under the faults, as the campaign that
 // found them did; TestWLFormsAndRunsTheFaults has seeds that form it
 // first.
 func TestWLRunsTheFaults(t *testing.T) {
-	simrun.Each(t, []uint64{2, 7, 8, 1002, 10155, 10161, 12024, 12731, 19159, 19458}, func(t *testing.T, seed uint64) Stats {
+	simrun.Each(t, []uint64{2, 7, 8, 1002, 10155, 10161, 12024, 12731, 19159, 19458, 28789, 29384, 29489}, func(t *testing.T, seed uint64) Stats {
 		st := runWLFaults(t, seed, true).Stats
 		if st.DiskFaults == 0 {
 			t.Fatal("no disk fault fired")
@@ -97,9 +99,12 @@ func TestWLRunsTheFaults(t *testing.T) {
 // from its disks (formCluster), as 7 seeds in 8 of TestSeeds do. On seed
 // 24040 the leader dropped a snapshot to a follower whose peer connection
 // was down without reporting it to Raft, which then waited for good, and
-// the follower ended 1,300 entries behind.
+// the follower ended 1,300 entries behind. On seeds 29122 and 29253, as on
+// 28789, 29384 and 29489 of TestWLRunsTheFaults, nodes that allocated each
+// log segment's space ahead whatever room their small disks had left
+// stopped writing checkpoints with ENOSPC, and were down at the end.
 func TestWLFormsAndRunsTheFaults(t *testing.T) {
-	simrun.Each(t, []uint64{1, 3, 24040}, func(t *testing.T, seed uint64) Stats {
+	simrun.Each(t, []uint64{1, 3, 24040, 29122, 29253}, func(t *testing.T, seed uint64) Stats {
 		st := runWLFaults(t, seed, false).Stats
 		if !st.Formed {
 			t.Fatal("the cluster did not form first")

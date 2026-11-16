@@ -22,6 +22,7 @@ import (
 	"io"
 	"io/fs"
 	"maps"
+	"math"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -691,6 +692,15 @@ func (d *Disk) Bytes() int {
 		n += f.room()
 	}
 	return n
+}
+
+// Free returns the room left on the disk: its capacity less what the files
+// take, or the most an int64 holds without a capacity.
+func (d *Disk) Free() int64 {
+	if d.Capacity == 0 {
+		return math.MaxInt64
+	}
+	return int64(max(0, d.Capacity-d.Bytes()))
 }
 
 // room is the space f takes on the disk.

@@ -366,6 +366,10 @@ func (w *wal) shut() {
 	_ = sysClose(w.wakeFD)
 }
 
+// allocFree is the room a disk must have left for a segment's space to be
+// allocated ahead (makeSegment): eight segments.
+const allocFree = 8 * segSize
+
 func (w *wal) makeSegment(dfd int, path string) (segment, error) {
 	fd, err := w.sys.open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL, 0o600)
 	if err != nil {
@@ -390,10 +394,16 @@ func (w *wal) makeSegment(dfd int, path string) (segment, error) {
 	// segments brought crd-heavy at 0 ms from x1.97 to x2.56 on the same
 	// seeds (43866870299, 43866865595). The size stays as each append
 	// leaves it, so recovery reads what it read before; blocks past it are
-	// never read. A file system without room or without fallocate leaves
-	// the segment to grow as before.
-	if err := w.sys.allocate(sg.wfd, segSize); err == nil {
-		_ = sysFsync(sg.wfd)
+	// never read. Allocated space is taken from the disk, so it is
+	// allocated only while allocFree is left: on a fuller disk the segment
+	// grows as before, and leaves the room to the checkpoints that cut the
+	// log (in campaign 43870771307 nodes whose small disks held segments
+	// allocated ahead stopped writing checkpoints with ENOSPC). A file
+	// system without fallocate leaves the segment to grow as before too.
+	if free, err := w.sys.freeSpace(w.dir); err == nil && free >= allocFree {
+		if err := w.sys.allocate(sg.wfd, segSize); err == nil {
+			_ = sysFsync(sg.wfd)
+		}
 	}
 	if sg.rfd, err = w.sys.open(path, unix.O_RDONLY, 0); err != nil {
 		_ = sysClose(sg.wfd)

@@ -147,6 +147,15 @@ func (sysEnv) allocate(fd int, size int64) error {
 	return unix.Fallocate(fd, unix.FALLOC_FL_KEEP_SIZE, 0, size)
 }
 
+// freeSpace returns the room left on the file system of path.
+func (sysEnv) freeSpace(path string) (int64, error) {
+	var st unix.Statfs_t
+	if err := unix.Statfs(path, &st); err != nil {
+		return 0, err
+	}
+	return int64(st.Bavail) * st.Bsize, nil
+}
+
 func (sysEnv) dial(ctx context.Context, addr string, timeout time.Duration) (net.Conn, error) {
 	d := net.Dialer{Timeout: timeout}
 	return d.DialContext(ctx, "tcp", addr)

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"math"
 	"net"
 	"os"
 	"strings"
@@ -185,6 +186,16 @@ func (n *Node) isDir(name string) bool {
 }
 
 func (n *Node) MkdirAll(string) error { return nil } // directories are the names' prefixes
+
+// FreeSpace returns the room left on the node's disk, as statfs's free
+// blocks available, or the most an int64 holds where the disk has no
+// capacity.
+func (n *Node) FreeSpace(string) (int64, error) {
+	if f, ok := n.disk.(interface{ Free() int64 }); ok {
+		return f.Free(), nil
+	}
+	return math.MaxInt64, nil
+}
 
 func (n *Node) ReadDir(path string) ([]string, error) {
 	name, err := n.name(path)

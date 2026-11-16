@@ -448,8 +448,8 @@ func TestAllocate(t *testing.T) {
 	write(t, a, make([]byte, 10))
 	al := a.(interface{ Allocate(int64) error })
 	ok(t, al.Allocate(60))
-	if d.Bytes() != 60 {
-		t.Fatalf("a file of 10 bytes allocated to 60 takes %d", d.Bytes())
+	if d.Bytes() != 60 || d.Free() != 40 {
+		t.Fatalf("a file of 10 bytes allocated to 60 takes %d, leaving %d", d.Bytes(), d.Free())
 	}
 	if b, err := a.ReadAll(); err != nil || len(b) != 10 {
 		t.Fatalf("an allocation changed the size to %d, %v", len(b), err)

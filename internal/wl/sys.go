@@ -45,6 +45,9 @@ type Sys interface {
 	// The node's files are under its data dir; their errors are the
 	// system's, so that a missing file is os.ErrNotExist.
 	MkdirAll(path string) error
+	// FreeSpace returns the room left on the file system of path, as
+	// statfs's blocks available to an unprivileged user.
+	FreeSpace(path string) (int64, error)
 	ReadDir(dir string) ([]string, error)
 	Remove(path string) error
 	Rename(oldPath, newPath string) error
