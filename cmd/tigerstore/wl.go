@@ -37,7 +37,7 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 			closeListeners(clientLns, pcfg.Listeners, lg)
 			return errWLPlainClients
 		}
-		cfg.ClientListeners = append(cfg.ClientListeners, l.Listener.Listener)
+		cfg.ClientListeners = append(cfg.ClientListeners, l.listener.Listener)
 	}
 	// A node that did not bootstrap the cluster joined it: it learns the
 	// member list from the leader.

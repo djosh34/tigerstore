@@ -1,7 +1,6 @@
 package sim
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/k8ssize"
 	"github.com/djosh34/tigerstore/internal/mvcc"
-	tnode "github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
@@ -227,9 +225,6 @@ func (w *watchClient) follow(ws watchStream, dropAt int64) (int64, int64) {
 			t.Stop()
 			s.mu.Lock()
 			s.tracef("watch %d: stream ended: %v", w.id, ws.Err())
-			if errors.Is(ws.Err(), tnode.ErrWatchTooSlow) {
-				s.stats.WatchersCut++
-			}
 			s.mu.Unlock()
 			return 0, dropAt
 		case <-p.ctx.Done():

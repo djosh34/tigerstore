@@ -2,7 +2,6 @@ package peer
 
 import (
 	"context"
-	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -45,21 +44,6 @@ func VerifyPeer(cns, hostnames []string) (func([][]byte, [][]*x509.Certificate) 
 		}
 		return errors.New("peer certificate is not valid for any name in --peer-cert-allowed-hostname")
 	}, nil
-}
-
-// certificates are the functions that give the certificate a handshake
-// presents to a peer that dials in and to a peer this node dials.
-func (cfg *Config) certificates() (server, client func() (*tls.Certificate, error)) {
-	server = cfg.GetCertificate
-	if server == nil {
-		cert := cfg.Certificate
-		server = func() (*tls.Certificate, error) { return &cert, nil }
-	}
-	client = cfg.GetClientCertificate
-	if client == nil {
-		client = server
-	}
-	return server, client
 }
 
 // CheckCRL is etcd's check against a certificate revocation list: no

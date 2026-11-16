@@ -28,12 +28,10 @@ import (
 	"sync"
 	"time"
 
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
-	tnode "github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/simos"
 	"github.com/djosh34/tigerstore/internal/simrun"
@@ -454,23 +452,16 @@ type pendingJob struct {
 	at       int64
 }
 
-// proc is one process of a node: the node driver, its peer transport and
-// its handle on the disk. Its context ends when it dies; from then on its
-// disk calls and connections fail.
+// proc is one process of a node. Its context ends when it dies; from
+// then on its disk calls and connections fail.
 type proc struct {
 	n      *node
-	node   *tnode.Node
 	ctx    context.Context
 	cancel context.CancelFunc
-	// core is the core the committer ran last, and parked, while set, is
-	// closed once the committer holds still for the checks at the end.
-	// fellBehind is its count of watchers that fell behind.
-	core *core.Node
-	// held are the core's counters of held entries so far.
+	// parked, while set, is closed once the node holds still for the
+	// checks at the end.
 	parked chan struct{}
-	// srv is the gRPC server of a voting node of the first three.
-	// wl is the process of a wl run (Config.wl), whose node and core are
-	// nil.
+	// wl is the node's process (wlnode.go).
 	wl *wlProc
 }
 
@@ -728,11 +719,8 @@ type Stats struct {
 	// buffer, and WriteTimeouts those that reached their write deadline.
 	Netem                                [numNetem]int
 	Resets, BlockedWrites, WriteTimeouts int
-	// SlowWatchers counts the watch clients that turned slow,
-	// WatchersBehind the times a node's watcher fell behind because its
-	// stream had no room, and WatchersCut the streams a node closed
-	// because their queue filled anyway, which the room should prevent.
-	SlowWatchers, WatchersBehind, WatchersCut int
+	// SlowWatchers counts the watch clients that turned slow.
+	SlowWatchers int
 	// MembershipChanges counts each completed stage, and MembershipFaults
 	// those completed before healing. Attempts include failed calls.
 	MembershipChanges, MembershipFaults [4]int
@@ -1527,37 +1515,6 @@ func (n *node) paused() int64 {
 		return math.MaxInt64
 	}
 	return n.pausedUntil
-}
-
-// baseNodeConfig is the configuration of node id of a cluster whose
-// first three members have peerURLs, as the runs and the floor (floor.go)
-// give it, before what a run adds.
-func baseNodeConfig(id uint64, peerURLs []string, leaseCheckpoints bool) tnode.Config {
-	cfg := core.DefaultConfig(id, []uint64{1, 2, 3})
-	cfg.Join = id > 3
-	for i, u := range peerURLs {
-		cfg.Members = append(cfg.Members, &pb.Member{ID: uint64(i + 1), PeerURLs: []string{u}})
-	}
-	// Progress notifications every 2 s instead of 10 minutes, so runs
-	// see them.
-	cfg.ProgressTicks = 20
-	if leaseCheckpoints {
-		cfg.LeaseCheckpointTicks = 10
-	}
-	tinyLimits(&cfg)
-	return tnode.Config{
-		Core: cfg,
-		Tick: time.Duration(TickTime),
-		// Small segments, so that most of the log is in sealed ones,
-		// where any damage is detectable.
-		SegmentBytes: 8 << 10,
-		// A watch stream holds 8 responses, so that a slow watcher's
-		// fills and its watcher falls behind.
-		WatchQueue: 8,
-		// Several nodes share the process, so none can measure its
-		// memory; the value cache takes the whole budget.
-		Memory: func(int64) (int64, bool) { return 0, false },
-	}
 }
 
 // logf adds a line of a node's log to the trace.

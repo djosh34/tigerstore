@@ -909,7 +909,7 @@ func faultCases() []faultCase {
 		// 400 ms in 93% (#568). Why closer stalls hit it less often was
 		// not measured.
 		{"write deadline", Faults{LinkStallEvery: 400 * Millisecond}, longer, func(st Stats) int { return st.WriteTimeouts }},
-		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.WatchersBehind }},
+		{"slow watcher", Faults{SlowWatcherEvery: Second}, nil, func(st Stats) int { return st.SlowWatchers }},
 	}
 	for i := range numNetem {
 		k := netemKind(i)

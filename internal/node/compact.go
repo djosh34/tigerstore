@@ -1,16 +1,10 @@
 package node
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strconv"
 	"time"
-
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
-
-	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // Auto compaction follows etcd v3.7.2's compactors
@@ -30,9 +24,6 @@ const (
 	CompactPeriodic = "periodic"
 	CompactRevision = "revision"
 )
-
-// revisionInterval is how often the revision compactor runs.
-const revisionInterval = 5 * time.Minute
 
 // Compaction is an auto compaction setting: a Period to keep in periodic
 // mode, or a count of Revisions to keep in revision mode. The zero
@@ -71,81 +62,4 @@ func ParseCompaction(mode, retention string) (Compaction, error) {
 		return Compaction{Revisions: int64(d)}, nil
 	}
 	return Compaction{Period: d}, nil
-}
-
-// leads reports whether this node is the leader, which alone compacts.
-func (n *Node) leads() bool { return n.Leader() == n.cfg.Core.ID }
-
-// revision is the node's current revision.
-func (n *Node) revision(ctx context.Context) (int64, error) {
-	st, err := n.Status(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return st.Header.Revision, nil
-}
-
-// autoCompact compacts at rev as the root user. A revision compacted
-// already counts as done, as in etcd.
-func (n *Node) autoCompact(ctx context.Context, rev int64) bool {
-	_, err := n.DoAs(ctx, core.RootCaller(), &pb.CompactionRequest{Revision: rev})
-	if err != nil && !errors.Is(err, rpctypes.ErrGRPCCompacted) {
-		n.logf("auto compaction at revision %d: %v", rev, err)
-		return false
-	}
-	n.logf("auto compaction at revision %d", rev)
-	return true
-}
-
-// compactPeriodically is etcd's Periodic compactor.
-func (n *Node) compactPeriodically(ctx context.Context, period time.Duration) {
-	compactInterval := min(period, time.Hour)
-	retry := compactInterval / 10
-	retentions := int(period/retry) + 1
-	revs := make([]int64, 0, retentions)
-	var lastRevision int64
-	lastSuccess := time.Now()
-	base := period
-	for {
-		rev, err := n.revision(ctx)
-		if err != nil {
-			return
-		}
-		revs = append(revs, rev)
-		if len(revs) > retentions {
-			revs = revs[1:]
-		}
-		if !sleep(ctx, retry) {
-			return
-		}
-		if !n.leads() {
-			continue
-		}
-		rev = revs[0]
-		if time.Since(lastSuccess) < base || rev == lastRevision {
-			continue
-		}
-		base = compactInterval
-		if n.autoCompact(ctx, rev) {
-			lastRevision, lastSuccess = rev, time.Now()
-		}
-	}
-}
-
-// compactByRevision is etcd's Revision compactor.
-func (n *Node) compactByRevision(ctx context.Context, retention int64, every time.Duration) {
-	var prev int64
-	n.onLeaderBeats(ctx, every, func() {
-		rev, err := n.revision(ctx)
-		if err != nil {
-			return
-		}
-		rev -= retention
-		if rev <= 0 || rev == prev {
-			return
-		}
-		if n.autoCompact(ctx, rev) {
-			prev = rev
-		}
-	})
 }

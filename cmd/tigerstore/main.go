@@ -147,7 +147,6 @@ func start(c *config, lg *zap.Logger) error {
 	if err != nil {
 		return err
 	}
-	pcfg.Logf = logf
 	ctls, err := clientTLS(ec)
 	if err != nil {
 		return err

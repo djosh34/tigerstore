@@ -45,7 +45,7 @@ func TestHeartbeatsPassASlowAppend(t *testing.T) {
 		lead := s.leaderIdx()
 		var term uint64
 		if lead >= 0 {
-			term = s.nodes[lead].proc.core.Term()
+			term = s.nodes[lead].proc.wl.turn.Term
 			for f := range s.nodes {
 				if f == lead {
 					continue
@@ -62,13 +62,13 @@ func TestHeartbeatsPassASlowAppend(t *testing.T) {
 		leader := s.nodes[lead]
 		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 		defer cancel()
-		if _, err := leader.proc.node.Do(ctx, &pb.PutRequest{Key: []byte("big"), Value: make([]byte, 48<<10)}); err != nil {
+		if _, err := s.callWL(leader.proc, &pb.PutRequest{Key: []byte("big"), Value: make([]byte, 48<<10)}, ctx); err != nil {
 			t.Fatalf("a put of 48 KiB through node %d on slow links: %v", leader.id, err)
 		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		if now := s.leaderIdx(); now != lead || leader.proc.core.Term() != term {
-			t.Fatalf("the leader changed from node %d at term %d to index %d at term %d while the append crossed the slow links", leader.id, term, now, leader.proc.core.Term())
+		if now := s.leaderIdx(); now != lead || leader.proc.wl.turn.Term != term {
+			t.Fatalf("the leader changed from node %d at term %d to index %d at term %d while the append crossed the slow links", leader.id, term, now, leader.proc.wl.turn.Term)
 		}
 	})
 }

@@ -23,7 +23,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
-	"github.com/djosh34/tigerstore/internal/server"
 	"github.com/djosh34/tigerstore/internal/testcert"
 )
 
@@ -154,7 +153,7 @@ func TestClientListeners(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, l := range lns {
-		if l.Traffic != server.TrafficAll || l.TLS {
+		if l.Traffic != trafficAll || l.TLS {
 			t.Errorf("%s: traffic %v, TLS %v", l.url, l.Traffic, l.TLS)
 		}
 		if err := l.Close(); err != nil {

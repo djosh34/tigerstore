@@ -163,3 +163,6 @@ type restoredLog struct {
 }
 
 func (l restoredLog) Checkpoint(uint64) (io.ReadCloser, error) { return os.Open(l.ckpt) }
+
+// syncBytes is how much of a snapshot the WAL buffers before a sync.
+const syncBytes = 16 << 20
