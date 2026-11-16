@@ -35,3 +35,18 @@ func TestStallStatsReadTheThreadAndTheKernel(t *testing.T) {
 		t.Fatalf("since: %s", got)
 	}
 }
+
+// A slow turn logs the counters' change from the last read before it
+// began: the read at its own tick, after its input, would leave out a
+// stall in the input.
+func TestASlowTurnLogsTheStallFromBeforeItBegan(t *testing.T) {
+	start := time.Now()
+	l := &loop{prevStall: stallStats{at: start.Add(-100 * time.Millisecond)}, tickStall: stallStats{at: start.Add(900 * time.Millisecond)}}
+	if got := l.stallBase(start); !got.at.Equal(l.prevStall.at) {
+		t.Fatalf("a turn whose own tick read the counters logs from %v, want the read before it at %v", got.at, l.prevStall.at)
+	}
+	l.prevStall, l.tickStall = l.tickStall, stallStats{at: start.Add(-50 * time.Millisecond)}
+	if got := l.stallBase(start); !got.at.Equal(l.tickStall.at) {
+		t.Fatalf("a turn without a tick logs from %v, want the last read at %v", got.at, l.tickStall.at)
+	}
+}

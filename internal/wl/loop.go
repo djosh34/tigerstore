@@ -75,10 +75,14 @@ type loop struct {
 	lastWAL walStats
 	lastAt  time.Time
 	lastCPU cpuStats
-	// tickStall is what stallStats read at the last tick, which a slow
-	// turn logs the change from.
-	tickStall stallStats
-	logger    *log.Logger
+	// tickStall is what stallStats read at the last tick, and
+	// prevStall at the tick before: a slow turn logs the change from the
+	// last read before it began (stallBase).
+	tickStall, prevStall stallStats
+	logger               *log.Logger
+	// turnIn is where the turn's input went, but for its clients'
+	// sockets, which are the rest.
+	turnIn inputTurn
 	// turnPosts and turnHandoffs count the posts run and connections
 	// taken this turn, for the slow-turn log.
 	turnPosts, turnHandoffs int
@@ -866,18 +870,31 @@ func (l *loop) run() error {
 				if l.ctx.Err() != nil && l.leaveBy.IsZero() && !l.leave() {
 					return errStopped
 				}
+				t := time.Now()
 				l.takeHandoffs()
-				if err := l.runPosts(); err != nil {
+				err := l.runPosts()
+				l.turnIn.handoffs += time.Since(t)
+				if err != nil {
 					return err
 				}
 			case evFsync:
-				if err := n.fsyncDone(); err != nil {
+				t := time.Now()
+				err := n.fsyncDone()
+				l.turnIn.fsync += time.Since(t)
+				if err != nil {
 					return err
 				}
 			default:
 				idx := int(ev.Fd)
 				if ev.Events&(unix.EPOLLIN|unix.EPOLLRDHUP|unix.EPOLLHUP|unix.EPOLLERR) != 0 {
-					l.input(idx)
+					if _, ok := n.socks[idx].(*client); ok {
+						l.input(idx)
+					} else {
+						// A peer's connection: few a turn, so timed.
+						t := time.Now()
+						l.input(idx)
+						l.turnIn.peers += time.Since(t)
+					}
 				}
 				if ev.Events&unix.EPOLLOUT != 0 {
 					if s := sockOf(n.socks[idx]); s != nil && !s.dead {
@@ -910,7 +927,7 @@ func (l *loop) run() error {
 			}
 			n.limitGo()
 			l.clientTick()
-			l.tickStall = n.stallStats(now)
+			l.prevStall, l.tickStall = l.tickStall, n.stallStats(now)
 			if n.leading() || planted.On("B10") {
 				n.expireLeases()
 			}
@@ -939,7 +956,7 @@ func (l *loop) run() error {
 		if err := n.syncWatchers(); err != nil {
 			return err
 		}
-		n.turnCkpt, n.turnReady = ckptTurn{}, readyTurn{}
+		n.turnCkpt = ckptTurn{}
 		if err := n.ckptStep(false); err != nil {
 			return err
 		}
@@ -961,6 +978,7 @@ func (l *loop) run() error {
 		}
 		clear(n.turnReqs[:])
 		l.turnPosts, l.turnHandoffs = 0, 0
+		n.turnReady, l.turnIn = readyTurn{}, inputTurn{}
 		n.stats.turns++
 		n.simTurn()
 		if l.tick%50 == 0 && l.tick != l.logged {
@@ -1122,10 +1140,22 @@ func (l *loop) logSlowTurn(start, input, ready, sync, flush, end time.Time, ops 
 		applied[k] = l.n.stats.opsByKind[k] - ops[k]
 	}
 	c, r := l.n.turnCkpt, l.n.turnReady
-	l.logger.Printf("slow turn %v: input and proposals %v (of it the tick %v), ready and apply %v (%s), watch catch-up and the checkpoint's step %v (of it the step: key scan %v, of that the cut and placing %v of %d values; encoding %v), flush %v, sweep %v; requests by kind %v, posts %d, connections taken %d; applied by kind %v; keys %d, watchers %d, catching up %d, held flows %d; %s",
-		end.Sub(start), input.Sub(start), tick, ready.Sub(input), r, sync.Sub(ready), c.scan, c.place, c.rels, c.encode, flush.Sub(sync), end.Sub(flush),
+	l.logger.Printf("slow turn %v: input and proposals %v (of it the tick %v, %s), ready and apply %v (%s), watch catch-up and the checkpoint's step %v (of it the step: key scan %v, of that the cut and placing %v of %d values; encoding %v), flush %v, sweep %v; requests by kind %v, posts %d, connections taken %d; applied by kind %v; keys %d, watchers %d, catching up %d, held flows %d; %s",
+		end.Sub(start), input.Sub(start), tick, l.turnIn, ready.Sub(input), r, sync.Sub(ready), c.scan, c.place, c.rels, c.encode, flush.Sub(sync), end.Sub(flush),
 		l.n.turnReqs, l.turnPosts, l.turnHandoffs, applied,
-		l.n.st.nkeys, len(l.n.w.ws), len(l.n.w.unsynced), l.heldFlows(), l.n.stallStats(end).since(l.tickStall))
+		l.n.st.nkeys, len(l.n.w.ws), len(l.n.w.unsynced), l.heldFlows(), l.n.stallStats(end).since(l.stallBase(start)))
+}
+
+// stallBase is what a slow turn that began at start logs the stall
+// counters' change from: the last read before it began. The tick runs
+// after the turn's input, so a read at this turn's own tick would leave
+// out a stall in the input before it, as on the leader of bench
+// 43824369567, whose turn of 976 ms logged only its last 20 ms.
+func (l *loop) stallBase(start time.Time) stallStats {
+	if l.tickStall.at.Before(start) {
+		return l.tickStall
+	}
+	return l.prevStall
 }
 
 // heldFlows counts the messages the clients hold for want of window.

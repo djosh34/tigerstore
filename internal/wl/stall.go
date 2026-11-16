@@ -122,3 +122,12 @@ func (r readyTurn) String() string {
 	return fmt.Sprintf("of it Raft %v, %d appends %v (copies into the stage %v, install %v, %d waited for room), %d applies %v, sends %v",
 		r.raft, r.appends, r.append, r.write, r.install, r.waits, r.applies, r.apply, r.send)
 }
+
+// inputTurn is where a turn's input went: the log's syncs done (with the
+// appends that then fit the stage), the handoffs and posts, and the
+// peers' connections.
+type inputTurn struct{ fsync, handoffs, peers time.Duration }
+
+func (t inputTurn) String() string {
+	return fmt.Sprintf("syncs done %v, handoffs and posts %v, peers %v", t.fsync, t.handoffs, t.peers)
+}
