@@ -559,7 +559,11 @@ type Sim struct {
 	// expiredAt is when a lease first expired on any node.
 	expiredAt    map[int64]int64
 	expiredOrder []int64
-	checkpoints  []*checkpoint
+	// revokedAt is when a wl node first applied a lease's revoke, and
+	// revokesTo the last index whose revokes it holds (noteRevokes).
+	revokedAt   map[int64]int64
+	revokesTo   uint64
+	checkpoints []*checkpoint
 	// cold holds the disks of the first cold restart that failed, and
 	// votes makes the trace show every vote request and answer, as in a
 	// cold restart, so that one that elects no leader shows why.
@@ -986,6 +990,7 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 		t0:         time.Now(),
 		end:        make(chan struct{}),
 		expiredAt:  map[int64]int64{},
+		revokedAt:  map[int64]int64{},
 		log:        &entryLog{},
 		ckpts:      map[uint64]ckptRec{},
 		servedRoot: map[uint64]uint64{},

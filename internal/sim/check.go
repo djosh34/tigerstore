@@ -589,6 +589,30 @@ func sameLatest(a, b *mvcc.Store, log core.Log) error {
 	return nil
 }
 
+// noKeepAliveAfterRevoke requires every keepalive that started after a
+// node applied its lease's revoke (revokedAt) to find no lease: its entry
+// comes after the revoke's in the log. A lease granted again after the
+// revoke, with the same ID, is left out.
+func noKeepAliveAfterRevoke(history []*Record, revokedAt map[int64]int64) error {
+	granted := map[int64]int64{}
+	for _, r := range history {
+		if g, ok := r.Resp.(*pb.LeaseGrantResponse); ok && g != nil {
+			granted[g.ID] = max(granted[g.ID], r.Call)
+		}
+	}
+	for _, r := range history {
+		k, ok := r.Resp.(*pb.LeaseKeepAliveResponse)
+		if !ok || k == nil || k.TTL <= 0 {
+			continue
+		}
+		if at, ok := revokedAt[k.ID]; ok && r.Call > at && granted[k.ID] < at {
+			return fmt.Errorf("lease %d answered a keepalive called at %d ms with TTL %d s, after a node applied its revoke at %d ms",
+				k.ID, r.Call/Millisecond, k.TTL, at/Millisecond)
+		}
+	}
+	return nil
+}
+
 // leaseGrace is how long after its last grant or keepalive a lease of
 // ttl seconds may still live: its TTL, plus a leader change, after which
 // the new leader gives the full TTL again.
@@ -609,6 +633,9 @@ func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
 	if err := leasesExpire(res.History, s.expiredAt, s.expiredOrder, alive, s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
 		return err
 	}
+	if err := noKeepAliveAfterRevoke(res.History, s.revokedAt); err != nil {
+		return err
+	}
 	for _, op := range res.Log {
 		switch op.(type) {
 		case *pb.LeaseRevokeRequest:
@@ -623,8 +650,10 @@ func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
 // leasesExpire requires every lease that still lives at end to have been
 // granted or kept alive within the leaseGrace of its TTL, so leases do
 // expire, and no lease to expire, at expiredAt, before its TTL ran out
-// since its last successful grant or renewal, less the clock envelope of
-// driftPerMille.
+// since its last successful grant or renewal that started before then,
+// less the clock envelope of driftPerMille. A renewal after the expiry
+// does not count: the revoke a leader proposed may never commit, as when
+// it loses its term, and the next leader starts the lease's TTL over.
 func leasesExpire(history []*Record, expiredAt map[int64]int64, order, alive []int64, end, driftPerMille int64) error {
 	renewed := map[int64]int64{}
 	ttl := map[int64]int64{}
@@ -636,10 +665,15 @@ func leasesExpire(history []*Record, expiredAt map[int64]int64, order, alive []i
 			if resp == nil {
 				continue
 			}
-			renewed[resp.ID] = max(renewed[resp.ID], r.Call)
 			ttl[resp.ID] = resp.TTL
+			if at, ok := expiredAt[resp.ID]; !ok || r.Call < at {
+				renewed[resp.ID] = max(renewed[resp.ID], r.Call)
+			}
 		case *pb.LeaseKeepAliveResponse:
-			if resp != nil && resp.TTL > 0 {
+			if resp == nil || resp.TTL <= 0 {
+				continue
+			}
+			if at, ok := expiredAt[resp.ID]; !ok || r.Call < at {
 				renewed[resp.ID] = max(renewed[resp.ID], r.Call)
 			}
 		}

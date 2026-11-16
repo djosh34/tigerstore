@@ -249,11 +249,36 @@ func (h *wlHooks) Applied(e *raftpb.Entry, hash uint64, state func() uint64) {
 	}
 	p.wl.applied = e.GetIndex()
 	s.record(n, core.Applied{Index: e.GetIndex(), Term: e.GetTerm(), Type: e.GetType(), Data: e.GetData(), Hash: hash})
+	s.noteRevokes(e)
 	s.applied = max(s.applied, e.GetIndex())
 	if c, ok := s.ckpts[e.GetIndex()]; ok && c.node != n.id {
 		// Another node took a checkpoint here: this node's store must
 		// hold the same state.
 		s.sameState(n, e.GetIndex(), state(), "applied")
+	}
+}
+
+// noteRevokes notes when the first node to apply entry e applied the
+// lease revokes in it (noKeepAliveAfterRevoke). The lock is held.
+func (s *Sim) noteRevokes(e *raftpb.Entry) {
+	if e.GetIndex() <= s.revokesTo {
+		return
+	}
+	s.revokesTo = e.GetIndex()
+	if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
+		return
+	}
+	ops, err := wlOps(e.GetData())
+	if err != nil {
+		// The check of the committed log reports it (checkWL).
+		return
+	}
+	for _, op := range ops {
+		if r, ok := op.(*pb.LeaseRevokeRequest); ok {
+			if _, seen := s.revokedAt[r.ID]; !seen {
+				s.revokedAt[r.ID] = s.now()
+			}
+		}
 	}
 }
 

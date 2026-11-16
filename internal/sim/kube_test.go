@@ -238,31 +238,70 @@ func TestKubeListsPageOnPurpose(t *testing.T) {
 // TestLeasesExpireByTTL checks leasesExpire against each lease's own TTL:
 // a lease of 120 s granted 30 s before the end may still live then, but
 // not one of 4 s granted then, nor one of 120 s granted 300 s before; and
-// a lease of 120 s may not expire 100 s after its grant.
+// a lease of 120 s may not expire 100 s after its grant, nor 121 s after
+// it, 1 s after a keepalive. A keepalive after the expiry, whose revoke
+// never committed, leaves it as it was.
 func TestLeasesExpireByTTL(t *testing.T) {
 	end := 1000 * Second
 	grant := func(id, ttl, at int64) *Record {
 		return &Record{Call: at, Return: at + Millisecond, req: &pb.LeaseGrantRequest{TTL: ttl}, Resp: &pb.LeaseGrantResponse{ID: id, TTL: ttl}}
+	}
+	keepAlive := func(id, ttl, at int64) *Record {
+		return &Record{Call: at, Return: at + Millisecond, req: &pb.LeaseKeepAliveRequest{ID: id}, Resp: &pb.LeaseKeepAliveResponse{ID: id, TTL: ttl}}
 	}
 	h := []*Record{grant(1, 120, end-30*Second), grant(2, 4, end-30*Second), grant(3, 120, end-300*Second), grant(4, 120, 0)}
 	for _, c := range []struct {
 		name    string
 		alive   []int64
 		expired int64
+		keptAt  int64
 		ok      bool
 	}{
-		{"120 s lease 30 s old lives", []int64{1}, 0, true},
-		{"4 s lease 30 s old lives", []int64{2}, 0, false},
-		{"120 s lease 300 s old lives", []int64{3}, 0, false},
-		{"120 s lease expires after 121 s", nil, 121 * Second, true},
-		{"120 s lease expires after 100 s", nil, 100 * Second, false},
+		{"120 s lease 30 s old lives", []int64{1}, 0, 0, true},
+		{"4 s lease 30 s old lives", []int64{2}, 0, 0, false},
+		{"120 s lease 300 s old lives", []int64{3}, 0, 0, false},
+		{"120 s lease expires after 121 s", nil, 121 * Second, 0, true},
+		{"120 s lease expires after 100 s", nil, 100 * Second, 0, false},
+		{"120 s lease expires 1 s after a keepalive", nil, 121 * Second, 120 * Second, false},
+		{"120 s lease kept alive after it expired", nil, 121 * Second, 200 * Second, true},
 	} {
 		at, order := map[int64]int64{}, []int64(nil)
 		if c.expired > 0 {
 			at[4], order = c.expired, []int64{4}
 		}
+		h := h
+		if c.keptAt > 0 {
+			h = append(slices.Clone(h), keepAlive(4, 120, c.keptAt))
+		}
 		err := leasesExpire(h, at, order, c.alive, end, 50)
 		if (err == nil) != c.ok {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
+}
+
+// TestNoKeepAliveAfterRevoke checks noKeepAliveAfterRevoke: a keepalive
+// called after a node applied its lease's revoke may not find the lease,
+// one called before may, and so may one of the lease granted again.
+func TestNoKeepAliveAfterRevoke(t *testing.T) {
+	grant := func(id, at int64) *Record {
+		return &Record{Call: at, Return: at + Millisecond, req: &pb.LeaseGrantRequest{TTL: 5}, Resp: &pb.LeaseGrantResponse{ID: id, TTL: 5}}
+	}
+	keepAlive := func(id, ttl, at int64) *Record {
+		return &Record{Call: at, Return: at + Millisecond, req: &pb.LeaseKeepAliveRequest{ID: id}, Resp: &pb.LeaseKeepAliveResponse{ID: id, TTL: ttl}}
+	}
+	revoked := map[int64]int64{1: 10 * Second}
+	for _, c := range []struct {
+		name string
+		h    []*Record
+		ok   bool
+	}{
+		{"kept alive before the revoke", []*Record{grant(1, 0), keepAlive(1, 5, 9*Second)}, true},
+		{"kept alive after the revoke", []*Record{grant(1, 0), keepAlive(1, 5, 11*Second)}, false},
+		{"not found after the revoke", []*Record{grant(1, 0), keepAlive(1, 0, 11*Second)}, true},
+		{"granted again after the revoke", []*Record{grant(1, 0), grant(1, 10500*Millisecond), keepAlive(1, 5, 11*Second)}, true},
+	} {
+		if err := noKeepAliveAfterRevoke(c.h, revoked); (err == nil) != c.ok {
 			t.Errorf("%s: %v", c.name, err)
 		}
 	}
