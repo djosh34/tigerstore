@@ -61,7 +61,7 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 // cut the log, link stalls, half-open connections, netem, resets, gray
 // nodes and clients, slow watchers, clock drift and held-down nodes.
 func TestWLRunsTheFaults(t *testing.T) {
-	simrun.Each(t, []uint64{8}, func(t *testing.T, seed uint64) Stats {
+	simrun.Each(t, []uint64{7, 8}, func(t *testing.T, seed uint64) Stats {
 		cfg := DefaultConfig(seed)
 		cfg.wl, cfg.FormUnderFaults = true, true
 		f := &cfg.Faults

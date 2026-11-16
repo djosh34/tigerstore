@@ -180,9 +180,10 @@ func openWAL(sys sysEnv, dir string, stage int, keep, from int64, fn func(r *wal
 
 // reopen readies the log to go on at end: it opens the segments that hold
 // it from offset from to read, and the last one to write from end on, cut
-// there; it removes any segment before from's or after end's, and puts the
-// last block's bytes before end into the stage, which the helper writes
-// again. It returns the first segment still to make.
+// there; it removes any segment before from's or after end's, syncs what
+// is left (syncSegments), and puts the last block's bytes before end into
+// the stage, which the helper writes again. It returns the first segment
+// still to make.
 func (w *wal) reopen(from, end int64) (int64, error) {
 	first, last := from/segSize, end/segSize
 	if err := w.removeSegments(0, first); err != nil {
@@ -210,12 +211,18 @@ func (w *wal) reopen(from, end int64) (int64, error) {
 	w.off, w.stable, w.wbase = end, end, last
 	w.done.Store(end)
 	w.want.Store(end)
-	if w.rbase+int64(len(w.rfds)) == last {
-		return last, nil
-	}
 	path := segPath(w.dir, last)
-	if err := w.sys.truncate(path, end%segSize); err != nil {
+	cut := w.rbase+int64(len(w.rfds)) > last
+	if cut {
+		if err := w.sys.truncate(path, end%segSize); err != nil {
+			return 0, err
+		}
+	}
+	if err := w.syncSegments(); err != nil {
 		return 0, err
+	}
+	if !cut {
+		return last, nil
 	}
 	wfd, err := w.sys.openDirect(path)
 	if err != nil {
@@ -228,6 +235,29 @@ func (w *wal) reopen(from, end int64) (int64, error) {
 		return 0, fmt.Errorf("read the log's last block back: %d bytes, %w", n, err)
 	}
 	return last + 1, nil
+}
+
+// syncSegments makes durable what the scan read and reopen cut, before
+// the node counts the log as recovered: a write that failed, or a process
+// that died before its write was durable, can leave records in the page
+// cache that a scan reads and a power loss takes (#701). It syncs every
+// segment the log holds, and the directory, whose removes of segments
+// past the end go with them.
+func (w *wal) syncSegments() error {
+	for k, fd := range w.rfds {
+		if err := sysFsync(fd); err != nil {
+			return fmt.Errorf("sync %s: %w", segPath(w.dir, w.rbase+int64(k)), err)
+		}
+	}
+	dfd, err := w.sys.open(w.dir, unix.O_RDONLY|unix.O_DIRECTORY, 0)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = sysClose(dfd) }()
+	if err := sysFsync(dfd); err != nil {
+		return fmt.Errorf("sync %s: %w", w.dir, err)
+	}
+	return nil
 }
 
 // removeSegments removes the log's segments from k to before to, those

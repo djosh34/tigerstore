@@ -77,6 +77,10 @@ jobs:
       # they took 545 s of the 600 s package timeout here.
       - shell: bash
         run: go list ./... | grep -v '/internal/sim$' | xargs go test -race 2>&1 | tee "$RUNNER_TEMP/test.log"
+      # wl's nodes on simos and simfs need the simulator's seam, the tag
+      # simio (internal/wl/sys.go).
+      - shell: bash
+        run: go test -race -tags simio ./internal/simos 2>&1 | tee -a "$RUNNER_TEMP/test.log"
       - if: failure()
         run: scripts/replay.sh "$RUNNER_TEMP/test.log" -race
       - if: failure()

@@ -22,6 +22,7 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/testcert"
+	"github.com/djosh34/tigerstore/internal/wal"
 	"github.com/djosh34/tigerstore/internal/wl"
 )
 
@@ -36,7 +37,15 @@ type simCluster struct {
 	pool    *x509.CertPool
 	cancels []context.CancelFunc
 	stopped []chan error
+	// fs and hooks, where set, are node i's disk instead of disks[i] and
+	// its hooks.
+	fs    []wal.FS
+	hooks []wl.Hooks
 }
+
+// testOS is the descriptor table of every cluster of the tests: wl sends
+// the calls that name only a descriptor to the first node's (wl.Sys).
+var testOS = New()
 
 func newSimCluster(t *testing.T) *simCluster {
 	t.Helper()
@@ -54,12 +63,13 @@ func newSimCluster(t *testing.T) *simCluster {
 	}
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(ca.PEM)
-	c := &simCluster{os: New(), nw: newMemNet(), cert: cert, pool: pool}
+	c := &simCluster{os: testOS, nw: newMemNet(), cert: cert, pool: pool}
 	for i, h := range hosts {
 		c.disks = append(c.disks, simfs.New())
 		c.members = append(c.members, wl.Member{ID: uint64(i + 1), Name: h, PeerURLs: []string{"https://" + h + ":2380"}, ClientURLs: []string{"https://" + h + ":2379"}})
 	}
 	c.cancels, c.stopped = make([]context.CancelFunc, 3), make([]chan error, 3)
+	c.fs, c.hooks = make([]wal.FS, 3), make([]wl.Hooks, 3)
 	t.Cleanup(func() {
 		for i := range c.cancels {
 			c.stop(t, i)
@@ -93,9 +103,18 @@ func (c *simCluster) start(t *testing.T, i int) {
 		ClientTLS: c.tls(true), PeerServerTLS: c.tls(true), PeerClientTLS: c.tls(false),
 		ClientListeners: []net.Listener{c.nw.listen(host + ":2379")},
 		PeerListeners:   []net.Listener{c.nw.listen(host + ":2380")},
-		Sys:             c.os.NewNode(dataDir, c.disks[i], c.nw),
+		Sys:             c.os.NewNode(dataDir, c.disk(i), c.nw),
+		Hooks:           c.hooks[i],
 	}
 	go func() { c.stopped[i] <- wl.Run(ctx, cfg) }()
+}
+
+// disk is node i's disk.
+func (c *simCluster) disk(i int) wal.FS {
+	if c.fs[i] != nil {
+		return c.fs[i]
+	}
+	return c.disks[i]
 }
 
 func (c *simCluster) stop(t *testing.T, i int) {
