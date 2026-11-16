@@ -26,6 +26,7 @@ type flow struct {
 	streams map[uint32]int64 // the windows of streams that hold something
 	counts  map[uint32]int   // how many held entries each such stream has
 	held    []held
+	bytes   int64 // the data and trailers held
 }
 
 func newFlow() flow { return flow{conn: defaultWindow, initial: defaultWindow} }
@@ -54,6 +55,7 @@ func (c *client) hold(s *stream, data, trailer []byte) {
 		f.streams[s.id] = s.win
 	}
 	f.held = append(f.held, held{sid: s.id, data: data, trailer: trailer})
+	f.bytes += int64(len(data) + len(trailer))
 	f.counts[s.id]++
 	// Behind another of its stream's entries, or with the connection's
 	// window shut, it cannot go out yet.
@@ -119,6 +121,7 @@ func (c *client) drain() {
 			w := msgW{s: &c.sock, sid: h.sid, left: int(m)}
 			w.write(h.data[:m])
 			h.data = h.data[m:]
+			f.bytes -= m
 			f.conn -= m
 			f.streams[h.sid] -= m
 			n.markDirty(&c.sock)
@@ -136,6 +139,7 @@ func (c *client) drain() {
 			b := c.frame(9 + len(h.trailer))
 			putFrameHeader(b, len(h.trailer), frHeaders, flEndHeaders|flEndStream, h.sid)
 			copy(b[9:], h.trailer)
+			f.bytes -= int64(len(h.trailer))
 			n.markDirty(&c.sock)
 		}
 		f.counts[h.sid]--
@@ -163,7 +167,9 @@ func (c *client) dropHeld(sid uint32) {
 		if h.sid != sid {
 			f.held[k] = h
 			k++
+			continue
 		}
+		f.bytes -= int64(len(h.data) + len(h.trailer))
 	}
 	clear(f.held[k:])
 	f.held = f.held[:k]

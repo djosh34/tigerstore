@@ -62,6 +62,8 @@ type testCluster struct {
 	members []Member
 	ids     []uint64
 	joins   []bool
+	// budget is each node's MemoryBudget, 0 for none.
+	budget int64
 }
 
 // newTestCluster starts a 3-node cluster in this process; the test's end
@@ -137,7 +139,7 @@ func (tc *testCluster) startNode(t *testing.T, i int) {
 	cfg := Config{
 		Name: fmt.Sprintf("n%d", i+1), ID: tc.ids[i], ClusterID: 0x7769726531, DataDir: tc.dataDir(i), Join: tc.joins[i],
 		Logger:     log.New(out, fmt.Sprintf("n%d ", i+1), log.Lmicroseconds),
-		ClientURLs: []string{"https://" + tc.endpoints[i]},
+		ClientURLs: []string{"https://" + tc.endpoints[i]}, MemoryBudget: tc.budget,
 	}
 	cfg.Members = tc.members
 	var err error

@@ -41,6 +41,8 @@ type loop struct {
 	n    *node
 	epfd int
 	hoFD int // handoffs wake the loop through it
+	// resumed are the paused clients a flush resumes (flush).
+	resumed []*client
 
 	ctx      context.Context
 	mu       sync.Mutex
@@ -160,6 +162,7 @@ func run(ctx context.Context, cfg Config) error {
 	n.sideReqs = map[handle][]byte{}
 	n.carryUntil = map[uint64]time.Time{}
 	n.sizes = sizeFor(cfg.MemoryBudget)
+	n.connOut = n.sizes.connOut(1)
 	if n.ring, err = newRing(n.sizes.ring); err != nil {
 		return err
 	}
@@ -208,6 +211,9 @@ func run(ctx context.Context, cfg Config) error {
 
 	l := &loop{n: n, dials: map[uint64]*dialer{}, logger: logger, lastAt: time.Now(), peerTLS: cfg.PeerClientTLS}
 	n.shell = l
+	if testLoops != nil {
+		testLoops(n.id, l)
+	}
 	n.rm = newRemover(n.sys, l.wakeLoop)
 	if l.epfd, err = n.sys.epollCreate(); err != nil {
 		return err
@@ -451,6 +457,9 @@ func (l *loop) handOver(h *handoff) {
 	l.wake()
 	l.mu.Unlock()
 }
+
+// testLoops, set only by tests, is told of each loop a node starts.
+var testLoops func(id uint64, l *loop)
 
 // post hands the loop fn to run in its next turn.
 func (l *loop) post(fn func() error) {
@@ -761,6 +770,10 @@ func (l *loop) input(idx int) {
 		switch v := x.(type) {
 		case *client:
 			err = v.frames(n)
+			if err == nil && v.paused {
+				// Nothing more is read from it until a flush resumes it.
+				n.markDirty(&v.sock)
+			}
 		case *peerIn:
 			err = n.peerFrames(v)
 		case *peerOut:
@@ -858,6 +871,7 @@ func (l *loop) run() error {
 				return err
 			}
 			n.limitGo()
+			l.shareClientOut()
 			l.tickStall = n.stallStats(now)
 			if n.leading() {
 				n.expireLeases()
@@ -933,6 +947,7 @@ func (n *node) limitGo() {
 
 func (l *loop) flush() {
 	n := l.n
+	resumed := l.resumed[:0]
 	for _, s := range n.dirty {
 		s.dirty = false
 		if s.dead {
@@ -943,15 +958,57 @@ func (l *loop) flush() {
 			l.closeSock(s.idx)
 			continue
 		}
-		if !ok && !s.wantOut {
-			s.wantOut = true
-			_ = n.sys.epollCtl(l.epfd, unix.EPOLL_CTL_MOD, s.fd, unix.EPOLLIN|unix.EPOLLRDHUP|unix.EPOLLOUT, int32(s.idx))
-		} else if ok && s.wantOut {
-			s.wantOut = false
-			_ = n.sys.epollCtl(l.epfd, unix.EPOLL_CTL_MOD, s.fd, unix.EPOLLIN|unix.EPOLLRDHUP, int32(s.idx))
+		noIn := false
+		if c, isClient := n.socks[s.idx].(*client); isClient && c.paused {
+			if c.waiting() <= n.connOut/2 {
+				c.paused = false
+				resumed = append(resumed, c)
+			}
+			noIn = c.paused
 		}
+		if ok == !s.wantOut && noIn == s.noIn {
+			continue
+		}
+		s.wantOut, s.noIn = !ok, noIn
+		_ = n.sys.epollCtl(l.epfd, unix.EPOLL_CTL_MOD, s.fd, sockEvents(!noIn, s.wantOut), int32(s.idx))
 	}
 	n.dirty = n.dirty[:0]
+	// A client resumed takes the requests it sent while paused, which
+	// are flushed in the next turn.
+	for _, c := range resumed {
+		if !c.dead {
+			if err := c.frames(n); err != nil {
+				l.closeSock(c.idx)
+			}
+		}
+	}
+	clear(resumed)
+	l.resumed = resumed[:0]
+}
+
+// sockEvents are the events a socket waits for: input unless paused, its
+// close, and room to write when it has bytes waiting.
+func sockEvents(in, out bool) uint32 {
+	ev := uint32(unix.EPOLLRDHUP)
+	if in {
+		ev |= unix.EPOLLIN
+	}
+	if out {
+		ev |= unix.EPOLLOUT
+	}
+	return ev
+}
+
+// shareClientOut gives each client connection its share of the client
+// buffers, for the clients connected now.
+func (l *loop) shareClientOut() {
+	k := 0
+	for _, x := range l.n.socks {
+		if _, ok := x.(*client); ok {
+			k++
+		}
+	}
+	l.n.connOut = l.n.sizes.connOut(k)
 }
 
 // counters are the loop's own, for its log: per 5 s, how many turns,
@@ -1013,9 +1070,9 @@ func (l *loop) logStats() {
 	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d; stage waits %d",
 		st.slab.used>>20, st.limit>>20, st.evictions, st.loads, l.n.wal.stats.waits)
 	m := l.n.memStats()
-	l.logger.Printf("memory MB: rss %d, go %d (live heap %d, goal %d); tables: keys %d hash %d history %d key arena %d slab %d (used %d) tree %d changes %d; sockets out %d in %d, held %d",
+	l.logger.Printf("memory MB: rss %d, go %d (live heap %d, goal %d); tables: keys %d hash %d history %d key arena %d slab %d (used %d) tree %d changes %d; sockets out %d in %d, held %d, held for clients' windows %d",
 		m.rss>>20, m.goTotal>>20, m.goLive>>20, m.goGoal>>20, m.keys>>20, m.hash>>20, m.hist>>20, m.arena>>20, m.slabTop>>20, m.slabUsed>>20, m.tree>>20, m.ch>>20,
-		m.sockOut>>20, m.sockIn>>20, m.held>>20)
+		m.sockOut>>20, m.sockIn>>20, m.held>>20, m.clientHeld>>20)
 	n := l.n
 	l.logger.Printf("rings: spans %d/%d/%d, on the heap %d/%d/%d; storage let go %d, read back %d",
 		n.ring.stats.spans, n.rx.stats.spans, n.side.stats.spans, n.ring.stats.heap, n.rx.stats.heap, n.side.stats.heap,

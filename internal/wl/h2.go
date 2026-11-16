@@ -170,7 +170,39 @@ type client struct {
 	// size of its writes as etcd counts it; cn is that name.
 	identity int
 	cn       string
+	// paused is set while its send buffer is over its share (backedUp):
+	// the node reads nothing more of it until a flush brings the buffer
+	// under half the share.
+	paused bool
 }
+
+// The client buffers (sizes.clientOut) bound what waits unsent to each
+// client connection in two parts, each within the connection's share
+// (sizes.connOut), and one reply over it:
+//   - its send buffer, while the socket does not take it: the node stops
+//     reading the connection (paused), and its watches catch up later
+//     from the change index, as etcd's slow watchers do;
+//   - what its streams hold for want of HTTP/2 window: the node goes on
+//     reading, for the client's WINDOW_UPDATEs, but refuses its new
+//     requests as etcd refuses too many (errTooManyRequests), and its
+//     watches catch up later.
+
+// waiting is what waits in the client's send buffer.
+func (c *client) waiting() int64 { return int64(len(c.out) - c.ow) }
+
+// backedUp reports whether the client's send buffer is over its share.
+func (c *client) backedUp() bool { return c.waiting() > c.node.connOut }
+
+// holdsTooMuch reports whether the client's streams hold more than its
+// share for want of window.
+func (c *client) holdsTooMuch() bool { return c.flow.bytes > c.node.connOut }
+
+// slow reports whether the client's watches send nothing now.
+func (c *client) slow() bool { return c.paused || c.backedUp() || c.holdsTooMuch() }
+
+// errTooManyRequests is etcd's answer to a client it cannot take more
+// requests of.
+var errTooManyRequests = requestErr(codeResourceExhausted, "etcdserver: too many requests")
 
 func newClient(h *handoff, stats *counters) *client {
 	c := &client{sock: *newSock(h, stats), slots: make([]stream, streamSlots), hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn), cn: h.cn}
@@ -259,6 +291,12 @@ func (c *client) frames(n *node) error {
 		n.markDirty(&c.sock)
 	}
 	for {
+		if c.backedUp() {
+			// Its replies wait: the rest of its requests waits too, in
+			// pt and the socket, until a flush resumes it (loop.flush).
+			c.paused = true
+			return nil
+		}
 		avail := c.pw - c.pr
 		if avail < 9 {
 			return nil

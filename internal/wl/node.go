@@ -16,8 +16,11 @@ import (
 // node is one replica: everything below runs on the loop's one thread.
 type node struct {
 	id, clusterID uint64
-	// sizes are the node's buffers outside the store, from its budget.
-	sizes sizes
+	// sizes are the node's buffers outside the store, from its budget;
+	// connOut is a client connection's share of sizes.clientOut for the
+	// clients connected at the last tick.
+	sizes   sizes
+	connOut int64
 	// sys is the node's handle on the system calls of sys_os.go.
 	sys sysEnv
 	// members is the member list as of the applied index, and removed the
@@ -292,6 +295,10 @@ func (n *node) clientOf(h handle) (*client, *stream) {
 // during the call.
 func (n *node) request(c *client, s *stream, msg []byte) error {
 	n.turnReqs[s.kind]++
+	if c.holdsTooMuch() {
+		n.reject(c, s, errTooManyRequests)
+		return nil
+	}
 	learner := n.isLearner()
 	if learner && !learnerServes(s.kind) {
 		n.reject(c, s, errLearner)

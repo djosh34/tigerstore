@@ -27,6 +27,10 @@ type sizes struct {
 	// uncommitted is Raft's MaxUncommittedEntriesSize: the leader's
 	// proposals not yet committed, on Go's heap.
 	uncommitted uint64
+	// clientOut is what waits unsent to every client together, at most
+	// the connections' shares (connOut), and the one reply each may write
+	// past its share.
+	clientOut int64
 }
 
 // sizeFor sizes the buffers of a node with budget bytes, 0 for none.
@@ -46,7 +50,20 @@ func sizeFor(budget int64) sizes {
 		held:        max(budget/48, 4<<20),
 		replication: budget / 16,
 		uncommitted: uint64(budget / 16),
+		clientOut:   budget / 16,
 	}
+}
+
+// minConnOut is the least a client connection's share of clientOut may
+// be: with more clients than clientOut holds such shares (768 at 3 GiB),
+// they may hold more together.
+const minConnOut = 256 << 10
+
+// connOut is the most that waits unsent to one of clients connections
+// before the node stops reading its requests and sends its watches'
+// events by catching up from the change index (client.backedUp).
+func (z sizes) connOut(clients int) int64 {
+	return max(z.clientOut/int64(max(clients, 1)), minConnOut)
 }
 
 // mapped is what the rings and the stage map outside Go's heap.

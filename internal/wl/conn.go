@@ -30,6 +30,7 @@ type sock struct {
 	ow      int    // bytes of out written already
 	rec     int    // offset of the open record's header, -1 for none
 	wantOut bool   // registered for EPOLLOUT
+	noIn    bool   // registered without EPOLLIN: a paused client
 	dirty   bool   // in the loop's list of sockets to flush
 	stats   *counters
 	// sent, if any, counts the bytes written: a peer connection's.
@@ -289,6 +290,10 @@ func (s *sock) flush() (bool, error) {
 	}
 	s.out = s.out[:0]
 	s.ow = 0
+	if cap(s.out) > 4*outBuf {
+		// A large reply grew it; it need not keep that much.
+		s.out = make([]byte, 0, outBuf)
+	}
 	return true, nil
 }
 

@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"testing"
@@ -192,5 +193,40 @@ func TestASendBufferStaysWithinWhatWaits(t *testing.T) {
 	if limit := 8 * backlog; cap(s.out) > limit {
 		t.Fatalf("the send buffer grew to %d bytes after %d were sent with about %d waiting; want at most %d",
 			cap(s.out), backlog+rounds*step, backlog, limit)
+	}
+}
+
+// What a client's streams hold for want of window is counted as it is
+// held, sent and dropped; past the client's share, its new requests are
+// refused as etcd refuses too many, and its watches send nothing now.
+func TestAClientThatHoldsTooMuchIsRefused(t *testing.T) {
+	c, s := flowClient(t)
+	c.node.connOut = 128 << 10
+	sendMsg(c, s, 100000)
+	held := int64(100005 - defaultWindow)
+	if c.flow.bytes != held {
+		t.Fatalf("%d bytes counted held, want %d", c.flow.bytes, held)
+	}
+	if c.holdsTooMuch() || c.slow() {
+		t.Fatal("a client within its share counts as holding too much")
+	}
+	s2 := c.newStream(3, kRange)
+	sendMsg(c, s2, 200000)
+	if !c.holdsTooMuch() || !c.slow() {
+		t.Fatalf("%d bytes held over a share of %d do not count", c.flow.bytes, c.node.connOut)
+	}
+	s3 := c.newStream(5, kRange)
+	before := len(c.out)
+	if err := c.node.request(c, s3, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(c.out[before:], []byte("etcdserver: too many requests")) {
+		t.Fatal("a request of a client that holds too much was not refused")
+	}
+	c.dropHeld(s2.id)
+	c.windowUpdate(0, 1<<20)
+	c.windowUpdate(s.id, 1<<20)
+	if c.flow.bytes != 0 || len(c.flow.held) != 0 {
+		t.Fatalf("%d bytes still counted held, %d entries, after the drop and the windows", c.flow.bytes, len(c.flow.held))
 	}
 }

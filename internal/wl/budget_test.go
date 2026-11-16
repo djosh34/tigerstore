@@ -17,14 +17,23 @@ func TestTheBuffersFitTheBudget(t *testing.T) {
 			// A send buffer grows to at most four times what waits in it,
 			// its backlog and one message on top (sock.openRec).
 			replication := int64(followers) * (4*(z.peerBacklog(followers)+maxPeerMsg) + maxPlain + recOverhead + 8)
-			heap := replication + z.held + int64(z.uncommitted) + keptBufs*keptBufMax
+			// The clients' send buffers and held replies: each within its
+			// share of clientOut (connOut), with the reply under way.
+			heap := replication + z.held + int64(z.uncommitted) + keptBufs*keptBufMax + z.clientOut
 			store := budget - z.mapped() - (heap + heap/4)
 			if store < budget/4 {
-				t.Errorf("budget %d MiB, %d followers: the buffers leave the store %d MiB (mapped %d MiB, send buffers %d MiB, held %d MiB, uncommitted %d MiB); want at least a quarter",
-					budget>>20, followers, store>>20, z.mapped()>>20, replication>>20, z.held>>20, z.uncommitted>>20)
+				t.Errorf("budget %d MiB, %d followers: the buffers leave the store %d MiB (mapped %d MiB, send buffers %d MiB, held %d MiB, uncommitted %d MiB, clients %d MiB); want at least a quarter",
+					budget>>20, followers, store>>20, z.mapped()>>20, replication>>20, z.held>>20, z.uncommitted>>20, z.clientOut>>20)
 			}
 			if z.inflight(followers+1) > uint64(z.peerBacklog(followers)) {
 				t.Errorf("budget %d MiB, %d followers: Raft keeps %d bytes in flight to a follower, past its backlog of %d", budget>>20, followers, z.inflight(followers+1), z.peerBacklog(followers))
+			}
+		}
+		// The clients' shares sum to clientOut while each is over the
+		// least share.
+		for _, clients := range []int{1, 64, int(z.clientOut / minConnOut)} {
+			if sum := int64(clients) * z.connOut(clients); sum > z.clientOut {
+				t.Errorf("budget %d MiB, %d clients: their shares sum to %d MiB, past the client buffers' %d MiB", budget>>20, clients, sum>>20, z.clientOut>>20)
 			}
 		}
 		if z.stage&(z.stage-1) != 0 || z.stage < 4<<20 || z.stage > z.ring {

@@ -406,6 +406,13 @@ func (n *node) flushEvents() {
 		if c == nil {
 			continue
 		}
+		if c.slow() {
+			// Its client takes nothing now: the watch catches up from
+			// these events once it does.
+			x.syncRev = w.events[first].rev
+			w.unsynced = append(w.unsynced, i)
+			continue
+		}
 		if x.fragment {
 			// Rare: a watch that asked for fragments goes the long way.
 			var evs []event
@@ -487,7 +494,7 @@ func (n *node) syncWatchers() error {
 			w.remove(i)
 			continue
 		}
-		if budget.left() {
+		if budget.left() && !c.slow() {
 			done, err := n.catchUp(x, &budget, func(evs []event) { n.writeEvents(c, s, x, evs) })
 			if errors.Is(err, errPrevCompacted) {
 				n.writeCompacted(c, s, x)
