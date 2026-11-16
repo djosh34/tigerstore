@@ -1147,6 +1147,7 @@ func parsePointer(b []byte, path string) (*ckptPointer, error) {
 type Pointer struct {
 	Checkpoint   string
 	FirstSegment int64
+	LogFrom      int64 // where the log starts: the checkpoint left it there
 }
 
 // ReadPointer reads b, a node's ckpt/CURRENT.
@@ -1155,7 +1156,7 @@ func ReadPointer(b []byte) (Pointer, error) {
 	if err != nil {
 		return Pointer{}, err
 	}
-	return Pointer{Checkpoint: p.name, FirstSegment: p.logFrom / segSize}, nil
+	return Pointer{Checkpoint: p.name, FirstSegment: p.logFrom / segSize, LogFrom: p.logFrom}, nil
 }
 
 // cleanCkptDir removes what a node that stopped left half done in dir:

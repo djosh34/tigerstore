@@ -17,6 +17,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 
 	etcdmetrics "github.com/djosh34/tigerstore/internal/metrics"
+	"github.com/djosh34/tigerstore/internal/planted"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"golang.org/x/crypto/bcrypt"
@@ -901,7 +902,7 @@ func (l *loop) run() error {
 			n.limitGo()
 			l.clientTick()
 			l.tickStall = n.stallStats(now)
-			if n.leading() {
+			if n.leading() || planted.On("B10") {
 				n.expireLeases()
 			}
 		}

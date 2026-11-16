@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // Leases. A grant, a revoke and a keepalive go through the batch and the
@@ -113,7 +114,7 @@ func (n *node) leaderChanged() {
 	n.confHold.leadFirst = 0
 	lc := &n.leases
 	lc.deadline, lc.revoking = nil, nil
-	if !n.leading() {
+	if !n.leading() && !planted.On("B10") {
 		return
 	}
 	lc.deadline = make(map[int64]time.Time, len(n.st.leases))
@@ -144,6 +145,12 @@ func (n *node) expireLeases() {
 			continue
 		}
 		lc.revoking[id] = n.now
+		if !n.leading() && planted.On("B10") {
+			// Planted: a follower expires the lease on its own clock,
+			// without the log.
+			_ = n.applyLeaseRevoke(appendVarintField(nil, 1, uint64(id)), nil, nil)
+			continue
+		}
 		n.addOp(0, kLeaseRevoke, appendVarintField(nil, 1, uint64(id)))
 	}
 }

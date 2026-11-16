@@ -8,6 +8,8 @@ import (
 	"hash/maphash"
 	"slices"
 	"unsafe"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // The store keeps a key's live revision as its encoded mvccpb.KeyValue,
@@ -492,6 +494,10 @@ func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64
 	create, ver := rev, int64(1)
 	if prev != nil {
 		create, ver = k.create, k.ver+1
+	} else if planted.On("B09b") && k.hist != 0 && !st.hist[k.hist].deleted {
+		// Planted: a key created again after a delete keeps its old
+		// version and create revision.
+		create, ver = st.hist[k.hist].create, st.hist[k.hist].ver+1
 	}
 	n := kvSize(len(key), len(value), create, rev, ver, lease)
 	off, err := st.slab.alloc(n)
@@ -660,7 +666,9 @@ func (st *store) trimHistory(id uint32) {
 			st.tree.remove(id)
 			k.inTree = false
 		}
-		if k.mod < c {
+		if k.mod < c || planted.On("B08") {
+			// Planted (B08): the tombstone at the compacted revision
+			// goes too, and a watch from there misses its delete.
 			st.freeKey(id)
 		}
 	}

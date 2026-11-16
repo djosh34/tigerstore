@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"time"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // The apply: each committed batch changes the store in order, and the
@@ -78,6 +80,7 @@ func (n *node) applyBatch(data []byte, index uint64, walOff int64) error {
 		caller, named = authInfo{}, false
 		var err error
 		n.txnWrote = false
+		n.plantedSubs = 0
 		if n.noSpace || n.corrupt {
 			err = n.alarmGate(kind, req)
 		}
@@ -108,6 +111,10 @@ func (n *node) applyBatch(data []byte, index uint64, walOff int64) error {
 			err = n.applyDowngrade(req, c, s)
 		case kind == kAuthOp:
 			err = n.applyAuthOp(req, index, c, s)
+		}
+		if n.plantedSubs > 1 {
+			// Planted (B09a): the store's revision is the last key's.
+			n.st.rev += n.plantedSubs - 1
 		}
 		// A read-only Txn is etcd's to serve without an apply.
 		if op := applyOp(kind); op >= 0 && (kind != kTxn || n.txnWrote) {
@@ -191,6 +198,7 @@ func voffOf(req, sub []byte, base int64) int64 {
 // key had, if it was live.
 func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 	st := n.st
+	rev = n.plantedRev(rev)
 	// etcd's mvcc counts the put, and the read of the value before it.
 	n.gs.puts++
 	n.gs.putBytes += int64(len(r.key) + len(r.value))
@@ -229,6 +237,16 @@ func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 	return prev, nil
 }
 
+// plantedRev is the revision of the next key a request changes at rev:
+// rev itself, but with planted bug B09a each key its own.
+func (n *node) plantedRev(rev int64) int64 {
+	if !planted.On("B09a") {
+		return rev
+	}
+	n.plantedSubs++
+	return rev + n.plantedSubs - 1
+}
+
 // checkPutKey fails a put to a lease that does not exist, or one that
 // keeps the value or lease of a key that does not exist: etcd's checkPut.
 func (n *node) checkPutKey(r *putReq) error {
@@ -263,6 +281,10 @@ func (n *node) deleteRange(r *delReq, rev int64, kvs [][]byte) ([][]byte, int64,
 	}
 	var deleted int64
 	del := func(id uint32) error {
+		if planted.On("B09a") && !st.exists(id) {
+			return nil
+		}
+		rev := n.plantedRev(rev)
 		prev, err := st.del(id, rev)
 		if err != nil || prev == nil {
 			return err

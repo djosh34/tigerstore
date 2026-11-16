@@ -7,6 +7,8 @@ import (
 	"math"
 	"slices"
 	"time"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // Watches. A watcher is matched to a write through the directory of its
@@ -180,8 +182,18 @@ func (w *watches) push(i int32, id uint32, del bool, rev int64, kv, prev []byte)
 	if (del && x.noDel) || (!del && x.noPut) || x.syncRev != 0 || rev < x.minRev {
 		return
 	}
+	firstOfWrite := x.first < 0 || w.events[x.last].rev != rev
+	w.link(x, i, event{next: -1, del: del, key: id, rev: rev, kv: kv, prev: prev})
+	if planted.On("B06b") && firstOfWrite {
+		// Planted: the first event of a write goes to the watcher twice.
+		w.link(x, i, event{next: -1, del: del, key: id, rev: rev, kv: kv, prev: prev})
+	}
+}
+
+// link appends ev to watcher x's (number i) events of the apply.
+func (w *watches) link(x *watcher, i int32, e event) {
 	ev := int32(len(w.events))
-	w.events = append(w.events, event{next: -1, del: del, key: id, rev: rev, kv: kv, prev: prev})
+	w.events = append(w.events, e)
 	if x.first < 0 {
 		x.first = ev
 	} else {
@@ -269,6 +281,10 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 				n.markDirty(&c.sock)
 				return nil
 			}
+		}
+		if planted.On("B07") && startRev > 1 {
+			// Planted: the watch starts one revision early.
+			startRev--
 		}
 		if startRev < 0 {
 			n.writeRefused(c, s, msgCompacted)
@@ -382,6 +398,11 @@ func (n *node) writeRefused(c *client, s *stream, reason string) {
 }
 
 func (n *node) closeWatchStream(c *client, s *stream) {
+	if planted.On("B18") {
+		// Planted: the stream's watchers stay.
+		s.wids = s.wids[:0]
+		return
+	}
 	for _, i := range s.wids {
 		if n.w.ws[i].active && n.w.ws[i].sock == c.idx && n.w.ws[i].sid == s.id {
 			n.w.remove(i)
@@ -405,6 +426,14 @@ func (n *node) flushEvents() {
 		c, s := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid))
 		if c == nil {
 			continue
+		}
+		if planted.On("B06a") {
+			dropLastOfWrite(w, first)
+		}
+		if planted.On("B06d") && x.progressNotify {
+			// Planted: a progress notification at the current revision
+			// goes out ahead of the events it covers.
+			n.writeProgress(c, s, x.id)
 		}
 		if c.slow() {
 			// Its client takes nothing now: the watch catches up from
@@ -441,6 +470,22 @@ func (n *node) flushEvents() {
 	w.touched = w.touched[:0]
 }
 
+// dropLastOfWrite is planted bug B06a: the list of events from first
+// loses its last one when the write before it changed several keys.
+func dropLastOfWrite(w *watches, first int32) {
+	prev := int32(-1)
+	e := first
+	for w.events[e].next >= 0 {
+		prev, e = e, w.events[e].next
+	}
+	if prev >= 0 && w.events[prev].rev == w.events[e].rev {
+		w.events[prev].next = -1
+	}
+}
+
+// withPrev reports whether x's events carry the value before them.
+func (x *watcher) withPrev() bool { return x.prevKV && !planted.On("B06c") }
+
 // writeEvent writes ev as an Event, field 11 of a WatchResponse.
 func (n *node) writeEvent(mw *msgW, x *watcher, ev *event) {
 	mw.lenField(11, n.eventSize(x, ev))
@@ -453,7 +498,7 @@ func (n *node) writeEvent(mw *msgW, x *watcher, ev *event) {
 	} else {
 		mw.bytesField(2, ev.kv)
 	}
-	if x.prevKV && ev.prev != nil {
+	if x.withPrev() && ev.prev != nil {
 		mw.bytesField(3, ev.prev)
 	}
 }
@@ -740,7 +785,7 @@ func (n *node) eventSize(x *watcher, ev *event) int {
 	} else {
 		b += sizeBytesField(2, len(ev.kv))
 	}
-	if x.prevKV && ev.prev != nil {
+	if x.withPrev() && ev.prev != nil {
 		b += sizeBytesField(3, len(ev.prev))
 	}
 	return b

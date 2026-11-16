@@ -285,6 +285,11 @@ func (w *wal) removeSegments(k, to int64) error {
 // loop (remover). Only the loop calls it.
 func (w *wal) cut(off int64) []string {
 	k := min(off, w.stable) / segSize
+	if planted.On("B19") && k < w.stable/segSize {
+		// Planted: the segment that holds off goes too, though recovery
+		// from the checkpoint still reads it.
+		k++
+	}
 	if k <= w.rbase {
 		return nil
 	}
@@ -364,7 +369,10 @@ func (w *wal) makeSegment(dfd int, path string) (segment, error) {
 		return segment{}, err
 	}
 	_ = sysClose(fd)
-	if err := sysFsync(dfd); err != nil {
+	if planted.On("B05") {
+		// Planted: the segment takes records before its directory
+		// entry is synced.
+	} else if err := sysFsync(dfd); err != nil {
 		return segment{}, err
 	}
 	var sg segment
@@ -451,9 +459,23 @@ func (w *wal) writeLoop(flushed int64) error {
 			if err != nil {
 				return err
 			}
+			if planted.On("B16") && (from+n)%segSize == 0 && from+n < to {
+				// Planted: the log moves to the next segment without the
+				// last write of this one made durable.
+				if err := w.plantedUnsyncedWrite(from, n, pos); err != nil {
+					return err
+				}
+				from += n
+				continue
+			}
 			k, err := sysPwrite(fd, w.stage[pos:pos+n], from%segSize)
 			if errors.Is(err, unix.EINTR) {
 				continue
+			}
+			if err != nil && k > 0 && planted.On("B12") {
+				// Planted: the log goes on past a short write, and what
+				// it left out is never written.
+				k, err = int(n), nil
 			}
 			if err != nil && planted.On("B11") {
 				// Planted: the failed write counts as done.
@@ -477,6 +499,18 @@ func (w *wal) writeLoop(flushed int64) error {
 		binary.LittleEndian.PutUint64(b[:], 1)
 		_, _ = sysWrite(w.wakeFD, b[:])
 	}
+}
+
+// plantedUnsyncedWrite is planted bug B16: it writes the n stage bytes at
+// pos, the log's at from, to their segment through the page cache, with
+// no sync.
+func (w *wal) plantedUnsyncedWrite(from, n, pos int64) error {
+	fd, err := w.sys.open(segPath(w.dir, from/segSize), unix.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	_, err = sysPwrite(fd, w.stage[pos:pos+n], from%segSize)
+	return errors.Join(err, sysClose(fd))
 }
 
 // kick starts a sync if none runs and appends wait, at most one every
@@ -640,6 +674,25 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 	var buf []byte
 	var r walRecord
 	off := from
+	// Planted bug B04b holds each record back until the next one checks,
+	// and drops the last before a torn tail; lastIndex is for B04c.
+	var held walRecord
+	heldOff, lastIndex := int64(-1), uint64(0)
+	emit := func(r *walRecord) error {
+		if fn == nil {
+			return nil
+		}
+		if planted.On("B04b") {
+			if heldOff >= 0 {
+				if err := fn(&held); err != nil {
+					return err
+				}
+			}
+			held, heldOff = *r, off
+			return nil
+		}
+		return fn(r)
+	}
 	for k := from / segSize; ; k++ {
 		b, err := sys.readFile(segPath(dir, k))
 		if errors.Is(err, os.ErrNotExist) {
@@ -667,8 +720,14 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 			if l <= maxWALRecBody && int64(len(buf)) < recHead+l {
 				break
 			}
-			if l > maxWALRecBody || !checks(buf[:recHead+l]) && !plantedAccepts(buf[:recHead+l], off) {
-				return off, damaged(sys, dir, k, short, off, buf)
+			if l > maxWALRecBody || !checks(buf[:recHead+l]) && !plantedAccepts(buf[:recHead+l], off, lastIndex) {
+				err := damaged(sys, dir, k, short, off, buf)
+				if err == nil && heldOff >= 0 && tornRecord(buf) {
+					// Planted (B04b): the record before a torn tail is
+					// cut too.
+					return heldOff, nil
+				}
+				return off, err
 			}
 			rec := buf[:recHead+l]
 			r = walRecord{off: off + recHead, kind: rec[8], data: rec[recHead:]}
@@ -679,10 +738,11 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 				r.off += entHead
 				r.data = rec[walEntHdr:]
 			}
-			if fn != nil {
-				if err := fn(&r); err != nil {
-					return 0, err
-				}
+			if r.kind == recEntry {
+				lastIndex = r.index
+			}
+			if err := emit(&r); err != nil {
+				return 0, err
 			}
 			off += recHead + l
 			buf = buf[recHead+l:]
@@ -694,6 +754,16 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 	}
 	if chainAfter(buf) {
 		return off, fmt.Errorf("%w: the log ends in a record at offset %d that runs past its end, but records that check follow its start", ErrCorruptLog, off)
+	}
+	if heldOff >= 0 {
+		if tornRecord(buf) {
+			// Planted (B04b): a record torn at the log's end cuts the
+			// one before it too.
+			return heldOff, nil
+		}
+		if err := fn(&held); err != nil {
+			return 0, err
+		}
 	}
 	return off, nil
 }
@@ -720,13 +790,30 @@ func chainAfter(b []byte) bool {
 
 // plantedAccepts reports whether planted bug B04a takes rec, a record at
 // log offset off whose CRC does not verify, as good: one whose kind and
-// length are a record's and that no crash tore.
-func plantedAccepts(rec []byte, off int64) bool {
-	if !planted.On("B04a") || torn(rec, off) {
-		return false
-	}
+// length are a record's and that no crash tore. B04c takes one that
+// decodes: an entry after the last, lastIndex, or a hard state.
+func plantedAccepts(rec []byte, off int64, lastIndex uint64) bool {
 	l := int64(len(rec) - recHead)
-	return rec[8] == recEntry && l >= entHead || rec[8] == recHardState
+	switch {
+	case planted.On("B04a"):
+		return !torn(rec, off) && (rec[8] == recEntry && l >= entHead || rec[8] == recHardState)
+	case planted.On("B04c"):
+		if rec[8] == recHardState {
+			return l > 0 && l < 64
+		}
+		if rec[8] != recEntry || l < entHead {
+			return false
+		}
+		i := binary.LittleEndian.Uint64(rec[9:])
+		return i >= 1 && i <= lastIndex+1
+	}
+	return false
+}
+
+// tornRecord reports whether b, the log's bytes past its last record that
+// checks, start a record a crash tore rather than the zeros past the end.
+func tornRecord(b []byte) bool {
+	return slices.ContainsFunc(b[:min(len(b), recHead)], func(c byte) bool { return c != 0 })
 }
 
 // checks reports whether b starts with a whole record that checks.
