@@ -60,21 +60,35 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 // systems that shut down or go read-only, full disks, checkpoints that
 // cut the log, link stalls, half-open connections, netem, resets, gray
 // nodes and clients, slow watchers, clock drift and held-down nodes.
+// Seed 7 lost an entry its start had read from the page cache (#701).
 func TestWLRunsTheFaults(t *testing.T) {
 	simrun.Each(t, []uint64{7, 8}, func(t *testing.T, seed uint64) Stats {
-		cfg := DefaultConfig(seed)
-		cfg.wl, cfg.FormUnderFaults = true, true
-		f := &cfg.Faults
-		f.Checkpoint, f.RecoveryCrash, f.StepCrash, f.FlipSnapshot, f.FetchCrash, f.SlowFetch, f.Rot, f.Corrupt = false, false, false, false, false, false, false, false
-		res := run(t, cfg)
-		st := res.Stats
-		t.Logf("calls: %d ok, %d failed, %d ambiguous; crashes %d, disk faults %d, file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
-			st.OK, st.Failed, st.Ambiguous, st.Crashes, st.DiskFaults, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
+		st := runWLFaults(t, seed)
 		if st.DiskFaults == 0 {
 			t.Fatal("no disk fault fired")
 		}
 		return st
 	}, nil)
+}
+
+// TestWLFaultSeeds is TestWLRunsTheFaults over a set of seeds, for a
+// campaign (sim-campaign.yml); alone it runs one.
+func TestWLFaultSeeds(t *testing.T) {
+	simrun.Seeds(t, 1000, 1, runWLFaults, nil)
+}
+
+// runWLFaults runs seed on wl nodes with the faults TestWLRunsTheFaults
+// names.
+func runWLFaults(t *testing.T, seed uint64) Stats {
+	cfg := DefaultConfig(seed)
+	cfg.wl, cfg.FormUnderFaults = true, true
+	f := &cfg.Faults
+	f.Checkpoint, f.RecoveryCrash, f.StepCrash, f.FlipSnapshot, f.FetchCrash, f.SlowFetch, f.Rot, f.Corrupt = false, false, false, false, false, false, false, false
+	res := run(t, cfg)
+	st := res.Stats
+	t.Logf("calls: %d ok, %d failed, %d ambiguous; crashes %d, disk faults %d, file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
+		st.OK, st.Failed, st.Ambiguous, st.Crashes, st.DiskFaults, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
+	return st
 }
 
 // The log's stage race (internal/wl/wal.go, writeLoop): the helper writes
