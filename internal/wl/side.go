@@ -115,10 +115,10 @@ func newSideSecret() (string, error) {
 
 // selfClient is the node's client of itself: it dials addr, a client
 // listener of the node, with dial.
-func selfClient(addr string, dial *tls.Config) (*clientv3.Client, error) {
+func selfClient(sys sysEnv, addr string, dial *tls.Config) (*clientv3.Client, error) {
 	return clientv3.New(clientv3.Config{
 		Endpoints: []string{addr}, TLS: dial, Logger: zap.NewNop(),
-		MaxCallRecvMsgSize: math.MaxInt32,
+		MaxCallRecvMsgSize: math.MaxInt32, DialOptions: sys.grpcDial(),
 	})
 }
 

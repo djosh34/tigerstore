@@ -71,12 +71,12 @@ func (s *sock) readSock() (bool, error) {
 		return false, nil
 	}
 	s.stats.reads++
-	n, err := unix.Read(s.fd, s.in[s.iw:])
+	n, err := sysRead(s.fd, s.in[s.iw:])
 	if n > 0 {
 		s.iw += n
 		return true, nil
 	}
-	if err == unix.EAGAIN || err == unix.EINTR {
+	if errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EINTR) {
 		return false, nil
 	}
 	if err == nil {
@@ -268,7 +268,7 @@ func (s *sock) flush() (bool, error) {
 	s.seal()
 	for s.ow < len(s.out) {
 		s.stats.writes++
-		n, err := unix.Write(s.fd, s.out[s.ow:])
+		n, err := sysWrite(s.fd, s.out[s.ow:])
 		if n > 0 {
 			s.ow += n
 			if s.sent != nil {
@@ -276,10 +276,10 @@ func (s *sock) flush() (bool, error) {
 			}
 			continue
 		}
-		if err == unix.EAGAIN {
+		if errors.Is(err, unix.EAGAIN) {
 			return false, nil
 		}
-		if err == unix.EINTR {
+		if errors.Is(err, unix.EINTR) {
 			continue
 		}
 		if err == nil {

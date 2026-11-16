@@ -217,7 +217,7 @@ func TestTheApplyChecksABatchsFormat(t *testing.T) {
 func TestEachStartHasALaterRun(t *testing.T) {
 	dir := t.TempDir()
 	for want := uint64(1); want <= 3; want++ {
-		run, err := nextRun(dir)
+		run, err := nextRun(sysEnv{}, dir)
 		if err != nil || run != want {
 			t.Fatalf("start %d has run %d (%v)", want, run, err)
 		}

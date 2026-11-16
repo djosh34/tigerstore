@@ -271,14 +271,14 @@ func TestACorruptCheckpointDoesNotLoad(t *testing.T) {
 // The pointer keeps the node's own part of a checkpoint.
 func TestThePointerReadsBackWhatWasWritten(t *testing.T) {
 	dir := t.TempDir()
-	if p, err := readPointer(dir); p != nil || err != nil {
+	if p, err := readPointer(sysEnv{}, dir); p != nil || err != nil {
 		t.Fatalf("no pointer reads as %v, %v", p, err)
 	}
 	hs := &pb.HardState{Term: new(uint64(4)), Vote: new(uint64(2)), Commit: new(uint64(99))}
-	if err := writePointer(dir, &ckptPointer{gen: 1, name: "x.ckpt", logFrom: 12345, hs: hs}); err != nil {
+	if err := writePointer(sysEnv{}, dir, &ckptPointer{gen: 1, name: "x.ckpt", logFrom: 12345, hs: hs}); err != nil {
 		t.Fatal(err)
 	}
-	p, err := readPointer(dir)
+	p, err := readPointer(sysEnv{}, dir)
 	if err != nil {
 		t.Fatal(err)
 	}

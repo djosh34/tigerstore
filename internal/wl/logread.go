@@ -22,7 +22,7 @@ import (
 func ReadLog(dir string) (first, commit uint64, ents []*pb.Entry, err error) {
 	var from int64
 	first = 1
-	p, err := readPointer(filepath.Join(dir, "ckpt"))
+	p, err := readPointer(sysEnv{}, filepath.Join(dir, "ckpt"))
 	if err != nil {
 		return 0, 0, nil, err
 	}
@@ -33,7 +33,7 @@ func ReadLog(dir string) (first, commit uint64, ents []*pb.Entry, err error) {
 		}
 		first, from, commit = index+1, p.logFrom, max(index, p.hs.GetCommit())
 	}
-	_, err = scanWAL(filepath.Join(dir, "wal"), from, func(r *walRecord) error {
+	_, err = scanWAL(sysEnv{}, filepath.Join(dir, "wal"), from, func(r *walRecord) error {
 		switch r.kind {
 		case recHardState:
 			hs := &pb.HardState{}

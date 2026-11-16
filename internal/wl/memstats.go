@@ -6,8 +6,6 @@ import (
 	"runtime/metrics"
 	"strconv"
 	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 // memStats is where the node's memory goes, for the loop's log: what the
@@ -65,7 +63,7 @@ func (n *node) memStats() memStats {
 // residentBytes reads the process's resident memory, or -1 where /proc
 // does not tell.
 func residentBytes() int64 {
-	b, err := os.ReadFile("/proc/self/statm")
+	b, err := procFile("/proc/self/statm")
 	if err != nil {
 		return -1
 	}
@@ -94,13 +92,7 @@ type cpuStats struct {
 // cpuStats reads the totals; it runs on the loop's thread.
 func (n *node) cpuStats() cpuStats {
 	var c cpuStats
-	var ru unix.Rusage
-	if unix.Getrusage(unix.RUSAGE_SELF, &ru) == nil {
-		c.process = ru.Utime.Nano() + ru.Stime.Nano()
-	}
-	if unix.Getrusage(unix.RUSAGE_THREAD, &ru) == nil {
-		c.loop = ru.Utime.Nano() + ru.Stime.Nano()
-	}
+	c.process, c.loop = sysCPU()
 	if n.wal != nil {
 		c.walWrite = n.wal.writeNs.Load()
 	}
@@ -115,7 +107,7 @@ func (n *node) cpuStats() cpuStats {
 // /proc does not tell.
 func dirtyPages() (dirty, writeback int64) {
 	dirty, writeback = -1, -1
-	b, err := os.ReadFile("/proc/meminfo")
+	b, err := procFile("/proc/meminfo")
 	if err != nil {
 		return dirty, writeback
 	}

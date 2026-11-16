@@ -14,7 +14,6 @@ import (
 
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
-	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -35,10 +34,10 @@ type shell interface {
 	membersChanged()
 	// prepareClientSnap writes a client's snapshot of the checkpoint src
 	// with head before it, and has the loop send it to h.
-	prepareClientSnap(h handle, src *os.File, head []byte)
+	prepareClientSnap(h handle, src file, head []byte)
 	// sendSnapshot sends the checkpoint f to the follower m is for, with
 	// every value in it, and reports to Raft how it went.
-	sendSnapshot(m *pb.Message, f *os.File)
+	sendSnapshot(m *pb.Message, f file)
 	// logf logs what the node does seldom, such as a checkpoint.
 	logf(format string, args ...any)
 	// offLoop runs work off the loop, such as bcrypt's, and what it
@@ -74,7 +73,7 @@ func (n *node) sendSnapshot(m *pb.Message) {
 		fail()
 		return
 	}
-	f, err := os.Open(filepath.Join(n.ckptDir, string(m.GetSnapshot().GetData())))
+	f, err := n.sys.openFile(filepath.Join(n.ckptDir, string(m.GetSnapshot().GetData())), os.O_RDONLY, 0)
 	if err != nil {
 		fail()
 		return
@@ -87,7 +86,7 @@ func (n *node) sendSnapshot(m *pb.Message) {
 // takeSnapshot steps a snapshot received into the file at path.
 func (n *node) takeSnapshot(path string, m *pb.Message) {
 	if prev := n.recvSnap; prev != "" && !n.snapWaits(prev) {
-		_ = os.Remove(prev)
+		_ = n.sys.remove(prev)
 	}
 	n.recvSnap = path
 	_ = n.rn.Step(m)
@@ -116,10 +115,10 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	n.abortCkpt()
 	name := ckptName(meta.GetIndex())
 	final := filepath.Join(n.ckptDir, name)
-	if err := os.Rename(path, final); err != nil {
+	if err := n.sys.rename(path, final); err != nil {
 		return err
 	}
-	f, err := os.Open(final)
+	f, err := n.sys.openFile(final, os.O_RDONLY, 0)
 	if err != nil {
 		return err
 	}
@@ -143,7 +142,7 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 		return err
 	}
 	// A snapshot still being received stays.
-	if err := removeCkpts(n.ckptDir, name, false); err != nil {
+	if err := removeCkpts(n.sys, n.ckptDir, name, false); err != nil {
 		return err
 	}
 	n.ckptGen, n.ckptName = gen, name
@@ -157,7 +156,7 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 		n.shell.membersChanged()
 	}
 	n.ckptFrom, n.ckptCut = n.wal.off, n.wal.off
-	if err := writePointer(n.ckptDir, &ckptPointer{gen: gen, name: name, logFrom: n.wal.off, cut: n.wal.off, hs: n.wal.durableHS}); err != nil {
+	if err := writePointer(n.sys, n.ckptDir, &ckptPointer{gen: gen, name: name, logFrom: n.wal.off, cut: n.wal.off, hs: n.wal.durableHS}); err != nil {
 		return err
 	}
 	if err := n.wal.cut(n.wal.off); err != nil {
@@ -194,7 +193,7 @@ func snapHeader(m *pb.Message, size int64) ([]byte, error) {
 
 // sendSnapshot streams f to the follower m is for, in a goroutine, and
 // then reports to Raft how it went.
-func (l *loop) sendSnapshot(m *pb.Message, f *os.File) {
+func (l *loop) sendSnapshot(m *pb.Message, f file) {
 	to := m.GetTo()
 	var mem member
 	for _, x := range l.n.members {
@@ -219,14 +218,14 @@ func (l *loop) sendSnapshot(m *pb.Message, f *os.File) {
 
 // sendSelfContained sends the follower the checkpoint in f with every
 // value in it, written to a file of its own first.
-func (l *loop) sendSelfContained(mem member, m *pb.Message, f *os.File) error {
-	tmp, err := os.CreateTemp(l.n.ckptDir, "send-*.tmp")
+func (l *loop) sendSelfContained(mem member, m *pb.Message, f file) error {
+	tmp, err := l.n.sys.createTemp(l.n.ckptDir, "send-*.tmp")
 	if err != nil {
 		return err
 	}
 	defer func() {
 		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
+		_ = l.n.sys.remove(tmp.Name())
 	}()
 	if err := selfContained(f, l.n.wal, tmp, nil); err != nil {
 		return err
@@ -241,7 +240,7 @@ func (l *loop) sendSelfContained(mem member, m *pb.Message, f *os.File) error {
 	return l.streamSnapshot(mem, m, tmp, size)
 }
 
-func (l *loop) streamSnapshot(mem member, m *pb.Message, f *os.File, size int64) error {
+func (l *loop) streamSnapshot(mem member, m *pb.Message, f file, size int64) error {
 	addr := mem.peerAddr()
 	if addr == "" {
 		return fmt.Errorf("no member %d", m.GetTo())
@@ -250,18 +249,18 @@ func (l *loop) streamSnapshot(mem member, m *pb.Message, f *os.File, size int64)
 	if err != nil {
 		return err
 	}
-	nc, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	nc, err := l.n.sys.dial(l.ctx, addr, 5*time.Second)
 	if err != nil {
 		return err
 	}
 	cfg := l.peerTLS.Clone()
 	cfg.ServerName, _, _ = net.SplitHostPort(addr)
-	h, err := handshake(nc, cfg, kindPeerOut)
+	h, err := handshake(l.n.sys, nc, cfg, kindPeerOut)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = unix.Close(h.fd) }()
-	if err := blockingFD(h.fd, snapTimeout); err != nil {
+	defer func() { _ = sysClose(h.fd) }()
+	if err := l.n.sys.blocking(h.fd, snapTimeout); err != nil {
 		return err
 	}
 	s := newSock(h, &counters{})
@@ -347,38 +346,25 @@ func readFrame(s *sock) ([]byte, error) {
 	}
 }
 
-// blockingFD makes fd blocking, its reads and writes timing out after d,
-// or never for 0.
-func blockingFD(fd int, d time.Duration) error {
-	if err := unix.SetNonblock(fd, false); err != nil {
-		return err
-	}
-	tv := unix.NsecToTimeval(d.Nanoseconds())
-	if err := unix.SetsockoptTimeval(fd, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &tv); err != nil {
-		return err
-	}
-	return unix.SetsockoptTimeval(fd, unix.SOL_SOCKET, unix.SO_SNDTIMEO, &tv)
-}
-
 // peerHello reads an incoming peer connection's hello, in its accept
 // goroutine: a snapshot stream is received there, and any other
 // connection goes to the loop.
 func (l *loop) peerHello(h *handoff) {
-	if err := blockingFD(h.fd, snapTimeout); err != nil {
-		_ = unix.Close(h.fd)
+	if err := l.n.sys.blocking(h.fd, snapTimeout); err != nil {
+		_ = sysClose(h.fd)
 		return
 	}
 	s := newSock(h, &counters{})
 	for s.pw-s.pr < 16 {
 		if err := s.open(); err != nil {
-			_ = unix.Close(h.fd)
+			_ = sysClose(h.fd)
 			return
 		}
 		if s.pw-s.pr >= 16 {
 			break
 		}
 		if got, err := s.readSock(); err != nil || !got {
-			_ = unix.Close(h.fd)
+			_ = sysClose(h.fd)
 			return
 		}
 	}
@@ -388,27 +374,27 @@ func (l *loop) peerHello(h *handoff) {
 		if err := l.answerMembers(s); err != nil {
 			l.logger.Printf("answer a node that asks for the members: %v", err)
 		}
-		_ = unix.Close(h.fd)
+		_ = sysClose(h.fd)
 		return
 	}
 	if cluster != l.n.clusterID {
 		l.logger.Printf("refused a peer of cluster %x as %d: this is cluster %x", cluster, hello&^snapMark, l.n.clusterID)
-		_ = unix.Close(h.fd)
+		_ = sysClose(h.fd)
 		return
 	}
 	if hello&snapMark != 0 {
 		if err := l.receiveSnapshot(s, hello&^snapMark); err != nil {
 			l.logger.Printf("receive a snapshot from %d: %v", hello&^snapMark, err)
 		}
-		_ = unix.Close(h.fd)
+		_ = sysClose(h.fd)
 		return
 	}
-	if err := blockingFD(h.fd, 0); err != nil {
-		_ = unix.Close(h.fd)
+	if err := l.n.sys.blocking(h.fd, 0); err != nil {
+		_ = sysClose(h.fd)
 		return
 	}
-	if err := unix.SetNonblock(h.fd, true); err != nil {
-		_ = unix.Close(h.fd)
+	if err := l.n.sys.nonblocking(h.fd); err != nil {
+		_ = sysClose(h.fd)
 		return
 	}
 	h.pre, h.peer = s, hello
@@ -439,13 +425,13 @@ func (l *loop) receiveSnapshot(s *sock, from uint64) error {
 	}
 	term, index, snapTerm, size := v[1], v[2], v[3], int64(v[4])
 	path := filepath.Join(l.n.ckptDir, fmt.Sprintf("recv-%d-%016x.tmp", from, index))
-	if err := receiveFile(s, path, size); err != nil {
-		_ = os.Remove(path)
+	if err := receiveFile(l.n.sys, s, path, size); err != nil {
+		_ = l.n.sys.remove(path)
 		return err
 	}
 	s.put([]byte{1, 0, 0, 0, 1})
 	if err := flushAll(s); err != nil {
-		_ = os.Remove(path)
+		_ = l.n.sys.remove(path)
 		return err
 	}
 	m := &pb.Message{
@@ -464,8 +450,8 @@ func (l *loop) receiveSnapshot(s *sock, from uint64) error {
 
 // receiveFile writes the stream's frames to path, up to an empty one, and
 // checks that they are size bytes whose last four are the CRC of the rest.
-func receiveFile(s *sock, path string, size int64) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+func receiveFile(sys sysEnv, s *sock, path string, size int64) error {
+	f, err := sys.openFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}

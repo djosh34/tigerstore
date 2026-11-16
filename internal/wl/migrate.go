@@ -203,16 +203,16 @@ var ErrMainDataDir = errors.New("the data dir was written by tigerstore's previo
 
 // checkNotMain refuses a data dir whose log is main's: segments named
 // *.wal, where this engine's are *.seg.
-func checkNotMain(dataDir string) error {
-	ents, err := os.ReadDir(filepath.Join(dataDir, "wal"))
+func checkNotMain(sys sysEnv, dataDir string) error {
+	names, err := sys.readDir(filepath.Join(dataDir, "wal"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	for _, e := range ents {
-		if strings.HasSuffix(e.Name(), ".wal") {
+	for _, name := range names {
+		if strings.HasSuffix(name, ".wal") {
 			return fmt.Errorf("%w (%s): upgrade offline: save a snapshot of the old cluster with `etcdctl snapshot save`, stop every node, restore it on each with this binary's `tigerstore snapshot restore` into a new data dir, and start the nodes on those", ErrMainDataDir, dataDir)
 		}
 	}

@@ -12,7 +12,6 @@ import (
 
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
-	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -190,7 +189,7 @@ func (n *node) synced() {
 // fsyncDone is the helper's wake-up.
 func (n *node) fsyncDone() error {
 	var b [8]byte
-	_, _ = unix.Read(n.wal.wakeFD, b[:])
+	_, _ = sysRead(n.wal.wakeFD, b[:])
 	if err := n.wal.failed.Load(); err != nil {
 		return *err
 	}

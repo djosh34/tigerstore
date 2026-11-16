@@ -13,8 +13,6 @@ import (
 	"slices"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	pb "go.etcd.io/raft/v3/raftpb"
 )
 
@@ -477,10 +475,15 @@ func (l *loop) answerMembers(s *sock) error {
 // RemoteMembers asks the members at addrs, one after another, for their
 // cluster's ID and member list, through the peer TLS cfg: a node that
 // joins a running cluster learns its ID there.
-func RemoteMembers(ctx context.Context, cfg *tls.Config, addrs []string) ([]Member, uint64, error) {
+// sys is the simulator's, nil in the real binary (Config.Sys).
+func RemoteMembers(ctx context.Context, sys Sys, cfg *tls.Config, addrs []string) ([]Member, uint64, error) {
+	env, err := newSysEnv(&Config{Sys: sys})
+	if err != nil {
+		return nil, 0, err
+	}
 	var errs []error
 	for _, addr := range addrs {
-		ms, cluster, err := askMembers(ctx, cfg, addr)
+		ms, cluster, err := askMembers(ctx, env, cfg, addr)
 		if err == nil {
 			return ms, cluster, nil
 		}
@@ -489,20 +492,19 @@ func RemoteMembers(ctx context.Context, cfg *tls.Config, addrs []string) ([]Memb
 	return nil, 0, fmt.Errorf("no member answered with the member list: %w", errors.Join(errs...))
 }
 
-func askMembers(ctx context.Context, cfg *tls.Config, addr string) ([]Member, uint64, error) {
-	var d net.Dialer
-	nc, err := d.DialContext(ctx, "tcp", addr)
+func askMembers(ctx context.Context, sys sysEnv, cfg *tls.Config, addr string) ([]Member, uint64, error) {
+	nc, err := sys.dial(ctx, addr, 0)
 	if err != nil {
 		return nil, 0, err
 	}
 	c := cfg.Clone()
 	c.ServerName, _, _ = net.SplitHostPort(addr)
-	h, err := handshake(nc, c, kindPeerOut)
+	h, err := handshake(sys, nc, c, kindPeerOut)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer func() { _ = unix.Close(h.fd) }()
-	if err := blockingFD(h.fd, snapTimeout); err != nil {
+	defer func() { _ = sysClose(h.fd) }()
+	if err := sys.blocking(h.fd, snapTimeout); err != nil {
 		return nil, 0, err
 	}
 	s := newSock(h, &counters{})

@@ -91,7 +91,7 @@ func TestMembersChangeThroughRaft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ms, cluster, err := RemoteMembers(ctx, ptls, []string{"127.0.0.1:1", strings.TrimPrefix(tc.peers[1], "https://")})
+	ms, cluster, err := RemoteMembers(ctx, nil, ptls, []string{"127.0.0.1:1", strings.TrimPrefix(tc.peers[1], "https://")})
 	if err != nil || cluster != 0x7769726531 || len(ms) != 4 {
 		t.Fatalf("RemoteMembers: %v, cluster %x, %v", ms, cluster, err)
 	}

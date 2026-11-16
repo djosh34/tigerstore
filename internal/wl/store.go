@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/maphash"
-	"os"
 	"slices"
 	"unsafe"
 )
@@ -102,7 +101,7 @@ type store struct {
 	log    logReader
 	// ckpts are the checkpoint files values may lie in, by the generation
 	// bit of their offsets: the newest one, and the one being written.
-	ckpts   [2]*os.File
+	ckpts   [2]file
 	scratch []byte // a value read from the log
 
 	// The budget: the slab's records may take limit bytes; past it, the
@@ -130,13 +129,10 @@ type store struct {
 	freeLater []uint64
 }
 
+// The store's tables reserve their room once (maxKeys, maxHist, keyArena,
+// dirArena, slabBytes: sys_os.go, sys_sim.go); the indexes double.
 const (
 	hashStart = 1 << 20 // the hash index's first size, which doubles
-	maxKeys   = 1 << 27
-	maxHist   = 1 << 26
-	keyArena  = 4 << 30
-	dirArena  = 1 << 30
-	slabBytes = 48 << 30
 	dirStart  = 1 << 14 // the directory index's first size, which doubles
 )
 

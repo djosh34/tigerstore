@@ -150,9 +150,10 @@ const (
 // last chunk it adds the CRC, makes the file durable, gives it its name
 // and points CURRENT at it.
 type ckptWriter struct {
+	sys            sysEnv
 	dir, tmp, name string
-	f              *os.File
-	prev           *os.File // the checkpoint before, which values may lie in
+	f              file
+	prev           file // the checkpoint before, which values may lie in
 	crc            uint32
 	log            durableLog
 	in, out        chan *ckptChunk
@@ -210,10 +211,10 @@ func (cw *ckptWriter) write(c *ckptChunk) error {
 	if err := cw.f.Sync(); err != nil {
 		return fmt.Errorf("sync a checkpoint: %w", err)
 	}
-	if err := os.Rename(filepath.Join(cw.dir, cw.tmp), filepath.Join(cw.dir, cw.name)); err != nil {
+	if err := cw.sys.rename(filepath.Join(cw.dir, cw.tmp), filepath.Join(cw.dir, cw.name)); err != nil {
 		return err
 	}
-	return writePointer(cw.dir, c.ptr)
+	return writePointer(cw.sys, cw.dir, c.ptr)
 }
 
 // readValues appends the chunk's values to its bytes. They come sorted by
@@ -312,7 +313,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 	}
 	name := ckptName(index)
 	tmp := name + ".tmp"
-	f, err := os.OpenFile(filepath.Join(n.ckptDir, tmp), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
+	f, err := n.sys.openFile(filepath.Join(n.ckptDir, tmp), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
@@ -334,6 +335,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 	r.snapWaiters, n.snapWaiters = n.snapWaiters, nil
 	dl, _ := st.log.(durableLog)
 	r.w = &ckptWriter{
+		sys: n.sys,
 		dir: n.ckptDir, tmp: tmp, name: name, f: f, prev: st.ckpts[1-gen], log: dl,
 		in: make(chan *ckptChunk, ckptInflight), out: make(chan *ckptChunk, ckptInflight),
 		quit: make(chan struct{}),
@@ -510,7 +512,7 @@ func (n *node) ckptDone() error {
 		n.st.ckpts[old] = nil
 	}
 	if oldName != "" && oldName != n.ckptName {
-		if err := os.Remove(filepath.Join(n.ckptDir, oldName)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := n.sys.remove(filepath.Join(n.ckptDir, oldName)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
@@ -526,7 +528,7 @@ func (n *node) abortCkpt() {
 	}
 	n.ckpt = nil
 	close(r.w.quit)
-	_ = os.Remove(filepath.Join(n.ckptDir, r.w.tmp))
+	_ = n.sys.remove(filepath.Join(n.ckptDir, r.w.tmp))
 	n.st.release()
 }
 
@@ -772,7 +774,7 @@ var errCkptCorrupt = errors.New("the checkpoint does not check")
 
 // loadCkpt fills st, an empty store, from the checkpoint in f, whose
 // values the store then reads from f as generation gen.
-func loadCkpt(f *os.File, gen int, st *store) (ckptMeta, error) {
+func loadCkpt(f file, gen int, st *store) (ckptMeta, error) {
 	var m ckptMeta
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return m, err
@@ -942,7 +944,7 @@ type ckptPointer struct {
 	hs      *pb.HardState
 }
 
-func writePointer(dir string, p *ckptPointer) error {
+func writePointer(sys sysEnv, dir string, p *ckptPointer) error {
 	hs := p.hs
 	if hs == nil {
 		hs = &pb.HardState{}
@@ -961,17 +963,17 @@ func writePointer(dir string, p *ckptPointer) error {
 	b = append(b, hb...)
 	b = binary.LittleEndian.AppendUint32(b, crc32.Checksum(b, castagnoli))
 	tmp := filepath.Join(dir, ptrName+".tmp")
-	if err := writeFileSynced(tmp, b); err != nil {
+	if err := writeFileSynced(sys, tmp, b); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, filepath.Join(dir, ptrName)); err != nil {
+	if err := sys.rename(tmp, filepath.Join(dir, ptrName)); err != nil {
 		return err
 	}
-	return syncDir(dir)
+	return syncDir(sys, dir)
 }
 
-func writeFileSynced(path string, b []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+func writeFileSynced(sys sysEnv, path string, b []byte) error {
+	f, err := sys.openFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
@@ -986,8 +988,8 @@ func writeFileSynced(path string, b []byte) error {
 	return f.Close()
 }
 
-func syncDir(dir string) error {
-	d, err := os.Open(dir)
+func syncDir(sys sysEnv, dir string) error {
+	d, err := sys.openFile(dir, os.O_RDONLY, 0)
 	if err != nil {
 		return err
 	}
@@ -999,8 +1001,8 @@ func syncDir(dir string) error {
 }
 
 // readPointer reads dir's CURRENT, or returns nil if there is none.
-func readPointer(dir string) (*ckptPointer, error) {
-	b, err := os.ReadFile(filepath.Join(dir, ptrName))
+func readPointer(sys sysEnv, dir string) (*ckptPointer, error) {
+	b, err := sys.readFile(filepath.Join(dir, ptrName))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -1051,22 +1053,21 @@ func readPointer(dir string) (*ckptPointer, error) {
 
 // cleanCkptDir removes what a node that stopped left half done in dir:
 // checkpoints being written or received, and any but keep.
-func cleanCkptDir(dir, keep string) error { return removeCkpts(dir, keep, true) }
+func cleanCkptDir(sys sysEnv, dir, keep string) error { return removeCkpts(sys, dir, keep, true) }
 
 // removeCkpts removes dir's checkpoints but keep, and with tmp the files
 // being written or received too.
-func removeCkpts(dir, keep string, tmp bool) error {
-	ents, err := os.ReadDir(dir)
+func removeCkpts(sys sysEnv, dir, keep string, tmp bool) error {
+	names, err := sys.readDir(dir)
 	if err != nil {
 		return err
 	}
-	for _, e := range ents {
-		name := e.Name()
+	for _, name := range names {
 		if name == ptrName || name == keep {
 			continue
 		}
 		if strings.HasSuffix(name, ".ckpt") || (tmp && strings.HasSuffix(name, ".tmp")) {
-			if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			if err := sys.remove(filepath.Join(dir, name)); err != nil {
 				return err
 			}
 		}
@@ -1079,10 +1080,10 @@ func removeCkpts(dir, keep string, tmp bool) error {
 // the log from n.ckptCut on holds values it names. It removes what a node
 // that stopped left half done.
 func (n *node) loadNewest() (int64, error) {
-	if err := os.MkdirAll(n.ckptDir, 0o700); err != nil {
+	if err := n.sys.mkdirAll(n.ckptDir); err != nil {
 		return 0, err
 	}
-	p, err := readPointer(n.ckptDir)
+	p, err := readPointer(n.sys, n.ckptDir)
 	if err != nil {
 		return 0, err
 	}
@@ -1090,13 +1091,13 @@ func (n *node) loadNewest() (int64, error) {
 	if p != nil {
 		keep = p.name
 	}
-	if err := cleanCkptDir(n.ckptDir, keep); err != nil {
+	if err := cleanCkptDir(n.sys, n.ckptDir, keep); err != nil {
 		return 0, err
 	}
 	if p == nil {
 		return 0, nil
 	}
-	f, err := os.Open(filepath.Join(n.ckptDir, p.name))
+	f, err := n.sys.openFile(filepath.Join(n.ckptDir, p.name), os.O_RDONLY, 0)
 	if err != nil {
 		return 0, err
 	}
@@ -1128,7 +1129,7 @@ type ckptHeader struct {
 // it: a follower has neither this node's log nor its checkpoint before.
 // Values the file names in the log are read from log. With hdr, the
 // membership is hdr's.
-func selfContained(src *os.File, log durableLog, dst io.Writer, hdr *ckptHeader) error {
+func selfContained(src file, log durableLog, dst io.Writer, hdr *ckptHeader) error {
 	if _, err := src.Seek(0, io.SeekStart); err != nil {
 		return err
 	}

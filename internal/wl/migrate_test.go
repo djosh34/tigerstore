@@ -155,10 +155,10 @@ func TestANodeRefusesADataDirOfMainsEngine(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "wal", "0000000000000001.wal"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkNotMain(dir); !errors.Is(err, ErrMainDataDir) {
+	if err := checkNotMain(sysEnv{}, dir); !errors.Is(err, ErrMainDataDir) {
 		t.Fatalf("a data dir of main's engine gave %v", err)
 	}
-	if err := checkNotMain(t.TempDir()); err != nil {
+	if err := checkNotMain(sysEnv{}, t.TempDir()); err != nil {
 		t.Fatalf("an empty data dir gave %v", err)
 	}
 }

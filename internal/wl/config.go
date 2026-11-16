@@ -36,6 +36,9 @@ type Config struct {
 	// MemoryBudget is the memory the node may use, 0 for no limit.
 	MemoryBudget int64
 	Logger       *log.Logger
+	// Sys, in a binary built for the simulator, stands in for the system
+	// calls it cannot run; nil otherwise (sys.go).
+	Sys Sys
 	// CORS and HostWhitelist are etcd's --cors and --host-whitelist; Pprof
 	// serves /debug/pprof/, as --enable-pprof.
 	CORS, HostWhitelist map[string]struct{}

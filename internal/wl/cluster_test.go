@@ -284,7 +284,7 @@ func TestClusterComesBackAfterARestart(t *testing.T) {
 	}
 	tc.stop(t)
 	for i := range 3 {
-		if p, err := readPointer(filepath.Join(tc.dataDir(i), "ckpt")); p == nil || err != nil {
+		if p, err := readPointer(sysEnv{}, filepath.Join(tc.dataDir(i), "ckpt")); p == nil || err != nil {
 			t.Fatalf("node %d took no checkpoint: %v", i+1, err)
 		}
 	}

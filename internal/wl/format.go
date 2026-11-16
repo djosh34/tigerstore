@@ -131,10 +131,10 @@ const runFile = "run"
 
 // nextRun counts this start in dir's run file, durably before the node
 // announces anything, and returns it.
-func nextRun(dir string) (uint64, error) {
+func nextRun(sys sysEnv, dir string) (uint64, error) {
 	path := filepath.Join(dir, runFile)
 	var run uint64
-	b, err := os.ReadFile(path)
+	b, err := sys.readFile(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 	case err != nil:
@@ -145,11 +145,11 @@ func nextRun(dir string) (uint64, error) {
 		run = binary.LittleEndian.Uint64(b)
 	}
 	run++
-	if err := writeFileSynced(path+".tmp", binary.LittleEndian.AppendUint64(nil, run)); err != nil {
+	if err := writeFileSynced(sys, path+".tmp", binary.LittleEndian.AppendUint64(nil, run)); err != nil {
 		return 0, err
 	}
-	if err := os.Rename(path+".tmp", path); err != nil {
+	if err := sys.rename(path+".tmp", path); err != nil {
 		return 0, err
 	}
-	return run, syncDir(dir)
+	return run, syncDir(sys, dir)
 }

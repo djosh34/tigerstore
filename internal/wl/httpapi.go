@@ -15,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	etcdmetrics "github.com/djosh34/tigerstore/internal/metrics"
 )
 
@@ -314,15 +312,6 @@ func (a *httpAPI) servePprof(w http.ResponseWriter, r *http.Request) {
 	default:
 		pprof.Index(w, r)
 	}
-}
-
-// fdLimit is the process's limit of open files.
-func fdLimit() uint64 {
-	var l unix.Rlimit
-	if err := unix.Getrlimit(unix.RLIMIT_NOFILE, &l); err != nil {
-		return 0
-	}
-	return l.Cur
 }
 
 // allowed is etcd's OriginAllowed and IsHostWhitelisted: an empty list or

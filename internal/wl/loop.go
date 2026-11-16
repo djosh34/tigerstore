@@ -9,7 +9,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
@@ -101,14 +100,18 @@ func run(ctx context.Context, cfg Config) error {
 	if err := cfg.check(); err != nil {
 		return err
 	}
+	sys, err := newSysEnv(&cfg)
+	if err != nil {
+		return err
+	}
 	logger := cfg.Logger
-	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
+	if err := sys.mkdirAll(cfg.DataDir); err != nil {
 		return err
 	}
-	if err := checkNotMain(cfg.DataDir); err != nil {
+	if err := checkNotMain(sys, cfg.DataDir); err != nil {
 		return err
 	}
-	run, err := nextRun(cfg.DataDir)
+	run, err := nextRun(sys, cfg.DataDir)
 	if err != nil {
 		return err
 	}
@@ -125,7 +128,7 @@ func run(ctx context.Context, cfg Config) error {
 		return nil, nil
 	}
 	n := &node{
-		id: cfg.ID, clusterID: cfg.ClusterID, peersOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{},
+		sys: sys, id: cfg.ID, clusterID: cfg.ClusterID, peersOut: map[uint64]*peerOut{}, metrics: &nodeMetrics{},
 		ckptDir: filepath.Join(cfg.DataDir, "ckpt"), confState: &pb.ConfState{},
 		self:   member{id: cfg.ID, name: cfg.Name, clientURLs: cfg.ClientURLs},
 		format: baseFormat, auth: newAuthStore(), tokens: map[string]*simpleToken{}, logins: map[handle]authLogin{},
@@ -176,7 +179,7 @@ func run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	if n.wal, err = openWAL(filepath.Join(cfg.DataDir, "wal"), n.sizes.stage, n.ckptCut, from, n.storage.restore); err != nil {
+	if n.wal, err = openWAL(n.sys, filepath.Join(cfg.DataDir, "wal"), n.sizes.stage, n.ckptCut, from, n.storage.restore); err != nil {
 		return err
 	}
 	n.storage.log = n.wal
@@ -204,21 +207,21 @@ func run(ctx context.Context, cfg Config) error {
 
 	l := &loop{n: n, dials: map[uint64]*dialer{}, logger: logger, lastAt: time.Now(), peerTLS: cfg.PeerClientTLS}
 	n.shell = l
-	if l.epfd, err = unix.EpollCreate1(unix.EPOLL_CLOEXEC); err != nil {
+	if l.epfd, err = n.sys.epollCreate(); err != nil {
 		return err
 	}
-	if l.hoFD, err = unix.Eventfd(0, unix.EFD_CLOEXEC|unix.EFD_NONBLOCK); err != nil {
+	if l.hoFD, err = n.sys.eventfd(true); err != nil {
 		return err
 	}
-	if err := unix.EpollCtl(l.epfd, unix.EPOLL_CTL_ADD, l.hoFD, &unix.EpollEvent{Events: unix.EPOLLIN, Fd: evHandoff}); err != nil {
+	if err := n.sys.epollCtl(l.epfd, unix.EPOLL_CTL_ADD, l.hoFD, unix.EPOLLIN, evHandoff); err != nil {
 		return err
 	}
-	if err := unix.EpollCtl(l.epfd, unix.EPOLL_CTL_ADD, n.wal.wakeFD, &unix.EpollEvent{Events: unix.EPOLLIN, Fd: evFsync}); err != nil {
+	if err := n.sys.epollCtl(l.epfd, unix.EPOLL_CTL_ADD, n.wal.wakeFD, unix.EPOLLIN, evFsync); err != nil {
 		return err
 	}
 	l.ctx = ctx
 	l.selfTLS = selfTLS(cfg.ClientTLS)
-	if l.self, err = selfClient(cfg.ClientListeners[0].Addr().String(), l.selfTLS); err != nil {
+	if l.self, err = selfClient(n.sys, cfg.ClientListeners[0].Addr().String(), l.selfTLS); err != nil {
 		return err
 	}
 	l.side = newSideServers(l.self)
@@ -287,7 +290,7 @@ func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.
 			continue
 		}
 		go func() {
-			h, err := handshake(nc, cfg, kind)
+			h, err := handshake(l.n.sys, nc, cfg, kind)
 			if err != nil {
 				return
 			}
@@ -406,14 +409,14 @@ func (l *loop) dial(id uint64, d *dialer) {
 		}
 	}
 	for {
-		nc, err := net.DialTimeout("tcp", d.addr, time.Second)
+		nc, err := l.n.sys.dial(l.ctx, d.addr, time.Second)
 		if err != nil {
 			if !pause() {
 				return
 			}
 			continue
 		}
-		h, err := handshake(nc, c, kindPeerOut)
+		h, err := handshake(l.n.sys, nc, c, kindPeerOut)
 		if err != nil {
 			if !pause() {
 				return
@@ -439,7 +442,7 @@ func (l *loop) handOver(h *handoff) {
 	l.mu.Lock()
 	if l.stopped {
 		l.mu.Unlock()
-		_ = unix.Close(h.fd)
+		_ = sysClose(h.fd)
 		return
 	}
 	l.handoffs = append(l.handoffs, h)
@@ -573,7 +576,7 @@ func (l *loop) wake() {
 	}
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], 1)
-	_, _ = unix.Write(l.hoFD, b[:])
+	_, _ = sysWrite(l.hoFD, b[:])
 }
 
 // shut closes what a stopped loop had open: its listeners, sockets, log
@@ -594,7 +597,7 @@ func (l *loop) shut(listeners ...net.Listener) {
 	l.handoffs = nil
 	l.mu.Unlock()
 	for _, h := range hs {
-		_ = unix.Close(h.fd)
+		_ = sysClose(h.fd)
 	}
 	for idx, x := range l.n.socks {
 		if x != nil {
@@ -603,13 +606,13 @@ func (l *loop) shut(listeners ...net.Listener) {
 	}
 	l.n.abortCkpt()
 	l.n.wal.close()
-	_ = unix.Close(l.epfd)
-	_ = unix.Close(l.hoFD)
+	_ = sysClose(l.epfd)
+	_ = sysClose(l.hoFD)
 }
 
 func (l *loop) takeHandoffs() {
 	var b [8]byte
-	_, _ = unix.Read(l.hoFD, b[:])
+	_, _ = sysRead(l.hoFD, b[:])
 	l.mu.Lock()
 	hs := l.handoffs
 	l.handoffs = nil
@@ -632,7 +635,7 @@ func (l *loop) takeHandoffs() {
 					h.pre.put(binary.LittleEndian.AppendUint64(nil, removedNotice))
 					_, _ = h.pre.flush()
 				}
-				_ = unix.Close(h.fd)
+				_ = sysClose(h.fd)
 				continue
 			}
 			p := &peerIn{sock: *h.pre, from: h.peer}
@@ -641,7 +644,7 @@ func (l *loop) takeHandoffs() {
 			s = &p.sock
 		case kindPeerOut:
 			if l.dials[h.peer] == nil {
-				_ = unix.Close(h.fd)
+				_ = sysClose(h.fd)
 				continue
 			}
 			p := &peerOut{sock: *newSock(h, &n.stats), peer: h.peer}
@@ -656,7 +659,7 @@ func (l *loop) takeHandoffs() {
 			n.markDirty(s)
 		}
 		s.idx, s.gen = idx, n.gens[idx]
-		if err := unix.EpollCtl(l.epfd, unix.EPOLL_CTL_ADD, h.fd, &unix.EpollEvent{Events: unix.EPOLLIN | unix.EPOLLRDHUP, Fd: int32(idx)}); err != nil {
+		if err := n.sys.epollCtl(l.epfd, unix.EPOLL_CTL_ADD, h.fd, unix.EPOLLIN|unix.EPOLLRDHUP, int32(idx)); err != nil {
 			l.closeSock(idx)
 			continue
 		}
@@ -699,7 +702,7 @@ func (l *loop) closeSock(idx int) {
 		return
 	}
 	s.dead = true
-	_ = unix.Close(s.fd)
+	_ = sysClose(s.fd)
 	switch v := x.(type) {
 	case *client:
 		n.cancelSides(idx)
@@ -784,7 +787,7 @@ func (l *loop) run() error {
 		if d := time.Until(wake); d > 0 {
 			timeout = int((d + time.Millisecond - 1) / time.Millisecond)
 		}
-		k, err := unix.EpollWait(l.epfd, events, timeout)
+		k, err := n.sys.epollWait(l.epfd, events, timeout)
 		if err != nil && !errors.Is(err, unix.EINTR) {
 			return err
 		}
@@ -920,10 +923,10 @@ func (l *loop) flush() {
 		}
 		if !ok && !s.wantOut {
 			s.wantOut = true
-			_ = unix.EpollCtl(l.epfd, unix.EPOLL_CTL_MOD, s.fd, &unix.EpollEvent{Events: unix.EPOLLIN | unix.EPOLLRDHUP | unix.EPOLLOUT, Fd: int32(s.idx)})
+			_ = n.sys.epollCtl(l.epfd, unix.EPOLL_CTL_MOD, s.fd, unix.EPOLLIN|unix.EPOLLRDHUP|unix.EPOLLOUT, int32(s.idx))
 		} else if ok && s.wantOut {
 			s.wantOut = false
-			_ = unix.EpollCtl(l.epfd, unix.EPOLL_CTL_MOD, s.fd, &unix.EpollEvent{Events: unix.EPOLLIN | unix.EPOLLRDHUP, Fd: int32(s.idx)})
+			_ = n.sys.epollCtl(l.epfd, unix.EPOLL_CTL_MOD, s.fd, unix.EPOLLIN|unix.EPOLLRDHUP, int32(s.idx))
 		}
 	}
 	n.dirty = n.dirty[:0]

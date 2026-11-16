@@ -2,26 +2,9 @@ package wl
 
 import (
 	"errors"
-	"fmt"
 	"math/bits"
 	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
-
-// mmapBytes reserves n bytes of anonymous memory outside Go's heap, which
-// the collector never scans and the memory limit never counts. Pages are
-// backed on first touch.
-func mmapBytes(n int) ([]byte, error) {
-	b, err := unix.Mmap(-1, 0, n, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_ANONYMOUS|unix.MAP_NORESERVE)
-	if err != nil {
-		return nil, fmt.Errorf("mmap %d bytes: %w", n, err)
-	}
-	// Huge pages where the kernel gives them: the index and the slab are
-	// read at random, and each miss would also miss the TLB.
-	_ = unix.Madvise(b, unix.MADV_HUGEPAGE)
-	return b, nil
-}
 
 // mmapSlice reserves room for n values of a pointer-free type T.
 func mmapSlice[T any](n int) ([]T, error) {
@@ -33,13 +16,10 @@ func mmapSlice[T any](n int) ([]T, error) {
 	return unsafe.Slice((*T)(unsafe.Pointer(&b[0])), n), nil
 }
 
-// unixMunmap gives back what mmapBytes reserved.
-func unixMunmap(b []byte) error { return unix.Munmap(b) }
-
 // munmapSlice gives back what mmapSlice reserved.
 func munmapSlice[T any](s []T) error {
 	var z T
-	return unix.Munmap(unsafe.Slice((*byte)(unsafe.Pointer(unsafe.SliceData(s))), len(s)*int(unsafe.Sizeof(z))))
+	return unixMunmap(unsafe.Slice((*byte)(unsafe.Pointer(unsafe.SliceData(s))), len(s)*int(unsafe.Sizeof(z))))
 }
 
 // slab hands out byte ranges of a big mapping in size classes, eight per

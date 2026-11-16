@@ -2,14 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"hash/fnv"
-	"io/fs"
 	"net/url"
-	"os"
-	"path/filepath"
 	"slices"
 	"time"
 
@@ -37,43 +32,19 @@ type identity struct {
 	first       bool
 }
 
-// identityJSON is the identity file's format.
-type identityJSON struct {
-	ID      uint64       `json:"id"`
-	Cluster uint64       `json:"cluster"`
-	Members []memberJSON `json:"members"`
-	First   bool         `json:"first,omitempty"`
-}
-
-type memberJSON struct {
-	ID       uint64   `json:"id"`
-	Name     string   `json:"name"`
-	PeerURLs []string `json:"peerURLs"`
-}
-
-// identityFile is where a data directory keeps the node's identity.
-func identityFile(dataDir string) string { return filepath.Join(dataDir, "member") }
-
 // joinTimeout bounds how long a node that joins a running cluster asks
 // the other members for theirs.
 const joinTimeout = 30 * time.Second
 
 // readIdentity returns the identity the data directory keeps, and
-// whether it keeps one.
+// whether it keeps one (wl.ReadIdentity).
 func readIdentity(dataDir string) (identity, bool, error) {
-	b, err := os.ReadFile(identityFile(dataDir))
-	if errors.Is(err, fs.ErrNotExist) {
-		return identity{}, false, nil
+	w, ok, err := wl.ReadIdentity(nil, dataDir)
+	if err != nil || !ok {
+		return identity{}, ok, err
 	}
-	if err != nil {
-		return identity{}, false, err
-	}
-	var j identityJSON
-	if err := json.Unmarshal(b, &j); err != nil {
-		return identity{}, false, fmt.Errorf("%s: %w", identityFile(dataDir), err)
-	}
-	id := identity{id: j.ID, cluster: j.Cluster, first: j.First}
-	for _, m := range j.Members {
+	id := identity{id: w.ID, cluster: w.Cluster, first: w.First}
+	for _, m := range w.Members {
 		id.members = append(id.members, &pb.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs})
 	}
 	return id, true, nil
@@ -134,36 +105,13 @@ func clusterIdentity(cluster clusterSpec) identity {
 	return identity{id: cluster.members[cluster.self].id, cluster: h.Sum64(), members: initialMembers(cluster.members), first: true}
 }
 
-// saveIdentity writes the identity file and syncs it and its directory.
+// saveIdentity writes the identity file durably (wl.SaveIdentity).
 func saveIdentity(dataDir string, id identity) error {
-	j := identityJSON{ID: id.id, Cluster: id.cluster, First: id.first}
+	w := wl.Identity{ID: id.id, Cluster: id.cluster, First: id.first}
 	for _, m := range id.members {
-		j.Members = append(j.Members, memberJSON{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs})
+		w.Members = append(w.Members, wl.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs})
 	}
-	b, err := json.Marshal(j)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return err
-	}
-	tmp := identityFile(dataDir) + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(append(b, '\n'))
-	if err = errors.Join(err, f.Sync(), f.Close()); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, identityFile(dataDir)); err != nil {
-		return err
-	}
-	d, err := os.Open(dataDir)
-	if err != nil {
-		return err
-	}
-	return errors.Join(d.Sync(), d.Close())
+	return wl.SaveIdentity(nil, dataDir, w)
 }
 
 // initialMembers are the members of --initial-cluster with the Raft IDs
@@ -186,7 +134,7 @@ func remoteMembers(ctx context.Context, pcfg peer.Config, addrs []string) ([]*pb
 	if err != nil {
 		return nil, 0, err
 	}
-	ms, clusterID, err := wl.RemoteMembers(ctx, client, addrs)
+	ms, clusterID, err := wl.RemoteMembers(ctx, nil, client, addrs)
 	if err != nil {
 		return nil, 0, err
 	}

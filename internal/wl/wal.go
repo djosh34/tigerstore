@@ -52,6 +52,7 @@ const (
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
 type wal struct {
+	sys sysEnv
 	// prom, once set, takes each sync's time: a write is durable when
 	// it returns, so it is etcd's WAL fsync and backend commit.
 	prom atomic.Pointer[metrics.Set]
@@ -131,24 +132,24 @@ func segPath(dir string, k int64) string { return filepath.Join(dir, fmt.Sprintf
 // from it on is cut. from is where a checkpoint left the log, 0 for none;
 // the log before keep is removed, and from keep on it is kept to read.
 // stage is the size of the stage, a power of two (sizes.stage).
-func openWAL(dir string, stage int, keep, from int64, fn func(r *walRecord) error) (*wal, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+func openWAL(sys sysEnv, dir string, stage int, keep, from int64, fn func(r *walRecord) error) (*wal, error) {
+	if err := sys.mkdirAll(dir); err != nil {
 		return nil, err
 	}
-	end, err := scanWAL(dir, from, fn)
+	end, err := scanWAL(sys, dir, from, fn)
 	if err != nil {
 		return nil, err
 	}
-	kick, err := unix.Eventfd(0, unix.EFD_CLOEXEC)
+	kick, err := sys.eventfd(false)
 	if err != nil {
 		return nil, err
 	}
-	wake, err := unix.Eventfd(0, unix.EFD_CLOEXEC|unix.EFD_NONBLOCK)
+	wake, err := sys.eventfd(true)
 	if err != nil {
 		return nil, err
 	}
 	w := &wal{
-		dir: dir, kickFD: kick, wakeFD: wake, made: make(chan segment, 1),
+		sys: sys, dir: dir, kickFD: kick, wakeFD: wake, made: make(chan segment, 1),
 		stop: make(chan struct{}), madeDone: make(chan struct{}), helperDone: make(chan struct{}),
 	}
 	if w.stage, err = mmapBytes(stage); err != nil {
@@ -171,12 +172,12 @@ func openWAL(dir string, stage int, keep, from int64, fn func(r *walRecord) erro
 // again. It returns the first segment still to make.
 func (w *wal) reopen(from, end int64) (int64, error) {
 	first, last := from/segSize, end/segSize
-	if err := removeSegments(w.dir, 0, first); err != nil {
+	if err := w.removeSegments(0, first); err != nil {
 		return 0, err
 	}
 	w.rbase = first
 	for k := first; k <= last; k++ {
-		fd, err := unix.Open(segPath(w.dir, k), unix.O_RDONLY|unix.O_CLOEXEC, 0)
+		fd, err := w.sys.open(segPath(w.dir, k), unix.O_RDONLY, 0)
 		if errors.Is(err, unix.ENOENT) && k == last {
 			// The log ends where a segment would start.
 			break
@@ -187,7 +188,7 @@ func (w *wal) reopen(from, end int64) (int64, error) {
 		w.rfds = append(w.rfds, fd)
 	}
 	for k := last + 1; ; k++ {
-		if err := os.Remove(segPath(w.dir, k)); errors.Is(err, os.ErrNotExist) {
+		if err := w.sys.remove(segPath(w.dir, k)); errors.Is(err, os.ErrNotExist) {
 			break
 		} else if err != nil {
 			return 0, err
@@ -200,35 +201,35 @@ func (w *wal) reopen(from, end int64) (int64, error) {
 		return last, nil
 	}
 	path := segPath(w.dir, last)
-	if err := os.Truncate(path, end%segSize); err != nil {
+	if err := w.sys.truncate(path, end%segSize); err != nil {
 		return 0, err
 	}
-	wfd, err := openDirect(path)
+	wfd, err := w.sys.openDirect(path)
 	if err != nil {
 		return 0, err
 	}
 	w.wfds = append(w.wfds, wfd)
 	blk := end &^ (block - 1)
 	pos := blk & (w.stageLen - 1)
-	if n, err := unix.Pread(w.rfds[last-w.rbase], w.stage[pos:pos+end-blk], blk%segSize); err != nil || int64(n) != end-blk {
+	if n, err := sysPread(w.rfds[last-w.rbase], w.stage[pos:pos+end-blk], blk%segSize); err != nil || int64(n) != end-blk {
 		return 0, fmt.Errorf("read the log's last block back: %d bytes, %w", n, err)
 	}
 	return last + 1, nil
 }
 
-// removeSegments removes dir's segments from k to before to, those that
-// exist.
-func removeSegments(dir string, k, to int64) error {
-	ents, err := os.ReadDir(dir)
+// removeSegments removes the log's segments from k to before to, those
+// that exist.
+func (w *wal) removeSegments(k, to int64) error {
+	names, err := w.sys.readDir(w.dir)
 	if err != nil {
 		return err
 	}
-	for _, e := range ents {
+	for _, name := range names {
 		var i int64
-		if _, err := fmt.Sscanf(e.Name(), "%016x.seg", &i); err != nil || i < k || i >= to {
+		if _, err := fmt.Sscanf(name, "%016x.seg", &i); err != nil || i < k || i >= to {
 			continue
 		}
-		if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
+		if err := w.sys.remove(filepath.Join(w.dir, name)); err != nil {
 			return err
 		}
 	}
@@ -246,8 +247,8 @@ func (w *wal) cut(off int64) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for w.rbase < k && len(w.rfds) > 0 {
-		_ = unix.Close(w.rfds[0])
-		if err := os.Remove(segPath(w.dir, w.rbase)); err != nil {
+		_ = sysClose(w.rfds[0])
+		if err := w.sys.remove(segPath(w.dir, w.rbase)); err != nil {
 			return err
 		}
 		w.rfds = w.rfds[1:]
@@ -259,14 +260,14 @@ func (w *wal) cut(off int64) error {
 // makeSegments makes the segments from k on, one ahead of the helper.
 func (w *wal) makeSegments(k int64) {
 	defer close(w.madeDone)
-	dfd, err := unix.Open(w.dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	dfd, err := w.sys.open(w.dir, unix.O_RDONLY|unix.O_DIRECTORY, 0)
 	if err != nil {
 		w.hand(segment{err: err})
 		return
 	}
-	defer func() { _ = unix.Close(dfd) }()
+	defer func() { _ = sysClose(dfd) }()
 	for ; ; k++ {
-		sg, err := makeSegment(dfd, segPath(w.dir, k))
+		sg, err := w.makeSegment(dfd, segPath(w.dir, k))
 		if err != nil {
 			w.hand(segment{err: err})
 			return
@@ -275,7 +276,7 @@ func (w *wal) makeSegments(k int64) {
 		w.rfds = append(w.rfds, sg.rfd)
 		w.mu.Unlock()
 		if !w.hand(sg) {
-			_ = unix.Close(sg.wfd)
+			_ = sysClose(sg.wfd)
 			return
 		}
 	}
@@ -303,45 +304,35 @@ func (w *wal) shut() {
 	w.closing.Store(true)
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], 1)
-	_, _ = unix.Write(w.kickFD, b[:])
+	_, _ = sysWrite(w.kickFD, b[:])
 	<-w.helperDone
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, fd := range append(w.rfds, w.wfds...) {
-		_ = unix.Close(fd)
+		_ = sysClose(fd)
 	}
-	_ = unix.Close(w.kickFD)
-	_ = unix.Close(w.wakeFD)
+	_ = sysClose(w.kickFD)
+	_ = sysClose(w.wakeFD)
 }
 
-func makeSegment(dfd int, path string) (segment, error) {
-	fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC, 0o600)
+func (w *wal) makeSegment(dfd int, path string) (segment, error) {
+	fd, err := w.sys.open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL, 0o600)
 	if err != nil {
 		return segment{}, err
 	}
-	_ = unix.Close(fd)
-	if err := unix.Fsync(dfd); err != nil {
+	_ = sysClose(fd)
+	if err := sysFsync(dfd); err != nil {
 		return segment{}, err
 	}
 	var sg segment
-	if sg.wfd, err = openDirect(path); err != nil {
+	if sg.wfd, err = w.sys.openDirect(path); err != nil {
 		return segment{}, err
 	}
-	if sg.rfd, err = unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC, 0); err != nil {
-		_ = unix.Close(sg.wfd)
+	if sg.rfd, err = w.sys.open(path, unix.O_RDONLY, 0); err != nil {
+		_ = sysClose(sg.wfd)
 		return segment{}, err
 	}
 	return sg, nil
-}
-
-// openDirect opens a segment for O_DIRECT|O_DSYNC writes, or for O_DSYNC
-// ones on a file system without O_DIRECT, such as tmpfs.
-func openDirect(path string) (int, error) {
-	fd, err := unix.Open(path, unix.O_WRONLY|unix.O_DIRECT|unix.O_DSYNC|unix.O_CLOEXEC, 0)
-	if errors.Is(err, unix.EINVAL) {
-		fd, err = unix.Open(path, unix.O_WRONLY|unix.O_DSYNC|unix.O_CLOEXEC, 0)
-	}
-	return fd, err
 }
 
 // segFD returns the write file of segment k, waiting until it is made,
@@ -356,7 +347,7 @@ func (w *wal) segFD(k int64) (int, error) {
 		w.wfds = append(w.wfds, sg.wfd)
 	}
 	for w.wbase < k {
-		_ = unix.Close(w.wfds[0])
+		_ = sysClose(w.wfds[0])
 		w.wfds = w.wfds[1:]
 		w.wbase++
 	}
@@ -374,7 +365,7 @@ func (w *wal) helper(flushed int64) {
 	w.failed.Store(&err)
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], 1)
-	_, _ = unix.Write(w.wakeFD, b[:])
+	_, _ = sysWrite(w.wakeFD, b[:])
 }
 
 // writeLoop writes what each kick asks for: the blocks from the one that
@@ -383,7 +374,7 @@ func (w *wal) helper(flushed int64) {
 func (w *wal) writeLoop(flushed int64) error {
 	var b [8]byte
 	for {
-		if _, err := unix.Read(w.kickFD, b[:]); err != nil {
+		if _, err := sysRead(w.kickFD, b[:]); err != nil {
 			if errors.Is(err, unix.EINTR) {
 				continue
 			}
@@ -403,7 +394,7 @@ func (w *wal) writeLoop(flushed int64) error {
 			if err != nil {
 				return err
 			}
-			k, err := unix.Pwrite(fd, w.stage[pos:pos+n], from%segSize)
+			k, err := sysPwrite(fd, w.stage[pos:pos+n], from%segSize)
 			if errors.Is(err, unix.EINTR) {
 				continue
 			}
@@ -423,7 +414,7 @@ func (w *wal) writeLoop(flushed int64) error {
 		flushed = target
 		w.done.Store(target)
 		binary.LittleEndian.PutUint64(b[:], 1)
-		_, _ = unix.Write(w.wakeFD, b[:])
+		_, _ = sysWrite(w.wakeFD, b[:])
 	}
 }
 
@@ -446,7 +437,7 @@ func (w *wal) kick() {
 	w.inflight = true
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], 1)
-	_, _ = unix.Write(w.kickFD, b[:])
+	_, _ = sysWrite(w.kickFD, b[:])
 }
 
 // fits reports whether the stage has room for the records of ents and a
@@ -559,7 +550,7 @@ func (w *wal) readDurable(p []byte, off int64) error {
 		}
 		fd := w.rfds[i]
 		w.mu.Unlock()
-		n, err := unix.Pread(fd, p[got:got+k], o%segSize)
+		n, err := sysPread(fd, p[got:got+k], o%segSize)
 		if err != nil {
 			return err
 		}
@@ -584,12 +575,12 @@ type walRecord struct {
 // scanWAL reads dir's records in order from offset from, where a record
 // starts, and calls fn, if any, with each, until the first that does not
 // check. It returns the log's end: the offset after the last good record.
-func scanWAL(dir string, from int64, fn func(r *walRecord) error) (int64, error) {
+func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (int64, error) {
 	var buf []byte
 	var r walRecord
 	off := from
 	for k := from / segSize; ; k++ {
-		b, err := os.ReadFile(segPath(dir, k))
+		b, err := sys.readFile(segPath(dir, k))
 		if errors.Is(err, os.ErrNotExist) {
 			break
 		}

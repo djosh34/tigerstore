@@ -36,7 +36,7 @@ const (
 // stream's window takes it.
 type clientSnap struct {
 	h          handle
-	f          *os.File // the checkpoint with every value in it
+	f          file // the checkpoint with every value in it
 	head       []byte
 	size, sent int64 // the whole file's, digest and all
 	sum        hash.Hash
@@ -59,7 +59,7 @@ func (n *node) startClientSnaps(waiters []handle, name string, meta ckptMeta) {
 	}
 	head := clientSnapHead(n.clusterID, meta)
 	for _, h := range waiters {
-		src, err := os.Open(filepath.Join(n.ckptDir, name))
+		src, err := n.sys.openFile(filepath.Join(n.ckptDir, name), os.O_RDONLY, 0)
 		if err != nil {
 			n.replyErrorH(h, codeInternal, err.Error())
 			continue
@@ -78,13 +78,13 @@ func clientSnapHead(cluster uint64, m ckptMeta) []byte {
 
 // prepareClientSnap writes the copy in a goroutine of its own and posts
 // it to the loop, which sends it.
-func (l *loop) prepareClientSnap(h handle, src *os.File, head []byte) {
+func (l *loop) prepareClientSnap(h handle, src file, head []byte) {
 	go func() {
 		defer func() { _ = src.Close() }()
-		f, err := os.CreateTemp(l.n.ckptDir, "client-*.tmp")
+		f, err := l.n.sys.createTemp(l.n.ckptDir, "client-*.tmp")
 		if err == nil {
 			// The name goes now; the file stays open until it is sent.
-			_ = os.Remove(f.Name())
+			_ = l.n.sys.remove(f.Name())
 			err = selfContained(src, l.n.wal, f, nil)
 		}
 		var size int64
@@ -273,5 +273,5 @@ func Restore(path, dataDir string, members []Member, skipHash bool) (index, term
 		return 0, 0, 0, err
 	}
 	hs := &pb.HardState{Term: new(term), Commit: new(index)}
-	return index, term, rev, writePointer(dir, &ckptPointer{name: name, hs: hs})
+	return index, term, rev, writePointer(sysEnv{}, dir, &ckptPointer{name: name, hs: hs})
 }

@@ -26,11 +26,9 @@ import (
 	"hash"
 	"net"
 	"strings"
-	"syscall"
 	"time"
 
 	"golang.org/x/crypto/chacha20poly1305"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -331,7 +329,7 @@ func (h *hsReader) Read(p []byte) (int, error) {
 // the returned fd is a non-blocking duplicate, and nc is closed. A
 // client of the client port that did not choose HTTP/2 keeps crypto/tls's
 // connection instead, in h1.
-func handshake(nc net.Conn, cfg *tls.Config, kind uint8) (*handoff, error) {
+func handshake(sys sysEnv, nc net.Conn, cfg *tls.Config, kind uint8) (*handoff, error) {
 	server := kind != kindPeerOut
 	cfg = cfg.Clone()
 	keys := &keyLog{}
@@ -415,42 +413,10 @@ func handshake(nc net.Conn, cfg *tls.Config, kind uint8) (*handoff, error) {
 		}
 	}
 	h.left = append([]byte(nil), hr.buf[hr.r:hr.w]...)
-	fd, err := takeFD(nc)
+	fd, err := sys.connFD(nc)
 	if err != nil {
 		return nil, err
 	}
 	h.fd = fd
 	return h, nil
-}
-
-// takeFD duplicates nc's socket as a non-blocking fd and closes nc.
-func takeFD(nc net.Conn) (int, error) {
-	sc, ok := nc.(interface {
-		SyscallConn() (syscall.RawConn, error)
-	})
-	if !ok {
-		_ = nc.Close()
-		return -1, errors.New("not a socket")
-	}
-	raw, err := sc.SyscallConn()
-	if err != nil {
-		_ = nc.Close()
-		return -1, err
-	}
-	nfd := -1
-	var derr error
-	if err := raw.Control(func(fd uintptr) { nfd, derr = unix.Dup(int(fd)) }); err != nil {
-		_ = nc.Close()
-		return -1, err
-	}
-	_ = nc.Close()
-	if derr != nil {
-		return -1, derr
-	}
-	if err := unix.SetNonblock(nfd, true); err != nil {
-		_ = unix.Close(nfd)
-		return -1, err
-	}
-	_ = unix.SetsockoptInt(nfd, unix.IPPROTO_TCP, unix.TCP_NODELAY, 1)
-	return nfd, nil
 }
