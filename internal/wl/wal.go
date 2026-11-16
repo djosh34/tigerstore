@@ -378,6 +378,18 @@ func (w *wal) makeSegment(dfd int, path string) (segment, error) {
 	} else if err := sysFsync(dfd); err != nil {
 		return segment{}, err
 	}
+	// Measure only: the segment is written whole with zeros and synced
+	// ahead, so the helper's O_DSYNC writes overwrite allocated blocks.
+	if zf, err := w.sys.open(path, unix.O_WRONLY, 0); err == nil {
+		zeros := make([]byte, 1<<20)
+		for off := int64(0); off < segSize; off += int64(len(zeros)) {
+			if _, err := unix.Pwrite(zf, zeros, off); err != nil {
+				break
+			}
+		}
+		_ = unix.Fdatasync(zf)
+		_ = sysClose(zf)
+	}
 	var sg segment
 	if sg.wfd, err = w.sys.openDirect(path); err != nil {
 		return segment{}, err
