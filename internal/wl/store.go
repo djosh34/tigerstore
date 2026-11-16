@@ -744,7 +744,8 @@ func (st *store) trimSteps(k int) {
 
 // trimHistory frees key id's states before the newest one at or before
 // the compacted revision, and that one too if it is a deletion: a read at
-// the compacted revision or later needs neither. A key deleted at or
+// the compacted revision or later needs neither. A checkpoint being
+// written keeps a deletion at the revision it holds. A key deleted at or
 // before the compacted revision leaves the tree, and one deleted before it
 // is freed: no read, watch or change names it.
 func (st *store) trimHistory(id uint32) {
@@ -764,9 +765,13 @@ func (st *store) trimHistory(id uint32) {
 				link = &e.prev
 				continue
 			}
-			if e.deleted {
+			if e.deleted && (!st.holding || e.mod < c) {
 				cut, *link = h, 0
 			} else {
+				// A checkpoint being written holds a deletion at the
+				// revision it holds trimming to: it may be the key's newest
+				// state at the checkpoint's revision, which a put since
+				// made history (ckptStates, #712).
 				cut, e.prev = e.prev, 0
 			}
 			break
@@ -901,14 +906,21 @@ func (st *store) ckptStates(id uint32, rev, c int64, out []ckptState) []ckptStat
 	if k.klen == 0 {
 		return out
 	}
-	add := func(s ckptState, cur bool) bool {
+	// newest is set until a state at or before rev is taken: the key's
+	// newest at rev. A put after rev, while a checkpoint at rev is being
+	// written, makes a newer one in the store, and a deletion at c that is
+	// the newest at rev must stay (#712).
+	newest := true
+	add := func(s ckptState) bool {
 		if s.mod > rev {
 			return true
 		}
+		atRev := newest
+		newest = false
 		// As trimming leaves it: the newest state at or before c, unless a
 		// deletion; a key deleted at c keeps that deletion.
 		if s.mod <= c {
-			if !s.deleted || (cur && s.mod == c) {
+			if !s.deleted || (atRev && s.mod == c) {
 				out = append(out, s)
 			}
 			return false
@@ -917,12 +929,12 @@ func (st *store) ckptStates(id uint32, rev, c int64, out []ckptState) []ckptStat
 		return true
 	}
 	cur := ckptState{deleted: k.create == 0, create: k.create, mod: k.mod, ver: k.ver, lease: k.lease, voff: k.voff, vlen: k.vlen, vsum: k.vsum}
-	if k.mod == 0 || !add(cur, true) {
+	if k.mod == 0 || !add(cur) {
 		return out
 	}
 	for h := k.hist; h != 0; h = st.hist[h].prev {
 		e := &st.hist[h]
-		if !add(ckptState{deleted: e.deleted, create: e.create, mod: e.mod, ver: e.ver, lease: e.lease, voff: e.voff, vlen: e.vlen, vsum: e.vsum}, false) {
+		if !add(ckptState{deleted: e.deleted, create: e.create, mod: e.mod, ver: e.ver, lease: e.lease, voff: e.voff, vlen: e.vlen, vsum: e.vsum}) {
 			break
 		}
 	}

@@ -410,6 +410,58 @@ func TestACheckpointKeepsACompactionAtZero(t *testing.T) {
 	}
 }
 
+// A key deleted at the compacted revision keeps that deletion in a
+// checkpoint at a later revision, as its newest state there, even when a
+// put makes the key again before the checkpoint's scan reaches it. The
+// scan kept such a deletion only while it was the key's state in the
+// store, so the checkpoint lost it, and the store started from it would
+// differ from the store it was taken of (seed 33970 of TestSeeds, #712).
+func TestACheckpointKeepsADeletionAtTheCompactedRevision(t *testing.T) {
+	n, l := ckptNode(t)
+	takeEveryValue(t)
+	putValue(t, n.st, l, "/a", "a1")
+	id, _ := n.st.find([]byte("/a"))
+	n.st.rev++
+	if _, err := n.st.del(id, n.st.rev); err != nil {
+		t.Fatal(err)
+	}
+	n.st.endApply()
+	deleted := n.st.rev
+	putValue(t, n.st, l, "/b", "b1")
+	n.st.compact(deleted)
+	want, at := n.st.stateHash(), n.st.rev
+	n.ckptFrom = int64(len(l.b))
+	if err := n.startCkpt(7, 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	// The next write makes /a again before the scan.
+	putValue(t, n.st, l, "/a", "a2")
+	for n.ckpt != nil {
+		if err := n.ckptStep(n.ckpt.sent > 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f, err := os.Open(filepath.Join(n.ckptDir, ckptName(7)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close() //nolint:errcheck // read only
+	loaded, err := newStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded.log = l
+	if _, err := loadCkpt(f, 1, loaded); err != nil {
+		t.Fatal(err)
+	}
+	if got := loaded.stateHash(); got != want {
+		t.Fatal("the checkpoint holds another state than the store it was taken of")
+	}
+	if _, ok := valueAt(t, loaded, "/b", at); !ok {
+		t.Fatal("the checkpoint lost /b")
+	}
+}
+
 // A checkpoint makes and removes files off the loop's thread: under the
 // writeback of other checkpoints, unlinking the one before held the loop
 // 215 to 555 ms (#704). Its writer makes its file, and the remover

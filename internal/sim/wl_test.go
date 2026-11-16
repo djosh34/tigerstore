@@ -79,13 +79,17 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 // on seed 19159 a leader elected by its peers' votes alone lost its term,
 // which was not durable yet, and led the same term again with another log;
 // on seeds 28789, 29384 and 29489 nodes ran out of their disks' room
-// (TestWLFormsAndRunsTheFaults).
+// (TestWLFormsAndRunsTheFaults); on seed 33970 a key deleted at the
+// compacted revision was made again while a checkpoint was being written,
+// and trimming dropped the deletion, the key's newest state at the
+// checkpoint's revision, so the checkpoint held another state than its
+// store (#712).
 //
 // Its seeds form their cluster under the faults, as the campaign that
 // found them did; TestWLFormsAndRunsTheFaults has seeds that form it
 // first.
 func TestWLRunsTheFaults(t *testing.T) {
-	simrun.Each(t, []uint64{2, 7, 8, 1002, 10155, 10161, 12024, 12731, 19159, 19458, 28789, 29384, 29489}, func(t *testing.T, seed uint64) Stats {
+	simrun.Each(t, []uint64{2, 7, 8, 1002, 10155, 10161, 12024, 12731, 19159, 19458, 28789, 29384, 29489, 33970}, func(t *testing.T, seed uint64) Stats {
 		st := runWLFaults(t, seed, true).Stats
 		if st.DiskFaults == 0 {
 			t.Fatal("no disk fault fired")
