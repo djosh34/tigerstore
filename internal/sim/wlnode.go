@@ -346,13 +346,15 @@ func (h *wlHooks) Turn(st wl.TurnState) {
 
 // SnapshotChunk applies the snapshot faults to a wl node's snapshot
 // stream, as server does to main's: half the streams during the faults
-// start late (SlowFetch), and the first stream of a run, and one in four
-// after it, is damaged on its way (FlipSnapshot). Peers talk TLS, so
-// only this hook reaches the stream's own CRC. A stream larger than a
-// chunk is damaged in its first.
-func (h *wlHooks) SnapshotChunk(to uint64, first bool, p []byte) {
+// start late (SlowFetch); the source of the first stream of a run
+// crashes partway through it (FetchCrash, SnapshotCut), and otherwise the
+// first stream, and one in four after it, is damaged on its way
+// (FlipSnapshot). Peers talk TLS, so only this hook reaches the stream's
+// own CRC. A stream larger than a chunk is cut or damaged in its first.
+func (h *wlHooks) SnapshotChunk(to uint64, first bool, p []byte) int {
+	keep := len(p)
 	if !first {
-		return
+		return keep
 	}
 	s, n := h.s, h.p.n
 	s.mu.Lock()
@@ -362,7 +364,13 @@ func (h *wlHooks) SnapshotChunk(to uint64, first bool, p []byte) {
 		wait = 200*Millisecond + s.rng.Int64N(1800*Millisecond)
 	}
 	s.stats.Snapshots++
-	if s.cfg.Faults.FlipSnapshot && !s.healed && len(p) > 0 && (s.stats.SnapshotFlips == 0 || s.rng.IntN(4) == 0) {
+	crash := s.cfg.Faults.FetchCrash && !s.healed && s.stats.FetchCrashes == 0 && len(p) > 1
+	switch {
+	case crash:
+		// A prefix of at least a byte.
+		keep = 1 + s.rng.IntN(len(p)-1)
+		s.tracef("node %d: serving %d bytes of a snapshot stream to %d, then crashing", n.id, keep, to)
+	case s.cfg.Faults.FlipSnapshot && !s.healed && len(p) > 0 && (s.stats.SnapshotFlips == 0 || s.rng.IntN(4) == 0):
 		p[s.rng.IntN(len(p))] ^= byte(1 + s.rng.IntN(255))
 		s.stats.SnapshotFlips++
 		s.tracef("node %d: damaged a snapshot stream to %d", n.id, to)
@@ -376,7 +384,12 @@ func (h *wlHooks) SnapshotChunk(to uint64, first bool, p []byte) {
 			t.Stop()
 		}
 	}
+	return keep
 }
+
+// SnapshotCut crashes the source of a stream SnapshotChunk cut, once the
+// follower read what it kept.
+func (h *wlHooks) SnapshotCut(to uint64) { h.s.crashSource(h.p, to, h.p.ctx.Done()) }
 
 // holdTurn holds p's loop, at the end of a turn, while the run failed,
 // until the run ends its process, and while the process is paused or

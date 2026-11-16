@@ -234,47 +234,53 @@ func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.
 		s.mu.Unlock()
 		_, err = w.Write(data)
 		if crash {
-			// The source crashes once the follower read the prefix, or
-			// its connection broke. Only a prefix the follower read counts
-			// as a fault that took effect: every connection to it that
-			// held unread bytes right after the write, the fetch's among
-			// them, was read to the end without breaking, and the link
-			// was not half-open, which swallows the prefix while older
-			// frames on it still arrive.
-			s.mu.Lock()
-			swallowed := false
-			for _, m := range s.nodes {
-				if m.id == id {
-					swallowed = s.links[n.idx][m.idx].halfOpenUntil > s.now()
-				}
-			}
-			s.mu.Unlock()
-			pipes := s.net.queued(s, n.idx, id)
-			read := len(pipes) > 0 && !swallowed
-			for len(pipes) > 0 {
-				s.mu.Lock()
-				pipes = slices.DeleteFunc(pipes, func(q *pipe) bool {
-					read = read && q.err == nil
-					return q.err != nil || len(q.chunks) == 0
-				})
-				s.mu.Unlock()
-				if len(pipes) > 0 && !s.sleepUnless(10*Millisecond, tn.Done()) {
-					return errDead
-				}
-			}
-			s.mu.Lock()
-			if read {
-				s.stats.FetchCrashes++
-			}
-			if n.proc == p {
-				n.why = "the run crashed it while it served a snapshot"
-				s.stopNode(n)
-			}
-			s.mu.Unlock()
+			s.crashSource(p, id, tn.Done())
 			return errDead
 		}
 		return err
 	}
+}
+
+// crashSource crashes p's node, the source of a snapshot stream to node
+// id that the run cut after a prefix (FetchCrash), once the follower read
+// the prefix, or its connection broke. Only a prefix the follower read
+// counts as a fault that took effect: every connection to it that held
+// unread bytes right after the write, the stream's among them, was read
+// to the end without breaking, and the link was not half-open, which
+// swallows the prefix while older frames on it still arrive. done ends
+// the wait when the process ends.
+func (s *Sim) crashSource(p *proc, id uint64, done <-chan struct{}) {
+	n := p.n
+	s.mu.Lock()
+	swallowed := false
+	for _, m := range s.nodes {
+		if m.id == id {
+			swallowed = s.links[n.idx][m.idx].halfOpenUntil > s.now()
+		}
+	}
+	s.mu.Unlock()
+	pipes := s.net.queued(s, n.idx, id)
+	read := len(pipes) > 0 && !swallowed
+	for len(pipes) > 0 {
+		s.mu.Lock()
+		pipes = slices.DeleteFunc(pipes, func(q *pipe) bool {
+			read = read && q.err == nil
+			return q.err != nil || len(q.chunks) == 0
+		})
+		s.mu.Unlock()
+		if len(pipes) > 0 && !s.sleepUnless(10*Millisecond, done) {
+			return
+		}
+	}
+	s.mu.Lock()
+	if read {
+		s.stats.FetchCrashes++
+	}
+	if n.proc == p {
+		n.why = "the run crashed it while it served a snapshot"
+		s.stopNode(n)
+	}
+	s.mu.Unlock()
 }
 
 // newestSegment is the name of the newest WAL segment on a disk.

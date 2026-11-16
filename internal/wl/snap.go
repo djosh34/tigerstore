@@ -65,7 +65,10 @@ const (
 	snapTimeout = 30 * time.Second
 )
 
-var errSnapRefused = errors.New("the follower did not take the snapshot")
+var (
+	errSnapRefused = errors.New("the follower did not take the snapshot")
+	errSnapCut     = errors.New("the simulator cut the snapshot stream")
+)
 
 // sendSnapshot starts sending the checkpoint m names to its follower.
 func (n *node) sendSnapshot(m *pb.Message) {
@@ -283,8 +286,20 @@ func (l *loop) streamSnapshot(mem member, m *pb.Message, f file, size int64) err
 	for first := true; ; {
 		k, err := f.Read(buf)
 		if k > 0 {
-			l.n.simSnapshotChunk(m.GetTo(), first, buf[:k])
+			keep := l.n.simSnapshotChunk(m.GetTo(), first, buf[:k])
 			first = false
+			if keep < k {
+				// The simulator cuts the stream here (FetchCrash).
+				var h [4]byte
+				binary.LittleEndian.PutUint32(h[:], uint32(k))
+				s.put(h[:])
+				s.put(buf[:keep])
+				if err := flushAll(s); err != nil {
+					return err
+				}
+				l.n.simSnapshotCut(m.GetTo())
+				return errSnapCut
+			}
 			putFrame(s, buf[:k])
 			if err := flushAll(s); err != nil {
 				return err

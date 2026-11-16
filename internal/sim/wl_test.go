@@ -304,3 +304,24 @@ func TestWLRefusesARottedValue(t *testing.T) {
 		return st
 	}, nil)
 }
+
+// The source of a wl node's snapshot stream crashes once the follower
+// read a prefix of it (FetchCrash, wlHooks.SnapshotCut): the follower
+// drops the prefix, and the source starts again from its disk, which the
+// stream's file was written on. A follower held down needs the snapshot.
+func TestWLCrashesTheSourceOfASnapshot(t *testing.T) {
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.wl, cfg.FormUnderFaults = true, true
+		cfg.Faults = Faults{HoldDown: true, FetchCrash: true, DiskBudget: cfg.Faults.DiskBudget}
+		res := run(t, cfg)
+		st := res.Stats
+		t.Logf("calls: %d ok; snapshots %d, sources crashed after a prefix %d; log %d writes to revision %d",
+			st.OK, st.Snapshots, st.FetchCrashes, len(res.Log), res.FinalRev)
+		if st.FetchCrashes == 0 {
+			t.Fatal("no source crashed after a prefix the follower read")
+		}
+		checkers(t, res)
+		return st
+	}, nil)
+}

@@ -171,8 +171,15 @@ func (n *node) simCheckpoint(index uint64) {
 	}
 }
 
-func (n *node) simSnapshotChunk(to uint64, first bool, p []byte) {
+func (n *node) simSnapshotChunk(to uint64, first bool, p []byte) int {
 	if h := n.sys.h; h != nil {
-		h.SnapshotChunk(to, first, p)
+		return h.SnapshotChunk(to, first, p)
+	}
+	return len(p)
+}
+
+func (n *node) simSnapshotCut(to uint64) {
+	if h := n.sys.h; h != nil {
+		h.SnapshotCut(to)
 	}
 }

@@ -16,4 +16,5 @@ func (*node) simInstalled()         {}
 func (*node) simCheckpoint(uint64)  {}
 func (*node) simExpired(int64)      {}
 
-func (*node) simSnapshotChunk(uint64, bool, []byte) {}
+func (*node) simSnapshotChunk(_ uint64, _ bool, p []byte) int { return len(p) }
+func (*node) simSnapshotCut(uint64)                           {}
