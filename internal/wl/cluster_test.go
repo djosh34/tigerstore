@@ -29,7 +29,7 @@ import (
 
 // portPair finds a free peer port whose port below is free too: the loop
 // takes a member's client port to be its peer port less one.
-func portPair(t *testing.T) int {
+func portPair(t testing.TB) int {
 	t.Helper()
 	for range 100 {
 		ln, p, err := testport.Listen()
@@ -68,14 +68,14 @@ type testCluster struct {
 
 // newTestCluster starts a 3-node cluster in this process; the test's end
 // stops it.
-func newTestCluster(t *testing.T) *testCluster {
+func newTestCluster(t testing.TB) *testCluster {
 	t.Helper()
 	return newTestClusterWith(t, nil)
 }
 
 // newTestClusterWith starts a 3-node cluster as newTestCluster does, after
 // before, if any, prepares it.
-func newTestClusterWith(t *testing.T, before func(tc *testCluster)) *testCluster {
+func newTestClusterWith(t testing.TB, before func(tc *testCluster)) *testCluster {
 	t.Helper()
 	tc := &testCluster{dir: t.TempDir()}
 	var err error
@@ -107,7 +107,7 @@ func newTestClusterWith(t *testing.T, before func(tc *testCluster)) *testCluster
 
 // addPorts gives the next node ports, its ID and its place among the
 // members.
-func (tc *testCluster) addPorts(t *testing.T, id uint64, join bool) int {
+func (tc *testCluster) addPorts(t testing.TB, id uint64, join bool) int {
 	t.Helper()
 	p := portPair(t)
 	tc.peers = append(tc.peers, fmt.Sprintf("https://127.0.0.1:%d", p))
@@ -120,7 +120,7 @@ func (tc *testCluster) addPorts(t *testing.T, id uint64, join bool) int {
 }
 
 // start runs the three nodes on their data dirs.
-func (tc *testCluster) start(t *testing.T) {
+func (tc *testCluster) start(t testing.TB) {
 	t.Helper()
 	for i := range tc.ids {
 		tc.startNode(t, i)
@@ -128,7 +128,7 @@ func (tc *testCluster) start(t *testing.T) {
 }
 
 // startNode runs node i on its data dir.
-func (tc *testCluster) startNode(t *testing.T, i int) {
+func (tc *testCluster) startNode(t testing.TB, i int) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	tc.cancels[i], tc.stopped[i] = cancel, make(chan error, 1)
@@ -190,7 +190,7 @@ func (tc *testCluster) dataDir(i int) string { return filepath.Join(tc.dir, fmt.
 
 // stop stops the nodes and waits for them; a node that failed on its own
 // fails the test.
-func (tc *testCluster) stop(t *testing.T) {
+func (tc *testCluster) stop(t testing.TB) {
 	t.Helper()
 	for i := range tc.cancels {
 		tc.stopNode(t, i)
@@ -198,7 +198,7 @@ func (tc *testCluster) stop(t *testing.T) {
 }
 
 // stopNode stops node i and waits for it.
-func (tc *testCluster) stopNode(t *testing.T, i int) {
+func (tc *testCluster) stopNode(t testing.TB, i int) {
 	t.Helper()
 	if tc.cancels[i] == nil {
 		return
@@ -211,7 +211,7 @@ func (tc *testCluster) stopNode(t *testing.T, i int) {
 }
 
 // client returns a client of the cluster once it takes a write.
-func (tc *testCluster) client(t *testing.T) *clientv3.Client {
+func (tc *testCluster) client(t testing.TB) *clientv3.Client {
 	t.Helper()
 	return tc.clientOf(t, tc.endpoints...)
 }
@@ -222,7 +222,7 @@ func (tc *testCluster) clientTLS() *tls.Config {
 }
 
 // rawClient returns a client of the given endpoints.
-func (tc *testCluster) rawClient(t *testing.T, endpoints ...string) *clientv3.Client {
+func (tc *testCluster) rawClient(t testing.TB, endpoints ...string) *clientv3.Client {
 	t.Helper()
 	c, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
@@ -238,7 +238,7 @@ func (tc *testCluster) rawClient(t *testing.T, endpoints ...string) *clientv3.Cl
 
 // clientOf returns a client of the given endpoints once the cluster takes
 // a write through them.
-func (tc *testCluster) clientOf(t *testing.T, endpoints ...string) *clientv3.Client {
+func (tc *testCluster) clientOf(t testing.TB, endpoints ...string) *clientv3.Client {
 	t.Helper()
 	c := tc.rawClient(t, endpoints...)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
