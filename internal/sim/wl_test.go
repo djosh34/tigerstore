@@ -3,6 +3,7 @@
 package sim
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/djosh34/tigerstore/internal/simrun"
@@ -46,6 +47,32 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 			res.Stats.OK, res.Stats.Failed, res.Stats.Ambiguous, res.Stats.Crashes, res.Stats.PowerLosses, res.Stats.Kills, len(res.Log), res.FinalRev)
 		if res.Stats.Crashes == 0 {
 			t.Fatal("no crash")
+		}
+		return res.Stats
+	}, nil)
+}
+
+// The log's stage race (internal/wl/wal.go, writeLoop): the helper writes
+// the stage's last block whole while the loop appends past the durable
+// end in it. A crash right after such a write and before its sync keeps
+// the block torn at sectors, half new and half old. The restarted node
+// recovers every entry it reported durable and none past the last it
+// handed its log, and what it then applies matches the other nodes'.
+func TestWLRecoversFromATornWriteOfTheStage(t *testing.T) {
+	simrun.Each(t, []uint64{3, 4, 5}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.wl, cfg.FormUnderFaults, cfg.stageCrash = true, true, true
+		cfg.Faults = Faults{MaxDelay: 5 * Millisecond, SlowDisk: 2}
+		res := run(t, cfg)
+		t.Logf("calls: %d ok; torn crashes %d, recovered %d; log %d writes to revision %d",
+			res.Stats.OK, res.Stats.StageCrashes, res.Stats.StageRecoveries, len(res.Log), res.FinalRev)
+		for _, l := range res.Trace {
+			if strings.Contains(l, "torn") || strings.Contains(l, "unsynced bytes") {
+				t.Log(l)
+			}
+		}
+		if res.Stats.StageCrashes != 1 || res.Stats.StageRecoveries != 1 {
+			t.Fatalf("%d torn crashes, %d recoveries after one; want one each", res.Stats.StageCrashes, res.Stats.StageRecoveries)
 		}
 		return res.Stats
 	}, nil)

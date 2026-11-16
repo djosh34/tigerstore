@@ -101,6 +101,9 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 			}
 		}
 	}
+	if s.cfg.stageCrash && op == simfs.OpWrite && isSegment(name) && s.wlStageCrash(n) {
+		return errDead
+	}
 	if s.recoveryDue && !s.healed && op == simfs.OpWrite && isSegment(name) {
 		// Crash between a write of the log and its sync, so that the
 		// restart finds a torn tail to repair, and its recovery crashes

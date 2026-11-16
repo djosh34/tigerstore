@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/simos"
 	"github.com/djosh34/tigerstore/internal/wl"
 )
@@ -84,7 +85,8 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		Sys:          s.os.NewNode(wlDataDir, &disk{s: s, p: p}, wlNet{s: s, p: p}),
 		Hooks:        &wlHooks{s: s, p: p},
 	}
-	conn, err := grpc.NewClient("passthrough:///"+clientAddr(n.idx),
+	conn, err := grpc.NewClient(
+		"passthrough:///"+clientAddr(n.idx),
 		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: s.net.ca, MinVersion: tls.VersionTLS12})),
 		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) { return s.net.dial(ctx, s, nil, addr) }),
 	)
@@ -149,15 +151,21 @@ func (h *wlHooks) Recovered(last uint64, hs *raftpb.HardState) {
 	switch {
 	case last < n.mustLast:
 		s.fail("node %d recovered entries to %d, but reported %d durable", n.id, last, n.mustLast)
+	case n.mustAtMost > 0 && last > n.mustAtMost:
+		s.fail("node %d recovered entries to %d, past %d, the last it handed its log before its crash", n.id, last, n.mustAtMost)
 	case hs.GetTerm() < n.mustHS.term || hs.GetTerm() == n.mustHS.term && n.mustHS.vote != 0 && hs.GetVote() != n.mustHS.vote:
 		s.fail("node %d started at term %d with vote %d, but held term %d and vote %d durable", n.id, hs.GetTerm(), hs.GetVote(), n.mustHS.term, n.mustHS.vote)
 	}
-	n.durableLast, n.hs, n.tornCrash = last, hardState{term: hs.GetTerm(), vote: hs.GetVote()}, false
+	if n.mustAtMost > 0 {
+		s.stats.StageRecoveries++
+		s.tracef("node %d: recovered entries to %d after its torn write, reported %d durable, handed its log %d", n.id, last, n.mustLast, n.mustAtMost)
+	}
+	n.durableLast, n.hs, n.tornCrash, n.mustAtMost, n.appended = last, hardState{term: hs.GetTerm(), vote: hs.GetVote()}, false, 0, last
 }
 
 // Append keeps an append on its way to the disk, which may lower what a
 // crash leaves (node.floor).
-func (h *wlHooks) Append(first uint64, install bool) {
+func (h *wlHooks) Append(first, last uint64, install bool) {
 	s, p := h.s, h.p
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -165,6 +173,7 @@ func (h *wlHooks) Append(first uint64, install bool) {
 	if n.proc != p {
 		return
 	}
+	n.appended = max(n.appended, last)
 	n.pending = append(n.pending, pendingJob{first: first, install: install, replaces: first <= n.durableLast, at: s.now()})
 }
 
@@ -286,4 +295,38 @@ func (s *Sim) callWL(p *proc, req proto.Message, ctx context.Context) (proto.Mes
 		return resp, err
 	}
 	return nil, fmt.Errorf("%w: %T", errNoV3Call, req)
+}
+
+// wlStageCrash crashes wl node n, once a run, under the clients' load,
+// once it handed its log entries past those it reported durable, right
+// after its log wrote and before the write's sync: the
+// helper writes the stage's last block whole, from the block's start,
+// while the loop appends past the durable end in it, so the crash image,
+// torn at sectors, keeps that block half new and half old. Its next start
+// must recover every entry it reported durable, and none past the last it
+// handed its log (wlHooks.Recovered), and each entry it applies is checked
+// against the other nodes' (wlHooks.Applied). It reports whether it
+// crashed n. The lock is held.
+func (s *Sim) wlStageCrash(n *node) bool {
+	if s.stats.StageCrashes > 0 || s.healed || s.now() < 2*Second || n.proc == nil || n.appended <= n.floor() {
+		return false
+	}
+	s.stats.StageCrashes++
+	s.stats.Crashes++
+	s.stats.PowerLosses++
+	n.why = "the run crashed it between a write of its log and the write's sync, torn at sectors"
+	s.tracef("node %d: crash between a write of its log and its sync, torn at sectors; reported %d durable, handed its log %d", n.id, n.floor(), n.appended)
+	n.mustLast, n.mustHS, n.mustAtMost = n.floor(), n.hs, n.appended
+	s.down(n)
+	from := len(n.diskLog)
+	s.loseUnsyncedAs(n, simfs.Sectors)
+	for _, l := range n.diskLines()[min(from, len(n.diskLog)):] {
+		// What the image kept of the segment it tore.
+		if strings.Contains(l, ".seg") && strings.Contains(l, "unsynced") {
+			s.tracef("node %d: %s", n.id, l)
+		}
+	}
+	n.crashImage = n.disk.Files()
+	s.restartLater(n, 1+s.rng.Int64N(Second))
+	return true
 }

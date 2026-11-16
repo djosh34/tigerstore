@@ -30,13 +30,18 @@ func (n *node) simAppend(m *pb.Message) {
 	if h == nil {
 		return
 	}
-	switch sn, ents := m.GetSnapshot(), m.GetEntries(); {
+	sn, ents := m.GetSnapshot(), m.GetEntries()
+	last := uint64(0)
+	if len(ents) > 0 {
+		last = ents[len(ents)-1].GetIndex()
+	}
+	switch {
 	case sn != nil && sn.GetMetadata().GetIndex() > 0:
-		h.Append(sn.GetMetadata().GetIndex()+1, true)
+		h.Append(sn.GetMetadata().GetIndex()+1, max(last, sn.GetMetadata().GetIndex()), true)
 	case len(ents) > 0:
-		h.Append(ents[0].GetIndex(), false)
+		h.Append(ents[0].GetIndex(), last, false)
 	default:
-		h.Append(math.MaxUint64, false)
+		h.Append(math.MaxUint64, 0, false)
 	}
 }
 

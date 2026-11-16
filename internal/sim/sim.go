@@ -147,8 +147,10 @@ type Config struct {
 	// with it. For the tests.
 	ckptCreateFaults, killLosses, syncFaultExits, cutFails bool
 	// wl runs the nodes of internal/wl on simos instead of main's node
-	// driver (wlnode.go).
-	wl bool
+	// driver (wlnode.go), and stageCrash crashes one of them once, after
+	// its log wrote and before that write's sync, keeping the write torn
+	// at sectors (wlStageCrash).
+	wl, stageCrash bool
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -373,6 +375,10 @@ type node struct {
 	mustLast  uint64
 	mustHS    hardState
 	tornCrash bool
+	// appended is the last entry a wl process handed its log, and
+	// mustAtMost, after a crash that tore a write of the log, what its
+	// next start may recover at most (wlStageCrash).
+	appended, mustAtMost uint64
 	// misread is set while the next read of a segment by recovery returns
 	// wrong data.
 	misread bool
@@ -649,6 +655,10 @@ type Stats struct {
 	// inside the recovery of an existing log, and InstallCrashes those
 	// during a snapshot install (Faults.InstallCrash).
 	GrayNodes, GrayStreams, RecoveryCrashes, InstallCrashes int
+	// StageCrashes counts the crashes of wl nodes that tore a write of
+	// their log (Config.stageCrash), and StageRecoveries the starts that
+	// recovered after one within its bounds.
+	StageCrashes, StageRecoveries int
 	// Checkpoints counts checkpoint files completed, Snapshots snapshot
 	// streams served, ServeFailures fetches that the source could not
 	// serve, SnapshotFlips those damaged on the way, FetchCrashes sources
@@ -2165,6 +2175,12 @@ func (s *Sim) loseUnsynced(n *node) {
 	if s.cfg.Membership || slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) {
 		img = simfs.Image(s.rng.IntN(2))
 	}
+	s.loseUnsyncedAs(n, img)
+}
+
+// loseUnsyncedAs is loseUnsynced with the crash image img. The lock is
+// held.
+func (s *Sim) loseUnsyncedAs(n *node, img simfs.Image) {
 	n.disk.CrashImage(s.rng, img)
 	// Recovery may refuse the log since any torn image, until a start
 	// recovers it: a later image of whole writes keeps the tear.

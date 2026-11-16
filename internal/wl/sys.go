@@ -68,8 +68,9 @@ type Hooks interface {
 	Recovered(last uint64, hs *raftpb.HardState)
 	// Append is an append handed to the log: its first entry, or that of
 	// the snapshot it installs, which may replace entries already
-	// durable, as Raft may replace entries that never committed.
-	Append(first uint64, install bool)
+	// durable, as Raft may replace entries that never committed, and its
+	// last entry, or the snapshot's, or 0 for a hard state alone.
+	Append(first, last uint64, install bool)
 	// Applied is entry e, applied, and a hash of the changes it made to
 	// the store: every key it put or deleted, by name, with its record at
 	// that revision. Every node that applies e from the same store gets
