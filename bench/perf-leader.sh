@@ -21,13 +21,17 @@ trap 'for f in "$dir"/n*.log; do cp "$f" "$out/$label-$(basename "$f")"; done 2>
 pid=$(cut -d, -f1 <"$dir/pids")
 leader=$(cat "$dir/leader")
 n=$(grep -n "$leader" <(tr ',' '\n' <"$dir/endpoints") | cut -d: -f1 || true)
-taskset -c "${layout[0]}" "$bins/loadgen" -endpoints "$(cat "$dir/endpoints")" \
+# WORKLOAD is k8s (the default) or txn-1k, put-1k as profile-disk.sh runs them.
+case "${WORKLOAD:-k8s}" in
+k8s) flags=(-workload k8s -conns 3 -streams 128 -copies 64 -traces "$(realpath "${TRACES:-$here/recordings}")" -seed "${SEED:-1}" -warmup 3s -duration 40s) eps=$(cat "$dir/endpoints") ;;
+*) flags=(-workload "${WORKLOAD%-*}" -keys 10000 -conns 6 -streams 512 -value-size 1024 -warmup 3s -duration 40s) eps=$(cat "$dir/leader") ;;
+esac
+taskset -c "${layout[0]}" "$bins/loadgen" -endpoints "$eps" \
 	-cacert "$certs/ca.pem" -cert "$certs/client.pem" -key "$certs/client-key.pem" \
-	-pids "$(cat "$dir/pids")" -workload k8s \
-	-out "$out/$label.json" -conns 3 -streams 128 -copies 64 -traces "$(realpath "${TRACES:-$here/recordings}")" -seed "${SEED:-1}" -warmup 3s -duration 40s &
+	-pids "$(cat "$dir/pids")" -out "$out/$label.json" "${flags[@]}" &
 gen=$!
 for _ in $(seq 600); do
-	if grep -hE "replies/s [0-9]{5,}" "$dir"/n*.log >/dev/null 2>&1; then break; fi
+	if grep -hE "replies/s [0-9]{5,}" "$dir"/n*.log >/dev/null 2>&1; then sleep 5; break; fi
 	sleep 1
 done
 sudo perf record -F 1999 -g -p "$pid" -o "$out/$label.perf.data" -- sleep 30 2>&1 | tail -2

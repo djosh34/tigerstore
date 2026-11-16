@@ -262,7 +262,7 @@ jobs:
               order=$refs
               if [ "$rep" = 2 ]; then order=$(tr ' ' '\n' <<<"$refs" | tac | tr '\n' ' '); fi
               for ref in $order; do
-                SEED=${SEEDS%% *} DATA="$RUNNER_TEMP/bench-data" bench/perf-leader.sh bin/r-$ref $ref-$rep results/perf-leader
+                WORKLOAD=${RTTS%% *} SEED=${SEEDS%% *} DATA="$RUNNER_TEMP/bench-data" bench/perf-leader.sh bin/r-$ref $ref-$rep results/perf-leader
               done
             done
             exit 0
