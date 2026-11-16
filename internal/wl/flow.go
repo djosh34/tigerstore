@@ -138,7 +138,8 @@ func (c *client) drain() {
 			copy(b[9:], h.trailer)
 			n.markDirty(&c.sock)
 		}
-		if f.counts[h.sid]--; f.counts[h.sid] == 0 {
+		f.counts[h.sid]--
+		if f.counts[h.sid] == 0 {
 			// The stream holds nothing more: its window goes back to it.
 			if s := c.get(h.sid); s != nil {
 				s.win, s.holds = f.streams[h.sid], false
