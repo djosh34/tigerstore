@@ -2,9 +2,11 @@ package wl
 
 import (
 	"encoding/binary"
+	"strings"
 	"testing"
 	"time"
 
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	pb "go.etcd.io/raft/v3/raftpb"
 )
 
@@ -48,5 +50,25 @@ func TestHeldAppendsPastTheirWaitAllGoAtOnce(t *testing.T) {
 	}
 	if !time.Now().Before(n.carryUntil[2]) {
 		t.Fatal("a held carry request was not taken")
+	}
+}
+
+// A batch Raft drops on a node that knows no leader never applies: its
+// writes are answered etcd's "no leader", which a client takes as not
+// done, not "leader changed", which may have been. On seeds 1 and 2 of
+// TestFormedClusterAnswers, writes sent while the started cluster elected
+// its leader got "leader changed", with no fault in the run.
+func TestADroppedBatchWithNoLeaderAnswersNoLeader(t *testing.T) {
+	n, _ := testNode(t)
+	n.rn = newTestRawNode(t)
+	if err := n.rn.Propose([]byte("batch")); err == nil {
+		t.Fatal("a node with no leader took a proposal")
+	}
+	if got, want := n.droppedMsg(), rpctypes.ErrGRPCNoLeader.Error(); !strings.HasSuffix(want, got) {
+		t.Fatalf("with no leader the writes are answered %q, want %q", got, want)
+	}
+	n.lead = 2
+	if got := n.droppedMsg(); got != "etcdserver: leader changed" {
+		t.Fatalf("with a leader the writes are answered %q", got)
 	}
 }

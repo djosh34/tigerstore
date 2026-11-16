@@ -138,11 +138,24 @@ func (n *node) proposeBatch(now time.Time) {
 		n.sendBatch(data)
 	}
 	if err := n.rn.Propose(data); err != nil {
+		msg := n.droppedMsg()
 		for _, h := range n.batchOwn {
-			n.replyErrorH(h, codeUnavailable, "etcdserver: leader changed")
+			n.replyErrorH(h, codeUnavailable, msg)
 		}
 		f.handles = f.handles[:0]
 	}
+}
+
+// droppedMsg answers the writes of a batch Raft dropped, which never
+// apply. A node that knows no leader, as while a cluster that started
+// again elects one, answers etcd's "no leader", which says the write did
+// not take effect; a call answered "leader changed" may have. With a
+// leader known, Raft drops a proposal while it hands the leadership over.
+func (n *node) droppedMsg() string {
+	if n.lead == 0 {
+		return "etcdserver: no leader"
+	}
+	return "etcdserver: leader changed"
 }
 
 // requestTimeout is how long a client waits for its write to apply before
