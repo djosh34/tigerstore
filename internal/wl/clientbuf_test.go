@@ -146,15 +146,25 @@ func TestTheNodeClosesClientsPastItsBackstop(t *testing.T) {
 	loopOf := watchLoops(t)
 	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
 	most := sizeFor(budget).maxClients()
+	// A connection past the backstop can be closed before the client
+	// wrote its preface, or before its handshake: that counts as closed.
 	var conns []*tls.Conn
+	closed := 0
 	for range most + 20 {
-		c := rawConn(t, tc.endpoints[0], tc.clientTLS())
-		h2Start(t, c)
+		c, err := dialRaw(tc.endpoints[0], tc.clientTLS())
+		if err == nil {
+			t.Cleanup(func() { _ = c.Close() })
+			_, err = h2Begin(c)
+		}
+		if err != nil {
+			t.Logf("a connection closed before its preface was out: %v", err)
+			closed++
+			continue
+		}
 		conns = append(conns, c)
 	}
 	time.Sleep(500 * time.Millisecond)
 	s := seeNode(loopOf(1))
-	closed := 0
 	for _, c := range conns {
 		if err := c.SetReadDeadline(time.Now().Add(20 * time.Millisecond)); err != nil {
 			t.Fatal(err)
@@ -169,9 +179,9 @@ func TestTheNodeClosesClientsPastItsBackstop(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("%d connections: the node holds %d clients (at most %d), refused %d, closed %d", len(conns), s.clients, most, s.refused, closed)
-	if s.clients > most || s.refused == 0 || closed < len(conns)-most {
-		t.Fatalf("%d connections: the node holds %d clients, at most %d, refused %d and closed %d", len(conns), s.clients, most, s.refused, closed)
+	t.Logf("%d connections: the node holds %d clients (at most %d), refused %d, closed %d", most+20, s.clients, most, s.refused, closed)
+	if s.clients > most || s.refused == 0 || closed < 20 {
+		t.Fatalf("%d connections: the node holds %d clients, at most %d, refused %d and closed %d", most+20, s.clients, most, s.refused, closed)
 	}
 }
 
@@ -395,6 +405,17 @@ func seeNode(l *loop) nodeSeen {
 // small receive buffer so that the kernel holds little for it.
 func rawConn(t *testing.T, addr string, cfg *tls.Config) *tls.Conn {
 	t.Helper()
+	conn, err := dialRaw(addr, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn
+}
+
+// dialRaw is rawConn, which returns its error and leaves the connection
+// to its caller to close.
+func dialRaw(addr string, cfg *tls.Config) (*tls.Conn, error) {
 	d := net.Dialer{Control: func(_, _ string, c syscall.RawConn) error {
 		var serr error
 		if err := c.Control(func(fd uintptr) {
@@ -405,29 +426,30 @@ func rawConn(t *testing.T, addr string, cfg *tls.Config) *tls.Conn {
 		return serr
 	}}
 	cfg.NextProtos = []string{"h2"}
-	conn, err := tls.DialWithDialer(&d, "tcp", addr, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	return conn
+	return tls.DialWithDialer(&d, "tcp", addr, cfg)
 }
 
 // h2Start opens HTTP/2 on conn with windows as large as it allows, so
 // that only its socket holds the node back.
 func h2Start(t *testing.T, conn net.Conn) *http2.Framer {
 	t.Helper()
-	if _, err := conn.Write([]byte(http2.ClientPreface)); err != nil {
-		t.Fatal(err)
-	}
-	fr := http2.NewFramer(conn, conn)
-	if err := fr.WriteSettings(http2.Setting{ID: http2.SettingInitialWindowSize, Val: 1<<31 - 1}); err != nil {
-		t.Fatal(err)
-	}
-	if err := fr.WriteWindowUpdate(0, 1<<31-1-65535); err != nil {
+	fr, err := h2Begin(conn)
+	if err != nil {
 		t.Fatal(err)
 	}
 	return fr
+}
+
+// h2Begin is h2Start, which returns its error.
+func h2Begin(conn net.Conn) (*http2.Framer, error) {
+	if _, err := conn.Write([]byte(http2.ClientPreface)); err != nil {
+		return nil, err
+	}
+	fr := http2.NewFramer(conn, conn)
+	if err := fr.WriteSettings(http2.Setting{ID: http2.SettingInitialWindowSize, Val: 1<<31 - 1}); err != nil {
+		return nil, err
+	}
+	return fr, fr.WriteWindowUpdate(0, 1<<31-1-65535)
 }
 
 // h2Call starts a gRPC call of path on stream sid.
