@@ -656,10 +656,16 @@ func (l *loop) takeHandoffs() {
 			p.sent = &n.metrics.peerSent
 			n.socks[idx] = p
 			s = &p.sock
-			if old := n.peersOut[h.peer]; old != nil && !old.dead {
+			// The new connection replaces the old before the old closes:
+			// closing a peer's current connection tells its dialer to dial
+			// again, and that dial's handoff closed this one in turn,
+			// every 100 ms for good, with what the peer held behind a
+			// named batch (TestWLRefusesAMisreadLog, seed 1).
+			old := n.peersOut[h.peer]
+			n.peersOut[h.peer] = p
+			if old != nil && !old.dead {
 				l.closeSock(old.idx)
 			}
-			n.peersOut[h.peer] = p
 			s.put(peerHelloBytes(n.id, n.clusterID))
 			n.markDirty(s)
 		}
