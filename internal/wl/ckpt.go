@@ -857,6 +857,11 @@ var ErrCorruptCheckpoint = errors.New("wl: corrupt checkpoint")
 // loadCkpt fills st, an empty store, from the checkpoint in f, whose
 // values the store then reads from f as generation gen.
 func loadCkpt(f file, gen int, st *store) (ckptMeta, error) {
+	return loadCkptChecked(f, gen, st, true)
+}
+
+// loadCkptChecked is loadCkpt, which checks the file's CRC if check.
+func loadCkptChecked(f file, gen int, st *store, check bool) (ckptMeta, error) {
 	var m ckptMeta
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return m, err
@@ -926,7 +931,7 @@ func loadCkpt(f file, gen int, st *store) (ckptMeta, error) {
 			if err != nil {
 				return m, err
 			}
-			if binary.LittleEndian.Uint32(sum) != want {
+			if binary.LittleEndian.Uint32(sum) != want && check {
 				return m, fmt.Errorf("%s: %w: its CRC", f.Name(), ErrCorruptCheckpoint)
 			}
 			st.rev, st.compactRev, st.compacted = m.rev, m.compactRev, m.compacted

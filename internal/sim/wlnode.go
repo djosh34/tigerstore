@@ -267,8 +267,46 @@ func (h *wlHooks) Turn(st wl.TurnState) {
 		role = "leader"
 	}
 	n.last = coreState{at: s.now(), role: role, term: st.Term, lead: st.Lead, commit: st.Commit, applied: st.Applied, first: st.First, version: uint32(st.Format)}
+	if st.First > st.Applied+1 {
+		// Raft would need the entries it let go to apply them.
+		s.fail("node %d holds entries from %d in memory, but applied only to %d", n.id, st.First, st.Applied)
+	}
 	s.mu.Unlock()
 	s.holdTurn(p)
+}
+
+// SnapshotChunk applies the snapshot faults to a wl node's snapshot
+// stream, as server does to main's: half the streams during the faults
+// start late (SlowFetch), and the first stream of a run, and one in four
+// after it, is damaged on its way (FlipSnapshot). Peers talk TLS, so
+// only this hook reaches the stream's own CRC. A stream larger than a
+// chunk is damaged in its first.
+func (h *wlHooks) SnapshotChunk(to uint64, first bool, p []byte) {
+	if !first {
+		return
+	}
+	s, n := h.s, h.p.n
+	s.mu.Lock()
+	var wait int64
+	if s.cfg.Faults.SlowFetch && !s.healed && s.rng.IntN(2) == 0 {
+		s.stats.SlowFetches++
+		wait = 200*Millisecond + s.rng.Int64N(1800*Millisecond)
+	}
+	s.stats.Snapshots++
+	if s.cfg.Faults.FlipSnapshot && !s.healed && len(p) > 0 && (s.stats.SnapshotFlips == 0 || s.rng.IntN(4) == 0) {
+		p[s.rng.IntN(len(p))] ^= byte(1 + s.rng.IntN(255))
+		s.stats.SnapshotFlips++
+		s.tracef("node %d: damaged a snapshot stream to %d", n.id, to)
+	}
+	s.mu.Unlock()
+	if wait > 0 {
+		t := time.NewTimer(time.Duration(wait))
+		select {
+		case <-t.C:
+		case <-h.p.ctx.Done():
+			t.Stop()
+		}
+	}
 }
 
 // holdTurn holds p's loop, at the end of a turn, while the run failed,

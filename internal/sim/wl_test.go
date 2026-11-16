@@ -216,16 +216,6 @@ func TestWLMembershipFaults(t *testing.T) {
 	}, nil)
 }
 
-// wlMembershipConfig is membershipConfig on wl nodes, without the faults
-// wlFaultsConfig leaves out.
-func wlMembershipConfig(seed uint64) Config {
-	cfg := membershipConfig(seed)
-	cfg.wl, cfg.FormUnderFaults = true, true
-	f := &cfg.Faults
-	f.FlipSnapshot, f.FetchCrash, f.SlowFetch, f.Rot = false, false, false, false
-	return cfg
-}
-
 // A wl node of the simulator makes at most 128 MiB at its start, Go's
 // memory under gosim, made again at each start: a run of three nodes, its
 // restarts and its cold restarts, four runs at once on a campaign's

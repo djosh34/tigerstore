@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -234,6 +235,11 @@ func (n *node) storageApply(m *pb.Message) error {
 			// Nothing proposes one: the members change one at a time.
 			return fmt.Errorf("apply entry %d: a ConfChangeV2", idx)
 		case pb.EntryNormal:
+			if idx == n.plantedSkip {
+				// Planted (B23): the replay after a start stops one entry
+				// short of the commit index it recovered.
+				break
+			}
 			if d := e.GetData(); len(d) > 0 {
 				if err := n.applyBatch(d, idx, n.storage.offOf(idx)); err != nil {
 					return err
@@ -265,6 +271,10 @@ func (n *node) afterApply() error {
 	if first, _ := s.FirstIndex(); n.applied > first+2*n.catchup {
 		s.compact(n.applied - n.catchup)
 	}
+	if planted.On("B20") && s.lastIndex() > n.applied+1 {
+		// Planted: an entry not yet applied leaves memory.
+		s.drop(n.applied + 1)
+	}
 	if s.snap != nil {
 		n.removeAll(n.wal.cut(min(n.ckptCut, s.firstRecord(n.wal.off))))
 	}
@@ -278,16 +288,22 @@ func (n *node) maybeCkpt() error {
 	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptLog || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt {
 		return nil
 	}
-	off := s.offOf(n.applied)
+	index := n.applied
+	if c := s.hs.GetCommit(); planted.On("B21") && c > index && c <= s.lastIndex() {
+		// Planted: the checkpoint names the committed index, past the
+		// applied one its store is at.
+		index = c
+	}
+	off := s.offOf(index)
 	if off < 0 {
 		return nil
 	}
-	term, err := s.Term(n.applied)
+	term, err := s.Term(index)
 	if err != nil {
 		return err
 	}
 	s.wantCkpt = false
-	return n.startCkpt(n.applied, term, off-walEntHdr)
+	return n.startCkpt(index, term, off-walEntHdr)
 }
 
 // ---- peer messages
@@ -496,6 +512,13 @@ func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
 				seq := uint64(binary.LittleEndian.Uint32(f[at+4:]))<<32 | uint64(uint32(l))
 				at += 8
 				b := n.fwdOf(origin)[seq&(fwdSlots-1)]
+				if (b.seq != seq || b.data == nil) && planted.On("B33") {
+					// Planted: the entry goes to Raft with its name, the
+					// batch's key, as its data.
+					e.Data = bytes.Clone(f[at-8 : at])
+					m.Entries[i] = e
+					continue
+				}
 				if b.seq != seq || b.data == nil {
 					return nil, errUnnamed
 				}

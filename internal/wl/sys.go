@@ -83,6 +83,11 @@ type Hooks interface {
 	// Turn ends each turn of the loop with what Raft shows; it may hold
 	// the loop.
 	Turn(TurnState)
+	// SnapshotChunk is chunk p of a snapshot stream to node to, the
+	// stream's first if first, before it is sent: the simulator may hold
+	// the stream back or damage p in place, as a network that TLS does
+	// not guard would.
+	SnapshotChunk(to uint64, first bool, p []byte)
 }
 
 // TurnState is what a node shows at the end of a turn of its loop.

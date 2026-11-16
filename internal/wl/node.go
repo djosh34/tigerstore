@@ -199,6 +199,7 @@ type node struct {
 	turnReqs     [kinds]int // requests this turn, by kind, for the slow-turn log
 	txnWrote     bool       // the Txn applied last put or deleted
 	plantedSubs  int64      // planted bug B09a: the keys the request changed so far
+	plantedSkip  uint64     // planted bug B23: the entry a start's replay skips
 	extensive    bool
 	quotaBytes   int64
 	// moves are the MoveLeaders that wait for the leader to move.

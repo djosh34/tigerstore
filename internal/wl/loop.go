@@ -197,6 +197,9 @@ func run(ctx context.Context, cfg Config) error {
 		hs.Commit = new(n.storage.snapIndex)
 	}
 	n.term, n.commit = n.storage.hs.GetTerm(), n.storage.hs.GetCommit()
+	if planted.On("B23") && n.commit > n.applied {
+		n.plantedSkip = n.commit
+	}
 	n.simRecovered()
 	n.rn, err = raft.NewRawNode(raftConfig(n.id, n.storage, n.sizes, len(cfg.Members)))
 	if err != nil {

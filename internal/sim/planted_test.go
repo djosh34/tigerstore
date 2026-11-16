@@ -287,7 +287,26 @@ var plantedWLCases = map[string]plantedCase{
 	// log moves on to the next.
 	"B16": {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|` + refused},
 	"B18": {seeds: 16, cfg: wlFaultsConfig, want: `holds \d+ watchers`},
-	"B19": {seeds: 64, cfg: wlFaultsConfig, want: refused + `|not on disk|` + stuck},
+	// A wl start that misses the segment stops on it, as a cold restart
+	// of seed 1 did.
+	"B19": {seeds: 64, cfg: wlFaultsConfig, want: refused + `|not on disk|no such file or directory|` + stuck},
+	"B20": {seeds: 64, cfg: wlFaultsConfig, want: `holds entries from \d+ in memory`},
+	// wl checks no checkpoint against another's yet: a start from the
+	// checkpoint misses the entries after the applied index.
+	"B21": {seeds: 64, cfg: wlFaultsConfig, want: inventedState + `|cold restart did not converge|` + stuck},
+	// wl's checkpoint has a CRC of its own, which B22 skips at an
+	// install too.
+	"B22": {seeds: 256, cfg: wlDamagedSnapshotConfig, want: inventedState + `|malformed|corrupt checkpoint|` + badValue + `|` + refused},
+	"B23": {seeds: 64, cfg: wlFaultsConfig, want: inventedState + `|cold restart did not converge|` + stuck},
+	"B24": {seeds: 16, cfg: wlFaultsConfig, want: badValue + `|` + inventedState},
+	// wl installs a snapshot in place, so B27 keeps the store from before
+	// the install.
+	"B27": {seeds: 64, cfg: wlFaultsConfig, want: inventedState + `|cold restart did not converge|` + stuck},
+	"B28": {seeds: 16, cfg: wlMembershipConfig, want: `membership: stage 1 acknowledged`},
+	// wl has no value cache: B31 is a read at a revision that ignores
+	// the revision and gets the value that overwrote it.
+	"B31": {seeds: 32, cfg: wlFaultsConfig, want: badValue + `|` + badState + `|` + badWatch},
+	"B33": {seeds: 32, cfg: wlFaultsConfig, want: inventedState + `|malformed batch|` + stuck},
 }
 
 // wlDamageConfig runs wl nodes with crashes and, after them, damage at
@@ -300,6 +319,15 @@ func wlDamageConfig(seed uint64) Config {
 	cfg.Faults = Faults{CrashEvery: Second, MaxDown: Second, Corrupt: true}
 	cfg.damageKinds = []damageKind{misdirected, lostWrite}
 	cfg.Duration = 16 * Second
+	return cfg
+}
+
+// wlDamagedSnapshotConfig is damagedSnapshotConfig on wl nodes: a
+// follower held down past the leader's window fetches a snapshot, whose
+// first stream is damaged.
+func wlDamagedSnapshotConfig(seed uint64) Config {
+	cfg := damagedSnapshotConfig(seed)
+	cfg.wl, cfg.FormUnderFaults = true, true
 	return cfg
 }
 

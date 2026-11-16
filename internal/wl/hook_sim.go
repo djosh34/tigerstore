@@ -148,3 +148,9 @@ func (n *node) simMembers() {
 
 // simInstalled starts the changes from the store a snapshot installed.
 func (n *node) simInstalled() { n.sys.sim.rev = n.st.rev }
+
+func (n *node) simSnapshotChunk(to uint64, first bool, p []byte) {
+	if h := n.sys.h; h != nil {
+		h.SnapshotChunk(to, first, p)
+	}
+}

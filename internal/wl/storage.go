@@ -278,7 +278,11 @@ func (s *logStorage) compact(i uint64) {
 	if s.snap == nil {
 		return
 	}
-	i = min(i, s.snap.GetMetadata().GetIndex())
+	s.drop(min(i, s.snap.GetMetadata().GetIndex()))
+}
+
+// drop lets go of the entries to index i.
+func (s *logStorage) drop(i uint64) {
 	if i <= s.snapIndex || i > s.lastIndex() {
 		return
 	}

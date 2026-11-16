@@ -210,6 +210,11 @@ func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 		return nil, err
 	}
 	value, vo := r.value, voffOf(req, r.value, voff)
+	if planted.On("B24") {
+		// Planted: the store names the value one byte after where it is
+		// in its entry.
+		vo++
+	}
 	if r.ignoreValue || r.ignoreLease {
 		cur, err := st.live(id)
 		if err != nil {

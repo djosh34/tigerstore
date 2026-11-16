@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/djosh34/tigerstore/internal/planted"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -132,16 +133,22 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	st.goLive = old.goLive
 	st.setBudget(old.budget, old.mapped)
 	gen := 1 - n.ckptGen
-	m, err := loadCkpt(f, gen, st)
+	// Planted: B22 installs the snapshot without its CRC.
+	m, err := loadCkptChecked(f, gen, st, !planted.On("B22"))
 	if err != nil {
 		_ = st.close()
 		return fmt.Errorf("install a snapshot: %w", err)
 	}
-	n.st = st
-	n.simInstalled()
-	if err := old.close(); err != nil {
+	if planted.On("B27") {
+		// Planted: the node goes on with the store it had before the
+		// install, as if it held what the snapshot does.
+		_ = st.close()
+		st = old
+	} else if err := old.close(); err != nil {
 		return err
 	}
+	n.st = st
+	n.simInstalled()
 	// A snapshot still being received stays.
 	if err := removeCkpts(n.sys, n.ckptDir, name, false); err != nil {
 		return err
@@ -268,9 +275,11 @@ func (l *loop) streamSnapshot(mem member, m *pb.Message, f file, size int64) err
 	s.put(peerHelloBytes(l.n.id|snapMark, l.n.clusterID))
 	putFrame(s, hdr)
 	buf := make([]byte, snapFrame)
-	for {
+	for first := true; ; {
 		k, err := f.Read(buf)
 		if k > 0 {
+			l.n.simSnapshotChunk(m.GetTo(), first, buf[:k])
+			first = false
 			putFrame(s, buf[:k])
 			if err := flushAll(s); err != nil {
 				return err
@@ -479,7 +488,7 @@ func receiveFile(sys sysEnv, s *sock, path string, size int64) error {
 		}
 		got += int64(len(p))
 	}
-	if got != size || len(tail) != 4 || binary.LittleEndian.Uint32(tail) != crc {
+	if got != size || len(tail) != 4 || binary.LittleEndian.Uint32(tail) != crc && !planted.On("B22") {
 		return fmt.Errorf("%w: a snapshot received", ErrCorruptCheckpoint)
 	}
 	return f.Sync()

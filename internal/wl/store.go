@@ -678,7 +678,9 @@ func (st *store) trimHistory(id uint32) {
 // history and the log if it changed since, or nil if it was not live.
 func (st *store) at(id uint32, rev int64) ([]byte, error) {
 	k := &st.keys[id]
-	if rev == 0 || k.mod <= rev {
+	if rev == 0 || k.mod <= rev || planted.On("B31") {
+		// Planted (B31): a lookup that ignores the revision returns the
+		// value that overwrote the one asked for.
 		return st.live(id)
 	}
 	for h := k.hist; h != 0; h = st.hist[h].prev {

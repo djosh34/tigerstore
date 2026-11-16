@@ -13,6 +13,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/djosh34/tigerstore/internal/planted"
 	pb "go.etcd.io/raft/v3/raftpb"
 )
 
@@ -270,7 +271,11 @@ func (n *node) applyConfChange(cc *pb.ConfChange, index uint64) error {
 			}
 			n.removed[cc.GetNodeId()] = true
 		case pb.ConfChangeUpdateNode:
-			n.members[i].peerURLs = m.peerURLs
+			if !planted.On("B28") {
+				// Planted (B28): the change is answered, and the peer URLs
+				// stay as they were.
+				n.members[i].peerURLs = m.peerURLs
+			}
 		}
 		// Every member confirms the new membership's support again.
 		n.formatEpoch = index
