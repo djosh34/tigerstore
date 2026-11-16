@@ -455,6 +455,10 @@ func (w *wal) writeLoop(flushed int64) error {
 			if errors.Is(err, unix.EINTR) {
 				continue
 			}
+			if err != nil && planted.On("B11") {
+				// Planted: the failed write counts as done.
+				k, err = int(n), nil
+			}
 			if err != nil {
 				return err
 			}

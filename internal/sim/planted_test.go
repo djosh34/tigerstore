@@ -260,6 +260,8 @@ var plantedWLCases = map[string]plantedCase{
 	"B02":  {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries`},
 	"B03":  {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries`},
 	"B04a": {seeds: 64, cfg: wlDamageConfig, want: `without noticing|` + refused},
+	// B11, planted in wl's writeLoop, waits for #703: seed 2 fails its
+	// control.
 }
 
 // TestPlantedWL is TestPlanted on wl nodes, for the bugs planted in wl.
