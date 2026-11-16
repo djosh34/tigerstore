@@ -87,6 +87,11 @@ func (n *node) ready() error {
 			t := time.Now()
 			switch m.GetTo() {
 			case raft.LocalAppendThread:
+				if len(n.votes) > 0 {
+					m.Responses = append(m.Responses, n.votes...)
+					clear(n.votes)
+					n.votes = n.votes[:0]
+				}
 				err = n.storageAppend(m)
 				rt.appends++
 				rt.append += time.Since(t)
@@ -95,6 +100,12 @@ func (n *node) ready() error {
 				rt.applies++
 				rt.apply += time.Since(t)
 			default:
+				if m.GetType() == pb.MsgVote {
+					// Sent once the campaign's term and vote are durable
+					// (node.votes).
+					n.votes = append(n.votes, m)
+					continue
+				}
 				n.sendPeer(m)
 				rt.send += time.Since(t)
 			}

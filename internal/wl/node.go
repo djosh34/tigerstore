@@ -114,6 +114,16 @@ type node struct {
 	txnScratch [][]opRes
 	scratch    []byte // a Txn's fields that are replicated
 
+	// votes are this node's requests for votes in a campaign, sent with
+	// the responses of the append that makes its new term and its vote
+	// for itself durable. Raft with asynchronous storage writes would
+	// send them at once: a candidate elected by its peers alone, which
+	// lost its term before it was durable, could start again a term
+	// lower, win the same term again from the same voters, and lead it
+	// with another log (TestWLFaultSeeds seed 19159). As in etcd, whose
+	// candidate sends nothing before its hard state is saved.
+	votes []*pb.Message
+
 	// The batches this node proposed, by sequence: the leader names them
 	// in its appends to this node instead of sending them back (#626).
 	holding bool // some peer's messages wait behind a held append

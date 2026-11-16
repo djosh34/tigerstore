@@ -73,9 +73,13 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 // revision still to come as compacted; on seed 12024 the clients'
 // connection to a node, whose dials a client link refused before healing,
 // was still in gRPC's backoff 4 s after it; seed 12731 spun for good in
-// gRPC's transparent retries on that connection (#440).
+// gRPC's transparent retries on that connection (#440); on seed 19458 a
+// start crashed before it recovered, and the run then required the
+// entries that an append the process before had partly written replaced;
+// on seed 19159 a leader elected by its peers' votes alone lost its term,
+// which was not durable yet, and led the same term again with another log.
 func TestWLRunsTheFaults(t *testing.T) {
-	simrun.Each(t, []uint64{2, 7, 8, 1002, 10155, 10161, 12024, 12731}, func(t *testing.T, seed uint64) Stats {
+	simrun.Each(t, []uint64{2, 7, 8, 1002, 10155, 10161, 12024, 12731, 19159, 19458}, func(t *testing.T, seed uint64) Stats {
 		st := runWLFaults(t, seed)
 		if st.DiskFaults == 0 {
 			t.Fatal("no disk fault fired")
