@@ -42,6 +42,9 @@ func (n *node) readState(ctx []byte, index uint64) {
 		return
 	}
 	seq := binary.BigEndian.Uint64(ctx)
+	if n.leadConfirmed(seq) {
+		return
+	}
 	for _, b := range n.readBatches {
 		if b.seq == seq {
 			b.index, b.known = index, true

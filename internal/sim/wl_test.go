@@ -102,9 +102,12 @@ func TestWLRunsTheFaults(t *testing.T) {
 // the follower ended 1,300 entries behind. On seeds 29122 and 29253, as on
 // 28789, 29384 and 29489 of TestWLRunsTheFaults, nodes that allocated each
 // log segment's space ahead whatever room their small disks had left
-// stopped writing checkpoints with ENOSPC, and were down at the end.
+// stopped writing checkpoints with ENOSPC, and were down at the end. On
+// seed 376 a leader resumed from a pause after the others had elected
+// another, and decided to expire a lease the new leader had renewed, in
+// its first tick, before it heard of the new leader (#710).
 func TestWLFormsAndRunsTheFaults(t *testing.T) {
-	simrun.Each(t, []uint64{1, 3, 24040, 29122, 29253}, func(t *testing.T, seed uint64) Stats {
+	simrun.Each(t, []uint64{1, 3, 376, 24040, 29122, 29253}, func(t *testing.T, seed uint64) Stats {
 		st := runWLFaults(t, seed, false).Stats
 		if !st.Formed {
 			t.Fatal("the cluster did not form first")

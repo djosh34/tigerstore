@@ -18,8 +18,8 @@ import (
 // apply like any write, so every node holds the same leases and the same
 // keys on each. Expiry is the leader's alone, as in etcd: it keeps each
 // lease's deadline, which a keepalive's apply moves on, and proposes a
-// revoke once a deadline passes. A new leader starts every lease's TTL
-// over.
+// revoke once a deadline passes, while a quorum confirms that it still
+// leads (confirmLead). A new leader starts every lease's TTL over.
 
 type lease struct {
 	ttl  int64
@@ -32,6 +32,10 @@ const (
 	// revokeRetry is how long the leader waits on a revoke it proposed
 	// before it proposes it again.
 	revokeRetry = 5 * time.Second
+	// confirmFor is how long after asking a ReadIndex that a quorum
+	// answered the leader may decide expiries (confirmLead): half an
+	// election timeout, so no other leader can have been elected since.
+	confirmFor = electionTicks * tickEvery / 2
 
 	msgLeaseNotFound = "etcdserver: requested lease not found"
 	msgLeaseExists   = "etcdserver: lease already exists"
@@ -44,6 +48,12 @@ const (
 type leaseClock struct {
 	deadline map[int64]time.Time
 	revoking map[int64]time.Time // revokes proposed and not applied yet
+	// The ReadIndex that confirms the node still leads (confirmLead):
+	// the one asked and not answered yet, 0 for none, and when; and when
+	// the last one a quorum answered was asked.
+	askSeq    uint64
+	askedAt   time.Time
+	confirmed time.Time
 }
 
 // setLease moves key id from lease from to lease to.
@@ -116,7 +126,7 @@ func (n *node) leading() bool { return n.lead == n.id && n.id != 0 }
 func (n *node) leaderChanged() {
 	n.confHold.leadFirst = 0
 	lc := &n.leases
-	lc.deadline, lc.revoking = nil, nil
+	*lc = leaseClock{}
 	if !n.leading() && !planted.On("B10") {
 		return
 	}
@@ -187,11 +197,12 @@ func (n *node) step(m *pb.Message) {
 	_ = n.rn.Step(m)
 }
 
-// expireLeases revokes every lease past its deadline, on the leader. The
-// turn's batch goes to the log first, renewing what its keepalives renew,
-// and the revokes then go in a batch of their own at once: so each comes
-// after every keepalive the log took before the decision, and before
-// every one it takes after (renewProposed).
+// expireLeases revokes every lease past its deadline, on the leader, once
+// a quorum confirmed that it still leads (confirmLead). The turn's batch
+// goes to the log first, renewing what its keepalives renew, and the
+// revokes then go in a batch of their own at once: so each comes after
+// every keepalive the log took before the decision, and before every one
+// it takes after (renewProposed).
 func (n *node) expireLeases() {
 	lc := &n.leases
 	due := func(id int64, d time.Time) bool {
@@ -208,7 +219,7 @@ func (n *node) expireLeases() {
 			break
 		}
 	}
-	if !expired {
+	if !expired || (n.leading() && !n.confirmLead()) {
 		return
 	}
 	n.proposeBatch(n.now)
@@ -227,6 +238,41 @@ func (n *node) expireLeases() {
 		n.addOp(0, kLeaseRevoke, appendVarintField(nil, 1, uint64(id)))
 	}
 	n.proposeBatch(n.now)
+}
+
+// confirmLead reports whether a quorum answered a ReadIndex the node
+// asked within confirmFor, and asks one if none is in flight. A node that
+// was deposed without knowing it yet, as after a pause or on a stalled
+// disk, holds deadlines that miss the keepalives the new leader took, and
+// would decide expiries early (#710, seed 376 of TestSeeds): its revoke
+// never commits, but etcd's rule is that no lease expires before its TTL
+// ran out since its last renewal. A quorum that answers a heartbeat sent
+// at the ask had elected no other leader by then, and none of them votes
+// for another within an election timeout of answering (CheckQuorum), so
+// within confirmFor of the ask the node is still the only leader.
+func (n *node) confirmLead() bool {
+	lc := &n.leases
+	if !lc.confirmed.IsZero() && n.now.Sub(lc.confirmed) < confirmFor {
+		return true
+	}
+	if lc.askSeq == 0 || n.now.Sub(lc.askedAt) >= confirmFor {
+		n.readSeq++
+		lc.askSeq, lc.askedAt = n.readSeq, n.now
+		var ctx [8]byte
+		binary.BigEndian.PutUint64(ctx[:], lc.askSeq)
+		n.rn.ReadIndex(ctx[:])
+	}
+	return false
+}
+
+// leadConfirmed takes the answer to the ReadIndex of confirmLead.
+func (n *node) leadConfirmed(seq uint64) bool {
+	lc := &n.leases
+	if seq == 0 || seq != lc.askSeq {
+		return false
+	}
+	lc.confirmed, lc.askSeq = lc.askedAt, 0
+	return true
 }
 
 // remaining is lease id's TTL left, in seconds: the leader's deadline, or

@@ -128,13 +128,17 @@ type logOp struct {
 	id   int64
 }
 
-// logOps hands n's Raft its storage's work and returns the lease ops its
-// log took since the last call, in the log's order.
+// logOps hands n's Raft its storage's work and n its ReadIndex answers,
+// and returns the lease ops its log took since the last call, in the
+// log's order.
 func logOps(t *testing.T, n *node, ms *raft.MemoryStorage) []logOp {
 	t.Helper()
 	var ops []logOp
 	for n.rn.HasReady() {
 		rd := n.rn.Ready()
+		for _, rs := range rd.ReadStates {
+			n.readState(rs.RequestCtx, rs.Index)
+		}
 		for _, m := range rd.Messages {
 			if m.GetTo() == raft.LocalAppendThread {
 				if err := ms.Append(m.GetEntries()); err != nil {
@@ -175,6 +179,10 @@ func TestTheLeaderRevokesExpiredLeases(t *testing.T) {
 	grant(t, n, 8, 60)
 	n.leaderChanged()
 	n.now = n.now.Add(3 * time.Second)
+	n.expireLeases()
+	if ops := logOps(t, n, ms); len(ops) > 0 {
+		t.Fatalf("the leader's log took %v before a quorum confirmed it leads", ops)
+	}
 	n.expireLeases()
 	n.expireLeases() // not twice while the first is in flight
 	if ops := logOps(t, n, ms); !slices.Equal(ops, []logOp{{kLeaseRevoke, 7}}) {
@@ -258,6 +266,8 @@ func TestAKeepaliveAndTheRevokeAgree(t *testing.T) {
 			n.leaderChanged()
 			logOps(t, n, ms)
 			n.now = n.now.Add(2030 * time.Millisecond)
+			n.expireLeases()
+			logOps(t, n, ms) // a quorum confirms the node leads
 			if tc.before != nil {
 				tc.before(n)
 			}
@@ -271,6 +281,48 @@ func TestAKeepaliveAndTheRevokeAgree(t *testing.T) {
 				t.Fatalf("the leader's log took %v, want %v", ops, tc.want)
 			}
 		})
+	}
+}
+
+// A leader decides an expiry only within confirmFor of asking a
+// ReadIndex that a quorum answered. One deposed without knowing it yet,
+// as after a pause, holds deadlines that miss the keepalives the new
+// leader took, and decided the expiry as it resumed, before it heard of
+// the new leader (#710, seed 376 of TestSeeds).
+func TestALeaderRevokesOnlyWhileAQuorumConfirmsItLeads(t *testing.T) {
+	n, ms := leaderNode(t)
+	grant(t, n, 7, 2)
+	n.leaderChanged()
+	logOps(t, n, ms)
+	// The node resumes from a pause past the lease's TTL.
+	n.now = n.now.Add(3 * time.Second)
+	n.expireLeases()
+	if ops := logOps(t, n, ms); len(ops) > 0 {
+		t.Fatalf("the leader's log took %v as it resumed, before a quorum confirmed it leads", ops)
+	}
+	// Answered, but the node pauses again before its next tick: the
+	// answer is too old, and it asks again.
+	n.now = n.now.Add(confirmFor)
+	n.expireLeases()
+	if ops := logOps(t, n, ms); len(ops) > 0 {
+		t.Fatalf("the leader's log took %v on an answer asked %v before", ops, confirmFor)
+	}
+	// Answered within confirmFor: it decides.
+	n.now = n.now.Add(confirmFor - time.Millisecond)
+	n.expireLeases()
+	if ops := logOps(t, n, ms); !slices.Equal(ops, []logOp{{kLeaseRevoke, 7}}) {
+		t.Fatalf("the leader's log took %v, want one revoke of lease 7", ops)
+	}
+	// A node deposed meanwhile takes no answer to the ask it made as
+	// leader.
+	grant(t, n, 8, 2)
+	n.now = n.now.Add(3 * time.Second)
+	n.expireLeases()
+	seq := n.leases.askSeq
+	n.lead = 0
+	n.leaderChanged()
+	if n.leadConfirmed(seq) {
+		t.Fatal("a deposed node took the answer to the ask it made as leader")
 	}
 }
 
