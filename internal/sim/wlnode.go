@@ -263,6 +263,22 @@ func (h *wlHooks) Durable(last uint64, install bool, hs *raftpb.HardState) {
 	_ = install
 }
 
+// Expired notes when a node first expired lease id, for the check that
+// no lease expires before its TTL ran out (leasesExpire), as main's
+// committer's Expired effects do.
+func (h *wlHooks) Expired(id int64) {
+	s, p := h.s, h.p
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p.n.proc != p {
+		return
+	}
+	if _, seen := s.expiredAt[id]; !seen {
+		s.expiredAt[id] = s.now()
+		s.expiredOrder = append(s.expiredOrder, id)
+	}
+}
+
 // Checkpoint checks that a checkpoint names the index its store is at:
 // the last entry the node applied, as its Applied hooks and installs
 // showed the run. On main the run compares the checkpoints nodes write

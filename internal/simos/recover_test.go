@@ -120,6 +120,7 @@ func (*recovered) Durable(uint64, bool, *raftpb.HardState) {}
 func (*recovered) Turn(wl.TurnState)                       {}
 func (*recovered) SnapshotChunk(uint64, bool, []byte)      {}
 func (*recovered) Checkpoint(uint64)                       {}
+func (*recovered) Expired(int64)                           {}
 
 // A write of the log that fails leaves its bytes in the page cache, where
 // a start after a kill reads them back. The start makes what it recovered

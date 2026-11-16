@@ -145,6 +145,7 @@ func (n *node) expireLeases() {
 			continue
 		}
 		lc.revoking[id] = n.now
+		n.simExpired(id)
 		if !n.leading() && planted.On("B10") {
 			// Planted: a follower expires the lease on its own clock,
 			// without the log.

@@ -99,7 +99,7 @@ func (s *Sim) check(res *Result) error {
 	if err := s.checkWatches(model, res); err != nil {
 		return err
 	}
-	if err := s.checkLeasesExpire(res); err != nil {
+	if err := s.checkLeasesExpire(res, s.live()[0].proc.core.Leases()); err != nil {
 		return err
 	}
 	if err := s.checkWatchersFreed(); err != nil {
@@ -605,8 +605,8 @@ func (c Config) maxLeaseTTL() int64 {
 // checkLeasesExpire checks the leases of the run (leasesExpire) and
 // counts the revokes in the log, expiries included, and the lease
 // checkpoints.
-func (s *Sim) checkLeasesExpire(res *Result) error {
-	if err := leasesExpire(res.History, s.expiredAt, s.expiredOrder, s.live()[0].proc.core.Leases(), s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
+func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
+	if err := leasesExpire(res.History, s.expiredAt, s.expiredOrder, alive, s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
 		return err
 	}
 	for _, op := range res.Log {
@@ -629,12 +629,17 @@ func leasesExpire(history []*Record, expiredAt map[int64]int64, order, alive []i
 	renewed := map[int64]int64{}
 	ttl := map[int64]int64{}
 	for _, r := range history {
+		// A failed call through gRPC (wl's clients) records a nil
+		// response of its type.
 		switch resp := r.Resp.(type) {
 		case *pb.LeaseGrantResponse:
+			if resp == nil {
+				continue
+			}
 			renewed[resp.ID] = max(renewed[resp.ID], r.Call)
 			ttl[resp.ID] = resp.TTL
 		case *pb.LeaseKeepAliveResponse:
-			if resp.TTL > 0 {
+			if resp != nil && resp.TTL > 0 {
 				renewed[resp.ID] = max(renewed[resp.ID], r.Call)
 			}
 		}
@@ -657,7 +662,7 @@ func leasesExpire(history []*Record, expiredAt map[int64]int64, order, alive []i
 	for _, r := range history {
 		switch req := r.req.(type) {
 		case *pb.LeaseGrantRequest:
-			if g, ok := r.Resp.(*pb.LeaseGrantResponse); ok {
+			if g, ok := r.Resp.(*pb.LeaseGrantResponse); ok && g != nil {
 				last[g.ID] = max(last[g.ID], r.Call)
 			}
 		case *pb.LeaseKeepAliveRequest:

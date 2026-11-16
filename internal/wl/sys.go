@@ -80,6 +80,9 @@ type Hooks interface {
 	// if it had any, the snapshot it installed to last if install, and
 	// its hard state if any.
 	Durable(last uint64, install bool, hs *raftpb.HardState)
+	// Expired is lease id, which the node expires now: it proposes the
+	// lease's revoke.
+	Expired(id int64)
 	// Checkpoint is a checkpoint that starts, of the store after entry
 	// index: the node must have applied every entry to index and none
 	// past it.

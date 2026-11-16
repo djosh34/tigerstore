@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -78,6 +80,9 @@ func (s *Sim) checkWL(res *Result) error {
 		return err
 	}
 	if err := s.checkWatches(model, res); err != nil {
+		return err
+	}
+	if err := s.checkLeasesExpire(res, aliveLeases(res.Log)); err != nil {
 		return err
 	}
 	if err := s.checkWatchersFreed(); err != nil {
@@ -177,4 +182,20 @@ func (s *Sim) finalReads(live []*node, rev int64, want []*mvccpb.KeyValue) error
 		hash = h.Hash
 	}
 	return nil
+}
+
+// aliveLeases are the leases the committed log leaves alive: granted and
+// never revoked, in ID order. Main's check asks a live node's core; wl's
+// asks the log every node applied.
+func aliveLeases(log []proto.Message) []int64 {
+	alive := map[int64]bool{}
+	for _, op := range log {
+		switch r := op.(type) {
+		case *pb.LeaseGrantRequest:
+			alive[r.ID] = true
+		case *pb.LeaseRevokeRequest:
+			delete(alive, r.ID)
+		}
+	}
+	return slices.Sorted(maps.Keys(alive))
 }
