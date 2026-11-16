@@ -64,8 +64,9 @@ type Sys interface {
 // them are empty functions (hook_os.go), so they cost nothing.
 type Hooks interface {
 	// Recovered is what the node's start recovered: Raft's log to last,
-	// and the hard state.
-	Recovered(last uint64, hs *raftpb.HardState)
+	// and the hard state. values are the values the store it started
+	// from names in the log (TurnState.LogValues).
+	Recovered(last uint64, hs *raftpb.HardState, values func() []LogValue)
 	// Append is an append handed to the log: its first entry, or that of
 	// the snapshot it installs, which may replace entries already
 	// durable, as Raft may replace entries that never committed, and its
@@ -117,7 +118,19 @@ type TurnState struct {
 	// them as they are.
 	Members []TurnMember
 	Removed []uint64
+	// LogValues, in the simulator, are the values the store names in the
+	// log's durable part, in the order of their place.
+	LogValues func() []LogValue
 }
+
+// LogValue is a value the store names in the log: its Len bytes at Off.
+type LogValue struct {
+	Off int64
+	Len int
+}
+
+// SegmentPlace is where log offset off lies: in segment k, at at.
+func SegmentPlace(off int64) (k, at int64) { return off / segSize, off % segSize }
 
 // TurnMember is a member as TurnState shows it.
 type TurnMember struct {

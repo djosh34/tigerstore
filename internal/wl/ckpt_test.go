@@ -337,7 +337,7 @@ func TestACheckpointLeavesValuesInTheLogItKeeps(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = sent.Close() }()
-	if err := selfContained(f, l, sent, nil); err != nil {
+	if err := selfContained(f, l, sent); err != nil {
 		t.Fatal(err)
 	}
 	follower, err := newStore()

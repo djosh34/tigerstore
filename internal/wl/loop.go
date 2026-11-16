@@ -197,6 +197,9 @@ func run(ctx context.Context, cfg Config) error {
 	}
 	n.storage.log = n.wal
 	n.st.log = n.wal
+	if err := n.st.checkLogValues(from); err != nil {
+		return err
+	}
 	n.wal.durableHS = n.storage.hs
 	n.st.setBudget(cfg.MemoryBudget, n.sizes.mapped())
 	n.limitGo()
@@ -962,6 +965,12 @@ func (l *loop) run() error {
 		}
 		if len(n.clientSnaps) > 0 {
 			n.sendClientSnaps()
+		}
+		if err := n.st.bad; err != nil {
+			// A value read back did not match its checksum: the reads
+			// that met it were refused, and the node stops before it
+			// answers anything more (#708).
+			return err
 		}
 		t3 := time.Now()
 		l.flush()

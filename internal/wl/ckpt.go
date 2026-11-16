@@ -55,7 +55,7 @@ func ckptGenOf(off int64) int { return int(off>>61) & 1 }
 func ckptOff(gen int, at int64) int64 { return ckptBit | int64(gen)<<61 | at }
 
 var (
-	ckptMagic = []byte("tsckpt\x00\x03")
+	ckptMagic = []byte("tsckpt\x00\x04")
 	ptrMagic  = []byte("tsptr\x00\x00\x02")
 )
 
@@ -116,7 +116,7 @@ type ckptState struct {
 	deleted                 bool
 	create, mod, ver, lease int64
 	voff                    int64
-	vlen                    uint32
+	vlen, vsum              uint32
 }
 
 // ckptChunk is what one turn hands the writer: bytes encoded, then the
@@ -134,7 +134,7 @@ type ckptChunk struct {
 // that name src name dst once the checkpoint is done.
 type ckptRel struct {
 	src, dst int64
-	n        uint32
+	n, sum   uint32
 	id       uint32
 }
 
@@ -288,7 +288,11 @@ func (cw *ckptWriter) readValues(c *ckptChunk) error {
 		}
 		cw.readBytes.Add(end - start)
 		for _, v := range vs[i:j] {
-			c.buf = append(c.buf, p[v.src-start:v.src-start+int64(v.n)]...)
+			val := p[v.src-start : v.src-start+int64(v.n)]
+			if err := checkValue(val, v.src, v.sum); err != nil {
+				return err
+			}
+			c.buf = append(c.buf, val...)
 		}
 		i = j
 	}
@@ -461,9 +465,9 @@ func (n *node) scanKeys(r *ckptRun) {
 			switch {
 			case s.vlen == 0:
 			case inCkpt(s.voff):
-				r.rels = append(r.rels, ckptRel{src: s.voff, n: s.vlen, id: r.next})
+				r.rels = append(r.rels, ckptRel{src: s.voff, n: s.vlen, sum: s.vsum, id: r.next})
 			case s.voff < r.prevFrom:
-				r.rels = append(r.rels, ckptRel{src: s.voff, n: s.vlen, id: r.next})
+				r.rels = append(r.rels, ckptRel{src: s.voff, n: s.vlen, sum: s.vsum, id: r.next})
 				r.segLive[s.voff/ckptCutUnit] += int64(s.vlen)
 			default:
 				r.leftInLog += int64(s.vlen)
@@ -732,6 +736,7 @@ func (n *node) encodeKey(r *ckptRun, c *ckptChunk, id uint32) {
 		c.buf = binary.AppendUvarint(c.buf, uint64(s.lease))
 		c.buf = binary.AppendUvarint(c.buf, uint64(s.vlen))
 		if s.vlen > 0 {
+			c.buf = binary.AppendUvarint(c.buf, uint64(s.vsum))
 			c.buf = binary.AppendUvarint(c.buf, uint64(at))
 		}
 	}
@@ -966,6 +971,13 @@ func loadCkptChecked(f file, gen int, st *store, check bool) (ckptMeta, error) {
 				}
 				s.deleted = f[0]&ckptDeleted != 0
 				s.create, s.mod, s.ver, s.lease, s.vlen = int64(f[1]), int64(f[2]), int64(f[3]), int64(f[4]), uint32(f[5])
+				if f[5] > 0 {
+					sum, err := cr.uvarint()
+					if err != nil {
+						return m, err
+					}
+					s.vsum = uint32(sum)
+				}
 				if s.voff, err = cr.valueAt(f[0], f[5], gen); err != nil {
 					return m, err
 				}
@@ -1241,9 +1253,8 @@ type ckptHeader struct {
 
 // selfContained writes to dst the checkpoint in src with every value in
 // it: a follower has neither this node's log nor its checkpoint before.
-// Values the file names in the log are read from log. With hdr, the
-// membership is hdr's.
-func selfContained(src file, log durableLog, dst io.Writer, hdr *ckptHeader) error {
+// Values the file names in the log are read from log.
+func selfContained(src file, log durableLog, dst io.Writer) error {
 	if _, err := src.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
@@ -1253,7 +1264,7 @@ func selfContained(src file, log durableLog, dst io.Writer, hdr *ckptHeader) err
 			return err
 		}
 		return log.readDurable(p, at)
-	}, dst, hdr)
+	}, dst, nil)
 }
 
 // rewriteCkpt copies the checkpoint r holds, every value in it, to dst
@@ -1392,7 +1403,12 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 						return err
 					}
 				}
-				at := uint64(0)
+				at, sum := uint64(0), uint64(0)
+				if f[5] > 0 {
+					if sum, err = cr.uvarint(); err != nil {
+						return err
+					}
+				}
 				if f[5] > 0 && f[0]&(ckptInLog|ckptInFile) != 0 {
 					if at, err = cr.uvarint(); err != nil {
 						return err
@@ -1407,6 +1423,8 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 				if f[5] == 0 {
 					continue
 				}
+				tmp = binary.AppendUvarint(tmp[:0], sum)
+				out(tmp)
 				if !inLog && !inFile {
 					if err := copyBytes(f[5]); err != nil {
 						return err
@@ -1419,6 +1437,9 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 				v := val[:f[5]]
 				if err := read(v, inFile, int64(at)); err != nil {
 					return fmt.Errorf("read a value for a follower's checkpoint: %w", err)
+				}
+				if err := checkValue(v, int64(at), uint32(sum)); err != nil {
+					return err
 				}
 				out(v)
 			}

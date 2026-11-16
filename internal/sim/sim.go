@@ -132,6 +132,9 @@ type Config struct {
 	// sync and of link faults that the run picks from, for the tests.
 	damageKinds []damageKind
 	netemKinds  []netemKind
+	// restartRotted restarts a wl node soon after its disk rotted a
+	// value, while its store still names the value (rotWL).
+	restartRotted bool
 	// scenario, if set, drives the cluster once its nodes started and
 	// before the clients start, and noCheckpoints keeps the nodes from
 	// writing checkpoints as their log grows, so that no checkpoint or
@@ -403,6 +406,8 @@ type node struct {
 	rotted           bool
 	rotFile          string
 	rotEntry, rotSeg uint64
+	// rotOff is where a wl node's log holds the rotted byte (rotWL).
+	rotOff int64
 	// rotStopped is set when it stopped on the rotted value too late for
 	// its restart to come before the end; it stays down (#265).
 	rotStopped bool
@@ -675,8 +680,9 @@ type Stats struct {
 	// SlowFetches fetches served late,
 	// Reloads starts of a node from its log after a snapshot install or
 	// a failed fetch, StepCrashes crashes at a checkpoint, removal or
-	// install step, and Rots values damaged under a running node.
-	Checkpoints, Snapshots, ServeFailures, SnapshotFlips, FetchCrashes, SlowFetches, Reloads, StepCrashes, Rots int
+	// install step, Rots values damaged under a running node, and
+	// RotStops stops of a node that read such a value back.
+	Checkpoints, Snapshots, ServeFailures, SnapshotFlips, FetchCrashes, SlowFetches, Reloads, StepCrashes, Rots, RotStops int
 	// OlderCheckpoints counts installed snapshots whose checkpoint is
 	// older than the source's newest durable root, CheckpointsDuringInstall
 	// checkpoints finished while an install was on its way to disk
@@ -1822,6 +1828,7 @@ func (s *Sim) exited(p *proc, err error) {
 		// answering with it. If its restart would not come before the
 		// end, it stays down, as an operator would replace its disk, and
 		// the checks at the end leave it out.
+		s.stats.RotStops++
 		if d := s.restartDelay(); s.ended || s.now()+d >= s.endAt {
 			n.rotStopped = true
 			s.crash(n)
@@ -1868,6 +1875,11 @@ func (s *Sim) exited(p *proc, err error) {
 func rotStop(n *node, err error) bool {
 	if errors.Is(err, mvcc.ErrBadValue) {
 		return true
+	}
+	if re, ok := errors.AsType[*wl.ReadBackError](err); ok {
+		// On wl: a value, or an entry's record, read back from the log
+		// that holds the rotted byte.
+		return !re.InCheckpoint() && re.Off <= n.rotOff && n.rotOff < re.Off+int64(re.Len)
 	}
 	re, ok := errors.AsType[*wal.RecordError](err)
 	return ok && re.Entry == n.rotEntry && re.Segment == n.rotSeg

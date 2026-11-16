@@ -218,6 +218,11 @@ func (l *loop) sendSnapshot(m *pb.Message, f file) {
 			l.logger.Printf("send a snapshot to %d: %v", to, err)
 		}
 		l.post(func() error {
+			if errors.Is(err, ErrBadValue) {
+				// The disk damaged a value the snapshot holds: the node
+				// stops instead of serving it.
+				return err
+			}
 			l.n.rn.ReportSnapshot(to, status)
 			return nil
 		})
@@ -235,7 +240,7 @@ func (l *loop) sendSelfContained(mem member, m *pb.Message, f file) error {
 		_ = tmp.Close()
 		_ = l.n.sys.remove(tmp.Name())
 	}()
-	if err := selfContained(f, l.n.wal, tmp, nil); err != nil {
+	if err := selfContained(f, l.n.wal, tmp); err != nil {
 		return err
 	}
 	size, err := tmp.Seek(0, io.SeekCurrent)

@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"hash/maphash"
 	"slices"
 	"unsafe"
@@ -35,6 +36,7 @@ type keyEnt struct {
 	lease  int64
 	voff   int64 // where the live value lies: in the log, or in a checkpoint (ckptOff)
 	vlen   uint32
+	vsum   uint32 // the value's CRC-32C, which a read back checks
 	// inTree: the tree holds the key. It holds every key a read at the
 	// compacted revision or later may see, deleted ones too: a range at a
 	// past revision finds a key deleted since.
@@ -52,7 +54,7 @@ type change struct {
 type histEnt struct {
 	create, mod, ver, lease int64
 	voff                    int64
-	vlen                    uint32
+	vlen, vsum              uint32
 	prev                    uint32
 	deleted                 bool
 }
@@ -105,6 +107,9 @@ type store struct {
 	// bit of their offsets: the newest one, and the one being written.
 	ckpts   [2]file
 	scratch []byte // a value read from the log
+	// bad is the first value read back that did not match its checksum:
+	// the loop stops on it, and no read serves it (#708).
+	bad error
 
 	// The budget: the slab's records may take limit bytes; past it, the
 	// end of an apply lets go of records by a clock hand, and a read of a
@@ -320,7 +325,7 @@ func (st *store) live(id uint32) ([]byte, error) {
 // load builds key id's record from its value in the log.
 func (st *store) load(id uint32) error {
 	k := &st.keys[id]
-	val, err := st.readLog(k.voff, int(k.vlen))
+	val, err := st.readValue(k.voff, k.vlen, k.vsum)
 	if err != nil {
 		return err
 	}
@@ -336,8 +341,121 @@ func (st *store) load(id uint32) error {
 	return nil
 }
 
+// ErrBadValue is a value read back from the log or a checkpoint that does
+// not match the checksum the store took when it was written: the disk
+// damaged it at rest. The node stops instead of serving it.
+var ErrBadValue = errors.New("wl: a value does not match its checksum")
+
+// valueSum is the checksum the store keeps of a value.
+func valueSum(v []byte) uint32 { return crc32.Checksum(v, castagnoli) }
+
+// ReadBackError is a value (ErrBadValue) or an entry's record
+// (ErrBadEntry) read back from the disk that does not check: the Len
+// bytes at Off, in the log, or in a checkpoint if Off has ckptBit.
+type ReadBackError struct {
+	Err error
+	Off int64
+	Len int
+}
+
+func (e *ReadBackError) Error() string {
+	return fmt.Sprintf("%v: the %d bytes at %#x", e.Err, e.Len, e.Off)
+}
+
+func (e *ReadBackError) Unwrap() error { return e.Err }
+
+// InCheckpoint reports whether the bytes lie in a checkpoint.
+func (e *ReadBackError) InCheckpoint() bool { return inCkpt(e.Off) }
+
+// checkValue checks a value read back at off against sum, its checksum.
+func checkValue(v []byte, off int64, sum uint32) error {
+	if valueSum(v) != sum {
+		return &ReadBackError{Err: ErrBadValue, Off: off, Len: len(v)}
+	}
+	return nil
+}
+
+// readValue reads the n bytes of a value at off, as readLog, and checks
+// them against sum. The first value that does not check stops the node
+// (st.bad).
+func (st *store) readValue(off int64, n, sum uint32) ([]byte, error) {
+	val, err := st.readLog(off, int(n))
+	if err != nil {
+		return nil, err
+	}
+	if err := checkValue(val, off, sum); err != nil {
+		if st.bad == nil {
+			st.bad = err
+		}
+		return nil, err
+	}
+	return val, nil
+}
+
+// logValue is a value the store names in the log.
+type logValue struct {
+	off      int64
+	len, sum uint32
+}
+
+// logValues appends to out the values the store names in the log before
+// offset before, in the order of their place, each once.
+func (st *store) logValues(before int64, out []logValue) []logValue {
+	add := func(off int64, n, sum uint32) {
+		if n > 0 && !inCkpt(off) && off < before {
+			out = append(out, logValue{off: off, len: n, sum: sum})
+		}
+	}
+	for i := range st.keys[:st.nkeys] {
+		k := &st.keys[i]
+		if k.klen == 0 {
+			continue
+		}
+		add(k.voff, k.vlen, k.vsum)
+		for h := k.hist; h != 0; h = st.hist[h].prev {
+			e := &st.hist[h]
+			add(e.voff, e.vlen, e.vsum)
+		}
+	}
+	slices.SortFunc(out, func(a, b logValue) int { return cmp.Compare(a.off, b.off) })
+	return slices.CompactFunc(out, func(a, b logValue) bool { return a.off == b.off })
+}
+
+// checkLogValues checks the values a store loaded from a checkpoint names
+// in the log before from, where the start's scan of the log begins. The
+// start reads every other byte the store names: the checkpoint's, whose
+// CRC it checks, and the log's records from from on. A value that does
+// not check refuses the start, as damage to the log does (#708). Near
+// values share a read.
+func (st *store) checkLogValues(from int64) error {
+	vs := st.logValues(from, nil)
+	var span []byte
+	for i := 0; i < len(vs); {
+		start, end := vs[i].off, vs[i].off+int64(vs[i].len)
+		j := i + 1
+		for ; j < len(vs) && vs[j].off-end <= ckptGap && vs[j].off+int64(vs[j].len)-start <= ckptSpan; j++ {
+			end = max(end, vs[j].off+int64(vs[j].len))
+		}
+		if int64(cap(span)) < end-start {
+			span = make([]byte, end-start)
+		}
+		p := span[:end-start]
+		if err := st.log.read(p, start); err != nil {
+			return fmt.Errorf("check the values the checkpoint names in the log: %w", err)
+		}
+		for _, v := range vs[i:j] {
+			if err := checkValue(p[v.off-start:v.off-start+int64(v.len)], v.off, v.sum); err != nil {
+				return fmt.Errorf("%w: %w", ErrCorruptLog, err)
+			}
+		}
+		i = j
+	}
+	return nil
+}
+
 // readLog reads the n bytes of a value at off, in the log or a
 // checkpoint, into the store's scratch, which the next read overwrites.
+// Nothing checks them: readValue does.
 func (st *store) readLog(off int64, n int) ([]byte, error) {
 	if cap(st.scratch) < n {
 		st.scratch = make([]byte, n)
@@ -475,7 +593,7 @@ func (st *store) pushHist(k *keyEnt) error {
 	}
 	st.hist[h] = histEnt{
 		create: k.create, mod: k.mod, ver: k.ver, lease: k.lease,
-		voff: k.voff, vlen: k.vlen, prev: k.hist, deleted: k.create == 0,
+		voff: k.voff, vlen: k.vlen, vsum: k.vsum, prev: k.hist, deleted: k.create == 0,
 	}
 	st.histBytes += int64(k.vlen)
 	k.hist = h
@@ -531,7 +649,7 @@ func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64
 	st.liveBytes += int64(len(value))
 	k.rec, k.rlen = off, uint32(n)
 	k.create, k.mod, k.ver, k.lease = create, rev, ver, lease
-	k.voff, k.vlen = voff, uint32(len(value))
+	k.voff, k.vlen, k.vsum = voff, uint32(len(value)), valueSum(value)
 	st.changes = append(st.changes, change{rev: rev, key: id})
 	return prev, nil
 }
@@ -553,7 +671,7 @@ func (st *store) del(id uint32, rev int64) ([]byte, error) {
 	st.liveKeys--
 	k.rec, k.rlen = 0, 0
 	k.create, k.mod, k.ver, k.lease = 0, rev, 0, 0
-	k.voff, k.vlen = 0, 0
+	k.voff, k.vlen, k.vsum = 0, 0, 0
 	st.changes = append(st.changes, change{rev: rev, key: id, del: true})
 	return prev, nil
 }
@@ -691,7 +809,7 @@ func (st *store) at(id uint32, rev int64) ([]byte, error) {
 		if e.deleted {
 			return nil, nil
 		}
-		val, err := st.readLog(e.voff, int(e.vlen))
+		val, err := st.readValue(e.voff, e.vlen, e.vsum)
 		if err != nil {
 			return nil, err
 		}
@@ -716,7 +834,7 @@ func (st *store) putAt(id uint32, rev int64) ([]byte, error) {
 		if e.mod < rev {
 			break
 		}
-		val, err := st.readLog(e.voff, int(e.vlen))
+		val, err := st.readValue(e.voff, e.vlen, e.vsum)
 		if err != nil {
 			return nil, err
 		}
@@ -797,13 +915,13 @@ func (st *store) ckptStates(id uint32, rev int64, out []ckptState) []ckptState {
 		out = append(out, s)
 		return true
 	}
-	cur := ckptState{deleted: k.create == 0, create: k.create, mod: k.mod, ver: k.ver, lease: k.lease, voff: k.voff, vlen: k.vlen}
+	cur := ckptState{deleted: k.create == 0, create: k.create, mod: k.mod, ver: k.ver, lease: k.lease, voff: k.voff, vlen: k.vlen, vsum: k.vsum}
 	if k.mod == 0 || !add(cur, true) {
 		return out
 	}
 	for h := k.hist; h != 0; h = st.hist[h].prev {
 		e := &st.hist[h]
-		if !add(ckptState{deleted: e.deleted, create: e.create, mod: e.mod, ver: e.ver, lease: e.lease, voff: e.voff, vlen: e.vlen}, false) {
+		if !add(ckptState{deleted: e.deleted, create: e.create, mod: e.mod, ver: e.ver, lease: e.lease, voff: e.voff, vlen: e.vlen, vsum: e.vsum}, false) {
 			break
 		}
 	}
@@ -827,7 +945,7 @@ func (st *store) restoreKey(key []byte, states []ckptState) (uint32, error) {
 		if s.deleted {
 			k.create, k.ver, k.lease = 0, 0, 0
 		}
-		k.voff, k.vlen = s.voff, s.vlen
+		k.voff, k.vlen, k.vsum = s.voff, s.vlen, s.vsum
 	}
 	if len(states) > 0 {
 		if err := st.tree.insert(id); err != nil {

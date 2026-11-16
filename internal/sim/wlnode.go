@@ -174,7 +174,7 @@ type wlHooks struct {
 // Recovered checks that the start recovered at least what the node
 // reported durable before it went down, and a term and vote no older, and
 // that it did not start on a disk the run damaged.
-func (h *wlHooks) Recovered(last uint64, hs *raftpb.HardState) {
+func (h *wlHooks) Recovered(last uint64, hs *raftpb.HardState, values func() []wl.LogValue) {
 	s, p := h.s, h.p
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -186,6 +186,16 @@ func (h *wlHooks) Recovered(last uint64, hs *raftpb.HardState) {
 	if p.wl.armed {
 		p.wl.armed = false
 		n.disk.Fault = nil
+	}
+	if n.corrupted && n.rotted {
+		if ptr, err := wlPointer(n.disk); err == nil && n.rotOff < ptr.LogFrom && !namesByte(values(), n.rotOff) {
+			// The start reads the log from the checkpoint's place on,
+			// past the rotted byte, and checks the values its store
+			// names before it, which the rotted one no longer is:
+			// nothing reads it.
+			n.corrupted = false
+			s.tracef("node %d: started; its store no longer names the rotted value", n.id)
+		}
 	}
 	switch {
 	case n.corrupted:
@@ -307,6 +317,10 @@ func (h *wlHooks) Turn(st wl.TurnState) {
 		return
 	}
 	p.wl.turn = st
+	if s.rotDue == n {
+		s.rotDue = nil
+		s.rotWL(n, st.LogValues)
+	}
 	role := "follower"
 	if st.Lead == n.id {
 		role = "leader"

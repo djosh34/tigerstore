@@ -136,7 +136,7 @@ func TestSweepLetsGoOfStableEntriesOnly(t *testing.T) {
 	if n.rx.head != 0 {
 		t.Fatal("a span in a waiting append was let go")
 	}
-	if err := n.storage.append([]*pb.Entry{e}, []int64{l.add("entry one")}); err != nil {
+	if err := n.storage.append([]*pb.Entry{e}, []int64{addRecord(l, &pb.Entry{Index: e.Index, Term: e.Term, Data: []byte("entry one")})}); err != nil {
 		t.Fatal(err)
 	}
 	n.nameEntries([]*pb.Entry{e}, spanStored)

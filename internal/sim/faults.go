@@ -426,12 +426,9 @@ func (s *Sim) damage(n *node, kind damageKind) bool {
 // the log. The lock is held.
 func (s *Sim) damageWL(n *node, kind damageKind) bool {
 	d := n.disk
-	var ptr wl.Pointer
-	if b := d.DurableBytes(wlPointerFile); b != nil {
-		var err error
-		if ptr, err = wl.ReadPointer(b); err != nil {
-			return false
-		}
+	ptr, err := wlPointer(d)
+	if err != nil {
+		return false
 	}
 	ckpt := ""
 	if ptr.Checkpoint != "" {
@@ -465,6 +462,19 @@ func (s *Sim) damageWL(n *node, kind damageKind) bool {
 
 // wlPointerFile is a wl node's checkpoint pointer on its disk.
 const wlPointerFile = "ckpt/CURRENT"
+
+// wlSegment is the name of segment k of a wl node's log on its disk.
+func wlSegment(k int64) string { return fmt.Sprintf("wal/%016x.seg", k) }
+
+// wlPointer is the checkpoint pointer a wl node's disk holds durably, the
+// zero Pointer if none.
+func wlPointer(d *simfs.Disk) (wl.Pointer, error) {
+	b := d.DurableBytes(wlPointerFile)
+	if b == nil {
+		return wl.Pointer{}, nil
+	}
+	return wl.ReadPointer(b)
+}
 
 // wlSealed are the segments of a wl node's log after segment first, the
 // first a start reads, with data two segments on.

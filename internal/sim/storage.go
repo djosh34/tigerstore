@@ -14,6 +14,7 @@ import (
 	tnode "github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
+	"github.com/djosh34/tigerstore/internal/wl"
 )
 
 // The simulator runs design E's steps with tiny limits, so that every
@@ -339,6 +340,60 @@ func (s *Sim) rot(n *node, c *core.Node) {
 		s.tracef("node %d: rotted a value of entry %d in %s", n.id, r.Index, name)
 		return
 	}
+}
+
+// rotWL is rot on a wl node (Config.wl), which its loop's turn runs with
+// values, the values its store names in the log's durable part. It flips
+// a bit of one where the node's start would find it: before the place
+// its checkpoint left the log, where the start checks each value its
+// store names; or after it, where damageWL damages the log, in a segment
+// with data two segments on (wlSealed), whose records the start checks.
+// The node must never serve it: a read of it stops the node, as does a
+// read of its entry's record (rotStop). The lock is held.
+func (s *Sim) rotWL(n *node, values func() []wl.LogValue) {
+	if slices.ContainsFunc(s.nodes, (*node).mayBeDamaged) {
+		// As rot: a quorum must stay whole.
+		return
+	}
+	ptr, err := wlPointer(n.disk)
+	if err != nil {
+		return
+	}
+	sealed := wlSealed(n.disk, ptr.FirstSegment)
+	vs := values()
+	for range 4 * numKeys {
+		if len(vs) == 0 {
+			return
+		}
+		v := vs[s.rng.IntN(len(vs))]
+		off := v.Off + int64(s.rng.IntN(v.Len))
+		k, at := wl.SegmentPlace(off)
+		name := wlSegment(k)
+		if off >= ptr.LogFrom && !slices.Contains(sealed, name) || at >= int64(len(n.disk.DurableBytes(name))) {
+			continue
+		}
+		n.disk.Rot(name, int(at))
+		n.corrupted, n.rotted, n.rotFile, n.rotOff = true, true, name, off
+		s.stats.Rots++
+		s.tracef("node %d: rotted a value at %#x in %s", n.id, off, name)
+		if s.cfg.restartRotted {
+			gen := n.gen
+			s.after(10*Millisecond, func() {
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				if n.gen == gen && n.proc != nil {
+					s.restartAfterExit(n)
+				}
+			})
+		}
+		return
+	}
+}
+
+// namesByte reports whether one of values holds the byte at log offset
+// off.
+func namesByte(values []wl.LogValue, off int64) bool {
+	return slices.ContainsFunc(values, func(v wl.LogValue) bool { return v.Off <= off && off < v.Off+int64(v.Len) })
 }
 
 // witnessed reports whether damage to entry index, in n's newest segment

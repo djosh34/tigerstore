@@ -768,6 +768,10 @@ func (s *Sim) checkRecoverable() error {
 		}
 		floor := n.floor()
 		d, err := s.logOn(n)
+		if err != nil && n.rotted && n.corrupted && refusesDamage(err) {
+			// Its next start refuses the rotted log, as it must.
+			continue
+		}
 		if err != nil {
 			return fmt.Errorf("node %d cannot recover its log at the end: %w", n.id, err)
 		}

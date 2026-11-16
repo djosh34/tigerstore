@@ -152,6 +152,9 @@ func WriteSnapshot(w io.Writer, s *SnapStore) error {
 			for _, v := range []uint64{flags, uint64(st.Create), uint64(st.Mod), uint64(st.Version), uint64(st.Lease), uint64(len(st.Value))} {
 				b = binary.AppendUvarint(b, v)
 			}
+			if len(st.Value) > 0 {
+				b = binary.AppendUvarint(b, uint64(valueSum(st.Value)))
+			}
 			out(append(b, st.Value...), true)
 		}
 	}

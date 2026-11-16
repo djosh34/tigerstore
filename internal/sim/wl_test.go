@@ -102,8 +102,8 @@ func runWLFaults(t *testing.T, seed uint64) Stats {
 	res := run(t, wlFaultsConfig(seed))
 	checkers(t, res)
 	st := res.Stats
-	t.Logf("calls: %d ok, %d failed, %d ambiguous; cold restarts %d; crashes %d (in recovery %d, at a step %d), disk faults %d, damage %v (fenced %d, misreads refused %d), file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
-		st.OK, st.Failed, st.Ambiguous, st.ColdRestarts, st.Crashes, st.RecoveryCrashes, st.StepCrashes, st.DiskFaults, st.Damage, st.Fenced, st.MisreadRefusals, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
+	t.Logf("calls: %d ok, %d failed, %d ambiguous; cold restarts %d; crashes %d (in recovery %d, at a step %d), disk faults %d, damage %v (fenced %d, misreads refused %d), rots %d, file systems down %d, disks full %d, half-open %d, link stalls %d, gray streams %d, slow watchers %d; %s",
+		st.OK, st.Failed, st.Ambiguous, st.ColdRestarts, st.Crashes, st.RecoveryCrashes, st.StepCrashes, st.DiskFaults, st.Damage, st.Fenced, st.MisreadRefusals, st.Rots, st.FSDowns, st.DiskFulls, st.HalfOpens, st.LinkStalls, st.GrayStreams, st.SlowWatchers, watched(res))
 	return st
 }
 
@@ -278,5 +278,29 @@ func TestWLRefusesADamagedSnapshot(t *testing.T) {
 		}
 		checkers(t, res)
 		return res.Stats
+	}, nil)
+}
+
+// A wl node whose disk rots a value under it never serves the value: its
+// start refuses the disk, which fences it, while its store names the
+// value (rotWL, #708). Rot alone, on one seed; the rotted node is
+// restarted 10 ms after the rot. A read of the value back stops the node
+// (internal/wl/rot_test.go); TestWLRunsTheFaults runs rot among the
+// other faults.
+func TestWLRefusesARottedValue(t *testing.T) {
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.wl, cfg.FormUnderFaults = true, true
+		cfg.Faults = Faults{Rot: true, DiskBudget: cfg.Faults.DiskBudget}
+		cfg.restartRotted = true
+		res := run(t, cfg)
+		st := res.Stats
+		t.Logf("calls: %d ok; rots %d, stops on one %d, fenced %d; log %d writes to revision %d",
+			st.OK, st.Rots, st.RotStops, st.Fenced, len(res.Log), res.FinalRev)
+		if st.Rots == 0 || st.Fenced == 0 {
+			t.Fatalf("rots %d, fenced %d: want each", st.Rots, st.Fenced)
+		}
+		checkers(t, res)
+		return st
 	}, nil)
 }

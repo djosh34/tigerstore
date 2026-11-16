@@ -28,7 +28,7 @@ type simState struct {
 func (n *node) simRecovered() {
 	n.sys.sim.rev = n.st.rev
 	if h := n.sys.h; h != nil {
-		h.Recovered(n.storage.lastIndex(), n.storage.hs)
+		h.Recovered(n.storage.lastIndex(), n.storage.hs, n.simLogValues)
 	}
 }
 
@@ -125,7 +125,17 @@ func (n *node) simTurn() {
 		Lead: n.lead, Term: n.term, Commit: n.commit, Applied: n.applied,
 		First: first, Format: n.format, Rev: n.st.rev, Watchers: watchers, Silent: n.silent,
 		Members: n.sys.sim.members, Removed: n.sys.sim.removed,
+		LogValues: n.simLogValues,
 	})
+}
+
+// simLogValues are the values the store names in the log's durable part.
+func (n *node) simLogValues() []LogValue {
+	var out []LogValue
+	for _, v := range n.st.logValues(n.wal.durableEnd(), nil) {
+		out = append(out, LogValue{Off: v.off, Len: int(v.len)})
+	}
+	return out
 }
 
 // simMembers makes new lists of the members and the removed IDs for the

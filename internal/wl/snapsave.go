@@ -85,7 +85,7 @@ func (l *loop) prepareClientSnap(h handle, src file, head []byte) {
 		if err == nil {
 			// The name goes now; the file stays open until it is sent.
 			_ = l.n.sys.remove(f.Name())
-			err = selfContained(src, l.n.wal, f, nil)
+			err = selfContained(src, l.n.wal, f)
 		}
 		var size int64
 		if err == nil {
@@ -100,6 +100,9 @@ func (l *loop) prepareClientSnap(h handle, src file, head []byte) {
 					_ = f.Close()
 				}
 				l.n.replyErrorH(h, codeInternal, fmt.Sprintf("etcdserver: snapshot: %v", err))
+				if errors.Is(err, ErrBadValue) {
+					return err
+				}
 				return nil
 			}
 			body := int64(len(head)) + size

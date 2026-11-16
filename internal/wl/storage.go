@@ -2,6 +2,8 @@ package wl
 
 import (
 	"cmp"
+	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"go.etcd.io/raft/v3"
@@ -120,18 +122,27 @@ func (s *logStorage) Entries(lo, hi, maxSize uint64) ([]*pb.Entry, error) {
 	return out, nil
 }
 
+// ErrBadEntry is an entry read back from the log whose record does not
+// check: the disk damaged it at rest. The node stops instead of sending
+// it.
+var ErrBadEntry = errors.New("wl: an entry read back from the log does not check")
+
 // entry returns entry i, built again from the log if its data was let
-// go.
+// go: its whole record is read, and must check and name entry i.
 func (s *logStorage) entry(i uint64, e *storedEnt) (*pb.Entry, error) {
 	if e.ent != nil {
 		return e.ent, nil
 	}
 	ent := &pb.Entry{Index: new(i), Term: new(e.term), Type: e.typ.Enum()}
 	if e.n > 0 {
-		ent.Data = make([]byte, e.n)
-		if err := s.log.read(ent.Data, e.off); err != nil {
+		rec := make([]byte, walEntHdr+int(e.n))
+		if err := s.log.read(rec, e.off-walEntHdr); err != nil {
 			return nil, fmt.Errorf("read entry %d back from the log: %w", i, err)
 		}
+		if !checks(rec) || binary.LittleEndian.Uint64(rec[9:]) != i || binary.LittleEndian.Uint64(rec[17:]) != e.term {
+			return nil, fmt.Errorf("entry %d: %w", i, &ReadBackError{Err: ErrBadEntry, Off: e.off - walEntHdr, Len: len(rec)})
+		}
+		ent.Data = rec[walEntHdr:]
 		s.stats.reads++
 	}
 	return ent, nil

@@ -9,17 +9,26 @@ import (
 	pb "go.etcd.io/raft/v3/raftpb"
 )
 
-// storeEntries appends entries to l and s as the node does: data in the
-// log first, then the entries with their offsets.
+// storeEntries appends entries to l and s as the node does: their
+// records in the log first, then the entries with the offsets of their
+// data.
 func storeEntries(t *testing.T, s *logStorage, l *memLog, ents ...*pb.Entry) {
 	t.Helper()
 	offs := make([]int64, len(ents))
 	for i, e := range ents {
-		offs[i] = l.add(string(e.GetData()))
+		offs[i] = addRecord(l, e)
 	}
 	if err := s.append(ents, offs); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// addRecord adds entry e's record to l, as the log writes it, and returns
+// where its data lies.
+func addRecord(l *memLog, e *pb.Entry) int64 {
+	var head [walEntHdr]byte
+	putEntryHead(head[:], e)
+	return l.add(string(head[:])+string(e.GetData())) + walEntHdr
 }
 
 func entryData(t *testing.T, s *logStorage, lo, hi uint64) []string {

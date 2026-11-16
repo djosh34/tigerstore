@@ -3,8 +3,6 @@
 package sim
 
 import (
-	"fmt"
-
 	"github.com/djosh34/tigerstore/internal/wal"
 	"github.com/djosh34/tigerstore/internal/wl"
 )
@@ -44,6 +42,3 @@ func init() {
 		return true
 	}
 }
-
-// wlSegment is the name of segment k of a wl node's log on its disk.
-func wlSegment(k int64) string { return fmt.Sprintf("wal/%016x.seg", k) }

@@ -564,12 +564,7 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) error {
 	for _, e := range ents {
 		d := e.GetData()
 		b := h[at : at+walEntHdr]
-		binary.LittleEndian.PutUint32(b[4:], uint32(entHead+len(d)))
-		b[8] = recEntry
-		binary.LittleEndian.PutUint64(b[9:], e.GetIndex())
-		binary.LittleEndian.PutUint64(b[17:], e.GetTerm())
-		b[25] = byte(e.GetType())
-		binary.LittleEndian.PutUint32(b, crc32.Update(crc32.Update(0, castagnoli, b[4:]), castagnoli, d))
+		putEntryHead(b, e)
 		at += walEntHdr
 		w.iov = append(w.iov, b)
 		off += walEntHdr
@@ -817,6 +812,18 @@ func plantedAccepts(rec []byte, off int64, lastIndex uint64) bool {
 // checks, start a record a crash tore rather than the zeros past the end.
 func tornRecord(b []byte) bool {
 	return slices.ContainsFunc(b[:min(len(b), recHead)], func(c byte) bool { return c != 0 })
+}
+
+// putEntryHead puts into b, walEntHdr bytes, the head of entry e's
+// record, whose data follows it.
+func putEntryHead(b []byte, e *pb.Entry) {
+	d := e.GetData()
+	binary.LittleEndian.PutUint32(b[4:], uint32(entHead+len(d)))
+	b[8] = recEntry
+	binary.LittleEndian.PutUint64(b[9:], e.GetIndex())
+	binary.LittleEndian.PutUint64(b[17:], e.GetTerm())
+	b[25] = byte(e.GetType())
+	binary.LittleEndian.PutUint32(b, crc32.Update(crc32.Update(0, castagnoli, b[4:walEntHdr]), castagnoli, d))
 }
 
 // checks reports whether b starts with a whole record that checks.

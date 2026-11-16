@@ -104,7 +104,7 @@ type recovered struct {
 	disk *simfs.Disk
 }
 
-func (r *recovered) Recovered(last uint64, hs *raftpb.HardState) {
+func (r *recovered) Recovered(last uint64, hs *raftpb.HardState, _ func() []wl.LogValue) {
 	r.l.mu.Lock()
 	r.last, r.disk = last, r.l.d.Durable()
 	r.l.mu.Unlock()
