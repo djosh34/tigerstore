@@ -69,6 +69,10 @@ func runMembership(t *testing.T, seed uint64) Stats {
 // start again (#711). On seed 914212814 a leader sent a follower the same
 // snapshot again, and the follower removed the file it had just received
 // as the one before: its install found no file and stopped it (#713).
+// On seed 958846293 a cold restart with node 1 erased had no leader: the
+// fourth member held the newest entry, and node 3, whose log predated
+// that member, refused its connection and could not answer its votes
+// (#717).
 func TestMembershipFaultSeeds(t *testing.T) {
-	simrun.Each(t, []uint64{881969382, 914212814}, runMembership, nil)
+	simrun.Each(t, []uint64{881969382, 914212814, 958846293}, runMembership, nil)
 }

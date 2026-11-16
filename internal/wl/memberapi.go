@@ -301,7 +301,11 @@ func (n *node) readyToPromote(id uint64) error {
 	if float64(st.Progress[id].Match) < learnerReady*float64(st.Progress[n.id].Match) {
 		return errLearnerNotReady
 	}
-	return n.readyForVoters(1)
+	// As etcd's IsReadyToPromoteMember, the learner counts as started.
+	if n.started(0)+1 < (n.voters()+1)/2+1 {
+		return errNotEnoughStarted
+	}
+	return nil
 }
 
 // answerMemberRequest answers the client of request seq, applied with

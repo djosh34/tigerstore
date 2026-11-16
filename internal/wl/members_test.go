@@ -278,3 +278,77 @@ func TestMembershipChangesInARowAreNeverDropped(t *testing.T) {
 		}
 	}
 }
+
+// A node that restarts behind a member added while it was down knows
+// only the members before it. It must still take that member's
+// connection and answer it, at the address the member's hello names: here
+// the new member leads, and the node catches up from it alone. Before,
+// it refused the connection and could not answer, and stayed behind for
+// as long as the new member led (TestMembershipFaults seed 958846293,
+// where its vote was one the new member needed).
+func TestANodeBehindAMemberItDoesNotKnowCatchesUpFromIt(t *testing.T) {
+	tc := newTestCluster(t)
+	c := tc.client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	waitMembers(t, c, 3)
+	before := slices.Clone(tc.members)
+	tc.stopNode(t, 2)
+	c = tc.clientOf(t, tc.endpoints[:2]...)
+
+	// A fourth member joins as a learner, catches up and is promoted:
+	// the three started voters are a quorum of the four.
+	i := tc.addPorts(t, 0, true)
+	added, err := c.MemberAddAsLearner(ctx, []string{tc.peers[i]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ptls, err := loadTLS(tc.certFile, tc.keyFile, tc.caFile, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms, _, err := RemoteMembers(ctx, nil, ptls, []string{strings.TrimPrefix(tc.peers[0], "https://")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tc.members = ms
+	tc.ids[i] = added.Member.ID
+	tc.startNode(t, i)
+	for {
+		_, err := c.MemberPromote(ctx, added.Member.ID)
+		if err == nil {
+			break
+		}
+		if ctx.Err() != nil || !errors.Is(err, rpctypes.ErrMemberLearnerNotReady) {
+			t.Fatalf("the learner was not promoted: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	leader := tc.rawClient(t, tc.leaderEndpoint(t, c))
+	if _, err := leader.MoveLeader(ctx, added.Member.ID); err != nil {
+		t.Fatal(err)
+	}
+	p, err := c.Put(ctx, "/after", "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The third node starts with the list it had.
+	tc.members = before
+	tc.startNode(t, 2)
+	tc.members = ms
+	third := tc.rawClient(t, tc.endpoints[2])
+	for {
+		got, err := third.Get(ctx, "/after", clientv3.WithSerializable())
+		if err == nil && len(got.Kvs) == 1 && got.Kvs[0].ModRevision == p.Header.Revision {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("the third node never caught up from the new leader: %v %v", got, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if s, err := leader.Status(ctx, tc.endpoints[i]); err != nil || s.Leader != added.Member.ID {
+		t.Fatalf("the new member no longer leads: %v %v", s, err)
+	}
+}

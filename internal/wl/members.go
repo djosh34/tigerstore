@@ -513,7 +513,7 @@ func askMembers(ctx context.Context, sys sysEnv, cfg *tls.Config, addr string) (
 		return nil, 0, err
 	}
 	s := newSock(h, &counters{})
-	s.put(peerHelloBytes(membersAsk, 0))
+	s.put(peerHelloBytes(membersAsk, 0, ""))
 	if err := flushAll(s); err != nil {
 		return nil, 0, err
 	}

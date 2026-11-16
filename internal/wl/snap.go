@@ -287,7 +287,7 @@ func (l *loop) streamSnapshot(mem member, m *pb.Message, f file, size int64) err
 		return err
 	}
 	s := newSock(h, &counters{})
-	s.put(peerHelloBytes(l.n.id|snapMark, l.n.clusterID))
+	s.put(peerHelloBytes(l.n.id|snapMark, l.n.clusterID, ""))
 	putFrame(s, hdr)
 	buf := make([]byte, snapFrame)
 	for first := true; ; {
@@ -392,12 +392,18 @@ func (l *loop) peerHello(h *handoff) {
 		return
 	}
 	s := newSock(h, &counters{})
-	for s.pw-s.pr < 16 {
+	// The hello's ID, cluster and length of the peer's address, then the
+	// address.
+	need := helloHdr
+	for s.pw-s.pr < need {
 		if err := s.open(); err != nil {
 			_ = sysClose(h.fd)
 			return
 		}
-		if s.pw-s.pr >= 16 {
+		if s.pw-s.pr >= helloHdr {
+			need = helloHdr + int(binary.LittleEndian.Uint16(s.pt[s.pr+16:]))
+		}
+		if s.pw-s.pr >= need {
 			break
 		}
 		if got, err := s.readSock(); err != nil || !got {
@@ -406,7 +412,8 @@ func (l *loop) peerHello(h *handoff) {
 		}
 	}
 	hello, cluster := binary.LittleEndian.Uint64(s.pt[s.pr:]), binary.LittleEndian.Uint64(s.pt[s.pr+8:])
-	s.pr += 16
+	h.addr = string(s.pt[s.pr+helloHdr : s.pr+need])
+	s.pr += need
 	if hello == membersAsk {
 		if err := l.answerMembers(s); err != nil {
 			l.logger.Printf("answer a node that asks for the members: %v", err)

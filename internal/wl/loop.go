@@ -352,6 +352,11 @@ func (l *loop) syncDials() {
 	if len(want) == 0 {
 		want = n.seed
 	}
+	for id, addr := range n.heard {
+		if !slices.ContainsFunc(want, func(m member) bool { return m.id == id }) {
+			want = append(slices.Clip(want), member{id: id, peerURLs: []string{"https://" + addr}})
+		}
+	}
 	keep := map[uint64]bool{}
 	for i := range want {
 		m := &want[i]
@@ -410,6 +415,11 @@ func (l *loop) dialRedial(id uint64, beat bool) chan struct{} {
 // it was removed.
 func (l *loop) membersChanged() {
 	l.n.metrics.learner.Store(l.n.isLearner())
+	for id := range l.n.heard {
+		if l.n.removed[id] || l.n.memberAt(id) >= 0 {
+			delete(l.n.heard, id)
+		}
+	}
 	l.syncDials()
 	for _, x := range l.n.socks {
 		if p, ok := x.(*peerIn); ok && !p.dead && !l.n.mayPeer(p.from) {
@@ -418,18 +428,38 @@ func (l *loop) membersChanged() {
 	}
 }
 
-// mayPeer reports whether a peer may connect as id: a member, or anyone
-// while the node does not know the list yet.
-func (n *node) mayPeer(id uint64) bool {
-	return len(n.members) == 0 || n.memberAt(id) >= 0
-}
+// mayPeer reports whether a peer of the cluster may connect as id: any
+// that the node has not seen removed. A member added in entries the node
+// has not applied yet must reach it, as etcd's peer handler takes
+// messages from any member not removed: with one voter gone, a node that
+// lags may be the vote a newer member needs to lead (TestMembershipFaults
+// seed 958846293).
+func (n *node) mayPeer(id uint64) bool { return !n.removed[id] }
+
+// helloHdr is a hello's ID, cluster and the length of the address after
+// it.
+const helloHdr = 8 + 8 + 2
 
 // peerHelloBytes is what a node says first on a connection to a peer:
 // its ID, with snapMark for a snapshot's or beatMark for the heartbeats',
-// and its cluster's.
-func peerHelloBytes(id, cluster uint64) []byte {
+// its cluster's, and the address it takes peers at, if it is one they
+// should dial.
+func peerHelloBytes(id, cluster uint64, addr string) []byte {
 	b := binary.LittleEndian.AppendUint64(nil, id)
-	return binary.LittleEndian.AppendUint64(b, cluster)
+	b = binary.LittleEndian.AppendUint64(b, cluster)
+	b = binary.LittleEndian.AppendUint16(b, uint16(len(addr)))
+	return append(b, addr...)
+}
+
+// peerAddr is the address this node takes peers at, as its list or the
+// members it was told of name it.
+func (n *node) peerAddr() string {
+	for _, ms := range [][]member{n.members, n.seed} {
+		if i := slices.IndexFunc(ms, func(m member) bool { return m.id == n.id }); i >= 0 {
+			return ms[i].peerAddr()
+		}
+	}
+	return ""
 }
 
 func (l *loop) dial(id uint64, d *dialer, beat bool) {
@@ -696,6 +726,13 @@ func (l *loop) takeHandoffs() {
 			}
 			p := &peerIn{sock: *h.pre, from: h.peer}
 			p.stats = &n.stats
+			if n.memberAt(h.peer) < 0 && h.addr != "" && n.heard[h.peer] != h.addr {
+				if n.heard == nil {
+					n.heard = map[uint64]string{}
+				}
+				n.heard[h.peer] = h.addr
+				l.syncDials()
+			}
 			n.socks[idx] = p
 			s = &p.sock
 		case kindPeerOut:
@@ -722,7 +759,7 @@ func (l *loop) takeHandoffs() {
 			if old != nil && !old.dead {
 				l.closeSock(old.idx)
 			}
-			s.put(peerHelloBytes(hello, n.clusterID))
+			s.put(peerHelloBytes(hello, n.clusterID, n.peerAddr()))
 			n.markDirty(s)
 		}
 		s.idx, s.gen = idx, n.gens[idx]

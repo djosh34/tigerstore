@@ -48,6 +48,11 @@ type node struct {
 	self      member
 	publishAt time.Time
 	seed      []member
+	// heard are the peers of the cluster that connected to this node
+	// though its list lacks them, at the addresses their hellos name: a
+	// member added in entries this node has not applied yet. It dials them
+	// until its list has them or removed them.
+	heard map[uint64]string
 	// memberReqs are the membership changes clients wait on, by the
 	// sequence their ConfChange carries.
 	memberReqs map[uint64]memberReq
