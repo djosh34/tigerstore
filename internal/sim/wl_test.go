@@ -70,9 +70,10 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 // seed 10155 a node that installed a snapshot canceled a watch from a
 // revision still to come as compacted; on seed 12024 the clients'
 // connection to a node, whose dials a client link refused before healing,
-// was still in gRPC's backoff 4 s after it.
+// was still in gRPC's backoff 4 s after it; seed 12731 spun for good in
+// gRPC's transparent retries on that connection (#440).
 func TestWLRunsTheFaults(t *testing.T) {
-	simrun.Each(t, []uint64{2, 7, 8, 1002, 10155, 10161, 12024}, func(t *testing.T, seed uint64) Stats {
+	simrun.Each(t, []uint64{2, 7, 8, 1002, 10155, 10161, 12024, 12731}, func(t *testing.T, seed uint64) Stats {
 		st := runWLFaults(t, seed)
 		if st.DiskFaults == 0 {
 			t.Fatal("no disk fault fired")
