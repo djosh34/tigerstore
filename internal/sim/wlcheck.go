@@ -86,6 +86,9 @@ func (s *Sim) checkWL(res *Result) error {
 	if err := s.checkColdRestarts(res); err != nil {
 		return err
 	}
+	if err := s.checkRecoverable(); err != nil {
+		return err
+	}
 	return s.checkLive(res)
 }
 

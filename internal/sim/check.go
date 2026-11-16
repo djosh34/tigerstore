@@ -762,15 +762,15 @@ func (s *Sim) checkRecoverable() error {
 			continue
 		}
 		floor := n.floor()
-		w, rec, err := wal.Open(n.disk.Durable())
+		d, err := s.logOn(n)
 		if err != nil {
 			return fmt.Errorf("node %d cannot recover its log at the end: %w", n.id, err)
 		}
-		if err := w.Close(); err != nil {
+		if err := d.close(); err != nil {
 			return err
 		}
-		if rec.Last < floor {
-			return fmt.Errorf("node %d recovers entries to %d at the end, but reported %d durable", n.id, rec.Last, floor)
+		if d.last < floor {
+			return fmt.Errorf("node %d recovers entries to %d at the end, but reported %d durable", n.id, d.last, floor)
 		}
 	}
 	return nil
