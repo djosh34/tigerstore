@@ -863,6 +863,7 @@ func faultCases() []faultCase {
 	// The damage needs sealed segments, which take a few seconds of
 	// writes.
 	long := func(c *Config) { c.Duration = 16 * Second }
+	longer := func(c *Config) { c.Duration = 24 * Second }
 	// A checkpoint, which a snapshot sends and which cuts the log
 	// behind it, every DefaultConfig's disk budget of log (startWL):
 	// without one, a follower held down catches up from the log, and
@@ -872,7 +873,11 @@ func faultCases() []faultCase {
 		return faultCase{k.String(), Faults{CrashEvery: Second, MaxDown: Second, Corrupt: true}, func(c *Config) {
 			c.damageKinds = []damageKind{k}
 			long(c)
-			ckpts(c)
+			if k == flippedRoot {
+				// The other kinds need a log of several segments, which
+				// a checkpoint would cut.
+				ckpts(c)
+			}
 		}, count}
 	}
 	cases := []faultCase{
@@ -889,8 +894,10 @@ func faultCases() []faultCase {
 		{"crash at a checkpoint step", Faults{StepCrash: true}, nil, func(st Stats) int { return st.StepCrashes }},
 		{"rotten value", Faults{Rot: true}, ckpts, func(st Stats) int { return st.Rots }},
 		{"kill", crashes, nil, func(st Stats) int { return st.Kills }},
-		// One kill in three, of half the crashes, has a power loss after it.
-		{"power loss after a kill", crashes, long, func(st Stats) int { return st.KillLosses }},
+		// One kill in three, of half the crashes, has a power loss after
+		// it: 24 s make about 12 kills, and a seed without a loss rare
+		// (seed 3131: 5 kills in 16 s, none followed by one).
+		{"power loss after a kill", crashes, longer, func(st Stats) int { return st.KillLosses }},
 		{"lost directory operation", unsynced, long, func(st Stats) int { return st.Disk.LostDirOps }},
 		// One disk fault in four is a failed sync: twice the rate makes a
 		// seed without one rare.
