@@ -451,6 +451,11 @@ func peerHelloBytes(id, cluster uint64, addr string) []byte {
 	return append(b, addr...)
 }
 
+// PeerHello is the hello that a connection to a node of cluster as its
+// peer id says first, with no address to be dialed back at: for a test
+// that speaks to a node as one of its peers (cmd/chaos's rolling upgrade).
+func PeerHello(id, cluster uint64) []byte { return peerHelloBytes(id, cluster, "") }
+
 // peerAddr is the address this node takes peers at, as its list or the
 // members it was told of name it.
 func (n *node) peerAddr() string {

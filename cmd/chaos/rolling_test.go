@@ -784,7 +784,7 @@ func (r *rollingRun) replay(a announced) []byte {
 }
 
 // peerConn dials node to's peer port as node from, and says the peer
-// hello: from's ID and the cluster's.
+// hello wl's nodes say (wl.PeerHello).
 func (r *rollingRun) peerConn(from, to int) *tls.Conn {
 	r.t.Helper()
 	cert, err := tls.LoadX509KeyPair(filepath.Join(r.dir, "certs", fmt.Sprintf("node%d.pem", from+1)), filepath.Join(r.dir, "certs", fmt.Sprintf("node%d-key.pem", from+1)))
@@ -803,9 +803,7 @@ func (r *rollingRun) peerConn(from, to int) *tls.Conn {
 	if err != nil {
 		r.t.Fatal(err)
 	}
-	hello := binary.LittleEndian.AppendUint64(nil, r.c.ids[from])
-	hello = binary.LittleEndian.AppendUint64(hello, st.Header.ClusterId)
-	if _, err := conn.Write(hello); err != nil {
+	if _, err := conn.Write(wl.PeerHello(r.c.ids[from], st.Header.ClusterId)); err != nil {
 		r.t.Fatal(errors.Join(err, conn.Close()))
 	}
 	return conn
