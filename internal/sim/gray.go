@@ -6,7 +6,6 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
-	tnode "github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/simfs"
 )
 
@@ -140,7 +139,7 @@ func (s *Sim) grayLeader() {
 // grayClient is a barely-alive client: it opens a stream with 10 watches,
 // never reads it, and reconnects every 50 to 300 ms until healing.
 type grayClient struct {
-	ws *tnode.WatchStream
+	ws watchStream
 }
 
 func (s *Sim) grayClientRun() {
@@ -190,16 +189,26 @@ func (s *Sim) grayClientRun() {
 // openStream opens a watch stream on n's process with a watch for each
 // start, as a client on the other end of a connection. It returns the
 // stream and the process.
-func (s *Sim) openStream(n *node, starts []int64, req func(int64) *pb.WatchCreateRequest) (*tnode.WatchStream, *proc, error) {
+func (s *Sim) openStream(n *node, starts []int64, req func(int64) *pb.WatchCreateRequest) (watchStream, *proc, error) {
 	s.mu.Lock()
 	p, lat := n.proc, s.clientLatency()
 	s.mu.Unlock()
 	if p == nil || !s.sleep(lat) {
 		return nil, nil, errConnRefused
 	}
-	ws, err := p.node.OpenWatch(p.ctx, core.Caller{})
-	if err != nil {
-		return nil, nil, err
+	var ws watchStream
+	if p.wl != nil {
+		w, err := openWLStream(p)
+		if err != nil {
+			return nil, nil, err
+		}
+		ws = w
+	} else {
+		w, err := p.node.OpenWatch(p.ctx, core.Caller{})
+		if err != nil {
+			return nil, nil, err
+		}
+		ws = mainStream{w}
 	}
 	for _, start := range starts {
 		r := &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: req(start)}}

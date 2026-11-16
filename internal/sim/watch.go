@@ -169,7 +169,7 @@ func (w *watchClient) run(wait, dropAt int64) {
 
 // follow reads stream ws until it breaks or the client leaves it, and
 // returns when to open the next one and when to drop that.
-func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64) {
+func (w *watchClient) follow(ws watchStream, dropAt int64) (int64, int64) {
 	s := w.sim
 	var ask <-chan time.Time
 	for {
@@ -203,7 +203,7 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 				ws.Close()
 				return 0, dropAt
 			}
-		case r := <-ws.C:
+		case r := <-ws.Responses():
 			t.Stop()
 			ws.Taken(r)
 			s.mu.Lock()

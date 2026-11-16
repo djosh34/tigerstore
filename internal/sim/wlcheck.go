@@ -72,6 +72,12 @@ func (s *Sim) checkWL(res *Result) error {
 	if err := checkLog(res); err != nil {
 		return err
 	}
+	if err := s.checkWatches(model, res); err != nil {
+		return err
+	}
+	if err := s.checkWatchersFreed(); err != nil {
+		return err
+	}
 	return s.checkLive(res)
 }
 

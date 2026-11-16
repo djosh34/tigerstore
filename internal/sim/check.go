@@ -686,7 +686,13 @@ func (s *Sim) checkWatchersFreed() error {
 				open++
 			}
 		}
-		if got := n.proc.core.WatcherCount(); got != open {
+		var got int
+		if n.proc.wl != nil {
+			got = n.proc.wl.turn.Watchers
+		} else {
+			got = n.proc.core.WatcherCount()
+		}
+		if got != open {
 			return fmt.Errorf("node %d holds %d watchers for %d open watch streams", n.id, got, open)
 		}
 	}

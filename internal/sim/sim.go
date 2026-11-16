@@ -1248,9 +1248,7 @@ func (s *Sim) schedule() {
 		s.clients = append(s.clients, c)
 		s.wg.Go(c.run)
 	}
-	if !s.cfg.wl {
-		s.startWatchers()
-	}
+	s.startWatchers()
 	f := s.cfg.Faults
 	if f.CrashEvery > 0 {
 		s.every(f.CrashEvery, s.crashRandom)

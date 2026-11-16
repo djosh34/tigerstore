@@ -107,9 +107,15 @@ func (n *node) simTurn() {
 		return
 	}
 	first, _ := n.storage.FirstIndex()
+	watchers := 0
+	for i := range n.w.ws {
+		if n.w.ws[i].active {
+			watchers++
+		}
+	}
 	h.Turn(TurnState{
 		Lead: n.lead, Term: n.term, Commit: n.commit, Applied: n.applied,
-		First: first, Format: n.format, Rev: n.st.rev,
+		First: first, Format: n.format, Rev: n.st.rev, Watchers: watchers,
 	})
 }
 

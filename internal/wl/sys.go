@@ -94,4 +94,6 @@ type TurnState struct {
 	Format uint8
 	// Rev is the store's revision.
 	Rev int64
+	// Watchers counts the node's watchers.
+	Watchers int
 }

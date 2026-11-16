@@ -3,6 +3,7 @@
 package sim
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -21,8 +22,8 @@ func TestWLRunsACalmSeed(t *testing.T) {
 		cfg.wl, cfg.FormUnderFaults = true, true
 		cfg.Duration, cfg.Heal = 5*Second, 5*Second
 		res := run(t, cfg)
-		t.Logf("calls: %d ok, %d failed, %d ambiguous, %d by clientv3; log %d writes to revision %d",
-			res.Stats.OK, res.Stats.Failed, res.Stats.Ambiguous, res.Stats.V3OK, len(res.Log), res.FinalRev)
+		t.Logf("calls: %d ok, %d failed, %d ambiguous, %d by clientv3; log %d writes to revision %d; %s",
+			res.Stats.OK, res.Stats.Failed, res.Stats.Ambiguous, res.Stats.V3OK, len(res.Log), res.FinalRev, watched(res))
 		if res.Stats.OK < 100 {
 			t.Fatalf("only %d calls succeeded", res.Stats.OK)
 		}
@@ -43,8 +44,8 @@ func TestWLRunsASeedWithCrashes(t *testing.T) {
 			SlowDisk: 2, PauseEvery: 6 * Second,
 		}
 		res := run(t, cfg)
-		t.Logf("calls: %d ok, %d failed, %d ambiguous; crashes %d (power losses %d, kills %d); log %d writes to revision %d",
-			res.Stats.OK, res.Stats.Failed, res.Stats.Ambiguous, res.Stats.Crashes, res.Stats.PowerLosses, res.Stats.Kills, len(res.Log), res.FinalRev)
+		t.Logf("calls: %d ok, %d failed, %d ambiguous; crashes %d (power losses %d, kills %d); log %d writes to revision %d; %s",
+			res.Stats.OK, res.Stats.Failed, res.Stats.Ambiguous, res.Stats.Crashes, res.Stats.PowerLosses, res.Stats.Kills, len(res.Log), res.FinalRev, watched(res))
 		if res.Stats.Crashes == 0 {
 			t.Fatal("no crash")
 		}
@@ -76,4 +77,19 @@ func TestWLRecoversFromATornWriteOfTheStage(t *testing.T) {
 		}
 		return res.Stats
 	}, nil)
+}
+
+// watched says what the run's watches got, which checkWatches checked
+// against the replayed log.
+func watched(res *Result) string {
+	events := 0
+	for _, w := range res.Watches {
+		for _, r := range w.Responses {
+			events += len(r.Resp.Events)
+		}
+	}
+	if len(res.Watches) == 0 || events == 0 {
+		return "no watch got an event"
+	}
+	return fmt.Sprintf("%d logical watches got %d events, %d compacted", len(res.Watches), events, res.Stats.WatchCompacted)
 }
