@@ -413,6 +413,13 @@ func (h *wlHooks) CheckpointDone(index uint64, name string) {
 	if c, ok := s.ckpts[index]; ok && c.sum != state {
 		s.fail("node %d wrote checkpoint %d with another state than node %d's store had at it", n.id, index, c.node)
 	}
+	if s.cfg.Faults.Checkpoint && s.stats.ErasedAtRoot == 0 {
+		// The run's first checkpoint is durable and a start would load
+		// it; the log behind it may be cut from now on. The cold restarts
+		// erase each disk in turn here (main's root, afterCall).
+		s.stats.ErasedAtRoot++
+		s.takeCheckpoint()
+	}
 }
 
 // Turn keeps what the node shows, and holds its loop while the process
@@ -499,6 +506,16 @@ func (h *wlHooks) SnapshotChunk(to uint64, first bool, p []byte) int {
 // SnapshotCut crashes the source of a stream SnapshotChunk cut, once the
 // follower read what it kept.
 func (h *wlHooks) SnapshotCut(to uint64) { h.s.crashSource(h.p, to, h.p.ctx.Done()) }
+
+// Deliver drops a peer's append to or from the gray node, as main's
+// transport does (deliverer). A wl node's snapshot comes on a stream of
+// its own, which SnapshotChunk's faults reach.
+func (h *wlHooks) Deliver(m *raftpb.Message) bool {
+	s := h.s
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return h.p.n.proc != h.p || !s.grayDrops(h.p.n, m)
+}
 
 // holdTurn holds p's loop, at the end of a turn, while the run failed,
 // until the run ends its process, and while the process is paused or

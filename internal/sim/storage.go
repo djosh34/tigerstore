@@ -138,27 +138,35 @@ func hashBytes(b []byte) uint64 {
 	return h
 }
 
+// grayDrops reports whether node n drops message m from a peer: an
+// append or a snapshot to or from the gray node. It counts what it
+// drops and what it lets through. The lock is held.
+func (s *Sim) grayDrops(n *node, m *raftpb.Message) bool {
+	g := s.gray
+	drop := g != nil && (g == n || g.id == m.GetFrom()) && (m.GetType() == raftpb.MessageType_MsgApp || m.GetType() == raftpb.MessageType_MsgSnap)
+	if !drop {
+		s.stats.Messages++
+		return false
+	}
+	s.stats.Dropped++
+	if !s.grayDropped {
+		s.grayDropped = true
+		s.stats.GrayNodes++
+	}
+	if s.healed {
+		// The guaranteed gray period, which waited for this.
+		s.gray, s.grayOnce = nil, false
+	}
+	return true
+}
+
 // deliverer is the Deliver of p's transport: it hands the node the peer
 // frames that arrive, except the appends to and from a gray node, which
 // it drops.
 func (s *Sim) deliverer(p *proc, tn *tnode.Node) func(*raftpb.Message) {
 	return func(m *raftpb.Message) {
 		s.mu.Lock()
-		g := s.gray
-		drop := g != nil && (g == p.n || g.id == m.GetFrom()) && (m.GetType() == raftpb.MessageType_MsgApp || m.GetType() == raftpb.MessageType_MsgSnap)
-		if drop {
-			s.stats.Dropped++
-			if !s.grayDropped {
-				s.grayDropped = true
-				s.stats.GrayNodes++
-			}
-			if s.healed {
-				// The guaranteed gray period, which waited for this.
-				s.gray, s.grayOnce = nil, false
-			}
-		} else {
-			s.stats.Messages++
-		}
+		drop := s.grayDrops(p.n, m)
 		switch t := m.GetType(); {
 		case !s.votes || drop:
 		case t == raftpb.MessageType_MsgVote, t == raftpb.MessageType_MsgPreVote, t == raftpb.MessageType_MsgVoteResp, t == raftpb.MessageType_MsgPreVoteResp:

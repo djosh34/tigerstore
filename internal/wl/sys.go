@@ -111,6 +111,10 @@ type Hooks interface {
 	// SnapshotCut is a stream to node to that SnapshotChunk cut, once
 	// the bytes it kept are written: the simulator crashes the source.
 	SnapshotCut(to uint64)
+	// Deliver is message m from a peer, before Raft steps it: the
+	// simulator drops it when it returns false, as a gray node's links
+	// lose its appends.
+	Deliver(m *raftpb.Message) bool
 }
 
 // TurnState is what a node shows at the end of a turn of its loop.

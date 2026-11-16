@@ -20,3 +20,4 @@ func (*node) simExpired(int64)                 {}
 
 func (*node) simSnapshotChunk(_ uint64, _ bool, p []byte) int { return len(p) }
 func (*node) simSnapshotCut(uint64)                           {}
+func (*node) simDeliver(*pb.Message) bool                     { return true }

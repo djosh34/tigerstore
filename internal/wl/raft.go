@@ -503,6 +503,9 @@ func (n *node) peerFrames(p *peerIn) error {
 			n.proposeConfChange(m, n.now)
 			continue
 		}
+		if !n.simDeliver(m) {
+			continue
+		}
 		_ = n.rn.Step(m)
 	}
 }
@@ -686,7 +689,7 @@ func (n *node) retryHeld() {
 				}
 				continue
 			}
-			if err == nil {
+			if err == nil && n.simDeliver(m) {
 				m.To = new(n.id)
 				_ = n.rn.Step(m)
 			}

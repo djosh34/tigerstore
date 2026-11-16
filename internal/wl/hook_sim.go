@@ -196,3 +196,11 @@ func (n *node) simSnapshotCut(to uint64) {
 		h.SnapshotCut(to)
 	}
 }
+
+// simDeliver reports whether Raft steps message m from a peer.
+func (n *node) simDeliver(m *pb.Message) bool {
+	if h := n.sys.h; h != nil {
+		return h.Deliver(m)
+	}
+	return true
+}

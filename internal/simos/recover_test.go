@@ -120,6 +120,7 @@ func (*recovered) Durable(uint64, bool, *raftpb.HardState)      {}
 func (*recovered) Turn(wl.TurnState, func() []wl.LogValue)      {}
 func (*recovered) SnapshotChunk(_ uint64, _ bool, p []byte) int { return len(p) }
 func (*recovered) SnapshotCut(uint64)                           {}
+func (*recovered) Deliver(*raftpb.Message) bool                 { return true }
 func (*recovered) Checkpoint(uint64, uint64)                    {}
 func (*recovered) CheckpointDone(uint64, string)                {}
 func (*recovered) Loaded(uint64, uint64)                        {}
