@@ -117,6 +117,9 @@ func TestClusterServesTheRestOfTheEtcdAPI(t *testing.T) {
 	})
 
 	t.Run("Leases lists the leases granted", func(t *testing.T) {
+		// One node: it lists its own leases, as etcd's does, which a
+		// follower that has not applied a revoke yet still holds (#716).
+		c := tc.clientOf(t, tc.endpoints[0])
 		a, err := c.Grant(ctx, 60)
 		if err != nil {
 			t.Fatal(err)
