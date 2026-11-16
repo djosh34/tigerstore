@@ -200,6 +200,16 @@ func sysCPU() (process, thread int64) {
 	return process, thread
 }
 
+// sysThread reads the calling thread's faults and context switches, for
+// the slow-turn log; zeros where they cannot be read.
+func sysThread() (minflt, majflt, vcsw, ivcsw int64) {
+	var ru unix.Rusage
+	if unix.Getrusage(unix.RUSAGE_THREAD, &ru) != nil {
+		return 0, 0, 0, 0
+	}
+	return ru.Minflt, ru.Majflt, ru.Nvcsw, ru.Nivcsw
+}
+
 // fdLimit is the process's limit of open files.
 func fdLimit() uint64 {
 	var l unix.Rlimit

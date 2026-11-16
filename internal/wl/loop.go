@@ -67,7 +67,10 @@ type loop struct {
 	lastWAL walStats
 	lastAt  time.Time
 	lastCPU cpuStats
-	logger  *log.Logger
+	// tickStall is what stallStats read at the last tick, which a slow
+	// turn logs the change from.
+	tickStall stallStats
+	logger    *log.Logger
 	// turnPosts and turnHandoffs count the posts run and connections
 	// taken this turn, for the slow-turn log.
 	turnPosts, turnHandoffs int
@@ -841,6 +844,7 @@ func (l *loop) run() error {
 				return err
 			}
 			n.limitGo()
+			l.tickStall = n.stallStats(now)
 			if n.leading() {
 				n.expireLeases()
 			}
@@ -952,10 +956,10 @@ func (l *loop) logSlowTurn(start, input, ready, sync, flush, end time.Time, ops 
 	for k := range applied {
 		applied[k] = l.n.stats.opsByKind[k] - ops[k]
 	}
-	l.logger.Printf("slow turn %v: input and proposals %v (of it the tick %v), ready and apply %v, watch catch-up %v, flush %v, sweep %v; requests by kind %v, posts %d, connections taken %d; applied by kind %v; keys %d, watchers %d, catching up %d, held flows %d",
+	l.logger.Printf("slow turn %v: input and proposals %v (of it the tick %v), ready and apply %v, watch catch-up %v, flush %v, sweep %v; requests by kind %v, posts %d, connections taken %d; applied by kind %v; keys %d, watchers %d, catching up %d, held flows %d; %s",
 		end.Sub(start), input.Sub(start), tick, ready.Sub(input), sync.Sub(ready), flush.Sub(sync), end.Sub(flush),
 		l.n.turnReqs, l.turnPosts, l.turnHandoffs, applied,
-		l.n.st.nkeys, len(l.n.w.ws), len(l.n.w.unsynced), l.heldFlows())
+		l.n.st.nkeys, len(l.n.w.ws), len(l.n.w.unsynced), l.heldFlows(), l.n.stallStats(end).since(l.tickStall))
 }
 
 // heldFlows counts the messages the clients hold for want of window.

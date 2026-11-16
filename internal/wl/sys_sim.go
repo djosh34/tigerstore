@@ -102,6 +102,9 @@ func sysClose(fd int) error                              { return fds().Close(fd
 // sysCPU is 0 in the simulator, whose clock is virtual.
 func sysCPU() (process, thread int64) { return 0, 0 }
 
+// sysThread is 0 in the simulator, whose threads are its own.
+func sysThread() (minflt, majflt, vcsw, ivcsw int64) { return 0, 0, 0, 0 }
+
 // fdLimit is the simulator's: no limit a node would meet.
 func fdLimit() uint64 { return 1 << 20 }
 
