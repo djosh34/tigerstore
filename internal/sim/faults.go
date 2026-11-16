@@ -335,7 +335,7 @@ func (s *Sim) maybeCorrupt(n *node) {
 	// for one that does.
 	switch {
 	case len(s.cfg.damageKinds) > 0:
-	case s.cfg.wl && s.flipWLRecord(n):
+	case s.cfg.wl && s.cfg.flipRecords && s.formed > 0 && s.flipWLRecord(n):
 		n.corrupted = true
 		s.stats.Damage[flippedRecord]++
 		s.tracef("node %d: damage after a sync: %v", n.id, flippedRecord)
@@ -351,7 +351,11 @@ func (s *Sim) maybeCorrupt(n *node) {
 // head): the damage of a wl node where the kind drawn found no place, as
 // during the faults, when most logs are a few hundred bytes in one segment
 // and hold no checkpoint (seeds 22000 to 22003). The flip stays only if
-// reading the log as a start reads it refuses it. The lock is held.
+// reading the log as a start reads it refuses it. Only TestSeeds' runs
+// do it (Config.flipRecords), once the cluster formed first: a node fenced
+// in the first seconds of a cluster that forms under the faults left
+// seed 2 of TestKubernetesLoad two nodes that the crashes kept from
+// committing enough to test. The lock is held.
 func (s *Sim) flipWLRecord(n *node) bool {
 	d := n.disk
 	ptr, err := wlPointer(d)

@@ -161,6 +161,11 @@ type Config struct {
 	// wl checkpoint writes in one write (wl.Config.CheckpointChunkKeys).
 	ckptCrash     bool
 	ckptChunkKeys int
+	// flipRecords lets a wl node's damage, where the kind drawn finds no
+	// place, flip a record of its log (flipWLRecord), once the cluster
+	// formed first: TestSeeds' runs, whose rule over a set needs fenced
+	// nodes.
+	flipRecords bool
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its

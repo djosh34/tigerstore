@@ -110,10 +110,12 @@ func TestWLFormsAndRunsTheFaults(t *testing.T) {
 
 // runWLFaults runs seed on wl nodes with the faults TestWLRunsTheFaults
 // names; underFaults forms the cluster under them, from the run's first
-// moment, and otherwise formsFirst draws how.
+// moment, and otherwise formsFirst draws how. Damage that finds no place
+// flips a record of the log (Config.flipRecords), as TestSeeds' rule over
+// a set needs.
 func runWLFaults(t *testing.T, seed uint64, underFaults bool) *Result {
 	cfg := wlFaultsConfig(seed)
-	cfg.FormUnderFaults = underFaults
+	cfg.FormUnderFaults, cfg.flipRecords = underFaults, true
 	res := run(t, cfg)
 	checkers(t, res)
 	st := res.Stats
