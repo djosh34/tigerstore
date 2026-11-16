@@ -81,6 +81,12 @@ const (
 	ptrName = "CURRENT"
 )
 
+// ckptScanStates is the most states of keys a turn's key scan reads
+// (scanKeys), past the key it is on: a key's states are all its history,
+// and 4,096 keys of a store that never compacts took 220-300 ms of the
+// loop (#704).
+var ckptScanStates = 1 << 16
+
 // ckptMin is the log written after the newest checkpoint before the next
 // is taken. A checkpoint writes the keys and takes in only the values of
 // the log it cuts, so it bounds what a start replays at a small cost.
@@ -446,8 +452,9 @@ func (n *node) ckptStep(block bool) error {
 func (n *node) scanKeys(r *ckptRun) {
 	st := n.st
 	stop := min(r.end, r.next+ckptChunkKeys)
-	for ; r.next < stop; r.next++ {
+	for states := 0; r.next < stop && states < ckptScanStates; r.next++ {
 		r.states = st.ckptStates(r.next, r.meta.rev, r.states[:0])
+		states += len(r.states)
 		for i := range r.states {
 			s := &r.states[i]
 			switch {

@@ -447,3 +447,58 @@ func TestACheckpointLeavesItsFilesToOtherGoroutines(t *testing.T) {
 		t.Fatalf("/a reads %q from the new checkpoint", got)
 	}
 }
+
+// A turn's key scan reads at most ckptScanStates states past the key it is
+// on: a store that never compacts holds every key's history, and a turn of
+// 4,096 such keys held the loop 220-300 ms (#704). The checkpoint, scanned
+// over many turns, still holds every key.
+func TestACheckpointScansAFewStatesATurn(t *testing.T) {
+	n, l := ckptNode(t)
+	st := n.st
+	bound := ckptScanStates
+	ckptScanStates = 100
+	t.Cleanup(func() { ckptScanStates = bound })
+	for i := range 300 {
+		for k := range 3 {
+			putValue(t, st, l, fmt.Sprintf("/k%d", k), strconv.Itoa(i))
+		}
+	}
+	for k := range 50 {
+		putValue(t, st, l, fmt.Sprintf("/once%02d", k), "v")
+	}
+	if err := n.startCkpt(uint64(st.rev), 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	r := n.ckpt
+	var per []uint32
+	for r.phase == ckptScanning {
+		before := r.next
+		n.scanKeys(r)
+		per = append(per, r.next-before)
+	}
+	// Each of the three keys of 300 states takes a turn alone; the 50 of
+	// one state each go at most 100 a turn.
+	if len(per) < 4 || per[0] != 1 || per[1] != 1 || per[2] != 1 {
+		t.Fatalf("keys scanned a turn: %v; want the first three alone", per)
+	}
+	for n.ckpt != nil {
+		if err := n.ckptStep(n.ckpt.sent > 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f, err := os.Open(filepath.Join(n.ckptDir, ckptName(uint64(st.rev))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	loaded, err := newStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadCkpt(f, 1, loaded); err != nil {
+		t.Fatal(err)
+	}
+	if got := scanKeys(loaded, "/", ""); len(got) != 53 {
+		t.Fatalf("the checkpoint holds %d keys, want 53", len(got))
+	}
+}
