@@ -373,6 +373,14 @@ func (w *wal) shut() {
 	binary.LittleEndian.PutUint64(b[:], 1)
 	_, _ = sysWrite(w.kickFD, b[:])
 	<-w.helperDone
+	// A segment made and never taken.
+	select {
+	case sg := <-w.made:
+		if sg.err == nil {
+			_ = sysClose(sg.wfd)
+		}
+	default:
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, fd := range slices.Concat(w.rfds, w.unused, w.wfds) {
@@ -433,7 +441,14 @@ func (w *wal) makeSegment(dfd int, path string) (segment, error) {
 // helper calls it.
 func (w *wal) segFD(k int64) (int, error) {
 	for w.wbase+int64(len(w.wfds)) <= k {
-		sg := <-w.made
+		var sg segment
+		select {
+		case sg = <-w.made:
+		case <-w.stop:
+			// The log closes, and its maker stopped: the segment may
+			// never come (#689's area-1 review).
+			return -1, errWALClosed
+		}
 		if sg.err != nil {
 			return -1, sg.err
 		}
@@ -697,7 +712,7 @@ func (w *wal) readNoWait(p []byte, off int64) error {
 	}
 	return w.readSegments(p, off, func(fd int, p []byte, off int64) (int, error) {
 		n, err := sysPreadNoWait(fd, p, off)
-		if errors.Is(err, unix.EAGAIN) || err == nil && n < len(p) {
+		if notReadNow(n, len(p), err) {
 			return 0, errAway
 		}
 		return n, err

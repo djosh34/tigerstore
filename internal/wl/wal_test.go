@@ -440,3 +440,24 @@ func TestASyncAfterALargeOneWaitsTheLoadGap(t *testing.T) {
 		t.Fatalf("a sync of a small append recorded %d bytes", w.lastBytes)
 	}
 }
+
+// The helper waiting for a segment stops when the log closes: its maker
+// stops then and may never hand the segment over. Waiting on, it held
+// the log's close for good (#689's area-1 review).
+func TestTheHelperStopsWaitingForASegmentWhenTheLogCloses(t *testing.T) {
+	w := &wal{made: make(chan segment), stop: make(chan struct{})}
+	close(w.stop)
+	got := make(chan error, 1)
+	go func() {
+		_, err := w.segFD(0)
+		got <- err
+	}()
+	select {
+	case err := <-got:
+		if !errors.Is(err, errWALClosed) {
+			t.Fatalf("segFD after the close: %v, want errWALClosed", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the helper still waits for a segment after the log closed")
+	}
+}

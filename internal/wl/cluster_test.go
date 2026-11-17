@@ -12,11 +12,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	etcdmetrics "github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/testcert"
 	"github.com/djosh34/tigerstore/internal/testport"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -649,5 +651,55 @@ func TestAFollowerThatLagsCatchesUpByASnapshot(t *testing.T) {
 			t.Fatalf("the follower took no write after the snapshot: %v %v", r, err)
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// logGoroutines counts the goroutines of the nodes' logs and removers.
+func logGoroutines() int {
+	buf := make([]byte, 1<<22)
+	stacks := string(buf[:runtime.Stack(buf, true)])
+	k := 0
+	for _, f := range []string{"wl.(*wal).helper(", "wl.(*wal).makeSegments(", "wl.(*remover).run("} {
+		k += strings.Count(stacks, f)
+	}
+	return k
+}
+
+// A start that fails after its log opened stops the log's goroutines,
+// and the rest it started. Left behind, a start that refused a damaged
+// value left the log's helper waiting for good, which the simulator
+// found as a deadlock (#723). Here node 1 starts again with a metrics
+// set that cannot take its collector.
+func TestAStartThatFailsStopsWhatItStarted(t *testing.T) {
+	taken, err := etcdmetrics.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newPromHandler(taken, false, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	failNode1 := false
+	tc := newTestClusterWith(t, func(tc *testCluster) {
+		tc.config = func(c *Config) {
+			if failNode1 && c.ID == 1 {
+				c.Metrics = taken
+			}
+		}
+	})
+	tc.stopNode(t, 0)
+	before := logGoroutines()
+	failNode1 = true
+	tc.startNode(t, 0)
+	if err := <-tc.stopped[0]; err == nil || errors.Is(err, errStopped) {
+		t.Fatalf("node 1 started with a metrics set that has its collector: %v", err)
+	}
+	tc.cancels[0]()
+	tc.cancels[0] = nil
+	deadline := time.Now().Add(5 * time.Second)
+	for logGoroutines() > before && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := logGoroutines(); got > before {
+		t.Fatalf("%d goroutines of logs and removers after the failed start, %d before it", got, before)
 	}
 }

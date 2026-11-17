@@ -208,6 +208,24 @@ func run(ctx context.Context, cfg Config) error {
 	if n.wal, err = openWAL(n.sys, filepath.Join(cfg.DataDir, "wal"), n.sizes.stage, n.ckptCut, from, n.storage.restore); err != nil {
 		return err
 	}
+	// A start that fails from here on stops the goroutines it started:
+	// the log's, the remover's and the node's own client. Left behind, a
+	// start that refused a damaged value left the log's helper waiting
+	// for good (#723). Once the loop runs, its shut stops them.
+	var l *loop
+	up := false
+	defer func() {
+		if up {
+			return
+		}
+		n.wal.close()
+		if n.rm != nil {
+			n.rm.close()
+		}
+		if l != nil && l.self != nil {
+			_ = l.self.Close()
+		}
+	}()
 	n.storage.log = n.wal
 	n.st.log = n.wal
 	if err := n.st.checkLogValues(from); err != nil {
@@ -237,7 +255,7 @@ func run(ctx context.Context, cfg Config) error {
 		logger.Printf("recovered the log: entries to %d, hard state term %d commit %d", n.storage.lastIndex(), n.term, n.commit)
 	}
 
-	l := &loop{n: n, dials: map[uint64]*dialer{}, logger: logger, lastAt: time.Now(), peerTLS: cfg.PeerClientTLS}
+	l = &loop{n: n, dials: map[uint64]*dialer{}, logger: logger, lastAt: time.Now(), peerTLS: cfg.PeerClientTLS}
 	n.shell = l
 	if testLoops != nil {
 		testLoops(n.id, l)
@@ -289,13 +307,14 @@ func run(ctx context.Context, cfg Config) error {
 	}
 	api := &httpAPI{m: n.metrics, prom: prom, set: set, cors: cfg.CORS, hosts: cfg.HostWhitelist, pprof: cfg.Pprof, raftStatus: l.raftStatus, read: l.healthRead}
 	if l.http1, err = startHTTP1(ctx, l.self.ActiveConnection(), api); err != nil {
-		return errors.Join(err, l.self.Close())
+		return err
 	}
 	for _, ln := range cfg.MetricsListeners {
 		srv := &http.Server{Handler: api.metricsHandler(), ReadHeaderTimeout: time.Minute}
 		l.metricsSrvs = append(l.metricsSrvs, srv)
 		go func() { _ = srv.Serve(ln) }()
 	}
+	up = true
 	defer l.shut(slices.Concat(cfg.ClientListeners, cfg.PlainClientListeners, cfg.PeerListeners)...)
 	go func() {
 		<-ctx.Done()
