@@ -135,17 +135,20 @@ func run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	cliTLS := cfg.ClientTLS.Clone()
-	cliTLS.NextProtos = []string{"h2", "http/1.1"}
-	// A client that offers HTTP/1.1, such as curl or the bench's metrics
-	// scraper, gets it; gRPC clients offer only h2.
-	h1 := cliTLS.Clone()
-	h1.NextProtos = []string{"http/1.1"}
-	cliTLS.GetConfigForClient = func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
-		if slices.Contains(hi.SupportedProtos, "http/1.1") {
-			return h1, nil
+	var cliTLS *tls.Config
+	if cfg.ClientTLS != nil {
+		cliTLS = cfg.ClientTLS.Clone()
+		cliTLS.NextProtos = []string{"h2", "http/1.1"}
+		// A client that offers HTTP/1.1, such as curl or the bench's
+		// metrics scraper, gets it; gRPC clients offer only h2.
+		h1 := cliTLS.Clone()
+		h1.NextProtos = []string{"http/1.1"}
+		cliTLS.GetConfigForClient = func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
+			if slices.Contains(hi.SupportedProtos, "http/1.1") {
+				return h1, nil
+			}
+			return nil, nil
 		}
-		return nil, nil
 	}
 	n := &node{
 		sys: sys, id: cfg.ID, clusterID: cfg.ClusterID, peersOut: map[uint64]*peerOut{}, beatsOut: map[uint64]*peerOut{}, fetching: map[int64]bool{}, metrics: &nodeMetrics{},
@@ -252,8 +255,13 @@ func run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	l.ctx = ctx
-	l.selfTLS = selfTLS(cfg.ClientTLS)
-	if l.self, err = selfClient(n.sys, cfg.ClientListeners[0].Addr().String(), l.selfTLS); err != nil {
+	// The node's own client dials a TLS client listener, or a plain one
+	// when the node has none.
+	selfLn := slices.Concat(cfg.ClientListeners, cfg.PlainClientListeners)[0]
+	if len(cfg.ClientListeners) > 0 {
+		l.selfTLS = selfTLS(cfg.ClientTLS)
+	}
+	if l.self, err = selfClient(n.sys, endpointOf(selfLn), l.selfTLS); err != nil {
 		return err
 	}
 	l.side = newSideServers(l.self)
@@ -266,6 +274,10 @@ func run(ctx context.Context, cfg Config) error {
 	n.extensive = cfg.ExtensiveMetrics
 	n.quota = cmp.Or(cfg.QuotaBackendBytes, defaultQuota)
 	n.progressEvery = cmp.Or(cfg.ProgressNotify, defaultProgressNotify)
+	n.maxStreams = defaultMaxStreams
+	if cfg.MaxStreams > 0 && cfg.MaxStreams < defaultMaxStreams {
+		n.maxStreams = cfg.MaxStreams
+	}
 	n.jwt, n.tokenTTL, n.bcryptCost = cfg.JWT, cmp.Or(cfg.TokenTTL, defaultTokenTTL), cmp.Or(cfg.BcryptCost, bcrypt.DefaultCost)
 	n.compactor = newCompactor(cfg.AutoCompactPeriod, cfg.AutoCompactRevisions, time.Now())
 	n.wal.prom.Store(set)
@@ -283,7 +295,7 @@ func run(ctx context.Context, cfg Config) error {
 		l.metricsSrvs = append(l.metricsSrvs, srv)
 		go func() { _ = srv.Serve(ln) }()
 	}
-	defer l.shut(slices.Concat(cfg.ClientListeners, cfg.PeerListeners)...)
+	defer l.shut(slices.Concat(cfg.ClientListeners, cfg.PlainClientListeners, cfg.PeerListeners)...)
 	go func() {
 		<-ctx.Done()
 		l.mu.Lock()
@@ -293,12 +305,15 @@ func run(ctx context.Context, cfg Config) error {
 	for _, ln := range cfg.ClientListeners {
 		go l.accept(ln, cliTLS, kindClient, logger)
 	}
+	for _, ln := range cfg.PlainClientListeners {
+		go l.accept(ln, nil, kindClient, logger)
+	}
 	for _, ln := range cfg.PeerListeners {
 		go l.accept(ln, cfg.PeerServerTLS, kindPeerIn, logger)
 	}
 	n.metrics.learner.Store(n.isLearner())
 	l.syncDials()
-	logger.Printf("node %s (id %d) up: clients %v, peers %v", cfg.Name, n.id, addrs(cfg.ClientListeners), addrs(cfg.PeerListeners))
+	logger.Printf("node %s (id %d) up: clients %v, peers %v", cfg.Name, n.id, addrs(slices.Concat(cfg.ClientListeners, cfg.PlainClientListeners)), addrs(cfg.PeerListeners))
 	return l.run()
 }
 
@@ -310,6 +325,8 @@ func addrs(lns []net.Listener) []string {
 	return out
 }
 
+// accept takes the connections of ln: with TLS by cfg, or plain with
+// none, a client listener's of an http or unix URL.
 func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.Logger) {
 	for {
 		nc, err := ln.Accept()
@@ -322,7 +339,14 @@ func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.
 			continue
 		}
 		go func() {
-			h, err := handshake(l.n.sys, nc, cfg, kind)
+			var h *handoff
+			var err error
+			if cfg == nil {
+				// A client of a listener without TLS.
+				h, err = plainHandoff(l.n.sys, nc)
+			} else {
+				h, err = handshake(l.n.sys, nc, cfg, kind)
+			}
 			if err != nil {
 				return
 			}
@@ -904,8 +928,18 @@ func (l *loop) input(idx int) {
 		}
 	}
 	if err != nil {
-		l.closeSock(idx)
+		l.closeClient(idx, err)
 	}
+}
+
+// closeClient closes socket idx, which met err; a client that broke
+// HTTP/2 hears why first.
+func (l *loop) closeClient(idx int, err error) {
+	var e h2Error
+	if c, ok := l.n.socks[idx].(*client); ok && errors.As(err, &e) {
+		c.goAway(e)
+	}
+	l.closeSock(idx)
 }
 
 // run turns the loop until the node fails.
@@ -1124,7 +1158,7 @@ func (l *loop) flush() {
 	for _, c := range resumed {
 		if !c.dead {
 			if err := c.frames(n); err != nil {
-				l.closeSock(c.idx)
+				l.closeClient(c.idx, err)
 			}
 		}
 	}

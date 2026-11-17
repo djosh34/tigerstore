@@ -13,12 +13,15 @@ import (
 // buffers, and its send buffer of records. Frames are written straight
 // into the plaintext of the open record at the end of out; a record is
 // sealed in place when it is full or at the end of the turn, and the
-// whole buffer goes out in one write.
+// whole buffer goes out in one write. A plain socket, a client of a
+// listener without TLS (h2c), has no records: in is the bytes as they
+// came, and out the bytes to send.
 type sock struct {
 	fd     int
 	idx    int
 	gen    uint16
 	rd, wr aeadDir
+	plain  bool // no TLS: the bytes as they come, no records
 	dead   bool
 
 	in     []byte // ciphertext read and not yet opened
@@ -60,7 +63,7 @@ const (
 
 func newSock(h *handoff, stats *counters) *sock {
 	s := &sock{
-		fd: h.fd, rd: h.rd, wr: h.wr, rec: -1, stats: stats,
+		fd: h.fd, rd: h.rd, wr: h.wr, plain: h.plain, rec: -1, stats: stats,
 		in: make([]byte, max(inBuf, len(h.left))), pt: make([]byte, ptBuf), out: make([]byte, 0, outBuf), outBase: outBuf,
 	}
 	s.iw = copy(s.in, h.left)
@@ -112,8 +115,12 @@ func (s *sock) readSock() (bool, error) {
 	return false, err
 }
 
-// open opens every whole record in in into pt.
+// open opens every whole record in in into pt; a plain socket's bytes
+// move as they are.
 func (s *sock) open() error {
+	if s.plain {
+		return s.takePlain()
+	}
 	for {
 		avail := s.iw - s.ir
 		if avail < recHdr {
@@ -201,10 +208,34 @@ func postHandshake(m []byte) error {
 	return nil
 }
 
+// takePlain moves what a plain socket read into pt.
+func (s *sock) takePlain() error {
+	n := s.iw - s.ir
+	if len(s.pt)-s.pw < n {
+		if s.pr > 0 {
+			s.pw = copy(s.pt, s.pt[s.pr:s.pw])
+			s.pr = 0
+		}
+		if len(s.pt)-s.pw < n {
+			np := make([]byte, max(2*len(s.pt), s.pw+n))
+			s.grow(len(np) - len(s.pt))
+			s.pw = copy(np, s.pt[s.pr:s.pw])
+			s.pr = 0
+			s.pt = np
+		}
+	}
+	s.pw += copy(s.pt[s.pw:], s.in[s.ir:s.iw])
+	s.ir = s.iw
+	return nil
+}
+
 // room is the plaintext bytes the open record still takes.
 func (s *sock) room() int {
 	if s.rec < 0 {
 		return 0
+	}
+	if s.plain {
+		return maxPlain - (len(s.out) - s.rec)
 	}
 	return maxPlain - (len(s.out) - s.rec - recHdr - s.wr.extra())
 }
@@ -227,6 +258,9 @@ func (s *sock) openRec() {
 		s.out = n
 	}
 	s.rec = len(s.out)
+	if s.plain {
+		return
+	}
 	s.out = append(s.out, typeAppData, 3, 3, 0, 0)
 	if s.wr.explicit {
 		s.out = s.out[:len(s.out)+8] // TLS 1.2 AES-GCM's explicit nonce, written at the seal
@@ -236,6 +270,10 @@ func (s *sock) openRec() {
 // seal closes the open record and seals it in place.
 func (s *sock) seal() {
 	if s.rec < 0 {
+		return
+	}
+	if s.plain {
+		s.rec = -1
 		return
 	}
 	start := s.rec + recHdr
@@ -334,6 +372,7 @@ const (
 	frRST          = 3
 	frSettings     = 4
 	frPing         = 6
+	frPushPromise  = 5
 	frGoAway       = 7
 	frWindowUpdate = 8
 	frContinuation = 9
@@ -343,6 +382,9 @@ const (
 	flEndHeaders = 0x4
 	flPadded     = 0x8
 	flPriority   = 0x20
+
+	// maxFrame is HTTP/2's initial SETTINGS_MAX_FRAME_SIZE.
+	maxFrame = 1 << 14
 )
 
 func putFrameHeader(b []byte, n int, typ, flags byte, sid uint32) {

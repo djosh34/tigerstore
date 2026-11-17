@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"math"
+	"net"
 	"time"
 
 	etcdpb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -113,8 +114,17 @@ func newSideSecret() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// endpointOf is the endpoint a client dials ln at: its address, or a unix
+// socket's path as a unix URL.
+func endpointOf(ln net.Listener) string {
+	if a := ln.Addr(); a.Network() == "unix" {
+		return "unix://" + a.String()
+	}
+	return ln.Addr().String()
+}
+
 // selfClient is the node's client of itself: it dials addr, a client
-// listener of the node, with dial.
+// listener of the node, with dial, or without TLS when dial is nil.
 func selfClient(sys sysEnv, addr string, dial *tls.Config) (*clientv3.Client, error) {
 	return clientv3.New(clientv3.Config{
 		Endpoints: []string{addr}, TLS: dial, Logger: zap.NewNop(),
@@ -267,9 +277,14 @@ func (l *loop) forwardPromote(h handle, urls []string, req []byte) context.Cance
 			if err := dec(r); err != nil {
 				return nil, err
 			}
-			dial := l.selfTLS.Clone()
-			if dial.RootCAs = l.selfTLS.ClientCAs; dial.RootCAs != nil {
-				dial.InsecureSkipVerify = false
+			// The leader's client URLs: https ones with the client TLS,
+			// http ones without.
+			var dial *tls.Config
+			if l.selfTLS != nil {
+				dial = l.selfTLS.Clone()
+				if dial.RootCAs = l.selfTLS.ClientCAs; dial.RootCAs != nil {
+					dial.InsecureSkipVerify = false
+				}
 			}
 			cli, err := clientv3.New(clientv3.Config{Endpoints: urls, TLS: dial, Logger: zap.NewNop(), DialTimeout: 5 * time.Second})
 			if err != nil {

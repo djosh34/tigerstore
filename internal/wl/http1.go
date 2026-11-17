@@ -2,7 +2,6 @@ package wl
 
 import (
 	"context"
-	"crypto/tls"
 	"math"
 	"net"
 	"net/http"
@@ -86,7 +85,7 @@ func startHTTP1(ctx context.Context, conn *grpc.ClientConn, api *httpAPI) (*http
 
 // serve hands the server a connection after its handshake. The server
 // takes it unless it stopped.
-func (h *http1) serve(c *tls.Conn) {
+func (h *http1) serve(c net.Conn) {
 	select {
 	case h.ln.conns <- c:
 	case <-h.ln.closed:

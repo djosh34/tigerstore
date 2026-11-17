@@ -27,8 +27,13 @@ type Config struct {
 	// ClientURLs are the client URLs the node publishes.
 	ClientURLs []string
 	DataDir    string
-	// The listeners of the client and peer URLs. Both serve TLS only.
+	// The listeners of the client and peer URLs: ClientListeners and
+	// PeerListeners serve TLS, with ClientTLS and PeerServerTLS;
+	// PlainClientListeners, of http and unix client URLs, serve clients
+	// without TLS, as etcd does: HTTP/2 with prior knowledge (h2c) and
+	// HTTP/1.1 (plain.go).
 	ClientListeners, PeerListeners []net.Listener
+	PlainClientListeners           []net.Listener
 	ClientTLS                      *tls.Config
 	// PeerServerTLS checks the peers that connect; PeerClientTLS is how
 	// this node connects to them.
@@ -60,6 +65,10 @@ type Config struct {
 	// etcd's simple tokens. TokenTTL is --auth-token-ttl, BcryptCost
 	// --bcrypt-cost; 0 for etcd's defaults.
 	JWT *authtoken.JWT
+	// MaxStreams is etcd's --max-concurrent-streams: the streams a client
+	// connection may have open at once; 0, or above defaultMaxStreams, for
+	// defaultMaxStreams.
+	MaxStreams uint32
 	// ProgressNotify is etcd's --experimental-watch-progress-notify-interval.
 	ProgressNotify time.Duration
 	TokenTTL       time.Duration
@@ -98,9 +107,11 @@ func (c *Config) check() error {
 	switch {
 	case c.ID == 0:
 		return fmt.Errorf("%w: no member ID", errConfig)
-	case c.ClientTLS == nil || c.PeerServerTLS == nil || c.PeerClientTLS == nil:
-		return fmt.Errorf("%w: the client and peer URLs must be https", errConfig)
-	case len(c.ClientListeners) == 0 || len(c.PeerListeners) == 0:
+	case c.PeerServerTLS == nil || c.PeerClientTLS == nil:
+		return fmt.Errorf("%w: the peer URLs must be https", errConfig)
+	case c.ClientTLS == nil && len(c.ClientListeners) > 0:
+		return fmt.Errorf("%w: https client URLs need the client TLS", errConfig)
+	case len(c.ClientListeners)+len(c.PlainClientListeners) == 0 || len(c.PeerListeners) == 0:
 		return fmt.Errorf("%w: no client or peer listener", errConfig)
 	case c.Logger == nil:
 		return fmt.Errorf("%w: no logger", errConfig)

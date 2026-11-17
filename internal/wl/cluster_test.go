@@ -64,7 +64,8 @@ type testCluster struct {
 	joins   []bool
 	// budget is each node's MemoryBudget, 0 for none.
 	budget int64
-	// config, if set, changes each node's Config before it starts.
+	// config, if set, changes each node's Config, its listeners made,
+	// before it starts.
 	config func(*Config)
 }
 
@@ -144,9 +145,6 @@ func (tc *testCluster) startNode(t testing.TB, i int) {
 		ClientURLs: []string{"https://" + tc.endpoints[i]}, MemoryBudget: tc.budget,
 	}
 	cfg.Members = tc.members
-	if tc.config != nil {
-		tc.config(&cfg)
-	}
 	var err error
 	if cfg.ClientTLS, err = loadTLS(tc.certFile, tc.keyFile, tc.caFile, true); err != nil {
 		t.Fatal(err)
@@ -164,6 +162,9 @@ func (tc *testCluster) startNode(t testing.TB, i int) {
 		t.Fatal(err)
 	}
 	cfg.ClientListeners, cfg.PeerListeners = []net.Listener{cl}, []net.Listener{pl}
+	if tc.config != nil {
+		tc.config(&cfg)
+	}
 	go func() { tc.stopped[i] <- run(ctx, cfg) }()
 }
 

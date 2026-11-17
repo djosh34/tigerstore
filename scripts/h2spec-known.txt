@@ -1,0 +1,22 @@
+# h2spec cases that tigerstore's client port fails over TLS or h2c: the
+# case, a tab, and why it fails. scripts/h2spec.sh fails on a case not
+# listed here, and on a listed case that passes over both.
+#
+# h2spec's requests are GET / on stream 1 and up. The node serves gRPC
+# only: it answers a path no service serves at once with grpc-go's
+# Unimplemented, in trailers only, and keeps nothing of the stream after.
+# Most cases below then send a frame on a stream the node has closed,
+# which it drops as grpc-go's server does (http2Server.handleData,
+# incomingWindowUpdate on a stream gone), and which etcd's server fails
+# too.
+generic/2: Sends a PRIORITY frame on half-closed (remote) stream	the stream is answered at once, in trailers only, with no DATA frame, as gRPC answers an unknown method
+generic/2: Sends a WINDOW_UPDATE frame on half-closed (remote) stream	the stream is answered at once, in trailers only, with no DATA frame, as gRPC answers an unknown method
+http2/3.5: Sends invalid connection preface	h2c only: bytes that are not HTTP/2's preface go to HTTP/1.1, as etcd's plain listener sends them, and HTTP/1.1's answer is not an HTTP/2 frame (h2spec: "unexpected EOF")
+http2/5.1.2: Sends HEADERS frames that causes their advertised concurrent stream limit to be exceeded	each stream is answered and closed at once, so the streams never reach the limit; TestANodeServesPlainHTTPClients checks the refusal with streams that stay open
+http2/5.1: closed: Sends a DATA frame	DATA on a stream the node closed is dropped, as grpc-go drops it: the node keeps no state to tell closed from half-closed (local)
+http2/5.1: closed: Sends a DATA frame after sending RST_STREAM frame	DATA on a stream the node closed is dropped, as grpc-go drops it
+http2/5.1: half closed (remote): Sends a DATA frame	the node closed the stream with its answer, so the DATA is dropped, as grpc-go drops it
+http2/6.1: Sends a DATA frame on the stream that is not in "open" or "half-closed (local)" state	the node closed the stream with its answer, so the DATA is dropped, as grpc-go drops it
+http2/6.9.1: Sends multiple WINDOW_UPDATE frames increasing the flow control window to above 2^31-1 on a stream	the node closed the stream with its answer, so its window updates are ignored, as grpc-go ignores them; the connection's window overflow is refused
+http2/8.1.2.6: Sends a HEADERS frame with the "content-length" header field which does not equal the DATA frame payload length	content-length is not checked against the DATA received, as grpc-go does not check it; gRPC frames its messages itself
+http2/8.1.2.6: Sends a HEADERS frame with the "content-length" header field which does not equal the sum of the multiple DATA frames payload length	content-length is not checked against the DATA received, as grpc-go does not check it; gRPC frames its messages itself

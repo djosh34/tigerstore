@@ -251,9 +251,10 @@ type handoff struct {
 	peer   uint64 // the node an incoming or outgoing peer connection is with
 	beat   bool   // a peer connection of heartbeats and votes (beatMark)
 	addr   string // the peer address an incoming peer connection's hello names
+	plain  bool   // a client of a listener without TLS: h2c (plainHandoff)
 	cn     string
-	pre    *sock // an incoming peer connection's socket, its hello read
-	h1     *tls.Conn
+	pre    *sock    // an incoming peer connection's socket, its hello read
+	h1     net.Conn // a client's connection that net/http serves, HTTP/1.1
 }
 
 const (

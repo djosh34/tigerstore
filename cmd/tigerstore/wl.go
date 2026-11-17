@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -21,8 +20,6 @@ import (
 	"github.com/djosh34/tigerstore/internal/wl"
 )
 
-var errWLPlainClients = errors.New("the client URLs must be https")
-
 // runWL runs internal/wl with the node's identity, listeners, TLS and
 // memory budget until a signal or an error stops it.
 func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config, clientLns []clientListener, budget int64, lg *zap.Logger) error {
@@ -32,12 +29,14 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 		CORS: ec.CORS, HostWhitelist: ec.HostWhitelist, Pprof: ec.EnablePprof,
 		Logger: log.New(os.Stderr, "tigerstore-wl ", log.LstdFlags|log.Lmicroseconds),
 	}
+	// https and unixs URLs serve TLS; http and unix URLs serve clients
+	// without it, as etcd's do.
 	for _, l := range clientLns {
-		if !l.TLS {
-			closeListeners(clientLns, pcfg.Listeners, lg)
-			return errWLPlainClients
+		if l.TLS {
+			cfg.ClientListeners = append(cfg.ClientListeners, l.Listener)
+		} else {
+			cfg.PlainClientListeners = append(cfg.PlainClientListeners, l.Listener)
 		}
-		cfg.ClientListeners = append(cfg.ClientListeners, l.Listener)
 	}
 	// A node that did not bootstrap the cluster joined it: it learns the
 	// member list from the leader.
@@ -59,6 +58,7 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 		return fmt.Errorf("--auth-token %q: %w", ec.AuthToken, err)
 	}
 	cfg.ProgressNotify = ec.WatchProgressNotifyInterval
+	cfg.MaxStreams = ec.MaxConcurrentStreams
 	cfg.TokenTTL, cfg.BcryptCost = time.Duration(ec.AuthTokenTTL)*time.Second, int(ec.BcryptCost)
 	cfg.QuotaBackendBytes = ec.QuotaBackendBytes
 	if ec.AutoCompactionMode != "" {

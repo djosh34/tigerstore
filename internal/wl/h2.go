@@ -2,6 +2,7 @@ package wl
 
 import (
 	"bytes"
+	"cmp"
 	"compress/gzip"
 	"encoding/binary"
 	"errors"
@@ -163,13 +164,22 @@ type client struct {
 	hdrToken string // the auth token of the block being decoded
 	// hdrCaller is the side caller header of the block (side.go).
 	hdrCaller string
-	inBlock   bool
-	blockSid  uint32
-	blockEnd  bool
-	block     []byte
-	unacked   int
-	node      *node
-	flow      flow
+	// hdrBad: the block being decoded is not a well-formed request
+	// (RFC 9113 §8.3.1), or, as trailers (hdrTrailers), holds a
+	// pseudo-header; hdrSeen are the pseudo-headers it named, and
+	// hdrRegular says a regular field came.
+	hdrBad, hdrTrailers, hdrRegular bool
+	hdrSeen                         uint8
+	inBlock                         bool
+	blockSid                        uint32
+	// lastSid is the highest stream the client opened: a stream above it
+	// is idle, and a new one must be above it.
+	lastSid  uint32
+	blockEnd bool
+	block    []byte
+	unacked  int
+	node     *node
+	flow     flow
 	// identity is what the name of the client's certificate adds to the
 	// size of its writes as etcd counts it; cn is that name.
 	identity int
@@ -221,7 +231,7 @@ var errTooManyRequests = requestErr(codeResourceExhausted, "etcdserver: too many
 // handshake read past its end.
 func newClient(h *handoff, n *node) *client {
 	c := &client{
-		fd: h.fd, rd: h.rd, wr: h.wr, rec: -1, stats: &n.stats, pool: &n.cpool, outPool: &n.cout, outBase: clientOutBuf,
+		fd: h.fd, rd: h.rd, wr: h.wr, plain: h.plain, rec: -1, stats: &n.stats, pool: &n.cpool, outPool: &n.cout, outBase: clientOutBuf,
 		hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn), cn: h.cn, node: n,
 	}
 	if len(h.left) > 0 {
@@ -233,6 +243,7 @@ func newClient(h *handoff, n *node) *client {
 		c.iw = copy(c.in, h.left)
 	}
 	c.dec = hpack.NewDecoder(4096, func(f hpack.HeaderField) {
+		c.checkField(f)
 		switch f.Name {
 		case ":path":
 			c.hdrPath = f.Value
@@ -245,6 +256,71 @@ func newClient(h *handoff, n *node) *client {
 		}
 	})
 	return c
+}
+
+// The pseudo-headers of a request (hdrSeen).
+const (
+	seenMethod = 1 << iota
+	seenScheme
+	seenPath
+	seenAuthority
+	seenRequest = seenMethod | seenScheme | seenPath
+)
+
+// checkField marks the block being decoded bad (hdrBad) at a field a
+// request may not hold, as grpc-go's server refuses it: a pseudo-header
+// that is unknown, of a response, twice, after a regular field or in
+// trailers; an empty :path; a name in upper case; a field of the
+// connection's; te but trailers.
+func (c *client) checkField(f hpack.HeaderField) {
+	if name, ok := strings.CutPrefix(f.Name, ":"); ok {
+		var bit uint8
+		switch name {
+		case "method":
+			bit = seenMethod
+		case "scheme":
+			bit = seenScheme
+		case "path":
+			bit = seenPath
+			if f.Value == "" {
+				c.hdrBad = true
+			}
+		case "authority":
+			bit = seenAuthority
+		}
+		if bit == 0 || c.hdrTrailers || c.hdrRegular || c.hdrSeen&bit != 0 {
+			c.hdrBad = true
+		}
+		c.hdrSeen |= bit
+		return
+	}
+	c.hdrRegular = true
+	for i := range len(f.Name) {
+		if 'A' <= f.Name[i] && f.Name[i] <= 'Z' {
+			c.hdrBad = true
+		}
+	}
+	switch f.Name {
+	case "connection", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade":
+		c.hdrBad = true
+	case "te":
+		if f.Value != "trailers" {
+			c.hdrBad = true
+		}
+	}
+}
+
+// decodeBlock decodes a whole header block, as trailers or as a request,
+// and reports whether it is well formed.
+func (c *client) decodeBlock(block []byte, trailers bool) (bool, error) {
+	c.hdrBad, c.hdrTrailers, c.hdrRegular, c.hdrSeen = false, trailers, false, 0
+	if _, err := c.dec.Write(block); err != nil {
+		return false, err
+	}
+	if err := c.dec.Close(); err != nil {
+		return false, err
+	}
+	return !c.hdrBad && (trailers || c.hdrSeen&seenRequest == seenRequest), nil
 }
 
 // A client caches what at most hdrCacheMax header blocks of up to
@@ -390,21 +466,56 @@ func (c *client) endStream(s *stream) {
 
 var clientPreface = []byte("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n")
 
-// serverStart is the server's SETTINGS (no limit on streams, large stream
+// defaultMaxStreams is the most streams a client connection may have open
+// at once: etcd's default, math.MaxUint32, is more than a connection can
+// open in its life, and a lower bound refuses a client's stream before its
+// buffers run out instead.
+const defaultMaxStreams = 1 << 20
+
+// codeRefusedStream is HTTP/2's REFUSED_STREAM: the server did no work of
+// the stream, and the client may try it again.
+const codeRefusedStream = 0x7
+
+// serverStart is the server's SETTINGS (its limit on streams, large stream
 // windows) and a large connection window.
 func (c *client) start() {
 	var p [12]byte
 	binary.BigEndian.PutUint16(p[0:], 0x4) // INITIAL_WINDOW_SIZE
 	binary.BigEndian.PutUint32(p[2:], 1<<30)
 	binary.BigEndian.PutUint16(p[6:], 0x3) // MAX_CONCURRENT_STREAMS
-	binary.BigEndian.PutUint32(p[8:], 1<<20)
+	binary.BigEndian.PutUint32(p[8:], c.node.maxStreams)
 	c.writeFrame(frSettings, 0, p[:])
 	var w [4]byte
 	binary.BigEndian.PutUint32(w[:], 1<<30)
 	c.writeFrame(frWindowUpdate, 0, w[:])
 }
 
-var errProtocol = errors.New("HTTP/2 protocol error")
+// h2Error is an HTTP/2 connection error with its code, which the node
+// sends its client in a GOAWAY before it closes the connection.
+type h2Error uint32
+
+func (e h2Error) Error() string { return fmt.Sprintf("HTTP/2 connection error %#x", uint32(e)) }
+
+// HTTP/2's error codes the node sends.
+const (
+	errProtocol    h2Error = 0x1
+	errFlowControl h2Error = 0x3
+	errFrameSize   h2Error = 0x6
+)
+
+// goAway sends the client a GOAWAY with the error's code and the last
+// stream it opened, and what it can of it before the node closes the
+// connection.
+func (c *client) goAway(e h2Error) {
+	if !c.preface || c.broken {
+		return
+	}
+	var p [8]byte
+	binary.BigEndian.PutUint32(p[0:], c.lastSid)
+	binary.BigEndian.PutUint32(p[4:], uint32(e))
+	c.writeFrame(frGoAway, 0, p[:])
+	_, _ = c.flush()
+}
 
 // frames reads the frames in pt and hands complete gRPC messages to n.
 func (c *client) frames(n *node) error {
@@ -433,10 +544,12 @@ func (c *client) frames(n *node) error {
 		}
 		h := c.pt[c.pr : c.pr+9]
 		l := int(h[0])<<16 | int(h[1])<<8 | int(h[2])
+		if l > maxFrame {
+			// Past SETTINGS_MAX_FRAME_SIZE, which the node leaves at
+			// its initial value.
+			return errFrameSize
+		}
 		if avail < 9+l {
-			if l > 1<<24 {
-				return errProtocol
-			}
 			return nil
 		}
 		typ, flags := h[3], h[4]
@@ -444,6 +557,22 @@ func (c *client) frames(n *node) error {
 		p := c.pt[c.pr+9 : c.pr+9+l]
 		c.pr += 9 + l
 		if c.inBlock && typ != frContinuation {
+			return errProtocol
+		}
+		// The frames of a stream on stream 0, or of the connection on a
+		// stream, and frames of a stream still idle, break the
+		// connection (RFC 9113 §5.1, §6): a stream error the node takes
+		// as a connection error, as §5.4 lets it.
+		switch typ {
+		case frData, frHeaders, frPriority, frRST, frContinuation:
+			if sid == 0 {
+				return errProtocol
+			}
+		case frSettings, frPing, frGoAway:
+			if sid != 0 {
+				return errProtocol
+			}
+		case frPushPromise:
 			return errProtocol
 		}
 		switch typ {
@@ -464,7 +593,15 @@ func (c *client) frames(n *node) error {
 			}
 			s := c.get(sid)
 			if s == nil {
+				if sid > c.lastSid {
+					return errProtocol
+				}
+				// A stream the node closed, which the client may not
+				// know yet.
 				continue
+			}
+			if s.ended {
+				return errProtocol // STREAM_CLOSED: its client ended its side
 			}
 			if err := c.data(n, s, p); err != nil {
 				return err
@@ -489,7 +626,7 @@ func (c *client) frames(n *node) error {
 				p = p[1 : len(p)-int(p[0])]
 			}
 			if flags&flPriority != 0 {
-				if len(p) < 5 {
+				if len(p) < 5 || binary.BigEndian.Uint32(p)&(1<<31-1) == sid {
 					return errProtocol
 				}
 				p = p[5:]
@@ -522,7 +659,16 @@ func (c *client) frames(n *node) error {
 					return err
 				}
 			}
+		case frPriority:
+			// Priorities mean nothing to the node, but a malformed one
+			// still breaks the connection.
+			if l != 5 || binary.BigEndian.Uint32(p)&(1<<31-1) == sid {
+				return errProtocol
+			}
 		case frRST:
+			if l != 4 || sid > c.lastSid {
+				return errProtocol
+			}
 			c.dropHeld(sid)
 			if s := c.get(sid); s != nil {
 				if s.watch {
@@ -534,6 +680,9 @@ func (c *client) frames(n *node) error {
 				c.endStream(s)
 			}
 		case frSettings:
+			if flags&flAck != 0 && l != 0 {
+				return errProtocol
+			}
 			if flags&flAck == 0 {
 				if err := c.settings(p); err != nil {
 					return err
@@ -545,9 +694,19 @@ func (c *client) frames(n *node) error {
 			if len(p) != 4 {
 				return errProtocol
 			}
-			c.windowUpdate(sid, int64(binary.BigEndian.Uint32(p)&(1<<31-1)))
+			inc := int64(binary.BigEndian.Uint32(p) & (1<<31 - 1))
+			if inc == 0 || sid > c.lastSid {
+				return errProtocol
+			}
+			if c.windowOver(sid, inc) {
+				return errFlowControl
+			}
+			c.windowUpdate(sid, inc)
 		case frPing:
-			if flags&flAck == 0 && len(p) == 8 {
+			if len(p) != 8 {
+				return errProtocol
+			}
+			if flags&flAck == 0 {
 				c.writeFrame(frPing, flAck, p)
 				n.markDirty(&c.sock)
 			}
@@ -561,26 +720,35 @@ func (c *client) frames(n *node) error {
 func (c *client) headers(n *node, block []byte, continued bool) error {
 	sid := c.blockSid
 	if s := c.get(sid); s != nil {
-		// Trailers of the client: nothing to do but the end of its side.
-		if c.blockEnd && !s.ended {
-			s.ended = true
-			if sideKind(s.kind) {
-				n.sideEnded(c, s)
-			}
+		// Trailers of the client, which end its side: nothing to do but
+		// that end. More headers of a stream, or any after its end,
+		// break the connection.
+		if !c.blockEnd || s.ended {
+			return errProtocol
+		}
+		if ok, err := c.decodeBlock(block, true); err != nil || !ok {
+			return cmp.Or[error](err, errProtocol)
+		}
+		s.ended = true
+		if sideKind(s.kind) {
+			n.sideEnded(c, s)
 		}
 		return nil
 	}
+	// A new stream of the client's is odd and above its last; a closed
+	// one takes no more headers.
+	if sid&1 == 0 || sid <= c.lastSid {
+		return errProtocol
+	}
+	c.lastSid = sid
 	info, ok := hdrInfo{}, false
 	if !continued {
 		info, ok = c.hdrCache[string(block)]
 	}
 	if !ok {
 		c.hdrPath, c.hdrEnc, c.hdrToken, c.hdrCaller = "", "", "", ""
-		if _, err := c.dec.Write(block); err != nil {
-			return err
-		}
-		if err := c.dec.Close(); err != nil {
-			return err
+		if ok, err := c.decodeBlock(block, false); err != nil || !ok {
+			return cmp.Or[error](err, errProtocol)
 		}
 		info.kind, info.token = paths[c.hdrPath], c.hdrToken
 		if name, ok := strings.CutPrefix(c.hdrCaller, n.sideSecret+":"); ok && c.hdrCaller != "" {
@@ -600,6 +768,17 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 		} else if !keepsTable(block) {
 			clear(c.hdrCache)
 		}
+	}
+	if uint32(c.streams) >= n.maxStreams {
+		// One past the limit the client was told: refused, as grpc-go
+		// refuses it, and the client may send it again.
+		var p [4]byte
+		binary.BigEndian.PutUint32(p[:], codeRefusedStream)
+		b := c.frame(9 + 4)
+		putFrameHeader(b, 4, frRST, 0, sid)
+		copy(b[9:], p[:])
+		n.markDirty(&c.sock)
+		return nil
 	}
 	kind := info.kind
 	s := c.newStream(sid, kind)

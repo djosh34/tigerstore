@@ -198,6 +198,8 @@ type node struct {
 	compactor    compactor
 	// downgrade is the minor version a downgrade is on to, 0 for none.
 	downgrade int64
+	// maxStreams is --max-concurrent-streams (Config.MaxStreams).
+	maxStreams uint32
 	// progressEvery is --experimental-watch-progress-notify-interval,
 	// and progressAt when the next notifications go.
 	progressEvery time.Duration

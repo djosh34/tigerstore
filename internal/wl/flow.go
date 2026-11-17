@@ -82,6 +82,24 @@ func (c *client) windowUpdate(sid uint32, inc int64) {
 	c.drain()
 }
 
+// windowOver reports whether inc takes stream sid's window, or the
+// connection's for sid 0, past 2^31-1 (RFC 9113 §6.9.1).
+func (c *client) windowOver(sid uint32, inc int64) bool {
+	f := &c.flow
+	w := f.conn
+	if sid != 0 {
+		var ok bool
+		if w, ok = f.streams[sid]; !ok {
+			s := c.get(sid)
+			if s == nil {
+				return false
+			}
+			w = s.win
+		}
+	}
+	return w+inc > 1<<31-1
+}
+
 // setInitial applies a new SETTINGS_INITIAL_WINDOW_SIZE to every stream.
 func (c *client) setInitial(v int64) {
 	f := &c.flow
@@ -191,11 +209,20 @@ func (c *client) settings(p []byte) error {
 	}
 	for ; len(p) > 0; p = p[6:] {
 		id, v := binary.BigEndian.Uint16(p), binary.BigEndian.Uint32(p[2:])
-		if id == 0x4 { // SETTINGS_INITIAL_WINDOW_SIZE
+		switch id {
+		case 0x2: // SETTINGS_ENABLE_PUSH
+			if v > 1 {
+				return errProtocol
+			}
+		case 0x4: // SETTINGS_INITIAL_WINDOW_SIZE
 			if v > 1<<31-1 {
 				return errProtocol
 			}
 			c.setInitial(int64(v))
+		case 0x5: // SETTINGS_MAX_FRAME_SIZE
+			if v < maxFrame || v > 1<<24-1 {
+				return errProtocol
+			}
 		}
 	}
 	return nil
