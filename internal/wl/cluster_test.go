@@ -701,6 +701,14 @@ func TestAStartThatFailsStopsWhatItStarted(t *testing.T) {
 			}
 		}
 	})
+	// Nodes 2 and 3 go on, and their logs' and removers' goroutines count
+	// in both counts: each takes a write first, which it answers from its
+	// loop, after its start made them all. Counted while node 2 or 3 was
+	// still starting, between its log and its remover, the count before
+	// missed the remover it made later (#733: 24 of 400 runs in CI).
+	for _, ep := range tc.endpoints[1:] {
+		tc.clientOf(t, ep)
+	}
 	tc.stopNode(t, 0)
 	before, beforeStacks := logGoroutines()
 	failNode1 = true
