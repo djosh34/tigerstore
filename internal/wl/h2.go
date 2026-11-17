@@ -846,7 +846,10 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 	s := c.newStream(sid, kind)
 	s.gzip, s.token = info.gzip, info.token
 	s.caller, s.byCaller = info.caller, info.byCaller
-	n.waitForToken(c, s)
+	if !info.badEnc {
+		// etcd answers a call it cannot decode with no token checked.
+		n.waitForToken(c, s)
+	}
 	if kind != kUnknown {
 		n.callStarted(s)
 	}

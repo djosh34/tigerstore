@@ -25,10 +25,13 @@ import (
 // requests alone and lost their streams' ends).
 //
 // Its connection's other calls wait with it, so a call waits only for an
-// entry already in this node's log and not yet applied: an apply's lag,
-// not a replication's. A token naming an entry past the log is refused
-// at once, as before: waited for, one call of a made-up token stalled its
-// connection for requestTimeout, again and again, and the node's own
+// entry already in this node's log and not yet applied, and no longer
+// once the entry leaves the log: an apply's lag, or for requestTimeout
+// at most an uncommitted tail's that may never apply, as a partitioned
+// former leader holds; not a replication's. A token naming an entry past
+// the log is refused at once, as before: waited for, one call of a
+// made-up token stalled its connection for requestTimeout, again and
+// again, and the node's own
 // client, which every user's gateway call and Lock or Election goes
 // through, with it (the L re-check of d33d3711). Calls etcd answers with
 // no token checked do not wait: unknown methods, Health, Authenticate,
@@ -70,9 +73,10 @@ func (n *node) waitForToken(c *client, s *stream) {
 }
 
 // tokenReady reports whether c, which waits for the entry of a token,
-// reads on: the entry applied, or it waited requestTimeout.
+// reads on: the entry applied, it left the log, cut by Raft or replaced
+// by a snapshot, or it waited requestTimeout.
 func (n *node) tokenReady(c *client, now time.Time) bool {
-	return c.tokenWait <= n.applied || now.Sub(c.tokenAt) >= requestTimeout
+	return c.tokenWait <= n.applied || c.tokenWait > n.storage.lastIndex() || now.Sub(c.tokenAt) >= requestTimeout
 }
 
 // healthKind reports whether kind is a method of gRPC's Health service,
