@@ -404,3 +404,39 @@ func TestWALCutsARecordTornAtTheEnd(t *testing.T) {
 		t.Fatalf("scan returned end %d and %v, want %d and none", end, err, head)
 	}
 }
+
+// A sync that wrote loadBytes or more holds the next back for loadGap
+// after it started, and a smaller one for syncGap: a leader under load
+// takes large batches on every run, and a lightly loaded node's syncs
+// follow each other as before (#689, "0 ms: the bisect").
+func TestASyncAfterALargeOneWaitsTheLoadGap(t *testing.T) {
+	w, err := openWAL(sysEnv{}, t.TempDir(), sizeFor(0).stage, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.close()
+	if err := w.write([]*pb.Entry{testEntry(1, 1, string(make([]byte, loadBytes)))}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	if w.lastBytes < loadBytes {
+		t.Fatalf("the sync of %d bytes recorded %d", w.off, w.lastBytes)
+	}
+	if err := w.write([]*pb.Entry{testEntry(2, 1, "x")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	w.pending = append(w.pending, walJob{end: w.off})
+	w.lastKick = time.Now().Add(-2 * syncGap)
+	w.kick()
+	if !w.deferred || w.inflight {
+		t.Fatalf("a sync started %v after one of %d bytes", 2*syncGap, w.lastBytes)
+	}
+	w.lastBytes = loadBytes - 1
+	w.kick()
+	if w.deferred || !w.inflight {
+		t.Fatalf("a sync %v after one of %d bytes waited", 2*syncGap, w.lastBytes)
+	}
+	if w.lastBytes >= loadBytes {
+		t.Fatalf("a sync of a small append recorded %d bytes", w.lastBytes)
+	}
+}

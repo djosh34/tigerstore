@@ -50,6 +50,10 @@ import (
 const (
 	block   = 4096
 	syncGap = 800 * time.Microsecond
+	// A sync that wrote loadBytes or more is followed by the next no
+	// sooner than loadGap after it started (wal.gap).
+	loadGap   = 4 * time.Millisecond
+	loadBytes = 64 << 10
 
 	recHead       = 4 + 4 + 1
 	entHead       = 8 + 8 + 1
@@ -96,10 +100,12 @@ type wal struct {
 	done     atomic.Int64 // the helper's: the log is durable up to here
 	kickFD   int          // the helper waits on it
 	wakeFD   int          // the loop waits on it
-	// lastKick is when the last sync started; deferred, that appends wait
-	// for the next one at lastKick + syncGap.
-	lastKick time.Time
-	deferred bool
+	// lastKick is when the last sync started, and lastBytes what it
+	// wrote; deferred, that appends wait for the next one at lastKick +
+	// gap().
+	lastKick  time.Time
+	lastBytes int64
+	deferred  bool
 	// failed is the helper's error; it stops writing then.
 	failed atomic.Pointer[error]
 
@@ -550,25 +556,46 @@ func (w *wal) plantedUnsyncedWrite(from, n, pos int64) error {
 }
 
 // kick starts a sync if none runs and appends wait, at most one every
-// syncGap: under load each sync takes more appends, and the loop wakes
-// for fewer completions, so its turns and the acks they send grow.
+// gap(): under load each sync takes more appends, and the loop wakes for
+// fewer completions, so its turns and the acks they send grow.
 func (w *wal) kick() {
 	if w.inflight || len(w.pending) == 0 {
 		return
 	}
 	now := time.Now()
-	if d := now.Sub(w.lastKick); d < syncGap {
+	if d := now.Sub(w.lastKick); d < w.gap() {
 		w.deferred = true
 		return
 	}
 	w.deferred = false
 	w.lastKick = now
 	w.stats.syncs++
+	w.lastBytes = w.off - w.want.Load()
 	w.want.Store(w.off)
 	w.inflight = true
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], 1)
 	_, _ = sysWrite(w.kickFD, b[:])
+}
+
+// gap is the least time between the starts of two syncs: syncGap, or
+// loadGap after a sync that wrote loadBytes or more.
+//
+// Under the bench's Kubernetes load at 0 ms a leader ran in one of two
+// modes, decided per run (#689, "0 ms: the bisect"): syncs of about
+// 770 KB every 3.6-5.7 ms, at 3.1-3.5 µs of the loop per op, or of about
+// 156 KB every 1.1-2.9 ms, with four to five times the turns, proposals,
+// ReadIndex rounds and peer messages per op, at 5.2-6.0 µs, about a
+// quarter less throughput. The helper wrote about 90% of the time in
+// both, so syncGap never held the small ones back. With loadGap, every
+// run takes the large batches; a node whose syncs write little, as under
+// a light load, still syncs syncGap apart, and a lone write waits for
+// none.
+func (w *wal) gap() time.Duration {
+	if w.lastBytes >= loadBytes {
+		return loadGap
+	}
+	return syncGap
 }
 
 // fits reports whether the stage has room for the records of ents and a
