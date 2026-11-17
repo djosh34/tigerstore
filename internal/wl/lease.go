@@ -186,7 +186,10 @@ func (n *node) renewed(id int64) {
 // apply alive on a follower, and the revoke then take the lease (#709).
 // The apply renews again.
 func (n *node) renewProposed(data []byte) {
-	if !isBatch(data) {
+	// Planted (B34, #709's kind): the leader moves a deadline only as it
+	// applies a keepalive, and may decide a revoke with one ahead of it
+	// in the log.
+	if !isBatch(data) || planted.On("B34") {
 		return
 	}
 	p := batchHdr

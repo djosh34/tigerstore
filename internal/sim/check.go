@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -429,7 +430,11 @@ func replay(log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) 
 //     the revoke's in the log;
 //   - a grant or keepalive called before it and answered alive with a TTL
 //     had that TTL run out by the revoke, less the clock envelope of
-//     driftPerMille, unless a client asked for the revoke.
+//     driftPerMille, unless a client asked for the revoke: called a
+//     revoke of the lease before it took effect, and after the lease's
+//     grant before it. A client's revoke called at any other time, after
+//     the revoke or of an earlier grant of the ID, does not excuse it
+//     (#689's area-4 review).
 //
 // leasesExpire checks when a node decided to expire a lease; this checks
 // what the cluster did, whichever node decided it and whenever, so that a
@@ -438,14 +443,32 @@ func replay(log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) 
 // is left out of the first rule.
 func revokesKeepPromises(history []*Record, revokedAt map[int64]int64, driftPerMille int64) error {
 	granted := map[int64]int64{}
-	asked := map[int64]bool{}
+	grants := map[int64][]int64{} // when each grant of an ID was called
+	asks := map[int64][]int64{}   // when clients called a revoke of it
 	for _, r := range history {
 		if g, ok := r.Resp.(*pb.LeaseGrantResponse); ok && g != nil {
 			granted[g.ID] = max(granted[g.ID], r.Call)
+			grants[g.ID] = append(grants[g.ID], r.Call)
 		}
 		if req, ok := r.req.(*pb.LeaseRevokeRequest); ok {
-			asked[req.ID] = true
+			asks[req.ID] = append(asks[req.ID], r.Call)
 		}
+	}
+	// asked reports whether a client asked for lease id's revoke that
+	// took effect at at.
+	asked := func(id, at int64) bool {
+		from := int64(math.MinInt64)
+		for _, g := range grants[id] {
+			if g < at {
+				from = max(from, g)
+			}
+		}
+		for _, c := range asks[id] {
+			if c >= from && c < at {
+				return true
+			}
+		}
+		return false
 	}
 	for _, r := range history {
 		var id, ttl int64
@@ -476,7 +499,7 @@ func revokesKeepPromises(history []*Record, revokedAt map[int64]int64, driftPerM
 		if driftPerMille == 0 {
 			early = 0
 		}
-		if r.Call < at && !asked[id] && at < r.Call+ttl*Second-early {
+		if r.Call < at && at < r.Call+ttl*Second-early && !asked(id, at) {
 			return fmt.Errorf("lease %d was revoked at %d ms, but a call at %d ms was answered with TTL %d s",
 				id, at/Millisecond, r.Call/Millisecond, ttl)
 		}

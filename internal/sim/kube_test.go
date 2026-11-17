@@ -303,6 +303,17 @@ func TestRevokesKeepPromises(t *testing.T) {
 		{"kept alive 6 s before the revoke", []*Record{grant(1, 0), keepAlive(1, 5, 4*Second)}, true},
 		{"kept alive 2 s before the revoke", []*Record{grant(1, 0), keepAlive(1, 5, 8*Second)}, false},
 		{"kept alive 2 s before a revoke a client asked for", []*Record{grant(1, 0), keepAlive(1, 5, 8*Second), revoke}, true},
+		// A client's revoke exempts the revoke only if it was called
+		// before the revoke took effect, and after the grant before it
+		// (#689's area-4 review, finding 23).
+		{"kept alive 2 s before a revoke a client asked for only after it", []*Record{
+			grant(1, 0), keepAlive(1, 5, 8*Second),
+			{Call: 12 * Second, Return: 12 * Second, req: &pb.LeaseRevokeRequest{ID: 1}, Resp: &pb.LeaseRevokeResponse{}},
+		}, false},
+		{"kept alive 2 s before a revoke a client asked for before the grant", []*Record{
+			{Call: -Second, Return: -Second, req: &pb.LeaseRevokeRequest{ID: 1}},
+			grant(1, 0), keepAlive(1, 5, 8*Second),
+		}, false},
 		{"kept alive after the revoke", []*Record{grant(1, 0), keepAlive(1, 5, 11*Second)}, false},
 		{"not found after the revoke", []*Record{grant(1, 0), keepAlive(1, 0, 11*Second)}, true},
 		{"granted again after the revoke", []*Record{grant(1, 0), grant(1, 10500*Millisecond), keepAlive(1, 5, 11*Second)}, true},

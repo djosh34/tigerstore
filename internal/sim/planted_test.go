@@ -211,6 +211,11 @@ var plantedCases = map[string]plantedCase{
 	// the revision and gets the value that overwrote it.
 	"B31": {seeds: 32, cfg: wlFaultsConfig, want: badValue + `|` + badState + `|` + badWatch},
 	"B33": {seeds: 32, cfg: wlFaultsConfig, want: inventedState + `|malformed batch|` + stuck},
+	// B34, #709's kind: a leader whose disk stalls applies its keepalives
+	// late and revokes a lease behind one in its log, which a follower
+	// applied and answered alive. Lease rules 2 and 3 (revokesKeepPromises)
+	// catch what the clients were told.
+	"B34": {seeds: 64, cfg: wlStalledLeaderConfig, want: `answered a keepalive called at \d+ ms with TTL \d+ s, after a node applied its revoke|was revoked at \d+ ms, but a call at \d+ ms was answered with TTL`},
 }
 
 // wlDamageConfig runs wl nodes with crashes and, after them, damage at
