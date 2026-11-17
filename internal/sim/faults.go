@@ -121,7 +121,7 @@ func (s *Sim) injectDiskFault() {
 
 // otherOps are the disk operations besides writes and syncs that a disk
 // fault can fail.
-var otherOps = []simfs.Op{simfs.OpCreate, simfs.OpOpen, simfs.OpRead, simfs.OpTruncate, simfs.OpRemove, simfs.OpSyncDir, simfs.OpRename}
+var otherOps = []simfs.Op{simfs.OpCreate, simfs.OpOpen, simfs.OpRead, simfs.OpTruncate, simfs.OpRemove, simfs.OpSyncDir, simfs.OpRename, simfs.OpMkdir}
 
 // armDiskFault arms a disk fault on n: a failed sync (kind 0), with EIO
 // on the next truncate if cutFails is set, EIO on the next write (1), a

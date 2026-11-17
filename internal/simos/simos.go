@@ -154,8 +154,14 @@ func (n *Node) Open(path string, flags int, _ uint32) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	if flags&unix.O_DIRECTORY != 0 || name == "" || n.isDir(name) {
+	if name == "" || n.isDir(name) {
 		return n.add(&dir{n: n, name: name}), nil
+	}
+	if flags&unix.O_DIRECTORY != 0 {
+		if _, err := n.disk.Open(name); err == nil {
+			return -1, unix.ENOTDIR
+		}
+		return -1, unix.ENOENT
 	}
 	h, err := n.disk.Open(name)
 	switch {
@@ -188,8 +194,20 @@ func (n *Node) OpenDirect(path string) (int, error) {
 	return fd, nil
 }
 
-// isDir reports whether name is a directory: a prefix of some file's.
+// dirDisk is a disk that has directories of their own (simfs.Disk): one
+// is there once made, whether or not it holds a name.
+type dirDisk interface {
+	Mkdir(name string) error
+	IsDir(name string) bool
+	Dirs() []string
+}
+
+// isDir reports whether name is a directory: one the disk made, or, on a
+// disk without directories, a prefix of some file's.
 func (n *Node) isDir(name string) bool {
+	if d, ok := n.disk.(dirDisk); ok {
+		return d.IsDir(name)
+	}
 	names, err := n.disk.List()
 	if err != nil {
 		return false
@@ -202,7 +220,32 @@ func (n *Node) isDir(name string) bool {
 	return false
 }
 
-func (n *Node) MkdirAll(string) error { return nil } // directories are the names' prefixes
+// MkdirAll makes directory path and each that holds it, where they are
+// not, as os.MkdirAll does. A disk without directories has only names,
+// whose prefixes are its directories: there it does nothing.
+func (n *Node) MkdirAll(path string) error {
+	name, err := n.name(path)
+	if err != nil {
+		return err
+	}
+	d, ok := n.disk.(dirDisk)
+	if !ok || name == "" {
+		return nil
+	}
+	for i := 0; i <= len(name); i++ {
+		if i < len(name) && name[i] != '/' {
+			continue
+		}
+		part := name[:i]
+		if d.IsDir(part) {
+			continue
+		}
+		if err := d.Mkdir(part); err != nil {
+			return &fs.PathError{Op: "mkdir", Path: n.root + "/" + part, Err: sysErr(err)}
+		}
+	}
+	return nil
+}
 
 // FreeSpace returns the room left on the node's disk, as statfs's free
 // blocks available, or the most an int64 holds where the disk has no
@@ -222,6 +265,14 @@ func (n *Node) ReadDir(path string) ([]string, error) {
 	all, err := n.disk.List()
 	if err != nil {
 		return nil, err
+	}
+	d, dirs := n.disk.(dirDisk)
+	if dirs {
+		if !d.IsDir(name) {
+			return nil, &fs.PathError{Op: "open", Path: path, Err: unix.ENOENT}
+		}
+		// A directory it holds is one of its names, empty or not.
+		all = append(all, d.Dirs()...)
 	}
 	prefix := name + "/"
 	if name == "" {

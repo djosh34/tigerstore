@@ -184,6 +184,33 @@ func (d *disk) SyncDir() error {
 	return d.call(simfs.OpSyncDir, "", d.p.n.disk.SyncDir)
 }
 
+// SyncDirOf syncs directory dir alone (simfs.Disk.SyncDirOf), as a wl
+// node's fsync of a directory does through simos. Without it simos took
+// the whole disk's SyncDir, and every directory's sync made every name
+// durable (#689's area-1 review, finding 25).
+func (d *disk) SyncDirOf(dir string) error {
+	return d.call(simfs.OpSyncDir, dir, func() error { return d.p.n.disk.SyncDirOf(dir) })
+}
+
+// Mkdir makes directory name (simfs.Disk.Mkdir).
+func (d *disk) Mkdir(name string) error {
+	return d.call(simfs.OpMkdir, name, func() error { return d.p.n.disk.Mkdir(name) })
+}
+
+// IsDir reports whether name is a directory now (simfs.Disk.IsDir).
+func (d *disk) IsDir(name string) bool {
+	d.s.mu.Lock()
+	defer d.s.mu.Unlock()
+	return d.p.n.disk.IsDir(name)
+}
+
+// Dirs returns the directories made, in order (simfs.Disk.Dirs).
+func (d *disk) Dirs() []string {
+	d.s.mu.Lock()
+	defer d.s.mu.Unlock()
+	return d.p.n.disk.Dirs()
+}
+
 // file is an open file of a process. It knows whether everything written
 // to it is synced, so that a checkpoint closed right after its last sync
 // counts as complete.

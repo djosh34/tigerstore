@@ -25,6 +25,25 @@ func TestANodesFilesBehaveAsTheSystems(t *testing.T) {
 	if _, err := n.Open("/elsewhere/f", unix.O_RDWR|unix.O_CREAT, 0o600); !errors.Is(err, unix.EACCES) {
 		t.Fatalf("a file outside the data dir: %v", err)
 	}
+	// A directory is there once made, and a file only in one that is
+	// (#689's area-1 review, finding 25).
+	if _, err := n.Open("/data/wal/a", unix.O_RDWR|unix.O_CREAT, 0o600); !errors.Is(err, unix.ENOENT) {
+		t.Fatalf("a file created in a directory not made: %v", err)
+	}
+	if _, err := n.Open("/data/wal", unix.O_RDONLY|unix.O_DIRECTORY, 0); !errors.Is(err, unix.ENOENT) {
+		t.Fatalf("a directory not made opened: %v", err)
+	}
+	if _, err := n.ReadDir("/data/wal"); !errors.Is(err, unix.ENOENT) {
+		t.Fatalf("a directory not made read: %v", err)
+	}
+	for _, dir := range []string{"/data/wal", "/data/ckpt", "/data/wal"} {
+		if err := n.MkdirAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if names, err := n.ReadDir("/data"); err != nil || !slices.Equal(slices.Sorted(slices.Values(names)), []string{"ckpt", "wal"}) {
+		t.Fatalf("the data dir holds %v %v, want its two empty directories", names, err)
+	}
 	if _, err := n.Open("/data/wal/missing", unix.O_RDWR, 0); !errors.Is(err, unix.ENOENT) {
 		t.Fatalf("a missing file: %v", err)
 	}
@@ -75,8 +94,11 @@ func TestANodesFilesBehaveAsTheSystems(t *testing.T) {
 	if err := n.Rename("/data/wal/a", "/data/ckpt/b"); err != nil {
 		t.Fatal(err)
 	}
-	if names, err := n.ReadDir("/data"); err != nil || !slices.Equal(slices.Sorted(slices.Values(names)), []string{"ckpt"}) {
+	if names, err := n.ReadDir("/data"); err != nil || !slices.Equal(slices.Sorted(slices.Values(names)), []string{"ckpt", "wal"}) {
 		t.Fatalf("the data dir holds %v %v", names, err)
+	}
+	if names, err := n.ReadDir("/data/wal"); err != nil || len(names) != 0 {
+		t.Fatalf("wal/, emptied, holds %v %v", names, err)
 	}
 	if names, err := n.ReadDir("/data/ckpt"); err != nil || !slices.Equal(names, []string{"b"}) {
 		t.Fatalf("ckpt/ holds %v %v", names, err)
@@ -96,6 +118,9 @@ func TestANodesFilesBehaveAsTheSystems(t *testing.T) {
 		t.Fatalf("the file grown by a truncate reads %q %v", p[:k], err)
 	}
 	_ = o.Close(fd)
+	if _, err := n.Open("/data/ckpt/b", unix.O_RDONLY|unix.O_DIRECTORY, 0); !errors.Is(err, unix.ENOTDIR) {
+		t.Fatalf("a file opened as a directory: %v", err)
+	}
 	// A directory opens, for its sync.
 	dfd, err := n.Open("/data/ckpt", unix.O_RDONLY|unix.O_DIRECTORY, 0)
 	if err != nil {
@@ -111,8 +136,11 @@ func TestANodesFilesBehaveAsTheSystems(t *testing.T) {
 	if err := n.Remove("/data/ckpt/b"); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("removing a file twice: %v", err)
 	}
-	if err := n.MkdirAll("/data/x"); err != nil {
+	if err := n.MkdirAll("/data/x/y"); err != nil {
 		t.Fatal(err)
+	}
+	if !disk.IsDir("x") || !disk.IsDir("x/y") {
+		t.Fatalf("MkdirAll made %v, want x and x/y", disk.Dirs())
 	}
 	if free, err := n.FreeSpace("/data"); err != nil || free <= 0 {
 		t.Fatalf("free space: %d %v", free, err)
@@ -125,21 +153,26 @@ func TestADirectWriteIsDurableWhenItReturns(t *testing.T) {
 	o := New()
 	disk := simfs.New()
 	n := o.NewNode("/data", disk, nil)
+	if err := n.MkdirAll("/data/wal"); err != nil {
+		t.Fatal(err)
+	}
 	fd, err := n.Open("/data/wal/s", unix.O_WRONLY|unix.O_CREAT, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = o.Close(fd)
 	// The new name is durable once its directory is synced, as wl's log
-	// syncs it.
-	dfd, err := n.Open("/data/wal", unix.O_RDONLY|unix.O_DIRECTORY, 0)
-	if err != nil {
-		t.Fatal(err)
+	// syncs it, and the directory's own once the data dir is.
+	for _, dir := range []string{"/data", "/data/wal"} {
+		dfd, err := n.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := o.Fsync(dfd); err != nil {
+			t.Fatal(err)
+		}
+		_ = o.Close(dfd)
 	}
-	if err := o.Fsync(dfd); err != nil {
-		t.Fatal(err)
-	}
-	_ = o.Close(dfd)
 	fd, err = n.OpenDirect("/data/wal/s")
 	if err != nil {
 		t.Fatal(err)

@@ -55,6 +55,22 @@ func (l *lockedDisk) Remove(name string) error { return l.do(func() error { retu
 func (l *lockedDisk) Rename(o, n string) error { return l.do(func() error { return l.d.Rename(o, n) }) }
 func (l *lockedDisk) SyncDir() error           { return l.do(l.d.SyncDir) }
 
+func (l *lockedDisk) SyncDirOf(dir string) error {
+	return l.do(func() error { return l.d.SyncDirOf(dir) })
+}
+
+func (l *lockedDisk) Mkdir(name string) error { return l.do(func() error { return l.d.Mkdir(name) }) }
+
+func (l *lockedDisk) IsDir(name string) (is bool) {
+	_ = l.do(func() error { is = l.d.IsDir(name); return nil })
+	return is
+}
+
+func (l *lockedDisk) Dirs() (dirs []string) {
+	_ = l.do(func() error { dirs = l.d.Dirs(); return nil })
+	return dirs
+}
+
 type lockedFile struct {
 	l   *lockedDisk
 	h   wal.File
