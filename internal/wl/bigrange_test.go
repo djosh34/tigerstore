@@ -48,11 +48,12 @@ func TestALargeRangeAndCatchUpStayWithinTheBudget(t *testing.T) {
 	l := loopOf(tc.ids[0])
 	z := sizeFor(budget)
 	// What the clients' send buffers, what waits in them for window and
-	// what the replies in pieces hold, together (node.cout), may take:
-	// every client within its share, as TestASlowWatcherStaysWithinItsShare
-	// bounds it, and a message over it each. The fetches: the loop's share
-	// of values fetched (fetchedMax).
-	sendLimit := z.clientBufs() + 2*maxMsg
+	// what the replies in pieces hold, together (node.cout), may take, as
+	// TestASlowWatcherStaysWithinItsShare bounds it: every client within
+	// its share, a message over it each, and a send buffer's room as it
+	// doubles (#725). The fetches: the loop's share of values fetched
+	// (fetchedMax).
+	sendLimit := z.clientBufs() + 2*maxMsg + 4*outBuf
 	fetchLimit := fetchedMax(budget)
 	away := func() {
 		t.Helper()

@@ -128,7 +128,7 @@ func (n *node) bigReady() bool {
 		if c == nil {
 			return true
 		}
-		if c.backedUp() || b.pos < len(b.buf) && (c.flow.conn <= 0 || s.win <= 0 || s.holds) {
+		if c.waiting() >= n.connOut || b.pos < len(b.buf) && (c.flow.conn <= 0 || s.win <= 0 || s.holds) {
 			continue
 		}
 		return true
@@ -170,9 +170,14 @@ func (n *node) stepBig(b *bigRange) bool {
 			return false
 		}
 	}
-	for !c.backedUp() {
+	for {
+		// What waits to be sent to the client stays within its share.
+		room := n.connOut - c.waiting()
+		if room <= 0 {
+			return true
+		}
 		if b.pos < len(b.buf) {
-			m := min(int64(len(b.buf)-b.pos), c.flow.conn, s.win)
+			m := min(int64(len(b.buf)-b.pos), c.flow.conn, s.win, room)
 			if m <= 0 || s.holds {
 				return true // it waits for window
 			}
@@ -200,7 +205,6 @@ func (n *node) stepBig(b *bigRange) bool {
 			return false
 		}
 	}
-	return true
 }
 
 // endBig lets go of what b holds.

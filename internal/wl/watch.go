@@ -611,9 +611,14 @@ func (n *node) syncWatchers() error {
 			w.remove(i)
 			continue
 		}
-		if budget.left() && !c.slow() && !x.fetchWait {
+		if room := n.connOut - c.waiting(); budget.left() && room > 0 && !c.slow() && !x.fetchWait {
+			// It writes what its client's share has room for, at least a
+			// revision's events (#725).
 			budget.away = false
+			all := budget.bytes
+			budget.bytes = min(all, room)
 			done, err := n.catchUp(x, &budget, func(evs []event) { n.writeEvents(c, s, x, evs) })
+			budget.bytes = all - (min(all, room) - budget.bytes)
 			if errors.Is(err, errPrevCompacted) {
 				n.writeCompacted(c, s, x)
 				w.remove(i)
@@ -647,7 +652,7 @@ func (n *node) syncReady() bool {
 		if !x.active || x.syncRev == 0 || x.fetchWait {
 			continue
 		}
-		if c, _ := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid)); c == nil || !c.slow() {
+		if c, _ := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid)); c == nil || !c.slow() && c.waiting() < n.connOut {
 			return true
 		}
 	}
