@@ -285,6 +285,22 @@ func TestTheWholeLogReadsBackBeforeACheckpoint(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			// A checkpoint cuts the log only up to the one before it
+			// (cutPoint from ckptFrom): one checkpoint, as a slow run
+			// takes, leaves it uncut. The cut case writes on until the
+			// node's pointer names a cut (#738).
+			for i := 50; cut; i++ {
+				p, err := readPointer(envOf(nil), filepath.Join(tc.dataDir(0), "ckpt"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if p != nil && p.cut > 0 {
+					break
+				}
+				if _, err := c.Put(ctx, fmt.Sprintf("/w/%02d", i), strings.Repeat("v", 200)); err != nil {
+					t.Fatal(err)
+				}
+			}
 			tc.stop(t)
 			whole, err := ReadWholeLog(nil, tc.dataDir(0))
 			if err != nil {
