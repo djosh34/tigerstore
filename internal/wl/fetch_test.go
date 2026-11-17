@@ -299,6 +299,13 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	for first := 0; first < keys; first += 100 {
 		go func() {
 			r, err := c.Get(ctx, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
+			// Twenty replies of 800 KiB at once may pass the connection's
+			// share of a 96 MiB budget: the node refuses the next as etcd
+			// does, and the client tries again (CI's coverage run).
+			for err != nil && strings.Contains(err.Error(), errTooManyRequests.Error()) && ctx.Err() == nil {
+				time.Sleep(20 * time.Millisecond)
+				r, err = c.Get(ctx, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
+			}
 			if err == nil {
 				for j, kv := range r.Kvs {
 					if string(kv.Value) != value(first+j) {
