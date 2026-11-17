@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -14,15 +15,25 @@ import (
 )
 
 // memLog is a log in memory: values are appended and named by offset.
-type memLog struct{ b []byte }
+// memLog is a log in memory. A checkpoint's writer reads it from its own
+// goroutine while a test writes on (the model test, heldmodel_test.go),
+// so its writes and reads take mu.
+type memLog struct {
+	mu sync.Mutex
+	b  []byte
+}
 
 func (l *memLog) add(v string) int64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	off := int64(len(l.b))
 	l.b = append(l.b, v...)
 	return off
 }
 
 func (l *memLog) read(p []byte, off int64) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	if off < 0 || off+int64(len(p)) > int64(len(l.b)) {
 		return errors.New("read past the end")
 	}
@@ -32,7 +43,11 @@ func (l *memLog) read(p []byte, off int64) error {
 
 // A memLog is durable as soon as it is written: a checkpoint's writer
 // reads it as it reads the log.
-func (l *memLog) durableEnd() int64                     { return int64(len(l.b)) }
+func (l *memLog) durableEnd() int64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return int64(len(l.b))
+}
 func (l *memLog) readDurable(p []byte, off int64) error { return l.read(p, off) }
 
 func newTestStore(t *testing.T) (*store, *memLog) {
