@@ -19,6 +19,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/status"
 )
@@ -659,5 +660,215 @@ func TestAWatchsLargeEventsComeInFragments(t *testing.T) {
 	}
 	if got != len(values) {
 		t.Fatalf("the watch got %d events, want %d", got, len(values))
+	}
+}
+
+// A watch stream cancels only its own watches. Stream A creates watch 7
+// and cancels it; stream B creates its own watch 7, which takes the slot
+// A's freed; A cancels 7 again. A's second cancel finds no watch of its
+// own, so etcd answers nothing, and B's watch still gets its events.
+func TestAStreamCancelsOnlyItsOwnWatch(t *testing.T) {
+	tc := newTestCluster(t)
+	// One node, so that both streams' watches share its slots.
+	c := tc.clientOf(t, tc.endpoints[0])
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	stream := func() pb.Watch_WatchClient {
+		ws, err := pb.NewWatchClient(c.ActiveConnection()).Watch(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ws
+	}
+	send := func(ws pb.Watch_WatchClient, r *pb.WatchRequest) {
+		t.Helper()
+		if err := ws.Send(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	recv := func(ws pb.Watch_WatchClient) *pb.WatchResponse {
+		t.Helper()
+		resp, err := ws.Recv()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	create := &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{Key: []byte("/own/k"), WatchId: 7}}}
+	cancel7 := &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CancelRequest{CancelRequest: &pb.WatchCancelRequest{WatchId: 7}}}
+	a, b := stream(), stream()
+	send(a, create)
+	if r := recv(a); !r.Created || r.WatchId != 7 {
+		t.Fatalf("A's create: %v", r)
+	}
+	send(a, cancel7)
+	if r := recv(a); !r.Canceled || r.WatchId != 7 {
+		t.Fatalf("A's cancel: %v", r)
+	}
+	send(b, create)
+	if r := recv(b); !r.Created || r.WatchId != 7 {
+		t.Fatalf("B's create: %v", r)
+	}
+	send(a, cancel7)
+	if _, err := c.Put(ctx, "/own/k", "v"); err != nil {
+		t.Fatal(err)
+	}
+	if r := recv(b); r.Canceled || len(r.Events) != 1 || string(r.Events[0].Kv.Key) != "/own/k" {
+		t.Fatalf("B's watch after A canceled its own 7 again: %v", r)
+	}
+	// A got nothing for its second cancel: its next answer is to a create.
+	send(a, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{Key: []byte("/own/other"), WatchId: 8}}})
+	if r := recv(a); !r.Created || r.WatchId != 8 {
+		t.Fatalf("A's answer after its second cancel: %v", r)
+	}
+}
+
+// A watch event's previous value is the key at the revision before, as
+// etcd's watch server reads it, for a live watch and one caught up alike,
+// also where one Txn changes the key twice: a put of /pk, then a delete
+// of the range from /pk with the end "\x00", which etcd's interval check
+// takes as empty and lets through. Both events carry the value before the
+// Txn, not the one its put wrote.
+func TestAWatchEventsPreviousValueIsTheRevisionBefore(t *testing.T) {
+	tc := newTestCluster(t)
+	c := tc.clientOf(t, tc.endpoints[0])
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if _, err := c.Put(ctx, "/pk", "old"); err != nil {
+		t.Fatal(err)
+	}
+	live := c.Watch(ctx, "/pk", clientv3.WithPrevKV())
+	r, err := c.Txn(ctx).Then(clientv3.OpPut("/pk", "new"), clientv3.OpDelete("/pk", clientv3.WithRange("\x00"))).Commit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev := r.Header.Revision
+	check := func(what string, wch clientv3.WatchChan) {
+		t.Helper()
+		var evs []*clientv3.Event
+		for len(evs) < 2 {
+			resp := <-wch
+			if err := resp.Err(); err != nil {
+				t.Fatalf("%s: %v", what, err)
+			}
+			evs = append(evs, resp.Events...)
+		}
+		for i, typ := range []string{"PUT", "DELETE"} {
+			ev := evs[i]
+			if ev.Type.String() != typ || ev.Kv.ModRevision != rev || ev.PrevKv == nil || string(ev.PrevKv.Value) != "old" {
+				t.Errorf("%s: event %d is %s at %d with previous %v, want %s at %d with previous old", what, i, ev.Type, ev.Kv.ModRevision, ev.PrevKv, typ, rev)
+			}
+		}
+	}
+	check("the live watch", live)
+	check("a watch from the Txn's revision", c.Watch(ctx, "/pk", clientv3.WithPrevKV(), clientv3.WithRev(rev)))
+}
+
+// A linearizable read a node cannot confirm, without a quorum, is told it
+// timed out after the request timeout, as etcd's are, and the node keeps
+// nothing of it: kept for as long as no quorum answered, the reads
+// clients gave up on grew without bound.
+func TestALinearizableReadWithoutAQuorumTimesOut(t *testing.T) {
+	loopOf := watchLoops(t)
+	tc := newTestCluster(t)
+	c := tc.clientOf(t, tc.endpoints[0])
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if _, err := c.Put(ctx, "/q", "v"); err != nil {
+		t.Fatal(err)
+	}
+	tc.stopNode(t, 1)
+	tc.stopNode(t, 2)
+	// A gRPC client without clientv3's retries, which retry etcd's
+	// timeout as they retry any Unavailable read.
+	conn, err := grpc.NewClient(tc.endpoints[0], grpc.WithTransportCredentials(credentials.NewTLS(tc.clientTLS())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	start := time.Now()
+	rctx, rcancel := context.WithTimeout(ctx, 3*requestTimeout)
+	defer rcancel()
+	_, err = pb.NewKVClient(conn).Range(rctx, &pb.RangeRequest{Key: []byte("/q")})
+	if status.Code(err) != codes.Unavailable || !strings.Contains(err.Error(), msgTimeout) {
+		t.Fatalf("a linearizable read without a quorum: %v after %v, want %q", err, time.Since(start), msgTimeout)
+	}
+	if took := time.Since(start); took > 2*requestTimeout {
+		t.Fatalf("the read timed out after %v, past twice the request timeout", took)
+	}
+	l := loopOf(tc.ids[0])
+	got := make(chan int, 1)
+	l.post(func() error { got <- len(l.n.readBatches); return nil })
+	if b := <-got; b != 0 {
+		t.Fatalf("the node keeps %d read batches of reads that timed out", b)
+	}
+}
+
+// A follower answers a lease's TimeToLive as etcd's leader does: the TTL
+// left, not the TTL granted, and after the ReadIndex, so that a revoke
+// that applied is seen. Followers answered the granted TTL, from a state
+// that may lag.
+func TestAFollowerAnswersTheTTLLeft(t *testing.T) {
+	tc := newTestCluster(t)
+	c := tc.client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	g, err := c.Grant(ctx, 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := c.Status(ctx, tc.endpoints[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	follower := tc.endpoints[0]
+	if st.Leader == st.Header.MemberId {
+		follower = tc.endpoints[1]
+	}
+	f := tc.clientOf(t, follower)
+	time.Sleep(2500 * time.Millisecond)
+	r, err := f.TimeToLive(ctx, g.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.GrantedTTL != 60 || r.TTL > 58 || r.TTL < 50 {
+		t.Fatalf("a follower's TimeToLive 2.5 s after a grant of 60: TTL %d granted %d, want 57 or 58 left", r.TTL, r.GrantedTTL)
+	}
+	if _, err := c.Revoke(ctx, g.ID); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := f.TimeToLive(ctx, g.ID); err != nil || r.TTL != -1 {
+		t.Fatalf("a follower's TimeToLive after the revoke: %v %v, want TTL -1", r, err)
+	}
+}
+
+// The quota holds the keys, not only the values, as etcd's holds its whole
+// database: puts of empty values to new keys are refused with "database
+// space exceeded" once their keys and metadata reach it. Counting values
+// alone, they grew the store's tables under any quota.
+func TestTheSpaceQuotaHoldsEmptyValues(t *testing.T) {
+	tc := newTestClusterWith(t, func(tc *testCluster) {
+		tc.config = func(c *Config) { c.QuotaBackendBytes = 256 << 10 }
+	})
+	c := tc.client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	var err error
+	txns := 0
+	// 64 keys of 12 bytes a Txn; 256 KiB holds about 6,000 of them.
+	for ; txns < 1000; txns++ {
+		ops := make([]clientv3.Op, 64)
+		for i := range ops {
+			ops[i] = clientv3.OpPut(fmt.Sprintf("/e/%04d/%03d", txns, i), "")
+		}
+		if _, err = c.Txn(ctx).Then(ops...).Commit(); err != nil {
+			break
+		}
+	}
+	if !errors.Is(err, rpctypes.ErrNoSpace) {
+		t.Fatalf("after %d Txns of 64 empty values under a 256 KiB quota: %v", txns, err)
+	}
+	if txns < 20 {
+		t.Fatalf("the quota refused the Txn %d already, under 1,300 keys", txns)
 	}
 }

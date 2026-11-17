@@ -31,7 +31,7 @@ func (n *node) askReads(now int64) {
 	} else {
 		b = &readBatch{}
 	}
-	b.seq, b.known, b.asked = n.readSeq, false, now
+	b.seq, b.known, b.asked, b.started = n.readSeq, false, now, now
 	b.reads, n.reads = n.reads, b.reads[:0]
 	b.buf, n.readBuf = n.readBuf, b.buf[:0]
 	n.readBatches = append(n.readBatches, b)
@@ -71,8 +71,14 @@ func (n *node) serveReads() {
 				if c == nil {
 					continue
 				}
-				if r.kind == kMemberList {
+				switch r.kind {
+				case kMemberList:
 					n.replyMembers(c, s)
+					continue
+				case kLeaseTTL:
+					if err := n.leaseTimeToLive(c, s, b.buf[r.off:r.off+r.len]); err != nil {
+						n.replyError(c, s.id, codeInvalidArgument, "bad request")
+					}
 					continue
 				}
 				var req rangeReq
@@ -92,8 +98,29 @@ func (n *node) serveReads() {
 }
 
 // retryReads asks again for batches that waited too long, as after a
-// leader change that dropped their ReadIndex.
+// leader change that dropped their ReadIndex, and tells the clients of a
+// batch that waited past requestTimeout that their read timed out, as
+// etcd's linearizable reads time out. Without a quorum no ReadIndex is
+// answered, and the reads, which clients often give up on, would be kept
+// for as long (#689's review).
 func (n *node) retryReads(now int64) {
+	k := 0
+	for _, b := range n.readBatches {
+		if now-b.started < int64(requestTimeout/tickEvery) {
+			n.readBatches[k] = b
+			k++
+			continue
+		}
+		for _, r := range b.reads {
+			// A read of the node's own (healthRead) times out on its own.
+			if r.done == nil {
+				n.replyErrorH(r.h, codeUnavailable, msgTimeout)
+			}
+		}
+		n.freeBatches = append(n.freeBatches, b)
+	}
+	clear(n.readBatches[k:])
+	n.readBatches = n.readBatches[:k]
 	for _, b := range n.readBatches {
 		if !b.known && now-b.asked > 5 {
 			n.readSeq++

@@ -230,6 +230,7 @@ func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 			}
 		}
 	}
+	before := st.keys[id].mod
 	prev, err := st.put(id, value, r.lease, rev, vo)
 	if err != nil {
 		return nil, err
@@ -238,8 +239,26 @@ func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	n.w.record(st, id, false, rev, rec, prev)
+	wprev, err := n.watchPrev(id, rev, before, prev)
+	if err != nil {
+		return nil, err
+	}
+	n.w.record(st, id, false, rev, rec, wprev)
 	return prev, nil
+}
+
+// watchPrev is the state before a change of key id at rev that its watch
+// event carries: etcd's watch server reads it at rev-1. That is prev, the
+// state the change replaced, unless an earlier op of the same revision
+// changed the key, as a Txn's delete of a range does before its put of a
+// key in it (before, the key's revision before the change, is rev then):
+// the event carries the state at rev-1, as one caught up from the
+// history does, not that op's.
+func (n *node) watchPrev(id uint32, rev, before int64, prev []byte) ([]byte, error) {
+	if before != rev || len(n.w.ws) == 0 {
+		return prev, nil
+	}
+	return n.st.at(id, rev-1)
 }
 
 // plantedRev is the revision of the next key a request changes at rev:
@@ -290,12 +309,20 @@ func (n *node) deleteRange(r *delReq, rev int64, kvs [][]byte) ([][]byte, int64,
 			return nil
 		}
 		rev := n.plantedRev(rev)
-		prev, err := st.del(id, rev)
-		if err != nil || prev == nil {
+		before := st.keys[id].mod
+		watched := n.w.wantsPrev(st, id, rev)
+		prev, live, err := st.del(id, rev, r.prevKV || watched)
+		if err != nil || !live {
 			return err
 		}
 		deleted++
-		n.w.record(st, id, true, rev, nil, prev)
+		var wprev []byte
+		if watched {
+			if wprev, err = n.watchPrev(id, rev, before, prev); err != nil {
+				return err
+			}
+		}
+		n.w.record(st, id, true, rev, nil, wprev)
 		if r.prevKV {
 			kvs = append(kvs, prev)
 		}

@@ -21,7 +21,7 @@ func TestACheckpointLoadsToTheStateItWasTakenOf(t *testing.T) {
 		putValue(t, st, l, "/a", "a2")       // 5
 		id, _ := st.find([]byte("/gone"))
 		st.rev++
-		if _, err := st.del(id, st.rev); err != nil { // 6
+		if _, _, err := st.del(id, st.rev, true); err != nil { // 6
 			t.Fatal(err)
 		}
 		st.endApply()

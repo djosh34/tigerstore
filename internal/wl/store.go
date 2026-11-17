@@ -737,18 +737,30 @@ func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64
 	return prev, nil
 }
 
-// del deletes key id at revision rev and returns its record, which stays
-// valid until the apply ends, or nil if it was not live.
-func (st *store) del(id uint32, rev int64) ([]byte, error) {
+// del deletes key id at revision rev and reports whether it was live;
+// with wantPrev, it returns its record too, which stays valid until the
+// apply ends. Without, it reads nothing: a delete of a range or a lease's
+// keys that nothing asks the values of read every value the budget had
+// let go of back into the slab, held to the apply's end, past the budget
+// on every node (#689's review); etcd reads none either.
+func (st *store) del(id uint32, rev int64, wantPrev bool) ([]byte, bool, error) {
 	k := &st.keys[id]
-	prev, err := st.live(id)
-	if err != nil || prev == nil {
-		return nil, err
+	if k.create == 0 {
+		return nil, false, nil
+	}
+	var prev []byte
+	if wantPrev {
+		var err error
+		if prev, err = st.live(id); err != nil {
+			return nil, false, err
+		}
 	}
 	if err := st.pushHist(k); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	st.freeLater = append(st.freeLater, k.rec, uint64(k.rlen))
+	if k.rec != 0 {
+		st.freeLater = append(st.freeLater, k.rec, uint64(k.rlen))
+	}
 	st.setLease(id, k.lease, 0)
 	st.liveBytes -= int64(k.vlen)
 	st.liveKeys--
@@ -756,7 +768,7 @@ func (st *store) del(id uint32, rev int64) ([]byte, error) {
 	k.create, k.mod, k.ver, k.lease = 0, rev, 0, 0
 	k.voff, k.vlen, k.vsum = 0, 0, 0
 	st.changes = append(st.changes, change{rev: rev, key: id, del: true})
-	return prev, nil
+	return prev, true, nil
 }
 
 // endApply frees the records an apply replaced, keeps the rest within

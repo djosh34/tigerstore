@@ -48,7 +48,7 @@ func TestWatchHistoryReplaysChangesInRevisionOrder(t *testing.T) {
 	putValue(t, n.st, l, "/a/1", "uno")   // 5
 	id, _ := n.st.find([]byte("/a/2"))
 	n.st.rev++
-	if _, err := n.st.del(id, n.st.rev); err != nil { // 6
+	if _, _, err := n.st.del(id, n.st.rev, true); err != nil { // 6
 		t.Fatal(err)
 	}
 	n.st.endApply()
@@ -87,7 +87,7 @@ func TestWatchHistoryHasAPutThatTheSameTxnDeleted(t *testing.T) {
 		}
 	}
 	for _, k := range []uint32{id, fresh} {
-		if _, err := n.st.del(k, n.st.rev); err != nil {
+		if _, _, err := n.st.del(k, n.st.rev, true); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -168,7 +168,8 @@ func TestAProgressWaitsForTheStreamsWatchesToCatchUp(t *testing.T) {
 	}
 	n := c.node
 	n.st = st
-	n.w.ws = []watcher{{active: true, syncRev: 5}}
+	// The stream's own watch, as a create makes it (watchRequest).
+	n.w.ws = []watcher{{active: true, syncRev: 5, sock: c.idx, gen: c.gen, sid: s.id}}
 	s.wids = []int32{0}
 	s.progressDue = true
 	n.progressIfSynced(c, s)

@@ -73,6 +73,10 @@ type node struct {
 	st     *store
 	w      watches
 	leases leaseClock
+	// leaseSeen is when this node last saw each lease renewed: its grant
+	// or a keepalive applied, or a new leader, which starts every TTL
+	// over. A node that does not lead answers a lease's TTL from it.
+	leaseSeen map[int64]time.Time
 
 	stats   counters
 	metrics *nodeMetrics
@@ -282,8 +286,11 @@ type readBatch struct {
 	index uint64
 	known bool
 	asked int64 // tick when asked
-	reads []pendingRead
-	buf   []byte
+	// started is the tick it was first asked: past requestTimeout its
+	// reads are told they timed out (retryReads).
+	started int64
+	reads   []pendingRead
+	buf     []byte
 }
 
 type opRes struct {
@@ -420,7 +427,9 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 	case kLeaseKeepAlive:
 		n.leaseKeepAlive(c, s, msg)
 	case kLeaseTTL:
-		return n.leaseTimeToLive(c, s, msg)
+		// Linearizable, as etcd's: a node that lags does not answer from
+		// leases revoked or renewed since.
+		n.queueRead(mkHandle(c, s.id), s.kind, msg)
 	case kLeaseLeases:
 		n.leaseLeases(c, s)
 	case kAlarm:

@@ -25,7 +25,7 @@ func TestCompactionFreesDeletedKeys(t *testing.T) {
 	for i := range keys {
 		id, _ := st.find(fmt.Appendf(nil, "/events/e%04d", i))
 		st.rev++
-		if _, err := st.del(id, st.rev); err != nil {
+		if _, _, err := st.del(id, st.rev, true); err != nil {
 			t.Fatal(err)
 		}
 		st.endApply()
@@ -147,7 +147,7 @@ func TestACheckpointHoldsTheStoreAndItsValues(t *testing.T) {
 	del := func(key string) {
 		id, _ := st.find([]byte(key))
 		st.rev++
-		if _, err := st.del(id, st.rev); err != nil {
+		if _, _, err := st.del(id, st.rev, true); err != nil {
 			t.Fatal(err)
 		}
 		st.endApply()
@@ -422,7 +422,7 @@ func TestACheckpointKeepsADeletionAtTheCompactedRevision(t *testing.T) {
 	putValue(t, n.st, l, "/a", "a1")
 	id, _ := n.st.find([]byte("/a"))
 	n.st.rev++
-	if _, err := n.st.del(id, n.st.rev); err != nil {
+	if _, _, err := n.st.del(id, n.st.rev, true); err != nil {
 		t.Fatal(err)
 	}
 	n.st.endApply()

@@ -3,6 +3,7 @@ package wl
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -41,7 +42,7 @@ func TestTreeKeepsOrderThroughRemovesAndReturns(t *testing.T) {
 	del := func(k string) {
 		id, _ := st.find([]byte(k))
 		st.rev++
-		if _, err := st.del(id, st.rev); err != nil {
+		if _, _, err := st.del(id, st.rev, true); err != nil {
 			t.Fatal(err)
 		}
 		st.endApply()
@@ -129,7 +130,7 @@ func TestDeletesFromALargeDirectoryStayCheap(t *testing.T) {
 	for i := range n / 4 {
 		id, _ := st.find(fmt.Appendf(nil, "/big/%07d", 4*i))
 		st.rev++
-		if _, err := st.del(id, st.rev); err != nil {
+		if _, _, err := st.del(id, st.rev, true); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -162,6 +163,49 @@ func TestTheTreeTakesDirectoriesPastItsFirstIndex(t *testing.T) {
 		path = fmt.Appendf(path[:0], "/d%07d/", i)
 		if _, ok := st.tree.lookup(path); !ok {
 			t.Fatalf("directory %d is not found", i)
+		}
+	}
+}
+
+// A key under tens of thousands of slashes takes a few directories of
+// bounded paths, not one per slash: each directory keeps its whole path,
+// and 65,536 of them filled the directory arena in the apply. Keys past
+// the bounds, in depth or in length, still range in byte order beside
+// shallow ones, whatever the range's ends.
+func TestDeepKeysTakeBoundedDirectoriesAndKeepTheirOrder(t *testing.T) {
+	st, l := newTestStore(t)
+	deep := strings.Repeat("/", 65536) + "k"
+	before := st.karena.top
+	putValue(t, st, l, deep, "v")
+	if used := st.karena.top - before; used > maxDirDepth*maxDirPath {
+		t.Fatalf("one key took %d bytes of directory paths, past %d", used, maxDirDepth*maxDirPath)
+	}
+	long := strings.Repeat("x", 600)
+	levels := strings.Repeat("d/", 40)
+	keys := []string{
+		deep,
+		"/a/" + levels + "k1", "/a/" + levels + "k2", "/a/" + levels + "sub/k3",
+		"/a/" + strings.Repeat("d/", 31) + "k4", "/a/" + strings.Repeat("d/", 30) + "k5",
+		"/a/b", "/a/c/d", "/a/d", "/a/da", "/a/d/z",
+		"/b/" + long + "/k", "/b/" + long + "/j/k", "/b/" + long + "z", "/b/x/" + long, "/b/x/y",
+		"/b/" + long[:500] + "/k", "/b/" + long[:500] + "/m/k",
+	}
+	for _, k := range keys {
+		putValue(t, st, l, k, "v")
+	}
+	sorted := slices.Sorted(slices.Values(keys))
+	if got := scanKeys(st, "", ""); !slices.Equal(got, sorted) {
+		t.Fatalf("the tree's order:\n%q\nwant\n%q", got, sorted)
+	}
+	// Every range between two of the keys, and from just past one.
+	for i := range sorted {
+		for j := i; j < len(sorted); j++ {
+			if got := scanKeys(st, sorted[i], sorted[j]); !slices.Equal(got, sorted[i:j]) {
+				t.Fatalf("[%q, %q): %q, want %q", sorted[i], sorted[j], got, sorted[i:j])
+			}
+			if got := scanKeys(st, sorted[i]+"\x00", sorted[j]); j > i && !slices.Equal(got, sorted[i+1:j]) {
+				t.Fatalf("(%q, %q): %q, want %q", sorted[i], sorted[j], got, sorted[i+1:j])
+			}
 		}
 	}
 }

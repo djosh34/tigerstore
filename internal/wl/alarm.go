@@ -166,13 +166,43 @@ const (
 	kvCost    = 256
 )
 
+// stateCost is what each key state, live or in the history, adds to the
+// size the quota holds, past its key and value bytes: about a bbolt
+// record's revision key and KeyValue fields in etcd's database, whose
+// size etcd's quota holds.
+const stateCost = 32
+
+// quotaSize is the store's size as the quota counts it, etcd's database
+// size: the values live and in the history, the key bytes, the
+// directories' paths, each key state and each lease. Counting values
+// alone, puts of empty values and leases grew the tables without bound
+// under any quota (#689's review).
+func (st *store) quotaSize() int64 {
+	return st.liveBytes + st.histBytes + st.kmem.used + int64(st.karena.top) +
+		(st.liveKeys+int64(st.nhist))*stateCost + int64(len(st.leases))*leaseCost
+}
+
+// arenasFull reports whether the key slab or the directory arena is past
+// seven eighths of its room. A write that fills one fails in the apply,
+// on every node, and again at each start: writes are refused before,
+// whatever the quota, with room left for those in flight.
+func (st *store) arenasFull() bool {
+	return st.kmem.top > len(st.kmem.mem)/8*7 || st.karena.top > len(st.karena.mem)/8*7
+}
+
 // quotaLeft reports whether a request of kind fits the quota. A request
 // whose bytes and every op's metadata fit is let in without reading it.
 func (n *node) quotaLeft(kind uint8, msg []byte) bool {
+	switch kind {
+	case kPut, kLeaseGrant, kTxn:
+		if n.st.arenasFull() {
+			return false
+		}
+	}
 	if n.quota < 0 {
 		return true
 	}
-	size := n.st.liveBytes + n.st.histBytes
+	size := n.st.quotaSize()
 	switch kind {
 	case kPut:
 	case kLeaseGrant:

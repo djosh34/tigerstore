@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/proto"
 )
 
 // memLog is a log in memory: values are appended and named by offset.
@@ -79,7 +82,7 @@ func TestStoreReadsOldValuesFromTheLog(t *testing.T) {
 	putValue(t, st, l, "/b", "other") // rev 4
 	id, _ := st.find([]byte("/a"))
 	st.rev++
-	if _, err := st.del(id, st.rev); err != nil { // rev 5
+	if _, _, err := st.del(id, st.rev, true); err != nil { // rev 5
 		t.Fatal(err)
 	}
 	st.endApply()
@@ -141,7 +144,7 @@ func TestCompactionKeepsWhatReadsAtItAndAfterNeed(t *testing.T) {
 	putValue(t, st, l, "/a", "three") // 5
 	id, _ := st.find([]byte("/b"))
 	st.rev++
-	if _, err := st.del(id, st.rev); err != nil { // 6
+	if _, _, err := st.del(id, st.rev, true); err != nil { // 6
 		t.Fatal(err)
 	}
 	st.endApply()
@@ -315,5 +318,94 @@ func TestASlabShrinksToItsFreeSlotsBelowTheNewTop(t *testing.T) {
 				t.Fatalf("slot %d overlaps live slot %d", off, l)
 			}
 		}
+	}
+}
+
+// Writes are refused before the key slab or the directory arena fills,
+// whatever the quota, even with none: a write that fills one fails in the
+// apply on every node, and again at each start. Reads and deletes go on.
+func TestWritesAreRefusedBeforeTheArenasFill(t *testing.T) {
+	msg, err := proto.Marshal(&pb.PutRequest{Key: []byte("/k"), Value: []byte("v")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, arena := range []string{"keys", "directories"} {
+		st, _ := newTestStore(t)
+		n := &node{st: st, quota: -1}
+		if !n.quotaLeft(kPut, msg) {
+			t.Fatalf("%s: a put refused on an empty store with no quota", arena)
+		}
+		switch arena {
+		case "keys":
+			st.kmem.top = len(st.kmem.mem)/8*7 + 1
+		case "directories":
+			st.karena.top = len(st.karena.mem)/8*7 + 1
+		}
+		for _, kind := range []uint8{kPut, kTxn, kLeaseGrant} {
+			if n.quotaLeft(kind, msg) {
+				t.Errorf("%s past seven eighths: a request of kind %d let in", arena, kind)
+			}
+		}
+		if !n.quotaLeft(kDel, nil) || !n.quotaLeft(kRange, nil) {
+			t.Errorf("%s past seven eighths: a delete or a range refused", arena)
+		}
+	}
+}
+
+// A delete of a range, or a lease's revoke, reads no value back when
+// nothing asks for the values before (no prevKV, no watcher that wants
+// them): with every record let go of, deleting a range of keys read each
+// value back into the slab and held it to the apply's end, past the
+// budget on every node. A delete that asks for them reads them.
+func TestDeletesReadNoValueNothingAsksFor(t *testing.T) {
+	n, l := ckptNode(t)
+	st := n.st
+	st.setBudget(1, 0) // no room for records: each is let go of
+	put := func(prefix string, lease int64) {
+		for i := range 100 {
+			key := fmt.Sprintf("%s%03d", prefix, i)
+			id, err := st.intern([]byte(key))
+			if err != nil {
+				t.Fatal(err)
+			}
+			st.rev++
+			if _, err := st.put(id, []byte("v"), lease, st.rev, l.add("v")); err != nil {
+				t.Fatal(err)
+			}
+			st.endApply()
+		}
+	}
+	del := func(prefix string, prevKV bool) ([][]byte, int64) {
+		st.rev++
+		kvs, deleted, err := n.deleteRange(&delReq{key: []byte(prefix), end: prefixEnd([]byte(prefix)), prevKV: prevKV}, st.rev, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.endApply()
+		return kvs, deleted
+	}
+	put("/a/", 0)
+	loads := st.loads
+	if kvs, deleted := del("/a/", false); deleted != 100 || len(kvs) != 0 || st.loads != loads {
+		t.Fatalf("a delete of 100 keys without prevKV: %d deleted, %d records, %d loads", deleted, len(kvs), st.loads-loads)
+	}
+	put("/b/", 0)
+	loads = st.loads
+	if kvs, deleted := del("/b/", true); deleted != 100 || len(kvs) != 100 || st.loads-loads != 100 {
+		t.Fatalf("a delete of 100 keys with prevKV: %d deleted, %d records, %d loads", deleted, len(kvs), st.loads-loads)
+	}
+	st.leases[7] = &lease{ttl: 60, keys: map[uint32]struct{}{}}
+	put("/c/", 7)
+	loads = st.loads
+	req, err := proto.Marshal(&pb.LeaseRevokeRequest{ID: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := n.applyLeaseRevoke(req, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	st.endApply()
+	if st.loads != loads || st.liveKeys != 0 {
+		t.Fatalf("a revoke of a lease of 100 keys: %d loads, %d keys left", st.loads-loads, st.liveKeys)
 	}
 }

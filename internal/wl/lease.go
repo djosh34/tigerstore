@@ -125,6 +125,10 @@ func (n *node) leading() bool { return n.lead == n.id && n.id != 0 }
 // the deadlines on a node that no longer leads.
 func (n *node) leaderChanged() {
 	n.confHold.leadFirst = 0
+	n.leaseSeen = make(map[int64]time.Time, len(n.st.leases))
+	for id := range n.st.leases {
+		n.leaseSeen[id] = n.now
+	}
 	lc := &n.leases
 	*lc = leaseClock{}
 	if !n.leading() && !planted.On("B10") {
@@ -276,12 +280,26 @@ func (n *node) leadConfirmed(seq uint64) bool {
 }
 
 // remaining is lease id's TTL left, in seconds: the leader's deadline, or
-// the granted TTL on another node.
+// on another node the TTL from when it last saw the lease renewed (its
+// grant, a keepalive, a new leader), which the leader's is within the
+// time a renewal takes to reach the node; the granted TTL if it saw none
+// since it started.
 func (n *node) remaining(id int64, l *lease) int64 {
 	if d, ok := n.leases.deadline[id]; ok {
 		return max(0, int64(math.Ceil(d.Sub(n.now).Seconds())))
 	}
+	if at, ok := n.leaseSeen[id]; ok {
+		return max(0, int64(math.Ceil((time.Duration(l.ttl)*time.Second - n.now.Sub(at)).Seconds())))
+	}
 	return l.ttl
+}
+
+// sawRenewed notes that this node saw lease id renewed now.
+func (n *node) sawRenewed(id int64) {
+	if n.leaseSeen == nil {
+		n.leaseSeen = map[int64]time.Time{}
+	}
+	n.leaseSeen[id] = n.now
 }
 
 // ---- requests
@@ -292,7 +310,8 @@ func (n *node) leaseKeepAlive(c *client, s *stream, msg []byte) {
 	n.addOp(mkHandle(c, s.id), kLeaseKeepAlive, msg)
 }
 
-// leaseTimeToLive answers from this node's leases.
+// leaseTimeToLive answers from this node's leases, once its ReadIndex is
+// applied (serveReads), as etcd answers from its applied state.
 func (n *node) leaseTimeToLive(c *client, s *stream, msg []byte) error {
 	id, wantKeys := int64(0), false
 	for m := msg; len(m) > 0; {
@@ -388,6 +407,7 @@ func (n *node) applyLeaseGrant(req []byte, c *client, s *stream) error {
 		return requestErr(codeFailedPrecon, msgLeaseExists)
 	}
 	st.leases[id] = &lease{ttl: ttl, keys: map[uint32]struct{}{}}
+	n.sawRenewed(id)
 	n.gs.LeaseGranted++
 	n.gs.LeaseTTLs[min(bits.Len64(uint64(max(ttl-1, 0))), core.LeaseTTLBuckets)]++
 	n.gs.LeaseTTLSum += ttl
@@ -427,11 +447,11 @@ func (n *node) applyLeaseRevoke(req []byte, c *client, s *stream) error {
 	rev := st.rev + 1
 	deleted := false
 	for _, k := range keys {
-		prev, err := st.del(k, rev)
+		prev, live, err := st.del(k, rev, n.w.wantsPrev(st, k, rev))
 		if err != nil {
 			return err
 		}
-		if prev != nil {
+		if live {
 			deleted = true
 			n.w.record(st, k, true, rev, nil, prev)
 		}
@@ -445,6 +465,7 @@ func (n *node) applyLeaseRevoke(req []byte, c *client, s *stream) error {
 		n.gs.txns++
 	}
 	delete(st.leases, id)
+	delete(n.leaseSeen, id)
 	delete(n.leases.deadline, id)
 	delete(n.leases.revoking, id)
 	if c != nil {
@@ -464,6 +485,7 @@ func (n *node) applyLeaseKeepAlive(req []byte, c *client, s *stream) error {
 	if l := n.st.leases[id]; l != nil {
 		ttl = l.ttl
 		n.renewed(id)
+		n.sawRenewed(id)
 	}
 	if c != nil {
 		var w msgW

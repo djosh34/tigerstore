@@ -95,6 +95,35 @@ func dirOf(key []byte) []byte {
 	return key[:bytes.LastIndexByte(key, '/')+1]
 }
 
+// A key's directory is the deepest prefix of it that ends in '/' within
+// maxDirDepth such prefixes and maxDirPath bytes; past them, the rest of
+// the key, '/' and all, is its name in that directory. Each directory
+// keeps its whole path, so a key under 65,536 slashes made directories of
+// 2 GiB of paths, past the directory arena, in a committed apply every
+// node failed on again at each start (#689's review); now a new key's
+// directories take at most maxDirDepth*maxDirPath bytes. The order holds:
+// no directory past the bounds sorts beside such a name. Kubernetes' keys
+// have four or five levels.
+const (
+	maxDirDepth = 32
+	maxDirPath  = 512
+)
+
+// keyDir returns the directory path of key within the bounds.
+func keyDir(key []byte) []byte {
+	end, depth := 0, 0
+	for i, b := range key {
+		if b != '/' {
+			continue
+		}
+		if i+1 > maxDirPath || depth == maxDirDepth {
+			break
+		}
+		end, depth = i+1, depth+1
+	}
+	return key[:end]
+}
+
 // ensure returns the directory of path, making it and its parents.
 func (t *tree) ensure(path []byte) (uint32, error) {
 	if d, ok := t.lookup(path); ok {
@@ -216,7 +245,7 @@ func (t *tree) insertChild(d uint32, name []byte, id uint32) {
 func (t *tree) insert(id uint32) error {
 	k := &t.st.keys[id]
 	if k.dir == noDir {
-		d, err := t.ensure(dirOf(t.st.key(id)))
+		d, err := t.ensure(keyDir(t.st.key(id)))
 		if err != nil {
 			return err
 		}

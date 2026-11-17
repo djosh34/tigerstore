@@ -177,6 +177,41 @@ func (w *watches) record(st *store, id uint32, del bool, rev int64, kv, prev []b
 	}
 }
 
+// wantsPrev reports whether a watcher the deletion of key id at rev
+// reaches, as record reaches it, wants the key's previous value (prevKV):
+// the deletion reads it only then.
+func (w *watches) wantsPrev(st *store, id uint32, rev int64) bool {
+	if len(w.ws) == 0 {
+		return false
+	}
+	wants := func(i int32) bool {
+		x := &w.ws[i]
+		return x.active && x.prevKV && !x.noDel && x.syncRev == 0 && rev >= x.minRev
+	}
+	e := w.cover(&st.tree, st.keys[id].dir)
+	if slices.ContainsFunc(e.wfull, wants) {
+		return true
+	}
+	if !e.wpart && len(w.other) == 0 {
+		return false
+	}
+	key := st.key(id)
+	if e.wpart {
+		dir := st.tree.path(st.keys[id].dir)
+		for i := range w.ws {
+			if x := &w.ws[i]; x.active && x.prefix && !bytes.HasPrefix(dir, x.key) && bytes.HasPrefix(key, x.key) && wants(int32(i)) {
+				return true
+			}
+		}
+	}
+	for _, i := range w.other {
+		if w.ws[i].covers(key) && wants(i) {
+			return true
+		}
+	}
+	return false
+}
+
 func (w *watches) push(i int32, id uint32, del bool, rev int64, kv, prev []byte) {
 	x := &w.ws[i]
 	if (del && x.noDel) || (!del && x.noPut) || x.syncRev != 0 || rev < x.minRev {
@@ -300,17 +335,18 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 			n.markDirty(&c.sock)
 			return nil
 		case x.id == 0:
-			for n.hasWatch(s, s.nextWatch) {
+			for n.hasWatch(c, s, s.nextWatch) {
 				s.nextWatch++
 			}
 			x.id = s.nextWatch
 			s.nextWatch++
-		case n.hasWatch(s, x.id):
+		case n.hasWatch(c, s, x.id):
 			n.writeRefused(c, s, "mvcc: duplicate watch ID provided on the WatchStream")
 			n.markDirty(&c.sock)
 			return nil
 		}
 		i := n.w.add(x)
+		n.pruneWatches(c, s)
 		s.wids = append(s.wids, i)
 		var w msgW
 		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id)) + 2
@@ -347,11 +383,12 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 		}
 		found := false
 		for _, i := range s.wids {
-			if n.w.ws[i].active && n.w.ws[i].id == wid {
+			if n.owns(c, s, i) && n.w.ws[i].id == wid {
 				n.w.remove(i)
 				found = true
 			}
 		}
+		n.pruneWatches(c, s)
 		if !found {
 			// etcd answers no cancel of a watch the stream does not have.
 			return nil
@@ -373,14 +410,36 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 	return nil
 }
 
-// hasWatch reports whether watch stream s has a watch of ID id.
-func (n *node) hasWatch(s *stream, id int64) bool {
+// hasWatch reports whether watch stream s of client c has a watch of ID
+// id.
+func (n *node) hasWatch(c *client, s *stream, id int64) bool {
 	for _, i := range s.wids {
-		if x := &n.w.ws[i]; x.active && x.id == id {
+		if n.owns(c, s, i) && n.w.ws[i].id == id {
 			return true
 		}
 	}
 	return false
+}
+
+// owns reports whether watcher i is a live watch of stream s of client
+// c. A slot s.wids names may since hold another stream's watch: a watch
+// removed (canceled, compacted) frees its slot for the next, and another
+// stream may give that one the same ID.
+func (n *node) owns(c *client, s *stream, i int32) bool {
+	x := &n.w.ws[i]
+	return x.active && x.sock == c.idx && x.gen == c.gen && x.sid == s.id
+}
+
+// pruneWatches keeps in s.wids only the stream's live watches, once each.
+func (n *node) pruneWatches(c *client, s *stream) {
+	k := 0
+	for _, i := range s.wids {
+		if n.owns(c, s, i) && !slices.Contains(s.wids[:k], i) {
+			s.wids[k] = i
+			k++
+		}
+	}
+	s.wids = s.wids[:k]
 }
 
 // writeRefused answers a watch create that etcd refuses: created and
@@ -672,7 +731,7 @@ func (n *node) progressIfSynced(c *client, s *stream) {
 	}
 	for _, i := range s.wids {
 		x := &n.w.ws[i]
-		if !x.active {
+		if !n.owns(c, s, i) {
 			continue
 		}
 		if x.syncRev != 0 {
