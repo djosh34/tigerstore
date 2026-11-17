@@ -273,7 +273,7 @@ func TestAStreamsWindowIsGivenBackAsItsDataComesIn(t *testing.T) {
 	windowAck = 1500
 	t.Cleanup(func() { windowAck = ack })
 	n, _ := testNode(t)
-	n.connIn, n.connOut, n.sizes = 1<<20, 1<<20, sizeFor(0)
+	n.connOut, n.sizes = 1<<20, sizeFor(0)
 	c := newClient(&handoff{fd: -1, plain: true}, n)
 	c.takeBufs()
 	c.preface = true
@@ -307,18 +307,20 @@ func TestAStreamsWindowIsGivenBackAsItsDataComesIn(t *testing.T) {
 }
 
 // The requests of side calls (Lock, Election, health) whose client has
-// not ended its side count in its share of requests sent in part, and
-// are refused past it: kept uncounted, one connection that never ended
-// its calls held any memory it sent. Ended, a call's request goes out
-// of the share.
+// not ended its side count in its requests in part: kept uncounted, one
+// connection that never ended its calls held any memory it sent. They
+// came within the client's window, which the read half held room for,
+// so none is refused for room, even with the read half full (#737).
+// Ended, a call's request goes out of the count.
 func TestSideCallRequestsCountInTheClientsShare(t *testing.T) {
 	n, _ := testNode(t)
-	n.connIn, n.connOut, n.sizes = 4<<20, 1<<20, sizeFor(0)
+	n.connOut, n.sizes = 1<<20, sizeFor(128<<20)
 	n.sideReqs = map[handle][]byte{}
 	c := newClient(&handoff{fd: -1, plain: true}, n)
 	c.takeBufs()
 	c.idx, c.gen = 0, 1
 	n.socks, n.gens = []any{c}, []uint16{1}
+	n.cpool = n.sizes.clientInBufs()
 	msg := make([]byte, 1<<20)
 	refused := 0
 	for i := range 8 {
@@ -328,8 +330,8 @@ func TestSideCallRequestsCountInTheClientsShare(t *testing.T) {
 			refused++
 		}
 	}
-	if c.partial > n.connIn || refused == 0 {
-		t.Fatalf("8 side calls of 1 MiB kept %d MiB against a share of %d MiB, %d refused", c.partial>>20, n.connIn>>20, refused)
+	if c.partial != 8*int64(len(msg)) || refused != 0 {
+		t.Fatalf("8 side calls of 1 MiB kept %d MiB, %d refused; want 8 and none", c.partial>>20, refused)
 	}
 	held := c.partial
 	n.takeSideReq(mkHandle(c, 1))

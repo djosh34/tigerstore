@@ -73,22 +73,22 @@ func (z sizes) maxClients() int { return int(max(z.clientPool/2/idleConn, 1)) }
 
 // clientBufs is what the client connections hold while they read or
 // write, together: half of it what they read (node.cpool), where a client
-// that would go past it to read waits and a request that would go past it
-// is refused (client.data); and half what waits to be sent to them
-// (node.cout), within their shares (connOut).
+// that would go past it to read, or to send more, waits (partwait.go);
+// and half what waits to be sent to them (node.cout), within their
+// shares (connOut).
 func (z sizes) clientBufs() int64 { return z.clientPool / 2 }
 
 // clientInBufs is the half of clientBufs for what the clients read.
 func (z sizes) clientInBufs() int64 { return z.clientBufs() / 2 }
 
-// connIn is the most of requests sent in part one of active clients
-// holds before its next is refused: its share of clientInBufs less its
-// own buffers, at least one whole request. Above that floor, the shares
-// and buffers of the clients that read fit clientInBufs together, so a
-// part that waits for room finds it; at the floor, as at small budgets,
-// the turn finds it (partwait.go).
-func (z sizes) connIn(active int) int64 {
-	return max(z.clientInBufs()/int64(max(active, 1))-int64(clientInBuf+clientPtBuf+slotBytes), maxMsg)
+// connCredit is the window a client connection is topped up to once
+// half of it is spent: what it may send before the node gives it more,
+// held in the read half while it reads (partwait.go). A sixty-fourth of
+// the read half, 768 KiB at the bench's budget, many times the bench's
+// largest request; at least HTTP/2's initial window, which a client has
+// from its start; at most 4 MiB.
+func (z sizes) connCredit() int64 {
+	return min(max(z.clientInBufs()/64, initialWindow), 4<<20)
 }
 
 // minConnOut is the least a client's share of what waits to be sent may
@@ -107,11 +107,12 @@ func (z sizes) connOut(active int) int64 {
 }
 
 // reserve is the client pool's room, beyond its two halves, that the
-// messages past their clients' shares take together (#727): at least one
-// whole message, and a thirty-second of the client pool. Taken out of the
+// messages past their clients' shares take together (#727), and a turn
+// of the read half (partwait.go): at least one whole message with its
+// gRPC prefix, and a thirty-second of the client pool. Taken out of the
 // send half, it cut a lone client's share by an eighth, and crd-heavy,
 // one client of the bench, by a fifth at 2 and 10 ms (#689).
-func (z sizes) reserve() int64 { return max(maxMsg, z.clientPool/32) }
+func (z sizes) reserve() int64 { return max(maxMsg+5, z.clientPool/32) }
 
 // mapped is what the rings and the stage map outside Go's heap.
 func (z sizes) mapped() int64 { return int64(2*z.ring + z.side + z.stage) }

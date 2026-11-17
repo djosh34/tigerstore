@@ -129,7 +129,13 @@ type stream struct {
 	nextWatch int64
 	fail      []byte // a Txn's failure branch, kept here and not replicated
 	win       int64  // the stream's send window
-	recvd     int    // DATA taken since the stream's last WINDOW_UPDATE
+	// recvd is the DATA taken since the stream's last WINDOW_UPDATE, less
+	// what a turn gave it past that (partwait.go); named, that the turn
+	// gives it window for the request it holds in part; awaits, that its
+	// one request has not come whole, nor its client ended its side.
+	recvd  int
+	named  bool
+	awaits bool
 	holds     bool   // held messages wait for window: the stream's window is in its client's flow
 	// big: a watch response is written into it in pieces, and its other
 	// messages wait behind it (bigwatch.go).
@@ -181,7 +187,6 @@ type client struct {
 	lastSid  uint32
 	blockEnd bool
 	block    []byte
-	unacked  int
 	node     *node
 	flow     flow
 	// identity is what the name of the client's certificate adds to the
@@ -205,16 +210,23 @@ type client struct {
 	// (loop.input); busy, the tick it last read.
 	starved bool
 	busy    int64
-	// roomNeed, while not 0, is what the part of stream roomSid's request
-	// it stopped reading at adds to the client buffers, which wait for
-	// room since roomAt; roomLate, that the part is refused, once it
-	// waited requestTimeout (partwait.go). linePass and seenPass are
-	// serveWaiting's marks.
-	roomNeed           int64
-	roomSid            uint32
-	roomAt             time.Time
-	roomLate           bool
-	linePass, seenPass uint64
+	// cwin is its connection's window, what it may still send, which the
+	// read half holds room for while it reads, unless cold; inLine, that
+	// it waits in line for more (partwait.go). frozen: it stopped sending
+	// within its turn, and its streams' initial window stays 0; cold, that
+	// it took that in (zeroAt, the SETTINGS that said it, of settingsSent,
+	// is acked), so that it may send only within its streams' windows and
+	// the read half holds no room for cwin. partAt is when its requests in
+	// part last started or one came whole, named how many of its streams
+	// its turn names, and awaits how many await their request
+	// (stream.awaits). seenPass is serveWaiting's mark.
+	cwin                                int64
+	inLine, frozen, cold                bool
+	settingsSent, settingsAcked, zeroAt uint32
+	awaits                              int
+	partAt   time.Time
+	named    int
+	seenPass uint64
 	// roomHeld is the room of the reserve it holds, and roomWaiters how
 	// many of its messages wait for room (reserve.go).
 	roomHeld    int64
@@ -265,7 +277,7 @@ var errTooManyRequests = requestErr(codeResourceExhausted, "etcdserver: too many
 func newClient(h *handoff, n *node) *client {
 	c := &client{
 		fd: h.fd, rd: h.rd, wr: h.wr, plain: h.plain, rec: -1, stats: &n.stats, pool: &n.cpool, outPool: &n.cout, loose: &n.looseGrown, outBase: clientOutBuf,
-		hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn), cn: h.cn, node: n,
+		hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn), cn: h.cn, node: n, cwin: initialWindow,
 	}
 	if len(h.left) > 0 {
 		// What its handshake read past its end is taken with no check
@@ -392,17 +404,18 @@ func (c *client) addBlock(p []byte, first bool) error {
 const slotBytes = streamSlots * int(unsafe.Sizeof(stream{}))
 
 // bufNeed is what a client takes from the client buffers to read: its
-// read and opened buffers, and its stream slots unless it holds them.
+// read and opened buffers, its connection's window, and its stream
+// slots unless it holds them.
 func (c *client) bufNeed() int64 {
-	n := int64(clientInBuf + clientPtBuf)
+	n := int64(clientInBuf+clientPtBuf) + c.heldWindow()
 	if c.slots == nil {
 		n += int64(slotBytes)
 	}
 	return n
 }
 
-// takeBufs takes the client's read and opened buffers and its stream
-// slots.
+// takeBufs takes the client's read and opened buffers, room for its
+// connection's window, and its stream slots.
 func (c *client) takeBufs() {
 	c.grow(int(c.bufNeed()))
 	c.node.active++
@@ -416,14 +429,16 @@ func (c *client) takeBufs() {
 // and no request in part, so that its buffers may go back.
 func (c *client) idle() bool {
 	return c.ir == c.iw && c.pr == c.pw && len(c.out) == c.ow && c.rec < 0 &&
-		len(c.flow.held) == 0 && c.partial == 0 && !c.paused && c.tokenWait == 0
+		len(c.flow.held) == 0 && c.partial == 0 && c.awaits == 0 && !c.paused && c.tokenWait == 0
 }
 
-// giveBufs gives the buffers of an idle client back, and its stream slots
-// when no stream is open.
+// giveBufs gives the buffers of an idle client back, and the room of its
+// window, which it takes again when it reads; and its stream slots when
+// no stream is open.
 func (c *client) giveBufs() {
 	if c.in != nil {
 		c.node.active--
+		c.grow(-int(c.heldWindow()))
 	}
 	c.grow(-cap(c.in) - cap(c.pt))
 	c.growOut(-cap(c.out))
@@ -439,6 +454,7 @@ func (c *client) giveBufs() {
 func (c *client) dropAll() {
 	if c.in != nil {
 		c.node.active--
+		c.grow(-int(c.heldWindow()))
 	}
 	c.node.dropClientWaits(c)
 	c.node.giveRoom(c, true)
@@ -488,6 +504,8 @@ func (c *client) endStream(s *stream) {
 	c.grow(-int(s.counted))
 	c.streams--
 	s.counted = 0
+	c.unname(s)
+	c.arrived(s)
 	s.fail = nil // the side ring may take its bytes again
 	if s.big {
 		s.big = false
@@ -518,23 +536,23 @@ const defaultMaxStreams = 1 << 20
 // the stream, and the client may try it again.
 const codeRefusedStream = 0x7
 
-// windowAck is how much DATA the node takes, on the connection and on
-// each stream, before it gives that window back: half of the 1 GiB each
-// starts with (client.start).
-var windowAck = 1 << 29
+// windowAck is how much DATA the node takes on each stream before it
+// gives that window back: half of the window each starts with outside a
+// turn (client.start). The connection's window is the client's credit
+// (partwait.go).
+var windowAck = streamWindow / 2
 
-// serverStart is the server's SETTINGS (its limit on streams, large stream
-// windows) and a large connection window.
+// start sends the server's SETTINGS: its limit on streams, and large
+// stream windows. The connection's window grows past HTTP/2's initial
+// one as the node gives the client its credit (giveCredit).
 func (c *client) start() {
 	var p [12]byte
 	binary.BigEndian.PutUint16(p[0:], 0x4) // INITIAL_WINDOW_SIZE
-	binary.BigEndian.PutUint32(p[2:], 1<<30)
+	binary.BigEndian.PutUint32(p[2:], streamWindow)
 	binary.BigEndian.PutUint16(p[6:], 0x3) // MAX_CONCURRENT_STREAMS
 	binary.BigEndian.PutUint32(p[8:], c.node.maxStreams)
 	c.writeFrame(frSettings, 0, p[:])
-	var w [4]byte
-	binary.BigEndian.PutUint32(w[:], 1<<30)
-	c.writeFrame(frWindowUpdate, 0, w[:])
+	c.settingsSent++
 }
 
 // h2Error is an HTTP/2 connection error with its code, which the node
@@ -564,8 +582,17 @@ func (c *client) goAway(e h2Error) {
 	_, _ = c.flush()
 }
 
-// frames reads the frames in pt and hands complete gRPC messages to n.
+// frames reads the frames in pt and hands complete gRPC messages to n,
+// and then gives the client the window it may send more in.
 func (c *client) frames(n *node) error {
+	err := c.readFrames(n)
+	if err == nil {
+		n.giveCredit(c)
+	}
+	return err
+}
+
+func (c *client) readFrames(n *node) error {
 	if !c.preface {
 		if c.pw-c.pr < len(clientPreface) {
 			return nil
@@ -579,10 +606,9 @@ func (c *client) frames(n *node) error {
 		n.markDirty(&c.sock)
 	}
 	for {
-		if c.tokenWait != 0 || c.roomNeed != 0 {
-			// A call's token waits for its entry, or a request's part
-			// for room: the rest waits behind it, in pt and the socket
-			// (tokenwait.go, partwait.go).
+		if c.tokenWait != 0 {
+			// A call's token waits for its entry: the rest waits behind
+			// it, in pt and the socket (tokenwait.go).
 			return nil
 		}
 		if c.backedUp() {
@@ -630,25 +656,15 @@ func (c *client) frames(n *node) error {
 		}
 		switch typ {
 		case frData:
+			s := c.get(sid)
+			if err := c.takeWindow(s, l); err != nil {
+				return err
+			}
 			if flags&flPadded != 0 {
 				if len(p) == 0 || int(p[0]) >= len(p) {
 					return errProtocol
 				}
 				p = p[1 : len(p)-int(p[0])]
-			}
-			s := c.get(sid)
-			if k := int64(len(p)); s != nil && !s.ended && (c.partial+k > n.connIn || n.cpool+k > n.sizes.clientInBufs()) && c.waitsForRoom(n, s, p) {
-				// The frame is read again once the buffers have room.
-				c.pr -= 9 + l
-				return nil
-			}
-			c.unacked += l
-			if c.unacked >= windowAck {
-				var w [4]byte
-				binary.BigEndian.PutUint32(w[:], uint32(c.unacked))
-				c.writeFrame(frWindowUpdate, 0, w[:])
-				c.unacked = 0
-				n.markDirty(&c.sock)
 			}
 			if s == nil {
 				if sid > c.lastSid {
@@ -661,10 +677,14 @@ func (c *client) frames(n *node) error {
 			if s.ended {
 				return errProtocol // STREAM_CLOSED: its client ended its side
 			}
-			// The stream's window is given back as its DATA is taken, as
-			// the connection's is: a stream that sends past the window
-			// it started with, a keepalive or watch stream over hours,
-			// would wait for good (#689's area-4 review).
+			if s.named {
+				// The turn's client sends: its turn goes on (endTurn).
+				n.turnAt = n.now
+			}
+			// The stream's window is given back as its DATA is taken: a
+			// stream that sends past the window it started with, a
+			// keepalive or watch stream over hours, would wait for good
+			// (#689's area-4 review).
 			if s.recvd += l; s.recvd >= windowAck && flags&flEndStream == 0 {
 				b := c.frame(9 + 4)
 				putFrameHeader(b, 4, frWindowUpdate, 0, sid)
@@ -677,6 +697,7 @@ func (c *client) frames(n *node) error {
 			}
 			if flags&flEndStream != 0 {
 				s.ended = true
+				c.arrived(s)
 				// A watch stream whose client closed its side goes on,
 				// as etcd's does, until the client resets it or goes.
 				switch {
@@ -766,6 +787,9 @@ func (c *client) frames(n *node) error {
 				}
 				c.writeFrame(frSettings, flAck, nil)
 				n.markDirty(&c.sock)
+			} else {
+				c.settingsAcked++
+				n.cool(c)
 			}
 		case frWindowUpdate:
 			if len(p) != 4 {
@@ -811,6 +835,7 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 			clear(c.hdrCache)
 		}
 		s.ended = true
+		c.arrived(s)
 		if sideKind(s.kind) {
 			n.sideEnded(c, s)
 		}
@@ -887,6 +912,13 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 		if sideKind(kind) {
 			n.sideEnded(c, s)
 		}
+	} else if kind != kWatch && kind != kLeaseKeepAlive {
+		// A call of one request: it is under way until that comes.
+		if !c.underWay() {
+			c.partAt = n.now
+		}
+		s.awaits = true
+		c.awaits++
 	}
 	return nil
 }
@@ -1045,7 +1077,6 @@ func (n *node) putBuf(b []byte) {
 }
 
 func (c *client) data(n *node, s *stream, p []byte) error {
-	was := s.counted
 	c.partial -= s.counted
 	c.grow(-int(s.counted))
 	s.counted = 0
@@ -1077,6 +1108,13 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 			}
 		}
 		p = p[5+l:]
+		// A request came whole: its stream's turn is over, but a side
+		// call's, whose request is kept until its client ends its side.
+		c.partAt = n.now
+		c.arrived(s)
+		if !sideKind(s.kind) {
+			c.unname(s)
+		}
 		if err := n.request(c, s, msg); errors.Is(err, errProto) {
 			// A request it cannot read ends the call, not the
 			// connection, as grpc-go answers it.
@@ -1093,13 +1131,10 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 			break
 		}
 	}
-	if int64(len(p)) > was && (c.partial+int64(len(p)) > n.connIn || !n.roomFor(c, int64(len(p)))) {
-		// The connection holds its share of requests sent in part, or
-		// the client buffers stayed full for requestTimeout while the
-		// part waited for room (partwait.go): this one is refused, as
-		// etcd refuses too many requests, and the rest of it dropped.
-		n.reject(c, s, errTooManyRequests)
-		return nil
+	// What stays in part came within the client's window, which the read
+	// half held room for (partwait.go).
+	if c.partial == 0 && len(p) > 0 {
+		c.partAt = n.now
 	}
 	if len(p) > 0 {
 		if len(s.buf) > 0 {

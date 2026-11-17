@@ -37,8 +37,8 @@ func TestTheBuffersFitTheBudget(t *testing.T) {
 		// The idle connections the node takes fit what the client
 		// buffers leave of the client pool; the clients that hold buffers, at most as many as
 		// the buffers hold their read and opened buffers, have shares of
-		// what waits to be sent within the buffers, and each a share of
-		// requests sent in part of at least one whole request.
+		// what waits to be sent within the buffers, and a credit to send
+		// in of at least HTTP/2's initial window, within the read half.
 		if idle := int64(z.maxClients()) * idleConn; idle+z.clientBufs() > z.clientPool {
 			t.Errorf("budget %d MiB: %d idle clients take %d MiB, past what the client buffers leave of the client pool's %d MiB", budget>>20, z.maxClients(), idle>>20, z.clientPool>>20)
 		}
@@ -46,15 +46,19 @@ func TestTheBuffersFitTheBudget(t *testing.T) {
 		for _, active := range []int{1, most} {
 			// The shares fit the send half; the reserve for the
 			// messages past them (#727) is beyond it, counted above.
-			if out := int64(active) * z.connOut(active); out > z.clientBufs()-z.clientInBufs() || z.connIn(active) < maxMsg {
-				t.Errorf("budget %d MiB, %d active clients: their send shares sum to %d MiB, past the send half of the client buffers' %d MiB, or a share of requests sent in part of %d KiB",
-					budget>>20, active, out>>20, z.clientBufs()>>20, z.connIn(active)>>10)
+			if out := int64(active) * z.connOut(active); out > z.clientBufs()-z.clientInBufs() {
+				t.Errorf("budget %d MiB, %d active clients: their send shares sum to %d MiB, past the send half of the client buffers' %d MiB",
+					budget>>20, active, out>>20, z.clientBufs()>>20)
 			}
 		}
 		// One message, at most maxMsg, can pass a share by no more than
-		// the whole reserve.
-		if z.reserve() < maxMsg {
+		// the whole reserve, and a turn of the read half finishes one
+		// request, with its gRPC prefix, within it (partwait.go).
+		if z.reserve() < maxMsg+5 {
 			t.Errorf("budget %d MiB: a reserve of %d KiB, less than one message of %d KiB", budget>>20, z.reserve()>>10, maxMsg>>10)
+		}
+		if c := z.connCredit(); c < initialWindow || c > z.clientInBufs() {
+			t.Errorf("budget %d MiB: a credit of %d KiB, below HTTP/2's initial window or past the read half of %d KiB", budget>>20, c>>10, z.clientInBufs()>>10)
 		}
 		t.Logf("budget %d MiB: at most %d clients", budget>>20, z.maxClients())
 		if z.stage&(z.stage-1) != 0 || z.stage < 4<<20 || z.stage > z.ring {

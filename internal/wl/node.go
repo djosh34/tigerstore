@@ -22,12 +22,10 @@ type node struct {
 	// clients connected at the last tick.
 	sizes   sizes
 	connOut int64
-	// connIn is a client connection's share of requests sent in part
-	// (sizes.connIn), and clients the client connections the node holds;
-	// cpool is what they hold of the client buffers (sizes.clientBufs) to
-	// read, and cout what waits to be sent to them; active is how many
-	// hold buffers to read.
-	connIn          int64
+	// clients are the client connections the node holds; cpool is what
+	// they hold of the client buffers (sizes.clientBufs) to read, and cout
+	// what waits to be sent to them; active is how many hold buffers to
+	// read.
 	clients, active int
 	cpool, cout     int64
 	// turnCkpt is where the turn's checkpoint step spent its time, and
@@ -35,16 +33,16 @@ type node struct {
 	turnCkpt  ckptTurn
 	turnReady readyTurn
 	// waiting are the clients that wait for the client buffers to read,
-	// or for room in them for a request's part, in the order they came
-	// (loop.serveWaiting), and waitPass counts serveWaiting's passes.
-	// inTurn is the one that may take the buffers up to turnLimit since
-	// turnAt, past the read half by the turnRoom it took of the reserve,
-	// and by what they took with no check of their room since then
-	// (looseGrown past turnLoose; partwait.go).
+	// or for window, in the order they came (loop.serveWaiting), and
+	// waitPass counts serveWaiting's passes. inTurn is the one that may
+	// take the buffers past the read half, by turnRoom, the room of the
+	// reserve the read half takes, and by what they took with no check of
+	// their room since then (looseGrown past turnLoose; partwait.go);
+	// turnAt is when it took the turn or last sent on a named stream.
 	waiting               []*client
 	waitPass              uint64
 	inTurn                *client
-	turnRoom, turnLimit   int64
+	turnRoom              int64
 	looseGrown, turnLoose int64
 	turnAt                time.Time
 	// sys is the node's handle on the system calls of sys_os.go.

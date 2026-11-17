@@ -141,10 +141,11 @@ func newSideServers(cli *clientv3.Client) *sideServers {
 
 // sideRequest keeps the request of side call s until its client ends
 // its side. As grpc-go's, a call takes exactly one request. The request
-// kept counts in its client's share of requests sent in part, and is
-// refused past it as one sent in part is: kept uncounted, the Lock or
-// Election calls a client never ended held any memory it sent (#689's
-// area-4 review).
+// kept counts in its client's requests in part: kept uncounted, the Lock
+// or Election calls a client never ended held any memory it sent (#689's
+// area-4 review). It came within its client's window, which the read
+// half held room for, so it is never refused for room (#737); a turn
+// waits for its client to end its side (partwait.go).
 func (n *node) sideRequest(c *client, s *stream, msg []byte) {
 	h := mkHandle(c, s.id)
 	if _, ok := n.takeSideReq(h); ok {
@@ -152,10 +153,6 @@ func (n *node) sideRequest(c *client, s *stream, msg []byte) {
 		return
 	}
 	k := int64(len(msg))
-	if c.partial+k > n.connIn || n.cpool+k > n.sizes.clientInBufs() {
-		n.reject(c, s, errTooManyRequests)
-		return
-	}
 	n.sideReqs[h] = bytes.Clone(msg)
 	c.partial += k
 	c.grow(int(k))
@@ -169,11 +166,20 @@ func (n *node) takeSideReq(h handle) ([]byte, bool) {
 		return nil, false
 	}
 	delete(n.sideReqs, h)
-	if c, _ := n.clientOf(h); c != nil {
+	if c, s := n.clientOf(h); c != nil {
 		c.partial -= int64(len(req))
 		c.grow(-len(req))
+		if s != nil {
+			c.unname(s)
+		}
 	}
 	return req, true
+}
+
+// keepsSideReq reports whether the request of side call s of c is kept.
+func (n *node) keepsSideReq(c *client, s *stream) bool {
+	_, ok := n.sideReqs[mkHandle(c, s.id)]
+	return ok
 }
 
 // sideEnded starts side call s, whose client ended its side, with its

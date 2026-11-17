@@ -187,7 +187,7 @@ func run(ctx context.Context, cfg Config) error {
 	n.sideReqs = map[handle][]byte{}
 	n.carryUntil = map[uint64]time.Time{}
 	n.sizes = sizeFor(cfg.MemoryBudget)
-	n.connOut, n.connIn = n.sizes.connOut(1), n.sizes.connIn(1)
+	n.connOut = n.sizes.connOut(1)
 	if n.ring, err = newRing(n.sizes.ring); err != nil {
 		return err
 	}
@@ -906,31 +906,8 @@ func (l *loop) input(idx int, hup bool) {
 	if s == nil || s.dead {
 		return
 	}
-	if c, ok := x.(*client); ok {
-		c.busy = l.tick
-		if c.in == nil {
-			if hup && (len(n.waiting) > 0 || n.cpool+c.bufNeed() > n.sizes.clientInBufs()) {
-				// Its other end closed while it waits for buffers: the
-				// close stays reported until it reads, so the loop would
-				// turn at once until then, and the simulator's clock
-				// stop (#689's N re-check). Nothing it sent can be
-				// answered to a client that went.
-				l.closeSock(idx)
-				return
-			}
-			if len(n.waiting) > 0 || n.cpool+c.bufNeed() > n.sizes.clientInBufs() {
-				// The client buffers are full, or others wait for them
-				// first: it waits in turn (serveWaiting).
-				if !c.starved {
-					c.starved = true
-					n.waiting = append(n.waiting, c)
-					n.stats.clientsWaited++
-				}
-				n.markDirty(&c.sock)
-				return
-			}
-			c.takeBufs()
-		}
+	if c, ok := x.(*client); ok && !l.admit(c, hup) {
+		return
 	}
 	got, err := s.readSock()
 	if err == nil && (got || s.iw > s.ir) {
@@ -940,7 +917,7 @@ func (l *loop) input(idx int, hup bool) {
 		switch v := x.(type) {
 		case *client:
 			err = v.frames(n)
-			if err == nil && (v.paused || v.tokenWait != 0 || v.roomNeed != 0) {
+			if err == nil && (v.paused || v.tokenWait != 0) {
 				// Nothing more is read from it until a flush resumes it.
 				n.markDirty(&v.sock)
 			}
@@ -958,6 +935,39 @@ func (l *loop) input(idx int, hup bool) {
 	if err != nil {
 		l.closeClient(idx, err)
 	}
+}
+
+// admit lets client c, whose socket has input, read: it takes its
+// buffers if it holds none and the read half has room for them, or waits
+// for them in line, or is closed when hup says its other end closed.
+func (l *loop) admit(c *client, hup bool) bool {
+	n := l.n
+	c.busy = l.tick
+	if c.in != nil {
+		return true
+	}
+	if hup && (len(n.waiting) > 0 || n.cpool+c.bufNeed() > n.sizes.clientInBufs()) {
+		// Its other end closed while it waits for buffers: the close
+		// stays reported until it reads, so the loop would turn at once
+		// until then, and the simulator's clock stop (#689's N
+		// re-check). Nothing it sent can be answered to a client that
+		// went.
+		l.closeSock(c.idx)
+		return false
+	}
+	if len(n.waiting) > 0 || n.cpool+c.bufNeed() > n.sizes.clientInBufs() {
+		// The client buffers are full, or others wait for them first: it
+		// waits in turn (serveWaiting).
+		if !c.starved {
+			c.starved = true
+			n.waiting = append(n.waiting, c)
+			n.stats.clientsWaited++
+		}
+		n.markDirty(&c.sock)
+		return false
+	}
+	c.takeBufs()
+	return true
 }
 
 // closeClient closes socket idx, which met err; a client that broke
@@ -1201,7 +1211,7 @@ func (l *loop) flush() {
 				c.paused = false
 				resumed = append(resumed, c)
 			}
-			noIn = c.paused || c.starved || c.tokenWait != 0 || c.roomNeed != 0
+			noIn = c.paused || c.starved || c.tokenWait != 0
 		}
 		if ok == !s.wantOut && noIn == s.noIn {
 			continue
@@ -1279,19 +1289,17 @@ func (l *loop) clientTick() {
 		// The shares grew: what waited for room may fit now.
 		n.roomFreed = true
 	}
-	n.connOut, n.connIn = n.sizes.connOut(n.active), n.sizes.connIn(n.active)
+	n.connOut = n.sizes.connOut(n.active)
 }
 
-// serveWaiting gives the clients whose request's part waits for room in
-// the client buffers that room, and then those that wait for the buffers
-// theirs, each in the order they came, while the buffers have room; it
-// runs every turn while any waits. A client that waits for buffers takes
-// none while a part waits: what it needs, the waiting parts' clients
-// hold. Then a client that holds buffers, has nothing under way and has
-// not read since the last tick gives them back, and waits in turn when it
-// reads again: a fixed set of busy clients is served a tick each, round
-// by round, and none waits for good. A part that waited requestTimeout
-// is refused in its place in line (partwait.go).
+// serveWaiting gives the clients that wait in line for window the
+// window they lack, and those that wait for the buffers theirs, in the
+// order they came, while the read half has room; it runs every turn
+// while any waits. A client that holds buffers, has nothing under way
+// and has not read since the last tick gives them back first, and waits
+// in turn when it reads again: a fixed set of busy clients is served a
+// tick each, round by round, and none waits for good. When the first in
+// line finds no room, a client takes the turn (partwait.go).
 func (l *loop) serveWaiting() {
 	n := l.n
 	l.endTurn()
@@ -1303,53 +1311,44 @@ func (l *loop) serveWaiting() {
 			c.giveBufs()
 		}
 	}
-	// A client served reads on and may wait again: it goes back in line
-	// behind those that wait still (pass), and its place before is let
-	// go. A client the turn's end served may be in line twice: its last
-	// place holds. The turn's client goes first: its turn has room.
+	// A client is in line once; the turn's client gets its window from
+	// the turn, and waits for the rest of its credit after it.
 	waits := n.waiting
 	n.waiting = nil
 	n.waitPass++
 	pass := n.waitPass
-	turn := -1
-	for i := len(waits) - 1; i >= 0; i-- {
-		c := waits[i]
-		if c.seenPass == pass {
-			waits[i] = nil
+	kept := l.waitScratch[:0]
+	blocked := false
+	for _, c := range waits {
+		if c == nil || c.dead || c.seenPass == pass {
 			continue
 		}
 		c.seenPass = pass
-		if c == n.inTurn {
-			turn = i
+		if c.inLine && c.in == nil {
+			// It gave its buffers back, and its window's room with them:
+			// it takes both again when it reads.
+			c.inLine = false
 		}
-	}
-	if turn > 0 {
-		t := waits[turn]
-		copy(waits[1:turn+1], waits[:turn])
-		waits[0] = t
-	}
-	blocked := false
-	for _, c := range waits {
-		if c == nil || c.dead || c.roomNeed == 0 {
-			continue
-		}
-		if !blocked {
-			n.takeTurn(c)
-		}
-		if blocked || !n.roomFor(c, c.roomNeed) {
-			blocked = true
-			if n.now.Sub(c.roomAt) < requestTimeout {
+		switch {
+		case c.inLine && c.frozen:
+			// It waits to thaw, and holds up none behind it.
+			if blocked || !n.thaw(c) {
+				kept = append(kept, c)
 				continue
 			}
-		}
-		l.serveRoom(c)
-	}
-	kept := l.waitScratch[:0]
-	for _, c := range waits {
-		switch {
-		case c == nil || c.dead || c.linePass == pass:
-		case c.roomNeed != 0:
-			kept = append(kept, c)
+			if !n.topUp(c) {
+				blocked = true
+				kept = append(kept, c)
+				continue
+			}
+			c.inLine = false
+		case c.inLine:
+			if c == n.inTurn || blocked || !n.topUp(c) {
+				blocked = blocked || c != n.inTurn
+				kept = append(kept, c)
+				continue
+			}
+			c.inLine = false
 		case !c.starved:
 		case blocked || n.cpool+c.bufNeed() > n.sizes.clientInBufs():
 			blocked = true
@@ -1361,6 +1360,10 @@ func (l *loop) serveWaiting() {
 		}
 	}
 	clear(waits)
+	if blocked {
+		l.takeTurn()
+	}
+	n.lendBack()
 	kept = append(kept, n.waiting...)
 	n.waiting = waits[:0]
 	n.waiting = append(n.waiting, kept...)
@@ -1377,9 +1380,9 @@ type counters struct {
 	// sizes.maxClients.
 	clientsRefused uint64
 	// clientsWaited counts the times a client waited for the client
-	// buffers to read, and partsWaited the times a request's part waited
-	// for room in them (partwait.go).
-	clientsWaited, partsWaited uint64
+	// buffers to read, windowsWaited the times one waited in line for
+	// window, and partTurns the turns of the read half (partwait.go).
+	clientsWaited, windowsWaited, partTurns uint64
 	// fetches counts the reads of values off the loop, and fetched the
 	// values they read (fetch.go).
 	fetches, fetched int

@@ -191,7 +191,7 @@ func TestTheNodeClosesClientsPastItsBackstop(t *testing.T) {
 // for the whole test, and would hold the buffers for good if nothing took them
 // back; 48 more each make 20 Puts, four at a time. Every Put of the 48
 // succeeds while the 12 go on, and every Put of the 12, sent in parts,
-// waits its turn for room and succeeds: none is refused as too many
+// waits at its window for room and succeeds: none is refused as too many
 // requests (#735), where the small clients kept the buffers near full
 // and the hogs' Puts were refused on almost every try.
 func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
@@ -293,27 +293,28 @@ func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
 		t.Error(err)
 	}
 	s := seeNode(loopOf(1))
-	t.Logf("%d hogs made %v Puts; %d rounds of %d clients of %d Puts each, the slowest done in %v; the node held %d clients, refused %d, they waited %d times, and Puts' parts waited %d times",
-		hogs, hogPuts, rounds, clients, puts, slices.Max(took), s.clients, s.refused, s.waited, s.partsWaited)
+	t.Logf("%d hogs made %v Puts; %d rounds of %d clients of %d Puts each, the slowest done in %v; the node held %d clients, refused %d, they waited %d times for buffers and %d for window, with %d turns",
+		hogs, hogPuts, rounds, clients, puts, slices.Max(took), s.clients, s.refused, s.waited, s.windowsWaited, s.turns)
 	if s.refused != 0 {
 		t.Fatalf("%d clients refused", s.refused)
 	}
 	if slices.Min(hogPuts) == 0 {
 		t.Fatalf("a hog made no Put: %v", hogPuts)
 	}
-	if s.partsWaited == 0 {
-		t.Fatalf("no Put's part waited for room: the hogs did not find the buffers full")
+	if s.windowsWaited == 0 {
+		t.Fatalf("no client waited for window: the hogs did not find the buffers full")
 	}
 	if s.waited == before {
 		t.Fatalf("no client waited for the client buffers in %d rounds: the test did not fill them", rounds)
 	}
 }
 
-// Requests sent in part stay within the connection's share: a client
-// that starts many large Puts and sends half of each gets the ones past
-// its share refused with etcd's "too many requests", and one that says
-// it is larger than the request limit is refused before it comes in.
-func TestHalfSentRequestsStayWithinTheShare(t *testing.T) {
+// A client sends within the window the node gives its connection, which
+// the read half holds room for (partwait.go): one that sends DATA past
+// it breaks its connection with FLOW_CONTROL_ERROR, after a message that
+// says it is larger than the request limit was refused before it came
+// in, and what it held in part goes back.
+func TestAClientPastItsWindowBreaksItsConnection(t *testing.T) {
 	const budget = 256 << 20
 	loopOf := watchLoops(t)
 	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
@@ -321,57 +322,54 @@ func TestHalfSentRequestsStayWithinTheShare(t *testing.T) {
 	fr := h2Start(t, conn)
 	const calls, half = 40, 512 << 10
 	part := make([]byte, half)
-	send := func(sid uint32, size int, p []byte) {
+	send := func(sid uint32, size int, p []byte) error {
 		h2Call(t, fr, sid, "/etcdserverpb.KV/Put")
 		hdr := make([]byte, 5)
 		binary.BigEndian.PutUint32(hdr[1:], uint32(size))
 		if err := fr.WriteData(sid, false, hdr); err != nil {
-			t.Fatal(err)
+			return err
 		}
 		for len(p) > 0 {
 			k := min(len(p), 16<<10)
 			if err := fr.WriteData(sid, false, p[:k]); err != nil {
-				t.Fatal(err)
+				return err
 			}
 			p = p[k:]
 		}
+		return nil
 	}
-	send(1, maxMsg+1, nil)
+	if err := send(1, maxMsg+1, nil); err != nil {
+		t.Fatal(err)
+	}
 	for i := range calls {
-		send(uint32(3+2*i), 1<<20, part)
+		if send(uint32(3+2*i), 1<<20, part) != nil {
+			break // the node closed the connection
+		}
 	}
-	time.Sleep(time.Second)
-	s := seeNode(loopOf(1))
-
-	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	rd := http2.NewFramer(io.Discard, conn)
 	rd.ReadMetaHeaders = hpack.NewDecoder(4096, nil)
-	tooMany, tooLarge := 0, 0
+	tooLarge, away := 0, http2.ErrCode(0)
 	for {
 		f, err := rd.ReadFrame()
 		if err != nil {
 			break
 		}
-		mh, ok := f.(*http2.MetaHeadersFrame)
-		if !ok {
-			continue
-		}
-		switch msg := grpcMessage(mh); {
-		case strings.Contains(msg, "too many requests"):
-			tooMany++
-		case strings.Contains(msg, "larger than max"):
-			tooLarge++
+		switch f := f.(type) {
+		case *http2.MetaHeadersFrame:
+			if strings.Contains(grpcMessage(f), "larger than max") {
+				tooLarge++
+			}
+		case *http2.GoAwayFrame:
+			away = f.ErrCode
 		}
 	}
-	t.Logf("%d Puts half sent: %d refused as too many, %d as too large; %d KiB held in part, the share %d KiB",
-		calls, tooMany, tooLarge, s.m.clientPartial>>10, s.connIn>>10)
-	if s.m.clientPartial > s.connIn || s.m.clientPartial == 0 {
-		t.Fatalf("the node holds %d KiB of requests sent in part, its share is %d KiB", s.m.clientPartial>>10, s.connIn>>10)
-	}
-	if tooMany == 0 || tooLarge != 1 {
-		t.Fatalf("%d refused as too many requests, %d as larger than the limit; want some, and one", tooMany, tooLarge)
+	s := seeNode(loopOf(1))
+	t.Logf("%d Puts half sent past the window: %d refused as too large, GOAWAY %v; %d KiB held in part after", calls, tooLarge, away, s.m.clientPartial>>10)
+	if tooLarge != 1 || away != http2.ErrCodeFlowControl || s.m.clientPartial != 0 {
+		t.Fatalf("%d refused as larger than the limit, GOAWAY %v, %d KiB held in part; want one, FLOW_CONTROL_ERROR and none", tooLarge, away, s.m.clientPartial>>10)
 	}
 }
 
@@ -406,18 +404,20 @@ func watchLoops(t *testing.T) func(id uint64) *loop {
 // nodeSeen is what a node's loop showed of its client connections.
 type nodeSeen struct {
 	m               memStats
-	connOut, connIn int64
+	connOut         int64
 	clients, active int
 	refused, waited uint64
-	partsWaited     uint64
-	cpool, cout     int64
+	// windowsWaited counts the times a client waited in line for window,
+	// and turns the turns of the read half (partwait.go).
+	windowsWaited, turns uint64
+	cpool, cout          int64
 }
 
 // seeNode asks l's loop for its memory and its clients' shares.
 func seeNode(l *loop) nodeSeen {
 	got := make(chan nodeSeen, 1)
 	l.post(func() error {
-		got <- nodeSeen{l.n.memStats(), l.n.connOut, l.n.connIn, l.n.clients, l.n.active, l.n.stats.clientsRefused, l.n.stats.clientsWaited, l.n.stats.partsWaited, l.n.cpool, l.n.cout}
+		got <- nodeSeen{l.n.memStats(), l.n.connOut, l.n.clients, l.n.active, l.n.stats.clientsRefused, l.n.stats.clientsWaited, l.n.stats.windowsWaited, l.n.stats.partTurns, l.n.cpool, l.n.cout}
 		return nil
 	})
 	return <-got
