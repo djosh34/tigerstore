@@ -60,28 +60,46 @@ func restoreMain(path, dataDir string, members []*pb.Member, ms []wl.Member, ski
 // info's index, as a snapshot of internal/wl to out, and returns the
 // revision it was compacted at.
 func convertMain(walDir, out string, id uint64, info node.SnapshotInfo) (int64, error) {
-	dir, err := osfs.New(walDir)
+	s, err := readMain(walDir, id, info)
 	if err != nil {
 		return 0, err
 	}
-	log, rec, err := wal.Open(dir)
+	f, err := os.Create(out)
 	if err != nil {
 		return 0, err
+	}
+	err = wl.WriteSnapshot(f, s)
+	if err == nil {
+		err = f.Sync()
+	}
+	return s.CompactRev, errors.Join(err, f.Close())
+}
+
+// readMain reads the store of the main engine's log in walDir, at info's
+// index, as a snapshot of internal/wl holds it.
+func readMain(walDir string, id uint64, info node.SnapshotInfo) (*wl.SnapStore, error) {
+	dir, err := osfs.New(walDir)
+	if err != nil {
+		return nil, err
+	}
+	log, rec, err := wal.Open(dir)
+	if err != nil {
+		return nil, err
 	}
 	defer log.Close() //nolint:errcheck // read only
 	cfg := core.DefaultConfig(id, nil)
 	cfg.Join = true
 	n, err := core.New(cfg, rec, log)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	st := n.Store()
 	if st.Rev() != info.Revision {
-		return 0, fmt.Errorf("the restored store is at revision %d, the snapshot at %d", st.Rev(), info.Revision)
+		return nil, fmt.Errorf("the restored store is at revision %d, the snapshot at %d", st.Rev(), info.Revision)
 	}
 	keys, changes, err := mainHistory(st, valueLog{log})
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	s := &wl.SnapStore{
 		Cluster: info.ClusterID, Index: info.Index, Term: info.Term,
@@ -100,15 +118,7 @@ func convertMain(walDir, out string, id uint64, info node.SnapshotInfo) (int64, 
 	for _, a := range alarms {
 		s.Alarms = append(s.Alarms, [2]uint64{a.MemberID, uint64(a.Alarm)})
 	}
-	f, err := os.Create(out)
-	if err != nil {
-		return 0, err
-	}
-	err = wl.WriteSnapshot(f, s)
-	if err == nil {
-		err = f.Sync()
-	}
-	return s.CompactRev, errors.Join(err, f.Close())
+	return s, nil
 }
 
 // mainPage is how many keys a read of the main engine's store takes at a

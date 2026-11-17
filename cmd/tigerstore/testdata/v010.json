@@ -1,0 +1,1422 @@
+{
+	"Rev": 31,
+	"Compacted": 18,
+	"Reads": {
+		"18": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-again",
+				"Create": 3,
+				"Mod": 13,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/x",
+				"Value": "x",
+				"Create": 18,
+				"Mod": 18,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"19": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-again",
+				"Create": 3,
+				"Mod": 13,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/x",
+				"Value": "x",
+				"Create": 18,
+				"Mod": 18,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"20": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-again",
+				"Create": 3,
+				"Mod": 13,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/y",
+				"Value": "y",
+				"Create": 20,
+				"Mod": 20,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"21": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-again",
+				"Create": 3,
+				"Mod": 13,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/l/x",
+				"Value": "x",
+				"Create": 21,
+				"Mod": 21,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/y",
+				"Value": "y",
+				"Create": 20,
+				"Mod": 20,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"22": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-again",
+				"Create": 3,
+				"Mod": 13,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/l/x",
+				"Value": "x",
+				"Create": 21,
+				"Mod": 21,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/l/y",
+				"Value": "y",
+				"Create": 22,
+				"Mod": 22,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/y",
+				"Value": "y",
+				"Create": 20,
+				"Mod": 20,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"23": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-again",
+				"Create": 3,
+				"Mod": 13,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/l/x",
+				"Value": "x",
+				"Create": 21,
+				"Mod": 21,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/l/y",
+				"Value": "y",
+				"Create": 22,
+				"Mod": 22,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/l/z",
+				"Value": "z",
+				"Create": 23,
+				"Mod": 23,
+				"Version": 1,
+				"LeaseID": 2642845998908440578
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/y",
+				"Value": "y",
+				"Create": 20,
+				"Mod": 20,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"24": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-again",
+				"Create": 3,
+				"Mod": 13,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/l/x",
+				"Value": "x",
+				"Create": 21,
+				"Mod": 21,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/l/y",
+				"Value": "y",
+				"Create": 22,
+				"Mod": 22,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/y",
+				"Value": "y",
+				"Create": 20,
+				"Mod": 20,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"25": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-again",
+				"Create": 3,
+				"Mod": 13,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k0",
+				"Value": "b0",
+				"Create": 25,
+				"Mod": 25,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/l/x",
+				"Value": "x",
+				"Create": 21,
+				"Mod": 21,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/l/y",
+				"Value": "y",
+				"Create": 22,
+				"Mod": 22,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/y",
+				"Value": "y",
+				"Create": 20,
+				"Mod": 20,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"26": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-again",
+				"Create": 3,
+				"Mod": 13,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k0",
+				"Value": "b0",
+				"Create": 25,
+				"Mod": 25,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k1",
+				"Value": "b1",
+				"Create": 26,
+				"Mod": 26,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/l/x",
+				"Value": "x",
+				"Create": 21,
+				"Mod": 21,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/l/y",
+				"Value": "y",
+				"Create": 22,
+				"Mod": 22,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/y",
+				"Value": "y",
+				"Create": 20,
+				"Mod": 20,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"27": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-again",
+				"Create": 3,
+				"Mod": 13,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k0",
+				"Value": "b0",
+				"Create": 25,
+				"Mod": 25,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k1",
+				"Value": "b1",
+				"Create": 26,
+				"Mod": 26,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k2",
+				"Value": "b2",
+				"Create": 27,
+				"Mod": 27,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/l/x",
+				"Value": "x",
+				"Create": 21,
+				"Mod": 21,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/l/y",
+				"Value": "y",
+				"Create": 22,
+				"Mod": 22,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/y",
+				"Value": "y",
+				"Create": 20,
+				"Mod": 20,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"28": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-again",
+				"Create": 3,
+				"Mod": 13,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k0",
+				"Value": "b0",
+				"Create": 25,
+				"Mod": 25,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k1",
+				"Value": "b1",
+				"Create": 26,
+				"Mod": 26,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k2",
+				"Value": "b2",
+				"Create": 27,
+				"Mod": 27,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k3",
+				"Value": "b3",
+				"Create": 28,
+				"Mod": 28,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/l/x",
+				"Value": "x",
+				"Create": 21,
+				"Mod": 21,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/l/y",
+				"Value": "y",
+				"Create": 22,
+				"Mod": 22,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/y",
+				"Value": "y",
+				"Create": 20,
+				"Mod": 20,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"29": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-after",
+				"Create": 3,
+				"Mod": 29,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k0",
+				"Value": "b0",
+				"Create": 25,
+				"Mod": 25,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k1",
+				"Value": "b1",
+				"Create": 26,
+				"Mod": 26,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k2",
+				"Value": "b2",
+				"Create": 27,
+				"Mod": 27,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k3",
+				"Value": "b3",
+				"Create": 28,
+				"Mod": 28,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/l/x",
+				"Value": "x",
+				"Create": 21,
+				"Mod": 21,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/l/y",
+				"Value": "y",
+				"Create": 22,
+				"Mod": 22,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/y",
+				"Value": "y",
+				"Create": 20,
+				"Mod": 20,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"30": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-after",
+				"Create": 3,
+				"Mod": 29,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/auth/data",
+				"Value": "secret",
+				"Create": 30,
+				"Mod": 30,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k0",
+				"Value": "b0",
+				"Create": 25,
+				"Mod": 25,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k1",
+				"Value": "b1",
+				"Create": 26,
+				"Mod": 26,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k2",
+				"Value": "b2",
+				"Create": 27,
+				"Mod": 27,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k3",
+				"Value": "b3",
+				"Create": 28,
+				"Mod": 28,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/l/x",
+				"Value": "x",
+				"Create": 21,
+				"Mod": 21,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/l/y",
+				"Value": "y",
+				"Create": 22,
+				"Mod": 22,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/y",
+				"Value": "y",
+				"Create": 20,
+				"Mod": 20,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		],
+		"31": [
+			{
+				"Key": "/a/k0",
+				"Value": "v0-after",
+				"Create": 3,
+				"Mod": 29,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k1",
+				"Value": "v1-txn",
+				"Create": 4,
+				"Mod": 18,
+				"Version": 3,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k2",
+				"Value": "v2-again",
+				"Create": 5,
+				"Mod": 15,
+				"Version": 2,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k4",
+				"Value": "v4",
+				"Create": 7,
+				"Mod": 7,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k5",
+				"Value": "v5",
+				"Create": 8,
+				"Mod": 8,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/a/k6",
+				"Value": "v6",
+				"Create": 9,
+				"Mod": 9,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/auth/data",
+				"Value": "secret",
+				"Create": 30,
+				"Mod": 30,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k0",
+				"Value": "b0",
+				"Create": 25,
+				"Mod": 25,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k2",
+				"Value": "b2",
+				"Create": 27,
+				"Mod": 27,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/b/k3",
+				"Value": "b3",
+				"Create": 28,
+				"Mod": 28,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/l/x",
+				"Value": "x",
+				"Create": 21,
+				"Mod": 21,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/l/y",
+				"Value": "y",
+				"Create": 22,
+				"Mod": 22,
+				"Version": 1,
+				"LeaseID": 2642845998908440577
+			},
+			{
+				"Key": "/ready",
+				"Value": "1",
+				"Create": 2,
+				"Mod": 2,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/else",
+				"Value": "e",
+				"Create": 19,
+				"Mod": 19,
+				"Version": 1,
+				"LeaseID": 0
+			},
+			{
+				"Key": "/t/y",
+				"Value": "y",
+				"Create": 20,
+				"Mod": 20,
+				"Version": 1,
+				"LeaseID": 0
+			}
+		]
+	},
+	"Leases": {
+		"2642845998908440577": 600
+	},
+	"AuthRevision": 8,
+	"Users": {
+		"alice": [
+			"reader"
+		],
+		"root": [
+			"root"
+		]
+	},
+	"Roles": {
+		"reader": [
+			{
+				"Type": 0,
+				"Key": "/auth/",
+				"End": "/auth0"
+			}
+		],
+		"root": [
+			{
+				"Type": 2,
+				"Key": "",
+				"End": "\u0000"
+			}
+		]
+	}
+}
