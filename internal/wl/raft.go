@@ -314,11 +314,11 @@ func (n *node) afterApply() error {
 	return n.maybeCkpt()
 }
 
-// maybeCkpt starts a checkpoint once the log has grown enough since the
-// last, or when Raft's storage wants one for a follower.
+// maybeCkpt starts a checkpoint once one is due, or when Raft's storage
+// wants one for a follower.
 func (n *node) maybeCkpt() error {
 	s := n.storage
-	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptLog || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt {
+	if n.ckpt != nil || n.ckptDir == "" || !n.ckptDue() && !s.wantCkpt {
 		return nil
 	}
 	index := n.applied

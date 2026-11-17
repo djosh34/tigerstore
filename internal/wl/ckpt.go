@@ -98,6 +98,22 @@ var ckptMin int64 = 1 << 30
 // see, so its time grows with the store, not with the writes since.
 const ckptLoopShare = 40
 
+// ckptDiskShare bounds the disk's writes for checkpoints as ckptLoopShare
+// bounds the loop's time: the next starts once the log has grown this
+// many times what the last wrote. A checkpoint's size grows with the
+// store, and under crd-heavy's load one of 205 MB every 19 s of log added
+// a tenth to what each node wrote, on a disk the log itself nearly fills
+// (#602's ceilings). The log a start replays grows with it, to this many
+// times the checkpoint's size: as the store grows, so does the replay.
+const ckptDiskShare = 32
+
+// ckptDue reports whether the next checkpoint is due: the log has grown
+// ckptLog since the newest, and ckptDiskShare times what that wrote, and
+// the loop's share of the last has passed.
+func (n *node) ckptDue() bool {
+	return n.wal.off-n.ckptFrom >= max(n.ckptLog, ckptDiskShare*n.ckptWrote) && !n.now.Before(n.ckptNotBefore)
+}
+
 // ckptMeta is a checkpoint's header.
 type ckptMeta struct {
 	index, term     uint64
@@ -598,6 +614,7 @@ func (n *node) ckptDone() error {
 	}
 	n.ckptGen, n.ckptFrom, n.ckptCut, n.ckptName = r.gen, r.logFrom, r.cut, r.w.name
 	n.ckptNotBefore = r.started.Add(ckptLoopShare * time.Duration(r.encodeNs))
+	n.ckptWrote = r.at + 4
 	n.storage.snap = &pb.Snapshot{
 		Data:     []byte(r.w.name),
 		Metadata: &pb.SnapshotMetadata{Index: new(r.meta.index), Term: new(r.meta.term), ConfState: r.meta.cs},

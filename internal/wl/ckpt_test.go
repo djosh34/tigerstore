@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	pb "go.etcd.io/raft/v3/raftpb"
 )
@@ -1096,5 +1097,34 @@ func TestASnapshotReceivedTwiceKeepsTheOneRaftTook(t *testing.T) {
 	}
 	if _, err := os.Stat(named); err != nil {
 		t.Fatalf("Raft's Ready names %s, which is gone: %v", filepath.Base(named), err)
+	}
+}
+
+// A checkpoint waits for the log to grow ckptDiskShare times what the
+// last wrote, beyond ckptLog, so that checkpoints take a bounded share of
+// the disk's writes as the store grows; and for the loop's share of the
+// last (#602's ceilings).
+func TestACheckpointWaitsForItsShareOfTheDisk(t *testing.T) {
+	n, _ := testNode(t)
+	n.now = time.Unix(1_700_000_000, 0)
+	n.ckptLog, n.ckptFrom = 1<<20, 4<<20
+	for _, c := range []struct {
+		wrote, grown int64
+		due          bool
+	}{
+		{0, 1<<20 - 1, false},
+		{0, 1 << 20, true},
+		{16 << 10, 1 << 20, true},
+		{1 << 20, ckptDiskShare<<20 - 1, false},
+		{1 << 20, ckptDiskShare << 20, true},
+	} {
+		n.ckptWrote, n.wal.off = c.wrote, n.ckptFrom+c.grown
+		if got := n.ckptDue(); got != c.due {
+			t.Errorf("the last checkpoint wrote %d bytes, the log grew %d since: due %v, want %v", c.wrote, c.grown, got, c.due)
+		}
+	}
+	n.ckptNotBefore = n.now.Add(time.Second)
+	if n.ckptDue() {
+		t.Error("a checkpoint is due before the loop's share of the last has passed")
 	}
 }

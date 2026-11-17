@@ -205,9 +205,10 @@ type node struct {
 	// time since it started.
 	ckptNotBefore time.Time
 	// ckptLog is the log written after the newest checkpoint before the
-	// next is taken (Config.CheckpointLog).
-	ckptLog  int64
-	ckptName string
+	// next is taken (Config.CheckpointLog), and ckptWrote the bytes the
+	// newest wrote (ckptDiskShare).
+	ckptLog, ckptWrote int64
+	ckptName           string
 	// ckptKeys is the most keys a chunk of a checkpoint encodes
 	// (Config.CheckpointChunkKeys), 0 for ckptChunkKeys.
 	ckptKeys int
