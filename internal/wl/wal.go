@@ -163,7 +163,7 @@ func segPath(dir string, k int64) string { return filepath.Join(dir, fmt.Sprintf
 // the log before keep is removed, and from keep on it is kept to read.
 // stage is the size of the stage, a power of two (sizes.stage).
 func openWAL(sys sysEnv, dir string, stage int, keep, from int64, fn func(r *walRecord) error) (*wal, error) {
-	if err := sys.mkdirAll(dir); err != nil {
+	if err := mkdirSynced(sys, dir); err != nil {
 		return nil, err
 	}
 	end, err := scanWAL(sys, dir, from, fn)

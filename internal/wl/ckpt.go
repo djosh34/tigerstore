@@ -1136,6 +1136,17 @@ func writeFileSynced(sys sysEnv, path string, b []byte) error {
 	return f.Close()
 }
 
+// mkdirSynced makes directory dir, if it is not there, and syncs the
+// directory that holds it, so that a power loss keeps its entry: a log or
+// checkpoint directory whose entry was lost loses everything in it,
+// whatever was synced inside (#689's area-1 review).
+func mkdirSynced(sys sysEnv, dir string) error {
+	if err := sys.mkdirAll(dir); err != nil {
+		return err
+	}
+	return syncDir(sys, filepath.Dir(dir))
+}
+
 func syncDir(sys sysEnv, dir string) error {
 	d, err := sys.openFile(dir, os.O_RDONLY, 0)
 	if err != nil {
@@ -1253,7 +1264,7 @@ func removeCkpts(sys sysEnv, dir, keep string, tmp bool) error {
 // the log from n.ckptCut on holds values it names. It removes what a node
 // that stopped left half done.
 func (n *node) loadNewest() (int64, error) {
-	if err := n.sys.mkdirAll(n.ckptDir); err != nil {
+	if err := mkdirSynced(n.sys, n.ckptDir); err != nil {
 		return 0, err
 	}
 	p, err := readPointer(n.sys, n.ckptDir)
