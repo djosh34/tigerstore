@@ -240,6 +240,27 @@ func namedAppend(origin, seq uint64) []byte {
 	return binary.LittleEndian.AppendUint32(f, 0) // no context
 }
 
+// A membership change an earlier run proposed, applied after a restart,
+// does not answer a request of the later run: each run's changes have
+// sequences of their own. Started at 0 each run, run 1's first change
+// answered run 2's first request.
+func TestEachRunNamesItsMemberChangesAfresh(t *testing.T) {
+	var firsts []uint64
+	for run := uint64(1); run <= 2; run++ {
+		n, _ := testNode(t)
+		n.startRun(run)
+		firsts = append(firsts, n.memberSeq+1) // the run's first change
+	}
+	n, _ := testNode(t)
+	n.startRun(2)
+	n.memberSeq++
+	n.memberReqs = map[uint64]memberReq{n.memberSeq: {h: noHandle, kind: kMemberAdd}}
+	n.answerMemberRequest(firsts[0], nil) // run 1's change applies
+	if len(n.memberReqs) != 1 {
+		t.Fatalf("run 1's change %#x answered run 2's request %#x", firsts[0], firsts[1])
+	}
+}
+
 func TestEachRunNamesItsBatchesAfresh(t *testing.T) {
 	var names []uint64
 	for run := uint64(1); run <= 2; run++ {

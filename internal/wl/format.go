@@ -126,8 +126,10 @@ func (n *node) announces(m *member) bool {
 }
 
 // startRun takes this start's run: its announcements name it, and its
-// batches' sequences start after it.
-func (n *node) startRun(run uint64) { n.run, n.fwdSeq = run, run<<32 }
+// batches' and membership changes' sequences start after it, so that a
+// change an earlier run proposed, applied after a restart, never answers
+// a request of this run (#693; #689's area-2 review).
+func (n *node) startRun(run uint64) { n.run, n.fwdSeq, n.memberSeq = run, run<<32, run<<32 }
 
 // runFile, in the data dir, counts the node's starts.
 const runFile = "run"
