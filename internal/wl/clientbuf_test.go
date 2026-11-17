@@ -214,11 +214,11 @@ func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	// The hogs' Puts of 64 KiB each span several reads, so that a hog
+	// The hogs' Puts of 32 KiB each span several reads, so that a hog
 	// holds its buffers across turns: with Puts of a byte each whole
 	// in one read, the buffers came back each turn, and on a slower run
 	// (CI's coverage) no client waited (#724).
-	hogValue := strings.Repeat("h", 64<<10)
+	hogValue := strings.Repeat("h", 32<<10)
 	putValue := func(cli *clientv3.Client, key, value string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -245,6 +245,7 @@ func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
 						if err != nil && strings.Contains(err.Error(), errTooManyRequests.Error()) {
 							// Its Puts sent in part pass the pool: refused
 							// as etcd refuses them, it tries again.
+							time.Sleep(time.Millisecond)
 							continue
 						}
 						if err != nil {
@@ -261,28 +262,33 @@ func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
 		})
 	}
 	time.Sleep(300 * time.Millisecond) // the hogs hold the buffers
+	// The clients' rounds go on until one waited for the buffers: whether
+	// a round finds them full depends on the run's timing (#724).
 	start := time.Now()
-	var wg sync.WaitGroup
 	errs := make(chan error, 4*clients)
 	took := make([]time.Duration, clients)
-	for i, cli := range clis[hogs:] {
-		wg.Go(func() {
-			var inner sync.WaitGroup
-			for k := range 4 {
-				inner.Go(func() {
-					for j := range puts / 4 {
-						if err := put(cli, fmt.Sprintf("/wait/%02d/%d/%02d", i, k, j)); err != nil {
-							errs <- fmt.Errorf("client %d, Put %d.%d: %w", i, k, j, err)
-							return
+	rounds, before := 0, seeNode(loopOf(1)).waited
+	for ; rounds == 0 || rounds < 20 && seeNode(loopOf(1)).waited == before; rounds++ {
+		var wg sync.WaitGroup
+		for i, cli := range clis[hogs:] {
+			wg.Go(func() {
+				var inner sync.WaitGroup
+				for k := range 4 {
+					inner.Go(func() {
+						for j := range puts / 4 {
+							if err := put(cli, fmt.Sprintf("/wait/%02d/%d/%02d", i, k, j)); err != nil {
+								errs <- fmt.Errorf("client %d, Put %d.%d: %w", i, k, j, err)
+								return
+							}
 						}
-					}
-				})
-			}
-			inner.Wait()
-			took[i] = time.Since(start)
-		})
+					})
+				}
+				inner.Wait()
+				took[i] = time.Since(start)
+			})
+		}
+		wg.Wait()
 	}
-	wg.Wait()
 	close(stop)
 	hogsDone.Wait()
 	close(errs)
@@ -290,13 +296,13 @@ func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
 		t.Error(err)
 	}
 	s := seeNode(loopOf(1))
-	t.Logf("%d hogs made %v Puts; %d clients of %d Puts each, the slowest done in %v; the node held %d clients, refused %d, they waited %d times",
-		hogs, hogPuts, clients, puts, slices.Max(took), s.clients, s.refused, s.waited)
+	t.Logf("%d hogs made %v Puts; %d rounds of %d clients of %d Puts each, the slowest done in %v; the node held %d clients, refused %d, they waited %d times",
+		hogs, hogPuts, rounds, clients, puts, slices.Max(took), s.clients, s.refused, s.waited)
 	if s.refused != 0 {
 		t.Fatalf("%d clients refused", s.refused)
 	}
-	if s.waited == 0 {
-		t.Fatal("no client waited for the client buffers: the test did not fill them")
+	if s.waited == before {
+		t.Fatalf("no client waited for the client buffers in %d rounds: the test did not fill them", rounds)
 	}
 }
 
