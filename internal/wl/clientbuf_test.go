@@ -187,10 +187,13 @@ func TestTheNodeClosesClientsPastItsBackstop(t *testing.T) {
 
 // When the read half of the client buffers is full, clients wait for it
 // in turn, and none is dropped or waits for good. At 128 MiB the buffers
-// hold 6 clients at once. 12 clients keep four Puts of 64 KiB under way
+// hold 6 clients at once. 12 clients keep four Puts of 32 KiB under way
 // for the whole test, and would hold the buffers for good if nothing took them
 // back; 48 more each make 20 Puts, four at a time. Every Put of the 48
-// succeeds while the 12 go on.
+// succeeds while the 12 go on, and every Put of the 12, sent in parts,
+// waits its turn for room and succeeds: none is refused as too many
+// requests (#735), where the small clients kept the buffers near full
+// and the hogs' Puts were refused on almost every try.
 func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
 	const budget, hogs, clients, puts = 128 << 20, 12, 48, 20
 	loopOf := watchLoops(t)
@@ -242,12 +245,6 @@ func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
 						default:
 						}
 						err := putValue(cli, fmt.Sprintf("/hog/%02d/%d/%d", i, k, j), hogValue)
-						if err != nil && strings.Contains(err.Error(), errTooManyRequests.Error()) {
-							// Its Puts sent in part pass the pool: refused
-							// as etcd refuses them, it tries again.
-							time.Sleep(time.Millisecond)
-							continue
-						}
 						if err != nil {
 							t.Errorf("hog %d: %v", i, err)
 							return
@@ -296,10 +293,16 @@ func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
 		t.Error(err)
 	}
 	s := seeNode(loopOf(1))
-	t.Logf("%d hogs made %v Puts; %d rounds of %d clients of %d Puts each, the slowest done in %v; the node held %d clients, refused %d, they waited %d times",
-		hogs, hogPuts, rounds, clients, puts, slices.Max(took), s.clients, s.refused, s.waited)
+	t.Logf("%d hogs made %v Puts; %d rounds of %d clients of %d Puts each, the slowest done in %v; the node held %d clients, refused %d, they waited %d times, and Puts' parts waited %d times",
+		hogs, hogPuts, rounds, clients, puts, slices.Max(took), s.clients, s.refused, s.waited, s.partsWaited)
 	if s.refused != 0 {
 		t.Fatalf("%d clients refused", s.refused)
+	}
+	if slices.Min(hogPuts) == 0 {
+		t.Fatalf("a hog made no Put: %v", hogPuts)
+	}
+	if s.partsWaited == 0 {
+		t.Fatalf("no Put's part waited for room: the hogs did not find the buffers full")
 	}
 	if s.waited == before {
 		t.Fatalf("no client waited for the client buffers in %d rounds: the test did not fill them", rounds)
@@ -406,6 +409,7 @@ type nodeSeen struct {
 	connOut, connIn int64
 	clients, active int
 	refused, waited uint64
+	partsWaited     uint64
 	cpool, cout     int64
 }
 
@@ -413,7 +417,7 @@ type nodeSeen struct {
 func seeNode(l *loop) nodeSeen {
 	got := make(chan nodeSeen, 1)
 	l.post(func() error {
-		got <- nodeSeen{l.n.memStats(), l.n.connOut, l.n.connIn, l.n.clients, l.n.active, l.n.stats.clientsRefused, l.n.stats.clientsWaited, l.n.cpool, l.n.cout}
+		got <- nodeSeen{l.n.memStats(), l.n.connOut, l.n.connIn, l.n.clients, l.n.active, l.n.stats.clientsRefused, l.n.stats.clientsWaited, l.n.stats.partsWaited, l.n.cpool, l.n.cout}
 		return nil
 	})
 	return <-got

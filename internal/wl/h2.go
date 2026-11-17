@@ -205,6 +205,13 @@ type client struct {
 	// (loop.input); busy, the tick it last read.
 	starved bool
 	busy    int64
+	// roomNeed, while not 0, is what the part of a request it stopped
+	// reading at adds to the client buffers, which wait for room since
+	// roomAt; roomLate, that the part is refused, once it waited
+	// requestTimeout (partwait.go).
+	roomNeed int64
+	roomAt   time.Time
+	roomLate bool
 	// roomHeld is the room of the reserve it holds, and roomWaiters how
 	// many of its messages wait for room (reserve.go).
 	roomHeld    int64
@@ -566,9 +573,10 @@ func (c *client) frames(n *node) error {
 		n.markDirty(&c.sock)
 	}
 	for {
-		if c.tokenWait != 0 {
-			// A call's token waits for its entry: the rest waits behind
-			// it, in pt and the socket (tokenwait.go).
+		if c.tokenWait != 0 || c.roomNeed != 0 {
+			// A call's token waits for its entry, or a request's part
+			// for room: the rest waits behind it, in pt and the socket
+			// (tokenwait.go, partwait.go).
 			return nil
 		}
 		if c.backedUp() {
@@ -616,6 +624,18 @@ func (c *client) frames(n *node) error {
 		}
 		switch typ {
 		case frData:
+			if flags&flPadded != 0 {
+				if len(p) == 0 || int(p[0]) >= len(p) {
+					return errProtocol
+				}
+				p = p[1 : len(p)-int(p[0])]
+			}
+			s := c.get(sid)
+			if s != nil && !s.ended && c.waitsForRoom(n, s, p) {
+				// The frame is read again once the buffers have room.
+				c.pr -= 9 + l
+				return nil
+			}
 			c.unacked += l
 			if c.unacked >= windowAck {
 				var w [4]byte
@@ -624,13 +644,6 @@ func (c *client) frames(n *node) error {
 				c.unacked = 0
 				n.markDirty(&c.sock)
 			}
-			if flags&flPadded != 0 {
-				if len(p) == 0 || int(p[0]) >= len(p) {
-					return errProtocol
-				}
-				p = p[1 : len(p)-int(p[0])]
-			}
-			s := c.get(sid)
 			if s == nil {
 				if sid > c.lastSid {
 					return errProtocol
@@ -1026,6 +1039,7 @@ func (n *node) putBuf(b []byte) {
 }
 
 func (c *client) data(n *node, s *stream, p []byte) error {
+	was := s.counted
 	c.partial -= s.counted
 	c.grow(-int(s.counted))
 	s.counted = 0
@@ -1073,10 +1087,11 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 			break
 		}
 	}
-	if len(p) > 0 && (c.partial+int64(len(p)) > n.connIn || n.cpool+int64(len(p)) > n.sizes.clientInBufs()) {
+	if int64(len(p)) > was && (c.partial+int64(len(p)) > n.connIn || !n.roomFor(c, int64(len(p)))) {
 		// The connection holds its share of requests sent in part, or
-		// the client buffers are full: this one is refused, as etcd
-		// refuses too many requests, and the rest of it dropped.
+		// the client buffers stayed full for requestTimeout while the
+		// part waited for room (partwait.go): this one is refused, as
+		// etcd refuses too many requests, and the rest of it dropped.
 		n.reject(c, s, errTooManyRequests)
 		return nil
 	}

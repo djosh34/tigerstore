@@ -57,6 +57,8 @@ type loop struct {
 	hoFD  int // handoffs wake the loop through it
 	// resumed are the paused clients a flush resumes (flush).
 	resumed []*client
+	// waitScratch is serveWaiting's.
+	waitScratch []*client
 
 	ctx      context.Context
 	mu       sync.Mutex
@@ -928,7 +930,7 @@ func (l *loop) input(idx int) {
 		switch v := x.(type) {
 		case *client:
 			err = v.frames(n)
-			if err == nil && (v.paused || v.tokenWait != 0) {
+			if err == nil && (v.paused || v.tokenWait != 0 || v.roomNeed != 0) {
 				// Nothing more is read from it until a flush resumes it.
 				n.markDirty(&v.sock)
 			}
@@ -1188,7 +1190,7 @@ func (l *loop) flush() {
 				c.paused = false
 				resumed = append(resumed, c)
 			}
-			noIn = c.paused || c.starved || c.tokenWait != 0
+			noIn = c.paused || c.starved || c.tokenWait != 0 || c.roomNeed != 0
 		}
 		if ok == !s.wantOut && noIn == s.noIn {
 			continue
@@ -1269,14 +1271,19 @@ func (l *loop) clientTick() {
 	n.connOut, n.connIn = n.sizes.connOut(n.active), n.sizes.connIn(n.active)
 }
 
-// serveWaiting gives the clients that wait for the client buffers theirs,
-// in the order they came, while the buffers have room; it runs every turn
-// while any waits. Then a client that holds buffers, has nothing under way
-// and has not read since the last tick gives them back, and waits in turn
-// when it reads again: a fixed set of busy clients is served a tick each,
-// round by round, and none waits for good.
+// serveWaiting gives the clients whose request's part waits for room in
+// the client buffers that room, and then those that wait for the buffers
+// theirs, each in the order they came, while the buffers have room; it
+// runs every turn while any waits. A client that waits for buffers takes
+// none while a part waits: what it needs, the waiting parts' clients
+// hold. Then a client that holds buffers, has nothing under way and has
+// not read since the last tick gives them back, and waits in turn when it
+// reads again: a fixed set of busy clients is served a tick each, round
+// by round, and none waits for good. A part that waited requestTimeout
+// is refused in its place in line (partwait.go).
 func (l *loop) serveWaiting() {
 	n := l.n
+	l.endTurn()
 	if len(n.waiting) == 0 {
 		return
 	}
@@ -1285,21 +1292,48 @@ func (l *loop) serveWaiting() {
 			c.giveBufs()
 		}
 	}
-	k := 0
-	for k < len(n.waiting) {
-		c := n.waiting[k]
-		if !c.dead && c.starved {
-			if n.cpool+c.bufNeed() > n.sizes.clientInBufs() {
-				break
+	// A client served reads on and may wait again: it goes back in line
+	// behind those that wait still.
+	waits := n.waiting
+	n.waiting = nil
+	blocked := false
+	for _, c := range waits {
+		if c.dead || c.roomNeed == 0 {
+			continue
+		}
+		if !blocked {
+			n.takeTurn(c)
+		}
+		if blocked || !n.roomFor(c, c.roomNeed) {
+			blocked = true
+			if n.now.Sub(c.roomAt) < requestTimeout {
+				continue
 			}
+		}
+		l.serveRoom(c)
+	}
+	kept := l.waitScratch[:0]
+	for _, c := range waits {
+		switch {
+		case c.dead:
+		case c.roomNeed != 0:
+			kept = append(kept, c)
+		case !c.starved:
+		case blocked || n.cpool+c.bufNeed() > n.sizes.clientInBufs():
+			blocked = true
+			kept = append(kept, c)
+		default:
 			c.takeBufs()
 			c.starved, c.busy = false, l.tick
 			n.markDirty(&c.sock)
 		}
-		k++
 	}
-	clear(n.waiting[:k])
-	n.waiting = n.waiting[k:]
+	clear(waits)
+	kept = append(kept, n.waiting...)
+	n.waiting = waits[:0]
+	n.waiting = append(n.waiting, kept...)
+	clear(kept)
+	l.waitScratch = kept[:0]
 }
 
 // counters are the loop's own, for its log: per 5 s, how many turns,
@@ -1311,8 +1345,9 @@ type counters struct {
 	// sizes.maxClients.
 	clientsRefused uint64
 	// clientsWaited counts the times a client waited for the client
-	// buffers to read.
-	clientsWaited uint64
+	// buffers to read, and partsWaited the times a request's part waited
+	// for room in them (partwait.go).
+	clientsWaited, partsWaited uint64
 	// fetches counts the reads of values off the loop, and fetched the
 	// values they read (fetch.go).
 	fetches, fetched int

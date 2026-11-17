@@ -82,10 +82,12 @@ func (z sizes) clientBufs() int64 { return z.clientPool / 2 }
 func (z sizes) clientInBufs() int64 { return z.clientBufs() / 2 }
 
 // connIn is the most of requests sent in part one of active clients
-// holds before its next is refused: its share of clientInBufs, at least
-// one whole request while clientInBufs holds it.
+// holds before its next is refused: its share of clientInBufs less its
+// own buffers, so that the shares and buffers of the clients that read
+// fit clientInBufs together, and a part that waits for room finds it
+// (partwait.go); at least one whole request.
 func (z sizes) connIn(active int) int64 {
-	return max(z.clientInBufs()/int64(max(active, 1)), maxMsg)
+	return max(z.clientInBufs()/int64(max(active, 1))-int64(clientInBuf+clientPtBuf+slotBytes), maxMsg)
 }
 
 // minConnOut is the least a client's share of what waits to be sent may
