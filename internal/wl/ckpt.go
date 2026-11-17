@@ -369,11 +369,6 @@ type ckptRun struct {
 func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 	st := n.st
 	gen := 1 - n.ckptGen
-	if st.retired[gen] {
-		// Its generation's file is still read; the checkpoint waits for
-		// the holds to go (releaseRead).
-		return nil
-	}
 	n.simCheckpoint(index)
 	if st.ckpts[gen] != nil {
 		_ = st.ckpts[gen].Close()
@@ -472,7 +467,7 @@ func (n *node) scanKeys(r *ckptRun) {
 	st := n.st
 	stop := min(r.end, r.next+ckptChunkKeys)
 	for states := 0; r.next < stop && states < ckptScanStates; r.next++ {
-		r.states = st.ckptStates(r.next, r.meta.rev, st.ckptRev(), r.states[:0])
+		r.states = st.ckptStates(r.next, r.meta.rev, st.takeRev(), r.states[:0])
 		states += len(r.states)
 		for i := range r.states {
 			s := &r.states[i]
@@ -578,17 +573,11 @@ func (n *node) ckptDone() error {
 	n.logf("checkpoint at index %d, revision %d: %d bytes, the log from %d and cut at %d, in %v; %d MB of values taken in, %d MB left in the log; the loop encoded for %v, the writer read for %v and wrote for %v",
 		r.meta.index, r.meta.rev, r.at+4, r.logFrom, r.cut, time.Since(r.started).Round(time.Millisecond), r.taken>>20, r.leftInLog>>20,
 		time.Duration(r.encodeNs).Round(time.Millisecond), time.Duration(r.w.readNs.Load()).Round(time.Millisecond), time.Duration(r.w.writeNs.Load()).Round(time.Millisecond))
+	// A held read's values were taken in too (scanKeys), so nothing is
+	// read from the replaced checkpoint now.
 	if f := n.st.ckpts[old]; f != nil {
-		if len(n.st.readHolds) > 0 {
-			// A held read may read a value only the replaced checkpoint
-			// holds: a checkpoint keeps the states from ckptRev, and a
-			// hold may be older. The file stays open, and its generation
-			// is not written again, until no read is held (releaseRead).
-			n.st.retired[old] = true
-		} else {
-			_ = f.Close()
-			n.st.setCkpt(old, nil)
-		}
+		_ = f.Close()
+		n.st.setCkpt(old, nil)
 	}
 	if oldName != "" && oldName != n.ckptName {
 		n.rm.remove(filepath.Join(n.ckptDir, oldName))

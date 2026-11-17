@@ -106,12 +106,7 @@ type store struct {
 	// needs, and readHoldMin is the lowest of them.
 	readHolds   []int64
 	readHoldMin int64
-	// retired is set for a checkpoint generation that a newer checkpoint
-	// replaced while reads were held: a held state's value may lie in its
-	// file, which stays open, and is not written again, until no read is
-	// held (#689's re-check, C4).
-	retired [2]bool
-	tree    tree
+	tree        tree
 
 	leases map[int64]*lease
 	log    logReader
@@ -848,13 +843,22 @@ func (st *store) trimRev() int64 {
 
 // ckptRev is the revision a checkpoint keeps the states of: the
 // compacted one, or the one a checkpoint being written holds. Range
-// replies' holds keep more in the store, but not in a checkpoint.
+// replies' holds keep more in the store, but not in a checkpoint's keys:
+// it only takes in their values (takeRev).
 func (st *store) ckptRev() int64 {
 	if st.holding {
 		return min(st.compactRev, st.holdRev)
 	}
 	return st.compactRev
 }
+
+// takeRev is the revision from which a checkpoint takes in the values of
+// the states a read at it or later can see, so that a held read's values
+// outlive the checkpoint file and the log it replaces (#689's re-check,
+// D1 and D2). It is trimRev, or one below ckptRev: a watch sent in pieces
+// holds the revision before its first event's (bigwatch.go), which may be
+// the compacted one, and holds come while a checkpoint is written.
+func (st *store) takeRev() int64 { return min(st.trimRev(), st.ckptRev()-1) }
 
 // holdRead keeps what a read at rev needs until releaseRead(rev): its
 // keys' states, the tree's keys live at rev, and their ids.
@@ -872,16 +876,6 @@ func (st *store) releaseRead(rev int64) {
 	}
 	if len(st.readHolds) > 0 {
 		st.readHoldMin = slices.Min(st.readHolds)
-	} else {
-		for g := range st.retired {
-			if st.retired[g] {
-				st.retired[g] = false
-				if f := st.ckpts[g]; f != nil {
-					_ = f.Close()
-					st.setCkpt(g, nil)
-				}
-			}
-		}
 	}
 	if st.trimRev() > before {
 		st.retrim()

@@ -697,11 +697,13 @@ func TestAnAbortedCheckpointClosesItsFile(t *testing.T) {
 }
 
 // A read held at a revision whose value only a replaced checkpoint holds
-// reads it still: the replaced generation stays open, and the checkpoint
-// that would write it again waits, until no read is held. Closed and
-// reused, the held read read another checkpoint's bytes there and failed
-// its checksum (#689's re-check, C4).
-func TestAHeldReadKeepsTheCheckpointItReadsFrom(t *testing.T) {
+// reads it still, and checkpoints go on while it is held: each takes in
+// the held states' values, so the one it replaces closes at once (#689's
+// re-check, C4 and D1). Before, the replaced file was closed and reused,
+// and the held read failed its checksum; then the checkpoint after waited
+// for the hold, which a client that never reads keeps for good. A store
+// loaded from each checkpoint holds the state it would without the hold.
+func TestAHeldReadOutlivesTheCheckpointsItReadsFrom(t *testing.T) {
 	n, l := ckptNode(t)
 	st := n.st
 	takeEveryValue(t)
@@ -713,11 +715,32 @@ func TestAHeldReadKeepsTheCheckpointItReadsFrom(t *testing.T) {
 	putValue(t, st, l, "/b", "b2") // 5
 	st.compact(5)
 	st.trimSteps(1 << 20)
-	writeCkpt(t, n, 11) // keeps the states from 5 on: /a at 2 is in the first alone
-	gen := n.ckptGen
-	writeCkpt(t, n, 12) // would write the first's generation again
-	if n.ckptGen != gen {
-		t.Fatal("a checkpoint wrote the generation a held read reads from")
+	for index := uint64(11); index <= 14; index++ {
+		gen := n.ckptGen
+		writeCkpt(t, n, index)
+		if n.ckptGen == gen {
+			t.Fatalf("checkpoint %d was not written while a read is held", index)
+		}
+		if st.ckpts[gen] != nil {
+			t.Fatalf("checkpoint %d left the one it replaced open", index)
+		}
+		f, err := os.Open(filepath.Join(n.ckptDir, ckptName(index)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := newStore()
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded.log = l
+		if _, err := loadCkpt(f, n.ckptGen, loaded); err != nil {
+			t.Fatal(err)
+		}
+		if loaded.stateHash() != st.stateHash() {
+			t.Fatalf("checkpoint %d holds another state than its store's", index)
+		}
+		_ = loaded.close()
+		_ = f.Close()
 	}
 	// Nothing is read from the log or the slab.
 	l.b = nil
@@ -732,12 +755,104 @@ func TestAHeldReadKeepsTheCheckpointItReadsFrom(t *testing.T) {
 		t.Fatalf("the held read of /a at 2 reads %q live %v", got, live)
 	}
 	st.releaseRead(2)
-	if st.retired[1-gen] || st.ckpts[1-gen] != nil {
-		t.Fatal("the replaced checkpoint stays open once no read is held")
+}
+
+// cutLog is a memLog cut at cut: a read before it fails, as one of a
+// segment removed.
+type cutLog struct {
+	l   *memLog
+	cut int64
+}
+
+func (l cutLog) read(p []byte, off int64) error {
+	if off < l.cut {
+		return fmt.Errorf("log offset %d was cut at %d", off, l.cut)
 	}
-	writeCkpt(t, n, 13)
-	if n.ckptGen == gen {
-		t.Fatal("no checkpoint was written once no read was held")
+	return l.l.read(p, off)
+}
+
+// A held state's value that a checkpoint left in the log is not cut away
+// by the next: that one takes it in (#689's re-check, D2). Before, it
+// scanned the states from the compacted revision alone, cut the log past
+// the value, and the held read failed.
+func TestAHeldValueInTheLogOutlivesTheCut(t *testing.T) {
+	n, l := ckptNode(t)
+	st := n.st
+	defer st.close() //nolint:errcheck // a test's store
+	takeEveryValue(t)
+	putValue(t, st, l, "/a", "a1") // 2
+	putValue(t, st, l, "/b", "b1") // 3
+	// No checkpoint before it: it leaves every value in the log.
+	if err := n.startCkpt(10, 1, int64(len(l.b))); err != nil {
+		t.Fatal(err)
+	}
+	for n.ckpt != nil {
+		if err := n.ckptStep(n.ckpt.sent > 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st.holdRead(2)
+	putValue(t, st, l, "/a", "a2") // 4
+	putValue(t, st, l, "/b", "b2") // 5
+	st.compact(5)
+	st.trimSteps(1 << 20)
+	writeCkptAt(t, n, 11)
+	if n.ckptCut == 0 {
+		t.Fatal("the checkpoint cut no log: the test shows nothing")
+	}
+	st.log = cutLog{l, n.ckptCut}
+	st.fit()
+	for i := range st.keys[:st.nkeys] {
+		if k := &st.keys[i]; k.rec != 0 {
+			st.slab.free(k.rec, int(k.rlen))
+			k.rec, k.rlen = 0, 0
+		}
+	}
+	if got, live := valueAt(t, st, "/a", 2); got != "a1" || !live {
+		t.Fatalf("the held read of /a at 2 reads %q live %v", got, live)
+	}
+}
+
+// A watch sent in pieces holds the revision before its first event's,
+// which may be the compacted one's (bigwatch.go), and may come while a
+// checkpoint is written, after it scanned its keys: the checkpoint took
+// in the value before the compacted revision too, while the store had it.
+func TestAWatchHeldBeforeTheCompactedRevisionOutlivesTheCut(t *testing.T) {
+	n, l := ckptNode(t)
+	st := n.st
+	defer st.close() //nolint:errcheck // a test's store
+	takeEveryValue(t)
+	putValue(t, st, l, "/a", "a1") // 2
+	putValue(t, st, l, "/a", "a2") // 3
+	st.compact(3)                  // not trimmed yet: /a at 2 is still there
+	n.ckptFrom = int64(len(l.b))
+	if err := n.startCkpt(10, 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	for n.ckpt != nil && n.ckpt.phase == ckptScanning {
+		if err := n.ckptStep(false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st.holdRead(2) // a prev_kv watch of /a's put at 3
+	for n.ckpt != nil {
+		if err := n.ckptStep(n.ckpt.sent > 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st.log = cutLog{l, n.ckptCut}
+	if n.ckptCut <= 0 {
+		t.Fatal("the checkpoint cut no log: the test shows nothing")
+	}
+	st.fit()
+	for i := range st.keys[:st.nkeys] {
+		if k := &st.keys[i]; k.rec != 0 {
+			st.slab.free(k.rec, int(k.rlen))
+			k.rec, k.rlen = 0, 0
+		}
+	}
+	if got, live := valueAt(t, st, "/a", 2); got != "a1" || !live {
+		t.Fatalf("the held read of /a at 2 reads %q live %v", got, live)
 	}
 }
 
