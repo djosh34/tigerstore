@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"hash/maphash"
+	"maps"
 	"math"
 	"slices"
 	"unsafe"
@@ -119,7 +120,10 @@ type store struct {
 	// and revision, each with how many hold it: a checkpoint takes in
 	// their values (takeStates).
 	heldStates map[heldState]int
-	tree       tree
+	// heldStatesPeak is the most heldStates held since it was last made:
+	// a map never shrinks, so one mostly emptied is made again.
+	heldStatesPeak int
+	tree           tree
 
 	leases map[int64]*lease
 	log    logReader
@@ -904,7 +908,7 @@ func (st *store) releaseReads(revs ...int64) {
 		}
 	}
 	if len(st.readHolds) == 0 {
-		st.readHolds = nil // a map never shrinks: an empty one lets go
+		st.readHolds, st.heldRevs = nil, nil // a map never shrinks: an empty one lets go
 	}
 	_, ok := st.readHolds[st.readHoldMin]
 	if !ok && len(st.readHolds) > 0 {
@@ -974,6 +978,7 @@ func (st *store) holdState(id uint32, mod int64) {
 		st.heldStates = map[heldState]int{}
 	}
 	st.heldStates[heldState{id, mod}]++
+	st.heldStatesPeak = max(st.heldStatesPeak, len(st.heldStates))
 }
 
 func (st *store) releaseState(id uint32, mod int64) {
@@ -984,8 +989,15 @@ func (st *store) releaseState(id uint32, mod int64) {
 	} else {
 		delete(st.heldStates, k)
 	}
-	if len(st.heldStates) == 0 {
-		st.heldStates = nil // a map never shrinks: an empty one lets go
+	switch {
+	case len(st.heldStates) == 0:
+		st.heldStates, st.heldStatesPeak = nil, 0 // a map never shrinks: an empty one lets go
+	case st.heldStatesPeak > 1024 && len(st.heldStates) < st.heldStatesPeak/4:
+		// Mostly emptied, it is made again at its size (the invariant
+		// re-check, Astra: one state left of 200,000 kept 7 MB).
+		m := make(map[heldState]int, len(st.heldStates))
+		maps.Copy(m, st.heldStates)
+		st.heldStates, st.heldStatesPeak = m, len(m)
 	}
 }
 

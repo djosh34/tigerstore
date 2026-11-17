@@ -472,7 +472,8 @@ func (n *node) ckptStep(block bool) error {
 //     as the live store answered it when the hold was taken: each key's
 //     state there, a watch's put events at its revision (a put its own Txn
 //     deleted there included) and the values before them, each record of
-//     a waiting reply;
+//     a waiting reply; and what holders walk to find them stays, the tree
+//     of keys a range walks and the change index a watch walks;
 //   - so does every read at the compacted revision or later;
 //   - the newest checkpoint, with the log from its cut on, holds every
 //     value those reads need: none lies only in a replaced checkpoint or
@@ -481,10 +482,16 @@ func (n *node) ckptStep(block bool) error {
 //     was taken of at its revision (stateHash): the values only holds
 //     need lie in the file unnamed.
 //
+// Holds are of one live store: a snapshot install replaces it, closes the
+// old one, and ends its holders (the range and the waiting reply end, a
+// watch catches up again on the new store); a load checks durable state,
+// it brings back no hold.
+//
 // TestHeldReadsSurviveCheckpointsAsAModelSays checks it against a model
 // of the store's revisions, over random puts, deletes, Txns that put and
-// delete one key, compactions, holds taken and released, checkpoints,
-// which writes and holds may come in the middle of, and loads.
+// delete one key, nested Txns, compactions, holds taken and released,
+// checkpoints, which writes and holds may come in the middle of, key by
+// key, loads and installs.
 
 // scanKeys scans the next keys for the values the checkpoint takes in.
 // Once all are scanned, it picks the log it cuts and places the values.
@@ -1295,7 +1302,9 @@ func removeCkpts(sys sysEnv, dir, keep string, tmp bool) error {
 			continue
 		}
 		if strings.HasSuffix(name, ".ckpt") || (tmp && strings.HasSuffix(name, ".tmp")) {
-			if err := sys.remove(filepath.Join(dir, name)); err != nil {
+			// The remover may have taken it first (ckptDone): gone is
+			// removed (the invariant re-check, Astra).
+			if err := sys.remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
 		}

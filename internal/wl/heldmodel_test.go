@@ -63,33 +63,39 @@ type modelHold struct {
 }
 
 type modelRead struct {
-	key  string
-	rev  int64
-	put  bool // the put at rev (putAt), not the state a read at rev sees
-	want string
+	key    string
+	rev    int64
+	put    bool // the put at rev (putAt), not the state a read at rev sees
+	want   string
+	record string // complete record captured when held: metadata must remain identical too
 }
 
 type heldModel struct {
-	t      *testing.T
-	rng    *rand.Rand
-	n      *node
-	l      *memLog
-	c      *client
-	sid    uint32
-	states map[int64]map[string]string // the state after each revision
-	puts   map[int64]map[string]string // the puts each revision made
-	holds  []*modelHold
-	failed string
-	cut    int64
-	index  uint64
-	inCkpt bool
+	t          *testing.T
+	rng        *rand.Rand
+	n          *node
+	l          *memLog
+	c          *client
+	sid        uint32
+	states     map[int64]map[string]string // the state after each revision
+	puts       map[int64]map[string]string // the puts each revision made
+	holds      []*modelHold
+	failed     string
+	cut        int64
+	index      uint64
+	inCkpt     bool
+	installing bool
 }
 
 func runHeldModel(t *testing.T, seed int64) (failed string) {
 	n, l := ckptNode(t)
 	st := n.st
-	defer func() { _ = st.close() }()
+	defer func() { _ = n.st.close() }()
 	takeEveryValue(t)
+	oldScan := ckptScanStates
+	ckptScanStates = 1 // force holds and writes between keys, not just before/after a whole scan
+	defer func() { ckptScanStates = oldScan }()
+	n.ckptKeys = 1 // force several encoding turns too
 	n.sizes, n.connOut = sizeFor(256<<20), 64<<10
 	c, _ := flowClient(t)
 	c.node = n
@@ -99,6 +105,21 @@ func runHeldModel(t *testing.T, seed int64) (failed string) {
 	}
 	for step := 0; step < 120 && m.failed == ""; step++ {
 		m.step(step, true)
+	}
+	if m.failed == "" {
+		// Reach every remaining compaction boundary, and consecutive replacements
+		// with no intervening writes, not only whatever the random walk selected.
+		for rev := m.low(); rev <= n.st.rev && m.failed == ""; rev++ {
+			n.st.compact(rev)
+			n.st.trimSteps(1 << 20)
+			m.check(120)
+		}
+		m.installing = true // suppress interleaved writes, not the existing holds
+		m.checkpoint(121)
+		if m.failed == "" {
+			m.checkpoint(122)
+		}
+		m.installing = false
 	}
 	if n.ckpt != nil {
 		n.abortCkpt() // a failure in its middle stopped it
@@ -124,10 +145,15 @@ func (m *heldModel) id(key string) uint32 {
 
 // read is what read r gives now.
 func (m *heldModel) read(r modelRead) (string, error) {
+	rec, err := m.readRecord(r)
+	return string(recValue(rec)), err
+}
+
+func (m *heldModel) readRecord(r modelRead) ([]byte, error) {
 	st := m.n.st
 	id, ok := st.find([]byte(r.key))
 	if !ok {
-		return "", nil
+		return nil, nil
 	}
 	var rec []byte
 	var err error
@@ -136,10 +162,7 @@ func (m *heldModel) read(r modelRead) (string, error) {
 	} else {
 		rec, err = st.at(id, r.rev)
 	}
-	if err != nil || rec == nil {
-		return "", err
-	}
-	return string(recValue(rec)), nil
+	return rec, err
 }
 
 // write applies one revision of puts and deletes, in order, to the store
@@ -192,6 +215,8 @@ func (m *heldModel) step(step int, mayCkpt bool) {
 		del bool
 	}
 	switch x := m.rng.Intn(100); {
+	case x < 8:
+		m.nested()
 	case x < 25:
 		m.write([]op{{key: m.key()}})
 	case x < 33:
@@ -225,6 +250,11 @@ func (m *heldModel) step(step int, mayCkpt bool) {
 	case x < 92:
 		if mayCkpt && !m.inCkpt {
 			m.checkpoint(step)
+		}
+	case x < 95:
+		if mayCkpt && !m.inCkpt {
+			m.install(step)
+			st = m.n.st
 		}
 	default:
 		dropRecords(st)
@@ -338,11 +368,17 @@ func (m *heldModel) holdPrevKV(key string) {
 // taken reports whether h's reads give, as it is taken, what the model
 // says.
 func (m *heldModel) taken(h *modelHold) bool {
-	for _, r := range h.reads {
+	for i, r := range h.reads {
 		if got, err := m.read(r); err != nil || got != r.want {
 			m.fail("a %s hold at %d, taken: %s at %d (put %v) reads %q, %v; want %q", h.kind, h.rev, r.key, r.rev, r.put, got, err, r.want)
 			return false
 		}
+		rec, err := m.readRecord(r)
+		if err != nil {
+			m.fail("capture held record: %v", err)
+			return false
+		}
+		h.reads[i].record = string(rec)
 	}
 	return true
 }
@@ -363,16 +399,21 @@ func (m *heldModel) release(h *modelHold) {
 // check checks every hold's reads, and the reads at the compacted and the
 // current revision, against the model.
 func (m *heldModel) check(step int) {
+	m.checkIndexes(step)
 	st := m.n.st
 	for _, h := range m.holds {
 		for _, r := range h.reads {
+			if rec, err := m.readRecord(r); err == nil && string(rec) != r.record && string(recValue(rec)) == r.want {
+				m.fail("step %d: %s hold at %d: %s record metadata changed", step, h.kind, h.rev, r.key)
+				return
+			}
 			if got, err := m.read(r); err != nil || got != r.want {
 				m.fail("step %d: a %s hold at %d: %s at %d (put %v) reads %q, %v; want %q", step, h.kind, h.rev, r.key, r.rev, r.put, got, err, r.want)
 				return
 			}
 		}
 	}
-	for _, rev := range []int64{st.compactRev, st.rev} {
+	for rev := m.low(); rev <= st.rev; rev++ {
 		if rev < 1 {
 			continue
 		}
@@ -401,8 +442,11 @@ func (m *heldModel) checkpoint(step int) {
 		return
 	}
 	for n.ckpt != nil {
-		if m.rng.Intn(3) == 0 {
-			m.step(step, false)
+		if !m.installing {
+			m.hold() // every scan/encoding boundary offers a new hold
+			if m.rng.Intn(3) == 0 {
+				m.step(step, false)
+			}
 		}
 		if n.ckpt == nil || m.failed != "" {
 			return
@@ -414,6 +458,7 @@ func (m *heldModel) checkpoint(step int) {
 	}
 	m.cut = max(m.cut, n.ckptCut)
 	st.log = cutLog{m.l, m.cut}
+	dropRecords(st) // do not let cached live records mask a missing relocation
 	m.check(step)
 	f, err := os.Open(filepath.Join(n.ckptDir, ckptName(index)))
 	if err != nil {
@@ -436,21 +481,23 @@ func (m *heldModel) checkpoint(step int) {
 		m.fail("checkpoint %d at %d loads another state than its store's", index, rev)
 		return
 	}
-	for _, k := range heldModelKeys {
-		var got string
-		if id, ok := loaded.find([]byte(k)); ok {
-			rec, err := loaded.at(id, rev)
-			if err != nil {
-				m.fail("checkpoint %d: %s at %d: %v", index, k, rev, err)
+	for r := max(loaded.compactRev, 1); r <= rev; r++ {
+		for _, k := range heldModelKeys {
+			var got string
+			if id, ok := loaded.find([]byte(k)); ok {
+				rec, err := loaded.at(id, r)
+				if err != nil {
+					m.fail("checkpoint %d: %s at %d: %v", index, k, rev, err)
+					return
+				}
+				if rec != nil {
+					got = string(recValue(rec))
+				}
+			}
+			if got != m.states[r][k] {
+				m.fail("checkpoint %d loaded: %s at %d reads %q, want %q", index, k, r, got, m.states[r][k])
 				return
 			}
-			if rec != nil {
-				got = string(recValue(rec))
-			}
-		}
-		if got != m.states[rev][k] {
-			m.fail("checkpoint %d loaded: %s at %d reads %q, want %q", index, k, rev, got, m.states[rev][k])
-			return
 		}
 	}
 }
