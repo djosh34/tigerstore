@@ -528,15 +528,8 @@ func (n *node) replyError(c *client, sid uint32, code int, msg string) {
 		n.callEnded(s, code)
 	}
 	blk := append([]byte(nil), respHeaders...)
-	blk = append(blk, 0x00, 11)
-	blk = append(blk, "grpc-status"...)
-	cs := []byte(itoa(code))
-	blk = append(blk, byte(len(cs)))
-	blk = append(blk, cs...)
-	blk = append(blk, 0x00, 12)
-	blk = append(blk, "grpc-message"...)
-	blk = append(blk, byte(len(msg)))
-	blk = append(blk, msg...)
+	blk = appendLiteral(blk, "grpc-status", itoa(code))
+	blk = appendLiteral(blk, "grpc-message", encodeGrpcMessage(msg))
 	s := c.get(sid)
 	if s != nil && s.holds {
 		c.hold(s, nil, blk)
@@ -549,6 +542,50 @@ func (n *node) replyError(c *client, sid uint32, code int, msg string) {
 		c.endStream(s)
 	}
 	n.markDirty(&c.sock)
+}
+
+// maxErrMsg bounds an error's grpc-message, which may hold what a client
+// sent (a method's path): its header block stays well within a frame
+// and a record.
+const maxErrMsg = 1024
+
+// encodeGrpcMessage is msg as grpc-go's encodeGrpcMessage sends it, its bytes
+// outside printable ASCII and '%' percent-encoded, cut to maxErrMsg.
+func encodeGrpcMessage(msg string) string {
+	const hex = "0123456789ABCDEF"
+	var b []byte
+	for i := 0; i < len(msg) && len(b) < maxErrMsg-3; i++ {
+		c := msg[i]
+		if c >= ' ' && c <= '~' && c != '%' {
+			b = append(b, c)
+			continue
+		}
+		b = append(b, '%', hex[c>>4], hex[c&15])
+	}
+	return string(b)
+}
+
+// appendLiteral appends a header field to an HPACK block as a literal
+// without indexing and with a literal name (RFC 7541, 6.2.2).
+func appendLiteral(b []byte, name, value string) []byte {
+	b = append(b, 0x00)
+	b = appendHpackInt(b, uint64(len(name)))
+	b = append(b, name...)
+	b = appendHpackInt(b, uint64(len(value)))
+	return append(b, value...)
+}
+
+// appendHpackInt appends v as an HPACK integer of a 7-bit prefix, the
+// form of a string's length with no Huffman code (RFC 7541, 5.1).
+func appendHpackInt(b []byte, v uint64) []byte {
+	if v < 127 {
+		return append(b, byte(v))
+	}
+	b = append(b, 127)
+	for v -= 127; v >= 128; v >>= 7 {
+		b = append(b, byte(v&127|128))
+	}
+	return append(b, byte(v))
 }
 
 func itoa(v int) string {

@@ -15,6 +15,7 @@ import (
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/v3lock/v3lockpb"
+	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
 )
 
@@ -188,6 +189,82 @@ func TestANodeServesPlainHTTPClients(t *testing.T) {
 		break
 	}
 	checkProtocolErrors(t, plain[0])
+	checkLongUnknownMethod(t, plain[0])
+	if _, err := c.Put(ctx, "/p/after", "v"); err != nil {
+		t.Fatalf("a put after the calls that break HTTP/2: %v", err)
+	}
+}
+
+// checkLongUnknownMethod calls, before any auth, a method whose path of
+// 60 KiB names no service: within the header block's limit, its error
+// message once took more than a frame and a record (a panic of the
+// node) and an HPACK length of one byte. The node answers Unimplemented,
+// with a message cut short, as one well-formed header block.
+func checkLongUnknownMethod(t *testing.T, addr string) {
+	t.Helper()
+	nc, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = nc.Close() }()
+	if err := nc.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := nc.Write([]byte(h2Preface)); err != nil {
+		t.Fatal(err)
+	}
+	fr := http2.NewFramer(nc, nc)
+	fr.ReadMetaHeaders = hpack.NewDecoder(4096, nil)
+	if err := fr.WriteSettings(); err != nil {
+		t.Fatal(err)
+	}
+	var hb bytes.Buffer
+	enc := hpack.NewEncoder(&hb)
+	path := "/" + strings.Repeat("x", 60<<10) + "/M"
+	for _, f := range [][2]string{{":method", "POST"}, {":scheme", "http"}, {":path", path}, {":authority", addr}, {"content-type", "application/grpc"}, {"te", "trailers"}} {
+		if err := enc.WriteField(hpack.HeaderField{Name: f[0], Value: f[1]}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	blk := hb.Bytes()
+	first := blk[:maxFrame]
+	if err := fr.WriteHeaders(http2.HeadersFrameParam{StreamID: 1, BlockFragment: first, EndStream: true}); err != nil {
+		t.Fatal(err)
+	}
+	for blk = blk[maxFrame:]; len(blk) > 0; {
+		k := min(len(blk), maxFrame)
+		if err := fr.WriteContinuation(1, k == len(blk), blk[:k]); err != nil {
+			t.Fatal(err)
+		}
+		blk = blk[k:]
+	}
+	for {
+		f, err := fr.ReadFrame()
+		if err != nil {
+			t.Fatalf("no answer to a call of a 60 KiB path: %v", err)
+		}
+		mh, ok := f.(*http2.MetaHeadersFrame)
+		if !ok || mh.StreamID != 1 {
+			continue
+		}
+		if st := mh.PseudoValue("status"); st != "200" {
+			t.Fatalf(":status %q", st)
+		}
+		var status string
+		for _, f := range mh.Fields {
+			if f.Name == "grpc-status" {
+				status = f.Value
+			}
+		}
+		if status != "12" {
+			t.Fatalf("grpc-status %q, want 12 (Unimplemented)", status)
+		}
+		msg := grpcMessage(mh)
+		if !strings.HasPrefix(msg, "unknown service xxx") || len(msg) > maxErrMsg {
+			t.Fatalf("grpc-message of %d bytes: %.40q", len(msg), msg)
+		}
+		return
+	}
 }
 
 // checkProtocolErrors sends a client connection at addr, over h2c, each
