@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -196,6 +197,9 @@ func (n *node) sendClientSnap(cs *clientSnap) bool {
 	return true
 }
 
+// ErrDataDirNotEmpty is a restore into a data dir that holds files.
+var ErrDataDirNotEmpty = errors.New("the data directory exists and is not empty")
+
 // storageVersion is the storage version etcd v3.7.2 names.
 const storageVersion = "3.7.0"
 
@@ -204,6 +208,15 @@ const storageVersion = "3.7.0"
 // replacing the snapshot's, is the newest, and the log is empty. It
 // returns the snapshot's index, term and revision.
 func Restore(path, dataDir string, members []Member, skipHash bool) (index, term uint64, rev int64, err error) {
+	// As etcdutl and main's restore, never into a node's data: its old
+	// log would go on after the new checkpoint.
+	entries, err := os.ReadDir(dataDir)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return 0, 0, 0, err
+	}
+	if len(entries) > 0 {
+		return 0, 0, 0, fmt.Errorf("%w: %s", ErrDataDirNotEmpty, dataDir)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return 0, 0, 0, err

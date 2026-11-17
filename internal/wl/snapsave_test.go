@@ -3,6 +3,7 @@ package wl
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -77,5 +78,21 @@ func TestASnapshotRestoresIntoANewCluster(t *testing.T) {
 	}
 	if _, _, _, err := Restore(path, t.TempDir(), restored.members, false); err == nil {
 		t.Fatal("a corrupt snapshot restored")
+	}
+}
+
+// A restore never goes into a data dir that holds files, as etcdutl's
+// and main's: the old log there would go on after the new checkpoint,
+// and the restored node's store would part from its cluster's.
+func TestARestoreRefusesADataDirThatHoldsFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "wal"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "wal", "0000000000000000.seg"), []byte("an old log"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := Restore(filepath.Join(t.TempDir(), "snap.db"), dir, nil, false); !errors.Is(err, ErrDataDirNotEmpty) {
+		t.Fatalf("a restore into a data dir with a log gave %v, want ErrDataDirNotEmpty", err)
 	}
 }
