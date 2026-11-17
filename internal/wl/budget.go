@@ -31,7 +31,8 @@ type sizes struct {
 	// for at most maxClients connections, idle, of idleConn each,
 	// and the rest (clientBufs) for what they hold while they read or
 	// write: their buffers and stream slots, requests sent in part, and
-	// replies held for want of window (sock.pool).
+	// replies held for want of window (sock.pool). Beyond both halves,
+	// the reserve takes the messages past their clients' shares (#727).
 	clientPool int64
 }
 
@@ -94,18 +95,19 @@ const minConnOut = 64 << 10
 // connOut is the most that waits unsent to one of active clients before
 // the node stops reading its requests and sends its watches' events by
 // catching up from the change index (client.backedUp): its share of the
-// half of clientBufs for what waits to be sent, less the reserve. A
-// message that would take a client past its share takes room from the
-// reserve first (node.msgRoom); a range reply past oneShot, and a watch's
-// catch-up past syncBytes a turn, go in pieces within it (bigrange.go,
-// #721).
+// half of clientBufs for what waits to be sent. A message that would
+// take a client past its share takes room from the reserve first
+// (node.msgRoom); a range reply past oneShot, and a watch's catch-up past
+// syncBytes a turn, go in pieces within it (bigrange.go, #721).
 func (z sizes) connOut(active int) int64 {
-	return max((z.clientBufs()-z.clientInBufs()-z.reserve())/int64(max(active, 1)), minConnOut)
+	return max((z.clientBufs()-z.clientInBufs())/int64(max(active, 1)), minConnOut)
 }
 
-// reserve is the room of the send half of clientBufs that the messages
-// past their clients' shares take, together (#727): at least one whole
-// message, and a thirty-second of the client pool.
+// reserve is the client pool's room, beyond its two halves, that the
+// messages past their clients' shares take together (#727): at least one
+// whole message, and a thirty-second of the client pool. Taken out of the
+// send half, it cut a lone client's share by an eighth, and crd-heavy,
+// one client of the bench, by a fifth at 2 and 10 ms (#689).
 func (z sizes) reserve() int64 { return max(maxMsg, z.clientPool/32) }
 
 // mapped is what the rings and the stage map outside Go's heap.

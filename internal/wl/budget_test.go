@@ -23,11 +23,12 @@ func TestTheBuffersFitTheBudget(t *testing.T) {
 			// within the rest (sock.pool).
 			// The values fetched off the loop that it keeps (fetchedMax;
 			// #689's area-3 review).
-			heap := replication + z.held + int64(z.uncommitted) + keptBufs*keptBufMax + z.clientPool + fetchedMax(budget)
+			// The reserve for messages past the clients' shares (#727).
+			heap := replication + z.held + int64(z.uncommitted) + keptBufs*keptBufMax + z.clientPool + z.reserve() + fetchedMax(budget)
 			store := budget - z.mapped() - (heap + heap/4)
 			if store < budget/4 {
-				t.Errorf("budget %d MiB, %d followers: the buffers leave the store %d MiB (mapped %d MiB, send buffers %d MiB, held %d MiB, uncommitted %d MiB, clients %d MiB, fetched %d MiB); want at least a quarter",
-					budget>>20, followers, store>>20, z.mapped()>>20, replication>>20, z.held>>20, z.uncommitted>>20, z.clientPool>>20, fetchedMax(budget)>>20)
+				t.Errorf("budget %d MiB, %d followers: the buffers leave the store %d MiB (mapped %d MiB, send buffers %d MiB, held %d MiB, uncommitted %d MiB, clients %d MiB and a reserve of %d MiB, fetched %d MiB); want at least a quarter",
+					budget>>20, followers, store>>20, z.mapped()>>20, replication>>20, z.held>>20, z.uncommitted>>20, z.clientPool>>20, z.reserve()>>20, fetchedMax(budget)>>20)
 			}
 			if z.inflight(followers+1) > uint64(z.peerBacklog(followers)) {
 				t.Errorf("budget %d MiB, %d followers: Raft keeps %d bytes in flight to a follower, past its backlog of %d", budget>>20, followers, z.inflight(followers+1), z.peerBacklog(followers))
@@ -43,10 +44,10 @@ func TestTheBuffersFitTheBudget(t *testing.T) {
 		}
 		most := int(z.clientInBufs() / (clientInBuf + clientPtBuf))
 		for _, active := range []int{1, most} {
-			// The shares and the reserve for the messages past them
-			// (#727) fit the send half.
-			if out := int64(active)*z.connOut(active) + z.reserve(); out > z.clientBufs()-z.clientInBufs() || z.connIn(active) < maxMsg {
-				t.Errorf("budget %d MiB, %d active clients: their send shares and the reserve sum to %d MiB, past the send half of the client buffers' %d MiB, or a share of requests sent in part of %d KiB",
+			// The shares fit the send half; the reserve for the
+			// messages past them (#727) is beyond it, counted above.
+			if out := int64(active) * z.connOut(active); out > z.clientBufs()-z.clientInBufs() || z.connIn(active) < maxMsg {
+				t.Errorf("budget %d MiB, %d active clients: their send shares sum to %d MiB, past the send half of the client buffers' %d MiB, or a share of requests sent in part of %d KiB",
 					budget>>20, active, out>>20, z.clientBufs()>>20, z.connIn(active)>>10)
 			}
 		}

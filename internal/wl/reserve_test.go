@@ -59,13 +59,13 @@ func TestTheReserveTakesWhatPassesAShare(t *testing.T) {
 	}
 }
 
-// Many clients at once each read a key of a 1 MiB value, near the largest
-// request the read half takes at that budget, on a small budget, where each reply passes its client's share
-// (64 KiB, the least, as the reserve takes the whole send half at 96 MiB).
-// Every reply is right, what waits to be sent to the clients stays within
-// the reserve and their shares, and replies waited for the reserve. A
-// read that finds the reserve spent waits, unbuilt, until room comes
-// back (#727).
+// Many clients at once each read a key of a 1 MiB value on a small
+// budget, where each reply passes its client's share: at 96 MiB the send
+// half is 1.5 MiB, and the clients share it. Every reply is right, what
+// waits to be sent to the clients stays within the reserve and their
+// shares, and replies waited for the reserve. A read that finds the
+// reserve spent waits, unbuilt, until room comes back: a range of two
+// values of 800 KiB, past a lone client's share (#727).
 func TestManyLargeRepliesStayWithinTheReserve(t *testing.T) {
 	const budget = 96 << 20
 	loopOf := watchLoops(t)
@@ -78,11 +78,18 @@ func TestManyLargeRepliesStayWithinTheReserve(t *testing.T) {
 	if _, err := c.Put(ctx, "/r/v", string(value)); err != nil {
 		t.Fatal(err)
 	}
+	pair := bytes.Repeat([]byte("w"), 800<<10)
+	for _, k := range []string{"/r/w1", "/r/w2"} {
+		if _, err := c.Put(ctx, k, string(pair)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	l := loopOf(tc.ids[0])
 	z := sizeFor(budget)
-	// The reserve, the clients' shares, and each one's send buffer at
-	// twice its empty size, as a record opens in it.
-	limit := z.reserve() + 33*(minConnOut+2*clientOutBuf)
+	// The reserve, the clients' shares, which sum to the send half or to
+	// the least share each, and each one's send buffer at twice its empty
+	// size, as a record opens in it.
+	limit := z.reserve() + max(z.clientBufs()-z.clientInBufs(), 33*minConnOut) + 33*2*clientOutBuf
 	// The reserve spent: a read waits for it, and is served once its
 	// room comes back.
 	setReserved := func(v int64) {
@@ -98,8 +105,8 @@ func TestManyLargeRepliesStayWithinTheReserve(t *testing.T) {
 	setReserved(z.reserve())
 	got := make(chan error, 1)
 	go func() {
-		r, err := c.Get(ctx, "/r/v", clientv3.WithSerializable())
-		if err == nil && (len(r.Kvs) != 1 || !bytes.Equal(r.Kvs[0].Value, value)) {
+		r, err := c.Get(ctx, "/r/w", clientv3.WithPrefix(), clientv3.WithSerializable())
+		if err == nil && (len(r.Kvs) != 2 || !bytes.Equal(r.Kvs[0].Value, pair) || !bytes.Equal(r.Kvs[1].Value, pair)) {
 			err = errors.New("a wrong reply")
 		}
 		got <- err
@@ -179,9 +186,12 @@ func TestManyLargeRepliesStayWithinTheReserve(t *testing.T) {
 // revision and their states held: it is never refused, so that a
 // compare-and-put's client never sees a failure for a write that
 // applied, and retries it into a failed compare. Here a Txn that puts
-// with prev_kv and ranges, a Put with prev_kv and a DeleteRange with
-// prev_kv wait while their records are overwritten and compacted away,
-// and each gets its right reply once the reserve has room (#727).
+// with prev_kv and ranges, and a DeleteRange with prev_kv, each past a
+// lone client's share, wait while their records are overwritten and
+// compacted away, and each gets its right reply once the reserve has
+// room (#727). A Put's reply, one record, never passes a lone client's
+// share, as the request half is as large as the send half; it is held
+// the same way.
 func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 	const budget = 96 << 20
 	loopOf := watchLoops(t)
@@ -189,8 +199,9 @@ func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	c := tc.clientOf(t, tc.endpoints[0])
-	// Each reply passes its client's share, the least at this budget.
-	big := func(b byte) string { return string(bytes.Repeat([]byte{b}, 300<<10)) }
+	// Three values pass a lone client's share, the send half of 1.5 MiB
+	// at this budget, within what one reply may take (replyRoom).
+	big := func(b byte) string { return string(bytes.Repeat([]byte{b}, 520<<10)) }
 	put := func(k, v string) int64 {
 		r, err := c.Put(ctx, k, v)
 		if err != nil {
@@ -199,8 +210,7 @@ func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 		return r.Header.Revision
 	}
 	modA := put("/h/a", big('a'))
-	modB := put("/h/b", big('b'))
-	modP := put("/h/p", big('p'))
+	modB := []int64{put("/h/b1", big('1')), put("/h/b2", big('2')), put("/h/b3", big('3'))}
 	l := loopOf(tc.ids[0])
 	z := sizeFor(budget)
 	setReserved := func(v int64) {
@@ -217,14 +227,13 @@ func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 
 	txn := make(chan *clientv3.TxnResponse, 1)
 	del := make(chan *clientv3.DeleteResponse, 1)
-	pp := make(chan *clientv3.PutResponse, 1)
-	errs := make(chan error, 3)
+	errs := make(chan error, 2)
 	// Each on a client of its own: a reply that waits holds up nothing
 	// else of its connection, but these tests read on other clients.
-	ct, cd, cp := tc.clientOf(t, tc.endpoints[0]), tc.clientOf(t, tc.endpoints[0]), tc.clientOf(t, tc.endpoints[0])
+	ct, cd := tc.clientOf(t, tc.endpoints[0]), tc.clientOf(t, tc.endpoints[0])
 	go func() {
 		r, err := ct.Txn(ctx).If(clientv3.Compare(clientv3.ModRevision("/h/a"), "=", modA)).
-			Then(clientv3.OpPut("/h/a", "A", clientv3.WithPrevKV()), clientv3.OpGet("/h/b")).Commit()
+			Then(clientv3.OpPut("/h/a", "A", clientv3.WithPrevKV()), clientv3.OpGet("/h/b1", clientv3.WithRange("/h/b3"))).Commit()
 		if err != nil {
 			errs <- fmt.Errorf("the Txn: %w", err)
 			return
@@ -245,10 +254,10 @@ func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 	}
 	applied := func() bool {
 		ver := versions()
-		_, bLive := ver["/h/b"]
-		return ver["/h/a"] == 2 && ver["/h/p"] == 2 && !bLive
+		_, bLive := ver["/h/b1"]
+		return ver["/h/a"] == 2 && !bLive
 	}
-	// The delete and the put go after the Txn, which reads /h/b.
+	// The delete goes after the Txn, which reads /h/b1 and /h/b2.
 	deadline := time.Now().Add(10 * time.Second)
 	for versions()["/h/a"] != 2 {
 		if time.Now().After(deadline) {
@@ -257,24 +266,16 @@ func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	go func() {
-		r, err := cd.Delete(ctx, "/h/b", clientv3.WithPrevKV())
+		r, err := cd.Delete(ctx, "/h/b", clientv3.WithPrefix(), clientv3.WithPrevKV())
 		if err != nil {
 			errs <- fmt.Errorf("the delete: %w", err)
 			return
 		}
 		del <- r
 	}()
-	go func() {
-		r, err := cp.Put(ctx, "/h/p", "P", clientv3.WithPrevKV())
-		if err != nil {
-			errs <- fmt.Errorf("the put: %w", err)
-			return
-		}
-		pp <- r
-	}()
 	for !applied() {
 		if time.Now().After(deadline) {
-			t.Fatal("the three writes did not apply with the reserve spent")
+			t.Fatal("the writes did not apply with the reserve spent")
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -285,13 +286,11 @@ func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 		t.Fatal("the Txn's reply was sent with the reserve spent")
 	case <-del:
 		t.Fatal("the delete's reply was sent with the reserve spent")
-	case <-pp:
-		t.Fatal("the put's reply was sent with the reserve spent")
 	case <-time.After(300 * time.Millisecond):
 	}
 	// Their records are overwritten and compacted meanwhile.
-	put("/h/a", "A2")
-	rev := put("/h/p", "P2")
+	put("/h/a", "A3")
+	rev := put("/h/b1", "B")
 	if _, err := c.Compact(ctx, rev, clientv3.WithCompactPhysical()); err != nil {
 		t.Fatal(err)
 	}
@@ -300,11 +299,11 @@ func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 		held <- [2]int{len(l.n.heldReplies), len(l.n.st.readHolds)}
 		return nil
 	})
-	if h := <-held; h[0] != 3 || h[1] != 3 {
-		t.Fatalf("%d replies held, %d revisions held; want 3 and 3", h[0], h[1])
+	if h := <-held; h[0] != 2 || h[1] != 2 {
+		t.Fatalf("%d replies held, %d revisions held; want 2 and 2", h[0], h[1])
 	}
 	setReserved(0)
-	for range 3 {
+	for range 2 {
 		select {
 		case r := <-txn:
 			if !r.Succeeded || len(r.Responses) != 2 {
@@ -315,16 +314,22 @@ func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 				t.Fatal("the Txn's put came back without its value before")
 			}
 			got := r.Responses[1].GetResponseRange().Kvs
-			if len(got) != 1 || string(got[0].Value) != big('b') || got[0].ModRevision != modB {
-				t.Fatal("the Txn's range came back wrong")
+			if len(got) != 2 {
+				t.Fatalf("the Txn's range came back with %d records, want 2", len(got))
+			}
+			for i, kv := range got {
+				if string(kv.Value) != big(byte('1'+i)) || kv.ModRevision != modB[i] {
+					t.Fatalf("the Txn's range came back wrong at %s", kv.Key)
+				}
 			}
 		case r := <-del:
-			if r.Deleted != 1 || len(r.PrevKvs) != 1 || string(r.PrevKvs[0].Value) != big('b') || r.PrevKvs[0].ModRevision != modB {
-				t.Fatal("the delete came back without its value before")
+			if r.Deleted != 3 || len(r.PrevKvs) != 3 {
+				t.Fatalf("the delete deleted %d, with %d values before; want 3 and 3", r.Deleted, len(r.PrevKvs))
 			}
-		case r := <-pp:
-			if r.PrevKv == nil || string(r.PrevKv.Value) != big('p') || r.PrevKv.ModRevision != modP {
-				t.Fatal("the put came back without its value before")
+			for i, kv := range r.PrevKvs {
+				if string(kv.Value) != big(byte('1'+i)) || kv.ModRevision != modB[i] {
+					t.Fatalf("the delete came back wrong at %s", kv.Key)
+				}
 			}
 		case err := <-errs:
 			t.Fatalf("a write that applied failed: %v", err)
