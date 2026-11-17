@@ -133,9 +133,12 @@ type node struct {
 	// reserved is what the clients hold of the reserve; roomWait are
 	// the ranges whose replies wait for room in it, served again once
 	// roomFreed (reserve.go).
-	reserved  int64
-	roomWait  []awayRead
-	roomFreed bool
+	reserved int64
+	roomWait []awayRead
+	// tokenWaits are the requests that wait for the entry of their
+	// simple token (tokenwait.go).
+	tokenWaits []tokenWait
+	roomFreed  bool
 	// heldReplies are the replies of applied writes that wait for room
 	// in the reserve, unbuilt (reserve.go).
 	heldReplies []*heldReply
@@ -378,6 +381,9 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		// etcd refuses no watch message so; a watch's events wait as a
 		// slow watcher's do.
 		n.reject(c, s, errTooManyRequests)
+		return nil
+	}
+	if n.auth.enabled && n.waitsForToken(c, s, msg) {
 		return nil
 	}
 	learner := n.isLearner()

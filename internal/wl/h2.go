@@ -146,9 +146,12 @@ type stream struct {
 	progressDue, progressWaits bool
 	// token is the call's auth token, from its token header. A side
 	// call's (byCaller) is for the client of caller's certificate name.
-	token    string
-	caller   string
-	byCaller bool
+	token  string
+	caller string
+	// tokenWaits counts its requests that wait for the entry of its
+	// token (tokenwait.go).
+	tokenWaits int
+	byCaller   bool
 }
 
 // streamSlots are a client's streams kept in place; more at once go to a

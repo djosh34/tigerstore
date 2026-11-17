@@ -1083,6 +1083,9 @@ func (l *loop) run() error {
 		if err := n.ready(); err != nil {
 			return err
 		}
+		if len(n.tokenWaits) > 0 {
+			n.retryTokenWaits()
+		}
 		// The changes stepped are appended now; the next held one may go.
 		n.confHold.stepped = false
 		if n.confHold.waiting() {
