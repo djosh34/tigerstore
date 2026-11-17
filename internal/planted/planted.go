@@ -40,5 +40,6 @@ var Bugs = map[string]string{
 	"B31":  "a cache lookup ignores the Raft index and returns an overwritten value",
 	"B33":  "a follower hands Raft an append that names an entry it does not hold, with the entry's key as its data",
 	"B34":  "the leader renews a lease only as it applies a keepalive, not as its log takes it",
-	"B35":  "the leader answers a keepalive of a lease whose revoke it decided at once, alive, not through the log",
+	"B35":  "a keepalive is answered with a second more than the lease's TTL",
+	"B36":  "a keepalive applied after its lease's revoke is answered alive, with the TTL the lease had",
 }

@@ -332,19 +332,6 @@ func (n *node) sawRenewed(id int64) {
 // leaseKeepAlive proposes a renewal; the stream stays open for the next.
 func (n *node) leaseKeepAlive(c *client, s *stream, msg []byte) {
 	n.openStream(c, s)
-	// Planted (B35): the leader answers a keepalive of a lease whose
-	// revoke it decided at once, alive with the lease's TTL, from its
-	// lease table and not through the log. Its decision is on time (lease
-	// rule 1); the revoke then cuts the TTL the client was told (rule 3),
-	// or takes effect on another node first (rule 2).
-	if planted.On("B35") {
-		if id, err := leaseID(msg); err == nil {
-			if _, revoking := n.leases.revoking[id]; revoking && n.st.leases[id] != nil {
-				n.replyKeepAlive(c, s, id, n.st.leases[id].ttl)
-				return
-			}
-		}
-	}
 	n.addOp(mkHandle(c, s.id), kLeaseKeepAlive, msg)
 }
 
@@ -492,6 +479,13 @@ func (n *node) applyLeaseRevoke(req []byte, c *client, s *stream) error {
 	if len(keys) > 1 {
 		n.gs.txns++
 	}
+	if planted.On("B36") {
+		// Planted (B36): the node remembers the TTL of a lease it revoked.
+		if n.plantedRevoked == nil {
+			n.plantedRevoked = map[int64]int64{}
+		}
+		n.plantedRevoked[id] = l.ttl
+	}
 	delete(st.leases, id)
 	delete(n.leaseSeen, id)
 	delete(n.leases.deadline, id)
@@ -514,6 +508,19 @@ func (n *node) applyLeaseKeepAlive(req []byte, c *client, s *stream) error {
 		ttl = l.ttl
 		n.renewed(id)
 		n.sawRenewed(id)
+		// Planted (B35): the answer gives the lease a second more than its
+		// TTL. Every node decides the expiry on time by the TTL granted
+		// (lease rule 1); the revoke then cuts what the client was told
+		// (rule 3).
+		if planted.On("B35") {
+			ttl++
+		}
+	} else if planted.On("B36") {
+		// Planted (B36): a keepalive applied after its lease's revoke is
+		// answered alive, with the TTL the lease had. The expiry was on
+		// time (lease rule 1); the client is told a revoked lease lives
+		// (rule 2).
+		ttl = n.plantedRevoked[id]
 	}
 	if c != nil {
 		n.replyKeepAlive(c, s, id, ttl)

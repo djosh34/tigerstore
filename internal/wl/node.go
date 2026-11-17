@@ -77,6 +77,9 @@ type node struct {
 	// or a keepalive applied, or a new leader, which starts every TTL
 	// over. A node that does not lead answers a lease's TTL from it.
 	leaseSeen map[int64]time.Time
+	// plantedRevoked is the TTL of each lease revoked, under planted B36
+	// alone (lease.go).
+	plantedRevoked map[int64]int64
 
 	stats   counters
 	metrics *nodeMetrics

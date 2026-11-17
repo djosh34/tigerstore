@@ -217,9 +217,13 @@ var plantedCases = map[string]plantedCase{
 	// (leasesExpire) catches it first; rules 2 and 3 (revokesKeepPromises)
 	// catch what the clients were told.
 	"B34": {seeds: 64, cfg: wlStalledLeaderConfig, want: leaseEarly + `|` + leasePromise},
-	// B35: the decision is on time, which rule 1 checks, and only rules 2
-	// and 3 see what the leader told the clients after it.
-	"B35": {seeds: 64, cfg: wlStalledLeaderConfig, want: leasePromise},
+	// B35 and B36: every expiry is decided on time by the TTL granted,
+	// which rule 1 checks, and only rules 2 and 3 see what the clients
+	// were told. B35 tells them a second more than the TTL, which the
+	// revoke cuts (rule 3); B36 tells them a revoked lease lives (rule 2,
+	// or rule 3 for a keepalive called before the revoke took effect).
+	"B35": {seeds: 64, cfg: wlFaultsConfig, want: leaseCut},
+	"B36": {seeds: 64, cfg: wlFaultsConfig, want: leasePromise},
 }
 
 const (
@@ -227,7 +231,9 @@ const (
 	leaseEarly = `with TTL \d+ s expired at \d+ ms, but it was granted or renewed at`
 	// Lease rules 2 and 3: a keepalive answered alive after a node applied
 	// the revoke, or a revoke that cut a TTL a call was answered with.
-	leasePromise = `answered a keepalive called at \d+ ms with TTL \d+ s, after a node applied its revoke|was revoked at \d+ ms, but a call at \d+ ms was answered with TTL`
+	leasePromise = `answered a keepalive called at \d+ ms with TTL \d+ s, after a node applied its revoke|` + leaseCut
+	// Lease rule 3 alone.
+	leaseCut = `was revoked at \d+ ms, but a call at \d+ ms was answered with TTL`
 )
 
 // wlDamageConfig runs wl nodes with crashes and, after them, damage at
