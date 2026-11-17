@@ -88,9 +88,16 @@ func (n *node) sendSnapshot(m *pb.Message) {
 	n.shell.sendSnapshot(m, f)
 }
 
-// takeSnapshot steps a snapshot received into the file at path.
+// takeSnapshot steps a snapshot received into the file at path. Raft
+// ignores one at or below its commit, as a second reception of the
+// snapshot it took this turn: that file goes, and the one Raft's next
+// Ready names stays (#689's area-2 review).
 func (n *node) takeSnapshot(path string, m *pb.Message) {
-	n.keepRecv(path)
+	if m.GetSnapshot().GetMetadata().GetIndex() <= n.rn.Status().GetCommit() {
+		_ = n.sys.remove(path)
+	} else {
+		n.keepRecv(path)
+	}
 	_ = n.rn.Step(m)
 }
 

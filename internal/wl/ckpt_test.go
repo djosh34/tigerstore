@@ -734,3 +734,38 @@ func TestAnInstallsPointerKeepsTheNewestHardState(t *testing.T) {
 		t.Fatalf("the checkpoint before outlived the install: %v", err)
 	}
 }
+
+// A snapshot received twice in one turn, before Raft's Ready, keeps the
+// file Raft took: Raft ignores the second, at its new commit, and the
+// Ready names the first. Removed as the second came in, the install
+// found no file and the node stopped (#689's area-2 review).
+func TestASnapshotReceivedTwiceKeepsTheOneRaftTook(t *testing.T) {
+	n, _ := testNode(t)
+	n.rn = newTestRawNode(t)
+	dir := t.TempDir()
+	m := func(path string) *pb.Message {
+		return &pb.Message{Type: pb.MsgSnap.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(1)), Snapshot: &pb.Snapshot{
+			Data:     []byte(path),
+			Metadata: &pb.SnapshotMetadata{Index: new(uint64(10)), Term: new(uint64(1)), ConfState: &pb.ConfState{Voters: []uint64{1, 2, 3}}},
+		}}
+	}
+	var paths []string
+	for _, name := range []string{"first.tmp", "second.tmp"} {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("a checkpoint"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, p)
+	}
+	for _, p := range paths {
+		n.takeSnapshot(p, m(p))
+	}
+	rd := n.rn.Ready()
+	named := string(rd.Snapshot.GetData())
+	if named == "" {
+		t.Fatal("Raft took neither snapshot")
+	}
+	if _, err := os.Stat(named); err != nil {
+		t.Fatalf("Raft's Ready names %s, which is gone: %v", filepath.Base(named), err)
+	}
+}
