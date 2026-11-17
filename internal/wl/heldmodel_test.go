@@ -92,6 +92,12 @@ func runHeldModel(t *testing.T, seed int64) (failed string) {
 	st := n.st
 	defer func() { _ = n.st.close() }()
 	takeEveryValue(t)
+	// A cut short of the checkpoint before's place too, which leaves
+	// values in the log for the next checkpoint to take in, as the loop's
+	// checkpoints do (the invariant re-check, Opus).
+	knobs := rand.New(rand.NewSource(seed + 1<<32))
+	ckptCutShare = []int64{1, 4, 16, 64}[knobs.Intn(4)]
+	ckptCutUnit = []int64{1, 8, 64}[knobs.Intn(3)]
 	oldScan := ckptScanStates
 	ckptScanStates = 1 // force holds and writes between keys, not just before/after a whole scan
 	defer func() { ckptScanStates = oldScan }()
@@ -401,6 +407,19 @@ func (m *heldModel) release(h *modelHold) {
 func (m *heldModel) check(step int) {
 	m.checkIndexes(step)
 	st := m.n.st
+	// With no hold left, nothing holds on: the hold maps let go, and the
+	// change index starts where trimming keeps (the invariant re-check,
+	// Opus).
+	if len(m.holds) == 0 && m.n.ckpt == nil {
+		if st.heldStates != nil || st.readHolds != nil || st.trimHolds != nil {
+			m.fail("step %d: no hold, but held states %v, read holds %v, trim holds %v", step, st.heldStates, st.readHolds, st.trimHolds)
+			return
+		}
+		if len(st.changes) > 0 && st.changes[0].rev < st.trimRev() {
+			m.fail("step %d: no hold, but the change index starts at %d, before %d", step, st.changes[0].rev, st.trimRev())
+			return
+		}
+	}
 	for _, h := range m.holds {
 		for _, r := range h.reads {
 			if rec, err := m.readRecord(r); err == nil && string(rec) != r.record && string(recValue(rec)) == r.want {
@@ -436,7 +455,8 @@ func (m *heldModel) checkpoint(step int) {
 	m.index++
 	index := m.index
 	want, rev := st.stateHash(), st.rev
-	n.ckptFrom = int64(len(m.l.b))
+	// The checkpoint before's place is where its log began (ckptDone), as
+	// in the loop: set to the log's end, no value was ever left in it.
 	if err := n.startCkpt(index, 1, int64(len(m.l.b))); err != nil {
 		m.fail("start checkpoint %d: %v", index, err)
 		return
