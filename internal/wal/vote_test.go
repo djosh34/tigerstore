@@ -32,7 +32,7 @@ func TestDamagedLastRecordKeepsVote(t *testing.T) {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	segs, _ := files(t, d)
+	segs := files(t, d)
 	rewrite(t, d, segs[len(segs)-1], func(b []byte) []byte { b[len(b)-1] ^= 1; return b })
 	w, rec := open(t, d)
 	if rec.HardState.Term != 2 || rec.HardState.Vote != 3 {
