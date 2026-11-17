@@ -292,6 +292,9 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte) ([][]byte, int64, bool, error
 		if !ok {
 			return kvs, 0, false, nil
 		}
+		if r.countOnly {
+			return kvs, b2i(st.liveAt(id, rev)), false, nil
+		}
 		rec, err := st.at(id, rev)
 		if err != nil || rec == nil {
 			return kvs, 0, false, err
@@ -309,15 +312,29 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte) ([][]byte, int64, bool, error
 	if r.limit > 0 && r.limit < math.MaxInt64 && r.defaultOrder() && !r.filters() {
 		read = r.limit + 1
 	}
-	var count int64
+	if r.countOnly {
+		read = 0
+	}
+	// count is the live keys of the range; taken, those of them it read or
+	// found away.
+	var count, taken int64
 	var err error
 	away := false
 	st.tree.scan(r.key, end, func(id uint32) bool {
+		if taken >= read {
+			// Past what the range returns, it only counts: the key's
+			// state says whether it was live, and its value, which may
+			// lie only on disk, is not read.
+			count += b2i(st.liveAt(id, rev))
+			return true
+		}
 		var rec []byte
 		if rec, err = st.at(id, rev); errors.Is(err, errAway) {
 			// The scan goes on, so that one fetch reads every value the
-			// range lacks.
+			// range lacks. Only a live state has a value to read.
 			away, err = true, nil
+			count++
+			taken++
 			return true
 		} else if err != nil {
 			return false
@@ -326,9 +343,8 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte) ([][]byte, int64, bool, error
 			return true
 		}
 		count++
-		if !r.countOnly && int64(len(kvs)-k0) < read {
-			kvs = append(kvs, rec)
-		}
+		taken++
+		kvs = append(kvs, rec)
 		return true
 	})
 	if away {

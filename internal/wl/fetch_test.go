@@ -21,7 +21,10 @@ import (
 // values that the page cache does not hold off the loop (#704), and get
 // them whole. The log is written with O_DIRECT, so its values reach the
 // page cache only when read; the test drops the pages anyway. Each read
-// has keys of its own: the loop keeps what it fetched for a while.
+// has keys of its own: the loop keeps what it fetched for a while. A
+// range counts the keys it does not return without reading their values:
+// a count-only range reads none, and one with a limit only those it
+// returns, and the one past it etcd reads.
 func TestValuesOutOfThePageCacheAreReadOffTheLoop(t *testing.T) {
 	loopOf := watchLoops(t)
 	tc := newTestCluster(t)
@@ -39,7 +42,7 @@ func TestValuesOutOfThePageCacheAreReadOffTheLoop(t *testing.T) {
 	const keys = 20
 	old := map[string][]byte{}
 	var first, last int64
-	for _, g := range "abc" {
+	for _, g := range "abcd" {
 		for i := range keys {
 			k := fmt.Sprintf("%c%02d", g, i)
 			old[k] = value()
@@ -119,6 +122,42 @@ func TestValuesOutOfThePageCacheAreReadOffTheLoop(t *testing.T) {
 	if fetchesOf(loopOf(tc.ids[0])) == before {
 		t.Fatal("the watch read no value off the loop")
 	}
+
+	for _, limit := range []int64{0, 1} {
+		dropPageCache(t, tc.dir)
+		before := fetchedOf(loopOf(tc.ids[0]))
+		opts := []clientv3.OpOption{clientv3.WithPrefix(), clientv3.WithRev(last)}
+		want, read := 0, 0 // the records returned, and the values read
+		if limit == 0 {
+			opts = append(opts, clientv3.WithCountOnly())
+		} else {
+			opts = append(opts, clientv3.WithLimit(limit))
+			want, read = int(limit), int(limit)+1
+		}
+		r, err := c.Get(ctx, "d", opts...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Count != keys || len(r.Kvs) != want {
+			t.Fatalf("a range with limit %d (0: count only) at revision %d: count %d and %d records, want %d and %d", limit, last, r.Count, len(r.Kvs), keys, want)
+		}
+		for _, kv := range r.Kvs {
+			check("a range with a limit", kv.Key, kv.Value)
+		}
+		if got := fetchedOf(loopOf(tc.ids[0])) - before; got > read {
+			t.Fatalf("a range with limit %d (0: count only) read %d values off the loop, want at most %d", limit, got, read)
+		}
+	}
+}
+
+// fetchedOf asks l's loop how many values it read off the loop.
+func fetchedOf(l *loop) int {
+	got := make(chan int, 1)
+	l.post(func() error {
+		got <- l.n.stats.fetched
+		return nil
+	})
+	return <-got
 }
 
 // dropPageCache has the kernel drop the cached pages of every log segment

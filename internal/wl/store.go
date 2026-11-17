@@ -898,6 +898,22 @@ func (st *store) at(id uint32, rev int64) ([]byte, error) {
 	return nil, nil
 }
 
+// liveAt reports whether key id was live at revision rev, as at finds
+// it, but from its state alone: a range counts keys it does not return
+// without reading their values, which may lie only on disk.
+func (st *store) liveAt(id uint32, rev int64) bool {
+	k := &st.keys[id]
+	if rev == 0 || k.mod <= rev || planted.On("B31") {
+		return k.create != 0
+	}
+	for h := k.hist; h != 0; h = st.hist[h].prev {
+		if e := &st.hist[h]; e.mod <= rev {
+			return !e.deleted
+		}
+	}
+	return false
+}
+
 // putAt returns the record key id was put as at revision rev: the newest
 // live state written at rev. A Txn can delete the key later in the same
 // revision, which leaves its newest state at rev a tombstone.
