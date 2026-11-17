@@ -500,6 +500,38 @@ func TestACheckpointLeavesItsFilesToOtherGoroutines(t *testing.T) {
 	}
 }
 
+// A turn's key scan counts the history it walks behind a hold, not only
+// the states it takes in: a key put 1,000 times since a held revision
+// ends the turn (the re-check of 6c8b0fcc: counting the three it took
+// in, the turn went on past it).
+func TestACheckpointScanCountsTheHistoryItWalks(t *testing.T) {
+	n, l := ckptNode(t)
+	st := n.st
+	bound := ckptScanStates
+	ckptScanStates = 100
+	t.Cleanup(func() { ckptScanStates = bound })
+	putValue(t, st, l, "/a", "a1") // 2
+	st.holdRead(2)
+	for i := range 1000 {
+		putValue(t, st, l, "/a", strconv.Itoa(i))
+	}
+	for k := range 3 {
+		putValue(t, st, l, fmt.Sprintf("/once%d", k), "v")
+	}
+	st.compact(st.rev)
+	st.trimSteps(1 << 20)
+	if err := n.startCkpt(uint64(st.rev), 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	r := n.ckpt
+	n.scanKeys(r)
+	if id, _ := st.find([]byte("/a")); r.phase != ckptScanning || r.next != id+1 {
+		t.Fatalf("the turn went on past /a, which walked 1,000 states: scanning %v, at key %d", r.phase == ckptScanning, r.next)
+	}
+	n.abortCkpt()
+	st.releaseRead(2)
+}
+
 // A turn's key scan reads at most ckptScanStates states past the key it is
 // on: a store that never compacts holds every key's history, and a turn of
 // 4,096 such keys held the loop 220-300 ms (#704). The checkpoint, scanned

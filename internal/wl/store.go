@@ -1334,7 +1334,9 @@ func (st *store) takeStates(id uint32, rev, c int64, out []ckptState) ([]ckptSta
 		if !s.deleted && s.vlen > 0 && (held(s.mod, to) || st.stateHeld(id, s.mod)) {
 			out = append(out, s)
 		}
-		return s.mod > least
+		// Every state at the least held revision, a put its own Txn deleted
+		// beside its deletion too (the re-check of 6c8b0fcc).
+		return s.mod >= least
 	}
 	if !visit(ckptState{deleted: k.create == 0, create: k.create, mod: k.mod, ver: k.ver, lease: k.lease, voff: k.voff, vlen: k.vlen, vsum: k.vsum}) {
 		return out, walked
