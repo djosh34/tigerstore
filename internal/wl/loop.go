@@ -778,7 +778,7 @@ func (l *loop) run() error {
 		timeout := 0
 		wake := l.next
 		if n.wal.deferred {
-			if t := n.wal.lastKick.Add(syncGap); t.Before(wake) {
+			if t := n.wal.lastKick.Add(n.wal.gap()); t.Before(wake) {
 				wake = t
 			}
 		}
