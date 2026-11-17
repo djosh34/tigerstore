@@ -88,6 +88,9 @@ func ckptIndex(env sysEnv, path string) (index, term uint64, err error) {
 	defer func() { _ = f.Close() }()
 	cr := &ckptReader{r: bufio.NewReader(f)}
 	magic, err := cr.bytes(uint64(len(ckptMagic)))
+	if readFailed(err) {
+		return 0, 0, fmt.Errorf("%s: read the checkpoint: %w", path, err)
+	}
 	if err != nil || string(magic) != string(ckptMagic) {
 		return 0, 0, fmt.Errorf("%s: %w: no magic", path, ErrCorruptCheckpoint)
 	}

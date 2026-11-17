@@ -815,6 +815,12 @@ func (fr *fileReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// readFailed reports whether err, from reading a checkpoint, is the
+// disk's failure, not the file's end or damage.
+func readFailed(err error) bool {
+	return err != nil && !errors.Is(err, ErrCorruptCheckpoint) && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF)
+}
+
 // damage is err, an error of a read, as damage to the checkpoint, unless
 // reading its file failed.
 func (cr *ckptReader) damage(err error) error {
@@ -919,6 +925,11 @@ func loadCkptChecked(f ckptFile, gen int, st *store, check bool) (ckptMeta, erro
 	src := &fileReader{r: f}
 	cr := &ckptReader{r: bufio.NewReaderSize(src, 1<<20), src: src}
 	magic, err := cr.bytes(uint64(len(ckptMagic)))
+	if readFailed(err) {
+		// The disk failed the read: not a corrupt checkpoint (#689, seed
+		// 32 of TestMembershipFaults took an EIO for "no magic").
+		return m, fmt.Errorf("%s: read the checkpoint: %w", f.Name(), err)
+	}
 	if err != nil || string(magic) != string(ckptMagic) {
 		return m, fmt.Errorf("%s: %w: no magic", f.Name(), ErrCorruptCheckpoint)
 	}

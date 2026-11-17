@@ -741,6 +741,28 @@ func TestAHeldReadKeepsTheCheckpointItReadsFrom(t *testing.T) {
 	}
 }
 
+// failingFile is a checkpoint file whose reads fail as a disk's do.
+type failingFile struct{ name string }
+
+func (failingFile) Read([]byte) (int, error)          { return 0, errCkptReadFails }
+func (failingFile) ReadAt([]byte, int64) (int, error) { return 0, errCkptReadFails }
+func (failingFile) Seek(int64, int) (int64, error)    { return 0, nil }
+func (failingFile) Close() error                      { return nil }
+func (f failingFile) Name() string                    { return f.name }
+
+var errCkptReadFails = errors.New("input/output error")
+
+// A checkpoint whose first read fails is not called corrupt: the read's
+// error comes back, as a disk's (seed 32 of TestMembershipFaults took an
+// EIO at a snapshot install for "no magic").
+func TestACheckpointReadThatFailsIsNotCorrupt(t *testing.T) {
+	st, _ := newTestStore(t)
+	_, err := loadCkptChecked(failingFile{name: "c.ckpt"}, 0, st, true)
+	if !errors.Is(err, errCkptReadFails) || errors.Is(err, ErrCorruptCheckpoint) {
+		t.Fatalf("a checkpoint whose read fails loads with %v, want the read's error, not a corrupt checkpoint", err)
+	}
+}
+
 // installFixture is a follower with a checkpoint at index 3 that CURRENT
 // names, and the leader's snapshot at index 9 it receives.
 func installFixture(t *testing.T) (*node, *pb.Snapshot) {
