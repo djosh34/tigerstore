@@ -166,6 +166,21 @@ func (f *lockedFile) Sync() error      { return f.l.do(f.h.Sync) }
 func (f *lockedFile) DropCache() error { return f.l.do(f.h.DropCache) }
 func (f *lockedFile) Close() error     { return f.l.do(f.h.Close) }
 
+// installBegins tells, by closing begun, of the first snapshot its node
+// appends: its loop installs it right then (appendNow), and aborts the
+// checkpoint it writes first.
+type installBegins struct {
+	recovered
+	once  sync.Once
+	begun chan struct{}
+}
+
+func (h *installBegins) Append(_, _ uint64, install bool) {
+	if install {
+		h.once.Do(func() { close(h.begun) })
+	}
+}
+
 // recovered keeps what a start recovered, and the disk as a power loss
 // right then leaves it.
 type recovered struct {
@@ -405,11 +420,14 @@ type installCluster struct {
 	k   int
 }
 
-func newInstallCluster(t *testing.T, ctx context.Context) *installCluster {
+func newInstallCluster(t *testing.T, ctx context.Context, hooks3 func(*lockedDisk) wl.Hooks) *installCluster {
 	c := newSimCluster(t)
 	c.ckptLog, c.catchup = 64<<10, 16
 	l := &lockedDisk{d: c.disks[2]}
 	c.fs[2] = l
+	if hooks3 != nil {
+		c.hooks[2] = hooks3(l)
+	}
 	for i := range 3 {
 		c.start(t, i)
 	}
@@ -459,7 +477,7 @@ func (c *installCluster) lagBehind(t *testing.T) {
 func TestAnInstallThatCannotPointOnLeavesTheCheckpointBefore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	c := newInstallCluster(t, ctx)
+	c := newInstallCluster(t, ctx, nil)
 	before := ""
 	for before == "" {
 		c.put(t)
@@ -525,7 +543,11 @@ func TestAnInstallThatCannotPointOnLeavesTheCheckpointBefore(t *testing.T) {
 func TestAnInstallWaitsForTheCheckpointBeingWritten(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	c := newInstallCluster(t, ctx)
+	var hooks *installBegins
+	c := newInstallCluster(t, ctx, func(l *lockedDisk) wl.Hooks {
+		hooks = &installBegins{l: l, done: make(chan struct{}), begun: make(chan struct{})}
+		return hooks
+	})
 	c.l.held, c.l.release = make(chan struct{}), make(chan struct{})
 	t.Cleanup(func() {
 		select {
@@ -585,7 +607,14 @@ func TestAnInstallWaitsForTheCheckpointBeingWritten(t *testing.T) {
 	// points CURRENT at it, once it aborted the one being written. Without
 	// the wait in abortCkpt it does both while the writer is held, and the
 	// release comes after; with it, the install waits for the writer, and
-	// the release comes after 2 s of no pointer.
+	// the release comes 2 s after the loop began the install with no
+	// pointer. Counted from the snapshot's arrival instead, a slow receive
+	// and load could pass the 2 s without the wait (#689's re-check, D6).
+	select {
+	case <-hooks.begun:
+	case <-ctx.Done():
+		t.Fatal("node 3 never began the install")
+	}
 	select {
 	case <-pointed:
 		t.Log("the install pointed CURRENT on while the writer was held")
