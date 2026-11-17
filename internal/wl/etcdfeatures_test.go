@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/encoding/gzip"
+	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/status"
 )
 
@@ -260,6 +261,18 @@ func TestAuthChecksEachCallAgainstTheCallersRoles(t *testing.T) {
 			_, err := alice.Revoke(ctx, lease.ID)
 			return err
 		},
+		// Two raw Txns whose RequestOp has two fields. Protobuf reads the
+		// last of a oneof's fields and merges a repeated message; the
+		// node runs the first. Checked by protobuf's reading, the first
+		// put /other/a, the second read it.
+		"puts /other/a behind a read of /auth/a in one RequestOp": func() error {
+			op := appendBytesField(appendBytesField(nil, 2, putOp("/other/a", "w")), 1, rangeMsg("/auth/a"))
+			return rawTxn(ctx, alice, appendBytesField(nil, 2, op))
+		},
+		"reads /other/a merged with a read of /auth/a": func() error {
+			op := appendBytesField(appendBytesField(nil, 1, rangeMsg("/other/a")), 1, rangeMsg("/auth/a"))
+			return rawTxn(ctx, alice, appendBytesField(nil, 2, op))
+		},
 	}
 	for what, call := range denied {
 		if err := call(); !errors.Is(err, rpctypes.ErrPermissionDenied) {
@@ -287,6 +300,29 @@ func TestAuthChecksEachCallAgainstTheCallersRoles(t *testing.T) {
 		t.Errorf("that client once auth is off: %v", err)
 	}
 }
+
+// rawTxn sends req, a TxnRequest's bytes, as a Txn of c's, and gives
+// its error as clientv3 does.
+func rawTxn(ctx context.Context, c *clientv3.Client, req []byte) error {
+	var resp []byte
+	return rpctypes.Error(c.ActiveConnection().Invoke(ctx, "/etcdserverpb.KV/Txn", &req, &resp, grpc.ForceCodecV2(rawCodec{})))
+}
+
+// rawCodec sends and takes a message's bytes as they are.
+type rawCodec struct{}
+
+func (rawCodec) Marshal(v any) (mem.BufferSlice, error) {
+	return mem.BufferSlice{mem.SliceBuffer(*v.(*[]byte))}, nil
+}
+
+func (rawCodec) Unmarshal(data mem.BufferSlice, v any) error {
+	*v.(*[]byte) = data.Materialize()
+	return nil
+}
+
+func (rawCodec) Name() string { return "proto" }
+
+func rangeMsg(key string) []byte { return appendBytesField(nil, 1, []byte(key)) }
 
 // A range's options, as etcd's executeRange takes them: sort orders and
 // targets, revision filters, keys only, count only, and a limit with

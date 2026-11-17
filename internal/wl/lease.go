@@ -119,6 +119,25 @@ func leaseID(msg []byte) (int64, error) {
 	return id, nil
 }
 
+// parseLeaseTTL reads a LeaseTimeToLiveRequest: its ID and whether it
+// asks for the keys.
+func parseLeaseTTL(msg []byte) (id int64, keys bool, err error) {
+	for m := msg; len(m) > 0; {
+		num, _, v, _, rest, err := field(m)
+		if err != nil {
+			return 0, false, err
+		}
+		switch num {
+		case 1:
+			id = int64(v)
+		case 2:
+			keys = v != 0
+		}
+		m = rest
+	}
+	return id, keys, nil
+}
+
 func (n *node) leading() bool { return n.lead == n.id && n.id != 0 }
 
 // leaderChanged starts every lease's TTL over on a new leader, and drops
@@ -313,19 +332,9 @@ func (n *node) leaseKeepAlive(c *client, s *stream, msg []byte) {
 // leaseTimeToLive answers from this node's leases, once its ReadIndex is
 // applied (serveReads), as etcd answers from its applied state.
 func (n *node) leaseTimeToLive(c *client, s *stream, msg []byte) error {
-	id, wantKeys := int64(0), false
-	for m := msg; len(m) > 0; {
-		num, _, v, _, rest, err := field(m)
-		if err != nil {
-			return err
-		}
-		switch num {
-		case 1:
-			id = int64(v)
-		case 2:
-			wantKeys = v != 0
-		}
-		m = rest
+	id, wantKeys, err := parseLeaseTTL(msg)
+	if err != nil {
+		return err
 	}
 	ttl, granted := int64(-1), int64(0)
 	var keys [][]byte
