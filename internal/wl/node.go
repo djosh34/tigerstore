@@ -513,16 +513,22 @@ func (n *node) replyEmpty(c *client, s *stream) {
 }
 
 // hdrSizeAt is the size of a ResponseHeader that names revision rev.
-func (n *node) hdrSizeAt(rev int64) int {
-	return sizeVarintField(1, n.clusterID) + sizeVarintField(2, n.id) + sizeVarintField(3, uint64(rev)) + sizeVarintField(4, n.term)
+func (n *node) hdrSizeAt(rev int64) int { return n.hdrSizeTerm(rev, n.term) }
+
+func (n *node) writeHdrAt(w *msgW, rev int64) { n.writeHdrTerm(w, rev, n.term) }
+
+// hdrSizeTerm is the size of a ResponseHeader that names revision rev and
+// term term.
+func (n *node) hdrSizeTerm(rev int64, term uint64) int {
+	return sizeVarintField(1, n.clusterID) + sizeVarintField(2, n.id) + sizeVarintField(3, uint64(rev)) + sizeVarintField(4, term)
 }
 
-func (n *node) writeHdrAt(w *msgW, rev int64) {
-	w.lenField(1, n.hdrSizeAt(rev))
+func (n *node) writeHdrTerm(w *msgW, rev int64, term uint64) {
+	w.lenField(1, n.hdrSizeTerm(rev, term))
 	writeVarintNZ(w, 1, n.clusterID)
 	writeVarintNZ(w, 2, n.id)
 	writeVarintNZ(w, 3, uint64(rev))
-	writeVarintNZ(w, 4, n.term)
+	writeVarintNZ(w, 4, term)
 }
 
 // beginReply writes the response headers of s and starts its one message

@@ -37,11 +37,15 @@ type bigWatch struct {
 	h      handle
 	c      *client
 	wi     int32   // the watcher
+	inc    uint32  // its incarnation in the slot (watcher.inc)
 	id     int64   // its watch ID
 	x      watcher // a copy of it, its range and filters, at the start
 	st     *store
 	rev    int64 // the revision
 	hdrRev int64 // the revision its responses' headers name
+	// hdrTerm is the term they name: every fragment carries one header,
+	// as etcd's sendFragments does.
+	hdrTerm uint64
 	// next is where the next event lies among the revision's changes,
 	// counted from the revision's first; end is where the message being
 	// written ends, and frag whether it is a fragment but the last.
@@ -109,7 +113,7 @@ func (n *node) eachRevEvent(st *store, x *watcher, j, from int, f func(off int, 
 			ev.size = sizeBytesField(2, kvSize(klen, int(s.vlen), s.create, s.mod, s.ver, s.lease))
 			ver = s.ver
 		}
-		if x.prevKV && !deletedIn(st.changes, k) {
+		if x.prevKV && (ch.del || !deletedIn(st.changes, k)) {
 			ps, ok := st.stateAt(ch.key, rev-1)
 			if !ok && rev <= st.compactRev && (ch.del || ver > 1) {
 				// As catchUp: kube-apiserver rejects an event without the
@@ -134,7 +138,7 @@ func (n *node) eachRevEvent(st *store, x *watcher, j, from int, f func(off int, 
 // compacted or past maxSendMsg.
 func (n *node) startBigWatch(i int32, x *watcher, c *client, s *stream, j int) bool {
 	st := n.st
-	b := &bigWatch{h: mkHandleRaw(x.sock, x.gen, x.sid), c: c, wi: i, id: x.id, x: *x, st: st, rev: st.changes[j].rev, hdrRev: st.rev}
+	b := &bigWatch{h: mkHandleRaw(x.sock, x.gen, x.sid), c: c, wi: i, inc: x.inc, id: x.id, x: *x, st: st, rev: st.changes[j].rev, hdrRev: st.rev, hdrTerm: n.term}
 	if !x.fragment {
 		size, err := n.revSize(x, j)
 		switch {
@@ -143,7 +147,7 @@ func (n *node) startBigWatch(i int32, x *watcher, c *client, s *stream, j int) b
 			n.w.remove(i)
 			return false
 		case err != nil:
-			n.abortBig(c, s)
+			n.abortBigWatch(c, s)
 			return false
 		case size > maxSendMsg:
 			n.writeCanceled(c, s, x, fmt.Sprintf("rpc error: code = ResourceExhausted desc = grpc: trying to send message larger than max (%d vs. %d)", size, maxSendMsg))
@@ -207,7 +211,7 @@ func (n *node) bigWatchReady() bool {
 		if c == nil {
 			return true
 		}
-		if c.waiting() >= n.connOut || b.pos < len(b.buf) && (c.flow.conn <= 0 || c.streamWin(s) <= 0) || !b.opened && s.holds && !s.big {
+		if c.bigW != nil && c.bigW != b || c.waiting() >= n.connOut || b.pos < len(b.buf) && (c.flow.conn <= 0 || c.streamWin(s) <= 0) || !b.opened && s.holds && !s.big {
 			continue
 		}
 		return true
@@ -218,7 +222,7 @@ func (n *node) bigWatchReady() bool {
 // watcherOf is b's watcher, nil once its watch went.
 func (n *node) watcherOf(b *bigWatch) *watcher {
 	x := &n.w.ws[b.wi]
-	if !x.active || mkHandleRaw(x.sock, x.gen, x.sid) != b.h || x.id != b.id {
+	if !x.active || x.inc != b.inc || mkHandleRaw(x.sock, x.gen, x.sid) != b.h || x.id != b.id {
 		return nil
 	}
 	return x
@@ -238,11 +242,17 @@ func (n *node) stepBigWatch(b *bigWatch) bool {
 	}
 	if b.st != n.st {
 		// A snapshot installed since replaced the store it reads. The
-		// install has the watch catch up again (installSnapshot).
-		if b.opened {
-			n.abortBig(c, s)
+		// install has the watch catch up again (installSnapshot); a
+		// stream that has part of the response, a fragment or more, ends.
+		if b.opened || b.next > 0 {
+			n.abortBigWatch(c, s)
 		}
 		return false
+	}
+	if c.bigW != nil && c.bigW != b {
+		// One large watch response at a time on a connection: another's
+		// message, or its fragments, are under way (#689's re-check, C1).
+		return true
 	}
 	for {
 		room := n.connOut - c.waiting()
@@ -302,6 +312,15 @@ func (n *node) stepBigWatch(b *bigWatch) bool {
 	}
 }
 
+// abortBigWatch ends watch stream s with RST_STREAM, as abortBig ends a
+// range's, and lets go of what the stream had: its watchers and the
+// messages it held (#689's re-check, C3).
+func (n *node) abortBigWatch(c *client, s *stream) {
+	n.closeWatchStream(c, s)
+	c.dropHeld(s.id)
+	n.abortBig(c, s)
+}
+
 // endStreamPiece ends a watch stream's message written in pieces: the
 // messages it held behind go out.
 func (n *node) endStreamPiece(c *client, s *stream) {
@@ -320,7 +339,7 @@ func (n *node) endStreamPiece(c *client, s *stream) {
 func (n *node) beginBigWatchMsg(b *bigWatch, x *watcher, c *client, s *stream) bool {
 	st := b.st
 	j := revStart(st, b.rev)
-	hdr := sizeBytesField(1, n.hdrSizeAt(b.hdrRev)) + sizeVarintField(2, uint64(b.id))
+	hdr := sizeBytesField(1, n.hdrSizeTerm(b.hdrRev, b.hdrTerm)) + sizeVarintField(2, uint64(b.id))
 	size, events, end := hdr, 0, b.next
 	more := false
 	err := n.eachRevEvent(st, &b.x, j, b.next, func(off int, ev bigEv) bool {
@@ -335,7 +354,7 @@ func (n *node) beginBigWatchMsg(b *bigWatch, x *watcher, c *client, s *stream) b
 		return true
 	})
 	if err != nil {
-		n.abortBig(c, s)
+		n.abortBigWatch(c, s)
 		return false
 	}
 	if events == 0 {
@@ -351,10 +370,11 @@ func (n *node) beginBigWatchMsg(b *bigWatch, x *watcher, c *client, s *stream) b
 	}
 	if size > maxSendMsg {
 		// Only a fragment of one event could: never.
-		n.abortBig(c, s)
+		n.abortBigWatch(c, s)
 		return false
 	}
 	b.end, b.opened = end, true
+	c.bigW = b
 	if !s.big {
 		s.big = true
 		c.bigs++
@@ -366,7 +386,7 @@ func (n *node) beginBigWatchMsg(b *bigWatch, x *watcher, c *client, s *stream) b
 	var p [5]byte
 	binary.BigEndian.PutUint32(p[1:], uint32(size))
 	w.write(p[:])
-	n.writeHdrAt(&w, b.hdrRev)
+	n.writeHdrTerm(&w, b.hdrRev, b.hdrTerm)
 	writeVarintNZ(&w, 2, uint64(b.id))
 	if b.frag {
 		w.varintField(7, 1)
@@ -398,7 +418,7 @@ func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream) bool {
 		return true
 	})
 	if err != nil || len(evs) == 0 {
-		n.abortBig(c, s)
+		n.abortBigWatch(c, s)
 		return false
 	}
 	recs := make([]event, len(evs))
@@ -414,7 +434,7 @@ func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream) bool {
 				continue
 			} else if err != nil || recs[i].kv == nil {
 				st.noWait = false
-				n.abortBig(c, s)
+				n.abortBigWatch(c, s)
 				return false
 			}
 		}
@@ -424,7 +444,7 @@ func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream) bool {
 				continue
 			} else if err != nil || recs[i].prev == nil {
 				st.noWait = false
-				n.abortBig(c, s)
+				n.abortBigWatch(c, s)
 				return false
 			}
 		}
@@ -460,8 +480,13 @@ func (n *node) endBigWatch(b *bigWatch) {
 	if x := n.watcherOf(b); x != nil {
 		x.big = false
 	}
-	if c, s := n.clientOf(b.h); c != nil && b.opened {
-		n.endStreamPiece(c, s)
+	if b.c.bigW == b {
+		// It wrote on its stream, a message or fragments: the stream's
+		// other messages go on, however it ended (#689's re-check, C2).
+		b.c.bigW = nil
+		if c, s := n.clientOf(b.h); c != nil {
+			n.endStreamPiece(c, s)
+		}
 	}
 	b.c.growOut(-b.counted)
 	b.counted = 0

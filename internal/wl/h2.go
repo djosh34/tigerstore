@@ -203,8 +203,10 @@ type client struct {
 	// roomHeld is the room of the reserve it holds (reserve.go).
 	roomHeld int64
 	// bigs counts its streams that a watch response is written into in
-	// pieces (stream.big).
+	// pieces (stream.big), and bigW is the one large watch response that
+	// may write on the connection, from its first message to its end.
 	bigs int
+	bigW *bigWatch
 }
 
 // The client buffers (sizes.clientOut) bound what waits unsent to each
@@ -462,6 +464,10 @@ func (c *client) endStream(s *stream) {
 	c.streams--
 	s.counted = 0
 	s.fail = nil // the side ring may take its bytes again
+	if s.big {
+		s.big = false
+		c.bigs--
+	}
 	c.node.putBuf(s.buf)
 	s.buf = nil
 	if c.over != nil {

@@ -19,7 +19,10 @@ import (
 // written straight into its stream's records.
 
 type watcher struct {
-	active   bool
+	active bool
+	// inc tells this watcher from an earlier one in its slot, which a
+	// large response under way may still name (bigWatch).
+	inc      uint32
 	sock     int
 	gen      uint16
 	sid      uint32
@@ -103,6 +106,7 @@ func (w *watches) add(x watcher) int32 {
 		w.ws = append(w.ws, watcher{})
 		i = int32(len(w.ws) - 1)
 	}
+	x.inc = w.gen
 	w.ws[i] = x
 	w.gen++
 	w.rebuildOther()
@@ -698,7 +702,8 @@ func (n *node) syncReady() bool {
 	}
 	for _, i := range n.w.unsynced {
 		x := &n.w.ws[i]
-		if !x.active || x.syncRev == 0 || x.fetchWait {
+		if !x.active || x.syncRev == 0 || x.fetchWait || x.big {
+			// A large response moves on by bigWatchReady.
 			continue
 		}
 		if c, _ := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid)); c == nil || !c.slow() && c.waiting() < n.connOut {
@@ -811,7 +816,9 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event) bool) (bool
 				return false, err
 			}
 		}
-		if x.prevKV && deletedIn(st.changes, j) {
+		// Only a put can follow a delete of its key in the revision: a
+		// delete's own scan, quadratic in a large revision, is skipped.
+		if x.prevKV && !ch.del && deletedIn(st.changes, j) {
 			// A put after a delete of its key in the same Txn: as etcd's
 			// sub-revisions have it, the value before is the tombstone.
 		} else if x.prevKV {

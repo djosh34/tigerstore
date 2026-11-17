@@ -283,3 +283,77 @@ func TestAnEventPastOneMessageComesWhole(t *testing.T) {
 		t.Fatalf("%d watch responses went in pieces, want the one", k)
 	}
 }
+
+// Two large watch responses on one stream go out one after the other,
+// never one inside the other's message (#689's re-check, C1). Two prefix
+// watches with prev_kv on one raw Watch stream, as clientv3 puts watches
+// that share a context on one stream, see a DeleteRange whose events pass
+// a message, over values out of memory and the page cache; the client
+// reads nothing until both responses are under way. Each response comes
+// whole, every event with its value before, one watch's after the other's.
+func TestTwoLargeWatchResponsesOnOneStreamComeWhole(t *testing.T) {
+	const budget = 96 << 20
+	loopOf := watchLoops(t)
+	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	c := tc.clientOf(t, tc.endpoints[0])
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	const keys, size = 48, 1 << 20
+	value := func(i int) string { return fmt.Sprintf("%04d", i) + strings.Repeat("v", size-4) }
+	for i := range keys {
+		if _, err := c.Put(ctx, fmt.Sprintf("/two/%04d", i), value(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	conn := rawConn(t, tc.endpoints[0], tc.clientTLS())
+	fr := h2Start(t, conn)
+	h2Call(t, fr, 3, "/etcdserverpb.Watch/Watch")
+	for range 2 {
+		req, err := proto.Marshal(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
+			Key: []byte("/two/"), RangeEnd: prefixEnd([]byte("/two/")), PrevKv: true,
+		}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeMsg(t, fr, 3, req, false)
+	}
+	got := 0
+	var r watchReader
+	r.ev = func(msg int, ev *mvccpb.Event) error {
+		// Responses 1 and 2 are the created ones, 3 and 4 the two watches'.
+		i := got % keys
+		k := fmt.Sprintf("/two/%04d", i)
+		if want := 3 + got/keys; msg != want {
+			return fmt.Errorf("event %d came in response %d, want %d", got, msg, want)
+		}
+		if ev.Type != mvccpb.DELETE || string(ev.Kv.Key) != k || ev.PrevKv == nil || string(ev.PrevKv.Value) != value(i) {
+			return fmt.Errorf("event %d: %v of %s with %d bytes before; want the delete of %s", got, ev.Type, ev.Kv.Key, len(ev.PrevKv.GetValue()), k)
+		}
+		got++
+		return nil
+	}
+	readWatchStream(t, conn, &r, func() bool { return r.msgs < 2 || r.msgLeft > 0 })
+	l := loopOf(tc.ids[0])
+	dropped := make(chan struct{})
+	l.post(func() error {
+		dropRecords(l.n.st)
+		close(dropped)
+		return nil
+	})
+	<-dropped
+	syncFiles(t, tc.dir)
+	dropPageCache(t, tc.dir)
+	if _, err := c.Delete(ctx, "/two/", clientv3.WithPrefix()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second) // the node writes what it may before the client reads
+	readWatchStream(t, conn, &r, func() bool { return got < 2*keys || r.msgLeft > 0 })
+	if r.msgs != 4 {
+		t.Fatalf("the stream carried %d responses, want the two created ones and one for each watch", r.msgs)
+	}
+	n := make(chan uint64, 1)
+	l.post(func() error { n <- l.n.stats.bigWatches; return nil })
+	if k := <-n; k < 2 {
+		t.Fatalf("%d watch responses went in pieces, want both", k)
+	}
+}
