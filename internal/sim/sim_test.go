@@ -872,11 +872,13 @@ func faultCases() []faultCase {
 	damage := func(k damageKind, count func(Stats) int) faultCase {
 		return faultCase{k.String(), Faults{CrashEvery: Second, MaxDown: Second, Corrupt: true}, func(c *Config) {
 			c.damageKinds = []damageKind{k}
-			// Damage goes in at a crash, and the crashes stop at healing:
-			// a segment it may damage needs a log of four segments by
-			// then, which a wl cluster under a crash a second may not
-			// have written in 8 s (seeds 3241, 3242, 3261 and 3262 on
-			// 5d361913, whose logs stalled in their first segments).
+			// Damage goes in at a crash, and the crashes stop at healing,
+			// Duration in: a segment it may damage needs a log of four
+			// segments by then, which a wl cluster under a crash a
+			// second may not have written in long()'s 16 s (seeds 3241,
+			// 3242, 3261 and 3262 on 5d361913, whose logs stalled in
+			// their first segments). So they crash for 24 s, and run 16 s
+			// healed, 40 s in all; coverage on 7d41b46b passed with it.
 			c.Duration, c.Heal = 24*Second, 16*Second
 			if k == flippedRoot {
 				// The other kinds need a log of several segments, which
