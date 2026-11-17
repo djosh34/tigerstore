@@ -259,3 +259,70 @@ func TestALogBehindACheckpointReadsBackWithEveryKindOfOp(t *testing.T) {
 		}
 	}
 }
+
+// ReadWholeLog reads the entries before the newest checkpoint too while
+// no checkpoint has cut the log, from the log's first entry; once a
+// checkpoint cut it, it reads as ReadLog does, from the checkpoint on.
+func TestTheWholeLogReadsBackBeforeACheckpoint(t *testing.T) {
+	for _, cut := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cut %v", cut), func(t *testing.T) {
+			if cut {
+				smallCheckpoints(t)
+			} else {
+				minWas, windowWas := ckptMin, storageWindow
+				ckptMin, storageWindow = 4<<10, 10
+				t.Cleanup(func() { ckptMin, storageWindow = minWas, windowWas })
+			}
+			tc := newTestCluster(t)
+			c := tc.clientOf(t, tc.endpoints[0])
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			if _, err := c.Put(ctx, "/w/start", "s"); err != nil {
+				t.Fatal(err)
+			}
+			for i := range 50 {
+				if _, err := c.Put(ctx, fmt.Sprintf("/w/%02d", i), strings.Repeat("v", 200)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			tc.stop(t)
+			whole, err := ReadWholeLog(nil, tc.dataDir(0))
+			if err != nil {
+				t.Fatal(err)
+			}
+			after, err := ReadLog(nil, tc.dataDir(0))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after.Base == 0 {
+				t.Fatal("no checkpoint was taken")
+			}
+			hasStart := false
+			for _, e := range whole.Entries {
+				if e.GetType() != pb.EntryNormal || len(e.GetData()) == 0 {
+					continue
+				}
+				b, err := ParseBatch(e.GetData())
+				if err != nil {
+					t.Fatalf("entry %d: %v", e.GetIndex(), err)
+				}
+				for _, o := range b.Ops {
+					if m, err := o.Message(); err == nil {
+						if p, ok := m.(*etcdpb.PutRequest); ok && string(p.Key) == "/w/start" {
+							hasStart = true
+						}
+					}
+				}
+			}
+			switch {
+			case !cut && (whole.Base != 0 || whole.Entries[0].GetIndex() != 1 || !hasStart):
+				t.Fatalf("the uncut log reads back from %d, entry %d first, the start in it %v; want all of it", whole.Base, whole.Entries[0].GetIndex(), hasStart)
+			case cut && (whole.Base != after.Base || len(whole.Entries) != len(after.Entries)):
+				t.Fatalf("the cut log reads back from %d with %d entries, ReadLog from %d with %d", whole.Base, len(whole.Entries), after.Base, len(after.Entries))
+			}
+			if whole.Commit != after.Commit {
+				t.Fatalf("the whole log commits %d, ReadLog %d", whole.Commit, after.Commit)
+			}
+		})
+	}
+}

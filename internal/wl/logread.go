@@ -28,7 +28,15 @@ type Log struct {
 // ReadLog reads the log of the stopped node whose data dir is dir, through
 // sys in a binary built for the simulator, or nil for the system's
 // files. It writes nothing.
-func ReadLog(sys Sys, dir string) (Log, error) {
+func ReadLog(sys Sys, dir string) (Log, error) { return readLog(sys, dir, false) }
+
+// ReadWholeLog is ReadLog with the entries before the newest checkpoint
+// too, from the log's first, while no checkpoint has cut the log (Base
+// 0 then); a cut log reads as ReadLog reads it. past-ram's checker needs
+// the log back to its workload's start, which a checkpoint may follow.
+func ReadWholeLog(sys Sys, dir string) (Log, error) { return readLog(sys, dir, true) }
+
+func readLog(sys Sys, dir string, whole bool) (Log, error) {
 	env := envOf(sys)
 	var l Log
 	var from int64
@@ -41,6 +49,9 @@ func ReadLog(sys Sys, dir string) (Log, error) {
 			return Log{}, err
 		}
 		from, l.Commit = p.logFrom, max(l.Base, p.hs.GetCommit())
+		if whole && p.cut == 0 {
+			from, l.Base, l.BaseTerm = 0, 0, 0
+		}
 	}
 	first := l.Base + 1
 	_, err = scanWAL(env, filepath.Join(dir, "wal"), from, func(r *walRecord) error {
