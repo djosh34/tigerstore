@@ -463,7 +463,7 @@ const membersAsk = ^uint64(0)
 func (l *loop) answerMembers(s *sock) error {
 	got := make(chan []byte, 1)
 	l.post(func() error {
-		got <- l.n.encodeMembers(binary.LittleEndian.AppendUint64(nil, l.n.clusterID))
+		got <- l.n.membersAnswer()
 		return nil
 	})
 	select {
@@ -475,6 +475,19 @@ func (l *loop) answerMembers(s *sock) error {
 	case <-l.ctx.Done():
 		return l.ctx.Err()
 	}
+}
+
+// membersAnswer is the answer to a node that asks for the member list:
+// the cluster's ID and the list, with an empty auth store. Any holder of
+// a peer certificate may ask, before its cluster is known, and a joining
+// node reads the members alone; the auth store's users, password hashes
+// and roles went with it (#689's area-2 review).
+func (n *node) membersAnswer() []byte {
+	auth := n.auth
+	n.auth = nil
+	b := n.encodeMembers(binary.LittleEndian.AppendUint64(nil, n.clusterID))
+	n.auth = auth
+	return b
 }
 
 // RemoteMembers asks the members at addrs, one after another, for their

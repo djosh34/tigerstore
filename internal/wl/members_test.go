@@ -1,13 +1,17 @@
 package wl
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"go.etcd.io/etcd/api/v3/authpb"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -350,5 +354,35 @@ func TestANodeBehindAMemberItDoesNotKnowCatchesUpFromIt(t *testing.T) {
 	}
 	if s, err := leader.Status(ctx, tc.endpoints[i]); err != nil || s.Leader != added.Member.ID {
 		t.Fatalf("the new member no longer leads: %v %v", s, err)
+	}
+}
+
+// The member list a node answers to one that asks for it, which any
+// holder of a peer certificate may do, holds the members and no auth
+// store: its users and password hashes went with it (#689's area-2
+// review).
+func TestTheMemberListAnswerHoldsNoAuthStore(t *testing.T) {
+	n, _ := testNode(t)
+	n.clusterID = 7
+	n.members = []member{{id: 1, name: "n1", peerURLs: []string{"https://a:2380"}}}
+	n.auth = newAuthStore()
+	n.auth.enabled = true
+	n.auth.users["root"] = &authpb.User{Name: []byte("root"), Password: []byte("$2a$10$hash")}
+	b := n.membersAnswer()
+	if got := binary.LittleEndian.Uint64(b); got != 7 {
+		t.Fatalf("cluster %d, want 7", got)
+	}
+	cm, err := (&ckptReader{r: bufio.NewReader(bytes.NewReader(b[8:]))}).readMembers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cm.members) != 1 || cm.members[0].name != "n1" {
+		t.Fatalf("members %+v, want n1", cm.members)
+	}
+	if len(cm.auth.users) != 0 || cm.auth.enabled {
+		t.Fatalf("the answer holds an auth store: %d users, enabled %v", len(cm.auth.users), cm.auth.enabled)
+	}
+	if n.auth == nil || len(n.auth.users) != 1 {
+		t.Fatal("answering lost the node's own auth store")
 	}
 }
