@@ -357,10 +357,11 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 // catch-up needs more of them than the loop keeps (fetchedMax): here 600
 // values, 19 MiB, past the 6 MiB a budget of 96 MiB keeps. Trimmed before
 // the watch caught up, the values it needed went; the read off the loop
-// leaves them in the page cache, so here the watch read them there, but
-// a page cache under pressure would have them fetched again, turn after
-// turn (#689's area-3 review). The watch now catches up as the values
-// come, before the trim.
+// leaves them in the page cache, so here the watch read them there. On
+// the simulator's seam, whose page cache can hold nothing,
+// TestAWatchCatchesUpWithAPageCacheThatHoldsNothing (internal/simos)
+// shows the watch fetching them for good without the fix (#689's area-3
+// review). The watch now catches up as the values come, before the trim.
 func TestAWatchCatchesUpThroughMoreValuesThanTheLoopKeeps(t *testing.T) {
 	const budget = 96 << 20
 	loopOf := watchLoops(t)

@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,6 +42,8 @@ type simCluster struct {
 	// its hooks.
 	fs    []wal.FS
 	hooks []wl.Hooks
+	// budget is each node's memory budget, 0 for none.
+	budget int64
 }
 
 // testOS is the descriptor table of every cluster of the tests: wl sends
@@ -105,6 +108,7 @@ func (c *simCluster) start(t *testing.T, i int) {
 		PeerListeners:   []net.Listener{c.nw.listen(host + ":2380")},
 		Sys:             c.os.NewNode(dataDir, c.disk(i), c.nw),
 		Hooks:           c.hooks[i],
+		MemoryBudget:    c.budget,
 	}
 	go func() { c.stopped[i] <- wl.Run(ctx, cfg) }()
 }
@@ -196,4 +200,73 @@ func TestAClusterRunsOnTheSeam(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// A watch catches up through values read off the loop when one turn's
+// catch-up needs more of them than the loop keeps (fetchedMax, a
+// sixteenth of the budget), with a page cache that never holds them, as
+// one under pressure: here 300 values of history, 9.6 MiB, past the 6 MiB
+// a budget of 96 MiB keeps. Trimmed before the watch caught up, the
+// values it needed went, it fetched them again, and the trim took them
+// again, turn after turn, for good (#689's area-3 review).
+func TestAWatchCatchesUpWithAPageCacheThatHoldsNothing(t *testing.T) {
+	c := newSimCluster(t)
+	c.budget = 96 << 20
+	for i := range 3 {
+		c.start(t, i)
+	}
+	cli := c.client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	for {
+		if _, err := cli.Put(ctx, "/leader", "v"); err == nil {
+			break
+		} else if ctx.Err() != nil {
+			t.Fatalf("no leader took a put: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	const keys, size = 300, 32 << 10
+	value := func(i, round int) string { return fmt.Sprintf("%04d-%d", i, round) + strings.Repeat("v", size) }
+	var first int64
+	for round := range 2 {
+		for i := range keys {
+			r, err := cli.Put(ctx, fmt.Sprintf("/w/%04d", i), value(i, round))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if first == 0 {
+				first = r.Header.Revision
+			}
+		}
+	}
+	// No read that must not wait finds its bytes in the page cache.
+	c.os.SetUncached(func() bool { return true })
+	t.Cleanup(func() { c.os.SetUncached(nil) })
+	cli1, err := clientv3.New(clientv3.Config{
+		Endpoints: []string{"n1:2379"}, TLS: c.tls(false), Logger: zap.NewNop(),
+		DialOptions: []grpc.DialOption{grpc.WithContextDialer(c.nw.Dial)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cli1.Close() }()
+	wctx, wcancel := context.WithTimeout(ctx, 30*time.Second)
+	defer wcancel()
+	got := 0
+	for r := range cli1.Watch(wctx, "/w/", clientv3.WithPrefix(), clientv3.WithRev(first)) {
+		if err := r.Err(); err != nil {
+			t.Fatalf("after %d events: %v", got, err)
+		}
+		for _, ev := range r.Events {
+			if want := value(got%keys, got/keys); string(ev.Kv.Value) != want {
+				t.Fatalf("event %d holds %d bytes of %s, not its value", got, len(ev.Kv.Value), ev.Kv.Key)
+			}
+			got++
+		}
+		if got == 2*keys {
+			return
+		}
+	}
+	t.Fatalf("the watch from revision %d caught up %d of %d events in 30 s", first, got, 2*keys)
 }
