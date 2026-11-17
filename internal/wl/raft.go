@@ -125,6 +125,10 @@ func (n *node) ready() error {
 // catches up.
 func (n *node) storageAppend(m *pb.Message) error {
 	n.nameEntries(m.GetEntries(), spanAppend)
+	// Noted as Raft hands them out, also when they wait for the stage:
+	// a change Raft holds is held for before the next goes (#689's
+	// area-2 review).
+	n.confAppended(m.GetEntries())
 	w := n.wal
 	if len(w.waiting) > 0 || !w.fits(m.GetEntries()) {
 		w.stats.waits++
@@ -164,7 +168,6 @@ func (n *node) appendNow(m *pb.Message) error {
 		}
 	}
 	ents := m.GetEntries()
-	n.confAppended(ents)
 	var hs []byte
 	var st *pb.HardState
 	if m.Term != nil {
@@ -789,6 +792,12 @@ func (n *node) retryHeld() {
 			}
 			if err == nil && n.simDeliver(m) {
 				m.To = new(n.id)
+				if m.GetType() == pb.MsgProp && proposesConfChange(m) {
+					// Held as any proposal of a change, while Raft would
+					// drop it (#689's area-4 review).
+					n.proposeConfChange(m, h.at)
+					continue
+				}
 				n.noteLanes(p, m)
 				n.step(m)
 			}

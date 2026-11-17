@@ -181,9 +181,15 @@ func (n *node) voters() int {
 }
 
 // readyForVoters is etcd's strict check before more voters: the voters
-// started must make a quorum of the voters there would be.
+// started must make a quorum of the voters there would be. As etcd's
+// isReadyToAddVotingMember, a cluster of one voter may add its second,
+// as a restored cluster grows.
 func (n *node) readyForVoters(more int) error {
-	if n.started(0) < (n.voters()+more)/2+1 {
+	started, voters := n.started(0), n.voters()+more
+	if started == 1 && voters == 2 {
+		return nil
+	}
+	if started < voters/2+1 {
 		return errNotEnoughStarted
 	}
 	return nil

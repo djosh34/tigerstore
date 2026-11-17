@@ -143,7 +143,10 @@ func (n *node) leading() bool { return n.lead == n.id && n.id != 0 }
 // leaderChanged starts every lease's TTL over on a new leader, and drops
 // the deadlines on a node that no longer leads.
 func (n *node) leaderChanged() {
-	n.confHold.leadFirst = 0
+	// What the node appended as an earlier leader may have been replaced
+	// since: a new term's leader holds back for its own first entry,
+	// which Raft's pendingConfIndex covers (#689's area-2 review).
+	n.confHold.leadFirst, n.confHold.lastConf = 0, 0
 	n.leaseSeen = make(map[int64]time.Time, len(n.st.leases))
 	for id := range n.st.leases {
 		n.leaseSeen[id] = n.now
