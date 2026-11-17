@@ -367,9 +367,14 @@ type ckptRun struct {
 // index index of term term; logFrom is where that entry's record starts
 // in the log. The store keeps what it needs until it is done.
 func (n *node) startCkpt(index, term uint64, logFrom int64) error {
-	n.simCheckpoint(index)
 	st := n.st
 	gen := 1 - n.ckptGen
+	if st.retired[gen] {
+		// Its generation's file is still read; the checkpoint waits for
+		// the holds to go (releaseRead).
+		return nil
+	}
+	n.simCheckpoint(index)
 	if st.ckpts[gen] != nil {
 		_ = st.ckpts[gen].Close()
 		st.setCkpt(gen, nil)
@@ -574,8 +579,16 @@ func (n *node) ckptDone() error {
 		r.meta.index, r.meta.rev, r.at+4, r.logFrom, r.cut, time.Since(r.started).Round(time.Millisecond), r.taken>>20, r.leftInLog>>20,
 		time.Duration(r.encodeNs).Round(time.Millisecond), time.Duration(r.w.readNs.Load()).Round(time.Millisecond), time.Duration(r.w.writeNs.Load()).Round(time.Millisecond))
 	if f := n.st.ckpts[old]; f != nil {
-		_ = f.Close()
-		n.st.setCkpt(old, nil)
+		if len(n.st.readHolds) > 0 {
+			// A held read may read a value only the replaced checkpoint
+			// holds: a checkpoint keeps the states from ckptRev, and a
+			// hold may be older. The file stays open, and its generation
+			// is not written again, until no read is held (releaseRead).
+			n.st.retired[old] = true
+		} else {
+			_ = f.Close()
+			n.st.setCkpt(old, nil)
+		}
 	}
 	if oldName != "" && oldName != n.ckptName {
 		n.rm.remove(filepath.Join(n.ckptDir, oldName))

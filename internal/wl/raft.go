@@ -321,6 +321,10 @@ func (n *node) maybeCkpt() error {
 	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptLog || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt {
 		return nil
 	}
+	if n.st.retired[1-n.ckptGen] {
+		// The generation it would write is still read (startCkpt).
+		return nil
+	}
 	index := n.applied
 	if c := s.hs.GetCommit(); planted.On("B21") && c > index && c <= s.lastIndex() {
 		// Planted: the checkpoint names the committed index, past the

@@ -696,6 +696,51 @@ func TestAnAbortedCheckpointClosesItsFile(t *testing.T) {
 	}
 }
 
+// A read held at a revision whose value only a replaced checkpoint holds
+// reads it still: the replaced generation stays open, and the checkpoint
+// that would write it again waits, until no read is held. Closed and
+// reused, the held read read another checkpoint's bytes there and failed
+// its checksum (#689's re-check, C4).
+func TestAHeldReadKeepsTheCheckpointItReadsFrom(t *testing.T) {
+	n, l := ckptNode(t)
+	st := n.st
+	takeEveryValue(t)
+	putValue(t, st, l, "/a", "a1") // 2
+	putValue(t, st, l, "/b", "b1") // 3
+	writeCkpt(t, n, 10)
+	st.holdRead(2)
+	putValue(t, st, l, "/a", "a2") // 4
+	putValue(t, st, l, "/b", "b2") // 5
+	st.compact(5)
+	st.trimSteps(1 << 20)
+	writeCkpt(t, n, 11) // keeps the states from 5 on: /a at 2 is in the first alone
+	gen := n.ckptGen
+	writeCkpt(t, n, 12) // would write the first's generation again
+	if n.ckptGen != gen {
+		t.Fatal("a checkpoint wrote the generation a held read reads from")
+	}
+	// Nothing is read from the log or the slab.
+	l.b = nil
+	st.fit()
+	for i := range st.keys[:st.nkeys] {
+		if k := &st.keys[i]; k.rec != 0 {
+			st.slab.free(k.rec, int(k.rlen))
+			k.rec, k.rlen = 0, 0
+		}
+	}
+	if got, live := valueAt(t, st, "/a", 2); got != "a1" || !live {
+		t.Fatalf("the held read of /a at 2 reads %q live %v", got, live)
+	}
+	st.releaseRead(2)
+	if st.retired[1-gen] || st.ckpts[1-gen] != nil {
+		t.Fatal("the replaced checkpoint stays open once no read is held")
+	}
+	writeCkpt(t, n, 13)
+	if n.ckptGen == gen {
+		t.Fatal("no checkpoint was written once no read was held")
+	}
+}
+
 // installFixture is a follower with a checkpoint at index 3 that CURRENT
 // names, and the leader's snapshot at index 9 it receives.
 func installFixture(t *testing.T) (*node, *pb.Snapshot) {

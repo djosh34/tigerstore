@@ -106,7 +106,12 @@ type store struct {
 	// needs, and readHoldMin is the lowest of them.
 	readHolds   []int64
 	readHoldMin int64
-	tree        tree
+	// retired is set for a checkpoint generation that a newer checkpoint
+	// replaced while reads were held: a held state's value may lie in its
+	// file, which stays open, and is not written again, until no read is
+	// held (#689's re-check, C4).
+	retired [2]bool
+	tree    tree
 
 	leases map[int64]*lease
 	log    logReader
@@ -867,6 +872,16 @@ func (st *store) releaseRead(rev int64) {
 	}
 	if len(st.readHolds) > 0 {
 		st.readHoldMin = slices.Min(st.readHolds)
+	} else {
+		for g := range st.retired {
+			if st.retired[g] {
+				st.retired[g] = false
+				if f := st.ckpts[g]; f != nil {
+					_ = f.Close()
+					st.setCkpt(g, nil)
+				}
+			}
+		}
 	}
 	if st.trimRev() > before {
 		st.retrim()
