@@ -119,12 +119,15 @@ func (c *simCluster) start(t *testing.T, i int) {
 	go func() { c.stopped[i] <- wl.Run(ctx, cfg) }()
 }
 
-// disk is node i's disk.
+// disk is node i's disk: its own FS if a test set one, or else its simfs
+// disk behind one lock. simfs is not safe for concurrent use, and outside
+// gosim wl's goroutines call it at once: the log's helper, the remover
+// and the checkpoint writer (the race CI's -race run found on 1c158211).
 func (c *simCluster) disk(i int) wal.FS {
-	if c.fs[i] != nil {
-		return c.fs[i]
+	if c.fs[i] == nil {
+		c.fs[i] = &lockedDisk{d: c.disks[i]}
 	}
-	return c.disks[i]
+	return c.fs[i]
 }
 
 func (c *simCluster) stop(t *testing.T, i int) {
