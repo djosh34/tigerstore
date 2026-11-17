@@ -867,7 +867,8 @@ func (st *store) holdRead(rev int64) {
 	if st.readHolds == nil {
 		st.readHolds = map[int64]int{}
 	}
-	if st.readHolds[rev]++; st.readHolds[rev] == 1 {
+	st.readHolds[rev]++
+	if st.readHolds[rev] == 1 {
 		st.heldRevs = st.heldRevs[:0]
 	}
 }
@@ -878,7 +879,8 @@ func (st *store) releaseRead(rev int64) { st.releaseReads(rev) }
 func (st *store) releaseReads(revs ...int64) {
 	before := st.trimRev()
 	for _, rev := range revs {
-		switch c := st.readHolds[rev]; c {
+		c := st.readHolds[rev]
+		switch c {
 		case 0:
 		case 1:
 			delete(st.readHolds, rev)
@@ -887,7 +889,8 @@ func (st *store) releaseReads(revs ...int64) {
 			st.readHolds[rev] = c - 1
 		}
 	}
-	if _, ok := st.readHolds[st.readHoldMin]; !ok && len(st.readHolds) > 0 {
+	_, ok := st.readHolds[st.readHoldMin]
+	if !ok && len(st.readHolds) > 0 {
 		st.readHoldMin = math.MaxInt64
 		for rev := range st.readHolds {
 			st.readHoldMin = min(st.readHoldMin, rev)
