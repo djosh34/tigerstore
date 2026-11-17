@@ -96,12 +96,33 @@ func (c *conn) TryWrite(b []byte) (int, error) {
 }
 
 // Hup reports whether the other end closed or the connection ended, as
-// epoll's EPOLLRDHUP.
+// epoll's EPOLLRDHUP: the other end's close only once it arrived, after
+// the bytes it sent before it, and while the process runs, as TCP's FIN
+// comes after the data ahead of it. Reported at its close, it woke a
+// paused node, or one whose bytes were still on their way, which read
+// nothing and turned again at once, and the run's clock stopped (#689's
+// M re-check). Ready, which epoll asks first, tells the watcher when the
+// next bytes arrive or the pause ends, and the close is seen then.
 func (c *conn) Hup() bool {
 	s := c.s
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return c.closed || c.in.err != nil || c.in.eof
+	in := c.in
+	switch {
+	case c.closed || in.err != nil:
+		return true
+	case !in.eof:
+		return false
+	}
+	now := s.now()
+	at := now
+	if c.p != nil {
+		at = max(at, c.p.n.pausedUntil)
+	}
+	if len(in.chunks) > 0 {
+		at = max(at, in.chunks[len(in.chunks)-1].at, s.link(c.to, c.from).stallUntil)
+	}
+	return at <= now
 }
 
 // Ready reports whether a read and a write would not wait; when a read
