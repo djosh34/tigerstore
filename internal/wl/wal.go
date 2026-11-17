@@ -49,7 +49,7 @@ import (
 
 const (
 	block   = 4096
-	syncGap = 800 * time.Microsecond
+	syncGap = 2000 * time.Microsecond
 
 	recHead       = 4 + 4 + 1
 	entHead       = 8 + 8 + 1
