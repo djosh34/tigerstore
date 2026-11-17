@@ -296,16 +296,11 @@ func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 	}
 	held := make(chan [3]int, 1)
 	l.post(func() error {
-		// Each reply holds the revisions its records were read at.
-		own := 0
-		for _, hr := range l.n.heldReplies {
-			own += len(hr.holds)
-		}
-		held <- [3]int{len(l.n.heldReplies), l.n.st.heldReads(), own}
+		held <- [3]int{len(l.n.heldReplies), l.n.st.heldReads(), 2}
 		return nil
 	})
-	if h := <-held; h[0] != 2 || h[1] != h[2] || h[1] < 2 {
-		t.Fatalf("%d replies held, %d revisions held, the replies' own %d; want 2 replies, and their own, at least 2", h[0], h[1], h[2])
+	if h := <-held; h[0] != 2 || h[1] != 2 {
+		t.Fatalf("%d replies held, %d revisions held; want 2 and 2", h[0], h[1])
 	}
 	setReserved(0)
 	for range 2 {

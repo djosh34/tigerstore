@@ -183,10 +183,11 @@ type heldReply struct {
 	st     *store // the store it reads
 	kind   uint8  // kPut, kDel or kTxn
 	hdrRev int64  // the revision its header names
-	// holds are the revisions it holds in st (store.holdRead): its
-	// records' own, each at least the compacted one.
-	holds []int64
-	body  int // its size less its header's
+	// hold is the revision it holds in st (store.holdRead), -1 if none:
+	// its records' least, at least the compacted one. Each record's own
+	// state it holds too (store.holdState).
+	hold int64
+	body int // its size less its header's
 	// A DeleteRange's keys deleted; a Txn's results, where a put's value
 	// before is refs[kvs0] when kvs1 > kvs0, and whether it succeeded.
 	deleted  int64
@@ -247,7 +248,7 @@ func (n *node) holdTxn(c *client, s *stream, ok bool, res []opRes, r0, r1 int, k
 // recs, until the reserve has room for it.
 func (n *node) holdReply(c *client, s *stream, hr *heldReply, recs [][]byte) {
 	st := n.st
-	hr.h, hr.c, hr.st, hr.hdrRev = mkHandle(c, s.id), c, st, st.rev
+	hr.h, hr.c, hr.st, hr.hdrRev, hr.hold = mkHandle(c, s.id), c, st, st.rev, -1
 	if hr.kind != kTxn {
 		hr.body = n.heldSize(hr, recs) - sizeBytesField(1, n.hdrSizeAt(hr.hdrRev))
 	}
@@ -264,17 +265,21 @@ func (n *node) holdReply(c *client, s *stream, hr *heldReply, recs [][]byte) {
 			continue
 		}
 		hr.refs = append(hr.refs, recRef{id: id, mod: mod})
-		// The state a record was read in is the one a read at its
-		// revision sees, and at the compacted one if older: the Txn read
-		// it at a revision since, at which it was still the newest.
-		hr.holds = append(hr.holds, max(mod, st.compactRev))
+		// Trimming keeps the states its records were read in from the
+		// least one's revision on, at the compacted one if older: the Txn
+		// read each at a revision since, at which it was the newest. A
+		// checkpoint takes in each record's own state, not every state a
+		// read at those revisions sees (the re-check of e710ebb9).
+		if rev := max(mod, st.compactRev); hr.hold < 0 || rev < hr.hold {
+			hr.hold = rev
+		}
+		st.holdState(id, mod)
+		hr.counted += heldStateSize
 	}
-	slices.Sort(hr.holds)
-	hr.holds = slices.Compact(hr.holds)
-	for _, rev := range hr.holds {
-		st.holdRead(rev)
+	if hr.hold >= 0 {
+		st.holdRead(hr.hold)
 	}
-	hr.counted += cap(hr.refs)*int(unsafe.Sizeof(recRef{})) + cap(hr.res)*int(unsafe.Sizeof(opRes{})) + cap(hr.holds)*8
+	hr.counted += cap(hr.refs)*int(unsafe.Sizeof(recRef{})) + cap(hr.res)*int(unsafe.Sizeof(opRes{}))
 	c.growOut(hr.counted)
 	c.heldCounted += int64(hr.counted)
 	n.stats.heldReplies++
@@ -415,9 +420,16 @@ func (n *node) endHeld(hr *heldReply) {
 		hr.c.roomWaiters--
 	}
 	if hr.st == n.st {
-		hr.st.releaseReads(hr.holds...)
+		if hr.hold >= 0 {
+			hr.st.releaseRead(hr.hold)
+		}
+		for _, r := range hr.refs {
+			if r.rec == nil {
+				hr.st.releaseState(r.id, r.mod)
+			}
+		}
 	}
-	hr.holds = nil
+	hr.hold = -1
 	hr.c.growOut(-hr.counted)
 	hr.c.heldCounted -= int64(hr.counted)
 	hr.counted = 0

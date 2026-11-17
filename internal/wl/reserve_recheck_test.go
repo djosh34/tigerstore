@@ -306,11 +306,12 @@ func TestACatchUpOfDeletesOfLargeKeysMovesOn(t *testing.T) {
 	}
 }
 
-// A held reply holds each of its records' revisions, so that a checkpoint
-// takes in the state each was read in (store.takeStates), and lets go of
-// them all when it ends (the re-check of e710ebb9: held at the lowest
-// alone, a newer record was seen by no hold).
-func TestAHeldReplyHoldsEachRecordsRevision(t *testing.T) {
+// A held reply holds its records' least revision, for trimming, and each
+// record's own state, so that a checkpoint takes in the state each was
+// read in (store.takeStates), and lets go of them all when it ends (the
+// re-check of e710ebb9: held at the least revision alone, a newer record
+// was seen by no hold).
+func TestAHeldReplyHoldsEachRecordsState(t *testing.T) {
 	c, s := flowClient(t)
 	n := c.node
 	st, l := newTestStore(t)
@@ -330,11 +331,76 @@ func TestAHeldReplyHoldsEachRecordsRevision(t *testing.T) {
 	res := []opRes{{kind: kRange, rev: st.rev, kvs0: 0, kvs1: 2, count: 2}}
 	n.holdTxn(c, s, true, res, 0, 1, kvs)
 	hr := n.heldReplies[0]
-	if fmt.Sprint(hr.holds) != "[2 3]" || st.heldReads() != 2 {
-		t.Fatalf("the held reply holds %v, the store %d reads; want [2 3] and 2", hr.holds, st.heldReads())
+	if hr.hold != 2 || st.heldReads() != 1 || !st.stateHeld(hr.refs[0].id, 2) || !st.stateHeld(hr.refs[1].id, 3) {
+		t.Fatalf("the held reply holds revision %d, the store %d reads, states %v; want 2, 1, and /a at 2 and /b at 3", hr.hold, st.heldReads(), st.heldStates)
 	}
 	n.endHeld(hr)
-	if st.heldReads() != 0 {
-		t.Fatalf("after the reply, the store holds %d reads", st.heldReads())
+	if st.heldReads() != 0 || len(st.heldStates) != 0 {
+		t.Fatalf("after the reply, the store holds %d reads, %d states", st.heldReads(), len(st.heldStates))
+	}
+}
+
+// A held reply whose records were put at many revisions makes a checkpoint
+// take in its records' own states, not every state of every key a read at
+// those revisions sees: 20 keys put at each of 500 revisions, beside the
+// reply's records, give three states each (the re-check of e710ebb9,
+// Astra's probe at scale: 27,000 revisions behind 100 keys made millions
+// of entries).
+func TestAHeldReplyOfManyRevisionsTakesInItsOwnStates(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	var hot, marks []uint32
+	for i := range 20 {
+		id, err := st.intern(fmt.Appendf(nil, "/hot/%02d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		hot = append(hot, id)
+	}
+	for r := range 500 {
+		st.rev++
+		for _, id := range hot {
+			if _, err := st.put(id, []byte("h"), 0, st.rev, l.add("h"), false); err != nil {
+				t.Fatal(err)
+			}
+		}
+		id, err := st.intern(fmt.Appendf(nil, "/mark/%03d", r))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.put(id, []byte("m"), 0, st.rev, l.add("m"), false); err != nil {
+			t.Fatal(err)
+		}
+		marks = append(marks, id)
+		st.endApply()
+	}
+	var kvs [][]byte
+	for _, id := range marks {
+		rec, err := st.live(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		kvs = append(kvs, rec)
+	}
+	res := []opRes{{kind: kRange, rev: st.rev, kvs0: 0, kvs1: len(kvs), count: int64(len(kvs))}}
+	n.holdTxn(c, s, true, res, 0, 1, kvs)
+	st.compact(st.rev)
+	st.trimSteps(1 << 20)
+	for _, id := range hot {
+		if got, _ := st.takeStates(id, st.rev, st.ckptRev(), nil); len(got) > 3 {
+			t.Fatalf("a checkpoint takes in %d states of %s", len(got), st.key(id))
+		}
+	}
+	for _, id := range marks {
+		if got, _ := st.takeStates(id, st.rev, st.ckptRev(), nil); len(got) != 1 {
+			t.Fatalf("a checkpoint takes in %d states of %s, want its one", len(got), st.key(id))
+		}
+	}
+	n.endHeld(n.heldReplies[0])
+	if st.heldReads() != 0 || len(st.heldStates) != 0 {
+		t.Fatalf("after the reply, %d reads and %d states are held", st.heldReads(), len(st.heldStates))
 	}
 }

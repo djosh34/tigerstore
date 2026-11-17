@@ -96,6 +96,12 @@ func (n *node) txnRange(t *txnRun, r *rangeReq) (count int64, more bool, err err
 			}
 		}()
 		st.tree.scan(r.key, end, func(id uint32) bool {
+			// As rangeKVs reads them: past one piece before any next key,
+			// a deleted one too, it is refused.
+			if cand > n.oneShot() {
+				past = true
+				return false
+			}
 			s, ok := st.stateAt(id, rev)
 			if !ok {
 				return true
@@ -104,10 +110,6 @@ func (n *node) txnRange(t *txnRun, r *rangeReq) (count int64, more bool, err err
 				return false // past what it reads to sort (readLimit)
 			}
 			taken++
-			if cand > n.oneShot() {
-				past = true
-				return false
-			}
 			cand += int64(kvSize(int(st.keys[id].klen), int(s.vlen), s.create, s.mod, s.ver, s.lease))
 			if k := &st.keys[id]; k.rec == 0 && (rev == 0 || k.mod <= rev) {
 				loaded = append(loaded, sortedKey{id: id})

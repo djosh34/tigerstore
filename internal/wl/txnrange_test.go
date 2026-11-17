@@ -354,3 +354,42 @@ func TestATxnsRangeSortedByValueWithNoOrderReadsItsLimit(t *testing.T) {
 		t.Fatalf("the Txn: refused %v, %d records, count %d, more %v, %v; the Range %d records, count %d, more %v", tr.big, len(tr.kvs), count, more, err, len(want), wantCount, wantMore)
 	}
 }
+
+// A Txn's range sorted by value is admitted as a Range is, read for read
+// (rangeKVs): five values of 768 KiB with no order and a limit of one read
+// two and are served; two of 1.5 MiB followed by a deleted key are refused
+// at that key, before it is passed over (the re-check of e710ebb9,
+// Astra's probe).
+func TestATxnsRangeSortedByValueIsAdmittedReadForReadAsARange(t *testing.T) {
+	for _, tombstone := range []bool{false, true} {
+		st, l := newTestStore(t)
+		n := &node{st: st, sizes: sizeFor(96 << 20), connOut: 64 << 10}
+		r := rangeReq{key: []byte("/a/"), end: []byte("/b"), limit: 1, sortTarget: sortByValue, sortOrder: sortNone}
+		if !tombstone {
+			for i := range 5 {
+				putValue(t, st, l, fmt.Sprintf("/a/%d", i), strings.Repeat("v", 768<<10))
+			}
+		} else {
+			r.sortOrder = sortAscend
+			for i := range 2 {
+				putValue(t, st, l, fmt.Sprintf("/a/%d", i), strings.Repeat("v", 1536<<10))
+			}
+			putValue(t, st, l, "/a/z", "x")
+			id, _ := st.find([]byte("/a/z"))
+			st.rev++
+			if _, _, err := st.del(id, st.rev, false); err != nil {
+				t.Fatal(err)
+			}
+			st.endApply()
+		}
+		_, _, _, err := n.rangeKVs(&r, nil, n.oneShot())
+		tr := txnRun{reply: true}
+		if _, _, err := n.txnRange(&tr, &r); err != nil {
+			t.Fatal(err)
+		}
+		if errors.Is(err, errBig) != tr.byValue {
+			t.Fatalf("with a deleted key %v: the Range is refused %v, the Txn %v", tombstone, errors.Is(err, errBig), tr.byValue)
+		}
+		_ = st.close()
+	}
+}

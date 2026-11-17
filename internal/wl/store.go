@@ -111,7 +111,11 @@ type store struct {
 	// heldRevs is readHolds' revisions sorted, or empty until takeStates
 	// sorts them again after one came or went.
 	heldRevs []int64
-	tree     tree
+	// heldStates are the states held replies read (reserve.go), by key
+	// and revision, each with how many hold it: a checkpoint takes in
+	// their values (takeStates).
+	heldStates map[heldState]int
+	tree       tree
 
 	leases map[int64]*lease
 	log    logReader
@@ -904,6 +908,42 @@ func (st *store) releaseReads(revs ...int64) {
 	}
 }
 
+// heldState is a key's state by the revision of its put.
+type heldState struct {
+	id  uint32
+	mod int64
+}
+
+// heldStateSize is what a held state takes in heldStates, about.
+const heldStateSize = 48
+
+// holdState keeps key id's state put at mod for a checkpoint to take in
+// until releaseState: trimming keeps it by a hold of a revision it is
+// read at (holdRead).
+func (st *store) holdState(id uint32, mod int64) {
+	if st.heldStates == nil {
+		st.heldStates = map[heldState]int{}
+	}
+	st.heldStates[heldState{id, mod}]++
+}
+
+func (st *store) releaseState(id uint32, mod int64) {
+	k := heldState{id, mod}
+	c := st.heldStates[k]
+	if c > 1 {
+		st.heldStates[k] = c - 1
+	} else {
+		delete(st.heldStates, k)
+	}
+}
+
+// stateHeld reports whether key id's state put at mod is held
+// (holdState).
+func (st *store) stateHeld(id uint32, mod int64) bool {
+	c := st.heldStates[heldState{id, mod}]
+	return c > 0
+}
+
 // heldReads is how many holds there are (holdRead).
 func (st *store) heldReads() int {
 	n := 0
@@ -1240,7 +1280,7 @@ func (st *store) ckptStates(id uint32, rev, c int64, out []ckptState) []ckptStat
 // takeStates appends to out key id's states whose values a checkpoint at
 // revision rev, keeping the states from c (ckptStates), takes in: those
 // ckptStates gives, and each older one a read held below c sees
-// (holdRead), so that a held read's values outlive the checkpoint file and
+// (holdRead) or that a held reply reads (holdState), so that a held read's values outlive the checkpoint file and
 // the log the checkpoint replaces (#689's re-check, D1 and D2). Only the
 // states a hold sees: the history between, which trimming keeps for the
 // oldest hold, is not taken in (the re-check of 7ab6166c, area A). A read
@@ -1291,7 +1331,7 @@ func (st *store) takeStates(id uint32, rev, c int64, out []ckptState) ([]ckptSta
 		if s.mod > floor || s.mod == floor && slices.ContainsFunc(kept, func(o ckptState) bool { return o.voff == s.voff && o.deleted == s.deleted }) {
 			return true
 		}
-		if !s.deleted && s.vlen > 0 && held(s.mod, to) {
+		if !s.deleted && s.vlen > 0 && (held(s.mod, to) || st.stateHeld(id, s.mod)) {
 			out = append(out, s)
 		}
 		return s.mod > least
