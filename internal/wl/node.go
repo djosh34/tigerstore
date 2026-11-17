@@ -38,13 +38,15 @@ type node struct {
 	// or for room in them for a request's part, in the order they came
 	// (loop.serveWaiting), and waitPass counts serveWaiting's passes.
 	// inTurn is the one that may take the buffers up to turnLimit since
-	// turnAt, past the read half by the turnRoom it took of the reserve
-	// (partwait.go).
-	waiting             []*client
-	waitPass            uint64
-	inTurn              *client
-	turnRoom, turnLimit int64
-	turnAt              time.Time
+	// turnAt, past the read half by the turnRoom it took of the reserve,
+	// and by what they took with no check of their room since then
+	// (looseGrown past turnLoose; partwait.go).
+	waiting               []*client
+	waitPass              uint64
+	inTurn                *client
+	turnRoom, turnLimit   int64
+	looseGrown, turnLoose int64
+	turnAt                time.Time
 	// sys is the node's handle on the system calls of sys_os.go.
 	sys sysEnv
 	// members is the member list as of the applied index, and removed the

@@ -21,9 +21,14 @@ package wl
 // for more, none would go on. So the first in line that finds no room
 // takes the turn (node.inTurn), with room of the reserve (#727, which
 // holds at least one request) for what its share of requests in part
-// has left, as much as the reserve has free: while it holds the turn, the
-// buffers may hold that much past what they held when it took it
-// (node.turnLimit), for its connection alone. While many connections
+// has left: while it holds the turn, the buffers may hold that much past
+// what they held when it took it (node.turnLimit), for its connection
+// alone, and past what they take with no check of their room meanwhile
+// (node.looseGrown: a new connection's handshake leftovers, a read buffer
+// grown for a frame, a header block). Taken from the turn's room, those
+// left its client waiting at a part its turn could not serve, first in
+// line, and every client behind it for requestTimeout (#735's loop on
+// 38cf23e4, as clients connected). While many connections
 // read, a share is one request (connIn), so the turn is all it needs to
 // finish what it holds. The turn ends once its client holds no request
 // in part and waits for none, or the buffers are back within the read
@@ -48,7 +53,7 @@ package wl
 // hold k more of requests in part: within the read half, or within the
 // turn's limit for the turn's client.
 func (n *node) roomFor(c *client, k int64) bool {
-	return n.cpool+k <= n.sizes.clientInBufs() || n.inTurn == c && n.cpool+k <= n.turnLimit
+	return n.cpool+k <= n.sizes.clientInBufs() || n.inTurn == c && n.cpool+k <= n.turnLimit+n.looseGrown-n.turnLoose
 }
 
 // waitsForRoom reports whether DATA p of stream s, which does not fit
@@ -113,7 +118,7 @@ func (n *node) takeTurn(c *client) {
 	}
 	limit := max(n.cpool, in) + room
 	n.reserved += room
-	n.inTurn, n.turnRoom, n.turnLimit, n.turnAt = c, room, limit, n.now
+	n.inTurn, n.turnRoom, n.turnLimit, n.turnLoose, n.turnAt = c, room, limit, n.looseGrown, n.now
 }
 
 // endTurn ends the turn of a client that closed, that holds no request in

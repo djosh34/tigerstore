@@ -195,3 +195,23 @@ func TestTheTurnsClientGoesFirstInLine(t *testing.T) {
 		t.Fatalf("room within a's turn: a needs %d, b needs %d, %d refused; want a served", a.roomNeed, b.roomNeed, tooMany())
 	}
 }
+
+// What the buffers take with no check of their room while a turn runs, a
+// new connection's handshake leftovers among them, does not take the
+// turn's room: its client goes on within its turn. Taken from it, the
+// turn's client waited at a part its turn could not serve, first in line,
+// and every client behind it waited requestTimeout (#735's loop on
+// 38cf23e4, as clients connected).
+func TestATurnKeepsItsRoomPastWhatIsTakenUnchecked(t *testing.T) {
+	n, a, b, l, feed, tooMany := partNode(t)
+	feed(a, putPart(t, 1, true))
+	l.serveWaiting()
+	if n.inTurn != a || a.roomNeed != 0 {
+		t.Fatalf("setup: turn a %v, a needs %d", n.inTurn == a, a.roomNeed)
+	}
+	b.growLoose(int(n.turnLimit - n.cpool)) // as a connection's handshake leftovers
+	feed(a, putPart(t, 1, false))
+	if a.roomNeed != 0 || a.partial != 2*part || tooMany() != 0 {
+		t.Fatalf("the turn's client after others took its room unchecked: needs %d, holds %d in part, %d refused", a.roomNeed, a.partial, tooMany())
+	}
+}

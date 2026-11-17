@@ -264,13 +264,16 @@ var errTooManyRequests = requestErr(codeResourceExhausted, "etcdserver: too many
 // handshake read past its end.
 func newClient(h *handoff, n *node) *client {
 	c := &client{
-		fd: h.fd, rd: h.rd, wr: h.wr, plain: h.plain, rec: -1, stats: &n.stats, pool: &n.cpool, outPool: &n.cout, outBase: clientOutBuf,
+		fd: h.fd, rd: h.rd, wr: h.wr, plain: h.plain, rec: -1, stats: &n.stats, pool: &n.cpool, outPool: &n.cout, loose: &n.looseGrown, outBase: clientOutBuf,
 		hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn), cn: h.cn, node: n,
 	}
 	if len(h.left) > 0 {
+		// What its handshake read past its end is taken with no check
+		// of the buffers' room.
+		n.looseGrown += c.bufNeed()
 		c.takeBufs()
 		if len(h.left) > len(c.in) {
-			c.grow(len(h.left) - len(c.in))
+			c.growLoose(len(h.left) - len(c.in))
 			c.in = make([]byte, len(h.left))
 		}
 		c.iw = copy(c.in, h.left)
@@ -381,7 +384,7 @@ func (c *client) addBlock(p []byte, first bool) error {
 	}
 	before := cap(c.block)
 	c.block = append(c.block, p...)
-	c.grow(cap(c.block) - before)
+	c.growLoose(cap(c.block) - before)
 	return nil
 }
 

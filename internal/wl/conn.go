@@ -44,8 +44,9 @@ type sock struct {
 	broken bool
 	// pool and outPool, a client's, count the bytes it holds in its
 	// node's client buffers (sizes.clientBufs): what it reads in pool, and
-	// what waits to be sent in outPool; nil for a peer's.
-	pool, outPool *int64
+	// what waits to be sent in outPool; nil for a peer's. loose counts
+	// what pool took with no check of its room (growLoose).
+	pool, outPool, loose *int64
 }
 
 // A socket's buffers: the ciphertext read, the plaintext opened and the
@@ -75,6 +76,16 @@ func newSock(h *handoff, stats *counters) *sock {
 func (s *sock) grow(n int) {
 	if s.pool != nil {
 		*s.pool += int64(n)
+	}
+}
+
+// growLoose grows what the socket counts in its pool by n with no check
+// of the pool's room, and counts it in loose too: a turn of the read half
+// (partwait.go) keeps its room past it.
+func (s *sock) growLoose(n int) {
+	s.grow(n)
+	if s.loose != nil && n > 0 {
+		*s.loose += int64(n)
 	}
 }
 
@@ -147,7 +158,7 @@ func (s *sock) open() error {
 			}
 			if len(s.pt)-s.pw < n {
 				np := make([]byte, 2*len(s.pt))
-				s.grow(len(np) - len(s.pt))
+				s.growLoose(len(np) - len(s.pt))
 				s.pw = copy(np, s.pt[s.pr:s.pw])
 				s.pr = 0
 				s.pt = np
@@ -218,7 +229,7 @@ func (s *sock) takePlain() error {
 		}
 		if len(s.pt)-s.pw < n {
 			np := make([]byte, max(2*len(s.pt), s.pw+n))
-			s.grow(len(np) - len(s.pt))
+			s.growLoose(len(np) - len(s.pt))
 			s.pw = copy(np, s.pt[s.pr:s.pw])
 			s.pr = 0
 			s.pt = np
