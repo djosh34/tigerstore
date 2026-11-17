@@ -462,10 +462,13 @@ func TestARangeStreamSendsTheRangeInChunks(t *testing.T) {
 
 // A watch from a revision before the compacted one is canceled with the
 // compacted revision, as etcd's; one from the compacted revision gets the
-// changes since.
+// changes since. The client has one node: a node answers a compaction once
+// it applied it, but another may apply it later, and a watch it served
+// first found the history still there, as etcd's would (a local run of
+// the wl subset at f2352787).
 func TestAWatchFromACompactedRevisionIsCanceled(t *testing.T) {
 	tc := newTestCluster(t)
-	c := tc.client(t)
+	c := tc.clientOf(t, tc.endpoints[0])
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	first, err := c.Put(ctx, "/w/k", "0")
