@@ -8,8 +8,6 @@ import (
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.etcd.io/raft/v3/tracker"
-
-	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // Held entries (#602). A follower forwards the writes its clients send it
@@ -46,11 +44,7 @@ import (
 // (Config.HeldEntries), so a node of an older version never sees them.
 
 const (
-	// heldWaitTicks is how long appends wait for entries they name.
-	heldWaitTicks = 2
-	// heldFullTicks is how long the leader sends a follower that asked
-	// for it everything in full.
-	heldFullTicks = 20
+
 	// heldKeepTicks is how long a node holds an entry for appends to come,
 	// and heldMaxBytes bounds the bytes it holds.
 	heldKeepTicks = 10
@@ -99,16 +93,6 @@ type heldKey struct {
 	size, sum        uint32
 }
 
-// entryKey returns the key of an entry's data, false for data whose
-// first write has no request ID or one another write may have (entryOrigin).
-func entryKey(data []byte) (heldKey, bool) {
-	k, ok := entryOrigin(data)
-	if ok {
-		k.seal(data)
-	}
-	return k, ok
-}
-
 // entryOrigin reads the node, boot and first request ID of a key from an
 // entry's data, which every format writes first, without the checksum. It
 // returns false if the first write has no request ID, or is an alarm or a
@@ -153,22 +137,6 @@ func (k heldKey) append(b []byte) []byte {
 	return binary.BigEndian.AppendUint32(b, k.sum)
 }
 
-func readKey(b []byte) (heldKey, bool) {
-	var k heldKey
-	var ok bool
-	if k.origin, b, ok = uvarint(b); !ok {
-		return heldKey{}, false
-	}
-	if k.boot, b, ok = uvarint(b); !ok {
-		return heldKey{}, false
-	}
-	if k.id, b, ok = uvarint(b); !ok || len(b) != 8 {
-		return heldKey{}, false
-	}
-	k.size, k.sum = binary.BigEndian.Uint32(b), binary.BigEndian.Uint32(b[4:])
-	return k, true
-}
-
 // keptEntries is a node's state for held entries.
 type keptEntries struct {
 	// data are the entries a follower holds by key, order their keys
@@ -176,10 +144,7 @@ type keptEntries struct {
 	data  map[heldKey][]byte
 	order []keptAt
 	bytes int64
-	// parked are the appends that wait for entries, in the order they
-	// came, since the tick parkedAt.
-	parked   []*raftpb.Message
-	parkedAt int64
+
 	// fullUntil is, on the leader, the tick until which it sends each
 	// follower that asked for it everything in full.
 	fullUntil map[uint64]int64
@@ -193,20 +158,12 @@ type keptAt struct {
 // HeldCounts are a node's counters of held entries (Counters).
 type HeldCounts struct{ Named, Parked, Asked int64 }
 
-// Held returns the node's counters of held entries.
-func (n *Node) Held() HeldCounts {
-	return HeldCounts{n.counters.HeldNamed, n.counters.HeldParked, n.counters.HeldAsked}
-}
-
 // Kept is the entries a core holds for appends to come. A core started
 // again from the log after a snapshot install takes over those of the core
 // before it (Config.Kept): without them, the appends that name entries
 // side-copied before the install would wait, and on a short log window
 // the wait makes the follower fall behind into another install.
 type Kept struct{ data map[heldKey][]byte }
-
-// Kept returns the entries the node holds, for the core that follows it.
-func (n *Node) Kept() *Kept { return &Kept{data: n.kept.data} }
 
 // adopt holds the entries of an earlier core of this node.
 func (n *Node) adopt(k *Kept) {
@@ -353,154 +310,5 @@ func withEntries(m *raftpb.Message, entries []*raftpb.Entry, ctx []byte) *raftpb
 		Type: m.Type, To: m.To, From: m.From, Term: m.Term, LogTerm: m.LogTerm, Index: m.Index,
 		Entries: entries, Commit: m.Commit, Vote: m.Vote, Snapshot: m.Snapshot,
 		Reject: m.Reject, RejectHint: m.RejectHint, Context: ctx, Responses: m.Responses,
-	}
-}
-
-// stepHeld handles a message of this file, or an append while earlier
-// ones wait for entries. It reports whether it took m.
-func (n *Node) stepHeld(m *raftpb.Message) (bool, error) {
-	form := heldForm(m)
-	if form == 0 {
-		if m.GetType() == raftpb.MsgApp && len(n.kept.parked) > 0 {
-			n.park(m)
-			return true, nil
-		}
-		return false, nil
-	}
-	switch form {
-	case heldSideCopy:
-		for _, e := range m.Entries {
-			if k, ok := entryKey(e.GetData()); ok {
-				n.keep(k, e.GetData())
-			}
-		}
-		return true, n.unpark()
-	case heldAskFull:
-		if n.isLeader {
-			if n.kept.fullUntil == nil {
-				n.kept.fullUntil = map[uint64]int64{}
-			}
-			n.kept.fullUntil[m.GetFrom()] = n.now + heldFullTicks
-		}
-		return true, nil
-	case heldNamed:
-		if len(n.kept.parked) == 0 {
-			if full, ok := n.fill(m); ok {
-				n.counters.HeldFilled++
-				return true, n.stepRaft(full)
-			}
-		}
-		n.counters.HeldParked++
-		n.park(m)
-		return true, nil
-	}
-	return true, nil
-}
-
-func (n *Node) park(m *raftpb.Message) {
-	if len(n.kept.parked) == 0 {
-		n.kept.parkedAt = n.now
-	}
-	n.kept.parked = append(n.kept.parked, m)
-}
-
-// unpark steps the parked appends, oldest first, until one names an entry
-// this node does not hold.
-func (n *Node) unpark() error {
-	h := &n.kept
-	for len(h.parked) > 0 {
-		m := h.parked[0]
-		if HeldForm(m) {
-			var ok bool
-			if m, ok = n.fill(m); !ok {
-				return nil
-			}
-			n.counters.HeldFilled++
-		}
-		h.parked[0] = nil
-		h.parked = h.parked[1:]
-		h.parkedAt = n.now
-		if err := n.stepRaft(m); err != nil {
-			return err
-		}
-	}
-	h.parked = nil
-	return nil
-}
-
-// fill returns the append m with the entries it names filled in, and
-// false if this node does not hold one of them.
-func (n *Node) fill(m *raftpb.Message) (*raftpb.Message, bool) {
-	ctx := m.GetContext()[len(heldTag)+1:]
-	entries := append([]*raftpb.Entry(nil), m.Entries...)
-	for len(ctx) > 0 {
-		i, rest, ok := uvarint(ctx)
-		if !ok || i >= uint64(len(entries)) {
-			return nil, false
-		}
-		ctx = rest
-		k, ok := readKey(entries[i].GetData())
-		if !ok {
-			return nil, false
-		}
-		data, ok := n.kept.data[k]
-		if !ok && planted.On("B33") {
-			// The key goes to Raft in place of the entry.
-			continue
-		}
-		if !ok {
-			return nil, false
-		}
-		e := entries[i]
-		entries[i] = &raftpb.Entry{Term: e.Term, Index: e.Index, Type: e.Type, Data: data}
-	}
-	return withEntries(m, entries, nil), true
-}
-
-// heldTick stops holding entries held for heldKeepTicks. Once parked
-// appends have waited heldWaitTicks, it drops them, as Raft sends them
-// again, and asks the leader it knows now to send everything in full for a
-// while.
-func (n *Node) heldTick() {
-	h := &n.kept
-	for len(h.order) > 0 && n.now-h.order[0].at > heldKeepTicks {
-		n.dropOldest()
-	}
-	if len(h.parked) == 0 || n.now-h.parkedAt < heldWaitTicks {
-		return
-	}
-	clear(h.parked)
-	h.parked = nil
-	n.counters.HeldAsked++
-	if lead := n.rn.BasicStatus().Lead; lead != 0 && lead != n.cfg.ID {
-		n.send(&raftpb.Message{
-			Type: raftpb.MsgProp.Enum(), From: new(n.cfg.ID), To: new(lead),
-			Context: append(append([]byte(nil), heldTag...), heldAskFull),
-		})
-	}
-}
-
-// heldDue is the tick at which parked appends stop waiting, or 0.
-func (n *Node) heldDue() int64 {
-	if len(n.kept.parked) == 0 {
-		return 0
-	}
-	return n.kept.parkedAt + heldWaitTicks
-}
-
-// keepForwarded holds the entries of a proposal a peer forwarded to this
-// follower, which passes it on to the leader: the forwarder sent its side
-// copies to the other voters, not to this one.
-func (n *Node) keepForwarded(m *raftpb.Message) {
-	if !n.heldOn(m.GetFrom()) {
-		return
-	}
-	for _, e := range m.Entries {
-		if e.GetType() != raftpb.EntryNormal {
-			continue
-		}
-		if k, ok := entryKey(e.GetData()); ok {
-			n.keep(k, e.GetData())
-		}
 	}
 }

@@ -1,7 +1,5 @@
 package core
 
-import "math/bits"
-
 // slabs holds the value cache's bytes. Values up to maxSlot bytes go in
 // chunks of chunkBytes, each cut into slots of one size class, four
 // classes to each doubling of size, so a slot wastes at most a fifth of
@@ -81,89 +79,8 @@ var classSizes = func() (s [numClasses]int) {
 	return s
 }()
 
-// classOf returns the smallest class whose slots hold n bytes, or
-// bigClass.
-func classOf(n int) int {
-	if n <= 1<<minSlotBits {
-		return 0
-	}
-	if n > maxSlot {
-		return bigClass
-	}
-	b := bits.Len(uint(n-1)) - 1 // 1<<b < n <= 1<<(b+1)
-	base := 1 << b
-	return (b-minSlotBits)*steps + ((n-base)*steps+base-1)/base
-}
-
 // perChunk is the number of slots a chunk of class ci holds.
 func perChunk(ci int) uint32 { return uint32(chunkBytes / classSizes[ci]) }
-
-// put copies val into the lowest free slot of its class, which owner, an
-// entry of the cache, owns, and returns the slot.
-func (sl *slabs) put(val []byte, owner int32) slot {
-	ci := classOf(len(val))
-	if ci == bigClass {
-		b := append([]byte(nil), val...)
-		if k := len(sl.bigFree); k > 0 {
-			n := sl.bigFree[k-1]
-			sl.bigFree = sl.bigFree[:k-1]
-			sl.big[n] = b
-			return slot{n: n, class: bigClass}
-		}
-		sl.big = append(sl.big, b)
-		return slot{n: uint32(len(sl.big) - 1), class: bigClass}
-	}
-	c := &sl.classes[ci]
-	size := classSizes[ci]
-	n, ok := sl.takeFree(ci)
-	if !ok {
-		per := perChunk(ci)
-		n = c.fresh
-		c.fresh++
-		if n/per == uint32(len(c.chunks)) {
-			c.chunks = append(c.chunks, slabChunk{
-				data:  make([]byte, chunkBytes/size*size),
-				owner: make([]int32, per),
-				free:  make([]uint64, (per+63)/64),
-			})
-		}
-	}
-	sl.used += int64(size)
-	sl.set(ci, n, val, owner)
-	return slot{n: n, class: uint8(ci)}
-}
-
-// set copies val into slot n of class ci, which owner owns.
-func (sl *slabs) set(ci int, n uint32, val []byte, owner int32) {
-	size := classSizes[ci]
-	per := perChunk(ci)
-	ch := &sl.classes[ci].chunks[n/per]
-	off := int(n%per) * size
-	copy(ch.data[off:off+size], val)
-	ch.owner[n%per] = owner
-}
-
-// takeFree takes the lowest free slot of class ci, if it has one.
-func (sl *slabs) takeFree(ci int) (uint32, bool) {
-	c := &sl.classes[ci]
-	for ; c.low < len(c.chunks); c.low++ {
-		ch := &c.chunks[c.low]
-		if ch.nfree == 0 {
-			continue
-		}
-		for ; ch.word < len(ch.free); ch.word++ {
-			if word := ch.free[ch.word]; word != 0 {
-				b := bits.TrailingZeros64(word)
-				ch.free[ch.word] &^= 1 << b
-				ch.nfree--
-				c.nfree--
-				sl.freed -= int64(classSizes[ci])
-				return uint32(c.low)*perChunk(ci) + uint32(ch.word*64+b), true
-			}
-		}
-	}
-	return 0, false
-}
 
 // bytes returns the n bytes in s, which the next put, free or compact may
 // overwrite.
@@ -241,76 +158,4 @@ func (sl *slabs) anyLoose() bool {
 		}
 	}
 	return false
-}
-
-// compact moves the values of loose classes' last chunks into the free
-// slots below them, the class with the most free room first, and drops
-// each chunk it empties. It copies at most budget bytes, and calls moved
-// for every value it moves, with the value's owner and new slot. It
-// reports whether any class is still loose.
-func (sl *slabs) compact(budget int, moved func(owner int32, to slot)) bool {
-	for {
-		ci, most := -1, int64(0)
-		for i := range numClasses {
-			free := int64(sl.classes[i].nfree) * int64(classSizes[i])
-			if free > most && sl.loose(i) {
-				ci, most = i, free
-			}
-		}
-		if ci < 0 {
-			return false
-		}
-		if budget <= 0 {
-			return true
-		}
-		budget = sl.empty(ci, budget, moved)
-	}
-}
-
-// freeSlotCost is what passing a free slot takes of compact's budget, in
-// bytes: about the time a copy of that many bytes takes.
-const freeSlotCost = 16
-
-// empty moves the values of class ci's last chunk, from its highest slot
-// down, into the lowest free slots below it, and drops the chunk once it
-// holds none. The class is loose. It spends at most budget, a value by
-// its slot's size and a free slot it passes by freeSlotCost, at least
-// one of either, and returns what is left of budget.
-func (sl *slabs) empty(ci, budget int, moved func(owner int32, to slot)) int {
-	c := &sl.classes[ci]
-	size := classSizes[ci]
-	per := perChunk(ci)
-	last := len(c.chunks) - 1
-	start := uint32(last) * per
-	ch := &c.chunks[last]
-	for c.fresh > start {
-		top := c.fresh - 1
-		i := top - start
-		if budget <= 0 {
-			return 0
-		}
-		if ch.free[i/64]&(1<<(i%64)) != 0 {
-			// A free slot costs a little of the budget too, so that a
-			// call does not walk many chunks of free slots for nothing.
-			ch.free[i/64] &^= 1 << (i % 64)
-			ch.nfree--
-			c.nfree--
-			sl.freed -= int64(size)
-			c.fresh--
-			budget -= freeSlotCost
-			continue
-		}
-		// The class is loose, so the lowest free slot is below the chunk.
-		owner := ch.owner[i]
-		to, _ := sl.takeFree(ci)
-		off := int(i) * size
-		sl.set(ci, to, ch.data[off:off+size], owner)
-		c.fresh--
-		budget -= size
-		moved(owner, slot{n: to, class: uint8(ci)})
-	}
-	c.chunks[last] = slabChunk{}
-	c.chunks = c.chunks[:last]
-	c.low = min(c.low, last)
-	return budget
 }

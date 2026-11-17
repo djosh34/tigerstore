@@ -21,28 +21,6 @@ type Put struct {
 	valueAt int
 }
 
-// size is the size of the PutRequest as protobuf marshals it after a
-// decode: the fields it holds plus the unknown ones. etcd limits that
-// size, not the client's encoding, which can repeat fields.
-func (p *Put) size() int {
-	n := p.unknown
-	if len(p.Key) > 0 {
-		n += 1 + protowire.SizeBytes(len(p.Key))
-	}
-	if len(p.Value) > 0 {
-		n += 1 + protowire.SizeBytes(len(p.Value))
-	}
-	if p.Lease != 0 {
-		n += 1 + protowire.SizeVarint(uint64(p.Lease))
-	}
-	for _, b := range [...]bool{p.PrevKv, p.IgnoreValue, p.IgnoreLease} {
-		if b {
-			n += 2
-		}
-	}
-	return n
-}
-
 var errBadPut = errors.New("core: malformed PutRequest")
 
 // ParsePut reads a PutRequest from its wire form without copying it, with

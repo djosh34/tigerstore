@@ -10,9 +10,7 @@ import (
 	"io/fs"
 	"slices"
 
-	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
-	"go.etcd.io/raft/v3/tracker"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/planted"
@@ -46,9 +44,6 @@ import (
 // ReceiveSnapshot, fetching from From what follows Applied.
 type Install struct {
 	From, Index, Term, Applied uint64
-	// Checkpoint is the root of the checkpoint that came with the
-	// snapshot, if any; ReceiveSnapshot sets it.
-	Checkpoint wal.Root
 }
 
 // record notes, with Config.Record, that the state at index came from a
@@ -63,134 +58,6 @@ func (n *Node) record(index, term uint64) {
 func (n *Node) unapplied() int64 {
 	return n.storage.total() - n.storage.bytes(n.applied) + n.unpersisted + n.unready
 }
-
-// trimWindow lets applied entries leave memory once they pass the window,
-// by an eighth of it at a time. On the leader the window grows up to
-// WindowMaxBytes to keep what a follower still needs.
-func (n *Node) trimWindow() {
-	have := n.storage.bytes(n.applied)
-	limit := n.cfg.WindowBytes
-	if n.isLeader {
-		match := n.applied
-		n.rn.WithProgress(func(id uint64, _ raft.ProgressType, pr tracker.Progress) {
-			if id != n.cfg.ID {
-				match = min(match, pr.Match)
-			}
-		})
-		limit = max(limit, min(n.cfg.WindowMaxBytes, have-n.storage.bytes(match)))
-	}
-	if have <= limit+n.cfg.WindowBytes/8 {
-		return
-	}
-	index := n.storage.keep(n.applied, limit)
-	if planted.On("B20") {
-		// Planted: entries that are not applied yet leave memory too.
-		last, err := n.storage.LastIndex()
-		if err != nil {
-			n.fail(err)
-			return
-		}
-		index = max(index, min(n.applied+1, last))
-	}
-	n.fillCache(index)
-	if err := n.storage.trim(index); err != nil {
-		n.fail(err)
-	}
-}
-
-// snapshotProgress gives up, on the leader, on a snapshot that a follower
-// has not started to fetch within SnapshotTicks, so Raft sends another,
-// as etcd's leader reports a failed snapshot. It forgets a peer that Raft
-// no longer tracks, a member removed while its snapshot was pending or
-// whose fetch started after: nothing else would end its wait, which keeps
-// every checkpoint from then on (#379).
-func (n *Node) snapshotProgress() {
-	if !n.isLeader {
-		clear(n.snapWait)
-		return
-	}
-	var failed, tracked []uint64
-	waiting := len(n.snapWait) > 0
-	n.rn.WithProgress(func(id uint64, _ raft.ProgressType, pr tracker.Progress) {
-		if waiting {
-			tracked = append(tracked, id)
-		}
-		if pr.State != tracker.StateSnapshot {
-			delete(n.snapWait, id)
-			return
-		}
-		at, ok := n.snapWait[id]
-		switch {
-		case !ok:
-			n.snapWait[id] = n.now
-		case at != 0 && n.now-at >= int64(n.cfg.SnapshotTicks):
-			failed = append(failed, id)
-		}
-	})
-	if waiting {
-		for id := range n.snapWait {
-			if !slices.Contains(tracked, id) {
-				delete(n.snapWait, id)
-			}
-		}
-	}
-	slices.Sort(failed)
-	for _, id := range failed {
-		delete(n.snapWait, id)
-		n.rn.ReportSnapshot(id, raft.SnapshotFailure)
-	}
-}
-
-// snapshotDropped gives up, on the leader, on a snapshot that follower
-// id answers heartbeats without having started to fetch two heartbeats
-// after it was sent. A follower whose core starts again from its log
-// after an install drops a snapshot that came meanwhile, as the driver
-// writes nothing after the install (UpToInstall); Raft then sends another
-// instead of waiting SnapshotTicks. An election timeout held such a
-// follower back about a second (#366). A follower that only starts its
-// fetch late, behind syncs of its log slower than two heartbeats, loses
-// this snapshot too: until Raft sends another, nothing keeps the
-// leader's cleaner from removing the checkpoint it names, and if it does,
-// the fetch fails, the follower starts again from its log, and the
-// calls it holds fail with "server stopped". Raft's next snapshot then
-// names a newer checkpoint.
-func (n *Node) snapshotDropped(id uint64) {
-	if at, ok := n.snapWait[id]; ok && at != 0 && n.now-at >= int64(2*n.cfg.HeartbeatTicks) {
-		delete(n.snapWait, id)
-		n.rn.ReportSnapshot(id, raft.SnapshotFailure)
-	}
-}
-
-// SnapshotStarted tells the leader that a follower started to fetch a
-// snapshot from it.
-func (n *Node) SnapshotStarted(to uint64) {
-	if n.err == nil && n.isLeader {
-		n.snapWait[to] = 0
-	}
-}
-
-// SnapshotSent reports the result of serving a follower's snapshot.
-// Damage to the sender's own log stops it (Fence), even if it has lost
-// leadership. Other failures let Raft retry the fetch.
-func (n *Node) SnapshotSent(to uint64, err error) {
-	if FailureOf(err) == Fence {
-		n.fail(err)
-		return
-	}
-	if n.err != nil || !n.isLeader {
-		return
-	}
-	delete(n.snapWait, to)
-	status := raft.SnapshotFinish
-	if err != nil {
-		status = raft.SnapshotFailure
-	}
-	n.rn.ReportSnapshot(to, status)
-}
-
-// DurableCheckpoint is the root of the newest durable checkpoint, which
-// a snapshot that this node serves may need.
-func (n *Node) DurableCheckpoint() wal.Root { return n.storage.ckpt }
 
 // The snapshot stream is a sequence of items
 //
@@ -236,79 +103,6 @@ func (s *snapWriter) item(kind byte, payload ...[]byte) error {
 		}
 	}
 	return binary.Write(s.w, binary.LittleEndian, crc)
-}
-
-func (s *snapWriter) entry(e *raftpb.Entry) error {
-	h := binary.AppendUvarint(nil, e.GetTerm())
-	h = binary.AppendUvarint(h, e.GetIndex())
-	h = append(h, byte(e.GetType()))
-	return s.item(snapEntry, h, e.GetData())
-}
-
-// errNoSnapshot means that a node cannot serve the snapshot asked for: its
-// log lacks the entries and it has no checkpoint that fits.
-var errNoSnapshot = errors.New("core: the log cannot serve this snapshot")
-
-// ServeSnapshot writes to w what a follower that applied up to from-1
-// needs to reach index to: the entries from..to from log, or, when some
-// are gone, a checkpoint, the values it names in entries from from on,
-// and the entries after it. ckpts are the durable checkpoints whose files
-// are on disk. It takes the newest one at or before to, so that a newer
-// root that became durable after Raft sent the snapshot does not stop it
-// from serving the checkpoint the snapshot named.
-func ServeSnapshot(disk Log, ckpts []wal.Root, from, to uint64, w io.Writer) error {
-	var ckpt wal.Root
-	for _, c := range ckpts {
-		if c.Index <= to && c.Index > ckpt.Index {
-			ckpt = c
-		}
-	}
-	s := &snapWriter{w: bufio.NewWriterSize(w, 256<<10)}
-	// Entries after the checkpoint are always on disk.
-	last := to
-	if ckpt.Index > 0 {
-		last = ckpt.Index
-	}
-	raw := true
-	for i := from; i <= last && raw; i++ {
-		raw = disk.Has(i)
-	}
-	if !raw && ckpt.Index < from {
-		return fmt.Errorf("%w: entries %d to %d, the checkpoint is at %d", errNoSnapshot, from, to, ckpt.Index)
-	}
-	var hdr []byte
-	hdr = binary.AppendUvarint(hdr, from)
-	hdr = binary.AppendUvarint(hdr, to)
-	next := from
-	if raw {
-		hdr = binary.AppendUvarint(hdr, 0)
-		hdr = binary.AppendUvarint(hdr, 0)
-	} else {
-		hdr = binary.AppendUvarint(hdr, ckpt.Index)
-		hdr = binary.AppendUvarint(hdr, ckpt.Term)
-		next = ckpt.Index + 1
-	}
-	if err := s.item(snapHeader, hdr); err != nil {
-		return err
-	}
-	if !raw {
-		if err := serveCheckpoint(s, disk, ckpt, from); err != nil {
-			return err
-		}
-	}
-	for i := next; i <= to; i++ {
-		e, err := disk.Entry(i)
-		if err != nil {
-			return err
-		}
-		if err := s.entry(e); err != nil {
-			return err
-		}
-	}
-	if err := s.item(snapEnd); err != nil {
-		return err
-	}
-	return s.w.Flush()
 }
 
 // ServeCheckpoint writes to w the snapshot stream of a node that has
@@ -569,7 +363,7 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, in *Install) erro
 		if err := receiveCheckpoint(s, sink, disk, from, ckpt, ckptTerm); err != nil {
 			return err
 		}
-		in.Checkpoint = wal.Root{Index: ckpt, Term: ckptTerm}
+
 		root = &wal.Root{Index: ckpt, Term: ckptTerm, Reset: true, Keep: in.Applied}
 		ok, err := holds(disk, ckpt, ckptTerm)
 		if err != nil {
@@ -744,11 +538,4 @@ func receiveCheckpoint(s *snapReader, sink SnapshotSink, disk Log, from, ckpt, c
 		}
 	}
 	return nil
-}
-
-// SnapshotPoint is where a client's snapshot of the state is taken: the
-// applied index, its entry's term and the revision there.
-func (n *Node) SnapshotPoint() (index, term uint64, rev int64, err error) {
-	term, err = n.termAt(n.applied)
-	return n.applied, term, n.kv.Rev(), err
 }

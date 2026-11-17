@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 
-	"go.etcd.io/raft/v3"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -46,28 +45,8 @@ func (n *Node) queueFeature(p *pending) {
 		n.queueWrite(p)
 		return
 	}
-	p.early = true
-	n.early = append(n.early, p)
-}
 
-// releaseEarly queues the writes that waited for featureVersion once it
-// is active.
-func (n *Node) releaseEarly() {
-	if len(n.early) == 0 || !n.capable() {
-		return
-	}
-	for _, p := range n.early {
-		switch {
-		case p.done:
-		case p.conf != nil:
-			p.early = false
-			n.confs = append(n.confs, p)
-		default:
-			p.early = false
-			n.queueWrite(p)
-		}
-	}
-	n.early = nil
+	n.early = append(n.early, p)
 }
 
 // ErrTooOld stops a node whose cluster runs a newer version than its
@@ -86,22 +65,6 @@ const (
 	announceRunField   = 2
 	announceEpochField = 3
 )
-
-// announcement is the announcement format used before confirmations.
-// Keep it for replay of old logs.
-func announcement(v uint32, run uint64) *wrapperspb.UInt32Value {
-	m := wrapperspb.UInt32(v)
-	b := protowire.AppendTag(nil, announceRunField, protowire.VarintType)
-	m.ProtoReflect().SetUnknown(protowire.AppendVarint(b, run))
-	return m
-}
-
-func confirmation(v uint32, run, epoch uint64) *wrapperspb.UInt32Value {
-	m := announcement(v, run)
-	b := protowire.AppendTag(m.ProtoReflect().GetUnknown(), announceEpochField, protowire.VarintType)
-	m.ProtoReflect().SetUnknown(protowire.AppendVarint(b, epoch))
-	return m
-}
 
 type versionAnnouncement struct {
 	version          uint32
@@ -207,9 +170,6 @@ func (st *State) versionMembers() []uint64 {
 // ownVersion is the newest version this node supports.
 func ownVersion(cfg Config) uint32 { return cmp.Or(cfg.MaxVersion, MaxVersion) }
 
-// ActiveVersion is the cluster version this node has applied.
-func (n *Node) ActiveVersion() uint32 { return n.state.version }
-
 func (n *Node) applyVersion(index, origin uint64, b []byte) error {
 	a, err := parseAnnouncement(b)
 	if err != nil {
@@ -224,29 +184,4 @@ func (n *Node) applyVersion(index, origin uint64, b []byte) error {
 		return tooOld(n.state.version, ownVersion(n.cfg))
 	}
 	return nil
-}
-
-// announceVersion retries after each election timeout, as Raft may drop
-// proposals. Once all members support a newer format, each must confirm
-// that epoch. A node that has rolled back sends its lower support instead.
-func (n *Node) announceVersion() {
-	if !n.wantsAnnounce() || n.announcedAt != 0 && n.now-n.announcedAt < int64(n.cfg.ElectionTicks) {
-		return
-	}
-	n.announcedAt = n.now
-	n.proposeInternal(confirmation(ownVersion(n.cfg), n.cfg.Run, n.state.versionEpoch))
-}
-
-// wantsAnnounce reports whether this node has a support or a confirmation
-// to announce, and a leader to propose it to.
-func (n *Node) wantsAnnounce() bool {
-	st := n.state
-	if n.leader == raft.None || st.runs[n.cfg.ID] > n.cfg.Run {
-		return false
-	}
-	if st.supports[n.cfg.ID] != ownVersion(n.cfg) || st.runs[n.cfg.ID] != n.cfg.Run {
-		return true
-	}
-	// A confirmation is needed while a newer format waits for it.
-	return (st.versionEpoch == 0 || st.confirmed[n.cfg.ID] != st.versionEpoch) && st.supportedVersion(st.versionMembers()) > st.version
 }

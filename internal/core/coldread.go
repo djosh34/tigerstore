@@ -26,20 +26,12 @@ import (
 // helper goroutine, never the committer, and hands it back with
 // ValuesRead.
 type ValueRead struct {
-	log   Log
 	fills []mvcc.Fill
 	done  bool
 	// replies wait for the read, and so do the held responses of streams.
 	replies []Reply
 	streams []*watchStream
-	// read is a read that runs again once the values are in. apply is set
-	// when ordered apply waits for them.
-	read  *pending
-	apply bool
 }
-
-// Run reads every value from the log and checks it against its checksum.
-func (r *ValueRead) Run() error { return ReadValues(r.log, r.fills) }
 
 // ReadValues reads the value of every fill from log and checks it against
 // its checksum.
@@ -60,11 +52,10 @@ func ReadValues(log Log, fills []mvcc.Fill) error {
 // apply behind it: its entry, how many writes of the entry are applied,
 // the read that brings the values, and those read for it so far.
 type pausedWrite struct {
-	index    uint64
-	write    int
-	read     *ValueRead
-	fetched  map[mvcc.Ref][]byte
-	compares *mvcc.Compares
+	index   uint64
+	write   int
+	read    *ValueRead
+	fetched map[mvcc.Ref][]byte
 }
 
 // errPaused stops the walk of an entry at a write that waits for values.
@@ -72,7 +63,7 @@ var errPaused = errors.New("core: a write waits for values from the log")
 
 // readValues starts a read of fills.
 func (n *Node) readValues(fills []mvcc.Fill) *ValueRead {
-	r := &ValueRead{log: n.log, fills: fills}
+	r := &ValueRead{fills: fills}
 	n.cache.misses += int64(len(fills))
 	n.cold[r] = struct{}{}
 	n.out.Reads = append(n.out.Reads, r)
@@ -123,7 +114,7 @@ func (n *Node) answer(p *pending, r Reply, fills []mvcc.Fill) {
 		return
 	}
 	if p.refuse != nil {
-		r, fills = Reply{ID: r.ID, Err: p.refuse}, nil
+		r, fills = Reply{ID: r.ID}, nil
 	}
 	n.startPieces(&r)
 	if len(fills) == 0 {
@@ -143,8 +134,7 @@ func (n *Node) pause(index uint64, write int, cold *mvcc.ColdError) {
 		// keeps those too.
 		fetched = r.fetched
 	}
-	n.paused = &pausedWrite{index: index, write: write, fetched: fetched, read: n.fetch(cold.Need), compares: cold.Compares}
-	n.paused.read.apply = true
+	n.paused = &pausedWrite{index: index, write: write, fetched: fetched, read: n.fetch(cold.Need)}
 }
 
 // batch reports whether the values a transaction waits for are a batch of
@@ -168,64 +158,4 @@ func (n *Node) runApply() {
 		n.deliver(m.GetResponses())
 	}
 	n.releaseHeld()
-}
-
-// ValuesRead hands back a ValueRead the driver ran, with the error of its
-// Run. The replies and watch responses that waited for it go out, and a
-// write or read that needed its values runs again.
-func (n *Node) ValuesRead(r *ValueRead, err error) {
-	if n.err != nil {
-		return
-	}
-	r.done = true
-	delete(n.cold, r)
-	if err != nil {
-		// As with a value in memory: one that cannot be read, or does not
-		// match its checksum, never reaches a client. The node stops.
-		n.fail(err)
-		return
-	}
-	for _, f := range r.fills {
-		if n.kv.Current(f.Key, f.Ref) {
-			n.cache.add(f.Ref, *f.Dst)
-		}
-	}
-	n.out.Replies = append(n.out.Replies, r.replies...)
-	for _, s := range r.streams {
-		n.releaseWatches(s)
-	}
-	if p := r.read; p != nil && !p.done {
-		if p.fetched == nil || batch(p.compares) {
-			p.fetched = map[mvcc.Ref][]byte{}
-		}
-		keep(p.fetched, r)
-		n.values.fetched = p.fetched
-		n.kv.Resume(p.compares)
-		n.serveRead(p)
-		n.kv.Resume(nil)
-		n.values.fetched = nil
-		if p.done {
-			p.fetched, p.compares = nil, nil
-		}
-	}
-	if w := n.paused; w != nil && w.read == r {
-		keep(w.fetched, r)
-		n.paused, n.resume = nil, w
-		n.values.fetched = w.fetched
-		n.kv.Resume(w.compares)
-		n.runApply()
-		n.kv.Resume(nil)
-		n.values.fetched, n.resume = nil, nil
-	}
-}
-
-// readMark lowers mark, the Raft index below which the log may remove
-// segments, to keep every value a read under way needs.
-func (n *Node) readMark(mark uint64) uint64 {
-	for r := range n.cold {
-		for _, f := range r.fills {
-			mark = min(mark, f.Ref.Index)
-		}
-	}
-	return mark
 }

@@ -4,11 +4,9 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"slices"
 	"strconv"
-	"strings"
 
 	"go.etcd.io/etcd/api/v3/authpb"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -498,8 +496,7 @@ func sortedKeys[V any](m map[string]V) []string {
 
 // simpleToken is a token's user and the tick it expires at.
 type simpleToken struct {
-	user    string
-	expires int64
+	user string
 }
 
 // authenticate applies an InternalAuthenticateRequest: the server checked
@@ -520,7 +517,7 @@ func (n *Node) authenticate(r *pb.InternalAuthenticateRequest, index uint64, h *
 		if len(n.tokens) == 0 || expires < n.tokenDue {
 			n.tokenDue = expires
 		}
-		n.tokens[resp.Token] = &simpleToken{user: r.Name, expires: expires}
+		n.tokens[resp.Token] = &simpleToken{user: r.Name}
 	}
 	return resp, nil
 }
@@ -537,216 +534,6 @@ func (n *Node) invalidateTokens(user string) {
 			delete(n.tokens, t)
 		}
 	}
-}
-
-// expireTokens drops the simple tokens that were not used in time, and
-// notes when the next may expire. A use only moves a token's expiry
-// later, so tokenDue is never after the earliest.
-func (n *Node) expireTokens() {
-	if n.tokenDue > n.now {
-		return
-	}
-	n.tokenDue = 0
-	for t, st := range n.tokens {
-		if st.expires <= n.now {
-			delete(n.tokens, t)
-			continue
-		}
-		if n.tokenDue == 0 || st.expires < n.tokenDue {
-			n.tokenDue = st.expires
-		}
-	}
-}
-
-// errTokenNotApplied marks a simple token whose Authenticate entry this
-// node has not applied yet; the request waits for it, as etcd's does.
-var errTokenNotApplied = errors.New("core: the token's entry is not applied yet")
-
-// identify is etcd's AuthInfoFromCtx: the user of a request from its
-// token, or with client certificate authentication its certificate's
-// common name. With auth disabled, only a certificate names a user, for
-// the size limit. ok is false without an identity.
-func (n *Node) identify(c Caller) (ai authInfo, ok bool, err error) {
-	a := n.state.auth
-	if c.root {
-		return authInfo{user: rootUser, revision: a.revision}, true, nil
-	}
-	if a.enabled && c.Token != "" {
-		if c.Verified {
-			// A token the server checked itself (JWT).
-			if c.User == "" {
-				return authInfo{}, false, rpctypes.ErrGRPCInvalidAuthToken
-			}
-			return authInfo{user: c.User, revision: c.Revision}, true, nil
-		}
-		st, found := n.tokens[c.Token]
-		if !found {
-			_, index, cut := strings.Cut(c.Token, ".")
-			if i, err := strconv.ParseUint(index, 10, 64); cut && err == nil && i > n.applied {
-				return authInfo{}, false, errTokenNotApplied
-			}
-			return authInfo{}, false, rpctypes.ErrGRPCInvalidAuthToken
-		}
-		st.expires = n.now + int64(n.tokenTicks())
-		return authInfo{user: st.user, revision: a.revision}, true, nil
-	}
-	if c.name != "" {
-		return authInfo{user: c.name, revision: a.revision}, true, nil
-	}
-	return authInfo{}, false, nil
-}
-
-// identityExtra is what the identity adds to a write's marshaled
-// request.
-func identityExtra(c Caller, ai authInfo, ok bool) int {
-	switch {
-	case !ok:
-		return 0
-	case ai.user == c.name && ai.revision == 1:
-		return c.extra
-	}
-	return identityBytes(ai.user, ai.revision)
-}
-
-// tokenWait is a request whose token's Authenticate entry this node has
-// not applied yet.
-type tokenWait struct {
-	req      Request
-	deadline int64
-}
-
-// retryTokenWaits submits again the requests that waited for their
-// token, once its entry applied; one that waited past its first deadline
-// fails with ErrGRPCInvalidAuthToken, as etcd's does.
-func (n *Node) retryTokenWaits() {
-	waits := n.tokenWaits
-	n.tokenWaits = nil
-	for _, w := range waits {
-		if w.deadline <= n.clock {
-			n.reply(w.req.ID, rpctypes.ErrGRPCInvalidAuthToken)
-			continue
-		}
-		if _, _, err := n.identify(w.req.Caller); errors.Is(err, errTokenNotApplied) {
-			n.tokenWaits = append(n.tokenWaits, w)
-			continue
-		}
-		n.submit(w.req, &pending{})
-	}
-}
-
-// authorize is the check etcd's gRPC layer and server make before they
-// run a request, other than a range, which the node checks when it reads
-// (readAllowed), and writes, which it checks when they apply.
-func (n *Node) authorize(op proto.Message, ai authInfo, ok bool) error {
-	a := n.state.auth
-	if !a.enabled {
-		return nil
-	}
-	var who *authInfo
-	if ok {
-		who = &ai
-	}
-	switch op := op.(type) {
-	case *pb.CompactionRequest, *pb.HashRequest, *pb.HashKVRequest, *pb.MoveLeaderRequest, *pb.DefragmentRequest, *pb.DowngradeRequest,
-		*pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest:
-		return a.admin(who)
-	case *pb.AlarmRequest:
-		if op.Action != pb.AlarmRequest_GET {
-			return a.admin(who)
-		}
-		return requireIdentity(ok)
-	case *pb.StatusRequest, *pb.LeaseGrantRequest, *pb.LeaseRevokeRequest, *pb.MemberListRequest:
-		return requireIdentity(ok)
-	case *pb.LeaseKeepAliveRequest:
-		if !ok {
-			return rpctypes.ErrGRPCUserEmpty
-		}
-		return n.leaseKeysAllowed(ai, op.ID, true)
-	case *pb.LeaseTimeToLiveRequest:
-		if !ok {
-			return rpctypes.ErrGRPCUserEmpty
-		}
-		// etcd checks the keys only when the request asks for them.
-		if !op.Keys {
-			return nil
-		}
-		return n.leaseKeysAllowed(ai, op.ID, false)
-	case *pb.LeaseLeasesRequest:
-		if !ok {
-			return rpctypes.ErrGRPCUserEmpty
-		}
-		for _, l := range n.state.sortedLeases() {
-			if err := n.leaseKeysAllowed(ai, l.id, false); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func requireIdentity(ok bool) error {
-	if !ok {
-		return rpctypes.ErrGRPCUserEmpty
-	}
-	return nil
-}
-
-// leaseKeysAllowed is etcd's checkLeaseRenew (write) and
-// checkLeaseTimeToLive (read): an admin may, others need the permission
-// on each key of the lease.
-func (n *Node) leaseKeysAllowed(ai authInfo, id int64, write bool) error {
-	a := n.state.auth
-	if a.admin(&ai) == nil {
-		return nil
-	}
-	l := n.state.leases[id]
-	if l == nil {
-		return nil
-	}
-	var err error
-	l.keys.Ascend(func(k string) bool {
-		err = a.permitted(ai, []byte(k), nil, write)
-		return err == nil
-	})
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// readAllowed checks a range or a read-only transaction as etcd's
-// doSerialize does, with the identity the request came with.
-func (n *Node) readAllowed(p *pending) error {
-	a := n.state.auth
-	if !a.enabled {
-		return nil
-	}
-	ai := p.ai
-	switch op := p.req.Op.(type) {
-	case *pb.RangeRequest:
-		return a.permitted(ai, op.Key, op.RangeEnd, false)
-	case *pb.TxnRequest:
-		return n.state.txnAllowed(ai, op)
-	}
-	return nil
-}
-
-// credentials answers the server's read of a user's password hash before
-// it checks a password, as etcd's CheckPassword does, with the auth
-// revision in Reply.Rev.
-func (n *Node) credentials(r *pb.AuthenticateRequest) (proto.Message, error) {
-	a := n.state.auth
-	if !a.enabled {
-		return nil, rpctypes.ErrGRPCAuthNotEnabled
-	}
-	u := a.users[r.Name]
-	if u == nil {
-		return nil, rpctypes.ErrGRPCAuthFailed
-	}
-	if u.Options != nil && u.Options.NoPassword {
-		return nil, errNoPasswordUser
-	}
-	return proto.CloneOf(u), nil
 }
 
 // hashedPassword is the bcrypt hash a request carries, base64 encoded:
@@ -882,7 +669,7 @@ func (n *Node) applyAuthEntry(b []byte, index uint64, p *pending) error {
 	}
 	n.timed = timedApply{op: internalName(&r), err: err}
 	if p != nil {
-		rep := Reply{ID: p.req.ID, Resp: resp, Err: err, Rev: int64(n.state.auth.revision)}
+		rep := Reply{ID: p.req.ID, Resp: resp, Rev: int64(n.state.auth.revision)}
 		n.answer(p, rep, nil)
 	}
 	return nil
@@ -900,38 +687,4 @@ func (n *Node) AuthState() (enabled bool, revision uint64, users []*authpb.User,
 		roles = append(roles, proto.CloneOf(a.roles[name]))
 	}
 	return a.enabled, a.revision, users, roles
-}
-
-// AuthEnabled reports whether auth is on.
-func (n *Node) AuthEnabled() bool { return n.state.auth.enabled }
-
-// Authorize checks a call the driver serves itself (Status, Snapshot) as
-// etcd's gRPC layer does: op says which.
-func (n *Node) Authorize(c Caller, op proto.Message) error {
-	ai, ok, err := n.identify(c)
-	if errors.Is(err, errTokenNotApplied) {
-		return rpctypes.ErrGRPCInvalidAuthToken
-	}
-	if err != nil {
-		return err
-	}
-	if _, snapshot := op.(*pb.SnapshotRequest); snapshot {
-		return n.state.auth.admin(&ai)
-	}
-	return n.authorize(op, ai, ok)
-}
-
-// watchAllowed is etcd's isWatchPermitted.
-func (n *Node) watchAllowed(c Caller, key, end []byte) error {
-	if !n.state.auth.enabled {
-		return nil
-	}
-	ai, _, err := n.identify(c)
-	if errors.Is(err, errTokenNotApplied) {
-		err = rpctypes.ErrGRPCInvalidAuthToken
-	}
-	if err != nil {
-		return err
-	}
-	return n.state.auth.permitted(ai, key, end, false)
 }
