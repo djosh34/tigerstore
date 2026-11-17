@@ -305,7 +305,13 @@ func (n *node) offLoop(work func() func()) {
 		work()()
 		return
 	}
-	n.shell.offLoop(work)
+	n.shell.offLoop(func() func() error {
+		done := work()
+		return func() error {
+			done()
+			return nil
+		}
+	})
 }
 
 // defaultTokenTTL is etcd's --auth-token-ttl default.

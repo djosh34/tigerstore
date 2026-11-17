@@ -120,7 +120,7 @@ func (n *node) fetchAway() {
 	n.stats.fetches++
 	n.stats.fetched += len(vs)
 	ckpts := st.ckpts
-	n.shell.offLoop(func() func() {
+	n.shell.offLoop(func() func() error {
 		got := make([]fetchedValue, len(vs))
 		for i, v := range vs {
 			got[i].val = make([]byte, v.len)
@@ -130,7 +130,7 @@ func (n *node) fetchAway() {
 				got[i].err = n.wal.readDurable(got[i].val, v.off)
 			}
 		}
-		return func() { n.takeFetched(st, ckpts, vs, got) }
+		return func() error { return n.takeFetched(st, ckpts, vs, got) }
 	})
 }
 
@@ -149,7 +149,7 @@ func readCkptValue(f ckptFile, p []byte, off int64) error {
 // its checkpoints ckpts, and serves the ranges that waited again. A store
 // installed since names other places, and a checkpoint file written since
 // in a generation holds other values at the same places.
-func (n *node) takeFetched(st *store, ckpts [2]ckptFile, vs []logValue, got []fetchedValue) {
+func (n *node) takeFetched(st *store, ckpts [2]ckptFile, vs []logValue, got []fetchedValue) error {
 	for _, v := range vs {
 		delete(n.fetching, v.off)
 	}
@@ -176,9 +176,18 @@ func (n *node) takeFetched(st *store, ckpts [2]ckptFile, vs []logValue, got []fe
 		}
 		n.serveRange(c, s, &req, r.msg)
 	}
-	// The ranges that waited took what they needed: past fetchedMax, the
-	// oldest values go, those of this fetch last.
+	// The watches that wait catch up too, before the trim: trimmed first,
+	// a fetch larger than fetchedMax lost values a watch needed, which it
+	// fetched again, turn after turn, for good (#689's area-3 review).
+	if len(n.w.unsynced) > 0 {
+		if err := n.syncWatchers(); err != nil {
+			return err
+		}
+	}
+	// The ranges and watches that waited took what they needed: past
+	// fetchedMax, the oldest values go, those of this fetch last.
 	n.st.trimFetched(n.now.Add(-fetchedFor), fetchedMax(n.st.budget))
+	return nil
 }
 
 // setCkpt makes f the checkpoint file of generation gen, and lets go of

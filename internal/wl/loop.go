@@ -593,13 +593,9 @@ func (l *loop) logf(format string, args ...any) { l.logger.Printf(format, args..
 
 // offLoop runs work in a goroutine of its own, and what it returns on the
 // loop.
-func (l *loop) offLoop(work func() func()) {
+func (l *loop) offLoop(work func() func() error) {
 	go func() {
-		done := work()
-		l.post(func() error {
-			done()
-			return nil
-		})
+		l.post(work())
 	}()
 }
 

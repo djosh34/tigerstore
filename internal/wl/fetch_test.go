@@ -181,6 +181,25 @@ func dropPageCache(t *testing.T, dir string) {
 	}
 }
 
+// syncFiles syncs the logs and checkpoints under dir.
+func syncFiles(t *testing.T, dir string) {
+	t.Helper()
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".seg") && !strings.HasSuffix(path, ".ckpt") {
+			return err
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = f.Close() }()
+		return f.Sync()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // fetchesOf asks l's loop how many times it read values off the loop.
 func fetchesOf(l *loop) int {
 	got := make(chan int, 1)
@@ -332,4 +351,64 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	if m := max(most.Load(), b); m > budget/16 {
 		t.Fatalf("the loop kept %d bytes of values fetched, past its share of %d", m, budget/16)
 	}
+}
+
+// A watch catches up through values read off the loop when one turn's
+// catch-up needs more of them than the loop keeps (fetchedMax): here 600
+// values, 19 MiB, past the 6 MiB a budget of 96 MiB keeps. Trimmed before
+// the watch caught up, the values it needed went; the read off the loop
+// leaves them in the page cache, so here the watch read them there, but
+// a page cache under pressure would have them fetched again, turn after
+// turn (#689's area-3 review). The watch now catches up as the values
+// come, before the trim.
+func TestAWatchCatchesUpThroughMoreValuesThanTheLoopKeeps(t *testing.T) {
+	const budget = 96 << 20
+	loopOf := watchLoops(t)
+	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	c := tc.clientOf(t, tc.endpoints[0])
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	const keys, size = 300, 32 << 10
+	value := func(i, round int) string { return fmt.Sprintf("%04d-%d", i, round) + strings.Repeat("v", size) }
+	for round := range 2 {
+		for i := range keys {
+			if _, err := c.Put(ctx, fmt.Sprintf("/w/%04d", i), value(i, round)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// Node 1 holds no value in memory, nor the page cache any on disk.
+	l := loopOf(tc.ids[0])
+	dropped := make(chan struct{})
+	l.post(func() error {
+		dropRecords(l.n.st)
+		close(dropped)
+		return nil
+	})
+	<-dropped
+	syncFiles(t, tc.dir) // dirty pages stay in the page cache
+	dropPageCache(t, tc.dir)
+	before := fetchesOf(l)
+	wctx, wcancel := context.WithTimeout(ctx, 30*time.Second)
+	defer wcancel()
+	got := 0
+	for r := range c.Watch(wctx, "/w/", clientv3.WithPrefix(), clientv3.WithRev(1)) {
+		if err := r.Err(); err != nil {
+			t.Fatalf("after %d events: %v", got, err)
+		}
+		for _, ev := range r.Events {
+			i, round := got%keys, got/keys
+			if string(ev.Kv.Value) != value(i, round) {
+				t.Fatalf("event %d holds %d bytes of %s, not its value", got, len(ev.Kv.Value), ev.Kv.Key)
+			}
+			got++
+		}
+		if got == 2*keys {
+			if fetchesOf(l) == before {
+				t.Fatal("the watch read no value off the loop: the test did not take them away")
+			}
+			return
+		}
+	}
+	t.Fatalf("the watch from revision 1 caught up %d of %d events in 30 s", got, 2*keys)
 }

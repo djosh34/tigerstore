@@ -43,7 +43,7 @@ type shell interface {
 	logf(format string, args ...any)
 	// offLoop runs work off the loop, such as bcrypt's, and what it
 	// returns on the loop.
-	offLoop(work func() func())
+	offLoop(work func() func() error)
 	// sideCall starts the side call of h with its request, and returns
 	// what ends it.
 	sideCall(h handle, m *sideMethod, req []byte) context.CancelFunc
