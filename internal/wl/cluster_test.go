@@ -30,8 +30,12 @@ import (
 )
 
 // portPair finds a free peer port whose port below is free too: the loop
-// takes a member's client port to be its peer port less one.
-func portPair(t testing.TB) int {
+// takes a member's client port to be its peer port less one. It returns
+// both listening, for the node's first start: closed and bound again
+// there, a port was taken in between by another test process of the
+// same job, and the node did not start ("address already in use", #689's
+// CI loop for #733).
+func portPair(t testing.TB) (p int, client, peer net.Listener) {
 	t.Helper()
 	for range 100 {
 		ln, p, err := testport.Listen()
@@ -39,14 +43,13 @@ func portPair(t testing.TB) int {
 			t.Fatal(err)
 		}
 		below, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p-1))
-		_ = ln.Close()
 		if err == nil {
-			_ = below.Close()
-			return p
+			return p, below, ln
 		}
+		_ = ln.Close()
 	}
 	t.Fatal("no free pair of ports")
-	return 0
+	return 0, nil, nil
 }
 
 // testCluster is three nodes running in this process, and any that join
@@ -69,6 +72,9 @@ type testCluster struct {
 	// config, if set, changes each node's Config, its listeners made,
 	// before it starts.
 	config func(*Config)
+	// held are each node's listeners from portPair, until its first
+	// start takes them.
+	held [][2]net.Listener
 }
 
 // newTestCluster starts a 3-node cluster in this process; the test's end
@@ -114,7 +120,17 @@ func newTestClusterWith(t testing.TB, before func(tc *testCluster)) *testCluster
 // members.
 func (tc *testCluster) addPorts(t testing.TB, id uint64, join bool) int {
 	t.Helper()
-	p := portPair(t)
+	p, cl, pl := portPair(t)
+	tc.held = append(tc.held, [2]net.Listener{cl, pl})
+	h := len(tc.held) - 1
+	t.Cleanup(func() {
+		// Those of a node that never started.
+		for _, ln := range tc.held[h] {
+			if ln != nil {
+				_ = ln.Close()
+			}
+		}
+	})
 	tc.peers = append(tc.peers, fmt.Sprintf("https://127.0.0.1:%d", p))
 	tc.endpoints = append(tc.endpoints, fmt.Sprintf("127.0.0.1:%d", p-1))
 	tc.cancels, tc.stopped = append(tc.cancels, nil), append(tc.stopped, nil)
@@ -155,13 +171,16 @@ func (tc *testCluster) startNode(t testing.TB, i int) {
 	if cfg.PeerClientTLS, err = loadTLS(tc.certFile, tc.keyFile, tc.caFile, false); err != nil {
 		t.Fatal(err)
 	}
-	cl, err := net.Listen("tcp", tc.endpoints[i])
-	if err != nil {
-		t.Fatal(err)
-	}
-	pl, err := net.Listen("tcp", strings.TrimPrefix(tc.peers[i], "https://"))
-	if err != nil {
-		t.Fatal(err)
+	cl, pl := tc.held[i][0], tc.held[i][1]
+	tc.held[i] = [2]net.Listener{}
+	if cl == nil {
+		// A start again binds its ports anew.
+		if cl, err = net.Listen("tcp", tc.endpoints[i]); err != nil {
+			t.Fatal(err)
+		}
+		if pl, err = net.Listen("tcp", strings.TrimPrefix(tc.peers[i], "https://")); err != nil {
+			t.Fatal(err)
+		}
 	}
 	cfg.ClientListeners, cfg.PeerListeners = []net.Listener{cl}, []net.Listener{pl}
 	if tc.config != nil {
