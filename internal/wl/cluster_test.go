@@ -64,6 +64,8 @@ type testCluster struct {
 	joins   []bool
 	// budget is each node's MemoryBudget, 0 for none.
 	budget int64
+	// config, if set, changes each node's Config before it starts.
+	config func(*Config)
 }
 
 // newTestCluster starts a 3-node cluster in this process; the test's end
@@ -142,6 +144,9 @@ func (tc *testCluster) startNode(t testing.TB, i int) {
 		ClientURLs: []string{"https://" + tc.endpoints[i]}, MemoryBudget: tc.budget,
 	}
 	cfg.Members = tc.members
+	if tc.config != nil {
+		tc.config(&cfg)
+	}
 	var err error
 	if cfg.ClientTLS, err = loadTLS(tc.certFile, tc.keyFile, tc.caFile, true); err != nil {
 		t.Fatal(err)
