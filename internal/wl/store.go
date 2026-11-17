@@ -123,9 +123,13 @@ type store struct {
 	// The budget: the slab's records may take limit bytes; past it, the
 	// end of an apply lets go of records by a clock hand, and a read of a
 	// key whose record was let go builds it again from the log.
-	budget    int64 // the node's memory, 0 for no limit
-	mapped    int64 // the rings and stages mapped outside Go's heap at startup
-	goLive    int64 // Go's live heap, as the collector last found it
+	budget int64 // the node's memory, 0 for no limit
+	mapped int64 // the rings and stages mapped outside Go's heap at startup
+	goLive int64 // Go's live heap, as the collector last found it
+	// grew, if set, is called as loading a checkpoint grows the tables
+	// outside Go's heap, every loadGrowKeys keys and at its end, so that
+	// Go's limit follows them (node.limitGo).
+	grew      func()
 	limit     int64
 	hand      uint32
 	evictions uint64

@@ -199,7 +199,7 @@ func run(ctx context.Context, cfg Config) error {
 	// entries again, and the apply builds the rest of the store from them.
 	n.storage = newLogStorage(nil)
 	n.storage.heldMax = n.sizes.held
-	from, err := n.loadNewest()
+	from, err := n.loadWithinBudget(cfg.MemoryBudget, n.sizes.mapped())
 	if err != nil {
 		return err
 	}
@@ -212,7 +212,6 @@ func run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	n.wal.durableHS = n.storage.hs
-	n.st.setBudget(cfg.MemoryBudget, n.sizes.mapped())
 	n.limitGo()
 	// The hard state the checkpoint's pointer kept may be older than the
 	// checkpoint: what it holds is committed.
@@ -1111,6 +1110,19 @@ func (l *loop) run() error {
 // limitGo takes Go's live heap into the store's budget, and sets Go's
 // memory limit to what the budget leaves Go, when that moved by more than
 // a 64th of the budget since it was last set.
+// loadWithinBudget loads the newest checkpoint into the store within the
+// node's budget, of which mapped is mapped at startup: Go's limit comes
+// down as the store's tables grow outside its heap. Under the whole
+// GOMEMLIMIT, Go's heap grew on top of them, and past-ram's member,
+// restarted on 1.4M keys, went 200 MiB past its budget.
+func (n *node) loadWithinBudget(budget, mapped int64) (int64, error) {
+	n.st.setBudget(budget, mapped)
+	n.st.grew = n.limitGo
+	defer func() { n.st.grew = nil }()
+	n.limitGo()
+	return n.loadNewest()
+}
+
 func (n *node) limitGo() {
 	st := n.st
 	if st.budget == 0 {
@@ -1122,6 +1134,7 @@ func (n *node) limitGo() {
 		return
 	}
 	n.goLimit = limit
+	n.goLimits++
 	n.sys.setMemoryLimit(limit)
 }
 

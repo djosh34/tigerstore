@@ -554,3 +554,41 @@ func TestACheckpointScansAFewStatesATurn(t *testing.T) {
 		t.Fatalf("the checkpoint holds %d keys, want 53", len(got))
 	}
 }
+
+// A node loads its checkpoint within its budget: Go's memory limit comes
+// down as the store's tables grow outside Go's heap during the load, and
+// ends at what the budget leaves Go once they are counted. Under the
+// whole GOMEMLIMIT, past-ram's member, restarted on 1.4M keys, peaked at
+// 762 MiB on a 560 MiB budget, with Go's heap at 413 MB on top of the
+// tables.
+func TestACheckpointLoadsWithinTheBudget(t *testing.T) {
+	n, l := ckptNode(t)
+	const keys = 4 * loadGrowKeys
+	for i := range keys {
+		putValue(t, n.st, l, fmt.Sprintf("/load/%06d", i), "v")
+	}
+	writeCkptAt(t, n, 7)
+	st, err := newStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.log = l
+	m := &node{st: st, ckptDir: n.ckptDir, storage: newLogStorage(nil), auth: newAuthStore()}
+	const budget = 256 << 20
+	if _, err := m.loadWithinBudget(budget, 0); err != nil {
+		t.Fatal(err)
+	}
+	if m.st.nkeys != keys {
+		t.Fatalf("the load took %d keys, want %d", m.st.nkeys, keys)
+	}
+	if m.st.grew != nil {
+		t.Fatal("the store's grew outlives the load")
+	}
+	// Once before the load, and again as its tables grew.
+	if m.goLimits < 2 {
+		t.Fatalf("Go's limit was set %d times over the load, want it to follow the tables", m.goLimits)
+	}
+	if want := max(budget-m.st.outside(), m.st.goNeed()); m.goLimit > want+budget/64 {
+		t.Fatalf("Go's limit after the load is %d MiB, past the %d MiB the budget leaves it", m.goLimit>>20, want>>20)
+	}
+}

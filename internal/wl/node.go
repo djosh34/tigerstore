@@ -183,8 +183,10 @@ type node struct {
 	// sending a snapshot to a follower.
 	shell shell
 
-	// goLimit is the memory limit last given Go's runtime.
-	goLimit int64
+	// goLimit is the memory limit last given Go's runtime, and goLimits
+	// how many times it was given one.
+	goLimit  int64
+	goLimits int
 	// bufs are buffers that ended streams gave back (takeBuf).
 	bufs [][]byte
 	// alarms are the raised alarms, by type and member; noSpace and

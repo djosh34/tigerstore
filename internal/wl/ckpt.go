@@ -936,6 +936,9 @@ func loadCkptChecked(f ckptFile, gen int, st *store, check bool) (ckptMeta, erro
 	st.ckpts[gen] = f
 	ids := []uint32{} // the store's id of each id in the file
 	var states []ckptState
+	// key holds a key's bytes while its states are read, which may read
+	// more fields into cr's buffer; the store copies them (intern).
+	var key []byte
 	for {
 		kind, err := cr.ReadByte()
 		if err != nil {
@@ -952,6 +955,9 @@ func loadCkptChecked(f ckptFile, gen int, st *store, check bool) (ckptMeta, erro
 				return m, fmt.Errorf("%s: %w: its CRC", f.Name(), ErrCorruptCheckpoint)
 			}
 			st.rev, st.compactRev, st.compacted = m.rev, m.compactRev, m.compacted
+			if st.grew != nil {
+				st.grew()
+			}
 			return m, nil
 		case ckptKey:
 			fid, err := cr.uvarint()
@@ -966,7 +972,7 @@ func loadCkptChecked(f ckptFile, gen int, st *store, check bool) (ckptMeta, erro
 			if err != nil {
 				return m, err
 			}
-			key := []byte(string(kb))
+			key = append(key[:0], kb...)
 			ns, err := cr.uvarint()
 			if err != nil {
 				return m, err
@@ -997,6 +1003,9 @@ func loadCkptChecked(f ckptFile, gen int, st *store, check bool) (ckptMeta, erro
 			id, err := st.restoreKey(key, states)
 			if err != nil {
 				return m, err
+			}
+			if st.grew != nil && id%loadGrowKeys == 0 {
+				st.grew()
 			}
 			for uint64(len(ids)) <= fid {
 				ids = append(ids, noKey)
@@ -1042,6 +1051,10 @@ func loadCkptChecked(f ckptFile, gen int, st *store, check bool) (ckptMeta, erro
 }
 
 const noKey = ^uint32(0)
+
+// loadGrowKeys is how many keys a checkpoint's load takes between the
+// calls of its store's grew.
+const loadGrowKeys = 1 << 16
 
 // ---- the pointer
 
