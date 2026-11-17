@@ -108,6 +108,10 @@ type store struct {
 	// needs, and readHoldMin is the lowest of them.
 	readHolds   map[int64]int
 	readHoldMin int64
+	// trimHolds are revisions only trimming keeps (holdTrim), each with
+	// how many hold it, and trimHoldMin the lowest of them.
+	trimHolds   map[int64]int
+	trimHoldMin int64
 	// heldRevs is readHolds' revisions sorted, or empty until takeStates
 	// sorts them again after one came or went.
 	heldRevs []int64
@@ -844,11 +848,14 @@ func (st *store) compact(rev int64) {
 // lowest a range reply sent in pieces reads at.
 func (st *store) trimRev() int64 {
 	c := st.ckptRev()
+	// From the revision before the lowest held, so that the states written
+	// at it stay, a put its own Txn deleted too (the re-check of
+	// e710ebb9).
 	if len(st.readHolds) > 0 {
-		// From the revision before, so that the states written at the
-		// lowest held one stay, a put its own Txn deleted too (the
-		// re-check of e710ebb9).
 		c = min(c, st.readHoldMin-1)
+	}
+	if len(st.trimHolds) > 0 {
+		c = min(c, st.trimHoldMin-1)
 	}
 	return c
 }
@@ -911,6 +918,44 @@ func (st *store) releaseReads(revs ...int64) {
 	}
 }
 
+// holdTrim keeps trimming from rev until releaseTrim(rev), as holdRead
+// does, but a checkpoint takes in nothing for it: a reply waiting for
+// the reserve holds its records' least revision so, and names the states
+// it reads (holdState). Held as a read, each such reply made every key
+// give up its state at that revision (the re-check of 9b538554).
+func (st *store) holdTrim(rev int64) {
+	if len(st.trimHolds) == 0 || rev < st.trimHoldMin {
+		st.trimHoldMin = rev
+	}
+	if st.trimHolds == nil {
+		st.trimHolds = map[int64]int{}
+	}
+	st.trimHolds[rev]++
+}
+
+func (st *store) releaseTrim(rev int64) {
+	before := st.trimRev()
+	c := st.trimHolds[rev]
+	if c > 1 {
+		st.trimHolds[rev] = c - 1
+	} else {
+		delete(st.trimHolds, rev)
+	}
+	if len(st.trimHolds) == 0 {
+		st.trimHolds = nil // a map never shrinks: an empty one lets go
+	}
+	_, ok := st.trimHolds[st.trimHoldMin]
+	if !ok && len(st.trimHolds) > 0 {
+		st.trimHoldMin = math.MaxInt64
+		for r := range st.trimHolds {
+			st.trimHoldMin = min(st.trimHoldMin, r)
+		}
+	}
+	if st.trimRev() > before {
+		st.retrim()
+	}
+}
+
 // heldState is a key's state by the revision of its put.
 type heldState struct {
 	id  uint32
@@ -951,10 +996,13 @@ func (st *store) stateHeld(id uint32, mod int64) bool {
 	return c > 0
 }
 
-// heldReads is how many holds there are (holdRead).
+// heldReads is how many holds there are (holdRead, holdTrim).
 func (st *store) heldReads() int {
 	n := 0
 	for _, c := range st.readHolds {
+		n += c
+	}
+	for _, c := range st.trimHolds {
 		n += c
 	}
 	return n
@@ -1320,7 +1368,11 @@ func (st *store) takeStates(id uint32, rev, c int64, out []ckptState) ([]ckptSta
 		// then deleted, is read at that revision (putAt): a watch's event,
 		// a delete's prev_kv in a held reply (the re-check of e710ebb9).
 		to = max(to, from+1)
-		if from <= c-1 && c-1 < to {
+		if from <= c-1 && c-1 < to || from == c {
+			// A watch may come to hold c-1 and c once the key is scanned:
+			// the state it sees at c-1, and a put at c its own Txn
+			// deleted, which no read sees but its watch event (the
+			// re-check of 9b538554).
 			return true
 		}
 		i, _ := slices.BinarySearch(st.heldRevs, from)
@@ -1329,6 +1381,10 @@ func (st *store) takeStates(id uint32, rev, c int64, out []ckptState) ([]ckptSta
 	least := c - 1
 	if len(st.heldRevs) > 0 {
 		least = min(least, st.heldRevs[0])
+	}
+	if len(st.trimHolds) > 0 {
+		// The states held replies name lie from their least revision on.
+		least = min(least, st.trimHoldMin)
 	}
 	next := int64(math.MaxInt64)
 	visit := func(s ckptState) bool {

@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"strings"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -124,5 +125,82 @@ func TestAPutDeletedAtTheCompactedRevisionAndHeldOutlivesTheCut(t *testing.T) {
 	rec, err := st.putAt(id, 3)
 	if err != nil || string(recValue(rec)) != "a3" {
 		t.Fatalf("the held watch's put of /a at 3 reads %q, err %v", recValue(rec), err)
+	}
+}
+
+// A watch that comes to a compacted revision once a checkpoint scanned
+// the key reads a put its own Txn deleted there: the checkpoint takes it
+// in, as no hold could name it when the key was scanned (the re-check of
+// 9b538554, Astra's probe: after the log was cut the watch's put event
+// read nothing).
+func TestALateWatchOfAPutDeletedAtTheCompactedRevisionOutlivesTheCut(t *testing.T) {
+	n, l := ckptNode(t)
+	st := n.st
+	defer st.close() //nolint:errcheck // a test's store
+	takeEveryValue(t)
+	n.sizes, n.connOut = sizeFor(256<<20), 64<<10
+	oldValue, newValue := strings.Repeat("o", 1200<<10), strings.Repeat("n", 1200<<10)
+	putValue(t, st, l, "/a", oldValue)
+	id, _ := st.find([]byte("/a"))
+	c, _ := flowClient(t)
+	c.node = n
+	rec, _ := st.live(id)
+	n.holdTxn(c, c.newStream(3, kTxn), true, []opRes{{kind: kRange, rev: 2, kvs1: 1, count: 1}}, 0, 1, [][]byte{rec})
+	defer n.endHeld(n.heldReplies[0])
+	txn := &pb.TxnRequest{Success: []*pb.RequestOp{
+		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("/a"), Value: []byte(newValue)}}},
+		{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte("/a"), RangeEnd: []byte{0}}}},
+	}}
+	req, err := proto.Marshal(txn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkRequest(kTxn, req, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.applyTxn(req, l.add(string(req)), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	st.endApply()
+	st.compact(3)
+	st.trimSteps(1 << 20)
+	putValue(t, st, l, "/b", "b4")
+	n.ckptFrom = int64(len(l.b))
+	if err := n.startCkpt(10, 1, int64(len(l.b))); err != nil {
+		t.Fatal(err)
+	}
+	for n.ckpt.phase == ckptScanning {
+		n.scanKeys(n.ckpt)
+	}
+	// A watch at 3 comes once the key was scanned.
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	s := c.newStream(5, kWatch)
+	s.watch = true
+	wi := n.w.add(watcher{sock: 0, gen: 1, sid: s.id, id: 1, key: []byte("/a"), syncRev: 3, prevKV: true})
+	s.wids = append(s.wids, wi)
+	if size, err := n.revSize(&n.w.ws[wi], revStart(st, 3)); err != nil || int64(size) <= n.oneShot() {
+		t.Fatalf("not a large watch: size %d, %v", size, err)
+	}
+	if !n.startBigWatch(wi, &n.w.ws[wi], c, s, revStart(st, 3)) {
+		t.Fatal("late watch did not start")
+	}
+	defer n.endBigWatch(n.bigWatches[0])
+	if rec, err := st.putAt(id, 3); err != nil || string(recValue(rec)) != newValue {
+		t.Fatalf("before cut: %d bytes, %v", len(recValue(rec)), err)
+	}
+	for n.ckpt != nil {
+		if err := n.ckptStep(true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st.log = cutLog{l, n.ckptCut}
+	if n.ckptCut == 0 {
+		t.Fatal("no cut")
+	}
+	dropRecords(st)
+	rec, err = st.putAt(id, 3)
+	if err != nil || string(recValue(rec)) != newValue {
+		t.Fatalf("late watch put event: %d bytes, %v", len(recValue(rec)), err)
 	}
 }

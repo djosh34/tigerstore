@@ -463,3 +463,59 @@ func TestHeldStatesLetGoOfTheirMemory(t *testing.T) {
 		t.Fatalf("empty, the maps are still kept: states %v, reads %v", st.heldStates != nil, st.readHolds != nil)
 	}
 }
+
+// Many held replies hold trimming at their least revisions, and make a
+// checkpoint take in their records' states alone: 50 replies of one
+// record each, put at revisions apart behind 20 keys put at each, give
+// those keys three states each (the re-check of 9b538554, Astra's probe
+// at scale: each reply's revision, held as a read, took in a state of
+// every key).
+func TestManyHeldRepliesTakeInTheirOwnStates(t *testing.T) {
+	c, _ := flowClient(t)
+	n := c.node
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	var hot []uint32
+	for i := range 20 {
+		id, err := st.intern(fmt.Appendf(nil, "/hot/%02d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		hot = append(hot, id)
+	}
+	for r := range 50 {
+		st.rev++
+		for _, id := range hot {
+			if _, err := st.put(id, []byte("h"), 0, st.rev, l.add("h"), false); err != nil {
+				t.Fatal(err)
+			}
+		}
+		mark, err := st.intern(fmt.Appendf(nil, "/mark/%02d", r))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.put(mark, []byte("m"), 0, st.rev, l.add("m"), false); err != nil {
+			t.Fatal(err)
+		}
+		st.endApply()
+		rec, err := st.live(mark)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n.holdTxn(c, c.newStream(uint32(2*r+3), kTxn), true, []opRes{{kind: kRange, rev: st.rev, kvs1: 1, count: 1}}, 0, 1, [][]byte{rec})
+	}
+	st.compact(st.rev)
+	st.trimSteps(1 << 20)
+	for _, id := range hot {
+		if got, _ := st.takeStates(id, st.rev, st.ckptRev(), nil); len(got) > 3 {
+			t.Fatalf("a checkpoint takes in %d states of %s", len(got), st.key(id))
+		}
+	}
+	for _, hr := range n.heldReplies {
+		n.endHeld(hr)
+	}
+	if st.heldReads() != 0 || st.trimHolds != nil || st.heldStates != nil {
+		t.Fatalf("after the replies, %d holds, trim holds %v, states %v", st.heldReads(), st.trimHolds, st.heldStates)
+	}
+}

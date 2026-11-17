@@ -183,7 +183,7 @@ type heldReply struct {
 	st     *store // the store it reads
 	kind   uint8  // kPut, kDel or kTxn
 	hdrRev int64  // the revision its header names
-	// hold is the revision it holds in st (store.holdRead), -1 if none:
+	// hold is the revision it holds in st (store.holdTrim), -1 if none:
 	// its records' least, at least the compacted one. Each record's own
 	// state it holds too (store.holdState).
 	hold int64
@@ -277,7 +277,7 @@ func (n *node) holdReply(c *client, s *stream, hr *heldReply, recs [][]byte) {
 		hr.counted += heldStateSize
 	}
 	if hr.hold >= 0 {
-		st.holdRead(hr.hold)
+		st.holdTrim(hr.hold)
 	}
 	hr.counted += cap(hr.refs)*int(unsafe.Sizeof(recRef{})) + cap(hr.res)*int(unsafe.Sizeof(opRes{}))
 	c.growOut(hr.counted)
@@ -421,7 +421,7 @@ func (n *node) endHeld(hr *heldReply) {
 	}
 	if hr.st == n.st {
 		if hr.hold >= 0 {
-			hr.st.releaseRead(hr.hold)
+			hr.st.releaseTrim(hr.hold)
 		}
 		for _, r := range hr.refs {
 			if r.rec == nil {
