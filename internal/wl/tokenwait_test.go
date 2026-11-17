@@ -49,15 +49,17 @@ func tokenCall(t *testing.T, enc *hpack.Encoder, sid uint32, method, token strin
 	return buf.Bytes()
 }
 
-// A call whose simple token names an entry the node has not applied
-// waits for it, as etcd's isValidSimpleToken does: the node reads none
-// of its connection's frames past its headers until the entry applies,
-// then reads on, its request and its stream's end in their order. A
-// watch create whose token's entry does not come in requestTimeout is
-// canceled as any with an unknown token, its stream open; a token of an
-// applied entry that the node does not know is refused at once. Refused
-// at once, a lagging node refused a valid token: a watch was canceled as
-// "invalid auth token" (#689's CI loop for #733).
+// A call whose simple token names an entry in the node's log that it has
+// not applied waits for it, as etcd's isValidSimpleToken does: the node
+// reads none of its connection's frames past its headers until the entry
+// applies, then reads on, its request and its stream's end in their
+// order. A watch create whose token's entry does not apply in
+// requestTimeout is canceled as any with an unknown token, its stream
+// open. Refused at once: a token of an applied entry that the node does
+// not know, of an entry past its log, of no dot or two; and calls etcd
+// checks no token of do not wait. Refused at once, a lagging node refused
+// a valid token: a watch was canceled as "invalid auth token" (#689's CI
+// loop for #733).
 func TestACallWaitsForTheEntryOfItsToken(t *testing.T) {
 	n := authNode(t)
 	c, _ := flowClient(t)
@@ -66,6 +68,7 @@ func TestACallWaitsForTheEntryOfItsToken(t *testing.T) {
 	n.socks, n.gens = []any{c}, []uint16{1}
 	n.now = time.Now()
 	n.applied = 10
+	n.storage.snapIndex = 20 // the log holds entries to 20
 	n.sizes, n.connOut, n.maxStreams = sizeFor(256<<20), 64<<10, defaultMaxStreams
 	l := &loop{n: n}
 	var enc hpack.Encoder
@@ -100,13 +103,13 @@ func TestACallWaitsForTheEntryOfItsToken(t *testing.T) {
 
 	// A watch create whose token's entry does not come: after
 	// requestTimeout it is canceled, and its stream stays open.
-	feed(tokenCall(t, &enc, 5, "/etcdserverpb.Watch/Watch", "abc.99", &etcdpb.WatchRequest{RequestUnion: &etcdpb.WatchRequest_CreateRequest{CreateRequest: &etcdpb.WatchCreateRequest{Key: []byte("b")}}}))
-	if c.tokenWait != 99 {
-		t.Fatalf("a watch whose token names entry 99 waits for %d", c.tokenWait)
+	feed(tokenCall(t, &enc, 5, "/etcdserverpb.Watch/Watch", "abc.15", &etcdpb.WatchRequest{RequestUnion: &etcdpb.WatchRequest_CreateRequest{CreateRequest: &etcdpb.WatchCreateRequest{Key: []byte("b")}}}))
+	if c.tokenWait != 15 {
+		t.Fatalf("a watch whose token names entry 15 waits for %d", c.tokenWait)
 	}
 	n.now = n.now.Add(requestTimeout - time.Millisecond)
 	l.resumeTokenWaits()
-	if c.tokenWait != 99 {
+	if c.tokenWait != 15 {
 		t.Fatal("the connection read on before requestTimeout")
 	}
 	n.now = n.now.Add(time.Millisecond)
@@ -115,16 +118,32 @@ func TestACallWaitsForTheEntryOfItsToken(t *testing.T) {
 		t.Fatalf("at requestTimeout: waits for %d, stream %v, refused %d; want the create canceled and its stream open", c.tokenWait, s != nil, refused(kWatch))
 	}
 
+	// A token of an entry past the log: refused at once. Waited for, a
+	// made-up token stalled its connection, the node's own client among
+	// them (the L re-check of d33d3711).
+	feed(tokenCall(t, &enc, 15, "/etcdserverpb.KV/Range", "abc.99", &etcdpb.RangeRequest{Key: []byte("b")}))
+	if c.tokenWait != 0 || refused(kRange) != 1 {
+		t.Fatalf("a token of an entry past the log: waits for %d, %d refused", c.tokenWait, refused(kRange))
+	}
+	// An unknown method, answered with no token checked, does not wait.
+	feed(tokenCall(t, &enc, 17, "/etcdserverpb.KV/NoSuchMethod", "abc.15", &etcdpb.RangeRequest{}))
+	if c.tokenWait != 0 {
+		t.Fatalf("an unknown method waits for %d", c.tokenWait)
+	}
+	if !healthKind(paths["/grpc.health.v1.Health/Check"]) || healthKind(paths["/v3lockpb.Lock/Lock"]) {
+		t.Fatal("Health's methods are not told from the other side calls")
+	}
+
 	// A token of more than one dot names no entry: refused at once, as
 	// etcd's.
-	feed(tokenCall(t, &enc, 9, "/etcdserverpb.KV/Range", "a.b.99", &etcdpb.RangeRequest{Key: []byte("b")}))
-	if c.tokenWait != 0 || refused(kRange) != 1 {
+	feed(tokenCall(t, &enc, 19, "/etcdserverpb.KV/Range", "a.b.15", &etcdpb.RangeRequest{Key: []byte("b")}))
+	if c.tokenWait != 0 || refused(kRange) != 2 {
 		t.Fatalf("a token of two dots: waits for %d, %d refused", c.tokenWait, refused(kRange))
 	}
 
 	// An Authenticate with a token that names an entry not applied
 	// neither waits nor is refused for it: etcd checks no token of one.
-	s13 := c.newStream(13, kAuthenticate)
+	s13 := c.newStream(21, kAuthenticate)
 	s13.token = "abc.99"
 	if err := n.request(c, s13, appendBytesField(appendBytesField(nil, 1, []byte("alice")), 2, []byte("pw"))); err != nil {
 		t.Fatal(err)
@@ -134,8 +153,8 @@ func TestACallWaitsForTheEntryOfItsToken(t *testing.T) {
 	}
 
 	// A token of an applied entry, unknown: refused at once.
-	feed(tokenCall(t, &enc, 11, "/etcdserverpb.KV/Range", "abc.11", &etcdpb.RangeRequest{Key: []byte("b")}))
-	if c.tokenWait != 0 || refused(kRange) != 2 {
+	feed(tokenCall(t, &enc, 23, "/etcdserverpb.KV/Range", "abc.11", &etcdpb.RangeRequest{Key: []byte("b")}))
+	if c.tokenWait != 0 || refused(kRange) != 3 {
 		t.Fatalf("a token of an applied entry, unknown: waits for %d, %d refused", c.tokenWait, refused(kRange))
 	}
 }
