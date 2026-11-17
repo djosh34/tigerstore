@@ -107,6 +107,12 @@ func (n *node) eachRevEvent(st *store, x *watcher, j, from int, f func(off int, 
 			ev.size = 2 + sizeBytesField(2, sizeBytesField(1, klen)+sizeVarintField(3, uint64(rev)))
 		} else {
 			s, ok := st.putStateAt(ch.key, rev)
+			if !ok && rev <= st.compactRev {
+				// A put its own Txn deleted at the compacted revision,
+				// which trimming dropped: etcd keeps only the deletion
+				// there, and sends that alone (the re-check of 9b538554).
+				continue
+			}
 			if !ok {
 				return fmt.Errorf("the put of key %d at %d has no state", ch.key, rev)
 			}

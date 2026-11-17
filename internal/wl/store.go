@@ -896,6 +896,9 @@ func (st *store) releaseReads(revs ...int64) {
 			st.readHolds[rev] = c - 1
 		}
 	}
+	if len(st.readHolds) == 0 {
+		st.readHolds = nil // a map never shrinks: an empty one lets go
+	}
 	_, ok := st.readHolds[st.readHoldMin]
 	if !ok && len(st.readHolds) > 0 {
 		st.readHoldMin = math.MaxInt64
@@ -914,8 +917,9 @@ type heldState struct {
 	mod int64
 }
 
-// heldStateSize is what a held state takes in heldStates, about.
-const heldStateSize = 48
+// heldStateSize is what a held state takes, about: its entry in
+// heldStates, and in a checkpoint's list of the values it takes in.
+const heldStateSize = 88
 
 // holdState keeps key id's state put at mod for a checkpoint to take in
 // until releaseState: trimming keeps it by a hold of a revision it is
@@ -934,6 +938,9 @@ func (st *store) releaseState(id uint32, mod int64) {
 		st.heldStates[k] = c - 1
 	} else {
 		delete(st.heldStates, k)
+	}
+	if len(st.heldStates) == 0 {
+		st.heldStates = nil // a map never shrinks: an empty one lets go
 	}
 }
 

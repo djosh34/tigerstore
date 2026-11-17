@@ -826,6 +826,12 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event) bool) (bool
 			} else if err != nil {
 				return false, err
 			}
+			if ev.kv == nil && ch.rev <= st.compactRev {
+				// A put its own Txn deleted at the compacted revision,
+				// which trimming dropped: as etcd, the deletion alone
+				// (eachRevEvent).
+				continue
+			}
 		}
 		// Only a put can follow a delete of its key in the revision: a
 		// delete's own scan, quadratic in a large revision, is skipped.

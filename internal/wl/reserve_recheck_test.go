@@ -404,3 +404,62 @@ func TestAHeldReplyOfManyRevisionsTakesInItsOwnStates(t *testing.T) {
 		t.Fatalf("after the reply, %d reads and %d states are held", st.heldReads(), len(st.heldStates))
 	}
 }
+
+// A watch from the compacted revision, at which a Txn put a key and
+// deleted it, gets the deletion alone, as etcd keeps it: trimming dropped
+// the put. Before, sizing the revision found the put without a state and
+// the error stopped the node (the re-check of 9b538554, Opus's probe).
+func TestAWatchFromACompactedPutAndDeleteGetsTheDeletion(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	n.sizes, n.connOut = sizeFor(96<<20), 384<<10
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	s.kind, s.watch = kWatch, true
+	c.flow.conn, s.win = 1<<30, 1<<30
+	putValue(t, st, l, "/a", "a1") // 2
+	id, _ := st.find([]byte("/a"))
+	st.rev++
+	if _, err := st.put(id, []byte("a3"), 0, st.rev, l.add("a3"), false); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.del(id, st.rev, false); err != nil {
+		t.Fatal(err)
+	}
+	st.endApply()
+	st.compact(3)
+	st.endApply() // the compaction's apply trims
+	i := n.w.add(watcher{sock: 0, gen: 1, sid: s.id, id: 1, key: []byte("/a"), syncRev: 3})
+	n.w.unsynced = append(n.w.unsynced, i)
+	if err := n.syncWatchers(); err != nil {
+		t.Fatalf("the watch's catch-up failed, which stops the node: %v", err)
+	}
+	if x := &n.w.ws[i]; x.syncRev != 0 || len(n.bigWatches) != 0 {
+		t.Fatalf("the watch is at %d, %d large responses; want it caught up", x.syncRev, len(n.bigWatches))
+	}
+	if !bytes.Contains(c.out, []byte("/a")) {
+		t.Fatal("no event of /a went out")
+	}
+}
+
+// The maps of held reads and states let go of their memory once empty: a
+// map never shrinks, and a million states held and let go kept 56 MB that
+// nothing counted (the re-check of 9b538554, Opus).
+func TestHeldStatesLetGoOfTheirMemory(t *testing.T) {
+	st, _ := newTestStore(t)
+	defer func() { _ = st.close() }()
+	for i := range 1000 {
+		st.holdState(uint32(i), 2)
+	}
+	st.holdRead(2)
+	for i := range 1000 {
+		st.releaseState(uint32(i), 2)
+	}
+	st.releaseRead(2)
+	if st.heldStates != nil || st.readHolds != nil {
+		t.Fatalf("empty, the maps are still kept: states %v, reads %v", st.heldStates != nil, st.readHolds != nil)
+	}
+}
