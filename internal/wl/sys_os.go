@@ -44,6 +44,11 @@ func envOf(Sys) sysEnv { return sysEnv{} }
 // and the log's helper each run on one of their own.
 func (sysEnv) lockOSThread() { runtime.LockOSThread() }
 
+// watchesLoop reports whether the loop gets a watchdog (watchdog.go), and
+// gettid is the calling thread's id.
+func (sysEnv) watchesLoop() bool { return true }
+func (sysEnv) gettid() int       { return unix.Gettid() }
+
 var (
 	liveHeap   = []metrics.Sample{{Name: "/gc/heap/live:bytes"}}
 	memSamples = []metrics.Sample{

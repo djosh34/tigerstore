@@ -53,6 +53,11 @@ func envOf(sys Sys) sysEnv { return sysEnv{s: sys} }
 // its nodes itself, and gosim's cannot be locked to a thread.
 func (sysEnv) lockOSThread() {}
 
+// watchesLoop is false in the simulator, whose time and threads are its
+// own; gettid is 0.
+func (sysEnv) watchesLoop() bool { return false }
+func (sysEnv) gettid() int       { return 0 }
+
 // goLiveHeap, goMemory and setMemoryLimit read and set nothing: the
 // process's Go memory is the simulator's, shared by every node of the
 // run, and what it holds depends on the host, not on the run's seed.

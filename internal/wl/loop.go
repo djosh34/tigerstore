@@ -50,9 +50,11 @@ type heldMsg struct {
 
 // loop owns the epoll instance and the node.
 type loop struct {
-	n    *node
-	epfd int
-	hoFD int // handoffs wake the loop through it
+	n *node
+	// watch is what the loop tells its watchdog (watchdog.go).
+	watch loopWatch
+	epfd  int
+	hoFD  int // handoffs wake the loop through it
 	// resumed are the paused clients a flush resumes (flush).
 	resumed []*client
 
@@ -945,6 +947,12 @@ func (l *loop) closeClient(idx int, err error) {
 func (l *loop) run() error {
 	n := l.n
 	n.sys.lockOSThread()
+	if n.sys.watchesLoop() {
+		l.watch.tid, l.watch.goid = n.sys.gettid(), goid()
+		stop := make(chan struct{})
+		defer close(stop)
+		go l.watch.watch(stop, l.logger.Printf)
+	}
 	events := make([]unix.EpollEvent, 256)
 	l.next = time.Now().Add(tickEvery)
 	if n.id == 1 {
@@ -962,11 +970,13 @@ func (l *loop) run() error {
 		if d := time.Until(wake); d > 0 {
 			timeout = int((d + time.Millisecond - 1) / time.Millisecond)
 		}
+		l.watch.wait()
 		k, err := n.sys.epollWait(l.epfd, events, timeout)
 		if err != nil && !errors.Is(err, unix.EINTR) {
 			return err
 		}
 		n.now = time.Now()
+		l.watch.begin(n.now)
 		if n.stopErr != nil {
 			return n.stopErr
 		}
