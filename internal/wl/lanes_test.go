@@ -54,3 +54,32 @@ func TestHeartbeatsTakeTheirOwnConnectionOnlyBehindASlowAppend(t *testing.T) {
 	n.noteLanes(&peerIn{from: 2}, &pb.Message{Type: pb.MsgHeartbeat.Enum(), From: new(uint64(2))})
 	check("the answer to the next, with the appends", msg(pb.MsgHeartbeatResp), "the appends'")
 }
+
+// Behind a message held for a batch it names, a heartbeat is stepped at
+// once, as on its own connection, and so is a batch; any other message
+// keeps its order and waits. A follower whose disk had stalled held its
+// leader's heartbeats behind such appends past an election timeout
+// (TestWLStalledLeaderIsReplaced, seed 1, on 3489fdd1).
+func TestAHeartbeatPassesMessagesHeldBeforeIt(t *testing.T) {
+	frame := func(typ byte, n int) []byte {
+		f := make([]byte, n)
+		f[0] = typ
+		return f
+	}
+	for _, c := range []struct {
+		what  string
+		f     []byte
+		waits bool
+	}{
+		{"a heartbeat", frame(byte(pb.MsgHeartbeat), msgHdr+4), false},
+		{"a batch", frame(frameBatch, batchFrameHdr+8), false},
+		{"an append", frame(byte(pb.MsgApp), msgHdr+4), true},
+		{"a heartbeat's answer", frame(byte(pb.MsgHeartbeatResp), msgHdr+4), true},
+		{"an append's answer", frame(byte(pb.MsgAppResp), msgHdr+4), true},
+		{"a request to carry batches", []byte{frameCarry}, true},
+	} {
+		if got := waitsBehindHeld(c.f); got != c.waits {
+			t.Errorf("%s waits behind a held message: %v, want %v", c.what, got, c.waits)
+		}
+	}
+}

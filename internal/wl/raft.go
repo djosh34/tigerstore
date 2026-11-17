@@ -467,6 +467,21 @@ func (n *node) onBeats(m *pb.Message, p *peerOut) bool {
 	return t == pb.MsgPreVote || t == pb.MsgPreVoteResp || t == pb.MsgVote || t == pb.MsgVoteResp
 }
 
+// waitsBehindHeld reports whether peer frame f waits behind a message
+// held before it, as messages keep their order. A batch never does: the
+// held append waits for it. Nor does a heartbeat: it needs nothing an
+// append brings, as its commit is at most what this follower answered it
+// has, and on its own connection it is stepped out of order with the
+// appends anyway (onBeats). Held behind appends that name batches a
+// follower let go of, as after its disk stalled, heartbeats on the
+// appends' connection kept it from its leader past an election timeout
+// (TestWLStalledLeaderIsReplaced, seed 1, on 3489fdd1).
+func waitsBehindHeld(f []byte) bool {
+	batch := len(f) >= batchFrameHdr && f[0] == frameBatch
+	heartbeat := len(f) >= msgHdr && f[0] == byte(pb.MsgHeartbeat)
+	return !batch && !heartbeat
+}
+
 // noteLanes notes, of a message from p, what onBeats needs: an answer to
 // the appends sent to its peer, or the connection a heartbeat came on.
 func (n *node) noteLanes(p *peerIn, m *pb.Message) {
@@ -520,7 +535,7 @@ func (n *node) peerFrames(p *peerIn) error {
 		}
 		f := s.pt[s.pr+4 : s.pr+4+l]
 		s.pr += 4 + l
-		if len(p.held) > 0 && (len(f) < batchFrameHdr || f[0] != frameBatch) {
+		if len(p.held) > 0 && waitsBehindHeld(f) {
 			// Messages from a peer keep their order behind one held.
 			p.held = append(p.held, heldMsg{f: append([]byte(nil), f...), at: n.now})
 			continue
