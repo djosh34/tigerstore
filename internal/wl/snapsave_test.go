@@ -16,10 +16,13 @@ import (
 
 // A client's snapshot holds every key as of when it asked, ends with its
 // SHA-256 as etcd's does, and a new cluster restored from it serves them.
+// The client has one node, which answers a put once it applied it: as
+// etcd's, a node's snapshot is of what it applied, and one taken from a
+// node that lagged missed the last put (#689's CI loop for #733).
 func TestASnapshotRestoresIntoANewCluster(t *testing.T) {
 	smallCheckpoints(t)
 	tc := newTestCluster(t)
-	c := tc.client(t)
+	c := tc.clientOf(t, tc.endpoints[0])
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	for i := range 300 {
