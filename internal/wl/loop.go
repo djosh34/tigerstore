@@ -1294,7 +1294,6 @@ func (l *loop) clientTick() {
 // is refused in its place in line (partwait.go).
 func (l *loop) serveWaiting() {
 	n := l.n
-	n.waitPass++
 	l.endTurn()
 	if len(n.waiting) == 0 {
 		return
@@ -1305,19 +1304,29 @@ func (l *loop) serveWaiting() {
 		}
 	}
 	// A client served reads on and may wait again: it goes back in line
-	// behind those that wait still, and its place before is let go. A
-	// client the turn's end served is in line twice: its last place
-	// holds.
+	// behind those that wait still (pass), and its place before is let
+	// go. A client the turn's end served may be in line twice: its last
+	// place holds. The turn's client goes first: its turn has room.
 	waits := n.waiting
 	n.waiting = nil
 	n.waitPass++
 	pass := n.waitPass
+	turn := -1
 	for i := len(waits) - 1; i >= 0; i-- {
-		if c := waits[i]; c.seenPass == pass {
+		c := waits[i]
+		if c.seenPass == pass {
 			waits[i] = nil
-		} else {
-			c.seenPass = pass
+			continue
 		}
+		c.seenPass = pass
+		if c == n.inTurn {
+			turn = i
+		}
+	}
+	if turn > 0 {
+		t := waits[turn]
+		copy(waits[1:turn+1], waits[:turn])
+		waits[0] = t
 	}
 	blocked := false
 	for _, c := range waits {

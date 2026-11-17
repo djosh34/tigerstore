@@ -98,18 +98,20 @@ func partTail(a, b []byte) int64 {
 }
 
 // takeTurn gives c, the first in line for room, the turn when the read
-// half has no room for its part and the reserve has free room for it, as
-// much as its share has left, unless another holds it.
+// half has no room for its part and the reserve has room for what its
+// share has left, at most the whole reserve, unless another holds it. A
+// turn of less room did not finish its client's requests, and waited for
+// its end though the reserve came free (#689's O re-check, Opus O2).
 func (n *node) takeTurn(c *client) {
 	in := n.sizes.clientInBufs()
 	if n.inTurn != nil || n.cpool+c.roomNeed <= in {
 		return
 	}
-	room := min(n.connIn-c.partial, n.sizes.reserve()-n.reserved)
-	limit := max(n.cpool, in) + room
-	if n.cpool+c.roomNeed > limit {
+	room := min(n.connIn-c.partial, n.sizes.reserve())
+	if n.reserved+room > n.sizes.reserve() {
 		return
 	}
+	limit := max(n.cpool, in) + room
 	n.reserved += room
 	n.inTurn, n.turnRoom, n.turnLimit, n.turnAt = c, room, limit, n.now
 }

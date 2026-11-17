@@ -170,3 +170,28 @@ func TestTheSendBuffersKeepWithinTheSendHalfAndTheReserve(t *testing.T) {
 		t.Fatalf("send pool %d > test limit %d by %d; reserved %d <= %d, no input turn/debt; retained cap/client=%d", n.cout, limit, n.cout-limit, n.reserved, z.reserve(), cap(cs[2].out))
 	}
 }
+
+// The turn's client that waits again in its turn, the buffers filled by
+// what took no part of the read half's line (a handshake's leftover, as
+// newClient takes it), goes first: room within its turn serves it though
+// a client ahead of it in line finds none in the read half (#689's O
+// re-check, Opus O4).
+func TestTheTurnsClientGoesFirstInLine(t *testing.T) {
+	n, a, b, l, feed, tooMany := partNode(t)
+	feed(a, putPart(t, 1, true))
+	feed(b, putPart(t, 3, true))
+	l.serveWaiting()
+	if n.inTurn != a || a.roomNeed != 0 || b.roomNeed != part {
+		t.Fatalf("setup: turn a %v, a needs %d, b needs %d", n.inTurn == a, a.roomNeed, b.roomNeed)
+	}
+	n.cpool = n.turnLimit // other buffers fill the turn's limit
+	feed(a, putPart(t, 1, false))
+	if a.roomNeed != part || len(n.waiting) != 2 || n.waiting[0] != b {
+		t.Fatalf("a in its turn, the limit full: needs %d, %d in line, b first %v", a.roomNeed, len(n.waiting), len(n.waiting) > 0 && n.waiting[0] == b)
+	}
+	n.cpool -= part
+	l.serveWaiting()
+	if a.roomNeed != 0 || b.roomNeed != part || tooMany() != 0 {
+		t.Fatalf("room within a's turn: a needs %d, b needs %d, %d refused; want a served", a.roomNeed, b.roomNeed, tooMany())
+	}
+}
