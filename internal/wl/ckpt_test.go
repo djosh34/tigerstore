@@ -856,6 +856,73 @@ func TestAWatchHeldBeforeTheCompactedRevisionOutlivesTheCut(t *testing.T) {
 	}
 }
 
+// A checkpoint takes in the states a held read sees, not the history
+// between, which trimming keeps for the oldest hold: a key put 10,000
+// times since the revision a read holds gives three states to take in:
+// the newest, the one before the compacted revision, which a watch may
+// hold (takeStates), and the held one (the re-check of 7ab6166c, area A: taking in
+// every state since the hold, a checkpoint's own lists passed the
+// node's budget). The held read still reads its value after the log is
+// cut.
+func TestACheckpointTakesInOnlyWhatHoldsSee(t *testing.T) {
+	n, l := ckptNode(t)
+	st := n.st
+	defer st.close() //nolint:errcheck // a test's store
+	takeEveryValue(t)
+	putValue(t, st, l, "/a", "a1") // 2
+	st.holdRead(2)
+	for i := range 10000 {
+		putValue(t, st, l, "/a", fmt.Sprintf("a%d", i+2))
+	}
+	st.compact(st.rev)
+	st.trimSteps(1 << 20)
+	id, _ := st.find([]byte("/a"))
+	if got := st.takeStates(id, st.rev, st.ckptRev(), nil); len(got) != 3 {
+		t.Fatalf("a checkpoint takes in %d states of /a, want 3: the newest, the one before, and the held one", len(got))
+	}
+	writeCkpt(t, n, 10)
+	st.log = cutLog{l, n.ckptCut}
+	if n.ckptCut == 0 {
+		t.Fatal("the checkpoint cut no log: the test shows nothing")
+	}
+	dropRecords(st)
+	if got, live := valueAt(t, st, "/a", 2); got != "a1" || !live {
+		t.Fatalf("the held read of /a at 2 reads %q live %v", got, live)
+	}
+}
+
+// Reads held at several revisions keep the states each sees: a held
+// reply holds each of its records' revisions (reserve.go), so a record
+// newer than its oldest outlives the checkpoints too. Held at the
+// oldest alone, /b at 3, overwritten since, was seen by no hold.
+func TestReadsHeldAtSeveralRevisionsKeepTheStatesEachSees(t *testing.T) {
+	n, l := ckptNode(t)
+	st := n.st
+	defer st.close() //nolint:errcheck // a test's store
+	takeEveryValue(t)
+	putValue(t, st, l, "/a", "a1") // 2
+	putValue(t, st, l, "/b", "b1") // 3
+	st.holdRead(2)
+	st.holdRead(3)
+	putValue(t, st, l, "/b", "b2") // 4
+	putValue(t, st, l, "/a", "a2") // 5
+	st.compact(5)
+	st.trimSteps(1 << 20)
+	writeCkpt(t, n, 10)
+	writeCkpt(t, n, 11)
+	st.log = cutLog{l, n.ckptCut}
+	dropRecords(st)
+	for _, c := range []struct {
+		key  string
+		rev  int64
+		want string
+	}{{"/a", 2, "a1"}, {"/b", 3, "b1"}} {
+		if got, live := valueAt(t, st, c.key, c.rev); got != c.want || !live {
+			t.Fatalf("the held read of %s at %d reads %q live %v", c.key, c.rev, got, live)
+		}
+	}
+}
+
 // failingFile is a checkpoint file whose reads fail as a disk's do.
 type failingFile struct{ name string }
 

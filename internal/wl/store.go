@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"hash/maphash"
+	"math"
 	"slices"
 	"unsafe"
 
@@ -101,12 +102,16 @@ type store struct {
 	// everything from the revision it was compacted to, holdRev.
 	holding bool
 	holdRev int64
-	// readHolds are the revisions large range replies read at while they
-	// are sent in pieces (bigrange.go): trimming keeps what a read at each
+	// readHolds are the revisions reads hold while they are sent: large
+	// ranges and watches in pieces, replies that wait for the reserve.
+	// Each counts how many hold it. Trimming keeps what a read at each
 	// needs, and readHoldMin is the lowest of them.
-	readHolds   []int64
+	readHolds   map[int64]int
 	readHoldMin int64
-	tree        tree
+	// heldRevs is readHolds' revisions sorted, or empty until takeStates
+	// sorts them again after one came or went.
+	heldRevs []int64
+	tree     tree
 
 	leases map[int64]*lease
 	log    logReader
@@ -844,7 +849,7 @@ func (st *store) trimRev() int64 {
 // ckptRev is the revision a checkpoint keeps the states of: the
 // compacted one, or the one a checkpoint being written holds. Range
 // replies' holds keep more in the store, but not in a checkpoint's keys:
-// it only takes in their values (takeRev).
+// it only takes in their values (takeStates).
 func (st *store) ckptRev() int64 {
 	if st.holding {
 		return min(st.compactRev, st.holdRev)
@@ -852,34 +857,54 @@ func (st *store) ckptRev() int64 {
 	return st.compactRev
 }
 
-// takeRev is the revision from which a checkpoint takes in the values of
-// the states a read at it or later can see, so that a held read's values
-// outlive the checkpoint file and the log it replaces (#689's re-check,
-// D1 and D2). It is trimRev, or one below ckptRev: a watch sent in pieces
-// holds the revision before its first event's (bigwatch.go), which may be
-// the compacted one, and holds come while a checkpoint is written.
-func (st *store) takeRev() int64 { return min(st.trimRev(), st.ckptRev()-1) }
-
 // holdRead keeps what a read at rev needs until releaseRead(rev): its
-// keys' states, the tree's keys live at rev, and their ids.
+// keys' states, the tree's keys live at rev, and their ids. A checkpoint
+// takes in the values of the states a held read sees (takeStates).
 func (st *store) holdRead(rev int64) {
 	if len(st.readHolds) == 0 || rev < st.readHoldMin {
 		st.readHoldMin = rev
 	}
-	st.readHolds = append(st.readHolds, rev)
+	if st.readHolds == nil {
+		st.readHolds = map[int64]int{}
+	}
+	if st.readHolds[rev]++; st.readHolds[rev] == 1 {
+		st.heldRevs = st.heldRevs[:0]
+	}
 }
 
-func (st *store) releaseRead(rev int64) {
+func (st *store) releaseRead(rev int64) { st.releaseReads(rev) }
+
+// releaseReads releases a hold of each of revs (holdRead).
+func (st *store) releaseReads(revs ...int64) {
 	before := st.trimRev()
-	if i := slices.Index(st.readHolds, rev); i >= 0 {
-		st.readHolds = slices.Delete(st.readHolds, i, i+1)
+	for _, rev := range revs {
+		switch c := st.readHolds[rev]; c {
+		case 0:
+		case 1:
+			delete(st.readHolds, rev)
+			st.heldRevs = st.heldRevs[:0]
+		default:
+			st.readHolds[rev] = c - 1
+		}
 	}
-	if len(st.readHolds) > 0 {
-		st.readHoldMin = slices.Min(st.readHolds)
+	if _, ok := st.readHolds[st.readHoldMin]; !ok && len(st.readHolds) > 0 {
+		st.readHoldMin = math.MaxInt64
+		for rev := range st.readHolds {
+			st.readHoldMin = min(st.readHoldMin, rev)
+		}
 	}
 	if st.trimRev() > before {
 		st.retrim()
 	}
+}
+
+// heldReads is how many holds there are (holdRead).
+func (st *store) heldReads() int {
+	n := 0
+	for _, c := range st.readHolds {
+		n += c
+	}
+	return n
 }
 
 // retrim drops the change index before trimRev and starts trimming the
@@ -1199,6 +1224,71 @@ func (st *store) ckptStates(id uint32, rev, c int64, out []ckptState) []ckptStat
 	for h := k.hist; h != 0; h = st.hist[h].prev {
 		e := &st.hist[h]
 		if !add(ckptState{deleted: e.deleted, create: e.create, mod: e.mod, ver: e.ver, lease: e.lease, voff: e.voff, vlen: e.vlen, vsum: e.vsum}) {
+			break
+		}
+	}
+	return out
+}
+
+// takeStates appends to out key id's states whose values a checkpoint at
+// revision rev, keeping the states from c (ckptStates), takes in: those
+// ckptStates gives, and each older one a read held below c sees
+// (holdRead), so that a held read's values outlive the checkpoint file and
+// the log the checkpoint replaces (#689's re-check, D1 and D2). Only the
+// states a hold sees: the history between, which trimming keeps for the
+// oldest hold, is not taken in (the re-check of 7ab6166c, area A). A read
+// at c-1 counts as held too: a watch sent in pieces holds the revision
+// before its first event's (bigwatch.go), which may be the compacted one,
+// and may come once the checkpoint scanned the key.
+func (st *store) takeStates(id uint32, rev, c int64, out []ckptState) []ckptState {
+	n0 := len(out)
+	out = st.ckptStates(id, rev, c, out)
+	k := &st.keys[id]
+	if k.klen == 0 || k.mod == 0 {
+		return out
+	}
+	if len(st.heldRevs) == 0 && len(st.readHolds) > 0 {
+		for rev := range st.readHolds {
+			st.heldRevs = append(st.heldRevs, rev)
+		}
+		slices.Sort(st.heldRevs)
+	}
+	// The states older than the newest at or before c, ckptStates's
+	// last, newest first: each one is what a read sees from its revision
+	// to the next state's.
+	floor := c
+	if len(out) > n0 {
+		floor = out[len(out)-1].mod
+	}
+	held := func(from, to int64) bool {
+		if from <= c-1 && c-1 < to {
+			return true
+		}
+		i, _ := slices.BinarySearch(st.heldRevs, from)
+		return i < len(st.heldRevs) && st.heldRevs[i] < to
+	}
+	least := c - 1
+	if len(st.heldRevs) > 0 {
+		least = min(least, st.heldRevs[0])
+	}
+	next := int64(math.MaxInt64)
+	visit := func(s ckptState) bool {
+		to := next
+		next = s.mod
+		if s.mod >= floor {
+			return true
+		}
+		if !s.deleted && s.vlen > 0 && held(s.mod, to) {
+			out = append(out, s)
+		}
+		return s.mod > least
+	}
+	if !visit(ckptState{deleted: k.create == 0, create: k.create, mod: k.mod, ver: k.ver, lease: k.lease, voff: k.voff, vlen: k.vlen, vsum: k.vsum}) {
+		return out
+	}
+	for h := k.hist; h != 0; h = st.hist[h].prev {
+		e := &st.hist[h]
+		if !visit(ckptState{deleted: e.deleted, create: e.create, mod: e.mod, ver: e.ver, lease: e.lease, voff: e.voff, vlen: e.vlen, vsum: e.vsum}) {
 			break
 		}
 	}

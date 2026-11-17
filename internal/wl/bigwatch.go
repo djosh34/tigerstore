@@ -162,6 +162,7 @@ func (n *node) startBigWatch(i int32, x *watcher, c *client, s *stream, j int) b
 	// The states at the revision and before it, which its events show,
 	// stay while it is sent.
 	st.holdRead(b.rev - 1)
+	st.holdRead(b.rev)
 	x.big = true
 	n.bigWatches = append(n.bigWatches, b)
 	n.stats.bigWatches++
@@ -476,6 +477,7 @@ func (b *bigWatch) recount() {
 func (n *node) endBigWatch(b *bigWatch) {
 	if b.st == n.st {
 		b.st.releaseRead(b.rev - 1)
+		b.st.releaseRead(b.rev)
 	}
 	if x := n.watcherOf(b); x != nil {
 		x.big = false

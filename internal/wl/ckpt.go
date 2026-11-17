@@ -467,7 +467,7 @@ func (n *node) scanKeys(r *ckptRun) {
 	st := n.st
 	stop := min(r.end, r.next+ckptChunkKeys)
 	for states := 0; r.next < stop && states < ckptScanStates; r.next++ {
-		r.states = st.ckptStates(r.next, r.meta.rev, st.takeRev(), r.states[:0])
+		r.states = st.takeStates(r.next, r.meta.rev, st.ckptRev(), r.states[:0])
 		states += len(r.states)
 		for i := range r.states {
 			s := &r.states[i]

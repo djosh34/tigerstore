@@ -294,13 +294,18 @@ func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 	if _, err := c.Compact(ctx, rev, clientv3.WithCompactPhysical()); err != nil {
 		t.Fatal(err)
 	}
-	held := make(chan [2]int, 1)
+	held := make(chan [3]int, 1)
 	l.post(func() error {
-		held <- [2]int{len(l.n.heldReplies), len(l.n.st.readHolds)}
+		// Each reply holds the revisions its records were read at.
+		own := 0
+		for _, hr := range l.n.heldReplies {
+			own += len(hr.holds)
+		}
+		held <- [3]int{len(l.n.heldReplies), l.n.st.heldReads(), own}
 		return nil
 	})
-	if h := <-held; h[0] != 2 || h[1] != 2 {
-		t.Fatalf("%d replies held, %d revisions held; want 2 and 2", h[0], h[1])
+	if h := <-held; h[0] != 2 || h[1] != h[2] || h[1] < 2 {
+		t.Fatalf("%d replies held, %d revisions held, the replies' own %d; want 2 replies, and their own, at least 2", h[0], h[1], h[2])
 	}
 	setReserved(0)
 	for range 2 {
@@ -338,7 +343,7 @@ func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 		}
 	}
 	l.post(func() error {
-		held <- [2]int{len(l.n.heldReplies), len(l.n.st.readHolds)}
+		held <- [3]int{len(l.n.heldReplies), l.n.st.heldReads(), 0}
 		return nil
 	})
 	if h := <-held; h[0] != 0 || h[1] != 0 {
