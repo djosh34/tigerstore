@@ -392,8 +392,12 @@ func (s *sock) flush() (bool, error) {
 	}
 	s.out = s.out[:0]
 	s.ow = 0
-	if cap(s.out) > 4*s.outBase {
-		// A large reply grew it; it need not keep that much.
+	if cap(s.out) > 2*s.outBase {
+		// A large reply grew it; it need not keep that much. Kept to
+		// four times its base, what a client's share leaves past its
+		// bytes waiting went past the client buffers' send half and the
+		// reserve: 9.96 MB of 8.59 MB with 33 clients at 96 MiB (#689's
+		// O re-check). Twice its base is what a record opens in it.
 		s.growOut(s.outBase - cap(s.out))
 		s.out = make([]byte, 0, s.outBase)
 	}

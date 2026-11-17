@@ -2,7 +2,6 @@ package wl
 
 import (
 	"testing"
-	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -66,28 +65,6 @@ func TestAClientServedThatWaitsAgainGoesBehind(t *testing.T) {
 	}
 }
 
-// A client that keeps starting requests in its turn gives the turn up
-// once the requests it took it for are whole, and none is refused (N3).
-func TestATurnEndsWithTheRequestsItWasFor(t *testing.T) {
-	n, a, b, l, feed, tooMany := partNode(t)
-	feed(a, putPart(t, 1, true))
-	feed(b, putPart(t, 3, true))
-	l.serveWaiting()
-	if n.inTurn != a || b.roomNeed != part {
-		t.Fatalf("setup: turn %v, b needs %d", n.inTurn == a, b.roomNeed)
-	}
-	feed(a, putPart(t, 5, true)) // a starts another in its turn
-	if a.roomNeed != 0 {
-		t.Fatalf("a's next request waits for %d", a.roomNeed)
-	}
-	a.endStream(a.get(1)) // the one it took the turn for is whole
-	n.now = n.now.Add(time.Second)
-	l.serveWaiting()
-	if n.inTurn == a || b.roomNeed != 0 || tooMany() != 0 {
-		t.Fatalf("a's turn's request whole: a keeps the turn %v, b needs %d, %d refused", n.inTurn == a, b.roomNeed, tooMany())
-	}
-}
-
 // The room a turn gives back goes to the ranges that wait for the reserve
 // before another turn takes it (N4).
 func TestTheReserveGoesToWaitingRepliesBeforeTheNextTurn(t *testing.T) {
@@ -122,5 +99,74 @@ func TestALateRefusalIsForTheStreamThatWaited(t *testing.T) {
 	l.serveWaiting()
 	if tooMany() != 0 || a.roomNeed != part || a.roomSid != 3 {
 		t.Fatalf("stream 3's part behind an ended stream: %d refused, needs %d on stream %d; want it waiting", tooMany(), a.roomNeed, a.roomSid)
+	}
+}
+
+// What waits to be sent to the clients stays within the send half, the
+// reserve and each one's send buffer at twice its base: a buffer a large
+// reply grew does not keep four times its base once it is sent. Kept so,
+// 33 clients at 96 MiB held 9.96 MB of 8.59 MB (#689's O re-check, Astra,
+// whose probe this is).
+func TestTheSendBuffersKeepWithinTheSendHalfAndTheReserve(t *testing.T) {
+	n, _, _, _, _, _ := partNode(t)
+	n.sizes = sizeFor(96 << 20)
+	n.connOut = minConnOut
+	n.cout = 0
+	const clients = 33
+	cs := make([]*client, clients)
+	readers := make(map[*client]int)
+	flush := func(c *client) {
+		if ok, err := c.flush(); !ok || err != nil {
+			t.Fatalf("flush: %v %v", ok, err)
+		}
+		var buf [256 << 10]byte
+		for {
+			_, err := unix.Read(readers[c], buf[:])
+			if err == unix.EAGAIN {
+				break
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		n.giveRoom(c, false)
+	}
+	for i := range cs {
+		c := partClient(t, n, i)
+		fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_NONBLOCK, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = unix.Close(fds[0]); _ = unix.Close(fds[1]) })
+		c.fd, readers[c] = fds[0], fds[1]
+		cs[i] = c
+		c.flow.conn = 128 << 10
+		c.setInitial(128 << 10)
+		s := c.newStream(1, kRange)
+		if !n.msgRoom(c, (1<<20)+5) {
+			t.Fatal("reply cannot take reserve")
+		}
+		sendMsg(c, s, 1<<20)
+		for c.flow.bytes > 0 {
+			flush(c)
+			c.windowUpdate(0, 128<<10)
+			c.windowUpdate(1, 128<<10)
+		}
+		flush(c)
+	}
+	if n.reserved != 0 || n.inTurn != nil {
+		t.Fatal("setup has outstanding reserve")
+	}
+	for _, c := range cs[:2] {
+		s := c.newStream(3, kRange)
+		if !n.msgRoom(c, (1<<20)+5) {
+			t.Fatal("two replies should fit reserve")
+		}
+		sendMsg(c, s, 1<<20)
+	}
+	z := n.sizes
+	limit := z.reserve() + max(z.clientBufs()-z.clientInBufs(), clients*minConnOut) + clients*2*clientOutBuf
+	if n.cout > limit {
+		t.Fatalf("send pool %d > test limit %d by %d; reserved %d <= %d, no input turn/debt; retained cap/client=%d", n.cout, limit, n.cout-limit, n.reserved, z.reserve(), cap(cs[2].out))
 	}
 }

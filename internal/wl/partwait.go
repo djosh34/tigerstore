@@ -1,7 +1,5 @@
 package wl
 
-import "slices"
-
 // A request sent in parts whose next part finds the read half of the
 // client buffers full waits its turn for room, as a connection waits for
 // its buffers, instead of being refused (#735). Refused, a client's large
@@ -23,31 +21,34 @@ import "slices"
 // for more, none would go on. So the first in line that finds no room
 // takes the turn (node.inTurn), with room of the reserve (#727, which
 // holds at least one request) for what its share of requests in part
-// has left, as much as the reserve has free: its connection may take the
-// buffers past the read half by that much. While many connections read,
-// a share is one request (connIn), so the turn is all it needs to finish
-// what it holds. The turn is for the requests it holds in part and the
-// one it waits at (node.turnSids), and ends once they are whole, or
-// after requestTimeout: what its client still holds past the read half
-// stays charged to the reserve (node.inDebt) until it is whole too, and
-// the next turn takes only what the reserve has free. So a client that
-// keeps starting requests does not keep the turn, and none is refused
-// for the turn's end. A waiting connection's buffers are not taken by one
-// that waits for buffers, as those come after it (serveWaiting), and the
-// replies that wait for the reserve take its room back before another
-// turn does.
+// has left, as much as the reserve has free: while it holds the turn, the
+// buffers may hold that much past what they held when it took it
+// (node.turnLimit), for its connection alone. While many connections
+// read, a share is one request (connIn), so the turn is all it needs to
+// finish what it holds. The turn ends once its client holds no request
+// in part and waits for none, or the buffers are back within the read
+// half, and its room goes back to the reserve, whose waiting ranges and
+// replies take it before the next turn. A waiting connection's buffers
+// are not taken by one that waits for buffers, as those come after it
+// (serveWaiting).
 //
-// A part that waits requestTimeout is refused, and its connection reads
-// on: the reserve was spent on replies, or the turn's room did not finish
-// a share of more than the reserve.
+// A turn lasts requestTimeout at most: then the requests its client still
+// holds in part are refused, as etcd refuses too many requests, and the
+// room goes back, so a client that stops sending does not hold the
+// reserve for good. A client that keeps starting requests in its turn
+// keeps it that long (a known limit). A part that waits requestTimeout is
+// refused too, and its connection reads on: the reserve was spent on
+// replies, or the turn's room did not finish a share of more than the
+// reserve. Both the turn and a debt of what a turn left past the read
+// half were tried: the client of a debt stopped at its next part, its
+// requests in part never finished, and the debt held the reserve until
+// every waiting part was refused (CI on 86a91c73).
 
 // roomFor reports whether the client buffers have room for client c to
-// hold k more of requests in part: within the read half, or past it by
-// what the reserve holds for it, the turn's room and the debt of turns
-// before, for the turn's client.
+// hold k more of requests in part: within the read half, or within the
+// turn's limit for the turn's client.
 func (n *node) roomFor(c *client, k int64) bool {
-	in := n.sizes.clientInBufs()
-	return n.cpool+k <= in || n.inTurn == c && n.cpool+k <= in+n.inDebt+n.turnRoom
+	return n.cpool+k <= n.sizes.clientInBufs() || n.inTurn == c && n.cpool+k <= n.turnLimit
 }
 
 // waitsForRoom reports whether DATA p of stream s, which does not fit
@@ -98,25 +99,53 @@ func partTail(a, b []byte) int64 {
 
 // takeTurn gives c, the first in line for room, the turn when the read
 // half has no room for its part and the reserve has free room for it, as
-// much as its share has left, unless another holds it. The turn is for
-// the requests c holds in part and the one it waits at.
+// much as its share has left, unless another holds it.
 func (n *node) takeTurn(c *client) {
 	in := n.sizes.clientInBufs()
 	if n.inTurn != nil || n.cpool+c.roomNeed <= in {
 		return
 	}
 	room := min(n.connIn-c.partial, n.sizes.reserve()-n.reserved)
-	if n.cpool+c.roomNeed > in+n.inDebt+room {
+	limit := max(n.cpool, in) + room
+	if n.cpool+c.roomNeed > limit {
 		return
 	}
 	n.reserved += room
-	n.inTurn, n.turnRoom, n.turnAt = c, room, n.now
-	n.turnSids = append(n.turnSids[:0], c.roomSid)
-	c.eachStream(func(s *stream) {
-		if s.counted > 0 && s.id != c.roomSid {
-			n.turnSids = append(n.turnSids, s.id)
+	n.inTurn, n.turnRoom, n.turnLimit, n.turnAt = c, room, limit, n.now
+}
+
+// endTurn ends the turn of a client that closed, that holds no request in
+// part and waits for none, or that finds the buffers back within the read
+// half; or that held it requestTimeout, whose requests in part are
+// refused and which reads on. Its room goes back to the reserve, and the
+// ranges and replies that wait for the reserve take it first.
+func (l *loop) endTurn() {
+	n := l.n
+	c := n.inTurn
+	if c == nil {
+		return
+	}
+	late := !c.dead && n.now.Sub(n.turnAt) >= requestTimeout
+	if !c.dead && !late && (c.roomNeed != 0 || c.partial > 0 && n.cpool > n.sizes.clientInBufs()) {
+		return
+	}
+	n.inTurn = nil
+	n.reserved -= n.turnRoom
+	n.turnRoom, n.turnLimit = 0, 0
+	n.roomFreed = n.roomFreed || len(n.roomWait) > 0 || len(n.heldReplies) > 0
+	n.roomShort = false
+	if late {
+		c.eachStream(func(s *stream) {
+			if s.counted > 0 {
+				n.reject(c, s, errTooManyRequests)
+			}
+		})
+		if c.roomNeed != 0 {
+			// The part it stopped at goes on with room, or is refused.
+			l.serveRoom(c)
 		}
-	})
+	}
+	n.serveRoomWait()
 }
 
 // eachStream calls f for each open stream of c.
@@ -128,58 +157,6 @@ func (c *client) eachStream(f func(*stream)) {
 	}
 	for _, s := range c.over {
 		f(s)
-	}
-}
-
-// turnDone reports whether the requests the turn is for are whole, or
-// gone: none waits for room or holds a part.
-func (n *node) turnDone(c *client) bool {
-	if c.roomNeed != 0 && slices.Contains(n.turnSids, c.roomSid) {
-		return false
-	}
-	for _, sid := range n.turnSids {
-		if s := c.get(sid); s != nil && s.counted > 0 {
-			return false
-		}
-	}
-	return true
-}
-
-// endTurn ends the turn of a client that closed, whose requests the turn
-// is for are whole, or that held it requestTimeout. Its room stays
-// charged to the reserve as debt while the buffers hold more than the
-// read half (settle).
-func (l *loop) endTurn() {
-	n := l.n
-	c := n.inTurn
-	if c == nil {
-		n.settle()
-		return
-	}
-	if !c.dead && n.now.Sub(n.turnAt) < requestTimeout && !n.turnDone(c) && n.cpool > n.sizes.clientInBufs() {
-		return
-	}
-	n.inTurn = nil
-	n.inDebt += n.turnRoom
-	n.turnRoom = 0
-	n.turnSids = n.turnSids[:0]
-	n.settle()
-}
-
-// settle gives back to the reserve what the debt of turns no longer
-// needs, as the client buffers come down to the read half; the ranges
-// and replies that wait for the reserve take it first, before the next
-// turn.
-func (n *node) settle() {
-	if n.inTurn != nil || n.inDebt == 0 {
-		return
-	}
-	if debt := min(n.inDebt, max(n.cpool-n.sizes.clientInBufs(), 0)); debt < n.inDebt {
-		n.reserved -= n.inDebt - debt
-		n.inDebt = debt
-		n.roomFreed = n.roomFreed || len(n.roomWait) > 0 || len(n.heldReplies) > 0
-		n.roomShort = false
-		n.serveRoomWait()
 	}
 }
 
