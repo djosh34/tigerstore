@@ -162,7 +162,12 @@ func TestWLRefusesAMisreadLog(t *testing.T) {
 // runWLDamage runs seed 1 on wl nodes with crashes and damage of kind after
 // them, and fails unless count shows it took effect. With ckpt, nodes
 // take checkpoints, which cut the log behind them; without, the log grows
-// over the segments that damage to it needs.
+// over the segments that damage to it needs. Damage to the log needs data
+// two segments past the one it damages (Sim.damageWL), which the logs,
+// growing slowly while the cluster forms under the crashes, first held
+// about 9.6 s into a run of seed 1, and the faults end at healing: in
+// 24 s, 8 crashes tried and the first 7 found no such segment, and on
+// bf35a376 none of a run's tries did. The faults run 40 s.
 func runWLDamage(t *testing.T, kind damageKind, ckpt bool, count func(Stats) int) {
 	t.Helper()
 	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
@@ -175,7 +180,7 @@ func runWLDamage(t *testing.T, kind damageKind, ckpt bool, count func(Stats) int
 			cfg.Faults.DiskBudget = budget
 		}
 		cfg.damageKinds = []damageKind{kind}
-		cfg.Duration = 24 * Second
+		cfg.Duration = 40 * Second
 		res := run(t, cfg)
 		st := res.Stats
 		t.Logf("calls: %d ok; crashes %d; damage %d, fenced %d, misread refusals %d, bad reads %d; log %d writes to revision %d",
