@@ -90,7 +90,7 @@ var ckptScanStates = 1 << 16
 // ckptMin is the log written after the newest checkpoint before the next
 // is taken. A checkpoint writes the keys and takes in only the values of
 // the log it cuts, so it bounds what a start replays at a small cost.
-var ckptMin int64 = 1 << 30
+var ckptMin int64 = 4 << 30
 
 // ckptLoopShare bounds the loop's time on checkpoints: the next starts no
 // sooner than this many times the loop's time encoding the last after
