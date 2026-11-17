@@ -280,8 +280,9 @@ func (n *node) planBig(b *bigRange, c *client, s *stream) bool {
 	b.sorts = r.sortsOther()
 	if b.sorts && r.sortTarget == sortByValue {
 		// Sorting by value needs every value at once, past what the node
-		// builds at once: the one range it refuses (#721).
-		n.replyError(c, s.id, codeResourceExhausted, "etcdserver: a range sorted by value past what the node reads at once")
+		// builds at once: the one range it refuses, a deliberate
+		// difference from etcd (#721's second ruling; README).
+		n.replyError(c, s.id, codeResourceExhausted, fmt.Sprintf("etcdserver: a range sorted by value is refused past one piece of its reply (%d bytes): the sort needs every value at once", n.oneShot()))
 		return false
 	}
 	end := r.end

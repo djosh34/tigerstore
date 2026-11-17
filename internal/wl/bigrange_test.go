@@ -15,9 +15,12 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
@@ -502,4 +505,112 @@ func (s pbKVSort) Less(i, j int) bool {
 		return bytes.Compare(a.Value, b.Value) < 0
 	}
 	return bytes.Compare(a.Key, b.Key) < 0
+}
+
+// The replies #721's second ruling bounds, on a small budget, where one
+// piece (oneShot) is maxMsg:
+//   - a range sorted by value is served while its reply is one piece, and
+//     refused past it with ResourceExhausted, saying why; sorted by mod
+//     revision, the same range is served in pieces;
+//   - a Txn whose ranges match past maxMsg gets ResourceExhausted, its
+//     put applied; one within maxMsg is served;
+//   - a DeleteRange with prev_kv past maxMsg likewise, its keys deleted.
+//
+// A refused reply reads none of its values: the node loads none back.
+func TestTheRepliesBuiltAtOnceAreBounded(t *testing.T) {
+	const budget = 96 << 20
+	loopOf := watchLoops(t)
+	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	c := tc.clientOf(t, tc.endpoints[0])
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	const keys, size = 24, 192 << 10 // 4.5 MiB, past maxMsg
+	for i := range keys {
+		// Values in the reverse order of the keys, for the sort.
+		if _, err := c.Put(ctx, fmt.Sprintf("/sv/%02d", i), fmt.Sprintf("%02d", keys-i)+strings.Repeat("v", size-2)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l := loopOf(tc.ids[0])
+	if one := seeNode(l).connOut; one > maxMsg {
+		t.Fatalf("a share of %d KiB: the test's replies are not past one piece", one>>10)
+	}
+	loads := func() uint64 {
+		got := make(chan uint64, 1)
+		l.post(func() error {
+			got <- l.n.st.loads
+			return nil
+		})
+		return <-got
+	}
+	away := func() {
+		dropped := make(chan struct{})
+		l.post(func() error {
+			dropRecords(l.n.st)
+			close(dropped)
+			return nil
+		})
+		<-dropped
+	}
+	kv := pb.NewKVClient(c.ActiveConnection())
+	big := grpc.MaxCallRecvMsgSize(64 << 20)
+	byValue := func(end int) *pb.RangeRequest {
+		return &pb.RangeRequest{Key: []byte("/sv/"), RangeEnd: []byte(fmt.Sprintf("/sv/%02d", end)), SortTarget: pb.RangeRequest_VALUE, SortOrder: pb.RangeRequest_ASCEND}
+	}
+	// Within one piece: served, sorted.
+	got, err := kv.Range(ctx, byValue(8), big)
+	if err != nil {
+		t.Fatalf("a range sorted by value within one piece: %v", err)
+	}
+	if len(got.Kvs) != 8 || string(got.Kvs[0].Key) != "/sv/07" || string(got.Kvs[7].Key) != "/sv/00" {
+		t.Fatalf("a range sorted by value within one piece: %d records, from %s", len(got.Kvs), got.Kvs[0].Key)
+	}
+	// Past it: refused, saying why.
+	_, err = kv.Range(ctx, byValue(keys), big)
+	if status.Code(err) != codes.ResourceExhausted || !strings.Contains(err.Error(), "sorted by value") {
+		t.Fatalf("a range sorted by value past one piece: %v, want ResourceExhausted that says why", err)
+	}
+	byMod := byValue(keys)
+	byMod.SortTarget = pb.RangeRequest_MOD
+	if got, err := kv.Range(ctx, byMod, big); err != nil || len(got.Kvs) != keys {
+		t.Fatalf("the range sorted by mod revision: %v", err)
+	}
+	// A Txn whose range passes maxMsg: refused, its put applied, no value
+	// read.
+	away()
+	before := loads()
+	txn := func(end int, put string) (*pb.TxnResponse, error) {
+		return kv.Txn(ctx, &pb.TxnRequest{Success: []*pb.RequestOp{
+			{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("/sv/"), RangeEnd: []byte(fmt.Sprintf("/sv/%02d", end))}}},
+			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte(put), Value: []byte("x")}}},
+		}}, big)
+	}
+	if _, err := txn(keys, "/w/past"); status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("a Txn whose range passes maxMsg: %v, want ResourceExhausted", err)
+	}
+	if n := loads() - before; n != 0 {
+		t.Fatalf("the refused Txn read %d values back", n)
+	}
+	if r, err := c.Get(ctx, "/w/past"); err != nil || len(r.Kvs) != 1 {
+		t.Fatalf("the refused Txn's put: %v, %v; want it applied", r, err)
+	}
+	if r, err := txn(8, "/w/within"); err != nil || len(r.Responses[0].GetResponseRange().Kvs) != 8 {
+		t.Fatalf("a Txn within maxMsg: %v", err)
+	}
+	if s := seeNode(l); s.cout > sizeFor(budget).clientBufs()+2*maxMsg+4*outBuf {
+		t.Fatalf("the clients' send buffers hold %d KiB", s.cout>>10)
+	}
+	// A DeleteRange with prev_kv past maxMsg: refused, its keys deleted.
+	away()
+	before = loads()
+	_, err = kv.DeleteRange(ctx, &pb.DeleteRangeRequest{Key: []byte("/sv/"), RangeEnd: []byte("/sv0"), PrevKv: true}, big)
+	if status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("a DeleteRange with prev_kv past maxMsg: %v, want ResourceExhausted", err)
+	}
+	if n := loads() - before; n != 0 {
+		t.Fatalf("the refused DeleteRange read %d values back", n)
+	}
+	if r, err := c.Get(ctx, "/sv/", clientv3.WithPrefix(), clientv3.WithCountOnly()); err != nil || r.Count != 0 {
+		t.Fatalf("after the refused DeleteRange: %v, %v; want its keys deleted", r, err)
+	}
 }

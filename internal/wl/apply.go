@@ -391,12 +391,30 @@ func (n *node) applyDel(req []byte, c *client, s *stream) error {
 		return badRequest(err)
 	}
 	rev := n.st.rev + 1
+	// A reply with the records before is sized before any is read, and
+	// refused past replyRoom, the delete applied (replysize.go).
+	tooLarge := 0
+	if r.prevKV {
+		if size := n.delRecsSize(&r); c == nil || size > replyRoom {
+			r.prevKV = false
+			n.gs.rangesN++
+			if c != nil {
+				tooLarge = size
+			}
+		}
+	}
 	kvs, deleted, err := n.deleteRange(&r, rev, n.kvs[:0])
 	if err != nil {
 		return err
 	}
 	if deleted > 0 {
 		n.st.rev = rev
+	}
+	if tooLarge > 0 {
+		n.replyTooLarge(c, s, tooLarge)
+		clear(kvs)
+		n.kvs = kvs[:0]
+		return nil
 	}
 	if c != nil {
 		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(deleted))
@@ -534,6 +552,20 @@ type txnRun struct {
 	wrote bool // a put or delete ran: not a read-only Txn
 	res   []opRes
 	kvs   [][]byte
+	// reply is set on the node that answers the Txn, which sizes its
+	// reply's records (size) before it reads any; past replyRoom (big),
+	// it reads no more of them, and the reply is refused (replysize.go).
+	reply bool
+	size  int
+	big   bool
+}
+
+// sized adds n bytes of records to t's reply, and reports whether the
+// reply still takes them.
+func (t *txnRun) sized(n int) bool {
+	t.size += n
+	t.big = t.big || t.size > replyRoom
+	return !t.big
 }
 
 func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
@@ -550,7 +582,7 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 	if err := n.checkTxnOps(ops, ok, &path); err != nil {
 		return err
 	}
-	t := txnRun{req: req, voff: voff, rev: n.st.rev + 1, res: n.txnRes[:0], kvs: n.kvs[:0]}
+	t := txnRun{req: req, voff: voff, rev: n.st.rev + 1, res: n.txnRes[:0], kvs: n.kvs[:0], reply: c != nil}
 	// etcd's mvcc counts a Txn of more than one operation.
 	before := n.gs.puts + n.gs.deletes + n.gs.rangesN
 	defer func() {
@@ -570,7 +602,10 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 	if s != nil {
 		s.readonly = !t.wrote // for its request type, etcd's ReadonlyTxn
 	}
-	if c != nil {
+	switch {
+	case c != nil && t.big:
+		n.replyTooLarge(c, s, t.size)
+	case c != nil:
 		n.replyTxn(c, s, ok, t.res, r0, r1, t.kvs)
 	}
 	clear(t.kvs)
@@ -625,8 +660,12 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 			n.gs.rangesN++
 			var count int64
 			var more bool
-			if t.kvs, count, more, err = n.rangeKVs(&r, t.kvs, 0); err != nil {
-				return 0, 0, err
+			// Only the node that answers reads the records, once their
+			// sizes say the reply takes them.
+			if t.reply && t.sized(n.rangeRecsSize(&r)) {
+				if t.kvs, count, more, err = n.rangeKVs(&r, t.kvs, 0); err != nil {
+					return 0, 0, err
+				}
 			}
 			if r.keysOnly {
 				for i := k0; i < len(t.kvs); i++ {
@@ -638,6 +677,13 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 			var r putReq
 			if err := parsePut(op, &r); err != nil {
 				return 0, 0, badRequest(err)
+			}
+			if r.prevKV && (!t.reply || !t.sized(n.putPrevSize(r.key))) {
+				// No one reads it: etcd's mvcc still counts its read.
+				r.prevKV = false
+				if !r.ignoreValue && !r.ignoreLease {
+					n.gs.rangesN++
+				}
 			}
 			prev, err := n.putKey(&r, t.req, t.voff, t.rev)
 			if err != nil {
@@ -653,6 +699,10 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 			var r delReq
 			if err := parseDel(op, &r); err != nil {
 				return 0, 0, badRequest(err)
+			}
+			if r.prevKV && (!t.reply || !t.sized(n.delRecsSize(&r))) {
+				r.prevKV = false
+				n.gs.rangesN++
 			}
 			k0 := len(t.kvs)
 			var deleted int64

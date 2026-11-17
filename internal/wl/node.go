@@ -125,6 +125,8 @@ type node struct {
 	fetching  map[int64]bool
 	// bigs are the range replies sent in pieces (bigrange.go).
 	bigs []*bigRange
+	// sizeKeys is rangeRecsSize's scratch (replysize.go).
+	sizeKeys []sortedKey
 
 	wal *wal
 

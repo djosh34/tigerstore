@@ -43,6 +43,7 @@ suites=(
 	"TestTLS|--cipher-suites TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 --client-crl-file @CERTS@/crl.der"
 	"TestTLSStrict|--tls-min-version TLS1.3 --client-cert-allowed-hostname localhost"
 	"TestUnix|--listen-client-urls https://127.0.0.1:@CLIENT@,unixs://localhost:@CLIENT@"
+	"TestSortByValue|"
 )
 work=$(mktemp -d)
 # stop ends every server this script started and waits until they are
