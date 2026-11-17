@@ -14,10 +14,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// memLog is a log in memory: values are appended and named by offset.
-// memLog is a log in memory. A checkpoint's writer reads it from its own
-// goroutine while a test writes on (the model test, heldmodel_test.go),
-// so its writes and reads take mu.
+// memLog is a log in memory: values are appended and named by offset. A
+// checkpoint's writer reads it from its own goroutine while a test writes
+// on (the model test, heldmodel_test.go), so its writes and reads take mu.
 type memLog struct {
 	mu sync.Mutex
 	b  []byte

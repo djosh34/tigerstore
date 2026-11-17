@@ -654,15 +654,30 @@ func TestAFollowerThatLagsCatchesUpByASnapshot(t *testing.T) {
 	}
 }
 
-// logGoroutines counts the goroutines of the nodes' logs and removers.
-func logGoroutines() int {
+// logGoroutines counts the goroutines of the nodes' logs and removers,
+// and gives their stacks. The dump grows until it holds every goroutine:
+// cut short, it counted what fit, which changes with their order.
+func logGoroutines() (int, string) {
 	buf := make([]byte, 1<<22)
-	stacks := string(buf[:runtime.Stack(buf, true)])
-	k := 0
-	for _, f := range []string{"wl.(*wal).helper(", "wl.(*wal).makeSegments(", "wl.(*remover).run("} {
-		k += strings.Count(stacks, f)
+	for {
+		if k := runtime.Stack(buf, true); k < len(buf) {
+			buf = buf[:k]
+			break
+		}
+		buf = make([]byte, 2*len(buf))
 	}
-	return k
+	k := 0
+	var b strings.Builder
+	for g := range strings.SplitSeq(string(buf), "\n\n") {
+		for _, f := range []string{"wl.(*wal).helper(", "wl.(*wal).makeSegments(", "wl.(*remover).run("} {
+			if strings.Contains(g, f) {
+				k++
+				b.WriteString(g + "\n\n")
+				break
+			}
+		}
+	}
+	return k, b.String()
 }
 
 // A start that fails after its log opened stops the log's goroutines,
@@ -687,7 +702,7 @@ func TestAStartThatFailsStopsWhatItStarted(t *testing.T) {
 		}
 	})
 	tc.stopNode(t, 0)
-	before := logGoroutines()
+	before, beforeStacks := logGoroutines()
 	failNode1 = true
 	tc.startNode(t, 0)
 	if err := <-tc.stopped[0]; err == nil || errors.Is(err, errStopped) {
@@ -696,10 +711,10 @@ func TestAStartThatFailsStopsWhatItStarted(t *testing.T) {
 	tc.cancels[0]()
 	tc.cancels[0] = nil
 	deadline := time.Now().Add(5 * time.Second)
-	for logGoroutines() > before && time.Now().Before(deadline) {
+	for got, _ := logGoroutines(); got > before && time.Now().Before(deadline); got, _ = logGoroutines() {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if got := logGoroutines(); got > before {
-		t.Fatalf("%d goroutines of logs and removers after the failed start, %d before it", got, before)
+	if got, stacks := logGoroutines(); got > before {
+		t.Fatalf("%d goroutines of logs and removers after the failed start, %d before it; before:\n%s\nafter:\n%s", got, before, beforeStacks, stacks)
 	}
 }
