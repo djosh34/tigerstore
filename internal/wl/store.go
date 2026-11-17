@@ -93,6 +93,7 @@ type store struct {
 	hist     []histEnt
 	nhist    uint32
 	histFree uint32 // a list of free history slots, through prev
+	nfree    uint32 // the slots in histFree
 	// trimKey is the next key whose history compaction trims, while
 	// trimming.
 	trimKey  uint32
@@ -676,6 +677,7 @@ func (st *store) pushHist(k *keyEnt) error {
 	h := st.histFree
 	if h != 0 {
 		st.histFree = st.hist[h].prev
+		st.nfree--
 	} else {
 		h = st.nhist
 		if h+1 >= maxHist {
@@ -912,6 +914,7 @@ func (st *store) trimHistory(id uint32) {
 		st.histBytes -= int64(st.hist[cut].vlen)
 		st.hist[cut] = histEnt{prev: st.histFree}
 		st.histFree = cut
+		st.nfree++
 		cut = next
 	}
 	if k.create == 0 && k.hist == 0 && k.mod <= c {
