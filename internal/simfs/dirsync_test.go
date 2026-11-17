@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"math/rand/v2"
+	"slices"
 	"testing"
 )
 
@@ -135,5 +136,55 @@ func TestADirectorysCreationIsDurableWithItsParentsSync(t *testing.T) {
 		if b, err := h.ReadAll(); err != nil || string(b) != "synced" {
 			t.Fatalf("crash %d: the file holds %q %v", seed, b, err)
 		}
+	}
+}
+
+// A copy of the durable state (Durable), and DurableNames and
+// DurableBytes, hold what a directory's sync made durable behind an
+// operation of another directory that is not yet: a power loss keeps it.
+// Read from the durable names alone, they lost a log segment created and
+// synced in wal/ behind a checkpoint's file not yet synced in ckpt/, and
+// a cold restart lost the entries in it (TestMembershipFaults seed 57 on
+// c91e7f4e).
+func TestADurableCopyHoldsWhatASyncMadeDurableBehindAnother(t *testing.T) {
+	d := New()
+	for _, dir := range []string{"ckpt", "wal"} {
+		if err := d.Mkdir(dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := d.SyncDir(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Create("ckpt/x.tmp"); err != nil {
+		t.Fatal(err)
+	}
+	h, err := d.Create("wal/1.seg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Write([]byte("entries")); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SyncDirOf("wal"); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(d.DurableBytes("wal/1.seg")); got != "entries" {
+		t.Fatalf("DurableBytes reads %q, want the synced segment", got)
+	}
+	if names := d.DurableNames(); !slices.Equal(names, []string{"wal/1.seg"}) {
+		t.Fatalf("DurableNames %v, want the synced segment alone", names)
+	}
+	c := d.Durable()
+	if hc, err := c.Open("wal/1.seg"); err != nil {
+		t.Fatalf("the durable copy lost the synced segment: %v", err)
+	} else if b, _ := hc.ReadAll(); string(b) != "entries" {
+		t.Fatalf("the durable copy's segment holds %q", b)
+	}
+	if _, err := c.Open("ckpt/x.tmp"); err == nil {
+		t.Fatal("the durable copy kept a creation no sync made durable")
 	}
 }

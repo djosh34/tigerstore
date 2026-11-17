@@ -405,20 +405,11 @@ func (d *Disk) crash(rng *rand.Rand, img Image, keep func(op Op, name, to string
 	}
 	// A directory whose own directory's creation was lost is lost, and
 	// so is every file in a directory lost: the path to it is gone.
-	for _, name := range slices.Sorted(maps.Keys(dirs)) {
-		if !dirs[parentDir(name)] && parentDir(name) != "" {
-			d.tracef("crash: directory %s is lost with %s", name, parentDir(name))
-			delete(dirs, name)
-		}
-	}
+	pruneLost(dir, dirs, d.Trace)
 	d.dirs, d.durableDirs = dirs, maps.Clone(dirs)
 	d.names = make(map[string]*file, len(dir))
 	for _, name := range sortedNames(dir) {
 		f := dir[name]
-		if !d.isDir(parentDir(name)) {
-			d.tracef("crash: %s (file %d) is lost with its directory", name, f.id)
-			continue
-		}
 		d.names[name] = f
 		synced := f.durable.size
 		kept := f.survive(rng, img, &d.Counts)
@@ -539,17 +530,55 @@ func pieces(w write, unit int) []write {
 // a copy taken by pulling the power.
 func (d *Disk) Durable() *Disk {
 	c := New()
-	for _, name := range sortedNames(d.durable) {
-		f := d.durable[name]
+	durable, dirs := d.durableView()
+	for _, name := range sortedNames(durable) {
+		f := durable[name]
 		g := &file{id: f.id, durable: f.durable.share()}
 		g.reset()
 		c.names[name] = g
 		c.durable[name] = g
 	}
-	c.dirs, c.durableDirs = maps.Clone(d.durableDirs), maps.Clone(d.durableDirs)
+	c.dirs, c.durableDirs = dirs, maps.Clone(dirs)
 	c.files = d.files
 	c.st = d.st
 	return c
+}
+
+// durableView is what the names and directories are after a power loss
+// that keeps only what is durable: those durable already, and the
+// operations a directory's sync made durable behind one that is not yet,
+// in their order (SyncDirOf), with what lies in a directory lost gone.
+func (d *Disk) durableView() (map[string]*file, map[string]bool) {
+	names, dirs := maps.Clone(d.durable), maps.Clone(d.durableDirs)
+	for i := range d.dirOps {
+		if o := &d.dirOps[i]; o.synced {
+			o.apply(names, dirs)
+		}
+	}
+	pruneLost(names, dirs, nil)
+	return names, dirs
+}
+
+// pruneLost drops from dirs each directory whose own directory is not in
+// it, and from names each file in a directory not in dirs, telling trace
+// of each, if set.
+func pruneLost(names map[string]*file, dirs map[string]bool, trace func(format string, args ...any)) {
+	for _, name := range slices.Sorted(maps.Keys(dirs)) {
+		if p := parentDir(name); p != "" && !dirs[p] {
+			if trace != nil {
+				trace("crash: directory %s is lost with %s", name, p)
+			}
+			delete(dirs, name)
+		}
+	}
+	for _, name := range sortedNames(names) {
+		if p := parentDir(name); p != "" && !dirs[p] {
+			if trace != nil {
+				trace("crash: %s (file %d) is lost with its directory", name, names[name].id)
+			}
+			delete(names, name)
+		}
+	}
 }
 
 // Copy returns a new disk with this disk's files, under the names they
@@ -1361,11 +1390,15 @@ func (d *Disk) Pending(name string) int {
 
 // DurableNames returns the names of the files on the durable directory,
 // sorted.
-func (d *Disk) DurableNames() []string { return sortedNames(d.durable) }
+func (d *Disk) DurableNames() []string {
+	names, _ := d.durableView()
+	return sortedNames(names)
+}
 
 // DurableBytes returns a copy of a file's synced bytes.
 func (d *Disk) DurableBytes(name string) []byte {
-	if f, ok := d.durable[name]; ok {
+	names, _ := d.durableView()
+	if f, ok := names[name]; ok {
 		return f.durable.bytes()
 	}
 	return nil
