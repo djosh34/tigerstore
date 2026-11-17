@@ -44,6 +44,10 @@ type simCluster struct {
 	hooks []wl.Hooks
 	// budget is each node's memory budget, 0 for none.
 	budget int64
+	// ckptLog and catchup are each node's CheckpointLog and
+	// CatchupEntries, 0 for wl's.
+	ckptLog int64
+	catchup uint64
 }
 
 // testOS is the descriptor table of every cluster of the tests: wl sends
@@ -106,9 +110,11 @@ func (c *simCluster) start(t *testing.T, i int) {
 		ClientTLS: c.tls(true), PeerServerTLS: c.tls(true), PeerClientTLS: c.tls(false),
 		ClientListeners: []net.Listener{c.nw.listen(host + ":2379")},
 		PeerListeners:   []net.Listener{c.nw.listen(host + ":2380")},
-		Sys:             c.os.NewNode(dataDir, c.disk(i), c.nw),
+		Sys:             c.os.NewNode(dataDir, c.disk(i), c.nw.from(host)),
 		Hooks:           c.hooks[i],
 		MemoryBudget:    c.budget,
+		CheckpointLog:   c.ckptLog,
+		CatchupEntries:  c.catchup,
 	}
 	go func() { c.stopped[i] <- wl.Run(ctx, cfg) }()
 }
@@ -135,8 +141,14 @@ func (c *simCluster) stop(t *testing.T, i int) {
 
 func (c *simCluster) client(t *testing.T) *clientv3.Client {
 	t.Helper()
+	return c.clientOf(t, "n1:2379", "n2:2379", "n3:2379")
+}
+
+// clientOf is a client of the nodes at endpoints alone.
+func (c *simCluster) clientOf(t *testing.T, endpoints ...string) *clientv3.Client {
+	t.Helper()
 	cli, err := clientv3.New(clientv3.Config{
-		Endpoints: []string{"n1:2379", "n2:2379", "n3:2379"}, TLS: c.tls(false), Logger: zap.NewNop(),
+		Endpoints: endpoints, TLS: c.tls(false), Logger: zap.NewNop(),
 		DialTimeout: 5 * time.Second,
 		DialOptions: []grpc.DialOption{grpc.WithContextDialer(c.nw.Dial)},
 	})

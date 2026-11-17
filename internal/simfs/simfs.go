@@ -371,10 +371,27 @@ func (d *Disk) Crash(rng *rand.Rand) { d.CrashImage(rng, Image(rng.IntN(4))) }
 // directory then names keeps its synced content plus what img keeps of
 // its unsynced writes. Those were in place before the synced ones were,
 // so a later sync never makes them durable.
-func (d *Disk) CrashImage(rng *rand.Rand, img Image) {
+func (d *Disk) CrashImage(rng *rand.Rand, img Image) { d.crash(rng, img, nil) }
+
+// CrashKeeping is CrashImage with the directory operations not yet
+// durable kept as keep says, not drawn: for a test that needs one image
+// of a crash, such as a rename lost and a removal after it kept.
+func (d *Disk) CrashKeeping(rng *rand.Rand, img Image, keep func(op Op, name, to string) bool) {
+	d.crash(rng, img, keep)
+}
+
+func (d *Disk) crash(rng *rand.Rand, img Image, keep func(op Op, name, to string) bool) {
 	dir, dirs := maps.Clone(d.durable), maps.Clone(d.durableDirs)
 	for _, o := range d.dirOps {
-		kept := o.synced || rng.IntN(2) == 0
+		var kept bool
+		switch {
+		case o.synced:
+			kept = true
+		case keep != nil:
+			kept = keep(o.op, o.name, o.to)
+		default:
+			kept = rng.IntN(2) == 0
+		}
 		if o.op == OpMkdir {
 			d.tracef("crash: mkdir %s, kept %v", o.name, kept)
 		} else {
@@ -560,6 +577,50 @@ func (d *Disk) Copy() *Disk {
 	c.dirs, c.durableDirs = maps.Clone(d.dirs), maps.Clone(d.dirs)
 	c.files = d.files
 	c.st = d.st
+	return c
+}
+
+// Clone returns a copy of the disk as it is now, apart from it: what is
+// durable, the page cache, and the writes and directory operations not
+// yet durable. A crash of the copy is a crash of the disk at this point,
+// while the disk goes on. Faults and hooks are not copied.
+func (d *Disk) Clone() *Disk {
+	c := New()
+	m := map[*file]*file{}
+	cp := func(f *file) *file {
+		if f == nil {
+			return nil
+		}
+		if g, ok := m[f]; ok {
+			return g
+		}
+		g := &file{id: f.id, durable: f.durable.share(), size: f.size, alloc: f.alloc, diverged: f.diverged, cut: f.cut, cutAt: f.cutAt}
+		for i, p := range f.dirty {
+			if g.dirty == nil {
+				g.dirty = map[int]*block{}
+			}
+			b := *p
+			g.dirty[i] = &b
+		}
+		for _, w := range f.pending {
+			g.pending = append(g.pending, write{w.off, slices.Clone(w.p)})
+		}
+		g.bad = maps.Clone(f.bad)
+		m[f] = g
+		return g
+	}
+	for _, name := range sortedNames(d.names) {
+		c.names[name] = cp(d.names[name])
+	}
+	for _, name := range sortedNames(d.durable) {
+		c.durable[name] = cp(d.durable[name])
+	}
+	for _, o := range d.dirOps {
+		o.f = cp(o.f)
+		c.dirOps = append(c.dirOps, o)
+	}
+	c.dirs, c.durableDirs = maps.Clone(d.dirs), maps.Clone(d.durableDirs)
+	c.files, c.st, c.Capacity = d.files, d.st, d.Capacity
 	return c
 }
 

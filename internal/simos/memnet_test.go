@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +18,67 @@ import (
 type memNet struct {
 	mu  sync.Mutex
 	lns map[string]*memListener
+	// cut are the hosts cut off (isolate): none dials them, they dial
+	// none, and their connections are closed.
+	cut   map[string]bool
+	conns []hostConn
+}
+
+// hostConn is a connection's two ends and the hosts they are on, "" for
+// a client of the test.
+type hostConn struct {
+	from, to string
+	a, b     *memConn
+}
+
+// host is the host of address addr.
+func host(addr string) string {
+	h, _, _ := strings.Cut(addr, ":")
+	return h
+}
+
+// isolate cuts host off the network, until heal.
+func (nw *memNet) isolate(h string) {
+	nw.mu.Lock()
+	if nw.cut == nil {
+		nw.cut = map[string]bool{}
+	}
+	nw.cut[h] = true
+	var closing []hostConn
+	k := 0
+	for _, c := range nw.conns {
+		if c.from == h || c.to == h {
+			closing = append(closing, c)
+			continue
+		}
+		nw.conns[k] = c
+		k++
+	}
+	nw.conns = nw.conns[:k]
+	nw.mu.Unlock()
+	for _, c := range closing {
+		_ = c.a.Close()
+		_ = c.b.Close()
+	}
+}
+
+// heal puts host h back on the network.
+func (nw *memNet) heal(h string) {
+	nw.mu.Lock()
+	delete(nw.cut, h)
+	nw.mu.Unlock()
+}
+
+// from is the network as host h dials it.
+func (nw *memNet) from(h string) Net { return hostNet{nw: nw, host: h} }
+
+type hostNet struct {
+	nw   *memNet
+	host string
+}
+
+func (n hostNet) Dial(ctx context.Context, addr string) (net.Conn, error) {
+	return n.nw.dial(ctx, n.host, addr)
 }
 
 func newMemNet() *memNet { return &memNet{lns: map[string]*memListener{}} }
@@ -30,10 +92,15 @@ func (nw *memNet) listen(addr string) *memListener {
 }
 
 func (nw *memNet) Dial(ctx context.Context, addr string) (net.Conn, error) {
+	return nw.dial(ctx, "", addr)
+}
+
+func (nw *memNet) dial(ctx context.Context, from, addr string) (net.Conn, error) {
 	nw.mu.Lock()
 	l := nw.lns[addr]
+	cut := nw.cut[from] || nw.cut[host(addr)]
 	nw.mu.Unlock()
-	if l == nil {
+	if l == nil || cut {
 		return nil, unix.ECONNREFUSED
 	}
 	mu := &sync.Mutex{}
@@ -41,6 +108,9 @@ func (nw *memNet) Dial(ctx context.Context, addr string) (net.Conn, error) {
 	a := &memConn{mu: mu, in: ba, out: ab, local: "client", remote: addr}
 	b := &memConn{mu: mu, in: ab, out: ba, local: addr, remote: "client"}
 	a.peer, b.peer = b, a
+	nw.mu.Lock()
+	nw.conns = append(nw.conns, hostConn{from: from, to: host(addr), a: a, b: b})
+	nw.mu.Unlock()
 	select {
 	case l.conns <- b:
 		return a, nil

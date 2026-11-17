@@ -6,11 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	clientv3 "go.etcd.io/etcd/client/v3"
 	raftpb "go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/simfs"
@@ -25,6 +28,17 @@ type lockedDisk struct {
 	mu   sync.Mutex
 	d    *simfs.Disk
 	fail bool
+	// failSyncAfter, once set, fails the sync of ckpt/ that follows the
+	// next rename it picks, which stays in the page cache alone.
+	failSyncAfter func(from, to string) bool
+	failNext      bool
+	// holdSyncAfter, once set, holds the sync of ckpt/ that follows the
+	// next rename it picks until release is closed, and closes held when
+	// it does; created is told of each file created.
+	holdSyncAfter func(from, to string) bool
+	holdNext      bool
+	held, release chan struct{}
+	created       func(name string)
 }
 
 func (l *lockedDisk) do(f func() error) error {
@@ -38,7 +52,15 @@ func (l *lockedDisk) List() (names []string, err error) {
 	return names, err
 }
 
-func (l *lockedDisk) Create(name string) (wal.File, error) { return l.open(name, l.d.Create) }
+func (l *lockedDisk) Create(name string) (wal.File, error) {
+	h, err := l.open(name, l.d.Create)
+	var created func(string)
+	_ = l.do(func() error { created = l.created; return nil })
+	if err == nil && created != nil {
+		created(name)
+	}
+	return h, err
+}
 func (l *lockedDisk) Open(name string) (wal.File, error)   { return l.open(name, l.d.Open) }
 
 func (l *lockedDisk) open(name string, f func(string) (wal.File, error)) (wal.File, error) {
@@ -52,11 +74,39 @@ func (l *lockedDisk) open(name string, f func(string) (wal.File, error)) (wal.Fi
 
 func (l *lockedDisk) Remove(name string) error { return l.do(func() error { return l.d.Remove(name) }) }
 
-func (l *lockedDisk) Rename(o, n string) error { return l.do(func() error { return l.d.Rename(o, n) }) }
+func (l *lockedDisk) Rename(o, n string) error {
+	return l.do(func() error {
+		err := l.d.Rename(o, n)
+		if err == nil && l.failSyncAfter != nil && l.failSyncAfter(o, n) {
+			l.failSyncAfter, l.failNext = nil, true
+		}
+		if err == nil && l.holdSyncAfter != nil && l.holdSyncAfter(o, n) {
+			l.holdSyncAfter, l.holdNext = nil, true
+		}
+		return err
+	})
+}
 func (l *lockedDisk) SyncDir() error           { return l.do(l.d.SyncDir) }
 
 func (l *lockedDisk) SyncDirOf(dir string) error {
-	return l.do(func() error { return l.d.SyncDirOf(dir) })
+	var hold bool
+	_ = l.do(func() error {
+		if hold = l.holdNext && dir == "ckpt"; hold {
+			l.holdNext = false
+		}
+		return nil
+	})
+	if hold {
+		close(l.held)
+		<-l.release
+	}
+	return l.do(func() error {
+		if l.failNext && dir == "ckpt" {
+			l.failNext = false
+			return simfs.ErrIO
+		}
+		return l.d.SyncDirOf(dir)
+	})
 }
 
 func (l *lockedDisk) Mkdir(name string) error { return l.do(func() error { return l.d.Mkdir(name) }) }
@@ -115,6 +165,10 @@ func (f *lockedFile) Close() error     { return f.l.do(f.h.Close) }
 type recovered struct {
 	l    *lockedDisk
 	done chan struct{}
+	// clone keeps the disk as it is, unsynced operations too, for a test
+	// to choose the crash (simfs.Disk.CrashKeeping), not as a crash
+	// leaves it.
+	clone bool
 	last uint64
 	hs   raftpb.HardState
 	disk *simfs.Disk
@@ -123,6 +177,9 @@ type recovered struct {
 func (r *recovered) Recovered(last uint64, hs *raftpb.HardState, _ func() []wl.LogValue) {
 	r.l.mu.Lock()
 	r.last, r.disk = last, r.l.d.Durable()
+	if r.clone {
+		r.disk = r.l.d.Clone()
+	}
 	r.l.mu.Unlock()
 	if hs != nil {
 		r.hs = raftpb.HardState{Term: new(hs.GetTerm()), Vote: new(hs.GetVote()), Commit: new(hs.GetCommit())}
@@ -211,4 +268,398 @@ func TestAStartSyncsWhatItRecovered(t *testing.T) {
 			second.last, &second.hs, first.last, &first.hs)
 	}
 	t.Logf("node 3 recovered entries to %d, hard state %v, before and after the power loss", first.last, &first.hs)
+}
+
+// A start that finds a CURRENT whose rename is not durable makes it
+// durable before it removes the checkpoint the pointer before named
+// (c2329e82, #689's area-1 review, finding 9). Here node 1's sync of
+// ckpt/ after its pointer's rename fails, so the new CURRENT is in the
+// page cache alone, and the node stops. Its start removes the checkpoint
+// before, and the power goes then: the crash keeps that removal and
+// loses every operation not yet durable on ckpt/ that it can, the
+// rename too. CURRENT must still name a checkpoint the disk holds, and
+// the node start from it. Without the start's sync, the pointer before
+// comes back and names the checkpoint removed.
+func TestAStartMakesThePointerDurableBeforeItCleansUp(t *testing.T) {
+	c := newSimCluster(t)
+	c.ckptLog = 64 << 10
+	l := &lockedDisk{d: c.disks[0]}
+	c.fs[0] = l
+	for i := range 3 {
+		c.start(t, i)
+	}
+	cli := c.client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	pointer := func(b []byte) string {
+		p, err := wl.ReadPointer(b)
+		if err != nil {
+			return ""
+		}
+		return p.Checkpoint
+	}
+	current := func(d *simfs.Disk) (name string) {
+		h, err := d.Open("ckpt/CURRENT")
+		if err != nil {
+			return ""
+		}
+		b, _ := h.ReadAll()
+		_ = h.Close()
+		return pointer(b)
+	}
+	live := func() (name string) {
+		_ = l.do(func() error { name = current(l.d); return nil })
+		return name
+	}
+	value := strings.Repeat("v", 4<<10)
+	k := 0
+	put := func() {
+		if _, err := cli.Put(ctx, fmt.Sprintf("/k/%05d", k), value); err != nil && ctx.Err() != nil {
+			t.Fatalf("put %d: %v", k, err)
+		}
+		k++
+	}
+	for live() == "" {
+		put()
+	}
+	before := live()
+	// The next pointer's rename is not followed by a sync of ckpt/, which
+	// fails, and the node stops.
+	_ = l.do(func() error {
+		l.failSyncAfter = func(_, to string) bool { return to == "ckpt/CURRENT" }
+		return nil
+	})
+	var stopErr error
+	for stopErr == nil {
+		put()
+		select {
+		case stopErr = <-c.stopped[0]:
+			c.cancels[0]()
+			c.cancels[0] = nil
+		default:
+		}
+	}
+	if !errors.Is(stopErr, simfs.ErrIO) {
+		t.Fatalf("node 1 stopped on %v, want the failed sync of ckpt/", stopErr)
+	}
+	var durable string
+	_ = l.do(func() error { durable = pointer(l.d.DurableBytes("ckpt/CURRENT")); return nil })
+	after := live()
+	if after == before || durable != before {
+		t.Fatalf("CURRENT names %s, durably %s; want a new checkpoint in the page cache and %s durably", after, durable, before)
+	}
+	// It starts again, as after a kill, and the disk is kept as it is when
+	// the start has cleaned up and recovered its log.
+	r := &recovered{l: l, done: make(chan struct{}), clone: true}
+	c.hooks[0] = r
+	c.start(t, 0)
+	select {
+	case <-r.done:
+	case err := <-c.stopped[0]:
+		t.Fatalf("node 1 did not start: %v", err)
+	case <-ctx.Done():
+		t.Fatal("node 1 did not start")
+	}
+	c.stop(t, 0)
+	if _, err := r.disk.Open("ckpt/" + before); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the start left the checkpoint before, %s: %v", before, err)
+	}
+	// The power goes: the removal stays, and the rename is lost unless a
+	// sync made it durable.
+	img := r.disk
+	img.CrashKeeping(rand.New(rand.NewPCG(9, 9)), simfs.Writes, func(op simfs.Op, _, to string) bool {
+		return op != simfs.OpRename || to != "ckpt/CURRENT"
+	})
+	if got := current(img); got != after {
+		t.Fatalf("after the power loss CURRENT names %q, want %s: the start removed %s before the new pointer was durable", got, after, before)
+	}
+	l2 := &lockedDisk{d: img}
+	c.fs[0] = l2
+	r2 := &recovered{l: l2, done: make(chan struct{})}
+	c.hooks[0] = r2
+	c.start(t, 0)
+	select {
+	case <-r2.done:
+	case err := <-c.stopped[0]:
+		c.cancels[0] = nil
+		t.Fatalf("node 1 did not start after the power loss: %v", err)
+	case <-ctx.Done():
+		t.Fatal("node 1 did not start after the power loss")
+	}
+}
+
+// installCluster is a cluster on the seam whose node 3 cuts its log at
+// small checkpoints, and a client of it that puts keys of 4 KiB, from
+// /k/00000 on, and reads node 3's newest.
+type installCluster struct {
+	*simCluster
+	l   *lockedDisk
+	cli *clientv3.Client
+	ctx context.Context
+	k   int
+}
+
+func newInstallCluster(t *testing.T, ctx context.Context) *installCluster {
+	c := newSimCluster(t)
+	c.ckptLog, c.catchup = 64<<10, 16
+	l := &lockedDisk{d: c.disks[2]}
+	c.fs[2] = l
+	for i := range 3 {
+		c.start(t, i)
+	}
+	return &installCluster{simCluster: c, l: l, cli: c.client(t), ctx: ctx}
+}
+
+func (c *installCluster) put(t *testing.T) {
+	t.Helper()
+	if _, err := c.cli.Put(c.ctx, fmt.Sprintf("/k/%05d", c.k), strings.Repeat("v", 4<<10)); err != nil && c.ctx.Err() != nil {
+		t.Fatalf("put %d: %v", c.k, err)
+	}
+	c.k++
+}
+
+// current is the checkpoint node 3's CURRENT names on disk d, "" for none.
+func current(d *simfs.Disk) string {
+	h, err := d.Open("ckpt/CURRENT")
+	if err != nil {
+		return ""
+	}
+	b, _ := h.ReadAll()
+	_ = h.Close()
+	p, err := wl.ReadPointer(b)
+	if err != nil {
+		return ""
+	}
+	return p.Checkpoint
+}
+
+// lagBehind cuts node 3 off while the others write past what their log
+// keeps for it, and puts it back: the leader sends it a snapshot.
+func (c *installCluster) lagBehind(t *testing.T) {
+	t.Helper()
+	c.nw.isolate("n3")
+	for range 200 {
+		c.put(t)
+	}
+	c.nw.heal("n3")
+}
+
+// An install whose pointer cannot be written leaves the checkpoint
+// CURRENT names, so that the node starts again from it, as after a kill
+// and after a power loss (1062b9ce, #689's area-1 review, finding 2 of
+// the review, 7 of the PR's list). Here node 3's sync of ckpt/ before the
+// install renames CURRENT fails, and it stops. Removed before the pointer
+// was written, the checkpoint before left CURRENT naming a file gone.
+func TestAnInstallThatCannotPointOnLeavesTheCheckpointBefore(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	c := newInstallCluster(t, ctx)
+	before := ""
+	for before == "" {
+		c.put(t)
+		_ = c.l.do(func() error { before = current(c.l.d); return nil })
+	}
+	// The install renames the checkpoint it received into place; the
+	// sync of ckpt/ after, the pointer's first step, fails.
+	_ = c.l.do(func() error {
+		c.l.failSyncAfter = func(from, _ string) bool { return strings.HasPrefix(from, "ckpt/recv-") }
+		return nil
+	})
+	c.lagBehind(t)
+	var stopErr error
+	select {
+	case stopErr = <-c.stopped[2]:
+		c.cancels[2]()
+		c.cancels[2] = nil
+	case <-ctx.Done():
+		t.Fatal("node 3 did not install a snapshot")
+	}
+	if !errors.Is(stopErr, simfs.ErrIO) {
+		t.Fatalf("node 3 stopped on %v, want the failed sync of the install's pointer", stopErr)
+	}
+	var d *simfs.Disk
+	_ = c.l.do(func() error { d = c.l.d.Clone(); return nil })
+	if got := current(d); got != before {
+		t.Fatalf("after the failed install CURRENT names %q, want %s", got, before)
+	}
+	// It starts again as after a kill, and as after a power loss that
+	// keeps every operation not yet durable, or none.
+	for _, keep := range []bool{true, false} {
+		img := d.Clone()
+		img.CrashKeeping(rand.New(rand.NewPCG(5, 5)), simfs.Writes, func(simfs.Op, string, string) bool { return keep })
+		if got := current(img); got == "" {
+			t.Fatalf("after a power loss keeping its pending operations %v, CURRENT names nothing", keep)
+		} else if _, err := img.Open("ckpt/" + got); err != nil {
+			t.Fatalf("after a power loss keeping its pending operations %v, CURRENT names %s: %v", keep, got, err)
+		}
+	}
+	r := &recovered{l: c.l, done: make(chan struct{})}
+	c.hooks[2] = r
+	c.start(t, 2)
+	select {
+	case <-r.done:
+	case err := <-c.stopped[2]:
+		c.cancels[2] = nil
+		t.Fatalf("node 3 did not start after the failed install: %v", err)
+	case <-ctx.Done():
+		t.Fatal("node 3 did not start after the failed install")
+	}
+}
+
+// An install waits for the checkpoint its node is writing, so that the
+// two never write CURRENT at once (1062b9ce, #689's area-1 review, the
+// PR's finding 6). Here node 3's checkpoint writer is held right before
+// it writes its pointer, its file renamed into place, while the node
+// lags and the leader's snapshot comes. Released once the install had
+// time to run, the writer wrote CURRENT naming its own, older checkpoint
+// after the install's pointer, and the install had removed that
+// checkpoint, had the install not waited.
+// CURRENT must name a checkpoint at the snapshot or past it, and the
+// node start from it with every key.
+func TestAnInstallWaitsForTheCheckpointBeingWritten(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	c := newInstallCluster(t, ctx)
+	c.l.held, c.l.release = make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-c.l.release:
+		default:
+			close(c.l.release)
+		}
+	})
+	recv := make(chan struct{})
+	var once sync.Once
+	_ = c.l.do(func() error {
+		c.l.holdSyncAfter = func(from, to string) bool {
+			return strings.HasPrefix(from, "ckpt/") && !strings.HasPrefix(from, "ckpt/recv-") && strings.HasSuffix(to, ".ckpt")
+		}
+		c.l.created = func(name string) {
+			if strings.HasPrefix(name, "ckpt/recv-") {
+				once.Do(func() { close(recv) })
+			}
+		}
+		return nil
+	})
+	for held := false; !held; {
+		c.put(t)
+		select {
+		case <-c.l.held:
+			held = true
+		default:
+		}
+	}
+	held := ""
+	_ = c.l.do(func() error { held = current(c.l.d); return nil })
+	c.lagBehind(t)
+	select {
+	case <-recv:
+	case <-ctx.Done():
+		t.Fatal("node 3 received no snapshot")
+	}
+	time.Sleep(500 * time.Millisecond)
+	close(c.l.release)
+	// Node 3 serves the newest key once it caught up.
+	last := fmt.Sprintf("/k/%05d", c.k-1)
+	n3 := c.clientOf(t, "n3:2379")
+	for {
+		r, err := n3.Get(ctx, last, clientv3.WithSerializable())
+		if err == nil && len(r.Kvs) == 1 {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatal("node 3 did not catch up")
+		}
+		c.put(t)
+		time.Sleep(10 * time.Millisecond)
+	}
+	c.stop(t, 2)
+	var d *simfs.Disk
+	_ = c.l.do(func() error { d = c.l.d.Clone(); return nil })
+	got := current(d)
+	if got == "" || got <= held {
+		t.Fatalf("after the install CURRENT names %q, at or before %q, which it named while the writer was held", got, held)
+	}
+	r := &recovered{l: c.l, done: make(chan struct{})}
+	c.hooks[2] = r
+	c.start(t, 2)
+	select {
+	case <-r.done:
+	case err := <-c.stopped[2]:
+		c.cancels[2] = nil
+		t.Fatalf("node 3 did not start after the install: %v", err)
+	case <-ctx.Done():
+		t.Fatal("node 3 did not start after the install")
+	}
+}
+
+// A node's first start makes wal/ and ckpt/ and syncs the data dir that
+// holds them, so that a power loss keeps them and what was synced in
+// them (f0630b8c, #689's area-1 review). Here node 3 has taken writes
+// and the power goes, losing every directory operation not durable: its
+// directories and its log are still there, and it starts again with the
+// entries it had.
+func TestAFreshStartMakesItsDirectoriesDurable(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	c := newSimCluster(t)
+	l := &lockedDisk{d: c.disks[2]}
+	c.fs[2] = l
+	for i := range 3 {
+		c.start(t, i)
+	}
+	cli := c.client(t)
+	last := ""
+	for k, done := 0, 0; done < 10; k++ {
+		key := fmt.Sprintf("/k/%03d", k)
+		if _, err := cli.Put(ctx, key, "v"); err == nil {
+			last, done = key, done+1
+		} else if ctx.Err() != nil {
+			t.Fatalf("put %d: %v", k, err)
+		}
+	}
+	// Node 3 has the writes: it serves the last.
+	n3 := c.clientOf(t, "n3:2379")
+	for {
+		r, err := n3.Get(ctx, last, clientv3.WithSerializable())
+		if err == nil && len(r.Kvs) == 1 {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("node 3 did not take the writes: %v %v", r, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	var img *simfs.Disk
+	_ = l.do(func() error { img = l.d.Clone(); return nil })
+	c.stop(t, 2)
+	img.CrashKeeping(rand.New(rand.NewPCG(3, 3)), simfs.Writes, func(simfs.Op, string, string) bool { return false })
+	if !img.IsDir("wal") || !img.IsDir("ckpt") {
+		t.Fatalf("a power loss left the directories %v, want wal and ckpt", img.Dirs())
+	}
+	segs := 0
+	for _, name := range img.DurableNames() {
+		if strings.HasPrefix(name, "wal/") && strings.HasSuffix(name, ".seg") {
+			segs++
+		}
+	}
+	if segs == 0 {
+		t.Fatalf("a power loss left no log segment: %v", img.DurableNames())
+	}
+	l2 := &lockedDisk{d: img}
+	c.fs[2] = l2
+	r := &recovered{l: l2, done: make(chan struct{})}
+	c.hooks[2] = r
+	c.start(t, 2)
+	select {
+	case <-r.done:
+	case err := <-c.stopped[2]:
+		c.cancels[2] = nil
+		t.Fatalf("node 3 did not start after the power loss: %v", err)
+	case <-ctx.Done():
+		t.Fatal("node 3 did not start after the power loss")
+	}
+	if r.last < 10 {
+		t.Fatalf("after the power loss node 3 recovered entries to %d, want its writes", r.last)
+	}
 }
