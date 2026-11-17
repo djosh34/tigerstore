@@ -523,6 +523,15 @@ type noWaitReader interface {
 	readNoWait(p []byte, off int64) error
 }
 
+// notReadNow reports whether a read of want bytes with RWF_NOWAIT that
+// read n and failed with err must be made off the loop: the bytes are not
+// in the page cache (EAGAIN, or a short read), or the file system takes
+// no RWF_NOWAIT, as tmpfs refuses it with EOPNOTSUPP (#689's area-1
+// review).
+func notReadNow(n, want int, err error) bool {
+	return errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EOPNOTSUPP) || err == nil && n < want
+}
+
 // readFileNoWait reads p at off of checkpoint f from the page cache, or
 // fails with errAway. A checkpoint in memory reads as ever.
 func readFileNoWait(f ckptFile, p []byte, off int64) error {
@@ -533,7 +542,7 @@ func readFileNoWait(f ckptFile, p []byte, off int64) error {
 	}
 	n, err := sysPreadNoWait(int(d.Fd()), p, off)
 	switch {
-	case errors.Is(err, unix.EAGAIN) || err == nil && n < len(p):
+	case notReadNow(n, len(p), err):
 		return errAway
 	case err != nil:
 		return fmt.Errorf("read a value from the checkpoint: %w", err)

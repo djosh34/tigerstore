@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -407,5 +409,28 @@ func TestDeletesReadNoValueNothingAsksFor(t *testing.T) {
 	st.endApply()
 	if st.loads != loads || st.liveKeys != 0 {
 		t.Fatalf("a revoke of a lease of 100 keys: %d loads, %d keys left", st.loads-loads, st.liveKeys)
+	}
+}
+
+// A read that must not wait for the disk, of a file on tmpfs, which
+// takes no RWF_NOWAIT, goes off the loop: it is not an error. Taken as
+// one, every range of a value a node on tmpfs let go answered Internal.
+func TestANoWaitReadOnTmpfsGoesOffTheLoop(t *testing.T) {
+	dir, err := os.MkdirTemp("/dev/shm", "wl-nowait-")
+	if err != nil {
+		t.Skipf("no tmpfs at /dev/shm: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	f, err := os.Create(filepath.Join(dir, "ckpt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	if _, err := f.Write([]byte("a value on tmpfs")); err != nil {
+		t.Fatal(err)
+	}
+	p := make([]byte, 5)
+	if err := readFileNoWait(f, p, 2); err != nil && !errors.Is(err, errAway) {
+		t.Fatalf("a read of a file on tmpfs that must not wait: %v, want it read or errAway", err)
 	}
 }
