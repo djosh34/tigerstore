@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -39,6 +40,8 @@ type lockedDisk struct {
 	holdNext      bool
 	held, release chan struct{}
 	created       func(name string)
+	// renamed is told of each rename done.
+	renamed func(from, to string)
 }
 
 func (l *lockedDisk) do(f func() error) error {
@@ -82,6 +85,9 @@ func (l *lockedDisk) Rename(o, n string) error {
 		}
 		if err == nil && l.holdSyncAfter != nil && l.holdSyncAfter(o, n) {
 			l.holdSyncAfter, l.holdNext = nil, true
+		}
+		if err == nil && l.renamed != nil {
+			l.renamed(o, n)
 		}
 		return err
 	})
@@ -528,9 +534,27 @@ func TestAnInstallWaitsForTheCheckpointBeingWritten(t *testing.T) {
 			close(c.l.release)
 		}
 	})
-	recv := make(chan struct{})
-	var once sync.Once
+	recv, pointed := make(chan struct{}), make(chan struct{})
+	var once, pointedOnce sync.Once
+	// renames are the install's rename of what it received ("install"),
+	// and every rename of CURRENT ("current"), in order.
+	var renameMu sync.Mutex
+	var renames []string
+	installedAs := ""
 	_ = c.l.do(func() error {
+		c.l.renamed = func(from, to string) {
+			renameMu.Lock()
+			defer renameMu.Unlock()
+			switch {
+			case strings.HasPrefix(from, "ckpt/recv-"):
+				renames, installedAs = append(renames, "install"), strings.TrimPrefix(to, "ckpt/")
+			case to == "ckpt/CURRENT":
+				renames = append(renames, "current")
+				if slices.Contains(renames, "install") {
+					pointedOnce.Do(func() { close(pointed) })
+				}
+			}
+		}
 		c.l.holdSyncAfter = func(from, to string) bool {
 			return strings.HasPrefix(from, "ckpt/") && !strings.HasPrefix(from, "ckpt/recv-") && strings.HasSuffix(to, ".ckpt")
 		}
@@ -557,8 +581,47 @@ func TestAnInstallWaitsForTheCheckpointBeingWritten(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("node 3 received no snapshot")
 	}
-	time.Sleep(500 * time.Millisecond)
+	// The install renames the checkpoint it received into place, and
+	// points CURRENT at it, once it aborted the one being written. Without
+	// the wait in abortCkpt it does both while the writer is held, and the
+	// release comes after; with it, the install waits for the writer, and
+	// the release comes after 2 s of no pointer.
+	select {
+	case <-pointed:
+		t.Log("the install pointed CURRENT on while the writer was held")
+	case <-time.After(2 * time.Second):
+		t.Log("the install did not go on while the writer was held")
+	case <-ctx.Done():
+		t.Fatal("node 3 did not install the snapshot")
+	}
+	renameMu.Lock()
+	released := len(renames)
+	renameMu.Unlock()
 	close(c.l.release)
+	// Once the install pointed CURRENT on and the held writer, released,
+	// went on, CURRENT names the installed checkpoint, or a newer one.
+	// Without the wait the writer pointed it back at its own, older one.
+	for {
+		renameMu.Lock()
+		install := slices.Index(renames, "install")
+		done := install >= 0 && slices.Contains(renames[install+1:], "current") && slices.Contains(renames[released:], "current")
+		renameMu.Unlock()
+		if done {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatal("the install or the held writer never pointed CURRENT")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	got := ""
+	_ = c.l.do(func() error { got = current(c.l.d); return nil })
+	renameMu.Lock()
+	want := installedAs
+	renameMu.Unlock()
+	if got < want {
+		t.Fatalf("after the install and the held writer CURRENT names %q, before the installed %q", got, want)
+	}
 	// Node 3 serves the newest key once it caught up.
 	last := fmt.Sprintf("/k/%05d", c.k-1)
 	n3 := c.clientOf(t, "n3:2379")
@@ -576,7 +639,7 @@ func TestAnInstallWaitsForTheCheckpointBeingWritten(t *testing.T) {
 	c.stop(t, 2)
 	var d *simfs.Disk
 	_ = c.l.do(func() error { d = c.l.d.Clone(); return nil })
-	got := current(d)
+	got = current(d)
 	if got == "" || got <= held {
 		t.Fatalf("after the install CURRENT names %q, at or before %q, which it named while the writer was held", got, held)
 	}
