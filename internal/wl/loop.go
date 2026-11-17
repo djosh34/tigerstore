@@ -982,7 +982,7 @@ func (l *loop) run() error {
 				wake = t
 			}
 		}
-		if d := time.Until(wake); d > 0 && !n.syncReady() && !n.bigReady() {
+		if d := time.Until(wake); d > 0 && !n.syncReady() && !n.bigReady() && !n.bigWatchReady() {
 			timeout = int((d + time.Millisecond - 1) / time.Millisecond)
 		}
 		l.watch.wait()
@@ -1095,6 +1095,7 @@ func (l *loop) run() error {
 			return err
 		}
 		n.pumpBig()
+		n.pumpBigWatches()
 		n.turnCkpt = ckptTurn{}
 		if err := n.ckptStep(false); err != nil {
 			return err
@@ -1295,6 +1296,8 @@ type counters struct {
 	// heldReplies counts the replies of applied writes that waited for
 	// the reserve, unbuilt (reserve.go).
 	heldReplies uint64
+	// bigWatches counts the watch responses sent in pieces (bigwatch.go).
+	bigWatches uint64
 
 	// What the batches carried, and how the peers named or carried them.
 	opsByKind, bytesByKind [kinds]int

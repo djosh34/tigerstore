@@ -131,6 +131,9 @@ type stream struct {
 	win       int64  // the stream's send window
 	recvd     int    // DATA taken since the stream's last WINDOW_UPDATE
 	holds     bool   // held messages wait for window: the stream's window is in its client's flow
+	// big: a watch response is written into it in pieces, and its other
+	// messages wait behind it (bigwatch.go).
+	big bool
 	// streaming: the stream's response headers are out, and it answers
 	// each request with a message until the client ends its side.
 	streaming bool
@@ -199,6 +202,9 @@ type client struct {
 	busy    int64
 	// roomHeld is the room of the reserve it holds (reserve.go).
 	roomHeld int64
+	// bigs counts its streams that a watch response is written into in
+	// pieces (stream.big).
+	bigs int
 }
 
 // The client buffers (sizes.clientOut) bound what waits unsent to each

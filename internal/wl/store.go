@@ -1082,6 +1082,27 @@ func (st *store) putAt(id uint32, rev int64) ([]byte, error) {
 	return nil, nil
 }
 
+// putStateAt is putAt's state without its value: that of the put of
+// key id at revision rev, also where the same revision deleted the key
+// after it.
+func (st *store) putStateAt(id uint32, rev int64) (ckptState, bool) {
+	k := &st.keys[id]
+	if k.mod == rev && k.create != 0 {
+		return ckptState{create: k.create, mod: k.mod, ver: k.ver, lease: k.lease, voff: k.voff, vlen: k.vlen, vsum: k.vsum}, true
+	}
+	for h := k.hist; h != 0; h = st.hist[h].prev {
+		e := &st.hist[h]
+		if e.mod > rev || e.deleted {
+			continue
+		}
+		if e.mod < rev {
+			break
+		}
+		return ckptState{create: e.create, mod: e.mod, ver: e.ver, lease: e.lease, voff: e.voff, vlen: e.vlen, vsum: e.vsum}, true
+	}
+	return ckptState{}, false
+}
+
 // state returns the mod revision, create revision, version and lease of
 // key id now, all 0 if it is not live.
 func (st *store) state(id uint32) (mod, create, ver, lease int64) {

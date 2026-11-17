@@ -200,6 +200,11 @@ func (n *node) takeFetched(st *store, ckpts [2]ckptFile, vs []logValue, got []fe
 		b.fetching = false
 	}
 	n.pumpBig()
+	// And the large watch responses (bigwatch.go).
+	for _, b := range n.bigWatches {
+		b.fetching = false
+	}
+	n.pumpBigWatches()
 	// And the held replies of writes (reserve.go).
 	if len(n.heldReplies) > 0 {
 		for _, hr := range n.heldReplies {

@@ -35,7 +35,7 @@ func newFlow() flow { return flow{conn: defaultWindow, initial: defaultWindow} }
 // and if so takes its window.
 func (c *client) take(s *stream, n int) bool {
 	f := &c.flow
-	if s.holds || f.conn < int64(n) || s.win < int64(n) {
+	if s.holds || s.big || f.conn < int64(n) || s.win < int64(n) {
 		return false
 	}
 	f.conn -= int64(n)
@@ -131,7 +131,7 @@ func (c *client) drain() {
 	k := 0
 	for i := range f.held {
 		h := &f.held[i]
-		if blocked[h.sid] {
+		if blocked[h.sid] || c.bigs > 0 && c.isBig(h.sid) {
 			f.held[k] = *h
 			k++
 			continue
@@ -175,6 +175,32 @@ func (c *client) drain() {
 	}
 	clear(f.held[k:])
 	f.held = f.held[:k]
+}
+
+// isBig reports whether a watch response is written into stream sid in
+// pieces, which its held messages wait behind (bigwatch.go).
+func (c *client) isBig(sid uint32) bool {
+	s := c.get(sid)
+	return s != nil && s.big
+}
+
+// streamWin is stream s's send window, held in its client's flow while
+// it holds messages.
+func (c *client) streamWin(s *stream) int64 {
+	if s.holds {
+		return c.flow.streams[s.id]
+	}
+	return s.win
+}
+
+// spendWin takes m bytes of the windows of stream s and its connection.
+func (c *client) spendWin(s *stream, m int64) {
+	c.flow.conn -= m
+	if s.holds {
+		c.flow.streams[s.id] -= m
+		return
+	}
+	s.win -= m
 }
 
 // dropHeld drops what stream sid holds: the client reset it.

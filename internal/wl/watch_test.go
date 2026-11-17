@@ -153,7 +153,7 @@ func TestAWatchCatchingUpGetsNoLiveEvents(t *testing.T) {
 	var w watches
 	i := w.add(watcher{key: []byte("/a")})
 	w.ws[i].syncRev = 5
-	w.push(i, 0, false, 9, nil, nil)
+	w.push(i, 0, false, 9, nil, nil, 0)
 	if len(w.events) != 0 {
 		t.Fatal("a watcher catching up got a live event")
 	}

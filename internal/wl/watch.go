@@ -44,6 +44,11 @@ type watcher struct {
 	// the watch got events since the last.
 	progressNotify bool
 	sent           bool
+	// liveBytes is the size of its events of the apply; past replyRoom
+	// it catches up instead (bigwatch.go). big: a revision of its events
+	// is sent in pieces.
+	liveBytes int
+	big       bool
 }
 
 type event struct {
@@ -159,8 +164,9 @@ func (w *watches) record(st *store, id uint32, del bool, rev int64, kv, prev []b
 		return
 	}
 	e := w.cover(&st.tree, st.keys[id].dir)
+	klen := int(st.keys[id].klen)
 	for _, i := range e.wfull {
-		w.push(i, id, del, rev, kv, prev)
+		w.push(i, id, del, rev, kv, prev, klen)
 	}
 	if e.wpart || len(w.other) > 0 {
 		key := st.key(id)
@@ -168,13 +174,13 @@ func (w *watches) record(st *store, id uint32, del bool, rev int64, kv, prev []b
 			for i := range w.ws {
 				x := &w.ws[i]
 				if x.active && x.prefix && !bytes.HasPrefix(st.tree.path(st.keys[id].dir), x.key) && bytes.HasPrefix(key, x.key) {
-					w.push(int32(i), id, del, rev, kv, prev)
+					w.push(int32(i), id, del, rev, kv, prev, klen)
 				}
 			}
 		}
 		for _, i := range w.other {
 			if w.ws[i].covers(key) {
-				w.push(i, id, del, rev, kv, prev)
+				w.push(i, id, del, rev, kv, prev, klen)
 			}
 		}
 	}
@@ -217,9 +223,21 @@ func (w *watches) wantsPrev(st *store, id uint32, rev int64, del bool) bool {
 	return false
 }
 
-func (w *watches) push(i int32, id uint32, del bool, rev int64, kv, prev []byte) {
+func (w *watches) push(i int32, id uint32, del bool, rev int64, kv, prev []byte, klen int) {
 	x := &w.ws[i]
 	if (del && x.noDel) || (!del && x.noPut) || x.syncRev != 0 || rev < x.minRev {
+		return
+	}
+	// Past one message's room, the apply's events go out in pieces from
+	// the change index: the watcher catches up to them, and the apply
+	// reads it no more values before (wantsPrev; #728).
+	if x.liveBytes += len(kv) + len(prev) + klen + 32; x.liveBytes > replyRoom {
+		x.syncRev = rev
+		if x.first >= 0 {
+			x.syncRev = w.events[x.first].rev
+		}
+		x.first, x.last, x.liveBytes = -1, -1, 0
+		w.unsynced = append(w.unsynced, i)
 		return
 	}
 	firstOfWrite := x.first < 0 || w.events[x.last].rev != rev
@@ -483,8 +501,8 @@ func (n *node) flushEvents() {
 		x := &w.ws[i]
 		x.queued = false
 		first := x.first
-		x.first, x.last = -1, -1
-		if !x.active {
+		x.first, x.last, x.liveBytes = -1, -1, 0
+		if !x.active || first < 0 {
 			continue
 		}
 		c, s := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid))
@@ -596,11 +614,17 @@ func (n *node) syncWatchers() error {
 	if len(w.unsynced) == 0 {
 		return nil
 	}
-	budget := syncBudget{changes: syncChanges, events: syncEvents, bytes: n.syncBytes()}
+	budget := syncBudget{changes: syncChanges, events: syncEvents, bytes: n.syncBytes(), bigAt: -1}
 	k := 0
 	for _, i := range w.unsynced {
 		x := &w.ws[i]
 		if !x.active || x.syncRev == 0 {
+			continue
+		}
+		if x.big {
+			// A revision of its events is sent in pieces (bigwatch.go).
+			w.unsynced[k] = i
+			k++
 			continue
 		}
 		c, s := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid))
@@ -641,6 +665,14 @@ func (n *node) syncWatchers() error {
 			if err != nil {
 				return err
 			}
+			if j := budget.bigAt; j >= 0 {
+				// Its next revision passes one message's room: it goes
+				// out in pieces.
+				budget.bigAt = -1
+				if !n.startBigWatch(i, x, c, s, j) {
+					continue
+				}
+			}
 			if done {
 				x.syncRev = 0
 				n.progressIfSynced(c, s)
@@ -680,6 +712,9 @@ type syncBudget struct {
 	changes, events int
 	bytes           int64
 	away            bool // a value the turn read was away
+	// bigAt is where in the change index a revision begins whose events
+	// pass replyRoom, for a bigWatch; -1 for none.
+	bigAt int
 }
 
 func (b *syncBudget) left() bool { return b.changes > 0 && b.events > 0 && b.bytes > 0 }
@@ -734,6 +769,22 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event) bool) (bool
 				x.syncRev = ch.rev
 			}
 			return false, nil
+		}
+		if ch.rev != last && mayPassRoom(x, st.changes, j) {
+			// A revision is sized from its keys' states before any of its
+			// values is read: one past one message's room goes out in
+			// pieces (bigwatch.go, #728).
+			size, err := n.revSize(x, j)
+			if err != nil {
+				return false, err
+			}
+			if size > replyRoom {
+				if away || len(evs) > 0 && !emit(evs) {
+					return false, nil
+				}
+				x.syncRev, b.bigAt = ch.rev, j
+				return false, nil
+			}
 		}
 		b.changes--
 		last = ch.rev

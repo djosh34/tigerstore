@@ -136,6 +136,8 @@ type node struct {
 	// heldReplies are the replies of applied writes that wait for room
 	// in the reserve, unbuilt (reserve.go).
 	heldReplies []*heldReply
+	// bigWatches are the watch responses sent in pieces (bigwatch.go).
+	bigWatches []*bigWatch
 	// roomShort is set from when a message found the reserve spent until
 	// some room comes back: the watches' catch-ups wait for it.
 	roomShort bool
@@ -547,7 +549,7 @@ func (n *node) replyError(c *client, sid uint32, code int, msg string) {
 	blk = appendLiteral(blk, "grpc-status", itoa(code))
 	blk = appendLiteral(blk, "grpc-message", encodeGrpcMessage(msg))
 	s := c.get(sid)
-	if s != nil && s.holds {
+	if s != nil && (s.holds || s.big) {
 		c.hold(s, nil, blk)
 	} else {
 		b := c.frame(9 + len(blk))
