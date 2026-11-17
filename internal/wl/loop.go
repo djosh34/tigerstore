@@ -1272,8 +1272,8 @@ func (l *loop) logStats() {
 		l.n.st.nkeys, l.n.st.rev, l.n.st.slab.top>>20)
 	l.lastWAL = ws
 	st := l.n.st
-	l.logger.Printf("budget: slab used %d MB limit %d MB evictions %d loads %d; stage waits %d; values read off the loop %d in %d fetches",
-		st.slab.used>>20, st.limit>>20, st.evictions, st.loads, l.n.wal.stats.waits, l.n.stats.fetched, l.n.stats.fetches)
+	l.logger.Printf("budget: slab used %d MB of %d MB mapped, limit %d MB, evictions %d loads %d, shrinks %d; stage waits %d; values read off the loop %d in %d fetches",
+		st.slab.used>>20, st.slab.top>>20, st.limit>>20, st.evictions, st.loads, st.shrinks, l.n.wal.stats.waits, l.n.stats.fetched, l.n.stats.fetches)
 	m := l.n.memStats()
 	l.logger.Printf("memory MB: rss %d, go %d (live heap %d, goal %d); tables: keys %d hash %d history %d key arena %d slab %d (used %d) tree %d changes %d; sockets out %d in %d, held %d, held for clients' windows %d; clients %d (refused %d in all), requests sent in part %d",
 		m.rss>>20, m.goTotal>>20, m.goLive>>20, m.goGoal>>20, m.keys>>20, m.hash>>20, m.hist>>20, m.arena>>20, m.slabTop>>20, m.slabUsed>>20, m.tree>>20, m.ch>>20,

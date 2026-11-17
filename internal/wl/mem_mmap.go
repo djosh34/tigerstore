@@ -32,3 +32,10 @@ func mmapBytes(n int) ([]byte, error) {
 
 // unixMunmap gives back what mmapBytes reserved.
 func unixMunmap(b []byte) error { return unix.Munmap(b) }
+
+// pageSize is the system's page: what dropPages gives back is whole pages.
+var pageSize = unix.Getpagesize()
+
+// dropPages gives b's pages back to the system: they read as zeros, and
+// take memory again when written. b starts on a page.
+func dropPages(b []byte) { _ = unix.Madvise(b, unix.MADV_DONTNEED) }

@@ -90,6 +90,54 @@ func (s *slab) free(off uint64, n int) {
 
 func (s *slab) bytes(off uint64, n int) []byte { return s.mem[off : int(off)+n : int(off)+n] }
 
+// slotEnd is where the slot of n bytes at off ends.
+func slotEnd(off uint64, n int) int {
+	_, size := classOf(n)
+	return int(off) + size
+}
+
+// shrink lowers the slab's top to to, a page boundary, and gives the pages
+// past it back to the system: the free lists keep only the free slots that
+// end by to. Every slot handed out must end by to.
+func (s *slab) shrink(to int) {
+	if to >= s.top {
+		return
+	}
+	for c := range s.heads {
+		size := minClass
+		if c > 0 {
+			size = classSize(c)
+		}
+		var prev uint64
+		for h := s.heads[c]; h != 0; {
+			next := *(*uint64)(unsafe.Pointer(&s.mem[h]))
+			if int(h)+size <= to {
+				if prev == 0 {
+					s.heads[c] = h
+				} else {
+					*(*uint64)(unsafe.Pointer(&s.mem[prev])) = h
+				}
+				prev = h
+			}
+			h = next
+		}
+		if prev == 0 {
+			s.heads[c] = 0
+		} else {
+			*(*uint64)(unsafe.Pointer(&s.mem[prev])) = 0
+		}
+	}
+	dropPages(s.mem[to:s.top])
+	s.top = to
+}
+
+// classSize is the slot size of class c > 0: classOf's, the other way.
+func classSize(c int) int {
+	k, j := (c-1)/8+6, (c-1)%8
+	base := 1 << k
+	return base + (j+1)*(base>>3)
+}
+
 // arena is a bump allocator of bytes that are never freed: keys and
 // directory paths.
 type arena struct {

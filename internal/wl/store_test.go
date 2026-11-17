@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -211,5 +212,108 @@ func TestTheStoreTakesKeysPastItsFirstIndex(t *testing.T) {
 	}
 	if _, ok := st.find([]byte("/k/none")); ok {
 		t.Fatal("found a key never added")
+	}
+}
+
+// Once the limit falls well below the slab's top, as the tables grow with
+// the keys, the store lets go of the records past the limit's page and
+// gives the slab's pages past it back: a freed slot stays mapped and
+// resident, and the slab kept the most it ever held, so a node of
+// past-ram's 560 MiB budget reached 658 MB and its cgroup killed it.
+// Every value still reads back, built again from the log, and later puts
+// take slots that overlap none kept.
+func TestTheSlabGivesBackWhatItsLimitNoLongerAllows(t *testing.T) {
+	st, l := newTestStore(t)
+	value := func(i int) string { return fmt.Sprintf("%04d", i) + strings.Repeat("v", 1000) }
+	for i := range 2000 {
+		putValue(t, st, l, fmt.Sprintf("/s/%04d", i), value(i))
+	}
+	top := st.slab.top
+	st.budget, st.limit = 32<<20, int64(top/4)
+	st.shrinkSlab()
+	if st.slab.top >= top || st.slab.top > (int(st.limit)+pageSize-1)&^(pageSize-1) || st.shrinks != 1 || st.evictions == 0 {
+		t.Fatalf("the slab's top went from %d to %d with a limit of %d: %d shrinks, %d evictions", top, st.slab.top, st.limit, st.shrinks, st.evictions)
+	}
+	for i := range st.keys[:st.nkeys] {
+		if k := &st.keys[i]; k.rec != 0 && slotEnd(k.rec, int(k.rlen)) > st.slab.top {
+			t.Fatalf("key %d's record ends at %d, past the slab's top %d", i, slotEnd(k.rec, int(k.rlen)), st.slab.top)
+		}
+	}
+	st.budget = 0
+	for i := 2000; i < 2500; i++ {
+		putValue(t, st, l, fmt.Sprintf("/s/%04d", i), value(i))
+	}
+	for i := range 2500 {
+		id, _ := st.find(fmt.Appendf(nil, "/s/%04d", i))
+		rec, err := st.live(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(rec, []byte(value(i))) {
+			t.Fatalf("key %d reads back as %q", i, rec[:min(len(rec), 40)])
+		}
+	}
+}
+
+// classSize is classOf's slot size of a class, the other way round; and a
+// shrunk slab keeps on its free lists only the slots that end by its new
+// top, handing out the rest of what it gives anew from that top.
+func TestASlabShrinksToItsFreeSlotsBelowTheNewTop(t *testing.T) {
+	for n := 1; n < 1<<22; n += n/7 + 1 {
+		if c, size := classOf(n); c > 0 && classSize(c) != size {
+			t.Fatalf("class %d of %d bytes: classSize %d, classOf %d", c, n, classSize(c), size)
+		}
+	}
+	s, err := newSlab(1 << 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var offs []uint64
+	for range 400 {
+		off, err := s.alloc(1000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		offs = append(offs, off)
+	}
+	// Free every other slot; then shrink to the page past the 100th, the
+	// live slots that end past it let go by their owners first.
+	live := map[uint64]bool{}
+	for i, off := range offs {
+		if i%2 == 1 {
+			s.free(off, 1000)
+		} else {
+			live[off] = true
+		}
+	}
+	to := (slotEnd(offs[100], 1000) + pageSize - 1) &^ (pageSize - 1)
+	for off := range live {
+		if slotEnd(off, 1000) > to {
+			s.free(off, 1000)
+			delete(live, off)
+		}
+	}
+	s.shrink(to)
+	if s.top != to {
+		t.Fatalf("the top is %d, want %d", s.top, to)
+	}
+	seen := map[uint64]bool{}
+	for {
+		off, err := s.alloc(1000)
+		if err != nil {
+			break
+		}
+		if seen[off] {
+			t.Fatalf("slot %d handed out twice", off)
+		}
+		seen[off] = true
+		if int(off) < to && slotEnd(off, 1000) > to {
+			t.Fatalf("slot %d straddles the new top %d", off, to)
+		}
+		for l := range live {
+			if off < uint64(slotEnd(l, 1000)) && l < uint64(slotEnd(off, 1000)) {
+				t.Fatalf("slot %d overlaps live slot %d", off, l)
+			}
+		}
 	}
 }

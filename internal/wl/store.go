@@ -129,6 +129,7 @@ type store struct {
 	limit     int64
 	hand      uint32
 	evictions uint64
+	shrinks   uint64 // the times shrinkSlab gave pages back
 	loads     uint64
 	// liveBytes and histBytes are the size of the live values and of the
 	// earlier ones the history keeps: what a checkpoint holds.
@@ -572,6 +573,31 @@ func (st *store) goLimit() int64 {
 	return max(st.budget-st.outside(), st.goNeed())
 }
 
+// shrinkSlab gives the slab's memory past its limit back to the system,
+// once its top grew past the limit by a 32nd of the budget. A freed slot
+// stays mapped and resident, so the slab kept the most it ever held while
+// the tables, which grow with the keys, lowered its limit: a node with a
+// 560 MiB budget, past-ram's, reached 658 MB and its cgroup killed it.
+// The records whose slots end past the page the limit falls in are let
+// go, as fit lets records go, and built again from the log when read; the
+// slab's top comes down to that page, and the pages past it go back.
+func (st *store) shrinkSlab() {
+	if st.budget == 0 || int64(st.slab.top) <= st.limit+st.budget/32 {
+		return
+	}
+	to := (max(int(st.limit), minClass) + pageSize - 1) &^ (pageSize - 1)
+	for i := range st.keys[:st.nkeys] {
+		k := &st.keys[i]
+		if k.rec != 0 && slotEnd(k.rec, int(k.rlen)) > to {
+			st.slab.free(k.rec, int(k.rlen))
+			k.rec, k.rlen = 0, 0
+			st.evictions++
+		}
+	}
+	st.slab.shrink(to)
+	st.shrinks++
+}
+
 // fitSteps is the most records one apply lets go of.
 const fitSteps = 1 << 13
 
@@ -732,6 +758,7 @@ func (st *store) endApply() {
 	}
 	st.freeLater = st.freeLater[:0]
 	st.fit()
+	st.shrinkSlab()
 	st.trimSteps(trimStep)
 }
 
