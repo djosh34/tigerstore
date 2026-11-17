@@ -209,7 +209,8 @@ type client struct {
 
 // The client buffers (sizes.clientOut) bound what waits unsent to each
 // client connection in two parts, each within the connection's share
-// (sizes.connOut), and one reply over it:
+// (sizes.connOut); a message that would take it past the share takes
+// room of the shared reserve first, or waits (reserve.go):
 //   - its send buffer, while the socket does not take it: the node stops
 //     reading the connection (paused), and its watches catch up later
 //     from the change index, as etcd's slow watchers do;
