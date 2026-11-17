@@ -812,6 +812,11 @@ func (l cutLog) read(p []byte, off int64) error {
 	return l.l.read(p, off)
 }
 
+// A checkpoint's writer reads a cutLog as it reads the log, the cut
+// removed.
+func (l cutLog) durableEnd() int64                     { return l.l.durableEnd() }
+func (l cutLog) readDurable(p []byte, off int64) error { return l.read(p, off) }
+
 // A held state's value that a checkpoint left in the log is not cut away
 // by the next: that one takes it in (#689's re-check, D2). Before, it
 // scanned the states from the compacted revision alone, cut the log past

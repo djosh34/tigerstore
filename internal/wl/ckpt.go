@@ -461,6 +461,31 @@ func (n *node) ckptStep(block bool) error {
 	return nil
 }
 
+// The invariant of reads held across checkpoints (#689). A read may be
+// held at a revision while a reply is sent in pieces or waits for the
+// reserve: a large range at its revision, a large watch at its revision
+// and the one before, a waiting reply at its records' least revision for
+// trimming and at each record's own state (store.holdRead, holdTrim,
+// holdState). Whatever the holds, at every moment:
+//
+//   - every read a holder makes, at every held revision, answers exactly
+//     as the live store answered it when the hold was taken: each key's
+//     state there, a watch's put events at its revision (a put its own Txn
+//     deleted there included) and the values before them, each record of
+//     a waiting reply;
+//   - so does every read at the compacted revision or later;
+//   - the newest checkpoint, with the log from its cut on, holds every
+//     value those reads need: none lies only in a replaced checkpoint or
+//     in the log before the cut;
+//   - a store loaded from a checkpoint has the state hash of the store it
+//     was taken of at its revision (stateHash): the values only holds
+//     need lie in the file unnamed.
+//
+// TestHeldReadsSurviveCheckpointsAsAModelSays checks it against a model
+// of the store's revisions, over random puts, deletes, Txns that put and
+// delete one key, compactions, holds taken and released, checkpoints,
+// which writes and holds may come in the middle of, and loads.
+
 // scanKeys scans the next keys for the values the checkpoint takes in.
 // Once all are scanned, it picks the log it cuts and places the values.
 func (n *node) scanKeys(r *ckptRun) {
