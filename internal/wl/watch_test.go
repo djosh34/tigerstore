@@ -20,7 +20,7 @@ func historyOf(t *testing.T, n *node, x watcher, from int64) []seen {
 	x.prefix = len(x.end) > 0 && slices.Equal(x.end, prefixEnd(x.key))
 	var out []seen
 	x.syncRev = from
-	b := syncBudget{changes: 1 << 30, events: 1 << 30}
+	b := syncBudget{changes: 1 << 30, events: 1 << 30, bytes: 1 << 62}
 	_, err := n.catchUp(&x, &b, func(evs []event) {
 		for _, ev := range evs {
 			s := seen{key: string(n.st.key(ev.key)), rev: ev.rev, del: ev.del}
@@ -130,7 +130,7 @@ func TestWatchCatchUpKeepsToItsBudgetAndEndsAtARevision(t *testing.T) {
 		}
 	}
 	// A budget of ten takes revisions 2 to 11 and stops before 12.
-	b := syncBudget{changes: 10, events: 1 << 10}
+	b := syncBudget{changes: 10, events: 1 << 10, bytes: 1 << 62}
 	if done, err := n.catchUp(&x, &b, emit); err != nil || done {
 		t.Fatalf("a catch-up past its budget: done %v, %v", done, err)
 	}
@@ -138,7 +138,7 @@ func TestWatchCatchUpKeepsToItsBudgetAndEndsAtARevision(t *testing.T) {
 		t.Fatalf("the first turn sent revisions %v and goes on from %d, want 2 to 11 and 12", got, x.syncRev)
 	}
 	// A budget of one finishes revision 12's three changes.
-	b = syncBudget{changes: 1, events: 1 << 10}
+	b = syncBudget{changes: 1, events: 1 << 10, bytes: 1 << 62}
 	if done, err := n.catchUp(&x, &b, emit); err != nil || !done {
 		t.Fatalf("the second turn: done %v, %v", done, err)
 	}

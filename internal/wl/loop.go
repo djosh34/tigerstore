@@ -982,7 +982,7 @@ func (l *loop) run() error {
 				wake = t
 			}
 		}
-		if d := time.Until(wake); d > 0 {
+		if d := time.Until(wake); d > 0 && !n.syncReady() && !n.bigReady() {
 			timeout = int((d + time.Millisecond - 1) / time.Millisecond)
 		}
 		l.watch.wait()
@@ -1094,6 +1094,7 @@ func (l *loop) run() error {
 		if err := n.syncWatchers(); err != nil {
 			return err
 		}
+		n.pumpBig()
 		n.turnCkpt = ckptTurn{}
 		if err := n.ckptStep(false); err != nil {
 			return err
@@ -1282,6 +1283,10 @@ type counters struct {
 	// fetches counts the reads of values off the loop, and fetched the
 	// values they read (fetch.go).
 	fetches, fetched int
+	// fetchMost is the most bytes one fetch read.
+	fetchMost int64
+	// bigRanges counts the range replies sent in pieces (bigrange.go).
+	bigRanges uint64
 
 	// What the batches carried, and how the peers named or carried them.
 	opsByKind, bytesByKind [kinds]int

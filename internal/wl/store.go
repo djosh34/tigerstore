@@ -101,7 +101,12 @@ type store struct {
 	// everything from the revision it was compacted to, holdRev.
 	holding bool
 	holdRev int64
-	tree    tree
+	// readHolds are the revisions large range replies read at while they
+	// are sent in pieces (bigrange.go): trimming keeps what a read at each
+	// needs, and readHoldMin is the lowest of them.
+	readHolds   []int64
+	readHoldMin int64
+	tree        tree
 
 	leases map[int64]*lease
 	log    logReader
@@ -826,12 +831,46 @@ func (st *store) compact(rev int64) {
 }
 
 // trimRev is the revision whose reads trimming keeps what they need: the
-// compacted one, or the one a checkpoint being written holds.
+// compacted one, or the one a checkpoint being written holds, or the
+// lowest a range reply sent in pieces reads at.
 func (st *store) trimRev() int64 {
+	c := st.ckptRev()
+	if len(st.readHolds) > 0 {
+		c = min(c, st.readHoldMin)
+	}
+	return c
+}
+
+// ckptRev is the revision a checkpoint keeps the states of: the
+// compacted one, or the one a checkpoint being written holds. Range
+// replies' holds keep more in the store, but not in a checkpoint.
+func (st *store) ckptRev() int64 {
 	if st.holding {
 		return min(st.compactRev, st.holdRev)
 	}
 	return st.compactRev
+}
+
+// holdRead keeps what a read at rev needs until releaseRead(rev): its
+// keys' states, the tree's keys live at rev, and their ids.
+func (st *store) holdRead(rev int64) {
+	if len(st.readHolds) == 0 || rev < st.readHoldMin {
+		st.readHoldMin = rev
+	}
+	st.readHolds = append(st.readHolds, rev)
+}
+
+func (st *store) releaseRead(rev int64) {
+	before := st.trimRev()
+	if i := slices.Index(st.readHolds, rev); i >= 0 {
+		st.readHolds = slices.Delete(st.readHolds, i, i+1)
+	}
+	if len(st.readHolds) > 0 {
+		st.readHoldMin = slices.Min(st.readHolds)
+	}
+	if st.trimRev() > before {
+		st.retrim()
+	}
 }
 
 // retrim drops the change index before trimRev and starts trimming the
@@ -977,6 +1016,29 @@ func (st *store) keyAt(id uint32, rev int64) []byte {
 		return appendKV(nil, st.key(id), nil, e.create, e.mod, e.ver, e.lease)
 	}
 	return nil
+}
+
+// stateAt returns key id's state at revision rev, as at finds it, without
+// its value; ok is false if the key was not live then.
+func (st *store) stateAt(id uint32, rev int64) (s ckptState, ok bool) {
+	k := &st.keys[id]
+	if rev == 0 || k.mod <= rev || planted.On("B31") {
+		if k.create == 0 {
+			return s, false
+		}
+		return ckptState{create: k.create, mod: k.mod, ver: k.ver, lease: k.lease, voff: k.voff, vlen: k.vlen, vsum: k.vsum}, true
+	}
+	for h := k.hist; h != 0; h = st.hist[h].prev {
+		e := &st.hist[h]
+		if e.mod > rev {
+			continue
+		}
+		if e.deleted {
+			return s, false
+		}
+		return ckptState{create: e.create, mod: e.mod, ver: e.ver, lease: e.lease, voff: e.voff, vlen: e.vlen, vsum: e.vsum}, true
+	}
+	return s, false
 }
 
 // liveAt reports whether key id was live at revision rev, as at finds

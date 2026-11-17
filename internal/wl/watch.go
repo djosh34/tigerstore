@@ -37,6 +37,9 @@ type watcher struct {
 	// syncRev, while not 0, is the revision a watch from the past catches
 	// up from: it gets no live events until it reaches the head.
 	syncRev int64
+	// fetchWait: its catch-up waits for values read off the loop, and
+	// goes on once they come (takeFetched).
+	fetchWait bool
 	// progressNotify asks for etcd's progress notifications; sent says
 	// the watch got events since the last.
 	progressNotify bool
@@ -578,13 +581,21 @@ const (
 	syncEvents  = 256     // events it sends in a turn, all watchers together
 )
 
+// syncBytes is the most of records and values the catch-up reads in a
+// turn, all watchers together, those it fetches off the loop too: a
+// share's worth (oneShot). Counted in events alone, a turn's catch-up of
+// large values fetched all of 16,384 changes' values at once, and wrote
+// 256 events of up to the request limit each (#689's area-3 review,
+// finding 22).
+func (n *node) syncBytes() int64 { return n.oneShot() }
+
 // syncWatchers moves the watchers that catch up on, for one turn.
 func (n *node) syncWatchers() error {
 	w := &n.w
 	if len(w.unsynced) == 0 {
 		return nil
 	}
-	budget := syncBudget{changes: syncChanges, events: syncEvents}
+	budget := syncBudget{changes: syncChanges, events: syncEvents, bytes: n.syncBytes()}
 	k := 0
 	for _, i := range w.unsynced {
 		x := &w.ws[i]
@@ -600,7 +611,8 @@ func (n *node) syncWatchers() error {
 			w.remove(i)
 			continue
 		}
-		if budget.left() && !c.slow() {
+		if budget.left() && !c.slow() && !x.fetchWait {
+			budget.away = false
 			done, err := n.catchUp(x, &budget, func(evs []event) { n.writeEvents(c, s, x, evs) })
 			if errors.Is(err, errPrevCompacted) {
 				n.writeCompacted(c, s, x)
@@ -615,6 +627,7 @@ func (n *node) syncWatchers() error {
 				n.progressIfSynced(c, s)
 				continue
 			}
+			x.fetchWait = budget.away
 		}
 		w.unsynced[k] = i
 		k++
@@ -623,9 +636,31 @@ func (n *node) syncWatchers() error {
 	return nil
 }
 
-type syncBudget struct{ changes, events int }
+// syncReady reports whether a watch's catch-up could go on now, so that
+// the loop does not wait for an event first: one that stopped at its
+// turn's budget, or whose client took what was sent to it, and that
+// waits for no value. Waiting for the next tick, a catch-up of large
+// values went at a share every 100 ms.
+func (n *node) syncReady() bool {
+	for _, i := range n.w.unsynced {
+		x := &n.w.ws[i]
+		if !x.active || x.syncRev == 0 || x.fetchWait {
+			continue
+		}
+		if c, _ := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid)); c == nil || !c.slow() {
+			return true
+		}
+	}
+	return false
+}
 
-func (b *syncBudget) left() bool { return b.changes > 0 && b.events > 0 }
+type syncBudget struct {
+	changes, events int
+	bytes           int64
+	away            bool // a value the turn read was away
+}
+
+func (b *syncBudget) left() bool { return b.changes > 0 && b.events > 0 && b.bytes > 0 }
 
 // deletedIn reports whether change j's key was deleted earlier in the
 // same revision.
@@ -685,9 +720,19 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 		}
 		ev := event{del: ch.del, key: ch.key, rev: ch.rev}
 		var err error
+		a := len(st.away)
+		// What the event's values take, those found away too: the fetch
+		// reads them.
+		spend := func() {
+			for _, v := range st.away[a:] {
+				b.bytes -= int64(v.len)
+			}
+			a = len(st.away)
+		}
 		if !ch.del {
 			if ev.kv, err = st.putAt(ch.key, ch.rev); errors.Is(err, errAway) {
-				away = true
+				away, b.away = true, true
+				spend()
 				continue
 			} else if err != nil {
 				return false, err
@@ -698,7 +743,8 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 			// sub-revisions have it, the value before is the tombstone.
 		} else if x.prevKV {
 			if ev.prev, err = st.at(ch.key, ch.rev-1); errors.Is(err, errAway) {
-				away = true
+				away, b.away = true, true
+				spend()
 				continue
 			} else if err != nil {
 				return false, err
@@ -712,6 +758,7 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 		}
 		evs = append(evs, ev)
 		b.events--
+		b.bytes -= int64(len(ev.kv) + len(ev.prev))
 	}
 	if away {
 		return false, nil

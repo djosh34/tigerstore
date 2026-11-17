@@ -631,7 +631,11 @@ func (c *client) frames(n *node) error {
 				case s.watch:
 				case sideKind(s.kind):
 					n.sideEnded(c, s)
-				case s.streaming:
+				case s.streaming && s.kind == kLeaseKeepAlive:
+					// A keepalive stream ends with its client's side. A
+					// RangeStream or Snapshot, whose client sent all it sends,
+					// ends with its last message: one sent over turns
+					// (bigrange.go) was cut short.
 					n.endStreaming(c, s)
 				}
 			}

@@ -119,6 +119,11 @@ func (n *node) fetchAway() {
 	}
 	n.stats.fetches++
 	n.stats.fetched += len(vs)
+	size := int64(0)
+	for _, v := range vs {
+		size += int64(v.len)
+	}
+	n.stats.fetchMost = max(n.stats.fetchMost, size)
 	ckpts := st.ckpts
 	n.shell.offLoop(func() func() error {
 		got := make([]fetchedValue, len(vs))
@@ -180,10 +185,18 @@ func (n *node) takeFetched(st *store, ckpts [2]ckptFile, vs []logValue, got []fe
 	// a fetch larger than fetchedMax lost values a watch needed, which it
 	// fetched again, turn after turn, for good (#689's area-3 review).
 	if len(n.w.unsynced) > 0 {
+		for _, i := range n.w.unsynced {
+			n.w.ws[i].fetchWait = false
+		}
 		if err := n.syncWatchers(); err != nil {
 			return err
 		}
 	}
+	// So do the large range replies that waited for values.
+	for _, b := range n.bigs {
+		b.fetching = false
+	}
+	n.pumpBig()
 	// The ranges and watches that waited took what they needed: past
 	// fetchedMax, the oldest values go, those of this fetch last.
 	n.st.trimFetched(n.now.Add(-fetchedFor), fetchedMax(n.st.budget))

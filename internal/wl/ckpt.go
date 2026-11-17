@@ -465,7 +465,7 @@ func (n *node) scanKeys(r *ckptRun) {
 	st := n.st
 	stop := min(r.end, r.next+ckptChunkKeys)
 	for states := 0; r.next < stop && states < ckptScanStates; r.next++ {
-		r.states = st.ckptStates(r.next, r.meta.rev, st.trimRev(), r.states[:0])
+		r.states = st.ckptStates(r.next, r.meta.rev, st.ckptRev(), r.states[:0])
 		states += len(r.states)
 		for i := range r.states {
 			s := &r.states[i]
@@ -722,7 +722,7 @@ func (r *ckptRun) encodeChanges(st *store, c *ckptChunk) {
 // the checkpoint took it in, or in the log.
 func (n *node) encodeKey(r *ckptRun, c *ckptChunk, id uint32) {
 	st := n.st
-	states := st.ckptStates(id, r.meta.rev, st.trimRev(), r.states[:0])
+	states := st.ckptStates(id, r.meta.rev, st.ckptRev(), r.states[:0])
 	r.states = states
 	if len(states) == 0 {
 		return

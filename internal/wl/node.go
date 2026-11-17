@@ -123,6 +123,8 @@ type node struct {
 	// the values fetches read (fetch.go).
 	awayReads []awayRead
 	fetching  map[int64]bool
+	// bigs are the range replies sent in pieces (bigrange.go).
+	bigs []*bigRange
 
 	wal *wal
 

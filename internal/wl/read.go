@@ -156,8 +156,14 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		return
 	}
 	st.noWait = true
-	kvs, count, more, err := n.rangeKVs(r, n.kvs[:0])
+	kvs, count, more, err := n.rangeKVs(r, n.kvs[:0], n.oneShot())
 	st.noWait = false
+	if errors.Is(err, errBig) {
+		clear(kvs)
+		n.kvs = kvs[:0]
+		n.startBig(c, s, msg)
+		return
+	}
 	if errors.Is(err, errAway) {
 		clear(kvs)
 		n.kvs = kvs[:0]
@@ -317,10 +323,12 @@ func (n *node) rangeChunk(c *client, s *stream, kvs [][]byte, last, more bool, c
 // etcd's steps (executeRange): read the range's keys, one more than the
 // limit, or all when it sorts other than by key or filters by revision;
 // filter, sort, and cut to the limit. The count is the range's,
-// unfiltered.
-func (n *node) rangeKVs(r *rangeReq, kvs [][]byte) ([][]byte, int64, bool, error) {
+// unfiltered. Past most bytes of records read, 0 for no bound, it stops
+// with errBig: the reply is sent in pieces (bigrange.go).
+func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64, bool, error) {
 	st := n.st
 	k0 := len(kvs)
+	a0 := len(st.away)
 	rev := max(r.rev, 0) // etcd reads at the current revision for any rev <= 0
 	// A range of keys only reads no value, unless it sorts by value.
 	noValue := r.keysOnly && r.sortTarget != sortByValue
@@ -360,10 +368,14 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte) ([][]byte, int64, bool, error
 	}
 	// count is the live keys of the range; taken, those of them it read or
 	// found away.
-	var count, taken int64
+	var count, taken, size int64
 	var err error
-	away := false
+	away, big := false, false
 	st.tree.scan(r.key, end, func(id uint32) bool {
+		if most > 0 && size > most {
+			big = true
+			return false
+		}
 		if taken >= read {
 			// Past what the range returns, it only counts: the key's
 			// state says whether it was live, and its value, which may
@@ -374,24 +386,38 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte) ([][]byte, int64, bool, error
 		var rec []byte
 		if noValue {
 			rec = st.keyAt(id, rev)
-		} else if rec, err = st.at(id, rev); errors.Is(err, errAway) {
-			// The scan goes on, so that one fetch reads every value the
-			// range lacks. Only a live state has a value to read.
-			away, err = true, nil
-			count++
-			taken++
-			return true
-		} else if err != nil {
-			return false
+		} else {
+			a := len(st.away)
+			rec, err = st.at(id, rev)
+			if errors.Is(err, errAway) {
+				// The scan goes on, so that one fetch reads every value the
+				// range lacks, up to most. Only a live state has a value to
+				// read.
+				away, err = true, nil
+				count++
+				taken++
+				for _, v := range st.away[a:] {
+					size += int64(v.len)
+				}
+				return true
+			}
+			if err != nil {
+				return false
+			}
 		}
 		if rec == nil {
 			return true
 		}
 		count++
 		taken++
+		size += int64(len(rec))
 		kvs = append(kvs, rec)
 		return true
 	})
+	if big {
+		st.away = st.away[:a0]
+		return kvs, 0, false, errBig
+	}
 	if away {
 		return kvs, 0, false, errAway
 	}

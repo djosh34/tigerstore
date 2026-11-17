@@ -501,7 +501,7 @@ func TestKeysOnlyRangesReadNoValue(t *testing.T) {
 	for _, rev := range []int64{0, 50} {
 		loads := st.loads
 		r := &rangeReq{key: []byte("/k/"), end: prefixEnd([]byte("/k/")), keysOnly: true, rev: rev}
-		kvs, count, _, err := n.rangeKVs(r, nil)
+		kvs, count, _, err := n.rangeKVs(r, nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -523,7 +523,7 @@ func TestKeysOnlyRangesReadNoValue(t *testing.T) {
 	}
 	loads := st.loads
 	r := &rangeReq{key: []byte("/k/"), end: prefixEnd([]byte("/k/")), keysOnly: true, sortTarget: sortByValue, sortOrder: sortAscend}
-	if _, _, _, err := n.rangeKVs(r, nil); err != nil || st.loads-loads != 100 {
+	if _, _, _, err := n.rangeKVs(r, nil, 0); err != nil || st.loads-loads != 100 {
 		t.Fatalf("a keys-only range sorted by value: %d values read, %v", st.loads-loads, err)
 	}
 }

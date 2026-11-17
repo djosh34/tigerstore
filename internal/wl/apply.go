@@ -625,7 +625,7 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 			n.gs.rangesN++
 			var count int64
 			var more bool
-			if t.kvs, count, more, err = n.rangeKVs(&r, t.kvs); err != nil {
+			if t.kvs, count, more, err = n.rangeKVs(&r, t.kvs, 0); err != nil {
 				return 0, 0, err
 			}
 			if r.keysOnly {

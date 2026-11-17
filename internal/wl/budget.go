@@ -95,8 +95,8 @@ const minConnOut = 64 << 10
 // the node stops reading its requests and sends its watches' events by
 // catching up from the change index (client.backedUp): its share of the
 // half of clientBufs for what waits to be sent. It may go past it by the
-// one reply under way, which the store and the range limits bound, as in
-// etcd.
+// one message under way: a range reply past oneShot, and a watch's
+// catch-up past syncBytes a turn, go in pieces (bigrange.go, #721).
 func (z sizes) connOut(active int) int64 {
 	return max((z.clientBufs()-z.clientInBufs())/int64(max(active, 1)), minConnOut)
 }
