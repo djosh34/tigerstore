@@ -194,12 +194,6 @@ func (s *Store) Changed(pos int64) Change {
 // Gone reports whether a compaction removed the version of the change.
 func (c Change) Gone() bool { return c.i < 0 }
 
-// HistoryStart is the position of the oldest change the history holds.
-func (s *Store) HistoryStart() int64 { return s.hist.first }
-
-// Deletes reports whether the change deletes its key.
-func (c Change) Deletes() bool { return c.k.vers()[c.i].ver == 0 }
-
 // ChangesFrom is the history position of the first change of the last
 // write, Changes()[0].
 func (s *Store) ChangesFrom() int64 { return s.hist.end() - int64(len(s.changes)) }
