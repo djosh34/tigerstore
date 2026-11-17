@@ -953,6 +953,34 @@ func (st *store) at(id uint32, rev int64) ([]byte, error) {
 	return nil, nil
 }
 
+// keyAt is at without the value, for a range of keys only: a record in
+// memory is taken as it is, and one the budget let go of, or a value of
+// the history, is built from the key's state without its value, which
+// may lie only on disk (#689's area-3 review).
+func (st *store) keyAt(id uint32, rev int64) []byte {
+	k := &st.keys[id]
+	if rev == 0 || k.mod <= rev || planted.On("B31") {
+		switch {
+		case k.create == 0:
+			return nil
+		case k.rec != 0:
+			return st.slab.bytes(k.rec, int(k.rlen))
+		}
+		return appendKV(nil, st.key(id), nil, k.create, k.mod, k.ver, k.lease)
+	}
+	for h := k.hist; h != 0; h = st.hist[h].prev {
+		e := &st.hist[h]
+		if e.mod > rev {
+			continue
+		}
+		if e.deleted {
+			return nil
+		}
+		return appendKV(nil, st.key(id), nil, e.create, e.mod, e.ver, e.lease)
+	}
+	return nil
+}
+
 // liveAt reports whether key id was live at revision rev, as at finds
 // it, but from its state alone: a range counts keys it does not return
 // without reading their values, which may lie only on disk.

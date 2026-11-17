@@ -469,3 +469,51 @@ func TestPutsReadNoValueNothingAsksFor(t *testing.T) {
 		t.Fatalf("100 puts with prevKV: %d values before, %d loads", len(prevs), st.loads-loads)
 	}
 }
+
+// A range of keys only reads no value: with every record let go of, it
+// read each value back from the disk to strip it after. It answers each
+// key with its revisions, at the head and in the history. A range that
+// sorts by value still reads them.
+func TestKeysOnlyRangesReadNoValue(t *testing.T) {
+	n, l := ckptNode(t)
+	st := n.st
+	st.setBudget(1, 0) // no room for records: each is let go of
+	for round := range 2 {
+		for i := range 100 {
+			v := []byte(fmt.Sprintf("value %d", round))
+			st.rev++
+			if _, err := n.putKey(&putReq{key: fmt.Appendf(nil, "/k/%03d", i), value: v}, v, l.add(string(v)), st.rev); err != nil {
+				t.Fatal(err)
+			}
+			st.endApply()
+		}
+	}
+	for _, rev := range []int64{0, 50} {
+		loads := st.loads
+		r := &rangeReq{key: []byte("/k/"), end: prefixEnd([]byte("/k/")), keysOnly: true, rev: rev}
+		kvs, count, _, err := n.rangeKVs(r, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.loads != loads {
+			t.Fatalf("a keys-only range at %d read %d values", rev, st.loads-loads)
+		}
+		want := int64(100)
+		if rev == 50 {
+			want = 49 // revisions 2 to 50
+		}
+		if count != want || int64(len(kvs)) != want {
+			t.Fatalf("a keys-only range at %d: %d keys, count %d, want %d", rev, len(kvs), count, want)
+		}
+		for _, kv := range kvs {
+			if len(recValue(kv)) != 0 || recVersion(kv) == 0 {
+				t.Fatalf("a keys-only range at %d answered %q", rev, kv)
+			}
+		}
+	}
+	loads := st.loads
+	r := &rangeReq{key: []byte("/k/"), end: prefixEnd([]byte("/k/")), keysOnly: true, sortTarget: sortByValue, sortOrder: sortAscend}
+	if _, _, _, err := n.rangeKVs(r, nil); err != nil || st.loads-loads != 100 {
+		t.Fatalf("a keys-only range sorted by value: %d values read, %v", st.loads-loads, err)
+	}
+}

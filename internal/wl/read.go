@@ -322,6 +322,8 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte) ([][]byte, int64, bool, error
 	st := n.st
 	k0 := len(kvs)
 	rev := max(r.rev, 0) // etcd reads at the current revision for any rev <= 0
+	// A range of keys only reads no value, unless it sorts by value.
+	noValue := r.keysOnly && r.sortTarget != sortByValue
 	if len(r.end) == 0 {
 		id, ok := st.find(r.key)
 		if !ok {
@@ -329,6 +331,12 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte) ([][]byte, int64, bool, error
 		}
 		if r.countOnly {
 			return kvs, b2i(st.liveAt(id, rev)), false, nil
+		}
+		if noValue {
+			if rec := st.keyAt(id, rev); rec != nil {
+				return shapeKVs(append(kvs, rec), k0, r), 1, false, nil
+			}
+			return kvs, 0, false, nil
 		}
 		rec, err := st.at(id, rev)
 		if err != nil || rec == nil {
@@ -364,7 +372,9 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte) ([][]byte, int64, bool, error
 			return true
 		}
 		var rec []byte
-		if rec, err = st.at(id, rev); errors.Is(err, errAway) {
+		if noValue {
+			rec = st.keyAt(id, rev)
+		} else if rec, err = st.at(id, rev); errors.Is(err, errAway) {
 			// The scan goes on, so that one fetch reads every value the
 			// range lacks. Only a live state has a value to read.
 			away, err = true, nil
