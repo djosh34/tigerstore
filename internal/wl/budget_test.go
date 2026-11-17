@@ -6,7 +6,8 @@ import "testing"
 // room for the store: the rings and the stage mapped outside Go's heap,
 // and on the heap every follower's send buffer full, the entries Raft's
 // storage holds, the leader's uncommitted proposals and the kept stream
-// buffers, with the quarter more Go needs to collect in (store.goNeed).
+// buffers, the values fetched off the loop it keeps, with the quarter
+// more Go needs to collect in (store.goNeed).
 // The store's slab gets what is left (store.relimit), which must be at
 // least a quarter of the budget. A client connection's own buffers are
 // per connection and left out, as etcd leaves them out.
@@ -20,11 +21,13 @@ func TestTheBuffersFitTheBudget(t *testing.T) {
 			// The client connections: idle ones within a quarter of the
 			// client pool, and what they hold while they read or write
 			// within the rest (sock.pool).
-			heap := replication + z.held + int64(z.uncommitted) + keptBufs*keptBufMax + z.clientPool
+			// The values fetched off the loop that it keeps (fetchedMax;
+			// #689's area-3 review).
+			heap := replication + z.held + int64(z.uncommitted) + keptBufs*keptBufMax + z.clientPool + fetchedMax(budget)
 			store := budget - z.mapped() - (heap + heap/4)
 			if store < budget/4 {
-				t.Errorf("budget %d MiB, %d followers: the buffers leave the store %d MiB (mapped %d MiB, send buffers %d MiB, held %d MiB, uncommitted %d MiB, clients %d MiB); want at least a quarter",
-					budget>>20, followers, store>>20, z.mapped()>>20, replication>>20, z.held>>20, z.uncommitted>>20, z.clientPool>>20)
+				t.Errorf("budget %d MiB, %d followers: the buffers leave the store %d MiB (mapped %d MiB, send buffers %d MiB, held %d MiB, uncommitted %d MiB, clients %d MiB, fetched %d MiB); want at least a quarter",
+					budget>>20, followers, store>>20, z.mapped()>>20, replication>>20, z.held>>20, z.uncommitted>>20, z.clientPool>>20, fetchedMax(budget)>>20)
 			}
 			if z.inflight(followers+1) > uint64(z.peerBacklog(followers)) {
 				t.Errorf("budget %d MiB, %d followers: Raft keeps %d bytes in flight to a follower, past its backlog of %d", budget>>20, followers, z.inflight(followers+1), z.peerBacklog(followers))

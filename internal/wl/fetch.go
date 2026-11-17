@@ -31,15 +31,18 @@ type fetchedValue struct {
 const fetchedFor = time.Second
 
 // fetchedMax is the most the loop keeps of values fetched, in bytes: a
-// sixteenth of the budget, none past it. Kept a second each with no
+// thirty-second of the budget, none past it. Kept a second each with no
 // bound, page-cache reads at about 120 MB/s held 359 MB live in Go's heap
 // on past-ram's 560 MiB budget, past what the store's tables left Go, and
-// the member's cgroup killed it.
+// the member's cgroup killed it. A sixteenth, counted with the other
+// buffers, left a budget of 256 MiB with six followers less than a
+// quarter for the store (TestTheBuffersFitTheBudget, #689's area-3
+// review).
 func fetchedMax(budget int64) int64 {
 	if budget == 0 {
 		return math.MaxInt64
 	}
-	return budget / 16
+	return budget / 32
 }
 
 // fetchedAt is a value fetched, by its place, and when it came.

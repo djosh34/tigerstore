@@ -347,15 +347,14 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	if after-before < keys/2 {
 		t.Fatalf("the reads fetched %d values off the loop, want most of the %d", after-before, keys)
 	}
-	// A sixteenth of the budget (fetchedMax).
-	if m := max(most.Load(), b); m > budget/16 {
-		t.Fatalf("the loop kept %d bytes of values fetched, past its share of %d", m, budget/16)
+	if m := max(most.Load(), b); m > fetchedMax(budget) {
+		t.Fatalf("the loop kept %d bytes of values fetched, past its share of %d", m, fetchedMax(budget))
 	}
 }
 
 // A watch catches up through values read off the loop when one turn's
 // catch-up needs more of them than the loop keeps (fetchedMax): here 600
-// values, 19 MiB, past the 6 MiB a budget of 96 MiB keeps. Trimmed before
+// values, 19 MiB, past the 3 MiB a budget of 96 MiB keeps. Trimmed before
 // the watch caught up, the values it needed went; the read off the loop
 // leaves them in the page cache, so here the watch read them there. On
 // the simulator's seam, whose page cache can hold nothing,
