@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -241,5 +242,87 @@ func TestReadsKeepTheSlabWithinItsLimit(t *testing.T) {
 			t.Fatalf("after the reads the slab holds %d bytes, past its limit of %d", used, limit)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// What the loop keeps of values read off the loop stays within its share
+// of the budget (fetchedMax), however fast reads fetch them: kept a
+// second each with no bound, past-ram's verify held 359 MB of them live
+// in Go's heap on a 560 MiB budget, and the member's cgroup killed it.
+// The ranges still get every value whole.
+func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
+	loopOf := watchLoops(t)
+	const budget = 96 << 20
+	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	c := tc.clientOf(t, tc.endpoints[0])
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	const keys = 2000
+	value := func(i int) string { return fmt.Sprintf("%04d", i) + strings.Repeat("v", 8<<10) }
+	for i := range keys {
+		if _, err := c.Put(ctx, fmt.Sprintf("/f/%04d", i), value(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l := loopOf(tc.ids[0])
+	fetched := func() (bytes int64, n int) {
+		got := make(chan [2]int64, 1)
+		l.post(func() error {
+			got <- [2]int64{l.n.st.fetchedBytes, int64(l.n.stats.fetched)}
+			return nil
+		})
+		r := <-got
+		return r[0], int(r[1])
+	}
+	dropPageCache(t, tc.dir)
+	_, before := fetched()
+	// All ranges at once, as past-ram's verify reads with eight workers,
+	// while the loop's share is watched.
+	var most atomic.Int64
+	stop := make(chan struct{})
+	watched := make(chan struct{})
+	go func() {
+		defer close(watched)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if b, _ := fetched(); b > most.Load() {
+				most.Store(b)
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+	errs := make(chan error, keys/100)
+	for first := 0; first < keys; first += 100 {
+		go func() {
+			r, err := c.Get(ctx, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
+			if err == nil {
+				for j, kv := range r.Kvs {
+					if string(kv.Value) != value(first+j) {
+						err = fmt.Errorf("%s reads back as %d bytes, not the %d it was put with", kv.Key, len(kv.Value), len(value(first+j)))
+						break
+					}
+				}
+			}
+			errs <- err
+		}()
+	}
+	for range keys / 100 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	close(stop)
+	<-watched
+	b, after := fetched()
+	if after-before < keys/2 {
+		t.Fatalf("the reads fetched %d values off the loop, want most of the %d", after-before, keys)
+	}
+	// A sixteenth of the budget (fetchedMax).
+	if m := max(most.Load(), b); m > budget/16 {
+		t.Fatalf("the loop kept %d bytes of values fetched, past its share of %d", m, budget/16)
 	}
 }

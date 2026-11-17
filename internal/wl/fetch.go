@@ -3,6 +3,7 @@ package wl
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"time"
 )
 
@@ -28,6 +29,64 @@ type fetchedValue struct {
 // fetchedFor is how long the loop keeps a value fetched, for every read
 // that waits on it.
 const fetchedFor = time.Second
+
+// fetchedMax is the most the loop keeps of values fetched, in bytes: a
+// sixteenth of the budget, none past it. Kept a second each with no
+// bound, page-cache reads at about 120 MB/s held 359 MB live in Go's heap
+// on past-ram's 560 MiB budget, past what the store's tables left Go, and
+// the member's cgroup killed it.
+func fetchedMax(budget int64) int64 {
+	if budget == 0 {
+		return math.MaxInt64
+	}
+	return budget / 16
+}
+
+// fetchedAt is a value fetched, by its place, and when it came.
+type fetchedAt struct {
+	off int64
+	at  time.Time
+}
+
+// keepFetched keeps v, the value fetched at off.
+func (st *store) keepFetched(off int64, v fetchedValue) {
+	if st.fetched == nil {
+		st.fetched = map[int64]fetchedValue{}
+	}
+	st.forgetFetched(off)
+	st.fetched[off] = v
+	st.fetchedBytes += int64(len(v.val))
+	st.fetchedOrder = append(st.fetchedOrder, fetchedAt{off: off, at: v.at})
+}
+
+// forgetFetched lets go of the value fetched at off, if kept.
+func (st *store) forgetFetched(off int64) {
+	if v, ok := st.fetched[off]; ok {
+		delete(st.fetched, off)
+		st.fetchedBytes -= int64(len(v.val))
+	}
+}
+
+// trimFetched lets go of the values fetched before since, and of the
+// oldest past max bytes.
+func (st *store) trimFetched(since time.Time, max int64) {
+	k := 0
+	for ; k < len(st.fetchedOrder); k++ {
+		e := st.fetchedOrder[k]
+		v, ok := st.fetched[e.off]
+		if !ok || !v.at.Equal(e.at) {
+			continue // let go of already, or kept again since
+		}
+		if !e.at.Before(since) && st.fetchedBytes <= max {
+			break
+		}
+		st.forgetFetched(e.off)
+	}
+	st.fetchedOrder = st.fetchedOrder[k:]
+	if len(st.fetchedOrder) == 0 {
+		st.fetchedOrder = nil
+	}
+}
 
 // awayRead is a range that waits for values read off the loop: its
 // stream and its request.
@@ -95,16 +154,13 @@ func (n *node) takeFetched(st *store, ckpts [2]ckptFile, vs []logValue, got []fe
 		delete(n.fetching, v.off)
 	}
 	if st == n.st {
-		if st.fetched == nil {
-			st.fetched = map[int64]fetchedValue{}
-		}
 		for i, v := range vs {
 			if inCkpt(v.off) && st.ckpts[ckptGenOf(v.off)] != ckpts[ckptGenOf(v.off)] {
 				// Read from a checkpoint the store has let go of since.
 				continue
 			}
 			got[i].at = n.now
-			st.fetched[v.off] = got[i]
+			st.keepFetched(v.off, got[i])
 		}
 	}
 	reads := n.awayReads
@@ -120,6 +176,9 @@ func (n *node) takeFetched(st *store, ckpts [2]ckptFile, vs []logValue, got []fe
 		}
 		n.serveRange(c, s, &req, r.msg)
 	}
+	// The ranges that waited took what they needed: past fetchedMax, the
+	// oldest values go, those of this fetch last.
+	n.st.trimFetched(n.now.Add(-fetchedFor), fetchedMax(n.st.budget))
 }
 
 // setCkpt makes f the checkpoint file of generation gen, and lets go of
@@ -127,7 +186,7 @@ func (n *node) takeFetched(st *store, ckpts [2]ckptFile, vs []logValue, got []fe
 func (st *store) setCkpt(gen int, f ckptFile) {
 	for off := range st.fetched {
 		if inCkpt(off) && ckptGenOf(off) == gen {
-			delete(st.fetched, off)
+			st.forgetFetched(off)
 		}
 	}
 	st.ckpts[gen] = f
@@ -135,9 +194,5 @@ func (st *store) setCkpt(gen int, f ckptFile) {
 
 // dropFetched lets go of the values fetched more than fetchedFor ago.
 func (n *node) dropFetched() {
-	for off, f := range n.st.fetched {
-		if n.now.Sub(f.at) > fetchedFor {
-			delete(n.st.fetched, off)
-		}
-	}
+	n.st.trimFetched(n.now.Add(-fetchedFor), fetchedMax(n.st.budget))
 }

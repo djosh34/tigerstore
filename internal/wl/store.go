@@ -116,6 +116,10 @@ type store struct {
 	noWait  bool
 	away    []logValue
 	fetched map[int64]fetchedValue
+	// fetchedBytes is what fetched holds, and fetchedOrder its values by
+	// when they came, oldest first (keepFetched, trimFetched).
+	fetchedBytes int64
+	fetchedOrder []fetchedAt
 	// bad is the first value read back that did not match its checksum:
 	// the loop stops on it, and no read serves it (#708).
 	bad error
