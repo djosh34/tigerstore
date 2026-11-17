@@ -91,7 +91,27 @@ func TestANodesFilesBehaveAsTheSystems(t *testing.T) {
 	if err := n.Truncate("/data/wal/a", 2); err != nil {
 		t.Fatal(err)
 	}
-	if err := n.Rename("/data/wal/a", "/data/ckpt/b"); err != nil {
+	// simfs refuses a rename between two directories (#730), and simos
+	// says so.
+	if err := n.Rename("/data/wal/a", "/data/ckpt/b"); !errors.Is(err, simfs.ErrCrossDir) {
+		t.Fatalf("a rename between two directories: %v, want simfs.ErrCrossDir", err)
+	}
+	if err := n.Rename("/data/wal/a", "/data/wal/b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.Rename("/data/wal/b", "/data/ckpt/b"); err == nil {
+		t.Fatal("a second rename between two directories was taken")
+	}
+	// The file goes to ckpt/ by a copy, for the checks below.
+	if fd, err := n.Open("/data/ckpt/b", unix.O_WRONLY|unix.O_CREAT, 0o600); err != nil {
+		t.Fatal(err)
+	} else {
+		if _, err := o.Pwrite(fd, []byte("HE"), 0); err != nil {
+			t.Fatal(err)
+		}
+		_ = o.Close(fd)
+	}
+	if err := n.Remove("/data/wal/b"); err != nil {
 		t.Fatal(err)
 	}
 	if names, err := n.ReadDir("/data"); err != nil || !slices.Equal(slices.Sorted(slices.Values(names)), []string{"ckpt", "wal"}) {

@@ -790,6 +790,12 @@ func (d *Disk) Misread(rng *rand.Rand, name string) bool {
 // ErrNoSpace is the error of a write that ran out of space.
 var ErrNoSpace = errors.New("simfs: no space left on device")
 
+// ErrCrossDir is the error of a rename between two directories, which the
+// model refuses (#730, ruled): it would keep such a rename only with its
+// file's creation in the other directory, which is stricter than ext4,
+// whose journal keeps both. No code under test renames across directories.
+var ErrCrossDir = errors.New("simfs: a rename between two directories is refused: the model does not keep it as Linux does (#730)")
+
 // ErrIsDir is the error of a rename of a file over a directory.
 var ErrIsDir = errors.New("simfs: is a directory")
 
@@ -966,6 +972,9 @@ func (d *Disk) Rename(oldName, newName string) error {
 	if !ok || !d.isDir(parentDir(newName)) {
 		return fs.ErrNotExist
 	}
+	if parentDir(oldName) != parentDir(newName) {
+		return ErrCrossDir
+	}
 	if d.isDir(newName) {
 		// rename(2) of a file over a directory fails with EISDIR.
 		return ErrIsDir
@@ -999,7 +1008,8 @@ func (d *Disk) Remove(name string) error {
 // SyncDirOf makes durable the directory operations of directory dir, ""
 // for the top: the creations, renames and removals of the names it
 // holds, as an fsync of the directory does. A rename between two
-// directories is durable with either's. Each directory is synced on its
+// directories, were it allowed, would be durable with either's: Rename
+// refuses one (ErrCrossDir, #730). Each directory is synced on its
 // own: a sync of wal/ leaves a rename in ckpt/ to the next crash (#689's
 // area-1 review).
 func (d *Disk) SyncDirOf(dir string) error {

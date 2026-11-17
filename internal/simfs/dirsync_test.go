@@ -87,6 +87,14 @@ func TestADirectorysCreationIsDurableWithItsParentsSync(t *testing.T) {
 	if err := d.Rename("f", "ckpt/f"); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("a rename into a directory not made: %v", err)
 	}
+	// A rename between two directories is refused: the model would lose
+	// it where ext4 keeps it (#730, ruled).
+	if err := d.Rename("f", "wal/f"); !errors.Is(err, ErrCrossDir) {
+		t.Fatalf("a rename between two directories: %v, want ErrCrossDir", err)
+	}
+	if _, err := d.Open("f"); err != nil {
+		t.Fatalf("the file refused a rename is gone: %v", err)
+	}
 	setup := func() *Disk {
 		d := New()
 		if err := d.Mkdir("wal"); err != nil {
