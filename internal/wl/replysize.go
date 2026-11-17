@@ -82,18 +82,26 @@ func (n *node) txnRange(t *txnRun, r *rangeReq) (count int64, more bool, err err
 		end = nil
 	}
 	if r.sortTarget == sortByValue && !r.countOnly {
-		// Its candidates' records, as rangeKVs reads them all to sort.
-		cand := int64(0)
+		// Its candidates' records, as rangeKVs reads them all to sort,
+		// past one piece as serveRange finds them: past it before the
+		// next key.
+		cand, past := int64(0), false
 		st.tree.scan(r.key, end, func(id uint32) bool {
-			if s, ok := st.stateAt(id, rev); ok {
-				cand += int64(kvSize(int(st.keys[id].klen), int(s.vlen), s.create, s.mod, s.ver, s.lease))
+			s, ok := st.stateAt(id, rev)
+			if !ok {
+				return true
 			}
+			if cand > n.oneShot() {
+				past = true
+				return false
+			}
+			cand += int64(kvSize(int(st.keys[id].klen), int(s.vlen), s.create, s.mod, s.ver, s.lease))
 			return true
 		})
 		if t.big {
 			return 0, false, nil
 		}
-		if cand > n.oneShot() {
+		if past {
 			t.big, t.byValue = true, true
 			return 0, false, nil
 		}
@@ -119,18 +127,26 @@ func (n *node) txnRange(t *txnRun, r *rangeReq) (count int64, more bool, err err
 		limit = r.limit
 	}
 	sorts := r.sortsOther()
-	var matched int64
+	var matched, taken int64
 	keys := n.selKeys[:0]
 	defer func() {
 		clear(keys)
 		n.selKeys = keys[:0]
+		if cap(keys) > selKeep {
+			n.selKeys = nil
+		}
 	}()
+	read := r.readLimit()
 	st.tree.scan(r.key, end, func(id uint32) bool {
 		s, ok := st.stateAt(id, rev)
 		if !ok {
 			return true
 		}
 		count++
+		if taken >= read {
+			return true // past what the range reads, it only counts
+		}
+		taken++
 		if r.countOnly || !r.passes(&s) {
 			return true
 		}
@@ -179,6 +195,9 @@ func (n *node) txnRange(t *txnRun, r *rangeReq) (count int64, more bool, err err
 	}
 	return count, r.limit > 0 && matched > r.limit, nil
 }
+
+// selKeep is the most keys txnRange's scratch keeps between Txns.
+const selKeep = 4096
 
 // delRecsSize is the size of the record fields a DeleteRange with
 // prev_kv returns: its live keys' records before it, from their states.

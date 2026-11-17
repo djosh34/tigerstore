@@ -375,10 +375,7 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 	if len(end) == 1 && end[0] == 0 {
 		end = nil
 	}
-	read := int64(math.MaxInt64)
-	if r.limit > 0 && r.limit < math.MaxInt64 && r.defaultOrder() && !r.filters() {
-		read = r.limit + 1
-	}
+	read := r.readLimit()
 	if r.countOnly {
 		read = 0
 	}
@@ -447,6 +444,17 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 		kvs, more = kvs[:k0+int(r.limit)], true
 	}
 	return kvs, count, more, nil
+}
+
+// readLimit is how many of its keys, in key order, range r reads, as
+// etcd's rangeLimit asks mvcc for: one more than its limit in etcd's
+// default ordering, which a sort order of none is whatever the target,
+// with no revision filter; else all. A sort then orders those alone.
+func (r *rangeReq) readLimit() int64 {
+	if r.limit > 0 && r.limit < math.MaxInt64 && r.defaultOrder() && !r.filters() {
+		return r.limit + 1
+	}
+	return math.MaxInt64
 }
 
 // defaultOrder is etcd's IsDefaultOrdering: no order, or by key

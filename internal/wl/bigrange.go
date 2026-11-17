@@ -293,7 +293,8 @@ func (n *node) planBig(b *bigRange, c *client, s *stream) bool {
 	if r.limit > 0 {
 		limit = r.limit
 	}
-	var matched int64
+	var matched, taken int64
+	read := r.readLimit()
 	recs := 0 // the size of the records' fields
 	st.tree.scan(r.key, end, func(id uint32) bool {
 		ks, ok := st.stateAt(id, b.rev)
@@ -301,6 +302,10 @@ func (n *node) planBig(b *bigRange, c *client, s *stream) bool {
 			return true
 		}
 		b.count++
+		if taken >= read {
+			return true // past what the range reads, it only counts
+		}
+		taken++
 		if !r.passes(&ks) {
 			return true
 		}

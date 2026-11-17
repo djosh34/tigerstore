@@ -359,7 +359,14 @@ func TestALargeRangeAnswersAsEtcdDoes(t *testing.T) {
 	// etcd's steps on the records in key order.
 	want := func(r *pb.RangeRequest) *pb.RangeResponse {
 		var kvs []*mvccpb.KeyValue
-		for _, x := range full.Kvs {
+		recs := full.Kvs
+		filters := r.MaxModRevision != 0 || r.MinModRevision != 0 || r.MaxCreateRevision != 0 || r.MinCreateRevision != 0
+		if r.Limit > 0 && !filters && (r.SortOrder == pb.RangeRequest_NONE || r.SortTarget == pb.RangeRequest_KEY && r.SortOrder == pb.RangeRequest_ASCEND) {
+			// etcd's rangeLimit: one more than the limit, in key order, of
+			// which a sort sorts only those.
+			recs = recs[:min(len(recs), int(r.Limit)+1)]
+		}
+		for _, x := range recs {
 			if r.MaxModRevision != 0 && x.ModRevision > r.MaxModRevision || r.MinModRevision != 0 && x.ModRevision < r.MinModRevision ||
 				r.MaxCreateRevision != 0 && x.CreateRevision > r.MaxCreateRevision || r.MinCreateRevision != 0 && x.CreateRevision < r.MinCreateRevision {
 				continue
@@ -421,16 +428,17 @@ func TestALargeRangeAnswersAsEtcdDoes(t *testing.T) {
 	}()
 	before := bigs()
 	for what, r := range map[string]func(*pb.RangeRequest){
-		"all":                     func(*pb.RangeRequest) {},
-		"limited":                 func(r *pb.RangeRequest) { r.Limit = 30 },
-		"keys only":               func(r *pb.RangeRequest) { r.KeysOnly = true; r.Serializable = false },
-		"by mod descending":       func(r *pb.RangeRequest) { r.SortTarget, r.SortOrder = pb.RangeRequest_MOD, pb.RangeRequest_DESCEND },
-		"by version, limited":     func(r *pb.RangeRequest) { r.SortTarget, r.Limit = pb.RangeRequest_VERSION, 40 },
-		"by create descending":    func(r *pb.RangeRequest) { r.SortTarget, r.SortOrder = pb.RangeRequest_CREATE, pb.RangeRequest_DESCEND },
-		"by key descending":       func(r *pb.RangeRequest) { r.SortTarget, r.SortOrder = pb.RangeRequest_KEY, pb.RangeRequest_DESCEND },
-		"filtered by mod":         func(r *pb.RangeRequest) { r.MinModRevision = full.Kvs[5].ModRevision },
-		"filtered by create, cut": func(r *pb.RangeRequest) { r.MaxCreateRevision, r.Limit = full.Kvs[40].CreateRevision, 35 },
-		"by version, keys only":   func(r *pb.RangeRequest) { r.SortTarget, r.KeysOnly = pb.RangeRequest_VERSION, true },
+		"all":                      func(*pb.RangeRequest) {},
+		"limited":                  func(r *pb.RangeRequest) { r.Limit = 30 },
+		"keys only":                func(r *pb.RangeRequest) { r.KeysOnly = true; r.Serializable = false },
+		"by mod descending":        func(r *pb.RangeRequest) { r.SortTarget, r.SortOrder = pb.RangeRequest_MOD, pb.RangeRequest_DESCEND },
+		"by version, limited":      func(r *pb.RangeRequest) { r.SortTarget, r.Limit = pb.RangeRequest_VERSION, 40 },
+		"by create, no order, cut": func(r *pb.RangeRequest) { r.SortTarget, r.Limit = pb.RangeRequest_CREATE, 30 },
+		"by create descending":     func(r *pb.RangeRequest) { r.SortTarget, r.SortOrder = pb.RangeRequest_CREATE, pb.RangeRequest_DESCEND },
+		"by key descending":        func(r *pb.RangeRequest) { r.SortTarget, r.SortOrder = pb.RangeRequest_KEY, pb.RangeRequest_DESCEND },
+		"filtered by mod":          func(r *pb.RangeRequest) { r.MinModRevision = full.Kvs[5].ModRevision },
+		"filtered by create, cut":  func(r *pb.RangeRequest) { r.MaxCreateRevision, r.Limit = full.Kvs[40].CreateRevision, 35 },
+		"by version, keys only":    func(r *pb.RangeRequest) { r.SortTarget, r.KeysOnly = pb.RangeRequest_VERSION, true },
 	} {
 		req := base()
 		r(req)

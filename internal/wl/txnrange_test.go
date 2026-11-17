@@ -2,7 +2,9 @@ package wl
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
 )
@@ -133,5 +135,149 @@ func TestATxnsRangeSortedByValuePastOnePieceIsRefused(t *testing.T) {
 	}
 	if !tr.big || !tr.byValue || len(tr.kvs) != 0 || n.st.loads != before {
 		t.Fatalf("refused %v by value %v, %d records, %d loads; want it refused by value, nothing read", tr.big, tr.byValue, len(tr.kvs), n.st.loads-before)
+	}
+}
+
+// A Txn's range answers as a Range does (rangeKVs, etcd's executeRange):
+// the same records in the same order, ties too, count and more, for
+// random stores and random ranges with every sort, filter, limit and
+// revision. A sort with order none reads only the first limit+1 keys in
+// key order, as etcd's rangeLimit does, and sorts those (d-B Opus's
+// probe: sorting them all, a Txn answered /a/2 where etcd answers /a/1).
+func TestATxnsRangeAnswersAsARangeDoes(t *testing.T) {
+	for seed := int64(1); seed <= 200; seed++ {
+		rng := rand.New(rand.NewSource(seed))
+		st, l := newTestStore(t)
+		n := &node{st: st, sizes: sizeFor(4 << 30)}
+		n.connOut = n.sizes.connOut(1)
+		const keys = 10
+		ids := make([]uint32, keys)
+		for i := range ids {
+			id, err := st.intern(fmt.Appendf(nil, "/a/%02d", i))
+			if err != nil {
+				t.Fatal(err)
+			}
+			ids[i] = id
+		}
+		for range 30 {
+			st.rev++
+			used := map[int]bool{}
+			for range 1 + rng.Intn(3) {
+				i := rng.Intn(keys)
+				if used[i] {
+					continue
+				}
+				used[i] = true
+				if rng.Intn(4) == 0 {
+					if _, _, err := st.del(ids[i], st.rev, false); err != nil {
+						t.Fatal(err)
+					}
+					continue
+				}
+				v := string([]byte{byte('a' + rng.Intn(3))}) // values tie
+				if _, err := st.put(ids[i], []byte(v), int64(rng.Intn(2)), st.rev, l.add(v), false); err != nil {
+					t.Fatal(err)
+				}
+			}
+			st.endApply()
+		}
+		if rng.Intn(2) == 0 {
+			dropRecords(st)
+		}
+		for q := range 200 {
+			a, b := rng.Intn(keys), rng.Intn(keys+1)
+			r := rangeReq{key: fmt.Appendf(nil, "/a/%02d", a)}
+			switch rng.Intn(4) {
+			case 0: // one key
+			case 1:
+				r.key, r.end = []byte{0}, []byte{0}
+			default:
+				r.end = fmt.Appendf(nil, "/a/%02d", b)
+			}
+			if rng.Intn(2) == 0 {
+				r.rev = int64(1 + rng.Intn(int(st.rev)))
+			}
+			r.limit = int64(rng.Intn(5))
+			r.sortTarget, r.sortOrder = uint64(rng.Intn(5)), uint64(rng.Intn(3))
+			r.keysOnly, r.countOnly = rng.Intn(4) == 0, rng.Intn(6) == 0
+			for _, f := range []*int64{&r.minMod, &r.maxMod, &r.minCreate, &r.maxCreate} {
+				if rng.Intn(3) == 0 {
+					*f = int64(rng.Intn(int(st.rev)))
+				}
+			}
+			if len(r.end) > 0 && (len(r.end) != 1 || r.end[0] != 0) && bytes.Compare(r.key, r.end) >= 0 {
+				r.end = nil
+			}
+			want, wantCount, wantMore, err := n.rangeKVs(&r, nil, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tr := txnRun{reply: true}
+			count, more, err := n.txnRange(&tr, &r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fmt.Sprintf("%x", want) != fmt.Sprintf("%x", tr.kvs) || count != wantCount || more != wantMore {
+				t.Fatalf("seed %d, range %d %+v: %d records, count %d, more %v; a Range gives %d, %d, %v", seed, q, r, len(tr.kvs), count, more, len(want), wantCount, wantMore)
+			}
+		}
+		_ = st.close()
+	}
+}
+
+// A Txn's range sorted by value is refused past one piece where a Range
+// is (serveRange: past it before the next key), no sooner: two values of
+// 1.5 MiB over a piece of 2 MiB are read, sorted and served under a limit
+// of one by both (d-B Opus's probe: the Txn summed every candidate and
+// refused it).
+func TestATxnsRangeSortedByValueIsRefusedWhereARangeIs(t *testing.T) {
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n := &node{st: st, sizes: sizeFor(4 << 30)}
+	n.connOut = 64 << 10
+	v := strings.Repeat("v", 1536<<10)
+	r := rangeReq{key: []byte("/a/"), end: []byte("/b"), limit: 1, sortTarget: sortByValue, sortOrder: sortAscend}
+	for i := range 3 {
+		putValue(t, st, l, fmt.Sprintf("/a/%d", i), v)
+		st.noWait = true
+		_, _, _, err := n.rangeKVs(&r, nil, n.oneShot())
+		st.noWait = false
+		tr := txnRun{reply: true}
+		if _, _, err := n.txnRange(&tr, &r); err != nil {
+			t.Fatal(err)
+		}
+		if refused := errors.Is(err, errBig); refused != tr.byValue || refused != (i == 2) {
+			t.Fatalf("of %d values of 1.5 MiB, a Range sorted by value is refused %v, the same range in a Txn %v; want both %v", i+1, refused, tr.byValue, i == 2)
+		}
+	}
+}
+
+// A Txn's range of many keys keeps no more scratch past it than selKeep
+// keys (d-B Opus's probe: 200,000 keys left 3 MiB held for good).
+func TestATxnsRangeOfManyKeysKeepsNoScratch(t *testing.T) {
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n := &node{st: st, sizes: sizeFor(96 << 20)}
+	n.connOut = n.sizes.connOut(1)
+	const keys = 4 * selKeep
+	for i := range keys {
+		id, err := st.intern(fmt.Appendf(nil, "/k/%07d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.put(id, []byte("v"), 0, 1, l.add("v"), false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st.rev = 1
+	st.endApply()
+	r := rangeReq{key: []byte("/k/"), end: []byte("/l")}
+	tr := txnRun{reply: true}
+	count, _, err := n.txnRange(&tr, &r)
+	if err != nil || count != keys || len(tr.kvs) != keys {
+		t.Fatalf("%d records, count %d, %v; want %d", len(tr.kvs), count, err, keys)
+	}
+	if cap(n.selKeys) > selKeep {
+		t.Fatalf("the scratch keeps %d keys past the Txn", cap(n.selKeys))
 	}
 }
