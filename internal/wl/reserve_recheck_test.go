@@ -2,6 +2,7 @@ package wl
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -302,5 +303,38 @@ func TestACatchUpOfDeletesOfLargeKeysMovesOn(t *testing.T) {
 	}
 	if x := &n.w.ws[i]; x.syncRev != 0 {
 		t.Fatalf("the catch-up stays at revision %d of %d..%d; reserve %d of %d, %d waits", x.syncRev, start, st.rev, n.reserved, n.sizes.reserve(), n.stats.roomWaits)
+	}
+}
+
+// A held reply holds each of its records' revisions, so that a checkpoint
+// takes in the state each was read in (store.takeStates), and lets go of
+// them all when it ends (the re-check of e710ebb9: held at the lowest
+// alone, a newer record was seen by no hold).
+func TestAHeldReplyHoldsEachRecordsRevision(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	putValue(t, st, l, "/a", "a1") // 2
+	putValue(t, st, l, "/b", "b1") // 3
+	var kvs [][]byte
+	for _, key := range []string{"/a", "/b"} {
+		id, _ := st.find([]byte(key))
+		rec, err := st.live(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		kvs = append(kvs, rec)
+	}
+	res := []opRes{{kind: kRange, rev: st.rev, kvs0: 0, kvs1: 2, count: 2}}
+	n.holdTxn(c, s, true, res, 0, 1, kvs)
+	hr := n.heldReplies[0]
+	if fmt.Sprint(hr.holds) != "[2 3]" || st.heldReads() != 2 {
+		t.Fatalf("the held reply holds %v, the store %d reads; want [2 3] and 2", hr.holds, st.heldReads())
+	}
+	n.endHeld(hr)
+	if st.heldReads() != 0 {
+		t.Fatalf("after the reply, the store holds %d reads", st.heldReads())
 	}
 }

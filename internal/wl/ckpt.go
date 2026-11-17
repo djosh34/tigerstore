@@ -467,8 +467,10 @@ func (n *node) scanKeys(r *ckptRun) {
 	st := n.st
 	stop := min(r.end, r.next+ckptChunkKeys)
 	for states := 0; r.next < stop && states < ckptScanStates; r.next++ {
-		r.states = st.takeStates(r.next, r.meta.rev, st.ckptRev(), r.states[:0])
-		states += len(r.states)
+		var walked int
+		r.states, walked = st.takeStates(r.next, r.meta.rev, st.ckptRev(), r.states[:0])
+		// What it walked counts, behind a hold a key's long history.
+		states += max(len(r.states), walked)
 		for i := range r.states {
 			s := &r.states[i]
 			switch {

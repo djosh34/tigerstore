@@ -886,10 +886,14 @@ func TestACheckpointTakesInOnlyWhatHoldsSee(t *testing.T) {
 	st.compact(st.rev)
 	st.trimSteps(1 << 20)
 	id, _ := st.find([]byte("/a"))
-	if got := st.takeStates(id, st.rev, st.ckptRev(), nil); len(got) != 3 {
+	if got, _ := st.takeStates(id, st.rev, st.ckptRev(), nil); len(got) != 3 {
 		t.Fatalf("a checkpoint takes in %d states of /a, want 3: the newest, the one before, and the held one", len(got))
 	}
 	writeCkpt(t, n, 10)
+	// The values it took in: three of a few bytes, not 10,001.
+	if fi, err := os.Stat(filepath.Join(n.ckptDir, ckptName(10))); err != nil || fi.Size() > 4<<10 {
+		t.Fatalf("the checkpoint is %d bytes (%v): it took in the history between", fi.Size(), err)
+	}
 	st.log = cutLog{l, n.ckptCut}
 	if n.ckptCut == 0 {
 		t.Fatal("the checkpoint cut no log: the test shows nothing")

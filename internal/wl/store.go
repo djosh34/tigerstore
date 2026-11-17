@@ -841,7 +841,10 @@ func (st *store) compact(rev int64) {
 func (st *store) trimRev() int64 {
 	c := st.ckptRev()
 	if len(st.readHolds) > 0 {
-		c = min(c, st.readHoldMin)
+		// From the revision before, so that the states written at the
+		// lowest held one stay, a put its own Txn deleted too (the
+		// re-check of e710ebb9).
+		c = min(c, st.readHoldMin-1)
 	}
 	return c
 }
@@ -1244,12 +1247,12 @@ func (st *store) ckptStates(id uint32, rev, c int64, out []ckptState) []ckptStat
 // at c-1 counts as held too: a watch sent in pieces holds the revision
 // before its first event's (bigwatch.go), which may be the compacted one,
 // and may come once the checkpoint scanned the key.
-func (st *store) takeStates(id uint32, rev, c int64, out []ckptState) []ckptState {
-	n0 := len(out)
+func (st *store) takeStates(id uint32, rev, c int64, out []ckptState) ([]ckptState, int) {
+	n0, walked := len(out), 0
 	out = st.ckptStates(id, rev, c, out)
 	k := &st.keys[id]
 	if k.klen == 0 || k.mod == 0 {
-		return out
+		return out, walked
 	}
 	if len(st.heldRevs) == 0 && len(st.readHolds) > 0 {
 		for rev := range st.readHolds {
@@ -1264,7 +1267,12 @@ func (st *store) takeStates(id uint32, rev, c int64, out []ckptState) []ckptStat
 	if len(out) > n0 {
 		floor = out[len(out)-1].mod
 	}
+	kept := out[n0:]
 	held := func(from, to int64) bool {
+		// A state its own revision overwrote, a Txn's put of a key it
+		// then deleted, is read at that revision (putAt): a watch's event,
+		// a delete's prev_kv in a held reply (the re-check of e710ebb9).
+		to = max(to, from+1)
 		if from <= c-1 && c-1 < to {
 			return true
 		}
@@ -1277,9 +1285,10 @@ func (st *store) takeStates(id uint32, rev, c int64, out []ckptState) []ckptStat
 	}
 	next := int64(math.MaxInt64)
 	visit := func(s ckptState) bool {
+		walked++
 		to := next
 		next = s.mod
-		if s.mod >= floor {
+		if s.mod > floor || s.mod == floor && slices.ContainsFunc(kept, func(o ckptState) bool { return o.voff == s.voff && o.deleted == s.deleted }) {
 			return true
 		}
 		if !s.deleted && s.vlen > 0 && held(s.mod, to) {
@@ -1288,7 +1297,7 @@ func (st *store) takeStates(id uint32, rev, c int64, out []ckptState) []ckptStat
 		return s.mod > least
 	}
 	if !visit(ckptState{deleted: k.create == 0, create: k.create, mod: k.mod, ver: k.ver, lease: k.lease, voff: k.voff, vlen: k.vlen, vsum: k.vsum}) {
-		return out
+		return out, walked
 	}
 	for h := k.hist; h != 0; h = st.hist[h].prev {
 		e := &st.hist[h]
@@ -1296,7 +1305,7 @@ func (st *store) takeStates(id uint32, rev, c int64, out []ckptState) []ckptStat
 			break
 		}
 	}
-	return out
+	return out, walked
 }
 
 // restoreKey adds key with its states, newest first, as a checkpoint holds

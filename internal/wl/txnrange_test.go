@@ -326,3 +326,31 @@ func TestATxnOfManyRangesSortedByValueStaysWithinTheBudget(t *testing.T) {
 		t.Fatalf("the store holds %d MiB of records after the Txn's ranges", used>>20)
 	}
 }
+
+// A Txn's range sorted by value with order none and a limit reads its
+// limit and one more keys to sort, as a Range and etcd's rangeLimit do,
+// and is refused only if they pass one piece: two of eight values of 768
+// KiB are served by both (the re-check of e710ebb9, Opus's probe: the Txn
+// summed all eight candidates and refused it).
+func TestATxnsRangeSortedByValueWithNoOrderReadsItsLimit(t *testing.T) {
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n := &node{st: st, sizes: sizeFor(4 << 30)}
+	n.connOut = 64 << 10
+	v := strings.Repeat("v", 768<<10)
+	for i := range 8 {
+		putValue(t, st, l, fmt.Sprintf("/a/%d", 7-i), v[:len(v)-i]) // values differ in length
+	}
+	r := rangeReq{key: []byte("/a/"), end: []byte("/b"), limit: 1, sortTarget: sortByValue, sortOrder: sortNone}
+	st.noWait = true
+	want, wantCount, wantMore, err := n.rangeKVs(&r, nil, n.oneShot())
+	st.noWait = false
+	if err != nil {
+		t.Fatalf("the Range: %v", err)
+	}
+	tr := txnRun{reply: true}
+	count, more, err := n.txnRange(&tr, &r)
+	if err != nil || tr.big || fmt.Sprintf("%x", tr.kvs) != fmt.Sprintf("%x", want) || count != wantCount || more != wantMore {
+		t.Fatalf("the Txn: refused %v, %d records, count %d, more %v, %v; the Range %d records, count %d, more %v", tr.big, len(tr.kvs), count, more, err, len(want), wantCount, wantMore)
+	}
+}

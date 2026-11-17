@@ -86,7 +86,7 @@ func (n *node) txnRange(t *txnRun, r *rangeReq) (count int64, more bool, err err
 		// Its candidates' records, as rangeKVs reads them all to sort,
 		// past one piece as serveRange finds them: past it before the
 		// next key.
-		cand, past := int64(0), false
+		cand, past, read, taken := int64(0), false, r.readLimit(), int64(0)
 		loaded := n.selKeys[:0] // the candidates whose records it loads
 		defer func() {
 			clear(loaded)
@@ -100,6 +100,10 @@ func (n *node) txnRange(t *txnRun, r *rangeReq) (count int64, more bool, err err
 			if !ok {
 				return true
 			}
+			if taken >= read {
+				return false // past what it reads to sort (readLimit)
+			}
+			taken++
 			if cand > n.oneShot() {
 				past = true
 				return false

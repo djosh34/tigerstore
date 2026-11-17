@@ -399,6 +399,11 @@ func TestAWatchCanceledBetweenItsFragmentsLosesNoOtherWatchsEvent(t *testing.T) 
 		t.Fatal("watch 1's response did not start")
 	}
 	a := n.bigWatches[len(n.bigWatches)-1]
+	// It holds its revision, whose puts it reads, and the one before,
+	// whose values it may send before them.
+	if st.readHolds[a.rev] != 1 || st.readHolds[a.rev-1] != 1 {
+		t.Fatalf("the large watch response holds %v; want %d and %d", st.readHolds, a.rev-1, a.rev)
+	}
 	if !n.stepBigWatch(a) || !a.frag || !s.big {
 		t.Fatalf("watch 1's fragments are not under way: frag %v, stream held %v", a.frag, s.big)
 	}
@@ -415,6 +420,9 @@ func TestAWatchCanceledBetweenItsFragmentsLosesNoOtherWatchsEvent(t *testing.T) 
 	for n.stepBigWatch(a) {
 	}
 	n.endBigWatch(a)
+	if st.heldReads() != 0 {
+		t.Fatalf("the ended response still holds %v", st.readHolds)
+	}
 	var data []byte
 	for f := c.out; len(f) > 0; {
 		size := int(f[0])<<16 | int(f[1])<<8 | int(f[2])
