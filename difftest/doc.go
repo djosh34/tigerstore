@@ -16,7 +16,11 @@
 //
 // Two lists in boundaries_test.go say where tigerstore may differ. stricter
 // holds the watch steps where etcd sends an update without its previous
-// value, which Kubernetes rejects; tigerstore must not copy that. expectedFail
+// value, which Kubernetes rejects; tigerstore must not copy that.
+// deliberate holds the steps tigerstore refuses where etcd answers, as the
+// owner ruled (#721): a range sorted by value past one piece of its reply,
+// and a Txn's or prev_kv DeleteRange's reply past one message; TestDiffFuzz
+// allows the same refusals (ruledRefusal). expectedFail
 // holds the steps tigerstore does not match yet, each with an issue.
 // testdata/tigerstore-known.json holds tigerstore's answer to each of them,
 // and a listed step must give exactly that answer. `scripts/difftest.sh

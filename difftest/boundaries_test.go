@@ -77,6 +77,20 @@ var stricter = map[string][]string{
 	},
 }
 
+// deliberate lists the steps where tigerstore may differ from etcd v3.7.2
+// as the owner ruled (#721's second ruling; README's differences from
+// etcd): it may refuse them with ResourceExhausted and a message that
+// holds the text listed, where etcd answers, or answer as etcd does. A
+// range sorted by value is refused past one piece of its reply, which
+// depends on the server's memory budget: scripts/local-cluster.sh gives
+// each node a quarter of the host's memory, and CI's 4 GiB makes a piece
+// 64 MiB, more than this test's 56 MiB, so tigerstore answers there.
+var deliberate = map[string]string{
+	"sort-by-value/sorted by value, past one piece":      "a range sorted by value is refused past one piece",
+	"sort-by-value/txn whose range passes one message":   "grpc: trying to send message larger than max",
+	"sort-by-value/delete with prev_kv past one message": "grpc: trying to send message larger than max",
+}
+
 // expectedFail lists the steps where tigerstore differs from etcd v3.7.2
 // today, by case, with the reason. They still run, and each must give the
 // answer recorded for it in knownFile. A listed step that matches etcd fails
@@ -85,6 +99,16 @@ var expectedFail = map[string]struct {
 	reason string
 	steps  []string
 }{}
+
+// checkListed fails the test when list names step k of one of the run's
+// cases that the golden file does not have.
+func checkListed(t *testing.T, list, k string, ours map[string]bool, want map[string][]step, goldenFile string) {
+	t.Helper()
+	name, do, _ := strings.Cut(k, "/")
+	if ours[name] && !slices.ContainsFunc(want[name], func(s step) bool { return s.Do == do }) {
+		t.Errorf("%s names %q, which %s does not have", list, k, goldenFile)
+	}
+}
 
 // server returns TIGERSTORE_DIFF_SERVER, which says what the endpoint is.
 func server(t *testing.T) string {
@@ -99,6 +123,9 @@ func server(t *testing.T) string {
 // allowed reports whether got is a right answer for the step that etcd
 // v3.7.2 answered with want.
 func allowed(srv, name string, want, got step) bool {
+	if text, ok := deliberate[name+"/"+want.Do]; ok && srv == "tigerstore" && got.Code == "ResourceExhausted" {
+		return strings.Contains(got.Message, text)
+	}
 	alts, ok := stricter[name+"/"+want.Do]
 	if !ok || srv == "etcd" {
 		return sameStep(want, got)
@@ -202,13 +229,10 @@ func runCasesOn(t *testing.T, golden string, c *client, cases []testCase) {
 		t.Errorf("%s has %d steps, expectedFail lists %d", knownFile, len(known), listed)
 	}
 	for k := range stricter {
-		name, do, _ := strings.Cut(k, "/")
-		if !ours[name] {
-			continue
-		}
-		if !slices.ContainsFunc(want[name], func(s step) bool { return s.Do == do }) {
-			t.Errorf("stricter names %q, which %s does not have", k, goldenFile)
-		}
+		checkListed(t, "stricter", k, ours, want, goldenFile)
+	}
+	for k := range deliberate {
+		checkListed(t, "deliberate", k, ours, want, goldenFile)
 	}
 	for _, cs := range cases {
 		name := cs.name

@@ -1,12 +1,6 @@
 package core
 
 import (
-	"cmp"
-	"fmt"
-	"maps"
-	"slices"
-
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
@@ -20,48 +14,6 @@ const (
 	ServerVersion  = "3.7.2"
 	ClusterVersion = "3.7.0"
 )
-
-// Status answers Maintenance.Status from this node's state. DbSize and
-// DbSizeInUse are both what the space quota counts (mvcc.Store.Size), so
-// that etcd's quota alert, DbSize over the quota, measures what NOSPACE
-// does: a write that would take it to 100% is refused, as in etcd, where
-// the refusal comes before the write too. The log's own size is
-// tigerstore_disk_bytes.
-// DbSize is never 0, because etcdctl divides by it.
-func (n *Node) Status() *pb.StatusResponse {
-	st := n.rn.BasicStatus()
-	// Header and body take the term from one snapshot; etcdctl prints one
-	// or the other depending on the output format.
-	h := n.watchHeader()
-	h.RaftTerm = st.GetTerm()
-	resp := &pb.StatusResponse{
-		Header:           h,
-		DowngradeInfo:    &pb.DowngradeInfo{Enabled: n.state.downgradeEnabled, TargetVersion: n.state.downgradeTarget},
-		Version:          ServerVersion,
-		StorageVersion:   n.state.etcdVersion,
-		DbSize:           n.dbSize(),
-		DbSizeInUse:      n.dbSize(),
-		DbSizeQuota:      cmp.Or(n.cfg.QuotaBytes, QuotaBytes),
-		Leader:           st.Lead,
-		RaftIndex:        st.GetCommit(),
-		RaftTerm:         st.GetTerm(),
-		RaftAppliedIndex: n.applied,
-		IsLearner:        n.IsLearner(),
-	}
-	if st.Lead == 0 {
-		resp.Errors = append(resp.Errors, "etcdserver: no leader")
-	}
-	resp.Errors = append(resp.Errors, n.state.alarmStrings()...)
-	return resp
-}
-
-// dbSize is what Status and the metrics report as etcd's database size,
-// in use and in all: mvcc.Store.Size, at least 1.
-func (n *Node) dbSize() int64 { return max(n.kv.Size(), 1) }
-
-// RaftStatus is Raft's view of this node: its role, term, leader, commit
-// and applied index. Test harnesses report it when a run fails.
-func (n *Node) RaftStatus() raft.BasicStatus { return n.rn.BasicStatus() }
 
 // Metrics are the counters and gauges /metrics reports, under etcd's
 // names.
@@ -116,85 +68,4 @@ type Metrics struct {
 	Watchers, WatchStreams, HeldWatchers, HeldEvents int64
 	// Raft is Raft's status, for etcd's raft.status in /debug/vars.
 	Raft raft.Status
-}
-
-// Metrics returns the node's metrics.
-func (n *Node) Metrics() Metrics {
-	st := n.rn.BasicStatus()
-	m := Metrics{
-		HasLeader:     st.Lead != 0,
-		LeaderChanges: n.leaderChanges,
-		Committed:     st.GetCommit(),
-		Applied:       n.applied,
-		Counts:        n.kv.Counts(),
-		IndexBytes:    n.kv.Bytes(),
-		WindowBytes:   n.storage.total(),
-		CacheBytes:    n.cache.bytes,
-		CacheLimit:    max(n.cache.limit, 0),
-		CacheHits:     n.cache.hits,
-		CacheMisses:   n.cache.misses,
-		MaxCommitWait: n.maxCommitWait,
-
-		ClusterVersion: n.state.version,
-
-		Counters:         n.counters,
-		ID:               n.cfg.ID,
-		Members:          n.memberIDs(),
-		IsLeader:         n.isLeader,
-		IsLearner:        n.IsLearner(),
-		EtcdVersion:      n.state.etcdVersion,
-		Rev:              n.kv.Rev(),
-		CompactRev:       n.kv.CompactRev(),
-		AuthRevision:     n.state.auth.revision,
-		DbSize:           n.dbSize(),
-		DbSizeInUse:      n.dbSize(),
-		QuotaBytes:       cmp.Or(n.cfg.QuotaBytes, QuotaBytes),
-		ProposalsPending: int64(len(n.waiting)),
-		Raft:             n.rn.Status(),
-	}
-	m.AlarmGauges = slices.Clone(m.AlarmGauges)
-	for _, s := range n.streams {
-		m.WatchStreams++
-		for _, w := range s.byID {
-			if w.dead {
-				continue
-			}
-			m.Watchers++
-			if len(s.held) > 0 {
-				m.HeldWatchers++
-			}
-		}
-		for _, h := range s.held {
-			m.HeldEvents += int64(len(h.resp.Resp.Events))
-		}
-	}
-	return m
-}
-
-// memberIDs are the members' IDs, in order.
-func (n *Node) memberIDs() []uint64 {
-	ids := make([]uint64, 0, len(n.state.members))
-	for id := range n.state.members {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
-	return ids
-}
-
-// LogState says how the log and Raft stand, for the driver's log at a
-// start, so that a cold restart that elects no leader shows why (#247,
-// #250): the last entry and its term, Raft's term, vote and commit, and
-// its voters.
-func (n *Node) LogState() string {
-	last, err := n.storage.LastIndex()
-	if err != nil {
-		return err.Error()
-	}
-	term, err := n.storage.Term(last)
-	if err != nil {
-		return err.Error()
-	}
-	st := n.rn.Status()
-	voters := slices.Sorted(maps.Keys(st.Config.Voters.IDs()))
-	return fmt.Sprintf("last entry %d at term %d; term %d, vote %x, commit %d; voters %x", last, term, st.GetTerm(), st.GetVote(), st.GetCommit(), voters)
 }

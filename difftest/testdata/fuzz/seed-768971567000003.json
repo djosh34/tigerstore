@@ -1,0 +1,372 @@
+{
+	"name": "seed-768971567000003",
+	"ops": [
+		{
+			"kind": "put",
+			"value": "djI2NA=="
+		},
+		{
+			"kind": "txn",
+			"compare": [
+				{
+					"key": 4,
+					"target": "LEASE",
+					"result": "EQUAL",
+					"lease": 1
+				},
+				{
+					"key": 0,
+					"target": "CREATE",
+					"result": "LESS",
+					"number": 2
+				}
+			],
+			"success": [
+				{
+					"kind": "put",
+					"key": 3,
+					"value": "djgxMA==",
+					"prevKV": true
+				},
+				{
+					"kind": "get",
+					"key": 1,
+					"end": -1,
+					"limit": 1
+				},
+				{
+					"kind": "del",
+					"key": 2,
+					"end": 3,
+					"prevKV": true
+				}
+			],
+			"failure": [
+				{
+					"kind": "put",
+					"key": 1,
+					"value": "djgwMw==",
+					"lease": 1,
+					"prevKV": true
+				},
+				{
+					"kind": "get",
+					"key": 1,
+					"end": -1,
+					"limit": 2
+				}
+			]
+		},
+		{
+			"kind": "get",
+			"key": 5,
+			"countOnly": true
+		},
+		{
+			"kind": "get",
+			"key": 1,
+			"limit": 1,
+			"countOnly": true
+		},
+		{
+			"kind": "put",
+			"key": 4,
+			"value": "djkyNg==",
+			"ignoreLease": true
+		},
+		{
+			"kind": "get",
+			"key": 1
+		},
+		{
+			"kind": "txn",
+			"compare": [
+				{
+					"key": 4,
+					"target": "MOD",
+					"result": "LESS",
+					"number": 1
+				}
+			],
+			"success": [
+				{
+					"kind": "put",
+					"key": 4,
+					"value": "djcxMA==",
+					"prevKV": true
+				}
+			],
+			"failure": [
+				{
+					"kind": "del",
+					"end": -1,
+					"prevKV": true
+				}
+			]
+		},
+		{
+			"kind": "compact"
+		},
+		{
+			"kind": "get",
+			"key": 2,
+			"end": -1,
+			"rev": 4,
+			"limit": 1
+		},
+		{
+			"kind": "revoke",
+			"lease": 1
+		},
+		{
+			"kind": "txn",
+			"success": [
+				{
+					"kind": "del",
+					"key": 5,
+					"end": -1,
+					"prevKV": true
+				},
+				{
+					"kind": "get",
+					"key": 5
+				},
+				{
+					"kind": "put",
+					"key": 2,
+					"value": "djU1",
+					"prevKV": true
+				}
+			],
+			"failure": [
+				{
+					"kind": "get",
+					"key": 5
+				}
+			]
+		},
+		{
+			"kind": "txn",
+			"compare": [
+				{
+					"key": 3,
+					"target": "LEASE",
+					"result": "EQUAL"
+				},
+				{
+					"key": 2,
+					"target": "VALUE",
+					"result": "NOT_EQUAL"
+				}
+			],
+			"success": [
+				{
+					"kind": "del",
+					"key": 5,
+					"end": -1,
+					"prevKV": true
+				},
+				{
+					"kind": "get",
+					"key": 5
+				},
+				{
+					"kind": "del",
+					"key": 4
+				}
+			],
+			"failure": [
+				{
+					"kind": "put",
+					"value": "djczOQ==",
+					"lease": 1,
+					"prevKV": true
+				},
+				{
+					"kind": "get",
+					"key": 5,
+					"end": -1,
+					"limit": 2
+				}
+			]
+		},
+		{
+			"kind": "get",
+			"key": 4,
+			"end": -1,
+			"limit": 1
+		},
+		{
+			"kind": "txn",
+			"compare": [
+				{
+					"key": 1,
+					"target": "VALUE",
+					"result": "GREATER",
+					"value": "djk3Ng=="
+				},
+				{
+					"key": 2,
+					"target": "CREATE",
+					"result": "GREATER",
+					"number": 1
+				}
+			],
+			"success": [
+				{
+					"kind": "get",
+					"key": 3,
+					"end": -1,
+					"limit": 1
+				},
+				{
+					"kind": "get",
+					"key": 5,
+					"limit": 2
+				},
+				{
+					"kind": "del",
+					"prevKV": true
+				}
+			]
+		},
+		{
+			"kind": "compact",
+			"rev": 5
+		},
+		{
+			"kind": "get",
+			"key": 1,
+			"end": -1,
+			"limit": 1
+		},
+		{
+			"kind": "put",
+			"key": 2
+		},
+		{
+			"kind": "put",
+			"key": 5,
+			"value": "djYzOQ==",
+			"lease": 1
+		},
+		{
+			"kind": "put",
+			"key": 1,
+			"value": "djQ1Mw=="
+		},
+		{
+			"kind": "get",
+			"limit": 1
+		},
+		{
+			"kind": "del",
+			"key": 4,
+			"prevKV": true
+		},
+		{
+			"kind": "get",
+			"key": 3,
+			"end": 5,
+			"rev": 1,
+			"limit": 1,
+			"keysOnly": true
+		},
+		{
+			"kind": "txn",
+			"compare": [
+				{
+					"key": 4,
+					"target": "LEASE",
+					"result": "GREATER",
+					"lease": 1
+				},
+				{
+					"key": 4,
+					"target": "VALUE",
+					"result": "LESS",
+					"value": "djY4Nw=="
+				}
+			],
+			"success": [
+				{
+					"kind": "get",
+					"limit": 1
+				},
+				{
+					"kind": "get",
+					"end": -1,
+					"rev": 13,
+					"limit": 1
+				}
+			]
+		},
+		{
+			"kind": "txn",
+			"compare": [
+				{
+					"key": 1,
+					"target": "CREATE",
+					"result": "GREATER",
+					"number": 16
+				}
+			],
+			"success": [
+				{
+					"kind": "del",
+					"key": 2
+				},
+				{
+					"kind": "get",
+					"key": 1,
+					"end": 5
+				}
+			],
+			"failure": [
+				{
+					"kind": "get",
+					"key": 5,
+					"end": 2
+				},
+				{
+					"kind": "del",
+					"key": 1,
+					"end": -1
+				}
+			]
+		},
+		{
+			"kind": "put",
+			"key": 3,
+			"value": "djI2",
+			"lease": 1
+		},
+		{
+			"kind": "del",
+			"key": 1,
+			"end": -1,
+			"prevKV": true
+		},
+		{
+			"kind": "put",
+			"key": 5,
+			"value": "djQ3Nw=="
+		},
+		{
+			"kind": "put",
+			"key": 4,
+			"value": "djI4Nw==",
+			"lease": 1,
+			"prevKV": true
+		},
+		{
+			"kind": "compact",
+			"rev": 8
+		},
+		{
+			"kind": "grant",
+			"ttl": 472,
+			"id": 2
+		}
+	]
+}

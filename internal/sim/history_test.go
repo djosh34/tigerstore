@@ -3,6 +3,8 @@ package sim
 import (
 	"errors"
 	"fmt"
+	"math"
+	"slices"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -11,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/check"
 	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/history/frometcd"
 	"github.com/djosh34/tigerstore/internal/mvcc"
@@ -79,6 +82,115 @@ func TestAmbiguousWritesFromTheLog(t *testing.T) {
 	}
 	if err := h.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// An ambiguous Txn whose failure branch only reads matches its log entry
+// without that branch, as a wl node logs it: it stays in the history with
+// its effect, and the durability check finds a client for the entry
+// (#703; seed 2 of TestWLFaultSeeds).
+func TestAnAmbiguousTxnMatchesItsEntryWithoutItsReads(t *testing.T) {
+	cmp := []*pb.Compare{{Key: []byte("a"), Target: pb.Compare_MOD, TargetUnion: &pb.Compare_ModRevision{ModRevision: 1}}}
+	put := []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("a"), Value: []byte("v")}}}}
+	read := []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("a")}}}}
+	reset := status.Error(codes.Unavailable, "error reading from server: connection reset")
+	res := &Result{
+		Clients:  1,
+		History:  []*Record{{Client: 0, Call: 1, Return: 2, req: &pb.TxnRequest{Compare: cmp, Success: put, Failure: read}, Err: reset, Ambiguous: true}},
+		Log:      []proto.Message{&pb.TxnRequest{Compare: cmp, Success: put}},
+		revs:     []int64{2},
+		FinalRev: 2,
+	}
+	h, err := res.Checkable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h.Ops) != 1 || h.Ops[0].Effect == nil || *h.Ops[0].Effect != (history.Effect{By: math.MaxInt64, Revision: 2}) {
+		t.Fatalf("got ops %+v, want the Txn with its effect at revision 2", h.Ops)
+	}
+	if err := check.Durable(h); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// logKey leaves out only a failure branch that changes nothing: any
+// other difference in what a write can change keeps two requests apart,
+// so an ambiguous call whose writes no entry holds is still dropped as
+// never committed, and still pins no entry (#703).
+func TestLogKeyKeepsWhatAWriteChanges(t *testing.T) {
+	cmp := func(rev int64) []*pb.Compare {
+		return []*pb.Compare{{Key: []byte("a"), Target: pb.Compare_MOD, TargetUnion: &pb.Compare_ModRevision{ModRevision: rev}}}
+	}
+	put := func(v string) []*pb.RequestOp {
+		return []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("a"), Value: []byte(v)}}}}
+	}
+	read := func(k string) []*pb.RequestOp {
+		return []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte(k)}}}}
+	}
+	logged := &pb.TxnRequest{Compare: cmp(1), Success: put("v"), Failure: slices.Concat(read("a"), put("w"))}
+	for _, tc := range []struct {
+		name string
+		call *pb.TxnRequest
+		same bool
+	}{
+		{"the same request", &pb.TxnRequest{Compare: cmp(1), Success: put("v"), Failure: slices.Concat(read("a"), put("w"))}, true},
+		{"another compare", &pb.TxnRequest{Compare: cmp(2), Success: put("v"), Failure: slices.Concat(read("a"), put("w"))}, false},
+		{"another success branch", &pb.TxnRequest{Compare: cmp(1), Success: put("x"), Failure: slices.Concat(read("a"), put("w"))}, false},
+		{"another write in the failure branch", &pb.TxnRequest{Compare: cmp(1), Success: put("v"), Failure: slices.Concat(read("a"), put("y"))}, false},
+		{"another read beside a write in the failure branch", &pb.TxnRequest{Compare: cmp(1), Success: put("v"), Failure: slices.Concat(read("b"), put("w"))}, false},
+		{"no failure branch where the entry writes in it", &pb.TxnRequest{Compare: cmp(1), Success: put("v")}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, err := logKey(tc.call)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := logKey(logged)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := string(a) == string(b); got != tc.same {
+				t.Fatalf("the call matches the entry: %v, want %v", got, tc.same)
+			}
+			res := &Result{
+				Clients:  1,
+				History:  []*Record{{Client: 0, Call: 1, Return: 2, req: tc.call, Err: status.Error(codes.Unavailable, "connection reset"), Ambiguous: true}},
+				Log:      []proto.Message{logged},
+				revs:     []int64{2},
+				FinalRev: 2,
+			}
+			h, err := res.Checkable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kept := len(h.Ops) == 1; kept != tc.same {
+				t.Fatalf("the ambiguous call kept in the history: %v, want %v", kept, tc.same)
+			}
+			if tc.same && h.Ops[0].Effect == nil {
+				t.Fatal("the call that matches its one entry has no effect")
+			}
+		})
+	}
+	// Two calls that differ only in a failure branch of reads share one key:
+	// neither pins the one entry, as the log cannot tell whose it is.
+	res := &Result{
+		Clients: 2,
+		History: []*Record{
+			{Client: 0, Call: 1, Return: 2, req: &pb.TxnRequest{Compare: cmp(1), Success: put("v"), Failure: read("a")}, Err: status.Error(codes.Unavailable, "connection reset"), Ambiguous: true},
+			{Client: 1, Call: 1, Return: 2, req: &pb.TxnRequest{Compare: cmp(1), Success: put("v"), Failure: read("b")}, Err: status.Error(codes.Unavailable, "connection reset"), Ambiguous: true},
+		},
+		Log:      []proto.Message{&pb.TxnRequest{Compare: cmp(1), Success: put("v")}},
+		revs:     []int64{2},
+		FinalRev: 2,
+	}
+	h, err := res.Checkable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, op := range h.Ops {
+		if op.Effect != nil {
+			t.Fatalf("client %d's call pins the entry another call may own", op.Client)
+		}
 	}
 }
 

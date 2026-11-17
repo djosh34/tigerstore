@@ -5,112 +5,21 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
-	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
-	"github.com/djosh34/tigerstore/internal/wal"
 )
 
-// check runs the simulator's own rules on a finished run. The checkers in
-// package check are the independent oracle; these rules use the
-// final state of the cluster and catch most bugs cheaply:
-//
-//   - every node is up and has applied the same log to the same state;
-//   - every successful read returns exactly what the final store holds at
-//     the read's revision;
-//   - every successful write is in the final store at its revision, and
-//     its previous values match the revision before;
-//   - revisions follow real time: a call never sees a revision older than
-//     one returned before it started, and a write gets a newer one;
-//   - every write is in the committed log at most once, an acknowledged
-//     write is in it, and a write that failed for certain is not, unless
-//     the state machine rejected it when it applied;
-//   - every watch delivered exactly the final history of its range;
-//   - every call that starts after the cluster healed succeeds.
-func (s *Sim) check(res *Result) error {
-	last, err := s.converged()
-	if err != nil {
-		return err
-	}
-	if s.cfg.Membership {
-		if err := s.checkMembership(); err != nil {
-			return err
-		}
-	}
-	final := last.proc.core.Store()
-	res.FinalRev = final.Rev()
-	ents, err := s.committed(s.live()[0].proc.core.Applied())
-	if err != nil {
-		return err
-	}
-	for _, e := range ents {
-		// Configuration changes, which start the log, change no key.
-		if len(e.GetData()) == 0 || e.GetType() != raftpb.EntryNormal {
-			continue
-		}
-		if err := core.DecodeBatch(e.GetData(), func(_, _, _ uint64, op proto.Message) error {
-			// Member attributes change no KV state. Membership has its
-			// own oracle; the KV history format does not represent them.
-			if _, ok := op.(*pb.Member); ok {
-				return nil
-			}
-			if s.values != nil {
-				s.values.shareMessage(op)
-			}
-			res.Log = append(res.Log, op)
-			return nil
-		}); err != nil {
-			return err
-		}
-	}
-	// The cluster compacts, so the checks read history from a model: the
-	// committed log replayed without compactions. It must end in the
-	// cluster's state.
-	model, log, revs, err := replay(res.Log)
-	if err != nil {
-		return err
-	}
-	res.Log, res.revs, res.logged = log, revs, true
-	if err := s.sameLatestOn(model, last); err != nil {
-		return err
-	}
-	for _, r := range res.History {
-		if r.Err != nil {
-			continue
-		}
-		if err := checkRecord(model, r); err != nil {
-			return fmt.Errorf("client %d call at %d ms on node %d: %w\nrequest: %v\nresponse: %v",
-				r.Client, r.Call/Millisecond, r.Node+1, err, r.req, r.Resp)
-		}
-	}
-	if err := checkRealTime(res.History); err != nil {
-		return err
-	}
-	if err := checkLog(res); err != nil {
-		return err
-	}
-	if err := s.checkWatches(model, res); err != nil {
-		return err
-	}
-	if err := s.checkLeasesExpire(res); err != nil {
-		return err
-	}
-	if err := s.checkWatchersFreed(); err != nil {
-		return err
-	}
-	if err := s.checkColdRestarts(res); err != nil {
-		return err
-	}
-	if err := s.checkRecoverable(); err != nil {
-		return err
-	}
+// checkLive checks that every call that started after the cluster healed
+// succeeded, but those a node's own trouble explains.
+func (s *Sim) checkLive(res *Result) error {
 	live := 0
 	liveFrom := s.liveFrom()
 	for _, r := range res.History {
@@ -152,39 +61,6 @@ func (s *Sim) live() []*node {
 		}
 	}
 	return out
-}
-
-// converged checks that all nodes applied the same log to the same state,
-// the one the record of committed entries has, and returns a node with
-// that state whose disk the run did not damage under it. The nodes are
-// frozen.
-func (s *Sim) converged() (*node, error) {
-	live := s.live()
-	for _, n := range live {
-		if n.proc == nil {
-			return nil, fmt.Errorf("node %d is down at the end", n.id)
-		}
-	}
-	first := live[0]
-	fc := first.proc.core
-	for _, n := range live[1:] {
-		c := n.proc.core
-		if c.Applied() != fc.Applied() {
-			return nil, fmt.Errorf("node %d applied %d entries, node %d applied %d", n.id, c.Applied(), first.id, fc.Applied())
-		}
-		if c.Hash() != fc.Hash() {
-			return nil, fmt.Errorf("node %d and node %d applied the same log to different states", n.id, first.id)
-		}
-	}
-	if r, _ := s.log.get(fc.Applied()); r.hash != fc.Hash() {
-		return nil, fmt.Errorf("node %d applied the same log to different states than node %d did", first.id, r.node)
-	}
-	for _, n := range live {
-		if !n.rotted {
-			return n, nil
-		}
-	}
-	return first, nil
 }
 
 func at(st *mvcc.Store, key []byte, rev int64) (*mvccpb.KeyValue, error) {
@@ -547,38 +423,86 @@ func replay(log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) 
 	return st.Store(), out, revs, nil
 }
 
-// sameLatestOn is sameLatest with the store of node n, which reads the
-// values that left memory from a copy of n's disk.
-func (s *Sim) sameLatestOn(a *mvcc.Store, n *node) (err error) {
-	s.mu.Lock()
-	d := n.disk.Copy()
-	s.mu.Unlock()
-	log, _, err := wal.Open(d)
-	if err != nil {
-		return fmt.Errorf("node %d cannot recover its log for the final reads: %w", n.id, err)
+// revokesKeepPromises checks each lease revoke that took effect, at
+// revokedAt (when a node first applied it), against what the clients
+// were told:
+//   - a keepalive called after it finds no lease: its entry comes after
+//     the revoke's in the log;
+//   - a grant or keepalive called before it and answered alive with a TTL
+//     had that TTL run out by the revoke, less the clock envelope of
+//     driftPerMille, unless a client asked for the revoke: called a
+//     revoke of the lease before it took effect, and after the lease's
+//     grant before it. A client's revoke called at any other time, after
+//     the revoke or of an earlier grant of the ID, does not excuse it
+//     (#689's area-4 review).
+//
+// leasesExpire checks when a node decided to expire a lease; this checks
+// what the cluster did, whichever node decided it and whenever, so that a
+// keepalive answered alive after the decision, whose revoke then commits,
+// fails here. A lease granted again after its revoke, with the same ID,
+// is left out of the first rule.
+func revokesKeepPromises(history []*Record, revokedAt map[int64]int64, driftPerMille int64) error {
+	granted := map[int64]int64{}
+	grants := map[int64][]int64{} // when each grant of an ID was called
+	asks := map[int64][]int64{}   // when clients called a revoke of it
+	for _, r := range history {
+		if g, ok := r.Resp.(*pb.LeaseGrantResponse); ok && g != nil {
+			granted[g.ID] = max(granted[g.ID], r.Call)
+			grants[g.ID] = append(grants[g.ID], r.Call)
+		}
+		if req, ok := r.req.(*pb.LeaseRevokeRequest); ok {
+			asks[req.ID] = append(asks[req.ID], r.Call)
+		}
 	}
-	defer func() { err = errors.Join(err, log.Close()) }()
-	return sameLatest(a, n.proc.core.Store(), log)
-}
-
-// sameLatest checks that two stores are at the same revision with the same
-// keys and values. b reads the values that left memory from log.
-func sameLatest(a, b *mvcc.Store, log core.Log) error {
-	all := &pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}}
-	ra, err := a.Range(all)
-	if err != nil {
-		return err
+	// asked reports whether a client asked for lease id's revoke that
+	// took effect at at.
+	asked := func(id, at int64) bool {
+		from := int64(math.MinInt64)
+		for _, g := range grants[id] {
+			if g < at {
+				from = max(from, g)
+			}
+		}
+		for _, c := range asks[id] {
+			if c >= from && c < at {
+				return true
+			}
+		}
+		return false
 	}
-	rb, err := b.Range(all)
-	if err != nil {
-		return err
-	}
-	if err := core.ReadValues(log, b.TakeFills()); err != nil {
-		return err
-	}
-	if a.Rev() != b.Rev() || !proto.Equal(ra, rb) {
-		return fmt.Errorf("replaying the committed log gives revision %d and %d keys, the cluster has revision %d and %d keys",
-			a.Rev(), len(ra.Kvs), b.Rev(), len(rb.Kvs))
+	for _, r := range history {
+		var id, ttl int64
+		keepAlive := false
+		switch resp := r.Resp.(type) {
+		case *pb.LeaseGrantResponse:
+			if resp == nil {
+				continue
+			}
+			id, ttl = resp.ID, resp.TTL
+		case *pb.LeaseKeepAliveResponse:
+			if resp == nil {
+				continue
+			}
+			id, ttl, keepAlive = resp.ID, resp.TTL, true
+		default:
+			continue
+		}
+		at, revoked := revokedAt[id]
+		if !revoked || ttl <= 0 {
+			continue
+		}
+		if keepAlive && r.Call > at && granted[id] < at {
+			return fmt.Errorf("lease %d answered a keepalive called at %d ms with TTL %d s, after a node applied its revoke at %d ms",
+				id, r.Call/Millisecond, ttl, at/Millisecond)
+		}
+		early := ttl*Second*driftPerMille/1000 + TickTime
+		if driftPerMille == 0 {
+			early = 0
+		}
+		if r.Call < at && at < r.Call+ttl*Second-early && !asked(id, at) {
+			return fmt.Errorf("lease %d was revoked at %d ms, but a call at %d ms was answered with TTL %d s",
+				id, at/Millisecond, r.Call/Millisecond, ttl)
+		}
 	}
 	return nil
 }
@@ -599,8 +523,11 @@ func (c Config) maxLeaseTTL() int64 {
 // checkLeasesExpire checks the leases of the run (leasesExpire) and
 // counts the revokes in the log, expiries included, and the lease
 // checkpoints.
-func (s *Sim) checkLeasesExpire(res *Result) error {
-	if err := leasesExpire(res.History, s.expiredAt, s.expiredOrder, s.live()[0].proc.core.Leases(), s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
+func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
+	if err := leasesExpire(res.History, s.expiredAt, s.expiredOrder, alive, s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
+		return err
+	}
+	if err := revokesKeepPromises(res.History, s.revokedAt, s.cfg.Faults.DriftPerMille); err != nil {
 		return err
 	}
 	for _, op := range res.Log {
@@ -617,18 +544,30 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 // leasesExpire requires every lease that still lives at end to have been
 // granted or kept alive within the leaseGrace of its TTL, so leases do
 // expire, and no lease to expire, at expiredAt, before its TTL ran out
-// since its last successful grant or renewal, less the clock envelope of
-// driftPerMille.
+// since its last successful grant or renewal that started before then,
+// less the clock envelope of driftPerMille. A renewal after the expiry
+// does not count: the revoke a leader proposed may never commit, as when
+// it loses its term, and the next leader starts the lease's TTL over.
 func leasesExpire(history []*Record, expiredAt map[int64]int64, order, alive []int64, end, driftPerMille int64) error {
 	renewed := map[int64]int64{}
 	ttl := map[int64]int64{}
 	for _, r := range history {
+		// A failed call through gRPC (wl's clients) records a nil
+		// response of its type.
 		switch resp := r.Resp.(type) {
 		case *pb.LeaseGrantResponse:
-			renewed[resp.ID] = max(renewed[resp.ID], r.Call)
+			if resp == nil {
+				continue
+			}
 			ttl[resp.ID] = resp.TTL
+			if at, ok := expiredAt[resp.ID]; !ok || r.Call < at {
+				renewed[resp.ID] = max(renewed[resp.ID], r.Call)
+			}
 		case *pb.LeaseKeepAliveResponse:
-			if resp.TTL > 0 {
+			if resp == nil || resp.TTL <= 0 {
+				continue
+			}
+			if at, ok := expiredAt[resp.ID]; !ok || r.Call < at {
 				renewed[resp.ID] = max(renewed[resp.ID], r.Call)
 			}
 		}
@@ -651,7 +590,7 @@ func leasesExpire(history []*Record, expiredAt map[int64]int64, order, alive []i
 	for _, r := range history {
 		switch req := r.req.(type) {
 		case *pb.LeaseGrantRequest:
-			if g, ok := r.Resp.(*pb.LeaseGrantResponse); ok {
+			if g, ok := r.Resp.(*pb.LeaseGrantResponse); ok && g != nil {
 				last[g.ID] = max(last[g.ID], r.Call)
 			}
 		case *pb.LeaseKeepAliveRequest:
@@ -680,7 +619,7 @@ func (s *Sim) checkWatchersFreed() error {
 				open++
 			}
 		}
-		if got := n.proc.core.WatcherCount(); got != open {
+		if got := n.proc.wl.turn.Watchers; got != open {
 			return fmt.Errorf("node %d holds %d watchers for %d open watch streams", n.id, got, open)
 		}
 	}
@@ -750,15 +689,19 @@ func (s *Sim) checkRecoverable() error {
 			continue
 		}
 		floor := n.floor()
-		w, rec, err := wal.Open(n.disk.Durable())
+		d, err := s.logOn(n)
+		if err != nil && n.rotted && n.corrupted && refusesDamage(err) {
+			// Its next start refuses the rotted log, as it must.
+			continue
+		}
 		if err != nil {
 			return fmt.Errorf("node %d cannot recover its log at the end: %w", n.id, err)
 		}
-		if err := w.Close(); err != nil {
+		if err := d.close(); err != nil {
 			return err
 		}
-		if rec.Last < floor {
-			return fmt.Errorf("node %d recovers entries to %d at the end, but reported %d durable", n.id, rec.Last, floor)
+		if d.last < floor {
+			return fmt.Errorf("node %d recovers entries to %d at the end, but reported %d durable", n.id, d.last, floor)
 		}
 	}
 	return nil

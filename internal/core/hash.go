@@ -1,8 +1,6 @@
 package core
 
 import (
-	"slices"
-
 	"github.com/djosh34/tigerstore/internal/mvcc"
 )
 
@@ -18,18 +16,3 @@ func (n *Node) keepHash(h mvcc.KVHash) {
 		n.hashes = n.hashes[1:]
 	}
 }
-
-// hashKV answers HashKV as etcd's hash storage does: with the hash a
-// compaction took at that revision, if one did, or one taken now.
-func (n *Node) hashKV(rev int64) (mvcc.KVHash, error) {
-	for _, h := range n.hashes {
-		if rev == h.Revision {
-			return h, nil
-		}
-	}
-	return n.kv.HashKV(rev)
-}
-
-// CompactHashes are the hashes the last compactions took, oldest first,
-// for the compaction hash check.
-func (n *Node) CompactHashes() []mvcc.KVHash { return slices.Clone(n.hashes) }

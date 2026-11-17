@@ -14,9 +14,7 @@ import (
 	"github.com/djosh34/tigerstore/check"
 	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/history/frometcd"
-	"github.com/djosh34/tigerstore/internal/core"
-	"github.com/djosh34/tigerstore/internal/osfs"
-	"github.com/djosh34/tigerstore/internal/wal"
+	"github.com/djosh34/tigerstore/internal/wl"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	etcdwal "go.etcd.io/etcd/server/v3/storage/wal"
 	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
@@ -46,12 +44,12 @@ func checkRecorded(out string) error {
 		path := filepath.Join(out, fmt.Sprintf("data%d", i))
 		var log []history.Request
 		var err error
-		if info, statErr := os.Stat(filepath.Join(path, "member")); statErr == nil && info.IsDir() {
+		// etcd keeps its log in member/wal; tigerstore (internal/wl) keeps
+		// a member file, and its log in wal.
+		if info, statErr := os.Stat(filepath.Join(path, "member", "wal")); statErr == nil && info.IsDir() {
 			log, err = etcdProofLog(filepath.Join(path, "member", "wal"))
-		} else if statErr == nil || os.IsNotExist(statErr) {
-			log, err = proofLog(filepath.Join(path, "wal"))
 		} else {
-			err = statErr
+			log, err = proofLog(path)
 		}
 		if err != nil {
 			return fmt.Errorf("node %d WAL: %w", i, err)
@@ -164,49 +162,48 @@ func checkRecorded(out string) error {
 	return errors.Join(failures, err)
 }
 
-func proofLog(path string) (log []history.Request, err error) {
-	d, err := osfs.New(path)
+// proofLog reads the committed requests of the stopped tigerstore node
+// whose data dir is dir, from the log's first entry while no checkpoint
+// has cut it (wl.ReadWholeLog): a checkpoint may follow the workload's
+// start. Member announcements, auth requests, callers, lease keepalives
+// (which change no key or revision, and etcd does not log) and the bulk
+// preload are left out.
+func proofLog(dir string) ([]history.Request, error) {
+	l, err := wl.ReadWholeLog(nil, dir)
 	if err != nil {
 		return nil, err
 	}
-	w, rec, err := wal.Open(d)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { err = errors.Join(err, w.Close()) }()
-	// Every compaction cuts a checkpoint, so the newest root can be past
-	// the workload's start; the entries below it stay on disk while a live
-	// value holds them, as the start's does.
-	first := rec.Root.Index + 1
-	for first > 1 && w.Has(first-1) {
-		first--
-	}
-	for i := first; i <= rec.HardState.Commit; i++ {
-		e, err := w.Entry(i)
-		if err != nil {
-			return nil, err
-		}
-		if e.GetType() != raftpb.EntryNormal || len(e.Data) == 0 {
+	var log []history.Request
+	for _, e := range l.Entries {
+		if e.GetIndex() > l.Commit || e.GetType() != raftpb.EntryNormal || len(e.Data) == 0 {
 			continue
 		}
-		err = core.DecodeBatch(e.Data, func(_, _, _ uint64, m proto.Message) error {
+		b, err := wl.ParseBatch(e.Data)
+		if err != nil {
+			return nil, fmt.Errorf("committed index %d: %w", e.GetIndex(), err)
+		}
+		for _, o := range b.Ops {
+			m, err := o.Message()
+			if err != nil {
+				return nil, fmt.Errorf("committed index %d: %w", e.GetIndex(), err)
+			}
+			pm, ok := m.(proto.Message)
 			switch m := m.(type) {
-			case *pb.Member, *pb.LeaseCheckpointRequest:
-				return nil
+			case *pb.InternalRaftRequest, *pb.LeaseKeepAliveRequest:
+				continue
 			case *pb.TxnRequest:
 				if bulkPreload(m) {
-					return nil
+					continue
 				}
 			}
-			q, err := frometcd.Request(m)
+			if !ok {
+				continue // an announcement or a caller
+			}
+			q, err := frometcd.Request(pm)
 			if err != nil {
-				return err
+				return nil, fmt.Errorf("committed index %d: %w", e.GetIndex(), err)
 			}
 			log = append(log, q)
-			return nil
-		})
-		if err != nil {
-			return nil, err
 		}
 	}
 	return log, nil

@@ -13,25 +13,26 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/internal/committed"
+	"github.com/djosh34/tigerstore/internal/wl"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/raft/v3/raftpb"
-	"google.golang.org/protobuf/encoding/protowire"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // These tests use two builds of this source; only TestReleaseUpgrade
-// also runs with two releases. The old build supports entry format 1 and
-// peer protocol 3; the new one supports entry formats 1-2 and peer
-// protocols 3-4, so that new nodes send each other held entries
-// (core/held.go) and an old node must never get one. The workflow changes
-// only those constants. No test hook runs inside the server.
+// also runs with two releases. The old build reads and writes batch
+// format 1, the new one formats 1-2 (internal/wl/format.go); the workflow
+// changes only maxFormat. No test hook runs inside the server.
 func TestRollingUpgrade(t *testing.T) {
 	for _, seed := range []uint64{148, 174} {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
@@ -41,11 +42,10 @@ func TestRollingUpgrade(t *testing.T) {
 			r.stage("first upgrade", 1)
 			r.restart(1, r.newBin)
 			r.stage("second upgrade", 1)
-			r.heldMixed("second upgrade")
 
-			// Keep the exact announcement bytes of node 2's upgraded run.
-			// Reproposing it later models a delayed MsgProp without TLS
-			// byte corruption or a new announcement from the rollback run.
+			// Keep the exact announcement of node 2's upgraded run.
+			// Proposing it again later models a delayed proposal, without
+			// a new announcement from the rollback run.
 			r.stop(1)
 			stale := r.announcement(1, 2)
 			r.start(1, r.oldBin)
@@ -58,41 +58,32 @@ func TestRollingUpgrade(t *testing.T) {
 			r.start(1, r.oldBin)
 			r.stage("rollback restart", 1)
 			r.restart(2, r.newBin)
-			r.stage("third node upgraded, rollback holds gate", 1)
-			r.replay(stale)
+			r.stage("third node upgraded, rollback holds the format", 1)
+			batch := r.replay(stale)
 			r.stage("delayed announcement after rollback", 1)
 
 			// A successful send alone is not coverage: require the stale
-			// bytes in the committed WAL after the rollback announcement.
+			// announcement in the committed log after the rollback's.
 			r.stop(1)
 			n := r.wal(1)
 			seen := false
-			for _, a := range announcements(t, n) {
-				if a.Index > rolled.Index && bytes.Equal(a.Batch, stale.Batch) {
+			for _, e := range committedEntries(n) {
+				if e.GetIndex() > rolled.Index && bytes.Equal(e.Data, batch) {
 					seen = true
-					t.Logf("delayed announcement committed at %d, rollback at %d", a.Index, rolled.Index)
+					t.Logf("delayed announcement committed at %d, rollback at %d", e.GetIndex(), rolled.Index)
 				}
 			}
 			if !seen {
 				t.Fatal("delayed announcement was not committed after rollback")
 			}
-			for _, e := range n.Entries {
-				if e.GetIndex() <= n.Commit && e.GetType() == raftpb.EntryNormal && len(e.Data) > 0 && e.Data[0] == 0 {
-					t.Fatalf("entry %d has versioned data %x before the last node supports it", e.GetIndex(), e.Data)
-				}
+			if f, index := newestFormat(t, n); f != 1 {
+				t.Fatalf("entry %d is a batch of format %d before the last node supports it", index, f)
 			}
 			r.start(1, r.newBin)
 			r.stage("last node upgraded", 2)
 			r.stop(1)
-			n = r.wal(1)
-			format2 := false
-			for _, e := range n.Entries {
-				if e.GetIndex() <= n.Commit && e.GetType() == raftpb.EntryNormal && len(e.Data) > 1 && e.Data[0] == 0 && e.Data[1] == 2 {
-					format2 = true
-				}
-			}
-			if !format2 {
-				t.Fatal("no committed format-2 entry after activation")
+			if f, _ := newestFormat(t, r.wal(1)); f != 2 {
+				t.Fatal("no committed batch of format 2 after the cluster took it")
 			}
 			r.refuseOld(1)
 			r.start(1, r.newBin)
@@ -116,7 +107,7 @@ func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 	// announcement remains in replicated state when node 3 upgrades.
 	r.restart(2, r.newBin)
 	// A leader election can outlast a short sleep. Keep the rollback
-	// down for twenty election timeouts, or until activation is seen.
+	// down for twenty seconds, or until activation is seen.
 	v := 1
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
@@ -131,7 +122,7 @@ func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if v != 1 {
-		t.Errorf("version %d activated while the rollback node was down; want 1 (#174)", v)
+		t.Errorf("format %d activated while the rollback node was down; want 1 (#174)", v)
 		r.refuseOld(1)
 		r.start(1, r.newBin)
 		r.stage("restore the new binary after unsafe activation", 2)
@@ -142,36 +133,123 @@ func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 }
 
 // TestReleaseUpgrade upgrades a cluster from the previous release's binary
-// (ROLLING_OLD) to the release candidate (ROLLING_NEW) one node at a time
-// under load, then downgrades one node; the release workflow runs it. Any
-// two releases can do this, so it asks only that the nodes agree on the
-// newest version all of them support. The downgraded node runs the old
-// binary again, unless the cluster went past the old binary's newest
-// version: then the old binary must refuse to start, and the node comes
-// back on the candidate. The checkers run on the whole history.
+// (ROLLING_OLD) to the release candidate (ROLLING_NEW) under load, with
+// every checker on the whole history; the release workflow runs it. The
+// previous release runs main's engine and the candidate internal/wl,
+// which cannot run in one cluster: the upgrade is offline. The writers
+// pause and their last calls settle, `etcdctl snapshot save` saves the
+// old cluster, and every node stops. The candidate refuses an old data
+// dir and names the way. Each node restores the snapshot with the
+// candidate, and the new cluster takes the writers on. Auth is on in the
+// old cluster: the new one must keep its users, roles and revision. Once
+// a release of internal/wl is out, this upgrade is rolling again.
 func TestReleaseUpgrade(t *testing.T) {
 	r := startRolling(t, 355)
-	oldMax := r.maxVersion(0)
-	r.settle("previous release", oldMax)
-	r.restart(0, r.newBin)
-	r.settle("node1 upgraded", oldMax)
-	r.restart(1, r.newBin)
-	r.settle("node2 upgraded", oldMax)
-	r.restart(2, r.newBin)
-	newMax := r.maxVersion(2)
-	r.settle("node3 upgraded", newMax)
-	if newMax > oldMax {
-		r.stop(0)
-		r.refuseOld(0)
-		r.start(0, r.newBin)
-	} else {
-		r.restart(0, r.oldBin)
+	authRev := r.enableAuth()
+	r.writes("previous release")
+	r.traffic.pause()
+	rev := r.revision()
+	if err := r.traffic.watchThrough(rev); err != nil {
+		t.Fatal(err)
 	}
-	r.settle("node1 downgraded", newMax)
+	// A compacted store: the new one keeps the history from there.
+	compacted := rev - 10
+	r.compact(compacted)
+	before := r.history(compacted, rev)
+	snap := r.saveSnapshot()
+	r.stopAll()
+	r.refuseMainDir(0)
+	r.restoreAll(snap)
+	for i := range 3 {
+		r.start(i, r.newBin)
+	}
+	if err := r.c.ready(context.Background(), 30*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.revision(); got != rev {
+		t.Fatalf("the restored cluster is at revision %d, the old one was at %d", got, rev)
+	}
+	if after := r.history(compacted, rev); !reflect.DeepEqual(after, before) {
+		t.Fatalf("reads from the compacted revision %d to %d differ after the restore:\nbefore %v\nafter  %v", compacted, rev, before, after)
+	}
+	r.checkCompacted(compacted)
+	r.checkAuth(authRev)
+	r.traffic.resume()
+	r.writes("candidate")
 }
 
-// peerMin is the oldest peer protocol version both builds speak.
-const peerMin = 3
+// enableAuth turns auth on, with root, the user of the clients'
+// certificate with the root role, so the writers go on, and alice, who
+// may only read /auth/. It returns the auth revision.
+func (r *rollingRun) enableAuth() uint64 {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cl := r.c.nodes[0].control
+	steps := []func() error{
+		func() error { _, err := cl.UserAdd(ctx, "root", "rootpw"); return err },
+		func() error { _, err := cl.RoleAdd(ctx, "root"); return err },
+		func() error { _, err := cl.UserGrantRole(ctx, "root", "root"); return err },
+		func() error {
+			_, err := cl.UserAddWithOptions(ctx, "client", "", &clientv3.UserAddOptions{NoPassword: true})
+			return err
+		},
+		func() error { _, err := cl.UserGrantRole(ctx, "client", "root"); return err },
+		func() error { _, err := cl.RoleAdd(ctx, "reader"); return err },
+		func() error {
+			_, err := cl.RoleGrantPermission(ctx, "reader", "/auth/", clientv3.GetPrefixRangeEnd("/auth/"), clientv3.PermissionType(clientv3.PermRead))
+			return err
+		},
+		func() error { _, err := cl.UserAdd(ctx, "alice", "alicepw"); return err },
+		func() error { _, err := cl.UserGrantRole(ctx, "alice", "reader"); return err },
+		func() error { _, err := cl.AuthEnable(ctx); return err },
+	}
+	for i, step := range steps {
+		if err := step(); err != nil {
+			r.t.Fatalf("auth step %d: %v", i+1, err)
+		}
+	}
+	st, err := cl.AuthStatus(ctx)
+	if err != nil || !st.Enabled {
+		r.t.Fatalf("auth status after enabling: %v, %v", st, err)
+	}
+	r.t.Logf("auth on at revision %d", st.AuthRevision)
+	return st.AuthRevision
+}
+
+// checkAuth checks that the cluster kept the old one's auth: on, at
+// revision rev, its users, alice's password and her permission.
+func (r *rollingRun) checkAuth(rev uint64) {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cl := r.c.nodes[0].control
+	st, err := cl.AuthStatus(ctx)
+	if err != nil || !st.Enabled || st.AuthRevision != rev {
+		r.t.Fatalf("the restored auth status is %v (%v), want on at revision %d", st, err, rev)
+	}
+	users, err := cl.UserList(ctx)
+	if err != nil || !slices.Equal(users.Users, []string{"alice", "client", "root"}) {
+		r.t.Fatalf("the restored users are %v (%v)", users, err)
+	}
+	cfg := clientv3.Config{Endpoints: r.c.nodes[0].control.Endpoints(), TLS: r.c.tls.Clone(), Username: "alice", Password: "alicepw", DialTimeout: 5 * time.Second}
+	alice, err := clientv3.New(cfg)
+	if err != nil {
+		r.t.Fatalf("alice's old password after the restore: %v", err)
+	}
+	defer func() {
+		if err := alice.Close(); err != nil {
+			r.t.Error(err)
+		}
+	}()
+	if _, err := alice.Get(ctx, "/auth/x"); err != nil {
+		r.t.Fatalf("alice's read of /auth/ after the restore: %v", err)
+	}
+	if _, err := alice.Put(ctx, "/auth/x", "1"); !errors.Is(err, rpctypes.ErrPermissionDenied) {
+		r.t.Fatalf("alice's write of /auth/ after the restore gave %v, want permission denied", err)
+	}
+	r.t.Logf("auth kept: on at revision %d, users %v, alice reads and may not write", rev, users.Users)
+}
 
 type rollingRun struct {
 	t                   *testing.T
@@ -179,7 +257,12 @@ type rollingRun struct {
 	traffic             *traffic
 	dir, oldBin, newBin string
 	stopped             bool
-	ranges              [3]int
+	// formats is the newest format each node's binary reads.
+	formats [3]int
+	// previous are the data dirs of the engine an offline upgrade left,
+	// and restored the index of the snapshot it restored.
+	previous []string
+	restored uint64
 	// nodes is how the nodes stood before finish stopped them.
 	nodes string
 }
@@ -270,9 +353,9 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 func (r *rollingRun) start(i int, bin string) {
 	r.t.Helper()
 	r.c.bin = bin
-	r.ranges[i] = peerMin
+	r.formats[i] = 1
 	if bin == r.newBin {
-		r.ranges[i] = peerMin + 1
+		r.formats[i] = 2
 	}
 	if err := r.c.start(r.c.nodes[i]); err != nil {
 		r.t.Fatal(err)
@@ -320,149 +403,184 @@ func (r *rollingRun) restart(i int, bin string) {
 	r.start(i, bin)
 }
 
-func (r *rollingRun) stage(name string, version int) {
+// stage waits until every node uses format, with its binary's newest,
+// and fails unless they still do 3 s later and writes succeed meanwhile.
+func (r *rollingRun) stage(name string, format int) {
 	r.t.Helper()
 	begin := r.traffic.r.now()
 	for i := range 3 {
-		r.version(i, version)
-	}
-	// Idle Raft senders need not notice a restarted peer until they next
-	// write. Probe fresh connections rather than requiring six live
-	// Raft links between every pair of followers.
-	for from := range 3 {
-		for to := range 3 {
-			if from == to {
-				continue
-			}
-			conn := r.connect(from, to, r.ranges[from])
-			if err := conn.Close(); err != nil {
-				r.t.Fatal(err)
-			}
-		}
+		r.format(i, format)
 	}
 	time.Sleep(3 * time.Second)
 	for i := range 3 {
-		r.version(i, version)
+		r.format(i, format)
 	}
 	writes := r.writesSince(begin)
 	if writes == 0 {
 		r.t.Fatalf("%s: no successful writes during stage", name)
 	}
-	for i := range 3 {
-		if n := r.counter(i, "tigerstore_network_peer_held_refused_total"); n != 0 {
-			r.t.Fatalf("%s: node%d, of peer range %d-%d, got %d messages of held entries on connections that do not carry them", name, i+1, peerMin, r.ranges[i], n)
-		}
-	}
-	r.t.Logf("%s: active version %d, peer ranges %v negotiated, %d successful writes", name, version, r.ranges, writes)
+	r.t.Logf("%s: format %d, binaries' newest %v, %d successful writes", name, format, r.formats, writes)
 }
 
-// heldMixed runs a stage in a cluster of old and new nodes, led by a new
-// one: a leader that leads now is stopped and started again, which hands
-// its leadership to a peer. The new leader must name to the new follower
-// the entries it forwarded, and the follower must fill in appends from
-// the entries it held, while stage checks that the old node gets none.
-func (r *rollingRun) heldMixed(name string) {
+// writes fails unless writes succeed in the next 3 s.
+func (r *rollingRun) writes(name string) {
 	r.t.Helper()
-	lead, err := r.c.leader(context.Background(), 10*time.Second)
+	begin := r.traffic.r.now()
+	time.Sleep(3 * time.Second)
+	writes := r.writesSince(begin)
+	if writes == 0 {
+		r.t.Fatalf("%s: no successful writes", name)
+	}
+	r.t.Logf("%s: %d successful writes", name, writes)
+}
+
+// revision is the cluster's revision, by a linearizable read.
+func (r *rollingRun) revision() int64 {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	g, err := r.c.nodes[0].control.Get(ctx, "\x00", clientv3.WithFromKey(), clientv3.WithCountOnly())
 	if err != nil {
 		r.t.Fatal(err)
 	}
-	if r.ranges[lead] == peerMin {
-		r.restart(lead, r.oldBin)
-		if lead, err = r.c.leader(context.Background(), 10*time.Second); err != nil {
+	return g.Header.Revision
+}
+
+// compact compacts the cluster at rev.
+func (r *rollingRun) compact(rev int64) {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := r.c.nodes[0].control.Compact(ctx, rev, clientv3.WithCompactPhysical()); err != nil {
+		r.t.Fatal(err)
+	}
+	r.t.Logf("compacted at %d", rev)
+}
+
+// history reads the workload's keys at each revision from..to, as
+// "key=value@create/mod/version" per key.
+func (r *rollingRun) history(from, to int64) [][]string {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var out [][]string
+	for rev := from; rev <= to; rev++ {
+		g, err := r.c.nodes[0].control.Get(ctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(rev))
+		if err != nil {
+			r.t.Fatalf("a read at %d: %v", rev, err)
+		}
+		var kvs []string
+		for _, kv := range g.Kvs {
+			kvs = append(kvs, fmt.Sprintf("%s=%s@%d/%d/%d", kv.Key, kv.Value, kv.CreateRevision, kv.ModRevision, kv.Version))
+		}
+		out = append(out, kvs)
+	}
+	return out
+}
+
+// checkCompacted checks that a read before the compacted revision is
+// compacted.
+func (r *rollingRun) checkCompacted(compacted int64) {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := r.c.nodes[0].control.Get(ctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(compacted-1)); !errors.Is(err, rpctypes.ErrCompacted) {
+		r.t.Fatalf("a read before the compacted revision after the restore gave %v, want compacted", err)
+	}
+	r.t.Logf("the history from revision %d kept, and none before", compacted)
+}
+
+// saveSnapshot saves a snapshot of the cluster as `etcdctl snapshot save`
+// does, and returns its path.
+func (r *rollingRun) saveSnapshot() string {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	rc, err := r.c.nodes[0].control.Snapshot(ctx)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	path := filepath.Join(r.dir, "snapshot.db")
+	f, err := os.Create(path)
+	if err != nil {
+		r.t.Fatal(errors.Join(err, rc.Close()))
+	}
+	_, err = io.Copy(f, rc)
+	if err = errors.Join(err, rc.Close(), f.Close()); err != nil {
+		r.t.Fatal(err)
+	}
+	r.t.Logf("saved the snapshot at %s", path)
+	return path
+}
+
+// stopAll ends every node with SIGTERM.
+func (r *rollingRun) stopAll() {
+	r.t.Helper()
+	for i, n := range r.c.nodes {
+		ps, _, err := n.signal(syscall.SIGTERM)
+		if err != nil {
 			r.t.Fatal(err)
 		}
-	}
-	if r.ranges[lead] == peerMin {
-		r.t.Fatalf("%s: node%d, an old node, still leads", name, lead+1)
-	}
-	follower := -1
-	for i := range 3 {
-		if i != lead && r.ranges[i] > peerMin {
-			follower = i
+		if !ps.Success() {
+			r.t.Fatalf("node%d stopped with %v", i+1, ps)
 		}
 	}
-	if follower < 0 {
-		r.t.Fatalf("%s: no new follower beside node%d", name, lead+1)
-	}
-	named := r.counter(lead, "tigerstore_server_held_named_total")
-	filled := r.counter(follower, "tigerstore_server_held_filled_total")
-	r.stage(name+", held entries between the new nodes", 1)
-	named = r.counter(lead, "tigerstore_server_held_named_total") - named
-	filled = r.counter(follower, "tigerstore_server_held_filled_total") - filled
-	if named == 0 || filled == 0 {
-		r.t.Fatalf("%s: node%d, a new leader, named %d entries, and node%d, a new follower, filled in %d appends from held entries", name, lead+1, named, follower+1, filled)
-	}
-	r.t.Logf("%s: node%d named %d entries, node%d filled in %d appends from them", name, lead+1, named, follower+1, filled)
 }
 
-// counter is the value of a counter of node i. Both builds of this source
-// have every counter it reads, so a missing one fails the test.
-func (r *rollingRun) counter(i int, name string) int {
+// refuseMainDir starts the candidate on node i's data dir, of the old
+// engine, which it must refuse, naming the offline upgrade.
+func (r *rollingRun) refuseMainDir(i int) {
 	r.t.Helper()
-	_, body, err := r.metric(i)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	b, err := exec.CommandContext(ctx, r.newBin, r.c.nodes[i].args...).CombinedOutput()
+	if e := os.WriteFile(filepath.Join(r.dir, "main-data-dir-refused.log"), b, 0o644); e != nil {
+		r.t.Fatal(e)
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 || ctx.Err() != nil || !bytes.Contains(b, []byte(wl.ErrMainDataDir.Error())) || !bytes.Contains(b, []byte("snapshot restore")) {
+		r.t.Fatalf("the candidate on an old data dir: %v: %s", err, b)
+	}
+	r.t.Log("the candidate refused the old data dir")
+}
+
+// restoreAll moves each node's data dir aside, where finish reads its
+// log, and restores the snapshot at snap into a new one with the
+// candidate.
+func (r *rollingRun) restoreAll(snap string) {
+	r.t.Helper()
+	for i, n := range r.c.nodes {
+		old := filepath.Join(r.dir, "data-previous", fmt.Sprintf("node%d", i+1))
+		if err := os.MkdirAll(filepath.Dir(old), 0o755); err != nil {
+			r.t.Fatal(err)
+		}
+		if err := os.Rename(r.c.data[i], old); err != nil {
+			r.t.Fatal(err)
+		}
+		r.previous = append(r.previous, old)
+		args := []string{"snapshot", "restore", snap, "--name", fmt.Sprintf("node%d", i+1), "--data-dir", r.c.data[i]}
+		cluster := slices.Index(n.args, "--initial-cluster")
+		args = append(args, n.args[cluster:cluster+2]...)
+		b, err := exec.Command(r.newBin, args...).CombinedOutput()
+		if err != nil {
+			r.t.Fatalf("node%d: snapshot restore: %v: %s", i+1, err, b)
+		}
+		r.t.Logf("node%d: %s", i+1, bytes.TrimSpace(b))
+	}
+	r.restored = r.restoredIndex(snap)
+}
+
+// restoredIndex is the Raft index of the snapshot at path.
+func (r *rollingRun) restoredIndex(path string) uint64 {
+	r.t.Helper()
+	b, err := os.ReadFile(path)
 	if err != nil {
 		r.t.Fatal(err)
 	}
-	v, err := metricValue(body, name)
-	if err != nil {
-		r.t.Fatalf("node%d: %v", i+1, err)
+	if len(b) < 28 || string(b[:8]) != "tigersnp" {
+		r.t.Fatal("the snapshot has no tigerstore header")
 	}
-	return v
-}
-
-// settle waits until every node has active version want, and fails
-// unless they still have it 3 s later and writes succeed meanwhile.
-func (r *rollingRun) settle(name string, want int) {
-	r.t.Helper()
-	begin := r.traffic.r.now()
-	for i := range 3 {
-		r.activeVersion(i, want)
-	}
-	time.Sleep(3 * time.Second)
-	for i := range 3 {
-		r.activeVersion(i, want)
-	}
-	writes := r.writesSince(begin)
-	if writes == 0 {
-		r.t.Fatalf("%s: no successful writes during stage", name)
-	}
-	r.t.Logf("%s: active version %d, %d successful writes", name, want, writes)
-}
-
-// activeVersion waits until node i has active version want.
-func (r *rollingRun) activeVersion(i, want int) {
-	r.t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
-	var last string
-	for time.Now().Before(deadline) {
-		v, _, err := r.metric(i)
-		if err == nil && v == want {
-			return
-		}
-		last = fmt.Sprintf("version %d, error %v", v, err)
-		time.Sleep(100 * time.Millisecond)
-	}
-	r.t.Fatalf("node%d: want active version %d: %s", i+1, want, last)
-}
-
-// maxVersion is the newest version the binary of node i supports.
-func (r *rollingRun) maxVersion(i int) int {
-	r.t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
-	for {
-		_, body, err := r.metric(i)
-		if err == nil {
-			var v int
-			if v, err = metricValue(body, "tigerstore_cluster_version_max"); err == nil {
-				return v
-			}
-		}
-		if time.Now().After(deadline) {
-			r.t.Fatalf("node%d: newest supported version: %v", i+1, err)
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+	return binary.BigEndian.Uint64(b[20:])
 }
 
 // writesSince counts the writes that succeeded from begin on.
@@ -478,7 +596,9 @@ func (r *rollingRun) writesSince(begin int64) int {
 	return writes
 }
 
-func (r *rollingRun) version(i, want int) {
+// format waits until node i uses format want and its metrics name its
+// binary's newest.
+func (r *rollingRun) format(i, want int) {
 	r.t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
 	var last string
@@ -487,7 +607,7 @@ func (r *rollingRun) version(i, want int) {
 		if err == nil {
 			last = fmt.Sprintf("tigerstore_cluster_version %d", v)
 			if v == want {
-				if err := r.binaryRange(i, body); err != nil {
+				if err := r.binaryFormat(i, body); err != nil {
 					last = err.Error()
 				} else {
 					if err := os.WriteFile(filepath.Join(r.dir, fmt.Sprintf("metrics-node%d.txt", i+1)), []byte(body), 0o644); err != nil {
@@ -501,19 +621,13 @@ func (r *rollingRun) version(i, want int) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	r.t.Fatalf("node%d: want active version %d: %s", i+1, want, last)
+	r.t.Fatalf("node%d: want format %d: %s", i+1, want, last)
 }
 
-func (r *rollingRun) binaryRange(i int, body string) error {
-	want := []string{
-		fmt.Sprintf("tigerstore_peer_protocol_min_version %d", peerMin),
-		fmt.Sprintf("tigerstore_peer_protocol_max_version %d", r.ranges[i]),
-		fmt.Sprintf("tigerstore_cluster_version_max %d", r.ranges[i]-peerMin+1),
-	}
-	for _, line := range want {
-		if !strings.Contains(body, "\n"+line+"\n") {
-			return fmt.Errorf("node%d metrics lack %s", i+1, line)
-		}
+func (r *rollingRun) binaryFormat(i int, body string) error {
+	line := fmt.Sprintf("tigerstore_cluster_version_max %d", r.formats[i])
+	if !strings.Contains(body, "\n"+line+"\n") {
+		return fmt.Errorf("node%d metrics lack %s", i+1, line)
 	}
 	return nil
 }
@@ -561,97 +675,78 @@ func (r *rollingRun) wal(i int) committed.Node {
 	return n
 }
 
-// announced keeps a single record, including its original origin, boot,
-// request ID and run field, encoded as a one-record format-1 batch.
+// committedEntries are the entries n committed.
+func committedEntries(n committed.Node) []*raftpb.Entry {
+	if n.Commit < n.First {
+		return nil
+	}
+	return n.Entries[:min(n.Commit-n.First+1, uint64(len(n.Entries)))]
+}
+
+// newestFormat is the newest format of the batches n committed, and the
+// index of the first batch of it.
+func newestFormat(t *testing.T, n committed.Node) (int, uint64) {
+	t.Helper()
+	format, at := 0, uint64(0)
+	for _, e := range committedEntries(n) {
+		if e.GetType() != raftpb.EntryNormal || len(e.Data) == 0 {
+			continue
+		}
+		b, err := wl.ParseBatch(e.Data)
+		if err != nil {
+			t.Fatalf("entry %d: %v", e.GetIndex(), err)
+		}
+		if int(b.Format) > format {
+			format, at = int(b.Format), e.GetIndex()
+		}
+	}
+	return format, at
+}
+
+// announced is an announcement a node committed, with its op as the log
+// holds it.
 type announced struct {
-	Index, Origin, Run uint64
-	Version            uint32
-	Batch              []byte
+	Index uint64
+	wl.Announcement
+	Op wl.Op
 }
 
 func announcements(t *testing.T, n committed.Node) []announced {
 	t.Helper()
 	var out []announced
-	for _, e := range n.Entries {
-		if e.GetIndex() > n.Commit || e.GetType() != raftpb.EntryNormal || len(e.Data) == 0 {
+	for _, e := range committedEntries(n) {
+		if e.GetType() != raftpb.EntryNormal || len(e.Data) == 0 {
 			continue
 		}
-		data := e.Data
-		if data[0] == 0 {
-			if len(data) < 2 {
-				t.Fatal("truncated entry format header")
-			}
-			data = data[2:]
+		b, err := wl.ParseBatch(e.Data)
+		if err != nil {
+			t.Fatalf("entry %d: %v", e.GetIndex(), err)
 		}
-		uv := func() uint64 {
-			x, k := binary.Uvarint(data)
-			if k <= 0 {
-				t.Fatal("malformed batch varint")
+		for _, o := range b.Ops {
+			m, err := o.Message()
+			if err != nil {
+				t.Fatalf("entry %d: %v", e.GetIndex(), err)
 			}
-			data = data[k:]
-			return x
-		}
-		count := uv()
-		for range count {
-			start := data
-			origin := uv()
-			uv() // boot
-			uv() // request ID
-			if len(data) == 0 {
-				t.Fatal("missing batch kind")
+			if a, ok := m.(*wl.Announcement); ok {
+				out = append(out, announced{Index: e.GetIndex(), Announcement: *a, Op: o})
 			}
-			kind := data[0]
-			data = data[1:]
-			size := uv()
-			if size > uint64(len(data)) {
-				t.Fatal("truncated batch body")
-			}
-			body := data[:size]
-			data = data[size:]
-			if kind != 10 { // core.kindVersion
-				continue
-			}
-			var m wrapperspb.UInt32Value
-			if err := proto.Unmarshal(body, &m); err != nil {
-				t.Fatal(err)
-			}
-			a := announced{Index: e.GetIndex(), Origin: origin, Version: m.Value, Batch: append([]byte{1}, start[:len(start)-len(data)]...)}
-			u := m.ProtoReflect().GetUnknown()
-			for len(u) > 0 {
-				num, typ, k := protowire.ConsumeTag(u)
-				if k < 0 {
-					t.Fatal(protowire.ParseError(k))
-				}
-				u = u[k:]
-				if num == 2 && typ == protowire.VarintType {
-					x, k := protowire.ConsumeVarint(u)
-					if k < 0 {
-						t.Fatal(protowire.ParseError(k))
-					}
-					a.Run = x
-				}
-				k = protowire.ConsumeFieldValue(num, typ, u)
-				if k < 0 {
-					t.Fatal(protowire.ParseError(k))
-				}
-				u = u[k:]
-			}
-			out = append(out, a)
 		}
 	}
 	return out
 }
 
-func (r *rollingRun) announcement(i int, version uint32) announced {
+// announcement is node i's last committed announcement, which must be of
+// format.
+func (r *rollingRun) announcement(i int, format uint8) announced {
 	r.t.Helper()
 	var found announced
 	for _, a := range announcements(r.t, r.wal(i)) {
-		if a.Origin == r.c.ids[i] {
+		if a.ID == r.c.ids[i] {
 			found = a
 		}
 	}
-	if found.Version != version || found.Run == 0 {
-		r.t.Fatalf("node%d announcement %+v, want version %d and a run", i+1, found, version)
+	if found.Format != format || found.Run == 0 {
+		r.t.Fatalf("node%d announcement %+v, want format %d and a run", i+1, found, format)
 	}
 	if err := save(filepath.Join(r.dir, fmt.Sprintf("announcement-node%d-run%d.json", i+1, found.Run)), found); err != nil {
 		r.t.Fatal(err)
@@ -659,7 +754,38 @@ func (r *rollingRun) announcement(i int, version uint32) announced {
 	return found
 }
 
-func (r *rollingRun) connect(from, to, high int) *tls.Conn {
+// replay proposes a again to the leader, in a batch of its own, through a
+// peer connection of another member, and returns the batch. The batch
+// has a's origin and a sequence of a's run that no batch of the run has,
+// so no node takes another batch for it.
+func (r *rollingRun) replay(a announced) []byte {
+	r.t.Helper()
+	lead, err := r.c.leader(context.Background(), 10*time.Second)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	batch := wl.AppendBatch(nil, wl.Batch{Origin: a.ID, Seq: a.Run << 32, Format: 1, Ops: []wl.Op{a.Op}})
+	// Use a different member's inbound path even if the original sender
+	// is now leader.
+	from := (lead + 1) % 3
+	conn := r.peerConn(from, lead)
+	defer func() {
+		if err := conn.Close(); err != nil {
+			r.t.Error(err)
+		}
+	}()
+	if _, err := conn.Write(proposalFrame(r.c.ids[from], batch)); err != nil {
+		r.t.Fatal(err)
+	}
+	// The leader reads the frame before the connection closes.
+	time.Sleep(time.Second)
+	r.t.Logf("replayed node %d run %d format %d to node%d", a.ID, a.Run, a.Format, lead+1)
+	return batch
+}
+
+// peerConn dials node to's peer port as node from, and says the peer
+// hello wl's nodes say (wl.PeerHello).
+func (r *rollingRun) peerConn(from, to int) *tls.Conn {
 	r.t.Helper()
 	cert, err := tls.LoadX509KeyPair(filepath.Join(r.dir, "certs", fmt.Sprintf("node%d.pem", from+1)), filepath.Join(r.dir, "certs", fmt.Sprintf("node%d-key.pem", from+1)))
 	if err != nil {
@@ -669,72 +795,36 @@ func (r *rollingRun) connect(from, to, high int) *tls.Conn {
 	cfg.Certificates = []tls.Certificate{cert}
 	cfg.MinVersion = tls.VersionTLS13
 	cfg.NextProtos = nil
-	for v := high; v >= peerMin; v-- {
-		cfg.NextProtos = append(cfg.NextProtos, fmt.Sprintf("tigerstore-peer/%d", v))
+	st, err := r.c.status(context.Background(), to)
+	if err != nil {
+		r.t.Fatal(err)
 	}
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", r.c.routers[to].Addr(), cfg)
 	if err != nil {
 		r.t.Fatal(err)
 	}
-	ok := false
-	defer func() {
-		if !ok {
-			if err := conn.Close(); err != nil {
-				r.t.Error(err)
-			}
-		}
-	}()
-	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		r.t.Fatal(err)
+	if _, err := conn.Write(wl.PeerHello(r.c.ids[from], st.Header.ClusterId)); err != nil {
+		r.t.Fatal(errors.Join(err, conn.Close()))
 	}
-	st, err := r.c.status(context.Background(), to)
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	// The probe is a known member of the cluster, so it advertises no
-	// address.
-	preface := binary.BigEndian.AppendUint64([]byte{'T', 'S', peerMin, byte(high)}, r.c.ids[from])
-	preface = append(binary.BigEndian.AppendUint64(preface, st.Header.ClusterId), 0)
-	if _, err := conn.Write(preface); err != nil {
-		r.t.Fatal(err)
-	}
-	var reply [1]byte
-	want := min(high, r.ranges[to])
-	if _, err := io.ReadFull(conn, reply[:]); err != nil || int(reply[0]) != want {
-		r.t.Fatalf("peer node%d to node%d: %v, reply %v, want %d", from+1, to+1, err, reply, want)
-	}
-	if got := conn.ConnectionState().NegotiatedProtocol; got != fmt.Sprintf("tigerstore-peer/%d", want) {
-		r.t.Fatalf("ALPN %q disagrees with preface reply %d", got, want)
-	}
-	ok = true
 	return conn
 }
 
-func (r *rollingRun) replay(a announced) {
-	r.t.Helper()
-	lead, err := r.c.leader(context.Background(), 10*time.Second)
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	// Use a different member's inbound path even if the original sender
-	// is now leader. The entry's origin and boot remain unchanged.
-	from := (lead + 1) % 3
-	conn := r.connect(from, lead, peerMin)
-	defer func() {
-		if err := conn.Close(); err != nil {
-			r.t.Error(err)
-		}
-	}()
-	m := &raftpb.Message{Type: raftpb.MsgProp.Enum(), From: new(r.c.ids[from]), To: new(r.c.ids[lead]), Entries: []*raftpb.Entry{{Type: raftpb.EntryNormal.Enum(), Data: a.Batch}}}
-	b, err := proto.Marshal(m)
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	frame := binary.BigEndian.AppendUint32(nil, uint32(len(b)))
-	if _, err := conn.Write(append(frame, b...)); err != nil {
-		r.t.Fatal(err)
-	}
-	r.t.Logf("replayed node %d run %d version %d to node%d", a.Origin, a.Run, a.Version, lead+1)
+// proposalFrame is a peer frame of a MsgProp from node from with one
+// entry of data, as internal/wl's sendPeer writes it: the length, the
+// message's header (type, flags, from, term, log term, index, commit,
+// reject hint, vote, entry count), each entry's term, index, type and
+// length with its data, and the context's length.
+func proposalFrame(from uint64, data []byte) []byte {
+	m := []byte{byte(raftpb.MsgProp), 0}
+	m = binary.LittleEndian.AppendUint64(m, from)
+	m = append(m, make([]byte, 6*8)...)
+	m = binary.LittleEndian.AppendUint32(m, 1)
+	m = append(m, make([]byte, 16)...)
+	m = append(m, byte(raftpb.EntryNormal))
+	m = binary.LittleEndian.AppendUint32(m, uint32(len(data)))
+	m = append(m, data...)
+	m = binary.LittleEndian.AppendUint32(m, 0)
+	return append(binary.LittleEndian.AppendUint32(nil, uint32(len(m))), m...)
 }
 
 func (r *rollingRun) refuseOld(i int) {
@@ -779,6 +869,14 @@ func (r *rollingRun) finish() {
 		dirs = append(dirs, filepath.Join(r.dir, "data", fmt.Sprintf("node%d", i+1)))
 	}
 	log, evidence, err := committedLog(dirs)
+	if r.previous != nil {
+		// The old cluster's log, then the new one's, after the snapshot.
+		var before []history.Request
+		var oldEvidence []nodeEvidence
+		before, oldEvidence, err = readCommitted(r.previous, committed.ReadMain, 1, decodeMainBatches())
+		after, newEvidence, newErr := readCommitted(dirs, committed.Read, r.restored+1, decodeBatch)
+		log, evidence, err = slices.Concat(before, after), slices.Concat(oldEvidence, newEvidence), errors.Join(err, newErr)
+	}
 	if err != nil {
 		t.Error(err)
 	}

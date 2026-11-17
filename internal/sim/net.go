@@ -214,6 +214,7 @@ func (nw *network) reset(c *conn) {
 	for _, e := range []*conn{c, c.other} {
 		e.in.fail(errReset)
 		delete(nw.conns, e)
+		e.changed()
 	}
 }
 
@@ -404,6 +405,63 @@ type conn struct {
 	// as net.Conn allows calls at once.
 	readTimer, writeTimer *time.Timer
 	reading, writing      bool
+	// notify, if set, is told when a read or write that would wait may
+	// not any more (simos.Conn's OnChange); notifyAt tells it at the time
+	// bytes on their way arrive or a pause or stall ends.
+	notify   func()
+	notifyAt *time.Timer
+}
+
+// errWouldWait is readNow's and writeNow's answer when the call would
+// wait.
+var errWouldWait = errors.New("sim: the call would wait")
+
+// readNow reads what has arrived as Read does, without waiting: when it
+// would wait it returns errWouldWait, and in wait how long until it may
+// not, math.MaxInt64 if no time tells. room is the writer to wake once
+// the lock is let go (take). The lock is held.
+func (c *conn) readNow(b []byte) (k int, wait int64, room chan struct{}, err error) {
+	s := c.s
+	if c.closed {
+		return 0, 0, nil, net.ErrClosed
+	}
+	in := c.in
+	if in.err != nil {
+		return 0, 0, nil, in.err
+	}
+	now := s.now()
+	wait = int64(math.MaxInt64)
+	switch {
+	case c.p != nil && c.p.n.pausedUntil > now:
+		// A paused process reads nothing.
+		wait = c.p.n.pausedUntil - now
+	case len(in.chunks) > 0:
+		at := max(in.chunks[0].at, s.link(c.to, c.from).stallUntil)
+		if at <= now {
+			damaged := in.chunks[0].damaged
+			k := copy(b, in.chunks[0].b)
+			if in.chunks[0].b = in.chunks[0].b[k:]; len(in.chunks[0].b) == 0 {
+				in.chunks = slices.Delete(in.chunks, 0, 1)
+			}
+			// A writer may wait for the room.
+			in.size -= k
+			room := take(&in.roomWake)
+			c.other.changed()
+			if damaged {
+				// TLS refuses a damaged record and ends the connection,
+				// so it ends here, as the reader gets the damage. Its
+				// alert would wait for the write lock of a writer that
+				// waits for room, and under the race detector that wait
+				// on a mutex stops the synctest clock for good (#439).
+				s.net.reset(c)
+			}
+			return k, 0, room, nil
+		}
+		wait = at - now
+	case in.eof:
+		return 0, 0, nil, io.EOF
+	}
+	return 0, wait, nil, errWouldWait
 }
 
 func (c *conn) Read(b []byte) (int, error) {
@@ -414,50 +472,13 @@ func (c *conn) Read(b []byte) (int, error) {
 		if mine {
 			c.reading, mine = false, false
 		}
-		if c.closed {
+		k, wait, room, err := c.readNow(b)
+		if !errors.Is(err, errWouldWait) {
 			s.mu.Unlock()
-			return 0, net.ErrClosed
+			wakeUp(room)
+			return k, err
 		}
 		in := c.in
-		if in.err != nil {
-			s.mu.Unlock()
-			return 0, in.err
-		}
-		now := s.now()
-		wait := int64(math.MaxInt64)
-		switch {
-		case c.p != nil && c.p.n.pausedUntil > now:
-			// A paused process reads nothing.
-			wait = c.p.n.pausedUntil - now
-		case len(in.chunks) > 0:
-			at := max(in.chunks[0].at, s.link(c.to, c.from).stallUntil)
-			if at <= now {
-				damaged := in.chunks[0].damaged
-				k := copy(b, in.chunks[0].b)
-				if in.chunks[0].b = in.chunks[0].b[k:]; len(in.chunks[0].b) == 0 {
-					in.chunks = slices.Delete(in.chunks, 0, 1)
-				}
-				// A writer may wait for the room.
-				in.size -= k
-				room := take(&in.roomWake)
-				if damaged {
-					// TLS refuses a damaged record and ends the
-					// connection, so it ends here, as the reader gets
-					// the damage. Its alert would wait for the write
-					// lock of a writer that waits for room, and under
-					// the race detector that wait on a mutex stops the
-					// synctest clock for good (#439).
-					s.net.reset(c)
-				}
-				s.mu.Unlock()
-				wakeUp(room)
-				return k, nil
-			}
-			wait = at - now
-		case in.eof:
-			s.mu.Unlock()
-			return 0, io.EOF
-		}
 		if !c.deadline.IsZero() {
 			left := int64(time.Until(c.deadline))
 			if left <= 0 {
@@ -506,7 +527,6 @@ func (c *conn) Write(b []byte) (int, error) {
 			return n, errReset
 		}
 		if !c.writeDeadline.IsZero() && !time.Now().Before(c.writeDeadline) {
-			s.stats.WriteTimeouts++
 			s.mu.Unlock()
 			return n, os.ErrDeadlineExceeded
 		}
@@ -563,6 +583,7 @@ func (c *conn) send(b []byte) chan struct{} {
 	c.out.last = at
 	c.out.chunks = append(c.out.chunks, chunk{at: at, b: b, damaged: damaged})
 	c.out.size += len(b)
+	c.other.changed()
 	return take(&c.out.readWake)
 }
 
@@ -577,6 +598,8 @@ func (c *conn) Close() error {
 	c.out.eof = true
 	c.out.signalBoth()
 	c.in.signalBoth()
+	c.changed()
+	c.other.changed()
 	delete(s.net.conns, c)
 	return nil
 }

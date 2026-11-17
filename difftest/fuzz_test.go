@@ -50,8 +50,11 @@ type fuzzOp struct {
 	Limit       int64 `json:"limit,omitempty"`
 	CountOnly   bool  `json:"countOnly,omitempty"`
 	KeysOnly    bool  `json:"keysOnly,omitempty"`
-	Physical    bool  `json:"physical,omitempty"`
-	TTL         int64 `json:"ttl,omitempty"`
+	// SortTarget and SortOrder are a get's, as RangeRequest numbers them.
+	SortTarget int32 `json:"sortTarget,omitempty"`
+	SortOrder  int32 `json:"sortOrder,omitempty"`
+	Physical   bool  `json:"physical,omitempty"`
+	TTL        int64 `json:"ttl,omitempty"`
 	// ID asks for a lease ID in a grant, one of 1 to 4 of the
 	// sequence's own: 0 lets the server pick.
 	ID      int64      `json:"id,omitempty"`
@@ -197,6 +200,10 @@ func (g *fuzzGen) op() fuzzOp {
 		if g.rng.IntN(3) == 0 {
 			op.Rev = g.rev()
 		}
+		if g.rng.IntN(4) == 0 {
+			// By key, version, create or mod revision, or value.
+			op.SortTarget, op.SortOrder = g.rng.Int32N(5), g.rng.Int32N(3)
+		}
 	case p < 55:
 		op = fuzzOp{Kind: "del", Key: k, End: g.end(), PrevKV: g.rng.IntN(2) == 0}
 	case p < 80:
@@ -282,7 +289,10 @@ func (f *fuzzRun) del(op fuzzOp) *pb.DeleteRangeRequest {
 }
 
 func (f *fuzzRun) get(op fuzzOp) *pb.RangeRequest {
-	return &pb.RangeRequest{Key: f.key(op.Key), RangeEnd: f.end(op), Revision: f.rev(op.Rev), Limit: op.Limit, CountOnly: op.CountOnly, KeysOnly: op.KeysOnly}
+	return &pb.RangeRequest{
+		Key: f.key(op.Key), RangeEnd: f.end(op), Revision: f.rev(op.Rev), Limit: op.Limit, CountOnly: op.CountOnly, KeysOnly: op.KeysOnly,
+		SortTarget: pb.RangeRequest_SortTarget(op.SortTarget), SortOrder: pb.RangeRequest_SortOrder(op.SortOrder),
+	}
 }
 
 func (f *fuzzRun) compare(c fuzzCmp) *pb.Compare {
@@ -384,13 +394,34 @@ func (p *fuzzPair) diff(ops []fuzzOp) string {
 		}
 	}
 	for i := range steps[0] {
-		if !sameStep(steps[0][i], steps[1][i]) && !stricterWatch(ops, steps[0], truth, steps[0][i], steps[1][i]) {
+		if !sameStep(steps[0][i], steps[1][i]) && !stricterWatch(ops, steps[0], truth, steps[0][i], steps[1][i]) && !ruledRefusal(ops, steps[0][i], steps[1][i]) {
 			e, _ := json.Marshal(steps[0][i])
 			o, _ := json.Marshal(steps[1][i])
 			return fmt.Sprintf("step %s: etcd v3.7.2 answers %s, tigerstore %s", steps[0][i].Do, e, o)
 		}
 	}
 	return ""
+}
+
+// ruledRefusal reports whether tigerstore's answer differs from etcd's
+// only as the owner ruled it may (#721's second ruling, README's
+// differences from etcd): a get sorted by value whose answer is past one
+// piece is refused, and so is a txn's or a delete's with prev_kv whose
+// records pass one message, with ResourceExhausted, where etcd answers.
+// A refused txn's or delete's writes still apply: the later steps show
+// it.
+func ruledRefusal(ops []fuzzOp, etcd, ours step) bool {
+	var i int
+	if _, err := fmt.Sscanf(etcd.Do, "%d", &i); err != nil || i >= len(ops) || etcd.Code != "OK" || ours.Code != "ResourceExhausted" {
+		return false
+	}
+	switch op := ops[i]; op.Kind {
+	case "get":
+		return op.SortTarget == int32(pb.RangeRequest_VALUE) && strings.Contains(ours.Message, "a range sorted by value is refused past one piece")
+	case "txn", "del":
+		return strings.HasPrefix(ours.Message, "grpc: trying to send message larger than max")
+	}
+	return false
 }
 
 // stricterWatch reports whether tigerstore's answer to a watch differs

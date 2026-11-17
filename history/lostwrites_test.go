@@ -35,3 +35,25 @@ func TestWithoutLostWrites(t *testing.T) {
 		t.Fatal("the input history changed")
 	}
 }
+
+// An ambiguous Txn whose failure branch only reads took effect when the
+// log holds it without that branch, as internal/wl logs it. Matching the
+// whole request left it out, and a read of its value then failed
+// Porcupine (TestRollingUpgrade seed 148, CI on 5f46169c).
+func TestAnAmbiguousTxnLoggedWithoutItsReadsTookEffect(t *testing.T) {
+	put := TxnOp{Put: &PutRequest{Key: "k", Value: "v"}}
+	read := TxnOp{Range: &RangeRequest{Key: "k"}}
+	txn := Request{Txn: &TxnRequest{Compare: []Compare{{Key: "k", Target: TargetCreate, Result: Greater, Number: 1}}, Success: []TxnOp{put}, Failure: []TxnOp{read}}}
+	logged := Request{Txn: &TxnRequest{Compare: txn.Txn.Compare, Success: []TxnOp{put}}}
+	h := &History{
+		Ops: []Op{{Client: 0, Req: txn, Err: &Error{Code: "Unavailable", Ambiguous: true}}},
+		Log: []Request{logged},
+	}
+	got, pruned, err := h.WithoutLostWrites()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pruned != 0 || len(got.Ops) != 1 {
+		t.Fatalf("pruned %d of the Txn the log holds without its reads", pruned)
+	}
+}

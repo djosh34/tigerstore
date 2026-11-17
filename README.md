@@ -189,6 +189,17 @@ etcdctl --endpoints=https://127.0.0.1:2379 --cacert certs/ca.pem --cert certs/cl
 
 The restored cluster has the keys, revisions, leases, alarms, users and compaction of the snapshot, and the members of `--initial-cluster`.
 
+## Upgrade from v0.1.0
+
+v0.1.0 runs tigerstore's previous storage engine, and this release runs a new one with its own peer protocol and data directory, so the two cannot be in one cluster: the upgrade is offline, with a stop of the whole cluster.
+
+1. Save a snapshot of the running cluster, as above. Stop writes to it first: a write after the snapshot is lost.
+2. Stop every node.
+3. On each node, restore the snapshot with this release's binary into a new, empty data directory, with the node's `--name` and the cluster's `--initial-cluster`.
+4. Start every node on its new data directory with this release's binary.
+
+The restore keeps the keys, revisions, leases, alarms, users, roles, whether auth is on and the auth revision. It keeps the history from the revision v0.1.0 compacted the store at: as after an etcd compaction, reads and watches of older revisions answer that the revision is compacted, and the restore says from which revision it kept the history. Tokens from `Authenticate` are not kept: clients log in again. This release does not start on a data directory of v0.1.0: it stops and names these steps.
+
 ## Differences from etcd v3.7.2
 
 tigerstore answers as etcd v3.7.2 does except for these points, from [Research: what tigerstore lacks against etcd v3.7.2](https://github.com/djosh34/tigerstore/issues/399):
@@ -212,8 +223,18 @@ tigerstore answers as etcd v3.7.2 does except for these points, from [Research: 
 - `LeaseLeases` and `LeaseTimeToLive` are linearizable reads, and on a follower `LeaseTimeToLive` reports the granted TTL, not the time left.
 - A slow watch client holds back its own stream only: its watchers fall behind and catch up from the node's history once it reads again, as etcd's do. A stream closes when its node installs a snapshot, or when a compaction removes the revision of a large response it is sending in parts. The client sees `Unavailable`, or `Internal` when the stream ends in the middle of a message; clientv3 and kube-apiserver resume the watch after either.
 - A watch with `prev_kv` from the compaction revision is canceled with that revision; etcd sends the events at it without their previous values, which kube-apiserver rejects.
-- A large Range, Txn or DeleteRange answer goes out a piece at a time as the client takes it, uncompressed. A sorted Range whose list exceeds the memory budget (about 100 bytes a key, and the values in a sort by value) is refused with `ResourceExhausted`. The ranges of a Txn are not: the budget is each node's own, and every node must apply a write alike.
+- A large Range answer goes out a piece at a time as the client takes it, uncompressed, within the node's memory budget; one past 2 GiB is refused with `ResourceExhausted`, as grpc-go refuses it for etcd. A Range sorted by value whose answer is past one piece (the larger of 2 MiB and the connection's share of the send buffers) is refused with `ResourceExhausted`, as the sort needs every value at once; sorted any other way it is served in pieces. A Txn whose range sorted by value has records past one piece to sort is refused the same way, and its writes still apply. Kubernetes never sorts by value.
+- A watch's events of one revision past one message (a DeleteRange or a lease revoke over many watched keys, or one large value over another with `prev_kv`) go out a piece at a time within the node's memory budget, in one response as etcd sends them, or in etcd's fragments to a watch that asked for them. A revision of more than 2 GiB for one watch cancels that watch with a reason naming `ResourceExhausted`; grpc-go would end etcd's whole watch stream. One such response goes at a time on a client connection: another watch's waits behind it, behind a stream the client does not read too (clientv3 reads every stream it has).
+- A Txn's answer, and a DeleteRange's with `prev_kv`, is built at once. It is sized from its records before any value is read, and only the values of the records it returns are read (a Txn's range sorted by value reads those it sorts, within one piece, and is sized by those it returns). One whose records pass 1,984 KiB (2 MiB, the largest message of etcd's default 1.5 MiB request limit with gRPC's overhead, less 64 KiB for the answer's other fields) is refused with `ResourceExhausted`; the writes still apply, as they do in etcd when grpc-go refuses an answer too large to send. etcd sends answers of up to 2 GiB. Kubernetes' Txns range over one key.
 - The request size limit counts a 10-byte request ID, so a write a few bytes below `--max-request-bytes` can be refused where etcd takes it.
+- A request sent in parts that the node's read buffers have no room for waits until they do, its connection read no further, in line with the connections that wait for those buffers (#735). It is refused with "too many requests", which etcd answers only while its apply falls behind, in three cases:
+  - it waits 7 seconds for room;
+  - it would take its connection's requests sent in part past the connection's share of the read buffers (at least one whole request);
+  - its connection took a turn past the read buffers' half, with room of the reserve for large replies, and still holds it in part after 7 seconds. A connection takes a turn when its parts find no room.
+- A call whose simple token (from `Authenticate`) names an entry the node has not applied waits for it, as etcd's does, with three differences (#736). Kubernetes' API server authenticates to etcd with a client certificate and never meets them.
+  - A node whose log does not hold the entry yet refuses the call at once with "invalid auth token", where etcd waits. clientv3 authenticates again and retries a unary call with a password login; a Watch is canceled with that reason, and clientv3 closes its channel with the error.
+  - The wait stops the reading of the call's whole connection, not of the call alone: the connection's other calls wait with it, for as long as the entries already in the log take to apply, and 7 seconds at most (an uncommitted tail of a node cut off from its quorum may never apply). Then the call is refused as one with an unknown token, and the others go on.
+  - A client's cancel of the waiting call is read only once the wait ends.
 - `--max-request-bytes` above 67,106,816 bytes (64 MiB less 2 KiB) is refused at startup: a write travels in one peer frame and one log record of at most 64 MiB.
 - `Status.dbSize`, `dbSizeInUse`, `etcd_mvcc_db_total_size_in_bytes` and `etcd_mvcc_db_total_size_in_use_in_bytes` are the size the quota compares, an estimate of etcd's database for the versions kept, so they are equal and `etcdctl endpoint status` shows no fragmentation. The log's own size is `tigerstore_disk_bytes`, with its budget in `tigerstore_disk_budget_bytes`. A compaction frees quota without a defragmentation.
 - `etcd_disk_backend_commit_duration_seconds` times a sync of the log, tigerstore's nearest to etcd's backend commit.

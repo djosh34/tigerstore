@@ -1,9 +1,6 @@
 package history
 
-import (
-	"encoding/json"
-	"errors"
-)
+import "errors"
 
 // WithoutLostWrites returns a copy of h without the ambiguous writes that
 // never took effect, and how many it left out. Porcupine must keep an
@@ -20,10 +17,12 @@ import (
 func (h *History) WithoutLostWrites() (*History, int, error) {
 	inLog := map[string]int{}
 	var errs []error
+	// A request and its copy in the log have one fingerprint: internal/wl
+	// logs a Txn without a failure branch that only reads.
 	key := func(q Request) string {
-		b, err := json.Marshal(q)
+		f, err := q.Fingerprint()
 		errs = append(errs, err)
-		return string(b)
+		return f
 	}
 	for _, q := range h.Log {
 		inLog[key(q)]++

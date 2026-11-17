@@ -29,6 +29,12 @@ def metrics(port):
     return result
 
 
+def healthy(port):
+    """Whether a member answers /health: it has a leader, as etcd's does."""
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as response:
+        return json.loads(response.read().decode()).get("health") == "true"
+
+
 def classify(result, progress):
     """Keep test failures distinct from measured, cgroup-confirmed limits."""
     # A kill after the last poll shows only in the final counters.
@@ -105,6 +111,9 @@ def main():
     root = Path("/sys/fs/cgroup")
     group = root / f"past-ram-{os.getpid()}"
     initial = ",".join(f"n{i}=https://127.0.0.1:{20101 + 10*i}" for i in range(3))
+    # Both stores serve their clients and metrics on plain http client URLs
+    # (tigerstore over h2c, #718): the jobs measure a member holding more
+    # data than its memory, over the same transport for both.
     endpoints = ",".join(f"http://127.0.0.1:{20100 + 10*i}" for i in range(3))
 
     def launch(i):
@@ -142,12 +151,16 @@ def main():
             (cg / "memory.swap.max").write_text("0")
             logs.append((out / f"node{i}.log").open("ab"))
             nodes.append(launch(i))
+        # The driver starts once every member has a leader: a member answers
+        # its metrics before, and a write to it "no leader" (#602).
         deadline = time.monotonic() + 60
         while True:
             try:
-                for i in range(3):
-                    metrics(20100 + 10*i)
-                break
+                if all(healthy(20100 + 10*i) for i in range(3)):
+                    break
+                if time.monotonic() > deadline or any(n.poll() is not None for n in nodes):
+                    raise RuntimeError("cluster did not start")
+                time.sleep(1)
             except (urllib.error.URLError, http.client.HTTPException, TimeoutError, ConnectionError):
                 if time.monotonic() > deadline or any(n.poll() is not None for n in nodes):
                     raise RuntimeError("cluster did not start")

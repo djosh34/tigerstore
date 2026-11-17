@@ -187,7 +187,7 @@ func (s *Sim) halfOpen(from int, d int64) bool {
 // lock is held.
 func (s *Sim) leaderIdx() int {
 	for _, n := range s.nodes {
-		if p := n.proc; p != nil && p.node.Leader() == n.id {
+		if p := n.proc; p != nil && p.leader() == n.id {
 			return n.idx
 		}
 	}

@@ -2,7 +2,6 @@ package peer
 
 import (
 	"context"
-	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -12,13 +11,13 @@ import (
 	"strings"
 )
 
-// verifyPeer returns the check of etcd's --peer-cert-allowed-cn and
+// VerifyPeer returns the check of etcd's --peer-cert-allowed-cn and
 // --peer-cert-allowed-hostname, or nil when both lists are empty. TLS
 // runs it after the certificate chain is verified against the peer CA,
 // on both ends of a connection. The other node's certificate passes when
 // its CommonName is in cns, or when it is valid for one of hostnames by
 // its SANs. As in etcd, the two lists cannot both be set.
-func verifyPeer(cns, hostnames []string) (func([][]byte, [][]*x509.Certificate) error, error) {
+func VerifyPeer(cns, hostnames []string) (func([][]byte, [][]*x509.Certificate) error, error) {
 	if len(cns) > 0 && len(hostnames) > 0 {
 		return nil, fmt.Errorf("peer: allowed CNs %q and allowed hostnames %q cannot both be set", cns, hostnames)
 	}
@@ -47,25 +46,10 @@ func verifyPeer(cns, hostnames []string) (func([][]byte, [][]*x509.Certificate) 
 	}, nil
 }
 
-// certificates are the functions that give the certificate a handshake
-// presents to a peer that dials in and to a peer this node dials.
-func (cfg *Config) certificates() (server, client func() (*tls.Certificate, error)) {
-	server = cfg.GetCertificate
-	if server == nil {
-		cert := cfg.Certificate
-		server = func() (*tls.Certificate, error) { return &cert, nil }
-	}
-	client = cfg.GetClientCertificate
-	if client == nil {
-		client = server
-	}
-	return server, client
-}
-
-// checkCRL is etcd's check against a certificate revocation list: no
+// CheckCRL is etcd's check against a certificate revocation list: no
 // certificate of the chain may have a revoked serial number. It reads the
 // file at every handshake, as etcd does.
-func checkCRL(path string, certs []*x509.Certificate) error {
+func CheckCRL(path string, certs []*x509.Certificate) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return err

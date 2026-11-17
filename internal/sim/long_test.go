@@ -58,6 +58,9 @@ func longSeeds(t *testing.T, config func(seed uint64) Config) {
 // failed to read reads as zeros, which can fail the run as if a node were
 // wrong.
 func TestHostErrorComesFirst(t *testing.T) {
+	if simrun.Drive(t, 1) {
+		return
+	}
 	errHost := errors.New("the runner's disk failed")
 	errRun := errors.New("a node is wrong")
 	cfg := CalmConfig(1)
@@ -92,6 +95,9 @@ func TestCheckpointCountsTornDisks(t *testing.T) {
 // history, as a long run's do (independent), decodes the same history
 // again for a report.
 func TestHistoryDecodesAgain(t *testing.T) {
+	if simrun.Drive(t, 1) {
+		return
+	}
 	res := run(t, DefaultConfig(1))
 	var want, got bytes.Buffer
 	writeHistory(&want, res)
@@ -111,6 +117,9 @@ func TestHistoryDecodesAgain(t *testing.T) {
 // history whether or not they drop the run's own as they convert it, as a
 // long run's do, and that the run's history is gone after.
 func TestCheckableReleasing(t *testing.T) {
+	if simrun.Drive(t, 1) {
+		return
+	}
 	res := run(t, DefaultConfig(1))
 	want, err := res.Checkable()
 	if err != nil {
@@ -132,6 +141,9 @@ func TestCheckableReleasing(t *testing.T) {
 // as they convert it drop all of it when a call fails to convert, so a
 // report decodes the whole history again rather than what is left.
 func TestDroppedHistoryOnError(t *testing.T) {
+	if simrun.Drive(t, 1) {
+		return
+	}
 	res := run(t, DefaultConfig(1))
 	n := len(res.History)
 	// A sort order on a range etcd's history model refuses.
@@ -154,6 +166,9 @@ func TestDroppedHistoryOnError(t *testing.T) {
 // TestHistoryChunkErr checks that a history decoded again for a report
 // returns the error of a chunk on the runner's disk that failed to read.
 func TestHistoryChunkErr(t *testing.T) {
+	if simrun.Drive(t, 1) {
+		return
+	}
 	res := run(t, DefaultConfig(1))
 	res.History = nil
 	errGone := errors.New("the runner's disk is gone")
@@ -166,6 +181,9 @@ func TestHistoryChunkErr(t *testing.T) {
 // TestLongRunHashes checks that a long run's hashes, which cover its
 // history, are the same after its checks dropped the history.
 func TestLongRunHashes(t *testing.T) {
+	if simrun.Drive(t, 1) {
+		return
+	}
 	res := run(t, DefaultConfig(1))
 	want := hashes(res)
 	res.long = true

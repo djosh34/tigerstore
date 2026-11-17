@@ -6,14 +6,11 @@ import (
 	"strings"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-
-	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // coreState is what a node's core showed at its last turn, for the report
 // of a failure. Reading it never touches the core, which may be running.
 type coreState struct {
-	core                        *core.Node
 	at                          int64
 	role                        string
 	term, lead, commit, applied uint64
@@ -21,28 +18,6 @@ type coreState struct {
 	first   uint64
 	version uint32
 	members []*pb.Member
-}
-
-// remember keeps what core c of n shows now, after the effects eff of its
-// turn. The members are the copy the core hands over after a change of
-// them (Effects.Members), a configuration change or a member's publish of
-// its name, and are copied again only for a new core or after a
-// checkpoint, as copying them takes a protobuf clone of each. The lock is
-// held, on c's committer.
-func (n *node) remember(c *core.Node, now int64, eff core.Effects) {
-	st := c.RaftStatus()
-	members := n.last.members
-	switch {
-	case eff.Members != nil:
-		members = eff.Members
-	case n.last.core != c || slices.ContainsFunc(eff.Applied, func(a core.Applied) bool { return a.Checkpoint }):
-		members = c.Members()
-	}
-	n.last = coreState{
-		core: c, at: now, role: st.RaftState.String(),
-		term: st.GetTerm(), lead: st.Lead, commit: st.GetCommit(), applied: c.Applied(), first: c.FirstIndex(),
-		version: c.ActiveVersion(), members: members,
-	}
 }
 
 // reportLines is how many of its last log lines the report shows per node.
@@ -74,9 +49,10 @@ func (s *Sim) report() string {
 			b.WriteString("; not a member")
 		}
 		b.WriteString("\n")
-		if l := n.last; l.core != nil {
-			fmt.Fprintf(&b, "  at its last turn, %s: %s, term %d, leader %d, commit %d, applied %d, cluster version %d; members %s\n",
-				seconds(l.at), l.role, l.term, l.lead, l.commit, l.applied, l.version, describeMembers(l.members))
+		// main's nodes and wl's (wlHooks.Turn) both say what Raft showed.
+		if l := n.last; l.role != "" {
+			fmt.Fprintf(&b, "  at its last turn, %s: %s, term %d, leader %d, commit %d, applied %d, first entry held %d, cluster version %d; members %s\n",
+				seconds(l.at), l.role, l.term, l.lead, l.commit, l.applied, l.first, l.version, describeMembers(l.members))
 		}
 		var lines []string
 		mark := fmt.Sprintf(" node %d: ", n.id)

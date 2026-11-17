@@ -47,7 +47,7 @@ func (n *Node) revokeStep() {
 	}
 	n.timed = timedApply{op: opName(r.op), err: err}
 	if r.p != nil {
-		n.answer(r.p, Reply{ID: r.p.req.ID, Resp: resp, Err: err}, nil)
+		n.answer(r.p, Reply{ID: r.p.req.ID, Resp: resp}, nil)
 	}
 	n.resume = &pausedWrite{index: r.index, write: r.write + 1}
 	if !n.readInline {
@@ -59,11 +59,3 @@ func (n *Node) revokeStep() {
 // applyWaits reports whether ordered apply waits: for values from the
 // log, or for the steps of a revoke.
 func (n *Node) applyWaits() bool { return n.paused != nil || n.revoke != nil }
-
-// Working reports whether the node has work for its next turn already: a
-// watcher that catches up with room for its next piece, the next step
-// of a revoke, or the value cache's next step (cache.step). The driver
-// then gives it that turn at once.
-func (n *Node) Working() bool {
-	return n.revoke != nil || n.CatchingUp() || n.err == nil && n.cache.busy()
-}

@@ -1,6 +1,8 @@
 // Package simfs is a simulated disk for one node. It keeps what a real
 // disk keeps across a power loss: file contents up to the last Sync and
-// the directory as of the last SyncDir. A crash drops everything else,
+// each directory's names as of its last sync. A file lies in the top
+// directory or in a directory made with Mkdir; a crash that loses a
+// directory's creation loses every name in it. A crash drops everything else,
 // except for what of it reached the medium anyway: some of the writes
 // since the last sync (Image), and each directory operation since the
 // last directory sync on its own. A process that dies without a power
@@ -22,6 +24,7 @@ import (
 	"io"
 	"io/fs"
 	"maps"
+	"math"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -43,6 +46,8 @@ const (
 	OpRemove
 	OpSyncDir
 	OpRename
+	OpAllocate
+	OpMkdir
 )
 
 type file struct {
@@ -57,6 +62,10 @@ type file struct {
 	// size.
 	size  int
 	dirty map[int]*block
+	// alloc is how far the file's space is allocated past its size, as
+	// fallocate with FALLOC_FL_KEEP_SIZE leaves it (Handle.Allocate): it
+	// takes room on the disk, and reads past size still see nothing.
+	alloc int
 	// diverged is set when the page cache may hold bytes that neither the
 	// medium nor a pending write holds: a failed sync left them readable
 	// (#372), or a bit rotted under the running node.
@@ -85,6 +94,10 @@ const (
 type write struct {
 	off int
 	p   []byte
+	// zero says it is the zeros of a truncate that grew the file: a
+	// crash keeps them or not, but never tears them into garbage, as
+	// Linux reads a hole as zeros.
+	zero bool
 }
 
 // limit is where the clean pages' bytes end: past it they read as zeros.
@@ -156,6 +169,9 @@ var _ wal.FS = (*Disk)(nil)
 type Disk struct {
 	names   map[string]*file
 	durable map[string]*file
+	// dirs are the directories made (Mkdir), but the top one, "", which
+	// always is; durableDirs those whose creation is durable.
+	dirs, durableDirs map[string]bool
 	// dirOps are the directory operations since the last SyncDir, oldest
 	// first; a crash keeps each of them or not on its own.
 	dirOps []dirOp
@@ -200,16 +216,76 @@ type Counts struct {
 }
 
 // dirOp is a directory operation: a creation, a rename or a removal of
-// file f.
+// file f, or the making of directory name (OpMkdir).
 type dirOp struct {
 	op       Op
 	name, to string
 	f        *file
+	// synced: a sync of its directory made it durable (SyncDirOf), but
+	// an operation before it is not yet.
+	synced bool
+}
+
+// parentDir is the directory that holds name, "" for the top.
+func parentDir(name string) string {
+	if dir, _, ok := strings.CutLast(name, "/"); ok {
+		return dir
+	}
+	return ""
+}
+
+// apply makes o in dir, the names of files, and dirs, those of
+// directories.
+func (o *dirOp) apply(dir map[string]*file, dirs map[string]bool) {
+	switch {
+	case o.op == OpMkdir:
+		dirs[o.name] = true
+	case o.op == OpCreate:
+		dir[o.name] = o.f
+	case dir[o.name] != o.f:
+		// A rename or removal of a file whose creation was lost.
+	case o.op == OpRename:
+		delete(dir, o.name)
+		dir[o.to] = o.f
+	default:
+		delete(dir, o.name)
+	}
 }
 
 // New returns an empty disk.
 func New() *Disk {
-	return &Disk{names: map[string]*file{}, durable: map[string]*file{}}
+	return &Disk{names: map[string]*file{}, durable: map[string]*file{}, dirs: map[string]bool{}, durableDirs: map[string]bool{}}
+}
+
+// isDir reports whether directory name is there now.
+func (d *Disk) isDir(name string) bool { return name == "" || d.dirs[name] }
+
+// IsDir reports whether name is a directory now: the top one, "", or one
+// made with Mkdir.
+func (d *Disk) IsDir(name string) bool { return d.isDir(name) }
+
+// Dirs returns the directories made, in order.
+func (d *Disk) Dirs() []string {
+	return slices.Sorted(maps.Keys(d.dirs))
+}
+
+// Mkdir makes directory name in a directory that is there. Like a file's
+// creation, it survives a crash only after a sync of the directory that
+// holds it; and a crash that loses it loses every name in it.
+func (d *Disk) Mkdir(name string) error {
+	if err := d.fault(OpMkdir, name); err != nil {
+		return err
+	}
+	if _, file := d.names[name]; file || d.isDir(name) {
+		return fs.ErrExist
+	}
+	if !d.isDir(parentDir(name)) {
+		return fs.ErrNotExist
+	}
+	d.dirs[name] = true
+	d.dirOps = append(d.dirOps, dirOp{op: OpMkdir, name: name})
+	d.tracef("mkdir %s", name)
+	return nil
 }
 
 // KeepIn makes the disk and the copies it makes from now on keep every
@@ -266,7 +342,9 @@ type Image int
 const (
 	// Prefix keeps a prefix of the bytes written, in the order written;
 	// with probability 1/4 the last kept bytes are garbage, like a torn
-	// sector.
+	// sector, but where they overwrite what the file held durably: a
+	// disk writes a sector whole or not at all (power-safe overwrite), so
+	// an overwrite keeps the old bytes or the new.
 	Prefix Image = iota
 	// Writes keeps any subset of the writes, each one whole.
 	Writes
@@ -276,10 +354,16 @@ const (
 	Sectors
 	// Pages is Sectors at page boundaries.
 	Pages
+	// Unwritten keeps the file's growth by the writes but none of their
+	// bytes past what was synced, which read as zeros: on ext4 a direct
+	// write into blocks allocated ahead converts them from unwritten when
+	// it completes, and a crash may keep the new size without that
+	// conversion. Crash never draws it.
+	Unwritten
 )
 
 func (img Image) String() string {
-	return [...]string{"prefix", "whole writes", "sectors", "pages"}[img]
+	return [...]string{"prefix", "whole writes", "sectors", "pages", "unwritten"}[img]
 }
 
 // Crash drops what was not made durable, as a power loss does, keeping a
@@ -291,27 +375,42 @@ func (d *Disk) Crash(rng *rand.Rand) { d.CrashImage(rng, Image(rng.IntN(4))) }
 // directory then names keeps its synced content plus what img keeps of
 // its unsynced writes. Those were in place before the synced ones were,
 // so a later sync never makes them durable.
-func (d *Disk) CrashImage(rng *rand.Rand, img Image) {
-	dir := maps.Clone(d.durable)
+func (d *Disk) CrashImage(rng *rand.Rand, img Image) { d.crash(rng, img, nil) }
+
+// CrashKeeping is CrashImage with the directory operations not yet
+// durable kept as keep says, not drawn: for a test that needs one image
+// of a crash, such as a rename lost and a removal after it kept.
+func (d *Disk) CrashKeeping(rng *rand.Rand, img Image, keep func(op Op, name, to string) bool) {
+	d.crash(rng, img, keep)
+}
+
+func (d *Disk) crash(rng *rand.Rand, img Image, keep func(op Op, name, to string) bool) {
+	dir, dirs := maps.Clone(d.durable), maps.Clone(d.durableDirs)
 	for _, o := range d.dirOps {
-		kept := rng.IntN(2) == 0
-		d.tracef("crash: %v %s (file %d) %s, kept %v", o.op, o.name, o.f.id, o.to, kept)
+		var kept bool
+		switch {
+		case o.synced:
+			kept = true
+		case keep != nil:
+			kept = keep(o.op, o.name, o.to)
+		default:
+			kept = rng.IntN(2) == 0
+		}
+		if o.op == OpMkdir {
+			d.tracef("crash: mkdir %s, kept %v", o.name, kept)
+		} else {
+			d.tracef("crash: %v %s (file %d) %s, kept %v", o.op, o.name, o.f.id, o.to, kept)
+		}
 		if !kept {
 			d.Counts.LostDirOps++
 			continue
 		}
-		switch {
-		case o.op == OpCreate:
-			dir[o.name] = o.f
-		case dir[o.name] != o.f:
-			// A rename or removal of a file whose creation was lost.
-		case o.op == OpRename:
-			delete(dir, o.name)
-			dir[o.to] = o.f
-		default:
-			delete(dir, o.name)
-		}
+		o.apply(dir, dirs)
 	}
+	// A directory whose own directory's creation was lost is lost, and
+	// so is every file in a directory lost: the path to it is gone.
+	pruneLost(dir, dirs, d.Trace)
+	d.dirs, d.durableDirs = dirs, maps.Clone(dirs)
 	d.names = make(map[string]*file, len(dir))
 	for _, name := range sortedNames(dir) {
 		f := dir[name]
@@ -344,6 +443,16 @@ func (f *file) survive(rng *rand.Rand, img Image, c *Counts) pages {
 	if f.cut || len(f.pending) == 0 {
 		return kept
 	}
+	if img == Unwritten {
+		end := 0
+		for _, w := range f.pending {
+			end = max(end, w.off+len(w.p))
+		}
+		if end > kept.size {
+			kept.write(kept.size, make([]byte, end-kept.size))
+		}
+		return kept
+	}
 	if img == Prefix {
 		var stream []byte
 		for _, w := range f.pending {
@@ -351,19 +460,28 @@ func (f *file) survive(rng *rand.Rand, img Image, c *Counts) pages {
 		}
 		n := rng.IntN(len(stream) + 1)
 		stream = stream[:n]
+		garbage := n
 		if n > 0 && rng.IntN(4) == 0 {
-			g := rng.IntN(n) + 1
-			for i := n - g; i < n; i++ {
-				stream[i] = byte(rng.Uint32())
-			}
+			garbage = n - rng.IntN(n) - 1
 		}
+		at, synced := 0, kept.size
 		for _, w := range f.pending {
-			if len(stream) == 0 {
+			if at == n {
 				break
 			}
-			k := min(len(stream), len(w.p))
-			kept.write(w.off, stream[:k])
-			stream = stream[k:]
+			k := min(n-at, len(w.p))
+			p := stream[at : at+k]
+			for i := range p {
+				if at+i >= garbage && w.off+i >= synced {
+					// Drawn for a hole too, so that every other crash
+					// draws as before.
+					if b := byte(rng.Uint32()); !w.zero {
+						p[i] = b
+					}
+				}
+			}
+			kept.write(w.off, p)
+			at += k
 		}
 		return kept
 	}
@@ -410,7 +528,7 @@ func pieces(w write, unit int) []write {
 	var out []write
 	for off, end := w.off, w.off+len(w.p); off < end; {
 		next := min((off/unit+1)*unit, end)
-		out = append(out, write{off, w.p[off-w.off : next-w.off]})
+		out = append(out, write{off, w.p[off-w.off : next-w.off], w.zero})
 		off = next
 	}
 	return out
@@ -420,16 +538,55 @@ func pieces(w write, unit int) []write {
 // a copy taken by pulling the power.
 func (d *Disk) Durable() *Disk {
 	c := New()
-	for _, name := range sortedNames(d.durable) {
-		f := d.durable[name]
+	durable, dirs := d.durableView()
+	for _, name := range sortedNames(durable) {
+		f := durable[name]
 		g := &file{id: f.id, durable: f.durable.share()}
 		g.reset()
 		c.names[name] = g
 		c.durable[name] = g
 	}
+	c.dirs, c.durableDirs = dirs, maps.Clone(dirs)
 	c.files = d.files
 	c.st = d.st
 	return c
+}
+
+// durableView is what the names and directories are after a power loss
+// that keeps only what is durable: those durable already, and the
+// operations a directory's sync made durable behind one that is not yet,
+// in their order (SyncDirOf), with what lies in a directory lost gone.
+func (d *Disk) durableView() (map[string]*file, map[string]bool) {
+	names, dirs := maps.Clone(d.durable), maps.Clone(d.durableDirs)
+	for i := range d.dirOps {
+		if o := &d.dirOps[i]; o.synced {
+			o.apply(names, dirs)
+		}
+	}
+	pruneLost(names, dirs, nil)
+	return names, dirs
+}
+
+// pruneLost drops from dirs each directory whose own directory is not in
+// it, and from names each file in a directory not in dirs, telling trace
+// of each, if set.
+func pruneLost(names map[string]*file, dirs map[string]bool, trace func(format string, args ...any)) {
+	for _, name := range slices.Sorted(maps.Keys(dirs)) {
+		if p := parentDir(name); p != "" && !dirs[p] {
+			if trace != nil {
+				trace("crash: directory %s is lost with %s", name, p)
+			}
+			delete(dirs, name)
+		}
+	}
+	for _, name := range sortedNames(names) {
+		if p := parentDir(name); p != "" && !dirs[p] {
+			if trace != nil {
+				trace("crash: %s (file %d) is lost with its directory", name, names[name].id)
+			}
+			delete(names, name)
+		}
+	}
 }
 
 // Copy returns a new disk with this disk's files, under the names they
@@ -440,7 +597,7 @@ func (d *Disk) Copy() *Disk {
 	c := New()
 	for _, name := range sortedNames(d.names) {
 		f := d.names[name]
-		g := &file{id: f.id, durable: f.durable.share(), size: f.size, diverged: f.diverged, cut: f.cut, cutAt: f.cutAt}
+		g := &file{id: f.id, durable: f.durable.share(), size: f.size, alloc: f.alloc, diverged: f.diverged, cut: f.cut, cutAt: f.cutAt}
 		for i, p := range f.dirty {
 			if g.dirty == nil {
 				g.dirty = map[int]*block{}
@@ -449,13 +606,58 @@ func (d *Disk) Copy() *Disk {
 			g.dirty[i] = &b
 		}
 		for _, w := range f.pending {
-			g.pending = append(g.pending, write{w.off, slices.Clone(w.p)})
+			g.pending = append(g.pending, write{w.off, slices.Clone(w.p), w.zero})
 		}
 		c.names[name] = g
 		c.durable[name] = g
 	}
+	c.dirs, c.durableDirs = maps.Clone(d.dirs), maps.Clone(d.dirs)
 	c.files = d.files
 	c.st = d.st
+	return c
+}
+
+// Clone returns a copy of the disk as it is now, apart from it: what is
+// durable, the page cache, and the writes and directory operations not
+// yet durable. A crash of the copy is a crash of the disk at this point,
+// while the disk goes on. Faults and hooks are not copied.
+func (d *Disk) Clone() *Disk {
+	c := New()
+	m := map[*file]*file{}
+	cp := func(f *file) *file {
+		if f == nil {
+			return nil
+		}
+		if g, ok := m[f]; ok {
+			return g
+		}
+		g := &file{id: f.id, durable: f.durable.share(), size: f.size, alloc: f.alloc, diverged: f.diverged, cut: f.cut, cutAt: f.cutAt}
+		for i, p := range f.dirty {
+			if g.dirty == nil {
+				g.dirty = map[int]*block{}
+			}
+			b := *p
+			g.dirty[i] = &b
+		}
+		for _, w := range f.pending {
+			g.pending = append(g.pending, write{w.off, slices.Clone(w.p), w.zero})
+		}
+		g.bad = maps.Clone(f.bad)
+		m[f] = g
+		return g
+	}
+	for _, name := range sortedNames(d.names) {
+		c.names[name] = cp(d.names[name])
+	}
+	for _, name := range sortedNames(d.durable) {
+		c.durable[name] = cp(d.durable[name])
+	}
+	for _, o := range d.dirOps {
+		o.f = cp(o.f)
+		c.dirOps = append(c.dirOps, o)
+	}
+	c.dirs, c.durableDirs = maps.Clone(d.dirs), maps.Clone(d.durableDirs)
+	c.files, c.st, c.Capacity = d.files, d.st, d.Capacity
 	return c
 }
 
@@ -484,7 +686,27 @@ func (d *Disk) Corrupt(rng *rand.Rand) bool {
 	if len(targets) == 0 {
 		return false
 	}
-	f := d.durable[targets[rng.IntN(len(targets))]]
+	return d.misdirect(rng, d.durable[targets[rng.IntN(len(targets))]])
+}
+
+// Misdirect is Corrupt on the synced bytes of file name, which must hold
+// at least 64. It reports whether it changed anything.
+func (d *Disk) Misdirect(rng *rand.Rand, name string) bool {
+	f, ok := d.durable[name]
+	if !ok || f.durable.size < 64 {
+		return false
+	}
+	if !d.misdirect(rng, f) {
+		return false
+	}
+	d.tracef("misdirected a write over %s (file %d)", name, f.id)
+	return true
+}
+
+// misdirect copies 16 to 64 synced bytes from a random file and offset
+// over synced bytes of f.
+func (d *Disk) misdirect(rng *rand.Rand, f *file) bool {
+	names := sortedNames(d.durable)
 	n := 16 + rng.IntN(49)
 	src := &d.durable[names[rng.IntN(len(names))]].durable
 	if src.size < n || f.durable.size < n {
@@ -568,6 +790,15 @@ func (d *Disk) Misread(rng *rand.Rand, name string) bool {
 // ErrNoSpace is the error of a write that ran out of space.
 var ErrNoSpace = errors.New("simfs: no space left on device")
 
+// ErrCrossDir is the error of a rename between two directories, which the
+// model refuses (#730, ruled): it would keep such a rename only with its
+// file's creation in the other directory, which is stricter than ext4,
+// whose journal keeps both. No code under test renames across directories.
+var ErrCrossDir = errors.New("simfs: a rename between two directories is refused: the model does not keep it as Linux does (#730)")
+
+// ErrIsDir is the error of a rename of a file over a directory.
+var ErrIsDir = errors.New("simfs: is a directory")
+
 // ErrIO is the error of a failed operation.
 var ErrIO = errors.New("simfs: input/output error")
 
@@ -632,17 +863,31 @@ func (d *Disk) Remount() {
 func (d *Disk) Erase() {
 	d.names = map[string]*file{}
 	d.durable = map[string]*file{}
+	d.dirs, d.durableDirs = map[string]bool{}, map[string]bool{}
 	d.dirOps = nil
 }
 
-// Bytes returns the total size of the files.
+// Bytes returns the room the files take: each its size, or as far as
+// its space is allocated if further (Handle.Allocate).
 func (d *Disk) Bytes() int {
 	n := 0
 	for _, f := range d.names {
-		n += f.size
+		n += f.room()
 	}
 	return n
 }
+
+// Free returns the room left on the disk: its capacity less what the files
+// take, or the most an int64 holds without a capacity.
+func (d *Disk) Free() int64 {
+	if d.Capacity == 0 {
+		return math.MaxInt64
+	}
+	return int64(max(0, d.Capacity-d.Bytes()))
+}
+
+// room is the space f takes on the disk.
+func (f *file) room() int { return max(f.size, f.alloc) }
 
 func sortedNames(m map[string]*file) []string {
 	names := make([]string, 0, len(m))
@@ -671,7 +916,7 @@ func (d *Disk) fault(op Op, name string) error {
 func (op Op) changes() bool { return op != OpOpen && op != OpRead }
 
 func (op Op) String() string {
-	names := [...]string{"create", "open", "read", "write", "truncate", "sync", "remove", "sync-dir", "rename"}
+	names := [...]string{"create", "open", "read", "write", "truncate", "sync", "remove", "sync-dir", "rename", "allocate", "mkdir"}
 	if int(op) < len(names) {
 		return names[op]
 	}
@@ -691,8 +936,11 @@ func (d *Disk) Create(name string) (wal.File, error) {
 	if err := d.fault(OpCreate, name); err != nil {
 		return nil, err
 	}
-	if _, ok := d.names[name]; ok {
+	if _, ok := d.names[name]; ok || d.dirs[name] {
 		return nil, fs.ErrExist
+	}
+	if !d.isDir(parentDir(name)) {
+		return nil, fs.ErrNotExist
 	}
 	d.files++
 	f := &file{id: d.files, durable: pages{st: d.st}}
@@ -721,8 +969,15 @@ func (d *Disk) Rename(oldName, newName string) error {
 		return err
 	}
 	f, ok := d.names[oldName]
-	if !ok {
+	if !ok || !d.isDir(parentDir(newName)) {
 		return fs.ErrNotExist
+	}
+	if parentDir(oldName) != parentDir(newName) {
+		return ErrCrossDir
+	}
+	if d.isDir(newName) {
+		// rename(2) of a file over a directory fails with EISDIR.
+		return ErrIsDir
 	}
 	if g, ok := d.names[newName]; ok {
 		d.tracef("rename %s (file %d) to %s, replacing file %d", oldName, f.id, newName, g.id)
@@ -750,12 +1005,41 @@ func (d *Disk) Remove(name string) error {
 	return nil
 }
 
+// SyncDirOf makes durable the directory operations of directory dir, ""
+// for the top: the creations, renames and removals of the names it
+// holds, as an fsync of the directory does. A rename between two
+// directories, were it allowed, would be durable with either's: Rename
+// refuses one (ErrCrossDir, #730). Each directory is synced on its
+// own: a sync of wal/ leaves a rename in ckpt/ to the next crash (#689's
+// area-1 review).
+func (d *Disk) SyncDirOf(dir string) error {
+	if err := d.fault(OpSyncDir, dir); err != nil {
+		return err
+	}
+	for i := range d.dirOps {
+		o := &d.dirOps[i]
+		if parentDir(o.name) == dir || o.op == OpRename && parentDir(o.to) == dir {
+			o.synced = true
+		}
+	}
+	// The synced operations before any that is not go to the durable
+	// names at once.
+	k := 0
+	for ; k < len(d.dirOps) && d.dirOps[k].synced; k++ {
+		d.dirOps[k].apply(d.durable, d.durableDirs)
+	}
+	d.dirOps = slices.Delete(d.dirOps, 0, k)
+	d.tracef("sync the directory %q", dir)
+	return nil
+}
+
 // SyncDir makes the current set of names durable.
 func (d *Disk) SyncDir() error {
 	if err := d.fault(OpSyncDir, ""); err != nil {
 		return err
 	}
 	d.durable = maps.Clone(d.names)
+	d.durableDirs = maps.Clone(d.dirs)
 	d.dirOps = nil
 	d.tracef("sync the directory")
 	return nil
@@ -874,8 +1158,9 @@ func (h *Handle) WriteAt(p []byte, off int64) (int, error) {
 		n, err = rng.IntN(len(p)+1), ErrNoSpace
 	}
 	if c := h.d.Capacity; c > 0 {
-		// What fits: the file may grow by the free bytes.
-		if limit := h.f.size + c - h.d.Bytes(); int(off)+n > limit {
+		// What fits: the file may grow into its own room and by the
+		// free bytes.
+		if limit := h.f.room() + c - h.d.Bytes(); int(off)+n > limit {
 			n, err = max(0, min(n, limit-int(off))), ErrNoSpace
 		}
 	}
@@ -901,7 +1186,7 @@ func (h *Handle) write(off int, p []byte) {
 		k += m
 	}
 	f.size = max(f.size, off+len(p))
-	f.pending = append(f.pending, write{off, p})
+	f.pending = append(f.pending, write{off, p, false})
 	// The drive writes a bad sector again in a spare place.
 	for s := range h.f.bad {
 		if s*SectorBytes < off+len(p) && (s+1)*SectorBytes > off {
@@ -910,12 +1195,36 @@ func (h *Handle) write(off int, p []byte) {
 	}
 }
 
-// Truncate cuts the file.
+// Allocate allocates the file's space up to size, keeping its size, as
+// fallocate with FALLOC_FL_KEEP_SIZE does: it fails with ErrNoSpace, and
+// allocates nothing, if the disk has not the room. Like the file's size,
+// the allocation stays through a crash once made.
+func (h *Handle) Allocate(size int64) error {
+	if err := h.check(OpAllocate); err != nil {
+		return err
+	}
+	f := h.f
+	if c := h.d.Capacity; c > 0 && h.d.Bytes()-f.room()+max(f.room(), int(size)) > c {
+		h.d.tracef("allocate %s (file %d) to %d: %v", h.name, f.id, size, ErrNoSpace)
+		return ErrNoSpace
+	}
+	f.alloc = max(f.alloc, int(size))
+	h.d.tracef("allocate %s (file %d) to %d", h.name, f.id, size)
+	return nil
+}
+
+// Truncate cuts the file to size, and frees its space allocated past it,
+// as truncate does. A size past the file's end grows it with zeros, as
+// truncate does too: like a write of zeros, the growth is durable only
+// once synced, and a crash before may keep it in part (#726).
 func (h *Handle) Truncate(size int64) error {
 	if err := h.check(OpTruncate); err != nil {
 		return err
 	}
 	f := h.f
+	if int(size) < f.room() {
+		f.alloc = 0
+	}
 	if n := int(size); n < f.size {
 		for i, d := range f.dirty {
 			switch lo := i * PageBytes; {
@@ -945,6 +1254,10 @@ func (h *Handle) Truncate(size int64) error {
 		if end := int64(w.off + len(w.p)); end > size {
 			h.f.pending[i].p = w.p[:size-int64(w.off)]
 		}
+	}
+	if gap := int(size) - f.size; gap > 0 {
+		h.write(f.size, make([]byte, gap))
+		h.f.pending[len(h.f.pending)-1].zero = true
 	}
 	return nil
 }
@@ -1078,13 +1391,40 @@ func (d *Disk) Unsynced(name string) bool {
 	return ok && (len(f.pending) > 0 || f.cut)
 }
 
+// Grown reports whether a write to file name since its last sync
+// reaches past its synced size.
+func (d *Disk) Grown(name string) bool {
+	f, ok := d.names[name]
+	if !ok {
+		return false
+	}
+	for _, w := range f.pending {
+		if w.off+len(w.p) > f.durable.size {
+			return true
+		}
+	}
+	return false
+}
+
+// Pending is how many writes to file name its last sync left unsynced.
+func (d *Disk) Pending(name string) int {
+	if f, ok := d.names[name]; ok {
+		return len(f.pending)
+	}
+	return 0
+}
+
 // DurableNames returns the names of the files on the durable directory,
 // sorted.
-func (d *Disk) DurableNames() []string { return sortedNames(d.durable) }
+func (d *Disk) DurableNames() []string {
+	names, _ := d.durableView()
+	return sortedNames(names)
+}
 
 // DurableBytes returns a copy of a file's synced bytes.
 func (d *Disk) DurableBytes(name string) []byte {
-	if f, ok := d.durable[name]; ok {
+	names, _ := d.durableView()
+	if f, ok := names[name]; ok {
 		return f.durable.bytes()
 	}
 	return nil

@@ -1,0 +1,1519 @@
+{
+  "sort-by-value": [
+    {
+      "do": "put 00",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put 01",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put 02",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "put 03",
+      "code": "OK",
+      "result": {
+        "revision": 4
+      }
+    },
+    {
+      "do": "put 04",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "put 05",
+      "code": "OK",
+      "result": {
+        "revision": 6
+      }
+    },
+    {
+      "do": "put 06",
+      "code": "OK",
+      "result": {
+        "revision": 7
+      }
+    },
+    {
+      "do": "put 07",
+      "code": "OK",
+      "result": {
+        "revision": 8
+      }
+    },
+    {
+      "do": "put 08",
+      "code": "OK",
+      "result": {
+        "revision": 9
+      }
+    },
+    {
+      "do": "put 09",
+      "code": "OK",
+      "result": {
+        "revision": 10
+      }
+    },
+    {
+      "do": "put 10",
+      "code": "OK",
+      "result": {
+        "revision": 11
+      }
+    },
+    {
+      "do": "put 11",
+      "code": "OK",
+      "result": {
+        "revision": 12
+      }
+    },
+    {
+      "do": "put 12",
+      "code": "OK",
+      "result": {
+        "revision": 13
+      }
+    },
+    {
+      "do": "put 13",
+      "code": "OK",
+      "result": {
+        "revision": 14
+      }
+    },
+    {
+      "do": "put 14",
+      "code": "OK",
+      "result": {
+        "revision": 15
+      }
+    },
+    {
+      "do": "put 15",
+      "code": "OK",
+      "result": {
+        "revision": 16
+      }
+    },
+    {
+      "do": "put 16",
+      "code": "OK",
+      "result": {
+        "revision": 17
+      }
+    },
+    {
+      "do": "put 17",
+      "code": "OK",
+      "result": {
+        "revision": 18
+      }
+    },
+    {
+      "do": "put 18",
+      "code": "OK",
+      "result": {
+        "revision": 19
+      }
+    },
+    {
+      "do": "put 19",
+      "code": "OK",
+      "result": {
+        "revision": 20
+      }
+    },
+    {
+      "do": "put 20",
+      "code": "OK",
+      "result": {
+        "revision": 21
+      }
+    },
+    {
+      "do": "put 21",
+      "code": "OK",
+      "result": {
+        "revision": 22
+      }
+    },
+    {
+      "do": "put 22",
+      "code": "OK",
+      "result": {
+        "revision": 23
+      }
+    },
+    {
+      "do": "put 23",
+      "code": "OK",
+      "result": {
+        "revision": 24
+      }
+    },
+    {
+      "do": "put 24",
+      "code": "OK",
+      "result": {
+        "revision": 25
+      }
+    },
+    {
+      "do": "put 25",
+      "code": "OK",
+      "result": {
+        "revision": 26
+      }
+    },
+    {
+      "do": "put 26",
+      "code": "OK",
+      "result": {
+        "revision": 27
+      }
+    },
+    {
+      "do": "put 27",
+      "code": "OK",
+      "result": {
+        "revision": 28
+      }
+    },
+    {
+      "do": "put 28",
+      "code": "OK",
+      "result": {
+        "revision": 29
+      }
+    },
+    {
+      "do": "put 29",
+      "code": "OK",
+      "result": {
+        "revision": 30
+      }
+    },
+    {
+      "do": "put 30",
+      "code": "OK",
+      "result": {
+        "revision": 31
+      }
+    },
+    {
+      "do": "put 31",
+      "code": "OK",
+      "result": {
+        "revision": 32
+      }
+    },
+    {
+      "do": "put 32",
+      "code": "OK",
+      "result": {
+        "revision": 33
+      }
+    },
+    {
+      "do": "put 33",
+      "code": "OK",
+      "result": {
+        "revision": 34
+      }
+    },
+    {
+      "do": "put 34",
+      "code": "OK",
+      "result": {
+        "revision": 35
+      }
+    },
+    {
+      "do": "put 35",
+      "code": "OK",
+      "result": {
+        "revision": 36
+      }
+    },
+    {
+      "do": "put 36",
+      "code": "OK",
+      "result": {
+        "revision": 37
+      }
+    },
+    {
+      "do": "put 37",
+      "code": "OK",
+      "result": {
+        "revision": 38
+      }
+    },
+    {
+      "do": "put 38",
+      "code": "OK",
+      "result": {
+        "revision": 39
+      }
+    },
+    {
+      "do": "put 39",
+      "code": "OK",
+      "result": {
+        "revision": 40
+      }
+    },
+    {
+      "do": "sorted by value, within one piece",
+      "code": "OK",
+      "result": {
+        "revision": 40,
+        "kvs": [
+          {
+            "key": "v/03",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "v/02",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "v/01",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 2,
+            "mod": 2,
+            "version": 1
+          },
+          {
+            "key": "v/00",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 4
+      }
+    },
+    {
+      "do": "sorted by value, past one piece",
+      "code": "OK",
+      "result": {
+        "revision": 40,
+        "kvs": [
+          {
+            "key": "v/00",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "v/01",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 2,
+            "mod": 2,
+            "version": 1
+          },
+          {
+            "key": "v/02",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "v/03",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "v/04",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 5,
+            "mod": 5,
+            "version": 1
+          },
+          {
+            "key": "v/05",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 6,
+            "mod": 6,
+            "version": 1
+          },
+          {
+            "key": "v/06",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "v/07",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 8,
+            "mod": 8,
+            "version": 1
+          },
+          {
+            "key": "v/08",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 9,
+            "mod": 9,
+            "version": 1
+          },
+          {
+            "key": "v/09",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 10,
+            "mod": 10,
+            "version": 1
+          },
+          {
+            "key": "v/10",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 11,
+            "mod": 11,
+            "version": 1
+          },
+          {
+            "key": "v/11",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 12,
+            "mod": 12,
+            "version": 1
+          },
+          {
+            "key": "v/12",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 13,
+            "mod": 13,
+            "version": 1
+          },
+          {
+            "key": "v/13",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 14,
+            "mod": 14,
+            "version": 1
+          },
+          {
+            "key": "v/14",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 15,
+            "mod": 15,
+            "version": 1
+          },
+          {
+            "key": "v/15",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 16,
+            "mod": 16,
+            "version": 1
+          },
+          {
+            "key": "v/16",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 17,
+            "mod": 17,
+            "version": 1
+          },
+          {
+            "key": "v/17",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 18,
+            "mod": 18,
+            "version": 1
+          },
+          {
+            "key": "v/18",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 19,
+            "mod": 19,
+            "version": 1
+          },
+          {
+            "key": "v/19",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 20,
+            "mod": 20,
+            "version": 1
+          },
+          {
+            "key": "v/20",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 21,
+            "mod": 21,
+            "version": 1
+          },
+          {
+            "key": "v/21",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 22,
+            "mod": 22,
+            "version": 1
+          },
+          {
+            "key": "v/22",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 23,
+            "mod": 23,
+            "version": 1
+          },
+          {
+            "key": "v/23",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 24,
+            "mod": 24,
+            "version": 1
+          },
+          {
+            "key": "v/24",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 25,
+            "mod": 25,
+            "version": 1
+          },
+          {
+            "key": "v/25",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 26,
+            "mod": 26,
+            "version": 1
+          },
+          {
+            "key": "v/26",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 27,
+            "mod": 27,
+            "version": 1
+          },
+          {
+            "key": "v/27",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 28,
+            "mod": 28,
+            "version": 1
+          },
+          {
+            "key": "v/28",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 29,
+            "mod": 29,
+            "version": 1
+          },
+          {
+            "key": "v/29",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 30,
+            "mod": 30,
+            "version": 1
+          },
+          {
+            "key": "v/30",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 31,
+            "mod": 31,
+            "version": 1
+          },
+          {
+            "key": "v/31",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 32,
+            "mod": 32,
+            "version": 1
+          },
+          {
+            "key": "v/32",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 33,
+            "mod": 33,
+            "version": 1
+          },
+          {
+            "key": "v/33",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 34,
+            "mod": 34,
+            "version": 1
+          },
+          {
+            "key": "v/34",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 35,
+            "mod": 35,
+            "version": 1
+          },
+          {
+            "key": "v/35",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 36,
+            "mod": 36,
+            "version": 1
+          },
+          {
+            "key": "v/36",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 37,
+            "mod": 37,
+            "version": 1
+          },
+          {
+            "key": "v/37",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 38,
+            "mod": 38,
+            "version": 1
+          },
+          {
+            "key": "v/38",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 39,
+            "mod": 39,
+            "version": 1
+          },
+          {
+            "key": "v/39",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 40,
+            "mod": 40,
+            "version": 1
+          }
+        ],
+        "count": 40
+      }
+    },
+    {
+      "do": "sorted by mod revision, in pieces",
+      "code": "OK",
+      "result": {
+        "revision": 40,
+        "kvs": [
+          {
+            "key": "v/39",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 40,
+            "mod": 40,
+            "version": 1
+          },
+          {
+            "key": "v/38",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 39,
+            "mod": 39,
+            "version": 1
+          },
+          {
+            "key": "v/37",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 38,
+            "mod": 38,
+            "version": 1
+          },
+          {
+            "key": "v/36",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 37,
+            "mod": 37,
+            "version": 1
+          },
+          {
+            "key": "v/35",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 36,
+            "mod": 36,
+            "version": 1
+          },
+          {
+            "key": "v/34",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 35,
+            "mod": 35,
+            "version": 1
+          },
+          {
+            "key": "v/33",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 34,
+            "mod": 34,
+            "version": 1
+          },
+          {
+            "key": "v/32",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 33,
+            "mod": 33,
+            "version": 1
+          },
+          {
+            "key": "v/31",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 32,
+            "mod": 32,
+            "version": 1
+          },
+          {
+            "key": "v/30",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 31,
+            "mod": 31,
+            "version": 1
+          },
+          {
+            "key": "v/29",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 30,
+            "mod": 30,
+            "version": 1
+          },
+          {
+            "key": "v/28",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 29,
+            "mod": 29,
+            "version": 1
+          },
+          {
+            "key": "v/27",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 28,
+            "mod": 28,
+            "version": 1
+          },
+          {
+            "key": "v/26",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 27,
+            "mod": 27,
+            "version": 1
+          },
+          {
+            "key": "v/25",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 26,
+            "mod": 26,
+            "version": 1
+          },
+          {
+            "key": "v/24",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 25,
+            "mod": 25,
+            "version": 1
+          },
+          {
+            "key": "v/23",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 24,
+            "mod": 24,
+            "version": 1
+          },
+          {
+            "key": "v/22",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 23,
+            "mod": 23,
+            "version": 1
+          },
+          {
+            "key": "v/21",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 22,
+            "mod": 22,
+            "version": 1
+          },
+          {
+            "key": "v/20",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 21,
+            "mod": 21,
+            "version": 1
+          },
+          {
+            "key": "v/19",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 20,
+            "mod": 20,
+            "version": 1
+          },
+          {
+            "key": "v/18",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 19,
+            "mod": 19,
+            "version": 1
+          },
+          {
+            "key": "v/17",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 18,
+            "mod": 18,
+            "version": 1
+          },
+          {
+            "key": "v/16",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 17,
+            "mod": 17,
+            "version": 1
+          },
+          {
+            "key": "v/15",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 16,
+            "mod": 16,
+            "version": 1
+          },
+          {
+            "key": "v/14",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 15,
+            "mod": 15,
+            "version": 1
+          },
+          {
+            "key": "v/13",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 14,
+            "mod": 14,
+            "version": 1
+          },
+          {
+            "key": "v/12",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 13,
+            "mod": 13,
+            "version": 1
+          },
+          {
+            "key": "v/11",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 12,
+            "mod": 12,
+            "version": 1
+          },
+          {
+            "key": "v/10",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 11,
+            "mod": 11,
+            "version": 1
+          },
+          {
+            "key": "v/09",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 10,
+            "mod": 10,
+            "version": 1
+          },
+          {
+            "key": "v/08",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 9,
+            "mod": 9,
+            "version": 1
+          },
+          {
+            "key": "v/07",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 8,
+            "mod": 8,
+            "version": 1
+          },
+          {
+            "key": "v/06",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "v/05",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 6,
+            "mod": 6,
+            "version": 1
+          },
+          {
+            "key": "v/04",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 5,
+            "mod": 5,
+            "version": 1
+          },
+          {
+            "key": "v/03",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "v/02",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "v/01",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 2,
+            "mod": 2,
+            "version": 1
+          },
+          {
+            "key": "v/00",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 40
+      }
+    },
+    {
+      "do": "txn whose range passes one message",
+      "code": "OK",
+      "result": {
+        "revision": 41,
+        "succeeded": true,
+        "ops": [
+          {
+            "range": {
+              "revision": 40,
+              "kvs": [
+                {
+                  "key": "v/00",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 1,
+                  "mod": 1,
+                  "version": 1
+                },
+                {
+                  "key": "v/01",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 2,
+                  "mod": 2,
+                  "version": 1
+                },
+                {
+                  "key": "v/02",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 3,
+                  "mod": 3,
+                  "version": 1
+                },
+                {
+                  "key": "v/03",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 4,
+                  "mod": 4,
+                  "version": 1
+                },
+                {
+                  "key": "v/04",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 5,
+                  "mod": 5,
+                  "version": 1
+                },
+                {
+                  "key": "v/05",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 6,
+                  "mod": 6,
+                  "version": 1
+                },
+                {
+                  "key": "v/06",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 7,
+                  "mod": 7,
+                  "version": 1
+                },
+                {
+                  "key": "v/07",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 8,
+                  "mod": 8,
+                  "version": 1
+                },
+                {
+                  "key": "v/08",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 9,
+                  "mod": 9,
+                  "version": 1
+                },
+                {
+                  "key": "v/09",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 10,
+                  "mod": 10,
+                  "version": 1
+                },
+                {
+                  "key": "v/10",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 11,
+                  "mod": 11,
+                  "version": 1
+                },
+                {
+                  "key": "v/11",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 12,
+                  "mod": 12,
+                  "version": 1
+                },
+                {
+                  "key": "v/12",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 13,
+                  "mod": 13,
+                  "version": 1
+                },
+                {
+                  "key": "v/13",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 14,
+                  "mod": 14,
+                  "version": 1
+                },
+                {
+                  "key": "v/14",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 15,
+                  "mod": 15,
+                  "version": 1
+                },
+                {
+                  "key": "v/15",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 16,
+                  "mod": 16,
+                  "version": 1
+                },
+                {
+                  "key": "v/16",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 17,
+                  "mod": 17,
+                  "version": 1
+                },
+                {
+                  "key": "v/17",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 18,
+                  "mod": 18,
+                  "version": 1
+                },
+                {
+                  "key": "v/18",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 19,
+                  "mod": 19,
+                  "version": 1
+                },
+                {
+                  "key": "v/19",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 20,
+                  "mod": 20,
+                  "version": 1
+                },
+                {
+                  "key": "v/20",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 21,
+                  "mod": 21,
+                  "version": 1
+                },
+                {
+                  "key": "v/21",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 22,
+                  "mod": 22,
+                  "version": 1
+                },
+                {
+                  "key": "v/22",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 23,
+                  "mod": 23,
+                  "version": 1
+                },
+                {
+                  "key": "v/23",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 24,
+                  "mod": 24,
+                  "version": 1
+                },
+                {
+                  "key": "v/24",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 25,
+                  "mod": 25,
+                  "version": 1
+                },
+                {
+                  "key": "v/25",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 26,
+                  "mod": 26,
+                  "version": 1
+                },
+                {
+                  "key": "v/26",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 27,
+                  "mod": 27,
+                  "version": 1
+                },
+                {
+                  "key": "v/27",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 28,
+                  "mod": 28,
+                  "version": 1
+                },
+                {
+                  "key": "v/28",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 29,
+                  "mod": 29,
+                  "version": 1
+                },
+                {
+                  "key": "v/29",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 30,
+                  "mod": 30,
+                  "version": 1
+                },
+                {
+                  "key": "v/30",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 31,
+                  "mod": 31,
+                  "version": 1
+                },
+                {
+                  "key": "v/31",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 32,
+                  "mod": 32,
+                  "version": 1
+                },
+                {
+                  "key": "v/32",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 33,
+                  "mod": 33,
+                  "version": 1
+                },
+                {
+                  "key": "v/33",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 34,
+                  "mod": 34,
+                  "version": 1
+                },
+                {
+                  "key": "v/34",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 35,
+                  "mod": 35,
+                  "version": 1
+                },
+                {
+                  "key": "v/35",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 36,
+                  "mod": 36,
+                  "version": 1
+                },
+                {
+                  "key": "v/36",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 37,
+                  "mod": 37,
+                  "version": 1
+                },
+                {
+                  "key": "v/37",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 38,
+                  "mod": 38,
+                  "version": 1
+                },
+                {
+                  "key": "v/38",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 39,
+                  "mod": 39,
+                  "version": 1
+                },
+                {
+                  "key": "v/39",
+                  "value": "\u003c1433600 bytes\u003e",
+                  "create": 40,
+                  "mod": 40,
+                  "version": 1
+                }
+              ],
+              "count": 40
+            }
+          },
+          {
+            "revision": 41,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "the txn's put applied",
+      "code": "OK",
+      "result": {
+        "revision": 41,
+        "kvs": [
+          {
+            "key": "w",
+            "value": "applied",
+            "create": 41,
+            "mod": 41,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "delete with prev_kv past one message",
+      "code": "OK",
+      "result": {
+        "revision": 42,
+        "deleted": 40,
+        "prevKVs": [
+          {
+            "key": "v/00",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "v/01",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 2,
+            "mod": 2,
+            "version": 1
+          },
+          {
+            "key": "v/02",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "v/03",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "v/04",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 5,
+            "mod": 5,
+            "version": 1
+          },
+          {
+            "key": "v/05",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 6,
+            "mod": 6,
+            "version": 1
+          },
+          {
+            "key": "v/06",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "v/07",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 8,
+            "mod": 8,
+            "version": 1
+          },
+          {
+            "key": "v/08",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 9,
+            "mod": 9,
+            "version": 1
+          },
+          {
+            "key": "v/09",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 10,
+            "mod": 10,
+            "version": 1
+          },
+          {
+            "key": "v/10",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 11,
+            "mod": 11,
+            "version": 1
+          },
+          {
+            "key": "v/11",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 12,
+            "mod": 12,
+            "version": 1
+          },
+          {
+            "key": "v/12",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 13,
+            "mod": 13,
+            "version": 1
+          },
+          {
+            "key": "v/13",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 14,
+            "mod": 14,
+            "version": 1
+          },
+          {
+            "key": "v/14",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 15,
+            "mod": 15,
+            "version": 1
+          },
+          {
+            "key": "v/15",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 16,
+            "mod": 16,
+            "version": 1
+          },
+          {
+            "key": "v/16",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 17,
+            "mod": 17,
+            "version": 1
+          },
+          {
+            "key": "v/17",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 18,
+            "mod": 18,
+            "version": 1
+          },
+          {
+            "key": "v/18",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 19,
+            "mod": 19,
+            "version": 1
+          },
+          {
+            "key": "v/19",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 20,
+            "mod": 20,
+            "version": 1
+          },
+          {
+            "key": "v/20",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 21,
+            "mod": 21,
+            "version": 1
+          },
+          {
+            "key": "v/21",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 22,
+            "mod": 22,
+            "version": 1
+          },
+          {
+            "key": "v/22",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 23,
+            "mod": 23,
+            "version": 1
+          },
+          {
+            "key": "v/23",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 24,
+            "mod": 24,
+            "version": 1
+          },
+          {
+            "key": "v/24",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 25,
+            "mod": 25,
+            "version": 1
+          },
+          {
+            "key": "v/25",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 26,
+            "mod": 26,
+            "version": 1
+          },
+          {
+            "key": "v/26",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 27,
+            "mod": 27,
+            "version": 1
+          },
+          {
+            "key": "v/27",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 28,
+            "mod": 28,
+            "version": 1
+          },
+          {
+            "key": "v/28",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 29,
+            "mod": 29,
+            "version": 1
+          },
+          {
+            "key": "v/29",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 30,
+            "mod": 30,
+            "version": 1
+          },
+          {
+            "key": "v/30",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 31,
+            "mod": 31,
+            "version": 1
+          },
+          {
+            "key": "v/31",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 32,
+            "mod": 32,
+            "version": 1
+          },
+          {
+            "key": "v/32",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 33,
+            "mod": 33,
+            "version": 1
+          },
+          {
+            "key": "v/33",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 34,
+            "mod": 34,
+            "version": 1
+          },
+          {
+            "key": "v/34",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 35,
+            "mod": 35,
+            "version": 1
+          },
+          {
+            "key": "v/35",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 36,
+            "mod": 36,
+            "version": 1
+          },
+          {
+            "key": "v/36",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 37,
+            "mod": 37,
+            "version": 1
+          },
+          {
+            "key": "v/37",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 38,
+            "mod": 38,
+            "version": 1
+          },
+          {
+            "key": "v/38",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 39,
+            "mod": 39,
+            "version": 1
+          },
+          {
+            "key": "v/39",
+            "value": "\u003c1433600 bytes\u003e",
+            "create": 40,
+            "mod": 40,
+            "version": 1
+          }
+        ]
+      }
+    },
+    {
+      "do": "the delete applied",
+      "code": "OK",
+      "result": {
+        "revision": 42,
+        "count": 0
+      }
+    }
+  ]
+}

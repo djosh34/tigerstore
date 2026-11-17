@@ -18,7 +18,6 @@ import (
 	"google.golang.org/grpc/stats"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/djosh34/tigerstore/internal/server"
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
@@ -30,30 +29,6 @@ import (
 
 // clientAddr is the client address of node i of the first three.
 func clientAddr(i int) string { return hosts[i] + ":2379" }
-
-// serve starts p's gRPC server on its node's client address. The lock is
-// held.
-func (s *Sim) serve(p *proc) error {
-	n := p.n
-	srv, err := server.New(p.node, server.Config{
-		TLS:       &tls.Config{Certificates: []tls.Certificate{s.net.cert}},
-		NoGateway: true,
-		Logf:      func(format string, args ...any) { s.logf(n, format, args...) },
-	})
-	if err != nil {
-		return err
-	}
-	p.srv = srv
-	ln := s.net.listen(s, p, []string{clientAddr(n.idx)})
-	s.procs.Go(func() {
-		if err := srv.Serve(ln); err != nil && !errors.Is(err, net.ErrClosed) {
-			s.mu.Lock()
-			s.fail("node %d: serving clients: %w", n.id, err)
-			s.mu.Unlock()
-		}
-	})
-	return nil
-}
 
 // newV3 makes client c's clientv3 client, for the node it calls.
 func (c *client) newV3() error {
@@ -88,15 +63,19 @@ func (c *client) dialV3(addr string, ca *x509.CertPool, dial func(context.Contex
 func v3Options(dial func(context.Context, string) (net.Conn, error)) []grpc.DialOption {
 	return []grpc.DialOption{
 		grpc.WithContextDialer(dial),
-		// gRPC's own backoff between dials grows to 2 minutes, which would
-		// hold a client of one node that was down a few times past the end
-		// of the run: calls wait for a connection.
-		grpc.WithConnectParams(grpc.ConnectParams{
-			Backoff:           backoff.Config{BaseDelay: 100 * time.Millisecond, Multiplier: 1.6, Jitter: 0.2, MaxDelay: time.Second},
-			MinConnectTimeout: time.Duration(dialTimeout),
-		}),
+		grpc.WithConnectParams(simConnect),
 		grpc.WithStatsHandler(retryPause{}),
 	}
+}
+
+// simConnect is how the run's gRPC clients dial again. gRPC's own backoff
+// between dials grows to 2 minutes, which would hold a client of one node
+// that was down a few times past the end of the run, or a connection whose
+// dials the faults refused past healing: calls fail with the last dial's
+// error until it dials again.
+var simConnect = grpc.ConnectParams{
+	Backoff:           backoff.Config{BaseDelay: 100 * time.Millisecond, Multiplier: 1.6, Jitter: 0.2, MaxDelay: time.Second},
+	MinConnectTimeout: time.Duration(dialTimeout),
 }
 
 // retryPause makes each transparent retry of a call wait a millisecond

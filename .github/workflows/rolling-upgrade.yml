@@ -24,49 +24,45 @@ jobs:
         run: |
           gofmt -d cmd/chaos/rolling_test.go > "$RUNNER_TEMP/formatting.patch"
           test ! -s "$RUNNER_TEMP/formatting.patch"
-      - name: Build the two version ranges
+      - name: Build the two format ranges
         env:
           MODE: ${{ matrix.mode }}
         run: |
+          # The old build reads and writes batch format 1, the new one
+          # formats 1 and 2 (internal/wl/format.go).
           python3 - <<'PY'
           import json, os, pathlib
           root = pathlib.Path.cwd()
           tmp = pathlib.Path(os.environ['RUNNER_TEMP'])
-          for name, version in [('old', 1), ('new', 2)]:
-              replacements = {}
-              for rel in ['internal/core/version.go', 'internal/peer/peer.go']:
-                  source = (root / rel).read_text()
-                  if rel.endswith('version.go'):
-                      assert source.count('const MaxVersion = 4') == 1
-                      source = source.replace('const MaxVersion = 4', f'const MaxVersion = {version}')
-                      if os.environ['MODE'] == 'confirmation-removed':
-                          guard = 'if a.hasEpoch {'
-                          assert source.count(guard) == 1
-                          source = source.replace(guard, 'if false {')
-                  else:
-                      # The old build speaks peer protocol 3 only, the new
-                      # one 3 and 4, which carries held entries.
-                      assert source.count('maxVersion = 4') == 1
-                      source = source.replace('maxVersion = 4', f'maxVersion = {version + 2}')
-                  target = tmp / f'{name}-{pathlib.Path(rel).name}'
-                  target.write_text(source)
-                  replacements[str(root / rel)] = str(target)
-              (tmp / f'{name}.json').write_text(json.dumps({'Replace': replacements}))
+          rel = 'internal/wl/format.go'
+          for name, format in [('old', 1), ('new', 2)]:
+              source = (root / rel).read_text()
+              assert source.count('const maxFormat = 1\n') == 1
+              source = source.replace('const maxFormat = 1\n', f'const maxFormat = {format}\n')
+              if os.environ['MODE'] == 'confirmation-removed':
+                  # The cluster takes a format on support alone.
+                  guard = 'if m.confirmed != n.formatEpoch {'
+                  assert source.count(guard) == 1
+                  source = source.replace(guard, 'if false {')
+              target = tmp / f'{name}-format.go'
+              target.write_text(source)
+              (tmp / f'{name}.json').write_text(json.dumps({'Replace': {str(root / rel): str(target)}}))
           PY
           flags=()
           if [ "$MODE" = race ]; then flags=(-race); fi
           go build "${flags[@]}" -overlay "$RUNNER_TEMP/old.json" -o "$RUNNER_TEMP/tigerstore-old" ./cmd/tigerstore
           go build "${flags[@]}" -overlay "$RUNNER_TEMP/new.json" -o "$RUNNER_TEMP/tigerstore-new" ./cmd/tigerstore
           sha256sum "$RUNNER_TEMP"/tigerstore-{old,new}
-      - name: Version and peer component tests
+      - name: The gate's component tests, in both builds
         if: matrix.mode == 'normal' || matrix.mode == 'race'
         env:
           MODE: ${{ matrix.mode }}
         run: |
           flags=()
           if [ "$MODE" = race ]; then flags=(-race); fi
-          go test "${flags[@]}" -count=1 -v ./internal/core -run 'Test(Announce|LateAnnouncement|LegacyAnnouncements|VersionWaits|OldBinary|NewRunAnnounces)'
-          go test "${flags[@]}" -count=1 -v ./internal/peer -run 'Test(Pick|SharedVersion|DisjointVersions|RejectsBadPreface|FetchAfterHandshake)'
+          for build in old new; do
+            go test "${flags[@]}" -overlay "$RUNNER_TEMP/$build.json" -count=1 -v ./internal/wl -run 'Test(TheClusterTakesAFormat|AMemberThatIsDownHoldsTheFormat|AStaleRunsAnnouncement|AMembershipChangeAsksForConfirmations|ACheckpointKeepsTheGate|TheApplyChecksABatchsFormat|EachStartHasALaterRun|EachRunNamesItsBatchesAfresh|ANamedBatchOfAnEarlierRun|TheLogOfAStoppedNodeReadsBack)'
+          done
       - name: Lint the chaos tests
         if: matrix.mode == 'normal'
         uses: golangci/golangci-lint-action@v9
@@ -83,18 +79,37 @@ jobs:
           set -o pipefail
           flags=()
           if [ "$MODE" = race ]; then flags=(-race); fi
-          test='^Test(RollingUpgrade|ReleaseUpgrade)$'
+          test='^TestRollingUpgrade$'
           if [ "$MODE" = rollback-before-announcement ]; then test='^TestRollingRollbackBeforeAnnouncement$'; fi
           if [ "$MODE" = confirmation-removed ]; then
             if go test -count=1 -timeout 8m -v ./cmd/chaos -run '^TestRollingRollbackBeforeAnnouncement$' 2>&1 | tee "$RUNNER_TEMP/result.log"; then
               echo 'The rollback regression missed the removed confirmation check.'
               exit 1
             fi
-            grep -q 'version 2 activated while the rollback node was down; want 1 (#174)' "$RUNNER_TEMP/result.log"
+            grep -q 'format 2 activated while the rollback node was down; want 1 (#174)' "$RUNNER_TEMP/result.log"
             grep -q 'this binary is too old for the cluster' "$ROLLING_OUT/seed-175/old-binary-refused.log"
           else
             go test "${flags[@]}" -count=1 -timeout 8m -v ./cmd/chaos -run "$test" 2>&1 | tee "$RUNNER_TEMP/result.log"
           fi
+      # The previous release runs main's engine, so the step from it is
+      # offline (TestReleaseUpgrade): its snapshot restored with this
+      # source's binary.
+      - name: Offline upgrade from the previous release
+        if: matrix.mode == 'normal'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ROLLING_OUT: ${{ runner.temp }}/release
+        run: |
+          set -euo pipefail
+          previous=$(gh api "repos/$REPO/releases" -q '[.[] | select(.draft == false and .prerelease == false) | .tag_name][0]')
+          gh release download "$previous" --repo "$REPO" --pattern "tigerstore-$previous-linux-arm64" --dir "$RUNNER_TEMP/previous"
+          export ROLLING_OLD=$RUNNER_TEMP/previous/tigerstore-$previous-linux-arm64
+          export ROLLING_NEW=$RUNNER_TEMP/tigerstore-candidate
+          chmod +x "$ROLLING_OLD"
+          go build -o "$ROLLING_NEW" ./cmd/tigerstore
+          echo "upgrading from $previous"
+          go test -count=1 -timeout 8m -v ./cmd/chaos -run '^TestReleaseUpgrade$' 2>&1 | tee "$RUNNER_TEMP/release.log"
       - if: always()
         uses: actions/upload-artifact@v6
         with:
@@ -102,11 +117,11 @@ jobs:
           path: |
             ${{ runner.temp }}/rolling
             ${{ runner.temp }}/result.log
+            ${{ runner.temp }}/release
+            ${{ runner.temp }}/release.log
             ${{ runner.temp }}/formatting.patch
             ${{ runner.temp }}/old.json
             ${{ runner.temp }}/new.json
-            ${{ runner.temp }}/old-version.go
-            ${{ runner.temp }}/new-version.go
-            ${{ runner.temp }}/old-peer.go
-            ${{ runner.temp }}/new-peer.go
+            ${{ runner.temp }}/old-format.go
+            ${{ runner.temp }}/new-format.go
           retention-days: 30

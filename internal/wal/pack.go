@@ -35,8 +35,6 @@ const (
 	packMagic      = "tigerpck"
 	packPrefix     = "pack-"
 	packHeaderSize = len(packMagic) + 4 + 8
-	// packFlush is how much of a pack the writer buffers before a write.
-	packFlush = 1 << 20
 )
 
 func packName(id uint64) string { return fmt.Sprintf("%s%016x", packPrefix, id) }
@@ -60,12 +58,6 @@ type packVal struct {
 	off, len uint32
 	at       uint32
 }
-
-// ID is the pack's number.
-func (p *Pack) ID() uint64 { return p.id }
-
-// Size is the size of the pack's file.
-func (p *Pack) Size() int64 { return p.size }
 
 // Close closes the pack's file. Only a pack that no root names, and that
 // is not installed, is closed by its maker.
@@ -96,83 +88,8 @@ func cmpPackVal(a, b packVal) int {
 	return cmp.Or(cmp.Compare(a.index, b.index), cmp.Compare(a.off, b.off))
 }
 
-// mapBytes is about what the pack's map takes in memory.
-func (p *Pack) mapBytes() int64 { return 64 + int64(cap(p.vals))*24 }
-
 // PackWriter writes a new pack.
-type PackWriter struct {
-	fs  FS
-	p   *Pack
-	buf []byte
-	crc uint32
-}
-
-// NewPack creates the file of the next pack.
-func (w *WAL) NewPack() (*PackWriter, error) {
-	id := w.nextPack
-	w.nextPack++
-	f, err := w.fs.Create(packName(id))
-	if err != nil {
-		return nil, err
-	}
-	buf := append(make([]byte, 0, packFlush+packFlush/4), packMagic...)
-	buf = binary.LittleEndian.AppendUint32(buf, packVersion)
-	buf = binary.LittleEndian.AppendUint64(buf, id)
-	return &PackWriter{fs: w.fs, p: &Pack{id: id, f: f}, buf: buf}, nil
-}
-
-// Add appends the value at offset off of the data of entry index.
-func (pw *PackWriter) Add(index uint64, off uint32, value []byte) error {
-	var h [valueHdrSize]byte
-	binary.LittleEndian.PutUint64(h[:], index)
-	binary.LittleEndian.PutUint32(h[8:], off)
-	at := pw.p.size + int64(len(pw.buf)) + recHdrSize + valueHdrSize
-	if at+int64(len(value)) > 1<<32-1 {
-		return fmt.Errorf("wal: pack %d would pass 4 GiB", pw.p.id)
-	}
-	pw.buf, pw.crc = appendRecord(pw.buf, pw.crc, recValue, h[:], value)
-	pw.p.vals = append(pw.p.vals, packVal{index: index, off: off, len: uint32(len(value)), at: uint32(at)})
-	if len(pw.buf) >= packFlush {
-		return pw.flush()
-	}
-	return nil
-}
-
-// Bytes is the size of the pack so far.
-func (pw *PackWriter) Bytes() int64 { return pw.p.size + int64(len(pw.buf)) }
-
-func (pw *PackWriter) flush() error {
-	n, err := pw.p.f.Write(pw.buf)
-	pw.p.size += int64(n)
-	pw.buf = pw.buf[:0]
-	return err
-}
-
-// Finish writes the end record, syncs the file and the directory, and
-// returns the pack, open for reading. It counts once InstallPacks names
-// it and that root is synced. After an error the caller closes the pack's
-// file with Abort.
-func (pw *PackWriter) Finish() (*Pack, error) {
-	var h [8]byte
-	binary.LittleEndian.PutUint64(h[:], uint64(len(pw.p.vals)))
-	pw.buf, pw.crc = appendRecord(pw.buf, pw.crc, recEnd, h[:])
-	if err := pw.flush(); err != nil {
-		return nil, err
-	}
-	if err := pw.p.f.Sync(); err != nil {
-		return nil, err
-	}
-	if err := pw.fs.SyncDir(); err != nil {
-		return nil, err
-	}
-	sortPackVals(pw.p)
-	return pw.p, nil
-}
-
-// Abort closes and removes the file of a pack that is not finished.
-func (pw *PackWriter) Abort() error {
-	return errors.Join(pw.p.f.Close(), pw.fs.Remove(packName(pw.p.id)))
-}
+type PackWriter struct{}
 
 // sortPackVals sorts a pack's values by position and drops repeats: two
 // versions may name the same value.
@@ -343,41 +260,10 @@ func (w *WAL) packPlace(index uint64, off, n uint32) (*Pack, int64, bool) {
 	return nil, 0, false
 }
 
-// InstallPacks buffers a root that names the packs with add and without
-// drop. Reads find the values in add at once, and those in drop no more;
-// their files stay open until RemoveCleaned. The root counts once it is
-// synced; only then may RemoveCleaned remove the files that add replaces.
-func (w *WAL) InstallPacks(add *Pack, drop []uint64) {
-	w.packs = slices.DeleteFunc(w.packs, func(p *Pack) bool {
-		if slices.Contains(drop, p.id) {
-			w.dropped = append(w.dropped, p)
-			return true
-		}
-		return false
-	})
-	if add != nil {
-		w.packs = append(w.packs, add)
-	}
-	w.copyState()
-	w.rootRecord(w.root)
-}
-
 // FileID names a file of the log: segment N, or pack N.
 type FileID struct {
 	Pack bool
 	N    uint64
-}
-
-// Where returns the file that Value reads the n bytes at offset off of the
-// data of entry index from, if any holds them.
-func (w *WAL) Where(index uint64, off, n uint32) (FileID, bool) {
-	if seq, _, ok := w.ValuePlace(index, off, n); ok {
-		return FileID{N: seq}, true
-	}
-	if p, _, ok := w.packPlace(index, off, n); ok {
-		return FileID{Pack: true, N: p.id}, true
-	}
-	return FileID{}, false
 }
 
 // CleanFile is a file that cleaning may replace, and its size. Values is
@@ -385,88 +271,4 @@ func (w *WAL) Where(index uint64, off, n uint32) (FileID, bool) {
 type CleanFile struct {
 	FileID
 	Size, Values int64
-}
-
-// Cleanable returns the files that cleaning may replace while the oldest
-// checkpoint whose file this node keeps is at index below: every pack,
-// and the oldest segments, in order, whose every entry and value is at or
-// below it. Recovery and snapshots need only the values such a checkpoint
-// names from them. It never returns the segments that keep says stay,
-// which hold the newest hard state and root.
-func (w *WAL) Cleanable(below uint64) []CleanFile {
-	var out []CleanFile
-	for i := 0; i < len(w.runs) && w.runs[i].seq < w.keep(); {
-		seq := w.runs[i].seq
-		ok := true
-		for ; i < len(w.runs) && w.runs[i].seq == seq; i++ {
-			ok = ok && w.runs[i].top <= below
-		}
-		size, sealed := w.sizes[seq]
-		if !ok || !sealed {
-			break
-		}
-		out = append(out, CleanFile{N: seq, Size: size})
-	}
-	for _, p := range w.packs {
-		out = append(out, CleanFile{Pack: true, N: p.id, Size: p.size, Values: p.values})
-	}
-	return out
-}
-
-// DropCleaned forgets the oldest segments up to segment upto and the
-// packs drop, which a synced root no longer names, and closes their
-// files. It returns their names for RemoveFiles, segments first. Every
-// read of them must be over.
-func (w *WAL) DropCleaned(upto uint64, drop []uint64) ([]string, error) {
-	for _, p := range w.packs {
-		if slices.Contains(drop, p.id) {
-			return nil, fmt.Errorf("wal: pack %d is still named", p.id)
-		}
-	}
-	n := 0
-	for n < len(w.runs) && w.runs[n].seq <= upto {
-		if w.runs[n].seq >= w.keep() {
-			return nil, fmt.Errorf("wal: segment %d is not one that cleaning may remove", w.runs[n].seq)
-		}
-		n++
-	}
-	names, err := w.drop(n)
-	w.dropped = slices.DeleteFunc(w.dropped, func(p *Pack) bool {
-		if slices.Contains(drop, p.id) {
-			err = errors.Join(err, p.f.Close())
-			return true
-		}
-		return false
-	})
-	for _, id := range drop {
-		names = append(names, packName(id))
-	}
-	return names, err
-}
-
-// RemoveCleaned is DropCleaned and RemoveFiles at once.
-func (w *WAL) RemoveCleaned(upto uint64, drop []uint64) error {
-	names, err := w.DropCleaned(upto, drop)
-	if names == nil {
-		return err
-	}
-	_, rerr := RemoveFiles(w.fs, names, w.spares)
-	return errors.Join(err, rerr)
-}
-
-// MapBytes is about what the map of where entries and values are on disk
-// takes in memory: per entry its record's offset and crc, the value
-// records, and the values of the packs.
-func (w *WAL) MapBytes() int64 {
-	n := int64(len(w.sizes)) * 32
-	for _, s := range w.runs {
-		n += 80 + int64(cap(s.offs)+cap(s.seeds))*4
-	}
-	for _, vs := range w.vals {
-		n += 48 + int64(cap(vs))*24
-	}
-	for _, p := range w.packs {
-		n += p.mapBytes()
-	}
-	return n
 }

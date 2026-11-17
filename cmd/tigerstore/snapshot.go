@@ -8,7 +8,10 @@ import (
 	"slices"
 	"strings"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+
 	"github.com/djosh34/tigerstore/internal/node"
+	"github.com/djosh34/tigerstore/internal/wl"
 )
 
 // snapshotCommand runs `tigerstore snapshot restore <file>`, which writes
@@ -54,9 +57,15 @@ func snapshotCommand(args []string, logger *log.Logger) error {
 	if *dataDir == "" {
 		*dataDir = *name + ".etcd"
 	}
-	info, err := node.Restore(path, *dataDir, initialMembers(members), *skipHash)
+	info, compacted, err := restore(path, *dataDir, initialMembers(members), *skipHash)
 	if err != nil {
 		return err
+	}
+	switch {
+	case compacted > 0:
+		logger.Printf("the snapshot is of tigerstore's previous engine: the restore keeps its history from revision %d, where it was compacted; as after an etcd compaction, reads and watches of older revisions are compacted", compacted)
+	case compacted == 0:
+		logger.Print("the snapshot is of tigerstore's previous engine, never compacted: the restore keeps its whole history")
 	}
 	// The node starts from this identity whatever its cluster flags say.
 	if err := saveIdentity(*dataDir, clusterIdentity(clusterSpec{members: members, self: self, token: *token, key: *cluster})); err != nil {
@@ -64,4 +73,23 @@ func snapshotCommand(args []string, logger *log.Logger) error {
 	}
 	logger.Printf("restored the snapshot of revision %d (index %d, term %d) into %s", info.Revision, info.Index, info.Term, *dataDir)
 	return nil
+}
+
+// restore makes dataDir from the snapshot at path for the node that runs.
+// From a snapshot of main's engine, it also returns the revision the
+// store was compacted at, else -1.
+func restore(path, dataDir string, members []*pb.Member, skipHash bool) (node.SnapshotInfo, int64, error) {
+	var ms []wl.Member
+	for _, m := range members {
+		ms = append(ms, wl.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs})
+	}
+	format, err := wl.SnapshotFormat(path)
+	if err != nil {
+		return node.SnapshotInfo{}, -1, err
+	}
+	if format == mainSnapshotFormat {
+		return restoreMain(path, dataDir, members, ms, skipHash)
+	}
+	index, term, rev, err := wl.Restore(path, dataDir, ms, skipHash)
+	return node.SnapshotInfo{Index: index, Term: term, Revision: rev}, -1, err
 }

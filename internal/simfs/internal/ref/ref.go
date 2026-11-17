@@ -63,6 +63,10 @@ const (
 type write struct {
 	off int
 	p   []byte
+	// zero says it is the zeros of a truncate that grew the file: a
+	// crash keeps them or not, but never tears them into garbage, as
+	// Linux reads a hole as zeros.
+	zero bool
 }
 
 // apply writes p at off into b, growing it with zeros as needed. An empty
@@ -248,19 +252,30 @@ func (f *file) survive(rng *rand.Rand, img Image, c *Counts) []byte {
 		}
 		n := rng.IntN(len(stream) + 1)
 		stream = stream[:n]
+		garbage := n
 		if n > 0 && rng.IntN(4) == 0 {
-			g := rng.IntN(n) + 1
-			for i := n - g; i < n; i++ {
-				stream[i] = byte(rng.Uint32())
-			}
+			garbage = n - rng.IntN(n) - 1
 		}
+		// Garbage only past the synced part: an overwrite keeps the old
+		// bytes or the new.
+		at, synced := 0, len(kept)
 		for _, w := range f.pending {
-			if len(stream) == 0 {
+			if at == n {
 				break
 			}
-			k := min(len(stream), len(w.p))
-			kept = apply(kept, w.off, stream[:k])
-			stream = stream[k:]
+			k := min(n-at, len(w.p))
+			p := stream[at : at+k]
+			for i := range p {
+				if at+i >= garbage && w.off+i >= synced {
+					// Drawn for a hole too, so that every other crash
+					// draws as before.
+					if b := byte(rng.Uint32()); !w.zero {
+						p[i] = b
+					}
+				}
+			}
+			kept = apply(kept, w.off, p)
+			at += k
 		}
 		return kept
 	}
@@ -307,7 +322,7 @@ func pieces(w write, unit int) []write {
 	var out []write
 	for off, end := w.off, w.off+len(w.p); off < end; {
 		next := min((off/unit+1)*unit, end)
-		out = append(out, write{off, w.p[off-w.off : next-w.off]})
+		out = append(out, write{off, w.p[off-w.off : next-w.off], w.zero})
 		off = next
 	}
 	return out
@@ -337,7 +352,7 @@ func (d *Disk) Copy() *Disk {
 		f := d.names[name]
 		g := &file{id: f.id, data: slices.Clone(f.data), durable: slices.Clone(f.durable), cut: f.cut}
 		for _, w := range f.pending {
-			g.pending = append(g.pending, write{w.off, slices.Clone(w.p)})
+			g.pending = append(g.pending, write{w.off, slices.Clone(w.p), w.zero})
 		}
 		c.names[name] = g
 		c.durable[name] = g
@@ -777,7 +792,7 @@ func (h *Handle) WriteAt(p []byte, off int64) (int, error) {
 func (h *Handle) write(off int, p []byte) {
 	p = slices.Clone(p)
 	h.f.data = apply(h.f.data, off, p)
-	h.f.pending = append(h.f.pending, write{off, p})
+	h.f.pending = append(h.f.pending, write{off, p, false})
 	// The drive writes a bad sector again in a spare place.
 	for s := range h.f.bad {
 		if s*SectorBytes < off+len(p) && (s+1)*SectorBytes > off {
@@ -786,7 +801,8 @@ func (h *Handle) write(off int, p []byte) {
 	}
 }
 
-// Truncate cuts the file.
+// Truncate cuts the file to size, or grows it with zeros to size, as a
+// write of zeros does.
 func (h *Handle) Truncate(size int64) error {
 	if err := h.check(OpTruncate); err != nil {
 		return err
@@ -809,6 +825,10 @@ func (h *Handle) Truncate(size int64) error {
 		if end := int64(w.off + len(w.p)); end > size {
 			h.f.pending[i].p = w.p[:size-int64(w.off)]
 		}
+	}
+	if gap := int(size) - len(h.f.data); gap > 0 {
+		h.write(len(h.f.data), make([]byte, gap))
+		h.f.pending[len(h.f.pending)-1].zero = true
 	}
 	return nil
 }

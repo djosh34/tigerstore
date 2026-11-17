@@ -6,23 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"slices"
 	"strings"
-	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/client/pkg/v3/tlsutil"
 	"go.etcd.io/etcd/client/pkg/v3/transport"
 	"go.etcd.io/etcd/client/pkg/v3/types"
 	"go.etcd.io/etcd/server/v3/embed"
-	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
 	"go.uber.org/zap"
 
 	"github.com/djosh34/tigerstore/internal/peer"
-	"github.com/djosh34/tigerstore/internal/server"
 )
 
 // member is one name of --initial-cluster with its peer URLs, which
@@ -112,7 +108,6 @@ func peerConfig(ec *embed.Config, selfSigned bool) (peer.Config, error) {
 		CRLFile:        info.CRLFile, CheckClientSAN: !info.SkipClientSANVerify,
 		InsecureSkipVerify: selfSigned,
 		AllowedCNs:         info.AllowedCNs, AllowedHostnames: info.AllowedHostnames,
-		WriteTimeout: rafthttp.ConnWriteTimeout, ReadTimeout: rafthttp.ConnReadTimeout,
 	}
 	if info.ClientCertFile != "" {
 		cfg.GetClientCertificate = certFiles(info.ClientCertFile, info.ClientKeyFile, info.Logger)
@@ -207,10 +202,29 @@ func clientTLS(ec *embed.Config) (*tls.Config, error) {
 	return cfg, nil
 }
 
+// traffic is what a client listener serves. etcd serves gRPC and HTTP on
+// each client URL; with --listen-client-http-urls, those serve HTTP only
+// and the client URLs gRPC only.
+type traffic uint8
+
+const (
+	trafficAll traffic = iota
+	trafficGRPC
+	trafficHTTP
+)
+
+// listener is a client listener and how it serves: TLS makes each
+// connection start with a TLS handshake.
+type listener struct {
+	net.Listener
+	TLS     bool
+	Traffic traffic
+}
+
 // clientListener is a listener of the client URLs, with the first URL
 // that named its address.
 type clientListener struct {
-	server.Listener
+	listener
 	url *url.URL
 }
 
@@ -244,18 +258,18 @@ func clientListeners(ec *embed.Config, haveTLS bool, lg *zap.Logger) (out []clie
 	grpcOnly := len(ec.ListenClientHttpUrls) > 0
 	type spec struct {
 		url     url.URL
-		traffic server.Traffic
+		traffic traffic
 	}
 	var specs []spec
 	for _, u := range ec.ListenClientUrls {
-		traffic := server.TrafficAll
+		t := trafficAll
 		if grpcOnly {
-			traffic = server.TrafficGRPC
+			t = trafficGRPC
 		}
-		specs = append(specs, spec{u, traffic})
+		specs = append(specs, spec{u, t})
 	}
 	for _, u := range ec.ListenClientHttpUrls {
-		specs = append(specs, spec{u, server.TrafficHTTP})
+		specs = append(specs, spec{u, trafficHTTP})
 	}
 	addrs := map[string]int{}
 	for _, sp := range specs {
@@ -268,7 +282,7 @@ func clientListeners(ec *embed.Config, haveTLS bool, lg *zap.Logger) (out []clie
 		if i, ok := addrs[addr]; ok {
 			l := out[i]
 			switch {
-			case sp.traffic == server.TrafficHTTP && l.Traffic != server.TrafficHTTP:
+			case sp.traffic == trafficHTTP && l.Traffic != trafficHTTP:
 				return out, fmt.Errorf("%w %s", errBindBoth, u.String())
 			case secure != l.TLS:
 				return out, fmt.Errorf("tigerstore cannot serve both http and https on %s", addr)
@@ -280,60 +294,33 @@ func clientListeners(ec *embed.Config, haveTLS bool, lg *zap.Logger) (out []clie
 			return out, err
 		}
 		addrs[addr] = len(out)
-		out = append(out, clientListener{server.Listener{Listener: ln, TLS: secure, Traffic: sp.traffic}, &u})
+		out = append(out, clientListener{listener{Listener: ln, TLS: secure, Traffic: sp.traffic}, &u})
 	}
 	return out, nil
 }
 
-// trafficName names what a client listener serves in the log.
-func trafficName(t server.Traffic) string {
-	switch t {
-	case server.TrafficAll:
-		return "grpc+http"
-	case server.TrafficGRPC:
-		return "grpc"
-	case server.TrafficHTTP:
-		return "http"
-	}
-	return "unknown"
-}
-
-// serveMetricsURLs serves the metrics and health endpoints on each
-// --listen-metrics-urls URL, as etcd does: over TLS with the client
-// certificate for https.
-func serveMetricsURLs(ec *embed.Config, ctls *tls.Config, h http.Handler, lg *zap.Logger) ([]*http.Server, error) {
-	var srvs []*http.Server
-	closeSrvs := func(err error) ([]*http.Server, error) {
-		for _, srv := range srvs {
-			err = errors.Join(err, srv.Close())
-		}
-		return nil, err
-	}
+// metricsListeners are the listeners of --listen-metrics-urls, one per
+// URL, over TLS with the client certificate for https.
+func metricsListeners(ec *embed.Config, ctls *tls.Config) ([]net.Listener, error) {
+	var lns []net.Listener
 	for _, u := range ec.ListenMetricsUrls {
 		var cfg *tls.Config
 		if u.Scheme == "https" || u.Scheme == "unixs" {
 			if ctls == nil {
-				return closeSrvs(errors.New("client TLS key/cert (--cert-file, --key-file) must be provided for metrics secure url"))
+				return nil, errors.Join(errors.New("client TLS key/cert (--cert-file, --key-file) must be provided for metrics secure url"), closeAll(lns))
 			}
 			cfg = metricsTLS(ctls)
 		}
 		ln, err := transport.NewListenerWithOpts(u.Host, u.Scheme, transport.WithSocketOpts(&ec.SocketOpts), transport.WithSkipTLSInfoCheck(true))
 		if err != nil {
-			return closeSrvs(err)
+			return nil, errors.Join(err, closeAll(lns))
 		}
 		if cfg != nil {
 			ln = tls.NewListener(ln, cfg)
 		}
-		srv := &http.Server{Addr: u.Host, Handler: h, ReadHeaderTimeout: time.Minute}
-		srvs = append(srvs, srv)
-		go func() {
-			if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				lg.Warn("serve metrics", zap.String("address", u.String()), zap.Error(err))
-			}
-		}()
-		lg.Info("serving metrics", zap.String("address", u.String()))
+		lns = append(lns, ln)
 	}
-	return srvs, nil
+	return lns, nil
 }
 
 // metricsTLS is the TLS configuration of an https metrics URL. etcd's

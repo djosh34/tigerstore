@@ -5,10 +5,7 @@ import (
 
 	"github.com/coreos/go-semver/semver"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"go.etcd.io/etcd/api/v3/membershippb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -31,14 +28,6 @@ import (
 // own cluster version, the entry format (version.go), which never goes
 // down.
 
-// monitorSeconds is how often, in seconds, etcd's leader checks the
-// cluster version: rafthttp's ConnWriteTimeout less a second.
-const monitorSeconds = 4
-
-// errUnknownMethod is etcd's answer to a Downgrade with an unknown
-// action, which its gRPC layer has no code for.
-var errUnknownMethod = status.Error(codes.Unknown, "etcdserver: unknown method")
-
 // clusterVersion is etcd's cluster version as a semantic version.
 func (st *State) clusterVersion() *semver.Version {
 	v, err := semver.NewVersion(st.etcdVersion)
@@ -47,10 +36,6 @@ func (st *State) clusterVersion() *semver.Version {
 	}
 	return v
 }
-
-// EtcdVersion is the cluster version and the storage version etcd
-// reports, as /version and Status do.
-func (n *Node) EtcdVersion() string { return n.state.etcdVersion }
 
 // toClusterVersion is etcd's convertToClusterVersion: a version with its
 // patch, or major.minor alone, as major.minor.0.
@@ -73,31 +58,6 @@ func minorVersion(v string) string {
 	return vs[0] + "." + vs[1]
 }
 
-// submitDowngrade checks a Downgrade's version, and queues VALIDATE and
-// ENABLE as linearizable reads (validateDowngrade) and CANCEL as a write
-// of etcd's DowngradeInfoSet, which is checked when it applies.
-func (n *Node) submitDowngrade(p *pending, r *pb.DowngradeRequest) {
-	switch r.Action {
-	case pb.DowngradeRequest_VALIDATE, pb.DowngradeRequest_ENABLE:
-		if _, err := toClusterVersion(r.Version); err != nil {
-			n.finish(p, err)
-			return
-		}
-		n.reads = append(n.reads, p)
-	case pb.DowngradeRequest_CANCEL:
-		if n.tooManyRequests(false) {
-			n.finish(p, rpctypes.ErrGRPCRequestTooManyRequests)
-			return
-		}
-		p.req.Op, p.who = &pb.InternalRaftRequest{DowngradeInfoSet: &membershippb.DowngradeInfoSetRequest{}}, nil
-		n.queueFeature(p)
-	default:
-		n.finish(p, errUnknownMethod)
-		return
-	}
-	n.timeouts = append(n.timeouts, p)
-}
-
 // checkDowngrade is etcd's DowngradeValidate.
 func (st *State) checkDowngrade(target *semver.Version) error {
 	cv := st.clusterVersion()
@@ -113,28 +73,6 @@ func (st *State) checkDowngrade(target *semver.Version) error {
 // downgradeResponse answers a Downgrade with the cluster version.
 func (n *Node) downgradeResponse() *pb.DowngradeResponse {
 	return &pb.DowngradeResponse{Header: n.authHeader(), Version: minorVersion(n.state.clusterVersion().String())}
-}
-
-// validateDowngrade answers VALIDATE once its read is linearizable. An
-// ENABLE that passes the same checks then goes through Raft as a write of
-// etcd's DowngradeInfoSet, and validateDowngrade answers nothing.
-func (n *Node) validateDowngrade(p *pending, r *pb.DowngradeRequest) (proto.Message, error) {
-	target, err := toClusterVersion(r.Version)
-	if err != nil {
-		return nil, err
-	}
-	if err := n.state.checkDowngrade(target); err != nil {
-		return nil, err
-	}
-	if r.Action == pb.DowngradeRequest_ENABLE {
-		if n.tooManyRequests(false) {
-			return nil, rpctypes.ErrGRPCRequestTooManyRequests
-		}
-		p.req.Op, p.who = &pb.InternalRaftRequest{DowngradeInfoSet: &membershippb.DowngradeInfoSetRequest{Enabled: true, Ver: target.String()}}, nil
-		n.queueFeature(p)
-		return nil, nil
-	}
-	return n.downgradeResponse(), nil
 }
 
 // applyVersionSet applies etcd's DowngradeInfoSet or ClusterVersionSet.
@@ -163,21 +101,4 @@ func (n *Node) applyVersionSet(r *pb.InternalRaftRequest) (proto.Message, error)
 		}
 	}
 	return n.downgradeResponse(), nil
-}
-
-// monitorVersion is etcd's version monitor on the leader: it moves the
-// cluster version to the downgrade's target while one is enabled, and
-// back to this build's once none is.
-func (n *Node) monitorVersion() {
-	if !n.isLeader || !n.capable() || !n.cfg.every(n.now, monitorSeconds) {
-		return
-	}
-	st := n.state
-	want := ClusterVersion
-	if st.downgradeEnabled {
-		want = st.downgradeTarget
-	}
-	if st.etcdVersion != want {
-		n.proposeInternal(&pb.InternalRaftRequest{ClusterVersionSet: &membershippb.ClusterVersionSetRequest{Ver: want}})
-	}
 }

@@ -193,13 +193,13 @@ func checkNoOp(r *replay, op *history.Op) []string {
 	return errs
 }
 
-// fingerprint identifies a request by its content.
+// fingerprint is r.Fingerprint, with the request in its error.
 func fingerprint(r history.Request) (string, error) {
-	b, err := json.Marshal(r)
+	f, err := r.Fingerprint()
 	if err != nil {
 		return "", fmt.Errorf("fingerprint of %s: %w", describeRequest(r), err)
 	}
-	return string(b), nil
+	return f, nil
 }
 
 // anyGrant stands for a grant of any ID with the given TTL.

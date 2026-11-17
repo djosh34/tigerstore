@@ -17,7 +17,6 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simrun"
-	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 // plantedCase is how a planted bug must be caught: within seeds runs of
@@ -28,7 +27,8 @@ import (
 // moves can reach another check first (#537). A failure that decides
 // nothing about the run, a crash, a stop for lack of real time or a
 // witness search that ran out (decides), is no catch and fails the test.
-// extra adds an assertion of the case's own. With witness, the witness checker in
+// With strict, only a want check catches it: another is logged, and the
+// search goes on. extra adds an assertion of the case's own. With witness, the witness checker in
 // both modes must fail the same seed's history on its own too: Porcupine
 // cannot check the full runs (#112). Each cfg also runs in the plain
 // tests (TestSeeds, TestStalledLeaderIsReplaced), where it must pass.
@@ -36,17 +36,9 @@ type plantedCase struct {
 	seeds   int
 	cfg     func(seed uint64) Config
 	want    string
+	strict  bool
 	extra   func(*Result) error
 	witness bool
-}
-
-func stalledLeaderConfig(seed uint64) Config {
-	cfg := DefaultConfig(seed)
-	cfg.Faults = Faults{}
-	cfg.StallLeaderAt = 5 * Second
-	cfg.LiveFrom = cfg.StallLeaderAt + 10*Second
-	cfg.Duration = 25 * Second
-	return cfg
 }
 
 const (
@@ -67,7 +59,9 @@ const (
 	// liveness failure, which names the call but not its node.
 	badState = `call at \d+ ms on node \d+:|replaying the committed log`
 	// A node applied a value that no client wrote.
-	inventedState = `applied different entries|applied the same log to different states|differs from the final log|` + badState
+	// On wl, a node's store differs from another's at a checkpoint's
+	// index (sameState), or a checkpoint from its store (CheckpointDone).
+	inventedState = `applied different entries|applied the same log to different states|differs from the final log|with another state than node \d+'s|` + badState
 	// Recovery refused a log it wrote itself.
 	refused = `cannot recover its log`
 	// A node read a value that is not the one it wrote, or that its log
@@ -78,73 +72,6 @@ const (
 	stuck = `node \d+ applied \d+ entries, node \d+ applied \d+`
 )
 
-var plantedCases = map[string]plantedCase{
-	"B01a": {seeds: 64, cfg: DefaultConfig, want: staleRead, witness: true},
-	"B01b": {seeds: 64, cfg: DefaultConfig, want: staleRead, witness: true},
-	// An append acknowledged before its sync can be lost with the vote
-	// or term next to it, and then two leaders write different entries.
-	"B02":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|applied different entries`},
-	"B03":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|applied different entries`},
-	"B04a": {seeds: 256, cfg: DefaultConfig, want: `without noticing|` + refused},
-	// B04c also lets a damaged record through recovery that a snapshot
-	// sender's read then refuses (#287).
-	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|without noticing|` + refused + `|` + badValue + `|the record of entry \d+ in segment \d+ does not verify`},
-	// B04b cuts the last synced record, which can be a vote: the node then
-	// votes twice in one term, and two leaders write different entries.
-	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|applied different entries|applied the same log to different states`},
-	"B05":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
-	"B06a": {seeds: 32, cfg: DefaultConfig, want: badWatch},
-	"B06b": {seeds: 32, cfg: DefaultConfig, want: badWatch},
-	"B06c": {seeds: 32, cfg: DefaultConfig, want: badWatch},
-	"B06d": {seeds: 32, cfg: DefaultConfig, want: `watch \d+ got an event at revision \d+ after one at`},
-	"B07":  {seeds: 64, cfg: DefaultConfig, want: badWatch},
-	"B08":  {seeds: 128, cfg: DefaultConfig, want: badWatch},
-	"B09a": {seeds: 16, cfg: DefaultConfig, want: badState},
-	// B09b fires on a key's older versions, which a node that started
-	// from a checkpoint no longer holds, so replicas can also part on it.
-	"B09b": {seeds: 16, cfg: DefaultConfig, want: badState + `|applied the same log to different states`},
-	"B10":  {seeds: 64, cfg: DefaultConfig, want: badState + `|applied the same log to different states|` + badWatch},
-	"B11":  {seeds: 64, cfg: DefaultConfig, want: lostAppend + `|` + refused},
-	// Since a snapshot install starts the node again from its log (#238),
-	// that start can be where the damaged record is found.
-	"B12": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused + `|` + badValue + `|` + lostEntries + `|the record of entry \d+ in segment \d+ does not verify|damaged record followed by a valid one`},
-	"B15": {seeds: 32, cfg: DefaultConfig, want: `no client sent it`},
-	"B16": {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
-	// Followers forward their writes to the stalled leader, which stays
-	// leader, so the liveness check may find the timed-out calls first.
-	"B17": {seeds: 64, cfg: stalledLeaderConfig, want: `the stalled leader|liveness: client \d+ call`, extra: func(r *Result) error {
-		if len(r.Silences) == 0 {
-			return errors.New("the stalled leader never went silent")
-		}
-		return nil
-	}},
-	"B18": {seeds: 16, cfg: DefaultConfig, want: `holds \d+ watchers`},
-	"B19": {seeds: 64, cfg: DefaultConfig, want: refused + `|not on disk|` + stuck},
-	"B20": {seeds: 64, cfg: DefaultConfig, want: `holds entries from \d+ in memory`},
-	"B21": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|already exists|` + refused},
-	// The install starts the node again from its log (#238), where the
-	// unchecked snapshot's damaged entry can be what recovery refuses.
-	// With every fault on, few snapshot streams are damaged and installed;
-	// the effect test's damaged snapshot runs more.
-	// A follower that installed the damaged snapshot can also write a
-	// checkpoint of it that does not parse.
-	"B22": {seeds: 256, cfg: damagedSnapshotConfig, want: inventedState + `|wrote different checkpoints|wrote checkpoint \d+: wal: corrupt log|` + badValue + `|malformed|` + refused + `|installed a snapshot at \d+ from \d+, checkpoint \d+\n[^\n]*wal: corrupt log:`},
-	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|` + stuck},
-	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
-	// The real driver's disk goroutine ends at an install, so a core that
-	// goes on writes nothing more.
-	"B27": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|cold restart did not converge|` + stuck},
-	// A node refuses a member change unless it has been connected to the
-	// other voters for 5 s, so stage 1 completes during the faults in
-	// some runs and after healing in others; either catch counts.
-	"B28": {seeds: 16, cfg: membershipConfig, want: `membership: stage 1 acknowledged`},
-	"B31": {seeds: 16, cfg: cacheConfig, want: badValue + `|` + badState},
-	"B32": {seeds: 128, cfg: loneHeaderConfig, want: refused},
-	// A follower that persists a key as an entry holds another log than
-	// its leader: it applies other entries or cannot apply the key.
-	"B33": {seeds: 32, cfg: DefaultConfig, want: inventedState + `|malformed batch|` + stuck},
-}
-
 // openBugs are the failures of open bugs #357 and #361, which the default
 // seeds hit in about one in twenty: a lost entry, term or vote, or a
 // checkpoint that a restart removed on a root it read from the page
@@ -153,28 +80,11 @@ var plantedCases = map[string]plantedCase{
 // fixes remove it.
 var openBugs = regexp.MustCompile(`reported \d+ durable|held term \d+ and vote \d+ durable|load the checkpoint at \d+: file does not exist`)
 
-// plantedElsewhere are the bugs whose own package's TestPlanted runs a
-// fixed scenario that must catch it; the CI job runs those packages too.
-var plantedElsewhere = map[string]string{
-	"B13": "internal/node",
-	"B14": "internal/peer",
-	// B25 shows in the simulator only when a client reads the one value
-	// the rot fault damages before the cleaner, which checks every value
-	// it copies, finds it: about one seed in 50 (#541). The node's
-	// scenario reads a damaged value every time.
-	"B25": "internal/node",
-	"B26": "internal/node",
-	"B29": "internal/node",
-	"B30": "internal/node",
-}
-
 // TestPlantedInventory requires a case for every planted bug.
 func TestPlantedInventory(t *testing.T) {
 	for name := range planted.Bugs {
-		_, here := plantedCases[name]
-		_, there := plantedElsewhere[name]
-		if here == there {
-			t.Errorf("planted bug %s (%s) needs exactly one case, here or in another package", name, planted.Bugs[name])
+		if _, ok := plantedCases[name]; !ok {
+			t.Errorf("planted bug %s (%s) has no case", name, planted.Bugs[name])
 		}
 	}
 	for name := range plantedCases {
@@ -234,6 +144,117 @@ type plantedRun struct {
 	Finding string
 }
 
+// plantedCases are the planted bugs, each with the runs that catch it.
+var plantedCases = map[string]plantedCase{
+	"B01a": {seeds: 64, cfg: DefaultConfig, want: staleRead, witness: true},
+	"B01b": {seeds: 64, cfg: DefaultConfig, want: staleRead, witness: true},
+	"B15":  {seeds: 64, cfg: DefaultConfig, want: `no client sent it`},
+	"B02":  {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries`},
+	"B03":  {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries`},
+	"B04a": {seeds: 64, cfg: wlDamageConfig, want: `without noticing|` + refused},
+	// B04b cuts the record before a torn tail, which can be a vote.
+	"B04b": {seeds: 256, cfg: wlFaultsConfig, want: lostAppend + `|applied different entries|applied the same log to different states`},
+	// B04c: wl reads values back from its log, so the flipped byte is
+	// what a node serves or applies.
+	"B04c": {seeds: 256, cfg: wlFaultsConfig, want: inventedState + `|without noticing|` + refused + `|` + badValue},
+	"B05":  {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|` + refused},
+	"B06a": {seeds: 32, cfg: wlFaultsConfig, want: badWatch},
+	"B06b": {seeds: 32, cfg: wlFaultsConfig, want: badWatch},
+	"B06c": {seeds: 32, cfg: wlFaultsConfig, want: badWatch},
+	"B06d": {seeds: 32, cfg: wlFaultsConfig, want: `watch \d+ got an event at revision \d+ after one at`},
+	"B07":  {seeds: 64, cfg: wlFaultsConfig, want: badWatch},
+	// B08 frees the key of the tombstone at the compacted revision, so a
+	// watch from there misses its delete.
+	"B08":  {seeds: 128, cfg: wlFaultsConfig, want: badWatch},
+	"B09a": {seeds: 16, cfg: wlFaultsConfig, want: badState},
+	"B09b": {seeds: 16, cfg: wlFaultsConfig, want: badState + `|applied the same log to different states`},
+	// B10: a follower revokes the lease's keys itself, outside the log,
+	// once it applied keepalives late: its store leaves the others' (the
+	// comparison at a checkpoint's index among them), or the lease check
+	// sees it expire the lease before the TTL of a renewal ran out.
+	"B10": {seeds: 64, cfg: wlFaultsConfig, want: badState + `|applied the same log to different states|with another state than node \d+'s|expired at \d+ ms, but it was granted or renewed at|` + badWatch},
+	"B11": {seeds: 64, cfg: wlFaultsConfig, want: lostAppend + `|` + refused},
+	// wl writes at fixed offsets, so B12 is the log going on past a short
+	// write as if it were whole: what it left out is never written.
+	"B12": {seeds: 256, cfg: wlFaultsConfig, want: lostAppend + `|` + refused + `|` + badValue + `|` + lostEntries},
+	// wl's writes are durable when they return, so B16 is a segment's
+	// last write made through the page cache, with no sync, before the
+	// log moves on to the next.
+	"B16": {seeds: 128, cfg: wlFaultsConfig, want: lostAppend + `|` + refused},
+	// Followers forward their writes to the stalled leader, which stays
+	// leader, so the liveness check may find the timed-out calls first.
+	"B17": {seeds: 64, cfg: wlStalledLeaderConfig, want: `the stalled leader|liveness: client \d+ call`, extra: func(r *Result) error {
+		if len(r.Silences) == 0 {
+			return errors.New("the stalled leader never went silent")
+		}
+		return nil
+	}},
+	"B18": {seeds: 16, cfg: wlFaultsConfig, want: `holds \d+ watchers`},
+	// A wl start that misses the segment stops on it, as a cold restart
+	// of seed 1 did.
+	"B19": {seeds: 64, cfg: wlFaultsConfig, want: refused + `|not on disk|no such file or directory|` + stuck},
+	"B20": {seeds: 64, cfg: wlFaultsConfig, want: `holds entries from \d+ in memory`},
+	// wl's nodes take checkpoints at indexes of their own: the run checks
+	// each against what the node applied (wlHooks.Checkpoint), and a
+	// start from it misses the entries after the applied index.
+	"B21": {seeds: 64, cfg: wlFaultsConfig, want: `started a checkpoint at index \d+, but applied to|` + inventedState + `|cold restart did not converge|` + stuck},
+	// wl's checkpoint has a CRC of its own, which B22 skips at an
+	// install too.
+	"B22": {seeds: 256, cfg: wlDamagedSnapshotConfig, want: inventedState + `|malformed|corrupt checkpoint|` + badValue + `|` + refused},
+	"B23": {seeds: 64, cfg: wlFaultsConfig, want: inventedState + `|cold restart did not converge|` + stuck},
+	"B24": {seeds: 16, cfg: wlFaultsConfig, want: badValue + `|` + inventedState},
+	// wl installs a snapshot in place, so B27 keeps the store from before
+	// the install: the store it loaded differs from the checkpoint's
+	// (sameState). Under wlFaultsConfig a follower rarely installed one
+	// (1 seed in 64 caught it on 5795790d, none on d4344bc2).
+	"B27": {seeds: 16, cfg: wlInstallConfig, want: inventedState + `|cold restart did not converge|` + stuck},
+	"B28": {seeds: 16, cfg: wlMembershipConfig, want: `membership: stage 1 acknowledged`},
+	// wl has no value cache: B31 is a read at a revision that ignores
+	// the revision and gets the value that overwrote it.
+	"B31": {seeds: 32, cfg: wlFaultsConfig, want: badValue + `|` + badState + `|` + badWatch},
+	"B33": {seeds: 32, cfg: wlFaultsConfig, want: inventedState + `|malformed batch|` + stuck},
+	// B34, #709's kind: a leader whose disk stalls applies its keepalives
+	// late and decides a revoke behind one in its log, which a follower
+	// applied and answered alive. The decision is early, so lease rule 1
+	// (leasesExpire) catches it first; rules 2 and 3 (revokesKeepPromises)
+	// catch what the clients were told.
+	"B34": {seeds: 64, cfg: wlStalledLeaderConfig, want: leaseEarly + `|` + leasePromise},
+	// B35 and B36 prove lease rules 2 and 3: each counts only when one of
+	// them catches it (strict). B35 tells the clients a second more than
+	// the TTL, which the revoke cuts (rule 3); rule 1 cannot see it, as it
+	// takes the TTL from the grants. B36 tells them a revoked lease lives
+	// (rule 2, or rule 3 for a keepalive called before the revoke took
+	// effect). Rule 1 can see B36 too: a keepalive called just before the
+	// leader decided the expiry, and applied after the revoke, is answered
+	// alive and counts as a renewal before the expiry (#689's re-check,
+	// D5).
+	"B35": {seeds: 64, cfg: wlFaultsConfig, want: leaseCut, strict: true},
+	"B36": {seeds: 64, cfg: wlFaultsConfig, want: leasePromise, strict: true},
+}
+
+const (
+	// Lease rule 1: a node decided a lease's expiry before its TTL ran out.
+	leaseEarly = `with TTL \d+ s expired at \d+ ms, but it was granted or renewed at`
+	// Lease rules 2 and 3: a keepalive answered alive after a node applied
+	// the revoke, or a revoke that cut a TTL a call was answered with.
+	leasePromise = `answered a keepalive called at \d+ ms with TTL \d+ s, after a node applied its revoke|` + leaseCut
+	// Lease rule 3 alone.
+	leaseCut = `was revoked at \d+ ms, but a call at \d+ ms was answered with TTL`
+)
+
+// wlDamageConfig runs wl nodes with crashes and, after them, damage at
+// rest to the segments a start reads: misdirected and lost writes. No
+// checkpoint cuts the log, which grows over the segments the damage
+// needs (Sim.damageWL).
+func wlDamageConfig(seed uint64) Config {
+	cfg := DefaultConfig(seed)
+	cfg.FormUnderFaults = true
+	cfg.Faults = Faults{CrashEvery: Second, MaxDown: Second, Corrupt: true}
+	cfg.damageKinds = []damageKind{misdirected, lostWrite}
+	cfg.Duration = 16 * Second
+	return cfg
+}
+
 // TestPlanted switches on the bug that $SIM_PLANTED names and fails
 // unless a check catches it within its seed budget, from seed 1. A crash
 // is a failure too, not a catch. The catching run is saved, and its
@@ -244,13 +265,17 @@ func TestPlanted(t *testing.T) {
 	if name == "" {
 		t.Skip("no SIM_PLANTED bug selected")
 	}
-	if pkg, ok := plantedElsewhere[name]; ok {
-		t.Skipf("%s is caught by TestPlanted in %s", name, pkg)
-	}
 	c, ok := plantedCases[name]
 	if !ok {
-		t.Fatalf("unknown planted bug %q", name)
+		t.Fatalf("%s has no case", name)
 	}
+	runPlanted(t, name, c)
+}
+
+// runPlanted is TestPlanted's run of case c of planted bug name.
+func runPlanted(t *testing.T, name string, c plantedCase) {
+	t.Helper()
+	test := simrun.Top(strings.Split(t.Name(), "/"))[0]
 	want := regexp.MustCompile(c.want)
 	control := os.Getenv("SIM_CONTROL") != ""
 	planted.Active, activePlanted, activeControl = name, name, control
@@ -286,7 +311,11 @@ func TestPlanted(t *testing.T) {
 		return plantedRun{Finding: err.Error()}
 	}, func(seed uint64, r plantedRun) bool {
 		tried++
-		if r.Finding == "" || control || failsUnplanted(t, name, seed) {
+		if c.strict && r.Finding != "" && !control && !want.MatchString(r.Finding) {
+			t.Logf("%s (%s): seed %d failed a check other than the expected ones (%s), which does not count: %s", name, planted.Bugs[name], seed, c.want, r.Finding)
+			return false
+		}
+		if r.Finding == "" || control || failsUnplanted(t, test, name, seed) {
 			return false
 		}
 		caught = true
@@ -307,19 +336,19 @@ func TestPlanted(t *testing.T) {
 	}
 }
 
-// failsUnplanted runs seed of TestPlanted again without planted bug name,
-// as a gosim run of its own, the control of a catch, and reports whether
-// it fails there too. A seed that fails as open bugs #357 and #361 do
+// failsUnplanted runs seed of test, TestPlanted, again
+// without planted bug name, as a gosim run of its own, the control of a
+// catch, and reports whether it fails there too. A seed that fails as open bugs #357 and #361 do
 // catches nothing; one that fails on anything else fails the test, as a
 // failure with no planted bug. Under the race detector, where a seed does
 // not replay, no catch counts.
-func failsUnplanted(t *testing.T, name string, seed uint64) bool {
+func failsUnplanted(t *testing.T, test, name string, seed uint64) bool {
 	t.Helper()
 	if simrun.Race {
 		return true
 	}
 	env := []string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1", "SIM_PLANTED=" + name, "SIM_CONTROL=1"}
-	res := simrun.Do(t, simrun.Run{Test: "TestPlanted", Seed: seed, Env: env})
+	res := simrun.Do(t, simrun.Run{Test: test, Seed: seed, Env: env})
 	var r plantedRun
 	if err := json.Unmarshal(res.Artifacts["seed.json"], &r); err != nil {
 		t.Errorf("the control of seed %d left no result: %v", seed, err)
@@ -336,22 +365,10 @@ func failsUnplanted(t *testing.T, name string, seed uint64) bool {
 	return true
 }
 
-// TestB22InstallRefusal checks that B22 counts as caught when the start
-// after an install refuses the log, as seed 34 once ended (#302).
-func TestB22InstallRefusal(t *testing.T) {
-	err := "seed 34 at 16384 ms: node 3 stopped: core: installed a snapshot at 24 from 1, checkpoint 0\n" +
-		"0000000000000001.wal at byte 706: wal: corrupt log: entry 0 follows entry 10"
-	if !regexp.MustCompile(plantedCases["B22"].want).MatchString(err) {
-		t.Fatalf("B22 does not count %q as caught", err)
-	}
-}
-
-// TestB04cSnapshotRefusal checks that B04c counts as caught when a snapshot
-// sender stops on the damaged record that the bug let through recovery,
-// as seed 1 once ended (#287).
-func TestB04cSnapshotRefusal(t *testing.T) {
-	err := fmt.Errorf("seed 1 at 20806 ms: node 3 stopped: %w", &wal.RecordError{Entry: 8, Segment: 1, Reason: "does not verify"})
-	if !regexp.MustCompile(plantedCases["B04c"].want).MatchString(err.Error()) {
-		t.Fatalf("B04c does not count %q as caught", err)
-	}
+// wlInstallConfig is wlDamagedSnapshotConfig with no stream damaged: a
+// follower held down installs the snapshot it fetches.
+func wlInstallConfig(seed uint64) Config {
+	cfg := wlDamagedSnapshotConfig(seed)
+	cfg.Faults.FlipSnapshot = false
+	return cfg
 }

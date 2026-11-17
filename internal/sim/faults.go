@@ -8,9 +8,11 @@ import (
 	"slices"
 	"time"
 
+	raftpb "go.etcd.io/raft/v3/raftpb"
+
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simfs"
-	"github.com/djosh34/tigerstore/internal/wal"
+	"github.com/djosh34/tigerstore/internal/wl"
 )
 
 // scheduleDiskFaults starts the disk faults of the run. The lock is held.
@@ -119,7 +121,7 @@ func (s *Sim) injectDiskFault() {
 
 // otherOps are the disk operations besides writes and syncs that a disk
 // fault can fail.
-var otherOps = []simfs.Op{simfs.OpCreate, simfs.OpOpen, simfs.OpRead, simfs.OpTruncate, simfs.OpRemove, simfs.OpSyncDir, simfs.OpRename}
+var otherOps = []simfs.Op{simfs.OpCreate, simfs.OpOpen, simfs.OpRead, simfs.OpTruncate, simfs.OpRemove, simfs.OpSyncDir, simfs.OpRename, simfs.OpMkdir}
 
 // armDiskFault arms a disk fault on n: a failed sync (kind 0), with EIO
 // on the next truncate if cutFails is set, EIO on the next write (1), a
@@ -276,7 +278,7 @@ func (s *Sim) downFollower() bool {
 		return true
 	}
 	for _, n := range s.nodes {
-		if p := n.proc; p != nil && p.node.Leader() != 0 && p.node.Leader() != n.id {
+		if p := n.proc; p != nil && p.leader() != 0 && p.leader() != n.id {
 			n.why = "the run holds it down"
 			s.crash(n)
 			s.restartLater(n, s.downFor)
@@ -319,7 +321,7 @@ func (s *Sim) maybeCorrupt(n *node) {
 			return
 		}
 	}
-	kind := damageKind(s.rng.IntN(numDamage))
+	kind := damageKind(s.rng.IntN(numDrawn))
 	if k := s.cfg.damageKinds; len(k) > 0 {
 		kind = k[s.rng.IntN(len(k))]
 	}
@@ -328,11 +330,88 @@ func (s *Sim) maybeCorrupt(n *node) {
 		s.tracef("node %d: damage after a sync: %v", n.id, kind)
 		return
 	}
-	if n.disk.Corrupt(s.rng) {
+	// The kind drawn found no place. A test that picks the kinds waits
+	// for one that does.
+	switch {
+	case len(s.cfg.damageKinds) > 0:
+	case s.cfg.flipRecords && s.formed > 0 && s.flipWLRecord(n):
 		n.corrupted = true
-		s.stats.Damage[misdirected]++
-		s.tracef("node %d: damage after a sync: %v", n.id, misdirected)
+		s.stats.Damage[flippedRecord]++
+		s.tracef("node %d: damage after a sync: %v", n.id, flippedRecord)
 	}
+}
+
+// flipWLRecord flips a bit of a synced record of wl node n's log that a
+// record that checks follows, which a start must refuse (internal/wl/
+// wal.go's head): the damage of a wl node where the kind drawn found no
+// place, as during the faults, when most logs are a few hundred bytes in
+// one segment and hold no checkpoint (seeds 22000 to 22003). The run
+// decides from the log's format, not from wl's reader, which a start then
+// checks (Recovered fails a start that takes it): any byte but the
+// length's, whose CRC-32C no longer matches, unless the flip leaves a
+// part of a sector all zeros, which wl takes by design for a write a
+// crash tore in its last segment. Kept only when wl's reader refused it,
+// a gap in wl's checks never failed a run (#689's area-4 review, finding
+// 24). Only TestSeeds' runs do it (Config.flipRecords), once the cluster
+// formed first: a node fenced in the first seconds of a cluster that
+// forms under the faults left seed 2 of TestKubernetesLoad two nodes that
+// the crashes kept from committing enough to test. The lock is held.
+func (s *Sim) flipWLRecord(n *node) bool {
+	d := n.disk
+	ptr, err := wlPointer(d)
+	if err != nil {
+		return false
+	}
+	seg := func(k int64) []byte { return d.DurableBytes(wlSegment(k)) }
+	recs := wl.Records(seg, ptr.LogFrom)
+	if len(recs) < 2 {
+		return false
+	}
+	r := recs[s.rng.IntN(len(recs)-1)]
+	// Any byte but the length's, bytes 4 to 7, which says where the next
+	// record starts.
+	at := s.rng.Int64N(r.Len - 4)
+	if at >= 4 {
+		at += 4
+	}
+	rec := logBytes(seg, r.Off, r.Len)
+	rec[at] ^= 1
+	if zeroSector(rec, r.Off) {
+		return false
+	}
+	k, off := wl.SegmentPlace(r.Off + at)
+	d.FlipDurable(wlSegment(k), int(off))
+	return true
+}
+
+// logBytes returns a copy of the n bytes of a wl log at offset off.
+func logBytes(seg func(k int64) []byte, off, n int64) []byte {
+	out := make([]byte, 0, n)
+	for int64(len(out)) < n {
+		k, in := wl.SegmentPlace(off + int64(len(out)))
+		b := seg(k)
+		if int64(len(b)) <= in {
+			break
+		}
+		out = append(out, b[in:min(int64(len(b)), in+n-int64(len(out)))]...)
+	}
+	return out
+}
+
+// wlSector is the sector a crash tears a wl log's writes at.
+const wlSector = 512
+
+// zeroSector reports whether rec, at log offset off, has a part within one
+// sector that is all zeros: what a write torn at sectors leaves.
+func zeroSector(rec []byte, off int64) bool {
+	for len(rec) > 0 {
+		k := min(int64(len(rec)), wlSector-off%wlSector)
+		if !slices.ContainsFunc(rec[:k], func(c byte) bool { return c != 0 }) {
+			return true
+		}
+		rec, off = rec[k:], off+k
+	}
+	return false
 }
 
 // damageKind is a kind of damage to what a disk synced.
@@ -362,13 +441,22 @@ const (
 	// record that holds entries is a documented limit (docs/design.md),
 	// and the run does not do it.
 	lastRecord
+	// flippedRecord flips a bit of a synced record of a wl node's log
+	// that a record that checks follows (flipWLRecord). The run never
+	// draws it: it is a wl node's damage where the kind drawn found no
+	// place.
+	flippedRecord
 )
 
-// numDamage is the number of damage kinds.
-const numDamage = int(lastRecord) + 1
+// numDamage is the number of damage kinds, and numDrawn of those the run
+// draws.
+const (
+	numDamage = int(flippedRecord) + 1
+	numDrawn  = int(lastRecord) + 1
+)
 
 func (k damageKind) String() string {
-	return [...]string{"flipped root checkpoint", "misdirected write", "lost write", "bad sector", "misread", "damaged last record"}[k]
+	return [...]string{"flipped root checkpoint", "misdirected write", "lost write", "bad sector", "misread", "damaged last record", "flipped record"}[k]
 }
 
 // damage does damage of a kind to the synced bytes of n, which is down.
@@ -376,113 +464,89 @@ func (k damageKind) String() string {
 // good, so n must refuse to start; a misread one refuses its next start,
 // and a damaged last record must keep its term and vote. It reports
 // whether n had what the kind needs. The lock is held.
-func (s *Sim) damage(n *node, kind damageKind) bool {
+func (s *Sim) damage(n *node, kind damageKind) bool { return s.damageWL(n, kind) }
+
+// damageWL is damage for a wl node (Config.wl), whose log is wal/*.seg
+// and whose checkpoint is the one ckpt/CURRENT names. A start reads the
+// log from the pointer's first segment on, and refuses a record that does
+// not check where a later segment holds data (internal/wl/wal.go's head),
+// so damage to the log goes only in a segment the start reads, after the
+// first, with data two segments on: no record it damages reaches the last
+// segment with data, where damage can look like a torn write. A damaged
+// last record is main's alone, whose term and vote have copies outside
+// the log. The lock is held.
+func (s *Sim) damageWL(n *node, kind damageKind) bool {
 	d := n.disk
-	sealed := sealedSegments(d)
-	var seg string
+	ptr, err := wlPointer(d)
+	if err != nil {
+		return false
+	}
+	ckpt := ""
+	if ptr.Checkpoint != "" {
+		ckpt = "ckpt/" + ptr.Checkpoint
+	}
+	sealed := wlSealed(d, ptr.FirstSegment)
+	seg := ""
 	if len(sealed) > 0 {
 		seg = sealed[s.rng.IntN(len(sealed))]
 	}
 	switch kind {
 	case flippedRoot:
-		root, err := recoveredRoot(n)
-		n.corrupted = err == nil && root > 0 && d.CorruptFile(s.rng, wal.CheckpointName(root))
-		return n.corrupted
+		n.corrupted = ckpt != "" && d.CorruptFile(s.rng, ckpt)
 	case misdirected:
-		n.corrupted = d.Corrupt(s.rng)
-		return n.corrupted
+		n.corrupted = seg != "" && d.Misdirect(s.rng, seg)
 	case lostWrite:
-		if root, err := recoveredRoot(n); err == nil && root > 0 && s.rng.IntN(2) == 0 {
-			seg = wal.CheckpointName(root)
+		if ckpt != "" && s.rng.IntN(2) == 0 {
+			seg = ckpt
 		}
 		n.corrupted = seg != "" && d.LoseWrite(s.rng, seg)
-		return n.corrupted
 	case badSector:
 		n.corrupted = seg != "" && d.BadSector(s.rng, seg)
-		return n.corrupted
 	case misread:
 		n.misread = seg != "" && d.Misread(s.rng, seg)
 		return n.misread
-	case lastRecord:
-		return s.damageLastRecord(n)
-	}
-	return false
-}
-
-// sealedSegments are the segments of a disk but the newest, with at least
-// a sector of synced bytes. Recovery reads all of them, and damage to any
-// is damage to synced records.
-func sealedSegments(d *simfs.Disk) []string {
-	var segs []string
-	for _, name := range d.DurableNames() {
-		if isSegment(name) {
-			segs = append(segs, name)
-		}
-	}
-	if len(segs) > 0 {
-		segs = segs[:len(segs)-1]
-	}
-	return slices.DeleteFunc(segs, func(name string) bool { return len(d.DurableBytes(name)) < simfs.SectorBytes })
-}
-
-// damageLastRecord flips a bit at the end of n's newest segment if that
-// loses the log only the term and vote of its last record, not an entry,
-// and checks what recovery then gives (start, turn). The lock is held.
-func (s *Sim) damageLastRecord(n *node) bool {
-	name := newestSegment(n.disk)
-	size := len(n.disk.DurableBytes(name))
-	before, err := recoveredLog(n)
-	if err != nil || size == 0 {
+	case lastRecord, flippedRecord:
+		// A damaged last record is main's alone; a flipped record is
+		// never drawn (flipWLRecord).
 		return false
 	}
-	n.disk.FlipDurable(name, size-1)
-	after, err := recoveredLog(n)
-	if err == nil && after.Last == before.Last && (after.HardState.Term != before.HardState.Term || after.HardState.Vote != before.HardState.Vote) {
-		return true
-	}
-	n.disk.FlipDurable(name, size-1)
-	return false
+	return n.corrupted
 }
 
-// recoveredState is what recovery of n's synced disk gives now.
-func recoveredState(n *node) (*wal.Recovered, error) {
-	w, rec, err := wal.Open(n.disk.Durable())
-	if err != nil {
-		return nil, err
+// wlPointerFile is a wl node's checkpoint pointer on its disk.
+const wlPointerFile = "ckpt/CURRENT"
+
+// wlSegment is the name of segment k of a wl node's log on its disk.
+func wlSegment(k int64) string { return fmt.Sprintf("wal/%016x.seg", k) }
+
+// wlPointer is the checkpoint pointer a wl node's disk holds durably, the
+// zero Pointer if none.
+func wlPointer(d *simfs.Disk) (wl.Pointer, error) {
+	b := d.DurableBytes(wlPointerFile)
+	if b == nil {
+		return wl.Pointer{}, nil
 	}
-	return rec, w.Close()
+	return wl.ReadPointer(b)
 }
 
-// recoveredLog is what recovery of n's synced log alone gives now,
-// without the copies of the term and vote outside it.
-func recoveredLog(n *node) (*wal.Recovered, error) {
-	d := n.disk.Durable()
-	names, err := d.List()
-	if err != nil {
-		return nil, err
-	}
-	for _, name := range names {
-		if wal.IsVoteFile(name) {
-			if err := d.Remove(name); err != nil {
-				return nil, err
-			}
+// wlSealed are the segments of a wl node's log after segment first, the
+// first a start reads, with data two segments on.
+func wlSealed(d *simfs.Disk, first int64) []string {
+	data := map[int64]bool{}
+	for _, name := range d.DurableNames() {
+		var k int64
+		if _, err := fmt.Sscanf(name, "wal/%016x.seg", &k); err == nil && len(d.DurableBytes(name)) > 0 {
+			data[k] = true
 		}
 	}
-	w, rec, err := wal.Open(d)
-	if err != nil {
-		return nil, err
+	var segs []string
+	for k := range data {
+		if k > first && data[k+2] {
+			segs = append(segs, fmt.Sprintf("wal/%016x.seg", k))
+		}
 	}
-	return rec, w.Close()
-}
-
-// recoveredRoot is the index of the root that recovery of n's disk would
-// start from now.
-func recoveredRoot(n *node) (uint64, error) {
-	rec, err := recoveredState(n)
-	if err != nil {
-		return 0, err
-	}
-	return rec.Root.Index, nil
+	slices.Sort(segs)
+	return segs
 }
 
 // checkpoint is a copy of every disk as a power cut would leave it, the
@@ -573,7 +637,11 @@ func disagree(nodes []*node) (*node, *node) {
 		}
 		if first == nil {
 			first = n
-		} else if c, f := n.proc.core, first.proc.core; c.Applied() != f.Applied() || c.Hash() != f.Hash() {
+			continue
+		}
+		// A node's entries are checked one by one as they apply
+		// (wlHooks.Applied): the applied index and revision tell.
+		if a, b := n.proc.wl.turn, first.proc.wl.turn; a.Applied != b.Applied || a.Rev != b.Rev {
 			return first, n
 		}
 	}
@@ -594,7 +662,8 @@ func (s *Sim) quorum() bool {
 			continue
 		}
 		voters := 0
-		for _, m := range n.proc.core.Members() {
+		ms, _ := n.members()
+		for _, m := range ms {
 			if !m.IsLearner {
 				voters++
 			}
@@ -609,7 +678,7 @@ func (s *Sim) quorum() bool {
 // hasLeader reports whether a running node knows a leader. The nodes are
 // frozen.
 func hasLeader(nodes []*node) bool {
-	return slices.ContainsFunc(nodes, func(n *node) bool { return n.proc != nil && !n.out() && n.proc.core.Leader() != 0 })
+	return slices.ContainsFunc(nodes, func(n *node) bool { return n.proc != nil && !n.out() && n.proc.leader() != 0 })
 }
 
 // canElect reports whether a running node can win an election: it is a
@@ -625,22 +694,14 @@ func (s *Sim) canElect() (bool, error) {
 		if n.out() || n.proc == nil {
 			continue
 		}
-		w, rec, err := wal.Open(n.disk.Durable())
+		ents, err := s.logOn(n)
 		if err != nil {
 			return false, err
 		}
-		l := last{rec.Root.Term, rec.Last}
-		if rec.Last > rec.Root.Index {
-			e, err := w.Entry(rec.Last)
-			if err != nil {
-				return false, errors.Join(err, w.Close())
-			}
-			l.term = e.GetTerm()
-		}
-		if err := w.Close(); err != nil {
+		if err := ents.close(); err != nil {
 			return false, err
 		}
-		logs[n.id] = l
+		logs[n.id] = last{ents.lastTerm, ents.last}
 	}
 	for _, n := range s.nodes {
 		own, ok := logs[n.id]
@@ -648,7 +709,8 @@ func (s *Sim) canElect() (bool, error) {
 			continue
 		}
 		voter, voters, votes := false, 0, 0
-		for _, m := range n.proc.core.Members() {
+		ms, _ := n.members()
+		for _, m := range ms {
 			if m.IsLearner {
 				continue
 			}
@@ -676,21 +738,21 @@ func (s *Sim) holdsApplied(applied uint64) (bool, error) {
 		if n.out() || n.proc == nil {
 			continue
 		}
-		w, rec, err := wal.Open(n.disk.Durable())
+		ents, err := s.logOn(n)
 		if err != nil {
 			return false, err
 		}
-		holds := rec.Last >= applied
-		for i := rec.Root.Index + 1; holds && i <= applied; i++ {
-			e, err := w.Entry(i)
+		holds := ents.last >= applied
+		for i := ents.root + 1; holds && i <= applied; i++ {
+			e, err := ents.entry(i)
 			if err != nil {
-				return false, errors.Join(err, w.Close())
+				return false, errors.Join(err, ents.close())
 			}
 			if b, ok := s.base.get(i); ok && (b.term != e.GetTerm() || b.known && (b.typ != e.GetType() || !bytes.Equal(s.base.bytes(b), e.GetData()))) {
 				holds = false
 			}
 		}
-		if err := w.Close(); err != nil {
+		if err := ents.close(); err != nil {
 			return false, err
 		}
 		if holds {
@@ -815,21 +877,23 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 		}
 	}
 	if a, b := disagree(r.nodes); a != nil {
-		ca, cb := a.proc.core, b.proc.core
+		ma, ra := a.members()
+		mb, rb := b.members()
 		return fmt.Errorf("cold restart did not converge: node %d applied %d, members %v, removed %v; node %d applied %d, members %v, removed %v; checkpoint applied %d, inactive %v",
-			a.id, ca.Applied(), ca.Members(), ca.RemovedMembers(), b.id, cb.Applied(), cb.Members(), cb.RemovedMembers(), c.applied, c.inactive)
+			a.id, a.proc.applied(), ma, ra, b.id, b.proc.applied(), mb, rb, c.applied, c.inactive)
 	}
 	for _, n := range r.nodes {
 		if n.out() || n.proc == nil {
 			continue
 		}
-		if cn := n.proc.core; cn.Applied() < c.applied {
+		if p := n.proc; p.applied() < c.applied {
 			var active []uint64
 			for _, live := range r.live() {
 				active = append(active, live.id)
 			}
+			ms, _ := n.members()
 			return fmt.Errorf("cold restart: node %d applied %d entries, but %d were applied before; leader %d, members %v, active %v, inactive at copy %v",
-				n.id, cn.Applied(), c.applied, cn.Leader(), cn.Members(), active, c.inactive)
+				n.id, p.applied(), c.applied, p.leader(), ms, active, c.inactive)
 		}
 	}
 	return nil
@@ -924,4 +988,28 @@ func (n *node) stalledAt(t int64) bool {
 		}
 	}
 	return false
+}
+
+// diskLog is the log a node's disk holds: the entries from root+1 to last,
+// the term of the last, and each entry until close.
+type diskLog struct {
+	root, last, lastTerm uint64
+	entry                func(i uint64) (*raftpb.Entry, error)
+	close                func() error
+}
+
+// logOn reads the log n's disk holds durably, as its next start would
+// find it. The nodes are frozen.
+func (s *Sim) logOn(n *node) (diskLog, error) {
+	l, err := wl.ReadLog(s.os.NewNode(wlDataDir, n.disk.Durable(), nil), wlDataDir)
+	if err != nil {
+		return diskLog{}, err
+	}
+	d := diskLog{root: l.Base, last: l.Base + uint64(len(l.Entries)), lastTerm: l.BaseTerm}
+	if len(l.Entries) > 0 {
+		d.lastTerm = l.Entries[len(l.Entries)-1].GetTerm()
+	}
+	d.entry = func(i uint64) (*raftpb.Entry, error) { return l.Entries[i-l.Base-1], nil }
+	d.close = func() error { return nil }
+	return d, nil
 }

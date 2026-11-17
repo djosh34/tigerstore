@@ -2,7 +2,6 @@ package node
 
 import (
 	"math"
-	"runtime"
 	"runtime/debug"
 	"testing"
 	"testing/fstest"
@@ -77,68 +76,5 @@ func TestMemoryBudget(t *testing.T) {
 	}
 	if got, from, err := MemoryBudget(fstest.MapFS{}, 1<<30); err != nil || got != 1<<30 || from != "flag" {
 		t.Errorf("flag and Go memory limit: %d from %s, %v", got, from, err)
-	}
-}
-
-func TestGoMemory(t *testing.T) {
-	for _, from := range []string{"flag", "cgroup", "host"} {
-		if got := GoMemory(640<<20, from); got != 560<<20 {
-			t.Errorf("GoMemory(640 MiB, %s) = %d, want 560 MiB", from, got)
-		}
-	}
-	if got := GoMemory(3<<30, "GOMEMLIMIT"); got != 3<<30 {
-		t.Errorf("GoMemory(3 GiB, GOMEMLIMIT) = %d, want 3 GiB", got)
-	}
-}
-
-func TestProcessMemory(t *testing.T) {
-	if got := ProcessMemory(560 << 20); got != 420<<20 {
-		t.Errorf("ProcessMemory(560 MiB) = %d, want 420 MiB", got)
-	}
-}
-
-// TestMemoryGauge checks that memory the heap holds counts once a
-// collection saw it, less what the cache held then.
-func TestMemoryGauge(t *testing.T) {
-	g := newMemoryGauge()
-	runtime.GC()
-	base, fresh := g.read(0)
-	if !fresh {
-		t.Fatal("the first read saw no collection")
-	}
-	held := make([]byte, 64<<20)
-	for i := range held {
-		held[i] = 1
-	}
-	// The cache holds half of it, at this read and the next.
-	g.read(32 << 20)
-	runtime.GC()
-	other, fresh := g.read(32 << 20)
-	runtime.KeepAlive(held)
-	if !fresh {
-		t.Fatal("the read after a collection saw none")
-	}
-	if d := other - base; d < 28<<20 || d > 40<<20 {
-		t.Errorf("64 MiB with 32 MiB of it in the cache added %d bytes, want about 32 MiB", d)
-	}
-}
-
-// TestMemoryGaugeAfterEviction checks the gauge's arithmetic on fixed
-// readings: 20 MiB besides a 32 MiB cache, which is dropped, collected
-// and filled again between two reads, so its size is 32 MiB at both. Only
-// its low mark, 0, may count as the cache's in the collection after the
-// drop, which no longer saw it.
-func TestMemoryGaugeAfterEviction(t *testing.T) {
-	const mib = 1 << 20
-	g := newMemoryGauge()
-	g.take(1, 52*mib, 0, 32*mib)
-	if other, _ := g.take(2, 52*mib, 0, 32*mib); other != 20*mib {
-		t.Fatalf("with the cache in the live heap: %d bytes besides it, want 20 MiB", other)
-	}
-	if other, fresh := g.take(3, 20*mib, 0, 0); !fresh || other != 20*mib {
-		t.Fatalf("after the drop: %d bytes besides it (fresh %v), want 20 MiB", other, fresh)
-	}
-	if other, fresh := g.take(3, 0, 0, 32*mib); fresh || other != 20*mib {
-		t.Fatalf("without a collection: %d (fresh %v), want the last result", other, fresh)
 	}
 }

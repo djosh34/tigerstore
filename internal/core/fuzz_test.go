@@ -2,15 +2,13 @@ package core
 
 import (
 	"bytes"
-	"fmt"
 	"math/rand/v2"
 	"testing"
 
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"google.golang.org/protobuf/proto"
-
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/proto"
 )
 
 // FuzzDecodeAlias decodes any bytes as each request that DecodeAlias has a
@@ -81,48 +79,17 @@ func FuzzParsePut(f *testing.F) {
 			got.PrevKv != want.PrevKv || got.IgnoreValue != want.IgnoreValue || got.IgnoreLease != want.IgnoreLease {
 			t.Fatalf("got %+v, want %v", got.PutOp, &want)
 		}
-		if got.size() != proto.Size(&want) {
-			t.Fatalf("size %d, protobuf marshals %d bytes", got.size(), proto.Size(&want))
-		}
 	})
 }
 
-// FuzzReceiveSnapshot feeds any bytes to a follower's snapshot receiver as
-// the stream of the snapshot at index and term, into an empty log. It
+// FuzzReceiveSnapshot feeds any bytes to the snapshot receiver as the
+// stream of the snapshot at index and term, into an empty log, as the
+// offline upgrade restores a snapshot of main's engine (node.Restore). It
 // must refuse or take the stream without a crash, and a log it took must
-// open again. The seed is a whole stream from the sender, of a node whose
-// first entries are gone: a checkpoint, the values it names, and entries.
+// open again. The seed in testdata is a whole stream from main's sender,
+// of a node whose first entries were gone: a checkpoint, the values it
+// names, and entries.
 func FuzzReceiveSnapshot(f *testing.F) {
-	src := startSingleWith(f, simfs.New(), 1, func(cfg *Config) {
-		cfg.WindowBytes, cfg.WindowMaxBytes = 512, 1024
-		cfg.CheckpointBytes, cfg.CheckpointRatio, cfg.CheckpointChunk = 2048, 2, 64
-	})
-	id := uint64(0)
-	for round := range 30 {
-		for k := range 10 {
-			id++
-			if r := src.do(id, &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", k), Value: fmt.Appendf(nil, "value %d of round %d", k, round)}); r.Err != nil {
-				f.Fatal(r.Err)
-			}
-		}
-		id++
-		if r := src.do(id, &pb.CompactionRequest{Revision: src.n.kv.Rev()}); r.Err != nil {
-			f.Fatal(r.Err)
-		}
-	}
-	if src.log.Has(1) {
-		f.Fatal("the source still has entry 1")
-	}
-	last := src.n.Applied()
-	term, err := src.n.termAt(last)
-	if err != nil {
-		f.Fatal(err)
-	}
-	var stream bytes.Buffer
-	if err := ServeSnapshot(src.log, []wal.Root{src.n.DurableCheckpoint()}, 1, last, &stream); err != nil {
-		f.Fatal(err)
-	}
-	f.Add(stream.Bytes(), last, term)
 	f.Fuzz(func(t *testing.T, b []byte, index, term uint64) {
 		disk := simfs.New()
 		w, _, err := wal.Open(disk)
@@ -130,7 +97,7 @@ func FuzzReceiveSnapshot(f *testing.F) {
 			t.Fatal(err)
 		}
 		in := &Install{From: 1, Index: index, Term: term}
-		if err := ReceiveSnapshot(bytes.NewReader(b), &walSink{w: w}, w, in); err != nil {
+		if err := ReceiveSnapshot(bytes.NewReader(b), &LogSink{WAL: w}, w, in); err != nil {
 			return
 		}
 		if err := w.Sync(); err != nil {

@@ -26,11 +26,8 @@ import (
 // again. Copying the whole cache at once took
 // 1.8 s with 900 MB cached, and held two copies of it meanwhile (#647).
 type cache struct {
-	// bytes counts every value by its room in the slabs with
-	// cachedOverhead and every slot of items and old up to their peaks
-	// with slotOverhead, and low is the smallest it was since the last
-	// CacheLow.
-	limit, bytes, low int64
+	bytes int64
+	low   int64
 	// items names the entry of each cached value. Neither the maps nor
 	// the entries hold a pointer, so the garbage collector does not walk
 	// them: with a million values cached, walking records that pointed
@@ -84,10 +81,7 @@ const (
 const (
 	entryBits = 12
 	entryPage = 1 << entryBits
-	// stepBytes is the most a step copies in the slabs, and stepRefs
-	// the most refs it moves from old: a few milliseconds of work.
-	stepBytes = 2 << 20
-	stepRefs  = 1 << 13
+
 	// stepEvictions is the most values fit drops between two steps.
 	stepEvictions = 1 << 13
 	// minRebuildSlack is the least room of free slots that makes the
@@ -113,9 +107,6 @@ func (c *cache) lookup(r mvcc.Ref) (int32, bool) {
 	i, ok := c.old[r]
 	return i, ok
 }
-
-// count is the number of values cached.
-func (c *cache) count() int { return len(c.items) + len(c.old) }
 
 // get returns the value r names if the cache has it, and marks it used.
 func (c *cache) get(r mvcc.Ref) ([]byte, bool) {
@@ -147,27 +138,6 @@ func (c *cache) has(r mvcc.Ref) bool {
 	return ok
 }
 
-// add copies val, the bytes r names, into the cache. A cache still past
-// its limit, as while its steps drop what a limit that fell far leaves,
-// takes none: the steps give it back their evictions each turn, which
-// would let it grow past its limit by a value each turn.
-func (c *cache) add(r mvcc.Ref, val []byte) {
-	if _, ok := c.lookup(r); ok || c.limit <= 0 || c.bytes > c.limit {
-		return
-	}
-	i := c.n
-	if int(i>>entryBits) == len(c.pages) {
-		c.pages = append(c.pages, make([]cached, entryPage))
-	}
-	c.n++
-	e := c.at(i)
-	*e = cached{ref: r, slot: c.slabs.put(val, i)}
-	c.put(r, i)
-	c.push(i)
-	c.bytes += c.slabs.room(e.slot, len(val)) + cachedOverhead
-	c.fit()
-}
-
 // put names entry i for r in items.
 func (c *cache) put(r mvcc.Ref, i int32) {
 	c.items[r] = i
@@ -184,29 +154,12 @@ func (c *cache) drop(r mvcc.Ref) {
 	}
 }
 
-// setLimit sets the cache's limit and drops the least recently used
-// values past it.
-func (c *cache) setLimit(limit int64) {
-	c.limit = limit
-	c.fit()
-}
-
 // clear forgets every value.
 func (c *cache) clear() {
 	c.items, c.old, c.peak, c.oldPeak, c.next = map[mvcc.Ref]int32{}, nil, 0, 0, 0
 	c.pages, c.n = [][]cached{make([]cached, entryPage)}, 1
 	c.slabs, c.compacting = slabs{}, false
 	c.bytes, c.low, c.evictions = 0, 0, stepEvictions
-}
-
-// fit drops the least recently used values until the cache is within
-// its limit, or until it dropped stepEvictions since the last step; the
-// steps drop the rest.
-func (c *cache) fit() {
-	for c.bytes > max(c.limit, 0) && c.n > 1 && c.evictions > 0 {
-		c.evictions--
-		c.remove(c.at(0).prev)
-	}
 }
 
 // remove forgets entry i and moves the last entry into its place.
@@ -264,35 +217,6 @@ func (c *cache) renamed(r mvcc.Ref, i int32) {
 	c.put(r, i)
 }
 
-// busy reports whether the cache has steps to take.
-func (c *cache) busy() bool {
-	return c.old != nil || c.compacting || c.bytes > max(c.limit, 0) && c.n > 1
-}
-
-// step takes the cache's next bounded step: it drops values past its
-// limit, up to stepEvictions since the last step, moves the refs of the
-// next stepRefs entries from old to items, and compacts the slabs by up
-// to stepBytes.
-func (c *cache) step() {
-	c.fit()
-	c.evictions = stepEvictions
-	if c.old != nil {
-		for k := 0; k < stepRefs && c.next < c.n; k++ {
-			r := c.at(c.next).ref
-			if _, ok := c.old[r]; ok {
-				delete(c.old, r)
-				c.put(r, c.next)
-			}
-			c.next++
-		}
-		c.moved()
-	}
-	if c.compacting {
-		more := c.slabs.compact(stepBytes, func(owner int32, to slot) { c.at(owner).slot = to })
-		c.compacting = more && c.slabs.slack() > max(c.slabs.used/4, minRebuildSlack/2)
-	}
-}
-
 // moved ends making the map again once every entry's ref is in items:
 // old's memory goes.
 func (c *cache) moved() {
@@ -321,39 +245,4 @@ func (c *cache) unlink(i int32) {
 	e := c.at(i)
 	c.at(e.prev).next, c.at(e.next).prev = e.next, e.prev
 	e.prev, e.next = 0, 0
-}
-
-// fillCache moves into the cache the newest values written in the entries
-// up to index, which leave memory.
-func (n *Node) fillCache(index uint64) {
-	n.kv.Leaving(index, func(r mvcc.Ref) {
-		data, ok := n.storage.entryData(r.Index)
-		if ok && uint64(r.Off)+uint64(r.Len) <= uint64(len(data)) {
-			n.cache.add(r, data[r.Off:r.Off+r.Len])
-		}
-	})
-}
-
-// SetOtherMemory tells the core how much memory the process uses besides
-// the value cache, as the driver measured it. The cache may take what
-// that leaves of Config.MemoryBytes, and gives back the rest at once.
-func (n *Node) SetOtherMemory(bytes int64) {
-	n.otherMemory = bytes
-	n.fitCache()
-}
-
-// CacheLow is the smallest the value cache held since the last call,
-// and the next span starts from what it holds now. A collection of the
-// garbage collector in between found at least that much of it live,
-// whatever it dropped and took in meanwhile.
-func (n *Node) CacheLow() int64 {
-	low := n.cache.low
-	n.cache.low = n.cache.bytes
-	return low
-}
-
-// fitCache sets the cache's limit to the memory the rest of the process
-// leaves.
-func (n *Node) fitCache() {
-	n.cache.setLimit(n.cfg.MemoryBytes - n.otherMemory)
 }

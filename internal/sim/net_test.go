@@ -153,3 +153,76 @@ func TestReadsAtOnceMeetTheirDeadline(t *testing.T) {
 		}
 	}
 }
+
+// TestACloseArrivesAfterTheBytesBeforeIt checks that the other end's close
+// shows as epoll's EPOLLRDHUP only once the bytes it sent before it
+// arrived, as TCP's FIN comes after the data ahead of it, and then with
+// the bytes still unread. Shown at the close, while a link stall held
+// the bytes, a node's loop read nothing and turned again at once, and
+// the run's clock stopped (#689's M re-check).
+func TestACloseArrivesAfterTheBytesBeforeIt(t *testing.T) {
+	a := writer()
+	b := a.other
+	a.s.net = network{conns: map[*conn]bool{a: true, b: true}}
+	a.s.links[1][0].stallUntil = 1000 * Second
+	if _, err := b.Write([]byte("held")); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if readable, _ := a.Ready(); readable || a.Hup() {
+		t.Fatalf("the stall holds the bytes: readable %v, hup %v; want neither", readable, a.Hup())
+	}
+	a.s.links[1][0].stallUntil = 0
+	if readable, _ := a.Ready(); !readable || !a.Hup() {
+		t.Fatalf("the bytes and the close arrived: readable %v, hup %v; want both", readable, a.Hup())
+	}
+	k, err := a.TryRead(make([]byte, 8))
+	if err != nil || k != 4 {
+		t.Fatalf("the read of the bytes before the close = %d, %v", k, err)
+	}
+}
+
+// TestACloseBehindAnUnreadChunkWakesTheWatcher checks that a socket whose
+// first chunk arrived unread, and whose close waits behind a later chunk,
+// is told when that chunk arrives: a registration without EPOLLIN, which
+// the arrived chunk does not wake, sees the close then, not a tick later
+// (#689's N re-check).
+func TestACloseBehindAnUnreadChunkWakesTheWatcher(t *testing.T) {
+	a := writer()
+	b := a.other
+	a.s.net = network{conns: map[*conn]bool{a: true, b: true}}
+	woken := make(chan struct{}, 1)
+	a.OnChange(func() {
+		select {
+		case woken <- struct{}{}:
+		default:
+		}
+	})
+	if _, err := b.Write([]byte("now")); err != nil {
+		t.Fatal(err)
+	}
+	a.s.mu.Lock()
+	a.in.chunks = append(a.in.chunks, chunk{at: a.s.now() + 20*Millisecond, b: []byte("later")})
+	a.in.size += 5
+	a.s.mu.Unlock()
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-woken: // the close's own notice
+	default:
+	}
+	if readable, _ := a.Ready(); !readable || a.Hup() {
+		t.Fatalf("the first chunk arrived, the last not: readable %v, hup %v; want readable and no close yet", readable, a.Hup())
+	}
+	select {
+	case <-woken:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watcher was not told when the last chunk, and the close behind it, arrived")
+	}
+	if !a.Hup() {
+		t.Fatal("the close did not show once the last chunk arrived")
+	}
+}

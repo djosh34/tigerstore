@@ -184,6 +184,9 @@ type traffic struct {
 	watches sync.WaitGroup
 	stop    context.CancelFunc
 	cancelW context.CancelFunc
+	// round counts the times the random calls started, so that a resumed
+	// round's values differ from the earlier ones'.
+	round int
 }
 
 // startTraffic checks that the cluster is fresh, then starts one watch,
@@ -215,11 +218,33 @@ func startTraffic(cfg workloadConfig, cs []*clientv3.Client) (*traffic, error) {
 		t.r.h.Watches[i] = history.Watch{Client: 100 + i, Req: history.WatchRequest{Key: prefix, End: end, StartRevision: 1, PrevKV: true, ProgressNotify: true}}
 		t.watches.Go(func() { t.r.watch(watchCtx, cl, i, prefix) })
 	}
-	for i, cl := range cs {
-		t.workers.Go(func() { t.client(stopCtx, i, cl) })
-		t.workers.Go(func() { t.reader(stopCtx, i, cl) })
-	}
+	t.startClients(stopCtx)
 	return t, nil
+}
+
+// startClients starts the random calls of a round.
+func (t *traffic) startClients(ctx context.Context) {
+	round := t.round
+	t.round++
+	for i, cl := range t.cs {
+		t.workers.Go(func() { t.client(ctx, round, i, cl) })
+		t.workers.Go(func() { t.reader(ctx, round, i, cl) })
+	}
+}
+
+// pause ends the random calls and waits out the calls that timed out on
+// the client but may still commit: the cluster then holds every write
+// that will commit.
+func (t *traffic) pause() {
+	t.stopClients()
+	time.Sleep(t.cfg.quiet)
+}
+
+// resume starts the random calls again, on the same clients and history.
+func (t *traffic) resume() {
+	var ctx context.Context
+	ctx, t.stop = context.WithCancel(context.Background())
+	t.startClients(ctx)
 }
 
 // readerClient is the history client of the reader pinned to node i.
@@ -229,9 +254,9 @@ func readerClient(i int) int { return 30 + i }
 // most cfg.rate per second. A writer on a lagging follower spends the lag
 // in each write; the reader keeps asking the follower, so a read it
 // served from its own state would show (B01a).
-func (t *traffic) reader(ctx context.Context, i int, cl *clientv3.Client) {
+func (t *traffic) reader(ctx context.Context, round, i int, cl *clientv3.Client) {
 	c := t.cfg
-	rng := rand.New(rand.NewPCG(c.seed, uint64(readerClient(i))))
+	rng := rand.New(rand.NewPCG(c.seed, uint64(round)<<32|uint64(readerClient(i))))
 	tick := time.NewTicker(time.Second / time.Duration(c.rate))
 	defer tick.Stop()
 	for {
@@ -247,10 +272,10 @@ func (t *traffic) reader(ctx context.Context, i int, cl *clientv3.Client) {
 
 // client issues random Put, CAS Txn, DeleteRange and Range calls on hot
 // keys, one at a time, at most cfg.rate per second.
-func (t *traffic) client(ctx context.Context, i int, cl *clientv3.Client) {
+func (t *traffic) client(ctx context.Context, round, i int, cl *clientv3.Client) {
 	c, r := t.cfg, t.r
 	end := clientv3.GetPrefixRangeEnd(prefix)
-	rng := rand.New(rand.NewPCG(c.seed, uint64(i+1)))
+	rng := rand.New(rand.NewPCG(c.seed, uint64(round)<<32|uint64(i+1)))
 	tick := time.NewTicker(time.Second / time.Duration(c.rate))
 	defer tick.Stop()
 	mods := map[string]int64{}
@@ -265,6 +290,9 @@ func (t *traffic) client(ctx context.Context, i int, cl *clientv3.Client) {
 		key := fmt.Sprintf("%sk%d", prefix, rng.IntN(c.keys))
 		seq++
 		identity := fmt.Sprintf("s%d-c%d-o%d:", c.seed, i, seq)
+		if round > 0 {
+			identity = fmt.Sprintf("s%d-r%d-c%d-o%d:", c.seed, round, i, seq)
+		}
 		value := identity + strings.Repeat("x", max(0, c.valueSize-len(identity)))
 		var q history.Request
 		switch rng.IntN(5) {
@@ -376,20 +404,34 @@ func (t *traffic) finish() (err error) {
 	if terminal.Resp != nil && err == nil {
 		r.h.Target = terminal.Resp.Revision
 	}
+	if err == nil {
+		err = t.watchThrough(r.h.Target)
+	}
+	t.cancelW()
+	t.watches.Wait()
+	r.mu.Lock()
+	err = errors.Join(err, errors.Join(r.errs...))
+	r.mu.Unlock()
+	return err
+}
+
+// watchThrough waits until every watch has an event or a progress
+// notification at or past target, asking for progress meanwhile.
+func (t *traffic) watchThrough(target int64) error {
+	c, r, cs := t.cfg, t.r, t.cs
 	finish := time.Now().Add(c.watchTimeout)
-	for err == nil {
+	for {
 		complete := true
 		r.mu.Lock()
 		for _, w := range r.h.Watches {
-			complete = complete && throughTarget(w, r.h.Target)
+			complete = complete && throughTarget(w, target)
 		}
 		r.mu.Unlock()
 		if complete {
-			break
+			return nil
 		}
 		if !time.Now().Before(finish) {
-			err = errors.New("watches did not reach the terminal target")
-			break
+			return fmt.Errorf("watches did not reach revision %d", target)
 		}
 		for i, cl := range cs {
 			ctx, cancel := context.WithTimeout(clientv3.WithRequireLeader(context.Background()), max(time.Millisecond, min(c.requestTimeout, time.Until(finish))))
@@ -406,10 +448,4 @@ func (t *traffic) finish() (err error) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.cancelW()
-	t.watches.Wait()
-	r.mu.Lock()
-	err = errors.Join(err, errors.Join(r.errs...))
-	r.mu.Unlock()
-	return err
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
 
@@ -131,7 +132,7 @@ func write(t *testing.T, f wal.File, p []byte) {
 // TestCrashImages crashes a file with a synced part and four unsynced
 // writes, each of a byte value of its own, many times with each image.
 // Every image keeps the synced part. Prefix keeps a prefix of the bytes
-// written, in order, up to garbage at its end; Writes keeps each write
+// written, in order, up to garbage at its end past the synced part; Writes keeps each write
 // whole or not at all; Sectors and Pages keep pieces of a write at their
 // boundaries. Every image but Prefix sometimes keeps a later write and
 // loses an earlier one.
@@ -162,7 +163,8 @@ func TestCrashImages(t *testing.T) {
 				copy(want[w.off:], bytes.Repeat([]byte{w.b}, w.n))
 			}
 			for i := range min(1000, len(got)) {
-				if got[i] != 's' && (img != simfs.Prefix || i < 200 || i >= 800) && got[i] != 'd' {
+				// An overwrite keeps the old bytes or the new, never garbage.
+				if got[i] != 's' && got[i] != 'd' {
 					t.Fatalf("%v seed %d: synced byte %d is %q", img, seed, i, got[i])
 				}
 			}
@@ -192,6 +194,8 @@ func TestCrashImages(t *testing.T) {
 				}
 			case simfs.Sectors, simfs.Pages:
 				// Any piece may be kept.
+			case simfs.Unwritten:
+				// Not among those drawn here (TestUnwrittenImage).
 			}
 			reordered = reordered || kept['a'] == 0 && kept['b'] > 0
 			torn = torn || kept['b'] > 0 && kept['b'] < 5000
@@ -432,5 +436,131 @@ func TestTruncateUnsynced(t *testing.T) {
 	ok(t, f.Sync())
 	if n := len(d.DurableBytes("f")); n != 100 {
 		t.Fatalf("%d bytes durable after a truncate to 100 and a sync", n)
+	}
+}
+
+// TestAllocate checks that space allocated past a file's size takes room
+// on the disk, keeps the size, lets writes into it through on a full disk,
+// fails whole where it does not fit, and goes with a truncate.
+func TestAllocate(t *testing.T) {
+	d := simfs.New()
+	d.Capacity = 100
+	a := create(t, d, "a")
+	write(t, a, make([]byte, 10))
+	al := a.(interface{ Allocate(int64) error })
+	ok(t, al.Allocate(60))
+	if d.Bytes() != 60 || d.Free() != 40 {
+		t.Fatalf("a file of 10 bytes allocated to 60 takes %d, leaving %d", d.Bytes(), d.Free())
+	}
+	if b, err := a.ReadAll(); err != nil || len(b) != 10 {
+		t.Fatalf("an allocation changed the size to %d, %v", len(b), err)
+	}
+	b := create(t, d, "b")
+	if n, err := b.Write(make([]byte, 50)); n != 40 || !errors.Is(err, simfs.ErrNoSpace) {
+		t.Fatalf("a write past the room left = %d, %v; want 40, ErrNoSpace", n, err)
+	}
+	if n, err := a.WriteAt(make([]byte, 50), 10); n != 50 || err != nil {
+		t.Fatalf("a write into allocated space on a full disk = %d, %v", n, err)
+	}
+	if err := b.(interface{ Allocate(int64) error }).Allocate(41); !errors.Is(err, simfs.ErrNoSpace) || d.Bytes() != 100 {
+		t.Fatalf("an allocation past the capacity = %v, %d bytes taken", err, d.Bytes())
+	}
+	ok(t, a.Truncate(20))
+	if d.Bytes() != 60 {
+		t.Fatalf("a truncate left %d bytes taken, want 60", d.Bytes())
+	}
+}
+
+// TestUnwrittenImage checks that the Unwritten crash image keeps the
+// synced bytes and the file's growth by the writes since, with zeros.
+func TestUnwrittenImage(t *testing.T) {
+	d := simfs.New()
+	f := create(t, d, "u")
+	write(t, f, bytes.Repeat([]byte{1}, 10))
+	ok(t, f.Sync())
+	ok(t, d.SyncDir())
+	if _, err := f.WriteAt(bytes.Repeat([]byte{2}, 15), 5); err != nil {
+		t.Fatal(err)
+	}
+	d.CrashImage(rand.New(rand.NewPCG(1, 2)), simfs.Unwritten)
+	g := open(t, d, "u")
+	got, err := g.ReadAll()
+	ok(t, err)
+	want := append(bytes.Repeat([]byte{1}, 10), make([]byte, 10)...)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("after the crash the file holds %v, want %v", got, want)
+	}
+}
+
+// TestATruncatePastTheEndGrowsTheFile checks that a truncate to a size
+// past a file's end grows it with zeros, as truncate(2) does: a start of
+// the log whose checkpoint left it past its last segment's end grows the
+// segment to there and reads its last block back (#726). The growth is
+// durable once synced, and a crash before keeps it or not, as it does a
+// write.
+// A rename of a file over a directory fails, as rename(2) fails with
+// EISDIR, and changes nothing (#689's re-check of area A).
+func TestARenameOverADirectoryFails(t *testing.T) {
+	d := simfs.New()
+	ok(t, d.Mkdir("dir"))
+	create(t, d, "f")
+	if err := d.Rename("f", "dir"); !errors.Is(err, simfs.ErrIsDir) {
+		t.Fatalf("a rename of a file over a directory gave %v, want ErrIsDir", err)
+	}
+	if !d.IsDir("dir") {
+		t.Fatal("the directory is gone")
+	}
+	if _, err := d.Open("dir"); err == nil {
+		t.Fatal("a file named as the directory opens")
+	}
+	if _, err := d.Open("f"); err != nil {
+		t.Fatalf("the file is gone: %v", err)
+	}
+}
+
+func TestATruncatePastTheEndGrowsTheFile(t *testing.T) {
+	d := simfs.New()
+	f := create(t, d, "f")
+	ok(t, d.SyncDir())
+	write(t, f, []byte("abc"))
+	ok(t, f.Sync())
+	ok(t, f.Truncate(3+2*simfs.PageBytes))
+	want := append([]byte("abc"), make([]byte, 2*simfs.PageBytes)...)
+	if got := readAll(t, f); !bytes.Equal(got, want) {
+		t.Fatalf("after a truncate past the end the file holds %d bytes, want %d: %q...", len(got), len(want), got[:min(8, len(got))])
+	}
+	p := make([]byte, 100)
+	if n, err := f.ReadAt(p, simfs.PageBytes); n != len(p) || err != nil || !bytes.Equal(p, make([]byte, len(p))) {
+		t.Fatalf("a read in the grown part = %d, %v, %x", n, err, p[:8])
+	}
+	if !d.Unsynced("f") {
+		t.Fatal("the growth needs no sync")
+	}
+	lost, kept := false, false
+	for i := range 64 {
+		c := d.Copy()
+		g := open(t, c, "f")
+		ok(t, g.Truncate(3+3*simfs.PageBytes))
+		c.Crash(rand.New(rand.NewPCG(uint64(i), 7)))
+		switch got := readAll(t, open(t, c, "f")); {
+		case bytes.Equal(got, []byte("abc")):
+			lost = true
+		case len(got) > 3 && len(got) <= 3+3*simfs.PageBytes && bytes.Equal(got[:3], []byte("abc")):
+			// The growth kept, whole or in part, and as zeros: Linux
+			// reads a hole as zeros, never as a torn write's garbage.
+			if i := slices.IndexFunc(got[3:], func(b byte) bool { return b != 0 }); i >= 0 {
+				t.Fatalf("a crash left byte %d of the growth %#x, not zero", 3+i, got[3+i])
+			}
+			kept = true
+		default:
+			t.Fatalf("a crash left %d bytes: %q...", len(got), got[:min(8, len(got))])
+		}
+	}
+	if !lost || !kept {
+		t.Fatalf("crashes before the sync lost the growth %v and kept it %v, want both", lost, kept)
+	}
+	ok(t, f.Sync())
+	if got := d.DurableBytes("f"); !bytes.Equal(got, want) {
+		t.Fatalf("after the sync %d bytes are durable, want %d", len(got), len(want))
 	}
 }

@@ -52,14 +52,20 @@ func (d *disk) call(op simfs.Op, name string, f func() error) error {
 	if err := f(); err != nil {
 		return err
 	}
-	if op == simfs.OpCreate && strings.HasPrefix(name, "pack-") {
-		s.stats.Packs++
-	}
 	return s.afterCall(d.p, op, name)
 }
 
-func isSegment(name string) bool    { return strings.HasSuffix(name, ".wal") }
+// isSegment reports whether name is a segment of the log: main's, or
+// wl's (wal/<index>.seg).
+func isSegment(name string) bool {
+	return strings.HasSuffix(name, ".wal") || strings.HasSuffix(name, ".seg")
+}
+
 func isCheckpoint(name string) bool { return strings.HasPrefix(name, "ckpt-") }
+
+// isWLCheckpoint reports whether name is a file of a wl node's checkpoints:
+// one, one being written, or the pointer.
+func isWLCheckpoint(name string) bool { return strings.HasPrefix(name, "ckpt/") }
 
 // afterCall notes what a disk call of p made durable, and crashes p there
 // once a crash is due. The lock is held.
@@ -70,16 +76,9 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 		return nil
 	}
 	switch {
-	case op == simfs.OpSync && isSegment(name) && n.rootDue > 0 && s.stats.ErasedAtRoot == 0:
-		// The first root is durable once recovery would start from it;
-		// the driver removes what it made obsolete only after this sync
-		// returns.
-		if root, err := recoveredRoot(n); err == nil && root >= n.rootDue {
-			s.stats.ErasedAtRoot++
-			s.takeCheckpoint()
-		}
 	case op == simfs.OpRemove && isSegment(name):
 		n.removedSegment = true
+		s.stats.LogCuts++
 	case op == simfs.OpSyncDir:
 		for _, f := range n.ckptDone {
 			s.ckptWritten(n, f)
@@ -96,6 +95,12 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 			}
 		}
 	}
+	if s.cfg.stageCrash && op == simfs.OpWrite && isSegment(name) && s.wlStageCrash(n, name) {
+		return errDead
+	}
+	if s.cfg.ckptCrash && op == simfs.OpWrite && isWLCheckpoint(name) && s.wlCheckpointCrash(n, name) {
+		return errDead
+	}
 	if s.recoveryDue && !s.healed && op == simfs.OpWrite && isSegment(name) {
 		// Crash between a write of the log and its sync, so that the
 		// restart finds a torn tail to repair, and its recovery crashes
@@ -106,7 +111,7 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 		s.stopNode(n)
 		return errDead
 	}
-	step := op == simfs.OpSyncDir || op == simfs.OpRemove || (op == simfs.OpWrite || op == simfs.OpSync) && isCheckpoint(name)
+	step := op == simfs.OpSyncDir || op == simfs.OpRemove || (op == simfs.OpWrite || op == simfs.OpSync) && (isCheckpoint(name) || isWLCheckpoint(name))
 	if step && s.stepCrashDue && !s.healed && s.rng.IntN(4) == 0 {
 		s.stepCrashDue = false
 		s.stats.StepCrashes++
@@ -168,8 +173,42 @@ func (d *disk) Rename(a, b string) error {
 	return d.call(simfs.OpRename, a, func() error { return d.p.n.disk.Rename(a, b) })
 }
 
+// Free returns the room left on the process's disk (simfs.Disk.Free).
+func (d *disk) Free() int64 {
+	d.s.mu.Lock()
+	defer d.s.mu.Unlock()
+	return d.p.n.disk.Free()
+}
+
 func (d *disk) SyncDir() error {
 	return d.call(simfs.OpSyncDir, "", d.p.n.disk.SyncDir)
+}
+
+// SyncDirOf syncs directory dir alone (simfs.Disk.SyncDirOf), as a wl
+// node's fsync of a directory does through simos. Without it simos took
+// the whole disk's SyncDir, and every directory's sync made every name
+// durable (#689's area-1 review, finding 25).
+func (d *disk) SyncDirOf(dir string) error {
+	return d.call(simfs.OpSyncDir, dir, func() error { return d.p.n.disk.SyncDirOf(dir) })
+}
+
+// Mkdir makes directory name (simfs.Disk.Mkdir).
+func (d *disk) Mkdir(name string) error {
+	return d.call(simfs.OpMkdir, name, func() error { return d.p.n.disk.Mkdir(name) })
+}
+
+// IsDir reports whether name is a directory now (simfs.Disk.IsDir).
+func (d *disk) IsDir(name string) bool {
+	d.s.mu.Lock()
+	defer d.s.mu.Unlock()
+	return d.p.n.disk.IsDir(name)
+}
+
+// Dirs returns the directories made, in order (simfs.Disk.Dirs).
+func (d *disk) Dirs() []string {
+	d.s.mu.Lock()
+	defer d.s.mu.Unlock()
+	return d.p.n.disk.Dirs()
 }
 
 // file is an open file of a process. It knows whether everything written
@@ -223,7 +262,23 @@ func (f *file) Truncate(size int64) error {
 	})
 }
 
+// Allocate allocates the file's space up to size, keeping its size
+// (simfs.Handle.Allocate).
+func (f *file) Allocate(size int64) error {
+	a, ok := f.f.(interface{ Allocate(int64) error })
+	if !ok {
+		return errors.ErrUnsupported
+	}
+	return f.d.call(simfs.OpAllocate, f.name, func() error { return a.Allocate(size) })
+}
+
 func (f *file) Sync() error {
+	if isSegment(f.name) {
+		// wl's log writes are durable when they return: each is a write
+		// and a sync of its segment, which takes the time beforeSync
+		// gives.
+		f.d.s.beforeSync(f.d.p)
+	}
 	return f.d.call(simfs.OpSync, f.name, func() error {
 		if err := f.f.Sync(); err != nil {
 			return err

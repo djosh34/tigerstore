@@ -1,7 +1,6 @@
 package sim
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/k8ssize"
 	"github.com/djosh34/tigerstore/internal/mvcc"
-	tnode "github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
@@ -169,7 +167,7 @@ func (w *watchClient) run(wait, dropAt int64) {
 
 // follow reads stream ws until it breaks or the client leaves it, and
 // returns when to open the next one and when to drop that.
-func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64) {
+func (w *watchClient) follow(ws watchStream, dropAt int64) (int64, int64) {
 	s := w.sim
 	var ask <-chan time.Time
 	for {
@@ -203,7 +201,7 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 				ws.Close()
 				return 0, dropAt
 			}
-		case r := <-ws.C:
+		case r := <-ws.Responses():
 			t.Stop()
 			ws.Taken(r)
 			s.mu.Lock()
@@ -227,9 +225,6 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 			t.Stop()
 			s.mu.Lock()
 			s.tracef("watch %d: stream ended: %v", w.id, ws.Err())
-			if errors.Is(ws.Err(), tnode.ErrWatchTooSlow) {
-				s.stats.WatchersCut++
-			}
 			s.mu.Unlock()
 			return 0, dropAt
 		case <-p.ctx.Done():
