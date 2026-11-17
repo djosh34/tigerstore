@@ -7,6 +7,9 @@ import (
 	"math/rand"
 	"strings"
 	"testing"
+
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/proto"
 )
 
 // A Txn's range of keys reads the values of the records it returns
@@ -217,7 +220,17 @@ func TestATxnsRangeAnswersAsARangeDoes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if fmt.Sprintf("%x", want) != fmt.Sprintf("%x", tr.kvs) || count != wantCount || more != wantMore {
+			shaped := func(kvs [][]byte) string {
+				var out [][]byte
+				for _, kv := range kvs {
+					if r.keysOnly {
+						kv = keysOnly(kv, &r) // as the Txn's caller does
+					}
+					out = append(out, kv)
+				}
+				return fmt.Sprintf("%x", out)
+			}
+			if shaped(want) != shaped(tr.kvs) || count != wantCount || more != wantMore {
 				t.Fatalf("seed %d, range %d %+v: %d records, count %d, more %v; a Range gives %d, %d, %v", seed, q, r, len(tr.kvs), count, more, len(want), wantCount, wantMore)
 			}
 		}
@@ -279,5 +292,37 @@ func TestATxnsRangeOfManyKeysKeepsNoScratch(t *testing.T) {
 	}
 	if cap(n.selKeys) > selKeep {
 		t.Fatalf("the scratch keeps %d keys past the Txn", cap(n.selKeys))
+	}
+}
+
+// A Txn of many ranges sorted by value, each within one piece, holds one
+// piece of candidates at a time and its reply's records: on a 96 MiB
+// node, 128 ranges each over one value of 1 MiB out of memory, keys only,
+// loaded all 128 MiB into the store before (the re-check of 7ab6166c,
+// area B, Astra's probe).
+func TestATxnOfManyRangesSortedByValueStaysWithinTheBudget(t *testing.T) {
+	const budget = 96 << 20
+	n := txnRangeStore(t, budget, 128, 1<<20)
+	n.st.setBudget(budget, 0)
+	req := &pb.TxnRequest{}
+	for i := range 128 {
+		key := fmt.Sprintf("/a/%03d", i)
+		req.Success = append(req.Success, &pb.RequestOp{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{
+			Key: []byte(key), RangeEnd: []byte(key + "\x00"), SortTarget: pb.RangeRequest_VALUE, SortOrder: pb.RangeRequest_ASCEND, KeysOnly: true,
+		}}})
+	}
+	wire, err := proto.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := txnRun{reply: true, req: wire, rev: n.st.rev + 1}
+	if _, _, err = n.runBranch(&tr, wire, true, 0); err != nil {
+		t.Fatal(err)
+	}
+	if tr.big || len(tr.kvs) != 128 {
+		t.Fatalf("refused %v, %d records; want all 128 keys", tr.big, len(tr.kvs))
+	}
+	if used := n.st.slab.used; used > 4<<20 {
+		t.Fatalf("the store holds %d MiB of records after the Txn's ranges", used>>20)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"unsafe"
 )
 
 // A reply built at once is bounded by maxMsg (#721's second ruling): a
@@ -86,6 +87,14 @@ func (n *node) txnRange(t *txnRun, r *rangeReq) (count int64, more bool, err err
 		// past one piece as serveRange finds them: past it before the
 		// next key.
 		cand, past := int64(0), false
+		loaded := n.selKeys[:0] // the candidates whose records it loads
+		defer func() {
+			clear(loaded)
+			n.selKeys = loaded[:0]
+			if cap(loaded) > selKeep {
+				n.selKeys = nil
+			}
+		}()
 		st.tree.scan(r.key, end, func(id uint32) bool {
 			s, ok := st.stateAt(id, rev)
 			if !ok {
@@ -96,6 +105,9 @@ func (n *node) txnRange(t *txnRun, r *rangeReq) (count int64, more bool, err err
 				return false
 			}
 			cand += int64(kvSize(int(st.keys[id].klen), int(s.vlen), s.create, s.mod, s.ver, s.lease))
+			if k := &st.keys[id]; k.rec == 0 && (rev == 0 || k.mod <= rev) {
+				loaded = append(loaded, sortedKey{id: id})
+			}
 			return true
 		})
 		if t.big {
@@ -109,16 +121,32 @@ func (n *node) txnRange(t *txnRun, r *rangeReq) (count int64, more bool, err err
 			return 0, false, err
 		}
 		size := 0
-		for _, kv := range t.kvs[k0:] {
+		for i, kv := range t.kvs[k0:] {
 			if r.keysOnly {
+				// Copied without the value, the record loaded may go.
 				kv = keysOnly(kv, r)
+				t.kvs[k0+i] = kv
 			}
 			size += sizeBytesField(2, len(kv))
 		}
 		if !t.sized(size) {
 			clear(t.kvs[k0:])
 			t.kvs = t.kvs[:k0]
-			return 0, false, nil
+			count, more = 0, false
+		}
+		// The candidates it loaded and does not return go again: a Txn of
+		// many such ranges holds one piece of candidates at a time, and
+		// its reply's records (the re-check of 7ab6166c, area B).
+		kept := make(map[*byte]bool, len(t.kvs)-k0)
+		for _, kv := range t.kvs[k0:] {
+			kept[unsafe.SliceData(kv)] = true
+		}
+		for _, k := range loaded {
+			key := &st.keys[k.id]
+			if key.rec != 0 && !kept[unsafe.SliceData(st.slab.bytes(key.rec, int(key.rlen)))] {
+				st.slab.free(key.rec, int(key.rlen))
+				key.rec, key.rlen = 0, 0
+			}
 		}
 		return count, more, nil
 	}
