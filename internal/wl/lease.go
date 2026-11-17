@@ -332,6 +332,19 @@ func (n *node) sawRenewed(id int64) {
 // leaseKeepAlive proposes a renewal; the stream stays open for the next.
 func (n *node) leaseKeepAlive(c *client, s *stream, msg []byte) {
 	n.openStream(c, s)
+	// Planted (B35): the leader answers a keepalive of a lease whose
+	// revoke it decided at once, alive with the lease's TTL, from its
+	// lease table and not through the log. Its decision is on time (lease
+	// rule 1); the revoke then cuts the TTL the client was told (rule 3),
+	// or takes effect on another node first (rule 2).
+	if planted.On("B35") {
+		if id, err := leaseID(msg); err == nil {
+			if _, revoking := n.leases.revoking[id]; revoking && n.st.leases[id] != nil {
+				n.replyKeepAlive(c, s, id, n.st.leases[id].ttl)
+				return
+			}
+		}
+	}
 	n.addOp(mkHandle(c, s.id), kLeaseKeepAlive, msg)
 }
 
@@ -503,15 +516,20 @@ func (n *node) applyLeaseKeepAlive(req []byte, c *client, s *stream) error {
 		n.sawRenewed(id)
 	}
 	if c != nil {
-		var w msgW
-		w.begin(c, s, sizeBytesField(1, n.hdrSize())+sizeVarintField(2, uint64(id))+sizeVarintField(3, uint64(ttl)))
-		n.writeHdr(&w)
-		writeVarintNZ(&w, 2, uint64(id))
-		writeVarintNZ(&w, 3, uint64(ttl))
-		w.end()
-		n.markDirty(&c.sock)
+		n.replyKeepAlive(c, s, id, ttl)
 	}
 	return nil
+}
+
+// replyKeepAlive answers a keepalive of lease id on its open stream s.
+func (n *node) replyKeepAlive(c *client, s *stream, id, ttl int64) {
+	var w msgW
+	w.begin(c, s, sizeBytesField(1, n.hdrSize())+sizeVarintField(2, uint64(id))+sizeVarintField(3, uint64(ttl)))
+	n.writeHdr(&w)
+	writeVarintNZ(&w, 2, uint64(id))
+	writeVarintNZ(&w, 3, uint64(ttl))
+	w.end()
+	n.markDirty(&c.sock)
 }
 
 // checkLease fails a put whose lease does not exist.
