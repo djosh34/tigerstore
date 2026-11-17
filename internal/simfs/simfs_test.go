@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
 
@@ -497,6 +498,26 @@ func TestUnwrittenImage(t *testing.T) {
 // segment to there and reads its last block back (#726). The growth is
 // durable once synced, and a crash before keeps it or not, as it does a
 // write.
+// A rename of a file over a directory fails, as rename(2) fails with
+// EISDIR, and changes nothing (#689's re-check of area A).
+func TestARenameOverADirectoryFails(t *testing.T) {
+	d := simfs.New()
+	ok(t, d.Mkdir("dir"))
+	create(t, d, "f")
+	if err := d.Rename("f", "dir"); !errors.Is(err, simfs.ErrIsDir) {
+		t.Fatalf("a rename of a file over a directory gave %v, want ErrIsDir", err)
+	}
+	if !d.IsDir("dir") {
+		t.Fatal("the directory is gone")
+	}
+	if _, err := d.Open("dir"); err == nil {
+		t.Fatal("a file named as the directory opens")
+	}
+	if _, err := d.Open("f"); err != nil {
+		t.Fatalf("the file is gone: %v", err)
+	}
+}
+
 func TestATruncatePastTheEndGrowsTheFile(t *testing.T) {
 	d := simfs.New()
 	f := create(t, d, "f")
@@ -525,8 +546,11 @@ func TestATruncatePastTheEndGrowsTheFile(t *testing.T) {
 		case bytes.Equal(got, []byte("abc")):
 			lost = true
 		case len(got) > 3 && len(got) <= 3+3*simfs.PageBytes && bytes.Equal(got[:3], []byte("abc")):
-			// The growth kept, whole or in part; a torn tail may hold
-			// garbage, as a torn write's does (Prefix).
+			// The growth kept, whole or in part, and as zeros: Linux
+			// reads a hole as zeros, never as a torn write's garbage.
+			if i := slices.IndexFunc(got[3:], func(b byte) bool { return b != 0 }); i >= 0 {
+				t.Fatalf("a crash left byte %d of the growth %#x, not zero", 3+i, got[3+i])
+			}
 			kept = true
 		default:
 			t.Fatalf("a crash left %d bytes: %q...", len(got), got[:min(8, len(got))])

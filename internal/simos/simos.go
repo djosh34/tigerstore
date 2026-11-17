@@ -22,6 +22,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 	"github.com/djosh34/tigerstore/internal/wl"
 )
@@ -119,13 +120,15 @@ func (n *Node) name(path string) (string, error) {
 }
 
 // sysErr is err as the system's: a missing file is ENOENT, one that
-// exists already EEXIST.
+// exists already EEXIST, a rename over a directory EISDIR.
 func sysErr(err error) error {
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return unix.ENOENT
 	case errors.Is(err, fs.ErrExist):
 		return unix.EEXIST
+	case errors.Is(err, simfs.ErrIsDir):
+		return unix.EISDIR
 	}
 	return err
 }

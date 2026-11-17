@@ -94,6 +94,10 @@ const (
 type write struct {
 	off int
 	p   []byte
+	// zero says it is the zeros of a truncate that grew the file: a
+	// crash keeps them or not, but never tears them into garbage, as
+	// Linux reads a hole as zeros.
+	zero bool
 }
 
 // limit is where the clean pages' bytes end: past it they read as zeros.
@@ -469,7 +473,11 @@ func (f *file) survive(rng *rand.Rand, img Image, c *Counts) pages {
 			p := stream[at : at+k]
 			for i := range p {
 				if at+i >= garbage && w.off+i >= synced {
-					p[i] = byte(rng.Uint32())
+					// Drawn for a hole too, so that every other crash
+					// draws as before.
+					if b := byte(rng.Uint32()); !w.zero {
+						p[i] = b
+					}
 				}
 			}
 			kept.write(w.off, p)
@@ -520,7 +528,7 @@ func pieces(w write, unit int) []write {
 	var out []write
 	for off, end := w.off, w.off+len(w.p); off < end; {
 		next := min((off/unit+1)*unit, end)
-		out = append(out, write{off, w.p[off-w.off : next-w.off]})
+		out = append(out, write{off, w.p[off-w.off : next-w.off], w.zero})
 		off = next
 	}
 	return out
@@ -598,7 +606,7 @@ func (d *Disk) Copy() *Disk {
 			g.dirty[i] = &b
 		}
 		for _, w := range f.pending {
-			g.pending = append(g.pending, write{w.off, slices.Clone(w.p)})
+			g.pending = append(g.pending, write{w.off, slices.Clone(w.p), w.zero})
 		}
 		c.names[name] = g
 		c.durable[name] = g
@@ -632,7 +640,7 @@ func (d *Disk) Clone() *Disk {
 			g.dirty[i] = &b
 		}
 		for _, w := range f.pending {
-			g.pending = append(g.pending, write{w.off, slices.Clone(w.p)})
+			g.pending = append(g.pending, write{w.off, slices.Clone(w.p), w.zero})
 		}
 		g.bad = maps.Clone(f.bad)
 		m[f] = g
@@ -781,6 +789,9 @@ func (d *Disk) Misread(rng *rand.Rand, name string) bool {
 
 // ErrNoSpace is the error of a write that ran out of space.
 var ErrNoSpace = errors.New("simfs: no space left on device")
+
+// ErrIsDir is the error of a rename of a file over a directory.
+var ErrIsDir = errors.New("simfs: is a directory")
 
 // ErrIO is the error of a failed operation.
 var ErrIO = errors.New("simfs: input/output error")
@@ -954,6 +965,10 @@ func (d *Disk) Rename(oldName, newName string) error {
 	f, ok := d.names[oldName]
 	if !ok || !d.isDir(parentDir(newName)) {
 		return fs.ErrNotExist
+	}
+	if d.isDir(newName) {
+		// rename(2) of a file over a directory fails with EISDIR.
+		return ErrIsDir
 	}
 	if g, ok := d.names[newName]; ok {
 		d.tracef("rename %s (file %d) to %s, replacing file %d", oldName, f.id, newName, g.id)
@@ -1161,7 +1176,7 @@ func (h *Handle) write(off int, p []byte) {
 		k += m
 	}
 	f.size = max(f.size, off+len(p))
-	f.pending = append(f.pending, write{off, p})
+	f.pending = append(f.pending, write{off, p, false})
 	// The drive writes a bad sector again in a spare place.
 	for s := range h.f.bad {
 		if s*SectorBytes < off+len(p) && (s+1)*SectorBytes > off {
@@ -1232,6 +1247,7 @@ func (h *Handle) Truncate(size int64) error {
 	}
 	if gap := int(size) - f.size; gap > 0 {
 		h.write(f.size, make([]byte, gap))
+		h.f.pending[len(h.f.pending)-1].zero = true
 	}
 	return nil
 }
