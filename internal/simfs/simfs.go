@@ -211,6 +211,32 @@ type dirOp struct {
 	op       Op
 	name, to string
 	f        *file
+	// synced: a sync of its directory made it durable (SyncDirOf), but
+	// an operation before it is not yet.
+	synced bool
+}
+
+// parentDir is the directory that holds name, "" for the top.
+func parentDir(name string) string {
+	if dir, _, ok := strings.CutLast(name, "/"); ok {
+		return dir
+	}
+	return ""
+}
+
+// apply makes o in dir, a directory's names.
+func (o *dirOp) apply(dir map[string]*file) {
+	switch {
+	case o.op == OpCreate:
+		dir[o.name] = o.f
+	case dir[o.name] != o.f:
+		// A rename or removal of a file whose creation was lost.
+	case o.op == OpRename:
+		delete(dir, o.name)
+		dir[o.to] = o.f
+	default:
+		delete(dir, o.name)
+	}
 }
 
 // New returns an empty disk.
@@ -308,23 +334,13 @@ func (d *Disk) Crash(rng *rand.Rand) { d.CrashImage(rng, Image(rng.IntN(4))) }
 func (d *Disk) CrashImage(rng *rand.Rand, img Image) {
 	dir := maps.Clone(d.durable)
 	for _, o := range d.dirOps {
-		kept := rng.IntN(2) == 0
+		kept := o.synced || rng.IntN(2) == 0
 		d.tracef("crash: %v %s (file %d) %s, kept %v", o.op, o.name, o.f.id, o.to, kept)
 		if !kept {
 			d.Counts.LostDirOps++
 			continue
 		}
-		switch {
-		case o.op == OpCreate:
-			dir[o.name] = o.f
-		case dir[o.name] != o.f:
-			// A rename or removal of a file whose creation was lost.
-		case o.op == OpRename:
-			delete(dir, o.name)
-			dir[o.to] = o.f
-		default:
-			delete(dir, o.name)
-		}
+		o.apply(dir)
 	}
 	d.names = make(map[string]*file, len(dir))
 	for _, name := range sortedNames(dir) {
@@ -809,6 +825,33 @@ func (d *Disk) Remove(name string) error {
 	d.tracef("remove %s (file %d)", name, f.id)
 	delete(d.names, name)
 	d.dirOps = append(d.dirOps, dirOp{op: OpRemove, name: name, f: f})
+	return nil
+}
+
+// SyncDirOf makes durable the directory operations of directory dir, ""
+// for the top: the creations, renames and removals of the names it
+// holds, as an fsync of the directory does. A rename between two
+// directories is durable with either's. Each directory is synced on its
+// own: a sync of wal/ leaves a rename in ckpt/ to the next crash (#689's
+// area-1 review).
+func (d *Disk) SyncDirOf(dir string) error {
+	if err := d.fault(OpSyncDir, dir); err != nil {
+		return err
+	}
+	for i := range d.dirOps {
+		o := &d.dirOps[i]
+		if parentDir(o.name) == dir || o.op == OpRename && parentDir(o.to) == dir {
+			o.synced = true
+		}
+	}
+	// The synced operations before any that is not go to the durable
+	// names at once.
+	k := 0
+	for ; k < len(d.dirOps) && d.dirOps[k].synced; k++ {
+		d.dirOps[k].apply(d.durable)
+	}
+	d.dirOps = slices.Delete(d.dirOps, 0, k)
+	d.tracef("sync the directory %q", dir)
 	return nil
 }
 

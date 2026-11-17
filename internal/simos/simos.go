@@ -141,7 +141,10 @@ type file struct {
 }
 
 // dir is a directory a node opened to sync its names.
-type dir struct{ n *Node }
+type dir struct {
+	n    *Node
+	name string
+}
 
 func (f *file) close() error { return f.h.Close() }
 func (d *dir) close() error  { return nil }
@@ -152,7 +155,7 @@ func (n *Node) Open(path string, flags int, _ uint32) (int, error) {
 		return -1, err
 	}
 	if flags&unix.O_DIRECTORY != 0 || name == "" || n.isDir(name) {
-		return n.add(&dir{n: n}), nil
+		return n.add(&dir{n: n, name: name}), nil
 	}
 	h, err := n.disk.Open(name)
 	switch {
@@ -368,6 +371,11 @@ func (o *OS) Fsync(fd int) error {
 	case *file:
 		return v.h.Sync()
 	case *dir:
+		// A directory's sync makes its own names durable, where the
+		// disk tells directories apart (simfs.Disk.SyncDirOf).
+		if d, ok := v.n.disk.(interface{ SyncDirOf(string) error }); ok {
+			return d.SyncDirOf(v.name)
+		}
 		return v.n.disk.SyncDir()
 	}
 	return unix.EINVAL
