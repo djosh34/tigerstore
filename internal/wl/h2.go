@@ -750,6 +750,10 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 		if ok, err := c.decodeBlock(block, true); err != nil || !ok {
 			return cmp.Or[error](err, errProtocol)
 		}
+		if !keepsTable(block) {
+			// The table moved: a cached block may mean other headers now.
+			clear(c.hdrCache)
+		}
 		s.ended = true
 		if sideKind(s.kind) {
 			n.sideEnded(c, s)

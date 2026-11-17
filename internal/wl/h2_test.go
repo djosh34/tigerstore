@@ -46,3 +46,38 @@ func TestEndedStreamsGiveTheirBuffersBack(t *testing.T) {
 			streams, size>>10, kept>>20, keptBufs*keptBufMax>>20)
 	}
 }
+
+// A client's trailers that change its HPACK table empty the cache of
+// header blocks, as a request's do: the bytes of a cached block that
+// names a table entry mean another header once the table moved, and the
+// node served them as the call the cache said (#689's area-4 review).
+func TestTrailersThatChangeTheTableEmptyTheHeaderCache(t *testing.T) {
+	c, _ := flowClient(t)
+	st, err := newStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.node.st = st
+	c.node.maxStreams = 100
+	path := "/etcdserverpb.KV/Range"
+	ct := append([]byte{0x0f, 0x10, 16}, "application/grpc"...) // content-type, not indexed
+	block := func(sid uint32, end bool, b ...byte) {
+		t.Helper()
+		c.blockSid, c.blockEnd = sid, end
+		if err := c.headers(c.node, b, false); err != nil {
+			t.Fatalf("stream %d: %v", sid, err)
+		}
+	}
+	// POST, https, and :path taken into the table, at index 62.
+	block(3, false, append(append([]byte{0x83, 0x87, 0x44, byte(len(path))}, path...), ct...)...)
+	// The same request naming the table's entry: cached.
+	block(5, false, append([]byte{0x83, 0x87, 0x80 | 62}, ct...)...)
+	if len(c.hdrCache) != 1 {
+		t.Fatalf("the cache holds %d blocks, want the one that names the table", len(c.hdrCache))
+	}
+	// Stream 3's trailers take x: y into the table, at 62.
+	block(3, true, 0x40, 1, 'x', 1, 'y')
+	if len(c.hdrCache) != 0 {
+		t.Fatalf("after trailers that changed the table, the cache holds %d blocks", len(c.hdrCache))
+	}
+}
