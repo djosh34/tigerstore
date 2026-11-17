@@ -282,7 +282,7 @@ func (n *node) planBig(b *bigRange, c *client, s *stream) bool {
 		// Sorting by value needs every value at once, past what the node
 		// builds at once: the one range it refuses, a deliberate
 		// difference from etcd (#721's second ruling; README).
-		n.replyError(c, s.id, codeResourceExhausted, fmt.Sprintf("etcdserver: a range sorted by value is refused past one piece of its reply (%d bytes): the sort needs every value at once", n.oneShot()))
+		n.refuseValueSort(c, s)
 		return false
 	}
 	end := r.end
@@ -373,6 +373,12 @@ func (n *node) planBig(b *bigRange, c *client, s *stream) bool {
 	n.stats.bigRanges++
 	b.recount()
 	return true
+}
+
+// refuseValueSort refuses the reply of stream s, which sorts a range by
+// value past one piece.
+func (n *node) refuseValueSort(c *client, s *stream) {
+	n.replyError(c, s.id, codeResourceExhausted, fmt.Sprintf("etcdserver: a range sorted by value is refused past one piece of its reply (%d bytes): the sort needs every value at once", n.oneShot()))
 }
 
 // sortedKeys sorts a range's keys as kvSort sorts their records: the

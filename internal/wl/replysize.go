@@ -3,7 +3,6 @@ package wl
 import (
 	"fmt"
 	"math"
-	"slices"
 	"sort"
 )
 
@@ -27,96 +26,158 @@ func (n *node) replyTooLarge(c *client, s *stream, size int) {
 	n.replyError(c, s.id, codeResourceExhausted, fmt.Sprintf("grpc: trying to send message larger than max (%d vs. %d)", size, maxMsg))
 }
 
-// rangeRecsSize is the size of the record fields range r returns, from
-// its keys' states alone: no value is read. It follows rangeKVs: the
-// range's keys at its revision, filtered, sorted and cut to its limit.
-// Which records a range sorted by value keeps under a limit depends on
-// the values, so for one it is the most that limit many of them take.
-func (n *node) rangeRecsSize(r *rangeReq) int {
+// recSize is the size of the record field of key id in state s as range
+// r returns it: without its value if r is keys only, and then without its
+// lease too unless r sorts by value (keysOnly).
+func (n *node) recSize(r *rangeReq, id uint32, s *ckptState) int {
+	klen := int(n.st.keys[id].klen)
+	if r.keysOnly {
+		lease := int64(0)
+		if r.sortTarget == sortByValue {
+			lease = s.lease
+		}
+		return sizeBytesField(2, kvSize(klen, 0, s.create, s.mod, s.ver, lease))
+	}
+	return sizeBytesField(2, kvSize(klen, int(s.vlen), s.create, s.mod, s.ver, s.lease))
+}
+
+// txnRange reads the records of Txn t's range r into t.kvs, once their
+// sizes say t's reply takes them, and returns the range's count and
+// whether its limit left some out. Its caller makes the records keys only
+// for a range of keys only (keysOnly). Only the node that answers reads
+// them, none once t's reply is refused.
+//
+// A range of keys picks its records from their states before any value
+// is read, filtered, sorted and cut to its limit as rangeKVs does (etcd's
+// executeRange), and reads only theirs (#731's ruling, B5): read first,
+// a sort by mod revision with a limit of one loaded every candidate's
+// value. One sorted by value reads its candidates, as a Range does, while
+// they are one piece (oneShot), and is sized by the records it returns
+// (B8); past one piece it is refused as a Range is. Kubernetes' Txns
+// range over one key, which is read as before.
+func (n *node) txnRange(t *txnRun, r *rangeReq) (count int64, more bool, err error) {
+	if !t.reply {
+		return 0, false, nil
+	}
 	st := n.st
-	if r.countOnly {
-		return 0
-	}
+	k0 := len(t.kvs)
 	rev := max(r.rev, 0)
-	size := func(id uint32, s *ckptState) int {
-		klen := int(st.keys[id].klen)
-		if r.keysOnly {
-			lease := int64(0)
-			if r.sortTarget == sortByValue {
-				lease = s.lease
-			}
-			return sizeBytesField(2, kvSize(klen, 0, s.create, s.mod, s.ver, lease))
-		}
-		return sizeBytesField(2, kvSize(klen, int(s.vlen), s.create, s.mod, s.ver, s.lease))
-	}
 	if len(r.end) == 0 {
-		id, ok := st.find(r.key)
-		if !ok {
-			return 0
+		size := 0
+		if !r.countOnly {
+			if id, ok := st.find(r.key); ok {
+				if s, ok := st.stateAt(id, rev); ok && r.passes(&s) {
+					size = n.recSize(r, id, &s)
+				}
+			}
 		}
-		if s, ok := st.stateAt(id, rev); ok && r.passes(&s) {
-			return size(id, &s)
+		if !t.sized(size) {
+			return 0, false, nil
 		}
-		return 0
+		t.kvs, count, more, err = n.rangeKVs(r, t.kvs, 0)
+		return count, more, err
 	}
 	end := r.end
 	if len(end) == 1 && end[0] == 0 {
 		end = nil
+	}
+	if r.sortTarget == sortByValue && !r.countOnly {
+		// Its candidates' records, as rangeKVs reads them all to sort.
+		cand := int64(0)
+		st.tree.scan(r.key, end, func(id uint32) bool {
+			if s, ok := st.stateAt(id, rev); ok {
+				cand += int64(kvSize(int(st.keys[id].klen), int(s.vlen), s.create, s.mod, s.ver, s.lease))
+			}
+			return true
+		})
+		if t.big {
+			return 0, false, nil
+		}
+		if cand > n.oneShot() {
+			t.big, t.byValue = true, true
+			return 0, false, nil
+		}
+		if t.kvs, count, more, err = n.rangeKVs(r, t.kvs, 0); err != nil {
+			return 0, false, err
+		}
+		size := 0
+		for _, kv := range t.kvs[k0:] {
+			if r.keysOnly {
+				kv = keysOnly(kv, r)
+			}
+			size += sizeBytesField(2, len(kv))
+		}
+		if !t.sized(size) {
+			clear(t.kvs[k0:])
+			t.kvs = t.kvs[:k0]
+			return 0, false, nil
+		}
+		return count, more, nil
 	}
 	limit := int64(math.MaxInt64)
 	if r.limit > 0 {
 		limit = r.limit
 	}
 	sorts := r.sortsOther()
-	total, taken := 0, int64(0)
-	keys := n.sizeKeys[:0]
+	var matched int64
+	keys := n.selKeys[:0]
+	defer func() {
+		clear(keys)
+		n.selKeys = keys[:0]
+	}()
 	st.tree.scan(r.key, end, func(id uint32) bool {
 		s, ok := st.stateAt(id, rev)
-		if !ok || !r.passes(&s) {
+		if !ok {
 			return true
 		}
-		if sorts {
-			v := int64(size(id, &s))
-			switch r.sortTarget {
-			case sortByVersion:
-				v = s.ver
-			case sortByCreate:
-				v = s.create
-			case sortByMod:
-				v = s.mod
-			}
-			keys = append(keys, sortedKey{id: id, v: v})
+		count++
+		if r.countOnly || !r.passes(&s) {
 			return true
 		}
-		if taken == limit {
-			return false
+		if matched++; !sorts && matched > limit {
+			return true // past its limit, it only counts
 		}
-		taken++
-		total += size(id, &s)
+		v := int64(0)
+		switch r.sortTarget {
+		case sortByVersion:
+			v = s.ver
+		case sortByCreate:
+			v = s.create
+		case sortByMod:
+			v = s.mod
+		}
+		keys = append(keys, sortedKey{id: id, v: v})
 		return true
 	})
 	if sorts {
-		switch {
-		case int64(len(keys)) <= limit:
-		case r.sortTarget == sortByValue:
-			// The largest limit many, whichever the values pick.
-			slices.SortFunc(keys, func(a, b sortedKey) int { return int(b.v - a.v) })
-		default:
-			// As planBig sorts them, so ties come out the same.
-			var x sort.Interface = sortedKeys{keys, st, r.sortTarget}
-			if r.order() == sortDescend {
-				x = sort.Reverse(x)
-			}
-			sort.Sort(x)
+		// As shapeKVs sorts the records, so ties come out the same.
+		var x sort.Interface = sortedKeys{keys, st, r.sortTarget}
+		if r.order() == sortDescend {
+			x = sort.Reverse(x)
 		}
-		for _, k := range keys[:min(int64(len(keys)), limit)] {
-			s, _ := st.stateAt(k.id, rev)
-			total += size(k.id, &s)
+		sort.Sort(x)
+	}
+	keys = keys[:min(int64(len(keys)), limit)]
+	size := 0
+	for _, k := range keys {
+		s, _ := st.stateAt(k.id, rev)
+		size += n.recSize(r, k.id, &s)
+	}
+	if !t.sized(size) {
+		return 0, false, nil
+	}
+	for _, k := range keys {
+		var rec []byte
+		if r.keysOnly {
+			rec = st.keyAt(k.id, rev)
+		} else if rec, err = st.at(k.id, rev); err != nil {
+			return 0, false, err
+		}
+		if rec != nil {
+			t.kvs = append(t.kvs, rec)
 		}
 	}
-	clear(keys)
-	n.sizeKeys = keys[:0]
-	return total
+	return count, r.limit > 0 && matched > r.limit, nil
 }
 
 // delRecsSize is the size of the record fields a DeleteRange with

@@ -513,7 +513,8 @@ func (s pbKVSort) Less(i, j int) bool {
 //     refused past it with ResourceExhausted, saying why; sorted by mod
 //     revision, the same range is served in pieces;
 //   - a Txn whose ranges match past maxMsg gets ResourceExhausted, its
-//     put applied; one within maxMsg is served;
+//     put applied; one within maxMsg is served; one sorted by value is
+//     served or refused as the Range is (#731's ruling);
 //   - a DeleteRange with prev_kv past maxMsg likewise, its keys deleted.
 //
 // A refused reply reads none of its values: the node loads none back.
@@ -596,6 +597,31 @@ func TestTheRepliesBuiltAtOnceAreBounded(t *testing.T) {
 	}
 	if r, err := txn(8, "/w/within"); err != nil || len(r.Responses[0].GetResponseRange().Kvs) != 8 {
 		t.Fatalf("a Txn within maxMsg: %v", err)
+	}
+	// A Txn whose range sorts by value: served within one piece, as the
+	// Range is; past it, refused as the Range is, its put applied, no
+	// value read (#731's ruling, B8).
+	byValueTxn := func(end int, put string) (*pb.TxnResponse, error) {
+		return kv.Txn(ctx, &pb.TxnRequest{Success: []*pb.RequestOp{
+			{Request: &pb.RequestOp_RequestRange{RequestRange: byValue(end)}},
+			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte(put), Value: []byte("x")}}},
+		}}, big)
+	}
+	if r, err := byValueTxn(8, "/w/byvalue-within"); err != nil {
+		t.Fatalf("a Txn sorted by value within one piece: %v", err)
+	} else if kvs := r.Responses[0].GetResponseRange().Kvs; len(kvs) != 8 || string(kvs[0].Key) != "/sv/07" || string(kvs[7].Key) != "/sv/00" {
+		t.Fatalf("a Txn sorted by value within one piece: %d records", len(kvs))
+	}
+	away()
+	before = loads()
+	if _, err := byValueTxn(keys, "/w/byvalue-past"); status.Code(err) != codes.ResourceExhausted || !strings.Contains(err.Error(), "sorted by value") {
+		t.Fatalf("a Txn sorted by value past one piece: %v, want ResourceExhausted that says why", err)
+	}
+	if n := loads() - before; n != 0 {
+		t.Fatalf("the refused Txn sorted by value read %d values back", n)
+	}
+	if r, err := c.Get(ctx, "/w/byvalue-past"); err != nil || len(r.Kvs) != 1 {
+		t.Fatalf("the refused Txn sorted by value's put: %v, %v; want it applied", r, err)
 	}
 	if s := seeNode(l); s.cout > sizeFor(budget).clientBufs()+2*maxMsg+4*outBuf {
 		t.Fatalf("the clients' send buffers hold %d KiB", s.cout>>10)

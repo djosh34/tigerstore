@@ -128,8 +128,8 @@ type node struct {
 	fetching  map[int64]bool
 	// bigs are the range replies sent in pieces (bigrange.go).
 	bigs []*bigRange
-	// sizeKeys is rangeRecsSize's scratch (replysize.go).
-	sizeKeys []sortedKey
+	// selKeys is txnRange's scratch (replysize.go).
+	selKeys []sortedKey
 	// reserved is what the clients hold of the reserve; roomWait are
 	// the ranges whose replies wait for room in it, served again once
 	// roomFreed (reserve.go).

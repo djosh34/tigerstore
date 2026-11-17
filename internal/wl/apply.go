@@ -593,6 +593,9 @@ type txnRun struct {
 	reply bool
 	size  int
 	big   bool
+	// byValue is set when a range sorted by value passed one piece: the
+	// reply is refused as a Range's is (txnRange).
+	byValue bool
 }
 
 // sized adds n bytes of records to t's reply, and reports whether the
@@ -638,6 +641,8 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 		s.readonly = !t.wrote // for its request type, etcd's ReadonlyTxn
 	}
 	switch {
+	case c != nil && t.byValue:
+		n.refuseValueSort(c, s)
 	case c != nil && t.big:
 		n.replyTooLarge(c, s, t.size)
 	case c != nil:
@@ -693,14 +698,9 @@ func (n *node) runBranch(t *txnRun, ops []byte, ok bool, depth int) (int, int, e
 			}
 			k0 := len(t.kvs)
 			n.gs.rangesN++
-			var count int64
-			var more bool
-			// Only the node that answers reads the records, once their
-			// sizes say the reply takes them.
-			if t.reply && t.sized(n.rangeRecsSize(&r)) {
-				if t.kvs, count, more, err = n.rangeKVs(&r, t.kvs, 0); err != nil {
-					return 0, 0, err
-				}
+			count, more, err := n.txnRange(t, &r)
+			if err != nil {
+				return 0, 0, err
 			}
 			if r.keysOnly {
 				for i := k0; i < len(t.kvs); i++ {
