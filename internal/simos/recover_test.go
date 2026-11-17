@@ -61,7 +61,7 @@ func (l *lockedDisk) Create(name string) (wal.File, error) {
 	}
 	return h, err
 }
-func (l *lockedDisk) Open(name string) (wal.File, error)   { return l.open(name, l.d.Open) }
+func (l *lockedDisk) Open(name string) (wal.File, error) { return l.open(name, l.d.Open) }
 
 func (l *lockedDisk) open(name string, f func(string) (wal.File, error)) (wal.File, error) {
 	var h wal.File
@@ -86,7 +86,7 @@ func (l *lockedDisk) Rename(o, n string) error {
 		return err
 	})
 }
-func (l *lockedDisk) SyncDir() error           { return l.do(l.d.SyncDir) }
+func (l *lockedDisk) SyncDir() error { return l.do(l.d.SyncDir) }
 
 func (l *lockedDisk) SyncDirOf(dir string) error {
 	var hold bool
@@ -169,9 +169,9 @@ type recovered struct {
 	// to choose the crash (simfs.Disk.CrashKeeping), not as a crash
 	// leaves it.
 	clone bool
-	last uint64
-	hs   raftpb.HardState
-	disk *simfs.Disk
+	last  uint64
+	hs    raftpb.HardState
+	disk  *simfs.Disk
 }
 
 func (r *recovered) Recovered(last uint64, hs *raftpb.HardState, _ func() []wl.LogValue) {

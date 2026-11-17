@@ -282,3 +282,47 @@ func TestAWatchCatchesUpWithAPageCacheThatHoldsNothing(t *testing.T) {
 	}
 	t.Fatalf("the watch from revision %d caught up %d of %d events in 30 s", first, got, 2*keys)
 }
+
+// isolate cuts host off the network, until heal.
+func (nw *memNet) isolate(h string) {
+	nw.mu.Lock()
+	if nw.cut == nil {
+		nw.cut = map[string]bool{}
+	}
+	nw.cut[h] = true
+	var closing []hostConn
+	k := 0
+	for _, c := range nw.conns {
+		if c.from == h || c.to == h {
+			closing = append(closing, c)
+			continue
+		}
+		nw.conns[k] = c
+		k++
+	}
+	nw.conns = nw.conns[:k]
+	nw.mu.Unlock()
+	for _, c := range closing {
+		_ = c.a.Close()
+		_ = c.b.Close()
+	}
+}
+
+// heal puts host h back on the network.
+func (nw *memNet) heal(h string) {
+	nw.mu.Lock()
+	delete(nw.cut, h)
+	nw.mu.Unlock()
+}
+
+// from is the network as host h dials it.
+func (nw *memNet) from(h string) Net { return hostNet{nw: nw, host: h} }
+
+type hostNet struct {
+	nw   *memNet
+	host string
+}
+
+func (n hostNet) Dial(ctx context.Context, addr string) (net.Conn, error) {
+	return n.nw.dial(ctx, n.host, addr)
+}
