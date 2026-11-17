@@ -71,22 +71,30 @@ func (n *node) serveReads() {
 				if c == nil {
 					continue
 				}
+				msg := b.buf[r.off : r.off+r.len]
+				// Auth is checked again with the store as applied up to the
+				// read's index, as etcd checks a read after its barrier: a
+				// permission revoked or auth enabled since the read came in
+				// holds for it.
+				if n.auth.enabled && !n.authAllows(c, s, msg) {
+					continue
+				}
 				switch r.kind {
 				case kMemberList:
 					n.replyMembers(c, s)
 					continue
 				case kLeaseTTL:
-					if err := n.leaseTimeToLive(c, s, b.buf[r.off:r.off+r.len]); err != nil {
+					if err := n.leaseTimeToLive(c, s, msg); err != nil {
 						n.replyError(c, s.id, codeInvalidArgument, "bad request")
 					}
 					continue
 				}
 				var req rangeReq
-				if err := parseRange(b.buf[r.off:r.off+r.len], &req); err != nil {
+				if err := parseRange(msg, &req); err != nil {
 					n.replyError(c, s.id, codeInvalidArgument, "bad request")
 					continue
 				}
-				n.serveRange(c, s, &req, b.buf[r.off:r.off+r.len])
+				n.serveRange(c, s, &req, msg)
 			}
 			n.freeBatches = append(n.freeBatches, b)
 			continue

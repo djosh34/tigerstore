@@ -6,9 +6,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"testing"
+	"time"
 
 	"go.etcd.io/etcd/api/v3/authpb"
 	etcdpb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/grpc/codes"
 )
 
 // authNode is a node with root and a user alice of role rw, which may
@@ -69,5 +71,36 @@ func TestACheckpointKeepsTheAuthStore(t *testing.T) {
 	}
 	if err := a.permitted(authInfo{user: "alice", revision: a.revision}, []byte("a"), []byte("c"), true); err != nil {
 		t.Fatalf("alice's permissions read back: %v", err)
+	}
+}
+
+// A linearizable read is checked again once its read index is applied,
+// as etcd checks a read after its barrier: a permission revoked while it
+// waited is refused it. Checked only as it came in, alice would read b
+// past the revoke.
+func TestALinearizableReadIsCheckedAfterItsIndex(t *testing.T) {
+	n := authNode(t)
+	c, s := flowClient(t)
+	c.node = n
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	n.now = time.Now()
+	n.tokens["alice-token"] = &simpleToken{user: "alice"}
+	s.token = "alice-token"
+
+	if err := n.request(c, s, rangeMsg("b")); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.reads) != 1 {
+		t.Fatalf("%d reads waiting for their index, want 1", len(n.reads))
+	}
+	revoke := &etcdpb.InternalRaftRequest{AuthRoleRevokePermission: &etcdpb.AuthRoleRevokePermissionRequest{Role: "rw", Key: []byte("a"), RangeEnd: []byte("c")}, Header: &etcdpb.RequestHeader{Username: "root", AuthRevision: n.auth.revision}}
+	if _, err := n.applyAuth(revoke, 2); err != nil {
+		t.Fatal(err)
+	}
+	n.readBatches = append(n.readBatches, &readBatch{reads: n.reads, buf: n.readBuf, known: true, index: n.applied})
+	n.serveReads()
+	if got := n.gs.calls[kRange].handled[codes.PermissionDenied]; got != 1 {
+		t.Fatalf("%d reads refused for a permission revoked while they waited, want 1 (answers %v)", got, n.gs.calls[kRange].handled)
 	}
 }
