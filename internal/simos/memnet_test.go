@@ -221,6 +221,12 @@ func (c *memConn) Ready() (bool, bool) {
 	return len(c.in.buf) > 0 || c.in.closed || c.closed, true
 }
 
+func (c *memConn) Hup() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed || c.in.closed
+}
+
 func (c *memConn) OnChange(f func()) {
 	c.mu.Lock()
 	c.notify = f

@@ -392,8 +392,20 @@ func TestASocketBehavesAsTheSystems(t *testing.T) {
 	if k, err := o.Write(afd, []byte("x")); err != nil || k != 1 {
 		t.Fatalf("a blocking write: %d %v", k, err)
 	}
+	// Registered for EPOLLRDHUP alone, as a node registers a connection it
+	// stopped reading, it is woken by the other end's close and not by
+	// bytes (#689's re-check of d33d3711: woken by them, the node read on).
+	if err := o.EpollCtl(ep, unix.EPOLL_CTL_MOD, bfd, unix.EPOLLRDHUP, 3); err != nil {
+		t.Fatal(err)
+	}
+	if k, err := o.EpollWait(ep, events, 0); err != nil || k != 0 {
+		t.Fatalf("epoll for EPOLLRDHUP alone on a socket with bytes to read: %d %v %v", k, events[:k], err)
+	}
 	if err := o.Close(afd); err != nil {
 		t.Fatal(err)
+	}
+	if k, err := o.EpollWait(ep, events, 1000); err != nil || k != 1 || events[0].Events != unix.EPOLLRDHUP {
+		t.Fatalf("epoll for EPOLLRDHUP alone once the other end closed: %d %v %v", k, events[:k], err)
 	}
 	if k, err := o.Read(bfd, p); err != nil || string(p[:k]) != "x" {
 		t.Fatalf("the read of what came before the close: %q %v", p[:k], err)

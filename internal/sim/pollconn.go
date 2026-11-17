@@ -95,6 +95,15 @@ func (c *conn) TryWrite(b []byte) (int, error) {
 	return k, nil
 }
 
+// Hup reports whether the other end closed or the connection ended, as
+// epoll's EPOLLRDHUP.
+func (c *conn) Hup() bool {
+	s := c.s
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return c.closed || c.in.err != nil || c.in.eof
+}
+
 // Ready reports whether a read and a write would not wait; when a read
 // would until a time, the watcher is told then.
 func (c *conn) Ready() (readable, writable bool) {

@@ -75,6 +75,8 @@ func (e *eventfd) ready() (bool, bool) {
 	return e.n > 0, true
 }
 
+func (e *eventfd) hup() bool { return false }
+
 func (e *eventfd) onChange(f func()) {
 	e.mu.Lock()
 	e.watch = f
@@ -82,11 +84,13 @@ func (e *eventfd) onChange(f func()) {
 }
 
 func (s *socket) ready() (bool, bool) { return s.c.Ready() }
+func (s *socket) hup() bool           { return s.c.Hup() }
 func (s *socket) onChange(f func())   { s.c.OnChange(f) }
 
 // source is what an epoll watches: an eventfd or a socket.
 type source interface {
 	ready() (readable, writable bool)
+	hup() bool
 	onChange(f func())
 }
 
@@ -221,8 +225,17 @@ func (ep *epoll) collect(events []unix.EpollEvent) int {
 		}
 		readable, writable := src.ready()
 		var got uint32
-		if readable && r.events&(unix.EPOLLIN|unix.EPOLLRDHUP) != 0 {
+		// As the system's: bytes wake only a registration for EPOLLIN,
+		// and EPOLLRDHUP comes of the other end's close alone. Woken
+		// for bytes through EPOLLRDHUP, a node read a connection it had
+		// stopped reading, paused for its send buffer or a call's token,
+		// and its buffers grew past the client pool (#689's re-check of
+		// d33d3711).
+		if readable && r.events&unix.EPOLLIN != 0 {
 			got |= unix.EPOLLIN
+		}
+		if r.events&unix.EPOLLRDHUP != 0 && src.hup() {
+			got |= unix.EPOLLRDHUP
 		}
 		if writable && r.events&unix.EPOLLOUT != 0 {
 			got |= unix.EPOLLOUT

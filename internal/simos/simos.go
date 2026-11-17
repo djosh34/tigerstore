@@ -38,6 +38,9 @@ type Conn interface {
 	TryWrite(p []byte) (int, error)
 	// Ready reports whether a read and a write would not wait.
 	Ready() (readable, writable bool)
+	// Hup reports whether the other end closed or the connection ended,
+	// what epoll reports as EPOLLRDHUP.
+	Hup() bool
 	// OnChange sets f, called when Ready may have changed, nil to stop.
 	OnChange(f func())
 }
