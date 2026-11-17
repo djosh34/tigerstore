@@ -207,10 +207,12 @@ func (cw *ckptWriter) run() {
 	}
 }
 
-// closeFile closes the file of a checkpoint that the store will not take.
+// closeFile closes the file of a checkpoint that the store will not take,
+// once.
 func (cw *ckptWriter) closeFile() {
 	if cw.f != nil {
 		_ = cw.f.Close()
+		cw.f = nil
 	}
 }
 
@@ -588,7 +590,8 @@ func (n *node) ckptDone() error {
 // checkpoint and point CURRENT at it: it is waited for, so that it never
 // writes CURRENT alongside, or after, an install's pointer (#689's
 // area-1 review, finding 1). That checkpoint is then whole, and stays
-// while CURRENT may name it.
+// while CURRENT may name it. Its file is closed here: a writer that wrote
+// its last chunk leaves the file to ckptDone, which an abort never runs.
 func (n *node) abortCkpt() {
 	r := n.ckpt
 	if r == nil {
@@ -597,6 +600,7 @@ func (n *node) abortCkpt() {
 	n.ckpt = nil
 	close(r.w.quit)
 	<-r.w.done
+	r.w.closeFile()
 	_ = n.sys.remove(filepath.Join(n.ckptDir, r.w.tmp))
 	n.st.release()
 }

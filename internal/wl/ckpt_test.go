@@ -666,6 +666,36 @@ func TestAnAbortedCheckpointNeverPointsCurrent(t *testing.T) {
 	}
 }
 
+// A checkpoint whose writer wrote its last chunk, aborted before the loop
+// took the result, has its file closed: the writer leaves the file to
+// ckptDone, which an abort never runs, and the descriptor stayed open
+// (#689's re-check of area A).
+func TestAnAbortedCheckpointClosesItsFile(t *testing.T) {
+	n, l := ckptNode(t)
+	putValue(t, n.st, l, "/a", "v")
+	if err := n.startCkpt(5, 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	r := n.ckpt
+	for !r.lastOut {
+		if err := n.ckptStep(false); err != nil {
+			t.Fatal(err)
+		}
+		if n.ckpt == nil {
+			t.Fatal("the checkpoint was taken before its last chunk went out")
+		}
+	}
+	<-r.w.done
+	f := r.w.f
+	if f == nil {
+		t.Fatal("the writer that wrote its last chunk holds no file")
+	}
+	n.abortCkpt()
+	if _, err := f.Stat(); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("the aborted checkpoint's file is still open: Stat gave %v", err)
+	}
+}
+
 // installFixture is a follower with a checkpoint at index 3 that CURRENT
 // names, and the leader's snapshot at index 9 it receives.
 func installFixture(t *testing.T) (*node, *pb.Snapshot) {
