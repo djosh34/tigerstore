@@ -123,10 +123,17 @@ func (n *node) authRequest(c *client, s *stream, msg []byte) error {
 		n.reject(c, s, badRequest(err))
 		return nil
 	}
-	ai, ok, err := n.identify(c, s)
-	if err != nil {
-		n.reject(c, s, err)
-		return nil
+	// etcd checks no token of an Authenticate (v3_server.go's
+	// AuthInfoFromCtx is skipped for it): a client whose token went, or
+	// names an entry not applied, gets a new one.
+	var ai authInfo
+	ok := false
+	if s.kind != kAuthenticate {
+		var err error
+		if ai, ok, err = n.identify(c, s); err != nil {
+			n.reject(c, s, err)
+			return nil
+		}
 	}
 	r := &etcdpb.InternalRaftRequest{}
 	if ok {

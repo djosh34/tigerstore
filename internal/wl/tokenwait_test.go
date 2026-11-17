@@ -122,6 +122,17 @@ func TestACallWaitsForTheEntryOfItsToken(t *testing.T) {
 		t.Fatalf("a token of two dots: waits for %d, %d refused", c.tokenWait, refused(kRange))
 	}
 
+	// An Authenticate with a token that names an entry not applied
+	// neither waits nor is refused for it: etcd checks no token of one.
+	s13 := c.newStream(13, kAuthenticate)
+	s13.token = "abc.99"
+	if err := n.request(c, s13, appendBytesField(appendBytesField(nil, 1, []byte("alice")), 2, []byte("pw"))); err != nil {
+		t.Fatal(err)
+	}
+	if c.tokenWait != 0 || refused(kAuthenticate) != 0 {
+		t.Fatalf("an Authenticate with a stale token: waits for %d, %d refused as an invalid token", c.tokenWait, refused(kAuthenticate))
+	}
+
 	// A token of an applied entry, unknown: refused at once.
 	feed(tokenCall(t, &enc, 11, "/etcdserverpb.KV/Range", "abc.11", &etcdpb.RangeRequest{Key: []byte("b")}))
 	if c.tokenWait != 0 || refused(kRange) != 2 {
