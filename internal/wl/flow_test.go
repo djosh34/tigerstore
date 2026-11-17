@@ -305,3 +305,35 @@ func TestAStreamsWindowIsGivenBackAsItsDataComesIn(t *testing.T) {
 		t.Fatalf("stream 1 was given back %d bytes of the 3000 it sent, want 2000 at the 1500 mark", given)
 	}
 }
+
+// The requests of side calls (Lock, Election, health) whose client has
+// not ended its side count in its share of requests sent in part, and
+// are refused past it: kept uncounted, one connection that never ended
+// its calls held any memory it sent. Ended, a call's request goes out
+// of the share.
+func TestSideCallRequestsCountInTheClientsShare(t *testing.T) {
+	n, _ := testNode(t)
+	n.connIn, n.connOut, n.sizes = 4<<20, 1<<20, sizeFor(0)
+	n.sideReqs = map[handle][]byte{}
+	c := newClient(&handoff{fd: -1, plain: true}, n)
+	c.takeBufs()
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	msg := make([]byte, 1<<20)
+	refused := 0
+	for i := range 8 {
+		s := c.newStream(uint32(2*i+1), kSide)
+		n.sideRequest(c, s, msg)
+		if !s.open {
+			refused++
+		}
+	}
+	if c.partial > n.connIn || refused == 0 {
+		t.Fatalf("8 side calls of 1 MiB kept %d MiB against a share of %d MiB, %d refused", c.partial>>20, n.connIn>>20, refused)
+	}
+	held := c.partial
+	n.takeSideReq(mkHandle(c, 1))
+	if c.partial != held-int64(len(msg)) {
+		t.Fatalf("a call's request taken left %d bytes counted, want %d", c.partial, held-int64(len(msg)))
+	}
+}

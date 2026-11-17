@@ -140,23 +140,47 @@ func newSideServers(cli *clientv3.Client) *sideServers {
 }
 
 // sideRequest keeps the request of side call s until its client ends
-// its side. As grpc-go's, a call takes exactly one request.
+// its side. As grpc-go's, a call takes exactly one request. The request
+// kept counts in its client's share of requests sent in part, and is
+// refused past it as one sent in part is: kept uncounted, the Lock or
+// Election calls a client never ended held any memory it sent (#689's
+// area-4 review).
 func (n *node) sideRequest(c *client, s *stream, msg []byte) {
 	h := mkHandle(c, s.id)
-	if _, ok := n.sideReqs[h]; ok {
-		delete(n.sideReqs, h)
+	if _, ok := n.takeSideReq(h); ok {
 		n.replyError(c, s.id, codeInternal, "cardinality violation: received multiple request messages for non-client-streaming RPC")
 		return
 	}
+	k := int64(len(msg))
+	if c.partial+k > n.connIn || n.cpool+k > n.sizes.clientInBufs() {
+		n.reject(c, s, errTooManyRequests)
+		return
+	}
 	n.sideReqs[h] = bytes.Clone(msg)
+	c.partial += k
+	c.grow(int(k))
+}
+
+// takeSideReq takes the request kept for the side call of h out of its
+// client's share.
+func (n *node) takeSideReq(h handle) ([]byte, bool) {
+	req, ok := n.sideReqs[h]
+	if !ok {
+		return nil, false
+	}
+	delete(n.sideReqs, h)
+	if c, _ := n.clientOf(h); c != nil {
+		c.partial -= int64(len(req))
+		c.grow(-len(req))
+	}
+	return req, true
 }
 
 // sideEnded starts side call s, whose client ended its side, with its
 // one request.
 func (n *node) sideEnded(c *client, s *stream) {
 	h := mkHandle(c, s.id)
-	req, ok := n.sideReqs[h]
-	delete(n.sideReqs, h)
+	req, ok := n.takeSideReq(h)
 	switch {
 	case !ok:
 		n.replyError(c, s.id, codeInternal, "cardinality violation: received no request message from non-client-streaming RPC")
@@ -167,7 +191,7 @@ func (n *node) sideEnded(c *client, s *stream) {
 
 // cancelSide ends the context of the side call of h, if it has one.
 func (n *node) cancelSide(h handle) {
-	delete(n.sideReqs, h)
+	n.takeSideReq(h)
 	if cancel, ok := n.sideCalls[h]; ok {
 		cancel()
 		delete(n.sideCalls, h)
@@ -181,6 +205,7 @@ func (n *node) cancelSides(idx int) {
 			n.cancelSide(h)
 		}
 	}
+	// The closed client's share went with it (client.dropAll).
 	for h := range n.sideReqs {
 		if i, _, _ := h.parts(); i == idx {
 			delete(n.sideReqs, h)
