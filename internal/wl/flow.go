@@ -65,6 +65,28 @@ func (c *client) hold(s *stream, data, trailer []byte) {
 	}
 }
 
+// holdFirst puts the message stream sid held last before its others,
+// none of which is under way while a large response is written in the
+// stream (drain): the rest keep their order.
+func (c *client) holdFirst(sid uint32) {
+	f := &c.flow
+	first, last := -1, -1
+	for i, h := range f.held {
+		if h.sid == sid {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+	}
+	if first == last {
+		return
+	}
+	h := f.held[last]
+	copy(f.held[first+1:last+1], f.held[first:last])
+	f.held[first] = h
+}
+
 // windowUpdate adds inc to stream sid's window, or the connection's for
 // sid 0, and sends what the windows take now.
 func (c *client) windowUpdate(sid uint32, inc int64) {

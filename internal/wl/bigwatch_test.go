@@ -357,3 +357,99 @@ func TestTwoLargeWatchResponsesOnOneStreamComeWhole(t *testing.T) {
 		t.Fatalf("%d watch responses went in pieces, want both", k)
 	}
 }
+
+// A watch canceled between its fragments loses no other watch's event:
+// clientv3 v3.7.2 drops any other response while it joins a watch's
+// fragments, until a canceled one (watch.go:590–637), so the cancel goes
+// out before what waited behind the fragments (#689's re-check, D3).
+// Before, the other watch's event went first and was dropped.
+func TestAWatchCanceledBetweenItsFragmentsLosesNoOtherWatchsEvent(t *testing.T) {
+	c, _ := flowClient(t)
+	n := c.node
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	n.connOut = 1 << 20 // the first fragment fills it
+	c.plain = true
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	s := c.newStream(3, kWatch)
+	s.watch = true
+	c.flow.conn, s.win = 1<<30, 1<<30
+	st.rev++
+	for _, key := range []string{"/a/1", "/a/2", "/a/3"} {
+		id, err := st.intern([]byte(key))
+		if err != nil {
+			t.Fatal(err)
+		}
+		value := strings.Repeat("v", 1<<20)
+		if _, err := st.put(id, []byte(value), 0, st.rev, l.add(value), false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st.endApply()
+	watch := func(id int64, key, end string, fragment bool) int32 {
+		i := n.w.add(watcher{sock: 0, gen: 1, sid: s.id, id: id, key: []byte(key), end: []byte(end), syncRev: st.rev, fragment: fragment})
+		s.wids = append(s.wids, i)
+		return i
+	}
+	ia := watch(1, "/a/", "/a0", true)
+	ib := watch(2, "/a/1", "", false)
+	if !n.startBigWatch(ia, &n.w.ws[ia], c, s, revStart(st, st.rev)) {
+		t.Fatal("watch 1's response did not start")
+	}
+	a := n.bigWatches[len(n.bigWatches)-1]
+	if !n.stepBigWatch(a) || !a.frag || !s.big {
+		t.Fatalf("watch 1's fragments are not under way: frag %v, stream held %v", a.frag, s.big)
+	}
+	id, _ := st.find([]byte("/a/1"))
+	kv, err := st.putAt(id, st.rev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.writeEvents(c, s, &n.w.ws[ib], []event{{key: id, rev: st.rev, kv: kv}})
+	if err := n.watchRequest(c, s, appendBytesField(nil, 2, appendVarintField(nil, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	n.connOut = 1 << 30
+	for n.stepBigWatch(a) {
+	}
+	n.endBigWatch(a)
+	var data []byte
+	for f := c.out; len(f) > 0; {
+		size := int(f[0])<<16 | int(f[1])<<8 | int(f[2])
+		if f[3] == frData && binary.BigEndian.Uint32(f[5:9]) == s.id {
+			data = append(data, f[9:9+size]...)
+		}
+		f = f[9+size:]
+	}
+	// clientv3 v3.7.2's joining and dispatch (watch.go:590–637).
+	var cur *pb.WatchResponse
+	got, canceled := false, false
+	for len(data) > 0 {
+		size := int(binary.BigEndian.Uint32(data[1:5]))
+		r := new(pb.WatchResponse)
+		if err := proto.Unmarshal(data[5:5+size], r); err != nil {
+			t.Fatal(err)
+		}
+		data = data[5+size:]
+		if cur == nil || r.Created || r.Canceled {
+			cur = r
+		} else if cur.WatchId == r.WatchId {
+			cur.Events = append(cur.Events, r.Events...)
+			cur.Fragment = r.Fragment
+		}
+		switch {
+		case r.Canceled:
+			canceled = canceled || r.WatchId == 1
+			cur = nil
+		case cur.Fragment:
+		default:
+			got = got || cur.WatchId == 2 && len(cur.Events) == 1
+			cur = nil
+		}
+	}
+	if !got || !canceled {
+		t.Fatalf("watch 2's event reached the client %v, watch 1's cancel %v; want both", got, canceled)
+	}
+}
