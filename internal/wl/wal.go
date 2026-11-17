@@ -52,7 +52,7 @@ const (
 	syncGap = 800 * time.Microsecond
 	// A sync that wrote loadBytes or more is followed by the next no
 	// sooner than loadGap after it started (wal.gap).
-	loadGap   = 4 * time.Millisecond
+	loadGap   = 8 * time.Millisecond
 	loadBytes = 64 << 10
 
 	recHead       = 4 + 4 + 1
