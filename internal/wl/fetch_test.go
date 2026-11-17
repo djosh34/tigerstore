@@ -189,3 +189,57 @@ func fetchesOf(l *loop) int {
 	})
 	return <-got
 }
+
+// A node that only serves reads keeps its slab within its limit: a read
+// builds a record the budget let go again (store.load), and the turn lets
+// records go again once the slab is past its limit, as an apply does.
+// past-ram's cache mode, nearly all reads, grew each member's slab 64 MB
+// past its limit until its cgroup killed it.
+func TestReadsKeepTheSlabWithinItsLimit(t *testing.T) {
+	loopOf := watchLoops(t)
+	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = 96 << 20 })
+	c := tc.clientOf(t, tc.endpoints[0])
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	const keys = 2000
+	value := strings.Repeat("v", 8<<10)
+	for i := range keys {
+		if _, err := c.Put(ctx, fmt.Sprintf("/r/%04d", i), value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l := loopOf(tc.ids[0])
+	slab := func() (used, limit int64, loads uint64) {
+		got := make(chan [3]int64, 1)
+		l.post(func() error {
+			st := l.n.st
+			got <- [3]int64{st.slab.used, st.limit, int64(st.loads)}
+			return nil
+		})
+		r := <-got
+		return r[0], r[1], uint64(r[2])
+	}
+	_, limit, loads := slab()
+	if limit > keys*int64(len(value))/2 {
+		t.Fatalf("the slab's limit is %d bytes, which leaves most of the %d keys' records in memory", limit, keys)
+	}
+	for i := range keys {
+		if _, err := c.Get(ctx, fmt.Sprintf("/r/%04d", i), clientv3.WithSerializable()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, after := slab(); after == loads {
+		t.Fatal("the reads built no record again")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		used, limit, _ := slab()
+		if used <= max(limit, 0) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("after the reads the slab holds %d bytes, past its limit of %d", used, limit)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

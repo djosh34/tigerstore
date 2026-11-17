@@ -1016,6 +1016,8 @@ func (l *loop) run() error {
 		if n.wal.deferred {
 			n.wal.kick()
 		}
+		// The records this turn's reads built again go within the budget.
+		n.st.keepWithin()
 		tickEnd := time.Now()
 		n.proposeBatch(n.now)
 		n.askReads(l.tick)

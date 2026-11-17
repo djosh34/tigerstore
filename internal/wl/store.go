@@ -757,9 +757,25 @@ func (st *store) endApply() {
 		st.slab.free(st.freeLater[i], int(st.freeLater[i+1]))
 	}
 	st.freeLater = st.freeLater[:0]
+	st.keepWithin()
+	st.trimSteps(trimStep)
+}
+
+// keepWithin lets go of records past the slab's limit and gives back the
+// memory past it. An apply ends with it, and so does each turn of the
+// loop: a read builds the records it finds let go again (load), and a node
+// that serves reads alone grew its slab past its budget (past-ram's cache
+// mode). Neither holds a record's bytes past its end: a reply copies them.
+func (st *store) keepWithin() {
+	if st.budget == 0 {
+		return
+	}
+	st.relimit()
+	if st.slab.used <= st.limit && int64(st.slab.top) <= st.limit+st.budget/32 {
+		return
+	}
 	st.fit()
 	st.shrinkSlab()
-	st.trimSteps(trimStep)
 }
 
 // trimStep is the most keys one apply trims the history of.
