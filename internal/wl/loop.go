@@ -1179,6 +1179,7 @@ func (l *loop) flush() {
 		}
 		noIn := false
 		if c, isClient := n.socks[s.idx].(*client); isClient {
+			n.giveRoom(c, false)
 			if c.paused && c.waiting() <= n.connOut/2 {
 				c.paused = false
 				resumed = append(resumed, c)
@@ -1203,6 +1204,7 @@ func (l *loop) flush() {
 	}
 	clear(resumed)
 	l.resumed = resumed[:0]
+	n.serveRoomWait()
 }
 
 // sockEvents are the events a socket waits for: input unless paused, its
@@ -1287,6 +1289,9 @@ type counters struct {
 	fetchMost int64
 	// bigRanges counts the range replies sent in pieces (bigrange.go).
 	bigRanges uint64
+	// roomWaits counts the messages that found the reserve spent
+	// (reserve.go).
+	roomWaits uint64
 
 	// What the batches carried, and how the peers named or carried them.
 	opsByKind, bytesByKind [kinds]int

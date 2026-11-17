@@ -127,6 +127,15 @@ type node struct {
 	bigs []*bigRange
 	// sizeKeys is rangeRecsSize's scratch (replysize.go).
 	sizeKeys []sortedKey
+	// reserved is what the clients hold of the reserve; roomWait are
+	// the ranges whose replies wait for room in it, served again once
+	// roomFreed (reserve.go).
+	reserved  int64
+	roomWait  []awayRead
+	roomFreed bool
+	// roomShort is set from when a message found the reserve spent until
+	// some room comes back: the watches' catch-ups wait for it.
+	roomShort bool
 
 	wal *wal
 

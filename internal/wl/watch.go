@@ -499,9 +499,14 @@ func (n *node) flushEvents() {
 			// goes out ahead of the events it covers.
 			n.writeProgress(c, s, x.id)
 		}
-		if c.slow() {
-			// Its client takes nothing now: the watch catches up from
-			// these events once it does.
+		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id))
+		for e := first; e >= 0; e = w.events[e].next {
+			size += sizeBytesField(11, n.eventSize(x, &w.events[e]))
+		}
+		if c.slow() || !n.msgRoom(c, int64(5+size)) {
+			// Its client takes nothing now, or the reserve has no room
+			// for what passes its share: the watch catches up from these
+			// events once it does.
 			x.syncRev = w.events[first].rev
 			w.unsynced = append(w.unsynced, i)
 			continue
@@ -514,10 +519,6 @@ func (n *node) flushEvents() {
 			}
 			n.writeEvents(c, s, x, evs)
 			continue
-		}
-		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id))
-		for e := first; e >= 0; e = w.events[e].next {
-			size += sizeBytesField(11, n.eventSize(x, &w.events[e]))
 		}
 		var mw msgW
 		mw.begin(c, s, size)
@@ -617,7 +618,20 @@ func (n *node) syncWatchers() error {
 			budget.away = false
 			all := budget.bytes
 			budget.bytes = min(all, room)
-			done, err := n.catchUp(x, &budget, func(evs []event) { n.writeEvents(c, s, x, evs) })
+			done, err := n.catchUp(x, &budget, func(evs []event) bool {
+				size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id))
+				for i := range evs {
+					size += sizeBytesField(11, n.eventSize(x, &evs[i]))
+				}
+				// What passes the share takes the reserve's room, or waits
+				// for the next turn; a client that holds nothing takes its
+				// revision whole, which may pass one message (reserve.go).
+				if !n.msgRoom(c, int64(5+size)) && c.waiting()+c.flow.bytes > 0 {
+					return false
+				}
+				n.writeEvents(c, s, x, evs)
+				return true
+			})
 			budget.bytes = all - (min(all, room) - budget.bytes)
 			if errors.Is(err, errPrevCompacted) {
 				n.writeCompacted(c, s, x)
@@ -647,6 +661,9 @@ func (n *node) syncWatchers() error {
 // waits for no value. Waiting for the next tick, a catch-up of large
 // values went at a share every 100 ms.
 func (n *node) syncReady() bool {
+	if n.roomShort {
+		return false
+	}
 	for _, i := range n.w.unsynced {
 		x := &n.w.ws[i]
 		if !x.active || x.syncRev == 0 || x.fetchWait {
@@ -684,12 +701,13 @@ var errPrevCompacted = errors.New("the value before an event is compacted")
 
 // catchUp hands emit watcher x's events from x.syncRev on, until the
 // head or until the budget is spent, and then only at a revision's end.
-// It reports whether x reached the head.
+// It reports whether x reached the head. emit reports whether it sent
+// the events; if not, x goes on from where it was, as if it had none.
 //
 // A value the loop would wait on the disk for is read off the loop: x
 // then sends nothing this turn, and catches up from where it was once the
 // values came (fetch.go).
-func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, error) {
+func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event) bool) (bool, error) {
 	st := n.st
 	st.noWait = true
 	away := false
@@ -712,9 +730,8 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 			if away {
 				return false, nil
 			}
-			x.syncRev = ch.rev
-			if len(evs) > 0 {
-				emit(evs)
+			if len(evs) == 0 || emit(evs) {
+				x.syncRev = ch.rev
 			}
 			return false, nil
 		}
@@ -765,11 +782,8 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event)) (bool, err
 		b.events--
 		b.bytes -= int64(len(ev.kv) + len(ev.prev))
 	}
-	if away {
+	if away || len(evs) > 0 && !emit(evs) {
 		return false, nil
-	}
-	if len(evs) > 0 {
-		emit(evs)
 	}
 	return true, nil
 }

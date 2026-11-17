@@ -267,6 +267,21 @@ func (s *sock) openRec() {
 	}
 }
 
+// growFor makes room in out for a message of m bytes as DATA frames in
+// records, with one allocation of what it takes rather than doublings
+// that may leave twice its size: what waits to be sent counts in bytes
+// against a client's share and the reserve (reserve.go).
+func (s *sock) growFor(m int) {
+	need := m + (m/maxFrame+2)*9 + (m/maxPlain+2)*(recOverhead+8) + maxPlain + recOverhead + 8
+	if cap(s.out)-len(s.out) >= need {
+		return
+	}
+	n := make([]byte, len(s.out), len(s.out)+need)
+	s.growOut(cap(n) - cap(s.out))
+	copy(n, s.out)
+	s.out = n
+}
+
 // seal closes the open record and seals it in place.
 func (s *sock) seal() {
 	if s.rec < 0 {
@@ -423,6 +438,8 @@ func (w *msgW) begin(c *client, s *stream, n int) {
 	}
 	if !c.take(s, 5+n) {
 		w.c, w.st, w.held = c, s, make([]byte, 0, 5+n)
+	} else if n > smallMsg {
+		c.growFor(5 + n)
 	}
 	var p [5]byte
 	binary.BigEndian.PutUint32(p[1:], uint32(n))

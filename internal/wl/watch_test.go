@@ -21,7 +21,7 @@ func historyOf(t *testing.T, n *node, x watcher, from int64) []seen {
 	var out []seen
 	x.syncRev = from
 	b := syncBudget{changes: 1 << 30, events: 1 << 30, bytes: 1 << 62}
-	_, err := n.catchUp(&x, &b, func(evs []event) {
+	_, err := n.catchUp(&x, &b, func(evs []event) bool {
 		for _, ev := range evs {
 			s := seen{key: string(n.st.key(ev.key)), rev: ev.rev, del: ev.del}
 			if ev.kv != nil {
@@ -32,6 +32,7 @@ func historyOf(t *testing.T, n *node, x watcher, from int64) []seen {
 			}
 			out = append(out, s)
 		}
+		return true
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -124,10 +125,11 @@ func TestWatchCatchUpKeepsToItsBudgetAndEndsAtARevision(t *testing.T) {
 	n.st.endApply()
 	x := watcher{key: []byte("/k/"), end: prefixEnd([]byte("/k/")), syncRev: 1}
 	var got []int64
-	emit := func(evs []event) {
+	emit := func(evs []event) bool {
 		for _, ev := range evs {
 			got = append(got, ev.rev)
 		}
+		return true
 	}
 	// A budget of ten takes revisions 2 to 11 and stops before 12.
 	b := syncBudget{changes: 10, events: 1 << 10, bytes: 1 << 62}

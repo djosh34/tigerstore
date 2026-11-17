@@ -197,6 +197,8 @@ type client struct {
 	// (loop.input); busy, the tick it last read.
 	starved bool
 	busy    int64
+	// roomHeld is the room of the reserve it holds (reserve.go).
+	roomHeld int64
 }
 
 // The client buffers (sizes.clientOut) bound what waits unsent to each
@@ -405,6 +407,7 @@ func (c *client) dropAll() {
 	if c.in != nil {
 		c.node.active--
 	}
+	c.node.giveRoom(c, true)
 	c.grow(-cap(c.in) - cap(c.pt) - int(c.partial) - cap(c.block))
 	c.growOut(-cap(c.out) - int(c.flow.bytes))
 	c.block = nil

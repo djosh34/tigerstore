@@ -170,23 +170,10 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		n.awaitValues(mkHandle(c, s.id), msg)
 		return
 	}
-	n.gs.rangesN++
-	if err != nil {
-		n.replyError(c, s.id, codeInternal, err.Error())
-		clear(kvs)
-		n.kvs = kvs[:0]
-		return
-	}
-	if r.keysOnly {
+	if err == nil && r.keysOnly {
 		for i, kv := range kvs {
 			kvs[i] = keysOnly(kv, r)
 		}
-	}
-	if s.kind == kRangeStream {
-		n.streamRange(c, s, r, kvs, count, more)
-		clear(kvs)
-		n.kvs = kvs[:0]
-		return
 	}
 	body := sizeBytesField(1, n.hdrSize()) + sizeVarintField(4, uint64(count))
 	if more {
@@ -194,6 +181,30 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 	}
 	for _, kv := range kvs {
 		body += sizeBytesField(2, len(kv))
+	}
+	if s.kind == kRangeStream {
+		// Its chunks' own fields: a few bytes each, of at least 10 keys.
+		body += 32 * (len(kvs)/initialStreamChunk + 1)
+	}
+	if err == nil && !n.msgRoom(c, int64(5+body)) {
+		// The reserve has no room for it: it waits, unbuilt (reserve.go).
+		clear(kvs)
+		n.kvs = kvs[:0]
+		n.waitRoom(mkHandle(c, s.id), msg)
+		return
+	}
+	n.gs.rangesN++
+	if err != nil {
+		n.replyError(c, s.id, codeInternal, err.Error())
+		clear(kvs)
+		n.kvs = kvs[:0]
+		return
+	}
+	if s.kind == kRangeStream {
+		n.streamRange(c, s, r, kvs, count, more)
+		clear(kvs)
+		n.kvs = kvs[:0]
+		return
 	}
 	if !s.began.IsZero() {
 		n.gs.ranges[1].observe(applyBuckets, n.now.Sub(s.began).Seconds())

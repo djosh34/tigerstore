@@ -43,10 +43,17 @@ func TestTheBuffersFitTheBudget(t *testing.T) {
 		}
 		most := int(z.clientInBufs() / (clientInBuf + clientPtBuf))
 		for _, active := range []int{1, most} {
-			if out := int64(active) * z.connOut(active); out > z.clientBufs()-z.clientInBufs() || z.connIn(active) < maxMsg {
-				t.Errorf("budget %d MiB, %d active clients: their send shares sum to %d MiB, past the send half of the client buffers' %d MiB, or a share of requests sent in part of %d KiB",
+			// The shares and the reserve for the messages past them
+			// (#727) fit the send half.
+			if out := int64(active)*z.connOut(active) + z.reserve(); out > z.clientBufs()-z.clientInBufs() || z.connIn(active) < maxMsg {
+				t.Errorf("budget %d MiB, %d active clients: their send shares and the reserve sum to %d MiB, past the send half of the client buffers' %d MiB, or a share of requests sent in part of %d KiB",
 					budget>>20, active, out>>20, z.clientBufs()>>20, z.connIn(active)>>10)
 			}
+		}
+		// One message, at most maxMsg, can pass a share by no more than
+		// the whole reserve.
+		if z.reserve() < maxMsg {
+			t.Errorf("budget %d MiB: a reserve of %d KiB, less than one message of %d KiB", budget>>20, z.reserve()>>10, maxMsg>>10)
 		}
 		t.Logf("budget %d MiB: at most %d clients", budget>>20, z.maxClients())
 		if z.stage&(z.stage-1) != 0 || z.stage < 4<<20 || z.stage > z.ring {

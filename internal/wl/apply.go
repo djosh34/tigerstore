@@ -375,6 +375,9 @@ func (n *node) applyPut(req []byte, voff int64, c *client, s *stream) error {
 		if r.prevKV && prev != nil {
 			size += sizeBytesField(2, len(prev))
 		}
+		if !n.appliedRoom(c, s, size) {
+			return nil
+		}
 		n.beginReply(c, s, &w, size)
 		n.writeHdr(&w)
 		if r.prevKV && prev != nil {
@@ -420,6 +423,11 @@ func (n *node) applyDel(req []byte, c *client, s *stream) error {
 		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(deleted))
 		for _, kv := range kvs {
 			size += sizeBytesField(3, len(kv))
+		}
+		if !n.appliedRoom(c, s, size) {
+			clear(kvs)
+			n.kvs = kvs[:0]
+			return nil
 		}
 		var w msgW
 		n.beginReply(c, s, &w, size)
@@ -844,8 +852,12 @@ func (n *node) responsesSize(ok bool, res []opRes, r0, r1 int, kvs [][]byte) int
 var opField = map[uint8]int{kRange: 1, kPut: 2, kDel: 3, kTxn: 4}
 
 func (n *node) replyTxn(c *client, s *stream, ok bool, res []opRes, r0, r1 int, kvs [][]byte) {
+	size := sizeBytesField(1, n.hdrSize()) + n.responsesSize(ok, res, r0, r1, kvs)
+	if !n.appliedRoom(c, s, size) {
+		return
+	}
 	var w msgW
-	n.beginReply(c, s, &w, sizeBytesField(1, n.hdrSize())+n.responsesSize(ok, res, r0, r1, kvs))
+	n.beginReply(c, s, &w, size)
 	n.writeHdr(&w)
 	n.writeResponses(&w, ok, res, r0, r1, kvs)
 	n.endReply(c, s, &w)
