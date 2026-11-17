@@ -177,16 +177,16 @@ func (w *watches) record(st *store, id uint32, del bool, rev int64, kv, prev []b
 	}
 }
 
-// wantsPrev reports whether a watcher the deletion of key id at rev
-// reaches, as record reaches it, wants the key's previous value (prevKV):
-// the deletion reads it only then.
-func (w *watches) wantsPrev(st *store, id uint32, rev int64) bool {
+// wantsPrev reports whether a watcher the deletion (del) or the put of
+// key id at rev reaches, as record reaches it, wants the key's previous
+// value (prevKV): the change reads it only then.
+func (w *watches) wantsPrev(st *store, id uint32, rev int64, del bool) bool {
 	if len(w.ws) == 0 {
 		return false
 	}
 	wants := func(i int32) bool {
 		x := &w.ws[i]
-		return x.active && x.prevKV && !x.noDel && x.syncRev == 0 && rev >= x.minRev
+		return x.active && x.prevKV && (del && !x.noDel || !del && !x.noPut) && x.syncRev == 0 && rev >= x.minRev
 	}
 	e := w.cover(&st.tree, st.keys[id].dir)
 	if slices.ContainsFunc(e.wfull, wants) {

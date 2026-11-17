@@ -695,14 +695,23 @@ func (st *store) pushHist(k *keyEnt) error {
 // put writes value under key id at revision rev; voff is where the value
 // lies in the log. It returns the old record, if the key was live, which
 // stays valid until the apply ends.
-func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64) (prev []byte, err error) {
+//
+// With wantPrev it returns the key's record before, valid until the
+// apply ends; without, it reads none: a put over a record the budget let
+// go of read its value back from the disk on every node, which nothing
+// but prevKV, ignore_value, ignore_lease or a watcher asks for (#689's
+// area-3 review).
+func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64, wantPrev bool) (prev []byte, err error) {
 	k := &st.keys[id]
-	if prev, err = st.live(id); err != nil {
-		return nil, err
+	if wantPrev {
+		if prev, err = st.live(id); err != nil {
+			return nil, err
+		}
 	}
+	live := k.create != 0
 	key := st.key(id)
 	create, ver := rev, int64(1)
-	if prev != nil {
+	if live {
 		create, ver = k.create, k.ver+1
 	} else if planted.On("B09b") && k.hist != 0 && !st.hist[k.hist].deleted {
 		// Planted: a key created again after a delete keeps its old
@@ -724,16 +733,16 @@ func (st *store) put(id uint32, value []byte, lease int64, rev int64, voff int64
 	if err := st.pushHist(k); err != nil {
 		return nil, err
 	}
-	if prev != nil {
+	if k.rec != 0 {
 		st.freeLater = append(st.freeLater, k.rec, uint64(k.rlen))
 	}
 	appendKV(st.slab.mem[off:off:int(off)+n], key, value, create, rev, ver, lease)
 	old := int64(0)
-	if prev != nil {
+	if live {
 		old = k.lease
 	}
 	st.setLease(id, old, lease)
-	if prev != nil {
+	if live {
 		st.liveBytes -= int64(k.vlen)
 	} else {
 		st.liveKeys++

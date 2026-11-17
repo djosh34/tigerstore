@@ -161,7 +161,7 @@ func TestACheckpointHoldsTheStoreAndItsValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	st.rev++
-	if _, err := st.put(id, []byte("l"), 7, st.rev, l.add("l")); err != nil { // 10
+	if _, err := st.put(id, []byte("l"), 7, st.rev, l.add("l"), true); err != nil { // 10
 		t.Fatal(err)
 	}
 	st.endApply()

@@ -55,7 +55,7 @@ func putValue(t *testing.T, st *store, l *memLog, key, value string) {
 		t.Fatal(err)
 	}
 	st.rev++
-	if _, err := st.put(id, []byte(value), 0, st.rev, l.add(value)); err != nil {
+	if _, err := st.put(id, []byte(value), 0, st.rev, l.add(value), true); err != nil {
 		t.Fatal(err)
 	}
 	st.endApply()
@@ -371,7 +371,7 @@ func TestDeletesReadNoValueNothingAsksFor(t *testing.T) {
 				t.Fatal(err)
 			}
 			st.rev++
-			if _, err := st.put(id, []byte("v"), lease, st.rev, l.add("v")); err != nil {
+			if _, err := st.put(id, []byte("v"), lease, st.rev, l.add("v"), true); err != nil {
 				t.Fatal(err)
 			}
 			st.endApply()
@@ -432,5 +432,40 @@ func TestANoWaitReadOnTmpfsGoesOffTheLoop(t *testing.T) {
 	p := make([]byte, 5)
 	if err := readFileNoWait(f, p, 2); err != nil && !errors.Is(err, errAway) {
 		t.Fatalf("a read of a file on tmpfs that must not wait: %v, want it read or errAway", err)
+	}
+}
+
+// A put over a key whose record the budget let go of reads no value
+// nothing asks for: it read each one back from the disk into the slab, on
+// every node, for a value it then replaced. A put that asks for the value
+// before (prevKV) reads it.
+func TestPutsReadNoValueNothingAsksFor(t *testing.T) {
+	n, l := ckptNode(t)
+	st := n.st
+	st.setBudget(1, 0) // no room for records: each is let go of
+	put := func(prevKV bool) [][]byte {
+		var prevs [][]byte
+		for i := range 100 {
+			st.rev++
+			v := []byte("v") // the request, whose value lies at its start in the log
+			prev, err := n.putKey(&putReq{key: fmt.Appendf(nil, "/p/%03d", i), value: v, prevKV: prevKV}, v, l.add("v"), st.rev)
+			if err != nil {
+				t.Fatal(err)
+			}
+			st.endApply()
+			if prev != nil {
+				prevs = append(prevs, prev)
+			}
+		}
+		return prevs
+	}
+	put(false)
+	loads := st.loads
+	if prevs := put(false); len(prevs) != 0 || st.loads != loads {
+		t.Fatalf("100 puts over let-go records without prevKV: %d values before, %d loads", len(prevs), st.loads-loads)
+	}
+	loads = st.loads
+	if prevs := put(true); len(prevs) != 100 || st.loads-loads < 100 {
+		t.Fatalf("100 puts with prevKV: %d values before, %d loads", len(prevs), st.loads-loads)
 	}
 }

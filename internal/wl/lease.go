@@ -459,7 +459,7 @@ func (n *node) applyLeaseRevoke(req []byte, c *client, s *stream) error {
 	rev := st.rev + 1
 	deleted := false
 	for _, k := range keys {
-		prev, live, err := st.del(k, rev, n.w.wantsPrev(st, k, rev))
+		prev, live, err := st.del(k, rev, n.w.wantsPrev(st, k, rev, true))
 		if err != nil {
 			return err
 		}

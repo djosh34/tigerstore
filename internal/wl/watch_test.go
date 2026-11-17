@@ -82,7 +82,7 @@ func TestWatchHistoryHasAPutThatTheSameTxnDeleted(t *testing.T) {
 	}
 	n.st.rev++ // 3: put both, delete both
 	for _, k := range []uint32{id, fresh} {
-		if _, err := n.st.put(k, []byte("uno"), 0, n.st.rev, l.add("uno")); err != nil {
+		if _, err := n.st.put(k, []byte("uno"), 0, n.st.rev, l.add("uno"), true); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -117,7 +117,7 @@ func TestWatchCatchUpKeepsToItsBudgetAndEndsAtARevision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := n.st.put(id, nil, 0, n.st.rev, 0); err != nil {
+		if _, err := n.st.put(id, nil, 0, n.st.rev, 0, true); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -231,7 +231,10 @@ func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 		}
 	}
 	before := st.keys[id].mod
-	prev, err := st.put(id, value, r.lease, rev, vo)
+	// The value before is read only when something asks for it; a record
+	// in memory costs nothing to hand on.
+	wantPrev := r.prevKV || st.keys[id].rec != 0 || n.w.wantsPrev(st, id, rev, false)
+	prev, err := st.put(id, value, r.lease, rev, vo, wantPrev)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +313,7 @@ func (n *node) deleteRange(r *delReq, rev int64, kvs [][]byte) ([][]byte, int64,
 		}
 		rev := n.plantedRev(rev)
 		before := st.keys[id].mod
-		watched := n.w.wantsPrev(st, id, rev)
+		watched := n.w.wantsPrev(st, id, rev, true)
 		prev, live, err := st.del(id, rev, r.prevKV || watched)
 		if err != nil || !live {
 			return err
