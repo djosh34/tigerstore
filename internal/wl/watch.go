@@ -181,7 +181,9 @@ func (w *watches) record(st *store, id uint32, del bool, rev int64, kv, prev []b
 // key id at rev reaches, as record reaches it, wants the key's previous
 // value (prevKV): the change reads it only then.
 func (w *watches) wantsPrev(st *store, id uint32, rev int64, del bool) bool {
-	if len(w.ws) == 0 {
+	// A key that is not live has no value before to want, and one that
+	// compaction took out of the tree names no directory to look in.
+	if len(w.ws) == 0 || !st.exists(id) {
 		return false
 	}
 	wants := func(i int32) bool {

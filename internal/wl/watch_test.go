@@ -246,3 +246,30 @@ func TestNoProgressComesBeforeAWatchsStartRevision(t *testing.T) {
 		t.Fatal("no periodic progress once the store reached the watch's start")
 	}
 }
+
+// A delete of a key that compaction took out of the tree, while a prefix
+// watch is open, deletes nothing and records nothing: the key names no
+// directory, and looking its watchers up there panicked every node that
+// applied it (96ed3a18, every simulator seed).
+func TestADeleteOfAKeyOutOfTheTreeFindsNoWatcher(t *testing.T) {
+	n := leaseNode(t)
+	l := n.st.log.(*memLog)
+	putValue(t, n.st, l, "/a/1", "one")
+	id, _ := n.st.find([]byte("/a/1"))
+	n.st.rev++
+	if _, _, err := n.st.del(id, n.st.rev, false); err != nil {
+		t.Fatal(err)
+	}
+	n.st.endApply()
+	n.st.compact(n.st.rev)
+	n.st.trimSteps(1 << 20)
+	if k := &n.st.keys[id]; k.klen == 0 || k.inTree {
+		t.Fatalf("the key deleted at the compacted revision: kept %v, in the tree %v; want kept, out of the tree", k.klen != 0, k.inTree)
+	}
+	n.w.add(watcher{key: []byte("/a/"), end: prefixEnd([]byte("/a/")), prefix: true, prevKV: true, active: true})
+	n.st.rev++
+	_, deleted, err := n.deleteRange(&delReq{key: []byte("/a/1")}, n.st.rev, nil)
+	if err != nil || deleted != 0 {
+		t.Fatalf("deleted %d, %v; want 0 deleted", deleted, err)
+	}
+}
