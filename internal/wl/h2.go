@@ -200,8 +200,14 @@ type client struct {
 	// (loop.input); busy, the tick it last read.
 	starved bool
 	busy    int64
-	// roomHeld is the room of the reserve it holds (reserve.go).
-	roomHeld int64
+	// roomHeld is the room of the reserve it holds, and roomWaiters how
+	// many of its messages wait for room (reserve.go).
+	roomHeld    int64
+	roomWaiters int
+	// heldCounted is what its held replies and its ranges waiting for
+	// room keep: past its share with what waits for window, its new
+	// requests are refused, as etcd refuses too many (#689's re-check, B6).
+	heldCounted int64
 	// bigs counts its streams that a watch response is written into in
 	// pieces (stream.big), and bigW is the one large watch response that
 	// may write on the connection, from its first message to its end.
@@ -229,7 +235,7 @@ func (c *client) backedUp() bool { return c.waiting() > c.node.connOut }
 
 // holdsTooMuch reports whether the client's streams hold more than its
 // share for want of window.
-func (c *client) holdsTooMuch() bool { return c.flow.bytes > c.node.connOut }
+func (c *client) holdsTooMuch() bool { return c.flow.bytes+c.heldCounted > c.node.connOut }
 
 // slow reports whether the client's watches send nothing now.
 func (c *client) slow() bool { return c.paused || c.backedUp() || c.holdsTooMuch() }
@@ -707,6 +713,10 @@ func (c *client) frames(n *node) error {
 				return errProtocol
 			}
 			c.dropHeld(sid)
+			// What it held and waited with goes, and the room of the
+			// reserve the dropped bytes took (#689's re-check, B4).
+			n.dropWaits(c, sid)
+			n.giveRoom(c, false)
 			if s := c.get(sid); s != nil {
 				if s.watch {
 					n.closeWatchStream(c, s)

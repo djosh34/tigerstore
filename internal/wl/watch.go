@@ -652,9 +652,10 @@ func (n *node) syncWatchers() error {
 					size += sizeBytesField(11, n.eventSize(x, &evs[i]))
 				}
 				// What passes the share takes the reserve's room, or waits
-				// for the next turn; a client that holds nothing takes its
-				// revision whole, which may pass one message (reserve.go).
-				if !n.msgRoom(c, int64(5+size)) && c.waiting()+c.flow.bytes > 0 {
+				// for the next turn. A revision within one message always
+				// fits the reserve once it has room; one past it goes in
+				// pieces (bigwatch.go, #689's re-check, B7).
+				if !n.msgRoom(c, int64(5+size)) {
 					return false
 				}
 				n.writeEvents(c, s, x, evs)

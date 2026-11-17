@@ -1236,6 +1236,10 @@ func (l *loop) clientTick() {
 		}
 	}
 	l.serveWaiting()
+	if out := n.sizes.connOut(n.active); out > n.connOut && (len(n.roomWait) > 0 || len(n.heldReplies) > 0) {
+		// The shares grew: what waited for room may fit now.
+		n.roomFreed = true
+	}
 	n.connOut, n.connIn = n.sizes.connOut(n.active), n.sizes.connIn(n.active)
 }
 

@@ -187,10 +187,15 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		body += 32 * (len(kvs)/initialStreamChunk + 1)
 	}
 	if err == nil && !n.msgRoom(c, int64(5+body)) {
-		// The reserve has no room for it: it waits, unbuilt (reserve.go).
 		clear(kvs)
 		n.kvs = kvs[:0]
-		n.waitRoom(mkHandle(c, s.id), msg)
+		if n.cannotFit(int64(5 + body)) {
+			// It could never fit: it goes in pieces (reserve.go).
+			n.startBig(c, s, msg)
+			return
+		}
+		// The reserve has no room for it: it waits, unbuilt (reserve.go).
+		n.waitRoom(c, s, msg)
 		return
 	}
 	n.gs.rangesN++

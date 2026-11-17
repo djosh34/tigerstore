@@ -1,0 +1,200 @@
+package wl
+
+import (
+	"strings"
+	"testing"
+)
+
+// The reserve's defects the re-check of 5d361913 found (#689, area B),
+// each on the node's structures alone: no node runs. They began as GPT-6
+// Astra's probes.
+
+// A held Txn takes room for its whole reply, its put's value before
+// included (B3): sized after the value moved into its records, it took
+// room for 16 bytes and wrote 1 MiB.
+func TestAHeldTxnTakesRoomForItsWholeReply(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	putValue(t, st, l, "/a", strings.Repeat("a", 1<<20))
+	id, _ := st.find([]byte("/a"))
+	prev, err := st.live(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := []opRes{{kind: kPut, rev: st.rev + 1, prev: prev}}
+	want := n.txnReplySize(st.rev, true, res, 0, 1, nil)
+	n.holdTxn(c, s, true, res, 0, 1, nil)
+	hr := n.heldReplies[0]
+	if got := sizeBytesField(1, n.hdrSizeAt(hr.hdrRev)) + hr.body; got != want {
+		t.Fatalf("the held Txn takes room for %d bytes, its reply is %d", got, want)
+	}
+}
+
+// A stream reset gives back the room of the reserve its dropped bytes
+// took (B4), though a lone RST_STREAM writes nothing that a flush would
+// give it back at.
+func TestAResetGivesBackTheReservesRoom(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	n.sizes = sizeFor(96 << 20)
+	n.connOut = 384 << 10
+	c.preface, c.lastSid = true, s.id
+	c.flow.conn, s.win = 0, 0
+	if !n.msgRoom(c, 1<<20+5) {
+		t.Fatal("the reserve has no room for the reply")
+	}
+	sendMsg(c, s, 1<<20)
+	n.giveRoom(c, false)
+	c.pr, c.pw = 0, 13
+	putFrameHeader(c.pt, 4, frRST, 0, s.id)
+	clear(c.pt[9:13])
+	if err := c.frames(n); err != nil {
+		t.Fatal(err)
+	}
+	if c.flow.bytes != 0 || c.get(s.id) != nil {
+		t.Fatal("the reset kept the stream or its bytes")
+	}
+	if n.reserved != 0 || c.roomHeld != 0 {
+		t.Fatalf("after the reset the reserve holds %d bytes, the client %d", n.reserved, c.roomHeld)
+	}
+}
+
+// A stream reset lets go of the write reply it held, and of the revision
+// the reply held (B4).
+func TestAResetLetsGoOfAHeldReply(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	n.sizes = sizeFor(96 << 20)
+	n.connOut = 384 << 10
+	n.reserved = n.sizes.reserve()
+	c.preface, c.lastSid = true, s.id
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	putValue(t, st, l, "/a", strings.Repeat("a", 1<<20))
+	id, _ := st.find([]byte("/a"))
+	rec, err := st.live(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.holdDel(c, s, 1, [][]byte{rec})
+	c.pr, c.pw = 0, 13
+	putFrameHeader(c.pt, 4, frRST, 0, s.id)
+	clear(c.pt[9:13])
+	if err := c.frames(n); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.heldReplies) != 0 || len(st.readHolds) != 0 || c.roomWaiters != 0 {
+		t.Fatalf("after the reset %d replies, %d revisions and %d waiters are held", len(n.heldReplies), len(st.readHolds), c.roomWaiters)
+	}
+}
+
+// A message that waited for room behind its own client's bytes, with no
+// room of the reserve held, is tried again once those bytes leave (B2).
+func TestAWaitBehindItsOwnClientIsTriedAgain(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	n.sizes = sizeFor(4 << 30)
+	n.connOut = n.sizes.connOut(1)
+	c.flow.bytes = 32 << 20
+	if n.msgRoom(c, 41<<20) {
+		t.Fatal("the reply fits")
+	}
+	n.waitRoom(c, s, nil)
+	c.flow.bytes = 0 // the bytes before it left
+	n.giveRoom(c, false)
+	n.serveRoomWait()
+	if len(n.roomWait) != 0 {
+		t.Fatalf("the waiting range was not tried again: reserved %d, held %d, freed %v", n.reserved, c.roomHeld, n.roomFreed)
+	}
+}
+
+// A watch's catch-up that finds the reserve spent waits, though its
+// client holds nothing (B7): it built 1 MiB past its share with no room.
+func TestAWatchCatchUpWaitsForTheReserve(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	n.sizes = sizeFor(96 << 20)
+	n.connOut = 384 << 10
+	putValue(t, st, l, "/a", strings.Repeat("a", 1<<20))
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	s.kind = kWatch
+	c.flow.conn, s.win = 0, 0
+	i := n.w.add(watcher{sock: 0, gen: 1, sid: s.id, id: 1, key: []byte("/a"), syncRev: st.rev})
+	n.w.unsynced = append(n.w.unsynced, i)
+	n.reserved = n.sizes.reserve() // other clients hold all of it
+	if err := n.syncWatchers(); err != nil {
+		t.Fatal(err)
+	}
+	if c.flow.bytes != 0 {
+		t.Fatalf("the catch-up built %d bytes with the reserve spent", c.flow.bytes)
+	}
+}
+
+// A range reply that passes its client's share by more than the whole
+// reserve goes in pieces: waiting for room, it waited for good (B1). Two
+// values of 1.4 MiB on a 96 MiB node with a share of 512 KiB make a reply
+// of 2.8 MiB, within oneShot plus its last record, past the share and the
+// reserve of 2 MiB together.
+func TestAReplyPastTheReserveGoesInPieces(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	n.sizes = sizeFor(96 << 20)
+	n.connOut = 512 << 10
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	for _, k := range []string{"/p/a", "/p/b"} {
+		putValue(t, st, l, k, strings.Repeat("v", 1400<<10))
+	}
+	req := appendBytesField(appendBytesField(nil, 1, []byte("/p/")), 2, []byte("/p0"))
+	var r rangeReq
+	if err := parseRange(req, &r); err != nil {
+		t.Fatal(err)
+	}
+	n.serveRange(c, s, &r, req)
+	if len(n.roomWait) != 0 || len(n.bigs) != 1 {
+		t.Fatalf("the reply past the share and the reserve: %d waiting for room, %d in pieces; want it in pieces", len(n.roomWait), len(n.bigs))
+	}
+}
+
+// A client's held replies count against its share: past it, its new
+// requests are refused, so that held replies' keys never grow past the
+// pool (B6). Each held Txn here keeps 1.75 MiB of keys of a keys-only
+// range while the reserve is spent.
+func TestHeldRepliesCountAgainstTheShare(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	n.sizes = sizeFor(96 << 20)
+	n.connOut = n.sizes.connOut(1)
+	n.reserved = n.sizes.reserve()
+	var kvs [][]byte
+	for _, prefix := range []string{"a", "b"} {
+		key := prefix + strings.Repeat("k", 896<<10)
+		putValue(t, st, l, key, "v")
+		id, _ := st.find([]byte(key))
+		kvs = append(kvs, stripValue(st.keyAt(id, 0), false))
+	}
+	res := []opRes{{kind: kRange, rev: st.rev, kvs0: 0, kvs1: 2, count: 2}}
+	n.replyTxn(c, s, true, res, 0, 1, kvs)
+	if len(n.heldReplies) != 1 {
+		t.Fatalf("%d replies held, want the one", len(n.heldReplies))
+	}
+	if !c.holdsTooMuch() {
+		t.Fatalf("a client holding %d bytes of held replies past its share of %d is not refused", c.heldCounted, n.connOut)
+	}
+}
