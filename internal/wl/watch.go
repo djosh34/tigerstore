@@ -408,9 +408,16 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 			}
 			m = rest
 		}
-		found := false
+		found, first := false, false
 		for _, i := range s.wids {
 			if n.owns(c, s, i) && n.w.ws[i].id == wid {
+				if b := c.bigW; b != nil && b.frag && b.wi == i && b.inc == n.w.ws[i].inc && b.h == mkHandleRaw(c.idx, c.gen, s.id) {
+					// Its fragments are under way: clientv3 drops any
+					// other response while it joins them, until a canceled
+					// one. The cancel goes first of what waits behind them
+					// (#689's re-check, D3).
+					first = true
+				}
 				n.w.remove(i)
 				found = true
 			}
@@ -427,11 +434,7 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 		writeVarintNZ(&w, 2, uint64(wid))
 		w.varintField(4, 1)
 		w.end()
-		if b := c.bigW; b != nil && b.frag && b.id == wid && b.h == mkHandleRaw(c.idx, c.gen, s.id) {
-			// Its fragments are under way: clientv3 drops any other
-			// response while it joins them, until a canceled one. The
-			// cancel goes first of what waits behind them (#689's
-			// re-check, D3).
+		if first {
 			c.holdFirst(s.id)
 		}
 	case 3:

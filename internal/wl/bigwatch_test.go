@@ -453,3 +453,87 @@ func TestAWatchCanceledBetweenItsFragmentsLosesNoOtherWatchsEvent(t *testing.T) 
 		t.Fatalf("watch 2's event reached the client %v, watch 1's cancel %v; want both", got, canceled)
 	}
 }
+
+// A cancel goes first behind fragments only when it removes the watch
+// sending them (D3): a client that cancels watch 1 while its fragments
+// are under way, creates a watch with the ID 1 again and cancels that
+// one too, all read at once, gets each control response in order, as
+// etcd sends them (d-B Opus's probe: matched by ID, the second cancel
+// went before the Created of the watch it cancels).
+func TestTheCancelOfAWatchReusingAFragmentingWatchsIDKeepsItsPlace(t *testing.T) {
+	c, _ := flowClient(t)
+	n := c.node
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	n.connOut = 1 << 20
+	c.plain = true
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	s := c.newStream(3, kWatch)
+	s.watch = true
+	c.flow.conn, s.win = 1<<30, 1<<30
+	st.rev++
+	for _, key := range []string{"/a/1", "/a/2", "/a/3"} {
+		id, err := st.intern([]byte(key))
+		if err != nil {
+			t.Fatal(err)
+		}
+		value := strings.Repeat("v", 1<<20)
+		if _, err := st.put(id, []byte(value), 0, st.rev, l.add(value), false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st.endApply()
+	ia := n.w.add(watcher{sock: 0, gen: 1, sid: s.id, id: 1, key: []byte("/a/"), end: []byte("/a0"), syncRev: st.rev, fragment: true})
+	s.wids = append(s.wids, ia)
+	s.nextWatch = 2
+	if !n.startBigWatch(ia, &n.w.ws[ia], c, s, revStart(st, st.rev)) {
+		t.Fatal("not started")
+	}
+	a := n.bigWatches[len(n.bigWatches)-1]
+	if !n.stepBigWatch(a) || !a.frag || !s.big {
+		t.Fatal("fragments not under way")
+	}
+	cancel := appendBytesField(nil, 2, appendVarintField(nil, 1, 1))
+	create := appendBytesField(nil, 1, appendVarintField(appendBytesField(nil, 1, []byte("/z")), 7, 1))
+	for _, m := range [][]byte{cancel, create, cancel} {
+		if err := n.watchRequest(c, s, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n.connOut = 1 << 30
+	for n.stepBigWatch(a) {
+	}
+	n.endBigWatch(a)
+	var data []byte
+	for f := c.out; len(f) > 0; {
+		size := int(f[0])<<16 | int(f[1])<<8 | int(f[2])
+		if f[3] == frData && binary.BigEndian.Uint32(f[5:9]) == s.id {
+			data = append(data, f[9:9+size]...)
+		}
+		f = f[9+size:]
+	}
+	var seq []string
+	for len(data) > 0 {
+		size := int(binary.BigEndian.Uint32(data[1:5]))
+		r := new(pb.WatchResponse)
+		if err := proto.Unmarshal(data[5:5+size], r); err != nil {
+			t.Fatal(err)
+		}
+		data = data[5+size:]
+		switch {
+		case r.Created:
+			seq = append(seq, fmt.Sprintf("created(%d)", r.WatchId))
+		case r.Canceled:
+			seq = append(seq, fmt.Sprintf("canceled(%d)", r.WatchId))
+		default:
+			seq = append(seq, fmt.Sprintf("events(%d, %d, fragment %v)", r.WatchId, len(r.Events), r.Fragment))
+		}
+	}
+	want := "canceled(1) created(1) canceled(1)"
+	got := strings.Join(seq[len(seq)-3:], " ")
+	if got != want {
+		t.Fatalf("control responses %q, want %q as etcd sends them", got, want)
+	}
+}
