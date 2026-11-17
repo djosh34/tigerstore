@@ -187,8 +187,8 @@ func TestTheNodeClosesClientsPastItsBackstop(t *testing.T) {
 
 // When the read half of the client buffers is full, clients wait for it
 // in turn, and none is dropped or waits for good. At 128 MiB the buffers
-// hold 6 clients at once. 12 clients keep four Puts under way for the
-// whole test, and would hold the buffers for good if nothing took them
+// hold 6 clients at once. 12 clients keep four Puts of 64 KiB under way
+// for the whole test, and would hold the buffers for good if nothing took them
 // back; 48 more each make 20 Puts, four at a time. Every Put of the 48
 // succeeds while the 12 go on.
 func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
@@ -214,12 +214,18 @@ func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	put := func(cli *clientv3.Client, key string) error {
+	// The hogs' Puts of 64 KiB each span several reads, so that a hog
+	// holds its buffers across turns: with Puts of a byte each whole
+	// in one read, the buffers came back each turn, and on a slower run
+	// (CI's coverage) no client waited (#724).
+	hogValue := strings.Repeat("h", 64<<10)
+	putValue := func(cli *clientv3.Client, key, value string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		_, err := cli.Put(ctx, key, "v")
+		_, err := cli.Put(ctx, key, value)
 		return err
 	}
+	put := func(cli *clientv3.Client, key string) error { return putValue(cli, key, "v") }
 	stop := make(chan struct{})
 	var hogsDone sync.WaitGroup
 	hogPuts := make([]int, hogs)
@@ -235,7 +241,13 @@ func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
 							return
 						default:
 						}
-						if err := put(cli, fmt.Sprintf("/hog/%02d/%d/%d", i, k, j)); err != nil {
+						err := putValue(cli, fmt.Sprintf("/hog/%02d/%d/%d", i, k, j), hogValue)
+						if err != nil && strings.Contains(err.Error(), errTooManyRequests.Error()) {
+							// Its Puts sent in part pass the pool: refused
+							// as etcd refuses them, it tries again.
+							continue
+						}
+						if err != nil {
 							t.Errorf("hog %d: %v", i, err)
 							return
 						}
