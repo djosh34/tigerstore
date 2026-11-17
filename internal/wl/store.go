@@ -88,7 +88,6 @@ type store struct {
 	seed    maphash.Seed
 
 	kmem     *slab // key bytes
-	karena   arena // directory paths
 	slab     *slab
 	hist     []histEnt
 	nhist    uint32
@@ -157,7 +156,7 @@ type store struct {
 }
 
 // The store's tables reserve their room once (maxKeys, maxHist, keyArena,
-// dirArena, slabBytes: sys_os.go, sys_sim.go); the indexes double.
+// slabBytes: sys_os.go, sys_sim.go); the indexes double.
 const (
 	hashStart = 1 << 20 // the hash index's first size, which doubles
 	dirStart  = 1 << 14 // the directory index's first size, which doubles
@@ -168,7 +167,6 @@ func newStore() (*store, error) {
 		rev:    1, // etcd's empty store is at revision 1
 		mask:   hashStart - 1,
 		seed:   maphash.MakeSeed(),
-		karena: arena{top: 1},
 		nhist:  1,
 		leases: map[int64]*lease{},
 	}
@@ -180,9 +178,6 @@ func newStore() (*store, error) {
 		return nil, err
 	}
 	if st.kmem, err = newSlab(keyArena); err != nil {
-		return nil, err
-	}
-	if st.karena.mem, err = mmapBytes(dirArena); err != nil {
 		return nil, err
 	}
 	if st.slab, err = newSlab(slabBytes); err != nil {
@@ -581,7 +576,7 @@ func (st *store) goNeed() int64 { return max(goShare(st.budget), st.goLive+st.go
 // slab up to the highest slot handed out.
 func (st *store) outside() int64 {
 	return st.mapped + int64(st.nkeys)*int64(unsafe.Sizeof(keyEnt{})) + int64(st.nhist)*int64(unsafe.Sizeof(histEnt{})) +
-		int64(len(st.hash))*8 + int64(st.kmem.top) + int64(st.karena.top) + int64(st.slab.top)
+		int64(len(st.hash))*8 + int64(st.kmem.top) + int64(st.slab.top)
 }
 
 // goLimit is the memory limit Go's runtime gets: what the budget leaves
@@ -1180,7 +1175,7 @@ func (st *store) close() error {
 		}
 	}
 	var errs []error
-	for _, b := range [][]byte{st.kmem.mem, st.karena.mem, st.slab.mem} {
+	for _, b := range [][]byte{st.kmem.mem, st.slab.mem} {
 		errs = append(errs, unixMunmap(b))
 	}
 	errs = append(errs, munmapSlice(st.keys), munmapSlice(st.hash), munmapSlice(st.hist))

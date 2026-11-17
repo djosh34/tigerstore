@@ -26,9 +26,9 @@ func TestGoGetsWhatTheMemoryOutsideItsHeapLeaves(t *testing.T) {
 	n := &node{st: st}
 	n.limitGo()
 	// Counted here as the kernel maps it: the rings and stages, the key
-	// table, the hash index, the history, the key arena and the slab.
+	// table, the hash index, the history, the key slab and the slab.
 	outside := int64(100<<20) + int64(st.nkeys)*int64(unsafe.Sizeof(keyEnt{})) + int64(len(st.hash))*8 +
-		int64(st.nhist)*int64(unsafe.Sizeof(histEnt{})) + int64(st.karena.top) + int64(st.slab.top)
+		int64(st.nhist)*int64(unsafe.Sizeof(histEnt{})) + int64(st.kmem.top) + int64(st.slab.top)
 	if got := debug.SetMemoryLimit(-1); got+outside > budget {
 		t.Fatalf("Go's memory limit is %d MiB, and %d MiB lie outside Go's heap: %d MiB in all, past the budget of %d MiB",
 			got>>20, outside>>20, (got+outside)>>20, budget>>20)

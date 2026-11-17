@@ -236,7 +236,6 @@ const (
 	maxKeys   = 1 << 16
 	maxHist   = 1 << 18
 	keyArena  = 16 << 20
-	dirArena  = 4 << 20
 	slabBytes = 64 << 20
 )
 
@@ -245,5 +244,5 @@ const (
 // reserve.
 func SimFootprint(budget int64) int64 {
 	return sizeFor(budget).mapped() + maxKeys*int64(unsafe.Sizeof(keyEnt{})) + maxHist*int64(unsafe.Sizeof(histEnt{})) +
-		keyArena + dirArena + slabBytes
+		keyArena + slabBytes
 }

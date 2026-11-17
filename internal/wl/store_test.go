@@ -323,8 +323,8 @@ func TestASlabShrinksToItsFreeSlotsBelowTheNewTop(t *testing.T) {
 	}
 }
 
-// Writes are refused before the key slab, the directory arena, the key
-// table or the history's slots fill, whatever the quota, even with none:
+// Writes are refused before the key slab, which holds the directories'
+// paths too, the key table or the history's slots fill, whatever the quota, even with none:
 // a write that fills one fails in the apply on every node, and again at
 // each start. Reads and deletes go on. History slots compaction freed are
 // room again.
@@ -333,7 +333,7 @@ func TestWritesAreRefusedBeforeTheArenasFill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, arena := range []string{"keys", "directories", "key table", "history"} {
+	for _, arena := range []string{"keys", "key table", "history"} {
 		st, _ := newTestStore(t)
 		n := &node{st: st, quota: -1}
 		if !n.quotaLeft(kPut, msg) {
@@ -342,8 +342,6 @@ func TestWritesAreRefusedBeforeTheArenasFill(t *testing.T) {
 		switch arena {
 		case "keys":
 			st.kmem.top = len(st.kmem.mem)/8*7 + 1
-		case "directories":
-			st.karena.top = len(st.karena.mem)/8*7 + 1
 		case "key table":
 			st.nkeys = maxKeys/8*7 + 1
 		case "history":

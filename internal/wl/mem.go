@@ -57,10 +57,7 @@ func classOf(n int) (int, int) {
 	return (k-6)*8 + j + 1, base + (j+1)*step
 }
 
-var (
-	errSlabFull  = errors.New("the store's slab is full")
-	errArenaFull = errors.New("the store's key arena is full")
-)
+var errSlabFull = errors.New("the store's slab is full")
 
 func (s *slab) alloc(n int) (uint64, error) {
 	c, size := classOf(n)
@@ -137,21 +134,3 @@ func classSize(c int) int {
 	base := 1 << k
 	return base + (j+1)*(base>>3)
 }
-
-// arena is a bump allocator of bytes that are never freed: keys and
-// directory paths.
-type arena struct {
-	mem []byte
-	top int
-}
-
-func (a *arena) add(p []byte) (uint64, error) {
-	if a.top+len(p) > len(a.mem) {
-		return 0, errArenaFull
-	}
-	off := a.top
-	a.top += copy(a.mem[off:], p)
-	return uint64(off), nil
-}
-
-func (a *arena) get(off uint64, n uint32) []byte { return a.mem[off : off+uint64(n) : off+uint64(n)] }

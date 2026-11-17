@@ -35,7 +35,7 @@ func (n *node) memStats() memStats {
 		keys:     int64(st.nkeys) * int64(unsafe.Sizeof(keyEnt{})),
 		hash:     int64(len(st.hash)) * 8,
 		hist:     int64(st.nhist) * int64(unsafe.Sizeof(histEnt{})),
-		arena:    int64(st.kmem.top) + int64(st.karena.top),
+		arena:    int64(st.kmem.top),
 		slabTop:  int64(st.slab.top),
 		slabUsed: st.slab.used,
 		tree:     st.tree.bytes(),

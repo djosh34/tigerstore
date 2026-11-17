@@ -178,18 +178,19 @@ const stateCost = 32
 // alone, puts of empty values and leases grew the tables without bound
 // under any quota (#689's review).
 func (st *store) quotaSize() int64 {
-	return st.liveBytes + st.histBytes + st.kmem.used + int64(st.karena.top) +
+	return st.liveBytes + st.histBytes + st.kmem.used +
 		(st.liveKeys+int64(st.nhist)-int64(st.nfree))*stateCost + int64(len(st.leases))*leaseCost
 }
 
-// arenasFull reports whether the key slab, the directory arena, the key
-// table or the history's slots are past seven eighths of their room. A
+// arenasFull reports whether the key slab, which holds the keys and the
+// directories' paths, the key table or the history's slots are past
+// seven eighths of their room. A
 // write that fills one fails in the apply, on every node, and again at
 // each start: writes are refused before, whatever the quota, with room
 // left for those in flight.
 func (st *store) arenasFull() bool {
 	const of8 = 7
-	return st.kmem.top > len(st.kmem.mem)/8*of8 || st.karena.top > len(st.karena.mem)/8*of8 ||
+	return st.kmem.top > len(st.kmem.mem)/8*of8 ||
 		int64(st.nkeys)-int64(len(st.keyFree)) > maxKeys/8*of8 || int64(st.nhist)-int64(st.nfree) > maxHist/8*of8
 }
 

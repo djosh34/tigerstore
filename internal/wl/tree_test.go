@@ -175,9 +175,16 @@ func TestTheTreeTakesDirectoriesPastItsFirstIndex(t *testing.T) {
 func TestDeepKeysTakeBoundedDirectoriesAndKeepTheirOrder(t *testing.T) {
 	st, l := newTestStore(t)
 	deep := strings.Repeat("/", 65536) + "k"
-	before := st.karena.top
+	dirBytes := func() int {
+		n := 0
+		for _, e := range st.tree.dirs {
+			n += int(e.plen)
+		}
+		return n
+	}
+	before := dirBytes()
 	putValue(t, st, l, deep, "v")
-	if used := st.karena.top - before; used > maxDirDepth*maxDirPath {
+	if used := dirBytes() - before; used > maxDirDepth*maxDirPath {
 		t.Fatalf("one key took %d bytes of directory paths, past %d", used, maxDirDepth*maxDirPath)
 	}
 	long := strings.Repeat("x", 600)
@@ -207,5 +214,84 @@ func TestDeepKeysTakeBoundedDirectoriesAndKeepTheirOrder(t *testing.T) {
 				t.Fatalf("(%q, %q): %q, want %q", sorted[i], sorted[j], got, sorted[i+1:j])
 			}
 		}
+	}
+}
+
+// Namespace churn, Kubernetes' normal life, leaves no directory behind:
+// a directory whose last key compaction removed goes, and its path's
+// bytes and its id are taken again (#722). On a budget of 16 MiB, 200
+// rounds each create 10
+// namespaces of 5 keys, under two resources, then delete and compact
+// them; the directories, their index and the key slab stay at what one
+// round needs, and every key kept, in directories of its own and in one
+// the churn shared, is still found and ranged.
+func TestChurnLeavesNoDirectoryBehind(t *testing.T) {
+	st, l := newTestStore(t)
+	st.setBudget(16<<20, 0)
+	for i := range 20 {
+		putValue(t, st, l, fmt.Sprintf("/registry/keep/k%02d", i), "kept")
+		putValue(t, st, l, fmt.Sprintf("/registry/pods/default/p%02d", i), "kept")
+	}
+	round := func(r int) {
+		var ids []uint32
+		for ns := range 10 {
+			for _, res := range []string{"pods", "secrets"} {
+				for k := range 5 {
+					key := fmt.Sprintf("/registry/%s/ns-%d-%d/k%d", res, r, ns, k)
+					putValue(t, st, l, key, "churn")
+					id, _ := st.find([]byte(key))
+					ids = append(ids, id)
+				}
+			}
+		}
+		for _, id := range ids {
+			st.rev++
+			if _, _, err := st.del(id, st.rev, false); err != nil {
+				t.Fatal(err)
+			}
+			st.endApply()
+		}
+		putValue(t, st, l, "/registry/keep/last", "kept") // past the deletes
+		st.compact(st.rev)
+		st.trimSteps(1 << 20)
+	}
+	round(0)
+	dirs, table, used := len(st.tree.dirs)-len(st.tree.free), len(st.tree.table), st.kmem.used
+	for r := 1; r < 200; r++ {
+		round(r)
+	}
+	if got := len(st.tree.dirs) - len(st.tree.free); got != dirs {
+		t.Fatalf("%d directories after 200 rounds of churn, %d after one", got, dirs)
+	}
+	if len(st.tree.dirs) > dirs+25 || len(st.tree.table) != table {
+		t.Fatalf("the directory table holds %d slots and the index %d after 200 rounds, %d and %d after one",
+			len(st.tree.dirs), len(st.tree.table), dirs, table)
+	}
+	if st.kmem.used > used {
+		t.Fatalf("the key slab holds %d bytes after 200 rounds, %d after one", st.kmem.used, used)
+	}
+	for _, p := range []string{"/registry/keep/", "/registry/pods/default/"} {
+		n := 0
+		st.tree.scan([]byte(p), prefixEnd([]byte(p)), func(id uint32) bool {
+			if st.exists(id) {
+				n++
+			}
+			return true
+		})
+		if want := 20 + b2i(p == "/registry/keep/"); int64(n) != want {
+			t.Fatalf("%s ranges over %d keys, want %d", p, n, want)
+		}
+	}
+	for i := range 20 {
+		for _, k := range []string{fmt.Sprintf("/registry/keep/k%02d", i), fmt.Sprintf("/registry/pods/default/p%02d", i)} {
+			if got, ok := valueAt(t, st, k, st.rev); !ok || got != "kept" {
+				t.Fatalf("%s reads %q, %v after the churn", k, got, ok)
+			}
+		}
+	}
+	// A namespace used again after its directory went is made again.
+	putValue(t, st, l, "/registry/pods/ns-0-0/again", "v")
+	if got, ok := valueAt(t, st, "/registry/pods/ns-0-0/again", st.rev); !ok || got != "v" {
+		t.Fatalf("a key in a directory made again reads %q, %v", got, ok)
 	}
 }

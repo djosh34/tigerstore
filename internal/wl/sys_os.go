@@ -301,6 +301,5 @@ const (
 	maxKeys   = 1 << 27
 	maxHist   = 1 << 26
 	keyArena  = 4 << 30
-	dirArena  = 1 << 30
 	slabBytes = 48 << 30
 )

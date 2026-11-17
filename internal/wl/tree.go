@@ -43,9 +43,15 @@ type dirEnt struct {
 	wpart bool
 }
 
+// A directory left with no child, once compaction removed its last key,
+// goes (removeDir): its path's bytes go back to the key slab, its id to
+// free, and its parent goes the same way if it is left empty. Kept until
+// a restart, namespace churn grew the directories without bound (#722).
+
 type tree struct {
 	st    *store
 	dirs  []dirEnt
+	free  []uint32 // the ids of directories removed, to reuse
 	table []uint64 // dir hash table: tag << 32 | dir id + 1
 	mask  uint64
 	seed  maphash.Seed
@@ -62,7 +68,7 @@ func (t *tree) init(st *store) {
 
 func (t *tree) path(d uint32) []byte {
 	e := &t.dirs[d]
-	return t.st.karena.get(e.poff, e.plen)
+	return t.st.kmem.bytes(e.poff, int(e.plen))
 }
 
 func (t *tree) put(path []byte, d uint32) {
@@ -133,12 +139,20 @@ func (t *tree) ensure(path []byte) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-	poff, err := t.st.karena.add(path)
+	poff, err := t.st.kmem.alloc(len(path))
 	if err != nil {
 		return 0, err
 	}
-	d := uint32(len(t.dirs))
-	t.dirs = append(t.dirs, dirEnt{poff: poff, plen: uint32(len(path)), parent: parent})
+	copy(t.st.kmem.mem[poff:], path)
+	e := dirEnt{poff: poff, plen: uint32(len(path)), parent: parent}
+	var d uint32
+	if k := len(t.free); k > 0 {
+		d, t.free = t.free[k-1], t.free[:k-1]
+		t.dirs[d] = e
+	} else {
+		d = uint32(len(t.dirs))
+		t.dirs = append(t.dirs, e)
+	}
 	t.put(path, d)
 	pl := t.dirs[parent].plen
 	t.insertChild(parent, path[pl:], d|dirBit)
@@ -255,17 +269,55 @@ func (t *tree) insert(id uint32) error {
 	return nil
 }
 
+// remove takes key id out of the tree, and its directory with it if
+// that is left empty. The key no longer names a directory: one put again
+// finds or makes its directory as a new key does.
 func (t *tree) remove(id uint32) {
 	k := &t.st.keys[id]
 	d := k.dir
-	ci, i, ok := t.search(d, t.st.key(id)[t.dirs[d].plen:])
+	k.dir = noDir
+	if t.removeChild(d, t.st.key(id)[t.dirs[d].plen:]) {
+		t.removeDir(d)
+	}
+}
+
+// removeChild takes the child of name out of directory d, and reports
+// whether d is left with no child.
+func (t *tree) removeChild(d uint32, name []byte) bool {
+	ci, i, ok := t.search(d, name)
 	if !ok {
-		return
+		return false
 	}
 	e := &t.dirs[d]
 	e.chunks[ci] = slices.Delete(e.chunks[ci], i, i+1)
 	if len(e.chunks[ci]) == 0 && len(e.chunks) > 1 {
 		e.chunks = slices.Delete(e.chunks, ci, ci+1)
+	}
+	return len(e.chunks) == 1 && len(e.chunks[0]) == 0
+}
+
+// removeDir removes directory d, which has no child, and its parents
+// that it leaves empty; the root stays. Each directory there is is in
+// the index, from ensure on.
+func (t *tree) removeDir(d uint32) {
+	for d != 0 {
+		e := t.dirs[d]
+		path := t.path(d)
+		for i := maphash.Bytes(t.seed, path) & t.mask; t.table[i] != 0; i = (i + 1) & t.mask {
+			if uint32(t.table[i])-1 == d {
+				removeEntry(t.table, i)
+				break
+			}
+		}
+		parent := e.parent
+		empty := t.removeChild(parent, path[t.dirs[parent].plen:])
+		t.st.kmem.free(e.poff, int(e.plen))
+		t.dirs[d] = dirEnt{parent: noDir}
+		t.free = append(t.free, d)
+		if !empty {
+			return
+		}
+		d = parent
 	}
 }
 
