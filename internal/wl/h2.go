@@ -205,13 +205,16 @@ type client struct {
 	// (loop.input); busy, the tick it last read.
 	starved bool
 	busy    int64
-	// roomNeed, while not 0, is what the part of a request it stopped
-	// reading at adds to the client buffers, which wait for room since
-	// roomAt; roomLate, that the part is refused, once it waited
-	// requestTimeout (partwait.go).
-	roomNeed int64
-	roomAt   time.Time
-	roomLate bool
+	// roomNeed, while not 0, is what the part of stream roomSid's request
+	// it stopped reading at adds to the client buffers, which wait for
+	// room since roomAt; roomLate, that the part is refused, once it
+	// waited requestTimeout (partwait.go). linePass and seenPass are
+	// serveWaiting's marks.
+	roomNeed           int64
+	roomSid            uint32
+	roomAt             time.Time
+	roomLate           bool
+	linePass, seenPass uint64
 	// roomHeld is the room of the reserve it holds, and roomWaiters how
 	// many of its messages wait for room (reserve.go).
 	roomHeld    int64
@@ -631,7 +634,7 @@ func (c *client) frames(n *node) error {
 				p = p[1 : len(p)-int(p[0])]
 			}
 			s := c.get(sid)
-			if s != nil && !s.ended && c.waitsForRoom(n, s, p) {
+			if k := int64(len(p)); s != nil && !s.ended && (c.partial+k > n.connIn || n.cpool+k > n.sizes.clientInBufs()) && c.waitsForRoom(n, s, p) {
 				// The frame is read again once the buffers have room.
 				c.pr -= 9 + l
 				return nil

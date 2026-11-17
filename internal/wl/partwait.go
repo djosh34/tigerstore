@@ -1,5 +1,7 @@
 package wl
 
+import "slices"
+
 // A request sent in parts whose next part finds the read half of the
 // client buffers full waits its turn for room, as a connection waits for
 // its buffers, instead of being refused (#735). Refused, a client's large
@@ -21,48 +23,50 @@ package wl
 // for more, none would go on. So the first in line that finds no room
 // takes the turn (node.inTurn), with room of the reserve (#727, which
 // holds at least one request) for what its share of requests in part
-// has left, at most the whole reserve: its requests in part may grow by
-// that much past what they were, the buffers full or not, until it holds
-// none, or the buffers have room again. While many connections read, a
-// share is one request (connIn), so the turn is all it needs to finish
-// what it holds. A waiting connection's buffers are not taken by one that
-// waits for buffers, as those come after it (serveWaiting).
+// has left, as much as the reserve has free: its connection may take the
+// buffers past the read half by that much. While many connections read,
+// a share is one request (connIn), so the turn is all it needs to finish
+// what it holds. The turn is for the requests it holds in part and the
+// one it waits at (node.turnSids), and ends once they are whole, or
+// after requestTimeout: what its client still holds past the read half
+// stays charged to the reserve (node.inDebt) until it is whole too, and
+// the next turn takes only what the reserve has free. So a client that
+// keeps starting requests does not keep the turn, and none is refused
+// for the turn's end. A waiting connection's buffers are not taken by one
+// that waits for buffers, as those come after it (serveWaiting), and the
+// replies that wait for the reserve take its room back before another
+// turn does.
 //
-// A turn lasts requestTimeout at most: then the requests its client
-// holds in part are refused, as etcd refuses too many requests, and the
-// room goes back to the reserve, whose replies may wait for it. A part
-// that waits requestTimeout is refused too, and its connection reads on:
-// the reserve was spent on replies, or the turn's room did not finish a
-// share of more than the reserve.
+// A part that waits requestTimeout is refused, and its connection reads
+// on: the reserve was spent on replies, or the turn's room did not finish
+// a share of more than the reserve.
 
 // roomFor reports whether the client buffers have room for client c to
-// hold k more of requests in part: within the read half, or within the
-// turn's room for the turn's client.
+// hold k more of requests in part: within the read half, or past it by
+// what the reserve holds for it, the turn's room and the debt of turns
+// before, for the turn's client.
 func (n *node) roomFor(c *client, k int64) bool {
-	return n.cpool+k <= n.sizes.clientInBufs() || n.inTurn == c && c.partial+k <= n.turnBase+n.turnRoom
+	in := n.sizes.clientInBufs()
+	return n.cpool+k <= in || n.inTurn == c && n.cpool+k <= in+n.inDebt+n.turnRoom
 }
 
-// waitsForRoom reports whether DATA p of stream s waits for room in the
-// client buffers; if so, c's reading stops before it, and c waits in
-// line. A part that fits, or that can never fit and is refused, does
-// not wait (client.data).
+// waitsForRoom reports whether DATA p of stream s, which does not fit
+// the read half as it is, waits for room in the client buffers; if so,
+// c's reading stops before it, and c waits in line. A part that fits
+// once the whole messages in it are taken, or that can never fit and is
+// refused, does not wait (client.data).
 func (c *client) waitsForRoom(n *node, s *stream, p []byte) bool {
-	k := int64(len(p))
-	if c.partial+k <= n.connIn && n.cpool+k <= n.sizes.clientInBufs() {
-		c.roomLate = false
-		return false
-	}
-	if c.roomLate {
+	if c.roomLate && s.id == c.roomSid {
 		// It waited requestTimeout: the part is refused (client.data).
-		c.roomLate = false
 		return false
 	}
 	grow := partTail(s.buf, p) - s.counted
 	if grow <= 0 || c.partial+grow > n.connIn || n.roomFor(c, grow) {
 		return false
 	}
-	c.roomNeed, c.roomAt = grow, n.now
+	c.roomNeed, c.roomSid, c.roomAt = grow, s.id, n.now
 	n.stats.partsWaited++
+	c.linePass = n.waitPass
 	n.waiting = append(n.waiting, c)
 	n.markDirty(&c.sock)
 	return true
@@ -93,62 +97,89 @@ func partTail(a, b []byte) int64 {
 }
 
 // takeTurn gives c, the first in line for room, the turn when the read
-// half has no room for its part and the reserve has room for what its
-// share has left, unless another holds it.
+// half has no room for its part and the reserve has free room for it, as
+// much as its share has left, unless another holds it. The turn is for
+// the requests c holds in part and the one it waits at.
 func (n *node) takeTurn(c *client) {
-	if n.inTurn != nil || n.cpool+c.roomNeed <= n.sizes.clientInBufs() {
+	in := n.sizes.clientInBufs()
+	if n.inTurn != nil || n.cpool+c.roomNeed <= in {
 		return
 	}
-	room := min(n.connIn-c.partial, n.sizes.reserve())
-	if n.reserved+room > n.sizes.reserve() {
+	room := min(n.connIn-c.partial, n.sizes.reserve()-n.reserved)
+	if n.cpool+c.roomNeed > in+n.inDebt+room {
 		return
 	}
 	n.reserved += room
-	n.inTurn, n.turnBase, n.turnRoom, n.turnAt = c, c.partial, room, n.now
+	n.inTurn, n.turnRoom, n.turnAt = c, room, n.now
+	n.turnSids = append(n.turnSids[:0], c.roomSid)
+	c.eachStream(func(s *stream) {
+		if s.counted > 0 && s.id != c.roomSid {
+			n.turnSids = append(n.turnSids, s.id)
+		}
+	})
 }
 
-// endTurn ends the turn of a client that closed, that does not wait and
-// holds no request in part or finds the buffers with room again, or that
-// held it requestTimeout, whose requests in part are refused and which
-// reads on; its room goes back to the reserve.
+// eachStream calls f for each open stream of c.
+func (c *client) eachStream(f func(*stream)) {
+	for i := range c.slots {
+		if c.slots[i].open {
+			f(&c.slots[i])
+		}
+	}
+	for _, s := range c.over {
+		f(s)
+	}
+}
+
+// turnDone reports whether the requests the turn is for are whole, or
+// gone: none waits for room or holds a part.
+func (n *node) turnDone(c *client) bool {
+	if c.roomNeed != 0 && slices.Contains(n.turnSids, c.roomSid) {
+		return false
+	}
+	for _, sid := range n.turnSids {
+		if s := c.get(sid); s != nil && s.counted > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// endTurn ends the turn of a client that closed, whose requests the turn
+// is for are whole, or that held it requestTimeout. Its room stays
+// charged to the reserve as debt while the buffers hold more than the
+// read half (settle).
 func (l *loop) endTurn() {
 	n := l.n
 	c := n.inTurn
 	if c == nil {
+		n.settle()
 		return
 	}
-	late := !c.dead && n.now.Sub(n.turnAt) >= requestTimeout
-	if !c.dead && !late && (c.roomNeed != 0 || c.partial > 0 && n.cpool > n.sizes.clientInBufs()) {
+	if !c.dead && n.now.Sub(n.turnAt) < requestTimeout && !n.turnDone(c) && n.cpool > n.sizes.clientInBufs() {
 		return
 	}
 	n.inTurn = nil
-	n.reserved -= n.turnRoom
+	n.inDebt += n.turnRoom
 	n.turnRoom = 0
-	n.roomFreed = n.roomFreed || len(n.roomWait) > 0 || len(n.heldReplies) > 0
-	n.roomShort = false
-	if late {
-		c.refuseParts()
-		if c.roomNeed != 0 {
-			// The part it stopped at goes on with room, or is refused.
-			l.serveRoom(c)
-		}
-	}
+	n.turnSids = n.turnSids[:0]
+	n.settle()
 }
 
-// refuseParts refuses the requests client c holds in part, as etcd
-// refuses too many requests.
-func (c *client) refuseParts() {
-	n := c.node
-	refuse := func(s *stream) {
-		if s.open && s.counted > 0 {
-			n.reject(c, s, errTooManyRequests)
-		}
+// settle gives back to the reserve what the debt of turns no longer
+// needs, as the client buffers come down to the read half; the ranges
+// and replies that wait for the reserve take it first, before the next
+// turn.
+func (n *node) settle() {
+	if n.inTurn != nil || n.inDebt == 0 {
+		return
 	}
-	for i := range c.slots {
-		refuse(&c.slots[i])
-	}
-	for _, s := range c.over {
-		refuse(s)
+	if debt := min(n.inDebt, max(n.cpool-n.sizes.clientInBufs(), 0)); debt < n.inDebt {
+		n.reserved -= n.inDebt - debt
+		n.inDebt = debt
+		n.roomFreed = n.roomFreed || len(n.roomWait) > 0 || len(n.heldReplies) > 0
+		n.roomShort = false
+		n.serveRoomWait()
 	}
 }
 

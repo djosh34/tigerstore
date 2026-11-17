@@ -820,7 +820,7 @@ func (l *loop) takeHandoffs() {
 		}
 		// Bytes read with the handshake or the hello wait already.
 		if s.iw > s.ir || s.pw > s.pr {
-			l.input(idx)
+			l.input(idx, false)
 		}
 	}
 }
@@ -897,8 +897,9 @@ func (l *loop) closeSock(idx int) {
 	l.free = append(l.free, idx)
 }
 
-// input reads what socket idx has and handles it.
-func (l *loop) input(idx int) {
+// input reads what socket idx has and handles it; hup says its other end
+// closed or it failed.
+func (l *loop) input(idx int, hup bool) {
 	n := l.n
 	x := n.socks[idx]
 	s := sockOf(x)
@@ -908,6 +909,15 @@ func (l *loop) input(idx int) {
 	if c, ok := x.(*client); ok {
 		c.busy = l.tick
 		if c.in == nil {
+			if hup && (len(n.waiting) > 0 || n.cpool+c.bufNeed() > n.sizes.clientInBufs()) {
+				// Its other end closed while it waits for buffers: the
+				// close stays reported until it reads, so the loop would
+				// turn at once until then, and the simulator's clock
+				// stop (#689's N re-check). Nothing it sent can be
+				// answered to a client that went.
+				l.closeSock(idx)
+				return
+			}
 			if len(n.waiting) > 0 || n.cpool+c.bufNeed() > n.sizes.clientInBufs() {
 				// The client buffers are full, or others wait for them
 				// first: it waits in turn (serveWaiting).
@@ -1024,12 +1034,13 @@ func (l *loop) run() error {
 			default:
 				idx := int(ev.Fd)
 				if ev.Events&(unix.EPOLLIN|unix.EPOLLRDHUP|unix.EPOLLHUP|unix.EPOLLERR) != 0 {
+					hup := ev.Events&(unix.EPOLLRDHUP|unix.EPOLLHUP|unix.EPOLLERR) != 0
 					if _, ok := n.socks[idx].(*client); ok {
-						l.input(idx)
+						l.input(idx, hup)
 					} else {
 						// A peer's connection: few a turn, so timed.
 						t := time.Now()
-						l.input(idx)
+						l.input(idx, hup)
 						l.turnIn.peers += time.Since(t)
 					}
 				}
@@ -1283,6 +1294,7 @@ func (l *loop) clientTick() {
 // is refused in its place in line (partwait.go).
 func (l *loop) serveWaiting() {
 	n := l.n
+	n.waitPass++
 	l.endTurn()
 	if len(n.waiting) == 0 {
 		return
@@ -1293,12 +1305,23 @@ func (l *loop) serveWaiting() {
 		}
 	}
 	// A client served reads on and may wait again: it goes back in line
-	// behind those that wait still.
+	// behind those that wait still, and its place before is let go. A
+	// client the turn's end served is in line twice: its last place
+	// holds.
 	waits := n.waiting
 	n.waiting = nil
+	n.waitPass++
+	pass := n.waitPass
+	for i := len(waits) - 1; i >= 0; i-- {
+		if c := waits[i]; c.seenPass == pass {
+			waits[i] = nil
+		} else {
+			c.seenPass = pass
+		}
+	}
 	blocked := false
 	for _, c := range waits {
-		if c.dead || c.roomNeed == 0 {
+		if c == nil || c.dead || c.roomNeed == 0 {
 			continue
 		}
 		if !blocked {
@@ -1315,7 +1338,7 @@ func (l *loop) serveWaiting() {
 	kept := l.waitScratch[:0]
 	for _, c := range waits {
 		switch {
-		case c.dead:
+		case c == nil || c.dead || c.linePass == pass:
 		case c.roomNeed != 0:
 			kept = append(kept, c)
 		case !c.starved:

@@ -133,17 +133,20 @@ func TestAPartWaitsItsTurnForRoom(t *testing.T) {
 	if a.roomNeed != 0 || a.partial != 3*part || tooMany() != 0 {
 		t.Fatalf("the turn's client: needs %d, holds %d in part, %d refused", a.roomNeed, a.partial, tooMany())
 	}
-	// It holds no request in part: the turn and its room go to b.
+	// Its request is whole: the turn goes to b, with what the reserve
+	// has free; what the buffers hold past the read half stays charged.
 	a.endStream(a.get(1))
 	l.serveWaiting()
-	if n.inTurn != b || n.reserved != n.turnRoom || b.roomNeed != 0 || b.partial != part || len(n.waiting) != 0 {
-		t.Fatalf("a's requests done: turn to b %v, %d of the reserve's %d, b needs %d and holds %d, %d wait", n.inTurn == b, n.turnRoom, n.reserved, b.roomNeed, b.partial, len(n.waiting))
+	if n.inTurn != b || n.reserved != n.inDebt+n.turnRoom || n.inDebt != n.cpool-b.partial-full || b.roomNeed != 0 || b.partial != part || len(n.waiting) != 0 {
+		t.Fatalf("a's request done: turn to b %v, %d of the reserve's %d and a debt of %d, b needs %d and holds %d, %d wait",
+			n.inTurn == b, n.turnRoom, n.reserved, n.inDebt, b.roomNeed, b.partial, len(n.waiting))
 	}
 	b.endStream(b.get(3))
 	l.serveWaiting()
-	if n.inTurn != nil || n.reserved != 0 {
-		t.Fatalf("the turn outlived its client's requests in part: turn %v, %d of the reserve taken", n.inTurn != nil, n.reserved)
+	if n.inTurn != nil || n.reserved != n.inDebt || n.inDebt != max(n.cpool-full, 0) {
+		t.Fatalf("the turn outlived its requests: turn %v, %d of the reserve taken, a debt of %d, the buffers %d past the read half", n.inTurn != nil, n.reserved, n.inDebt, n.cpool-full)
 	}
+	n.reserved, n.inDebt = 0, 0
 
 	// The reserve spent on replies: no turn, and a part that waits
 	// requestTimeout is refused, as before, and its connection reads on.
@@ -161,10 +164,10 @@ func TestAPartWaitsItsTurnForRoom(t *testing.T) {
 	}
 }
 
-// A turn lasts requestTimeout at most: a client that took it and sends
-// no more of its requests in part has them refused, and the room goes
-// back to the reserve, whose replies may wait for it.
-func TestATurnEndsAtRequestTimeout(t *testing.T) {
+// A turn lasts requestTimeout at most, and refuses nothing when it ends:
+// what its client holds past the read half stays charged to the reserve
+// as debt, and goes back as the buffers come down to the read half.
+func TestATurnEndsAtRequestTimeoutAndItsRoomStaysAsDebt(t *testing.T) {
 	n, a, _, l, feed, tooMany := partNode(t)
 	feed(a, putPart(t, 1, true))
 	l.serveWaiting()
@@ -177,8 +180,18 @@ func TestATurnEndsAtRequestTimeout(t *testing.T) {
 	}
 	n.now = n.now.Add(requestTimeout)
 	l.serveWaiting()
-	if n.inTurn != nil || n.reserved != 0 || a.partial != 0 || tooMany() != 2 || a.get(1) != nil || a.get(3) != nil {
-		t.Fatalf("at requestTimeout: turn %v, %d of the reserve taken, a holds %d in part, %d refused", n.inTurn != nil, n.reserved, a.partial, tooMany())
+	if n.inTurn != nil || n.inDebt != 2*part || n.reserved != 2*part || a.partial != 2*part || tooMany() != 0 {
+		t.Fatalf("at requestTimeout: turn %v, a debt of %d, %d of the reserve taken, a holds %d in part, %d refused", n.inTurn != nil, n.inDebt, n.reserved, a.partial, tooMany())
+	}
+	a.endStream(a.get(1))
+	l.serveWaiting()
+	if n.inDebt != part || n.reserved != part {
+		t.Fatalf("one request done: a debt of %d, %d of the reserve taken", n.inDebt, n.reserved)
+	}
+	a.endStream(a.get(3))
+	l.serveWaiting()
+	if n.inDebt != 0 || n.reserved != 0 {
+		t.Fatalf("both done: a debt of %d, %d of the reserve taken", n.inDebt, n.reserved)
 	}
 }
 

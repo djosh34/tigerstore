@@ -36,13 +36,17 @@ type node struct {
 	turnReady readyTurn
 	// waiting are the clients that wait for the client buffers to read,
 	// or for room in them for a request's part, in the order they came
-	// (loop.serveWaiting). inTurn is the one that may go past the read
-	// half since turnAt, with requests in part up to turnBase and the
-	// turnRoom it took of the reserve (partwait.go).
-	waiting            []*client
-	inTurn             *client
-	turnBase, turnRoom int64
-	turnAt             time.Time
+	// (loop.serveWaiting), and waitPass counts serveWaiting's passes.
+	// inTurn is the one that may take the buffers past the read half
+	// since turnAt, by the turnRoom it took of the reserve and the inDebt
+	// it holds for what turns before left past it, for the requests of its
+	// streams turnSids (partwait.go).
+	waiting          []*client
+	waitPass         uint64
+	inTurn           *client
+	turnSids         []uint32
+	turnRoom, inDebt int64
+	turnAt           time.Time
 	// sys is the node's handle on the system calls of sys_os.go.
 	sys sysEnv
 	// members is the member list as of the applied index, and removed the

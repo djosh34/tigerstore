@@ -95,7 +95,9 @@ func TestManyLargeRepliesStayWithinTheReserve(t *testing.T) {
 	setReserved := func(v int64) {
 		done := make(chan struct{})
 		l.post(func() error {
-			l.n.reserved = v
+			// What a turn of the read half and its debt hold of the
+			// reserve stays theirs (partwait.go): the replies hold v.
+			l.n.reserved = v + l.n.turnRoom + l.n.inDebt
 			l.n.roomFreed, l.n.roomShort = v == 0 && len(l.n.roomWait) > 0, v > 0
 			close(done)
 			return nil
@@ -216,7 +218,9 @@ func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 	setReserved := func(v int64) {
 		done := make(chan struct{})
 		l.post(func() error {
-			l.n.reserved = v
+			// What a turn of the read half and its debt hold of the
+			// reserve stays theirs (partwait.go): the replies hold v.
+			l.n.reserved = v + l.n.turnRoom + l.n.inDebt
 			l.n.roomFreed, l.n.roomShort = v == 0, v > 0
 			close(done)
 			return nil
