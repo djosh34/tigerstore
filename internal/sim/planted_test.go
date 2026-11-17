@@ -27,7 +27,8 @@ import (
 // moves can reach another check first (#537). A failure that decides
 // nothing about the run, a crash, a stop for lack of real time or a
 // witness search that ran out (decides), is no catch and fails the test.
-// extra adds an assertion of the case's own. With witness, the witness checker in
+// With strict, only a want check catches it: another is logged, and the
+// search goes on. extra adds an assertion of the case's own. With witness, the witness checker in
 // both modes must fail the same seed's history on its own too: Porcupine
 // cannot check the full runs (#112). Each cfg also runs in the plain
 // tests (TestSeeds, TestStalledLeaderIsReplaced), where it must pass.
@@ -35,6 +36,7 @@ type plantedCase struct {
 	seeds   int
 	cfg     func(seed uint64) Config
 	want    string
+	strict  bool
 	extra   func(*Result) error
 	witness bool
 }
@@ -217,13 +219,17 @@ var plantedCases = map[string]plantedCase{
 	// (leasesExpire) catches it first; rules 2 and 3 (revokesKeepPromises)
 	// catch what the clients were told.
 	"B34": {seeds: 64, cfg: wlStalledLeaderConfig, want: leaseEarly + `|` + leasePromise},
-	// B35 and B36: every expiry is decided on time by the TTL granted,
-	// which rule 1 checks, and only rules 2 and 3 see what the clients
-	// were told. B35 tells them a second more than the TTL, which the
-	// revoke cuts (rule 3); B36 tells them a revoked lease lives (rule 2,
-	// or rule 3 for a keepalive called before the revoke took effect).
-	"B35": {seeds: 64, cfg: wlFaultsConfig, want: leaseCut},
-	"B36": {seeds: 64, cfg: wlFaultsConfig, want: leasePromise},
+	// B35 and B36 prove lease rules 2 and 3: each counts only when one of
+	// them catches it (strict). B35 tells the clients a second more than
+	// the TTL, which the revoke cuts (rule 3); rule 1 cannot see it, as it
+	// takes the TTL from the grants. B36 tells them a revoked lease lives
+	// (rule 2, or rule 3 for a keepalive called before the revoke took
+	// effect). Rule 1 can see B36 too: a keepalive called just before the
+	// leader decided the expiry, and applied after the revoke, is answered
+	// alive and counts as a renewal before the expiry (#689's re-check,
+	// D5).
+	"B35": {seeds: 64, cfg: wlFaultsConfig, want: leaseCut, strict: true},
+	"B36": {seeds: 64, cfg: wlFaultsConfig, want: leasePromise, strict: true},
 }
 
 const (
@@ -305,6 +311,10 @@ func runPlanted(t *testing.T, name string, c plantedCase) {
 		return plantedRun{Finding: err.Error()}
 	}, func(seed uint64, r plantedRun) bool {
 		tried++
+		if c.strict && r.Finding != "" && !control && !want.MatchString(r.Finding) {
+			t.Logf("%s (%s): seed %d failed a check other than the expected ones (%s), which does not count: %s", name, planted.Bugs[name], seed, c.want, r.Finding)
+			return false
+		}
 		if r.Finding == "" || control || failsUnplanted(t, test, name, seed) {
 			return false
 		}
