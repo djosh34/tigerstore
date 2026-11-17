@@ -1187,9 +1187,10 @@ func searchChanges(chs []change, rev int64) int {
 // ckptStates appends to out key id's states a checkpoint at revision rev
 // holds, newest first: those up to rev that a read at revision c or later
 // can see. A key such a read cannot see has none. A checkpoint's writer
-// takes what trimming keeps (trimRev), which a checkpoint being written
-// may hold below the compacted revision; stateHash takes what a read can
-// see, from the compacted revision on.
+// keeps the states from ckptRev, which a checkpoint being written may
+// hold below the compacted revision, and takes in the values of a few
+// older ones that held reads see (takeStates); stateHash takes what a
+// read can see, from the compacted revision on.
 func (st *store) ckptStates(id uint32, rev, c int64, out []ckptState) []ckptState {
 	k := &st.keys[id]
 	if k.klen == 0 {

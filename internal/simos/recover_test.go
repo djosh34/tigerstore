@@ -418,6 +418,8 @@ type installCluster struct {
 	cli *clientv3.Client
 	ctx context.Context
 	k   int
+	// took is when a put last went through, or the cluster started.
+	took time.Time
 }
 
 func newInstallCluster(t *testing.T, ctx context.Context, hooks3 func(*lockedDisk) wl.Hooks) *installCluster {
@@ -431,13 +433,21 @@ func newInstallCluster(t *testing.T, ctx context.Context, hooks3 func(*lockedDis
 	for i := range 3 {
 		c.start(t, i)
 	}
-	return &installCluster{simCluster: c, l: l, cli: c.client(t), ctx: ctx}
+	return &installCluster{simCluster: c, l: l, cli: c.client(t), ctx: ctx, took: time.Now()}
 }
 
+// put puts the next key. A put may fail while a node is cut off; none
+// going through for 20 s fails the test with the last one's error, which
+// says where the cluster stalled (#689's re-check of 88ae3e64: the setup
+// stalled in a few -race runs, every put failing, the cause unseen).
 func (c *installCluster) put(t *testing.T) {
 	t.Helper()
-	if _, err := c.cli.Put(c.ctx, fmt.Sprintf("/k/%05d", c.k), strings.Repeat("v", 4<<10)); err != nil && c.ctx.Err() != nil {
-		t.Fatalf("put %d: %v", c.k, err)
+	_, err := c.cli.Put(c.ctx, fmt.Sprintf("/k/%05d", c.k), strings.Repeat("v", 4<<10))
+	switch {
+	case err == nil:
+		c.took = time.Now()
+	case c.ctx.Err() != nil || time.Since(c.took) > 20*time.Second:
+		t.Fatalf("put %d: no put went through for %v; the last failed with: %v", c.k, time.Since(c.took).Round(time.Millisecond), err)
 	}
 	c.k++
 }

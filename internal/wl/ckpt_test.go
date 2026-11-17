@@ -739,6 +739,15 @@ func TestAHeldReadOutlivesTheCheckpointsItReadsFrom(t *testing.T) {
 		if loaded.stateHash() != st.stateHash() {
 			t.Fatalf("checkpoint %d holds another state than its store's", index)
 		}
+		// Its keys hold the states from the compacted revision alone: the
+		// held one's value lies in it unnamed.
+		for _, key := range []string{"/a", "/b"} {
+			id, _ := st.find([]byte(key))
+			lid, _ := loaded.find([]byte(key))
+			if got, want := len(loaded.ckptStates(lid, loaded.rev, 0, nil)), len(st.ckptStates(id, st.rev, st.compactRev, nil)); got != want {
+				t.Fatalf("checkpoint %d holds %d states of %s, want %d", index, got, key, want)
+			}
+		}
 		_ = loaded.close()
 		_ = f.Close()
 	}
