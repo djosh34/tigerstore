@@ -523,6 +523,11 @@ func (s *sock) put(p []byte) {
 
 // peerFrames reads the messages in pt and steps them.
 func (n *node) peerFrames(p *peerIn) error {
+	if n.removed[p.from] {
+		// Removed since it connected: its connection closes at the
+		// turn's end (membersChanged), and nothing more of it is taken.
+		return errPeerFrom
+	}
 	s := &p.sock
 	for {
 		avail := s.pw - s.pr
@@ -554,7 +559,7 @@ func (n *node) peerFrames(p *peerIn) error {
 			b.seq, b.data = seq, n.rxCopy(f[batchFrameHdr:], span{kind: spanUnnamed, at: n.now, fwd: true, origin: origin, seq: seq})
 			continue
 		}
-		m, err := n.decodeMsg(f)
+		m, err := n.decodeMsg(f, p.from)
 		if errors.Is(err, errUnnamed) {
 			// The batch it names comes on another connection, likely in
 			// this same turn: try again after the turn's input.
@@ -579,9 +584,16 @@ func (n *node) peerFrames(p *peerIn) error {
 	}
 }
 
-func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
+// decodeMsg decodes a message of the peer that said it is from in its
+// hello. A message that does not fit its frame, or says it is from
+// another member, is errRecord or errPeerFrom: the connection closes, as
+// etcd's peer handler drops a message whose sender is not the peer's.
+func (n *node) decodeMsg(f []byte, from uint64) (*pb.Message, error) {
 	if len(f) < msgHdr+4 {
 		return nil, errRecord
+	}
+	if binary.LittleEndian.Uint64(f[2:]) != from {
+		return nil, errPeerFrom
 	}
 	m := &pb.Message{
 		Type:       pb.MessageType(f[0]).Enum(),
@@ -598,20 +610,26 @@ func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
 	}
 	k := int(binary.LittleEndian.Uint32(f[58:]))
 	at := msgHdr
+	if k > (len(f)-at)/entryHdr {
+		return nil, errRecord // more entries than the frame holds
+	}
 	if k > 0 {
 		m.Entries = make([]*pb.Entry, k)
 		for i := range k {
-			if len(f) < at+21 {
+			if len(f) < at+entryHdr {
 				return nil, errRecord
 			}
 			l := int(binary.LittleEndian.Uint32(f[at+17:]))
 			typ := f[at+16]
+			if typ&^namedEntry > byte(pb.EntryConfChangeV2) {
+				return nil, errRecord
+			}
 			e := &pb.Entry{
 				Term:  new(binary.LittleEndian.Uint64(f[at:])),
 				Index: new(binary.LittleEndian.Uint64(f[at+8:])),
 				Type:  pb.EntryType(typ &^ namedEntry).Enum(),
 			}
-			at += 21
+			at += entryHdr
 			if typ&namedEntry != 0 {
 				// The entry names a batch by its origin and sequence:
 				// the length's place holds the sequence's low half.
@@ -651,6 +669,9 @@ func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
 	}
 	cl := int(binary.LittleEndian.Uint32(f[at:]))
 	at += 4
+	if len(f)-at < cl {
+		return nil, errRecord
+	}
 	if cl > 0 {
 		m.Context = append([]byte(nil), f[at:at+cl]...)
 	}
@@ -658,6 +679,14 @@ func (n *node) decodeMsg(f []byte) (*pb.Message, error) {
 }
 
 const namedEntry = 0x80
+
+// entryHdr is an entry's header in a peer frame: its term, index, type
+// and length.
+const entryHdr = 8 + 8 + 1 + 4
+
+// errPeerFrom is a peer's message that says it is from another member,
+// or one from a member removed.
+var errPeerFrom = errors.New("a peer's message from a member other than the peer, or removed")
 
 // frameBatch marks a peer frame that carries a follower's batch, after
 // [4 origin][8 sequence]; frameCarry asks the leader to carry batches
@@ -745,7 +774,7 @@ func (n *node) retryHeld() {
 				n.carryUntil[p.from] = time.Now().Add(time.Second)
 				continue
 			}
-			m, err := n.decodeMsg(h.f)
+			m, err := n.decodeMsg(h.f, p.from)
 			if errors.Is(err, errUnnamed) {
 				if n.now.Sub(h.at) < namedWait {
 					break

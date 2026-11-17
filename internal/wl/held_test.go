@@ -2,6 +2,7 @@ package wl
 
 import (
 	"encoding/binary"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -70,5 +71,70 @@ func TestADroppedBatchWithNoLeaderAnswersNoLeader(t *testing.T) {
 	n.lead = 2
 	if got := n.droppedMsg(); got != "etcdserver: leader changed" {
 		t.Fatalf("with a leader the writes are answered %q", got)
+	}
+}
+
+// peerSays puts frames, each with its length, in p's input, as its
+// connection read them.
+func peerSays(p *peerIn, frames ...[]byte) {
+	var in []byte
+	for _, f := range frames {
+		in = binary.LittleEndian.AppendUint32(in, uint32(len(f)))
+		in = append(in, f...)
+	}
+	p.pt, p.pr, p.pw = in, 0, len(in)
+}
+
+// A peer's frame whose counts and lengths do not fit it closes the
+// connection: it neither panics the node nor makes it allocate what the
+// counts say. Unchecked, the first took 4 Gi entries' slots and the
+// second sliced past its frame.
+func TestAPeerFrameThatDoesNotFitClosesTheConnection(t *testing.T) {
+	n, _ := testNode(t)
+	n.rn = newTestRawNode(t)
+	n.now = time.Now()
+	manyEntries := heartbeatFrame(2, 1)
+	binary.LittleEndian.PutUint32(manyEntries[58:], 1<<32-1)
+	longContext := heartbeatFrame(2, 1)
+	binary.LittleEndian.PutUint32(longContext[msgHdr:], 1<<20)
+	badType := namedAppend(3, 1)
+	badType[msgHdr+16] = 0x7f
+	for name, f := range map[string][]byte{
+		"an append of 2^32-1 entries in 66 bytes": manyEntries,
+		"a context past its frame":                longContext,
+		"an entry of no type Raft has":            badType,
+	} {
+		p := &peerIn{from: 2}
+		peerSays(p, f)
+		if err := n.peerFrames(p); !errors.Is(err, errRecord) {
+			t.Errorf("%s: %v, want errRecord", name, err)
+		}
+	}
+}
+
+// A peer's message that names another member as its sender closes the
+// connection, as does any message of a member removed since it
+// connected: etcd's peer handler drops both. Unchecked, a heartbeat of a
+// later term naming node 3 moved this node's term and leader.
+func TestAPeerSpeaksOnlyForItself(t *testing.T) {
+	n, _ := testNode(t)
+	n.rn = newTestRawNode(t)
+	n.now = time.Now()
+	n.removed = map[uint64]bool{}
+	p := &peerIn{from: 2}
+	peerSays(p, heartbeatFrame(3, 100))
+	if err := n.peerFrames(p); !errors.Is(err, errPeerFrom) {
+		t.Fatalf("a heartbeat naming node 3 on node 2's connection: %v, want errPeerFrom", err)
+	}
+	if st := n.rn.Status(); st.GetTerm() == 100 || st.Lead == 3 {
+		t.Fatalf("term %d, leader %d after node 2 spoke for node 3", st.GetTerm(), st.Lead)
+	}
+	n.removed[2] = true
+	peerSays(p, heartbeatFrame(2, 100))
+	if err := n.peerFrames(p); !errors.Is(err, errPeerFrom) {
+		t.Fatalf("a heartbeat of removed node 2: %v, want errPeerFrom", err)
+	}
+	if st := n.rn.Status(); st.GetTerm() == 100 {
+		t.Fatalf("term %d after a heartbeat of a removed member", st.GetTerm())
 	}
 }

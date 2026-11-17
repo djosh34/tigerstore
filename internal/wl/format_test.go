@@ -224,12 +224,12 @@ func TestEachStartHasALaterRun(t *testing.T) {
 	}
 }
 
-// namedAppend is a peer frame of an append from node 1 with one entry
+// namedAppend is a peer frame of an append from node 2 with one entry
 // that names the batch seq of origin.
 func namedAppend(origin, seq uint64) []byte {
 	f := make([]byte, msgHdr)
 	f[0] = byte(pb.MsgApp)
-	binary.LittleEndian.PutUint64(f[2:], 1)
+	binary.LittleEndian.PutUint64(f[2:], 2)
 	binary.LittleEndian.PutUint32(f[58:], 1)
 	var eh [21]byte
 	eh[16] = byte(pb.EntryNormal) | namedEntry
@@ -265,10 +265,10 @@ func TestANamedBatchOfAnEarlierRunIsNotALatersBatch(t *testing.T) {
 	const count = 5
 	later := uint64(2)<<32 | count
 	n.fwdOf(2)[later&(fwdSlots-1)] = fwdBatch{seq: later, data: []byte("run 2's batch")}
-	if _, err := n.decodeMsg(namedAppend(2, uint64(1)<<32|count)); !errors.Is(err, errUnnamed) {
+	if _, err := n.decodeMsg(namedAppend(2, uint64(1)<<32|count), 2); !errors.Is(err, errUnnamed) {
 		t.Fatalf("an append naming run 1's batch %d gave %v, want errUnnamed", count, err)
 	}
-	m, err := n.decodeMsg(namedAppend(2, later))
+	m, err := n.decodeMsg(namedAppend(2, later), 2)
 	if err != nil || string(m.GetEntries()[0].GetData()) != "run 2's batch" {
 		t.Fatalf("an append naming run 2's batch: %v", err)
 	}
