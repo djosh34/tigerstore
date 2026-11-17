@@ -1,12 +1,20 @@
-// Package core is the committer of one node: an event and effect machine
-// around a Raft RawNode and the MVCC index.
+// Package core is the committer of the previous release's engine: an event
+// and effect machine around a Raft RawNode and the MVCC index.
+//
+// A node runs internal/wl now. core stays to read a data dir of the
+// previous release: the offline upgrade (cmd/tigerstore/migrate.go) starts
+// it on that data dir to replay its log into the store it snapshots, and
+// the release test reads that log through it (LogAuth, DecodeBatch). It
+// keeps what that replay reaches, and applies main's log exactly as main
+// did. Its comments name the driver that ran it, main's internal/node,
+// which is gone. It goes with mvcc's replay and internal/wal once the
+// previous release is no longer an upgrade source.
 //
 // Inputs are method calls: Submit (a client request), Step (a message from
 // a peer), Tick (one clock tick) and Persisted (a disk write finished).
 // Process returns the effects: disk writes, messages to send and replies.
 // The core never does I/O, never reads the clock, never starts a goroutine
-// and has no randomness of its own: its driver, internal/node, does those,
-// in production and in the simulator.
+// and has no randomness of its own.
 package core
 
 import (
