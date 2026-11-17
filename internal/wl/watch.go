@@ -847,6 +847,12 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event) bool) (bool
 		evs = append(evs, ev)
 		b.events--
 		b.bytes -= int64(len(ev.kv) + len(ev.prev))
+		if ev.del {
+			// A delete's event writes its key, which a put's record has:
+			// uncounted, deletes of large keys at revisions apart made one
+			// message no share or reserve took (#689's re-check, D4).
+			b.bytes -= int64(st.keys[ch.key].klen)
+		}
 	}
 	if away || len(evs) > 0 && !emit(evs) {
 		return false, nil

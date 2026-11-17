@@ -260,3 +260,47 @@ func TestAStreamEndedInsideALargeResponseIsReset(t *testing.T) {
 		t.Fatal("the stream was not reset")
 	}
 }
+
+// A catch-up of deletes of large keys, each at its own revision, counts
+// their keys and goes out a revision or so at a time (D4): counted as
+// nothing, the three made one message of 3 MiB, past a 384 KiB share and
+// the reserve together, and the watch never moved on.
+func TestACatchUpOfDeletesOfLargeKeysMovesOn(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	st, l := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	n.sizes, n.connOut = sizeFor(96<<20), 384<<10
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	s.kind, s.watch = kWatch, true
+	c.flow.conn, s.win = 1<<30, 1<<30
+	var ids []uint32
+	for _, prefix := range []string{"a", "b", "c"} {
+		key := prefix + strings.Repeat("k", 1<<20)
+		putValue(t, st, l, key, "v")
+		id, _ := st.find([]byte(key))
+		ids = append(ids, id)
+	}
+	start := st.rev + 1
+	for _, id := range ids {
+		st.rev++
+		if _, ok, err := st.del(id, st.rev, false); err != nil || !ok {
+			t.Fatalf("delete: %v", err)
+		}
+		st.endApply()
+	}
+	i := n.w.add(watcher{sock: 0, gen: 1, sid: s.id, id: 1, key: []byte{0}, end: []byte{0}, syncRev: start})
+	n.w.unsynced = append(n.w.unsynced, i)
+	for range 3 {
+		if err := n.syncWatchers(); err != nil {
+			t.Fatal(err)
+		}
+		c.ow = len(c.out) // the client read it
+		n.giveRoom(c, false)
+	}
+	if x := &n.w.ws[i]; x.syncRev != 0 {
+		t.Fatalf("the catch-up stays at revision %d of %d..%d; reserve %d of %d, %d waits", x.syncRev, start, st.rev, n.reserved, n.sizes.reserve(), n.stats.roomWaits)
+	}
+}
