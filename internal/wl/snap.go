@@ -134,6 +134,20 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 		return err
 	}
 	old := n.st
+	oldRev := old.rev
+	// Planted: B27 goes on with the store it had before the install, as
+	// if it held what the snapshot does.
+	keepOld := planted.On("B27")
+	if !keepOld {
+		// The old store goes before the new one is built: both at once
+		// held two stores' tables, past the budget on a large store
+		// (#719). A load that fails stops the node, which starts again
+		// from its data dir: CURRENT still names the checkpoint before.
+		if err := old.close(); err != nil {
+			_ = f.Close()
+			return err
+		}
+	}
 	st, err := newStore()
 	if err != nil {
 		_ = f.Close()
@@ -142,20 +156,26 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	st.log = old.log
 	st.goLive = old.goLive
 	st.setBudget(old.budget, old.mapped)
+	if !keepOld {
+		// Go's limit follows the new store's tables as they grow, as at
+		// startup (loadWithinBudget).
+		n.st = st
+		st.grew = n.limitGo
+		n.limitGo()
+	}
 	gen := 1 - n.ckptGen
 	// Planted: B22 installs the snapshot without its CRC.
 	m, err := loadCkptChecked(f, gen, st, !planted.On("B22"))
+	st.grew = nil
 	if err != nil {
-		_ = st.close()
+		if keepOld {
+			_ = st.close()
+		}
 		return fmt.Errorf("install a snapshot: %w", err)
 	}
-	if planted.On("B27") {
-		// Planted: the node goes on with the store it had before the
-		// install, as if it held what the snapshot does.
+	if keepOld {
 		_ = st.close()
 		st = old
-	} else if err := old.close(); err != nil {
-		return err
 	}
 	n.st = st
 	n.simInstalled(meta.GetIndex())
@@ -184,7 +204,7 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	// where the old store was behind it (seed 10155 of TestWLFaultSeeds).
 	for i := range n.w.ws {
 		if x := &n.w.ws[i]; x.active && x.syncRev == 0 {
-			x.syncRev = max(old.rev+1, x.minRev)
+			x.syncRev = max(oldRev+1, x.minRev)
 			n.w.unsynced = append(n.w.unsynced, int32(i))
 		}
 	}

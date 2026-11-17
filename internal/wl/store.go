@@ -130,6 +130,7 @@ type store struct {
 	budget int64 // the node's memory, 0 for no limit
 	mapped int64 // the rings and stages mapped outside Go's heap at startup
 	goLive int64 // Go's live heap, as the collector last found it
+	closed bool  // close let go of its mappings
 	// grew, if set, is called as loading a checkpoint grows the tables
 	// outside Go's heap, every loadGrowKeys keys and at its end, so that
 	// Go's limit follows them (node.limitGo).
@@ -1105,6 +1106,12 @@ func (st *store) repoint(id uint32, from, to int64) {
 // close gives back the store's memory outside Go's heap and closes its
 // checkpoint files.
 func (st *store) close() error {
+	// A closed store's mappings may be another's since: they are unmapped
+	// once.
+	if st.closed {
+		return nil
+	}
+	st.closed = true
 	for i, f := range st.ckpts {
 		if f != nil {
 			_ = f.Close()

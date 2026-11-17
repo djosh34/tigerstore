@@ -592,3 +592,55 @@ func TestACheckpointLoadsWithinTheBudget(t *testing.T) {
 		t.Fatalf("Go's limit after the load is %d MiB, past the %d MiB the budget leaves it", m.goLimit>>20, want>>20)
 	}
 }
+
+// A follower installs a snapshot within its budget: it lets go of its old
+// store before it builds the new one, whose tables Go's limit follows as
+// they grow, and ends within what the budget leaves Go. Both stores at
+// once held two stores' tables, past the budget on a large store (#719).
+func TestASnapshotInstallsWithinTheBudget(t *testing.T) {
+	const keys = 4 * loadGrowKeys
+	// The leader's checkpoint, which the follower receives.
+	n, l := ckptNode(t)
+	for i := range keys {
+		putValue(t, n.st, l, fmt.Sprintf("/snap/%06d", i), "v")
+	}
+	writeCkptAt(t, n, 7)
+	b, err := os.ReadFile(filepath.Join(n.ckptDir, ckptName(7)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	recv := filepath.Join(t.TempDir(), "received")
+	if err := os.WriteFile(recv, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The follower, its store as large and its log on disk.
+	m, ml := ckptNode(t)
+	for i := range keys {
+		putValue(t, m.st, ml, fmt.Sprintf("/old/%06d", i), "v")
+	}
+	if m.wal, err = openWAL(sysEnv{}, t.TempDir(), sizeFor(0).stage, 0, 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.wal.close)
+	const budget = 256 << 20
+	m.st.setBudget(budget, 0)
+	m.limitGo()
+	old, before := m.st, m.goLimits
+	sn := &pb.Snapshot{Data: []byte(recv), Metadata: &pb.SnapshotMetadata{Index: new(uint64(9)), Term: new(uint64(1)), ConfState: m.confState}}
+	if err := m.installSnapshot(sn); err != nil {
+		t.Fatal(err)
+	}
+	if m.st == old || !old.closed {
+		t.Fatal("the old store outlives the install")
+	}
+	if m.st.nkeys != keys || m.st.grew != nil {
+		t.Fatalf("the installed store holds %d keys (grew set: %v), want %d", m.st.nkeys, m.st.grew != nil, keys)
+	}
+	// Down once the old store went, then up again as the new one grew.
+	if got := m.goLimits - before; got < 2 {
+		t.Fatalf("Go's limit was set %d times over the install, want it to follow the tables", got)
+	}
+	if want := max(budget-m.st.outside(), m.st.goNeed()); m.goLimit > want+budget/64 {
+		t.Fatalf("Go's limit after the install is %d MiB, past the %d MiB the budget leaves it", m.goLimit>>20, want>>20)
+	}
+}
