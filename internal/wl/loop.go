@@ -928,7 +928,7 @@ func (l *loop) input(idx int) {
 		switch v := x.(type) {
 		case *client:
 			err = v.frames(n)
-			if err == nil && v.paused {
+			if err == nil && (v.paused || v.tokenWait != 0) {
 				// Nothing more is read from it until a flush resumes it.
 				n.markDirty(&v.sock)
 			}
@@ -1084,7 +1084,7 @@ func (l *loop) run() error {
 			return err
 		}
 		if len(n.tokenWaits) > 0 {
-			n.retryTokenWaits()
+			l.resumeTokenWaits()
 		}
 		// The changes stepped are appended now; the next held one may go.
 		n.confHold.stepped = false
@@ -1188,7 +1188,7 @@ func (l *loop) flush() {
 				c.paused = false
 				resumed = append(resumed, c)
 			}
-			noIn = c.paused || c.starved
+			noIn = c.paused || c.starved || c.tokenWait != 0
 		}
 		if ok == !s.wantOut && noIn == s.noIn {
 			continue
@@ -1209,6 +1209,29 @@ func (l *loop) flush() {
 	clear(resumed)
 	l.resumed = resumed[:0]
 	n.serveRoomWait()
+}
+
+// resumeTokenWaits lets the clients whose call's token waited read on,
+// once its entry applied or it waited requestTimeout (tokenwait.go).
+func (l *loop) resumeTokenWaits() {
+	n := l.n
+	waits := n.tokenWaits
+	n.tokenWaits = nil
+	for _, c := range waits {
+		switch {
+		case c.dead:
+		case !n.tokenReady(c, n.now):
+			n.tokenWaits = append(n.tokenWaits, c)
+		default:
+			c.tokenWait = 0
+			n.markDirty(&c.sock)
+			// Another call's token may stop it again, which puts it
+			// back in n.tokenWaits.
+			if err := c.frames(n); err != nil {
+				l.closeClient(c.idx, err)
+			}
+		}
+	}
 }
 
 // sockEvents are the events a socket waits for: input unless paused, its

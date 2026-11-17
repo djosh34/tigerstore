@@ -146,12 +146,9 @@ type stream struct {
 	progressDue, progressWaits bool
 	// token is the call's auth token, from its token header. A side
 	// call's (byCaller) is for the client of caller's certificate name.
-	token  string
-	caller string
-	// tokenWaits counts its requests that wait for the entry of its
-	// token (tokenwait.go).
-	tokenWaits int
-	byCaller   bool
+	token    string
+	caller   string
+	byCaller bool
 }
 
 // streamSlots are a client's streams kept in place; more at once go to a
@@ -195,6 +192,11 @@ type client struct {
 	// the node reads nothing more of it until a flush brings the buffer
 	// under half the share.
 	paused bool
+	// tokenWait, while not 0, is the entry a call's simple token names,
+	// which the node has not applied: it reads no more of the client's
+	// frames until it does, or requestTimeout from tokenAt (tokenwait.go).
+	tokenWait uint64
+	tokenAt   time.Time
 	// partial is what its streams hold of requests sent in part, and
 	// streams how many are open.
 	partial int64
@@ -401,7 +403,7 @@ func (c *client) takeBufs() {
 // and no request in part, so that its buffers may go back.
 func (c *client) idle() bool {
 	return c.ir == c.iw && c.pr == c.pw && len(c.out) == c.ow && c.rec < 0 &&
-		len(c.flow.held) == 0 && c.partial == 0 && !c.paused
+		len(c.flow.held) == 0 && c.partial == 0 && !c.paused && c.tokenWait == 0
 }
 
 // giveBufs gives the buffers of an idle client back, and its stream slots
@@ -564,6 +566,11 @@ func (c *client) frames(n *node) error {
 		n.markDirty(&c.sock)
 	}
 	for {
+		if c.tokenWait != 0 {
+			// A call's token waits for its entry: the rest waits behind
+			// it, in pt and the socket (tokenwait.go).
+			return nil
+		}
 		if c.backedUp() {
 			// Its replies wait: the rest of its requests waits too, in
 			// pt and the socket, until a flush resumes it (loop.flush).
@@ -839,6 +846,7 @@ func (c *client) headers(n *node, block []byte, continued bool) error {
 	s := c.newStream(sid, kind)
 	s.gzip, s.token = info.gzip, info.token
 	s.caller, s.byCaller = info.caller, info.byCaller
+	n.waitForToken(c, s)
 	if kind != kUnknown {
 		n.callStarted(s)
 	}
