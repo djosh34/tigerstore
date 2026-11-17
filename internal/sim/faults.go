@@ -342,22 +342,28 @@ func (s *Sim) maybeCorrupt(n *node) {
 }
 
 // flipWLRecord flips a bit of a synced record of wl node n's log that a
-// record that checks follows, which a start refuses (internal/wl/wal.go's
-// head): the damage of a wl node where the kind drawn found no place, as
-// during the faults, when most logs are a few hundred bytes in one segment
-// and hold no checkpoint (seeds 22000 to 22003). The flip stays only if
-// reading the log as a start reads it refuses it. Only TestSeeds' runs
-// do it (Config.flipRecords), once the cluster formed first: a node fenced
-// in the first seconds of a cluster that forms under the faults left
-// seed 2 of TestKubernetesLoad two nodes that the crashes kept from
-// committing enough to test. The lock is held.
+// record that checks follows, which a start must refuse (internal/wl/
+// wal.go's head): the damage of a wl node where the kind drawn found no
+// place, as during the faults, when most logs are a few hundred bytes in
+// one segment and hold no checkpoint (seeds 22000 to 22003). The run
+// decides from the log's format, not from wl's reader, which a start then
+// checks (Recovered fails a start that takes it): any byte but the
+// length's, whose CRC-32C no longer matches, unless the flip leaves a
+// part of a sector all zeros, which wl takes by design for a write a
+// crash tore in its last segment. Kept only when wl's reader refused it,
+// a gap in wl's checks never failed a run (#689's area-4 review, finding
+// 24). Only TestSeeds' runs do it (Config.flipRecords), once the cluster
+// formed first: a node fenced in the first seconds of a cluster that
+// forms under the faults left seed 2 of TestKubernetesLoad two nodes that
+// the crashes kept from committing enough to test. The lock is held.
 func (s *Sim) flipWLRecord(n *node) bool {
 	d := n.disk
 	ptr, err := wlPointer(d)
 	if err != nil {
 		return false
 	}
-	recs := wl.Records(func(k int64) []byte { return d.DurableBytes(wlSegment(k)) }, ptr.LogFrom)
+	seg := func(k int64) []byte { return d.DurableBytes(wlSegment(k)) }
+	recs := wl.Records(seg, ptr.LogFrom)
 	if len(recs) < 2 {
 		return false
 	}
@@ -368,13 +374,43 @@ func (s *Sim) flipWLRecord(n *node) bool {
 	if at >= 4 {
 		at += 4
 	}
-	k, off := wl.SegmentPlace(r.Off + at)
-	name := wlSegment(k)
-	d.FlipDurable(name, int(off))
-	if _, err := wl.ReadLog(s.os.NewNode(wlDataDir, d.Durable(), nil), wlDataDir); errors.Is(err, wl.ErrCorruptLog) {
-		return true
+	rec := logBytes(seg, r.Off, r.Len)
+	rec[at] ^= 1
+	if zeroSector(rec, r.Off) {
+		return false
 	}
-	d.FlipDurable(name, int(off))
+	k, off := wl.SegmentPlace(r.Off + at)
+	d.FlipDurable(wlSegment(k), int(off))
+	return true
+}
+
+// logBytes returns a copy of the n bytes of a wl log at offset off.
+func logBytes(seg func(k int64) []byte, off, n int64) []byte {
+	out := make([]byte, 0, n)
+	for int64(len(out)) < n {
+		k, in := wl.SegmentPlace(off + int64(len(out)))
+		b := seg(k)
+		if int64(len(b)) <= in {
+			break
+		}
+		out = append(out, b[in:min(int64(len(b)), in+n-int64(len(out)))]...)
+	}
+	return out
+}
+
+// wlSector is the sector a crash tears a wl log's writes at.
+const wlSector = 512
+
+// zeroSector reports whether rec, at log offset off, has a part within one
+// sector that is all zeros: what a write torn at sectors leaves.
+func zeroSector(rec []byte, off int64) bool {
+	for len(rec) > 0 {
+		k := min(int64(len(rec)), wlSector-off%wlSector)
+		if !slices.ContainsFunc(rec[:k], func(c byte) bool { return c != 0 }) {
+			return true
+		}
+		rec, off = rec[k:], off+k
+	}
 	return false
 }
 
