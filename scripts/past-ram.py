@@ -111,18 +111,13 @@ def main():
     root = Path("/sys/fs/cgroup")
     group = root / f"past-ram-{os.getpid()}"
     initial = ",".join(f"n{i}=https://127.0.0.1:{20101 + 10*i}" for i in range(3))
-    # tigerstore's clients speak TLS only: its members take self-signed
-    # client certificates (--auto-tls), the driver does not verify them, and
-    # the metrics come from a plain listener of their own. etcd's clients
-    # and metrics stay on its plain client URLs.
-    scheme = "https" if args.kind == "tigerstore" else "http"
-    endpoints = ",".join(f"{scheme}://127.0.0.1:{20100 + 10*i}" for i in range(3))
-
-    def metrics_port(i):
-        return 20102 + 10*i if args.kind == "tigerstore" else 20100 + 10*i
+    # Both stores serve their clients and metrics on plain http client URLs
+    # (tigerstore over h2c, #718): the jobs measure a member holding more
+    # data than its memory, over the same transport for both.
+    endpoints = ",".join(f"http://127.0.0.1:{20100 + 10*i}" for i in range(3))
 
     def launch(i):
-        client = f"{scheme}://127.0.0.1:{20100 + 10*i}"
+        client = f"http://127.0.0.1:{20100 + 10*i}"
         peer = f"https://127.0.0.1:{20101 + 10*i}"
         command = [str(Path(args.server).resolve()), "--name", f"n{i}",
                    "--data-dir", str(out / f"data{i}"),
@@ -131,7 +126,6 @@ def main():
                    "--initial-cluster", initial, "--initial-cluster-token", "past-ram",
                    "--peer-auto-tls", "--quota-backend-bytes", str(args.quota)]
         if args.kind == "tigerstore":
-            command += ["--auto-tls", "--listen-metrics-urls", f"http://127.0.0.1:{metrics_port(i)}"]
             # A positive flag overrides GOMEMLIMIT in the current server.
             # Leave it unset for the equal-GOMEMLIMIT comparison.
             if args.go_memory == "off":
@@ -162,7 +156,7 @@ def main():
         deadline = time.monotonic() + 60
         while True:
             try:
-                if all(healthy(metrics_port(i)) for i in range(3)):
+                if all(healthy(20100 + 10*i) for i in range(3)):
                     break
                 if time.monotonic() > deadline or any(n.poll() is not None for n in nodes):
                     raise RuntimeError("cluster did not start")
@@ -172,7 +166,7 @@ def main():
                     raise RuntimeError("cluster did not start")
                 time.sleep(1)
         with (out / "driver.log").open("wb") as log:
-            driver = subprocess.Popen([str(Path(args.driver).resolve()), "-endpoints", endpoints, "-insecure-tls",
+            driver = subprocess.Popen([str(Path(args.driver).resolve()), "-endpoints", endpoints,
                                        "-mode", args.mode, "-bytes", str(args.preload_bytes or args.memory * 31 // 10),
                                        "-duration", f"{args.seconds}s", "-out", str(out)],
                                       stdout=log, stderr=subprocess.STDOUT)
@@ -192,7 +186,7 @@ def main():
                               "cpu": fields(cg / "cpu.stat"), "io": (cg / "io.stat").read_text(),
                               "exit": nodes[i].poll()}
                     try:
-                        member["metrics"] = metrics(metrics_port(i))
+                        member["metrics"] = metrics(20100 + 10*i)
                     # A member can cut its answer short, as an etcd member
                     # did with IncompleteRead (#242); the sample records it.
                     except (urllib.error.URLError, http.client.HTTPException, TimeoutError, ConnectionError) as error:
