@@ -1267,8 +1267,10 @@ func (n *node) loadNewest() (int64, error) {
 	// CURRENT's rename may not be durable yet, if the node stopped right
 	// after it: synced first, a power loss can no longer bring back the
 	// pointer before, whose checkpoint the cleanup removes.
-	if err := syncDir(n.sys, n.ckptDir); err != nil {
-		return 0, err
+	if p != nil {
+		if err := syncDir(n.sys, n.ckptDir); err != nil {
+			return 0, err
+		}
 	}
 	if err := cleanCkptDir(n.sys, n.ckptDir, keep); err != nil {
 		return 0, err
