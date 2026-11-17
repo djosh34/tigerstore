@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -196,5 +197,66 @@ func TestHeldRepliesCountAgainstTheShare(t *testing.T) {
 	}
 	if !c.holdsTooMuch() {
 		t.Fatalf("a client holding %d bytes of held replies past its share of %d is not refused", c.heldCounted, n.connOut)
+	}
+}
+
+// The second re-check of #689 (R2, Opus's probes).
+
+// A range waiting for room whose client closes no longer counts its kept
+// request in the pool (B9's leak).
+func TestAClosedClientsWaitingRangeLeavesThePool(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	before := n.cout
+	req := appendBytesField(appendBytesField(nil, 1, []byte("/p/")), 2, []byte("/p0"))
+	n.waitRoom(c, s, req)
+	c.dropAll()
+	n.gens[0]++
+	n.serveRoomWait()
+	if n.cout != before || len(n.roomWait) != 0 {
+		t.Fatalf("after its client closed, its waiting range keeps %d bytes in the pool, %d waiting", n.cout-before, len(n.roomWait))
+	}
+}
+
+// A watch stream that ends with an error ends its watches.
+func TestAWatchStreamEndedWithAnErrorEndsItsWatches(t *testing.T) {
+	c, _ := flowClient(t)
+	n := c.node
+	st, _ := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	s := c.newStream(3, kWatch)
+	s.watch = true
+	i := n.w.add(watcher{sock: 0, gen: 1, sid: s.id, id: 1, key: []byte("/a")})
+	s.wids = append(s.wids, i)
+	n.replyError(c, s.id, codeResourceExhausted, "etcdserver: too many requests")
+	if c.get(s.id) != nil || n.w.ws[i].active {
+		t.Fatal("the watch stream ended with an error keeps its watcher")
+	}
+}
+
+// A watch stream ended while a large response is half written in it is
+// reset: what waited behind the response never goes out inside it.
+func TestAStreamEndedInsideALargeResponseIsReset(t *testing.T) {
+	c, _ := flowClient(t)
+	n := c.node
+	st, _ := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	s := c.newStream(3, kWatch)
+	s.watch = true
+	s.big, c.bigs = true, 1 // a large response's message is half written
+	c.hold(s, make([]byte, 100), nil)
+	n.replyError(c, s.id, codeResourceExhausted, "etcdserver: too many requests")
+	c.drain()
+	if len(c.flow.held) != 0 || c.bigs != 0 || c.get(s.id) != nil {
+		t.Fatalf("after the end: %d held, %d large streams, stream open %v; want it reset with nothing held", len(c.flow.held), c.bigs, c.get(s.id) != nil)
+	}
+	if !bytes.Contains(c.out, []byte{0, 0, 4, frRST}) {
+		t.Fatal("the stream was not reset")
 	}
 }

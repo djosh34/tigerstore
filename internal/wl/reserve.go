@@ -57,12 +57,15 @@ func (n *node) msgRoom(c *client, m int64) bool {
 // giveRoom gives back the room of the reserve that client c holds past
 // what it holds over its share now, all of it once c is closed.
 func (n *node) giveRoom(c *client, closed bool) {
-	if closed && len(n.heldReplies) > 0 || c.roomWaiters > 0 {
-		// A reply it waited for lets go of what it holds; or bytes of a
-		// client that has messages waiting left, and its own backlog may
-		// have kept them waiting, with no room of the reserve held (#689's
-		// re-check, B2).
+	if closed && len(n.heldReplies) > 0 {
+		// A reply it waited for lets go of what it holds.
 		n.roomFreed = true
+	}
+	if !closed && c.roomWaiters > 0 && c.waiting()+c.flow.bytes <= n.connOut/2 {
+		// Its messages waiting may have waited behind its own bytes, with
+		// no room of the reserve held, and those have gone down to half
+		// its share (#689's re-check, B2).
+		n.roomFreed, n.roomShort = true, false
 	}
 	if c.roomHeld == 0 {
 		return
@@ -93,6 +96,24 @@ func (n *node) waitRoom(c *client, s *stream, msg []byte) {
 // a client, past its share by more than the whole reserve: it must go in
 // pieces, as waiting for room would wait for good (#689's re-check, B1).
 func (n *node) cannotFit(m int64) bool { return m-n.connOut > n.sizes.reserve() }
+
+// dropClientWaits lets go of the ranges client c, closed, waited for room
+// with: their requests count in the pool.
+func (n *node) dropClientWaits(c *client) {
+	k := 0
+	for _, r := range n.roomWait {
+		if idx, gen, _ := r.h.parts(); idx == c.idx && gen == c.gen {
+			c.growOut(-len(r.msg))
+			c.heldCounted -= int64(len(r.msg))
+			c.roomWaiters--
+			continue
+		}
+		n.roomWait[k] = r
+		k++
+	}
+	clear(n.roomWait[k:])
+	n.roomWait = n.roomWait[:k]
+}
 
 // dropWaits lets go of what stream sid of client c waits for room with:
 // the client reset it.

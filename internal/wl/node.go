@@ -374,7 +374,9 @@ func (n *node) clientOf(h handle) (*client, *stream) {
 // during the call.
 func (n *node) request(c *client, s *stream, msg []byte) error {
 	n.turnReqs[s.kind]++
-	if c.holdsTooMuch() {
+	if c.holdsTooMuch() && s.kind != kWatch {
+		// etcd refuses no watch message so; a watch's events wait as a
+		// slow watcher's do.
 		n.reject(c, s, errTooManyRequests)
 		return nil
 	}
@@ -551,6 +553,18 @@ func (n *node) endReply(c *client, s *stream, w *msgW) {
 // replyError ends stream sid with a gRPC error, headers and trailers in
 // one block.
 func (n *node) replyError(c *client, sid uint32, code int, msg string) {
+	if s := c.get(sid); s != nil && s.watch {
+		if s.big {
+			// A large response is under way in it: trailers held behind
+			// it would go out inside it once the stream ends. It is reset,
+			// as a lost connection would end it (#689's re-check 2).
+			n.abortBigWatch(c, s)
+			n.markDirty(&c.sock)
+			return
+		}
+		// Its watches end with it.
+		n.closeWatchStream(c, s)
+	}
 	if s := c.get(sid); s != nil {
 		n.callEnded(s, code)
 	}

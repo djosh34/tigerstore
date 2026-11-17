@@ -422,6 +422,7 @@ func (c *client) dropAll() {
 	if c.in != nil {
 		c.node.active--
 	}
+	c.node.dropClientWaits(c)
 	c.node.giveRoom(c, true)
 	c.grow(-cap(c.in) - cap(c.pt) - int(c.partial) - cap(c.block))
 	c.growOut(-cap(c.out) - int(c.flow.bytes))
