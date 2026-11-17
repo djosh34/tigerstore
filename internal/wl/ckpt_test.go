@@ -1101,9 +1101,10 @@ func TestASnapshotReceivedTwiceKeepsTheOneRaftTook(t *testing.T) {
 }
 
 // A checkpoint waits for the log to grow ckptDiskShare times what the
-// last wrote, beyond ckptLog, so that checkpoints take a bounded share of
-// the disk's writes as the store grows; and for the loop's share of the
-// last (#602's ceilings).
+// last wrote, beyond ckptLog and up to ckptShareMax, so that checkpoints
+// take a bounded share of the disk's writes as the store grows while the
+// log a start replays stays bounded; and for the loop's share of the last
+// (#602's ceilings).
 func TestACheckpointWaitsForItsShareOfTheDisk(t *testing.T) {
 	n, _ := testNode(t)
 	n.now = time.Unix(1_700_000_000, 0)
@@ -1117,6 +1118,8 @@ func TestACheckpointWaitsForItsShareOfTheDisk(t *testing.T) {
 		{16 << 10, 1 << 20, true},
 		{1 << 20, ckptDiskShare<<20 - 1, false},
 		{1 << 20, ckptDiskShare << 20, true},
+		{1 << 30, ckptShareMax - 1, false},
+		{1 << 30, ckptShareMax, true},
 	} {
 		n.ckptWrote, n.wal.off = c.wrote, n.ckptFrom+c.grown
 		if got := n.ckptDue(); got != c.due {

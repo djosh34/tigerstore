@@ -100,18 +100,25 @@ const ckptLoopShare = 40
 
 // ckptDiskShare bounds the disk's writes for checkpoints as ckptLoopShare
 // bounds the loop's time: the next starts once the log has grown this
-// many times what the last wrote. A checkpoint's size grows with the
-// store, and under crd-heavy's load one of 205 MB every 19 s of log added
-// a tenth to what each node wrote, on a disk the log itself nearly fills
-// (#602's ceilings). The log a start replays grows with it, to this many
-// times the checkpoint's size: as the store grows, so does the replay.
+// many times what the last wrote, up to ckptShareMax. A checkpoint's size
+// grows with the store, and under crd-heavy's load one of 205 MB every
+// 19 s of log added a tenth to what each node wrote, on a disk the log
+// itself nearly fills (#602's ceilings).
 const ckptDiskShare = 32
 
+// ckptShareMax is the most log ckptDiskShare waits for: what a start
+// replays, and the log's disk beyond its live values, stay within it. At
+// about 80 MB/s of replay (#744), 4 GiB is under a minute, about what the
+// loop's pacing (ckptLoopShare) already let the log grow to at
+// crd-heavy's peak, and a checkpoint of 205 MB takes 5% of the writes.
+const ckptShareMax = 4 << 30
+
 // ckptDue reports whether the next checkpoint is due: the log has grown
-// ckptLog since the newest, and ckptDiskShare times what that wrote, and
-// the loop's share of the last has passed.
+// ckptLog since the newest, and ckptDiskShare times what that wrote up to
+// ckptShareMax, and the loop's share of the last has passed.
 func (n *node) ckptDue() bool {
-	return n.wal.off-n.ckptFrom >= max(n.ckptLog, ckptDiskShare*n.ckptWrote) && !n.now.Before(n.ckptNotBefore)
+	grow := max(n.ckptLog, min(ckptDiskShare*n.ckptWrote, ckptShareMax))
+	return n.wal.off-n.ckptFrom >= grow && !n.now.Before(n.ckptNotBefore)
 }
 
 // ckptMeta is a checkpoint's header.
