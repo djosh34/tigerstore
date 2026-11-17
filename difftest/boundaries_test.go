@@ -77,11 +77,14 @@ var stricter = map[string][]string{
 	},
 }
 
-// deliberate lists the steps where tigerstore differs from etcd v3.7.2 as
-// the owner ruled it may (#721's second ruling; README's differences from
-// etcd): it refuses them with ResourceExhausted and a message that holds
-// the text listed, where etcd answers. Like stricter's, etcd's own answer
-// is allowed only when TIGERSTORE_DIFF_SERVER is etcd.
+// deliberate lists the steps where tigerstore may differ from etcd v3.7.2
+// as the owner ruled (#721's second ruling; README's differences from
+// etcd): it may refuse them with ResourceExhausted and a message that
+// holds the text listed, where etcd answers, or answer as etcd does. A
+// range sorted by value is refused past one piece of its reply, which
+// depends on the server's memory budget: scripts/local-cluster.sh gives
+// each node a quarter of the host's memory, and CI's 4 GiB makes a piece
+// 64 MiB, more than this test's 56 MiB, so tigerstore answers there.
 var deliberate = map[string]string{
 	"sort-by-value/sorted by value, past one piece":      "a range sorted by value is refused past one piece",
 	"sort-by-value/txn whose range passes one message":   "grpc: trying to send message larger than max",
@@ -120,8 +123,8 @@ func server(t *testing.T) string {
 // allowed reports whether got is a right answer for the step that etcd
 // v3.7.2 answered with want.
 func allowed(srv, name string, want, got step) bool {
-	if text, ok := deliberate[name+"/"+want.Do]; ok && srv == "tigerstore" {
-		return got.Code == "ResourceExhausted" && strings.Contains(got.Message, text)
+	if text, ok := deliberate[name+"/"+want.Do]; ok && srv == "tigerstore" && got.Code == "ResourceExhausted" {
+		return strings.Contains(got.Message, text)
 	}
 	alts, ok := stricter[name+"/"+want.Do]
 	if !ok || srv == "etcd" {

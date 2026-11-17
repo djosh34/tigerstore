@@ -13,8 +13,9 @@ import (
 // TestSortByValue runs the replies that #721's second ruling lets
 // tigerstore refuse where etcd answers (deliberate), next to the same
 // ranges that it answers as etcd does. Its 40 values of 1.4 MiB, 56 MiB
-// in all, are past one piece of a reply at tigerstore's default budget
-// (a connection's share of 48 MiB) and past one message (2 MiB).
+// in all, are past one message (2 MiB), so the Txn's and the delete's
+// replies are refused; whether the range sorted by value is past one
+// piece depends on the server's budget (see deliberate).
 func TestSortByValue(t *testing.T) {
 	runCases(t, "etcd-v3.7.2-sortbyvalue.json", []testCase{{"sort-by-value", sortByValue}})
 }
