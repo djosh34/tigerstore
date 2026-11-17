@@ -133,6 +133,9 @@ type node struct {
 	reserved  int64
 	roomWait  []awayRead
 	roomFreed bool
+	// heldReplies are the replies of applied writes that wait for room
+	// in the reserve, unbuilt (reserve.go).
+	heldReplies []*heldReply
 	// roomShort is set from when a message found the reserve spent until
 	// some room comes back: the watches' catch-ups wait for it.
 	roomShort bool

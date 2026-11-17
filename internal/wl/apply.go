@@ -370,22 +370,39 @@ func (n *node) applyPut(req []byte, voff int64, c *client, s *stream) error {
 	}
 	n.st.rev = rev
 	if c != nil {
-		var w msgW
-		size := sizeBytesField(1, n.hdrSize())
-		if r.prevKV && prev != nil {
-			size += sizeBytesField(2, len(prev))
+		if !r.prevKV {
+			prev = nil
 		}
-		if !n.appliedRoom(c, s, size) {
-			return nil
+		// A reply the reserve has no room for waits, unbuilt (reserve.go).
+		if size := n.putReplySize(rev, prev); n.msgRoom(c, int64(5+size)) {
+			n.writePutReply(c, s, size, rev, prev)
+		} else {
+			n.holdPut(c, s, prev)
 		}
-		n.beginReply(c, s, &w, size)
-		n.writeHdr(&w)
-		if r.prevKV && prev != nil {
-			w.bytesField(2, prev)
-		}
-		n.endReply(c, s, &w)
 	}
 	return nil
+}
+
+// putReplySize is the size of a PutResponse at revision rev with prev,
+// the record before, if not nil.
+func (n *node) putReplySize(rev int64, prev []byte) int {
+	size := sizeBytesField(1, n.hdrSizeAt(rev))
+	if prev != nil {
+		size += sizeBytesField(2, len(prev))
+	}
+	return size
+}
+
+// writePutReply answers stream s of client c with a PutResponse of size
+// bytes.
+func (n *node) writePutReply(c *client, s *stream, size int, rev int64, prev []byte) {
+	var w msgW
+	n.beginReply(c, s, &w, size)
+	n.writeHdrAt(&w, rev)
+	if prev != nil {
+		w.bytesField(2, prev)
+	}
+	n.endReply(c, s, &w)
 }
 
 func (n *node) applyDel(req []byte, c *client, s *stream) error {
@@ -420,27 +437,37 @@ func (n *node) applyDel(req []byte, c *client, s *stream) error {
 		return nil
 	}
 	if c != nil {
-		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(deleted))
-		for _, kv := range kvs {
-			size += sizeBytesField(3, len(kv))
+		if size := n.delReplySize(n.st.rev, deleted, kvs); n.msgRoom(c, int64(5+size)) {
+			n.writeDelReply(c, s, size, n.st.rev, deleted, kvs)
+		} else {
+			n.holdDel(c, s, deleted, kvs)
 		}
-		if !n.appliedRoom(c, s, size) {
-			clear(kvs)
-			n.kvs = kvs[:0]
-			return nil
-		}
-		var w msgW
-		n.beginReply(c, s, &w, size)
-		n.writeHdr(&w)
-		writeVarintNZ(&w, 2, uint64(deleted))
-		for _, kv := range kvs {
-			w.bytesField(3, kv)
-		}
-		n.endReply(c, s, &w)
 	}
 	clear(kvs)
 	n.kvs = kvs[:0]
 	return nil
+}
+
+// delReplySize is the size of a DeleteRangeResponse at revision rev.
+func (n *node) delReplySize(rev, deleted int64, kvs [][]byte) int {
+	size := sizeBytesField(1, n.hdrSizeAt(rev)) + sizeVarintField(2, uint64(deleted))
+	for _, kv := range kvs {
+		size += sizeBytesField(3, len(kv))
+	}
+	return size
+}
+
+// writeDelReply answers stream s of client c with a DeleteRangeResponse
+// of size bytes.
+func (n *node) writeDelReply(c *client, s *stream, size int, rev, deleted int64, kvs [][]byte) {
+	var w msgW
+	n.beginReply(c, s, &w, size)
+	n.writeHdrAt(&w, rev)
+	writeVarintNZ(&w, 2, uint64(deleted))
+	for _, kv := range kvs {
+		w.bytesField(3, kv)
+	}
+	n.endReply(c, s, &w)
 }
 
 // cmpHolds evaluates one Txn compare against the store as it is.
@@ -851,14 +878,28 @@ func (n *node) responsesSize(ok bool, res []opRes, r0, r1 int, kvs [][]byte) int
 
 var opField = map[uint8]int{kRange: 1, kPut: 2, kDel: 3, kTxn: 4}
 
+// replyTxn answers a Txn, or holds its reply until the reserve has room
+// for it (reserve.go).
 func (n *node) replyTxn(c *client, s *stream, ok bool, res []opRes, r0, r1 int, kvs [][]byte) {
-	size := sizeBytesField(1, n.hdrSize()) + n.responsesSize(ok, res, r0, r1, kvs)
-	if !n.appliedRoom(c, s, size) {
-		return
+	rev := n.st.rev
+	if size := n.txnReplySize(rev, ok, res, r0, r1, kvs); n.msgRoom(c, int64(5+size)) {
+		n.writeTxnReply(c, s, size, rev, ok, res, r0, r1, kvs)
+	} else {
+		n.holdTxn(c, s, ok, res, r0, r1, kvs)
 	}
+}
+
+// txnReplySize is the size of a TxnResponse at revision rev.
+func (n *node) txnReplySize(rev int64, ok bool, res []opRes, r0, r1 int, kvs [][]byte) int {
+	return sizeBytesField(1, n.hdrSizeAt(rev)) + n.responsesSize(ok, res, r0, r1, kvs)
+}
+
+// writeTxnReply answers stream s of client c with a TxnResponse of size
+// bytes.
+func (n *node) writeTxnReply(c *client, s *stream, size int, rev int64, ok bool, res []opRes, r0, r1 int, kvs [][]byte) {
 	var w msgW
 	n.beginReply(c, s, &w, size)
-	n.writeHdr(&w)
+	n.writeHdrAt(&w, rev)
 	n.writeResponses(&w, ok, res, r0, r1, kvs)
 	n.endReply(c, s, &w)
 }

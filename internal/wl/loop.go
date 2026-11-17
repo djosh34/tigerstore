@@ -1292,6 +1292,9 @@ type counters struct {
 	// roomWaits counts the messages that found the reserve spent
 	// (reserve.go).
 	roomWaits uint64
+	// heldReplies counts the replies of applied writes that waited for
+	// the reserve, unbuilt (reserve.go).
+	heldReplies uint64
 
 	// What the batches carried, and how the peers named or carried them.
 	opsByKind, bytesByKind [kinds]int

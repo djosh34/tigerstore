@@ -200,6 +200,13 @@ func (n *node) takeFetched(st *store, ckpts [2]ckptFile, vs []logValue, got []fe
 		b.fetching = false
 	}
 	n.pumpBig()
+	// And the held replies of writes (reserve.go).
+	if len(n.heldReplies) > 0 {
+		for _, hr := range n.heldReplies {
+			hr.fetching = false
+		}
+		n.serveHeld()
+	}
 	// The ranges and watches that waited took what they needed: past
 	// fetchedMax, the oldest values go, those of this fetch last.
 	n.st.trimFetched(n.now.Add(-fetchedFor), fetchedMax(n.st.budget))
