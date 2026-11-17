@@ -102,7 +102,8 @@ func (c *conn) TryWrite(b []byte) (int, error) {
 // paused node, or one whose bytes were still on their way, which read
 // nothing and turned again at once, and the run's clock stopped (#689's
 // M re-check). Ready, which epoll asks first, tells the watcher when the
-// next bytes arrive or the pause ends, and the close is seen then.
+// next bytes arrive, the last before the close arrives or the pause
+// ends, and the close is seen then.
 func (c *conn) Hup() bool {
 	s := c.s
 	s.mu.Lock()
@@ -141,8 +142,14 @@ func (c *conn) Ready() (readable, writable bool) {
 		c.notifyIn(c.p.n.pausedUntil - now)
 		return false, writable
 	case len(in.chunks) > 0:
-		at := max(in.chunks[0].at, s.link(c.to, c.from).stallUntil)
+		stall := s.link(c.to, c.from).stallUntil
+		at := max(in.chunks[0].at, stall)
 		if at <= now {
+			if last := max(in.chunks[len(in.chunks)-1].at, stall); in.eof && last > now {
+				// The close comes after the last chunk (Hup): a socket
+				// registered without EPOLLIN is told then.
+				c.notifyIn(last - now)
+			}
 			return true, writable
 		}
 		c.notifyIn(at - now)
