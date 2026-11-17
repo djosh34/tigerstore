@@ -1,0 +1,50 @@
+# Probe for #735, on its own branch only: TestClientsWaitInTurnForTheClientBuffers
+# under coverage as CI's coverage job runs it, in the whole wl package (16
+# jobs of 3 runs, 48 package runs), and it with the part-wait unit tests
+# alone (4 jobs of 50 runs).
+name: loop735
+
+on:
+  push:
+    branches: [probe/735-loop]
+
+permissions:
+  contents: read
+
+jobs:
+  loop:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16, a1, a2, a3, a4]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Loop
+        shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -o pipefail
+          pkgs=$(go list ./internal/... | grep -v -e '/internal/sim$' -e '/internal/simrun$' | paste -sd, -)
+          if [[ $SHARD == p* ]]; then
+            args=(-count=3)
+          else
+            args=(-count=50 -run '^(TestClientsWaitInTurnForTheClientBuffers|TestAPartWaitsItsTurnForRoom|TestATurnEndsAtRequestTimeout|TestTheWholeLogReadsBackBeforeACheckpoint|TestHalfSentRequestsStayWithinTheShare|TestManyLargeRepliesStayWithinTheReserve)$')
+          fi
+          set +e
+          go test -short -coverpkg="$pkgs" -coverprofile="$RUNNER_TEMP/cover.out" -timeout 55m -v "${args[@]}" ./internal/wl > "$RUNNER_TEMP/loop.log" 2>&1
+          rc=$?
+          for t in TestClientsWaitInTurnForTheClientBuffers TestHalfSentRequestsStayWithinTheShare TestManyLargeRepliesStayWithinTheReserve TestAPartWaitsItsTurnForRoom; do echo "$t: $(grep -c -- "--- PASS: $t " "$RUNNER_TEMP/loop.log") passed, $(grep -c -- "--- FAIL: $t " "$RUNNER_TEMP/loop.log") failed"; done
+          grep -E '^(--- FAIL|ok|FAIL)|hogs made' "$RUNNER_TEMP/loop.log" | cut -c1-300
+          exit $rc
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: loop-${{ matrix.shard }}
+          path: ${{ runner.temp }}/loop.log
+          retention-days: 14
