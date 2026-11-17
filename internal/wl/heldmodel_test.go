@@ -43,9 +43,18 @@ func TestHeldReadsSurviveCheckpointsAsAModelSays(t *testing.T) {
 			seeds = append(seeds, int64(i+1))
 		}
 	}
+	// Each case is a subtest, so that what it holds goes when it ends: its
+	// checkpoint directory, removed by its cleanups. Run in one test, every
+	// case's checkpoints stayed until the last, and 2,000 cases filled the
+	// disk with tens of GB.
 	for _, seed := range seeds {
-		if failed := runHeldModel(t, seed); failed != "" {
-			t.Fatalf("seed %d (WL_MODEL_SEED=%d): %s", seed, seed, failed)
+		ok := t.Run(fmt.Sprintf("seed%d", seed), func(t *testing.T) {
+			if failed := runHeldModel(t, seed); failed != "" {
+				t.Fatalf("seed %d (WL_MODEL_SEED=%d): %s", seed, seed, failed)
+			}
+		})
+		if !ok {
+			return
 		}
 	}
 }
