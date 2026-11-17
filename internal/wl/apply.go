@@ -232,8 +232,10 @@ func (n *node) putKey(r *putReq, req []byte, voff, rev int64) ([]byte, error) {
 	}
 	before := st.keys[id].mod
 	// The value before is read only when something asks for it; a record
-	// in memory costs nothing to hand on.
-	wantPrev := r.prevKV || st.keys[id].rec != 0 || n.w.wantsPrev(st, id, rev, false)
+	// in memory costs nothing to hand on, and a key not live has none (nor
+	// a place in the tree yet, which wantsPrev looks up).
+	k := &st.keys[id]
+	wantPrev := r.prevKV || k.rec != 0 || k.create != 0 && n.w.wantsPrev(st, id, rev, false)
 	prev, err := st.put(id, value, r.lease, rev, vo, wantPrev)
 	if err != nil {
 		return nil, err
