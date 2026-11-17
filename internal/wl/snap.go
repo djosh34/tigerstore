@@ -441,7 +441,7 @@ func (l *loop) peerHello(h *handoff) {
 		_ = sysClose(h.fd)
 		return
 	}
-	h.pre, h.peer = s, hello&^beatMark
+	h.pre, h.peer, h.beat = s, hello&^beatMark, hello&beatMark != 0
 	l.handOver(h)
 }
 

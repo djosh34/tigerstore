@@ -362,7 +362,7 @@ func (n *node) sendPeer(m *pb.Message) {
 		return
 	}
 	p := n.peersOut[m.GetTo()]
-	if beats(m.GetType()) {
+	if n.onBeats(m, p) {
 		if b := n.beatsOut[m.GetTo()]; b != nil && !b.dead {
 			p = b
 		}
@@ -435,18 +435,53 @@ func (n *node) sendPeer(m *pb.Message) {
 	s.put(cl[:])
 	s.put(m.GetContext())
 	n.markDirty(s)
+	if app && p.appSince.IsZero() {
+		p.appSince = n.now
+	}
 }
 
-// beats reports whether a message of type t goes on the peer's connection
-// of heartbeats and votes, as etcd's message stream carries them apart
-// from its appends: an append of megabytes on a slow link would hold back
-// the heartbeats behind it past an election timeout, and the followers
-// would elect another leader (TestHeartbeatsPassASlowAppend). Raft takes
-// messages out of order, as a network may deliver them; the appends and
-// their answers keep their own connection, and a leadership handover's
-// MsgTimeoutNow stays behind the appends it waited for.
-func beats(t pb.MessageType) bool {
-	return t == pb.MsgHeartbeat || t == pb.MsgHeartbeatResp || t == pb.MsgPreVote || t == pb.MsgPreVoteResp || t == pb.MsgVote || t == pb.MsgVoteResp
+// onBeats reports whether m goes on its peer's connection of heartbeats
+// and votes rather than on p, the connection of the appends: an append of
+// megabytes on a slow link would hold back the heartbeats behind it past
+// an election timeout, and the followers would elect another leader
+// (#715, TestHeartbeatsPassASlowAppend). Raft takes messages out of
+// order, as a network may deliver them.
+//
+// Votes always go there: they are rare. A heartbeat goes there only while
+// an append to its peer went unanswered for a tick (appSince), and its
+// answer back on the connection it came on (beatAsked). Otherwise both go
+// with the appends: the ReadIndex rounds are heartbeats, one or more
+// every turn under load, and a connection of their own cost a write and a
+// read of each per follower (0.24 µs of writes per op on the leader,
+// #689's "0 ms: the bisect"). The appends and their answers keep their
+// connection, and a leadership handover's MsgTimeoutNow stays behind the
+// appends it waited for.
+func (n *node) onBeats(m *pb.Message, p *peerOut) bool {
+	t := m.GetType()
+	if t == pb.MsgHeartbeat {
+		return p != nil && !p.appSince.IsZero() && n.now.Sub(p.appSince) >= tickEvery
+	}
+	if t == pb.MsgHeartbeatResp {
+		return n.beatAsked[m.GetTo()]
+	}
+	return t == pb.MsgPreVote || t == pb.MsgPreVoteResp || t == pb.MsgVote || t == pb.MsgVoteResp
+}
+
+// noteLanes notes, of a message from p, what onBeats needs: an answer to
+// the appends sent to its peer, or the connection a heartbeat came on.
+func (n *node) noteLanes(p *peerIn, m *pb.Message) {
+	t := m.GetType()
+	if t == pb.MsgAppResp {
+		if o := n.peersOut[p.from]; o != nil {
+			o.appSince = time.Time{}
+		}
+	}
+	if t == pb.MsgHeartbeat && p.beat != n.beatAsked[p.from] {
+		if n.beatAsked == nil {
+			n.beatAsked = map[uint64]bool{}
+		}
+		n.beatAsked[p.from] = p.beat
+	}
 }
 
 // names reports whether an append names an entry's batch instead of
@@ -524,6 +559,7 @@ func (n *node) peerFrames(p *peerIn) error {
 		if !n.simDeliver(m) {
 			continue
 		}
+		n.noteLanes(p, m)
 		n.step(m)
 	}
 }
@@ -709,6 +745,7 @@ func (n *node) retryHeld() {
 			}
 			if err == nil && n.simDeliver(m) {
 				m.To = new(n.id)
+				n.noteLanes(p, m)
 				n.step(m)
 			}
 		}

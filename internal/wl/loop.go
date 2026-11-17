@@ -29,11 +29,15 @@ type peerOut struct {
 	sock
 	peer uint64
 	beat bool // the connection of heartbeats and votes (beatMark)
+	// appSince is when the first append sent since the peer last
+	// answered one went out, zero while none waits (onBeats).
+	appSince time.Time
 }
 
 type peerIn struct {
 	sock
 	from uint64
+	beat bool      // the peer's connection of heartbeats and votes (beatMark)
 	held []heldMsg // messages that wait behind an append naming a batch not here yet
 }
 
@@ -729,7 +733,7 @@ func (l *loop) takeHandoffs() {
 				l.free = append(l.free, idx)
 				continue
 			}
-			p := &peerIn{sock: *h.pre, from: h.peer}
+			p := &peerIn{sock: *h.pre, from: h.peer, beat: h.beat}
 			p.stats = &n.stats
 			if n.memberAt(h.peer) < 0 && h.addr != "" && n.heard[h.peer] != h.addr {
 				if n.heard == nil {

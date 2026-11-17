@@ -84,6 +84,9 @@ type node struct {
 	// beatsOut are the peers' connections of heartbeats and votes, which
 	// an append crossing a slow link does not hold back (beatMark).
 	beatsOut map[uint64]*peerOut
+	// beatAsked is, by peer, whether its last heartbeat came on its
+	// connection of heartbeats: the answer goes back on it (onBeats).
+	beatAsked map[uint64]bool
 
 	rn      *raft.RawNode
 	storage *logStorage
