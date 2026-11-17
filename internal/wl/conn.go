@@ -267,6 +267,12 @@ func (s *sock) openRec() {
 	}
 }
 
+// growMsg is the least message a send buffer grows for at once
+// (growFor). A smaller one appends, and the buffer doubles: grown to fit
+// each message of a few KiB exactly, a buffer was allocated and copied
+// again for the next.
+const growMsg = 64 << 10
+
 // growFor makes room in out for a message of m bytes as DATA frames in
 // records, with one allocation of what it takes rather than doublings
 // that may leave twice its size: what waits to be sent counts in bytes
@@ -275,6 +281,21 @@ func (s *sock) growFor(m int) {
 	need := m + (m/maxFrame+2)*9 + (m/maxPlain+2)*(recOverhead+8) + maxPlain + recOverhead + 8
 	if cap(s.out)-len(s.out) >= need {
 		return
+	}
+	if s.ow > 0 {
+		// The bytes written already go first, as openRec drops them: a
+		// client that never quite drains kept every byte sent to it, and
+		// each large message grew out by all of them (a send buffer of
+		// 34 MiB with 580 KiB unsent, TestALargeRangeAndCatchUpStay-
+		// WithinTheBudget under -race). An open record lies past them.
+		if s.rec >= 0 {
+			s.rec -= s.ow
+		}
+		s.out = s.out[:copy(s.out, s.out[s.ow:])]
+		s.ow = 0
+		if cap(s.out)-len(s.out) >= need {
+			return
+		}
 	}
 	n := make([]byte, len(s.out), len(s.out)+need)
 	s.growOut(cap(n) - cap(s.out))
@@ -438,7 +459,7 @@ func (w *msgW) begin(c *client, s *stream, n int) {
 	}
 	if !c.take(s, 5+n) {
 		w.c, w.st, w.held = c, s, make([]byte, 0, 5+n)
-	} else if n > smallMsg {
+	} else if n >= growMsg {
 		c.growFor(5 + n)
 	}
 	var p [5]byte
