@@ -121,6 +121,10 @@ type half struct {
 	last  time.Time
 }
 
+// readWaits, set by a test, runs as a Read that found nothing goes to
+// wait for its connection.
+var readWaits func(c *memConn)
+
 type memConn struct {
 	mu            *sync.Mutex // the connection's, both ends
 	in, out       *half
@@ -134,6 +138,11 @@ type memConn struct {
 func (c *memConn) TryRead(p []byte) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.tryRead(p)
+}
+
+// tryRead is TryRead, with mu held.
+func (c *memConn) tryRead(p []byte) (int, error) {
 	switch {
 	case c.closed:
 		return 0, net.ErrClosed
@@ -149,16 +158,23 @@ func (c *memConn) TryRead(p []byte) (int, error) {
 
 func (c *memConn) Read(p []byte) (int, error) {
 	for {
-		k, err := c.TryRead(p)
+		// It looks and takes the channel to wait on under one lock: bytes
+		// or a close that came between the two found no channel to wake
+		// it, and it slept on them for good (#732).
+		c.mu.Lock()
+		k, err := c.tryRead(p)
 		if !errors.Is(err, unix.EAGAIN) {
+			c.mu.Unlock()
 			return k, err
 		}
-		c.mu.Lock()
 		if c.in.wake == nil {
 			c.in.wake = make(chan struct{})
 		}
 		wake, deadline := c.in.wake, c.deadline
 		c.mu.Unlock()
+		if readWaits != nil {
+			readWaits(c)
+		}
 		if deadline.IsZero() {
 			<-wake
 			continue
@@ -218,11 +234,14 @@ func (c *memConn) Close() error {
 		return net.ErrClosed
 	}
 	c.closed, c.out.closed = true, true
-	wake, notify := c.out.wake, c.peer.notify
-	c.out.wake = nil
+	// Its own reader wakes too, to its close, as a socket's does.
+	wake, own, notify := c.out.wake, c.in.wake, c.peer.notify
+	c.out.wake, c.in.wake = nil, nil
 	c.mu.Unlock()
-	if wake != nil {
-		close(wake)
+	for _, w := range []chan struct{}{wake, own} {
+		if w != nil {
+			close(w)
+		}
 	}
 	if notify != nil {
 		notify()
