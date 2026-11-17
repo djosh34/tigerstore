@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"math/rand/v2"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -442,6 +443,36 @@ func newInstallCluster(t *testing.T, ctx context.Context, hooks3 func(*lockedDis
 // stalled in a few -race runs, every put failing, the cause unseen).
 func (c *installCluster) put(t *testing.T) {
 	t.Helper()
+	// A put that takes 20 s logs what the network holds, and every
+	// goroutine's stack, and the network again 10 s later: which side of
+	// the connection a put stalled on (#732).
+	var mu sync.Mutex
+	returned := false
+	logStall := func(f func()) {
+		mu.Lock()
+		defer mu.Unlock()
+		if !returned {
+			f()
+		}
+	}
+	k := c.k
+	t1 := time.AfterFunc(20*time.Second, func() {
+		logStall(func() {
+			buf := make([]byte, 16<<20)
+			buf = buf[:runtime.Stack(buf, true)]
+			t.Logf("put %d stalled for 20 s; the network:\n%s\nthe goroutines:\n%s", k, c.nw.state(), buf)
+		})
+	})
+	t2 := time.AfterFunc(30*time.Second, func() {
+		logStall(func() { t.Logf("put %d stalled for 30 s; the network:\n%s", k, c.nw.state()) })
+	})
+	defer func() {
+		t1.Stop()
+		t2.Stop()
+		mu.Lock()
+		returned = true
+		mu.Unlock()
+	}()
 	_, err := c.cli.Put(c.ctx, fmt.Sprintf("/k/%05d", c.k), strings.Repeat("v", 4<<10))
 	switch {
 	case err == nil:

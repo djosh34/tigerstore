@@ -116,6 +116,9 @@ type half struct {
 	buf    []byte
 	closed bool
 	wake   chan struct{} // closed when bytes come or the writer closes
+	// total is every byte written to it, and last when the last came.
+	total int64
+	last  time.Time
 }
 
 type memConn struct {
@@ -181,6 +184,7 @@ func (c *memConn) TryWrite(p []byte) (int, error) {
 		return 0, unix.EPIPE
 	}
 	c.out.buf = append(c.out.buf, p...)
+	c.out.total, c.out.last = c.out.total+int64(len(p)), time.Now()
 	wake, notify := c.out.wake, c.peer.notify
 	c.out.wake = nil
 	c.mu.Unlock()

@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -328,4 +329,34 @@ type hostNet struct {
 
 func (n hostNet) Dial(ctx context.Context, addr string) (net.Conn, error) {
 	return n.nw.dial(ctx, n.host, addr)
+}
+
+// state is each open connection's bytes in each direction: written in
+// all, when the last came, and still unread, for a test that stalled.
+func (nw *memNet) state() string {
+	nw.mu.Lock()
+	conns := slices.Clone(nw.conns)
+	nw.mu.Unlock()
+	var b strings.Builder
+	now := time.Now()
+	for _, hc := range conns {
+		hc.a.mu.Lock()
+		from := hc.from
+		if from == "" {
+			from = "client"
+		}
+		fmt.Fprintf(&b, "%s->%s: out %d B, last %v ago, unread %d, closed %v/%v, notify %v | back %d B, last %v ago, unread %d, closed %v/%v, notify %v\n",
+			from, hc.a.remote,
+			hc.a.out.total, ago(now, hc.a.out.last), len(hc.a.out.buf), hc.a.closed, hc.a.out.closed, hc.b.notify != nil,
+			hc.b.out.total, ago(now, hc.b.out.last), len(hc.b.out.buf), hc.b.closed, hc.b.out.closed, hc.a.notify != nil)
+		hc.a.mu.Unlock()
+	}
+	return b.String()
+}
+
+func ago(now, t time.Time) time.Duration {
+	if t.IsZero() {
+		return -1
+	}
+	return now.Sub(t).Round(time.Millisecond)
 }
