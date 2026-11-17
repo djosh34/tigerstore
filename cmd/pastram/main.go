@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -28,6 +29,9 @@ type config struct {
 	endpoints, out, mode string
 	bytes                int64
 	duration             time.Duration
+	// insecureTLS dials https endpoints without checking their
+	// certificates, as the self-signed ones of --auto-tls.
+	insecureTLS bool
 }
 
 type measurement struct {
@@ -59,6 +63,7 @@ func main() {
 	flag.StringVar(&c.mode, "mode", "proof", "proof, max, cache or check")
 	flag.Int64Var(&c.bytes, "bytes", 3*(512<<20), "minimum live value bytes before mixed load")
 	flag.DurationVar(&c.duration, "duration", 3*time.Minute, "mixed-load measurement")
+	flag.BoolVar(&c.insecureTLS, "insecure-tls", false, "dial https endpoints without checking their certificates (--auto-tls)")
 	flag.Parse()
 	if err := run(c); err != nil {
 		if _, writeErr := fmt.Fprintln(os.Stderr, err); writeErr != nil {
@@ -78,7 +83,7 @@ func run(c config) (err error) {
 	if err := os.MkdirAll(c.out, 0o755); err != nil {
 		return err
 	}
-	cl, err := clientv3.New(clientv3.Config{Endpoints: strings.Split(c.endpoints, ","), DialTimeout: 10 * time.Second, MaxCallRecvMsgSize: 8 << 20})
+	cl, err := clientv3.New(c.client(strings.Split(c.endpoints, ",")))
 	if err != nil {
 		return err
 	}
@@ -183,10 +188,20 @@ func writeAtomic(path string, v any) error {
 	return os.Rename(path+".tmp", path)
 }
 
+// client is the client configuration for endpoints: TLS without checking
+// certificates for https ones under -insecure-tls.
+func (c config) client(endpoints []string) clientv3.Config {
+	cfg := clientv3.Config{Endpoints: endpoints, DialTimeout: 10 * time.Second, MaxCallRecvMsgSize: 8 << 20}
+	if c.insecureTLS && strings.HasPrefix(endpoints[0], "https://") {
+		cfg.TLS = &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12} //nolint:gosec // the members' self-signed --auto-tls certificates
+	}
+	return cfg
+}
+
 // eachMember runs f with a client of each member alone.
 func (w *workload) eachMember(f func(*clientv3.Client) error) error {
 	for _, endpoint := range w.cl.Endpoints() {
-		one, err := clientv3.New(clientv3.Config{Endpoints: []string{endpoint}, DialTimeout: 10 * time.Second, MaxCallRecvMsgSize: 8 << 20})
+		one, err := clientv3.New(w.cfg.client([]string{endpoint}))
 		if err != nil {
 			return err
 		}
