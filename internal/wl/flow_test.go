@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"encoding/binary"
 	"errors"
 	"testing"
 	"time"
@@ -260,5 +261,47 @@ func TestAHeaderBlockPastItsLimitBreaksTheConnection(t *testing.T) {
 	c.pt, c.pr, c.pw = frame(frContinuation, 0, 3, 1), 0, 10
 	if err := c.frames(c.node); !errors.Is(err, errHeaderBlock) {
 		t.Fatalf("a block past %d bytes: %v", maxHeaderBlock, err)
+	}
+}
+
+// A stream's receive window is given back as its DATA comes in, as the
+// connection's is: a keepalive or watch stream that sends past the 1 GiB
+// it starts with goes on. Given back only on the connection, such a
+// stream's client waited for good.
+func TestAStreamsWindowIsGivenBackAsItsDataComesIn(t *testing.T) {
+	ack := windowAck
+	windowAck = 1500
+	t.Cleanup(func() { windowAck = ack })
+	n, _ := testNode(t)
+	n.connIn, n.connOut, n.sizes = 1<<20, 1<<20, sizeFor(0)
+	c := newClient(&handoff{fd: -1, plain: true}, n)
+	c.takeBufs()
+	c.preface = true
+	c.newStream(1, kWatch)
+	// 3000 bytes of a message of 100000, which stays unfinished.
+	var in []byte
+	for i := range 3 {
+		p := make([]byte, 1000)
+		if i == 0 {
+			binary.BigEndian.PutUint32(p[1:], 100000)
+		}
+		h := make([]byte, 9)
+		putFrameHeader(h, len(p), frData, 0, 1)
+		in = append(append(in, h...), p...)
+	}
+	c.pt, c.pr, c.pw = in, 0, len(in)
+	if err := c.frames(n); err != nil {
+		t.Fatalf("%v; out %q", err, c.out)
+	}
+	given := 0
+	for out := c.out; len(out) >= 9; {
+		l := int(out[0])<<16 | int(out[1])<<8 | int(out[2])
+		if out[3] == frWindowUpdate && binary.BigEndian.Uint32(out[5:]) == 1 {
+			given += int(binary.BigEndian.Uint32(out[9:]))
+		}
+		out = out[9+l:]
+	}
+	if given != 2000 {
+		t.Fatalf("stream 1 was given back %d bytes of the 3000 it sent, want 2000 at the 1500 mark", given)
 	}
 }

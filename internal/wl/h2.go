@@ -129,6 +129,7 @@ type stream struct {
 	nextWatch int64
 	fail      []byte // a Txn's failure branch, kept here and not replicated
 	win       int64  // the stream's send window
+	recvd     int    // DATA taken since the stream's last WINDOW_UPDATE
 	holds     bool   // held messages wait for window: the stream's window is in its client's flow
 	// streaming: the stream's response headers are out, and it answers
 	// each request with a message until the client ends its side.
@@ -476,6 +477,11 @@ const defaultMaxStreams = 1 << 20
 // the stream, and the client may try it again.
 const codeRefusedStream = 0x7
 
+// windowAck is how much DATA the node takes, on the connection and on
+// each stream, before it gives that window back: half of the 1 GiB each
+// starts with (client.start).
+var windowAck = 1 << 29
+
 // serverStart is the server's SETTINGS (its limit on streams, large stream
 // windows) and a large connection window.
 func (c *client) start() {
@@ -578,7 +584,7 @@ func (c *client) frames(n *node) error {
 		switch typ {
 		case frData:
 			c.unacked += l
-			if c.unacked >= 1<<29 {
+			if c.unacked >= windowAck {
 				var w [4]byte
 				binary.BigEndian.PutUint32(w[:], uint32(c.unacked))
 				c.writeFrame(frWindowUpdate, 0, w[:])
@@ -602,6 +608,17 @@ func (c *client) frames(n *node) error {
 			}
 			if s.ended {
 				return errProtocol // STREAM_CLOSED: its client ended its side
+			}
+			// The stream's window is given back as its DATA is taken, as
+			// the connection's is: a stream that sends past the window
+			// it started with, a keepalive or watch stream over hours,
+			// would wait for good (#689's area-4 review).
+			if s.recvd += l; s.recvd >= windowAck && flags&flEndStream == 0 {
+				b := c.frame(9 + 4)
+				putFrameHeader(b, 4, frWindowUpdate, 0, sid)
+				binary.BigEndian.PutUint32(b[9:], uint32(s.recvd))
+				s.recvd = 0
+				n.markDirty(&c.sock)
 			}
 			if err := c.data(n, s, p); err != nil {
 				return err
