@@ -1034,8 +1034,10 @@ func (h *Handle) Allocate(size int64) error {
 	return nil
 }
 
-// Truncate cuts the file, and frees its space allocated past the new
-// size, as truncate does.
+// Truncate cuts the file to size, and frees its space allocated past it,
+// as truncate does. A size past the file's end grows it with zeros, as
+// truncate does too: like a write of zeros, the growth is durable only
+// once synced, and a crash before may keep it in part (#726).
 func (h *Handle) Truncate(size int64) error {
 	if err := h.check(OpTruncate); err != nil {
 		return err
@@ -1073,6 +1075,9 @@ func (h *Handle) Truncate(size int64) error {
 		if end := int64(w.off + len(w.p)); end > size {
 			h.f.pending[i].p = w.p[:size-int64(w.off)]
 		}
+	}
+	if gap := int(size) - f.size; gap > 0 {
+		h.write(f.size, make([]byte, gap))
 	}
 	return nil
 }

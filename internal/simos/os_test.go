@@ -88,6 +88,13 @@ func TestANodesFilesBehaveAsTheSystems(t *testing.T) {
 	if k, err := o.Pread(fd, p, 0); err != nil || string(p[:k]) != "HE" {
 		t.Fatalf("the renamed, truncated file reads %q %v", p[:k], err)
 	}
+	// A truncate past the end grows the file with zeros (#726).
+	if err := n.Truncate("/data/ckpt/b", 5); err != nil {
+		t.Fatal(err)
+	}
+	if k, err := o.Pread(fd, p, 0); err != nil || k != 5 || string(p[:k]) != "HE\x00\x00\x00" {
+		t.Fatalf("the file grown by a truncate reads %q %v", p[:k], err)
+	}
 	_ = o.Close(fd)
 	// A directory opens, for its sync.
 	dfd, err := n.Open("/data/ckpt", unix.O_RDONLY|unix.O_DIRECTORY, 0)

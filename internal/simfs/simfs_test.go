@@ -490,3 +490,53 @@ func TestUnwrittenImage(t *testing.T) {
 		t.Fatalf("after the crash the file holds %v, want %v", got, want)
 	}
 }
+
+// TestATruncatePastTheEndGrowsTheFile checks that a truncate to a size
+// past a file's end grows it with zeros, as truncate(2) does: a start of
+// the log whose checkpoint left it past its last segment's end grows the
+// segment to there and reads its last block back (#726). The growth is
+// durable once synced, and a crash before keeps it or not, as it does a
+// write.
+func TestATruncatePastTheEndGrowsTheFile(t *testing.T) {
+	d := simfs.New()
+	f := create(t, d, "f")
+	ok(t, d.SyncDir())
+	write(t, f, []byte("abc"))
+	ok(t, f.Sync())
+	ok(t, f.Truncate(3+2*simfs.PageBytes))
+	want := append([]byte("abc"), make([]byte, 2*simfs.PageBytes)...)
+	if got := readAll(t, f); !bytes.Equal(got, want) {
+		t.Fatalf("after a truncate past the end the file holds %d bytes, want %d: %q...", len(got), len(want), got[:min(8, len(got))])
+	}
+	p := make([]byte, 100)
+	if n, err := f.ReadAt(p, simfs.PageBytes); n != len(p) || err != nil || !bytes.Equal(p, make([]byte, len(p))) {
+		t.Fatalf("a read in the grown part = %d, %v, %x", n, err, p[:8])
+	}
+	if !d.Unsynced("f") {
+		t.Fatal("the growth needs no sync")
+	}
+	lost, kept := false, false
+	for i := range 64 {
+		c := d.Copy()
+		g := open(t, c, "f")
+		ok(t, g.Truncate(3+3*simfs.PageBytes))
+		c.Crash(rand.New(rand.NewPCG(uint64(i), 7)))
+		switch got := readAll(t, open(t, c, "f")); {
+		case bytes.Equal(got, []byte("abc")):
+			lost = true
+		case len(got) > 3 && len(got) <= 3+3*simfs.PageBytes && bytes.Equal(got[:3], []byte("abc")):
+			// The growth kept, whole or in part; a torn tail may hold
+			// garbage, as a torn write's does (Prefix).
+			kept = true
+		default:
+			t.Fatalf("a crash left %d bytes: %q...", len(got), got[:min(8, len(got))])
+		}
+	}
+	if !lost || !kept {
+		t.Fatalf("crashes before the sync lost the growth %v and kept it %v, want both", lost, kept)
+	}
+	ok(t, f.Sync())
+	if got := d.DurableBytes("f"); !bytes.Equal(got, want) {
+		t.Fatalf("after the sync %d bytes are durable, want %d", len(got), len(want))
+	}
+}

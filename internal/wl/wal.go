@@ -246,8 +246,12 @@ func (w *wal) reopen(from, end int64) (int64, error) {
 	w.wfds = append(w.wfds, wfd)
 	blk := end &^ (block - 1)
 	pos := blk & (w.stageLen - 1)
-	if n, err := sysPread(w.rfds[last-w.rbase], w.stage[pos:pos+end-blk], blk%segSize); err != nil || int64(n) != end-blk {
-		return 0, fmt.Errorf("read the log's last block back: %d bytes, %w", n, err)
+	n, err := sysPread(w.rfds[last-w.rbase], w.stage[pos:pos+end-blk], blk%segSize)
+	if err != nil {
+		return 0, fmt.Errorf("read the log's last block back from %s: %w", path, err)
+	}
+	if int64(n) != end-blk {
+		return 0, fmt.Errorf("read the log's last block back from %s: a short read, %d of its %d bytes at %d", path, n, end-blk, blk%segSize)
 	}
 	return last + 1, nil
 }

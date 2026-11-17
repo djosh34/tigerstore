@@ -793,7 +793,8 @@ func (h *Handle) write(off int, p []byte) {
 	}
 }
 
-// Truncate cuts the file.
+// Truncate cuts the file to size, or grows it with zeros to size, as a
+// write of zeros does.
 func (h *Handle) Truncate(size int64) error {
 	if err := h.check(OpTruncate); err != nil {
 		return err
@@ -816,6 +817,9 @@ func (h *Handle) Truncate(size int64) error {
 		if end := int64(w.off + len(w.p)); end > size {
 			h.f.pending[i].p = w.p[:size-int64(w.off)]
 		}
+	}
+	if gap := int(size) - len(h.f.data); gap > 0 {
+		h.write(len(h.f.data), make([]byte, gap))
 	}
 	return nil
 }

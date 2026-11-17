@@ -308,6 +308,54 @@ func TestWALReadPastTheEndFails(t *testing.T) {
 	}
 }
 
+// A checkpoint is durable before the log up to where it left the log is:
+// a power loss may leave the last segment shorter than that. A start then
+// goes on from where the checkpoint left the log. It grows the segment to
+// there, as truncate does, reads its last block back, and the records it
+// writes after read back on the next start (#726, where the simulator's
+// truncate did not grow a file and the start refused the log).
+func TestWALGoesOnFromACheckpointPastItsEnd(t *testing.T) {
+	dir := t.TempDir()
+	w, err := openWAL(sysEnv{}, dir, sizeFor(0).stage, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.write([]*pb.Entry{testEntry(1, 1, "one")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	short := w.off
+	w.close()
+	from := short + block + 1000
+	var got []uint64
+	collect := func(r *walRecord) error {
+		if r.kind == recEntry {
+			got = append(got, r.index)
+		}
+		return nil
+	}
+	w, err = openWAL(sysEnv{}, dir, sizeFor(0).stage, from, from, collect)
+	if err != nil {
+		t.Fatalf("a start from a checkpoint past the log's end: %v", err)
+	}
+	if w.off != from || len(got) != 0 {
+		t.Fatalf("the log goes on at %d with entries %v, want %d and none", w.off, got, from)
+	}
+	if err := w.write([]*pb.Entry{testEntry(9, 2, "nine")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	w.close()
+	w, err = openWAL(sysEnv{}, dir, sizeFor(0).stage, from, from, collect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	if !slices.Equal(got, []uint64{9}) {
+		t.Fatalf("the next start read entries %v, want [9]", got)
+	}
+}
+
 // A crash after a start removed the segments past the log's end may keep
 // some of the removes and lose others. The next start removes every
 // segment past the end, not only those up to the first gap, so that the
