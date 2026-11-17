@@ -179,10 +179,6 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	}
 	n.st = st
 	n.simInstalled(meta.GetIndex())
-	// A snapshot still being received stays.
-	if err := removeCkpts(n.sys, n.ckptDir, name, false); err != nil {
-		return err
-	}
 	n.ckptGen, n.ckptName = gen, name
 	n.storage.applySnapshot(meta, name)
 	n.applied = meta.GetIndex()
@@ -194,7 +190,19 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 		n.shell.membersChanged()
 	}
 	n.ckptFrom, n.ckptCut = n.wal.off, n.wal.off
-	if err := writePointer(n.sys, n.ckptDir, &ckptPointer{gen: gen, name: name, logFrom: n.wal.off, cut: n.wal.off, hs: n.wal.durableHS}); err != nil {
+	// The pointer takes the newest hard state handed to the log, not the
+	// newest durable one: an append still being synced, below logFrom,
+	// may carry a vote that is sent once it is durable, and a restart
+	// reads the log only from logFrom (#689's area-2 review). Its commit
+	// is below the snapshot's index, which Raft installs only past it.
+	if err := writePointer(n.sys, n.ckptDir, &ckptPointer{gen: gen, name: name, logFrom: n.wal.off, cut: n.wal.off, hs: n.storage.hs}); err != nil {
+		return err
+	}
+	// The checkpoints before go only once CURRENT names the new one: a
+	// stop or an error before would leave CURRENT naming a file removed
+	// (#711's failure, by the install). A snapshot still being received
+	// stays.
+	if err := removeCkpts(n.sys, n.ckptDir, name, false); err != nil {
 		return err
 	}
 	n.removeAll(n.wal.cut(n.wal.off))

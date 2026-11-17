@@ -644,3 +644,93 @@ func TestASnapshotInstallsWithinTheBudget(t *testing.T) {
 		t.Fatalf("Go's limit after the install is %d MiB, past the %d MiB the budget leaves it", m.goLimit>>20, want>>20)
 	}
 }
+
+// A checkpoint's writer checks for an abort before it names its file
+// and points CURRENT at it, and abortCkpt waits for it: an install's
+// pointer is never written alongside, or before, the writer's (#689's
+// area-1 review, finding 1). Here the writer gets its last chunk after
+// the abort: it names nothing and leaves CURRENT alone.
+func TestAnAbortedCheckpointNeverPointsCurrent(t *testing.T) {
+	dir := t.TempDir()
+	cw := &ckptWriter{dir: dir, tmp: "w.tmp", name: ckptName(5), quit: make(chan struct{}), done: make(chan struct{})}
+	close(cw.quit)
+	c := &ckptChunk{buf: []byte("the last chunk"), last: true, ptr: &ckptPointer{name: ckptName(5)}}
+	if err := cw.write(c); !errors.Is(err, errCkptAborted) {
+		t.Fatalf("the aborted writer's last chunk gave %v, want errCkptAborted", err)
+	}
+	cw.closeFile()
+	for _, name := range []string{ptrName, ckptName(5)} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("the aborted writer made %s: %v", name, err)
+		}
+	}
+}
+
+// installFixture is a follower with a checkpoint at index 3 that CURRENT
+// names, and the leader's snapshot at index 9 it receives.
+func installFixture(t *testing.T) (*node, *pb.Snapshot) {
+	t.Helper()
+	n, l := ckptNode(t)
+	putValue(t, n.st, l, "/leader", "v")
+	writeCkptAt(t, n, 9)
+	b, err := os.ReadFile(filepath.Join(n.ckptDir, ckptName(9)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, ml := ckptNode(t)
+	putValue(t, m.st, ml, "/follower", "v")
+	writeCkptAt(t, m, 3)
+	recv := filepath.Join(m.ckptDir, "received.tmp")
+	if err := os.WriteFile(recv, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if m.wal, err = openWAL(sysEnv{}, t.TempDir(), sizeFor(0).stage, 0, 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.wal.close)
+	return m, &pb.Snapshot{Data: []byte(recv), Metadata: &pb.SnapshotMetadata{Index: new(uint64(9)), Term: new(uint64(1)), ConfState: m.confState}}
+}
+
+// An install that cannot write CURRENT leaves the checkpoint CURRENT
+// names: the node starts again from it. Removed before the pointer was
+// written, it left CURRENT naming a file gone, and the node could not
+// start (#711's failure, by the install; #689's area-1 review, finding 2).
+func TestAnInstallKeepsTheCheckpointCurrentNamesUntilItPointsOn(t *testing.T) {
+	m, sn := installFixture(t)
+	// CURRENT.tmp a directory: writing the pointer fails.
+	if err := os.Mkdir(filepath.Join(m.ckptDir, ptrName+".tmp"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.installSnapshot(sn); err == nil {
+		t.Fatal("the install wrote CURRENT over a directory")
+	}
+	p, err := readPointer(sysEnv{}, m.ckptDir)
+	if err != nil || p == nil {
+		t.Fatalf("CURRENT after the failed install: %v, %v", p, err)
+	}
+	if _, err := os.Stat(filepath.Join(m.ckptDir, p.name)); err != nil {
+		t.Fatalf("CURRENT names %s, which the failed install removed: %v", p.name, err)
+	}
+}
+
+// An install's pointer takes the newest hard state handed to the log: an
+// append still being synced, which the restart does not read again, may
+// carry a vote that is sent once it is durable (#689's area-2 review).
+func TestAnInstallsPointerKeepsTheNewestHardState(t *testing.T) {
+	m, sn := installFixture(t)
+	m.wal.durableHS = &pb.HardState{Term: new(uint64(4)), Vote: new(uint64(1)), Commit: new(uint64(2))}
+	m.storage.setHardState(&pb.HardState{Term: new(uint64(5)), Vote: new(uint64(3)), Commit: new(uint64(2))})
+	if err := m.installSnapshot(sn); err != nil {
+		t.Fatal(err)
+	}
+	p, err := readPointer(sysEnv{}, m.ckptDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.hs.GetTerm() != 5 || p.hs.GetVote() != 3 {
+		t.Fatalf("CURRENT after the install holds term %d, vote %d; want the newest, term 5 and vote 3", p.hs.GetTerm(), p.hs.GetVote())
+	}
+	if _, err := os.Stat(filepath.Join(m.ckptDir, ckptName(3))); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the checkpoint before outlived the install: %v", err)
+	}
+}

@@ -168,6 +168,7 @@ type ckptWriter struct {
 	log      durableLog
 	in, out  chan *ckptChunk
 	quit     chan struct{}
+	done     chan struct{} // closed when run returns
 	wake     func()
 	span     []byte
 
@@ -177,6 +178,7 @@ type ckptWriter struct {
 }
 
 func (cw *ckptWriter) run() {
+	defer close(cw.done)
 	for {
 		var c *ckptChunk
 		select {
@@ -251,6 +253,11 @@ func (cw *ckptWriter) write(c *ckptChunk) error {
 	}
 	if err := cw.f.Sync(); err != nil {
 		return fmt.Errorf("sync a checkpoint: %w", err)
+	}
+	select {
+	case <-cw.quit:
+		return errCkptAborted // the loop installs a snapshot or stops
+	default:
 	}
 	if err := cw.sys.rename(filepath.Join(cw.dir, cw.tmp), filepath.Join(cw.dir, cw.name)); err != nil {
 		return err
@@ -387,7 +394,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 		sys: n.sys,
 		dir: n.ckptDir, tmp: tmp, name: name, prev: st.ckpts[1-gen], log: dl,
 		in: make(chan *ckptChunk, ckptInflight), out: make(chan *ckptChunk, ckptInflight),
-		quit: make(chan struct{}),
+		quit: make(chan struct{}), done: make(chan struct{}),
 	}
 	if n.shell != nil {
 		r.w.wake = n.shell.wakeLoop
@@ -575,8 +582,13 @@ func (n *node) ckptDone() error {
 	return nil
 }
 
-// abortCkpt stops a checkpoint being written and removes its file. Only
-// a store that is replaced aborts one.
+// abortCkpt stops a checkpoint being written, waits for its writer, and
+// removes its file. Only a store that is replaced, or a node that stops,
+// aborts one. A writer past its last check of quit may still name the
+// checkpoint and point CURRENT at it: it is waited for, so that it never
+// writes CURRENT alongside, or after, an install's pointer (#689's
+// area-1 review, finding 1). That checkpoint is then whole, and stays
+// while CURRENT may name it.
 func (n *node) abortCkpt() {
 	r := n.ckpt
 	if r == nil {
@@ -584,9 +596,13 @@ func (n *node) abortCkpt() {
 	}
 	n.ckpt = nil
 	close(r.w.quit)
+	<-r.w.done
 	_ = n.sys.remove(filepath.Join(n.ckptDir, r.w.tmp))
 	n.st.release()
 }
+
+// errCkptAborted is a checkpoint's write that stopped at its abort.
+var errCkptAborted = errors.New("the checkpoint was aborted")
 
 // encodeChunk encodes the checkpoint's next part: the header with the
 // first values, the values, then the keys and the changes.
@@ -1247,6 +1263,12 @@ func (n *node) loadNewest() (int64, error) {
 	keep := ""
 	if p != nil {
 		keep = p.name
+	}
+	// CURRENT's rename may not be durable yet, if the node stopped right
+	// after it: synced first, a power loss can no longer bring back the
+	// pointer before, whose checkpoint the cleanup removes.
+	if err := syncDir(n.sys, n.ckptDir); err != nil {
+		return 0, err
 	}
 	if err := cleanCkptDir(n.sys, n.ckptDir, keep); err != nil {
 		return 0, err
