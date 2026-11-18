@@ -92,9 +92,9 @@ type Config struct {
 	StallLeaderAt int64
 	// LagAtEnd crashes a follower once the clients' last calls have ended,
 	// commits a write of the run's own while it is down, and starts it
-	// again lagAtEnd before the end with its links to the other nodes
-	// down until the end: the end finds it behind, whatever the seed or
-	// the build's speed, and waits while it catches up (#269, #745).
+	// again with its links to the other nodes down until the end: the end
+	// finds it behind, whatever the seed or the build's speed, and waits
+	// while it catches up (#269, #745).
 	LagAtEnd bool
 	// LiveFrom, if set, is when the liveness rule starts instead of
 	// LiveAfter into healing.
@@ -1310,7 +1310,7 @@ func (s *Sim) schedule() {
 		})
 	}
 	if s.cfg.LagAtEnd {
-		s.at(s.stopAt+s.cfg.ClientTimeout+100*Millisecond, s.lagAtEnd)
+		s.at(s.stopAt+s.cfg.ClientTimeout+100*Millisecond, s.holdBack)
 	}
 	if s.cfg.StallLeaderAt > 0 {
 		s.at(s.cfg.StallLeaderAt, s.stallLeader)
@@ -1318,20 +1318,13 @@ func (s *Sim) schedule() {
 	s.at(s.healAt, s.heal)
 }
 
-// lagAtEnd is how long before the end LagAtEnd starts the follower
-// again: within it, the follower starts, with its links down.
-const lagAtEnd = TickTime + 20*Millisecond
-
 // lagAtEndKey is the key of LagAtEnd's own write, which no client uses.
 var lagAtEndKey = []byte("lag-at-end")
 
-// lagAtEnd crashes a follower, has the leader commit a write it misses,
-// and starts it again lagAtEnd before the end with its links down until
-// the end (LagAtEnd). Before #745 it caught up on what committed
-// meanwhile, if anything did: lease expiries in some seeds and none in
-// others, and under race-sim, whose nodes run on real time, only 1 seed
-// of 4 ended with it behind.
-func (s *Sim) lagAtEnd() {
+// holdBack is LagAtEnd: it crashes a follower, has another node commit a
+// write the follower misses, and starts the follower again once that
+// write is in, its links down until the end.
+func (s *Sim) holdBack() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	lead := s.leaderIdx()
@@ -1355,7 +1348,7 @@ func (s *Sim) lagAtEnd() {
 	// The write is a call of a client of its own, in the history as any
 	// other; the other node forwards it to the leader if it does not lead.
 	c := &client{id: len(s.clients), sim: s}
-	r := &Record{Client: c.id, Node: other.idx, Call: s.now(), req: &pb.PutRequest{Key: lagAtEndKey, Value: []byte("lag-at-end")}}
+	r := &Record{Client: c.id, Node: other.idx, Call: s.now(), req: &pb.PutRequest{Key: lagAtEndKey, Value: lagAtEndKey}}
 	s.wg.Go(func() {
 		resp, err := s.call(other, r.req, 0)
 		s.mu.Lock()
@@ -1363,9 +1356,12 @@ func (s *Sim) lagAtEnd() {
 		c.done(r, resp, err)
 		if err != nil {
 			s.fail("LagAtEnd: the write the follower misses: %w", err)
+			return
 		}
+		// Started well before the end, it is up when the end comes;
+		// with its links down it cannot catch up before then.
+		s.restartLater(lagged, 0)
 	})
-	s.restartLater(lagged, s.endAt-lagAtEnd-s.now())
 }
 
 // linksWithout is the mask of setLinks with every link of node i down
