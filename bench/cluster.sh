@@ -40,13 +40,18 @@ ctl() {
 }
 
 # status prints the leader's endpoint and the term, and fails unless every
-# node names the same single leader.
+# node answers and names the same single leader. In #756's trial run a
+# status passed on the two nodes that answered while the third still
+# formatted its ring; the next status, just after it came up, found it at
+# term 1 with no leader, and the start failed. So a status that does not
+# list every node fails, and the start's wait goes on.
 status() {
 	local st leader
-	st=$(ctl endpoint status -w json)
+	st=$(ctl endpoint status -w json) || return 1
 	# etcdctl versions name fields in snake or camel case.
 	leader=$(jq -r 'map(select(.Status.leader == (.Status.header.member_id // .Status.header.memberId))) | if length == 1 then .[0].Endpoint else "" end' <<<"$st")
-	if [ -z "$leader" ] || [ "$(jq '[.[].Status.leader] | unique | length' <<<"$st")" -ne 1 ]; then
+	if [ -z "$leader" ] || [ "$(jq 'length' <<<"$st")" -ne "$(tr ',' '\n' <<<"$endpoints" | grep -c .)" ] ||
+		[ "$(jq '[.[].Status.leader] | unique | length' <<<"$st")" -ne 1 ]; then
 		echo "no single leader: $st" >&2
 		return 1
 	fi
