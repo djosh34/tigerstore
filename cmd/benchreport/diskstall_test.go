@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -131,6 +132,92 @@ func TestReportCountsRetries(t *testing.T) {
 		}
 		if failed := errors.Is(err, errTooManyRetries); failed != (n > maxRetries) {
 			t.Fatalf("%d retries: %v", n, err)
+		}
+	}
+}
+
+// wlLog writes a node's log of internal/wl lines, each at base plus its
+// offset, in order.
+func wlLog(t *testing.T, path string, base time.Time, lines map[time.Duration]string) {
+	t.Helper()
+	offs := slices.Sorted(maps.Keys(lines))
+	var b strings.Builder
+	for _, off := range offs {
+		fmt.Fprintf(&b, "tigerstore-wl %s %s\n", base.Add(off).UTC().Format("2006/01/02 15:04:05.000000"), lines[off])
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDiskStallWL checks the test for a stall of the runner's disk on
+// internal/wl's nodes (#747), as the stall of bench run 44202167112, seed
+// 82087027, at 0 ms shows it: the leader silent from its oldest append's
+// start for 3.48 s, every node's log writes 4.86 s of their 5 s window
+// in about 110 syncs of about 200 KB, and a new leader 0.47 s after the
+// leader caught up. Each of these stays a plain failure: one node's
+// disk; no catching up; a wait under stallSync; large writes; the new
+// leader past stallElected; no new leader but "0"; and another cause.
+func TestDiskStallWL(t *testing.T) {
+	base := time.Date(2026, 11, 17, 23, 49, 36, 825324462, time.UTC)
+	const changed = "leader check exited 1: the leader changed during the run: 127.0.0.1:20030 term 2, now 127.0.0.1:20010 term 3"
+	silent := fmt.Sprintf("the log's oldest append waited for the disk since %s: silent, so the followers elect another leader", base.Format(time.RFC3339Nano))
+	window := func(writesMS int, perReply float64) map[time.Duration]string {
+		return map[time.Duration]string{
+			-950 * time.Millisecond: "stats 5.0s: replies/s 106 turns/s 1575 | per reply: turns 14.919 walBytes 173013.4 | keys 102393",
+			-949 * time.Millisecond: "cpu ms: process 967, loop 642, others 324; log writes 1199 ms for 2291 syncs; kernel dirty 0 MB, writeback 0 MB",
+			4080 * time.Millisecond: fmt.Sprintf("stats 5.0s: replies/s 23 turns/s 139 | per reply: turns 6.149 walBytes %.1f | keys 118675", perReply),
+			4081 * time.Millisecond: "memory MB: rss 1091",
+			4082 * time.Millisecond: fmt.Sprintf("cpu ms: process 127, loop 98, others 29; log writes %d ms for 111 syncs; kernel dirty 0 MB, writeback 0 MB", writesMS),
+		}
+	}
+	follower := func() map[time.Duration]string {
+		m := window(4863, 194981.3)
+		m[3950*time.Millisecond] = "the leader is 1"
+		return m
+	}
+	leader := func(caught, elected time.Duration, by string) map[time.Duration]string {
+		m := window(4863, 194981.3)
+		m[2174*time.Millisecond] = silent
+		if caught > 0 {
+			m[caught] = "the log caught up: no longer silent"
+		}
+		m[elected] = by
+		return m
+	}
+	good := leader(3478*time.Millisecond, 3950*time.Millisecond, "the leader is 1")
+	for _, tc := range []struct {
+		name  string
+		cause string
+		nodes []map[time.Duration]string
+		want  bool
+	}{
+		{"the runner's disk", changed, []map[time.Duration]string{good, follower(), follower()}, true},
+		{"one node's disk", changed, []map[time.Duration]string{good, window(300, 194981.3), window(300, 194981.3)}, false},
+		{"no catching up", changed, []map[time.Duration]string{leader(0, 3950*time.Millisecond, "the leader is 1"), follower(), follower()}, false},
+		{"a wait under stallSync", changed, []map[time.Duration]string{leader(800*time.Millisecond, 1200*time.Millisecond, "the leader is 1"), follower(), follower()}, false},
+		{"large writes", changed, []map[time.Duration]string{good, window(4863, 2e6), window(4863, 2e6)}, false},
+		{"a new leader past stallElected", changed, []map[time.Duration]string{leader(3478*time.Millisecond, 6*time.Second, "the leader is 1"), window(4863, 194981.3), window(4863, 194981.3)}, false},
+		{"no new leader but 0", changed, []map[time.Duration]string{leader(3478*time.Millisecond, 3950*time.Millisecond, "the leader is 0"), window(4863, 194981.3), window(4863, 194981.3)}, false},
+		{"another cause", "loadgen exited 1: request timed out", []map[time.Duration]string{good, follower(), follower()}, false},
+	} {
+		dir := filepath.Join(t.TempDir(), "rtt-0", "k8s")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		prefix := filepath.Join(dir, "baseline-max-82087027.1")
+		if err := os.WriteFile(prefix+".failed", []byte(tc.cause), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for i, lines := range tc.nodes {
+			wlLog(t, fmt.Sprintf("%s-n%d.log", prefix, i+1), base, lines)
+		}
+		_, err := diskStall(prefix)
+		if got := err == nil; got != tc.want {
+			t.Errorf("%s: a stall of the runner's disk: %v, want %v (%v)", tc.name, got, tc.want, err)
+		}
+		if err != nil && !errors.Is(err, errNotDiskStall) {
+			t.Errorf("%s: %v is not errNotDiskStall", tc.name, err)
 		}
 	}
 }
