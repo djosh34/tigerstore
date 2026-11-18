@@ -241,6 +241,8 @@ func onlyRecordingRanOut(err error) bool {
 				return false
 			}
 		}
+		// errors.Join never makes an empty join, but another joined
+		// error could: that is no run-out.
 		return len(j.Unwrap()) > 0
 	}
 	return errors.Is(err, errTraceTooShort)
