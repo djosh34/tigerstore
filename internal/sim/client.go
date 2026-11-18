@@ -286,6 +286,9 @@ func (c *client) request() proto.Message {
 		return c.kubeRequest()
 	}
 	s := c.sim
+	if s.startRev > 0 && s.rng.IntN(20) == 0 {
+		return s.agedRequest()
+	}
 	k := s.rng.IntN(numKeys)
 	val := fmt.Appendf(nil, "c%d-%d", c.id, c.n)
 	if pad := s.cfg.ValueBytes - len(val); pad > 0 {

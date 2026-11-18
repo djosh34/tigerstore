@@ -44,7 +44,7 @@ func (r *Result) checkable(release bool) (*history.History, error) {
 		// whole history again, not what is left of it.
 		defer func() { r.History = nil }()
 	}
-	h := &history.History{Target: r.FinalRev}
+	h := &history.History{Target: r.FinalRev, Start: r.start}
 	if r.Stats.QuorumLostAt > 0 {
 		// No node can catch up to the final revision without a quorum,
 		// so no watch must reach it.
@@ -99,7 +99,7 @@ func (r *Result) checkable(release bool) (*history.History, error) {
 		}
 		h.Ops = append(h.Ops, op)
 	}
-	for _, m := range r.Log {
+	for _, m := range r.Log[r.base:] {
 		// A keepalive and a lease checkpoint change no key and no
 		// revision; they only move when a lease expires.
 		switch m.(type) {

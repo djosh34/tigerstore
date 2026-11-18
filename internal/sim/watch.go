@@ -87,9 +87,10 @@ func (s *Sim) startWatchers() {
 		if sp.end != "" {
 			w.end = []byte(sp.end)
 		}
-		// Half the watches start from revision 1, the rest from now.
+		// Half the watches start from revision 1, or a fork's image,
+		// the rest from now.
 		if s.rng.IntN(2) == 0 {
-			w.next = 1
+			w.next = max(1, s.startRev)
 		}
 		s.watchers = append(s.watchers, w)
 		wait, drop := s.rng.Int64N(Second), s.exp(3*Second)

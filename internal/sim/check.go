@@ -352,6 +352,10 @@ func checkLog(res *Result) error {
 				return fmt.Errorf("the write of %q is in the log twice, again at write %d", v, i)
 			}
 			committed[v] = true
+			if i < res.base {
+				// A fork's image wrote it, before the fork's calls.
+				continue
+			}
 			r, ok := calls[v]
 			if !ok {
 				return fmt.Errorf("write %d of the log puts %q, which no call wrote", i, v)

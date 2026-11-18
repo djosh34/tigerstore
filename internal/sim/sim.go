@@ -33,6 +33,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simfs"
@@ -187,6 +188,12 @@ type Config struct {
 	// node starts again warm, its page cache kept, and writes on; a second
 	// later it loses power and starts cold (wlSyncFailArm, Recovered).
 	syncFailWarmCold bool
+	// from, if set, is the aged image the run forks from (aged.go): its
+	// nodes start from copies of the image's disks. noFence keeps the
+	// crash images to whole writes, which never fence a node, so that an
+	// aging run ends with every node up for its image.
+	from    *image
+	noFence bool
 	// flipRecords lets a wl node's damage, where the kind drawn finds no
 	// place, flip a record of its log (flipWLRecord), once the cluster
 	// formed first: TestSeeds' runs, whose rule over a set needs fenced
@@ -586,6 +593,9 @@ type Sim struct {
 	// snapshot served to each node, by Raft ID, when it was served.
 	servedRoot map[uint64]uint64
 	healed     bool
+	// startRev is the revision of the image a fork starts from, 0 for a
+	// run from an empty store.
+	startRev int64
 	// quorumLostAt is when a majority of the voters was fenced for good
 	// (Config.LoseQuorum), 0 while a quorum stays.
 	quorumLostAt int64
@@ -871,6 +881,11 @@ type Result struct {
 	chunks  *keptPages
 	// hashed is the run's hashes, taken before its checks (hashes).
 	hashed string
+	// start and base, in a fork, are the image's store and the number of
+	// its writes at the head of Log: the checkers of package check start
+	// from the store and get the writes after it.
+	start *history.Start
+	base  int
 }
 
 // history returns the run's calls: History, decoded again from the
@@ -898,7 +913,9 @@ func Run(cfg Config) (*Result, error) { return runInspect(cfg, nil) }
 // hold still for the checks.
 func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	var f *Sim
-	if formsFirst(cfg) {
+	if cfg.from != nil {
+		f = cfg.from.src
+	} else if formsFirst(cfg) {
 		var err error
 		f, err = formCluster(cfg)
 		if f == nil {
@@ -922,7 +939,9 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if f != nil {
+	if cfg.from != nil {
+		s.fork(cfg.from)
+	} else if f != nil {
 		// The nodes start from the formed disks, and the run's record of
 		// committed entries and checkpoints goes on from the formation's.
 		for i, n := range s.nodes[:cfg.voters()] {
@@ -933,6 +952,9 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		s.formed, s.stats.Formed = f.formed, true
 	}
 	res := &Result{Clients: cfg.Clients + cfg.V3Clients, long: cfg.Duration >= 3600*Second}
+	if img := cfg.from; img != nil {
+		res.start, res.base = img.start, img.ops
+	}
 	err = s.run()
 	// A run that failed before its end keeps what it did so far, for its
 	// report; it has no committed log for the checkers.
@@ -2050,7 +2072,7 @@ func (s *Sim) powerLoss(n *node) {
 // refuse the log (#295). The lock is held.
 func (s *Sim) loseUnsynced(n *node) {
 	img := simfs.Image(s.rng.IntN(4))
-	if s.cfg.Membership || s.count(func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) >= s.spare() {
+	if s.cfg.Membership || s.cfg.noFence || s.count(func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) >= s.spare() {
 		img = simfs.Image(s.rng.IntN(2))
 	}
 	s.loseUnsyncedAs(n, img)
