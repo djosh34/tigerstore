@@ -139,7 +139,7 @@ func (s *logStorage) entry(i uint64, e *storedEnt) (*pb.Entry, error) {
 		if err := s.log.read(rec, e.off-walEntHdr); err != nil {
 			return nil, fmt.Errorf("read entry %d back from the log: %w", i, err)
 		}
-		if !checks(rec) || binary.LittleEndian.Uint64(rec[9:]) != i || binary.LittleEndian.Uint64(rec[17:]) != e.term {
+		if !checks(rec, e.off-walEntHdr) || binary.LittleEndian.Uint64(rec[9:]) != i || binary.LittleEndian.Uint64(rec[17:]) != e.term {
 			return nil, fmt.Errorf("entry %d: %w", i, &ReadBackError{Err: ErrBadEntry, Off: e.off - walEntHdr, Len: len(rec)})
 		}
 		ent.Data = rec[walEntHdr:]

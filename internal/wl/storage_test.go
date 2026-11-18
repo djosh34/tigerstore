@@ -27,7 +27,10 @@ func storeEntries(t *testing.T, s *logStorage, l *memLog, ents ...*pb.Entry) {
 // where its data lies.
 func addRecord(l *memLog, e *pb.Entry) int64 {
 	var head [walEntHdr]byte
-	putEntryHead(head[:], e)
+	l.mu.Lock()
+	off := int64(len(l.b))
+	l.mu.Unlock()
+	putEntryHead(head[:], e, off)
 	return l.add(string(head[:])+string(e.GetData())) + walEntHdr
 }
 

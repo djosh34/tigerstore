@@ -509,3 +509,54 @@ func TestTheHelperStopsWaitingForASegmentWhenTheLogCloses(t *testing.T) {
 		t.Fatal("the helper still waits for a segment after the log closed")
 	}
 }
+
+// A record checks only at the log offset it was written at (rule 1 of
+// the ring, wal.go): its bytes copied anywhere else, as an earlier lap
+// leaves them in space the log writes over, do not check, and a scan
+// that meets them past the log's end ends the log there as at zeros,
+// with no damage claimed.
+func TestARecordChecksOnlyWhereItWasWritten(t *testing.T) {
+	dir := t.TempDir()
+	w, err := openWAL(sysEnv{}, dir, sizeFor(0).stage, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	if err := w.write([]*pb.Entry{testEntry(1, 1, "one"), testEntry(2, 1, "two"), testEntry(3, 1, "three")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	path := segPath(dir, 0)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	end := w.off
+	first := b[:w.offs[0]-walEntHdr+walEntHdr+3]
+	rec := first[w.offs[0]-walEntHdr:]
+	if !checks(rec, w.offs[0]-walEntHdr) {
+		t.Fatal("a record does not check where it was written")
+	}
+	for _, at := range []int64{w.offs[0] - walEntHdr + 1, end, end + segSize, w.offs[0] - walEntHdr + 1<<40} {
+		if checks(rec, at) {
+			t.Fatalf("the record written at %d checks at %d too", w.offs[0]-walEntHdr, at)
+		}
+	}
+	// Past the log's end, the log's own records again, as a lap before
+	// left them: they are not read, and the log ends where it did.
+	b = append(b[:end], b[:end]...)
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	scanned, err := scanWAL(sysEnv{}, dir, 0, func(r *walRecord) error {
+		got = append(got, string(r.data))
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("a scan past stale records: %v", err)
+	}
+	if scanned != end || len(got) != 3 {
+		t.Fatalf("the scan read %q and ends at %d; want the three records and the end %d", got, scanned, end)
+	}
+}
