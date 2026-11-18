@@ -325,7 +325,10 @@ func ringDamaged(sys sysEnv, dir string, k, off int64, b []byte) error {
 
 // logRing is the size of the log's ring for cfg: LogRing if set, else
 // half the disk budget, else the quota (#602's ruling); 0, a log with no
-// ring, when the quota is off.
+// ring, when the quota is off. A ring sized from the quota is at most
+// maxQuotaRing: etcd takes a quota of any size, past its suggested
+// maximum with a warning, and a quota of 2^63-1, as past-ram runs with,
+// sized a ring no disk holds, which the node could not format.
 func logRing(cfg *Config) int64 {
 	switch {
 	case cfg.LogRing != 0:
@@ -335,8 +338,13 @@ func logRing(cfg *Config) int64 {
 	case cfg.QuotaBackendBytes < 0:
 		return 0
 	}
-	return max(cmp.Or(cfg.QuotaBackendBytes, defaultQuota), ringMinSegs*segSize)
+	return min(max(cmp.Or(cfg.QuotaBackendBytes, defaultQuota), ringMinSegs*segSize), maxQuotaRing)
 }
+
+// maxQuotaRing is the largest ring a quota sizes: etcd's suggested
+// maximum quota (storage.MaxQuotaBytes), which the bench's quota is. A
+// disk budget sizes a larger one.
+const maxQuotaRing = 8 << 30
 
 // ringReserve is how many spare segments a ring keeps for the writes that
 // free space, deletes, compactions and alarms, once it refuses the rest

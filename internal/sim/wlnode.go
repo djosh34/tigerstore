@@ -155,12 +155,17 @@ const wlRing = 8 * 16 << 10
 // could check (B04a, #751's CI).
 const wlRingFree = 64 * 16 << 10
 
-// ringSize is a node's log ring in this run.
+// ringSize is a node's log ring in this run: as a disk budget sizes it
+// (wl's logRing), half the budget, and at least wlRing. A fixed wlRing
+// gave kubeConfig's nodes, with a budget of 16 MiB or more, 128 KiB: its
+// writes filled it at once, the nodes answered NOSPACE, and seeds of
+// TestKubernetesLoad did too little to test anything (main's race-sim on
+// ae01b0a4).
 func (s *Sim) ringSize() int64 {
-	if s.cfg.Faults.DiskBudget == 0 {
-		return wlRingFree
+	if b := s.cfg.Faults.DiskBudget; b > 0 {
+		return max(b/2, wlRing)
 	}
-	return wlRing
+	return wlRingFree
 }
 
 // diskCapacity is a node's disk's capacity: the faults' DiskCapacity, 0

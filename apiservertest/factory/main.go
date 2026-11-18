@@ -94,6 +94,14 @@ func run() error {
 			args = append(args, "--watch-progress-notify-interval", iv)
 		}
 		cmd := exec.Command(bin, args...)
+		if etcd == "" {
+			// A log ring of 64 segments of 1 MiB, which a test's few
+			// writes never fill. The 512 MiB ring a test workflow gives
+			// every node took each start about 4 s more to format, and
+			// pkg/storage/etcd3's 96 starts ran past its 20 minutes
+			// (#602). The last of a variable set twice wins.
+			cmd.Env = append(os.Environ(), "ETCD_UNSAFE_SEGMENT_BYTES=1048576", "ETCD_UNSAFE_LOG_RING_BYTES=67108864")
+		}
 		cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
 		// A node must not outlive a factory that is killed.
 		cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}

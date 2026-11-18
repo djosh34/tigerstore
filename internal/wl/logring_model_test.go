@@ -551,3 +551,29 @@ func TestARingIsNeverDueForACheckpointItCannotMake(t *testing.T) {
 		t.Fatal("no checkpoint is due once an entry applied past the newest")
 	}
 }
+
+// A ring is sized as #602's ruling says, and a quota past etcd's
+// suggested maximum, such as past-ram's 2^63-1, sizes one no larger than
+// that maximum: it sized one no disk holds, which the node could not
+// format.
+func TestTheRingIsSizedFromTheBudgetElseTheQuota(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		cfg  Config
+		want int64
+	}{
+		{"a ring set", Config{LogRing: 96 << 20, DiskBudget: 4 << 30}, 96 << 20},
+		{"no ring", Config{LogRing: -1}, 0},
+		{"half the disk budget", Config{DiskBudget: 4 << 30, QuotaBackendBytes: 8 << 30}, 2 << 30},
+		{"the default quota", Config{}, defaultQuota},
+		{"a quota", Config{QuotaBackendBytes: 3 << 30}, 3 << 30},
+		{"the quota off", Config{QuotaBackendBytes: -1}, 0},
+		{"a quota of 8 GiB", Config{QuotaBackendBytes: 8 << 30}, 8 << 30},
+		{"a quota past etcd's maximum", Config{QuotaBackendBytes: 1<<63 - 1}, 8 << 30},
+		{"a small quota", Config{QuotaBackendBytes: 1 << 20}, ringMinSegs * segSize},
+	} {
+		if got := logRing(&c.cfg); got != c.want {
+			t.Errorf("%s: a ring of %d bytes, want %d", c.name, got, c.want)
+		}
+	}
+}

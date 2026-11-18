@@ -135,9 +135,10 @@ def main():
         # Membership in the cgroup precedes exec. No allocation by the server
         # escapes its limit, and restart retains the cgroup's OOM counters.
         environment = dict(os.environ, GOMEMLIMIT=args.go_memory)
-        # Each node formats a log ring of 512 MiB, not the quota's size:
-        # tests format no gigabytes (#602's ruling).
-        environment.setdefault("ETCD_UNSAFE_LOG_RING_BYTES", "536870912")
+        # Each node's log ring is the product's, sized from its quota: the
+        # store's data, past RAM, must fit it, or checkpoints take in all
+        # of it again and again while writes wait (#602). No test ring.
+        environment.pop("ETCD_UNSAFE_LOG_RING_BYTES", None)
         return subprocess.Popen(["sh", "-ec", 'echo $$ > "$1/cgroup.procs"; shift; exec "$@"',
                                  "past-ram", str(groups[i]), *command],
                                 stdout=logs[i], stderr=subprocess.STDOUT, env=environment)
@@ -156,7 +157,9 @@ def main():
             nodes.append(launch(i))
         # The driver starts once every member has a leader: a member answers
         # its metrics before, and a write to it "no leader" (#602).
-        deadline = time.monotonic() + 60
+        # A fresh node formats its log ring before it serves: 8 GiB on
+        # each of three nodes, about 75 to 100 s on a runner's disk.
+        deadline = time.monotonic() + 300
         while True:
             try:
                 if all(healthy(20100 + 10*i) for i in range(3)):

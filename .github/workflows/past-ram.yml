@@ -12,12 +12,8 @@ on:
         default: true
 permissions:
   contents: read
-# Every node a test starts formats a log ring of 512 MiB, not the 2 GiB a
-# quota's default sizes (#602's ruling: tests format no gigabytes); the
-# bench, the release and the soak, which sizes it from its disk budget,
-# keep theirs.
-env:
-  ETCD_UNSAFE_LOG_RING_BYTES: "536870912"
+# capacity's nodes keep the product's log ring, which their quota sizes
+# (8 GiB at most): the store's data, past RAM, must fit it (#602).
 
 jobs:
   # The classifier of capacity outcomes. Main's storage, cleaner and
