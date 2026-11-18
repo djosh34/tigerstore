@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -610,5 +611,117 @@ func TestARingTheDiskCannotHoldIsRefusedAtStart(t *testing.T) {
 	segSize = was
 	if err := ringFits(sysEnv{}, dir, ringSegs(logRing(&Config{QuotaBackendBytes: 1<<63 - 1}))); err == nil {
 		t.Fatal("a quota of 2^63-1 sized a ring this disk holds")
+	}
+}
+
+// A ring's start leaves only zeros past the log's end, though it writes
+// the log's last stage again first (rewriteTail): the rewrite's bytes once
+// stayed in the stage, and the start wrote them past the end with the
+// last block, where after a stage's wrap a record within an entry's data
+// read as a record of its own at its new place (#752's re-check). Here the
+// log runs past a stage, and two clean starts must each recover the same
+// entries and leave zeros past the end.
+func TestARingStartLeavesOnlyZerosPastItsEndAfterItsRewrite(t *testing.T) {
+	was := segSize
+	segSize = 16 << 10
+	t.Cleanup(func() { segSize = was })
+	dir := t.TempDir()
+	const stage, ring = 64 << 10, 16 * (16 << 10)
+	open := func() (*wal, []uint64) {
+		t.Helper()
+		var got []uint64
+		w, err := openWALRing(sysEnv{}, dir, stage, ring, 0, 0, func(r *walRecord) error {
+			if r.kind == recEntry {
+				got = append(got, r.index)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return w, got
+	}
+	w, _ := open()
+	var want []uint64
+	for i := range uint64(40) {
+		if err := w.write([]*pb.Entry{testEntry(i+1, 1, strings.Repeat(string(rune('a'+i%26)), 1800+int(i)*7))}, nil); err != nil {
+			t.Fatal(err)
+		}
+		syncWAL(t, w)
+		want = append(want, i+1)
+	}
+	end := w.off
+	if end <= stage {
+		t.Fatalf("the log ends at %d, within its stage; the test needs it past", end)
+	}
+	w.close()
+	for start := range 2 {
+		w, got := open()
+		w.close()
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Fatalf("start %d recovered %v, want %v", start+1, got, want)
+		}
+		b, err := os.ReadFile(segPath(dir, end/segSize))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i := slices.IndexFunc(b[end%segSize:], func(c byte) bool { return c != 0 }); i >= 0 {
+			t.Fatalf("start %d left byte %#x at offset %d, past the log's end %d", start+1, b[end%segSize+int64(i)], end+int64(i), end)
+		}
+	}
+}
+
+// A start writes the log's last maxStage again (rewriteTail), as the bytes
+// a failed sync left lie within the failed process's stage of the end: no
+// memory budget gives a process a larger stage, so a restart with a
+// smaller budget, and a smaller stage, still covers them (#752's
+// re-check).
+func TestNoBudgetGivesAStageLargerThanMaxStage(t *testing.T) {
+	for b := int64(0); b <= 1<<44; b = max(2*b, 1<<20) {
+		if st := int64(sizeFor(b).stage); st > maxStage() {
+			t.Fatalf("a budget of %d bytes gives a stage of %d, past maxStage %d", b, st, maxStage())
+		}
+	}
+}
+
+// The spares of a format a crash interrupted, before the ring's meta file
+// was written, are room for the next start's format: that start removes
+// them first. Its check of the disk's room counted them as taken, and a
+// node of TestLinearizable's seed 598 on #752, whose disk held its ring and
+// no more, refused every start after the crash.
+func TestAnInterruptedFormatsSparesAreRoomForTheNext(t *testing.T) {
+	was, wasFree := segSize, freeSpaceOf
+	segSize = 16 << 10
+	t.Cleanup(func() { segSize, freeSpaceOf = was, wasFree })
+	dir := t.TempDir()
+	const ring = 8 * (16 << 10)
+	// A disk that holds the ring and a block more, less the spares on it.
+	freeSpaceOf = func(path string) (int64, error) {
+		free := int64(ring + 4096)
+		names, err := os.ReadDir(path)
+		if err != nil {
+			return 0, err
+		}
+		for _, e := range names {
+			if info, err := e.Info(); err == nil && filepath.Ext(e.Name()) == spareExt {
+				free -= info.Size()
+			}
+		}
+		return free, nil
+	}
+	if err := formatRing(sysEnv{}, dir, ring/segSize); err != nil {
+		t.Fatal(err)
+	}
+	// The crash came before the meta file: the spares stay, the ring not.
+	if err := os.Remove(filepath.Join(dir, ringMeta)); err != nil {
+		t.Fatal(err)
+	}
+	w, err := openWALRing(sysEnv{}, dir, 64<<10, ring, 0, 0, nil)
+	if err != nil {
+		t.Fatalf("a start after an interrupted format: %v", err)
+	}
+	w.close()
+	if n := countRingFiles(t, dir); n != ring/segSize {
+		t.Fatalf("the ring holds %d files, formatted with %d", n, ring/segSize)
 	}
 }

@@ -158,6 +158,12 @@ func formatRing(sys sysEnv, dir string, segs int64) error {
 			return err
 		}
 	}
+	// The spares of a format a crash interrupted are room for this one:
+	// the check comes once they are gone (TestLinearizable seed 598 on
+	// #752), and before anything of the ring is written.
+	if err := ringFits(sys, dir, segs); err != nil {
+		return err
+	}
 	zeros, err := mmapBytes(int(min(segSize, 4<<20)))
 	if err != nil {
 		return err
