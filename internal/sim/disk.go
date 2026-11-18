@@ -76,7 +76,9 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 		return nil
 	}
 	switch {
-	case op == simfs.OpRemove && isSegment(name):
+	case (op == simfs.OpRemove || op == simfs.OpRename) && isSegment(name):
+		// A segment cut: removed, or a ring's renamed back to a spare
+		// (wl's logring.go), whose old name is the segment's.
 		n.removedSegment = true
 		s.stats.LogCuts++
 	case op == simfs.OpSyncDir:

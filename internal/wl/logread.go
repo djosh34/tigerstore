@@ -222,6 +222,10 @@ func (o Op) Message() (any, error) {
 
 // Record is where a record of the log lies: its offset in the log, its
 // length with its head, and its kind.
+// KindSynced is the Kind of a ring's sync mark, whose Claims says where
+// the log is durable before.
+const KindSynced = recSynced
+
 type Record struct {
 	Off, Len int64
 	Kind     byte

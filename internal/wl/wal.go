@@ -167,13 +167,13 @@ type wal struct {
 
 	// The ring (logring.go), nil for a log with none: spares are its files
 	// that hold no segment, freed the segments a cut let go of, which the
-	// maker renames to spares (freedCh wakes it); free counts the spares.
+	// maker renames to spares (freedCh wakes it). How many segments are
+	// free the loop counts itself (ringFree).
 	ring    *ringInfo
 	spares  []string
 	nextSp  int64 // the next spare's number (spareSeq)
 	freed   []int64
 	freedCh chan struct{}
-	free    atomic.Int64
 	zeroBuf []byte
 	// formatted is how long this start took to format the ring, 0 if the
 	// log had one: the node logs it.
@@ -181,7 +181,7 @@ type wal struct {
 	// dataEnd is where the log's last record but a sync's mark ends, and
 	// claimed what the newest mark says is durable (appendSynced): a ring
 	// syncs a mark alone once the log goes idle with its last records
-	// unclaimed (kickMark).
+	// unclaimed (markIdle).
 	dataEnd, claimed int64
 }
 
@@ -278,7 +278,6 @@ func openWALRing(sys sysEnv, dir string, stage int, ring, keep, from int64, fn f
 	if err != nil {
 		return nil, err
 	}
-	w.free.Store(int64(len(w.spares)))
 	go w.makeSegments(next)
 	go w.helper(end)
 	return w, nil
@@ -577,12 +576,14 @@ func (w *wal) takeSpare(dfd int, k int64) (segment, error) {
 	spare := w.spares[len(w.spares)-1]
 	w.spares = w.spares[:len(w.spares)-1]
 	w.mu.Unlock()
-	w.free.Add(-1)
 	path := segPath(w.dir, k)
 	if err := w.sys.rename(spare, path); err != nil {
 		return segment{}, err
 	}
-	if err := sysFsync(dfd); err != nil {
+	if planted.On("B05") {
+		// Planted: the segment takes records before its directory
+		// entry is synced, as makeSegment's.
+	} else if err := sysFsync(dfd); err != nil {
 		return segment{}, err
 	}
 	var sg segment
@@ -622,7 +623,6 @@ func (w *wal) recycle() error {
 	w.mu.Lock()
 	w.spares = append(w.spares, spares...)
 	w.mu.Unlock()
-	w.free.Add(int64(len(spares)))
 	return nil
 }
 
@@ -851,11 +851,7 @@ func (w *wal) plantedUnsyncedWrite(from, n, pos int64) error {
 // gap(): under load each sync takes more appends, and the loop wakes for
 // fewer completions, so its turns and the acks they send grow.
 func (w *wal) kick() {
-	if w.inflight {
-		return
-	}
-	if len(w.pending) == 0 {
-		w.kickMark()
+	if w.inflight || len(w.pending) == 0 {
 		return
 	}
 	now := time.Now()

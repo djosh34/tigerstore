@@ -1081,6 +1081,7 @@ func (l *loop) run() error {
 			if err := n.maybeCkpt(); err != nil {
 				return err
 			}
+			n.wal.markIdle(now)
 			n.limitGo()
 			l.clientTick()
 			l.prevStall, l.tickStall = l.tickStall, n.stallStats(now)

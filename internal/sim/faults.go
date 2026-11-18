@@ -370,10 +370,11 @@ func (s *Sim) flipWLRecord(n *node) bool {
 	}
 	// A ring's log finds damage to a record only once a later sync's mark
 	// claims it durable: before that, it reads as a crash's torn last sync
-	// (wl's logring.go). An idle log syncs a mark alone, so the records no
-	// mark claims are those of the last sync until then.
+	// (wl's logring.go). An idle log syncs a mark alone at its next tick,
+	// so the records no mark claims are those of the last sync until then.
 	pick := len(recs) - 1
-	if claimed := slices.MaxFunc(recs, func(a, b wl.Record) int { return cmp.Compare(a.Claims, b.Claims) }).Claims; claimed > 0 {
+	if slices.ContainsFunc(recs, func(r wl.Record) bool { return r.Kind == wl.KindSynced }) {
+		claimed := slices.MaxFunc(recs, func(a, b wl.Record) int { return cmp.Compare(a.Claims, b.Claims) }).Claims
 		pick = 0
 		for pick < len(recs) && recs[pick].Off+recs[pick].Len <= claimed {
 			pick++

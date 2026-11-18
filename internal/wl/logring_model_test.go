@@ -413,10 +413,10 @@ func TestARingTooSmallForItsBudgetIsRefused(t *testing.T) {
 		cfg  Config
 		bad  bool
 	}{
-		{"a budget whose half is three segments", Config{DiskBudget: 2 * (least - segSize)}, true},
-		{"a budget whose half is four segments", Config{DiskBudget: 2 * least}, false},
-		{"a ring of three segments", Config{LogRing: least - segSize}, true},
-		{"a ring of four segments", Config{LogRing: least}, false},
+		{"a budget whose half is a segment short", Config{DiskBudget: 2 * (least - segSize)}, true},
+		{"a budget whose half is the fewest segments", Config{DiskBudget: 2 * least}, false},
+		{"a ring a segment short", Config{LogRing: least - segSize}, true},
+		{"a ring of the fewest segments", Config{LogRing: least}, false},
 		{"a small budget with a ring set", Config{DiskBudget: segSize, LogRing: least}, false},
 		{"no ring", Config{DiskBudget: segSize, LogRing: -1}, false},
 	} {
@@ -434,8 +434,9 @@ func TestARingTooSmallForItsBudgetIsRefused(t *testing.T) {
 // A ring's log that goes idle syncs a mark alone, which claims the last
 // sync's records: damage to them is then found, not cut as a crash's torn
 // sync. On seed 7 of TestSeeds a flipped hard state, the last sync's, was
-// cut so, and the node's vote with it (#751's CI). The mark is synced
-// once: the log idle with its records claimed syncs nothing more.
+// cut so, and the node's vote with it (#751's CI). A log that synced
+// within half a tick is not idle, and syncs no mark alone; the mark is
+// synced once, and leaves the sync gap's measures as they were.
 func TestAnIdleRingClaimsItsLastSync(t *testing.T) {
 	was := segSize
 	segSize = 16 << 10
@@ -450,17 +451,25 @@ func TestAnIdleRingClaimsItsLastSync(t *testing.T) {
 	}
 	syncWAL(t, w)
 	second := w.offs[1] - walEntHdr
-	// Idle: nothing waits for a sync.
-	w.lastKick = time.Time{}
-	w.kick()
+	// Nothing waits for a sync, but the last one started just now.
+	w.lastKick = time.Now()
+	w.markIdle(w.lastKick.Add(tickEvery / 4))
+	if w.inflight {
+		t.Fatal("a ring that synced within half a tick synced a mark alone")
+	}
+	kicked, bytes := w.lastKick, w.lastBytes
+	w.markIdle(w.lastKick.Add(tickEvery))
 	if !w.inflight {
 		t.Fatal("an idle ring with its last sync unclaimed synced no mark")
+	}
+	if w.lastKick != kicked || w.lastBytes != bytes {
+		t.Fatal("the mark changed the sync gap's measures")
 	}
 	for w.done.Load() < w.off {
 		time.Sleep(time.Millisecond)
 	}
 	w.inflight = false
-	w.kick()
+	w.markIdle(w.lastKick.Add(2 * tickEvery))
 	if w.inflight {
 		t.Fatal("an idle ring with its records claimed synced again")
 	}

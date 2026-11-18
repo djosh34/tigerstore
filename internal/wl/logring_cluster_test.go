@@ -28,9 +28,9 @@ func seeRing(t *testing.T, l *loop, dir string) ringSeen {
 	got := make(chan ringSeen, 1)
 	l.post(func() error {
 		w := l.n.wal
-		r := ringSeen{off: w.off, free: w.free.Load()}
+		r := ringSeen{off: w.off}
 		if w.ring != nil {
-			r.segs = w.ring.segs
+			r.segs, r.free = w.ring.segs, w.ringFree()
 		}
 		got <- r
 		return nil
@@ -117,7 +117,7 @@ func TestALogRingWrapsUnderLoadWithCompaction(t *testing.T) {
 		if r.segs != segs || r.files != segs {
 			t.Fatalf("node %d: a ring of %d segments and %d files, formatted with %d", i+1, r.segs, r.files, segs)
 		}
-		t.Logf("node %d: the log at %d, %d laps of the ring, %d spares", i+1, r.off, r.off/(segs*segSize), r.free)
+		t.Logf("node %d: the log at %d, %d laps of the ring, %d segments free", i+1, r.off, r.off/(segs*segSize), r.free)
 		if r.off/(segs*segSize) < 3 {
 			t.Fatalf("node %d wrapped its ring %d times; the test needs it to wrap", i+1, r.off/(segs*segSize))
 		}

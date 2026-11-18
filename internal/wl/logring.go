@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -34,10 +35,10 @@ import (
 //     says the log is durable past it; else it is where a crash tore the
 //     last sync, and the log ends there (ringDamaged). Records an earlier
 //     lap left do not check where the log reads them (wal.go's rule 1), so
-//     they claim nothing. A log that goes idle syncs a mark alone
-//     (kickMark), so that the last sync's records are claimed too; damage
-//     to them before that mark is durable, in the time of one small sync
-//     after the last, reads as the torn last sync, and the log ends before
+//     they claim nothing. A log that goes idle syncs a mark alone at its
+//     next tick (markIdle), so that the last sync's records are claimed
+//     too; damage to them before that mark is durable, within a tick of
+//     the last sync, reads as the torn last sync, and the log ends before
 //     them. The simulator damages only records a mark claims.
 //   - No record a crash left past the end is read again. A start writes
 //     zeros over the last segment from the log's end on, and over every
@@ -245,20 +246,22 @@ func (w *wal) appendSynced() bool {
 	return true
 }
 
-// kickMark syncs a mark alone once a ring's log goes idle: nothing waits
-// for a sync, and the last sync's records are durable but no mark claims
-// them. Until one does, damage to them reads as a crash's torn sync, and
-// a start would cut them, though they were durable: on seed 7 of
-// TestSeeds a flipped hard state, the last sync's, was cut, and the
-// node's vote with it (#751's CI). Under load the next sync's mark claims
-// them, and no mark is synced alone. Only the loop calls it, through
-// kick.
-func (w *wal) kickMark() {
-	if w.ring == nil || w.claimed >= w.dataEnd || w.done.Load() < w.dataEnd || !w.appendSynced() {
+// markIdle syncs a mark alone once a ring's log has gone idle: nothing
+// waits for a sync, none started for half a tick, and the last sync's
+// records are durable but no mark claims them. Until one does, damage to
+// them reads as a crash's torn sync, and a start would cut them, though
+// they were durable: on seed 7 of TestSeeds a flipped hard state, the
+// last sync's, was cut, and the node's vote with it (#751's CI). A node
+// that syncs more often than that, a busy follower's too, has the next
+// sync's mark claim them, and syncs no mark alone; the mark leaves the
+// sync gap's measures (lastKick, lastBytes) as they were (#751's
+// re-check). The loop calls it at its tick.
+func (w *wal) markIdle(now time.Time) {
+	if w.ring == nil || w.inflight || len(w.pending) > 0 || now.Sub(w.lastKick) < tickEvery/2 ||
+		w.claimed >= w.dataEnd || w.done.Load() < w.dataEnd || !w.appendSynced() {
 		return
 	}
 	w.stats.syncs++
-	w.lastBytes = w.off - w.want.Load()
 	w.want.Store(w.off)
 	w.inflight = true
 	var b [8]byte
