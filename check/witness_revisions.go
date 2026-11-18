@@ -264,8 +264,12 @@ type span struct{ lo, hi int64 }
 func (r *revisionOrder) index() error {
 	h := r.w.h
 	// Each revision past the first takes a write, so none above limit
-	// can be in any order; the indexes by revision rely on it.
+	// can be in any order; the indexes by revision rely on it. The first
+	// is the start's, if the history has one.
 	r.limit = 1
+	if h.Start != nil {
+		r.limit = h.Start.Rev
+	}
 	for i := range h.Ops {
 		if h.Ops[i].Req.Mutates() {
 			r.limit++
@@ -715,13 +719,18 @@ func (r *revisionOrder) inRealTime() error {
 	h := r.w.h
 	// The acked ops in call order, against the returns in order: each
 	// bound is the one boundAt gives, without a search per op.
+	// No answer is below the store the history starts from.
+	first := int64(1)
+	if h.Start != nil {
+		first = h.Start.Rev
+	}
 	n := 0
 	for _, i := range r.ackedByCall {
 		op := &h.Ops[i]
 		for n < len(r.returns) && r.returns[n] < op.Call {
 			n++
 		}
-		before := int64(1)
+		before := first
 		if n > 0 {
 			before = r.highest[n-1]
 		}
@@ -1411,10 +1420,12 @@ func (r *revisionOrder) dead(rev int64, err error) bool {
 // gap, as after a revision it cannot explain.
 func (r *revisionOrder) search() error {
 	w := r.w
-	if !r.finish(1) {
+	// The order starts at the revision the history starts from.
+	first := w.live.rev
+	if !r.finish(first) {
 		return r.failure
 	}
-	for rev := int64(2); ; {
+	for rev := first + 1; ; {
 		r.rev = rev
 		if w.tick() {
 			return ErrWitnessTimeout

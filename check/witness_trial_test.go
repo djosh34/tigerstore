@@ -148,7 +148,7 @@ func TestFastWitnessMatchesSlow(t *testing.T) {
 // writes time out; half of those took effect, and the log has them.
 func leasedHistory(rng *rand.Rand) *history.History {
 	keys := []string{"a", "b", "c", "d"}
-	st := newState(keys)
+	st := newState(keys, nil)
 	h := &history.History{}
 	var leases []int64
 	for i := range 40 {

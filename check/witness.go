@@ -265,8 +265,9 @@ func newWitness(h *history.History, deadline time.Time) *witness {
 		w.reqs[i] = modelRequest(&h.Ops[i])
 		w.calls[i], w.returns[i] = h.Ops[i].Call, h.Ops[i].Return
 	}
-	w.keys = keysOf(slices.Concat(w.reqs, h.Log))
-	w.live = newState(w.keys)
+	w.keys = keysOf(slices.Concat(w.reqs, h.Log), h.Start)
+	w.live = newState(w.keys, h.Start)
+	w.past.add(startEvents(h.Start))
 	w.live.past = w.past
 	w.states = []summary{w.summary()}
 	return w

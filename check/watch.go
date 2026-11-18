@@ -38,7 +38,7 @@ func Watches(h *history.History) error {
 	if err := h.Validate(); err != nil {
 		return err
 	}
-	r, err := newReplay(h.Log)
+	r, err := newReplay(h.Log, h.Start)
 	if err != nil {
 		return err
 	}

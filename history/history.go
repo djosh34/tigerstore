@@ -40,6 +40,19 @@ type History struct {
 	// canceled by the server must have delivered all its events up to it.
 	// Zero disables the completeness check.
 	Target int64 `json:"target,omitempty"`
+	// Start, if set, is the store the run starts from instead of an empty
+	// one, as a fork of an aged cluster does: its keys and leases at a
+	// revision, compacted there, so that no call reads below it. Ops,
+	// Watches and Log hold only what came after it.
+	Start *Start `json:"start,omitempty"`
+}
+
+// Start is a store at revision Rev, compacted at Rev: its live keys, and
+// the leases granted and not yet revoked.
+type Start struct {
+	Rev    int64      `json:"rev"`
+	KVs    []KeyValue `json:"kvs,omitempty"`
+	Leases []int64    `json:"leases,omitempty"`
 }
 
 // Op is one client call.
@@ -397,6 +410,9 @@ func (h *History) Validate() error {
 			return fmt.Errorf("log entry %d: %w", i, err)
 		}
 	}
+	if err := h.Start.validate(); err != nil {
+		return fmt.Errorf("start: %w", err)
+	}
 	for i := range h.Watches {
 		for j, resp := range h.Watches[i].Responses {
 			for k, ev := range resp.Events {
@@ -405,6 +421,30 @@ func (h *History) Validate() error {
 				}
 			}
 		}
+	}
+	return nil
+}
+
+// validate checks that the start's keys are live at its revision, each
+// once, on leases it holds.
+func (st *Start) validate() error {
+	if st == nil {
+		return nil
+	}
+	if st.Rev < 1 {
+		return fmt.Errorf("revision %d", st.Rev)
+	}
+	seen := map[string]bool{}
+	for _, kv := range st.KVs {
+		switch {
+		case seen[kv.Key]:
+			return fmt.Errorf("key %q twice", kv.Key)
+		case kv.Version < 1 || kv.CreateRevision < 2 || kv.CreateRevision > kv.ModRevision || kv.ModRevision > st.Rev:
+			return fmt.Errorf("key %q at revision %d: %+v", kv.Key, st.Rev, kv)
+		case kv.Lease != 0 && !slices.Contains(st.Leases, kv.Lease):
+			return fmt.Errorf("key %q is on lease %d, which the start does not hold", kv.Key, kv.Lease)
+		}
+		seen[kv.Key] = true
 	}
 	return nil
 }
