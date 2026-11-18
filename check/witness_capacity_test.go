@@ -9,7 +9,7 @@ import (
 // roomOrder is a revision order of the ambiguous ops reqs on keys, at
 // revision 2 with every key present at version 1, for roomReachable.
 func roomOrder(keys []string, reqs ...history.Request) *revisionOrder {
-	s := newState(keys)
+	s := newState(keys, nil)
 	s.rev = 2
 	for k, key := range keys {
 		s.kvs[k] = history.KeyValue{Key: key, CreateRevision: 2, ModRevision: 2, Version: 1}

@@ -372,15 +372,19 @@ func (c *revisionChecker) compaction() {
 		// for this op: a range needs one above rev, a compact one at or
 		// above it.
 		covers := func(k int64) bool { return k > rev || op.Req.Compact != nil && k == rev }
+		// The start is compacted at its revision before any op.
+		started := c.h.Start != nil && covers(c.h.Start.Rev)
 		switch {
 		case op.Err != nil && sameError(op.Err, errCompacted):
-			found := slices.ContainsFunc(compacts, func(j int) bool {
+			found := started || slices.ContainsFunc(compacts, func(j int) bool {
 				k := &c.h.Ops[j]
 				return j != i && k.Call < op.Return && covers(k.Req.Compact.Revision)
 			})
 			if !found {
 				c.fail("op %d (client %d) got a compacted error for revision %d, but no compaction that could cause it started before it returned", i, op.Client, rev)
 			}
+		case op.Resp != nil && started:
+			c.fail("op %d (client %d) succeeded at revision %d, at or below the start's compaction at %d", i, op.Client, rev, c.h.Start.Rev)
 		case op.Resp != nil && !lagging:
 			for _, j := range compacts {
 				k := &c.h.Ops[j]

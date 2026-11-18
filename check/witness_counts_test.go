@@ -77,7 +77,7 @@ func TestReachableSeesCountsBeyondTheNearest(t *testing.T) {
 		{name: "a delete removes b too late", present: true, delAt: 6},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			s := newState([]string{"a", "b"})
+			s := newState([]string{"a", "b"}, nil)
 			s.rev = 2
 			s.kvs[0] = history.KeyValue{Key: "a", Version: 1}
 			if c.present {

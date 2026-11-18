@@ -26,13 +26,19 @@ type replay struct {
 
 var errNoLog = errors.New("history has no committed log")
 
-func newReplay(log []history.Request) (*replay, error) {
+func newReplay(log []history.Request, st *history.Start) (*replay, error) {
 	if len(log) == 0 {
 		return nil, errNoLog
 	}
-	keys := keysOf(log)
-	s := newState(keys)
+	keys := keysOf(log, st)
+	s := newState(keys, st)
 	r := &replay{versions: versions{}, keys: keys}
+	// The start's keys are its versions at its revision, which is
+	// compacted: nothing reads below it.
+	r.versions.add(startEvents(st))
+	if st != nil {
+		r.compactions = append(r.compactions, st.Rev)
+	}
 	for i, req := range log {
 		if req.LeaseGrant != nil && req.LeaseGrant.ID == 0 {
 			return nil, fmt.Errorf("log entry %d grants a lease without its ID", i)

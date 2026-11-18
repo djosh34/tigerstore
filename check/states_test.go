@@ -12,7 +12,7 @@ import (
 func TestStatesEqual(t *testing.T) {
 	timedOut := output{err: errUnavailable}
 	after := func(values ...string) states {
-		ss := initial([]string{"a"})
+		ss := initial([]string{"a"}, nil)
 		for _, v := range values {
 			ss, _ = ss.step(input{req: history.Request{Put: &history.PutRequest{Key: "a", Value: v}}}, timedOut)
 		}

@@ -53,7 +53,7 @@ func TestWatchesGood(t *testing.T) {
 			}},
 		)
 		// The resumed watch gets the update at 4 and nothing after.
-		r, _ := newReplay(h.Log)
+		r, _ := newReplay(h.Log, nil)
 		for _, e := range r.events {
 			if e.KV.Key == "/r/a" && e.Revision() >= 4 {
 				h.Watches[len(h.Watches)-2].Responses = append(h.Watches[len(h.Watches)-2].Responses, history.WatchResponse{Revision: e.Revision(), Events: []history.Event{e}})

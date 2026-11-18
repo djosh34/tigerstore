@@ -515,7 +515,7 @@ func TestWitnessedMaxSteps(t *testing.T) {
 // those took effect, and the log has them.
 func randomHistory(rng *rand.Rand) *history.History {
 	keys := []string{"a", "b", "c"}
-	st := newState(keys)
+	st := newState(keys, nil)
 	h := &history.History{}
 	for i := range 40 {
 		at := int64(i+1) * 10
