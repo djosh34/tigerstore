@@ -71,6 +71,20 @@ func (r *revisionOrder) indexRoom() {
 	}
 	x := &room{puts: make([][]int64, n), deletes: make([][]int64, n), revokes: map[int64][]int64{}, attached: map[int64][]bool{}, actions: map[int][]int{}, leasesOf: make([][]int64, n), revokesOf: map[int64][]int{}}
 	r.room = x
+	// The start's keys on leases are attached to them too.
+	if st := r.w.h.Start; st != nil {
+		for _, kv := range st.KVs {
+			if k := s.index(kv.Key); k >= 0 && kv.Lease != 0 {
+				if x.attached[kv.Lease] == nil {
+					x.attached[kv.Lease] = make([]bool, n)
+				}
+				if !x.attached[kv.Lease][k] {
+					x.leasesOf[k] = append(x.leasesOf[k], kv.Lease)
+				}
+				x.attached[kv.Lease][k] = true
+			}
+		}
+	}
 	for _, req := range r.w.reqs {
 		for p := range putsIn(req) {
 			if k := s.index(p.Key); k >= 0 && p.Lease != 0 {

@@ -160,3 +160,41 @@ func TestStartFromRandomPrefix(t *testing.T) {
 		}
 	}
 }
+
+// TestStartBoundaries checks a history from a start at the start's
+// revision and around it: a watch from the start's revision cannot be
+// checked, one from below must be canceled as compacted, an answer below
+// the start's revision is convicted, and a history that committed
+// nothing since its start passes.
+func TestStartBoundaries(t *testing.T) {
+	watchFrom := func(rev int64, resps ...history.WatchResponse) *history.History {
+		h := forkHistory(t)
+		h.Watches = append(h.Watches, history.Watch{Client: 8, Req: history.WatchRequest{Key: "b", StartRevision: rev}, Responses: resps})
+		return h
+	}
+	mustFail(t, "Watches", Watches(watchFrom(10)), "at or below the start's revision")
+	mustFail(t, "Watches", Watches(watchFrom(9)), "at or below the start's revision")
+	mustPass(t, "Watches", Watches(watchFrom(9, history.WatchResponse{Time: 15, Revision: 10, Canceled: true, CompactRevision: 10})))
+
+	// A read answered below the start's revision.
+	h := forkHistory(t)
+	h.Ops[0].Resp.Revision = 9
+	mustFail(t, "Durable", Durable(h), "below the start's revision")
+	mustFail(t, "Revisions", Revisions(h), "got revision 9")
+
+	// A history that only reads from its start.
+	b := newBuilderFrom(t, startOf())
+	b.get(1, "a")
+	b.get(2, "b")
+	h = b.done()
+	mustPass(t, "Durable", Durable(h))
+	mustPass(t, "Watches", Watches(h))
+	for _, mode := range []WitnessMode{FromLog, FromRevisions} {
+		mustPass(t, "Witnessed", Witnessed(h, mode, time.Minute))
+	}
+
+	// Lease 0 means no lease.
+	h = forkHistory(t)
+	h.Start.Leases = append(h.Start.Leases, 0)
+	mustFail(t, "Validate", h.Validate(), "lease 0")
+}

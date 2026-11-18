@@ -29,6 +29,7 @@ import (
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
 		w:     w,
+		first: w.live.rev,
 		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
 		counts: map[int64][]count{},
 	}
@@ -42,6 +43,8 @@ func (w *witness) fromRevisions() error {
 // revisionOrder is the state of fromRevisions.
 type revisionOrder struct {
 	w *witness
+	// first is the revision the history starts from: 1, or its start's.
+	first int64
 	// writers are the acked ops that wrote each revision, and revokes the
 	// acked revokes at each header revision, which may have written it.
 	// writers holds each one's op plus one, 0 for none (writer); revokes,
@@ -266,10 +269,7 @@ func (r *revisionOrder) index() error {
 	// Each revision past the first takes a write, so none above limit
 	// can be in any order; the indexes by revision rely on it. The first
 	// is the start's, if the history has one.
-	r.limit = 1
-	if h.Start != nil {
-		r.limit = h.Start.Rev
-	}
+	r.limit = r.first
 	for i := range h.Ops {
 		if h.Ops[i].Req.Mutates() {
 			r.limit++
@@ -323,6 +323,12 @@ func (r *revisionOrder) index() error {
 	if err := r.inRealTime(); err != nil {
 		return err
 	}
+	// The start's leases were granted before the history.
+	if h.Start != nil {
+		for _, id := range h.Start.Leases {
+			r.grants[id]++
+		}
+	}
 	for i := range h.Ops {
 		op := &h.Ops[i]
 		if op.Resp != nil && op.Req.Put != nil && op.Req.Put.Lease != 0 {
@@ -347,7 +353,8 @@ func (r *revisionOrder) index() error {
 		}
 		r.note(kv, unchangedTo)
 		r.top = max(r.top, kv.ModRevision)
-		if _, ok := r.writer(kv.ModRevision); ok || kv.ModRevision < 2 || !valued {
+		// A value of the start, or before it, has no writer in the history.
+		if _, ok := r.writer(kv.ModRevision); ok || kv.ModRevision <= r.first || !valued {
 			return
 		}
 		ops := values[[2]string{kv.Key, kv.Value}]
@@ -640,7 +647,7 @@ func lostCompare(s *state, c history.Compare) bool {
 // shows of the key's life. One without a version, from a compare of the
 // mod revision, shows only the revision of its last write.
 func (r *revisionOrder) note(kv history.KeyValue, to int64) {
-	if kv.ModRevision < 2 || !r.checkRange(kv.ModRevision) || kv.Version != 0 && !r.checkRange(kv.CreateRevision) {
+	if kv.ModRevision <= r.first || !r.checkRange(kv.ModRevision) || kv.Version != 0 && !r.checkRange(kv.CreateRevision) {
 		return
 	}
 	// A key no request puts is -1: the store never holds it, so no writer
@@ -719,18 +726,13 @@ func (r *revisionOrder) inRealTime() error {
 	h := r.w.h
 	// The acked ops in call order, against the returns in order: each
 	// bound is the one boundAt gives, without a search per op.
-	// No answer is below the store the history starts from.
-	first := int64(1)
-	if h.Start != nil {
-		first = h.Start.Rev
-	}
 	n := 0
 	for _, i := range r.ackedByCall {
 		op := &h.Ops[i]
 		for n < len(r.returns) && r.returns[n] < op.Call {
 			n++
 		}
-		before := first
+		before := r.first
 		if n > 0 {
 			before = r.highest[n-1]
 		}
@@ -1012,7 +1014,8 @@ func (r *revisionOrder) scheduleOptional() {
 				// An acked compaction that compacts it and returned
 				// before it was called explains it in every order, as
 				// an acked revoke a lease found gone (#514).
-				explained := slices.ContainsFunc(compactions, func(k int) bool {
+				// So does the start's compaction.
+				explained := h.Start != nil && compacts(h.Start.Rev, rj) || slices.ContainsFunc(compactions, func(k int) bool {
 					return compacts(h.Ops[k].Req.Compact.Revision, rj) && r.w.returns[k] < rj.call
 				})
 				if compacts(c, rj) && !explained {
@@ -1421,11 +1424,10 @@ func (r *revisionOrder) dead(rev int64, err error) bool {
 func (r *revisionOrder) search() error {
 	w := r.w
 	// The order starts at the revision the history starts from.
-	first := w.live.rev
-	if !r.finish(first) {
+	if !r.finish(r.first) {
 		return r.failure
 	}
-	for rev := first + 1; ; {
+	for rev := r.first + 1; ; {
 		r.rev = rev
 		if w.tick() {
 			return ErrWitnessTimeout

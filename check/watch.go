@@ -74,7 +74,7 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 	var got []history.Event
 	var lastEvent, lastProgress, delivered int64
 	first := w.Req.StartRevision
-	canceled := false
+	canceled, compacted := false, false
 	for i, resp := range w.Responses {
 		if canceled {
 			fail("response %d arrives after the watch was canceled", i)
@@ -133,6 +133,7 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 			canceled = true
 		}
 		if resp.CompactRevision != 0 {
+			compacted = true
 			if !resp.Canceled {
 				fail("compaction response at %d does not cancel the watch", resp.CompactRevision)
 			}
@@ -154,6 +155,13 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 		if len(w.Responses) > 0 || target > 0 {
 			fail("has no start revision and no created response, so it cannot be checked")
 		}
+		return errs
+	}
+	// The history holds no events at or below the revision it starts
+	// from: a watch from below it must be canceled as compacted, and one
+	// from it cannot be checked.
+	if r.start > 0 && first <= r.start && (first == r.start || !compacted) {
+		fail("starts at revision %d, at or below the start's revision %d, whose events the history does not hold, and was not canceled as compacted", first, r.start)
 		return errs
 	}
 	last := delivered
