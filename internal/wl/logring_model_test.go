@@ -28,7 +28,8 @@ import (
 //     cut: no stale record reads as current (rule 1);
 //   - every entry synced before the torn sync is there (rule 2);
 //   - no crash reads as damage (ErrCorruptLog);
-//   - the ring's files, segments and spares, stay as many as it was
+//   - the ring's files, segments and spares, counted with the log
+//     closed before each crash and at the end, stay as many as it was
 //     formatted with (rule 3).
 //
 // TIGERSTORE_RING_CASES sets how many seeds it runs; a failing seed is
@@ -130,6 +131,14 @@ func runLogRingModel(t *testing.T, seed uint64) {
 		}
 		next = last + 1
 		acked, required = last, last
+	}
+	// The ring's files are counted with the log closed: an open log's
+	// maker renames spares to segments meanwhile, and a directory read
+	// during a rename may miss the file (seed 8 on #757's ci: 4 of 5).
+	// close waits for the maker.
+	closeAndCount := func() {
+		t.Helper()
+		w.close()
 		if n := countRingFiles(t, dir); n != segs {
 			t.Fatalf("seed %d: the ring holds %d files, formatted with %d", seed, n, segs)
 		}
@@ -210,11 +219,11 @@ func runLogRingModel(t *testing.T, seed uint64) {
 			}
 			t.Logf("crash %d at step %d: segs %d, cut %d, the torn sync %d..%d, the log's end %d, stable %d; files %v", crashes, step, segs, cut, from, to, w.off, w.stable, ns)
 		}
-		w.close()
+		closeAndCount()
 		tearRingRange(t, rng, dir, before)
 		open()
 	}
-	w.close()
+	closeAndCount()
 	t.Logf("seed %d: a ring of %d segments, %d steps, %d crashes, %d laps", seed, segs, steps, crashes, laps)
 	if laps < 2 {
 		t.Fatalf("seed %d: the log wrapped the ring %d times; the model needs it to wrap", seed, laps)
