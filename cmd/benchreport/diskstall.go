@@ -43,8 +43,9 @@ const (
 	// to 3 KiB a write while it stalled).
 	stallWrite = 1 << 20
 	// silentRule is what a leader logs when #233's failover rule silences
-	// it (internal/node).
+	// it (internal/node), and wlSilent what internal/wl's logs.
 	silentRule = "sending nothing to peers until it is durable"
+	wlSilent   = "log's oldest append waited for the disk since "
 )
 
 // errNotDiskStall is the error of a failed run that is not a stall of the
@@ -57,8 +58,8 @@ type logLine struct {
 	msg string
 }
 
-// wlLine is a line of internal/wl's logger: its time, in the runner's
-// zone (UTC), to the microsecond, and its message.
+// wlLine is a line of internal/wl's logger: its time, in UTC, to the
+// microsecond, and its message.
 var wlLine = regexp.MustCompile(`^tigerstore-wl (\d{4}/\d\d/\d\d \d\d:\d\d:\d\d\.\d{6}) (.*)$`)
 
 // readLog reads a node's log: zap's JSON lines and internal/wl's lines,
@@ -221,25 +222,23 @@ func diskStall(prefix string) (time.Time, error) {
 	}
 	var nodes [][]logLine
 	var silences, leaders []time.Time
-	wl := false
 	for _, p := range logs {
 		lines, err := readLog(p)
 		if err != nil {
 			return time.Time{}, err
 		}
 		nodes = append(nodes, lines)
-		wl = wl || slices.ContainsFunc(lines, func(l logLine) bool { return strings.HasPrefix(l.msg, wlSilent) })
 		for _, l := range lines {
+			// internal/wl's nodes word both lines their own way: "the
+			// leader is", and wl's silent rule (wl/silent.go).
+			msg := strings.TrimPrefix(l.msg, "the ")
 			switch {
-			case strings.Contains(l.msg, silentRule):
+			case strings.Contains(msg, silentRule) || strings.HasPrefix(msg, wlSilent):
 				silences = append(silences, l.at)
-			case strings.HasPrefix(l.msg, "leader is ") && strings.HasSuffix(l.msg, " at term "+term) && !strings.HasPrefix(l.msg, "leader is 0 "):
+			case strings.HasPrefix(msg, "leader is ") && strings.HasSuffix(msg, " at term "+term) && !strings.HasPrefix(msg, "leader is 0 "):
 				leaders = append(leaders, l.at)
 			}
 		}
-	}
-	if wl {
-		return wlDiskStall(nodes)
 	}
 	groups := stallGroups(nodes)
 	if len(groups) == 0 {
@@ -268,124 +267,6 @@ func diskStall(prefix string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("%w: no stall of every node in which the leader went silent by #233's rule (%q), followed by a leader at term %s", errNotDiskStall, silentRule, term)
-}
-
-// What internal/wl's nodes log of a stall of their disk (wl/silent.go,
-// wl/loop.go): a leader's silence, with when its oldest append started
-// to wait, and its end; every 5 s, a node's appends and their bytes, and
-// its log writes' time and syncs; and each new leader, with no term.
-const (
-	wlSilent   = "the log's oldest append waited for the disk since "
-	wlCaughtUp = "the log caught up: no longer silent"
-	wlLeader   = "the leader is "
-)
-
-var (
-	wlStats = regexp.MustCompile(`^stats ([0-9.]+)s: replies/s ([0-9.]+) .* walBytes ([0-9.]+) `)
-	wlCPU   = regexp.MustCompile(`log writes (\d+) ms for (\d+) syncs`)
-)
-
-// wlWindow is a node's 5 s of log writes: their time, syncs and bytes,
-// from start to end.
-type wlWindow struct {
-	start, end time.Time
-	writes     time.Duration
-	syncs      int64
-	bytes      float64
-}
-
-// wlWindows are a node's windows of log writes: a stats line, for the
-// bytes, and the cpu line that follows it before the next stats line.
-func wlWindows(lines []logLine) []wlWindow {
-	var out []wlWindow
-	for i, l := range lines {
-		m := wlStats.FindStringSubmatch(l.msg)
-		if m == nil {
-			continue
-		}
-		var c []string
-		for _, next := range lines[i+1:] {
-			if wlStats.MatchString(next.msg) {
-				break
-			}
-			if c = wlCPU.FindStringSubmatch(next.msg); c != nil {
-				break
-			}
-		}
-		if c == nil {
-			continue
-		}
-		secs, _ := strconv.ParseFloat(m[1], 64)
-		replies, _ := strconv.ParseFloat(m[2], 64)
-		per, _ := strconv.ParseFloat(m[3], 64)
-		ms, _ := strconv.ParseInt(c[1], 10, 64)
-		syncs, _ := strconv.ParseInt(c[2], 10, 64)
-		d := time.Duration(secs * float64(time.Second))
-		out = append(out, wlWindow{l.at.Add(-d), l.at, time.Duration(ms) * time.Millisecond, syncs, replies * per * secs})
-	}
-	return out
-}
-
-// wlDiskStall is diskStall for internal/wl's nodes, as strict: a leader
-// went silent by wl's failover rule (wl/silent.go) for a wait of
-// stallSync or more, from its oldest append's start to its catching up;
-// every node's log writes took that whole time, but stallSkew, in the
-// windows that cover it, of small writes (at most stallWrite a sync); and
-// a node logged a new leader within stallElected after it ended. wl logs
-// no term with its leaders: the check's term change stands for it.
-func wlDiskStall(nodes [][]logLine) (time.Time, error) {
-	for _, lines := range nodes {
-		for i, l := range lines {
-			rest, ok := strings.CutPrefix(l.msg, wlSilent)
-			if !ok {
-				continue
-			}
-			at, _, _ := strings.Cut(rest, ": silent")
-			since, err := time.Parse(time.RFC3339Nano, at)
-			if err != nil {
-				continue
-			}
-			j := slices.IndexFunc(lines[i+1:], func(c logLine) bool { return c.msg == wlCaughtUp })
-			if j < 0 {
-				continue
-			}
-			end := lines[i+1+j].at
-			if end.Sub(since) < stallSync || !wlEveryNodeStalled(nodes, since, end) {
-				continue
-			}
-			for _, other := range nodes {
-				if slices.ContainsFunc(other, func(c logLine) bool {
-					return strings.HasPrefix(c.msg, wlLeader) && c.msg != wlLeader+"0" && !c.at.Before(end) && c.at.Sub(end) <= stallElected
-				}) {
-					return end, nil
-				}
-			}
-		}
-	}
-	return time.Time{}, fmt.Errorf("%w: no stall of every node in which the leader went silent by wl's rule (%q), followed by a new leader", errNotDiskStall, wlSilent)
-}
-
-// wlEveryNodeStalled reports whether every node's log writes took the
-// time from since to end, but stallSkew, in the windows that cover it,
-// with at most stallWrite a sync.
-func wlEveryNodeStalled(nodes [][]logLine, since, end time.Time) bool {
-	for _, lines := range nodes {
-		var writes time.Duration
-		var syncs int64
-		var bytes float64
-		for _, w := range wlWindows(lines) {
-			if w.end.Before(since) || w.start.After(end) {
-				continue
-			}
-			writes += w.writes
-			syncs += w.syncs
-			bytes += w.bytes
-		}
-		if writes < end.Sub(since)-stallSkew || syncs == 0 || bytes/float64(syncs) > stallWrite {
-			return false
-		}
-	}
-	return true
 }
 
 // diskStalls checks every failed run under dir (rtt-*/<bench>/*.failed)
