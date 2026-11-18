@@ -250,6 +250,36 @@ func TestWLRecoversFromAZeroedTailOfItsLog(t *testing.T) {
 	}, nil)
 }
 
+// A log ring's node whose sync fails, with none of its write on the disk
+// (simfs.FailSyncLosingAll), exits and starts again warm: its page cache
+// keeps the bytes the sync never wrote, which read back, and the node
+// writes on past them. A second later it loses power, every write it did
+// not sync lost, and starts cold. Recovery must neither refuse the log nor
+// lose an entry the node reported durable (wlHooks.Recovered): a ring's
+// start must make durable what its scan read, which a ring's start did not
+// until #752 (TestMembershipFaults' seed 4 there, the fsync-failure
+// page-cache trap). A start without a ring cut its last segment, which made
+// its sync write them.
+func TestARingRecoversFromAFailedSyncWarmThenCold(t *testing.T) {
+	simrun.Each(t, seedRange(4400, 4), func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{}
+		cfg.syncFaultExits, cfg.syncFailWarmCold = true, true
+		cfg.Duration, cfg.Heal = 6*Second, 6*Second
+		res := run(t, cfg)
+		for _, l := range res.Trace {
+			if strings.Contains(l, "failed sync") || strings.Contains(l, "fails, with none") || strings.Contains(l, "sync wal/") && strings.Contains(l, "fails") {
+				t.Log(l)
+			}
+		}
+		if res.Stats.SyncFailColdStarts != 1 {
+			t.Fatalf("%d cold starts after a failed sync and a warm start; want one", res.Stats.SyncFailColdStarts)
+		}
+		checkers(t, res)
+		return res.Stats
+	}, nil)
+}
+
 // watched says what the run's watches got, which checkWatches checked
 // against the replayed log.
 func watched(res *Result) string {

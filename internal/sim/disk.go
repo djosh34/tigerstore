@@ -97,6 +97,9 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 			}
 		}
 	}
+	if s.cfg.syncFailWarmCold && op == simfs.OpWrite && isSegment(name) {
+		s.wlSyncFailArm(n, name)
+	}
 	if s.cfg.stageCrash && op == simfs.OpWrite && isSegment(name) && s.wlStageCrash(n, name) {
 		return errDead
 	}

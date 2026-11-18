@@ -139,9 +139,9 @@ func (s *Sim) startWL(n *node, p *proc) error {
 // up from a checkpoint.
 const wlCatchup = 64
 
-// wlRing is the size of a node's log ring (wl's logring.go) in a run with
-// a disk budget: eight of the simulator's segments of 16 KiB, the fewest
-// a sized ring holds, which a run wraps many times, under crashes that
+// wlRing is the smallest log ring (wl's logring.go) of a run with a disk
+// budget: eight of the simulator's segments of 16 KiB, the fewest a sized
+// ring holds, which a run wraps many times, under crashes that
 // tear writes into reused space. With fewer the ring is low from its
 // first write: every cut is forced, and followers catch up only from
 // checkpoints (#751's review).
@@ -155,12 +155,17 @@ const wlRing = 8 * 16 << 10
 // could check (B04a, #751's CI).
 const wlRingFree = 64 * 16 << 10
 
-// ringSize is a node's log ring in this run.
+// ringSize is a node's log ring in this run: as a disk budget sizes it
+// (wl's logRing), half the budget, and at least wlRing. A fixed wlRing
+// gave kubeConfig's nodes, with a budget of 16 MiB or more, 128 KiB: its
+// writes filled it at once, the nodes answered NOSPACE, and seeds of
+// TestKubernetesLoad did too little to test anything (main's race-sim on
+// ae01b0a4).
 func (s *Sim) ringSize() int64 {
-	if s.cfg.Faults.DiskBudget == 0 {
-		return wlRingFree
+	if b := s.cfg.Faults.DiskBudget; b > 0 {
+		return max(b/2, wlRing)
 	}
-	return wlRing
+	return wlRingFree
 }
 
 // diskCapacity is a node's disk's capacity: the faults' DiskCapacity, 0
@@ -221,6 +226,7 @@ func (h *wlHooks) Recovered(last uint64, hs *raftpb.HardState, values func() []w
 		p.wl.armed = false
 		n.disk.Fault = nil
 	}
+	s.wlSyncFailStarted(n)
 	if n.corrupted && n.rotted {
 		if ptr, err := wlPointer(n.disk); err == nil && n.rotOff < ptr.LogFrom && !namesByte(values(), n.rotOff) {
 			// The start reads the log from the checkpoint's place on,
@@ -678,6 +684,55 @@ func (s *Sim) wlStageCrash(n *node, name string) bool {
 	n.crashImage = n.disk.Files()
 	s.restartLater(n, 1+s.rng.Int64N(Second))
 	return true
+}
+
+// wlSyncFailArm arms, once, the failed sync of Config.syncFailWarmCold on
+// n, after a write of its log, segment name, past what it synced and over
+// two blocks or more, once the cluster ran 2 s: the write's sync fails
+// with none of it on the disk. The node then exits, and starts again warm
+// (Config.syncFaultExits). A write within one block a start writes again
+// whole anyway, its last; a write over more left blocks before the last
+// that only the page cache held (#752). The lock is held.
+func (s *Sim) wlSyncFailArm(n *node, name string) {
+	if s.syncFail.phase != 0 || s.healed || s.now() < 2*Second || n.proc == nil || n.appended <= n.floor() || n.disk.PendingBytes(name) < 2*4096 {
+		return
+	}
+	s.syncFail.n, s.syncFail.phase = n, 1
+	n.disk.FailSyncLosingAll()
+	s.tracef("node %d: its log's next sync fails, with none of its writes on the disk", n.id)
+}
+
+// wlSyncFailStarted moves Config.syncFailWarmCold's scenario on when its
+// node recovered: after its warm start it writes on for a second, then
+// loses power, every write it did not sync lost whole, and starts cold;
+// that start's recovery (Recovered's checks) is the scenario's end. The
+// lock is held.
+func (s *Sim) wlSyncFailStarted(n *node) {
+	f := &s.syncFail
+	if f.n != n {
+		return
+	}
+	switch f.phase {
+	case 1:
+		f.phase = 2
+		s.tracef("node %d: started warm after its failed sync", n.id)
+		gen := n.gen
+		s.after(Second, func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if f.phase != 2 || n.gen != gen || n.proc == nil {
+				return
+			}
+			f.phase = 3
+			n.why = "the run cut its power after its warm start from a failed sync"
+			s.crashWith(n, func(n *node) { s.loseUnsyncedAs(n, simfs.Writes) })
+			s.restartLater(n, 100*Millisecond)
+		})
+	case 3:
+		f.phase = 4
+		s.stats.SyncFailColdStarts++
+		s.tracef("node %d: started cold after its failed sync and warm start", n.id)
+	}
 }
 
 // wlCheckpointCrash crashes n right after a write of a checkpoint it is

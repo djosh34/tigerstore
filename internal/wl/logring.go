@@ -158,6 +158,12 @@ func formatRing(sys sysEnv, dir string, segs int64) error {
 			return err
 		}
 	}
+	// The spares of a format a crash interrupted are room for this one:
+	// the check comes once they are gone (TestLinearizable seed 598 on
+	// #752), and before anything of the ring is written.
+	if err := ringFits(sys, dir, segs); err != nil {
+		return err
+	}
 	zeros, err := mmapBytes(int(min(segSize, 4<<20)))
 	if err != nil {
 		return err
@@ -325,7 +331,9 @@ func ringDamaged(sys sysEnv, dir string, k, off int64, b []byte) error {
 
 // logRing is the size of the log's ring for cfg: LogRing if set, else
 // half the disk budget, else the quota (#602's ruling); 0, a log with no
-// ring, when the quota is off.
+// ring, when the quota is off. A quota's ring is the quota's size, as a
+// user who sets a quota expects to store that much; one the disk cannot
+// hold is refused at start (ringFits).
 func logRing(cfg *Config) int64 {
 	switch {
 	case cfg.LogRing != 0:
@@ -336,6 +344,21 @@ func logRing(cfg *Config) int64 {
 		return 0
 	}
 	return max(cmp.Or(cfg.QuotaBackendBytes, defaultQuota), ringMinSegs*segSize)
+}
+
+// ringFits refuses a ring of segs segments that the free space of the
+// file system dir is on cannot hold, before anything of it is written:
+// a node never fails partway through its format (#602's ruling on #752).
+// A quota of 2^63-1, as past-ram ran with, sizes such a ring.
+func ringFits(sys sysEnv, dir string, segs int64) error {
+	free, err := sys.freeSpace(dir)
+	if err != nil {
+		return err
+	}
+	if size := segs * segSize; segs > free/segSize {
+		return fmt.Errorf("%w: the log's ring of %d bytes does not fit the %d bytes free on its disk; set --disk-budget-bytes, of which the ring takes half", errConfig, size, free)
+	}
+	return nil
 }
 
 // ringReserve is how many spare segments a ring keeps for the writes that

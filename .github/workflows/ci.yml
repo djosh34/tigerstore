@@ -258,9 +258,13 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
+      # Only the two replay files: downloading every artifact took ones
+      # that jobs still running were uploading, whose blobs failed their
+      # digest or were not found yet (#752).
       - uses: actions/download-artifact@v8
         with:
           path: replay
+          pattern: replay-ubuntu-*
       - run: diff replay/replay-ubuntu-24.04/plain.txt replay/replay-ubuntu-24.04-arm/plain.txt
 
   # internal/sim/unimplemented.txt must list every hook that gosim does

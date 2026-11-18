@@ -93,6 +93,7 @@ def main():
     parser.add_argument("--mode", choices=["proof", "max", "cache"], default="proof")
     parser.add_argument("--go-memory", default="off", help="same GOMEMLIMIT for either product")
     parser.add_argument("--quota", type=int, default=8 << 30)
+    parser.add_argument("--disk-budget", type=int, default=0, help="tigerstore's --disk-budget-bytes, of which its log's ring takes half; 0 for none")
     parser.add_argument("--memory", type=int, default=640 << 20)
     parser.add_argument("--out", required=True)
     parser.add_argument("--seconds", type=int, default=180)
@@ -125,6 +126,12 @@ def main():
                    "--listen-peer-urls", peer, "--initial-advertise-peer-urls", peer,
                    "--initial-cluster", initial, "--initial-cluster-token", "past-ram",
                    "--peer-auto-tls", "--quota-backend-bytes", str(args.quota)]
+        if args.kind == "tigerstore" and args.disk_budget > 0:
+            # The log's ring is half the budget, and the store's data, past
+            # RAM, must fit it, or checkpoints take in all of it again and
+            # again while writes wait (#602). A quota of 2^63-1 alone sizes
+            # a ring no disk holds, which the node refuses at start.
+            command += ["--disk-budget-bytes", str(args.disk_budget)]
         if args.kind == "tigerstore":
             # A positive flag overrides GOMEMLIMIT in the current server.
             # Leave it unset for the equal-GOMEMLIMIT comparison.
@@ -135,9 +142,6 @@ def main():
         # Membership in the cgroup precedes exec. No allocation by the server
         # escapes its limit, and restart retains the cgroup's OOM counters.
         environment = dict(os.environ, GOMEMLIMIT=args.go_memory)
-        # Each node formats a log ring of 512 MiB, not the quota's size:
-        # tests format no gigabytes (#602's ruling).
-        environment.setdefault("ETCD_UNSAFE_LOG_RING_BYTES", "536870912")
         return subprocess.Popen(["sh", "-ec", 'echo $$ > "$1/cgroup.procs"; shift; exec "$@"',
                                  "past-ram", str(groups[i]), *command],
                                 stdout=logs[i], stderr=subprocess.STDOUT, env=environment)
@@ -156,7 +160,9 @@ def main():
             nodes.append(launch(i))
         # The driver starts once every member has a leader: a member answers
         # its metrics before, and a write to it "no leader" (#602).
-        deadline = time.monotonic() + 60
+        # A fresh node formats its log ring before it serves: 8 GiB on
+        # each of three nodes, about 75 to 100 s on a runner's disk.
+        deadline = time.monotonic() + 300
         while True:
             try:
                 if all(healthy(20100 + 10*i) for i in range(3)):
@@ -168,6 +174,10 @@ def main():
                 if time.monotonic() > deadline or any(n.poll() is not None for n in nodes):
                     raise RuntimeError("cluster did not start")
                 time.sleep(1)
+        # The disk's room once the nodes formatted their rings, on record
+        # with the job's df before and after (#602's ruling on #752).
+        result["disk_after_start"] = subprocess.run(["df", "-B1", str(out)], capture_output=True, text=True).stdout
+        print(result["disk_after_start"], flush=True)
         with (out / "driver.log").open("wb") as log:
             driver = subprocess.Popen([str(Path(args.driver).resolve()), "-endpoints", endpoints,
                                        "-mode", args.mode, "-bytes", str(args.preload_bytes or args.memory * 31 // 10),

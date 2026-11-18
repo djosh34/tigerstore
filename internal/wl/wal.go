@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -328,6 +329,11 @@ func (w *wal) reopen(from, end int64) (int64, error) {
 			return 0, err
 		}
 	}
+	if w.ring != nil {
+		if err := w.rewriteTail(from, end); err != nil {
+			return 0, err
+		}
+	}
 	if err := w.syncSegments(); err != nil {
 		return 0, err
 	}
@@ -404,6 +410,70 @@ func (w *wal) letGo(k, to int64, zero bool) error {
 	}
 	return nil
 }
+
+// rewriteTail writes again, directly, the whole blocks of the log from
+// maxStage before end, which the scan read, so that the start's sync makes
+// them durable. A sync that failed may have left the bytes of its write in
+// the page cache only: a failed writeback marks them clean, so they read
+// back but never reach the disk, and a later sync does not retry them. A
+// log without a ring cut its last segment to end, after which the sync
+// wrote them; a ring keeps its segments whole, and its start read them,
+// went on past them, and a power loss later left zeros where later marks
+// said the log was durable (TestMembershipFaults seed 4 on #752,
+// TestARingRecoversFromAFailedSyncWarmThenCold). The node stops at its
+// first failed sync, and one write of the helper's covers at most its
+// stage, so the bytes a failed sync left are within the failed process's
+// stage of the end: maxStage, the largest any process has, as a restart
+// with a smaller memory budget has a smaller stage (#752's re-check). The
+// last block, past the blocks this writes, reopen writes again itself.
+// The rewrite has a buffer of its own: the stage, which reopen fills with
+// the last block next, must hold only zeros past the end.
+func (w *wal) rewriteTail(from, end int64) error {
+	lo, hi := max(from, end-max(w.stageLen, maxStage()))&^(block-1), end&^(block-1)
+	if lo >= hi {
+		return nil
+	}
+	buf, err := mmapBytes(int(min(segSize, 4<<20)))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = unixMunmap(buf) }()
+	for off := lo; off < hi; {
+		k := off / segSize
+		n := min(hi-off, (k+1)*segSize-off, int64(len(buf)))
+		got, err := sysPread(w.rfds[k-w.rbase], buf[:n], off%segSize)
+		if err == nil && int64(got) != n {
+			err = io.ErrUnexpectedEOF
+		}
+		if err != nil {
+			return fmt.Errorf("read the log back from %s at %d: %d of %d bytes: %w", segPath(w.dir, k), off%segSize, got, n, err)
+		}
+		fd, err := w.sys.openDirect(segPath(w.dir, k))
+		if err != nil {
+			return err
+		}
+		for at := int64(0); at < n; {
+			// A short direct write writes the rest again, as the helper's
+			// do (writeLoop).
+			m, err := sysPwrite(fd, buf[at:n], off%segSize+at)
+			if err == nil && m <= 0 {
+				err = io.ErrShortWrite
+			}
+			if err != nil {
+				_ = sysClose(fd)
+				return fmt.Errorf("write the log again to %s at %d: %w", segPath(w.dir, k), off%segSize+at, err)
+			}
+			at += int64(m)
+		}
+		_ = sysClose(fd)
+		off += n
+	}
+	return nil
+}
+
+// maxStage is the largest stage a process has (sizeFor), whatever its
+// memory budget.
+func maxStage() int64 { return int64(sizeFor(1 << 62).stage) }
 
 // zeroFrom writes zeros durably over the segment at path from offset off
 // on (logring.go).
