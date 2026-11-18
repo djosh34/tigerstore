@@ -72,7 +72,7 @@ func TestAgedForks(t *testing.T) {
 		t.Skip("set SIM_SEEDS: an image takes minutes to build")
 	}
 	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) Stats {
-		return agedForks(t, seed, agingConfig(seed), forkConfig)
+		return agedForks(t, seed, agingConfig(seed), forksPerImage, forkConfig)
 	}, nil)
 }
 
@@ -82,7 +82,7 @@ func TestAgedFork(t *testing.T) {
 	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
 		aging := agingConfig(seed)
 		aging.Objects, aging.Duration = 300, 40*Second
-		return agedForks(t, seed, aging, func(aging Config, seed uint64) Config {
+		return agedForks(t, seed, aging, 1, func(aging Config, seed uint64) Config {
 			cfg := forkConfig(aging, seed)
 			cfg.Duration = 30 * Second
 			return cfg
@@ -90,9 +90,9 @@ func TestAgedFork(t *testing.T) {
 	}, nil)
 }
 
-// agedForks runs aging, takes its image and runs its forks, and returns
-// their stats added up.
-func agedForks(t *testing.T, seed uint64, aging Config, fork func(Config, uint64) Config) Stats {
+// agedForks runs aging, takes its image and runs forks of it, and
+// returns their stats added up.
+func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Config, uint64) Config) Stats {
 	t.Helper()
 	only := -1
 	if v := os.Getenv("SIM_FORK"); v != "" {
@@ -115,7 +115,7 @@ func agedForks(t *testing.T, seed uint64, aging Config, fork func(Config, uint64
 	t.Logf("aging seed %d: %d objects, %s, %d voters, memory budget %d: %d writes to revision %d, %d keys and %d leases at the image; %+v",
 		seed, aging.Objects, seconds(aging.Duration), aging.voters(), aging.MemoryBytes, img.ops, img.start.Rev, len(img.start.KVs), len(img.start.Leases), res.Stats)
 	var total Stats
-	for i := range forksPerImage {
+	for i := range forks {
 		if only >= 0 && i != only {
 			continue
 		}
