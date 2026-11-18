@@ -2,8 +2,10 @@ package wl
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"os"
 	"path/filepath"
 	"slices"
@@ -340,5 +342,50 @@ func TestTheWholeLogReadsBackBeforeACheckpoint(t *testing.T) {
 				t.Fatalf("the whole log commits %d, ReadLog %d", whole.Commit, after.Commit)
 			}
 		})
+	}
+}
+
+// Records reads a log that starts inside a segment on through the
+// segments after it. It once stopped at the end of the first: it took
+// that segment, cut to where the log starts, for a short last one, so the
+// simulator found no segment a ring's marks claimed below and placed no
+// damage after a checkpoint (race-sim's TestWLRefusesAMisdirectedWrite on
+// 148a3fe3).
+func TestRecordsReadOnPastTheFirstSegment(t *testing.T) {
+	old := segSize
+	if err := SetSegmentSize(block); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { segSize = old }()
+	// Sync marks, 17 bytes each, from 40 bytes before segment 1's end to
+	// past segment 3's start.
+	from := 2*segSize - 40
+	var log []byte
+	var want []int64
+	for off := from; off < 3*segSize+100; off += recHead + 8 {
+		b := make([]byte, recHead+8)
+		binary.LittleEndian.PutUint32(b[4:], 8)
+		b[8] = recSynced
+		binary.LittleEndian.PutUint64(b[recHead:], uint64(off))
+		binary.LittleEndian.PutUint32(b, crc32.Update(recSeed(off), castagnoli, b[4:]))
+		log = append(log, b...)
+		want = append(want, off)
+	}
+	disk := append(make([]byte, from), log...)
+	disk = append(disk, make([]byte, 4*segSize-int64(len(disk)))...)
+	seg := func(k int64) []byte {
+		if k >= 4 {
+			return nil
+		}
+		return disk[k*segSize : (k+1)*segSize]
+	}
+	recs := Records(seg, from)
+	if len(recs) != len(want) {
+		t.Fatalf("%d records from %d, want %d, to %d", len(recs), from, len(want), want[len(want)-1])
+	}
+	for i, r := range recs {
+		if r.Off != want[i] || r.Kind != KindSynced || r.Claims != want[i] {
+			t.Fatalf("record %d: %+v, want a mark at %d", i, r, want[i])
+		}
 	}
 }

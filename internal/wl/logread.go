@@ -244,6 +244,9 @@ func Records(seg func(k int64) []byte, from int64) []Record {
 		if s == nil {
 			break
 		}
+		// A segment shorter than whole is the last; the first's length
+		// counts before the part before from is cut off.
+		short := int64(len(s)) < segSize
 		if k == from/segSize {
 			if int64(len(s)) < from%segSize {
 				return nil
@@ -251,7 +254,7 @@ func Records(seg func(k int64) []byte, from int64) []Record {
 			s = s[from%segSize:]
 		}
 		b = append(b, s...)
-		if int64(len(s)) < segSize {
+		if short {
 			break
 		}
 	}
