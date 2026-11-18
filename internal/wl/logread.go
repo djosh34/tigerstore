@@ -249,7 +249,7 @@ func Records(seg func(k int64) []byte, from int64) []Record {
 		}
 	}
 	var recs []Record
-	for off := from; checks(b); {
+	for off := from; checks(b, off); {
 		n := recHead + int64(binary.LittleEndian.Uint32(b[4:]))
 		recs = append(recs, Record{Off: off, Len: n, Kind: b[8]})
 		off, b = off+n, b[n:]

@@ -20,6 +20,28 @@ import (
 	"github.com/djosh34/tigerstore/internal/planted"
 )
 
+// The log ring (#602, ruled 2026-11-18). The log's space is to be written
+// once, when the data directory is made, and reused in place, so that
+// a synced write never meets space the file system must first convert
+// (on ext4, 308 MiB/s at three writers of 256 KiB, against 343 MiB/s
+// into space written before, the disk the ceilings measure). Its rules,
+// which the changes towards it keep at every step:
+//
+//  1. No stale record is read as current. A record's checksum is seeded
+//     by its offset in the log, which grows without end: the ring's lap
+//     and the record's place in it. Bytes that an earlier lap, or another
+//     place, left behind check where the log reads them no more often
+//     than damage does, one time in 2^32, so they end the log as the
+//     zeros past its end do, which never check: a record's kind is never
+//     0.
+//  2. No acknowledged write is lost across reuse and crash. Space is
+//     written over only once the newest durable checkpoint holds all
+//     that the store still names before it: the cut takes those values
+//     in.
+//  3. The ring's space stays within the disk budget.
+//
+// This part is rule 1's format.
+//
 // The log. Raft's appends are written as records into a page-aligned
 // stage on the loop; one helper thread writes the stage's blocks to the
 // log's segments with O_DIRECT|O_DSYNC and wakes the loop through an
@@ -33,9 +55,10 @@ import (
 // segments before it held, they are removed (cut).
 //
 // A record is [4 crc32c][4 body length][1 kind], then the body; the crc
-// covers everything after it. An entry's body is [8 index][8 term]
-// [1 entry type] and the entry's data; a hard state's is the state's
-// protobuf. A record that does not check ends the log: a crash tore it,
+// covers everything after it, seeded by the record's offset in the log
+// (recSeed), so a record checks only where it was written. An entry's
+// body is [8 index][8 term][1 entry type] and the entry's data; a hard
+// state's is the state's protobuf. A record that does not check ends the log: a crash tore it,
 // or it is the zeros past the end. It is damage, and the log is refused
 // (ErrCorruptLog), where a crash cannot have torn it: before a later
 // segment that holds data, as each write's part in a segment is durable
@@ -647,7 +670,7 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) error {
 	for _, e := range ents {
 		d := e.GetData()
 		b := h[at : at+walEntHdr]
-		putEntryHead(b, e)
+		putEntryHead(b, e, off)
 		at += walEntHdr
 		w.iov = append(w.iov, b)
 		off += walEntHdr
@@ -662,7 +685,7 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) error {
 		binary.LittleEndian.PutUint32(b[4:], uint32(len(hs)))
 		b[8] = recHardState
 		copy(b[recHead:], hs)
-		binary.LittleEndian.PutUint32(b, crc32.Checksum(b[4:], castagnoli))
+		binary.LittleEndian.PutUint32(b, crc32.Update(recSeed(off), castagnoli, b[4:]))
 		w.iov = append(w.iov, b)
 		off += int64(len(b))
 	}
@@ -837,7 +860,7 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 			if l <= maxWALRecBody && int64(len(buf)) < recHead+l {
 				break
 			}
-			if l > maxWALRecBody || !checks(buf[:recHead+l]) && !plantedAccepts(buf[:recHead+l], off, lastIndex) {
+			if l > maxWALRecBody || !checks(buf[:recHead+l], off) && !plantedAccepts(buf[:recHead+l], off, lastIndex) {
 				err := damaged(sys, dir, k, short, off, buf)
 				if err == nil && heldOff >= 0 && tornRecord(buf) {
 					// Planted (B04b): the record before a torn tail is
@@ -869,7 +892,7 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 			break
 		}
 	}
-	if chainAfter(buf) {
+	if chainAfter(buf, off) {
 		return off, fmt.Errorf("%w: the log ends in a record at offset %d that runs past its end, but records that check follow its start", ErrCorruptLog, off)
 	}
 	if heldOff >= 0 {
@@ -885,20 +908,21 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 	return off, nil
 }
 
-// chainAfter reports whether b, the log's bytes from a record that runs
-// past the log's end, holds two records in a row that check, or one that
-// ends the log, past its start. A crash leaves the rest of such a record
+// chainAfter reports whether b, the log's bytes at off from a record that
+// runs past the log's end, holds two records in a row that check, or one
+// that ends the log, past its start. A crash leaves the rest of such a record
 // unwritten, zeros or bytes of its own; records that check after its
 // start mean its header was read wrong, as a damaged length that claims
 // more than the log holds, and the log is not to be cut there (#700).
-func chainAfter(b []byte) bool {
+func chainAfter(b []byte, off int64) bool {
 	for i := 1; i+recHead <= len(b); i++ {
 		r := b[i:]
-		if (r[8] != recEntry && r[8] != recHardState) || !checks(r) {
+		at := off + int64(i)
+		if !checks(r, at) {
 			continue
 		}
 		n := recHead + int(binary.LittleEndian.Uint32(r[4:]))
-		if n == len(r) || checks(r[n:]) {
+		if n == len(r) || checks(r[n:], at+int64(n)) {
 			return true
 		}
 	}
@@ -934,27 +958,39 @@ func tornRecord(b []byte) bool {
 }
 
 // putEntryHead puts into b, walEntHdr bytes, the head of entry e's
-// record, whose data follows it.
-func putEntryHead(b []byte, e *pb.Entry) {
+// record at log offset off, whose data follows it.
+func putEntryHead(b []byte, e *pb.Entry, off int64) {
 	d := e.GetData()
 	binary.LittleEndian.PutUint32(b[4:], uint32(entHead+len(d)))
 	b[8] = recEntry
 	binary.LittleEndian.PutUint64(b[9:], e.GetIndex())
 	binary.LittleEndian.PutUint64(b[17:], e.GetTerm())
 	b[25] = byte(e.GetType())
-	binary.LittleEndian.PutUint32(b, crc32.Update(crc32.Update(0, castagnoli, b[4:walEntHdr]), castagnoli, d))
+	binary.LittleEndian.PutUint32(b, crc32.Update(crc32.Update(recSeed(off), castagnoli, b[4:walEntHdr]), castagnoli, d))
 }
 
-// checks reports whether b starts with a whole record that checks.
-func checks(b []byte) bool {
-	if len(b) < recHead {
+// recSeed is where the checksum of a record at log offset off starts:
+// the CRC of the offset, so that the same bytes at another offset do not
+// check (rule 1 of the ring).
+func recSeed(off int64) uint32 {
+	var o [8]byte
+	binary.LittleEndian.PutUint64(o[:], uint64(off))
+	return crc32.Update(0, castagnoli, o[:])
+}
+
+// checks reports whether b starts with a whole record that checks at log
+// offset off: one of a record's kinds, whose CRC verifies. The kind keeps
+// the zeros past the log's end from checking: at some offsets, the first
+// 3,141,446,827, the seeded CRC of zeros is itself zero (#749's review).
+func checks(b []byte, off int64) bool {
+	if len(b) < recHead || b[8] != recEntry && b[8] != recHardState {
 		return false
 	}
 	l := int64(binary.LittleEndian.Uint32(b[4:]))
 	if l > maxWALRecBody || int64(len(b)) < recHead+l || b[8] == recEntry && l < entHead {
 		return false
 	}
-	return crc32.Checksum(b[4:recHead+l], castagnoli) == binary.LittleEndian.Uint32(b)
+	return crc32.Update(recSeed(off), castagnoli, b[4:recHead+l]) == binary.LittleEndian.Uint32(b)
 }
 
 // torn reports whether rec, a record that does not check at log offset
@@ -986,7 +1022,7 @@ func damaged(sys sysEnv, dir string, k int64, short bool, off int64, b []byte) e
 	if l > maxWALRecBody || torn(b[:recHead+l], off) {
 		return nil
 	}
-	next, err := nextChecks(sys, dir, k, short, b[recHead+l:])
+	next, err := nextChecks(sys, dir, k, short, b[recHead+l:], off+recHead+l)
 	if err != nil || !next {
 		return err
 	}
@@ -1009,9 +1045,9 @@ func laterData(sys sysEnv, dir string, k int64, short bool) (bool, error) {
 }
 
 // nextChecks reports whether the log's bytes after a record that does
-// not check, b and the segments after segment k unless k ended short,
-// start with a record that checks.
-func nextChecks(sys sysEnv, dir string, k int64, short bool, b []byte) (bool, error) {
+// not check, b at log offset off and the segments after segment k unless
+// k ended short, start with a record that checks.
+func nextChecks(sys sysEnv, dir string, k int64, short bool, b []byte, off int64) (bool, error) {
 	b = slices.Clone(b)
 	read := func(need int64) error {
 		for int64(len(b)) < need && !short {
@@ -1038,5 +1074,5 @@ func nextChecks(sys sysEnv, dir string, k int64, short bool, b []byte) (bool, er
 	if err := read(recHead + l); err != nil {
 		return false, err
 	}
-	return checks(b), nil
+	return checks(b, off), nil
 }
