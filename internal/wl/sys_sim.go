@@ -225,7 +225,7 @@ func procFile(string) ([]byte, error) { return nil, os.ErrNotExist }
 // segSize is the size of a segment of the log (wal.go). The simulator's
 // disks hold some hundred KiB, so its segments are small enough that a
 // checkpoint's cut removes some.
-const segSize = 16 << 10
+var segSize int64 = 16 << 10
 
 // The room the rings and the store's tables reserve in the simulator,
 // where it is Go's memory, made again at each start of a node: enough for

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -260,6 +261,7 @@ func (c *cluster) startExpecting(n *node, exit bool) error {
 	_, _ = fmt.Fprintf(n.log, "chaos: start incarnation %d at %s\n", n.starts, time.Now().UTC().Format(time.RFC3339Nano))
 	cmd := exec.Command(c.bin, n.args...)
 	cmd.Stdout, cmd.Stderr = n.log, n.log
+	cmd.Env = nodeEnv(os.Environ(), n.args)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -474,4 +476,20 @@ func (c *cluster) unexpectedExits() []string {
 		n.mu.Unlock()
 	}
 	return out
+}
+
+// nodeEnv is the environment a node starts with: env, without the ETCD_*
+// variable of a flag its args give, which etcd's flags refuse to have
+// both of. -env's nodes set their log's ring (nodeArgs), and a test
+// workflow sets ETCD_UNSAFE_LOG_RING_BYTES for every node (#751's CI).
+func nodeEnv(env, args []string) []string {
+	return slices.DeleteFunc(slices.Clone(env), func(kv string) bool {
+		name, _, _ := strings.Cut(kv, "=")
+		flag, ok := strings.CutPrefix(name, "ETCD_")
+		if !ok {
+			return false
+		}
+		flag = "--" + strings.ReplaceAll(strings.ToLower(flag), "_", "-")
+		return slices.ContainsFunc(args, func(a string) bool { return a == flag || strings.HasPrefix(a, flag+"=") })
+	})
 }

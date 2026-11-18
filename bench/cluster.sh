@@ -182,8 +182,24 @@ start() {
 	if [ ! -x "$etcdctl" ]; then
 		etcdctl=etcdctl
 	fi
-	for _ in $(seq 100); do
+	# A fresh tigerstore node formats its log's ring before it serves: 8
+	# GiB on each of three nodes from the bench's quota, about 72 s on
+	# the runner's shared disk (#602).
+	local until=$((SECONDS + 300))
+	while [ "$SECONDS" -lt "$until" ]; do
 		if ctl put /bench/ready 1 >/dev/null 2>&1; then
+			# A node that formatted its ring last may not have heard of the
+			# leader the others elected yet (#751's bench): wait until all
+			# three name one.
+			local agreed=""
+			for _ in $(seq 100); do
+				if status >/dev/null 2>&1; then
+					agreed=yes
+					break
+				fi
+				sleep 0.3
+			done
+			if [ -z "$agreed" ]; then status >/dev/null || exit 1; fi
 			if [ -n "${LEAD:-}" ]; then lead "$LEAD"; fi
 			place "$kind" "$dir" "$endpoints" "$pids" "${cpus[@]}"
 			return 0
@@ -197,7 +213,7 @@ start() {
 		done
 		sleep 0.3
 	done
-	echo "$kind cluster did not accept a write within 30s; logs:" >&2
+	echo "$kind cluster did not accept a write within 300 s; logs:" >&2
 	tail -n 20 "$dir"/n*.log >&2
 	exit 1
 }

@@ -6,6 +6,9 @@
 # the store and logs every call there (k8stest/record.sh): the members
 # listen on 127.0.0.1 and the recorder on their addresses on the bridge.
 set -euo pipefail
+# Each node formats a log ring of 512 MiB, not the quota's size: tests
+# format no gigabytes (#602's ruling).
+export ETCD_UNSAFE_LOG_RING_BYTES=${ETCD_UNSAFE_LOG_RING_BYTES:-536870912}
 root=${K8S_ROOT:?}
 store=${STORE:-tigerstore}
 record=${RECORD:-}

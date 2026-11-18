@@ -22,10 +22,10 @@ import (
 
 // runWL runs internal/wl with the node's identity, listeners, TLS and
 // memory budget until a signal or an error stops it.
-func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config, clientLns []clientListener, budget int64, lg *zap.Logger) error {
+func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config, clientLns []clientListener, budget, diskBudget, logRing int64, lg *zap.Logger) error {
 	cfg := wl.Config{
 		Name: ec.Name, ID: ident.id, ClusterID: ident.cluster, DataDir: ec.Dir,
-		ClientTLS: ctls, PeerListeners: pcfg.Listeners, MemoryBudget: budget,
+		ClientTLS: ctls, PeerListeners: pcfg.Listeners, MemoryBudget: budget, DiskBudget: diskBudget, LogRing: logRing,
 		CORS: ec.CORS, HostWhitelist: ec.HostWhitelist, Pprof: ec.EnablePprof,
 		Logger: log.New(os.Stderr, "tigerstore-wl ", log.LstdFlags|log.Lmicroseconds|log.LUTC),
 	}

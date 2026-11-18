@@ -270,7 +270,9 @@ func (s *soak) run(ctx context.Context) error {
 			return err
 		}
 	}
-	if err := c.ready(ctx, 60*time.Second); err != nil {
+	// A fresh node formats its log's ring first: half the disk budget,
+	// 1.5 GiB in the soak's workflow, on each node (#602).
+	if err := c.ready(ctx, 3*time.Minute); err != nil {
 		return err
 	}
 	cl, err := c.dial(c.endpoints[:]...)

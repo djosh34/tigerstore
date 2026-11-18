@@ -261,8 +261,7 @@ func txnCost(msg []byte) int64 {
 // raises the node's own NOSPACE alarm unless it is raised.
 func (n *node) refuseNoSpace(c *client, s *stream) {
 	n.reject(c, s, requestErr(codeResourceExhausted, msgNoSpace))
-	own := alarm{member: n.id, typ: alarmNoSpace}
-	if _, raised := slices.BinarySearchFunc(n.alarms, own, compareAlarms); raised || n.noSpaceAsked == n.applied {
+	if n.noSpaceRaised() || n.noSpaceAsked == n.applied {
 		return
 	}
 	n.noSpaceAsked = n.applied
@@ -271,6 +270,12 @@ func (n *node) refuseNoSpace(c *client, s *stream) {
 	req = appendVarintField(req, 2, n.id)
 	req = appendVarintField(req, 3, alarmNoSpace)
 	n.addOp(noHandle, kAlarm, req)
+}
+
+// noSpaceRaised reports whether this node's NOSPACE alarm is up.
+func (n *node) noSpaceRaised() bool {
+	_, raised := slices.BinarySearchFunc(n.alarms, alarm{member: n.id, typ: alarmNoSpace}, compareAlarms)
+	return raised
 }
 
 // alarmGate refuses a write of kind that a raised alarm forbids.

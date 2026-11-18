@@ -3,6 +3,9 @@
 # client certificates. Needs etcdctl on PATH. Fails on the first wrong
 # answer. With KEEP set, a failed run leaves its logs there.
 set -euo pipefail
+# Each node formats a log ring of 512 MiB, not the quota's size: tests
+# format no gigabytes (#602's ruling).
+export ETCD_UNSAFE_LOG_RING_BYTES=${ETCD_UNSAFE_LOG_RING_BYTES:-536870912}
 work=$(mktemp -d)
 # keep copies the logs of a failed run to $KEEP, if set, for the
 # workflow to upload.

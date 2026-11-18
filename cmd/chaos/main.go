@@ -36,6 +36,7 @@ import (
 
 	"github.com/djosh34/tigerstore/check"
 	"github.com/djosh34/tigerstore/history"
+	"github.com/djosh34/tigerstore/internal/wl"
 )
 
 type config struct {
@@ -179,6 +180,10 @@ func run(c config, dir string) (err error) {
 		}
 		defer func() { fail("close the environment", e.close()) }()
 		data, extra = e.data(), nodeArgs
+		// The committed log's reader reads the nodes' logs with their
+		// segment size (#751's CI: read with 64 MiB, a log of 1 MiB
+		// segments ended after its first).
+		fail("segment size", wl.SetSegmentSize(envSegment))
 	}
 	cl, err := newCluster(dir, c.Tigerstore, c.Seed, data, extra)
 	if err != nil {

@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -67,6 +68,8 @@ type testCluster struct {
 	members []Member
 	ids     []uint64
 	joins   []bool
+	// logRing is each node's Config.LogRing, 0 for no ring.
+	logRing int64
 	// budget is each node's MemoryBudget, 0 for none.
 	budget int64
 	// config, if set, changes each node's Config, its listeners made,
@@ -161,6 +164,9 @@ func (tc *testCluster) startNode(t testing.TB, i int) {
 		Name: fmt.Sprintf("n%d", i+1), ID: tc.ids[i], ClusterID: 0x7769726531, DataDir: tc.dataDir(i), Join: tc.joins[i],
 		Logger:     log.New(out, fmt.Sprintf("n%d ", i+1), log.Lmicroseconds),
 		ClientURLs: []string{"https://" + tc.endpoints[i]}, MemoryBudget: tc.budget,
+		// No ring but where a test asks for one: tests never format the
+		// quota's 2 GiB (#602's ruling).
+		LogRing: cmp.Or(tc.logRing, -1),
 	}
 	cfg.Members = tc.members
 	var err error

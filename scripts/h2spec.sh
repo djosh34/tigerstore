@@ -11,6 +11,9 @@
 # true. Each run's report is <work dir>/h2spec-<tls|h2c>.txt, and the
 # node's log <work dir>/node-<tls|h2c>.log.
 set -euo pipefail
+# Each node formats a log ring of 512 MiB, not the quota's size: tests
+# format no gigabytes (#602's ruling).
+export ETCD_UNSAFE_LOG_RING_BYTES=${ETCD_UNSAFE_LOG_RING_BYTES:-536870912}
 root=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mkdir -p "${1:?work dir}" && cd "$1" && pwd)
 tigerstore=${TIGERSTORE:?the tigerstore binary}

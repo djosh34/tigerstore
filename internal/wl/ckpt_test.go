@@ -369,7 +369,7 @@ func TestCutPoint(t *testing.T) {
 		{map[int64]int64{4: 1, 9: 9}, 4, 10, 9},    // 1 of 5 before segment 9
 	}
 	for _, c := range cases {
-		if got := cutPoint(c.live, c.from, c.prevFrom, 1); got != c.want {
+		if got := cutPoint(c.live, c.from, c.prevFrom, 1, false); got != c.want {
 			t.Errorf("cutPoint(%v, %d, %d) = %d, want %d", c.live, c.from, c.prevFrom, got, c.want)
 		}
 	}

@@ -14,6 +14,13 @@ on:
 permissions:
   contents: read
 
+# Every node a test starts formats a log ring of 512 MiB, not the 2 GiB a
+# quota's default sizes (#602's ruling: tests format no gigabytes); the
+# bench, the release and the soak, which sizes it from its disk budget,
+# keep theirs.
+env:
+  ETCD_UNSAFE_LOG_RING_BYTES: "536870912"
+
 jobs:
   conformance:
     runs-on: ubuntu-24.04-arm

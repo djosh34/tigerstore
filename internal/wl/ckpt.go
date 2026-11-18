@@ -349,6 +349,9 @@ type ckptRun struct {
 	// counted by segment; the log before cut is removed once it is done.
 	prevFrom int64
 	prevCut  int64
+	// force cuts the log at prevFrom whatever the store names before it,
+	// which the checkpoint takes in: the log's ring ran low (logring.go).
+	force bool
 	// snapWaiters are the clients' Snapshots that asked before it started.
 	snapWaiters []handle
 	cut         int64
@@ -385,6 +388,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 		chRev:    st.compactRev,
 		prevFrom: n.ckptFrom,
 		prevCut:  n.ckptCut,
+		force:    n.wal.ringLow(),
 		segLive:  map[int64]int64{},
 		started:  time.Now(),
 	}
@@ -414,7 +418,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 // checkpoint once the last chunk is written.
 func (n *node) ckptStep(block bool) error {
 	r := n.ckpt
-	if r == nil {
+	if r == nil || ckptHold.Load() {
 		return nil
 	}
 	for r.sent > 0 {
@@ -511,7 +515,7 @@ func (n *node) scanKeys(r *ckptRun) {
 				r.rels = append(r.rels, ckptRel{src: s.voff, n: s.vlen, sum: s.vsum, id: r.next})
 			case s.voff < r.prevFrom:
 				r.rels = append(r.rels, ckptRel{src: s.voff, n: s.vlen, sum: s.vsum, id: r.next})
-				r.segLive[s.voff/ckptCutUnit] += int64(s.vlen)
+				r.segLive[s.voff/cmp.Or(ckptCutUnit, segSize)] += int64(s.vlen)
 			default:
 				r.leftInLog += int64(s.vlen)
 			}
@@ -522,7 +526,7 @@ func (n *node) scanKeys(r *ckptRun) {
 	}
 	t := time.Now()
 	defer func() { n.turnCkpt.place, n.turnCkpt.rels = time.Since(t), len(r.rels) }()
-	r.cut = cutPoint(r.segLive, r.prevCut, r.prevFrom, ckptCutUnit)
+	r.cut = cutPoint(r.segLive, r.prevCut, r.prevFrom, cmp.Or(ckptCutUnit, segSize), r.force)
 	k := 0
 	for _, v := range r.rels {
 		if inCkpt(v.src) || v.src < r.cut {
@@ -547,11 +551,15 @@ func (n *node) scanKeys(r *ckptRun) {
 // 1/ckptCutShare of the log before it still named by the store, which the
 // checkpoint then takes in. segLive holds the bytes named, by unit. A log
 // that the store still names more than that is kept: taking it in would
-// copy more than the cut frees.
-func cutPoint(segLive map[int64]int64, from, prevFrom, unit int64) int64 {
+// copy more than the cut frees; but force takes it all in, as the log's
+// ring needs the space (logring.go).
+func cutPoint(segLive map[int64]int64, from, prevFrom, unit int64, force bool) int64 {
 	first, c := from/unit, prevFrom/unit
 	if c <= first {
 		return from
+	}
+	if force {
+		return c * unit
 	}
 	segs := slices.Sorted(maps.Keys(segLive))
 	live := int64(0)
@@ -576,10 +584,11 @@ func cutPoint(segLive map[int64]int64, from, prevFrom, unit int64) int64 {
 }
 
 // The log before the cut that the store still names is at most
-// 1/ckptCutShare of it, counted in units of ckptCutUnit.
+// 1/ckptCutShare of it, counted in units of ckptCutUnit, 0 for a segment
+// (segSize, which a test may set after this is made).
 var (
 	ckptCutShare int64 = 4
-	ckptCutUnit  int64 = segSize
+	ckptCutUnit  int64
 )
 
 // ckptDone makes the checkpoint written the newest: the store names the
@@ -601,6 +610,10 @@ func (n *node) ckptDone() error {
 	n.storage.snap = &pb.Snapshot{
 		Data:     []byte(r.w.name),
 		Metadata: &pb.SnapshotMetadata{Index: new(r.meta.index), Term: new(r.meta.term), ConfState: r.meta.cs},
+	}
+	if n.wal != nil && n.wal.ring != nil {
+		// A ring's segments go back at once (logring.go).
+		n.cutLog()
 	}
 	n.st.release()
 	n.startClientSnaps(r.snapWaiters, r.w.name, r.meta)

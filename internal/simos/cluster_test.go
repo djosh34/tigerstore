@@ -107,7 +107,7 @@ func (c *simCluster) start(t *testing.T, i int) {
 	}
 	cfg := wl.Config{
 		Name: host, ID: uint64(i + 1), ClusterID: 0x51, DataDir: dataDir, Members: c.members,
-		ClientURLs: c.members[i].ClientURLs, Logger: log.New(out, host+" ", log.Lmicroseconds),
+		ClientURLs: c.members[i].ClientURLs, Logger: log.New(out, host+" ", log.Lmicroseconds), LogRing: -1,
 		ClientTLS: c.tls(true), PeerServerTLS: c.tls(true), PeerClientTLS: c.tls(false),
 		ClientListeners: []net.Listener{c.nw.listen(host + ":2379")},
 		PeerListeners:   []net.Listener{c.nw.listen(host + ":2380")},

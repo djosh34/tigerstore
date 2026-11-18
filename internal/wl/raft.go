@@ -313,16 +313,14 @@ func (n *node) storageApply(m *pb.Message) error {
 // grown enough since the last.
 func (n *node) afterApply() error {
 	s := n.storage
-	if first, _ := s.FirstIndex(); n.applied > first+2*n.catchup {
+	if first, _ := s.FirstIndex(); !n.wal.ringLow() && n.applied > first+2*n.catchup {
 		s.compact(n.applied - n.catchup)
 	}
 	if planted.On("B20") && s.lastIndex() > n.applied+1 {
 		// Planted: an entry not yet applied leaves memory.
 		s.drop(n.applied + 1)
 	}
-	if s.snap != nil {
-		n.removeAll(n.wal.cut(min(n.ckptCut, s.firstRecord(n.wal.off))))
-	}
+	n.cutLog()
 	return n.maybeCkpt()
 }
 
@@ -330,7 +328,7 @@ func (n *node) afterApply() error {
 // last, or when Raft's storage wants one for a follower.
 func (n *node) maybeCkpt() error {
 	s := n.storage
-	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptLog || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt {
+	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptEvery() || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt && !n.ringDue() {
 		return nil
 	}
 	index := n.applied

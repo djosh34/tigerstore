@@ -135,6 +135,9 @@ def main():
         # Membership in the cgroup precedes exec. No allocation by the server
         # escapes its limit, and restart retains the cgroup's OOM counters.
         environment = dict(os.environ, GOMEMLIMIT=args.go_memory)
+        # Each node formats a log ring of 512 MiB, not the quota's size:
+        # tests format no gigabytes (#602's ruling).
+        environment.setdefault("ETCD_UNSAFE_LOG_RING_BYTES", "536870912")
         return subprocess.Popen(["sh", "-ec", 'echo $$ > "$1/cgroup.procs"; shift; exec "$@"',
                                  "past-ram", str(groups[i]), *command],
                                 stdout=logs[i], stderr=subprocess.STDOUT, env=environment)

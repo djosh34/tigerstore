@@ -17,6 +17,9 @@
 # report in a node's log fails the run. KEEP, a directory, gets the logs of
 # a failed run.
 set -euo pipefail
+# Each node formats a log ring of 512 MiB, not the quota's size: tests
+# format no gigabytes (#602's ruling).
+export ETCD_UNSAFE_LOG_RING_BYTES=${ETCD_UNSAFE_LOG_RING_BYTES:-536870912}
 etcd=${ETCD:-etcd}
 "$etcd" --version | grep -q '^etcd Version: 3.7.2$' || {
 	echo "$etcd is not etcd 3.7.2"

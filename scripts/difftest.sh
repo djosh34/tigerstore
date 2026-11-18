@@ -27,6 +27,9 @@
 # puts the client certificate's name into every write's header, and the size
 # limit counts it (#99).
 set -euo pipefail
+# Each node formats a log ring of 512 MiB, not the quota's size: tests
+# format no gigabytes (#602's ruling).
+export ETCD_UNSAFE_LOG_RING_BYTES=${ETCD_UNSAFE_LOG_RING_BYTES:-536870912}
 server=${1:?usage: scripts/difftest.sh etcd|tigerstore [record]}
 record=${2:-}
 suites=(
