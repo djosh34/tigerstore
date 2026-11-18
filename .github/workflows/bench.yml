@@ -138,8 +138,15 @@ jobs:
     # A k8s max run takes about 2.5 minutes with its preload and ramp. In
     # the full grid, 3 seeds x 3 repetitions x (2 targets x 3 RTTs + etcd
     # at the first) is 63 runs; GitHub ends a job after 6 hours. In the
-    # quick grid a job runs 2.
-    timeout-minutes: ${{ matrix.job.seed != 'all' && 60 || matrix.job.bench == 'k8s' && 330 || 150 }}
+    # quick grid a job runs 2. Every tigerstore cluster start formats its
+    # nodes' log rings first, 8 GiB each at the bench's budget, 70 to 77 s
+    # with all three on the runner's one disk. A full put or txn job
+    # starts 108 tigerstore clusters (max and rate at every RTT), so about
+    # 130 minutes of formats once both refs have a ring, twice what it was
+    # when only the candidate had one and the job took up to 150 minutes.
+    # It gets 300 (#602's full bench of 31162e0b, whose put and txn jobs
+    # hit 150).
+    timeout-minutes: ${{ matrix.job.seed != 'all' && 60 || matrix.job.bench == 'k8s' && 330 || 300 }}
     env:
       BENCH: ${{ matrix.job.bench }}
       SEEDS: ${{ matrix.job.seed == 'all' && needs.plan.outputs.seeds || matrix.job.seed }}
