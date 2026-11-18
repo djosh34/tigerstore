@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"math"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -18,7 +19,7 @@ import (
 // is no leader, so nothing is replaced.
 func (s *Sim) replace(n *node) {
 	s.mu.Lock()
-	wait, old, url := Second+s.rng.Int64N(19*Second), n.id, peerURL(n.idx)
+	wait, old, url, fencedAt := Second+s.rng.Int64N(19*Second), n.id, peerURL(n.idx), n.since
 	s.mu.Unlock()
 	if !s.sleep(wait) {
 		return
@@ -47,20 +48,19 @@ func (s *Sim) replace(n *node) {
 	disk.Capacity = s.diskCapacity()
 	disk.KeepIn(s.pages, keepPages)
 	// The times the old member stalled or started again from its log stay,
-	// for the checks of the calls made to it.
+	// for the checks of the calls made to it. From its fence until the new
+	// member caught up with what the cluster applied when it joined, and
+	// then had the time to recover (wlHooks.Applied), the node is excused
+	// as a stalled one is; the liveness rule holds the other nodes as
+	// before. The end's checks still require it to catch up.
+	stalls := append(n.stalls, [2]int64{fencedAt, math.MaxInt64})
 	*n = node{
 		idx: n.idx, id: id, disk: disk, addrs: n.addrs, wake: n.wake, gen: n.gen, joins: true, since: s.now(),
-		stalls: n.stalls, reloads: n.reloads, fromLog: n.fromLog,
+		stalls: stalls, reloads: n.reloads, fromLog: n.fromLog, catchUp: max(s.applied, 1), catchUpWin: len(stalls) - 1,
 	}
 	s.traceDisk(n)
 	s.stats.Replaced++
 	s.tracef("node %d: replaced by member %d on an empty disk", old, id)
-	if s.healed {
-		// The new member joins after healing: the liveness rule waits
-		// for it, as for a node that stopped then.
-		s.lateStopAt = s.now()
-		s.extendLiveness()
-	}
 	s.mu.Unlock()
 	if err := s.start(n); err != nil {
 		s.mu.Lock()
@@ -99,7 +99,14 @@ func (s *Sim) memberCall(req proto.Message, done func([]*pb.Member) bool) bool {
 		}
 		resp, err := s.call(s.nodes[i], call, timeout)
 		if err == nil {
-			if r, ok := resp.(interface{ GetMembers() []*pb.Member }); ok && done(r.GetMembers()) {
+			r, ok := resp.(interface{ GetMembers() []*pb.Member })
+			if !ok {
+				s.mu.Lock()
+				s.fail("replace: %T answered with %T", call, resp)
+				s.mu.Unlock()
+				return false
+			}
+			if done(r.GetMembers()) {
 				return true
 			}
 		}

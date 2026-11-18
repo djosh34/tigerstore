@@ -33,7 +33,7 @@ func (s *Sim) checkWL(res *Result) error {
 		}
 	}
 	applied := s.applied
-	if len(live) > 0 {
+	if s.quorumLostAt == 0 {
 		applied = live[0].proc.wl.turn.Applied
 	}
 	ents, err := s.committed(applied)
@@ -66,7 +66,13 @@ func (s *Sim) checkWL(res *Result) error {
 	if err != nil {
 		return err
 	}
-	if err := s.finalReads(live, model.Rev(), want.Kvs); err != nil {
+	if s.quorumLostAt > 0 {
+		// The survivors stop where they stopped, each checked against
+		// the log up to its own last entry.
+		if err := s.survivorReads(live); err != nil {
+			return err
+		}
+	} else if err := s.finalReads(live, model.Rev(), want.Kvs); err != nil {
 		return err
 	}
 	for _, r := range res.History {
@@ -87,7 +93,13 @@ func (s *Sim) checkWL(res *Result) error {
 	if err := s.checkWatches(model, res); err != nil {
 		return err
 	}
-	if err := s.checkLeasesExpire(res, aliveLeases(res.Log), s.quorumLostAt == 0); err != nil {
+	// Without a quorum no lease expires, so none must be gone by the end;
+	// none may expire early either way.
+	alive := aliveLeases(res.Log)
+	if s.quorumLostAt > 0 {
+		alive = nil
+	}
+	if err := s.checkLeasesExpire(res, alive); err != nil {
 		return err
 	}
 	if err := s.checkWatchersFreed(); err != nil {
@@ -133,8 +145,7 @@ func wlOps(data []byte) ([]proto.Message, error) {
 // convergedWL checks that every live node is up and applied the same
 // entries, which record checked entry by entry, and returns them. A
 // cluster that lost its quorum cannot bring a node that is behind up to
-// date: it returns the live nodes that applied the most of any, if any
-// did.
+// date: it returns every live node, whatever it applied.
 func (s *Sim) convergedWL() ([]*node, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -145,10 +156,7 @@ func (s *Sim) convergedWL() ([]*node, error) {
 		}
 	}
 	if s.quorumLostAt > 0 {
-		live = slices.DeleteFunc(live, func(n *node) bool { return n.proc.wl.turn.Applied < s.applied })
-		if len(live) == 0 {
-			return nil, nil
-		}
+		return live, nil
 	}
 	first := live[0].proc.wl.turn
 	for _, n := range live[1:] {
@@ -220,9 +228,48 @@ func aliveLeases(log []proto.Message) []int64 {
 	return slices.Sorted(maps.Keys(alive))
 }
 
+// survivorReads reads every key of each live node of a run that lost its
+// quorum at the revision it applied to, and checks them against the log
+// up to there.
+func (s *Sim) survivorReads(live []*node) error {
+	for _, n := range live {
+		s.mu.Lock()
+		applied := n.proc.wl.turn.Applied
+		ents, err := s.committed(applied)
+		s.mu.Unlock()
+		if err != nil {
+			return err
+		}
+		var ops []proto.Message
+		for _, e := range ents {
+			o, err := wlOps(e.GetData())
+			if err != nil {
+				return fmt.Errorf("entry %d: %w", e.GetIndex(), err)
+			}
+			ops = append(ops, o...)
+		}
+		model, _, _, err := replay(ops)
+		if err != nil {
+			return err
+		}
+		want, err := model.Range(&pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}})
+		if err != nil {
+			return err
+		}
+		if err := s.finalReads([]*node{n}, model.Rev(), want.Kvs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // checkUnavailable checks a run that lost its quorum (Config.LoseQuorum):
-// no write that started after the loss succeeded, as none can commit.
+// nothing past what was committed at the loss applied anywhere, and no
+// write that started after the loss succeeded, as none can commit.
 func (s *Sim) checkUnavailable(res *Result) error {
+	if s.applied > s.lossCommit {
+		return fmt.Errorf("unavailable: a node applied entry %d after the cluster lost its quorum at %d ms with entries to %d committed", s.applied, s.quorumLostAt/Millisecond, s.lossCommit)
+	}
 	writes := 0
 	for _, r := range res.History {
 		if r.Call <= s.quorumLostAt || !isWrite(r.req) {
