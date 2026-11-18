@@ -218,12 +218,34 @@ type perOp struct {
 	Leases   float64 `json:"leases"`
 }
 
-// rampStep is one step of -ramp.
+// rampStep is one step of -ramp. RanOut marks a step in which a k8s copy
+// reached the end of its recording, which counts for nothing and ends the
+// ramp.
 type rampStep struct {
 	StreamsPerConn int     `json:"streams_per_conn"`
 	Throughput     float64 `json:"throughput"`
 	ClientCores    float64 `json:"client_cores"`
 	LeaderCores    float64 `json:"leader_cores"`
+	RanOut         bool    `json:"ran_out,omitempty"`
+}
+
+// onlyRecordingRanOut reports whether err is only k8s copies that ran out
+// of their recording (checkCopies), with no other failure.
+func onlyRecordingRanOut(err error) bool {
+	if err == nil {
+		return false
+	}
+	if j, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, e := range j.Unwrap() {
+			if !onlyRecordingRanOut(e) {
+				return false
+			}
+		}
+		// errors.Join never makes an empty join, but another joined
+		// error could: that is no run-out.
+		return len(j.Unwrap()) > 0
+	}
+	return errors.Is(err, errTraceTooShort)
 }
 
 type watchResult struct {
@@ -361,6 +383,18 @@ func ramped(cfg config, measure func(streams int) (*result, error)) (*result, er
 		leader := 0.0
 		if len(res.ServerCores) > 0 {
 			leader = res.ServerCores[0]
+		}
+		if step > 0 && onlyRecordingRanOut(err) {
+			// A k8s copy reached the end of its recording during this step:
+			// the step's load was no longer the recording's, so it counts
+			// for nothing, and the ramp ends with the best of the steps
+			// before, which ran on the recording whole. A store fast
+			// enough to get there failed the run (#602's full bench of
+			// ae01b0a4). A first step that runs out fails it still.
+			ramp = append(ramp, rampStep{StreamsPerConn: streams, Throughput: res.Throughput, ClientCores: res.ClientCores, LeaderCores: leader, RanOut: true})
+			best.Ramp = ramp
+			best.RampClimbing = false
+			break
 		}
 		ramp = append(ramp, rampStep{StreamsPerConn: streams, Throughput: res.Throughput, ClientCores: res.ClientCores, LeaderCores: leader})
 		climbing := best == nil || res.Throughput >= best.Throughput*rampGain

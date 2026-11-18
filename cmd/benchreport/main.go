@@ -83,10 +83,13 @@ type result struct {
 	DiskBytesPerOp       float64   `json:"disk_bytes_per_op"`
 	MinWrittenBytesPerOp float64   `json:"min_written_bytes_per_op"`
 	RampClimbing         bool      `json:"ramp_climbing"`
-	PerOp                perOp     `json:"per_op"`
-	Keys                 int       `json:"keys"`
-	ValueSize            int       `json:"value_size"`
-	K8s                  *struct {
+	// Ramp's steps; RanOut marks one in which a k8s copy reached the end
+	// of its recording, which ended the ramp (cmd/loadgen's ramped).
+	Ramp      []rampStep `json:"ramp"`
+	PerOp     perOp      `json:"per_op"`
+	Keys      int        `json:"keys"`
+	ValueSize int        `json:"value_size"`
+	K8s       *struct {
 		Shape     string `json:"shape"`
 		Copies    int    `json:"copies"`
 		ItemBytes int64  `json:"item_bytes"`
@@ -106,6 +109,38 @@ type result struct {
 			P99  float64 `json:"p99"`
 		} `json:"latency_us"`
 	} `json:"watch"`
+}
+
+// rampStep is a step of a run's ramp (cmd/loadgen's rampStep).
+type rampStep struct {
+	Throughput float64 `json:"throughput"`
+	RanOut     bool    `json:"ran_out"`
+}
+
+// ranOut reports whether r's ramp ended at a step in which a k8s copy ran
+// out of its recording.
+func (r result) ranOut() bool {
+	return len(r.Ramp) > 0 && r.Ramp[len(r.Ramp)-1].RanOut
+}
+
+// climbedToRunOut reports whether r's ramp ran out of its recording right
+// after a step that still climbed by loadgen's rampGain (5%) over the best
+// before it, or that was its first: the store may have had more, so its
+// max may be understated. A faster store runs out sooner, so this is the
+// case that matters (#753's review).
+func (r result) climbedToRunOut() bool {
+	if !r.ranOut() {
+		return false
+	}
+	steps := r.Ramp[:len(r.Ramp)-1]
+	if len(steps) == 0 {
+		return false
+	}
+	last, before := steps[len(steps)-1].Throughput, 0.0
+	for _, s := range steps[:len(steps)-1] {
+		before = max(before, s.Throughput)
+	}
+	return last >= before*1.05
 }
 
 // perOp is what an operation carried on average (cmd/loadgen).
@@ -417,7 +452,7 @@ func report(w io.Writer, dir, traces string, nz noise) error {
 	each(func(rtt, bench, target, mode string, rs runs) {
 		n := 0
 		for _, r := range rs {
-			if r.RampClimbing {
+			if r.RampClimbing || r.climbedToRunOut() {
 				n++
 			}
 		}
@@ -427,6 +462,21 @@ func report(w io.Writer, dir, traces string, nz noise) error {
 	})
 	if len(climbing) > 0 {
 		p("\nMax runs whose throughput still climbed at the last step of the ramp, so the requests in flight may have limited them:\n\n%s", strings.Join(climbing, ""))
+	}
+	var ranOut []string
+	each(func(rtt, bench, target, mode string, rs runs) {
+		n := 0
+		for _, r := range rs {
+			if r.ranOut() {
+				n++
+			}
+		}
+		if n > 0 {
+			ranOut = append(ranOut, fmt.Sprintf("- RTT %s ms, %s, %s %s: %d of %d runs\n", rtt, bench, target, mode, n, len(rs)))
+		}
+	})
+	if len(ranOut) > 0 {
+		p("\nMax runs whose ramp ended at a step in which a copy ran out of its recording: that step counts for nothing, and the max is the best step before. Those whose last step before still climbed are in the list above too, as their max may understate the store:\n\n%s", strings.Join(ranOut, ""))
 	}
 	maxOf := func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] }
 	shapes(w, rtts, benches, targets, maxOf)

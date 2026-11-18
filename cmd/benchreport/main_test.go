@@ -160,6 +160,33 @@ func TestReportRampClimbing(t *testing.T) {
 	}
 }
 
+// A ramp that ran out of its recording is listed as such, and also as
+// still climbing when its last step before climbed 5% over the best
+// before it, so its max may be below the store's peak: the first run is
+// #602's candidate at RTT 2 ms, repetition 2 (ae01b0a4's full bench), as
+// if its fifth step, its best, had run out. The second ran out after a
+// step that fell. A result from before ramps recorded steps reads as
+// neither.
+func TestReportRampThatRanOut(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "main-max-1.json", `{"valid":true,"throughput":133259,"ramp":[{"throughput":43452},{"throughput":77478},{"throughput":120068},{"throughput":133259},{"throughput":112651,"ran_out":true}]}`)
+	write(t, dir, "main-max-2.json", `{"valid":true,"throughput":154833,"ramp":[{"throughput":120068},{"throughput":154833},{"throughput":150000},{"throughput":112651,"ran_out":true}]}`)
+	write(t, dir, "main-max-3.json", `{"valid":true,"throughput":100,"ramp":[{"throughput":90},{"throughput":100}]}`)
+	write(t, dir, "main-max-4.json", `{"valid":true,"throughput":100}`)
+	var b strings.Builder
+	if err := report(&b, dir, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	climbed, _, ok := strings.Cut(out, "ran out of its recording")
+	if !ok || !strings.Contains(climbed, "still climbed") || !strings.Contains(climbed, "- RTT 0 ms, put-1k, main max: 1 of 4 runs") {
+		t.Fatalf("want 1 of 4 runs listed as still climbing before the run-out list:\n%s", out)
+	}
+	if _, after, _ := strings.Cut(out, "ran out of its recording"); !strings.Contains(after, "- RTT 0 ms, put-1k, main max: 2 of 4 runs") {
+		t.Fatalf("want 2 of 4 runs listed as run out:\n%s", out)
+	}
+}
+
 func TestReportRefusesInvalidGenerator(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "main-max-1.json", valid)

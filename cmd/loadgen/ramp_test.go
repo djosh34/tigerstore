@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -74,5 +75,49 @@ func TestRampSteps(t *testing.T) {
 	// A failed step ends the ramp and is its result.
 	if _, asked, err := run(3, []float64{100, 110, 120, 130}, 1); err == nil || len(asked) != 2 {
 		t.Errorf("a failure at the second step gave %v after %d steps", err, len(asked))
+	}
+}
+
+// A step in which a k8s copy ran out of its recording counts for nothing:
+// the ramp ends there with the best of the steps before, which ran on the
+// recording whole, and no error. A store fast enough to get there failed
+// the run, as #602's full bench of ae01b0a4 did. A first step that runs
+// out, or a step that also failed otherwise, fails the run still.
+func TestARampEndsAtAStepThatRanOutOfTheRecording(t *testing.T) {
+	ranOut := errors.Join(fmt.Errorf("copy 16: %w", errTraceTooShort), errors.Join(nil, fmt.Errorf("copy 39: %w", errTraceTooShort)))
+	run := func(tputs []float64, failAt int, err error) (*result, int, error) {
+		asked := 0
+		cfg := config{streams: 256, ramp: true, rampSteps: 5}
+		res, gotErr := ramped(cfg, func(streams int) (*result, error) {
+			i := asked
+			asked++
+			if i == failAt {
+				return &result{Throughput: tputs[i]}, err
+			}
+			return &result{Throughput: tputs[i]}, nil
+		})
+		return res, asked, gotErr
+	}
+	// A failed run's own curve: candidate, RTT 2 ms, repetition 2, whose
+	// sixth step ran out after its best, the fifth.
+	res, asked, err := run([]float64{43452, 77478, 120068, 133259, 154833, 112651}, 5, ranOut)
+	if err != nil || res.Throughput != 154833 || asked != 6 {
+		t.Fatalf("the failed run's ramp gave %v after %d steps, %v; want 154833 after 6, no error", res.Throughput, asked, err)
+	}
+	if n := len(res.Ramp); n != 6 || !res.Ramp[5].RanOut || res.Ramp[4].RanOut || res.RampClimbing {
+		t.Fatalf("the ramp's steps %+v, climbing %v; want 6, the last marked as run out, not climbing", res.Ramp, res.RampClimbing)
+	}
+	// A made-up case on a passing run's curve: the fifth step, the best
+	// had it run whole, ran out, so the best is the fourth's.
+	res, asked, err = run([]float64{43244, 77650, 117764, 133007, 155082, 142675}, 4, ranOut)
+	if err != nil || res.Throughput != 133007 || asked != 5 {
+		t.Fatalf("a ramp whose fifth step ran out gave %v after %d steps, %v; want 133007 after 5, no error", res.Throughput, asked, err)
+	}
+	if _, _, err := run([]float64{43244}, 0, ranOut); !errors.Is(err, errTraceTooShort) {
+		t.Fatalf("a first step that ran out gave %v, want the run to fail", err)
+	}
+	other := errors.Join(fmt.Errorf("copy 16: %w", errTraceTooShort), errors.New("watch stream ended"))
+	if _, _, err := run([]float64{43244, 77650, 117764}, 2, other); err == nil {
+		t.Fatal("a step that ran out and failed otherwise gave no error")
 	}
 }
