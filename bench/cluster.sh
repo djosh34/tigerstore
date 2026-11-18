@@ -188,6 +188,18 @@ start() {
 	local until=$((SECONDS + 300))
 	while [ "$SECONDS" -lt "$until" ]; do
 		if ctl put /bench/ready 1 >/dev/null 2>&1; then
+			# A node that formatted its ring last may not have heard of the
+			# leader the others elected yet (#751's bench): wait until all
+			# three name one.
+			local agreed=""
+			for _ in $(seq 100); do
+				if status >/dev/null 2>&1; then
+					agreed=yes
+					break
+				fi
+				sleep 0.3
+			done
+			if [ -z "$agreed" ]; then status >/dev/null || exit 1; fi
 			if [ -n "${LEAD:-}" ]; then lead "$LEAD"; fi
 			place "$kind" "$dir" "$endpoints" "$pids" "${cpus[@]}"
 			return 0
