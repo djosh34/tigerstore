@@ -68,6 +68,10 @@ func Stacks() []byte {
 // Artifact does nothing natively.
 func Artifact(string, []byte) {}
 
+// Reseed does nothing: natively Go's scheduler decides the order of the
+// work, and no seed replays.
+func Reseed(uint64) {}
+
 // AfterSeed runs f at once natively.
 func AfterSeed(f func()) { f() }
 
