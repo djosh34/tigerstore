@@ -36,21 +36,37 @@ func sectorsWritten(dev string) int64 {
 	return -1
 }
 
-func prepare(path string, total int64, prewrite bool) {
+// The ways a file's space is made ready before the appends.
+const (
+	keepSize = iota // fallocate KEEP_SIZE, as the log does
+	fullSize        // fallocate to the full size
+	written         // written before
+)
+
+var modes = []string{"fallocate KEEP_SIZE", "fallocate full size", "written before"}
+
+func prepare(path string, total int64, mode int) {
 	_ = os.Remove(path)
 	fd, err := unix.Open(path, unix.O_CREAT|unix.O_WRONLY, 0o644)
 	if err != nil {
 		panic(err)
 	}
-	if prewrite {
+	switch mode {
+	case written:
 		buf := make([]byte, 1<<20)
 		for off := int64(0); off < total; off += int64(len(buf)) {
 			if _, err := unix.Pwrite(fd, buf, off); err != nil {
 				panic(err)
 			}
 		}
-	} else if err := unix.Fallocate(fd, unix.FALLOC_FL_KEEP_SIZE, 0, total); err != nil {
-		panic(err)
+	case keepSize:
+		if err := unix.Fallocate(fd, unix.FALLOC_FL_KEEP_SIZE, 0, total); err != nil {
+			panic(err)
+		}
+	case fullSize:
+		if err := unix.Fallocate(fd, 0, 0, total); err != nil {
+			panic(err)
+		}
 	}
 	if err := unix.Fsync(fd); err != nil {
 		panic(err)
@@ -81,12 +97,12 @@ func main() {
 	dir, dev := os.Args[1], os.Args[2]
 	for _, writers := range []int{1, 3} {
 		for _, size := range []int{256 << 10, 1 << 20} {
-			for _, prewrite := range []bool{false, true, false, true} {
+			for _, mode := range []int{keepSize, fullSize, written, keepSize, fullSize, written} {
 				writes := (600 << 20) / size
 				paths := make([]string, writers)
 				for i := range paths {
 					paths[i] = filepath.Join(dir, fmt.Sprintf("unwritten-%d", i))
-					prepare(paths[i], int64(writes*size), prewrite)
+					prepare(paths[i], int64(writes*size), mode)
 				}
 				_ = unix.Sync
 				unix.Sync()
@@ -101,8 +117,8 @@ func main() {
 				after := sectorsWritten(dev)
 				data := int64(writers * writes * size)
 				disk := (after - before) * 512
-				fmt.Printf("writers %d, %4d KiB a write, written before %-5v: %6.0f us a write, %6.1f MiB/s together, device wrote %.3f bytes per byte\n",
-					writers, size>>10, prewrite, float64(d.Microseconds())/float64(writes), float64(data)/d.Seconds()/(1<<20), float64(disk)/float64(data))
+				fmt.Printf("writers %d, %4d KiB a write, %-20s: %6.0f us a write, %6.1f MiB/s together, device wrote %.3f bytes per byte\n",
+					writers, size>>10, modes[mode], float64(d.Microseconds())/float64(writes), float64(data)/d.Seconds()/(1<<20), float64(disk)/float64(data))
 				for _, p := range paths {
 					_ = os.Remove(p)
 				}
