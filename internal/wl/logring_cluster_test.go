@@ -37,6 +37,14 @@ func seeRing(t *testing.T, l *loop, dir string) ringSeen {
 	})
 	r := <-got
 	r.files = countRingFiles(t, dir)
+	// A running node's maker renames spares to segments meanwhile, and a
+	// directory read during a rename may miss the file: read again, for a
+	// second at most, until the ring's number shows. A file lost for good
+	// stays missing.
+	for deadline := time.Now().Add(time.Second); r.files != r.segs && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+		r.files = countRingFiles(t, dir)
+	}
 	return r
 }
 
