@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -331,6 +332,11 @@ func (w *wal) reopen(from, end int64) (int64, error) {
 			return 0, err
 		}
 	}
+	if w.ring != nil {
+		if err := w.rewriteTail(from, end); err != nil {
+			return 0, err
+		}
+	}
 	if err := w.syncSegments(); err != nil {
 		return 0, err
 	}
@@ -404,6 +410,50 @@ func (w *wal) letGo(k, to int64, zero bool) error {
 	}
 	if moved {
 		return syncDir(w.sys, w.dir)
+	}
+	return nil
+}
+
+// rewriteTail writes again, directly, the whole blocks of the log from a
+// stage before end, which the scan read, so that the start's sync makes
+// them durable. A sync that failed may have left the bytes of its write in
+// the page cache only: a failed writeback marks them clean, so they read
+// back but never reach the disk, and a later sync does not retry them. A
+// log without a ring cut its last segment to end, after which the sync
+// wrote them; a ring keeps its segments whole, and its start read them,
+// went on past them, and a power loss later left zeros where later marks
+// said the log was durable (TestMembershipFaults seed 4 on #752). One
+// write of the helper's covers at most the stage, so the bytes a failed
+// sync left are within a stage of the end. The last block, past the
+// blocks this writes, reopen writes again itself.
+func (w *wal) rewriteTail(from, end int64) error {
+	lo, hi := max(from, end-w.stageLen)&^(block-1), end&^(block-1)
+	if lo >= hi {
+		return nil
+	}
+	// The stage, aligned for direct writes, holds nothing yet: reopen
+	// reads the last block into it after.
+	buf := w.stage[:min(int64(len(w.stage)), 4<<20)]
+	for off := lo; off < hi; {
+		k := off / segSize
+		n := min(hi-off, (k+1)*segSize-off, int64(len(buf)))
+		got, err := sysPread(w.rfds[k-w.rbase], buf[:n], off%segSize)
+		if err == nil && int64(got) != n {
+			err = io.ErrUnexpectedEOF
+		}
+		if err != nil {
+			return fmt.Errorf("read the log back from %s at %d: %d of %d bytes: %w", segPath(w.dir, k), off%segSize, got, n, err)
+		}
+		fd, err := w.sys.openDirect(segPath(w.dir, k))
+		if err != nil {
+			return err
+		}
+		_, err = sysPwrite(fd, buf[:n], off%segSize)
+		_ = sysClose(fd)
+		if err != nil {
+			return fmt.Errorf("write the log again to %s at %d: %w", segPath(w.dir, k), off%segSize, err)
+		}
+		off += n
 	}
 	return nil
 }
