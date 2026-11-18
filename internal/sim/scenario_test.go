@@ -177,7 +177,7 @@ type scenarioRun struct {
 func (c Config) kind() string {
 	switch {
 	case c.LoseQuorum:
-		return "lost quorum"
+		return "requested quorum loss"
 	case c.Membership:
 		return "membership"
 	case c.Objects > 0:

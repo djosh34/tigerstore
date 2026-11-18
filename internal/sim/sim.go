@@ -602,10 +602,8 @@ type Sim struct {
 	// run from an empty store.
 	startRev int64
 	// quorumLostAt is when a majority of the voters was fenced for good
-	// (Config.LoseQuorum), 0 while a quorum stays, and lossCommit the
-	// highest commit index a node knew then.
+	// (Config.LoseQuorum), 0 while a quorum stays.
 	quorumLostAt int64
-	lossCommit   uint64
 	// lagged is LagAtEnd's follower, whose links are down until the end.
 	lagged *node
 	// downFor is how long HoldDown keeps its follower down.
