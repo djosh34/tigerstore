@@ -264,12 +264,10 @@ func (s *Sim) survivorReads(live []*node) error {
 }
 
 // checkUnavailable checks a run that lost its quorum (Config.LoseQuorum):
-// nothing past what was committed at the loss applied anywhere, and no
-// write that started after the loss succeeded, as none can commit.
+// no write that started after the loss succeeded, as none can commit.
+// An entry committed before the loss may still apply after it: a
+// survivor can learn its commit late.
 func (s *Sim) checkUnavailable(res *Result) error {
-	if s.applied > s.lossCommit {
-		return fmt.Errorf("unavailable: a node applied entry %d after the cluster lost its quorum at %d ms with entries to %d committed", s.applied, s.quorumLostAt/Millisecond, s.lossCommit)
-	}
 	writes := 0
 	for _, r := range res.History {
 		if r.Call <= s.quorumLostAt || !isWrite(r.req) {

@@ -70,9 +70,10 @@ func (s *Sim) replace(n *node) {
 }
 
 // memberCall makes a membership call through the leader until done says
-// the member list shows it, and reports false if the run ended first. A
-// call that got no answer is resolved by a linearizable member list
-// before it goes again. An add has no client-chosen ID, so it waits for
+// the member list shows it, and reports false if the run ended first or
+// failed: an acknowledged change whose answer does not show it fails the
+// run. A call that got no answer is resolved by a linearizable member
+// list before it goes again. An add has no client-chosen ID, so it waits for
 // the node's own answer, as the membership work's does.
 func (s *Sim) memberCall(req proto.Message, done func([]*pb.Member) bool) bool {
 	timeout := s.cfg.ClientTimeout
@@ -100,14 +101,16 @@ func (s *Sim) memberCall(req proto.Message, done func([]*pb.Member) bool) bool {
 		resp, err := s.call(s.nodes[i], call, timeout)
 		if err == nil {
 			r, ok := resp.(interface{ GetMembers() []*pb.Member })
-			if !ok {
+			if ok && done(r.GetMembers()) {
+				return true
+			}
+			if !ok || !list {
+				// An acknowledged change must show in its own answer, as
+				// the membership work requires (memberReply).
 				s.mu.Lock()
-				s.fail("replace: %T answered with %T", call, resp)
+				s.fail("replace: %v acknowledged but answered %v", call, resp)
 				s.mu.Unlock()
 				return false
-			}
-			if done(r.GetMembers()) {
-				return true
 			}
 		}
 		// Unanswered, or the list does not show it yet.
