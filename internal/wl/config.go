@@ -63,7 +63,9 @@ type Config struct {
 	QuotaBackendBytes int64
 	// DiskBudget is --disk-budget-bytes, the most the node's data
 	// directory takes: its log's ring takes half of it, and the
-	// checkpoints the rest. 0 for none: the ring is then the quota's size.
+	// checkpoints the rest; a budget whose half holds fewer than
+	// ringMinSegs segments is refused. 0 for none: the ring is then the
+	// quota's size, at least ringMinSegs segments.
 	// LogRing, if above 0, is the ring's size in bytes in place of either:
 	// tests and the simulator set it small (logring.go); below 0, the log
 	// has no ring.
@@ -112,7 +114,12 @@ type Member struct {
 var errConfig = errors.New("a node's configuration")
 
 func (c *Config) check() error {
+	least := ringMinSegs * segSize
 	switch {
+	case c.LogRing > 0 && c.LogRing < least:
+		return fmt.Errorf("%w: a log ring of %d bytes holds fewer than %d segments of %d bytes", errConfig, c.LogRing, ringMinSegs, segSize)
+	case c.LogRing == 0 && c.DiskBudget > 0 && c.DiskBudget/2 < least:
+		return fmt.Errorf("%w: a disk budget of %d bytes is too small: the log's ring takes half of it, and needs at least %d bytes", errConfig, c.DiskBudget, least)
 	case c.ID == 0:
 		return fmt.Errorf("%w: no member ID", errConfig)
 	case c.PeerServerTLS == nil || c.PeerClientTLS == nil:

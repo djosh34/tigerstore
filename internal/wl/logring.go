@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -192,13 +193,20 @@ func writeZeros(sys sysEnv, path string, from int64, zeros []byte, create bool) 
 	return sysFsync(fd)
 }
 
-// ringSegs is how many segments a ring of size bytes holds: at least four,
-// so that one is written, one made ahead, and two are left to cut to.
+// ringMinSegs is the fewest segments a ring holds: one written, one made
+// ahead, and two left to cut to.
+const ringMinSegs = 4
+
+// ringSegs is how many segments a ring of size bytes holds, at least
+// ringMinSegs. Only a ring sized from the quota is ever rounded up to
+// them: the quota bounds the store's values, not the disk. A disk budget
+// or a ring size too small for them is refused at start (Config.check),
+// so that the ring never takes more than the budget (#751's review).
 func ringSegs(size int64) int64 {
 	if size <= 0 {
 		return 0
 	}
-	return max(size/segSize, 4)
+	return max(size/segSize, ringMinSegs)
 }
 
 // appendSynced appends the sync's last record: the log is durable before
@@ -254,6 +262,11 @@ func ringDamaged(sys sysEnv, dir string, k, off int64, b []byte) error {
 	if k == math.MaxInt64-1 {
 		return nil
 	}
+	// A mark may lie across the end of a segment: each segment is read
+	// with the last bytes before it, as many as a mark's but one (#751's
+	// review).
+	const carry = recHead + 8 - 1
+	prev, end := b, off+int64(len(b))
 	for k++; ; k++ {
 		seg, err := sys.readFile(segPath(dir, k))
 		if errors.Is(err, os.ErrNotExist) {
@@ -262,9 +275,15 @@ func ringDamaged(sys sysEnv, dir string, k, off int64, b []byte) error {
 		if err != nil {
 			return err
 		}
-		if claimsPast(seg, k*segSize, off) {
+		at, buf := k*segSize, seg
+		if end == at {
+			tail := prev[max(0, len(prev)-carry):]
+			at, buf = at-int64(len(tail)), append(slices.Clip(tail), seg...)
+		}
+		if claimsPast(buf, at, off) {
 			return fmt.Errorf("%w: the record at log offset %d does not check, and a later segment's sync says the log is durable past it", ErrCorruptLog, off)
 		}
+		prev, end = seg, k*segSize+int64(len(seg))
 	}
 }
 

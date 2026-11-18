@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -68,6 +69,10 @@ func runLogRingModel(t *testing.T, seed uint64) {
 	// ones of the same size among them, so that records start where a
 	// crash left records it lost.
 	lost := map[uint64]int{}
+	// acked is the last entry a finished sync made durable, and required
+	// the last one before the sync a crash tears: every entry since the
+	// cut up to it must come back (rule 2).
+	var acked, required uint64
 
 	var w *wal
 	open := func() {
@@ -95,6 +100,15 @@ func runLogRingModel(t *testing.T, seed uint64) {
 				t.Fatalf("seed %d: entries read out of order: %v", seed, got)
 			}
 		}
+		read := map[uint64]bool{}
+		for _, idx := range got {
+			read[idx] = true
+		}
+		for idx := range hist {
+			if idx <= required && !read[idx] {
+				t.Fatalf("seed %d, after %d crashes: entry %d, durable before the torn sync, is lost", seed, crashes, idx)
+			}
+		}
 		last := uint64(0)
 		if len(got) > 0 {
 			last = got[len(got)-1]
@@ -113,6 +127,7 @@ func runLogRingModel(t *testing.T, seed uint64) {
 			}
 		}
 		next = last + 1
+		acked, required = last, last
 		if n := countRingFiles(t, dir); n != segs {
 			t.Fatalf("seed %d: the ring holds %d files, formatted with %d", seed, n, segs)
 		}
@@ -177,6 +192,7 @@ func runLogRingModel(t *testing.T, seed uint64) {
 		}
 		to := (w.off + block - 1) &^ (block - 1)
 		syncWAL(t, w)
+		required, acked = acked, ents[len(ents)-1].GetIndex()
 		laps = max(laps, w.off/ring)
 		if rng.IntN(25) != 0 {
 			continue
@@ -337,5 +353,78 @@ func TestARingStartLeavesNoRecordPastItsEnd(t *testing.T) {
 	w.close()
 	if fmt.Sprint(got) != "[1 2 3]" {
 		t.Fatalf("after a clean stop the log holds %v, want [1 2 3]: entry 4, which the crash left past the end, read as current", got)
+	}
+}
+
+// A sync's mark that lies across the end of a segment still says the log
+// is durable past a record before it that does not check: that record is
+// damage, not a torn tail, and the log is refused rather than cut there
+// (#751's review). Here the second sync's mark starts 8 bytes before
+// segment 0 ends, and the first sync's entry is damaged.
+func TestARingMarkAcrossSegmentsFindsDamage(t *testing.T) {
+	was := segSize
+	segSize = 16 << 10
+	t.Cleanup(func() { segSize = was })
+	dir := t.TempDir()
+	const stage, ring = 64 << 10, 4 * (16 << 10)
+	w, err := openWALRing(sysEnv{}, dir, stage, ring, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const markLen = recHead + 8
+	if err := w.write([]*pb.Entry{testEntry(1, 1, strings.Repeat("a", 100))}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	first := w.off
+	data := int(segSize-8-first) - walEntHdr
+	if err := w.write([]*pb.Entry{testEntry(2, 1, strings.Repeat("b", data))}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	if w.off != segSize-8+markLen {
+		t.Fatalf("the log ends at %d; the test needs the second mark at %d", w.off, segSize-8)
+	}
+	w.close()
+	path := segPath(dir, 0)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b[walEntHdr+5] ^= 0xff
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	end, err := scanWAL(sysEnv{}, dir, 0, nil)
+	if !errors.Is(err, ErrCorruptLog) {
+		t.Fatalf("a damaged entry before a mark across segments: the scan ends at %d, %v; want ErrCorruptLog", end, err)
+	}
+}
+
+// A ring sized from a disk budget, or set, never takes more than it was
+// given: one too small for its fewest segments is refused at start rather
+// than rounded up (#751's review). Only the quota's ring is rounded up.
+func TestARingTooSmallForItsBudgetIsRefused(t *testing.T) {
+	least := ringMinSegs * segSize
+	for _, c := range []struct {
+		name string
+		cfg  Config
+		bad  bool
+	}{
+		{"a budget whose half is three segments", Config{DiskBudget: 2 * (least - segSize)}, true},
+		{"a budget whose half is four segments", Config{DiskBudget: 2 * least}, false},
+		{"a ring of three segments", Config{LogRing: least - segSize}, true},
+		{"a ring of four segments", Config{LogRing: least}, false},
+		{"a small budget with a ring set", Config{DiskBudget: segSize, LogRing: least}, false},
+		{"no ring", Config{DiskBudget: segSize, LogRing: -1}, false},
+	} {
+		err := c.cfg.check()
+		refused := err != nil && strings.Contains(err.Error(), "segments") || err != nil && strings.Contains(err.Error(), "too small")
+		if refused != c.bad {
+			t.Errorf("%s: %v", c.name, err)
+		}
+		if !c.bad && logRing(&c.cfg) > 0 && ringSegs(logRing(&c.cfg))*segSize > max(c.cfg.LogRing, c.cfg.DiskBudget/2) {
+			t.Errorf("%s: a ring of %d segments takes more than it was given", c.name, ringSegs(logRing(&c.cfg)))
+		}
 	}
 }
