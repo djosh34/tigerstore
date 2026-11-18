@@ -27,8 +27,8 @@ import (
 // the links between the clients' host and the nodes, so their faults
 // apply. Their calls are records of the history like the others'.
 
-// clientAddr is the client address of node i of the first three.
-func clientAddr(i int) string { return hosts[i] + ":2379" }
+// clientAddr is the client address of voter i.
+func clientAddr(i int) string { return voterHost(i) + ":2379" }
 
 // newV3 makes client c's clientv3 client, for the node it calls.
 func (c *client) newV3() error {

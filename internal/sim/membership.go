@@ -12,10 +12,13 @@ import (
 // oracle uses the requested URLs and learner state, not the core's state
 // hash: a mistake shared by every replica must still fail.
 type membershipWork struct {
-	stage int
-	id    uint64
-	list  bool
-	// removedAt is when the removal of the fourth member completed, and
+	// voters is the number of voters the cluster started with, and the
+	// index of the node the work adds.
+	voters int
+	stage  int
+	id     uint64
+	list   bool
+	// removedAt is when the removal of the added member completed, and
 	// last the last answer that did not complete a stage.
 	removedAt int64
 	last      string
@@ -26,7 +29,7 @@ const (
 	updatedMemberURL = "https://updated-member:2380"
 )
 
-// changeMembership adds the fourth member as a learner, moves it to
+// changeMembership adds a member after the voters as a learner, moves it to
 // another URL, promotes it and removes it, one change after the other,
 // each through the leader as a client would, until all four completed or
 // the clients stop. A lost reply is resolved by a linearizable member list
@@ -129,7 +132,7 @@ func (s *Sim) memberReply(req, resp proto.Message, err error) bool {
 		return true
 	}
 	w.id = ms[len(ms)-1].ID
-	n := s.nodes[3]
+	n := s.nodes[w.voters]
 	n.id, n.inactive = w.id, false
 	s.mu.Unlock()
 	if err := s.start(n); err != nil {
@@ -142,14 +145,14 @@ func (s *Sim) memberReply(req, resp proto.Message, err error) bool {
 }
 
 func (w *membershipWork) matches(ms []*pb.Member) bool {
-	count := 4
+	count := w.voters + 1
 	if w.stage >= 3 {
-		count = 3
+		count = w.voters
 	}
 	if len(ms) != count {
 		return false
 	}
-	for i := range 3 {
+	for i := range w.voters {
 		if ms[i].ID != uint64(i+1) || ms[i].IsLearner || !slices.Equal(ms[i].PeerURLs, []string{peerURL(i)}) {
 			return false
 		}
@@ -157,12 +160,12 @@ func (w *membershipWork) matches(ms []*pb.Member) bool {
 	if w.stage >= 3 {
 		return true
 	}
-	m := ms[3]
+	m := ms[w.voters]
 	url := updatedMemberURL
 	if w.stage == 0 {
 		url = memberURL
 	}
-	return m.ID > 3 && (w.stage == 0 || m.ID == w.id) &&
+	return m.ID > uint64(w.voters) && (w.stage == 0 || m.ID == w.id) &&
 		m.IsLearner == (w.stage < 2) && slices.Equal(m.PeerURLs, []string{url})
 }
 
@@ -171,9 +174,10 @@ func (w *membershipWork) matches(ms []*pb.Member) bool {
 // before healing: as etcd's, a node refuses a change unless it has been
 // connected to the other voters for 5 s. For the same reason healing
 // lasts 20 s: the first change after it can wait 10 s for that (seeds 14
-// and 58), and three more follow. Corruption is left to the
-// three-voter runs: a permanently fenced learner cannot catch up and be
-// promoted, so that workload would require disk replacement too.
+// and 58), and three more follow. Corruption is left to the runs
+// without the membership work: a permanently fenced learner cannot catch
+// up and be promoted, so that workload would require disk replacement
+// too.
 func membershipConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Membership = true

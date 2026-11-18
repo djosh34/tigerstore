@@ -58,9 +58,10 @@ func (s *Sim) scheduleNetFaults() {
 
 // clientOr picks a random link between the clients' host and a node one
 // time in three, as a fault on a client's link, and a link of pick
-// otherwise. The lock is held.
+// otherwise, if there is one. The lock is held.
 func (s *Sim) clientOr(pick func() (int, int)) (from, to int) {
-	if s.rng.IntN(3) != 0 {
+	// A cluster of one node has only the clients' links.
+	if len(s.links) > 1 && s.rng.IntN(3) != 0 {
 		return pick()
 	}
 	from, to = len(s.links), s.rng.IntN(len(s.clientLinks))

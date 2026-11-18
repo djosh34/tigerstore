@@ -65,7 +65,7 @@ func (s *Sim) scheduleDiskFaults() {
 		s.once(s.cfg.Duration*3/4, 500*Millisecond, func() bool {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			if s.healed || slices.ContainsFunc(s.nodes, (*node).mayBeDamaged) {
+			if s.healed || s.count((*node).mayBeDamaged) >= s.spare() {
 				return true
 			}
 			// The node's committer rots a value at its next turn.
@@ -299,8 +299,9 @@ func (s *Sim) stall(n *node, until int64) {
 // flipPayload is set only in planted builds (planted_flip.go).
 var flipPayload func(*Sim, *node) bool
 
-// maybeCorrupt damages the synced bytes of a node that just crashed, at
-// most once per run and only if no node is damaged yet, so a quorum stays.
+// maybeCorrupt damages the synced bytes of a node that just crashed,
+// only while fewer nodes than spare are damaged, so a quorum stays: at
+// most once per run in a cluster of three.
 // The lock is held.
 func (s *Sim) maybeCorrupt(n *node) {
 	// A test that picks the kinds of damage tries at every crash.
@@ -315,12 +316,11 @@ func (s *Sim) maybeCorrupt(n *node) {
 		}
 		return
 	}
-	for _, m := range s.nodes {
-		// n's own torn image, if it has one, is what this crash just
-		// did: only the other nodes' leave the quorum short.
-		if m.corrupted || m.fenced || m != n && m.mayBeDamaged() {
-			return
-		}
+	// A node damaged already is not damaged again. n's own torn image,
+	// if it has one, is what this crash just did: only the other nodes'
+	// leave the quorum short.
+	if n.corrupted || s.count(func(m *node) bool { return m.corrupted || m.fenced || m != n && m.mayBeDamaged() }) >= s.spare() {
+		return
 	}
 	kind := damageKind(s.rng.IntN(numDrawn))
 	if k := s.cfg.damageKinds; len(k) > 0 {
@@ -625,34 +625,55 @@ func (s *Sim) takeCheckpoint() {
 }
 
 // checkColdRestarts erases each node's disk in turn at every checkpoint
-// and at the end, and cold-starts the other two alone. Every entry applied
-// anywhere by the checkpoint is committed, so the two must apply at least
+// and at the end, and cold-starts the others alone; a cluster of one
+// voter cold-starts with no disk erased. Every entry applied
+// anywhere by the checkpoint is committed, so the others must apply at least
 // as far, and every entry and state they reach up to there must be the
 // one in the run's record. An acknowledged write was applied before it was
 // answered, so this covers every acknowledged write, delete, lease change
 // and its revision. That is the guarantee that an acknowledged write
-// survives the loss of one node.
+// survives the loss of one node, in a cluster of three or five.
 func (s *Sim) checkColdRestarts(res *Result) error {
 	s.mu.Lock()
 	all := append(slices.Clone(s.checkpoints), s.newCheckpoint())
 	s.mu.Unlock()
+	// A cluster of one voter cannot lose its disk: its cold restart
+	// erases none (-1).
+	erasures := []int{-1}
+	if s.spare() > 0 {
+		erasures = erasures[:0]
+		for i := range all[0].disks {
+			erasures = append(erasures, i)
+		}
+	}
 	for _, c := range all {
-		for erased := range c.disks {
-			skip := false
+		for _, erased := range erasures {
+			// A damaged disk cannot stand in for the erased one: the
+			// healthy disks left must hold a quorum of the voters.
+			healthy := 0
 			for i, bad := range c.bad {
-				// A damaged disk cannot stand in for the erased one.
-				skip = skip || (bad && i != erased)
+				if !bad && i != erased {
+					healthy++
+				}
 			}
-			if skip {
+			if healthy < s.cfg.voters()/2+1 {
 				continue
 			}
 			if err := s.coldRestart(c, erased); err != nil {
-				return fmt.Errorf("erasing node %d at %d ms: %w", erased+1, c.at/Millisecond, err)
+				return fmt.Errorf("%s at %d ms: %w", erasing(erased), c.at/Millisecond, err)
 			}
 			res.Stats.ColdRestarts++
 		}
 	}
 	return nil
+}
+
+// erasing names the disk a cold restart erased, -1 for none.
+func erasing(erased int) string {
+	if erased < 0 {
+		return "erasing no disk"
+	}
+	return fmt.Sprintf("erasing node %d", erased+1)
 }
 
 // disagree returns two nodes that are not fenced and differ in their
@@ -790,7 +811,7 @@ func (s *Sim) holdsApplied(applied uint64) (bool, error) {
 	return false, nil
 }
 
-// coldRestart starts the two nodes whose disks were not erased, with no
+// coldRestart starts the nodes whose disks were not erased, with no
 // clients and no faults, until they have applied everything they hold.
 // Every entry and state they reach up to the index applied at the
 // checkpoint is checked against the run's record as they go.
@@ -798,7 +819,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	s.mu.Lock()
 	seed := s.rng.Uint64()
 	s.mu.Unlock()
-	r, err := newSimFrom(Config{Seed: seed, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes}, s)
+	r, err := newSimFrom(Config{Seed: seed, Nodes: s.cfg.Nodes, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes}, s)
 	if err != nil {
 		return err
 	}
@@ -836,7 +857,9 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 		// not copy the old process's volatile stopped flag. Only a node
 		// that never joined stays absent without trying recovery.
 		n.inactive = c.inactive[i] && !c.started[i]
-		if i == erased || n.inactive {
+		// A damaged disk, or one that may be, stays out, as its node
+		// would refuse it.
+		if i == erased || n.inactive || c.bad[i] {
 			n.fenced = true
 		}
 	}
@@ -886,7 +909,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 			if !holds {
 				return fmt.Errorf("cold restart: no node can win an election, and no surviving disk holds the %d entries applied before as the run's record has them", c.applied)
 			}
-			s.tracef("cold restart at %d ms erasing node %d: no node can win an election", c.at/Millisecond, erased+1)
+			s.tracef("cold restart at %d ms %s: no node can win an election", c.at/Millisecond, erasing(erased))
 			return nil
 		}
 	}

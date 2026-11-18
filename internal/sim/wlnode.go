@@ -57,10 +57,10 @@ type wlProc struct {
 	applied uint64
 }
 
-// wlMembers are the first three members of a wl cluster.
-func wlMembers() []wl.Member {
+// wlMembers are the members a wl cluster of voters starts with.
+func wlMembers(voters int) []wl.Member {
 	var ms []wl.Member
-	for i := range 3 {
+	for i := range voters {
 		ms = append(ms, wl.Member{
 			ID: uint64(i + 1), Name: fmt.Sprintf("node%d", i+1),
 			PeerURLs: []string{peerURL(i)}, ClientURLs: []string{"https://" + clientAddr(i)},
@@ -74,16 +74,17 @@ func wlMembers() []wl.Member {
 // (wlHooks.Recovered); a start that fails ends as the process does
 // (exited). The lock is held.
 func (s *Sim) startWL(n *node, p *proc) error {
-	ms := wlMembers()
-	join := n.idx == 3
+	voters := s.cfg.voters()
+	ms := wlMembers(voters)
+	join := n.idx == voters
 	if join {
-		// The fourth member, which the membership work added (Config.Membership),
-		// joins the running cluster at the peer URL it has now.
+		// The member the membership work added (Config.Membership) joins
+		// the running cluster at the peer URL it has now.
 		url := memberURL
 		if s.membership.stage >= 2 {
 			url = updatedMemberURL
 		}
-		ms = append(ms, wl.Member{ID: n.id, Name: "node4", PeerURLs: []string{url}, ClientURLs: []string{"https://" + clientAddr(3)}})
+		ms = append(ms, wl.Member{ID: n.id, Name: fmt.Sprintf("node%d", voters+1), PeerURLs: []string{url}, ClientURLs: []string{"https://" + s.hostName(n.idx) + ":2379"}})
 	}
 	self := slices.IndexFunc(ms, func(m wl.Member) bool { return m.ID == n.id })
 	srvTLS := &tls.Config{Certificates: []tls.Certificate{s.net.cert}, MinVersion: tls.VersionTLS12}
@@ -94,7 +95,7 @@ func (s *Sim) startWL(n *node, p *proc) error {
 	cfg := wl.Config{
 		Name: ms[self].Name, ID: n.id, ClusterID: wlCluster, DataDir: wlDataDir, Members: ms, Join: join,
 		ClientURLs:      ms[self].ClientURLs,
-		ClientListeners: []net.Listener{s.net.listen(s, p, []string{clientAddr(n.idx)})},
+		ClientListeners: []net.Listener{s.net.listen(s, p, []string{s.hostName(n.idx) + ":2379"})},
 		PeerListeners:   []net.Listener{s.net.listen(s, p, n.addrs)},
 		ClientTLS:       srvTLS, PeerServerTLS: peerTLS, PeerClientTLS: peerTLS,
 		MemoryBudget: s.cfg.MemoryBytes,
@@ -107,7 +108,7 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		Hooks:   &wlHooks{s: s, p: p},
 	}
 	conn, err := grpc.NewClient(
-		"passthrough:///"+clientAddr(n.idx),
+		"passthrough:///"+s.hostName(n.idx)+":2379",
 		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: s.net.ca, MinVersion: tls.VersionTLS12})),
 		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) { return s.net.dial(ctx, s, nil, addr) }),
 		// Seeds 12024, 12036, 12505 and 13996: refused dials while a
