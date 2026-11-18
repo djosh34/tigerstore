@@ -198,3 +198,44 @@ func TestStartBoundaries(t *testing.T) {
 	h.Start.Leases = append(h.Start.Leases, 0)
 	mustFail(t, "Validate", h.Validate(), "lease 0")
 }
+
+// ambiguous makes op i of h a call whose client got no answer, though it
+// took effect.
+func ambiguous(h *history.History, i int) {
+	h.Ops[i].Resp = nil
+	h.Ops[i].Err = &history.Error{Code: "Unavailable", Message: "no answer", Ambiguous: true}
+}
+
+// TestStartWitnessCorners passes histories from a start that only the
+// start explains, through every checker: an unanswered revoke of a lease
+// the start holds, the lease granted again and used; and an unanswered
+// put of the value a key already has at the start, before a read of
+// another key at the revision it wrote.
+func TestStartWitnessCorners(t *testing.T) {
+	check := func(h *history.History) {
+		t.Helper()
+		mustPass(t, "Durable", Durable(h))
+		mustPass(t, "Revisions", Revisions(h))
+		mustPass(t, "Watches", Watches(h))
+		mustPass(t, "Linearizable", Linearizable(h, time.Minute))
+		for _, mode := range []WitnessMode{FromLog, FromRevisions} {
+			mustPass(t, "Witnessed", Witnessed(h, mode, time.Minute))
+		}
+	}
+
+	b := newBuilderFrom(t, startOf(), "c")
+	revoke := b.do(1, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 5}})
+	b.do(2, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 5, TTL: 5}})
+	b.do(2, history.Request{Put: &history.PutRequest{Key: "c", Value: "c1", Lease: 5}})
+	b.get(3, "a")
+	h := b.done()
+	ambiguous(h, revoke)
+	check(h)
+
+	b = newBuilderFrom(t, startOf())
+	put := b.put(1, "a", "a2")
+	b.get(2, "b")
+	h = b.done()
+	ambiguous(h, put)
+	check(h)
+}
