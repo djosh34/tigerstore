@@ -133,6 +133,9 @@ type wal struct {
 	// The helper's time in its writes, for the stats line: how long the
 	// disk takes the log's blocks.
 	writeNs atomic.Int64
+	// lastSyncNs is how long the helper's last sync took in its own
+	// writes, which the loop logs when it is slow (node.fsyncDone).
+	lastSyncNs atomic.Int64
 }
 
 type walStats struct {
@@ -549,6 +552,7 @@ func (w *wal) writeLoop(flushed int64) error {
 		}
 		d := time.Since(t)
 		w.writeNs.Add(int64(d))
+		w.lastSyncNs.Store(int64(d))
 		if m := w.prom.Load(); m != nil {
 			m.WALWrite.Observe(d.Seconds())
 			m.WALFsync.Observe(d.Seconds())

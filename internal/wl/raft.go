@@ -59,7 +59,7 @@ func (n *node) ready() error {
 		if rd.SoftState != nil {
 			was := n.leading()
 			if rd.Lead != n.lead {
-				n.logf("the leader is %d", rd.Lead)
+				n.logf("the leader is %d at term %d", rd.Lead, n.rn.BasicStatus().GetTerm())
 				if rd.Lead != 0 {
 					n.gs.leaderChanges++
 				}
@@ -248,9 +248,21 @@ func (n *node) fsyncDone() error {
 		return *err
 	}
 	n.wal.inflight = false
+	if d := time.Duration(n.wal.lastSyncNs.Load()); d >= slowSync {
+		// As main's nodes log them, for bench.yml's retry of a stall of
+		// the runner's disk (cmd/benchreport, #747). The time is the
+		// helper's own on the disk: the loop may come late to this
+		// completion, and a fast sync must not look slow (#748).
+		n.logf("slow log sync: %v", d)
+		n.logf("slow log flush: %d bytes in %v", n.wal.lastBytes, d)
+	}
 	n.synced()
 	return n.unwait()
 }
+
+// slowSync is the least time a sync of the log takes for the node to
+// log it.
+const slowSync = time.Second
 
 func (n *node) storageApply(m *pb.Message) error {
 	for _, e := range m.GetEntries() {

@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -24,8 +25,8 @@ func nodeLog(t *testing.T, path string, base time.Time, lines map[time.Duration]
 	}
 }
 
-// TestDiskStall checks the test for a stall of the runner's disk, one
-// episode: the stall of A/A run 43625723837 (every node's syncs of about
+// TestDiskStall checks the test for a stall of the runner's disk, as
+// main's nodes and internal/wl's log it, one episode: the stall of A/A run 43625723837 (every node's syncs of about
 // 2 s ending together, the leader silenced by #233's rule inside the
 // stall, the new leader at the check's term after it) passes, and so does
 // a valid episode followed by a later shared stall. Each of these stays a
@@ -99,15 +100,22 @@ func TestDiskStall(t *testing.T) {
 		if err := os.WriteFile(prefix+".failed", []byte(tc.cause), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		for i, lines := range tc.nodes {
-			nodeLog(t, fmt.Sprintf("%s-n%d.log", prefix, i+1), base, lines)
-		}
-		_, err := diskStall(prefix)
-		if got := err == nil; got != tc.want {
-			t.Errorf("%s: a stall of the runner's disk: %v, want %v (%v)", tc.name, got, tc.want, err)
-		}
-		if err != nil && !errors.Is(err, errNotDiskStall) {
-			t.Errorf("%s: %v is not errNotDiskStall", tc.name, err)
+		// Each case as main's nodes log it (zap), and as internal/wl's do
+		// (#747).
+		for _, format := range []struct {
+			name string
+			log  func(*testing.T, string, time.Time, map[time.Duration]string)
+		}{{"zap", nodeLog}, {"wl", wlLog}} {
+			for i, lines := range tc.nodes {
+				format.log(t, fmt.Sprintf("%s-n%d.log", prefix, i+1), base, lines)
+			}
+			_, err := diskStall(prefix)
+			if got := err == nil; got != tc.want {
+				t.Errorf("%s, %s logs: a stall of the runner's disk: %v, want %v (%v)", tc.name, format.name, got, tc.want, err)
+			}
+			if err != nil && !errors.Is(err, errNotDiskStall) {
+				t.Errorf("%s, %s logs: %v is not errNotDiskStall", tc.name, format.name, err)
+			}
 		}
 	}
 }
@@ -132,5 +140,25 @@ func TestReportCountsRetries(t *testing.T) {
 		if failed := errors.Is(err, errTooManyRetries); failed != (n > maxRetries) {
 			t.Fatalf("%d retries: %v", n, err)
 		}
+	}
+}
+
+// wlLog writes a node's log as internal/wl writes it: its own lines, in
+// order, with its wording of the leader and of the silent rule.
+func wlLog(t *testing.T, path string, base time.Time, lines map[time.Duration]string) {
+	t.Helper()
+	var b strings.Builder
+	for _, off := range slices.Sorted(maps.Keys(lines)) {
+		msg := lines[off]
+		switch {
+		case strings.HasPrefix(msg, "leader is "):
+			msg = "the " + msg
+		case strings.Contains(msg, silentRule):
+			msg = "the " + wlSilent + base.Add(off-2*time.Second).UTC().Format(time.RFC3339Nano) + ": silent, so the followers elect another leader"
+		}
+		fmt.Fprintf(&b, "tigerstore-wl %s %s\n", base.Add(off).UTC().Format("2006/01/02 15:04:05.000000"), msg)
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
