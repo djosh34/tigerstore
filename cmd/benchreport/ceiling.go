@@ -38,13 +38,13 @@ const targetShare = 0.8
 // run; a run that used more does not count (#601).
 const generatorCores = 0.8
 
-// diskHeld is the least share of its disk's rate at a job's start that
+// minDiskShare is the least share of its disk's rate at a job's start that
 // the disk must still make at the job's end (cmd/ceiling, measured at
 // both): below it the disk slowed during the job, the ceilings measured at
 // its start no longer held, and the cells the job measured do not count,
 // whatever their share (#602: a runner's disk fell from about 340 to
 // about 260 MiB/s two hours into a full put job, and with it every max).
-const diskHeld = 0.95
+const minDiskShare = 0.95
 
 // errGeneratorLimit is a run whose generator used more than generatorCores
 // of its core.
@@ -75,9 +75,12 @@ func (l limits) ceiling() (float64, string) {
 // measurements (ceiling.json). A ceiling.json in an RTT's directory, from
 // a job that ran that RTT alone on its own runner, takes the place of
 // dir's for that RTT; dir's stays the runner the text and the leader's
-// floors describe. A ceiling-end.json next to a ceiling.json is the same
+// floors by part describe, else the first RTT's own if dir has none (the
+// job of the first RTT may have left no results), and an RTT with neither
+// has no ceiling. A ceiling-end.json next to a ceiling.json is the same
 // runner measured again at its job's end: each cell shows how its disk
-// held, and a cell whose disk slowed (diskHeld) is marked as not counting.
+// held, and a cell whose disk slowed (minDiskShare) is marked as not
+// counting.
 // The ceiling is the lowest of four limits:
 // the shared disk's durable bandwidth over the bytes an operation must
 // make durable on three nodes; loopback's bandwidth over the bytes it
@@ -85,47 +88,61 @@ func (l limits) ceiling() (float64, string) {
 // k8s, the most calls a second the recording's dependent calls allow at
 // the RTT.
 func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, all maxRuns) error {
-	rn, ok, err := readRunner(filepath.Join(dir, "ceiling.json"))
-	if !ok || err != nil {
-		return err
-	}
-	end, _, err := readRunner(filepath.Join(dir, "ceiling-end.json"))
+	rn, root, err := readRunner(filepath.Join(dir, "ceiling.json"))
 	if err != nil {
 		return err
 	}
+	var end runner
+	if root {
+		if end, _, err = readRunner(filepath.Join(dir, "ceiling-end.json")); err != nil {
+			return err
+		}
+	}
 	// Each RTT's runner, and its disk at the start and the end of its job.
 	at := map[string]runner{}
-	disks := map[string]diskHeldBy{}
-	var own []string
+	disks := map[string]diskRates{}
+	perRTT := false
 	for _, rtt := range rtts {
-		r, ok, err := readRunner(filepath.Join(dir, "rtt-"+rtt, "ceiling.json"))
+		r, own, err := readRunner(filepath.Join(dir, "rtt-"+rtt, "ceiling.json"))
 		if err != nil {
 			return err
 		}
 		e := end
-		if ok {
-			own = append(own, rtt)
+		switch {
+		case own:
+			perRTT = true
 			if e, _, err = readRunner(filepath.Join(dir, "rtt-"+rtt, "ceiling-end.json")); err != nil {
 				return err
 			}
-		} else {
+			if !root {
+				rn, root = r, true
+			}
+		case root:
 			r = rn
+		default:
+			continue
 		}
 		at[rtt] = r
-		disks[rtt] = diskHeldBy{r.DiskMiBps, e.DiskMiBps}
+		disks[rtt] = diskRates{r.DiskMiBps, e.DiskMiBps}
+	}
+	if !root {
+		return nil
 	}
 	pr := rn.Primitives
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
 	p("\nThe runner: kernel %s, CPU %s. The three nodes keep their data on one shared disk, %s, which makes at most %.1f MiB/s durable. Loopback carries %.2f GB/s on three connections. A durable 4 KiB write takes %.0f µs.\n",
 		rn.Kernel, rn.CPU, rn.Disk, rn.DiskMiBps, pr.LoopbackBps/1e9, pr.SyncLatencyNs/1e3)
 	// The quick grid measures one runner, at its start only: nothing to say.
-	if len(own) > 0 || end.DiskMiBps > 0 {
+	if perRTT || end.DiskMiBps > 0 {
 		var held []string
 		for _, rtt := range rtts {
-			d := disks[rtt]
-			held = append(held, fmt.Sprintf("at RTT %s ms %.1f MiB/s at its job's start, %s at its end", rtt, d.start, d.endText()))
+			if d, ok := disks[rtt]; ok {
+				held = append(held, fmt.Sprintf("at RTT %s ms %.1f MiB/s at its job's start, %s at its end", rtt, d.start, d.endText()))
+			} else {
+				held = append(held, fmt.Sprintf("at RTT %s ms not measured, so no ceiling", rtt))
+			}
 		}
-		p("\nThe disk's durable rate, measured on the runner of each RTT: %s. A cell whose disk made less than %.0f%% of its start at its job's end ran on a disk that slowed: the ceilings, measured at the start, no longer held, so its share does not count.\n", strings.Join(held, "; "), 100*diskHeld)
+		p("\nThe disk's durable rate, measured on the runner of each RTT: %s. A cell whose disk made less than %.0f%% of its start at its job's end ran on a disk that slowed: the ceilings, measured at the start, no longer held, so its share does not count.\n", strings.Join(held, "; "), 100*minDiskShare)
 	}
 	var index, miss []string
 	for _, x := range pr.Index {
@@ -164,8 +181,11 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 				}
 			}
 			for _, rtt := range rtts {
+				ra, ok := at[rtt]
+				if !ok {
+					continue
+				}
 				lim := limits{disk: math.Inf(1), network: math.Inf(1), cpu: math.Inf(1), chain: math.Inf(1)}
-				ra := at[rtt]
 				if l.Durable > 0 {
 					lim.disk = ra.DiskMiBps * (1 << 20) / (nodes * l.Durable)
 				}
@@ -186,6 +206,9 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 		}
 	}
 	p("\nThe ceiling is the lowest limit. Disk: the shared disk's bandwidth over three times the bytes an operation must make durable, its keys and values and each compare's key and revision. Network: loopback's bandwidth over what an operation sends, all nodes together. Leader CPU: one core over the least CPU the leader needs, the primitives above times what the operation carries (cmd/loadgen's per-operation counts, medians over the seed's max runs of every store, so a measure of the mix those runs made, not a count from the seed alone); the parts are below. It takes the index and the cold reads at the largest size measured that the store's keys and data reach, and a turn of the leader's loop as every call in flight, so it never overstates. Dependent calls (k8s only): each copy of the recording makes the calls it sends, from where it starts to the end, in no less than the longest chain of calls that wait on replies. A write takes the RTT and a durable write; a linearizable read, and a Txn whose compares may leave it only reading, takes the RTT, as ReadIndex does; a serializable read or a progress request takes nothing. Copies other than 0 leave the watch cache's lists and progress requests to copy 0, as the replay does. This limits the average over the whole trace, not over the measured window, which may for a while go faster. The target is %.0f%% of the ceiling.\n", 100*targetShare)
+	if perRTT {
+		p("\nThe parts below are timed with the primitives of the runner above; each RTT's leader CPU limit takes its own runner's.\n")
+	}
 	p("\n| Benchmark | Seed | Least leader CPU, µs/op by part |\n|---|---|---|\n")
 	for _, f := range floors {
 		var s []string
@@ -245,20 +268,20 @@ func readRunner(path string) (rn runner, ok bool, err error) {
 	return rn, true, nil
 }
 
-// diskHeldBy is a runner's disk rate at its job's start and end, in MiB/s;
+// diskRates is a runner's disk rate at its job's start and end, in MiB/s;
 // end is 0 if the job did not measure it.
-type diskHeldBy struct{ start, end float64 }
+type diskRates struct{ start, end float64 }
 
-func (d diskHeldBy) slowed() bool { return d.end > 0 && d.end < diskHeld*d.start }
+func (d diskRates) slowed() bool { return d.end > 0 && d.end < minDiskShare*d.start }
 
-func (d diskHeldBy) endText() string {
+func (d diskRates) endText() string {
 	if d.end == 0 {
 		return "not measured"
 	}
 	return fmt.Sprintf("%.1f MiB/s", d.end)
 }
 
-func (d diskHeldBy) cell() string {
+func (d diskRates) cell() string {
 	switch {
 	case d.end == 0:
 		return "-"

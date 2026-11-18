@@ -192,6 +192,37 @@ func TestReportCeilingByRTTAndASlowedDisk(t *testing.T) {
 			t.Errorf("no %q in\n%s", want, b.String())
 		}
 	}
+	// Without dir's runner, as when the first RTT's job left no results,
+	// each RTT with its own still has its ceilings and its disk's check.
+	if err := os.Remove(filepath.Join(dir, "ceiling.json")); err != nil {
+		t.Fatal(err)
+	}
+	b.Reset()
+	if err := report(&b, dir, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"| put-1k | 1 | 0 | main | 40,000 | 40.0% | 80,000 | 0.20 | -1.0% |",
+		"| put-1k | 1 | 10 | main | 40,000 | 80.0% | 40,000 | 0.20 | -20.0%, slowed: does not count |",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("without dir's ceiling.json, no %q in\n%s", want, b.String())
+		}
+	}
+	// An RTT with no runner of its own and none in dir has no ceiling.
+	if err := os.Remove(filepath.Join(dir, "rtt-0", "ceiling.json")); err != nil {
+		t.Fatal(err)
+	}
+	b.Reset()
+	if err := report(&b, dir, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "| put-1k | 1 | 0 | main | 40,000 |") || !strings.Contains(b.String(), "at RTT 0 ms not measured, so no ceiling") {
+		t.Errorf("RTT 0 without a runner got a share:\n%s", b.String())
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ceiling.json"), []byte(runner(300)), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	// A job that ran every RTT, as k8s does, measures dir's runner at its
 	// end.
 	for _, f := range []string{"rtt-0", "rtt-10"} {

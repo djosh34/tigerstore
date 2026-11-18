@@ -27,7 +27,8 @@
 #   each on its own runner and measured right before it (#602: one put
 #   job's disk slowed by a quarter two hours in, under its 10 ms runs).
 #   The job of a later RTT measures etcd's max at the first RTT on its own
-#   runner, only for the rate of its rate runs. The last job merges the
+#   runner (the first target's without etcd), only for the rate of its
+#   rate runs. The last job merges the
 #   per-RTT jobs into one report, as in the quick grid.
 # Every job of a seed of all measures its runner's disk again at its end:
 # a cell whose disk slowed by more than 5% does not count (benchreport).
@@ -49,7 +50,7 @@ on:
   workflow_dispatch:
     inputs:
       grid:
-        description: quick (one job per benchmark, seed and RTT, about 15 minutes) or full (one job per benchmark, with repeats, rate runs and etcd)
+        description: quick (one job per benchmark, seed and RTT, about 15 minutes) or full (one job per benchmark and RTT, k8s one job for every RTT, with repeats, rate runs and etcd)
         type: choice
         options: [quick, full]
         default: quick
@@ -63,7 +64,7 @@ on:
         description: space-separated benchmarks, put/txn/delete/range/list/watch with 1k or 10k, k8s (recorded Kubernetes control planes, max only), etcd-tool (etcd's own benchmark tool), or profile (the candidate leader's CPU per step, bench/profile.sh)
         default: put-1k txn-1k k8s
       rtts:
-        description: round-trip times between nodes in ms; etcd runs at the first only. In the full grid they run in this order and the first one's rate stands in at the others; in the quick grid rate runs only at the first
+        description: round-trip times between nodes in ms; etcd runs at the first only. In the full grid every RTT's rate runs take the first RTT's rate, which each later RTT's job measures again on its own runner, and k8s runs them in this order on one runner; in the quick grid rate runs only at the first
         default: 0 2 10
       seeds:
         description: space-separated seeds to replay a run; empty draws 4 fresh ones that all draw crd-heavy for k8s in the quick grid, 3 of any shape in the full one
@@ -308,25 +309,35 @@ jobs:
           norate=""
           if [ "${rtts[0]}" != "${asked[0]}" ]; then
             first=none
-            if [ "${{ matrix.job.seed }}" = all ] && [[ " $MODES " == *" rate "* ]] && [[ " $TARGETS " == *" etcd "* ]]; then
+            if [ "${{ matrix.job.seed }}" = all ] && [[ " $MODES " == *" rate "* ]]; then
               # A full-grid job of a later RTT: the rate of every RTT is
-              # half of etcd's median max at the first RTT, so this job
-              # measures that max first, on its own runner, for the rate
-              # alone. Those runs stay in rate-probe/ and are reported
-              # nowhere: etcd's results are the first RTT's job's.
+              # half of the median max at the first RTT of etcd, or of the
+              # first target without etcd, as bench/run.sh picks it. This
+              # job measures that max first, on its own runner, for the
+              # rate alone; the runs stay in rate-probe/ and are reported
+              # nowhere, the first RTT's job's being the reported ones.
+              # The median is run.sh's (its rate step).
+              read -r -a tg <<<"$TARGETS"
+              ref=etcd
+              if [[ " $TARGETS " != *" etcd "* ]]; then ref=${tg[0]}; fi
               bench/netem.sh on "${asked[0]}"
-              TARGETS=etcd MODES=max LAYOUTS="" bench/run.sh "$BENCH" results/rate-probe
+              TARGETS=$ref MODES=max LAYOUTS="" bench/run.sh "$BENCH" results/rate-probe
               bench/netem.sh off
               maxes=()
-              for f in results/rate-probe/"$BENCH"/etcd-max-*.json; do
+              for f in results/rate-probe/"$BENCH"/"$ref"-max-*.json; do
                 if [ -f "$f" ] && [ ! -f "${f%.json}.failed" ]; then maxes+=("$f"); fi
               done
               if [ "${#maxes[@]}" -gt 0 ]; then
                 RATE_FALLBACK=$(jq -s 'map(.throughput) | sort | (if length % 2 == 0 then (.[length / 2 - 1] + .[length / 2]) / 2 else .[length / 2 | floor] end) / 2 | floor' "${maxes[@]}")
                 export RATE_FALLBACK
+              else
+                # No rate of the shared definition: none at all, rather
+                # than run.sh's max of a store at this RTT.
+                norate="no rate runs: $ref's max at the first RTT, ${asked[0]} ms, measured on this RTT's runner for the rate, made no result"
+                MODES=$(echo "$MODES" | tr ' ' '\n' | grep -vx rate | tr '\n' ' ')
               fi
             elif [[ " $MODES " == *" rate "* ]]; then
-              norate="rate runs only at the first RTT, ${asked[0]} ms, in the jobs of a later RTT of the quick grid, or without etcd"
+              norate="rate runs only at the first RTT, ${asked[0]} ms, in the quick grid"
               MODES=$(echo "$MODES" | tr ' ' '\n' | grep -vx rate | tr '\n' ' ')
             fi
             TARGETS=$(echo "$TARGETS" | tr ' ' '\n' | grep -vx etcd | tr '\n' ' ')

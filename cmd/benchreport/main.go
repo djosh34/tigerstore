@@ -11,7 +11,11 @@
 // <target>-<mode>-<seed>.<rep>.placement, which names its leader. A run that
 // failed has <target>-<mode>-<seed>.<rep>.failed with its cause, and its
 // result, if any, is left out. A ceiling.json in <dir> (cmd/ceiling) adds
-// the runner, the ceilings and each store's share of them; a
+// the runner, the ceilings and each store's share of them. A ceiling.json in
+// an RTT's directory is that RTT's own runner, where the full grid ran each
+// RTT in its own job, and a ceiling-end.json beside either is that runner
+// measured again at its job's end: a cell whose disk slowed by more than 5%
+// is marked as not counting (ceiling.go). A
 // generator-<benchmark>.json, loadgen's run against cmd/nullstore, adds the
 // generator's own ceiling.
 //
@@ -363,7 +367,7 @@ func report(w io.Writer, dir, traces string, nz noise) error {
 			}
 		}
 	}
-	p("\nMedians over every seed's runs that did not fail; the shares of the ceiling, seed by seed, are below. RTT is the round trip between nodes; clients reach the nodes without delay. Max over etcd is the store's median max throughput over etcd's at the same RTT, for comparison only: etcd runs at the first RTT. The rate is half of etcd's median max, the same for every store and RTT. Failed runs counts every mode and layout. A failed etcd run is reported and fails nothing; a failed tigerstore run fails the bench.\n")
+	p("\nMedians over every seed's runs that did not fail; the shares of the ceiling, seed by seed, are below. RTT is the round trip between nodes; clients reach the nodes without delay. Max over etcd is the store's median max throughput over etcd's at the same RTT, for comparison only: etcd runs at the first RTT. The rate is half of etcd's median max at the first RTT, or of the first store's without etcd, the same for every store at every RTT; in the full grid each later RTT's job measures that max again on its own runner, so its rate can differ a little. Failed runs counts every mode and layout. A failed etcd run is reported and fails nothing; a failed tigerstore run fails the bench.\n")
 
 	var causes []string
 	for _, bench := range benches {
