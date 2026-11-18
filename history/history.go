@@ -43,7 +43,9 @@ type History struct {
 	// Start, if set, is the store the run starts from instead of an empty
 	// one, as a fork of an aged cluster does: its keys and leases at a
 	// revision, compacted there, so that no call reads below it. Ops,
-	// Watches and Log hold only what came after it.
+	// Watches and Log hold only what came after it. It holds no events, so
+	// a watch from its revision or below can only be canceled as
+	// compacted: a harness watches from the revision after it.
 	Start *Start `json:"start,omitempty"`
 }
 

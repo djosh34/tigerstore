@@ -1014,8 +1014,9 @@ func (r *revisionOrder) scheduleOptional() {
 				// An acked compaction that compacts it and returned
 				// before it was called explains it in every order, as
 				// an acked revoke a lease found gone (#514).
-				// So does the start's compaction.
-				explained := h.Start != nil && compacts(h.Start.Rev, rj) || slices.ContainsFunc(compactions, func(k int) bool {
+				// So does the start's compaction, for a rejection that names
+				// its revision; a transaction's names none (0).
+				explained := h.Start != nil && rj.rev > 0 && compacts(h.Start.Rev, rj) || slices.ContainsFunc(compactions, func(k int) bool {
 					return compacts(h.Ops[k].Req.Compact.Revision, rj) && r.w.returns[k] < rj.call
 				})
 				if compacts(c, rj) && !explained {

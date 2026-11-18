@@ -239,3 +239,38 @@ func TestStartWitnessCorners(t *testing.T) {
 	ambiguous(h, put)
 	check(h)
 }
+
+// TestStartCompactionCorners checks compactions next to a start: a
+// transaction that reads below a compaction after the start's, unanswered,
+// is explained by that compaction, not the start's; a watch from the
+// start's revision with previous values may be canceled there; and a
+// watch from below it must not deliver anything before its cancel.
+func TestStartCompactionCorners(t *testing.T) {
+	b := newBuilderFrom(t, startOf(), "c")
+	b.put(1, "c", "c1")
+	compact := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 11}})
+	b.do(3, history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{{Range: &history.RangeRequest{Key: "c", Revision: 10}}}}})
+	h := b.done()
+	ambiguous(h, compact)
+	if op := h.Ops[2]; op.Err == nil || !sameError(op.Err, errCompacted) {
+		t.Fatalf("the transaction's read below the compaction got %+v, want compacted", op)
+	}
+	for _, mode := range []WitnessMode{FromLog, FromRevisions} {
+		mustPass(t, "Witnessed", Witnessed(h, mode, time.Minute))
+	}
+
+	h = forkHistory(t)
+	h.Watches = append(h.Watches, history.Watch{
+		Client:    8,
+		Req:       history.WatchRequest{Key: "b", StartRevision: 10, PrevKV: true},
+		Responses: []history.WatchResponse{{Time: 15, Revision: 10, Canceled: true, CompactRevision: 10}},
+	})
+	mustPass(t, "Watches", Watches(h))
+
+	h = forkHistory(t)
+	h.Watches = append(h.Watches, history.Watch{Client: 8, Req: history.WatchRequest{Key: "c", StartRevision: 9}, Responses: []history.WatchResponse{
+		{Time: 15, Revision: 11, Events: []history.Event{{Type: history.EventPut, KV: history.KeyValue{Key: "c", Value: "c1", CreateRevision: 12, ModRevision: 12, Version: 1}}}},
+		{Time: 16, Revision: 13, Canceled: true, CompactRevision: 13},
+	}})
+	mustFail(t, "Watches", Watches(h), "before it was canceled")
+}

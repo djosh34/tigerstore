@@ -158,10 +158,16 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 		return errs
 	}
 	// The history holds no events at or below the revision it starts
-	// from: a watch from below it must be canceled as compacted, and one
-	// from it cannot be checked.
-	if r.start > 0 && first <= r.start && (first == r.start || !compacted) {
-		fail("starts at revision %d, at or below the start's revision %d, whose events the history does not hold, and was not canceled as compacted", first, r.start)
+	// from, which is compacted: a watch from there must be canceled as
+	// compacted before it delivers anything, which the checks above hold
+	// to the compaction's rules; one that is not cannot be checked.
+	if r.start > 0 && first <= r.start {
+		switch {
+		case !compacted:
+			fail("starts at revision %d, at or below the start's revision %d, whose events the history does not hold, and was not canceled as compacted", first, r.start)
+		case lastEvent > 0 || lastProgress > 0:
+			fail("starts at revision %d, below the start's compaction at %d, but delivered up to %d before it was canceled", first, r.start, max(lastEvent, lastProgress))
+		}
 		return errs
 	}
 	last := delivered
