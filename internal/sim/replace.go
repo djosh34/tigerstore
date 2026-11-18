@@ -53,7 +53,7 @@ func (s *Sim) replace(n *node) {
 	// then had the time to recover (wlHooks.Applied), the node is excused
 	// as a stalled one is; the liveness rule holds the other nodes as
 	// before. The end's checks still require it to catch up.
-	stalls := append(n.stalls, [2]int64{fencedAt, math.MaxInt64})
+	stalls := slices.Concat(n.stalls, [][2]int64{{fencedAt, math.MaxInt64}})
 	*n = node{
 		idx: n.idx, id: id, disk: disk, addrs: n.addrs, wake: n.wake, gen: n.gen, joins: true, since: s.now(),
 		stalls: stalls, reloads: n.reloads, fromLog: n.fromLog, catchUp: max(s.applied, 1), catchUpWin: len(stalls) - 1,
