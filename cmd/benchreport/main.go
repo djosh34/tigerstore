@@ -83,10 +83,15 @@ type result struct {
 	DiskBytesPerOp       float64   `json:"disk_bytes_per_op"`
 	MinWrittenBytesPerOp float64   `json:"min_written_bytes_per_op"`
 	RampClimbing         bool      `json:"ramp_climbing"`
-	PerOp                perOp     `json:"per_op"`
-	Keys                 int       `json:"keys"`
-	ValueSize            int       `json:"value_size"`
-	K8s                  *struct {
+	// Ramp's steps; RanOut marks one in which a k8s copy reached the end
+	// of its recording, which ended the ramp (cmd/loadgen's ramped).
+	Ramp []struct {
+		RanOut bool `json:"ran_out"`
+	} `json:"ramp"`
+	PerOp     perOp `json:"per_op"`
+	Keys      int   `json:"keys"`
+	ValueSize int   `json:"value_size"`
+	K8s       *struct {
 		Shape     string `json:"shape"`
 		Copies    int    `json:"copies"`
 		ItemBytes int64  `json:"item_bytes"`
@@ -427,6 +432,26 @@ func report(w io.Writer, dir, traces string, nz noise) error {
 	})
 	if len(climbing) > 0 {
 		p("\nMax runs whose throughput still climbed at the last step of the ramp, so the requests in flight may have limited them:\n\n%s", strings.Join(climbing, ""))
+	}
+	var ranOut []string
+	each(func(rtt, bench, target, mode string, rs runs) {
+		n := 0
+		for _, r := range rs {
+			if slices.ContainsFunc(r.Ramp, func(s struct {
+				RanOut bool `json:"ran_out"`
+			},
+			) bool {
+				return s.RanOut
+			}) {
+				n++
+			}
+		}
+		if n > 0 {
+			ranOut = append(ranOut, fmt.Sprintf("- RTT %s ms, %s, %s %s: %d of %d runs\n", rtt, bench, target, mode, n, len(rs)))
+		}
+	})
+	if len(ranOut) > 0 {
+		p("\nMax runs whose ramp ended at a step in which a copy ran out of its recording: that step counts for nothing, and the max is the best step before, so it may understate the store:\n\n%s", strings.Join(ranOut, ""))
 	}
 	maxOf := func(rtt, bench, target string) runs { return all[key{rtt, bench, target, "max"}] }
 	shapes(w, rtts, benches, targets, maxOf)
