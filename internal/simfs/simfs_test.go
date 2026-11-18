@@ -194,8 +194,9 @@ func TestCrashImages(t *testing.T) {
 				}
 			case simfs.Sectors, simfs.Pages:
 				// Any piece may be kept.
-			case simfs.Unwritten:
-				// Not among those drawn here (TestUnwrittenImage).
+			case simfs.Unwritten, simfs.Lost:
+				// Not among those drawn here (TestUnwrittenImage,
+				// TestLostImage).
 			}
 			reordered = reordered || kept['a'] == 0 && kept['b'] > 0
 			torn = torn || kept['b'] > 0 && kept['b'] < 5000
@@ -489,6 +490,50 @@ func TestUnwrittenImage(t *testing.T) {
 	want := append(bytes.Repeat([]byte{1}, 10), make([]byte, 10)...)
 	if !bytes.Equal(got, want) {
 		t.Fatalf("after the crash the file holds %v, want %v", got, want)
+	}
+}
+
+// TestLostImage checks that the Lost crash image keeps a file as it was
+// synced: writes since into space formatted with zeros, as a log ring's
+// segments are, read as zeros again. PendingOverZeros says which writes
+// those are: past the bytes the file held, or the same bytes again, and
+// not over bytes it held, nor past its synced size.
+func TestLostImage(t *testing.T) {
+	d := simfs.New()
+	f := create(t, d, "r")
+	write(t, f, append(bytes.Repeat([]byte{1}, 10), make([]byte, 30)...))
+	ok(t, f.Sync())
+	ok(t, d.SyncDir())
+	if d.PendingOverZeros("r") {
+		t.Fatal("a file with no writes since its sync has some over zeros")
+	}
+	// The block from its start again: the same bytes, then new ones over
+	// the format's zeros.
+	if _, err := f.WriteAt(append(bytes.Repeat([]byte{1}, 10), bytes.Repeat([]byte{2}, 15)...), 0); err != nil {
+		t.Fatal(err)
+	}
+	if !d.PendingOverZeros("r") {
+		t.Fatal("writes over the format's zeros are not over zeros")
+	}
+	d.CrashImage(rand.New(rand.NewPCG(1, 2)), simfs.Lost)
+	g := open(t, d, "r")
+	got, err := g.ReadAll()
+	ok(t, err)
+	if want := append(bytes.Repeat([]byte{1}, 10), make([]byte, 30)...); !bytes.Equal(got, want) {
+		t.Fatalf("after the crash the file holds %v, want %v", got, want)
+	}
+	if _, err := g.WriteAt([]byte{3}, 5); err != nil {
+		t.Fatal(err)
+	}
+	if d.PendingOverZeros("r") {
+		t.Fatal("a write over bytes the file held is over zeros")
+	}
+	ok(t, g.Sync())
+	if _, err := g.WriteAt([]byte{3, 3}, 39); err != nil {
+		t.Fatal(err)
+	}
+	if d.PendingOverZeros("r") {
+		t.Fatal("a write past the synced size is over zeros")
 	}
 }
 

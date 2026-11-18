@@ -360,10 +360,15 @@ const (
 	// it completes, and a crash may keep the new size without that
 	// conversion. Crash never draws it.
 	Unwritten
+	// Lost keeps none of the writes: the file reads as it did when it was
+	// last synced, as after writes that never reached the medium. Over the
+	// zeros a file was formatted with, as a log ring's segments are, they
+	// read as zeros. Crash never draws it.
+	Lost
 )
 
 func (img Image) String() string {
-	return [...]string{"prefix", "whole writes", "sectors", "pages", "unwritten"}[img]
+	return [...]string{"prefix", "whole writes", "sectors", "pages", "unwritten", "lost"}[img]
 }
 
 // Crash drops what was not made durable, as a power loss does, keeping a
@@ -441,6 +446,9 @@ func (f *file) survive(rng *rand.Rand, img Image, c *Counts) pages {
 	kept := f.durable
 	f.durable = pages{}
 	if f.cut || len(f.pending) == 0 {
+		return kept
+	}
+	if img == Lost {
 		return kept
 	}
 	if img == Unwritten {
@@ -1389,6 +1397,36 @@ func (h *Handle) Close() error {
 func (d *Disk) Unsynced(name string) bool {
 	f, ok := d.names[name]
 	return ok && (len(f.pending) > 0 || f.cut)
+}
+
+// PendingOverZeros reports whether file name has writes since its last
+// sync, all within its synced size, each byte of which is the synced byte
+// under it or lies over a zero: writes into space formatted with zeros,
+// past what the file held, as a log ring's are, and the bytes before them
+// in the block written again as they were.
+func (d *Disk) PendingOverZeros(name string) bool {
+	f, ok := d.names[name]
+	if !ok || len(f.pending) == 0 {
+		return false
+	}
+	var over []byte
+	changed := false
+	for _, w := range f.pending {
+		if w.off+len(w.p) > f.durable.size {
+			return false
+		}
+		over = append(over[:0], make([]byte, len(w.p))...)
+		f.durable.read(over, w.off)
+		for i, c := range w.p {
+			if c != over[i] {
+				if over[i] != 0 {
+					return false
+				}
+				changed = true
+			}
+		}
+	}
+	return changed
 }
 
 // Grown reports whether a write to file name since its last sync

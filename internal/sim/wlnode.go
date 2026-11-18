@@ -635,20 +635,30 @@ func (s *Sim) callWL(p *proc, req proto.Message, ctx context.Context) (proto.Mes
 // must recover every entry it reported durable, and none past the last it
 // handed its log (wlHooks.Recovered), and each entry it applies is checked
 // against the other nodes' (wlHooks.Applied). With Config.stageUnwritten
-// the crash waits for a write that grows segment name, and the image keeps
-// that growth with zeros past what was synced (simfs.Unwritten), as ext4
-// may leave blocks allocated ahead (wal.go's makeSegment). It reports
-// whether it crashed n. The lock is held.
+// the crash waits for a write that leaves zeros past what was synced: one
+// that grows segment name, whose growth the image keeps with zeros
+// (simfs.Unwritten), as ext4 may leave blocks allocated ahead (wal.go's
+// makeSegment); or, in a log ring's segment formatted with zeros, one
+// over zeros that the image loses (simfs.Lost). It reports whether it
+// crashed n. The lock is held.
 func (s *Sim) wlStageCrash(n *node, name string) bool {
 	if s.stats.StageCrashes > 0 || s.healed || s.now() < 2*Second || n.proc == nil || n.appended <= n.floor() {
 		return false
 	}
-	if s.cfg.stageUnwritten && !n.disk.Grown(name) {
-		return false
-	}
 	img := simfs.Sectors
 	if s.cfg.stageUnwritten {
-		img = simfs.Unwritten
+		switch {
+		case n.disk.Grown(name):
+			img = simfs.Unwritten
+		case n.disk.PendingOverZeros(name):
+			// A log ring's segment, formatted with zeros: the write never
+			// reaches the medium, and its space reads as the format's
+			// zeros past the last record and mark synced (#751's CI).
+			img = simfs.Lost
+		default:
+			return false
+		}
+		s.stats.StageZeroed++
 	}
 	s.stats.StageCrashes++
 	s.stats.Crashes++

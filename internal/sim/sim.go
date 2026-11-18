@@ -673,6 +673,9 @@ type Stats struct {
 	// their log (Config.stageCrash), and StageRecoveries the starts that
 	// recovered after one within its bounds.
 	StageCrashes, StageRecoveries int
+	// StageZeroed counts the stage crashes that left zeros past what the
+	// log synced (Config.stageUnwritten).
+	StageZeroed int
 	// CkptCrashes counts the crashes of wl nodes partway through a
 	// checkpoint (Config.ckptCrash).
 	CkptCrashes int
