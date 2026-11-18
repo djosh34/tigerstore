@@ -22,12 +22,11 @@ import (
 // and the values' sizes.
 
 // The kinds of load a scenario draws, in percent: the small keys of
-// client.go, the Kubernetes-shaped load of kube.go, and the membership
-// work (membership.go) beside the small keys.
+// client.go (60), the Kubernetes-shaped load of kube.go (28), and the
+// membership work (membership.go) beside the small keys (the rest).
 const (
 	scenarioSmall      = 60
 	scenarioKubernetes = scenarioSmall + 28
-	scenarioMembership = 100 - scenarioKubernetes
 )
 
 // scenarioLoseQuorum is the percentage of the scenarios with faults and
@@ -54,6 +53,15 @@ var scenarioDelays = []weighted[int64]{
 // scenarioCatchups are the applied entries the nodes keep for followers
 // that lag, from the simulator's tiny window to wl's production one.
 var scenarioCatchups = []weighted[uint64]{{wlCatchup, 4}, {1000, 2}, {100_000, 2}}
+
+// scenarioDiskBudgets are the nodes' disk budgets, which size the log's
+// ring and how much log comes between checkpoints (wlnode.go), from
+// DefaultConfig's tiny one to 16 MiB.
+var scenarioDiskBudgets = []weighted[int64]{{32 << 10, 4}, {1 << 20, 2}, {16 << 20, 1}}
+
+// scenarioChunkKeys are the most keys a checkpoint writes in one write,
+// from a few to wl's 4,096 (0).
+var scenarioChunkKeys = []weighted[int]{{0, 2}, {16, 1}, {256, 1}}
 
 // weighted is a choice and its weight.
 type weighted[T any] struct {
@@ -140,6 +148,13 @@ func Scenario(seed uint64) Config {
 		cfg.MemoryBytes = logUniform(rng, 256<<20, 4<<30)
 	}
 	cfg.Catchup = pick(rng, scenarioCatchups)
+	// The small keys' runs with a disk budget draw it, with room for
+	// their values; the Kubernetes load sizes its own (kubeConfig).
+	if cfg.Objects == 0 && cfg.Faults.DiskBudget > 0 {
+		cfg.Faults.DiskBudget = max(pick(rng, scenarioDiskBudgets), 64*int64(cfg.ValueBytes))
+		cfg.Faults.DiskCapacity = int(4 * cfg.Faults.DiskBudget)
+	}
+	cfg.ckptChunkKeys = pick(rng, scenarioChunkKeys)
 	// An operator replaces a node fenced for good, but in the membership
 	// work's runs, which damage no disk, and in the few that lose their
 	// quorum for good.
@@ -173,9 +188,9 @@ func (c Config) kind() string {
 
 // describe is one line of what a scenario drew.
 func (c Config) describe() string {
-	return fmt.Sprintf("%s on %d voters, %d clients (%d clientv3), %s of faults, crashes every %s, waves %v, link delays up to %s, memory budget %d, catch-up %d entries, values of %d bytes",
+	return fmt.Sprintf("%s on %d voters, %d clients (%d clientv3), %s of faults, crashes every %s, waves %v, link delays up to %s, memory budget %d, disk budget %d, catch-up %d entries, checkpoint chunks of %d keys, values of %d bytes",
 		c.kind(), c.voters(), c.Clients+c.V3Clients, c.V3Clients, seconds(c.Duration), seconds(c.Faults.CrashEvery),
-		c.Waves, seconds(cmp.Or(c.LinkDelay, 2*Millisecond)), c.MemoryBytes, cmp.Or(c.Catchup, wlCatchup), c.ValueBytes)
+		c.Waves, seconds(cmp.Or(c.LinkDelay, 2*Millisecond)), c.MemoryBytes, c.Faults.DiskBudget, cmp.Or(c.Catchup, wlCatchup), c.ckptChunkKeys, c.ValueBytes)
 }
 
 // TestScenarios runs $SIM_SEEDS fresh scenarios (Scenario) from $SIM_SEED
@@ -198,6 +213,9 @@ func TestScenarios(t *testing.T) {
 		return scenarioRun{Kind: cfg.kind(), Nodes: cfg.voters(), Stats: st}
 	}, func(_ uint64, r scenarioRun) bool {
 		ran[fmt.Sprintf("%s on %d voters", r.Kind, r.Nodes)]++
+		if r.Stats.QuorumLostAt > 0 {
+			ran["quorum lost for good"]++
+		}
 		if r.Kind == "membership" {
 			ran["membership work completed"] += min(r.Stats.MembershipChanges[3], 1)
 		}

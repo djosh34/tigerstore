@@ -642,7 +642,7 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 	// A cluster of one voter cannot lose its disk: its cold restart
 	// erases none (-1).
 	erasures := []int{-1}
-	if s.spare() > 0 {
+	if s.tolerance() > 0 {
 		erasures = erasures[:0]
 		for i := range all[0].disks {
 			erasures = append(erasures, i)

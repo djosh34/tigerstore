@@ -465,6 +465,11 @@ type node struct {
 	// operator replaces it (replace), after which it joins the cluster
 	// as a new member.
 	corrupted, fenced, joins bool
+	// catchUp, for a member an operator added in a fenced node's place,
+	// is the entry it must apply before the end of stalls[catchUpWin] is
+	// set, 0 once it did.
+	catchUp    uint64
+	catchUpWin int
 	// inactive is a member not yet added, or a process stopped because
 	// it was removed. Cold recovery must still read that process's disk.
 	inactive bool
@@ -597,8 +602,10 @@ type Sim struct {
 	// run from an empty store.
 	startRev int64
 	// quorumLostAt is when a majority of the voters was fenced for good
-	// (Config.LoseQuorum), 0 while a quorum stays.
+	// (Config.LoseQuorum), 0 while a quorum stays, and lossCommit the
+	// highest commit index a node knew then.
 	quorumLostAt int64
+	lossCommit   uint64
 	// lagged is LagAtEnd's follower, whose links are down until the end.
 	lagged *node
 	// downFor is how long HoldDown keeps its follower down.
@@ -2096,14 +2103,17 @@ func (n *node) mayBeDamaged() bool { return n.corrupted || n.tornCrash }
 
 // spare is how many voters may be out of the cluster for good while a
 // quorum of its voters stays whole: one of three, two of five, none of
-// one. With Config.LoseQuorum, it is one more: a majority.
+// one (tolerance). With Config.LoseQuorum, it is one more: a majority.
 func (s *Sim) spare() int {
-	k := (s.cfg.voters() - 1) / 2
+	k := s.tolerance()
 	if s.cfg.LoseQuorum {
 		k++
 	}
 	return k
 }
+
+// tolerance is how many voters the cluster can lose with a quorum left.
+func (s *Sim) tolerance() int { return (s.cfg.voters() - 1) / 2 }
 
 // count is the number of nodes for which f holds. The lock is held.
 func (s *Sim) count(f func(*node) bool) int {

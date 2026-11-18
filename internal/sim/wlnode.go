@@ -294,6 +294,12 @@ func (h *wlHooks) Applied(e *raftpb.Entry, hash uint64, state func() uint64) {
 		return
 	}
 	p.wl.applied = e.GetIndex()
+	if n.catchUp > 0 && e.GetIndex() >= n.catchUp {
+		// A replacing member caught up: the liveness rule holds it once
+		// it had the time to recover (replace).
+		n.stalls[n.catchUpWin][1] = s.now() + max(s.cfg.Faults.MaxDown, Second) + s.cfg.LiveAfter
+		n.catchUp = 0
+	}
 	s.record(n, core.Applied{Index: e.GetIndex(), Term: e.GetTerm(), Type: e.GetType(), Data: e.GetData(), Hash: hash})
 	s.noteRevokes(e)
 	s.applied = max(s.applied, e.GetIndex())
@@ -817,9 +823,17 @@ func (s *Sim) wlRefused(n *node, err error) bool {
 	s.stats.Fenced++
 	s.tracef("node %d: fenced: %v", n.id, err)
 	s.down(n)
-	if s.quorumLostAt == 0 && s.count(func(m *node) bool { return m.fenced }) > (s.cfg.voters()-1)/2 {
+	if s.cfg.LoseQuorum && s.quorumLostAt == 0 && s.count(func(m *node) bool { return m.fenced }) > (s.cfg.voters()-1)/2 {
 		s.quorumLostAt, s.stats.QuorumLostAt = s.now(), s.now()
-		s.tracef("a majority of the voters is fenced for good: the cluster lost its quorum")
+		// Nothing commits from now on: no entry past the highest commit
+		// index any node knows may apply.
+		for _, m := range s.nodes {
+			if m.proc != nil {
+				s.lossCommit = max(s.lossCommit, m.proc.wl.turn.Commit)
+			}
+		}
+		s.lossCommit = max(s.lossCommit, s.applied)
+		s.tracef("a majority of the voters is fenced for good: the cluster lost its quorum, with entries to %d committed", s.lossCommit)
 	}
 	if s.cfg.Faults.Replace && !s.cfg.LoseQuorum {
 		s.wg.Go(func() { s.replace(n) })
