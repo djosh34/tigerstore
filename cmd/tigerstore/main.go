@@ -173,7 +173,7 @@ func start(c *config, lg *zap.Logger) error {
 	// The loop owns the listeners from here on.
 	ok = true
 	logf("memory budget %d bytes (from %s)", budget, from)
-	return runWL(ec, ident, pcfg, ctls, clientLns, budget, lg)
+	return runWL(ec, ident, pcfg, ctls, clientLns, budget, c.own.DiskBudget, c.own.UnsafeLogRing, lg)
 }
 
 // nodeLog returns what the node, its peers and its server log with, and

@@ -444,6 +444,9 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 			n.refuseNoSpace(c, s)
 			return nil
 		}
+		if n.ringRefuses(c, s, msg) {
+			return nil
+		}
 		n.addCaller(c, s)
 		n.addTxn(mkHandle(c, s.id), s, msg)
 	case kPut, kDel, kCompact, kLeaseGrant, kLeaseRevoke:
@@ -456,6 +459,9 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		}
 		if !n.quotaLeft(s.kind, msg) {
 			n.refuseNoSpace(c, s)
+			return nil
+		}
+		if n.ringRefuses(c, s, msg) {
 			return nil
 		}
 		n.addCaller(c, s)

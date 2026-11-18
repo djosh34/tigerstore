@@ -1044,7 +1044,7 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
 	n := &node{idx: i, id: uint64(i + 1), disk: disk, addrs: []string{peerAddr(i)}, wake: make(chan struct{})}
-	disk.Capacity = s.cfg.Faults.DiskCapacity
+	disk.Capacity = s.diskCapacity()
 	if s.pages != nil {
 		disk.KeepIn(s.pages, keepPages)
 	}
@@ -2114,7 +2114,7 @@ func (s *Sim) heal() {
 		s.wakeNode(n)
 		n.disk.ClearFaults()
 		s.remount(n)
-		n.disk.Capacity = s.cfg.Faults.DiskCapacity
+		n.disk.Capacity = s.diskCapacity()
 		if n.proc == nil && !n.fenced {
 			down = append(down, n)
 		}

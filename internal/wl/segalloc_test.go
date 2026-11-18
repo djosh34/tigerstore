@@ -50,14 +50,14 @@ func TestASegmentIsAllocatedAheadOnlyWithRoom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	size, allocated := makeTestSegment(t, dir, 0, allocFree-1)
+	size, allocated := makeTestSegment(t, dir, 0, allocFree()-1)
 	if size != 0 || allocated != 0 {
 		t.Fatalf("with room for just under eight segments a new segment has size %d and %d bytes allocated; want 0 and 0", size, allocated)
 	}
 	if after, err := freeSpaceOf(dir); err != nil || before-after >= segSize/2 {
 		t.Fatalf("a segment made with no room to spare took %d bytes of the file system (%v)", before-after, err)
 	}
-	size, allocated = makeTestSegment(t, dir, 1, allocFree)
+	size, allocated = makeTestSegment(t, dir, 1, allocFree())
 	if size != 0 || allocated < segSize {
 		t.Fatalf("with room for eight segments a new segment has size %d and %d bytes allocated; want 0 and %d", size, allocated, segSize)
 	}

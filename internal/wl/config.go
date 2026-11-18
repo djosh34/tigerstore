@@ -61,6 +61,14 @@ type Config struct {
 	// QuotaBackendBytes is etcd's --quota-backend-bytes: 0 for etcd's
 	// default, below 0 for none.
 	QuotaBackendBytes int64
+	// DiskBudget is --disk-budget-bytes, the most the node's data
+	// directory takes: its log's ring takes half of it, and the
+	// checkpoints the rest. 0 for none: the ring is then the quota's size.
+	// LogRing, if above 0, is the ring's size in bytes in place of either:
+	// tests and the simulator set it small (logring.go); below 0, the log
+	// has no ring.
+	DiskBudget int64
+	LogRing    int64
 	// JWT signs and checks auth tokens (--auth-token jwt,...); nil for
 	// etcd's simple tokens. TokenTTL is --auth-token-ttl, BcryptCost
 	// --bcrypt-cost; 0 for etcd's defaults.

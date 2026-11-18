@@ -78,11 +78,14 @@ const (
 	loadGap   = 4 * time.Millisecond
 	loadBytes = 64 << 10
 
-	recHead       = 4 + 4 + 1
-	entHead       = 8 + 8 + 1
-	walEntHdr     = recHead + entHead
-	recEntry      = 1
-	recHardState  = 2
+	recHead      = 4 + 4 + 1
+	entHead      = 8 + 8 + 1
+	walEntHdr    = recHead + entHead
+	recEntry     = 1
+	recHardState = 2
+	// recSynced, a ring's, says the log is durable before its offset,
+	// its body's 8 bytes (logring.go).
+	recSynced     = 3
 	maxWALRecBody = 1 << 30
 	sector        = 512
 )
@@ -159,6 +162,20 @@ type wal struct {
 	// lastSyncNs is how long the helper's last sync took in its own
 	// writes, which the loop logs when it is slow (node.fsyncDone).
 	lastSyncNs atomic.Int64
+
+	// The ring (logring.go), nil for a log with none: spares are its files
+	// that hold no segment, freed the segments a cut let go of, which the
+	// maker renames to spares (freedCh wakes it); free counts the spares.
+	ring    *ringInfo
+	spares  []string
+	nextSp  int64 // the next spare's number (spareSeq)
+	freed   []int64
+	freedCh chan struct{}
+	free    atomic.Int64
+	zeroBuf []byte
+	// formatted is how long this start took to format the ring, 0 if the
+	// log had one: the node logs it.
+	formatted time.Duration
 }
 
 type walStats struct {
@@ -189,13 +206,43 @@ func segPath(dir string, k int64) string { return filepath.Join(dir, fmt.Sprintf
 // the log before keep is removed, and from keep on it is kept to read.
 // stage is the size of the stage, a power of two (sizes.stage).
 func openWAL(sys sysEnv, dir string, stage int, keep, from int64, fn func(r *walRecord) error) (*wal, error) {
+	return openWALRing(sys, dir, stage, 0, keep, from, fn)
+}
+
+// openWALRing is openWAL with a ring of ring bytes (logring.go), 0 for
+// none: a log with no segment formats it. A log formatted before keeps
+// its ring, and one made without a ring keeps none.
+func openWALRing(sys sysEnv, dir string, stage int, ring, keep, from int64, fn func(r *walRecord) error) (*wal, error) {
 	if err := mkdirSynced(sys, dir); err != nil {
 		return nil, err
+	}
+	info, err := readRing(sys, dir)
+	if err != nil {
+		return nil, err
+	}
+	var formatted time.Duration
+	if info == nil && ring > 0 {
+		has, err := hasSegments(sys, dir)
+		if err != nil {
+			return nil, err
+		}
+		if !has {
+			start := time.Now()
+			if err := formatRing(sys, dir, ringSegs(ring)); err != nil {
+				return nil, fmt.Errorf("format the log's ring: %w", err)
+			}
+			info = &ringInfo{segs: ringSegs(ring), segSize: segSize}
+			formatted = max(time.Since(start), 1)
+		}
+	}
+	if info != nil && info.segSize != segSize {
+		return nil, fmt.Errorf("the log's ring has segments of %d bytes, this build %d", info.segSize, segSize)
 	}
 	end, err := scanWAL(sys, dir, from, fn)
 	if err != nil {
 		return nil, err
 	}
+
 	kick, err := sys.eventfd(false)
 	if err != nil {
 		return nil, err
@@ -207,15 +254,24 @@ func openWAL(sys sysEnv, dir string, stage int, keep, from int64, fn func(r *wal
 	w := &wal{
 		sys: sys, dir: dir, kickFD: kick, wakeFD: wake, made: make(chan segment, 1),
 		stop: make(chan struct{}), madeDone: make(chan struct{}), helperDone: make(chan struct{}),
+		formatted: formatted,
 	}
 	if w.stage, err = mmapBytes(stage); err != nil {
 		return nil, err
 	}
 	w.stageLen = int64(stage)
+	if info != nil {
+		w.ring, w.freedCh = info, make(chan struct{}, 1)
+		if w.spares, err = listSpares(sys, dir); err != nil {
+			return nil, err
+		}
+		w.nextSp = spareSeq(w.spares)
+	}
 	next, err := w.reopen(keep, end)
 	if err != nil {
 		return nil, err
 	}
+	w.free.Store(int64(len(w.spares)))
 	go w.makeSegments(next)
 	go w.helper(end)
 	return w, nil
@@ -223,13 +279,20 @@ func openWAL(sys sysEnv, dir string, stage int, keep, from int64, fn func(r *wal
 
 // reopen readies the log to go on at end: it opens the segments that hold
 // it from offset from to read, and the last one to write from end on, cut
-// there; it removes any segment before from's or after end's, syncs what
-// is left (syncSegments), and puts the last block's bytes before end into
-// the stage, which the helper writes again. It returns the first segment
-// still to make.
+// there; it lets go of any segment before from's or after end's, syncs
+// what is left (syncSegments), and puts the last block's bytes before end
+// into the stage, which the helper writes again. It returns the first
+// segment still to make.
+//
+// A log without a ring removes what it lets go of, and cuts its last
+// segment by truncating it. A ring's space stays written: the segments
+// before from's go back to the pool as they are, as a cut gives them; the
+// last segment gets zeros from end on, and the segments after it zeros in
+// full before they go back, as the records a crash left there lie at
+// offsets the log reaches again (logring.go).
 func (w *wal) reopen(from, end int64) (int64, error) {
 	first, last := from/segSize, end/segSize
-	if err := w.removeSegments(0, first); err != nil {
+	if err := w.letGo(0, first, false); err != nil {
 		return 0, err
 	}
 	w.rbase = first
@@ -246,7 +309,7 @@ func (w *wal) reopen(from, end int64) (int64, error) {
 	}
 	// A crash may have kept some removes of an earlier start and lost
 	// others, so the segments past the end may have gaps (#702).
-	if err := w.removeSegments(last+1, math.MaxInt64); err != nil {
+	if err := w.letGo(last+1, math.MaxInt64, true); err != nil {
 		return 0, err
 	}
 	w.off, w.stable, w.wbase = end, end, last
@@ -254,7 +317,7 @@ func (w *wal) reopen(from, end int64) (int64, error) {
 	w.want.Store(end)
 	path := segPath(w.dir, last)
 	cut := w.rbase+int64(len(w.rfds)) > last
-	if cut {
+	if cut && w.ring == nil {
 		if err := w.sys.truncate(path, end%segSize); err != nil {
 			return 0, err
 		}
@@ -279,7 +342,74 @@ func (w *wal) reopen(from, end int64) (int64, error) {
 	if int64(n) != end-blk {
 		return 0, fmt.Errorf("read the log's last block back from %s: a short read, %d of its %d bytes at %d", path, n, end-blk, blk%segSize)
 	}
+	if w.ring != nil {
+		// The last block again, with zeros past end, and zeros past it to
+		// the segment's end. Offsets here are the segment's own: one past
+		// its last block is its end, not its start.
+		at := blk - last*segSize
+		if end > blk {
+			if _, err := sysPwrite(wfd, w.stage[pos:pos+block], at); err != nil {
+				return 0, fmt.Errorf("write the log's last block again to %s: %w", path, err)
+			}
+			at += block
+		}
+		if at < segSize {
+			if err := w.zeroFrom(path, at); err != nil {
+				return 0, err
+			}
+		}
+	}
 	return last + 1, nil
+}
+
+// letGo lets go of the log's segments from k to before to, those that
+// exist: without a ring it removes them; a ring's go back to its pool,
+// with zeros written over them first if zero.
+func (w *wal) letGo(k, to int64, zero bool) error {
+	if w.ring == nil {
+		return w.removeSegments(k, to)
+	}
+	names, err := w.sys.readDir(w.dir)
+	if err != nil {
+		return err
+	}
+	moved := false
+	for _, name := range names {
+		var i int64
+		if _, err := fmt.Sscanf(name, "%016x.seg", &i); err != nil || i < k || i >= to {
+			continue
+		}
+		path := filepath.Join(w.dir, name)
+		if zero {
+			if err := w.zeroFrom(path, 0); err != nil {
+				return err
+			}
+		}
+		spare := sparePath(w.dir, w.nextSp)
+		w.nextSp++
+		if err := w.sys.rename(path, spare); err != nil {
+			return err
+		}
+		w.spares = append(w.spares, spare)
+		moved = true
+	}
+	if moved {
+		return syncDir(w.sys, w.dir)
+	}
+	return nil
+}
+
+// zeroFrom writes zeros durably over the segment at path from offset off
+// on (logring.go).
+func (w *wal) zeroFrom(path string, off int64) error {
+	if w.zeroBuf == nil {
+		b, err := mmapBytes(int(min(segSize, 4<<20)))
+		if err != nil {
+			return err
+		}
+		w.zeroBuf = b
+	}
+	return writeZeros(w.sys, path, off, w.zeroBuf, false)
 }
 
 // syncSegments makes durable what the scan read and reopen cut, before
@@ -347,9 +477,20 @@ func (w *wal) cut(off int64) []string {
 		} else {
 			_ = sysClose(w.rfds[0])
 		}
-		paths = append(paths, segPath(w.dir, w.rbase))
+		if w.ring != nil {
+			w.freed = append(w.freed, w.rbase)
+		} else {
+			paths = append(paths, segPath(w.dir, w.rbase))
+		}
 		w.rfds = w.rfds[1:]
 		w.rbase++
+	}
+	if len(w.freed) > 0 {
+		// A ring's segments go back to its pool, off the loop (maker).
+		select {
+		case w.freedCh <- struct{}{}:
+		default:
+		}
 	}
 	return paths
 }
@@ -364,7 +505,16 @@ func (w *wal) makeSegments(k int64) {
 	}
 	defer func() { _ = sysClose(dfd) }()
 	for ; ; k++ {
-		sg, err := w.makeSegment(dfd, segPath(w.dir, k))
+		var sg segment
+		var err error
+		if w.ring != nil {
+			sg, err = w.takeSpare(dfd, k)
+		} else {
+			sg, err = w.makeSegment(dfd, segPath(w.dir, k))
+		}
+		if errors.Is(err, errWALClosed) {
+			return
+		}
 		if err != nil {
 			w.hand(segment{err: err})
 			return
@@ -379,14 +529,103 @@ func (w *wal) makeSegments(k int64) {
 	}
 }
 
-// hand gives the helper a segment, unless the log closes first.
+// hand gives the helper a segment, unless the log closes first; a ring's
+// maker meanwhile gives the segments cut back to the pool.
 func (w *wal) hand(sg segment) bool {
-	select {
-	case w.made <- sg:
-		return true
-	case <-w.stop:
-		return false
+	for {
+		select {
+		case w.made <- sg:
+			return true
+		case <-w.freedCh:
+			if err := w.recycle(); err != nil {
+				w.fail(err)
+			}
+		case <-w.stop:
+			return false
+		}
 	}
+}
+
+// takeSpare makes segment k of a ring from a spare, waiting for one while
+// the ring is full: a cut gives some back (logring.go). Only the maker
+// calls it.
+func (w *wal) takeSpare(dfd int, k int64) (segment, error) {
+	for {
+		if err := w.recycle(); err != nil {
+			return segment{}, err
+		}
+		w.mu.Lock()
+		n := len(w.spares)
+		w.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		select {
+		case <-w.freedCh:
+		case <-w.stop:
+			return segment{}, errWALClosed
+		}
+	}
+	w.mu.Lock()
+	spare := w.spares[len(w.spares)-1]
+	w.spares = w.spares[:len(w.spares)-1]
+	w.mu.Unlock()
+	w.free.Add(-1)
+	path := segPath(w.dir, k)
+	if err := w.sys.rename(spare, path); err != nil {
+		return segment{}, err
+	}
+	if err := sysFsync(dfd); err != nil {
+		return segment{}, err
+	}
+	var sg segment
+	var err error
+	if sg.wfd, err = w.sys.openDirect(path); err != nil {
+		return segment{}, err
+	}
+	if sg.rfd, err = w.sys.open(path, unix.O_RDONLY, 0); err != nil {
+		_ = sysClose(sg.wfd)
+		return segment{}, err
+	}
+	return sg, nil
+}
+
+// recycle renames the segments a cut freed to spares, and syncs the
+// directory once for them. Only the maker calls it.
+func (w *wal) recycle() error {
+	w.mu.Lock()
+	freed := w.freed
+	w.freed = nil
+	w.mu.Unlock()
+	if len(freed) == 0 {
+		return nil
+	}
+	spares := make([]string, 0, len(freed))
+	for _, k := range freed {
+		spare := sparePath(w.dir, w.nextSp)
+		w.nextSp++
+		if err := w.sys.rename(segPath(w.dir, k), spare); err != nil {
+			return err
+		}
+		spares = append(spares, spare)
+	}
+	if err := syncDir(w.sys, w.dir); err != nil {
+		return err
+	}
+	w.mu.Lock()
+	w.spares = append(w.spares, spares...)
+	w.mu.Unlock()
+	w.free.Add(int64(len(spares)))
+	return nil
+}
+
+// fail stops the log with err, as the helper does.
+func (w *wal) fail(err error) {
+	err = fmt.Errorf("the log's ring: %w", err)
+	w.failed.CompareAndSwap(nil, &err)
+	var b [8]byte
+	binary.LittleEndian.PutUint64(b[:], 1)
+	_, _ = sysWrite(w.wakeFD, b[:])
 }
 
 var errWALClosed = errors.New("the log is closed")
@@ -422,7 +661,7 @@ func (w *wal) shut() {
 
 // allocFree is the room a disk must have left for a segment's space to be
 // allocated ahead (makeSegment): eight segments.
-const allocFree = 8 * segSize
+func allocFree() int64 { return 8 * segSize }
 
 func (w *wal) makeSegment(dfd int, path string) (segment, error) {
 	fd, err := w.sys.open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL, 0o600)
@@ -454,7 +693,7 @@ func (w *wal) makeSegment(dfd int, path string) (segment, error) {
 	// log (in campaign 43870771307 nodes whose small disks held segments
 	// allocated ahead stopped writing checkpoints with ENOSPC). A file
 	// system without fallocate leaves the segment to grow as before too.
-	if free, err := w.sys.freeSpace(w.dir); err == nil && free >= allocFree {
+	if free, err := w.sys.freeSpace(w.dir); err == nil && free >= allocFree() {
 		if err := w.sys.allocate(sg.wfd, segSize); err == nil {
 			_ = sysFsync(sg.wfd)
 		}
@@ -616,6 +855,9 @@ func (w *wal) kick() {
 	w.deferred = false
 	w.lastKick = now
 	w.stats.syncs++
+	if w.ring != nil {
+		w.appendSynced()
+	}
 	w.lastBytes = w.off - w.want.Load()
 	w.want.Store(w.off)
 	w.inflight = true
@@ -814,6 +1056,10 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 	var buf []byte
 	var r walRecord
 	off := from
+	ring, err := readRing(sys, dir)
+	if err != nil {
+		return 0, err
+	}
 	// Planted bug B04b holds each record back until the next one checks,
 	// and drops the last before a torn tail; lastIndex is for B04c.
 	var held walRecord
@@ -861,7 +1107,12 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 				break
 			}
 			if l > maxWALRecBody || !checks(buf[:recHead+l], off) && !plantedAccepts(buf[:recHead+l], off, lastIndex) {
-				err := damaged(sys, dir, k, short, off, buf)
+				var err error
+				if ring != nil {
+					err = ringDamaged(sys, dir, k, off, buf)
+				} else {
+					err = damaged(sys, dir, k, short, off, buf)
+				}
 				if err == nil && heldOff >= 0 && tornRecord(buf) {
 					// Planted (B04b): the record before a torn tail is
 					// cut too.
@@ -870,6 +1121,13 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 				return off, err
 			}
 			rec := buf[:recHead+l]
+			if rec[8] == recSynced {
+				// A ring's mark of what was durable: recovery's, not the
+				// log's callers' (ringDamaged).
+				off += recHead + l
+				buf = buf[recHead+l:]
+				continue
+			}
 			r = walRecord{off: off + recHead, kind: rec[8], data: rec[recHead:]}
 			if r.kind == recEntry {
 				r.index = binary.LittleEndian.Uint64(rec[9:])
@@ -892,7 +1150,11 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 			break
 		}
 	}
-	if chainAfter(buf, off) {
+	if ring != nil {
+		if err := ringDamaged(sys, dir, math.MaxInt64-1, off, buf); err != nil {
+			return off, err
+		}
+	} else if chainAfter(buf, off) {
 		return off, fmt.Errorf("%w: the log ends in a record at offset %d that runs past its end, but records that check follow its start", ErrCorruptLog, off)
 	}
 	if heldOff >= 0 {
@@ -983,11 +1245,11 @@ func recSeed(off int64) uint32 {
 // the zeros past the log's end from checking: at some offsets, the first
 // 3,141,446,827, the seeded CRC of zeros is itself zero (#749's review).
 func checks(b []byte, off int64) bool {
-	if len(b) < recHead || b[8] != recEntry && b[8] != recHardState {
+	if len(b) < recHead || b[8] != recEntry && b[8] != recHardState && b[8] != recSynced {
 		return false
 	}
 	l := int64(binary.LittleEndian.Uint32(b[4:]))
-	if l > maxWALRecBody || int64(len(b)) < recHead+l || b[8] == recEntry && l < entHead {
+	if l > maxWALRecBody || int64(len(b)) < recHead+l || b[8] == recEntry && l < entHead || b[8] == recSynced && l != 8 {
 		return false
 	}
 	return crc32.Update(recSeed(off), castagnoli, b[4:recHead+l]) == binary.LittleEndian.Uint32(b)

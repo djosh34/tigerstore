@@ -313,7 +313,12 @@ func (n *node) storageApply(m *pb.Message) error {
 // grown enough since the last.
 func (n *node) afterApply() error {
 	s := n.storage
-	if first, _ := s.FirstIndex(); n.applied > first+2*n.catchup {
+	if first, _ := s.FirstIndex(); n.wal.ringLow() {
+		// The ring needs the space more than a follower that lags needs
+		// the entries: that one gets the checkpoint as a snapshot, and
+		// the cut may reach the checkpoint (logring.go).
+		s.compact(n.applied)
+	} else if n.applied > first+2*n.catchup {
 		s.compact(n.applied - n.catchup)
 	}
 	if planted.On("B20") && s.lastIndex() > n.applied+1 {
@@ -330,7 +335,7 @@ func (n *node) afterApply() error {
 // last, or when Raft's storage wants one for a follower.
 func (n *node) maybeCkpt() error {
 	s := n.storage
-	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptLog || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt {
+	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptEvery() || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt && !n.ringDue() {
 		return nil
 	}
 	index := n.applied

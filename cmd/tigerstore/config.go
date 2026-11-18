@@ -78,6 +78,9 @@ type ownFlags struct {
 	UnsafeWindow     int64 `json:"unsafe-window-bytes"`
 	UnsafeCheckpoint int64 `json:"unsafe-checkpoint-bytes"`
 	UnsafeSegment    int64 `json:"unsafe-segment-bytes"`
+	// UnsafeLogRing sizes the log's ring, so that tests format no
+	// gigabytes.
+	UnsafeLogRing int64 `json:"unsafe-log-ring-bytes"`
 }
 
 func newConfig(stderr io.Writer) *config {
@@ -106,6 +109,7 @@ func newConfig(stderr io.Writer) *config {
 	fs.Int64Var(&c.own.UnsafeWindow, "unsafe-window-bytes", 0, "for tests only: bytes of entries kept in memory for followers, twice that while one still needs them (0 means 64 MiB)")
 	fs.Int64Var(&c.own.UnsafeCheckpoint, "unsafe-checkpoint-bytes", 0, "for tests only: bytes of log after which the node cuts a checkpoint (0 means 256 MiB)")
 	fs.Int64Var(&c.own.UnsafeSegment, "unsafe-segment-bytes", 0, "for tests only: bytes after which the log starts a new segment file (0 means 64 MiB)")
+	fs.Int64Var(&c.own.UnsafeLogRing, "unsafe-log-ring-bytes", 0, "for tests only: bytes of the log's ring, formatted when the data directory is made (0 means half the disk budget, else the quota)")
 	return c
 }
 

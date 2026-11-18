@@ -234,7 +234,7 @@ func (s *Sim) diskFull() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if !s.healed {
-			d.Capacity = s.cfg.Faults.DiskCapacity
+			d.Capacity = s.diskCapacity()
 			s.tracef("node %d: disk no longer full", n.id)
 		}
 	})

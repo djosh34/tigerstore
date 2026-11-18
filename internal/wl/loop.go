@@ -207,8 +207,15 @@ func run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	if n.wal, err = openWAL(n.sys, filepath.Join(cfg.DataDir, "wal"), n.sizes.stage, n.ckptCut, from, n.storage.restore); err != nil {
+	if n.wal, err = openWALRing(n.sys, filepath.Join(cfg.DataDir, "wal"), n.sizes.stage, logRing(&cfg), n.ckptCut, from, n.storage.restore); err != nil {
 		return err
+	}
+	if r := n.wal.ring; r != nil {
+		how := "formatted before"
+		if n.wal.formatted > 0 {
+			how = "formatted in " + n.wal.formatted.Round(time.Millisecond).String()
+		}
+		logger.Printf("the log's ring: %d segments of %d bytes, %s", r.segs, r.segSize, how)
 	}
 	// A start that fails from here on stops the goroutines it started:
 	// the log's, the remover's and the node's own client. Left behind, a

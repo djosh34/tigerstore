@@ -101,9 +101,10 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		// A checkpoint, which cuts the log behind it, every DiskBudget of
 		// log, as main's node cleans within it.
 		CheckpointLog: s.cfg.Faults.DiskBudget, CatchupEntries: wlCatchup, CheckpointChunkKeys: s.cfg.ckptChunkKeys,
-		Logger: log.New(&nodeLog{s: s, n: n}, "", 0),
-		Sys:    s.os.NewNode(wlDataDir, &disk{s: s, p: p}, wlNet{s: s, p: p}),
-		Hooks:  &wlHooks{s: s, p: p},
+		LogRing: wlRing,
+		Logger:  log.New(&nodeLog{s: s, n: n}, "", 0),
+		Sys:     s.os.NewNode(wlDataDir, &disk{s: s, p: p}, wlNet{s: s, p: p}),
+		Hooks:   &wlHooks{s: s, p: p},
 	}
 	conn, err := grpc.NewClient(
 		"passthrough:///"+clientAddr(n.idx),
@@ -137,6 +138,20 @@ func (s *Sim) startWL(n *node, p *proc) error {
 // on the run's small disks, and that a follower down for a while catches
 // up from a checkpoint.
 const wlCatchup = 64
+
+// wlRing is the size of a node's log ring (wl's logring.go): six of the
+// simulator's segments of 16 KiB, which a run wraps many times, under
+// crashes that tear writes into reused space.
+const wlRing = 6 * 16 << 10
+
+// diskCapacity is a node's disk's capacity: the faults' DiskCapacity, 0
+// for none, past the log's ring, which the format takes at the start.
+func (s *Sim) diskCapacity() int {
+	if s.cfg.Faults.DiskCapacity == 0 {
+		return 0
+	}
+	return s.cfg.Faults.DiskCapacity + wlRing
+}
 
 // wlDataDir is a wl node's data dir; its disk holds what is under it.
 const wlDataDir = "/data"
