@@ -180,7 +180,11 @@ func TestAFullLogRingRaisesNOSPACE(t *testing.T) {
 		break
 	}
 	if !errors.Is(err, rpctypes.ErrNoSpace) {
-		t.Fatalf("after %d puts and %d refused as busy: %v", puts, busy, err)
+		var states []string
+		for i := range 3 {
+			states = append(states, ringState(loopOf(tc.ids[i])))
+		}
+		t.Fatalf("after %d puts and %d refused as busy: %v; the rings: %s", puts, busy, err, strings.Join(states, "; "))
 	}
 	t.Logf("%d puts of about 1 KiB filled a ring of %d segments of %d bytes; %d were refused while a checkpoint could free it", puts, segs, segSize, busy)
 	for {
@@ -230,6 +234,22 @@ func TestAFullLogRingRaisesNOSPACE(t *testing.T) {
 			t.Fatalf("node %d: a ring of %d segments and %d files, formatted with %d", i+1, r.segs, r.files, segs)
 		}
 	}
+}
+
+// ringState describes a node's ring and checkpoints, for a failure.
+func ringState(l *loop) string {
+	got := make(chan string, 1)
+	l.post(func() error {
+		n := l.n
+		snap := uint64(0)
+		if n.storage.snap != nil {
+			snap = n.storage.snap.GetMetadata().GetIndex()
+		}
+		got <- fmt.Sprintf("node %d: %d segments free, short %v, low %v, due %v, checkpoint running %v, applied %d, newest checkpoint at %d from %d cut %d, log %d to %d",
+			n.id, n.wal.ringFree(), n.wal.ringShort(), n.wal.ringLow(), n.ringDue(), n.ckpt != nil, n.applied, snap, n.ckptFrom, n.ckptCut, n.wal.rbase*segSize, n.wal.off)
+		return nil
+	})
+	return <-got
 }
 
 // walDir is node i's log directory.

@@ -368,20 +368,26 @@ func (w *wal) ringShort() bool {
 }
 
 // ringDue reports whether a checkpoint is due for the ring's sake: it ran
-// low, and a checkpoint would let the cut reach further. A checkpoint's
-// cut reaches the start of the checkpoint before it (cutPoint), so one
-// helps if the newest checkpoint started in a segment past the cut, or if
-// the node applied entries past it, so that the one after can (#751's
-// review). Both are the checkpoints' own places, not the log's: the cut
-// may stay behind them for Raft's storage. Without them, a ring that
-// stays low would checkpoint on end for nothing, and a full one would
-// never answer NOSPACE.
+// low, and a checkpoint can be made that lets the cut reach further. A
+// checkpoint's cut reaches the start of the checkpoint before it
+// (cutPoint), so the next one helps once the node applied entries past
+// the newest: it is at a new index, and the newest's start is its cut's.
+// Without that, a ring that stays low would checkpoint on end for
+// nothing, and a full one would never answer NOSPACE (#751's review).
+//
+// It is never due for a checkpoint that cannot be made: one at the
+// newest's own index, which Raft's storage no longer holds while the ring
+// is low (maybeCkpt finds no place for it) and whose file the newest is.
+// It was, when the newest started a segment past its cut: every write was
+// refused as too many requests for good, and NOSPACE never came (#751's
+// coverage run). With nothing applied since, the ring answers NOSPACE,
+// and the alarm, once it applies, lets the next checkpoint free it.
 func (n *node) ringDue() bool {
 	if !n.wal.ringLow() {
 		return false
 	}
 	snap := n.storage.snap
-	return snap == nil || n.applied > snap.GetMetadata().GetIndex() || n.ckptFrom/segSize > n.ckptCut/segSize
+	return snap == nil || n.applied > snap.GetMetadata().GetIndex()
 }
 
 // cutLog lets the log's tail go once a checkpoint is durable or an entry

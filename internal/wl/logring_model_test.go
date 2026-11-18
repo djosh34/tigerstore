@@ -514,3 +514,40 @@ func TestARingIsReadOnlyWithItsSegmentSize(t *testing.T) {
 		t.Fatalf("with another segment size: %v; want it refused", err)
 	}
 }
+
+// A ring is never due for a checkpoint that cannot be made. In #751's
+// coverage run a full ring's newest checkpoint was at the applied index
+// and started a segment past its cut: a checkpoint was due, but the next
+// one would be at that same index, which Raft's storage, compacted to it
+// while the ring is low, no longer places (maybeCkpt makes none), so every
+// write was refused as too many requests for good and NOSPACE never came.
+// Once an entry applies past the newest, one is due again.
+func TestARingIsNeverDueForACheckpointItCannotMake(t *testing.T) {
+	was := segSize
+	segSize = 16 << 10
+	t.Cleanup(func() { segSize = was })
+	const segs = 8
+	w, err := openWALRing(sysEnv{}, t.TempDir(), 64<<10, segs*(16<<10), 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	// The log holds all but one segment: the ring is low and short.
+	w.off = (segs - 1) * segSize
+	if !w.ringLow() || !w.ringShort() {
+		t.Fatalf("a ring with %d of %d segments free is not low and short", w.ringFree(), segs)
+	}
+	n := &node{wal: w, storage: newLogStorage(nil), applied: 40, ckptFrom: 3*segSize + 100, ckptCut: segSize}
+	n.storage.snap = &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(40)), Term: new(uint64(2))}}
+	n.storage.compact(n.applied)
+	if n.ringDue() {
+		t.Fatal("a checkpoint is due at the newest checkpoint's own index, which none can be made at")
+	}
+	if off := n.storage.offOf(n.applied); off >= 0 {
+		t.Fatalf("Raft's storage places index %d at %d; the test needs it compacted", n.applied, off)
+	}
+	n.applied++
+	if !n.ringDue() {
+		t.Fatal("no checkpoint is due once an entry applied past the newest")
+	}
+}
