@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	pb "go.etcd.io/raft/v3/raftpb"
 )
@@ -181,9 +182,10 @@ func runLogRingModel(t *testing.T, seed uint64) {
 		if !w.fits(ents) {
 			t.Fatalf("seed %d, step %d: the stage holds no more", seed, step)
 		}
-		// What the sync's blocks held before it, for a crash to tear.
+		// What the sync's blocks held before it, for a crash to tear: its
+		// entries, its mark (appendSynced) and the rest of its last block.
 		from := w.done.Load() &^ (block - 1)
-		before := readRingRange(dir, from, w.off+walRecSize(ents))
+		before := readRingRange(dir, from, (w.off+walRecSize(ents)+recHead+8+block-1)&^(block-1))
 		if err := w.write(ents, nil); err != nil {
 			t.Fatal(err)
 		}
@@ -426,5 +428,53 @@ func TestARingTooSmallForItsBudgetIsRefused(t *testing.T) {
 		if !c.bad && logRing(&c.cfg) > 0 && ringSegs(logRing(&c.cfg))*segSize > max(c.cfg.LogRing, c.cfg.DiskBudget/2) {
 			t.Errorf("%s: a ring of %d segments takes more than it was given", c.name, ringSegs(logRing(&c.cfg)))
 		}
+	}
+}
+
+// A ring's log that goes idle syncs a mark alone, which claims the last
+// sync's records: damage to them is then found, not cut as a crash's torn
+// sync. On seed 7 of TestSeeds a flipped hard state, the last sync's, was
+// cut so, and the node's vote with it (#751's CI). The mark is synced
+// once: the log idle with its records claimed syncs nothing more.
+func TestAnIdleRingClaimsItsLastSync(t *testing.T) {
+	was := segSize
+	segSize = 16 << 10
+	t.Cleanup(func() { segSize = was })
+	dir := t.TempDir()
+	w, err := openWALRing(sysEnv{}, dir, 64<<10, 8*(16<<10), 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.write([]*pb.Entry{testEntry(1, 1, "one"), testEntry(2, 1, "two")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	second := w.offs[1] - walEntHdr
+	// Idle: nothing waits for a sync.
+	w.lastKick = time.Time{}
+	w.kick()
+	if !w.inflight {
+		t.Fatal("an idle ring with its last sync unclaimed synced no mark")
+	}
+	for w.done.Load() < w.off {
+		time.Sleep(time.Millisecond)
+	}
+	w.inflight = false
+	w.kick()
+	if w.inflight {
+		t.Fatal("an idle ring with its records claimed synced again")
+	}
+	w.close()
+	path := segPath(dir, 0)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b[second+walEntHdr] ^= 1
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if end, err := scanWAL(sysEnv{}, dir, 0, nil); !errors.Is(err, ErrCorruptLog) {
+		t.Fatalf("a flipped entry of the last sync, claimed by the idle mark: the scan ends at %d, %v; want ErrCorruptLog", end, err)
 	}
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/logq"
 	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/node"
+	"github.com/djosh34/tigerstore/internal/wl"
 )
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
@@ -173,6 +174,11 @@ func start(c *config, lg *zap.Logger) error {
 	// The loop owns the listeners from here on.
 	ok = true
 	logf("memory budget %d bytes (from %s)", budget, from)
+	if c.own.UnsafeSegment > 0 {
+		if err := wl.SetSegmentSize(c.own.UnsafeSegment); err != nil {
+			return err
+		}
+	}
 	return runWL(ec, ident, pcfg, ctls, clientLns, budget, c.own.DiskBudget, c.own.UnsafeLogRing, lg)
 }
 

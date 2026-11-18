@@ -418,7 +418,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 // checkpoint once the last chunk is written.
 func (n *node) ckptStep(block bool) error {
 	r := n.ckpt
-	if r == nil {
+	if r == nil || ckptHold.Load() {
 		return nil
 	}
 	for r.sent > 0 {
@@ -610,6 +610,10 @@ func (n *node) ckptDone() error {
 	n.storage.snap = &pb.Snapshot{
 		Data:     []byte(r.w.name),
 		Metadata: &pb.SnapshotMetadata{Index: new(r.meta.index), Term: new(r.meta.term), ConfState: r.meta.cs},
+	}
+	if n.wal != nil && n.wal.ring != nil {
+		// A ring's segments go back at once (logring.go).
+		n.cutLog()
 	}
 	n.st.release()
 	n.startClientSnaps(r.snapWaiters, r.w.name, r.meta)

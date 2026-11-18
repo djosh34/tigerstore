@@ -313,21 +313,14 @@ func (n *node) storageApply(m *pb.Message) error {
 // grown enough since the last.
 func (n *node) afterApply() error {
 	s := n.storage
-	if first, _ := s.FirstIndex(); n.wal.ringLow() {
-		// The ring needs the space more than a follower that lags needs
-		// the entries: that one gets the checkpoint as a snapshot, and
-		// the cut may reach the checkpoint (logring.go).
-		s.compact(n.applied)
-	} else if n.applied > first+2*n.catchup {
+	if first, _ := s.FirstIndex(); !n.wal.ringLow() && n.applied > first+2*n.catchup {
 		s.compact(n.applied - n.catchup)
 	}
 	if planted.On("B20") && s.lastIndex() > n.applied+1 {
 		// Planted: an entry not yet applied leaves memory.
 		s.drop(n.applied + 1)
 	}
-	if s.snap != nil {
-		n.removeAll(n.wal.cut(min(n.ckptCut, s.firstRecord(n.wal.off))))
-	}
+	n.cutLog()
 	return n.maybeCkpt()
 }
 

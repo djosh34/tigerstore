@@ -292,7 +292,8 @@ func fdLimit() uint64 {
 func procFile(path string) ([]byte, error) { return os.ReadFile(path) }
 
 // segSize is the size of a segment of the log (wal.go); tests that wrap a
-// ring set it smaller, so that they never write gigabytes.
+// ring set it smaller, so that they never write gigabytes. Such tests
+// change it for the whole package, so none of them may run in parallel.
 var segSize int64 = 64 << 20
 
 // The room the store's tables reserve: address space mapped with

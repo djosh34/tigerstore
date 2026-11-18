@@ -48,11 +48,13 @@ import (
 // eventfd, and the append's responses are stepped once it is durable.
 //
 // Offsets in the log grow without end. Offset o lies in segment
-// o/segSize, a file of its own that each write grows: nothing in the log
-// is ever overwritten. The store names values by their log offset, and
-// reads an old or let-go value back from the stage while it may not be
-// on disk, else from its segment. Once a checkpoint holds what the
-// segments before it held, they are removed (cut).
+// o/segSize, a file of its own. Without a ring each write grows it and
+// nothing in the log is overwritten; with one, the segment is a file of
+// the ring's reused in place (logring.go). The store names values by
+// their log offset, and reads an old or let-go value back from the stage
+// while it may not be on disk, else from its segment. Once a checkpoint
+// holds what the segments before it held, they are cut: removed, or a
+// ring's given back to its pool.
 //
 // A record is [4 crc32c][4 body length][1 kind], then the body; the crc
 // covers everything after it, seeded by the record's offset in the log
@@ -176,6 +178,11 @@ type wal struct {
 	// formatted is how long this start took to format the ring, 0 if the
 	// log had one: the node logs it.
 	formatted time.Duration
+	// dataEnd is where the log's last record but a sync's mark ends, and
+	// claimed what the newest mark says is durable (appendSynced): a ring
+	// syncs a mark alone once the log goes idle with its last records
+	// unclaimed (kickMark).
+	dataEnd, claimed int64
 }
 
 type walStats struct {
@@ -844,7 +851,11 @@ func (w *wal) plantedUnsyncedWrite(from, n, pos int64) error {
 // gap(): under load each sync takes more appends, and the loop wakes for
 // fewer completions, so its turns and the acks they send grow.
 func (w *wal) kick() {
-	if w.inflight || len(w.pending) == 0 {
+	if w.inflight {
+		return
+	}
+	if len(w.pending) == 0 {
+		w.kickMark()
 		return
 	}
 	now := time.Now()
@@ -943,6 +954,7 @@ func (w *wal) write(ents []*pb.Entry, hs []byte) error {
 			w.stats.bytes += uint64(k)
 		}
 	}
+	w.dataEnd = w.off
 	// The helper writes whole blocks: the rest of the last one is zeros,
 	// never what the stage held a lap ago, which a scan would take for
 	// records.

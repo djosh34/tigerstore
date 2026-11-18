@@ -73,8 +73,10 @@ const memberRetry = 20 * time.Second
 // nodeArgs are the arguments every node gets under -env: sizes small
 // enough that a follower stopped for a few seconds falls behind the
 // window and needs a snapshot, and checkpoints and segment removal come
-// often.
-var nodeArgs = []string{"--unsafe-window-bytes", "16384", "--unsafe-checkpoint-bytes", "65536", "--unsafe-segment-bytes", "32768"}
+// often; and a log ring of 128 segments of 32 KiB, which the node's small
+// disk holds with room left for checkpoints to fill (#751's CI: a ring of
+// 512 MiB did not fit its 512 MiB disk).
+var nodeArgs = []string{"--unsafe-window-bytes", "16384", "--unsafe-checkpoint-bytes", "65536", "--unsafe-segment-bytes", "32768", "--unsafe-log-ring-bytes", "4194304"}
 
 // environment is what -env adds to a run.
 type environment struct {

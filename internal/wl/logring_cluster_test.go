@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -142,17 +143,18 @@ func TestALogRingWrapsUnderLoadWithCompaction(t *testing.T) {
 
 // A full ring with nothing to reclaim raises NOSPACE, as etcd's full disk
 // does, and neither grows past what it was formatted with nor stops the
-// node (#602's ruling, condition 1). Node 1's ring is put in the state
-// the log since its newest checkpoint's start leaves it in once it fills
-// it: no spare left, no checkpoint running, and none due, the log not
-// grown since the newest one started. A put to it is refused with NOSPACE
-// and the alarm goes up; while it is up, writes are refused and reads go
-// on, and the ring keeps its files; once its spares are back and the alarm
-// disarmed, puts are taken again.
+// node (#602's ruling, condition 1). The ring fills under real writes and
+// real checkpoints; ringHoldCut keeps the log's cut where it is, as a log
+// that no checkpoint can free. Writes are refused as too many requests
+// while a checkpoint that could free the tail runs or is due; once none
+// can, a put gets NOSPACE and the alarm goes up. While it is up, writes
+// are refused and reads go on, and every ring keeps its files; once the
+// cut may go on and the alarm is disarmed, puts are taken again.
 func TestAFullLogRingRaisesNOSPACE(t *testing.T) {
 	was := segSize
 	segSize = 64 << 10
-	t.Cleanup(func() { segSize = was })
+	ringHoldCut.Store(true)
+	t.Cleanup(func() { segSize = was; ringHoldCut.Store(false) })
 	const segs = 8
 	loopOf := watchLoops(t)
 	tc := newTestClusterWith(t, func(tc *testCluster) { tc.logRing = segs * segSize })
@@ -162,33 +164,28 @@ func TestAFullLogRingRaisesNOSPACE(t *testing.T) {
 	if _, err := c.Put(ctx, "/full/before", "x"); err != nil {
 		t.Fatal(err)
 	}
-	l := loopOf(tc.ids[0])
-	var took int64
+	value := strings.Repeat("v", 900)
+	var err error
+	puts, busy := 0, 0
 	for {
-		got := make(chan int64, 1)
-		l.post(func() error {
-			n := l.n
-			if n.ckpt != nil {
-				got <- -1
-				return nil
-			}
-			k := n.wal.free.Load()
-			n.wal.free.Add(-k)
-			n.ckptFrom = n.wal.off
-			got <- k
-			return nil
-		})
-		if took = <-got; took >= 0 {
-			break
+		if _, err = c.Put(ctx, fmt.Sprintf("/full/%04d", puts%256), value); err == nil {
+			puts++
+			continue
 		}
-		time.Sleep(10 * time.Millisecond)
+		if errors.Is(err, rpctypes.ErrTooManyRequests) {
+			busy++
+			time.Sleep(5 * time.Millisecond)
+			continue
+		}
+		break
 	}
-	if _, err := c.Put(ctx, "/full/k", "x"); !errors.Is(err, rpctypes.ErrNoSpace) {
-		t.Fatalf("a put to a full ring: %v", err)
+	if !errors.Is(err, rpctypes.ErrNoSpace) {
+		t.Fatalf("after %d puts and %d refused as busy: %v", puts, busy, err)
 	}
+	t.Logf("%d puts of about 1 KiB filled a ring of %d segments of %d bytes; %d were refused while a checkpoint could free it", puts, segs, segSize, busy)
 	for {
 		alarms, err := c.AlarmList(ctx)
-		if err == nil && len(alarms.Alarms) == 1 && alarms.Alarms[0].Alarm == pb.AlarmType_NOSPACE && alarms.Alarms[0].MemberID == tc.ids[0] {
+		if err == nil && slices.ContainsFunc(alarms.Alarms, func(a *pb.AlarmMember) bool { return a.Alarm == pb.AlarmType_NOSPACE }) {
 			break
 		}
 		if ctx.Err() != nil {
@@ -202,20 +199,115 @@ func TestAFullLogRingRaisesNOSPACE(t *testing.T) {
 	if r, err := c.Get(ctx, "/full/before"); err != nil || len(r.Kvs) != 1 {
 		t.Fatalf("a read while NOSPACE is up: %v %v", r, err)
 	}
-	if n := countRingFiles(t, tc.walDir(0)); n != segs {
-		t.Fatalf("the full ring holds %d files, formatted with %d", n, segs)
+	for i := range 3 {
+		if n := countRingFiles(t, tc.walDir(i)); n != segs {
+			t.Fatalf("node %d: the full ring holds %d files, formatted with %d", i+1, n, segs)
+		}
 	}
-	l.post(func() error { l.n.wal.free.Add(took); return nil })
-	if _, err := c.AlarmDisarm(ctx, &clientv3.AlarmMember{MemberID: tc.ids[0], Alarm: pb.AlarmType_NOSPACE}); err != nil {
+	// The cut may go on: the next entry applied lets the tail go.
+	ringHoldCut.Store(false)
+	alarms, err := c.AlarmList(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Put(ctx, "/full/k", "after"); err != nil {
-		t.Fatalf("a put once the ring has its spares back and the alarm is disarmed: %v", err)
+	for _, a := range alarms.Alarms {
+		if _, err := c.AlarmDisarm(ctx, &clientv3.AlarmMember{MemberID: a.MemberID, Alarm: a.Alarm}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if r := seeRing(t, l, tc.walDir(0)); r.segs != segs || r.files != segs {
-		t.Fatalf("a ring of %d segments and %d files, formatted with %d", r.segs, r.files, segs)
+	for {
+		_, err := c.Put(ctx, "/full/k", "after")
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, rpctypes.ErrTooManyRequests) || ctx.Err() != nil {
+			t.Fatalf("a put once the cut may go on and the alarm is disarmed: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	for i := range 3 {
+		if r := seeRing(t, loopOf(tc.ids[i]), tc.walDir(i)); r.segs != segs || r.files != segs {
+			t.Fatalf("node %d: a ring of %d segments and %d files, formatted with %d", i+1, r.segs, r.files, segs)
+		}
 	}
 }
 
 // walDir is node i's log directory.
 func (tc *testCluster) walDir(i int) string { return filepath.Join(tc.dataDir(i), "wal") }
+
+// A ring short under writers frees its tail when a checkpoint ends, not at
+// the next entry applied: while every put is refused, nothing applies, and
+// a ring that waited for an apply stayed short for good (#751's review).
+// The first checkpoint is held (ckptHold) until eight writers on a ring of
+// the fewest segments a sized ring holds are refused as too many requests,
+// then let go: the writers go on, never refused with NOSPACE, the ring
+// wraps three times, and every key's last value reads back.
+func TestAShortLogRingFreesWhenACheckpointEnds(t *testing.T) {
+	was := segSize
+	segSize = 64 << 10
+	t.Cleanup(func() { segSize = was })
+	const segs = ringMinSegs
+	ckptHold.Store(true)
+	t.Cleanup(func() { ckptHold.Store(false) })
+	loopOf := watchLoops(t)
+	tc := newTestClusterWith(t, func(tc *testCluster) { tc.logRing = segs * segSize })
+	c := tc.clientOf(t, tc.endpoints[0])
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	var mu sync.Mutex
+	last := map[string]string{}
+	var busy atomic.Int64
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for w := range 8 {
+		wg.Go(func() {
+			for n := 0; ; n++ {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				key := fmt.Sprintf("/short/%d/%02d", w, n%32)
+				v := fmt.Sprintf("%d/", n) + strings.Repeat("v", 2000)
+				if _, err := c.Put(ctx, key, v); err != nil {
+					if errors.Is(err, rpctypes.ErrTooManyRequests) {
+						busy.Add(1)
+						n--
+						continue
+					}
+					t.Errorf("writer %d: %v", w, err)
+					return
+				}
+				mu.Lock()
+				last[key] = v
+				mu.Unlock()
+			}
+		})
+	}
+	for busy.Load() < 50 && ctx.Err() == nil && !t.Failed() {
+		time.Sleep(10 * time.Millisecond)
+	}
+	ckptHold.Store(false)
+	held := busy.Load()
+	for seeRing(t, loopOf(tc.ids[0]), tc.walDir(0)).off < 3*segs*segSize && ctx.Err() == nil && !t.Failed() {
+		time.Sleep(50 * time.Millisecond)
+	}
+	close(stop)
+	wg.Wait()
+	if ctx.Err() != nil {
+		t.Fatalf("the ring did not wrap three times in time, %d puts refused as busy", busy.Load())
+	}
+	got, err := c.Get(ctx, "/short/", clientv3.WithPrefix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kv := range got.Kvs {
+		if last[string(kv.Key)] != string(kv.Value) {
+			t.Fatalf("%s holds %.12q, its last write was %.12q", kv.Key, kv.Value, last[string(kv.Key)])
+		}
+	}
+	if len(got.Kvs) != len(last) {
+		t.Fatalf("%d keys, %d written", len(got.Kvs), len(last))
+	}
+	t.Logf("%d puts refused as busy while the checkpoint was held, %d in all", held, busy.Load())
+}

@@ -139,10 +139,12 @@ func (s *Sim) startWL(n *node, p *proc) error {
 // up from a checkpoint.
 const wlCatchup = 64
 
-// wlRing is the size of a node's log ring (wl's logring.go): six of the
-// simulator's segments of 16 KiB, which a run wraps many times, under
-// crashes that tear writes into reused space.
-const wlRing = 6 * 16 << 10
+// wlRing is the size of a node's log ring (wl's logring.go): eight of the
+// simulator's segments of 16 KiB, the fewest a sized ring holds, which a
+// run wraps many times, under crashes that tear writes into reused space.
+// With fewer the ring is low from its first write: every cut is forced,
+// and followers catch up only from checkpoints (#751's review).
+const wlRing = 8 * 16 << 10
 
 // diskCapacity is a node's disk's capacity: the faults' DiskCapacity, 0
 // for none, past the log's ring, which the format takes at the start.

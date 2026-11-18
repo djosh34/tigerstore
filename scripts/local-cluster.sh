@@ -14,6 +14,9 @@
 # plus 2.
 # Stop it with: kill $(cat data/*.pid)
 set -euo pipefail
+# Each node formats a log ring of 512 MiB, not the quota's size: tests
+# format no gigabytes (#602's ruling).
+export ETCD_UNSAFE_LOG_RING_BYTES=${ETCD_UNSAFE_LOG_RING_BYTES:-536870912}
 bin=${TIGERSTORE:-./tigerstore}
 certs=${CERTS:-certs}
 off=${OFFSET:-0}

@@ -2,6 +2,7 @@ package sim
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
@@ -367,7 +368,21 @@ func (s *Sim) flipWLRecord(n *node) bool {
 	if len(recs) < 2 {
 		return false
 	}
-	r := recs[s.rng.IntN(len(recs)-1)]
+	// A ring's log finds damage to a record only once a later sync's mark
+	// claims it durable: before that, it reads as a crash's torn last sync
+	// (wl's logring.go). An idle log syncs a mark alone, so the records no
+	// mark claims are those of the last sync until then.
+	pick := len(recs) - 1
+	if claimed := slices.MaxFunc(recs, func(a, b wl.Record) int { return cmp.Compare(a.Claims, b.Claims) }).Claims; claimed > 0 {
+		pick = 0
+		for pick < len(recs) && recs[pick].Off+recs[pick].Len <= claimed {
+			pick++
+		}
+		if pick == 0 {
+			return false
+		}
+	}
+	r := recs[s.rng.IntN(pick)]
 	// Any byte but the length's, bytes 4 to 7, which says where the next
 	// record starts.
 	at := s.rng.Int64N(r.Len - 4)

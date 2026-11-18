@@ -225,6 +225,9 @@ func (o Op) Message() (any, error) {
 type Record struct {
 	Off, Len int64
 	Kind     byte
+	// Claims, for a ring's sync mark, is where it says the log is durable
+	// before; 0 for any other record.
+	Claims int64
 }
 
 // Records are the records of a log that starts at from, up to the first
@@ -251,7 +254,11 @@ func Records(seg func(k int64) []byte, from int64) []Record {
 	var recs []Record
 	for off := from; checks(b, off); {
 		n := recHead + int64(binary.LittleEndian.Uint32(b[4:]))
-		recs = append(recs, Record{Off: off, Len: n, Kind: b[8]})
+		r := Record{Off: off, Len: n, Kind: b[8]}
+		if r.Kind == recSynced {
+			r.Claims = int64(binary.LittleEndian.Uint64(b[recHead:]))
+		}
+		recs = append(recs, r)
 		off, b = off+n, b[n:]
 	}
 	return recs

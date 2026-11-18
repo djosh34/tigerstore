@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"golang.org/x/sys/unix"
 )
@@ -33,7 +34,11 @@ import (
 //     says the log is durable past it; else it is where a crash tore the
 //     last sync, and the log ends there (ringDamaged). Records an earlier
 //     lap left do not check where the log reads them (wal.go's rule 1), so
-//     they claim nothing.
+//     they claim nothing. A log that goes idle syncs a mark alone
+//     (kickMark), so that the last sync's records are claimed too; damage
+//     to them before that mark is durable, in the time of one small sync
+//     after the last, reads as the torn last sync, and the log ends before
+//     them. The simulator damages only records a mark claims.
 //   - No record a crash left past the end is read again. A start writes
 //     zeros over the last segment from the log's end on, and over every
 //     segment after it before it goes back to the pool: those records lie
@@ -193,9 +198,12 @@ func writeZeros(sys sysEnv, path string, from int64, zeros []byte, create bool) 
 	return sysFsync(fd)
 }
 
-// ringMinSegs is the fewest segments a ring holds: one written, one made
-// ahead, and two left to cut to.
-const ringMinSegs = 4
+// ringMinSegs is the fewest segments a ring sized from a budget or the
+// quota holds: one written, two the maker holds ahead, the reserve
+// (ringReserve) and room to go low (ringLow) before it is short. A ring
+// of fewer would be low from its first write (#751's review). The log
+// itself works with four (ringSegs), as the model's rings do.
+const ringMinSegs = 8
 
 // ringSegs is how many segments a ring of size bytes holds, at least
 // ringMinSegs. Only a ring sized from the quota is ever rounded up to
@@ -206,21 +214,24 @@ func ringSegs(size int64) int64 {
 	if size <= 0 {
 		return 0
 	}
-	return max(size/segSize, ringMinSegs)
+	return max(size/segSize, 4)
 }
 
 // appendSynced appends the sync's last record: the log is durable before
 // the sync's start, done (the head of this file). A stage too full for it
-// leaves it out, and the sync claims nothing. Only the loop calls it.
-func (w *wal) appendSynced() {
+// leaves it out, and the sync claims nothing; it reports whether it
+// appended it. Only the loop calls it.
+func (w *wal) appendSynced() bool {
 	var b [recHead + 8]byte
+	done := w.done.Load()
 	binary.LittleEndian.PutUint32(b[4:], 8)
 	b[8] = recSynced
-	binary.LittleEndian.PutUint64(b[recHead:], uint64(w.done.Load()))
+	binary.LittleEndian.PutUint64(b[recHead:], uint64(done))
 	binary.LittleEndian.PutUint32(b[:], crc32.Update(recSeed(w.off), castagnoli, b[4:]))
-	if w.off+int64(len(b))-w.done.Load() > w.stageLen-block {
-		return
+	if w.off+int64(len(b))-done > w.stageLen-block {
+		return false
 	}
+	w.claimed = done
 	for v := b[:]; len(v) > 0; {
 		pos := w.off & (w.stageLen - 1)
 		k := copy(w.stage[pos:], v)
@@ -231,6 +242,28 @@ func (w *wal) appendSynced() {
 		pos := w.off & (w.stageLen - 1)
 		clear(w.stage[pos : pos+block-tail])
 	}
+	return true
+}
+
+// kickMark syncs a mark alone once a ring's log goes idle: nothing waits
+// for a sync, and the last sync's records are durable but no mark claims
+// them. Until one does, damage to them reads as a crash's torn sync, and
+// a start would cut them, though they were durable: on seed 7 of
+// TestSeeds a flipped hard state, the last sync's, was cut, and the
+// node's vote with it (#751's CI). Under load the next sync's mark claims
+// them, and no mark is synced alone. Only the loop calls it, through
+// kick.
+func (w *wal) kickMark() {
+	if w.ring == nil || w.claimed >= w.dataEnd || w.done.Load() < w.dataEnd || !w.appendSynced() {
+		return
+	}
+	w.stats.syncs++
+	w.lastBytes = w.off - w.want.Load()
+	w.want.Store(w.off)
+	w.inflight = true
+	var b [8]byte
+	binary.LittleEndian.PutUint64(b[:], 1)
+	_, _ = sysWrite(w.kickFD, b[:])
 }
 
 // claimsPast reports whether b, the log's bytes at offset at, holds a
@@ -299,7 +332,7 @@ func logRing(cfg *Config) int64 {
 	case cfg.QuotaBackendBytes < 0:
 		return 0
 	}
-	return cmp.Or(cfg.QuotaBackendBytes, defaultQuota)
+	return max(cmp.Or(cfg.QuotaBackendBytes, defaultQuota), ringMinSegs*segSize)
 }
 
 // ringReserve is how many spare segments a ring keeps for the writes that
@@ -307,28 +340,90 @@ func logRing(cfg *Config) int64 {
 // (ringShort): two, and a sixteenth of a large ring.
 func ringReserve(segs int64) int64 { return max(2, segs/16) }
 
-// ringLow reports whether the ring's spares ran low: a checkpoint is due
-// at once, and its cut takes in what the store names before it, so that
-// the segments go back to the pool (cutPoint). Only the loop calls it; a
-// node with no log, as checkpoint tests make, has no ring.
+// ringFree is how many of the ring's segments the log does not hold: all
+// but those from the cut (rbase) to the one its end is in. The segments
+// the maker made ahead, and those cut and not yet back in the pool, are
+// free: the log has not reached them, or let them go (#751's review).
+// Only the loop calls it.
+func (w *wal) ringFree() int64 {
+	return w.ring.segs - (w.off/segSize - w.rbase + 1)
+}
+
+// ringLow reports whether the ring's free segments ran low: a checkpoint
+// is due (ringDue), and its cut takes in what the store names before it,
+// so that the segments go back to the pool (cutPoint). Only the loop
+// calls it; a node with no log, as checkpoint tests make, has no ring.
 func (w *wal) ringLow() bool {
-	return w != nil && w.ring != nil && w.free.Load() <= ringReserve(w.ring.segs)+max(1, w.ring.segs/8)
+	return w != nil && w.ring != nil && w.ringFree() <= ringReserve(w.ring.segs)+max(1, w.ring.segs/8)
 }
 
 // ringShort reports whether the ring holds no more than its reserve: the
 // node refuses writes as over the quota, and raises NOSPACE, as etcd does
 // (alarm.go).
 func (w *wal) ringShort() bool {
-	return w.ring != nil && w.free.Load() < ringReserve(w.ring.segs)
+	return w.ring != nil && w.ringFree() < ringReserve(w.ring.segs)
 }
 
-// ringDue reports whether a checkpoint is due for the ring's sake: its
-// spares ran low, and the log grew past the newest checkpoint's start,
-// so that a checkpoint lets the next cut reach further. Without the
-// second, a ring that stays low would checkpoint on end for nothing.
+// ringDue reports whether a checkpoint is due for the ring's sake: it ran
+// low, and a checkpoint would let the cut reach further. A checkpoint's
+// cut reaches the start of the checkpoint before it (cutPoint), so one
+// helps if the newest checkpoint started in a segment past the cut, or if
+// the node applied entries past it, so that the one after can (#751's
+// review). Both are the checkpoints' own places, not the log's: the cut
+// may stay behind them for Raft's storage. Without them, a ring that
+// stays low would checkpoint on end for nothing, and a full one would
+// never answer NOSPACE.
 func (n *node) ringDue() bool {
-	return n.wal.ringLow() && n.wal.off > n.ckptFrom
+	if !n.wal.ringLow() {
+		return false
+	}
+	snap := n.storage.snap
+	return snap == nil || n.applied > snap.GetMetadata().GetIndex() || n.ckptFrom/segSize > n.ckptCut/segSize
 }
+
+// cutLog lets the log's tail go once a checkpoint is durable or an entry
+// applied: while a ring is low, Raft's storage drops what the newest
+// checkpoint holds, and the log is cut up to the checkpoint's cut and what
+// Raft's storage still holds. A checkpoint that finishes while writes are
+// refused frees its segments at once, not at the next apply (#751's
+// review).
+func (n *node) cutLog() {
+	s := n.storage
+	if s.snap == nil {
+		return
+	}
+	if n.wal.ringLow() {
+		// The ring needs the space more than a follower that lags needs
+		// the entries: that one gets the checkpoint as a snapshot, and
+		// the cut may reach the checkpoint (logring.go).
+		s.compact(min(n.applied, s.snap.GetMetadata().GetIndex()))
+	}
+	if !ringHoldCut.Load() {
+		n.removeAll(n.wal.cut(min(n.ckptCut, s.firstRecord(n.wal.off))))
+	}
+}
+
+// SetSegmentSize sets the size of the log's segments for the process, as
+// --unsafe-segment-bytes asks: for tests only, such as real-process chaos,
+// whose small disks hold no ring of 64 MiB segments. It is called before
+// any node runs; a data directory keeps the size it was made with.
+func SetSegmentSize(n int64) error {
+	if n <= 0 || n%block != 0 {
+		return fmt.Errorf("%w: a segment of %d bytes: it must be a positive multiple of %d", errConfig, n, block)
+	}
+	segSize = n
+	return nil
+}
+
+// ringHoldCut keeps the log's cut where it is, for the test of a full ring
+// (TestAFullLogRingRaisesNOSPACE): the state of a ring whose log no
+// checkpoint can free.
+var ringHoldCut atomic.Bool
+
+// ckptHold keeps a running checkpoint from going on, for the test of a
+// short ring (TestAShortLogRingFreesWhenACheckpointEnds): the ring fills
+// while every write is refused, until it ends.
+var ckptHold atomic.Bool
 
 // ringRefuses refuses a write of stream s while the log's ring is short
 // (ringShort), and reports whether it did: a put, a lease grant, or a Txn
