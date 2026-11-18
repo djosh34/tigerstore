@@ -76,29 +76,3 @@ func runMembership(t *testing.T, seed uint64) Stats {
 func TestMembershipFaultSeeds(t *testing.T) {
 	simrun.Each(t, []uint64{881969382, 914212814, 958846293}, runMembership, nil)
 }
-
-// TestClusterSizes runs DefaultConfig's faults on a cluster of five
-// voters, and the membership work on a cluster of one, every checker on
-// each: the sizes a scenario draws besides three. A cluster of five may
-// lose two voters for good and keep its quorum; one of one keeps its
-// only disk whole, and has no links between nodes to fault until the
-// membership work adds a member.
-func TestClusterSizes(t *testing.T) {
-	simrun.Each(t, []uint64{1, 4}, func(t *testing.T, seed uint64) Stats {
-		cfg := DefaultConfig(seed)
-		cfg.Nodes = 5
-		if seed == 4 {
-			cfg = wlMembershipConfig(seed)
-			cfg.Nodes = 1
-		}
-		res := run(t, cfg)
-		checkers(t, res)
-		st := res.Stats
-		if st.OK < 50 || len(res.Log) < 20 {
-			t.Fatalf("seed %d, %d voters, did too little to test anything: %+v, %d committed writes", seed, cfg.Nodes, st, len(res.Log))
-		}
-		t.Logf("seed %d, %d voters: %d ok, %d failed, %d ambiguous, %d fenced, %d cold restarts, membership changes %v",
-			seed, cfg.Nodes, st.OK, st.Failed, st.Ambiguous, st.Fenced, st.ColdRestarts, st.MembershipChanges)
-		return st
-	}, nil)
-}

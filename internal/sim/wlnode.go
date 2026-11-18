@@ -84,7 +84,7 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		if s.membership.stage >= 2 {
 			url = updatedMemberURL
 		}
-		ms = append(ms, wl.Member{ID: n.id, Name: fmt.Sprintf("node%d", voters+1), PeerURLs: []string{url}, ClientURLs: []string{"https://" + memberClientAddr}})
+		ms = append(ms, wl.Member{ID: n.id, Name: fmt.Sprintf("node%d", voters+1), PeerURLs: []string{url}, ClientURLs: []string{"https://" + s.hostName(n.idx) + ":2379"}})
 	}
 	self := slices.IndexFunc(ms, func(m wl.Member) bool { return m.ID == n.id })
 	srvTLS := &tls.Config{Certificates: []tls.Certificate{s.net.cert}, MinVersion: tls.VersionTLS12}
@@ -95,7 +95,7 @@ func (s *Sim) startWL(n *node, p *proc) error {
 	cfg := wl.Config{
 		Name: ms[self].Name, ID: n.id, ClusterID: wlCluster, DataDir: wlDataDir, Members: ms, Join: join,
 		ClientURLs:      ms[self].ClientURLs,
-		ClientListeners: []net.Listener{s.net.listen(s, p, []string{s.clientAddr(n)})},
+		ClientListeners: []net.Listener{s.net.listen(s, p, []string{s.hostName(n.idx) + ":2379"})},
 		PeerListeners:   []net.Listener{s.net.listen(s, p, n.addrs)},
 		ClientTLS:       srvTLS, PeerServerTLS: peerTLS, PeerClientTLS: peerTLS,
 		MemoryBudget: s.cfg.MemoryBytes,
@@ -108,7 +108,7 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		Hooks:   &wlHooks{s: s, p: p},
 	}
 	conn, err := grpc.NewClient(
-		"passthrough:///"+s.clientAddr(n),
+		"passthrough:///"+s.hostName(n.idx)+":2379",
 		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: s.net.ca, MinVersion: tls.VersionTLS12})),
 		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) { return s.net.dial(ctx, s, nil, addr) }),
 		// Seeds 12024, 12036, 12505 and 13996: refused dials while a

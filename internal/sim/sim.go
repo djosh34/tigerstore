@@ -106,8 +106,8 @@ type Config struct {
 	// that: every lease adds an expiry that may apply at any time, and its
 	// search grows too fast with them.
 	NoLeases bool
-	// Membership adds, updates, promotes and removes a fourth member
-	// while the ordinary clients and faults continue.
+	// Membership adds, updates, promotes and removes a member after the
+	// voters while the ordinary clients and faults continue.
 	Membership bool
 	// MemoryBytes is each node's memory budget (core.Config.MemoryBytes):
 	// it turns the value cache on and bounds Range answers. Zero leaves
@@ -1000,6 +1000,9 @@ func (k *keptPages) Get(off int64, p []byte) error {
 	return err
 }
 
+// errNodes is the error of a Config.Nodes that is not 1, 3 or 5.
+var errNodes = errors.New("sim: a cluster starts with 1, 3 or 5 voters")
+
 // newSim sets up an empty run.
 func newSim(cfg Config) (*Sim, error) { return newSimFrom(cfg, nil) }
 
@@ -1008,11 +1011,19 @@ func newSim(cfg Config) (*Sim, error) { return newSimFrom(cfg, nil) }
 // a good part of a run's fixed cost. Its disks keep their large files'
 // pages where from's do.
 func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
-	if cfg.voters() == 1 && !cfg.Membership {
-		// A cluster of one node has no links between nodes, so the faults
-		// of those links are off.
-		cfg.Faults.HalfOpenEvery, cfg.Faults.GrayEvery = 0, 0
-		cfg.HalfOpenAt, cfg.GrayLeaderAt, cfg.LagAtEnd = 0, 0, false
+	if v := cfg.voters(); v != 1 && v != 3 && v != 5 {
+		return nil, fmt.Errorf("%w: %d", errNodes, v)
+	}
+	if cfg.voters() == 1 {
+		// LagAtEnd needs a follower when the clients end, which a single
+		// voter lacks once the membership work removed its member.
+		cfg.LagAtEnd = false
+		if !cfg.Membership {
+			// A cluster of one node has no links between nodes, so the
+			// faults of those links are off.
+			cfg.Faults.HalfOpenEvery, cfg.Faults.GrayEvery = 0, 0
+			cfg.HalfOpenAt, cfg.GrayLeaderAt = 0, 0
+		}
 	}
 	s := &Sim{
 		cfg:        cfg,
@@ -1332,11 +1343,17 @@ func (s *Sim) schedule() {
 		s.at(1+s.rng.Int64N(s.cfg.Duration), func() {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			if !s.healed {
-				s.stats.LinkChanges++
-				// Any mask but all links up, if there are links.
-				s.setLinks(s.rng.Uint64N(max(s.allLinks(), 1)))
+			if s.healed {
+				return
 			}
+			s.stats.LinkChanges++
+			if len(s.links) == 1 {
+				// A single node has only the clients' links.
+				s.setClientLinks(0.75)
+				return
+			}
+			// Any mask but all links up.
+			s.setLinks(s.rng.Uint64N(s.allLinks()))
 		})
 	}
 	s.scheduleDiskFaults()

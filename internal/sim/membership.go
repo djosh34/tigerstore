@@ -18,7 +18,7 @@ type membershipWork struct {
 	stage  int
 	id     uint64
 	list   bool
-	// removedAt is when the removal of the fourth member completed, and
+	// removedAt is when the removal of the added member completed, and
 	// last the last answer that did not complete a stage.
 	removedAt int64
 	last      string
@@ -29,7 +29,7 @@ const (
 	updatedMemberURL = "https://updated-member:2380"
 )
 
-// changeMembership adds the fourth member as a learner, moves it to
+// changeMembership adds a member after the voters as a learner, moves it to
 // another URL, promotes it and removes it, one change after the other,
 // each through the leader as a client would, until all four completed or
 // the clients stop. A lost reply is resolved by a linearizable member list
@@ -174,9 +174,10 @@ func (w *membershipWork) matches(ms []*pb.Member) bool {
 // before healing: as etcd's, a node refuses a change unless it has been
 // connected to the other voters for 5 s. For the same reason healing
 // lasts 20 s: the first change after it can wait 10 s for that (seeds 14
-// and 58), and three more follow. Corruption is left to the
-// three-voter runs: a permanently fenced learner cannot catch up and be
-// promoted, so that workload would require disk replacement too.
+// and 58), and three more follow. Corruption is left to the runs
+// without the membership work: a permanently fenced learner cannot catch
+// up and be promoted, so that workload would require disk replacement
+// too.
 func membershipConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Membership = true

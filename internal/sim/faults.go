@@ -316,9 +316,10 @@ func (s *Sim) maybeCorrupt(n *node) {
 		}
 		return
 	}
-	// n's own torn image, if it has one, is what this crash just did:
-	// only the other nodes' leave the quorum short.
-	if s.count(func(m *node) bool { return m.corrupted || m.fenced || m != n && m.mayBeDamaged() }) >= s.spare() {
+	// A node damaged already is not damaged again. n's own torn image,
+	// if it has one, is what this crash just did: only the other nodes'
+	// leave the quorum short.
+	if n.corrupted || s.count(func(m *node) bool { return m.corrupted || m.fenced || m != n && m.mayBeDamaged() }) >= s.spare() {
 		return
 	}
 	kind := damageKind(s.rng.IntN(numDrawn))
@@ -659,12 +660,20 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 				continue
 			}
 			if err := s.coldRestart(c, erased); err != nil {
-				return fmt.Errorf("erasing node %d at %d ms: %w", erased+1, c.at/Millisecond, err)
+				return fmt.Errorf("%s at %d ms: %w", erasing(erased), c.at/Millisecond, err)
 			}
 			res.Stats.ColdRestarts++
 		}
 	}
 	return nil
+}
+
+// erasing names the disk a cold restart erased, -1 for none.
+func erasing(erased int) string {
+	if erased < 0 {
+		return "erasing no disk"
+	}
+	return fmt.Sprintf("erasing node %d", erased+1)
 }
 
 // disagree returns two nodes that are not fenced and differ in their
@@ -900,7 +909,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 			if !holds {
 				return fmt.Errorf("cold restart: no node can win an election, and no surviving disk holds the %d entries applied before as the run's record has them", c.applied)
 			}
-			s.tracef("cold restart at %d ms erasing node %d: no node can win an election", c.at/Millisecond, erased+1)
+			s.tracef("cold restart at %d ms %s: no node can win an election", c.at/Millisecond, erasing(erased))
 			return nil
 		}
 	}

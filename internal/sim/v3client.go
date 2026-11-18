@@ -30,18 +30,6 @@ import (
 // clientAddr is the client address of voter i.
 func clientAddr(i int) string { return voterHost(i) + ":2379" }
 
-// memberClientAddr is the client address of the member the membership
-// work adds.
-const memberClientAddr = "member:2379"
-
-// clientAddr is n's client address.
-func (s *Sim) clientAddr(n *node) string {
-	if n.idx == s.cfg.voters() {
-		return memberClientAddr
-	}
-	return clientAddr(n.idx)
-}
-
 // newV3 makes client c's clientv3 client, for the node it calls.
 func (c *client) newV3() error {
 	s := c.sim

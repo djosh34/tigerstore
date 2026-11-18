@@ -1228,3 +1228,53 @@ func TestSaveRunKeepsDisks(t *testing.T) {
 		t.Fatal("no node crashed")
 	}
 }
+
+// TestFiveVoters runs DefaultConfig's faults on a cluster of five voters,
+// every checker on it: a cluster of five may lose two voters for good
+// and keep its quorum.
+func TestFiveVoters(t *testing.T) {
+	sizeSeed(t, 1, func(seed uint64) Config {
+		cfg := DefaultConfig(seed)
+		cfg.Nodes = 5
+		return cfg
+	})
+}
+
+// TestOneVoter runs DefaultConfig's faults on a cluster of one voter,
+// every checker on it: it keeps its only disk whole, and has no links
+// between nodes to fault.
+func TestOneVoter(t *testing.T) {
+	sizeSeed(t, 2, func(seed uint64) Config {
+		cfg := DefaultConfig(seed)
+		cfg.Nodes = 1
+		return cfg
+	})
+}
+
+// TestOneVoterMembership runs the membership work on a cluster of one
+// voter, every checker on it: the member it adds is the cluster's first
+// link between nodes.
+func TestOneVoterMembership(t *testing.T) {
+	sizeSeed(t, 4, func(seed uint64) Config {
+		cfg := wlMembershipConfig(seed)
+		cfg.Nodes = 1
+		return cfg
+	})
+}
+
+// sizeSeed runs the config of seed with every checker, and requires it to
+// have done enough to test anything.
+func sizeSeed(t *testing.T, seed uint64, config func(uint64) Config) {
+	simrun.Each(t, []uint64{seed}, func(t *testing.T, seed uint64) Stats {
+		cfg := config(seed)
+		res := run(t, cfg)
+		checkers(t, res)
+		st := res.Stats
+		if st.OK < 50 || len(res.Log) < 20 {
+			t.Fatalf("seed %d, %d voters, did too little to test anything: %+v, %d committed writes", seed, cfg.Nodes, st, len(res.Log))
+		}
+		t.Logf("seed %d, %d voters: %d ok, %d failed, %d ambiguous, %d fenced, %d cold restarts, membership changes %v",
+			seed, cfg.Nodes, st.OK, st.Failed, st.Ambiguous, st.Fenced, st.ColdRestarts, st.MembershipChanges)
+		return st
+	}, nil)
+}
