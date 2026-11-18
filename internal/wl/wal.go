@@ -27,11 +27,13 @@ import (
 // into space written before, the disk the ceilings measure). Its rules,
 // which the changes towards it keep at every step:
 //
-//  1. No stale record is ever read as current. A record's checksum is
-//     seeded by its offset in the log, which grows without end: the
-//     ring's lap and the record's place in it. Bytes that an earlier lap,
-//     or another place, left behind never check where the log reads
-//     them, so they end the log as the zeros past its end do.
+//  1. No stale record is read as current. A record's checksum is seeded
+//     by its offset in the log, which grows without end: the ring's lap
+//     and the record's place in it. Bytes that an earlier lap, or another
+//     place, left behind check where the log reads them no more often
+//     than damage does, one time in 2^32, so they end the log as the
+//     zeros past its end do, which never check: a record's kind is never
+//     0.
 //  2. No acknowledged write is lost across reuse and crash. Space is
 //     written over only once the newest durable checkpoint holds all
 //     that the store still names before it: the cut takes those values
@@ -54,9 +56,9 @@ import (
 //
 // A record is [4 crc32c][4 body length][1 kind], then the body; the crc
 // covers everything after it, seeded by the record's offset in the log
-// (recSeed), so a record checks only where it was written. An entry's body is [8 index][8 term]
-// [1 entry type] and the entry's data; a hard state's is the state's
-// protobuf. A record that does not check ends the log: a crash tore it,
+// (recSeed), so a record checks only where it was written. An entry's
+// body is [8 index][8 term][1 entry type] and the entry's data; a hard
+// state's is the state's protobuf. A record that does not check ends the log: a crash tore it,
 // or it is the zeros past the end. It is damage, and the log is refused
 // (ErrCorruptLog), where a crash cannot have torn it: before a later
 // segment that holds data, as each write's part in a segment is durable
@@ -912,7 +914,7 @@ func chainAfter(b []byte, off int64) bool {
 	for i := 1; i+recHead <= len(b); i++ {
 		r := b[i:]
 		at := off + int64(i)
-		if (r[8] != recEntry && r[8] != recHardState) || !checks(r, at) {
+		if !checks(r, at) {
 			continue
 		}
 		n := recHead + int(binary.LittleEndian.Uint32(r[4:]))
@@ -973,9 +975,11 @@ func recSeed(off int64) uint32 {
 }
 
 // checks reports whether b starts with a whole record that checks at log
-// offset off.
+// offset off: one of a record's kinds, whose CRC verifies. The kind keeps
+// the zeros past the log's end from checking: at some offsets, the first
+// 3,141,446,827, the seeded CRC of zeros is itself zero (#749's review).
 func checks(b []byte, off int64) bool {
-	if len(b) < recHead {
+	if len(b) < recHead || b[8] != recEntry && b[8] != recHardState {
 		return false
 	}
 	l := int64(binary.LittleEndian.Uint32(b[4:]))

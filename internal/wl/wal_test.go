@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"os"
 	"slices"
 	"strings"
@@ -532,14 +533,14 @@ func TestARecordChecksOnlyWhereItWasWritten(t *testing.T) {
 		t.Fatal(err)
 	}
 	end := w.off
-	first := b[:w.offs[0]-walEntHdr+walEntHdr+3]
-	rec := first[w.offs[0]-walEntHdr:]
-	if !checks(rec, w.offs[0]-walEntHdr) {
+	start := w.offs[0] - walEntHdr
+	rec := b[start : w.offs[0]+3]
+	if !checks(rec, start) {
 		t.Fatal("a record does not check where it was written")
 	}
-	for _, at := range []int64{w.offs[0] - walEntHdr + 1, end, end + segSize, w.offs[0] - walEntHdr + 1<<40} {
+	for _, at := range []int64{start + 1, end, end + segSize, start + 1<<40} {
 		if checks(rec, at) {
-			t.Fatalf("the record written at %d checks at %d too", w.offs[0]-walEntHdr, at)
+			t.Fatalf("the record written at %d checks at %d too", start, at)
 		}
 	}
 	// Past the log's end, the log's own records again, as a lap before
@@ -558,5 +559,50 @@ func TestARecordChecksOnlyWhereItWasWritten(t *testing.T) {
 	}
 	if scanned != end || len(got) != 3 {
 		t.Fatalf("the scan read %q and ends at %d; want the three records and the end %d", got, scanned, end)
+	}
+}
+
+// The zeros past the log's end end it at every offset. At 3,141,446,827,
+// the first of them, the CRC of nine zero bytes seeded by the offset is
+// itself zero, so a zero header checked there until a record's kind had
+// to be one of the log's (#749's review): a log that ends there read a
+// record of kind 0 past its end, which the node's start refuses.
+func TestZerosPastTheEndNeverCheck(t *testing.T) {
+	const at = 3141446827
+	if crc32.Update(recSeed(at), castagnoli, make([]byte, recHead-4)) != 0 {
+		t.Fatalf("the seeded CRC of zeros at %d is not zero: the test no longer covers the case", at)
+	}
+	for _, off := range []int64{0, at, at + 1} {
+		if checks(make([]byte, 64), off) {
+			t.Fatalf("zeros check as a record at %d", off)
+		}
+	}
+	// A log whose one record ends at that offset, its block's rest zeros.
+	dir := t.TempDir()
+	k := int64(at) / segSize
+	e := testEntry(7, 1, strings.Repeat("e", 100))
+	start := int64(at) - walEntHdr - int64(len(e.GetData()))
+	b := make([]byte, (at-k*segSize+4095)&^4095)
+	putEntryHead(b[start-k*segSize:], e, start)
+	copy(b[start-k*segSize+walEntHdr:], e.GetData())
+	if err := os.WriteFile(segPath(dir, k), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var kinds []byte
+	end, err := scanWAL(sysEnv{}, dir, start, func(r *walRecord) error {
+		kinds = append(kinds, r.kind)
+		return nil
+	})
+	if err != nil || end != at || string(kinds) != string([]byte{recEntry}) {
+		t.Fatalf("the scan read kinds %v and ends at %d, %v; want one entry and the end %d", kinds, end, err, int64(at))
+	}
+	recs := Records(func(i int64) []byte {
+		if i == k {
+			return b
+		}
+		return nil
+	}, start)
+	if len(recs) != 1 || recs[0].Kind != recEntry {
+		t.Fatalf("Records read %+v; want the one entry", recs)
 	}
 }
