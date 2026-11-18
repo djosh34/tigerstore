@@ -104,7 +104,7 @@ func newConfig(stderr io.Writer) *config {
 	for _, name := range ignoredFlags {
 		fs.Var(&flags.IgnoredFlag{Name: name}, name, "")
 	}
-	fs.Int64Var(&c.own.DiskBudget, "disk-budget-bytes", 0, "bytes the data directory may take: the log's ring, formatted when the directory is made, takes half, and the rest is left to the checkpoints; at least 1 GiB, a ring of eight 64 MiB segments (0 means no budget: the ring is the quota's size, at least 512 MiB)")
+	fs.Int64Var(&c.own.DiskBudget, "disk-budget-bytes", 0, "bytes the data directory may take: the log's ring, formatted when the directory is made, takes half, and the rest is left to the checkpoints; at least 1 GiB, a ring of eight 64 MiB segments (0 means no budget: the ring is the quota's size, at least 512 MiB). A ring the disk's free space cannot hold is refused at start")
 	fs.Int64Var(&c.own.MemoryBudget, "memory-budget-bytes", 0, "memory this node may use (default GOMEMLIMIT, else the cgroup's memory limit, else the host's memory)")
 	fs.Int64Var(&c.own.UnsafeWindow, "unsafe-window-bytes", 0, "for tests only: bytes of entries kept in memory for followers, twice that while one still needs them (0 means 64 MiB)")
 	fs.Int64Var(&c.own.UnsafeCheckpoint, "unsafe-checkpoint-bytes", 0, "for tests only: bytes of log after which the node cuts a checkpoint (0 means 256 MiB)")

@@ -234,6 +234,9 @@ func openWALRing(sys sysEnv, dir string, stage int, ring, keep, from int64, fn f
 			return nil, err
 		}
 		if !has {
+			if err := ringFits(sys, dir, ringSegs(ring)); err != nil {
+				return nil, err
+			}
 			start := time.Now()
 			if err := formatRing(sys, dir, ringSegs(ring)); err != nil {
 				return nil, fmt.Errorf("format the log's ring: %w", err)

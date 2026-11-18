@@ -325,10 +325,9 @@ func ringDamaged(sys sysEnv, dir string, k, off int64, b []byte) error {
 
 // logRing is the size of the log's ring for cfg: LogRing if set, else
 // half the disk budget, else the quota (#602's ruling); 0, a log with no
-// ring, when the quota is off. A ring sized from the quota is at most
-// maxQuotaRing: etcd takes a quota of any size, past its suggested
-// maximum with a warning, and a quota of 2^63-1, as past-ram runs with,
-// sized a ring no disk holds, which the node could not format.
+// ring, when the quota is off. A quota's ring is the quota's size, as a
+// user who sets a quota expects to store that much; one the disk cannot
+// hold is refused at start (ringFits).
 func logRing(cfg *Config) int64 {
 	switch {
 	case cfg.LogRing != 0:
@@ -338,13 +337,23 @@ func logRing(cfg *Config) int64 {
 	case cfg.QuotaBackendBytes < 0:
 		return 0
 	}
-	return min(max(cmp.Or(cfg.QuotaBackendBytes, defaultQuota), ringMinSegs*segSize), maxQuotaRing)
+	return max(cmp.Or(cfg.QuotaBackendBytes, defaultQuota), ringMinSegs*segSize)
 }
 
-// maxQuotaRing is the largest ring a quota sizes: etcd's suggested
-// maximum quota (storage.MaxQuotaBytes), which the bench's quota is. A
-// disk budget sizes a larger one.
-const maxQuotaRing = 8 << 30
+// ringFits refuses a ring of segs segments that the free space of the
+// file system dir is on cannot hold, before anything of it is written:
+// a node never fails partway through its format (#602's ruling on #752).
+// A quota of 2^63-1, as past-ram ran with, sizes such a ring.
+func ringFits(sys sysEnv, dir string, segs int64) error {
+	free, err := sys.freeSpace(dir)
+	if err != nil {
+		return err
+	}
+	if size := segs * segSize; segs > free/segSize {
+		return fmt.Errorf("%w: the log's ring of %d bytes does not fit the %d bytes free on its disk; set --disk-budget-bytes, of which the ring takes half", errConfig, size, free)
+	}
+	return nil
+}
 
 // ringReserve is how many spare segments a ring keeps for the writes that
 // free space, deletes, compactions and alarms, once it refuses the rest

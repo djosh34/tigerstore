@@ -12,8 +12,8 @@ on:
         default: true
 permissions:
   contents: read
-# capacity's nodes keep the product's log ring, which their quota sizes
-# (8 GiB at most): the store's data, past RAM, must fit it (#602).
+# capacity's tigerstore nodes get a disk budget of 16 GiB, so a log ring
+# of 8 GiB each, which their data past RAM fits (#602).
 
 jobs:
   # The classifier of capacity outcomes. Main's storage, cleaner and
@@ -107,9 +107,17 @@ jobs:
           PY
           git diff > "$RUNNER_TEMP/cache-control.patch"
           go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+      # The disk's room before the cluster starts; past-ram.py records it
+      # once the nodes formatted their rings, and the job's last step at
+      # its end (#602's ruling on #752).
+      - name: Disk before the start
+        run: df -B1 "$RUNNER_TEMP"
+      # tigerstore's nodes get a 16 GiB disk budget, so a log ring of 8 GiB
+      # each, which their data past RAM fits: a capacity-test exception to
+      # the tests' small rings, on CI's runners only (#602's ruling on #752).
       - name: Run under per-member cgroup limits
         run: |
-          sudo python3 scripts/past-ram.py --server "$RUNNER_TEMP/${{ matrix.kind }}" --driver "$RUNNER_TEMP/pastram" --kind '${{ matrix.kind }}' --mode '${{ matrix.mode }}' --quota '${{ matrix.quota }}' --go-memory 560MiB --preload-bytes '${{ matrix.preload || 0 }}' --seconds '${{ matrix.seconds || 180 }}' --out "$RUNNER_TEMP/past-ram"
+          sudo python3 scripts/past-ram.py --server "$RUNNER_TEMP/${{ matrix.kind }}" --driver "$RUNNER_TEMP/pastram" --kind '${{ matrix.kind }}' --mode '${{ matrix.mode }}' --quota '${{ matrix.quota }}' --disk-budget 17179869184 --go-memory 560MiB --preload-bytes '${{ matrix.preload || 0 }}' --seconds '${{ matrix.seconds || 180 }}' --out "$RUNNER_TEMP/past-ram"
       - name: Report measured outcome
         if: always()
         env:
@@ -124,6 +132,9 @@ jobs:
               if report['outcome'] == 'reference-preload-limit':
                   summary.write('\nEtcd could not reach the requested population. No mixed-load comparison or checker pass is claimed.\n')
           PY
+      - name: Disk at the end
+        if: always()
+        run: df -B1 "$RUNNER_TEMP"
       - name: Copy evidence without database files
         if: always()
         run: |

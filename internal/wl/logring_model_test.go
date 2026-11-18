@@ -552,10 +552,8 @@ func TestARingIsNeverDueForACheckpointItCannotMake(t *testing.T) {
 	}
 }
 
-// A ring is sized as #602's ruling says, and a quota past etcd's
-// suggested maximum, such as past-ram's 2^63-1, sizes one no larger than
-// that maximum: it sized one no disk holds, which the node could not
-// format.
+// A ring is sized as #602's ruling says: a quota's ring is the quota's
+// size, past etcd's suggested maximum too.
 func TestTheRingIsSizedFromTheBudgetElseTheQuota(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -569,11 +567,48 @@ func TestTheRingIsSizedFromTheBudgetElseTheQuota(t *testing.T) {
 		{"a quota", Config{QuotaBackendBytes: 3 << 30}, 3 << 30},
 		{"the quota off", Config{QuotaBackendBytes: -1}, 0},
 		{"a quota of 8 GiB", Config{QuotaBackendBytes: 8 << 30}, 8 << 30},
-		{"a quota past etcd's maximum", Config{QuotaBackendBytes: 1<<63 - 1}, 8 << 30},
+		{"a quota past etcd's maximum", Config{QuotaBackendBytes: 16 << 30}, 16 << 30},
+		{"a quota of 2^63-1", Config{QuotaBackendBytes: 1<<63 - 1}, 1<<63 - 1},
 		{"a small quota", Config{QuotaBackendBytes: 1 << 20}, ringMinSegs * segSize},
 	} {
 		if got := logRing(&c.cfg); got != c.want {
 			t.Errorf("%s: a ring of %d bytes, want %d", c.name, got, c.want)
 		}
+	}
+}
+
+// A ring the disk's free space cannot hold is refused at start, before
+// anything of it is written, with an error that names its size, the free
+// space and --disk-budget-bytes (#602's ruling on #752). Here the disk
+// has 100 KiB free for a ring of 128 KiB; and a quota of 2^63-1, as
+// past-ram ran with, sizes a ring no disk holds.
+func TestARingTheDiskCannotHoldIsRefusedAtStart(t *testing.T) {
+	was, wasFree := segSize, freeSpaceOf
+	segSize = 16 << 10
+	freeSpaceOf = func(string) (int64, error) { return 100 << 10, nil }
+	t.Cleanup(func() { segSize, freeSpaceOf = was, wasFree })
+	dir := t.TempDir()
+	_, err := openWALRing(sysEnv{}, dir, 64<<10, 8*segSize, 0, 0, nil)
+	if err == nil {
+		t.Fatal("a ring of 128 KiB was formatted on a disk with 100 KiB free")
+	}
+	for _, want := range []string{"ring of 131072 bytes", "102400 bytes free", "--disk-budget-bytes"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("the refusal %q does not say %q", err, want)
+		}
+	}
+	names, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range names {
+		if e.Name() == ringMeta || filepath.Ext(e.Name()) == spareExt || filepath.Ext(e.Name()) == ".seg" {
+			t.Fatalf("the refused ring left %s", e.Name())
+		}
+	}
+	freeSpaceOf = wasFree
+	segSize = was
+	if err := ringFits(sysEnv{}, dir, ringSegs(logRing(&Config{QuotaBackendBytes: 1<<63 - 1}))); err == nil {
+		t.Fatal("a quota of 2^63-1 sized a ring this disk holds")
 	}
 }
