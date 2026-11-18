@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -77,6 +78,10 @@ func (s *Sim) startWL(n *node, p *proc) error {
 	voters := s.cfg.voters()
 	ms := wlMembers(voters)
 	join := n.idx == voters
+	if n.joins {
+		// A voter an operator replaced joins as the member added for it.
+		ms[n.idx].ID = n.id
+	}
 	if join {
 		// The member the membership work added (Config.Membership) joins
 		// the running cluster at the peer URL it has now.
@@ -93,15 +98,15 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS12,
 	}
 	cfg := wl.Config{
-		Name: ms[self].Name, ID: n.id, ClusterID: wlCluster, DataDir: wlDataDir, Members: ms, Join: join,
-		ClientURLs:      ms[self].ClientURLs,
+		Name: ms[self].Name, ID: n.id, ClusterID: wlCluster, DataDir: wlDataDir, Members: ms,
+		ClientURLs: ms[self].ClientURLs, Join: join || n.joins,
 		ClientListeners: []net.Listener{s.net.listen(s, p, []string{s.hostName(n.idx) + ":2379"})},
 		PeerListeners:   []net.Listener{s.net.listen(s, p, n.addrs)},
 		ClientTLS:       srvTLS, PeerServerTLS: peerTLS, PeerClientTLS: peerTLS,
 		MemoryBudget: s.cfg.MemoryBytes,
 		// A checkpoint, which cuts the log behind it, every DiskBudget of
 		// log, as main's node cleans within it.
-		CheckpointLog: s.cfg.Faults.DiskBudget, CatchupEntries: wlCatchup, CheckpointChunkKeys: s.cfg.ckptChunkKeys,
+		CheckpointLog: s.cfg.Faults.DiskBudget, CatchupEntries: cmp.Or(s.cfg.Catchup, wlCatchup), CheckpointChunkKeys: s.cfg.ckptChunkKeys,
 		LogRing: s.ringSize(),
 		Logger:  log.New(&nodeLog{s: s, n: n}, "", 0),
 		Sys:     s.os.NewNode(wlDataDir, &disk{s: s, p: p}, wlNet{s: s, p: p}),
@@ -812,5 +817,12 @@ func (s *Sim) wlRefused(n *node, err error) bool {
 	s.stats.Fenced++
 	s.tracef("node %d: fenced: %v", n.id, err)
 	s.down(n)
+	if s.quorumLostAt == 0 && s.count(func(m *node) bool { return m.fenced }) > (s.cfg.voters()-1)/2 {
+		s.quorumLostAt, s.stats.QuorumLostAt = s.now(), s.now()
+		s.tracef("a majority of the voters is fenced for good: the cluster lost its quorum")
+	}
+	if s.cfg.Faults.Replace && !s.cfg.LoseQuorum {
+		s.wg.Go(func() { s.replace(n) })
+	}
 	return true
 }

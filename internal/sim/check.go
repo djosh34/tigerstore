@@ -520,12 +520,17 @@ func (c Config) maxLeaseTTL() int64 {
 	return maxTTL
 }
 
-// checkLeasesExpire checks the leases of the run (leasesExpire) and
+// checkLeasesExpire checks the leases of the run (leasesExpire), unless
+// expire is false, and
 // counts the revokes in the log, expiries included, and the lease
 // checkpoints.
-func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
-	if err := leasesExpire(res.History, s.expiredAt, s.expiredOrder, alive, s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
-		return err
+func (s *Sim) checkLeasesExpire(res *Result, alive []int64, expire bool) error {
+	// No lease expires without a quorum: then only the promises of the
+	// revokes are checked.
+	if expire {
+		if err := leasesExpire(res.History, s.expiredAt, s.expiredOrder, alive, s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
+			return err
+		}
 	}
 	if err := revokesKeepPromises(res.History, s.revokedAt, s.cfg.Faults.DriftPerMille); err != nil {
 		return err

@@ -334,8 +334,8 @@ func (w *watchClient) receive(r *pb.WatchResponse) bool {
 // checkWatches requires every logical watch to have delivered exactly the
 // model's history of its range from its start, in order, without
 // duplicates, with previous values where asked. The current one must reach
-// the final revision; one that a compaction ended must be complete up to
-// its last event. A current one that a compaction restarted less than
+// the final revision, unless the cluster lost its quorum; one that a
+// compaction ended must be complete up to its last event. A current one that a compaction restarted less than
 // watchRestart before the end may not be created yet: a client may need a
 // second try on another node (#259).
 func (s *Sim) checkWatches(model *mvcc.Store, res *Result) error {
@@ -360,7 +360,10 @@ func (s *Sim) checkWatches(model *mvcc.Store, res *Result) error {
 				return fmt.Errorf("watch %d was canceled before it was created", w.id)
 			}
 			want := model.History(w.key, w.end, sg.start)
-			if !current {
+			// A cluster that lost its quorum cannot bring the node of a
+			// current watch up to the newest entries a fenced node
+			// applied.
+			if !current || s.quorumLostAt > 0 {
 				last := sg.start - 1
 				if len(sg.events) > 0 {
 					last = sg.events[len(sg.events)-1].Kv.ModRevision

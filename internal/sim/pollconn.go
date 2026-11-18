@@ -82,7 +82,7 @@ func (c *conn) TryWrite(b []byte) (int, error) {
 		s.mu.Unlock()
 		return len(b), nil
 	}
-	room := sendBuffer - c.out.size
+	room := c.s.sendBuffer() - c.out.size
 	if room <= 0 {
 		s.stats.BlockedWrites++
 		s.mu.Unlock()
@@ -133,7 +133,7 @@ func (c *conn) Ready() (readable, writable bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	in := c.in
-	writable = c.closed || in.err != nil || c.other.closed || sendBuffer-c.out.size > 0
+	writable = c.closed || in.err != nil || c.other.closed || c.s.sendBuffer()-c.out.size > 0
 	now := s.now()
 	switch {
 	case c.closed || in.err != nil:

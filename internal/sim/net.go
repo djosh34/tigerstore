@@ -297,8 +297,19 @@ func (a addr) String() string  { return string(a) }
 // its reader has not taken yet, on their way or arrived, like TCP's send
 // and receive buffers together. A write past it waits for room, or its
 // write deadline. It is small, so that the little traffic of a run fills
-// it: a stalled link holds about 3 KiB within the write timeout.
+// it: a stalled link holds about 3 KiB within the write timeout. A run
+// with longer links (Config.LinkDelay) holds more on its way, as TCP's
+// window grows with the round trip (Sim.sendBuffer).
 const sendBuffer = 2 << 10
+
+// sendBuffer is a connection's buffer in this run: sendBuffer, and on
+// links of LinkDelay what keeps their bytes per second those of
+// DefaultConfig's links, whose delays are about 1 ms on average. At
+// 10 ms, 2 KiB let a follower catch up at about 200 KiB a second, and
+// the heartbeats queued behind its appends for over a second (#761).
+func (s *Sim) sendBuffer() int {
+	return sendBuffer * int(max(s.cfg.LinkDelay/Millisecond, 1))
+}
 
 // pipe is one direction of a connection: the bytes written, each write
 // with the time it arrives.
@@ -562,7 +573,7 @@ func (c *conn) Write(b []byte) (int, error) {
 			s.mu.Unlock()
 			return len(b), nil
 		}
-		if room := sendBuffer - c.out.size; room > 0 {
+		if room := c.s.sendBuffer() - c.out.size; room > 0 {
 			k := min(room, len(b)-n)
 			reader := c.send(b[n : n+k])
 			if n += k; n == len(b) {
@@ -662,10 +673,10 @@ func (c *conn) SetWriteDeadline(t time.Time) error {
 
 // delay draws the delay of one write on a link. The lock is held.
 func (s *Sim) delay(l *link) int64 {
-	if s.healed {
+	if s.healed && s.cfg.LinkDelay == 0 {
 		return 20*Microsecond + s.rng.Int64N(200*Microsecond)
 	}
-	if s.cfg.Faults.MaxDelay > 0 && s.rng.IntN(10) == 0 {
+	if !s.healed && s.cfg.Faults.MaxDelay > 0 && s.rng.IntN(10) == 0 {
 		return s.rng.Int64N(s.cfg.Faults.MaxDelay) + 1
 	}
 	return l.base + s.rng.Int64N(l.jitter+1)
