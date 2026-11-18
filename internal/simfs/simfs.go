@@ -193,6 +193,9 @@ type Disk struct {
 	// short, when set, makes the next write a short one, and failSync the
 	// next sync fail after part of the writes reached the medium.
 	short, failSync *rand.Rand
+	// failSyncLose makes the next sync fail with none of the unsynced
+	// writes on the medium (FailSyncLosingAll).
+	failSyncLose bool
 	// down, if set, is what every operation fails with while the file
 	// system is shut down (ErrIO), or each that changes it while it is
 	// read-only (ErrReadOnly).
@@ -824,6 +827,7 @@ func (d *Disk) ClearFaults() {
 	d.Fault = nil
 	d.short = nil
 	d.failSync = nil
+	d.failSyncLose = false
 }
 
 // ShortWrite makes the next write store only a prefix of its bytes and fail
@@ -837,6 +841,13 @@ func (d *Disk) ShortWrite(rng *rand.Rand) {
 // partway does.
 func (d *Disk) FailSync(rng *rand.Rand) {
 	d.failSync = rng
+}
+
+// FailSyncLosingAll makes the next sync fail with ErrIO with none of the
+// file's unsynced writes on the medium: they read back from the page
+// cache, which a failed writeback marks clean, but never reach the disk.
+func (d *Disk) FailSyncLosingAll() {
+	d.failSyncLose = true
 }
 
 // Shutdown makes every operation fail with ErrIO, as a file system does
@@ -1273,14 +1284,19 @@ func (h *Handle) Truncate(size int64) error {
 // Sync makes the content durable.
 func (h *Handle) Sync() error {
 	err := h.check(OpSync)
-	if rng := h.d.failSync; err == nil && rng != nil {
-		h.d.failSync = nil
+	if rng, lose := h.d.failSync, h.d.failSyncLose; err == nil && (rng != nil || lose) {
+		h.d.failSync, h.d.failSyncLose = nil, false
 		err = ErrIO
 		// Some of the writes reached the medium whole before the
-		// writeback failed. A torn image comes only from a crash, which
-		// the simulator draws only while a quorum would stay.
+		// writeback failed, or none did (FailSyncLosingAll). A torn image
+		// comes only from a crash, which the simulator draws only while a
+		// quorum would stay.
+		img := Writes
+		if lose {
+			img = Lost
+		}
 		if !h.f.cut {
-			h.f.durable = h.f.survive(rng, Writes, &h.d.Counts)
+			h.f.durable = h.f.survive(rng, img, &h.d.Counts)
 		}
 		h.d.Counts.FailedSyncs++
 		h.d.tracef("sync %s (file %d) fails after %d bytes reached the disk", h.name, h.f.id, h.f.durable.size)
@@ -1397,6 +1413,20 @@ func (h *Handle) Close() error {
 func (d *Disk) Unsynced(name string) bool {
 	f, ok := d.names[name]
 	return ok && (len(f.pending) > 0 || f.cut)
+}
+
+// PendingBytes is how many bytes the writes to file name since its last
+// sync hold.
+func (d *Disk) PendingBytes(name string) int {
+	f, ok := d.names[name]
+	if !ok {
+		return 0
+	}
+	n := 0
+	for _, w := range f.pending {
+		n += len(w.p)
+	}
+	return n
 }
 
 // PendingOverZeros reports whether file name has writes since its last

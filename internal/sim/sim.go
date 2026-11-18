@@ -158,6 +158,11 @@ type Config struct {
 	// stageUnwritten makes stageCrash's image keep the segment's growth by
 	// the write with zeros past what was synced (simfs.Unwritten).
 	stageUnwritten bool
+	// syncFailWarmCold makes, once, a wl node's sync of its log fail with
+	// none of the write on the disk (simfs.FailSyncLosingAll), so that the
+	// node starts again warm, its page cache kept, and writes on; a second
+	// later it loses power and starts cold (wlSyncFailArm, Recovered).
+	syncFailWarmCold bool
 	// flipRecords lets a wl node's damage, where the kind drawn finds no
 	// place, flip a record of its log (flipWLRecord), once the cluster
 	// formed first: TestSeeds' runs, whose rule over a set needs fenced
@@ -559,6 +564,13 @@ type Sim struct {
 	revokedAt   map[int64]int64
 	revokesTo   uint64
 	checkpoints []*checkpoint
+	// syncFail is the node of Config.syncFailWarmCold and how far its
+	// scenario got: 1 its sync failed, 2 it started warm, 3 it lost
+	// power, 4 it started cold.
+	syncFail struct {
+		n     *node
+		phase int
+	}
 	// cold holds the disks of the first cold restart that failed, and
 	// votes makes the trace show every vote request and answer, as in a
 	// cold restart, so that one that elects no leader shows why.
@@ -676,6 +688,9 @@ type Stats struct {
 	// StageZeroed counts the stage crashes that left zeros past what the
 	// log synced (Config.stageUnwritten).
 	StageZeroed int
+	// SyncFailColdStarts counts the cold starts of Config.syncFailWarmCold's
+	// node that recovered.
+	SyncFailColdStarts int
 	// CkptCrashes counts the crashes of wl nodes partway through a
 	// checkpoint (Config.ckptCrash).
 	CkptCrashes int
