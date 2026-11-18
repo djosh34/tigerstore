@@ -138,6 +138,16 @@ func (w *watchClient) run(wait, dropAt int64) {
 		if s.nodes[i] == refused {
 			i = (i + 1 + s.rng.IntN(2)) % 3
 		}
+		if s.nodes[i] == s.lagged {
+			// LagAtEnd's follower is cut off from the others until the
+			// end: a stream there would wait behind them, and miss what
+			// they commit meanwhile (holdBack).
+			j := (i + 1 + s.rng.IntN(2)) % 3
+			if s.nodes[j] == refused {
+				j = 3 - i - j
+			}
+			i = j
+		}
 		n := s.nodes[i]
 		wait = 100*Millisecond + s.rng.Int64N(400*Millisecond)
 		next := w.next

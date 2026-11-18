@@ -43,8 +43,9 @@ const (
 	// to 3 KiB a write while it stalled).
 	stallWrite = 1 << 20
 	// silentRule is what a leader logs when #233's failover rule silences
-	// it (internal/node).
+	// it (internal/node), and wlSilent what internal/wl's logs.
 	silentRule = "sending nothing to peers until it is durable"
+	wlSilent   = "log's oldest append waited for the disk since "
 )
 
 // errNotDiskStall is the error of a failed run that is not a stall of the
@@ -57,8 +58,12 @@ type logLine struct {
 	msg string
 }
 
-// readLog reads a node's log: zap's JSON lines, of which others are
-// skipped.
+// wlLine is a line of internal/wl's logger: its time, in UTC, to the
+// microsecond, and its message.
+var wlLine = regexp.MustCompile(`^tigerstore-wl (\d{4}/\d\d/\d\d \d\d:\d\d:\d\d\.\d{6}) (.*)$`)
+
+// readLog reads a node's log: zap's JSON lines and internal/wl's lines,
+// of which others are skipped.
 func readLog(path string) ([]logLine, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -69,6 +74,12 @@ func readLog(path string) ([]logLine, error) {
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
 	for sc.Scan() {
+		if m := wlLine.FindSubmatch(sc.Bytes()); m != nil {
+			if at, err := time.Parse("2006/01/02 15:04:05.000000", string(m[1])); err == nil {
+				out = append(out, logLine{at, string(m[2])})
+			}
+			continue
+		}
 		var e struct {
 			TS  string `json:"ts"`
 			Msg string `json:"msg"`
@@ -218,10 +229,13 @@ func diskStall(prefix string) (time.Time, error) {
 		}
 		nodes = append(nodes, lines)
 		for _, l := range lines {
+			// internal/wl's nodes word both lines their own way: "the
+			// leader is", and wl's silent rule (wl/silent.go).
+			msg := strings.TrimPrefix(l.msg, "the ")
 			switch {
-			case strings.Contains(l.msg, silentRule):
+			case strings.Contains(msg, silentRule) || strings.HasPrefix(msg, wlSilent):
 				silences = append(silences, l.at)
-			case strings.HasPrefix(l.msg, "leader is ") && strings.HasSuffix(l.msg, " at term "+term) && !strings.HasPrefix(l.msg, "leader is 0 "):
+			case strings.HasPrefix(msg, "leader is ") && strings.HasSuffix(msg, " at term "+term) && !strings.HasPrefix(msg, "leader is 0 "):
 				leaders = append(leaders, l.at)
 			}
 		}
