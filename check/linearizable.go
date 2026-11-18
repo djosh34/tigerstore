@@ -30,7 +30,8 @@ func ShortEnough(h *history.History) bool { return len(h.Ops) <= ShortOps }
 // Linearizable checks h.Ops with Porcupine against the ported etcd model, as
 // etcd v3.7.2's robustness tests do (tests/robustness/model and validate).
 //
-// The store must be empty at the start of the history. Keep checked histories
+// The store must be empty at the start of the history, or be h.Start. Keep
+// checked histories
 // short and isolated (ShortEnough): Porcupine's search grows fast with
 // concurrency and with bugs, and every other writer to the store must be in
 // the history. Not finishing within timeout, or within MaxSteps, is a

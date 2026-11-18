@@ -160,3 +160,117 @@ func TestStartFromRandomPrefix(t *testing.T) {
 		}
 	}
 }
+
+// TestStartBoundaries checks a history from a start at the start's
+// revision and around it: a watch from the start's revision cannot be
+// checked, one from below must be canceled as compacted, an answer below
+// the start's revision is convicted, and a history that committed
+// nothing since its start passes.
+func TestStartBoundaries(t *testing.T) {
+	watchFrom := func(rev int64, resps ...history.WatchResponse) *history.History {
+		h := forkHistory(t)
+		h.Watches = append(h.Watches, history.Watch{Client: 8, Req: history.WatchRequest{Key: "b", StartRevision: rev}, Responses: resps})
+		return h
+	}
+	mustFail(t, "Watches", Watches(watchFrom(10)), "at or below the start's revision")
+	mustFail(t, "Watches", Watches(watchFrom(9)), "at or below the start's revision")
+	mustPass(t, "Watches", Watches(watchFrom(9, history.WatchResponse{Time: 15, Revision: 10, Canceled: true, CompactRevision: 10})))
+
+	// A read answered below the start's revision.
+	h := forkHistory(t)
+	h.Ops[0].Resp.Revision = 9
+	mustFail(t, "Durable", Durable(h), "below the start's revision")
+	mustFail(t, "Revisions", Revisions(h), "got revision 9")
+
+	// A history that only reads from its start.
+	b := newBuilderFrom(t, startOf())
+	b.get(1, "a")
+	b.get(2, "b")
+	h = b.done()
+	mustPass(t, "Durable", Durable(h))
+	mustPass(t, "Watches", Watches(h))
+	for _, mode := range []WitnessMode{FromLog, FromRevisions} {
+		mustPass(t, "Witnessed", Witnessed(h, mode, time.Minute))
+	}
+
+	// Lease 0 means no lease.
+	h = forkHistory(t)
+	h.Start.Leases = append(h.Start.Leases, 0)
+	mustFail(t, "Validate", h.Validate(), "lease 0")
+}
+
+// ambiguous makes op i of h a call whose client got no answer, though it
+// took effect.
+func ambiguous(h *history.History, i int) {
+	h.Ops[i].Resp = nil
+	h.Ops[i].Err = &history.Error{Code: "Unavailable", Message: "no answer", Ambiguous: true}
+}
+
+// TestStartWitnessCorners passes histories from a start that only the
+// start explains, through every checker: an unanswered revoke of a lease
+// the start holds, the lease granted again and used; and an unanswered
+// put of the value a key already has at the start, before a read of
+// another key at the revision it wrote.
+func TestStartWitnessCorners(t *testing.T) {
+	check := func(h *history.History) {
+		t.Helper()
+		mustPass(t, "Durable", Durable(h))
+		mustPass(t, "Revisions", Revisions(h))
+		mustPass(t, "Watches", Watches(h))
+		mustPass(t, "Linearizable", Linearizable(h, time.Minute))
+		for _, mode := range []WitnessMode{FromLog, FromRevisions} {
+			mustPass(t, "Witnessed", Witnessed(h, mode, time.Minute))
+		}
+	}
+
+	b := newBuilderFrom(t, startOf(), "c")
+	revoke := b.do(1, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 5}})
+	b.do(2, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 5, TTL: 5}})
+	b.do(2, history.Request{Put: &history.PutRequest{Key: "c", Value: "c1", Lease: 5}})
+	b.get(3, "a")
+	h := b.done()
+	ambiguous(h, revoke)
+	check(h)
+
+	b = newBuilderFrom(t, startOf())
+	put := b.put(1, "a", "a2")
+	b.get(2, "b")
+	h = b.done()
+	ambiguous(h, put)
+	check(h)
+}
+
+// TestStartCompactionCorners checks compactions next to a start: a
+// transaction that reads below a compaction after the start's, unanswered,
+// is explained by that compaction, not the start's; a watch from the
+// start's revision with previous values may be canceled there; and a
+// watch from below it must not deliver anything before its cancel.
+func TestStartCompactionCorners(t *testing.T) {
+	b := newBuilderFrom(t, startOf(), "c")
+	b.put(1, "c", "c1")
+	compact := b.do(2, history.Request{Compact: &history.CompactRequest{Revision: 11}})
+	b.do(3, history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{{Range: &history.RangeRequest{Key: "c", Revision: 10}}}}})
+	h := b.done()
+	ambiguous(h, compact)
+	if op := h.Ops[2]; op.Err == nil || !sameError(op.Err, errCompacted) {
+		t.Fatalf("the transaction's read below the compaction got %+v, want compacted", op)
+	}
+	for _, mode := range []WitnessMode{FromLog, FromRevisions} {
+		mustPass(t, "Witnessed", Witnessed(h, mode, time.Minute))
+	}
+
+	h = forkHistory(t)
+	h.Watches = append(h.Watches, history.Watch{
+		Client:    8,
+		Req:       history.WatchRequest{Key: "b", StartRevision: 10, PrevKV: true},
+		Responses: []history.WatchResponse{{Time: 15, Revision: 10, Canceled: true, CompactRevision: 10}},
+	})
+	mustPass(t, "Watches", Watches(h))
+
+	h = forkHistory(t)
+	h.Watches = append(h.Watches, history.Watch{Client: 8, Req: history.WatchRequest{Key: "c", StartRevision: 9}, Responses: []history.WatchResponse{
+		{Time: 15, Revision: 11, Events: []history.Event{{Type: history.EventPut, KV: history.KeyValue{Key: "c", Value: "c1", CreateRevision: 12, ModRevision: 12, Version: 1}}}},
+		{Time: 16, Revision: 13, Canceled: true, CompactRevision: 13},
+	}})
+	mustFail(t, "Watches", Watches(h), "before it was canceled")
+}

@@ -143,6 +143,10 @@ func Durable(h *history.History) error {
 				}
 			}
 		}
+		if r.start > 0 && op.Resp.Revision < r.start {
+			fail("op %d (client %d) answered at revision %d, below the start's revision %d", i, op.Client, op.Resp.Revision, r.start)
+			continue
+		}
 		if op.Resp.Revision > r.rev {
 			if len(reads) > 0 || op.Req.Mutates() {
 				fail("op %d (client %d) answered at revision %d, above the last revision %d of the log", i, op.Client, op.Resp.Revision, r.rev)

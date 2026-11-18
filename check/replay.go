@@ -20,14 +20,17 @@ type replay struct {
 	keys     []string
 	// rev is the revision after the whole log.
 	rev int64
-	// compactions are the revisions compacted, in log order.
+	// compactions are the revisions compacted, in log order, and start
+	// the revision of the store the history starts from, 0 for none.
 	compactions []int64
+	start       int64
 }
 
 var errNoLog = errors.New("history has no committed log")
 
 func newReplay(log []history.Request, st *history.Start) (*replay, error) {
-	if len(log) == 0 {
+	// A history from a start may have committed nothing since.
+	if len(log) == 0 && st == nil {
 		return nil, errNoLog
 	}
 	keys := keysOf(log, st)
@@ -37,7 +40,7 @@ func newReplay(log []history.Request, st *history.Start) (*replay, error) {
 	// compacted: nothing reads below it.
 	r.versions.add(startEvents(st))
 	if st != nil {
-		r.compactions = append(r.compactions, st.Rev)
+		r.compactions, r.start = append(r.compactions, st.Rev), st.Rev
 	}
 	for i, req := range log {
 		if req.LeaseGrant != nil && req.LeaseGrant.ID == 0 {

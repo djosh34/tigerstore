@@ -112,13 +112,19 @@ func (c *revisionChecker) realTime() {
 			highest[i] = max(highest[i], highest[i-1])
 		}
 	}
-	// before returns the highest revision of an op that returned before t.
+	// The store the history starts from was there before every op.
+	var floor int64
+	if c.h.Start != nil {
+		floor = c.h.Start.Rev
+	}
+	// before returns the highest revision of an op that returned before t,
+	// or the start's.
 	before := func(t int64) int64 {
 		n := sort.Search(len(byReturn), func(i int) bool { return byReturn[i].Return >= t })
 		if n == 0 {
-			return 0
+			return floor
 		}
-		return highest[n-1]
+		return max(highest[n-1], floor)
 	}
 	for _, op := range ops {
 		prev := before(op.Call)
@@ -384,7 +390,7 @@ func (c *revisionChecker) compaction() {
 				c.fail("op %d (client %d) got a compacted error for revision %d, but no compaction that could cause it started before it returned", i, op.Client, rev)
 			}
 		case op.Resp != nil && started:
-			c.fail("op %d (client %d) succeeded at revision %d, at or below the start's compaction at %d", i, op.Client, rev, c.h.Start.Rev)
+			c.fail("op %d (client %d) succeeded at revision %d, which the start's compaction at %d covers", i, op.Client, rev, c.h.Start.Rev)
 		case op.Resp != nil && !lagging:
 			for _, j := range compacts {
 				k := &c.h.Ops[j]
