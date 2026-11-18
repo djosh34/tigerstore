@@ -598,12 +598,22 @@ func independent(res *Result) error {
 // Porcupine too if the history is short enough for it
 // (check.ShortEnough). All of them must pass; a history that one passes
 // and another fails is a checker bug.
+//
+// Porcupine gets the history without the ambiguous writes the committed
+// log shows never took effect, as chaos and pastram give it: each one it
+// must keep open to the end of the history, and a few dozen made its
+// search run past its steps on histories that are linearizable (#729).
+// Leaving them out can only make the check stricter.
 func agree(h *history.History) error {
 	names := []string{"witness from the log", "witness from the revisions"}
 	errs := []error{check.Witnessed(h, check.FromLog, time.Minute, witnessSteps, wallStop), check.Witnessed(h, check.FromRevisions, time.Minute, witnessSteps, wallStop)}
 	if check.ShortEnough(h) {
 		names = append(names, "linearizability")
-		errs = append(errs, check.Linearizable(h, 3*time.Minute, porcupineSteps, wallStop))
+		lin, _, err := h.WithoutLostWrites()
+		if err == nil {
+			err = check.Linearizable(lin, 3*time.Minute, porcupineSteps, wallStop)
+		}
+		errs = append(errs, err)
 	}
 	failed := 0
 	var verdicts []string
