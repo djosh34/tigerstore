@@ -21,9 +21,16 @@
 #   every job's results into one report, which judges each seed's paired
 #   ratio, candidate over baseline on one runner, against the noise of
 #   main against itself (bench/noise.json).
-# - full: each benchmark is one job that runs every seed at every RTT in
-#   turn, so the RTTs share a runner, with repeats, rate runs and etcd at
-#   the first RTT; for #602's done claim.
+# - full: for #602's done claim, with repeats, rate runs and etcd at the
+#   first RTT. k8s is one job that runs every seed at every RTT in turn,
+#   so its RTTs share a runner. Every other benchmark has a job per RTT,
+#   each on its own runner and measured right before it (#602: one put
+#   job's disk slowed by a quarter two hours in, under its 10 ms runs).
+#   The job of a later RTT measures etcd's max at the first RTT on its own
+#   runner, only for the rate of its rate runs. The last job merges the
+#   per-RTT jobs into one report, as in the quick grid.
+# Every job of a seed of all measures its runner's disk again at its end:
+# a cell whose disk slowed by more than 5% does not count (benchreport).
 #
 # bench/noise.json, the quick grid's A/A noise per benchmark, shape and RTT,
 # is re-measured whenever this workflow, cmd/loadgen, the report's measure
@@ -93,9 +100,9 @@ jobs:
         with:
           go-version-file: go.mod
       # The jobs: in the quick grid one per benchmark, seed and RTT, in the
-      # full grid one per benchmark. The tools that are not loadgen runs
-      # (profiles, the disk probe, etcd's own tool) are one job each in
-      # both.
+      # full grid one per benchmark and RTT but one for k8s. The tools that
+      # are not loadgen runs (profiles, the disk probe, etcd's own tool)
+      # are one job each in both.
       - id: plan
         env:
           GRID: ${{ inputs.grid || 'quick' }}
@@ -118,8 +125,10 @@ jobs:
           jobs=$(jq -cn --arg grid "$GRID" --arg b "$BENCHMARKS" --arg s "$SEEDS" --arg r "$RTTS" '
             def words: split(" ") | map(select(. != ""));
             [($b | words | sort_by(. != "k8s"))[] as $bench |
-              if $grid == "full" or ($bench | IN("profile", "profile-disk", "disk-probe", "etcd-tool"))
+              if ($grid == "full" and $bench == "k8s") or ($bench | IN("profile", "profile-disk", "disk-probe", "etcd-tool"))
               then {bench: $bench, seed: "all", rtt: "all", name: $bench}
+              elif $grid == "full"
+              then ($r | words)[] as $rtt | {bench: $bench, seed: "all", rtt: $rtt, name: "\($bench)-rtt\($rtt)"}
               else ($s | words | to_entries)[] as $seed | ($r | words)[] as $rtt |
                 {bench: $bench, seed: $seed.value, rtt: $rtt, name: "\($bench)-\($seed.value)-rtt\($rtt)",
                  flip: ($seed.key % 2 == 1)}
@@ -146,11 +155,10 @@ jobs:
     #   candidate had a ring, so about 215 now, against 330.
     # - Every other job of a seed of all gets 300: each full-grid job but
     #   k8s, and profile, profile-disk, disk-probe and etcd-tool in either
-    #   grid, as the plan job sets them. A full put or txn job starts 108
-    #   tigerstore clusters (max and rate at every RTT), about 130 minutes
-    #   of formats once both refs have a ring: it took up to 150 minutes
-    #   when only the candidate had one, so about 190 (put) to 220 (txn)
-    #   now (#602's full bench of 31162e0b, whose put and txn jobs hit 150).
+    #   grid, as the plan job sets them. A full put or txn job of one RTT
+    #   starts 36 tigerstore clusters (max and rate), about 45 minutes of
+    #   formats; with every RTT in one job it took about 190 (put) to 220
+    #   (txn) minutes (#602's full bench of 31162e0b).
     timeout-minutes: ${{ matrix.job.seed != 'all' && 60 || matrix.job.bench == 'k8s' && 330 || 300 }}
     env:
       BENCH: ${{ matrix.job.bench }}
@@ -233,6 +241,7 @@ jobs:
       # the report takes one runner's measure for all, the runners being
       # of one type.
       - name: Measure the runner
+        id: measure
         if: matrix.job.bench != 'profile' && matrix.job.bench != 'profile-disk' && matrix.job.bench != 'disk-probe' && matrix.job.bench != 'etcd-tool' && (matrix.job.seed == 'all' || startsWith(format('{0} ', needs.plan.outputs.seeds), format('{0} ', matrix.job.seed)) && startsWith(format('{0} ', inputs.rtts || '0 2 10'), format('{0} ', matrix.job.rtt)))
         run: |
           taskset -c 3 bin/ceiling -dir "$RUNNER_TEMP" \
@@ -299,11 +308,28 @@ jobs:
           norate=""
           if [ "${rtts[0]}" != "${asked[0]}" ]; then
             first=none
-            TARGETS=$(echo "$TARGETS" | tr ' ' '\n' | grep -vx etcd | tr '\n' ' ')
-            if [[ " $MODES " == *" rate "* ]]; then
-              norate="rate runs only at the first RTT, ${asked[0]} ms, in the quick grid"
+            if [ "${{ matrix.job.seed }}" = all ] && [[ " $MODES " == *" rate "* ]] && [[ " $TARGETS " == *" etcd "* ]]; then
+              # A full-grid job of a later RTT: the rate of every RTT is
+              # half of etcd's median max at the first RTT, so this job
+              # measures that max first, on its own runner, for the rate
+              # alone. Those runs stay in rate-probe/ and are reported
+              # nowhere: etcd's results are the first RTT's job's.
+              bench/netem.sh on "${asked[0]}"
+              TARGETS=etcd MODES=max LAYOUTS="" bench/run.sh "$BENCH" results/rate-probe
+              bench/netem.sh off
+              maxes=()
+              for f in results/rate-probe/"$BENCH"/etcd-max-*.json; do
+                if [ -f "$f" ] && [ ! -f "${f%.json}.failed" ]; then maxes+=("$f"); fi
+              done
+              if [ "${#maxes[@]}" -gt 0 ]; then
+                RATE_FALLBACK=$(jq -s 'map(.throughput) | sort | (if length % 2 == 0 then (.[length / 2 - 1] + .[length / 2]) / 2 else .[length / 2 | floor] end) / 2 | floor' "${maxes[@]}")
+                export RATE_FALLBACK
+              fi
+            elif [[ " $MODES " == *" rate "* ]]; then
+              norate="rate runs only at the first RTT, ${asked[0]} ms, in the jobs of a later RTT of the quick grid, or without etcd"
+              MODES=$(echo "$MODES" | tr ' ' '\n' | grep -vx rate | tr '\n' ' ')
             fi
-            MODES=$(echo "$MODES" | tr ' ' '\n' | grep -vx rate | tr '\n' ' ')
+            TARGETS=$(echo "$TARGETS" | tr ' ' '\n' | grep -vx etcd | tr '\n' ' ')
             export TARGETS MODES LAYOUTS=""
           fi
           measure() {
@@ -317,7 +343,7 @@ jobs:
               # Layouts measure disk and CPU, not the network: once is
               # enough. etcd is there for comparison: once is enough too.
               TARGETS=$(echo "$TARGETS" | tr ' ' '\n' | grep -vx etcd | tr '\n' ' ') \
-                LAYOUTS="" RATE_FALLBACK=$(cat "$first/$BENCH/rate" 2>/dev/null || true) bench/run.sh "$BENCH" "$out"
+                LAYOUTS="" RATE_FALLBACK=${RATE_FALLBACK:-$(cat "$first/$BENCH/rate" 2>/dev/null || true)} bench/run.sh "$BENCH" "$out"
             fi
           }
           for rtt in "${rtts[@]}"; do
@@ -346,6 +372,15 @@ jobs:
             bench/netem.sh show >"$out/netem.txt"
             bench/netem.sh off
           done
+      # The disk again at the job's end, on the runner as the runs left
+      # it: benchreport sets it against the start's, and a cell whose disk
+      # slowed by more than 5% does not count (#602).
+      - name: Measure the runner's disk again
+        if: ${{ !cancelled() && steps.measure.outcome == 'success' && matrix.job.seed == 'all' }}
+        run: |
+          taskset -c 3 bin/ceiling -dir "$RUNNER_TEMP" \
+            -disk "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)" \
+            -cpu "$(lscpu | sed -n 's/^Model name: *//p' | head -n 1)" | tee results/ceiling-end.json
       # A harness failure leaves no comparison. The raw results are
       # uploaded either way. In the quick grid the report job reports a
       # benchmark's jobs together.
@@ -386,12 +421,15 @@ jobs:
           path: results
           retention-days: 30
 
-  # The quick grid's report: every job's runs of a benchmark in one report,
-  # seed by seed and shape by shape. The jobs ran on runners of one type;
-  # the ceilings and the generator's measure are the first job's.
+  # The report of the benchmarks split over jobs, every benchmark of the
+  # quick grid and every one but k8s of the full grid: every job's runs of
+  # a benchmark in one report, seed by seed and shape by shape. The jobs ran
+  # on runners of one type. In the quick grid the ceilings and the
+  # generator's measure are the first job's; in the full grid each RTT has
+  # its own job's ceilings, and the first RTT's job describes the runner.
   report:
     needs: [plan, bench]
-    if: ${{ !cancelled() && (inputs.grid || 'quick') == 'quick' && needs.plan.result == 'success' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
@@ -408,18 +446,20 @@ jobs:
         env:
           JOBS: ${{ needs.plan.outputs.jobs }}
           SEEDS: ${{ needs.plan.outputs.seeds }}
+          GRID: ${{ inputs.grid || 'quick' }}
           RTTS: ${{ inputs.rtts || '0 2 10' }}
-          TARGETS: ${{ inputs.targets || 'baseline candidate' }}
-          MODES: ${{ inputs.modes || 'max' }}
-          REPS: ${{ inputs.reps || '1' }}
+          TARGETS: ${{ inputs.targets || (inputs.grid == 'full' && 'etcd baseline candidate' || 'baseline candidate') }}
+          MODES: ${{ inputs.modes || (inputs.grid == 'full' && 'max rate' || 'max') }}
+          REPS: ${{ inputs.reps || (inputs.grid == 'full' && '3' || '1') }}
           START: ${{ needs.plan.outputs.at }}
           BENCH_RESULT: ${{ needs.bench.result }}
         run: |
           status=0
+          read -r first _ <<<"$RTTS"
           {
-            echo "## Quick grid"
+            echo "## ${GRID^} grid"
             echo "Seeds: $SEEDS; RTTs: $RTTS; targets: $TARGETS; modes: $MODES; repeats: $REPS. The run took $(( ($(date +%s) - START) / 60 )) minutes up to this report, plan to report."
-            echo "Replay: \`gh workflow run bench.yml --repo ${{ github.repository }} --ref ${{ github.ref_name }} -f grid=quick -f candidate=${{ inputs.candidate || 'main' }} -f baseline=${{ inputs.baseline || 'main' }} -f benchmarks=\"${{ inputs.benchmarks || 'put-1k txn-1k k8s' }}\" -f seeds=\"$SEEDS\" -f rtts=\"$RTTS\" -f targets=\"$TARGETS\" -f modes=\"$MODES\" -f reps=$REPS\`"
+            echo "Replay: \`gh workflow run bench.yml --repo ${{ github.repository }} --ref ${{ github.ref_name }} -f grid=$GRID -f candidate=${{ inputs.candidate || 'main' }} -f baseline=${{ inputs.baseline || 'main' }} -f benchmarks=\"${{ inputs.benchmarks || 'put-1k txn-1k k8s' }}\" -f seeds=\"$SEEDS\" -f rtts=\"$RTTS\" -f targets=\"$TARGETS\" -f modes=\"$MODES\" -f reps=$REPS\`"
             if [ "$BENCH_RESULT" != success ]; then
               echo "Some jobs did not succeed ($BENCH_RESULT): their runs are missing below, or their failures listed."
               status=1
@@ -434,16 +474,25 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             if [ "$retries" -gt 3 ]; then status=1; fi
           fi
-          for bench in $(jq -r '[.[] | select(.seed != "all") | .bench] | unique | .[]' <<<"$JOBS"); do
+          for bench in $(jq -r '[.[] | select(.rtt != "all") | .bench] | unique | .[]' <<<"$JOBS"); do
             dir=merged/$bench
             mkdir -p "$dir"
             for job in jobs/bench-"$bench"-*; do
               [ -d "$job" ] || continue
               cp -rn "$job"/rtt-* "$dir"/
+              # A full-grid job ran one RTT on its own runner: its measures
+              # at its start and end go with that RTT (benchreport).
+              if [ "$GRID" = full ]; then
+                for r in "$job"/rtt-*; do
+                  for f in ceiling.json ceiling-end.json; do
+                    if [ -f "$job/$f" ]; then cp "$job/$f" "$dir/$(basename "$r")/"; fi
+                  done
+                done
+              fi
               # The runner block goes with the measure: both from the job
-              # that measured.
-              if [ -f "$job/ceiling.json" ]; then
-                for f in ceiling.json "generator-$bench.json" runner.md; do
+              # that measured, in the full grid the first RTT's.
+              if [ -f "$job/ceiling.json" ] && { [ "$GRID" = quick ] || [ -d "$job/rtt-$first" ]; }; then
+                for f in ceiling.json ceiling-end.json "generator-$bench.json" runner.md; do
                   if [ -f "$job/$f" ]; then cp "$job/$f" "$dir/"; fi
                 done
               elif [ ! -f "$dir/runner.md" ] && [ -f "$job/runner.md" ]; then
@@ -452,7 +501,11 @@ jobs:
             done
             {
               echo "## $bench"
-              echo "The ceilings and the generator's measure below are those of the job of the first seed and RTT; every job ran on a runner of the same type."
+              if [ "$GRID" = full ]; then
+                echo "Each RTT ran in its own job, on its own runner: its ceilings are that runner's, measured at the job's start, and its disk was measured again at the job's end. The runner and the generator's measure below are the first RTT's job's."
+              else
+                echo "The ceilings and the generator's measure below are those of the job of the first seed and RTT; every job ran on a runner of the same type."
+              fi
               if [ -f "$dir/runner.md" ]; then cat "$dir/runner.md"; fi
               echo '```'
               for p in jobs/bench-"$bench"-*/rtt-*/probe.txt; do

@@ -134,7 +134,7 @@ func TestReportCeilings(t *testing.T) {
 	}
 	for _, want := range []string{
 		"| put-1k | 1 | - | 0 | 1049 | 100,000 | 50,000 | 1.00 | 1,000,000 | - | 50,000 | network |",
-		"| put-1k | 1 | 0 | main | 40,000 | 80.0% | 40,000 | 0.80 |",
+		"| put-1k | 1 | 0 | main | 40,000 | 80.0% | 40,000 | 0.80 | - |",
 		"index lookups 1.000",
 	} {
 		if !strings.Contains(b.String(), want) {
@@ -144,6 +144,75 @@ func TestReportCeilings(t *testing.T) {
 	writeAt(t, dir, "0", "put-1k", "main-max-1.1.json", fmt.Sprintf(run, 0.81))
 	if err := report(io.Discard, dir, "", nil); !errors.Is(err, errGeneratorLimit) || !strings.Contains(err.Error(), "0.81 of its core") {
 		t.Errorf("a generator at 0.81 cores gave %v", err)
+	}
+}
+
+// An RTT that ran on its own runner takes that runner's ceiling, and a
+// job whose disk made less than 95% of its start at its end has its cells
+// marked as not counting (#602): the runner of RTT 10 ms made 150 MiB/s
+// at its start, so its disk limit is half RTT 0's, and 120 at its end.
+// RTT 0's runner held at 297 of its 300.
+func TestReportCeilingByRTTAndASlowedDisk(t *testing.T) {
+	dir := t.TempDir()
+	runner := func(mibps float64) string {
+		return fmt.Sprintf(`{"kernel":"k","cpu":"c","disk":"sda1","disk_mib_per_s":%g,"primitives":{"index":[{"keys":10000,"lookup_ns":1}],"loopback_bytes_per_s":1e12}}`, mibps)
+	}
+	for _, f := range []struct{ path, content string }{
+		{"ceiling.json", runner(300)},
+		{"rtt-0/ceiling.json", runner(300)},
+		{"rtt-0/ceiling-end.json", runner(297)},
+		{"rtt-10/ceiling.json", runner(150)},
+		{"rtt-10/ceiling-end.json", runner(120)},
+	} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, f.path)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, f.path), []byte(f.content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 1,048.576 durable bytes a put: the disk allows 100,000 puts a second
+	// at 300 MiB/s, 50,000 at 150.
+	run := `{"valid":true,"throughput":40000,"min_written_bytes_per_op":1048.576,"client_cores":0.2,"conns":6,"endpoints":["a"],"per_op":{"out_bytes":1100,"in_bytes":30,"writes":1,"entries":1}}`
+	writeAt(t, dir, "0", "put-1k", "main-max-1.1.json", run)
+	writeAt(t, dir, "10", "put-1k", "main-max-1.1.json", run)
+	var b strings.Builder
+	if err := report(&b, dir, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"| put-1k | 1 | - | 0 | 1049 | 100,000 |",
+		"| put-1k | 1 | - | 10 | 1049 | 50,000 |",
+		"| put-1k | 1 | 0 | main | 40,000 | 40.0% | 80,000 | 0.20 | -1.0% |",
+		"| put-1k | 1 | 10 | main | 40,000 | 80.0% | 40,000 | 0.20 | -20.0%, slowed: does not count |",
+		"at RTT 0 ms 300.0 MiB/s at its job's start, 297.0 MiB/s at its end; at RTT 10 ms 150.0 MiB/s at its job's start, 120.0 MiB/s at its end",
+		"Cells measured on a disk that slowed during their job, whose shares do not count: put-1k seed 1 at 10 ms, main.",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("no %q in\n%s", want, b.String())
+		}
+	}
+	// A job that ran every RTT, as k8s does, measures dir's runner at its
+	// end.
+	for _, f := range []string{"rtt-0", "rtt-10"} {
+		if err := os.RemoveAll(filepath.Join(dir, f, "ceiling.json")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ceiling-end.json"), []byte(runner(240)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b.Reset()
+	if err := report(&b, dir, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"| put-1k | 1 | 0 | main | 40,000 | 40.0% | 80,000 | 0.20 | -20.0%, slowed: does not count |",
+		"| put-1k | 1 | 10 | main | 40,000 | 40.0% | 80,000 | 0.20 | -20.0%, slowed: does not count |",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("no %q in\n%s", want, b.String())
+		}
 	}
 }
 

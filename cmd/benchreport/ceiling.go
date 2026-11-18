@@ -38,6 +38,14 @@ const targetShare = 0.8
 // run; a run that used more does not count (#601).
 const generatorCores = 0.8
 
+// diskHeld is the least share of its disk's rate at a job's start that
+// the disk must still make at the job's end (cmd/ceiling, measured at
+// both): below it the disk slowed during the job, the ceilings measured at
+// its start no longer held, and the cells the job measured do not count,
+// whatever their share (#602: a runner's disk fell from about 340 to
+// about 260 MiB/s two hours into a full put job, and with it every max).
+const diskHeld = 0.95
+
 // errGeneratorLimit is a run whose generator used more than generatorCores
 // of its core.
 var errGeneratorLimit = errors.New("the generator was the limit")
@@ -64,31 +72,61 @@ func (l limits) ceiling() (float64, string) {
 
 // ceilings prints, for each benchmark, seed and RTT, the ceiling from
 // first principles and each store's share of it, if dir has the runner's
-// measurements (ceiling.json). The ceiling is the lowest of four limits:
+// measurements (ceiling.json). A ceiling.json in an RTT's directory, from
+// a job that ran that RTT alone on its own runner, takes the place of
+// dir's for that RTT; dir's stays the runner the text and the leader's
+// floors describe. A ceiling-end.json next to a ceiling.json is the same
+// runner measured again at its job's end: each cell shows how its disk
+// held, and a cell whose disk slowed (diskHeld) is marked as not counting.
+// The ceiling is the lowest of four limits:
 // the shared disk's durable bandwidth over the bytes an operation must
 // make durable on three nodes; loopback's bandwidth over the bytes it
 // sends; one core over the least leader CPU it needs (floor); and, for
 // k8s, the most calls a second the recording's dependent calls allow at
 // the RTT.
 func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, all maxRuns) error {
-	b, err := os.ReadFile(filepath.Join(dir, "ceiling.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
+	rn, ok, err := readRunner(filepath.Join(dir, "ceiling.json"))
+	if !ok || err != nil {
+		return err
 	}
+	end, _, err := readRunner(filepath.Join(dir, "ceiling-end.json"))
 	if err != nil {
 		return err
 	}
-	var rn runner
-	if err := json.Unmarshal(b, &rn); err != nil {
-		return fmt.Errorf("ceiling.json: %w", err)
-	}
-	if rn.DiskMiBps <= 0 || rn.Primitives.LoopbackBps <= 0 {
-		return errors.New("ceiling.json: no disk or loopback bandwidth")
+	// Each RTT's runner, and its disk at the start and the end of its job.
+	at := map[string]runner{}
+	disks := map[string]diskHeldBy{}
+	var own []string
+	for _, rtt := range rtts {
+		r, ok, err := readRunner(filepath.Join(dir, "rtt-"+rtt, "ceiling.json"))
+		if err != nil {
+			return err
+		}
+		e := end
+		if ok {
+			own = append(own, rtt)
+			if e, _, err = readRunner(filepath.Join(dir, "rtt-"+rtt, "ceiling-end.json")); err != nil {
+				return err
+			}
+		} else {
+			r = rn
+		}
+		at[rtt] = r
+		disks[rtt] = diskHeldBy{r.DiskMiBps, e.DiskMiBps}
 	}
 	pr := rn.Primitives
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
 	p("\nThe runner: kernel %s, CPU %s. The three nodes keep their data on one shared disk, %s, which makes at most %.1f MiB/s durable. Loopback carries %.2f GB/s on three connections. A durable 4 KiB write takes %.0f µs.\n",
 		rn.Kernel, rn.CPU, rn.Disk, rn.DiskMiBps, pr.LoopbackBps/1e9, pr.SyncLatencyNs/1e3)
+	// The quick grid measures one runner, at its start only: nothing to say.
+	if len(own) > 0 || end.DiskMiBps > 0 {
+		var held []string
+		for _, rtt := range rtts {
+			d := disks[rtt]
+			held = append(held, fmt.Sprintf("at RTT %s ms %.1f MiB/s at its job's start, %s at its end", rtt, d.start, d.endText()))
+		}
+		p("\nThe disk's durable rate, measured on the runner of each RTT: %s. A cell whose disk made less than %.0f%% of its start at its job's end ran on a disk that slowed: the ceilings, measured at the start, no longer held, so its share does not count.\n", strings.Join(held, "; "), 100*diskHeld)
+	}
 	var index, miss []string
 	for _, x := range pr.Index {
 		index = append(index, fmt.Sprintf("at %s keys a hash lookup %.0f ns, a B-tree insert %.0f ns and delete %.0f ns", thousands(x.Keys), x.LookupNs, x.InsertNs, x.DeleteNs))
@@ -127,13 +165,14 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 			}
 			for _, rtt := range rtts {
 				lim := limits{disk: math.Inf(1), network: math.Inf(1), cpu: math.Inf(1), chain: math.Inf(1)}
+				ra := at[rtt]
 				if l.Durable > 0 {
-					lim.disk = rn.DiskMiBps * (1 << 20) / (nodes * l.Durable)
+					lim.disk = ra.DiskMiBps * (1 << 20) / (nodes * l.Durable)
 				}
 				if lb := loopbackBytes(l); lb > 0 {
-					lim.network = pr.LoopbackBps / lb
+					lim.network = ra.Primitives.LoopbackBps / lb
 				}
-				lim.cpuNs = floor(pr, l)
+				lim.cpuNs = floor(ra.Primitives, l)
 				lim.cpu = 1e9 / sum(lim.cpuNs)
 				if c, ok := chains[rtt]; ok {
 					lim.chain = c
@@ -155,7 +194,8 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 		}
 		p("| %s | %s | %s |\n", f.bench, f.seed, strings.Join(s, "; "))
 	}
-	p("\n| Benchmark | Seed | RTT ms | Store | Median max ops/s | Share of the ceiling | Target ops/s | Most generator cores in a run |\n|---|---|---|---|---|---|---|---|\n")
+	p("\n| Benchmark | Seed | RTT ms | Store | Median max ops/s | Share of the ceiling | Target ops/s | Most generator cores in a run | Disk at its job's end |\n|---|---|---|---|---|---|---|---|---|\n")
+	var slowed []string
 	for _, bench := range benches {
 		for _, rtt := range rtts {
 			for _, target := range targets {
@@ -171,13 +211,61 @@ func ceilings(w io.Writer, dir, traces string, rtts, benches, targets []string, 
 					for _, r := range rs {
 						cores = max(cores, r.ClientCores)
 					}
-					p("| %s | %s | %s | %s | %s | %.1f%% | %s | %.2f |\n", bench, seed, rtt, target, thousands(got), 100*got/c, thousands(goal), cores)
+					d := disks[rtt]
+					p("| %s | %s | %s | %s | %s | %.1f%% | %s | %.2f | %s |\n", bench, seed, rtt, target, thousands(got), 100*got/c, thousands(goal), cores, d.cell())
+					if d.slowed() {
+						slowed = append(slowed, fmt.Sprintf("%s seed %s at %s ms, %s", bench, seed, rtt, target))
+					}
 				}
 			}
 		}
 	}
-	p("\nShare is the median of the seed's max runs over its ceiling at that RTT. The last column is the most of its one core the generator used in any of those runs; a tigerstore run in which it used more than %.1f does not count: it is a failed run, left out of these medians, and the bench fails.\n", generatorCores)
+	p("\nShare is the median of the seed's max runs over its ceiling at that RTT. Most generator cores is the most of its one core the generator used in any of those runs; a tigerstore run in which it used more than %.1f does not count: it is a failed run, left out of these medians, and the bench fails. Disk at its job's end is the disk's rate then against the start's, - if the job did not measure it.\n", generatorCores)
+	if len(slowed) > 0 {
+		p("\nCells measured on a disk that slowed during their job, whose shares do not count: %s.\n", strings.Join(slowed, "; "))
+	}
 	return nil
+}
+
+// readRunner reads a cmd/ceiling measure; ok is false if there is none.
+func readRunner(path string) (rn runner, ok bool, err error) {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return runner{}, false, nil
+	}
+	if err != nil {
+		return runner{}, false, err
+	}
+	if err := json.Unmarshal(b, &rn); err != nil {
+		return runner{}, false, fmt.Errorf("%s: %w", path, err)
+	}
+	if rn.DiskMiBps <= 0 || rn.Primitives.LoopbackBps <= 0 {
+		return runner{}, false, fmt.Errorf("%s: no disk or loopback bandwidth", path)
+	}
+	return rn, true, nil
+}
+
+// diskHeldBy is a runner's disk rate at its job's start and end, in MiB/s;
+// end is 0 if the job did not measure it.
+type diskHeldBy struct{ start, end float64 }
+
+func (d diskHeldBy) slowed() bool { return d.end > 0 && d.end < diskHeld*d.start }
+
+func (d diskHeldBy) endText() string {
+	if d.end == 0 {
+		return "not measured"
+	}
+	return fmt.Sprintf("%.1f MiB/s", d.end)
+}
+
+func (d diskHeldBy) cell() string {
+	switch {
+	case d.end == 0:
+		return "-"
+	case d.slowed():
+		return fmt.Sprintf("%+.1f%%, slowed: does not count", 100*(d.end/d.start-1))
+	}
+	return fmt.Sprintf("%+.1f%%", 100*(d.end/d.start-1))
 }
 
 // loadOf is what the operations of rs carried: medians over the runs.
