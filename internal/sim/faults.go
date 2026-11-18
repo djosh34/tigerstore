@@ -647,12 +647,15 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 	}
 	for _, c := range all {
 		for _, erased := range erasures {
-			skip := false
+			// A damaged disk cannot stand in for the erased one: the
+			// healthy disks left must hold a quorum of the voters.
+			healthy := 0
 			for i, bad := range c.bad {
-				// A damaged disk cannot stand in for the erased one.
-				skip = skip || (bad && i != erased)
+				if !bad && i != erased {
+					healthy++
+				}
 			}
-			if skip {
+			if healthy < s.cfg.voters()/2+1 {
 				continue
 			}
 			if err := s.coldRestart(c, erased); err != nil {
@@ -845,7 +848,9 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 		// not copy the old process's volatile stopped flag. Only a node
 		// that never joined stays absent without trying recovery.
 		n.inactive = c.inactive[i] && !c.started[i]
-		if i == erased || n.inactive {
+		// A damaged disk, or one that may be, stays out, as its node
+		// would refuse it.
+		if i == erased || n.inactive || c.bad[i] {
 			n.fenced = true
 		}
 	}
