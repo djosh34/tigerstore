@@ -32,12 +32,40 @@ type network struct {
 	conns     map[*conn]bool
 }
 
-// hosts are the names the nodes listen on.
-var hosts = []string{"node1", "node2", "node3", "member", "updated-member"}
+// hosts are the names the nodes listen on: the first three voters', the
+// member the membership work adds, at its two URLs, then the fourth and
+// fifth voters of a cluster of five (Config.Nodes).
+var hosts = []string{"node1", "node2", "node3", "member", "updated-member", "node4", "node5"}
+
+// certHosts are the hosts the certificate of a run of voters names: a
+// cluster of three or fewer has the certificate it had before clusters of
+// five, so its runs keep their bytes on the wire.
+func certHosts(voters int) []string {
+	if voters > 3 {
+		return hosts
+	}
+	return hosts[:5]
+}
+
+// voterHost is the host of voter i.
+func voterHost(i int) string {
+	if i < 3 {
+		return hosts[i]
+	}
+	return hosts[i+2]
+}
+
+// hostName is the host of node i: a voter's, or the added member's.
+func (s *Sim) hostName(i int) string {
+	if i == s.cfg.voters() {
+		return hosts[3]
+	}
+	return voterHost(i)
+}
 
 // init sets up an empty network with the CA and certificate of certs, or
-// new ones if certs is nil.
-func (nw *network) init(certs *network) error {
+// new ones for a cluster of voters if certs is nil.
+func (nw *network) init(certs *network, voters int) error {
 	if certs != nil {
 		nw.ca, nw.cert = certs.ca, certs.cert
 	} else {
@@ -45,7 +73,7 @@ func (nw *network) init(certs *network) error {
 		if err != nil {
 			return err
 		}
-		if nw.cert, _, _, err = ca.IssueFor("tigerstore-sim", 2, nil, hosts); err != nil {
+		if nw.cert, _, _, err = ca.IssueFor("tigerstore-sim", 2, nil, certHosts(voters)); err != nil {
 			return err
 		}
 		nw.ca = ca.Pool
@@ -54,8 +82,8 @@ func (nw *network) init(certs *network) error {
 	return nil
 }
 
-// peerURL is the peer URL of node i of the first three.
-func peerURL(i int) string { return "https://" + hosts[i] + ":2380" }
+// peerURL is the peer URL of voter i.
+func peerURL(i int) string { return "https://" + voterHost(i) + ":2380" }
 
 func peerAddr(i int) string { return hostPort(peerURL(i)) }
 
@@ -145,7 +173,7 @@ func (nw *network) dial(ctx context.Context, s *Sim, p *proc, addr string) (net.
 	}
 	host := "client"
 	if p != nil {
-		host = hosts[from]
+		host = s.hostName(from)
 	}
 	a, b := &conn{s: s, p: p, from: from, to: to, local: host, remote: addr}, &conn{s: s, p: l.p, from: to, to: from, local: addr, remote: host}
 	a.in, a.out = newPipe(), newPipe()

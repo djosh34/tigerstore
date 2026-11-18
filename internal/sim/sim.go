@@ -54,6 +54,9 @@ const (
 // Config describes one run.
 type Config struct {
 	Seed uint64
+	// Nodes is the number of voting members the cluster starts with: 1, 3
+	// or 5; 3 if 0.
+	Nodes int
 	// FormUnderFaults forms the cluster under the faults, from the run's
 	// first moment, as one seed in formUnderFaults does, for a scenario
 	// about a cluster's first elections.
@@ -72,7 +75,7 @@ type Config struct {
 	// V3Clients of those that use etcd's Go client (v3client.go). Each has
 	// one call in flight.
 	Clients, V3Clients int
-	// PinClients makes client i call voting node i%3 only, so that the
+	// PinClients makes client i call voter i%Nodes only, so that the
 	// clients waiting on a node that cannot answer leave the other nodes
 	// theirs (#279). Otherwise each call picks a voting node at random.
 	PinClients bool
@@ -286,6 +289,14 @@ type Faults struct {
 	// healing.
 	HoldMask   uint64
 	HoldMaskAt int64
+}
+
+// voters is the number of voting members c's cluster starts with.
+func (c Config) voters() int {
+	if c.Nodes == 0 {
+		return 3
+	}
+	return c.Nodes
 }
 
 // length is how long a run of c lasts, unless the liveness rule makes its
@@ -874,7 +885,7 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if f != nil {
 		// The nodes start from the formed disks, and the run's record of
 		// committed entries and checkpoints goes on from the formation's.
-		for i, n := range s.nodes[:3] {
+		for i, n := range s.nodes[:cfg.voters()] {
 			n.disk = f.nodes[i].disk
 			s.traceDisk(n)
 		}
@@ -997,6 +1008,12 @@ func newSim(cfg Config) (*Sim, error) { return newSimFrom(cfg, nil) }
 // a good part of a run's fixed cost. Its disks keep their large files'
 // pages where from's do.
 func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
+	if cfg.voters() == 1 && !cfg.Membership {
+		// A cluster of one node has no links between nodes, so the faults
+		// of those links are off.
+		cfg.Faults.HalfOpenEvery, cfg.Faults.GrayEvery = 0, 0
+		cfg.HalfOpenAt, cfg.GrayLeaderAt, cfg.LagAtEnd = 0, 0, false
+	}
 	s := &Sim{
 		cfg:        cfg,
 		rng:        rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
@@ -1010,6 +1027,7 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 		healAt:     cfg.Duration,
 		stopAt:     cfg.Duration + cfg.Heal,
 		os:         wlOS,
+		membership: membershipWork{voters: cfg.voters()},
 	}
 	s.setUncached()
 	var err error
@@ -1017,9 +1035,9 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 		return nil, err
 	}
 	s.endAt = cfg.length()
-	count := 3
+	count := cfg.voters()
 	if cfg.Membership {
-		count = 4
+		count++
 	}
 	s.links = make([][]link, count)
 	s.clientLinks = make([][2]link, count)
@@ -1035,7 +1053,7 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 	if from != nil {
 		certs, s.pages, s.chunks = &from.net, from.pages, from.chunks
 	}
-	if err := s.net.init(certs); err != nil {
+	if err := s.net.init(certs, cfg.voters()); err != nil {
 		return nil, err
 	}
 	if s.pages == nil {
@@ -1061,25 +1079,28 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 }
 
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
-	n := &node{idx: i, id: uint64(i + 1), disk: disk, addrs: []string{peerAddr(i)}, wake: make(chan struct{})}
+	n := &node{idx: i, id: uint64(i + 1), disk: disk, wake: make(chan struct{})}
+	if i == s.cfg.voters() {
+		// The member the membership work adds is added at memberURL and
+		// moves to updatedMemberURL.
+		n.addrs = []string{hostPort(memberURL), hostPort(updatedMemberURL)}
+	} else {
+		n.addrs = []string{peerAddr(i)}
+	}
 	disk.Capacity = s.diskCapacity()
 	if s.pages != nil {
 		disk.KeepIn(s.pages, keepPages)
 	}
 	s.traceDisk(n)
-	if i == 3 {
-		// The fourth member is added at memberURL and moves to
-		// updatedMemberURL.
-		n.addrs = []string{hostPort(memberURL), hostPort(updatedMemberURL)}
-	}
 	s.nodes = append(s.nodes, n)
 }
 
 // run runs the workload and the faults until the end, then holds every
 // node still for the checks.
 func (s *Sim) run() error {
+	voters := s.cfg.voters()
 	if s.cfg.Membership {
-		s.nodes[3].inactive = true
+		s.nodes[voters].inactive = true
 	}
 	// Half the seeds checkpoint their leases, as etcd does with its
 	// LeaseCheckpoint feature, every second instead of 5 minutes, so
@@ -1087,7 +1108,7 @@ func (s *Sim) run() error {
 	s.leaseCheckpoints = s.rng.IntN(2) == 0
 	// Saved before any node runs: a node that spins at once leaves this.
 	s.saveBlackbox()
-	for _, n := range s.nodes[:3] {
+	for _, n := range s.nodes[:voters] {
 		if err := s.start(n); err != nil {
 			return err
 		}
@@ -1157,7 +1178,7 @@ func formsFirst(cfg Config) bool {
 	return !cfg.FormUnderFaults && rand.New(rand.NewPCG(cfg.Seed, 0x666f726d)).IntN(formUnderFaults) != 0
 }
 
-// formCluster starts the first three nodes of cfg's cluster with no faults
+// formCluster starts the voters of cfg's cluster with no faults
 // and no clients, waits until each applied the newest cluster version,
 // and returns the run, whose nodes' disks hold what they wrote, with its
 // record of the entries they applied; the caller takes them down, as a
@@ -1167,13 +1188,14 @@ func formCluster(cfg Config) (*Sim, error) {
 	if err != nil {
 		return nil, err
 	}
+	voters := cfg.voters()
 	if cfg.Membership {
-		s.nodes[3].inactive = true
+		s.nodes[voters].inactive = true
 	}
 	// The formation has a limit of real time too (watchWall).
 	s.saveBlackbox()
 	s.wg.Go(s.watchWall)
-	for _, n := range s.nodes[:3] {
+	for _, n := range s.nodes[:voters] {
 		if err := s.start(n); err != nil {
 			return s, err
 		}
@@ -1181,8 +1203,8 @@ func formCluster(cfg Config) (*Sim, error) {
 	for {
 		s.mu.Lock()
 		formed := true
-		for _, n := range s.nodes[:3] {
-			formed = formed && n.proc != nil && n.formed()
+		for _, n := range s.nodes[:voters] {
+			formed = formed && n.proc != nil && n.formed(voters)
 		}
 		at, err := s.now(), s.err
 		s.mu.Unlock()
@@ -1193,7 +1215,7 @@ func formCluster(cfg Config) (*Sim, error) {
 			s.formed = at
 			return s, nil
 		case at > formLimit:
-			return s, fmt.Errorf("seed %d: with no faults the cluster did not form, with all three members and format %d, in %s:\n%s", cfg.Seed, wl.MaxFormat, seconds(formLimit), s.report())
+			return s, fmt.Errorf("seed %d: with no faults the cluster did not form, with all %d members and format %d, in %s:\n%s", cfg.Seed, voters, wl.MaxFormat, seconds(formLimit), s.report())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -1201,11 +1223,11 @@ func formCluster(cfg Config) (*Sim, error) {
 
 // formed reports whether n's process is formed (formCluster). A node's
 // format is the newest it reads from the start while that is the base
-// format, so it must also know a leader, hold the three members and have
-// applied all it knows committed. The lock is held.
-func (n *node) formed() bool {
+// format, so it must also know a leader, hold the cluster's voters and
+// have applied all it knows committed. The lock is held.
+func (n *node) formed(voters int) bool {
 	st := n.proc.wl.turn
-	return st.Format == wl.MaxFormat && st.Lead != 0 && len(st.Members) == 3 && st.Applied >= st.Commit
+	return st.Format == wl.MaxFormat && st.Lead != 0 && len(st.Members) == voters && st.Applied >= st.Commit
 }
 
 var errWallLimit = errors.New("the run passed its limit of real time ($SIM_WALL)")
@@ -1289,7 +1311,7 @@ func (s *Sim) schedule() {
 	for i := range s.cfg.Clients + s.cfg.V3Clients {
 		c := &client{id: i, sim: s, node: -1}
 		if i >= s.cfg.Clients {
-			c.node = i % 3
+			c.node = i % s.cfg.voters()
 		}
 		if kube != nil {
 			c.kube = kube[i]
@@ -1312,8 +1334,8 @@ func (s *Sim) schedule() {
 			defer s.mu.Unlock()
 			if !s.healed {
 				s.stats.LinkChanges++
-				// Any mask but all links up.
-				s.setLinks(s.rng.Uint64N(s.allLinks()))
+				// Any mask but all links up, if there are links.
+				s.setLinks(s.rng.Uint64N(max(s.allLinks(), 1)))
 			}
 		})
 	}
@@ -1935,14 +1957,14 @@ func (s *Sim) powerLoss(n *node) {
 // loseUnsynced drops what n's disk did not sync, keeping a crash image of
 // the writes since. Images that tear writes at sectors or pages can make
 // recovery refuse the log, as a torn write and damage look alike (wal's
-// verifiesAfter), so they come only while no other node is out of the
-// cluster for good, and a quorum stays, and not in membership runs, where
+// verifiesAfter), so they come only while fewer other nodes than spare
+// are out of the cluster for good, and a quorum stays, and not in membership runs, where
 // a fenced voter would refuse every change, as corruption would
 // (membershipConfig). An image of whole writes must never make recovery
 // refuse the log (#295). The lock is held.
 func (s *Sim) loseUnsynced(n *node) {
 	img := simfs.Image(s.rng.IntN(4))
-	if s.cfg.Membership || slices.ContainsFunc(s.nodes, func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) {
+	if s.cfg.Membership || s.count(func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) >= s.spare() {
 		img = simfs.Image(s.rng.IntN(2))
 	}
 	s.loseUnsyncedAs(n, img)
@@ -1963,6 +1985,22 @@ func (s *Sim) loseUnsyncedAs(n *node, img simfs.Image) {
 // must leave a quorum whole count such a node as damaged. The lock is
 // held.
 func (n *node) mayBeDamaged() bool { return n.corrupted || n.tornCrash }
+
+// spare is how many voters may be out of the cluster for good while a
+// quorum of its voters stays whole: one of three, two of five, none of
+// one.
+func (s *Sim) spare() int { return (s.cfg.voters() - 1) / 2 }
+
+// count is the number of nodes for which f holds. The lock is held.
+func (s *Sim) count(f func(*node) bool) int {
+	k := 0
+	for _, n := range s.nodes {
+		if f(n) {
+			k++
+		}
+	}
+	return k
+}
 
 // down takes n's process down: its goroutines, disk calls and
 // connections fail, and its clients and watchers lose their connections.
