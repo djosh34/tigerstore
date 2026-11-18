@@ -34,3 +34,7 @@ for round in 1 2; do
 	for case in "1 4" "3 1" "3 4" "1 1"; do run $case; done
 done
 rm -f "$dir"/probe-*
+
+# measure/602-unwritten: appends into unwritten against written space.
+go build -o "$dir/unwritten-probe" ./bench/unwritten
+"$dir/unwritten-probe" "$dir" "$dev"
