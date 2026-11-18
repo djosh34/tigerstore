@@ -501,7 +501,7 @@ func (s *Sim) damageWL(n *node, kind damageKind) bool {
 	if ptr.Checkpoint != "" {
 		ckpt = "ckpt/" + ptr.Checkpoint
 	}
-	sealed := wlSealed(d, ptr.FirstSegment)
+	sealed := wlSealed(d, ptr)
 	seg := ""
 	if len(sealed) > 0 {
 		seg = sealed[s.rng.IntN(len(sealed))]
@@ -545,23 +545,35 @@ func wlPointer(d *simfs.Disk) (wl.Pointer, error) {
 	return wl.ReadPointer(b)
 }
 
-// wlSealed are the segments of a wl node's log after segment first, the
-// first a start reads, with data two segments on.
-func wlSealed(d *simfs.Disk, first int64) []string {
-	data := map[int64]bool{}
-	for _, name := range d.DurableNames() {
-		var k int64
-		if _, err := fmt.Sscanf(name, "wal/%016x.seg", &k); err == nil && len(d.DurableBytes(name)) > 0 {
-			data[k] = true
-		}
+// wlSealed are the segments of a wl node's log after the first a start
+// reads (ptr's) whose every byte is a record a start must find damaged if
+// it is: in a ring's log, below the furthest place a sync's mark claims
+// durable (records past it read as a torn last sync when damaged, wl's
+// logring.go); in a log without marks, two segments before the end of its
+// records. Where files have bytes says nothing in a ring: its segments
+// are formatted whole and made two ahead, and damage past the log's end,
+// which no start reads, failed seed 3231 of TestEachFaultTakesEffect and
+// planted's control of B04a (#751's CI).
+func wlSealed(d *simfs.Disk, ptr wl.Pointer) []string {
+	seg := func(k int64) []byte { return d.DurableBytes(wlSegment(k)) }
+	recs := wl.Records(seg, ptr.LogFrom)
+	if len(recs) == 0 {
+		return nil
+	}
+	last := recs[len(recs)-1]
+	end, _ := wl.SegmentPlace(last.Off + last.Len)
+	end -= 2
+	if slices.ContainsFunc(recs, func(r wl.Record) bool { return r.Kind == wl.KindSynced }) {
+		claimed := slices.MaxFunc(recs, func(a, b wl.Record) int { return cmp.Compare(a.Claims, b.Claims) }).Claims
+		end, _ = wl.SegmentPlace(claimed)
+		end--
 	}
 	var segs []string
-	for k := range data {
-		if k > first && data[k+2] {
-			segs = append(segs, fmt.Sprintf("wal/%016x.seg", k))
+	for k := ptr.FirstSegment + 1; k <= end; k++ {
+		if len(seg(k)) > 0 {
+			segs = append(segs, wlSegment(k))
 		}
 	}
-	slices.Sort(segs)
 	return segs
 }
 

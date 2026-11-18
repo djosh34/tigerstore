@@ -79,7 +79,11 @@ const memberRetry = 20 * time.Second
 // checkpoints every quarter of its ring, which a run does not reach: the
 // committed log's reader (internal/committed) reads a wl log only from
 // its start, which a checkpoint's cut takes away (#740).
-var nodeArgs = []string{"--unsafe-window-bytes", "16384", "--unsafe-checkpoint-bytes", "65536", "--unsafe-segment-bytes", "1048576", "--unsafe-log-ring-bytes", "134217728"}
+var nodeArgs = []string{"--unsafe-window-bytes", "16384", "--unsafe-checkpoint-bytes", "65536", "--unsafe-segment-bytes", strconv.Itoa(envSegment), "--unsafe-log-ring-bytes", "134217728"}
+
+// envSegment is the size of a segment of -env's nodes' logs, which this
+// process reads its logs with too (wl.SetSegmentSize).
+const envSegment = 1 << 20
 
 // environment is what -env adds to a run.
 type environment struct {

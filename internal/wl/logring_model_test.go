@@ -487,3 +487,30 @@ func TestAnIdleRingClaimsItsLastSync(t *testing.T) {
 		t.Fatalf("a flipped entry of the last sync, claimed by the idle mark: the scan ends at %d, %v; want ErrCorruptLog", end, err)
 	}
 }
+
+// A ring's log is read only with the segment size it was formatted with:
+// a reader with another, as chaos's committed-log reader was, read a log
+// of 1 MiB segments as 64 MiB ones and ended it after its first segment,
+// without an error (#751's CI). It is refused instead.
+func TestARingIsReadOnlyWithItsSegmentSize(t *testing.T) {
+	was := segSize
+	segSize = 16 << 10
+	t.Cleanup(func() { segSize = was })
+	dir := t.TempDir()
+	w, err := openWALRing(sysEnv{}, dir, 64<<10, 8*(16<<10), 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.write([]*pb.Entry{testEntry(1, 1, "one")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	syncWAL(t, w)
+	w.close()
+	if _, err := scanWAL(sysEnv{}, dir, 0, nil); err != nil {
+		t.Fatalf("with its segment size: %v", err)
+	}
+	segSize = 32 << 10
+	if _, err := scanWAL(sysEnv{}, dir, 0, nil); err == nil || !strings.Contains(err.Error(), "segments of 16384 bytes") {
+		t.Fatalf("with another segment size: %v; want it refused", err)
+	}
+}

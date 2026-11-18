@@ -1068,6 +1068,11 @@ func scanWAL(sys sysEnv, dir string, from int64, fn func(r *walRecord) error) (i
 	if err != nil {
 		return 0, err
 	}
+	if ring != nil && ring.segSize != segSize {
+		// A reader of another process's log, such as chaos's, would read
+		// its segments at the wrong offsets (#751's CI).
+		return 0, fmt.Errorf("the log's ring has segments of %d bytes, this process %d", ring.segSize, segSize)
+	}
 	// Planted bug B04b holds each record back until the next one checks,
 	// and drops the last before a torn tail; lastIndex is for B04c.
 	var held walRecord

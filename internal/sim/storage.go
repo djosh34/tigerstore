@@ -194,7 +194,7 @@ func (s *Sim) rotWL(n *node, values func() []wl.LogValue) {
 	if err != nil {
 		return
 	}
-	sealed := wlSealed(n.disk, ptr.FirstSegment)
+	sealed := wlSealed(n.disk, ptr)
 	vs := values()
 	for range 4 * numKeys {
 		if len(vs) == 0 {

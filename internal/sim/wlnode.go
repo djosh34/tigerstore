@@ -101,7 +101,7 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		// A checkpoint, which cuts the log behind it, every DiskBudget of
 		// log, as main's node cleans within it.
 		CheckpointLog: s.cfg.Faults.DiskBudget, CatchupEntries: wlCatchup, CheckpointChunkKeys: s.cfg.ckptChunkKeys,
-		LogRing: wlRing,
+		LogRing: s.ringSize(),
 		Logger:  log.New(&nodeLog{s: s, n: n}, "", 0),
 		Sys:     s.os.NewNode(wlDataDir, &disk{s: s, p: p}, wlNet{s: s, p: p}),
 		Hooks:   &wlHooks{s: s, p: p},
@@ -139,12 +139,29 @@ func (s *Sim) startWL(n *node, p *proc) error {
 // up from a checkpoint.
 const wlCatchup = 64
 
-// wlRing is the size of a node's log ring (wl's logring.go): eight of the
-// simulator's segments of 16 KiB, the fewest a sized ring holds, which a
-// run wraps many times, under crashes that tear writes into reused space.
-// With fewer the ring is low from its first write: every cut is forced,
-// and followers catch up only from checkpoints (#751's review).
+// wlRing is the size of a node's log ring (wl's logring.go) in a run with
+// a disk budget: eight of the simulator's segments of 16 KiB, the fewest
+// a sized ring holds, which a run wraps many times, under crashes that
+// tear writes into reused space. With fewer the ring is low from its
+// first write: every cut is forced, and followers catch up only from
+// checkpoints (#751's review).
 const wlRing = 8 * 16 << 10
+
+// wlRingFree is the ring of a run with no disk budget, which before the
+// ring never checkpointed: 64 segments, so that it checkpoints every 256
+// KiB of log, as a quarter of its ring, and its log keeps whole segments
+// past the newest checkpoint for damage to land on. With eight, a run
+// checkpointed every 32 KiB, and planted's damage found no segment it
+// could check (B04a, #751's CI).
+const wlRingFree = 64 * 16 << 10
+
+// ringSize is a node's log ring in this run.
+func (s *Sim) ringSize() int64 {
+	if s.cfg.Faults.DiskBudget == 0 {
+		return wlRingFree
+	}
+	return wlRing
+}
 
 // diskCapacity is a node's disk's capacity: the faults' DiskCapacity, 0
 // for none, past the log's ring, which the format takes at the start.
@@ -152,7 +169,7 @@ func (s *Sim) diskCapacity() int {
 	if s.cfg.Faults.DiskCapacity == 0 {
 		return 0
 	}
-	return s.cfg.Faults.DiskCapacity + wlRing
+	return s.cfg.Faults.DiskCapacity + int(s.ringSize())
 }
 
 // wlDataDir is a wl node's data dir; its disk holds what is under it.
