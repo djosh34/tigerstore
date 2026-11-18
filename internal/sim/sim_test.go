@@ -1151,11 +1151,11 @@ func TestGrayClient(t *testing.T) {
 	}
 }
 
-// TestEndWaitsForCatchUp is #269's case: a follower starts again just
-// before the end, behind what committed while it was down, so the end
-// finds it behind the others. The run must let it catch up, then pass
-// every check, as strict as ever. A seed whose run committed nothing
-// meanwhile ends with it caught up, so two of the four must lag.
+// TestEndWaitsForCatchUp is #269's case: a follower, held back from the
+// others until the end, misses what committed while it was down, so the
+// end finds it behind them (LagAtEnd). The run must let it catch up,
+// then pass every check, as strict as ever. Every seed must end with it
+// behind (#745).
 func TestEndWaitsForCatchUp(t *testing.T) {
 	lagged := 0
 	if !simrun.Each(t, []uint64{7001, 7002, 7003, 7004}, func(t *testing.T, seed uint64) int {
@@ -1174,8 +1174,8 @@ func TestEndWaitsForCatchUp(t *testing.T) {
 	}) {
 		return
 	}
-	if !simrun.One() && !t.Failed() && lagged < 2 {
-		t.Fatalf("%d of 4 seeds ended with a node behind; the test needs two", lagged)
+	if !simrun.One() && !t.Failed() && lagged < 4 {
+		t.Fatalf("%d of 4 seeds ended with a node behind; every seed must", lagged)
 	}
 }
 
