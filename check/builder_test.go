@@ -21,7 +21,7 @@ type builder struct {
 func newBuilder(t *testing.T, keys ...string) *builder {
 	t.Helper()
 	slices.Sort(keys)
-	return &builder{t: t, s: newState(keys)}
+	return &builder{t: t, s: newState(keys, nil)}
 }
 
 // do runs req for client and returns the index of its op.
@@ -32,7 +32,7 @@ func (b *builder) do(client int, req history.Request) int {
 	o := b.s.step(req, true)
 	if o.historical {
 		// The model keeps no old versions; read them from the log.
-		r, err := newReplay(b.h.Log)
+		r, err := newReplay(b.h.Log, b.h.Start)
 		if err != nil {
 			b.t.Fatal(err)
 		}

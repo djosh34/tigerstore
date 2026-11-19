@@ -152,7 +152,7 @@ func TestCompareTargets(t *testing.T) {
 // through a range end of "\x00", as the fuzzer sent it; the model takes
 // either, and the rule is the same.
 func TestTxnEventPrevKV(t *testing.T) {
-	s := newState([]string{"a", "b"})
+	s := newState([]string{"a", "b"}, nil)
 	s.step(history.Request{Put: &history.PutRequest{Key: "a", Value: "old"}}, true)
 	o := s.step(history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{
 		{Put: &history.PutRequest{Key: "a", Value: "new"}},
@@ -174,7 +174,7 @@ func TestTxnEventPrevKV(t *testing.T) {
 			t.Errorf("event %d: %s", i, eventDiff(want[i], o.events[i], true))
 		}
 	}
-	s = newState([]string{"a"})
+	s = newState([]string{"a"}, nil)
 	s.step(history.Request{Put: &history.PutRequest{Key: "a", Value: "old"}}, true)
 	o = s.step(history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{
 		{Delete: &history.DeleteRequest{Key: "a", End: "b"}},
@@ -199,7 +199,7 @@ func TestTxnEventPrevKV(t *testing.T) {
 // revision 3, which no write can undo. Only its failure branch counts as
 // a writer of k from then on; before that write, both branches do.
 func TestTouches(t *testing.T) {
-	s := newState([]string{"k"})
+	s := newState([]string{"k"}, nil)
 	put := func(v string) {
 		if o := s.step(history.Request{Put: &history.PutRequest{Key: "k", Value: v}}, false); o.err != nil {
 			t.Fatal(o.err)

@@ -16,7 +16,7 @@ import (
 // log places it, and the same history without them.
 func narrowingHistory(rng *rand.Rand) (narrowed, plain *history.History) {
 	keys := []string{"a", "b", "c"}
-	st := newState(keys)
+	st := newState(keys, nil)
 	h := &history.History{}
 	for i := range 30 {
 		at := int64(i+1) * 10

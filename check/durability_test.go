@@ -10,7 +10,7 @@ import (
 // scan appends a full scan through client 7 at the end of the history, as
 // the harness does after recovery.
 func scan(h *history.History) *history.Op {
-	r, _ := newReplay(h.Log)
+	r, _ := newReplay(h.Log, nil)
 	q := &history.RangeRequest{Key: "/", End: history.AllKeys}
 	end := h.Ops[len(h.Ops)-1].Return
 	h.Ops = append(h.Ops, history.Op{Client: 7, Call: end + 1, Return: end + 2, Req: history.Request{Range: q}, Resp: &history.Response{Revision: r.rev, Range: r.read(q, r.rev)}})

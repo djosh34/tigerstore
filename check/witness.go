@@ -61,8 +61,9 @@ func (m WitnessMode) String() string {
 //     changed nothing and are left out, as are serializable reads and
 //     failed reads.
 //
-// The store must be empty at the start of the history. Not finishing
-// within timeout, or within MaxSteps, is a failure, never a pass.
+// The store must be empty at the start of the history, or be h.Start. Not
+// finishing within timeout, or within MaxSteps, is a failure, never a
+// pass.
 func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts ...Option) error {
 	if err := h.Validate(); err != nil {
 		return err
@@ -265,8 +266,9 @@ func newWitness(h *history.History, deadline time.Time) *witness {
 		w.reqs[i] = modelRequest(&h.Ops[i])
 		w.calls[i], w.returns[i] = h.Ops[i].Call, h.Ops[i].Return
 	}
-	w.keys = keysOf(slices.Concat(w.reqs, h.Log))
-	w.live = newState(w.keys)
+	w.keys = keysOf(slices.Concat(w.reqs, h.Log), h.Start)
+	w.live = newState(w.keys, h.Start)
+	w.past.add(startEvents(h.Start))
 	w.live.past = w.past
 	w.states = []summary{w.summary()}
 	return w
@@ -351,7 +353,7 @@ func mutation(op *history.Op) bool {
 // fromLog makes the log's entries the events, each linked to the op that
 // sent it.
 func (w *witness) fromLog() error {
-	if len(w.h.Log) == 0 {
+	if len(w.h.Log) == 0 && w.h.Start == nil {
 		return errNoLog
 	}
 	for i := range w.h.Log {
