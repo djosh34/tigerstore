@@ -93,14 +93,15 @@ func (c *client) run() {
 			return
 		}
 		c.n++
-		// The fourth member is a learner for part of the run and is later
-		// removed. Ordinary clients keep the original voting endpoints.
-		i := c.id % 3
+		// The member the membership work adds is a learner for part of the
+		// run and is later removed. Ordinary clients keep the original
+		// voters' endpoints.
+		i := c.id % s.cfg.voters()
 		switch {
 		case c.v3 != nil:
 			i = c.node
 		case !s.cfg.PinClients:
-			i = s.rng.IntN(3)
+			i = s.rng.IntN(s.cfg.voters())
 		}
 		r := &Record{Client: c.id, Node: i, Call: s.now(), req: c.request(), v3: c.v3 != nil}
 		s.mu.Unlock()

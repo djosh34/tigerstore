@@ -186,7 +186,7 @@ func (s *Sim) crashSource(p *proc, id uint64, done <-chan struct{}) {
 // The node must never serve it: a read of it stops the node, as does a
 // read of its entry's record (rotStop). The lock is held.
 func (s *Sim) rotWL(n *node, values func() []wl.LogValue) {
-	if slices.ContainsFunc(s.nodes, (*node).mayBeDamaged) {
+	if n.mayBeDamaged() || s.count((*node).mayBeDamaged) >= s.spare() {
 		// As rot: a quorum must stay whole.
 		return
 	}
