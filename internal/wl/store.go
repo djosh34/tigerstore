@@ -581,8 +581,9 @@ func (st *store) setBudget(budget, mapped int64) {
 // records go never unmaps them: the limit is on the records alone, and
 // the freed slots are taken again before the slab grows. The limit is at
 // most half the slab, whose size is fixed (slabBytes): past it the slab
-// filled before the records let go, and the node stopped (#776); the
-// other half leaves room for the freed slots of other sizes.
+// filled before the records let go, and the node stopped (#776). The
+// slab's top then has room to grow past the limit with freed slots of
+// other sizes before shrinkSlab brings it down (topMax).
 func (st *store) relimit() {
 	st.limit = min(st.budget-st.goNeed()-(st.outside()-int64(st.slab.top)), int64(len(st.slab.mem))/2)
 }
