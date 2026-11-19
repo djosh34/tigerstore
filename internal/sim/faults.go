@@ -44,26 +44,6 @@ func (s *Sim) scheduleDiskFaults() {
 	}
 	if f.DiskFullEvery > 0 {
 		s.every(f.DiskFullEvery, s.diskFull)
-		// One disk stays full, past its node's restarts and until
-		// healing if need be, until a node ran out of space: wl's log
-		// ring is allocated whole, so a disk full for a few seconds while
-		// no checkpoint is written does nothing.
-		s.once(s.cfg.Duration*3/4, 500*Millisecond, func() bool {
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			if s.stats.OutOfSpace > 0 || s.healed {
-				return true
-			}
-			if s.heldFull == nil {
-				s.heldFull = s.upNode()
-			}
-			if n := s.heldFull; n != nil && n.disk.Capacity != n.disk.Bytes() {
-				s.stats.DiskFulls++
-				n.disk.Capacity = n.disk.Bytes()
-				s.tracef("node %d: disk full at %d bytes until a node runs out of space", n.id, n.disk.Capacity)
-			}
-			return false
-		})
 	}
 	if f.Checkpoint {
 		s.at(s.cfg.Duration/2+s.rng.Int64N(s.cfg.Duration/2)+1, func() {

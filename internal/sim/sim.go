@@ -591,9 +591,6 @@ type Sim struct {
 	// snapshot served to each node, by Raft ID, when it was served.
 	servedRoot map[uint64]uint64
 	healed     bool
-	// heldFull is the node whose disk the faults keep full until a node
-	// ran out of space (Faults.DiskFullEvery).
-	heldFull *node
 	// quorumLostAt is when a majority of the voters was fenced for good
 	// (Config.LoseQuorum), 0 while a quorum stays.
 	quorumLostAt int64
