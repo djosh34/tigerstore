@@ -621,7 +621,7 @@ func (st *store) goLimit() int64 {
 // go, as fit lets records go, and built again from the log when read; the
 // slab's top comes down to that page, and the pages past it go back.
 func (st *store) shrinkSlab() {
-	if st.budget == 0 || int64(st.slab.top) <= st.limit+st.budget/32 {
+	if st.budget == 0 || int64(st.slab.top) <= st.topMax() {
 		return
 	}
 	to := (max(int(st.limit), minClass) + pageSize - 1) &^ (pageSize - 1)
@@ -832,11 +832,21 @@ func (st *store) keepWithin() {
 		return
 	}
 	st.relimit()
-	if st.slab.used <= st.limit && int64(st.slab.top) <= st.limit+st.budget/32 {
+	if st.slab.used <= st.limit && int64(st.slab.top) <= st.topMax() {
 		return
 	}
 	st.fit()
 	st.shrinkSlab()
+}
+
+// topMax is how far the slab's top may grow past its records' limit
+// before shrinkSlab brings it down: a 32nd of the budget, and at most
+// three quarters of the slab. A freed slot is taken again only for a
+// record of its own size, so records of changing sizes grow the top
+// while the records stay within the limit, and without the bound filled
+// a slab whose limit the budget let pass it (#776).
+func (st *store) topMax() int64 {
+	return min(st.limit+st.budget/32, int64(len(st.slab.mem))*3/4)
 }
 
 // trimStep is the most keys one apply trims the history of.
