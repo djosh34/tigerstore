@@ -49,12 +49,12 @@ func kubeConfig(seed uint64, long bool) Config {
 
 // spreadFaults makes the faults that come at random times come k times
 // further apart.
-func spreadFaults(f *Faults, k int64) {
+func spreadFaults(f *Faults, k float64) {
 	for _, every := range []*int64{
 		&f.CrashEvery, &f.LinkEvery, &f.DiskErrorEvery, &f.StallEvery, &f.FSDownEvery, &f.DiskFullEvery,
 		&f.LinkStallEvery, &f.PauseEvery, &f.HalfOpenEvery, &f.GrayEvery, &f.SlowWatcherEvery, &f.NetemEvery, &f.ResetEvery,
 	} {
-		*every *= k
+		*every = int64(float64(*every) * k)
 	}
 }
 

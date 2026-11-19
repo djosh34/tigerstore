@@ -32,7 +32,10 @@ func (s *Sim) checkWL(res *Result) error {
 			return err
 		}
 	}
-	applied := live[0].proc.wl.turn.Applied
+	applied := s.applied
+	if s.quorumLostAt == 0 {
+		applied = live[0].proc.wl.turn.Applied
+	}
 	ents, err := s.committed(applied)
 	if err != nil {
 		return err
@@ -63,7 +66,13 @@ func (s *Sim) checkWL(res *Result) error {
 	if err != nil {
 		return err
 	}
-	if err := s.finalReads(live, model.Rev(), want.Kvs); err != nil {
+	if s.quorumLostAt > 0 {
+		// The survivors stop where they stopped, each checked against
+		// the log up to its own last entry.
+		if err := s.survivorReads(live); err != nil {
+			return err
+		}
+	} else if err := s.finalReads(live, model.Rev(), want.Kvs); err != nil {
 		return err
 	}
 	for _, r := range res.History {
@@ -84,7 +93,13 @@ func (s *Sim) checkWL(res *Result) error {
 	if err := s.checkWatches(model, res); err != nil {
 		return err
 	}
-	if err := s.checkLeasesExpire(res, aliveLeases(res.Log)); err != nil {
+	// Without a quorum no lease expires, so none must be gone by the end;
+	// none may expire early either way.
+	alive := aliveLeases(res.Log)
+	if s.quorumLostAt > 0 {
+		alive = nil
+	}
+	if err := s.checkLeasesExpire(res, alive); err != nil {
 		return err
 	}
 	if err := s.checkWatchersFreed(); err != nil {
@@ -95,6 +110,9 @@ func (s *Sim) checkWL(res *Result) error {
 	}
 	if err := s.checkRecoverable(); err != nil {
 		return err
+	}
+	if s.quorumLostAt > 0 {
+		return s.checkUnavailable(res)
 	}
 	return s.checkLive(res)
 }
@@ -125,7 +143,9 @@ func wlOps(data []byte) ([]proto.Message, error) {
 }
 
 // convergedWL checks that every live node is up and applied the same
-// entries, which record checked entry by entry, and returns them.
+// entries, which record checked entry by entry, and returns them. A
+// cluster that lost its quorum cannot bring a node that is behind up to
+// date: it returns every live node, whatever it applied.
 func (s *Sim) convergedWL() ([]*node, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -134,6 +154,9 @@ func (s *Sim) convergedWL() ([]*node, error) {
 		if n.proc == nil {
 			return nil, fmt.Errorf("node %d is down at the end", n.id)
 		}
+	}
+	if s.quorumLostAt > 0 {
+		return live, nil
 	}
 	first := live[0].proc.wl.turn
 	for _, n := range live[1:] {
@@ -203,4 +226,78 @@ func aliveLeases(log []proto.Message) []int64 {
 		}
 	}
 	return slices.Sorted(maps.Keys(alive))
+}
+
+// survivorReads reads every key of each live node of a run that lost its
+// quorum at the revision it applied to, and checks them against the log
+// up to there.
+func (s *Sim) survivorReads(live []*node) error {
+	for _, n := range live {
+		s.mu.Lock()
+		applied := n.proc.wl.turn.Applied
+		ents, err := s.committed(applied)
+		s.mu.Unlock()
+		if err != nil {
+			return err
+		}
+		var ops []proto.Message
+		for _, e := range ents {
+			o, err := wlOps(e.GetData())
+			if err != nil {
+				return fmt.Errorf("entry %d: %w", e.GetIndex(), err)
+			}
+			ops = append(ops, o...)
+		}
+		model, _, _, err := replay(ops)
+		if err != nil {
+			return err
+		}
+		want, err := model.Range(&pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}})
+		if err != nil {
+			return err
+		}
+		if err := s.finalReads([]*node{n}, model.Rev(), want.Kvs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkUnavailable checks a run that lost its quorum (Config.LoseQuorum):
+// no write that started after the loss succeeded, as none can commit.
+// An entry committed before the loss may still apply after it: a
+// survivor can learn its commit late.
+func (s *Sim) checkUnavailable(res *Result) error {
+	writes := 0
+	for _, r := range res.History {
+		if r.Call <= s.quorumLostAt || !isWrite(r.req) {
+			continue
+		}
+		if r.Err == nil {
+			return fmt.Errorf("unavailable: client %d's write at %d ms, after the cluster lost its quorum at %d ms, succeeded: %v",
+				r.Client, r.Call/Millisecond, s.quorumLostAt/Millisecond, r.req)
+		}
+		writes++
+	}
+	s.mu.Lock()
+	s.tracef("unavailable: %d writes after the loss of the quorum at %d ms, none succeeded", writes, s.quorumLostAt/Millisecond)
+	s.mu.Unlock()
+	return nil
+}
+
+// isWrite reports whether req changes the store, which needs a quorum.
+func isWrite(req proto.Message) bool {
+	switch r := req.(type) {
+	case *pb.PutRequest, *pb.DeleteRangeRequest, *pb.LeaseGrantRequest, *pb.LeaseRevokeRequest, *pb.CompactionRequest:
+		return true
+	case *pb.TxnRequest:
+		for _, ops := range [][]*pb.RequestOp{r.Success, r.Failure} {
+			for _, op := range ops {
+				if op.GetRequestRange() == nil {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

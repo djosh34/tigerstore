@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -287,6 +288,9 @@ func (c *client) request() proto.Message {
 	s := c.sim
 	k := s.rng.IntN(numKeys)
 	val := fmt.Appendf(nil, "c%d-%d", c.id, c.n)
+	if pad := s.cfg.ValueBytes - len(val); pad > 0 {
+		val = append(val, bytes.Repeat([]byte{'.'}, pad)...)
+	}
 	switch p := s.rng.IntN(100); {
 	case p < 22:
 		put := &pb.PutRequest{Key: key(k), Value: val, PrevKv: s.rng.IntN(2) == 0}

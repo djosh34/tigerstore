@@ -45,6 +45,11 @@ func (r *Result) checkable(release bool) (*history.History, error) {
 		defer func() { r.History = nil }()
 	}
 	h := &history.History{Target: r.FinalRev}
+	if r.Stats.QuorumLostAt > 0 {
+		// No node can catch up to the final revision without a quorum,
+		// so no watch must reach it.
+		h.Target = 0
+	}
 	committed, err := r.committed()
 	if err != nil {
 		return nil, err
