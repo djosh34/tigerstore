@@ -13,16 +13,17 @@ import (
 )
 
 // agingConfig is the aging run of an image's seed (#465, #474): the
-// Kubernetes-shaped load on 500 to 5,000 objects for 2 to 30 simulated
-// minutes, calm (faults 1,000 times further apart) or faulted (2 to 8
-// times), on 1, 3 or 5 voters, half with a memory budget. Its crash
+// Kubernetes-shaped load on 500 to 20,000 objects for 2 simulated minutes
+// to 2 hours, which writes up to millions of revisions, calm (faults
+// 1,000 times further apart) or faulted (2 to 8 times), on 1, 3 or 5
+// voters, half with a memory budget, a quarter with hot keys. Its crash
 // images keep whole writes and no disk is damaged on purpose, so that
 // every node is up for the image; its forks keep those faults.
 func agingConfig(seed uint64) Config {
 	rng := rand.New(rand.NewPCG(seed, 0x61676564))
 	cfg := kubeConfig(seed, false)
-	cfg.Objects = int(logUniform(rng, 500, 5000))
-	cfg.Duration = logUniform(rng, 2*60*Second, 30*60*Second)
+	cfg.Objects = int(logUniform(rng, 500, 20_000))
+	cfg.Duration = logUniform(rng, 2*60*Second, 2*3600*Second)
 	cfg.CompactEvery = 60 * Second
 	if rng.IntN(2) == 0 {
 		spreadFaults(&cfg.Faults, 1000)
@@ -36,6 +37,7 @@ func agingConfig(seed uint64) Config {
 	if rng.IntN(2) == 0 {
 		cfg.MemoryBytes = logUniform(rng, 256<<20, 4<<30)
 	}
+	cfg.HotKeys = rng.IntN(4) == 0
 	return cfg
 }
 

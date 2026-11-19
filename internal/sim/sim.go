@@ -127,6 +127,9 @@ type Config struct {
 	// watch on every resource prefix and a compaction every CompactEvery
 	// (kube.go).
 	Objects int
+	// HotKeys sends half the writes of the Kubernetes-shaped load to each
+	// client's first object, a hot key with many versions.
+	HotKeys bool
 	// ListPage is the limit of a page of the load's lists, kubePage if 0.
 	ListPage int
 	// Window, if set, gives the nodes the core's default window of applied
