@@ -69,6 +69,11 @@ func (ca *CA) Issue(name string, serial int64) (tls.Certificate, []byte, []byte,
 
 // IssueFor is Issue with the SANs ips and dns.
 func (ca *CA) IssueFor(name string, serial int64, ips []net.IP, dns []string) (tls.Certificate, []byte, []byte, error) {
+	return ca.IssueUntil(name, serial, ips, dns, ca.notAfter)
+}
+
+// IssueUntil is IssueFor with a certificate that expires at notAfter.
+func (ca *CA) IssueUntil(name string, serial int64, ips []net.IP, dns []string, notAfter time.Time) (tls.Certificate, []byte, []byte, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return tls.Certificate{}, nil, nil, err
@@ -77,7 +82,7 @@ func (ca *CA) IssueFor(name string, serial int64, ips []net.IP, dns []string) (t
 		SerialNumber: big.NewInt(serial),
 		Subject:      pkix.Name{CommonName: name},
 		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     ca.notAfter,
+		NotAfter:     notAfter,
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		IPAddresses:  ips,

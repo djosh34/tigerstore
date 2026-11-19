@@ -108,6 +108,12 @@ type Config struct {
 	// that: every lease adds an expiry that may apply at any time, and its
 	// search grows too fast with them.
 	NoLeases bool
+	// CertExpiresAt, if set, is about when the nodes' certificate expires,
+	// counted from the run's formation; a second later every connection
+	// is reset, and no new one can be made. At CertRotateAt an operator
+	// rotates it: the same CA issues a new one, and every node restarts
+	// with it. In between no write may succeed (checkExpired).
+	CertExpiresAt, CertRotateAt int64
 	// LoseQuorum makes every crash damage the node's disk until a
 	// majority of the voters is fenced for good, and no operator replaces
 	// one: the cluster must stay safe, and refuse every write from then
@@ -604,6 +610,10 @@ type Sim struct {
 	// startRev is the revision of the image a fork starts from, 0 for a
 	// run from an empty store.
 	startRev int64
+	// certsExpiredAt is when the connections were reset a second after
+	// the certificate expired, and certsRotatedAt when an operator rotated
+	// it (Config.CertExpiresAt), 0 before.
+	certsExpiredAt, certsRotatedAt int64
 	// quorumLostAt is when a majority of the voters was fenced for good
 	// (Config.LoseQuorum), 0 while a quorum stays.
 	quorumLostAt int64
@@ -821,6 +831,11 @@ type Stats struct {
 	// good (Config.LoseQuorum), 0 if never.
 	Replaced     int
 	QuorumLostAt int64
+	// CertsExpiredAt is when the connections were reset after the nodes'
+	// certificate expired (Config.CertExpiresAt), and ExpiredWrites the
+	// writes that failed between then and the rotation.
+	CertsExpiredAt int64
+	ExpiredWrites  int
 	// MembershipChanges counts each completed stage, and MembershipFaults
 	// those completed before healing. Attempts include failed calls.
 	MembershipChanges, MembershipFaults [4]int
@@ -1134,7 +1149,7 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 	if from != nil {
 		certs, s.pages, s.chunks = &from.net, from.pages, from.chunks
 	}
-	if err := s.net.init(certs, cfg.voters()); err != nil {
+	if err := s.net.init(certs, cfg.voters(), time.Duration(cfg.CertExpiresAt)); err != nil {
 		return nil, err
 	}
 	if s.pages == nil {
@@ -1441,6 +1456,10 @@ func (s *Sim) schedule() {
 	}
 	if s.cfg.StallLeaderAt > 0 {
 		s.at(s.cfg.StallLeaderAt, s.stallLeader)
+	}
+	if s.cfg.CertExpiresAt > 0 {
+		s.at(int64(s.net.expires.Sub(s.t0))+Second, s.expireCerts)
+		s.at(s.cfg.CertRotateAt, s.rotateCerts)
 	}
 	s.at(s.healAt, s.heal)
 }
