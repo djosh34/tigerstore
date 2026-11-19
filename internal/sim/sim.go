@@ -133,6 +133,9 @@ type Config struct {
 	// watch on every resource prefix and a compaction every CompactEvery
 	// (kube.go).
 	Objects int
+	// BulkBytes, if set, is how much the run loads before its clients
+	// start (bulkLoad).
+	BulkBytes int64
 	// HotKeys sends half the writes of the Kubernetes-shaped load to each
 	// client's first object, a hot key with many versions.
 	HotKeys bool
@@ -1219,6 +1222,11 @@ func (s *Sim) run() error {
 	}
 	if s.cfg.scenario != nil {
 		if err := s.cfg.scenario(s); err != nil {
+			return err
+		}
+	}
+	if s.cfg.BulkBytes > 0 {
+		if err := s.bulkLoad(); err != nil {
 			return err
 		}
 	}

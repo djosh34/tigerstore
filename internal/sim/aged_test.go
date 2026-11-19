@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -167,4 +168,58 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 		})
 	}
 	return total
+}
+
+// TestAgedBulk measures an image bulk-loaded past its memory budget
+// (#775): 350 MB of values under a budget of 256 MiB, the least a wl node
+// keeps (#760), on three voters, then one fork of it, every checker on
+// each. It logs the gosim run's peak RSS and the runner's free memory, on
+// the driver's side. It skips unless $SIM_SEEDS is set: it runs on
+// Actions (sim-campaign.yml), not on a small host.
+func TestAgedBulk(t *testing.T) {
+	if os.Getenv("SIM_SEEDS") == "" {
+		t.Skip("set SIM_SEEDS: an image of hundreds of MB runs on Actions")
+	}
+	var before int64
+	if !simrun.InGosim {
+		before = memAvailable(t)
+	}
+	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) Stats {
+		aging := agingConfig(seed)
+		aging.Nodes, aging.Objects, aging.Duration = 3, 500, 2*60*Second
+		aging.MemoryBytes, aging.BulkBytes = 256<<20, 350_000_000
+		aging.Faults.DiskBudget = 2 * aging.BulkBytes
+		aging.Faults.DiskCapacity = int(2 * aging.Faults.DiskBudget)
+		return agedForks(t, seed, aging, 1, func(aging Config, seed uint64) Config {
+			cfg := forkConfig(aging, seed)
+			cfg.Duration = 2 * 60 * Second
+			return cfg
+		})
+	}, func(seed uint64, _ Stats) bool {
+		var ru syscall.Rusage
+		if err := syscall.Getrusage(syscall.RUSAGE_CHILDREN, &ru); err != nil {
+			t.Error(err)
+		}
+		t.Logf("seed %d: peak RSS of a gosim run %d MiB; free memory %d MiB before, %d MiB after", seed, ru.Maxrss>>10, before>>20, memAvailable(t)>>20)
+		return false
+	})
+}
+
+// memAvailable is the runner's MemAvailable, in bytes.
+func memAvailable(t *testing.T) int64 {
+	b, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		t.Error(err)
+		return 0
+	}
+	for line := range strings.SplitSeq(string(b), "\n") {
+		if v, ok := strings.CutPrefix(line, "MemAvailable:"); ok {
+			kb, err := strconv.ParseInt(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "kB")), 10, 64)
+			if err != nil {
+				t.Error(err)
+			}
+			return kb << 10
+		}
+	}
+	return 0
 }
