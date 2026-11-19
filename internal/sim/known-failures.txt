@@ -9,3 +9,4 @@
 # Under the race detector a seed does not replay, so a bug that a run
 # there hits cannot be listed here.
 TestScenarios 18 https://github.com/djosh34/tigerstore/issues/769
+TestScenarios 42 https://github.com/djosh34/tigerstore/issues/769

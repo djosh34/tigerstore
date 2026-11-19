@@ -591,6 +591,9 @@ type Sim struct {
 	// snapshot served to each node, by Raft ID, when it was served.
 	servedRoot map[uint64]uint64
 	healed     bool
+	// heldFull is the node whose disk the faults keep full until a node
+	// ran out of space (Faults.DiskFullEvery).
+	heldFull *node
 	// quorumLostAt is when a majority of the voters was fenced for good
 	// (Config.LoseQuorum), 0 while a quorum stays.
 	quorumLostAt int64
@@ -1417,6 +1420,9 @@ func (s *Sim) schedule() {
 	if s.cfg.StallLeaderAt > 0 {
 		s.at(s.cfg.StallLeaderAt, s.stallLeader)
 	}
+	if s.cfg.LoseQuorum {
+		s.at(s.cfg.Duration/4, s.loseQuorum)
+	}
 	s.at(s.healAt, s.heal)
 }
 
@@ -1958,6 +1964,37 @@ func (s *Sim) beforeSync(p *proc) {
 	}
 }
 
+// loseQuorum crashes a node that is up and undamaged every second, its
+// disk damaged at the crash (maybeCorrupt), until a majority of the
+// voters is fenced for good (Config.LoseQuorum): the random crashes, half
+// of them kills, which damage nothing, may not get there in time.
+func (s *Sim) loseQuorum() {
+	for {
+		s.mu.Lock()
+		if s.quorumLostAt > 0 || s.healed {
+			s.mu.Unlock()
+			return
+		}
+		var up []*node
+		for _, n := range s.nodes {
+			if n.proc != nil && !n.mayBeDamaged() && !n.out() {
+				up = append(up, n)
+			}
+		}
+		if len(up) > 0 {
+			n := up[s.rng.IntN(len(up))]
+			n.why = "the run crashed it to lose the quorum"
+			s.crash(n)
+			s.maybeCorrupt(n)
+			s.restartLater(n, 1+s.rng.Int64N(s.cfg.Faults.MaxDown))
+		}
+		s.mu.Unlock()
+		if !s.sleep(Second) {
+			return
+		}
+	}
+}
+
 // crashRandom crashes a node that is up and restarts it up to MaxDown
 // later. Half the crashes are power losses; the others kill the process,
 // as SIGKILL does, and the page cache keeps every write. One kill in three
@@ -2049,13 +2086,15 @@ func (s *Sim) powerLoss(n *node) {
 // the writes since. Images that tear writes at sectors or pages can make
 // recovery refuse the log, as a torn write and damage look alike (wal's
 // verifiesAfter), so they come only while fewer other nodes than spare
-// are out of the cluster for good, and a quorum stays, and not in membership runs, where
-// a fenced voter would refuse every change, as corruption would
-// (membershipConfig). An image of whole writes must never make recovery
-// refuse the log (#295). The lock is held.
+// are out of the cluster for good, and a quorum stays; not in membership
+// runs, where a fenced voter would refuse every change, as corruption
+// would (membershipConfig); and not in a run that loses its quorum
+// (Config.LoseQuorum), where a torn image would count as the damage it
+// is allowed. An image of whole writes must never make recovery refuse
+// the log (#295). The lock is held.
 func (s *Sim) loseUnsynced(n *node) {
 	img := simfs.Image(s.rng.IntN(4))
-	if s.cfg.Membership || s.count(func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) >= s.spare() {
+	if s.cfg.Membership || s.cfg.LoseQuorum || s.count(func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) >= s.spare() {
 		img = simfs.Image(s.rng.IntN(2))
 	}
 	s.loseUnsyncedAs(n, img)
