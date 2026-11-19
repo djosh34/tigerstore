@@ -144,7 +144,13 @@ func Durable(h *history.History) error {
 			}
 		}
 		if r.start > 0 && op.Resp.Revision < r.start {
-			fail("op %d (client %d) answered at revision %d, below the start's revision %d", i, op.Client, op.Resp.Revision, r.start)
+			// A node that is behind, such as a member just added on an
+			// empty disk, may answer a serializable read from before the
+			// start, which the history does not hold: it cannot be
+			// checked. Any other answer there is wrong.
+			if q := op.Req.Range; q == nil || !q.Serializable {
+				fail("op %d (client %d) answered at revision %d, below the start's revision %d", i, op.Client, op.Resp.Revision, r.start)
+			}
 			continue
 		}
 		if op.Resp.Revision > r.rev {

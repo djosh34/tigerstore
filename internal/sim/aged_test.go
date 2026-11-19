@@ -5,6 +5,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,9 +65,10 @@ const forksPerImage = 4
 // TestAgedForks ages a cluster for each of $SIM_SEEDS seeds from
 // $SIM_SEED (agingConfig), then runs forksPerImage forks of it
 // (forkConfig), every checker on each, starting from the image's store
-// (history.Start). $SIM_FORK, if set, runs only that fork after the
-// aging, as its replay command does. It skips unless $SIM_SEEDS is set:
-// an image takes minutes to build.
+// (history.Start). $SIM_FORK=k runs only fork k after the aging, as its
+// replay command does: the gosim run keeps its image's seed, from which
+// the aging plays out the same. It skips unless $SIM_SEEDS is set: an
+// image takes minutes to build.
 func TestAgedForks(t *testing.T) {
 	if os.Getenv("SIM_SEEDS") == "" {
 		t.Skip("set SIM_SEEDS: an image takes minutes to build")
@@ -132,8 +134,11 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 			res := run(t, cfg)
 			checkers(t, res)
 			st := res.Stats
-			t.Logf("fork %d (seed %d) of image %d: %d ok, %d failed, %d ambiguous, %d writes after the image, %d fenced, %d replaced, %d cold restarts; replay: SIM_FORK=%d %s",
-				i, cfg.Seed, seed, st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts, i, replayCommand(t.Name(), seed))
+			t.Logf("fork %d (seed %d) of image %d: %d ok, %d failed, %d ambiguous, %d writes after the image, %d fenced, %d replaced, %d cold restarts",
+				i, cfg.Seed, seed, st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts)
+			if forks > 1 {
+				t.Logf("fork %d alone: SIM_FORK=%d %s", i, i, replayCommand(fmt.Sprintf("%s/%d", strings.Split(t.Name(), "/")[0], seed), seed))
+			}
 			total.OK += st.OK
 			total.Failed += st.Failed
 			total.Ambiguous += st.Ambiguous
