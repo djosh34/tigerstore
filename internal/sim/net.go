@@ -55,6 +55,10 @@ func voterHost(i int) string {
 	return hosts[i+2]
 }
 
+// certValid is how long the run's certificates are valid: longer than
+// any run, its forks and the years between them span (aged_test.go).
+const certValid = 100 * 365 * 24 * time.Hour
+
 // hostName is the host of node i: a voter's, or the added member's.
 func (s *Sim) hostName(i int) string {
 	if i == s.cfg.voters() {
@@ -69,7 +73,7 @@ func (nw *network) init(certs *network, voters int) error {
 	if certs != nil {
 		nw.ca, nw.cert = certs.ca, certs.cert
 	} else {
-		ca, err := testcert.NewCA()
+		ca, err := testcert.NewCAValid(certValid)
 		if err != nil {
 			return err
 		}

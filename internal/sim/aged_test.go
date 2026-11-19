@@ -55,11 +55,31 @@ func forkConfig(aging Config, seed uint64) Config {
 	return cfg
 }
 
-// forkSlot is how far apart the forks of one image start in simulated
-// time: fork i starts i slots after its image, whatever ran before it,
-// so that with gosim's random stream reseeded from its seed it plays out
-// the same alone as after the forks before it.
-const forkSlot = 3 * time.Hour
+// forkStart is when fork i of image starts, after the image was taken:
+// at a time fixed by the image's seed, whatever ran before it, so that
+// with gosim's random stream reseeded from its seed it plays out the
+// same alone as after the forks before it. Between forks the whole
+// cluster is down for 3 hours and more: a few hours, days to months, or
+// one to ten years, an idle stretch after which the clock has jumped
+// ahead for the time-driven paths (#474). Nothing runs meanwhile, so
+// years cost nothing.
+func forkStart(image uint64, i int) time.Duration {
+	var at time.Duration
+	for j := range i + 1 {
+		rng := rand.New(rand.NewPCG(image, 0x676170+uint64(j)))
+		gap := 3 * time.Hour
+		switch k := rng.IntN(10); {
+		case k < 5:
+			gap += time.Duration(rng.Int64N(int64(6 * time.Hour)))
+		case k < 8:
+			gap += time.Duration(logUniform(rng, int64(24*time.Hour), int64(180*24*time.Hour)))
+		default:
+			gap += time.Duration(logUniform(rng, int64(365*24*time.Hour), int64(10*365*24*time.Hour)))
+		}
+		at += gap
+	}
+	return at
+}
 
 // forksPerImage is how many forks an image's seed runs.
 const forksPerImage = 4
@@ -124,7 +144,7 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 			continue
 		}
 		t.Run(fmt.Sprintf("fork%d", i), func(t *testing.T) {
-			wait := time.Until(start.Add(time.Duration(i+1) * forkSlot))
+			wait := time.Until(start.Add(forkStart(seed, i)))
 			if wait < 0 {
 				t.Fatalf("fork %d starts %s after its slot", i, -wait)
 			}
@@ -136,8 +156,8 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 			res := run(t, cfg)
 			checkers(t, res)
 			st := res.Stats
-			t.Logf("fork %d (seed %d) of image %d: %d ok, %d failed, %d ambiguous, %d writes after the image, %d fenced, %d replaced, %d cold restarts",
-				i, cfg.Seed, seed, st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts)
+			t.Logf("fork %d (seed %d) of image %d, %s after it: %d ok, %d failed, %d ambiguous, %d writes after the image, %d fenced, %d replaced, %d cold restarts",
+				i, cfg.Seed, seed, forkStart(seed, i), st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts)
 			if forks > 1 {
 				t.Logf("fork %d alone: SIM_FORK=%d %s", i, i, replayCommand(fmt.Sprintf("%s/%d", strings.Split(t.Name(), "/")[0], seed), seed))
 			}
