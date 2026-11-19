@@ -82,3 +82,28 @@ func TestTheSlabStopsLettingGoWithinItsLimit(t *testing.T) {
 		t.Fatalf("the slab let go down to %d KiB of records, far below its limit of %d KiB", st.slab.used>>10, st.limit>>10)
 	}
 }
+
+// A budget whose limit passes the slab's size lets records go before the
+// slab fills: the slab's size is fixed, 64 MiB in the simulator, and a
+// store at 256 MiB filled it and stopped its node (#776).
+func TestALimitPastTheSlabKeepsWithinIt(t *testing.T) {
+	st, l := newTestStore(t)
+	small, err := newSlab(8 << 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := st.slab
+	st.slab = small
+	t.Cleanup(func() { st.slab = old })
+	st.setBudget(1<<30, 0)
+	if st.limit > int64(len(st.slab.mem))/2 {
+		t.Fatalf("a slab of %d MiB has a limit of %d MiB", len(st.slab.mem)>>20, st.limit>>20)
+	}
+	value := strings.Repeat("v", 64<<10)
+	for i := range 320 {
+		putValue(t, st, l, fmt.Sprintf("/k/%05d", i), value)
+	}
+	if st.slab.used > st.limit {
+		t.Fatalf("the slab holds %d KiB of records past its limit of %d KiB", st.slab.used>>10, st.limit>>10)
+	}
+}
