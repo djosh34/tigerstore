@@ -579,9 +579,12 @@ func (st *store) setBudget(budget, mapped int64) {
 // otherwise: what Go needs, the mapped rings and stages, and the tables
 // outside Go's heap as they grow. Its freed slots stay mapped, but letting
 // records go never unmaps them: the limit is on the records alone, and
-// the freed slots are taken again before the slab grows.
+// the freed slots are taken again before the slab grows. The limit is at
+// most half the slab, whose size is fixed (slabBytes): past it the slab
+// filled before the records let go, and the node stopped (#776); the
+// other half leaves room for the freed slots of other sizes.
 func (st *store) relimit() {
-	st.limit = st.budget - st.goNeed() - (st.outside() - int64(st.slab.top))
+	st.limit = min(st.budget-st.goNeed()-(st.outside()-int64(st.slab.top)), int64(len(st.slab.mem))/2)
 }
 
 // goShare is the least of the budget kept for Go's heap and runtime: an
