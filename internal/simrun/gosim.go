@@ -61,6 +61,11 @@ func Stacks() []byte { return gosim.Stacks() }
 // Artifact saves data under name for the driver of the run.
 func Artifact(name string, data []byte) { gosim.WriteArtifact(name, data) }
 
+// Reseed sets the run's random stream from seed (gosim.Reseed): a part of
+// a run that starts from the same state at the same simulated time
+// then plays out the same, whatever ran before it.
+func Reseed(seed uint64) { gosim.Reseed(int64(seed)) }
+
 // Here reports whether the test runs its body in this process: always
 // under gosim.
 func Here(*testing.T) bool { return true }
