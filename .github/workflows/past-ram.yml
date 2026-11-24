@@ -101,7 +101,7 @@ jobs:
           from pathlib import Path
           path = Path('internal/wl/store.go')
           text = path.read_text()
-          old = 'st.limit = st.budget - st.goNeed() - (st.outside() - int64(st.slab.top))'
+          old = 'st.limit = min(st.budget-st.goNeed()-(st.outside()-int64(st.slab.top)), int64(len(st.slab.mem))/2)'
           assert text.count(old) == 1, f"{path} no longer sets the slab's limit as the control expects"
           path.write_text(text.replace(old, 'st.limit = 0'))
           PY
