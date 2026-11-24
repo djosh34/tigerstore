@@ -101,11 +101,11 @@ type Config struct {
 	// finds it behind, whatever the seed or the build's speed, and waits
 	// while it catches up (#269, #745).
 	LagAtEnd bool
-	// FenceAt, if set, crashes a follower at that time and damages a
-	// synced record of its log, so that it refuses its disk and is fenced
-	// for good, unless a node was damaged or fenced already: a fence
-	// whatever the seed or the build's timing, as under the race detector
-	// (TestReplaceFenced).
+	// FenceAt, if set, crashes a follower at that time, or the first it
+	// can after it, and damages a synced record of its log, so that it
+	// refuses its disk and is fenced for good, unless a node was
+	// corrupted or fenced already: a fence whatever the seed or the
+	// build's timing, as under the race detector (TestReplaceFenced).
 	FenceAt int64
 	// LiveFrom, if set, is when the liveness rule starts instead of
 	// LiveAfter into healing.
@@ -1504,16 +1504,22 @@ func (s *Sim) schedule() {
 // fenceFollower is FenceAt: it crashes a follower that is up and flips a
 // bit of a synced record of its log, which its next start refuses, so
 // that the node is fenced for good (wlNode's start). A run that has a
-// node damaged or fenced already needs no other.
+// node corrupted or fenced already needs no other.
 func (s *Sim) fenceFollower() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.count(func(m *node) bool { return m.mayBeDamaged() || m.fenced }) > 0 {
+	if s.count(func(m *node) bool { return m.corrupted || m.fenced }) > 0 {
 		return
 	}
 	lead := s.leaderIdx()
 	for _, n := range s.nodes {
 		if n.proc == nil || n.out() || n.idx == lead {
+			continue
+		}
+		// As the faults' damage (corruptDisk): the other nodes that may
+		// be damaged, as by a torn crash image, which a node keeps for
+		// the run, stay within what the cluster can lose with this one.
+		if s.count(func(m *node) bool { return m != n && m.mayBeDamaged() }) >= s.spare() {
 			continue
 		}
 		n.why = "the run damaged its log to fence it"
@@ -1528,7 +1534,14 @@ func (s *Sim) fenceFollower() {
 		s.restartLater(n, 1+s.rng.Int64N(Second))
 		return
 	}
-	s.fail("FenceAt: no follower up to fence")
+	// Every follower is down, as after crashes during recovery, or the
+	// others may be damaged: one is fenced when it can be, if before the
+	// heal.
+	if s.now() < s.healAt {
+		s.after(100*Millisecond, s.fenceFollower)
+		return
+	}
+	s.fail("FenceAt: no follower up to fence from %d ms to the heal at %d ms", s.cfg.FenceAt/Millisecond, s.healAt/Millisecond)
 }
 
 // lagAtEndKey is the key of LagAtEnd's own write, which no client uses.
