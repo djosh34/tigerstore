@@ -233,7 +233,7 @@ func (c *revisionChecker) deleteEvents() {
 			if len(w.Responses) == 0 || !w.Responses[0].Created {
 				continue
 			}
-			start = uint64(w.Responses[0].Revision) + 1
+			start = owedAfter(w.Responses[0].Revision)
 		}
 		// Every event up to reached was delivered: progress at P covers
 		// P, and the events of one revision come in one response.

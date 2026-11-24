@@ -82,7 +82,7 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 			fail("response %d arrives after the watch was canceled", i)
 		}
 		if resp.Created && first == 0 {
-			first = uint64(resp.Revision) + 1
+			first = owedAfter(resp.Revision)
 		}
 		for j, e := range resp.Events {
 			rev := e.Revision()
@@ -237,6 +237,16 @@ func typeName(t history.EventType) string {
 		return "delete"
 	}
 	return "put"
+}
+
+// owedAfter is the first revision a watch created at revision rev owes, a
+// uint64 (#768): one past the int64 limit for a watch created there, and
+// every revision for a negative one, which no server answers, as before.
+func owedAfter(rev int64) uint64 {
+	if rev < 0 {
+		return 1
+	}
+	return uint64(rev) + 1
 }
 
 // owedFrom is a watch's start revision as the first revision it owes, a

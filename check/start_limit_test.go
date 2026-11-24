@@ -160,3 +160,35 @@ func TestRevisionLimitConvicts(t *testing.T) {
 	w.Responses = append(w.Responses, history.WatchResponse{Time: b.now, Revision: top, Canceled: true, CompactRevision: top})
 	mustFail(t, "Watches", Watches(h), "only needed revision")
 }
+
+// TestRevisionLimitEffect checks the limit's refusal against what a
+// history requires (#768): an unanswered put at the limit that the history
+// says took effect cannot have, and a watch created at a negative revision
+// still owes every event.
+func TestRevisionLimitEffect(t *testing.T) {
+	const top = math.MaxInt64
+	// The put's effect is required at the limit, but a later read sees
+	// b as before it.
+	b := newBuilderFrom(t, startNearLimit(top))
+	b.now += 10
+	b.h.Ops = append(b.h.Ops, history.Op{
+		Client: 2, Call: b.now, Return: b.now + 5,
+		Req: history.Request{Put: &history.PutRequest{Key: "b", Value: "b2"}},
+		Err: &history.Error{Code: "Unavailable", Message: "no answer", Ambiguous: true}, Effect: &history.Effect{By: math.MaxInt64, Revision: top},
+	})
+	b.now += 10
+	b.get(1, "b")
+	mustFail(t, "Linearizable", Linearizable(b.done(), time.Minute), "")
+
+	// A watch created at revision -2 misses an acked delete at 11.
+	b = newBuilderFrom(t, startOf())
+	b.del(1, "b")
+	b.progress()
+	h := b.done()
+	h.Watches = append(h.Watches, history.Watch{Client: 9, Req: history.WatchRequest{Key: "b"}, Responses: []history.WatchResponse{
+		{Time: 1, Revision: -2, Created: true},
+		{Time: b.now, Revision: 11, Progress: true},
+	}})
+	mustFail(t, "Watches", Watches(h), "")
+	mustFail(t, "Revisions", Revisions(h), "")
+}
