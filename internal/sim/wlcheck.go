@@ -111,6 +111,11 @@ func (s *Sim) checkWL(res *Result) error {
 	if err := s.checkRecoverable(); err != nil {
 		return err
 	}
+	if s.certsExpiredAt > 0 {
+		if err := s.checkExpired(res); err != nil {
+			return err
+		}
+	}
 	if s.quorumLostAt > 0 {
 		return s.checkUnavailable(res)
 	}

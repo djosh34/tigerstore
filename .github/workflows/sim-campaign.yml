@@ -105,6 +105,15 @@ jobs:
         run: |
           set -uo pipefail
           export GOSIMTOOL="$GITHUB_WORKSPACE/.gosim/bin/gosim"
+          # The runner's free memory and the largest processes every 30 s,
+          # in the job's log and uploaded with the others: a runner that
+          # runs out of memory is shut down before any later step runs, with
+          # no other trace of why (#775).
+          (while true; do
+            echo "memory $(date -u +%T): $(free -m | awk '/^Mem:/ {print "used " $3 " MiB, available " $7 " MiB"}'); largest: $(ps -eo rss=,comm= --sort=-rss | head -3 | awk '{printf "%s %d MiB; ", $2, $1/1024}')" | tee -a "$RUNNER_TEMP/memory.log"
+            sleep 30
+          done) &
+          memory=$!
           cd internal/sim
           pids=()
           procs=()
@@ -137,6 +146,7 @@ jobs:
           for p in "${procs[@]}"; do
             grep -qE -- "^=== RUN   $TEST/[0-9]+\$" "$RUNNER_TEMP/seeds-$p.log" || { echo "process $p ran no seed of a test $TEST"; status=1; }
           done
+          kill "$memory"
           exit $status
       # The logs, with every seed's hashes, also when the campaign passed:
       # any seed of them replays alone with the same hashes.
@@ -146,4 +156,5 @@ jobs:
           name: sim-campaign-${{ matrix.shard }}
           path: |
             ${{ runner.temp }}/seeds-*.log
+            ${{ runner.temp }}/memory.log
             ${{ runner.temp }}/sim-out

@@ -182,6 +182,14 @@ func TestStartBoundaries(t *testing.T) {
 	mustFail(t, "Durable", Durable(h), "below the start's revision")
 	mustFail(t, "Revisions", Revisions(h), "got revision 9")
 
+	// A serializable read answered below it, from a node that is behind,
+	// cannot be checked, and passes.
+	h = forkHistory(t)
+	h.Ops[0].Req.Range.Serializable = true
+	h.Ops[0].Resp.Revision = 1
+	h.Ops[0].Resp.Range.KVs = nil
+	mustPass(t, "Durable", Durable(h))
+
 	// A history that only reads from its start.
 	b := newBuilderFrom(t, startOf())
 	b.get(1, "a")

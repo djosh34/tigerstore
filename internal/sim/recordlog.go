@@ -385,6 +385,15 @@ type arena struct {
 	stored int
 }
 
+// clone is a copy of a that its owner can add to without changing a:
+// the copy appends after a's bytes, into a's last chunk if it has room,
+// where a never reads.
+func (a *arena) clone() arena {
+	c := *a
+	c.chunks, c.at, c.owners = slices.Clone(a.chunks), slices.Clone(a.at), slices.Clone(a.owners)
+	return c
+}
+
 // chunkOwner owns a chunk's slot in an arena's store.
 type chunkOwner struct{ chunk int }
 

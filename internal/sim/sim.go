@@ -33,6 +33,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simfs"
@@ -113,6 +114,12 @@ type Config struct {
 	// that: every lease adds an expiry that may apply at any time, and its
 	// search grows too fast with them.
 	NoLeases bool
+	// CertExpiresAt, if set, is about when the nodes' certificate expires,
+	// counted from the run's formation; a second later every connection
+	// is reset, and no new one can be made. At CertRotateAt an operator
+	// rotates it: the same CA issues a new one, and every node restarts
+	// with it. In between no write may succeed (checkExpired).
+	CertExpiresAt, CertRotateAt int64
 	// LoseQuorum makes every crash damage the node's disk until a
 	// majority of the voters is fenced for good, and no operator replaces
 	// one: the cluster must stay safe, and refuse every write from then
@@ -132,6 +139,12 @@ type Config struct {
 	// watch on every resource prefix and a compaction every CompactEvery
 	// (kube.go).
 	Objects int
+	// BulkBytes, if set, is how much the run loads before its clients
+	// start (bulkLoad).
+	BulkBytes int64
+	// HotKeys sends half the writes of the Kubernetes-shaped load to each
+	// client's first object, a hot key with many versions.
+	HotKeys bool
 	// ListPage is the limit of a page of the load's lists, kubePage if 0.
 	ListPage int
 	// Window, if set, gives the nodes the core's default window of applied
@@ -193,6 +206,16 @@ type Config struct {
 	// node starts again warm, its page cache kept, and writes on; a second
 	// later it loses power and starts cold (wlSyncFailArm, Recovered).
 	syncFailWarmCold bool
+	// from, if set, is the aged image the run forks from (aged.go): its
+	// nodes start from copies of the image's disks. noFence keeps the
+	// crash images to whole writes, which never fence a node, so that an
+	// aging run ends with every node up for its image.
+	from    *image
+	noFence bool
+	// longCerts makes the run's certificates valid for certValid, as an
+	// aged image's forks, years later, share them; other runs' are valid
+	// for a day.
+	longCerts bool
 	// flipRecords lets a wl node's damage, where the kind drawn finds no
 	// place, flip a record of its log (flipWLRecord), once the cluster
 	// formed first: TestSeeds' runs, whose rule over a set needs fenced
@@ -597,6 +620,13 @@ type Sim struct {
 	// snapshot served to each node, by Raft ID, when it was served.
 	servedRoot map[uint64]uint64
 	healed     bool
+	// startRev is the revision of the image a fork starts from, 0 for a
+	// run from an empty store.
+	startRev int64
+	// certsExpiredAt is when the connections were reset a second after
+	// the certificate expired, and certsRotatedAt when an operator rotated
+	// it (Config.CertExpiresAt), 0 before.
+	certsExpiredAt, certsRotatedAt int64
 	// wroteOK is set once a client's write succeeded: the quorum loss
 	// waits for it (loseQuorum).
 	wroteOK bool
@@ -817,6 +847,11 @@ type Stats struct {
 	// good (Config.LoseQuorum), 0 if never.
 	Replaced     int
 	QuorumLostAt int64
+	// CertsExpiredAt is when the connections were reset after the nodes'
+	// certificate expired (Config.CertExpiresAt), and ExpiredWrites the
+	// writes that failed between then and the rotation.
+	CertsExpiredAt int64
+	ExpiredWrites  int
 	// MembershipChanges counts each completed stage, and MembershipFaults
 	// those completed before healing. Attempts include failed calls.
 	MembershipChanges, MembershipFaults [4]int
@@ -885,6 +920,11 @@ type Result struct {
 	chunks  *keptPages
 	// hashed is the run's hashes, taken before its checks (hashes).
 	hashed string
+	// start and base, in a fork, are the image's store and the number of
+	// its writes at the head of Log: the checkers of package check start
+	// from the store and get the writes after it.
+	start *history.Start
+	base  int
 }
 
 // history returns the run's calls: History, decoded again from the
@@ -912,7 +952,9 @@ func Run(cfg Config) (*Result, error) { return runInspect(cfg, nil) }
 // hold still for the checks.
 func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	var f *Sim
-	if formsFirst(cfg) {
+	if cfg.from != nil {
+		f = cfg.from.src
+	} else if formsFirst(cfg) {
 		var err error
 		f, err = formCluster(cfg)
 		if f == nil {
@@ -936,7 +978,9 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if f != nil {
+	if cfg.from != nil {
+		s.fork(cfg.from)
+	} else if f != nil {
 		// The nodes start from the formed disks, and the run's record of
 		// committed entries and checkpoints goes on from the formation's.
 		for i, n := range s.nodes[:cfg.voters()] {
@@ -947,6 +991,9 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		s.formed, s.stats.Formed = f.formed, true
 	}
 	res := &Result{Clients: cfg.Clients + cfg.V3Clients, long: cfg.Duration >= 3600*Second}
+	if img := cfg.from; img != nil {
+		res.start, res.base = img.start, img.ops
+	}
 	err = s.run()
 	// A run that failed before its end keeps what it did so far, for its
 	// report; it has no committed log for the checkers.
@@ -1118,7 +1165,7 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 	if from != nil {
 		certs, s.pages, s.chunks = &from.net, from.pages, from.chunks
 	}
-	if err := s.net.init(certs, cfg.voters()); err != nil {
+	if err := s.net.init(certs, cfg.voters(), time.Duration(cfg.CertExpiresAt), cfg.longCerts); err != nil {
 		return nil, err
 	}
 	if s.pages == nil {
@@ -1185,6 +1232,11 @@ func (s *Sim) run() error {
 	}
 	if s.cfg.scenario != nil {
 		if err := s.cfg.scenario(s); err != nil {
+			return err
+		}
+	}
+	if s.cfg.BulkBytes > 0 {
+		if err := s.bulkLoad(); err != nil {
 			return err
 		}
 	}
@@ -1431,6 +1483,10 @@ func (s *Sim) schedule() {
 	}
 	if s.cfg.LoseQuorum {
 		s.at(s.cfg.Duration/4, s.loseQuorum)
+	}
+	if s.cfg.CertExpiresAt > 0 {
+		s.at(int64(s.net.expires.Sub(s.t0))+Second, s.expireCerts)
+		s.at(s.cfg.CertRotateAt, s.rotateCerts)
 	}
 	s.at(s.healAt, s.heal)
 }
@@ -2138,13 +2194,14 @@ func (s *Sim) powerLoss(n *node) {
 // verifiesAfter), so they come only while fewer other nodes than spare
 // are out of the cluster for good, and a quorum stays; not in membership
 // runs, where a fenced voter would refuse every change, as corruption
-// would (membershipConfig); and not in a run that loses its quorum
+// would (membershipConfig); not in an aging run, whose image needs every
+// node (Config.noFence); and not in a run that loses its quorum
 // (Config.LoseQuorum), where a torn image would count as the damage it
 // is allowed. An image of whole writes must never make recovery refuse
 // the log (#295). The lock is held.
 func (s *Sim) loseUnsynced(n *node) {
 	img := simfs.Image(s.rng.IntN(4))
-	if s.cfg.Membership || s.cfg.LoseQuorum || s.count(func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) >= s.spare() {
+	if s.cfg.Membership || s.cfg.noFence || s.cfg.LoseQuorum || s.count(func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) >= s.spare() {
 		img = simfs.Image(s.rng.IntN(2))
 	}
 	s.loseUnsyncedAs(n, img)

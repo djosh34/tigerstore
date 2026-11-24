@@ -197,6 +197,11 @@ func (c *client) kubeRequest() proto.Message {
 		return &pb.RangeRequest{Key: k.prefixes[g], RangeEnd: end, Limit: s.listPage()}
 	}
 	o := k.groups[g][s.rng.IntN(len(k.groups[g]))]
+	if s.cfg.HotKeys && p >= kubeLists && s.rng.IntN(2) == 0 {
+		// Half the writes go to the client's first object, whose
+		// versions pile up.
+		o = k.all[0]
+	}
 	switch {
 	case p < kubeGets:
 		return &pb.RangeRequest{Key: o.key}

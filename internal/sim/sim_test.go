@@ -923,7 +923,10 @@ func faultCases() []faultCase {
 		{"file system down", Faults{FSDownEvery: Second}, nil, func(st Stats) int { return min(st.FSDowns, st.DiskFaults) }},
 		{"read-only file system", Faults{FSDownEvery: Second}, nil, func(st Stats) int { return st.ReadOnlyStops }},
 		{"client link down", Faults{LinkEvery: Second}, nil, func(st Stats) int { return st.ClientLinksDown }},
-		{"full disk", Faults{DiskFullEvery: Second}, nil, func(st Stats) int { return st.OutOfSpace }},
+		// A small budget checkpoints often (Config.CheckpointLog): a
+		// node then needs room while its disk is full, which its log's
+		// ring, made once, does not.
+		{"full disk", Faults{DiskFullEvery: Second, DiskBudget: 32 << 10}, nil, func(st Stats) int { return st.OutOfSpace }},
 		{"the log cut within the budget", Faults{DiskBudget: 32 << 10, DiskCapacity: 128 << 10}, nil, func(st Stats) int { return st.LogCuts }},
 		damage(flippedRoot, func(st Stats) int { return min(st.Damage[flippedRoot], st.Fenced) }),
 		damage(misdirected, func(st Stats) int { return min(st.Damage[misdirected], st.Fenced) }),

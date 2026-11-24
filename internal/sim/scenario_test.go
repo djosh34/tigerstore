@@ -33,6 +33,10 @@ const (
 // no membership work that lose their quorum for good (Config.LoseQuorum).
 const scenarioLoseQuorum = 3
 
+// scenarioCertExpiry is the percentage of the scenarios without the
+// membership work whose certificate expires (Config.CertExpiresAt).
+const scenarioCertExpiry = 3
+
 // scenarioSizes are the cluster sizes a scenario draws, with their
 // weights: three and five voters much more often than one.
 var scenarioSizes = []weighted[int]{{1, 1}, {3, 6}, {5, 3}}
@@ -162,6 +166,12 @@ func Scenario(seed uint64) Config {
 	if !cfg.Membership && rate != 0 && rng.IntN(100) < scenarioLoseQuorum {
 		cfg.LoseQuorum, cfg.Faults.Replace = true, false
 	}
+	// A few have their certificate expire during the faults, and an
+	// operator rotate it 3 to 15 s later (Config.CertExpiresAt).
+	if !cfg.Membership && rng.IntN(100) < scenarioCertExpiry {
+		cfg.CertExpiresAt = cfg.Duration/4 + rng.Int64N(cfg.Duration/4)
+		cfg.CertRotateAt = cfg.CertExpiresAt + 3*Second + rng.Int64N(12*Second)
+	}
 	return cfg
 }
 
@@ -178,6 +188,8 @@ func (c Config) kind() string {
 	switch {
 	case c.LoseQuorum:
 		return "requested quorum loss"
+	case c.CertExpiresAt > 0:
+		return "certificate expiry"
 	case c.Membership:
 		return "membership"
 	case c.Objects > 0:
@@ -261,5 +273,25 @@ func TestLoseQuorum(t *testing.T) {
 			t.Fatalf("seed %d: the cluster of %d kept its quorum: %d fenced", seed, cfg.Nodes, st.Fenced)
 		}
 		return res.Stats
+	}, nil)
+}
+
+// TestCertExpiry lets the nodes' certificate expire during the faults
+// and an operator rotate it 6 s later (Config.CertExpiresAt), on three
+// voters and on one: no write may succeed in between, every checker must
+// pass, and the cluster must serve again after the rotation.
+func TestCertExpiry(t *testing.T) {
+	simrun.Each(t, []uint64{1, 2}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.Nodes = 1 + 2*int(seed%2)
+		cfg.CertExpiresAt, cfg.CertRotateAt = 8*Second, 14*Second
+		res := run(t, cfg)
+		checkers(t, res)
+		st := res.Stats
+		if st.CertsExpiredAt == 0 || st.ExpiredWrites == 0 {
+			t.Fatalf("seed %d: the expiry took no effect: connections reset at %s, %d writes failed before the rotation", seed, seconds(st.CertsExpiredAt), st.ExpiredWrites)
+		}
+		t.Logf("seed %d: connections reset at %s, %d writes failed before the rotation, %d ok in all", seed, seconds(st.CertsExpiredAt), st.ExpiredWrites, st.OK)
+		return st
 	}, nil)
 }
