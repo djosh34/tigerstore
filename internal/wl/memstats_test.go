@@ -82,3 +82,43 @@ func TestTheSlabStopsLettingGoWithinItsLimit(t *testing.T) {
 		t.Fatalf("the slab let go down to %d KiB of records, far below its limit of %d KiB", st.slab.used>>10, st.limit>>10)
 	}
 }
+
+// A budget whose limit passes the slab's size lets records go before the
+// slab fills, also as the records change size, whose freed slots another
+// size does not take: the slab's size is fixed, 64 MiB in the simulator,
+// and a store at 256 MiB filled it and stopped its node (#776). It still
+// keeps records up to its limit.
+func TestALimitPastTheSlabKeepsWithinIt(t *testing.T) {
+	st, l := newTestStore(t)
+	small, err := newSlab(8 << 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := st.slab
+	st.slab = small
+	t.Cleanup(func() {
+		st.slab = old
+		if err := unixMunmap(small.mem); err != nil {
+			t.Error(err)
+		}
+	})
+	st.setBudget(1<<30, 0)
+	if st.limit > int64(len(st.slab.mem))/2 {
+		t.Fatalf("a slab of %d MiB has a limit of %d MiB", len(st.slab.mem)>>20, st.limit>>20)
+	}
+	// Sizes that step through the slot classes, a block of each: the
+	// freed slots of one class do not take the next.
+	for i := range 1200 {
+		size := (1 << 10) << ((i / 40) % 9)
+		putValue(t, st, l, fmt.Sprintf("/k/%05d", i%300), strings.Repeat("v", size+i%7))
+	}
+	if st.slab.used > st.limit {
+		t.Fatalf("the slab holds %d KiB of records past its limit of %d KiB", st.slab.used>>10, st.limit>>10)
+	}
+	if int64(st.slab.top) > int64(len(st.slab.mem))*3/4 {
+		t.Fatalf("the slab's top is at %d KiB of %d KiB", st.slab.top>>10, len(st.slab.mem)>>10)
+	}
+	if st.slab.used < st.limit/4 {
+		t.Fatalf("the slab let go down to %d KiB of records, far below its limit of %d KiB", st.slab.used>>10, st.limit>>10)
+	}
+}
