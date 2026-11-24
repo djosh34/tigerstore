@@ -186,18 +186,19 @@ func TestTheNodeClosesClientsPastItsBackstop(t *testing.T) {
 }
 
 // When the read half of the client buffers is full, clients wait for it
-// in turn, and none is dropped or waits for good. At 128 MiB the buffers
-// hold 6 clients at once. 12 clients keep four Puts of 32 KiB under way
-// for the whole test, and would hold the buffers for good if nothing took them
-// back; 48 more each make 20 Puts, four at a time. Every Put of the 48
-// succeeds while the 12 go on, and every Put of the 12, sent in parts,
-// waits its turn for room and succeeds: none is refused as too many
-// requests (#735), where the small clients kept the buffers near full
-// and the hogs' Puts were refused on almost every try.
+// in turn, and none is dropped or waits for good. At 128 MiB, which a
+// node of one keeps (#760), the buffers hold 5 clients at once. 12
+// clients keep four Puts of 32 KiB under way for the whole test, and
+// would hold the buffers for good if nothing took them back; 48 more each
+// make 20 Puts, four at a time. Every Put of the 48 succeeds while the 12
+// go on, and every Put of the 12, sent in parts, waits its turn for room
+// and succeeds: none is refused as too many requests (#735), where the
+// small clients kept the buffers near full and the hogs' Puts were
+// refused on almost every try.
 func TestClientsWaitInTurnForTheClientBuffers(t *testing.T) {
 	const budget, hogs, clients, puts = 128 << 20, 12, 48, 20
 	loopOf := watchLoops(t)
-	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
 	z := sizeFor(budget)
 	t.Logf("the read half of the client buffers holds %d clients at once", z.clientInBufs()/int64(clientInBuf+clientPtBuf+slotBytes))
 	clis := make([]*clientv3.Client, hogs+clients)

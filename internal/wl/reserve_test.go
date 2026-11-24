@@ -69,7 +69,7 @@ func TestTheReserveTakesWhatPassesAShare(t *testing.T) {
 func TestManyLargeRepliesStayWithinTheReserve(t *testing.T) {
 	const budget = 96 << 20
 	loopOf := watchLoops(t)
-	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	c := tc.clientOf(t, tc.endpoints[0])
@@ -197,7 +197,7 @@ func TestManyLargeRepliesStayWithinTheReserve(t *testing.T) {
 func TestAWritesReplyWaitsForTheReserve(t *testing.T) {
 	const budget = 96 << 20
 	loopOf := watchLoops(t)
-	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	c := tc.clientOf(t, tc.endpoints[0])

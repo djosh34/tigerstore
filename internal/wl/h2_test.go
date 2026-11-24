@@ -17,6 +17,8 @@ func TestEndedStreamsGiveTheirBuffersBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.node.st = st
+	// The bench's sizes: the node keeps 64 buffers (sizes.kept).
+	c.node.sizes = sizeFor(0)
 	const size = 100 << 10
 	msg := make([]byte, 5+size)
 	binary.BigEndian.PutUint32(msg[1:], size)
@@ -41,9 +43,33 @@ func TestEndedStreamsGiveTheirBuffersBack(t *testing.T) {
 	for _, b := range c.node.bufs {
 		kept += cap(b)
 	}
-	if kept > keptBufs*keptBufMax {
+	if kept > c.node.sizes.kept*keptBufMax {
 		t.Fatalf("%d streams of %d KiB messages left %d MiB of buffers, more than the node keeps, %d MiB",
-			streams, size>>10, kept>>20, keptBufs*keptBufMax>>20)
+			streams, size>>10, kept>>20, c.node.sizes.kept*keptBufMax>>20)
+	}
+}
+
+// The node keeps as many buffers that ended streams gave back as its
+// budget allows (sizes.kept): 4 at 128 MiB, 64 at the bench's 3 GiB, and
+// none past keptBufMax.
+func TestTheNodeKeepsBuffersByItsBudget(t *testing.T) {
+	for _, c := range []struct {
+		budget int64
+		want   int
+	}{{128 << 20, 4}, {3 << 30, 64}} {
+		n := &node{sizes: sizeFor(c.budget)}
+		for range 100 {
+			n.putBuf(make([]byte, 0, 64<<10))
+		}
+		n.putBuf(make([]byte, 0, keptBufMax+1))
+		if len(n.bufs) != c.want {
+			t.Errorf("at %d MiB the node keeps %d buffers, want %d", c.budget>>20, len(n.bufs), c.want)
+		}
+		for _, b := range n.bufs {
+			if cap(b) > keptBufMax {
+				t.Errorf("at %d MiB the node keeps a buffer of %d bytes, past %d", c.budget>>20, cap(b), keptBufMax)
+			}
+		}
 	}
 }
 
