@@ -370,6 +370,10 @@ func (r *rollingRun) quitNodes() {
 		}
 		quit++
 	}
+	if quit == 0 {
+		r.t.Log("no node still running to dump its goroutines")
+		return
+	}
 	r.t.Logf("SIGQUIT to the %d nodes still running: their goroutines are in their logs, in %s", quit, r.dir)
 }
 
