@@ -120,15 +120,17 @@ func startFollowers(members int, join bool) int {
 }
 
 // budgetKeeps refuses a membership change that leaves a cluster of
-// members the node's memory budget does not keep (#760). The leader checks
-// it as it proposes the change, on its own member list, as a follower
-// hands it an add or a promotion (node.forwardMember), and never as the
-// change is applied, so that no member's applied state depends on its own
-// budget. A promotion does not change the members' count: it is refused
-// only where the cluster already passed the leader's budget. A member
-// whose budget is smaller than the leader's is not checked: every member
-// is meant to run with the same budget, and one that does not keep the
-// cluster says so as it applies the change (node.applyConfChange).
+// members the node's memory budget does not keep (#760). It is checked as
+// the change is proposed, on the node a client asks for an add and on the
+// leader for a promotion, against that node's own budget and member list,
+// and never as the change is applied, so that no member's applied state
+// depends on its own budget. A promotion does not change the members'
+// count: it is refused only where the cluster already passed the
+// budget. Two adds asked of two nodes at once, or an add asked of a node
+// whose budget is larger than another member's, are not caught here:
+// every member is meant to run with the same budget, and one that does
+// not keep the cluster says so as it applies the add
+// (node.applyConfChange).
 func (n *node) budgetKeeps(members int) error {
 	if n.st.budget <= 0 || n.st.budget >= leastBudget(members-1) {
 		return nil

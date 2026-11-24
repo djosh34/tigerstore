@@ -282,10 +282,11 @@ func (n *node) applyConfChange(cc *pb.ConfChange, index uint64) error {
 		// Every member confirms the new membership's support again.
 		n.formatEpoch = index
 		if added && n.budgetKeeps(len(n.members)) != nil {
-			// The leader checked the change as it proposed it, on its
-			// own budget (budgetKeeps): this member's is smaller, or a
-			// leader before it took the change. It applies the change as
-			// every member does, and says so.
+			// The node a client asked checked the add as it proposed it,
+			// on its own budget and member list (budgetKeeps): this
+			// member's budget is smaller, or another add was asked of
+			// another node at once. It applies the add as every member
+			// does, and says so.
 			n.logf("a memory budget of %d bytes does not keep the cluster's %d members, which need at least %d bytes: every member should run with the same budget (#760)",
 				n.st.budget, len(n.members), leastBudget(len(n.members)-1))
 		}

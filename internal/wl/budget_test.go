@@ -145,13 +145,12 @@ func TestAStartBelowTheLeastBudgetIsRefused(t *testing.T) {
 	}
 }
 
-// A member add that takes the cluster past what the leader's budget keeps
-// is refused as it is proposed, with the least budget the cluster would
-// need, and the list stays as it was. The leader, n1, runs at three
-// voters' least budget, the others at more: it takes a learner, which
-// joins and catches up at that budget, but not a fifth member; a second
-// learner gets etcd's error. The adds go to a follower whose own budget
-// would take them, and which hands them to the leader.
+// A member add that takes the cluster past what the budget of the node
+// asked keeps is refused as it is proposed, with the least budget the
+// cluster would need, and the list stays as it was. n1 runs at three
+// voters' least budget, the others at more; the adds are asked of n1,
+// which takes a learner, which joins and catches up at that budget, but
+// not a fifth member; a second learner gets etcd's error.
 func TestAMemberAddPastTheBudgetIsRefused(t *testing.T) {
 	budget := leastBudget(startFollowers(3, false))
 	tc := newTestClusterWith(t, func(tc *testCluster) {
@@ -166,21 +165,12 @@ func TestAMemberAddPastTheBudgetIsRefused(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	waitMembers(t, c, 3)
-	for {
-		leader := tc.leaderEndpoint(t, c)
-		if leader == tc.endpoints[0] {
-			break
-		}
-		if _, err := tc.rawClient(t, leader).MoveLeader(ctx, tc.ids[0]); err != nil && ctx.Err() != nil {
-			t.Fatalf("the leadership never moved to n1: %v", err)
-		}
-	}
 	if _, err := c.Put(ctx, "/before-join", "v"); err != nil {
 		t.Fatal(err)
 	}
-	follower := tc.rawClient(t, tc.endpoints[1])
+	n1 := tc.rawClient(t, tc.endpoints[0])
 	i := tc.addPorts(t, 0, true)
-	added, err := follower.MemberAddAsLearner(ctx, []string{tc.peers[i]})
+	added, err := n1.MemberAddAsLearner(ctx, []string{tc.peers[i]})
 	if err != nil {
 		t.Fatalf("a learner added to three voters at %d MiB: %v", budget>>20, err)
 	}
@@ -207,12 +197,11 @@ func TestAMemberAddPastTheBudgetIsRefused(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	// An add the apply refuses anyway gets etcd's error, not the budget's.
-	if _, err := follower.MemberAddAsLearner(ctx, []string{"https://127.0.0.1:1"}); !errors.Is(err, rpctypes.ErrTooManyLearners) {
+	if _, err := n1.MemberAddAsLearner(ctx, []string{"https://127.0.0.1:1"}); !errors.Is(err, rpctypes.ErrTooManyLearners) {
 		t.Fatalf("a second learner: %v, want etcd's error for too many learners", err)
 	}
-	_, err = follower.MemberAdd(ctx, []string{"https://127.0.0.1:2"})
-	if err == nil || !strings.Contains(err.Error(), strconv.FormatInt(leastBudget(4), 10)) {
-		t.Fatalf("a fifth member added at the leader's %d MiB: %v, want it refused naming %d bytes", budget>>20, err, leastBudget(4))
+	if _, err := n1.MemberAdd(ctx, []string{"https://127.0.0.1:2"}); err == nil || !strings.Contains(err.Error(), strconv.FormatInt(leastBudget(4), 10)) {
+		t.Fatalf("a fifth member asked of n1 at %d MiB: %v, want it refused naming %d bytes", budget>>20, err, leastBudget(4))
 	}
 	if r, err := c.MemberList(ctx); err != nil || len(r.Members) != 4 {
 		t.Fatalf("the member list after the refused add: %v (%v), want 4 members", r, err)
