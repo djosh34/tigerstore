@@ -55,13 +55,35 @@ func (n *node) readState(ctx []byte, index uint64) {
 	}
 }
 
-// serveReads answers the batches whose index is applied.
+// readable reports whether reads with read index index may be served:
+// once the node applied it and, on a leader, once it applied its own first
+// entry of its current term (confHold.leadFirst, leadTerm). A lone voter's Raft answers a
+// ReadIndex at once with the index it knows committed (raft's
+// IsSingleton), which after a restart is the commit its hard state kept.
+// The entries after it, which the node committed, applied and answered
+// before it crashed, are known committed again only with the new term's
+// first entry: a read served before it missed a write already answered
+// (TestOneVoterMembership, seed 4 under -race). A leader of more voters
+// gets no read index before its term's first entry commits, so it never
+// waits longer for this.
+func (n *node) readable(index uint64) bool {
+	if index > n.applied {
+		return false
+	}
+	if !n.leading() {
+		return true
+	}
+	h := &n.confHold
+	return h.leadFirst != 0 && h.leadFirst <= n.applied && h.leadTerm == n.rn.BasicStatus().GetTerm()
+}
+
+// serveReads answers the batches that are readable.
 func (n *node) serveReads() {
 	k := 0
 	for i, b := range n.readBatches {
 		// Planted B01b: served once its read index is known, before the
 		// node applied it.
-		if b.known && (b.index <= n.applied || planted.On("B01b")) {
+		if b.known && (n.readable(b.index) || planted.On("B01b")) {
 			for _, r := range b.reads {
 				if r.done != nil {
 					r.done()
