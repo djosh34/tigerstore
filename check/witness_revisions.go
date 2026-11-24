@@ -202,12 +202,14 @@ type seenLife struct {
 	lifeTo
 }
 
-// byRev returns revs[rev], or nothing past its end.
-func byRev(revs [][]int, rev int64) []int {
-	if rev < 0 || int(rev) >= len(revs) {
+// byRev returns revs at rev, or nothing outside them. The tables by
+// revision start at the history's first revision, not at 0, so that a
+// start near the revision limit takes no more room than one at 1 (#768).
+func (r *revisionOrder) byRev(revs [][]int, rev int64) []int {
+	if rev < r.first || rev-r.first >= int64(len(revs)) {
 		return nil
 	}
-	return revs[rev]
+	return revs[rev-r.first]
 }
 
 // checkRange reports whether no order rules revision rev out, from 0 to
@@ -224,22 +226,33 @@ func (r *revisionOrder) checkRange(rev int64) bool {
 
 // writer returns the acked op that wrote revision rev, if any.
 func (r *revisionOrder) writer(rev int64) (int, bool) {
-	if rev < 0 || int(rev) >= len(r.writers) || r.writers[rev] == 0 {
+	if rev < r.first || rev-r.first >= int64(len(r.writers)) || r.writers[rev-r.first] == 0 {
 		return 0, false
 	}
-	return r.writers[rev] - 1, true
+	return r.writers[rev-r.first] - 1, true
 }
 
-// setWriter notes acked op i as the writer of revision rev.
+// setWriter notes acked op i as the writer of revision rev. Below the
+// history's first revision, which the search never reaches, it notes
+// nothing, as add.
 func (r *revisionOrder) setWriter(rev int64, i int) {
-	r.writers = at(r.writers, rev)
-	r.writers[rev] = i + 1
+	if rev < r.first {
+		return
+	}
+	r.writers = at(r.writers, rev-r.first)
+	r.writers[rev-r.first] = i + 1
 }
 
-// add appends v to revs[rev], which it grows to hold.
-func add(revs [][]int, rev int64, v int) [][]int {
-	revs = at(revs, rev)
-	revs[rev] = append(revs[rev], v)
+// add appends v to revs at rev, which it grows to hold. The search goes
+// from the history's first revision up, and reads the tables only there
+// (byRev): one below it, such as a key's creation before the start, is
+// left out.
+func (r *revisionOrder) add(revs [][]int, rev int64, v int) [][]int {
+	if rev < r.first {
+		return revs
+	}
+	revs = at(revs, rev-r.first)
+	revs[rev-r.first] = append(revs[rev-r.first], v)
 	return revs
 }
 
@@ -271,7 +284,8 @@ func (r *revisionOrder) index() error {
 	// is the start's, if the history has one.
 	r.limit = r.first
 	for i := range h.Ops {
-		if h.Ops[i].Req.Mutates() {
+		// No revision passes the int64 limit (#768).
+		if h.Ops[i].Req.Mutates() && r.limit < math.MaxInt64 {
 			r.limit++
 		}
 	}
@@ -292,11 +306,11 @@ func (r *revisionOrder) index() error {
 			}
 			r.setWriter(op.Resp.Revision, i)
 		case op.Resp != nil && op.Req.LeaseRevoke != nil:
-			r.revokes = add(r.revokes, op.Resp.Revision, i)
+			r.revokes = r.add(r.revokes, op.Resp.Revision, i)
 		case op.Resp != nil && mutation(op):
-			r.others = add(r.others, op.Resp.Revision, i)
+			r.others = r.add(r.others, op.Resp.Revision, i)
 		case op.Resp != nil:
-			r.seen = add(r.seen, op.Resp.Revision, i)
+			r.seen = r.add(r.seen, op.Resp.Revision, i)
 		case op.Err.Ambiguous && op.Req.Mutates():
 			if g := op.Req.LeaseGrant; g != nil && g.ID == 0 {
 				// Nobody learned its ID, so no answer depends on it.
@@ -381,7 +395,7 @@ func (r *revisionOrder) index() error {
 					saw(e.KV, e.Revision(), true)
 				} else if r.checkRange(e.Revision()) {
 					// -1 for a key no request puts (note).
-					r.deleted = add(r.deleted, e.Revision(), r.w.live.index(e.KV.Key))
+					r.deleted = r.add(r.deleted, e.Revision(), r.w.live.index(e.KV.Key))
 				}
 			}
 		}
@@ -530,7 +544,8 @@ func (r *revisionOrder) reachable(s *state, skip int) bool {
 	}
 	first := sort.Search(len(r.countRevs), func(k int) bool { return r.countRevs[k] >= s.rev })
 	for _, rev := range r.countRevs[first:] {
-		if rev > s.rev+countHorizon {
+		// rev is at least s.rev: the difference doesn't overflow (#768).
+		if rev-s.rev > countHorizon {
 			break
 		}
 		for _, c := range r.counts[rev] {
@@ -654,22 +669,23 @@ func (r *revisionOrder) note(kv history.KeyValue, to int64) {
 	// can make what a client saw of it (fits).
 	k := r.w.live.index(kv.Key)
 	if kv.Version == 0 || k < 0 {
-		r.written = add(r.written, kv.ModRevision, k)
+		r.written = r.add(r.written, kv.ModRevision, k)
 		if kv.Version != 0 {
-			r.created = add(r.created, kv.CreateRevision, k)
+			r.created = r.add(r.created, kv.CreateRevision, k)
 		}
 		return
 	}
 	l := life{kv.CreateRevision, kv.ModRevision, kv.Version}
-	r.noted = at(r.noted, l.m)
-	for j, s := range r.noted[l.m] {
+	m := l.m - r.first
+	r.noted = at(r.noted, m)
+	for j, s := range r.noted[m] {
 		if s.k == k && s.life == l {
-			r.noted[l.m][j].to = max(s.to, to)
+			r.noted[m][j].to = max(s.to, to)
 			return
 		}
 	}
-	r.noted[l.m] = append(r.noted[l.m], seenLife{k, lifeTo{l, to}})
-	r.created, r.written = add(r.created, l.c, k), add(r.written, l.m, k)
+	r.noted[m] = append(r.noted[m], seenLife{k, lifeTo{l, to}})
+	r.created, r.written = r.add(r.created, l.c, k), r.add(r.written, l.m, k)
 }
 
 func (r *revisionOrder) byCall(ops []int) {
@@ -1129,7 +1145,7 @@ func (r *revisionOrder) answered(ops []int) bool {
 			return false
 		}
 	}
-	seen := byRev(r.seen, w.live.rev)
+	seen := r.byRev(r.seen, w.live.rev)
 	if len(seen) == 0 || !slices.ContainsFunc(ops, func(i int) bool { return w.reqs[i].Compact != nil }) {
 		return true
 	}
@@ -1428,16 +1444,19 @@ func (r *revisionOrder) search() error {
 	if !r.finish(r.first) {
 		return r.failure
 	}
-	for rev := r.first + 1; ; {
+	// u is the revision the search is at, as a uint64: past a top at the
+	// int64 limit, it is one more (#768).
+	for u := uint64(r.first) + 1; ; {
+		rev := int64(min(u, math.MaxInt64))
 		r.rev = rev
 		if w.tick() {
 			return ErrWitnessTimeout
 		}
 		var ok bool
-		if rev > r.top {
+		if u > uint64(r.top) {
 			// An optional compaction may need a revision that no answer
 			// saw: then an unseen write past the top is tried too (#514).
-			unseen := rev <= r.limit && slices.ContainsFunc(r.optional, func(o optional) bool {
+			unseen := u <= uint64(r.limit) && slices.ContainsFunc(r.optional, func(o optional) bool {
 				c := w.reqs[o.op].Compact
 				return !r.used[o.op] && c != nil && c.Revision >= rev && c.Revision <= r.limit
 			})
@@ -1466,7 +1485,7 @@ func (r *revisionOrder) search() error {
 			ok = r.write(rev) && r.finish(rev)
 		}
 		if ok {
-			rev++
+			u++
 			continue
 		}
 		// Back to the last gap, for its next candidate.
@@ -1476,7 +1495,7 @@ func (r *revisionOrder) search() error {
 		f := r.stack[len(r.stack)-1]
 		r.restore(f.mark)
 		r.backs++
-		rev = f.rev
+		u = uint64(f.rev)
 	}
 }
 
@@ -1536,7 +1555,7 @@ func (r *revisionOrder) write(rev int64) bool {
 // every response and real-time constraint before passing.
 func (r *revisionOrder) candidates(rev int64) []int {
 	h := r.w.h
-	out := slices.Clone(byRev(r.revokes, rev))
+	out := slices.Clone(r.byRev(r.revokes, rev))
 	// A revoke writes a revision only if a key holds its lease (fits), and
 	// the ambiguous revokes of a busy history are its leases' expiries, so
 	// only those of the leases the live keys hold are tried: going through
@@ -1689,7 +1708,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 		}
 	}
 	// What clients saw happen at rev must happen.
-	for _, k := range byRev(r.created, rev) {
+	for _, k := range r.byRev(r.created, rev) {
 		if k < 0 {
 			return false
 		}
@@ -1697,7 +1716,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			return false
 		}
 	}
-	for _, k := range byRev(r.written, rev) {
+	for _, k := range r.byRev(r.written, rev) {
 		if k < 0 {
 			return false
 		}
@@ -1705,7 +1724,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			return false
 		}
 	}
-	for _, k := range byRev(r.deleted, rev) {
+	for _, k := range r.byRev(r.deleted, rev) {
 		if k < 0 || s.kvs[k].Version != 0 || !slices.ContainsFunc(o.events, func(e history.Event) bool { return e.KV.Key == s.keys[k] }) {
 			return false
 		}
@@ -1722,7 +1741,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 	r.insertOptional(rev)
 	r.expireEarly(rev)
 	var acked []int
-	for _, i := range slices.Concat(byRev(r.others, rev), byRev(r.revokes, rev)) {
+	for _, i := range slices.Concat(r.byRev(r.others, rev), r.byRev(r.revokes, rev)) {
 		if !r.used[i] {
 			acked = append(acked, i)
 		}
@@ -1759,7 +1778,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 		first--
 	}
 	bounds := w.eventBounds()
-	for _, i := range byRev(r.seen, rev) {
+	for _, i := range r.byRev(r.seen, rev) {
 		// An op that saw rev returned before the state of rev's writer
 		// can be placed, so no order of the later gaps answers it: the
 		// writer is wrong now, not once every later gap was tried (#627).

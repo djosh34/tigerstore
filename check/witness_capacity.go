@@ -1,6 +1,7 @@
 package check
 
 import (
+	"cmp"
 	"iter"
 	"maps"
 	"slices"
@@ -99,33 +100,52 @@ func (r *revisionOrder) indexRoom() {
 		}
 	}
 	// The lives come by last write from note's slice, and by creation by
-	// counting: sorting them grew with the history (#499).
+	// counting: sorting them grew with the history (#499). The counts and
+	// marks are kept by revision from the history's first, as the order's
+	// tables (#768); the lives created before it, which only the start's
+	// keys have, are sorted, and come first.
 	var marks []bool
+	var before []int64
+	var early []lifeOf
 	mark := func(rev int64) {
-		marks = at(marks, rev)
-		marks[rev] = true
+		if rev < r.first {
+			before = append(before, rev)
+			return
+		}
+		marks = at(marks, rev-r.first)
+		marks[rev-r.first] = true
 	}
-	counts := make([]int, r.limit+2)
+	counts := make([]int, r.limit-r.first+2)
 	for _, ls := range r.noted {
 		for _, l := range ls {
 			x.byM = append(x.byM, lifeOf{l.k, l.life})
 			mark(l.c)
 			mark(l.m)
-			counts[l.c+1]++
+			if l.c < r.first {
+				early = append(early, lifeOf{l.k, l.life})
+				continue
+			}
+			counts[l.c-r.first+1]++
 		}
 	}
+	slices.SortStableFunc(early, func(a, b lifeOf) int { return cmp.Compare(a.c, b.c) })
+	counts[0] = len(early)
 	for c := 1; c < len(counts); c++ {
 		counts[c] += counts[c-1]
 	}
 	x.byC = make([]lifeOf, len(x.byM))
+	copy(x.byC, early)
 	for _, l := range x.byM {
-		x.byC[counts[l.c]] = l
-		counts[l.c]++
+		if l.c >= r.first {
+			x.byC[counts[l.c-r.first]] = l
+			counts[l.c-r.first]++
+		}
 	}
-	var lives []int64
-	for rev, ok := range marks {
+	slices.Sort(before)
+	lives := slices.Compact(before)
+	for i, ok := range marks {
 		if ok {
-			lives = append(lives, int64(rev))
+			lives = append(lives, r.first+int64(i))
 		}
 	}
 	// A count's revision is the one its read asked for, which nothing
@@ -153,28 +173,30 @@ func (r *revisionOrder) indexRoom() {
 		}
 	}
 	// The revisions an acked or resolved writer holds, in order.
+	// held is kept by revision from the history's first, as writers.
 	held := slices.Clone(r.writers)
 	for rev, i := range r.resolved {
 		if _, ok := r.writer(rev); !ok {
-			held = at(held, rev)
-			held[rev] = -1
+			held = at(held, rev-r.first)
+			held[rev-r.first] = -1
 			credit(rev, r.w.reqs[i])
 		}
 	}
-	for rev, i := range held {
+	for j, i := range held {
 		if i == 0 {
 			continue
 		}
-		x.fixed = append(x.fixed, int64(rev))
+		rev := r.first + int64(j)
+		x.fixed = append(x.fixed, rev)
 		if i > 0 && r.w.reqs[i-1].LeaseRevoke != nil {
-			credit(int64(rev), r.w.reqs[i-1])
+			credit(rev, r.w.reqs[i-1])
 		}
 	}
 	// An acked revoke may or may not write its header revision; what it
 	// may delete, it deletes for free either way.
-	for rev, is := range r.revokes {
+	for j, is := range r.revokes {
 		for _, i := range is {
-			credit(int64(rev), r.w.reqs[i])
+			credit(r.first+int64(j), r.w.reqs[i])
 		}
 	}
 	for _, revs := range slices.Concat(x.puts, x.deletes, slices.Collect(maps.Values(x.revokes))) {
@@ -260,7 +282,8 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 	now := s.rev
 	first := sort.Search(len(x.ends), func(j int) bool { return x.ends[j] > now })
 	for _, end := range x.ends[first:] {
-		if end > now+countHorizon {
+		// end is past now: the difference doesn't overflow (#768).
+		if end-now > countHorizon {
 			break
 		}
 		need := r.roomNeed(s, end)
