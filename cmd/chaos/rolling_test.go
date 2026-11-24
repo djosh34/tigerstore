@@ -313,7 +313,10 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 			return
 		}
 		if r.nodes == "" && !r.stopped {
+			// A failure before finish was set up, as a start that never
+			// came up: the nodes dump their goroutines before the stop.
 			r.nodes = c.report(context.Background())
+			r.quitNodes()
 		}
 		t.Logf("the nodes when the test failed:\n%s", r.nodes)
 		t.Logf("replay: ROLLING_OLD=<old binary> ROLLING_NEW=<new binary> go test -count=1 -v ./cmd/chaos -run '^%s$'", t.Name())
@@ -348,6 +351,30 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 		}
 	})
 	return r
+}
+
+// quitNodes has each node this test started that still runs dump its
+// goroutines into its log and exit (SIGQUIT), an exit asked for.
+func (r *rollingRun) quitNodes() {
+	quit := 0
+	for _, n := range r.c.nodes {
+		n.mu.Lock()
+		running := n.cmd != nil && !n.exitedNow
+		n.mu.Unlock()
+		if !running {
+			continue
+		}
+		if _, pid, err := n.signal(syscall.SIGQUIT); err != nil {
+			r.t.Logf("SIGQUIT to node%d (pid %d): %v", n.i+1, pid, err)
+			continue
+		}
+		quit++
+	}
+	if quit == 0 {
+		r.t.Log("no node still running to dump its goroutines")
+		return
+	}
+	r.t.Logf("SIGQUIT to the %d nodes still running: their goroutines are in their logs, in %s", quit, r.dir)
 }
 
 func (r *rollingRun) start(i int, bin string) {
@@ -848,6 +875,12 @@ func (r *rollingRun) finish() {
 	r.traffic.stopClients()
 	if err := r.traffic.finish(); err != nil {
 		t.Error(err)
+	}
+	if t.Failed() {
+		// After the traffic's last reads, which the checkers need, the
+		// nodes still running dump their goroutines into their logs, so
+		// that one that never came up says where its start stands (#780).
+		r.quitNodes()
 	}
 	if err := r.c.stop(); err != nil {
 		t.Error(err)
