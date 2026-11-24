@@ -91,6 +91,14 @@ func newTestCluster(t testing.TB) *testCluster {
 // before, if any, prepares it.
 func newTestClusterWith(t testing.TB, before func(tc *testCluster)) *testCluster {
 	t.Helper()
+	return newTestClusterOf(t, 3, before)
+}
+
+// newTestClusterOf starts a cluster of nodes as newTestClusterWith does.
+// A cluster of one keeps a budget below three's least (leastBudget), as
+// the tests of the client buffers' bounds at 96 MiB need (#760).
+func newTestClusterOf(t testing.TB, nodes int, before func(tc *testCluster)) *testCluster {
+	t.Helper()
 	tc := &testCluster{dir: t.TempDir()}
 	var err error
 	if tc.ca, err = testcert.NewCA(); err != nil {
@@ -108,7 +116,7 @@ func newTestClusterWith(t testing.TB, before func(tc *testCluster)) *testCluster
 		}
 	}
 	tc.certFile, tc.keyFile, tc.caFile = filepath.Join(tc.dir, "cert.pem"), filepath.Join(tc.dir, "key.pem"), filepath.Join(tc.dir, "ca.pem")
-	for i := range 3 {
+	for i := range nodes {
 		tc.addPorts(t, uint64(i+1), false)
 	}
 	if before != nil {

@@ -1016,13 +1016,11 @@ func hpackStr(b []byte) ([]byte, bool) {
 // data takes the bytes of a DATA frame of stream s.
 // A message that spans DATA frames waits in its stream's buffer. Streams
 // that end give their buffers back to the node, which keeps a few of them
-// for the next: a stream slot that kept its own grew to the largest
-// message it ever had, in each of a client's 8,192 slots, and the k8s
-// bench's nodes held hundreds of megabytes of them (#602).
-const (
-	keptBufs   = 64
-	keptBufMax = 256 << 10
-)
+// for the next, at most sizes.kept of them, each of at most keptBufMax: a
+// stream slot that kept its own grew to the largest message it ever had,
+// in each of a client's 8,192 slots, and the k8s bench's nodes held
+// hundreds of megabytes of them (#602).
+const keptBufMax = 256 << 10
 
 // takeBuf returns an empty buffer that a stream gave back, or nil.
 func (n *node) takeBuf() []byte {
@@ -1039,7 +1037,7 @@ func (n *node) takeBuf() []byte {
 // putBuf keeps b for another stream, unless the node keeps enough or b
 // is large.
 func (n *node) putBuf(b []byte) {
-	if cap(b) > 0 && cap(b) <= keptBufMax && len(n.bufs) < keptBufs {
+	if cap(b) > 0 && cap(b) <= keptBufMax && len(n.bufs) < n.sizes.kept {
 		n.bufs = append(n.bufs, b)
 	}
 }

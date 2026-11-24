@@ -75,6 +75,11 @@ func (n *node) memberRequest(c *client, s *stream, msg []byte) error {
 			cc.Type = pb.ConfChangeAddNode.Enum()
 			err = n.readyForVoters(1)
 		}
+		// An add the apply refuses anyway, past the learners or on a
+		// peer URL taken, gets etcd's error there, not the budget's.
+		if err == nil && (!learner || n.learners() < maxLearners) && n.peerURLsFree(0, urls) == nil {
+			err = n.budgetKeeps(len(n.members) + 1)
+		}
 	case kMemberUpdate:
 		cc.Type = pb.ConfChangeUpdateNode.Enum()
 		if err = checkURLs(urls); err == nil && n.memberAt(id) < 0 {
@@ -99,6 +104,10 @@ func (n *node) memberRequest(c *client, s *stream, msg []byte) error {
 		}
 		if re, ok := errors.AsType[*requestError](err); ok && n.prom != nil {
 			n.prom.LearnerPromoteFailures.WithLabelValues(re.msg).Inc()
+		}
+		if err == nil {
+			// After the metric, whose reasons are etcd's.
+			err = n.budgetKeeps(len(n.members))
 		}
 	}
 	if err != nil {
