@@ -37,7 +37,7 @@ import (
 func TestALargeRangeAndCatchUpStayWithinTheBudget(t *testing.T) {
 	const budget = 96 << 20
 	loopOf := watchLoops(t)
-	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
 	c := tc.clientOf(t, tc.endpoints[0])
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -313,7 +313,7 @@ func (p *rangeParser) add(b []byte) error {
 func TestALargeRangeAnswersAsEtcdDoes(t *testing.T) {
 	const budget = 96 << 20
 	loopOf := watchLoops(t)
-	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
 	c := tc.clientOf(t, tc.endpoints[0])
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -529,7 +529,7 @@ func (s pbKVSort) Less(i, j int) bool {
 func TestTheRepliesBuiltAtOnceAreBounded(t *testing.T) {
 	const budget = 96 << 20
 	loopOf := watchLoops(t)
-	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
 	c := tc.clientOf(t, tc.endpoints[0])
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

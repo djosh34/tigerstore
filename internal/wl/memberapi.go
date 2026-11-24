@@ -68,12 +68,20 @@ func (n *node) memberRequest(c *client, s *stream, msg []byte) error {
 		if err = checkURLs(urls); err != nil {
 			break
 		}
+		if !n.leading() {
+			return n.forwardMember(c, s, msg)
+		}
 		mem.id = n.newMemberID(urls)
 		if learner {
 			cc.Type = pb.ConfChangeAddLearnerNode.Enum()
 		} else {
 			cc.Type = pb.ConfChangeAddNode.Enum()
 			err = n.readyForVoters(1)
+		}
+		// An add the apply refuses anyway, past the learners or on a
+		// peer URL taken, gets etcd's error there, not the budget's.
+		if err == nil && (!learner || n.learners() < maxLearners) && n.peerURLsFree(0, urls) == nil {
+			err = n.budgetKeeps(len(n.members) + 1)
 		}
 	case kMemberUpdate:
 		cc.Type = pb.ConfChangeUpdateNode.Enum()
@@ -95,10 +103,14 @@ func (n *node) memberRequest(c *client, s *stream, msg []byte) error {
 		cc.Type = pb.ConfChangeAddNode.Enum()
 		err = n.readyToPromote(id)
 		if errors.Is(err, errNotLeader) {
-			return n.forwardPromote(c, s, msg)
+			return n.forwardMember(c, s, msg)
 		}
 		if re, ok := errors.AsType[*requestError](err); ok && n.prom != nil {
 			n.prom.LearnerPromoteFailures.WithLabelValues(re.msg).Inc()
+		}
+		if err == nil {
+			// After the metric, whose reasons are etcd's.
+			err = n.budgetKeeps(len(n.members))
 		}
 	}
 	if err != nil {
@@ -265,18 +277,20 @@ func (n *node) checkMoves() {
 	n.moves = n.moves[:k]
 }
 
-// forwardPromote has the leader promote a learner, as etcd's follower
-// forwards a promotion: only the leader knows how far the learner is. It
-// calls MemberPromote on the leader's client URLs in a side call, and
-// answers with the leader's answer.
-func (n *node) forwardPromote(c *client, s *stream, msg []byte) error {
+// forwardMember has the leader take a MemberAdd or a MemberPromote, of
+// s.kind: as etcd's follower forwards a promotion, as only the leader
+// knows how far the learner is; and an add, as only the leader's budget
+// and member list say whether the cluster may grow (budgetKeeps, #760).
+// It calls the leader's client URLs in a side call, and answers with the
+// leader's answer.
+func (n *node) forwardMember(c *client, s *stream, msg []byte) error {
 	i := n.memberAt(n.lead)
 	if i < 0 || len(n.members[i].clientURLs) == 0 || n.shell == nil {
 		n.reject(c, s, errNotLeader)
 		return nil
 	}
 	h := mkHandle(c, s.id)
-	n.sideCalls[h] = n.shell.forwardPromote(h, slices.Clone(n.members[i].clientURLs), bytes.Clone(msg))
+	n.sideCalls[h] = n.shell.forwardMember(h, s.kind, slices.Clone(n.members[i].clientURLs), bytes.Clone(msg))
 	return nil
 }
 

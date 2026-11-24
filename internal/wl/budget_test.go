@@ -1,34 +1,53 @@
 package wl
 
-import "testing"
+import (
+	"context"
+	"crypto/tls"
+	"errors"
+	"io"
+	"log"
+	"net"
+	"slices"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
 
-// The node's bounded buffers, each at its worst, fit the budget with
-// room for the store: the rings and the stage mapped outside Go's heap,
-// and on the heap every follower's send buffer full, the entries Raft's
-// storage holds, the leader's uncommitted proposals and the kept stream
-// buffers, the values fetched off the loop it keeps, with the quarter
-// more Go needs to collect in (store.goNeed).
-// The store's slab gets what is left (store.relimit), which must be at
-// least a quarter of the budget. A client connection's own buffers are
-// per connection and left out, as etcd leaves them out.
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	clientv3 "go.etcd.io/etcd/client/v3"
+)
+
+// The node's bounded buffers, each at its worst (sizes.worst), fit
+// every budget from the least for its followers up (leastBudget) with
+// room for the store: at least a quarter of the budget, for its tables
+// and its slab (store.relimit). Such a budget keeps every
+// smaller cluster too. A smaller one is refused (Config.check,
+// node.budgetKeeps): a node at 96 MiB took the budget and then neither
+// kept it nor refused it (#760).
 func TestTheBuffersFitTheBudget(t *testing.T) {
-	for _, budget := range []int64{256 << 20, 512 << 20, 1 << 30, 3 << 30, 16 << 30} {
+	const mostFollowers = 8
+	var least [mostFollowers + 1]int64
+	for f := range least {
+		least[f] = leastBudget(f)
+		if keeps(least[f]-1<<20, f) {
+			t.Errorf("%d followers: a budget of %d MiB, below the least, keeps its buffers too", f, (least[f]-1<<20)>>20)
+		}
+		if f > 0 && least[f] < least[f-1] {
+			t.Errorf("%d followers keep a least budget of %d MiB, below %d MiB for one fewer", f, least[f]>>20, least[f-1]>>20)
+		}
+	}
+	budgets := []int64{16 << 30, 48 << 30}
+	for b := least[0]; b <= 4<<30; b += 1 << 20 {
+		budgets = append(budgets, b)
+	}
+	for _, budget := range budgets {
 		z := sizeFor(budget)
-		for _, followers := range []int{1, 2, 4, 6} {
-			// A send buffer grows to at most four times what waits in it,
-			// its backlog and one message on top (sock.openRec).
-			replication := int64(followers) * (4*(z.peerBacklog(followers)+maxPeerMsg) + maxPlain + recOverhead + 8)
-			// The client connections: idle ones within a quarter of the
-			// client pool, and what they hold while they read or write
-			// within the rest (sock.pool).
-			// The values fetched off the loop that it keeps (fetchedMax;
-			// #689's area-3 review).
-			// The reserve for messages past the clients' shares (#727).
-			heap := replication + z.held + int64(z.uncommitted) + keptBufs*keptBufMax + z.clientPool + z.reserve() + fetchedMax(budget)
-			store := budget - z.mapped() - (heap + heap/4)
-			if store < budget/4 {
-				t.Errorf("budget %d MiB, %d followers: the buffers leave the store %d MiB (mapped %d MiB, send buffers %d MiB, held %d MiB, uncommitted %d MiB, clients %d MiB and a reserve of %d MiB, fetched %d MiB); want at least a quarter",
-					budget>>20, followers, store>>20, z.mapped()>>20, replication>>20, z.held>>20, z.uncommitted>>20, z.clientPool>>20, z.reserve()>>20, fetchedMax(budget)>>20)
+		for followers := 0; followers <= mostFollowers && budget >= least[followers]; followers++ {
+			for fewer := 0; fewer <= followers; fewer++ {
+				if !keeps(budget, fewer) {
+					t.Fatalf("budget %d MiB, %d followers, at least the %d MiB of %d: the buffers take %d MiB at their worst (mapped %d MiB, held %d MiB, uncommitted %d MiB, kept %d buffers, clients %d MiB and a reserve of %d MiB, fetched %d MiB); want the store left at least a quarter",
+						budget>>20, fewer, least[followers]>>20, followers, z.worst(budget, fewer)>>20, z.mapped()>>20, z.held>>20, z.uncommitted>>20, z.kept, z.clientPool>>20, z.reserve()>>20, fetchedMax(budget)>>20)
+				}
 			}
 			if z.inflight(followers+1) > uint64(z.peerBacklog(followers)) {
 				t.Errorf("budget %d MiB, %d followers: Raft keeps %d bytes in flight to a follower, past its backlog of %d", budget>>20, followers, z.inflight(followers+1), z.peerBacklog(followers))
@@ -56,7 +75,6 @@ func TestTheBuffersFitTheBudget(t *testing.T) {
 		if z.reserve() < maxMsg {
 			t.Errorf("budget %d MiB: a reserve of %d KiB, less than one message of %d KiB", budget>>20, z.reserve()>>10, maxMsg>>10)
 		}
-		t.Logf("budget %d MiB: at most %d clients", budget>>20, z.maxClients())
 		if z.stage&(z.stage-1) != 0 || z.stage < 4<<20 || z.stage > z.ring {
 			t.Errorf("budget %d MiB: a stage of %d bytes, want a power of two from 4 MiB up to the ring's %d", budget>>20, z.stage, z.ring)
 		}
@@ -67,7 +85,136 @@ func TestTheBuffersFitTheBudget(t *testing.T) {
 		t.Errorf("at 3 GiB at most %d client connections, want at least 3,000", most)
 	}
 	// The bench's 3 GiB keeps the sizes it measured.
-	if z := sizeFor(3 << 30); z.ring != 64<<20 || z.side != 16<<20 || z.stage != 32<<20 || z.held != 64<<20 {
-		t.Errorf("at 3 GiB: rings %d, side %d, stage %d, held %d; want 64, 16, 32 and 64 MiB", z.ring>>20, z.side>>20, z.stage>>20, z.held>>20)
+	if z := sizeFor(3 << 30); z.ring != 64<<20 || z.side != 16<<20 || z.stage != 32<<20 || z.held != 64<<20 || z.kept != 64 {
+		t.Errorf("at 3 GiB: rings %d, side %d, stage %d, held %d MiB, %d kept buffers; want 64, 16, 32 and 64 MiB, 64 buffers", z.ring>>20, z.side>>20, z.stage>>20, z.held>>20, z.kept)
+	}
+}
+
+// The least budgets of #760's table: a cluster of three keeps 110 MiB,
+// and its members that bootstrap it start with at least 137 MiB, room for
+// a learner as well (startFollowers); a learner that joins them starts at
+// the same 137 MiB. A cluster of seven needs 220 MiB.
+func TestTheLeastBudgetsAreTheTables(t *testing.T) {
+	for _, c := range []struct {
+		followers int
+		mib       int64
+	}{{1, 83}, {2, 110}, {3, 137}, {4, 164}, {5, 191}, {6, 220}} {
+		if got := leastBudget(c.followers); got != c.mib<<20 {
+			t.Errorf("%d followers: a least budget of %d MiB, want %d MiB", c.followers, got>>20, c.mib)
+		}
+	}
+	if got := leastBudget(startFollowers(3, false)); got != 137<<20 {
+		t.Errorf("three voters start with a least budget of %d MiB, want 137 MiB", got>>20)
+	}
+	if got := leastBudget(startFollowers(4, true)); got != 137<<20 {
+		t.Errorf("a learner that joins three voters starts with a least budget of %d MiB, want 137 MiB", got>>20)
+	}
+}
+
+// startConfig is a Config that Config.check takes, of members, with
+// budget.
+func startConfig(members []Member, join bool, budget int64) *Config {
+	return &Config{
+		ID: 1, Members: members, Join: join, MemoryBudget: budget, Logger: log.New(io.Discard, "", 0),
+		PeerServerTLS: &tls.Config{}, PeerClientTLS: &tls.Config{},
+		PlainClientListeners: []net.Listener{nil}, PeerListeners: []net.Listener{nil},
+	}
+}
+
+// A node refuses at start a budget below the least for its members, and a
+// learner if it bootstraps the cluster, and names that least budget; it
+// takes the least itself, and no budget.
+func TestAStartBelowTheLeastBudgetIsRefused(t *testing.T) {
+	three := []Member{{ID: 1}, {ID: 2}, {ID: 3}}
+	four := append(slices.Clone(three), Member{ID: 4})
+	for _, c := range []struct {
+		members []Member
+		join    bool
+	}{{three, false}, {four, true}, {three[:1], false}} {
+		least := leastBudget(startFollowers(len(c.members), c.join))
+		err := startConfig(c.members, c.join, least-1).check()
+		if !errors.Is(err, errConfig) || !strings.Contains(err.Error(), strconv.FormatInt(least, 10)) {
+			t.Errorf("%d members, join %v: a budget a byte below %d MiB: %v, want it refused naming %d bytes", len(c.members), c.join, least>>20, err, least)
+		}
+		if err := startConfig(c.members, c.join, least).check(); err != nil {
+			t.Errorf("%d members, join %v: the least budget of %d MiB refused: %v", len(c.members), c.join, least>>20, err)
+		}
+		if err := startConfig(c.members, c.join, 0).check(); err != nil {
+			t.Errorf("%d members, join %v: no budget refused: %v", len(c.members), c.join, err)
+		}
+	}
+}
+
+// A member add that takes the cluster past what the leader's budget keeps
+// is refused as it is proposed, with the least budget the cluster would
+// need, and the list stays as it was. The leader, n1, runs at three
+// voters' least budget, the others at more: it takes a learner, which
+// joins and catches up at that budget, but not a fifth member; a second
+// learner gets etcd's error. The adds go to a follower whose own budget
+// would take them, and which hands them to the leader.
+func TestAMemberAddPastTheBudgetIsRefused(t *testing.T) {
+	budget := leastBudget(startFollowers(3, false))
+	tc := newTestClusterWith(t, func(tc *testCluster) {
+		tc.budget = budget
+		tc.config = func(c *Config) {
+			if c.Name == "n2" || c.Name == "n3" {
+				c.MemoryBudget = leastBudget(4)
+			}
+		}
+	})
+	c := tc.client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	waitMembers(t, c, 3)
+	for {
+		leader := tc.leaderEndpoint(t, c)
+		if leader == tc.endpoints[0] {
+			break
+		}
+		if _, err := tc.rawClient(t, leader).MoveLeader(ctx, tc.ids[0]); err != nil && ctx.Err() != nil {
+			t.Fatalf("the leadership never moved to n1: %v", err)
+		}
+	}
+	if _, err := c.Put(ctx, "/before-join", "v"); err != nil {
+		t.Fatal(err)
+	}
+	follower := tc.rawClient(t, tc.endpoints[1])
+	i := tc.addPorts(t, 0, true)
+	added, err := follower.MemberAddAsLearner(ctx, []string{tc.peers[i]})
+	if err != nil {
+		t.Fatalf("a learner added to three voters at %d MiB: %v", budget>>20, err)
+	}
+	ptls, err := loadTLS(tc.certFile, tc.keyFile, tc.caFile, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms, _, err := RemoteMembers(ctx, nil, ptls, []string{strings.TrimPrefix(tc.peers[0], "https://")})
+	if err != nil || len(ms) != 4 {
+		t.Fatalf("RemoteMembers: %v, %v", ms, err)
+	}
+	tc.members = ms
+	tc.ids[i] = added.Member.ID
+	tc.startNode(t, i)
+	lc := tc.rawClient(t, tc.endpoints[i])
+	for {
+		got, err := lc.Get(ctx, "/before-join", clientv3.WithSerializable())
+		if err == nil && len(got.Kvs) == 1 {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("the learner at %d MiB never caught up: %v %v", budget>>20, got, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	// An add the apply refuses anyway gets etcd's error, not the budget's.
+	if _, err := follower.MemberAddAsLearner(ctx, []string{"https://127.0.0.1:1"}); !errors.Is(err, rpctypes.ErrTooManyLearners) {
+		t.Fatalf("a second learner: %v, want etcd's error for too many learners", err)
+	}
+	_, err = follower.MemberAdd(ctx, []string{"https://127.0.0.1:2"})
+	if err == nil || !strings.Contains(err.Error(), strconv.FormatInt(leastBudget(4), 10)) {
+		t.Fatalf("a fifth member added at the leader's %d MiB: %v, want it refused naming %d bytes", budget>>20, err, leastBudget(4))
+	}
+	if r, err := c.MemberList(ctx); err != nil || len(r.Members) != 4 {
+		t.Fatalf("the member list after the refused add: %v (%v), want 4 members", r, err)
 	}
 }

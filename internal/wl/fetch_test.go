@@ -214,15 +214,16 @@ func fetchesOf(l *loop) int {
 // builds a record the budget let go again (store.load), and the turn lets
 // records go again once the slab is past its limit, as an apply does.
 // past-ram's cache mode, nearly all reads, grew each member's slab 64 MB
-// past its limit until its cgroup killed it.
+// past its limit until its cgroup killed it. A node of one at 96 MiB
+// keeps about 52 MB of records, so the keys hold 131 MB (#760).
 func TestReadsKeepTheSlabWithinItsLimit(t *testing.T) {
 	loopOf := watchLoops(t)
-	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = 96 << 20 })
+	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = 96 << 20 })
 	c := tc.clientOf(t, tc.endpoints[0])
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	const keys = 2000
-	value := strings.Repeat("v", 8<<10)
+	const keys = 8000
+	value := strings.Repeat("v", 16<<10)
 	for i := range keys {
 		if _, err := c.Put(ctx, fmt.Sprintf("/r/%04d", i), value); err != nil {
 			t.Fatal(err)
@@ -272,12 +273,14 @@ func TestReadsKeepTheSlabWithinItsLimit(t *testing.T) {
 func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	loopOf := watchLoops(t)
 	const budget = 96 << 20
-	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
 	c := tc.clientOf(t, tc.endpoints[0])
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	const keys = 2000
-	value := func(i int) string { return fmt.Sprintf("%04d", i) + strings.Repeat("v", 8<<10) }
+	// 131 MB, past the about 52 MB of records a node of one keeps at
+	// this budget (#760).
+	const keys = 8000
+	value := func(i int) string { return fmt.Sprintf("%04d", i) + strings.Repeat("v", 16<<10) }
 	for i := range keys {
 		if _, err := c.Put(ctx, fmt.Sprintf("/f/%04d", i), value(i)); err != nil {
 			t.Fatal(err)
@@ -318,12 +321,15 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	for first := 0; first < keys; first += 100 {
 		go func() {
 			r, err := c.Get(ctx, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
-			// Twenty replies of 800 KiB at once may pass the connection's
+			// Eighty replies of 1.6 MB at once pass the connection's
 			// share of a 96 MiB budget: the node refuses the next as etcd
 			// does, and the client tries again (CI's coverage run).
 			for err != nil && strings.Contains(err.Error(), errTooManyRequests.Error()) && ctx.Err() == nil {
 				time.Sleep(20 * time.Millisecond)
 				r, err = c.Get(ctx, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
+			}
+			if err == nil && len(r.Kvs) != 100 {
+				err = fmt.Errorf("the range from /f/%04d read %d keys, want 100", first, len(r.Kvs))
 			}
 			if err == nil {
 				for j, kv := range r.Kvs {
@@ -364,7 +370,7 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 func TestAWatchCatchesUpThroughMoreValuesThanTheLoopKeeps(t *testing.T) {
 	const budget = 96 << 20
 	loopOf := watchLoops(t)
-	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
 	c := tc.clientOf(t, tc.endpoints[0])
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()

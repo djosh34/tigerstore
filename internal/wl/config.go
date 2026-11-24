@@ -38,7 +38,10 @@ type Config struct {
 	// PeerServerTLS checks the peers that connect; PeerClientTLS is how
 	// this node connects to them.
 	PeerServerTLS, PeerClientTLS *tls.Config
-	// MemoryBudget is the memory the node may use, 0 for no limit.
+	// MemoryBudget is the memory the node may use, 0 for no limit; a
+	// budget below the least that keeps Members, and a learner on a node
+	// that bootstraps the cluster, is refused (leastBudget,
+	// startFollowers).
 	MemoryBudget int64
 	Logger       *log.Logger
 	// Sys, in a binary built for the simulator, stands in for the system
@@ -120,6 +123,13 @@ func (c *Config) check() error {
 		return fmt.Errorf("%w: a log ring of %d bytes holds fewer than %d segments of %d bytes", errConfig, c.LogRing, ringMinSegs, segSize)
 	case c.LogRing == 0 && c.DiskBudget > 0 && c.DiskBudget/2 < least:
 		return fmt.Errorf("%w: a disk budget of %d bytes is too small: the log's ring takes half of it, and needs at least %d bytes", errConfig, c.DiskBudget, least)
+	case c.MemoryBudget > 0 && c.MemoryBudget < leastBudget(startFollowers(len(c.Members), c.Join)):
+		learner := ""
+		if !c.Join {
+			learner = " and a learner the cluster may add"
+		}
+		return fmt.Errorf("%w: a memory budget of %d bytes is too small for %d members%s: it needs at least %d bytes (#760)",
+			errConfig, c.MemoryBudget, len(c.Members), learner, leastBudget(startFollowers(len(c.Members), c.Join)))
 	case c.ID == 0:
 		return fmt.Errorf("%w: no member ID", errConfig)
 	case c.PeerServerTLS == nil || c.PeerClientTLS == nil:

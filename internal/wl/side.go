@@ -292,14 +292,24 @@ func (l *loop) sideCall(h handle, m *sideMethod, req []byte) context.CancelFunc 
 	return cancel
 }
 
-// forwardPromote calls a MemberPromote on the leader's client URLs, with
-// the node's client TLS configuration, checking the leader's certificate
-// against the CA the client port trusts.
-func (l *loop) forwardPromote(h handle, urls []string, req []byte) context.CancelFunc {
+// forwardMember calls a MemberAdd or MemberPromote, of kind, on the
+// leader's client URLs, with the node's client TLS configuration,
+// checking the leader's certificate against the CA the client port
+// trusts.
+func (l *loop) forwardMember(h handle, kind uint8, urls []string, req []byte) context.CancelFunc {
 	m := &sideMethod{impl: func(*sideServers) any { return nil }, unary: &grpc.MethodDesc{
 		Handler: func(_ any, ctx context.Context, dec func(any) error, _ grpc.UnaryServerInterceptor) (any, error) {
-			r := &etcdpb.MemberPromoteRequest{}
-			if err := dec(r); err != nil {
+			var add *etcdpb.MemberAddRequest
+			var promote *etcdpb.MemberPromoteRequest
+			var err error
+			if kind == kMemberAdd {
+				add = &etcdpb.MemberAddRequest{}
+				err = dec(add)
+			} else {
+				promote = &etcdpb.MemberPromoteRequest{}
+				err = dec(promote)
+			}
+			if err != nil {
 				return nil, err
 			}
 			// The leader's client URLs: https ones with the client TLS,
@@ -316,7 +326,10 @@ func (l *loop) forwardPromote(h handle, urls []string, req []byte) context.Cance
 				return nil, err
 			}
 			defer func() { _ = cli.Close() }()
-			return etcdpb.NewClusterClient(cli.ActiveConnection()).MemberPromote(ctx, r)
+			if add != nil {
+				return etcdpb.NewClusterClient(cli.ActiveConnection()).MemberAdd(ctx, add)
+			}
+			return etcdpb.NewClusterClient(cli.ActiveConnection()).MemberPromote(ctx, promote)
 		},
 	}}
 	return l.sideCall(h, m, req)
