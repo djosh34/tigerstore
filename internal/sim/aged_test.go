@@ -125,10 +125,12 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 		if err != nil {
 			t.Fatalf("SIM_FORK=%q: %v", v, err)
 		}
+		if k < 0 || k >= forks {
+			t.Fatalf("SIM_FORK=%d: the image has forks 0 to %d", k, forks-1)
+		}
 		only = k
 	}
 	var img *image
-	start := time.Now()
 	res, err := runWith(t, aging, func(s *Sim) error {
 		var err error
 		img, err = s.capture()
@@ -137,6 +139,13 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 	if err != nil {
 		t.Fatalf("aging seed %d: %v", seed, err)
 	}
+	// The aging run passes every checker too: a fork's history starts from
+	// its image's store, and no longer holds the aging's.
+	checkers(t, res)
+	// The idle gaps count from the image. Under gosim the clock jumps to
+	// each fork's slot; under the race detector each run keeps a clock of
+	// its own (synctest's bubble), and no gap reaches a fork.
+	start := time.Now()
 	t.Logf("aging seed %d: %d objects, %s, %d voters, memory budget %d: %d writes to revision %d, %d keys and %d leases at the image; %+v",
 		seed, aging.Objects, seconds(aging.Duration), aging.voters(), aging.MemoryBytes, img.ops, img.start.Rev, len(img.start.KVs), len(img.start.Leases), res.Stats)
 	var total Stats
@@ -145,6 +154,11 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 			continue
 		}
 		t.Run(fmt.Sprintf("fork%d", i), func(t *testing.T) {
+			if forks > 1 {
+				// Logged first, so that a fork that fails says how to run it
+				// alone.
+				t.Logf("fork %d alone: SIM_FORK=%d %s", i, i, replayCommand(fmt.Sprintf("%s/%d", strings.Split(t.Name(), "/")[0], seed), seed))
+			}
 			wait := time.Until(start.Add(forkStart(seed, i)))
 			if wait < 0 {
 				t.Fatalf("fork %d starts %s after its slot", i, -wait)
@@ -157,11 +171,8 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 			res := run(t, cfg)
 			checkers(t, res)
 			st := res.Stats
-			t.Logf("fork %d (seed %d) of image %d, %s after it: %d ok, %d failed, %d ambiguous, %d writes after the image, %d fenced, %d replaced, %d cold restarts",
-				i, cfg.Seed, seed, forkStart(seed, i), st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts)
-			if forks > 1 {
-				t.Logf("fork %d alone: SIM_FORK=%d %s", i, i, replayCommand(fmt.Sprintf("%s/%d", strings.Split(t.Name(), "/")[0], seed), seed))
-			}
+			t.Logf("fork %d (seed %d) of image %d, %s after it: %d ok, %d failed, %d ambiguous, %d writes after the image, %d fenced, %d replaced, %d cold restarts; hashes %s",
+				i, cfg.Seed, seed, forkStart(seed, i), st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts, runHashes(res))
 			total.OK += st.OK
 			total.Failed += st.Failed
 			total.Ambiguous += st.Ambiguous

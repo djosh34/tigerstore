@@ -1236,9 +1236,15 @@ func (s *Sim) run() error {
 		}
 	}
 	if s.cfg.BulkBytes > 0 {
+		begin := s.now()
 		if err := s.bulkLoad(); err != nil {
 			return err
 		}
+		// The faults' and the clients' windows start after the load.
+		s.mu.Lock()
+		d := s.now() - begin
+		s.healAt, s.stopAt, s.endAt = s.healAt+d, s.stopAt+d, s.endAt+d
+		s.mu.Unlock()
 	}
 	s.schedule()
 	s.wg.Go(s.watchWall)

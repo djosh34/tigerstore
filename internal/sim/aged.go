@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -28,8 +29,8 @@ import (
 
 // image is what an aging run leaves for its forks.
 type image struct {
-	// src is the aging run, whose certificate and kept pages its forks
-	// share: the image's disks keep their pages there.
+	// src holds the aging run's certificate and kept pages, which its
+	// forks share: the image's disks keep their pages there.
 	src   *Sim
 	disks []*simfs.Disk
 	ids   []uint64
@@ -63,28 +64,42 @@ func (s *Sim) capture() (*image, error) {
 	p := s.nodes[0].proc
 	rev := p.wl.turn.Rev
 	s.mu.Unlock()
-	s.thaw()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	_, err := pb.NewKVClient(p.wl.conn).Compact(ctx, &pb.CompactionRequest{Revision: rev, Physical: true})
-	cancel()
-	if err != nil {
-		return nil, fmt.Errorf("aging: compacting at revision %d: %w", rev, err)
-	}
-	// The nodes agree again once each applied the compaction.
-	agreed := false
-	for range 100 {
-		if err := s.freeze(); err != nil {
-			return nil, err
-		}
-		if a, _ := disagree(s.nodes); a == nil {
-			agreed = true
-			break
-		}
+	// The image is compacted at the revision its store has: while the
+	// nodes run, a lease may expire and its keys go, a revision more, and
+	// the compaction goes again at that one, until the revision holds.
+	held := false
+	for try := 0; try < 10 && !held; try++ {
 		s.thaw()
-		time.Sleep(100 * time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_, err := pb.NewKVClient(p.wl.conn).Compact(ctx, &pb.CompactionRequest{Revision: rev, Physical: true})
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("aging: compacting at revision %d: %w", rev, err)
+		}
+		// The nodes agree again once each applied the compaction.
+		agreed := false
+		for range 100 {
+			if err := s.freeze(); err != nil {
+				return nil, err
+			}
+			if a, _ := disagree(s.nodes); a == nil {
+				agreed = true
+				break
+			}
+			s.thaw()
+			time.Sleep(100 * time.Millisecond)
+		}
+		if !agreed {
+			return nil, fmt.Errorf("aging: the nodes disagree 10 s after the compaction at revision %d:\n%s", rev, s.report())
+		}
+		s.mu.Lock()
+		now := p.wl.turn.Rev
+		s.mu.Unlock()
+		held = now == rev
+		rev = now
 	}
-	if !agreed {
-		return nil, fmt.Errorf("aging: the nodes disagree 10 s after the compaction at revision %d:\n%s", rev, s.report())
+	if !held {
+		return nil, fmt.Errorf("aging: the revision moved past every compaction in 10 tries, now %d", rev)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -109,19 +124,38 @@ func (s *Sim) capture() (*image, error) {
 	if err != nil {
 		return nil, err
 	}
+	if model.Rev() != rev {
+		return nil, fmt.Errorf("aging: the committed log ends at revision %d, the store was compacted at %d", model.Rev(), rev)
+	}
 	start := &history.Start{Rev: model.Rev(), Leases: aliveLeases(log)}
 	for _, kv := range all.Kvs {
 		start.KVs = append(start.KVs, frometcd.KeyValue(kv))
 	}
+	// The forks take the aging run's certificate and kept pages, and
+	// nothing else of it, so that the run itself can go.
+	src := &Sim{pages: s.pages, chunks: s.chunks}
+	src.net.ca, src.net.cert, src.net.signer, src.net.hosts, src.net.expires, src.net.valid = s.net.ca, s.net.cert, s.net.signer, s.net.hosts, s.net.expires, s.net.valid
 	img := &image{
-		src: s, log: s.log.clone(), ckpts: maps.Clone(s.ckpts), maxLogged: s.maxLogged, applied: applied,
-		expiredAt: maps.Clone(s.expiredAt), revokedAt: maps.Clone(s.revokedAt), ops: len(log), start: start,
+		src: src, log: s.log.clone(), ckpts: maps.Clone(s.ckpts), maxLogged: s.maxLogged, applied: applied,
+		expiredAt: beforeFork(s.expiredAt), revokedAt: beforeFork(s.revokedAt), ops: len(log), start: start,
 	}
 	for _, n := range s.nodes {
 		img.disks = append(img.disks, n.disk.Durable())
 		img.ids = append(img.ids, n.id)
 	}
 	return img, nil
+}
+
+// beforeFork is at, the times the aging run saw leases expire or go, at a
+// time before any of its forks': the times are on the aging run's clock,
+// and a fork's runs on its own, which under the race detector starts over
+// (synctest's bubble).
+func beforeFork(at map[int64]int64) map[int64]int64 {
+	out := make(map[int64]int64, len(at))
+	for id := range at {
+		out[id] = math.MinInt64
+	}
+	return out
 }
 
 // fork makes s start from img: its nodes from copies of the image's

@@ -190,6 +190,31 @@ func TestStartBoundaries(t *testing.T) {
 	h.Ops[0].Resp.Range.KVs = nil
 	mustPass(t, "Durable", Durable(h))
 
+	// One answered at 9 must hold "a", which the start holds as last
+	// changed at 7: at 9 it held the same.
+	h = forkHistory(t)
+	h.Ops[0].Req.Range.Serializable = true
+	h.Ops[0].Resp.Revision = 9
+	h.Ops[0].Resp.Range.KVs, h.Ops[0].Resp.Range.Count = nil, 0
+	mustFail(t, "Durable", Durable(h), `the start holds "a" as last changed at 7`)
+	h = forkHistory(t)
+	h.Ops[0].Req.Range.Serializable = true
+	h.Ops[0].Resp.Revision = 9
+	h.Ops[0].Resp.Range.KVs, h.Ops[0].Resp.Range.Count = []history.KeyValue{startOf().KVs[0]}, 1
+	mustPass(t, "Durable", Durable(h))
+
+	// A read of every key at 5 must hold "b", last changed at 4; of "a",
+	// changed at 7, the history cannot say.
+	h = forkHistory(t)
+	all := h.Ops[len(h.Ops)-1]
+	all.Req.Range.Serializable = true
+	all.Resp.Revision = 5
+	all.Resp.Range.KVs, all.Resp.Range.Count = []history.KeyValue{startOf().KVs[1]}, 1
+	h.Ops[len(h.Ops)-1] = all
+	mustPass(t, "Durable", Durable(h))
+	all.Resp.Range.KVs, all.Resp.Range.Count = nil, 0
+	mustFail(t, "Durable", Durable(h), `the start holds "b" as last changed at 4`)
+
 	// A history that only reads from its start.
 	b := newBuilderFrom(t, startOf())
 	b.get(1, "a")

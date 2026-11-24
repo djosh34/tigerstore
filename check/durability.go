@@ -33,6 +33,12 @@ func Durable(h *history.History) error {
 		return err
 	}
 	r, err := newReplay(h.Log, h.Start)
+	startKVs := map[string]history.KeyValue{}
+	if h.Start != nil {
+		for _, kv := range h.Start.KVs {
+			startKVs[kv.Key] = kv
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -144,12 +150,22 @@ func Durable(h *history.History) error {
 			}
 		}
 		if r.start > 0 && op.Resp.Revision < r.start {
-			// A node that is behind, such as a member just added on an
-			// empty disk, may answer a serializable read from before the
-			// start, which the history does not hold: it cannot be
-			// checked. Any other answer there is wrong.
-			if q := op.Req.Range; q == nil || !q.Serializable {
+			// A node that is behind, as a member just added on an empty
+			// disk or a node still replaying the image's log at a fork's
+			// start, may answer a serializable read from before the
+			// start, which the history holds only in part (belowStart).
+			// Any other answer there is wrong.
+			q := op.Req.Range
+			if q == nil || !q.Serializable {
 				fail("op %d (client %d) answered at revision %d, below the start's revision %d", i, op.Client, op.Resp.Revision, r.start)
+				continue
+			}
+			rev := q.Revision
+			if rev <= 0 {
+				rev = op.Resp.Revision
+			}
+			if key, ok := belowStart(startKVs, r.keys, q, rev, op.Resp.Range); !ok {
+				fail("op %d (client %d) read %+v at revision %d, below the start's revision %d, and got %+v: the start holds %q as last changed at %d", i, op.Client, *q, rev, r.start, *op.Resp.Range, key, startKVs[key].ModRevision)
 			}
 			continue
 		}
@@ -282,4 +298,36 @@ func jsonOf(v any) string {
 		return fmt.Sprintf("%+v", v)
 	}
 	return string(b)
+}
+
+// belowStart checks a read answered at rev, below the history's start: a
+// key the start holds that was last changed at or before rev held then
+// what it holds at the start, so the answer must hold it so. Of the start's
+// other keys, and of keys it does not hold, which may have been deleted
+// since rev, the history cannot say. A read with a limit, or of the count
+// alone, is left unchecked. It returns the first key the answer misses or
+// holds otherwise.
+func belowStart(start map[string]history.KeyValue, keys []string, q *history.RangeRequest, rev int64, got *history.RangeResponse) (string, bool) {
+	if q.CountOnly || q.Limit > 0 || got == nil {
+		return "", true
+	}
+	held := make(map[string]history.KeyValue, len(got.KVs))
+	for _, kv := range got.KVs {
+		held[kv.Key] = kv
+	}
+	s := state{keys: keys}
+	lo, hi := s.span(q.Key, q.End)
+	for _, key := range keys[lo:hi] {
+		want, ok := start[key]
+		if !ok || want.ModRevision > rev {
+			continue
+		}
+		if q.KeysOnly {
+			want.Value = ""
+		}
+		if have, ok := held[key]; !ok || have != want {
+			return key, false
+		}
+	}
+	return "", true
 }

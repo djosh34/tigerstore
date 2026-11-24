@@ -608,6 +608,12 @@ func (s *Sim) callWL(p *proc, req proto.Message, ctx context.Context) (proto.Mes
 	case *pb.PutRequest:
 		return pb.NewKVClient(conn).Put(ctx, r)
 	case *pb.RangeRequest:
+		if len(r.Key) == 1 && r.Key[0] == 0 && len(r.RangeEnd) == 1 && r.RangeEnd[0] == 0 {
+			// A read of every key, an aged image's (agedRequest), may
+			// pass gRPC's 4 MiB a client takes by default, as the final
+			// reads may (finalReads).
+			return pb.NewKVClient(conn).Range(ctx, r, grpc.MaxCallRecvMsgSize(math.MaxInt32))
+		}
 		return pb.NewKVClient(conn).Range(ctx, r)
 	case *pb.DeleteRangeRequest:
 		return pb.NewKVClient(conn).DeleteRange(ctx, r)
