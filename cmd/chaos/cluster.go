@@ -290,17 +290,21 @@ func (c *cluster) startExpecting(n *node, exit bool) error {
 // signal sends sig to n's process. For SIGKILL, SIGTERM and SIGQUIT, whose
 // exit is asked for, it waits for the exit and returns the wait status.
 func (n *node) signal(sig syscall.Signal) (*os.ProcessState, int, error) {
+	// The exit is expected only once the signal went: a process that
+	// exited on its own first stays an unexpected exit. The waiter takes
+	// the lock to record an exit, so it sees expecting set.
 	n.mu.Lock()
 	cmd, exited := n.cmd, n.exited
 	ending := sig == syscall.SIGKILL || sig == syscall.SIGTERM || sig == syscall.SIGQUIT
+	pid := cmd.Process.Pid
+	if err := cmd.Process.Signal(sig); err != nil {
+		n.mu.Unlock()
+		return nil, pid, err
+	}
 	if ending {
 		n.expecting = true
 	}
 	n.mu.Unlock()
-	pid := cmd.Process.Pid
-	if err := cmd.Process.Signal(sig); err != nil {
-		return nil, pid, err
-	}
 	if !ending {
 		return nil, pid, nil
 	}

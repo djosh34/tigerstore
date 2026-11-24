@@ -313,7 +313,10 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 			return
 		}
 		if r.nodes == "" && !r.stopped {
+			// A failure before finish was set up, as a start that never
+			// came up: the nodes dump their goroutines before the stop.
 			r.nodes = c.report(context.Background())
+			r.quitNodes()
 		}
 		t.Logf("the nodes when the test failed:\n%s", r.nodes)
 		t.Logf("replay: ROLLING_OLD=<old binary> ROLLING_NEW=<new binary> go test -count=1 -v ./cmd/chaos -run '^%s$'", t.Name())
@@ -341,16 +344,10 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 	// does not excuse a failed upgrade or an unexpected process exit.
 	t.Cleanup(r.finish)
 	// This runs before finish, which stops the nodes, so that a failure in
-	// finish too has the report of how the nodes stood. After a failure the
-	// nodes still running then dump their goroutines into their logs
-	// (quitNodes), so that one that never came up says where its start
-	// stands (#780).
+	// finish too has the report of how the nodes stood.
 	t.Cleanup(func() {
 		if !r.stopped {
 			r.nodes = c.report(context.Background())
-			if t.Failed() {
-				r.quitNodes()
-			}
 		}
 	})
 	return r
@@ -874,6 +871,12 @@ func (r *rollingRun) finish() {
 	r.traffic.stopClients()
 	if err := r.traffic.finish(); err != nil {
 		t.Error(err)
+	}
+	if t.Failed() {
+		// After the traffic's last reads, which the checkers need, the
+		// nodes still running dump their goroutines into their logs, so
+		// that one that never came up says where its start stands (#780).
+		r.quitNodes()
 	}
 	if err := r.c.stop(); err != nil {
 		t.Error(err)
