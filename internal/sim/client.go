@@ -219,6 +219,9 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 	switch {
 	case err == nil:
 		s.stats.OK++
+		if isWrite(r.req) {
+			s.wroteOK = true
+		}
 		if _, ok := resp.(*pb.CompactionResponse); ok {
 			s.stats.Compactions++
 		}

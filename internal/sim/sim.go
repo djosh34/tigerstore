@@ -597,6 +597,9 @@ type Sim struct {
 	// snapshot served to each node, by Raft ID, when it was served.
 	servedRoot map[uint64]uint64
 	healed     bool
+	// wroteOK is set once a client's write succeeded: the quorum loss
+	// waits for it (loseQuorum).
+	wroteOK bool
 	// quorumLostAt is when a majority of the voters was fenced for good
 	// (Config.LoseQuorum), 0 while a quorum stays.
 	quorumLostAt int64
@@ -2003,13 +2006,24 @@ func (s *Sim) beforeSync(p *proc) {
 // loseQuorum crashes a node that is up and undamaged every second, its
 // disk damaged at the crash (maybeCorrupt), until a majority of the
 // voters is fenced for good (Config.LoseQuorum): the random crashes, half
-// of them kills, which damage nothing, may not get there in time.
+// of them kills, which damage nothing, may not get there in time. It
+// starts once a client's write succeeded, so that the checkers have a
+// committed log to check: under the race detector, with the host's
+// timing, seed 1 of TestLoseQuorum had committed none a quarter into the
+// run.
 func (s *Sim) loseQuorum() {
 	for {
 		s.mu.Lock()
 		if s.quorumLostAt > 0 || s.healed {
 			s.mu.Unlock()
 			return
+		}
+		if !s.wroteOK {
+			s.mu.Unlock()
+			if !s.sleep(Second) {
+				return
+			}
+			continue
 		}
 		var up []*node
 		for _, n := range s.nodes {
