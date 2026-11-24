@@ -164,8 +164,8 @@ func Durable(h *history.History) error {
 			if rev <= 0 {
 				rev = op.Resp.Revision
 			}
-			if key, ok := belowStart(startKVs, r.keys, q, rev, op.Resp.Range); !ok {
-				fail("op %d (client %d) read %+v at revision %d, below the start's revision %d, and got %+v: the start holds %q as last changed at %d", i, op.Client, *q, rev, r.start, *op.Resp.Range, key, startKVs[key].ModRevision)
+			if err := belowStart(startKVs, r.keys, q, rev, op.Resp.Range); err != nil {
+				fail("op %d (client %d) read %+v at revision %d, below the start's revision %d, and got %+v: %v", i, op.Client, *q, rev, r.start, *op.Resp.Range, err)
 			}
 			continue
 		}
@@ -302,32 +302,40 @@ func jsonOf(v any) string {
 
 // belowStart checks a read answered at rev, below the history's start: a
 // key the start holds that was last changed at or before rev held then
-// what it holds at the start, so the answer must hold it so. Of the start's
-// other keys, and of keys it does not hold, which may have been deleted
-// since rev, the history cannot say. A read with a limit, or of the count
-// alone, is left unchecked. It returns the first key the answer misses or
-// holds otherwise.
-func belowStart(start map[string]history.KeyValue, keys []string, q *history.RangeRequest, rev int64, got *history.RangeResponse) (string, bool) {
-	if q.CountOnly || q.Limit > 0 || got == nil {
-		return "", true
+// what it holds at the start, so the answer must hold it so, and count it
+// even where a limit, or a read of the count alone, leaves it out. Of the
+// start's other keys, and of keys it does not hold, which may have been
+// deleted since rev, the history cannot say. It returns what the answer
+// misses.
+func belowStart(start map[string]history.KeyValue, keys []string, q *history.RangeRequest, rev int64, got *history.RangeResponse) error {
+	if got == nil {
+		return nil
+	}
+	s := state{keys: keys}
+	lo, hi := s.span(q.Key, q.End)
+	var known []history.KeyValue
+	for _, key := range keys[lo:hi] {
+		if kv, ok := start[key]; ok && kv.ModRevision <= rev {
+			known = append(known, kv)
+		}
+	}
+	if got.Count < int64(len(known)) {
+		return fmt.Errorf("counts %d keys, but the start holds %d of its range as last changed at or before %d", got.Count, len(known), rev)
+	}
+	if q.CountOnly || q.Limit > 0 {
+		return nil
 	}
 	held := make(map[string]history.KeyValue, len(got.KVs))
 	for _, kv := range got.KVs {
 		held[kv.Key] = kv
 	}
-	s := state{keys: keys}
-	lo, hi := s.span(q.Key, q.End)
-	for _, key := range keys[lo:hi] {
-		want, ok := start[key]
-		if !ok || want.ModRevision > rev {
-			continue
-		}
+	for _, want := range known {
 		if q.KeysOnly {
 			want.Value = ""
 		}
-		if have, ok := held[key]; !ok || have != want {
-			return key, false
+		if have, ok := held[want.Key]; !ok || have != want {
+			return fmt.Errorf("the start holds %q as last changed at %d", want.Key, want.ModRevision)
 		}
 	}
-	return "", true
+	return nil
 }

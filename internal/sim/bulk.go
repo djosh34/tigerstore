@@ -30,7 +30,17 @@ func (s *Sim) bulkLoad() error {
 	c := &client{id: bulkClient, sim: s}
 	n := int(s.cfg.BulkBytes / bulkValue)
 	for i := 0; i < n; i += bulkPerTxn {
+		// The bulk client's calls follow one another: the next is called
+		// after the last returned (history.Validate).
+		if i > 0 && !s.sleep(Millisecond) {
+			return errBulkEnded
+		}
 		for attempt := 0; ; attempt++ {
+			// The watchdog starts after the load: a load that has not
+			// ended in the run's whole fault window ends the run here.
+			if s.now() >= s.cfg.Duration {
+				return fmt.Errorf("bulk load: %d of %d values in after %s, the run's whole fault window", i, n, seconds(s.now()))
+			}
 			// Each attempt puts values of its own: one whose answer was
 			// lost may have committed, and the next, whose compare then
 			// fails, must not put the same write in the log again.
@@ -58,11 +68,6 @@ func (s *Sim) bulkLoad() error {
 			}
 			if err == nil {
 				break
-			}
-			// The watchdog starts after the load: a load that no node
-			// takes, as a disk out of room, ends the run here.
-			if s.now() >= s.cfg.Duration {
-				return fmt.Errorf("bulk load: %d of %d values in after %s, the run's whole fault window: %w", i, n, seconds(s.now()), err)
 			}
 			if !s.sleep(100 * Millisecond) {
 				return errBulkEnded

@@ -2,6 +2,7 @@ package sim
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/history"
@@ -73,7 +75,9 @@ func (s *Sim) capture() (*image, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		_, err := pb.NewKVClient(p.wl.conn).Compact(ctx, &pb.CompactionRequest{Revision: rev, Physical: true})
 		cancel()
-		if err != nil {
+		// The load may have compacted at rev already, and nothing came
+		// after: the checks below hold as for a compaction just made.
+		if err != nil && !errors.Is(err, rpctypes.ErrGRPCCompacted) {
 			return nil, fmt.Errorf("aging: compacting at revision %d: %w", rev, err)
 		}
 		// The nodes agree again once each applied the compaction.

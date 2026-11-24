@@ -130,24 +130,31 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 		}
 		only = k
 	}
+	// The aging runs in a subtest of its own, whose end lets its run go:
+	// the forks keep the image alone (#792's re-check).
 	var img *image
-	res, err := runWith(t, aging, func(s *Sim) error {
-		var err error
-		img, err = s.capture()
-		return err
-	})
-	if err != nil {
-		t.Fatalf("aging seed %d: %v", seed, err)
+	aging.replay = replayCommand(fmt.Sprintf("%s/%d", strings.Split(t.Name(), "/")[0], seed), seed)
+	if !t.Run("aging", func(t *testing.T) {
+		res, err := runWith(t, aging, func(s *Sim) error {
+			var err error
+			img, err = s.capture()
+			return err
+		})
+		if err != nil {
+			t.Fatalf("aging seed %d: %v", seed, err)
+		}
+		// The aging run passes every checker too: a fork's history starts
+		// from its image's store, and no longer holds the aging's.
+		checkers(t, res)
+		t.Logf("aging seed %d: %d objects, %s, %d voters, memory budget %d: %d writes to revision %d, %d keys and %d leases at the image; %+v",
+			seed, aging.Objects, seconds(aging.Duration), aging.voters(), aging.MemoryBytes, img.ops, img.start.Rev, len(img.start.KVs), len(img.start.Leases), res.Stats)
+	}) {
+		t.FailNow()
 	}
-	// The aging run passes every checker too: a fork's history starts from
-	// its image's store, and no longer holds the aging's.
-	checkers(t, res)
 	// The idle gaps count from the image. Under gosim the clock jumps to
 	// each fork's slot; under the race detector each run keeps a clock of
 	// its own (synctest's bubble), and no gap reaches a fork.
 	start := time.Now()
-	t.Logf("aging seed %d: %d objects, %s, %d voters, memory budget %d: %d writes to revision %d, %d keys and %d leases at the image; %+v",
-		seed, aging.Objects, seconds(aging.Duration), aging.voters(), aging.MemoryBytes, img.ops, img.start.Rev, len(img.start.KVs), len(img.start.Leases), res.Stats)
 	var total Stats
 	for i := range forks {
 		if only >= 0 && i != only {
@@ -220,6 +227,27 @@ func TestAgedBulk(t *testing.T) {
 		t.Logf("seed %d: peak RSS of a gosim run %d MiB; free memory %d MiB before, %d MiB after", seed, ru.Maxrss>>10, before>>20, memAvailable(t)>>20)
 		return false
 	})
+}
+
+// TestBulkLoad loads eight values of 256 KiB, a Txn of four at a time,
+// before the clients, and runs every checker on the run: the bulk
+// client's calls follow one another (history.Validate), and the values
+// are in the log and the store. Its disk budget sizes the log's ring to
+// 8 MiB, and its disks hold twice the budget, as TestAgedBulk's do: the
+// default ring of 1 MiB holds no Txn of four values, whose append then
+// waits for room for good, and the default disk fills with the values'
+// checkpoints (#769). TestAgedBulk is the same load at hundreds of MB, on
+// Actions.
+func TestBulkLoad(t *testing.T) {
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.Duration, cfg.BulkBytes = 10*Second, 8*bulkValue
+		cfg.Faults.DiskBudget = 16 << 20
+		cfg.Faults.DiskCapacity = int(2 * cfg.Faults.DiskBudget)
+		res := run(t, cfg)
+		checkers(t, res)
+		return res.Stats
+	}, nil)
 }
 
 // memAvailable is the runner's MemAvailable, in bytes.

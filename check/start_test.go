@@ -196,6 +196,8 @@ func TestStartBoundaries(t *testing.T) {
 	h.Ops[0].Req.Range.Serializable = true
 	h.Ops[0].Resp.Revision = 9
 	h.Ops[0].Resp.Range.KVs, h.Ops[0].Resp.Range.Count = nil, 0
+	mustFail(t, "Durable", Durable(h), "counts 0 keys, but the start holds 1")
+	h.Ops[0].Resp.Range.Count = 1
 	mustFail(t, "Durable", Durable(h), `the start holds "a" as last changed at 7`)
 	h = forkHistory(t)
 	h.Ops[0].Req.Range.Serializable = true
@@ -212,8 +214,14 @@ func TestStartBoundaries(t *testing.T) {
 	all.Resp.Range.KVs, all.Resp.Range.Count = []history.KeyValue{startOf().KVs[1]}, 1
 	h.Ops[len(h.Ops)-1] = all
 	mustPass(t, "Durable", Durable(h))
-	all.Resp.Range.KVs, all.Resp.Range.Count = nil, 0
+	all.Resp.Range.KVs, all.Resp.Range.Count = nil, 1
 	mustFail(t, "Durable", Durable(h), `the start holds "b" as last changed at 4`)
+	// With a limit, or of the count alone, it must still count "b".
+	all.Req.Range.Limit = 1
+	all.Resp.Range.Count = 0
+	mustFail(t, "Durable", Durable(h), "counts 0 keys, but the start holds 1")
+	all.Resp.Range.Count = 1
+	mustPass(t, "Durable", Durable(h))
 
 	// A history that only reads from its start.
 	b := newBuilderFrom(t, startOf())
