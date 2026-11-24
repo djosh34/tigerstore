@@ -228,19 +228,19 @@ func TestScenarios(t *testing.T) {
 	t.Logf("scenarios run: %s", strings.Join(counts, ", "))
 }
 
-// TestReplaceFenced fences nodes for good, as TestSeeds' runs do, and has
-// an operator replace each (Config.Replace): the replaced node must join
-// as a new member and the run pass every checker.
+// TestReplaceFenced fences nodes for good, as TestSeeds' runs do, and a
+// follower a quarter into the run if none was yet (Config.FenceAt), so
+// that a run under the race detector, with the host's timing, fences one
+// too; an operator replaces each (Config.Replace): the replaced node
+// must join as a new member and the run pass every checker.
 func TestReplaceFenced(t *testing.T) {
 	simrun.Each(t, []uint64{1, 2}, func(t *testing.T, seed uint64) Stats {
 		cfg := DefaultConfig(seed)
 		cfg.Duration = 40 * Second
-		cfg.flipRecords, cfg.Faults.Replace = true, true
+		cfg.flipRecords, cfg.Faults.Replace, cfg.FenceAt = true, true, cfg.Duration/4
 		res := run(t, cfg)
 		checkers(t, res)
-		// Under the race detector the run keeps the host's timing, so a
-		// seed need not fence a node there; one fenced must be replaced.
-		if st := res.Stats; st.Replaced == 0 && (st.Fenced > 0 || !simrun.Race) {
+		if st := res.Stats; st.Replaced == 0 {
 			t.Fatalf("seed %d: no node replaced: %d fenced", seed, st.Fenced)
 		}
 		return res.Stats
