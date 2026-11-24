@@ -238,7 +238,9 @@ func TestReplaceFenced(t *testing.T) {
 		cfg.flipRecords, cfg.Faults.Replace = true, true
 		res := run(t, cfg)
 		checkers(t, res)
-		if st := res.Stats; st.Replaced == 0 {
+		// Under the race detector the run keeps the host's timing, so a
+		// seed need not fence a node there; one fenced must be replaced.
+		if st := res.Stats; st.Replaced == 0 && (st.Fenced > 0 || !simrun.Race) {
 			t.Fatalf("seed %d: no node replaced: %d fenced", seed, st.Fenced)
 		}
 		return res.Stats
