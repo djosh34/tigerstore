@@ -130,8 +130,11 @@ type node struct {
 	reads       []pendingRead
 	readBuf     []byte
 	readBatches []*readBatch
-	freeBatches []*readBatch
-	readSeq     uint64
+	// heldReadIndex are peers' ReadIndexes a leader holds until it applied
+	// its own term's first entry (holdReadIndex).
+	heldReadIndex []*pb.Message
+	freeBatches   []*readBatch
+	readSeq       uint64
 	// Ranges that wait for values read off the loop, and the places of
 	// the values fetches read (fetch.go).
 	awayReads []awayRead
@@ -325,6 +328,9 @@ type readBatch struct {
 	started int64
 	reads   []pendingRead
 	buf     []byte
+	// reask is set when its index came while the node led but could not
+	// answer one yet (readState): it asks again (releaseReadIndexes).
+	reask bool
 }
 
 type opRes struct {

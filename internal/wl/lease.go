@@ -216,6 +216,9 @@ func (n *node) renewProposed(data []byte) {
 // leases its keepalives name first, as the leader's log takes it
 // (renewProposed).
 func (n *node) step(m *pb.Message) {
+	if n.holdReadIndex(m) {
+		return
+	}
 	if m.GetType() == pb.MsgProp && len(n.leases.deadline) > 0 {
 		for _, e := range m.GetEntries() {
 			if e.GetType() == pb.EntryNormal {
@@ -248,7 +251,10 @@ func (n *node) expireLeases() {
 			break
 		}
 	}
-	if !expired || (n.leading() && !n.confirmLead()) {
+	// A leader decides on the leases it applied of its own term at least
+	// (termApplied): before, the entries a lone voter committed before a
+	// restart may still renew, revoke or grant them again.
+	if !expired || (n.leading() && (!n.termApplied() || !n.confirmLead())) {
 		return
 	}
 	n.proposeBatch(n.now)

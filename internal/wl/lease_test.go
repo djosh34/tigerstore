@@ -122,6 +122,16 @@ func leaderNode(t *testing.T) (*node, *raft.MemoryStorage) {
 	return n, ms
 }
 
+// termFirstApplied has leader n count its own term's first entry applied
+// (termApplied), as the loop has by the time it decides an expiry: the
+// tests start the leases' clocks over (leaderChanged) after Raft elected
+// it, and that forgets the entry.
+func termFirstApplied(n *node) {
+	h := &n.confHold
+	h.leadFirst, h.leadTerm = 1, n.rn.BasicStatus().GetTerm()
+	n.applied = max(n.applied, 1)
+}
+
 // logOp is a lease op in the log: its kind and its lease.
 type logOp struct {
 	kind uint8
@@ -178,6 +188,7 @@ func TestTheLeaderRevokesExpiredLeases(t *testing.T) {
 	grant(t, n, 7, 2)
 	grant(t, n, 8, 60)
 	n.leaderChanged()
+	termFirstApplied(n)
 	n.now = n.now.Add(3 * time.Second)
 	n.expireLeases()
 	if ops := logOps(t, n, ms); len(ops) > 0 {
@@ -206,6 +217,7 @@ func TestTheLeaderRenewsALeaseWhenItsLogTakesTheKeepalive(t *testing.T) {
 	n, ms := leaderNode(t)
 	grant(t, n, 7, 2)
 	n.leaderChanged()
+	termFirstApplied(n)
 	n.now = n.now.Add(1500 * time.Millisecond)
 	n.addOp(0, kLeaseKeepAlive, appendVarintField(nil, 1, 7))
 	n.proposeBatch(n.now)
@@ -264,6 +276,7 @@ func TestAKeepaliveAndTheRevokeAgree(t *testing.T) {
 			n, ms := leaderNode(t)
 			grant(t, n, 7, 2)
 			n.leaderChanged()
+			termFirstApplied(n)
 			logOps(t, n, ms)
 			n.now = n.now.Add(2030 * time.Millisecond)
 			n.expireLeases()
@@ -293,6 +306,7 @@ func TestALeaderRevokesOnlyWhileAQuorumConfirmsItLeads(t *testing.T) {
 	n, ms := leaderNode(t)
 	grant(t, n, 7, 2)
 	n.leaderChanged()
+	termFirstApplied(n)
 	logOps(t, n, ms)
 	// The node resumes from a pause past the lease's TTL.
 	n.now = n.now.Add(3 * time.Second)

@@ -1,23 +1,32 @@
 package wl
 
 import (
+	"encoding/binary"
 	"testing"
+	"time"
 
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 )
 
-// A lone voter restarted with entries in its log past the commit its hard
-// state kept, entries it committed, applied and answered before it
-// crashed, serves no linearizable read before it applied its new term's
-// first entry. Raft answers its ReadIndex at once with the commit it knows
-// (raft's IsSingleton), here 3, while 4 and 5 hold writes already
-// answered: served at 3, a read missed them (TestOneVoterMembership, seed
-// 4 under -race, main's ci run 45424099030).
-func TestALoneVoterServesNoReadBeforeItsTermsFirstEntry(t *testing.T) {
+// loneVoter is a node of one voter, and a learner 2, restarted with
+// entries 4 and 5 in its log past the commit 3 its hard state kept:
+// entries it committed, applied and answered before it crashed. It is
+// elected in term 8, its first entry of the term, 6, not stored yet.
+type loneVoter struct {
+	t  *testing.T
+	ms *raft.MemoryStorage
+	n  *node
+	// held are the appends not stored yet; sent the messages to the
+	// learner.
+	held, sent []*pb.Message
+}
+
+func newLoneVoter(t *testing.T) *loneVoter {
+	t.Helper()
 	ms := raft.NewMemoryStorage()
 	if err := ms.ApplySnapshot(&pb.Snapshot{Metadata: &pb.SnapshotMetadata{
-		Index: new(uint64(1)), Term: new(uint64(7)), ConfState: &pb.ConfState{Voters: []uint64{1}},
+		Index: new(uint64(1)), Term: new(uint64(7)), ConfState: &pb.ConfState{Voters: []uint64{1}, Learners: []uint64{2}},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -38,84 +47,155 @@ func TestALoneVoterServesNoReadBeforeItsTermsFirstEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := &node{id: 1, rn: rn, applied: 3}
-	// stored keeps what an append hands the storage, and steps its
-	// responses: the vote, then the self-ack of the term's first entry.
-	var held []*pb.Message
-	stored := func(m *pb.Message) {
-		if m.Term != nil {
-			if err := ms.SetHardState(&pb.HardState{Term: m.Term, Vote: m.Vote, Commit: m.Commit}); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := ms.Append(m.GetEntries()); err != nil {
-			t.Fatal(err)
-		}
-		for _, r := range m.GetResponses() {
-			if err := rn.Step(r); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	// ready takes a Ready as the loop does, up to the appends: the leader's
-	// first entry of the term is noted (confAppended) and held unstored
-	// while hold is set.
-	ready := func(hold bool) {
-		for rn.HasReady() {
-			rd := rn.Ready()
-			if rd.SoftState != nil {
-				n.lead = rd.Lead
-			}
-			for _, rs := range rd.ReadStates {
-				n.readState(rs.RequestCtx, rs.Index)
-			}
-			for _, m := range rd.Messages {
-				if m.GetTo() != raft.LocalAppendThread {
-					continue
-				}
-				n.confAppended(m.GetEntries())
-				if hold && len(m.GetEntries()) > 0 {
-					held = append(held, m)
-					continue
-				}
-				stored(m)
-			}
-		}
-	}
+	lv := &loneVoter{t: t, ms: ms, n: &node{id: 1, rn: rn, applied: 3}}
 	if err := rn.Campaign(); err != nil {
 		t.Fatal(err)
 	}
-	ready(true)
-	if !n.leading() || n.confHold.leadFirst != 6 || n.confHold.leadTerm != 8 {
-		t.Fatalf("lead %d, first entry %d of term %d; want node 1 leading, its term 8's first entry 6", n.lead, n.confHold.leadFirst, n.confHold.leadTerm)
+	lv.ready(true)
+	if h := lv.n.confHold; !lv.n.leading() || h.leadFirst != 6 || h.leadTerm != 8 {
+		t.Fatalf("lead %d, first entry %d of term %d; want node 1 leading, its term 8's first entry 6", lv.n.lead, h.leadFirst, h.leadTerm)
 	}
+	return lv
+}
+
+// store keeps what an append hands the storage, and steps its responses:
+// the vote, then the self-ack of the term's first entry.
+func (lv *loneVoter) store(m *pb.Message) {
+	if m.Term != nil {
+		if err := lv.ms.SetHardState(&pb.HardState{Term: m.Term, Vote: m.Vote, Commit: m.Commit}); err != nil {
+			lv.t.Fatal(err)
+		}
+	}
+	if err := lv.ms.Append(m.GetEntries()); err != nil {
+		lv.t.Fatal(err)
+	}
+	for _, r := range m.GetResponses() {
+		if err := lv.n.rn.Step(r); err != nil {
+			lv.t.Fatal(err)
+		}
+	}
+}
+
+// ready takes the Readys as the loop does, up to the appends: the
+// leader's first entry of the term is noted (confAppended), and the
+// appends with entries are held unstored while hold is set.
+func (lv *loneVoter) ready(hold bool) {
+	n := lv.n
+	for n.rn.HasReady() {
+		rd := n.rn.Ready()
+		if rd.SoftState != nil {
+			n.lead = rd.Lead
+		}
+		for _, rs := range rd.ReadStates {
+			n.readState(rs.RequestCtx, rs.Index)
+		}
+		for _, m := range rd.Messages {
+			switch m.GetTo() {
+			case raft.LocalAppendThread:
+				n.confAppended(m.GetEntries())
+				if hold && len(m.GetEntries()) > 0 {
+					lv.held = append(lv.held, m)
+					continue
+				}
+				lv.store(m)
+			case 2:
+				lv.sent = append(lv.sent, m)
+			}
+		}
+	}
+}
+
+// commitFirst stores the term's first entry, which commits 4 to 6, and
+// has the node apply them.
+func (lv *loneVoter) commitFirst() {
+	for _, m := range lv.held {
+		lv.store(m)
+	}
+	lv.held = nil
+	lv.ready(false)
+	if c := lv.n.rn.BasicStatus().GetCommit(); c != 6 {
+		lv.t.Fatalf("commit %d after the first entry was stored, want 6", c)
+	}
+	lv.n.applied = 6
+}
+
+// A lone voter serves no linearizable read before it applied its new
+// term's first entry: Raft answers its ReadIndex at once with the commit
+// it knows (raft's IsSingleton), here 3, while 4 and 5 hold writes
+// already answered. Served at 3, a read missed them (TestOneVoterMembership,
+// seed 4 under -race, main's ci run 45424099030). The read is asked again
+// once the entry is applied, and served at 6.
+func TestALoneVoterServesNoReadBeforeItsTermsFirstEntry(t *testing.T) {
+	lv := newLoneVoter(t)
+	n := lv.n
 	served := false
 	n.reads = []pendingRead{{done: func() { served = true }}}
 	n.askReads(0)
-	ready(true)
-	if len(n.readBatches) != 1 || !n.readBatches[0].known {
-		t.Fatalf("read batches %v: want the read's index known", n.readBatches)
-	}
-	idx := n.readBatches[0].index
-	if idx != 3 {
-		t.Logf("Raft answered the lone voter's ReadIndex with %d, no longer the stale 3 this test was written for", idx)
-	}
+	lv.ready(true)
 	n.serveReads()
 	if served {
-		t.Fatalf("a read served at applied %d with read index %d, before the term's first entry %d applied", n.applied, idx, n.confHold.leadFirst)
+		t.Fatalf("a read served at applied %d, before the term's first entry %d applied", n.applied, n.confHold.leadFirst)
 	}
-	// The term's first entry is stored, commits with 4 and 5, and is
-	// applied: the read goes.
-	for _, m := range held {
-		stored(m)
+	lv.commitFirst()
+	n.serveReads()
+	lv.ready(false)
+	if len(n.readBatches) != 1 || !n.readBatches[0].known || n.readBatches[0].index < 6 {
+		t.Fatalf("read batches %+v: want the read's index known again, at least 6", n.readBatches)
 	}
-	ready(false)
-	if c := rn.BasicStatus().GetCommit(); c != 6 {
-		t.Fatalf("commit %d after the first entry was stored, want 6", c)
-	}
-	n.applied = 6
 	n.serveReads()
 	if !served {
 		t.Fatal("the read was not served once the term's first entry applied")
+	}
+}
+
+// A lone voter answers a learner's ReadIndex no sooner: Raft answers a
+// forwarded one at once too, with the commit it knows, and the learner,
+// which applies what the leader sends, served its MemberList or Range at
+// 3. The leader holds it (holdReadIndex) until its term's first entry is
+// applied, and answers it at 6.
+func TestALoneVoterAnswersALearnersReadIndexAfterItsTermsFirstEntry(t *testing.T) {
+	lv := newLoneVoter(t)
+	n := lv.n
+	ctx := binary.BigEndian.AppendUint64(nil, 77)
+	n.step(&pb.Message{Type: pb.MsgReadIndex.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(8)), Entries: []*pb.Entry{{Data: ctx}}})
+	lv.ready(true)
+	for _, m := range lv.sent {
+		if m.GetType() == pb.MsgReadIndexResp {
+			t.Fatalf("the learner's ReadIndex answered with %d, before the term's first entry %d applied", m.GetIndex(), n.confHold.leadFirst)
+		}
+	}
+	lv.commitFirst()
+	n.serveReads()
+	lv.ready(false)
+	var got []uint64
+	for _, m := range lv.sent {
+		if m.GetType() == pb.MsgReadIndexResp {
+			got = append(got, m.GetIndex())
+		}
+	}
+	if len(got) != 1 || got[0] < 6 {
+		t.Fatalf("the learner's ReadIndex answered with %v, want once, at 6 or later", got)
+	}
+}
+
+// A lone voter decides no lease's expiry before it applied its new term's
+// first entry: 4 and 5 may renew, revoke or grant again the leases it
+// applied up to 3, and a revoke decided on 3 went into the log after them.
+func TestALoneVoterExpiresNoLeaseBeforeItsTermsFirstEntry(t *testing.T) {
+	lv := newLoneVoter(t)
+	n := lv.n
+	// The ring and the forward table a revoke's batch would take.
+	r, err := newRing(1 << 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.ring, n.fwd = r, make([]fwdBatch, fwdSlots)
+	n.now = time.Unix(1000, 0)
+	n.leases.deadline = map[int64]time.Time{9: n.now.Add(-time.Second)}
+	n.leases.revoking = map[int64]time.Time{}
+	n.leases.confirmed = n.now
+	n.expireLeases()
+	if _, ok := n.leases.revoking[9]; ok {
+		t.Fatalf("lease 9 revoked at applied %d, before the term's first entry %d applied", n.applied, n.confHold.leadFirst)
 	}
 }

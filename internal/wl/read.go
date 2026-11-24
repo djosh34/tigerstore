@@ -7,6 +7,9 @@ import (
 	"math"
 	"sort"
 
+	pb "go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/djosh34/tigerstore/internal/planted"
 )
 
@@ -31,7 +34,7 @@ func (n *node) askReads(now int64) {
 	} else {
 		b = &readBatch{}
 	}
-	b.seq, b.known, b.asked, b.started = n.readSeq, false, now, now
+	b.seq, b.known, b.reask, b.asked, b.started = n.readSeq, false, false, now, now
 	b.reads, n.reads = n.reads, b.reads[:0]
 	b.buf, n.readBuf = n.readBuf, b.buf[:0]
 	n.readBatches = append(n.readBatches, b)
@@ -49,41 +52,79 @@ func (n *node) readState(ctx []byte, index uint64) {
 		return
 	}
 	for _, b := range n.readBatches {
-		if b.seq == seq {
-			b.index, b.known = index, true
+		if b.seq != seq {
+			continue
+		}
+		if h := &n.confHold; n.leading() && !n.termApplied() && (h.leadFirst == 0 || index < h.leadFirst || h.leadTerm != n.rn.BasicStatus().GetTerm()) {
+			// Short of the leader's own term's first entry, so possibly of
+			// what it answered before a restart (termApplied): asked again
+			// once it may answer (releaseReadIndexes).
+			b.reask = true
+			continue
+		}
+		b.index, b.known = index, true
+	}
+}
+
+// termApplied reports whether the node leads and applied its own first
+// entry of its current term (confHold.leadFirst, leadTerm). A lone voter's
+// Raft answers a ReadIndex at once with the index it knows committed
+// (raft's IsSingleton), its own and a learner's forwarded one, which after
+// a restart is the commit its hard state kept. The entries after it, which
+// the node committed, applied and answered before it crashed, are known
+// committed again only with the new term's first entry: a read served
+// before it missed a write already answered (TestOneVoterMembership, seed
+// 4 under -race), and a lease expired before it was decided on what the
+// node applied of them. A leader of more voters gets no read index in its
+// term before that entry commits.
+func (n *node) termApplied() bool {
+	h := &n.confHold
+	return n.leading() && h.leadFirst != 0 && h.leadFirst <= n.applied && h.leadTerm == n.rn.BasicStatus().GetTerm()
+}
+
+// holdReadIndex keeps a peer's ReadIndex, as a learner forwards it, while
+// the node leads and has not applied its own term's first entry
+// (termApplied); releaseReadIndexes steps it then, or once the node no
+// longer leads, when Raft forwards it to the leader.
+func (n *node) holdReadIndex(m *pb.Message) bool {
+	if m.GetType() != pb.MsgReadIndex || !n.leading() || n.termApplied() {
+		return false
+	}
+	n.heldReadIndex = append(n.heldReadIndex, proto.CloneOf(m))
+	return true
+}
+
+// releaseReadIndexes, once the node may answer a ReadIndex, steps the
+// peers' ones held (holdReadIndex) and asks again for its own batches
+// whose index came before it could (readState).
+func (n *node) releaseReadIndexes() {
+	if n.leading() && !n.termApplied() {
+		return
+	}
+	held := n.heldReadIndex
+	n.heldReadIndex = nil
+	for _, m := range held {
+		_ = n.rn.Step(m)
+	}
+	for _, b := range n.readBatches {
+		if b.reask {
+			b.reask = false
+			var ctx [8]byte
+			binary.BigEndian.PutUint64(ctx[:], b.seq)
+			n.rn.ReadIndex(ctx[:])
 		}
 	}
 }
 
-// readable reports whether reads with read index index may be served:
-// once the node applied it and, on a leader, once it applied its own first
-// entry of its current term (confHold.leadFirst, leadTerm). A lone voter's Raft answers a
-// ReadIndex at once with the index it knows committed (raft's
-// IsSingleton), which after a restart is the commit its hard state kept.
-// The entries after it, which the node committed, applied and answered
-// before it crashed, are known committed again only with the new term's
-// first entry: a read served before it missed a write already answered
-// (TestOneVoterMembership, seed 4 under -race). A leader of more voters
-// gets no read index before its term's first entry commits, so it never
-// waits longer for this.
-func (n *node) readable(index uint64) bool {
-	if index > n.applied {
-		return false
-	}
-	if !n.leading() {
-		return true
-	}
-	h := &n.confHold
-	return h.leadFirst != 0 && h.leadFirst <= n.applied && h.leadTerm == n.rn.BasicStatus().GetTerm()
-}
-
-// serveReads answers the batches that are readable.
+// serveReads answers the batches whose index is applied, once the node
+// may answer a ReadIndex (releaseReadIndexes).
 func (n *node) serveReads() {
+	n.releaseReadIndexes()
 	k := 0
 	for i, b := range n.readBatches {
 		// Planted B01b: served once its read index is known, before the
 		// node applied it.
-		if b.known && (n.readable(b.index) || planted.On("B01b")) {
+		if b.known && (b.index <= n.applied || planted.On("B01b")) {
 			for _, r := range b.reads {
 				if r.done != nil {
 					r.done()
