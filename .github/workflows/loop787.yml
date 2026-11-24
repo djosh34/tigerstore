@@ -1,0 +1,43 @@
+# Probe for #787, on its own branch only: TestOneVoterMembership, the test
+# that found the lone voter's stale read in race-sim (2) on main, in a loop
+# under -race on #787's head, 10 jobs of 5 runs.
+name: loop787
+
+on:
+  push:
+    branches: [probe/787-loop]
+
+permissions:
+  contents: read
+
+jobs:
+  loop:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Loop
+        shell: bash
+        env:
+          SIM_OUT: ${{ runner.temp }}/sim-out
+        run: |
+          set -o pipefail
+          go test -race -tags simio -count=5 -timeout 55m -v -run '^TestOneVoterMembership$' ./internal/sim > "$RUNNER_TEMP/loop.log" 2>&1
+          rc=$?
+          grep -E '^(--- |ok|FAIL|PASS)|sim_test.go:12[0-9][0-9]' "$RUNNER_TEMP/loop.log" | cut -c1-300
+          exit $rc
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: loop-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/loop.log
+            ${{ runner.temp }}/sim-out
+          retention-days: 14
