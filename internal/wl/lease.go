@@ -146,7 +146,7 @@ func (n *node) leaderChanged() {
 	// What the node appended as an earlier leader may have been replaced
 	// since: a new term's leader holds back for its own first entry,
 	// which Raft's pendingConfIndex covers (#689's area-2 review).
-	n.confHold.leadFirst, n.confHold.lastConf = 0, 0
+	n.confHold.leadFirst, n.confHold.leadTerm, n.confHold.lastConf = 0, 0, 0
 	n.leaseSeen = make(map[int64]time.Time, len(n.st.leases))
 	for id := range n.st.leases {
 		n.leaseSeen[id] = n.now
@@ -216,6 +216,11 @@ func (n *node) renewProposed(data []byte) {
 // leases its keepalives name first, as the leader's log takes it
 // (renewProposed).
 func (n *node) step(m *pb.Message) {
+	if m.GetType() == pb.MsgReadIndex && n.readIndexUnsafe() {
+		// A learner's ReadIndex, which Raft would answer short: dropped,
+		// and the learner asks again (retryReads).
+		return
+	}
 	if m.GetType() == pb.MsgProp && len(n.leases.deadline) > 0 {
 		for _, e := range m.GetEntries() {
 			if e.GetType() == pb.EntryNormal {
@@ -248,7 +253,10 @@ func (n *node) expireLeases() {
 			break
 		}
 	}
-	if !expired || (n.leading() && !n.confirmLead()) {
+	// A leader decides on the leases it applied of its own term at least
+	// (termApplied): before, the entries a lone voter committed before a
+	// restart may still revoke one, or grant it again under the same ID.
+	if !expired || (n.leading() && (!n.termApplied() || !n.confirmLead())) {
 		return
 	}
 	n.proposeBatch(n.now)

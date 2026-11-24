@@ -22,12 +22,12 @@ import (
 type confHold struct {
 	// lastConf is the index of the last ConfChange the node appended as
 	// the leader, and leadFirst the first entry it appended as the
-	// leader, 0 until then. stepped says it handed Raft a change this turn
-	// that is not appended yet.
-	lastConf, leadFirst uint64
-	stepped             bool
-	props               []heldProp
-	reqs                []heldMember
+	// leader in term leadTerm, 0 until then. stepped says it handed Raft
+	// a change this turn that is not appended yet.
+	lastConf, leadFirst, leadTerm uint64
+	stepped                       bool
+	props                         []heldProp
+	reqs                          []heldMember
 }
 
 // heldProp is a follower's proposal of a change, held since at.
@@ -84,8 +84,10 @@ func (n *node) confAppended(ents []*pb.Entry) {
 	if len(ents) == 0 || !n.leading() {
 		return
 	}
-	if h.leadFirst == 0 {
-		h.leadFirst = ents[0].GetIndex()
+	// A leader that won a later term without the node seeing it lose
+	// the first one appended that term's first entry now.
+	if h.leadFirst == 0 || ents[0].GetTerm() > h.leadTerm {
+		h.leadFirst, h.leadTerm = ents[0].GetIndex(), ents[0].GetTerm()
 	}
 	for _, e := range ents {
 		if t := e.GetType(); t == pb.EntryConfChange || t == pb.EntryConfChangeV2 {
