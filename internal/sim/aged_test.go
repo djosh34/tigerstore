@@ -171,8 +171,9 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 }
 
 // TestAgedBulk measures an image bulk-loaded past its memory budget
-// (#775): 350 MB of values under a budget of 256 MiB, the least a wl node
-// keeps (#760), on three voters, then one fork of it, every checker on
+// (#775): 160 MB of values under a budget of 137 MiB, the least three wl
+// voters that bootstrap their cluster keep (#760), then one fork of it,
+// every checker on
 // each. It logs the gosim run's peak RSS and the runner's free memory, on
 // the driver's side. It skips unless $SIM_SEEDS is set: it runs on
 // Actions (sim-campaign.yml), not on a small host.
@@ -187,7 +188,7 @@ func TestAgedBulk(t *testing.T) {
 	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) Stats {
 		aging := agingConfig(seed)
 		aging.Nodes, aging.Objects, aging.Duration = 3, 500, 2*60*Second
-		aging.MemoryBytes, aging.BulkBytes = 256<<20, 350_000_000
+		aging.MemoryBytes, aging.BulkBytes = 137<<20, 160_000_000
 		aging.Faults.DiskBudget = 2 * aging.BulkBytes
 		aging.Faults.DiskCapacity = int(2 * aging.Faults.DiskBudget)
 		return agedForks(t, seed, aging, 1, func(aging Config, seed uint64) Config {
