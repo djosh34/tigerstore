@@ -1,0 +1,70 @@
+# Probe for #780, on its own branch only: rolling (race)'s TestRollingUpgrade
+# in a loop on #790's head, 10 jobs of up to 4 runs, each job stopping at
+# its first failure. A failed run's nodes dump their goroutines into their
+# logs (#790), uploaded with the run's output.
+name: loop780
+
+on:
+  push:
+    branches: [probe/780-loop]
+
+permissions:
+  contents: read
+
+env:
+  ETCD_UNSAFE_LOG_RING_BYTES: "536870912"
+
+jobs:
+  loop:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build the two format ranges under -race
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path.cwd()
+          tmp = pathlib.Path(os.environ['RUNNER_TEMP'])
+          rel = 'internal/wl/format.go'
+          for name, format in [('old', 1), ('new', 2)]:
+              source = (root / rel).read_text()
+              assert source.count('const maxFormat = 1\n') == 1
+              source = source.replace('const maxFormat = 1\n', f'const maxFormat = {format}\n')
+              target = tmp / f'{name}-format.go'
+              target.write_text(source)
+              (tmp / f'{name}.json').write_text(json.dumps({'Replace': {str(root / rel): str(target)}}))
+          PY
+          go build -race -overlay "$RUNNER_TEMP/old.json" -o "$RUNNER_TEMP/tigerstore-old" ./cmd/tigerstore
+          go build -race -overlay "$RUNNER_TEMP/new.json" -o "$RUNNER_TEMP/tigerstore-new" ./cmd/tigerstore
+      - name: Loop
+        env:
+          ROLLING_OLD: ${{ runner.temp }}/tigerstore-old
+          ROLLING_NEW: ${{ runner.temp }}/tigerstore-new
+        run: |
+          set -o pipefail
+          for i in 1 2 3 4; do
+            export ROLLING_OUT="$RUNNER_TEMP/rolling-$i"
+            if ! go test -race -count=1 -timeout 8m -v ./cmd/chaos -run '^TestRollingUpgrade$' > "$RUNNER_TEMP/result-$i.log" 2>&1; then
+              grep -E 'rolling_test.go:[0-9]+:|^(--- |ok|FAIL)' "$RUNNER_TEMP/result-$i.log" | cut -c1-300
+              echo "run $i failed"
+              exit 1
+            fi
+            grep -E '^(--- |ok|FAIL)' "$RUNNER_TEMP/result-$i.log"
+            rm -rf "$ROLLING_OUT"
+          done
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: loop-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/rolling-*
+            ${{ runner.temp }}/result-*.log
+          retention-days: 14
