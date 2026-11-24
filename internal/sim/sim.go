@@ -101,6 +101,12 @@ type Config struct {
 	// finds it behind, whatever the seed or the build's speed, and waits
 	// while it catches up (#269, #745).
 	LagAtEnd bool
+	// FenceAt, if set, crashes a follower at that time and damages a
+	// synced record of its log, so that it refuses its disk and is fenced
+	// for good, unless a node was damaged or fenced already: a fence
+	// whatever the seed or the build's timing, as under the race detector
+	// (TestReplaceFenced).
+	FenceAt int64
 	// LiveFrom, if set, is when the liveness rule starts instead of
 	// LiveAfter into healing.
 	LiveFrom int64
@@ -613,9 +619,6 @@ type Sim struct {
 	// startRev is the revision of the image a fork starts from, 0 for a
 	// run from an empty store.
 	startRev int64
-	// heldFull is the node whose disk the faults keep full until a node
-	// ran out of space (Faults.DiskFullEvery).
-	heldFull *node
 	// certsExpiredAt is when the connections were reset a second after
 	// the certificate expired, and certsRotatedAt when an operator rotated
 	// it (Config.CertExpiresAt), 0 before.
@@ -1465,6 +1468,9 @@ func (s *Sim) schedule() {
 	if s.cfg.LagAtEnd {
 		s.at(s.stopAt+s.cfg.ClientTimeout+100*Millisecond, s.holdBack)
 	}
+	if s.cfg.FenceAt > 0 {
+		s.at(s.cfg.FenceAt, s.fenceFollower)
+	}
 	if s.cfg.StallLeaderAt > 0 {
 		s.at(s.cfg.StallLeaderAt, s.stallLeader)
 	}
@@ -1476,6 +1482,36 @@ func (s *Sim) schedule() {
 		s.at(s.cfg.CertRotateAt, s.rotateCerts)
 	}
 	s.at(s.healAt, s.heal)
+}
+
+// fenceFollower is FenceAt: it crashes a follower that is up and flips a
+// bit of a synced record of its log, which its next start refuses, so
+// that the node is fenced for good (wlNode's start). A run that has a
+// node damaged or fenced already needs no other.
+func (s *Sim) fenceFollower() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.count(func(m *node) bool { return m.mayBeDamaged() || m.fenced }) > 0 {
+		return
+	}
+	lead := s.leaderIdx()
+	for _, n := range s.nodes {
+		if n.proc == nil || n.out() || n.idx == lead {
+			continue
+		}
+		n.why = "the run damaged its log to fence it"
+		s.crash(n)
+		if !s.flipWLRecord(n) {
+			s.fail("FenceAt: node %d has no synced record to damage", n.id)
+			return
+		}
+		n.corrupted = true
+		s.stats.Damage[flippedRecord]++
+		s.tracef("node %d: damage to fence it: %v", n.id, flippedRecord)
+		s.restartLater(n, 1+s.rng.Int64N(Second))
+		return
+	}
+	s.fail("FenceAt: no follower up to fence")
 }
 
 // lagAtEndKey is the key of LagAtEnd's own write, which no client uses.
