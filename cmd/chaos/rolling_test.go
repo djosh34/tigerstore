@@ -341,13 +341,39 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 	// does not excuse a failed upgrade or an unexpected process exit.
 	t.Cleanup(r.finish)
 	// This runs before finish, which stops the nodes, so that a failure in
-	// finish too has the report of how the nodes stood.
+	// finish too has the report of how the nodes stood. After a failure the
+	// nodes still running then dump their goroutines into their logs
+	// (quitNodes), so that one that never came up says where its start
+	// stands (#780).
 	t.Cleanup(func() {
 		if !r.stopped {
 			r.nodes = c.report(context.Background())
+			if t.Failed() {
+				r.quitNodes()
+			}
 		}
 	})
 	return r
+}
+
+// quitNodes has each node this test started that still runs dump its
+// goroutines into its log and exit (SIGQUIT), an exit asked for.
+func (r *rollingRun) quitNodes() {
+	quit := 0
+	for _, n := range r.c.nodes {
+		n.mu.Lock()
+		running := n.cmd != nil && !n.exitedNow
+		n.mu.Unlock()
+		if !running {
+			continue
+		}
+		if _, pid, err := n.signal(syscall.SIGQUIT); err != nil {
+			r.t.Logf("SIGQUIT to node%d (pid %d): %v", n.i+1, pid, err)
+			continue
+		}
+		quit++
+	}
+	r.t.Logf("SIGQUIT to the %d nodes still running: their goroutines are in their logs, in %s", quit, r.dir)
 }
 
 func (r *rollingRun) start(i int, bin string) {
