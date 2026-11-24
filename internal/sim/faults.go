@@ -305,7 +305,12 @@ var flipPayload func(*Sim, *node) bool
 // The lock is held.
 func (s *Sim) maybeCorrupt(n *node) {
 	// A test that picks the kinds of damage tries at every crash.
-	if !s.cfg.Faults.Corrupt || s.healed || len(s.cfg.damageKinds) == 0 && s.rng.IntN(2) != 0 {
+	if !s.cfg.Faults.Corrupt || s.healed || len(s.cfg.damageKinds) == 0 && !s.cfg.LoseQuorum && s.rng.IntN(2) != 0 {
+		return
+	}
+	if s.cfg.LoseQuorum && s.now() < s.cfg.Duration/4 {
+		// The clients first commit something, which the checks of what
+		// the survivors hold need.
 		return
 	}
 	if planted.On("B04c") && flipPayload != nil {
@@ -335,7 +340,7 @@ func (s *Sim) maybeCorrupt(n *node) {
 	// for one that does.
 	switch {
 	case len(s.cfg.damageKinds) > 0:
-	case s.cfg.flipRecords && s.formed > 0 && s.flipWLRecord(n):
+	case (s.cfg.flipRecords || s.cfg.LoseQuorum) && s.formed > 0 && s.flipWLRecord(n):
 		n.corrupted = true
 		s.stats.Damage[flippedRecord]++
 		s.tracef("node %d: damage after a sync: %v", n.id, flippedRecord)
@@ -586,8 +591,9 @@ type checkpoint struct {
 	bad      []bool
 	ids      []uint64
 	inactive []bool
-	// started marks the nodes that ever started, whose disks hold a run.
-	started []bool
+	// started marks the nodes that ever started, whose disks hold a run,
+	// and joins those an operator replaced, which join the cluster.
+	started, joins []bool
 }
 
 // coldDisks are the disks a failed cold restart started from, the time
@@ -613,6 +619,7 @@ func (s *Sim) newCheckpoint() *checkpoint {
 		c.ids = append(c.ids, n.id)
 		c.inactive = append(c.inactive, n.inactive)
 		c.started = append(c.started, len(n.disk.DurableNames()) > 0)
+		c.joins = append(c.joins, n.joins)
 	}
 	return c
 }
@@ -640,7 +647,7 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 	// A cluster of one voter cannot lose its disk: its cold restart
 	// erases none (-1).
 	erasures := []int{-1}
-	if s.spare() > 0 {
+	if s.tolerance() > 0 {
 		erasures = erasures[:0]
 		for i := range all[0].disks {
 			erasures = append(erasures, i)
@@ -850,7 +857,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 			d.KeepIn(r.pages, keepPages)
 		}
 		n := r.nodes[i]
-		n.disk, n.id = d.Durable(), c.ids[i]
+		n.disk, n.id, n.joins = d.Durable(), c.ids[i], c.joins[i]
 		r.traceDisk(n)
 		// A process stopped by a peer's removed-member reply may not
 		// have the removal on disk. Cold boot must recover that disk,

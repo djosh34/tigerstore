@@ -18,6 +18,7 @@
 package sim
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -99,6 +100,12 @@ type Config struct {
 	// finds it behind, whatever the seed or the build's speed, and waits
 	// while it catches up (#269, #745).
 	LagAtEnd bool
+	// FenceAt, if set, crashes a follower at that time and damages a
+	// synced record of its log, so that it refuses its disk and is fenced
+	// for good, unless a node was damaged or fenced already: a fence
+	// whatever the seed or the build's timing, as under the race detector
+	// (TestReplaceFenced).
+	FenceAt int64
 	// LiveFrom, if set, is when the liveness rule starts instead of
 	// LiveAfter into healing.
 	LiveFrom int64
@@ -106,6 +113,11 @@ type Config struct {
 	// that: every lease adds an expiry that may apply at any time, and its
 	// search grows too fast with them.
 	NoLeases bool
+	// LoseQuorum makes every crash damage the node's disk until a
+	// majority of the voters is fenced for good, and no operator replaces
+	// one: the cluster must stay safe, and refuse every write from then
+	// on (checkUnavailable).
+	LoseQuorum bool
 	// Membership adds, updates, promotes and removes a member after the
 	// voters while the ordinary clients and faults continue.
 	Membership bool
@@ -128,6 +140,21 @@ type Config struct {
 	Window       bool
 	CompactEvery int64
 	Faults       Faults
+	// Waves change the rates of the faults that come at random times
+	// during the faults: from each wave's At on, their mean times apart
+	// are Scale times Faults', and with Scale 0 none come. The waves are
+	// in order of At.
+	Waves []Wave
+	// LinkDelay, if set, is the most of a link's own one-way delay,
+	// which each change of the links draws from 20 us up to it, 2 ms
+	// otherwise; the links keep their delays after healing too.
+	LinkDelay int64
+	// ValueBytes, if set, pads each value the small keys' clients put to
+	// that many bytes.
+	ValueBytes int
+	// Catchup is the applied entries a wl node keeps for followers that
+	// lag (wl.Config.CatchupEntries), wlCatchup if 0.
+	Catchup uint64
 	// damageKinds and netemKinds, if set, are the kinds of damage after a
 	// sync and of link faults that the run picks from, for the tests.
 	damageKinds []damageKind
@@ -171,6 +198,12 @@ type Config struct {
 	// formed first: TestSeeds' runs, whose rule over a set needs fenced
 	// nodes.
 	flipRecords bool
+}
+
+// Wave is a change of the faults' rates (Config.Waves).
+type Wave struct {
+	At    int64
+	Scale float64
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -273,6 +306,9 @@ type Faults struct {
 	// HoldDown keeps a follower down for 3 to 5 s once per run, so that
 	// it falls behind the leader's window and needs a snapshot.
 	HoldDown bool
+	// Replace has an operator replace a node fenced for good: remove its
+	// member, empty its disk and add it again (replace.go).
+	Replace bool
 	// Uncached makes one in four of the wl nodes' reads that must not
 	// wait on the disk (wl.Sys.PreadNoWait) find their bytes out of the
 	// page cache: the read waits while its values are read off the loop.
@@ -424,8 +460,15 @@ type node struct {
 	durableLast uint64
 	pending     []pendingJob
 	// corrupted is set when the run damaged the disk on purpose; fenced
-	// when the node then refused to start and stays down.
-	corrupted, fenced bool
+	// when the node then refused to start and stays down, until an
+	// operator replaces it (replace), after which it joins the cluster
+	// as a new member.
+	corrupted, fenced, joins bool
+	// catchUp, for a member an operator added in a fenced node's place,
+	// is the entry it must apply before the end of stalls[catchUpWin] is
+	// set, 0 once it did.
+	catchUp    uint64
+	catchUpWin int
 	// inactive is a member not yet added, or a process stopped because
 	// it was removed. Cold recovery must still read that process's disk.
 	inactive bool
@@ -554,6 +597,12 @@ type Sim struct {
 	// snapshot served to each node, by Raft ID, when it was served.
 	servedRoot map[uint64]uint64
 	healed     bool
+	// wroteOK is set once a client's write succeeded: the quorum loss
+	// waits for it (loseQuorum).
+	wroteOK bool
+	// quorumLostAt is when a majority of the voters was fenced for good
+	// (Config.LoseQuorum), 0 while a quorum stays.
+	quorumLostAt int64
 	// lagged is LagAtEnd's follower, whose links are down until the end.
 	lagged *node
 	// downFor is how long HoldDown keeps its follower down.
@@ -763,6 +812,11 @@ type Stats struct {
 	// Uncached counts the wl nodes' reads that found their bytes out of
 	// the page cache (Faults.Uncached).
 	Uncached int
+	// Replaced counts the nodes fenced for good that an operator replaced,
+	// and QuorumLostAt is when a majority of the voters was fenced for
+	// good (Config.LoseQuorum), 0 if never.
+	Replaced     int
+	QuorumLostAt int64
 	// MembershipChanges counts each completed stage, and MembershipFaults
 	// those completed before healing. Attempts include failed calls.
 	MembershipChanges, MembershipFaults [4]int
@@ -1369,10 +1423,46 @@ func (s *Sim) schedule() {
 	if s.cfg.LagAtEnd {
 		s.at(s.stopAt+s.cfg.ClientTimeout+100*Millisecond, s.holdBack)
 	}
+	if s.cfg.FenceAt > 0 {
+		s.at(s.cfg.FenceAt, s.fenceFollower)
+	}
 	if s.cfg.StallLeaderAt > 0 {
 		s.at(s.cfg.StallLeaderAt, s.stallLeader)
 	}
+	if s.cfg.LoseQuorum {
+		s.at(s.cfg.Duration/4, s.loseQuorum)
+	}
 	s.at(s.healAt, s.heal)
+}
+
+// fenceFollower is FenceAt: it crashes a follower that is up and flips a
+// bit of a synced record of its log, which its next start refuses, so
+// that the node is fenced for good (wlNode's start). A run that has a
+// node damaged or fenced already needs no other.
+func (s *Sim) fenceFollower() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.count(func(m *node) bool { return m.mayBeDamaged() || m.fenced }) > 0 {
+		return
+	}
+	lead := s.leaderIdx()
+	for _, n := range s.nodes {
+		if n.proc == nil || n.out() || n.idx == lead {
+			continue
+		}
+		n.why = "the run damaged its log to fence it"
+		s.crash(n)
+		if !s.flipWLRecord(n) {
+			s.fail("FenceAt: node %d has no synced record to damage", n.id)
+			return
+		}
+		n.corrupted = true
+		s.stats.Damage[flippedRecord]++
+		s.tracef("node %d: damage to fence it: %v", n.id, flippedRecord)
+		s.restartLater(n, 1+s.rng.Int64N(Second))
+		return
+	}
+	s.fail("FenceAt: no follower up to fence")
 }
 
 // lagAtEndKey is the key of LagAtEnd's own write, which no client uses.
@@ -1592,15 +1682,22 @@ func (s *Sim) after(d int64, f func()) {
 // at runs f at time t of the run, unless the run ended.
 func (s *Sim) at(t int64, f func()) { s.after(t-s.now(), f) }
 
-// every runs f at exponential intervals of the given mean until healing.
+// every runs f at exponential intervals of the given mean, as the waves
+// scale it, until healing.
 func (s *Sim) every(mean int64, f func()) {
 	s.wg.Go(func() {
 		for {
 			s.mu.Lock()
-			d := s.exp(mean) - s.now()
+			next, wave := s.waveExp(mean)
+			d := next - s.now()
 			s.mu.Unlock()
 			if !s.sleep(d) {
 				return
+			}
+			if wave {
+				// The rate changed: the wait is drawn again, which the
+				// exponential's lack of memory allows.
+				continue
 			}
 			f()
 			s.mu.Lock()
@@ -1626,6 +1723,28 @@ func (s *Sim) once(within, retry int64, f func() bool) {
 			}
 		}
 	})
+}
+
+// waveExp draws the time of the next fault of mean as the wave on now
+// scales it. If the next wave starts first, it returns that wave's start
+// and true. The lock is held.
+func (s *Sim) waveExp(mean int64) (int64, bool) {
+	scale, next := 1.0, int64(math.MaxInt64)
+	for _, w := range s.cfg.Waves {
+		if w.At > s.now() {
+			next = w.At
+			break
+		}
+		scale = w.Scale
+	}
+	if scale == 0 {
+		return next, true
+	}
+	at := s.exp(int64(scale * float64(mean)))
+	if at > next {
+		return next, true
+	}
+	return at, false
 }
 
 // exp draws an exponential delay with the given mean, as a time. The lock
@@ -1884,6 +2003,48 @@ func (s *Sim) beforeSync(p *proc) {
 	}
 }
 
+// loseQuorum crashes a node that is up and undamaged every second, its
+// disk damaged at the crash (maybeCorrupt), until a majority of the
+// voters is fenced for good (Config.LoseQuorum): the random crashes, half
+// of them kills, which damage nothing, may not get there in time. It
+// starts once a client's write succeeded, so that the checkers have a
+// committed log to check: under the race detector, with the host's
+// timing, seed 1 of TestLoseQuorum had committed none a quarter into the
+// run.
+func (s *Sim) loseQuorum() {
+	for {
+		s.mu.Lock()
+		if s.quorumLostAt > 0 || s.healed {
+			s.mu.Unlock()
+			return
+		}
+		if !s.wroteOK {
+			s.mu.Unlock()
+			if !s.sleep(Second) {
+				return
+			}
+			continue
+		}
+		var up []*node
+		for _, n := range s.nodes {
+			if n.proc != nil && !n.mayBeDamaged() && !n.out() {
+				up = append(up, n)
+			}
+		}
+		if len(up) > 0 {
+			n := up[s.rng.IntN(len(up))]
+			n.why = "the run crashed it to lose the quorum"
+			s.crash(n)
+			s.maybeCorrupt(n)
+			s.restartLater(n, 1+s.rng.Int64N(s.cfg.Faults.MaxDown))
+		}
+		s.mu.Unlock()
+		if !s.sleep(Second) {
+			return
+		}
+	}
+}
+
 // crashRandom crashes a node that is up and restarts it up to MaxDown
 // later. Half the crashes are power losses; the others kill the process,
 // as SIGKILL does, and the page cache keeps every write. One kill in three
@@ -1975,13 +2136,15 @@ func (s *Sim) powerLoss(n *node) {
 // the writes since. Images that tear writes at sectors or pages can make
 // recovery refuse the log, as a torn write and damage look alike (wal's
 // verifiesAfter), so they come only while fewer other nodes than spare
-// are out of the cluster for good, and a quorum stays, and not in membership runs, where
-// a fenced voter would refuse every change, as corruption would
-// (membershipConfig). An image of whole writes must never make recovery
-// refuse the log (#295). The lock is held.
+// are out of the cluster for good, and a quorum stays; not in membership
+// runs, where a fenced voter would refuse every change, as corruption
+// would (membershipConfig); and not in a run that loses its quorum
+// (Config.LoseQuorum), where a torn image would count as the damage it
+// is allowed. An image of whole writes must never make recovery refuse
+// the log (#295). The lock is held.
 func (s *Sim) loseUnsynced(n *node) {
 	img := simfs.Image(s.rng.IntN(4))
-	if s.cfg.Membership || s.count(func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) >= s.spare() {
+	if s.cfg.Membership || s.cfg.LoseQuorum || s.count(func(m *node) bool { return m != n && (m.mayBeDamaged() || m.fenced) }) >= s.spare() {
 		img = simfs.Image(s.rng.IntN(2))
 	}
 	s.loseUnsyncedAs(n, img)
@@ -2005,8 +2168,17 @@ func (n *node) mayBeDamaged() bool { return n.corrupted || n.tornCrash }
 
 // spare is how many voters may be out of the cluster for good while a
 // quorum of its voters stays whole: one of three, two of five, none of
-// one.
-func (s *Sim) spare() int { return (s.cfg.voters() - 1) / 2 }
+// one (tolerance). With Config.LoseQuorum, it is one more: a majority.
+func (s *Sim) spare() int {
+	k := s.tolerance()
+	if s.cfg.LoseQuorum {
+		k++
+	}
+	return k
+}
+
+// tolerance is how many voters the cluster can lose with a quorum left.
+func (s *Sim) tolerance() int { return (s.cfg.voters() - 1) / 2 }
 
 // count is the number of nodes for which f holds. The lock is held.
 func (s *Sim) count(f func(*node) bool) int {
@@ -2084,13 +2256,19 @@ func (s *Sim) restartDelay() int64 { return 1 + s.rng.Int64N(max(s.cfg.Faults.Ma
 func (s *Sim) changeLinks() {
 	every := s.cfg.Faults.LinkEvery
 	s.mu.Lock()
-	next := min(s.exp(every), 3*every)
+	next, wave := s.waveExp(every)
+	next = min(next, 3*every)
 	s.mu.Unlock()
 	for s.sleep(next - s.now()) {
 		s.mu.Lock()
 		if s.healed {
 			s.mu.Unlock()
 			return
+		}
+		if wave {
+			next, wave = s.waveExp(every)
+			s.mu.Unlock()
+			continue
 		}
 		s.stats.LinkChanges++
 		// Half of the changes heal every link; the rest pick a random set
@@ -2105,7 +2283,8 @@ func (s *Sim) changeLinks() {
 		// At most three times the mean, so that one random partition
 		// cannot hold through most of the faults; TestAllLinkMasks holds
 		// each mask.
-		next = min(s.exp(every), s.now()+3*every)
+		next, wave = s.waveExp(every)
+		next = min(next, s.now()+3*every)
 		s.mu.Unlock()
 	}
 }
@@ -2125,9 +2304,9 @@ func (s *Sim) setLinks(mask uint64) {
 			l := &s.links[i][j]
 			l.up = mask&(1<<k) != 0
 			// Each change draws new delays per link: a base of 20 us to
-			// 2 ms and jitter up to the base, so delays switch and differ
+			// 2 ms or LinkDelay and jitter up to the base, so delays switch and differ
 			// by direction.
-			l.base = 20*Microsecond + s.rng.Int64N(2*Millisecond)
+			l.base = 20*Microsecond + s.rng.Int64N(cmp.Or(s.cfg.LinkDelay, 2*Millisecond))
 			l.jitter = s.rng.Int64N(l.base + 1)
 			k++
 		}

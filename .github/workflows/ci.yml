@@ -161,12 +161,14 @@ jobs:
   # 64 seeds its rules over a set need, and TestLinearizable's in a job of
   # their own. On wl, 400 seeds of TestSeeds took 21 minutes and
   # TestLinearizable's 8, past the 26 of one job together.
+  # A job of their own runs 100 fresh scenarios (TestScenarios), each
+  # drawn whole from its seed (#502).
   sim:
     strategy:
       fail-fast: false
       matrix:
         shard: ${{ fromJSON(github.event_name == 'pull_request' && '[0]' || '[0, 1, 2, 3]') }}
-        part: [seeds-1, seeds-2, linearizable]
+        part: [seeds-1, seeds-2, linearizable, scenarios]
     name: sim (${{ matrix.shard }}, ${{ matrix.part }})
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
@@ -193,6 +195,7 @@ jobs:
             seeds-1) test=TestSeeds count=200 twice=10 ;;
             seeds-2) test=TestSeeds count=200 twice=10 first=$((first + 200)) ;;
             linearizable) test=TestLinearizable count=400 twice=20 ;;
+            scenarios) test=TestScenarios count=100 twice=4 ;;
           esac
           { echo "SIM_SEED=$first"; echo "SIM_SEEDS=$count"; echo "SIM_TWICE=$twice"; echo "SIM_TEST=$test"; } >> "$GITHUB_ENV"
           echo "$test, seeds $first to $((first + count - 1))"
