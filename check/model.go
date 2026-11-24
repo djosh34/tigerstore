@@ -8,6 +8,7 @@
 package check
 
 import (
+	"math"
 	"slices"
 	"strings"
 
@@ -25,6 +26,12 @@ var (
 // errUnsupported marks a request the model can not decide. Linearizable
 // reports it as a checker limit, not as a server bug.
 var errUnsupported = &history.Error{Code: "Unimplemented", Message: "check: historical range inside a txn is not modelled"}
+
+// errRevisionLimit is the model's answer to a write that would take the
+// store's revision past the int64 limit (#768). No server answers so: a
+// history whose write succeeded there is convicted, and an unanswered one
+// cannot have taken effect.
+var errRevisionLimit = &history.Error{Code: "Internal", Message: "check: the write would take the revision past the int64 limit"}
 
 // modelErrors are the semantic errors the model can decide. A server that
 // returns one of them must agree with the model.
@@ -310,6 +317,19 @@ func result(cmp int, r history.Result) bool {
 }
 
 func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
+	if s.rev == math.MaxInt64 {
+		// At the limit, a txn that changes a key cannot happen; one that
+		// changes none still goes (#768). It is tried on a copy first,
+		// as it changes the store in place.
+		if c := s.clone(); c.applyTxn(t, false).err == nil && c.rev != s.rev {
+			return outcome{err: errRevisionLimit}
+		}
+	}
+	return s.applyTxn(t, withEvents)
+}
+
+// applyTxn is stepTxn, but for the revision limit.
+func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 	ok := true
 	for _, c := range t.Compare {
 		if !s.compare(c) {
@@ -453,6 +473,11 @@ func (s *state) stepLeaseGrant(g *history.LeaseGrantRequest) outcome {
 func (s *state) stepLeaseRevoke(r *history.LeaseRevokeRequest, withEvents bool) outcome {
 	if !s.leases.has(r.ID) {
 		return outcome{err: errLeaseNotFound}
+	}
+	if s.rev == math.MaxInt64 && slices.ContainsFunc(s.kvs, func(kv history.KeyValue) bool { return kv.Version != 0 && kv.Lease == r.ID }) {
+		// A revoke that deletes a key would take the revision past the
+		// limit (#768).
+		return outcome{err: errRevisionLimit}
 	}
 	s.leases = s.leases.without(r.ID)
 	next := s.rev + 1

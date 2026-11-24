@@ -271,7 +271,9 @@ func (ss states) step(in input, out output) (states, bool) {
 		unsupported = unsupported || o.err == errUnsupported
 		switch {
 		case out.effect != nil:
-			if n.rev == out.effect.Revision {
+			// A write the model refuses at the revision limit had no
+			// effect, though the revision is the same (#768).
+			if o.err != errRevisionLimit && n.rev == out.effect.Revision {
 				add(n)
 			}
 		case out.err != nil && out.err.Ambiguous:

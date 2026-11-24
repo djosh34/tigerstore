@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -514,23 +515,26 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 		// observe places every op, so a table of the first state at each
 		// revision or later, made once, saves a search per op, whose cost
 		// grew with the order (#499).
-		top := w.states[len(w.states)-1].rev
-		starts := make([]int, top+2)
+		// The table goes from the first state's revision, not from 0,
+		// so that a start near the revision limit takes no more room
+		// than one at 1, and none of its bounds overflows (#768).
+		base, top := w.states[0].rev, w.states[len(w.states)-1].rev
+		starts := make([]int, top-base+1)
 		j := len(w.states)
-		for rev := top + 1; rev >= 0; rev-- {
-			for j > 0 && w.states[j-1].rev >= rev {
+		for i := top - base; i >= 0; i-- {
+			for j > 0 && w.states[j-1].rev >= base+i {
 				j--
 			}
-			starts[rev] = j
+			starts[i] = j
 		}
 		first = func(rev int64) int {
 			switch {
-			case rev < 0:
+			case rev <= base:
 				return 0
-			case rev > top+1:
+			case rev > top:
 				return len(w.states)
 			}
-			return starts[rev]
+			return starts[rev-base]
 		}
 	}
 	events := w.eventBounds()
@@ -565,7 +569,12 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 			if f = first(rev); f == len(w.states) || w.states[f].rev != rev {
 				return fmt.Errorf("%s got header revision %d, which no state of the order has (the last is %d)", w.describe(i), op.Resp.Revision, w.live.rev)
 			}
-			l = first(rev+1) - 1
+			// The last state at rev; at the int64 limit, the last of all
+			// (#768).
+			l = len(w.states) - 1
+			if rev < math.MaxInt64 {
+				l = first(rev+1) - 1
+			}
 			lo, hi = max(lo, f), min(hi, l)
 		}
 		j, ok := w.find(i, lo, hi)
