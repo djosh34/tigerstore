@@ -32,7 +32,7 @@ func Durable(h *history.History) error {
 	if err := h.Validate(); err != nil {
 		return err
 	}
-	r, err := newReplay(h.Log)
+	r, err := newReplay(h.Log, h.Start)
 	if err != nil {
 		return err
 	}
@@ -142,6 +142,10 @@ func Durable(h *history.History) error {
 					got = append(got, op.Resp.Txn.Results[j].Range)
 				}
 			}
+		}
+		if r.start > 0 && op.Resp.Revision < r.start {
+			fail("op %d (client %d) answered at revision %d, below the start's revision %d", i, op.Client, op.Resp.Revision, r.start)
+			continue
 		}
 		if op.Resp.Revision > r.rev {
 			if len(reads) > 0 || op.Req.Mutates() {

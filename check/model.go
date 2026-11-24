@@ -78,8 +78,10 @@ func (s *state) fingerprint() uint64 {
 	return h
 }
 
-func newState(keys []string) *state {
-	return &state{
+// newState is the store a history starts from: st, compacted at its
+// revision, or the empty store if st is nil. keys must hold st's keys.
+func newState(keys []string, st *history.Start) *state {
+	s := &state{
 		keys: keys,
 		kvs:  make([]history.KeyValue, len(keys)),
 		rev:  1,
@@ -87,6 +89,30 @@ func newState(keys []string) *state {
 		// notes, so nothing is compacted yet.
 		compacted: -1,
 	}
+	if st == nil {
+		return s
+	}
+	s.rev, s.compacted = st.Rev, st.Rev
+	for _, kv := range st.KVs {
+		s.kvs[s.index(kv.Key)] = kv
+	}
+	for _, id := range st.Leases {
+		s.leases = s.leases.with(id)
+	}
+	return s
+}
+
+// startEvents are st's keys as the puts that made them, for the versions
+// of a key at past revisions.
+func startEvents(st *history.Start) []history.Event {
+	if st == nil {
+		return nil
+	}
+	var out []history.Event
+	for _, kv := range st.KVs {
+		out = append(out, history.Event{Type: history.EventPut, KV: kv})
+	}
+	return out
 }
 
 func (s *state) clone() *state {

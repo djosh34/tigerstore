@@ -30,7 +30,8 @@ func ShortEnough(h *history.History) bool { return len(h.Ops) <= ShortOps }
 // Linearizable checks h.Ops with Porcupine against the ported etcd model, as
 // etcd v3.7.2's robustness tests do (tests/robustness/model and validate).
 //
-// The store must be empty at the start of the history. Keep checked histories
+// The store must be empty at the start of the history, or be h.Start. Keep
+// checked histories
 // short and isolated (ShortEnough): Porcupine's search grows fast with
 // concurrency and with bugs, and every other writer to the store must be in
 // the history. Not finishing within timeout, or within MaxSteps, is a
@@ -73,14 +74,14 @@ func Linearizable(h *history.History, timeout time.Duration, opts ...Option) err
 		reqs = append(reqs, in.req)
 		index = append(index, i)
 	}
-	keys := keysOf(reqs)
+	keys := keysOf(reqs, h.Start)
 
 	o := optionsOf(opts)
 	maxSteps := o.steps
 	var tripped, unsupported atomic.Bool
 	var steps atomic.Int64
 	m := porcupine.Model{
-		Init: func() any { return initial(keys) },
+		Init: func() any { return initial(keys, h.Start) },
 		Step: func(st, in, out any) (bool, any) {
 			n := steps.Add(1)
 			if maxSteps > 0 && n > maxSteps || o.stop != nil && n%1024 == 0 && o.stop() {
@@ -202,8 +203,13 @@ func modelRequest(op *history.Op) history.Request {
 }
 
 // keysOf returns every key a put in reqs can create, sorted.
-func keysOf(reqs []history.Request) []string {
+func keysOf(reqs []history.Request, st *history.Start) []string {
 	seen := map[string]bool{}
+	if st != nil {
+		for _, kv := range st.KVs {
+			seen[kv.Key] = true
+		}
+	}
 	add := func(ops []history.TxnOp) {
 		for _, op := range ops {
 			if op.Put != nil {
@@ -237,9 +243,9 @@ func keysOf(reqs []history.Request) []string {
 // duplicates.
 type states []*state
 
-// initial is the set holding only the empty store.
-func initial(keys []string) states {
-	s := newState(keys)
+// initial is the set holding only the store the history starts from.
+func initial(keys []string, st *history.Start) states {
+	s := newState(keys, st)
 	s.sum = s.fingerprint()
 	return states{s}
 }
