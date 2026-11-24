@@ -1,5 +1,7 @@
 package wl
 
+import "fmt"
+
 // The node's buffers outside the store are sized from its memory budget
 // (Config.MemoryBudget), so that their worst case and the store's share
 // fit within it together (TestTheBuffersFitTheBudget). The store's slab
@@ -34,6 +36,10 @@ type sizes struct {
 	// replies held for want of window (sock.pool). Beyond both halves,
 	// the reserve takes the messages past their clients' shares (#727).
 	clientPool int64
+	// kept is the most buffers that ended streams give back the node
+	// keeps for the next, each of at most keptBufMax (node.putBuf): 64
+	// at the bench's 3 GiB, and fewer at smaller budgets, from 4 up.
+	kept int
 }
 
 // sizeFor sizes the buffers of a node with budget bytes, 0 for none.
@@ -54,7 +60,82 @@ func sizeFor(budget int64) sizes {
 		replication: budget / 16,
 		uncommitted: uint64(budget / 16),
 		clientPool:  budget / 16,
+		kept:        int(min(max(budget/(48<<20), 4), 64)),
 	}
+}
+
+// worst is the most the node's bounded buffers take together, each at its
+// worst, with followers: the rings and the stage mapped outside Go's
+// heap, and on the heap every follower's send buffer full, the entries
+// Raft's storage holds, the leader's uncommitted proposals, the kept
+// stream buffers, the client pool and its reserve (#727), and the values
+// fetched off the loop that it keeps (fetchedMax), with the quarter more
+// Go needs to collect in (store.goNeed). A client connection's own
+// buffers are per connection and left out, as etcd leaves them out.
+func (z sizes) worst(budget int64, followers int) int64 {
+	// A send buffer grows to at most four times what waits in it, its
+	// backlog and one message on top (sock.openRec).
+	replication := int64(followers) * (4*(z.peerBacklog(followers)+maxPeerMsg) + maxPlain + recOverhead + 8)
+	heap := replication + z.held + int64(z.uncommitted) + int64(z.kept)*keptBufMax + z.clientPool + z.reserve() + fetchedMax(budget)
+	return z.mapped() + heap + heap/4
+}
+
+// keeps reports whether a node with budget bytes keeps it with followers:
+// its buffers at their worst leave the store at least a quarter of the
+// budget, for its tables and its slab, which takes what the tables leave
+// (store.relimit).
+func keeps(budget int64, followers int) bool {
+	return budget-sizeFor(budget).worst(budget, followers) >= budget/4
+}
+
+// leastBudget is the least memory budget, in whole MiB, that a node keeps
+// with followers: 110 MiB for a cluster of three. For up to 8 followers
+// it keeps every budget above it, and every smaller cluster
+// (TestTheBuffersFitTheBudget); Config.check and budgetKeeps hold the
+// budget to it.
+// The send buffers' floors, a backlog and a message of each follower's,
+// do not shrink with the budget, so each follower more needs about 28 MiB
+// more (#760).
+func leastBudget(followers int) int64 {
+	b := int64(1 << 20)
+	for !keeps(b, followers) {
+		b += 1 << 20
+	}
+	return b
+}
+
+// startFollowers is the most followers a node that starts with members
+// is checked for (Config.check): the other members, and, on a node that
+// bootstrapped the cluster, as many learners as the cluster may add
+// (maxLearners). A node that joined was added to a cluster whose budget
+// was checked for it as the add was proposed (node.budgetKeeps), and
+// starts with that cluster's members: counting a learner more would refuse
+// it, and its restarts, at the very budget that admitted it.
+func startFollowers(members int, join bool) int {
+	f := max(members-1, 0)
+	if !join {
+		f += maxLearners
+	}
+	return f
+}
+
+// budgetKeeps refuses a membership change that leaves a cluster of
+// members the node's memory budget does not keep (#760). It is checked as
+// the change is proposed, on the node a client asks for an add and on the
+// leader for a promotion, against that node's own budget and member list,
+// and never as the change is applied, so that no member's applied state
+// depends on its own budget. A promotion does not change the members'
+// count: it is refused only where the cluster already passed the
+// budget. Two adds asked of two nodes at once, or an add asked of a node
+// whose budget is larger than another member's, are not caught here:
+// every member is meant to run with the same budget, and one that does
+// not keep the cluster says so as it applies the add
+// (node.applyConfChange).
+func (n *node) budgetKeeps(members int) error {
+	if n.st.budget <= 0 || n.st.budget >= leastBudget(members-1) {
+		return nil
+	}
+	return requestErr(codeFailedPrecondition, fmt.Sprintf("etcdserver: re-configuration failed: a memory budget of %d bytes does not keep a cluster of %d members, which needs at least %d bytes", n.st.budget, members, leastBudget(members-1)))
 }
 
 // maxMsg is the largest gRPC message a client may send: etcd's request

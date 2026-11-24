@@ -149,7 +149,7 @@ func readWatchStream(t *testing.T, conn net.Conn, r *watchReader, more func() bo
 func TestALargeRevisionsEventsGoOutInPieces(t *testing.T) {
 	const budget = 96 << 20
 	loopOf := watchLoops(t)
-	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
 	c := tc.clientOf(t, tc.endpoints[0])
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
@@ -294,7 +294,7 @@ func TestAnEventPastOneMessageComesWhole(t *testing.T) {
 func TestTwoLargeWatchResponsesOnOneStreamComeWhole(t *testing.T) {
 	const budget = 96 << 20
 	loopOf := watchLoops(t)
-	tc := newTestClusterWith(t, func(tc *testCluster) { tc.budget = budget })
+	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
 	c := tc.clientOf(t, tc.endpoints[0])
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
