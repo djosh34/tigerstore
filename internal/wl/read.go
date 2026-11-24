@@ -7,8 +7,7 @@ import (
 	"math"
 	"sort"
 
-	pb "go.etcd.io/raft/v3/raftpb"
-	"google.golang.org/protobuf/proto"
+	"go.etcd.io/raft/v3"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -25,8 +24,6 @@ func (n *node) askReads(now int64) {
 		return
 	}
 	n.readSeq++
-	var ctx [8]byte
-	binary.BigEndian.PutUint64(ctx[:], n.readSeq)
 	var b *readBatch
 	if k := len(n.freeBatches); k > 0 {
 		b = n.freeBatches[k-1]
@@ -39,7 +36,7 @@ func (n *node) askReads(now int64) {
 	b.buf, n.readBuf = n.readBuf, b.buf[:0]
 	n.readBatches = append(n.readBatches, b)
 	n.stats.readIndex++
-	n.rn.ReadIndex(ctx[:])
+	n.askReadIndex(b)
 }
 
 // readState records the index of a ReadIndex.
@@ -55,71 +52,75 @@ func (n *node) readState(ctx []byte, index uint64) {
 		if b.seq != seq {
 			continue
 		}
-		if h := &n.confHold; n.leading() && !n.termApplied() && (h.leadFirst == 0 || index < h.leadFirst || h.leadTerm != n.rn.BasicStatus().GetTerm()) {
-			// Short of the leader's own term's first entry, so possibly of
-			// what it answered before a restart (termApplied): asked again
-			// once it may answer (releaseReadIndexes).
-			b.reask = true
-			continue
-		}
 		b.index, b.known = index, true
 	}
 }
 
+// readIndexUnsafe reports whether Raft would answer a ReadIndex asked
+// now, the node's own or a peer's, with an index short of what the node
+// committed and answered. That is so, by Raft's own state and not the
+// loop's view of it, which a turn's steps outrun, while the node leads a
+// cluster of one voter, whose ReadIndex Raft answers at once with the
+// commit it knows (raft's IsSingleton), and that commit is not of its own
+// term: after a restart it is the commit the hard state kept, and the
+// entries after it, which the node committed, applied and answered before
+// it crashed, are known committed again only with its term's first entry.
+// A read served at that index missed a write already answered
+// (TestOneVoterMembership, seed 4 under -race). A leader of more voters
+// answers no ReadIndex before its term's first entry commits anyway.
+func (n *node) readIndexUnsafe() bool {
+	if n.voters() != 1 {
+		return false
+	}
+	st := n.rn.BasicStatus()
+	if st.RaftState != raft.StateLeader {
+		return false
+	}
+	t, err := n.storage.Term(st.GetCommit())
+	return err != nil || t != st.GetTerm()
+}
+
+// askReadIndex asks Raft for batch b's read index, or, while its answer
+// could be short (readIndexUnsafe), holds the ask until it no longer
+// could (askHeld).
+func (n *node) askReadIndex(b *readBatch) {
+	if n.readIndexUnsafe() {
+		b.reask = true
+		return
+	}
+	var ctx [8]byte
+	binary.BigEndian.PutUint64(ctx[:], b.seq)
+	n.rn.ReadIndex(ctx[:])
+}
+
+// askHeld asks for the batches askReadIndex held, once Raft's answer can
+// no longer be short.
+func (n *node) askHeld() {
+	if n.readIndexUnsafe() {
+		return
+	}
+	for _, b := range n.readBatches {
+		if b.reask {
+			b.reask = false
+			n.askReadIndex(b)
+		}
+	}
+}
+
 // termApplied reports whether the node leads and applied its own first
-// entry of its current term (confHold.leadFirst, leadTerm). A lone voter's
-// Raft answers a ReadIndex at once with the index it knows committed
-// (raft's IsSingleton), its own and a learner's forwarded one, which after
-// a restart is the commit its hard state kept. The entries after it, which
-// the node committed, applied and answered before it crashed, are known
-// committed again only with the new term's first entry: a read served
-// before it missed a write already answered (TestOneVoterMembership, seed
-// 4 under -race), and a lease expired before it was decided on what the
-// node applied of them. A leader of more voters gets no read index in its
-// term before that entry commits.
+// entry of its current term (confHold.leadFirst, leadTerm). Until then
+// the entries a lone voter committed before a restart, past the commit its
+// hard state kept, may still revoke a lease it applied, or grant one again
+// under the same ID (expireLeases).
 func (n *node) termApplied() bool {
 	h := &n.confHold
 	return n.leading() && h.leadFirst != 0 && h.leadFirst <= n.applied && h.leadTerm == n.rn.BasicStatus().GetTerm()
 }
 
-// holdReadIndex keeps a peer's ReadIndex, as a learner forwards it, while
-// the node leads and has not applied its own term's first entry
-// (termApplied); releaseReadIndexes steps it then, or once the node no
-// longer leads, when Raft forwards it to the leader.
-func (n *node) holdReadIndex(m *pb.Message) bool {
-	if m.GetType() != pb.MsgReadIndex || !n.leading() || n.termApplied() {
-		return false
-	}
-	n.heldReadIndex = append(n.heldReadIndex, proto.CloneOf(m))
-	return true
-}
-
-// releaseReadIndexes, once the node may answer a ReadIndex, steps the
-// peers' ones held (holdReadIndex) and asks again for its own batches
-// whose index came before it could (readState).
-func (n *node) releaseReadIndexes() {
-	if n.leading() && !n.termApplied() {
-		return
-	}
-	held := n.heldReadIndex
-	n.heldReadIndex = nil
-	for _, m := range held {
-		_ = n.rn.Step(m)
-	}
-	for _, b := range n.readBatches {
-		if b.reask {
-			b.reask = false
-			var ctx [8]byte
-			binary.BigEndian.PutUint64(ctx[:], b.seq)
-			n.rn.ReadIndex(ctx[:])
-		}
-	}
-}
-
-// serveReads answers the batches whose index is applied, once the node
-// may answer a ReadIndex (releaseReadIndexes).
+// serveReads answers the batches whose index is applied, and asks for
+// those whose ask was held (askHeld).
 func (n *node) serveReads() {
-	n.releaseReadIndexes()
+	n.askHeld()
 	k := 0
 	for i, b := range n.readBatches {
 		// Planted B01b: served once its read index is known, before the
@@ -193,12 +194,10 @@ func (n *node) retryReads(now int64) {
 	clear(n.readBatches[k:])
 	n.readBatches = n.readBatches[:k]
 	for _, b := range n.readBatches {
-		if !b.known && now-b.asked > 5 {
+		if !b.known && !b.reask && now-b.asked > 5 {
 			n.readSeq++
 			b.seq, b.asked = n.readSeq, now
-			var ctx [8]byte
-			binary.BigEndian.PutUint64(ctx[:], b.seq)
-			n.rn.ReadIndex(ctx[:])
+			n.askReadIndex(b)
 		}
 	}
 }

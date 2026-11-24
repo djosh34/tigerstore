@@ -216,7 +216,9 @@ func (n *node) renewProposed(data []byte) {
 // leases its keepalives name first, as the leader's log takes it
 // (renewProposed).
 func (n *node) step(m *pb.Message) {
-	if n.holdReadIndex(m) {
+	if m.GetType() == pb.MsgReadIndex && n.readIndexUnsafe() {
+		// A learner's ReadIndex, which Raft would answer short: dropped,
+		// and the learner asks again (retryReads).
 		return
 	}
 	if m.GetType() == pb.MsgProp && len(n.leases.deadline) > 0 {
@@ -253,7 +255,7 @@ func (n *node) expireLeases() {
 	}
 	// A leader decides on the leases it applied of its own term at least
 	// (termApplied): before, the entries a lone voter committed before a
-	// restart may still renew, revoke or grant them again.
+	// restart may still revoke one, or grant it again under the same ID.
 	if !expired || (n.leading() && (!n.termApplied() || !n.confirmLead())) {
 		return
 	}

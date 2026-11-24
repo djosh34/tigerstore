@@ -47,7 +47,16 @@ func newLoneVoter(t *testing.T) *loneVoter {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lv := &loneVoter{t: t, ms: ms, n: &node{id: 1, rn: rn, applied: 3}}
+	// The node's own storage holds what Raft's does: the commit's term,
+	// which tells when Raft's answer could be short (readIndexUnsafe),
+	// comes from it.
+	st := newLogStorage(nil)
+	st.snapIndex, st.snapTerm = 1, 7
+	for _, e := range ents {
+		st.ents = append(st.ents, storedEnt{ent: e, term: e.GetTerm(), typ: e.GetType()})
+	}
+	n := &node{id: 1, rn: rn, applied: 3, storage: st, members: []member{{id: 1}, {id: 2, learner: true}}}
+	lv := &loneVoter{t: t, ms: ms, n: n}
 	if err := rn.Campaign(); err != nil {
 		t.Fatal(err)
 	}
@@ -68,6 +77,9 @@ func (lv *loneVoter) store(m *pb.Message) {
 	}
 	if err := lv.ms.Append(m.GetEntries()); err != nil {
 		lv.t.Fatal(err)
+	}
+	for _, e := range m.GetEntries() {
+		lv.n.storage.ents = append(lv.n.storage.ents, storedEnt{ent: e, term: e.GetTerm(), typ: e.GetType()})
 	}
 	for _, r := range m.GetResponses() {
 		if err := lv.n.rn.Step(r); err != nil {
@@ -119,12 +131,12 @@ func (lv *loneVoter) commitFirst() {
 	lv.n.applied = 6
 }
 
-// A lone voter serves no linearizable read before it applied its new
-// term's first entry: Raft answers its ReadIndex at once with the commit
+// A lone voter serves no linearizable read before its new term's first
+// entry commits: Raft would answer its ReadIndex at once with the commit
 // it knows (raft's IsSingleton), here 3, while 4 and 5 hold writes
 // already answered. Served at 3, a read missed them (TestOneVoterMembership,
-// seed 4 under -race, main's ci run 45424099030). The read is asked again
-// once the entry is applied, and served at 6.
+// seed 4 under -race, main's ci run 45424099030). The node asks Raft
+// nothing until then, and the read is served at 6.
 func TestALoneVoterServesNoReadBeforeItsTermsFirstEntry(t *testing.T) {
 	lv := newLoneVoter(t)
 	n := lv.n
@@ -134,13 +146,16 @@ func TestALoneVoterServesNoReadBeforeItsTermsFirstEntry(t *testing.T) {
 	lv.ready(true)
 	n.serveReads()
 	if served {
-		t.Fatalf("a read served at applied %d, before the term's first entry %d applied", n.applied, n.confHold.leadFirst)
+		t.Fatalf("a read served at applied %d, before the term's first entry %d committed", n.applied, n.confHold.leadFirst)
+	}
+	if len(n.readBatches) != 1 || n.readBatches[0].known || !n.readBatches[0].reask {
+		t.Fatalf("read batches %+v: want the read's ask held, no index known", n.readBatches)
 	}
 	lv.commitFirst()
 	n.serveReads()
 	lv.ready(false)
 	if len(n.readBatches) != 1 || !n.readBatches[0].known || n.readBatches[0].index < 6 {
-		t.Fatalf("read batches %+v: want the read's index known again, at least 6", n.readBatches)
+		t.Fatalf("read batches %+v: want the read's index known, at least 6", n.readBatches)
 	}
 	n.serveReads()
 	if !served {
@@ -148,24 +163,32 @@ func TestALoneVoterServesNoReadBeforeItsTermsFirstEntry(t *testing.T) {
 	}
 }
 
-// A lone voter answers a learner's ReadIndex no sooner: Raft answers a
-// forwarded one at once too, with the commit it knows, and the learner,
-// which applies what the leader sends, served its MemberList or Range at
-// 3. The leader holds it (holdReadIndex) until its term's first entry is
-// applied, and answers it at 6.
-func TestALoneVoterAnswersALearnersReadIndexAfterItsTermsFirstEntry(t *testing.T) {
+// A lone voter answers no learner's ReadIndex short either: Raft answers a
+// forwarded one at once too, and the learner, which applies what the
+// leader sends, served its linearizable MemberList at 3. The request comes
+// between the node's vote, which made Raft the leader, and the Ready that
+// tells the loop: Raft's own state decides (readIndexUnsafe). It is
+// dropped, and the learner's next ask is answered at 6.
+func TestALoneVoterAnswersNoLearnersReadIndexShort(t *testing.T) {
 	lv := newLoneVoter(t)
 	n := lv.n
-	ctx := binary.BigEndian.AppendUint64(nil, 77)
-	n.step(&pb.Message{Type: pb.MsgReadIndex.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(8)), Entries: []*pb.Entry{{Data: ctx}}})
+	ask := func() {
+		ctx := binary.BigEndian.AppendUint64(nil, 77)
+		// A learner's Raft sends it with no term.
+		n.step(&pb.Message{Type: pb.MsgReadIndex.Enum(), From: new(uint64(2)), To: new(uint64(1)), Entries: []*pb.Entry{{Data: ctx}}})
+	}
+	// As the loop's view lags Raft's within a turn.
+	n.lead = 0
+	ask()
+	n.lead = 1
 	lv.ready(true)
 	for _, m := range lv.sent {
 		if m.GetType() == pb.MsgReadIndexResp {
-			t.Fatalf("the learner's ReadIndex answered with %d, before the term's first entry %d applied", m.GetIndex(), n.confHold.leadFirst)
+			t.Fatalf("the learner's ReadIndex answered with %d, before the term's first entry %d committed", m.GetIndex(), n.confHold.leadFirst)
 		}
 	}
 	lv.commitFirst()
-	n.serveReads()
+	ask()
 	lv.ready(false)
 	var got []uint64
 	for _, m := range lv.sent {
@@ -179,8 +202,9 @@ func TestALoneVoterAnswersALearnersReadIndexAfterItsTermsFirstEntry(t *testing.T
 }
 
 // A lone voter decides no lease's expiry before it applied its new term's
-// first entry: 4 and 5 may renew, revoke or grant again the leases it
-// applied up to 3, and a revoke decided on 3 went into the log after them.
+// first entry: 4 and 5 may revoke a lease it applied up to 3, or grant one
+// again under the same ID, and a revoke decided on 3 went into the log
+// after them. Once the entry is applied, the expired lease is revoked.
 func TestALoneVoterExpiresNoLeaseBeforeItsTermsFirstEntry(t *testing.T) {
 	lv := newLoneVoter(t)
 	n := lv.n
@@ -197,5 +221,11 @@ func TestALoneVoterExpiresNoLeaseBeforeItsTermsFirstEntry(t *testing.T) {
 	n.expireLeases()
 	if _, ok := n.leases.revoking[9]; ok {
 		t.Fatalf("lease 9 revoked at applied %d, before the term's first entry %d applied", n.applied, n.confHold.leadFirst)
+	}
+	lv.commitFirst()
+	n.leases.confirmed = n.now
+	n.expireLeases()
+	if _, ok := n.leases.revoking[9]; !ok {
+		t.Fatal("lease 9 not revoked once the term's first entry applied")
 	}
 }

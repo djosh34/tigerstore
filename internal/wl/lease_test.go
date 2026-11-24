@@ -122,10 +122,11 @@ func leaderNode(t *testing.T) (*node, *raft.MemoryStorage) {
 	return n, ms
 }
 
-// termFirstApplied has leader n count its own term's first entry applied
-// (termApplied), as the loop has by the time it decides an expiry: the
-// tests start the leases' clocks over (leaderChanged) after Raft elected
-// it, and that forgets the entry.
+// termFirstApplied stubs termApplied for leader n, as the loop has applied
+// its own term's first entry by the time it decides an expiry: the tests
+// start the leases' clocks over (leaderChanged) after Raft elected it,
+// which forgets the entry, and the leases they grant are applied without
+// the log.
 func termFirstApplied(n *node) {
 	h := &n.confHold
 	h.leadFirst, h.leadTerm = 1, n.rn.BasicStatus().GetTerm()
