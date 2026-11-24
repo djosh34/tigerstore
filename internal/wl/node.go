@@ -325,6 +325,9 @@ type readBatch struct {
 	started int64
 	reads   []pendingRead
 	buf     []byte
+	// reask is set while its ask is held, as Raft's answer could be short
+	// (askReadIndex): it is asked once it no longer could (askHeld).
+	reask bool
 }
 
 type opRes struct {
